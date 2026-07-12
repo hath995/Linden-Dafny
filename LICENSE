@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 Aaron Elligsen (Dafny port)
+Copyright (c) 2026 Aaron Elligsen
 
 This package is a Dafny port of the OCaml "RegElk" linear-time regex engine
 (https://github.com/LindenRegex/RegElk), which is likewise MIT-licensed:
