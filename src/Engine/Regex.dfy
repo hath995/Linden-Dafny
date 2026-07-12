@@ -1,19 +1,30 @@
 // Port of regex.ml
 // The type of regexes we match, including capture groups and lookarounds,
 // plus annotation, nullability analysis, and AST manipulation helpers.
+/** The regex AST (before/after annotation), plus nullability analysis and AST
+    manipulation helpers. `raw_regex` is what the `Parser` produces; `annotate`
+    turns it into a `regex` with unique ids for every capture group, lookaround,
+    and quantifier, which is what the `Compiler` consumes. */
 module RegElkRegex {
   import opened Std.Wrappers
   import opened Charclasses
 
   // * Quantifiers
   // all of these can be compiled for regex-linear matching, except LazyPlus
+  /** The six ECMAScript quantifier shorthands: `*`, `*?`, `+`, `+?`, `?`, `??`.
+      All but `LazyPlus` can be compiled for linear-time matching. */
   datatype quantifier =
     | Star | LazyStar | Plus | LazyPlus | QuestionMark | LazyQuestionMark
 
   // generic quantifier type, for (possibly non-linear) counted repetition.
   // max = None represents infinity.
+  /** A general `{min,max}`-style counted repetition (`max = None` means
+      unbounded), with a `greedy` flag; the canonical form every `quantifier`
+      is reduced to. */
   datatype counted_quantifier = CountedQuant(min: int, max: Option<int>, greedy: bool)
 
+  /** Converts a quantifier shorthand (`*`, `+`, `?`, ...) into its canonical
+      `counted_quantifier`. */
   function quant_canonicalize(q: quantifier): counted_quantifier {
     match q
     case Star => CountedQuant(0, None, true)
@@ -25,12 +36,16 @@ module RegElkRegex {
   }
 
   // * Lookarounds
+  /** The four lookaround flavours: `(?=…)`, `(?!…)`, `(?<=…)`, `(?<!…)`. */
   datatype lookaround = Lookahead | NegLookahead | Lookbehind | NegLookbehind
 
   // * Anchors (0-width assertions)
+  /** Zero-width assertions: `$`, `^`, `\b`, `\B`. */
   datatype anchor = EndInput | BeginInput | WordBoundary | NonWordBoundary
 
   // * Character Characterizations
+  /** A single-character pattern element: a literal `Char`, `Dot` (any
+      character), a Perl `char_group` like `\w`, or a bracket `Class`/`NegClass`. */
   datatype character =
     | Char(c: char)            // a simple character
     | Dot                      // any character
@@ -39,6 +54,19 @@ module RegElkRegex {
     | NegClass(cl: char_class) // a negated character class
 
   // * Raw Regexes (before annotation)
+  /** The unannotated regex AST produced by the `Parser`: capture groups,
+      lookarounds, and quantifiers don't yet carry the unique ids that
+      `annotate` assigns them.
+
+      - `Raw_empty` — the empty pattern.
+      - `Raw_character(rc)` — a single `character`.
+      - `Raw_alt(ra1, ra2)` — `ra1 | ra2`.
+      - `Raw_con(rc1, rc2)` — `rc1` followed by `rc2`.
+      - `Raw_quant(rq, rqr)` — `rqr` repeated per quantifier shorthand `rq`.
+      - `Raw_count(rcq, rcr)` — `rcr` repeated per general `{min,max}` count `rcq`.
+      - `Raw_capture(rcap)` — a capturing group `( rcap )`.
+      - `Raw_lookaround(rl, rlr)` — a lookaround `rl` around `rlr`.
+      - `Raw_anchor(ranc)` — a zero-width anchor. */
   datatype raw_regex =
     | Raw_empty
     | Raw_character(rc: character)
@@ -51,24 +79,43 @@ module RegElkRegex {
     | Raw_anchor(ranc: anchor)
 
   // shortcuts for simpler ASTs
+  /** A literal-character `raw_regex`. */
   function raw_char(x: char): raw_regex { Raw_character(Char(x)) }
+  /** The `.` (any character) `raw_regex`. */
   const raw_dot: raw_regex := Raw_character(Dot)
+  /** `r*` — greedy zero-or-more, as a `raw_regex`. */
   function raw_star(r: raw_regex): raw_regex { Raw_quant(Star, r) }
+  /** `r+` — greedy one-or-more, as a `raw_regex`. */
   function raw_plus(r: raw_regex): raw_regex { Raw_quant(Plus, r) }
+  /** `r?` — greedy optional, as a `raw_regex`. */
   function raw_qmark(r: raw_regex): raw_regex { Raw_quant(QuestionMark, r) }
+  /** A Perl character-group (e.g. `\w`) `raw_regex`. */
   function raw_group(g: char_group): raw_regex { Raw_character(Group(g)) }
+  /** A bracket class `[...]` `raw_regex`. */
   function raw_class(c: char_class): raw_regex { Raw_character(Class(c)) }
+  /** A negated bracket class `[^...]` `raw_regex`. */
   function raw_neg_class(c: char_class): raw_regex { Raw_character(NegClass(c)) }
 
   // * Nullability: NonNullable / Context-Dependent / Context-Independent
+  /** How a regex's ability to match the empty string can depend on context:
+      `NonNullable` (never), `CDNullable` (context-dependent, e.g. an anchor
+      or lookaround), or `CINullable` (always, regardless of context). */
   datatype nullability = NonNullable | CDNullable | CINullable
 
   // annotated identifiers
+  /** A capture-group id, assigned by `annotate`. */
   type capture = int
+  /** A lookaround id, assigned by `annotate`. */
   type lookid = int
+  /** A quantifier id, assigned by `annotate`. */
   type quantid = int
 
   // * Annotated Regexes
+  /** The annotated regex AST the `Compiler` consumes: like `raw_regex`, but
+      every capture group (`Re_capture`), lookaround (`Re_lookaround`), and
+      quantifier (`Re_quant`) carries a unique id, and each quantifier has been
+      canonicalized to a `counted_quantifier` and cached its `nullability`.
+      Produced from a `raw_regex` by `annotate`. */
   datatype regex =
     | Re_empty
     | Re_character(ec: character)
@@ -81,6 +128,8 @@ module RegElkRegex {
     | Re_anchor(anc: anchor)
 
   // * Computing Nullability
+  /** Nullability of a disjunction `r1 | r2` given the nullability of each
+      side. */
   function null_or(n1: nullability, n2: nullability): nullability {
     match n1
     case NonNullable => n2
@@ -88,6 +137,8 @@ module RegElkRegex {
     case CINullable => CINullable
   }
 
+  /** Nullability of a concatenation `r1 r2` given the nullability of each
+      part. */
   function null_and(n1: nullability, n2: nullability): nullability {
     match n1
     case NonNullable => NonNullable
@@ -95,6 +146,8 @@ module RegElkRegex {
     case CINullable => n2
   }
 
+  /** Whether annotated regex `r` can match the empty string, and if so under
+      what conditions (see `nullability`). */
   function nullable(r: regex): nullability
     decreases r
   {
@@ -109,6 +162,7 @@ module RegElkRegex {
     case Re_anchor(_) => CDNullable
   }
 
+  /** Same as `nullable`, computed directly on an unannotated `raw_regex`. */
   function raw_nullable(r: raw_regex): nullability
     decreases r
   {
@@ -134,6 +188,10 @@ module RegElkRegex {
   // * Annotating Regexes
   // adds identifiers for each capture group / lookaround / quantifier,
   // returning the next fresh ids; also canonicalizes every quantifier.
+  /** Annotates `ra`, assigning fresh capture/lookaround/quantifier ids
+      starting at `c`/`l`/`q` (depth-first, left to right) and canonicalizing
+      every quantifier; returns the annotated `regex` along with the next
+      fresh id of each kind. The workhorse behind `annotate`. */
   function annotate_regex(ra: raw_regex, c: capture, l: lookid, q: quantid)
     : (regex, capture, lookid, quantid)
     decreases ra
@@ -165,11 +223,16 @@ module RegElkRegex {
   }
 
   // external capture group 0; lookarounds start at 1; quants start at 1.
+  /** Annotates a parsed `raw_regex` into the `regex` the `Compiler` consumes,
+      implicitly wrapping it in capture group 0 (the whole-match capture);
+      lookaround and quantifier ids start at 1. */
   function annotate(ra: raw_regex): regex {
     annotate_regex(Raw_capture(ra), 0, 1, 1).0
   }
 
   // adds a .*? prefix so the match need not start at the beginning
+  /** Prepends a non-greedy `.*?` to `r`, so the match is free to start
+      anywhere in the input rather than only at position 0. */
   function lazy_prefix(r: regex): regex {
     Re_con(Re_quant(NonNullable, 0, CountedQuant(0, None, false), Re_character(Dot)), r)
   }
@@ -177,6 +240,9 @@ module RegElkRegex {
   // * Regex Manipulation
 
   // reversing a regex for backward execution (only concatenation is reversed)
+  /** Reverses `r` for backward execution: swaps the order of every
+      concatenation (`Re_con(r1, r2)` becomes `r2` then `r1`), leaving
+      everything else structurally the same. Used to run lookbehinds. */
   function reverse_regex(r: regex): regex
     decreases r
   {
@@ -192,6 +258,9 @@ module RegElkRegex {
   }
 
   // during oracle building we don't extract captures, so remove them
+  /** Strips every `Re_capture` node out of `r` (dropping the group markers
+      but keeping their content), since building the lookaround `Oracle`
+      doesn't need capture information. */
   function remove_capture(r: regex): regex
     decreases r
   {
@@ -207,6 +276,8 @@ module RegElkRegex {
   }
 
   // * Lookaround Manipulation
+  /** Finds the `Re_lookaround` node in `r` with id `lid`, returning its body
+      and `lookaround` flavour, or `None` if no such id occurs. */
   function get_lookaround(r: regex, lid: lookid): Option<(regex, lookaround)>
     decreases r
   {
@@ -225,12 +296,16 @@ module RegElkRegex {
   }
 
   // we should always find a lookaround in range
+  /** Total variant of `get_lookaround`, for callers that already know `lid`
+      occurs in `r` (as every id assigned by `annotate` does). */
   function get_look(r: regex, lid: lookid): (regex, lookaround)
     requires get_lookaround(r, lid).Some?
   {
     get_lookaround(r, lid).value
   }
 
+  /** Finds the `Re_quant` node in `r` with id `qid`, returning its body and
+      `counted_quantifier`, or `None` if no such id occurs. */
   function get_quantifier(r: regex, qid: quantid): Option<(regex, counted_quantifier)>
     decreases r
   {
@@ -248,6 +323,8 @@ module RegElkRegex {
       if id == qid then Some((r1, quant)) else get_quantifier(r1, qid)
   }
 
+  /** Total variant of `get_quantifier`, for callers that already know `qid`
+      occurs in `r`. */
   function get_quant(r: regex, qid: quantid): (regex, counted_quantifier)
     requires get_quantifier(r, qid).Some?
   {
@@ -256,6 +333,7 @@ module RegElkRegex {
 
   function imax(a: int, b: int): int { if a > b then a else b }
 
+  /** The largest lookaround id occurring in `r` (0 if it has none). */
   function max_lookaround(r: regex): lookid
     ensures max_lookaround(r) >= 0
     decreases r
@@ -271,6 +349,8 @@ module RegElkRegex {
     case Re_lookaround(lid, look, r1) => imax(lid, max_lookaround(r1))
   }
 
+  /** The largest capture-group id occurring in `r` (0 if it has none but the
+      implicit whole-match group). */
   function max_group(r: regex): capture
     ensures max_group(r) >= 0
     decreases r
@@ -286,6 +366,7 @@ module RegElkRegex {
     case Re_capture(cid, r1) => imax(cid, max_group(r1))
   }
 
+  /** The largest quantifier id occurring in `r` (0 if it has none). */
   function max_quant(r: regex): quantid
     ensures max_quant(r) >= 0
     decreases r
@@ -333,6 +414,8 @@ module RegElkRegex {
   }
 
   // ordered from lowest to highest
+  /** The ids of every nullable, greedy, unbounded (`min>0, max=None`) `+`
+      quantifier in `r`, ordered from lowest to highest id. */
   function nullable_plus_quantid(r: regex): seq<quantid> {
     reverse_seq(nullable_plus_quantid'(r, []))
   }
@@ -355,6 +438,8 @@ module RegElkRegex {
       else cdn_plus_list'(r1, lq)
   }
 
+  /** The ids of every context-dependent-nullable (`CDNullable`), greedy,
+      unbounded `+` quantifier in `r`, ordered from highest to lowest id. */
   function cdn_plus_list(r: regex): seq<quantid> {
     cdn_plus_list'(r, [])
   }
@@ -375,6 +460,9 @@ module RegElkRegex {
     if |cl| == 0 then true else class_elt_wf(cl[0]) && class_wf(cl[1..])
   }
 
+  /** Well-formedness of a parsed `raw_regex`: every literal character is
+      ASCII (`char_wf`), every counted repetition's range is non-empty
+      (`min <= max`), and every character class's ranges are properly ordered. */
   predicate regex_wf(r: raw_regex)
     decreases r
   {

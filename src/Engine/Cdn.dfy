@@ -2,6 +2,10 @@
 // CDN (Context-Dependent Nullable) formulas: express when a regex is nullable
 // at a given string position, so that context-dependent nullable eager pluses
 // can be matched without bytecode duplication.
+/** CDN (Context-Dependent Nullable) formulas: boolean formulas over the
+    oracle/context that say whether a regex is nullable at the current string
+    position, letting the engine match context-dependent-nullable eager `+`
+    quantifiers without duplicating bytecode. */
 module Cdn {
   import opened Std.Wrappers
   import opened RegElkRegex
@@ -12,13 +16,23 @@ module Cdn {
   // * CDN Table
   // a set of quantifier ids known to be nullable at the current cp
   // (OCaml `unit IntMap.t`).
+  /** The set of quantifier ids known (during one interpreter step) to be
+      CDN-nullable at the current position. */
   type cdn_table = set<int>
 
+  /** The empty CDN table: no quantifier known nullable yet. */
   function init_cdn(): cdn_table { {} }
+  /** Records that quantifier `qid` is nullable at the current position. */
   function cdn_set_true(cdn: cdn_table, qid: quantid): cdn_table { cdn + {qid} }
+  /** Whether `qid` has been recorded as nullable in `cdn`. */
   function cdn_get(cdn: cdn_table, qid: quantid): bool { qid in cdn }
 
   // * CDN formulas
+  /** A boolean formula deciding context-dependent nullability: constants
+      `CDN_true`/`CDN_false`, `CDN_and`/`CDN_or` combinators, a reference to
+      another quantifier's already-computed table entry (`CDN_quant`), a
+      lookaround test (`CDN_look`/`CDN_neglook`), or an anchor test
+      (`CDN_anchor`). */
   datatype cdn_formula =
     | CDN_true
     | CDN_false
@@ -30,6 +44,8 @@ module Cdn {
     | CDN_anchor(canc: anchor)
 
   // * Evaluating CDN formulas
+  /** Evaluates formula `f` at position `cp`, against oracle `o`, the CDN
+      table `t` computed so far, and anchor context `ctx`/`dir`. */
   function interpret_cdn(f: cdn_formula, cp: int, o: oracle, t: cdn_table,
                          ctx: char_context, dir: direction): bool
     reads o
@@ -49,6 +65,9 @@ module Cdn {
   }
 
   // * Compiling to CDN formulas (minimizing as we build)
+  /** Compiles the CDN formula for whether `r` matches the empty string at the
+      current position, simplifying `true`/`false` constants as it goes (e.g.
+      `CDN_and(CDN_true, f) = f`). */
   function compile_cdnf(r: regex): cdn_formula
     decreases r
   {
@@ -88,8 +107,14 @@ module Cdn {
   }
 
   // * Compiling all CDN formulas of a regex (single AST traversal)
+  /** An ordered list of `(quantifier id, cdn_formula)` pairs, one per
+      CDN-nullable eager `+` quantifier in a regex, as produced by
+      `compile_cdns`. */
   type cdns = seq<(quantid, cdn_formula)>
 
+  /** Accumulates the `cdns` list for `r` by walking every `Re_quant` node and
+      compiling a `compile_cdnf` formula for each eligible (CDN-nullable,
+      greedy, unbounded) quantifier. */
   function compile_cdns_rec(r: regex, c: cdns): cdns
     decreases r
   {
@@ -107,9 +132,14 @@ module Cdn {
       else compile_cdns_rec(r1, c)
   }
 
+  /** All the `(quantifier id, cdn_formula)` pairs needed to evaluate `r`'s
+      CDN-nullable eager pluses, computed in one AST traversal. */
   function compile_cdns(r: regex): cdns { compile_cdns_rec(r, []) }
 
   // * Building the CDN Table (done by the interpreter at each step)
+  /** Evaluates each formula in `cs` in order against oracle `o` and context
+      `ctx`, accumulating results into `table` (later formulas can reference
+      earlier quantifiers' entries via `CDN_quant`). */
   function build_cdn_rec(cs: cdns, cp: int, o: oracle, ctx: char_context,
                          dir: direction, table: cdn_table): cdn_table
     reads o
@@ -123,6 +153,8 @@ module Cdn {
       build_cdn_rec(cs[1..], cp, o, ctx, dir, table')
   }
 
+  /** Builds the full CDN table at position `cp` from scratch, evaluating
+      every formula in `cs` against oracle `o` and context `ctx`/`dir`. */
   function build_cdn(cs: cdns, cp: int, o: oracle, ctx: char_context, dir: direction): cdn_table
     reads o
   {
@@ -132,6 +164,8 @@ module Cdn {
   // ----- Pure view-based evaluation (spec-only; used by the functional model
   // of the interpreter, which computes over OracleView) -----
 
+  /** Pure `OracleView` counterpart of `interpret_cdn`, used by the
+      interpreter's functional model. */
   function interpret_cdn_v(f: cdn_formula, cp: int, ov: OracleView, t: cdn_table,
                            ctx: char_context, dir: direction): bool
     decreases f
@@ -149,6 +183,7 @@ module Cdn {
     case CDN_anchor(a) => is_satisfied(a, ctx, dir)
   }
 
+  /** Pure `OracleView` counterpart of `build_cdn_rec`. */
   function build_cdn_rec_v(cs: cdns, cp: int, ov: OracleView, ctx: char_context,
                            dir: direction, table: cdn_table): cdn_table
     decreases |cs|
@@ -161,10 +196,13 @@ module Cdn {
       build_cdn_rec_v(cs[1..], cp, ov, ctx, dir, table')
   }
 
+  /** Pure `OracleView` counterpart of `build_cdn`. */
   function build_cdn_v(cs: cdns, cp: int, ov: OracleView, ctx: char_context, dir: direction): cdn_table {
     build_cdn_rec_v(cs, cp, ov, ctx, dir, init_cdn())
   }
 
+  /** `interpret_cdn` on the mutable oracle agrees with `interpret_cdn_v` on
+      its `ViewOf` snapshot. */
   lemma InterpretCdnView(f: cdn_formula, cp: int, o: oracle, t: cdn_table,
                          ctx: char_context, dir: direction)
     ensures interpret_cdn(f, cp, o, t, ctx, dir) == interpret_cdn_v(f, cp, ViewOf(o), t, ctx, dir)
@@ -182,6 +220,8 @@ module Cdn {
     case _ =>
   }
 
+  /** `build_cdn_rec` on the mutable oracle agrees with `build_cdn_rec_v` on
+      its `ViewOf` snapshot. */
   lemma BuildCdnRecView(cs: cdns, cp: int, o: oracle, ctx: char_context,
                         dir: direction, table: cdn_table)
     ensures build_cdn_rec(cs, cp, o, ctx, dir, table) == build_cdn_rec_v(cs, cp, ViewOf(o), ctx, dir, table)
@@ -196,6 +236,8 @@ module Cdn {
     }
   }
 
+  /** `build_cdn` on the mutable oracle agrees with `build_cdn_v` on its
+      `ViewOf` snapshot. */
   lemma BuildCdnView(cs: cdns, cp: int, o: oracle, ctx: char_context, dir: direction)
     ensures build_cdn(cs, cp, o, ctx, dir) == build_cdn_v(cs, cp, ViewOf(o), ctx, dir)
   {

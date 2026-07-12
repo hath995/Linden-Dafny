@@ -13,6 +13,14 @@
 //  - find_match (string walk): measure = |str|-cp (forward) / cp (backward),
 //    guarded by the invariant `context.nextchar == get_char(str, cp[-1])`.
 //  - consume: |blocked|; nulled_plus/children: structural on the AST.
+/** The Thompson-style bytecode interpreter (the paper's RegElk engine): runs
+    threads over `Bytecode` in lockstep by string position, tracking capture/
+    lookaround/quantifier registers via the `AbstractRegs` backend `R`,
+    building the lookaround `Oracle` and `Cdn` tables, and reconstructing
+    captures lost to nulled `+` iterations. Instantiated once per `Regs`
+    backend below (`ArrayInterp`, `ListInterp`, `MapInterp`). Every imperative
+    method here has a pure functional counterpart (prefixed `F`) it is proved
+    equal to, so all correctness reasoning happens over the pure values. */
 abstract module Interpreter {
   import opened Std.Wrappers
   import opened Charclasses
@@ -25,6 +33,8 @@ abstract module Interpreter {
   import R : AbstractRegs
 
   // * Direction helpers
+  /** Which direction to scan the string when building lookaround `l`'s oracle
+      entries: `Backward` for lookaheads, `Forward` for lookbehinds. */
   function oracle_direction(l: lookaround): direction {
     match l
     case Lookahead => Backward
@@ -33,52 +43,81 @@ abstract module Interpreter {
     case NegLookbehind => Forward
   }
   // OCaml failwiths on negative lookarounds; only called when capture_type holds.
+  /** Which direction to scan when reconstructing lookaround `l`'s capture
+      groups: `Forward` for lookaheads, `Backward` for lookbehinds. Only
+      meaningful for positive lookarounds (guarded by `capture_type`). */
   function capture_direction(l: lookaround): direction {
     match l
     case Lookahead => Forward
     case Lookbehind => Backward
     case _ => Forward
   }
+  /** Whether lookaround `l` is positive (`Lookahead`/`Lookbehind`) and so has
+      capture groups worth reconstructing. */
   function capture_type(l: lookaround): bool {
     match l
     case Lookahead => true
     case Lookbehind => true
     case _ => false
   }
+  /** Moves position `cp` one step in direction `dir` (`+1` forward, `-1`
+      backward). */
   function incr_cp(cp: int, dir: direction): int {
     match dir case Forward => cp + 1 case Backward => cp - 1
   }
+  /** The starting position for a scan of direction `dir` over a string of
+      length `str_size`: `0` forward, `str_size` backward. */
   function init_cp(dir: direction, str_size: int): int {
     match dir case Forward => 0 case Backward => str_size
   }
+  /** The offset back to the character just consumed when advancing in
+      direction `dir` (0 forward, 1 backward); used to read the right
+      character into the context window after moving `cp`. */
   function cp_offset(dir: direction): int {
     match dir case Forward => 0 case Backward => 1
   }
 
   // * String access
+  /** Total read of the character at position `cp` in `str`: `None` if out of
+      range. */
   function get_char(str: string, cp: int): Option<char> {
     if 0 <= cp < |str| then Some(str[cp]) else None
   }
 
   // * Threads (immutable)
+  /** An immutable snapshot of one VM thread: its program counter `pc`, its
+      three register banks (`capture_regs`, `look_regs`, `quant_regs`), and
+      `exit_allowed` (whether it may currently leave a quantifier loop without
+      consuming). The mutable OCaml thread record becomes this immutable
+      value, copied at every `Fork`. */
   datatype Thread = Thread(pc: int, capture_regs: R.Regs, look_regs: R.Regs,
                            quant_regs: R.Regs, exit_allowed: bool)
 
+  /** The initial thread: `pc` 0, the given register banks, `exit_allowed =
+      false`. */
   function init_thread(initcap: R.Regs, initlook: R.Regs, initquant: R.Regs): Thread {
     Thread(0, initcap, initlook, initquant, false)
   }
 
   // * PC Sets (immutable seq<bool>)
+  /** A set of instruction labels represented as a bitmap, one entry per
+      label. */
   type pcset = seq<bool>
+  /** The empty `pcset` for a code of size `n` — every label absent. */
   function init_pcset(n: int): pcset { if n >= 0 then seq(n, i => false) else [] }
+  /** Marks label `pc` present in `pcs` (a no-op if `pc` is out of range). */
   function pc_add(pcs: pcset, pc: Label): pcset {
     if 0 <= pc < |pcs| then pcs[pc := true] else pcs
   }
+  /** Whether label `pc` is marked present in `pcs`. */
   function pc_mem(pcs: pcset, pc: Label): bool {
     0 <= pc < |pcs| && pcs[pc]
   }
 
   // adds (thread, char) at the head of blocked only if its pc isn't already in.
+  /** Prepends `(t, x)` to the `blocked` list `current`, unless a thread
+      already occupies `t.pc` in `inset` — per label, only the
+      highest-priority thread survives to the consume phase. */
   function add_thread(t: Thread, x: char_expectation,
                       current: seq<(Thread, char_expectation)>, inset: pcset)
     : (seq<(Thread, char_expectation)>, pcset)
@@ -88,12 +127,18 @@ abstract module Interpreter {
   }
 
   // * Boolean PC Sets (per exit_allowed value)
+  /** Two `pcset`s, one per value of `exit_allowed`, tracking which `(pc,
+      exit_allowed)` pairs have already been processed during one
+      epsilon-closure pass (see `advance_epsilon`). */
   datatype Bpcset = Bpcset(true_set: pcset, false_set: pcset)
+  /** The empty `Bpcset` for a code of size `n`. */
   function init_bpcset(n: int): Bpcset { Bpcset(init_pcset(n), init_pcset(n)) }
+  /** Marks `(pc, exit_bool)` as processed in `b`. */
   function bpc_add(b: Bpcset, pc: Label, exit_bool: bool): Bpcset {
     if exit_bool then Bpcset(pc_add(b.true_set, pc), b.false_set)
     else Bpcset(b.true_set, pc_add(b.false_set, pc))
   }
+  /** Whether `(pc, exit_bool)` has already been processed in `b`. */
   function bpc_mem(b: Bpcset, pc: Label, exit_bool: bool): bool {
     if exit_bool then pc_mem(b.true_set, pc) else pc_mem(b.false_set, pc)
   }
@@ -104,17 +149,24 @@ abstract module Interpreter {
   // The measure is the number of still-unprocessed slots, lexicographically
   // paired with |active| (which strictly shrinks whenever a thread is dropped
   // without marking a fresh slot).
+  /** How many entries of `s` are still `false` (unmarked); part of the
+      termination measure for `advance_epsilon`'s epsilon closure. */
   function count_false(s: seq<bool>): nat
     decreases |s|
   {
     if |s| == 0 then 0 else (if s[0] then 0 else 1) + count_false(s[1..])
   }
+  /** The number of `(pc, exit_allowed)` pairs not yet processed in `b`; the
+      primary component of `advance_epsilon`'s termination measure. */
   function unprocessed(b: Bpcset): nat {
     count_false(b.true_set) + count_false(b.false_set)
   }
 
   // Flipping a slot to `true` never increases the false-count, and strictly
   // decreases it when that slot was previously `false`.
+  /** Marking one slot of `s` as `true` never increases `count_false`, and
+      strictly decreases it if that slot was previously `false` — the key
+      fact making `advance_epsilon`'s epsilon closure terminate. */
   lemma count_false_set(s: seq<bool>, pc: int)
     requires 0 <= pc < |s|
     ensures count_false(s[pc := true]) <= count_false(s)
@@ -130,6 +182,11 @@ abstract module Interpreter {
   }
 
   // * Interpreter state (mutable)
+  /** The interpreter's mutable per-scan state: the current position `cp`,
+      the `active`/`blocked` thread queues, which `(pc, exit_allowed)` pairs
+      and labels have been `processed`/marked `isblocked` this step, the best
+      match found so far, the anchor `context`, a logical `clock`, and the
+      current `cdn` table. Mirrored by the pure `VmState`/`StateOf`. */
   class IState {
     var cp: int
     var active: seq<Thread>                          // high-to-low priority
@@ -141,6 +198,7 @@ abstract module Interpreter {
     var clock: int
     var cdn: cdn_table
 
+    /** Builds an `IState` directly from its already-computed fields. */
     constructor(cp_: int, active_: seq<Thread>, processed_: Bpcset,
                 blocked_: seq<(Thread, char_expectation)>, isblocked_: pcset,
                 bestmatch_: Option<Thread>, context_: char_context, clock_: int, cdn_: cdn_table)
@@ -154,6 +212,8 @@ abstract module Interpreter {
     }
   }
 
+  /** The `char_context` (surrounding characters) at position `cp` in `str`
+      when scanning in direction `dir`. */
   function cp_context(cp: int, str: string, dir: direction): char_context {
     var nextop := get_char(str, cp);
     var prevop := get_char(str, cp - 1);
@@ -170,11 +230,16 @@ abstract module Interpreter {
   // and the compiled tables by FCompiled/CrView (Compiler.dfy).
   // ===========================================================================
 
+  /** Pure, immutable mirror of `IState`, used by the functional model
+      (`F`-prefixed functions) that every imperative method here is proved to
+      match. */
   datatype VmState = VmSt(cp: int, active: seq<Thread>, processed: Bpcset,
                           blocked: seq<(Thread, char_expectation)>, isblocked: pcset,
                           bestmatch: Option<Thread>, context: char_context,
                           clock: int, cdn: cdn_table)
 
+  /** Reads the current contents of `IState` `s` into a pure `VmState`
+      snapshot. */
   function StateOf(s: IState): VmState
     reads s
   {
@@ -182,6 +247,8 @@ abstract module Interpreter {
          s.context, s.clock, s.cdn)
   }
 
+  /** Pure counterpart of `init_state`: the initial `VmState` for running code
+      `c` from position `initcp` with the given registers/clock/context. */
   function FInitState(c: code, initcp: int, initcap: R.Regs, initlook: R.Regs,
                       initquant: R.Regs, initclk: int, initctx: char_context): VmState
   {
@@ -189,6 +256,8 @@ abstract module Interpreter {
          [], init_pcset(size(c)), None, initctx, initclk, init_cdn())
   }
 
+  /** `bpc_add` never increases `unprocessed`, and strictly decreases it when
+      adding a genuinely new, in-range `(pc, eb)` pair. */
   lemma UnprocessedAdd(b: Bpcset, pc: Label, eb: bool)
     ensures unprocessed(bpc_add(b, pc, eb)) <= unprocessed(b)
     ensures !bpc_mem(b, pc, eb) && (eb ==> 0 <= pc < |b.true_set|) && (!eb ==> 0 <= pc < |b.false_set|)
@@ -201,6 +270,10 @@ abstract module Interpreter {
     }
   }
 
+  /** Pure counterpart of `advance_epsilon`: repeatedly steps the
+      highest-priority `active` thread along epsilon transitions (jumps,
+      forks, register writes, oracle/anchor/CDN checks) until every thread
+      has either blocked on a `Consume`, been dropped, or reached `Accept`. */
   function FAdvanceEpsilon(c: code, s: VmState, ov: OracleView, dir: direction): (VmState, OracleView)
     requires |s.processed.true_set| == size(c) && |s.processed.false_set| == size(c)
     ensures var (s', ov') := FAdvanceEpsilon(c, s, ov, dir);
@@ -273,6 +346,9 @@ abstract module Interpreter {
           FAdvanceEpsilon(c, s1.(active := ac), ov, dir)
   }
 
+  /** Pure counterpart of `consume`: feeds the next input character to every
+      `blocked` thread, in priority order, reactivating (with `exit_allowed`
+      set) those whose expectation it satisfies and dropping the rest. */
   function FConsume(s: VmState): VmState
     ensures var r := FConsume(s);
       r.cp == s.cp && r.context == s.context && r.processed == s.processed
@@ -290,6 +366,9 @@ abstract module Interpreter {
       FConsume(s2)
   }
 
+  /** Pure counterpart of `null_interp`: runs the epsilon closure alone (no
+      character consumption) — used to find a nullable match when
+      reconstructing a `+` quantifier's last, empty iteration. */
   function FNullInterp(c: code, s: VmState, ov: OracleView, dir: direction)
     : (Option<Thread>, VmState, OracleView)
     requires |s.processed.true_set| == size(c) && |s.processed.false_set| == size(c)
@@ -298,6 +377,10 @@ abstract module Interpreter {
     (s'.bestmatch, s', ov')
   }
 
+  /** Pure counterpart of `find_match`: the main string-walking loop — build
+      the CDN table, run the epsilon closure, then consume a character and
+      repeat, until no threads remain or the string end is reached, returning
+      the highest-priority accepting thread if any. */
   function FFindMatch(c: code, str: string, s: VmState, ov: OracleView, dir: direction, cdn: cdns)
     : (Option<Thread>, OracleView)
     requires |s.processed.true_set| == size(c) && |s.processed.false_set| == size(c)
@@ -320,10 +403,18 @@ abstract module Interpreter {
         FFindMatch(c, str, s4, ov1, dir, cdn)
   }
 
+  /** Total, bounds-guarded read of the `i`th code-table entry in `s`
+      (out-of-range `i` reads as `[]`); the sequence-based counterpart of
+      `get_code`. */
   function get_code_v(s: seq<code>, i: int): code {
     if 0 <= i < |s| then s[i] else []
   }
 
+  /** Pure counterpart of `nulled_plus`: walks `reg`'s AST and, for every
+      quantifier whose registers show it started an iteration
+      (`R.get_cp(qt, qid)` is set), replays that iteration's bytecode with the
+      null interpreter to reconstruct the captures a possibly-empty match
+      would have set. */
   function FNulledPlus(reg: regex, cap: R.Regs, lk: R.Regs, qt: R.Regs,
                        plus_bcv: seq<code>, str: string, ov: OracleView, dir: direction)
     : (R.Regs, R.Regs, R.Regs, OracleView)
@@ -359,6 +450,10 @@ abstract module Interpreter {
         FNulledChildren(body, subtable, start_cp, ncap, nlk, nqt, plus_bcv, str, ov1, dir)
   }
 
+  /** Pure counterpart of `nulled_children`: like `FNulledPlus`, but restricted
+      to quantifiers nested inside a parent `+` that started at the same
+      position `cp`, sharing the parent's already-computed CDN table
+      `cdnt`. */
   function FNulledChildren(reg: regex, cdnt: cdn_table, cp: int, cap: R.Regs, lk: R.Regs, qt: R.Regs,
                            plus_bcv: seq<code>, str: string, ov: OracleView, dir: direction)
     : (R.Regs, R.Regs, R.Regs, OracleView)
@@ -395,6 +490,9 @@ abstract module Interpreter {
           (cap, lk, qt, ov)
   }
 
+  /** Pure counterpart of `reconstruct_plus_groups`: reconstructs every nulled
+      `+`'s missing captures in `thread` via `FNulledPlus`, leaving its
+      `pc`/`exit_allowed` unchanged. */
   function FReconstructPlus(thread: Thread, ast: regex, plus_bcv: seq<code>,
                             str: string, ov: OracleView, dir: direction): (Thread, OracleView)
   {
@@ -403,6 +501,9 @@ abstract module Interpreter {
     (Thread(thread.pc, cap, lk, qt, thread.exit_allowed), ov1)
   }
 
+  /** Pure counterpart of `find_match_plus`: runs `FFindMatch` from
+      `start_cp` and, on a match, reconstructs nulled-plus captures via
+      `FReconstructPlus`. */
   function FFindMatchPlus(c: code, ast: regex, plus_bcv: seq<code>, str: string, ov: OracleView,
                           dir: direction, start_cp: int, capture: R.Regs, look: R.Regs,
                           quant: R.Regs, start_clock: int, cdn: cdns): (Option<Thread>, OracleView)
@@ -417,6 +518,10 @@ abstract module Interpreter {
       (Some(rt), ov2)
   }
 
+  /** Pure counterpart of the `build_oracle` loop body: builds oracle entries
+      for lookaround ids down to 1 in decreasing order, starting from `lid`
+      (so a lookaround can reference lookarounds nested inside it, which get
+      lower ids). */
   function FBuildLids(crv: FCompiled, str: string, lid: int, ov: OracleView): OracleView
     decreases lid
   {
@@ -439,12 +544,19 @@ abstract module Interpreter {
       FBuildLids(crv, str, lid - 1, ov1)
   }
 
+  /** Pure counterpart of `build_oracle`: the full lookaround oracle for
+      `str`, built by running every lookaround's oracle-building bytecode via
+      `FBuildLids`. */
   function FBuildOracle(crv: FCompiled, str: string): OracleView
   {
     var maxlook := max_lookaround(crv.f_main_ast);
     FBuildLids(crv, str, maxlook, init_view(|str|, maxlook + 1))
   }
 
+  /** Pure counterpart of the `build_capture` lookaround loop: for each
+      lookaround id from `lid` to `maxlook`, if it was recorded as matching
+      (`R.get_cp(lk, lid)`), replays its capture-reconstruction bytecode via
+      `FFindMatchPlus`. */
   function FLookLoop(crv: FCompiled, str: string, lid: int, maxlook: int,
                      cap: R.Regs, lk: R.Regs, qt: R.Regs, ov: OracleView)
     : (R.Regs, R.Regs, R.Regs, OracleView)
@@ -472,6 +584,10 @@ abstract module Interpreter {
           FLookLoop(crv, str, next, maxlook, cap, lk, qt, ov)
   }
 
+  /** Pure counterpart of `build_capture`: finds the main match with
+      `FFindMatchPlus`, reconstructs every lookaround's captures with
+      `FLookLoop`, then filters out registers reset by unmatched
+      alternatives/quantifiers via `filter_reset`. */
   function FBuildCapture(crv: FCompiled, str: string, ov: OracleView): (Option<seq<int>>, OracleView)
   {
     var max_look := max_lookaround(crv.f_main_ast);
@@ -490,6 +606,8 @@ abstract module Interpreter {
       (Some(filter_reset(crv.f_main_ast, cap, lk, qt, -1)), ov2)
   }
 
+  /** Pure counterpart of `matcher`: builds the oracle then the capture
+      result for `str` against compiled regex `crv`. */
   function FMatcher(crv: FCompiled, str: string): Option<seq<int>>
   {
     var ov := FBuildOracle(crv, str);
@@ -498,6 +616,9 @@ abstract module Interpreter {
 
   // THE functional characterization of the whole engine: full_match (each
   // register backend) provably returns exactly this.
+  /** THE functional specification of the whole engine: annotates and fully
+      compiles `raw`, then matches `str`. Every register backend's
+      `full_match` is proved to return exactly this. */
   function FFullMatch(raw: raw_regex, str: string): Option<seq<int>>
   {
     FMatcher(FFullCompilation(annotate(raw)), str)
@@ -507,6 +628,8 @@ abstract module Interpreter {
   // End of functional model
   // ===========================================================================
 
+  /** Allocates a fresh `IState` for running code `c` from position `initcp`,
+      matching `FInitState`. */
   method init_state(c: code, initcp: int, initcap: R.Regs, initlook: R.Regs,
                     initquant: R.Regs, initclk: int, initctx: char_context) returns (s: IState)
     ensures fresh(s)
@@ -519,6 +642,11 @@ abstract module Interpreter {
   }
 
   // * advance all threads along epsilon transitions
+  /** Imperative counterpart of `FAdvanceEpsilon`: repeatedly pops the
+      highest-priority `active` thread and steps it along epsilon transitions
+      — jumps, forks, register/quantifier-clock writes, oracle/negative-oracle
+      checks, oracle writes, loop begin/end, CDN nullability checks, and
+      anchor assertions — until `active` is empty. */
   method advance_epsilon(c: code, s: IState, o: oracle, dir: direction)
     requires |s.processed.true_set| == size(c) && |s.processed.false_set| == size(c)
     modifies s, o
@@ -624,6 +752,9 @@ abstract module Interpreter {
   }
 
   // * consume the next character, advancing or killing blocked threads
+  /** Imperative counterpart of `FConsume`: feeds the next input character to
+      each `blocked` thread in priority order, reactivating those it
+      satisfies. */
   method consume(s: IState)
     modifies s
     ensures s.cp == old(s.cp) && s.context == old(s.context) && s.processed == old(s.processed)
@@ -642,6 +773,8 @@ abstract module Interpreter {
   }
 
   // * Null interpreter: follow epsilon transitions only (for + reconstruction)
+  /** Imperative counterpart of `FNullInterp`: runs `advance_epsilon` alone (no
+      consuming) and returns the resulting best match, if any. */
   method null_interp(c: code, s: IState, o: oracle, dir: direction) returns (res: Option<Thread>)
     requires |s.processed.true_set| == size(c) && |s.processed.false_set| == size(c)
     modifies s, o
@@ -652,6 +785,10 @@ abstract module Interpreter {
   }
 
   // * Finding the top priority match: alternate advance_epsilon and consume
+  /** Imperative counterpart of `FFindMatch`: the main matching loop over
+      `str`, alternating `advance_epsilon` and `consume` while rebuilding the
+      CDN table at each position, until the threads die out or the string end
+      is reached. */
   method find_match(c: code, str: string, s: IState, o: oracle, dir: direction, cdn: cdns)
     returns (res: Option<Thread>)
     requires |s.processed.true_set| == size(c) && |s.processed.false_set| == size(c)
@@ -685,12 +822,17 @@ abstract module Interpreter {
 
   // * Reconstructing Nullable + Values
   // reads a code entry from the plus-bytecode table (bounds-guarded read)
+  /** Total, bounds-guarded read of the `i`th entry of code array `a`
+      (out-of-range `i` reads as `[]`). */
   function get_code(a: array<code>, i: int): code reads a {
     if 0 <= i < a.Length then a[i] else []
   }
   function opt_int(o: Option<int>): int { match o case None => -1 case Some(x) => x }
 
   // goes through the regex; for each nulled +, replays it with the null interp.
+  /** Imperative counterpart of `FNulledPlus`: walks `reg`, replaying each
+      unresolved `+` iteration's bytecode via `null_interp` to reconstruct
+      capture registers a nulled last iteration would have set. */
   method nulled_plus(reg: regex, cap: R.Regs, lk: R.Regs, qt: R.Regs,
                      plus_bc: array<code>, str: string, o: oracle, dir: direction)
     returns (cap2: R.Regs, lk2: R.Regs, qt2: R.Regs)
@@ -737,6 +879,9 @@ abstract module Interpreter {
   }
 
   // children nulled while nulling a parent plus share the parent's CDN table
+  /** Imperative counterpart of `FNulledChildren`: like `nulled_plus`, but only
+      for quantifiers nested in a parent `+` that started at the same
+      position `cp`, reusing the parent's CDN table `cdnt`. */
   method nulled_children(reg: regex, cdnt: cdn_table, cp: int, cap: R.Regs, lk: R.Regs, qt: R.Regs,
                          plus_bc: array<code>, str: string, o: oracle, dir: direction)
     returns (cap2: R.Regs, lk2: R.Regs, qt2: R.Regs)
@@ -783,6 +928,8 @@ abstract module Interpreter {
     }
   }
 
+  /** Imperative counterpart of `FReconstructPlus`: reconstructs `thread`'s
+      nulled-`+` captures via `nulled_plus`. */
   method reconstruct_plus_groups(thread: Thread, ast: regex, plus_bc: array<code>,
                                  str: string, o: oracle, dir: direction) returns (res: Thread)
     modifies o
@@ -794,6 +941,8 @@ abstract module Interpreter {
   }
 
   // * Find a match AND reconstruct the corresponding plus groups
+  /** Imperative counterpart of `FFindMatchPlus`: runs `find_match` from
+      `start_cp`, then `reconstruct_plus_groups` on a match. */
   method find_match_plus(c: code, ast: regex, plus_bc: array<code>, str: string, o: oracle,
                          dir: direction, start_cp: int, capture: R.Regs, look: R.Regs,
                          quant: R.Regs, start_clock: int, cdn: cdns) returns (res: Option<Thread>)
@@ -819,6 +968,9 @@ abstract module Interpreter {
     if 0 <= i < |s| then s[i] else -1
   }
 
+  /** Resets every capture-group start register found under `r` to unset
+      (`-1`) — used when an alternative/quantifier body didn't end up on the
+      winning path, so its captures must not leak into the result. */
   function filter_all(r: regex, regs: seq<int>): seq<int>
     decreases r
   {
@@ -833,6 +985,10 @@ abstract module Interpreter {
     case Re_lookaround(_, _, r1) => filter_all(r1, regs)
   }
 
+  /** Walks `r`, comparing each capture/quantifier/lookaround's recorded clock
+      against `maxclock` (the enclosing scope's threshold) to decide whether
+      it belongs to the winning match or must be reset via `filter_all` —
+      implements ECMAScript's per-iteration capture-reset semantics. */
   function filter_capture(r: regex, cap_regs: seq<int>, cap_clocks: seq<int>,
                           look_clocks: seq<int>, quant_clocks: seq<int>, maxclock: int): seq<int>
     decreases r
@@ -863,6 +1019,9 @@ abstract module Interpreter {
       else filter_capture(r1, cap_regs, cap_clocks, look_clocks, quant_clocks, -1)
   }
 
+  /** Top-level entry point for capture-reset filtering: reads `capture`/
+      `look`/`quant`'s clocks and applies `filter_capture` to `r`, producing
+      the final flat `(start, end)` register sequence for the match. */
   function filter_reset(r: regex, capture: R.Regs, look: R.Regs, quant: R.Regs, maxclock: int): seq<int> {
     var (cap_regs, cap_clocks) := R.as_arrays(capture);
     var (_, look_clocks) := R.as_arrays(look);
@@ -871,6 +1030,9 @@ abstract module Interpreter {
   }
 
   // * Building the Oracle (lookarounds by reverse order of their ids)
+  /** Imperative counterpart of `FBuildOracle`: allocates a fresh oracle sized
+      for `str` and `cr`'s lookarounds, then builds every lookaround's entries
+      in decreasing id order via `find_match`. */
   method build_oracle(cr: CompiledRegex, str: string) returns (o: oracle)
     ensures fresh(o)
     ensures ViewOf(o) == FBuildOracle(CrView(cr), str)
@@ -906,6 +1068,10 @@ abstract module Interpreter {
   }
 
   // * Finding the main match and reconstructing lookaround capture groups
+  /** Imperative counterpart of `FBuildCapture`: finds the main match,
+      reconstructs every recorded lookaround's captures in increasing id
+      order, then applies `filter_reset` to produce the final capture
+      registers. */
   method build_capture(cr: CompiledRegex, str: string, o: oracle) returns (res: Option<seq<int>>)
     modifies o
     ensures (res, ViewOf(o)) == FBuildCapture(CrView(cr), str, old(ViewOf(o)))
@@ -964,6 +1130,8 @@ abstract module Interpreter {
   }
 
   // * The Full Matcher
+  /** Imperative counterpart of `FMatcher`: runs `build_oracle` then
+      `build_capture` on already-compiled regex `cr` against `str`. */
   method matcher(cr: CompiledRegex, str: string) returns (res: Option<seq<int>>)
     ensures res == FMatcher(CrView(cr), str)
   {
@@ -971,6 +1139,9 @@ abstract module Interpreter {
     res := build_capture(cr, str, o);
   }
 
+  /** Imperative counterpart of `FFullMatch`: the top-level entry point —
+      annotates `raw`, fully compiles it, and matches `str`, returning the
+      flat capture-register sequence on success. */
   method full_match(raw: raw_regex, str: string) returns (res: Option<seq<int>>)
     ensures res == FFullMatch(raw, str)
   {
@@ -981,6 +1152,9 @@ abstract module Interpreter {
 }
 
 // The three instantiations (OCaml: Interpreter(Array_Regs) etc.)
+/** The `Interpreter` instantiated with the `Array_Regs` register backend. */
 module ArrayInterp refines Interpreter { import R = Array_Regs }
+/** The `Interpreter` instantiated with the `List_Regs` register backend. */
 module ListInterp refines Interpreter { import R = List_Regs }
+/** The `Interpreter` instantiated with the `Map_Regs` register backend. */
 module MapInterp refines Interpreter { import R = Map_Regs }

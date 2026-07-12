@@ -2,6 +2,10 @@
 // Compile an annotated regex to bytecode.
 // NOTE: `fresh` is a reserved keyword in Dafny (the fresh(...) builtin), so the
 // OCaml `fresh` label parameter is named `nextl` here.
+/** Compiles an annotated `regex` (from `RegElkRegex`) down to `Bytecode` `code`
+    for the Thompson-style VM, plus everything a `CompiledRegex` needs:
+    per-lookaround oracle-building/capture-reconstruction bytecode, and
+    per-quantifier nulled-capture-reconstruction bytecode. */
 module Compiler {
   import opened Std.Wrappers
   import opened Charclasses
@@ -10,13 +14,20 @@ module Compiler {
   import opened Cdn
 
   // * Registers (2 per capture group: start and end)
+  /** The register holding capture group `c`'s start position. */
   function start_reg(c: capture): Register { 2 * c }
+  /** The register holding capture group `c`'s end position. */
   function end_reg(c: capture): Register { 2 * c + 1 }
 
   // * Compilation data-structure: a tree of instruction lists, flattened later.
+  /** An intermediate compiled-code representation: a tree of instruction
+      lists built by `compile`, later linearized by `tl_flatten` (avoids
+      repeated list append during compilation). */
   datatype treelist = Leaf(l: seq<instruction>) | Concat(t1: treelist, t2: treelist)
 
   // left-associative chain of Concats (OCaml `@@`)
+  /** Builds a left-associative `Concat` chain out of `ts`: `((ts[0] @ ts[1]) @
+      ts[2]) @ ...`. */
   function chain(ts: seq<treelist>): treelist
     requires |ts| >= 1
     decreases |ts|
@@ -25,6 +36,8 @@ module Compiler {
     else Concat(chain(ts[..|ts| - 1]), ts[|ts| - 1])
   }
 
+  /** Flattens `t` into a plain instruction sequence, with `tail` appended at
+      the end. */
   function tl_flatten(t: treelist, tail: seq<instruction>): seq<instruction>
     decreases t
   {
@@ -34,11 +47,18 @@ module Compiler {
   }
 
   // * Compilation types
+  /** How `compile` should treat a subtree: `Progress` compiles it normally;
+      `ReconstructNulled` compiles only the bytecode needed to fill in missing
+      captures when a `+` quantifier's last iteration matched empty (see
+      `compile_reconstruct_nulled`). */
   datatype comp_type = Progress | ReconstructNulled
 
   // AST node count, used as the termination measure across compile/repeat_*.
   // Re_quant contributes 2 so repeat_min/optional (which re-compile the body)
   // have a strictly smaller measure than the enclosing compile call.
+  /** AST node count of `r`; the well-founded termination measure that
+      `compile`/`repeat_min`/`repeat_optional` decrease on, since those
+      functions can re-compile the same subtree more than once. */
   function rsize(r: regex): nat
     decreases r
   {
@@ -55,6 +75,10 @@ module Compiler {
 
   // Recursively compiles a regex. `nextl` is the next available label.
   // Returns the code and the next fresh label.
+  /** The core compiler: turns `r` into bytecode starting at label `nextl`,
+      returning the compiled `treelist` and the next free label. `ctype`
+      selects between normal compilation (`Progress`) and reconstructing a
+      nulled `+`'s last iteration (`ReconstructNulled`). */
   function compile(r: regex, nextl: Label, ctype: comp_type): (treelist, Label)
     decreases rsize(r), 0
   {
@@ -143,6 +167,8 @@ module Compiler {
   }
 
   // repeats body `min` times inside quantifier qid
+  /** Compiles `min` back-to-back copies of quantifier `qid`'s body `r` — the
+      mandatory-minimum part of a counted repetition. */
   function repeat_min(min: int, qid: quantid, r: regex, nextl: Label, ctype: comp_type): (treelist, Label)
     decreases rsize(r) + 1, min
   {
@@ -154,6 +180,9 @@ module Compiler {
   }
 
   // repeats the optional max-min repetitions of a bounded quantifier
+  /** Compiles the optional `nb` extra repetitions of quantifier `qid`'s body
+      `r` beyond its minimum (the `max - min` part of a bounded `{min,max}`
+      quantifier), as a chain of `Fork`-guarded loop iterations. */
   function repeat_optional(nb: int, qid: quantid, r: regex, nextl: Label, ctype: comp_type, greedy: bool): (treelist, Label)
     decreases rsize(r) + 1, nb
   {
@@ -166,21 +195,33 @@ module Compiler {
   }
 
   // adds an Accept at the end
+  /** Compiles `r` to a complete, runnable `code`: `compile` in `Progress`
+      mode followed by `Accept`. */
   function compile_to_bytecode(r: regex): code {
     tl_flatten(compile(r, 0, Progress).0, [Accept])
   }
 
   // same but with a WriteOracle instead of Accept (l = the lookid being built)
+  /** Like `compile_to_bytecode`, but ends in `WriteOracle(l)` instead of
+      `Accept` — the bytecode that records lookaround `l`'s result into the
+      oracle. */
   function compile_to_write(r: regex, l: lookid): code {
     tl_flatten(compile(r, 0, Progress).0, [WriteOracle(l)])
   }
 
   // bytecode for reconstructing missing groups from nulled + (recurses on nested +)
+  /** Compiles the bytecode that reconstructs missing captures after a `+`
+      quantifier's last iteration matched empty, recursing into any nested
+      `+`s. */
   function compile_reconstruct_nulled(r: regex): code {
     tl_flatten(compile(r, 0, ReconstructNulled).0, [Accept])
   }
 
   // * Fully Compiled Regexes (ahead-of-time compilation)
+  /** The fully compiled form of a regex: the main bytecode, plus, for every
+      lookaround id, its type/AST/CDN-formulas/oracle-building bytecode/
+      capture-reconstruction bytecode, and, for every quantifier id, its
+      nulled-capture-reconstruction bytecode. Built by `full_compilation`. */
   class CompiledRegex {
     var main_ast: regex
     var main_bc: code
@@ -192,6 +233,7 @@ module Compiler {
     var look_capture_bc: array<code>
     var plus_bc: array<code>
 
+    /** Builds a `CompiledRegex` directly from its already-computed fields. */
     constructor(ast: regex, bc: code, cdns_: cdns,
                 lt: array<lookaround>, la: array<regex>, lc: array<cdns>,
                 lb: array<code>, lcap: array<code>, pb: array<code>)
@@ -206,6 +248,10 @@ module Compiler {
   }
 
   // the regex used when building the oracle
+  /** The regex to run when building lookaround `looktype`'s oracle entry:
+      captures stripped and a lazy `.*?` prefix added so it can start matching
+      anywhere; lookahead bodies are additionally reversed, since a
+      lookahead's oracle is built by scanning the string backward. */
   function oracle_regex(looktype: lookaround, l: regex): regex {
     match looktype
     case Lookahead => lazy_prefix(reverse_regex(remove_capture(l)))
@@ -215,6 +261,10 @@ module Compiler {
   }
 
   // the regex used when reconstructing capture groups
+  /** The regex to run when reconstructing lookaround `looktype`'s capture
+      groups once its oracle entry says it matched: the body as-is for
+      lookaheads, reversed for lookbehinds (undoing the backward scan), or
+      `Re_empty` for negative lookarounds (which never expose captures). */
   function capture_regex(looktype: lookaround, l: regex): regex {
     match looktype
     case Lookahead => l
@@ -224,11 +274,16 @@ module Compiler {
   }
 
   // ----- Pure model of the compiled regex (spec-only; mirrors the arrays) -----
+  /** Pure, sequence-based mirror of `CompiledRegex`'s array fields, used by
+      the functional specification instead of reasoning about the mutable
+      arrays directly. */
   datatype FCompiled = FCompiled(
     f_main_ast: regex, f_main_bc: code, f_main_cdns: cdns,
     f_look_types: seq<lookaround>, f_look_ast: seq<regex>, f_look_cdns: seq<cdns>,
     f_look_build_bc: seq<code>, f_look_capture_bc: seq<code>, f_plus_bc: seq<code>)
 
+  /** Reads the current contents of `CompiledRegex` `c` into a pure
+      `FCompiled` snapshot. */
   function CrView(c: CompiledRegex): FCompiled
     reads c, c.look_types, c.look_ast, c.look_cdns, c.look_build_bc, c.look_capture_bc, c.plus_bc
   {
@@ -243,6 +298,8 @@ module Compiler {
   }
 
   // mirrors compile_extra_bytecode's sequential array writes
+  /** Pure functional mirror of `compile_extra_bytecode`: walks `r`, filling
+      in `c`'s per-lookaround and per-nullable-plus bytecode tables. */
   function FCompileExtra(r: regex, c: FCompiled): FCompiled
     decreases r
   {
@@ -267,6 +324,8 @@ module Compiler {
       FCompileExtra(body, c5)
   }
 
+  /** Pure functional mirror of `full_compilation`: the complete `FCompiled`
+      result of compiling `r` from scratch. */
   function FFullCompilation(r: regex): FCompiled {
     var maxlook := max_lookaround(r);
     var maxquant := max_quant(r);
@@ -281,6 +340,10 @@ module Compiler {
   // recursively sets the two kinds of bytecode for each lookaround and nullable
   // plus. Table writes are bounds-guarded (memory-safe; in practice every
   // lid <= maxlook and qid <= maxquant so the guards always pass).
+  /** Recursively fills in `c`'s per-lookaround (`look_types`/`look_ast`/
+      `look_cdns`/`look_build_bc`/`look_capture_bc`) and per-nullable-plus
+      (`plus_bc`) tables by walking `r`; the imperative counterpart of
+      `FCompileExtra`. */
   method compile_extra_bytecode(r: regex, c: CompiledRegex)
     // the three code tables are distinct arrays (they are in full_compilation,
     // the only caller); needed so the writes mirror the pure model
@@ -318,6 +381,10 @@ module Compiler {
       compile_extra_bytecode(body, c);
   }
 
+  /** Compiles `r` end to end into a fresh `CompiledRegex`: the main bytecode
+      (with lazy prefix) and CDN formulas, plus every lookaround's and
+      nullable-plus's extra bytecode via `compile_extra_bytecode`. The
+      top-level entry point of this module. */
   method full_compilation(r: regex) returns (c: CompiledRegex)
     ensures fresh(c) && fresh(c.look_types) && fresh(c.look_ast) && fresh(c.look_cdns)
     ensures fresh(c.look_build_bc) && fresh(c.look_capture_bc) && fresh(c.plus_bc)
