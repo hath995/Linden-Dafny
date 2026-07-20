@@ -23,3 +23,4 @@ obj/
 *.csproj
 *.runtimeconfig.json
 deps/
+.lem-publish/
