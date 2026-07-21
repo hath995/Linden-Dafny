@@ -1,0 +1,24 @@
+[package]
+name = "linden-engine-model"
+version = "1.0.0"
+description = "Linden regex engine model: NFA bytecode compilation and its structural correctness (CompileNfa*), the base layer of the Pike VM equivalence proof"
+license = "MIT"
+keywords = ["regular expression", "Linden Tree", "Finite Automata", "NFA"]
+
+[toolchain]
+dafny = ">= 4.11.0"
+
+[source]
+to_export = ["src/**/*.dfy"]
+
+[options]
+standard-libraries = true
+verification-time-limit = "600"
+
+[verification]
+expected-errors = [
+]
+
+[dependencies]
+linden-warblre = "^1.0.0"
+linden-semantics-core = "^1.0.0"

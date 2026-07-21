@@ -1,0 +1,19 @@
+# lem workspace root — groups the Linden regex-spec packages so the whole
+# inter-dependent graph locks, verifies, and publishes as a set, in dependency
+# order (docs: DafnyPackage/docs/workspaces.md).
+#
+# Members (in effect, the dependency DAG):
+#   regex-engine, linden-warblre        (leaves)
+#     -> linden-semantics-core
+#          -> linden-engine-model -> linden-engine
+#          -> linden-reasoning
+#               -> linden-equiv         (top)
+[workspace]
+members = ["regex-engine", "linden-*"]
+
+# Inherited by any member that does not set its own.
+[workspace.toolchain]
+dafny = ">= 4.11.0"
+
+[workspace.options]
+standard-libraries = true

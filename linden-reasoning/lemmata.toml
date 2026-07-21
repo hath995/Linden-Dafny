@@ -1,0 +1,25 @@
+[package]
+name = "linden-reasoning"
+version = "1.0.0"
+description = "Engine-independent regex reasoning API over the Linden semantics: RegElk-to-Linden translation, capture-content facts, and the semantics-level TypedCapture / SemResult theorems"
+license = "MIT"
+keywords = ["regular expression", "Linden Tree", "semantics", "reasoning"]
+
+[toolchain]
+dafny = ">= 4.11.0"
+
+[source]
+to_export = ["src/**/*.dfy"]
+
+[options]
+standard-libraries = true
+verification-time-limit = "600"
+
+[verification]
+expected-errors = [
+]
+
+[dependencies]
+regex-engine = "^1.0.0"
+linden-warblre = "^1.0.0"
+linden-semantics-core = "^1.0.0"

@@ -1,0 +1,25 @@
+[package]
+name = "linden-engine"
+version = "1.0.0"
+description = "Linden regex engine: Pike VM / backtracking-tree equivalence (TreeRep, PikeEquiv) — the compiled-engine correctness proof against the Linden reference semantics"
+license = "MIT"
+keywords = ["regular expression", "Linden Tree", "Pike VM", "Finite Automata"]
+
+[toolchain]
+dafny = ">= 4.11.0"
+
+[source]
+to_export = ["src/**/*.dfy"]
+
+[options]
+standard-libraries = true
+verification-time-limit = "600"
+
+[verification]
+expected-errors = [
+]
+
+[dependencies]
+linden-warblre = "^1.0.0"
+linden-semantics-core = "^1.0.0"
+linden-engine-model = "^1.0.0"

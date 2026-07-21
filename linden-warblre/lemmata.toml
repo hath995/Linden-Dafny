@@ -1,0 +1,21 @@
+[package]
+name = "linden-warblre"
+version = "1.0.0"
+description = "ECMAScript regex primitives (character classes, numerics, RegExpRecord) for the Linden reference spec"
+license = "MIT"
+keywords = ["regular expression", "ECMAScript", "Linden", "Warblre"]
+
+[toolchain]
+dafny = ">= 4.11.0"
+
+[source]
+to_export = ["src/**/*.dfy"]
+
+[options]
+standard-libraries = true
+
+[verification]
+expected-errors = [
+]
+
+[dependencies]

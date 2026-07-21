@@ -1,0 +1,23 @@
+[package]
+name = "linden-semantics-core"
+version = "1.0.0"
+description = "ECMAScript-faithful backtracking-tree semantics for regular expressions in Dafny (Linden reference spec: core semantics, rewriting, and properties)"
+license = "MIT"
+keywords = ["regular expression", "ECMAScript", "semantics", "Linden Tree"]
+
+[toolchain]
+dafny = ">= 4.11.0"
+
+[source]
+to_export = ["src/**/*.dfy"]
+
+[options]
+standard-libraries = true
+verification-time-limit = "600"
+
+[verification]
+expected-errors = [
+]
+
+[dependencies]
+linden-warblre = "^1.0.0"

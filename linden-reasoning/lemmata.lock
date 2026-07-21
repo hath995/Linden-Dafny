@@ -1,0 +1,28 @@
+lock-version = 1
+solver = "lem-mvs/1"
+dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
+manifest-hash = "sha256:af48bcd2e95cfc0b91607b3723e88eb4924b4115ab43d0a8412488d01f7052c5"
+
+[[package]]
+name = "regex-engine"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:8c9de1be8383333437ebc35911f683203cb0411c408dff0423bcb3bb1d6508cb"
+doo-hash = "f2bd1c4625cba8bcba4d92b386882260f218cac4816b40f68ee73af4de66c958"
+
+[[package]]
+name = "linden-warblre"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:a8e4762306c7e50e673816b6f5ed529f532ac51d6fa3af0a8fd56d6fcf18dbef"
+doo-hash = "2ed24138e40fe4b882b6269546a173288add1833cc7b6e817c0e4d653c20674f"
+
+[[package]]
+name = "linden-semantics-core"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:06eb203077712c7c274cc6b5372a49e7642987fd932e0ad4dd63cb3b3830bff9"
+doo-hash = "71fe8701b76afb0100dbc0e5049ab17d0824d24b8ac8a1e0f0eb2f0d5792190c"

@@ -1,0 +1,21 @@
+# harness / editor local state
+.claude/
+
+# lem-materialized dependencies + build output (regenerable via `lem restore` / `lem pack`)
+**/deps/
+**/*-lib/
+**/*.doo
+**/.lem-publish/
+**/bin/
+**/obj/
+
+# diagnostic / profiling output
+**/*.csv
+
+# build artifacts left by publish
+**/*.zip
+
+# regex-engine is a distinct upstream port (RegElk, EPFL) with its own git repo
+# (github.com/hath995/regex-engine); it's a workspace member on disk but tracked
+# separately, not absorbed into this monorepo.
+regex-engine/

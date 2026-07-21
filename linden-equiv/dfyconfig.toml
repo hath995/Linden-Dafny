@@ -1,0 +1,4 @@
+[options]
+standard-libraries = true
+verification-time-limit = 900
+library = ["deps/linden-engine-model.doo", "deps/linden-engine.doo", "deps/linden-reasoning.doo", "deps/linden-semantics-core.doo", "deps/linden-warblre.doo", "deps/regex-engine.doo"]

@@ -1,0 +1,4 @@
+[options]
+standard-libraries = true
+verification-time-limit = 600
+library = ["deps/linden-semantics-core.doo", "deps/linden-warblre.doo"]

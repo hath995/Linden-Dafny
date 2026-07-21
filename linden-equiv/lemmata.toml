@@ -1,0 +1,29 @@
+[package]
+name = "linden-equiv"
+version = "1.0.3"
+description = "Machine-checked equivalence of the RegElk regex engine with the Linden reference semantics (the Pike VM / backtracking-tree pinnacle theorem) plus the engine-facing match API"
+license = "MIT"
+keywords = ["regular expression", "Linden Tree", "Pike VM", "Finite Automata", "equivalence"]
+preferredTarget = "go"
+
+[toolchain]
+dafny = ">= 4.11.0"
+
+[source]
+to_export = ["src/**/*.dfy"]
+
+[options]
+standard-libraries = true
+verification-time-limit = "900"
+
+[verification]
+expected-errors = [
+]
+
+[dependencies]
+regex-engine = "^1.0.0"
+linden-warblre = "^1.0.0"
+linden-semantics-core = "^1.0.0"
+linden-engine-model = "^1.0.0"
+linden-engine = "^1.0.0"
+linden-reasoning = "^1.0.0"
