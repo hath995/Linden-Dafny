@@ -3,6 +3,7 @@ name = "linden-semantics-core"
 version = "1.0.0"
 description = "ECMAScript-faithful backtracking-tree semantics for regular expressions in Dafny (Linden reference spec: core semantics, rewriting, and properties)"
 license = "MIT"
+repository = "https://github.com/hath995/Linden-Dafny/tree/main/linden-semantics-core"
 keywords = ["regular expression", "ECMAScript", "semantics", "Linden Tree"]
 
 [toolchain]

@@ -3,6 +3,7 @@ name = "linden-reasoning"
 version = "1.0.0"
 description = "Engine-independent regex reasoning API over the Linden semantics: RegElk-to-Linden translation, capture-content facts, and the semantics-level TypedCapture / SemResult theorems"
 license = "MIT"
+repository = "https://github.com/hath995/Linden-Dafny/tree/main/linden-reasoning"
 keywords = ["regular expression", "Linden Tree", "semantics", "reasoning"]
 
 [toolchain]

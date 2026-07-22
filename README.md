@@ -1,9 +1,9 @@
 # Linden-Dafny
 
-A machine-checked (Dafny) formalization of **ECMAScript regular-expression
-semantics** and its **equivalence with the [RegElk](https://github.com/hath995/regex-engine)
-engine**, developed as a [lem](#setup-with-lem) workspace of seven
-independently-verified packages.
+A machine-checked (Dafny) formalization of the **[Linden](https://github.com/LindenRegex/Linden)
+ECMAScript regular-expression semantics** and its **equivalence with the
+[RegElk](https://github.com/LindenRegex/RegElk) engine**, developed as a
+[lem](#setup-with-lem) workspace of seven independently-verified packages.
 
 At the top sits `MainTheorem` (in `linden-equiv`): for a supported pattern and
 any input, the RegElk engine's full-match result — the Node-compatible capture
@@ -42,8 +42,8 @@ proof-carrying `.doo` artifacts rather than re-checking their source.
 | Package | Role |
 |---------|------|
 | **linden-warblre** | ECMAScript primitive layer (numeric helpers, character classes, `RegExpRecord`). Leaf. Named after [Warblre](https://github.com/epfl-systemf/Warblre) (EPFL). |
-| **regex-engine** | The [RegElk](https://github.com/hath995/regex-engine) regex engine (a Dafny port): bytecode, compiler, array interpreter, oracle. Leaf. |
-| **linden-semantics-core** | The Linden backtracking-tree reference semantics + rewriting/properties. |
+| **regex-engine** | The [RegElk](https://github.com/LindenRegex/RegElk) regex engine (a Dafny port): bytecode, compiler, array interpreter, oracle. Leaf. |
+| **linden-semantics-core** | The [Linden](https://github.com/LindenRegex/Linden) backtracking-tree reference semantics + rewriting/properties. |
 | **linden-engine-model** | NFA representation and bytecode compilation (the `CompileNfaRep*` layer). |
 | **linden-engine** | Pike VM ⇔ backtracking-tree equivalence, functional Pike VM, correctness/termination. |
 | **linden-reasoning** | Engine-**independent** semantics API: the translation bridge, capture content, typed-capture reasoning. A consumer wanting only the semantics never pulls the engine. |
@@ -152,9 +152,12 @@ tens of minutes on a many-core machine.
 
 ## Provenance & license
 
+- **Linden** — the reference regex semantics this project mechanizes —
+  [github.com/LindenRegex/Linden](https://github.com/LindenRegex/Linden).
+- **RegElk** — the OCaml regex engine that `regex-engine` ports —
+  [github.com/LindenRegex/RegElk](https://github.com/LindenRegex/RegElk)
+  (EPFL SYSTEMF; Aurèle Barrière & Clément Pit-Claudel).
 - **Warblre** — the mechanized ECMAScript RegExp semantics whose definitions
-  `linden-warblre` draws from — is by the [EPFL Systems & Formalisms lab](https://github.com/epfl-systemf/Warblre).
-- **RegElk** — the regex engine `regex-engine` ports — informs the engine side of
-  the equivalence.
+  `linden-warblre` draws from — [EPFL Systems & Formalisms lab](https://github.com/epfl-systemf/Warblre).
 
 See each package's `LICENSE` for its terms.

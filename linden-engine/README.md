@@ -28,16 +28,21 @@ cost center (`TreeRep`/`PikeEquiv`), kept separate from the NFA layer.
 
 ## Related packages
 
-Part of the [`linden-spec`](https://github.com/hath995/linden-spec) monorepo:
+Part of the [`Linden-Dafny`](https://github.com/hath995/Linden-Dafny) monorepo,
+which decomposes the Linden reference specification and its RegElk-engine
+equivalence proof into independently-verified layers:
 
 ```
-linden-warblre
-  └─ linden-semantics-core
-       ├─ linden-engine-model
-       │    └─ linden-engine        ← you are here
-       └─ linden-reasoning
-              └─ linden-equiv       consumes this to relate the RegElk engine
+linden-warblre  ·  regex-engine     two leaves: ECMAScript primitives · the RegElk engine
+  └─ linden-semantics-core          backtracking-tree reference semantics
+       ├─ linden-engine-model       NFA bytecode compilation
+       │    └─ linden-engine        Pike VM ⇔ tree equivalence
+       └─ linden-reasoning          engine-independent reasoning API   (+ regex-engine AST)
+              └─ linden-equiv       RegElk engine ⇔ semantics — pinnacle (+ regex-engine)
 ```
+
+You're in **`linden-engine`** (the Pike-VM ⇔ tree cost center); `linden-equiv`
+consumes it to relate the RegElk engine.
 
 ## Building
 

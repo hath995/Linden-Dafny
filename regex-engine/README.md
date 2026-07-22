@@ -7,8 +7,8 @@ ECMAScript-style pattern to bytecode and runs it as a Thompson/PikeVM
 simulation, returning Node-compatible capture arrays in time linear in the
 pattern × input — no catastrophic backtracking.
 
-This repository is the **engine**. Its match results are proved correct against
-the ECMAScript tree semantics in a separate package — see
+This package is the **engine**. Its match results are proved correct against
+the ECMAScript tree semantics by other members of the monorepo — see
 [Related packages](#related-packages).
 
 ## The pipeline
@@ -67,7 +67,7 @@ This package establishes the engine's **internal correctness**:
   not a hope.
 
 What is **not** proved here — that `FFullMatch` computes the answer ECMAScript
-*demands* — is the job of the `linden-regex` proof (see below).
+*demands* — is the job of the `linden-equiv` proof (see below).
 
 ## Supported features & limits
 
@@ -127,15 +127,18 @@ Dafny.exe build -t:lib dfyconfig.toml --allow-warnings
 
 ## Related packages
 
-RegElk is one of three Dafny packages that together give an end-to-end
-machine-checked JS regex matcher:
+Part of the [`Linden-Dafny`](https://github.com/hath995/Linden-Dafny) monorepo —
+`regex-engine` is the engine leaf, proved correct against the Linden reference
+semantics by the other members:
 
-- **`regex-engine`** (this repo) — the linear-time engine.
-- **`linden-semantics`** — the Linden/Warblre backtracking-tree ECMAScript
+- **`regex-engine`** (this package) — the linear-time engine.
+- **`linden-semantics-core`** — the Linden/Warblre backtracking-tree ECMAScript
   reference semantics (the *specification*).
-- **`linden-regex`** — the equivalence proof: RegElk's `FFullMatch` **is** the
-  answer the semantics demand (`MainTheorem`), on the *star fragment*. It also
+- **`linden-equiv`** — the equivalence proof: RegElk's `FFullMatch` **is** the
+  answer the semantics demand (`MainTheorem`), for a supported pattern. It also
   exposes the verified `Match` API and worked examples.
+- **`linden-reasoning`** — the engine-independent reasoning API built directly
+  on the semantics (imports only this package's AST).
 
 ## License & attribution
 
