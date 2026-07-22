@@ -8,5 +8,5 @@ name = "linden-warblre"
 class = 1
 version = "1.0.0"
 ordinal = 0
-fileset-hash = "sha256:a8e4762306c7e50e673816b6f5ed529f532ac51d6fa3af0a8fd56d6fcf18dbef"
-doo-hash = "2ed24138e40fe4b882b6269546a173288add1833cc7b6e817c0e4d653c20674f"
+fileset-hash = "sha256:6685a9357275b3a18105c86604be03fa3b9566c9f0fa090d5f7067d24d6edee4"
+doo-hash = "542b6d241bed45b89dd836789dae6040b04ac8cf8d5e7a980169232b79d05923"

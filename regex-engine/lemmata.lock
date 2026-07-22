@@ -9,5 +9,5 @@ class = 1
 version = "1.0.0"
 ordinal = 0
 fileset-hash = "sha256:53f3c5d5df9cebf5a6c72a256d36c41197df425dfe53c2601c2d5d0705113d61"
-doo-hash = "363126caa160dd3bfaf8186409d55e9b6cde632265d4728791c9888692f8938a"
+doo-hash = "feaf38ab17a62fcff62e81de7a7225d75240cf113634aef23122d48cfa8c4ba3"
 dev = true

@@ -1,6 +1,6 @@
 [package]
 name = "linden-equiv"
-version = "1.0.3"
+version = "1.0.0"
 description = "Machine-checked equivalence of the RegElk regex engine with the Linden reference semantics (the Pike VM / backtracking-tree pinnacle theorem) plus the engine-facing match API"
 license = "MIT"
 keywords = ["regular expression", "Linden Tree", "Pike VM", "Finite Automata", "equivalence"]

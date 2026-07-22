@@ -1,0 +1,4 @@
+lock-version = 1
+solver = "lem-mvs/1"
+dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
+manifest-hash = "sha256:19217e5d65d9186ea06117971ad6808168db00cc3725b46036a786aafd57ffe2"
