@@ -1,0 +1,13 @@
+lock-version = 1
+solver = "lem-mvs/1"
+dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
+manifest-hash = "sha256:51e067d4b8f31384a9f4fc1f179ab515cc66255fb3f383a537dfb5d7045e2382"
+
+[[package]]
+name = "dafnycheck"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:53f3c5d5df9cebf5a6c72a256d36c41197df425dfe53c2601c2d5d0705113d61"
+doo-hash = "363126caa160dd3bfaf8186409d55e9b6cde632265d4728791c9888692f8938a"
+dev = true

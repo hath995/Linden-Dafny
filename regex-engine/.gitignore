@@ -1,0 +1,26 @@
+# Dafny / .NET build artifacts
+bin/
+obj/
+*.dll
+*.exe
+*.pdb
+*.dtr
+*.doo
+
+# Compiled Dafny translation outputs
+*-go/
+*-py/
+*.cs
+*.js
+*.java
+
+# Editor / OS cruft
+.vs/
+.idea/
+*.swp
+.DS_Store
+*.deps.json
+*.csproj
+*.runtimeconfig.json
+deps/
+.lem-publish/

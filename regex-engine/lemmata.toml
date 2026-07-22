@@ -1,0 +1,24 @@
+[package]
+name = "regex-engine"
+version = "1.0.0"
+description = "A verified, linear-time JavaScript regular-expression matcher (RegElk) in Dafny"
+license = "MIT"
+keywords = ["regular expression", "Finite Automata", "PikeVM"]
+
+[toolchain]
+dafny = ">= 4.11.0"
+
+[source]
+to_export = ["src/**/*.dfy"]
+
+[options]
+standard-libraries = true
+
+[verification]
+expected-errors = [
+]
+
+[dependencies]
+
+[test.dependencies]
+dafnycheck = "^1.0.0"
