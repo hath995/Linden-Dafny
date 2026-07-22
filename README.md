@@ -74,14 +74,14 @@ dependency order.
 
 ## Setup with lem
 
-This repository is driven by **lem** (the Lemmata verified package manager for
-Dafny; registry at `registry.lemmata.sh`). lem carries its own hash-pinned Dafny toolchain
+This repository is driven by **[lem](https://lemmata.sh)** (the Lemmata verified
+package manager for Dafny; registry API at `registry.lemmata.sh`). lem carries its own hash-pinned Dafny toolchain
 (this workspace requires **Dafny ≥ 4.11.0** with the standard libraries), so you
 do **not** need a separate Dafny install to verify.
 
 ### 1. Install lem
 
-Install the `lem` CLI following the Lemmata install instructions
+Install the `lem` CLI following the [Lemmata install instructions](https://lemmata.sh)
 (e.g. `scoop install lem` on Windows). Confirm it's on your `PATH`:
 
 ```sh
