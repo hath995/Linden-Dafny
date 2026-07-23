@@ -1543,6 +1543,31 @@ module LindenElkNfaRep {
     }
   }
 
+  /** `CompileToBytecodeRepLookBehind` for the ORACLE-BUILD entry point
+      `CP.compile_to_write`: the build program represents `re` from pc 0 to
+      the compiler's fresh label, where the `WriteOracle(l)` recorder sits
+      instead of `Accept` — a build sweep records (and kills) rather than
+      accepting, which is what makes the oracle statement all-positions. */
+  lemma CompileToWriteRep(re: R.regex, l: R.lookid)
+    requires LookBehindFragmentRE(re)
+    ensures var code := CP.compile_to_write(re, l);
+      var next := CP.compile(re, 0, CP.Progress).1;
+      next >= 0 && NfaRepRE(re, code, 0, next as nat)
+      && GetPcRE(code, next as nat) == Some(RB.WriteOracle(l))
+      && |code| == next + 1
+  {
+    var (tl, next) := CP.compile(re, 0, CP.Progress);
+    FreshCorrectRE(re, 0, tl, next);
+    CompileNfaRepRE(re, 0, tl, next, []);
+    assert [] + Flat(tl) == Flat(tl);
+    FlattenApp(tl, [RB.WriteOracle(l)]);
+    assert CP.compile_to_write(re, l) == Flat(tl) + [RB.WriteOracle(l)];
+    NfaRepExtendRE(re, Flat(tl), 0, next as nat, [RB.WriteOracle(l)]);
+    assert GetPcRE(Flat(tl) + [RB.WriteOracle(l)], next as nat) == Some(RB.WriteOracle(l)) by {
+      assert (Flat(tl) + [RB.WriteOracle(l)])[next as nat] == RB.WriteOracle(l);
+    }
+  }
+
   /** `CompileToBytecodeRepLookBehind` restricted to the plus fragment — the
       signature the plus-gated downstream files consume. */
   lemma CompileToBytecodeRepPlus(re: R.regex)
