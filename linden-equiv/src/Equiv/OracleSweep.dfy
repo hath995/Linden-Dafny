@@ -63,6 +63,15 @@ module LindenElkOracleSweep {
     forall pc :: 0 <= pc < |c| ==> (c[pc].WriteOracle? ==> c[pc].wol == lid)
   }
 
+  /** No `Accept` anywhere in `c` — `compile` never emits it (only
+      `compile_to_bytecode` appends the terminal `Accept`), so build code has
+      none. The epsilon closure early-exits the whole `active` list on `Accept`
+      (dropping still-queued threads), which the completeness worklist argument
+      cannot tolerate; this predicate rules that branch out. */
+  ghost predicate NoAccept(c: RB.code) {
+    forall pc :: 0 <= pc < |c| ==> !c[pc].Accept?
+  }
+
   // ===========================================================================
   // Oracle-view plumbing
   // ===========================================================================
