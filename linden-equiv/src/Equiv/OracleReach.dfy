@@ -806,4 +806,74 @@ module LindenElkOracleReach {
       ReachInProc(c, str, cp0, pc1, eb1, cp, w);
     }
   }
+
+  /** Reachability stays within the string: a Forward run can consume past a
+      position only if the character there is accepted, and `is_accepted(None,
+      _)` is false, so no config is reachable beyond `|str|`. (Dual of
+      `ReachFGeStart`.) */
+  least lemma ReachFLeEnd(c: RB.code, str: string, cp0: int, pc: nat, eb: bool, cp: int)
+    requires ReachF(c, str, cp0, pc, eb, cp)
+    requires cp0 <= |str|
+    ensures cp <= |str|
+  {
+    if pc == 0 && eb == false && cp == cp0 {
+    } else if exists pc1: nat, eb1: bool ::
+                ReachF(c, str, cp0, pc1, eb1, cp) && EpsEdge(c, str, cp, pc1, eb1, pc, eb) {
+      var pc1: nat, eb1: bool :|
+        ReachF(c, str, cp0, pc1, eb1, cp) && EpsEdge(c, str, cp, pc1, eb1, pc, eb);
+      ReachFLeEnd(c, str, cp0, pc1, eb1, cp);
+    } else {
+      assert eb == true && pc > 0 && ConsumeEdge(c, str, cp - 1, pc - 1);
+      assert AI.get_char(str, cp - 1).Some?;   // is_accepted(None, _) is false
+    }
+  }
+
+  /** Some config reachable at `boundary` has an accepted consume edge. */
+  ghost predicate HasAcceptedConsumeAt(c: RB.code, str: string, cp0: int, boundary: int) {
+    exists p: nat, e: bool :: ReachF(c, str, cp0, p, e, boundary) && ConsumeEdge(c, str, boundary, p)
+  }
+
+  /** Introduce `HasAcceptedConsumeAt` from a concrete witness (isolates the
+      existential from the `least lemma` context, where witness detection fails). */
+  lemma HasAcceptedConsumeAtIntro(c: RB.code, str: string, cp0: int, boundary: int, p: nat, e: bool)
+    requires ReachF(c, str, cp0, p, e, boundary) && ConsumeEdge(c, str, boundary, p)
+    ensures HasAcceptedConsumeAt(c, str, cp0, boundary)
+  {
+  }
+
+  /** To be reachable beyond `boundary`, the run must consume through it: some
+      config reachable at `boundary` has an accepted consume edge. Contrapositive
+      of "nothing is reachable past `boundary`" — stated as an existence so no
+      forall hypothesis (and its fragile trigger) is needed. The caller derives
+      emptiness when `boundary` has no accepted consume (blocked empty, or
+      `boundary == |str|`). Recurses on the eps and consume predecessors. */
+  least lemma ReachBeyondNeedsConsume(c: RB.code, str: string, cp0: int, boundary: int, pc: nat, eb: bool, cp: int)
+    requires ReachF(c, str, cp0, pc, eb, cp)
+    requires cp0 <= boundary
+    requires cp > boundary
+    ensures HasAcceptedConsumeAt(c, str, cp0, boundary)
+  {
+    if pc == 0 && eb == false && cp == cp0 {
+      // cp == cp0 <= boundary contradicts cp > boundary: vacuous
+    } else if exists pc1: nat, eb1: bool ::
+                ReachF(c, str, cp0, pc1, eb1, cp) && EpsEdge(c, str, cp, pc1, eb1, pc, eb) {
+      var pc1: nat, eb1: bool :|
+        ReachF(c, str, cp0, pc1, eb1, cp) && EpsEdge(c, str, cp, pc1, eb1, pc, eb);
+      ReachBeyondNeedsConsume(c, str, cp0, boundary, pc1, eb1, cp);
+    } else {
+      assert eb == true && pc > 0
+             && (ReachF(c, str, cp0, pc - 1, false, cp - 1) || ReachF(c, str, cp0, pc - 1, true, cp - 1))
+             && ConsumeEdge(c, str, cp - 1, pc - 1);
+      var e' :| (e' == false || e' == true) && ReachF(c, str, cp0, pc - 1, e', cp - 1);
+      if cp - 1 > boundary {
+        ReachBeyondNeedsConsume(c, str, cp0, boundary, pc - 1, e', cp - 1);
+      } else {
+        assert cp - 1 == boundary;   // cp > boundary and cp - 1 >= boundary
+        var q: nat := pc - 1;
+        assert ReachF(c, str, cp0, q, e', boundary);
+        assert ConsumeEdge(c, str, boundary, q);
+        HasAcceptedConsumeAtIntro(c, str, cp0, boundary, q, e');
+      }
+    }
+  }
 }
