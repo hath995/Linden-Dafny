@@ -764,4 +764,46 @@ module LindenElkOracleReach {
       }
     }
   }
+
+  /** A config `ReachF` reaches at `cp` by a NON-epsilon final step: the initial
+      config (at `cp0`), or a consume successor from `cp - 1`. Every reachable
+      config at `cp` is either one of these or `EpsEdge`-reachable from one. */
+  ghost predicate EntryConfig(c: RB.code, str: string, cp0: int, pc: nat, eb: bool, cp: int) {
+    (pc == 0 && eb == false && cp == cp0)
+    || (eb == true && pc > 0
+        && (ReachF(c, str, cp0, pc - 1, false, cp - 1) || ReachF(c, str, cp0, pc - 1, true, cp - 1))
+        && ConsumeEdge(c, str, cp - 1, pc - 1))
+  }
+
+  /** ReachF inversion (per position): if `w` has every in-range entry config of
+      `cp` processed and its processed set is `EpsEdge`-closed at `cp`, then every
+      in-range config `ReachF`-reachable at `cp` is processed. The induction only
+      recurses on the epsilon disjunct (same `cp`); base/consume configs are
+      entries, discharged by the coverage hypothesis. */
+  least lemma ReachInProc(c: RB.code, str: string, cp0: int, pc: nat, eb: bool, cp: int, w: AI.VmState)
+    requires ReachF(c, str, cp0, pc, eb, cp)
+    requires pc < RB.size(c)
+    requires forall p: nat, e: bool :: EntryConfig(c, str, cp0, p, e, cp) && p < RB.size(c) ==> InProc(w, p, e)
+    requires forall p: nat, e: bool, p2: nat, e2: bool ::
+        InProc(w, p, e) && p2 < RB.size(c) && EpsEdge(c, str, cp, p, e, p2, e2) ==> InProc(w, p2, e2)
+    ensures InProc(w, pc, eb)
+  {
+    if pc == 0 && eb == false && cp == cp0 {
+      // base entry
+    } else if eb == true && pc > 0
+              && (ReachF(c, str, cp0, pc - 1, false, cp - 1) || ReachF(c, str, cp0, pc - 1, true, cp - 1))
+              && ConsumeEdge(c, str, cp - 1, pc - 1) {
+      // consume entry: EntryConfig(pc, eb, cp) holds
+    } else {
+      // the epsilon disjunct is the only one left
+      assert exists pc1: nat, eb1: bool ::
+        ReachF(c, str, cp0, pc1, eb1, cp) && EpsEdge(c, str, cp, pc1, eb1, pc, eb);
+      var pc1: nat, eb1: bool :|
+        ReachF(c, str, cp0, pc1, eb1, cp) && EpsEdge(c, str, cp, pc1, eb1, pc, eb);
+      assert 0 <= pc1 < RB.size(c) by {
+        if !(pc1 < RB.size(c)) { assert RB.get_instr(c, pc1) == RB.Fail; }
+      }
+      ReachInProc(c, str, cp0, pc1, eb1, cp, w);
+    }
+  }
 }
