@@ -876,4 +876,203 @@ module LindenElkOracleReach {
       }
     }
   }
+
+  /** `FConsume` drains the blocked queue (it recurses until empty). */
+  lemma FConsumeDrainsBlocked(s: AI.VmState)
+    ensures AI.FConsume(s).blocked == []
+    decreases |s.blocked|
+  {
+    if |s.blocked| == 0 {
+      assert AI.FConsume(s) == s;
+    } else {
+      var t := s.blocked[0].0;
+      var ce := s.blocked[0].1;
+      var s1 := s.(blocked := s.blocked[1..]);
+      if RC.is_accepted(s1.context.nextchar, ce) {
+        var s2 := s1.(active := [t.(exit_allowed := true, pc := t.pc + 1)] + s1.active);
+        FConsumeDrainsBlocked(s2);
+        assert AI.FConsume(s) == AI.FConsume(s2);
+      } else {
+        FConsumeDrainsBlocked(s1);
+        assert AI.FConsume(s) == AI.FConsume(s1);
+      }
+    }
+  }
+
+  /** A whole classified `NoAccept` Forward run is COMPLETE for writes: if the
+      run enters position `s.cp` with `active` covering the entry configs of
+      `s.cp` and the oracle already recording every reachable write below `s.cp`,
+      then every reachable `WriteOracle` position gets its bit set. Dual of
+      `FindMatchReachSound`; the induction is along positions. */
+  lemma FindMatchReachComplete(c: RB.code, str: string, cp0: int, s: AI.VmState, ov: LOr.OracleView,
+                               cdn: LCdn.cdns, lid: int)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires s.context.nextchar == AI.get_char(str, s.cp)
+    requires OS.NoOracleReads(c) && OS.NoCheckNullable(c) && OS.WritesOnlyLid(c, lid) && OS.NoAccept(c)
+    requires s.context == CtxAt(str, s.cp)
+    requires s.processed == AI.init_bpcset(RB.size(c))
+    requires s.isblocked == AI.init_pcset(RB.size(c))
+    requires s.blocked == []
+    requires 0 <= cp0 <= s.cp <= |str|
+    requires |str| < |ov|                                                          // a row per position 0..|str|
+    requires forall i: int {:trigger ov[i]} :: 0 <= i < |ov| ==> 0 <= lid < |ov[i]|   // column lid present
+    requires forall pc: nat, eb: bool ::
+        EntryConfig(c, str, cp0, pc, eb, s.cp) && pc < RB.size(c) ==> InActive(s, pc, eb)
+    requires forall cp2: int ::
+        cp2 < s.cp && ReachesWrite(c, str, cp0, lid, cp2) ==> LOr.view_get_oracle(ov, cp2, lid)
+    ensures var (_, ov') := AI.FFindMatch(c, str, s, ov, LAnc.Forward, cdn);
+      forall cp2: int :: ReachesWrite(c, str, cp0, lid, cp2) ==> LOr.view_get_oracle(ov', cp2, lid)
+    decreases |str| - s.cp
+  {
+    var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, LAnc.Forward));
+    var (s1, ov1) := AI.FAdvanceEpsilon(c, s0, ov, LAnc.Forward);
+    assert ClosureInv(c, str, s0, ov, lid);   // s0's processed/isblocked empty, blocked == []
+    assert 0 <= s0.cp < |ov| && 0 <= lid < |ov[s0.cp]|;
+    AdvanceReachComplete(c, str, s0, ov, lid);
+    OS.AdvanceOracleFrame(c, s0, ov, LAnc.Forward, lid);
+    // entries of s.cp are processed in s1, and s1's processed set is EpsEdge-closed at s.cp
+    assert forall p: nat, e: bool ::
+        EntryConfig(c, str, cp0, p, e, s.cp) && p < RB.size(c) ==> InProc(s1, p, e);
+    assert forall p: nat, e: bool, p2: nat, e2: bool ::
+        InProc(s1, p, e) && p2 < RB.size(c) && EpsEdge(c, str, s.cp, p, e, p2, e2) ==> InProc(s1, p2, e2);
+    // every reachable write at or below s.cp is now set in ov1
+    forall cp2: int | cp2 <= s.cp && ReachesWrite(c, str, cp0, lid, cp2)
+      ensures LOr.view_get_oracle(ov1, cp2, lid)
+    {
+      if cp2 == s.cp {
+        var pc: nat, eb: bool :| ReachF(c, str, cp0, pc, eb, cp2) && RB.get_instr(c, pc) == RB.WriteOracle(lid);
+        assert pc < RB.size(c);
+        ReachInProc(c, str, cp0, pc, eb, s.cp, s1);
+      }
+    }
+    if |s1.blocked| == 0 {
+      assert !HasAcceptedConsumeAt(c, str, cp0, s.cp) by {
+        if HasAcceptedConsumeAt(c, str, cp0, s.cp) {
+          var p: nat, e: bool :| ReachF(c, str, cp0, p, e, s.cp) && ConsumeEdge(c, str, s.cp, p);
+          assert 0 <= p < RB.size(c) by {
+            if !(p < RB.size(c)) { assert RB.get_instr(c, p) == RB.Fail; }
+          }
+          ReachInProc(c, str, cp0, p, e, s.cp, s1);
+          assert RB.get_instr(c, p).Consume?;
+          assert HasBlockedEntry(c, s1.blocked, p);   // Inv2 — but s1.blocked == []
+          assert false;
+        }
+      }
+      forall cp2: int | ReachesWrite(c, str, cp0, lid, cp2)
+        ensures LOr.view_get_oracle(ov1, cp2, lid)
+      {
+        if cp2 > s.cp {
+          var pc: nat, eb: bool :| ReachF(c, str, cp0, pc, eb, cp2) && RB.get_instr(c, pc) == RB.WriteOracle(lid);
+          ReachBeyondNeedsConsume(c, str, cp0, s.cp, pc, eb, cp2);
+          assert false;
+        }
+      }
+      return;
+    }
+    match s1.context.nextchar
+    case None =>
+      forall cp2: int | ReachesWrite(c, str, cp0, lid, cp2)
+        ensures LOr.view_get_oracle(ov1, cp2, lid)
+      {
+        if cp2 > s.cp {
+          var pc: nat, eb: bool :| ReachF(c, str, cp0, pc, eb, cp2) && RB.get_instr(c, pc) == RB.WriteOracle(lid);
+          ReachFLeEnd(c, str, cp0, pc, eb, cp2);   // cp2 <= |str|
+          assert AI.get_char(str, s.cp) == None;    // nextchar None ==> s.cp >= |str|
+          assert false;                             // cp2 > s.cp >= |str| >= cp2
+        }
+      }
+    case Some(_) =>
+      var s2 := AI.FConsume(s1);
+      var s3 := s2.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
+                    cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, LAnc.Forward));
+      var newchar := AI.get_char(str, s3.cp - AI.cp_offset(LAnc.Forward));
+      var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
+      FConsumeReachComplete(s1);
+      FConsumeDrainsBlocked(s1);
+      assert s4.blocked == [];
+      assert s4.cp == s.cp + 1;
+      assert s4.context == CtxAt(str, s4.cp);
+      assert OS.SameShape(ov, ov1);
+      assert |str| < |ov1|;                                // SameShape: |ov1| == |ov|
+      forall i: int | 0 <= i < |ov1|
+        ensures 0 <= lid < |ov1[i]|
+      {
+        assert |ov[i]| == |ov1[i]|;                        // SameShape at i
+      }
+      // entries of s4.cp (= s.cp + 1) are covered by s4.active (== FConsume(s1).active)
+      forall pc: nat, eb: bool | EntryConfig(c, str, cp0, pc, eb, s4.cp) && pc < RB.size(c)
+        ensures InActive(s4, pc, eb)
+      {
+        // EntryConfig at s.cp+1 is a consume successor (base needs cp == cp0 <= s.cp)
+        assert eb == true && pc > 0
+               && (ReachF(c, str, cp0, pc - 1, false, s.cp) || ReachF(c, str, cp0, pc - 1, true, s.cp))
+               && ConsumeEdge(c, str, s.cp, pc - 1);
+        var e' :| (e' == false || e' == true) && ReachF(c, str, cp0, pc - 1, e', s.cp);
+        var q: nat := pc - 1;
+        assert 0 <= q < RB.size(c) by {
+          if !(q < RB.size(c)) { assert RB.get_instr(c, q) == RB.Fail; }
+        }
+        ReachInProc(c, str, cp0, q, e', s.cp, s1);
+        // Inv2: reachable Consume config q has a blocked entry at q
+        assert RB.get_instr(c, q).Consume?;
+        assert HasBlockedEntry(c, s1.blocked, q);
+        var j :| 0 <= j < |s1.blocked| && s1.blocked[j].0.pc == q
+                 && RB.get_instr(c, q) == RB.Consume(s1.blocked[j].1);
+        assert RC.is_accepted(s1.context.nextchar, s1.blocked[j].1);   // ConsumeEdge(s.cp, q)
+        // FConsumeReachComplete(s1) reactivated that entry at (q + 1, exit_allowed := true)
+        assert exists k :: 0 <= k < |AI.FConsume(s1).active|
+               && AI.FConsume(s1).active[k].pc == s1.blocked[j].0.pc + 1
+               && AI.FConsume(s1).active[k].exit_allowed;
+        var k :| 0 <= k < |AI.FConsume(s1).active|
+                 && AI.FConsume(s1).active[k].pc == q + 1 && AI.FConsume(s1).active[k].exit_allowed;
+        assert s4.active == AI.FConsume(s1).active;
+        assert s4.active[k].pc == pc && s4.active[k].exit_allowed == eb;   // q + 1 == pc, eb == true
+      }
+      // writes below s4.cp are already recorded in ov1 (cp2 <= s.cp handled above)
+      FindMatchReachComplete(c, str, cp0, s4, ov1, cdn, lid);
+  }
+
+  /** The full L1 sweep characterization: running `FFindMatch` over classified
+      `NoAccept` build code from the initial (Forward, cp 0) state sets exactly
+      the bits that were already set, plus the reachable-`WriteOracle` positions.
+      Soundness (`FindMatchReachSound`) gives ⊆; completeness
+      (`FindMatchReachComplete`) + monotonicity (`MonoAny`) give ⊇. */
+  lemma SweepCharacterization(c: RB.code, str: string, ov: LOr.OracleView, lid: int, cdn: LCdn.cdns,
+                              initcap: AReg.Regs, initlook: AReg.Regs, initquant: AReg.Regs, initclk: int)
+    requires OS.NoOracleReads(c) && OS.NoCheckNullable(c) && OS.WritesOnlyLid(c, lid) && OS.NoAccept(c)
+    requires |str| < |ov|
+    requires forall i: int {:trigger ov[i]} :: 0 <= i < |ov| ==> 0 <= lid < |ov[i]|
+    ensures
+      var s := AI.FInitState(c, 0, initcap, initlook, initquant, initclk, AI.cp_context(0, str, LAnc.Forward));
+      var (_, ov') := AI.FFindMatch(c, str, s, ov, LAnc.Forward, cdn);
+      forall cp: int :: LOr.view_get_oracle(ov', cp, lid)
+        == (LOr.view_get_oracle(ov, cp, lid) || ReachesWrite(c, str, 0, lid, cp))
+  {
+    var s := AI.FInitState(c, 0, initcap, initlook, initquant, initclk, AI.cp_context(0, str, LAnc.Forward));
+    // FInitState shape: cp 0, active == [init_thread (pc 0, exit_allowed false)], empty sets.
+    assert s.cp == 0 && s.blocked == [];
+    assert ReachF(c, str, 0, 0, false, 0);                    // the base config
+    assert ActiveOk(c, str, 0, s.active, s.cp);
+    assert BlockedOk(c, str, 0, s.blocked, s.cp);
+    FindMatchReachSound(c, str, 0, s, ov, cdn, lid);          // soundness: every set bit is old or reachable
+    // entry coverage at cp 0: only the base config (no consume edge into cp 0)
+    forall pc: nat, eb: bool | EntryConfig(c, str, 0, pc, eb, 0) && pc < RB.size(c)
+      ensures InActive(s, pc, eb)
+    {
+      assert AI.get_char(str, -1) == None;                    // no consume edge at cp -1
+      assert pc == 0 && eb == false;
+      assert s.active[0] == AI.init_thread(initcap, initlook, initquant);
+    }
+    // bits-below at cp 0 is vacuous: no write is reachable at a negative position
+    forall cp2: int | cp2 < s.cp && ReachesWrite(c, str, 0, lid, cp2)
+      ensures LOr.view_get_oracle(ov, cp2, lid)
+    {
+      var pc: nat, eb: bool :| ReachF(c, str, 0, pc, eb, cp2) && RB.get_instr(c, pc) == RB.WriteOracle(lid);
+      ReachFGeStart(c, str, 0, pc, eb, cp2);   // cp2 >= 0 contradicts cp2 < s.cp == 0
+    }
+    assert |str| < |ov|;
+    assert forall i: int {:trigger ov[i]} :: 0 <= i < |ov| ==> 0 <= lid < |ov[i]|;
+    FindMatchReachComplete(c, str, 0, s, ov, cdn, lid);       // completeness: every reachable write is set
+    OS.MonoAny(c, str, s, ov, LAnc.Forward, cdn);             // Submap(ov, ov'): old bits survive
+  }
 }
