@@ -436,6 +436,267 @@ module LindenElkNfaRep {
   }
 
   // ===========================================================================
+  // The lookbehind fragment: the plus fragment extended with capture-free,
+  // non-nested lookbehinds (`(?<=...)`, `(?<!...)`). Their oracle build
+  // passes run FORWARD over the (capture-free) body — `oracle_regex` for a
+  // lookbehind is `lazy_prefix(remove_capture(body))` with no reversal — so
+  // the existing forward pipeline covers the build bytecode, while the main
+  // pass sees a single zero-width oracle-consulting instruction, anchor-like.
+  // ===========================================================================
+
+  /** No `Re_capture` node anywhere in `re`. Capture-free lookaround bodies
+      expose no groups, so a positive lookaround's `LkResult` returns the
+      group map unchanged — the LK wrapper is leaf-transparent. */
+  predicate CaptureFreeRE(re: R.regex)
+    decreases re
+  {
+    match re
+    case Re_empty => true
+    case Re_character(_) => true
+    case Re_anchor(_) => true
+    case Re_alt(r1, r2) => CaptureFreeRE(r1) && CaptureFreeRE(r2)
+    case Re_con(r1, r2) => CaptureFreeRE(r1) && CaptureFreeRE(r2)
+    case Re_quant(_, _, _, r1) => CaptureFreeRE(r1)
+    case Re_capture(_, _) => false
+    case Re_lookaround(_, _, r1) => CaptureFreeRE(r1)
+  }
+
+  /** No `Re_lookaround` node anywhere in `re` — lookaround bodies in the
+      lookbehind fragment are non-nested. */
+  predicate LookFreeRE(re: R.regex)
+    decreases re
+  {
+    match re
+    case Re_empty => true
+    case Re_character(_) => true
+    case Re_anchor(_) => true
+    case Re_alt(r1, r2) => LookFreeRE(r1) && LookFreeRE(r2)
+    case Re_con(r1, r2) => LookFreeRE(r1) && LookFreeRE(r2)
+    case Re_quant(_, _, _, r1) => LookFreeRE(r1)
+    case Re_capture(_, r1) => LookFreeRE(r1)
+    case Re_lookaround(_, _, _) => false
+  }
+
+  /** The `raw_regex` counterpart of `CaptureFreeRE`. */
+  predicate CaptureFreeRaw(raw: R.raw_regex)
+    decreases raw
+  {
+    match raw
+    case Raw_empty => true
+    case Raw_character(_) => true
+    case Raw_anchor(_) => true
+    case Raw_alt(r1, r2) => CaptureFreeRaw(r1) && CaptureFreeRaw(r2)
+    case Raw_con(r1, r2) => CaptureFreeRaw(r1) && CaptureFreeRaw(r2)
+    case Raw_quant(_, r1) => CaptureFreeRaw(r1)
+    case Raw_count(_, r1) => CaptureFreeRaw(r1)
+    case Raw_capture(_) => false
+    case Raw_lookaround(_, r1) => CaptureFreeRaw(r1)
+  }
+
+  /** The `raw_regex` counterpart of `LookFreeRE`. */
+  predicate LookFreeRaw(raw: R.raw_regex)
+    decreases raw
+  {
+    match raw
+    case Raw_empty => true
+    case Raw_character(_) => true
+    case Raw_anchor(_) => true
+    case Raw_alt(r1, r2) => LookFreeRaw(r1) && LookFreeRaw(r2)
+    case Raw_con(r1, r2) => LookFreeRaw(r1) && LookFreeRaw(r2)
+    case Raw_quant(_, r1) => LookFreeRaw(r1)
+    case Raw_count(_, r1) => LookFreeRaw(r1)
+    case Raw_capture(r1) => LookFreeRaw(r1)
+    case Raw_lookaround(_, _) => false
+  }
+
+  /** The lookbehind fragment: every plus-fragment shape, plus lookbehind
+      leaves `(?<=...)`/`(?<!...)` whose bodies are capture-free, non-nested
+      plus-fragment regexes. Lookaheads remain excluded (their build passes
+      run backward — the L2 campaign). */
+  predicate LookBehindFragmentRE(re: R.regex)
+    decreases re
+  {
+    match re
+    case Re_empty => true
+    case Re_character(_) => true
+    case Re_anchor(_) => true
+    case Re_alt(r1, r2) => LookBehindFragmentRE(r1) && LookBehindFragmentRE(r2)
+    case Re_con(r1, r2) => LookBehindFragmentRE(r1) && LookBehindFragmentRE(r2)
+    case Re_quant(nul, qid, q, r1) =>
+      ((q.min == 0 && q.max == None)
+       || (0 <= q.min && q.max.Some? && q.min <= q.max.value)
+       || (q.min > 0 && q.max == None && nul == R.NonNullable
+           && R.nullable(r1) == R.NonNullable))
+      && LookBehindFragmentRE(r1)
+    case Re_capture(cid, r1) => LookBehindFragmentRE(r1)
+    case Re_lookaround(lid, la, r1) =>
+      (la.Lookbehind? || la.NegLookbehind?)
+      && CaptureFreeRE(r1) && LookFreeRE(r1) && PlusFragmentRE(r1)
+  }
+
+  /** The `raw_regex` counterpart of `LookBehindFragmentRE`. */
+  predicate LookBehindFragmentRaw(raw: R.raw_regex)
+    decreases raw
+  {
+    match raw
+    case Raw_empty => true
+    case Raw_character(_) => true
+    case Raw_anchor(_) => true
+    case Raw_alt(r1, r2) => LookBehindFragmentRaw(r1) && LookBehindFragmentRaw(r2)
+    case Raw_con(r1, r2) => LookBehindFragmentRaw(r1) && LookBehindFragmentRaw(r2)
+    case Raw_quant(q, r1) =>
+      ((q.Plus? || q.LazyPlus?) ==> R.raw_nullable(r1) == R.NonNullable)
+      && LookBehindFragmentRaw(r1)
+    case Raw_count(q, r1) =>
+      ((q.min == 0 && q.max == None)
+       || (0 <= q.min && q.max.Some? && q.min <= q.max.value)
+       || (q.min > 0 && q.max == None && R.raw_nullable(r1) == R.NonNullable))
+      && LookBehindFragmentRaw(r1)
+    case Raw_capture(r1) => LookBehindFragmentRaw(r1)
+    case Raw_lookaround(look, r1) =>
+      (look.Lookbehind? || look.NegLookbehind?)
+      && CaptureFreeRaw(r1) && LookFreeRaw(r1) && PlusFragmentRaw(r1)
+  }
+
+  /** The plus fragment embeds in the lookbehind fragment. */
+  lemma PlusIsLookBehindFragmentRE(re: R.regex)
+    requires PlusFragmentRE(re)
+    ensures LookBehindFragmentRE(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => PlusIsLookBehindFragmentRE(r1); PlusIsLookBehindFragmentRE(r2);
+    case Re_con(r1, r2) => PlusIsLookBehindFragmentRE(r1); PlusIsLookBehindFragmentRE(r2);
+    case Re_quant(_, _, _, r1) => PlusIsLookBehindFragmentRE(r1);
+    case Re_capture(_, r1) => PlusIsLookBehindFragmentRE(r1);
+    case _ =>
+  }
+
+  /** The raw plus fragment embeds in the raw lookbehind fragment. */
+  lemma PlusIsLookBehindFragmentRaw(ra: R.raw_regex)
+    requires PlusFragmentRaw(ra)
+    ensures LookBehindFragmentRaw(ra)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) => PlusIsLookBehindFragmentRaw(r1); PlusIsLookBehindFragmentRaw(r2);
+    case Raw_con(r1, r2) => PlusIsLookBehindFragmentRaw(r1); PlusIsLookBehindFragmentRaw(r2);
+    case Raw_quant(_, r1) => PlusIsLookBehindFragmentRaw(r1);
+    case Raw_count(_, r1) => PlusIsLookBehindFragmentRaw(r1);
+    case Raw_capture(r1) => PlusIsLookBehindFragmentRaw(r1);
+    case _ =>
+  }
+
+  /** Annotation preserves capture-freedom — it only assigns ids. */
+  lemma AnnotateCaptureFree(ra: R.raw_regex, c: int, l: int, q: int)
+    requires CaptureFreeRaw(ra)
+    ensures CaptureFreeRE(R.annotate_regex(ra, c, l, q).0)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) =>
+      AnnotateCaptureFree(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateCaptureFree(r2, c1, l1, q1);
+    case Raw_con(r1, r2) =>
+      AnnotateCaptureFree(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateCaptureFree(r2, c1, l1, q1);
+    case Raw_quant(_, r1) => AnnotateCaptureFree(r1, c, l, q + 1);
+    case Raw_count(_, r1) => AnnotateCaptureFree(r1, c, l, q + 1);
+    case Raw_lookaround(_, r1) => AnnotateCaptureFree(r1, c, l + 1, q);
+    case _ =>
+  }
+
+  /** Annotation preserves lookaround-freedom. */
+  lemma AnnotateLookFree(ra: R.raw_regex, c: int, l: int, q: int)
+    requires LookFreeRaw(ra)
+    ensures LookFreeRE(R.annotate_regex(ra, c, l, q).0)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) =>
+      AnnotateLookFree(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateLookFree(r2, c1, l1, q1);
+    case Raw_con(r1, r2) =>
+      AnnotateLookFree(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateLookFree(r2, c1, l1, q1);
+    case Raw_quant(_, r1) => AnnotateLookFree(r1, c, l, q + 1);
+    case Raw_count(_, r1) => AnnotateLookFree(r1, c, l, q + 1);
+    case Raw_capture(r1) => AnnotateLookFree(r1, c + 1, l, q);
+    case _ =>
+  }
+
+  /** Annotation preserves the lookbehind fragment: the lookaround flavour is
+      copied verbatim, and the body's three side-conditions are preserved by
+      the three lemmas above. */
+  lemma AnnotateLookBehindFragment(ra: R.raw_regex, c: int, l: int, q: int)
+    requires LookBehindFragmentRaw(ra)
+    ensures LookBehindFragmentRE(R.annotate_regex(ra, c, l, q).0)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) =>
+      AnnotateLookBehindFragment(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateLookBehindFragment(r2, c1, l1, q1);
+    case Raw_con(r1, r2) =>
+      AnnotateLookBehindFragment(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateLookBehindFragment(r2, c1, l1, q1);
+    case Raw_quant(quant, r1) =>
+      AnnotateLookBehindFragment(r1, c, l, q + 1);
+      AnnotateNullable(r1, c, l, q + 1);
+    case Raw_count(quant, r1) =>
+      AnnotateLookBehindFragment(r1, c, l, q + 1);
+      AnnotateNullable(r1, c, l, q + 1);
+    case Raw_capture(r1) => AnnotateLookBehindFragment(r1, c + 1, l, q);
+    case Raw_lookaround(look, r1) =>
+      AnnotateCaptureFree(r1, c, l + 1, q);
+      AnnotateLookFree(r1, c, l + 1, q);
+      AnnotatePlusFragment(r1, c, l + 1, q);
+    case _ =>
+  }
+
+  /** `lazy_prefix(annotate(raw))` stays in the lookbehind fragment. */
+  lemma SpecRegexLookBehindFragment(raw: R.raw_regex)
+    requires LookBehindFragmentRaw(raw)
+    ensures LookBehindFragmentRE(R.lazy_prefix(R.annotate(raw)))
+  {
+    AnnotateLookBehindFragment(R.Raw_capture(raw), 0, 1, 1);
+  }
+
+  /** On capture-free regexes `remove_capture` is the identity, so an L1
+      lookbehind's oracle build regex is `lazy_prefix(body)` itself. */
+  lemma RemoveCaptureFreeId(re: R.regex)
+    requires CaptureFreeRE(re)
+    ensures R.remove_capture(re) == re
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => RemoveCaptureFreeId(r1); RemoveCaptureFreeId(r2);
+    case Re_con(r1, r2) => RemoveCaptureFreeId(r1); RemoveCaptureFreeId(r2);
+    case Re_quant(_, _, _, r1) => RemoveCaptureFreeId(r1);
+    case Re_lookaround(_, _, r1) => RemoveCaptureFreeId(r1);
+    case _ =>
+  }
+
+  /** The oracle build regex of a lookbehind-fragment lookaround stays in the
+      PLUS fragment: for lookbehinds `oracle_regex` is
+      `lazy_prefix(remove_capture(body))`, `remove_capture` is the identity on
+      the capture-free body, and the lazy prefix's quantifier is star-shaped —
+      so the whole existing forward build pipeline applies unchanged. */
+  lemma OracleRegexPlusFragment(la: R.lookaround, body: R.regex)
+    requires la.Lookbehind? || la.NegLookbehind?
+    requires CaptureFreeRE(body) && PlusFragmentRE(body)
+    ensures PlusFragmentRE(CP.oracle_regex(la, body))
+  {
+    RemoveCaptureFreeId(body);
+  }
+
+  // ===========================================================================
   // Code access and flattening
   // ===========================================================================
 
@@ -630,7 +891,7 @@ module LindenElkNfaRep {
   /** `FreshCorrectRE` for `repeat_min`: label arithmetic of the forced-copy
       chain. */
   lemma FreshCorrectMinRE(k: nat, qid: R.quantid, r1: R.regex, start: nat, tl: CP.treelist, next: int)
-    requires PlusFragmentRE(r1)
+    requires LookBehindFragmentRE(r1)
     requires CP.repeat_min(k, qid, r1, start, CP.Progress) == (tl, next)
     ensures next == start + |Flat(tl)|
     decreases CP.rsize(r1), k + 2
@@ -652,7 +913,7 @@ module LindenElkNfaRep {
   /** `FreshCorrectRE` for `repeat_optional`: label arithmetic of the
       optional-layer chain. */
   lemma FreshCorrectOptRE(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, start: nat, tl: CP.treelist, next: int)
-    requires PlusFragmentRE(r1)
+    requires LookBehindFragmentRE(r1)
     requires CP.repeat_optional(k, qid, r1, start, CP.Progress, greedy) == (tl, next)
     ensures next == start + |Flat(tl)|
     decreases CP.rsize(r1), k + 2
@@ -673,7 +934,7 @@ module LindenElkNfaRep {
   }
 
   lemma FreshCorrectRE(re: R.regex, start: nat, tl: CP.treelist, next: int)
-    requires PlusFragmentRE(re)
+    requires LookBehindFragmentRE(re)
     requires CP.compile(re, start, CP.Progress) == (tl, next)
     ensures next == start + |Flat(tl)|
     decreases CP.rsize(re), 1
@@ -682,6 +943,7 @@ module LindenElkNfaRep {
     case Re_empty =>
     case Re_character(_) =>
     case Re_anchor(_) =>
+    case Re_lookaround(_, _, _) =>
     case Re_alt(r1, r2) =>
       var (l1, f1) := CP.compile(r1, start + 1, CP.Progress);
       var (l2, f2) := CP.compile(r2, f1 + 1, CP.Progress);
@@ -948,7 +1210,7 @@ module LindenElkNfaRep {
   /** `CompileNfaRepRE` for `repeat_min`: the forced-copy chain the compiler
       emits satisfies `NfaRepMinRE`. */
   lemma {:isolate_assertions} CompileNfaRepMinRE(k: nat, qid: R.quantid, r1: R.regex, start: nat, tl: CP.treelist, next: int, prev: RB.code)
-    requires PlusFragmentRE(r1)
+    requires LookBehindFragmentRE(r1)
     requires CP.repeat_min(k, qid, r1, start, CP.Progress) == (tl, next)
     requires start == |prev|
     ensures next >= 0 && NfaRepMinRE(k, qid, r1, prev + Flat(tl), start, next as nat)
@@ -986,7 +1248,7 @@ module LindenElkNfaRep {
   /** `CompileNfaRepRE` for `repeat_optional`: the optional-layer chain the
       compiler emits satisfies `NfaRepOptRE`. */
   lemma {:isolate_assertions} CompileNfaRepOptRE(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, start: nat, tl: CP.treelist, next: int, prev: RB.code)
-    requires PlusFragmentRE(r1)
+    requires LookBehindFragmentRE(r1)
     requires CP.repeat_optional(k, qid, r1, start, CP.Progress, greedy) == (tl, next)
     requires start == |prev|
     ensures next >= 0 && NfaRepOptRE(k, greedy, qid, r1, prev + Flat(tl), start, next as nat)
@@ -1100,7 +1362,7 @@ module LindenElkNfaRep {
       code satisfying `NfaRepRE` against it — the RegElk analogue of Linden's
       `compile_nfa_rep`. */
   lemma {:isolate_assertions} CompileNfaRepRE(re: R.regex, start: nat, tl: CP.treelist, next: int, prev: RB.code)
-    requires PlusFragmentRE(re)
+    requires LookBehindFragmentRE(re)
     requires CP.compile(re, start, CP.Progress) == (tl, next)
     requires start == |prev|
     ensures next >= 0 && NfaRepRE(re, prev + Flat(tl), start, next as nat)
@@ -1115,6 +1377,10 @@ module LindenElkNfaRep {
       GetFirstRE(Flat(tl), prev);
     case Re_anchor(a) =>
       assert Flat(tl) == [RB.AnchorAssertion(a)];
+      GetFirstRE(Flat(tl), prev);
+    case Re_lookaround(lid, la, _) =>
+      assert Flat(tl) == [if la.Lookahead? || la.Lookbehind?
+                          then RB.CheckOracle(lid) else RB.NegCheckOracle(lid)];
       GetFirstRE(Flat(tl), prev);
     case Re_alt(r1, r2) =>
       var (l1, f1) := CP.compile(r1, start + 1, CP.Progress);
@@ -1257,8 +1523,8 @@ module LindenElkNfaRep {
   /** Corollary of `CompileNfaRepRE` for the actual entry point
       `CP.compile_to_bytecode`: the whole program represents `re` from pc 0 to the
       compiler's fresh label, exactly where the trailing `Accept` instruction sits. */
-  lemma CompileToBytecodeRepPlus(re: R.regex)
-    requires PlusFragmentRE(re)
+  lemma CompileToBytecodeRepLookBehind(re: R.regex)
+    requires LookBehindFragmentRE(re)
     ensures var code := CP.compile_to_bytecode(re);
       var next := CP.compile(re, 0, CP.Progress).1;
       next >= 0 && NfaRepRE(re, code, 0, next as nat)
@@ -1275,6 +1541,20 @@ module LindenElkNfaRep {
     assert GetPcRE(Flat(tl) + [RB.Accept], next as nat) == Some(RB.Accept) by {
       assert (Flat(tl) + [RB.Accept])[next as nat] == RB.Accept;
     }
+  }
+
+  /** `CompileToBytecodeRepLookBehind` restricted to the plus fragment — the
+      signature the plus-gated downstream files consume. */
+  lemma CompileToBytecodeRepPlus(re: R.regex)
+    requires PlusFragmentRE(re)
+    ensures var code := CP.compile_to_bytecode(re);
+      var next := CP.compile(re, 0, CP.Progress).1;
+      next >= 0 && NfaRepRE(re, code, 0, next as nat)
+      && GetPcRE(code, next as nat) == Some(RB.Accept)
+      && |code| == next + 1
+  {
+    PlusIsLookBehindFragmentRE(re);
+    CompileToBytecodeRepLookBehind(re);
   }
 
   /** `CompileToBytecodeRepPlus` restricted to the quantifier fragment — the
