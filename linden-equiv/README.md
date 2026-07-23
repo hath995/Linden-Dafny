@@ -48,6 +48,16 @@ linden-warblre  ·  regex-engine     two leaves: ECMAScript primitives · the Re
 You're in **`linden-equiv`**, the pinnacle — it consumes both engine branches
 plus `regex-engine`.
 
+## Work in progress
+
+The **lookaround campaign** — extending `Supported`/`MainTheorem` beyond the
+plus fragment to lookarounds, starting with capture-free non-nested
+lookbehinds — is underway. Its design, completed milestones, and the full
+intended proof structure for what remains are documented in
+[`LOOKAROUND_CAMPAIGN.md`](LOOKAROUND_CAMPAIGN.md); the campaign's files so
+far are `LookTables.dfy`, `OracleSweep.dfy`, and `OracleReach.dfy`, plus the
+lookbehind-fragment vocabulary in `NfaRepRE.dfy`.
+
 ## A note on verification
 
 `MainTheorem`/`MainExtraction` carry `hide T.TransWf, NR.PlusFragmentRE;`: those
