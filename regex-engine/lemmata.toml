@@ -1,9 +1,9 @@
 [package]
 name = "regex-engine"
-version = "1.0.0"
+version = "1.0.1"
 description = "A verified, linear-time JavaScript regular-expression matcher (RegElk) in Dafny"
-license = "MIT"
 repository = "https://github.com/hath995/Linden-Dafny/tree/main/regex-engine"
+license = "MIT"
 keywords = ["regular expression", "Finite Automata", "PikeVM"]
 
 [toolchain]

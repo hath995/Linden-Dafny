@@ -1,9 +1,9 @@
 [package]
 name = "linden-warblre"
-version = "1.0.0"
+version = "1.0.3"
 description = "ECMAScript regex primitives (character classes, numerics, RegExpRecord) for the Linden reference spec"
-license = "MIT"
 repository = "https://github.com/hath995/Linden-Dafny/tree/main/linden-warblre"
+license = "MIT"
 keywords = ["regular expression", "ECMAScript", "Linden", "Warblre"]
 
 [toolchain]
