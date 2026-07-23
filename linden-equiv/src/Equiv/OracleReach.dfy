@@ -313,13 +313,13 @@ module LindenElkOracleReach {
 
   ghost predicate ClosureInv(c: RB.code, str: string, s: AI.VmState, ov: LOr.OracleView, lid: int) {
     (forall pc: nat, eb: bool, pc2: nat, eb2: bool ::
-        InProc(s, pc, eb) && pc2 < RB.size(c) && EpsEdge(c, str, s.cp, pc, eb, pc2, eb2)
-          ==> InProc(s, pc2, eb2) || InActive(s, pc2, eb2))
+        (InProc(s, pc, eb) && pc2 < RB.size(c) && EpsEdge(c, str, s.cp, pc, eb, pc2, eb2))
+          ==> (InProc(s, pc2, eb2) || InActive(s, pc2, eb2)))
     && (forall pc: nat, eb: bool ::
         InProc(s, pc, eb) && RB.get_instr(c, pc).Consume? ==> HasBlockedEntry(c, s.blocked, pc))
     && (forall q: int :: AI.pc_mem(s.isblocked, q) ==> HasBlockedEntry(c, s.blocked, q))
     && (forall pc: nat, eb: bool ::
-        InProc(s, pc, eb) && RB.get_instr(c, pc) == RB.WriteOracle(lid)
+        (InProc(s, pc, eb) && RB.get_instr(c, pc) == RB.WriteOracle(lid))
           ==> LOr.view_get_oracle(ov, s.cp, lid))
   }
 
@@ -492,8 +492,8 @@ module LindenElkOracleReach {
     requires sr.processed == AI.bpc_add(s.processed, hpc, heb)
     requires !RB.get_instr(c, hpc).Consume? && RB.get_instr(c, hpc) != RB.WriteOracle(lid)
     requires forall pc2: nat, eb2: bool ::
-        pc2 < RB.size(c) && EpsEdge(c, str, s.cp, hpc, heb, pc2, eb2)
-          ==> InProc(sr, pc2, eb2) || InActive(sr, pc2, eb2)
+        (pc2 < RB.size(c) && EpsEdge(c, str, s.cp, hpc, heb, pc2, eb2))
+          ==> (InProc(sr, pc2, eb2) || InActive(sr, pc2, eb2))
     ensures ClosureInv(c, str, sr, ov, lid)
   {
     var ac := s.active[1..];
@@ -727,10 +727,12 @@ module LindenElkOracleReach {
       yields an active thread at `(p + 1, exit_allowed := true)` — the consume
       edge's successor. The existence counterpart of `FConsumeReach`. */
   lemma FConsumeReachComplete(s: AI.VmState)
-    ensures forall j :: 0 <= j < |s.blocked| && RC.is_accepted(s.context.nextchar, s.blocked[j].1)
-      ==> exists k :: 0 <= k < |AI.FConsume(s).active|
-                      && AI.FConsume(s).active[k].pc == s.blocked[j].0.pc + 1
-                      && AI.FConsume(s).active[k].exit_allowed
+    ensures
+      forall j ::
+        (0 <= j < |s.blocked| && RC.is_accepted(s.context.nextchar, s.blocked[j].1))
+        ==> (exists k :: 0 <= k < |AI.FConsume(s).active|
+                         && AI.FConsume(s).active[k].pc == s.blocked[j].0.pc + 1
+                         && AI.FConsume(s).active[k].exit_allowed)
     decreases |s.blocked|
   {
     if |s.blocked| == 0 { assert AI.FConsume(s) == s; return; }
@@ -1020,9 +1022,9 @@ module LindenElkOracleReach {
                  && RB.get_instr(c, q) == RB.Consume(s1.blocked[j].1);
         assert RC.is_accepted(s1.context.nextchar, s1.blocked[j].1);   // ConsumeEdge(s.cp, q)
         // FConsumeReachComplete(s1) reactivated that entry at (q + 1, exit_allowed := true)
-        assert exists k :: 0 <= k < |AI.FConsume(s1).active|
-               && AI.FConsume(s1).active[k].pc == s1.blocked[j].0.pc + 1
-               && AI.FConsume(s1).active[k].exit_allowed;
+        assert exists k :: (0 <= k < |AI.FConsume(s1).active|
+                            && AI.FConsume(s1).active[k].pc == s1.blocked[j].0.pc + 1
+                            && AI.FConsume(s1).active[k].exit_allowed);
         var k :| 0 <= k < |AI.FConsume(s1).active|
                  && AI.FConsume(s1).active[k].pc == q + 1 && AI.FConsume(s1).active[k].exit_allowed;
         assert s4.active == AI.FConsume(s1).active;
