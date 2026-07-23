@@ -697,4 +697,71 @@ module LindenElkOracleReach {
       }
       AdvanceReachComplete(c, str, sr, ov, lid);
   }
+
+  /** `FConsume` only prepends to `active`, so any config present survives. */
+  lemma FConsumeKeepsActive(s: AI.VmState, pc: int, eb: bool)
+    requires exists k :: 0 <= k < |s.active| && s.active[k].pc == pc && s.active[k].exit_allowed == eb
+    ensures exists k :: 0 <= k < |AI.FConsume(s).active|
+                        && AI.FConsume(s).active[k].pc == pc && AI.FConsume(s).active[k].exit_allowed == eb
+    decreases |s.blocked|
+  {
+    if |s.blocked| == 0 { assert AI.FConsume(s) == s; return; }
+    var t := s.blocked[0].0;
+    var ce := s.blocked[0].1;
+    var s1 := s.(blocked := s.blocked[1..]);
+    var k :| 0 <= k < |s.active| && s.active[k].pc == pc && s.active[k].exit_allowed == eb;
+    if RC.is_accepted(s1.context.nextchar, ce) {
+      var s2 := s1.(active := [t.(exit_allowed := true, pc := t.pc + 1)] + s1.active);
+      assert s2.active[k + 1] == s.active[k];
+      FConsumeKeepsActive(s2, pc, eb);
+      assert AI.FConsume(s) == AI.FConsume(s2);
+    } else {
+      assert s1.active[k] == s.active[k];
+      FConsumeKeepsActive(s1, pc, eb);
+      assert AI.FConsume(s) == AI.FConsume(s1);
+    }
+  }
+
+  /** `FConsume` reactivates EVERY blocked entry whose expectation accepts the
+      character at `cp` (it dedups nothing): each accepted entry at pc `p`
+      yields an active thread at `(p + 1, exit_allowed := true)` — the consume
+      edge's successor. The existence counterpart of `FConsumeReach`. */
+  lemma FConsumeReachComplete(s: AI.VmState)
+    ensures forall j :: 0 <= j < |s.blocked| && RC.is_accepted(s.context.nextchar, s.blocked[j].1)
+      ==> exists k :: 0 <= k < |AI.FConsume(s).active|
+                      && AI.FConsume(s).active[k].pc == s.blocked[j].0.pc + 1
+                      && AI.FConsume(s).active[k].exit_allowed
+    decreases |s.blocked|
+  {
+    if |s.blocked| == 0 { assert AI.FConsume(s) == s; return; }
+    var t := s.blocked[0].0;
+    var ce := s.blocked[0].1;
+    var s1 := s.(blocked := s.blocked[1..]);
+    if RC.is_accepted(s1.context.nextchar, ce) {
+      var newthr := t.(exit_allowed := true, pc := t.pc + 1);
+      var s2 := s1.(active := [newthr] + s1.active);
+      FConsumeReachComplete(s2);
+      assert s2.active[0] == newthr;
+      FConsumeKeepsActive(s2, t.pc + 1, true);
+      assert AI.FConsume(s) == AI.FConsume(s2);
+      forall j | 0 <= j < |s.blocked| && RC.is_accepted(s.context.nextchar, s.blocked[j].1)
+        ensures exists k :: 0 <= k < |AI.FConsume(s).active|
+                            && AI.FConsume(s).active[k].pc == s.blocked[j].0.pc + 1
+                            && AI.FConsume(s).active[k].exit_allowed
+      {
+        if j >= 1 { assert s2.blocked[j - 1] == s.blocked[j]; }
+      }
+    } else {
+      FConsumeReachComplete(s1);
+      assert AI.FConsume(s) == AI.FConsume(s1);
+      forall j | 0 <= j < |s.blocked| && RC.is_accepted(s.context.nextchar, s.blocked[j].1)
+        ensures exists k :: 0 <= k < |AI.FConsume(s).active|
+                            && AI.FConsume(s).active[k].pc == s.blocked[j].0.pc + 1
+                            && AI.FConsume(s).active[k].exit_allowed
+      {
+        assert j >= 1;
+        assert s1.blocked[j - 1] == s.blocked[j];
+      }
+    }
+  }
 }
