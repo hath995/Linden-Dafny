@@ -1699,6 +1699,182 @@ module LindenElkNfaRep {
       // not in the STAR fragment: vacuous
   }
 
+  // The oracle-build classification: look-free plus-fragment code contains
+  // none of the four instructions the sweep lemmas (OracleSweep.dfy) must
+  // exclude — CheckOracle/NegCheckOracle (would make the run oracle-
+  // dependent), WriteOracle (only the appended recorder writes), and
+  // CheckNullable (would make the run cdn-dependent).
+  /** `NoOracleInstrRE` for the `repeat_min` forced-copy chain. */
+  lemma NoOracleInstrMinRE(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires PlusFragmentRE(r1) && LookFreeRE(r1)
+    requires NfaRepMinRE(k, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures GetPcRE(code, pc).Some? ==>
+      var i := GetPcRE(code, pc).value;
+      !i.CheckOracle? && !i.NegCheckOracle? && !i.WriteOracle? && !i.CheckNullable?
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| GetPcRE(code, start) == Some(RB.SetQuantToClock(qid, false))
+      && NfaRepRE(r1, code, start + 1, e1)
+      && NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
+    NfaRepIncrRE(r1, code, start + 1, e1);
+    NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
+    if pc == start {
+    } else if pc < e1 {
+      NoOracleInstrRE(r1, code, start + 1, e1, pc);
+    } else {
+      NoOracleInstrMinRE(k - 1, qid, r1, code, e1, endl, pc);
+    }
+  }
+
+  /** `NoOracleInstrRE` for the `repeat_optional` layer chain. */
+  lemma NoOracleInstrOptRE(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires PlusFragmentRE(r1) && LookFreeRE(r1)
+    requires NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures GetPcRE(code, pc).Some? ==>
+      var i := GetPcRE(code, pc).value;
+      !i.CheckOracle? && !i.NegCheckOracle? && !i.WriteOracle? && !i.CheckNullable?
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| GetPcRE(code, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
+      && GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+      && GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+      && NfaRepRE(r1, code, start + 3, e1)
+      && GetPcRE(code, e1) == Some(RB.EndLoop)
+      && NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+    NfaRepIncrRE(r1, code, start + 3, e1);
+    NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+    if pc <= start + 2 {
+    } else if pc < e1 {
+      NoOracleInstrRE(r1, code, start + 3, e1, pc);
+    } else if pc == e1 {
+    } else {
+      NoOracleInstrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl, pc);
+    }
+  }
+
+  /** Look-free plus-fragment code contains no oracle or cdn instructions:
+      every position strictly inside such an `NfaRepRE` block holds something
+      other than `CheckOracle`/`NegCheckOracle`/`WriteOracle`/`CheckNullable`
+      — the classification the oracle-build sweep lemmas consume. */
+  lemma NoOracleInstrRE(re: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires PlusFragmentRE(re) && LookFreeRE(re)
+    requires NfaRepRE(re, code, start, endl)
+    requires start <= pc < endl
+    ensures GetPcRE(code, pc).Some? ==>
+      var i := GetPcRE(code, pc).value;
+      !i.CheckOracle? && !i.NegCheckOracle? && !i.WriteOracle? && !i.CheckNullable?
+    decreases CP.rsize(re), 1
+  {
+    match re
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      var e1: nat :| GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
+        && NfaRepRE(r1, code, start + 1, e1)
+        && GetPcRE(code, e1) == Some(RB.Jmp(endl))
+        && NfaRepRE(r2, code, e1 + 1, endl);
+      NfaRepIncrRE(r1, code, start + 1, e1);
+      NfaRepIncrRE(r2, code, e1 + 1, endl);
+      if pc == start {
+      } else if pc < e1 {
+        NoOracleInstrRE(r1, code, start + 1, e1, pc);
+      } else if pc == e1 {
+      } else {
+        NoOracleInstrRE(r2, code, e1 + 1, endl, pc);
+      }
+    case Re_con(r1, r2) =>
+      var e1: nat :| NfaRepRE(r1, code, start, e1) && NfaRepRE(r2, code, e1, endl);
+      NfaRepIncrRE(r1, code, start, e1);
+      NfaRepIncrRE(r2, code, e1, endl);
+      if pc < e1 {
+        NoOracleInstrRE(r1, code, start, e1, pc);
+      } else {
+        NoOracleInstrRE(r2, code, e1, endl, pc);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      if q.min == 0 && q.max == None {
+        var e1: nat :| GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
+          && GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+          && GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+          && NfaRepRE(r1, code, start + 3, e1)
+          && GetPcRE(code, e1) == Some(RB.EndLoop)
+          && GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
+          && endl == e1 + 2;
+        NfaRepIncrRE(r1, code, start + 3, e1);
+        if pc <= start + 2 {
+        } else if pc < e1 {
+          NoOracleInstrRE(r1, code, start + 3, e1, pc);
+        } else {
+        }
+      } else if q.max.Some? {
+        var em := NfaRepREQuantInv(nul, qid, q, r1, code, start, endl);
+        NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NfaRepIncrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl);
+        if pc < em {
+          NoOracleInstrMinRE(q.min as nat, qid, r1, code, start, em, pc);
+        } else {
+          NoOracleInstrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
+        }
+      } else {
+        var em, e1 := NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
+        NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NfaRepIncrRE(r1, code, em + 1, e1);
+        if pc < em {
+          NoOracleInstrMinRE((q.min - 1) as nat, qid, r1, code, start, em, pc);
+        } else if pc == em {
+        } else if pc < e1 {
+          NoOracleInstrRE(r1, code, em + 1, e1, pc);
+        } else {
+        }
+      }
+    case Re_capture(cid, r1) =>
+      var e1: nat :| GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
+        && NfaRepRE(r1, code, start + 1, e1)
+        && GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+        && endl == e1 + 1;
+      NfaRepIncrRE(r1, code, start + 1, e1);
+      if pc == start {
+      } else if pc < e1 {
+        NoOracleInstrRE(r1, code, start + 1, e1, pc);
+      } else {
+      }
+    case Re_lookaround(_, _, _) =>
+      // excluded by LookFreeRE: vacuous
+  }
+
+  /** The full oracle-build program of a look-free plus-fragment build regex,
+      classified for the sweep lemmas: no oracle reads, no `CheckNullable`,
+      and the only `WriteOracle` is the final recorder for `lid`. */
+  lemma CompileToWriteClassified(re: R.regex, lid: R.lookid)
+    requires PlusFragmentRE(re) && LookFreeRE(re)
+    ensures var code := CP.compile_to_write(re, lid);
+      forall pc :: 0 <= pc < |code| ==>
+        !code[pc].CheckOracle? && !code[pc].NegCheckOracle? && !code[pc].CheckNullable?
+        && (code[pc].WriteOracle? ==> code[pc].wol == lid)
+  {
+    PlusIsLookBehindFragmentRE(re);
+    CompileToWriteRep(re, lid);
+    var code := CP.compile_to_write(re, lid);
+    var next := CP.compile(re, 0, CP.Progress).1;
+    forall pc | 0 <= pc < |code|
+      ensures !code[pc].CheckOracle? && !code[pc].NegCheckOracle? && !code[pc].CheckNullable?
+              && (code[pc].WriteOracle? ==> code[pc].wol == lid)
+    {
+      if pc < next as nat {
+        NoOracleInstrRE(re, code, 0, next as nat, pc);
+        assert GetPcRE(code, pc) == Some(code[pc]);
+      } else {
+        assert pc == next as nat;
+        assert GetPcRE(code, pc) == Some(RB.WriteOracle(lid));
+      }
+    }
+  }
+
   /** Labels only increase: `NfaRepRE(re, code, start, endl)` implies `start <= endl` —
       the RegElk port of Linden's `nfa_rep_incr`, used in termination/measure arguments
       elsewhere. */
