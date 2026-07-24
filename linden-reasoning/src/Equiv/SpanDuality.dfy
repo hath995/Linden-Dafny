@@ -606,4 +606,198 @@ module LindenSpanDuality {
     BwdComplete(rer, r, [], str, i, cp, gm);
     assert [LS.Areg(r)] + [] == [LS.Areg(r)];
   }
+
+  // ===========================================================================
+  // BwdSound: a successful backward walk yields a span match
+  // ===========================================================================
+
+  /** `Reverse` preserves length. */
+  lemma ReverseLength<T>(s: seq<T>)
+    ensures |LC.Reverse(s)| == |s|
+    decreases |s|
+  {
+    if |s| > 0 { ReverseLength(s[1..]); }
+  }
+
+  /** `InputAt(str, p)` sits at index `p`. */
+  lemma IdxInputAt(str: string, p: int)
+    requires 0 <= p <= |str|
+    ensures |T.InputAt(str, p).pref| == p && LC.Idx(T.InputAt(str, p)) == p
+  {
+    ReverseLength(str[..p]);
+  }
+
+  /** THE soundness direction: if the backward walk of `[Areg(r)] + cont`
+      from position `j` succeeds, then `r` matches some span `[i, j)` and the
+      continuation's walk succeeds from `i`. */
+  lemma BwdSound(rer: LW.RegExpRecord, r: L.Regex, cont: LS.Actions, str: string,
+                 j: int, gm: LG.GroupMap) returns (i: int)
+    requires GroupFreeL(r)
+    requires 0 <= j <= |str|
+    requires SuccActs(rer, [LS.Areg(r)] + cont, T.InputAt(str, j), gm, WP.Backward)
+    ensures 0 <= i <= j
+    ensures MatchesL(rer, r, str, i, j)
+    ensures SuccActs(rer, cont, T.InputAt(str, i), gm, WP.Backward)
+    decreases r, 1, 0
+  {
+    var inp := T.InputAt(str, j);
+    var acts := [LS.Areg(r)] + cont;
+    FU.ComputeTrRw(rer, acts, inp, gm, WP.Backward);
+    assert acts[0] == LS.Areg(r) && acts[1..] == cont;
+    match r
+    case Epsilon =>
+      i := j;
+    case Character(cd) =>
+      if LC.ReadChar(rer, cd, inp, WP.Backward) == None {
+        assert FU.ComputeTr(rer, acts, inp, gm, WP.Backward) == LT.Mismatch;
+        assert false;
+      }
+      IdxInputAt(str, j);
+      assert |inp.pref| == j && |inp.pref| > 0;
+      InputAtPeel(str, j);
+      assert LC.CharMatch(rer, str[j - 1], cd);
+      ReadCharBackAt(rer, cd, str, j);
+      AdvanceInputPBackAt(str, j);
+      var tc := FU.ComputeTr(rer, cont, T.InputAt(str, j - 1), gm, WP.Backward);
+      assert FU.ComputeTr(rer, acts, inp, gm, WP.Backward) == LT.Read(str[j - 1], tc);
+      assert LT.TreeRes(LT.Read(str[j - 1], tc), gm, inp, WP.Backward)
+          == LT.TreeRes(tc, gm, T.InputAt(str, j - 1), WP.Backward);
+      i := j - 1;
+    case AnchorR(a) =>
+      if !LS.AnchorSatisfied(rer, a, inp) {
+        assert FU.ComputeTr(rer, acts, inp, gm, WP.Backward) == LT.Mismatch;
+        assert false;
+      }
+      i := j;
+    case Disjunction(r1, r2) =>
+      var t1 := FU.ComputeTr(rer, [LS.Areg(r1)] + cont, inp, gm, WP.Backward);
+      var t2 := FU.ComputeTr(rer, [LS.Areg(r2)] + cont, inp, gm, WP.Backward);
+      assert FU.ComputeTr(rer, acts, inp, gm, WP.Backward) == LT.Choice(t1, t2);
+      assert LT.TreeRes(LT.Choice(t1, t2), gm, inp, WP.Backward)
+          == LT.Seqop(LT.TreeRes(t1, gm, inp, WP.Backward), LT.TreeRes(t2, gm, inp, WP.Backward));
+      if LT.TreeRes(t1, gm, inp, WP.Backward).Some? {
+        i := BwdSound(rer, r1, cont, str, j, gm);
+      } else {
+        assert LT.TreeRes(t2, gm, inp, WP.Backward).Some?;
+        i := BwdSound(rer, r2, cont, str, j, gm);
+      }
+    case Sequence(r1, r2) =>
+      assert LS.SeqList(r1, r2, WP.Backward) + cont == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
+      var m := BwdSound(rer, r2, [LS.Areg(r1)] + cont, str, j, gm);
+      i := BwdSound(rer, r1, cont, str, m, gm);
+      assert MatchesL(rer, r1, str, i, m) && MatchesL(rer, r2, str, m, j);
+    case Quantified(greedy, min, delta, r1) =>
+      var k: nat;
+      i, k := BwdSoundQuant(rer, greedy, min, delta, r1, cont, str, j, gm);
+    case Group(_, _) =>
+      i := j; assert false;
+    case LookaroundR(_, _) =>
+      i := j; assert false;
+    case Backreference(_) =>
+      i := j; assert false;
+  }
+
+  /** `BwdSound` for quantifiers: the walk's own unfolding peels the
+      RIGHTMOST span per forced copy or free layer; free layers consume
+      strictly (the `Acheck` guard), so the position founds the
+      induction where `delta == Inf` gives no structural measure. */
+  lemma BwdSoundQuant(rer: LW.RegExpRecord, greedy: bool, min: nat, delta: LN.NoI,
+                      r1: L.Regex, cont: LS.Actions, str: string,
+                      j: int, gm: LG.GroupMap) returns (i: int, k: nat)
+    requires GroupFreeL(r1)
+    requires 0 <= j <= |str|
+    requires SuccActs(rer, [LS.Areg(L.Quantified(greedy, min, delta, r1))] + cont,
+                      T.InputAt(str, j), gm, WP.Backward)
+    ensures 0 <= i <= j
+    ensures min <= k && (match delta case Inf => true case NN(dx) => k <= min + dx)
+    ensures IterL(rer, r1, k, str, i, j)
+    ensures SuccActs(rer, cont, T.InputAt(str, i), gm, WP.Backward)
+    decreases r1, 3, min + j
+  {
+    var inp := T.InputAt(str, j);
+    var q := L.Quantified(greedy, min, delta, r1);
+    var acts := [LS.Areg(q)] + cont;
+    FU.ComputeTrRw(rer, acts, inp, gm, WP.Backward);
+    assert acts[0] == LS.Areg(q) && acts[1..] == cont;
+    GroupFreeDefGroups(r1);
+    GMResetNil(gm);
+    GMUpdateResetNil(LC.Idx(inp), gm);
+    if min > 0 {
+      var inner := [LS.Areg(L.Quantified(greedy, min - 1, delta, r1))] + cont;
+      assert [LS.Areg(r1), LS.Areg(L.Quantified(greedy, min - 1, delta, r1))] + cont
+          == [LS.Areg(r1)] + inner;
+      var titer := FU.ComputeTr(rer, [LS.Areg(r1)] + inner, inp, gm, WP.Backward);
+      assert FU.ComputeTr(rer, acts, inp, gm, WP.Backward) == LT.GroupActionT(LG.Reset([]), titer);
+      assert LT.TreeRes(LT.GroupActionT(LG.Reset([]), titer), gm, inp, WP.Backward)
+          == LT.TreeRes(titer, gm, inp, WP.Backward);
+      var m := BwdSound(rer, r1, inner, str, j, gm);
+      var i2, k2 := BwdSoundQuant(rer, greedy, min - 1, delta, r1, cont, str, m, gm);
+      i := i2;
+      k := k2 + 1;
+      IterLSnoc(rer, r1, k2, str, i2, m, j);
+    } else if delta == LN.NN(0) {
+      i := j;
+      k := 0;
+    } else {
+      var qpred := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+      var inner := [LS.Acheck(inp), LS.Areg(qpred)] + cont;
+      assert [LS.Areg(r1), LS.Acheck(inp), LS.Areg(qpred)] + cont == [LS.Areg(r1)] + inner;
+      var titer := FU.ComputeTr(rer, [LS.Areg(r1)] + inner, inp, gm, WP.Backward);
+      var tskip := FU.ComputeTr(rer, cont, inp, gm, WP.Backward);
+      assert FU.ComputeTr(rer, acts, inp, gm, WP.Backward)
+          == LT.GreedyChoice(greedy, LT.GroupActionT(LG.Reset([]), titer), tskip);
+      var iterRes := LT.TreeRes(LT.GroupActionT(LG.Reset([]), titer), gm, inp, WP.Backward);
+      var skipRes := LT.TreeRes(tskip, gm, inp, WP.Backward);
+      assert iterRes.Some? || skipRes.Some? by {
+        if greedy {
+          assert LT.TreeRes(LT.GreedyChoice(greedy, LT.GroupActionT(LG.Reset([]), titer), tskip), gm, inp, WP.Backward)
+              == LT.Seqop(iterRes, skipRes);
+        } else {
+          assert LT.TreeRes(LT.GreedyChoice(greedy, LT.GroupActionT(LG.Reset([]), titer), tskip), gm, inp, WP.Backward)
+              == LT.Seqop(skipRes, iterRes);
+        }
+      }
+      if skipRes.Some? {
+        i := j;
+        k := 0;
+      } else {
+        assert iterRes.Some?;
+        assert LT.TreeRes(titer, gm, inp, WP.Backward).Some?;
+        var m := BwdSound(rer, r1, inner, str, j, gm);
+        // the Acheck guard forces strict progress: m < j
+        var inpM := T.InputAt(str, m);
+        FU.ComputeTrRw(rer, inner, inpM, gm, WP.Backward);
+        assert inner[0] == LS.Acheck(inp) && inner[1..] == [LS.Areg(qpred)] + cont;
+        if !SSx.IsStrictSuffix(inpM, inp, WP.Backward) {
+          assert FU.ComputeTr(rer, inner, inpM, gm, WP.Backward) == LT.Mismatch;
+          assert false;
+        }
+        SSx.SSLengthLt(inpM, inp, WP.Backward);
+        IdxInputAt(str, m);
+        IdxInputAt(str, j);
+        assert m < j;
+        var tq := FU.ComputeTr(rer, [LS.Areg(qpred)] + cont, inpM, gm, WP.Backward);
+        assert FU.ComputeTr(rer, inner, inpM, gm, WP.Backward) == LT.Progress(tq);
+        assert SuccActs(rer, [LS.Areg(qpred)] + cont, inpM, gm, WP.Backward);
+        var i2, k2 := BwdSoundQuant(rer, greedy, 0, FS.NoiPred(delta), r1, cont, str, m, gm);
+        i := i2;
+        k := k2 + 1;
+        IterLSnoc(rer, r1, k2, str, i2, m, j);
+      }
+    }
+  }
+
+  /** The soundness half of the span duality, assembled: a successful
+      backward walk of the body from `cp` yields a body match ending at
+      `cp`. */
+  lemma SpanDualitySound(rer: LW.RegExpRecord, r: L.Regex, str: string,
+                         cp: int, gm: LG.GroupMap) returns (i: int)
+    requires GroupFreeL(r)
+    requires 0 <= cp <= |str|
+    requires SuccActs(rer, [LS.Areg(r)], T.InputAt(str, cp), gm, WP.Backward)
+    ensures 0 <= i <= cp && MatchesL(rer, r, str, i, cp)
+  {
+    assert [LS.Areg(r)] + [] == [LS.Areg(r)];
+    i := BwdSound(rer, r, [], str, cp, gm);
+  }
 }
