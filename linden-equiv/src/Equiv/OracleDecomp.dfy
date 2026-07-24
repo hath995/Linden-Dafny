@@ -45,7 +45,9 @@ module LindenElkOracleDecomp {
   import RC = Charclasses
   import T = LindenElkTranslate
   import NR = LindenElkNfaRep
+  import LT = LindenElkLookTables
   import ORc = LindenElkOracleReach
+  import OBu = LindenElkOracleBuild
   import OB = LindenElkOracleBridge
 
   // ===========================================================================
@@ -1252,5 +1254,246 @@ module LindenElkOracleDecomp {
           }
         }
       }
+  }
+
+  // ===========================================================================
+  // The program-level sweep: every reachable configuration of a build
+  // program is in the dot-star zone, mid-parse in the body, or done
+  // ===========================================================================
+
+  /** Some legitimate body entry position underlies this mid-parse state. */
+  ghost predicate BodyMid(body: R.regex, code: RB.code, next: nat, str: string, pc: nat, cp: int) {
+    exists i: int {:trigger InBlock(body, code, 6, next, str, i, pc, cp)} ::
+      0 <= i && InBlock(body, code, 6, next, str, i, pc, cp)
+  }
+
+  lemma BodyMidIntro(body: R.regex, code: RB.code, next: nat, str: string, pc: nat, cp: int, i: int)
+    requires 0 <= i && InBlock(body, code, 6, next, str, i, pc, cp)
+    ensures BodyMid(body, code, next, str, pc, cp)
+  {
+  }
+
+  lemma BodyMidInv(body: R.regex, code: RB.code, next: nat, str: string, pc: nat, cp: int) returns (i: int)
+    requires BodyMid(body, code, next, str, pc, cp)
+    ensures 0 <= i && InBlock(body, code, 6, next, str, i, pc, cp)
+  {
+    i :| 0 <= i && InBlock(body, code, 6, next, str, i, pc, cp);
+  }
+
+  /** The recorder's claim: some in-range entry yields a full body match
+      ending at `cp`. */
+  ghost predicate RecorderHit(body: R.regex, str: string, cp: int) {
+    exists i: int {:trigger OB.Matches(body, str, i, cp)} ::
+      0 <= i <= cp && OB.Matches(body, str, i, cp)
+  }
+
+  lemma RecorderHitIntro(body: R.regex, str: string, cp: int, i: int)
+    requires 0 <= i <= cp && OB.Matches(body, str, i, cp)
+    ensures RecorderHit(body, str, cp)
+  {
+  }
+
+  lemma RecorderHitInv(body: R.regex, str: string, cp: int) returns (i: int)
+    requires RecorderHit(body, str, cp)
+    ensures 0 <= i <= cp && OB.Matches(body, str, i, cp)
+  {
+    i :| 0 <= i <= cp && OB.Matches(body, str, i, cp);
+  }
+
+  /** The build program's reachability invariant: the dot-star zone
+      (pcs 0..5 — the star's one-Consume body pins the layout), a body
+      mid-parse state, or the recorder with a completed match. */
+  ghost predicate ProgInv(body: R.regex, code: RB.code, next: nat, str: string, pc: nat, cp: int) {
+    (pc <= 5 && 0 <= cp)
+    || BodyMid(body, code, next, str, pc, cp)
+    || (pc == next && RecorderHit(body, str, cp))
+  }
+
+  /** Every reachable configuration of the build program satisfies the
+      invariant — the least-lemma sweep over `ReachF`. */
+  least lemma ProgReachInv(body: R.regex, code: RB.code, next: nat, lid: R.lookid, str: string,
+                           pc: nat, eb: bool, cp: int)
+    requires NR.LookFreeRE(body)
+    requires StarShape(0, R.Re_character(R.Dot), code, 0, 4, 6)
+    requires NR.NfaRepRE(body, code, 6, next)
+    requires 6 <= next
+    requires NR.GetPcRE(code, next) == Some(RB.WriteOracle(lid))
+    requires ORc.ReachF(code, str, 0, pc, eb, cp)
+    ensures ProgInv(body, code, next, str, pc, cp)
+  {
+    if pc == 0 && eb == false && cp == 0 {
+      // the initial configuration is in the zone
+    } else if exists pc1: nat, eb1: bool ::
+        ORc.ReachF(code, str, 0, pc1, eb1, cp) && ORc.EpsEdge(code, str, cp, pc1, eb1, pc, eb) {
+      var pc1: nat, eb1: bool :|
+        ORc.ReachF(code, str, 0, pc1, eb1, cp) && ORc.EpsEdge(code, str, cp, pc1, eb1, pc, eb);
+      ProgReachInv(body, code, next, lid, str, pc1, eb1, cp);
+      assert AnyEdge(code, str, pc1, eb1, cp, pc, eb, cp);
+      if pc1 <= 5 && 0 <= cp {
+        ZoneStep(body, code, next, str, pc1, eb1, cp, pc, eb, cp);
+      } else if BodyMid(body, code, next, str, pc1, cp) {
+        var i := BodyMidInv(body, code, next, str, pc1, cp);
+        BlockStep(body, code, 6, next, str, i, pc1, eb1, cp, pc, eb, cp);
+        if InBlock(body, code, 6, next, str, i, pc, cp) {
+          BodyMidIntro(body, code, next, str, pc, cp, i);
+        } else {
+          OB.MatchesBounds(body, str, i, cp);
+          RecorderHitIntro(body, str, cp, i);
+        }
+      } else {
+        // the recorder has no outgoing edges
+        OB.GetPcInstr(code, next, RB.WriteOracle(lid));
+        assert false;
+      }
+    } else {
+      assert eb == true && pc > 0 && ORc.ConsumeEdge(code, str, cp - 1, pc - 1);
+      var eb1: bool :| (eb1 == false || eb1 == true)
+        && ORc.ReachF(code, str, 0, pc - 1, eb1, cp - 1);
+      ProgReachInv(body, code, next, lid, str, pc - 1, eb1, cp - 1);
+      assert AnyEdge(code, str, pc - 1, eb1, cp - 1, pc, eb, cp);
+      if pc - 1 <= 5 && 0 <= cp - 1 {
+        ZoneStep(body, code, next, str, pc - 1, eb1, cp - 1, pc, eb, cp);
+      } else if BodyMid(body, code, next, str, pc - 1, cp - 1) {
+        var i := BodyMidInv(body, code, next, str, pc - 1, cp - 1);
+        BlockStep(body, code, 6, next, str, i, pc - 1, eb1, cp - 1, pc, eb, cp);
+        if InBlock(body, code, 6, next, str, i, pc, cp) {
+          BodyMidIntro(body, code, next, str, pc, cp, i);
+        } else {
+          OB.MatchesBounds(body, str, i, cp);
+          RecorderHitIntro(body, str, cp, i);
+        }
+      } else {
+        OB.GetPcInstr(code, next, RB.WriteOracle(lid));
+        assert false;
+      }
+    }
+  }
+
+  /** One step out of the dot-star zone: the pins at pcs 0..5 enumerate the
+      successors — stay in the zone, or enter the body block. */
+  lemma ZoneStep(body: R.regex, code: RB.code, next: nat, str: string,
+                 pc1: nat, eb1: bool, cp1: int, pc: nat, eb: bool, cp: int)
+    requires NR.LookFreeRE(body)
+    requires StarShape(0, R.Re_character(R.Dot), code, 0, 4, 6)
+    requires NR.NfaRepRE(body, code, 6, next)
+    requires 6 <= next
+    requires pc1 <= 5 && 0 <= cp1
+    requires AnyEdge(code, str, pc1, eb1, cp1, pc, eb, cp)
+    ensures ProgInv(body, code, next, str, pc, cp)
+  {
+    assert NR.GetPcRE(code, 3) == Some(RB.Consume(T.ExpectationOf(R.Dot)));
+    if pc1 == 0 {
+      assert OB.ForkAt(code, 0, 1, 6);
+      EdgeFromForkAt(code, str, 1, 6, pc1, eb1, cp1, pc, eb, cp);
+      if pc == 6 {
+        BlockEntry(body, code, 6, next, str, cp);
+        if 6 == next {
+          BlockEmpty(body, code, 6, str, cp);
+          RecorderHitIntro(body, str, cp, cp);
+        } else {
+          BodyMidIntro(body, code, next, str, pc, cp, cp);
+        }
+      }
+    } else if pc1 == 1 {
+      EdgeFromSetQuant(code, str, 0, false, pc1, eb1, cp1, pc, eb, cp);
+    } else if pc1 == 2 {
+      EdgeFromBeginLoop(code, str, pc1, eb1, cp1, pc, eb, cp);
+    } else if pc1 == 3 {
+      EdgeFromConsume(code, str, T.ExpectationOf(R.Dot), pc1, eb1, cp1, pc, eb, cp);
+    } else if pc1 == 4 {
+      EdgeFromEndLoop(code, str, pc1, eb1, cp1, pc, eb, cp);
+    } else {
+      EdgeFromJmp(code, str, 0, pc1, eb1, cp1, pc, eb, cp);
+    }
+  }
+
+  // ===========================================================================
+  // PathToMatches, assembled
+  // ===========================================================================
+
+  /** THE decomposition direction: a reachable `WriteOracle(lid)` in the
+      build program means the body matches some span ending at `cp`. */
+  lemma ReachesWriteToMatches(body: R.regex, lid: R.lookid, str: string, cp: int) returns (i: int)
+    requires NR.PlusFragmentRE(body) && NR.LookFreeRE(body)
+    requires ORc.ReachesWrite(CP.compile_to_write(R.lazy_prefix(body), lid), str, 0, lid, cp)
+    ensures 0 <= i <= cp && OB.Matches(body, str, i, cp)
+  {
+    assert NR.PlusFragmentRE(R.lazy_prefix(body));
+    OB.LookFreeLazyPrefixB(body);
+    NR.PlusIsLookBehindFragmentRE(R.lazy_prefix(body));
+    NR.CompileToWriteRep(R.lazy_prefix(body), lid);
+    var code := CP.compile_to_write(R.lazy_prefix(body), lid);
+    var next := CP.compile(R.lazy_prefix(body), 0, CP.Progress).1;
+    // the two-block layout: dot-star head at 0..5, body at [6, next)
+    var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
+    assert R.lazy_prefix(body) == R.Re_con(pre, body);
+    assert NR.NfaRepRE(R.Re_con(pre, body), code, 0, next as nat);
+    assert exists e1: nat :: NR.NfaRepRE(pre, code, 0, e1) && NR.NfaRepRE(body, code, e1, next as nat);
+    var e1x: nat :| NR.NfaRepRE(pre, code, 0, e1x) && NR.NfaRepRE(body, code, e1x, next as nat);
+    var es1: nat :|
+      NR.GetPcRE(code, 0) == Some(RB.Fork(es1 + 2, 1))
+      && NR.GetPcRE(code, 1) == Some(RB.SetQuantToClock(0, false))
+      && NR.GetPcRE(code, 2) == Some(RB.BeginLoop)
+      && NR.NfaRepRE(R.Re_character(R.Dot), code, 3, es1)
+      && NR.GetPcRE(code, es1) == Some(RB.EndLoop)
+      && NR.GetPcRE(code, es1 + 1) == Some(RB.Jmp(0))
+      && e1x == es1 + 2;
+    assert es1 == 4 && e1x == 6;
+    assert StarShape(0, R.Re_character(R.Dot), code, 0, 4, 6);
+    NR.NfaRepIncrRE(body, code, 6, next as nat);
+    // the recorder's pc is pinned: inside the block nothing writes
+    var pc: nat, eb: bool :|
+      ORc.ReachF(code, str, 0, pc, eb, cp) && RB.get_instr(code, pc) == RB.WriteOracle(lid);
+    assert 0 <= pc < |code|;
+    assert |code| == next + 1;
+    if pc < next as nat {
+      NR.NoOracleInstrRE(R.lazy_prefix(body), code, 0, next as nat, pc);
+      assert false;
+    }
+    assert pc == next as nat;
+    ProgReachInv(body, code, next as nat, lid, str, pc, eb, cp);
+    // the zone is below the body block, and mid-parse states sit before next
+    assert !(pc <= 5);
+    if BodyMid(body, code, next as nat, str, pc, cp) {
+      var i0 := BodyMidInv(body, code, next as nat, str, pc, cp);
+      InBlockRange(body, code, 6, next as nat, str, i0, pc, cp);
+      assert false;
+    }
+    i := RecorderHitInv(body, str, cp);
+  }
+
+  // ===========================================================================
+  // THE L1 oracle characterization, per column
+  // ===========================================================================
+
+  /** The oracle theorem, assembled: for a lid-unique lookbehind-fragment
+      regex, the built oracle's bit at `(cp, lid)` holds exactly when the
+      lookaround's body matches some span ending at `cp`. The chain:
+      FBuildOracleCorrectAt (bit == ReachesWrite of the build bytecode) +
+      MatchesToReachesWrite (forward bridge) + ReachesWriteToMatches
+      (decomposition). The body-side facts are the fragment's own guarantees
+      at the lookaround subterm; the caller walks `re` to collect them
+      (LookTablesOk supplies `LookEntryOk`). */
+  lemma OracleColumnCharacterized(re: R.regex, str: string, lid: R.lookid,
+                                  la: R.lookaround, body: R.regex, cp: int)
+    requires NR.LookBehindFragmentRE(re)
+    requires LT.LookUnique(re)
+    requires LT.LookEntryOk(CP.FFullCompilation(re), lid, la, body)
+    requires la.Lookbehind? || la.NegLookbehind?
+    requires NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    requires 1 <= lid
+    requires 0 <= cp <= |str|
+    ensures LOr.view_get_oracle(AI.FBuildOracle(CP.FFullCompilation(re), str), cp, lid)
+         <==> RecorderHit(body, str, cp)
+  {
+    OBu.FBuildOracleCorrectAt(re, str, lid, la, body, cp);
+    if LOr.view_get_oracle(AI.FBuildOracle(CP.FFullCompilation(re), str), cp, lid) {
+      var i := ReachesWriteToMatches(body, lid, str, cp);
+      RecorderHitIntro(body, str, cp, i);
+    }
+    if RecorderHit(body, str, cp) {
+      var i := RecorderHitInv(body, str, cp);
+      OB.MatchesToReachesWrite(body, lid, str, i, cp);
+    }
   }
 }
