@@ -81,6 +81,140 @@ module LindenElkOracleBridge {
   }
 
   // ===========================================================================
+  // Span algebra: bounds, splitting, dropping empty iterations, nullability
+  // ===========================================================================
+
+  /** Spans never go backward. */
+  lemma MatchesBounds(re: R.regex, str: string, i: int, j: int)
+    requires Matches(re, str, i, j)
+    ensures i <= j
+    decreases CP.rsize(re), 0, 0
+  {
+    match re
+    case Re_alt(r1, r2) =>
+      if Matches(r1, str, i, j) { MatchesBounds(r1, str, i, j); }
+      else { MatchesBounds(r2, str, i, j); }
+    case Re_con(r1, r2) =>
+      var m: int :| Matches(r1, str, i, m) && Matches(r2, str, m, j);
+      MatchesBounds(r1, str, i, m);
+      MatchesBounds(r2, str, m, j);
+    case Re_quant(nul, qid, q, r1) =>
+      var k: nat :| q.min <= k && (q.max.Some? ==> k <= q.max.value)
+                 && MatchesIter(r1, k, str, i, j);
+      MatchesIterBounds(r1, k, str, i, j);
+    case Re_capture(_, r1) => MatchesBounds(r1, str, i, j);
+    case _ =>
+  }
+
+  /** `MatchesBounds` for iteration chains. */
+  lemma MatchesIterBounds(r: R.regex, k: nat, str: string, i: int, j: int)
+    requires MatchesIter(r, k, str, i, j)
+    ensures i <= j
+    decreases CP.rsize(r), 1, k
+  {
+    if k > 0 {
+      var m: int :| Matches(r, str, i, m) && MatchesIter(r, k - 1, str, m, j);
+      MatchesBounds(r, str, i, m);
+      MatchesIterBounds(r, k - 1, str, m, j);
+    }
+  }
+
+  /** Head inversion for a nonempty iteration chain (a top-level helper —
+      the definitional unfold is fuel-fragile in nested proof contexts). */
+  lemma MatchesIterHead(r: R.regex, k: nat, str: string, i: int, j: int) returns (m: int)
+    requires k > 0
+    requires MatchesIter(r, k, str, i, j)
+    ensures Matches(r, str, i, m) && MatchesIter(r, k - 1, str, m, j)
+  {
+    m :| Matches(r, str, i, m) && MatchesIter(r, k - 1, str, m, j);
+  }
+
+  /** Split an iteration chain after its first `n` spans. */
+  lemma IterSplit(r: R.regex, k: nat, n: nat, str: string, i: int, j: int) returns (mid: int)
+    requires MatchesIter(r, k, str, i, j)
+    requires n <= k
+    ensures MatchesIter(r, n, str, i, mid) && MatchesIter(r, k - n, str, mid, j)
+    decreases n
+  {
+    if n == 0 { mid := i; return; }
+    var m: int :| Matches(r, str, i, m) && MatchesIter(r, k - 1, str, m, j);
+    mid := IterSplit(r, k - 1, n - 1, str, m, j);
+  }
+
+  /** Iteration chains whose every span CONSUMES — what the engine's
+      `BeginLoop`/`EndLoop` guard admits through a loop. */
+  ghost predicate MatchesIterNE(r: R.regex, k: nat, str: string, i: int, j: int)
+    decreases CP.rsize(r), 2, k
+  {
+    if k == 0 then i == j
+    else exists m: int :: i < m && Matches(r, str, i, m) && MatchesIterNE(r, k - 1, str, m, j)
+  }
+
+  /** Empty iterations are droppable: any chain thins to a nonempty chain of
+      no greater length over the same span. */
+  lemma IterDropEmpty(r: R.regex, k: nat, str: string, i: int, j: int) returns (k2: nat)
+    requires MatchesIter(r, k, str, i, j)
+    ensures k2 <= k && MatchesIterNE(r, k2, str, i, j)
+    decreases k
+  {
+    if k == 0 { k2 := 0; return; }
+    var m: int :| Matches(r, str, i, m) && MatchesIter(r, k - 1, str, m, j);
+    if m == i {
+      k2 := IterDropEmpty(r, k - 1, str, m, j);
+    } else {
+      MatchesBounds(r, str, i, m);
+      var kk := IterDropEmpty(r, k - 1, str, m, j);
+      k2 := kk + 1;
+    }
+  }
+
+  /** A syntactically `NonNullable` regex never matches the empty span — the
+      fact that keeps the do-while scheme's loop iterations consuming. The
+      fragment hypothesis rules out malformed negative-`min` quantifiers,
+      for which the claim would be false (`k == 0` slips under `min <= k`). */
+  lemma NonNullableNoEmptyMatch(re: R.regex, str: string, i: int)
+    requires NR.PlusFragmentRE(re)
+    requires R.nullable(re) == R.NonNullable
+    ensures !Matches(re, str, i, i)
+    decreases CP.rsize(re), 0, 0
+  {
+    match re
+    case Re_alt(r1, r2) =>
+      NonNullableNoEmptyMatch(r1, str, i);
+      NonNullableNoEmptyMatch(r2, str, i);
+    case Re_con(r1, r2) =>
+      if Matches(re, str, i, i) {
+        assert Matches(R.Re_con(r1, r2), str, i, i);
+        assert exists m: int :: Matches(r1, str, i, m) && Matches(r2, str, m, i);
+        var m: int :| Matches(r1, str, i, m) && Matches(r2, str, m, i);
+        MatchesBounds(r1, str, i, m);
+        MatchesBounds(r2, str, m, i);
+        assert m == i;
+        if R.nullable(r1) == R.NonNullable { NonNullableNoEmptyMatch(r1, str, i); }
+        else { NonNullableNoEmptyMatch(r2, str, i); }
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      // NonNullable rules out min == 0; the fragment's shapes then force
+      // min > 0, so every admissible k is positive
+      assert q.min > 0;
+      if Matches(re, str, i, i) {
+        assert Matches(R.Re_quant(nul, qid, q, r1), str, i, i);
+        assert exists k: nat :: q.min <= k && (q.max.Some? ==> k <= q.max.value)
+                             && MatchesIter(r1, k, str, i, i);
+        var k: nat :| q.min <= k && (q.max.Some? ==> k <= q.max.value)
+                   && MatchesIter(r1, k, str, i, i);
+        assert k > 0;
+        var m := MatchesIterHead(r1, k, str, i, i);
+        MatchesBounds(r1, str, i, m);
+        MatchesIterBounds(r1, k - 1, str, m, i);
+        assert m == i;
+        NonNullableNoEmptyMatch(r1, str, i);
+      }
+    case Re_capture(_, r1) => NonNullableNoEmptyMatch(r1, str, i);
+    case _ =>
+  }
+
+  // ===========================================================================
   // ReachF step packaging
   // ===========================================================================
 
