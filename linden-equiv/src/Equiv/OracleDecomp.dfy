@@ -645,6 +645,125 @@ module LindenElkOracleDecomp {
     assert OptShape(k, greedy, qid, r1, code, start, e1, endl);
   }
 
+  // ===========================================================================
+  // Edge inversion per pinned instruction
+  // ===========================================================================
+
+  /** Any one configuration-graph step: an epsilon edge (same position) or a
+      consume edge (next position, exit flag re-armed). */
+  ghost predicate AnyEdge(code: RB.code, str: string, pc: nat, eb: bool, cp: int,
+                          pc2: nat, eb2: bool, cp2: int) {
+    (ORc.EpsEdge(code, str, cp, pc, eb, pc2, eb2) && cp2 == cp)
+    || (ORc.ConsumeEdge(code, str, cp, pc) && pc2 == pc + 1 && eb2 == true && cp2 == cp + 1)
+  }
+
+  lemma EdgeFromConsume(code: RB.code, str: string, ce: RC.char_expectation,
+                        pc: nat, eb: bool, cp: int, pc2: nat, eb2: bool, cp2: int)
+    requires NR.GetPcRE(code, pc) == Some(RB.Consume(ce))
+    requires AnyEdge(code, str, pc, eb, cp, pc2, eb2, cp2)
+    ensures pc2 == pc + 1 && eb2 == true && cp2 == cp + 1
+    ensures RC.is_accepted(AI.get_char(str, cp), ce)
+  {
+    OB.GetPcInstr(code, pc, RB.Consume(ce));
+  }
+
+  lemma EdgeFromJmp(code: RB.code, str: string, x: int,
+                    pc: nat, eb: bool, cp: int, pc2: nat, eb2: bool, cp2: int)
+    requires NR.GetPcRE(code, pc) == Some(RB.Jmp(x))
+    requires AnyEdge(code, str, pc, eb, cp, pc2, eb2, cp2)
+    ensures x >= 0 && pc2 == x && eb2 == eb && cp2 == cp
+  {
+    OB.GetPcInstr(code, pc, RB.Jmp(x));
+  }
+
+  lemma EdgeFromForkAt(code: RB.code, str: string, a: nat, b: nat,
+                       pc: nat, eb: bool, cp: int, pc2: nat, eb2: bool, cp2: int)
+    requires OB.ForkAt(code, pc, a, b)
+    requires AnyEdge(code, str, pc, eb, cp, pc2, eb2, cp2)
+    ensures (pc2 == a || pc2 == b) && eb2 == eb && cp2 == cp
+  {
+    if NR.GetPcRE(code, pc) == Some(RB.Fork(a as int, b as int)) {
+      OB.GetPcInstr(code, pc, RB.Fork(a as int, b as int));
+    } else {
+      OB.GetPcInstr(code, pc, RB.Fork(b as int, a as int));
+    }
+  }
+
+  lemma EdgeFromSetReg(code: RB.code, str: string, reg: RB.Register,
+                       pc: nat, eb: bool, cp: int, pc2: nat, eb2: bool, cp2: int)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(reg))
+    requires AnyEdge(code, str, pc, eb, cp, pc2, eb2, cp2)
+    ensures pc2 == pc + 1 && eb2 == eb && cp2 == cp
+  {
+    OB.GetPcInstr(code, pc, RB.SetRegisterToCP(reg));
+  }
+
+  lemma EdgeFromSetQuant(code: RB.code, str: string, q: R.quantid, b: bool,
+                         pc: nat, eb: bool, cp: int, pc2: nat, eb2: bool, cp2: int)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, b))
+    requires AnyEdge(code, str, pc, eb, cp, pc2, eb2, cp2)
+    ensures pc2 == pc + 1 && eb2 == eb && cp2 == cp
+  {
+    OB.GetPcInstr(code, pc, RB.SetQuantToClock(q, b));
+  }
+
+  lemma EdgeFromBeginLoop(code: RB.code, str: string,
+                          pc: nat, eb: bool, cp: int, pc2: nat, eb2: bool, cp2: int)
+    requires NR.GetPcRE(code, pc) == Some(RB.BeginLoop)
+    requires AnyEdge(code, str, pc, eb, cp, pc2, eb2, cp2)
+    ensures pc2 == pc + 1 && eb2 == false && cp2 == cp
+  {
+    OB.GetPcInstr(code, pc, RB.BeginLoop);
+  }
+
+  lemma EdgeFromEndLoop(code: RB.code, str: string,
+                        pc: nat, eb: bool, cp: int, pc2: nat, eb2: bool, cp2: int)
+    requires NR.GetPcRE(code, pc) == Some(RB.EndLoop)
+    requires AnyEdge(code, str, pc, eb, cp, pc2, eb2, cp2)
+    ensures pc2 == pc + 1 && eb2 == eb && cp2 == cp
+  {
+    OB.GetPcInstr(code, pc, RB.EndLoop);
+  }
+
+  lemma EdgeFromAnchor(code: RB.code, str: string, a: R.anchor,
+                       pc: nat, eb: bool, cp: int, pc2: nat, eb2: bool, cp2: int)
+    requires NR.GetPcRE(code, pc) == Some(RB.AnchorAssertion(a))
+    requires AnyEdge(code, str, pc, eb, cp, pc2, eb2, cp2)
+    ensures pc2 == pc + 1 && eb2 == eb && cp2 == cp
+    ensures LAnc.is_satisfied(a, ORc.CtxAt(str, cp), LAnc.Forward)
+  {
+    OB.GetPcInstr(code, pc, RB.AnchorAssertion(a));
+  }
+
+  // ===========================================================================
+  // Chain-exit vocabulary and small intros
+  // ===========================================================================
+
+  /** The optional-layer chain completed with at most `layers` spans. */
+  ghost predicate OptDone(layers: nat, r1: R.regex, str: string, j: int, cp2: int) {
+    exists k: nat {:trigger OB.MatchesIter(r1, k, str, j, cp2)} ::
+      k <= layers && OB.MatchesIter(r1, k, str, j, cp2)
+  }
+
+  lemma OptDoneIntro(layers: nat, r1: R.regex, str: string, j: int, cp2: int, k: nat)
+    requires k <= layers && OB.MatchesIter(r1, k, str, j, cp2)
+    ensures OptDone(layers, r1, str, j, cp2)
+  {
+  }
+
+  lemma OptDoneInv(layers: nat, r1: R.regex, str: string, j: int, cp2: int) returns (k: nat)
+    requires OptDone(layers, r1, str, j, cp2)
+    ensures k <= layers && OB.MatchesIter(r1, k, str, j, cp2)
+  {
+    k :| k <= layers && OB.MatchesIter(r1, k, str, j, cp2);
+  }
+
+  lemma IterFromIntro(r: R.regex, n: nat, k: nat, str: string, i: int, m: int)
+    requires n <= k && OB.MatchesIter(r, k, str, i, m)
+    ensures IterFrom(r, n, str, i, m)
+  {
+  }
+
   /** Entering a nonempty block at its start label, at string position `cp`,
       is a mid-parse state with entry `cp` (an empty block has no mid states
       — pair with `BlockEmpty`). */
@@ -730,6 +849,407 @@ module LindenElkOracleDecomp {
           IterFromZero(r1, str, cp);
           DwTailIntro((q.min - 1) as nat, qid, r1, code, em, e1, str, cp, start, cp, cp);
           assert InBlock(re, code, start, endl, str, cp, start, cp);
+        }
+      }
+  }
+
+  // ===========================================================================
+  // The step lemmas: every edge out of a mid-parse state stays mid-parse or
+  // exits the block with a completed span
+  // ===========================================================================
+
+  /** Concatenate two chains. */
+  lemma IterConcat(r: R.regex, a: nat, b: nat, str: string, i: int, m: int, j: int)
+    requires OB.MatchesIter(r, a, str, i, m)
+    requires OB.MatchesIter(r, b, str, m, j)
+    ensures OB.MatchesIter(r, a + b, str, i, j)
+    decreases a
+  {
+    if a == 0 { return; }
+    var m1 := OB.MatchesIterHead(r, a, str, i, m);
+    IterConcat(r, a - 1, b, str, m1, m, j);
+    IterCons(r, a + b - 1, str, i, m1, j);
+  }
+
+  /** `BlockStep` for the forced-copy chain: exits carry exactly `k` spans. */
+  lemma BlockStepMin(k: nat, qid: R.quantid, r1: R.regex, code: RB.code,
+                     start: nat, endl: nat, str: string, j: int,
+                     pc: nat, eb: bool, cp: int, pc2: nat, eb2: bool, cp2: int)
+    requires NR.LookFreeRE(r1)
+    requires InMin(k, qid, r1, code, start, endl, str, j, pc, cp)
+    requires AnyEdge(code, str, pc, eb, cp, pc2, eb2, cp2)
+    ensures InMin(k, qid, r1, code, start, endl, str, j, pc2, cp2)
+         || (pc2 == endl && OB.MatchesIter(r1, k, str, j, cp2))
+    decreases CP.rsize(r1), 1, k
+  {
+    var e1: nat :| MinShape(k, qid, r1, code, start, e1, endl)
+      && ((pc == start && cp == j)
+          || InBlock(r1, code, start + 1, e1, str, j, pc, cp)
+          || exists m: int :: OB.Matches(r1, str, j, m) && InMin(k - 1, qid, r1, code, e1, endl, str, m, pc, cp));
+    if pc == start && cp == j {
+      EdgeFromSetQuant(code, str, qid, false, pc, eb, cp, pc2, eb2, cp2);
+      BlockEntry(r1, code, start + 1, e1, str, j);
+      if start + 1 == e1 {
+        BlockEmpty(r1, code, start + 1, str, j);
+        // pc2 == e1: the first copy matched empty; hand over to the rest
+        if k - 1 > 0 {
+          MinEntry(k - 1, qid, r1, code, e1, endl, str, j);
+          assert InMin(k, qid, r1, code, start, endl, str, j, pc2, cp2);
+        } else {
+          MinZeroSame(qid, r1, code, e1, endl);
+          IterCons(r1, 0, str, j, j, j);
+          assert pc2 == endl && OB.MatchesIter(r1, k, str, j, cp2);
+        }
+      } else {
+        assert InBlock(r1, code, start + 1, e1, str, j, pc2, cp2);
+        assert InMin(k, qid, r1, code, start, endl, str, j, pc2, cp2);
+      }
+    } else if InBlock(r1, code, start + 1, e1, str, j, pc, cp) {
+      BlockStep(r1, code, start + 1, e1, str, j, pc, eb, cp, pc2, eb2, cp2);
+      if InBlock(r1, code, start + 1, e1, str, j, pc2, cp2) {
+        assert InMin(k, qid, r1, code, start, endl, str, j, pc2, cp2);
+      } else {
+        // pc2 == e1 with Matches(r1, j, cp2): first copy done
+        if k - 1 > 0 {
+          MinEntry(k - 1, qid, r1, code, e1, endl, str, cp2);
+          assert InMin(k, qid, r1, code, start, endl, str, j, pc2, cp2);
+        } else {
+          MinZeroSame(qid, r1, code, e1, endl);
+          IterCons(r1, 0, str, j, cp2, cp2);
+          assert pc2 == endl && OB.MatchesIter(r1, k, str, j, cp2);
+        }
+      }
+    } else {
+      var m: int :| OB.Matches(r1, str, j, m) && InMin(k - 1, qid, r1, code, e1, endl, str, m, pc, cp);
+      BlockStepMin(k - 1, qid, r1, code, e1, endl, str, m, pc, eb, cp, pc2, eb2, cp2);
+      if InMin(k - 1, qid, r1, code, e1, endl, str, m, pc2, cp2) {
+        assert InMin(k, qid, r1, code, start, endl, str, j, pc2, cp2);
+      } else {
+        IterCons(r1, k - 1, str, j, m, cp2);
+        assert pc2 == endl && OB.MatchesIter(r1, k, str, j, cp2);
+      }
+    }
+  }
+
+  /** `BlockStep` for the optional-layer chain: exits carry at most `layers`
+      spans (skipping is one fork edge straight to the common end). */
+  lemma BlockStepOpt(layers: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code,
+                     start: nat, endl: nat, str: string, j: int,
+                     pc: nat, eb: bool, cp: int, pc2: nat, eb2: bool, cp2: int)
+    requires NR.LookFreeRE(r1)
+    requires InOpt(layers, greedy, qid, r1, code, start, endl, str, j, pc, cp)
+    requires AnyEdge(code, str, pc, eb, cp, pc2, eb2, cp2)
+    ensures InOpt(layers, greedy, qid, r1, code, start, endl, str, j, pc2, cp2)
+         || (pc2 == endl && OptDone(layers, r1, str, j, cp2))
+    decreases CP.rsize(r1), 2, layers
+  {
+    var e1: nat :| OptShape(layers, greedy, qid, r1, code, start, e1, endl)
+      && (((pc == start || pc == start + 1 || pc == start + 2) && cp == j)
+          || InBlock(r1, code, start + 3, e1, str, j, pc, cp)
+          || (pc == e1 && OB.Matches(r1, str, j, cp))
+          || exists m: int ::
+               OB.Matches(r1, str, j, m)
+               && InOpt(layers - 1, greedy, qid, r1, code, e1 + 1, endl, str, m, pc, cp));
+    if (pc == start || pc == start + 1 || pc == start + 2) && cp == j {
+      if pc == start {
+        assert OB.ForkAt(code, start, start + 1, endl);
+        EdgeFromForkAt(code, str, start + 1, endl, pc, eb, cp, pc2, eb2, cp2);
+        if pc2 == start + 1 {
+          assert InOpt(layers, greedy, qid, r1, code, start, endl, str, j, pc2, cp2);
+        } else {
+          assert OB.MatchesIter(r1, 0, str, j, j);
+          OptDoneIntro(layers, r1, str, j, cp2, 0);
+        }
+      } else if pc == start + 1 {
+        EdgeFromSetQuant(code, str, qid, false, pc, eb, cp, pc2, eb2, cp2);
+        assert InOpt(layers, greedy, qid, r1, code, start, endl, str, j, pc2, cp2);
+      } else {
+        EdgeFromBeginLoop(code, str, pc, eb, cp, pc2, eb2, cp2);
+        BlockEntry(r1, code, start + 3, e1, str, j);
+        if start + 3 == e1 {
+          BlockEmpty(r1, code, start + 3, str, j);
+          assert pc2 == e1 && OB.Matches(r1, str, j, cp2);
+          assert InOpt(layers, greedy, qid, r1, code, start, endl, str, j, pc2, cp2);
+        } else {
+          assert InBlock(r1, code, start + 3, e1, str, j, pc2, cp2);
+          assert InOpt(layers, greedy, qid, r1, code, start, endl, str, j, pc2, cp2);
+        }
+      }
+    } else if InBlock(r1, code, start + 3, e1, str, j, pc, cp) {
+      BlockStep(r1, code, start + 3, e1, str, j, pc, eb, cp, pc2, eb2, cp2);
+      if InBlock(r1, code, start + 3, e1, str, j, pc2, cp2) {
+        assert InOpt(layers, greedy, qid, r1, code, start, endl, str, j, pc2, cp2);
+      } else {
+        assert pc2 == e1 && OB.Matches(r1, str, j, cp2);
+        assert InOpt(layers, greedy, qid, r1, code, start, endl, str, j, pc2, cp2);
+      }
+    } else if pc == e1 && OB.Matches(r1, str, j, cp) {
+      EdgeFromEndLoop(code, str, pc, eb, cp, pc2, eb2, cp2);
+      // pc2 == e1 + 1: the next layer's chain begins (or the chain is done)
+      if layers - 1 > 0 {
+        OptEntry(layers - 1, greedy, qid, r1, code, e1 + 1, endl, str, cp);
+        assert InOpt(layers, greedy, qid, r1, code, start, endl, str, j, pc2, cp2);
+      } else {
+        OptZeroSame(greedy, qid, r1, code, e1 + 1, endl);
+        IterCons(r1, 0, str, j, cp, cp);
+        OptDoneIntro(layers, r1, str, j, cp2, 1);
+      }
+    } else {
+      var m: int :| OB.Matches(r1, str, j, m)
+        && InOpt(layers - 1, greedy, qid, r1, code, e1 + 1, endl, str, m, pc, cp);
+      BlockStepOpt(layers - 1, greedy, qid, r1, code, e1 + 1, endl, str, m, pc, eb, cp, pc2, eb2, cp2);
+      if InOpt(layers - 1, greedy, qid, r1, code, e1 + 1, endl, str, m, pc2, cp2) {
+        assert InOpt(layers, greedy, qid, r1, code, start, endl, str, j, pc2, cp2);
+      } else {
+        var k := OptDoneInv(layers - 1, r1, str, m, cp2);
+        IterCons(r1, k, str, j, m, cp2);
+        OptDoneIntro(layers, r1, str, j, cp2, k + 1);
+      }
+    }
+  }
+
+  /** THE step lemma: every configuration-graph edge out of a mid-parse state
+      of `re`'s block lands in a mid-parse state or exits at `endl` with a
+      completed span match. */
+  lemma BlockStep(re: R.regex, code: RB.code, start: nat, endl: nat, str: string, i: int,
+                  pc: nat, eb: bool, cp: int, pc2: nat, eb2: bool, cp2: int)
+    requires NR.LookFreeRE(re)
+    requires InBlock(re, code, start, endl, str, i, pc, cp)
+    requires AnyEdge(code, str, pc, eb, cp, pc2, eb2, cp2)
+    ensures InBlock(re, code, start, endl, str, i, pc2, cp2)
+         || (pc2 == endl && OB.Matches(re, str, i, cp2))
+    decreases CP.rsize(re), 0, 0
+  {
+    match re
+    case Re_empty =>
+    case Re_lookaround(_, _, _) =>
+    case Re_character(ch) =>
+      EdgeFromConsume(code, str, T.ExpectationOf(ch), pc, eb, cp, pc2, eb2, cp2);
+      assert OB.Matches(re, str, i, cp2);
+    case Re_anchor(a) =>
+      EdgeFromAnchor(code, str, a, pc, eb, cp, pc2, eb2, cp2);
+      assert OB.Matches(re, str, i, cp2);
+    case Re_alt(r1, r2) =>
+      var e1: nat :| AltShape(r1, r2, code, start, e1, endl)
+        && ((pc == start && cp == i)
+            || InBlock(r1, code, start + 1, e1, str, i, pc, cp)
+            || (pc == e1 && OB.Matches(r1, str, i, cp))
+            || InBlock(r2, code, e1 + 1, endl, str, i, pc, cp));
+      if pc == start && cp == i {
+        OB.GetPcInstr(code, start, RB.Fork(start + 1, e1 + 1));
+        assert ORc.EpsEdge(code, str, cp, pc, eb, pc2, eb2) && cp2 == cp;
+        assert pc2 == start + 1 || pc2 == e1 + 1;
+        if pc2 == start + 1 {
+          BlockEntry(r1, code, start + 1, e1, str, i);
+          if start + 1 == e1 {
+            BlockEmpty(r1, code, start + 1, str, i);
+            assert pc2 == e1 && OB.Matches(r1, str, i, cp2);
+            assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+          } else {
+            assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+          }
+        } else {
+          BlockEntry(r2, code, e1 + 1, endl, str, i);
+          if e1 + 1 == endl {
+            BlockEmpty(r2, code, e1 + 1, str, i);
+            assert pc2 == endl && OB.Matches(re, str, i, cp2);
+          } else {
+            assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+          }
+        }
+      } else if InBlock(r1, code, start + 1, e1, str, i, pc, cp) {
+        BlockStep(r1, code, start + 1, e1, str, i, pc, eb, cp, pc2, eb2, cp2);
+        assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+      } else if pc == e1 && OB.Matches(r1, str, i, cp) {
+        EdgeFromJmp(code, str, endl as int, pc, eb, cp, pc2, eb2, cp2);
+        assert pc2 == endl && OB.Matches(re, str, i, cp2);
+      } else {
+        BlockStep(r2, code, e1 + 1, endl, str, i, pc, eb, cp, pc2, eb2, cp2);
+        if InBlock(r2, code, e1 + 1, endl, str, i, pc2, cp2) {
+          assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+        } else {
+          assert pc2 == endl && OB.Matches(re, str, i, cp2);
+        }
+      }
+    case Re_con(r1, r2) =>
+      var e1: nat :| ConShape(r1, r2, code, start, e1, endl)
+        && (InBlock(r1, code, start, e1, str, i, pc, cp)
+            || exists m: int :: OB.Matches(r1, str, i, m) && InBlock(r2, code, e1, endl, str, m, pc, cp));
+      if InBlock(r1, code, start, e1, str, i, pc, cp) {
+        BlockStep(r1, code, start, e1, str, i, pc, eb, cp, pc2, eb2, cp2);
+        if InBlock(r1, code, start, e1, str, i, pc2, cp2) {
+          assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+        } else {
+          // pc2 == e1 with Matches(r1, i, cp2): cross the seam into r2
+          BlockEntry(r2, code, e1, endl, str, cp2);
+          if e1 == endl {
+            BlockEmpty(r2, code, e1, str, cp2);
+            assert pc2 == endl && OB.Matches(re, str, i, cp2);
+          } else {
+            assert OB.Matches(r1, str, i, cp2) && InBlock(r2, code, e1, endl, str, cp2, pc2, cp2);
+            assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+          }
+        }
+      } else {
+        var m: int :| OB.Matches(r1, str, i, m) && InBlock(r2, code, e1, endl, str, m, pc, cp);
+        BlockStep(r2, code, e1, endl, str, m, pc, eb, cp, pc2, eb2, cp2);
+        if InBlock(r2, code, e1, endl, str, m, pc2, cp2) {
+          assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+        } else {
+          assert pc2 == endl && OB.Matches(re, str, i, cp2);
+        }
+      }
+    case Re_capture(cid, r1) =>
+      var e1: nat :| CapShape(cid, r1, code, start, e1, endl)
+        && ((pc == start && cp == i)
+            || InBlock(r1, code, start + 1, e1, str, i, pc, cp)
+            || (pc == e1 && OB.Matches(r1, str, i, cp)));
+      if pc == start && cp == i {
+        EdgeFromSetReg(code, str, CP.start_reg(cid), pc, eb, cp, pc2, eb2, cp2);
+        BlockEntry(r1, code, start + 1, e1, str, i);
+        if start + 1 == e1 {
+          BlockEmpty(r1, code, start + 1, str, i);
+          assert pc2 == e1 && OB.Matches(r1, str, i, cp2);
+          assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+        } else {
+          assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+        }
+      } else if InBlock(r1, code, start + 1, e1, str, i, pc, cp) {
+        BlockStep(r1, code, start + 1, e1, str, i, pc, eb, cp, pc2, eb2, cp2);
+        assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+      } else {
+        EdgeFromSetReg(code, str, CP.end_reg(cid), pc, eb, cp, pc2, eb2, cp2);
+        assert pc2 == endl && OB.Matches(re, str, i, cp2);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      if q.min == 0 && q.max == None {
+        var es1: nat :| StarShape(qid, r1, code, start, es1, endl)
+          && StTail(qid, r1, code, start, es1, str, i, pc, cp);
+        var m := StTailInv(qid, r1, code, start, es1, str, i, pc, cp);
+        if (pc == start || pc == start + 1 || pc == start + 2) && cp == m {
+          if pc == start {
+            assert OB.ForkAt(code, start, start + 1, endl);
+            EdgeFromForkAt(code, str, start + 1, endl, pc, eb, cp, pc2, eb2, cp2);
+            if pc2 == start + 1 {
+              StTailIntro(qid, r1, code, start, es1, str, i, pc2, cp2, m);
+              assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+            } else {
+              var k := IterFromInv(r1, 0, str, i, m);
+              assert OB.Matches(re, str, i, cp2);
+            }
+          } else if pc == start + 1 {
+            EdgeFromSetQuant(code, str, qid, false, pc, eb, cp, pc2, eb2, cp2);
+            StTailIntro(qid, r1, code, start, es1, str, i, pc2, cp2, m);
+            assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+          } else {
+            EdgeFromBeginLoop(code, str, pc, eb, cp, pc2, eb2, cp2);
+            BlockEntry(r1, code, start + 3, es1, str, m);
+            if start + 3 == es1 {
+              BlockEmpty(r1, code, start + 3, str, m);
+              assert pc2 == es1 && OB.Matches(r1, str, m, cp2);
+              StTailIntro(qid, r1, code, start, es1, str, i, pc2, cp2, m);
+              assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+            } else {
+              StTailIntro(qid, r1, code, start, es1, str, i, pc2, cp2, m);
+              assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+            }
+          }
+        } else if InBlock(r1, code, start + 3, es1, str, m, pc, cp) {
+          BlockStep(r1, code, start + 3, es1, str, m, pc, eb, cp, pc2, eb2, cp2);
+          StTailIntro(qid, r1, code, start, es1, str, i, pc2, cp2, m);
+          assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+        } else if pc == es1 {
+          EdgeFromEndLoop(code, str, pc, eb, cp, pc2, eb2, cp2);
+          StTailIntro(qid, r1, code, start, es1, str, i, pc2, cp2, m);
+          assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+        } else {
+          EdgeFromJmp(code, str, start as int, pc, eb, cp, pc2, eb2, cp2);
+          IterFromSnoc(r1, 0, str, i, m, cp);
+          StTailIntro(qid, r1, code, start, es1, str, i, pc2, cp2, cp);
+          assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+        }
+      } else if q.max.Some? {
+        var em: nat :|
+          NR.NfaRepMinRE(q.min as nat, qid, r1, code, start, em)
+          && NR.NfaRepOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl)
+          && (InMin(q.min as nat, qid, r1, code, start, em, str, i, pc, cp)
+              || BdTail(q.min as nat, (q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, str, i, pc, cp));
+        if InMin(q.min as nat, qid, r1, code, start, em, str, i, pc, cp) {
+          BlockStepMin(q.min as nat, qid, r1, code, start, em, str, i, pc, eb, cp, pc2, eb2, cp2);
+          if InMin(q.min as nat, qid, r1, code, start, em, str, i, pc2, cp2) {
+            assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+          } else {
+            // pc2 == em with the min copies done: enter the layers (or exit)
+            if (q.max.value - q.min) as nat > 0 {
+              OptEntry((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, str, cp2);
+              BdTailIntro(q.min as nat, (q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, str, i, pc2, cp2, cp2);
+              assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+            } else {
+              OptZeroSame(q.greedy, qid, r1, code, em, endl);
+              assert pc2 == endl && OB.Matches(re, str, i, cp2);
+            }
+          }
+        } else {
+          var m := BdTailInv(q.min as nat, (q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, str, i, pc, cp);
+          BlockStepOpt((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, str, m, pc, eb, cp, pc2, eb2, cp2);
+          if InOpt((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, str, m, pc2, cp2) {
+            BdTailIntro(q.min as nat, (q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, str, i, pc2, cp2, m);
+            assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+          } else {
+            var k := OptDoneInv((q.max.value - q.min) as nat, r1, str, m, cp2);
+            IterConcat(r1, q.min as nat, k, str, i, m, cp2);
+            assert OB.MatchesIter(r1, q.min as nat + k, str, i, cp2);
+            assert pc2 == endl && OB.Matches(re, str, i, cp2);
+          }
+        }
+      } else {
+        var em: nat, e1: nat :|
+          NR.NfaRepMinRE((q.min - 1) as nat, qid, r1, code, start, em)
+          && DoWhileShape(qid, r1, code, em, e1, endl)
+          && (InMin((q.min - 1) as nat, qid, r1, code, start, em, str, i, pc, cp)
+              || DwTail((q.min - 1) as nat, qid, r1, code, em, e1, str, i, pc, cp));
+        if InMin((q.min - 1) as nat, qid, r1, code, start, em, str, i, pc, cp) {
+          BlockStepMin((q.min - 1) as nat, qid, r1, code, start, em, str, i, pc, eb, cp, pc2, eb2, cp2);
+          if InMin((q.min - 1) as nat, qid, r1, code, start, em, str, i, pc2, cp2) {
+            assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+          } else {
+            // pc2 == em with the min-1 copies done
+            IterFromIntro(r1, (q.min - 1) as nat, (q.min - 1) as nat, str, i, cp2);
+            DwTailIntro((q.min - 1) as nat, qid, r1, code, em, e1, str, i, pc2, cp2, cp2);
+            assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+          }
+        } else {
+          var m := DwTailInv((q.min - 1) as nat, qid, r1, code, em, e1, str, i, pc, cp);
+          if pc == em && cp == m {
+            EdgeFromSetQuant(code, str, qid, false, pc, eb, cp, pc2, eb2, cp2);
+            BlockEntry(r1, code, em + 1, e1, str, m);
+            if em + 1 == e1 {
+              BlockEmpty(r1, code, em + 1, str, m);
+              DwTailIntro((q.min - 1) as nat, qid, r1, code, em, e1, str, i, pc2, cp2, m);
+              assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+            } else {
+              DwTailIntro((q.min - 1) as nat, qid, r1, code, em, e1, str, i, pc2, cp2, m);
+              assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+            }
+          } else if InBlock(r1, code, em + 1, e1, str, m, pc, cp) {
+            BlockStep(r1, code, em + 1, e1, str, m, pc, eb, cp, pc2, eb2, cp2);
+            DwTailIntro((q.min - 1) as nat, qid, r1, code, em, e1, str, i, pc2, cp2, m);
+            assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+          } else {
+            // pc == e1 with this repetition's span complete: loop or exit
+            assert OB.ForkAt(code, e1, em, endl);
+            EdgeFromForkAt(code, str, em, endl, pc, eb, cp, pc2, eb2, cp2);
+            if pc2 == em {
+              IterFromSnoc(r1, (q.min - 1) as nat, str, i, m, cp);
+              DwTailIntro((q.min - 1) as nat, qid, r1, code, em, e1, str, i, pc2, cp2, cp);
+              assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+            } else {
+              var k := IterFromInv(r1, (q.min - 1) as nat, str, i, m);
+              IterSnoc(r1, k, str, i, m, cp);
+              assert OB.MatchesIter(r1, k + 1, str, i, cp2);
+              assert pc2 == endl && OB.Matches(re, str, i, cp2);
+            }
+          }
         }
       }
   }
