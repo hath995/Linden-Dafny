@@ -1711,7 +1711,7 @@ module LindenElkNfaRep {
     requires start <= pc < endl
     ensures GetPcRE(code, pc).Some? ==>
       var i := GetPcRE(code, pc).value;
-      !i.CheckOracle? && !i.NegCheckOracle? && !i.WriteOracle? && !i.CheckNullable?
+      !i.CheckOracle? && !i.NegCheckOracle? && !i.WriteOracle? && !i.CheckNullable? && !i.Accept?
     decreases CP.rsize(r1), k + 2
   {
     if k == 0 { return; }
@@ -1735,7 +1735,7 @@ module LindenElkNfaRep {
     requires start <= pc < endl
     ensures GetPcRE(code, pc).Some? ==>
       var i := GetPcRE(code, pc).value;
-      !i.CheckOracle? && !i.NegCheckOracle? && !i.WriteOracle? && !i.CheckNullable?
+      !i.CheckOracle? && !i.NegCheckOracle? && !i.WriteOracle? && !i.CheckNullable? && !i.Accept?
     decreases CP.rsize(r1), k + 2
   {
     if k == 0 { return; }
@@ -1766,7 +1766,7 @@ module LindenElkNfaRep {
     requires start <= pc < endl
     ensures GetPcRE(code, pc).Some? ==>
       var i := GetPcRE(code, pc).value;
-      !i.CheckOracle? && !i.NegCheckOracle? && !i.WriteOracle? && !i.CheckNullable?
+      !i.CheckOracle? && !i.NegCheckOracle? && !i.WriteOracle? && !i.CheckNullable? && !i.Accept?
     decreases CP.rsize(re), 1
   {
     match re
@@ -1854,7 +1854,7 @@ module LindenElkNfaRep {
     requires PlusFragmentRE(re) && LookFreeRE(re)
     ensures var code := CP.compile_to_write(re, lid);
       forall pc :: 0 <= pc < |code| ==>
-        !code[pc].CheckOracle? && !code[pc].NegCheckOracle? && !code[pc].CheckNullable?
+        !code[pc].CheckOracle? && !code[pc].NegCheckOracle? && !code[pc].CheckNullable? && !code[pc].Accept?
         && (code[pc].WriteOracle? ==> code[pc].wol == lid)
   {
     PlusIsLookBehindFragmentRE(re);
@@ -1862,7 +1862,7 @@ module LindenElkNfaRep {
     var code := CP.compile_to_write(re, lid);
     var next := CP.compile(re, 0, CP.Progress).1;
     forall pc | 0 <= pc < |code|
-      ensures !code[pc].CheckOracle? && !code[pc].NegCheckOracle? && !code[pc].CheckNullable?
+      ensures !code[pc].CheckOracle? && !code[pc].NegCheckOracle? && !code[pc].CheckNullable? && !code[pc].Accept?
               && (code[pc].WriteOracle? ==> code[pc].wol == lid)
     {
       if pc < next as nat {
