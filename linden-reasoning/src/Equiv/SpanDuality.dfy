@@ -41,6 +41,8 @@ module LindenSpanDuality {
   import LS = Semantics
   import LT = Tree
   import FU = FunctionalUtils
+  import FS = FunctionalSemantics
+  import SSx = StrictSuffix
   import T = LindenElkTranslate
 
   // ===========================================================================
@@ -245,5 +247,363 @@ module LindenSpanDuality {
   {
     FU.ComputeTrRw(rer, [], inp, gm, dir);
     assert FU.ComputeTrUnfold(rer, [], inp, gm, dir) == LT.Match;
+  }
+
+  // ===========================================================================
+  // Backward-walk plumbing at InputAt positions
+  // ===========================================================================
+
+  /** `Reverse` seen from the other end: head of the reversal is the last
+      element, tail of the reversal reverses the rest. */
+  lemma ReverseSnocView<T>(s: seq<T>)
+    requires |s| > 0
+    ensures LC.Reverse(s) == [s[|s| - 1]] + LC.Reverse(s[..|s| - 1])
+    decreases |s|
+  {
+    if |s| == 1 {
+      assert s[..0] == [];
+    } else {
+      ReverseSnocView(s[1..]);
+      assert s[1..][..|s| - 2] == s[..|s| - 1][1..];
+      assert s[1..][|s[1..]| - 1] == s[|s| - 1];
+      assert LC.Reverse(s[..|s| - 1]) == LC.Reverse(s[..|s| - 1][1..]) + [s[..|s| - 1][0]];
+      assert s[..|s| - 1][0] == s[0];
+    }
+  }
+
+  /** Peeling one character backward off `InputAt(str, j)` lands exactly on
+      `InputAt(str, j - 1)` — the single fact the whole backward walk runs
+      on. */
+  lemma InputAtPeel(str: string, j: int)
+    requires 0 < j <= |str|
+    ensures var ia := T.InputAt(str, j);
+      |ia.pref| > 0
+      && ia.pref[0] == str[j - 1]
+      && LC.Input([ia.pref[0]] + ia.next, ia.pref[1..]) == T.InputAt(str, j - 1)
+  {
+    var ia := T.InputAt(str, j);
+    ReverseSnocView(str[..j]);
+    assert str[..j][|str[..j]| - 1] == str[j - 1];
+    assert str[..j][..j - 1] == str[..j - 1];
+    assert ia.pref == [str[j - 1]] + LC.Reverse(str[..j - 1]);
+    assert ia.pref[1..] == LC.Reverse(str[..j - 1]);
+    assert [str[j - 1]] + str[j..] == str[j - 1..];
+  }
+
+  /** `AdvanceInputP` backward at an `InputAt` position steps to the previous
+      position. */
+  lemma AdvanceInputPBackAt(str: string, j: int)
+    requires 0 < j <= |str|
+    ensures LC.AdvanceInputP(T.InputAt(str, j), WP.Backward) == T.InputAt(str, j - 1)
+  {
+    InputAtPeel(str, j);
+  }
+
+  /** Reading backward at `InputAt(str, j)` under a matching descriptor
+      yields the previous character and position. */
+  lemma ReadCharBackAt(rer: LW.RegExpRecord, cd: LC.CharDescr, str: string, j: int)
+    requires 0 < j <= |str|
+    requires LC.CharMatch(rer, str[j - 1], cd)
+    ensures LC.ReadChar(rer, cd, T.InputAt(str, j), WP.Backward)
+         == Some((str[j - 1], T.InputAt(str, j - 1)))
+  {
+    InputAtPeel(str, j);
+  }
+
+  /** Backward strict-suffix at `InputAt` positions is just `mid < j`. */
+  lemma StrictSuffixBackAt(str: string, mid: int, j: int)
+    requires 0 <= mid < j <= |str|
+    ensures SSx.IsStrictSuffix(T.InputAt(str, mid), T.InputAt(str, j), WP.Backward)
+    decreases j - mid
+  {
+    InputAtPeel(str, j);
+    var ia := T.InputAt(str, j);
+    if mid == j - 1 {
+      assert LC.Input([ia.pref[0]] + ia.next, ia.pref[1..]) == T.InputAt(str, mid);
+    } else {
+      StrictSuffixBackAt(str, mid, j - 1);
+      var ib := T.InputAt(str, j - 1);
+      assert SSx.StrictSuffixBackward(T.InputAt(str, mid), ib.next, ib.pref);
+      assert [ia.pref[0]] + ia.next == ib.next && ia.pref[1..] == ib.pref;
+    }
+  }
+
+  /** Updating with an empty `Reset` changes nothing. */
+  lemma GMUpdateResetNil(idx: nat, gm: LG.GroupMap)
+    ensures LG.GMUpdate(LG.Reset([]), idx, gm) == gm
+  {
+  }
+
+  // ===========================================================================
+  // Nonempty chains (what the Acheck progress guard admits)
+  // ===========================================================================
+
+  /** Chains whose every span consumes. */
+  ghost predicate IterLNE(rer: LW.RegExpRecord, r: L.Regex, k: nat, str: string, i: int, j: int)
+    decreases r, 2, k
+  {
+    if k == 0 then i == j
+    else exists m: int {:trigger IterLNE(rer, r, k - 1, str, m, j)} ::
+      i < m && MatchesL(rer, r, str, i, m) && IterLNE(rer, r, k - 1, str, m, j)
+  }
+
+  lemma IterLNEHead(rer: LW.RegExpRecord, r: L.Regex, k: nat, str: string, i: int, j: int)
+    returns (m: int)
+    requires k > 0
+    requires IterLNE(rer, r, k, str, i, j)
+    ensures i < m && MatchesL(rer, r, str, i, m) && IterLNE(rer, r, k - 1, str, m, j)
+  {
+    m :| i < m && MatchesL(rer, r, str, i, m) && IterLNE(rer, r, k - 1, str, m, j);
+  }
+
+  lemma IterLNECons(rer: LW.RegExpRecord, r: L.Regex, k: nat, str: string, i: int, m: int, j: int)
+    requires i < m && MatchesL(rer, r, str, i, m)
+    requires IterLNE(rer, r, k, str, m, j)
+    ensures IterLNE(rer, r, k + 1, str, i, j)
+  {
+  }
+
+  /** `IterLBounds` for nonempty chains. */
+  lemma IterLNEBounds(rer: LW.RegExpRecord, r: L.Regex, k: nat, str: string, i: int, j: int)
+    requires IterLNE(rer, r, k, str, i, j)
+    ensures i <= j
+    decreases r, 2, k
+  {
+    if k > 0 {
+      var m := IterLNEHead(rer, r, k, str, i, j);
+      IterLNEBounds(rer, r, k - 1, str, m, j);
+    }
+  }
+
+  /** Empty iterations are droppable. */
+  lemma IterLDropEmpty(rer: LW.RegExpRecord, r: L.Regex, k: nat, str: string, i: int, j: int)
+    returns (k2: nat)
+    requires IterL(rer, r, k, str, i, j)
+    ensures k2 <= k && IterLNE(rer, r, k2, str, i, j)
+    decreases k
+  {
+    if k == 0 { k2 := 0; return; }
+    var m := IterLHead(rer, r, k, str, i, j);
+    if m == i {
+      k2 := IterLDropEmpty(rer, r, k - 1, str, m, j);
+    } else {
+      MatchesLBounds(rer, r, str, i, m);
+      var kk := IterLDropEmpty(rer, r, k - 1, str, m, j);
+      IterLNECons(rer, r, kk, str, i, m, j);
+      k2 := kk + 1;
+    }
+  }
+
+  /** Split a nonempty chain after its first `n` spans. */
+  lemma IterLNESplit(rer: LW.RegExpRecord, r: L.Regex, k: nat, n: nat, str: string, i: int, j: int)
+    returns (mid: int)
+    requires IterLNE(rer, r, k, str, i, j)
+    requires n <= k
+    ensures IterLNE(rer, r, n, str, i, mid) && IterLNE(rer, r, k - n, str, mid, j)
+    decreases n
+  {
+    if n == 0 { mid := i; return; }
+    var m := IterLNEHead(rer, r, k, str, i, j);
+    mid := IterLNESplit(rer, r, k - 1, n - 1, str, m, j);
+    IterLNECons(rer, r, n - 1, str, i, m, mid);
+  }
+
+  // ===========================================================================
+  // BwdComplete: a span match makes the backward walk succeed
+  // ===========================================================================
+
+  /** THE completeness direction: if `r` matches `[i, j)` and the
+      continuation's backward walk succeeds from position `i`, then the walk
+      of `[Areg(r)] + cont` from position `j` succeeds. Group-free `r` keeps
+      the group map constant throughout. */
+  lemma BwdComplete(rer: LW.RegExpRecord, r: L.Regex, cont: LS.Actions, str: string,
+                    i: int, j: int, gm: LG.GroupMap)
+    requires GroupFreeL(r)
+    requires 0 <= i <= j <= |str|
+    requires MatchesL(rer, r, str, i, j)
+    requires SuccActs(rer, cont, T.InputAt(str, i), gm, WP.Backward)
+    ensures SuccActs(rer, [LS.Areg(r)] + cont, T.InputAt(str, j), gm, WP.Backward)
+    decreases r, 1, 0
+  {
+    var inp := T.InputAt(str, j);
+    var acts := [LS.Areg(r)] + cont;
+    FU.ComputeTrRw(rer, acts, inp, gm, WP.Backward);
+    assert acts[0] == LS.Areg(r) && acts[1..] == cont;
+    match r
+    case Epsilon =>
+      assert i == j;
+    case Character(cd) =>
+      assert j == i + 1 && LC.CharMatch(rer, str[i], cd);
+      ReadCharBackAt(rer, cd, str, j);
+      AdvanceInputPBackAt(str, j);
+      var tc := FU.ComputeTr(rer, cont, T.InputAt(str, i), gm, WP.Backward);
+      assert FU.ComputeTr(rer, acts, inp, gm, WP.Backward) == LT.Read(str[i], tc);
+      assert LT.TreeRes(LT.Read(str[i], tc), gm, inp, WP.Backward)
+          == LT.TreeRes(tc, gm, T.InputAt(str, i), WP.Backward);
+    case AnchorR(a) =>
+      assert i == j && LS.AnchorSatisfied(rer, a, inp);
+    case Disjunction(r1, r2) =>
+      assert MatchesL(rer, L.Disjunction(r1, r2), str, i, j);
+      var t1 := FU.ComputeTr(rer, [LS.Areg(r1)] + cont, inp, gm, WP.Backward);
+      var t2 := FU.ComputeTr(rer, [LS.Areg(r2)] + cont, inp, gm, WP.Backward);
+      assert FU.ComputeTr(rer, acts, inp, gm, WP.Backward) == LT.Choice(t1, t2);
+      if MatchesL(rer, r1, str, i, j) {
+        BwdComplete(rer, r1, cont, str, i, j, gm);
+        assert LT.TreeRes(t1, gm, inp, WP.Backward).Some?;
+      } else {
+        BwdComplete(rer, r2, cont, str, i, j, gm);
+        assert LT.TreeRes(t2, gm, inp, WP.Backward).Some?;
+      }
+    case Sequence(r1, r2) =>
+      assert MatchesL(rer, L.Sequence(r1, r2), str, i, j);
+      assert exists m: int :: MatchesL(rer, r1, str, i, m) && MatchesL(rer, r2, str, m, j);
+      var m: int :| MatchesL(rer, r1, str, i, m) && MatchesL(rer, r2, str, m, j);
+      MatchesLBounds(rer, r1, str, i, m);
+      MatchesLBounds(rer, r2, str, m, j);
+      BwdComplete(rer, r1, cont, str, i, m, gm);
+      BwdComplete(rer, r2, [LS.Areg(r1)] + cont, str, m, j, gm);
+      assert LS.SeqList(r1, r2, WP.Backward) + cont == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
+    case Quantified(greedy, min, delta, r1) =>
+      assert MatchesL(rer, L.Quantified(greedy, min, delta, r1), str, i, j);
+      assert exists k: nat :: (min <= k
+        && (match delta case Inf => true case NN(dx) => k <= min + dx)
+        && IterL(rer, r1, k, str, i, j));
+      var k: nat :| min <= k
+        && (match delta case Inf => true case NN(dx) => k <= min + dx)
+        && IterL(rer, r1, k, str, i, j);
+      BwdCompleteQuant(rer, greedy, min, delta, r1, cont, str, i, j, gm, k);
+    case Group(_, _) =>
+    case LookaroundR(_, _) =>
+    case Backreference(_) =>
+  }
+
+  /** `BwdComplete` for quantifiers: `k` admissible spans walk the
+      quantifier's own unfolding — forced copies peel the RIGHTMOST span
+      first (the action list is head-first regardless of direction), and
+      the free layers take only consuming spans through the `Acheck`
+      progress guard. */
+  lemma BwdCompleteQuant(rer: LW.RegExpRecord, greedy: bool, min: nat, delta: LN.NoI,
+                         r1: L.Regex, cont: LS.Actions, str: string,
+                         i: int, j: int, gm: LG.GroupMap, k: nat)
+    requires GroupFreeL(r1)
+    requires 0 <= i <= j <= |str|
+    requires min <= k
+    requires match delta case Inf => true case NN(dx) => k <= min + dx
+    requires IterL(rer, r1, k, str, i, j)
+    requires SuccActs(rer, cont, T.InputAt(str, i), gm, WP.Backward)
+    ensures SuccActs(rer, [LS.Areg(L.Quantified(greedy, min, delta, r1))] + cont,
+                     T.InputAt(str, j), gm, WP.Backward)
+    decreases r1, 3, k + min
+  {
+    var inp := T.InputAt(str, j);
+    var q := L.Quantified(greedy, min, delta, r1);
+    var acts := [LS.Areg(q)] + cont;
+    FU.ComputeTrRw(rer, acts, inp, gm, WP.Backward);
+    assert acts[0] == LS.Areg(q) && acts[1..] == cont;
+    GroupFreeDefGroups(r1);
+    GMResetNil(gm);
+    if min > 0 {
+      // peel the last span into the head copy; the rest recurse
+      var mid := IterLSplit(rer, r1, k, k - 1, str, i, j);
+      IterLBounds(rer, r1, k - 1, str, i, mid);
+      var mm := IterLHead(rer, r1, k - (k - 1), str, mid, j);
+      assert mm == j;
+      MatchesLBounds(rer, r1, str, mid, j);
+      var inner := [LS.Areg(L.Quantified(greedy, min - 1, delta, r1))] + cont;
+      BwdCompleteQuant(rer, greedy, min - 1, delta, r1, cont, str, i, mid, gm, k - 1);
+      BwdComplete(rer, r1, inner, str, mid, j, gm);
+      assert [LS.Areg(r1), LS.Areg(L.Quantified(greedy, min - 1, delta, r1))] + cont
+          == [LS.Areg(r1)] + inner;
+      var titer := FU.ComputeTr(rer, [LS.Areg(r1)] + inner, inp, gm, WP.Backward);
+      assert FU.ComputeTr(rer, acts, inp, gm, WP.Backward) == LT.GroupActionT(LG.Reset([]), titer);
+      GMUpdateResetNil(LC.Idx(inp), gm);
+      assert LT.TreeRes(LT.GroupActionT(LG.Reset([]), titer), gm, inp, WP.Backward)
+          == LT.TreeRes(titer, gm, inp, WP.Backward);
+    } else if delta == LN.NN(0) {
+      assert k == 0;
+    } else {
+      var k2 := IterLDropEmpty(rer, r1, k, str, i, j);
+      BwdCompleteFree(rer, greedy, delta, r1, cont, str, i, j, gm, k2);
+    }
+  }
+
+  /** The free layers: a NONEMPTY chain of `k2` admissible spans takes the
+      iterate branch `k2` times (each passes the `Acheck` strict-progress
+      guard), then the skip branch. */
+  lemma BwdCompleteFree(rer: LW.RegExpRecord, greedy: bool, delta: LN.NoI,
+                        r1: L.Regex, cont: LS.Actions, str: string,
+                        i: int, j: int, gm: LG.GroupMap, k2: nat)
+    requires GroupFreeL(r1)
+    requires 0 <= i <= j <= |str|
+    requires delta != LN.NN(0) || k2 == 0
+    requires match delta case Inf => true case NN(dx) => k2 <= dx
+    requires IterLNE(rer, r1, k2, str, i, j)
+    requires SuccActs(rer, cont, T.InputAt(str, i), gm, WP.Backward)
+    ensures SuccActs(rer, [LS.Areg(L.Quantified(greedy, 0, delta, r1))] + cont,
+                     T.InputAt(str, j), gm, WP.Backward)
+    decreases r1, 2, k2
+  {
+    var inp := T.InputAt(str, j);
+    var q := L.Quantified(greedy, 0, delta, r1);
+    var acts := [LS.Areg(q)] + cont;
+    FU.ComputeTrRw(rer, acts, inp, gm, WP.Backward);
+    assert acts[0] == LS.Areg(q) && acts[1..] == cont;
+    GroupFreeDefGroups(r1);
+    GMResetNil(gm);
+    if k2 == 0 {
+      // i == j: the skip branch carries the continuation's success
+      if delta == LN.NN(0) {
+        return;
+      }
+      var tskip := FU.ComputeTr(rer, cont, inp, gm, WP.Backward);
+      var titer := FU.ComputeTr(rer, [LS.Areg(r1), LS.Acheck(inp), LS.Areg(L.Quantified(greedy, 0, FS.NoiPred(delta), r1))] + cont,
+                                inp, gm, WP.Backward);
+      assert FU.ComputeTr(rer, acts, inp, gm, WP.Backward)
+          == LT.GreedyChoice(greedy, LT.GroupActionT(LG.Reset([]), titer), tskip);
+      assert LT.TreeRes(tskip, gm, inp, WP.Backward).Some?;
+    } else {
+      // nonempty chain: last span through this layer, the rest recurse
+      var mid := IterLNESplit(rer, r1, k2, k2 - 1, str, i, j);
+      IterLNEBounds(rer, r1, k2 - 1, str, i, mid);
+      var mm := IterLNEHead(rer, r1, k2 - (k2 - 1), str, mid, j);
+      assert mm == j && mid < j;
+      var qpred := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+      var inner := [LS.Acheck(inp), LS.Areg(qpred)] + cont;
+      // the guard passes at mid, and the smaller quantifier finishes there
+      BwdCompleteFree(rer, greedy, FS.NoiPred(delta), r1, cont, str, i, mid, gm, k2 - 1);
+      var inpMid := T.InputAt(str, mid);
+      FU.ComputeTrRw(rer, inner, inpMid, gm, WP.Backward);
+      assert inner[0] == LS.Acheck(inp) && inner[1..] == [LS.Areg(qpred)] + cont;
+      StrictSuffixBackAt(str, mid, j);
+      var tq := FU.ComputeTr(rer, [LS.Areg(qpred)] + cont, inpMid, gm, WP.Backward);
+      assert FU.ComputeTr(rer, inner, inpMid, gm, WP.Backward) == LT.Progress(tq);
+      assert SuccActs(rer, inner, inpMid, gm, WP.Backward);
+      // the body's span rides on top
+      BwdComplete(rer, r1, inner, str, mid, j, gm);
+      assert [LS.Areg(r1), LS.Acheck(inp), LS.Areg(qpred)] + cont == [LS.Areg(r1)] + inner;
+      var titer := FU.ComputeTr(rer, [LS.Areg(r1)] + inner, inp, gm, WP.Backward);
+      var tskip := FU.ComputeTr(rer, cont, inp, gm, WP.Backward);
+      assert FU.ComputeTr(rer, acts, inp, gm, WP.Backward)
+          == LT.GreedyChoice(greedy, LT.GroupActionT(LG.Reset([]), titer), tskip);
+      GMUpdateResetNil(LC.Idx(inp), gm);
+      assert LT.TreeRes(LT.GroupActionT(LG.Reset([]), titer), gm, inp, WP.Backward)
+          == LT.TreeRes(titer, gm, inp, WP.Backward);
+      assert LT.TreeRes(titer, gm, inp, WP.Backward).Some?;
+    }
+  }
+
+  /** The completeness half of the span duality, assembled: a body match
+      ending at `cp` makes the backward walk of the body from `cp`
+      succeed. */
+  lemma SpanDualityComplete(rer: LW.RegExpRecord, r: L.Regex, str: string,
+                            i: int, cp: int, gm: LG.GroupMap)
+    requires GroupFreeL(r)
+    requires 0 <= i <= cp <= |str|
+    requires MatchesL(rer, r, str, i, cp)
+    ensures SuccActs(rer, [LS.Areg(r)], T.InputAt(str, cp), gm, WP.Backward)
+  {
+    SuccActsNil(rer, T.InputAt(str, i), gm, WP.Backward);
+    BwdComplete(rer, r, [], str, i, cp, gm);
+    assert [LS.Areg(r)] + [] == [LS.Areg(r)];
   }
 }
