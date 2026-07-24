@@ -959,12 +959,12 @@ module LindenElkMain {
       pipeline: compile the regex, run the simulation (`PSM.FindMatchSimRE`)
       to pin the winning VM thread to the spec's first leaf, then hand off to
       `MainExtraction` to show the two answers denote the same result. */
-  lemma MainTheorem(raw: R.raw_regex, str: string)
+  lemma {:isolate_assertions} MainTheorem(raw: R.raw_regex, str: string)
     requires NR.PlusFragmentRaw(raw)
     requires T.Latin1Wf(raw)
     ensures LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)))
   {
-    hide T.TransWf, NR.PlusFragmentRE;
+    hide T.TransWf, NR.PlusFragmentRE, NR.LookBehindFragmentRE, NR.CaptureFreeRE, NR.LookFreeRE, NR.LookBehindFragmentRaw, NR.CaptureFreeRaw, NR.LookFreeRaw;
     var ast := R.annotate(raw);
     var re := R.lazy_prefix(ast);
     var rer := LES.TheRer(raw);
@@ -1147,6 +1147,28 @@ module LindenElkMain {
       var leaf := bestT.value;
       assert leaf.1 == PIV.GmOfLive(re, caps, lk, qt);
       assert LT.FirstLeaf(t, inp) == Some(leaf);
+      // restate MainExtraction's preconditions one by one, in its own terms:
+      // under {:isolate_assertions} each becomes its own batch, keeping any
+      // single Z3 search small (the monolithic call batch ran away)
+      assert BS.BoolTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), BS.CannotExit, t);
+      assert LS.IsTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), LG.Empty, WP.Forward, t);
+      assert CM.ThreadRegsWf(thread, 2 * R.max_group(R.annotate(raw)) + 2, 1,
+                             R.max_quant(R.annotate(raw)) + 1) by {
+        // semantically the already-established line-1132 fact modulo the
+        // `ast` let; with every definition hidden the solver has nothing to
+        // unfold and closes by congruence (the open-context batch ran away
+        // in ThreadRegsWf's register quantifiers)
+        hide *;
+        assert ast == R.annotate(raw);
+        assert CM.ThreadRegsWf(thread, ncap, nlook, nquant);
+      }
+      assert QuantRegsFinal(thread);
+      assert leaf.1 == PIV.GmOfLive(R.lazy_prefix(R.annotate(raw)), thread.capture_regs,
+                                    thread.look_regs, thread.quant_regs);
+      assert LT.FirstLeaf(t, LC.InitInput(str)) == Some(leaf);
+      assert AI.FFullMatch(raw, str)
+          == Some(AI.filter_reset(R.annotate(raw), thread.capture_regs, thread.look_regs,
+                                  thread.quant_regs, -1));
       MainExtraction(raw, str, t, thread, leaf);
     }
   }
@@ -1231,7 +1253,7 @@ module LindenElkMain {
                                   thread.quant_regs, -1))
     ensures LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)))
   {
-    hide T.TransWf, NR.PlusFragmentRE;
+    hide T.TransWf, NR.PlusFragmentRE, NR.LookBehindFragmentRE, NR.CaptureFreeRE, NR.LookFreeRE, NR.LookBehindFragmentRaw, NR.CaptureFreeRaw, NR.LookFreeRaw;
     var ast := R.annotate(raw);
     var re := R.lazy_prefix(ast);
     var rer := LES.TheRer(raw);
