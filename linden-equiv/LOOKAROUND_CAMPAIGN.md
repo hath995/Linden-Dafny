@@ -19,7 +19,7 @@ Status (2026-07-23):
 | C2 (half) | Sweep soundness: every written bit has a reachable `WriteOracle` | **DONE** (`634434a`) |
 | C2 (half) | Sweep completeness: every reachable `WriteOracle` gets written | **DONE** — §6.1: `NoAccept`, `AdvanceReachComplete`, `FConsumeReachComplete`, the `ReachF` inversions (`ReachInProc`/`ReachFLeEnd`/`ReachBeyondNeedsConsume`), `FindMatchReachComplete`, and `SweepCharacterization` all verify |
 | C3 | `FBuildLids` assembly: the per-lid oracle characterization | **DONE** — §6.2: `OracleBuild.dfy` (`LidBuildOk`/`AllLidsBuildOk`, `FBuildLidsCharacterized`, `FBuildOracleCorrect`, per-lookaround `FBuildOracleCorrectAt` — the §6.3 bridge's interface) |
-| C4 | Bridge: reachability ⟺ a body match ending at cp | groundwork done — §6.3: `OracleBridge.dfy` has `Matches`/`MatchesIter`, the `ReachF` step intros, and the lazy-prefix "start anywhere" walker (`LazyPrefixBodyEntry`); the two block inductions (`MatchesToPath`, `PathToMatches`) remain |
+| C4 | Bridge: reachability ⟺ a body match ending at cp | half done — §6.3: `OracleBridge.dfy` has `Matches`/`MatchesIter` + span algebra, the walker, and the FULL forward direction: `MatchesToPath` (with `StarLoopPath`/`MinChainPath`/`OptChainPath`/`DoWhilePath` companions) capped by `MatchesToReachesWrite` — a body match ending at cp reaches the recorder. `PathToMatches` (the decomposition direction) remains |
 | C5 | Spec-side duality: forward span match ⟺ backward walk | open — §6.4 |
 | B | The `lm` + `ov` threading sweep through the tree-rep/sim layers | open — §6.5 |
 | D | Entry construction, `StaticOkRE` conjunct, `Supported` flip, smoke | open — §6.6 |
