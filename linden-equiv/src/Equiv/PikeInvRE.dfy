@@ -2549,6 +2549,128 @@ module LindenElkPikeInv {
   // ==========================================================================
 
   // ==========================================================================
+  // `reverse_regex` and the fragment. A lookbehind's CAPTURE regex is
+  // `reverse_regex(body)` (Compiler.capture_regex), so everything the capture
+  // pass is asked about the body has to survive the reversal — which it does,
+  // since reversing only swaps concatenation order and rebuilds every node
+  // with the same ids.
+  // ==========================================================================
+
+  /** Reversal keeps a regex capture-free. */
+  lemma ReverseCaptureFree(r: R.regex)
+    requires NR.CaptureFreeRE(r)
+    ensures NR.CaptureFreeRE(R.reverse_regex(r))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => ReverseCaptureFree(r1); ReverseCaptureFree(r2);
+    case Re_con(r1, r2) => ReverseCaptureFree(r1); ReverseCaptureFree(r2);
+    case Re_quant(_, _, _, r1) => ReverseCaptureFree(r1);
+    case Re_lookaround(_, _, r1) => ReverseCaptureFree(r1);
+    case _ =>
+  }
+
+  /** Reversal keeps a regex lookaround-free. */
+  lemma ReverseLookFree(r: R.regex)
+    requires NR.LookFreeRE(r)
+    ensures NR.LookFreeRE(R.reverse_regex(r))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => ReverseLookFree(r1); ReverseLookFree(r2);
+    case Re_con(r1, r2) => ReverseLookFree(r1); ReverseLookFree(r2);
+    case Re_quant(_, _, _, r1) => ReverseLookFree(r1);
+    case Re_capture(_, r1) => ReverseLookFree(r1);
+    case _ =>
+  }
+
+  /** Reversal preserves the quant ids (every node is rebuilt with its own). */
+  lemma ReverseQuantIds(r: R.regex)
+    ensures QuantIds(R.reverse_regex(r)) == QuantIds(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => ReverseQuantIds(r1); ReverseQuantIds(r2);
+    case Re_con(r1, r2) => ReverseQuantIds(r1); ReverseQuantIds(r2);
+    case Re_quant(_, _, _, r1) => ReverseQuantIds(r1);
+    case Re_capture(_, r1) => ReverseQuantIds(r1);
+    case Re_lookaround(_, _, r1) => ReverseQuantIds(r1);
+    case _ =>
+  }
+
+  /** Reversal preserves quant-id uniqueness. */
+  lemma ReverseQuantUnique(r: R.regex)
+    requires QuantUnique(r)
+    ensures QuantUnique(R.reverse_regex(r))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      ReverseQuantUnique(r1); ReverseQuantUnique(r2);
+      ReverseQuantIds(r1); ReverseQuantIds(r2);
+    case Re_con(r1, r2) =>
+      ReverseQuantUnique(r1); ReverseQuantUnique(r2);
+      ReverseQuantIds(r1); ReverseQuantIds(r2);
+    case Re_quant(_, _, _, r1) => ReverseQuantUnique(r1); ReverseQuantIds(r1);
+    case Re_capture(_, r1) => ReverseQuantUnique(r1);
+    case Re_lookaround(_, _, r1) => ReverseQuantUnique(r1);
+    case _ =>
+  }
+
+  /** Reversal keeps a regex in the plus fragment (the quantifier shapes and
+      the nullability side conditions are node-local, and `nullable` itself is
+      reversal-invariant). */
+  lemma ReversePlusFragment(r: R.regex)
+    requires NR.PlusFragmentRE(r)
+    ensures NR.PlusFragmentRE(R.reverse_regex(r))
+    decreases r
+  {
+    ReverseNullable(r);
+    match r
+    case Re_alt(r1, r2) => ReversePlusFragment(r1); ReversePlusFragment(r2);
+    case Re_con(r1, r2) => ReversePlusFragment(r1); ReversePlusFragment(r2);
+    case Re_quant(nul, qid, q, r1) => ReversePlusFragment(r1); ReverseNullable(r1);
+    case Re_capture(_, r1) => ReversePlusFragment(r1);
+    case _ =>
+  }
+
+  /** Nullability is reversal-invariant. */
+  lemma ReverseNullable(r: R.regex)
+    ensures R.nullable(R.reverse_regex(r)) == R.nullable(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => ReverseNullable(r1); ReverseNullable(r2);
+    case Re_con(r1, r2) => ReverseNullable(r1); ReverseNullable(r2);
+    case Re_quant(_, _, _, r1) => ReverseNullable(r1);
+    case Re_capture(_, r1) => ReverseNullable(r1);
+    case Re_lookaround(_, _, r1) => ReverseNullable(r1);
+    case _ =>
+  }
+
+  /** The composite the capture pass wants: the capture regex of an L1
+      lookbehind is itself an L1 body — capture-free, look-free, plus
+      fragment (hence lookbehind-fragment), with the same quant ids. */
+  lemma CaptureRegexFragment(la: R.lookaround, body: R.regex)
+    requires NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    requires la.Lookbehind? || la.NegLookbehind?
+    ensures var cr := CP.capture_regex(la, body);
+      NR.CaptureFreeRE(cr) && NR.LookFreeRE(cr) && NR.PlusFragmentRE(cr)
+      && NR.LookBehindFragmentRE(cr)
+      && QuantIds(cr) <= QuantIds(body)
+  {
+    if la.Lookbehind? {
+      ReverseCaptureFree(body);
+      ReverseLookFree(body);
+      ReversePlusFragment(body);
+      ReverseQuantIds(body);
+      NR.PlusIsLookBehindFragmentRE(R.reverse_regex(body));
+    } else {
+      // NegLookbehind: the capture regex is `Re_empty`
+    }
+  }
+
+  // ==========================================================================
   // Which quant ids a compiled block can write. Together with ClockMono's
   // quant frame this pins the lookaround capture pass: its replay writes only
   // the BODY's ids, and those are exactly the ones the filter never reads.
