@@ -44,13 +44,30 @@ module LindenElkActionsRep {
   import T = LindenElkTranslate
   import NR = LindenElkNfaRep
   import NUL = LindenElkNullable
+  import LOr = Oracle
 
-  // The quantifier-groups map: qid -> groups reset by that quantifier's
-  // iterations, on the TRANSLATED (Linden) side.
-  /** `qid -> groups reset by that quantifier's iterations`, on the translated
-      (Linden) side — recovers the group list that RegElk's `SetQuantToClock(qid, _)`
-      instruction drops down to a bare `qid`. */
-  type QMap = map<int, LG.GroupSet>
+  // The erased-id tables: RegElk's bytecode carries bare integer ids where the
+  // Linden AST carries structure, so the Linden-side representation predicates
+  // need a table per erased id namespace.
+  //   quants: qid -> groups reset by that quantifier's iterations, on the
+  //           TRANSLATED (Linden) side (recovers what `SetQuantToClock(qid, _)`
+  //           drops).
+  //   looks:  lid -> the (flavour, body) that `CheckOracle(lid)` /
+  //           `NegCheckOracle(lid)` assert (recovers what the single-instruction
+  //           lookaround encoding drops).
+  //   ov:     the lookaround oracle the main pass reads. It belongs with the
+  //           tables rather than as a separate parameter: the main pass never
+  //           writes it (the build passes ran first), so it is as static as
+  //           `quants`/`looks` are, and bundling keeps the whole
+  //           NfaRepL/TreeRepRE/simulation stack at one table parameter.
+  /** The static tables the Linden-side representation predicates consult:
+      quantifier reset groups by `qid`, lookaround (flavour, body) pairs by
+      `lid`, and the oracle bits the lookaround instructions test. Bundled in
+      one record so the whole `NfaRepL`/`TreeRepRE`/simulation stack threads a
+      single table parameter. */
+  datatype QMap = QMap(quants: map<int, LG.GroupSet>,
+                       looks: map<int, (L.Lookaround, L.Regex)>,
+                       ov: LOr.OracleView)
 
   // qm agrees with every quantifier of the (annotated) RegElk regex.
   /** `qm` correctly records, for every quantifier in the (annotated) RegElk regex
@@ -67,9 +84,38 @@ module LindenElkActionsRep {
     case Re_alt(r1, r2) => QmapOk(r1, qm) && QmapOk(r2, qm)
     case Re_con(r1, r2) => QmapOk(r1, qm) && QmapOk(r2, qm)
     case Re_quant(nul, qid, q, r1) =>
-      qid in qm && qm[qid] == L.DefGroups(T.Translate(r1)) && QmapOk(r1, qm)
+      qid in qm.quants && qm.quants[qid] == L.DefGroups(T.Translate(r1)) && QmapOk(r1, qm)
     case Re_capture(_, r1) => QmapOk(r1, qm)
     case Re_lookaround(_, _, r1) => QmapOk(r1, qm)
+  }
+
+  // qm's lookaround table agrees with every lookaround of the (annotated)
+  // RegElk regex — the `QmapOk` of the second namespace.
+  /** `qm.looks` correctly records, for every lookaround `(lid, la, body)` in the
+      (annotated) RegElk regex `re`, that lid's translated flavour and body — the
+      link the single-instruction `CheckOracle(lid)` encoding erases, and the one
+      the oracle-bit reasoning needs to know WHICH body a bit speaks about. */
+  ghost predicate LmapOk(re: R.regex, qm: QMap)
+    requires T.TransWf(re)
+    decreases re
+  {
+    match re
+    case Re_empty => true
+    case Re_character(_) => true
+    case Re_anchor(_) => true
+    case Re_alt(r1, r2) => LmapOk(r1, qm) && LmapOk(r2, qm)
+    case Re_con(r1, r2) => LmapOk(r1, qm) && LmapOk(r2, qm)
+    case Re_quant(_, _, _, r1) => LmapOk(r1, qm)
+    case Re_capture(_, r1) => LmapOk(r1, qm)
+    case Re_lookaround(lid, la, r1) =>
+      lid in qm.looks && qm.looks[lid] == (T.TrLookaround(la), T.Translate(r1))
+      && LmapOk(r1, qm)
+  }
+
+  /** A lookaround flavour asserts a match (rather than its absence) — the
+      `CheckOracle` / `NegCheckOracle` split in the bytecode. */
+  predicate PositiveL(lk: L.Lookaround) {
+    lk.LookAhead? || lk.LookBehind?
   }
 
   // ===========================================================================
@@ -136,7 +182,7 @@ module LindenElkActionsRep {
       exists e1: nat ::
         (exists qid: int ::
            NR.GetPcRE(c, pc1) == Some(RB.SetQuantToClock(qid, false))
-           && qid in qm && qm[qid] == L.DefGroups(r1))
+           && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
         && NfaRepL(rer, qm, r1, c, body, e1)
         && NfaRepMinL(rer, qm, rest, r1, c, e1, pc2)
   }
@@ -152,7 +198,7 @@ module LindenElkActionsRep {
       NR.GetPcRE(c, pc1) == Some(if greedy then RB.Fork(pc1 + 1, pc2) else RB.Fork(pc2, pc1 + 1))
       && (exists qid: int ::
             NR.GetPcRE(c, pc1 + 1) == Some(RB.SetQuantToClock(qid, false))
-            && qid in qm && qm[qid] == L.DefGroups(r1))
+            && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
       && NR.GetPcRE(c, pc1 + 2) == Some(RB.BeginLoop)
       && NfaRepL(rer, qm, r1, c, pc1 + 3, e1)
       && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
@@ -182,7 +228,7 @@ module LindenElkActionsRep {
           NR.GetPcRE(c, pc1) == Some(if greedy then RB.Fork(pc1 + 1, e1 + 2) else RB.Fork(e1 + 2, pc1 + 1))
           && (exists qid: int ::
                 NR.GetPcRE(c, pc1 + 1) == Some(RB.SetQuantToClock(qid, false))
-                && qid in qm && qm[qid] == L.DefGroups(r1))
+                && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
           && NR.GetPcRE(c, pc1 + 2) == Some(RB.BeginLoop)
           && NfaRepL(rer, qm, r1, c, pc1 + 3, e1)
           && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
@@ -198,7 +244,7 @@ module LindenElkActionsRep {
           && em <= pc1
           && (exists qid: int ::
                 NR.GetPcRE(c, em) == Some(RB.SetQuantToClock(qid, false))
-                && qid in qm && qm[qid] == L.DefGroups(r1))
+                && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
           && NfaRepL(rer, qm, r1, c, em + 1, pc1)
           && pc2 == pc1 + 1)
       else
@@ -213,7 +259,7 @@ module LindenElkActionsRep {
                 NfaRepMinL(rer, qm, mn1, r1, c, pc1, em)
                 && (exists qid: int ::
                       NR.GetPcRE(c, em) == Some(RB.SetQuantToClock(qid, false))
-                      && qid in qm && qm[qid] == L.DefGroups(r1))
+                      && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
                 && NfaRepL(rer, qm, r1, c, em + 1, e1)
                 && NR.GetPcRE(c, e1) == Some(if greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
                 && pc2 == e1 + 1
@@ -227,7 +273,15 @@ module LindenElkActionsRep {
         && NfaRepL(rer, qm, r1, c, pc1 + 1, e1)
         && NR.GetPcRE(c, e1) == Some(RB.SetRegisterToCP(CP.end_reg(gid as int)))
         && pc2 == e1 + 1
-    case LookaroundR(_, _) => false
+    case LookaroundR(lk, r1) =>
+      // the main pass carries only the oracle consultation: one zero-width
+      // instruction, whose bare `lid` the `looks` table maps back to this
+      // lookaround's flavour and body (the quantifier idiom for erased ids)
+      pc2 == pc1 + 1
+      && exists lid: int ::
+           NR.GetPcRE(c, pc1) == Some(if PositiveL(lk) then RB.CheckOracle(lid)
+                                                       else RB.NegCheckOracle(lid))
+           && lid in qm.looks && qm.looks[lid] == (lk, r1)
     case AnchorR(la) =>
       pc2 == pc1 + 1
       && exists a: R.anchor ::
@@ -261,7 +315,7 @@ module LindenElkActionsRep {
     requires min > 0 && NUL.NonNullableL(r1)
     requires NfaRepMinL(rer, qm, min - 1, r1, c, pc1, em)
     requires NR.GetPcRE(c, em) == Some(RB.SetQuantToClock(qid, false))
-    requires qid in qm && qm[qid] == L.DefGroups(r1)
+    requires qid in qm.quants && qm.quants[qid] == L.DefGroups(r1)
     requires NfaRepL(rer, qm, r1, c, em + 1, e1)
     requires NR.GetPcRE(c, e1) == Some(if greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
     requires pc2 == e1 + 1
@@ -277,7 +331,7 @@ module LindenElkActionsRep {
     ensures NfaRepMinL(rer, qm, min - 1, r1, c, pc1, em)
     ensures exists qid: int ::
       NR.GetPcRE(c, em) == Some(RB.SetQuantToClock(qid, false))
-      && qid in qm && qm[qid] == L.DefGroups(r1)
+      && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1)
     ensures NfaRepL(rer, qm, r1, c, em + 1, e1)
     ensures NR.GetPcRE(c, e1) == Some(if greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
     ensures pc2 == e1 + 1
@@ -287,7 +341,7 @@ module LindenElkActionsRep {
       NfaRepMinL(rer, qm, mn1, r1, c, pc1, em)
       && (exists qid: int ::
             NR.GetPcRE(c, em) == Some(RB.SetQuantToClock(qid, false))
-            && qid in qm && qm[qid] == L.DefGroups(r1))
+            && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
       && NfaRepL(rer, qm, r1, c, em + 1, e1)
       && NR.GetPcRE(c, e1) == Some(if greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
       && pc2 == e1 + 1;
@@ -304,9 +358,9 @@ module LindenElkActionsRep {
   /** `TransNfaRep` for the forced-copy chains: `NfaRepMinRE` over the RegElk
       body transports to `NfaRepMinL` over its translation. */
   lemma TransNfaRepMin(rer: LW.RegExpRecord, qm: QMap, k: nat, qid: R.quantid, r1: R.regex, c: RB.code, pc1: nat, pc2: nat)
-    requires NR.PlusFragmentRE(r1) && T.TransWf(r1) && !rer.ignoreCase
-    requires QmapOk(r1, qm)
-    requires qid in qm && qm[qid] == L.DefGroups(T.Translate(r1))
+    requires NR.LookBehindFragmentRE(r1) && T.TransWf(r1) && !rer.ignoreCase
+    requires QmapOk(r1, qm) && LmapOk(r1, qm)
+    requires qid in qm.quants && qm.quants[qid] == L.DefGroups(T.Translate(r1))
     requires NR.NfaRepMinRE(k, qid, r1, c, pc1, pc2)
     ensures NfaRepMinL(rer, qm, k, T.Translate(r1), c, pc1, pc2)
     decreases CP.rsize(r1), k + 2
@@ -319,7 +373,7 @@ module LindenElkActionsRep {
       TransNfaRepMin(rer, qm, k - 1, qid, r1, c, e1, pc2);
       assert (exists qd: int ::
            NR.GetPcRE(c, pc1) == Some(RB.SetQuantToClock(qd, false))
-           && qd in qm && qm[qd] == L.DefGroups(T.Translate(r1)))
+           && qd in qm.quants && qm.quants[qd] == L.DefGroups(T.Translate(r1)))
         && NfaRepL(rer, qm, T.Translate(r1), c, pc1 + 1, e1)
         && NfaRepMinL(rer, qm, k - 1, T.Translate(r1), c, e1, pc2);
     }
@@ -328,9 +382,9 @@ module LindenElkActionsRep {
   /** `TransNfaRep` for the optional-layer chains: `NfaRepOptRE` over the
       RegElk body transports to `NfaRepOptL` over its translation. */
   lemma TransNfaRepOpt(rer: LW.RegExpRecord, qm: QMap, k: nat, greedy: bool, qid: R.quantid, r1: R.regex, c: RB.code, pc1: nat, pc2: nat)
-    requires NR.PlusFragmentRE(r1) && T.TransWf(r1) && !rer.ignoreCase
-    requires QmapOk(r1, qm)
-    requires qid in qm && qm[qid] == L.DefGroups(T.Translate(r1))
+    requires NR.LookBehindFragmentRE(r1) && T.TransWf(r1) && !rer.ignoreCase
+    requires QmapOk(r1, qm) && LmapOk(r1, qm)
+    requires qid in qm.quants && qm.quants[qid] == L.DefGroups(T.Translate(r1))
     requires NR.NfaRepOptRE(k, greedy, qid, r1, c, pc1, pc2)
     ensures NfaRepOptL(rer, qm, k, greedy, T.Translate(r1), c, pc1, pc2)
     decreases CP.rsize(r1), k + 2
@@ -347,7 +401,7 @@ module LindenElkActionsRep {
       assert NR.GetPcRE(c, pc1) == Some(if greedy then RB.Fork(pc1 + 1, pc2) else RB.Fork(pc2, pc1 + 1))
         && (exists qd: int ::
               NR.GetPcRE(c, pc1 + 1) == Some(RB.SetQuantToClock(qd, false))
-              && qd in qm && qm[qd] == L.DefGroups(T.Translate(r1)))
+              && qd in qm.quants && qm.quants[qd] == L.DefGroups(T.Translate(r1)))
         && NR.GetPcRE(c, pc1 + 2) == Some(RB.BeginLoop)
         && NfaRepL(rer, qm, T.Translate(r1), c, pc1 + 3, e1)
         && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
@@ -356,8 +410,8 @@ module LindenElkActionsRep {
   }
 
   lemma TransNfaRep(rer: LW.RegExpRecord, qm: QMap, re: R.regex, c: RB.code, pc1: nat, pc2: nat)
-    requires NR.PlusFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase
-    requires QmapOk(re, qm)
+    requires NR.LookBehindFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase
+    requires QmapOk(re, qm) && LmapOk(re, qm)
     requires NR.NfaRepRE(re, c, pc1, pc2)
     ensures NfaRepL(rer, qm, T.Translate(re), c, pc1, pc2)
     decreases CP.rsize(re), 1
@@ -401,11 +455,11 @@ module LindenElkActionsRep {
         TransNfaRep(rer, qm, r1, c, pc1 + 3, e1);
         assert T.TrDelta(q) == LN.Inf;
         assert T.Translate(re) == L.Quantified(q.greedy, 0, LN.Inf, T.Translate(r1));
-        assert qid in qm && qm[qid] == L.DefGroups(T.Translate(r1));
+        assert qid in qm.quants && qm.quants[qid] == L.DefGroups(T.Translate(r1));
         assert NR.GetPcRE(c, pc1) == Some(if q.greedy then RB.Fork(pc1 + 1, e1 + 2) else RB.Fork(e1 + 2, pc1 + 1))
             && (exists qd: int ::
                   NR.GetPcRE(c, pc1 + 1) == Some(RB.SetQuantToClock(qd, false))
-                  && qd in qm && qm[qd] == L.DefGroups(T.Translate(r1)))
+                  && qd in qm.quants && qm.quants[qd] == L.DefGroups(T.Translate(r1)))
             && NR.GetPcRE(c, pc1 + 2) == Some(RB.BeginLoop)
             && NfaRepL(rer, qm, T.Translate(r1), c, pc1 + 3, e1)
             && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
@@ -430,7 +484,7 @@ module LindenElkActionsRep {
         NUL.TransNonNullable(r1);
         assert T.TrDelta(q) == LN.Inf;
         assert T.Translate(re) == L.Quantified(q.greedy, mn, LN.Inf, T.Translate(r1));
-        assert qid in qm && qm[qid] == L.DefGroups(T.Translate(r1));
+        assert qid in qm.quants && qm.quants[qid] == L.DefGroups(T.Translate(r1));
         NfaRepLPlusIntro(rer, qm, q.greedy, mn, T.Translate(r1), c, pc1, em, e1, pc2, qid);
       }
     case Re_capture(cid, r1) =>
@@ -446,6 +500,57 @@ module LindenElkActionsRep {
           && NfaRepL(rer, qm, T.Translate(r1), c, pc1 + 1, e1)
           && NR.GetPcRE(c, e1) == Some(RB.SetRegisterToCP(CP.end_reg((cid as nat) as int)))
           && pc2 == e1 + 1;
+    case Re_lookaround(lid, la, r1) =>
+      // one zero-width instruction; the `looks` row carries the erased link
+      var lk := T.TrLookaround(la);
+      assert T.Translate(re) == L.LookaroundR(lk, T.Translate(r1));
+      assert PositiveL(lk) <==> (la.Lookahead? || la.Lookbehind?);
+      assert lid in qm.looks && qm.looks[lid] == (lk, T.Translate(r1));
+      assert NR.GetPcRE(c, pc1) == Some(if PositiveL(lk) then RB.CheckOracle(lid)
+                                                         else RB.NegCheckOracle(lid));
+  }
+
+  // ===========================================================================
+  // Lookaround-free regexes need no lookaround table
+  // ===========================================================================
+
+  /** A lookaround-free regex constrains no row of `qm.looks`, so `LmapOk`
+      holds of any table — what lets the narrower fragments' entry points keep
+      their signatures while the bridge gained its `LmapOk` precondition. */
+  lemma LookFreeLmapOk(re: R.regex, qm: QMap)
+    requires T.TransWf(re) && NR.LookFreeRE(re)
+    ensures LmapOk(re, qm)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => LookFreeLmapOk(r1, qm); LookFreeLmapOk(r2, qm);
+    case Re_con(r1, r2) => LookFreeLmapOk(r1, qm); LookFreeLmapOk(r2, qm);
+    case Re_quant(_, _, _, r1) => LookFreeLmapOk(r1, qm);
+    case Re_capture(_, r1) => LookFreeLmapOk(r1, qm);
+    case _ =>
+  }
+
+  /** The plus fragment admits no lookaround node at all. */
+  lemma PlusFragmentLookFree(re: R.regex)
+    requires NR.PlusFragmentRE(re)
+    ensures NR.LookFreeRE(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => PlusFragmentLookFree(r1); PlusFragmentLookFree(r2);
+    case Re_con(r1, r2) => PlusFragmentLookFree(r1); PlusFragmentLookFree(r2);
+    case Re_quant(_, _, _, r1) => PlusFragmentLookFree(r1);
+    case Re_capture(_, r1) => PlusFragmentLookFree(r1);
+    case _ =>
+  }
+
+  /** `LmapOk` for free on the plus fragment: no lookarounds, no rows. */
+  lemma PlusFragmentLmapOk(re: R.regex, qm: QMap)
+    requires T.TransWf(re) && NR.PlusFragmentRE(re)
+    ensures LmapOk(re, qm)
+  {
+    PlusFragmentLookFree(re);
+    LookFreeLmapOk(re, qm);
   }
 
   // ===========================================================================
@@ -461,7 +566,7 @@ module LindenElkActionsRep {
     if k > 0 {
       var e1: nat :| (exists qid: int ::
             NR.GetPcRE(c, start) == Some(RB.SetQuantToClock(qid, false))
-            && qid in qm && qm[qid] == L.DefGroups(r1))
+            && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
         && NfaRepL(rer, qm, r1, c, start + 1, e1)
         && NfaRepMinL(rer, qm, k - 1, r1, c, e1, endl);
       NfaRepIncrL(rer, qm, r1, c, start + 1, e1);
@@ -479,7 +584,7 @@ module LindenElkActionsRep {
       var e1: nat :| NR.GetPcRE(c, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
         && (exists qid: int ::
               NR.GetPcRE(c, start + 1) == Some(RB.SetQuantToClock(qid, false))
-              && qid in qm && qm[qid] == L.DefGroups(r1))
+              && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
         && NR.GetPcRE(c, start + 2) == Some(RB.BeginLoop)
         && NfaRepL(rer, qm, r1, c, start + 3, e1)
         && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
@@ -517,7 +622,7 @@ module LindenElkActionsRep {
              NR.GetPcRE(c, start) == Some(if greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
              && (exists qid: int ::
                    NR.GetPcRE(c, start + 1) == Some(RB.SetQuantToClock(qid, false))
-                   && qid in qm && qm[qid] == L.DefGroups(r1))
+                   && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
              && NR.GetPcRE(c, start + 2) == Some(RB.BeginLoop)
              && NfaRepL(rer, qm, r1, c, start + 3, e1)
              && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
@@ -537,7 +642,7 @@ module LindenElkActionsRep {
               NfaRepMinL(rer, qm, min - 1, r1, c, start, em)
               && (exists qid: int ::
                     NR.GetPcRE(c, em) == Some(RB.SetQuantToClock(qid, false))
-                    && qid in qm && qm[qid] == L.DefGroups(r1))
+                    && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
               && NfaRepL(rer, qm, r1, c, em + 1, e1)
               && NR.GetPcRE(c, e1) == Some(if greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
               && endl == e1 + 1;
@@ -631,6 +736,8 @@ module LindenElkActionsRep {
     var code := CP.compile_to_bytecode(re);
     var next := CP.compile(re, 0, CP.Progress).1;
     NR.CompileToBytecodeRepPlus(re);
+    NR.PlusIsLookBehindFragmentRE(re);
+    PlusFragmentLmapOk(re, qm);
     TransNfaRep(rer, qm, re, code, 0, next as nat);
     assert ActionsRepL(rer, qm, [], code, next as nat);
     var single := [LS.Areg(T.Translate(re))];
@@ -651,6 +758,8 @@ module LindenElkActionsRep {
     var next := CP.compile(re, 0, CP.Progress).1;
     NR.QuantIsPlusFragmentRE(re);
     NR.CompileToBytecodeRepQuant(re);
+    NR.PlusIsLookBehindFragmentRE(re);
+    PlusFragmentLmapOk(re, qm);
     TransNfaRep(rer, qm, re, code, 0, next as nat);
     assert ActionsRepL(rer, qm, [], code, next as nat);
     var single := [LS.Areg(T.Translate(re))];
@@ -670,6 +779,8 @@ module LindenElkActionsRep {
     NR.AnchorIsQuantFragmentRE(re);
     NR.QuantIsPlusFragmentRE(re);
     NR.CompileToBytecodeRepAnchor(re);
+    NR.PlusIsLookBehindFragmentRE(re);
+    PlusFragmentLmapOk(re, qm);
     TransNfaRep(rer, qm, re, code, 0, next as nat);
     assert ActionsRepL(rer, qm, [], code, next as nat);
     var single := [LS.Areg(T.Translate(re))];

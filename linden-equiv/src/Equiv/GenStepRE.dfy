@@ -36,6 +36,7 @@ module LindenElkGenStep {
   import T = LindenElkTranslate
   import TREP = LindenElkTreeRep
   import TT = LindenElkTreeThread
+  import LOr = Oracle
 
   // What a tree-thread at a non-stuttering pc tells us, by instruction.
   /** What a tree-thread sitting at a non-stuttering `pc` implies, keyed on the
@@ -78,7 +79,7 @@ module LindenElkGenStep {
       && TT.TreeThreadRE(rer, qm, code, inp, t.t, pc + 1, ea)
     case Some(SetQuantToClock(qid, bb)) =>
       bb == false && t.GroupActionT? && t.g.Reset?
-      && qid in qm && qm[qid] == t.g.gl
+      && qid in qm.quants && qm.quants[qid] == t.g.gl
       && TT.TreeThreadRE(rer, qm, code, inp, t.t, pc + 1, ea)
     case Some(EndLoop) =>
       (ea ==> t.Progress? && TT.TreeThreadRE(rer, qm, code, inp, t.t, pc + 1, true))
@@ -88,10 +89,20 @@ module LindenElkGenStep {
          t.AnchorPass? && t.a == T.TrAnchor(a)
          && TT.TreeThreadRE(rer, qm, code, inp, t.t, pc + 1, ea))
       && (!RA.is_satisfied(a, TREP.CtxOf(inp), RA.Forward) ==> t == LT.Mismatch)
+    case Some(CheckOracle(lid)) =>
+      // zero-width, like an anchor, but leaf-transparent: the continuation
+      // tree IS the thread's tree (the LK wrapper is dissolved)
+      (LOr.view_get_oracle(qm.ov, TREP.CpOf(inp), lid) ==>
+         TT.TreeThreadRE(rer, qm, code, inp, t, pc + 1, ea))
+      && (!LOr.view_get_oracle(qm.ov, TREP.CpOf(inp), lid) ==> t == LT.Mismatch)
+    case Some(NegCheckOracle(lid)) =>
+      // the negative gate passes on a CLEAR bit
+      (!LOr.view_get_oracle(qm.ov, TREP.CpOf(inp), lid) ==>
+         TT.TreeThreadRE(rer, qm, code, inp, t, pc + 1, ea))
+      && (LOr.view_get_oracle(qm.ov, TREP.CpOf(inp), lid) ==> t == LT.Mismatch)
     case Some(Jmp(_)) => true        // excluded by !StuttersRE at use sites
     case Some(BeginLoop) => true     // excluded by !StuttersRE at use sites
-    case Some(_) => false            // CheckOracle/NegCheckOracle/WriteOracle/
-                                     // CheckNullable/Fail:
+    case Some(_) => false            // WriteOracle/CheckNullable/Fail:
                                      // unreachable in fragment-represented code
     case None => false               // out-of-range: a tree-thread pins an instr
   }
@@ -146,7 +157,7 @@ module LindenElkGenStep {
       }
     case Some(SetQuantToClock(qid, bb)) =>   // tr_reset (only bb == false has a rule)
       var qid2: int :| NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid2, false))
-        && qid2 in qm && qm[qid2] == t.g.gl
+        && qid2 in qm.quants && qm.quants[qid2] == t.g.gl
         && TREP.TreeRepRE(qm, t.t, code, pc + 1, inp, ea);
       assert qid2 == qid;
     case Some(EndLoop) =>            // tr_progress (ea) or tr_progressfail (!ea)
@@ -158,6 +169,8 @@ module LindenElkGenStep {
           && TREP.TreeRepRE(qm, t.t, code, pc + 1, inp, ea);
         assert a2 == a;
       }
+    case Some(CheckOracle(lid)) =>   // the gate rule, read off the instruction
+    case Some(NegCheckOracle(lid)) =>
     case Some(Jmp(_)) =>             // excluded by !StuttersRE
     case Some(BeginLoop) =>          // excluded by !StuttersRE
     case Some(_) =>                  // no TreeRepRE disjunct: requires is false

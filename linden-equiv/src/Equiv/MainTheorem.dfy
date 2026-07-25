@@ -685,10 +685,11 @@ module LindenElkMain {
   // ==========================================================================
   // The QMap builder: qid |-> DefGroups(Translate(body)), per quant node.
   // ==========================================================================
-  /** Builds the `AR.QMap` for `re`: maps each quant id to the capture groups
-      defined by its body (`L.DefGroups` of the translated body), by walking
-      `re`'s quant nodes. */
-  ghost function QmOfRE(re: R.regex): AR.QMap
+  /** Builds the quantifier half of the `AR.QMap` for `re`: maps each quant id
+      to the capture groups defined by its body (`L.DefGroups` of the translated
+      body), by walking `re`'s quant nodes. The lookaround half is built
+      separately (`LmOfRE`) and the two are paired at the assembly. */
+  ghost function QmOfRE(re: R.regex): map<int, LG.GroupSet>
     requires T.TransWf(re)
     decreases re
   {
@@ -701,6 +702,28 @@ module LindenElkMain {
     case Re_quant(nul, qid, q, r1) => QmOfRE(r1)[qid := L.DefGroups(T.Translate(r1))]
     case Re_capture(_, r1) => QmOfRE(r1)
     case Re_lookaround(_, _, r1) => QmOfRE(r1)
+  }
+
+  /** Builds the lookaround half of the `AR.QMap` for `re`: maps each
+      lookaround id to its translated flavour and body — the link
+      `CheckOracle(lid)` erases. (`LmapOk` for it needs lid uniqueness, the
+      `LT.LookUnique` analogue of `PIV.QuantUnique`; the current top-level
+      gate is lookaround-free, where `AR.PlusFragmentLmapOk` discharges
+      `LmapOk` outright.) */
+  ghost function LmOfRE(re: R.regex): map<int, (L.Lookaround, L.Regex)>
+    requires T.TransWf(re)
+    decreases re
+  {
+    match re
+    case Re_empty => map[]
+    case Re_character(_) => map[]
+    case Re_anchor(_) => map[]
+    case Re_alt(r1, r2) => LmOfRE(r1) + LmOfRE(r2)
+    case Re_con(r1, r2) => LmOfRE(r1) + LmOfRE(r2)
+    case Re_quant(_, _, _, r1) => LmOfRE(r1)
+    case Re_capture(_, r1) => LmOfRE(r1)
+    case Re_lookaround(lid, la, r1) =>
+      LmOfRE(r1)[lid := (T.TrLookaround(la), T.Translate(r1))]
   }
 
   /** `QmOfRE(re)`'s domain is exactly `re`'s quant ids (`PIV.QuantIds`). */
@@ -805,7 +828,7 @@ module LindenElkMain {
   lemma QmapOkFromEntries(re: R.regex, qm: AR.QMap)
     requires T.TransWf(re) && PIV.QuantUnique(re)
     requires forall qid: nat :: qid in PIV.QuantIds(re) && T.TransWf(PIV.QidBody(re, qid)) ==>
-      (qid as int) in qm && qm[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(re, qid)))
+      (qid as int) in qm.quants && qm.quants[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(re, qid)))
     ensures AR.QmapOk(re, qm)
     decreases re
   {
@@ -813,7 +836,7 @@ module LindenElkMain {
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_alt(r1, r2) =>
       forall qid: nat | qid in PIV.QuantIds(r1) && T.TransWf(PIV.QidBody(r1, qid))
-        ensures (qid as int) in qm && qm[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(r1, qid)))
+        ensures (qid as int) in qm.quants && qm.quants[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(r1, qid)))
       {
         assert qid in PIV.QuantIds(re);
         TransWfQidBody(re, qid);
@@ -821,7 +844,7 @@ module LindenElkMain {
       }
       QmapOkFromEntries(r1, qm);
       forall qid: nat | qid in PIV.QuantIds(r2) && T.TransWf(PIV.QidBody(r2, qid))
-        ensures (qid as int) in qm && qm[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(r2, qid)))
+        ensures (qid as int) in qm.quants && qm.quants[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(r2, qid)))
       {
         assert qid in PIV.QuantIds(re);
         TransWfQidBody(re, qid);
@@ -833,7 +856,7 @@ module LindenElkMain {
       QmapOkFromEntries(r2, qm);
     case Re_con(r1, r2) =>
       forall qid: nat | qid in PIV.QuantIds(r1) && T.TransWf(PIV.QidBody(r1, qid))
-        ensures (qid as int) in qm && qm[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(r1, qid)))
+        ensures (qid as int) in qm.quants && qm.quants[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(r1, qid)))
       {
         assert qid in PIV.QuantIds(re);
         TransWfQidBody(re, qid);
@@ -841,7 +864,7 @@ module LindenElkMain {
       }
       QmapOkFromEntries(r1, qm);
       forall qid: nat | qid in PIV.QuantIds(r2) && T.TransWf(PIV.QidBody(r2, qid))
-        ensures (qid as int) in qm && qm[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(r2, qid)))
+        ensures (qid as int) in qm.quants && qm.quants[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(r2, qid)))
       {
         assert qid in PIV.QuantIds(re);
         TransWfQidBody(re, qid);
@@ -855,9 +878,9 @@ module LindenElkMain {
       assert qid0 >= 0;                                 // QuantUnique
       assert (qid0 as nat) in PIV.QuantIds(re);
       assert PIV.QidBody(re, qid0 as nat) == r1;
-      assert qid0 in qm && qm[qid0] == L.DefGroups(T.Translate(r1));
+      assert qid0 in qm.quants && qm.quants[qid0] == L.DefGroups(T.Translate(r1));
       forall qid: nat | qid in PIV.QuantIds(r1) && T.TransWf(PIV.QidBody(r1, qid))
-        ensures (qid as int) in qm && qm[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(r1, qid)))
+        ensures (qid as int) in qm.quants && qm.quants[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(r1, qid)))
       {
         assert qid in PIV.QuantIds(re);
         TransWfQidBody(re, qid);
@@ -867,7 +890,7 @@ module LindenElkMain {
       QmapOkFromEntries(r1, qm);
     case Re_capture(_, r1) =>
       forall qid: nat | qid in PIV.QuantIds(r1) && T.TransWf(PIV.QidBody(r1, qid))
-        ensures (qid as int) in qm && qm[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(r1, qid)))
+        ensures (qid as int) in qm.quants && qm.quants[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(r1, qid)))
       {
         assert qid in PIV.QuantIds(re);
         TransWfQidBody(re, qid);
@@ -876,7 +899,7 @@ module LindenElkMain {
       QmapOkFromEntries(r1, qm);
     case Re_lookaround(_, _, r1) =>
       forall qid: nat | qid in PIV.QuantIds(r1) && T.TransWf(PIV.QidBody(r1, qid))
-        ensures (qid as int) in qm && qm[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(r1, qid)))
+        ensures (qid as int) in qm.quants && qm.quants[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(r1, qid)))
       {
         assert qid in PIV.QuantIds(re);
         TransWfQidBody(re, qid);
@@ -979,7 +1002,9 @@ module LindenElkMain {
 
     PIV.SpecRegexCapUnique(raw);           // CapUnique(re)
     PIV.SpecRegexQuantUnique(raw);         // QuantUnique(re)
-    var qm := QmOfRE(re);
+    // the oracle view is part of the static table record; the main pass never
+    // writes it (`crv` below is the same compilation, so `qm.ov == ov`)
+    var qm := AR.QMap(QmOfRE(re), LmOfRE(re), AI.FBuildOracle(CP.FFullCompilation(ast), str));
     QmOfREEntries(re);
     QmapOkFromEntries(re, qm);
 

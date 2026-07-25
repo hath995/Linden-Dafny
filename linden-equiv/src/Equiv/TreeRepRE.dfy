@@ -32,6 +32,7 @@ module LindenElkTreeRep {
   import NR = LindenElkNfaRep
   import AR = LindenElkActionsRep
   import PS = PikeSubset
+  import LOr = Oracle
 
   /** RegElk's `char_context` at a Linden `Input`'s position (forward scan):
       `prevchar` is the last-consumed character (head of the reversed prefix),
@@ -39,6 +40,13 @@ module LindenElkTreeRep {
   function CtxOf(inp: LC.Input): RA.char_context {
     RA.CharContext(if |inp.pref| == 0 then None else Some(inp.pref[0]),
                    if |inp.next| == 0 then None else Some(inp.next[0]))
+  }
+
+  /** The string position of a Linden `Input` scanned forward from the start of
+      the string: the consumed prefix's length. `InputAt(str, cp)` has exactly
+      `cp` characters behind it, so this is the `cp` the oracle is indexed by. */
+  function CpOf(inp: LC.Input): nat {
+    |inp.pref|
   }
 
   /** THE anchor agreement, Input-level: RegElk's `is_satisfied` at the
@@ -70,7 +78,7 @@ module LindenElkTreeRep {
     // tr_reset (RegElk: the SetQuantToClock marker carries the Reset node)
     || (t.GroupActionT? && t.g.Reset? && exists qid: int ::
           NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
-          && qid in qm && qm[qid] == t.g.gl
+          && qid in qm.quants && qm.quants[qid] == t.g.gl
           && TreeRepRE(qm, t.t, code, pc + 1, inp, b))
     // tr_choice (forward forks only: every compiled fork except the
     // do-while's is forward, and the direction split keeps determinism)
@@ -127,6 +135,28 @@ module LindenElkTreeRep {
           NR.GetPcRE(code, pc) == Some(RB.Consume(ce)) && AR.ReadCharE(ce, inp) == None)
     // tr_progressfail
     || (t == LT.Mismatch && b == false && NR.GetPcRE(code, pc) == Some(RB.EndLoop))
+    // tr_lk / tr_lkfail / tr_neglk / tr_neglkfail — the lookaround gate.
+    // Zero-width, like an anchor, and LEAF-TRANSPARENT: for the capture-free
+    // bodies of the L1 fragment the `LK` wrapper contributes no leaf of its
+    // own and feeds the continuation an unchanged group map, so the checked
+    // tree carries only the CONTINUATION (the same dissolution the do-while's
+    // `Progress` guard gets); a failed gate is `Mismatch` (`LKFail`'s leaves
+    // are `[]`). A NEGATIVE lookaround passes exactly when the bit is CLEAR —
+    // the bit always encodes the positive body question and the gate inverts.
+    // Stated instruction-first, with NO existential over `lid`: the
+    // instruction pins it, and a quantifier here is paid for by every proof
+    // obligation that so much as mentions `TreeRepRE` (it cost this file's
+    // consumers ~2x before the rules were written this way).
+    || (match NR.GetPcRE(code, pc)
+        case Some(CheckOracle(lid)) =>
+          if LOr.view_get_oracle(qm.ov, CpOf(inp), lid)
+          then TreeRepRE(qm, t, code, pc + 1, inp, b)
+          else t == LT.Mismatch
+        case Some(NegCheckOracle(lid)) =>
+          if LOr.view_get_oracle(qm.ov, CpOf(inp), lid)
+          then t == LT.Mismatch
+          else TreeRepRE(qm, t, code, pc + 1, inp, b)
+        case _ => false)
   }
 
   // Determinism: at a fixed (pc, inp, b) the represented tree is unique.
@@ -152,7 +182,7 @@ module LindenElkTreeRep {
         case GroupActionT(g1, tc1) =>
           match t2 {
             case GroupActionT(g2, tc2) =>
-              assert g1 == LG.Reset(qm[qid]) && g2 == LG.Reset(qm[qid]);
+              assert g1 == LG.Reset(qm.quants[qid]) && g2 == LG.Reset(qm.quants[qid]);
               TreeRepDetermRE(qm, code, pc + 1, inp, b, tc1, tc2);
             case _ =>
           }
@@ -250,8 +280,15 @@ module LindenElkTreeRep {
           case _ =>
         }
       }
-    case Some(_) =>                 // CheckOracle/NegCheckOracle/WriteOracle/
-                                    // CheckNullable/Fail:
+    case Some(CheckOracle(lid)) =>  // tr_lkpass (bit set) or tr_lkfail
+      if LOr.view_get_oracle(qm.ov, CpOf(inp), lid) {
+        TreeRepDetermRE(qm, code, pc + 1, inp, b, t1, t2);
+      }
+    case Some(NegCheckOracle(lid)) =>  // tr_neglkpass (bit clear) or tr_neglkfail
+      if !LOr.view_get_oracle(qm.ov, CpOf(inp), lid) {
+        TreeRepDetermRE(qm, code, pc + 1, inp, b, t1, t2);
+      }
+    case Some(_) =>                 // WriteOracle/CheckNullable/Fail:
                                     // no TreeRepRE rule — vacuous
     case None =>                    // vacuous
   }
@@ -383,6 +420,20 @@ module LindenElkTreeRep {
         }
       } else {
         assert t == LT.Mismatch;   // only tr_anchorfail matches
+        PikeSubtreeLeaf(t);
+      }
+    case Some(CheckOracle(lid)) =>
+      if LOr.view_get_oracle(qm.ov, CpOf(inp), lid) {
+        TreeRepPikeSubtree(qm, t, code, pc + 1, inp, b);
+      } else {
+        assert t == LT.Mismatch;   // only tr_lkfail matches
+        PikeSubtreeLeaf(t);
+      }
+    case Some(NegCheckOracle(lid)) =>
+      if !LOr.view_get_oracle(qm.ov, CpOf(inp), lid) {
+        TreeRepPikeSubtree(qm, t, code, pc + 1, inp, b);
+      } else {
+        assert t == LT.Mismatch;   // only tr_neglkfail matches
         PikeSubtreeLeaf(t);
       }
     case Some(_) =>                 // no rule — vacuous

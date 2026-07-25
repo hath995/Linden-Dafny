@@ -104,6 +104,32 @@ module LindenElkPikeSim {
     && PIV.StutterTameRE(code)
   }
 
+  // Inside a plus-fragment block there is no oracle instruction: the fragment
+  // has no lookaround node, so the compiler emits no CheckOracle /
+  // NegCheckOracle / WriteOracle / CheckNullable. Packaged against
+  // `StaticOkRE`'s shape (Accept sits at `endl`, so any pc carrying another
+  // instruction is strictly inside the block).
+  /** A `StaticOkRE` code carries no oracle (or `CheckNullable`) instruction at
+      any pc other than the final `Accept` — the plus fragment compiles none.
+      The lookaround campaign's simulation cases are vacuous until the gate
+      widens past `NR.PlusFragmentRE`. */
+  lemma NoOracleInstrAt(re: R.regex, code: RB.code, endl: nat, pc: nat)
+    requires NR.PlusFragmentRE(re)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires |code| == endl + 1
+    requires pc < |code|
+    requires NR.GetPcRE(code, pc).Some?
+    requires var i := NR.GetPcRE(code, pc).value;
+      i.CheckOracle? || i.NegCheckOracle? || i.WriteOracle? || i.CheckNullable?
+    ensures false
+  {
+    AR.PlusFragmentLookFree(re);
+    assert pc != endl;                        // Accept is none of those
+    assert pc < endl;                         // |code| == endl + 1
+    NR.NoOracleInstrRE(re, code, 0, endl, pc);
+  }
+
   // Register files sized to cover every compiled write.
   /** The register files (`ncap`/`nlook`/`nquant`) are sized large enough to
       hold every register `re`'s compilation can write. */
@@ -555,11 +581,11 @@ module LindenElkPikeSim {
 
   // =========================================================================
   // Step helper: the RESET case. At a SetQuantToClock(qid, false) instruction
-  // the tree emits GroupActionT(Reset(qm[qid]), _); the stamp write tracks
+  // the tree emits GroupActionT(Reset(qm.quants[qid]), _); the stamp write tracks
   // GMReset and re-arms the body's staleness for free.
   // =========================================================================
   /** The `Reset`-case analogue of `OpenStepThreadRE`/`CloseStepThreadRE`:
-      pins the tree step to `GroupActionT(Reset(qm[qid]), _)` and shows the
+      pins the tree step to `GroupActionT(Reset(qm.quants[qid]), _)` and shows the
       quantifier-clock stamp write denotes `GMReset`. */
   lemma ResetStepThreadRE(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                           inp: LC.Input, t: LT.Tree, gm: LG.GroupMap, th: AI.Thread, pc: nat,
@@ -579,7 +605,7 @@ module LindenElkPikeSim {
     requires |th.quant_regs.a_clk| >= R.max_quant(re) + 1
     requires |th.quant_regs.a_cp| == |th.quant_regs.a_clk|
     requires S >= 0
-    ensures t.GroupActionT? && t.g.Reset? && qid0 in qm && qm[qid0] == t.g.gl
+    ensures t.GroupActionT? && t.g.Reset? && qid0 in qm.quants && qm.quants[qid0] == t.g.gl
     ensures TT.TreeThreadRE(rer, qm, code, inp, t.t, pc + 1, th.exit_allowed)
     ensures var quant' := AReg.set_reg(th.quant_regs, qid0, None, S + 1);
       t.GroupActionT? && t.g.Reset? ==>
@@ -602,7 +628,7 @@ module LindenElkPikeSim {
 
     // Tree step: StepSpec's SetQuantToClock clause pins the Reset.
     GS.GenStepRE(rer, qm, code, inp, t, pc, ea);
-    assert t.GroupActionT? && t.g.Reset? && qid0 in qm && qm[qid0] == t.g.gl;
+    assert t.GroupActionT? && t.g.Reset? && qid0 in qm.quants && qm.quants[qid0] == t.g.gl;
 
     // Register bounds via the instruction inventory (also gives qid0 >= 0).
     NI.CodeShapeAt(re, code, 0, endl, pc);
@@ -630,8 +656,8 @@ module LindenElkPikeSim {
     var quant' := AReg.set_reg(quant, qid0, None, clk);
     assert quant' == AReg.set_reg(quant, qid, None, clk);
     assert PIV.GmOfLive(re, caps, th.look_regs, quant')
-        == LG.GMReset(qm[qid as int], PIV.GmOfLive(re, caps, th.look_regs, quant));
-    assert qm[qid as int] == t.g.gl;
+        == LG.GMReset(qm.quants[qid as int], PIV.GmOfLive(re, caps, th.look_regs, quant));
+    assert qm.quants[qid as int] == t.g.gl;
 
     // Positional invariant advances across the stamp.
     assert quant'.a_clk == qc[qid0 := clk];
@@ -2298,13 +2324,15 @@ module LindenElkPikeSim {
                                         pts1, vms2, ov, dir, ncap, nlook, nquant);
         TrcCons(pts, pts1, pts');
       case CheckOracle(l) =>
-        assert !TT.StuttersRE(pc, code);
-        GS.GenStepRE(rer, qm, code, inp, t, pc, th.exit_allowed);
+        // The tree layer now HAS oracle rules (tr_lkpass/tr_lkfail), so the
+        // contradiction no longer comes from StepSpec: it comes from the
+        // fragment gate. `StaticOkRE` still admits only the plus fragment,
+        // which compiles no oracle instruction anywhere in the block.
+        NoOracleInstrAt(re, code, endl, pc);
         assert false;
         pts' := pts;
       case NegCheckOracle(l) =>
-        assert !TT.StuttersRE(pc, code);
-        GS.GenStepRE(rer, qm, code, inp, t, pc, th.exit_allowed);
+        NoOracleInstrAt(re, code, endl, pc);
         assert false;
         pts' := pts;
       case WriteOracle(l) =>

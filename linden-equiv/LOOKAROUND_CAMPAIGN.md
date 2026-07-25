@@ -415,21 +415,29 @@ in linden-reasoning if stated over the TRANSLATED body (see below —
 stating it over the Linden `Regex` via `T.Translate(body)` skips one
 transfer lemma).
 
-### 6.4 C5 — spec-side duality (linden-reasoning; engine-free) [CORE DONE — SpanDuality.dfy; glue remains]
+### 6.4 C5 — spec-side duality (linden-reasoning; engine-free) [DONE — SpanDuality.dfy + OracleSpec.dfy]
 
-**Done:** `MatchesL` + `SpanDualityComplete`/`SpanDualitySound` (see §5).
-**Remaining glue (next up):** (a) refresh linden-equiv's stale
-`deps/linden-reasoning.doo` (it predates SpanDuality.dfy — `lem build` at
-the workspace root, or the hand-built-doo bridge); (b) the transfer
-`OB.Matches(bodyAST, str, i, j) ⟺ MatchesL(rer, Translate(bodyAST), str, i, j)`
-in linden-equiv — structural induction via `CharSemAgree` (!ignoreCase +
-`CharacterWfL1` from `Latin1Wf`) and `AnchorSemAgree` (!multiline; note
-`AI.cp_context(i, str, Forward) == T.CpContext(str, i, Forward)` is
-definitional), quantifier counts lining up by `q.min as nat`/`TrDelta`;
-(c) the OracleOk-shaped corollary chaining `OracleColumnCharacterized` +
-transfer + duality: bit(cp, lid) ⟺ the backward walk of the translated
-body succeeds at cp — the exact `StaticOkRE` conjunct §6.5 consumes.
-The original plan for this section follows.
+**Done:** `MatchesL` + `SpanDualityComplete`/`SpanDualitySound` (see §5), and
+the glue, in linden-equiv's NEW `src/Equiv/OracleSpec.dfy` (12 green):
+
+- `MatchesTransfer`/`IterTransfer` — `OB.Matches(re, str, i, j) <==>
+  SD.MatchesL(rer, T.Translate(re), str, i, j)`, structural induction
+  discharged by `T.CharSemAgree` (!ignoreCase) and `T.AnchorSemAgree`
+  (!multiline). Hypotheses: `T.TransWf(re)` and `0 <= i && j <= |str|` — the
+  span must lie inside the string, since outside it the engine's context
+  functions read `None` while `MatchesL` pins its positions to `0..|str|`.
+  NO capture-/look-freedom needed (captures translate to `Group`, which both
+  predicates see through; lookarounds have no rule on either side).
+- `QuantBoundsAgree` (per-`k`, not a trigger-less `forall`),
+  `CtxAtIsCpContext`, `TranslateGroupFree`.
+- `OracleColumnSpec` — THE chain: for an L1 lookbehind,
+  `view_get_oracle(FBuildOracle(FFullCompilation(re), str), cp, lid) <==>
+  SuccActs(rer, [Areg(Translate(body))], InputAt(str, cp), gm, Backward)`.
+
+Note the dependency bridge: linden-equiv's `deps/linden-reasoning.doo` must be
+rebuilt whenever linden-reasoning changes (`dafny build -t:lib dfyconfig.toml
+--no-verify` in linden-reasoning, copy the `.doo` in — any plain `lem restore`
+reverts it). The original plan for this section follows.
 
 The spec walks a lookbehind body BACKWARD from cp (`LkDir(LookBehind) ==
 Backward`); the engine characterization speaks of forward matches ending at
@@ -461,7 +469,101 @@ Finally connect §6.3's `Matches` (RegElk AST) to `MatchesSpan` (Linden
 `TransNfaRep` (or avoid it by defining `Matches` over the translated body
 from the start).
 
-### 6.5 Phase B — the `lm` + `ov` threading sweep
+### 6.5 Phase B — the `lm` + `ov` threading sweep [STAGE 1 DONE — vocabulary]
+
+**The ripple was avoided entirely by BUNDLING, not by adding parameters.**
+`AR.QMap` stopped being a bare map and became the record of static tables the
+Linden-side layer consults:
+
+```
+datatype QMap = QMap(quants: map<int, LG.GroupSet>,
+                     looks:  map<int, (L.Lookaround, L.Regex)>,
+                     ov:     LOr.OracleView)
+```
+
+Every layer already threads one `qm: AR.QMap`, so adding `looks`/`ov` as
+FIELDS cost ~66 mechanical edits (`qm[qid]` → `qm.quants[qid]`, `qid in qm` →
+`qid in qm.quants`) instead of ~1000 new argument positions across
+`NfaRepL`/`TreeRepRE`/`TreeThreadRE`/`StepSpec`/`PikeSimRE`/`PikeInvRE`/
+`MainTheorem`. The oracle view belongs with the tables for a real reason: the
+main pass never writes it (the build passes ran first), so it is exactly as
+static as `quants` is, and `CpOf(inp) == |inp.pref|` supplies the column
+index without threading the string.
+
+Landed on that base (all first-try green):
+
+- `LmapOk(re, qm)` (ActionsRepRE) — the `QmapOk` of the lid namespace: every
+  `Re_lookaround(lid, la, body)` has `qm.looks[lid] == (TrLookaround(la),
+  Translate(body))`. Plus `PositiveL`, `LookFreeLmapOk`,
+  `PlusFragmentLookFree`, `PlusFragmentLmapOk` (lookaround-free regexes
+  constrain no row, so the narrower fragments get `LmapOk` for free).
+- `NfaRepL`'s `LookaroundR` arm: `false` → `pc2 == pc1 + 1 && exists lid ::
+  GetPcRE(c, pc1) == Some(CheckOracle(lid) / NegCheckOracle(lid)) && lid in
+  qm.looks && qm.looks[lid] == (lk, r1)` — the quantifier idiom for erased ids.
+- `TransNfaRep`/`Min`/`Opt` widened from `PlusFragmentRE` to
+  `LookBehindFragmentRE` + `LmapOk`, with the new `Re_lookaround` case; the
+  narrow entry points (`CompileToBytecodeActionsRep{Plus,Quant,Anchor}`) KEEP
+  their signatures by routing through `PlusIsLookBehindFragmentRE` +
+  `PlusFragmentLmapOk`, so no downstream client changed.
+- `TreeRepRE` gained ONE new disjunct carrying all four gate rules
+  (`tr_lk`/`tr_lkfail`/`tr_neglk`/`tr_neglkfail`), gated on
+  `view_get_oracle(qm.ov, CpOf(inp), lid)` with the negative flavour passing
+  on a CLEAR bit; `CpOf(inp) == |inp.pref|` is the column index.
+  LEAF-TRANSPARENT: the pass rule carries the SAME tree to `pc+1` (the `LK`
+  wrapper is dissolved, exactly like the do-while's `Progress` guard), which
+  is what keeps `TreeRepPikeSubtree` true. `TreeRepDetermRE` and
+  `TreeRepPikeSubtree` gained the matching cases.
+  **PERFORMANCE LESSON — write the rule instruction-first, with NO
+  `exists lid`.** The first version used four disjuncts each existentially
+  quantifying `lid`; that made `ActionsTreeRepRE` (3.8k assertion batches)
+  go from 7m52s to >15min, because every proof obligation mentioning
+  `TreeRepRE` now carried those quantifiers. Restating it as
+  `match GetPcRE(code, pc) case Some(CheckOracle(lid)) => if bit then ...
+  else t == Mismatch ...` — the instruction pins `lid`, so no quantifier is
+  needed — brought it back to 8m33s (+9%, the honest cost of the new rules).
+  Same measured, same green.
+- `StepSpec`/`GenStepRE` (GenStepRE.dfy) gained real oracle cases.
+- `MainTheorem`: `QmOfRE` now returns the bare quant map and the record is
+  built at the use site as `AR.QMap(QmOfRE(re), LmOfRE(re), ov)`; NEW
+  `LmOfRE` mirrors `QmOfRE` for the lid namespace (its `LmapOk` discharge
+  needs a `LT.LookUnique` analogue of `PIV.QuantUnique` — deferred to §6.6,
+  since the current gate is lookaround-free and `PlusFragmentLmapOk` applies).
+- `PikeSimRE`'s two oracle cases can no longer derive `false` from `StepSpec`
+  (the tree layer now HAS oracle rules); they derive it from the fragment gate
+  instead, via the new `NoOracleInstrAt` (`StaticOkRE` still admits only
+  `NR.PlusFragmentRE`, which compiles no oracle instruction).
+
+**Stage 2 (next): the simulation preservation cases** — what turns those
+vacuous cases into real ones, once `StaticOkRE`'s gate widens to
+`LookBehindFragmentRE`:
+
+- **The pass case is a tree-side STUTTER.** Leaf-transparency means the tree
+  does not step while the VM advances `pc` — the same shape as `Jmp`/
+  `BeginLoop` (`PreserveStutterCase`), not as `AnchorAssertion`. So
+  `TT.StuttersRE` and `PIV.StutterSuccIs` should gain
+  `CheckOracle`/`NegCheckOracle` (successor `pc+1`); `StutterTameRE` stays
+  trivially true for them (it constrains only `Jmp` targets), and
+  `StutterChainSource`'s ensures grows two shapes. `GenStepRE`'s oracle cases
+  then become unreachable-by-`requires` but stay as true statements.
+- **The kill case mirrors `PreserveAnchorKill`**: the checked tree is
+  `Mismatch`, the thread dies, the tree is consumed into `seen`.
+- **The one genuinely new obligation: the `look_regs` write.** The engine's
+  `CheckOracle` pass also does `look_regs[lid] := cp`, so `ThreadTracksGm`
+  must survive it: `GmOfLive` reads `look` through `AI.filter_reset` →
+  `filter_capture`, whose `Re_lookaround` branch either `filter_all`s the body
+  or recurses into it. For CAPTURE-FREE bodies both alternatives are the
+  IDENTITY on `cap_regs`, so `GmOfLive` is independent of the look bank —
+  prove `CaptureFreeRE(r) ==> filter_all(r, regs) == regs` and
+  `CaptureFreeRE(r) ==> filter_capture(r, regs, ..) == regs`, then lift by
+  induction over the ast (hypothesis: `LookBehindFragmentRE`, whose
+  lookaround arm carries `CaptureFreeRE(body)`). This is the L1 shape of what
+  the campaign scoping called "the `GmOfLive` look-clock branch" — L3
+  (captures inside lookarounds) is where it stops being the identity.
+- The `ClockMono`/`BB*` bookkeeping for the write is already in place
+  (`RegsClocksLESet`/`SetRegLens` handle `look_regs` — the VM-level oracle
+  cases were oracle-aware from the start).
+
+The original plan for this section follows.
 
 Do these TOGETHER — they ripple through the same heavy files
 (`PikeSimRE` 3.0k, `PikeInvRE` 3.6k, `MainTheorem` 1.3k), and two separate

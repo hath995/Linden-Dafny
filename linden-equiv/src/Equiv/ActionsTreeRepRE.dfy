@@ -340,7 +340,7 @@ module LindenElkActionsTreeRep {
                 var em, e1x := AR.NfaRepLPlusInv(rer, qm, greedy, min, r1, code, pc, pcmid);
                 assert NUL.NonNullableL(r1);
                 var qid: int :| NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
-                  && qid in qm && qm[qid] == gidl;
+                  && qid in qm.quants && qm.quants[qid] == gidl;
                 AR.NfaRepIncrL(rer, qm, r1, code, em + 1, e1x);
                 if min > 1 {
                   // a forced copy: stamp at pc, body at pc+1, the smaller
@@ -348,7 +348,7 @@ module LindenElkActionsTreeRep {
                   var quant1 := L.Quantified(greedy, min - 1, LN.Inf, r1);
                   var eb: nat :| (exists qid2: int ::
                         NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid2, false))
-                        && qid2 in qm && qm[qid2] == gidl)
+                        && qid2 in qm.quants && qm.quants[qid2] == gidl)
                     && AR.NfaRepL(rer, qm, r1, code, pc + 1, eb)
                     && AR.NfaRepMinL(rer, qm, min - 2, r1, code, eb, em);
                   AR.NfaRepLPlusIntro(rer, qm, greedy, min - 1, r1, code, eb, em, e1x, pcmid, qid);
@@ -417,7 +417,7 @@ module LindenElkActionsTreeRep {
                           && em <= e1x
                           && (exists qid2: int ::
                                 NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid2, false))
-                                && qid2 in qm && qm[qid2] == L.DefGroups(r1))
+                                && qid2 in qm.quants && qm.quants[qid2] == L.DefGroups(r1))
                           && AR.NfaRepL(rer, qm, r1, code, em + 1, e1x);
                       }
                       FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
@@ -455,7 +455,7 @@ module LindenElkActionsTreeRep {
                 var quant1 := L.Quantified(greedy, min - 1, delta, r1);
                 var eb: nat :| (exists qid: int ::
                       NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
-                      && qid in qm && qm[qid] == gidl)
+                      && qid in qm.quants && qm.quants[qid] == gidl)
                   && AR.NfaRepL(rer, qm, r1, code, pc + 1, eb)
                   && AR.NfaRepMinL(rer, qm, min - 1, r1, code, eb, em);
                 AR.NfaRepLQuantIntro(rer, qm, greedy, min - 1, kx, r1, code, eb, em, pcmid);
@@ -507,7 +507,7 @@ module LindenElkActionsTreeRep {
               var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, pcmid) else RB.Fork(pcmid, pc + 1))
                 && (exists qid: int ::
                       NR.GetPcRE(code, pc + 1) == Some(RB.SetQuantToClock(qid, false))
-                      && qid in qm && qm[qid] == gidl)
+                      && qid in qm.quants && qm.quants[qid] == gidl)
                 && NR.GetPcRE(code, pc + 2) == Some(RB.BeginLoop)
                 && AR.NfaRepL(rer, qm, r1, code, pc + 3, e1)
                 && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
@@ -579,7 +579,7 @@ module LindenElkActionsTreeRep {
           if exists e1: nat :: NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1))
                        && (exists qid: int ::
                              NR.GetPcRE(code, pc + 1) == Some(RB.SetQuantToClock(qid, false))
-                             && qid in qm && qm[qid] == gidl)
+                             && qid in qm.quants && qm.quants[qid] == gidl)
                        && NR.GetPcRE(code, pc + 2) == Some(RB.BeginLoop)
                        && AR.NfaRepL(rer, qm, r1, code, pc + 3, e1)
                        && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
@@ -589,7 +589,7 @@ module LindenElkActionsTreeRep {
             var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1))
                          && (exists qid: int ::
                                NR.GetPcRE(code, pc + 1) == Some(RB.SetQuantToClock(qid, false))
-                               && qid in qm && qm[qid] == gidl)
+                               && qid in qm.quants && qm.quants[qid] == gidl)
                          && NR.GetPcRE(code, pc + 2) == Some(RB.BeginLoop)
                          && AR.NfaRepL(rer, qm, r1, code, pc + 3, e1)
                          && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
@@ -664,7 +664,7 @@ module LindenElkActionsTreeRep {
               && em <= pc
               && (exists qid: int ::
                     NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
-                    && qid in qm && qm[qid] == gidl)
+                    && qid in qm.quants && qm.quants[qid] == gidl)
               && AR.NfaRepL(rer, qm, r1, code, em + 1, pc)
               && pcmid == pc + 1;
             WO.WalkOkLoopView(acts, code, pc, EaOf(b), greedy, LN.Inf, r1,
@@ -838,7 +838,7 @@ module LindenElkActionsTreeRep {
               } else {
                 var eb: nat :| (exists qid: int ::
                       NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
-                      && qid in qm && qm[qid] == gidl)
+                      && qid in qm.quants && qm.quants[qid] == gidl)
                   && AR.NfaRepL(rer, qm, r1, code, pc + 1, eb)
                   && AR.NfaRepMinL(rer, qm, min - 2, r1, code, eb, em);
                 assert false;    // SetQuantToClock != Fork
@@ -847,7 +847,7 @@ module LindenElkActionsTreeRep {
               var em := AR.NfaRepLQuantInv(rer, qm, greedy, min, kx, r1, code, pc, pcmid);
               var eb: nat :| (exists qid: int ::
                     NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
-                    && qid in qm && qm[qid] == gidl)
+                    && qid in qm.quants && qm.quants[qid] == gidl)
                 && AR.NfaRepL(rer, qm, r1, code, pc + 1, eb)
                 && AR.NfaRepMinL(rer, qm, min - 1, r1, code, eb, em);
               assert false;      // SetQuantToClock != Fork
@@ -868,7 +868,7 @@ module LindenElkActionsTreeRep {
             var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, pcmid) else RB.Fork(pcmid, pc + 1))
               && (exists qid: int ::
                     NR.GetPcRE(code, pc + 1) == Some(RB.SetQuantToClock(qid, false))
-                    && qid in qm && qm[qid] == gidl)
+                    && qid in qm.quants && qm.quants[qid] == gidl)
               && NR.GetPcRE(code, pc + 2) == Some(RB.BeginLoop)
               && AR.NfaRepL(rer, qm, r1, code, pc + 3, e1)
               && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
@@ -882,7 +882,7 @@ module LindenElkActionsTreeRep {
           if exists e1: nat :: NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1))
                        && (exists qid: int ::
                              NR.GetPcRE(code, pc + 1) == Some(RB.SetQuantToClock(qid, false))
-                             && qid in qm && qm[qid] == gidl)
+                             && qid in qm.quants && qm.quants[qid] == gidl)
                        && NR.GetPcRE(code, pc + 2) == Some(RB.BeginLoop)
                        && AR.NfaRepL(rer, qm, r1, code, pc + 3, e1)
                        && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
@@ -901,11 +901,11 @@ module LindenElkActionsTreeRep {
               && em <= pc
               && (exists qid: int ::
                     NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
-                    && qid in qm && qm[qid] == gidl)
+                    && qid in qm.quants && qm.quants[qid] == gidl)
               && AR.NfaRepL(rer, qm, r1, code, em + 1, pc)
               && pcmid == pc + 1;
             var qid: int :| NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
-              && qid in qm && qm[qid] == gidl;
+              && qid in qm.quants && qm.quants[qid] == gidl;
             var q0 := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
             assert q0 == L.Quantified(greedy, 0, LN.Inf, r1) == r;
             WO.WalkOkLoopView(acts, code, pc, true, greedy, LN.Inf, r1,
@@ -951,7 +951,7 @@ module LindenElkActionsTreeRep {
                         && em <= pc
                         && (exists qid2: int ::
                               NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid2, false))
-                              && qid2 in qm && qm[qid2] == L.DefGroups(r1))
+                              && qid2 in qm.quants && qm.quants[qid2] == L.DefGroups(r1))
                         && AR.NfaRepL(rer, qm, r1, code, em + 1, pc);
                     }
                     assert AR.ActionRepL(rer, qm, LS.Areg(q0), code, pc, pc + 1);

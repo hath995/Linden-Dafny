@@ -3077,7 +3077,7 @@ module LindenElkPikeInv {
   // QUANT array — caps and thus cc are untouched) raises the reset threshold for
   // qid's subtree, so filter_reset removes exactly the groups of qid's scope gl.
   // GmOfLive(quant') == GmOfLive(quant) - gl. Mirrors Linden's
-  // GMReset(gl, gm) == gm - gl, with gl == qm[qid] (StepSpec).
+  // GMReset(gl, gm) == gm - gl, with gl == qm.quants[qid] (StepSpec).
   //
   // The reset-scope precondition (filter on quant' clears exactly gl's starts,
   // leaving every non-gl register untouched) is the deferred-reset obligation
@@ -3191,7 +3191,7 @@ module LindenElkPikeInv {
   // ===========================================================================
   // Reset-case completion: connect the reset conclusion (gm minus the body's
   // CapIds) to Linden's GMReset over the QMap's group list. QmapOk pins
-  // qm[qid] == DefGroups(Translate(body)), and DefGroups enumerates exactly
+  // qm.quants[qid] == DefGroups(Translate(body)), and DefGroups enumerates exactly
   // CapIds -- so the two subtractions coincide.
   // ===========================================================================
 
@@ -3217,14 +3217,14 @@ module LindenElkPikeInv {
   // At any quant node reachable by QidBody's descent, QmapOk pins qm's entry to
   // the body's group list. (No QuantUnique needed: QmapOk constrains EVERY
   // quant node, including the one QidBody selects.)
-  /** At any quant node `QidBody` selects, `QmapOk` pins `qm[qid]` to the body's
+  /** At any quant node `QidBody` selects, `QmapOk` pins `qm.quants[qid]` to the body's
       group list, whose ids are exactly `CapIds(QidBody(re, qid))`. */
   lemma QmapOkAtQid(re: R.regex, qm: AR.QMap, qid: nat)
     requires T.TransWf(re)
     requires AR.QmapOk(re, qm)
     requires qid in QuantIds(re)
-    ensures (qid as int) in qm
-    ensures (set g: nat {:autotriggers false} | g in qm[qid as int]) == CapIds(QidBody(re, qid))
+    ensures (qid as int) in qm.quants
+    ensures (set g: nat {:autotriggers false} | g in qm.quants[qid as int]) == CapIds(QidBody(re, qid))
     decreases re
   {
     match re
@@ -3235,7 +3235,7 @@ module LindenElkPikeInv {
     case Re_quant(nul, qid0, q, r1) =>
       if qid0 >= 0 && (qid0 as nat) == qid {
         assert qid0 == qid as int;
-        assert qm[qid as int] == L.DefGroups(T.Translate(r1));
+        assert qm.quants[qid as int] == L.DefGroups(T.Translate(r1));
         DefGroupsCapIds(r1);
         assert QidBody(re, qid) == r1;
       } else {
@@ -3246,11 +3246,11 @@ module LindenElkPikeInv {
   }
 
   // The TOTAL Reset interface: stamping quant qid mirrors Linden's GMReset over
-  // gl == qm[qid]. Remaining positional hypothesis: PathPresentQ (plus MxAtQid/
+  // gl == qm.quants[qid]. Remaining positional hypothesis: PathPresentQ (plus MxAtQid/
   // body-staleness bounds, dischargeable from the clock backbone since the
   // fresh stamp S+1 exceeds every stored clock <= S).
   /** The TOTAL Reset interface: stamping quant `qid` mirrors Linden's `GMReset`
-      over `gl == qm[qid]`. Remaining positional hypothesis: `PathPresentQ`
+      over `gl == qm.quants[qid]`. Remaining positional hypothesis: `PathPresentQ`
       (plus `MxAtQid`/body-staleness bounds, dischargeable from the clock
       backbone since the fresh stamp exceeds every stored clock). */
   lemma GmOfLiveResetGMReset(ast: R.regex, qm: AR.QMap, caps: AReg.Regs, look: AReg.Regs,
@@ -3267,14 +3267,14 @@ module LindenElkPikeInv {
     requires forall k :: AI.get_idx(caps.a_cp, k) >= -1
     requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
                              ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
-    ensures (qid as int) in qm
+    ensures (qid as int) in qm.quants
     ensures GmOfLive(ast, caps, look, AReg.set_reg(quant, qid, None, clk))
-         == LG.GMReset(qm[qid as int], GmOfLive(ast, caps, look, quant))
+         == LG.GMReset(qm.quants[qid as int], GmOfLive(ast, caps, look, quant))
   {
     GmOfLiveResetFull(ast, caps, look, quant, qid, clk);
     QmapOkAtQid(ast, qm, qid);
-    assert LG.GMReset(qm[qid as int], GmOfLive(ast, caps, look, quant))
-        == GmOfLive(ast, caps, look, quant) - (set g: nat {:autotriggers false} | g in qm[qid as int]);
+    assert LG.GMReset(qm.quants[qid as int], GmOfLive(ast, caps, look, quant))
+        == GmOfLive(ast, caps, look, quant) - (set g: nat {:autotriggers false} | g in qm.quants[qid as int]);
   }
 
   // ===========================================================================
@@ -3419,7 +3419,7 @@ module LindenElkPikeInv {
                              t: LT.Tree, pc: nat, ea: bool, qid: int)
     requires t.GroupActionT? && t.g.Reset?
     requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
-    requires qid in qm && qm[qid] == t.g.gl
+    requires qid in qm.quants && qm.quants[qid] == t.g.gl
     requires TT.TreeThreadRE(rer, qm, code, inp, t.t, pc + 1, ea)
     ensures TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea)
   {}
