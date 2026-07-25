@@ -269,6 +269,189 @@ module LindenElkClockMono {
     }
   }
 
+  /** Every `SetQuantToClock` in `c` targets an id in `S`. */
+  ghost predicate QuantWritesInside(c: RB.code, S: set<int>) {
+    forall pc: nat :: pc < |c| ==> (c[pc].SetQuantToClock? ==> c[pc].sq in S)
+  }
+
+  /** `set_reg` touches one slot: every other index reads through unchanged. */
+  lemma SetRegOtherIdx(r: AReg.Regs, k: int, cp: Option<int>, clk: int, k2: int)
+    requires k2 != k
+    ensures AI.get_idx(AReg.set_reg(r, k, cp, clk).a_cp, k2) == AI.get_idx(r.a_cp, k2)
+    ensures AI.get_idx(AReg.set_reg(r, k, cp, clk).a_clk, k2) == AI.get_idx(r.a_clk, k2)
+  {}
+
+  /** Two register banks agree outside `S` (values and clocks alike). */
+  ghost predicate RegsAgreeOutside(a: AReg.Regs, b: AReg.Regs, S: set<int>) {
+    forall k: int :: k !in S ==>
+      AI.get_idx(a.a_cp, k) == AI.get_idx(b.a_cp, k)
+      && AI.get_idx(a.a_clk, k) == AI.get_idx(b.a_clk, k)
+  }
+
+  /** Every thread in the state — active, blocked, or the best match so far —
+      has a quant bank agreeing with `qt0` outside `S`. */
+  ghost predicate VmQuantsAgree(s: AI.VmState, qt0: AReg.Regs, S: set<int>) {
+    (forall t | t in s.active :: RegsAgreeOutside(t.quant_regs, qt0, S))
+    && (forall tb | tb in s.blocked :: RegsAgreeOutside(tb.0.quant_regs, qt0, S))
+    && (s.bestmatch.Some? ==> RegsAgreeOutside(s.bestmatch.value.quant_regs, qt0, S))
+  }
+
+  /** An epsilon phase writes quant ids only where the code says it may. */
+  lemma FAdvanceEpsilonQuantFrame(c: RB.code, s: AI.VmState, ov: LOr.OracleView,
+                                dir: LAnc.direction, qt0: AReg.Regs, S: set<int>)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires QuantWritesInside(c, S)
+    requires VmQuantsAgree(s, qt0, S)
+    ensures VmQuantsAgree(AI.FAdvanceEpsilon(c, s, ov, dir).0, qt0, S)
+    decreases AI.unprocessed(s.processed), |s.active|
+  {
+    if |s.active| == 0 { return; }
+    var t := s.active[0];
+    var ac := s.active[1..];
+    assert t in s.active;
+    assert forall x | x in ac :: x in s.active;
+    if AI.bpc_mem(s.processed, t.pc, t.exit_allowed) {
+      FAdvanceEpsilonQuantFrame(c, s.(active := ac), ov, dir, qt0, S);
+      return;
+    }
+    var b0 := s.processed;
+    var s1 := s.(clock := s.clock + 1, processed := AI.bpc_add(b0, t.pc, t.exit_allowed));
+    assert AI.unprocessed(s1.processed) <= AI.unprocessed(b0)
+        && (0 <= t.pc < RB.size(c) ==> AI.unprocessed(s1.processed) < AI.unprocessed(b0))
+      by { AI.UnprocessedAdd(b0, t.pc, t.exit_allowed); }
+    match RB.get_instr(c, t.pc) {
+      case Consume(ce) =>
+        var (nb, ni) := AI.add_thread(t, ce, s1.blocked, s1.isblocked);
+        var s2 := s1.(blocked := nb, isblocked := ni, active := ac);
+        assert VmQuantsAgree(s2, qt0, S) by {
+          forall tb | tb in nb ensures RegsAgreeOutside(tb.0.quant_regs, qt0, S) {
+            assert tb == (t, ce) || tb in s1.blocked;
+          }
+        }
+        FAdvanceEpsilonQuantFrame(c, s2, ov, dir, qt0, S);
+      case Accept =>
+      case Jmp(x) =>
+        FAdvanceEpsilonQuantFrame(c, s1.(active := [t.(pc := x)] + ac), ov, dir, qt0, S);
+      case Fork(x, y) =>
+        var newt := AI.Thread(x, t.capture_regs, t.look_regs, t.quant_regs, t.exit_allowed);
+        FAdvanceEpsilonQuantFrame(c, s1.(active := [newt, t.(pc := y)] + ac), ov, dir, qt0, S);
+      case SetRegisterToCP(reg) =>
+        var t2 := t.(capture_regs := AReg.set_reg(t.capture_regs, reg, Some(s1.cp), s1.clock), pc := t.pc + 1);
+        FAdvanceEpsilonQuantFrame(c, s1.(active := [t2] + ac), ov, dir, qt0, S);
+      case SetQuantToClock(q, bq) =>
+        var ocp := if bq then Some(s1.cp) else None;
+        var t2 := t.(quant_regs := AReg.set_reg(t.quant_regs, q, ocp, s1.clock), pc := t.pc + 1);
+        assert 0 <= t.pc < |c|;
+        assert q in S;                     // QuantWritesInside
+        assert RegsAgreeOutside(t2.quant_regs, qt0, S) by {
+          forall k: int | k !in S
+            ensures AI.get_idx(t2.quant_regs.a_cp, k) == AI.get_idx(qt0.a_cp, k)
+                 && AI.get_idx(t2.quant_regs.a_clk, k) == AI.get_idx(qt0.a_clk, k)
+          {
+            SetRegOtherIdx(t.quant_regs, q, ocp, s1.clock, k);
+          }
+        }
+        FAdvanceEpsilonQuantFrame(c, s1.(active := [t2] + ac), ov, dir, qt0, S);
+      case CheckOracle(l) =>
+        if LOr.view_get_oracle(ov, s1.cp, l) {
+          var t2 := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(s1.cp), s1.clock));
+          FAdvanceEpsilonQuantFrame(c, s1.(active := [t2] + ac), ov, dir, qt0, S);
+        } else {
+          FAdvanceEpsilonQuantFrame(c, s1.(active := ac), ov, dir, qt0, S);
+        }
+      case NegCheckOracle(l) =>
+        if LOr.view_get_oracle(ov, s1.cp, l) {
+          FAdvanceEpsilonQuantFrame(c, s1.(active := ac), ov, dir, qt0, S);
+        } else {
+          FAdvanceEpsilonQuantFrame(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir, qt0, S);
+        }
+      case WriteOracle(l) =>
+        FAdvanceEpsilonQuantFrame(c, s1.(active := ac), LOr.view_set_oracle(ov, s1.cp, l), dir, qt0, S);
+      case BeginLoop =>
+        FAdvanceEpsilonQuantFrame(c, s1.(active := [t.(exit_allowed := false, pc := t.pc + 1)] + ac), ov, dir, qt0, S);
+      case EndLoop =>
+        if t.exit_allowed {
+          FAdvanceEpsilonQuantFrame(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir, qt0, S);
+        } else {
+          FAdvanceEpsilonQuantFrame(c, s1.(active := ac), ov, dir, qt0, S);
+        }
+      case CheckNullable(qid) =>
+        if LCdn.cdn_get(s1.cdn, qid) {
+          FAdvanceEpsilonQuantFrame(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir, qt0, S);
+        } else {
+          FAdvanceEpsilonQuantFrame(c, s1.(active := ac), ov, dir, qt0, S);
+        }
+      case AnchorAssertion(a) =>
+        if LAnc.is_satisfied(a, s1.context, dir) {
+          FAdvanceEpsilonQuantFrame(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir, qt0, S);
+        } else {
+          FAdvanceEpsilonQuantFrame(c, s1.(active := ac), ov, dir, qt0, S);
+        }
+      case Fail =>
+        FAdvanceEpsilonQuantFrame(c, s1.(active := ac), ov, dir, qt0, S);
+    }
+  }
+
+  /** The consume phase only resumes blocked threads — no register writes. */
+  lemma FConsumeQuantFrame(s: AI.VmState, qt0: AReg.Regs, S: set<int>)
+    requires VmQuantsAgree(s, qt0, S)
+    ensures VmQuantsAgree(AI.FConsume(s), qt0, S)
+    decreases |s.blocked|
+  {
+    if |s.blocked| == 0 { return; }
+    var t := s.blocked[0].0;
+    var ce := s.blocked[0].1;
+    var s1 := s.(blocked := s.blocked[1..]);
+    assert VmQuantsAgree(s1, qt0, S) by {
+      forall tb | tb in s1.blocked ensures RegsAgreeOutside(tb.0.quant_regs, qt0, S) { assert tb in s.blocked; }
+    }
+    var s2 := if RC.is_accepted(s1.context.nextchar, ce)
+              then s1.(active := [t.(exit_allowed := true, pc := t.pc + 1)] + s1.active)
+              else s1;
+    assert VmQuantsAgree(s2, qt0, S) by {
+      assert s.blocked[0] in s.blocked;
+      assert RegsAgreeOutside(t.quant_regs, qt0, S);
+      forall t2 | t2 in s2.active ensures RegsAgreeOutside(t2.quant_regs, qt0, S) {
+        if t2 != t.(exit_allowed := true, pc := t.pc + 1) { assert t2 in s1.active; }
+      }
+    }
+    FConsumeQuantFrame(s2, qt0, S);
+  }
+
+  /** THE frame: a whole search returns a thread whose quant bank agrees with
+      the one it started from outside the ids the code writes. */
+  lemma FFindMatchQuantFrame(c: RB.code, str: string, s: AI.VmState, ov: LOr.OracleView,
+                           dir: LAnc.direction, cdn: LCdn.cdns, qt0: AReg.Regs, S: set<int>)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires dir.Forward? ==> s.context.nextchar == AI.get_char(str, s.cp)
+    requires dir.Backward? ==> s.context.nextchar == AI.get_char(str, s.cp - 1)
+    requires QuantWritesInside(c, S)
+    requires VmQuantsAgree(s, qt0, S)
+    ensures var r := AI.FFindMatch(c, str, s, ov, dir, cdn).0;
+      r.Some? ==> RegsAgreeOutside(r.value.quant_regs, qt0, S)
+    decreases if dir.Forward? then |str| - s.cp else s.cp
+  {
+    var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, dir));
+    assert VmQuantsAgree(s0, qt0, S);
+    var (s1, ov1) := AI.FAdvanceEpsilon(c, s0, ov, dir);
+    FAdvanceEpsilonQuantFrame(c, s0, ov, dir, qt0, S);
+    assert VmQuantsAgree(s1, qt0, S);
+    if |s1.blocked| == 0 { return; }
+    match s1.context.nextchar {
+      case None =>
+      case Some(_) =>
+        var s2 := AI.FConsume(s1);
+        FConsumeQuantFrame(s1, qt0, S);
+        var s3 := s2.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
+                      cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
+        var newchar := AI.get_char(str, s3.cp - AI.cp_offset(dir));
+        var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
+        assert VmQuantsAgree(s4, qt0, S);
+        FFindMatchQuantFrame(c, str, s4, ov1, dir, cdn, qt0, S);
+    }
+  }
+
+
   /** No position of `c` holds a `WriteOracle`. */
   ghost predicate NoWriteOracleCode(c: RB.code) {
     forall pc: nat :: pc < |c| ==> !c[pc].WriteOracle?

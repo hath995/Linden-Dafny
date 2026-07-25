@@ -1083,8 +1083,8 @@ module LindenElkMain {
     // remember that its leaves — hence its first leaf — agree with t's.
     WOE.WalkOkEntry(re);
     AR.CompileToBytecodeActionsRepPlus(rer, qm, re);
-    assert PS.PikeActions([LS.Areg(T.Translate(re))]) by {
-      PS.PikeActionsConsIff(LS.Areg(T.Translate(re)), []);
+    assert EL.PikeLkActions([LS.Areg(T.Translate(re))]) by {
+      EL.PikeLkActionsConsIff(LS.Areg(T.Translate(re)), []);
     }
     assert WO.WalkOk([LS.Areg(T.Translate(re))], code, 0, ATR.EaOf(BS.CannotExit));
     // the oracle hypothesis is vacuous here: a plus-fragment regex registers no
@@ -1207,7 +1207,6 @@ module LindenElkMain {
       // restate MainExtraction's preconditions one by one, in its own terms:
       // under {:isolate_assertions} each becomes its own batch, keeping any
       // single Z3 search small (the monolithic call batch ran away)
-      assert BS.BoolTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), BS.CannotExit, t);
       assert LS.IsTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), LG.Empty, WP.Forward, t);
       assert CM.ThreadRegsWf(thread, 2 * R.max_group(R.annotate(raw)) + 2, 1,
                              R.max_quant(R.annotate(raw)) + 1) by {
@@ -1297,7 +1296,10 @@ module LindenElkMain {
                                                     t: LT.Tree, thread: AI.Thread, leaf: LT.Leaf)
     requires NR.PlusFragmentRaw(raw)
     requires T.Latin1Wf(raw)
-    requires BS.BoolTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), BS.CannotExit, t)
+    // (the boolean-tree hypothesis used to sit here too; it was never used —
+    // the spec tree arrives as `IsTree` — and after the campaign the entry
+    // carries the WIDENED relation, so dropping it keeps this lemma out of the
+    // boolean layer entirely)
     requires LS.IsTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), LG.Empty, WP.Forward, t)
     requires CM.ThreadRegsWf(thread, 2 * R.max_group(R.annotate(raw)) + 2, 1,
                              R.max_quant(R.annotate(raw)) + 1)
