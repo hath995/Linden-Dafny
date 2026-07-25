@@ -1250,7 +1250,10 @@ module LindenElkMain {
       assert AI.FFullMatch(raw, str)
           == Some(AI.filter_reset(R.annotate(raw), thread.capture_regs, thread.look_regs,
                                   thread.quant_regs, -1));
-      MainExtraction(raw, str, t, thread, leaf);
+      // every precondition is restated verbatim just above, so with the axiom
+      // space collapsed the call's check closes by congruence — without the
+      // hide, this ONE batch ran away past 900s while all 1213 others passed
+      { hide *; MainExtraction(raw, str, t, thread, leaf); }
     }
   }
 
