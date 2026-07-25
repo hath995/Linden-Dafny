@@ -418,9 +418,12 @@ transfer lemma).
 ### 6.4 C5 — spec-side duality (linden-reasoning; engine-free) [CORE DONE — SpanDuality.dfy; glue remains]
 
 **Done:** `MatchesL` + `SpanDualityComplete`/`SpanDualitySound` (see §5).
-**Remaining glue (next up):** (a) refresh linden-equiv's stale
-`deps/linden-reasoning.doo` (it predates SpanDuality.dfy — `lem build` at
-the workspace root, or the hand-built-doo bridge); (b) the transfer
+**(a) DONE — the dep refresh** (dev-environment step, nothing tracked):
+linden-equiv's `deps/linden-reasoning.doo` predated SpanDuality.dfy; refreshed
+via the `lem pack` recipe in §7 ("Sibling .doo freshness"). Confirmed: both
+capstones are callable from a linden-equiv client, and the whole package
+re-verifies at **7373 verified, 0 errors** against the fresh .doo.
+**Remaining glue (next up):** (b) the transfer
 `OB.Matches(bodyAST, str, i, j) ⟺ MatchesL(rer, Translate(bodyAST), str, i, j)`
 in linden-equiv — structural induction via `CharSemAgree` (!ignoreCase +
 `CharacterWfL1` from `Latin1Wf`) and `AnchorSemAgree` (!multiline; note
@@ -547,6 +550,26 @@ Dafny.exe verify src/Equiv/<file>.dfy \
 Dafny 4.11 (PATH `dafny` is 4.10 and cannot load the 4.11 `.doo`s):
 `$env:USERPROFILE\.vscode\extensions\dafny-lang.ide-vscode-3.5.4\out\resources\4.11.0\github\dafny\Dafny.exe`.
 Full workspace: `lem build` at the repo root (~8 min, ~14 GB).
+
+**Sibling `.doo` freshness** — the trap when the campaign spans two packages.
+`lem restore`/`lem build` inside a member fetch
+siblings from the REGISTRY at the locked version, so unpublished local work in
+a sibling is invisible to its consumers: after SpanDuality.dfy landed in
+linden-reasoning, `linden-equiv/deps/linden-reasoning.doo` still held the
+published 1.0.0 program and no amount of restoring changed that. `lem build`
+at the workspace root does rebuild the graph, but it also re-verifies
+linden-equiv and so eats the 10-minute wall. The cheap refresh:
+
+```
+cd linden-reasoning && lem pack     # verifies, then emits a verified .doo
+cp linden-reasoning/linden-reasoning-<ver>.doo \
+   linden-equiv/deps/linden-reasoning.doo    # consumer uses the UNVERSIONED name
+```
+
+`lem pack` writes its artifacts directly into the package dir (not
+`.lem-publish/` as `--help` says); they are gitignored. To tell stale from
+fresh, a `.doo` is a zip — `unzip -q` it and grep `program` for the module or
+lemma name you expect.
 
 **Module homes** (for new files' imports — these cost a round-trip each when
 guessed): `get_instr`/`size` = `Bytecode`; `build_cdn_v`/`cdn_get`/
