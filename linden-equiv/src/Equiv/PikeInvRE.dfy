@@ -2538,6 +2538,242 @@ module LindenElkPikeInv {
   // (captures INSIDE lookarounds) it stops being the identity.
   // ===========================================================================
 
+  // ==========================================================================
+  // Quant clocks INSIDE lookaround bodies are invisible to the filter.
+  //
+  // The lookaround CAPTURE pass replays the body's bytecode and keeps the
+  // resulting quant bank, so the clocks of the body's own quantifiers change.
+  // They cannot move the answer: `filter_capture` reaches a lookaround node and
+  // stops there (its body is capture-free, so both branches are the identity),
+  // which means only the quant ids OUTSIDE lookaround bodies are ever read.
+  // ==========================================================================
+
+  // ==========================================================================
+  // Which quant ids a compiled block can write. Together with ClockMono's
+  // quant frame this pins the lookaround capture pass: its replay writes only
+  // the BODY's ids, and those are exactly the ones the filter never reads.
+  // ==========================================================================
+
+  /** Every `SetQuantToClock` inside a compiled block targets one of that
+      regex's own quant ids. */
+  lemma QuantWriteIdsRE(re: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.LookBehindFragmentRE(re) && QuantUnique(re)
+    requires NR.NfaRepRE(re, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetQuantToClock? ==>
+      var q := NR.GetPcRE(code, pc).value.sq;
+      q >= 0 && (q as nat) in QuantIds(re)
+    decreases CP.rsize(re), 1
+  {
+    match re
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_lookaround(_, _, _) =>
+    case Re_alt(r1, r2) =>
+      var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
+        && NR.NfaRepRE(r1, code, start + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
+        && NR.NfaRepRE(r2, code, e1 + 1, endl);
+      NR.NfaRepIncrRE(r1, code, start + 1, e1);
+      NR.NfaRepIncrRE(r2, code, e1 + 1, endl);
+      if pc == start {
+      } else if pc < e1 {
+        QuantWriteIdsRE(r1, code, start + 1, e1, pc);
+      } else if pc == e1 {
+      } else {
+        QuantWriteIdsRE(r2, code, e1 + 1, endl, pc);
+      }
+    case Re_con(r1, r2) =>
+      var e1: nat :| NR.NfaRepRE(r1, code, start, e1) && NR.NfaRepRE(r2, code, e1, endl);
+      NR.NfaRepIncrRE(r1, code, start, e1);
+      NR.NfaRepIncrRE(r2, code, e1, endl);
+      if pc < e1 {
+        QuantWriteIdsRE(r1, code, start, e1, pc);
+      } else {
+        QuantWriteIdsRE(r2, code, e1, endl, pc);
+      }
+    case Re_capture(cid, r1) =>
+      var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
+        && NR.NfaRepRE(r1, code, start + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+        && endl == e1 + 1;
+      NR.NfaRepIncrRE(r1, code, start + 1, e1);
+      if pc == start {
+      } else if pc < e1 {
+        QuantWriteIdsRE(r1, code, start + 1, e1, pc);
+      } else {
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      if q.min == 0 && q.max == None {
+        var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
+          && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+          && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+          && NR.NfaRepRE(r1, code, start + 3, e1)
+          && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+          && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
+          && endl == e1 + 2;
+        NR.NfaRepIncrRE(r1, code, start + 3, e1);
+        if pc <= start + 2 {
+        } else if pc < e1 {
+          QuantWriteIdsRE(r1, code, start + 3, e1, pc);
+        } else {
+        }
+      } else if q.max.Some? {
+        var em := NR.NfaRepREQuantInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl);
+        if pc < em {
+          QuantWriteIdsMinRE(q.min as nat, qid, r1, code, start, em, pc);
+        } else {
+          QuantWriteIdsOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
+        }
+      } else {
+        var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 1, e1);
+        if pc < em {
+          QuantWriteIdsMinRE((q.min - 1) as nat, qid, r1, code, start, em, pc);
+        } else if pc == em {
+        } else if pc < e1 {
+          QuantWriteIdsRE(r1, code, em + 1, e1, pc);
+        } else {
+        }
+      }
+  }
+
+  /** `QuantWriteIdsRE` for the forced-copy chain. */
+  lemma QuantWriteIdsMinRE(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.LookBehindFragmentRE(r1) && QuantUnique(r1)
+    requires NR.NfaRepMinRE(k, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetQuantToClock? ==>
+      var q := NR.GetPcRE(code, pc).value.sq;
+      q == qid || (q >= 0 && (q as nat) in QuantIds(r1))
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetQuantToClock(qid, false))
+      && NR.NfaRepRE(r1, code, start + 1, e1)
+      && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
+    NR.NfaRepIncrRE(r1, code, start + 1, e1);
+    NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
+    if pc == start {
+    } else if pc < e1 {
+      QuantWriteIdsRE(r1, code, start + 1, e1, pc);
+    } else {
+      QuantWriteIdsMinRE(k - 1, qid, r1, code, e1, endl, pc);
+    }
+  }
+
+  /** `QuantWriteIdsRE` for the optional-layer chain. */
+  lemma QuantWriteIdsOptRE(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.LookBehindFragmentRE(r1) && QuantUnique(r1)
+    requires NR.NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetQuantToClock? ==>
+      var q := NR.GetPcRE(code, pc).value.sq;
+      q == qid || (q >= 0 && (q as nat) in QuantIds(r1))
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| NR.GetPcRE(code, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
+      && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+      && NR.NfaRepRE(r1, code, start + 3, e1)
+      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+      && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+    NR.NfaRepIncrRE(r1, code, start + 3, e1);
+    NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+    if pc <= start + 2 {
+    } else if pc < e1 {
+      QuantWriteIdsRE(r1, code, start + 3, e1, pc);
+    } else if pc == e1 {
+    } else {
+      QuantWriteIdsOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl, pc);
+    }
+  }
+
+  /** `QuantIds` that does NOT descend into lookaround bodies — the ids the
+      filter can actually consult. */
+  ghost function QuantIdsOutsideLooks(r: R.regex): set<nat>
+    decreases r
+  {
+    match r
+    case Re_empty => {}
+    case Re_character(_) => {}
+    case Re_anchor(_) => {}
+    case Re_alt(r1, r2) => QuantIdsOutsideLooks(r1) + QuantIdsOutsideLooks(r2)
+    case Re_con(r1, r2) => QuantIdsOutsideLooks(r1) + QuantIdsOutsideLooks(r2)
+    case Re_quant(_, qid, _, r1) =>
+      (if qid >= 0 then {qid as nat} else {}) + QuantIdsOutsideLooks(r1)
+    case Re_capture(_, r1) => QuantIdsOutsideLooks(r1)
+    case Re_lookaround(_, _, _) => {}
+  }
+
+  /** THE frame: `filter_capture` only reads quant clocks at ids outside
+      lookaround bodies, so agreeing there is agreeing everywhere that
+      matters. */
+  lemma FilterCaptureQcFrameOutside(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>,
+                                    qc: seq<int>, qc2: seq<int>, M: int, j: int)
+    requires NR.LookBehindFragmentRE(r)
+    requires forall q0: nat :: q0 in QuantIdsOutsideLooks(r)
+                               ==> AI.get_idx(qc, q0) == AI.get_idx(qc2, q0)
+    ensures AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, M), j)
+         == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc2, M), j)
+    decreases r, 0
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      FilterCaptureFullOutside(r1, cr, cc, lc, qc, qc2, M);
+      FilterCaptureQcFrameOutside(r2, AI.filter_capture(r1, cr, cc, lc, qc, M),
+                                  cc, lc, qc, qc2, M, j);
+    case Re_con(r1, r2) =>
+      FilterCaptureFullOutside(r1, cr, cc, lc, qc, qc2, M);
+      FilterCaptureQcFrameOutside(r2, AI.filter_capture(r1, cr, cc, lc, qc, M),
+                                  cc, lc, qc, qc2, M, j);
+    case Re_quant(nul, qid, q, r1) =>
+      assert AI.get_idx(qc, qid) == AI.get_idx(qc2, qid);
+      var qv := AI.get_idx(qc, qid);
+      if qv < M {
+      } else {
+        FilterCaptureQcFrameOutside(r1, cr, cc, lc, qc, qc2, qv, j);
+      }
+    case Re_capture(cid, r1) =>
+      var start := AI.get_idx(cc, CP.start_reg(cid));
+      if start < 0 {
+      } else if start < M {
+      } else {
+        FilterCaptureQcFrameOutside(r1, cr, cc, lc, qc, qc2, M, j);
+      }
+    case Re_lookaround(lid, la, r1) =>
+      FilterAtLookaround(lid, la, r1, cr, cc, lc, qc, M);
+      FilterAtLookaround(lid, la, r1, cr, cc, lc, qc2, M);
+    case _ =>
+  }
+
+  /** The whole-sequence form of `FilterCaptureQcFrameOutside` (the `Re_alt` /
+      `Re_con` steps need the prefix's OUTPUT to coincide, not just one
+      slot). */
+  lemma FilterCaptureFullOutside(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>,
+                                 qc: seq<int>, qc2: seq<int>, M: int)
+    requires NR.LookBehindFragmentRE(r)
+    requires forall q0: nat :: q0 in QuantIdsOutsideLooks(r)
+                               ==> AI.get_idx(qc, q0) == AI.get_idx(qc2, q0)
+    ensures AI.filter_capture(r, cr, cc, lc, qc, M) == AI.filter_capture(r, cr, cc, lc, qc2, M)
+    decreases r, 1
+  {
+    var a := AI.filter_capture(r, cr, cc, lc, qc, M);
+    var b := AI.filter_capture(r, cr, cc, lc, qc2, M);
+    FilterCaptureLen(r, cr, cc, lc, qc, M);
+    FilterCaptureLen(r, cr, cc, lc, qc2, M);
+    assert |a| == |cr| == |b|;
+    forall i: nat | 0 <= i < |a| ensures a[i] == b[i] {
+      FilterCaptureQcFrameOutside(r, cr, cc, lc, qc, qc2, M, i);
+      assert AI.get_idx(a, i) == a[i] && AI.get_idx(b, i) == b[i];
+    }
+  }
+
   /** A capture-free regex has no capture ids. */
   lemma CaptureFreeNoCapIds(r: R.regex)
     requires NR.CaptureFreeRE(r)

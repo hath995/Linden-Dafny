@@ -31,6 +31,7 @@ module LindenElkMain {
   import RC = Charclasses
   import AR = LindenElkActionsRep
   import EL = LindenElkEntryLk
+  import SD = LindenSpanDuality
   import LL = LindenElkLookLeaves
   import T = LindenElkTranslate
   import CM = LindenElkClockMono
@@ -459,7 +460,8 @@ module LindenElkMain {
       thread. */
   least lemma FirstLeafClosed(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input,
                               b: BS.LoopBool, t: LT.Tree, gm: LG.GroupMap, leaf: LT.Leaf)
-    requires BS.BoolTree(rer, acts, inp, b, t)
+    requires EL.BoolTreeLk(rer, acts, inp, b, t)
+    requires EL.PikeLkActions(acts)
     requires OpenOf(gm) <= PendingCloses(acts)
     requires LT.TreeRes(t, gm, inp, WP.Forward) == Some(leaf)
     ensures ClosedGm(leaf.1)
@@ -614,8 +616,28 @@ module LindenElkMain {
             assert t == LT.Mismatch;
             assert false;
           }
-        case LookaroundR(_, _) =>
-          assert false;
+        case LookaroundR(lk, r1) =>
+          // the gate is zero-width and, for an L1 (group-free) body, hands the
+          // continuation the very map it was entered with — so the pending-
+          // closes invariant carries straight through
+          assert EL.PikeLkRegex(r) && SD.GroupFreeL(r1);
+          match t {
+            case LK(lk2, tlk, tc) =>
+              assert PendingCloses(acts) == PendingCloses(cont);
+              LL.ComputeTrGmNeutral(rer, r1, inp, LG.Empty, L.LkDir(lk));
+              assert LL.GmNeutralTree(tlk);
+              var sub := LT.TreeLeaves(tlk, gm, inp, L.LkDir(lk));
+              LL.GmNeutralLeaves(tlk, gm, inp, L.LkDir(lk));
+              LT.FirstTreeLeaf(tlk, gm, inp, L.LkDir(lk));
+              if L.Positivity(lk) {
+                assert |sub| > 0;              // else TreeRes(t, ..) would be None
+                assert sub[0].1 == gm;
+              }
+              FirstLeafClosed(rer, cont, inp, b, tc, gm, leaf);
+            case LKFail(lk2, tlk) =>
+              assert false;                    // LKFail has no leaves
+            case _ =>
+          }
         case Backreference(_) =>
           assert false;
     }
@@ -1009,7 +1031,7 @@ module LindenElkMain {
     requires T.Latin1Wf(raw)
     ensures LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)))
   {
-    hide T.TransWf, NR.PlusFragmentRE, NR.LookBehindFragmentRE, NR.CaptureFreeRE, NR.LookFreeRE, NR.LookBehindFragmentRaw, NR.CaptureFreeRaw, NR.LookFreeRaw;
+    hide T.TransWf, NR.PlusFragmentRE, NR.LookBehindFragmentRE, NR.CaptureFreeRE, NR.LookFreeRE, NR.LookBehindFragmentRaw, NR.CaptureFreeRaw, NR.LookFreeRaw, EL.PikeLkRegex, EL.PikeLkActions, EL.LkGateOk, SD.GroupFreeL;
     var ast := R.annotate(raw);
     var re := R.lazy_prefix(ast);
     var rer := LES.TheRer(raw);
@@ -1207,6 +1229,7 @@ module LindenElkMain {
       // restate MainExtraction's preconditions one by one, in its own terms:
       // under {:isolate_assertions} each becomes its own batch, keeping any
       // single Z3 search small (the monolithic call batch ran away)
+      assert EL.BoolTreeLk(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), BS.CannotExit, t);
       assert LS.IsTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), LG.Empty, WP.Forward, t);
       assert CM.ThreadRegsWf(thread, 2 * R.max_group(R.annotate(raw)) + 2, 1,
                              R.max_quant(R.annotate(raw)) + 1) by {
@@ -1296,10 +1319,7 @@ module LindenElkMain {
                                                     t: LT.Tree, thread: AI.Thread, leaf: LT.Leaf)
     requires NR.PlusFragmentRaw(raw)
     requires T.Latin1Wf(raw)
-    // (the boolean-tree hypothesis used to sit here too; it was never used —
-    // the spec tree arrives as `IsTree` — and after the campaign the entry
-    // carries the WIDENED relation, so dropping it keeps this lemma out of the
-    // boolean layer entirely)
+    requires EL.BoolTreeLk(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), BS.CannotExit, t)
     requires LS.IsTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), LG.Empty, WP.Forward, t)
     requires CM.ThreadRegsWf(thread, 2 * R.max_group(R.annotate(raw)) + 2, 1,
                              R.max_quant(R.annotate(raw)) + 1)
@@ -1312,7 +1332,7 @@ module LindenElkMain {
                                   thread.quant_regs, -1))
     ensures LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)))
   {
-    hide T.TransWf, NR.PlusFragmentRE, NR.LookBehindFragmentRE, NR.CaptureFreeRE, NR.LookFreeRE, NR.LookBehindFragmentRaw, NR.CaptureFreeRaw, NR.LookFreeRaw;
+    hide T.TransWf, NR.PlusFragmentRE, NR.LookBehindFragmentRE, NR.CaptureFreeRE, NR.LookFreeRE, NR.LookBehindFragmentRaw, NR.CaptureFreeRaw, NR.LookFreeRaw, EL.PikeLkRegex, EL.PikeLkActions, EL.LkGateOk, SD.GroupFreeL;
     var ast := R.annotate(raw);
     var re := R.lazy_prefix(ast);
     var rer := LES.TheRer(raw);
@@ -1330,6 +1350,11 @@ module LindenElkMain {
     // closedness of the leaf gm
     assert LT.TreeRes(t, LG.Empty, inp, WP.Forward) == Some(leaf);
     assert OpenOf(LG.Empty) <= PendingCloses([LS.Areg(T.Translate(re))]);
+    NR.PlusIsLookBehindFragmentRE(re);
+    EL.TranslateFragmentPikeLk(re);
+    assert EL.PikeLkActions([LS.Areg(T.Translate(re))]) by {
+      EL.PikeLkActionsConsIff(LS.Areg(T.Translate(re)), []);
+    }
     FirstLeafClosed(rer, [LS.Areg(T.Translate(re))], inp, BS.CannotExit, t, LG.Empty, leaf);
     assert ClosedGm(leaf.1);
 
