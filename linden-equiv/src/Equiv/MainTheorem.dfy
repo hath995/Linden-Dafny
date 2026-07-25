@@ -5,6 +5,7 @@
 include "PikeSimRE.dfy"
 include "WalkOkEntry.dfy"
 include "LookCapture.dfy"
+include "OracleEntry.dfy"
 
 /** The top-level equivalence theorem: `MainTheorem` proves RegElk's compiled,
     executable engine (`FFullMatch`) agrees with the Linden/Warblre tree
@@ -37,6 +38,7 @@ module LindenElkMain {
   import LTB = LindenElkLookTables
   import SD = LindenSpanDuality
   import LL = LindenElkLookLeaves
+  import OE = LindenElkOracleEntry
   import T = LindenElkTranslate
   import CM = LindenElkClockMono
   import NI = LindenElkNestInv
@@ -720,7 +722,7 @@ module LindenElkMain {
   /** Builds the quantifier half of the `AR.QMap` for `re`: maps each quant id
       to the capture groups defined by its body (`L.DefGroups` of the translated
       body), by walking `re`'s quant nodes. The lookaround half is built
-      separately (`LmOfRE`) and the two are paired at the assembly. */
+      separately (`OE.LmOf`) and the two are paired at the assembly. */
   ghost function QmOfRE(re: R.regex): map<int, LG.GroupSet>
     requires T.TransWf(re)
     decreases re
@@ -742,37 +744,20 @@ module LindenElkMain {
       `LT.LookUnique` analogue of `PIV.QuantUnique`; the current top-level
       gate is lookaround-free, where `AR.PlusFragmentLmapOk` discharges
       `LmapOk` outright.) */
-  ghost function LmOfRE(re: R.regex): map<int, (L.Lookaround, L.Regex)>
-    requires T.TransWf(re)
-    decreases re
+  /** `LmOf(lazy_prefix(ast))` is `LmOf(ast)`: the prefix is a quantified
+      any-char, which registers no lookaround row. Lets the entry lemmas, which
+      are stated about the compiled ast, apply to the table built for `re`. */
+  lemma LmOfLazyPrefix(ast: R.regex)
+    requires T.TransWf(R.lazy_prefix(ast)) && T.TransWf(ast)
+    ensures OE.LmOf(R.lazy_prefix(ast)) == OE.LmOf(ast)
   {
-    match re
-    case Re_empty => map[]
-    case Re_character(_) => map[]
-    case Re_anchor(_) => map[]
-    case Re_alt(r1, r2) => LmOfRE(r1) + LmOfRE(r2)
-    case Re_con(r1, r2) => LmOfRE(r1) + LmOfRE(r2)
-    case Re_quant(_, _, _, r1) => LmOfRE(r1)
-    case Re_capture(_, r1) => LmOfRE(r1)
-    case Re_lookaround(lid, la, r1) =>
-      LmOfRE(r1)[lid := (T.TrLookaround(la), T.Translate(r1))]
+    var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false),
+                          R.Re_character(R.Dot));
+    assert R.lazy_prefix(ast) == R.Re_con(pre, ast);
+    OE.LookFreeLmOfEmpty(pre);
+    assert map[] + OE.LmOf(ast) == OE.LmOf(ast);
   }
 
-  /** A lookaround-free regex contributes no row to the lookaround table — so
-      the oracle hypothesis the entry construction wants is vacuous while the
-      top-level gate is still the plus fragment. */
-  lemma LmOfRELookFree(re: R.regex)
-    requires T.TransWf(re) && NR.LookFreeRE(re)
-    ensures LmOfRE(re) == map[]
-    decreases re
-  {
-    match re
-    case Re_alt(r1, r2) => LmOfRELookFree(r1); LmOfRELookFree(r2);
-    case Re_con(r1, r2) => LmOfRELookFree(r1); LmOfRELookFree(r2);
-    case Re_quant(_, _, _, r1) => LmOfRELookFree(r1);
-    case Re_capture(_, r1) => LmOfRELookFree(r1);
-    case _ =>
-  }
 
   /** `QmOfRE(re)`'s domain is exactly `re`'s quant ids (`PIV.QuantIds`). */
   lemma QmOfREDom(re: R.regex)
@@ -1056,7 +1041,7 @@ module LindenElkMain {
     PIV.SpecRegexQuantUnique(raw);         // QuantUnique(re)
     // the oracle view is part of the static table record; the main pass never
     // writes it (`crv` below is the same compilation, so `qm.ov == ov`)
-    var qm := AR.QMap(QmOfRE(re), LmOfRE(re), AI.FBuildOracle(CP.FFullCompilation(ast), str));
+    var qm := AR.QMap(QmOfRE(re), OE.LmOf(re), AI.FBuildOracle(CP.FFullCompilation(ast), str));
     QmOfREEntries(re);
     QmapOkFromEntries(re, qm);
     // the simulation gate is now the lookbehind fragment; a plus-fragment
@@ -1080,7 +1065,9 @@ module LindenElkMain {
     assert R.max_group(re) == maxcap;
     assert R.max_quant(re) == R.imax(0, maxquant) == maxquant;
     var ncap := 2 * maxcap + 2;
-    var nlook := 1;
+    FragmentMaxLook(ast);
+    var nlook := R.max_lookaround(ast) + 1;
+    assert nlook == 1;
     var nquant := maxquant + 1;
     assert PSM.SizesOkRE(re, ncap, nlook, nquant);
     assert ngroups == (maxcap + 1) as nat;
@@ -1122,7 +1109,7 @@ module LindenElkMain {
     // the oracle hypothesis is vacuous here: a plus-fragment regex registers no
     // lookaround row, so the table constrains nothing
     AR.PlusFragmentLookFree(re);
-    LmOfRELookFree(re);
+    OE.LookFreeLmOfEmpty(re);
     assert qm.looks == map[];
     assert LL.OracleOkSuffix(rer, qm, inp);
     var tstar := ATR.ActionsTreeRepRE(rer, qm, [LS.Areg(T.Translate(re))], code, 0, inp, BS.CannotExit, t);
@@ -1250,7 +1237,8 @@ module LindenElkMain {
       // single Z3 search small (the monolithic call batch ran away)
       assert EL.BoolTreeLk(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), BS.CannotExit, t);
       assert LS.IsTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), LG.Empty, WP.Forward, t);
-      assert CM.ThreadRegsWf(thread, 2 * R.max_group(R.annotate(raw)) + 2, 1,
+      assert CM.ThreadRegsWf(thread, 2 * R.max_group(R.annotate(raw)) + 2,
+                             R.max_lookaround(R.annotate(raw)) + 1,
                              R.max_quant(R.annotate(raw)) + 1) by {
         // semantically the already-established line-1132 fact modulo the
         // `ast` let; with every definition hidden the solver has nothing to
@@ -1258,6 +1246,7 @@ module LindenElkMain {
         // in ThreadRegsWf's register quantifiers)
         hide *;
         assert ast == R.annotate(raw);
+        assert R.max_lookaround(ast) + 1 == nlook;
         assert CM.ThreadRegsWf(thread, ncap, nlook, nquant);
       }
       assert QuantRegsFinal(thread);
@@ -1270,6 +1259,7 @@ module LindenElkMain {
       // every precondition is restated verbatim just above, so with the axiom
       // space collapsed the call's check closes by congruence — without the
       // hide, this ONE batch ran away past 900s while all 1213 others passed
+      NR.PlusIsLookBehindFragmentRaw(raw);
       { hide *; MainExtraction(raw, str, t, thread, leaf); }
     }
   }
@@ -1599,11 +1589,12 @@ module LindenElkMain {
       bridge (`PIV.GmOfCapArrayBridge`). */
   lemma MainExtraction(raw: R.raw_regex, str: string,
                                                     t: LT.Tree, thread: AI.Thread, leaf: LT.Leaf)
-    requires NR.PlusFragmentRaw(raw)
+    requires NR.LookBehindFragmentRaw(raw)
     requires T.Latin1Wf(raw)
     requires EL.BoolTreeLk(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), BS.CannotExit, t)
     requires LS.IsTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), LG.Empty, WP.Forward, t)
-    requires CM.ThreadRegsWf(thread, 2 * R.max_group(R.annotate(raw)) + 2, 1,
+    requires CM.ThreadRegsWf(thread, 2 * R.max_group(R.annotate(raw)) + 2,
+                             R.max_lookaround(R.annotate(raw)) + 1,
                              R.max_quant(R.annotate(raw)) + 1)
     requires QuantRegsFinal(thread)
     requires var re := R.lazy_prefix(R.annotate(raw));
@@ -1622,8 +1613,7 @@ module LindenElkMain {
     var ngroups := LES.NGroups(raw);
     var ncap := 2 * R.max_group(ast) + 2;
     T.AnnotateWf(raw);
-    NR.SpecRegexPlusFragment(raw);
-    NR.PlusIsLookBehindFragmentRE(re);     // the filter lemmas gate on the wider fragment
+    NR.SpecRegexLookBehindFragment(raw);
     var caps := thread.capture_regs;
     var lk := thread.look_regs;
     var qt := thread.quant_regs;
@@ -1632,7 +1622,6 @@ module LindenElkMain {
     // closedness of the leaf gm
     assert LT.TreeRes(t, LG.Empty, inp, WP.Forward) == Some(leaf);
     assert OpenOf(LG.Empty) <= PendingCloses([LS.Areg(T.Translate(re))]);
-    NR.PlusIsLookBehindFragmentRE(re);
     EL.TranslateFragmentPikeLk(re);
     assert EL.PikeLkActions([LS.Areg(T.Translate(re))]) by {
       assert [LS.Areg(T.Translate(re))] == [LS.Areg(T.Translate(re))] + [];
