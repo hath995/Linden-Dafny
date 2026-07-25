@@ -2478,6 +2478,106 @@ module LindenElkPikeInv {
     assert GmOfLive(ast, caps, look, quant).Keys == {};
   }
 
+  // ===========================================================================
+  // The look bank does not steer the denotation (L1: capture-free lookaround
+  // bodies). filter_capture consults the look CLOCKS only at a Re_lookaround
+  // node, where it either filter_alls the body or recurses into it — and for a
+  // capture-free body both alternatives are the identity on the capture
+  // registers. So the engine's `look_regs[lid] := cp` write at a passing
+  // CheckOracle leaves `GmOfLive` (hence `ThreadTracksGm`) untouched. This is
+  // the L1 shape of the campaign's "GmOfLive look-clock branch"; at L3
+  // (captures INSIDE lookarounds) it stops being the identity.
+  // ===========================================================================
+
+  /** A capture-free regex has nothing to erase: `filter_all` is the identity. */
+  lemma FilterAllCaptureFree(r: R.regex, regs: seq<int>)
+    requires NR.CaptureFreeRE(r)
+    ensures AI.filter_all(r, regs) == regs
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => FilterAllCaptureFree(r1, regs); FilterAllCaptureFree(r2, AI.filter_all(r1, regs));
+    case Re_con(r1, r2) => FilterAllCaptureFree(r1, regs); FilterAllCaptureFree(r2, AI.filter_all(r1, regs));
+    case Re_quant(_, _, _, r1) => FilterAllCaptureFree(r1, regs);
+    case Re_lookaround(_, _, r1) => FilterAllCaptureFree(r1, regs);
+    case _ =>
+  }
+
+  /** A capture-free regex filters nothing either — whatever the clocks say. */
+  lemma FilterCaptureCaptureFree(r: R.regex, cap_regs: seq<int>, cap_clocks: seq<int>,
+                                 look_clocks: seq<int>, quant_clocks: seq<int>, maxclock: int)
+    requires NR.CaptureFreeRE(r)
+    ensures AI.filter_capture(r, cap_regs, cap_clocks, look_clocks, quant_clocks, maxclock) == cap_regs
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      FilterCaptureCaptureFree(r1, cap_regs, cap_clocks, look_clocks, quant_clocks, maxclock);
+      FilterCaptureCaptureFree(r2, cap_regs, cap_clocks, look_clocks, quant_clocks, maxclock);
+    case Re_con(r1, r2) =>
+      FilterCaptureCaptureFree(r1, cap_regs, cap_clocks, look_clocks, quant_clocks, maxclock);
+      FilterCaptureCaptureFree(r2, cap_regs, cap_clocks, look_clocks, quant_clocks, maxclock);
+    case Re_quant(_, qid, _, r1) =>
+      FilterAllCaptureFree(r1, cap_regs);
+      FilterCaptureCaptureFree(r1, cap_regs, cap_clocks, look_clocks, quant_clocks,
+                               AI.get_idx(quant_clocks, qid));
+    case Re_lookaround(lid, _, r1) =>
+      FilterAllCaptureFree(r1, cap_regs);
+      FilterCaptureCaptureFree(r1, cap_regs, cap_clocks, look_clocks, quant_clocks, -1);
+    case _ =>
+  }
+
+  /** With capture-free lookaround bodies, `filter_capture` never depends on the
+      look clocks: the only node that reads them yields `cap_regs` on every
+      branch. */
+  lemma FilterCaptureLookIndep(r: R.regex, cap_regs: seq<int>, cap_clocks: seq<int>,
+                               lc1: seq<int>, lc2: seq<int>, quant_clocks: seq<int>, maxclock: int)
+    requires NR.LookBehindFragmentRE(r)
+    ensures AI.filter_capture(r, cap_regs, cap_clocks, lc1, quant_clocks, maxclock)
+         == AI.filter_capture(r, cap_regs, cap_clocks, lc2, quant_clocks, maxclock)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      FilterCaptureLookIndep(r1, cap_regs, cap_clocks, lc1, lc2, quant_clocks, maxclock);
+      FilterCaptureLookIndep(r2, AI.filter_capture(r1, cap_regs, cap_clocks, lc1, quant_clocks, maxclock),
+                             cap_clocks, lc1, lc2, quant_clocks, maxclock);
+    case Re_con(r1, r2) =>
+      FilterCaptureLookIndep(r1, cap_regs, cap_clocks, lc1, lc2, quant_clocks, maxclock);
+      FilterCaptureLookIndep(r2, AI.filter_capture(r1, cap_regs, cap_clocks, lc1, quant_clocks, maxclock),
+                             cap_clocks, lc1, lc2, quant_clocks, maxclock);
+    case Re_quant(_, qid, _, r1) =>
+      FilterCaptureLookIndep(r1, cap_regs, cap_clocks, lc1, lc2, quant_clocks,
+                             AI.get_idx(quant_clocks, qid));
+    case Re_capture(cid, r1) =>
+      FilterCaptureLookIndep(r1, cap_regs, cap_clocks, lc1, lc2, quant_clocks, maxclock);
+      FilterCaptureLookIndep(r1, AI.set_idx(cap_regs, CP.start_reg(cid), -1), cap_clocks,
+                             lc1, lc2, quant_clocks, maxclock);
+    case Re_lookaround(lid, la, r1) =>
+      // every branch of the lookaround node is the identity for capture-free r1
+      FilterAllCaptureFree(r1, cap_regs);
+      FilterCaptureCaptureFree(r1, cap_regs, cap_clocks, lc1, quant_clocks, -1);
+      FilterCaptureCaptureFree(r1, cap_regs, cap_clocks, lc2, quant_clocks, -1);
+    case _ =>
+  }
+
+  /** THE consequence: `GmOfLive` — and so `ThreadTracksGm` — is independent of
+      the look register bank, so a `CheckOracle` pass's `look_regs` write cannot
+      disturb the group-map denotation. */
+  lemma GmOfLiveLookIndep(ast: R.regex, caps: AReg.Regs, look1: AReg.Regs, look2: AReg.Regs,
+                          quant: AReg.Regs)
+    requires NR.LookBehindFragmentRE(ast)
+    ensures GmOfLive(ast, caps, look1, quant) == GmOfLive(ast, caps, look2, quant)
+  {
+    var (cap_regs, cap_clocks) := AReg.as_arrays(caps);
+    var lc1 := AReg.as_arrays(look1).1;
+    var lc2 := AReg.as_arrays(look2).1;
+    var qc := AReg.as_arrays(quant).1;
+    FilterCaptureLookIndep(ast, cap_regs, cap_clocks, lc1, lc2, qc, -1);
+    assert AI.filter_reset(ast, caps, look1, quant, -1)
+        == AI.filter_reset(ast, caps, look2, quant, -1);
+  }
+
   // On a properly closed match (every present group with a set end has
   // end_clock >= start_clock), the live denotation coincides with GmOf — so the
   // final answer, extracted via GmOf + GmOfCapArrayBridge, is unaffected.
