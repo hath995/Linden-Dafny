@@ -167,6 +167,13 @@ module LindenElkActionsTreeRep {
       leaves-agreeing with `t`. One case per `Action`/`Regex` shape; the
       do-while cases plant/dissolve the progress check as described in the
       file header. */
+  // {:isolate_assertions} is LOAD-BEARING here: as one VC this lemma times out
+  // past 600s (measured). It is also the package's dominant cost — ~4300 tiny
+  // batches, ~3800 cpu-seconds — and the way to fix that is to decompose the
+  // LEMMA (its per-shape cases into standalone lemmas with small contexts),
+  // not to split the file: this single lemma owns ~98% of the file's time and
+  // is mutually recursive with AtBackForkTreeRep, so no file split can
+  // separate them.
   lemma {:isolate_assertions} ActionsTreeRepFRE(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code, pc: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree, n: nat)
     returns (tstar: LT.Tree)
     requires EL.PikeLkActions(acts)

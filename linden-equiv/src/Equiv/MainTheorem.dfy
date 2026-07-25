@@ -1026,7 +1026,11 @@ module LindenElkMain {
       pipeline: compile the regex, run the simulation (`PSM.FindMatchSimRE`)
       to pin the winning VM thread to the spec's first leaf, then hand off to
       `MainExtraction` to show the two answers denote the same result. */
-  lemma {:isolate_assertions} MainTheorem(raw: R.raw_regex, str: string)
+  // NO {:isolate_assertions}: with the `hide` bridges below (the ThreadRegsWf
+  // restatement and the MainExtraction call), the monolithic VC verifies in
+  // ~49s, against 6m35s for ~1200 isolated batches. The previous campaign left
+  // this exact question open; measured, the bridges win.
+  lemma MainTheorem(raw: R.raw_regex, str: string)
     requires NR.PlusFragmentRaw(raw)
     requires T.Latin1Wf(raw)
     ensures LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)))
