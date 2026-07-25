@@ -136,7 +136,15 @@ module LindenElkWalkOk {
                   WalkOkF([LS.Areg(r1), LS.Acheck(chk), LS.Areg(qnext)] + cont, c, iterarm + 2, false, n - 1))
                && WalkOkF(cont, c, skiparm, g, n - 1)
          case _ => true)
-    case LookaroundR(_, _) => true   // not pike: never walked
+    // the lookaround gate: one zero-width instruction, so the walk continues
+    // at pc + 1 with the flag unchanged (the body is not walked here — it
+    // lives in the per-lid build program). Guarded on the instruction, like
+    // every other arm: at a pc holding something else there is nothing to say.
+    case LookaroundR(_, _) =>
+      (match NR.GetPcRE(c, pc)
+       case Some(CheckOracle(_)) => WalkOkF(cont, c, pc + 1, g, n - 1)
+       case Some(NegCheckOracle(_)) => WalkOkF(cont, c, pc + 1, g, n - 1)
+       case _ => true)
     case Backreference(_) => true    // not pike: never walked
   }
 
@@ -237,6 +245,23 @@ module LindenElkWalkOk {
     requires WalkOk(acts, c, pc, g)
     requires |acts| > 0 && acts[0].Areg? && acts[0].r.AnchorR?
     requires NR.GetPcRE(c, pc).Some? && NR.GetPcRE(c, pc).value.AnchorAssertion?
+    ensures WalkOk(acts[1..], c, pc + 1, g)
+  {
+    forall n: nat {:trigger WalkOkF(acts[1..], c, pc + 1, g, n)} ensures WalkOkF(acts[1..], c, pc + 1, g, n) {
+      assert WalkOkF(acts, c, pc, g, n + 1);
+      if |acts| > 0 && acts[0].Areg? {
+        assert WalkOkRegF(acts[0].r, acts[1..], c, pc, g, n + 1);
+      }
+    }
+  }
+
+  /** `WalkOkAnchor` for the lookaround gate: zero-width, so the continuation's
+      guard sits at `pc + 1` with the same flag. */
+  lemma WalkOkLookaround(acts: LS.Actions, c: RB.code, pc: nat, g: bool)
+    requires WalkOk(acts, c, pc, g)
+    requires |acts| > 0 && acts[0].Areg? && acts[0].r.LookaroundR?
+    requires NR.GetPcRE(c, pc).Some?
+             && (NR.GetPcRE(c, pc).value.CheckOracle? || NR.GetPcRE(c, pc).value.NegCheckOracle?)
     ensures WalkOk(acts[1..], c, pc + 1, g)
   {
     forall n: nat {:trigger WalkOkF(acts[1..], c, pc + 1, g, n)} ensures WalkOkF(acts[1..], c, pc + 1, g, n) {

@@ -54,7 +54,7 @@ module LindenElkWalkOkEntry {
       translation is walk-transparent: every non-empty shape pins a non-`Jmp`
       instruction at its head. */
   lemma NfaRepREPins(re: R.regex, c: RB.code, pc1: nat, pc2: nat)
-    requires NR.PlusFragmentRE(re) && T.TransWf(re)
+    requires NR.LookBehindFragmentRE(re) && T.TransWf(re)
     requires NR.NfaRepRE(re, c, pc1, pc2)
     requires NR.GetPcRE(c, pc1).Some? && NR.GetPcRE(c, pc1).value.Jmp?
     ensures pc1 == pc2 && TransparentL(T.Translate(re))
@@ -240,7 +240,7 @@ module LindenElkWalkOkEntry {
       block's entry. Structural on `re`; the knots (star back-Jmp, do-while
       backward fork) recurse at strictly smaller fuel via the rest lemmas. */
   lemma WalkOkCompF(n: nat, re: R.regex, c: RB.code, pc1: nat, pc2: nat, cont: LS.Actions, g: bool)
-    requires NR.PlusFragmentRE(re) && T.TransWf(re)
+    requires NR.LookBehindFragmentRE(re) && T.TransWf(re)
     requires NR.NfaRepRE(re, c, pc1, pc2)
     requires forall gp: bool, mm: nat {:trigger WO.WalkOkF(cont, c, pc2, gp, mm)} :: mm < n ==> WO.WalkOkF(cont, c, pc2, gp, mm)
     ensures WO.WalkOkF([LS.Areg(T.Translate(re))] + cont, c, pc1, g, n)
@@ -346,8 +346,12 @@ module LindenElkWalkOkEntry {
       assert WO.WalkOkF([LS.Areg(tr1), LS.Aclose(gid)] + cont, c, pc1 + 1, g, n - 1);
       assert WO.WalkOkRegF(trre, cont, c, pc1, g, n);
       assert WO.WalkOkF(tgt, c, pc1, g, n);
-    case Re_lookaround(_, _, _) =>
-      // excluded by PlusFragmentRE
+    case Re_lookaround(lid, la, r1) =>
+      // the gate: one zero-width instruction, so the walk guard is just the
+      // continuation's guard one pc later — which the hypothesis supplies
+      assert pc2 == pc1 + 1;
+      assert WO.WalkOkF(cont, c, pc1 + 1, g, n - 1);
+      assert WO.WalkOkRegF(trre, cont, c, pc1, g, n);
     case Re_quant(nul, qid, q, r1) =>
       if q.min == 0 && q.max == None {
         // the star
@@ -410,7 +414,7 @@ module LindenElkWalkOkEntry {
       is guarded at each copy head; bottoms out in the optional layers. */
   lemma WalkOkMinChainF(n: nat, k: nat, kx: nat, greedy: bool, qid: R.quantid, r1: R.regex,
                         c: RB.code, pc1: nat, em: nat, pc2: nat, cont: LS.Actions, g: bool)
-    requires NR.PlusFragmentRE(r1) && T.TransWf(r1)
+    requires NR.LookBehindFragmentRE(r1) && T.TransWf(r1)
     requires NR.NfaRepMinRE(k, qid, r1, c, pc1, em)
     requires NR.NfaRepOptRE(kx, greedy, qid, r1, c, em, pc2)
     requires forall gp: bool, mm: nat {:trigger WO.WalkOkF(cont, c, pc2, gp, mm)} :: mm < n ==> WO.WalkOkF(cont, c, pc2, gp, mm)
@@ -448,7 +452,7 @@ module LindenElkWalkOkEntry {
       transparent. */
   lemma WalkOkOptChainF(n: nat, k: nat, greedy: bool, qid: R.quantid, r1: R.regex,
                         c: RB.code, pc1: nat, pc2: nat, cont: LS.Actions, g: bool)
-    requires NR.PlusFragmentRE(r1) && T.TransWf(r1)
+    requires NR.LookBehindFragmentRE(r1) && T.TransWf(r1)
     requires NR.NfaRepOptRE(k, greedy, qid, r1, c, pc1, pc2)
     requires forall gp: bool, mm: nat {:trigger WO.WalkOkF(cont, c, pc2, gp, mm)} :: mm < n ==> WO.WalkOkF(cont, c, pc2, gp, mm)
     ensures WO.WalkOkF([LS.Areg(L.Quantified(greedy, 0, LN.NN(k), T.Translate(r1)))] + cont, c, pc1, g, n)
@@ -510,7 +514,7 @@ module LindenElkWalkOkEntry {
       layer's chain. */
   lemma WalkOkOptRestF(m: nat, k: nat, greedy: bool, qid: R.quantid, r1: R.regex,
                        c: RB.code, e1: nat, pc2: nat, cont: LS.Actions, gp: bool, chk: LC.Input)
-    requires NR.PlusFragmentRE(r1) && T.TransWf(r1)
+    requires NR.LookBehindFragmentRE(r1) && T.TransWf(r1)
     requires NR.GetPcRE(c, e1) == Some(RB.EndLoop)
     requires NR.NfaRepOptRE(k, greedy, qid, r1, c, e1 + 1, pc2)
     requires forall gp2: bool, mm: nat {:trigger WO.WalkOkF(cont, c, pc2, gp2, mm)} :: mm < m ==> WO.WalkOkF(cont, c, pc2, gp2, mm)
@@ -532,7 +536,7 @@ module LindenElkWalkOkEntry {
       KNOT re-enters the star head at strictly smaller fuel. */
   lemma WalkOkStarRestF(m: nat, re: R.regex, c: RB.code, pc1: nat, pc2: nat, e1: nat,
                         cont: LS.Actions, gp: bool, chk: LC.Input)
-    requires NR.PlusFragmentRE(re) && T.TransWf(re)
+    requires NR.LookBehindFragmentRE(re) && T.TransWf(re)
     requires NR.NfaRepRE(re, c, pc1, pc2)
     requires NR.GetPcRE(c, e1) == Some(RB.EndLoop)
     requires NR.GetPcRE(c, e1 + 1) == Some(RB.Jmp(pc1))
@@ -567,7 +571,7 @@ module LindenElkWalkOkEntry {
   lemma WalkOkPlusChainF(n: nat, k: nat, greedy: bool, qid: R.quantid, r1: R.regex,
                          c: RB.code, pc1: nat, em: nat, e1: nat, pc2: nat, cont: LS.Actions, g: bool)
     requires k >= 1
-    requires NR.PlusFragmentRE(r1) && T.TransWf(r1)
+    requires NR.LookBehindFragmentRE(r1) && T.TransWf(r1)
     requires NR.NfaRepMinRE(k - 1, qid, r1, c, pc1, em)
     requires NR.GetPcRE(c, em) == Some(RB.SetQuantToClock(qid, false))
     requires NR.NfaRepRE(r1, c, em + 1, e1)
@@ -624,7 +628,7 @@ module LindenElkWalkOkEntry {
       strictly smaller fuel) and the skip onto the exit arm. */
   lemma WalkOkDoWhileRestF(m: nat, greedy: bool, qid: R.quantid, r1: R.regex,
                            c: RB.code, em: nat, e1: nat, pc2: nat, cont: LS.Actions, gp: bool, chk: LC.Input)
-    requires NR.PlusFragmentRE(r1) && T.TransWf(r1)
+    requires NR.LookBehindFragmentRE(r1) && T.TransWf(r1)
     requires NR.NfaRepRE(r1, c, em + 1, e1)
     requires NR.GetPcRE(c, e1) == Some(if greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
     requires pc2 == e1 + 1
@@ -675,13 +679,13 @@ module LindenElkWalkOkEntry {
   /** Compiled plus-fragment code satisfies the walk guard for the entry
       continuation `[Areg(Translate(re))]` at pc 0, at every guard bit. */
   lemma WalkOkEntry(re: R.regex)
-    requires NR.PlusFragmentRE(re) && T.TransWf(re)
+    requires NR.LookBehindFragmentRE(re) && T.TransWf(re)
     ensures forall g: bool ::
       WO.WalkOk([LS.Areg(T.Translate(re))], CP.compile_to_bytecode(re), 0, g)
   {
     var code := CP.compile_to_bytecode(re);
     var next := CP.compile(re, 0, CP.Progress).1;
-    NR.CompileToBytecodeRepPlus(re);
+    NR.CompileToBytecodeRepLookBehind(re);
     assert NR.NfaRepRE(re, code, 0, next as nat);
     assert NR.GetPcRE(code, next as nat) == Some(RB.Accept);
     forall g: bool

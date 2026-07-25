@@ -26,6 +26,7 @@
 include "TreeRepRE.dfy"
 include "CheckErase.dfy"
 include "WalkOk.dfy"
+include "LookLeaves.dfy"
 
 /** Phase 4b layer 4 — the checked-tree construction: a `BoolTree` of a
     `PikeActions`/`PikeRegex`-restricted action list yields a leaves-agreeing
@@ -52,6 +53,10 @@ module LindenElkActionsTreeRep {
   import TR = LindenElkTreeRep
   import CE = LindenElkCheckErase
   import WO = LindenElkWalkOk
+  import FU = FunctionalUtils
+  import LOr = Oracle
+  import EL = LindenElkEntryLk
+  import LL = LindenElkLookLeaves
   import NUL = LindenElkNullable
 
   // RegElk's exit_allowed bool for a Linden LoopBool.
@@ -164,13 +169,14 @@ module LindenElkActionsTreeRep {
       file header. */
   lemma {:isolate_assertions} ActionsTreeRepFRE(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code, pc: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree, n: nat)
     returns (tstar: LT.Tree)
-    requires PS.PikeActions(acts)
+    requires EL.PikeLkActions(acts)
     requires !rer.multiline
     requires ActionsRepFuelL(rer, qm, acts, code, pc, n)
     requires WO.WalkOk(acts, code, pc, EaOf(b))
-    requires BS.BoolTree(rer, acts, inp, b, t)
+    requires LL.OracleOkSuffix(rer, qm, inp)
+    requires EL.BoolTreeLk(rer, acts, inp, b, t)
     ensures TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b))
-    ensures CE.LeavesAgree(tstar, t)
+    ensures LL.LeavesAgreeAt(tstar, t, inp)
     decreases CE.PSize(t), MsizeA(acts), n, 1
   {
     if |acts| == 0 && NR.GetPcRE(code, pc) == Some(RB.Accept) {
@@ -185,9 +191,9 @@ module LindenElkActionsTreeRep {
     } else {
       var cont := acts[1..];
       var pcmid: nat :| AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && ActionsRepFuelL(rer, qm, cont, code, pcmid, n - 1);
-      PS.PikeActionsTail(acts);
+      EL.PikeLkActionsTail(acts);
       assert acts == [acts[0]] + cont;
-      PS.PikeActionsConsIff(acts[0], cont);
+      EL.PikeLkActionsConsIff(acts[0], cont);
       match acts[0]
       case Acheck(strcheck) =>
         assert LS.ActionsRegexSize(acts) == LS.ActionsRegexSize(cont);
@@ -200,7 +206,7 @@ module LindenElkActionsTreeRep {
                 var sub := ActionsTreeRepFRE(rer, qm, cont, code, pc + 1, inp, BS.CanExit, tc, n - 1);
                 tstar := LT.Progress(sub);
                 // tr_progress (fall-through EndLoop)
-                CE.LACongProgress(sub, tc);
+                LL.LAAtCongProgress(sub, tc, inp);
               case _ =>
             }
           } else {
@@ -216,7 +222,7 @@ module LindenElkActionsTreeRep {
                 WO.WalkOkAcheckBackFork(acts, code, pc, EaOf(b));
                 var sub := AtBackForkTreeRep(rer, qm, cont, code, pc, inp, tc, n - 1);
                 tstar := LT.Progress(sub);
-                CE.LACongProgress(sub, tc);
+                LL.LAAtCongProgress(sub, tc, inp);
               case _ =>
             }
           } else {
@@ -236,11 +242,11 @@ module LindenElkActionsTreeRep {
             var sub := ActionsTreeRepFRE(rer, qm, cont, code, pc + 1, inp, b, tc, n - 1);
             tstar := LT.GroupActionT(g, sub);
             // tr_close
-            CE.LACongGroup(g, sub, tc);
+            LL.LAAtCongGroup(g, sub, tc, inp);
           case _ =>
         }
       case Areg(r) =>
-        assert PS.PikeRegex(r);
+        assert EL.PikeLkRegex(r);
         match r
         case Epsilon =>
           assert pcmid == pc;
@@ -264,14 +270,14 @@ module LindenElkActionsTreeRep {
                   tstar := LT.Read(c, sub);
                   // tr_read with witness (ce, pair.1)
                   assert AR.ReadCharE(ce, inp) == Some((c, pair.1));
-                  CE.LACongRead(c, sub, tc);
+                  LL.LAAtCongRead(c, sub, tc, inp);
                 case _ =>
               }
           }
         }
         case Disjunction(r1, r2) => {
-          PS.PikeActionsConsIff(LS.Areg(r1), cont);
-          PS.PikeActionsConsIff(LS.Areg(r2), cont);
+          EL.PikeLkActionsConsIff(LS.Areg(r1), cont);
+          EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
           var e1: nat :| NR.GetPcRE(code, pc) == Some(RB.Fork(pc + 1, e1 + 1))
                        && AR.NfaRepL(rer, qm, r1, code, pc + 1, e1)
                        && NR.GetPcRE(code, e1) == Some(RB.Jmp(pcmid))
@@ -305,13 +311,13 @@ module LindenElkActionsTreeRep {
               var subb := ActionsTreeRepFRE(rer, qm, lb, code, e1 + 1, inp, b, tb, nb);
               tstar := LT.Choice(suba, subb);
               // tr_choice with the forward Fork(pc+1, e1+1)
-              CE.LACongChoice(suba, ta, subb, tb);
+              LL.LAAtCongChoice(suba, ta, subb, tb, inp);
             case _ =>
           }
         }
         case Sequence(r1, r2) => {
-          PS.PikeActionsConsIff(LS.Areg(r2), cont);
-          PS.PikeActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
+          EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
+          EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
           assert AR.NfaRepL(rer, qm, L.Sequence(r1, r2), code, pc, pcmid);
           var e1: nat :| AR.NfaRepL(rer, qm, r1, code, pc, e1) && AR.NfaRepL(rer, qm, r2, code, e1, pcmid);
           var na := [LS.Areg(r1), LS.Areg(r2)] + cont;
@@ -356,8 +362,8 @@ module LindenElkActionsTreeRep {
                   match t {
                     case GroupActionT(g, tc) =>
                       assert g == LG.Reset(gidl);
-                      PS.PikeActionsConsIff(LS.Areg(quant1), cont);
-                      PS.PikeActionsConsIff(LS.Areg(r1), [LS.Areg(quant1)] + cont);
+                      EL.PikeLkActionsConsIff(LS.Areg(quant1), cont);
+                      EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(quant1)] + cont);
                       FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
                       assert AR.ActionRepL(rer, qm, LS.Areg(quant1), code, eb, pcmid);
                       var lq1 := [LS.Areg(quant1)] + cont;
@@ -375,7 +381,7 @@ module LindenElkActionsTreeRep {
                       var sub := ActionsTreeRepFRE(rer, qm, ia, code, pc + 1, inp, b, tc, ni);
                       tstar := LT.GroupActionT(g, sub);
                       // tr_reset at pc (the copy's clock-mark carries the Reset)
-                      CE.LACongGroup(g, sub, tc);
+                      LL.LAAtCongGroup(g, sub, tc, inp);
                     case _ =>
                   }
                 } else {
@@ -386,14 +392,14 @@ module LindenElkActionsTreeRep {
                   match t {
                     case GroupActionT(g, tc) =>
                       assert g == LG.Reset(gidl);
-                      assert BS.BoolTree(rer, [LS.Areg(r1), LS.Areg(q0)] + cont, inp, b, tc);
+                      assert EL.BoolTreeLk(rer, [LS.Areg(r1), LS.Areg(q0)] + cont, inp, b, tc);
                       var pre := [LS.Areg(r1)];
                       var rest := [LS.Areg(q0)] + cont;
-                      PS.PikeActionsConsIff(LS.Areg(q0), cont);
-                      PS.PikeActionsConsIff(LS.Areg(r1), rest);
-                      assert PS.PikeActions(pre) by {
+                      EL.PikeLkActionsConsIff(LS.Areg(q0), cont);
+                      EL.PikeLkActionsConsIff(LS.Areg(r1), rest);
+                      assert EL.PikeLkActions(pre) by {
                         assert pre == [LS.Areg(r1)] + [];
-                        PS.PikeActionsConsIff(LS.Areg(r1), []);
+                        EL.PikeLkActionsConsIff(LS.Areg(r1), []);
                       }
                       assert pre + rest == [LS.Areg(r1), LS.Areg(q0)] + cont;
                       assert CE.ConsumesBeforeAreg(pre) by {
@@ -402,7 +408,7 @@ module LindenElkActionsTreeRep {
                       var t1ck := CE.BoolCheckInsert(rer, pre, inp, rest, inp, b, tc);
                       var ia := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont;
                       assert ia == pre + [LS.Acheck(inp)] + rest;
-                      assert BS.BoolTree(rer, ia, inp, b, t1ck);
+                      assert EL.BoolTreeLk(rer, ia, inp, b, t1ck);
                       // representation of the checked list at pc+1: the body,
                       // the zero-width check at the fork, the loop view
                       assert AR.BackForkAt(code, e1x) by {
@@ -426,7 +432,7 @@ module LindenElkActionsTreeRep {
                       assert lq[0] == LS.Areg(q0) && lq[1..] == cont;
                       assert AR.ActionsRepL(rer, qm, lq, code, e1x);
                       var lc := [LS.Acheck(inp)] + lq;
-                      PS.PikeActionsConsIff(LS.Acheck(inp), lq);
+                      EL.PikeLkActionsConsIff(LS.Acheck(inp), lq);
                       assert AR.ActionRepL(rer, qm, LS.Acheck(inp), code, e1x, e1x);
                       assert lc[0] == LS.Acheck(inp) && lc[1..] == lq;
                       assert AR.ActionsRepL(rer, qm, lc, code, e1x);
@@ -434,8 +440,8 @@ module LindenElkActionsTreeRep {
                       assert ia == [LS.Areg(r1)] + lc;
                       assert ia[0] == LS.Areg(r1) && ia[1..] == lc;
                       assert AR.ActionsRepL(rer, qm, ia, code, pc + 1);
-                      PS.PikeActionsConsIff(LS.Areg(r1), lc);
-                      assert PS.PikeActions(ia);
+                      EL.PikeLkActionsConsIff(LS.Areg(r1), lc);
+                      assert EL.PikeLkActions(ia);
                       ActionsRepLToFuel(rer, qm, ia, code, pc + 1);
                       var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 1, ni);
                       WO.WalkOkQuantSeam(acts, code, pc, EaOf(b), greedy, r1, inp);
@@ -445,8 +451,8 @@ module LindenElkActionsTreeRep {
                       tstar := LT.GroupActionT(g, sub);
                       // tr_reset at pc (the do-while stamp; the VM's
                       // SetQuantToClock preserves exit_allowed, so b carries)
-                      assert CE.LeavesAgree(sub, tc);
-                      CE.LACongGroup(g, sub, tc);
+                      assert LL.LeavesAgreeAt(sub, tc, inp);
+                      LL.LAAtCongGroup(g, sub, tc, inp);
                     case _ =>
                   }
                 }
@@ -463,8 +469,8 @@ module LindenElkActionsTreeRep {
                 match t {
                   case GroupActionT(g, tc) =>
                     assert g == LG.Reset(gidl);
-                    PS.PikeActionsConsIff(LS.Areg(quant1), cont);
-                    PS.PikeActionsConsIff(LS.Areg(r1), [LS.Areg(quant1)] + cont);
+                    EL.PikeLkActionsConsIff(LS.Areg(quant1), cont);
+                    EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(quant1)] + cont);
                     FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
                     assert AR.ActionRepL(rer, qm, LS.Areg(quant1), code, eb, pcmid);
                     var lq1 := [LS.Areg(quant1)] + cont;
@@ -482,7 +488,7 @@ module LindenElkActionsTreeRep {
                     var sub := ActionsTreeRepFRE(rer, qm, ia, code, pc + 1, inp, b, tc, ni);
                     tstar := LT.GroupActionT(g, sub);
                     // tr_reset at pc (the clock-mark carries the Reset node)
-                    CE.LACongGroup(g, sub, tc);
+                    LL.LAAtCongGroup(g, sub, tc, inp);
                   case _ =>
                 }
             }
@@ -528,9 +534,9 @@ module LindenElkActionsTreeRep {
                       assert CE.PSize(skipt) < CE.PSize(t);
                       var subs := ActionsTreeRepFRE(rer, qm, cont, code, pcmid, inp, b, skipt, n - 1);
                       // iteration branch at pc+3 with the NN(k-1) continuation at e1+1
-                      PS.PikeActionsConsIff(LS.Areg(quant), cont);
-                      PS.PikeActionsConsIff(LS.Acheck(inp), [LS.Areg(quant)] + cont);
-                      PS.PikeActionsConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+                      EL.PikeLkActionsConsIff(LS.Areg(quant), cont);
+                      EL.PikeLkActionsConsIff(LS.Acheck(inp), [LS.Areg(quant)] + cont);
+                      EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
                       FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
                       var lq := [LS.Areg(quant)] + cont;
                       assert AR.NfaRepMinL(rer, qm, 0, r1, code, e1 + 1, e1 + 1);
@@ -559,11 +565,11 @@ module LindenElkActionsTreeRep {
                       var iterstar := LT.GroupActionT(g, subi);
                       assert TR.TreeRepRE(qm, iterstar, code, pc + 1, inp, EaOf(b));
                       tstar := if greedy then LT.Choice(iterstar, subs) else LT.Choice(subs, iterstar);
-                      CE.LACongGroup(g, subi, ti);
+                      LL.LAAtCongGroup(g, subi, ti, inp);
                       if greedy {
-                        CE.LACongChoice(iterstar, itert, subs, skipt);
+                        LL.LAAtCongChoice(iterstar, itert, subs, skipt, inp);
                       } else {
-                        CE.LACongChoice(subs, skipt, iterstar, itert);
+                        LL.LAAtCongChoice(subs, skipt, iterstar, itert, inp);
                       }
                       assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));
                     case _ =>
@@ -610,9 +616,9 @@ module LindenElkActionsTreeRep {
                     assert CE.PSize(skipt) < CE.PSize(t);
                     var subs := ActionsTreeRepFRE(rer, qm, cont, code, pcmid, inp, b, skipt, n - 1);
                     // iteration branch: [Areg r1, Acheck inp, Areg quant] + cont at pc+3
-                    PS.PikeActionsConsIff(LS.Areg(quant), cont);
-                    PS.PikeActionsConsIff(LS.Acheck(inp), [LS.Areg(quant)] + cont);
-                    PS.PikeActionsConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+                    EL.PikeLkActionsConsIff(LS.Areg(quant), cont);
+                    EL.PikeLkActionsConsIff(LS.Acheck(inp), [LS.Areg(quant)] + cont);
+                    EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
                     FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
                     // [Areg quant]+cont at pc (the star block itself, ending at pcmid)
                     var lq := [LS.Areg(quant)] + cont;
@@ -643,11 +649,11 @@ module LindenElkActionsTreeRep {
                     var iterstar := LT.GroupActionT(g, subi);
                     assert TR.TreeRepRE(qm, iterstar, code, pc + 1, inp, EaOf(b));
                     tstar := if greedy then LT.Choice(iterstar, subs) else LT.Choice(subs, iterstar);
-                    CE.LACongGroup(g, subi, ti);
+                    LL.LAAtCongGroup(g, subi, ti, inp);
                     if greedy {
-                      CE.LACongChoice(iterstar, itert, subs, skipt);
+                      LL.LAAtCongChoice(iterstar, itert, subs, skipt, inp);
                     } else {
-                      CE.LACongChoice(subs, skipt, iterstar, itert);
+                      LL.LAAtCongChoice(subs, skipt, iterstar, itert, inp);
                     }
                     assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));
                   case _ =>
@@ -675,13 +681,13 @@ module LindenElkActionsTreeRep {
             assert AR.BackForkAt(code, pc);
             var sub := AtBackForkTreeRep(rer, qm, acts, code, pc, inp, t, n);
             tstar := LT.Progress(sub);
-            CE.LAProgressPass(sub);
-            assert CE.LeavesAgree(tstar, t);
+            LL.LAAtProgressPass(sub, inp);
+            assert LL.LeavesAgreeAt(tstar, t, inp);
           }
         }
         case Group(gid, r1) => {
-          PS.PikeActionsConsIff(LS.Aclose(gid), cont);
-          PS.PikeActionsConsIff(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+          EL.PikeLkActionsConsIff(LS.Aclose(gid), cont);
+          EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Aclose(gid)] + cont);
           var e1: nat :| NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(CP.start_reg(gid as int)))
                        && AR.NfaRepL(rer, qm, r1, code, pc + 1, e1)
                        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(gid as int)))
@@ -706,7 +712,7 @@ module LindenElkActionsTreeRep {
               var sub := ActionsTreeRepFRE(rer, qm, ga, code, pc + 1, inp, b, tc, ng);
               tstar := LT.GroupActionT(g, sub);
               // tr_open
-              CE.LACongGroup(g, sub, tc);
+              LL.LAAtCongGroup(g, sub, tc, inp);
             case _ =>
           }
         }
@@ -724,7 +730,7 @@ module LindenElkActionsTreeRep {
                 var sub := ActionsTreeRepFRE(rer, qm, cont, code, pc + 1, inp, b, tc, n - 1);
                 tstar := LT.AnchorPass(la2, sub);
                 // tr_anchorpass (is_satisfied via the agreement)
-                CE.LACongAnchor(la2, sub, tc);
+                LL.LAAtCongAnchor(la2, sub, tc, inp);
               case _ =>
             }
           } else {
@@ -732,7 +738,48 @@ module LindenElkActionsTreeRep {
             tstar := LT.Mismatch;
           }
         }
-        case LookaroundR(lk, r1) =>  // not pike
+        case LookaroundR(lk, r1) => {
+          // THE GATE. `NfaRepL`'s lookaround arm pins one zero-width
+          // instruction at `pc`, whose bare lid the `looks` table maps back to
+          // this (flavour, body); `OracleOkAt` says the oracle column agrees
+          // with the body's walk, which is what `BoolTreeLk`'s rule decided by.
+          // The checked tree DROPS the wrapper: it is the continuation's tree
+          // on a pass, `Mismatch` on a kill.
+          var lid: int :| NR.GetPcRE(code, pc)
+                            == Some(if AR.PositiveL(lk) then RB.CheckOracle(lid)
+                                                        else RB.NegCheckOracle(lid))
+                          && lid in qm.looks && qm.looks[lid] == (lk, r1);
+          assert pcmid == pc + 1;
+          assert LL.OracleOkAt(rer, qm, inp);
+          var tlkc := FU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk));
+          var bit := LOr.view_get_oracle(qm.ov, TR.CpOf(inp), lid);
+          assert bit <==> LT.TreeRes(tlkc, LG.Empty, inp, L.LkDir(lk)).Some?;
+          LT.FirstTreeLeaf(tlkc, LG.Empty, inp, L.LkDir(lk));
+          EL.ComputeTrGmIndep(rer, r1, inp, LG.Empty, L.LkDir(lk));
+          LL.ComputeTrGmNeutral(rer, r1, inp, LG.Empty, L.LkDir(lk));
+          match t {
+            case LK(lk2, tlk, tc) =>
+              // the gate passed: `LkGateOk(.., true)` pins tlk == tlkc and the
+              // verdict, so the engine's bit agrees
+              assert tlk == tlkc && LS.LkResult(lk, tlk, LG.Empty, inp).Some?;
+              assert bit == AR.PositiveL(lk);
+              WO.WalkOkLookaround(acts, code, pc, EaOf(b));
+              var sub := ActionsTreeRepFRE(rer, qm, cont, code, pc + 1, inp, b, tc, n - 1);
+              tstar := sub;
+              // tr_lk / tr_neglk: the gate rule carries the SAME tree onward
+              assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));
+              LL.LAAtGatePass(lk, tlk, tc, inp);
+              LL.LAAtTrans(tstar, tc, LT.LK(lk, tlk, tc), inp);
+            case LKFail(lk2, tlk) =>
+              assert tlk == tlkc && LS.LkResult(lk, tlk, LG.Empty, inp).None?;
+              assert bit != AR.PositiveL(lk);
+              tstar := LT.Mismatch;
+              // tr_lkfail / tr_neglkfail
+              assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));
+              LL.LAAtGateFail(lk, tlk, inp);
+            case _ =>
+          }
+        }
         case Backreference(gid) =>   // not pike
     }
   }
@@ -747,14 +794,15 @@ module LindenElkActionsTreeRep {
       built by the general construction. */
   lemma AtBackForkTreeRep(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code, pc: nat, inp: LC.Input, tc: LT.Tree, n: nat)
     returns (tcstar: LT.Tree)
-    requires PS.PikeActions(acts)
+    requires EL.PikeLkActions(acts)
     requires !rer.multiline
     requires ActionsRepFuelL(rer, qm, acts, code, pc, n)
     requires WO.WalkOk(acts, code, pc, true)
-    requires BS.BoolTree(rer, acts, inp, BS.CanExit, tc)
+    requires LL.OracleOkSuffix(rer, qm, inp)
+    requires EL.BoolTreeLk(rer, acts, inp, BS.CanExit, tc)
     requires AR.BackForkAt(code, pc)
     ensures TR.TreeRepRE(qm, LT.Progress(tcstar), code, pc, inp, true)
-    ensures CE.LeavesAgree(tcstar, tc)
+    ensures LL.LeavesAgreeAt(tcstar, tc, inp)
     decreases CE.PSize(tc), MsizeA(acts), n, 0
   {
     var fx: int, fy: int :| NR.GetPcRE(code, pc) == Some(RB.Fork(fx, fy))
@@ -764,9 +812,9 @@ module LindenElkActionsTreeRep {
     assert |acts| > 0;
     var cont := acts[1..];
     var pcmid: nat :| AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && ActionsRepFuelL(rer, qm, cont, code, pcmid, n - 1);
-    PS.PikeActionsTail(acts);
+    EL.PikeLkActionsTail(acts);
     assert acts == [acts[0]] + cont;
-    PS.PikeActionsConsIff(acts[0], cont);
+    EL.PikeLkActionsConsIff(acts[0], cont);
     match acts[0]
     case Acheck(strcheck) =>
       // a stacked check: also zero-width at the fork (EndLoop is refuted);
@@ -778,15 +826,15 @@ module LindenElkActionsTreeRep {
           WO.WalkOkAcheckBackFork(acts, code, pc, true);
           var sub := AtBackForkTreeRep(rer, qm, cont, code, pc, inp, tc2, n - 1);
           tcstar := sub;
-          CE.LAProgressPass(tc2);
-          assert CE.LeavesAgree(tcstar, tc);
+          LL.LAAtProgressPass(tc2, inp);
+          assert LL.LeavesAgreeAt(tcstar, tc, inp);
         case _ =>
       }
     case Aclose(gid) =>
       // pins SetRegisterToCP: contradiction with the Fork
       assert false;
     case Areg(r) =>
-      assert PS.PikeRegex(r);
+      assert EL.PikeLkRegex(r);
       match r
       case Epsilon =>
         assert pcmid == pc;
@@ -807,8 +855,8 @@ module LindenElkActionsTreeRep {
         AR.NfaRepIncrL(rer, qm, r1, code, pc + 1, e1);
         assert false;   // both arms forward: contradicts the backward arm
       case Sequence(r1, r2) =>
-        PS.PikeActionsConsIff(LS.Areg(r2), cont);
-        PS.PikeActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
+        EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
+        EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
         assert AR.NfaRepL(rer, qm, L.Sequence(r1, r2), code, pc, pcmid);
         var e1: nat :| AR.NfaRepL(rer, qm, r1, code, pc, e1) && AR.NfaRepL(rer, qm, r2, code, e1, pcmid);
         var na := [LS.Areg(r1), LS.Areg(r2)] + cont;
@@ -919,17 +967,17 @@ module LindenElkActionsTreeRep {
                   case GroupActionT(g, ti) =>
                     assert g == LG.Reset(gidl);
                     var il := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont;
-                    assert BS.BoolTree(rer, il, inp, BS.CannotExit, ti);
+                    assert EL.BoolTreeLk(rer, il, inp, BS.CannotExit, ti);
                     // skip branch: the general construction at the exit arm
                     assert CE.PSize(skipt) < CE.PSize(tc);
                     var subs := ActionsTreeRepFRE(rer, qm, cont, code, pc + 1, inp, BS.CanExit, skipt, n - 1);
                     // iteration branch: lift to CanExit (the engine keeps
                     // exit_allowed through the back edge), then construct
-                    PS.PikeActionsConsIff(LS.Areg(q0), cont);
-                    PS.PikeActionsConsIff(LS.Acheck(inp), [LS.Areg(q0)] + cont);
-                    PS.PikeActionsConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
+                    EL.PikeLkActionsConsIff(LS.Areg(q0), cont);
+                    EL.PikeLkActionsConsIff(LS.Acheck(inp), [LS.Areg(q0)] + cont);
+                    EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
                     assert il == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
-                    assert PS.PikeActions(il);
+                    assert EL.PikeLkActions(il);
                     assert CE.ShieldedActs(il) by {
                       forall i | 0 <= i < |il| && il[i].Acheck?
                         ensures exists j :: 0 <= j < i && il[j].Areg? && NUL.NonNullableL(il[j].r)
@@ -940,7 +988,7 @@ module LindenElkActionsTreeRep {
                       }
                     }
                     CE.BoolFlagLift(rer, il, inp, ti);
-                    assert BS.BoolTree(rer, il, inp, BS.CanExit, ti);
+                    assert EL.BoolTreeLk(rer, il, inp, BS.CanExit, ti);
                     // representation of the iteration list at em+1
                     FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
                     var lq := [LS.Areg(q0)] + cont;
@@ -973,11 +1021,11 @@ module LindenElkActionsTreeRep {
                     var iterstar := LT.GroupActionT(g, subi);
                     assert TR.TreeRepRE(qm, iterstar, code, em, inp, true);
                     tcstar := if greedy then LT.Choice(iterstar, subs) else LT.Choice(subs, iterstar);
-                    CE.LACongGroup(g, subi, ti);
+                    LL.LAAtCongGroup(g, subi, ti, inp);
                     if greedy {
-                      CE.LACongChoice(iterstar, itert, subs, skipt);
+                      LL.LAAtCongChoice(iterstar, itert, subs, skipt, inp);
                     } else {
-                      CE.LACongChoice(subs, skipt, iterstar, itert);
+                      LL.LAAtCongChoice(subs, skipt, iterstar, itert, inp);
                     }
                     assert TR.TreeRepRE(qm, LT.Progress(tcstar), code, pc, inp, true);
                   case _ =>
@@ -1003,13 +1051,14 @@ module LindenElkActionsTreeRep {
       and agrees with `t` on leaves. */
   lemma ActionsTreeRepRE(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code, pc: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree)
     returns (tstar: LT.Tree)
-    requires PS.PikeActions(acts)
+    requires EL.PikeLkActions(acts)
     requires !rer.multiline
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
     requires WO.WalkOk(acts, code, pc, EaOf(b))
-    requires BS.BoolTree(rer, acts, inp, b, t)
+    requires LL.OracleOkSuffix(rer, qm, inp)
+    requires EL.BoolTreeLk(rer, acts, inp, b, t)
     ensures TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b))
-    ensures CE.LeavesAgree(tstar, t)
+    ensures LL.LeavesAgreeAt(tstar, t, inp)
   {
     ActionsRepLToFuel(rer, qm, acts, code, pc);
     var n: nat :| ActionsRepFuelL(rer, qm, acts, code, pc, n);

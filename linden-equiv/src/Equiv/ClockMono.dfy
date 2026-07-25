@@ -102,6 +102,173 @@ module LindenElkClockMono {
   // search, which is what lets the static table record carry it.
   // ==========================================================================
 
+  // ==========================================================================
+  // The capture-register frame: code that never writes a capture register
+  // leaves every thread's capture bank exactly as it found it. This is what
+  // makes the lookaround CAPTURE pass (FLookLoop's replay) invisible to the
+  // final answer when the lookaround's body is capture-free — the L1 shape of
+  // "the look pass is the identity", which MainTheorem used to get for free
+  // from `max_lookaround == 0`.
+  // ==========================================================================
+
+  /** No position of `c` holds a `SetRegisterToCP`. */
+  ghost predicate NoCaptureWriteCode(c: RB.code) {
+    forall pc: nat :: pc < |c| ==> !c[pc].SetRegisterToCP?
+  }
+
+  /** Every thread in the state — active, blocked, or the best match so far —
+      carries the same capture bank. */
+  ghost predicate VmCapsAre(s: AI.VmState, cap: AReg.Regs) {
+    (forall t | t in s.active :: t.capture_regs == cap)
+    && (forall tb | tb in s.blocked :: tb.0.capture_regs == cap)
+    && (s.bestmatch.Some? ==> s.bestmatch.value.capture_regs == cap)
+  }
+
+  /** An epsilon phase over capture-write-free code preserves the bank. */
+  lemma FAdvanceEpsilonCapFrame(c: RB.code, s: AI.VmState, ov: LOr.OracleView,
+                                dir: LAnc.direction, cap: AReg.Regs)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires NoCaptureWriteCode(c)
+    requires VmCapsAre(s, cap)
+    ensures VmCapsAre(AI.FAdvanceEpsilon(c, s, ov, dir).0, cap)
+    decreases AI.unprocessed(s.processed), |s.active|
+  {
+    if |s.active| == 0 { return; }
+    var t := s.active[0];
+    var ac := s.active[1..];
+    assert t in s.active;
+    assert forall x | x in ac :: x in s.active;
+    if AI.bpc_mem(s.processed, t.pc, t.exit_allowed) {
+      FAdvanceEpsilonCapFrame(c, s.(active := ac), ov, dir, cap);
+      return;
+    }
+    var b0 := s.processed;
+    var s1 := s.(clock := s.clock + 1, processed := AI.bpc_add(b0, t.pc, t.exit_allowed));
+    assert AI.unprocessed(s1.processed) <= AI.unprocessed(b0)
+        && (0 <= t.pc < RB.size(c) ==> AI.unprocessed(s1.processed) < AI.unprocessed(b0))
+      by { AI.UnprocessedAdd(b0, t.pc, t.exit_allowed); }
+    match RB.get_instr(c, t.pc) {
+      case Consume(ce) =>
+        var (nb, ni) := AI.add_thread(t, ce, s1.blocked, s1.isblocked);
+        var s2 := s1.(blocked := nb, isblocked := ni, active := ac);
+        assert VmCapsAre(s2, cap) by {
+          forall tb | tb in nb ensures tb.0.capture_regs == cap {
+            assert tb == (t, ce) || tb in s1.blocked;
+          }
+        }
+        FAdvanceEpsilonCapFrame(c, s2, ov, dir, cap);
+      case Accept =>
+      case Jmp(x) =>
+        FAdvanceEpsilonCapFrame(c, s1.(active := [t.(pc := x)] + ac), ov, dir, cap);
+      case Fork(x, y) =>
+        var newt := AI.Thread(x, t.capture_regs, t.look_regs, t.quant_regs, t.exit_allowed);
+        FAdvanceEpsilonCapFrame(c, s1.(active := [newt, t.(pc := y)] + ac), ov, dir, cap);
+      case SetRegisterToCP(reg) =>
+        assert 0 <= t.pc < |c|;            // excluded by NoCaptureWriteCode
+        assert false;
+      case SetQuantToClock(q, bq) =>
+        var ocp := if bq then Some(s1.cp) else None;
+        var t2 := t.(quant_regs := AReg.set_reg(t.quant_regs, q, ocp, s1.clock), pc := t.pc + 1);
+        FAdvanceEpsilonCapFrame(c, s1.(active := [t2] + ac), ov, dir, cap);
+      case CheckOracle(l) =>
+        if LOr.view_get_oracle(ov, s1.cp, l) {
+          var t2 := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(s1.cp), s1.clock));
+          FAdvanceEpsilonCapFrame(c, s1.(active := [t2] + ac), ov, dir, cap);
+        } else {
+          FAdvanceEpsilonCapFrame(c, s1.(active := ac), ov, dir, cap);
+        }
+      case NegCheckOracle(l) =>
+        if LOr.view_get_oracle(ov, s1.cp, l) {
+          FAdvanceEpsilonCapFrame(c, s1.(active := ac), ov, dir, cap);
+        } else {
+          FAdvanceEpsilonCapFrame(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir, cap);
+        }
+      case WriteOracle(l) =>
+        FAdvanceEpsilonCapFrame(c, s1.(active := ac), LOr.view_set_oracle(ov, s1.cp, l), dir, cap);
+      case BeginLoop =>
+        FAdvanceEpsilonCapFrame(c, s1.(active := [t.(exit_allowed := false, pc := t.pc + 1)] + ac), ov, dir, cap);
+      case EndLoop =>
+        if t.exit_allowed {
+          FAdvanceEpsilonCapFrame(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir, cap);
+        } else {
+          FAdvanceEpsilonCapFrame(c, s1.(active := ac), ov, dir, cap);
+        }
+      case CheckNullable(qid) =>
+        if LCdn.cdn_get(s1.cdn, qid) {
+          FAdvanceEpsilonCapFrame(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir, cap);
+        } else {
+          FAdvanceEpsilonCapFrame(c, s1.(active := ac), ov, dir, cap);
+        }
+      case AnchorAssertion(a) =>
+        if LAnc.is_satisfied(a, s1.context, dir) {
+          FAdvanceEpsilonCapFrame(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir, cap);
+        } else {
+          FAdvanceEpsilonCapFrame(c, s1.(active := ac), ov, dir, cap);
+        }
+      case Fail =>
+        FAdvanceEpsilonCapFrame(c, s1.(active := ac), ov, dir, cap);
+    }
+  }
+
+  /** The consume phase only resumes blocked threads — no register writes. */
+  lemma FConsumeCapFrame(s: AI.VmState, cap: AReg.Regs)
+    requires VmCapsAre(s, cap)
+    ensures VmCapsAre(AI.FConsume(s), cap)
+    decreases |s.blocked|
+  {
+    if |s.blocked| == 0 { return; }
+    var t := s.blocked[0].0;
+    var ce := s.blocked[0].1;
+    var s1 := s.(blocked := s.blocked[1..]);
+    assert VmCapsAre(s1, cap) by {
+      forall tb | tb in s1.blocked ensures tb.0.capture_regs == cap { assert tb in s.blocked; }
+    }
+    var s2 := if RC.is_accepted(s1.context.nextchar, ce)
+              then s1.(active := [t.(exit_allowed := true, pc := t.pc + 1)] + s1.active)
+              else s1;
+    assert VmCapsAre(s2, cap) by {
+      assert s.blocked[0] in s.blocked;
+      assert t.capture_regs == cap;
+      forall t2 | t2 in s2.active ensures t2.capture_regs == cap {
+        if t2 != t.(exit_allowed := true, pc := t.pc + 1) { assert t2 in s1.active; }
+      }
+    }
+    FConsumeCapFrame(s2, cap);
+  }
+
+  /** THE frame: a whole search over capture-write-free code returns a thread
+      whose capture bank is the one it started from. */
+  lemma FFindMatchCapFrame(c: RB.code, str: string, s: AI.VmState, ov: LOr.OracleView,
+                           dir: LAnc.direction, cdn: LCdn.cdns, cap: AReg.Regs)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires dir.Forward? ==> s.context.nextchar == AI.get_char(str, s.cp)
+    requires dir.Backward? ==> s.context.nextchar == AI.get_char(str, s.cp - 1)
+    requires NoCaptureWriteCode(c)
+    requires VmCapsAre(s, cap)
+    ensures var r := AI.FFindMatch(c, str, s, ov, dir, cdn).0;
+      r.Some? ==> r.value.capture_regs == cap
+    decreases if dir.Forward? then |str| - s.cp else s.cp
+  {
+    var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, dir));
+    assert VmCapsAre(s0, cap);
+    var (s1, ov1) := AI.FAdvanceEpsilon(c, s0, ov, dir);
+    FAdvanceEpsilonCapFrame(c, s0, ov, dir, cap);
+    assert VmCapsAre(s1, cap);
+    if |s1.blocked| == 0 { return; }
+    match s1.context.nextchar {
+      case None =>
+      case Some(_) =>
+        var s2 := AI.FConsume(s1);
+        FConsumeCapFrame(s1, cap);
+        var s3 := s2.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
+                      cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
+        var newchar := AI.get_char(str, s3.cp - AI.cp_offset(dir));
+        var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
+        assert VmCapsAre(s4, cap);
+        FFindMatchCapFrame(c, str, s4, ov1, dir, cdn, cap);
+    }
+  }
+
   /** No position of `c` holds a `WriteOracle`. */
   ghost predicate NoWriteOracleCode(c: RB.code) {
     forall pc: nat :: pc < |c| ==> !c[pc].WriteOracle?

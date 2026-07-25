@@ -1993,6 +1993,147 @@ module LindenElkNfaRep {
   }
 
 
+  // The CAPTURE classification: a capture-free block emits no
+  // SetRegisterToCP, so running it cannot disturb any thread's capture bank.
+  // What it buys: the lookaround capture pass (FLookLoop's replay) leaves the
+  // final answer alone when the lookaround's body is capture-free — the L1
+  // shape of "the look pass is the identity".
+  /** `NoCaptureInstrRE` for the `repeat_min` forced-copy chain. */
+  lemma NoCaptureInstrMinRE(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires LookBehindFragmentRE(r1) && CaptureFreeRE(r1)
+    requires NfaRepMinRE(k, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures GetPcRE(code, pc).Some? ==>
+      var i := GetPcRE(code, pc).value;
+      !i.SetRegisterToCP?
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| GetPcRE(code, start) == Some(RB.SetQuantToClock(qid, false))
+      && NfaRepRE(r1, code, start + 1, e1)
+      && NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
+    NfaRepIncrRE(r1, code, start + 1, e1);
+    NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
+    if pc == start {
+    } else if pc < e1 {
+      NoCaptureInstrRE(r1, code, start + 1, e1, pc);
+    } else {
+      NoCaptureInstrMinRE(k - 1, qid, r1, code, e1, endl, pc);
+    }
+  }
+
+  /** `NoCaptureInstrRE` for the `repeat_optional` layer chain. */
+  lemma NoCaptureInstrOptRE(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires LookBehindFragmentRE(r1) && CaptureFreeRE(r1)
+    requires NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures GetPcRE(code, pc).Some? ==>
+      var i := GetPcRE(code, pc).value;
+      !i.SetRegisterToCP?
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| GetPcRE(code, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
+      && GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+      && GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+      && NfaRepRE(r1, code, start + 3, e1)
+      && GetPcRE(code, e1) == Some(RB.EndLoop)
+      && NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+    NfaRepIncrRE(r1, code, start + 3, e1);
+    NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+    if pc <= start + 2 {
+    } else if pc < e1 {
+      NoCaptureInstrRE(r1, code, start + 3, e1, pc);
+    } else if pc == e1 {
+    } else {
+      NoCaptureInstrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl, pc);
+    }
+  }
+
+  /** Capture-free code writes no capture register: every position strictly
+      inside such an `NfaRepRE` block holds something other than
+      `SetRegisterToCP`. */
+  lemma NoCaptureInstrRE(re: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires LookBehindFragmentRE(re) && CaptureFreeRE(re)
+    requires NfaRepRE(re, code, start, endl)
+    requires start <= pc < endl
+    ensures GetPcRE(code, pc).Some? ==>
+      var i := GetPcRE(code, pc).value;
+      !i.SetRegisterToCP?
+    decreases CP.rsize(re), 1
+  {
+    match re
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      var e1: nat :| GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
+        && NfaRepRE(r1, code, start + 1, e1)
+        && GetPcRE(code, e1) == Some(RB.Jmp(endl))
+        && NfaRepRE(r2, code, e1 + 1, endl);
+      NfaRepIncrRE(r1, code, start + 1, e1);
+      NfaRepIncrRE(r2, code, e1 + 1, endl);
+      if pc == start {
+      } else if pc < e1 {
+        NoCaptureInstrRE(r1, code, start + 1, e1, pc);
+      } else if pc == e1 {
+      } else {
+        NoCaptureInstrRE(r2, code, e1 + 1, endl, pc);
+      }
+    case Re_con(r1, r2) =>
+      var e1: nat :| NfaRepRE(r1, code, start, e1) && NfaRepRE(r2, code, e1, endl);
+      NfaRepIncrRE(r1, code, start, e1);
+      NfaRepIncrRE(r2, code, e1, endl);
+      if pc < e1 {
+        NoCaptureInstrRE(r1, code, start, e1, pc);
+      } else {
+        NoCaptureInstrRE(r2, code, e1, endl, pc);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      if q.min == 0 && q.max == None {
+        var e1: nat :| GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
+          && GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+          && GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+          && NfaRepRE(r1, code, start + 3, e1)
+          && GetPcRE(code, e1) == Some(RB.EndLoop)
+          && GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
+          && endl == e1 + 2;
+        NfaRepIncrRE(r1, code, start + 3, e1);
+        if pc <= start + 2 {
+        } else if pc < e1 {
+          NoCaptureInstrRE(r1, code, start + 3, e1, pc);
+        } else {
+        }
+      } else if q.max.Some? {
+        var em := NfaRepREQuantInv(nul, qid, q, r1, code, start, endl);
+        NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NfaRepIncrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl);
+        if pc < em {
+          NoCaptureInstrMinRE(q.min as nat, qid, r1, code, start, em, pc);
+        } else {
+          NoCaptureInstrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
+        }
+      } else {
+        var em, e1 := NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
+        NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NfaRepIncrRE(r1, code, em + 1, e1);
+        if pc < em {
+          NoCaptureInstrMinRE((q.min - 1) as nat, qid, r1, code, start, em, pc);
+        } else if pc == em {
+        } else if pc < e1 {
+          NoCaptureInstrRE(r1, code, em + 1, e1, pc);
+        } else {
+        }
+      }
+    case Re_capture(cid, r1) =>
+      // excluded by CaptureFreeRE
+    case Re_lookaround(lid, la, r1) =>
+      // the whole block is the single gate instruction at `start`
+      assert pc == start;
+  }
+
+
+
   /** The full oracle-build program of a look-free plus-fragment build regex,
       classified for the sweep lemmas: no oracle reads, no `CheckNullable`,
       and the only `WriteOracle` is the final recorder for `lid`. */

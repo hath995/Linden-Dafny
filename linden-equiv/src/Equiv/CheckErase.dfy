@@ -11,6 +11,8 @@
 // because a NonNullable component precedes it (`NullableFacts`), and
 // `Progress` is a definitional pass-through in `TreeLeaves`.
 
+include "EntryLk.dfy"
+
 /** The check-insertion equivalence over the functional tree semantics
     (`ComputeTree`): fuel monotonicity, the leaves-agreement relation, and
     the guarded insertion lemma. */
@@ -27,6 +29,7 @@ module LindenElkCheckErase {
   import L = Regex
   import LN = WarblreNumeric
   import PS = PikeSubset
+  import EL = LindenElkEntryLk
   import BS = BooleanSemantics
   import NN = LindenElkNullable
 
@@ -152,6 +155,14 @@ module LindenElkCheckErase {
   lemma LACongGroup(g: LG.GroupAction, a: LT.Tree, b: LT.Tree)
     requires LeavesAgree(a, b)
     ensures LeavesAgree(LT.GroupActionT(g, a), LT.GroupActionT(g, b))
+  {}
+
+  /** A gate is a congruence for leaf agreement when both sides carry the SAME
+      body subtree: the verdict and the map handed to the continuation are read
+      off that subtree, so they coincide. */
+  lemma LACongLK(lk: L.Lookaround, tlk: LT.Tree, a: LT.Tree, b: LT.Tree)
+    requires LeavesAgree(a, b)
+    ensures LeavesAgree(LT.LK(lk, tlk, a), LT.LK(lk, tlk, b))
   {}
 
   lemma LACongAnchor(an: L.Anchor, a: LT.Tree, b: LT.Tree)
@@ -536,10 +547,10 @@ module LindenElkCheckErase {
       `Progress` pass-through: leaves agree. */
   lemma BoolCheckInsert(rer: LW.RegExpRecord, pre: LS.Actions, chk: LC.Input, rest: LS.Actions,
                        inp: LC.Input, b: BS.LoopBool, t: LT.Tree) returns (tstar: LT.Tree)
-    requires PS.PikeActions(pre)
+    requires EL.PikeLkActions(pre)
     requires ConsumesBeforeAreg(pre) || AcheckIn(pre) || b == BS.CanExit
-    requires BS.BoolTree(rer, pre + rest, inp, b, t)
-    ensures BS.BoolTree(rer, pre + [LS.Acheck(chk)] + rest, inp, b, tstar)
+    requires EL.BoolTreeLk(rer, pre + rest, inp, b, t)
+    ensures EL.BoolTreeLk(rer, pre + [LS.Acheck(chk)] + rest, inp, b, tstar)
     ensures LeavesAgree(tstar, t)
     ensures PSize(tstar) == PSize(t)
     decreases LS.TreeSize(t), LS.ActionsRegexSize(pre)
@@ -557,9 +568,9 @@ module LindenElkCheckErase {
       assert (pre + rest)[0] == pre[0] && (pre + rest)[1..] == pre[1..] + rest;
       assert (pre + [LS.Acheck(chk)] + rest)[0] == pre[0]
           && (pre + [LS.Acheck(chk)] + rest)[1..] == pre[1..] + [LS.Acheck(chk)] + rest;
-      assert PS.PikeAction(pre[0]);
-      assert PS.PikeActions(pre[1..]) by {
-        forall i | 0 <= i < |pre[1..]| ensures PS.PikeAction(pre[1..][i]) {
+      assert EL.PikeLkAction(pre[0]);
+      assert EL.PikeLkActions(pre[1..]) by {
+        forall i | 0 <= i < |pre[1..]| ensures EL.PikeLkAction(pre[1..][i]) {
           assert pre[1..][i] == pre[i + 1];
         }
       }
@@ -588,7 +599,7 @@ module LindenElkCheckErase {
           case _ =>
         }
       case Areg(r) =>
-        assert PS.PikeRegex(r);
+        assert EL.PikeLkRegex(r);
         match r
         case Epsilon =>
           if ConsumesBeforeAreg(pre) { ConsumesTailC(pre); }
@@ -616,11 +627,11 @@ module LindenElkCheckErase {
               assert pb + rest == [LS.Areg(r2)] + (pre[1..] + rest);
               assert pa + [LS.Acheck(chk)] + rest == [LS.Areg(r1)] + (pre[1..] + [LS.Acheck(chk)] + rest);
               assert pb + [LS.Acheck(chk)] + rest == [LS.Areg(r2)] + (pre[1..] + [LS.Acheck(chk)] + rest);
-              assert PS.PikeActions(pa) by {
-                forall i | 0 <= i < |pa| ensures PS.PikeAction(pa[i]) { if i > 0 { assert pa[i] == pre[i]; } }
+              assert EL.PikeLkActions(pa) by {
+                forall i | 0 <= i < |pa| ensures EL.PikeLkAction(pa[i]) { if i > 0 { assert pa[i] == pre[i]; } }
               }
-              assert PS.PikeActions(pb) by {
-                forall i | 0 <= i < |pb| ensures PS.PikeAction(pb[i]) { if i > 0 { assert pb[i] == pre[i]; } }
+              assert EL.PikeLkActions(pb) by {
+                forall i | 0 <= i < |pb| ensures EL.PikeLkAction(pb[i]) { if i > 0 { assert pb[i] == pre[i]; } }
               }
               if ConsumesBeforeAreg(pre) && !(pre[0].Areg? && NN.NonNullableL(pre[0].r)) {
                 ConsumesTailC(pre);
@@ -646,8 +657,8 @@ module LindenElkCheckErase {
           var pn := [LS.Areg(r1), LS.Areg(r2)] + pre[1..];
           assert pn + rest == [LS.Areg(r1), LS.Areg(r2)] + (pre[1..] + rest);
           assert pn + [LS.Acheck(chk)] + rest == [LS.Areg(r1), LS.Areg(r2)] + (pre[1..] + [LS.Acheck(chk)] + rest);
-          assert PS.PikeActions(pn) by {
-            forall i | 0 <= i < |pn| ensures PS.PikeAction(pn[i]) {
+          assert EL.PikeLkActions(pn) by {
+            forall i | 0 <= i < |pn| ensures EL.PikeLkAction(pn[i]) {
               if i >= 2 { assert pn[i] == pre[i - 1]; }
             }
           }
@@ -678,8 +689,8 @@ module LindenElkCheckErase {
                 var pn := [LS.Areg(r1), LS.Areg(q1)] + pre[1..];
                 assert pn + rest == [LS.Areg(r1), LS.Areg(q1)] + (pre[1..] + rest);
                 assert pn + [LS.Acheck(chk)] + rest == [LS.Areg(r1), LS.Areg(q1)] + (pre[1..] + [LS.Acheck(chk)] + rest);
-                assert PS.PikeActions(pn) by {
-                  forall i | 0 <= i < |pn| ensures PS.PikeAction(pn[i]) {
+                assert EL.PikeLkActions(pn) by {
+                  forall i | 0 <= i < |pn| ensures EL.PikeLkAction(pn[i]) {
                     if i >= 2 { assert pn[i] == pre[i - 1]; }
                   }
                 }
@@ -714,8 +725,8 @@ module LindenElkCheckErase {
                     var pi := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + pre[1..];
                     assert pi + rest == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + (pre[1..] + rest);
                     assert pi + [LS.Acheck(chk)] + rest == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + (pre[1..] + [LS.Acheck(chk)] + rest);
-                    assert PS.PikeActions(pi) by {
-                      forall i | 0 <= i < |pi| ensures PS.PikeAction(pi[i]) {
+                    assert EL.PikeLkActions(pi) by {
+                      forall i | 0 <= i < |pi| ensures EL.PikeLkAction(pi[i]) {
                         if i >= 3 { assert pi[i] == pre[i - 2]; }
                       }
                     }
@@ -747,8 +758,8 @@ module LindenElkCheckErase {
               var pn := [LS.Areg(r1), LS.Aclose(gid)] + pre[1..];
               assert pn + rest == [LS.Areg(r1), LS.Aclose(gid)] + (pre[1..] + rest);
               assert pn + [LS.Acheck(chk)] + rest == [LS.Areg(r1), LS.Aclose(gid)] + (pre[1..] + [LS.Acheck(chk)] + rest);
-              assert PS.PikeActions(pn) by {
-                forall i | 0 <= i < |pn| ensures PS.PikeAction(pn[i]) {
+              assert EL.PikeLkActions(pn) by {
+                forall i | 0 <= i < |pn| ensures EL.PikeLkAction(pn[i]) {
                   if i >= 2 { assert pn[i] == pre[i - 1]; }
                 }
               }
@@ -782,8 +793,21 @@ module LindenElkCheckErase {
           } else {
             tstar := LT.Mismatch;
           }
-        case LookaroundR(_, _) =>
-          assert false;   // not pike
+        case LookaroundR(lk, r1) =>
+          // the gate is zero-width: rebuild it around the continuation's
+          // inserted-check tree. Both sides carry the SAME body subtree, so
+          // LACongLK gives the leaf agreement.
+          match t {
+            case LK(lk2, tlk, tc) =>
+              if ConsumesBeforeAreg(pre) { ConsumesTailC(pre); }
+              if AcheckIn(pre) && !(ConsumesBeforeAreg(pre[1..]) || b == BS.CanExit) { AcheckInTail(pre); }
+              var sub := BoolCheckInsert(rer, pre[1..], chk, rest, inp, b, tc);
+              tstar := LT.LK(lk2, tlk, sub);
+              LACongLK(lk2, tlk, sub, tc);
+            case LKFail(lk2, tlk) =>
+              tstar := t;
+            case _ =>
+          }
         case Backreference(_) =>
           assert false;   // not pike
     }
@@ -860,15 +884,15 @@ module LindenElkCheckErase {
       subtrees are pushed at `CannotExit` by BOTH derivations and are likewise
       shared without recursion. */
   lemma BoolFlagLift(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input, t: LT.Tree)
-    requires PS.PikeActions(acts)
+    requires EL.PikeLkActions(acts)
     requires ShieldedActs(acts)
-    requires BS.BoolTree(rer, acts, inp, BS.CannotExit, t)
-    ensures BS.BoolTree(rer, acts, inp, BS.CanExit, t)
+    requires EL.BoolTreeLk(rer, acts, inp, BS.CannotExit, t)
+    ensures EL.BoolTreeLk(rer, acts, inp, BS.CanExit, t)
     decreases LS.TreeSize(t), LS.ActionsRegexSize(acts)
   {
     if |acts| == 0 { return; }
     var cont := acts[1..];
-    PS.PikeActionsTail(acts);
+    EL.PikeLkActionsTail(acts);
     assert acts == [acts[0]] + cont;
     match acts[0]
     case Acheck(strcheck) =>
@@ -882,7 +906,7 @@ module LindenElkCheckErase {
         case _ =>
       }
     case Areg(r) =>
-      assert PS.PikeRegex(r);
+      assert EL.PikeLkRegex(r);
       match r
       case Epsilon =>
         ShieldedTail(acts);
@@ -899,8 +923,8 @@ module LindenElkCheckErase {
           case Choice(ta, tb) =>
             var la := [LS.Areg(r1)] + cont;
             var lb := [LS.Areg(r2)] + cont;
-            PS.PikeActionsConsIff(LS.Areg(r1), cont);
-            PS.PikeActionsConsIff(LS.Areg(r2), cont);
+            EL.PikeLkActionsConsIff(LS.Areg(r1), cont);
+            EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
             assert NN.NonNullableL(r) ==> NN.NonNullableL(r1) && NN.NonNullableL(r2);
             ShieldedCons([LS.Areg(r1)], acts);
             ShieldedCons([LS.Areg(r2)], acts);
@@ -910,8 +934,8 @@ module LindenElkCheckErase {
         }
       case Sequence(r1, r2) =>
         var ln := [LS.Areg(r1), LS.Areg(r2)] + cont;
-        PS.PikeActionsConsIff(LS.Areg(r2), cont);
-        PS.PikeActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
+        EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
+        EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
         assert ln == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
         var sparts := [LS.Areg(r1), LS.Areg(r2)];
         if NN.NonNullableL(r) {
@@ -932,8 +956,8 @@ module LindenElkCheckErase {
             case GroupActionT(g, tc) =>
               var q1 := L.Quantified(greedy, min - 1, delta, r1);
               var ln := [LS.Areg(r1), LS.Areg(q1)] + cont;
-              PS.PikeActionsConsIff(LS.Areg(q1), cont);
-              PS.PikeActionsConsIff(LS.Areg(r1), [LS.Areg(q1)] + cont);
+              EL.PikeLkActionsConsIff(LS.Areg(q1), cont);
+              EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(q1)] + cont);
               assert ln == [LS.Areg(r1)] + ([LS.Areg(q1)] + cont);
               assert NN.NonNullableL(r) ==> NN.NonNullableL(r1);
               ShieldedCons([LS.Areg(r1), LS.Areg(q1)], acts);
@@ -966,8 +990,8 @@ module LindenElkCheckErase {
         match t {
           case GroupActionT(g, tc) =>
             var ln := [LS.Areg(r1), LS.Aclose(gid)] + cont;
-            PS.PikeActionsConsIff(LS.Aclose(gid), cont);
-            PS.PikeActionsConsIff(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+            EL.PikeLkActionsConsIff(LS.Aclose(gid), cont);
+            EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Aclose(gid)] + cont);
             assert ln == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
             assert NN.NonNullableL(r) ==> NN.NonNullableL(r1);
             ShieldedCons([LS.Areg(r1), LS.Aclose(gid)], acts);
@@ -984,7 +1008,14 @@ module LindenElkCheckErase {
             case _ =>
           }
         }
-      case LookaroundR(_, _) =>
+      case LookaroundR(lk, r1) =>
+        // the gate does not read the loop flag; lift under it
+        match t {
+          case LK(lk2, tlk, tc) =>
+            ShieldedTail(acts);
+            BoolFlagLift(rer, cont, inp, tc);
+          case _ =>
+        }
       case Backreference(_) =>
   }
 }

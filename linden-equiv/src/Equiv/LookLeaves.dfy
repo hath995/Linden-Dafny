@@ -24,6 +24,7 @@
 //     positive gate resumes at the very map the `LK` node was entered with.
 include "EntryLk.dfy"
 include "CheckErase.dfy"
+include "TreeRepRE.dfy"
 
 /** §6.6: `LeavesAgreeAt` (leaf agreement at one input, for every group map),
     its congruences, group-map neutrality of group-free walks, and the two
@@ -44,6 +45,9 @@ module LindenElkLookLeaves {
   import CE = LindenElkCheckErase
   import SSx = StrictSuffix
   import EL = LindenElkEntryLk
+  import AR = LindenElkActionsRep
+  import TR = LindenElkTreeRep
+  import LOr = Oracle
 
   // ===========================================================================
   // Leaf agreement at a fixed input
@@ -313,4 +317,48 @@ module LindenElkLookLeaves {
   lemma LAAtGateFail(lk: L.Lookaround, tlk: LT.Tree, inp: LC.Input)
     ensures LeavesAgreeAt(LT.LKFail(lk, tlk), LT.Mismatch, inp)
   {}
+
+  // ===========================================================================
+  // What the construction must know about the oracle
+  // ===========================================================================
+
+  /** The oracle column at `inp`'s position tells the truth about every
+      lookaround the table knows: the bit is set exactly when the body's walk
+      (in the lookaround's own direction) succeeds there. Stated over `Input`
+      rather than a string+cp pair because the construction is string-free —
+      `TR.CpOf(inp)` is the column. */
+  ghost predicate OracleOkAt(rer: LW.RegExpRecord, qm: AR.QMap, inp: LC.Input) {
+    forall lid: int, lk: L.Lookaround, r1: L.Regex ::
+      lid in qm.looks && qm.looks[lid] == (lk, r1) ==>
+        (LOr.view_get_oracle(qm.ov, TR.CpOf(inp), lid)
+         <==> LT.TreeRes(FU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk)),
+                         LG.Empty, inp, L.LkDir(lk)).Some?)
+  }
+
+  /** `OracleOkAt` here and at every position the walk can still reach — the
+      form the construction carries, since it recurses into suffixes. */
+  ghost predicate OracleOkSuffix(rer: LW.RegExpRecord, qm: AR.QMap, inp0: LC.Input) {
+    forall inp: LC.Input :: (inp == inp0 || SSx.IsStrictSuffix(inp, inp0, WP.Forward))
+                            ==> OracleOkAt(rer, qm, inp)
+  }
+
+  /** The hypothesis survives a read. */
+  lemma OracleOkSuffixStep(rer: LW.RegExpRecord, qm: AR.QMap, inp0: LC.Input, inp1: LC.Input)
+    requires OracleOkSuffix(rer, qm, inp0)
+    requires inp1 == inp0 || SSx.IsStrictSuffix(inp1, inp0, WP.Forward)
+    ensures OracleOkSuffix(rer, qm, inp1)
+  {
+    forall inp: LC.Input | inp == inp1 || SSx.IsStrictSuffix(inp, inp1, WP.Forward)
+      ensures OracleOkAt(rer, qm, inp)
+    {
+      if inp != inp0 && !SSx.IsStrictSuffix(inp, inp0, WP.Forward) {
+        assert inp != inp1;
+        assert SSx.IsStrictSuffix(inp, inp1, WP.Forward);
+        assert inp1 != inp0;
+        assert SSx.IsStrictSuffix(inp1, inp0, WP.Forward);
+        SSx.StrictSuffixTrans(inp, inp1, inp0, WP.Forward);
+        assert false;
+      }
+    }
+  }
 }

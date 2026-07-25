@@ -30,6 +30,8 @@ module LindenElkMain {
   import LCdn = Cdn
   import RC = Charclasses
   import AR = LindenElkActionsRep
+  import EL = LindenElkEntryLk
+  import LL = LindenElkLookLeaves
   import T = LindenElkTranslate
   import CM = LindenElkClockMono
   import NI = LindenElkNestInv
@@ -348,9 +350,9 @@ module LindenElkMain {
       with `exit_allowed == false`). */
   least lemma BoolTreeLbIrrel(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input,
                               b1: BS.LoopBool, b2: BS.LoopBool, t: LT.Tree)
-    requires BS.BoolTree(rer, acts, inp, b1, t)
+    requires EL.BoolTreeLk(rer, acts, inp, b1, t)
     requires forall i :: 0 <= i < |acts| ==> !acts[i].Acheck?
-    ensures BS.BoolTree(rer, acts, inp, b2, t)
+    ensures EL.BoolTreeLk(rer, acts, inp, b2, t)
   {
     if |acts| == 0 {
       assert t == LT.Match;
@@ -373,7 +375,7 @@ module LindenElkMain {
           } else {
             var pair := LC.ReadChar(rer, cd, inp, WP.Forward).value;
             assert t.Read? && t.c == pair.0;
-            assert BS.BoolTree(rer, cont, pair.1, BS.CanExit, t.t);
+            assert EL.BoolTreeLk(rer, cont, pair.1, BS.CanExit, t.t);
           }
         case Disjunction(r1, r2) =>
           assert t.Choice?;
@@ -400,7 +402,7 @@ module LindenElkMain {
             var skipt := if greedy then t.t2 else t.t1;
             assert itert.GroupActionT?;
             // the iteration branch is at an explicit CannotExit: shared fact.
-            assert BS.BoolTree(rer, [LS.Areg(r1), LS.Acheck(inp), LS.Areg(L.Quantified(greedy, 0, LFS.NoiPred(delta), r1))] + cont,
+            assert EL.BoolTreeLk(rer, [LS.Areg(r1), LS.Acheck(inp), LS.Areg(L.Quantified(greedy, 0, LFS.NoiPred(delta), r1))] + cont,
                                inp, BS.CannotExit, itert.t);
             // the skip branch threads the flag: induct.
             BoolTreeLbIrrel(rer, cont, inp, b1, b2, skipt);
@@ -417,8 +419,12 @@ module LindenElkMain {
           } else {
             assert t == LT.Mismatch;
           }
-        case LookaroundR(_, _) =>
-          assert false;
+        case LookaroundR(lk, r1) =>
+          // the gate does not read the loop flag; recurse under it
+          match t {
+            case LK(lk2, tlk, tc) => BoolTreeLbIrrel(rer, cont, inp, b1, b2, tc);
+            case _ =>
+          }
         case Backreference(_) =>
           assert false;
     }
@@ -724,6 +730,22 @@ module LindenElkMain {
     case Re_capture(_, r1) => LmOfRE(r1)
     case Re_lookaround(lid, la, r1) =>
       LmOfRE(r1)[lid := (T.TrLookaround(la), T.Translate(r1))]
+  }
+
+  /** A lookaround-free regex contributes no row to the lookaround table — so
+      the oracle hypothesis the entry construction wants is vacuous while the
+      top-level gate is still the plus fragment. */
+  lemma LmOfRELookFree(re: R.regex)
+    requires T.TransWf(re) && NR.LookFreeRE(re)
+    ensures LmOfRE(re) == map[]
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => LmOfRELookFree(r1); LmOfRELookFree(r2);
+    case Re_con(r1, r2) => LmOfRELookFree(r1); LmOfRELookFree(r2);
+    case Re_quant(_, _, _, r1) => LmOfRELookFree(r1);
+    case Re_capture(_, r1) => LmOfRELookFree(r1);
+    case _ =>
   }
 
   /** `QmOfRE(re)`'s domain is exactly `re`'s quant ids (`PIV.QuantIds`). */
@@ -1050,8 +1072,8 @@ module LindenElkMain {
     var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(re))], inp, LG.Empty, WP.Forward);
     assert LS.IsTree(rer, [LS.Areg(T.Translate(re))], inp, LG.Empty, WP.Forward, t);
     assert LES.SpecRegex(raw) == T.Translate(re);
-    ATR.TranslateFragmentPike(re);         // PikeRegex(Translate(re))
-    BS.BooleanCorrect(rer, T.Translate(re), inp, t);
+    EL.TranslateFragmentPikeLk(re);        // PikeLkRegex(Translate(re))
+    EL.BooleanCorrectLk(rer, T.Translate(re), inp, t);
     assert forall i :: 0 <= i < |[LS.Areg(T.Translate(re))]| ==> ![LS.Areg(T.Translate(re))][i].Acheck?;
     BoolTreeLbIrrel(rer, [LS.Areg(T.Translate(re))], inp, BS.CanExit, BS.CannotExit, t);
 
@@ -1065,9 +1087,15 @@ module LindenElkMain {
       PS.PikeActionsConsIff(LS.Areg(T.Translate(re)), []);
     }
     assert WO.WalkOk([LS.Areg(T.Translate(re))], code, 0, ATR.EaOf(BS.CannotExit));
+    // the oracle hypothesis is vacuous here: a plus-fragment regex registers no
+    // lookaround row, so the table constrains nothing
+    AR.PlusFragmentLookFree(re);
+    LmOfRELookFree(re);
+    assert qm.looks == map[];
+    assert LL.OracleOkSuffix(rer, qm, inp);
     var tstar := ATR.ActionsTreeRepRE(rer, qm, [LS.Areg(T.Translate(re))], code, 0, inp, BS.CannotExit, t);
     assert TR.TreeRepRE(qm, tstar, code, 0, inp, false);
-    CE.LAFirstLeaf(tstar, t, inp);
+    LL.LAAtFirstLeaf(tstar, t, inp);
     assert LT.FirstLeaf(tstar, inp) == LT.FirstLeaf(t, inp);
 
     // ---- the engine pipeline ---------------------------------------------
