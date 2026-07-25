@@ -670,6 +670,41 @@ bit-for-bit unchanged and the cost lands in the package that wants the feature.
 when one IS wanted — it rebuilds each member's `.doo` in dependency order, and
 fails the member whose build exceeds its 10-minute cap.)
 
+**The entry's tables and the oracle discharge are DONE** (OracleEntry.dfy, 24
+green):
+
+- `LmOf(re)` — the lookaround table (lid -> translated flavour and body), with
+  `LmOfDom`, `LmOfInv` (every row IS a node of `re`, carrying its table row, its
+  lookBEHIND flavour and its L1 body facts) and `LmapOkOfLmOf`. The descent
+  needs `IsLookSub` + refl/trans/child plumbing, and `LookFreeLmOfEmpty`: an L1
+  body is look-FREE, so a lid can only belong to its own node.
+- `OracleOkFromColumns` — `OS.OracleColumnSpec` instantiated at every row and
+  every column gives the construction's `LL.OracleOkSuffix` from the initial
+  input. `SuffixIsInputAt` lines the indexings up: every input the forward walk
+  can still reach IS a string position.
+
+**The capture pass ("the look pass is the identity") is HALF done.** MainTheorem
+used to get this free from `max_lookaround == 0`; at L1 it is true but must be
+proved, because `FLookLoop` replays `compile_to_bytecode(capture_regex(la,
+body))` for every positive lookaround that matched and takes the replay's
+registers. What the answer (`filter_reset` over the main ast) can see:
+
+| register bank | why the replay cannot change the answer | status |
+|---|---|---|
+| capture | a capture-free body compiles no `SetRegisterToCP` | DONE — `NR.NoCaptureInstrRE` family + `CM.FFindMatchCapFrame` |
+| look | `filter_capture` ignores look clocks when bodies are capture-free | DONE — `PIV.FilterCaptureLookIndep` |
+| quant | written only at the body's own ids, which the filter never consults | frames DONE (`CM.FFindMatchQuantFrame`); classification + filter frame REMAIN |
+
+Remaining for it: (i) `QuantWritesInside(compile_to_bytecode(re), QuantIds(re))`
+— an `NfaRepRE` family clone in the shape of `NoCaptureInstrRE`; (ii) a
+`filter_capture` frame saying quant clocks INSIDE lookaround bodies never
+matter (the `FilterCaptureQcFrame` induction with `FilterAtLookaround` in the
+lookaround case); (iii) `reverse_regex` preserves the body fragment (the
+capture regex of a lookbehind is `reverse_regex(body)`); (iv) the `FLookLoop`
+induction and the widened `FBuildCaptureUnfold`. `FReconstructPlus` needs
+nothing new — `FNulledPlusIdentity` already covers it for all-negative quant
+values, which `QuantRegsFinal` supplies.
+
 **Remaining:**
 
 - **Leaf-transparency lemmas** (linden-semantics-core or linden-reasoning):
