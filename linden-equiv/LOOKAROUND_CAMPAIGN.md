@@ -547,18 +547,18 @@ vacuous cases into real ones, once `StaticOkRE`'s gate widens to
   then become unreachable-by-`requires` but stay as true statements.
 - **The kill case mirrors `PreserveAnchorKill`**: the checked tree is
   `Mismatch`, the thread dies, the tree is consumed into `seen`.
-- **The one genuinely new obligation: the `look_regs` write.** The engine's
-  `CheckOracle` pass also does `look_regs[lid] := cp`, so `ThreadTracksGm`
-  must survive it: `GmOfLive` reads `look` through `AI.filter_reset` →
-  `filter_capture`, whose `Re_lookaround` branch either `filter_all`s the body
-  or recurses into it. For CAPTURE-FREE bodies both alternatives are the
-  IDENTITY on `cap_regs`, so `GmOfLive` is independent of the look bank —
-  prove `CaptureFreeRE(r) ==> filter_all(r, regs) == regs` and
-  `CaptureFreeRE(r) ==> filter_capture(r, regs, ..) == regs`, then lift by
-  induction over the ast (hypothesis: `LookBehindFragmentRE`, whose
-  lookaround arm carries `CaptureFreeRE(body)`). This is the L1 shape of what
-  the campaign scoping called "the `GmOfLive` look-clock branch" — L3
-  (captures inside lookarounds) is where it stops being the identity.
+- **The one genuinely new obligation — the `look_regs` write — is DONE**
+  (PikeInvRE.dfy, 154 green). The engine's `CheckOracle` pass also does
+  `look_regs[lid] := cp`, so `ThreadTracksGm` has to survive it: `GmOfLive`
+  reads `look` through `AI.filter_reset` -> `filter_capture`, whose
+  `Re_lookaround` branch either `filter_all`s the body or recurses into it,
+  and for CAPTURE-FREE bodies both alternatives are the IDENTITY on
+  `cap_regs`. Landed as `FilterAllCaptureFree`, `FilterCaptureCaptureFree`,
+  `FilterCaptureLookIndep` (hypothesis `NR.LookBehindFragmentRE`, whose
+  lookaround arm carries `CaptureFreeRE(body)`) and the consequence
+  `GmOfLiveLookIndep`. This is the L1 shape of what the campaign scoping
+  called "the `GmOfLive` look-clock branch"; at L3 (captures INSIDE
+  lookarounds) it stops being the identity.
 - The `ClockMono`/`BB*` bookkeeping for the write is already in place
   (`RegsClocksLESet`/`SetRegLens` handle `look_regs` — the VM-level oracle
   cases were oracle-aware from the start).
