@@ -9,7 +9,7 @@ This document records the campaign's design, the work completed so far, and —
 in enough detail that another person could carry it on — the intended proof
 structure for everything that remains.
 
-Status (2026-07-23):
+Status (2026-07-25):
 
 | Phase | Content | State |
 |---|---|---|
@@ -209,9 +209,57 @@ per-file (see §7 for the command).
   `FConsumeReach`) `FConsume` drains `blocked` to `[]`.
 - `FindMatchReachSound`: whole-run soundness.
 
+**Phase C2 completeness (PR #1, `b79ea0a`, external contribution) —
+OracleReach.dfy:** `NoAccept` classification, the worklist invariant
+`ClosureInv` (EpsEdge-closure into P ∪ A, blocked-entry coverage keyed on
+`isblocked`, write coverage) with `AdvanceReachComplete`,
+`FConsumeReachComplete`, the `ReachF` inversions
+(`ReachInProc`/`ReachFLeEnd`/`ReachBeyondNeedsConsume`),
+`FindMatchReachComplete`, and **`SweepCharacterization`** — a classified
+`NoAccept` run sets exactly the old bits plus the `ReachesWrite` positions,
+for arbitrary initial registers.
+
+**Phase C3 (`80f9e13`) — OracleBuild.dfy:** `LidBuildOk`/`AllLidsBuildOk`
+(every lid's build row is empty or classified-and-forward; gap lids ride
+the seed frame with the same formula), `FBuildLidsCharacterized` (the
+lid-descending induction: `SweepCharacterization` per column,
+`FindMatchOracleFrame` commuting the rest), **`FBuildOracleCorrect`** (each
+`FBuildOracle` column holds EXACTLY its build bytecode's `ReachesWrite`
+positions) and per-lookaround **`FBuildOracleCorrectAt`** in
+`lazy_prefix(body)` form.
+
+**Phase C4 (`642737b`..`dce5aac`) — OracleBridge.dfy + OracleDecomp.dfy:**
+the span predicate `Matches`/`MatchesIter` + algebra; the lazy-prefix
+"start anywhere" walker; the forward direction `MatchesToPath`
+(+`StarLoopPath`/`MinChainPath`/`OptChainPath`/`DoWhilePath`) capped by
+`MatchesToReachesWrite`; the decomposition direction via the mid-parse
+invariant `InBlock` (+`InMin`/`InOpt`, `*Shape` pin packages, named tail
+predicates with inversion/intro helpers), `BlockStep`
+(+`BlockStepMin`/`BlockStepOpt`), the program sweep `ProgReachInv`, and
+`ReachesWriteToMatches`; capstone **`OracleColumnCharacterized`** — the
+oracle bit at `(cp, lid)` iff the body matches some span ending at `cp`.
+
+**Phase C5 spec-side core (`869b7a3`..`3a92f43`) —
+linden-reasoning/SpanDuality.dfy:** the direction-free Linden span
+predicate `MatchesL`/`IterL` + algebra, `GroupFreeL` (capture-free bodies
+translate group-free, the group map is constant), `SuccActs`, the
+backward-walk plumbing at `InputAt` positions, and BOTH duality directions:
+**`SpanDualityComplete`** and **`SpanDualitySound`** — the backward walk
+from `cp` succeeds iff the regex matches some span ending at `cp`.
+
+**MainTheorem regression, found and fixed (`dacecd6`):** the campaign's new
+`NfaRepRE`-module predicates perturbed the pinnacle lemma's marginal Z3
+search; the runaway was ONE semantically trivial batch (the
+`ThreadRegsWf` bridge at the `MainExtraction` call). Fix: the bridge closes
+inside `assert ... by { hide *; ... }` (context collapse ⇒ congruence),
+the call's preconditions are split into individual asserts, and
+`MainTheorem` carries `{:isolate_assertions}` (935 small batches, worker-
+friendly). Reusable recipe: a trivial assert that runs away in a huge
+context wants `by { hide *; restate the exact facts; }`.
+
 ## 6. The remaining proof plan (L1)
 
-### 6.1 C2 completeness — every reachable `WriteOracle` gets written
+### 6.1 C2 completeness — every reachable `WriteOracle` gets written [DONE — PR #1]
 
 The Pike worklist argument, at existence level. Two prerequisites, then two
 lemmas mirroring the soundness pair.
@@ -292,7 +340,7 @@ lemma SweepCharacterization(c, str, ov, lid, cdn)   // c classified + NoAccept
       == view_get_oracle(ov, cp, lid) || ReachesWrite(c, str, 0, lid, cp)
 ```
 
-### 6.2 C3 — `FBuildLids` assembly
+### 6.2 C3 — `FBuildLids` assembly [DONE — OracleBuild.dfy]
 
 Instantiate per lid, for a `LookBehindFragmentRE` main regex `re` with
 `LookUnique(re)`, `fc := FFullCompilation(re)`:
@@ -325,7 +373,7 @@ lemma FBuildOracleCorrect(re, str)      // LookBehindFragmentRE + LookUnique
 `LookAt(re, lid)` lookup function — either is fine; the recursion mirrors
 `LookTablesOk` and avoids inventing a partial lookup.)
 
-### 6.3 C4 — the bridge: `ReachesWrite` ⟺ a body match ending at cp
+### 6.3 C4 — the bridge: `ReachesWrite` ⟺ a body match ending at cp [DONE — OracleBridge.dfy + OracleDecomp.dfy]
 
 Relate the configuration graph to walks of the compiled block. Target
 (engine-level, still spec-free):
@@ -367,7 +415,21 @@ in linden-reasoning if stated over the TRANSLATED body (see below —
 stating it over the Linden `Regex` via `T.Translate(body)` skips one
 transfer lemma).
 
-### 6.4 C5 — spec-side duality (linden-reasoning; engine-free)
+### 6.4 C5 — spec-side duality (linden-reasoning; engine-free) [CORE DONE — SpanDuality.dfy; glue remains]
+
+**Done:** `MatchesL` + `SpanDualityComplete`/`SpanDualitySound` (see §5).
+**Remaining glue (next up):** (a) refresh linden-equiv's stale
+`deps/linden-reasoning.doo` (it predates SpanDuality.dfy — `lem build` at
+the workspace root, or the hand-built-doo bridge); (b) the transfer
+`OB.Matches(bodyAST, str, i, j) ⟺ MatchesL(rer, Translate(bodyAST), str, i, j)`
+in linden-equiv — structural induction via `CharSemAgree` (!ignoreCase +
+`CharacterWfL1` from `Latin1Wf`) and `AnchorSemAgree` (!multiline; note
+`AI.cp_context(i, str, Forward) == T.CpContext(str, i, Forward)` is
+definitional), quantifier counts lining up by `q.min as nat`/`TrDelta`;
+(c) the OracleOk-shaped corollary chaining `OracleColumnCharacterized` +
+transfer + duality: bit(cp, lid) ⟺ the backward walk of the translated
+body succeeds at cp — the exact `StaticOkRE` conjunct §6.5 consumes.
+The original plan for this section follows.
 
 The spec walks a lookbehind body BACKWARD from cp (`LkDir(LookBehind) ==
 Backward`); the engine characterization speaks of forward matches ending at
