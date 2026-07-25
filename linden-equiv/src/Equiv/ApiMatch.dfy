@@ -40,7 +40,7 @@ module LindenRegexApi {
       `MainTheorem`'s precondition, exposed so callers can check membership
       at runtime or in their own proofs. */
   predicate Supported(pattern: R.raw_regex) {
-    NR.PlusFragmentRaw(pattern) && T.Latin1Wf(pattern)
+    NR.LookBehindFragmentRaw(pattern) && T.Latin1Wf(pattern)
   }
 
   // ==========================================================================

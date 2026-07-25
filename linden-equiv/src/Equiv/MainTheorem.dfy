@@ -948,7 +948,7 @@ module LindenElkMain {
       ast/bytecode/cdns fields of an `FCompiled` untouched on fragment
       regexes (which contain no lookarounds). */
   lemma FCompileExtraFrame(r: R.regex, c: CP.FCompiled)
-    requires NR.PlusFragmentRE(r)
+    requires NR.LookBehindFragmentRE(r)
     ensures CP.FCompileExtra(r, c).f_main_ast == c.f_main_ast
     ensures CP.FCompileExtra(r, c).f_main_bc == c.f_main_bc
     ensures CP.FCompileExtra(r, c).f_main_cdns == c.f_main_cdns
@@ -964,7 +964,20 @@ module LindenElkMain {
                 then c.(f_plus_bc := CP.upd(c.f_plus_bc, qid, CP.compile_reconstruct_nulled(r1)))
                 else c;
       FCompileExtraFrame(r1, c1);
-    case Re_lookaround(_, _, _) =>
+    case Re_lookaround(lid, la, body) =>
+      // reachable under the widened gate: the five updates write only the LOOK
+      // tables, and the recursion into `body` leaves the main fields alone too
+      var c1 := c.(f_look_types := CP.upd(c.f_look_types, lid, la));
+      var c2 := c1.(f_look_cdns := CP.upd(c1.f_look_cdns, lid, LCdn.compile_cdns(body)));
+      var c3 := c2.(f_look_ast := CP.upd(c2.f_look_ast, lid, body));
+      var c4 := c3.(f_look_build_bc :=
+                      CP.upd(c3.f_look_build_bc, lid,
+                             CP.compile_to_write(CP.oracle_regex(la, body), lid)));
+      var c5 := c4.(f_look_capture_bc :=
+                      CP.upd(c4.f_look_capture_bc, lid,
+                             CP.compile_to_bytecode(CP.capture_regex(la, body))));
+      NR.PlusIsLookBehindFragmentRE(body);
+      FCompileExtraFrame(body, c5);
   }
 
   /** `CP.FCompileExtra` also leaves the plus-reconstruction bytecode table
@@ -1019,8 +1032,47 @@ module LindenElkMain {
   // restatement and the MainExtraction call), the monolithic VC verifies in
   // ~49s, against 6m35s for ~1200 isolated batches. The previous campaign left
   // this exact question open; measured, the bridges win.
+  /** The static lookaround package: everything about the lookaround tables
+      and the built oracle that `MainTheorem` consumes, derived in a MINIMAL
+      context. `LmapOk`, `OracleOkSuffix` and `ActionsRepL` are large
+      quantified predicates. Under the plus gate they were nearly free
+      (`qm.looks == map[]` made the oracle hypothesis vacuous); once the gate
+      admits real lookbehinds the main lemma has to DERIVE them, and doing that
+      inline ran the VC past 900s. Established here, consumed as opaque facts
+      there. */
+  lemma LookStaticPackage(raw: R.raw_regex, str: string, qm: AR.QMap)
+    requires NR.LookBehindFragmentRaw(raw) && T.Latin1Wf(raw)
+    // listed first so the `qm` clause below is well-formed: QmOfRE / LmOf are
+    // partial on TransWf, and a precondition cannot call AnnotateWf itself
+    requires T.TransWf(R.annotate(raw)) && T.TransWf(R.lazy_prefix(R.annotate(raw)))
+    requires qm == AR.QMap(QmOfRE(R.lazy_prefix(R.annotate(raw))),
+                           OE.LmOf(R.lazy_prefix(R.annotate(raw))),
+                           AI.FBuildOracle(CP.FFullCompilation(R.annotate(raw)), str))
+    ensures var re := R.lazy_prefix(R.annotate(raw));
+      AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
+      && LL.OracleOkSuffix(LES.TheRer(raw), qm, LC.InitInput(str))
+      && AR.ActionsRepL(LES.TheRer(raw), qm, [LS.Areg(T.Translate(re))],
+                        CP.compile_to_bytecode(re), 0)
+  {
+    var ast := R.annotate(raw);
+    var re := R.lazy_prefix(ast);
+    var rer := LES.TheRer(raw);
+    T.AnnotateWf(raw);
+    NR.SpecRegexLookBehindFragment(raw);
+    LTB.SpecRegexLookUnique(raw);
+    assert NR.LookBehindFragmentRE(ast);
+    PIV.SpecRegexQuantUnique(raw);
+    QmOfREEntries(re);
+    QmapOkFromEntries(re, qm);
+    OE.LmapOkOfLmOf(re, qm);
+    LmOfLazyPrefix(ast);
+    assert qm.looks == OE.LmOf(ast);
+    OE.OracleOkFromColumns(rer, ast, str, qm);
+    AR.CompileToBytecodeActionsRepLookBehind(rer, qm, re);
+  }
+
   lemma MainTheorem(raw: R.raw_regex, str: string)
-    requires NR.PlusFragmentRaw(raw)
+    requires NR.LookBehindFragmentRaw(raw)
     requires T.Latin1Wf(raw)
     ensures LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)))
   {
@@ -1033,23 +1085,21 @@ module LindenElkMain {
 
     // ---- static packages -------------------------------------------------
     T.AnnotateWf(raw);                     // TransWf(ast) && TransWf(re)
-    NR.SpecRegexPlusFragment(raw);          // QuantFragmentRE(re)
+    NR.SpecRegexLookBehindFragment(raw);   // LookBehindFragmentRE(re)
+    LTB.SpecRegexLookUnique(raw);          // unique lids, all >= 1
 
-    assert NR.PlusFragmentRE(ast);         // con component
+    assert NR.LookBehindFragmentRE(ast);   // con component
 
     PIV.SpecRegexCapUnique(raw);           // CapUnique(re)
     PIV.SpecRegexQuantUnique(raw);         // QuantUnique(re)
     // the oracle view is part of the static table record; the main pass never
     // writes it (`crv` below is the same compilation, so `qm.ov == ov`)
     var qm := AR.QMap(QmOfRE(re), OE.LmOf(re), AI.FBuildOracle(CP.FFullCompilation(ast), str));
-    QmOfREEntries(re);
-    QmapOkFromEntries(re, qm);
-    // the simulation gate is now the lookbehind fragment; a plus-fragment
-    // regex embeds into it and constrains no row of the lookaround table
-    NR.PlusIsLookBehindFragmentRE(re);
-    AR.PlusFragmentLmapOk(re, qm);
+    // QmapOk / LmapOk / OracleOkSuffix / ActionsRepL, all at once and all
+    // derived elsewhere -- see LookStaticPackage's comment
+    LookStaticPackage(raw, str, qm);
 
-    NR.CompileToBytecodeRepPlus(re);
+    NR.CompileToBytecodeRepLookBehind(re);
     var code := CP.compile_to_bytecode(re);
     var next := CP.compile(re, 0, CP.Progress).1;
     var endl: nat := next as nat;
@@ -1065,9 +1115,7 @@ module LindenElkMain {
     assert R.max_group(re) == maxcap;
     assert R.max_quant(re) == R.imax(0, maxquant) == maxquant;
     var ncap := 2 * maxcap + 2;
-    FragmentMaxLook(ast);
     var nlook := R.max_lookaround(ast) + 1;
-    assert nlook == 1;
     var nquant := maxquant + 1;
     assert PSM.SizesOkRE(re, ncap, nlook, nquant);
     assert ngroups == (maxcap + 1) as nat;
@@ -1099,18 +1147,12 @@ module LindenElkMain {
     // do-while's dissolved progress guards); build it once at the entry and
     // remember that its leaves — hence its first leaf — agree with t's.
     WOE.WalkOkEntry(re);
-    AR.CompileToBytecodeActionsRepPlus(rer, qm, re);
     assert EL.PikeLkActions([LS.Areg(T.Translate(re))]) by {
       assert [LS.Areg(T.Translate(re))] == [LS.Areg(T.Translate(re))] + [];
       assert EL.PikeLkActions([]);
       EL.PikeLkActionsConsIff(LS.Areg(T.Translate(re)), []);
     }
     assert WO.WalkOk([LS.Areg(T.Translate(re))], code, 0, ATR.EaOf(BS.CannotExit));
-    // the oracle hypothesis is vacuous here: a plus-fragment regex registers no
-    // lookaround row, so the table constrains nothing
-    AR.PlusFragmentLookFree(re);
-    OE.LookFreeLmOfEmpty(re);
-    assert qm.looks == map[];
     assert LL.OracleOkSuffix(rer, qm, inp);
     var tstar := ATR.ActionsTreeRepRE(rer, qm, [LS.Areg(T.Translate(re))], code, 0, inp, BS.CannotExit, t);
     assert TR.TreeRepRE(qm, tstar, code, 0, inp, false);
@@ -1121,8 +1163,6 @@ module LindenElkMain {
     var crv := CP.FFullCompilation(ast);
     FFullCompilationFacts(ast);
     assert crv.f_main_ast == ast && crv.f_main_bc == code && crv.f_main_cdns == LCdn.compile_cdns(ast);
-    FragmentMaxLook(ast);
-    assert R.max_lookaround(ast) == 0;
 
     var ov := AI.FBuildOracle(crv, str);
     var capture := AReg.init_regs(ncap);
@@ -1195,14 +1235,11 @@ module LindenElkMain {
     assert R.max_group(crv.f_main_ast) == maxcap && R.max_quant(crv.f_main_ast) == maxquant;
     assert ncap == 2 * R.max_group(crv.f_main_ast) + 2;
     assert nquant == R.max_quant(crv.f_main_ast) + 1;
-    // the capture pass may now run, but under the current gate the main ast
-    // registers no lookaround row: no gate is compiled, so the look bank is
-    // still the freshly-initialized one
-    NoGateMainCode(re, code);
-    LookRegsUntouched(code, str, inits, ov, crv.f_main_cdns, capture, look, quant, result);
+    // the capture pass runs for real; its row hypothesis comes from the
+    // lookaround tables (LookRowsFromTables), discharged in its own context
     if result.None? {
       assert fmp.0 == None;
-      FBuildCaptureUnfoldNoLook(crv, str, ov, ncap, nlook, nquant, capture, look, quant, fmp);
+      FBuildCaptureUnfold(crv, str, ov, ncap, nlook, nquant, capture, look, quant, fmp);
       assert bc.0 == None;
       assert bestT.None?;
       assert LT.FirstLeaf(t, inp) == None;
@@ -1224,7 +1261,9 @@ module LindenElkMain {
       // branch: its preconditions are about `fmp.0.value`, and only after the
       // reconstruct-identity above is that known to be `thread`. Called early,
       // the main VC re-derives reconstruction to reach them and runs away.
-      FBuildCaptureUnfoldNoLook(crv, str, ov, ncap, nlook, nquant, capture, look, quant, fmp);
+      LookRowsFromTables(ast, re, crv, code, str, ov, crv.f_main_cdns, inits,
+                         capture, look, quant, nlook, endl, result);
+      FBuildCaptureUnfold(crv, str, ov, ncap, nlook, nquant, capture, look, quant, fmp);
       assert bc.0 == Some(AI.filter_reset(crv.f_main_ast, caps, lk, qt, -1));
       assert AI.FFullMatch(raw, str) == Some(AI.filter_reset(ast, caps, lk, qt, -1));
 
@@ -1259,7 +1298,6 @@ module LindenElkMain {
       // every precondition is restated verbatim just above, so with the axiom
       // space collapsed the call's check closes by congruence — without the
       // hide, this ONE batch ran away past 900s while all 1213 others passed
-      NR.PlusIsLookBehindFragmentRaw(raw);
       { hide *; MainExtraction(raw, str, t, thread, leaf); }
     }
   }
@@ -1270,7 +1308,7 @@ module LindenElkMain {
       computed in a minimal context so the large `FCompiled` base record
       doesn't leak into the caller's verification conditions. */
   lemma FFullCompilationFacts(ast: R.regex)
-    requires NR.PlusFragmentRE(ast)
+    requires NR.LookBehindFragmentRE(ast)
     ensures CP.FFullCompilation(ast).f_main_ast == ast
     ensures CP.FFullCompilation(ast).f_main_bc == CP.compile_to_bytecode(R.lazy_prefix(ast))
     ensures CP.FFullCompilation(ast).f_main_cdns == LCdn.compile_cdns(ast)
@@ -1468,6 +1506,86 @@ module LindenElkMain {
     PIV.FilterCaptureFullOutside(mainast, cr, cc, AReg.as_arrays(nlk).1,
                                  AReg.as_arrays(nqt).1, AReg.as_arrays(qt).1, -1);
 
+  }
+
+  /** Under the widened gate the look bank really can be written. Every slot
+      the main pass sets names a lookaround id of `re`, and `LmOfInv` turns that
+      id into its table row -- which the fragment forces to be an L1 lookbehind.
+      This is exactly the capture pass's row hypothesis, discharged in its own
+      context so the reasoning never lands in `MainTheorem`'s VC. */
+  lemma LookRowsFromTables(ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code,
+                           str: string, ov: LOr.OracleView, cdn: LCdn.cdns,
+                           inits: AI.VmState, cap: AReg.Regs, look: AReg.Regs,
+                           quant: AReg.Regs, nlook: int, endl: nat,
+                           result: Option<AI.Thread>)
+    requires T.TransWf(ast) && T.TransWf(re) && re == R.lazy_prefix(ast)
+    requires NR.LookBehindFragmentRE(re) && LTB.LookUnique(re) && PIV.QuantUnique(re)
+    requires crv == CP.FFullCompilation(ast)
+    requires code == CP.compile_to_bytecode(re)
+    requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires nlook == R.max_lookaround(ast) + 1 && look == AReg.init_regs(nlook)
+    requires |inits.processed.true_set| == RB.size(code)
+          && |inits.processed.false_set| == RB.size(code)
+    requires inits.context.nextchar == AI.get_char(str, inits.cp)
+    requires inits.active == [AI.init_thread(cap, look, quant)]
+    requires inits.blocked == [] && inits.bestmatch.None?
+    requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
+    ensures result.Some? ==>
+      forall l: int :: 1 <= l <= R.max_lookaround(ast)
+                       && AReg.get_cp(result.value.look_regs, l).Some? ==>
+        exists la: R.lookaround, body: R.regex ::
+          LTB.LookEntryOk(crv, l, la, body)
+          && (la.Lookbehind? || la.NegLookbehind?)
+          && NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+          && PIV.QuantUnique(body)
+          && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
+  {
+    var S: set<int> := set x: nat | x in LTB.LookIds(re) :: x as int;
+    // the code only gates on ids `re` actually owns
+    forall pc: nat | pc < |code|
+      ensures (code[pc].CheckOracle? ==> code[pc].col in S)
+           && (code[pc].NegCheckOracle? ==> code[pc].ncl in S)
+    {
+      assert NR.GetPcRE(code, pc) == Some(code[pc]);
+      if pc != endl { PIV.LookCheckIdsRE(re, code, 0, endl, pc); }
+    }
+    assert CM.LookChecksInside(code, S);
+    assert CM.VmLooksAgree(inits, look, S) by {
+      assert CM.RegsAgreeOutside(look, look, S);
+    }
+    CM.FFindMatchLookFrame(code, str, inits, ov, LAnc.Forward, cdn, look, S);
+
+    // the lazy prefix owns no lookaround, so `re`'s ids are `ast`'s
+    var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false),
+                          R.Re_character(R.Dot));
+    assert re == R.Re_con(pre, ast);
+    assert LTB.LookIds(pre) == {};
+    assert LTB.LookIds(re) == LTB.LookIds(ast);
+    assert PIV.QuantUnique(ast) && LTB.LookUnique(ast);
+    assert NR.LookBehindFragmentRE(ast);
+    LTB.FFullCompilationLookOk(ast);
+    OE.LmOfDom(ast);
+    RL.AInitLaws(nlook);
+
+    if result.Some? {
+      forall l: int | 1 <= l <= R.max_lookaround(ast)
+                      && AReg.get_cp(result.value.look_regs, l).Some?
+        ensures exists la: R.lookaround, body: R.regex ::
+          LTB.LookEntryOk(crv, l, la, body)
+          && (la.Lookbehind? || la.NegLookbehind?)
+          && NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+          && PIV.QuantUnique(body)
+          && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
+      {
+        // outside `S` the bank still reads as freshly initialized, so a set
+        // slot must name one of `re`'s own ids
+        assert l in S;
+        assert (l as nat) in LTB.LookIds(ast);
+        assert l in OE.LmOf(ast);
+        var la, body := OE.LmOfInv(ast, crv, l);
+      }
+    }
   }
 
   /** A plus-fragment regex compiles no gate, so its code cannot record a look

@@ -92,6 +92,23 @@ module LindenElkLookTables {
     case Raw_lookaround(look, r1) => AnnotateLookUnique(r1, c, l + 1, q);
   }
 
+  /** What actually gets compiled — `lazy_prefix(annotate(raw))` — has unique
+      look ids, all at least `1`, and the lazy prefix contributes none of them.
+      The lid analogue of `PIV.SpecRegexQuantUnique`. */
+  lemma SpecRegexLookUnique(raw: R.raw_regex)
+    ensures LookUnique(R.annotate(raw))
+    ensures LookUnique(R.lazy_prefix(R.annotate(raw)))
+    ensures LookIds(R.lazy_prefix(R.annotate(raw))) == LookIds(R.annotate(raw))
+    ensures forall x: nat :: x in LookIds(R.annotate(raw)) ==> 1 <= x
+  {
+    AnnotateLookUnique(R.Raw_capture(raw), 0, 1, 1);
+    var ast := R.annotate(raw);
+    var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false),
+                          R.Re_character(R.Dot));
+    assert R.lazy_prefix(ast) == R.Re_con(pre, ast);
+    assert LookIds(pre) == {};
+  }
+
   /** Every lid in `r` is bounded by `max_lookaround(r)` — so the
       `FFullCompilation` tables (length `max_lookaround(r) + 1`) have room for
       every row. */

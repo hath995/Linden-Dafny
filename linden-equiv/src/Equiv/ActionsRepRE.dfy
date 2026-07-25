@@ -727,23 +727,36 @@ module LindenElkActionsRep {
       `[Areg(Translate(re))]` at `pc` 0 — the entry point later simulation lemmas
       build on. */
   /** `CompileToBytecodeActionsRep` widened to the plus fragment. */
-  lemma CompileToBytecodeActionsRepPlus(rer: LW.RegExpRecord, qm: QMap, re: R.regex)
-    requires NR.PlusFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase
-    requires QmapOk(re, qm)
+  /** The whole compiled program represents the single spec action, on the
+      lookbehind fragment -- the widest gate the table reasoning supports. The
+      caller supplies `LmapOk` (the plus-fragment corollary below derives it
+      from look-freeness instead). */
+  lemma CompileToBytecodeActionsRepLookBehind(rer: LW.RegExpRecord, qm: QMap, re: R.regex)
+    requires NR.LookBehindFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase
+    requires QmapOk(re, qm) && LmapOk(re, qm)
     ensures var code := CP.compile_to_bytecode(re);
       ActionsRepL(rer, qm, [LS.Areg(T.Translate(re))], code, 0)
   {
     var code := CP.compile_to_bytecode(re);
     var next := CP.compile(re, 0, CP.Progress).1;
-    NR.CompileToBytecodeRepPlus(re);
-    NR.PlusIsLookBehindFragmentRE(re);
-    PlusFragmentLmapOk(re, qm);
+    NR.CompileToBytecodeRepLookBehind(re);
     TransNfaRep(rer, qm, re, code, 0, next as nat);
     assert ActionsRepL(rer, qm, [], code, next as nat);
     var single := [LS.Areg(T.Translate(re))];
     assert ActionRepL(rer, qm, single[0], code, 0, next as nat);
     assert single[1..] == [];
     assert ActionsRepL(rer, qm, single, code, 0);
+  }
+
+  lemma CompileToBytecodeActionsRepPlus(rer: LW.RegExpRecord, qm: QMap, re: R.regex)
+    requires NR.PlusFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase
+    requires QmapOk(re, qm)
+    ensures var code := CP.compile_to_bytecode(re);
+      ActionsRepL(rer, qm, [LS.Areg(T.Translate(re))], code, 0)
+  {
+    NR.PlusIsLookBehindFragmentRE(re);
+    PlusFragmentLmapOk(re, qm);
+    CompileToBytecodeActionsRepLookBehind(rer, qm, re);
   }
 
   /** `CompileToBytecodeActionsRepPlus` restricted to the quantifier

@@ -15,6 +15,7 @@
 // columns line up without dragging the string through the tree layers.
 include "LookLeaves.dfy"
 include "LookTables.dfy"
+include "PikeInvRE.dfy"
 
 /** §6.6: the lookaround table `LmOf`, its correctness (`LmapOkOfLmOf`), and
     the `OracleOkSuffix` discharge that feeds the entry construction. */
@@ -38,6 +39,7 @@ module LindenElkOracleEntry {
   import AR = LindenElkActionsRep
   import TR = LindenElkTreeRep
   import LTB = LindenElkLookTables
+  import PIV = LindenElkPikeInv
   import SD = LindenSpanDuality
   import SAPI = LindenSemanticsReasoning
   import OS = LindenElkOracleSpec
@@ -103,6 +105,7 @@ module LindenElkOracleEntry {
     returns (la: R.lookaround, body: R.regex)
     requires T.TransWf(re) && NR.LookBehindFragmentRE(re)
     requires LTB.LookUnique(re) && LTB.LookTablesOk(re, fc)
+    requires PIV.QuantUnique(re)
     requires lid in LmOf(re)
     ensures T.TransWf(body)
     ensures LmOf(re)[lid] == (T.TrLookaround(la), T.Translate(body))
@@ -110,6 +113,10 @@ module LindenElkOracleEntry {
     ensures la.Lookbehind? || la.NegLookbehind?
     ensures NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
     ensures lid >= 0 && (lid as nat) in LTB.LookIds(re)
+    // the quant half: `body` sits under a lookaround, so every id it owns is
+    // one of `re`'s in-look ids -- the disjointness the capture pass replays on
+    ensures PIV.QuantUnique(body)
+    ensures forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(re)
     decreases re
   {
     LmOfDom(re);
@@ -326,7 +333,7 @@ module LindenElkOracleEntry {
   lemma OracleOkFromColumns(rer: LW.RegExpRecord, re: R.regex, str: string, qm: AR.QMap)
     requires !rer.ignoreCase && !rer.multiline
     requires T.TransWf(re) && NR.LookBehindFragmentRE(re)
-    requires LTB.LookUnique(re)
+    requires LTB.LookUnique(re) && PIV.QuantUnique(re)
     requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x
     requires qm.looks == LmOf(re)
     requires qm.ov == AI.FBuildOracle(CP.FFullCompilation(re), str)
