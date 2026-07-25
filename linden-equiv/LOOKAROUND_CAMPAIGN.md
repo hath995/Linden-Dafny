@@ -695,15 +695,32 @@ registers. What the answer (`filter_reset` over the main ast) can see:
 | look | `filter_capture` ignores look clocks when bodies are capture-free | DONE — `PIV.FilterCaptureLookIndep` |
 | quant | written only at the body's own ids, which the filter never consults | frames DONE (`CM.FFindMatchQuantFrame`); classification + filter frame REMAIN |
 
-Remaining for it: (i) `QuantWritesInside(compile_to_bytecode(re), QuantIds(re))`
-— an `NfaRepRE` family clone in the shape of `NoCaptureInstrRE`; (ii) a
-`filter_capture` frame saying quant clocks INSIDE lookaround bodies never
-matter (the `FilterCaptureQcFrame` induction with `FilterAtLookaround` in the
-lookaround case); (iii) `reverse_regex` preserves the body fragment (the
-capture regex of a lookbehind is `reverse_regex(body)`); (iv) the `FLookLoop`
-induction and the widened `FBuildCaptureUnfold`. `FReconstructPlus` needs
-nothing new — `FNulledPlusIdentity` already covers it for all-negative quant
-values, which `QuantRegsFinal` supplies.
+(i)-(iii) are now DONE as well:
+
+- `PIV.QuantWriteIdsRE` + Min/Opt companions — every `SetQuantToClock` inside a
+  compiled block targets one of that regex's own quant ids (needs
+  `QuantUnique`: without it a node's own id could be negative and so not in
+  `QuantIds`).
+- `PIV.QuantIdsOutsideLooks` + `FilterCaptureQcFrameOutside` /
+  `FilterCaptureFullOutside` — `filter_capture` reads quant clocks only at ids
+  OUTSIDE lookaround bodies, because it reaches a lookaround node and stops
+  (both branches are the identity for a capture-free body). Mutual measure:
+  per-slot at `(r, 0)`, whole-sequence at `(r, 1)`.
+- `PIV.CaptureRegexFragment` (with `ReverseCaptureFree`/`ReverseLookFree`/
+  `ReverseQuantIds`/`ReverseQuantUnique`/`ReverseNullable`/`ReversePlusFragment`)
+  — a lookbehind's capture regex is itself an L1 body, with quant ids contained
+  in the body's. Reversal only swaps concatenation order and rebuilds nodes
+  with their own ids, so every fragment property is node-local; nullability is
+  reversal-invariant, which is what the plus fragment's side conditions need.
+
+REMAINING: (iv) the `FLookLoop` induction over lid and the widened
+`FBuildCaptureUnfold`. Two supporting facts it will want: `QuantUnique(re) ==>
+QuantIdsOutsideLooks(re)` is disjoint from the ids inside lookaround bodies
+(so the frame's "agree outside S" meets the filter's "reads only outside
+looks"), and "a set `look_regs[lid]` implies `lid` is a real node id" (only a
+`CheckOracle(lid)` writes that slot, and those exist only for nodes).
+`FReconstructPlus` needs nothing new — `FNulledPlusIdentity` already covers it
+for all-negative quant values, which `QuantRegsFinal` supplies.
 
 **Remaining:**
 
