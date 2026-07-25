@@ -94,6 +94,97 @@ module LindenElkClockMono {
   }
 
   // The clock-monotonicity backbone.
+  // ==========================================================================
+  // The main pass never writes the oracle. Only WriteOracle does, and the
+  // compiled MAIN bytecode of a lookbehind-fragment regex holds none (see
+  // NR.NoWriteInstrRE) — the lookaround BUILD passes ran before the search and
+  // are the only writers. So the oracle view is static across the whole
+  // search, which is what lets the static table record carry it.
+  // ==========================================================================
+
+  /** No position of `c` holds a `WriteOracle`. */
+  ghost predicate NoWriteOracleCode(c: RB.code) {
+    forall pc: nat :: pc < |c| ==> !c[pc].WriteOracle?
+  }
+
+  /** An epsilon phase over write-free code returns the oracle view it was
+      given — the main pass is a pure READER of the oracle. */
+  lemma FAdvanceEpsilonOvStable(c: RB.code, s: AI.VmState, ov: LOr.OracleView, dir: LAnc.direction)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires NoWriteOracleCode(c)
+    ensures AI.FAdvanceEpsilon(c, s, ov, dir).1 == ov
+    decreases AI.unprocessed(s.processed), |s.active|
+  {
+    if |s.active| == 0 { return; }
+    var t := s.active[0];
+    var ac := s.active[1..];
+    if AI.bpc_mem(s.processed, t.pc, t.exit_allowed) {
+      FAdvanceEpsilonOvStable(c, s.(active := ac), ov, dir);
+      return;
+    }
+    var b0 := s.processed;
+    var s1 := s.(clock := s.clock + 1, processed := AI.bpc_add(b0, t.pc, t.exit_allowed));
+    assert AI.unprocessed(s1.processed) <= AI.unprocessed(b0)
+        && (0 <= t.pc < RB.size(c) ==> AI.unprocessed(s1.processed) < AI.unprocessed(b0))
+      by { AI.UnprocessedAdd(b0, t.pc, t.exit_allowed); }
+    match RB.get_instr(c, t.pc) {
+      case Consume(ce) =>
+        var (nb, ni) := AI.add_thread(t, ce, s1.blocked, s1.isblocked);
+        FAdvanceEpsilonOvStable(c, s1.(blocked := nb, isblocked := ni, active := ac), ov, dir);
+      case Accept =>
+      case Jmp(x) =>
+        FAdvanceEpsilonOvStable(c, s1.(active := [t.(pc := x)] + ac), ov, dir);
+      case Fork(x, y) =>
+        var newt := AI.Thread(x, t.capture_regs, t.look_regs, t.quant_regs, t.exit_allowed);
+        FAdvanceEpsilonOvStable(c, s1.(active := [newt, t.(pc := y)] + ac), ov, dir);
+      case SetRegisterToCP(reg) =>
+        var t' := t.(capture_regs := AReg.set_reg(t.capture_regs, reg, Some(s1.cp), s1.clock), pc := t.pc + 1);
+        FAdvanceEpsilonOvStable(c, s1.(active := [t'] + ac), ov, dir);
+      case SetQuantToClock(q, bq) =>
+        var ocp := if bq then Some(s1.cp) else None;
+        var t' := t.(quant_regs := AReg.set_reg(t.quant_regs, q, ocp, s1.clock), pc := t.pc + 1);
+        FAdvanceEpsilonOvStable(c, s1.(active := [t'] + ac), ov, dir);
+      case CheckOracle(l) =>
+        if LOr.view_get_oracle(ov, s1.cp, l) {
+          var t' := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(s1.cp), s1.clock));
+          FAdvanceEpsilonOvStable(c, s1.(active := [t'] + ac), ov, dir);
+        } else {
+          FAdvanceEpsilonOvStable(c, s1.(active := ac), ov, dir);
+        }
+      case NegCheckOracle(l) =>
+        if LOr.view_get_oracle(ov, s1.cp, l) {
+          FAdvanceEpsilonOvStable(c, s1.(active := ac), ov, dir);
+        } else {
+          FAdvanceEpsilonOvStable(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir);
+        }
+      case WriteOracle(l) =>
+        assert 0 <= t.pc < |c|;      // excluded by NoWriteOracleCode
+        assert false;
+      case BeginLoop =>
+        FAdvanceEpsilonOvStable(c, s1.(active := [t.(exit_allowed := false, pc := t.pc + 1)] + ac), ov, dir);
+      case EndLoop =>
+        if t.exit_allowed {
+          FAdvanceEpsilonOvStable(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir);
+        } else {
+          FAdvanceEpsilonOvStable(c, s1.(active := ac), ov, dir);
+        }
+      case CheckNullable(qid) =>
+        if LCdn.cdn_get(s1.cdn, qid) {
+          FAdvanceEpsilonOvStable(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir);
+        } else {
+          FAdvanceEpsilonOvStable(c, s1.(active := ac), ov, dir);
+        }
+      case AnchorAssertion(a) =>
+        if LAnc.is_satisfied(a, s1.context, dir) {
+          FAdvanceEpsilonOvStable(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir);
+        } else {
+          FAdvanceEpsilonOvStable(c, s1.(active := ac), ov, dir);
+        }
+      case Fail =>
+        FAdvanceEpsilonOvStable(c, s1.(active := ac), ov, dir);
+    }
+  }
+
   /** `FAdvanceEpsilon` never decreases the state's clock and preserves
       `VmClocksLE`: structural induction over the epsilon-closure fuel, one
       case per bytecode instruction. */

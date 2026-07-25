@@ -1007,6 +1007,10 @@ module LindenElkMain {
     var qm := AR.QMap(QmOfRE(re), LmOfRE(re), AI.FBuildOracle(CP.FFullCompilation(ast), str));
     QmOfREEntries(re);
     QmapOkFromEntries(re, qm);
+    // the simulation gate is now the lookbehind fragment; a plus-fragment
+    // regex embeds into it and constrains no row of the lookaround table
+    NR.PlusIsLookBehindFragmentRE(re);
+    AR.PlusFragmentLmapOk(re, qm);
 
     NR.CompileToBytecodeRepPlus(re);
     var code := CP.compile_to_bytecode(re);
@@ -1287,6 +1291,7 @@ module LindenElkMain {
     var ncap := 2 * R.max_group(ast) + 2;
     T.AnnotateWf(raw);
     NR.SpecRegexPlusFragment(raw);
+    NR.PlusIsLookBehindFragmentRE(re);     // the filter lemmas gate on the wider fragment
     var caps := thread.capture_regs;
     var lk := thread.look_regs;
     var qt := thread.quant_regs;

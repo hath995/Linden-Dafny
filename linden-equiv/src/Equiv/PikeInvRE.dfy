@@ -221,12 +221,12 @@ module LindenElkPikeInv {
   // Compiled fragment bytecode is stutter-tame.
   /** Compiled fragment bytecode is `StutterTameRE`. */
   lemma CompileStutterTameRE(re: R.regex)
-    requires NR.PlusFragmentRE(re)
+    requires NR.LookBehindFragmentRE(re)
     ensures StutterTameRE(CP.compile_to_bytecode(re))
   {
     var code := CP.compile_to_bytecode(re);
     var endl := CP.compile(re, 0, CP.Progress).1;
-    NR.CompileToBytecodeRepPlus(re);     // NfaRepRE(re, code, 0, endl), GetPc(endl)==Accept, |code|==endl+1
+    NR.CompileToBytecodeRepLookBehind(re);  // NfaRepRE(re, code, 0, endl), GetPc(endl)==Accept, |code|==endl+1
     forall pc: nat | pc < |code|
       ensures match NR.GetPcRE(code, pc)
               case Some(Jmp(next)) =>
@@ -261,6 +261,8 @@ module LindenElkPikeInv {
     match NR.GetPcRE(code, pc)
     case Some(Jmp(n)) => n >= 0 && npc == n
     case Some(BeginLoop) => npc == pc + 1
+    case Some(CheckOracle(_)) => npc == pc + 1
+    case Some(NegCheckOracle(_)) => npc == pc + 1
     case _ => false
   }
 
@@ -281,7 +283,8 @@ module LindenElkPikeInv {
   lemma StutterChainSource(code: RB.code, pc: nat, target: nat)
     requires StutterChainTo(code, pc, target)
     ensures NR.GetPcRE(code, pc).Some?
-         && (NR.GetPcRE(code, pc).value.Jmp? || NR.GetPcRE(code, pc).value.BeginLoop?)
+         && (NR.GetPcRE(code, pc).value.Jmp? || NR.GetPcRE(code, pc).value.BeginLoop?
+             || NR.GetPcRE(code, pc).value.CheckOracle? || NR.GetPcRE(code, pc).value.NegCheckOracle?)
   {}
 
   // A stutter chain in tame code either strictly increases the pc or ends on a
@@ -303,6 +306,10 @@ module LindenElkPikeInv {
         assert target == n && n >= 0;
       case Some(BeginLoop) =>
         assert target == pc + 1;
+      case Some(CheckOracle(_)) =>
+        assert target == pc + 1;
+      case Some(NegCheckOracle(_)) =>
+        assert target == pc + 1;
     } else {
       var mid: nat :| StutterSuccIs(code, pc, mid) && StutterChainTo(code, mid, target);
       StutterChainForwardOrFork(code, mid, target);   // IH: mid < target || code[target] Fork
@@ -318,6 +325,10 @@ module LindenElkPikeInv {
           assert pc < |code|;
           assert mid == n && n >= 0;
         case Some(BeginLoop) =>
+          assert mid == pc + 1;
+        case Some(CheckOracle(_)) =>
+          assert mid == pc + 1;
+        case Some(NegCheckOracle(_)) =>
           assert mid == pc + 1;
       }
     }
@@ -973,7 +984,7 @@ module LindenElkPikeInv {
       the subtree exactly as `filter_all` does. This is what makes a freshly-
       stamped `SetQuantToClock` clock reset all stale descendants. */
   lemma FilterCaptureAllStale(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, M: int)
-    requires NR.PlusFragmentRE(r)
+    requires NR.LookBehindFragmentRE(r)
     requires forall cid: nat :: cid in CapIds(r)
                                ==> AI.get_idx(cc, CP.start_reg(cid)) < M
                                    || AI.get_idx(cc, CP.start_reg(cid)) < 0
@@ -984,6 +995,8 @@ module LindenElkPikeInv {
     decreases r
   {
     match r
+    case Re_lookaround(lid, la, r1) =>
+      FilterAtLookaround(lid, la, r1, cr, cc, lc, qc, M);
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_alt(r1, r2) =>
       FilterCaptureAllStale(r1, cr, cc, lc, qc, M);
@@ -1080,12 +1093,14 @@ module LindenElkPikeInv {
   /** `filter_capture` writes only START registers of ids IN the subtree, so a
       register whose id is OUTSIDE the subtree passes through. */
   lemma FilterCaptureOutside(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, mx: int, g: nat)
-    requires NR.PlusFragmentRE(r)
+    requires NR.LookBehindFragmentRE(r)
     requires g !in CapIds(r)
     ensures AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), CP.start_reg(g)) == AI.get_idx(cr, CP.start_reg(g))
     decreases r
   {
     match r
+    case Re_lookaround(lid, la, r1) =>
+      FilterAtLookaround(lid, la, r1, cr, cc, lc, qc, mx);
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_alt(r1, r2) =>
       FilterCaptureOutside(r1, cr, cc, lc, qc, mx, g);
@@ -1189,7 +1204,7 @@ module LindenElkPikeInv {
       everywhere except that same position. */
   lemma FilterCaptureFrameAt(r: R.regex, A: seq<int>, B: seq<int>, cc: seq<int>, cc': seq<int>,
                              lc: seq<int>, qc: seq<int>, mx: int, gid: nat)
-    requires NR.PlusFragmentRE(r)
+    requires NR.LookBehindFragmentRE(r)
     requires gid !in CapIds(r)
     requires |A| == |B|
     requires forall j :: j != CP.start_reg(gid) ==> AI.get_idx(A, j) == AI.get_idx(B, j)
@@ -1201,6 +1216,9 @@ module LindenElkPikeInv {
   {
     FilterCaptureLen(r, A, cc, lc, qc, mx); FilterCaptureLen(r, B, cc', lc, qc, mx);
     match r
+    case Re_lookaround(lid, la, r1) =>
+      FilterAtLookaround(lid, la, r1, A, cc, lc, qc, mx);
+      FilterAtLookaround(lid, la, r1, B, cc', lc, qc, mx);
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_alt(r1, r2) =>
       FilterCaptureFrameAt(r1, A, B, cc, cc', lc, qc, mx, gid);
@@ -1631,7 +1649,7 @@ module LindenElkPikeInv {
       `PathPresent`, and `gid`'s own start clock/value are fresh and set. */
   lemma FilterPresenceExtract(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>,
                               mx: int, gid: nat)
-    requires NR.PlusFragmentRE(r)
+    requires NR.LookBehindFragmentRE(r)
     requires CapUnique(r)
     requires gid in CapIds(r)
     requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0
@@ -1644,7 +1662,8 @@ module LindenElkPikeInv {
     decreases r
   {
     match r
-    case Re_empty => case Re_character(_) => case Re_anchor(_) => case Re_lookaround(_, _, _) =>
+    case Re_empty => case Re_character(_) => case Re_anchor(_) =>
+    case Re_lookaround(_, _, r1) => CaptureFreeNoCapIds(r1);   // gid in CapIds({}) is false
     case Re_alt(r1, r2) =>
       var c1 := AI.filter_capture(r1, cr, cc, lc, qc, mx);
       if gid in CapIds(r1) {
@@ -1736,7 +1755,7 @@ module LindenElkPikeInv {
       discharges `PathPresentIntro`'s `AncCaps` hypotheses from
       `ThreadTracksGm`. */
   lemma GmOfLivePresenceExtract(ast: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, gid: nat)
-    requires NR.PlusFragmentRE(ast)
+    requires NR.LookBehindFragmentRE(ast)
     requires CapUnique(ast)
     requires gid in CapIds(ast)
     requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
@@ -1770,7 +1789,7 @@ module LindenElkPikeInv {
       unset. Exactly the Open-site "stale-or-unset" hypothesis. */
   lemma FilterAbsenceExtract(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>,
                              mx: int, gid: nat)
-    requires NR.PlusFragmentRE(r)
+    requires NR.LookBehindFragmentRE(r)
     requires CapUnique(r)
     requires gid in CapIds(r)
     requires PathPresent(r, cc, qc, mx, gid)
@@ -1782,7 +1801,8 @@ module LindenElkPikeInv {
     decreases r
   {
     match r
-    case Re_empty => case Re_character(_) => case Re_anchor(_) => case Re_lookaround(_, _, _) =>
+    case Re_empty => case Re_character(_) => case Re_anchor(_) =>
+    case Re_lookaround(_, _, r1) => CaptureFreeNoCapIds(r1);   // gid in CapIds({}) is false
     case Re_alt(r1, r2) =>
       var c1 := AI.filter_capture(r1, cr, cc, lc, qc, mx);
       if gid in CapIds(r1) {
@@ -1844,7 +1864,7 @@ module LindenElkPikeInv {
       denotation while `PathPresent` holds ⟹ its start clock is stale-or-unset,
       the Open-site hypothesis. `CapRegWf` supplies the consistency direction. */
   lemma GmOfLiveAbsenceExtract(ast: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, gid: nat)
-    requires NR.PlusFragmentRE(ast)
+    requires NR.LookBehindFragmentRE(ast)
     requires CapUnique(ast)
     requires gid in CapIds(ast)
     requires CapRegWf(caps)
@@ -2029,12 +2049,14 @@ module LindenElkPikeInv {
   /** `filter_capture` never stores a value below `-1` (the `filter_capture`
       analog of `FilterAllGeqNeg1`). */
   lemma FilterCaptureGeqNeg1(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, mx: int, i: int)
-    requires NR.PlusFragmentRE(r)
+    requires NR.LookBehindFragmentRE(r)
     requires AI.get_idx(cr, i) >= -1
     ensures AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), i) >= -1
     decreases r
   {
     match r
+    case Re_lookaround(lid, la, r1) =>
+      FilterAtLookaround(lid, la, r1, cr, cc, lc, qc, mx);
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_alt(r1, r2) =>
       FilterCaptureGeqNeg1(r1, cr, cc, lc, qc, mx, i);
@@ -2080,12 +2102,14 @@ module LindenElkPikeInv {
       capture-start of the subtree (they differ only there: `filter_all` clears
       every start, `filter_capture` keeps the present ones). */
   lemma FilterCaptureVsAll(r: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, M: int, j: int)
-    requires NR.PlusFragmentRE(r)
+    requires NR.LookBehindFragmentRE(r)
     requires forall cid: nat :: cid in CapIds(r) ==> CP.start_reg(cid) != j
     ensures AI.get_idx(AI.filter_capture(r, A, cc, lc, qc, M), j) == AI.get_idx(AI.filter_all(r, A), j)
     decreases r
   {
     match r
+    case Re_lookaround(lid, la, r1) =>
+      FilterAtLookaround(lid, la, r1, A, cc, lc, qc, M);
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_alt(r1, r2) =>
       FilterCaptureVsAll(r1, A, cc, lc, qc, M, j);
@@ -2139,12 +2163,15 @@ module LindenElkPikeInv {
   /** `filter_capture` never reads capture values (only clocks), so its output
       at `j` is determined by the capture input at `j` alone. */
   lemma FilterCaptureCrPointwise(r: R.regex, X: seq<int>, Y: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, M: int, j: int)
-    requires NR.PlusFragmentRE(r)
+    requires NR.LookBehindFragmentRE(r)
     requires AI.get_idx(X, j) == AI.get_idx(Y, j)
     ensures AI.get_idx(AI.filter_capture(r, X, cc, lc, qc, M), j) == AI.get_idx(AI.filter_capture(r, Y, cc, lc, qc, M), j)
     decreases r
   {
     match r
+    case Re_lookaround(lid, la, r1) =>
+      FilterAtLookaround(lid, la, r1, X, cc, lc, qc, M);
+      FilterAtLookaround(lid, la, r1, Y, cc, lc, qc, M);
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_alt(r1, r2) =>
       FilterCaptureCrPointwise(r1, X, Y, cc, lc, qc, M, j);
@@ -2170,13 +2197,16 @@ module LindenElkPikeInv {
       leaves `filter_capture` unchanged (quant nodes read `qc` only at their own
       ids). */
   lemma FilterCaptureQcFrame(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, qc': seq<int>, M: int, qid: nat, j: int)
-    requires NR.PlusFragmentRE(r)
+    requires NR.LookBehindFragmentRE(r)
     requires qid !in QuantIds(r)
     requires forall q0: nat :: q0 in QuantIds(r) ==> AI.get_idx(qc, q0) == AI.get_idx(qc', q0)
     ensures AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, M), j) == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc', M), j)
     decreases r
   {
     match r
+    case Re_lookaround(lid, la, r1) =>
+      FilterAtLookaround(lid, la, r1, cr, cc, lc, qc, M);
+      FilterAtLookaround(lid, la, r1, cr, cc, lc, qc', M);
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_alt(r1, r2) =>
       FilterCaptureQcFrame(r1, cr, cc, lc, qc, qc', M, qid, j);
@@ -2252,7 +2282,7 @@ module LindenElkPikeInv {
       all-stale vs `MxAtGid`, so the body filter degenerates to `filter_all`. */
   lemma FilterOpenFrame(r: R.regex, cr: seq<int>, cr': seq<int>, cc: seq<int>, cc': seq<int>,
                         lc: seq<int>, qc: seq<int>, mx: int, gid: nat, cp: int, clk: int)
-    requires NR.PlusFragmentRE(r)
+    requires NR.LookBehindFragmentRE(r)
     requires CapUnique(r)
     requires gid in CapIds(r)
     requires cp >= 0 && clk >= 0
@@ -2284,7 +2314,8 @@ module LindenElkPikeInv {
     decreases r
   {
     match r
-    case Re_empty => case Re_character(_) => case Re_anchor(_) => case Re_lookaround(_, _, _) =>
+    case Re_empty => case Re_character(_) => case Re_anchor(_) =>
+    case Re_lookaround(_, _, r1) => CaptureFreeNoCapIds(r1);   // gid in CapIds({}) is false
     case Re_alt(r1, r2) =>
       var X := AI.filter_capture(r1, cr, cc, lc, qc, mx);
       var X' := AI.filter_capture(r1, cr', cc', lc, qc, mx);
@@ -2293,6 +2324,7 @@ module LindenElkPikeInv {
         assert MxAtGid(r, cc, qc, mx, gid) == MxAtGid(r1, cc, qc, mx, gid);
         assert BodyOf(r, gid) == BodyOf(r1, gid);
         FilterOpenFrame(r1, cr, cr', cc, cc', lc, qc, mx, gid, cp, clk);
+        assert gid !in CapIds(r2) by { if gid in CapIds(r2) { assert gid in CapIds(r1) * CapIds(r2); } }
         FilterCaptureFrameAt(r2, X', X, cc', cc, lc, qc, mx, gid);
         FilterCaptureOutside(r2, X, cc, lc, qc, mx, gid);
         FilterCaptureOutside(r2, X', cc', lc, qc, mx, gid);
@@ -2304,9 +2336,17 @@ module LindenElkPikeInv {
         forall k ensures AI.get_idx(X, k) >= -1 { FilterCaptureGeqNeg1(r1, cr, cc, lc, qc, mx, k); }
         forall k ensures AI.get_idx(X', k) >= -1 { FilterCaptureGeqNeg1(r1, cr', cc', lc, qc, mx, k); }
         forall c: nat | c in CapIds(r2) && AI.get_idx(cc, CP.start_reg(c)) < 0
-          ensures AI.get_idx(X, CP.start_reg(c)) < 0 { FilterCaptureOutside(r1, cr, cc, lc, qc, mx, c); }
+          ensures AI.get_idx(X, CP.start_reg(c)) < 0
+        {
+          assert c !in CapIds(r1) by { if c in CapIds(r1) { assert c in CapIds(r1) * CapIds(r2); } }
+          FilterCaptureOutside(r1, cr, cc, lc, qc, mx, c);
+        }
         forall c: nat | c in CapIds(r2) && AI.get_idx(cc', CP.start_reg(c)) < 0
-          ensures AI.get_idx(X', CP.start_reg(c)) < 0 { FilterCaptureOutside(r1, cr', cc', lc, qc, mx, c); }
+          ensures AI.get_idx(X', CP.start_reg(c)) < 0
+        {
+          assert c !in CapIds(r1) by { if c in CapIds(r1) { assert c in CapIds(r1) * CapIds(r2); } }
+          FilterCaptureOutside(r1, cr', cc', lc, qc, mx, c);
+        }
         assert MxAtGid(r, cc, qc, mx, gid) == MxAtGid(r2, cc, qc, mx, gid);
         assert BodyOf(r, gid) == BodyOf(r2, gid);
         FilterOpenFrame(r2, X, X', cc, cc', lc, qc, mx, gid, cp, clk);
@@ -2319,6 +2359,7 @@ module LindenElkPikeInv {
         assert MxAtGid(r, cc, qc, mx, gid) == MxAtGid(r1, cc, qc, mx, gid);
         assert BodyOf(r, gid) == BodyOf(r1, gid);
         FilterOpenFrame(r1, cr, cr', cc, cc', lc, qc, mx, gid, cp, clk);
+        assert gid !in CapIds(r2) by { if gid in CapIds(r2) { assert gid in CapIds(r1) * CapIds(r2); } }
         FilterCaptureFrameAt(r2, X', X, cc', cc, lc, qc, mx, gid);
         FilterCaptureOutside(r2, X, cc, lc, qc, mx, gid);
         FilterCaptureOutside(r2, X', cc', lc, qc, mx, gid);
@@ -2330,9 +2371,17 @@ module LindenElkPikeInv {
         forall k ensures AI.get_idx(X, k) >= -1 { FilterCaptureGeqNeg1(r1, cr, cc, lc, qc, mx, k); }
         forall k ensures AI.get_idx(X', k) >= -1 { FilterCaptureGeqNeg1(r1, cr', cc', lc, qc, mx, k); }
         forall c: nat | c in CapIds(r2) && AI.get_idx(cc, CP.start_reg(c)) < 0
-          ensures AI.get_idx(X, CP.start_reg(c)) < 0 { FilterCaptureOutside(r1, cr, cc, lc, qc, mx, c); }
+          ensures AI.get_idx(X, CP.start_reg(c)) < 0
+        {
+          assert c !in CapIds(r1) by { if c in CapIds(r1) { assert c in CapIds(r1) * CapIds(r2); } }
+          FilterCaptureOutside(r1, cr, cc, lc, qc, mx, c);
+        }
         forall c: nat | c in CapIds(r2) && AI.get_idx(cc', CP.start_reg(c)) < 0
-          ensures AI.get_idx(X', CP.start_reg(c)) < 0 { FilterCaptureOutside(r1, cr', cc', lc, qc, mx, c); }
+          ensures AI.get_idx(X', CP.start_reg(c)) < 0
+        {
+          assert c !in CapIds(r1) by { if c in CapIds(r1) { assert c in CapIds(r1) * CapIds(r2); } }
+          FilterCaptureOutside(r1, cr', cc', lc, qc, mx, c);
+        }
         assert MxAtGid(r, cc, qc, mx, gid) == MxAtGid(r2, cc, qc, mx, gid);
         assert BodyOf(r, gid) == BodyOf(r2, gid);
         FilterOpenFrame(r2, X, X', cc, cc', lc, qc, mx, gid, cp, clk);
@@ -2488,6 +2537,52 @@ module LindenElkPikeInv {
   // the L1 shape of the campaign's "GmOfLive look-clock branch"; at L3
   // (captures INSIDE lookarounds) it stops being the identity.
   // ===========================================================================
+
+  /** A capture-free regex has no capture ids. */
+  lemma CaptureFreeNoCapIds(r: R.regex)
+    requires NR.CaptureFreeRE(r)
+    ensures CapIds(r) == {}
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => CaptureFreeNoCapIds(r1); CaptureFreeNoCapIds(r2);
+    case Re_con(r1, r2) => CaptureFreeNoCapIds(r1); CaptureFreeNoCapIds(r2);
+    case Re_quant(_, _, _, r1) => CaptureFreeNoCapIds(r1);
+    case Re_lookaround(_, _, r1) => CaptureFreeNoCapIds(r1);
+    case _ =>
+  }
+
+  /** A quantifier body inside a capture-free regex is itself capture-free. */
+  lemma CaptureFreeQidBody(r: R.regex, qid: nat)
+    requires NR.CaptureFreeRE(r) && qid in QuantIds(r)
+    ensures NR.CaptureFreeRE(QidBody(r, qid))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if qid in QuantIds(r1) { CaptureFreeQidBody(r1, qid); } else { CaptureFreeQidBody(r2, qid); }
+    case Re_con(r1, r2) =>
+      if qid in QuantIds(r1) { CaptureFreeQidBody(r1, qid); } else { CaptureFreeQidBody(r2, qid); }
+    case Re_quant(_, qid0, _, r1) =>
+      if qid0 >= 0 && (qid0 as nat) == qid { } else { CaptureFreeQidBody(r1, qid); }
+    case Re_lookaround(_, _, r1) => CaptureFreeQidBody(r1, qid);
+    case _ =>
+  }
+
+  /** A lookaround node is TRANSPARENT to both filters when its body is
+      capture-free (the L1 fragment's shape): every branch of
+      `filter_capture`'s lookaround rule, and `filter_all`'s, returns the
+      capture registers unchanged — which is why the look clocks cannot steer
+      anything. */
+  lemma FilterAtLookaround(lid: R.lookid, la: R.lookaround, r1: R.regex, cr: seq<int>,
+                           cc: seq<int>, lc: seq<int>, qc: seq<int>, M: int)
+    requires NR.CaptureFreeRE(r1)
+    ensures AI.filter_capture(R.Re_lookaround(lid, la, r1), cr, cc, lc, qc, M) == cr
+    ensures AI.filter_all(R.Re_lookaround(lid, la, r1), cr) == cr
+  {
+    FilterAllCaptureFree(r1, cr);
+    FilterCaptureCaptureFree(r1, cr, cc, lc, qc, -1);
+  }
 
   /** A capture-free regex has nothing to erase: `filter_all` is the identity. */
   lemma FilterAllCaptureFree(r: R.regex, regs: seq<int>)
@@ -2972,7 +3067,7 @@ module LindenElkPikeInv {
     requires CP.start_reg(gid) < |caps.a_cp|
     requires cp >= 0 && clk >= 0
     requires clk > AI.get_idx(caps.a_clk, CP.end_reg(gid))
-    requires NR.PlusFragmentRE(ast) && CapUnique(ast) && gid in CapIds(ast)
+    requires NR.LookBehindFragmentRE(ast) && CapUnique(ast) && gid in CapIds(ast)
     // gid's start register is UNSET or STALE relative to the enclosing star's
     // stamp — covers both the first open and a star re-entry (RegElk never
     // clears registers; staleness lives in the filter).
@@ -3021,7 +3116,7 @@ module LindenElkPikeInv {
     requires CP.start_reg(gid) < |caps.a_cp|
     requires cp >= 0 && clk >= 0
     requires clk > AI.get_idx(caps.a_clk, CP.end_reg(gid))
-    requires NR.PlusFragmentRE(ast) && CapUnique(ast) && gid in CapIds(ast)
+    requires NR.LookBehindFragmentRE(ast) && CapUnique(ast) && gid in CapIds(ast)
     requires AI.get_idx(caps.a_clk, CP.start_reg(gid))
                < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
           || AI.get_idx(caps.a_clk, CP.start_reg(gid)) < 0
@@ -3055,7 +3150,7 @@ module LindenElkPikeInv {
       go negative) and leaves every other position unchanged. Stated per-`j`. */
   lemma FilterResetFrame(r: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, qc': seq<int>,
                          M: int, qid: nat, clk: int, j: int)
-    requires NR.PlusFragmentRE(r) && CapUnique(r) && QuantUnique(r)
+    requires NR.LookBehindFragmentRE(r) && CapUnique(r) && QuantUnique(r)
     requires qid in QuantIds(r)
     requires clk >= 0
     requires clk >= MxAtQid(r, cc, qc, M, qid)
@@ -3072,6 +3167,12 @@ module LindenElkPikeInv {
     decreases r
   {
     match r
+    case Re_lookaround(lid, la, r1) =>
+      FilterAtLookaround(lid, la, r1, A, cc, lc, qc, M);
+      FilterAtLookaround(lid, la, r1, A, cc, lc, qc', M);
+      // the quantifier sits inside a capture-free body: no capture ids below it
+      CaptureFreeQidBody(r1, qid);
+      CaptureFreeNoCapIds(QidBody(r1, qid));
     case Re_capture(cid, r1) =>
       assert qid in QuantIds(r1);
       assert AI.get_idx(cc, CP.start_reg(cid)) >= M && AI.get_idx(cc, CP.start_reg(cid)) >= 0;  // PathPresentQ
@@ -3118,7 +3219,7 @@ module LindenElkPikeInv {
   lemma FilterResetFrameSeq(r: R.regex, r1: R.regex, r2: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>,
                             qc: seq<int>, qc': seq<int>, M: int, qid: nat, clk: int, j: int)
     requires r == R.Re_alt(r1, r2) || r == R.Re_con(r1, r2)
-    requires NR.PlusFragmentRE(r) && CapUnique(r) && QuantUnique(r)
+    requires NR.LookBehindFragmentRE(r) && CapUnique(r) && QuantUnique(r)
     requires qid in QuantIds(r)
     requires clk >= 0
     requires clk >= MxAtQid(r, cc, qc, M, qid)
@@ -3164,7 +3265,11 @@ module LindenElkPikeInv {
       { FilterCaptureQcFrame(r1, A, cc, lc, qc, qc', M, qid, j0); }
       forall k ensures AI.get_idx(X, k) >= -1 { FilterCaptureGeqNeg1(r1, A, cc, lc, qc, M, k); }
       forall c: nat | c in CapIds(r2) && AI.get_idx(cc, CP.start_reg(c)) < 0
-        ensures AI.get_idx(X, CP.start_reg(c)) < 0 { FilterCaptureOutside(r1, A, cc, lc, qc, M, c); }
+        ensures AI.get_idx(X, CP.start_reg(c)) < 0
+      {
+        assert c !in CapIds(r1) by { if c in CapIds(r1) { assert c in CapIds(r1) * CapIds(r2); } }
+        FilterCaptureOutside(r1, A, cc, lc, qc, M, c);
+      }
       assert MxAtQid(r, cc, qc, M, qid) == MxAtQid(r2, cc, qc, M, qid);
       assert QidBody(r, qid) == QidBody(r2, qid);
       FilterResetFrame(r2, X, cc, lc, qc, qc', M, qid, clk, j);
@@ -3249,7 +3354,7 @@ module LindenElkPikeInv {
       predicates the clock-monotonicity invariant supplies. */
   lemma GmOfLiveResetFull(ast: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
                           qid: nat, clk: int)
-    requires NR.PlusFragmentRE(ast) && CapUnique(ast) && QuantUnique(ast)
+    requires NR.LookBehindFragmentRE(ast) && CapUnique(ast) && QuantUnique(ast)
     requires qid in QuantIds(ast)
     requires qid < |AReg.as_arrays(quant).1|
     requires |AReg.as_arrays(quant).0| == |AReg.as_arrays(quant).1|
@@ -3355,7 +3460,7 @@ module LindenElkPikeInv {
       backbone since the fresh stamp exceeds every stored clock). */
   lemma GmOfLiveResetGMReset(ast: R.regex, qm: AR.QMap, caps: AReg.Regs, look: AReg.Regs,
                              quant: AReg.Regs, qid: nat, clk: int)
-    requires NR.PlusFragmentRE(ast) && CapUnique(ast) && QuantUnique(ast)
+    requires NR.LookBehindFragmentRE(ast) && CapUnique(ast) && QuantUnique(ast)
     requires T.TransWf(ast) && AR.QmapOk(ast, qm)
     requires qid in QuantIds(ast)
     requires qid < |AReg.as_arrays(quant).1|
@@ -3671,7 +3776,7 @@ module LindenElkPikeInv {
       simulation. */
   lemma InitialPikeInvRE(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, ngroups: nat,
                          str: string, tree: LT.Tree, vms: AI.VmState, ncap: int, nlook: int, nquant: int)
-    requires NR.PlusFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase && AR.QmapOk(re, qm)
+    requires NR.LookBehindFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase && AR.QmapOk(re, qm)
     requires code == CP.compile_to_bytecode(re)
     requires TT.TreeThreadRE(rer, qm, code, LC.InitInput(str), tree, 0, false)
     requires vms.cp == 0

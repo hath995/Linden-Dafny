@@ -96,38 +96,29 @@ module LindenElkPikeSim {
       translates soundly (`TransWf`), `qm` is consistent (`QmapOk`), and
       `code` is a well-formed compilation of `re` ending in `Accept`. */
   ghost predicate StaticOkRE(qm: AR.QMap, re: R.regex, code: RB.code, endl: nat) {
-    NR.PlusFragmentRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re)
-    && T.TransWf(re) && AR.QmapOk(re, qm)
+    NR.LookBehindFragmentRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re)
+    && T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
     && NR.NfaRepRE(re, code, 0, endl)
     && NR.GetPcRE(code, endl) == Some(RB.Accept)
     && |code| == endl + 1
     && PIV.StutterTameRE(code)
   }
 
-  // Inside a plus-fragment block there is no oracle instruction: the fragment
-  // has no lookaround node, so the compiler emits no CheckOracle /
-  // NegCheckOracle / WriteOracle / CheckNullable. Packaged against
-  // `StaticOkRE`'s shape (Accept sits at `endl`, so any pc carrying another
-  // instruction is strictly inside the block).
-  /** A `StaticOkRE` code carries no oracle (or `CheckNullable`) instruction at
-      any pc other than the final `Accept` — the plus fragment compiles none.
-      The lookaround campaign's simulation cases are vacuous until the gate
-      widens past `NR.PlusFragmentRE`. */
-  lemma NoOracleInstrAt(re: R.regex, code: RB.code, endl: nat, pc: nat)
-    requires NR.PlusFragmentRE(re)
-    requires NR.NfaRepRE(re, code, 0, endl)
-    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
-    requires |code| == endl + 1
-    requires pc < |code|
-    requires NR.GetPcRE(code, pc).Some?
-    requires var i := NR.GetPcRE(code, pc).value;
-      i.CheckOracle? || i.NegCheckOracle? || i.WriteOracle? || i.CheckNullable?
-    ensures false
+  // The main pass is a pure READER of the oracle: a lookbehind-fragment block
+  // holds no WriteOracle (only the build passes write), so the view the search
+  // starts with is the view it ends with — which is what lets `qm.ov` carry it
+  // as a static table.
+  /** `StaticOkRE` code contains no `WriteOracle` instruction. */
+  lemma StaticOkNoWrite(qm: AR.QMap, re: R.regex, code: RB.code, endl: nat)
+    requires StaticOkRE(qm, re, code, endl)
+    ensures CM.NoWriteOracleCode(code)
   {
-    AR.PlusFragmentLookFree(re);
-    assert pc != endl;                        // Accept is none of those
-    assert pc < endl;                         // |code| == endl + 1
-    NR.NoOracleInstrRE(re, code, 0, endl, pc);
+    forall pc: nat | pc < |code| ensures !code[pc].WriteOracle? {
+      if pc != endl {
+        NR.NoWriteInstrRE(re, code, 0, endl, pc);
+        assert NR.GetPcRE(code, pc) == Some(code[pc]);
+      }
+    }
   }
 
   // Register files sized to cover every compiled write.
@@ -157,6 +148,8 @@ module LindenElkPikeSim {
              case Some(SetQuantToClock(_, _)) => pc2 == pc + 1
              case Some(SetRegisterToCP(_)) => pc2 == pc + 1
              case Some(AnchorAssertion(_)) => pc2 == pc + 1
+             case Some(CheckOracle(_)) => pc2 == pc + 1
+             case Some(NegCheckOracle(_)) => pc2 == pc + 1
              case _ => false
     ensures !NI.ColdRE(code, pc2)
   {
@@ -392,7 +385,7 @@ module LindenElkPikeSim {
                          inp: LC.Input, t: LT.Tree, gm: LG.GroupMap, th: AI.Thread, pc: nat,
                          sreg: int, cp: int, S: int)
     // static side conditions
-    requires NR.PlusFragmentRE(re) && PIV.CapUnique(re)
+    requires NR.LookBehindFragmentRE(re) && PIV.CapUnique(re)
     requires !rer.multiline
     requires NR.NfaRepRE(re, code, 0, endl)
     requires NR.GetPcRE(code, endl) == Some(RB.Accept)
@@ -495,7 +488,7 @@ module LindenElkPikeSim {
   lemma CloseStepThreadRE(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                           inp: LC.Input, t: LT.Tree, gm: LG.GroupMap, th: AI.Thread, pc: nat,
                           ereg: int, cp: int, S: int)
-    requires NR.PlusFragmentRE(re) && PIV.CapUnique(re)
+    requires NR.LookBehindFragmentRE(re) && PIV.CapUnique(re)
     requires !rer.multiline && PIV.QuantUnique(re)
     requires NR.NfaRepRE(re, code, 0, endl)
     requires NR.GetPcRE(code, endl) == Some(RB.Accept)
@@ -590,7 +583,7 @@ module LindenElkPikeSim {
   lemma ResetStepThreadRE(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                           inp: LC.Input, t: LT.Tree, gm: LG.GroupMap, th: AI.Thread, pc: nat,
                           qid0: int, S: int)
-    requires NR.PlusFragmentRE(re) && PIV.CapUnique(re)
+    requires NR.LookBehindFragmentRE(re) && PIV.CapUnique(re)
     requires !rer.multiline && PIV.QuantUnique(re)
     requires T.TransWf(re) && AR.QmapOk(re, qm)
     requires NR.NfaRepRE(re, code, 0, endl)
@@ -1969,6 +1962,223 @@ module LindenElkPikeSim {
   }
 
   // =========================================================================
+  // Per-case preservation: THE LOOKAROUND GATE.
+  //
+  // The gate is leaf-transparent (TreeRepRE's gate rule carries the SAME tree
+  // to pc+1), so a PASSING gate is a tree-side STUTTER: the VM advances and
+  // writes look_regs while the tree machine stands still. A FAILING gate is an
+  // ordinary kill: the checked tree is Mismatch and both sides drop it,
+  // exactly like an unsatisfied anchor.
+  //
+  // The look_regs write is invisible to everything the invariant reads:
+  // GmOfLive ignores the look bank while lookaround bodies are capture-free
+  // (PIV.GmOfLiveLookIndep), and NestInvRE reads capture/quant clocks only.
+  // =========================================================================
+  /** Inversion at a lookaround gate: the checked tree either survives INTACT
+      at `pc+1` (bit set for a positive gate, clear for a negative one) or is
+      `Mismatch`. It is the SAME tree — the `LK` wrapper is dissolved. */
+  lemma OracleStepThreadRE(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                           inp: LC.Input, t: LT.Tree, th: AI.Thread, pc: nat, l: int, pos: bool)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires th.pc >= 0 && pc == th.pc as nat && pc <= endl
+    requires NR.GetPcRE(code, pc) == Some(if pos then RB.CheckOracle(l) else RB.NegCheckOracle(l))
+    requires TT.TreeThreadRE(rer, qm, code, inp, t, pc, th.exit_allowed)
+    requires NI.NestTopRE(re, code, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk)
+    ensures LOr.view_get_oracle(qm.ov, TREP.CpOf(inp), l) == pos ==>
+      TT.TreeThreadRE(rer, qm, code, inp, t, pc + 1, th.exit_allowed)
+      && pc + 1 <= endl
+      && NI.NestTopRE(re, code, endl, pc + 1, th.capture_regs.a_clk, th.quant_regs.a_clk)
+    ensures LOr.view_get_oracle(qm.ov, TREP.CpOf(inp), l) != pos ==> t == LT.Mismatch
+  {
+    var cc := th.capture_regs.a_clk;
+    var qc := th.quant_regs.a_clk;
+    assert pc < endl;                       // Accept sits at endl; a gate does not
+    assert TREP.TreeRepRE(qm, t, code, pc, inp, th.exit_allowed);
+    if LOr.view_get_oracle(qm.ov, TREP.CpOf(inp), l) == pos {
+      assert NI.NestInvRE(re, code, 0, endl, pc, cc, qc, -1);
+      assert NI.StepEdgeRE(code, pc, pc + 1);
+      NI.NestInvAdvance(re, code, 0, endl, pc, pc + 1, cc, qc, -1);
+    }
+  }
+
+  /** Per-case preservation for a PASSING lookaround gate: a tree-side stutter.
+      The tree machine does not move (`pts` is unchanged); the VM advances the
+      head to `pc+1`, recording the match position in `look_regs` for a
+      positive gate. */
+  lemma PreserveOraclePass(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                           ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                           s1: AI.VmState, th2: AI.Thread, vms2: AI.VmState, l: int, pos: bool,
+                           ncap: int, nlook: int, nquant: int)
+    requires !rer.multiline
+    requires StaticOkRE(qm, re, code, endl)
+    requires SizesOkRE(re, ncap, nlook, nquant)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat)
+          == Some(if pos then RB.CheckOracle(l) else RB.NegCheckOracle(l))
+    requires LOr.view_get_oracle(qm.ov, vms.cp, l) == pos
+    requires pos ==> th2 == vms.active[0].(pc := vms.active[0].pc + 1,
+              look_regs := AReg.set_reg(vms.active[0].look_regs, l, Some(s1.cp), s1.clock))
+    requires !pos ==> th2 == vms.active[0].(pc := vms.active[0].pc + 1)
+    requires vms2 == s1.(active := [th2] + s1.active[1..])
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := pts;
+    var th := vms.active[0];
+    var ea := th.exit_allowed;
+    var pc: nat := th.pc as nat;
+
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
+    assert PIV.ThreadTracksGm(re, th, gm);
+    assert ThreadNestRE(re, code, endl, th.pc, th);
+    assert CM.ThreadClocksLE(th, vms.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant);
+
+    // The VM reads the bit at vms.cp; the tree rule reads it at the input's
+    // index — the same column.
+    PIV.IdxInpOfCp(str, vms.cp as nat);
+    assert TREP.CpOf(inp) == vms.cp as nat;
+
+    // The gate step: the tree survives INTACT at pc + 1.
+    OracleStepThreadRE(rer, qm, re, code, endl, inp, t, th, pc, l, pos);
+    assert TT.TreeThreadRE(rer, qm, code, inp, t, pc + 1, ea);
+    assert vms2.active == [th2] + vms.active[1..];
+    assert th2.pc == (pc + 1) as int && th2.exit_allowed == ea;
+
+    // The successor thread still denotes the same group map: GmOfLive cannot
+    // see the look bank while lookaround bodies are capture-free.
+    assert PIV.ThreadTracksGm(re, th2, gm) by {
+      PIV.GmOfLiveLookIndep(re, th.capture_regs, th.look_regs, th2.look_regs, th.quant_regs);
+    }
+
+    // Backbones.
+    BBTick(vms, s1, ncap, nlook, nquant);
+    assert th in vms.active;
+    assert CM.ThreadClocksLE(th2, s1.clock) by {
+      CM.ThreadClocksLEMono(th, vms.clock, s1.clock);
+      if pos { CM.RegsClocksLESet(th.look_regs, l, Some(s1.cp), s1.clock, s1.clock); }
+    }
+    assert CM.ThreadRegsWf(th2, ncap, nlook, nquant) by {
+      if pos { CM.SetRegLens(th.look_regs, l, Some(s1.cp), s1.clock); }
+    }
+    assert CM.RegsValsLE(th2.capture_regs, s1.cp);
+    BBReplaceHead(s1, th2, ncap, nlook, nquant);
+
+    // Active correspondence: the SAME (tree, gm) list against the moved head.
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms2.active) by {
+      assert vms2.active[0] == th2 && vms2.active[1..] == vms.active[1..];
+      assert ta == [ta[0]] + ta[1..];
+    }
+
+    // Seen inclusion: the gate is a stutter step, so the head tree is carried
+    // along the chain rather than consumed.
+    assert TT.StuttersRE(pc, code);
+    assert PIV.StutterSuccIs(code, pc, pc + 1);
+    assert PIV.HdTreeOf(ta) == Some(t) && PIV.HeadPcOf(vms.active) == pc;
+    PIV.StutterInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea, pc + 1);
+    assert PIV.HeadPcOf(vms2.active) == pc + 1;
+
+    // Positional fact and the remaining conjuncts.
+    assert ThreadNestRE(re, code, endl, th2.pc, th2) by {
+      assert NI.NestInvRE(re, code, 0, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk, -1);
+      assert NI.StepEdgeRE(code, pc, pc + 1);
+      NI.NestInvAdvance(re, code, 0, endl, pc, pc + 1, th.capture_regs.a_clk, th.quant_regs.a_clk, -1);
+    }
+    forall t2 | t2 in vms2.active ensures ThreadNestRE(re, code, endl, t2.pc, t2) {
+      if t2 != th2 { assert t2 in vms.active; }
+    }
+    forall tb2 | tb2 in vms2.blocked ensures ThreadNestRE(re, code, endl, tb2.0.pc + 1, tb2.0) {
+      assert tb2 in vms.blocked;
+    }
+    forall t2 | t2 in vms2.active ensures EaColdOkRE(code, t2) {
+      if t2 != th2 { assert t2 in vms.active; }
+      else if !t2.exit_allowed {
+        assert !ea;
+        assert th in vms.active && EaColdOkRE(code, th);
+        assert !NI.ColdRE(code, pc);
+        NotColdSucc(code, pc, pc + 1);
+      }
+    }
+    IsblockedGrow(rer, qm, code, inp, seen, vms.isblocked, t);
+    assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms2, ncap, nlook, nquant);
+  }
+
+  /** Per-case preservation for a FAILING lookaround gate: the checked tree is
+      `Mismatch` and the thread dies — the anchor-kill shape. */
+  lemma PreserveOracleKill(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                           ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                           s1: AI.VmState, vms2: AI.VmState, l: int, pos: bool,
+                           ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticOkRE(qm, re, code, endl)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat)
+          == Some(if pos then RB.CheckOracle(l) else RB.NegCheckOracle(l))
+    requires LOr.view_get_oracle(qm.ov, vms.cp, l) != pos
+    requires vms2 == s1.(active := s1.active[1..])
+    ensures PT.PikeTreeStep(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := pts;
+    var th := vms.active[0];
+    var ea := th.exit_allowed;
+    var pc: nat := th.pc as nat;
+
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
+    assert ThreadNestRE(re, code, endl, th.pc, th);
+
+    PIV.IdxInpOfCp(str, vms.cp as nat);
+    assert TREP.CpOf(inp) == vms.cp as nat;
+
+    // The gate step (failing branch): the checked tree is Mismatch.
+    OracleStepThreadRE(rer, qm, re, code, endl, inp, t, th, pc, l, pos);
+    assert t == LT.Mismatch;
+
+    // The tree step: an EMPTY pts_active — the branch dies on both sides.
+    assert PT.TreeBfsStep(t, gm, LC.Idx(inp)) == PT.StepActive([]);
+    pts1 := PT.PTS(inp, [] + ta[1..], best, tb, SS.AddSeenTrees(seen, t));
+    assert PT.PikeTreeStep(pts, pts1);
+    assert [] + ta[1..] == ta[1..];
+
+    // The full invariant at the successor.
+    BBTick(vms, s1, ncap, nlook, nquant);
+    BBDropHead(s1, ncap, nlook, nquant);
+    PIV.AddInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea,
+                       PIV.HdTreeOf(ta[1..]), PIV.HeadPcOf(vms2.active));
+    IsblockedGrow(rer, qm, code, inp, seen, vms.isblocked, t);
+    forall t2 | t2 in vms2.active ensures ThreadNestRE(re, code, endl, t2.pc, t2) {
+      assert t2 in vms.active;
+    }
+    forall tb2 | tb2 in vms2.blocked ensures ThreadNestRE(re, code, endl, tb2.0.pc + 1, tb2.0) {
+      assert tb2 in vms.blocked;
+    }
+    assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
+  }
+
+  // =========================================================================
   // Per-case preservation: CONSUME, not dedup-dropped. The VM blocks the head
   // unconditionally; the tree side blocks a Read (matching char) or dies via
   // an empty pts_active (mismatch) — the filter keeps the lists aligned.
@@ -2208,6 +2418,7 @@ module LindenElkPikeSim {
     returns (pts': PT.PikeTreeState)
     requires !rer.multiline
     requires StaticOkRE(qm, re, code, endl)
+    requires qm.ov == ov              // the tables carry the view the VM reads
     requires SizesOkRE(re, ncap, nlook, nquant)
     requires pts.PTS?
     requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
@@ -2324,17 +2535,41 @@ module LindenElkPikeSim {
                                         pts1, vms2, ov, dir, ncap, nlook, nquant);
         TrcCons(pts, pts1, pts');
       case CheckOracle(l) =>
-        // The tree layer now HAS oracle rules (tr_lkpass/tr_lkfail), so the
-        // contradiction no longer comes from StepSpec: it comes from the
-        // fragment gate. `StaticOkRE` still admits only the plus fragment,
-        // which compiles no oracle instruction anywhere in the block.
-        NoOracleInstrAt(re, code, endl, pc);
-        assert false;
-        pts' := pts;
+        // A passing gate is a tree-side stutter (pts unchanged); a failing one
+        // kills the thread against a Mismatch.
+        if LOr.view_get_oracle(ov, s1.cp, l) {
+          var th' := th.(pc := th.pc + 1,
+                         look_regs := AReg.set_reg(th.look_regs, l, Some(s1.cp), s1.clock));
+          var vms2 := s1.(active := [th'] + ac);
+          PreserveOraclePass(rer, qm, re, code, endl, ngroups, str, pts, vms,
+                             s1, th', vms2, l, true, ncap, nlook, nquant);
+          pts' := InvariantPreservationRE(rer, qm, re, code, endl, ngroups, str,
+                                          pts, vms2, ov, dir, ncap, nlook, nquant);
+        } else {
+          var vms2 := s1.(active := ac);
+          var pts1 := PreserveOracleKill(rer, qm, re, code, endl, ngroups, str, pts, vms,
+                                         s1, vms2, l, true, ncap, nlook, nquant);
+          pts' := InvariantPreservationRE(rer, qm, re, code, endl, ngroups, str,
+                                          pts1, vms2, ov, dir, ncap, nlook, nquant);
+          TrcCons(pts, pts1, pts');
+        }
       case NegCheckOracle(l) =>
-        NoOracleInstrAt(re, code, endl, pc);
-        assert false;
-        pts' := pts;
+        // the negative gate passes on a CLEAR bit
+        if LOr.view_get_oracle(ov, s1.cp, l) {
+          var vms2 := s1.(active := ac);
+          var pts1 := PreserveOracleKill(rer, qm, re, code, endl, ngroups, str, pts, vms,
+                                         s1, vms2, l, false, ncap, nlook, nquant);
+          pts' := InvariantPreservationRE(rer, qm, re, code, endl, ngroups, str,
+                                          pts1, vms2, ov, dir, ncap, nlook, nquant);
+          TrcCons(pts, pts1, pts');
+        } else {
+          var th' := th.(pc := th.pc + 1);
+          var vms2 := s1.(active := [th'] + ac);
+          PreserveOraclePass(rer, qm, re, code, endl, ngroups, str, pts, vms,
+                             s1, th', vms2, l, false, ncap, nlook, nquant);
+          pts' := InvariantPreservationRE(rer, qm, re, code, endl, ngroups, str,
+                                          pts, vms2, ov, dir, ncap, nlook, nquant);
+        }
       case WriteOracle(l) =>
         assert !TT.StuttersRE(pc, code);
         GS.GenStepRE(rer, qm, code, inp, t, pc, th.exit_allowed);
@@ -2753,6 +2988,7 @@ module LindenElkPikeSim {
       ncap: int, nlook: int, nquant: int)
     returns (bestT: Option<LT.Leaf>)
     requires StaticOkRE(qm, re, code, endl)
+    requires qm.ov == ov              // the tables carry the view the VM reads
     requires SizesOkRE(re, ncap, nlook, nquant)
     requires pts.PTS?
     requires !rer.multiline
@@ -2770,6 +3006,11 @@ module LindenElkPikeSim {
     var pts1 := InvariantPreservationRE(rer, qm, re, code, endl, ngroups, str,
                                         pts, s0, ov, dir, ncap, nlook, nquant);
     var (s1, ov1) := AI.FAdvanceEpsilon(code, s0, ov, dir);
+    // The main pass only READS the oracle, so the view is the same one at
+    // every position — `qm.ov == ov1` survives into the recursive call.
+    StaticOkNoWrite(qm, re, code, endl);
+    CM.FAdvanceEpsilonOvStable(code, s0, ov, dir);
+    assert ov1 == ov;
     assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, s1, ncap, nlook, nquant);
     FAdvanceEpsilonActiveEmpty(code, s0, ov, dir);
     assert s1.active == [];
@@ -2928,7 +3169,7 @@ module LindenElkPikeSim {
   lemma InitialPikeInvFullRE(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
                              endl: nat, ngroups: nat, str: string, tree: LT.Tree, vms: AI.VmState,
                              ncap: int, nlook: int, nquant: int)
-    requires NR.PlusFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase && !rer.multiline && AR.QmapOk(re, qm)
+    requires NR.LookBehindFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase && !rer.multiline && AR.QmapOk(re, qm)
     requires code == CP.compile_to_bytecode(re)
     requires NR.NfaRepRE(re, code, 0, endl)
     requires NR.GetPcRE(code, endl) == Some(RB.Accept)

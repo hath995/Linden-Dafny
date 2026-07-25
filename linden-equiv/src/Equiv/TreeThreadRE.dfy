@@ -89,6 +89,15 @@ module LindenElkTreeThread {
     match NR.GetPcRE(code, pc)
     case Some(Jmp(_)) => true
     case Some(BeginLoop) => true
+    // The lookaround gate stutters TOO — not because it is zero-width (an
+    // AnchorAssertion is zero-width and does not stutter) but because it is
+    // LEAF-TRANSPARENT: a passing gate advances the VM while the checked tree
+    // stays put, which is exactly what "stutter" means on this side. A failing
+    // gate kills the thread against a `Mismatch`, and that tree IS consumed —
+    // the predicate is syntactic, so it covers both and the kill case simply
+    // never uses the stutter machinery.
+    case Some(CheckOracle(_)) => true
+    case Some(NegCheckOracle(_)) => true
     case _ => false
   }
 

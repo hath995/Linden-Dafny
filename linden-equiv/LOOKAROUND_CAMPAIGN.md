@@ -469,7 +469,7 @@ Finally connect §6.3's `Matches` (RegElk AST) to `MatchesSpan` (Linden
 `TransNfaRep` (or avoid it by defining `Matches` over the translated body
 from the start).
 
-### 6.5 Phase B — the `lm` + `ov` threading sweep [STAGE 1 DONE — vocabulary]
+### 6.5 Phase B — the `lm` + `ov` threading sweep [DONE — the simulation carries lookaround gates]
 
 **The ripple was avoided entirely by BUNDLING, not by adding parameters.**
 `AR.QMap` stopped being a bare map and became the record of static tables the
@@ -533,9 +533,44 @@ Landed on that base (all first-try green):
   instead, via the new `NoOracleInstrAt` (`StaticOkRE` still admits only
   `NR.PlusFragmentRE`, which compiles no oracle instruction).
 
-**Stage 2 (next): the simulation preservation cases** — what turns those
-vacuous cases into real ones, once `StaticOkRE`'s gate widens to
-`LookBehindFragmentRE`:
+**Stage 2 (DONE): the simulation preservation cases.** `StaticOkRE`'s gate is
+now `NR.LookBehindFragmentRE(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)`,
+and the two oracle cases of `InvariantPreservationRE` are real. What it took,
+in dependency order:
+
+- **NestInv**: `StepEdgeRE` gained the two gate edges (zero-width
+  fall-through, like an anchor — the `look_regs` write is invariant-neutral
+  because `NestInvRE` reads capture and quant clocks only), and
+  `ColdPropagatesF` its lookaround case. 80 green.
+- **PikeInvRE** (158 green): the whole `filter_capture` family widened to the
+  lookbehind fragment. Every one of those inductions needed the same case —
+  a lookaround node is TRANSPARENT to both filters when its body is
+  capture-free — so it is packaged once as `FilterAtLookaround`, with
+  `CaptureFreeNoCapIds` and `CaptureFreeQidBody` for the id-set side
+  conditions. Two `Re_alt`/`Re_con` disjointness facts that used to be found
+  automatically needed explicit `assert c !in CapIds(r1) by { ... }` hints
+  after the widening.
+- **The oracle view is static** — the fact that lets `qm.ov` carry it:
+  `NR.NoWriteInstrRE` (new family in NfaRepRE, the `NoOracleInstrRE` skeleton
+  with the gates ADMITTED and only `WriteOracle`/`CheckNullable` excluded) +
+  `CM.NoWriteOracleCode`/`CM.FAdvanceEpsilonOvStable` (an epsilon phase over
+  write-free code returns the view it was given) + `PSM.StaticOkNoWrite`.
+  `qm.ov == ov` is then a hypothesis of `InvariantPreservationRE` and
+  `FindMatchSimRE` that survives every position of the search.
+- **The stutter machinery** absorbed the gates: `TT.StuttersRE` and
+  `PIV.StutterSuccIs` gained `CheckOracle`/`NegCheckOracle` (successor
+  `pc+1`), `StutterChainSource`'s ensures grew two shapes, and
+  `StutterChainForwardOrFork` two cases. `StutterTameRE` needed nothing — it
+  constrains `Jmp` targets only.
+- **PikeSimRE** (107 green, first try): `OracleStepThreadRE` (inversion at a
+  gate: the tree survives INTACT at `pc+1`, or is `Mismatch`),
+  `PreserveOraclePass` (a tree-side STUTTER — `pts` is unchanged while the VM
+  advances and writes `look_regs`; `ThreadTracksGm` survives by
+  `PIV.GmOfLiveLookIndep`, the seen-inclusion by `PIV.StutterInclusionRE`),
+  and `PreserveOracleKill` (the `PreserveAnchorKill` shape). Both flavours of
+  gate go through the same two lemmas via a `pos: bool` parameter.
+
+The original stage-2 design notes follow (they held up):
 
 - **The pass case is a tree-side STUTTER.** Leaf-transparency means the tree
   does not step while the VM advances `pc` — the same shape as `Jmp`/

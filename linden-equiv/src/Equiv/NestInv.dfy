@@ -753,6 +753,11 @@ module LindenElkNestInv {
     match NR.GetPcRE(code, pc)
     case Some(Consume(_)) => pc' == pc + 1
     case Some(AnchorAssertion(_)) => pc' == pc + 1   // zero-width fall-through, no writes
+    // the lookaround gate: zero-width fall-through like an anchor. Its
+    // look_regs write is invariant-neutral — NestInvRE reads capture and
+    // quant clocks only.
+    case Some(CheckOracle(_)) => pc' == pc + 1
+    case Some(NegCheckOracle(_)) => pc' == pc + 1
     case Some(BeginLoop) => pc' == pc + 1
     case Some(EndLoop) => pc' == pc + 1
     case Some(Fork(x, y)) => (pc' as int == x) || (pc' as int == y)
@@ -2374,7 +2379,7 @@ module LindenElkNestInv {
       bodies sink into their `EndLoop`, nested do-while forks hide behind
       NonNullable bodies), and the residual path is a sub-derivation. */
   lemma ColdPropagatesF(re: R.regex, c: RB.code, pc1: nat, pc2: nat, n: nat)
-    requires NR.PlusFragmentRE(re) && NR.NfaRepRE(re, c, pc1, pc2)
+    requires NR.LookBehindFragmentRE(re) && NR.NfaRepRE(re, c, pc1, pc2)
     requires ColdF(c, pc1, n)
     ensures ColdF(c, pc2, n)
     decreases n, CP.rsize(re), 1
@@ -2423,7 +2428,12 @@ module LindenElkNestInv {
       assert !AR.BackForkAt(c, e1);
       assert ColdF(c, pc2, n - 2);
       ColdFMono(c, pc2, n - 2, n);
-    case Re_lookaround(_, _, _) =>
+    case Re_lookaround(lid, la, r1) =>
+      // one zero-width gate instruction: ColdF crosses it exactly as it
+      // crosses an anchor (the body lives in the per-lid tables, not here)
+      assert !AR.BackForkAt(c, pc1);
+      assert ColdF(c, pc1 + 1, n - 1);
+      ColdFMono(c, pc2, n - 1, n);
     case Re_quant(nul, qid, q, r1) =>
       if q.min == 0 && q.max == None {
         // the star: the body is a Cold sink (EndLoop has no edge)
@@ -2468,7 +2478,7 @@ module LindenElkNestInv {
 
   /** `ColdPropagatesF` along a forced-copy chain. */
   lemma ColdPropagatesMinF(k: nat, qid: R.quantid, r1: R.regex, c: RB.code, pcb: nat, pce: nat, n: nat)
-    requires NR.PlusFragmentRE(r1) && NR.NfaRepMinRE(k, qid, r1, c, pcb, pce)
+    requires NR.LookBehindFragmentRE(r1) && NR.NfaRepMinRE(k, qid, r1, c, pcb, pce)
     requires ColdF(c, pcb, n)
     ensures ColdF(c, pce, n)
     decreases n, CP.rsize(r1), k + 2
@@ -2487,7 +2497,7 @@ module LindenElkNestInv {
   /** `ColdPropagatesF` along an optional-layer chain (each layer's body is a
       Cold sink; only the skip arm carries the path forward). */
   lemma ColdPropagatesOptF(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, c: RB.code, pcb: nat, pce: nat, n: nat)
-    requires NR.PlusFragmentRE(r1) && NR.NfaRepOptRE(k, greedy, qid, r1, c, pcb, pce)
+    requires NR.LookBehindFragmentRE(r1) && NR.NfaRepOptRE(k, greedy, qid, r1, c, pcb, pce)
     requires ColdF(c, pcb, n)
     ensures ColdF(c, pce, n)
     decreases n, CP.rsize(r1), k + 2
@@ -2521,7 +2531,7 @@ module LindenElkNestInv {
       read), and any nested backward fork hides behind a NonNullable body of
       its own. */
   lemma ColdNNF(re: R.regex, c: RB.code, pc1: nat, pc2: nat, n: nat)
-    requires NR.PlusFragmentRE(re) && NR.NfaRepRE(re, c, pc1, pc2)
+    requires NR.LookBehindFragmentRE(re) && NR.NfaRepRE(re, c, pc1, pc2)
     requires R.nullable(re) == R.NonNullable
     requires ColdF(c, pc1, n)
     ensures false
@@ -2599,7 +2609,7 @@ module LindenElkNestInv {
   /** The entry pc of a compiled fragment is never Cold: a Cold path would
       propagate to the final `Accept`, which has no Cold edge. */
   lemma NotColdEntryRE(re: R.regex, c: RB.code, endl: nat)
-    requires NR.PlusFragmentRE(re) && NR.NfaRepRE(re, c, 0, endl)
+    requires NR.LookBehindFragmentRE(re) && NR.NfaRepRE(re, c, 0, endl)
     requires NR.GetPcRE(c, endl) == Some(RB.Accept)
     ensures !ColdRE(c, 0)
   {
@@ -2613,7 +2623,7 @@ module LindenElkNestInv {
 
   /** `BeginLoopColdSafeAt` for forced-copy chains. */
   lemma BeginLoopColdSafeAtMin(k: nat, qid: R.quantid, r1: R.regex, c: RB.code, pcb: nat, pce: nat, p: nat)
-    requires NR.PlusFragmentRE(r1) && NR.NfaRepMinRE(k, qid, r1, c, pcb, pce)
+    requires NR.LookBehindFragmentRE(r1) && NR.NfaRepMinRE(k, qid, r1, c, pcb, pce)
     requires pcb <= p < pce
     requires NR.GetPcRE(c, p) == Some(RB.BeginLoop)
     ensures !ColdRE(c, p + 1)
@@ -2635,7 +2645,7 @@ module LindenElkNestInv {
 
   /** `BeginLoopColdSafeAt` for optional-layer chains. */
   lemma BeginLoopColdSafeAtOpt(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, c: RB.code, pcb: nat, pce: nat, p: nat)
-    requires NR.PlusFragmentRE(r1) && NR.NfaRepOptRE(k, greedy, qid, r1, c, pcb, pce)
+    requires NR.LookBehindFragmentRE(r1) && NR.NfaRepOptRE(k, greedy, qid, r1, c, pcb, pce)
     requires pcb <= p < pce
     requires NR.GetPcRE(c, p) == Some(RB.BeginLoop)
     ensures !ColdRE(c, p + 1)
@@ -2671,7 +2681,7 @@ module LindenElkNestInv {
       static fact the invariant's true→false transition (the VM's `BeginLoop`
       step) consumes. */
   lemma BeginLoopColdSafeAt(re: R.regex, c: RB.code, pcb: nat, pce: nat, p: nat)
-    requires NR.PlusFragmentRE(re) && NR.NfaRepRE(re, c, pcb, pce)
+    requires NR.LookBehindFragmentRE(re) && NR.NfaRepRE(re, c, pcb, pce)
     requires pcb <= p < pce
     requires NR.GetPcRE(c, p) == Some(RB.BeginLoop)
     ensures !ColdRE(c, p + 1)
