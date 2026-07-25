@@ -21,8 +21,8 @@ Status (2026-07-25):
 | C3 | `FBuildLids` assembly: the per-lid oracle characterization | **DONE** — §6.2: `OracleBuild.dfy` (`LidBuildOk`/`AllLidsBuildOk`, `FBuildLidsCharacterized`, `FBuildOracleCorrect`, per-lookaround `FBuildOracleCorrectAt` — the §6.3 bridge's interface) |
 | C4 | Bridge: reachability ⟺ a body match ending at cp | **DONE** — §6.3: forward (`MatchesToPath`/`MatchesToReachesWrite`, OracleBridge.dfy) AND decomposition (`InBlock` mid-parse invariant, `BlockStep`, `ProgReachInv`, `ReachesWriteToMatches`, OracleDecomp.dfy); capstone **`OracleColumnCharacterized`**: bit(cp, lid) ⟺ ∃i ≤ cp: body matches str[i..cp) |
 | C5 | Spec-side duality: forward span match ⟺ backward walk | **DONE (both directions)** — §6.4: `SpanDuality.dfy` (linden-reasoning, 55 verified): `SpanDualityComplete` (a span match ending at cp makes the backward walk succeed; `BwdComplete`+`BwdCompleteQuant`/`BwdCompleteFree`, rightmost-span peeling, `Acheck` guards taking only consuming spans) and `SpanDualitySound` (a successful backward walk yields a span match; `BwdSound`+`BwdSoundQuant`, with the free-layer induction founded on strict `Acheck` progress via `SSLengthLt` where `delta == Inf` has no structural measure). What remains of C5 is glue in linden-equiv: the `OB.Matches ⟺ MatchesL(Translate·)` transfer via `CharSemAgree`/`AnchorSemAgree`, then the OracleOk-shaped corollary chaining `OracleColumnCharacterized`: `SuccActs([Areg(r)]+cont, InputAt(str,j), Backward) ⟺ ∃i: MatchesL(r,str,i,j) ∧ SuccActs(cont, InputAt(str,i), Backward)`; then the `OB.Matches ⟺ MatchesL(Translate·)` transfer in linden-equiv via `CharSemAgree`/`AnchorSemAgree` |
-| B | The `lm` + `ov` threading sweep through the tree-rep/sim layers | open — §6.5 |
-| D | Entry construction, `StaticOkRE` conjunct, `Supported` flip, smoke | open — §6.6 |
+| B | The `lm` + `ov` threading sweep through the tree-rep/sim layers | **DONE** — §6.5 |
+| D | Entry construction, `StaticOkRE` conjunct, `Supported` flip, smoke | **DONE (smoke deferred)** — §6.6 |
 
 Earlier campaign steps (recorded in git history, sessions of 2026-07-19):
 `NfaRepRE`'s `Re_lookaround` arm already carries the real single-instruction
@@ -743,9 +743,45 @@ for all-negative quant values, which `QuantRegsFinal` supplies.
 - **Supported flip** (`ApiMatch.dfy:42`): `NR.PlusFragmentRaw(pattern)` →
   `NR.LookBehindFragmentRaw(pattern)` (keep `Latin1Wf`). `ApiReasoning`/
   `Patterns` clients inherit it.
-- **Smoke**: `lem restore --source` + `lem test <file> --source` (Go
-  target) with e.g. `(?<=a)b` / `(?<!a)b` patterns, mirroring the `a+`
-  smoke from the plus campaign.
+- **Smoke**: DEFERRED, not done. `lem test` does not pick up locally
+  changed `.doo` files produced by `lem pack` (user, 2026-07-25, unfixed),
+  so a Go smoke test cannot validate a widening made in an upstream
+  package. NOTE the residual risk: lookbehind compiles *gate* instructions
+  (`CheckOracle`/`NegCheckOracle`) into the bytecode, and no runtime test
+  has ever executed that path — the plus campaign's `a+` smoke does not
+  cover it. Run `(?<=a)b` / `(?<!a)b` once `lem` is fixed.
+
+### 6.6 OUTCOME (2026-07-25) — L1 IS DONE
+
+`MainTheorem` gates on `NR.LookBehindFragmentRaw` and `ApiMatch.Supported`
+follows it. MainTheorem 47 verified / 0 errors / 58s; whole package
+**7184 verified, 0 errors, 21m08s**.
+
+The three vacuity crutches are replaced by real discharges:
+`OE.LmapOkOfLmOf` (was `AR.PlusFragmentLmapOk`), `OE.OracleOkFromColumns`
+(was `qm.looks == map[]`), and `LookRowsFromTables` feeding the wide
+`FBuildCaptureUnfold` (was the `NoGateMainCode`/`LookRegsUntouched`
+vacuity path — all three of those lemmas are now deleted).
+`LookStaticPackage` bundles the static facts into one minimal context;
+`LTB.SpecRegexLookUnique` supplies lid uniqueness; `OE.LmOfInv` also
+yields the quant half of the row hypothesis.
+
+Still OUT of the fragment: lookahead, captures inside bodies, nested
+lookarounds, non-plus-fragment bodies.
+
+**Two traps this phase hit, both worth re-reading before the next widening:**
+
+1. `assert R.max_lookaround(ast) == 0` survived the gate flip. True under
+   the plus gate, FALSE under the wide one — Z3 spent 900s failing to
+   prove it, which read exactly like a context-cost timeout. Two rounds of
+   VC-shrinking refactors were spent on the wrong diagnosis.
+   `{:isolate_assertions}` completed the lemma in 9m29s with 1421
+   per-assertion results and named the culprit outright; removing it took
+   the lemma to **55s**. Profile FIRST after a semantic change.
+2. `FCompileExtraFrame`'s `case Re_lookaround(_, _, _) =>` was empty —
+   sound only while the plus gate made it unreachable. **An empty match
+   case is a silent unreachability assumption, and widening a gate is
+   precisely what invalidates it.** Audit empty cases on every widening.
 
 ## 7. Practical notes
 
