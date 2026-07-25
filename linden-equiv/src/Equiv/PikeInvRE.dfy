@@ -2833,6 +2833,117 @@ module LindenElkPikeInv {
     case Re_lookaround(_, _, _) => {}
   }
 
+  /** The quant ids that live INSIDE lookaround bodies — the ones the capture
+      pass rewrites and the filter never reads. */
+  ghost function QuantIdsInLooks(r: R.regex): set<nat>
+    decreases r
+  {
+    match r
+    case Re_empty => {}
+    case Re_character(_) => {}
+    case Re_anchor(_) => {}
+    case Re_alt(r1, r2) => QuantIdsInLooks(r1) + QuantIdsInLooks(r2)
+    case Re_con(r1, r2) => QuantIdsInLooks(r1) + QuantIdsInLooks(r2)
+    case Re_quant(_, _, _, r1) => QuantIdsInLooks(r1)
+    case Re_capture(_, r1) => QuantIdsInLooks(r1)
+    case Re_lookaround(_, _, r1) => QuantIds(r1)
+  }
+
+  /** The two halves cover everything. */
+  lemma QuantIdsSplit(r: R.regex)
+    ensures QuantIds(r) == QuantIdsOutsideLooks(r) + QuantIdsInLooks(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => QuantIdsSplit(r1); QuantIdsSplit(r2);
+    case Re_con(r1, r2) => QuantIdsSplit(r1); QuantIdsSplit(r2);
+    case Re_quant(_, _, _, r1) => QuantIdsSplit(r1);
+    case Re_capture(_, r1) => QuantIdsSplit(r1);
+    case Re_lookaround(_, _, r1) =>
+    case _ =>
+  }
+
+  /** ...and, with unique ids, they are disjoint: an id used inside a
+      lookaround body cannot also name a quantifier outside one. This is what
+      lets the capture pass's quant writes (all inside a body) sit alongside the
+      filter's reads (all outside). */
+  lemma QuantIdsLooksDisjoint(r: R.regex)
+    requires QuantUnique(r)
+    ensures QuantIdsOutsideLooks(r) * QuantIdsInLooks(r) == {}
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      QuantIdsLooksDisjoint(r1); QuantIdsLooksDisjoint(r2);
+      QuantIdsSplit(r1); QuantIdsSplit(r2);
+      forall q: nat | q in QuantIdsOutsideLooks(r) ensures q !in QuantIdsInLooks(r) {
+        if q in QuantIdsOutsideLooks(r1) {
+          assert q !in QuantIdsInLooks(r1) by {                   // IH on r1
+            if q in QuantIdsInLooks(r1) {
+              assert q in QuantIdsOutsideLooks(r1) * QuantIdsInLooks(r1);
+            }
+          }
+          assert q in QuantIds(r1);
+          if q in QuantIdsInLooks(r2) {
+            assert q in QuantIds(r2);
+            assert q in QuantIds(r1) * QuantIds(r2);              // QuantUnique
+          }
+        } else {
+          assert q in QuantIdsOutsideLooks(r2);
+          assert q !in QuantIdsInLooks(r2) by {                   // IH on r2
+            if q in QuantIdsInLooks(r2) {
+              assert q in QuantIdsOutsideLooks(r2) * QuantIdsInLooks(r2);
+            }
+          }
+          assert q in QuantIds(r2);
+          if q in QuantIdsInLooks(r1) {
+            assert q in QuantIds(r1);
+            assert q in QuantIds(r1) * QuantIds(r2);              // QuantUnique
+          }
+        }
+      }
+    case Re_con(r1, r2) =>
+      QuantIdsLooksDisjoint(r1); QuantIdsLooksDisjoint(r2);
+      QuantIdsSplit(r1); QuantIdsSplit(r2);
+      forall q: nat | q in QuantIdsOutsideLooks(r) ensures q !in QuantIdsInLooks(r) {
+        if q in QuantIdsOutsideLooks(r1) {
+          assert q !in QuantIdsInLooks(r1) by {                   // IH on r1
+            if q in QuantIdsInLooks(r1) {
+              assert q in QuantIdsOutsideLooks(r1) * QuantIdsInLooks(r1);
+            }
+          }
+          assert q in QuantIds(r1);
+          if q in QuantIdsInLooks(r2) {
+            assert q in QuantIds(r2);
+            assert q in QuantIds(r1) * QuantIds(r2);              // QuantUnique
+          }
+        } else {
+          assert q in QuantIdsOutsideLooks(r2);
+          assert q !in QuantIdsInLooks(r2) by {                   // IH on r2
+            if q in QuantIdsInLooks(r2) {
+              assert q in QuantIdsOutsideLooks(r2) * QuantIdsInLooks(r2);
+            }
+          }
+          assert q in QuantIds(r2);
+          if q in QuantIdsInLooks(r1) {
+            assert q in QuantIds(r1);
+            assert q in QuantIds(r1) * QuantIds(r2);              // QuantUnique
+          }
+        }
+      }
+    case Re_quant(nul, qid, q0, r1) =>
+      QuantIdsLooksDisjoint(r1);
+      QuantIdsSplit(r1);
+      forall q: nat | q in QuantIdsOutsideLooks(r) ensures q !in QuantIdsInLooks(r) {
+        if q == qid as nat {
+          if q in QuantIdsInLooks(r1) { assert q in QuantIds(r1); }   // QuantUnique
+        }
+      }
+    case Re_capture(_, r1) => QuantIdsLooksDisjoint(r1);
+    case Re_lookaround(_, _, r1) =>
+    case _ =>
+  }
+
   /** THE frame: `filter_capture` only reads quant clocks at ids outside
       lookaround bodies, so agreeing there is agreeing everywhere that
       matters. */

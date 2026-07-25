@@ -1031,7 +1031,7 @@ module LindenElkMain {
     requires T.Latin1Wf(raw)
     ensures LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)))
   {
-    hide T.TransWf, NR.PlusFragmentRE, NR.LookBehindFragmentRE, NR.CaptureFreeRE, NR.LookFreeRE, NR.LookBehindFragmentRaw, NR.CaptureFreeRaw, NR.LookFreeRaw, EL.PikeLkRegex, EL.PikeLkActions, EL.LkGateOk, SD.GroupFreeL;
+    hide T.TransWf, NR.PlusFragmentRE, NR.LookBehindFragmentRE, NR.CaptureFreeRE, NR.LookFreeRE, NR.LookBehindFragmentRaw, NR.CaptureFreeRaw, NR.LookFreeRaw, EL.PikeLkRegex, EL.LkGateOk, SD.GroupFreeL;
     var ast := R.annotate(raw);
     var re := R.lazy_prefix(ast);
     var rer := LES.TheRer(raw);
@@ -1106,6 +1106,8 @@ module LindenElkMain {
     WOE.WalkOkEntry(re);
     AR.CompileToBytecodeActionsRepPlus(rer, qm, re);
     assert EL.PikeLkActions([LS.Areg(T.Translate(re))]) by {
+      assert [LS.Areg(T.Translate(re))] == [LS.Areg(T.Translate(re))] + [];
+      assert EL.PikeLkActions([]);
       EL.PikeLkActionsConsIff(LS.Areg(T.Translate(re)), []);
     }
     assert WO.WalkOk([LS.Areg(T.Translate(re))], code, 0, ATR.EaOf(BS.CannotExit));
@@ -1332,7 +1334,7 @@ module LindenElkMain {
                                   thread.quant_regs, -1))
     ensures LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)))
   {
-    hide T.TransWf, NR.PlusFragmentRE, NR.LookBehindFragmentRE, NR.CaptureFreeRE, NR.LookFreeRE, NR.LookBehindFragmentRaw, NR.CaptureFreeRaw, NR.LookFreeRaw, EL.PikeLkRegex, EL.PikeLkActions, EL.LkGateOk, SD.GroupFreeL;
+    hide T.TransWf, NR.PlusFragmentRE, NR.LookBehindFragmentRE, NR.CaptureFreeRE, NR.LookFreeRE, NR.LookBehindFragmentRaw, NR.CaptureFreeRaw, NR.LookFreeRaw, EL.PikeLkRegex, EL.LkGateOk, SD.GroupFreeL;
     var ast := R.annotate(raw);
     var re := R.lazy_prefix(ast);
     var rer := LES.TheRer(raw);
@@ -1353,6 +1355,8 @@ module LindenElkMain {
     NR.PlusIsLookBehindFragmentRE(re);
     EL.TranslateFragmentPikeLk(re);
     assert EL.PikeLkActions([LS.Areg(T.Translate(re))]) by {
+      assert [LS.Areg(T.Translate(re))] == [LS.Areg(T.Translate(re))] + [];
+      assert EL.PikeLkActions([]);
       EL.PikeLkActionsConsIff(LS.Areg(T.Translate(re)), []);
     }
     FirstLeafClosed(rer, [LS.Areg(T.Translate(re))], inp, BS.CannotExit, t, LG.Empty, leaf);
