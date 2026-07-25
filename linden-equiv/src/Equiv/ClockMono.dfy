@@ -102,6 +102,7 @@ module LindenElkClockMono {
   // search, which is what lets the static table record carry it.
   // ==========================================================================
 
+
   // ==========================================================================
   // The capture-register frame: code that never writes a capture register
   // leaves every thread's capture bank exactly as it found it. This is what
@@ -268,6 +269,161 @@ module LindenElkClockMono {
         FFindMatchCapFrame(c, str, s4, ov1, dir, cdn, cap);
     }
   }
+
+  /** No position of `c` holds a gate, so nothing can record a look register.
+      The EQUALITY form of the look frame: a gate-free run leaves the look bank
+      not merely agreeing but IDENTICAL, which is what a caller needs to carry a
+      `get_cp(lk, l)` hypothesis across a replay. */
+  ghost predicate NoLookWriteCode(c: RB.code) {
+    forall pc: nat :: pc < |c| ==> !c[pc].CheckOracle? && !c[pc].NegCheckOracle?
+  }
+
+  /** Every thread in the state — active, blocked, or the best match so far —
+      carries the same capture bank. */
+  ghost predicate VmLooksAre(s: AI.VmState, lk0: AReg.Regs) {
+    (forall t | t in s.active :: t.look_regs == lk0)
+    && (forall tb | tb in s.blocked :: tb.0.look_regs == lk0)
+    && (s.bestmatch.Some? ==> s.bestmatch.value.look_regs == lk0)
+  }
+
+  /** An epsilon phase over gate-free code preserves the look bank. */
+  lemma FAdvanceEpsilonLookEq(c: RB.code, s: AI.VmState, ov: LOr.OracleView,
+                                dir: LAnc.direction, lk0: AReg.Regs)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires NoLookWriteCode(c)
+    requires VmLooksAre(s, lk0)
+    ensures VmLooksAre(AI.FAdvanceEpsilon(c, s, ov, dir).0, lk0)
+    decreases AI.unprocessed(s.processed), |s.active|
+  {
+    if |s.active| == 0 { return; }
+    var t := s.active[0];
+    var ac := s.active[1..];
+    assert t in s.active;
+    assert forall x | x in ac :: x in s.active;
+    if AI.bpc_mem(s.processed, t.pc, t.exit_allowed) {
+      FAdvanceEpsilonLookEq(c, s.(active := ac), ov, dir, lk0);
+      return;
+    }
+    var b0 := s.processed;
+    var s1 := s.(clock := s.clock + 1, processed := AI.bpc_add(b0, t.pc, t.exit_allowed));
+    assert AI.unprocessed(s1.processed) <= AI.unprocessed(b0)
+        && (0 <= t.pc < RB.size(c) ==> AI.unprocessed(s1.processed) < AI.unprocessed(b0))
+      by { AI.UnprocessedAdd(b0, t.pc, t.exit_allowed); }
+    match RB.get_instr(c, t.pc) {
+      case Consume(ce) =>
+        var (nb, ni) := AI.add_thread(t, ce, s1.blocked, s1.isblocked);
+        var s2 := s1.(blocked := nb, isblocked := ni, active := ac);
+        assert VmLooksAre(s2, lk0) by {
+          forall tb | tb in nb ensures tb.0.look_regs == lk0 {
+            assert tb == (t, ce) || tb in s1.blocked;
+          }
+        }
+        FAdvanceEpsilonLookEq(c, s2, ov, dir, lk0);
+      case Accept =>
+      case Jmp(x) =>
+        FAdvanceEpsilonLookEq(c, s1.(active := [t.(pc := x)] + ac), ov, dir, lk0);
+      case Fork(x, y) =>
+        var newt := AI.Thread(x, t.capture_regs, t.look_regs, t.quant_regs, t.exit_allowed);
+        FAdvanceEpsilonLookEq(c, s1.(active := [newt, t.(pc := y)] + ac), ov, dir, lk0);
+      case SetRegisterToCP(reg) =>
+        var t2 := t.(capture_regs := AReg.set_reg(t.capture_regs, reg, Some(s1.cp), s1.clock), pc := t.pc + 1);
+        FAdvanceEpsilonLookEq(c, s1.(active := [t2] + ac), ov, dir, lk0);
+      case SetQuantToClock(q, bq) =>
+        var ocp := if bq then Some(s1.cp) else None;
+        var t2 := t.(quant_regs := AReg.set_reg(t.quant_regs, q, ocp, s1.clock), pc := t.pc + 1);
+        FAdvanceEpsilonLookEq(c, s1.(active := [t2] + ac), ov, dir, lk0);
+      case CheckOracle(l) =>
+        assert 0 <= t.pc < |c|;            // excluded by NoLookWriteCode
+        assert false;
+      case NegCheckOracle(l) =>
+        assert 0 <= t.pc < |c|;            // excluded by NoLookWriteCode
+        assert false;
+      case WriteOracle(l) =>
+        FAdvanceEpsilonLookEq(c, s1.(active := ac), LOr.view_set_oracle(ov, s1.cp, l), dir, lk0);
+      case BeginLoop =>
+        FAdvanceEpsilonLookEq(c, s1.(active := [t.(exit_allowed := false, pc := t.pc + 1)] + ac), ov, dir, lk0);
+      case EndLoop =>
+        if t.exit_allowed {
+          FAdvanceEpsilonLookEq(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir, lk0);
+        } else {
+          FAdvanceEpsilonLookEq(c, s1.(active := ac), ov, dir, lk0);
+        }
+      case CheckNullable(qid) =>
+        if LCdn.cdn_get(s1.cdn, qid) {
+          FAdvanceEpsilonLookEq(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir, lk0);
+        } else {
+          FAdvanceEpsilonLookEq(c, s1.(active := ac), ov, dir, lk0);
+        }
+      case AnchorAssertion(a) =>
+        if LAnc.is_satisfied(a, s1.context, dir) {
+          FAdvanceEpsilonLookEq(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir, lk0);
+        } else {
+          FAdvanceEpsilonLookEq(c, s1.(active := ac), ov, dir, lk0);
+        }
+      case Fail =>
+        FAdvanceEpsilonLookEq(c, s1.(active := ac), ov, dir, lk0);
+    }
+  }
+
+  /** The consume phase only resumes blocked threads — no register writes. */
+  lemma FConsumeLookEq(s: AI.VmState, lk0: AReg.Regs)
+    requires VmLooksAre(s, lk0)
+    ensures VmLooksAre(AI.FConsume(s), lk0)
+    decreases |s.blocked|
+  {
+    if |s.blocked| == 0 { return; }
+    var t := s.blocked[0].0;
+    var ce := s.blocked[0].1;
+    var s1 := s.(blocked := s.blocked[1..]);
+    assert VmLooksAre(s1, lk0) by {
+      forall tb | tb in s1.blocked ensures tb.0.look_regs == lk0 { assert tb in s.blocked; }
+    }
+    var s2 := if RC.is_accepted(s1.context.nextchar, ce)
+              then s1.(active := [t.(exit_allowed := true, pc := t.pc + 1)] + s1.active)
+              else s1;
+    assert VmLooksAre(s2, lk0) by {
+      assert s.blocked[0] in s.blocked;
+      assert t.look_regs == lk0;
+      forall t2 | t2 in s2.active ensures t2.look_regs == lk0 {
+        if t2 != t.(exit_allowed := true, pc := t.pc + 1) { assert t2 in s1.active; }
+      }
+    }
+    FConsumeLookEq(s2, lk0);
+  }
+
+  /** THE frame: a whole search over gate-free code returns a thread whose look
+      bank IS the one it started from. */
+  lemma FFindMatchLookEq(c: RB.code, str: string, s: AI.VmState, ov: LOr.OracleView,
+                           dir: LAnc.direction, cdn: LCdn.cdns, lk0: AReg.Regs)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires dir.Forward? ==> s.context.nextchar == AI.get_char(str, s.cp)
+    requires dir.Backward? ==> s.context.nextchar == AI.get_char(str, s.cp - 1)
+    requires NoLookWriteCode(c)
+    requires VmLooksAre(s, lk0)
+    ensures var r := AI.FFindMatch(c, str, s, ov, dir, cdn).0;
+      r.Some? ==> r.value.look_regs == lk0
+    decreases if dir.Forward? then |str| - s.cp else s.cp
+  {
+    var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, dir));
+    assert VmLooksAre(s0, lk0);
+    var (s1, ov1) := AI.FAdvanceEpsilon(c, s0, ov, dir);
+    FAdvanceEpsilonLookEq(c, s0, ov, dir, lk0);
+    assert VmLooksAre(s1, lk0);
+    if |s1.blocked| == 0 { return; }
+    match s1.context.nextchar {
+      case None =>
+      case Some(_) =>
+        var s2 := AI.FConsume(s1);
+        FConsumeLookEq(s1, lk0);
+        var s3 := s2.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
+                      cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
+        var newchar := AI.get_char(str, s3.cp - AI.cp_offset(dir));
+        var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
+        assert VmLooksAre(s4, lk0);
+        FFindMatchLookEq(c, str, s4, ov1, dir, cdn, lk0);
+    }
+  }
+
 
   /** Every `SetQuantToClock` in `c` targets an id in `S`. */
   ghost predicate QuantWritesInside(c: RB.code, S: set<int>) {
@@ -703,6 +859,84 @@ module LindenElkClockMono {
         }
       case Fail =>
         FAdvanceEpsilonOvStable(c, s1.(active := ac), ov, dir);
+    }
+  }
+
+  /** The clock never runs backwards across an epsilon phase. The
+      quant-finality induction needs this to know register stamps stay >= -1,
+      and it cannot use `VmClocksLE`: a REPLAY carries the main pass's clocks
+      into a state whose own clock restarts at 0. */
+  lemma FAdvanceEpsilonClockGrows(c: RB.code, s: AI.VmState, ov: LOr.OracleView, dir: LAnc.direction)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    ensures AI.FAdvanceEpsilon(c, s, ov, dir).0.clock >= s.clock
+    decreases AI.unprocessed(s.processed), |s.active|
+  {
+    if |s.active| == 0 { return; }
+    var t := s.active[0];
+    var ac := s.active[1..];
+    if AI.bpc_mem(s.processed, t.pc, t.exit_allowed) {
+      FAdvanceEpsilonClockGrows(c, s.(active := ac), ov, dir);
+      return;
+    }
+    var b0 := s.processed;
+    var s1 := s.(clock := s.clock + 1, processed := AI.bpc_add(b0, t.pc, t.exit_allowed));
+    assert AI.unprocessed(s1.processed) <= AI.unprocessed(b0)
+        && (0 <= t.pc < RB.size(c) ==> AI.unprocessed(s1.processed) < AI.unprocessed(b0))
+      by { AI.UnprocessedAdd(b0, t.pc, t.exit_allowed); }
+    match RB.get_instr(c, t.pc) {
+      case Consume(ce) =>
+        var (nb, ni) := AI.add_thread(t, ce, s1.blocked, s1.isblocked);
+        FAdvanceEpsilonClockGrows(c, s1.(blocked := nb, isblocked := ni, active := ac), ov, dir);
+      case Accept =>
+      case Jmp(x) =>
+        FAdvanceEpsilonClockGrows(c, s1.(active := [t.(pc := x)] + ac), ov, dir);
+      case Fork(x, y) =>
+        var newt := AI.Thread(x, t.capture_regs, t.look_regs, t.quant_regs, t.exit_allowed);
+        FAdvanceEpsilonClockGrows(c, s1.(active := [newt, t.(pc := y)] + ac), ov, dir);
+      case SetRegisterToCP(reg) =>
+        var t' := t.(capture_regs := AReg.set_reg(t.capture_regs, reg, Some(s1.cp), s1.clock), pc := t.pc + 1);
+        FAdvanceEpsilonClockGrows(c, s1.(active := [t'] + ac), ov, dir);
+      case SetQuantToClock(q, bq) =>
+        var ocp := if bq then Some(s1.cp) else None;
+        var t' := t.(quant_regs := AReg.set_reg(t.quant_regs, q, ocp, s1.clock), pc := t.pc + 1);
+        FAdvanceEpsilonClockGrows(c, s1.(active := [t'] + ac), ov, dir);
+      case CheckOracle(l) =>
+        if LOr.view_get_oracle(ov, s1.cp, l) {
+          var t' := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(s1.cp), s1.clock));
+          FAdvanceEpsilonClockGrows(c, s1.(active := [t'] + ac), ov, dir);
+        } else {
+          FAdvanceEpsilonClockGrows(c, s1.(active := ac), ov, dir);
+        }
+      case NegCheckOracle(l) =>
+        if LOr.view_get_oracle(ov, s1.cp, l) {
+          FAdvanceEpsilonClockGrows(c, s1.(active := ac), ov, dir);
+        } else {
+          FAdvanceEpsilonClockGrows(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir);
+        }
+      case WriteOracle(l) =>
+        FAdvanceEpsilonClockGrows(c, s1.(active := ac), LOr.view_set_oracle(ov, s1.cp, l), dir);
+      case BeginLoop =>
+        FAdvanceEpsilonClockGrows(c, s1.(active := [t.(exit_allowed := false, pc := t.pc + 1)] + ac), ov, dir);
+      case EndLoop =>
+        if t.exit_allowed {
+          FAdvanceEpsilonClockGrows(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir);
+        } else {
+          FAdvanceEpsilonClockGrows(c, s1.(active := ac), ov, dir);
+        }
+      case CheckNullable(qid) =>
+        if LCdn.cdn_get(s1.cdn, qid) {
+          FAdvanceEpsilonClockGrows(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir);
+        } else {
+          FAdvanceEpsilonClockGrows(c, s1.(active := ac), ov, dir);
+        }
+      case AnchorAssertion(a) =>
+        if LAnc.is_satisfied(a, s1.context, dir) {
+          FAdvanceEpsilonClockGrows(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir);
+        } else {
+          FAdvanceEpsilonClockGrows(c, s1.(active := ac), ov, dir);
+        }
+      case Fail =>
+        FAdvanceEpsilonClockGrows(c, s1.(active := ac), ov, dir);
     }
   }
 

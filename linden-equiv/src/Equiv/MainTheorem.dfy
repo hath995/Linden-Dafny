@@ -4,6 +4,7 @@
 // bricks are pipeline plumbing and the leaf-closedness extraction.
 include "PikeSimRE.dfy"
 include "WalkOkEntry.dfy"
+include "LookCapture.dfy"
 
 /** The top-level equivalence theorem: `MainTheorem` proves RegElk's compiled,
     executable engine (`FFullMatch`) agrees with the Linden/Warblre tree
@@ -31,6 +32,9 @@ module LindenElkMain {
   import RC = Charclasses
   import AR = LindenElkActionsRep
   import EL = LindenElkEntryLk
+  import RL = LindenElkRegsLaws
+  import LKC = LindenElkLookCapture
+  import LTB = LindenElkLookTables
   import SD = LindenSpanDuality
   import LL = LindenElkLookLeaves
   import T = LindenElkTranslate
@@ -1204,9 +1208,14 @@ module LindenElkMain {
     assert R.max_group(crv.f_main_ast) == maxcap && R.max_quant(crv.f_main_ast) == maxquant;
     assert ncap == 2 * R.max_group(crv.f_main_ast) + 2;
     assert nquant == R.max_quant(crv.f_main_ast) + 1;
-    FBuildCaptureUnfold(crv, str, ov, ncap, nlook, nquant, capture, look, quant, fmp);
+    // the capture pass may now run, but under the current gate the main ast
+    // registers no lookaround row: no gate is compiled, so the look bank is
+    // still the freshly-initialized one
+    NoGateMainCode(re, code);
+    LookRegsUntouched(code, str, inits, ov, crv.f_main_cdns, capture, look, quant, result);
     if result.None? {
       assert fmp.0 == None;
+      FBuildCaptureUnfoldNoLook(crv, str, ov, ncap, nlook, nquant, capture, look, quant, fmp);
       assert bc.0 == None;
       assert bestT.None?;
       assert LT.FirstLeaf(t, inp) == None;
@@ -1224,7 +1233,11 @@ module LindenElkMain {
       assert AI.FReconstructPlus(thread, ast, crv.f_plus_bc, str, fmres.1, LAnc.Forward).0 == thread;
       assert fmp.0 == Some(thread);
 
-      // the engine answer, via the unfold lemma
+      // the engine answer, via the unfold lemma -- called HERE, not before the
+      // branch: its preconditions are about `fmp.0.value`, and only after the
+      // reconstruct-identity above is that known to be `thread`. Called early,
+      // the main VC re-derives reconstruction to reach them and runs away.
+      FBuildCaptureUnfoldNoLook(crv, str, ov, ncap, nlook, nquant, capture, look, quant, fmp);
       assert bc.0 == Some(AI.filter_reset(crv.f_main_ast, caps, lk, qt, -1));
       assert AI.FFullMatch(raw, str) == Some(AI.filter_reset(ast, caps, lk, qt, -1));
 
@@ -1282,6 +1295,254 @@ module LindenElkMain {
     FCompileExtraFrame(ast, base);
   }
 
+  // ==========================================================================
+  // The lookaround CAPTURE pass leaves the answer alone (L1).
+  //
+  // `FLookLoop` replays each matched positive lookaround's capture bytecode and
+  // keeps the replay's registers. For capture-free bodies that cannot move
+  // `filter_reset` over the main ast: the replay writes no capture register and
+  // no look register, and the quant ids it does write live inside a lookaround
+  // body, where the filter never reads them.
+  // ==========================================================================
+
+  /** `FFindMatchThreadFacts`' quant half, in BOTH directions — the lookbehind
+      capture pass runs backward, so the forward-only version does not apply. */
+  lemma FFindMatchQuantFinalAny(c: RB.code, str: string, s: AI.VmState, ov: LOr.OracleView,
+                                dir: LAnc.direction, cdn: LCdn.cdns)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires dir.Forward? ==> s.context.nextchar == AI.get_char(str, s.cp)
+    requires dir.Backward? ==> s.context.nextchar == AI.get_char(str, s.cp - 1)
+    requires forall pc: nat, q: int, b: bool ::
+      NR.GetPcRE(c, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
+    requires s.clock >= -1
+    requires VmQuantFinal(s)
+    ensures var r := AI.FFindMatch(c, str, s, ov, dir, cdn).0;
+      r.Some? ==> QuantRegsFinal(r.value)
+    decreases if dir.Forward? then |str| - s.cp else s.cp
+  {
+    var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, dir));
+    assert VmQuantFinal(s0);
+    FAdvanceEpsilonQuantFinal(c, s0, ov, dir);
+    var (s1, ov1) := AI.FAdvanceEpsilon(c, s0, ov, dir);
+    assert VmQuantFinal(s1);
+    CM.FAdvanceEpsilonClockGrows(c, s0, ov, dir);
+    if |s1.blocked| == 0 { return; }
+    match s1.context.nextchar {
+      case None =>
+      case Some(_) =>
+        var s2 := AI.FConsume(s1);
+        FConsumeQuantFinal(s1);
+        var s3 := s2.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
+                      cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
+        var newchar := AI.get_char(str, s3.cp - AI.cp_offset(dir));
+        var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
+        assert VmQuantFinal(s4);
+        FFindMatchQuantFinalAny(c, str, s4, ov1, dir, cdn);
+    }
+  }
+
+  /** THE capture-pass frame: filtering the main ast over the registers
+      `FLookLoop` returns gives what filtering over the registers it was handed
+      gives. */
+  lemma FLookLoopFilterFrame(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
+                             cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                             mainast: R.regex)
+    requires NR.LookBehindFragmentRE(mainast) && PIV.QuantUnique(mainast)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
+      exists la: R.lookaround, body: R.regex ::
+        LTB.LookEntryOk(crv, l, la, body)
+        && (la.Lookbehind? || la.NegLookbehind?)
+        && NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+        && PIV.QuantUnique(body)
+        && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(mainast))
+    ensures var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
+      AI.filter_reset(mainast, res.0, res.1, res.2, -1)
+        == AI.filter_reset(mainast, cap, lk, qt, -1)
+    decreases maxlook - lid
+  {
+    if lid > maxlook { return; }
+    var next := lid + 1;
+    match AReg.get_cp(lk, lid)
+    case None =>
+      FLookLoopFilterFrame(crv, str, next, maxlook, cap, lk, qt, ov, mainast);
+    case Some(cp) =>
+      var looktype := if 0 <= lid < |crv.f_look_types| then crv.f_look_types[lid] else R.Lookahead;
+      if !AI.capture_type(looktype) {
+        FLookLoopFilterFrame(crv, str, next, maxlook, cap, lk, qt, ov, mainast);
+      } else {
+        var la: R.lookaround, body: R.regex :|
+          LTB.LookEntryOk(crv, lid, la, body)
+          && (la.Lookbehind? || la.NegLookbehind?)
+          && NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+          && PIV.QuantUnique(body)
+          && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(mainast));
+        assert looktype == la && la.Lookbehind?;          // capture_type rules out the negative
+        var bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
+        var dir := AI.capture_direction(looktype);
+        var lookcdn := if 0 <= lid < |crv.f_look_cdns| then crv.f_look_cdns[lid] else [];
+        var lookast := if 0 <= lid < |crv.f_look_ast| then crv.f_look_ast[lid] else R.Re_empty;
+        assert bytecode == CP.compile_to_bytecode(CP.capture_regex(la, body));
+        assert lookast == body;
+
+        LKC.CaptureCodeClassified(la, body);
+        var (result, ov1) := AI.FFindMatchPlus(bytecode, lookast, crv.f_plus_bc, str, ov, dir,
+                                               cp, cap, lk, qt, 0, lookcdn);
+        var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
+        ReplayFrames(bytecode, str, inits, ov, dir, lookcdn, cap, lk, qt, la, body);
+        var (res0, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+        assert result.Some? ==> res0.Some?;
+        if result.Some? {
+          var th := res0.value;
+          assert QuantRegsFinal(th);
+          FNulledPlusIdentity(lookast, th.capture_regs, th.look_regs, th.quant_regs,
+                              crv.f_plus_bc, str, ovx, dir);
+          assert result.value.capture_regs == th.capture_regs
+              && result.value.look_regs == th.look_regs
+              && result.value.quant_regs == th.quant_regs;
+        }
+        var ncap, nlk, nqt := if result.None? then cap else result.value.capture_regs,
+                              if result.None? then lk else result.value.look_regs,
+                              if result.None? then qt else result.value.quant_regs;
+        FilterUnmoved(mainast, cap, lk, qt, ncap, nlk, nqt, body);
+        FLookLoopFilterFrame(crv, str, next, maxlook, ncap, nlk, nqt, ov1, mainast);
+      }
+  }
+
+  /** One replay's register facts, packaged: the capture and look banks come out
+      untouched, the quant bank agrees outside the body's ids, and the result
+      thread is still quant-final. */
+  lemma ReplayFrames(bytecode: RB.code, str: string, inits: AI.VmState, ov: LOr.OracleView,
+                     dir: LAnc.direction, lookcdn: LCdn.cdns,
+                     cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs,
+                     la: R.lookaround, body: R.regex)
+    requires NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    requires PIV.QuantUnique(body)
+    requires la.Lookbehind? || la.NegLookbehind?
+    requires bytecode == CP.compile_to_bytecode(CP.capture_regex(la, body))
+    requires inits.active == [AI.init_thread(cap, lk, qt)]
+    requires inits.blocked == [] && inits.bestmatch.None?
+    requires |inits.processed.true_set| == RB.size(bytecode)
+          && |inits.processed.false_set| == RB.size(bytecode)
+    requires dir.Forward? ==> inits.context.nextchar == AI.get_char(str, inits.cp)
+    requires dir.Backward? ==> inits.context.nextchar == AI.get_char(str, inits.cp - 1)
+    requires inits.clock >= -1
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    ensures var r := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn).0;
+      r.Some? ==>
+        r.value.capture_regs == cap
+        && r.value.look_regs == lk
+        && CM.RegsAgreeOutside(r.value.quant_regs, qt, LKC.QIdsInt(body))
+        && QuantRegsFinal(r.value)
+  {
+    LKC.CaptureCodeClassified(la, body);
+    assert CM.VmCapsAre(inits, cap);
+    assert CM.VmLooksAre(inits, lk);
+    assert CM.VmQuantsAgree(inits, qt, LKC.QIdsInt(body)) by {
+      assert CM.RegsAgreeOutside(qt, qt, LKC.QIdsInt(body));
+    }
+    assert VmQuantFinal(inits);
+    CM.FFindMatchCapFrame(bytecode, str, inits, ov, dir, lookcdn, cap);
+    CM.FFindMatchLookEq(bytecode, str, inits, ov, dir, lookcdn, lk);
+    CM.FFindMatchQuantFrame(bytecode, str, inits, ov, dir, lookcdn, qt, LKC.QIdsInt(body));
+    FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
+  }
+
+  /** The filter cannot see the difference the replay makes. */
+  lemma FilterUnmoved(mainast: R.regex, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs,
+                      ncap: AReg.Regs, nlk: AReg.Regs, nqt: AReg.Regs, body: R.regex)
+    requires NR.LookBehindFragmentRE(mainast) && PIV.QuantUnique(mainast)
+    requires ncap == cap
+    requires nlk == lk
+    requires CM.RegsAgreeOutside(nqt, qt, LKC.QIdsInt(body))
+    requires forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(mainast)
+    ensures AI.filter_reset(mainast, ncap, nlk, nqt, -1)
+         == AI.filter_reset(mainast, cap, lk, qt, -1)
+  {
+    PIV.QuantIdsLooksDisjoint(mainast);
+    var cr := AReg.as_arrays(cap).0;
+    var cc := AReg.as_arrays(cap).1;
+    forall q0: nat | q0 in PIV.QuantIdsOutsideLooks(mainast)
+      ensures AI.get_idx(AReg.as_arrays(nqt).1, q0) == AI.get_idx(AReg.as_arrays(qt).1, q0)
+    {
+      assert q0 !in LKC.QIdsInt(body) by {
+        if q0 in LKC.QIdsInt(body) {
+          assert q0 in PIV.QuantIds(body);
+          assert q0 in PIV.QuantIdsInLooks(mainast);
+          assert q0 in PIV.QuantIdsOutsideLooks(mainast) * PIV.QuantIdsInLooks(mainast);
+        }
+      }
+    }
+    PIV.FilterCaptureFullOutside(mainast, cr, cc, AReg.as_arrays(nlk).1,
+                                 AReg.as_arrays(nqt).1, AReg.as_arrays(qt).1, -1);
+
+  }
+
+  /** A plus-fragment regex compiles no gate, so its code cannot record a look
+      register. */
+  lemma NoGateMainCode(re: R.regex, code: RB.code)
+    requires NR.PlusFragmentRE(re)
+    requires code == CP.compile_to_bytecode(re)
+    ensures CM.NoLookWriteCode(code)
+  {
+    AR.PlusFragmentLookFree(re);
+    NR.CompileToBytecodeRepPlus(re);
+    var next := CP.compile(re, 0, CP.Progress).1;
+    var endl: nat := next as nat;
+    forall pc: nat | pc < |code| ensures !code[pc].CheckOracle? && !code[pc].NegCheckOracle? {
+      assert NR.GetPcRE(code, pc) == Some(code[pc]);
+      if pc != endl { NR.NoOracleInstrRE(re, code, 0, endl, pc); }
+    }
+  }
+
+  /** ...so the winning thread carries the look bank it started with. */
+  lemma LookRegsUntouched(code: RB.code, str: string, inits: AI.VmState, ov: LOr.OracleView,
+                          cdn: LCdn.cdns, cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+                          result: Option<AI.Thread>)
+    requires CM.NoLookWriteCode(code)
+    requires |inits.processed.true_set| == RB.size(code)
+          && |inits.processed.false_set| == RB.size(code)
+    requires inits.context.nextchar == AI.get_char(str, inits.cp)
+    requires inits.active == [AI.init_thread(cap, look, quant)]
+    requires inits.blocked == [] && inits.bestmatch.None?
+    requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
+    ensures result.Some? ==> result.value.look_regs == look
+  {
+    assert CM.VmLooksAre(inits, look);
+    CM.FFindMatchLookEq(code, str, inits, ov, LAnc.Forward, cdn, look);
+  }
+
+  /** `FBuildCaptureUnfold` for a main ast that registers no lookaround row:
+      the look bank is still the freshly-initialized one, so every slot is
+      unset and the capture pass's row hypothesis is vacuous. Kept separate so
+      the discharge does not land in `MainTheorem`'s own VC. */
+  lemma FBuildCaptureUnfoldNoLook(crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                                  ncap: int, nlook: int, nquant: int,
+                                  capture: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+                                  fmp: (Option<AI.Thread>, LOr.OracleView))
+    requires NR.LookBehindFragmentRE(crv.f_main_ast) && PIV.QuantUnique(crv.f_main_ast)
+    requires ncap == 2 * R.max_group(crv.f_main_ast) + 2
+    requires nlook == R.max_lookaround(crv.f_main_ast) + 1
+    requires nquant == R.max_quant(crv.f_main_ast) + 1
+    requires capture == AReg.init_regs(ncap)
+    requires look == AReg.init_regs(nlook)
+    requires quant == AReg.init_regs(nquant)
+    requires fmp == AI.FFindMatchPlus(crv.f_main_bc, crv.f_main_ast, crv.f_plus_bc, str, ov,
+                                      LAnc.Forward, 0, capture, look, quant, 0, crv.f_main_cdns)
+    requires fmp.0.Some? ==> fmp.0.value.look_regs == look
+    requires fmp.0.Some? ==> QuantRegsFinal(fmp.0.value)
+    ensures fmp.0.None? ==> AI.FBuildCapture(crv, str, ov).0 == None
+    ensures fmp.0.Some? ==> (AI.FBuildCapture(crv, str, ov).0
+      == Some(AI.filter_reset(crv.f_main_ast, fmp.0.value.capture_regs,
+                              fmp.0.value.look_regs, fmp.0.value.quant_regs, -1)))
+  {
+    RL.AInitLaws(nlook);
+    assert forall l: int :: AReg.get_cp(look, l).None?;
+    FBuildCaptureUnfold(crv, str, ov, ncap, nlook, nquant, capture, look, quant, fmp);
+  }
+
   // FBuildCapture, unfolded once in a MINIMAL context (inlined in the main
   // lemma, the solver drowns in the surrounding facts): with no lookarounds
   // the look pass is the identity and the answer is the filtered result
@@ -1294,15 +1555,26 @@ module LindenElkMain {
                             ncap: int, nlook: int, nquant: int,
                             capture: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
                             fmp: (Option<AI.Thread>, LOr.OracleView))
-    requires R.max_lookaround(crv.f_main_ast) == 0
+    requires NR.LookBehindFragmentRE(crv.f_main_ast) && PIV.QuantUnique(crv.f_main_ast)
     requires ncap == 2 * R.max_group(crv.f_main_ast) + 2
-    requires nlook == 1
+    requires nlook == R.max_lookaround(crv.f_main_ast) + 1
     requires nquant == R.max_quant(crv.f_main_ast) + 1
     requires capture == AReg.init_regs(ncap)
     requires look == AReg.init_regs(nlook)
     requires quant == AReg.init_regs(nquant)
     requires fmp == AI.FFindMatchPlus(crv.f_main_bc, crv.f_main_ast, crv.f_plus_bc, str, ov,
                                       LAnc.Forward, 0, capture, look, quant, 0, crv.f_main_cdns)
+    // the capture pass's per-row facts, from the tables and the fragment
+    requires fmp.0.Some? ==>
+      (forall l: int :: 1 <= l <= R.max_lookaround(crv.f_main_ast)
+                        && AReg.get_cp(fmp.0.value.look_regs, l).Some? ==>
+        exists la: R.lookaround, body: R.regex ::
+          LTB.LookEntryOk(crv, l, la, body)
+          && (la.Lookbehind? || la.NegLookbehind?)
+          && NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+          && PIV.QuantUnique(body)
+          && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(crv.f_main_ast)))
+    requires fmp.0.Some? ==> QuantRegsFinal(fmp.0.value)
     ensures fmp.0.None? ==> AI.FBuildCapture(crv, str, ov).0 == None
     ensures fmp.0.Some? ==> (AI.FBuildCapture(crv, str, ov).0
       == Some(AI.filter_reset(crv.f_main_ast, fmp.0.value.capture_regs,
@@ -1310,9 +1582,10 @@ module LindenElkMain {
   {
     if fmp.0.Some? {
       var thread := fmp.0.value;
-      assert AI.FLookLoop(crv, str, 1, 0, thread.capture_regs, thread.look_regs,
-                          thread.quant_regs, fmp.1)
-          == (thread.capture_regs, thread.look_regs, thread.quant_regs, fmp.1);
+      // the look pass may now really run; it just cannot move the answer
+      FLookLoopFilterFrame(crv, str, 1, R.max_lookaround(crv.f_main_ast),
+                           thread.capture_regs, thread.look_regs, thread.quant_regs, fmp.1,
+                           crv.f_main_ast);
     }
   }
 

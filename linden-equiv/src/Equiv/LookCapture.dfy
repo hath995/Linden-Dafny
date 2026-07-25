@@ -38,6 +38,7 @@ module LindenElkLookCapture {
   import PIV = LindenElkPikeInv
   import CM = LindenElkClockMono
   import LTB = LindenElkLookTables
+  import NI = LindenElkNestInv
   import OBu = LindenElkOracleBuild
 
   // ===========================================================================
@@ -64,6 +65,24 @@ module LindenElkLookCapture {
     case _ =>
   }
 
+  /** A capture-free regex has (vacuously) unique capture ids. */
+  lemma CaptureFreeCapUnique(r: R.regex)
+    requires NR.CaptureFreeRE(r)
+    ensures PIV.CapUnique(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      CaptureFreeCapUnique(r1); CaptureFreeCapUnique(r2);
+      PIV.CaptureFreeNoCapIds(r1); PIV.CaptureFreeNoCapIds(r2);
+    case Re_con(r1, r2) =>
+      CaptureFreeCapUnique(r1); CaptureFreeCapUnique(r2);
+      PIV.CaptureFreeNoCapIds(r1); PIV.CaptureFreeNoCapIds(r2);
+    case Re_quant(_, _, _, r1) => CaptureFreeCapUnique(r1);
+    case Re_lookaround(_, _, r1) => CaptureFreeCapUnique(r1);
+    case _ =>
+  }
+
   /** The compiled capture bytecode of an L1 lookaround is classified: no
       capture write, no gate, and every quant write inside the body's ids. */
   lemma CaptureCodeClassified(la: R.lookaround, body: R.regex)
@@ -73,7 +92,9 @@ module LindenElkLookCapture {
     ensures var code := CP.compile_to_bytecode(CP.capture_regex(la, body));
       CM.NoCaptureWriteCode(code)
       && CM.LookChecksInside(code, {})
+      && CM.NoLookWriteCode(code)
       && CM.QuantWritesInside(code, QIdsInt(body))
+      && (forall pc: nat :: pc < |code| ==> (code[pc].SetQuantToClock? ==> !code[pc].sb))
   {
     var cr := CP.capture_regex(la, body);
     PIV.CaptureRegexFragment(la, body);
@@ -82,6 +103,8 @@ module LindenElkLookCapture {
       if la.Lookbehind? { assert cr == R.reverse_regex(body); } else { assert cr == R.Re_empty; }
     }
     LookFreeLookUnique(cr);
+    PIV.CaptureFreeNoCapIds(cr);
+    CaptureFreeCapUnique(cr);
     var code := CP.compile_to_bytecode(cr);
     var next := CP.compile(cr, 0, CP.Progress).1;
     NR.CompileToBytecodeRepLookBehind(cr);
@@ -94,11 +117,13 @@ module LindenElkLookCapture {
       ensures !code[pc].CheckOracle? && !code[pc].NegCheckOracle?
       ensures code[pc].SetQuantToClock? ==>
                 code[pc].sq >= 0 && (code[pc].sq as nat) in PIV.QuantIds(body)
+      ensures code[pc].SetQuantToClock? ==> !code[pc].sb
     {
       assert NR.GetPcRE(code, pc) == Some(code[pc]);
       if pc != endl {
         assert pc < endl;
         NR.NoCaptureInstrRE(cr, code, 0, endl, pc);
+        NI.CodeShapeAt(cr, code, 0, endl, pc);       // pins `!bb` on every stamp
         PIV.LookCheckIdsRE(cr, code, 0, endl, pc);
         PIV.QuantWriteIdsRE(cr, code, 0, endl, pc);
         OBu.LookFreeNoIds(cr);                       // look-free: LookIds(cr) == {}
@@ -111,36 +136,17 @@ module LindenElkLookCapture {
   }
 
   // ===========================================================================
-  // The whole loop — NOT YET PROVED
+  // The whole loop — PROVED, in MainTheorem.dfy
   // ===========================================================================
   //
-  // The remaining statement is
+  // `MainTheorem.FLookLoopFilterFrame` closes this out: for an L1 main ast,
   //
-  //   lemma FLookLoopFilterFrame(crv, str, lid, maxlook, cap, lk, qt, ov, mainast)
-  //     requires LookBehindFragmentRE(mainast) && QuantUnique(mainast)
-  //     requires forall l :: get_cp(lk, l).Some? && lid <= l <= maxlook ==>
-  //                <l names a real node of mainast, with its table row and its
-  //                 L1 body facts, and QuantIds(body) <= QuantIdsInLooks(mainast)>
-  //     ensures var res := FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
-  //       filter_reset(mainast, res.0, res.1, res.2, -1)
-  //         == filter_reset(mainast, cap, lk, qt, -1)
-  //     decreases maxlook - lid
+  //   filter_reset(mainast, FLookLoop(...)) == filter_reset(mainast, cap, lk, qt)
   //
-  // by induction on `maxlook - lid`. Per step: `None`/non-capture-type lids
-  // recurse unchanged; a recorded positive lid replays
-  // `compile_to_bytecode(capture_regex(la, body))`, and
-  //
-  //   * `CaptureCodeClassified` + `CM.FFindMatchCapFrame` give `ncap == cap`,
-  //   * `CaptureCodeClassified` + `CM.FFindMatchLookFrame` (at the empty id
-  //     set) give `nlk == lk`,
-  //   * `CaptureCodeClassified` + `CM.FFindMatchQuantFrame` give `nqt == qt`
-  //     outside the body's ids, which by `PIV.QuantIdsLooksDisjoint` are
-  //     disjoint from `QuantIdsOutsideLooks(mainast)`, so
-  //     `PIV.FilterCaptureFullOutside` leaves the filter where it was,
-  //   * `FReconstructPlus` is the identity by `FNulledPlusIdentity`, whose
-  //     all-negative-quant-values hypothesis survives the replay (its writes
-  //     are `SetQuantToClock(_, false)`, i.e. value `None`).
-  //
-  // The invariant the induction carries is that the look bank is unchanged and
-  // the quant values stay negative, so the hypotheses hold at `lid + 1`.
+  // by induction on `maxlook - lid`, with `ReplayFrames` packaging one replay's
+  // register facts (capture bank untouched, look bank identical, quant bank
+  // agreeing outside the body's ids, result still quant-final) and
+  // `FilterUnmoved` showing the filter cannot see the difference. It lives
+  // there rather than here because it needs `QuantRegsFinal` and
+  // `FNulledPlusIdentity`, which are MainTheorem's.
 }
