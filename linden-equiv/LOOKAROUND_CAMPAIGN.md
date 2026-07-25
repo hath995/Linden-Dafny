@@ -21,6 +21,7 @@ Status (2026-07-25):
 | C3 | `FBuildLids` assembly: the per-lid oracle characterization | **DONE** — §6.2: `OracleBuild.dfy` (`LidBuildOk`/`AllLidsBuildOk`, `FBuildLidsCharacterized`, `FBuildOracleCorrect`, per-lookaround `FBuildOracleCorrectAt` — the §6.3 bridge's interface) |
 | C4 | Bridge: reachability ⟺ a body match ending at cp | **DONE** — §6.3: forward (`MatchesToPath`/`MatchesToReachesWrite`, OracleBridge.dfy) AND decomposition (`InBlock` mid-parse invariant, `BlockStep`, `ProgReachInv`, `ReachesWriteToMatches`, OracleDecomp.dfy); capstone **`OracleColumnCharacterized`**: bit(cp, lid) ⟺ ∃i ≤ cp: body matches str[i..cp) |
 | C5 | Spec-side duality: forward span match ⟺ backward walk | **DONE (both directions)** — §6.4: `SpanDuality.dfy` (linden-reasoning, 55 verified): `SpanDualityComplete` (a span match ending at cp makes the backward walk succeed; `BwdComplete`+`BwdCompleteQuant`/`BwdCompleteFree`, rightmost-span peeling, `Acheck` guards taking only consuming spans) and `SpanDualitySound` (a successful backward walk yields a span match; `BwdSound`+`BwdSoundQuant`, with the free-layer induction founded on strict `Acheck` progress via `SSLengthLt` where `delta == Inf` has no structural measure). What remains of C5 is glue in linden-equiv: the `OB.Matches ⟺ MatchesL(Translate·)` transfer via `CharSemAgree`/`AnchorSemAgree`, then the OracleOk-shaped corollary chaining `OracleColumnCharacterized`: `SuccActs([Areg(r)]+cont, InputAt(str,j), Backward) ⟺ ∃i: MatchesL(r,str,i,j) ∧ SuccActs(cont, InputAt(str,i), Backward)`; then the `OB.Matches ⟺ MatchesL(Translate·)` transfer in linden-equiv via `CharSemAgree`/`AnchorSemAgree` |
+| C5 glue | `Matches ⟺ MatchesL∘Translate` transfer + the oracle column's spec-side characterization | **DONE** — §6.4: `OracleSpec.dfy` (`MatchesTransfer`/`MatchesIterTransfer`, `CaptureFreeGroupFreeL`, **`OracleColumnSpec`**); C5 is now closed end to end |
 | B | The `lm` + `ov` threading sweep through the tree-rep/sim layers | open — §6.5 |
 | D | Entry construction, `StaticOkRE` conjunct, `Supported` flip, smoke | open — §6.6 |
 
@@ -415,20 +416,45 @@ in linden-reasoning if stated over the TRANSLATED body (see below —
 stating it over the Linden `Regex` via `T.Translate(body)` skips one
 transfer lemma).
 
-### 6.4 C5 — spec-side duality (linden-reasoning; engine-free) [CORE DONE — SpanDuality.dfy; glue remains]
+### 6.4 C5 — spec-side duality (linden-reasoning; engine-free) [DONE — SpanDuality.dfy + OracleSpec.dfy]
 
 **Done:** `MatchesL` + `SpanDualityComplete`/`SpanDualitySound` (see §5).
-**Remaining glue (next up):** (a) refresh linden-equiv's stale
-`deps/linden-reasoning.doo` (it predates SpanDuality.dfy — `lem build` at
-the workspace root, or the hand-built-doo bridge); (b) the transfer
-`OB.Matches(bodyAST, str, i, j) ⟺ MatchesL(rer, Translate(bodyAST), str, i, j)`
-in linden-equiv — structural induction via `CharSemAgree` (!ignoreCase +
-`CharacterWfL1` from `Latin1Wf`) and `AnchorSemAgree` (!multiline; note
-`AI.cp_context(i, str, Forward) == T.CpContext(str, i, Forward)` is
-definitional), quantifier counts lining up by `q.min as nat`/`TrDelta`;
-(c) the OracleOk-shaped corollary chaining `OracleColumnCharacterized` +
-transfer + duality: bit(cp, lid) ⟺ the backward walk of the translated
-body succeeds at cp — the exact `StaticOkRE` conjunct §6.5 consumes.
+
+**(a) DONE — the dep refresh** (dev-environment step, nothing tracked):
+linden-equiv's `deps/linden-reasoning.doo` predated SpanDuality.dfy; refreshed
+via the `lem pack` recipe in §7 ("Sibling .doo freshness").
+
+**(b) DONE — the transfer** (`OracleSpec.dfy`, new): `MatchesTransfer` /
+`MatchesIterTransfer`,
+`OB.Matches(re, str, i, j) ⟺ MatchesL(rer, Translate(re), str, i, j)` on
+in-range spans, via `CharSemAgree` (!ignoreCase + `CharacterWfL1` from
+`Latin1Wf`) and `AnchorSemAgree` (!multiline; `CtxAtAgree` packages the
+definitional `AI.cp_context(i, str, Forward) == T.CpContext(str, i, Forward)`),
+quantifier counts lining up by `q.min as nat`/`TrDelta` exactly as planned.
+**Lighter than the plan expected: NO capture-freedom hypothesis is needed** —
+`Matches` (`Re_capture`) and `MatchesL` (`Group`) are BOTH transparent on
+captures, so the induction covers the whole RegElk AST. Capture-freedom is
+needed only to feed the duality its `GroupFreeL` precondition, which is the
+separate three-line `CaptureFreeGroupFreeL` (`Group` comes only from
+`Re_capture`, `LookaroundR` only from `Re_lookaround`, and `Translate` never
+emits `Backreference`).
+
+**(c) DONE — the OracleOk-shaped corollary** (`OracleSpec.dfy`):
+`OracleColumnSpec` chains `OracleColumnCharacterized` + transfer + duality to
+`view_get_oracle(FBuildOracle(fc, str), cp, lid) ⟺ SuccActs(rer,
+[Areg(Translate(body))], InputAt(str, cp), gm, Backward)` — the exact
+`StaticOkRE` conjunct §6.5 consumes, for every `gm` (group-free body) and both
+lookbehind flavours (the bit is the positive question; `NegCheckOracle` inverts
+at the gate). `OracleSpec.dfy`: 15 verified, 0 errors; whole package **7388
+verified, 0 errors**.
+
+**Left for §6.6:** `OracleColumnSpec` carries `T.TransWf(body)` as a
+hypothesis. It is not derivable from the fragment predicates (it needs
+`CharacterWfL1`, i.e. `Latin1Wf` threaded through `AnnotateRegexWf`), and
+`TransWf` is structural but reaching `body` goes through `LookEntryOk` rather
+than a subterm relation — so it discharges where the other top-level gates are
+widened.
+
 The original plan for this section follows.
 
 The spec walks a lookbehind body BACKWARD from cp (`LkDir(LookBehind) ==
@@ -548,6 +574,26 @@ Dafny 4.11 (PATH `dafny` is 4.10 and cannot load the 4.11 `.doo`s):
 `$env:USERPROFILE\.vscode\extensions\dafny-lang.ide-vscode-3.5.4\out\resources\4.11.0\github\dafny\Dafny.exe`.
 Full workspace: `lem build` at the repo root (~8 min, ~14 GB).
 
+**Sibling `.doo` freshness** — the trap when the campaign spans two packages.
+`lem restore`/`lem build` inside a member fetch
+siblings from the REGISTRY at the locked version, so unpublished local work in
+a sibling is invisible to its consumers: after SpanDuality.dfy landed in
+linden-reasoning, `linden-equiv/deps/linden-reasoning.doo` still held the
+published 1.0.0 program and no amount of restoring changed that. `lem build`
+at the workspace root does rebuild the graph, but it also re-verifies
+linden-equiv and so eats the 10-minute wall. The cheap refresh:
+
+```
+cd linden-reasoning && lem pack     # verifies, then emits a verified .doo
+cp linden-reasoning/linden-reasoning-<ver>.doo \
+   linden-equiv/deps/linden-reasoning.doo    # consumer uses the UNVERSIONED name
+```
+
+`lem pack` writes its artifacts directly into the package dir (not
+`.lem-publish/` as `--help` says); they are gitignored. To tell stale from
+fresh, a `.doo` is a zip — `unzip -q` it and grep `program` for the module or
+lemma name you expect.
+
 **Module homes** (for new files' imports — these cost a round-trip each when
 guessed): `get_instr`/`size` = `Bytecode`; `build_cdn_v`/`cdn_get`/
 `init_cdn`/type `cdns` = `Cdn`; `is_accepted` = `Charclasses`;
@@ -569,6 +615,16 @@ guessed): `get_instr`/`size` = `Bytecode`; `build_cdn_v`/`cdn_get`/
 - The engine's function ensures are minimal; structural facts you need
   (closure ends `active == []`, `FConsume` drains `blocked`) must be carried
   as extra ensures on your own lemmas.
+- A predicate that `match`es its AST does NOT unfold inside a lemma's branch
+  when it is reached through a module qualifier (`OB.Matches`, `SD.MatchesL`):
+  `var m :| ...` reports "cannot establish the existence of LHS values", and an
+  explicit `assert exists m :: ...` fails identically. The fix is the
+  `NR.NfaRepREQuantInv` idiom — a top-level helper taking the predicate as a
+  PRECONDITION over the syntactic constructor
+  (`requires OB.Matches(R.Re_con(r1, r2), str, i, j)`), where it does fire.
+  Only the inversion direction needs this; intro is fine. (Same lesson
+  `MatchesIterHead`/`IterLHead` already record for the counter unfold —
+  `OracleSpec.dfy` adds the four datatype-match ones.)
 - The induction skeletons for anything over `FAdvanceEpsilon` are in
   `OracleSweep.dfy`/`OracleReach.dfy` (and `ClockMono.dfy`) — copy a
   skeleton, don't re-derive the 15-case match.
