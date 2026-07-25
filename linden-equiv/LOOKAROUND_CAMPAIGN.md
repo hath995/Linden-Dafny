@@ -644,7 +644,33 @@ sweeps would re-verify them twice.
   assembly (§6.6) by chaining `FBuildOracleCorrect` (§6.2) + the bridge
   (§6.3) + the duality (§6.4).
 
-### 6.6 Phase D — entry construction, Supported flip, smoke
+### 6.6 Phase D — entry construction, Supported flip, smoke [boolean layer DONE]
+
+**Done (EntryLk.dfy, 20 green):** `BoolTreeLk` — the boolean semantics widened
+with a lookaround gate rule — and the faithfulness direction
+`IsTree ==> BoolTreeLk` (`ComputeBoolTreeLk`/`EncodeEqualLk`/`BooleanCorrectLk`),
+which is the only direction the entry uses. Plus `PikeLkRegex`/`PikeLkActions`,
+`TranslateFragmentPikeLk`, and the group-map machinery the gate case needs:
+`ComputeTreeGmIndep`/`ComputeTrGmIndep` (a group-free walk never consults the
+map, so its tree is map-independent) and `LkResultGmIndep` (success is
+map-independent for free, by `ResGroupMapIndep`).
+
+**A LOAD-BEARING NEGATIVE RESULT — do not widen `BS.BoolTree` in
+linden-engine-model.** The rule was written there first and verified there.
+But `BoolTree`'s body is unfolded by every consumer, and linden-engine's
+`PikeEquiv.GenerateActiveF` sits right at the solver's limit: ANY extra case
+tipped it over. Measured: PikeEquiv green in 4m51s before, one 300s timeout
+after, in three formulations — the rule stated with `IsTree`, with `ComputeTr`,
+and sealed behind an `{:opaque}` payload predicate. `{:isolate_assertions}` on
+`GenerateActiveF` localized the failure to a single precondition batch (983/984
+green) but did not fix it, and a `{ hide *; ... }` block around that call made
+it worse. Hence the copy in linden-equiv: the dependency packages stay
+bit-for-bit unchanged and the cost lands in the package that wants the feature.
+(`lem pack` at the workspace root is the way to propagate a dependency change
+when one IS wanted — it rebuilds each member's `.doo` in dependency order, and
+fails the member whose build exceeds its 10-minute cap.)
+
+**Remaining:**
 
 - **Leaf-transparency lemmas** (linden-semantics-core or linden-reasoning):
   capture-free positive `LkResult(lk, tlk, gm, inp) == Some(gm)` when
