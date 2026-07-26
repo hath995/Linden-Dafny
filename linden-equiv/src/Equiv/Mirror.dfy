@@ -362,6 +362,12 @@ module LindenElkMirror {
       Not needed before `FFindMatch` -- the epsilon phase holds `cp` fixed. */
   function MirrorView(ov: LOr.OracleView, n: int): LOr.OracleView
     requires n >= 0 && |ov| == n + 1
+    // stated as ensures, not lemmas: downstream needs the ROW CONTENTS to be
+    // automatic. Instantiating a separate row lemma at the mirrored index
+    // `n - i` would not fire when discharging the sweep layer's column-shape
+    // precondition -- the same reason SwapAnchorsCode carries its length here.
+    ensures |MirrorView(ov, n)| == n + 1
+    ensures forall k: int :: 0 <= k < n + 1 ==> MirrorView(ov, n)[k] == ov[n - k]
   {
     seq(n + 1, k requires 0 <= k < n + 1 => ov[n - k])
   }
@@ -1003,34 +1009,69 @@ module LindenElkMirror {
     forall pc | 0 <= pc < |c| ensures SwapAnchorsCodeNonAnchorAt(c, pc) {}
   }
 
-  /* ---------------------------------------------------------------------
-     NEXT STEP (L2, and this is where it stopped).
+  /** THE TRANSPORT. `SweepCharacterization` is forward-only; this is its
+      BACKWARD counterpart, obtained not by re-proving it but by running the
+      isomorphism underneath it.
 
-     `SwapPreservesClassification` above is the easy half: the anchor swap
-     leaves NoOracleReads / NoCheckNullable / WritesOnlyLid / NoAccept intact,
-     so the swapped program is still classified for the sweep layer.
+      A backward build's oracle column at `cp` is set exactly when the
+      anchor-swapped program, run FORWARD over the reversed string, reaches a
+      write at the mirrored position. */
+  lemma BackwardSweepCharacterization(c: RB.code, str: string, ov: LOr.OracleView, lid: int,
+                                      cdn: LCdn.cdns, ncap: int, nlook: int, nquant: int,
+                                      n: int)
+    requires n == |str| && |ov| == n + 1
+    requires OS.NoOracleReads(c) && OS.NoCheckNullable(c) && OS.WritesOnlyLid(c, lid)
+          && OS.NoAccept(c)
+    requires forall i: int :: 0 <= i < |ov| ==> 0 <= lid < |ov[i]|
+    ensures
+      var initcp := AI.init_cp(LAnc.Backward, n);
+      var s := AI.FInitState(c, initcp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                             AReg.init_regs(nquant), 0,
+                             AI.cp_context(initcp, str, LAnc.Backward));
+      var ov' := AI.FFindMatch(c, str, s, ov, LAnc.Backward, cdn).1;
+      forall cp: int :: LOr.view_get_oracle(ov', cp, lid)
+        == (LOr.view_get_oracle(ov, cp, lid)
+            || ORc.ReachesWrite(SwapAnchorsCode(c), LC.Reverse(str), 0, lid,
+                                Mirror(cp, n)))
+  {
+    ReverseLen(str);
+    var cs := SwapAnchorsCode(c);
+    var rstr := LC.Reverse(str);
+    var mv := MirrorView(ov, n);
+    SwapPreservesClassification(c, lid);
+    // the column-shape hypothesis, transported. MirrorView's row `ensures`
+    // makes mv[j] == ov[n - j] available without instantiating a lemma, which
+    // is what previously refused to fire at the mirrored index.
+    assert |mv| == n + 1;
+    forall j: int | 0 <= j < |mv| ensures 0 <= lid < |mv[j]| {
+      assert mv[j] == ov[n - j];
+      assert 0 <= n - j < |ov|;
+    }
+    assert |rstr| < |mv|;
 
-     What remains is `BackwardSweepCharacterization`: feed the swapped program
-     and the mirrored view to `ORc.SweepCharacterization` (forward-only) and
-     compose with `BackwardBuildIsForward` to get
+    assert OS.NoOracleReads(cs) && OS.NoCheckNullable(cs);
+    assert OS.WritesOnlyLid(cs, lid) && OS.NoAccept(cs);
+    assert |rstr| < |mv|;
+    assert forall i: int :: 0 <= i < |mv| ==> 0 <= lid < |mv[i]|;
+    // the forward statement, on the swapped program over the reversed string
+    ORc.SweepCharacterization(cs, rstr, mv, lid, SwapAnchorsCdns(cdn),
+                              AReg.init_regs(ncap), AReg.init_regs(nlook),
+                              AReg.init_regs(nquant), 0);
+    // ... and the isomorphism identifying that run with the backward build
+    BackwardBuildIsForward(c, str, ov, cdn, ncap, nlook, nquant, n);
 
-       view_get_oracle(backward-build view, cp, lid)
-         == view_get_oracle(ov, cp, lid)
-            || ReachesWrite(SwapAnchorsCode(c), Reverse(str), 0, lid, Mirror(cp, n))
-
-     The composition is straightforward on paper -- MirrorViewGet turns each
-     side into the other -- and was written out in full. It did NOT verify,
-     and the obstacle is bookkeeping rather than mathematics: discharging
-     SweepCharacterization's column-shape precondition
-
-       forall i :: 0 <= i < |ov| ==> 0 <= lid < |ov[i]|
-
-     for the MIRRORED view. Instantiating the hypothesis at the mirrored index
-     `n - i` would not fire; renaming the bound variable to avoid shadowing
-     got the inner assertions through, but the enclosing `forall` statement's
-     postcondition still would not close. Worth attacking fresh, probably by
-     giving `MirrorView` an `ensures` about its rows so the shape fact is
-     automatic rather than quantifier-instantiated -- the same trick that
-     fixed `SwapAnchorsCode`'s length above.
-     --------------------------------------------------------------------- */
+    var initcp := AI.init_cp(LAnc.Backward, n);
+    var sb := AI.FInitState(c, initcp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                            AReg.init_regs(nquant), 0,
+                            AI.cp_context(initcp, str, LAnc.Backward));
+    var ovb := AI.FFindMatch(c, str, sb, ov, LAnc.Backward, cdn).1;
+    forall cp: int
+      ensures LOr.view_get_oracle(ovb, cp, lid)
+           == (LOr.view_get_oracle(ov, cp, lid)
+               || ORc.ReachesWrite(cs, rstr, 0, lid, Mirror(cp, n)))
+    {
+      MirrorViewGet(ovb, n, cp, lid);
+      MirrorViewGet(ov, n, cp, lid);
+    }
+  }
 }
