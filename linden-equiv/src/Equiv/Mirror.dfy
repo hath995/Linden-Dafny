@@ -29,6 +29,7 @@
    that is where this plugs in first.
    ========================================================================== */
 include "PikeSimRE.dfy"
+include "OracleReach.dfy"
 
 module LindenElkMirror {
   import opened Std.Wrappers
@@ -41,6 +42,8 @@ module LindenElkMirror {
   import LOr = Oracle
   import LCdn = Cdn
   import RC = Charclasses
+  import OS = LindenElkOracleSweep
+  import ORc = LindenElkOracleReach
 
   // ==========================================================================
   // The position mirror
@@ -982,4 +985,52 @@ module LindenElkMirror {
         && |inits.processed.false_set| == RB.size(bc);
     FFindMatchMirror(bc, str, inits, ov, cdn, n);
   }
+
+  // ==========================================================================
+  // Layer 8: transporting the FORWARD sweep characterization to a
+  //          BACKWARD build
+  // ==========================================================================
+
+  /** The anchor swap preserves every classification the sweep layer gates on:
+      it rewrites anchor ARGUMENTS only, so oracle reads, nullability checks,
+      write columns and accepts are all untouched. */
+  lemma SwapPreservesClassification(c: RB.code, lid: int)
+    ensures OS.NoOracleReads(c) ==> OS.NoOracleReads(SwapAnchorsCode(c))
+    ensures OS.NoCheckNullable(c) ==> OS.NoCheckNullable(SwapAnchorsCode(c))
+    ensures OS.WritesOnlyLid(c, lid) ==> OS.WritesOnlyLid(SwapAnchorsCode(c), lid)
+    ensures OS.NoAccept(c) ==> OS.NoAccept(SwapAnchorsCode(c))
+  {
+    forall pc | 0 <= pc < |c| ensures SwapAnchorsCodeNonAnchorAt(c, pc) {}
+  }
+
+  /* ---------------------------------------------------------------------
+     NEXT STEP (L2, and this is where it stopped).
+
+     `SwapPreservesClassification` above is the easy half: the anchor swap
+     leaves NoOracleReads / NoCheckNullable / WritesOnlyLid / NoAccept intact,
+     so the swapped program is still classified for the sweep layer.
+
+     What remains is `BackwardSweepCharacterization`: feed the swapped program
+     and the mirrored view to `ORc.SweepCharacterization` (forward-only) and
+     compose with `BackwardBuildIsForward` to get
+
+       view_get_oracle(backward-build view, cp, lid)
+         == view_get_oracle(ov, cp, lid)
+            || ReachesWrite(SwapAnchorsCode(c), Reverse(str), 0, lid, Mirror(cp, n))
+
+     The composition is straightforward on paper -- MirrorViewGet turns each
+     side into the other -- and was written out in full. It did NOT verify,
+     and the obstacle is bookkeeping rather than mathematics: discharging
+     SweepCharacterization's column-shape precondition
+
+       forall i :: 0 <= i < |ov| ==> 0 <= lid < |ov[i]|
+
+     for the MIRRORED view. Instantiating the hypothesis at the mirrored index
+     `n - i` would not fire; renaming the bound variable to avoid shadowing
+     got the inner assertions through, but the enclosing `forall` statement's
+     postcondition still would not close. Worth attacking fresh, probably by
+     giving `MirrorView` an `ensures` about its rows so the shape fact is
+     automatic rather than quantifier-instantiated -- the same trick that
+     fixed `SwapAnchorsCode`'s length above.
+     --------------------------------------------------------------------- */
 }
