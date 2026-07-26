@@ -562,6 +562,53 @@ module LindenSpanDuality {
         <==> LS.AnchorSatisfied(rer, a, inp)
   {}
 
+  /** `RevL` permutes `DefGroups` (a Sequence swaps its two halves) but
+      preserves its ELEMENTS. */
+  lemma SetOfConcat(a: seq<LG.GroupId>, b: seq<LG.GroupId>)
+    ensures forall g: LG.GroupId :: g in a + b <==> (g in a || g in b)
+  {}
+
+  lemma RevLDefGroupsSet(r: L.Regex)
+    ensures forall g: LG.GroupId :: g in L.DefGroups(RevL(r)) <==> g in L.DefGroups(r)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) =>
+      RevLDefGroupsSet(r1); RevLDefGroupsSet(r2);
+      SetOfConcat(L.DefGroups(RevL(r1)), L.DefGroups(RevL(r2)));
+      SetOfConcat(L.DefGroups(r1), L.DefGroups(r2));
+    case Sequence(r1, r2) =>
+      RevLDefGroupsSet(r1); RevLDefGroupsSet(r2);
+      assert L.DefGroups(RevL(r)) == L.DefGroups(RevL(r2)) + L.DefGroups(RevL(r1));
+      assert L.DefGroups(r) == L.DefGroups(r1) + L.DefGroups(r2);
+      SetOfConcat(L.DefGroups(RevL(r2)), L.DefGroups(RevL(r1)));
+      SetOfConcat(L.DefGroups(r1), L.DefGroups(r2));
+    case Quantified(_, _, _, r1) => RevLDefGroupsSet(r1);
+    case Group(gid, r1) =>
+      RevLDefGroupsSet(r1);
+      SetOfConcat([gid], L.DefGroups(RevL(r1)));
+      SetOfConcat([gid], L.DefGroups(r1));
+    case _ =>
+  }
+
+  /** ... and a `Reset` only ever reads those elements as a SET, so the
+      permuted payload acts identically. */
+  lemma GMResetPermute(gl1: LG.GroupSet, gl2: LG.GroupSet, gm: LG.GroupMap)
+    requires forall g: LG.GroupId :: g in gl1 <==> g in gl2
+    ensures LG.GMReset(gl1, gm) == LG.GMReset(gl2, gm)
+  {
+    assert (set g | g in gl1) == (set g | g in gl2);
+  }
+
+  /** The two combined: a quantifier layer's reset behaves the same either
+      way round. */
+  lemma RevLResetAgrees(r: L.Regex, gm: LG.GroupMap)
+    ensures LG.GMReset(L.DefGroups(RevL(r)), gm) == LG.GMReset(L.DefGroups(r), gm)
+  {
+    RevLDefGroupsSet(r);
+    GMResetPermute(L.DefGroups(RevL(r)), L.DefGroups(r), gm);
+  }
+
   /* ---------------------------------------------------------------------
      (4) CONCATENATION ORDER -- and the reason a TREE-level reversal now
      looks tractable, where it previously looked risky.
