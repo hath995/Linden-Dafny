@@ -500,6 +500,98 @@ module LindenSpanDuality {
   }
 
   // ===========================================================================
+  // Reversal at the INPUT level: the four direction-sensitive primitives
+  // ===========================================================================
+
+  /** An input window with its two halves exchanged. Scanning `r` BACKWARD
+      over `inp` is scanning `RevL(r)` FORWARD over `SwapInput(inp)` -- this
+      is the whole reversal, expressed without ever mentioning a string. */
+  function SwapInput(inp: LC.Input): LC.Input { LC.Input(inp.pref, inp.next) }
+
+  lemma SwapInputInvolution(inp: LC.Input)
+    ensures SwapInput(SwapInput(inp)) == inp
+  {}
+
+  /** `InputAtReverse`, restated as the swap. */
+  lemma InputAtSwap(str: string, cp: int)
+    requires 0 <= cp <= |str|
+    ensures |LC.Reverse(str)| == |str|
+    ensures T.InputAt(LC.Reverse(str), |str| - cp) == SwapInput(T.InputAt(str, cp))
+  {
+    ReverseLength(str);
+    InputAtReverse(str, cp);
+  }
+
+  /** (1) Reading a character. Backward reads `pref[0]`; forward on the
+      swapped window reads the SAME character and lands on the swapped
+      result. */
+  lemma ReadCharSwap(rer: LW.RegExpRecord, cd: LC.CharDescr, inp: LC.Input)
+    ensures match LC.ReadChar(rer, cd, inp, WP.Backward)
+            case None => LC.ReadChar(rer, cd, SwapInput(inp), WP.Forward).None?
+            case Some(pair) =>
+              LC.ReadChar(rer, cd, SwapInput(inp), WP.Forward)
+                == Some((pair.0, SwapInput(pair.1)))
+  {}
+
+  /** (2) The strict-suffix progress guard. */
+  lemma StrictSuffixSwapAux(inp: LC.Input, next: seq<char>, pref: seq<char>)
+    ensures SSx.StrictSuffixBackward(inp, next, pref)
+        <==> SSx.StrictSuffixForward(SwapInput(inp), pref, next)
+    decreases |pref|
+  {
+    if |pref| == 0 { return; }
+    if LC.Input([pref[0]] + next, pref[1..]) == inp {
+      assert LC.Input(pref[1..], [pref[0]] + next) == SwapInput(inp);
+    } else {
+      assert LC.Input(pref[1..], [pref[0]] + next) != SwapInput(inp);
+      StrictSuffixSwapAux(inp, [pref[0]] + next, pref[1..]);
+    }
+  }
+
+  lemma IsStrictSuffixSwap(inp1: LC.Input, inp2: LC.Input)
+    ensures SSx.IsStrictSuffix(inp1, inp2, WP.Backward)
+        <==> SSx.IsStrictSuffix(SwapInput(inp1), SwapInput(inp2), WP.Forward)
+  {
+    StrictSuffixSwapAux(inp1, inp2.next, inp2.pref);
+  }
+
+  /** (3) Anchors, at the input level (the string-level form is
+      `AnchorSatisfiedReverse`). */
+  lemma AnchorSatisfiedSwap(rer: LW.RegExpRecord, a: L.Anchor, inp: LC.Input)
+    ensures LS.AnchorSatisfied(rer, SwapAnchorL(a), SwapInput(inp))
+        <==> LS.AnchorSatisfied(rer, a, inp)
+  {}
+
+  /* ---------------------------------------------------------------------
+     (4) CONCATENATION ORDER -- and the reason a TREE-level reversal now
+     looks tractable, where it previously looked risky.
+
+       SeqList(r1, r2, Backward) == [Areg(r2), Areg(r1)]
+
+     The spec ALREADY reverses concatenation order when scanning backward,
+     which is exactly what `RevL` does structurally: RevL(Sequence(r1, r2))
+     is Sequence(RevL(r2), RevL(r1)), whose FORWARD SeqList is
+     [Areg(RevL(r2)), Areg(RevL(r1))]. The two action stacks correspond
+     elementwise.
+
+     Priority is decided by that stack order together with `Choice` ordering
+     (Disjunction) and the greedy flag (Quantified), and `RevL` preserves
+     both. So the objection that killed the tree-level route for captures --
+     that leaf ORDER might not survive reversal -- appears not to apply.
+
+     With the four primitives above all commuting with `SwapInput`, the
+     conjecture is that the computed trees are LITERALLY EQUAL:
+
+       ComputeTree(rer, RevActs(acts), SwapInput(inp), gm, Forward, fuel)
+         == ComputeTree(rer, acts, inp, gm, Backward, fuel)
+
+     where RevActs maps Areg(r) to Areg(RevL(r)), Acheck(i) to
+     Acheck(SwapInput(i)), and leaves Aclose alone. NOT PROVEN -- it is the
+     next step, and it would unblock L3's lookbehind capture pass, whose
+     capture regex is reverse_regex(body) run Backward.
+     --------------------------------------------------------------------- */
+
+  // ===========================================================================
   // Group maps do not decide SUCCESS
   // ===========================================================================
 
