@@ -116,7 +116,15 @@ module LindenSpanDuality {
         && (match delta case Inf => true case NN(dx) => k <= min + dx)
         && IterL(rer, r1, k, str, i, j)
     case Group(gid, r1) => MatchesL(rer, r1, str, i, j)
-    case LookaroundR(_, _) => false
+    case LookaroundR(lk, r1) =>
+      // L4 (nesting): a lookBEHIND is zero-width and succeeds at `i` exactly
+      // when its body spans some `[m, i)` -- negated for the negative flavour.
+      // Lookaheads are not in the fragment, so they still match nothing.
+      (lk.LookBehind? || lk.NegLookBehind?)
+      && i == j && 0 <= i <= |str|
+      && (L.Positivity(lk) <==>
+            exists m: int {:trigger MatchesL(rer, r1, str, m, i)} ::
+              0 <= m <= i && MatchesL(rer, r1, str, m, i))
     case Backreference(_) => false
   }
 
@@ -331,6 +339,63 @@ module LindenSpanDuality {
     case _ =>
   }
 
+  /** `GroupOkL` widened to admit `LookaroundR` too (L4, nesting). Still no
+      `Backreference`: that is the ONLY construct whose success reads the group
+      map, which is what makes the map-independence below true. */
+  ghost predicate NoBackrefL(r: L.Regex)
+    decreases r
+  {
+    match r
+    case Epsilon => true
+    case Character(_) => true
+    case AnchorR(_) => true
+    case Disjunction(r1, r2) => NoBackrefL(r1) && NoBackrefL(r2)
+    case Sequence(r1, r2) => NoBackrefL(r1) && NoBackrefL(r2)
+    case Quantified(_, _, _, r1) => NoBackrefL(r1)
+    case Group(_, r1) => NoBackrefL(r1)
+    case LookaroundR(_, r1) => NoBackrefL(r1)
+    case Backreference(_) => false
+  }
+
+  ghost predicate NoBackrefActs(acts: LS.Actions) {
+    forall i :: 0 <= i < |acts| ==>
+      (acts[i].Acheck? || acts[i].Aclose? || (acts[i].Areg? && NoBackrefL(acts[i].r)))
+  }
+
+  lemma NoBackrefActsTail(acts: LS.Actions)
+    requires |acts| > 0 && NoBackrefActs(acts)
+    ensures NoBackrefActs(acts[1..])
+  { forall i | 0 <= i < |acts[1..]| ensures acts[1..][i].Acheck? || acts[1..][i].Aclose?
+      || (acts[1..][i].Areg? && NoBackrefL(acts[1..][i].r)) { assert acts[1..][i] == acts[i + 1]; } }
+
+  lemma NoBackrefActsCons(a: LS.Action, acts: LS.Actions)
+    requires NoBackrefActs(acts)
+    requires a.Acheck? || a.Aclose? || (a.Areg? && NoBackrefL(a.r))
+    ensures NoBackrefActs([a] + acts)
+  { forall i | 0 <= i < |[a] + acts| ensures ([a] + acts)[i].Acheck? || ([a] + acts)[i].Aclose?
+      || (([a] + acts)[i].Areg? && NoBackrefL(([a] + acts)[i].r)) {
+      if i > 0 { assert ([a] + acts)[i] == acts[i - 1]; } } }
+
+  /** Group-OK is in particular backreference-free. */
+  lemma GroupOkIsNoBackref(r: L.Regex)
+    requires GroupOkL(r)
+    ensures NoBackrefL(r)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => GroupOkIsNoBackref(r1); GroupOkIsNoBackref(r2);
+    case Sequence(r1, r2) => GroupOkIsNoBackref(r1); GroupOkIsNoBackref(r2);
+    case Quantified(_, _, _, r1) => GroupOkIsNoBackref(r1);
+    case Group(_, r1) => GroupOkIsNoBackref(r1);
+    case _ =>
+  }
+
+  lemma GroupOkActsIsNoBackref(acts: LS.Actions)
+    requires GroupOkActs(acts)
+    ensures NoBackrefActs(acts)
+  { forall i | 0 <= i < |acts| && acts[i].Areg? ensures NoBackrefL(acts[i].r) {
+      GroupOkIsNoBackref(acts[i].r); } }
+
   /** Action stacks the walk may carry: regexes are group-OK, and `Aclose`
       (pushed by a `Group`) is now permitted. */
   ghost predicate GroupOkActs(acts: LS.Actions) {
@@ -360,7 +425,7 @@ module LindenSpanDuality {
   lemma ComputeTreeGroupOkGmIndep(rer: LW.RegExpRecord, act: LS.Actions, inp: LC.Input,
                                   gm1: LG.GroupMap, gm2: LG.GroupMap, dir: WP.Direction,
                                   fuel: nat)
-    requires GroupOkActs(act)
+    requires NoBackrefActs(act)
     ensures FS.ComputeTree(rer, act, inp, gm1, dir, fuel)
          == FS.ComputeTree(rer, act, inp, gm2, dir, fuel)
     decreases fuel
@@ -368,7 +433,7 @@ module LindenSpanDuality {
     if fuel == 0 || |act| == 0 { return; }
     var f := fuel - 1;
     var cont := act[1..];
-    GroupOkActsTail(act);
+    NoBackrefActsTail(act);
     match act[0]
     case Acheck(strcheck) =>
       if SSx.IsStrictSuffix(inp, strcheck, dir) {
@@ -386,21 +451,21 @@ module LindenSpanDuality {
           case Some(pair) => ComputeTreeGroupOkGmIndep(rer, cont, pair.1, gm1, gm2, dir, f);
         }
       case Disjunction(r1, r2) =>
-        GroupOkActsCons(LS.Areg(r1), cont);
-        GroupOkActsCons(LS.Areg(r2), cont);
+        NoBackrefActsCons(LS.Areg(r1), cont);
+        NoBackrefActsCons(LS.Areg(r2), cont);
         ComputeTreeGroupOkGmIndep(rer, [LS.Areg(r1)] + cont, inp, gm1, gm2, dir, f);
         ComputeTreeGroupOkGmIndep(rer, [LS.Areg(r2)] + cont, inp, gm1, gm2, dir, f);
       case Sequence(r1, r2) =>
         var na := LS.SeqList(r1, r2, dir) + cont;
-        assert GroupOkActs(na) by {
+        assert NoBackrefActs(na) by {
           if dir.Forward? {
             assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
-            GroupOkActsCons(LS.Areg(r2), cont);
-            GroupOkActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont);
+            NoBackrefActsCons(LS.Areg(r2), cont);
+            NoBackrefActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont);
           } else {
             assert na == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
-            GroupOkActsCons(LS.Areg(r1), cont);
-            GroupOkActsCons(LS.Areg(r2), [LS.Areg(r1)] + cont);
+            NoBackrefActsCons(LS.Areg(r1), cont);
+            NoBackrefActsCons(LS.Areg(r2), [LS.Areg(r1)] + cont);
           }
         }
         ComputeTreeGroupOkGmIndep(rer, na, inp, gm1, gm2, dir, f);
@@ -409,10 +474,10 @@ module LindenSpanDuality {
         if min > 0 {
           var quant := L.Quantified(greedy, min - 1, delta, r1);
           var na := [LS.Areg(r1), LS.Areg(quant)] + cont;
-          assert GroupOkActs(na) by {
+          assert NoBackrefActs(na) by {
             assert na == [LS.Areg(r1)] + ([LS.Areg(quant)] + cont);
-            GroupOkActsCons(LS.Areg(quant), cont);
-            GroupOkActsCons(LS.Areg(r1), [LS.Areg(quant)] + cont);
+            NoBackrefActsCons(LS.Areg(quant), cont);
+            NoBackrefActsCons(LS.Areg(r1), [LS.Areg(quant)] + cont);
           }
           // the Reset payload is `gidl`, which depends only on r1
           ComputeTreeGroupOkGmIndep(rer, na, inp, LG.GMReset(gidl, gm1),
@@ -422,11 +487,11 @@ module LindenSpanDuality {
         } else {
           var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
           var na := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
-          assert GroupOkActs(na) by {
+          assert NoBackrefActs(na) by {
             assert na == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
-            GroupOkActsCons(LS.Areg(quant), cont);
-            GroupOkActsCons(LS.Acheck(inp), [LS.Areg(quant)] + cont);
-            GroupOkActsCons(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+            NoBackrefActsCons(LS.Areg(quant), cont);
+            NoBackrefActsCons(LS.Acheck(inp), [LS.Areg(quant)] + cont);
+            NoBackrefActsCons(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
           }
           ComputeTreeGroupOkGmIndep(rer, na, inp, LG.GMReset(gidl, gm1),
                                     LG.GMReset(gidl, gm2), dir, f);
@@ -434,14 +499,32 @@ module LindenSpanDuality {
         }
       case Group(gid, r1) =>
         var na := [LS.Areg(r1), LS.Aclose(gid)] + cont;
-        assert GroupOkActs(na) by {
+        assert NoBackrefActs(na) by {
           assert na == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
-          GroupOkActsCons(LS.Aclose(gid), cont);
-          GroupOkActsCons(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+          NoBackrefActsCons(LS.Aclose(gid), cont);
+          NoBackrefActsCons(LS.Areg(r1), [LS.Aclose(gid)] + cont);
         }
         ComputeTreeGroupOkGmIndep(rer, na, inp, LG.GMOpen(LC.Idx(inp), gid, gm1),
                                   LG.GMOpen(LC.Idx(inp), gid, gm2), dir, f);
-      case LookaroundR(lk, r1) =>   // excluded by GroupOkL
+      case LookaroundR(lk, r1) =>
+        // the sub-walk's tree is map-independent by the IH; WHETHER the
+        // lookaround passes is map-independent by TreeResSomeGmIndep; and the
+        // map it hands the continuation (`gmlk`) differs between the two runs
+        // but the IH says the continuation's tree does not depend on it
+        NoBackrefActsCons(LS.Areg(r1), []);
+        assert [LS.Areg(r1)] == [LS.Areg(r1)] + [];
+        ComputeTreeGroupOkGmIndep(rer, [LS.Areg(r1)], inp, gm1, gm2, L.LkDir(lk), f);
+        var o1 := FS.ComputeTree(rer, [LS.Areg(r1)], inp, gm1, L.LkDir(lk), f);
+        if o1.Some? {
+          var treelk := o1.value;
+          TreeResSomeGmIndep(treelk, gm1, gm2, inp, L.LkDir(lk));
+          match LS.LkResult(lk, treelk, gm1, inp) {
+            case None =>
+            case Some(gmlk1) =>
+              var gmlk2 := LS.LkResult(lk, treelk, gm2, inp).value;
+              ComputeTreeGroupOkGmIndep(rer, cont, inp, gmlk1, gmlk2, dir, f);
+          }
+        }
       case AnchorR(a) =>
         if LS.AnchorSatisfied(rer, a, inp) {
           ComputeTreeGroupOkGmIndep(rer, cont, inp, gm1, gm2, dir, f);
@@ -457,7 +540,7 @@ module LindenSpanDuality {
       changes the map the walk RECORDS, never whether the walk succeeds. */
   lemma SuccActsGmIndep(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input,
                         gm1: LG.GroupMap, gm2: LG.GroupMap, dir: WP.Direction)
-    requires GroupOkActs(acts)
+    requires NoBackrefActs(acts)
     ensures SuccActs(rer, acts, inp, gm1, dir) <==> SuccActs(rer, acts, inp, gm2, dir)
   {
     var fuel := FS.ActionsFuel(acts, inp, dir) + 1;
@@ -470,6 +553,20 @@ module LindenSpanDuality {
     TreeResSomeGmIndep(FU.ComputeTr(rer, acts, inp, gm1, dir), gm1, gm2, inp, dir);
   }
 
+  // NEXT STEP (L4, nesting): `MatchesL` now has a real `LookaroundR` case, and
+  // the map-independence above already admits nested lookarounds. What remains
+  // on the spec side is the `Bwd*` `LookaroundR` arm: a nested lookBEHIND is
+  // zero-width, so the walk neither consumes nor moves -- it succeeds exactly
+  // when the sub-walk of its body from the SAME position does, which is the
+  // `MatchesL` clause. The engine side is the lid-induction: `FBuildLids`
+  // counts DOWN from maxlook and `annotate` gives an outer lookaround a
+  // SMALLER lid than its body's, so inner columns are always built first and
+  // an outer build reads them already-correct. `FBuildOracleCorrect` is
+  // ALREADY nesting-agnostic (it characterizes the bit operationally via
+  // ReachesWrite); the look-free assumption to remove lives in
+  // `OracleSpec.OracleColumnSpec`, whose `TranslateGroupFree` + `SpanDuality`
+  // steps are what currently force a look-free body.
+  //
   // NEXT STEP (L3): widen the `Bwd*` family from `GroupFreeL` to `GroupOkL`.
   // The Group case of `BwdComplete` is straightforward with the lemmas above
   // (push `Areg(r1), Aclose(gid)` under `GMOpen`, land back on `cont` with a
