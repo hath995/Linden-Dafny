@@ -250,6 +250,239 @@ module LindenSpanDuality {
   }
 
   // ===========================================================================
+  // Group maps do not decide SUCCESS
+  // ===========================================================================
+
+  /** `TreeRes` never lets the group map decide Some-vs-None: every node either
+      ignores `gm`, threads it unchanged, or rewrites it (`GroupActionT`, and
+      the positive `LK` arm) without touching whether a leaf is reached. So
+      success of a fixed tree is gm-independent — for ANY tree, with no
+      restriction on the regex that built it.
+
+      This is the fact that lets the span duality carry `Group` nodes: a group
+      changes the map the walk records, never whether the walk succeeds. */
+  lemma TreeResSomeGmIndep(t: LT.Tree, gm1: LG.GroupMap, gm2: LG.GroupMap,
+                           inp: LC.Input, dir: WP.Direction)
+    ensures LT.TreeRes(t, gm1, inp, dir).Some? <==> LT.TreeRes(t, gm2, inp, dir).Some?
+    decreases t
+  {
+    match t
+    case Mismatch =>
+    case Match =>
+    case Choice(t1, t2) =>
+      TreeResSomeGmIndep(t1, gm1, gm2, inp, dir);
+      TreeResSomeGmIndep(t2, gm1, gm2, inp, dir);
+    case Read(_, t1) =>
+      TreeResSomeGmIndep(t1, gm1, gm2, LC.AdvanceInputP(inp, dir), dir);
+    case Progress(t1) => TreeResSomeGmIndep(t1, gm1, gm2, inp, dir);
+    case ReadBackRef(brStr, t0) =>
+      TreeResSomeGmIndep(t0, gm1, gm2, LC.AdvanceInputN(inp, |brStr|, dir), dir);
+    case AnchorPass(_, t0) => TreeResSomeGmIndep(t0, gm1, gm2, inp, dir);
+    case GroupActionT(a, t1) =>
+      TreeResSomeGmIndep(t1, LG.GMUpdate(a, LC.Idx(inp), gm1),
+                             LG.GMUpdate(a, LC.Idx(inp), gm2), inp, dir);
+    case LKFail(_, _) =>
+    case LK(lk, tlk, t1) =>
+      TreeResSomeGmIndep(tlk, gm1, gm2, inp, L.LkDir(lk));
+      if L.Positivity(lk) {
+        // the sub-walk's own result feeds t1's map; both sides reach t1
+        // together by the IH on tlk, with (possibly different) maps
+        match LT.TreeRes(tlk, gm1, inp, L.LkDir(lk)) {
+          case None =>
+          case Some(p1) =>
+            var p2 := LT.TreeRes(tlk, gm2, inp, L.LkDir(lk)).value;
+            TreeResSomeGmIndep(t1, p1.1, p2.1, inp, dir);
+        }
+      } else {
+        TreeResSomeGmIndep(t1, gm1, gm2, inp, dir);
+      }
+  }
+
+  /** Like `GroupFreeL`, but `Group` nodes ARE allowed: the image under
+      `Translate` of a look-free RegElk body that MAY contain captures. Still
+      no `LookaroundR` (bodies are look-free at L1/L3) and no `Backreference`
+      -- a backreference is the one construct whose SUCCESS reads the group
+      map, which is exactly what the lemmas below rule out. */
+  ghost predicate GroupOkL(r: L.Regex)
+    decreases r
+  {
+    match r
+    case Epsilon => true
+    case Character(_) => true
+    case AnchorR(_) => true
+    case Disjunction(r1, r2) => GroupOkL(r1) && GroupOkL(r2)
+    case Sequence(r1, r2) => GroupOkL(r1) && GroupOkL(r2)
+    case Quantified(_, _, _, r1) => GroupOkL(r1)
+    case Group(_, r1) => GroupOkL(r1)
+    case LookaroundR(_, _) => false
+    case Backreference(_) => false
+  }
+
+  /** A group-free regex is in particular group-OK. */
+  lemma GroupFreeIsGroupOk(r: L.Regex)
+    requires GroupFreeL(r)
+    ensures GroupOkL(r)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => GroupFreeIsGroupOk(r1); GroupFreeIsGroupOk(r2);
+    case Sequence(r1, r2) => GroupFreeIsGroupOk(r1); GroupFreeIsGroupOk(r2);
+    case Quantified(_, _, _, r1) => GroupFreeIsGroupOk(r1);
+    case _ =>
+  }
+
+  /** Action stacks the walk may carry: regexes are group-OK, and `Aclose`
+      (pushed by a `Group`) is now permitted. */
+  ghost predicate GroupOkActs(acts: LS.Actions) {
+    forall i :: 0 <= i < |acts| ==>
+      (acts[i].Acheck? || acts[i].Aclose? || (acts[i].Areg? && GroupOkL(acts[i].r)))
+  }
+
+  lemma GroupOkActsTail(acts: LS.Actions)
+    requires |acts| > 0 && GroupOkActs(acts)
+    ensures GroupOkActs(acts[1..])
+  { forall i | 0 <= i < |acts[1..]| ensures acts[1..][i].Acheck? || acts[1..][i].Aclose?
+      || (acts[1..][i].Areg? && GroupOkL(acts[1..][i].r)) { assert acts[1..][i] == acts[i + 1]; } }
+
+  lemma GroupOkActsCons(a: LS.Action, acts: LS.Actions)
+    requires GroupOkActs(acts)
+    requires a.Acheck? || a.Aclose? || (a.Areg? && GroupOkL(a.r))
+    ensures GroupOkActs([a] + acts)
+  { forall i | 0 <= i < |[a] + acts| ensures ([a] + acts)[i].Acheck? || ([a] + acts)[i].Aclose?
+      || (([a] + acts)[i].Areg? && GroupOkL(([a] + acts)[i].r)) {
+      if i > 0 { assert ([a] + acts)[i] == acts[i - 1]; } } }
+
+  /** The computed tree does not depend on the group map at all -- not merely
+      its success, the WHOLE tree. Every node's payload carries only ids
+      (`Open(gid)`, `Close(gid)`, `Reset(gidl)`), never the map itself, and
+      the only construct whose control flow reads the map is `Backreference`,
+      which `GroupOkL` excludes. */
+  lemma ComputeTreeGroupOkGmIndep(rer: LW.RegExpRecord, act: LS.Actions, inp: LC.Input,
+                                  gm1: LG.GroupMap, gm2: LG.GroupMap, dir: WP.Direction,
+                                  fuel: nat)
+    requires GroupOkActs(act)
+    ensures FS.ComputeTree(rer, act, inp, gm1, dir, fuel)
+         == FS.ComputeTree(rer, act, inp, gm2, dir, fuel)
+    decreases fuel
+  {
+    if fuel == 0 || |act| == 0 { return; }
+    var f := fuel - 1;
+    var cont := act[1..];
+    GroupOkActsTail(act);
+    match act[0]
+    case Acheck(strcheck) =>
+      if SSx.IsStrictSuffix(inp, strcheck, dir) {
+        ComputeTreeGroupOkGmIndep(rer, cont, inp, gm1, gm2, dir, f);
+      }
+    case Aclose(gid) =>
+      ComputeTreeGroupOkGmIndep(rer, cont, inp, LG.GMClose(LC.Idx(inp), gid, gm1),
+                                LG.GMClose(LC.Idx(inp), gid, gm2), dir, f);
+    case Areg(r) =>
+      match r
+      case Epsilon => ComputeTreeGroupOkGmIndep(rer, cont, inp, gm1, gm2, dir, f);
+      case Character(cd) =>
+        match LC.ReadChar(rer, cd, inp, dir) {
+          case None =>
+          case Some(pair) => ComputeTreeGroupOkGmIndep(rer, cont, pair.1, gm1, gm2, dir, f);
+        }
+      case Disjunction(r1, r2) =>
+        GroupOkActsCons(LS.Areg(r1), cont);
+        GroupOkActsCons(LS.Areg(r2), cont);
+        ComputeTreeGroupOkGmIndep(rer, [LS.Areg(r1)] + cont, inp, gm1, gm2, dir, f);
+        ComputeTreeGroupOkGmIndep(rer, [LS.Areg(r2)] + cont, inp, gm1, gm2, dir, f);
+      case Sequence(r1, r2) =>
+        var na := LS.SeqList(r1, r2, dir) + cont;
+        assert GroupOkActs(na) by {
+          if dir.Forward? {
+            assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+            GroupOkActsCons(LS.Areg(r2), cont);
+            GroupOkActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont);
+          } else {
+            assert na == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
+            GroupOkActsCons(LS.Areg(r1), cont);
+            GroupOkActsCons(LS.Areg(r2), [LS.Areg(r1)] + cont);
+          }
+        }
+        ComputeTreeGroupOkGmIndep(rer, na, inp, gm1, gm2, dir, f);
+      case Quantified(greedy, min, delta, r1) =>
+        var gidl := L.DefGroups(r1);
+        if min > 0 {
+          var quant := L.Quantified(greedy, min - 1, delta, r1);
+          var na := [LS.Areg(r1), LS.Areg(quant)] + cont;
+          assert GroupOkActs(na) by {
+            assert na == [LS.Areg(r1)] + ([LS.Areg(quant)] + cont);
+            GroupOkActsCons(LS.Areg(quant), cont);
+            GroupOkActsCons(LS.Areg(r1), [LS.Areg(quant)] + cont);
+          }
+          // the Reset payload is `gidl`, which depends only on r1
+          ComputeTreeGroupOkGmIndep(rer, na, inp, LG.GMReset(gidl, gm1),
+                                    LG.GMReset(gidl, gm2), dir, f);
+        } else if delta == LN.NN(0) {
+          ComputeTreeGroupOkGmIndep(rer, cont, inp, gm1, gm2, dir, f);
+        } else {
+          var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+          var na := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
+          assert GroupOkActs(na) by {
+            assert na == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+            GroupOkActsCons(LS.Areg(quant), cont);
+            GroupOkActsCons(LS.Acheck(inp), [LS.Areg(quant)] + cont);
+            GroupOkActsCons(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+          }
+          ComputeTreeGroupOkGmIndep(rer, na, inp, LG.GMReset(gidl, gm1),
+                                    LG.GMReset(gidl, gm2), dir, f);
+          ComputeTreeGroupOkGmIndep(rer, cont, inp, gm1, gm2, dir, f);
+        }
+      case Group(gid, r1) =>
+        var na := [LS.Areg(r1), LS.Aclose(gid)] + cont;
+        assert GroupOkActs(na) by {
+          assert na == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
+          GroupOkActsCons(LS.Aclose(gid), cont);
+          GroupOkActsCons(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+        }
+        ComputeTreeGroupOkGmIndep(rer, na, inp, LG.GMOpen(LC.Idx(inp), gid, gm1),
+                                  LG.GMOpen(LC.Idx(inp), gid, gm2), dir, f);
+      case LookaroundR(lk, r1) =>   // excluded by GroupOkL
+      case AnchorR(a) =>
+        if LS.AnchorSatisfied(rer, a, inp) {
+          ComputeTreeGroupOkGmIndep(rer, cont, inp, gm1, gm2, dir, f);
+        }
+      case Backreference(gid) =>    // excluded by GroupOkL
+  }
+
+  /** SUCCESS of a walk is group-map independent: the tree is the same
+      (`ComputeTreeGroupOkGmIndep`) and reading a leaf out of a fixed tree
+      never lets the map decide Some-vs-None (`TreeResSomeGmIndep`).
+
+      This is what lets the span duality below carry captures: a `Group` node
+      changes the map the walk RECORDS, never whether the walk succeeds. */
+  lemma SuccActsGmIndep(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input,
+                        gm1: LG.GroupMap, gm2: LG.GroupMap, dir: WP.Direction)
+    requires GroupOkActs(acts)
+    ensures SuccActs(rer, acts, inp, gm1, dir) <==> SuccActs(rer, acts, inp, gm2, dir)
+  {
+    var fuel := FS.ActionsFuel(acts, inp, dir) + 1;
+    FS.FunctionalTerminates(rer, acts, inp, gm1, dir, fuel);
+    FS.FunctionalTerminates(rer, acts, inp, gm2, dir, fuel);
+    ComputeTreeGroupOkGmIndep(rer, acts, inp, gm1, gm2, dir, fuel);
+    FU.ComputeTrRw(rer, acts, inp, gm1, dir);
+    FU.ComputeTrRw(rer, acts, inp, gm2, dir);
+    assert FU.ComputeTr(rer, acts, inp, gm1, dir) == FU.ComputeTr(rer, acts, inp, gm2, dir);
+    TreeResSomeGmIndep(FU.ComputeTr(rer, acts, inp, gm1, dir), gm1, gm2, inp, dir);
+  }
+
+  // NEXT STEP (L3): widen the `Bwd*` family from `GroupFreeL` to `GroupOkL`.
+  // The Group case of `BwdComplete` is straightforward with the lemmas above
+  // (push `Areg(r1), Aclose(gid)` under `GMOpen`, land back on `cont` with a
+  // rewritten map that `SuccActsGmIndep` discards). What blocks a one-shot
+  // widening is the QUANTIFIER proofs: `BwdCompleteQuant`/`BwdCompleteFree`/
+  // `BwdSoundQuant` currently lean on `GroupFreeDefGroups` + `GMResetNil` to
+  // treat a layer's `Reset` as a NO-OP and keep `gm` constant across
+  // iterations. With groups present `DefGroups(r1)` is nonempty, so each layer
+  // really resets and the recursion must thread `GMReset(DefGroups(r1), gm)`,
+  // re-anchoring each recursive call's continuation hypothesis through
+  // `SuccActsGmIndep`. Mechanical, ~6 sites, but not a signature change.
+
+  // ===========================================================================
   // Backward-walk plumbing at InputAt positions
   // ===========================================================================
 
