@@ -25,6 +25,7 @@ module LindenElkMirror {
   import AReg = Array_Regs
   import LOr = Oracle
   import LCdn = Cdn
+  import RC = Charclasses
 
   // ==========================================================================
   // The position mirror
@@ -169,6 +170,17 @@ module LindenElkMirror {
       if c[i].AnchorAssertion? { SwapAnchorInvolution(c[i].aa); }
     }
   }
+
+  /** `get_instr` through the transform, total in `pc` (out of range both
+      read `Fail`). This is what a caller needs to know that the swapped
+      program takes the SAME branch at a non-anchor instruction. */
+  lemma GetInstrSwap(c: RB.code, pc: int)
+    ensures !RB.get_instr(c, pc).AnchorAssertion? ==>
+              RB.get_instr(SwapAnchorsCode(c), pc) == RB.get_instr(c, pc)
+    ensures RB.get_instr(c, pc).AnchorAssertion? ==>
+              RB.get_instr(SwapAnchorsCode(c), pc)
+                == RB.AnchorAssertion(SwapAnchor(RB.get_instr(c, pc).aa))
+  {}
 
   /** Pointwise: outside anchors the two programs are the same instruction. */
   predicate SwapAnchorsCodeNonAnchorAt(c: RB.code, pc: nat)
@@ -319,4 +331,442 @@ module LindenElkMirror {
      string the forward measure is `n - Mirror(cp) = cp`, i.e. THE SAME
      MEASURE. The induction should line up without reindexing.
      --------------------------------------------------------------------- */
+
+  // ==========================================================================
+  // Layer 3: the oracle view mirror
+  // ==========================================================================
+
+  /** An oracle view with its COLUMNS reflected. The view is indexed by
+      position (`n + 1` rows for a string of length `n`), so a Backward run
+      reading column `cp` corresponds to a Forward run reading `Mirror(cp)`.
+      Not needed before `FFindMatch` -- the epsilon phase holds `cp` fixed. */
+  function MirrorView(ov: LOr.OracleView, n: int): LOr.OracleView
+    requires n >= 0 && |ov| == n + 1
+  {
+    seq(n + 1, k requires 0 <= k < n + 1 => ov[n - k])
+  }
+
+  lemma MirrorViewLen(ov: LOr.OracleView, n: int)
+    requires n >= 0 && |ov| == n + 1
+    ensures |MirrorView(ov, n)| == n + 1
+  {}
+
+  lemma MirrorViewInvolution(ov: LOr.OracleView, n: int)
+    requires n >= 0 && |ov| == n + 1
+    ensures MirrorView(MirrorView(ov, n), n) == ov
+  {
+    forall k | 0 <= k < n + 1 ensures MirrorView(MirrorView(ov, n), n)[k] == ov[k] {}
+  }
+
+  /** Reading through the mirror. */
+  lemma MirrorViewGet(ov: LOr.OracleView, n: int, cp: int, lid: int)
+    requires n >= 0 && |ov| == n + 1
+    ensures LOr.view_get_oracle(MirrorView(ov, n), Mirror(cp, n), lid)
+         == LOr.view_get_oracle(ov, cp, lid)
+  {
+    if 0 <= cp <= n {
+      assert MirrorView(ov, n)[n - cp] == ov[cp];
+    }
+  }
+
+  /** Writing through the mirror. */
+  lemma MirrorViewSet(ov: LOr.OracleView, n: int, cp: int, lid: int)
+    requires n >= 0 && |ov| == n + 1
+    ensures MirrorView(LOr.view_set_oracle(ov, cp, lid), n)
+         == LOr.view_set_oracle(MirrorView(ov, n), Mirror(cp, n), lid)
+  {
+    var lhs := MirrorView(LOr.view_set_oracle(ov, cp, lid), n);
+    var rhs := LOr.view_set_oracle(MirrorView(ov, n), Mirror(cp, n), lid);
+    forall k | 0 <= k < n + 1 ensures lhs[k] == rhs[k] {
+      if 0 <= cp <= n && 0 <= lid < |ov[cp]| {
+        if k == n - cp {
+          assert lhs[k] == ov[cp][lid := true];
+        } else {
+          assert n - k != cp;
+        }
+      }
+    }
+  }
+
+  // ==========================================================================
+  // Layer 3b: the cdn table
+  // ==========================================================================
+
+  /** The anchor swap pushed through a cdn formula. `interpret_cdn_v` consults
+      `dir` in exactly one place -- `CDN_anchor` -- so this is the same move as
+      `SwapAnchorsCode`, one layer down. */
+  function SwapAnchorsFormula(f: LCdn.cdn_formula): LCdn.cdn_formula
+    decreases f
+  {
+    match f
+    case CDN_true => f
+    case CDN_false => f
+    case CDN_and(f1, f2) => LCdn.CDN_and(SwapAnchorsFormula(f1), SwapAnchorsFormula(f2))
+    case CDN_or(o1, o2) => LCdn.CDN_or(SwapAnchorsFormula(o1), SwapAnchorsFormula(o2))
+    case CDN_quant(q) => f
+    case CDN_look(l) => f
+    case CDN_neglook(l) => f
+    case CDN_anchor(a) => LCdn.CDN_anchor(SwapAnchor(a))
+  }
+
+  function SwapAnchorsCdns(cs: LCdn.cdns): LCdn.cdns {
+    seq(|cs|, i requires 0 <= i < |cs| => (cs[i].0, SwapAnchorsFormula(cs[i].1)))
+  }
+
+  /** A cdn formula evaluates the same backward as its swap does forward, at
+      mirrored position against the mirrored view. */
+  lemma InterpretCdnMirror(f: LCdn.cdn_formula, cp: int, ov: LOr.OracleView, n: int,
+                           t: LCdn.cdn_table, ctx: LAnc.char_context)
+    requires n >= 0 && |ov| == n + 1
+    ensures LCdn.interpret_cdn_v(f, cp, ov, t, ctx, LAnc.Backward)
+         == LCdn.interpret_cdn_v(SwapAnchorsFormula(f), Mirror(cp, n), MirrorView(ov, n), t,
+                                 ctx, LAnc.Forward)
+    decreases f
+  {
+    match f
+    case CDN_and(f1, f2) =>
+      InterpretCdnMirror(f1, cp, ov, n, t, ctx);
+      InterpretCdnMirror(f2, cp, ov, n, t, ctx);
+    case CDN_or(o1, o2) =>
+      InterpretCdnMirror(o1, cp, ov, n, t, ctx);
+      InterpretCdnMirror(o2, cp, ov, n, t, ctx);
+    case CDN_look(l) => MirrorViewGet(ov, n, cp, l);
+    case CDN_neglook(l) => MirrorViewGet(ov, n, cp, l);
+    case CDN_anchor(a) => IsSatisfiedMirror(a, ctx);
+    case _ =>
+  }
+
+  lemma BuildCdnRecMirror(cs: LCdn.cdns, cp: int, ov: LOr.OracleView, n: int,
+                          ctx: LAnc.char_context, table: LCdn.cdn_table)
+    requires n >= 0 && |ov| == n + 1
+    ensures LCdn.build_cdn_rec_v(cs, cp, ov, ctx, LAnc.Backward, table)
+         == LCdn.build_cdn_rec_v(SwapAnchorsCdns(cs), Mirror(cp, n), MirrorView(ov, n), ctx,
+                                 LAnc.Forward, table)
+    decreases |cs|
+  {
+    if |cs| == 0 { return; }
+    InterpretCdnMirror(cs[0].1, cp, ov, n, table, ctx);
+    var eval := LCdn.interpret_cdn_v(cs[0].1, cp, ov, table, ctx, LAnc.Backward);
+    var table' := if eval then LCdn.cdn_set_true(table, cs[0].0) else table;
+    assert SwapAnchorsCdns(cs)[1..] == SwapAnchorsCdns(cs[1..]);
+    BuildCdnRecMirror(cs[1..], cp, ov, n, ctx, table');
+  }
+
+  /** `build_cdn_v` through the mirror -- the last consumer of `dir` in
+      `FFindMatch`'s body that had not been checked. It behaves exactly like
+      the others: swap the anchors, mirror the position and the view. */
+  lemma BuildCdnMirror(cs: LCdn.cdns, cp: int, ov: LOr.OracleView, n: int,
+                       ctx: LAnc.char_context)
+    requires n >= 0 && |ov| == n + 1
+    ensures LCdn.build_cdn_v(cs, cp, ov, ctx, LAnc.Backward)
+         == LCdn.build_cdn_v(SwapAnchorsCdns(cs), Mirror(cp, n), MirrorView(ov, n), ctx,
+                             LAnc.Forward)
+  {
+    BuildCdnRecMirror(cs, cp, ov, n, ctx, LCdn.init_cdn());
+  }
+
+  // ==========================================================================
+  // Layer 4: mirroring the recorded positions (registers, threads, states)
+  // ==========================================================================
+
+  /** A stored register value through the mirror. `-1` means UNSET and must
+      stay unset; a real position `v` reflects to `n - v`. */
+  function MirrorCpVal(v: int, n: int): int { if v >= 0 then n - v else v }
+
+  /** A register bank with every recorded POSITION reflected. Clocks are not
+      positions and are left alone. */
+  function MirrorRegs(r: AReg.Regs, n: int): AReg.Regs {
+    AReg.ARegs(seq(|r.a_cp|, i requires 0 <= i < |r.a_cp| => MirrorCpVal(r.a_cp[i], n)),
+               r.a_clk)
+  }
+
+  /** Writing a position commutes with the mirror. */
+  lemma SetRegMirror(r: AReg.Regs, k: int, cp: int, clk: int, n: int)
+    requires cp >= 0
+    ensures AReg.set_reg(MirrorRegs(r, n), k, Some(Mirror(cp, n)), clk)
+         == MirrorRegs(AReg.set_reg(r, k, Some(cp), clk), n)
+  {
+    if 0 <= k < |r.a_cp| && 0 <= k < |r.a_clk| {
+      var lhs := AReg.set_reg(MirrorRegs(r, n), k, Some(Mirror(cp, n)), clk);
+      var rhs := MirrorRegs(AReg.set_reg(r, k, Some(cp), clk), n);
+      assert |lhs.a_cp| == |rhs.a_cp|;
+      forall i | 0 <= i < |lhs.a_cp| ensures lhs.a_cp[i] == rhs.a_cp[i] {}
+    }
+  }
+
+  /** Clearing a register commutes with the mirror (the `None` write). */
+  lemma SetRegNoneMirror(r: AReg.Regs, k: int, clk: int, n: int)
+    ensures AReg.set_reg(MirrorRegs(r, n), k, None, clk)
+         == MirrorRegs(AReg.set_reg(r, k, None, clk), n)
+  {
+    if 0 <= k < |r.a_cp| && 0 <= k < |r.a_clk| {
+      var lhs := AReg.set_reg(MirrorRegs(r, n), k, None, clk);
+      var rhs := MirrorRegs(AReg.set_reg(r, k, None, clk), n);
+      forall i | 0 <= i < |lhs.a_cp| ensures lhs.a_cp[i] == rhs.a_cp[i] {}
+    }
+  }
+
+  function MirrorThread(t: AI.Thread, n: int): AI.Thread {
+    AI.Thread(t.pc, MirrorRegs(t.capture_regs, n), MirrorRegs(t.look_regs, n),
+              MirrorRegs(t.quant_regs, n), t.exit_allowed)
+  }
+
+  function MirrorThreads(ts: seq<AI.Thread>, n: int): seq<AI.Thread> {
+    seq(|ts|, i requires 0 <= i < |ts| => MirrorThread(ts[i], n))
+  }
+
+  function MirrorBlocked(bs: seq<(AI.Thread, RC.char_expectation)>, n: int)
+    : seq<(AI.Thread, RC.char_expectation)>
+  {
+    seq(|bs|, i requires 0 <= i < |bs| => (MirrorThread(bs[i].0, n), bs[i].1))
+  }
+
+  /** A whole VM state through the mirror: the position and every recorded
+      position reflected, everything else (pcs, flags, clock, the processed
+      sets, the character window) untouched. */
+  function MirrorState(s: AI.VmState, n: int): AI.VmState {
+    AI.VmSt(Mirror(s.cp, n), MirrorThreads(s.active, n), s.processed,
+            MirrorBlocked(s.blocked, n), s.isblocked,
+            (match s.bestmatch case None => None case Some(t) => Some(MirrorThread(t, n))),
+            s.context, s.clock, s.cdn)
+  }
+
+  lemma MirrorThreadsCons(t: AI.Thread, ts: seq<AI.Thread>, n: int)
+    ensures MirrorThreads([t] + ts, n) == [MirrorThread(t, n)] + MirrorThreads(ts, n)
+  {
+    var lhs := MirrorThreads([t] + ts, n);
+    var rhs := [MirrorThread(t, n)] + MirrorThreads(ts, n);
+    forall i | 0 <= i < |lhs| ensures lhs[i] == rhs[i] {}
+  }
+
+  lemma MirrorThreadsTail(ts: seq<AI.Thread>, n: int)
+    requires |ts| > 0
+    ensures MirrorThreads(ts, n)[1..] == MirrorThreads(ts[1..], n)
+  {
+    var lhs := MirrorThreads(ts, n)[1..];
+    var rhs := MirrorThreads(ts[1..], n);
+    forall i | 0 <= i < |lhs| ensures lhs[i] == rhs[i] {}
+  }
+
+  /** `add_thread` (the block list) commutes with the mirror. */
+  lemma AddThreadMirror(t: AI.Thread, ce: RC.char_expectation,
+                        bl: seq<(AI.Thread, RC.char_expectation)>, ib: AI.pcset, n: int)
+    ensures AI.add_thread(MirrorThread(t, n), ce, MirrorBlocked(bl, n), ib).0
+         == MirrorBlocked(AI.add_thread(t, ce, bl, ib).0, n)
+    ensures AI.add_thread(MirrorThread(t, n), ce, MirrorBlocked(bl, n), ib).1
+         == AI.add_thread(t, ce, bl, ib).1
+  {
+    if AI.pc_mem(ib, t.pc) { return; }
+    var lhs := MirrorBlocked(bl, n) + [(MirrorThread(t, n), ce)];
+    var rhs := MirrorBlocked(bl + [(t, ce)], n);
+    forall i | 0 <= i < |lhs| ensures lhs[i] == rhs[i] {}
+  }
+
+  // ==========================================================================
+  // Layer 5: the epsilon phase through the FULL mirror
+  // ==========================================================================
+
+  /** An epsilon phase only ever `view_set_oracle`s, which preserves the
+      view's shape. Needed so `MirrorView` is well-formed on the result. */
+  lemma FAdvanceEpsilonViewLen(c: RB.code, s: AI.VmState, ov: LOr.OracleView)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    ensures |AI.FAdvanceEpsilon(c, s, ov, LAnc.Backward).1| == |ov|
+    decreases AI.unprocessed(s.processed), |s.active|
+  {
+    if |s.active| == 0 { return; }
+    var t := s.active[0];
+    var ac := s.active[1..];
+    var i := RB.get_instr(c, t.pc);
+    if AI.bpc_mem(s.processed, t.pc, t.exit_allowed) {
+      FAdvanceEpsilonViewLen(c, s.(active := ac), ov); return;
+    }
+    var b0 := s.processed;
+    var s1 := s.(clock := s.clock + 1, processed := AI.bpc_add(b0, t.pc, t.exit_allowed));
+    AI.UnprocessedAdd(b0, t.pc, t.exit_allowed);
+    match i
+    case Consume(ce) =>
+      var (nb, ni) := AI.add_thread(t, ce, s1.blocked, s1.isblocked);
+      FAdvanceEpsilonViewLen(c, s1.(blocked := nb, isblocked := ni, active := ac), ov);
+    case Accept =>
+    case Jmp(x) => FAdvanceEpsilonViewLen(c, s1.(active := [t.(pc := x)] + ac), ov);
+    case Fork(x, y) =>
+      var newt := AI.Thread(x, t.capture_regs, t.look_regs, t.quant_regs, t.exit_allowed);
+      FAdvanceEpsilonViewLen(c, s1.(active := [newt, t.(pc := y)] + ac), ov);
+    case SetRegisterToCP(reg) =>
+      FAdvanceEpsilonViewLen(c, s1.(active := [t.(capture_regs := AReg.set_reg(t.capture_regs, reg, Some(s1.cp), s1.clock), pc := t.pc + 1)] + ac), ov);
+    case SetQuantToClock(q, b) =>
+      var ocp := if b then Some(s1.cp) else None;
+      FAdvanceEpsilonViewLen(c, s1.(active := [t.(quant_regs := AReg.set_reg(t.quant_regs, q, ocp, s1.clock), pc := t.pc + 1)] + ac), ov);
+    case CheckOracle(l) =>
+      if LOr.view_get_oracle(ov, s1.cp, l) {
+        FAdvanceEpsilonViewLen(c, s1.(active := [t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(s1.cp), s1.clock))] + ac), ov);
+      } else { FAdvanceEpsilonViewLen(c, s1.(active := ac), ov); }
+    case NegCheckOracle(l) =>
+      if LOr.view_get_oracle(ov, s1.cp, l) { FAdvanceEpsilonViewLen(c, s1.(active := ac), ov); }
+      else { FAdvanceEpsilonViewLen(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov); }
+    case WriteOracle(l) =>
+      FAdvanceEpsilonViewLen(c, s1.(active := ac), LOr.view_set_oracle(ov, s1.cp, l));
+    case BeginLoop =>
+      FAdvanceEpsilonViewLen(c, s1.(active := [t.(exit_allowed := false, pc := t.pc + 1)] + ac), ov);
+    case EndLoop =>
+      if t.exit_allowed { FAdvanceEpsilonViewLen(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov); }
+      else { FAdvanceEpsilonViewLen(c, s1.(active := ac), ov); }
+    case CheckNullable(qid) =>
+      if LCdn.cdn_get(s1.cdn, qid) { FAdvanceEpsilonViewLen(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov); }
+      else { FAdvanceEpsilonViewLen(c, s1.(active := ac), ov); }
+    case AnchorAssertion(a) =>
+      if LAnc.is_satisfied(a, s1.context, LAnc.Backward) {
+        FAdvanceEpsilonViewLen(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov);
+      } else { FAdvanceEpsilonViewLen(c, s1.(active := ac), ov); }
+    case Fail => FAdvanceEpsilonViewLen(c, s1.(active := ac), ov);
+  }
+
+  /** THE epsilon-phase isomorphism, now with the position mirror: running
+      `c` BACKWARD on a state, then mirroring, is the same as mirroring first
+      and running the anchor-swapped program FORWARD.
+
+      `FAdvanceEpsilonSwap` was the `cp`-fixed special case; this is the form
+      `FFindMatch` needs, where the recorded positions (registers, oracle
+      columns) all reflect. */
+  lemma FAdvanceEpsilonMirror(c: RB.code, s: AI.VmState, ov: LOr.OracleView, n: int)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires n >= 0 && |ov| == n + 1 && 0 <= s.cp <= n
+    ensures |AI.FAdvanceEpsilon(c, s, ov, LAnc.Backward).1| == n + 1
+    ensures AI.FAdvanceEpsilon(SwapAnchorsCode(c), MirrorState(s, n), MirrorView(ov, n),
+                               LAnc.Forward)
+         == (MirrorState(AI.FAdvanceEpsilon(c, s, ov, LAnc.Backward).0, n),
+             MirrorView(AI.FAdvanceEpsilon(c, s, ov, LAnc.Backward).1, n))
+    decreases AI.unprocessed(s.processed), |s.active|
+  {
+    FAdvanceEpsilonViewLen(c, s, ov);
+    var cs := SwapAnchorsCode(c);
+    var ms := MirrorState(s, n);
+    var mv := MirrorView(ov, n);
+    assert RB.size(cs) == RB.size(c);
+    assert ms.cp == Mirror(s.cp, n) && ms.cp >= 0;
+    if |s.active| == 0 { return; }
+    assert |ms.active| == |s.active|;
+    var t := s.active[0];
+    var ac := s.active[1..];
+    assert ms.active[0] == MirrorThread(t, n);
+    MirrorThreadsTail(s.active, n);
+    assert ms.active[1..] == MirrorThreads(ac, n);
+    var i := RB.get_instr(c, t.pc);
+    GetInstrSwap(c, t.pc);            // the forward run reads the same instruction
+    if AI.bpc_mem(s.processed, t.pc, t.exit_allowed) {
+      assert MirrorState(s.(active := ac), n) == ms.(active := MirrorThreads(ac, n));
+      FAdvanceEpsilonMirror(c, s.(active := ac), ov, n);
+      return;
+    }
+    var b0 := s.processed;
+    var s1 := s.(clock := s.clock + 1, processed := AI.bpc_add(b0, t.pc, t.exit_allowed));
+    AI.UnprocessedAdd(b0, t.pc, t.exit_allowed);
+    assert s1.cp == s.cp;
+    var ms1 := MirrorState(s1, n);
+    // s1 differs from s only in clock/processed, so the mirrored thread list
+    // is unchanged -- Fork builds its new thread out of ms1.active[0]
+    assert ms1.active == ms.active;
+    assert ms1.active[0] == MirrorThread(t, n);
+    assert ms1.active[1..] == MirrorThreads(ac, n);
+    match i
+    case Consume(ce) =>
+      var (nb, ni) := AI.add_thread(t, ce, s1.blocked, s1.isblocked);
+      AddThreadMirror(t, ce, s1.blocked, s1.isblocked, n);
+      var s2 := s1.(blocked := nb, isblocked := ni, active := ac);
+      assert MirrorState(s2, n)
+          == ms1.(blocked := MirrorBlocked(nb, n), isblocked := ni,
+                  active := MirrorThreads(ac, n));
+      FAdvanceEpsilonMirror(c, s2, ov, n);
+    case Accept =>
+      // both runs stop here; the winner is the mirrored thread
+      assert MirrorThreads([], n) == [];
+      assert MirrorState(s1.(active := [], bestmatch := Some(t)), n)
+          == ms1.(active := [], bestmatch := Some(MirrorThread(t, n)));
+    case Jmp(x) =>
+      MirrorThreadsCons(t.(pc := x), ac, n);
+      FAdvanceEpsilonMirror(c, s1.(active := [t.(pc := x)] + ac), ov, n);
+    case Fork(x, y) =>
+      var newt := AI.Thread(x, t.capture_regs, t.look_regs, t.quant_regs, t.exit_allowed);
+      // the forward run forks the MIRRORED thread; same object either way
+      assert MirrorThread(newt, n)
+          == AI.Thread(x, MirrorRegs(t.capture_regs, n), MirrorRegs(t.look_regs, n),
+                       MirrorRegs(t.quant_regs, n), t.exit_allowed);
+      assert MirrorThread(t.(pc := y), n) == MirrorThread(t, n).(pc := y);
+      MirrorThreadsCons(t.(pc := y), ac, n);
+      MirrorThreadsCons(newt, [t.(pc := y)] + ac, n);
+      assert [newt, t.(pc := y)] + ac == [newt] + ([t.(pc := y)] + ac);
+      assert MirrorThreads([newt, t.(pc := y)] + ac, n)
+          == [MirrorThread(newt, n)] + ([MirrorThread(t, n).(pc := y)] + MirrorThreads(ac, n));
+      assert MirrorState(s1.(active := [newt, t.(pc := y)] + ac), n)
+          == ms1.(active := [MirrorThread(newt, n)]
+                            + ([MirrorThread(t, n).(pc := y)] + MirrorThreads(ac, n)));
+      // the forward run builds [a, b] + c; match it to the [a] + ([b] + c) shape
+      assert [MirrorThread(newt, n), MirrorThread(t, n).(pc := y)] + MirrorThreads(ac, n)
+          == [MirrorThread(newt, n)]
+             + ([MirrorThread(t, n).(pc := y)] + MirrorThreads(ac, n));
+      FAdvanceEpsilonMirror(c, s1.(active := [newt, t.(pc := y)] + ac), ov, n);
+    case SetRegisterToCP(reg) =>
+      SetRegMirror(t.capture_regs, reg, s1.cp, s1.clock, n);
+      var t' := t.(capture_regs := AReg.set_reg(t.capture_regs, reg, Some(s1.cp), s1.clock),
+                   pc := t.pc + 1);
+      MirrorThreadsCons(t', ac, n);
+      FAdvanceEpsilonMirror(c, s1.(active := [t'] + ac), ov, n);
+    case SetQuantToClock(q, b) =>
+      var ocp := if b then Some(s1.cp) else None;
+      if b { SetRegMirror(t.quant_regs, q, s1.cp, s1.clock, n); }
+      else { SetRegNoneMirror(t.quant_regs, q, s1.clock, n); }
+      var t' := t.(quant_regs := AReg.set_reg(t.quant_regs, q, ocp, s1.clock), pc := t.pc + 1);
+      MirrorThreadsCons(t', ac, n);
+      FAdvanceEpsilonMirror(c, s1.(active := [t'] + ac), ov, n);
+    case CheckOracle(l) =>
+      MirrorViewGet(ov, n, s1.cp, l);
+      if LOr.view_get_oracle(ov, s1.cp, l) {
+        SetRegMirror(t.look_regs, l, s1.cp, s1.clock, n);
+        var t' := t.(pc := t.pc + 1,
+                     look_regs := AReg.set_reg(t.look_regs, l, Some(s1.cp), s1.clock));
+        MirrorThreadsCons(t', ac, n);
+        FAdvanceEpsilonMirror(c, s1.(active := [t'] + ac), ov, n);
+      } else {
+        FAdvanceEpsilonMirror(c, s1.(active := ac), ov, n);
+      }
+    case NegCheckOracle(l) =>
+      MirrorViewGet(ov, n, s1.cp, l);
+      if LOr.view_get_oracle(ov, s1.cp, l) {
+        FAdvanceEpsilonMirror(c, s1.(active := ac), ov, n);
+      } else {
+        MirrorThreadsCons(t.(pc := t.pc + 1), ac, n);
+        FAdvanceEpsilonMirror(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, n);
+      }
+    case WriteOracle(l) =>
+      MirrorViewSet(ov, n, s1.cp, l);
+      FAdvanceEpsilonMirror(c, s1.(active := ac), LOr.view_set_oracle(ov, s1.cp, l), n);
+    case BeginLoop =>
+      MirrorThreadsCons(t.(exit_allowed := false, pc := t.pc + 1), ac, n);
+      FAdvanceEpsilonMirror(c, s1.(active := [t.(exit_allowed := false, pc := t.pc + 1)] + ac),
+                            ov, n);
+    case EndLoop =>
+      if t.exit_allowed {
+        MirrorThreadsCons(t.(pc := t.pc + 1), ac, n);
+        FAdvanceEpsilonMirror(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, n);
+      } else {
+        FAdvanceEpsilonMirror(c, s1.(active := ac), ov, n);
+      }
+    case CheckNullable(qid) =>
+      if LCdn.cdn_get(s1.cdn, qid) {
+        MirrorThreadsCons(t.(pc := t.pc + 1), ac, n);
+        FAdvanceEpsilonMirror(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, n);
+      } else {
+        FAdvanceEpsilonMirror(c, s1.(active := ac), ov, n);
+      }
+    case AnchorAssertion(a) =>
+      IsSatisfiedMirror(a, s1.context);
+      if LAnc.is_satisfied(a, s1.context, LAnc.Backward) {
+        MirrorThreadsCons(t.(pc := t.pc + 1), ac, n);
+        FAdvanceEpsilonMirror(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, n);
+      } else {
+        FAdvanceEpsilonMirror(c, s1.(active := ac), ov, n);
+      }
+    case Fail =>
+      FAdvanceEpsilonMirror(c, s1.(active := ac), ov, n);
+  }
 }
