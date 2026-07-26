@@ -258,6 +258,248 @@ module LindenSpanDuality {
   }
 
   // ===========================================================================
+  // Reversing the STRING (L2): InputAt through the mirror
+  // ===========================================================================
+
+  /** Reversing the string reflects positions AND swaps the two halves of the
+      input window: what was ahead of `cp` is now behind `|str| - cp`. This is
+      the spec-side counterpart of `Mirror.cp_context` swapping prev/next. */
+  lemma InputAtReverse(str: string, cp: int)
+    requires 0 <= cp <= |str|
+    ensures |LC.Reverse(str)| == |str|
+    ensures T.InputAt(LC.Reverse(str), |str| - cp)
+         == LC.Input(LC.Reverse(str[..cp]), str[cp..])
+  {
+    ReverseLength(str);
+    var n := |str|;
+    var rs := LC.Reverse(str);
+    assert str == str[..cp] + str[cp..];
+    SSx.ReverseApp(str[..cp], str[cp..]);
+    assert rs == LC.Reverse(str[cp..]) + LC.Reverse(str[..cp]);
+    ReverseLength(str[cp..]);
+    ReverseLength(str[..cp]);
+    assert |LC.Reverse(str[cp..])| == n - cp;
+    // the tail of the reversal is the reversal of the head
+    assert rs[n - cp..] == LC.Reverse(str[..cp]);
+    assert rs[..n - cp] == LC.Reverse(str[cp..]);
+    FS.ReverseReverse(str[cp..]);
+    assert LC.Reverse(rs[..n - cp]) == str[cp..];
+  }
+
+  /** Index into a reversal. */
+  lemma ReverseIndexAt<T>(sq: seq<T>, k: int)
+    requires 0 <= k < |sq|
+    ensures |LC.Reverse(sq)| == |sq|
+    ensures LC.Reverse(sq)[k] == sq[|sq| - 1 - k]
+    decreases |sq|
+  {
+    ReverseLength(sq);
+    if |sq| > 0 {
+      ReverseLength(sq[1..]);
+      if k < |sq| - 1 {
+        ReverseIndexAt(sq[1..], k);
+        assert LC.Reverse(sq)[k] == LC.Reverse(sq[1..])[k];
+      }
+    }
+  }
+
+  /** `BeginInput <-> EndInput`; the boundary anchors are direction-blind.
+      Reversing the string swaps which end is which. */
+  function SwapAnchorL(a: L.Anchor): L.Anchor {
+    match a
+    case BeginInput => L.EndInput
+    case EndInput => L.BeginInput
+    case WordBoundary => L.WordBoundary
+    case NonWordBoundary => L.NonWordBoundary
+  }
+
+  /** An anchor holds at `cp` in `str` exactly when its swap holds at the
+      mirrored position in the reversal -- because `InputAtReverse` swaps the
+      two halves of the window, and the boundary anchors read them
+      symmetrically. */
+  lemma AnchorSatisfiedReverse(rer: LW.RegExpRecord, a: L.Anchor, str: string, cp: int)
+    requires 0 <= cp <= |str|
+    ensures |LC.Reverse(str)| == |str|
+    ensures LS.AnchorSatisfied(rer, SwapAnchorL(a), T.InputAt(LC.Reverse(str), |str| - cp))
+        <==> LS.AnchorSatisfied(rer, a, T.InputAt(str, cp))
+  {
+    ReverseLength(str);
+    InputAtReverse(str, cp);
+    var inp := T.InputAt(str, cp);
+    var rinp := T.InputAt(LC.Reverse(str), |str| - cp);
+    assert rinp.pref == inp.next && rinp.next == inp.pref;
+  }
+
+  /** A regex reversed for the other scanning direction: concatenation order
+      flips and input anchors swap. The spec-side counterpart of RegElk's
+      `reverse_regex` (which leaves anchors alone, because the ENGINE handles
+      them via its direction flag; reversing the STRING has to be explicit). */
+  function RevL(r: L.Regex): L.Regex
+    decreases r
+  {
+    match r
+    case Epsilon => r
+    case Character(_) => r
+    case AnchorR(a) => L.AnchorR(SwapAnchorL(a))
+    case Disjunction(r1, r2) => L.Disjunction(RevL(r1), RevL(r2))
+    case Sequence(r1, r2) => L.Sequence(RevL(r2), RevL(r1))
+    case Quantified(g, min, delta, r1) => L.Quantified(g, min, delta, RevL(r1))
+    case Group(gid, r1) => L.Group(gid, RevL(r1))
+    case LookaroundR(lk, r1) => r
+    case Backreference(_) => r
+  }
+
+  lemma RevLGroupOk(r: L.Regex)
+    requires GroupOkL(r)
+    ensures GroupOkL(RevL(r))
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => RevLGroupOk(r1); RevLGroupOk(r2);
+    case Sequence(r1, r2) => RevLGroupOk(r1); RevLGroupOk(r2);
+    case Quantified(_, _, _, r1) => RevLGroupOk(r1);
+    case Group(_, r1) => RevLGroupOk(r1);
+    case _ =>
+  }
+
+  /** THE SPAN-LEVEL REVERSAL. `r` spans `[i, j)` of `str` exactly when
+      `RevL(r)` spans the mirrored interval of the reversed string.
+
+      Spans are existential, so unlike a tree-level reversal this needs no
+      notion of priority -- which is why the ORACLE (a boolean) can be
+      characterized this way while captures could not. */
+  lemma MatchesLReverse(rer: LW.RegExpRecord, r: L.Regex, str: string, i: int, j: int)
+    requires GroupOkL(r)
+    requires 0 <= i <= j <= |str|
+    ensures MatchesL(rer, RevL(r), LC.Reverse(str), |str| - j, |str| - i)
+        <==> MatchesL(rer, r, str, i, j)
+    decreases r, 0, 0
+  {
+    ReverseLength(str);
+    var n := |str|;
+    match r
+    case Epsilon =>
+    case Character(cd) =>
+      if 0 <= i < n {
+        ReverseIndexAt(str, n - 1 - i);
+        assert LC.Reverse(str)[n - 1 - i] == str[i];
+      }
+      if 0 <= n - j < n {
+        ReverseIndexAt(str, n - j);
+        assert LC.Reverse(str)[n - j] == str[n - 1 - (n - j)];
+      }
+    case AnchorR(a) =>
+      if i == j { AnchorSatisfiedReverse(rer, a, str, i); }
+    case Disjunction(r1, r2) =>
+      MatchesLReverse(rer, r1, str, i, j);
+      MatchesLReverse(rer, r2, str, i, j);
+    case Sequence(r1, r2) =>
+      forall m: int | 0 <= m <= n
+        ensures (MatchesL(rer, r1, str, i, m) && MatchesL(rer, r2, str, m, j))
+            ==> (MatchesL(rer, RevL(r2), LC.Reverse(str), n - j, n - m)
+                 && MatchesL(rer, RevL(r1), LC.Reverse(str), n - m, n - i))
+      {
+        if MatchesL(rer, r1, str, i, m) && MatchesL(rer, r2, str, m, j) {
+          MatchesLBounds(rer, r1, str, i, m);
+          MatchesLBounds(rer, r2, str, m, j);
+          MatchesLReverse(rer, r1, str, i, m);
+          MatchesLReverse(rer, r2, str, m, j);
+        }
+      }
+      if MatchesL(rer, r, str, i, j) {
+        assert MatchesL(rer, L.Sequence(r1, r2), str, i, j);
+        assert exists m: int :: MatchesL(rer, r1, str, i, m) && MatchesL(rer, r2, str, m, j);
+        var m: int :| MatchesL(rer, r1, str, i, m) && MatchesL(rer, r2, str, m, j);
+        MatchesLBounds(rer, r1, str, i, m);
+        MatchesLBounds(rer, r2, str, m, j);
+        MatchesLReverse(rer, r1, str, i, m);
+        MatchesLReverse(rer, r2, str, m, j);
+        assert MatchesL(rer, RevL(r2), LC.Reverse(str), n - j, n - m);
+        assert MatchesL(rer, RevL(r1), LC.Reverse(str), n - m, n - i);
+      }
+      if MatchesL(rer, RevL(r), LC.Reverse(str), n - j, n - i) {
+        assert RevL(r) == L.Sequence(RevL(r2), RevL(r1));
+        assert MatchesL(rer, L.Sequence(RevL(r2), RevL(r1)), LC.Reverse(str), n - j, n - i);
+        assert exists q: int :: MatchesL(rer, RevL(r2), LC.Reverse(str), n - j, q)
+                             && MatchesL(rer, RevL(r1), LC.Reverse(str), q, n - i);
+        var m': int :| MatchesL(rer, RevL(r2), LC.Reverse(str), n - j, m')
+                    && MatchesL(rer, RevL(r1), LC.Reverse(str), m', n - i);
+        MatchesLBounds(rer, RevL(r2), LC.Reverse(str), n - j, m');
+        MatchesLBounds(rer, RevL(r1), LC.Reverse(str), m', n - i);
+        MatchesLReverse(rer, r2, str, n - m', j);
+        MatchesLReverse(rer, r1, str, i, n - m');
+        assert MatchesL(rer, r1, str, i, n - m') && MatchesL(rer, r2, str, n - m', j);
+      }
+    case Quantified(g, min, delta, r1) =>
+      if MatchesL(rer, r, str, i, j) {
+        assert MatchesL(rer, L.Quantified(g, min, delta, r1), str, i, j);
+        assert exists k: nat :: min <= k
+          && (match delta case Inf => true case NN(dx) => k <= min + dx)
+          && IterL(rer, r1, k, str, i, j);
+        var k: nat :| min <= k
+          && (match delta case Inf => true case NN(dx) => k <= min + dx)
+          && IterL(rer, r1, k, str, i, j);
+        IterLReverse(rer, r1, k, str, i, j);
+      }
+      if MatchesL(rer, RevL(r), LC.Reverse(str), n - j, n - i) {
+        assert RevL(r) == L.Quantified(g, min, delta, RevL(r1));
+        assert MatchesL(rer, L.Quantified(g, min, delta, RevL(r1)), LC.Reverse(str),
+                        n - j, n - i);
+        assert exists k: nat :: min <= k
+          && (match delta case Inf => true case NN(dx) => k <= min + dx)
+          && IterL(rer, RevL(r1), k, LC.Reverse(str), n - j, n - i);
+        var k: nat :| min <= k
+          && (match delta case Inf => true case NN(dx) => k <= min + dx)
+          && IterL(rer, RevL(r1), k, LC.Reverse(str), n - j, n - i);
+        IterLReverseBack(rer, r1, k, str, i, j);
+      }
+    case Group(gid, r1) => MatchesLReverse(rer, r1, str, i, j);
+  }
+
+  /** The iterate form, forward direction. */
+  lemma IterLReverse(rer: LW.RegExpRecord, r: L.Regex, k: nat, str: string, i: int, j: int)
+    requires GroupOkL(r)
+    requires 0 <= i <= j <= |str|
+    requires IterL(rer, r, k, str, i, j)
+    ensures IterL(rer, RevL(r), k, LC.Reverse(str), |str| - j, |str| - i)
+    decreases r, 1, k
+  {
+    ReverseLength(str);
+    var n := |str|;
+    if k == 0 { return; }
+    var m: int :| MatchesL(rer, r, str, i, m) && IterL(rer, r, k - 1, str, m, j);
+    MatchesLBounds(rer, r, str, i, m);
+    IterLBounds(rer, r, k - 1, str, m, j);
+    MatchesLReverse(rer, r, str, i, m);
+    IterLReverse(rer, r, k - 1, str, m, j);
+    // the reversed chain runs the other way round
+    assert IterL(rer, RevL(r), k - 1, LC.Reverse(str), n - j, n - m);
+    assert MatchesL(rer, RevL(r), LC.Reverse(str), n - m, n - i);
+    IterLSnoc(rer, RevL(r), k - 1, LC.Reverse(str), n - j, n - m, n - i);
+  }
+
+  /** ... and back. */
+  lemma IterLReverseBack(rer: LW.RegExpRecord, r: L.Regex, k: nat, str: string, i: int, j: int)
+    requires GroupOkL(r)
+    requires 0 <= i <= j <= |str|
+    requires IterL(rer, RevL(r), k, LC.Reverse(str), |str| - j, |str| - i)
+    ensures IterL(rer, r, k, str, i, j)
+    decreases r, 1, k
+  {
+    ReverseLength(str);
+    var n := |str|;
+    if k == 0 { return; }
+    RevLGroupOk(r);
+    var m': int :| MatchesL(rer, RevL(r), LC.Reverse(str), n - j, m')
+                && IterL(rer, RevL(r), k - 1, LC.Reverse(str), m', n - i);
+    MatchesLBounds(rer, RevL(r), LC.Reverse(str), n - j, m');
+    IterLBounds(rer, RevL(r), k - 1, LC.Reverse(str), m', n - i);
+    MatchesLReverse(rer, r, str, n - m', j);
+    IterLReverseBack(rer, r, k - 1, str, i, n - m');
+    IterLSnoc(rer, r, k - 1, str, i, n - m', j);
+  }
+
+  // ===========================================================================
   // Group maps do not decide SUCCESS
   // ===========================================================================
 
