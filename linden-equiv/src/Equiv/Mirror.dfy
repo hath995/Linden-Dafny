@@ -901,4 +901,85 @@ module LindenElkMirror {
       assert s4.context.nextchar == AI.get_char(LC.Reverse(str), n - s4.cp);
       FFindMatchMirror(c, str, s4, ov1, cdn, n);
   }
+
+  // ==========================================================================
+  // Layer 7: the payoff -- a BACKWARD oracle build IS a forward run
+  // ==========================================================================
+
+  /** A freshly initialized bank records no positions, so the mirror fixes it. */
+  lemma MirrorInitRegs(k: int, n: int)
+    ensures MirrorRegs(AReg.init_regs(k), n) == AReg.init_regs(k)
+  {
+    var lhs := MirrorRegs(AReg.init_regs(k), n);
+    var rhs := AReg.init_regs(k);
+    assert |lhs.a_cp| == |rhs.a_cp|;
+    forall i | 0 <= i < |lhs.a_cp| ensures lhs.a_cp[i] == rhs.a_cp[i] {}
+  }
+
+  /** The backward build's START state mirrors to the standard FORWARD start
+      state over the reversed string: `init_cp(Backward, n)` is `n`, whose
+      mirror is `0`, and the two initial character windows coincide by
+      `CpContextMirror`. */
+  lemma FInitStateMirror(c: RB.code, str: string, cap: AReg.Regs, lk: AReg.Regs,
+                         qt: AReg.Regs, n: int)
+    requires n == |str|
+    ensures MirrorState(AI.FInitState(c, AI.init_cp(LAnc.Backward, n), cap, lk, qt, 0,
+                                      AI.cp_context(AI.init_cp(LAnc.Backward, n), str,
+                                                    LAnc.Backward)), n)
+         == AI.FInitState(SwapAnchorsCode(c), 0, MirrorRegs(cap, n), MirrorRegs(lk, n),
+                          MirrorRegs(qt, n), 0,
+                          AI.cp_context(0, LC.Reverse(str), LAnc.Forward))
+  {
+    CpContextMirror(str, n);
+    assert AI.init_cp(LAnc.Backward, n) == n;
+    assert Mirror(n, n) == 0;
+    var bt := AI.init_thread(cap, lk, qt);
+    assert MirrorThread(bt, n)
+        == AI.init_thread(MirrorRegs(cap, n), MirrorRegs(lk, n), MirrorRegs(qt, n));
+    assert MirrorThreads([bt], n) == [MirrorThread(bt, n)];
+    assert MirrorBlocked([], n) == [];
+  }
+
+  /** THE PAYOFF. A lookaround whose oracle is built BACKWARD -- i.e. a
+      lookAHEAD (`oracle_direction(Lookahead) == Backward`) -- produces
+      exactly the mirror of the oracle a FORWARD run of the anchor-swapped
+      program over the reversed string produces.
+
+      So the forward-only reachability layer (`OracleReach`) and the
+      forward-only simulation (`PikeSimRE`) can characterize a backward build
+      by transport, instead of being re-proved with flipped arithmetic. */
+  lemma BackwardBuildIsForward(bc: RB.code, str: string, ov: LOr.OracleView,
+                               cdn: LCdn.cdns, ncap: int, nlook: int, nquant: int, n: int)
+    requires n == |str| && |ov| == n + 1
+    ensures
+      var initcp := AI.init_cp(LAnc.Backward, n);
+      var inits := AI.FInitState(bc, initcp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                 AReg.init_regs(nquant), 0,
+                                 AI.cp_context(initcp, str, LAnc.Backward));
+      var initsF := AI.FInitState(SwapAnchorsCode(bc), 0, AReg.init_regs(ncap),
+                                  AReg.init_regs(nlook), AReg.init_regs(nquant), 0,
+                                  AI.cp_context(0, LC.Reverse(str), LAnc.Forward));
+      // stated as mirror-of-backward == forward: `MirrorView` needs its
+      // argument's length, and only the backward run's is established here
+      |AI.FFindMatch(bc, str, inits, ov, LAnc.Backward, cdn).1| == n + 1
+      && MirrorView(AI.FFindMatch(bc, str, inits, ov, LAnc.Backward, cdn).1, n)
+         == AI.FFindMatch(SwapAnchorsCode(bc), LC.Reverse(str), initsF,
+                          MirrorView(ov, n), LAnc.Forward, SwapAnchorsCdns(cdn)).1
+  {
+    var initcp := AI.init_cp(LAnc.Backward, n);
+    var ctx := AI.cp_context(initcp, str, LAnc.Backward);
+    var inits := AI.FInitState(bc, initcp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                               AReg.init_regs(nquant), 0, ctx);
+    MirrorInitRegs(ncap, n); MirrorInitRegs(nlook, n); MirrorInitRegs(nquant, n);
+    FInitStateMirror(bc, str, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                     AReg.init_regs(nquant), n);
+    ReverseLen(str);
+    GetCharMirror(str, initcp);
+    assert inits.cp == n && 0 <= inits.cp <= n;
+    assert inits.context.nextchar == AI.get_char(str, inits.cp - 1);
+    assert inits.context.nextchar == AI.get_char(LC.Reverse(str), n - inits.cp);
+    assert |inits.processed.true_set| == RB.size(bc)
+        && |inits.processed.false_set| == RB.size(bc);
+    FFindMatchMirror(bc, str, inits, ov, cdn, n);
+  }
 }
