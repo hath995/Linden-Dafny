@@ -609,6 +609,153 @@ module LindenSpanDuality {
     GMResetPermute(L.DefGroups(RevL(r)), L.DefGroups(r), gm);
   }
 
+  /** An action stack reversed for the other scanning direction: each regex
+      reverses, each progress guard's recorded window swaps, and `Aclose` is
+      direction-blind. */
+  function RevActs(acts: LS.Actions): LS.Actions {
+    seq(|acts|, i requires 0 <= i < |acts| =>
+      match acts[i]
+      case Areg(r) => LS.Areg(RevL(r))
+      case Acheck(ip) => LS.Acheck(SwapInput(ip))
+      case Aclose(g) => LS.Aclose(g))
+  }
+
+  lemma RevActsCons(a: LS.Action, acts: LS.Actions)
+    ensures RevActs([a] + acts)
+         == [(match a case Areg(r) => LS.Areg(RevL(r))
+                      case Acheck(ip) => LS.Acheck(SwapInput(ip))
+                      case Aclose(g) => LS.Aclose(g))] + RevActs(acts)
+  {
+    var lhs := RevActs([a] + acts);
+    var rhs := [(match a case Areg(r) => LS.Areg(RevL(r))
+                         case Acheck(ip) => LS.Acheck(SwapInput(ip))
+                         case Aclose(g) => LS.Aclose(g))] + RevActs(acts);
+    forall i | 0 <= i < |lhs| ensures lhs[i] == rhs[i] {}
+  }
+
+  lemma RevActsTail(acts: LS.Actions)
+    requires |acts| > 0
+    ensures RevActs(acts)[1..] == RevActs(acts[1..])
+  {
+    var lhs := RevActs(acts)[1..];
+    var rhs := RevActs(acts[1..]);
+    forall i | 0 <= i < |lhs| ensures lhs[i] == rhs[i] {}
+  }
+
+  /** The reversal keeps a stack backreference-free. */
+  lemma RevActsNoBackref(acts: LS.Actions)
+    requires NoBackrefActs(acts)
+    ensures NoBackrefActs(RevActs(acts))
+  {
+    forall i | 0 <= i < |RevActs(acts)| && RevActs(acts)[i].Areg?
+      ensures NoBackrefL(RevActs(acts)[i].r)
+    {
+      assert acts[i].Areg?;
+      RevLNoBackref(acts[i].r);
+    }
+  }
+
+  lemma RevLNoBackref(r: L.Regex)
+    requires NoBackrefL(r)
+    ensures NoBackrefL(RevL(r))
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => RevLNoBackref(r1); RevLNoBackref(r2);
+    case Sequence(r1, r2) => RevLNoBackref(r1); RevLNoBackref(r2);
+    case Quantified(_, _, _, r1) => RevLNoBackref(r1);
+    case Group(_, r1) => RevLNoBackref(r1);
+    case _ =>
+  }
+
+  /** The concatenation-order fact, as a lemma rather than a comment: the
+      spec's BACKWARD `SeqList` is the reversal of its FORWARD one. This is
+      the step that makes the whole reversal line up. */
+  lemma SeqListReverse(r1: L.Regex, r2: L.Regex)
+    ensures RevActs(LS.SeqList(r1, r2, WP.Backward))
+         == LS.SeqList(RevL(r2), RevL(r1), WP.Forward)
+  {
+    assert LS.SeqList(r1, r2, WP.Backward) == [LS.Areg(r2), LS.Areg(r1)];
+    assert LS.SeqList(RevL(r2), RevL(r1), WP.Forward)
+        == [LS.Areg(RevL(r2)), LS.Areg(RevL(r1))];
+    var lhs := RevActs([LS.Areg(r2), LS.Areg(r1)]);
+    forall i | 0 <= i < |lhs|
+      ensures lhs[i] == [LS.Areg(RevL(r2)), LS.Areg(RevL(r1))][i] {}
+  }
+
+  // ---------------------------------------------------------------------
+  // The FUEL measures correspond too -- the same phenomenon as FFindMatch's
+  // `decreases` lining up in Mirror.dfy. Without this the tree correspondence
+  // would have to reconcile two different termination bounds.
+  // ---------------------------------------------------------------------
+
+  lemma CurrentStrSwap(inp: LC.Input)
+    ensures LC.CurrentStr(SwapInput(inp), WP.Forward) == LC.CurrentStr(inp, WP.Backward)
+    ensures LC.CurrentStr(SwapInput(inp), WP.Backward) == LC.CurrentStr(inp, WP.Forward)
+  {}
+
+  lemma MaxIterSwap(inp: LC.Input)
+    ensures FS.MaxIter(SwapInput(inp), WP.Forward) == FS.MaxIter(inp, WP.Backward)
+  {}
+
+  /** Advancing one position commutes with the swap -- the `Acheck` guard's
+      counterpart of `ReadCharSwap`. */
+  lemma AdvanceInputSwap(inp: LC.Input)
+    ensures match LC.AdvanceInput(inp, WP.Backward)
+            case None => LC.AdvanceInput(SwapInput(inp), WP.Forward).None?
+            case Some(ni) =>
+              LC.AdvanceInput(SwapInput(inp), WP.Forward) == Some(SwapInput(ni))
+  {}
+
+  lemma RegexFuelReverse(r: L.Regex, inp: LC.Input)
+    requires GroupOkL(r)
+    ensures FS.RegexFuel(RevL(r), SwapInput(inp), WP.Forward)
+         == FS.RegexFuel(r, inp, WP.Backward)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) =>
+      RegexFuelReverse(r1, inp); RegexFuelReverse(r2, inp);
+    case Sequence(r1, r2) =>
+      RegexFuelReverse(r1, inp); RegexFuelReverse(r2, inp);
+      assert RevL(r) == L.Sequence(RevL(r2), RevL(r1));
+    case Quantified(b, min, delta, r1) =>
+      RegexFuelReverse(r1, inp);
+      MaxIterSwap(inp);
+    case Group(_, r1) => RegexFuelReverse(r1, inp);
+    case _ =>
+  }
+
+  lemma ActionsFuelReverse(acts: LS.Actions, inp: LC.Input)
+    requires GroupOkActs(acts)
+    ensures FS.ActionsFuel(RevActs(acts), SwapInput(inp), WP.Forward)
+         == FS.ActionsFuel(acts, inp, WP.Backward)
+    decreases |acts|
+  {
+    if |acts| == 0 {
+      assert RevActs(acts) == [];
+      return;
+    }
+    GroupOkActsTail(acts);
+    RevActsTail(acts);
+    assert RevActs(acts)[0] ==
+      (match acts[0] case Areg(r) => LS.Areg(RevL(r))
+                     case Acheck(ip) => LS.Acheck(SwapInput(ip))
+                     case Aclose(g) => LS.Aclose(g));
+    match acts[0]
+    case Areg(r) =>
+      RegexFuelReverse(r, inp);
+      ActionsFuelReverse(acts[1..], inp);
+    case Aclose(g) =>
+      ActionsFuelReverse(acts[1..], inp);
+    case Acheck(ip) =>
+      AdvanceInputSwap(ip);
+      match LC.AdvanceInput(ip, WP.Backward) {
+        case None =>
+        case Some(ni) => ActionsFuelReverse(acts[1..], ni);
+      }
+  }
+
   /* ---------------------------------------------------------------------
      (4) CONCATENATION ORDER -- and the reason a TREE-level reversal now
      looks tractable, where it previously looked risky.
@@ -626,16 +773,40 @@ module LindenSpanDuality {
      both. So the objection that killed the tree-level route for captures --
      that leaf ORDER might not survive reversal -- appears not to apply.
 
-     With the four primitives above all commuting with `SwapInput`, the
-     conjecture is that the computed trees are LITERALLY EQUAL:
+     STATUS. Every ingredient the tree correspondence needs is now proven;
+     only the assembly remains. In dependency order:
 
-       ComputeTree(rer, RevActs(acts), SwapInput(inp), gm, Forward, fuel)
-         == ComputeTree(rer, acts, inp, gm, Backward, fuel)
+       (a) ReadCharSwap        -- consuming a character
+       (b) IsStrictSuffixSwap  -- the empty-iteration progress guard
+       (c) AnchorSatisfiedSwap -- anchors, via SwapAnchorL
+       (d) SeqListReverse      -- concatenation order (the key one: the spec
+                                  ALREADY reverses it going backward)
+       (e) RevLResetAgrees     -- a quantifier layer's Reset permutes but
+                                  acts identically
+       (f) ActionsFuelReverse  -- the fuel measures correspond exactly, so
+                                  the two runs terminate together
+       (g) TreeResSomeGmIndep  -- the group map never decides success
 
-     where RevActs maps Areg(r) to Areg(RevL(r)), Acheck(i) to
-     Acheck(SwapInput(i)), and leaves Aclose alone. NOT PROVEN -- it is the
-     next step, and it would unblock L3's lookbehind capture pass, whose
-     capture regex is reverse_regex(body) run Backward.
+     THE REMAINING LEMMA. Note it cannot be stated as tree EQUALITY, for the
+     reason (e) exists: the Reset payload is a permuted sequence, so the two
+     trees differ as values. The right shape is a structural equivalence
+
+       TreeEquiv(t1, t2)  ==  equal except Reset payloads agree as SETS
+
+     with ComputeTree producing TreeEquiv trees under RevActs + SwapInput,
+     and TreeEquiv implying TreeRes agrees on Some-ness (using (g), since
+     the recorded group POSITIONS also differ -- Idx(inp) is |inp.pref| and
+     the swap exchanges the halves, so leaf maps correspond through the
+     index mirror rather than being equal, exactly as Mirror.dfy's register
+     banks do).
+
+     WHAT IT BUYS. `SuccActs` correspondence between directions, hence the
+     forward span duality (L2 item 4) for free from the existing Bwd*
+     family, instead of porting ~300 lines by hand. It also unblocks L3's
+     lookbehind capture pass, whose capture regex is reverse_regex(body) run
+     Backward.
+
+     No contradiction has turned up anywhere in this chain.
      --------------------------------------------------------------------- */
 
   // ===========================================================================
