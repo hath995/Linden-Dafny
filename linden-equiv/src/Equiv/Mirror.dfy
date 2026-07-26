@@ -10,8 +10,23 @@
    L2_INVESTIGATION.md for why this route was chosen over parameterizing the
    ~1080-line `OracleReach` family by direction.
 
-   Layer 1 (this file, so far): the two facts the whole route rests on --
-   the context correspondence and the anchor swap.
+   STATUS: the isomorphism is PROVEN, end to end -- see `FFindMatchMirror`.
+   A Backward run of `c` over `str` equals a Forward run of
+   `SwapAnchorsCode(c)` over `Reverse(str)`, with every recorded position
+   (the cursor, the registers, the oracle columns) reflected through
+   `cp |-> |str| - cp`.
+
+   Layers: (1) context correspondence + anchor swap; (2) the epsilon phase
+   with `cp` fixed; (3) the oracle-view mirror; (3b) the cdn table; (4) the
+   register/thread/state mirror; (5) the epsilon phase through the full
+   mirror; (6) FConsume and the FFindMatch induction.
+
+   NOT yet done: applying it. The payoff is that the forward-only
+   reachability layer (`OracleReach`, ~1080 lines) and the forward-only
+   simulation (`PikeSimRE`, `requires dir == Forward`) become usable for
+   backward runs by transport, rather than being re-proved with flipped
+   arithmetic. `FBuildLids` runs a lookAHEAD's oracle build Backward, so
+   that is where this plugs in first.
    ========================================================================== */
 include "PikeSimRE.dfy"
 
@@ -152,7 +167,9 @@ module LindenElkMirror {
       priority order -- is untouched. That invariance is the reason this
       route can also serve the capture layer, where priority decides the
       answer. */
-  function SwapAnchorsCode(c: RB.code): RB.code {
+  function SwapAnchorsCode(c: RB.code): RB.code
+    ensures |SwapAnchorsCode(c)| == |c|
+  {
     seq(|c|, i requires 0 <= i < |c| =>
       match c[i]
       case AnchorAssertion(a) => RB.AnchorAssertion(SwapAnchor(a))
@@ -768,5 +785,120 @@ module LindenElkMirror {
       }
     case Fail =>
       FAdvanceEpsilonMirror(c, s1.(active := ac), ov, n);
+  }
+
+  // ==========================================================================
+  // Layer 6: FConsume and the FFindMatch induction
+  // ==========================================================================
+
+  lemma MirrorBlockedTail(bs: seq<(AI.Thread, RC.char_expectation)>, n: int)
+    requires |bs| > 0
+    ensures MirrorBlocked(bs, n)[0] == (MirrorThread(bs[0].0, n), bs[0].1)
+    ensures MirrorBlocked(bs, n)[1..] == MirrorBlocked(bs[1..], n)
+  {
+    var lhs := MirrorBlocked(bs, n)[1..];
+    var rhs := MirrorBlocked(bs[1..], n);
+    forall i | 0 <= i < |lhs| ensures lhs[i] == rhs[i] {}
+  }
+
+  /** `FConsume` takes no direction at all -- it only promotes blocked threads
+      whose expectation the current character satisfies -- so it commutes with
+      the mirror outright. */
+  lemma FConsumeMirror(s: AI.VmState, n: int)
+    ensures AI.FConsume(MirrorState(s, n)) == MirrorState(AI.FConsume(s), n)
+    decreases |s.blocked|
+  {
+    if |s.blocked| == 0 { return; }
+    MirrorBlockedTail(s.blocked, n);
+    var t := s.blocked[0].0;
+    var ce := s.blocked[0].1;
+    var s1 := s.(blocked := s.blocked[1..]);
+    assert MirrorState(s1, n) == MirrorState(s, n).(blocked := MirrorBlocked(s.blocked[1..], n));
+    var s2 := if RC.is_accepted(s1.context.nextchar, ce)
+              then s1.(active := [t.(exit_allowed := true, pc := t.pc + 1)] + s1.active)
+              else s1;
+    if RC.is_accepted(s1.context.nextchar, ce) {
+      MirrorThreadsCons(t.(exit_allowed := true, pc := t.pc + 1), s1.active, n);
+      assert MirrorThread(t.(exit_allowed := true, pc := t.pc + 1), n)
+          == MirrorThread(t, n).(exit_allowed := true, pc := t.pc + 1);
+    }
+    FConsumeMirror(s2, n);
+  }
+
+  /** THE isomorphism: a BACKWARD run of `c` over `str` is a FORWARD run of
+      the anchor-swapped program over `Reverse(str)`, with every position --
+      the cursor, the registers, the oracle columns -- reflected.
+
+      This is what buys backward execution without re-proving the forward
+      reachability and simulation layers with flipped arithmetic. */
+  lemma FFindMatchMirror(c: RB.code, str: string, s: AI.VmState, ov: LOr.OracleView,
+                         cdn: LCdn.cdns, n: int)
+    requires n == |str|
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires |ov| == n + 1
+    requires 0 <= s.cp <= n
+    requires s.context.nextchar == AI.get_char(str, s.cp - 1)
+    // the same fact read through the mirror. Implied by the line above via
+    // GetCharMirror, but a precondition inside an `ensures` has to be
+    // well-formed WITHOUT calling a lemma, so it is stated here and callers
+    // discharge it with GetCharMirror.
+    requires s.context.nextchar == AI.get_char(LC.Reverse(str), n - s.cp)
+    ensures |AI.FFindMatch(c, str, s, ov, LAnc.Backward, cdn).1| == n + 1
+    ensures AI.FFindMatch(SwapAnchorsCode(c), LC.Reverse(str), MirrorState(s, n),
+                          MirrorView(ov, n), LAnc.Forward, SwapAnchorsCdns(cdn))
+         == ((match AI.FFindMatch(c, str, s, ov, LAnc.Backward, cdn).0
+              case None => None
+              case Some(t) => Some(MirrorThread(t, n))),
+             MirrorView(AI.FFindMatch(c, str, s, ov, LAnc.Backward, cdn).1, n))
+    decreases s.cp
+  {
+    ReverseLen(str);
+    GetCharMirror(str, s.cp);
+    var cs := SwapAnchorsCode(c);
+    var rstr := LC.Reverse(str);
+    var ms := MirrorState(s, n);
+    var mv := MirrorView(ov, n);
+    assert ms.context.nextchar == AI.get_char(rstr, ms.cp);
+
+    // --- the cdn table -----------------------------------------------------
+    BuildCdnMirror(cdn, s.cp, ov, n, s.context);
+    var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, LAnc.Backward));
+    assert MirrorState(s0, n) == ms.(cdn := s0.cdn);
+
+    // --- the epsilon phase -------------------------------------------------
+    FAdvanceEpsilonMirror(c, s0, ov, n);
+    var (s1, ov1) := AI.FAdvanceEpsilon(c, s0, ov, LAnc.Backward);
+    assert |ov1| == n + 1;
+    assert s1.cp == s0.cp == s.cp && s1.context == s.context;
+
+    if |s1.blocked| == 0 { return; }
+    match s1.context.nextchar
+    case None =>
+    case Some(_) =>
+      // --- consume and step ------------------------------------------------
+      FConsumeMirror(s1, n);
+      var s2 := AI.FConsume(s1);
+      assert s2.cp == s1.cp && s2.context == s1.context;
+      var s3 := s2.(processed := AI.init_bpcset(RB.size(c)),
+                    isblocked := AI.init_pcset(RB.size(c)),
+                    cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, LAnc.Backward));
+      assert s3.cp == s.cp - 1;
+      // the character window advances the same way on both sides
+      assert AI.get_char(str, s.cp - 1).Some? ==> 0 <= s.cp - 1 < n;
+      GetCharMirror(str, s3.cp);
+      var newchar := AI.get_char(str, s3.cp - AI.cp_offset(LAnc.Backward));
+      assert newchar == AI.get_char(rstr, Mirror(s3.cp, n));
+      var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
+      assert MirrorState(s3, n)
+          == MirrorState(s2, n).(processed := AI.init_bpcset(RB.size(cs)),
+                                 isblocked := AI.init_pcset(RB.size(cs)),
+                                 cdn := LCdn.init_cdn(),
+                                 cp := AI.incr_cp(Mirror(s2.cp, n), LAnc.Forward));
+      assert MirrorState(s4, n) == MirrorState(s3, n).(context := s4.context);
+      assert 0 <= s4.cp <= n;
+      assert s4.context.nextchar == AI.get_char(str, s4.cp - 1);
+      GetCharMirror(str, s4.cp);
+      assert s4.context.nextchar == AI.get_char(LC.Reverse(str), n - s4.cp);
+      FFindMatchMirror(c, str, s4, ov1, cdn, n);
   }
 }
