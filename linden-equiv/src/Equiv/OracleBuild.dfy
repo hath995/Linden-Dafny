@@ -29,6 +29,7 @@
 include "NfaRepRE.dfy"
 include "LookTables.dfy"
 include "OracleReach.dfy"
+include "Mirror.dfy"
 
 /** The `FBuildLids` assembly: after the oracle build, each lid's column
     holds exactly the `ReachesWrite` positions of its (classified, forward)
@@ -48,6 +49,8 @@ module LindenElkOracleBuild {
   import LT = LindenElkLookTables
   import OS = LindenElkOracleSweep
   import ORc = LindenElkOracleReach
+  import MIR = LindenElkMirror
+  import LC = Chars
 
   // ===========================================================================
   // Small facts
@@ -155,10 +158,52 @@ module LindenElkOracleBuild {
   ghost predicate LidBuildOk(crv: CP.FCompiled, i: int) {
     var bc := AI.get_code_v(crv.f_look_build_bc, i);
     bc == []
-    || (OS.NoOracleReads(bc) && OS.NoCheckNullable(bc) && OS.WritesOnlyLid(bc, i) && OS.NoAccept(bc)
-        && AI.oracle_direction(if 0 <= i < |crv.f_look_types| then crv.f_look_types[i] else R.Lookahead)
-           == LAnc.Forward)
+    || (OS.NoOracleReads(bc) && OS.NoCheckNullable(bc) && OS.WritesOnlyLid(bc, i)
+        && OS.NoAccept(bc))
   }
+
+  /** The direction a lid's oracle is built in: Forward for lookbehinds,
+      Backward for lookaheads (`AI.oracle_direction`). */
+  ghost function LidDir(crv: CP.FCompiled, i: int): LAnc.direction {
+    AI.oracle_direction(
+      if 0 <= i < |crv.f_look_types| then crv.f_look_types[i] else R.Lookahead)
+  }
+
+  /** "The build sweep for lid `i` records a bit at `cp`", for EITHER
+      direction. A forward build (lookbehind) is the plain reachability of its
+      bytecode over `str`. A BACKWARD build (lookahead) is the reachability of
+      the anchor-swapped bytecode over the REVERSED string at the mirrored
+      position -- the transport proved in `Mirror.BackwardSweepCharacterization`,
+      which is what lets the forward-only reachability layer serve a backward
+      sweep. */
+  ghost opaque predicate LidReaches(crv: CP.FCompiled, str: string, i: int, cp: int) {
+    var bc := AI.get_code_v(crv.f_look_build_bc, i);
+    if LidDir(crv, i) == LAnc.Forward
+    then ORc.ReachesWrite(bc, str, 0, i, cp)
+    else ORc.ReachesWrite(MIR.SwapAnchorsCode(bc), LC.Reverse(str), 0, i,
+                          MIR.Mirror(cp, |str|))
+  }
+
+  /** An empty build program records nothing, in EITHER direction -- provable
+      without knowing which, since both disjuncts are about empty code. */
+  lemma LidReachesEmpty(crv: CP.FCompiled, str: string, i: int, cp: int)
+    requires AI.get_code_v(crv.f_look_build_bc, i) == []
+    ensures !LidReaches(crv, str, i, cp)
+  {
+    reveal LidReaches();
+    ReachesWriteEmpty(str, 0, i, cp);
+    MIR.SwapAnchorsCodeLen([]);
+    assert MIR.SwapAnchorsCode([]) == [];
+    ReachesWriteEmpty(LC.Reverse(str), 0, i, MIR.Mirror(cp, |str|));
+  }
+
+  /** On the lookbehind fragment every build is Forward, so `LidReaches`
+      collapses to the plain forward reachability the L1 chain consumes. */
+  lemma LidReachesForward(crv: CP.FCompiled, str: string, i: int, cp: int)
+    requires LidDir(crv, i) == LAnc.Forward
+    ensures LidReaches(crv, str, i, cp)
+        <==> ORc.ReachesWrite(AI.get_code_v(crv.f_look_build_bc, i), str, 0, i, cp)
+  { reveal LidReaches(); }
 
   /** Every lid OF the regex satisfies `LidBuildOk`: the fragment makes its
       flavour a lookbehind (Forward) and its body capture-free/look-free/
@@ -198,6 +243,31 @@ module LindenElkOracleBuild {
       `FFullCompilation(re)`: lids of `re` by the lemma above, all others
       because their rows still hold the seed's empty bytecode
       (`FCompileExtraLookFrame`). */
+  /** A row that is not a lookaround of `re` still holds the seed's empty
+      bytecode -- the `else` half of `AllLidsBuildOk`, split out so the
+      direction bridge can use it too. */
+  lemma NonLidRowEmpty(re: R.regex, i: int)
+    requires NR.LookBehindFragmentRE(re)
+    requires !(i >= 0 && (i as nat) in LT.LookIds(re))
+    ensures AI.get_code_v(CP.FFullCompilation(re).f_look_build_bc, i) == []
+  {
+    var crv := CP.FFullCompilation(re);
+    var maxlook := R.max_lookaround(re);
+    var maxquant := R.max_quant(re);
+    var nlook := if maxlook + 1 >= 0 then maxlook + 1 else 0;
+    var nquant := if maxquant + 1 >= 0 then maxquant + 1 else 0;
+    var seed := CP.FCompiled(re, CP.compile_to_bytecode(R.lazy_prefix(re)), LCdn.compile_cdns(re),
+                             seq(nlook, k => R.Lookahead), seq(nlook, k => R.Re_empty),
+                             seq(nlook, k => []), seq(nlook, k => []),
+                             seq(nlook, k => []), seq(nquant, k => []));
+    assert crv == CP.FCompileExtra(re, seed);
+    LT.FCompileExtraLookFrame(re, seed);
+    if 0 <= i < |crv.f_look_build_bc| {
+      assert LT.AgreeAt(seed, crv, i as nat);
+      assert seed.f_look_build_bc[i] == [];
+    }
+  }
+
   lemma AllLidsBuildOk(re: R.regex, i: int)
     requires NR.LookBehindFragmentRE(re)
     requires LT.LookUnique(re)
@@ -229,6 +299,55 @@ module LindenElkOracleBuild {
     }
   }
 
+  /** A real row of a LOOKBEHIND-fragment regex builds Forward, since the
+      fragment forces every lookaround to a lookbehind flavour. */
+  lemma LookTablesLidDirForward(r: R.regex, fc: CP.FCompiled, i: nat)
+    requires NR.LookBehindFragmentRE(r)
+    requires LT.LookTablesOk(r, fc)
+    requires i in LT.LookIds(r)
+    ensures LidDir(fc, i) == LAnc.Forward
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if i in LT.LookIds(r1) { LookTablesLidDirForward(r1, fc, i); }
+      else { LookTablesLidDirForward(r2, fc, i); }
+    case Re_con(r1, r2) =>
+      if i in LT.LookIds(r1) { LookTablesLidDirForward(r1, fc, i); }
+      else { LookTablesLidDirForward(r2, fc, i); }
+    case Re_quant(_, _, _, r1) => LookTablesLidDirForward(r1, fc, i);
+    case Re_capture(_, r1) => LookTablesLidDirForward(r1, fc, i);
+    case Re_lookaround(lid, la, body) =>
+      LookFreeNoIds(body);
+      assert lid >= 0 && (lid as nat) == i;
+      assert la.Lookbehind? || la.NegLookbehind?;
+      assert fc.f_look_types[i] == la;
+  }
+
+  /** On the lookbehind fragment `LidReaches` IS the plain forward
+      reachability -- a real row builds Forward, and a row that is not a
+      lookaround of `re` holds empty bytecode, where both sides are false.
+      This is what keeps the whole L1 chain (which is stated in terms of
+      `ReachesWrite`) working unchanged after the generalization. */
+  lemma LidReachesIsReachesWrite(re: R.regex, str: string, i: int, cp: int)
+    requires NR.LookBehindFragmentRE(re)
+    requires LT.LookUnique(re)
+    ensures var crv := CP.FFullCompilation(re);
+      LidReaches(crv, str, i, cp)
+      <==> ORc.ReachesWrite(AI.get_code_v(crv.f_look_build_bc, i), str, 0, i, cp)
+  {
+    var crv := CP.FFullCompilation(re);
+    if i >= 0 && (i as nat) in LT.LookIds(re) {
+      LT.FFullCompilationLookOk(re);
+      LookTablesLidDirForward(re, crv, i as nat);
+      LidReachesForward(crv, str, i, cp);
+    } else {
+      NonLidRowEmpty(re, i);
+      LidReachesEmpty(crv, str, i, cp);
+      ReachesWriteEmpty(str, 0, i, cp);
+    }
+  }
+
   // ===========================================================================
   // The FBuildLids induction and the top-level theorem
   // ===========================================================================
@@ -237,15 +356,14 @@ module LindenElkOracleBuild {
       bytecode's `ReachesWrite` positions; everything else is untouched. */
   lemma FBuildLidsCharacterized(crv: CP.FCompiled, str: string, lid: int, ov: LOr.OracleView)
     requires forall i: int :: 1 <= i <= lid ==> LidBuildOk(crv, i)
-    requires |str| < |ov|
+    requires |ov| == |str| + 1
     requires forall r: int {:trigger ov[r]} :: 0 <= r < |ov| ==> lid < |ov[r]|
     ensures var ov' := AI.FBuildLids(crv, str, lid, ov);
       OS.SameShape(ov, ov')
       && forall i: int, cp: int ::
            LOr.view_get_oracle(ov', cp, i)
            == (LOr.view_get_oracle(ov, cp, i)
-               || (1 <= i <= lid
-                   && ORc.ReachesWrite(AI.get_code_v(crv.f_look_build_bc, i), str, 0, i, cp)))
+               || (1 <= i <= lid && LidReaches(crv, str, i, cp)))
     decreases lid
   {
     if lid < 1 { return; }
@@ -271,41 +389,69 @@ module LindenElkOracleBuild {
       forall i: int, cp: int
         ensures LOr.view_get_oracle(AI.FBuildLids(crv, str, lid - 1, ov1), cp, i)
              == (LOr.view_get_oracle(ov, cp, i)
-                 || (1 <= i <= lid
-                     && ORc.ReachesWrite(AI.get_code_v(crv.f_look_build_bc, i), str, 0, i, cp)))
+                 || (1 <= i <= lid && LidReaches(crv, str, i, cp)))
       {
-        if i == lid { ReachesWriteEmpty(str, 0, i, cp); }
+        if i == lid {
+          assert AI.get_code_v(crv.f_look_build_bc, i) == bc == [];
+          LidReachesEmpty(crv, str, i, cp);
+        }
       }
     } else {
       assert LidBuildOk(crv, lid);
-      assert OS.NoOracleReads(bc) && OS.NoCheckNullable(bc) && OS.WritesOnlyLid(bc, lid) && OS.NoAccept(bc);
-      assert dir == LAnc.Forward && initcp == 0;
-      ORc.SweepCharacterization(bc, str, ov, lid, lookcdn, capture, lookmem, quant, 0);
-      OS.FindMatchOracleFrame(bc, str, inits, ov, dir, lookcdn, lid);
-      assert OS.SameShape(ov, ov1);
-      assert |str| < |ov1|;
-      forall r: int | 0 <= r < |ov1|
-        ensures lid - 1 < |ov1[r]|
-      {
-        assert |ov1[r]| == |ov[r]|;
-      }
-      FBuildLidsCharacterized(crv, str, lid - 1, ov1);
-      var ov' := AI.FBuildLids(crv, str, lid - 1, ov1);
-      forall i: int, cp: int
-        ensures LOr.view_get_oracle(ov', cp, i)
-             == (LOr.view_get_oracle(ov, cp, i)
-                 || (1 <= i <= lid
-                     && ORc.ReachesWrite(AI.get_code_v(crv.f_look_build_bc, i), str, 0, i, cp)))
-      {
-        if i == lid {
-          // the recursion (over 1..lid-1) leaves column lid at ov1's value,
-          // which SweepCharacterization pinned
-          assert LOr.view_get_oracle(ov', cp, i) == LOr.view_get_oracle(ov1, cp, i);
-        } else if 1 <= i <= lid - 1 {
-          // this sweep framed column i; the recursion characterized it
-          assert LOr.view_get_oracle(ov1, cp, i) == LOr.view_get_oracle(ov, cp, i);
-        } else {
-          assert LOr.view_get_oracle(ov1, cp, i) == LOr.view_get_oracle(ov, cp, i);
+      assert OS.NoOracleReads(bc) && OS.NoCheckNullable(bc) && OS.WritesOnlyLid(bc, lid)
+          && OS.NoAccept(bc);
+      assert LidDir(crv, lid) == dir;
+      assert AI.get_code_v(crv.f_look_build_bc, lid) == bc;
+      // The tail is duplicated under each direction ON PURPOSE. `LidReaches`
+      // is an if-then-else on the build direction, so it only unfolds where
+      // `dir` is statically known; after an if-else join it is opaque and the
+      // forall below cannot close.
+      if dir == LAnc.Forward {
+        assert initcp == 0;
+        ORc.SweepCharacterization(bc, str, ov, lid, lookcdn, capture, lookmem, quant, 0);
+        OS.FindMatchOracleFrame(bc, str, inits, ov, dir, lookcdn, lid);
+        assert OS.SameShape(ov, ov1);
+        assert |ov1| == |str| + 1;
+        forall r: int | 0 <= r < |ov1| ensures lid - 1 < |ov1[r]| { assert |ov1[r]| == |ov[r]|; }
+        FBuildLidsCharacterized(crv, str, lid - 1, ov1);
+        var ov' := AI.FBuildLids(crv, str, lid - 1, ov1);
+        forall i: int, cp: int
+          ensures LOr.view_get_oracle(ov', cp, i)
+               == (LOr.view_get_oracle(ov, cp, i)
+                   || (1 <= i <= lid && LidReaches(crv, str, i, cp)))
+        {
+          if i == lid {
+            reveal LidReaches();
+            assert LOr.view_get_oracle(ov', cp, i) == LOr.view_get_oracle(ov1, cp, i);
+          } else if 1 <= i <= lid - 1 {
+            assert LOr.view_get_oracle(ov1, cp, i) == LOr.view_get_oracle(ov, cp, i);
+          } else {
+            assert LOr.view_get_oracle(ov1, cp, i) == LOr.view_get_oracle(ov, cp, i);
+          }
+        }
+      } else {
+        assert dir == LAnc.Backward && initcp == AI.init_cp(LAnc.Backward, |str|);
+        MIR.BackwardSweepCharacterization(bc, str, ov, lid, lookcdn,
+                                          2 * maxcap + 2, maxlook + 1, maxquant + 1, |str|);
+        OS.FindMatchOracleFrame(bc, str, inits, ov, dir, lookcdn, lid);
+        assert OS.SameShape(ov, ov1);
+        assert |ov1| == |str| + 1;
+        forall r: int | 0 <= r < |ov1| ensures lid - 1 < |ov1[r]| { assert |ov1[r]| == |ov[r]|; }
+        FBuildLidsCharacterized(crv, str, lid - 1, ov1);
+        var ov' := AI.FBuildLids(crv, str, lid - 1, ov1);
+        forall i: int, cp: int
+          ensures LOr.view_get_oracle(ov', cp, i)
+               == (LOr.view_get_oracle(ov, cp, i)
+                   || (1 <= i <= lid && LidReaches(crv, str, i, cp)))
+        {
+          if i == lid {
+            reveal LidReaches();
+            assert LOr.view_get_oracle(ov', cp, i) == LOr.view_get_oracle(ov1, cp, i);
+          } else if 1 <= i <= lid - 1 {
+            assert LOr.view_get_oracle(ov1, cp, i) == LOr.view_get_oracle(ov, cp, i);
+          } else {
+            assert LOr.view_get_oracle(ov1, cp, i) == LOr.view_get_oracle(ov, cp, i);
+          }
         }
       }
     }
@@ -349,6 +495,13 @@ module LindenElkOracleBuild {
       AllLidsBuildOk(re, i);
     }
     FBuildLidsCharacterized(crv, str, maxlook, ov0);
+    // the fragment is all lookbehinds, so LidReaches collapses to ReachesWrite
+    forall i: int, cp: int
+      ensures LidReaches(crv, str, i, cp)
+          <==> ORc.ReachesWrite(AI.get_code_v(crv.f_look_build_bc, i), str, 0, i, cp)
+    {
+      LidReachesIsReachesWrite(re, str, i, cp);
+    }
   }
 
   /** `FBuildOracleCorrect` restated per lookaround, with the bytecode in its
