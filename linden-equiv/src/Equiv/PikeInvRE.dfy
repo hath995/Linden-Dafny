@@ -2821,6 +2821,180 @@ module LindenElkPikeInv {
     }
   }
 
+  // ==========================================================================
+  // The capture-write CLASSIFICATION (L3a): the compiled code of a capturing
+  // body writes capture registers only for the body's OWN group ids. Paired
+  // with CM.FFindMatchCapWriteFrame, this pins FLookLoop's capture replay: it
+  // touches only CaptureRegs(body), disjoint from the outer captures the main
+  // filter reads. Mirror of QuantWriteIdsRE; here Re_capture is the write case.
+  // ==========================================================================
+
+  /** The capture REGISTER ids (start/end) of `re`'s own groups. */
+  ghost function CaptureRegs(re: R.regex): set<int> {
+    (set cid | cid in CapIds(re) :: CP.start_reg(cid))
+    + (set cid | cid in CapIds(re) :: CP.end_reg(cid))
+  }
+
+  /** `CaptureRegs` is monotone in `CapIds`. */
+  lemma CaptureRegsMono(sub: R.regex, re: R.regex)
+    requires CapIds(sub) <= CapIds(re)
+    ensures CaptureRegs(sub) <= CaptureRegs(re)
+  {
+    forall k | k in CaptureRegs(sub) ensures k in CaptureRegs(re) {
+      if k in (set cid | cid in CapIds(sub) :: CP.start_reg(cid)) {
+        var cid :| cid in CapIds(sub) && CP.start_reg(cid) == k;
+      } else {
+        var cid :| cid in CapIds(sub) && CP.end_reg(cid) == k;
+      }
+    }
+  }
+
+  /** Every `SetRegisterToCP` inside a compiled block targets one of that
+      regex's own capture registers. */
+  lemma CaptureWriteIdsRE(re: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.LookBehindFragmentRE(re) && CapUnique(re)
+    requires NR.NfaRepRE(re, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetRegisterToCP? ==>
+      NR.GetPcRE(code, pc).value.reg in CaptureRegs(re)
+    decreases CP.rsize(re), 1
+  {
+    match re
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_lookaround(_, _, _) =>
+    case Re_alt(r1, r2) =>
+      var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
+        && NR.NfaRepRE(r1, code, start + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
+        && NR.NfaRepRE(r2, code, e1 + 1, endl);
+      NR.NfaRepIncrRE(r1, code, start + 1, e1);
+      NR.NfaRepIncrRE(r2, code, e1 + 1, endl);
+      if pc == start {
+      } else if pc < e1 {
+        CaptureWriteIdsRE(r1, code, start + 1, e1, pc);
+        CaptureRegsMono(r1, re);
+      } else if pc == e1 {
+      } else {
+        CaptureWriteIdsRE(r2, code, e1 + 1, endl, pc);
+        CaptureRegsMono(r2, re);
+      }
+    case Re_con(r1, r2) =>
+      var e1: nat :| NR.NfaRepRE(r1, code, start, e1) && NR.NfaRepRE(r2, code, e1, endl);
+      NR.NfaRepIncrRE(r1, code, start, e1);
+      NR.NfaRepIncrRE(r2, code, e1, endl);
+      if pc < e1 {
+        CaptureWriteIdsRE(r1, code, start, e1, pc);
+        CaptureRegsMono(r1, re);
+      } else {
+        CaptureWriteIdsRE(r2, code, e1, endl, pc);
+        CaptureRegsMono(r2, re);
+      }
+    case Re_capture(cid, r1) =>
+      var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
+        && NR.NfaRepRE(r1, code, start + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+        && endl == e1 + 1;
+      NR.NfaRepIncrRE(r1, code, start + 1, e1);
+      assert cid >= 0 && (cid as nat) in CapIds(re);   // CapUnique
+      if pc == start {
+        assert CP.start_reg(cid) in CaptureRegs(re);
+      } else if pc < e1 {
+        CaptureWriteIdsRE(r1, code, start + 1, e1, pc);
+        CaptureRegsMono(r1, re);
+      } else {
+        assert CP.end_reg(cid) in CaptureRegs(re);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      if q.min == 0 && q.max == None {
+        var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
+          && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+          && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+          && NR.NfaRepRE(r1, code, start + 3, e1)
+          && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+          && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
+          && endl == e1 + 2;
+        NR.NfaRepIncrRE(r1, code, start + 3, e1);
+        if pc <= start + 2 {
+        } else if pc < e1 {
+          CaptureWriteIdsRE(r1, code, start + 3, e1, pc);
+        } else {
+        }
+      } else if q.max.Some? {
+        var em := NR.NfaRepREQuantInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl);
+        if pc < em {
+          CaptureWriteIdsMinRE(q.min as nat, qid, r1, code, start, em, pc);
+        } else {
+          CaptureWriteIdsOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
+        }
+      } else {
+        var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 1, e1);
+        if pc < em {
+          CaptureWriteIdsMinRE((q.min - 1) as nat, qid, r1, code, start, em, pc);
+        } else if pc == em {
+        } else if pc < e1 {
+          CaptureWriteIdsRE(r1, code, em + 1, e1, pc);
+        } else {
+        }
+      }
+  }
+
+  /** `CaptureWriteIdsRE` for the forced-copy chain (the chain adds only
+      SetQuantToClock, never SetRegisterToCP, so writes come from the body). */
+  lemma CaptureWriteIdsMinRE(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.LookBehindFragmentRE(r1) && CapUnique(r1)
+    requires NR.NfaRepMinRE(k, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetRegisterToCP? ==>
+      NR.GetPcRE(code, pc).value.reg in CaptureRegs(r1)
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetQuantToClock(qid, false))
+      && NR.NfaRepRE(r1, code, start + 1, e1)
+      && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
+    NR.NfaRepIncrRE(r1, code, start + 1, e1);
+    NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
+    if pc == start {
+    } else if pc < e1 {
+      CaptureWriteIdsRE(r1, code, start + 1, e1, pc);
+    } else {
+      CaptureWriteIdsMinRE(k - 1, qid, r1, code, e1, endl, pc);
+    }
+  }
+
+  /** `CaptureWriteIdsRE` for the optional-layer chain. */
+  lemma CaptureWriteIdsOptRE(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.LookBehindFragmentRE(r1) && CapUnique(r1)
+    requires NR.NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetRegisterToCP? ==>
+      NR.GetPcRE(code, pc).value.reg in CaptureRegs(r1)
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| NR.GetPcRE(code, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
+      && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+      && NR.NfaRepRE(r1, code, start + 3, e1)
+      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+      && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+    NR.NfaRepIncrRE(r1, code, start + 3, e1);
+    NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+    if pc <= start + 2 {
+    } else if pc < e1 {
+      CaptureWriteIdsRE(r1, code, start + 3, e1, pc);
+    } else if pc == e1 {
+    } else {
+      CaptureWriteIdsOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl, pc);
+    }
+  }
+
   /** Every `SetQuantToClock` inside a compiled block targets one of that
       regex's own quant ids. */
   lemma LookCheckIdsRE(re: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
