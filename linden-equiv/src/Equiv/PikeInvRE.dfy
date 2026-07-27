@@ -2654,12 +2654,16 @@ module LindenElkPikeInv {
       fragment (hence lookbehind-fragment), with the same quant ids. */
   lemma CaptureRegexFragment(la: R.lookaround, body: R.regex)
     requires NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
-    requires la.Lookbehind? || la.NegLookbehind?
     ensures var cr := CP.capture_regex(la, body);
       NR.CaptureFreeRE(cr) && NR.LookFreeRE(cr) && NR.PlusFragmentRE(cr)
       && NR.LookBehindFragmentRE(cr)
       && QuantIds(cr) <= QuantIds(body)
   {
+    if la.Lookahead? {
+      // a lookAHEAD's capture regex is the body itself -- no reversal
+      assert CP.capture_regex(la, body) == body;
+      NR.PlusIsLookBehindFragmentRE(body);
+    }
     if la.Lookbehind? {
       ReverseCaptureFree(body);
       ReverseLookFree(body);

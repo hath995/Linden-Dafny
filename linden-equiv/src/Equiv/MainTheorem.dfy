@@ -1071,7 +1071,13 @@ module LindenElkMain {
     AR.CompileToBytecodeActionsRepLookBehind(rer, qm, re);
   }
 
-  lemma MainTheorem(raw: R.raw_regex, str: string)
+  // {:isolate_assertions} is REQUIRED here, not a tuning knob. Admitting
+  // lookaheads adds a second column-spec path and a second capture-regex
+  // shape, and the combined VC runs past 900s. Isolated, every one of its
+  // 1566 obligations passes and the lemma completes in ~10m. (Checked first
+  // that no obligation FAILS -- twice in this campaign a widening turned a
+  // true assertion false and presented as a timeout.)
+  lemma {:isolate_assertions} MainTheorem(raw: R.raw_regex, str: string)
     requires NR.LookBehindFragmentRaw(raw)
     requires T.Latin1Wf(raw)
     ensures LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)))
@@ -1381,7 +1387,6 @@ module LindenElkMain {
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
       exists la: R.lookaround, body: R.regex ::
         LTB.LookEntryOk(crv, l, la, body)
-        && (la.Lookbehind? || la.NegLookbehind?)
         && NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
         && PIV.QuantUnique(body)
         && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(mainast))
@@ -1402,11 +1407,12 @@ module LindenElkMain {
       } else {
         var la: R.lookaround, body: R.regex :|
           LTB.LookEntryOk(crv, lid, la, body)
-          && (la.Lookbehind? || la.NegLookbehind?)
           && NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
           && PIV.QuantUnique(body)
           && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(mainast));
-        assert looktype == la && la.Lookbehind?;          // capture_type rules out the negative
+        // capture_type rules out only the NEGATIVE flavours; with lookaheads
+        // in the fragment the positive one can be either
+        assert looktype == la && (la.Lookbehind? || la.Lookahead?);
         var bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
         var dir := AI.capture_direction(looktype);
         var lookcdn := if 0 <= lid < |crv.f_look_cdns| then crv.f_look_cdns[lid] else [];
@@ -1447,7 +1453,6 @@ module LindenElkMain {
                      la: R.lookaround, body: R.regex)
     requires NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
     requires PIV.QuantUnique(body)
-    requires la.Lookbehind? || la.NegLookbehind?
     requires bytecode == CP.compile_to_bytecode(CP.capture_regex(la, body))
     requires inits.active == [AI.init_thread(cap, lk, qt)]
     requires inits.blocked == [] && inits.bestmatch.None?
@@ -1536,7 +1541,6 @@ module LindenElkMain {
                        && AReg.get_cp(result.value.look_regs, l).Some? ==>
         exists la: R.lookaround, body: R.regex ::
           LTB.LookEntryOk(crv, l, la, body)
-          && (la.Lookbehind? || la.NegLookbehind?)
           && NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
           && PIV.QuantUnique(body)
           && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
@@ -1573,7 +1577,6 @@ module LindenElkMain {
                       && AReg.get_cp(result.value.look_regs, l).Some?
         ensures exists la: R.lookaround, body: R.regex ::
           LTB.LookEntryOk(crv, l, la, body)
-          && (la.Lookbehind? || la.NegLookbehind?)
           && NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
           && PIV.QuantUnique(body)
           && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
@@ -1618,7 +1621,6 @@ module LindenElkMain {
                         && AReg.get_cp(fmp.0.value.look_regs, l).Some? ==>
         exists la: R.lookaround, body: R.regex ::
           LTB.LookEntryOk(crv, l, la, body)
-          && (la.Lookbehind? || la.NegLookbehind?)
           && NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
           && PIV.QuantUnique(body)
           && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(crv.f_main_ast)))

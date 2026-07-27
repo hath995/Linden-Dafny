@@ -38,7 +38,21 @@ module LindenRegexApi {
       `raw_nullable` executably — a nullable-bodied `a?+` still needs a
       rewrite) — over Latin-1-well-formed patterns (`T.Latin1Wf`); exactly
       `MainTheorem`'s precondition, exposed so callers can check membership
-      at runtime or in their own proofs. */
+      at runtime or in their own proofs.
+
+      LOOKAROUNDS. Both flavours are supported, with capture-free, look-free
+      (non-nested) bodies:
+        - `(?<=…)` / `(?<!…)` — body anywhere in the plus fragment;
+        - `(?=…)`  / `(?!…)`  — body additionally STAR-shaped, i.e. no
+          anchors and only `*`-style quantifiers. That asymmetry is not
+          fundamental: a lookahead's oracle is built by scanning BACKWARD,
+          which is proved by transporting the forward machinery over the
+          reversed string, and the transport currently needs the compiled
+          build program to be anchor-free. Widening it to the full plus
+          fragment needs the anchor swap to commute with compilation.
+
+      NOTE the predicate below is still spelled `LookBehindFragmentRaw` for
+      historical reasons; it admits both flavours. Renaming is pending. */
   predicate Supported(pattern: R.raw_regex) {
     NR.LookBehindFragmentRaw(pattern) && T.Latin1Wf(pattern)
   }

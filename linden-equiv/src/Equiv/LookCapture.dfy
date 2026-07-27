@@ -88,7 +88,6 @@ module LindenElkLookCapture {
   lemma CaptureCodeClassified(la: R.lookaround, body: R.regex)
     requires NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
     requires PIV.QuantUnique(body)
-    requires la.Lookbehind? || la.NegLookbehind?
     ensures var code := CP.compile_to_bytecode(CP.capture_regex(la, body));
       CM.NoCaptureWriteCode(code)
       && CM.LookChecksInside(code, {})
@@ -100,7 +99,11 @@ module LindenElkLookCapture {
     PIV.CaptureRegexFragment(la, body);
     PIV.ReverseQuantUnique(body);
     assert PIV.QuantUnique(cr) by {
-      if la.Lookbehind? { assert cr == R.reverse_regex(body); } else { assert cr == R.Re_empty; }
+      // three shapes: reversed body (lookbehind), the body itself
+      // (lookahead), or empty (either negative flavour)
+      if la.Lookbehind? { assert cr == R.reverse_regex(body); }
+      else if la.Lookahead? { assert cr == body; }
+      else { assert cr == R.Re_empty; }
     }
     LookFreeLookUnique(cr);
     PIV.CaptureFreeNoCapIds(cr);
@@ -130,6 +133,8 @@ module LindenElkLookCapture {
         if la.Lookbehind? {
           PIV.ReverseQuantIds(body);
           assert cr == R.reverse_regex(body);
+        } else if la.Lookahead? {
+          assert cr == body;                         // ids are the body's own
         }
       }
     }
