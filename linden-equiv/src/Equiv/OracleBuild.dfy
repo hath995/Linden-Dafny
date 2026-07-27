@@ -258,7 +258,6 @@ module LindenElkOracleBuild {
         NR.CompileToWriteClassified(R.lazy_prefix(body), lid);
       } else {
         assert CP.oracle_regex(la, body) == R.lazy_prefix(R.reverse_regex(body));
-        NR.ReverseStarFragmentRE(body);
         NR.ReverseLookFreeRE(body);
         LookFreeLazyPrefix(R.reverse_regex(body));
         NR.CompileToWriteClassified(R.lazy_prefix(R.reverse_regex(body)), lid);
@@ -561,5 +560,310 @@ module LindenElkOracleBuild {
     LT.FCompileExtraLookFrame(re, seed);
     assert |crv.f_look_build_bc| == nlook;
     assert lid <= maxlook0;
+  }
+
+  // ===========================================================================
+  // The compiler / anchor-swap commutation
+  //
+  // A lookAHEAD's oracle build runs BACKWARD, and `Mirror.BackwardSweep-
+  // Characterization` reads that build as a FORWARD run of `SwapAnchorsCode`
+  // of the build bytecode.  To point the existing forward span bridge
+  // (`ReachesWriteToMatches`) at it, the swapped bytecode must be recognised
+  // as a compiled program.  It is: swapping anchors in the SOURCE regex and
+  // then compiling is the same as compiling and then swapping anchors in the
+  // BYTECODE, because `compile`'s treelist shape and label arithmetic branch
+  // on nothing an anchor swap changes.  This retires the star-shape
+  // restriction that previously made the swap the identity.
+  // ===========================================================================
+
+  /** `r` with every input anchor swapped (`Begin`<->`End`), structurally
+      identical otherwise -- the regex-level analogue of
+      `MIR.SwapAnchorsCode`. */
+  function SwapAnchorsRegex(r: R.regex): R.regex
+    decreases r
+  {
+    match r
+    case Re_empty => r
+    case Re_character(_) => r
+    case Re_anchor(a) => R.Re_anchor(MIR.SwapAnchor(a))
+    case Re_alt(r1, r2) => R.Re_alt(SwapAnchorsRegex(r1), SwapAnchorsRegex(r2))
+    case Re_con(r1, r2) => R.Re_con(SwapAnchorsRegex(r1), SwapAnchorsRegex(r2))
+    case Re_quant(nul, qid, q, r1) => R.Re_quant(nul, qid, q, SwapAnchorsRegex(r1))
+    case Re_capture(cid, r1) => R.Re_capture(cid, SwapAnchorsRegex(r1))
+    case Re_lookaround(lid, lk, r1) => R.Re_lookaround(lid, lk, SwapAnchorsRegex(r1))
+  }
+
+  /** The swap preserves the compile termination measure (it never changes a
+      constructor). */
+  lemma SwapAnchorsRsize(r: R.regex)
+    ensures CP.rsize(SwapAnchorsRegex(r)) == CP.rsize(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => SwapAnchorsRsize(r1); SwapAnchorsRsize(r2);
+    case Re_con(r1, r2) => SwapAnchorsRsize(r1); SwapAnchorsRsize(r2);
+    case Re_quant(_, _, _, r1) => SwapAnchorsRsize(r1);
+    case Re_capture(_, r1) => SwapAnchorsRsize(r1);
+    case Re_lookaround(_, _, r1) => SwapAnchorsRsize(r1);
+    case _ =>
+  }
+
+  /** `MIR.SwapAnchorsCode` lifted to the compiler's intermediate `treelist`,
+      mapped over every leaf's instruction list. */
+  function SwapAnchorsTreelist(t: CP.treelist): CP.treelist
+    decreases t
+  {
+    match t
+    case Leaf(l) => CP.Leaf(MIR.SwapAnchorsCode(l))
+    case Concat(a, b) => CP.Concat(SwapAnchorsTreelist(a), SwapAnchorsTreelist(b))
+  }
+
+  /** The treelist swap, mapped over a sequence of treelists. */
+  function SwapAnchorsTreelistSeq(ts: seq<CP.treelist>): seq<CP.treelist>
+  {
+    seq(|ts|, i requires 0 <= i < |ts| => SwapAnchorsTreelist(ts[i]))
+  }
+
+  /** The treelist swap distributes over `chain` (Dafny will not unfold
+      `chain`'s slice recursion through `SwapAnchorsTreelist` on its own). */
+  lemma SwapAnchorsChain(ts: seq<CP.treelist>)
+    requires |ts| >= 1
+    ensures SwapAnchorsTreelist(CP.chain(ts)) == CP.chain(SwapAnchorsTreelistSeq(ts))
+    decreases |ts|
+  {
+    if |ts| == 1 {
+      assert SwapAnchorsTreelistSeq(ts) == [SwapAnchorsTreelist(ts[0])];
+    } else {
+      SwapAnchorsChain(ts[..|ts| - 1]);
+      assert SwapAnchorsTreelistSeq(ts)[..|ts| - 1] == SwapAnchorsTreelistSeq(ts[..|ts| - 1]);
+      assert SwapAnchorsTreelistSeq(ts)[|ts| - 1] == SwapAnchorsTreelist(ts[|ts| - 1]);
+      assert CP.chain(SwapAnchorsTreelistSeq(ts))
+          == CP.Concat(CP.chain(SwapAnchorsTreelistSeq(ts)[..|ts| - 1]),
+                       SwapAnchorsTreelistSeq(ts)[|ts| - 1]);
+    }
+  }
+
+  /** Explicit-arity forms of `SwapAnchorsChain`, with the mapped list written
+      out so Dafny can unify it with a compiled `chain([...])`. */
+  lemma SwapChain3(a: CP.treelist, b: CP.treelist, c: CP.treelist)
+    ensures SwapAnchorsTreelist(CP.chain([a, b, c]))
+         == CP.chain([SwapAnchorsTreelist(a), SwapAnchorsTreelist(b), SwapAnchorsTreelist(c)])
+  {
+    SwapAnchorsChain([a, b, c]);
+    assert SwapAnchorsTreelistSeq([a, b, c])
+        == [SwapAnchorsTreelist(a), SwapAnchorsTreelist(b), SwapAnchorsTreelist(c)];
+  }
+
+  lemma SwapChain4(a: CP.treelist, b: CP.treelist, c: CP.treelist, d: CP.treelist)
+    ensures SwapAnchorsTreelist(CP.chain([a, b, c, d]))
+         == CP.chain([SwapAnchorsTreelist(a), SwapAnchorsTreelist(b),
+                      SwapAnchorsTreelist(c), SwapAnchorsTreelist(d)])
+  {
+    SwapAnchorsChain([a, b, c, d]);
+    assert SwapAnchorsTreelistSeq([a, b, c, d])
+        == [SwapAnchorsTreelist(a), SwapAnchorsTreelist(b),
+            SwapAnchorsTreelist(c), SwapAnchorsTreelist(d)];
+  }
+
+  /** A leaf of control instructions (no anchors) is fixed by the swap. */
+  lemma SwapControlLeaf(l: seq<RB.instruction>)
+    requires forall i :: 0 <= i < |l| ==> !l[i].AnchorAssertion?
+    ensures MIR.SwapAnchorsCode(l) == l
+  {
+    MIR.SwapAnchorsCodeIdent(l);
+  }
+
+  /** The bytecode swap distributes over concatenation (a pointwise map). */
+  lemma SwapAnchorsCodeAppend(a: seq<RB.instruction>, b: seq<RB.instruction>)
+    ensures MIR.SwapAnchorsCode(a + b) == MIR.SwapAnchorsCode(a) + MIR.SwapAnchorsCode(b)
+  {
+    assert |MIR.SwapAnchorsCode(a + b)| == |a| + |b|;
+    forall i | 0 <= i < |a| + |b|
+      ensures MIR.SwapAnchorsCode(a + b)[i]
+           == (MIR.SwapAnchorsCode(a) + MIR.SwapAnchorsCode(b))[i]
+    {}
+  }
+
+  /** ...and therefore over `tl_flatten`. */
+  lemma SwapAnchorsFlatten(t: CP.treelist, tail: seq<RB.instruction>)
+    ensures MIR.SwapAnchorsCode(CP.tl_flatten(t, tail))
+         == CP.tl_flatten(SwapAnchorsTreelist(t), MIR.SwapAnchorsCode(tail))
+    decreases t
+  {
+    match t
+    case Leaf(l) =>
+      SwapAnchorsCodeAppend(l, tail);
+    case Concat(a, b) =>
+      SwapAnchorsFlatten(b, tail);
+      SwapAnchorsFlatten(a, CP.tl_flatten(b, tail));
+  }
+
+  /** THE COMMUTATION, at the `compile` level: compiling the anchor-swapped
+      regex yields the anchor-swapped treelist and the SAME next label. The
+      companions `RepeatMinSwap`/`RepeatOptionalSwap` cover the mutually
+      recursive quantifier helpers. */
+  lemma CompileSwap(r: R.regex, nextl: RB.Label, ctype: CP.comp_type)
+    ensures CP.compile(SwapAnchorsRegex(r), nextl, ctype).1 == CP.compile(r, nextl, ctype).1
+    ensures CP.compile(SwapAnchorsRegex(r), nextl, ctype).0
+         == SwapAnchorsTreelist(CP.compile(r, nextl, ctype).0)
+    decreases CP.rsize(r), 0
+  {
+    SwapAnchorsRsize(r);
+    match r
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      var (l1, f1) := CP.compile(r1, nextl + 1, ctype);
+      var (l2, f2) := CP.compile(r2, f1 + 1, ctype);
+      CompileSwap(r1, nextl + 1, ctype);
+      CompileSwap(r2, f1 + 1, ctype);
+      SwapControlLeaf([RB.Fork(nextl + 1, f1 + 1)]);
+      SwapControlLeaf([RB.Jmp(f2)]);
+      SwapChain4(CP.Leaf([RB.Fork(nextl + 1, f1 + 1)]), l1, CP.Leaf([RB.Jmp(f2)]), l2);
+    case Re_con(r1, r2) =>
+      CompileSwap(r1, nextl, ctype);
+      var f1 := CP.compile(r1, nextl, ctype).1;
+      CompileSwap(r2, f1, ctype);
+    case Re_capture(cid, r1) =>
+      var (l1, f1) := CP.compile(r1, nextl + 1, ctype);
+      CompileSwap(r1, nextl + 1, ctype);
+      SwapControlLeaf([RB.SetRegisterToCP(CP.start_reg(cid))]);
+      SwapControlLeaf([RB.SetRegisterToCP(CP.end_reg(cid))]);
+      SwapChain3(CP.Leaf([RB.SetRegisterToCP(CP.start_reg(cid))]), l1,
+                 CP.Leaf([RB.SetRegisterToCP(CP.end_reg(cid))]));
+    case Re_lookaround(lid, lk, r1) =>
+    case Re_quant(nul, qid, q, r1) =>
+      if ctype == CP.Progress {
+        if q.min > 0 && q.max == None && nul == R.NonNullable {
+          RepeatMinSwap(q.min - 1, qid, r1, nextl, ctype);
+          var (min_code, min_f) := CP.repeat_min(q.min - 1, qid, r1, nextl, ctype);
+          var (body_code, body_f) := CP.compile(r1, min_f + 1, ctype);
+          CompileSwap(r1, min_f + 1, ctype);
+          var fork := if q.greedy then RB.Fork(min_f, body_f + 1) else RB.Fork(body_f + 1, min_f);
+          SwapControlLeaf([RB.SetQuantToClock(qid, false)]);
+          SwapControlLeaf([fork]);
+          SwapChain4(min_code, CP.Leaf([RB.SetQuantToClock(qid, false)]), body_code,
+                     CP.Leaf([fork]));
+        } else if q.min > 0 && q.max == None && nul == R.CINullable && q.greedy {
+          RepeatMinSwap(q.min - 1, qid, r1, nextl, ctype);
+          var (min_code, min_f) := CP.repeat_min(q.min - 1, qid, r1, nextl, ctype);
+          var (body_code, body_f) := CP.compile(r1, min_f + 3, ctype);
+          CompileSwap(r1, min_f + 3, ctype);
+          SwapControlLeaf([RB.Fork(min_f + 1, body_f + 2), RB.SetQuantToClock(qid, false), RB.BeginLoop]);
+          SwapControlLeaf([RB.EndLoop, RB.Fork(min_f + 1, body_f + 3), RB.SetQuantToClock(qid, true)]);
+          SwapChain4(min_code,
+                     CP.Leaf([RB.Fork(min_f + 1, body_f + 2), RB.SetQuantToClock(qid, false), RB.BeginLoop]),
+                     body_code,
+                     CP.Leaf([RB.EndLoop, RB.Fork(min_f + 1, body_f + 3), RB.SetQuantToClock(qid, true)]));
+        } else if q.min > 0 && q.max == None && nul == R.CDNullable && q.greedy {
+          RepeatMinSwap(q.min - 1, qid, r1, nextl, ctype);
+          var (min_code, min_f) := CP.repeat_min(q.min - 1, qid, r1, nextl, ctype);
+          var (body_code, body_f) := CP.compile(r1, min_f + 3, ctype);
+          CompileSwap(r1, min_f + 3, ctype);
+          SwapControlLeaf([RB.Fork(min_f + 1, body_f + 2), RB.SetQuantToClock(qid, false), RB.BeginLoop]);
+          SwapControlLeaf([RB.EndLoop, RB.Fork(min_f + 1, body_f + 4), RB.CheckNullable(qid), RB.SetQuantToClock(qid, true)]);
+          SwapChain4(min_code,
+                     CP.Leaf([RB.Fork(min_f + 1, body_f + 2), RB.SetQuantToClock(qid, false), RB.BeginLoop]),
+                     body_code,
+                     CP.Leaf([RB.EndLoop, RB.Fork(min_f + 1, body_f + 4), RB.CheckNullable(qid), RB.SetQuantToClock(qid, true)]));
+        } else {
+          RepeatMinSwap(q.min, qid, r1, nextl, ctype);
+          var (min_code, min_f) := CP.repeat_min(q.min, qid, r1, nextl, ctype);
+          match q.max
+          case None =>
+            var (iter_code, iter_f) := CP.compile(r1, min_f + 3, ctype);
+            CompileSwap(r1, min_f + 3, ctype);
+            var fork := if q.greedy then RB.Fork(min_f + 1, iter_f + 2) else RB.Fork(iter_f + 2, min_f + 1);
+            SwapControlLeaf([fork, RB.SetQuantToClock(qid, false), RB.BeginLoop]);
+            SwapControlLeaf([RB.EndLoop, RB.Jmp(min_f)]);
+            SwapChain4(min_code, CP.Leaf([fork, RB.SetQuantToClock(qid, false), RB.BeginLoop]),
+                       iter_code, CP.Leaf([RB.EndLoop, RB.Jmp(min_f)]));
+          case Some(mx) =>
+            RepeatOptionalSwap(mx - q.min, qid, r1, min_f, ctype, q.greedy);
+        }
+      } else {
+        if q.min == 0 {
+        } else if nul == R.NonNullable {
+        } else if q.max == None && nul == R.CINullable && q.greedy {
+        } else if q.max == None && nul == R.CDNullable && q.greedy {
+        } else {
+          CompileSwap(r1, nextl + 1, CP.ReconstructNulled);
+        }
+      }
+  }
+
+  lemma RepeatMinSwap(min: int, qid: R.quantid, r: R.regex, nextl: RB.Label, ctype: CP.comp_type)
+    ensures CP.repeat_min(min, qid, SwapAnchorsRegex(r), nextl, ctype).1
+         == CP.repeat_min(min, qid, r, nextl, ctype).1
+    ensures CP.repeat_min(min, qid, SwapAnchorsRegex(r), nextl, ctype).0
+         == SwapAnchorsTreelist(CP.repeat_min(min, qid, r, nextl, ctype).0)
+    decreases CP.rsize(r) + 1, min
+  {
+    SwapAnchorsRsize(r);
+    if min <= 0 {
+    } else {
+      var (body_code, new_f) := CP.compile(r, nextl + 1, ctype);
+      CompileSwap(r, nextl + 1, ctype);
+      var (next_code, next_f) := CP.repeat_min(min - 1, qid, r, new_f, ctype);
+      RepeatMinSwap(min - 1, qid, r, new_f, ctype);
+      SwapControlLeaf([RB.SetQuantToClock(qid, false)]);
+      SwapChain3(CP.Leaf([RB.SetQuantToClock(qid, false)]), body_code, next_code);
+    }
+  }
+
+  lemma RepeatOptionalSwap(nb: int, qid: R.quantid, r: R.regex, nextl: RB.Label,
+                           ctype: CP.comp_type, greedy: bool)
+    ensures CP.repeat_optional(nb, qid, SwapAnchorsRegex(r), nextl, ctype, greedy).1
+         == CP.repeat_optional(nb, qid, r, nextl, ctype, greedy).1
+    ensures CP.repeat_optional(nb, qid, SwapAnchorsRegex(r), nextl, ctype, greedy).0
+         == SwapAnchorsTreelist(CP.repeat_optional(nb, qid, r, nextl, ctype, greedy).0)
+    decreases CP.rsize(r) + 1, nb
+  {
+    SwapAnchorsRsize(r);
+    if nb <= 0 {
+    } else {
+      var (body_code, new_f) := CP.compile(r, nextl + 3, ctype);
+      CompileSwap(r, nextl + 3, ctype);
+      var (next_code, next_f) := CP.repeat_optional(nb - 1, qid, r, new_f + 1, ctype, greedy);
+      RepeatOptionalSwap(nb - 1, qid, r, new_f + 1, ctype, greedy);
+      var fork := if greedy then RB.Fork(nextl + 1, next_f) else RB.Fork(next_f, nextl + 1);
+      SwapControlLeaf([fork, RB.SetQuantToClock(qid, false), RB.BeginLoop]);
+      SwapControlLeaf([RB.EndLoop]);
+      SwapChain4(CP.Leaf([fork, RB.SetQuantToClock(qid, false), RB.BeginLoop]), body_code,
+                 CP.Leaf([RB.EndLoop]), next_code);
+    }
+  }
+
+  /** THE COMMUTATION, at the `compile_to_write` level -- the form the oracle
+      column chain consumes: swapping the anchors of a build program is the
+      same as building the anchor-swapped regex. */
+  lemma CompileToWriteSwap(r: R.regex, lid: R.lookid)
+    ensures MIR.SwapAnchorsCode(CP.compile_to_write(r, lid))
+         == CP.compile_to_write(SwapAnchorsRegex(r), lid)
+  {
+    CompileSwap(r, 0, CP.Progress);
+    SwapAnchorsFlatten(CP.compile(r, 0, CP.Progress).0, [RB.WriteOracle(lid)]);
+    assert MIR.SwapAnchorsCode([RB.WriteOracle(lid)]) == [RB.WriteOracle(lid)];
+  }
+
+  /** `lazy_prefix` (a `.*?` prefix) is anchor-free, so the swap slides through
+      it. */
+  lemma SwapAnchorsLazyPrefix(r: R.regex)
+    ensures SwapAnchorsRegex(R.lazy_prefix(r)) == R.lazy_prefix(SwapAnchorsRegex(r))
+  {}
+
+  /** A BACKWARD build's oracle column is the FORWARD reachability of the
+      anchor-swapped build program over the reversed string -- the general
+      form of `LidReachesBackwardNoAnchor`, with no anchor-free requirement,
+      since `LidReaches`'s backward branch is already stated on the swapped
+      code. */
+  lemma LidReachesBackward(crv: CP.FCompiled, str: string, i: int, cp: int)
+    requires LidDir(crv, i) == LAnc.Backward
+    ensures LidReaches(crv, str, i, cp)
+        <==> ORc.ReachesWrite(MIR.SwapAnchorsCode(AI.get_code_v(crv.f_look_build_bc, i)),
+                              LC.Reverse(str), 0, i, MIR.Mirror(cp, |str|))
+  {
+    reveal LidReaches();
   }
 }

@@ -110,9 +110,8 @@ module LindenElkOracleEntry {
     ensures T.TransWf(body)
     ensures LmOf(re)[lid] == (T.TrLookaround(la), T.Translate(body))
     ensures LTB.LookEntryOk(fc, lid, la, body)
-    // the fragment now admits BOTH flavours; a lookAHEAD's body is
-    // additionally star-shaped (hence its build program is anchor-free)
-    ensures (la.Lookahead? || la.NegLookahead?) ==> NR.StarFragmentRE(body)
+    // the fragment admits BOTH flavours over the whole plus fragment (the
+    // lookAHEAD star-shape restriction is retired -- see OracleColumnSpecLookahead)
     ensures NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
     ensures lid >= 0 && (lid as nat) in LTB.LookIds(re)
     // the quant half: `body` sits under a lookaround, so every id it owns is

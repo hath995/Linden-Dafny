@@ -530,14 +530,12 @@ module LindenElkNfaRep {
       && LookBehindFragmentRE(r1)
     case Re_capture(cid, r1) => LookBehindFragmentRE(r1)
     case Re_lookaround(lid, la, r1) =>
-      // BOTH flavours now. A lookBEHIND's body may use the whole plus
-      // fragment; a lookAHEAD's must additionally be star-shaped, which for
-      // the compiled build program means ANCHOR-FREE -- and that is what makes
-      // the anchor swap the identity on it (see Mirror.SwapAnchorsCodeIdent),
-      // so a backward build reads as a forward run of the same code. Drop the
-      // extra conjunct once the compile/swap commutation is proved.
+      // BOTH flavours, whole plus fragment. A lookAHEAD's body no longer needs
+      // to be star-shaped: its oracle builds BACKWARD, and the compile/anchor-
+      // swap commutation (OracleBuild.CompileToWriteSwap) reads that build as a
+      // forward run of `compile_to_write(RevRE(body))` -- so anchors in the
+      // body are handled, not forbidden.
       CaptureFreeRE(r1) && LookFreeRE(r1) && PlusFragmentRE(r1)
-      && ((la.Lookahead? || la.NegLookahead?) ==> StarFragmentRE(r1))
   }
 
   /** The `raw_regex` counterpart of `LookBehindFragmentRE`. */
@@ -561,7 +559,6 @@ module LindenElkNfaRep {
     case Raw_capture(r1) => LookBehindFragmentRaw(r1)
     case Raw_lookaround(look, r1) =>
       CaptureFreeRaw(r1) && LookFreeRaw(r1) && PlusFragmentRaw(r1)
-      && ((look.Lookahead? || look.NegLookahead?) ==> StarFragmentRaw(r1))
   }
 
   /** The plus fragment embeds in the lookbehind fragment. */
@@ -663,9 +660,6 @@ module LindenElkNfaRep {
       AnnotateCaptureFree(r1, c, l + 1, q);
       AnnotateLookFree(r1, c, l + 1, q);
       AnnotatePlusFragment(r1, c, l + 1, q);
-      if look.Lookahead? || look.NegLookahead? {
-        AnnotateStarFragment(r1, c, l + 1, q);   // the lookAHEAD body stays star
-      }
     case _ =>
   }
 
@@ -699,17 +693,43 @@ module LindenElkNfaRep {
       so the whole existing forward build pipeline applies unchanged. */
   lemma OracleRegexPlusFragment(la: R.lookaround, body: R.regex)
     requires CaptureFreeRE(body) && PlusFragmentRE(body)
-    requires (la.Lookahead? || la.NegLookahead?) ==> StarFragmentRE(body)
     ensures PlusFragmentRE(CP.oracle_regex(la, body))
   {
     RemoveCaptureFreeId(body);
     if la.Lookahead? || la.NegLookahead? {
-      // the lookAHEAD build reverses the body first
-      ReverseStarFragmentRE(body);
-      StarIsAnchorFragmentRE(R.reverse_regex(body));
-      AnchorIsQuantFragmentRE(R.reverse_regex(body));
-      QuantIsPlusFragmentRE(R.reverse_regex(body));
+      // the lookAHEAD build reverses the body first; reversal preserves the
+      // plus fragment (only concatenation order and anchor identity change)
+      ReversePlusFragmentRE(body);
     }
+  }
+
+  /** `reverse_regex` preserves nullability -- it only reorders concatenation
+      (`null_and` is commutative) and leaves anchors. */
+  lemma ReverseNullableRE(r: R.regex)
+    ensures R.nullable(R.reverse_regex(r)) == R.nullable(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => ReverseNullableRE(r1); ReverseNullableRE(r2);
+    case Re_con(r1, r2) => ReverseNullableRE(r1); ReverseNullableRE(r2);
+    case Re_quant(_, _, _, r1) => ReverseNullableRE(r1);
+    case Re_capture(_, r1) => ReverseNullableRE(r1);
+    case _ =>
+  }
+
+  /** `reverse_regex` preserves the plus fragment (the `+` side condition is on
+      the body's nullability, which reversal preserves). */
+  lemma ReversePlusFragmentRE(r: R.regex)
+    requires PlusFragmentRE(r)
+    ensures PlusFragmentRE(R.reverse_regex(r))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => ReversePlusFragmentRE(r1); ReversePlusFragmentRE(r2);
+    case Re_con(r1, r2) => ReversePlusFragmentRE(r1); ReversePlusFragmentRE(r2);
+    case Re_quant(_, _, _, r1) => ReversePlusFragmentRE(r1); ReverseNullableRE(r1);
+    case Re_capture(_, r1) => ReversePlusFragmentRE(r1);
+    case _ =>
   }
 
   /** `reverse_regex` preserves look-freedom. */
@@ -1453,6 +1473,19 @@ module LindenElkNfaRep {
           && NfaRepRE(r1, prev + Flat(tl), start + 1, f1 as nat)
           && GetPcRE(prev + Flat(tl), f1 as nat) == Some(RB.Jmp(f2))
           && NfaRepRE(r2, prev + Flat(tl), (f1 + 1) as nat, f2 as nat);
+      assert next == f2;
+      // Guide the NfaRepRE(Re_alt) fold in a collapsed context: the perturbed
+      // LookBehindFragmentRE axiom (now one conjunct lighter) otherwise sends
+      // this existential witness into a matching loop (batch 45, ~242M rlimit).
+      assert NfaRepRE(re, prev + Flat(tl), start, next as nat) by {
+        hide *;
+        reveal NfaRepRE;
+        assert GetPcRE(prev + Flat(tl), start) == Some(RB.Fork(start + 1, f1 + 1));
+        assert NfaRepRE(r1, prev + Flat(tl), start + 1, f1 as nat);
+        assert GetPcRE(prev + Flat(tl), f1 as nat) == Some(RB.Jmp(f2));
+        assert NfaRepRE(r2, prev + Flat(tl), (f1 + 1) as nat, f2 as nat);
+        assert next == f2;
+      }
     case Re_con(r1, r2) =>
       var (l1, f1) := CP.compile(r1, start, CP.Progress);
       var (l2, f2) := CP.compile(r2, f1, CP.Progress);
@@ -1533,7 +1566,14 @@ module LindenElkNfaRep {
         assert |pre1| == min_f + 1;
         CompileNfaRepRE(r1, (min_f + 1) as nat, body_code, body_f, pre1);
         NfaRepExtendRE(r1, pre1 + Flat(body_code), (min_f + 1) as nat, body_f as nat, [fork]);
-        assert (pre1 + Flat(body_code)) + [fork] == prev + Flat(tl);
+        // Collapsed context: the perturbed LookBehindFragmentRE axiom otherwise
+        // loops here (do-while case has the largest fact set), turning this
+        // sequence equality into a >900s batch.
+        assert (pre1 + Flat(body_code)) + [fork] == prev + Flat(tl) by {
+          hide *;
+          assert Flat(tl) == Flat(min_code) + [RB.SetQuantToClock(qid, false)] + Flat(body_code) + [fork];
+          assert pre1 == prev + Flat(min_code) + [RB.SetQuantToClock(qid, false)];
+        }
         // the backward fork
         assert |pre1 + Flat(body_code)| == body_f;
         GetFirstRE([fork], pre1 + Flat(body_code));

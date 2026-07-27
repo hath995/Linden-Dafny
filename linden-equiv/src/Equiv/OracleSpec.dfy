@@ -320,6 +320,54 @@ module LindenElkOracleSpec {
     case _ =>
   }
 
+  /** The spec-side reversal preserves nullability -- it only reorders
+      concatenation (`null_and` is commutative) and swaps anchors (all anchors
+      are `CDNullable`). Mirrors `PIV.ReverseNullable` for `RevRE`. */
+  lemma RevRENullable(r: R.regex)
+    ensures R.nullable(SD.RevRE(r)) == R.nullable(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => RevRENullable(r1); RevRENullable(r2);
+    case Re_con(r1, r2) => RevRENullable(r1); RevRENullable(r2);
+    case Re_quant(_, _, _, r1) => RevRENullable(r1);
+    case Re_capture(_, r1) => RevRENullable(r1);
+    case _ =>
+  }
+
+  /** ...and it keeps a regex in the plus fragment (the `+` side condition is
+      phrased on the body's nullability, which `RevRENullable` preserves). */
+  lemma RevREPlusFragment(r: R.regex)
+    requires NR.PlusFragmentRE(r)
+    ensures NR.PlusFragmentRE(SD.RevRE(r))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => RevREPlusFragment(r1); RevREPlusFragment(r2);
+    case Re_con(r1, r2) => RevREPlusFragment(r1); RevREPlusFragment(r2);
+    case Re_quant(nul, qid, q, r1) => RevREPlusFragment(r1); RevRENullable(r1);
+    case Re_capture(_, r1) => RevREPlusFragment(r1);
+    case _ =>
+  }
+
+  /** The engine's `reverse_regex` followed by the bytecode-level anchor swap
+      IS the spec-side `RevRE` (which reverses AND swaps anchors), on a
+      look-free regex. This is what identifies the anchor-swapped backward
+      build program with a compiled `RevRE(body)`. */
+  lemma SwapReverseIsRevRE(r: R.regex)
+    requires NR.LookFreeRE(r)
+    ensures OBu.SwapAnchorsRegex(R.reverse_regex(r)) == SD.RevRE(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => SwapReverseIsRevRE(r1); SwapReverseIsRevRE(r2);
+    case Re_con(r1, r2) => SwapReverseIsRevRE(r1); SwapReverseIsRevRE(r2);
+    case Re_quant(_, _, _, r1) => SwapReverseIsRevRE(r1);
+    case Re_capture(_, r1) => SwapReverseIsRevRE(r1);
+    case Re_anchor(a) => assert MIR.SwapAnchor(a) == SD.SwapAnchorRE(a);
+    case _ =>
+  }
+
   /** THE LOOKAHEAD COLUMN SPEC. A lookAHEAD's oracle column at `cp` holds
       exactly when the spec's FORWARD walk of its body from `cp` succeeds --
       the mirror image of `OracleColumnSpec`, and the statement
@@ -328,16 +376,25 @@ module LindenElkOracleSpec {
       The chain, and where each link came from:
         oracle bit                          FBuildOracleCorrect
           == LidReaches (Backward build)
-          == forward reach over Reverse(str)  LidReachesBackwardNoAnchor
-                                              (the body is star-shaped, so the
-                                               build program is anchor-free and
-                                               the anchor swap is the identity)
-          <-> a span of reverse_regex(body) ending at Mirror(cp)
+          == forward reach of SwapAnchorsCode(build) over Reverse(str)
+                                              LidReachesBackward
+          == forward reach of compile_to_write(lazy_prefix(RevRE(body)))
+                                              CompileToWriteSwap /
+                                              SwapAnchorsLazyPrefix /
+                                              SwapReverseIsRevRE
+                                              (the anchor swap on the BYTECODE
+                                               is the compile of RevRE(body),
+                                               which reverses AND swaps anchors)
+          <-> a span of RevRE(body) ending at Mirror(cp)
                                               ReachesWriteToMatches /
                                               MatchesToReachesWrite
           <-> a span of body STARTING at cp   MatchesReverseRE
           <-> the forward walk succeeds       MatchesTransfer +
                                               SpanDualityForward{Complete,Sound}
+
+      Lookahead bodies may be anywhere in the plus fragment (no star-shape
+      restriction): the compile/anchor-swap commutation makes the backward
+      build's anchors well-behaved.
    */
   lemma OracleColumnSpecLookahead(rer: LW.RegExpRecord, re: R.regex, str: string,
                                   lid: R.lookid, la: R.lookaround, body: R.regex,
@@ -346,7 +403,7 @@ module LindenElkOracleSpec {
     requires NR.LookBehindFragmentRE(re) && LT.LookUnique(re)
     requires LT.LookEntryOk(CP.FFullCompilation(re), lid, la, body)
     requires la.Lookahead? || la.NegLookahead?
-    requires NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.StarFragmentRE(body)
+    requires NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
     requires T.TransWf(body)
     requires 1 <= lid <= R.max_lookaround(re)
     requires 0 <= cp <= |str|
@@ -358,35 +415,41 @@ module LindenElkOracleSpec {
     var n := |str|;
     var rstr := LC.Reverse(str);
     var rb := R.reverse_regex(body);
+    var rrb := SD.RevRE(body);
     SD.ReverseLength(str);
 
     // --- the build program for this row ------------------------------------
     NR.RemoveCaptureFreeId(body);
     assert CP.oracle_regex(la, body) == R.lazy_prefix(rb);
-    NR.ReverseStarFragmentRE(body);
     NR.ReverseLookFreeRE(body);
-    NR.StarIsAnchorFragmentRE(rb);
-    NR.AnchorIsQuantFragmentRE(rb);
-    NR.QuantIsPlusFragmentRE(rb);
     OBu.LookFreeLazyPrefix(rb);
     var bc := CP.compile_to_write(R.lazy_prefix(rb), lid);
     assert AI.get_code_v(crv.f_look_build_bc, lid) == bc;
 
-    // --- oracle bit == a FORWARD reach over the reversed string ------------
+    // --- the anchor-swapped build program IS compile_to_write(lazy_prefix(RevRE(body))) ---
+    OBu.CompileToWriteSwap(R.lazy_prefix(rb), lid);
+    OBu.SwapAnchorsLazyPrefix(rb);
+    SwapReverseIsRevRE(body);
+    assert MIR.SwapAnchorsCode(bc) == CP.compile_to_write(R.lazy_prefix(rrb), lid);
+
+    // --- fragment facts for RevRE(body) (it stays capture-/look-free + plus) ---
+    RevRELookFree(body);
+    RevREPlusFragment(body);
+
+    // --- oracle bit == a FORWARD reach of the swapped program over Reverse(str) ---
     OBu.FBuildOracleCorrect(re, str);
     assert OBu.LidDir(crv, lid) == LAnc.Backward;
-    NR.CompileToWriteNoAnchor(R.lazy_prefix(rb), lid);
-    OBu.LidReachesBackwardNoAnchor(crv, str, lid, cp);
+    OBu.LidReachesBackward(crv, str, lid, cp);
     assert LOr.view_get_oracle(AI.FBuildOracle(crv, str), cp, lid)
-        <==> ORc.ReachesWrite(bc, rstr, 0, lid, MIR.Mirror(cp, n));
+        <==> ORc.ReachesWrite(CP.compile_to_write(R.lazy_prefix(rrb), lid), rstr, 0, lid,
+                              MIR.Mirror(cp, n));
 
     // --- and that is a span of `body` starting at cp ------------------------
-    RevREIsReverse(body);
     TranslateGroupFree(body);
     SD.GroupFreeIsGroupOk(T.Translate(body));
 
     if LOr.view_get_oracle(AI.FBuildOracle(crv, str), cp, lid) {
-      var m := OD.ReachesWriteToMatches(rb, lid, rstr, MIR.Mirror(cp, n));
+      var m := OD.ReachesWriteToMatches(rrb, lid, rstr, MIR.Mirror(cp, n));
       // m is the span's START in the reversal; mirror it back
       var j := n - m;
       MatchesReverseRE(rer, body, str, cp, j);
@@ -398,8 +461,8 @@ module LindenElkOracleSpec {
       var j := SD.SpanDualityForwardSound(rer, T.Translate(body), str, cp, gm);
       MatchesTransfer(rer, body, str, cp, j);
       MatchesReverseRE(rer, body, str, cp, j);
-      assert OB.Matches(rb, rstr, n - j, MIR.Mirror(cp, n));
-      OB.MatchesToReachesWrite(rb, lid, rstr, n - j, MIR.Mirror(cp, n));
+      assert OB.Matches(rrb, rstr, n - j, MIR.Mirror(cp, n));
+      OB.MatchesToReachesWrite(rrb, lid, rstr, n - j, MIR.Mirror(cp, n));
     }
   }
 }
