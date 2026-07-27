@@ -1682,4 +1682,308 @@ module LindenSpanDuality {
     assert [LS.Areg(r)] + [] == [LS.Areg(r)];
     i := BwdSound(rer, r, [], str, cp, gm);
   }
+
+  // ===========================================================================
+  // THE DIRECTION CORRESPONDENCE
+  // ===========================================================================
+
+  /** `TreeRes` lifted over the fuel `Option`. */
+  ghost function TResOpt(o: Option<LT.Tree>, gm: LG.GroupMap, inp: LC.Input,
+                         dir: WP.Direction): Option<LT.Leaf>
+  {
+    match o case None => None case Some(t) => LT.TreeRes(t, gm, inp, dir)
+  }
+
+  /** Walking `acts` BACKWARD from `inp` succeeds exactly when walking the
+      reversed stack FORWARD from the swapped window does.
+
+      Stated on SUCCESS rather than on the trees, because the trees genuinely
+      differ: a quantifier's `Reset` payload is permuted (RevLDefGroupsSet)
+      and an `AnchorPass` payload is swapped. `TreeRes` reads the first
+      set-wise and ignores the second, so neither difference reaches the
+      answer. The recorded group maps also differ -- `Idx` is `|inp.pref|`
+      and the swap exchanges the halves -- which is why the two maps are
+      universally quantified here rather than shared. */
+  lemma SuccReverse(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input,
+                    gm1: LG.GroupMap, gm2: LG.GroupMap, fuel: nat)
+    requires GroupOkActs(acts)
+    // the two runs consume fuel in lockstep -- needed wherever a case pairs
+    // two sub-results (Disjunction, the free quantifier layer), since there
+    // `None` means "ran out", not "no match"
+    ensures FS.ComputeTree(rer, acts, inp, gm1, WP.Backward, fuel).Some?
+        <==> FS.ComputeTree(rer, RevActs(acts), SwapInput(inp), gm2, WP.Forward, fuel).Some?
+    ensures TResOpt(FS.ComputeTree(rer, acts, inp, gm1, WP.Backward, fuel),
+                    gm1, inp, WP.Backward).Some?
+        <==> TResOpt(FS.ComputeTree(rer, RevActs(acts), SwapInput(inp), gm2,
+                                    WP.Forward, fuel),
+                     gm2, SwapInput(inp), WP.Forward).Some?
+    decreases fuel
+  {
+    if fuel == 0 { return; }
+    var f := fuel - 1;
+    if |acts| == 0 { assert RevActs(acts) == []; return; }
+    var cont := acts[1..];
+    GroupOkActsTail(acts);
+    RevActsTail(acts);
+    RevActsCons(acts[0], cont);
+    assert RevActs(acts) == [RevActs(acts)[0]] + RevActs(cont);
+    var sinp := SwapInput(inp);
+
+    match acts[0]
+    case Acheck(strcheck) =>
+      assert RevActs(acts)[0] == LS.Acheck(SwapInput(strcheck));
+      IsStrictSuffixSwap(inp, strcheck);
+      if SSx.IsStrictSuffix(inp, strcheck, WP.Backward) {
+        SuccReverse(rer, cont, inp, gm1, gm2, f);
+      }
+    case Aclose(gid) =>
+      assert RevActs(acts)[0] == LS.Aclose(gid);
+      SuccReverse(rer, cont, inp, LG.GMClose(LC.Idx(inp), gid, gm1),
+                  LG.GMClose(LC.Idx(sinp), gid, gm2), f);
+    case Areg(r) =>
+      assert RevActs(acts)[0] == LS.Areg(RevL(r));
+      match r
+      case Epsilon => SuccReverse(rer, cont, inp, gm1, gm2, f);
+      case Character(cd) =>
+        ReadCharSwap(rer, cd, inp);
+        match LC.ReadChar(rer, cd, inp, WP.Backward) {
+          case None =>
+          case Some(pair) =>
+            LC.AdvanceInputSuccess(inp, WP.Backward, pair.1);
+            LC.AdvanceInputSuccess(sinp, WP.Forward, SwapInput(pair.1));
+            SuccReverse(rer, cont, pair.1, gm1, gm2, f);
+        }
+      case Disjunction(r1, r2) =>
+        GroupOkActsCons(LS.Areg(r1), cont);
+        GroupOkActsCons(LS.Areg(r2), cont);
+        RevActsCons(LS.Areg(r1), cont);
+        RevActsCons(LS.Areg(r2), cont);
+        SuccReverse(rer, [LS.Areg(r1)] + cont, inp, gm1, gm2, f);
+        SuccReverse(rer, [LS.Areg(r2)] + cont, inp, gm1, gm2, f);
+      case Sequence(r1, r2) =>
+        var na := LS.SeqList(r1, r2, WP.Backward) + cont;
+        assert na == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
+        assert GroupOkActs(na) by {
+          GroupOkActsCons(LS.Areg(r1), cont);
+          GroupOkActsCons(LS.Areg(r2), [LS.Areg(r1)] + cont);
+        }
+        RevActsCons(LS.Areg(r1), cont);
+        RevActsCons(LS.Areg(r2), [LS.Areg(r1)] + cont);
+        assert RevActs(na)
+            == [LS.Areg(RevL(r2))] + ([LS.Areg(RevL(r1))] + RevActs(cont));
+        assert LS.SeqList(RevL(r2), RevL(r1), WP.Forward) + RevActs(cont)
+            == [LS.Areg(RevL(r2))] + ([LS.Areg(RevL(r1))] + RevActs(cont));
+        SuccReverse(rer, na, inp, gm1, gm2, f);
+      case Quantified(g, min, delta, r1) =>
+        assert RevL(r) == L.Quantified(g, min, delta, RevL(r1));
+        var gidl := L.DefGroups(r1);
+        var gidl2 := L.DefGroups(RevL(r1));
+        RevLResetAgrees(r1, gm1);
+        if min > 0 {
+          var q := L.Quantified(g, min - 1, delta, r1);
+          var na := [LS.Areg(r1), LS.Areg(q)] + cont;
+          assert na == [LS.Areg(r1)] + ([LS.Areg(q)] + cont);
+          assert GroupOkActs(na) by {
+            GroupOkActsCons(LS.Areg(q), cont);
+            GroupOkActsCons(LS.Areg(r1), [LS.Areg(q)] + cont);
+          }
+          RevActsCons(LS.Areg(q), cont);
+          RevActsCons(LS.Areg(r1), [LS.Areg(q)] + cont);
+          assert RevL(q) == L.Quantified(g, min - 1, delta, RevL(r1));
+          assert RevActs(na)
+              == [LS.Areg(RevL(r1))] + ([LS.Areg(RevL(q))] + RevActs(cont));
+          assert [LS.Areg(RevL(r1)), LS.Areg(RevL(q))] + RevActs(cont)
+              == [LS.Areg(RevL(r1))] + ([LS.Areg(RevL(q))] + RevActs(cont));
+          SuccReverse(rer, na, inp, LG.GMReset(gidl, gm1), LG.GMReset(gidl2, gm2), f);
+        } else if delta == LN.NN(0) {
+          SuccReverse(rer, cont, inp, gm1, gm2, f);
+        } else {
+          var q := L.Quantified(g, 0, FS.NoiPred(delta), r1);
+          var na := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q)] + cont;
+          assert na == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(q)] + cont));
+          assert GroupOkActs(na) by {
+            GroupOkActsCons(LS.Areg(q), cont);
+            GroupOkActsCons(LS.Acheck(inp), [LS.Areg(q)] + cont);
+            GroupOkActsCons(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(q)] + cont));
+          }
+          RevActsCons(LS.Areg(q), cont);
+          RevActsCons(LS.Acheck(inp), [LS.Areg(q)] + cont);
+          RevActsCons(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(q)] + cont));
+          assert RevL(q) == L.Quantified(g, 0, FS.NoiPred(delta), RevL(r1));
+          assert RevActs(na)
+              == [LS.Areg(RevL(r1))]
+                 + ([LS.Acheck(SwapInput(inp))] + ([LS.Areg(RevL(q))] + RevActs(cont)));
+          assert [LS.Areg(RevL(r1)), LS.Acheck(SwapInput(inp)), LS.Areg(RevL(q))]
+                 + RevActs(cont)
+              == [LS.Areg(RevL(r1))]
+                 + ([LS.Acheck(SwapInput(inp))] + ([LS.Areg(RevL(q))] + RevActs(cont)));
+          SuccReverse(rer, na, inp, LG.GMReset(gidl, gm1), LG.GMReset(gidl2, gm2), f);
+          SuccReverse(rer, cont, inp, gm1, gm2, f);
+          // spell the four sub-trees out; the outer node is a GreedyChoice of
+          // the iterate branch (under its Reset) and the skip branch, ordered
+          // by the SAME greedy flag on both sides
+          var ib := FS.ComputeTree(rer, na, inp, LG.GMReset(gidl, gm1), WP.Backward, f);
+          var sb := FS.ComputeTree(rer, cont, inp, gm1, WP.Backward, f);
+          var if_ := FS.ComputeTree(rer, RevActs(na), sinp, LG.GMReset(gidl2, gm2),
+                                    WP.Forward, f);
+          var sf := FS.ComputeTree(rer, RevActs(cont), sinp, gm2, WP.Forward, f);
+          assert ib.Some? <==> if_.Some?;
+          assert sb.Some? <==> sf.Some?;
+          if ib.Some? && sb.Some? {
+            assert LT.TreeRes(LT.GroupActionT(LG.Reset(gidl), ib.value), gm1, inp,
+                              WP.Backward)
+                == LT.TreeRes(ib.value, LG.GMReset(gidl, gm1), inp, WP.Backward);
+            assert LT.TreeRes(LT.GroupActionT(LG.Reset(gidl2), if_.value), gm2, sinp,
+                              WP.Forward)
+                == LT.TreeRes(if_.value, LG.GMReset(gidl2, gm2), sinp, WP.Forward);
+          }
+        }
+      case Group(gid, r1) =>
+        var na := [LS.Areg(r1), LS.Aclose(gid)] + cont;
+        assert na == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
+        assert GroupOkActs(na) by {
+          GroupOkActsCons(LS.Aclose(gid), cont);
+          GroupOkActsCons(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+        }
+        RevActsCons(LS.Aclose(gid), cont);
+        RevActsCons(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+        assert RevActs(na) == [LS.Areg(RevL(r1))] + ([LS.Aclose(gid)] + RevActs(cont));
+        assert [LS.Areg(RevL(r1)), LS.Aclose(gid)] + RevActs(cont)
+            == [LS.Areg(RevL(r1))] + ([LS.Aclose(gid)] + RevActs(cont));
+        SuccReverse(rer, na, inp, LG.GMOpen(LC.Idx(inp), gid, gm1),
+                    LG.GMOpen(LC.Idx(sinp), gid, gm2), f);
+      case AnchorR(a) =>
+        AnchorSatisfiedSwap(rer, a, inp);
+        if LS.AnchorSatisfied(rer, a, inp) {
+          SuccReverse(rer, cont, inp, gm1, gm2, f);
+        }
+      case LookaroundR(lk, r1) =>   // excluded by GroupOkL
+      case Backreference(gid) =>    // excluded by GroupOkL
+  }
+
+  /** THE COROLLARY downstream consumes: walking BACKWARD succeeds exactly
+      when walking the reversed stack FORWARD from the swapped window does.
+
+      The two runs need the SAME fuel (ActionsFuelReverse), so one bound
+      serves both. */
+  lemma SuccActsReverse(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input,
+                        gm1: LG.GroupMap, gm2: LG.GroupMap)
+    requires GroupOkActs(acts)
+    ensures SuccActs(rer, RevActs(acts), SwapInput(inp), gm2, WP.Forward)
+        <==> SuccActs(rer, acts, inp, gm1, WP.Backward)
+  {
+    GroupOkActsIsNoBackref(acts);
+    RevActsNoBackref(acts);
+    var fb := FS.ActionsFuel(acts, inp, WP.Backward) + 1;
+    var ff := FS.ActionsFuel(RevActs(acts), SwapInput(inp), WP.Forward) + 1;
+    ActionsFuelReverse(acts, inp);
+    assert fb == ff;
+    FS.FunctionalTerminates(rer, acts, inp, gm1, WP.Backward, fb);
+    FS.FunctionalTerminates(rer, RevActs(acts), SwapInput(inp), gm2, WP.Forward, ff);
+    FU.ComputeTrRw(rer, acts, inp, gm1, WP.Backward);
+    FU.ComputeTrRw(rer, RevActs(acts), SwapInput(inp), gm2, WP.Forward);
+    SuccReverse(rer, acts, inp, gm1, gm2, fb);
+  }
+
+  // ===========================================================================
+  // L2 item 4: the FORWARD span duality, for free from the backward one
+  // ===========================================================================
+
+  lemma RevLInvolution(r: L.Regex)
+    ensures RevL(RevL(r)) == r
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => RevLInvolution(r1); RevLInvolution(r2);
+    case Sequence(r1, r2) => RevLInvolution(r1); RevLInvolution(r2);
+    case Quantified(_, _, _, r1) => RevLInvolution(r1);
+    case Group(_, r1) => RevLInvolution(r1);
+    case AnchorR(a) => assert SwapAnchorL(SwapAnchorL(a)) == a;
+    case _ =>
+  }
+
+  lemma RevLGroupFree(r: L.Regex)
+    requires GroupFreeL(r)
+    ensures GroupFreeL(RevL(r))
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => RevLGroupFree(r1); RevLGroupFree(r2);
+    case Sequence(r1, r2) => RevLGroupFree(r1); RevLGroupFree(r2);
+    case Quantified(_, _, _, r1) => RevLGroupFree(r1);
+    case _ =>
+  }
+
+  /** A single-regex stack reverses to a single-regex stack. */
+  lemma RevActsSingleton(r: L.Regex)
+    ensures RevActs([LS.Areg(r)]) == [LS.Areg(RevL(r))]
+  {
+    var lhs := RevActs([LS.Areg(r)]);
+    forall i | 0 <= i < |lhs| ensures lhs[i] == [LS.Areg(RevL(r))][i] {}
+  }
+
+  /** Success of the FORWARD walk, expressed through the reversal. */
+  lemma SuccActsForwardViaReverse(rer: LW.RegExpRecord, r: L.Regex, str: string,
+                                  cp: int, gm: LG.GroupMap)
+    requires GroupFreeL(r)
+    requires 0 <= cp <= |str|
+    ensures |LC.Reverse(str)| == |str|
+    ensures SuccActs(rer, [LS.Areg(r)], T.InputAt(str, cp), gm, WP.Forward)
+        <==> SuccActs(rer, [LS.Areg(RevL(r))],
+                      T.InputAt(LC.Reverse(str), |str| - cp), gm, WP.Backward)
+  {
+    ReverseLength(str);
+    InputAtSwap(str, cp);
+    RevLGroupFree(r);
+    GroupFreeIsGroupOk(RevL(r));
+    var acts := [LS.Areg(RevL(r))];
+    assert GroupOkActs(acts) by {
+      forall i | 0 <= i < |acts| && acts[i].Areg? ensures GroupOkL(acts[i].r) {}
+    }
+    RevActsSingleton(RevL(r));
+    RevLInvolution(r);
+    assert RevActs(acts) == [LS.Areg(r)];
+    SwapInputInvolution(T.InputAt(str, cp));
+    SuccActsReverse(rer, acts, T.InputAt(LC.Reverse(str), |str| - cp), gm, gm);
+  }
+
+  /** THE FORWARD COMPLETENESS half: a span makes the forward walk succeed. */
+  lemma SpanDualityForwardComplete(rer: LW.RegExpRecord, r: L.Regex, str: string,
+                                   i: int, j: int, gm: LG.GroupMap)
+    requires GroupFreeL(r)
+    requires 0 <= i <= j <= |str|
+    requires MatchesL(rer, r, str, i, j)
+    ensures SuccActs(rer, [LS.Areg(r)], T.InputAt(str, i), gm, WP.Forward)
+  {
+    ReverseLength(str);
+    GroupFreeIsGroupOk(r);
+    MatchesLReverse(rer, r, str, i, j);
+    RevLGroupFree(r);
+    SpanDualityComplete(rer, RevL(r), LC.Reverse(str), |str| - j, |str| - i, gm);
+    SuccActsForwardViaReverse(rer, r, str, i, gm);
+  }
+
+  /** THE FORWARD SOUNDNESS half: a successful forward walk yields a span. */
+  lemma SpanDualityForwardSound(rer: LW.RegExpRecord, r: L.Regex, str: string,
+                                cp: int, gm: LG.GroupMap) returns (j: int)
+    requires GroupFreeL(r)
+    requires 0 <= cp <= |str|
+    requires SuccActs(rer, [LS.Areg(r)], T.InputAt(str, cp), gm, WP.Forward)
+    ensures cp <= j <= |str|
+    ensures MatchesL(rer, r, str, cp, j)
+  {
+    ReverseLength(str);
+    GroupFreeIsGroupOk(r);
+    RevLGroupFree(r);
+    SuccActsForwardViaReverse(rer, r, str, cp, gm);
+    var m := SpanDualitySound(rer, RevL(r), LC.Reverse(str), |str| - cp, gm);
+    // m is the START of the reversed span; mirror it back
+    j := |str| - m;
+    RevLInvolution(r);
+    GroupFreeIsGroupOk(RevL(r));
+    MatchesLReverse(rer, RevL(r), LC.Reverse(str), m, |str| - cp);
+    assert MatchesL(rer, RevL(RevL(r)), LC.Reverse(LC.Reverse(str)),
+                    |str| - (|str| - cp), |str| - m);
+    FS.ReverseReverse(str);
+  }
 }
