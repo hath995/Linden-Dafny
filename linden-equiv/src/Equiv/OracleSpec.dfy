@@ -76,6 +76,11 @@ module LindenElkOracleSpec {
   lemma MatchesTransfer(rer: LW.RegExpRecord, re: R.regex, str: string, i: int, j: int)
     requires !rer.ignoreCase && !rer.multiline
     requires T.TransWf(re)
+    // `MatchesL` now gives a lookaround REAL span semantics (what L4's nesting
+    // needs), while `OB.Matches` still reports false for one. The transfer
+    // therefore holds exactly where no lookaround can occur -- which every
+    // caller has, since these are lookaround BODIES.
+    requires NR.LookFreeRE(re)
     requires 0 <= i && j <= |str|
     ensures OB.Matches(re, str, i, j) <==> SD.MatchesL(rer, T.Translate(re), str, i, j)
     decreases CP.rsize(re), 0, 0
@@ -143,9 +148,7 @@ module LindenElkOracleSpec {
       }
     case Re_capture(cid, r1) =>
       MatchesTransfer(rer, r1, str, i, j);
-    case Re_lookaround(lid, lk, r1) =>
-      assert !OB.Matches(re, str, i, j);
-      assert T.Translate(re) == L.LookaroundR(T.TrLookaround(lk), T.Translate(r1));
+    case Re_lookaround(lid, lk, r1) =>   // excluded by LookFreeRE
   }
 
   /** The two quantifier bound encodings pick out the same counters: RegElk
@@ -168,6 +171,7 @@ module LindenElkOracleSpec {
   lemma IterTransfer(rer: LW.RegExpRecord, r: R.regex, k: nat, str: string, i: int, j: int)
     requires !rer.ignoreCase && !rer.multiline
     requires T.TransWf(r)
+    requires NR.LookFreeRE(r)
     requires 0 <= i && j <= |str|
     ensures OB.MatchesIter(r, k, str, i, j) <==> SD.IterL(rer, T.Translate(r), k, str, i, j)
     decreases CP.rsize(r), 1, k
@@ -248,5 +252,50 @@ module LindenElkOracleSpec {
       MatchesTransfer(rer, body, str, i, cp);
       OD.RecorderHitIntro(body, str, cp, i);
     }
+  }
+
+  // ==========================================================================
+  // The span reversal, transferred to the engine side (L2)
+  // ==========================================================================
+
+  /** `MatchesLReverse` carried across the translation: an engine-side span of
+      `re` over `str` is a span of `RevRE(re)` over the reversed string, at the
+      mirrored interval.
+
+      This is what turns a lookAHEAD's reversed oracle build back into a
+      statement about the body matching FORWARD from `cp`. */
+  /** The reversal preserves look-freedom (it only reorders concatenations and
+      swaps anchors). */
+  lemma RevRELookFree(re: R.regex)
+    requires NR.LookFreeRE(re)
+    ensures NR.LookFreeRE(SD.RevRE(re))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => RevRELookFree(r1); RevRELookFree(r2);
+    case Re_con(r1, r2) => RevRELookFree(r1); RevRELookFree(r2);
+    case Re_quant(_, _, _, r1) => RevRELookFree(r1);
+    case Re_capture(_, r1) => RevRELookFree(r1);
+    case _ =>
+  }
+
+  lemma MatchesReverseRE(rer: LW.RegExpRecord, re: R.regex, str: string, i: int, j: int)
+    requires !rer.ignoreCase && !rer.multiline
+    requires T.TransWf(re)
+    requires NR.LookFreeRE(re)
+    requires SD.GroupOkL(T.Translate(re))
+    requires 0 <= i <= j <= |str|
+    ensures |LC.Reverse(str)| == |str|
+    ensures T.TransWf(SD.RevRE(re))
+    ensures OB.Matches(SD.RevRE(re), LC.Reverse(str), |str| - j, |str| - i)
+        <==> OB.Matches(re, str, i, j)
+  {
+    SD.ReverseLength(str);
+    SD.TranslateRevRE(re);
+    RevRELookFree(re);
+    MatchesTransfer(rer, re, str, i, j);
+    MatchesTransfer(rer, SD.RevRE(re), LC.Reverse(str), |str| - j, |str| - i);
+    SD.MatchesLReverse(rer, T.Translate(re), str, i, j);
+    assert T.Translate(SD.RevRE(re)) == SD.RevL(T.Translate(re));
   }
 }

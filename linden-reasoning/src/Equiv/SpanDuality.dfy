@@ -44,6 +44,7 @@ module LindenSpanDuality {
   import FS = FunctionalSemantics
   import SSx = StrictSuffix
   import T = LindenElkTranslate
+  import RE = RegElkRegex
 
   // ===========================================================================
   // The fragment: what L1 lookbehind bodies translate to
@@ -420,8 +421,9 @@ module LindenSpanDuality {
       if MatchesL(rer, RevL(r), LC.Reverse(str), n - j, n - i) {
         assert RevL(r) == L.Sequence(RevL(r2), RevL(r1));
         assert MatchesL(rer, L.Sequence(RevL(r2), RevL(r1)), LC.Reverse(str), n - j, n - i);
-        assert exists q: int :: MatchesL(rer, RevL(r2), LC.Reverse(str), n - j, q)
-                             && MatchesL(rer, RevL(r1), LC.Reverse(str), q, n - i);
+        assert exists q: int {:trigger MatchesL(rer, RevL(r1), LC.Reverse(str), q, n - i)} ::
+                 (MatchesL(rer, RevL(r2), LC.Reverse(str), n - j, q)
+                  && MatchesL(rer, RevL(r1), LC.Reverse(str), q, n - i));
         var m': int :| MatchesL(rer, RevL(r2), LC.Reverse(str), n - j, m')
                     && MatchesL(rer, RevL(r1), LC.Reverse(str), m', n - i);
         MatchesLBounds(rer, RevL(r2), LC.Reverse(str), n - j, m');
@@ -433,9 +435,10 @@ module LindenSpanDuality {
     case Quantified(g, min, delta, r1) =>
       if MatchesL(rer, r, str, i, j) {
         assert MatchesL(rer, L.Quantified(g, min, delta, r1), str, i, j);
-        assert exists k: nat :: min <= k
-          && (match delta case Inf => true case NN(dx) => k <= min + dx)
-          && IterL(rer, r1, k, str, i, j);
+        assert exists k: nat {:trigger IterL(rer, r1, k, str, i, j)} ::
+                 (min <= k
+                  && (match delta case Inf => true case NN(dx) => k <= min + dx)
+                  && IterL(rer, r1, k, str, i, j));
         var k: nat :| min <= k
           && (match delta case Inf => true case NN(dx) => k <= min + dx)
           && IterL(rer, r1, k, str, i, j);
@@ -445,9 +448,10 @@ module LindenSpanDuality {
         assert RevL(r) == L.Quantified(g, min, delta, RevL(r1));
         assert MatchesL(rer, L.Quantified(g, min, delta, RevL(r1)), LC.Reverse(str),
                         n - j, n - i);
-        assert exists k: nat :: min <= k
-          && (match delta case Inf => true case NN(dx) => k <= min + dx)
-          && IterL(rer, RevL(r1), k, LC.Reverse(str), n - j, n - i);
+        assert exists k: nat {:trigger IterL(rer, RevL(r1), k, LC.Reverse(str), n - j, n - i)} ::
+                 (min <= k
+                  && (match delta case Inf => true case NN(dx) => k <= min + dx)
+                  && IterL(rer, RevL(r1), k, LC.Reverse(str), n - j, n - i));
         var k: nat :| min <= k
           && (match delta case Inf => true case NN(dx) => k <= min + dx)
           && IterL(rer, RevL(r1), k, LC.Reverse(str), n - j, n - i);
@@ -1985,5 +1989,67 @@ module LindenSpanDuality {
     assert MatchesL(rer, RevL(RevL(r)), LC.Reverse(LC.Reverse(str)),
                     |str| - (|str| - cp), |str| - m);
     FS.ReverseReverse(str);
+  }
+
+  // ===========================================================================
+  // The reversal on the RegElk side, and its commutation with Translate
+  // ===========================================================================
+
+  function SwapAnchorRE(a: RE.anchor): RE.anchor {
+    match a
+    case BeginInput => RE.EndInput
+    case EndInput => RE.BeginInput
+    case WordBoundary => RE.WordBoundary
+    case NonWordBoundary => RE.NonWordBoundary
+  }
+
+  /** `RevL` on the RegElk side: concatenation order flips and input anchors
+      swap. Note this is `R.reverse_regex` PLUS the anchor swap -- the engine's
+      own `reverse_regex` leaves anchors alone because backward EXECUTION
+      handles them via its direction flag, whereas reversing the string makes
+      the swap explicit. */
+  function RevRE(r: RE.regex): RE.regex
+    decreases r
+  {
+    match r
+    case Re_empty => r
+    case Re_character(_) => r
+    case Re_anchor(a) => RE.Re_anchor(SwapAnchorRE(a))
+    case Re_alt(r1, r2) => RE.Re_alt(RevRE(r1), RevRE(r2))
+    case Re_con(r1, r2) => RE.Re_con(RevRE(r2), RevRE(r1))
+    case Re_quant(n, q, qt, r1) => RE.Re_quant(n, q, qt, RevRE(r1))
+    case Re_capture(c, r1) => RE.Re_capture(c, RevRE(r1))
+    case Re_lookaround(l, lk, r1) => r
+  }
+
+  lemma RevRETransWf(r: RE.regex)
+    requires T.TransWf(r)
+    ensures T.TransWf(RevRE(r))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => RevRETransWf(r1); RevRETransWf(r2);
+    case Re_con(r1, r2) => RevRETransWf(r1); RevRETransWf(r2);
+    case Re_quant(_, _, _, r1) => RevRETransWf(r1);
+    case Re_capture(_, r1) => RevRETransWf(r1);
+    case _ =>
+  }
+
+  /** The two reversals agree across the translation -- so a fact proved about
+      `RevL` on the spec side transfers to `RevRE` on the engine side. */
+  lemma TranslateRevRE(r: RE.regex)
+    requires T.TransWf(r)
+    ensures T.TransWf(RevRE(r))
+    ensures T.Translate(RevRE(r)) == RevL(T.Translate(r))
+    decreases r
+  {
+    RevRETransWf(r);
+    match r
+    case Re_alt(r1, r2) => TranslateRevRE(r1); TranslateRevRE(r2);
+    case Re_con(r1, r2) => TranslateRevRE(r1); TranslateRevRE(r2);
+    case Re_quant(_, _, _, r1) => TranslateRevRE(r1);
+    case Re_capture(_, r1) => TranslateRevRE(r1);
+    case Re_anchor(a) => assert T.TrAnchor(SwapAnchorRE(a)) == SwapAnchorL(T.TrAnchor(a));
+    case _ =>
   }
 }
