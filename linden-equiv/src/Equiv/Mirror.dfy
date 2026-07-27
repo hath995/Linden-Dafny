@@ -28,7 +28,6 @@
    arithmetic. `FBuildLids` runs a lookAHEAD's oracle build Backward, so
    that is where this plugs in first.
    ========================================================================== */
-include "PikeSimRE.dfy"
 include "OracleReach.dfy"
 
 module LindenElkMirror {
@@ -1008,6 +1007,34 @@ module LindenElkMirror {
   {
     forall pc | 0 <= pc < |c| ensures SwapAnchorsCodeNonAnchorAt(c, pc) {}
   }
+
+  /* ---------------------------------------------------------------------
+     ITEM 2 (LidBuildOk / FBuildLidsCharacterized) -- ATTEMPTED, BACKED OUT.
+
+     The generalization itself is small and was written out in full:
+       - drop `oracle_direction(...) == Forward` from LidBuildOk;
+       - add LidReaches(crv, str, i, cp), which is ReachesWrite over `str` for
+         a forward build and ReachesWrite over SwapAnchorsCode(bc) /
+         Reverse(str) at Mirror(cp) for a backward one;
+       - in FBuildLidsCharacterized, split on direction and call either
+         ORc.SweepCharacterization or BackwardSweepCharacterization below.
+     `OS.FindMatchOracleFrame` is ALREADY direction-generic, so the framing
+     (other columns untouched) needs no work.
+
+     It did not verify, and the failure is a strange one worth recording. Under
+     {:isolate_assertions} every assertion passed -- 79 of them, including the
+     forall's goal RESTATED VERBATIM inside the body for the i == lid case --
+     while the enclosing `forall` statement's postcondition still would not
+     close. That is not the usual missing-fact or missing-shape signature; the
+     fact is present in exactly the form required.
+
+     Suspect the `{:trigger ov[r]}` on FBuildLidsCharacterized's column-shape
+     hypothesis, or the interaction of the strengthened `|ov| == |str| + 1`
+     precondition with the recursion, rather than anything about direction.
+     Worth retrying from the ensures side: characterize one lid at a time
+     (a per-lid lemma) and assemble, instead of generalizing the existing
+     combined induction in place.
+     --------------------------------------------------------------------- */
 
   /** THE TRANSPORT. `SweepCharacterization` is forward-only; this is its
       BACKWARD counterpart, obtained not by re-proving it but by running the
