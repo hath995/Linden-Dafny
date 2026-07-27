@@ -1511,6 +1511,68 @@ module LindenElkMain {
     CM.FFindMatchCapWriteFrame(bytecode, str, inits, ov, dir, lookcdn, cap, PIV.CaptureRegs(body));
   }
 
+  /** A plus-fragment body's compiled code never STAMPS a quantifier true
+      (`SetQuantToClock(_, true)`) -- the `!bb` half of `CodeShapeAt`, lifted to
+      the whole `compile_to_bytecode`. Capture-independent (the quant structure
+      is the same whether or not the body captures). Feeds `FFindMatchQuantFinalAny`. */
+  lemma NoTrueQuantStamp(body: R.regex)
+    requires NR.LookBehindFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    ensures var code := CP.compile_to_bytecode(body);
+      forall pc: nat, q: int, b: bool ::
+        NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
+  {
+    var code := CP.compile_to_bytecode(body);
+    var next := CP.compile(body, 0, CP.Progress).1;
+    NR.CompileToBytecodeRepLookBehind(body);
+    var endl := next as nat;
+    forall pc: nat, q: int, b: bool | NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, b))
+      ensures !b
+    {
+      assert pc < |code|;
+      if pc < endl {
+        NI.CodeShapeAt(body, code, 0, endl, pc);
+      } else {
+        assert pc == endl;
+        assert NR.GetPcRE(code, endl) == Some(RB.Accept);
+      }
+    }
+  }
+
+  /** L3a — the FULL replay capture frame: a capturing lookAHEAD's whole
+      `FFindMatchPlus` (= `FFindMatch` then `FReconstructPlus`) changes the
+      capture bank only within `CaptureRegs(body)`. The `FReconstructPlus` half
+      is the IDENTITY even with captures: the replay result is `QuantRegsFinal`
+      (`FFindMatchQuantFinalAny`, capture-independent via `NoTrueQuantStamp`), so
+      every plus's cp is negative and `FNulledPlus` never runs the reconstruct
+      code (`FNulledPlusIdentity`, which is itself capture-agnostic). So the
+      change is entirely `ReplayCaptureFrame`'s. */
+  lemma ReplayPlusCaptureFrame(bytecode: RB.code, str: string, ov: LOr.OracleView, dir: LAnc.direction,
+                               lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                               cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
+    requires NR.LookBehindFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires la.Lookahead? && dir == LAnc.Forward
+    requires bytecode == CP.compile_to_bytecode(body)
+    requires AI.cp_context(cp, str, dir).nextchar == AI.get_char(str, cp)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp, cap, lk, qt, 0, lookcdn).0;
+      r.Some? ==> CM.RegsAgreeOutside(r.value.capture_regs, cap, PIV.CaptureRegs(body))
+  {
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
+    ReplayCaptureFrame(bytecode, str, inits, ov, dir, lookcdn, cap, lk, qt, la, body);
+    NoTrueQuantStamp(body);
+    assert VmQuantFinal(inits) by {
+      assert QuantRegsFinal(AI.init_thread(cap, lk, qt));
+    }
+    FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
+    var (res0, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+    if res0.Some? {
+      var th := res0.value;
+      assert QuantRegsFinal(th);
+      FNulledPlusIdentity(body, th.capture_regs, th.look_regs, th.quant_regs, plus_bcv, str, ovx, dir);
+    }
+  }
+
   /** The filter cannot see the difference the replay makes. */
   lemma FilterUnmoved(mainast: R.regex, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs,
                       ncap: AReg.Regs, nlk: AReg.Regs, nqt: AReg.Regs, body: R.regex)
