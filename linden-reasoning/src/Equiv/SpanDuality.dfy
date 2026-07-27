@@ -1304,7 +1304,8 @@ module LindenSpanDuality {
       the group map constant throughout. */
   lemma BwdComplete(rer: LW.RegExpRecord, r: L.Regex, cont: LS.Actions, str: string,
                     i: int, j: int, gm: LG.GroupMap)
-    requires GroupFreeL(r)
+    requires GroupOkL(r)
+    requires NoBackrefActs(cont)
     requires 0 <= i <= j <= |str|
     requires MatchesL(rer, r, str, i, j)
     requires SuccActs(rer, cont, T.InputAt(str, i), gm, WP.Backward)
@@ -1346,6 +1347,8 @@ module LindenSpanDuality {
       var m: int :| MatchesL(rer, r1, str, i, m) && MatchesL(rer, r2, str, m, j);
       MatchesLBounds(rer, r1, str, i, m);
       MatchesLBounds(rer, r2, str, m, j);
+      GroupOkIsNoBackref(r1);
+      NoBackrefActsCons(LS.Areg(r1), cont);
       BwdComplete(rer, r1, cont, str, i, m, gm);
       BwdComplete(rer, r2, [LS.Areg(r1)] + cont, str, m, j, gm);
       assert LS.SeqList(r1, r2, WP.Backward) + cont == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
@@ -1358,7 +1361,30 @@ module LindenSpanDuality {
         && (match delta case Inf => true case NN(dx) => k <= min + dx)
         && IterL(rer, r1, k, str, i, j);
       BwdCompleteQuant(rer, greedy, min, delta, r1, cont, str, i, j, gm, k);
-    case Group(_, _) =>
+    case Group(gid, r1) =>
+      // ComputeTr([Areg(Group(gid,r1))]+cont, inp, gm) = GroupActionT(Open(gid),
+      //   ComputeTr([Areg(r1), Aclose(gid)]+cont, inp, GMOpen(Idx(inp),gid,gm))).
+      // TreeRes threads GMOpen; so the goal is exactly the body's span under
+      // the opened map. The body match is MatchesL(r1) (group-transparent), and
+      // cont resumes at the CLOSED map, which SuccActsGmIndep discards.
+      assert MatchesL(rer, r1, str, i, j);            // MatchesL(Group) == MatchesL(r1)
+      GroupOkIsNoBackref(r1);
+      var gmO := LG.GMOpen(LC.Idx(inp), gid, gm);
+      var acont := [LS.Aclose(gid)] + cont;
+      NoBackrefActsCons(LS.Aclose(gid), cont);
+      // [Aclose(gid)]+cont succeeds under gmO at position i
+      var inpI := T.InputAt(str, i);
+      IdxInputAt(str, i);
+      var gmC := LG.GMClose(LC.Idx(inpI), gid, gmO);
+      SuccActsGmIndep(rer, cont, inpI, gm, gmC, WP.Backward);
+      FU.ComputeTrRw(rer, acont, inpI, gmO, WP.Backward);
+      assert acont[0] == LS.Aclose(gid) && acont[1..] == cont;
+      assert SuccActs(rer, acont, inpI, gmO, WP.Backward);
+      BwdComplete(rer, r1, acont, str, i, j, gmO);
+      // relate SuccActs([Areg(r1),Aclose(gid)]+cont, inp, gmO) to the goal
+      assert [LS.Areg(r1)] + acont == [LS.Areg(r1), LS.Aclose(gid)] + cont;
+      var titer := FU.ComputeTr(rer, [LS.Areg(r1), LS.Aclose(gid)] + cont, inp, gmO, WP.Backward);
+      assert FU.ComputeTr(rer, acts, inp, gm, WP.Backward) == LT.GroupActionT(LG.Open(gid), titer);
     case LookaroundR(_, _) =>
     case Backreference(_) =>
   }
@@ -1371,7 +1397,8 @@ module LindenSpanDuality {
   lemma BwdCompleteQuant(rer: LW.RegExpRecord, greedy: bool, min: nat, delta: LN.NoI,
                          r1: L.Regex, cont: LS.Actions, str: string,
                          i: int, j: int, gm: LG.GroupMap, k: nat)
-    requires GroupFreeL(r1)
+    requires GroupOkL(r1)
+    requires NoBackrefActs(cont)
     requires 0 <= i <= j <= |str|
     requires min <= k
     requires match delta case Inf => true case NN(dx) => k <= min + dx
@@ -1386,9 +1413,15 @@ module LindenSpanDuality {
     var acts := [LS.Areg(q)] + cont;
     FU.ComputeTrRw(rer, acts, inp, gm, WP.Backward);
     assert acts[0] == LS.Areg(q) && acts[1..] == cont;
-    GroupFreeDefGroups(r1);
-    GMResetNil(gm);
+    GroupOkIsNoBackref(r1);
     if min > 0 {
+      // Each iteration RESETS the body's groups: the quantifier tree is
+      // GroupActionT(Reset(DefGroups(r1)), titer), and titer is built under
+      // GMReset(gidl, gm). So recurse under gm' and let the Reset node thread
+      // the map back; cont's success shifts gm -> gm' via SuccActsGmIndep.
+      var gidl := L.DefGroups(r1);
+      var gm' := LG.GMReset(gidl, gm);
+      SuccActsGmIndep(rer, cont, T.InputAt(str, i), gm, gm', WP.Backward);
       // peel the last span into the head copy; the rest recurse
       var mid := IterLSplit(rer, r1, k, k - 1, str, i, j);
       IterLBounds(rer, r1, k - 1, str, i, mid);
@@ -1396,15 +1429,15 @@ module LindenSpanDuality {
       assert mm == j;
       MatchesLBounds(rer, r1, str, mid, j);
       var inner := [LS.Areg(L.Quantified(greedy, min - 1, delta, r1))] + cont;
-      BwdCompleteQuant(rer, greedy, min - 1, delta, r1, cont, str, i, mid, gm, k - 1);
-      BwdComplete(rer, r1, inner, str, mid, j, gm);
+      NoBackrefActsCons(LS.Areg(L.Quantified(greedy, min - 1, delta, r1)), cont);
+      BwdCompleteQuant(rer, greedy, min - 1, delta, r1, cont, str, i, mid, gm', k - 1);
+      BwdComplete(rer, r1, inner, str, mid, j, gm');
       assert [LS.Areg(r1), LS.Areg(L.Quantified(greedy, min - 1, delta, r1))] + cont
           == [LS.Areg(r1)] + inner;
-      var titer := FU.ComputeTr(rer, [LS.Areg(r1)] + inner, inp, gm, WP.Backward);
-      assert FU.ComputeTr(rer, acts, inp, gm, WP.Backward) == LT.GroupActionT(LG.Reset([]), titer);
-      GMUpdateResetNil(LC.Idx(inp), gm);
-      assert LT.TreeRes(LT.GroupActionT(LG.Reset([]), titer), gm, inp, WP.Backward)
-          == LT.TreeRes(titer, gm, inp, WP.Backward);
+      var titer := FU.ComputeTr(rer, [LS.Areg(r1)] + inner, inp, gm', WP.Backward);
+      assert FU.ComputeTr(rer, acts, inp, gm, WP.Backward) == LT.GroupActionT(LG.Reset(gidl), titer);
+      assert LT.TreeRes(LT.GroupActionT(LG.Reset(gidl), titer), gm, inp, WP.Backward)
+          == LT.TreeRes(titer, gm', inp, WP.Backward);
     } else if delta == LN.NN(0) {
       assert k == 0;
     } else {
@@ -1419,7 +1452,8 @@ module LindenSpanDuality {
   lemma BwdCompleteFree(rer: LW.RegExpRecord, greedy: bool, delta: LN.NoI,
                         r1: L.Regex, cont: LS.Actions, str: string,
                         i: int, j: int, gm: LG.GroupMap, k2: nat)
-    requires GroupFreeL(r1)
+    requires GroupOkL(r1)
+    requires NoBackrefActs(cont)
     requires 0 <= i <= j <= |str|
     requires delta != LN.NN(0) || k2 == 0
     requires match delta case Inf => true case NN(dx) => k2 <= dx
@@ -1434,20 +1468,26 @@ module LindenSpanDuality {
     var acts := [LS.Areg(q)] + cont;
     FU.ComputeTrRw(rer, acts, inp, gm, WP.Backward);
     assert acts[0] == LS.Areg(q) && acts[1..] == cont;
-    GroupFreeDefGroups(r1);
-    GMResetNil(gm);
+    GroupOkIsNoBackref(r1);
+    var gidl := L.DefGroups(r1);
     if k2 == 0 {
-      // i == j: the skip branch carries the continuation's success
+      // i == j: the skip branch carries the continuation's success (unaffected
+      // by the iterate branch's Reset(gidl))
       if delta == LN.NN(0) {
         return;
       }
       var tskip := FU.ComputeTr(rer, cont, inp, gm, WP.Backward);
       var titer := FU.ComputeTr(rer, [LS.Areg(r1), LS.Acheck(inp), LS.Areg(L.Quantified(greedy, 0, FS.NoiPred(delta), r1))] + cont,
-                                inp, gm, WP.Backward);
+                                inp, LG.GMReset(gidl, gm), WP.Backward);
       assert FU.ComputeTr(rer, acts, inp, gm, WP.Backward)
-          == LT.GreedyChoice(greedy, LT.GroupActionT(LG.Reset([]), titer), tskip);
+          == LT.GreedyChoice(greedy, LT.GroupActionT(LG.Reset(gidl), titer), tskip);
       assert LT.TreeRes(tskip, gm, inp, WP.Backward).Some?;
     } else {
+      // Each iteration resets DefGroups(r1); the iterate subtree is built under
+      // gm' = GMReset(gidl, gm). Recurse under gm', shift cont via SuccActsGmIndep,
+      // and the Reset node threads the map back.
+      var gm' := LG.GMReset(gidl, gm);
+      SuccActsGmIndep(rer, cont, T.InputAt(str, i), gm, gm', WP.Backward);
       // nonempty chain: last span through this layer, the rest recurse
       var mid := IterLNESplit(rer, r1, k2, k2 - 1, str, i, j);
       IterLNEBounds(rer, r1, k2 - 1, str, i, mid);
@@ -1455,26 +1495,27 @@ module LindenSpanDuality {
       assert mm == j && mid < j;
       var qpred := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
       var inner := [LS.Acheck(inp), LS.Areg(qpred)] + cont;
+      NoBackrefActsCons(LS.Areg(qpred), cont);
+      NoBackrefActsCons(LS.Acheck(inp), [LS.Areg(qpred)] + cont);
       // the guard passes at mid, and the smaller quantifier finishes there
-      BwdCompleteFree(rer, greedy, FS.NoiPred(delta), r1, cont, str, i, mid, gm, k2 - 1);
+      BwdCompleteFree(rer, greedy, FS.NoiPred(delta), r1, cont, str, i, mid, gm', k2 - 1);
       var inpMid := T.InputAt(str, mid);
-      FU.ComputeTrRw(rer, inner, inpMid, gm, WP.Backward);
+      FU.ComputeTrRw(rer, inner, inpMid, gm', WP.Backward);
       assert inner[0] == LS.Acheck(inp) && inner[1..] == [LS.Areg(qpred)] + cont;
       StrictSuffixBackAt(str, mid, j);
-      var tq := FU.ComputeTr(rer, [LS.Areg(qpred)] + cont, inpMid, gm, WP.Backward);
-      assert FU.ComputeTr(rer, inner, inpMid, gm, WP.Backward) == LT.Progress(tq);
-      assert SuccActs(rer, inner, inpMid, gm, WP.Backward);
+      var tq := FU.ComputeTr(rer, [LS.Areg(qpred)] + cont, inpMid, gm', WP.Backward);
+      assert FU.ComputeTr(rer, inner, inpMid, gm', WP.Backward) == LT.Progress(tq);
+      assert SuccActs(rer, inner, inpMid, gm', WP.Backward);
       // the body's span rides on top
-      BwdComplete(rer, r1, inner, str, mid, j, gm);
+      BwdComplete(rer, r1, inner, str, mid, j, gm');
       assert [LS.Areg(r1), LS.Acheck(inp), LS.Areg(qpred)] + cont == [LS.Areg(r1)] + inner;
-      var titer := FU.ComputeTr(rer, [LS.Areg(r1)] + inner, inp, gm, WP.Backward);
+      var titer := FU.ComputeTr(rer, [LS.Areg(r1)] + inner, inp, gm', WP.Backward);
       var tskip := FU.ComputeTr(rer, cont, inp, gm, WP.Backward);
       assert FU.ComputeTr(rer, acts, inp, gm, WP.Backward)
-          == LT.GreedyChoice(greedy, LT.GroupActionT(LG.Reset([]), titer), tskip);
-      GMUpdateResetNil(LC.Idx(inp), gm);
-      assert LT.TreeRes(LT.GroupActionT(LG.Reset([]), titer), gm, inp, WP.Backward)
-          == LT.TreeRes(titer, gm, inp, WP.Backward);
-      assert LT.TreeRes(titer, gm, inp, WP.Backward).Some?;
+          == LT.GreedyChoice(greedy, LT.GroupActionT(LG.Reset(gidl), titer), tskip);
+      assert LT.TreeRes(LT.GroupActionT(LG.Reset(gidl), titer), gm, inp, WP.Backward)
+          == LT.TreeRes(titer, gm', inp, WP.Backward);
+      assert LT.TreeRes(titer, gm', inp, WP.Backward).Some?;
     }
   }
 
@@ -1483,12 +1524,13 @@ module LindenSpanDuality {
       succeed. */
   lemma SpanDualityComplete(rer: LW.RegExpRecord, r: L.Regex, str: string,
                             i: int, cp: int, gm: LG.GroupMap)
-    requires GroupFreeL(r)
+    requires GroupOkL(r)
     requires 0 <= i <= cp <= |str|
     requires MatchesL(rer, r, str, i, cp)
     ensures SuccActs(rer, [LS.Areg(r)], T.InputAt(str, cp), gm, WP.Backward)
   {
     SuccActsNil(rer, T.InputAt(str, i), gm, WP.Backward);
+    assert NoBackrefActs([]);
     BwdComplete(rer, r, [], str, i, cp, gm);
     assert [LS.Areg(r)] + [] == [LS.Areg(r)];
   }
@@ -1518,7 +1560,8 @@ module LindenSpanDuality {
       continuation's walk succeeds from `i`. */
   lemma BwdSound(rer: LW.RegExpRecord, r: L.Regex, cont: LS.Actions, str: string,
                  j: int, gm: LG.GroupMap) returns (i: int)
-    requires GroupFreeL(r)
+    requires GroupOkL(r)
+    requires NoBackrefActs(cont)
     requires 0 <= j <= |str|
     requires SuccActs(rer, [LS.Areg(r)] + cont, T.InputAt(str, j), gm, WP.Backward)
     ensures 0 <= i <= j
@@ -1568,6 +1611,8 @@ module LindenSpanDuality {
         i := BwdSound(rer, r2, cont, str, j, gm);
       }
     case Sequence(r1, r2) =>
+      GroupOkIsNoBackref(r1);
+      NoBackrefActsCons(LS.Areg(r1), cont);
       assert LS.SeqList(r1, r2, WP.Backward) + cont == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
       var m := BwdSound(rer, r2, [LS.Areg(r1)] + cont, str, j, gm);
       i := BwdSound(rer, r1, cont, str, m, gm);
@@ -1575,8 +1620,32 @@ module LindenSpanDuality {
     case Quantified(greedy, min, delta, r1) =>
       var k: nat;
       i, k := BwdSoundQuant(rer, greedy, min, delta, r1, cont, str, j, gm);
-    case Group(_, _) =>
-      i := j; assert false;
+    case Group(gid, r1) =>
+      // ComputeTr([Areg(Group(gid,r1))]+cont, inp, gm) = GroupActionT(Open(gid),
+      //   ComputeTr([Areg(r1),Aclose(gid)]+cont, inp, gmO)); TreeRes threads GMOpen,
+      //   so the body's backward walk under gmO succeeds. Recover its span (=
+      //   MatchesL(Group)==MatchesL(r1)); cont resumes at the closed map, shifted
+      //   back to gm by SuccActsGmIndep.
+      GroupOkIsNoBackref(r1);
+      var gmO := LG.GMOpen(LC.Idx(inp), gid, gm);
+      var acont := [LS.Aclose(gid)] + cont;
+      NoBackrefActsCons(LS.Aclose(gid), cont);
+      var t' := FU.ComputeTr(rer, [LS.Areg(r1)] + acont, inp, gmO, WP.Backward);
+      assert [LS.Areg(r1)] + acont == [LS.Areg(r1), LS.Aclose(gid)] + cont;
+      assert FU.ComputeTr(rer, acts, inp, gm, WP.Backward) == LT.GroupActionT(LG.Open(gid), t');
+      assert LT.TreeRes(LT.GroupActionT(LG.Open(gid), t'), gm, inp, WP.Backward)
+          == LT.TreeRes(t', gmO, inp, WP.Backward);
+      assert SuccActs(rer, [LS.Areg(r1)] + acont, inp, gmO, WP.Backward);
+      var i2 := BwdSound(rer, r1, acont, str, j, gmO);
+      // acont = [Aclose(gid)]+cont succeeds under gmO at i2  ->  cont at gmC  ->  cont at gm
+      var inpI := T.InputAt(str, i2);
+      IdxInputAt(str, i2);
+      var gmC := LG.GMClose(LC.Idx(inpI), gid, gmO);
+      FU.ComputeTrRw(rer, acont, inpI, gmO, WP.Backward);
+      assert acont[0] == LS.Aclose(gid) && acont[1..] == cont;
+      assert SuccActs(rer, cont, inpI, gmC, WP.Backward);
+      SuccActsGmIndep(rer, cont, inpI, gmC, gm, WP.Backward);
+      i := i2;
     case LookaroundR(_, _) =>
       i := j; assert false;
     case Backreference(_) =>
@@ -1590,7 +1659,8 @@ module LindenSpanDuality {
   lemma BwdSoundQuant(rer: LW.RegExpRecord, greedy: bool, min: nat, delta: LN.NoI,
                       r1: L.Regex, cont: LS.Actions, str: string,
                       j: int, gm: LG.GroupMap) returns (i: int, k: nat)
-    requires GroupFreeL(r1)
+    requires GroupOkL(r1)
+    requires NoBackrefActs(cont)
     requires 0 <= j <= |str|
     requires SuccActs(rer, [LS.Areg(L.Quantified(greedy, min, delta, r1))] + cont,
                       T.InputAt(str, j), gm, WP.Backward)
@@ -1605,41 +1675,48 @@ module LindenSpanDuality {
     var acts := [LS.Areg(q)] + cont;
     FU.ComputeTrRw(rer, acts, inp, gm, WP.Backward);
     assert acts[0] == LS.Areg(q) && acts[1..] == cont;
-    GroupFreeDefGroups(r1);
-    GMResetNil(gm);
-    GMUpdateResetNil(LC.Idx(inp), gm);
+    GroupOkIsNoBackref(r1);
+    var gidl := L.DefGroups(r1);
     if min > 0 {
+      // the iterate subtree is built under gm' = GMReset(gidl, gm); recover the
+      // body's span there, then shift cont's success back to gm.
+      var gm' := LG.GMReset(gidl, gm);
       var inner := [LS.Areg(L.Quantified(greedy, min - 1, delta, r1))] + cont;
+      NoBackrefActsCons(LS.Areg(L.Quantified(greedy, min - 1, delta, r1)), cont);
       assert [LS.Areg(r1), LS.Areg(L.Quantified(greedy, min - 1, delta, r1))] + cont
           == [LS.Areg(r1)] + inner;
-      var titer := FU.ComputeTr(rer, [LS.Areg(r1)] + inner, inp, gm, WP.Backward);
-      assert FU.ComputeTr(rer, acts, inp, gm, WP.Backward) == LT.GroupActionT(LG.Reset([]), titer);
-      assert LT.TreeRes(LT.GroupActionT(LG.Reset([]), titer), gm, inp, WP.Backward)
-          == LT.TreeRes(titer, gm, inp, WP.Backward);
-      var m := BwdSound(rer, r1, inner, str, j, gm);
-      var i2, k2 := BwdSoundQuant(rer, greedy, min - 1, delta, r1, cont, str, m, gm);
+      var titer := FU.ComputeTr(rer, [LS.Areg(r1)] + inner, inp, gm', WP.Backward);
+      assert FU.ComputeTr(rer, acts, inp, gm, WP.Backward) == LT.GroupActionT(LG.Reset(gidl), titer);
+      assert LT.TreeRes(LT.GroupActionT(LG.Reset(gidl), titer), gm, inp, WP.Backward)
+          == LT.TreeRes(titer, gm', inp, WP.Backward);
+      var m := BwdSound(rer, r1, inner, str, j, gm');
+      var i2, k2 := BwdSoundQuant(rer, greedy, min - 1, delta, r1, cont, str, m, gm');
       i := i2;
       k := k2 + 1;
       IterLSnoc(rer, r1, k2, str, i2, m, j);
+      SuccActsGmIndep(rer, cont, T.InputAt(str, i2), gm', gm, WP.Backward);
     } else if delta == LN.NN(0) {
       i := j;
       k := 0;
     } else {
+      var gm' := LG.GMReset(gidl, gm);
       var qpred := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
       var inner := [LS.Acheck(inp), LS.Areg(qpred)] + cont;
+      NoBackrefActsCons(LS.Areg(qpred), cont);
+      NoBackrefActsCons(LS.Acheck(inp), [LS.Areg(qpred)] + cont);
       assert [LS.Areg(r1), LS.Acheck(inp), LS.Areg(qpred)] + cont == [LS.Areg(r1)] + inner;
-      var titer := FU.ComputeTr(rer, [LS.Areg(r1)] + inner, inp, gm, WP.Backward);
+      var titer := FU.ComputeTr(rer, [LS.Areg(r1)] + inner, inp, gm', WP.Backward);
       var tskip := FU.ComputeTr(rer, cont, inp, gm, WP.Backward);
       assert FU.ComputeTr(rer, acts, inp, gm, WP.Backward)
-          == LT.GreedyChoice(greedy, LT.GroupActionT(LG.Reset([]), titer), tskip);
-      var iterRes := LT.TreeRes(LT.GroupActionT(LG.Reset([]), titer), gm, inp, WP.Backward);
+          == LT.GreedyChoice(greedy, LT.GroupActionT(LG.Reset(gidl), titer), tskip);
+      var iterRes := LT.TreeRes(LT.GroupActionT(LG.Reset(gidl), titer), gm, inp, WP.Backward);
       var skipRes := LT.TreeRes(tskip, gm, inp, WP.Backward);
       assert iterRes.Some? || skipRes.Some? by {
         if greedy {
-          assert LT.TreeRes(LT.GreedyChoice(greedy, LT.GroupActionT(LG.Reset([]), titer), tskip), gm, inp, WP.Backward)
+          assert LT.TreeRes(LT.GreedyChoice(greedy, LT.GroupActionT(LG.Reset(gidl), titer), tskip), gm, inp, WP.Backward)
               == LT.Seqop(iterRes, skipRes);
         } else {
-          assert LT.TreeRes(LT.GreedyChoice(greedy, LT.GroupActionT(LG.Reset([]), titer), tskip), gm, inp, WP.Backward)
+          assert LT.TreeRes(LT.GreedyChoice(greedy, LT.GroupActionT(LG.Reset(gidl), titer), tskip), gm, inp, WP.Backward)
               == LT.Seqop(skipRes, iterRes);
         }
       }
@@ -1648,27 +1725,28 @@ module LindenSpanDuality {
         k := 0;
       } else {
         assert iterRes.Some?;
-        assert LT.TreeRes(titer, gm, inp, WP.Backward).Some?;
-        var m := BwdSound(rer, r1, inner, str, j, gm);
+        assert LT.TreeRes(titer, gm', inp, WP.Backward).Some?;
+        var m := BwdSound(rer, r1, inner, str, j, gm');
         // the Acheck guard forces strict progress: m < j
         var inpM := T.InputAt(str, m);
-        FU.ComputeTrRw(rer, inner, inpM, gm, WP.Backward);
+        FU.ComputeTrRw(rer, inner, inpM, gm', WP.Backward);
         assert inner[0] == LS.Acheck(inp) && inner[1..] == [LS.Areg(qpred)] + cont;
         if !SSx.IsStrictSuffix(inpM, inp, WP.Backward) {
-          assert FU.ComputeTr(rer, inner, inpM, gm, WP.Backward) == LT.Mismatch;
+          assert FU.ComputeTr(rer, inner, inpM, gm', WP.Backward) == LT.Mismatch;
           assert false;
         }
         SSx.SSLengthLt(inpM, inp, WP.Backward);
         IdxInputAt(str, m);
         IdxInputAt(str, j);
         assert m < j;
-        var tq := FU.ComputeTr(rer, [LS.Areg(qpred)] + cont, inpM, gm, WP.Backward);
-        assert FU.ComputeTr(rer, inner, inpM, gm, WP.Backward) == LT.Progress(tq);
-        assert SuccActs(rer, [LS.Areg(qpred)] + cont, inpM, gm, WP.Backward);
-        var i2, k2 := BwdSoundQuant(rer, greedy, 0, FS.NoiPred(delta), r1, cont, str, m, gm);
+        var tq := FU.ComputeTr(rer, [LS.Areg(qpred)] + cont, inpM, gm', WP.Backward);
+        assert FU.ComputeTr(rer, inner, inpM, gm', WP.Backward) == LT.Progress(tq);
+        assert SuccActs(rer, [LS.Areg(qpred)] + cont, inpM, gm', WP.Backward);
+        var i2, k2 := BwdSoundQuant(rer, greedy, 0, FS.NoiPred(delta), r1, cont, str, m, gm');
         i := i2;
         k := k2 + 1;
         IterLSnoc(rer, r1, k2, str, i2, m, j);
+        SuccActsGmIndep(rer, cont, T.InputAt(str, i2), gm', gm, WP.Backward);
       }
     }
   }
@@ -1678,12 +1756,13 @@ module LindenSpanDuality {
       `cp`. */
   lemma SpanDualitySound(rer: LW.RegExpRecord, r: L.Regex, str: string,
                          cp: int, gm: LG.GroupMap) returns (i: int)
-    requires GroupFreeL(r)
+    requires GroupOkL(r)
     requires 0 <= cp <= |str|
     requires SuccActs(rer, [LS.Areg(r)], T.InputAt(str, cp), gm, WP.Backward)
     ensures 0 <= i <= cp && MatchesL(rer, r, str, i, cp)
   {
     assert [LS.Areg(r)] + [] == [LS.Areg(r)];
+    assert NoBackrefActs([]);
     i := BwdSound(rer, r, [], str, cp, gm);
   }
 
@@ -1929,7 +2008,7 @@ module LindenSpanDuality {
   /** Success of the FORWARD walk, expressed through the reversal. */
   lemma SuccActsForwardViaReverse(rer: LW.RegExpRecord, r: L.Regex, str: string,
                                   cp: int, gm: LG.GroupMap)
-    requires GroupFreeL(r)
+    requires GroupOkL(r)
     requires 0 <= cp <= |str|
     ensures |LC.Reverse(str)| == |str|
     ensures SuccActs(rer, [LS.Areg(r)], T.InputAt(str, cp), gm, WP.Forward)
@@ -1938,8 +2017,7 @@ module LindenSpanDuality {
   {
     ReverseLength(str);
     InputAtSwap(str, cp);
-    RevLGroupFree(r);
-    GroupFreeIsGroupOk(RevL(r));
+    RevLGroupOk(r);
     var acts := [LS.Areg(RevL(r))];
     assert GroupOkActs(acts) by {
       forall i | 0 <= i < |acts| && acts[i].Areg? ensures GroupOkL(acts[i].r) {}
@@ -1954,15 +2032,14 @@ module LindenSpanDuality {
   /** THE FORWARD COMPLETENESS half: a span makes the forward walk succeed. */
   lemma SpanDualityForwardComplete(rer: LW.RegExpRecord, r: L.Regex, str: string,
                                    i: int, j: int, gm: LG.GroupMap)
-    requires GroupFreeL(r)
+    requires GroupOkL(r)
     requires 0 <= i <= j <= |str|
     requires MatchesL(rer, r, str, i, j)
     ensures SuccActs(rer, [LS.Areg(r)], T.InputAt(str, i), gm, WP.Forward)
   {
     ReverseLength(str);
-    GroupFreeIsGroupOk(r);
     MatchesLReverse(rer, r, str, i, j);
-    RevLGroupFree(r);
+    RevLGroupOk(r);
     SpanDualityComplete(rer, RevL(r), LC.Reverse(str), |str| - j, |str| - i, gm);
     SuccActsForwardViaReverse(rer, r, str, i, gm);
   }
@@ -1970,21 +2047,19 @@ module LindenSpanDuality {
   /** THE FORWARD SOUNDNESS half: a successful forward walk yields a span. */
   lemma SpanDualityForwardSound(rer: LW.RegExpRecord, r: L.Regex, str: string,
                                 cp: int, gm: LG.GroupMap) returns (j: int)
-    requires GroupFreeL(r)
+    requires GroupOkL(r)
     requires 0 <= cp <= |str|
     requires SuccActs(rer, [LS.Areg(r)], T.InputAt(str, cp), gm, WP.Forward)
     ensures cp <= j <= |str|
     ensures MatchesL(rer, r, str, cp, j)
   {
     ReverseLength(str);
-    GroupFreeIsGroupOk(r);
-    RevLGroupFree(r);
+    RevLGroupOk(r);
     SuccActsForwardViaReverse(rer, r, str, cp, gm);
     var m := SpanDualitySound(rer, RevL(r), LC.Reverse(str), |str| - cp, gm);
     // m is the START of the reversed span; mirror it back
     j := |str| - m;
     RevLInvolution(r);
-    GroupFreeIsGroupOk(RevL(r));
     MatchesLReverse(rer, RevL(r), LC.Reverse(str), m, |str| - cp);
     assert MatchesL(rer, RevL(RevL(r)), LC.Reverse(LC.Reverse(str)),
                     |str| - (|str| - cp), |str| - m);
