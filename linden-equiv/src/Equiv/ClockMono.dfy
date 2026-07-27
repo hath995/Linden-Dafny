@@ -28,6 +28,9 @@ module LindenElkClockMono {
   import LCdn = Cdn
   import RC = Charclasses
   import PIV = LindenElkPikeInv
+  import NR = LindenElkNfaRep
+  import CP = Compiler
+  import R = RegElkRegex
 
   // Every clock stored in `regs` is at most C. Note: because get_idx yields -1
   // for out-of-range indices, RegsClocksLE(regs, C) already forces C >= -1.
@@ -781,6 +784,31 @@ module LindenElkClockMono {
         var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
         assert VmCapturesAgree(s4, cap0, S);
         FFindMatchCapWriteFrame(c, str, s4, ov1, dir, cdn, cap0, S);
+    }
+  }
+
+  /** The whole-bytecode lift: `compile_to_bytecode(body)` (the shape FLookLoop
+      replays for a lookAHEAD capture pass, `capture_regex(Lookahead)==body`)
+      writes capture registers only for `body`'s own group ids — the exact
+      `CaptureWritesInside` hypothesis `FFindMatchCapWriteFrame` needs. The
+      trailing `Accept` is not a `SetRegisterToCP`. */
+  lemma CaptureBytecodeClassified(body: R.regex)
+    requires NR.LookBehindFragmentRE(body) && PIV.CapUnique(body)
+    ensures CaptureWritesInside(CP.compile_to_bytecode(body), PIV.CaptureRegs(body))
+  {
+    var code := CP.compile_to_bytecode(body);
+    var next := CP.compile(body, 0, CP.Progress).1;
+    NR.CompileToBytecodeRepLookBehind(body);
+    forall pc: nat | pc < |code|
+      ensures code[pc].SetRegisterToCP? ==> code[pc].reg in PIV.CaptureRegs(body)
+    {
+      assert NR.GetPcRE(code, pc) == Some(code[pc]);
+      if pc < next as nat {
+        PIV.CaptureWriteIdsRE(body, code, 0, next as nat, pc);
+      } else {
+        assert pc == next as nat;
+        assert NR.GetPcRE(code, next as nat) == Some(RB.Accept);
+      }
     }
   }
 

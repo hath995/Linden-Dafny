@@ -3151,6 +3151,133 @@ module LindenElkPikeInv {
 
   /** `QuantIds` that does NOT descend into lookaround bodies — the ids the
       filter can actually consult. */
+  // ==========================================================================
+  // Capture-id in/outside-looks split (L3a) — the capture analogue of the
+  // quant split below. The capture pass replays a look body's OWN groups
+  // (CapIdsInLooks), disjoint from the outer groups the main filter reads
+  // (CapIdsOutsideLooks). Lifted to registers by CaptureRegsDisjoint.
+  // ==========================================================================
+
+  /** The capture ids OUTSIDE lookaround bodies — read by the main filter. */
+  ghost function CapIdsOutsideLooks(r: R.regex): set<nat>
+    decreases r
+  {
+    match r
+    case Re_empty => {}
+    case Re_character(_) => {}
+    case Re_anchor(_) => {}
+    case Re_alt(r1, r2) => CapIdsOutsideLooks(r1) + CapIdsOutsideLooks(r2)
+    case Re_con(r1, r2) => CapIdsOutsideLooks(r1) + CapIdsOutsideLooks(r2)
+    case Re_quant(_, _, _, r1) => CapIdsOutsideLooks(r1)
+    case Re_capture(cid, r1) => (if cid >= 0 then {cid as nat} else {}) + CapIdsOutsideLooks(r1)
+    case Re_lookaround(_, _, _) => {}
+  }
+
+  /** The capture ids INSIDE lookaround bodies — replayed by the capture pass. */
+  ghost function CapIdsInLooks(r: R.regex): set<nat>
+    decreases r
+  {
+    match r
+    case Re_empty => {}
+    case Re_character(_) => {}
+    case Re_anchor(_) => {}
+    case Re_alt(r1, r2) => CapIdsInLooks(r1) + CapIdsInLooks(r2)
+    case Re_con(r1, r2) => CapIdsInLooks(r1) + CapIdsInLooks(r2)
+    case Re_quant(_, _, _, r1) => CapIdsInLooks(r1)
+    case Re_capture(_, r1) => CapIdsInLooks(r1)
+    case Re_lookaround(_, _, r1) => CapIds(r1)
+  }
+
+  /** The two halves cover everything. */
+  lemma CapIdsSplit(r: R.regex)
+    ensures CapIds(r) == CapIdsOutsideLooks(r) + CapIdsInLooks(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => CapIdsSplit(r1); CapIdsSplit(r2);
+    case Re_con(r1, r2) => CapIdsSplit(r1); CapIdsSplit(r2);
+    case Re_quant(_, _, _, r1) => CapIdsSplit(r1);
+    case Re_capture(_, r1) => CapIdsSplit(r1);
+    case Re_lookaround(_, _, r1) =>
+    case _ =>
+  }
+
+  /** ...and, with unique ids, they are disjoint. */
+  lemma CapIdsLooksDisjoint(r: R.regex)
+    requires CapUnique(r)
+    ensures CapIdsOutsideLooks(r) * CapIdsInLooks(r) == {}
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      CapIdsLooksDisjoint(r1); CapIdsLooksDisjoint(r2);
+      CapIdsSplit(r1); CapIdsSplit(r2);
+      forall q: nat | q in CapIdsOutsideLooks(r) ensures q !in CapIdsInLooks(r) {
+        if q in CapIdsOutsideLooks(r1) {
+          assert q !in CapIdsInLooks(r1) by {
+            if q in CapIdsInLooks(r1) { assert q in CapIdsOutsideLooks(r1) * CapIdsInLooks(r1); }
+          }
+          assert q in CapIds(r1);
+          if q in CapIdsInLooks(r2) { assert q in CapIds(r2); assert q in CapIds(r1) * CapIds(r2); }
+        } else {
+          assert q in CapIdsOutsideLooks(r2);
+          assert q !in CapIdsInLooks(r2) by {
+            if q in CapIdsInLooks(r2) { assert q in CapIdsOutsideLooks(r2) * CapIdsInLooks(r2); }
+          }
+          assert q in CapIds(r2);
+          if q in CapIdsInLooks(r1) { assert q in CapIds(r1); assert q in CapIds(r1) * CapIds(r2); }
+        }
+      }
+    case Re_con(r1, r2) =>
+      CapIdsLooksDisjoint(r1); CapIdsLooksDisjoint(r2);
+      CapIdsSplit(r1); CapIdsSplit(r2);
+      forall q: nat | q in CapIdsOutsideLooks(r) ensures q !in CapIdsInLooks(r) {
+        if q in CapIdsOutsideLooks(r1) {
+          assert q !in CapIdsInLooks(r1) by {
+            if q in CapIdsInLooks(r1) { assert q in CapIdsOutsideLooks(r1) * CapIdsInLooks(r1); }
+          }
+          assert q in CapIds(r1);
+          if q in CapIdsInLooks(r2) { assert q in CapIds(r2); assert q in CapIds(r1) * CapIds(r2); }
+        } else {
+          assert q in CapIdsOutsideLooks(r2);
+          assert q !in CapIdsInLooks(r2) by {
+            if q in CapIdsInLooks(r2) { assert q in CapIdsOutsideLooks(r2) * CapIdsInLooks(r2); }
+          }
+          assert q in CapIds(r2);
+          if q in CapIdsInLooks(r1) { assert q in CapIds(r1); assert q in CapIds(r1) * CapIds(r2); }
+        }
+      }
+    case Re_quant(_, _, _, r1) => CapIdsLooksDisjoint(r1);
+    case Re_capture(cid, r1) =>
+      CapIdsLooksDisjoint(r1);
+      CapIdsSplit(r1);
+      forall q: nat | q in CapIdsOutsideLooks(r) ensures q !in CapIdsInLooks(r) {
+        if q == cid as nat {
+          if q in CapIdsInLooks(r1) { assert q in CapIds(r1); }   // CapUnique: cid !in CapIds(r1)
+        }
+      }
+    case Re_lookaround(_, _, r1) =>
+    case _ =>
+  }
+
+  /** Disjoint capture ids give disjoint capture REGISTERS (start_reg/end_reg
+      are injective and parity-separated). */
+  lemma CaptureRegsDisjoint(a: R.regex, b: R.regex)
+    requires CapIds(a) * CapIds(b) == {}
+    ensures CaptureRegs(a) * CaptureRegs(b) == {}
+  {
+    forall k | k in CaptureRegs(a) ensures k !in CaptureRegs(b) {
+      var ca :| ca in CapIds(a) && (k == CP.start_reg(ca) || k == CP.end_reg(ca));
+      if k in CaptureRegs(b) {
+        var cb :| cb in CapIds(b) && (k == CP.start_reg(cb) || k == CP.end_reg(cb));
+        assert CP.start_reg(ca) == 2 * ca && CP.end_reg(ca) == 2 * ca + 1;
+        assert CP.start_reg(cb) == 2 * cb && CP.end_reg(cb) == 2 * cb + 1;
+        assert ca == cb;
+        assert ca in CapIds(a) * CapIds(b);
+      }
+    }
+  }
+
   ghost function QuantIdsOutsideLooks(r: R.regex): set<nat>
     decreases r
   {
