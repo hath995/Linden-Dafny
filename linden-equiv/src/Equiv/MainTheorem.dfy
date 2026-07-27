@@ -1483,6 +1483,34 @@ module LindenElkMain {
     FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
   }
 
+  /** L3a — the CAPTURING replay's frame direction: for a lookAHEAD with a
+      capturing body (`capture_regex(Lookahead)==body`, run Forward), the
+      replay's `FFindMatch` changes the capture bank only within
+      `CaptureRegs(body)` (the body's own groups). Contrast `ReplayFrames`,
+      which for a capture-free body gets the bank UNTOUCHED. Built from the
+      capture-write frame + the whole-bytecode classification. */
+  lemma ReplayCaptureFrame(bytecode: RB.code, str: string, inits: AI.VmState, ov: LOr.OracleView,
+                           dir: LAnc.direction, lookcdn: LCdn.cdns,
+                           cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs,
+                           la: R.lookaround, body: R.regex)
+    requires NR.LookBehindFragmentRE(body) && PIV.CapUnique(body)
+    requires la.Lookahead? && dir == LAnc.Forward
+    requires bytecode == CP.compile_to_bytecode(body)
+    requires inits.active == [AI.init_thread(cap, lk, qt)]
+    requires inits.blocked == [] && inits.bestmatch.None?
+    requires |inits.processed.true_set| == RB.size(bytecode)
+          && |inits.processed.false_set| == RB.size(bytecode)
+    requires inits.context.nextchar == AI.get_char(str, inits.cp)
+    ensures var r := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn).0;
+      r.Some? ==> CM.RegsAgreeOutside(r.value.capture_regs, cap, PIV.CaptureRegs(body))
+  {
+    CM.CaptureBytecodeClassified(body);
+    assert CM.VmCapturesAgree(inits, cap, PIV.CaptureRegs(body)) by {
+      assert CM.RegsAgreeOutside(cap, cap, PIV.CaptureRegs(body));
+    }
+    CM.FFindMatchCapWriteFrame(bytecode, str, inits, ov, dir, lookcdn, cap, PIV.CaptureRegs(body));
+  }
+
   /** The filter cannot see the difference the replay makes. */
   lemma FilterUnmoved(mainast: R.regex, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs,
                       ncap: AReg.Regs, nlk: AReg.Regs, nqt: AReg.Regs, body: R.regex)
