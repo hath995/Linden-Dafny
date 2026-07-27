@@ -110,7 +110,9 @@ module LindenElkOracleEntry {
     ensures T.TransWf(body)
     ensures LmOf(re)[lid] == (T.TrLookaround(la), T.Translate(body))
     ensures LTB.LookEntryOk(fc, lid, la, body)
-    ensures la.Lookbehind? || la.NegLookbehind?
+    // the fragment now admits BOTH flavours; a lookAHEAD's body is
+    // additionally star-shaped (hence its build program is anchor-free)
+    ensures (la.Lookahead? || la.NegLookahead?) ==> NR.StarFragmentRE(body)
     ensures NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
     ensures lid >= 0 && (lid as nat) in LTB.LookIds(re)
     // the quant half: `body` sits under a lookaround, so every id it owns is
@@ -366,8 +368,17 @@ module LindenElkOracleEntry {
         var la, body := LmOfInv(re, fc, lid);
         assert lk == T.TrLookaround(la) && r1 == T.Translate(body);
         assert 1 <= lid;                              // ids start at 1 after annotate
-        assert L.LkDir(lk) == WP.Backward;            // lookBEHIND
-        OS.OracleColumnSpec(rer, re, str, lid, la, body, cp, LG.Empty);
+        LTB.LookIdsLeMax(re);
+        // each flavour has its own column spec, and `LkDir` picks the matching
+        // walk direction -- which is exactly why `OracleOkAt` is stated in
+        // terms of LkDir rather than a fixed direction
+        if la.Lookbehind? || la.NegLookbehind? {
+          assert L.LkDir(lk) == WP.Backward;
+          OS.OracleColumnSpec(rer, re, str, lid, la, body, cp, LG.Empty);
+        } else {
+          assert L.LkDir(lk) == WP.Forward;
+          OS.OracleColumnSpecLookahead(rer, re, str, lid, la, body, cp, LG.Empty);
+        }
       }
     }
   }

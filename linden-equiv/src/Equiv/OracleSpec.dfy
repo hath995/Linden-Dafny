@@ -52,6 +52,8 @@ module LindenElkOracleSpec {
   import ORc = LindenElkOracleReach
   import OB = LindenElkOracleBridge
   import OD = LindenElkOracleDecomp
+  import OBu = LindenElkOracleBuild
+  import MIR = LindenElkMirror
 
   // ===========================================================================
   // Position contexts
@@ -297,5 +299,107 @@ module LindenElkOracleSpec {
     MatchesTransfer(rer, SD.RevRE(re), LC.Reverse(str), |str| - j, |str| - i);
     SD.MatchesLReverse(rer, T.Translate(re), str, i, j);
     assert T.Translate(SD.RevRE(re)) == SD.RevL(T.Translate(re));
+  }
+
+  // ==========================================================================
+  // The LOOKAHEAD column spec (L2)
+  // ==========================================================================
+
+  /** On an anchor-free regex the spec-side reversal IS the engine's
+      `reverse_regex` -- they differ only in the anchor case. */
+  lemma RevREIsReverse(r: R.regex)
+    requires NR.StarFragmentRE(r)
+    ensures SD.RevRE(r) == R.reverse_regex(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => RevREIsReverse(r1); RevREIsReverse(r2);
+    case Re_con(r1, r2) => RevREIsReverse(r1); RevREIsReverse(r2);
+    case Re_quant(_, _, _, r1) => RevREIsReverse(r1);
+    case Re_capture(_, r1) => RevREIsReverse(r1);
+    case _ =>
+  }
+
+  /** THE LOOKAHEAD COLUMN SPEC. A lookAHEAD's oracle column at `cp` holds
+      exactly when the spec's FORWARD walk of its body from `cp` succeeds --
+      the mirror image of `OracleColumnSpec`, and the statement
+      `OracleOkAt` needs for a lookahead row (where `LkDir` is Forward).
+
+      The chain, and where each link came from:
+        oracle bit                          FBuildOracleCorrect
+          == LidReaches (Backward build)
+          == forward reach over Reverse(str)  LidReachesBackwardNoAnchor
+                                              (the body is star-shaped, so the
+                                               build program is anchor-free and
+                                               the anchor swap is the identity)
+          <-> a span of reverse_regex(body) ending at Mirror(cp)
+                                              ReachesWriteToMatches /
+                                              MatchesToReachesWrite
+          <-> a span of body STARTING at cp   MatchesReverseRE
+          <-> the forward walk succeeds       MatchesTransfer +
+                                              SpanDualityForward{Complete,Sound}
+   */
+  lemma OracleColumnSpecLookahead(rer: LW.RegExpRecord, re: R.regex, str: string,
+                                  lid: R.lookid, la: R.lookaround, body: R.regex,
+                                  cp: int, gm: LG.GroupMap)
+    requires !rer.ignoreCase && !rer.multiline
+    requires NR.LookBehindFragmentRE(re) && LT.LookUnique(re)
+    requires LT.LookEntryOk(CP.FFullCompilation(re), lid, la, body)
+    requires la.Lookahead? || la.NegLookahead?
+    requires NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.StarFragmentRE(body)
+    requires T.TransWf(body)
+    requires 1 <= lid <= R.max_lookaround(re)
+    requires 0 <= cp <= |str|
+    ensures LOr.view_get_oracle(AI.FBuildOracle(CP.FFullCompilation(re), str), cp, lid)
+        <==> SD.SuccActs(rer, [LS.Areg(T.Translate(body))], T.InputAt(str, cp), gm,
+                         WP.Forward)
+  {
+    var crv := CP.FFullCompilation(re);
+    var n := |str|;
+    var rstr := LC.Reverse(str);
+    var rb := R.reverse_regex(body);
+    SD.ReverseLength(str);
+
+    // --- the build program for this row ------------------------------------
+    NR.RemoveCaptureFreeId(body);
+    assert CP.oracle_regex(la, body) == R.lazy_prefix(rb);
+    NR.ReverseStarFragmentRE(body);
+    NR.ReverseLookFreeRE(body);
+    NR.StarIsAnchorFragmentRE(rb);
+    NR.AnchorIsQuantFragmentRE(rb);
+    NR.QuantIsPlusFragmentRE(rb);
+    OBu.LookFreeLazyPrefix(rb);
+    var bc := CP.compile_to_write(R.lazy_prefix(rb), lid);
+    assert AI.get_code_v(crv.f_look_build_bc, lid) == bc;
+
+    // --- oracle bit == a FORWARD reach over the reversed string ------------
+    OBu.FBuildOracleCorrect(re, str);
+    assert OBu.LidDir(crv, lid) == LAnc.Backward;
+    NR.CompileToWriteNoAnchor(R.lazy_prefix(rb), lid);
+    OBu.LidReachesBackwardNoAnchor(crv, str, lid, cp);
+    assert LOr.view_get_oracle(AI.FBuildOracle(crv, str), cp, lid)
+        <==> ORc.ReachesWrite(bc, rstr, 0, lid, MIR.Mirror(cp, n));
+
+    // --- and that is a span of `body` starting at cp ------------------------
+    RevREIsReverse(body);
+    TranslateGroupFree(body);
+    SD.GroupFreeIsGroupOk(T.Translate(body));
+
+    if LOr.view_get_oracle(AI.FBuildOracle(crv, str), cp, lid) {
+      var m := OD.ReachesWriteToMatches(rb, lid, rstr, MIR.Mirror(cp, n));
+      // m is the span's START in the reversal; mirror it back
+      var j := n - m;
+      MatchesReverseRE(rer, body, str, cp, j);
+      assert OB.Matches(body, str, cp, j);
+      MatchesTransfer(rer, body, str, cp, j);
+      SD.SpanDualityForwardComplete(rer, T.Translate(body), str, cp, j, gm);
+    }
+    if SD.SuccActs(rer, [LS.Areg(T.Translate(body))], T.InputAt(str, cp), gm, WP.Forward) {
+      var j := SD.SpanDualityForwardSound(rer, T.Translate(body), str, cp, gm);
+      MatchesTransfer(rer, body, str, cp, j);
+      MatchesReverseRE(rer, body, str, cp, j);
+      assert OB.Matches(rb, rstr, n - j, MIR.Mirror(cp, n));
+      OB.MatchesToReachesWrite(rb, lid, rstr, n - j, MIR.Mirror(cp, n));
+    }
   }
 }

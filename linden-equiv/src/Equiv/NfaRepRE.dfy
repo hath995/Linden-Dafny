@@ -530,8 +530,14 @@ module LindenElkNfaRep {
       && LookBehindFragmentRE(r1)
     case Re_capture(cid, r1) => LookBehindFragmentRE(r1)
     case Re_lookaround(lid, la, r1) =>
-      (la.Lookbehind? || la.NegLookbehind?)
-      && CaptureFreeRE(r1) && LookFreeRE(r1) && PlusFragmentRE(r1)
+      // BOTH flavours now. A lookBEHIND's body may use the whole plus
+      // fragment; a lookAHEAD's must additionally be star-shaped, which for
+      // the compiled build program means ANCHOR-FREE -- and that is what makes
+      // the anchor swap the identity on it (see Mirror.SwapAnchorsCodeIdent),
+      // so a backward build reads as a forward run of the same code. Drop the
+      // extra conjunct once the compile/swap commutation is proved.
+      CaptureFreeRE(r1) && LookFreeRE(r1) && PlusFragmentRE(r1)
+      && ((la.Lookahead? || la.NegLookahead?) ==> StarFragmentRE(r1))
   }
 
   /** The `raw_regex` counterpart of `LookBehindFragmentRE`. */
@@ -554,8 +560,8 @@ module LindenElkNfaRep {
       && LookBehindFragmentRaw(r1)
     case Raw_capture(r1) => LookBehindFragmentRaw(r1)
     case Raw_lookaround(look, r1) =>
-      (look.Lookbehind? || look.NegLookbehind?)
-      && CaptureFreeRaw(r1) && LookFreeRaw(r1) && PlusFragmentRaw(r1)
+      CaptureFreeRaw(r1) && LookFreeRaw(r1) && PlusFragmentRaw(r1)
+      && ((look.Lookahead? || look.NegLookahead?) ==> StarFragmentRaw(r1))
   }
 
   /** The plus fragment embeds in the lookbehind fragment. */
@@ -657,6 +663,9 @@ module LindenElkNfaRep {
       AnnotateCaptureFree(r1, c, l + 1, q);
       AnnotateLookFree(r1, c, l + 1, q);
       AnnotatePlusFragment(r1, c, l + 1, q);
+      if look.Lookahead? || look.NegLookahead? {
+        AnnotateStarFragment(r1, c, l + 1, q);   // the lookAHEAD body stays star
+      }
     case _ =>
   }
 
@@ -689,11 +698,47 @@ module LindenElkNfaRep {
       the capture-free body, and the lazy prefix's quantifier is star-shaped —
       so the whole existing forward build pipeline applies unchanged. */
   lemma OracleRegexPlusFragment(la: R.lookaround, body: R.regex)
-    requires la.Lookbehind? || la.NegLookbehind?
     requires CaptureFreeRE(body) && PlusFragmentRE(body)
+    requires (la.Lookahead? || la.NegLookahead?) ==> StarFragmentRE(body)
     ensures PlusFragmentRE(CP.oracle_regex(la, body))
   {
     RemoveCaptureFreeId(body);
+    if la.Lookahead? || la.NegLookahead? {
+      // the lookAHEAD build reverses the body first
+      ReverseStarFragmentRE(body);
+      StarIsAnchorFragmentRE(R.reverse_regex(body));
+      AnchorIsQuantFragmentRE(R.reverse_regex(body));
+      QuantIsPlusFragmentRE(R.reverse_regex(body));
+    }
+  }
+
+  /** `reverse_regex` preserves look-freedom. */
+  lemma ReverseLookFreeRE(r: R.regex)
+    requires LookFreeRE(r)
+    ensures LookFreeRE(R.reverse_regex(r))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => ReverseLookFreeRE(r1); ReverseLookFreeRE(r2);
+    case Re_con(r1, r2) => ReverseLookFreeRE(r1); ReverseLookFreeRE(r2);
+    case Re_quant(_, _, _, r1) => ReverseLookFreeRE(r1);
+    case Re_capture(_, r1) => ReverseLookFreeRE(r1);
+    case _ =>
+  }
+
+  /** `reverse_regex` preserves the star fragment (it only reorders
+      concatenations). */
+  lemma ReverseStarFragmentRE(r: R.regex)
+    requires StarFragmentRE(r)
+    ensures StarFragmentRE(R.reverse_regex(r))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => ReverseStarFragmentRE(r1); ReverseStarFragmentRE(r2);
+    case Re_con(r1, r2) => ReverseStarFragmentRE(r1); ReverseStarFragmentRE(r2);
+    case Re_quant(_, _, _, r1) => ReverseStarFragmentRE(r1);
+    case Re_capture(_, r1) => ReverseStarFragmentRE(r1);
+    case _ =>
   }
 
   // ===========================================================================

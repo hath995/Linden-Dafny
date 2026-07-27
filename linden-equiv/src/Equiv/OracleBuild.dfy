@@ -249,13 +249,20 @@ module LindenElkOracleBuild {
       assert lid >= 0 && (lid as nat) == i;
       // the recorded row (LookEntryOk) with the fragment's body facts
       NR.RemoveCaptureFreeId(body);
-      assert CP.oracle_regex(la, body) == R.lazy_prefix(body);
       NR.OracleRegexPlusFragment(la, body);
-      LookFreeLazyPrefix(body);
-      NR.CompileToWriteClassified(R.lazy_prefix(body), lid);
-      assert AI.get_code_v(fc.f_look_build_bc, i)
-          == CP.compile_to_write(R.lazy_prefix(body), lid);
-      assert AI.oracle_direction(fc.f_look_types[i]) == LAnc.Forward;
+      // a lookBEHIND builds lazy_prefix(body); a lookAHEAD builds
+      // lazy_prefix(reverse_regex(body)). Both are classified build programs.
+      if la.Lookbehind? || la.NegLookbehind? {
+        assert CP.oracle_regex(la, body) == R.lazy_prefix(body);
+        LookFreeLazyPrefix(body);
+        NR.CompileToWriteClassified(R.lazy_prefix(body), lid);
+      } else {
+        assert CP.oracle_regex(la, body) == R.lazy_prefix(R.reverse_regex(body));
+        NR.ReverseStarFragmentRE(body);
+        NR.ReverseLookFreeRE(body);
+        LookFreeLazyPrefix(R.reverse_regex(body));
+        NR.CompileToWriteClassified(R.lazy_prefix(R.reverse_regex(body)), lid);
+      }
   }
 
   /** Every lid whatsoever satisfies `LidBuildOk` against
@@ -324,7 +331,10 @@ module LindenElkOracleBuild {
     requires NR.LookBehindFragmentRE(r)
     requires LT.LookTablesOk(r, fc)
     requires i in LT.LookIds(r)
-    ensures LidDir(fc, i) == LAnc.Forward
+    // only a lookBEHIND row builds Forward; the fragment now admits lookaheads
+    ensures 0 <= i < |fc.f_look_types|
+    ensures (fc.f_look_types[i].Lookbehind? || fc.f_look_types[i].NegLookbehind?)
+            ==> LidDir(fc, i) == LAnc.Forward
     decreases r
   {
     match r
@@ -339,7 +349,6 @@ module LindenElkOracleBuild {
     case Re_lookaround(lid, la, body) =>
       LookFreeNoIds(body);
       assert lid >= 0 && (lid as nat) == i;
-      assert la.Lookbehind? || la.NegLookbehind?;
       assert fc.f_look_types[i] == la;
   }
 
@@ -352,14 +361,15 @@ module LindenElkOracleBuild {
     requires NR.LookBehindFragmentRE(re)
     requires LT.LookUnique(re)
     ensures var crv := CP.FFullCompilation(re);
-      LidReaches(crv, str, i, cp)
-      <==> ORc.ReachesWrite(AI.get_code_v(crv.f_look_build_bc, i), str, 0, i, cp)
+      (LidDir(crv, i) == LAnc.Forward ==>
+        (LidReaches(crv, str, i, cp)
+         <==> ORc.ReachesWrite(AI.get_code_v(crv.f_look_build_bc, i), str, 0, i, cp)))
   {
     var crv := CP.FFullCompilation(re);
     if i >= 0 && (i as nat) in LT.LookIds(re) {
       LT.FFullCompilationLookOk(re);
       LookTablesLidDirForward(re, crv, i as nat);
-      LidReachesForward(crv, str, i, cp);
+      if LidDir(crv, i) == LAnc.Forward { LidReachesForward(crv, str, i, cp); }
     } else {
       NonLidRowEmpty(re, i);
       LidReachesEmpty(crv, str, i, cp);
@@ -486,8 +496,7 @@ module LindenElkOracleBuild {
       var ovf := AI.FBuildOracle(crv, str);
       forall lid: int, cp: int ::
         LOr.view_get_oracle(ovf, cp, lid)
-        == (1 <= lid <= R.max_lookaround(re)
-            && ORc.ReachesWrite(AI.get_code_v(crv.f_look_build_bc, lid), str, 0, lid, cp))
+        == (1 <= lid <= R.max_lookaround(re) && LidReaches(crv, str, lid, cp))
   {
     var crv := CP.FFullCompilation(re);
     var maxlook0 := R.max_lookaround(re);
@@ -514,13 +523,6 @@ module LindenElkOracleBuild {
       AllLidsBuildOk(re, i);
     }
     FBuildLidsCharacterized(crv, str, maxlook, ov0);
-    // the fragment is all lookbehinds, so LidReaches collapses to ReachesWrite
-    forall i: int, cp: int
-      ensures LidReaches(crv, str, i, cp)
-          <==> ORc.ReachesWrite(AI.get_code_v(crv.f_look_build_bc, i), str, 0, i, cp)
-    {
-      LidReachesIsReachesWrite(re, str, i, cp);
-    }
   }
 
   /** `FBuildOracleCorrect` restated per lookaround, with the bytecode in its
@@ -538,7 +540,9 @@ module LindenElkOracleBuild {
   {
     var crv := CP.FFullCompilation(re);
     FBuildOracleCorrect(re, str);
-    // the row's bytecode, in lazy_prefix(body) form
+    // this row is a lookBEHIND, so its build is Forward and LidReaches is the
+    // plain reachability the L1 chain consumes
+    LidReachesIsReachesWrite(re, str, lid, cp);
     NR.RemoveCaptureFreeId(body);
     assert CP.oracle_regex(la, body) == R.lazy_prefix(body);
     assert AI.get_code_v(crv.f_look_build_bc, lid)
