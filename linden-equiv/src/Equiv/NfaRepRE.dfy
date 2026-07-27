@@ -2162,6 +2162,33 @@ module LindenElkNfaRep {
     }
   }
 
+  /** Star-fragment build code carries no anchor instruction. The point is
+      that the anchor SWAP is then the identity on it, so a BACKWARD build of
+      such a body can be read as a forward run of the very same program over
+      the reversed string -- no compile/swap commutation needed. */
+  lemma CompileToWriteNoAnchor(re: R.regex, lid: R.lookid)
+    requires StarFragmentRE(re)
+    ensures var code := CP.compile_to_write(re, lid);
+      forall pc :: 0 <= pc < |code| ==> !code[pc].AnchorAssertion?
+  {
+    StarIsAnchorFragmentRE(re);
+    AnchorIsQuantFragmentRE(re);
+    QuantIsPlusFragmentRE(re);
+    PlusIsLookBehindFragmentRE(re);
+    CompileToWriteRep(re, lid);
+    var code := CP.compile_to_write(re, lid);
+    var next := CP.compile(re, 0, CP.Progress).1;
+    forall pc | 0 <= pc < |code| ensures !code[pc].AnchorAssertion? {
+      if pc < next as nat {
+        StarFragmentNoAnchorInstr(re, code, 0, next as nat, pc);
+        assert GetPcRE(code, pc) == Some(code[pc]);
+      } else {
+        assert pc == next as nat;
+        assert GetPcRE(code, pc) == Some(RB.WriteOracle(lid));
+      }
+    }
+  }
+
   /** Labels only increase: `NfaRepRE(re, code, start, endl)` implies `start <= endl` —
       the RegElk port of Linden's `nfa_rep_incr`, used in termination/measure arguments
       elsewhere. */

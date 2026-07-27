@@ -182,6 +182,16 @@ module LindenElkMirror {
     ensures |SwapAnchorsCode(c)| == |c|
   {}
 
+  /** On anchor-free code the swap is the IDENTITY. This is what lets an
+      anchor-free backward build be read as a forward run of the very same
+      program, deferring the (harder) compile/swap commutation. */
+  lemma SwapAnchorsCodeIdent(c: RB.code)
+    requires forall pc: nat :: pc < |c| ==> !c[pc].AnchorAssertion?
+    ensures SwapAnchorsCode(c) == c
+  {
+    forall i | 0 <= i < |c| ensures SwapAnchorsCode(c)[i] == c[i] {}
+  }
+
   lemma SwapAnchorsCodeInvolution(c: RB.code)
     ensures SwapAnchorsCode(SwapAnchorsCode(c)) == c
   {

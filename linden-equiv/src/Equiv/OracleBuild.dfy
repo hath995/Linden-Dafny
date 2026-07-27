@@ -184,6 +184,25 @@ module LindenElkOracleBuild {
                           MIR.Mirror(cp, |str|))
   }
 
+  /** A BACKWARD build of an ANCHOR-FREE program: its column is the plain
+      FORWARD reachability of the SAME program over the reversed string, at
+      the mirrored position. No compile/swap commutation is needed, because
+      the swap cannot touch a program with no anchors in it.
+
+      This is the form a lookAHEAD's oracle column takes, and it is what lets
+      the existing (forward) C4 characterization be pointed straight at it. */
+  lemma LidReachesBackwardNoAnchor(crv: CP.FCompiled, str: string, i: int, cp: int)
+    requires LidDir(crv, i) == LAnc.Backward
+    requires forall pc: nat :: pc < |AI.get_code_v(crv.f_look_build_bc, i)| ==>
+               !AI.get_code_v(crv.f_look_build_bc, i)[pc].AnchorAssertion?
+    ensures LidReaches(crv, str, i, cp)
+        <==> ORc.ReachesWrite(AI.get_code_v(crv.f_look_build_bc, i), LC.Reverse(str),
+                              0, i, MIR.Mirror(cp, |str|))
+  {
+    reveal LidReaches();
+    MIR.SwapAnchorsCodeIdent(AI.get_code_v(crv.f_look_build_bc, i));
+  }
+
   /** An empty build program records nothing, in EITHER direction -- provable
       without knowing which, since both disjuncts are about empty code. */
   lemma LidReachesEmpty(crv: CP.FCompiled, str: string, i: int, cp: int)
