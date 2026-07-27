@@ -244,6 +244,7 @@ module LindenElkOracleSpec {
   {
     OD.OracleColumnCharacterized(re, str, lid, la, body, cp);
     TranslateGroupFree(body);
+    SD.GroupFreeIsGroupOk(T.Translate(body));   // SpanDuality now gates on GroupOkL (L3-0)
     if LOr.view_get_oracle(AI.FBuildOracle(CP.FFullCompilation(re), str), cp, lid) {
       var i := OD.RecorderHitInv(body, str, cp);
       MatchesTransfer(rer, body, str, i, cp);
