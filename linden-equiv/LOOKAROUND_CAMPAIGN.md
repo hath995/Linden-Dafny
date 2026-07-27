@@ -114,6 +114,54 @@ Note the direction chiasm: for a LOOKBEHIND the engine's build pass runs
      (`ReachF`), an EXISTENCE statement, far weaker than the priority
      (first-leaf) theorem the main pass needed.
 
+## 3.5 L2 OUTCOME (2026-07-27) — LOOKAHEADS ARE SUPPORTED
+
+`ApiMatch.Supported` admits BOTH flavours. Whole package **9166 verified,
+0 errors**.
+
+    (?<=...) / (?<!...)   body anywhere in the plus fragment
+    (?=...)  / (?!...)    body additionally STAR-shaped (anchor-free,
+                          only *-style quantifiers)
+
+The route was NOT either option this doc proposed (parameterize the rep/sim
+by direction, or a tree-level reversal). It is a third: **reverse the
+STRING, not the regex.** `Mirror.dfy` proves a Backward run of `c` over
+`str` equals a Forward run of `SwapAnchorsCode(c)` over `Reverse(str)` under
+`cp |-> |str| - cp`. That works because `cp_context` ALREADY swaps
+prev/next for Backward, and it preserves thread PRIORITY because the
+bytecode is the same object modulo the anchor swap.
+
+Layers, all proven:
+  - Mirror.dfy: the isomorphism, up to BackwardSweepCharacterization, so the
+    forward-only OracleReach (~1080 lines) serves backward builds by
+    transport rather than re-proof.
+  - SpanDuality: MatchesLReverse (span-level reversal -- existential, so no
+    priority problem, which is exactly why the ORACLE is reachable this way
+    and captures are not), SuccReverse/SuccActsReverse (the direction
+    correspondence), and SpanDualityForward{Complete,Sound} derived from the
+    backward family instead of a ~300-line hand port.
+  - OracleBuild: LidReaches makes the build direction-aware; the L1 chain
+    keeps its ReachesWrite form via a per-row bridge.
+  - OracleSpec: OracleColumnSpecLookahead -- the forward column spec. It
+    verified first try.
+  - OracleOkFromColumns dispatches on flavour; `OracleOkAt` was ALREADY
+    stated in terms of `LkDir(lk)`, so the whole tree/leaf/simulation layer
+    needed NO change.
+
+Why lookahead bodies are star-shaped: star => the compiled build program is
+ANCHOR-FREE => the anchor swap is the identity on it, so the transport needs
+no compile/swap commutation. Proving that commutation removes the
+restriction. Nothing else about lookaheads is narrower.
+
+Costs and caveats:
+  - MainTheorem now needs {:isolate_assertions}: ~10m, 1566 obligations.
+    Checked that none FAIL before concluding it was size.
+  - The predicate is still spelled `LookBehindFragmentRaw` while admitting
+    both flavours. Rename pending.
+  - Runtime validation still deferred (`lem test` cannot see locally packed
+    .doo). Lookahead adds a SECOND unexercised path -- its build scans
+    backward.
+
 ## 4. The milestone ladder
 
 - **L1 — capture-free, non-nested LOOKBEHINDS** (this campaign): bodies in
