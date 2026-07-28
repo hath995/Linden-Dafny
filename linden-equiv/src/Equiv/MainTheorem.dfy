@@ -1910,6 +1910,91 @@ module LindenElkMain {
     // ReplayCapAgreeFresh:  ra.None? <==> rf.None? && captures agree on CaptureRegs(body)
   }
 
+  // ===========================================================================
+  // §4b -- SPEC-side gm-frame. `TreeRes` threads `gm` through the tree; a
+  // look-free tree (`NoLKTree`) never branches on `gm` (only `LK` nodes read it),
+  // so two runs from gms agreeing on a group set `S` end at the same position and
+  // agree on `S`. Since `FirstLeaf(t, inp) == TreeRes(t, Empty, inp, Forward)` and
+  // `LkResult` of a positive lookAHEAD is `TreeRes(tlk, gm, inp, Forward).1`, this
+  // bridges the standalone body leaf (at `Empty`) to the main tree's lookaround
+  // subtree (at the main `gm`) on the body's own groups -- the SPEC analogue of
+  // the engine bisimulation.
+  // ===========================================================================
+
+  /** Two group maps agree on membership and value at every group in `S`. */
+  ghost predicate GmAgreeOn(gm1: LG.GroupMap, gm2: LG.GroupMap, S: set<LG.GroupId>) {
+    forall g :: g in S ==> (g in gm1 <==> g in gm2) && (g in gm1 ==> gm1[g] == gm2[g])
+  }
+
+  /** A tree with no `LK`/`LKFail` node -- the tree of a look-free regex. */
+  predicate NoLKTree(t: LT.Tree) {
+    match t
+    case Mismatch => true
+    case Match => true
+    case Choice(t1, t2) => NoLKTree(t1) && NoLKTree(t2)
+    case Read(_, t1) => NoLKTree(t1)
+    case ReadBackRef(_, t1) => NoLKTree(t1)
+    case Progress(t1) => NoLKTree(t1)
+    case AnchorPass(_, t1) => NoLKTree(t1)
+    case GroupActionT(_, t1) => NoLKTree(t1)
+    case LK(_, _, _) => false
+    case LKFail(_, _) => false
+  }
+
+  /** Applying the SAME group action to two `S`-agreeing maps preserves
+      `S`-agreement (the action reads/writes one group -- or a reset set --
+      identically on both). */
+  lemma GMUpdateAgree(op: LG.GroupAction, idx: nat, gm1: LG.GroupMap, gm2: LG.GroupMap, S: set<LG.GroupId>)
+    requires GmAgreeOn(gm1, gm2, S)
+    ensures GmAgreeOn(LG.GMUpdate(op, idx, gm1), LG.GMUpdate(op, idx, gm2), S)
+  {
+    match op
+    case Open(g) =>
+    case Close(g) =>
+      // GMClose modifies only group `g`; for `g' in S`, either g' != g (entry
+      // unchanged in both) or g' == g in S (so Find(g, .) agrees -> same close).
+      forall g' | g' in S
+        ensures (g' in LG.GMClose(idx, g, gm1) <==> g' in LG.GMClose(idx, g, gm2))
+             && (g' in LG.GMClose(idx, g, gm1) ==> LG.GMClose(idx, g, gm1)[g'] == LG.GMClose(idx, g, gm2)[g'])
+      {
+        if g' == g {
+          assert LG.Find(g, gm1) == LG.Find(g, gm2);   // g in S: maps agree at g
+        }
+      }
+    case Reset(gs) =>
+  }
+
+  /** SPEC-side gm-frame: for a look-free tree, `TreeRes` from `S`-agreeing gms
+      lands at the same position and its leaf gms still agree on `S`. */
+  lemma TreeResGmFrame(t: LT.Tree, gm1: LG.GroupMap, gm2: LG.GroupMap, inp: LC.Input,
+                       dir: WP.Direction, S: set<LG.GroupId>)
+    requires NoLKTree(t)
+    requires GmAgreeOn(gm1, gm2, S)
+    ensures (LT.TreeRes(t, gm1, inp, dir).None? <==> LT.TreeRes(t, gm2, inp, dir).None?)
+    ensures LT.TreeRes(t, gm1, inp, dir).Some? ==>
+              LT.TreeRes(t, gm1, inp, dir).value.0 == LT.TreeRes(t, gm2, inp, dir).value.0
+              && GmAgreeOn(LT.TreeRes(t, gm1, inp, dir).value.1, LT.TreeRes(t, gm2, inp, dir).value.1, S)
+    decreases t
+  {
+    match t
+    case Mismatch =>
+    case Match =>
+    case Choice(t1, t2) =>
+      TreeResGmFrame(t1, gm1, gm2, inp, dir, S);
+      TreeResGmFrame(t2, gm1, gm2, inp, dir, S);
+    case Read(c, t1) =>
+      TreeResGmFrame(t1, gm1, gm2, LC.AdvanceInputP(inp, dir), dir, S);
+    case ReadBackRef(brStr, t1) =>
+      TreeResGmFrame(t1, gm1, gm2, LC.AdvanceInputN(inp, |brStr|, dir), dir, S);
+    case Progress(t1) =>
+      TreeResGmFrame(t1, gm1, gm2, inp, dir, S);
+    case AnchorPass(a, t1) =>
+      TreeResGmFrame(t1, gm1, gm2, inp, dir, S);
+    case GroupActionT(a, t1) =>
+      GMUpdateAgree(a, LC.Idx(inp), gm1, gm2, S);
+      TreeResGmFrame(t1, LG.GMUpdate(a, LC.Idx(inp), gm1), LG.GMUpdate(a, LC.Idx(inp), gm2), inp, dir, S);
+  }
+
   /** The filter cannot see the difference the replay makes. */
   lemma FilterUnmoved(mainast: R.regex, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs,
                       ncap: AReg.Regs, nlk: AReg.Regs, nqt: AReg.Regs, body: R.regex)
