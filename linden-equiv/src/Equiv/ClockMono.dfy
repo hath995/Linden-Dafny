@@ -427,6 +427,264 @@ module LindenElkClockMono {
     }
   }
 
+  // ===========================================================================
+  // §4b -- RELATIONAL capture frame. Two FFindMatch runs whose threads differ
+  // only in register VALUES (agreeing on a capture set `Sc` and quant set `Sq`
+  // per thread) evolve in LOCKSTEP and their results still agree on (Sc, Sq).
+  // The engine never branches on capture/quant/look register values -- every
+  // decision reads pc/exit_allowed/cp/clock/context/cdn/oracle/processed, and
+  // dedup (`bpc_mem`/`pc_mem`) is by (pc, exit_allowed)/pc. So a body match from
+  // the main thread's cap/lk/qt agrees, on the body's OWN ids, with the same
+  // match from FRESH registers -- the bridge the captured-lookahead replay needs.
+  // ===========================================================================
+
+  /** Two register banks have equal lengths and agree on every slot IN `S`. */
+  ghost predicate RegsAgreeInside(a: AReg.Regs, b: AReg.Regs, S: set<int>) {
+    |a.a_cp| == |b.a_cp| && |a.a_clk| == |b.a_clk|
+    && (forall k: int :: k in S ==>
+          AI.get_idx(a.a_cp, k) == AI.get_idx(b.a_cp, k)
+          && AI.get_idx(a.a_clk, k) == AI.get_idx(b.a_clk, k))
+  }
+
+  /** Setting the SAME slot to the SAME value on both banks preserves
+      inside-agreement (equal lengths make the range test agree). */
+  lemma SetRegAgreeInside(a: AReg.Regs, b: AReg.Regs, S: set<int>, reg: int, cp: Option<int>, clk: int)
+    requires RegsAgreeInside(a, b, S)
+    ensures RegsAgreeInside(AReg.set_reg(a, reg, cp, clk), AReg.set_reg(b, reg, cp, clk), S)
+  {
+    var a' := AReg.set_reg(a, reg, cp, clk);
+    var b' := AReg.set_reg(b, reg, cp, clk);
+    forall k: int | k in S
+      ensures AI.get_idx(a'.a_cp, k) == AI.get_idx(b'.a_cp, k)
+           && AI.get_idx(a'.a_clk, k) == AI.get_idx(b'.a_clk, k)
+    {
+      if k != reg {
+        SetRegOtherIdx(a, reg, cp, clk, k);
+        SetRegOtherIdx(b, reg, cp, clk, k);
+      }
+      // k == reg: in range (equal lengths) both store the same value; out of
+      // range both are the identity and agree by hypothesis.
+    }
+  }
+
+  /** Two threads are control-identical and their capture/quant banks agree on
+      `Sc`/`Sq` (look banks are unconstrained -- the engine never reads them for
+      control, and a look-free body records nothing there). */
+  ghost predicate ThreadRel(ta: AI.Thread, tb: AI.Thread, Sc: set<int>, Sq: set<int>) {
+    ta.pc == tb.pc && ta.exit_allowed == tb.exit_allowed
+    && RegsAgreeInside(ta.capture_regs, tb.capture_regs, Sc)
+    && RegsAgreeInside(ta.quant_regs, tb.quant_regs, Sq)
+  }
+
+  /** Two VM states are identical in all control components and their thread
+      lists (active/blocked/bestmatch) are element-wise `ThreadRel`. */
+  ghost predicate VmRel(sa: AI.VmState, sb: AI.VmState, Sc: set<int>, Sq: set<int>) {
+    sa.cp == sb.cp && sa.processed == sb.processed && sa.isblocked == sb.isblocked
+    && sa.context == sb.context && sa.clock == sb.clock && sa.cdn == sb.cdn
+    && |sa.active| == |sb.active|
+    && (forall i :: 0 <= i < |sa.active| ==> ThreadRel(sa.active[i], sb.active[i], Sc, Sq))
+    && |sa.blocked| == |sb.blocked|
+    && (forall i :: 0 <= i < |sa.blocked| ==>
+          sa.blocked[i].1 == sb.blocked[i].1 && ThreadRel(sa.blocked[i].0, sb.blocked[i].0, Sc, Sq))
+    && (sa.bestmatch.None? <==> sb.bestmatch.None?)
+    && (sa.bestmatch.Some? ==> ThreadRel(sa.bestmatch.value, sb.bestmatch.value, Sc, Sq))
+  }
+
+  /** The epsilon-closure step preserves `VmRel` and threads the oracle
+      identically. Both runs take the SAME branch at every thread (equal pc,
+      flag, processed, cp, context, cdn, oracle), and every register write is
+      identical, so agreement on (Sc, Sq) is maintained. */
+  lemma FAdvanceEpsilonRel(c: RB.code, sa: AI.VmState, sb: AI.VmState, ov: LOr.OracleView,
+                           dir: LAnc.direction, Sc: set<int>, Sq: set<int>)
+    requires |sa.processed.true_set| == RB.size(c) && |sa.processed.false_set| == RB.size(c)
+    requires VmRel(sa, sb, Sc, Sq)
+    ensures var (sa', ova') := AI.FAdvanceEpsilon(c, sa, ov, dir);
+            var (sb', ovb') := AI.FAdvanceEpsilon(c, sb, ov, dir);
+            VmRel(sa', sb', Sc, Sq) && ova' == ovb'
+    decreases AI.unprocessed(sa.processed), |sa.active|
+  {
+    if |sa.active| == 0 {
+      assert |sb.active| == 0;
+      return;
+    }
+    var ta := sa.active[0];  var tb := sb.active[0];
+    assert ThreadRel(ta, tb, Sc, Sq);          // heads related (index 0)
+    var aca := sa.active[1..];  var acb := sb.active[1..];
+    // the tails stay related
+    assert VmRel(sa.(active := aca), sb.(active := acb), Sc, Sq) by {
+      forall i | 0 <= i < |aca| ensures ThreadRel(aca[i], acb[i], Sc, Sq) {
+        assert aca[i] == sa.active[i + 1] && acb[i] == sb.active[i + 1];
+      }
+    }
+    var i := RB.get_instr(c, ta.pc);
+    if AI.bpc_mem(sa.processed, ta.pc, ta.exit_allowed) {
+      FAdvanceEpsilonRel(c, sa.(active := aca), sb.(active := acb), ov, dir, Sc, Sq);
+    } else {
+      var s1a := sa.(clock := sa.clock + 1, processed := AI.bpc_add(sa.processed, ta.pc, ta.exit_allowed));
+      var s1b := sb.(clock := sb.clock + 1, processed := AI.bpc_add(sb.processed, tb.pc, tb.exit_allowed));
+      AI.UnprocessedAdd(sa.processed, ta.pc, ta.exit_allowed);
+      match i {
+        case Consume(ce) =>
+          var (nba, nia) := AI.add_thread(ta, ce, s1a.blocked, s1a.isblocked);
+          var (nbb, nib) := AI.add_thread(tb, ce, s1b.blocked, s1b.isblocked);
+          assert VmRel(s1a.(blocked := nba, isblocked := nia, active := aca),
+                       s1b.(blocked := nbb, isblocked := nib, active := acb), Sc, Sq) by {
+            if !AI.pc_mem(s1a.isblocked, ta.pc) {
+              forall j | 0 <= j < |nba| ensures nba[j].1 == nbb[j].1 && ThreadRel(nba[j].0, nbb[j].0, Sc, Sq) {
+                if j == 0 { } else { assert nba[j] == s1a.blocked[j - 1] && nbb[j] == s1b.blocked[j - 1]; }
+              }
+            }
+          }
+          FAdvanceEpsilonRel(c, s1a.(blocked := nba, isblocked := nia, active := aca),
+                             s1b.(blocked := nbb, isblocked := nib, active := acb), ov, dir, Sc, Sq);
+        case Accept =>
+        case Jmp(x) =>
+          FAdvanceEpsilonRel(c, s1a.(active := [ta.(pc := x)] + aca),
+                             s1b.(active := [tb.(pc := x)] + acb), ov, dir, Sc, Sq);
+        case Fork(x, y) =>
+          var newta := AI.Thread(x, ta.capture_regs, ta.look_regs, ta.quant_regs, ta.exit_allowed);
+          var newtb := AI.Thread(x, tb.capture_regs, tb.look_regs, tb.quant_regs, tb.exit_allowed);
+          FAdvanceEpsilonRel(c, s1a.(active := [newta, ta.(pc := y)] + aca),
+                             s1b.(active := [newtb, tb.(pc := y)] + acb), ov, dir, Sc, Sq);
+        case SetRegisterToCP(reg) =>
+          var ta' := ta.(capture_regs := AReg.set_reg(ta.capture_regs, reg, Some(s1a.cp), s1a.clock), pc := ta.pc + 1);
+          var tb' := tb.(capture_regs := AReg.set_reg(tb.capture_regs, reg, Some(s1b.cp), s1b.clock), pc := tb.pc + 1);
+          SetRegAgreeInside(ta.capture_regs, tb.capture_regs, Sc, reg, Some(s1a.cp), s1a.clock);
+          FAdvanceEpsilonRel(c, s1a.(active := [ta'] + aca), s1b.(active := [tb'] + acb), ov, dir, Sc, Sq);
+        case SetQuantToClock(q, b) =>
+          var ocpa := if b then Some(s1a.cp) else None;
+          var ocpb := if b then Some(s1b.cp) else None;
+          var ta' := ta.(quant_regs := AReg.set_reg(ta.quant_regs, q, ocpa, s1a.clock), pc := ta.pc + 1);
+          var tb' := tb.(quant_regs := AReg.set_reg(tb.quant_regs, q, ocpb, s1b.clock), pc := tb.pc + 1);
+          SetRegAgreeInside(ta.quant_regs, tb.quant_regs, Sq, q, ocpa, s1a.clock);
+          FAdvanceEpsilonRel(c, s1a.(active := [ta'] + aca), s1b.(active := [tb'] + acb), ov, dir, Sc, Sq);
+        case CheckOracle(l) =>
+          if LOr.view_get_oracle(ov, s1a.cp, l) {
+            var ta' := ta.(pc := ta.pc + 1, look_regs := AReg.set_reg(ta.look_regs, l, Some(s1a.cp), s1a.clock));
+            var tb' := tb.(pc := tb.pc + 1, look_regs := AReg.set_reg(tb.look_regs, l, Some(s1b.cp), s1b.clock));
+            FAdvanceEpsilonRel(c, s1a.(active := [ta'] + aca), s1b.(active := [tb'] + acb), ov, dir, Sc, Sq);
+          } else {
+            FAdvanceEpsilonRel(c, s1a.(active := aca), s1b.(active := acb), ov, dir, Sc, Sq);
+          }
+        case NegCheckOracle(l) =>
+          if LOr.view_get_oracle(ov, s1a.cp, l) {
+            FAdvanceEpsilonRel(c, s1a.(active := aca), s1b.(active := acb), ov, dir, Sc, Sq);
+          } else {
+            FAdvanceEpsilonRel(c, s1a.(active := [ta.(pc := ta.pc + 1)] + aca),
+                               s1b.(active := [tb.(pc := tb.pc + 1)] + acb), ov, dir, Sc, Sq);
+          }
+        case WriteOracle(l) =>
+          FAdvanceEpsilonRel(c, s1a.(active := aca), s1b.(active := acb),
+                             LOr.view_set_oracle(ov, s1a.cp, l), dir, Sc, Sq);
+        case BeginLoop =>
+          FAdvanceEpsilonRel(c, s1a.(active := [ta.(exit_allowed := false, pc := ta.pc + 1)] + aca),
+                             s1b.(active := [tb.(exit_allowed := false, pc := tb.pc + 1)] + acb), ov, dir, Sc, Sq);
+        case EndLoop =>
+          if ta.exit_allowed {
+            FAdvanceEpsilonRel(c, s1a.(active := [ta.(pc := ta.pc + 1)] + aca),
+                               s1b.(active := [tb.(pc := tb.pc + 1)] + acb), ov, dir, Sc, Sq);
+          } else {
+            FAdvanceEpsilonRel(c, s1a.(active := aca), s1b.(active := acb), ov, dir, Sc, Sq);
+          }
+        case CheckNullable(qid) =>
+          if LCdn.cdn_get(s1a.cdn, qid) {
+            FAdvanceEpsilonRel(c, s1a.(active := [ta.(pc := ta.pc + 1)] + aca),
+                               s1b.(active := [tb.(pc := tb.pc + 1)] + acb), ov, dir, Sc, Sq);
+          } else {
+            FAdvanceEpsilonRel(c, s1a.(active := aca), s1b.(active := acb), ov, dir, Sc, Sq);
+          }
+        case AnchorAssertion(a) =>
+          if LAnc.is_satisfied(a, s1a.context, dir) {
+            FAdvanceEpsilonRel(c, s1a.(active := [ta.(pc := ta.pc + 1)] + aca),
+                               s1b.(active := [tb.(pc := tb.pc + 1)] + acb), ov, dir, Sc, Sq);
+          } else {
+            FAdvanceEpsilonRel(c, s1a.(active := aca), s1b.(active := acb), ov, dir, Sc, Sq);
+          }
+        case Fail =>
+          FAdvanceEpsilonRel(c, s1a.(active := aca), s1b.(active := acb), ov, dir, Sc, Sq);
+      }
+    }
+  }
+
+  /** The character-consumption step preserves `VmRel`: `is_accepted` reads only
+      `context.nextchar` and the (equal) expectation, so both runs reactivate the
+      same blocked threads. */
+  lemma FConsumeRel(sa: AI.VmState, sb: AI.VmState, Sc: set<int>, Sq: set<int>)
+    requires VmRel(sa, sb, Sc, Sq)
+    ensures VmRel(AI.FConsume(sa), AI.FConsume(sb), Sc, Sq)
+    decreases |sa.blocked|
+  {
+    if |sa.blocked| == 0 {
+      assert |sb.blocked| == 0;
+      return;
+    }
+    var ta := sa.blocked[0].0;  var ce := sa.blocked[0].1;
+    var tb := sb.blocked[0].0;
+    assert sa.blocked[0].1 == sb.blocked[0].1 && ThreadRel(ta, tb, Sc, Sq);
+    var s1a := sa.(blocked := sa.blocked[1..]);
+    var s1b := sb.(blocked := sb.blocked[1..]);
+    assert VmRel(s1a, s1b, Sc, Sq) by {
+      forall j | 0 <= j < |s1a.blocked|
+        ensures s1a.blocked[j].1 == s1b.blocked[j].1 && ThreadRel(s1a.blocked[j].0, s1b.blocked[j].0, Sc, Sq)
+      { assert s1a.blocked[j] == sa.blocked[j + 1] && s1b.blocked[j] == sb.blocked[j + 1]; }
+    }
+    var s2a := if RC.is_accepted(s1a.context.nextchar, ce)
+               then s1a.(active := [ta.(exit_allowed := true, pc := ta.pc + 1)] + s1a.active) else s1a;
+    var s2b := if RC.is_accepted(s1b.context.nextchar, ce)
+               then s1b.(active := [tb.(exit_allowed := true, pc := tb.pc + 1)] + s1b.active) else s1b;
+    assert VmRel(s2a, s2b, Sc, Sq) by {
+      if RC.is_accepted(s1a.context.nextchar, ce) {
+        forall j | 0 <= j < |s2a.active| ensures ThreadRel(s2a.active[j], s2b.active[j], Sc, Sq) {
+          if j == 0 { } else { assert s2a.active[j] == s1a.active[j - 1] && s2b.active[j] == s1b.active[j - 1]; }
+        }
+      }
+    }
+    FConsumeRel(s2a, s2b, Sc, Sq);
+  }
+
+  /** THE relational capture frame: two `FFindMatch` runs from `VmRel`-related
+      states end with `ThreadRel`-related best matches (agreeing on Sc, Sq) and
+      an identical oracle. */
+  lemma FFindMatchCapRel(c: RB.code, str: string, sa: AI.VmState, sb: AI.VmState, ov: LOr.OracleView,
+                         dir: LAnc.direction, cdn: LCdn.cdns, Sc: set<int>, Sq: set<int>)
+    requires |sa.processed.true_set| == RB.size(c) && |sa.processed.false_set| == RB.size(c)
+    requires dir.Forward? ==> sa.context.nextchar == AI.get_char(str, sa.cp)
+    requires dir.Backward? ==> sa.context.nextchar == AI.get_char(str, sa.cp - 1)
+    requires VmRel(sa, sb, Sc, Sq)
+    ensures var (ra, ova) := AI.FFindMatch(c, str, sa, ov, dir, cdn);
+            var (rb, ovb) := AI.FFindMatch(c, str, sb, ov, dir, cdn);
+            (ra.None? <==> rb.None?)
+            && (ra.Some? ==> ThreadRel(ra.value, rb.value, Sc, Sq))
+            && ova == ovb
+    decreases if dir.Forward? then |str| - sa.cp else sa.cp
+  {
+    var s0a := sa.(cdn := LCdn.build_cdn_v(cdn, sa.cp, ov, sa.context, dir));
+    var s0b := sb.(cdn := LCdn.build_cdn_v(cdn, sb.cp, ov, sb.context, dir));
+    assert VmRel(s0a, s0b, Sc, Sq);            // cdn set identically (cp/ov/context equal)
+    FAdvanceEpsilonRel(c, s0a, s0b, ov, dir, Sc, Sq);
+    var (s1a, ov1a) := AI.FAdvanceEpsilon(c, s0a, ov, dir);
+    var (s1b, ov1b) := AI.FAdvanceEpsilon(c, s0b, ov, dir);
+    assert VmRel(s1a, s1b, Sc, Sq) && ov1a == ov1b;
+    if |s1a.blocked| == 0 {
+      assert |s1b.blocked| == 0;
+      return;
+    }
+    match s1a.context.nextchar {
+      case None =>
+      case Some(_) =>
+        var s2a := AI.FConsume(s1a);  var s2b := AI.FConsume(s1b);
+        FConsumeRel(s1a, s1b, Sc, Sq);
+        var s3a := s2a.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
+                        cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2a.cp, dir));
+        var s3b := s2b.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
+                        cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2b.cp, dir));
+        var newchar := AI.get_char(str, s3a.cp - AI.cp_offset(dir));
+        var s4a := s3a.(context := LAnc.update_context(s3a.context, newchar));
+        var s4b := s3b.(context := LAnc.update_context(s3b.context, newchar));
+        assert VmRel(s4a, s4b, Sc, Sq);
+        FFindMatchCapRel(c, str, s4a, s4b, ov1a, dir, cdn, Sc, Sq);
+    }
+  }
 
   /** Every `SetQuantToClock` in `c` targets an id in `S`. */
   ghost predicate QuantWritesInside(c: RB.code, S: set<int>) {
