@@ -481,6 +481,22 @@ module LindenElkEntryLk {
     ComputeTreeNoLK(rer, acts, inp, gm, dir, fuel);
   }
 
+  /** `GroupFreeL` is stronger than `NoLkBrL` (it excludes `Group`, `LookaroundR`,
+      and `Backreference`). Backward-compat bridge for a future
+      `PikeLkRegex(LookAhead)` widening to `NoLkBrL`: a currently-valid group-free
+      lookahead body still qualifies. */
+  lemma GroupFreeLNoLkBr(r: L.Regex)
+    requires SD.GroupFreeL(r)
+    ensures NoLkBrL(r)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => GroupFreeLNoLkBr(r1); GroupFreeLNoLkBr(r2);
+    case Sequence(r1, r2) => GroupFreeLNoLkBr(r1); GroupFreeLNoLkBr(r2);
+    case Quantified(_, _, _, r1) => GroupFreeLNoLkBr(r1);
+    case _ =>
+  }
+
   /** A look-free `R.regex` translates to a `NoLkBrL` `L.Regex`: `Translate`
       makes `LookaroundR` only from `Re_lookaround` (absent) and never makes a
       `Backreference` (no such `R.regex` constructor). */
