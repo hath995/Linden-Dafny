@@ -447,6 +447,18 @@ module LindenElkClockMono {
       && AI.get_idx(a.a_clk, k) == AI.get_idx(b.a_clk, k)
   }
 
+  /** Agreeing outside a smaller set implies agreeing outside a bigger one. */
+  lemma RegsAgreeOutsideWeaken(a: AReg.Regs, b: AReg.Regs, S1: set<int>, S2: set<int>)
+    requires RegsAgreeOutside(a, b, S1) && S1 <= S2
+    ensures RegsAgreeOutside(a, b, S2)
+  {}
+
+  /** `RegsAgreeOutside` is transitive at a fixed `S`. */
+  lemma RegsAgreeOutsideTrans(a: AReg.Regs, b: AReg.Regs, c: AReg.Regs, S: set<int>)
+    requires RegsAgreeOutside(a, b, S) && RegsAgreeOutside(b, c, S)
+    ensures RegsAgreeOutside(a, c, S)
+  {}
+
   /** Every thread in the state — active, blocked, or the best match so far —
       has a quant bank agreeing with `qt0` outside `S`. */
   ghost predicate VmQuantsAgree(s: AI.VmState, qt0: AReg.Regs, S: set<int>) {

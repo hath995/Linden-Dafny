@@ -140,6 +140,33 @@ module LindenElkLookCapture {
     }
   }
 
+  /** A LOOK-free body's compiled bytecode writes no look register — it has no
+      `CheckOracle`/`NegCheckOracle` at all (their `col`/`ncl` would have to be
+      in `LookIds(body) == {}`). Capture-independent; the L3a analogue of the
+      `NoLookWriteCode` conjunct of `CaptureCodeClassified`, without needing
+      capture-freeness. Feeds `FFindMatchLookEq` for a capturing lookahead replay. */
+  lemma NoLookWriteBody(body: R.regex)
+    requires NR.LookBehindFragmentRE(body) && NR.LookFreeRE(body)
+    ensures CM.NoLookWriteCode(CP.compile_to_bytecode(body))
+  {
+    var code := CP.compile_to_bytecode(body);
+    var next := CP.compile(body, 0, CP.Progress).1;
+    NR.CompileToBytecodeRepLookBehind(body);
+    var endl: nat := next as nat;
+    LookFreeLookUnique(body);
+    OBu.LookFreeNoIds(body);            // LookIds(body) == {}
+    forall pc: nat | pc < |code|
+      ensures !code[pc].CheckOracle? && !code[pc].NegCheckOracle?
+    {
+      assert NR.GetPcRE(code, pc) == Some(code[pc]);
+      if pc < endl {
+        PIV.LookCheckIdsRE(body, code, 0, endl, pc);   // any gate's id would be in {}
+      } else {
+        assert code[pc] == RB.Accept;
+      }
+    }
+  }
+
   // ===========================================================================
   // The whole loop — PROVED, in MainTheorem.dfy
   // ===========================================================================
