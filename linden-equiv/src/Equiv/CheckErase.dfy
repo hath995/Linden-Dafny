@@ -553,6 +553,8 @@ module LindenElkCheckErase {
     ensures EL.BoolTreeLk(rer, pre + [LS.Acheck(chk)] + rest, inp, b, tstar)
     ensures LeavesAgree(tstar, t)
     ensures PSize(tstar) == PSize(t)
+    // TODO(L3a): ensures forall SS :: LkConfinedTree(t, SS) ==> LkConfinedTree(tstar, SS)
+    //   -- needs per-case proof help in the body; unblocks the FRE line-458 precondition.
     decreases LS.TreeSize(t), LS.ActionsRegexSize(pre)
   {
     if |pre| == 0 {
@@ -1017,5 +1019,46 @@ module LindenElkCheckErase {
           case _ =>
         }
       case Backreference(_) =>
+  }
+
+  // L3a: confinement predicates (moved here from LookLeaves so BoolCheckInsert,
+  // upstream, can ensure their preservation).
+
+  /** A group action touches only groups in `S`. */
+  ghost predicate GmActionIn(a: LG.GroupAction, S: set<LG.GroupId>) {
+    match a
+    case Open(g) => g in S
+    case Close(g) => g in S
+    case Reset(gs) => forall g :: g in gs ==> g in S
+  }
+
+  /** A tree whose group actions all touch only `S` (and no `LK`/`LKFail`). */
+  ghost predicate GmConfinedTree(t: LT.Tree, S: set<LG.GroupId>) {
+    match t
+    case Mismatch => true
+    case Match => true
+    case Choice(t1, t2) => GmConfinedTree(t1, S) && GmConfinedTree(t2, S)
+    case Read(_, t1) => GmConfinedTree(t1, S)
+    case Progress(t1) => GmConfinedTree(t1, S)
+    case GroupActionT(a, t1) => GmActionIn(a, S) && GmConfinedTree(t1, S)
+    case AnchorPass(_, t1) => GmConfinedTree(t1, S)
+    case ReadBackRef(_, t1) => GmConfinedTree(t1, S)
+    case LK(_, _, _) => false
+    case LKFail(_, _) => false
+  }
+
+  /** Every `LK`/`LKFail` node in `t` has a `GmConfinedTree(_, S)` body. */
+  ghost predicate LkConfinedTree(t: LT.Tree, S: set<LG.GroupId>) {
+    match t
+    case Mismatch => true
+    case Match => true
+    case Choice(t1, t2) => LkConfinedTree(t1, S) && LkConfinedTree(t2, S)
+    case Read(_, t1) => LkConfinedTree(t1, S)
+    case ReadBackRef(_, t1) => LkConfinedTree(t1, S)
+    case Progress(t1) => LkConfinedTree(t1, S)
+    case AnchorPass(_, t1) => LkConfinedTree(t1, S)
+    case GroupActionT(_, t1) => LkConfinedTree(t1, S)
+    case LK(lk, tlk, t1) => GmConfinedTree(tlk, S) && LkConfinedTree(t1, S)
+    case LKFail(lk, tlk) => GmConfinedTree(tlk, S)
   }
 }

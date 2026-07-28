@@ -370,34 +370,10 @@ module LindenElkLookLeaves {
     ensures GmAgreeOutside(a, c, S)
   {}
 
-  /** A group action touches only groups in `S`. */
-  ghost predicate GmActionIn(a: LG.GroupAction, S: set<LG.GroupId>) {
-    match a
-    case Open(g) => g in S
-    case Close(g) => g in S
-    case Reset(gs) => forall g :: g in gs ==> g in S
-  }
-
-  /** A tree whose group actions all touch only `S` (and no `LK`/`LKFail`) --
-      the tree of a look-free body that captures only its own groups `S`. */
-  ghost predicate GmConfinedTree(t: LT.Tree, S: set<LG.GroupId>) {
-    match t
-    case Mismatch => true
-    case Match => true
-    case Choice(t1, t2) => GmConfinedTree(t1, S) && GmConfinedTree(t2, S)
-    case Read(_, t1) => GmConfinedTree(t1, S)
-    case Progress(t1) => GmConfinedTree(t1, S)
-    case GroupActionT(a, t1) => GmActionIn(a, S) && GmConfinedTree(t1, S)
-    case AnchorPass(_, t1) => GmConfinedTree(t1, S)
-    case ReadBackRef(_, t1) => GmConfinedTree(t1, S)
-    case LK(_, _, _) => false
-    case LKFail(_, _) => false
-  }
-
-  /** `GmConfinedTree` is monotone in the group set. */
+  /** `CE.GmConfinedTree` is monotone in the group set. */
   lemma GmConfinedTreeMono(t: LT.Tree, S1: set<LG.GroupId>, S2: set<LG.GroupId>)
-    requires GmConfinedTree(t, S1) && S1 <= S2
-    ensures GmConfinedTree(t, S2)
+    requires CE.GmConfinedTree(t, S1) && S1 <= S2
+    ensures CE.GmConfinedTree(t, S2)
     decreases t
   {
     match t
@@ -447,12 +423,12 @@ module LindenElkLookLeaves {
     { assert act[1..][i] == act[i + 1]; }
   }
 
-  /** A `ConfinedActs` walk builds a `GmConfinedTree(_, S)`. */
+  /** A `ConfinedActs` walk builds a `CE.GmConfinedTree(_, S)`. */
   lemma ComputeTreeConfined(rer: LW.RegExpRecord, act: LS.Actions, inp: LC.Input,
                             gm: LG.GroupMap, dir: WP.Direction, fuel: nat, S: set<LG.GroupId>)
     requires ConfinedActs(act, S)
     ensures FS.ComputeTree(rer, act, inp, gm, dir, fuel).Some?
-         ==> GmConfinedTree(FS.ComputeTree(rer, act, inp, gm, dir, fuel).value, S)
+         ==> CE.GmConfinedTree(FS.ComputeTree(rer, act, inp, gm, dir, fuel).value, S)
     decreases fuel
   {
     if fuel == 0 || |act| == 0 { return; }
@@ -533,11 +509,11 @@ module LindenElkLookLeaves {
   }
 
   /** The `ComputeTr` form: a look-free, backref-free body that captures only
-      groups in `S` yields a `GmConfinedTree(_, S)`. */
+      groups in `S` yields a `CE.GmConfinedTree(_, S)`. */
   lemma ComputeTrConfined(rer: LW.RegExpRecord, r: L.Regex, inp: LC.Input, gm: LG.GroupMap,
                           dir: WP.Direction, S: set<LG.GroupId>)
     requires EL.NoLkBrL(r) && DefGroupsIn(r, S)
-    ensures GmConfinedTree(FU.ComputeTr(rer, [LS.Areg(r)], inp, gm, dir), S)
+    ensures CE.GmConfinedTree(FU.ComputeTr(rer, [LS.Areg(r)], inp, gm, dir), S)
   {
     var acts := [LS.Areg(r)];
     assert ConfinedActs(acts, S);
@@ -548,7 +524,7 @@ module LindenElkLookLeaves {
 
   /** A confined action leaves the map unchanged outside `S`. */
   lemma GmUpdateConfined(a: LG.GroupAction, idx: nat, gm: LG.GroupMap, S: set<LG.GroupId>)
-    requires GmActionIn(a, S)
+    requires CE.GmActionIn(a, S)
     ensures GmAgreeOutside(LG.GMUpdate(a, idx, gm), gm, S)
   {
     match a
@@ -563,7 +539,7 @@ module LindenElkLookLeaves {
 
   /** A confined tree's every leaf agrees with the incoming map OUTSIDE `S`. */
   lemma GmConfinedLeaves(t: LT.Tree, gm: LG.GroupMap, inp: LC.Input, dir: WP.Direction, S: set<LG.GroupId>)
-    requires GmConfinedTree(t, S)
+    requires CE.GmConfinedTree(t, S)
     ensures forall i :: 0 <= i < |LT.TreeLeaves(t, gm, inp, dir)|
                         ==> GmAgreeOutside(LT.TreeLeaves(t, gm, inp, dir)[i].1, gm, S)
     decreases t
@@ -609,7 +585,7 @@ module LindenElkLookLeaves {
       continuation's OUTSIDE `S`. The capturing analogue of `LAAtGatePass`. */
   lemma LAAtGatePassL3a(lk: L.Lookaround, tlk: LT.Tree, tc: LT.Tree, inp: LC.Input, S: set<LG.GroupId>)
     requires L.Positivity(lk) && L.LkDir(lk) == WP.Forward
-    requires GmConfinedTree(tlk, S)
+    requires CE.GmConfinedTree(tlk, S)
     requires |LT.TreeLeaves(tlk, LG.Empty, inp, L.LkDir(lk))| > 0
     ensures LeavesAgreeAtOutside(LT.LK(lk, tlk, tc), tc, inp, S)
   {
@@ -797,30 +773,16 @@ module LindenElkLookLeaves {
       { GmAgreeOutsideSym(LT.TreeLeaves(t1, gm, inp, WP.Forward)[i].1, LT.TreeLeaves(t2, gm, inp, WP.Forward)[i].1, S); } }
   }
 
-  /** Every `LK`/`LKFail` node in `t` has a `GmConfinedTree(_, S)` body -- the
+  /** Every `LK`/`LKFail` node in `t` has a `CE.GmConfinedTree(_, S)` body -- the
       structural requires the L3a checked-tree correspondence threads. Capture-free
       bodies (GmNeutral) are confined to any `S`, so L1/L2 satisfy it at `S == {}`
       only when the tree is `LK`-free; capturing lookAHEADs supply it via
       `ComputeTrConfined`. */
-  ghost predicate LkConfinedTree(t: LT.Tree, S: set<LG.GroupId>) {
-    match t
-    case Mismatch => true
-    case Match => true
-    case Choice(t1, t2) => LkConfinedTree(t1, S) && LkConfinedTree(t2, S)
-    case Read(_, t1) => LkConfinedTree(t1, S)
-    case ReadBackRef(_, t1) => LkConfinedTree(t1, S)
-    case Progress(t1) => LkConfinedTree(t1, S)
-    case AnchorPass(_, t1) => LkConfinedTree(t1, S)
-    case GroupActionT(_, t1) => LkConfinedTree(t1, S)
-    case LK(lk, tlk, t1) => GmConfinedTree(tlk, S) && LkConfinedTree(t1, S)
-    case LKFail(lk, tlk) => GmConfinedTree(tlk, S)
-  }
-
-  /** An `LK`-free tree is vacuously `LkConfinedTree` for any `S` -- what a
+  /** An `LK`-free tree is vacuously `CE.LkConfinedTree` for any `S` -- what a
       look-free body's checked-tree caller (`BodyTreeAtCp`) needs. */
   lemma NoLKTreeConfined(t: LT.Tree, S: set<LG.GroupId>)
     requires EL.NoLKTree(t)
-    ensures LkConfinedTree(t, S)
+    ensures CE.LkConfinedTree(t, S)
     decreases t
   {
     match t
@@ -840,7 +802,7 @@ module LindenElkLookLeaves {
       standalone to prove the pieces compose before the plumbing. */
   lemma LKNodeOutside(lk: L.Lookaround, tlk: LT.Tree, tc: LT.Tree, sub: LT.Tree, inp: LC.Input, S: set<LG.GroupId>)
     requires L.Positivity(lk) && L.LkDir(lk) == WP.Forward
-    requires GmConfinedTree(tlk, S)
+    requires CE.GmConfinedTree(tlk, S)
     requires |LT.TreeLeaves(tlk, LG.Empty, inp, L.LkDir(lk))| > 0
     requires LeavesAgreeAtOutside(sub, tc, inp, S)
     ensures LeavesAgreeAtOutside(sub, LT.LK(lk, tlk, tc), inp, S)

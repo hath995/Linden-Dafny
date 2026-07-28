@@ -182,7 +182,7 @@ module LindenElkActionsTreeRep {
     requires WO.WalkOk(acts, code, pc, EaOf(b))
     requires LL.OracleOkSuffix(rer, qm, inp)
     requires EL.BoolTreeLk(rer, acts, inp, b, t)
-    requires LL.LkConfinedTree(t, S)
+    requires CE.LkConfinedTree(t, S)
     ensures TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b))
     ensures LL.LeavesAgreeAtOutside(tstar, t, inp, S)
     decreases CE.PSize(t), MsizeA(acts), n, 1
@@ -812,7 +812,7 @@ module LindenElkActionsTreeRep {
     requires LL.OracleOkSuffix(rer, qm, inp)
     requires EL.BoolTreeLk(rer, acts, inp, BS.CanExit, tc)
     requires AR.BackForkAt(code, pc)
-    requires LL.LkConfinedTree(tc, S)
+    requires CE.LkConfinedTree(tc, S)
     ensures TR.TreeRepRE(qm, LT.Progress(tcstar), code, pc, inp, true)
     ensures LL.LeavesAgreeAtOutside(tcstar, tc, inp, S)
     decreases CE.PSize(tc), MsizeA(acts), n, 0
@@ -1069,7 +1069,7 @@ module LindenElkActionsTreeRep {
     requires WO.WalkOk(acts, code, pc, EaOf(b))
     requires LL.OracleOkSuffix(rer, qm, inp)
     requires EL.BoolTreeLk(rer, acts, inp, b, t)
-    requires LL.LkConfinedTree(t, S)
+    requires CE.LkConfinedTree(t, S)
     ensures TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b))
     ensures LL.LeavesAgreeAtOutside(tstar, t, inp, S)
   {
