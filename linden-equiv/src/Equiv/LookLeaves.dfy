@@ -797,6 +797,25 @@ module LindenElkLookLeaves {
       { GmAgreeOutsideSym(LT.TreeLeaves(t1, gm, inp, WP.Forward)[i].1, LT.TreeLeaves(t2, gm, inp, WP.Forward)[i].1, S); } }
   }
 
+  /** Every `LK`/`LKFail` node in `t` has a `GmConfinedTree(_, S)` body -- the
+      structural requires the L3a checked-tree correspondence threads. Capture-free
+      bodies (GmNeutral) are confined to any `S`, so L1/L2 satisfy it at `S == {}`
+      only when the tree is `LK`-free; capturing lookAHEADs supply it via
+      `ComputeTrConfined`. */
+  ghost predicate LkConfinedTree(t: LT.Tree, S: set<LG.GroupId>) {
+    match t
+    case Mismatch => true
+    case Match => true
+    case Choice(t1, t2) => LkConfinedTree(t1, S) && LkConfinedTree(t2, S)
+    case Read(_, t1) => LkConfinedTree(t1, S)
+    case ReadBackRef(_, t1) => LkConfinedTree(t1, S)
+    case Progress(t1) => LkConfinedTree(t1, S)
+    case AnchorPass(_, t1) => LkConfinedTree(t1, S)
+    case GroupActionT(_, t1) => LkConfinedTree(t1, S)
+    case LK(lk, tlk, t1) => GmConfinedTree(tlk, S) && LkConfinedTree(t1, S)
+    case LKFail(lk, tlk) => GmConfinedTree(tlk, S)
+  }
+
   /** THE L3a LK-case assembly (mirrors ActionsTreeRepRE:774-779 in "outside S"
       form): the continuation's checked tree `sub`, already agreeing with `tc`
       outside `S`, also agrees with the gate node `LK(lk,tlk,tc)` outside `S`.
