@@ -1980,6 +1980,76 @@ module LindenElkMain {
       TreeResGmFrame(t1, LG.GMUpdate(a, LC.Idx(inp), gm1), LG.GMUpdate(a, LC.Idx(inp), gm2), inp, dir, S);
   }
 
+  /** §4b KEYSTONE: the per-lookaround value theorem. For a positive lookAHEAD
+      with a look-free body, the engine replay from the main thread's `cap/lk/qt`
+      MATCHES the spec `LkResult` on the body's own groups. Composes every §4b
+      piece: `ReplayCapIsBodyLeaf` (engine: replay caps agree with the fresh body
+      match on `CaptureRegs(body)`, whose `GmOfLive(body,.)` is the body's spec
+      first leaf `FirstLeaf(ComputeTr(body,Empty))`), `TranslateNoLkBr` +
+      `ComputeTrGmIndepLk` (the main-tree subtree `tlk` at the running gm equals
+      the body tree at `Empty`), `ComputeTrNoLK` (`NoLKTree(tlk)`), and
+      `TreeResGmFrame` (spec: `LkResult` at the running gm agrees with the leaf
+      at `Empty` on the body's `DefGroups`). */
+  lemma LkReplayMatchesSpec(
+      rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat, ngroups: nat,
+      str: string, cp: nat, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+      cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
+      ncap: int, nlook: int, nquant: int)
+    requires PSM.StaticOkRE(qm, body, bodycode, endl)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires qm.ov == ov
+    requires !rer.ignoreCase && !rer.multiline
+    requires cp <= |str|
+    requires bodycode == CP.compile_to_bytecode(body)
+    requires NR.LookFreeRE(body)
+    requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
+    requires CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    requires la.Lookahead?
+    requires tlk == LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], PIV.InpOfCp(str, cp), gmMain, WP.Forward)
+    requires GmAgreeOn(gmMain, LG.Empty, set g | g in L.DefGroups(T.Translate(body)))
+    ensures var inp := PIV.InpOfCp(str, cp);
+            var ctxc := AI.cp_context(cp, str, LAnc.Forward);
+            var ra := AI.FFindMatch(bodycode, str,
+                        AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
+            var rf := AI.FFindMatch(bodycode, str,
+                        AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                      AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
+            var S := set g | g in L.DefGroups(T.Translate(body));
+            (ra.None? <==> LS.LkResult(T.TrLookaround(la), tlk, gmMain, inp).None?)
+            && (ra.Some? ==>
+                  LS.LkResult(T.TrLookaround(la), tlk, gmMain, inp).Some?
+                  && rf.Some?
+                  && CM.RegsAgreeInside(ra.value.capture_regs, rf.value.capture_regs, PIV.CaptureRegs(body))
+                  && GmAgreeOn(LS.LkResult(T.TrLookaround(la), tlk, gmMain, inp).value,
+                               PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs), S))
+  {
+    var inp := PIV.InpOfCp(str, cp);
+    var S := set g | g in L.DefGroups(T.Translate(body));
+    var tr := T.Translate(body);
+
+    // engine: the replay from cap ~ fresh, both == the body's spec first leaf.
+    var bestT := ReplayCapIsBodyLeaf(rer, qm, body, bodycode, endl, ngroups, str, cp, cap, lk, qt,
+                                     ov, cdns, ncap, nlook, nquant);
+    var tEmpty := LFU.ComputeTr(rer, [LS.Areg(tr)], inp, LG.Empty, WP.Forward);
+    assert bestT == LT.FirstLeaf(tEmpty, inp);            // from ReplayCapIsBodyLeaf
+
+    // tlk (at gmMain) == tEmpty (at Empty): group-map independence for look-free.
+    EL.TranslateNoLkBr(body);                             // NoLkBrL(tr)
+    EL.ComputeTrGmIndepLk(rer, tr, inp, gmMain, WP.Forward);
+    assert tlk == tEmpty;
+    EL.ComputeTrNoLK(rer, tr, inp, LG.Empty, WP.Forward);
+    assert EL.NoLKTree(tlk);
+
+    // spec: TreeRes at gmMain agrees with TreeRes at Empty on the body's groups.
+    TreeResGmFrame(tlk, gmMain, LG.Empty, inp, WP.Forward, S);
+    assert LT.FirstLeaf(tlk, inp) == LT.TreeRes(tlk, LG.Empty, inp, WP.Forward);   // definitional
+    assert LT.FirstLeaf(tlk, inp) == bestT;
+
+    // LkResult of a positive lookAHEAD == TreeRes(tlk, gmMain, inp, Forward) folded.
+    assert L.Positivity(T.TrLookaround(la)) && L.LkDir(T.TrLookaround(la)) == WP.Forward;
+  }
+
   /** The filter cannot see the difference the replay makes. */
   lemma FilterUnmoved(mainast: R.regex, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs,
                       ncap: AReg.Regs, nlk: AReg.Regs, nqt: AReg.Regs, body: R.regex)
