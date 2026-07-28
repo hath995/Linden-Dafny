@@ -1136,6 +1136,71 @@ module LindenElkMain {
     assert bestT == LT.FirstLeaf(tstar, inp);
   }
 
+  /** §4b, the tree-construction port: for a fragment `body` (a look-free
+      capturing plus-fragment is in `LookBehindFragmentRE`, since its
+      `Re_lookaround` case — which still bans captures — never fires), the body
+      match from position `cp` corresponds to the body's SPEC first leaf at
+      `InpOfCp(str, cp)`. This discharges `FindMatchBodyAtCp`'s `tstar`
+      hypotheses by BUILDING the checked tree (mirroring `MainTheorem`'s
+      1140-1166 entry construction at `body`/`cp` instead of the whole regex at
+      0), so the caller need only supply the static package + the oracle
+      correctness at `cp`. `TreeThreadRE` is definitionally `TreeRepRE`
+      (TreeThreadRE.dfy:56), so the one tree built serves both hypotheses. */
+  lemma BodyTreeAtCp(
+      rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat,
+      ngroups: nat, str: string, cp: nat, ov: LOr.OracleView,
+      cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
+    returns (bestT: Option<LT.Leaf>)
+    requires PSM.StaticOkRE(qm, body, bodycode, endl)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires qm.ov == ov
+    requires !rer.ignoreCase && !rer.multiline
+    requires cp <= |str|
+    requires bodycode == CP.compile_to_bytecode(body)
+    requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
+    ensures var inp := PIV.InpOfCp(str, cp);
+            var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Forward);
+            var inits := AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                       AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward));
+            PIV.BestMatchRE(body, bestT, AI.FFindMatch(bodycode, str, inits, ov, LAnc.Forward, cdns).0)
+            && bestT == LT.FirstLeaf(t, inp)
+  {
+    var inp := PIV.InpOfCp(str, cp);
+    var acts := [LS.Areg(T.Translate(body))];
+
+    // ---- the spec tree ---------------------------------------------------
+    LFU.ComputeTrIsTree(rer, acts, inp, LG.Empty, WP.Forward);
+    var t := LFU.ComputeTr(rer, acts, inp, LG.Empty, WP.Forward);
+    assert LS.IsTree(rer, acts, inp, LG.Empty, WP.Forward, t);
+    EL.TranslateFragmentPikeLk(body);          // PikeLkRegex(Translate(body))
+    EL.BooleanCorrectLk(rer, T.Translate(body), inp, t);
+    assert forall i :: 0 <= i < |acts| ==> !acts[i].Acheck?;
+    BoolTreeLbIrrel(rer, acts, inp, BS.CanExit, BS.CannotExit, t);
+
+    // ---- the CHECKED tree the simulation runs on -------------------------
+    WOE.WalkOkEntry(body);
+    assert EL.PikeLkActions(acts) by {
+      assert acts == acts + [];
+      assert EL.PikeLkActions([]);
+      EL.PikeLkActionsConsIff(LS.Areg(T.Translate(body)), []);
+    }
+    assert WO.WalkOk(acts, bodycode, 0, ATR.EaOf(BS.CannotExit));
+    AR.CompileToBytecodeActionsRepLookBehind(rer, qm, body);   // ActionsRepL
+    var tstar := ATR.ActionsTreeRepRE(rer, qm, acts, bodycode, 0, inp, BS.CannotExit, t);
+    assert TR.TreeRepRE(qm, tstar, bodycode, 0, inp, false);
+    LL.LAAtFirstLeaf(tstar, t, inp);
+    assert LT.FirstLeaf(tstar, inp) == LT.FirstLeaf(t, inp);
+
+    // TreeThreadRE is definitionally TreeRepRE, so the checked tree discharges
+    // both of FindMatchBodyAtCp's tree hypotheses.
+    assert TT.TreeThreadRE(rer, qm, bodycode, inp, tstar, 0, false);
+
+    // ---- run the simulation at cp ----------------------------------------
+    bestT := FindMatchBodyAtCp(rer, qm, body, bodycode, endl, ngroups, str, cp, tstar,
+                               ov, cdns, ncap, nlook, nquant);
+    assert bestT == LT.FirstLeaf(tstar, inp) == LT.FirstLeaf(t, inp);
+  }
+
   // {:isolate_assertions} is REQUIRED here, not a tuning knob. Admitting
   // lookaheads adds a second column-spec path and a second capture-regex
   // shape, and the combined VC runs past 900s. Isolated, every one of its
