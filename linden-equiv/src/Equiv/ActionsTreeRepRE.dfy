@@ -777,10 +777,22 @@ module LindenElkActionsTreeRep {
               tstar := sub;
               // tr_lk / tr_neglk: the gate rule carries the SAME tree onward
               assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));
-              LL.LAAtGatePass(lk, tlk, tc, inp);
-              LL.LeavesAgreeAtWeaken(LT.LK(lk, tlk, tc), tc, inp, S);
-              LL.LAAtSymOutside(LT.LK(lk, tlk, tc), tc, inp, S);
-              LL.LAAtTransOutside(sub, tc, LT.LK(lk, tlk, tc), inp, S);
+              if L.Positivity(lk) && L.LkDir(lk) == WP.Forward {
+                // positive lookAHEAD: the gate may fold captures within S -- use
+                // the confinement path (works for capture-free bodies too, since
+                // GmNeutral => GmConfinedTree(_, S)).
+                assert CE.GmConfinedTree(tlk, S);   // from LkConfinedTree(t, S), t == LK(_,tlk,tc)
+                assert |LT.TreeLeaves(tlk, LG.Empty, inp, L.LkDir(lk))| > 0 by {
+                  assert LT.TreeRes(tlk, LG.Empty, inp, L.LkDir(lk)).Some?;   // LkResult(lk,tlk,Empty).Some?, positive
+                  LT.HdErrorNoneNil(LT.TreeLeaves(tlk, LG.Empty, inp, L.LkDir(lk)));
+                }
+                LL.LKNodeOutside(lk, tlk, tc, sub, inp, S);
+              } else {
+                LL.LAAtGatePass(lk, tlk, tc, inp);
+                LL.LeavesAgreeAtWeaken(LT.LK(lk, tlk, tc), tc, inp, S);
+                LL.LAAtSymOutside(LT.LK(lk, tlk, tc), tc, inp, S);
+                LL.LAAtTransOutside(sub, tc, LT.LK(lk, tlk, tc), inp, S);
+              }
             case LKFail(lk2, tlk) =>
               assert tlk == tlkc && LS.LkResult(lk, tlk, LG.Empty, inp).None?;
               assert bit != AR.PositiveL(lk);
