@@ -394,6 +394,158 @@ module LindenElkLookLeaves {
     case LKFail(_, _) => false
   }
 
+  /** `GmConfinedTree` is monotone in the group set. */
+  lemma GmConfinedTreeMono(t: LT.Tree, S1: set<LG.GroupId>, S2: set<LG.GroupId>)
+    requires GmConfinedTree(t, S1) && S1 <= S2
+    ensures GmConfinedTree(t, S2)
+    decreases t
+  {
+    match t
+    case Choice(t1, t2) => GmConfinedTreeMono(t1, S1, S2); GmConfinedTreeMono(t2, S1, S2);
+    case Read(_, t1) => GmConfinedTreeMono(t1, S1, S2);
+    case Progress(t1) => GmConfinedTreeMono(t1, S1, S2);
+    case GroupActionT(_, t1) => GmConfinedTreeMono(t1, S1, S2);
+    case AnchorPass(_, t1) => GmConfinedTreeMono(t1, S1, S2);
+    case ReadBackRef(_, t1) => GmConfinedTreeMono(t1, S1, S2);
+    case _ =>
+  }
+
+  /** Every group `r` defines is in `S`. */
+  ghost predicate DefGroupsIn(r: L.Regex, S: set<LG.GroupId>) {
+    forall g :: g in L.DefGroups(r) ==> g in S
+  }
+
+  /** `ConfinedActs`: look/backref-free, and every `Areg`'s groups and every
+      `Aclose`'s gid live in `S`. Preserved down a `ComputeTree` walk. */
+  ghost predicate ConfinedActs(act: LS.Actions, S: set<LG.GroupId>) {
+    EL.NoLkBrActs(act)
+    && (forall i :: 0 <= i < |act| ==>
+         (act[i].Areg? ==> DefGroupsIn(act[i].r, S)) && (act[i].Aclose? ==> act[i].gid in S))
+  }
+
+  lemma ConfinedActsCons(x: LS.Action, cont: LS.Actions, S: set<LG.GroupId>)
+    requires (x.Acheck? || x.Aclose? || (x.Areg? && EL.NoLkBrL(x.r)))
+          && (x.Areg? ==> DefGroupsIn(x.r, S)) && (x.Aclose? ==> x.gid in S)
+          && ConfinedActs(cont, S)
+    ensures ConfinedActs([x] + cont, S)
+  {
+    EL.NoLkBrActsCons(x, cont);
+    forall i | 0 <= i < |[x] + cont|
+      ensures (([x] + cont)[i].Areg? ==> DefGroupsIn(([x] + cont)[i].r, S))
+           && (([x] + cont)[i].Aclose? ==> ([x] + cont)[i].gid in S)
+    { if i == 0 {} else { assert ([x] + cont)[i] == cont[i - 1]; } }
+  }
+
+  lemma ConfinedActsTail(act: LS.Actions, S: set<LG.GroupId>)
+    requires |act| > 0 && ConfinedActs(act, S)
+    ensures ConfinedActs(act[1..], S)
+  {
+    EL.NoLkBrActsTail(act);
+    forall i | 0 <= i < |act[1..]|
+      ensures (act[1..][i].Areg? ==> DefGroupsIn(act[1..][i].r, S))
+           && (act[1..][i].Aclose? ==> act[1..][i].gid in S)
+    { assert act[1..][i] == act[i + 1]; }
+  }
+
+  /** A `ConfinedActs` walk builds a `GmConfinedTree(_, S)`. */
+  lemma ComputeTreeConfined(rer: LW.RegExpRecord, act: LS.Actions, inp: LC.Input,
+                            gm: LG.GroupMap, dir: WP.Direction, fuel: nat, S: set<LG.GroupId>)
+    requires ConfinedActs(act, S)
+    ensures FS.ComputeTree(rer, act, inp, gm, dir, fuel).Some?
+         ==> GmConfinedTree(FS.ComputeTree(rer, act, inp, gm, dir, fuel).value, S)
+    decreases fuel
+  {
+    if fuel == 0 || |act| == 0 { return; }
+    var f := fuel - 1;
+    var cont := act[1..];
+    ConfinedActsTail(act, S);
+    match act[0]
+    case Acheck(strcheck) =>
+      if SSx.IsStrictSuffix(inp, strcheck, dir) { ComputeTreeConfined(rer, cont, inp, gm, dir, f, S); }
+    case Aclose(gid) =>
+      ComputeTreeConfined(rer, cont, inp, LG.GMClose(LC.Idx(inp), gid, gm), dir, f, S);
+    case Areg(r) =>
+      match r
+      case Epsilon => ComputeTreeConfined(rer, cont, inp, gm, dir, f, S);
+      case Character(cd) =>
+        match LC.ReadChar(rer, cd, inp, dir) {
+          case None =>
+          case Some(pair) => ComputeTreeConfined(rer, cont, pair.1, gm, dir, f, S);
+        }
+      case Disjunction(r1, r2) =>
+        ConfinedActsCons(LS.Areg(r1), cont, S);
+        ConfinedActsCons(LS.Areg(r2), cont, S);
+        ComputeTreeConfined(rer, [LS.Areg(r1)] + cont, inp, gm, dir, f, S);
+        ComputeTreeConfined(rer, [LS.Areg(r2)] + cont, inp, gm, dir, f, S);
+      case Sequence(r1, r2) =>
+        var na := LS.SeqList(r1, r2, dir) + cont;
+        assert ConfinedActs(na, S) by {
+          if dir.Forward? {
+            assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+            ConfinedActsCons(LS.Areg(r2), cont, S);
+            ConfinedActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont, S);
+          } else {
+            assert na == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
+            ConfinedActsCons(LS.Areg(r1), cont, S);
+            ConfinedActsCons(LS.Areg(r2), [LS.Areg(r1)] + cont, S);
+          }
+        }
+        ComputeTreeConfined(rer, na, inp, gm, dir, f, S);
+      case Quantified(greedy, min, delta, r1) =>
+        var gidl := L.DefGroups(r1);
+        assert forall g :: g in gidl ==> g in S;    // DefGroups(r1) subset of S
+        if min > 0 {
+          var quant := L.Quantified(greedy, min - 1, delta, r1);
+          var na := [LS.Areg(r1), LS.Areg(quant)] + cont;
+          assert ConfinedActs(na, S) by {
+            assert na == [LS.Areg(r1)] + ([LS.Areg(quant)] + cont);
+            ConfinedActsCons(LS.Areg(quant), cont, S);
+            ConfinedActsCons(LS.Areg(r1), [LS.Areg(quant)] + cont, S);
+          }
+          ComputeTreeConfined(rer, na, inp, LG.GMReset(gidl, gm), dir, f, S);
+        } else if delta == LN.NN(0) {
+          ComputeTreeConfined(rer, cont, inp, gm, dir, f, S);
+        } else {
+          var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+          var na := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
+          assert ConfinedActs(na, S) by {
+            assert na == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+            ConfinedActsCons(LS.Areg(quant), cont, S);
+            ConfinedActsCons(LS.Acheck(inp), [LS.Areg(quant)] + cont, S);
+            ConfinedActsCons(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont), S);
+          }
+          ComputeTreeConfined(rer, na, inp, LG.GMReset(gidl, gm), dir, f, S);
+          ComputeTreeConfined(rer, cont, inp, gm, dir, f, S);
+        }
+      case Group(gid, r1) =>
+        assert gid in S && (forall g :: g in L.DefGroups(r1) ==> g in S);   // DefGroups(Group) = [gid]+DefGroups(r1)
+        var na := [LS.Areg(r1), LS.Aclose(gid)] + cont;
+        assert ConfinedActs(na, S) by {
+          assert na == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
+          ConfinedActsCons(LS.Aclose(gid), cont, S);
+          ConfinedActsCons(LS.Areg(r1), [LS.Aclose(gid)] + cont, S);
+        }
+        ComputeTreeConfined(rer, na, inp, LG.GMOpen(LC.Idx(inp), gid, gm), dir, f, S);
+      case LookaroundR(lk, r1) =>
+      case AnchorR(a) =>
+        if LS.AnchorSatisfied(rer, a, inp) { ComputeTreeConfined(rer, cont, inp, gm, dir, f, S); }
+      case Backreference(gid) =>
+  }
+
+  /** The `ComputeTr` form: a look-free, backref-free body that captures only
+      groups in `S` yields a `GmConfinedTree(_, S)`. */
+  lemma ComputeTrConfined(rer: LW.RegExpRecord, r: L.Regex, inp: LC.Input, gm: LG.GroupMap,
+                          dir: WP.Direction, S: set<LG.GroupId>)
+    requires EL.NoLkBrL(r) && DefGroupsIn(r, S)
+    ensures GmConfinedTree(FU.ComputeTr(rer, [LS.Areg(r)], inp, gm, dir), S)
+  {
+    var acts := [LS.Areg(r)];
+    assert ConfinedActs(acts, S);
+    var fuel := FS.ActionsFuel(acts, inp, dir) + 1;
+    FS.FunctionalTerminates(rer, acts, inp, gm, dir, fuel);
+    ComputeTreeConfined(rer, acts, inp, gm, dir, fuel, S);
+  }
+
   /** A confined action leaves the map unchanged outside `S`. */
   lemma GmUpdateConfined(a: LG.GroupAction, idx: nat, gm: LG.GroupMap, S: set<LG.GroupId>)
     requires GmActionIn(a, S)
