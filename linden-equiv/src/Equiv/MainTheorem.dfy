@@ -54,6 +54,7 @@ module LindenElkMain {
   import LN = WarblreNumeric
   import LFS = FunctionalSemantics
   import TR = LindenElkTreeRep
+  import TT = LindenElkTreeThread
   import CE = LindenElkCheckErase
   import WO = LindenElkWalkOk
   import WOE = LindenElkWalkOkEntry
@@ -1069,6 +1070,70 @@ module LindenElkMain {
     assert qm.looks == OE.LmOf(ast);
     OE.OracleOkFromColumns(rer, ast, str, qm);
     AR.CompileToBytecodeActionsRepLookBehind(rer, qm, re);
+  }
+
+  // ===========================================================================
+  // §4b: run the simulation on a body from an ARBITRARY start position `cp`.
+  // ===========================================================================
+  //
+  // `MainTheorem` runs `InitialPikeInvFullRE` + `FindMatchSimRE` from cp==0 to
+  // pin the whole-regex answer to the spec first leaf. For a captured lookahead
+  // (§4b) the *body* is matched from the lookaround's recorded position `cp`,
+  // with FRESH registers, so we need the same pin at an arbitrary `cp`. This is
+  // now bounded: `FindMatchSimRE` was always written cp-generically (it decreases
+  // `|str| - vms.cp` and uses `vms.cp` abstractly), and the only piece hard-coded
+  // to cp==0 was the entry invariant — now generalized as
+  // `InitialPikeInvFullREAtCp`. The bridge from the search trace to the checked
+  // tree's first leaf (`TrcREToLinden` -> `TreeRepPikeSubtree` -> `InitPiketreeInv`
+  // -> `PikeTreeTrcCorrect`) needs only `PikeSubtree(tstar)`, so the checked tree
+  // enters only through `TreeThreadRE`/`TreeRepRE` hypotheses.
+  /** The cp-generalized simulation pin: from the entry state at `cp` (fresh
+      registers), the best-match thread of `FFindMatch` corresponds to the
+      body's checked-tree first leaf at `InpOfCp(str, cp)`. The `cp==0` special
+      case is the core of `MainTheorem`'s extraction; this is the reusable form
+      the captured-lookahead body match needs. */
+  lemma FindMatchBodyAtCp(
+      rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat,
+      ngroups: nat, str: string, cp: nat, tstar: LT.Tree, ov: LOr.OracleView,
+      cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
+    returns (bestT: Option<LT.Leaf>)
+    requires PSM.StaticOkRE(qm, body, bodycode, endl)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires qm.ov == ov
+    requires !rer.ignoreCase && !rer.multiline
+    requires cp <= |str|
+    requires bodycode == CP.compile_to_bytecode(body)
+    requires TT.TreeThreadRE(rer, qm, bodycode, PIV.InpOfCp(str, cp), tstar, 0, false)
+    requires TR.TreeRepRE(qm, tstar, bodycode, 0, PIV.InpOfCp(str, cp), false)
+    ensures var inp := PIV.InpOfCp(str, cp);
+            var inits := AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                       AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward));
+            PIV.BestMatchRE(body, bestT, AI.FFindMatch(bodycode, str, inits, ov, LAnc.Forward, cdns).0)
+            && bestT == LT.FirstLeaf(tstar, inp)
+  {
+    var inp := PIV.InpOfCp(str, cp);
+    var ctx := AI.cp_context(cp, str, LAnc.Forward);
+    var capture := AReg.init_regs(ncap);
+    var look := AReg.init_regs(nlook);
+    var quant := AReg.init_regs(nquant);
+    var inits := AI.FInitState(bodycode, cp, capture, look, quant, 0, ctx);
+
+    // Entry invariant at cp (fresh registers) -> the full simulation invariant.
+    PSM.InitialPikeInvFullREAtCp(rer, qm, body, bodycode, endl, ngroups, str, cp, tstar,
+                                 inits, ncap, nlook, nquant);
+    var pts0 := PT.PikeTreeInitialState(tstar, inp);
+    assert ctx.nextchar == AI.get_char(str, cp);        // cp_context definitional
+    bestT := PSM.FindMatchSimRE(rer, qm, body, bodycode, endl, ngroups, str, pts0, inits,
+                                ov, LAnc.Forward, cdns, ncap, nlook, nquant);
+    assert PSM.TrcRE(pts0, PT.PTS_final(bestT));
+    assert PIV.BestMatchRE(body, bestT, AI.FFindMatch(bodycode, str, inits, ov, LAnc.Forward, cdns).0);
+
+    // Pin bestT to the checked tree's first leaf.
+    TrcREToLinden(pts0, PT.PTS_final(bestT));
+    TR.TreeRepPikeSubtree(qm, tstar, bodycode, 0, inp, false);
+    PT.InitPiketreeInv(tstar, inp);
+    CR.PikeTreeTrcCorrect(pts0, PT.PTS_final(bestT), LT.FirstLeaf(tstar, inp));
+    assert bestT == LT.FirstLeaf(tstar, inp);
   }
 
   // {:isolate_assertions} is REQUIRED here, not a tuning knob. Admitting

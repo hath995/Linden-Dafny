@@ -4923,4 +4923,38 @@ module LindenElkPikeInv {
     // Seen inclusion is vacuous at the empty (init_bpcset) processed set.
     InitialInclusionRE(rer, qm, code, inp, Some(tree), 0, |code|);
   }
+
+  /** The cp-generalized base case: the initial state at an ARBITRARY start
+      position `cp` (with fresh registers) satisfies `PikeInvRE`. `InitialPikeInvRE`
+      is the `cp == 0` instance. The proof is the same and actually simpler — the
+      incoming `inp` is `InpOfCp(str, cp)` directly, with no `InitInput` bridge.
+      This is the entry invariant the lookaround body match at position `cp`
+      needs (§4b): the body is simulated from a fresh thread at `cp`, not at 0. */
+  lemma InitialPikeInvREAtCp(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, ngroups: nat,
+                             str: string, cp: nat, tree: LT.Tree, vms: AI.VmState, ncap: int, nlook: int, nquant: int)
+    requires NR.LookBehindFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase && AR.QmapOk(re, qm)
+    requires code == CP.compile_to_bytecode(re)
+    requires cp <= |str|
+    requires TT.TreeThreadRE(rer, qm, code, InpOfCp(str, cp), tree, 0, false)
+    requires vms.cp == cp
+    requires vms.active == [AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant))]
+    requires vms.blocked == []
+    requires vms.bestmatch.None?
+    requires vms.processed == AI.init_bpcset(|code|)
+    requires vms.context == AI.cp_context(cp, str, LAnc.Forward)
+    ensures PikeInvRE(rer, qm, re, code, ngroups, str, PT.PikeTreeInitialState(tree, InpOfCp(str, cp)), vms)
+  {
+    var inp := InpOfCp(str, cp);
+    var acts := [LS.Areg(T.Translate(re))];
+
+    // Active correspondence for the singleton [(tree, Empty)] ~ [init_thread].
+    GmOfLiveInit(re, ncap, nlook, nquant);              // GmOfLive(re, init_regs...) == Empty
+    var th := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
+    assert ActiveRepRE(rer, qm, re, code, inp, [(tree, LG.Empty)], [th]) by {
+      assert ActiveRepRE(rer, qm, re, code, inp, [], []);
+    }
+
+    // Seen inclusion is vacuous at the empty (init_bpcset) processed set.
+    InitialInclusionRE(rer, qm, code, inp, Some(tree), 0, |code|);
+  }
 }
