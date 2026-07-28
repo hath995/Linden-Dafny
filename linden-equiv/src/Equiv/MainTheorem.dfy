@@ -1926,21 +1926,6 @@ module LindenElkMain {
     forall g :: g in S ==> (g in gm1 <==> g in gm2) && (g in gm1 ==> gm1[g] == gm2[g])
   }
 
-  /** A tree with no `LK`/`LKFail` node -- the tree of a look-free regex. */
-  predicate NoLKTree(t: LT.Tree) {
-    match t
-    case Mismatch => true
-    case Match => true
-    case Choice(t1, t2) => NoLKTree(t1) && NoLKTree(t2)
-    case Read(_, t1) => NoLKTree(t1)
-    case ReadBackRef(_, t1) => NoLKTree(t1)
-    case Progress(t1) => NoLKTree(t1)
-    case AnchorPass(_, t1) => NoLKTree(t1)
-    case GroupActionT(_, t1) => NoLKTree(t1)
-    case LK(_, _, _) => false
-    case LKFail(_, _) => false
-  }
-
   /** Applying the SAME group action to two `S`-agreeing maps preserves
       `S`-agreement (the action reads/writes one group -- or a reset set --
       identically on both). */
@@ -1968,7 +1953,7 @@ module LindenElkMain {
       lands at the same position and its leaf gms still agree on `S`. */
   lemma TreeResGmFrame(t: LT.Tree, gm1: LG.GroupMap, gm2: LG.GroupMap, inp: LC.Input,
                        dir: WP.Direction, S: set<LG.GroupId>)
-    requires NoLKTree(t)
+    requires EL.NoLKTree(t)
     requires GmAgreeOn(gm1, gm2, S)
     ensures (LT.TreeRes(t, gm1, inp, dir).None? <==> LT.TreeRes(t, gm2, inp, dir).None?)
     ensures LT.TreeRes(t, gm1, inp, dir).Some? ==>

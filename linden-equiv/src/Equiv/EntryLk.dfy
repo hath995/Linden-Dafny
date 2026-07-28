@@ -366,6 +366,121 @@ module LindenElkEntryLk {
     ComputeTreeGmIndepLk(rer, acts, inp, gm, LG.Empty, dir, fuel);
   }
 
+  /** A tree with no `LK`/`LKFail` node -- the tree of a look-free regex. */
+  predicate NoLKTree(t: LT.Tree) {
+    match t
+    case Mismatch => true
+    case Match => true
+    case Choice(t1, t2) => NoLKTree(t1) && NoLKTree(t2)
+    case Read(_, t1) => NoLKTree(t1)
+    case ReadBackRef(_, t1) => NoLKTree(t1)
+    case Progress(t1) => NoLKTree(t1)
+    case AnchorPass(_, t1) => NoLKTree(t1)
+    case GroupActionT(_, t1) => NoLKTree(t1)
+    case LK(_, _, _) => false
+    case LKFail(_, _) => false
+  }
+
+  /** A `NoLkBrActs` walk builds a tree with no `LK`/`LKFail` node -- the `LK`
+      node is produced only by the `LookaroundR` case, which is absent. */
+  lemma ComputeTreeNoLK(rer: LW.RegExpRecord, act: LS.Actions, inp: LC.Input,
+                        gm: LG.GroupMap, dir: WP.Direction, fuel: nat)
+    requires NoLkBrActs(act)
+    ensures FS.ComputeTree(rer, act, inp, gm, dir, fuel).Some?
+         ==> NoLKTree(FS.ComputeTree(rer, act, inp, gm, dir, fuel).value)
+    decreases fuel
+  {
+    if fuel == 0 || |act| == 0 { return; }
+    var f := fuel - 1;
+    var cont := act[1..];
+    NoLkBrActsTail(act);
+    match act[0]
+    case Acheck(strcheck) =>
+      if SSx.IsStrictSuffix(inp, strcheck, dir) {
+        ComputeTreeNoLK(rer, cont, inp, gm, dir, f);
+      }
+    case Aclose(gid) =>
+      ComputeTreeNoLK(rer, cont, inp, LG.GMClose(LC.Idx(inp), gid, gm), dir, f);
+    case Areg(r) =>
+      match r
+      case Epsilon => ComputeTreeNoLK(rer, cont, inp, gm, dir, f);
+      case Character(cd) =>
+        match LC.ReadChar(rer, cd, inp, dir) {
+          case None =>
+          case Some(pair) => ComputeTreeNoLK(rer, cont, pair.1, gm, dir, f);
+        }
+      case Disjunction(r1, r2) =>
+        NoLkBrActsCons(LS.Areg(r1), cont);
+        NoLkBrActsCons(LS.Areg(r2), cont);
+        ComputeTreeNoLK(rer, [LS.Areg(r1)] + cont, inp, gm, dir, f);
+        ComputeTreeNoLK(rer, [LS.Areg(r2)] + cont, inp, gm, dir, f);
+      case Sequence(r1, r2) =>
+        var na := LS.SeqList(r1, r2, dir) + cont;
+        assert NoLkBrActs(na) by {
+          if dir.Forward? {
+            assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+            NoLkBrActsCons(LS.Areg(r2), cont);
+            NoLkBrActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont);
+          } else {
+            assert na == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
+            NoLkBrActsCons(LS.Areg(r1), cont);
+            NoLkBrActsCons(LS.Areg(r2), [LS.Areg(r1)] + cont);
+          }
+        }
+        ComputeTreeNoLK(rer, na, inp, gm, dir, f);
+      case Quantified(greedy, min, delta, r1) =>
+        var gidl := L.DefGroups(r1);
+        if min > 0 {
+          var quant := L.Quantified(greedy, min - 1, delta, r1);
+          var na := [LS.Areg(r1), LS.Areg(quant)] + cont;
+          assert NoLkBrActs(na) by {
+            assert na == [LS.Areg(r1)] + ([LS.Areg(quant)] + cont);
+            NoLkBrActsCons(LS.Areg(quant), cont);
+            NoLkBrActsCons(LS.Areg(r1), [LS.Areg(quant)] + cont);
+          }
+          ComputeTreeNoLK(rer, na, inp, LG.GMReset(gidl, gm), dir, f);
+        } else if delta == LN.NN(0) {
+          ComputeTreeNoLK(rer, cont, inp, gm, dir, f);
+        } else {
+          var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+          var na := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
+          assert NoLkBrActs(na) by {
+            assert na == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+            NoLkBrActsCons(LS.Areg(quant), cont);
+            NoLkBrActsCons(LS.Acheck(inp), [LS.Areg(quant)] + cont);
+            NoLkBrActsCons(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+          }
+          ComputeTreeNoLK(rer, na, inp, LG.GMReset(gidl, gm), dir, f);
+          ComputeTreeNoLK(rer, cont, inp, gm, dir, f);
+        }
+      case Group(gid, r1) =>
+        var na := [LS.Areg(r1), LS.Aclose(gid)] + cont;
+        assert NoLkBrActs(na) by {
+          assert na == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
+          NoLkBrActsCons(LS.Aclose(gid), cont);
+          NoLkBrActsCons(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+        }
+        ComputeTreeNoLK(rer, na, inp, LG.GMOpen(LC.Idx(inp), gid, gm), dir, f);
+      case LookaroundR(lk, r1) =>   // excluded by NoLkBrL
+      case AnchorR(a) =>
+        if LS.AnchorSatisfied(rer, a, inp) {
+          ComputeTreeNoLK(rer, cont, inp, gm, dir, f);
+        }
+      case Backreference(gid) =>    // excluded by NoLkBrL
+  }
+
+  /** The `ComputeTr` form: a look-free (backref-free) body's tree is `NoLKTree`. */
+  lemma ComputeTrNoLK(rer: LW.RegExpRecord, r: L.Regex, inp: LC.Input, gm: LG.GroupMap, dir: WP.Direction)
+    requires NoLkBrL(r)
+    ensures NoLKTree(FU.ComputeTr(rer, [LS.Areg(r)], inp, gm, dir))
+  {
+    var acts := [LS.Areg(r)];
+    assert NoLkBrActs(acts);
+    var fuel := FS.ActionsFuel(acts, inp, dir) + 1;
+    FS.FunctionalTerminates(rer, acts, inp, gm, dir, fuel);
+    ComputeTreeNoLK(rer, acts, inp, gm, dir, fuel);
+  }
+
   /** A look-free `R.regex` translates to a `NoLkBrL` `L.Regex`: `Translate`
       makes `LookaroundR` only from `Re_lookaround` (absent) and never makes a
       `Backreference` (no such `R.regex` constructor). */
