@@ -1,4 +1,4 @@
-// Phase 4b (layer 4) / Phase +C4: the central construction — from the spec
+﻿// Phase 4b (layer 4) / Phase +C4: the central construction â€” from the spec
 // BoolTree of a represented action list to the CHECKED TreeRepRE tree.
 //
 // PIVOT (plus campaign): the lemma is value-returning. Given the spec walk
@@ -7,18 +7,18 @@
 // (TreeRepRE at the same pc/flag) and proves the two agree on leaves. The
 // checking happens at exactly two seams:
 //  - the do-while entry (min == 1, Inf): BoolCheckInsert plants the missing
-//    Acheck after the guaranteed last forced body — legal because the body is
+//    Acheck after the guaranteed last forced body â€” legal because the body is
 //    NonNullable (ConsumesBeforeAreg);
 //  - the backward fork (the do-while's decision point): the zero-width Acheck
 //    dissolves into the fork and is consumed together with the Choice by
 //    tr_plus (companion lemma AtBackForkTreeRep), with BoolFlagLift raising
-//    the iteration walk to CanExit — the engine never clears exit_allowed
+//    the iteration walk to CanExit â€” the engine never clears exit_allowed
 //    through the back edge, so the represented iteration runs at true.
 // The WalkOk carrier excludes the one adversarial config where the ensures
 // would be false (a bare loop-view star at CannotExit); its guard bit g runs
 // in lockstep with EaOf(b) through every case.
 //
-// Measure: PSize (Progress-blind — check insertion is PSize-preserving),
+// Measure: PSize (Progress-blind â€” check insertion is PSize-preserving),
 // then MsizeA = 2*ActionsRegexSize + |acts| (expansions net-decrease it,
 // Acheck/Progress-consuming steps tie PSize and drop it), then fuel, then a
 // tag ordering the mutual pair (the bare loop-view delegation is a tie on
@@ -28,7 +28,7 @@ include "CheckErase.dfy"
 include "WalkOk.dfy"
 include "LookLeaves.dfy"
 
-/** Phase 4b layer 4 — the checked-tree construction: a `BoolTree` of a
+/** Phase 4b layer 4 â€” the checked-tree construction: a `BoolTree` of a
     `PikeActions`/`PikeRegex`-restricted action list yields a leaves-agreeing
     CHECKED tree that is `TreeRepRE`-represented at the corresponding pc. */
 module LindenElkActionsTreeRep {
@@ -67,7 +67,7 @@ module LindenElkActionsTreeRep {
   // Translated fragment regexes are exactly Linden's pike subset.
   /** Every RegElk regex in the star fragment (`StarFragmentRE`, well-formed
       under `TransWf`) translates to a regex satisfying Linden's `PikeRegex`
-      restriction — so the tree-simulation argument can assume the pike subset. */
+      restriction â€” so the tree-simulation argument can assume the pike subset. */
   lemma TranslateFragmentPike(re: R.regex)
     requires NR.PlusFragmentRE(re) && T.TransWf(re)
     ensures PS.PikeRegex(T.Translate(re))
@@ -111,7 +111,7 @@ module LindenElkActionsTreeRep {
   }
 
   /** Every `ActionsRepL` derivation has some finite fuel bound witnessing it
-      via `ActionsRepFuelL` — turns the representation predicate into
+      via `ActionsRepFuelL` â€” turns the representation predicate into
       something a fuel-indexed induction can consume. */
   least lemma ActionsRepLToFuel(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, c: RB.code, pc: nat)
     requires AR.ActionsRepL(rer, qm, acts, c, pc)
@@ -132,7 +132,7 @@ module LindenElkActionsTreeRep {
     }
   }
 
-  /** The fuelled predicate implies the real one — `ActionsRepFuelL` is sound
+  /** The fuelled predicate implies the real one â€” `ActionsRepFuelL` is sound
       for `ActionsRepL`, the inverse direction of `ActionsRepLToFuel`. */
   lemma FuelToActionsRepL(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, c: RB.code, pc: nat, n: nat)
     requires ActionsRepFuelL(rer, qm, acts, c, pc, n)
@@ -156,25 +156,25 @@ module LindenElkActionsTreeRep {
   /** The list component of the construction's measure: expansions replace a
       regex node by its parts (`ActionsRegexSize` drops by at least one, the
       length grows by at most one), and `Acheck`/`Aclose` peels drop the
-      length with the size unchanged — both strictly decrease this. */
+      length with the size unchanged â€” both strictly decrease this. */
   function MsizeA(acts: LS.Actions): nat {
     2 * LS.ActionsRegexSize(acts) + |acts|
   }
 
   /** Fuel-indexed core of the construction: from the action-stack fuel bound,
       the walk guard, and `acts`'s spec `BoolTree` `t`, CONSTRUCTS the checked
-      tree `tstar` — `TreeRepRE`-represented at `pc` with the walk's flag, and
+      tree `tstar` â€” `TreeRepRE`-represented at `pc` with the walk's flag, and
       leaves-agreeing with `t`. One case per `Action`/`Regex` shape; the
       do-while cases plant/dissolve the progress check as described in the
       file header. */
   // {:isolate_assertions} is LOAD-BEARING here: as one VC this lemma times out
-  // past 600s (measured). It is also the package's dominant cost — ~4300 tiny
-  // batches, ~3800 cpu-seconds — and the way to fix that is to decompose the
+  // past 600s (measured). It is also the package's dominant cost â€” ~4300 tiny
+  // batches, ~3800 cpu-seconds â€” and the way to fix that is to decompose the
   // LEMMA (its per-shape cases into standalone lemmas with small contexts),
   // not to split the file: this single lemma owns ~98% of the file's time and
   // is mutually recursive with AtBackForkTreeRep, so no file split can
   // separate them.
-  lemma {:isolate_assertions} ActionsTreeRepFRE(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code, pc: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree, n: nat)
+  lemma {:isolate_assertions} ActionsTreeRepFRE(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code, pc: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree, n: nat, S: set<LG.GroupId>)
     returns (tstar: LT.Tree)
     requires EL.PikeLkActions(acts)
     requires !rer.multiline
@@ -182,8 +182,9 @@ module LindenElkActionsTreeRep {
     requires WO.WalkOk(acts, code, pc, EaOf(b))
     requires LL.OracleOkSuffix(rer, qm, inp)
     requires EL.BoolTreeLk(rer, acts, inp, b, t)
+    requires LL.LkConfinedTree(t, S)
     ensures TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b))
-    ensures LL.LeavesAgreeAt(tstar, t, inp)
+    ensures LL.LeavesAgreeAtOutside(tstar, t, inp, S)
     decreases CE.PSize(t), MsizeA(acts), n, 1
   {
     if |acts| == 0 && NR.GetPcRE(code, pc) == Some(RB.Accept) {
@@ -192,7 +193,7 @@ module LindenElkActionsTreeRep {
     } else if exists pcstart: nat :: NR.GetPcRE(code, pc) == Some(RB.Jmp(pcstart)) && ActionsRepFuelL(rer, qm, acts, code, pcstart, n - 1) {
       var pcstart: nat :| NR.GetPcRE(code, pc) == Some(RB.Jmp(pcstart)) && ActionsRepFuelL(rer, qm, acts, code, pcstart, n - 1);
       WO.WalkOkJmp(acts, code, pc, EaOf(b), pcstart);
-      tstar := ActionsTreeRepFRE(rer, qm, acts, code, pcstart, inp, b, t, n - 1);
+      tstar := ActionsTreeRepFRE(rer, qm, acts, code, pcstart, inp, b, t, n - 1, S);
       // tr_jmp
       assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));
     } else {
@@ -210,10 +211,10 @@ module LindenElkActionsTreeRep {
             match t {
               case Progress(tc) =>
                 WO.WalkOkAcheckEndLoop(acts, code, pc, EaOf(b));
-                var sub := ActionsTreeRepFRE(rer, qm, cont, code, pc + 1, inp, BS.CanExit, tc, n - 1);
+                var sub := ActionsTreeRepFRE(rer, qm, cont, code, pc + 1, inp, BS.CanExit, tc, n - 1, S);
                 tstar := LT.Progress(sub);
                 // tr_progress (fall-through EndLoop)
-                LL.LAAtCongProgress(sub, tc, inp);
+                LL.LAAtCongProgressOutside(sub, tc, inp, S);
               case _ =>
             }
           } else {
@@ -227,13 +228,13 @@ module LindenElkActionsTreeRep {
             match t {
               case Progress(tc) =>
                 WO.WalkOkAcheckBackFork(acts, code, pc, EaOf(b));
-                var sub := AtBackForkTreeRep(rer, qm, cont, code, pc, inp, tc, n - 1);
+                var sub := AtBackForkTreeRep(rer, qm, cont, code, pc, inp, tc, n - 1, S);
                 tstar := LT.Progress(sub);
-                LL.LAAtCongProgress(sub, tc, inp);
+                LL.LAAtCongProgressOutside(sub, tc, inp, S);
               case _ =>
             }
           } else {
-            // t == Mismatch: the dissolved guard fails — tr_plusfail
+            // t == Mismatch: the dissolved guard fails â€” tr_plusfail
             tstar := LT.Mismatch;
             var fx: int, fy: int :| NR.GetPcRE(code, pc) == Some(RB.Fork(fx, fy))
               && fx >= 0 && fy >= 0 && (fx as nat <= pc || fy as nat <= pc);
@@ -246,10 +247,10 @@ module LindenElkActionsTreeRep {
             assert g == LG.Close(gid);
             WO.WalkOkAclose(acts, code, pc, EaOf(b));
             assert CE.PSize(tc) < CE.PSize(t);
-            var sub := ActionsTreeRepFRE(rer, qm, cont, code, pc + 1, inp, b, tc, n - 1);
+            var sub := ActionsTreeRepFRE(rer, qm, cont, code, pc + 1, inp, b, tc, n - 1, S);
             tstar := LT.GroupActionT(g, sub);
             // tr_close
-            LL.LAAtCongGroup(g, sub, tc, inp);
+            LL.LAAtCongGroupOutside(g, sub, tc, inp, S);
           case _ =>
         }
       case Areg(r) =>
@@ -259,7 +260,7 @@ module LindenElkActionsTreeRep {
           assert pcmid == pc;
           WO.WalkOkEpsilon(acts, code, pc, EaOf(b));
           assert MsizeA(cont) < MsizeA(acts);
-          tstar := ActionsTreeRepFRE(rer, qm, cont, code, pc, inp, b, t, n - 1);
+          tstar := ActionsTreeRepFRE(rer, qm, cont, code, pc, inp, b, t, n - 1, S);
         case Character(cd) => {
           var ce :| NR.GetPcRE(code, pc) == Some(RB.Consume(ce)) && AR.ExpectationMatches(rer, ce, cd);
           AR.ReadAgree(rer, ce, cd, inp);
@@ -273,11 +274,11 @@ module LindenElkActionsTreeRep {
                   assert c == pair.0;
                   WO.WalkOkCharacter(acts, code, pc, EaOf(b));
                   assert CE.PSize(tc) < CE.PSize(t);
-                  var sub := ActionsTreeRepFRE(rer, qm, cont, code, pc + 1, pair.1, BS.CanExit, tc, n - 1);
+                  var sub := ActionsTreeRepFRE(rer, qm, cont, code, pc + 1, pair.1, BS.CanExit, tc, n - 1, S);
                   tstar := LT.Read(c, sub);
                   // tr_read with witness (ce, pair.1)
                   assert AR.ReadCharE(ce, inp) == Some((c, pair.1));
-                  LL.LAAtCongRead(c, sub, tc, inp);
+                  LL.LAAtCongReadOutside(c, sub, tc, inp, S);
                 case _ =>
               }
           }
@@ -293,7 +294,7 @@ module LindenElkActionsTreeRep {
           match t {
             case Choice(ta, tb) =>
               WO.WalkOkAlt(acts, code, pc, EaOf(b), r1, r2, pc + 1, e1 + 1);
-              // left branch: [Areg r1]+cont at pc+1 (cont reached via Jmp(e1→pcmid))
+              // left branch: [Areg r1]+cont at pc+1 (cont reached via Jmp(e1â†’pcmid))
               var la := [LS.Areg(r1)] + cont;
               assert AR.ActionsRepL(rer, qm, cont, code, e1) by {
                 FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
@@ -305,7 +306,7 @@ module LindenElkActionsTreeRep {
               ActionsRepLToFuel(rer, qm, la, code, pc + 1);
               var na: nat :| ActionsRepFuelL(rer, qm, la, code, pc + 1, na);
               assert CE.PSize(ta) < CE.PSize(t);
-              var suba := ActionsTreeRepFRE(rer, qm, la, code, pc + 1, inp, b, ta, na);
+              var suba := ActionsTreeRepFRE(rer, qm, la, code, pc + 1, inp, b, ta, na, S);
               // right branch: [Areg r2]+cont at e1+1
               var lb := [LS.Areg(r2)] + cont;
               FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
@@ -315,10 +316,10 @@ module LindenElkActionsTreeRep {
               ActionsRepLToFuel(rer, qm, lb, code, e1 + 1);
               var nb: nat :| ActionsRepFuelL(rer, qm, lb, code, e1 + 1, nb);
               assert CE.PSize(tb) < CE.PSize(t);
-              var subb := ActionsTreeRepFRE(rer, qm, lb, code, e1 + 1, inp, b, tb, nb);
+              var subb := ActionsTreeRepFRE(rer, qm, lb, code, e1 + 1, inp, b, tb, nb, S);
               tstar := LT.Choice(suba, subb);
               // tr_choice with the forward Fork(pc+1, e1+1)
-              LL.LAAtCongChoice(suba, ta, subb, tb, inp);
+              LL.LAAtCongChoiceOutside(suba, ta, subb, tb, inp, S);
             case _ =>
           }
         }
@@ -341,7 +342,7 @@ module LindenElkActionsTreeRep {
           ActionsRepLToFuel(rer, qm, na, code, pc);
           var nn: nat :| ActionsRepFuelL(rer, qm, na, code, pc, nn);
           WO.WalkOkSeq(acts, code, pc, EaOf(b), r1, r2);
-          tstar := ActionsTreeRepFRE(rer, qm, na, code, pc, inp, b, t, nn);
+          tstar := ActionsTreeRepFRE(rer, qm, na, code, pc, inp, b, t, nn, S);
         }
         case Quantified(greedy, min, delta, r1) => {
           var gidl := L.DefGroups(r1);
@@ -385,15 +386,15 @@ module LindenElkActionsTreeRep {
                       var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 1, ni);
                       WO.WalkOkQuantForced(acts, code, pc, EaOf(b), greedy, min, delta, r1);
                       assert CE.PSize(tc) < CE.PSize(t);
-                      var sub := ActionsTreeRepFRE(rer, qm, ia, code, pc + 1, inp, b, tc, ni);
+                      var sub := ActionsTreeRepFRE(rer, qm, ia, code, pc + 1, inp, b, tc, ni, S);
                       tstar := LT.GroupActionT(g, sub);
                       // tr_reset at pc (the copy's clock-mark carries the Reset)
-                      LL.LAAtCongGroup(g, sub, tc, inp);
+                      LL.LAAtCongGroupOutside(g, sub, tc, inp, S);
                     case _ =>
                   }
                 } else {
                   // min == 1: THE SEAM. The stamp is at pc (== em); the spec
-                  // walk has no check after this last forced body — insert it.
+                  // walk has no check after this last forced body â€” insert it.
                   assert em == pc;
                   var q0 := L.Quantified(greedy, 0, LN.Inf, r1);
                   match t {
@@ -454,12 +455,12 @@ module LindenElkActionsTreeRep {
                       WO.WalkOkQuantSeam(acts, code, pc, EaOf(b), greedy, r1, inp);
                       assert CE.PSize(t1ck) == CE.PSize(tc);
                       assert CE.PSize(t1ck) < CE.PSize(t);
-                      var sub := ActionsTreeRepFRE(rer, qm, ia, code, pc + 1, inp, b, t1ck, ni);
+                      var sub := ActionsTreeRepFRE(rer, qm, ia, code, pc + 1, inp, b, t1ck, ni, S);
                       tstar := LT.GroupActionT(g, sub);
                       // tr_reset at pc (the do-while stamp; the VM's
                       // SetQuantToClock preserves exit_allowed, so b carries)
-                      assert LL.LeavesAgreeAt(sub, tc, inp);
-                      LL.LAAtCongGroup(g, sub, tc, inp);
+                      assert LL.LeavesAgreeAtOutside(sub, tc, inp, S);
+                      LL.LAAtCongGroupOutside(g, sub, tc, inp, S);
                     case _ =>
                   }
                 }
@@ -492,10 +493,10 @@ module LindenElkActionsTreeRep {
                     var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 1, ni);
                     WO.WalkOkQuantForced(acts, code, pc, EaOf(b), greedy, min, delta, r1);
                     assert CE.PSize(tc) < CE.PSize(t);
-                    var sub := ActionsTreeRepFRE(rer, qm, ia, code, pc + 1, inp, b, tc, ni);
+                    var sub := ActionsTreeRepFRE(rer, qm, ia, code, pc + 1, inp, b, tc, ni, S);
                     tstar := LT.GroupActionT(g, sub);
                     // tr_reset at pc (the clock-mark carries the Reset node)
-                    LL.LAAtCongGroup(g, sub, tc, inp);
+                    LL.LAAtCongGroupOutside(g, sub, tc, inp, S);
                   case _ =>
                 }
             }
@@ -512,7 +513,7 @@ module LindenElkActionsTreeRep {
               WO.WalkOkQuantSpent(acts, code, pc, EaOf(b), greedy, r1);
               assert LS.ActionsRegexSize(cont) < LS.ActionsRegexSize(acts);
               assert MsizeA(cont) < MsizeA(acts);
-              tstar := ActionsTreeRepFRE(rer, qm, cont, code, pcmid, inp, b, t, n - 1);
+              tstar := ActionsTreeRepFRE(rer, qm, cont, code, pcmid, inp, b, t, n - 1, S);
             } else {
               // one bounded layer: the fork skips to the common end pcmid
               var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
@@ -539,7 +540,7 @@ module LindenElkActionsTreeRep {
                                           if greedy then pcmid else pc + 1, inp);
                       // skip branch: cont at the common end pcmid
                       assert CE.PSize(skipt) < CE.PSize(t);
-                      var subs := ActionsTreeRepFRE(rer, qm, cont, code, pcmid, inp, b, skipt, n - 1);
+                      var subs := ActionsTreeRepFRE(rer, qm, cont, code, pcmid, inp, b, skipt, n - 1, S);
                       // iteration branch at pc+3 with the NN(k-1) continuation at e1+1
                       EL.PikeLkActionsConsIff(LS.Areg(quant), cont);
                       EL.PikeLkActionsConsIff(LS.Acheck(inp), [LS.Areg(quant)] + cont);
@@ -564,7 +565,7 @@ module LindenElkActionsTreeRep {
                       ActionsRepLToFuel(rer, qm, ia, code, pc + 3);
                       var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 3, ni);
                       assert CE.PSize(ti) < CE.PSize(t);
-                      var subi := ActionsTreeRepFRE(rer, qm, ia, code, pc + 3, inp, BS.CannotExit, ti, ni);
+                      var subi := ActionsTreeRepFRE(rer, qm, ia, code, pc + 3, inp, BS.CannotExit, ti, ni, S);
                       // assemble: subi at pc+3 (false) -> tr_begin at pc+2 ->
                       // tr_reset at pc+1 -> tr_choice with the skip at pcmid
                       assert TR.TreeRepRE(qm, subi, code, pc + 3, inp, false);
@@ -572,11 +573,11 @@ module LindenElkActionsTreeRep {
                       var iterstar := LT.GroupActionT(g, subi);
                       assert TR.TreeRepRE(qm, iterstar, code, pc + 1, inp, EaOf(b));
                       tstar := if greedy then LT.Choice(iterstar, subs) else LT.Choice(subs, iterstar);
-                      LL.LAAtCongGroup(g, subi, ti, inp);
+                      LL.LAAtCongGroupOutside(g, subi, ti, inp, S);
                       if greedy {
-                        LL.LAAtCongChoice(iterstar, itert, subs, skipt, inp);
+                        LL.LAAtCongChoiceOutside(iterstar, itert, subs, skipt, inp, S);
                       } else {
-                        LL.LAAtCongChoice(subs, skipt, iterstar, itert, inp);
+                        LL.LAAtCongChoiceOutside(subs, skipt, iterstar, itert, inp, S);
                       }
                       assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));
                     case _ =>
@@ -621,7 +622,7 @@ module LindenElkActionsTreeRep {
                                         if greedy then pcmid else pc + 1, inp);
                     // skip branch at pcmid == e1+2
                     assert CE.PSize(skipt) < CE.PSize(t);
-                    var subs := ActionsTreeRepFRE(rer, qm, cont, code, pcmid, inp, b, skipt, n - 1);
+                    var subs := ActionsTreeRepFRE(rer, qm, cont, code, pcmid, inp, b, skipt, n - 1, S);
                     // iteration branch: [Areg r1, Acheck inp, Areg quant] + cont at pc+3
                     EL.PikeLkActionsConsIff(LS.Areg(quant), cont);
                     EL.PikeLkActionsConsIff(LS.Acheck(inp), [LS.Areg(quant)] + cont);
@@ -648,19 +649,19 @@ module LindenElkActionsTreeRep {
                     ActionsRepLToFuel(rer, qm, ia, code, pc + 3);
                     var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 3, ni);
                     assert CE.PSize(ti) < CE.PSize(t);
-                    var subi := ActionsTreeRepFRE(rer, qm, ia, code, pc + 3, inp, BS.CannotExit, ti, ni);
-                    // assemble: subi at pc+3 (false) → tr_begin at pc+2 (any b) →
-                    // tr_reset at pc+1 (consumes the Reset node at b) → tr_choice
+                    var subi := ActionsTreeRepFRE(rer, qm, ia, code, pc + 3, inp, BS.CannotExit, ti, ni, S);
+                    // assemble: subi at pc+3 (false) â†’ tr_begin at pc+2 (any b) â†’
+                    // tr_reset at pc+1 (consumes the Reset node at b) â†’ tr_choice
                     assert TR.TreeRepRE(qm, subi, code, pc + 3, inp, false);
                     assert TR.TreeRepRE(qm, subi, code, pc + 2, inp, EaOf(b));
                     var iterstar := LT.GroupActionT(g, subi);
                     assert TR.TreeRepRE(qm, iterstar, code, pc + 1, inp, EaOf(b));
                     tstar := if greedy then LT.Choice(iterstar, subs) else LT.Choice(subs, iterstar);
-                    LL.LAAtCongGroup(g, subi, ti, inp);
+                    LL.LAAtCongGroupOutside(g, subi, ti, inp, S);
                     if greedy {
-                      LL.LAAtCongChoice(iterstar, itert, subs, skipt, inp);
+                      LL.LAAtCongChoiceOutside(iterstar, itert, subs, skipt, inp, S);
                     } else {
-                      LL.LAAtCongChoice(subs, skipt, iterstar, itert, inp);
+                      LL.LAAtCongChoiceOutside(subs, skipt, iterstar, itert, inp, S);
                     }
                     assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));
                   case _ =>
@@ -686,10 +687,10 @@ module LindenElkActionsTreeRep {
             assert EaOf(b) == true;
             assert b == BS.CanExit;
             assert AR.BackForkAt(code, pc);
-            var sub := AtBackForkTreeRep(rer, qm, acts, code, pc, inp, t, n);
+            var sub := AtBackForkTreeRep(rer, qm, acts, code, pc, inp, t, n, S);
             tstar := LT.Progress(sub);
-            LL.LAAtProgressPass(sub, inp);
-            assert LL.LeavesAgreeAt(tstar, t, inp);
+            LL.LAAtProgressPassOutside(sub, inp, S);
+            assert LL.LeavesAgreeAtOutside(tstar, t, inp, S);
           }
         }
         case Group(gid, r1) => {
@@ -716,10 +717,10 @@ module LindenElkActionsTreeRep {
               ActionsRepLToFuel(rer, qm, ga, code, pc + 1);
               var ng: nat :| ActionsRepFuelL(rer, qm, ga, code, pc + 1, ng);
               assert CE.PSize(tc) < CE.PSize(t);
-              var sub := ActionsTreeRepFRE(rer, qm, ga, code, pc + 1, inp, b, tc, ng);
+              var sub := ActionsTreeRepFRE(rer, qm, ga, code, pc + 1, inp, b, tc, ng, S);
               tstar := LT.GroupActionT(g, sub);
               // tr_open
-              LL.LAAtCongGroup(g, sub, tc, inp);
+              LL.LAAtCongGroupOutside(g, sub, tc, inp, S);
             case _ =>
           }
         }
@@ -734,10 +735,10 @@ module LindenElkActionsTreeRep {
                 assert la2 == la;
                 WO.WalkOkAnchor(acts, code, pc, EaOf(b));
                 assert CE.PSize(tc) < CE.PSize(t);
-                var sub := ActionsTreeRepFRE(rer, qm, cont, code, pc + 1, inp, b, tc, n - 1);
+                var sub := ActionsTreeRepFRE(rer, qm, cont, code, pc + 1, inp, b, tc, n - 1, S);
                 tstar := LT.AnchorPass(la2, sub);
                 // tr_anchorpass (is_satisfied via the agreement)
-                LL.LAAtCongAnchor(la2, sub, tc, inp);
+                LL.LAAtCongAnchorOutside(la2, sub, tc, inp, S);
               case _ =>
             }
           } else {
@@ -771,12 +772,14 @@ module LindenElkActionsTreeRep {
               assert tlk == tlkc && LS.LkResult(lk, tlk, LG.Empty, inp).Some?;
               assert bit == AR.PositiveL(lk);
               WO.WalkOkLookaround(acts, code, pc, EaOf(b));
-              var sub := ActionsTreeRepFRE(rer, qm, cont, code, pc + 1, inp, b, tc, n - 1);
+              var sub := ActionsTreeRepFRE(rer, qm, cont, code, pc + 1, inp, b, tc, n - 1, S);
               tstar := sub;
               // tr_lk / tr_neglk: the gate rule carries the SAME tree onward
               assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));
               LL.LAAtGatePass(lk, tlk, tc, inp);
-              LL.LAAtTrans(tstar, tc, LT.LK(lk, tlk, tc), inp);
+              LL.LeavesAgreeAtWeaken(LT.LK(lk, tlk, tc), tc, inp, S);
+              LL.LAAtSymOutside(LT.LK(lk, tlk, tc), tc, inp, S);
+              LL.LAAtTransOutside(sub, tc, LT.LK(lk, tlk, tc), inp, S);
             case LKFail(lk2, tlk) =>
               assert tlk == tlkc && LS.LkResult(lk, tlk, LG.Empty, inp).None?;
               assert bit != AR.PositiveL(lk);
@@ -784,6 +787,7 @@ module LindenElkActionsTreeRep {
               // tr_lkfail / tr_neglkfail
               assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));
               LL.LAAtGateFail(lk, tlk, inp);
+              LL.LeavesAgreeAtWeaken(LT.Mismatch, LT.LKFail(lk, tlk), inp, S);
             case _ =>
           }
         }
@@ -796,10 +800,10 @@ module LindenElkActionsTreeRep {
       tree yields a checked Choice whose `Progress` wrapper is consumed by
       `tr_plus` together with the fork. Pops `Epsilon`/`Sequence`/spent
       heads; every other head shape contradicts the pinned Fork; at the
-      loop-view star, the iteration is lifted to `CanExit` (`BoolFlagLift` —
+      loop-view star, the iteration is lifted to `CanExit` (`BoolFlagLift` â€”
       the engine runs it at `exit_allowed == true`) and both branches are
       built by the general construction. */
-  lemma AtBackForkTreeRep(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code, pc: nat, inp: LC.Input, tc: LT.Tree, n: nat)
+  lemma AtBackForkTreeRep(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code, pc: nat, inp: LC.Input, tc: LT.Tree, n: nat, S: set<LG.GroupId>)
     returns (tcstar: LT.Tree)
     requires EL.PikeLkActions(acts)
     requires !rer.multiline
@@ -808,8 +812,9 @@ module LindenElkActionsTreeRep {
     requires LL.OracleOkSuffix(rer, qm, inp)
     requires EL.BoolTreeLk(rer, acts, inp, BS.CanExit, tc)
     requires AR.BackForkAt(code, pc)
+    requires LL.LkConfinedTree(tc, S)
     ensures TR.TreeRepRE(qm, LT.Progress(tcstar), code, pc, inp, true)
-    ensures LL.LeavesAgreeAt(tcstar, tc, inp)
+    ensures LL.LeavesAgreeAtOutside(tcstar, tc, inp, S)
     decreases CE.PSize(tc), MsizeA(acts), n, 0
   {
     var fx: int, fy: int :| NR.GetPcRE(code, pc) == Some(RB.Fork(fx, fy))
@@ -831,10 +836,10 @@ module LindenElkActionsTreeRep {
       match tc {
         case Progress(tc2) =>
           WO.WalkOkAcheckBackFork(acts, code, pc, true);
-          var sub := AtBackForkTreeRep(rer, qm, cont, code, pc, inp, tc2, n - 1);
+          var sub := AtBackForkTreeRep(rer, qm, cont, code, pc, inp, tc2, n - 1, S);
           tcstar := sub;
-          LL.LAAtProgressPass(tc2, inp);
-          assert LL.LeavesAgreeAt(tcstar, tc, inp);
+          LL.LAAtProgressPassOutside(tc2, inp, S);
+          assert LL.LeavesAgreeAtOutside(tcstar, tc, inp, S);
         case _ =>
       }
     case Aclose(gid) =>
@@ -847,7 +852,7 @@ module LindenElkActionsTreeRep {
         assert pcmid == pc;
         WO.WalkOkEpsilon(acts, code, pc, true);
         assert MsizeA(cont) < MsizeA(acts);
-        tcstar := AtBackForkTreeRep(rer, qm, cont, code, pc, inp, tc, n - 1);
+        tcstar := AtBackForkTreeRep(rer, qm, cont, code, pc, inp, tc, n - 1, S);
       case Character(cd) =>
         var ce :| NR.GetPcRE(code, pc) == Some(RB.Consume(ce)) && AR.ExpectationMatches(rer, ce, cd);
         assert false;   // Consume != Fork
@@ -880,7 +885,7 @@ module LindenElkActionsTreeRep {
         ActionsRepLToFuel(rer, qm, na, code, pc);
         var nn: nat :| ActionsRepFuelL(rer, qm, na, code, pc, nn);
         WO.WalkOkSeq(acts, code, pc, true, r1, r2);
-        tcstar := AtBackForkTreeRep(rer, qm, na, code, pc, inp, tc, nn);
+        tcstar := AtBackForkTreeRep(rer, qm, na, code, pc, inp, tc, nn, S);
       case Quantified(greedy, min, delta, r1) =>
         var gidl := L.DefGroups(r1);
         if min > 0 {
@@ -917,7 +922,7 @@ module LindenElkActionsTreeRep {
             WO.WalkOkQuantSpent(acts, code, pc, true, greedy, r1);
             assert LS.ActionsRegexSize(cont) < LS.ActionsRegexSize(acts);
             assert MsizeA(cont) < MsizeA(acts);
-            tcstar := AtBackForkTreeRep(rer, qm, cont, code, pc, inp, tc, n - 1);
+            tcstar := AtBackForkTreeRep(rer, qm, cont, code, pc, inp, tc, n - 1, S);
           } else {
             // a bounded layer pins a FORWARD fork: contradiction
             var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, pcmid) else RB.Fork(pcmid, pc + 1))
@@ -977,7 +982,7 @@ module LindenElkActionsTreeRep {
                     assert EL.BoolTreeLk(rer, il, inp, BS.CannotExit, ti);
                     // skip branch: the general construction at the exit arm
                     assert CE.PSize(skipt) < CE.PSize(tc);
-                    var subs := ActionsTreeRepFRE(rer, qm, cont, code, pc + 1, inp, BS.CanExit, skipt, n - 1);
+                    var subs := ActionsTreeRepFRE(rer, qm, cont, code, pc + 1, inp, BS.CanExit, skipt, n - 1, S);
                     // iteration branch: lift to CanExit (the engine keeps
                     // exit_allowed through the back edge), then construct
                     EL.PikeLkActionsConsIff(LS.Areg(q0), cont);
@@ -1023,16 +1028,16 @@ module LindenElkActionsTreeRep {
                     ActionsRepLToFuel(rer, qm, il, code, em + 1);
                     var ni: nat :| ActionsRepFuelL(rer, qm, il, code, em + 1, ni);
                     assert CE.PSize(ti) < CE.PSize(tc);
-                    var subi := ActionsTreeRepFRE(rer, qm, il, code, em + 1, inp, BS.CanExit, ti, ni);
+                    var subi := ActionsTreeRepFRE(rer, qm, il, code, em + 1, inp, BS.CanExit, ti, ni, S);
                     // assemble: tr_reset at the stamp, then tr_plus at the fork
                     var iterstar := LT.GroupActionT(g, subi);
                     assert TR.TreeRepRE(qm, iterstar, code, em, inp, true);
                     tcstar := if greedy then LT.Choice(iterstar, subs) else LT.Choice(subs, iterstar);
-                    LL.LAAtCongGroup(g, subi, ti, inp);
+                    LL.LAAtCongGroupOutside(g, subi, ti, inp, S);
                     if greedy {
-                      LL.LAAtCongChoice(iterstar, itert, subs, skipt, inp);
+                      LL.LAAtCongChoiceOutside(iterstar, itert, subs, skipt, inp, S);
                     } else {
-                      LL.LAAtCongChoice(subs, skipt, iterstar, itert, inp);
+                      LL.LAAtCongChoiceOutside(subs, skipt, iterstar, itert, inp, S);
                     }
                     assert TR.TreeRepRE(qm, LT.Progress(tcstar), code, pc, inp, true);
                   case _ =>
@@ -1056,7 +1061,7 @@ module LindenElkActionsTreeRep {
       `ActionsRepL`-represented at `pc`, walk-guarded, and its spec `BoolTree`
       is `t`, the returned checked tree is `TreeRepRE`-represented at `pc`
       and agrees with `t` on leaves. */
-  lemma ActionsTreeRepRE(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code, pc: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree)
+  lemma ActionsTreeRepRE(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code, pc: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree, S: set<LG.GroupId>)
     returns (tstar: LT.Tree)
     requires EL.PikeLkActions(acts)
     requires !rer.multiline
@@ -1064,11 +1069,12 @@ module LindenElkActionsTreeRep {
     requires WO.WalkOk(acts, code, pc, EaOf(b))
     requires LL.OracleOkSuffix(rer, qm, inp)
     requires EL.BoolTreeLk(rer, acts, inp, b, t)
+    requires LL.LkConfinedTree(t, S)
     ensures TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b))
-    ensures LL.LeavesAgreeAt(tstar, t, inp)
+    ensures LL.LeavesAgreeAtOutside(tstar, t, inp, S)
   {
     ActionsRepLToFuel(rer, qm, acts, code, pc);
     var n: nat :| ActionsRepFuelL(rer, qm, acts, code, pc, n);
-    tstar := ActionsTreeRepFRE(rer, qm, acts, code, pc, inp, b, t, n);
+    tstar := ActionsTreeRepFRE(rer, qm, acts, code, pc, inp, b, t, n, S);
   }
 }

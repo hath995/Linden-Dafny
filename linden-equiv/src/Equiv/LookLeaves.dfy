@@ -816,6 +816,23 @@ module LindenElkLookLeaves {
     case LKFail(lk, tlk) => GmConfinedTree(tlk, S)
   }
 
+  /** An `LK`-free tree is vacuously `LkConfinedTree` for any `S` -- what a
+      look-free body's checked-tree caller (`BodyTreeAtCp`) needs. */
+  lemma NoLKTreeConfined(t: LT.Tree, S: set<LG.GroupId>)
+    requires EL.NoLKTree(t)
+    ensures LkConfinedTree(t, S)
+    decreases t
+  {
+    match t
+    case Choice(t1, t2) => NoLKTreeConfined(t1, S); NoLKTreeConfined(t2, S);
+    case Read(_, t1) => NoLKTreeConfined(t1, S);
+    case ReadBackRef(_, t1) => NoLKTreeConfined(t1, S);
+    case Progress(t1) => NoLKTreeConfined(t1, S);
+    case AnchorPass(_, t1) => NoLKTreeConfined(t1, S);
+    case GroupActionT(_, t1) => NoLKTreeConfined(t1, S);
+    case _ =>
+  }
+
   /** THE L3a LK-case assembly (mirrors ActionsTreeRepRE:774-779 in "outside S"
       form): the continuation's checked tree `sub`, already agreeing with `tc`
       outside `S`, also agrees with the gate node `LK(lk,tlk,tc)` outside `S`.
