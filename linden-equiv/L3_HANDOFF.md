@@ -163,37 +163,49 @@ FFindMatchQuantFinalAny (⇒ QuantRegsFinal) + FNulledPlusIdentity (⇒ identity
 
 ## 4. The remaining work (in order)
 
-### 4a. FLookLoop capture induction — NEXT, tractable
+### 4a. FLookLoop capture induction — ✅ DONE (commit e5db9f2, all first-try)
 
-Add `FLookLoopCaptureFrame` in `MainTheorem.dfy`, mirroring `FLookLoopFilterFrame`
-(:1381) structurally but carrying a capture frame instead of `FilterUnmoved`'s
-identity:
+`FLookLoopCaptureFrame` (MainTheorem): `RegsAgreeOutside(FLookLoop(...).0, cap, S) &&
+FLookLoop(...).1 == lk`, for any `S` with `CaptureRegs(body) <= S` per matched body.
+Parameterising by an abstract `S` (rather than baking in `CaptureRegsSet(CapIdsInLooks)`)
+kept the induction clean — the eventual caller instantiates `S` and discharges
+`CaptureRegs(body) <= S` from `CapIds(body) ⊆ CapIdsInLooks(mainast)` (a small lemma
+still to write, the capture analogue of the quant in-looks precondition). Supporting:
+`ReplayPlusFrame` (full per-replay: cap within `CaptureRegs(body)`, look unchanged,
+quant final), `NoLookWriteBody` (LookCapture), `RegsAgreeOutsideWeaken`/`Trans`
+(ClockMono). Lookahead → `ReplayPlusFrame`; every other flavour capture-free →
+`ReplayFrames` (identity).
 
-- Fix `S = CaptureRegsSet(CapIdsInLooks(mainast))` (define a set-of-ids → register
-  set; note `CaptureRegs(re) == CaptureRegsSet(CapIds(re))`). Ensure
-  `RegsAgreeOutside(FLookLoop(...).0, cap, S)`.
-- Per matched positive lookahead lid: `ReplayPlusCaptureFrame` gives the replay's
-  cap agrees with the pre-replay cap outside `CaptureRegs(body_lid)`; that is `⊆ S`
-  because `CapIds(body_lid) ⊆ CapIdsInLooks(mainast)` (needs a small lemma, the
-  capture analogue of the quant precondition `q in QuantIds(body) ⇒ q in
-  QuantIdsInLooks(mainast)` that `FLookLoopFilterFrame` already carries — establish
-  it from `LookEntryOk` + the fragment). Compose `RegsAgreeOutside` across iterations.
-- The negative / non-capture / unmatched branches leave cap unchanged (trivially
-  agree). The lookbehind branch is out of scope for L3a (lookahead-first).
-
-Then the outer filter reads only `CapIdsOutsideLooks` registers (disjoint from `S`
-by `CaptureRegsDisjoint` + `CapIdsLooksDisjoint`), so the OUTER groups' filter output
-is preserved. The INNER groups (in `S`) now carry the reconstructed values — which is
-the point, and their correctness is §4b.
-
-### 4b. The reconstruction theorem — deep
+### 4b. The reconstruction theorem — NEXT, deep
 
 The replay's WRITTEN VALUES on `CaptureRegs(body)` must equal the tree's
-`LkResult(lk, tlk, gm, inp).value` on those ids. `FLookLoop` replays
-`capture_regex(Lookahead)==body` FORWARD via `FFindMatchPlus` from the recorded cp —
-the SAME engine the main match uses — so this is "apply `MainExtraction`/`PikeSim` to
-the body as a standalone sub-match". The spec half consumes L3-0's `GroupOkL` span
-duality (now available in linden-equiv). Likely the single deepest new object.
+`LkResult(lk, tlk, gm, inp).value` on those ids. Path (investigated 2026-07-28):
+
+- **`PSM.FindMatchSimRE` (PikeSimRE:2984) is the reusable core** — it is stated
+  GENERICALLY over `(rer, qm, re, code, endl, ngroups, str, pts, vms, ov, dir, cdn, …)`,
+  not tied to the main regex, and ensures `BestMatchRE(re, bestT, FFindMatch(code,…).0)`
+  (the engine's winning thread ⟷ the tree's best leaf). The main flow uses it at
+  MainTheorem:1192, seeded by `PSM.InitialPikeInvFullRE` (:3169) then pinned to
+  `FirstLeaf` (`TrcREToLinden`/`TreeRepPikeSubtree`/`PikeTreeTrcCorrect`, :1200-1205).
+- **The wrinkle:** `InitialPikeInvFullRE` is HARD-CODED to `vms.cp == 0`,
+  `vms.clock == 0`, and FRESH `init_regs` (:3177-3185). The body replay starts at the
+  recorded `cp` with the MAIN thread's `cap/lk/qt` (denoting the current `gm`).
+- **The likely SIMPLIFICATION (do this before a full non-fresh-register invariant
+  rebuild):** during the main pass the lookaround body is NEVER executed — `CheckOracle`
+  only records the cp — so the main thread's captures on the BODY's own ids are UNSET at
+  replay start (like fresh), and the body match only writes its own ids
+  (`ReplayPlusFrame` already proves the frame). So on `CaptureRegs(body)` the replay
+  behaves like a fresh match; reduce §4b to the FRESH-register simulation restricted to
+  the body's ids + a frame/independence argument (the outer ids' initial values don't
+  affect the body's captures). Still need: (a) a "body ids unset at replay start" lemma
+  (the main pass never runs the body); (b) generalise the sim entry to start at `cp != 0`
+  (positions are absolute — `FFindMatch` already handles arbitrary `vms.cp`; the fresh
+  `cp==0` in `InitialPikeInvFullRE` is the only obstacle, likely a bounded generalisation).
+- **Spec bridge:** the resulting `bestT.1` (body first-leaf gm) == `LkResult(lk, tlk, gm,
+  inp).value` on the body's ids; connect the standalone body tree to the actual `tlk`
+  subtree in the main tree. Consumes L3-0's `GroupOkL` span duality (now in linden-equiv).
+- Still the single deepest object, but the reuse of `FindMatchSimRE` + the body-ids-unset
+  simplification bound the effort.
 
 ### 4c. The GmOfLive reframe — research risk
 
