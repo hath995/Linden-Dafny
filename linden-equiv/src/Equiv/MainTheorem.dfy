@@ -2206,6 +2206,33 @@ module LindenElkMain {
     }
   }
 
+  /** L3a `FBuildCapture` unfold: exposes the RECONSTRUCTED caps directly (no
+      `FLookLoopFilterFrame` "unchanged" simplification -- for capturing
+      lookaheads the pass DOES move the answer). Purely definitional: the answer
+      IS `filter_reset` of the `FLookLoop` result. Feeds the L3a extraction, which
+      proves that result's inside-look groups carry the spec `LkResult` values. */
+  lemma FBuildCaptureUnfoldL3a(crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                               ncap: int, nlook: int, nquant: int,
+                               capture: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+                               fmp: (Option<AI.Thread>, LOr.OracleView))
+    requires ncap == 2 * R.max_group(crv.f_main_ast) + 2
+    requires nlook == R.max_lookaround(crv.f_main_ast) + 1
+    requires nquant == R.max_quant(crv.f_main_ast) + 1
+    requires capture == AReg.init_regs(ncap)
+    requires look == AReg.init_regs(nlook)
+    requires quant == AReg.init_regs(nquant)
+    requires fmp == AI.FFindMatchPlus(crv.f_main_bc, crv.f_main_ast, crv.f_plus_bc, str, ov,
+                                      LAnc.Forward, 0, capture, look, quant, 0, crv.f_main_cdns)
+    ensures fmp.0.None? ==> AI.FBuildCapture(crv, str, ov).0 == None
+    ensures fmp.0.Some? ==>
+      var thread := fmp.0.value;
+      var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(crv.f_main_ast),
+                              thread.capture_regs, thread.look_regs, thread.quant_regs, fmp.1);
+      AI.FBuildCapture(crv, str, ov).0
+        == Some(AI.filter_reset(crv.f_main_ast, res.0, res.1, res.2, -1))
+  {
+  }
+
   // The Some-branch extraction, as its own verification unit (the parent
   // times out with it inlined).
   /** The `Some`-result half of `MainTheorem`, isolated as its own lemma
