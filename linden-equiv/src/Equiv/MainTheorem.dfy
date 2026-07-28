@@ -1828,6 +1828,45 @@ module LindenElkMain {
     }
   }
 
+  /** §4b ENGINE BRIDGE: the body replay from the MAIN thread's `cap/lk/qt`
+      agrees, on `CaptureRegs(body)`, with the replay from FRESH registers. `cap`
+      has the body's ids UNSET (the main pass writes only outside-look captures,
+      §4b groundwork), so `cap` agrees with fresh there; and the engine never
+      branches on register values, so the two runs stay in lockstep
+      (`CM.FFindMatchCapRel`). `Sq = {}`: control is quant-value-independent too,
+      so no quant hypothesis is needed. Composed with `BodyTreeAtCp` on the fresh
+      run, this pins the replay's body captures to the body's spec first leaf. */
+  lemma ReplayCapAgreeFresh(bodycode: RB.code, str: string, cp: int, cap: AReg.Regs, lk: AReg.Regs,
+                            qt: AReg.Regs, ov: LOr.OracleView, cdns: LCdn.cdns, body: R.regex,
+                            ncap: int, nlook: int, nquant: int)
+    requires 0 <= cp <= |str|
+    requires AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp)
+    requires CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    ensures var ctxc := AI.cp_context(cp, str, LAnc.Forward);
+            var ra := AI.FFindMatch(bodycode, str,
+                        AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
+            var rf := AI.FFindMatch(bodycode, str,
+                        AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                      AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
+            (ra.None? <==> rf.None?)
+            && (ra.Some? ==> CM.RegsAgreeInside(ra.value.capture_regs, rf.value.capture_regs, PIV.CaptureRegs(body)))
+  {
+    var ctxc := AI.cp_context(cp, str, LAnc.Forward);
+    var sa := AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc);
+    var sf := AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                            AReg.init_regs(nquant), 0, ctxc);
+    var Sc := PIV.CaptureRegs(body);
+    assert CM.VmRel(sa, sf, Sc, {}) by {
+      assert CM.ThreadRel(AI.init_thread(cap, lk, qt),
+                          AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant)),
+                          Sc, {}) by {
+        assert CM.RegsAgreeInside(qt, AReg.init_regs(nquant), {});  // just equal lengths (nquant)
+      }
+    }
+    CM.FFindMatchCapRel(bodycode, str, sa, sf, ov, LAnc.Forward, cdns, Sc, {});
+  }
+
   /** The filter cannot see the difference the replay makes. */
   lemma FilterUnmoved(mainast: R.regex, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs,
                       ncap: AReg.Regs, nlk: AReg.Regs, nqt: AReg.Regs, body: R.regex)
