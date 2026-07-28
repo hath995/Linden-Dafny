@@ -485,6 +485,44 @@ module LindenElkLookLeaves {
     }
   }
 
+  /** Full agreement is agreement outside any `S` (the L1 gate cases feed the
+      L3a chain unchanged). */
+  lemma LeavesAgreeAtWeaken(t1: LT.Tree, t2: LT.Tree, inp: LC.Input, S: set<LG.GroupId>)
+    requires LeavesAgreeAt(t1, t2, inp)
+    ensures LeavesAgreeAtOutside(t1, t2, inp, S)
+  {
+    forall gm: LG.GroupMap
+      ensures |LT.TreeLeaves(t1, gm, inp, WP.Forward)| == |LT.TreeLeaves(t2, gm, inp, WP.Forward)|
+      ensures forall i :: 0 <= i < |LT.TreeLeaves(t1, gm, inp, WP.Forward)| ==>
+                LT.TreeLeaves(t1, gm, inp, WP.Forward)[i].0 == LT.TreeLeaves(t2, gm, inp, WP.Forward)[i].0
+                && GmAgreeOutside(LT.TreeLeaves(t1, gm, inp, WP.Forward)[i].1,
+                                  LT.TreeLeaves(t2, gm, inp, WP.Forward)[i].1, S)
+    {
+      forall i | 0 <= i < |LT.TreeLeaves(t1, gm, inp, WP.Forward)|
+        ensures GmAgreeOutside(LT.TreeLeaves(t1, gm, inp, WP.Forward)[i].1,
+                               LT.TreeLeaves(t2, gm, inp, WP.Forward)[i].1, S)
+      { GmAgreeOutsideRefl(LT.TreeLeaves(t1, gm, inp, WP.Forward)[i].1, S); }
+    }
+  }
+
+  /** `LeavesAgreeAtOutside` transfers to the FIRST leaf (`TreeRes`/`FirstLeaf`):
+      same success, same position, maps agreeing outside `S`. */
+  lemma FirstLeafAgreeOutside(t1: LT.Tree, t2: LT.Tree, inp: LC.Input, S: set<LG.GroupId>)
+    requires LeavesAgreeAtOutside(t1, t2, inp, S)
+    ensures (LT.FirstLeaf(t1, inp).None? <==> LT.FirstLeaf(t2, inp).None?)
+    ensures LT.FirstLeaf(t1, inp).Some? ==>
+              LT.FirstLeaf(t1, inp).value.0 == LT.FirstLeaf(t2, inp).value.0
+              && GmAgreeOutside(LT.FirstLeaf(t1, inp).value.1, LT.FirstLeaf(t2, inp).value.1, S)
+  {
+    LT.FirstTreeLeaf(t1, LG.Empty, inp, WP.Forward);
+    LT.FirstTreeLeaf(t2, LG.Empty, inp, WP.Forward);
+    var l1: seq<LT.Leaf> := LT.TreeLeaves(t1, LG.Empty, inp, WP.Forward);
+    var l2: seq<LT.Leaf> := LT.TreeLeaves(t2, LG.Empty, inp, WP.Forward);
+    LT.HdErrorNoneNil(l1);
+    LT.HdErrorNoneNil(l2);
+    // FirstLeaf == HdError(TreeLeaves(_, Empty, inp, Forward)); lists agree outside S.
+  }
+
   lemma LAAtGatePass(lk: L.Lookaround, tlk: LT.Tree, tc: LT.Tree, inp: LC.Input)
     requires GmNeutralTree(tlk)
     requires L.Positivity(lk) ==> |LT.TreeLeaves(tlk, LG.Empty, inp, L.LkDir(lk))| > 0
