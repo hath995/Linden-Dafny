@@ -176,36 +176,45 @@ quant final), `NoLookWriteBody` (LookCapture), `RegsAgreeOutsideWeaken`/`Trans`
 (ClockMono). Lookahead → `ReplayPlusFrame`; every other flavour capture-free →
 `ReplayFrames` (identity).
 
-### 4b. The reconstruction theorem — NEXT, deep
+### 4b. The reconstruction theorem — MOSTLY BUILT (2026-07-28); ONE gap left
 
 The replay's WRITTEN VALUES on `CaptureRegs(body)` must equal the tree's
-`LkResult(lk, tlk, gm, inp).value` on those ids. Path (investigated 2026-07-28):
+`LkResult(lk, tlk, gm, inp).value` on those ids.
 
-- **`PSM.FindMatchSimRE` (PikeSimRE:2984) is the reusable core** — it is stated
-  GENERICALLY over `(rer, qm, re, code, endl, ngroups, str, pts, vms, ov, dir, cdn, …)`,
-  not tied to the main regex, and ensures `BestMatchRE(re, bestT, FFindMatch(code,…).0)`
-  (the engine's winning thread ⟷ the tree's best leaf). The main flow uses it at
-  MainTheorem:1192, seeded by `PSM.InitialPikeInvFullRE` (:3169) then pinned to
-  `FirstLeaf` (`TrcREToLinden`/`TreeRepPikeSubtree`/`PikeTreeTrcCorrect`, :1200-1205).
-- **The wrinkle:** `InitialPikeInvFullRE` is HARD-CODED to `vms.cp == 0`,
-  `vms.clock == 0`, and FRESH `init_regs` (:3177-3185). The body replay starts at the
-  recorded `cp` with the MAIN thread's `cap/lk/qt` (denoting the current `gm`).
-- **The likely SIMPLIFICATION (do this before a full non-fresh-register invariant
-  rebuild):** during the main pass the lookaround body is NEVER executed — `CheckOracle`
-  only records the cp — so the main thread's captures on the BODY's own ids are UNSET at
-  replay start (like fresh), and the body match only writes its own ids
-  (`ReplayPlusFrame` already proves the frame). So on `CaptureRegs(body)` the replay
-  behaves like a fresh match; reduce §4b to the FRESH-register simulation restricted to
-  the body's ids + a frame/independence argument (the outer ids' initial values don't
-  affect the body's captures). Still need: (a) a "body ids unset at replay start" lemma
-  (the main pass never runs the body); (b) generalise the sim entry to start at `cp != 0`
-  (positions are absolute — `FFindMatch` already handles arbitrary `vms.cp`; the fresh
-  `cp==0` in `InitialPikeInvFullRE` is the only obstacle, likely a bounded generalisation).
-- **Spec bridge:** the resulting `bestT.1` (body first-leaf gm) == `LkResult(lk, tlk, gm,
-  inp).value` on the body's ids; connect the standalone body tree to the actual `tlk`
-  subtree in the main tree. Consumes L3-0's `GroupOkL` span duality (now in linden-equiv).
-- Still the single deepest object, but the reuse of `FindMatchSimRE` + the body-ids-unset
-  simplification bound the effort.
+- **`PSM.FindMatchSimRE` (PikeSimRE:2984) is the reusable core** — stated GENERICALLY
+  over `(rer, qm, re, code, …, pts, vms, ov, dir, cdn, …)`, ensures
+  `BestMatchRE(re, bestT, FFindMatch(code,…).0)`. It was ALWAYS cp-generic (decreases
+  `|str| - vms.cp`, uses `vms.cp` abstractly); the ONLY thing hard-coded to `cp==0` was
+  the ENTRY invariant.
+- **DONE (commit 3c9d1a6, all first-try) — the cp!=0 generalization:**
+  - `PIV.InitialPikeInvREAtCp` — base correspondence at cp (`inp = InpOfCp(str,cp)`
+    directly; the helpers already take `inp`).
+  - `PSM.InitialPikeInvFullREAtCp` — full backbone at cp; the only cp-sensitive step is
+    `RegsValsLE(fresh, cp)`, which holds for any `cp>=0` since fresh regs are all `-1`.
+  - `MainTheorem.FindMatchBodyAtCp` — the reusable PIN: from the fresh entry state at cp,
+    `FFindMatch`'s best thread ⟷ the body's checked-tree `FirstLeaf` at `InpOfCp(str,cp)`.
+    The `Trc→FirstLeaf` bridge needs only `PikeSubtree(tstar)`, so the checked tree enters
+    only via `TreeThreadRE`/`TreeRepRE` hyps (and `TreeThreadRE` IS `TreeRepRE`, defn.).
+- **DONE (commit 6d4d85b, first-try) — the tree-construction port:**
+  - `MainTheorem.BodyTreeAtCp` — builds the checked tree for `body` at cp (mirrors the
+    entry construction MainTheorem:1140-1166) and discharges `FindMatchBodyAtCp`'s tstar
+    hyps, giving: **for a fragment body, the body match at cp ⟷ the body's SPEC first leaf
+    `FirstLeaf(ComputeTr(body, InpOfCp(str,cp)), …)`**. Needs only `StaticOkRE(body)` +
+    `SizesOkRE` + `OracleOkSuffix(rer, qm, InpOfCp(str,cp))` [caller derives via
+    `OracleOkSuffixStep`]. A look-free capturing plus-fragment body IS in
+    `LookBehindFragmentRE` (its `Re_lookaround` case, which still bans captures, never
+    fires), so the fragment lemmas apply WITHOUT further widening.
+- **THE ONE REMAINING GAP — gm-independence of the body's own-group captures.** The
+  replay THREADS the main thread's `cap/lk/qt` (Interpreter.dfy:577,511), not fresh, at
+  cp, dir=Forward. `InitialPikeInvFullREAtCp` needs FRESH regs (gm=Empty). The main caps
+  have the body's ids UNSET (§4b groundwork: main writes only outside-look caps), so on
+  `CaptureRegs(body)` they equal fresh — BUT bridging requires: **the body's first-leaf
+  captures on `CaptureRegs(body)` are independent of the incoming registers / gm.** This
+  is the single conceptual piece left, and it IS the §4c GmOfLive reframe (research risk).
+  Cleanest attack: generalize `InitialPikeInvFullREAtCp` to arbitrary initial registers
+  (tree `gm = GmOfLive(cap,lk,qt)`), then prove the body first-leaf agrees with the
+  Empty-gm tree on `CaptureRegs(body)` — a tree-level gm-independence of own-group
+  captures. Consumes L3-0's `GroupOkL` span duality (now in linden-equiv).
 
 ### 4c. The GmOfLive reframe — research risk
 
