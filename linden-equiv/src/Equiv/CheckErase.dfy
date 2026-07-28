@@ -1,8 +1,8 @@
-// Phase +B: the check-insertion equivalence — inserting an always-passing
+﻿// Phase +B: the check-insertion equivalence â€” inserting an always-passing
 // Acheck into an action list preserves the computed tree up to Progress
 // nodes, hence preserves leaves.
 //
-// This is the semantic core of the do-while campaign (ROADMAP.md §1): the
+// This is the semantic core of the do-while campaign (ROADMAP.md Â§1): the
 // compiler's `+` scheme omits the empty-iteration guard, so the engine's
 // backward fork must consume `Progress(Choice(...))` uniformly. We get that
 // uniformity by relating the engine to trees of CHECKED action lists (an
@@ -106,7 +106,7 @@ module LindenElkCheckErase {
   // The Progress-blind tree measure
   // ===========================================================================
 
-  /** Tree size counting `Progress` nodes as zero — the measure under which
+  /** Tree size counting `Progress` nodes as zero â€” the measure under which
       check insertion is size-preserving (`BoolCheckInsert` only ever adds
       `Progress` nodes), so the downstream construction can recurse on a
       checked subtree where `TreeSize` would tie. */
@@ -131,7 +131,7 @@ module LindenElkCheckErase {
   // ===========================================================================
 
   /** `t1` and `t2` denote the same leaf sequences at every group map, input,
-      and direction — the sense in which inserting a passing `Acheck` (whose
+      and direction â€” the sense in which inserting a passing `Acheck` (whose
       `Progress` node is a `TreeLeaves` pass-through) changes nothing. */
   ghost predicate LeavesAgree(t1: LT.Tree, t2: LT.Tree) {
     forall gm: LG.GroupMap, inp: LC.Input, dir: WP.Direction ::
@@ -175,7 +175,7 @@ module LindenElkCheckErase {
     ensures LeavesAgree(LT.Choice(a1, a2), LT.Choice(b1, b2))
   {}
 
-  /** Leaves-agreeing trees have the same highest-priority result — the
+  /** Leaves-agreeing trees have the same highest-priority result â€” the
       single hop `MainTheorem` takes from the checked tree the simulation ran
       on back to the spec tree. */
   lemma LAFirstLeaf(t1: LT.Tree, t2: LT.Tree, inp: LC.Input)
@@ -239,7 +239,7 @@ module LindenElkCheckErase {
   // ===========================================================================
 
   /** THE check-insertion lemma: inserting `Acheck(chk)` between `pre` and
-      `rest` cannot change the outcome — the check always passes when reached,
+      `rest` cannot change the outcome â€” the check always passes when reached,
       because either the walk has already moved strictly past `chk`
       (`IsStrictSuffix`), or a NonNullable element of `pre` still guarantees
       it will before the check is consumed. The checked tree computes with one
@@ -541,7 +541,7 @@ module LindenElkCheckErase {
 
   /** THE boolean-layer check-insertion lemma: `BoolTree`'s `Acheck` rule
       consults only the flag, never the recorded input, so the insertion is
-      justified by the flag alone — it is `CanExit` when the check is reached,
+      justified by the flag alone â€” it is `CanExit` when the check is reached,
       because a NonNullable element of `pre` (or an earlier check) forces a
       read first, or the flag was already set. The inserted node is a
       `Progress` pass-through: leaves agree. */
@@ -553,8 +553,7 @@ module LindenElkCheckErase {
     ensures EL.BoolTreeLk(rer, pre + [LS.Acheck(chk)] + rest, inp, b, tstar)
     ensures LeavesAgree(tstar, t)
     ensures PSize(tstar) == PSize(t)
-    // TODO(L3a): ensures forall SS :: LkConfinedTree(t, SS) ==> LkConfinedTree(tstar, SS)
-    //   -- needs per-case proof help in the body; unblocks the FRE line-458 precondition.
+    ensures forall SS: set<LG.GroupId> :: LkConfinedTree(t, SS) ==> LkConfinedTree(tstar, SS)
     decreases LS.TreeSize(t), LS.ActionsRegexSize(pre)
   {
     if |pre| == 0 {
@@ -565,6 +564,7 @@ module LindenElkCheckErase {
       assert ([LS.Acheck(chk)] + rest)[0] == LS.Acheck(chk)
           && ([LS.Acheck(chk)] + rest)[1..] == rest;
       tstar := LT.Progress(t);
+      forall SSp: set<LG.GroupId> | LkConfinedTree(t, SSp) ensures LkConfinedTree(tstar, SSp) {}
       LAProgressPass(t);
     } else {
       assert (pre + rest)[0] == pre[0] && (pre + rest)[1..] == pre[1..] + rest;
@@ -583,12 +583,14 @@ module LindenElkCheckErase {
             case Progress(tc) =>
               var sub := BoolCheckInsert(rer, pre[1..], chk, rest, inp, BS.CanExit, tc);
               tstar := LT.Progress(sub);
+              forall SSp: set<LG.GroupId> | LkConfinedTree(t, SSp) ensures LkConfinedTree(tstar, SSp) {}
               LACongProgress(sub, tc);
             case _ =>
           }
         } else {
           // check fails on both sides identically
           tstar := LT.Mismatch;
+          forall SSp: set<LG.GroupId> | LkConfinedTree(t, SSp) ensures LkConfinedTree(tstar, SSp) {}
         }
       case Aclose(gid) =>
         match t {
@@ -597,6 +599,7 @@ module LindenElkCheckErase {
             if AcheckIn(pre) && !(ConsumesBeforeAreg(pre[1..]) || b == BS.CanExit) { AcheckInTail(pre); }
             var sub := BoolCheckInsert(rer, pre[1..], chk, rest, inp, b, tc);
             tstar := LT.GroupActionT(g, sub);
+            forall SSp: set<LG.GroupId> | LkConfinedTree(t, SSp) ensures LkConfinedTree(tstar, SSp) {}
             LACongGroup(g, sub, tc);
           case _ =>
         }
@@ -607,6 +610,7 @@ module LindenElkCheckErase {
           if ConsumesBeforeAreg(pre) { ConsumesTailC(pre); }
           if AcheckIn(pre) && !(ConsumesBeforeAreg(pre[1..]) || b == BS.CanExit) { AcheckInTail(pre); }
           tstar := BoolCheckInsert(rer, pre[1..], chk, rest, inp, b, t);
+          forall SSp: set<LG.GroupId> | LkConfinedTree(t, SSp) ensures LkConfinedTree(tstar, SSp) {}
         case Character(cd) =>
           match LC.ReadChar(rer, cd, inp, WP.Forward) {
             case Some(pair) =>
@@ -614,11 +618,13 @@ module LindenElkCheckErase {
                 case Read(c, tc) =>
                   var sub := BoolCheckInsert(rer, pre[1..], chk, rest, pair.1, BS.CanExit, tc);
                   tstar := LT.Read(c, sub);
+                  forall SSp: set<LG.GroupId> | LkConfinedTree(t, SSp) ensures LkConfinedTree(tstar, SSp) {}
                   LACongRead(c, sub, tc);
                 case _ =>
               }
             case None =>
               tstar := LT.Mismatch;
+              forall SSp: set<LG.GroupId> | LkConfinedTree(t, SSp) ensures LkConfinedTree(tstar, SSp) {}
           }
         case Disjunction(r1, r2) =>
           match t {
@@ -652,6 +658,7 @@ module LindenElkCheckErase {
               var sa := BoolCheckInsert(rer, pa, chk, rest, inp, b, ta);
               var sb := BoolCheckInsert(rer, pb, chk, rest, inp, b, tb);
               tstar := LT.Choice(sa, sb);
+              forall SSp: set<LG.GroupId> | LkConfinedTree(t, SSp) ensures LkConfinedTree(tstar, SSp) {}
               LACongChoice(sa, ta, sb, tb);
             case _ =>
           }
@@ -682,6 +689,7 @@ module LindenElkCheckErase {
           assert pre == [pre[0]] + pre[1..];
           assert LS.ActionsRegexSize(pn) < LS.ActionsRegexSize(pre);
           tstar := BoolCheckInsert(rer, pn, chk, rest, inp, b, t);
+          forall SSp: set<LG.GroupId> | LkConfinedTree(t, SSp) ensures LkConfinedTree(tstar, SSp) {}
         case Quantified(greedy, min, delta, r1) =>
           var gidl := L.DefGroups(r1);
           if min > 0 {
@@ -709,6 +717,7 @@ module LindenElkCheckErase {
                 }
                 var sub := BoolCheckInsert(rer, pn, chk, rest, inp, b, tc);
                 tstar := LT.GroupActionT(g, sub);
+                forall SSp: set<LG.GroupId> | LkConfinedTree(t, SSp) ensures LkConfinedTree(tstar, SSp) {}
                 LACongGroup(g, sub, tc);
               case _ =>
             }
@@ -716,6 +725,7 @@ module LindenElkCheckErase {
             if ConsumesBeforeAreg(pre) { ConsumesTailC(pre); }
             if AcheckIn(pre) && !(ConsumesBeforeAreg(pre[1..]) || b == BS.CanExit) { AcheckInTail(pre); }
             tstar := BoolCheckInsert(rer, pre[1..], chk, rest, inp, b, t);
+            forall SSp: set<LG.GroupId> | LkConfinedTree(t, SSp) ensures LkConfinedTree(tstar, SSp) {}
           } else {
             match t {
               case Choice(ta, tb) =>
@@ -744,9 +754,17 @@ module LindenElkCheckErase {
                     LACongGroup(g, si, ti);
                     if greedy {
                       tstar := LT.Choice(istar, ss);
+                      forall SSp: set<LG.GroupId> | LkConfinedTree(t, SSp) ensures LkConfinedTree(tstar, SSp) {
+                        assert LkConfinedTree(itert, SSp) && LkConfinedTree(skipt, SSp);
+                        assert LkConfinedTree(ti, SSp);
+                      }
                       LACongChoice(istar, itert, ss, skipt);
                     } else {
                       tstar := LT.Choice(ss, istar);
+                      forall SSp: set<LG.GroupId> | LkConfinedTree(t, SSp) ensures LkConfinedTree(tstar, SSp) {
+                        assert LkConfinedTree(itert, SSp) && LkConfinedTree(skipt, SSp);
+                        assert LkConfinedTree(ti, SSp);
+                      }
                       LACongChoice(ss, skipt, istar, itert);
                     }
                   case _ =>
@@ -778,6 +796,7 @@ module LindenElkCheckErase {
               }
               var sub := BoolCheckInsert(rer, pn, chk, rest, inp, b, tc);
               tstar := LT.GroupActionT(g, sub);
+              forall SSp: set<LG.GroupId> | LkConfinedTree(t, SSp) ensures LkConfinedTree(tstar, SSp) {}
               LACongGroup(g, sub, tc);
             case _ =>
           }
@@ -789,11 +808,13 @@ module LindenElkCheckErase {
                 if AcheckIn(pre) && !(ConsumesBeforeAreg(pre[1..]) || b == BS.CanExit) { AcheckInTail(pre); }
                 var sub := BoolCheckInsert(rer, pre[1..], chk, rest, inp, b, tc);
                 tstar := LT.AnchorPass(a2, sub);
+                forall SSp: set<LG.GroupId> | LkConfinedTree(t, SSp) ensures LkConfinedTree(tstar, SSp) {}
                 LACongAnchor(a2, sub, tc);
               case _ =>
             }
           } else {
             tstar := LT.Mismatch;
+            forall SSp: set<LG.GroupId> | LkConfinedTree(t, SSp) ensures LkConfinedTree(tstar, SSp) {}
           }
         case LookaroundR(lk, r1) =>
           // the gate is zero-width: rebuild it around the continuation's
@@ -805,9 +826,11 @@ module LindenElkCheckErase {
               if AcheckIn(pre) && !(ConsumesBeforeAreg(pre[1..]) || b == BS.CanExit) { AcheckInTail(pre); }
               var sub := BoolCheckInsert(rer, pre[1..], chk, rest, inp, b, tc);
               tstar := LT.LK(lk2, tlk, sub);
+              forall SSp: set<LG.GroupId> | LkConfinedTree(t, SSp) ensures LkConfinedTree(tstar, SSp) {}
               LACongLK(lk2, tlk, sub, tc);
             case LKFail(lk2, tlk) =>
               tstar := t;
+              forall SSp: set<LG.GroupId> | LkConfinedTree(t, SSp) ensures LkConfinedTree(tstar, SSp) {}
             case _ =>
           }
         case Backreference(_) =>
@@ -979,7 +1002,7 @@ module LindenElkCheckErase {
               match itert {
                 case GroupActionT(g, ti) =>
                   // iteration subtree: pushed at CannotExit by both
-                  // derivations — shared verbatim, no recursion.
+                  // derivations â€” shared verbatim, no recursion.
                   ShieldedTail(acts);
                   assert LS.TreeSize(skipt) < LS.TreeSize(t);
                   BoolFlagLift(rer, cont, inp, skipt);

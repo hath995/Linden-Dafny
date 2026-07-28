@@ -414,6 +414,7 @@ module LindenElkActionsTreeRep {
                         assert pre[0].Areg? && NUL.NonNullableL(pre[0].r);
                       }
                       var t1ck := CE.BoolCheckInsert(rer, pre, inp, rest, inp, b, tc);
+                      assert CE.LkConfinedTree(t1ck, S);   // BoolCheckInsert preserves it from LkConfinedTree(tc, S)
                       var ia := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont;
                       assert ia == pre + [LS.Acheck(inp)] + rest;
                       assert EL.BoolTreeLk(rer, ia, inp, b, t1ck);
