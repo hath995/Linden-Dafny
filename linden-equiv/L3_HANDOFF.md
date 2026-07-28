@@ -209,12 +209,40 @@ The replay's WRITTEN VALUES on `CaptureRegs(body)` must equal the tree's
   cp, dir=Forward. `InitialPikeInvFullREAtCp` needs FRESH regs (gm=Empty). The main caps
   have the body's ids UNSET (§4b groundwork: main writes only outside-look caps), so on
   `CaptureRegs(body)` they equal fresh — BUT bridging requires: **the body's first-leaf
-  captures on `CaptureRegs(body)` are independent of the incoming registers / gm.** This
-  is the single conceptual piece left, and it IS the §4c GmOfLive reframe (research risk).
-  Cleanest attack: generalize `InitialPikeInvFullREAtCp` to arbitrary initial registers
-  (tree `gm = GmOfLive(cap,lk,qt)`), then prove the body first-leaf agrees with the
-  Empty-gm tree on `CaptureRegs(body)` — a tree-level gm-independence of own-group
-  captures. Consumes L3-0's `GroupOkL` span duality (now in linden-equiv).
+  captures on `CaptureRegs(body)` are independent of the incoming registers / gm.**
+
+  This decomposes into TWO gm-independences (both needed):
+  - **SPEC-side:** `FirstLeaf(ComputeTr(body,inp,gm0)).1` agrees with
+    `FirstLeaf(ComputeTr(body,inp,Empty)).1` on body's DefGroups, when gm0 doesn't
+    pre-set body's ids. NOT given by SpanDuality (that is SUCCESS-level `MatchesL`/`IterL`,
+    now GroupOkL-widened, but carries no leaf-gm VALUE). Needs new value-level induction
+    over `ComputeTr`/`FirstLeaf` gm-threading.
+  - **ENGINE-side:** `FFindMatch(bodycode, from cap).result` agrees with
+    `FFindMatch(bodycode, from fresh).result` on `CaptureRegs(body)`, given cap/fresh
+    agree there + on body quant ids (body is look-free).
+
+  **Three candidate attacks, investigated 2026-07-28 (deep dive):**
+  1. **Generalize the entry invariant to non-fresh registers** (tree gm=GmOfLive(cap,lk,qt))
+     — BLOCKED: `VmCapsLE` (PikeInvFullRE, PikeSimRE:174,821) requires ALL capture values
+     `<= cp`, but the main thread's OUTER captures exceed the lookahead cp. The bound is
+     used narrowly (GmOfLiveCloseGMClose, PikeInvRE:4059, only for the group being CLOSED,
+     always a body id) — so a LOCALIZED VmCapsLE (bound only ids the code writes) would
+     work, but weakening the `forall k` ripples through the whole load-bearing simulation
+     (RISK to proven machinery).
+  2. **RELATIONAL engine bisimulation (RECOMMENDED — cleanest, zero risk to existing
+     machinery):** a two-run frame `FFindMatch(cap) ~ FFindMatch(fresh) agree on
+     CaptureRegs(body)`. Templated on `CM.FFindMatchLookEq` (ClockMono:399, a clean ~30-line
+     UNARY invariant that keeps `look_regs == lk0` via step lemmas `FAdvanceEpsilonLookEq`
+     /`FConsumeLookEq`). The relational version needs TWO-run step lemmas
+     `FAdvanceEpsilonCapRel`/`FConsumeCapRel`: capture register VALUES never affect control
+     flow (the VM branches on pc/flags/oracle/quant-clocks; dedup in FAdvanceEpsilon is by
+     (pc,flag), register-value-INDEPENDENT), so the two runs' active/blocked PC-lists evolve
+     IDENTICALLY and each thread's caps agree on S=CaptureRegs(body)∪body-quant-ids
+     throughout (body code writes only within S). Last mile: a `GmOfLive` frame (reads only
+     own ids — build from the `FilterCapture*Frame` family, PikeInvRE:911/1206/2200) turns
+     reg-agreement into GmOfLive-agreement. Est. ~150-250 lines across 3 levels; then
+     BodyTreeAtCp closes it. STILL needs the SPEC-side value induction above.
+  3. Spec-side value induction alone doesn't close it (engine still threads main caps).
 
 ### 4c. The GmOfLive reframe — research risk
 
