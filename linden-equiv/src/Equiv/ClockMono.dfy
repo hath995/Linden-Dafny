@@ -824,6 +824,31 @@ module LindenElkClockMono {
     }
   }
 
+  /** L3a §4b — the TIGHTER lift: `compile_to_bytecode(re)` writes capture
+      registers only for `re`'s OUTSIDE-look groups. Applied to the MAIN ast it
+      shows the main match never writes a look body's own capture registers, so
+      those stay unset until FLookLoop replays them. */
+  lemma CaptureBytecodeClassifiedOutside(re: R.regex)
+    requires NR.LookBehindFragmentRE(re) && PIV.CapUnique(re)
+    ensures CaptureWritesInside(CP.compile_to_bytecode(re),
+                                PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(re)))
+  {
+    var code := CP.compile_to_bytecode(re);
+    var next := CP.compile(re, 0, CP.Progress).1;
+    NR.CompileToBytecodeRepLookBehind(re);
+    forall pc: nat | pc < |code|
+      ensures code[pc].SetRegisterToCP? ==> code[pc].reg in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(re))
+    {
+      assert NR.GetPcRE(code, pc) == Some(code[pc]);
+      if pc < next as nat {
+        PIV.CaptureWriteIdsOutsideRE(re, code, 0, next as nat, pc);
+      } else {
+        assert pc == next as nat;
+        assert NR.GetPcRE(code, next as nat) == Some(RB.Accept);
+      }
+    }
+  }
+
   /** Every gate in `c` names an id in `S` (so only those can be recorded). */
   ghost predicate LookChecksInside(c: RB.code, S: set<int>) {
     forall pc: nat :: pc < |c| ==>
