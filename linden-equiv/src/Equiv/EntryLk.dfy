@@ -196,6 +196,176 @@ module LindenElkEntryLk {
     ComputeTreeGmIndep(rer, acts, inp, gm, LG.Empty, dir, fuel);
   }
 
+  // ===========================================================================
+  // L3a: the SAME group-map independence for LOOK-FREE (not necessarily
+  // group-free) bodies. A body may CAPTURE; the tree STRUCTURE still ignores the
+  // group map, because the only nodes that read it are `LookaroundR` (via
+  // `LkResult`) and `Backreference` (via the captured string) -- neither present
+  // in a look-free, backref-free body. `Group`/`Aclose`/`Quantified` merely
+  // THREAD `GMOpen`/`GMClose`/`GMReset`, and the IH applies at whatever pair of
+  // maps they produce. This is what lets the L3a captured-lookahead subtree
+  // `tlk` (built at the main gm) be identified with the standalone body tree
+  // (built at `Empty`).
+  // ===========================================================================
+
+  /** No `LookaroundR` and no `Backreference` anywhere -- groups ARE allowed.
+      Exactly the class on which `ComputeTree`'s structure is group-map
+      independent. */
+  ghost predicate NoLkBrL(r: L.Regex) {
+    match r
+    case Epsilon => true
+    case Character(_) => true
+    case AnchorR(_) => true
+    case Disjunction(r1, r2) => NoLkBrL(r1) && NoLkBrL(r2)
+    case Sequence(r1, r2) => NoLkBrL(r1) && NoLkBrL(r2)
+    case Quantified(_, _, _, r1) => NoLkBrL(r1)
+    case Group(_, r1) => NoLkBrL(r1)
+    case LookaroundR(_, _) => false
+    case Backreference(_) => false
+  }
+
+  /** Every action is `Acheck`/`Aclose` (no regex) or `Areg` of a `NoLkBrL`
+      regex -- the invariant preserved down a `ComputeTree` walk. */
+  ghost predicate NoLkBrActs(acts: LS.Actions) {
+    forall i :: 0 <= i < |acts| ==>
+      (acts[i].Acheck? || acts[i].Aclose? || (acts[i].Areg? && NoLkBrL(acts[i].r)))
+  }
+
+  /** `NoLkBrActs` of a cons. */
+  lemma NoLkBrActsCons(x: LS.Action, cont: LS.Actions)
+    ensures NoLkBrActs([x] + cont)
+        <==> ((x.Acheck? || x.Aclose? || (x.Areg? && NoLkBrL(x.r))) && NoLkBrActs(cont))
+  {
+    if (x.Acheck? || x.Aclose? || (x.Areg? && NoLkBrL(x.r))) && NoLkBrActs(cont) {
+      forall i | 0 <= i < |[x] + cont|
+        ensures ([x] + cont)[i].Acheck? || ([x] + cont)[i].Aclose? || (([x] + cont)[i].Areg? && NoLkBrL(([x] + cont)[i].r))
+      { if i == 0 {} else { assert ([x] + cont)[i] == cont[i - 1]; } }
+    }
+    if NoLkBrActs([x] + cont) {
+      assert ([x] + cont)[0] == x;
+      forall i | 0 <= i < |cont|
+        ensures cont[i].Acheck? || cont[i].Aclose? || (cont[i].Areg? && NoLkBrL(cont[i].r))
+      { assert ([x] + cont)[i + 1] == cont[i]; }
+    }
+  }
+
+  /** `NoLkBrActs` of a tail. */
+  lemma NoLkBrActsTail(acts: LS.Actions)
+    requires |acts| > 0 && NoLkBrActs(acts)
+    ensures NoLkBrActs(acts[1..])
+  {
+    forall i | 0 <= i < |acts[1..]|
+      ensures acts[1..][i].Acheck? || acts[1..][i].Aclose? || (acts[1..][i].Areg? && NoLkBrL(acts[1..][i].r))
+    { assert acts[1..][i] == acts[i + 1]; }
+  }
+
+  /** The independence for `NoLkBrActs` (groups allowed): the tree is the same
+      under any two group maps. */
+  lemma ComputeTreeGmIndepLk(rer: LW.RegExpRecord, act: LS.Actions, inp: LC.Input,
+                             gm1: LG.GroupMap, gm2: LG.GroupMap, dir: WP.Direction, fuel: nat)
+    requires NoLkBrActs(act)
+    ensures FS.ComputeTree(rer, act, inp, gm1, dir, fuel)
+         == FS.ComputeTree(rer, act, inp, gm2, dir, fuel)
+    decreases fuel
+  {
+    if fuel == 0 || |act| == 0 { return; }
+    var f := fuel - 1;
+    var cont := act[1..];
+    NoLkBrActsTail(act);
+    match act[0]
+    case Acheck(strcheck) =>
+      if SSx.IsStrictSuffix(inp, strcheck, dir) {
+        ComputeTreeGmIndepLk(rer, cont, inp, gm1, gm2, dir, f);
+      }
+    case Aclose(gid) =>
+      ComputeTreeGmIndepLk(rer, cont, inp, LG.GMClose(LC.Idx(inp), gid, gm1),
+                           LG.GMClose(LC.Idx(inp), gid, gm2), dir, f);
+    case Areg(r) =>
+      match r
+      case Epsilon => ComputeTreeGmIndepLk(rer, cont, inp, gm1, gm2, dir, f);
+      case Character(cd) =>
+        match LC.ReadChar(rer, cd, inp, dir) {
+          case None =>
+          case Some(pair) => ComputeTreeGmIndepLk(rer, cont, pair.1, gm1, gm2, dir, f);
+        }
+      case Disjunction(r1, r2) =>
+        NoLkBrActsCons(LS.Areg(r1), cont);
+        NoLkBrActsCons(LS.Areg(r2), cont);
+        ComputeTreeGmIndepLk(rer, [LS.Areg(r1)] + cont, inp, gm1, gm2, dir, f);
+        ComputeTreeGmIndepLk(rer, [LS.Areg(r2)] + cont, inp, gm1, gm2, dir, f);
+      case Sequence(r1, r2) =>
+        var na := LS.SeqList(r1, r2, dir) + cont;
+        assert NoLkBrActs(na) by {
+          if dir.Forward? {
+            assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+            NoLkBrActsCons(LS.Areg(r2), cont);
+            NoLkBrActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont);
+          } else {
+            assert na == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
+            NoLkBrActsCons(LS.Areg(r1), cont);
+            NoLkBrActsCons(LS.Areg(r2), [LS.Areg(r1)] + cont);
+          }
+        }
+        ComputeTreeGmIndepLk(rer, na, inp, gm1, gm2, dir, f);
+      case Quantified(greedy, min, delta, r1) =>
+        var gidl := L.DefGroups(r1);
+        if min > 0 {
+          var quant := L.Quantified(greedy, min - 1, delta, r1);
+          var na := [LS.Areg(r1), LS.Areg(quant)] + cont;
+          assert NoLkBrActs(na) by {
+            assert na == [LS.Areg(r1)] + ([LS.Areg(quant)] + cont);
+            NoLkBrActsCons(LS.Areg(quant), cont);
+            NoLkBrActsCons(LS.Areg(r1), [LS.Areg(quant)] + cont);
+          }
+          ComputeTreeGmIndepLk(rer, na, inp, LG.GMReset(gidl, gm1), LG.GMReset(gidl, gm2), dir, f);
+        } else if delta == LN.NN(0) {
+          ComputeTreeGmIndepLk(rer, cont, inp, gm1, gm2, dir, f);
+        } else {
+          var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+          var na := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
+          assert NoLkBrActs(na) by {
+            assert na == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+            NoLkBrActsCons(LS.Areg(quant), cont);
+            NoLkBrActsCons(LS.Acheck(inp), [LS.Areg(quant)] + cont);
+            NoLkBrActsCons(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+          }
+          ComputeTreeGmIndepLk(rer, na, inp, LG.GMReset(gidl, gm1), LG.GMReset(gidl, gm2), dir, f);
+          ComputeTreeGmIndepLk(rer, cont, inp, gm1, gm2, dir, f);
+        }
+      case Group(gid, r1) =>
+        var na := [LS.Areg(r1), LS.Aclose(gid)] + cont;
+        assert NoLkBrActs(na) by {
+          assert na == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
+          NoLkBrActsCons(LS.Aclose(gid), cont);
+          NoLkBrActsCons(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+        }
+        ComputeTreeGmIndepLk(rer, na, inp, LG.GMOpen(LC.Idx(inp), gid, gm1),
+                             LG.GMOpen(LC.Idx(inp), gid, gm2), dir, f);
+      case LookaroundR(lk, r1) =>   // excluded by NoLkBrL
+      case AnchorR(a) =>
+        if LS.AnchorSatisfied(rer, a, inp) {
+          ComputeTreeGmIndepLk(rer, cont, inp, gm1, gm2, dir, f);
+        }
+      case Backreference(gid) =>    // excluded by NoLkBrL
+  }
+
+  /** The `ComputeTr` form of the look-free independence -- the tlk-identification
+      workhorse: a look-free (backref-free) body's tree at the main `gm` equals
+      its tree at `Empty`. */
+  lemma ComputeTrGmIndepLk(rer: LW.RegExpRecord, r: L.Regex, inp: LC.Input, gm: LG.GroupMap,
+                           dir: WP.Direction)
+    requires NoLkBrL(r)
+    ensures FU.ComputeTr(rer, [LS.Areg(r)], inp, gm, dir)
+         == FU.ComputeTr(rer, [LS.Areg(r)], inp, LG.Empty, dir)
+  {
+    var acts := [LS.Areg(r)];
+    assert NoLkBrActs(acts);
+    var fuel := FS.ActionsFuel(acts, inp, dir) + 1;
+    FS.FunctionalTerminates(rer, acts, inp, gm, dir, fuel);
+    FS.FunctionalTerminates(rer, acts, inp, LG.Empty, dir, fuel);
+    ComputeTreeGmIndepLk(rer, acts, inp, gm, LG.Empty, dir, fuel);
+  }
+
   /** Gate success is group-map independent outright (`ResGroupMapIndep`). */
   lemma LkResultGmIndep(lk: L.Lookaround, t: LT.Tree, gm: LG.GroupMap, inp: LC.Input)
     ensures LS.LkResult(lk, t, gm, inp).Some? <==> LS.LkResult(lk, t, LG.Empty, inp).Some?
