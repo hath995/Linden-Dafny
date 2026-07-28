@@ -1867,6 +1867,49 @@ module LindenElkMain {
     CM.FFindMatchCapRel(bodycode, str, sa, sf, ov, LAnc.Forward, cdns, Sc, {});
   }
 
+  /** §4b ENGINE VALUE BRIDGE (capstone): the body replay from the MAIN thread's
+      `cap/lk/qt` produces, on `CaptureRegs(body)`, exactly the capture registers
+      of the FRESH body match, whose group-map denotation `GmOfLive(body, .)` is
+      the body's SPEC first leaf `FirstLeaf(ComputeTr(body, InpOfCp(str,cp)))`.
+      Composes `BodyTreeAtCp` (fresh match <-> spec leaf) with `ReplayCapAgreeFresh`
+      (replay-cap ~ fresh on body ids). This closes the ENGINE half of §4b; what
+      remains is the SPEC-side bridge from this standalone body leaf to the main
+      tree's lookaround subtree (gm-independence of own-group captures). */
+  lemma ReplayCapIsBodyLeaf(rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code,
+                            endl: nat, ngroups: nat, str: string, cp: nat, cap: AReg.Regs, lk: AReg.Regs,
+                            qt: AReg.Regs, ov: LOr.OracleView, cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
+    returns (bestT: Option<LT.Leaf>)
+    requires PSM.StaticOkRE(qm, body, bodycode, endl)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires qm.ov == ov
+    requires !rer.ignoreCase && !rer.multiline
+    requires cp <= |str|
+    requires bodycode == CP.compile_to_bytecode(body)
+    requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
+    requires CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    ensures var inp := PIV.InpOfCp(str, cp);
+            var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Forward);
+            var ctxc := AI.cp_context(cp, str, LAnc.Forward);
+            var ra := AI.FFindMatch(bodycode, str,
+                        AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
+            var rf := AI.FFindMatch(bodycode, str,
+                        AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                      AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
+            bestT == LT.FirstLeaf(t, inp)
+            && (ra.None? <==> bestT.None?)
+            && (ra.Some? ==>
+                  bestT.Some? && rf.Some?
+                  && CM.RegsAgreeInside(ra.value.capture_regs, rf.value.capture_regs, PIV.CaptureRegs(body))
+                  && bestT.value.1 == PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs))
+  {
+    bestT := BodyTreeAtCp(rer, qm, body, bodycode, endl, ngroups, str, cp, ov, cdns, ncap, nlook, nquant);
+    ReplayCapAgreeFresh(bodycode, str, cp, cap, lk, qt, ov, cdns, body, ncap, nlook, nquant);
+    // BodyTreeAtCp:  BestMatchRE(body, bestT, rf) && bestT == FirstLeaf(t, inp)
+    //   -> bestT.value.1 == GmOfLive(body, rf.regs), bestT.None? <==> rf.None?
+    // ReplayCapAgreeFresh:  ra.None? <==> rf.None? && captures agree on CaptureRegs(body)
+  }
+
   /** The filter cannot see the difference the replay makes. */
   lemma FilterUnmoved(mainast: R.regex, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs,
                       ncap: AReg.Regs, nlk: AReg.Regs, nqt: AReg.Regs, body: R.regex)
