@@ -281,6 +281,210 @@ module LindenElkLookLeaves {
       node denotes exactly its continuation's leaves. Positive gates need the
       body tree to be group-map neutral (so the continuation resumes at the
       same map); negative gates hand the map straight through. */
+  // ===========================================================================
+  // L3a: the CAPTURING analogue of the gm-neutral gate machinery. A captured
+  // lookAHEAD's body touches only its own groups `S`, so at the gate it folds
+  // captures into the continuation's map WITHIN `S`. Everything is stated
+  // "outside `S`": the gate node's leaves agree with the continuation's OUTSIDE
+  // `S`. Threading this weaker relation replaces `LeavesAgreeAt` in the L3a
+  // checked-tree correspondence.
+  // ===========================================================================
+
+  /** Two group maps agree on membership and value at every group NOT in `S`. */
+  ghost predicate GmAgreeOutside(gm1: LG.GroupMap, gm2: LG.GroupMap, S: set<LG.GroupId>) {
+    forall g :: g !in S ==> (g in gm1 <==> g in gm2) && (g in gm1 ==> gm1[g] == gm2[g])
+  }
+
+  /** The SAME group action preserves outside-`S` agreement. */
+  lemma GMUpdateAgreeOutside(op: LG.GroupAction, idx: nat, gm1: LG.GroupMap, gm2: LG.GroupMap, S: set<LG.GroupId>)
+    requires GmAgreeOutside(gm1, gm2, S)
+    ensures GmAgreeOutside(LG.GMUpdate(op, idx, gm1), LG.GMUpdate(op, idx, gm2), S)
+  {
+    match op
+    case Open(g) =>
+    case Close(g) =>
+      forall g' | g' !in S
+        ensures (g' in LG.GMClose(idx, g, gm1) <==> g' in LG.GMClose(idx, g, gm2))
+             && (g' in LG.GMClose(idx, g, gm1) ==> LG.GMClose(idx, g, gm1)[g'] == LG.GMClose(idx, g, gm2)[g'])
+      { if g' == g { assert LG.Find(g, gm1) == LG.Find(g, gm2); } }
+    case Reset(gs) =>
+  }
+
+  /** THE general frame: `TreeLeaves` from two maps that agree OUTSIDE `S` yields
+      leaf lists of equal length, equal positions, and per-leaf maps that still
+      agree outside `S`. Holds for ANY tree (nested `LK` verdicts are group-map
+      independent, so the recursion carries through). */
+  lemma TreeLeavesFrameOutside(t: LT.Tree, gm1: LG.GroupMap, gm2: LG.GroupMap, inp: LC.Input,
+                               dir: WP.Direction, S: set<LG.GroupId>)
+    requires GmAgreeOutside(gm1, gm2, S)
+    ensures |LT.TreeLeaves(t, gm1, inp, dir)| == |LT.TreeLeaves(t, gm2, inp, dir)|
+    ensures forall i :: 0 <= i < |LT.TreeLeaves(t, gm1, inp, dir)| ==>
+              LT.TreeLeaves(t, gm1, inp, dir)[i].0 == LT.TreeLeaves(t, gm2, inp, dir)[i].0
+              && GmAgreeOutside(LT.TreeLeaves(t, gm1, inp, dir)[i].1, LT.TreeLeaves(t, gm2, inp, dir)[i].1, S)
+    decreases t
+  {
+    match t
+    case Mismatch =>
+    case Match =>
+    case Choice(t1, t2) =>
+      TreeLeavesFrameOutside(t1, gm1, gm2, inp, dir, S);
+      TreeLeavesFrameOutside(t2, gm1, gm2, inp, dir, S);
+      var a1: seq<LT.Leaf> := LT.TreeLeaves(t1, gm1, inp, dir);
+      var a2: seq<LT.Leaf> := LT.TreeLeaves(t1, gm2, inp, dir);
+      var b1: seq<LT.Leaf> := LT.TreeLeaves(t2, gm1, inp, dir);
+      var b2: seq<LT.Leaf> := LT.TreeLeaves(t2, gm2, inp, dir);
+      var L1: seq<LT.Leaf> := LT.TreeLeaves(t, gm1, inp, dir);
+      var L2: seq<LT.Leaf> := LT.TreeLeaves(t, gm2, inp, dir);
+      assert L1 == a1 + b1 && L2 == a2 + b2;
+      forall i | 0 <= i < |L1|
+        ensures L1[i].0 == L2[i].0 && GmAgreeOutside(L1[i].1, L2[i].1, S)
+      {
+        if i < |a1| { assert L1[i] == a1[i] && L2[i] == a2[i]; }
+        else { assert L1[i] == b1[i - |a1|] && L2[i] == b2[i - |a1|]; }
+      }
+    case Read(c, t1) => TreeLeavesFrameOutside(t1, gm1, gm2, LC.AdvanceInputP(inp, dir), dir, S);
+    case Progress(t1) => TreeLeavesFrameOutside(t1, gm1, gm2, inp, dir, S);
+    case GroupActionT(a, t1) =>
+      GMUpdateAgreeOutside(a, LC.Idx(inp), gm1, gm2, S);
+      TreeLeavesFrameOutside(t1, LG.GMUpdate(a, LC.Idx(inp), gm1), LG.GMUpdate(a, LC.Idx(inp), gm2), inp, dir, S);
+    case AnchorPass(_, t0) => TreeLeavesFrameOutside(t0, gm1, gm2, inp, dir, S);
+    case ReadBackRef(brStr, t0) => TreeLeavesFrameOutside(t0, gm1, gm2, LC.AdvanceInputN(inp, |brStr|, dir), dir, S);
+    case LK(lk, tlk, t1) =>
+      TreeLeavesFrameOutside(tlk, gm1, gm2, inp, L.LkDir(lk), S);
+      var sub1 := LT.TreeLeaves(tlk, gm1, inp, L.LkDir(lk));
+      var sub2 := LT.TreeLeaves(tlk, gm2, inp, L.LkDir(lk));
+      if L.Positivity(lk) {
+        if |sub1| > 0 { TreeLeavesFrameOutside(t1, sub1[0].1, sub2[0].1, inp, dir, S); }
+      } else {
+        if |sub1| == 0 { TreeLeavesFrameOutside(t1, gm1, gm2, inp, dir, S); }
+      }
+    case LKFail(_, _) =>
+  }
+
+  /** `GmAgreeOutside` is reflexive and transitive. */
+  lemma GmAgreeOutsideRefl(gm: LG.GroupMap, S: set<LG.GroupId>)
+    ensures GmAgreeOutside(gm, gm, S)
+  {}
+  lemma GmAgreeOutsideTrans(a: LG.GroupMap, b: LG.GroupMap, c: LG.GroupMap, S: set<LG.GroupId>)
+    requires GmAgreeOutside(a, b, S) && GmAgreeOutside(b, c, S)
+    ensures GmAgreeOutside(a, c, S)
+  {}
+
+  /** A group action touches only groups in `S`. */
+  ghost predicate GmActionIn(a: LG.GroupAction, S: set<LG.GroupId>) {
+    match a
+    case Open(g) => g in S
+    case Close(g) => g in S
+    case Reset(gs) => forall g :: g in gs ==> g in S
+  }
+
+  /** A tree whose group actions all touch only `S` (and no `LK`/`LKFail`) --
+      the tree of a look-free body that captures only its own groups `S`. */
+  ghost predicate GmConfinedTree(t: LT.Tree, S: set<LG.GroupId>) {
+    match t
+    case Mismatch => true
+    case Match => true
+    case Choice(t1, t2) => GmConfinedTree(t1, S) && GmConfinedTree(t2, S)
+    case Read(_, t1) => GmConfinedTree(t1, S)
+    case Progress(t1) => GmConfinedTree(t1, S)
+    case GroupActionT(a, t1) => GmActionIn(a, S) && GmConfinedTree(t1, S)
+    case AnchorPass(_, t1) => GmConfinedTree(t1, S)
+    case ReadBackRef(_, t1) => GmConfinedTree(t1, S)
+    case LK(_, _, _) => false
+    case LKFail(_, _) => false
+  }
+
+  /** A confined action leaves the map unchanged outside `S`. */
+  lemma GmUpdateConfined(a: LG.GroupAction, idx: nat, gm: LG.GroupMap, S: set<LG.GroupId>)
+    requires GmActionIn(a, S)
+    ensures GmAgreeOutside(LG.GMUpdate(a, idx, gm), gm, S)
+  {
+    match a
+    case Open(g) =>
+    case Close(g) =>
+      forall g' | g' !in S
+        ensures (g' in LG.GMClose(idx, g, gm) <==> g' in gm)
+             && (g' in LG.GMClose(idx, g, gm) ==> LG.GMClose(idx, g, gm)[g'] == gm[g'])
+      {}
+    case Reset(gs) =>
+  }
+
+  /** A confined tree's every leaf agrees with the incoming map OUTSIDE `S`. */
+  lemma GmConfinedLeaves(t: LT.Tree, gm: LG.GroupMap, inp: LC.Input, dir: WP.Direction, S: set<LG.GroupId>)
+    requires GmConfinedTree(t, S)
+    ensures forall i :: 0 <= i < |LT.TreeLeaves(t, gm, inp, dir)|
+                        ==> GmAgreeOutside(LT.TreeLeaves(t, gm, inp, dir)[i].1, gm, S)
+    decreases t
+  {
+    match t
+    case Mismatch =>
+    case Match => GmAgreeOutsideRefl(gm, S);
+    case Choice(t1, t2) =>
+      GmConfinedLeaves(t1, gm, inp, dir, S);
+      GmConfinedLeaves(t2, gm, inp, dir, S);
+      var a1: seq<LT.Leaf> := LT.TreeLeaves(t1, gm, inp, dir);
+      var b1: seq<LT.Leaf> := LT.TreeLeaves(t2, gm, inp, dir);
+      var L1: seq<LT.Leaf> := LT.TreeLeaves(t, gm, inp, dir);
+      assert L1 == a1 + b1;
+      forall i | 0 <= i < |L1| ensures GmAgreeOutside(L1[i].1, gm, S) {
+        if i < |a1| { assert L1[i] == a1[i]; } else { assert L1[i] == b1[i - |a1|]; }
+      }
+    case Read(c, t1) => GmConfinedLeaves(t1, gm, LC.AdvanceInputP(inp, dir), dir, S);
+    case Progress(t1) => GmConfinedLeaves(t1, gm, inp, dir, S);
+    case GroupActionT(a, t1) =>
+      var gm' := LG.GMUpdate(a, LC.Idx(inp), gm);
+      GmUpdateConfined(a, LC.Idx(inp), gm, S);           // gm' agrees gm outside S
+      GmConfinedLeaves(t1, gm', inp, dir, S);            // leaves agree gm' outside S
+      forall i | 0 <= i < |LT.TreeLeaves(t1, gm', inp, dir)|
+        ensures GmAgreeOutside(LT.TreeLeaves(t1, gm', inp, dir)[i].1, gm, S)
+      { GmAgreeOutsideTrans(LT.TreeLeaves(t1, gm', inp, dir)[i].1, gm', gm, S); }
+    case AnchorPass(_, t0) => GmConfinedLeaves(t0, gm, inp, dir, S);
+    case ReadBackRef(brStr, t0) => GmConfinedLeaves(t0, gm, LC.AdvanceInputN(inp, |brStr|, dir), dir, S);
+  }
+
+  /** Leaf lists agree (length, positions, maps OUTSIDE `S`) at every incoming map. */
+  ghost predicate LeavesAgreeAtOutside(t1: LT.Tree, t2: LT.Tree, inp: LC.Input, S: set<LG.GroupId>) {
+    forall gm: LG.GroupMap ::
+      |LT.TreeLeaves(t1, gm, inp, WP.Forward)| == |LT.TreeLeaves(t2, gm, inp, WP.Forward)|
+      && (forall i :: 0 <= i < |LT.TreeLeaves(t1, gm, inp, WP.Forward)| ==>
+            LT.TreeLeaves(t1, gm, inp, WP.Forward)[i].0 == LT.TreeLeaves(t2, gm, inp, WP.Forward)[i].0
+            && GmAgreeOutside(LT.TreeLeaves(t1, gm, inp, WP.Forward)[i].1,
+                              LT.TreeLeaves(t2, gm, inp, WP.Forward)[i].1, S))
+  }
+
+  /** L3a gate-pass: a POSITIVE lookAHEAD whose confined (captures only `S`) body
+      matches folds captures within `S`, so the gate node's leaves agree with the
+      continuation's OUTSIDE `S`. The capturing analogue of `LAAtGatePass`. */
+  lemma LAAtGatePassL3a(lk: L.Lookaround, tlk: LT.Tree, tc: LT.Tree, inp: LC.Input, S: set<LG.GroupId>)
+    requires L.Positivity(lk) && L.LkDir(lk) == WP.Forward
+    requires GmConfinedTree(tlk, S)
+    requires |LT.TreeLeaves(tlk, LG.Empty, inp, L.LkDir(lk))| > 0
+    ensures LeavesAgreeAtOutside(LT.LK(lk, tlk, tc), tc, inp, S)
+  {
+    forall gm: LG.GroupMap
+      ensures |LT.TreeLeaves(LT.LK(lk, tlk, tc), gm, inp, WP.Forward)| == |LT.TreeLeaves(tc, gm, inp, WP.Forward)|
+      ensures forall i :: 0 <= i < |LT.TreeLeaves(LT.LK(lk, tlk, tc), gm, inp, WP.Forward)| ==>
+                LT.TreeLeaves(LT.LK(lk, tlk, tc), gm, inp, WP.Forward)[i].0 == LT.TreeLeaves(tc, gm, inp, WP.Forward)[i].0
+                && GmAgreeOutside(LT.TreeLeaves(LT.LK(lk, tlk, tc), gm, inp, WP.Forward)[i].1,
+                                  LT.TreeLeaves(tc, gm, inp, WP.Forward)[i].1, S)
+    {
+      var sub: seq<LT.Leaf> := LT.TreeLeaves(tlk, gm, inp, L.LkDir(lk));
+      // the body still matches at gm (verdict is group-map independent)
+      LT.FirstTreeLeaf(tlk, gm, inp, L.LkDir(lk));
+      LT.FirstTreeLeaf(tlk, LG.Empty, inp, L.LkDir(lk));
+      if |sub| == 0 {
+        LT.HdErrorNoneNil(sub);
+        LT.ResGroupMapIndep(tlk, gm, LG.Empty, inp, inp, L.LkDir(lk), L.LkDir(lk));
+        LT.HdErrorNoneNil(LT.TreeLeaves(tlk, LG.Empty, inp, L.LkDir(lk)));
+        assert false;
+      }
+      // TreeLeaves(LK, gm) == TreeLeaves(tc, sub[0].1); sub[0].1 agrees gm outside S.
+      GmConfinedLeaves(tlk, gm, inp, L.LkDir(lk), S);       // sub[0].1 agrees gm outside S
+      assert GmAgreeOutside(sub[0].1, gm, S);
+      TreeLeavesFrameOutside(tc, sub[0].1, gm, inp, WP.Forward, S);
+    }
+  }
+
   lemma LAAtGatePass(lk: L.Lookaround, tlk: LT.Tree, tc: LT.Tree, inp: LC.Input)
     requires GmNeutralTree(tlk)
     requires L.Positivity(lk) ==> |LT.TreeLeaves(tlk, LG.Empty, inp, L.LkDir(lk))| > 0
