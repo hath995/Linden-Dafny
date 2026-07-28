@@ -778,6 +778,22 @@ module LindenElkLookLeaves {
       bodies (GmNeutral) are confined to any `S`, so L1/L2 satisfy it at `S == {}`
       only when the tree is `LK`-free; capturing lookAHEADs supply it via
       `ComputeTrConfined`. */
+  /** A group-map-neutral tree (only `Reset([])` actions, no gate) is confined to
+      ANY `S` -- so a capture-free lookaround body's tree meets the obligation. */
+  lemma GmNeutralConfined(t: LT.Tree, S: set<LG.GroupId>)
+    requires GmNeutralTree(t)
+    ensures CE.GmConfinedTree(t, S)
+    decreases t
+  {
+    match t
+    case Choice(t1, t2) => GmNeutralConfined(t1, S); GmNeutralConfined(t2, S);
+    case Read(_, t1) => GmNeutralConfined(t1, S);
+    case Progress(t1) => GmNeutralConfined(t1, S);
+    case GroupActionT(a, t1) => GmNeutralConfined(t1, S);
+    case AnchorPass(_, t1) => GmNeutralConfined(t1, S);
+    case _ =>
+  }
+
   /** An `LK`-free tree is vacuously `CE.LkConfinedTree` for any `S` -- what a
       look-free body's checked-tree caller (`BodyTreeAtCp`) needs. */
   lemma NoLKTreeConfined(t: LT.Tree, S: set<LG.GroupId>)
