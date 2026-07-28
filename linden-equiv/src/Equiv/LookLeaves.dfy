@@ -523,6 +523,29 @@ module LindenElkLookLeaves {
     // FirstLeaf == HdError(TreeLeaves(_, Empty, inp, Forward)); lists agree outside S.
   }
 
+  /** Agreement outside the EMPTY set is full agreement -- lets a caller that
+      passes `S == {}` recover `LeavesAgreeAt` (the capture-free path). */
+  lemma LeavesAgreeAtOutsideEmpty(t1: LT.Tree, t2: LT.Tree, inp: LC.Input)
+    requires LeavesAgreeAtOutside(t1, t2, inp, {})
+    ensures LeavesAgreeAt(t1, t2, inp)
+  {
+    forall gm: LG.GroupMap
+      ensures LT.TreeLeaves(t1, gm, inp, WP.Forward) == LT.TreeLeaves(t2, gm, inp, WP.Forward)
+    {
+      var emptyS: set<LG.GroupId> := {};
+      var l1: seq<LT.Leaf> := LT.TreeLeaves(t1, gm, inp, WP.Forward);
+      var l2: seq<LT.Leaf> := LT.TreeLeaves(t2, gm, inp, WP.Forward);
+      assert |l1| == |l2|;
+      forall i | 0 <= i < |l1| ensures l1[i] == l2[i] {
+        assert l1[i].0 == l2[i].0 && GmAgreeOutside(l1[i].1, l2[i].1, emptyS);
+        assert l1[i].1 == l2[i].1 by {
+          forall g ensures (g in l1[i].1 <==> g in l2[i].1) && (g in l1[i].1 ==> l1[i].1[g] == l2[i].1[g])
+          { assert g !in emptyS; }
+        }
+      }
+    }
+  }
+
   // --- the "outside S" congruence toolkit (mirrors the LeavesAgreeAt LAAt*
   // family) -- what the L3a checked-tree correspondence assembles with. ---
 
