@@ -523,6 +523,86 @@ module LindenElkLookLeaves {
     // FirstLeaf == HdError(TreeLeaves(_, Empty, inp, Forward)); lists agree outside S.
   }
 
+  // --- the "outside S" congruence toolkit (mirrors the LeavesAgreeAt LAAt*
+  // family) -- what the L3a checked-tree correspondence assembles with. ---
+
+  lemma LAAtReflOutside(t: LT.Tree, inp: LC.Input, S: set<LG.GroupId>)
+    ensures LeavesAgreeAtOutside(t, t, inp, S)
+  {
+    forall gm: LG.GroupMap
+      ensures forall i :: 0 <= i < |LT.TreeLeaves(t, gm, inp, WP.Forward)| ==>
+                GmAgreeOutside(LT.TreeLeaves(t, gm, inp, WP.Forward)[i].1, LT.TreeLeaves(t, gm, inp, WP.Forward)[i].1, S)
+    { forall i | 0 <= i < |LT.TreeLeaves(t, gm, inp, WP.Forward)|
+        ensures GmAgreeOutside(LT.TreeLeaves(t, gm, inp, WP.Forward)[i].1, LT.TreeLeaves(t, gm, inp, WP.Forward)[i].1, S)
+      { GmAgreeOutsideRefl(LT.TreeLeaves(t, gm, inp, WP.Forward)[i].1, S); } }
+  }
+
+  lemma LAAtTransOutside(a: LT.Tree, b: LT.Tree, c: LT.Tree, inp: LC.Input, S: set<LG.GroupId>)
+    requires LeavesAgreeAtOutside(a, b, inp, S) && LeavesAgreeAtOutside(b, c, inp, S)
+    ensures LeavesAgreeAtOutside(a, c, inp, S)
+  {
+    forall gm: LG.GroupMap
+      ensures |LT.TreeLeaves(a, gm, inp, WP.Forward)| == |LT.TreeLeaves(c, gm, inp, WP.Forward)|
+      ensures forall i :: 0 <= i < |LT.TreeLeaves(a, gm, inp, WP.Forward)| ==>
+                LT.TreeLeaves(a, gm, inp, WP.Forward)[i].0 == LT.TreeLeaves(c, gm, inp, WP.Forward)[i].0
+                && GmAgreeOutside(LT.TreeLeaves(a, gm, inp, WP.Forward)[i].1, LT.TreeLeaves(c, gm, inp, WP.Forward)[i].1, S)
+    { forall i | 0 <= i < |LT.TreeLeaves(a, gm, inp, WP.Forward)|
+        ensures LT.TreeLeaves(a, gm, inp, WP.Forward)[i].0 == LT.TreeLeaves(c, gm, inp, WP.Forward)[i].0
+             && GmAgreeOutside(LT.TreeLeaves(a, gm, inp, WP.Forward)[i].1, LT.TreeLeaves(c, gm, inp, WP.Forward)[i].1, S)
+      { GmAgreeOutsideTrans(LT.TreeLeaves(a, gm, inp, WP.Forward)[i].1,
+                            LT.TreeLeaves(b, gm, inp, WP.Forward)[i].1,
+                            LT.TreeLeaves(c, gm, inp, WP.Forward)[i].1, S); } }
+  }
+
+  lemma LAAtProgressPassOutside(t: LT.Tree, inp: LC.Input, S: set<LG.GroupId>)
+    ensures LeavesAgreeAtOutside(LT.Progress(t), t, inp, S)
+  { LAAtReflOutside(t, inp, S); }
+
+  lemma LAAtCongProgressOutside(a: LT.Tree, b: LT.Tree, inp: LC.Input, S: set<LG.GroupId>)
+    requires LeavesAgreeAtOutside(a, b, inp, S)
+    ensures LeavesAgreeAtOutside(LT.Progress(a), LT.Progress(b), inp, S)
+  {}
+
+  lemma LAAtCongReadOutside(c: char, a: LT.Tree, b: LT.Tree, inp: LC.Input, S: set<LG.GroupId>)
+    requires LeavesAgreeAtOutside(a, b, LC.AdvanceInputP(inp, WP.Forward), S)
+    ensures LeavesAgreeAtOutside(LT.Read(c, a), LT.Read(c, b), inp, S)
+  {}
+
+  lemma LAAtCongGroupOutside(g: LG.GroupAction, a: LT.Tree, b: LT.Tree, inp: LC.Input, S: set<LG.GroupId>)
+    requires LeavesAgreeAtOutside(a, b, inp, S)
+    ensures LeavesAgreeAtOutside(LT.GroupActionT(g, a), LT.GroupActionT(g, b), inp, S)
+  {}
+
+  lemma LAAtCongAnchorOutside(an: L.Anchor, a: LT.Tree, b: LT.Tree, inp: LC.Input, S: set<LG.GroupId>)
+    requires LeavesAgreeAtOutside(a, b, inp, S)
+    ensures LeavesAgreeAtOutside(LT.AnchorPass(an, a), LT.AnchorPass(an, b), inp, S)
+  {}
+
+  lemma LAAtCongChoiceOutside(a1: LT.Tree, b1: LT.Tree, a2: LT.Tree, b2: LT.Tree, inp: LC.Input, S: set<LG.GroupId>)
+    requires LeavesAgreeAtOutside(a1, b1, inp, S) && LeavesAgreeAtOutside(a2, b2, inp, S)
+    ensures LeavesAgreeAtOutside(LT.Choice(a1, a2), LT.Choice(b1, b2), inp, S)
+  {
+    forall gm: LG.GroupMap
+      ensures |LT.TreeLeaves(LT.Choice(a1, a2), gm, inp, WP.Forward)| == |LT.TreeLeaves(LT.Choice(b1, b2), gm, inp, WP.Forward)|
+      ensures forall i :: 0 <= i < |LT.TreeLeaves(LT.Choice(a1, a2), gm, inp, WP.Forward)| ==>
+                LT.TreeLeaves(LT.Choice(a1, a2), gm, inp, WP.Forward)[i].0 == LT.TreeLeaves(LT.Choice(b1, b2), gm, inp, WP.Forward)[i].0
+                && GmAgreeOutside(LT.TreeLeaves(LT.Choice(a1, a2), gm, inp, WP.Forward)[i].1,
+                                  LT.TreeLeaves(LT.Choice(b1, b2), gm, inp, WP.Forward)[i].1, S)
+    {
+      var x1: seq<LT.Leaf> := LT.TreeLeaves(a1, gm, inp, WP.Forward);
+      var y1: seq<LT.Leaf> := LT.TreeLeaves(a2, gm, inp, WP.Forward);
+      var x2: seq<LT.Leaf> := LT.TreeLeaves(b1, gm, inp, WP.Forward);
+      var y2: seq<LT.Leaf> := LT.TreeLeaves(b2, gm, inp, WP.Forward);
+      var L1: seq<LT.Leaf> := LT.TreeLeaves(LT.Choice(a1, a2), gm, inp, WP.Forward);
+      var L2: seq<LT.Leaf> := LT.TreeLeaves(LT.Choice(b1, b2), gm, inp, WP.Forward);
+      assert L1 == x1 + y1 && L2 == x2 + y2;
+      forall i | 0 <= i < |L1|
+        ensures L1[i].0 == L2[i].0 && GmAgreeOutside(L1[i].1, L2[i].1, S)
+      { if i < |x1| { assert L1[i] == x1[i] && L2[i] == x2[i]; }
+        else { assert L1[i] == y1[i - |x1|] && L2[i] == y2[i - |x1|]; } }
+    }
+  }
+
   lemma LAAtGatePass(lk: L.Lookaround, tlk: LT.Tree, tc: LT.Tree, inp: LC.Input)
     requires GmNeutralTree(tlk)
     requires L.Positivity(lk) ==> |LT.TreeLeaves(tlk, LG.Empty, inp, L.LkDir(lk))| > 0
