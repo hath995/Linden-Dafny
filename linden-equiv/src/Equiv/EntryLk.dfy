@@ -366,6 +366,25 @@ module LindenElkEntryLk {
     ComputeTreeGmIndepLk(rer, acts, inp, gm, LG.Empty, dir, fuel);
   }
 
+  /** A look-free `R.regex` translates to a `NoLkBrL` `L.Regex`: `Translate`
+      makes `LookaroundR` only from `Re_lookaround` (absent) and never makes a
+      `Backreference` (no such `R.regex` constructor). */
+  lemma TranslateNoLkBr(re: R.regex)
+    requires T.TransWf(re) && NR.LookFreeRE(re)
+    ensures NoLkBrL(T.Translate(re))
+    decreases re
+  {
+    match re
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_alt(r1, r2) => TranslateNoLkBr(r1); TranslateNoLkBr(r2);
+    case Re_con(r1, r2) => TranslateNoLkBr(r1); TranslateNoLkBr(r2);
+    case Re_quant(_, _, _, r1) => TranslateNoLkBr(r1);
+    case Re_capture(_, r1) => TranslateNoLkBr(r1);
+    case Re_lookaround(_, _, _) =>   // excluded by LookFreeRE
+  }
+
   /** Gate success is group-map independent outright (`ResGroupMapIndep`). */
   lemma LkResultGmIndep(lk: L.Lookaround, t: LT.Tree, gm: LG.GroupMap, inp: LC.Input)
     ensures LS.LkResult(lk, t, gm, inp).Some? <==> LS.LkResult(lk, t, LG.Empty, inp).Some?
