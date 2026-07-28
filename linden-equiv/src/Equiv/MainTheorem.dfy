@@ -1186,8 +1186,10 @@ module LindenElkMain {
     }
     assert WO.WalkOk(acts, bodycode, 0, ATR.EaOf(BS.CannotExit));
     AR.CompileToBytecodeActionsRepLookBehind(rer, qm, body);   // ActionsRepL
-    var tstar := ATR.ActionsTreeRepRE(rer, qm, acts, bodycode, 0, inp, BS.CannotExit, t);
+    LL.ComputeTrLkConfinedEmpty(rer, acts, inp, LG.Empty, WP.Forward);   // LkConfinedTree(t, {})
+    var tstar := ATR.ActionsTreeRepRE(rer, qm, acts, bodycode, 0, inp, BS.CannotExit, t, {});
     assert TR.TreeRepRE(qm, tstar, bodycode, 0, inp, false);
+    LL.LeavesAgreeAtOutsideEmpty(tstar, t, inp);               // Outside({}) -> full LeavesAgreeAt
     LL.LAAtFirstLeaf(tstar, t, inp);
     assert LT.FirstLeaf(tstar, inp) == LT.FirstLeaf(t, inp);
 
@@ -1290,8 +1292,10 @@ module LindenElkMain {
     }
     assert WO.WalkOk([LS.Areg(T.Translate(re))], code, 0, ATR.EaOf(BS.CannotExit));
     assert LL.OracleOkSuffix(rer, qm, inp);
-    var tstar := ATR.ActionsTreeRepRE(rer, qm, [LS.Areg(T.Translate(re))], code, 0, inp, BS.CannotExit, t);
+    LL.ComputeTrLkConfinedEmpty(rer, [LS.Areg(T.Translate(re))], inp, LG.Empty, WP.Forward);  // LkConfinedTree(t, {})
+    var tstar := ATR.ActionsTreeRepRE(rer, qm, [LS.Areg(T.Translate(re))], code, 0, inp, BS.CannotExit, t, {});
     assert TR.TreeRepRE(qm, tstar, code, 0, inp, false);
+    LL.LeavesAgreeAtOutsideEmpty(tstar, t, inp);              // Outside({}) -> full LeavesAgreeAt
     LL.LAAtFirstLeaf(tstar, t, inp);
     assert LT.FirstLeaf(tstar, inp) == LT.FirstLeaf(t, inp);
 
