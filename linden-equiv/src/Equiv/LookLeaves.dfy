@@ -778,6 +778,42 @@ module LindenElkLookLeaves {
     }
   }
 
+  /** `GmAgreeOutside` and `LeavesAgreeAtOutside` are symmetric. */
+  lemma GmAgreeOutsideSym(gm1: LG.GroupMap, gm2: LG.GroupMap, S: set<LG.GroupId>)
+    requires GmAgreeOutside(gm1, gm2, S)
+    ensures GmAgreeOutside(gm2, gm1, S)
+  {}
+  lemma LAAtSymOutside(t1: LT.Tree, t2: LT.Tree, inp: LC.Input, S: set<LG.GroupId>)
+    requires LeavesAgreeAtOutside(t1, t2, inp, S)
+    ensures LeavesAgreeAtOutside(t2, t1, inp, S)
+  {
+    forall gm: LG.GroupMap
+      ensures |LT.TreeLeaves(t2, gm, inp, WP.Forward)| == |LT.TreeLeaves(t1, gm, inp, WP.Forward)|
+      ensures forall i :: 0 <= i < |LT.TreeLeaves(t2, gm, inp, WP.Forward)| ==>
+                LT.TreeLeaves(t2, gm, inp, WP.Forward)[i].0 == LT.TreeLeaves(t1, gm, inp, WP.Forward)[i].0
+                && GmAgreeOutside(LT.TreeLeaves(t2, gm, inp, WP.Forward)[i].1, LT.TreeLeaves(t1, gm, inp, WP.Forward)[i].1, S)
+    { forall i | 0 <= i < |LT.TreeLeaves(t2, gm, inp, WP.Forward)|
+        ensures GmAgreeOutside(LT.TreeLeaves(t2, gm, inp, WP.Forward)[i].1, LT.TreeLeaves(t1, gm, inp, WP.Forward)[i].1, S)
+      { GmAgreeOutsideSym(LT.TreeLeaves(t1, gm, inp, WP.Forward)[i].1, LT.TreeLeaves(t2, gm, inp, WP.Forward)[i].1, S); } }
+  }
+
+  /** THE L3a LK-case assembly (mirrors ActionsTreeRepRE:774-779 in "outside S"
+      form): the continuation's checked tree `sub`, already agreeing with `tc`
+      outside `S`, also agrees with the gate node `LK(lk,tlk,tc)` outside `S`.
+      This is the single crux the `ActionsTreeRepFRE` reframing pivots on -- built
+      standalone to prove the pieces compose before the plumbing. */
+  lemma LKNodeOutside(lk: L.Lookaround, tlk: LT.Tree, tc: LT.Tree, sub: LT.Tree, inp: LC.Input, S: set<LG.GroupId>)
+    requires L.Positivity(lk) && L.LkDir(lk) == WP.Forward
+    requires GmConfinedTree(tlk, S)
+    requires |LT.TreeLeaves(tlk, LG.Empty, inp, L.LkDir(lk))| > 0
+    requires LeavesAgreeAtOutside(sub, tc, inp, S)
+    ensures LeavesAgreeAtOutside(sub, LT.LK(lk, tlk, tc), inp, S)
+  {
+    LAAtGatePassL3a(lk, tlk, tc, inp, S);        // LeavesAgreeAtOutside(LK(lk,tlk,tc), tc, S)
+    LAAtSymOutside(LT.LK(lk, tlk, tc), tc, inp, S); // LeavesAgreeAtOutside(tc, LK(lk,tlk,tc), S)
+    LAAtTransOutside(sub, tc, LT.LK(lk, tlk, tc), inp, S);
+  }
+
   lemma LAAtGatePass(lk: L.Lookaround, tlk: LT.Tree, tc: LT.Tree, inp: LC.Input)
     requires GmNeutralTree(tlk)
     requires L.Positivity(lk) ==> |LT.TreeLeaves(tlk, LG.Empty, inp, L.LkDir(lk))| > 0
