@@ -811,6 +811,119 @@ module LindenElkLookLeaves {
     case _ =>
   }
 
+  /** A `PikeLkActions` walk (lookaround bodies group-free) builds a tree that is
+      `LkConfinedTree(_, {})`: every gate body is group-free, hence GmNeutral,
+      hence `GmConfinedTree(_, {})`. What both checked-tree callers need at
+      `S == {}` for capture-free lookarounds. */
+  lemma ComputeTreeLkConfinedEmpty(rer: LW.RegExpRecord, act: LS.Actions, inp: LC.Input,
+                                   gm: LG.GroupMap, dir: WP.Direction, fuel: nat)
+    requires EL.PikeLkActions(act)
+    ensures FS.ComputeTree(rer, act, inp, gm, dir, fuel).Some?
+         ==> CE.LkConfinedTree(FS.ComputeTree(rer, act, inp, gm, dir, fuel).value, {})
+    decreases fuel
+  {
+    if fuel == 0 || |act| == 0 { return; }
+    var f := fuel - 1;
+    var cont := act[1..];
+    assert act == [act[0]] + cont;
+    EL.PikeLkActionsConsIff(act[0], cont);
+    match act[0]
+    case Acheck(strcheck) =>
+      if SSx.IsStrictSuffix(inp, strcheck, dir) { ComputeTreeLkConfinedEmpty(rer, cont, inp, gm, dir, f); }
+    case Aclose(gid) =>
+      ComputeTreeLkConfinedEmpty(rer, cont, inp, LG.GMClose(LC.Idx(inp), gid, gm), dir, f);
+    case Areg(r) =>
+      match r
+      case Epsilon => ComputeTreeLkConfinedEmpty(rer, cont, inp, gm, dir, f);
+      case Character(cd) =>
+        match LC.ReadChar(rer, cd, inp, dir) {
+          case None =>
+          case Some(pair) => ComputeTreeLkConfinedEmpty(rer, cont, pair.1, gm, dir, f);
+        }
+      case Disjunction(r1, r2) =>
+        EL.PikeLkActionsConsIff(LS.Areg(r1), cont);
+        EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
+        ComputeTreeLkConfinedEmpty(rer, [LS.Areg(r1)] + cont, inp, gm, dir, f);
+        ComputeTreeLkConfinedEmpty(rer, [LS.Areg(r2)] + cont, inp, gm, dir, f);
+      case Sequence(r1, r2) =>
+        var na := LS.SeqList(r1, r2, dir) + cont;
+        assert EL.PikeLkActions(na) by {
+          if dir.Forward? {
+            assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+            EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
+            EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
+          } else {
+            assert na == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
+            EL.PikeLkActionsConsIff(LS.Areg(r1), cont);
+            EL.PikeLkActionsConsIff(LS.Areg(r2), [LS.Areg(r1)] + cont);
+          }
+        }
+        ComputeTreeLkConfinedEmpty(rer, na, inp, gm, dir, f);
+      case Quantified(greedy, min, delta, r1) =>
+        var gidl := L.DefGroups(r1);
+        if min > 0 {
+          var quant := L.Quantified(greedy, min - 1, delta, r1);
+          var na := [LS.Areg(r1), LS.Areg(quant)] + cont;
+          assert EL.PikeLkActions(na) by {
+            assert na == [LS.Areg(r1)] + ([LS.Areg(quant)] + cont);
+            EL.PikeLkActionsConsIff(LS.Areg(quant), cont);
+            EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(quant)] + cont);
+          }
+          ComputeTreeLkConfinedEmpty(rer, na, inp, LG.GMReset(gidl, gm), dir, f);
+        } else if delta == LN.NN(0) {
+          ComputeTreeLkConfinedEmpty(rer, cont, inp, gm, dir, f);
+        } else {
+          var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+          var na := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
+          assert EL.PikeLkActions(na) by {
+            assert na == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+            EL.PikeLkActionsConsIff(LS.Areg(quant), cont);
+            EL.PikeLkActionsConsIff(LS.Acheck(inp), [LS.Areg(quant)] + cont);
+            EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+          }
+          ComputeTreeLkConfinedEmpty(rer, na, inp, LG.GMReset(gidl, gm), dir, f);
+          ComputeTreeLkConfinedEmpty(rer, cont, inp, gm, dir, f);
+        }
+      case Group(gid, r1) =>
+        var na := [LS.Areg(r1), LS.Aclose(gid)] + cont;
+        assert EL.PikeLkActions(na) by {
+          assert na == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
+          EL.PikeLkActionsConsIff(LS.Aclose(gid), cont);
+          EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+        }
+        ComputeTreeLkConfinedEmpty(rer, na, inp, LG.GMOpen(LC.Idx(inp), gid, gm), dir, f);
+      case LookaroundR(lk, r1) =>
+        assert SD.GroupFreeL(r1);                      // PikeLkRegex(LookaroundR)
+        var bodyacts := [LS.Areg(r1)];
+        assert EL.GroupFreeActs(bodyacts) by {
+          forall i | 0 <= i < |bodyacts| ensures bodyacts[i].Acheck? || (bodyacts[i].Areg? && SD.GroupFreeL(bodyacts[i].r)) {}
+        }
+        match FS.ComputeTree(rer, bodyacts, inp, gm, L.LkDir(lk), f) {
+          case None =>
+          case Some(treelk) =>
+            ComputeTreeGmNeutral(rer, bodyacts, inp, gm, L.LkDir(lk), f, treelk);   // GmNeutralTree(treelk)
+            GmNeutralConfined(treelk, {});                                          // GmConfinedTree(treelk, {})
+            match LS.LkResult(lk, treelk, gm, inp) {
+              case Some(gmlk) => ComputeTreeLkConfinedEmpty(rer, cont, inp, gmlk, dir, f);
+              case None =>
+            }
+        }
+      case AnchorR(a) =>
+        if LS.AnchorSatisfied(rer, a, inp) { ComputeTreeLkConfinedEmpty(rer, cont, inp, gm, dir, f); }
+      case Backreference(gid) =>                        // PikeLkRegex(Backreference) == false
+  }
+
+  /** The `ComputeTr` form both callers apply. */
+  lemma ComputeTrLkConfinedEmpty(rer: LW.RegExpRecord, act: LS.Actions, inp: LC.Input,
+                                 gm: LG.GroupMap, dir: WP.Direction)
+    requires EL.PikeLkActions(act)
+    ensures CE.LkConfinedTree(FU.ComputeTr(rer, act, inp, gm, dir), {})
+  {
+    var fuel := FS.ActionsFuel(act, inp, dir) + 1;
+    FS.FunctionalTerminates(rer, act, inp, gm, dir, fuel);
+    ComputeTreeLkConfinedEmpty(rer, act, inp, gm, dir, fuel);
+  }
+
   /** THE L3a LK-case assembly (mirrors ActionsTreeRepRE:774-779 in "outside S"
       form): the continuation's checked tree `sub`, already agreeing with `tc`
       outside `S`, also agrees with the gate node `LK(lk,tlk,tc)` outside `S`.
