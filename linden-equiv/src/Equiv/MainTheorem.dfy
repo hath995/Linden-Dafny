@@ -1092,6 +1092,38 @@ module LindenElkMain {
       assert LL.LkBodyGroups(T.Translate(r)) == (set g | g in L.DefGroups(T.Translate(r1))) + LL.LkBodyGroups(T.Translate(r1));
   }
 
+  /** L3a OUTSIDE-look value bridge: the spec first leaf `ft` (which agrees with
+      the main thread's denotation `gmBest` OUTSIDE the tree inside-look set) agrees
+      with `GmOfLive(re, capR, look, quantR)` (the FLookLoop-reconstructed answer) on
+      every OUTSIDE-look group. Composes `GmOfLiveFrameOutside` (capR/quantR agree
+      capT/quantT outside the inside-look registers/quants) with the tree/engine
+      inside-look set identity (`LkBodyGroupsEqCapIdsInLooks`). */
+  lemma OutsideLookValueBridge(re: R.regex, capT: AReg.Regs, capR: AReg.Regs, look: AReg.Regs,
+                               quantT: AReg.Regs, quantR: AReg.Regs, gmBest: LG.GroupMap, ft: LG.GroupMap)
+    requires T.TransWf(re) && NR.LookBehindFragmentRE(re) && PIV.CapUnique(re)
+    requires gmBest == PIV.GmOfLive(re, capT, look, quantT)
+    requires forall g: nat :: g !in LL.LkBodyGroups(T.Translate(re)) ==>
+      (g in ft <==> g in gmBest) && (g in ft ==> ft[g] == gmBest[g])
+    requires forall k: int :: k !in PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)) ==>
+      AI.get_idx(AReg.as_arrays(capR).0, k) == AI.get_idx(AReg.as_arrays(capT).0, k)
+      && AI.get_idx(AReg.as_arrays(capR).1, k) == AI.get_idx(AReg.as_arrays(capT).1, k)
+    requires forall q: nat :: q in PIV.QuantIdsOutsideLooks(re) ==>
+      AI.get_idx(AReg.as_arrays(quantR).1, q) == AI.get_idx(AReg.as_arrays(quantT).1, q)
+    ensures forall g: nat :: g !in PIV.CapIdsInLooks(re) ==>
+      (g in ft <==> g in PIV.GmOfLive(re, capR, look, quantR))
+      && (g in ft ==> ft[g] == PIV.GmOfLive(re, capR, look, quantR)[g])
+  {
+    LkBodyGroupsEqCapIdsInLooks(re);                 // LkBodyGroups(Translate(re)) == CapIdsInLooks(re)
+    PIV.GmOfLiveFrameOutside(re, capR, capT, look, quantR, quantT);   // GmOfLive(capR) ~ GmOfLive(capT) outside CapIdsInLooks
+    forall g: nat | g !in PIV.CapIdsInLooks(re)
+      ensures (g in ft <==> g in PIV.GmOfLive(re, capR, look, quantR))
+           && (g in ft ==> ft[g] == PIV.GmOfLive(re, capR, look, quantR)[g])
+    {
+      assert g !in LL.LkBodyGroups(T.Translate(re));       // set identity
+      // ft ~ gmBest (spec/main outside S), gmBest = GmOfLive(capT) ~ GmOfLive(capR) (frame)
+    }
+  }
+
   /** L3a value companion of `LookBodyLeafOpenSub`: when the look's body groups
       are UNSET in the incoming `gm` (the reset condition — a fresh or just-reset
       entry), the body's first leaf from `gm` agrees, on `S == DefGroups(r1)`, with
