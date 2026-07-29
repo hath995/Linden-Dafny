@@ -1524,8 +1524,12 @@ module LindenElkPikeInv {
     FilterCaptureLen(r, A, cc, lc, qc, mx); FilterCaptureLen(r, B, cc', lc, qc, mx);
     match r
     case Re_lookaround(lid, la, r1) =>
-      FilterAtLookaround(lid, la, r1, A, cc, lc, qc, mx);
-      FilterAtLookaround(lid, la, r1, B, cc', lc, qc, mx);
+      // same `lc` -> same branch; both filters frame off `start_reg(gid)` (gid is
+      // not one of r1's groups). L3a: works for capturing bodies too.
+      NR.PlusIsLookBehindFragmentRE(r1);   // LookBehindFragmentRE(r1) from LookFree+PlusFragment
+      var lv := AI.get_idx(lc, lid);
+      if lv < 0 || lv < mx { FilterAllFrameAt(r1, A, B, gid); }
+      else { FilterCaptureFrameAt(r1, A, B, cc, cc', lc, qc, -1, gid); }
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_alt(r1, r2) =>
       FilterCaptureFrameAt(r1, A, B, cc, cc', lc, qc, mx, gid);
