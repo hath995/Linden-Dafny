@@ -1321,6 +1321,108 @@ module LindenElkPikeInv {
     case Re_lookaround(lid, l, r1) => PathPresent(r1, cc, qc, mx, gid)
   }
 
+  // ===========================================================================
+  // L3a: the lookaround-AWARE variants of MxAtGid / PathPresent. For a capturing
+  // lookaround body, filter_capture's lookaround rule is NOT the identity: a
+  // MATCHED look (lv = lc[lid] >= mx) takes the `filter_capture(r1, .., -1)`
+  // branch (mx RESET to -1), an unmatched look clears the body. So the mx that
+  // reaches a group INSIDE a lookaround is -1, and presence requires the look to
+  // have matched. These thread `lc` (absent from the L1/L2 versions).
+  // ===========================================================================
+
+  /** `MxAtGid` threaded through the lookaround `mx`-reset (a matched look resets
+      `mx` to `-1` for its body). */
+  ghost function MxAtGidLk(r: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>, mx: int, gid: nat): int
+    requires gid in CapIds(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => if gid in CapIds(r1) then MxAtGidLk(r1, cc, lc, qc, mx, gid) else MxAtGidLk(r2, cc, lc, qc, mx, gid)
+    case Re_con(r1, r2) => if gid in CapIds(r1) then MxAtGidLk(r1, cc, lc, qc, mx, gid) else MxAtGidLk(r2, cc, lc, qc, mx, gid)
+    case Re_quant(nul, qid, q, r1) => var qv := AI.get_idx(qc, qid); MxAtGidLk(r1, cc, lc, qc, qv, gid)
+    case Re_capture(cid, r1) => if cid == gid then mx else MxAtGidLk(r1, cc, lc, qc, mx, gid)
+    case Re_lookaround(lid, l, r1) => MxAtGidLk(r1, cc, lc, qc, -1, gid)
+  }
+
+  /** Lookaround-aware `PathPresent`: along the descent to `gid`, every quantifier
+      and capture is present AND every enclosing lookaround MATCHED (`lc[lid] >=
+      mx`, resetting `mx` to `-1` for its body). */
+  ghost predicate PathPresentLk(r: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>, mx: int, gid: nat)
+    requires gid in CapIds(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => if gid in CapIds(r1) then PathPresentLk(r1, cc, lc, qc, mx, gid) else PathPresentLk(r2, cc, lc, qc, mx, gid)
+    case Re_con(r1, r2) => if gid in CapIds(r1) then PathPresentLk(r1, cc, lc, qc, mx, gid) else PathPresentLk(r2, cc, lc, qc, mx, gid)
+    case Re_quant(nul, qid, q, r1) => var qv := AI.get_idx(qc, qid); qv >= mx && PathPresentLk(r1, cc, lc, qc, qv, gid)
+    case Re_capture(cid, r1) =>
+      if cid == gid then true
+      else AI.get_idx(cc, CP.start_reg(cid)) >= 0 && AI.get_idx(cc, CP.start_reg(cid)) >= mx
+           && PathPresentLk(r1, cc, lc, qc, mx, gid)
+    case Re_lookaround(lid, l, r1) =>
+      AI.get_idx(lc, lid) >= 0 && AI.get_idx(lc, lid) >= mx && PathPresentLk(r1, cc, lc, qc, -1, gid)
+  }
+
+  /** THE P2 core: an L3a-present captured group's START register survives
+      `filter_capture`. Every enclosing quantifier/capture takes its keep branch
+      (`PathPresentLk`), every enclosing lookaround matched (so `FilterAtLookaround-
+      Matched` takes the keep branch, `mx -> -1`), and at `gid`'s own node the
+      clock is set and in scope (`cc[start] >= 0 && >= MxAtGidLk`) so it is kept.
+      The capturing analog of the L1/L2 filter-presence machinery. */
+  lemma FilterKeepsPresentLk(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, mx: int, gid: nat)
+    requires CapUnique(r)
+    requires gid in CapIds(r)
+    requires PathPresentLk(r, cc, lc, qc, mx, gid)
+    requires AI.get_idx(cc, CP.start_reg(gid)) >= 0
+    requires AI.get_idx(cc, CP.start_reg(gid)) >= MxAtGidLk(r, cc, lc, qc, mx, gid)
+    ensures AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), CP.start_reg(gid)) == AI.get_idx(cr, CP.start_reg(gid))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if gid in CapIds(r1) {
+        assert gid !in CapIds(r2) by { if gid in CapIds(r2) { assert gid in CapIds(r1) * CapIds(r2); } }
+        FilterKeepsPresentLk(r1, cr, cc, lc, qc, mx, gid);
+        forall g0: nat | g0 in CapIds(r2) ensures CP.start_reg(g0) != CP.start_reg(gid) {}
+        FilterCaptureAgreeOutsideOwn(r2, AI.filter_capture(r1, cr, cc, lc, qc, mx), cc, lc, qc, mx, CP.start_reg(gid));
+      } else {
+        forall g0: nat | g0 in CapIds(r1) ensures CP.start_reg(g0) != CP.start_reg(gid) {}
+        FilterCaptureAgreeOutsideOwn(r1, cr, cc, lc, qc, mx, CP.start_reg(gid));
+        FilterKeepsPresentLk(r2, AI.filter_capture(r1, cr, cc, lc, qc, mx), cc, lc, qc, mx, gid);
+      }
+    case Re_con(r1, r2) =>
+      if gid in CapIds(r1) {
+        assert gid !in CapIds(r2) by { if gid in CapIds(r2) { assert gid in CapIds(r1) * CapIds(r2); } }
+        FilterKeepsPresentLk(r1, cr, cc, lc, qc, mx, gid);
+        forall g0: nat | g0 in CapIds(r2) ensures CP.start_reg(g0) != CP.start_reg(gid) {}
+        FilterCaptureAgreeOutsideOwn(r2, AI.filter_capture(r1, cr, cc, lc, qc, mx), cc, lc, qc, mx, CP.start_reg(gid));
+      } else {
+        forall g0: nat | g0 in CapIds(r1) ensures CP.start_reg(g0) != CP.start_reg(gid) {}
+        FilterCaptureAgreeOutsideOwn(r1, cr, cc, lc, qc, mx, CP.start_reg(gid));
+        FilterKeepsPresentLk(r2, AI.filter_capture(r1, cr, cc, lc, qc, mx), cc, lc, qc, mx, gid);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      assert qv >= mx;   // PathPresentLk
+      FilterKeepsPresentLk(r1, cr, cc, lc, qc, qv, gid);
+    case Re_capture(cid, r1) =>
+      var start := AI.get_idx(cc, CP.start_reg(cid));
+      if cid == gid {
+        assert start >= 0 && start >= mx;   // cc[start_reg(gid)] >= MxAtGidLk == mx here
+        assert gid !in CapIds(r1) by { if gid in CapIds(r1) { } }   // CapUnique: cid !in CapIds(r1)
+        forall g0: nat | g0 in CapIds(r1) ensures CP.start_reg(g0) != CP.start_reg(gid) {}
+        FilterCaptureAgreeOutsideOwn(r1, cr, cc, lc, qc, mx, CP.start_reg(gid));
+      } else {
+        assert start >= 0 && start >= mx;   // PathPresentLk
+        FilterKeepsPresentLk(r1, cr, cc, lc, qc, mx, gid);
+      }
+    case Re_lookaround(lid, l, r1) =>
+      var lv := AI.get_idx(lc, lid);
+      assert lv >= 0 && lv >= mx;   // PathPresentLk -> matched
+      FilterAtLookaroundMatched(lid, l, r1, cr, cc, lc, qc, mx);
+      FilterKeepsPresentLk(r1, cr, cc, lc, qc, -1, gid);
+  }
+
   // Single-index frame: changing register arrays only at position start_reg(gid)
   // (whose id is OUTSIDE the subtree) leaves filter output unchanged everywhere
   // except that same position.
