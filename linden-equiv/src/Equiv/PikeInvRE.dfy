@@ -3703,6 +3703,19 @@ module LindenElkPikeInv {
     FilterCaptureCaptureFree(r1, cr, cc, lc, qc, -1);
   }
 
+  /** L3a: a MATCHED lookaround node KEEPS the body's captures. When the look
+      clock `lv = get_idx(lc, lid)` is set (`>= 0`) and not stale (`>= M`),
+      `filter_capture`'s lookaround rule takes the `filter_capture(r1, .., -1)`
+      branch -- so the body's own group registers survive filtering. The
+      capturing analog of `FilterAtLookaround` (which collapses for capture-free
+      bodies because both branches are then the identity). */
+  lemma FilterAtLookaroundMatched(lid: R.lookid, la: R.lookaround, r1: R.regex, cr: seq<int>,
+                                  cc: seq<int>, lc: seq<int>, qc: seq<int>, M: int)
+    requires AI.get_idx(lc, lid) >= 0 && AI.get_idx(lc, lid) >= M
+    ensures AI.filter_capture(R.Re_lookaround(lid, la, r1), cr, cc, lc, qc, M)
+         == AI.filter_capture(r1, cr, cc, lc, qc, -1)
+  {}
+
   /** A capture-free regex has nothing to erase: `filter_all` is the identity. */
   lemma FilterAllCaptureFree(r: R.regex, regs: seq<int>)
     requires NR.CaptureFreeRE(r)
