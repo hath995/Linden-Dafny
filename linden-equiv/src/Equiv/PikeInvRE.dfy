@@ -1963,6 +1963,7 @@ module LindenElkPikeInv {
     requires NR.LookBehindFragmentRE(r)
     requires CapUnique(r)
     requires gid in CapIds(r)
+    requires gid !in CapIdsInLooks(r)   // L3a: presence extraction is for outside-look gids
     requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0
                              ==> AI.get_idx(cr, CP.start_reg(c)) < 0
     requires AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), CP.start_reg(gid)) >= 0
@@ -1974,7 +1975,9 @@ module LindenElkPikeInv {
   {
     match r
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
-    case Re_lookaround(_, _, r1) => CaptureFreeNoCapIds(r1);   // gid in CapIds({}) is false
+    case Re_lookaround(_, _, r1) =>
+      assert gid in CapIdsInLooks(r);   // == CapIds(r1) ∋ gid, contradicts the outside-look requires
+      assert false;
     case Re_alt(r1, r2) =>
       var c1 := AI.filter_capture(r1, cr, cc, lc, qc, mx);
       if gid in CapIds(r1) {
@@ -2069,6 +2072,7 @@ module LindenElkPikeInv {
     requires NR.LookBehindFragmentRE(ast)
     requires CapUnique(ast)
     requires gid in CapIds(ast)
+    requires gid !in CapIdsInLooks(ast)   // L3a: presence extraction is for outside-look gids
     requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
                              ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
     requires gid in GmOfLive(ast, caps, look, quant)
@@ -2103,6 +2107,7 @@ module LindenElkPikeInv {
     requires NR.LookBehindFragmentRE(r)
     requires CapUnique(r)
     requires gid in CapIds(r)
+    requires gid !in CapIdsInLooks(r)   // L3a: absence extraction is for outside-look gids
     requires PathPresent(r, cc, qc, mx, gid)
     requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) >= 0
                              ==> AI.get_idx(cr, CP.start_reg(c)) >= 0
@@ -2178,6 +2183,7 @@ module LindenElkPikeInv {
     requires NR.LookBehindFragmentRE(ast)
     requires CapUnique(ast)
     requires gid in CapIds(ast)
+    requires gid !in CapIdsInLooks(ast)   // L3a: absence extraction is for outside-look gids
     requires CapRegWf(caps)
     requires PathPresent(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
     requires gid !in GmOfLive(ast, caps, look, quant)
@@ -2367,7 +2373,10 @@ module LindenElkPikeInv {
   {
     match r
     case Re_lookaround(lid, la, r1) =>
-      FilterAtLookaround(lid, la, r1, cr, cc, lc, qc, mx);
+      NR.PlusIsLookBehindFragmentRE(r1);
+      var lv := AI.get_idx(lc, lid);
+      if lv < 0 || lv < mx { FilterAllGeqNeg1(r1, cr, i); }
+      else { FilterCaptureGeqNeg1(r1, cr, cc, lc, qc, -1, i); }
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_alt(r1, r2) =>
       FilterCaptureGeqNeg1(r1, cr, cc, lc, qc, mx, i);
@@ -2420,7 +2429,10 @@ module LindenElkPikeInv {
   {
     match r
     case Re_lookaround(lid, la, r1) =>
-      FilterAtLookaround(lid, la, r1, A, cc, lc, qc, M);
+      NR.PlusIsLookBehindFragmentRE(r1);
+      var lv := AI.get_idx(lc, lid);
+      // reset: both sides == filter_all(r1, A)[j]; keep: recurse at mx=-1.
+      if lv < 0 || lv < M {} else { FilterCaptureVsAll(r1, A, cc, lc, qc, -1, j); }
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_alt(r1, r2) =>
       FilterCaptureVsAll(r1, A, cc, lc, qc, M, j);
@@ -2481,8 +2493,10 @@ module LindenElkPikeInv {
   {
     match r
     case Re_lookaround(lid, la, r1) =>
-      FilterAtLookaround(lid, la, r1, X, cc, lc, qc, M);
-      FilterAtLookaround(lid, la, r1, Y, cc, lc, qc, M);
+      NR.PlusIsLookBehindFragmentRE(r1);
+      var lv := AI.get_idx(lc, lid);
+      if lv < 0 || lv < M { FilterAllCrPointwise(r1, X, Y, j); }
+      else { FilterCaptureCrPointwise(r1, X, Y, cc, lc, qc, -1, j); }
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_alt(r1, r2) =>
       FilterCaptureCrPointwise(r1, X, Y, cc, lc, qc, M, j);
@@ -2516,8 +2530,10 @@ module LindenElkPikeInv {
   {
     match r
     case Re_lookaround(lid, la, r1) =>
-      FilterAtLookaround(lid, la, r1, cr, cc, lc, qc, M);
-      FilterAtLookaround(lid, la, r1, cr, cc, lc, qc', M);
+      NR.PlusIsLookBehindFragmentRE(r1);
+      var lv := AI.get_idx(lc, lid);
+      // reset: both == filter_all(r1, cr)[j] (filter_all ignores qc); keep: recurse at -1.
+      if lv < 0 || lv < M {} else { FilterCaptureQcFrame(r1, cr, cc, lc, qc, qc', -1, qid, j); }
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_alt(r1, r2) =>
       FilterCaptureQcFrame(r1, cr, cc, lc, qc, qc', M, qid, j);
@@ -2596,6 +2612,7 @@ module LindenElkPikeInv {
     requires NR.LookBehindFragmentRE(r)
     requires CapUnique(r)
     requires gid in CapIds(r)
+    requires gid !in CapIdsInLooks(r)   // L3a: open frame is for outside-look gids
     requires cp >= 0 && clk >= 0
     requires clk >= MxAtGid(r, cc, qc, mx, gid)
     requires PathPresent(r, cc, qc, mx, gid)
@@ -2617,6 +2634,10 @@ module LindenElkPikeInv {
     requires forall sg: nat :: sg in CapIds(BodyOf(r, gid))
                               ==> AI.get_idx(cc, CP.start_reg(sg)) < MxAtGid(r, cc, qc, mx, gid)
                                   || AI.get_idx(cc, CP.start_reg(sg)) < 0
+    // L3a: every lookaround inside gid's body is stale at gid's birth stamp — the
+    // body's looks haven't fired in this iteration, so a fresh open cannot keep
+    // any inside-look captures (mirrors the sg capture-staleness above).
+    requires LooksStale(BodyOf(r, gid), lc, MxAtGid(r, cc, qc, mx, gid))
     ensures AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), CP.start_reg(gid)) < 0
     ensures AI.get_idx(AI.filter_capture(r, cr', cc', lc, qc, mx), CP.start_reg(gid)) == cp
     ensures forall j :: j != CP.start_reg(gid)
@@ -2626,7 +2647,9 @@ module LindenElkPikeInv {
   {
     match r
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
-    case Re_lookaround(_, _, r1) => CaptureFreeNoCapIds(r1);   // gid in CapIds({}) is false
+    case Re_lookaround(_, _, r1) =>
+      assert gid in CapIdsInLooks(r);   // == CapIds(r1) ∋ gid, contradicts the outside-look requires
+      assert false;
     case Re_alt(r1, r2) =>
       var X := AI.filter_capture(r1, cr, cc, lc, qc, mx);
       var X' := AI.filter_capture(r1, cr', cc', lc, qc, mx);
@@ -2720,6 +2743,8 @@ module LindenElkPikeInv {
           assert CP.start_reg(cidx) != CP.start_reg(gid);
           assert AI.get_idx(cc', CP.start_reg(cidx)) == AI.get_idx(cc, CP.start_reg(cidx));
         }
+        assert BodyOf(r, gid) == r1 && MxAtGid(r, cc, qc, mx, gid) == mx;
+        assert LooksStale(r1, lc, mx);                     // == LooksStale(BodyOf(r,gid), lc, MxAtGid) from requires
         FilterCaptureAllStale(r1, cr', cc', lc, qc, mx);   // filter_capture(r1,cr',cc',mx) == filter_all(r1,cr')
         // f-side (before the write): two subcases, both land in a filter_all branch
         // whose input at start_reg(gid) is negative.
@@ -4636,6 +4661,7 @@ module LindenElkPikeInv {
     requires cp >= 0 && clk >= 0
     requires clk > AI.get_idx(caps.a_clk, CP.end_reg(gid))
     requires NR.LookBehindFragmentRE(ast) && CapUnique(ast) && gid in CapIds(ast)
+    requires gid !in CapIdsInLooks(ast)   // L3a: Open fires for outside-look gids
     // gid's start register is UNSET or STALE relative to the enclosing star's
     // stamp — covers both the first open and a star re-entry (RegElk never
     // clears registers; staleness lives in the filter).
@@ -4650,6 +4676,8 @@ module LindenElkPikeInv {
     requires forall sg: nat :: sg in CapIds(BodyOf(ast, gid))
                               ==> AI.get_idx(caps.a_clk, CP.start_reg(sg)) < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
                                   || AI.get_idx(caps.a_clk, CP.start_reg(sg)) < 0
+    requires LooksStale(BodyOf(ast, gid), AReg.as_arrays(look).1,
+                        MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid))
     ensures gid !in GmOfLive(ast, caps, look, quant)
     ensures GmOfLive(ast, AReg.set_reg(caps, CP.start_reg(gid), Some(cp), clk), look, quant)
          == GmOfLive(ast, caps, look, quant)[gid := LG.Range(cp as nat, None)]
@@ -4685,6 +4713,7 @@ module LindenElkPikeInv {
     requires cp >= 0 && clk >= 0
     requires clk > AI.get_idx(caps.a_clk, CP.end_reg(gid))
     requires NR.LookBehindFragmentRE(ast) && CapUnique(ast) && gid in CapIds(ast)
+    requires gid !in CapIdsInLooks(ast)   // L3a: Open fires for outside-look gids
     requires AI.get_idx(caps.a_clk, CP.start_reg(gid))
                < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
           || AI.get_idx(caps.a_clk, CP.start_reg(gid)) < 0
@@ -4696,6 +4725,8 @@ module LindenElkPikeInv {
     requires forall sg: nat :: sg in CapIds(BodyOf(ast, gid))
                               ==> AI.get_idx(caps.a_clk, CP.start_reg(sg)) < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
                                   || AI.get_idx(caps.a_clk, CP.start_reg(sg)) < 0
+    requires LooksStale(BodyOf(ast, gid), AReg.as_arrays(look).1,
+                        MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid))
     ensures GmOfLive(ast, AReg.set_reg(caps, CP.start_reg(gid), Some(cp), clk), look, quant)
          == LG.GMOpen(cp as nat, gid, GmOfLive(ast, caps, look, quant))
   {
