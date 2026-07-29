@@ -3849,6 +3849,101 @@ module LindenElkPikeInv {
     case _ =>
   }
 
+  /** A group's start register belongs to `CaptureRegsSet(S)` iff the group is in
+      `S` (parity: `start_reg` is even, `end_reg` odd, both injective). */
+  lemma StartRegInCaptureRegsSet(S: set<nat>, g: nat)
+    ensures (CP.start_reg(g) in CaptureRegsSet(S)) <==> (g in S)
+  {
+    if CP.start_reg(g) in CaptureRegsSet(S) {
+      if CP.start_reg(g) in (set cid | cid in S :: CP.start_reg(cid)) {
+        var c :| c in S && CP.start_reg(c) == CP.start_reg(g);
+        assert 2 * c == 2 * g;
+      } else {
+        var c :| c in S && CP.end_reg(c) == CP.start_reg(g);
+        assert 2 * c + 1 == 2 * g;   // parity contradiction
+      }
+    }
+  }
+
+  lemma EndRegInCaptureRegsSet(S: set<nat>, g: nat)
+    ensures (CP.end_reg(g) in CaptureRegsSet(S)) <==> (g in S)
+  {
+    if CP.end_reg(g) in CaptureRegsSet(S) {
+      if CP.end_reg(g) in (set cid | cid in S :: CP.start_reg(cid)) {
+        var c :| c in S && CP.start_reg(c) == CP.end_reg(g);
+        assert 2 * c == 2 * g + 1;   // parity contradiction
+      } else {
+        var c :| c in S && CP.end_reg(c) == CP.end_reg(g);
+        assert 2 * c + 1 == 2 * g + 1;
+      }
+    }
+  }
+
+  /** THE P1 GmOfLive frame: on OUTSIDE-look groups, `GmOfLive` is unchanged when
+      the capture bank (and its clocks) agree outside the inside-look registers,
+      the look bank is the same, and the quant clocks agree at outside-look quant
+      ids. Composes `FilterFrameOutside` (capture frame) with `FilterCaptureFull-
+      Outside` (quant frame). The agreements are `requires` -- the caller supplies
+      them from §4a (`RegsAgreeOutside(res.0, caps, S)`) and the FLookLoop quant
+      frame. This is P1: it moves `GmOfLive(re, res.0, lk, res.2)` to `GmOfLive(re,
+      caps, lk, qt)` on all outside-look groups. */
+  lemma GmOfLiveFrameOutside(re: R.regex, cap: AReg.Regs, cap': AReg.Regs, look: AReg.Regs,
+                             quant: AReg.Regs, quant': AReg.Regs)
+    requires NR.LookBehindFragmentRE(re) && CapUnique(re)
+    requires forall k: int :: k !in CaptureRegsSet(CapIdsInLooks(re)) ==>
+      AI.get_idx(AReg.as_arrays(cap).0, k) == AI.get_idx(AReg.as_arrays(cap').0, k)
+      && AI.get_idx(AReg.as_arrays(cap).1, k) == AI.get_idx(AReg.as_arrays(cap').1, k)
+    requires forall q: nat :: q in QuantIdsOutsideLooks(re) ==>
+      AI.get_idx(AReg.as_arrays(quant).1, q) == AI.get_idx(AReg.as_arrays(quant').1, q)
+    ensures forall g: nat :: g !in CapIdsInLooks(re) ==>
+      ((g in GmOfLive(re, cap, look, quant)) <==> (g in GmOfLive(re, cap', look, quant')))
+      && (g in GmOfLive(re, cap, look, quant) ==>
+          GmOfLive(re, cap, look, quant)[g] == GmOfLive(re, cap', look, quant')[g])
+  {
+    var W := CaptureRegsSet(CapIdsInLooks(re));
+    var crA := AReg.as_arrays(cap).0;  var ccA := AReg.as_arrays(cap).1;
+    var crB := AReg.as_arrays(cap').0; var ccB := AReg.as_arrays(cap').1;
+    var lc := AReg.as_arrays(look).1;
+    var qcA := AReg.as_arrays(quant).1; var qcB := AReg.as_arrays(quant').1;
+
+    // structural requires of FilterFrameOutside
+    CapIdsLooksDisjoint(re);
+    assert forall g: nat :: g in CapIdsInLooks(re) ==> CP.start_reg(g) in W by {
+      forall g: nat | g in CapIdsInLooks(re) ensures CP.start_reg(g) in W { StartRegInCaptureRegsSet(CapIdsInLooks(re), g); }
+    }
+    assert forall g: nat :: g in CapIdsOutsideLooks(re) ==> CP.start_reg(g) !in W by {
+      forall g: nat | g in CapIdsOutsideLooks(re) ensures CP.start_reg(g) !in W {
+        assert g !in CapIdsInLooks(re) by { if g in CapIdsInLooks(re) { assert g in CapIdsOutsideLooks(re) * CapIdsInLooks(re); } }
+        StartRegInCaptureRegsSet(CapIdsInLooks(re), g);
+      }
+    }
+    assert forall x: int :: x in W ==> x >= 0 by {
+      forall x: int | x in W ensures x >= 0 {}
+    }
+    // swap quant' -> quant on the whole filter (quant frame), then cap frame.
+    FilterCaptureFullOutside(re, crB, ccB, lc, qcB, qcA, -1);   // filter(crB,ccB,qcB)==filter(crB,ccB,qcA)
+    FilterFrameOutside(re, crA, crB, ccA, ccB, lc, qcA, qcA, -1, W);   // filter(crA,ccA,qcA) ~ filter(crB,ccB,qcA) outside W
+
+    var f1 := AI.filter_reset(re, cap, look, quant, -1);
+    var f2 := AI.filter_reset(re, cap', look, quant', -1);
+    assert f1 == AI.filter_capture(re, crA, ccA, lc, qcA, -1);
+    assert f2 == AI.filter_capture(re, crB, ccB, lc, qcB, -1);
+
+    forall g: nat | g !in CapIdsInLooks(re)
+      ensures ((g in GmOfLive(re, cap, look, quant)) <==> (g in GmOfLive(re, cap', look, quant')))
+           && (g in GmOfLive(re, cap, look, quant) ==>
+               GmOfLive(re, cap, look, quant)[g] == GmOfLive(re, cap', look, quant')[g])
+    {
+      StartRegInCaptureRegsSet(CapIdsInLooks(re), g);
+      EndRegInCaptureRegsSet(CapIdsInLooks(re), g);
+      assert CP.start_reg(g) !in W && CP.end_reg(g) !in W;
+      assert AI.get_idx(f1, CP.start_reg(g)) == AI.get_idx(f2, CP.start_reg(g));
+      assert AI.get_idx(f1, CP.end_reg(g)) == AI.get_idx(f2, CP.end_reg(g));
+      assert AI.get_idx(ccA, CP.start_reg(g)) == AI.get_idx(ccB, CP.start_reg(g));
+      assert AI.get_idx(ccA, CP.end_reg(g)) == AI.get_idx(ccB, CP.end_reg(g));
+    }
+  }
+
   /** A lookaround node is TRANSPARENT to both filters when its body is
       capture-free (the L1 fragment's shape): every branch of
       `filter_capture`'s lookaround rule, and `filter_all`'s, returns the
