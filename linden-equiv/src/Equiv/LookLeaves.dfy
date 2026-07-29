@@ -361,6 +361,74 @@ module LindenElkLookLeaves {
     case LKFail(_, _) =>
   }
 
+  /** Two group maps agree on membership and value at every group IN `S`. */
+  ghost predicate GmAgreeInside(gm1: LG.GroupMap, gm2: LG.GroupMap, S: set<LG.GroupId>) {
+    forall g :: g in S ==> (g in gm1 <==> g in gm2) && (g in gm1 ==> gm1[g] == gm2[g])
+  }
+
+  /** The SAME group action preserves inside-`S` agreement (an action on a group
+      updates both maps identically; an action on another group leaves `S`
+      untouched). No confinement needed. */
+  lemma GMUpdateAgreeInside(op: LG.GroupAction, idx: nat, gm1: LG.GroupMap, gm2: LG.GroupMap, S: set<LG.GroupId>)
+    requires GmAgreeInside(gm1, gm2, S)
+    ensures GmAgreeInside(LG.GMUpdate(op, idx, gm1), LG.GMUpdate(op, idx, gm2), S)
+  {
+    match op
+    case Open(g) =>
+    case Close(g) =>
+      forall g' | g' in S
+        ensures (g' in LG.GMClose(idx, g, gm1) <==> g' in LG.GMClose(idx, g, gm2))
+             && (g' in LG.GMClose(idx, g, gm1) ==> LG.GMClose(idx, g, gm1)[g'] == LG.GMClose(idx, g, gm2)[g'])
+      { if g' == g { assert LG.Find(g, gm1) == LG.Find(g, gm2); } }
+    case Reset(gs) =>
+  }
+
+  /** The inside-`S` mirror of `TreeLeavesFrameOutside`: `TreeLeaves` from two maps
+      that agree ON `S` yields leaf lists of equal length, equal positions, and
+      per-leaf maps that still agree on `S`. (Holds for ANY tree — group actions on
+      groups outside `S` don't touch `S`, actions inside `S` update both alike.) */
+  lemma TreeLeavesFrameInside(t: LT.Tree, gm1: LG.GroupMap, gm2: LG.GroupMap, inp: LC.Input,
+                              dir: WP.Direction, S: set<LG.GroupId>)
+    requires GmAgreeInside(gm1, gm2, S)
+    ensures |LT.TreeLeaves(t, gm1, inp, dir)| == |LT.TreeLeaves(t, gm2, inp, dir)|
+    ensures forall i :: 0 <= i < |LT.TreeLeaves(t, gm1, inp, dir)| ==>
+              LT.TreeLeaves(t, gm1, inp, dir)[i].0 == LT.TreeLeaves(t, gm2, inp, dir)[i].0
+              && GmAgreeInside(LT.TreeLeaves(t, gm1, inp, dir)[i].1, LT.TreeLeaves(t, gm2, inp, dir)[i].1, S)
+    decreases t
+  {
+    match t
+    case Mismatch =>
+    case Match =>
+    case Choice(t1, t2) =>
+      TreeLeavesFrameInside(t1, gm1, gm2, inp, dir, S);
+      TreeLeavesFrameInside(t2, gm1, gm2, inp, dir, S);
+      var a1 := LT.TreeLeaves(t1, gm1, inp, dir); var a2 := LT.TreeLeaves(t1, gm2, inp, dir);
+      var b1 := LT.TreeLeaves(t2, gm1, inp, dir); var b2 := LT.TreeLeaves(t2, gm2, inp, dir);
+      var L1 := LT.TreeLeaves(t, gm1, inp, dir); var L2 := LT.TreeLeaves(t, gm2, inp, dir);
+      assert L1 == a1 + b1 && L2 == a2 + b2;
+      forall i | 0 <= i < |L1| ensures L1[i].0 == L2[i].0 && GmAgreeInside(L1[i].1, L2[i].1, S) {
+        if i < |a1| { assert L1[i] == a1[i] && L2[i] == a2[i]; }
+        else { assert L1[i] == b1[i - |a1|] && L2[i] == b2[i - |a1|]; }
+      }
+    case Read(c, t1) => TreeLeavesFrameInside(t1, gm1, gm2, LC.AdvanceInputP(inp, dir), dir, S);
+    case Progress(t1) => TreeLeavesFrameInside(t1, gm1, gm2, inp, dir, S);
+    case GroupActionT(a, t1) =>
+      GMUpdateAgreeInside(a, LC.Idx(inp), gm1, gm2, S);
+      TreeLeavesFrameInside(t1, LG.GMUpdate(a, LC.Idx(inp), gm1), LG.GMUpdate(a, LC.Idx(inp), gm2), inp, dir, S);
+    case AnchorPass(_, t0) => TreeLeavesFrameInside(t0, gm1, gm2, inp, dir, S);
+    case ReadBackRef(brStr, t0) => TreeLeavesFrameInside(t0, gm1, gm2, LC.AdvanceInputN(inp, |brStr|, dir), dir, S);
+    case LK(lk, tlk, t1) =>
+      TreeLeavesFrameInside(tlk, gm1, gm2, inp, L.LkDir(lk), S);
+      var sub1 := LT.TreeLeaves(tlk, gm1, inp, L.LkDir(lk));
+      var sub2 := LT.TreeLeaves(tlk, gm2, inp, L.LkDir(lk));
+      if L.Positivity(lk) {
+        if |sub1| > 0 { TreeLeavesFrameInside(t1, sub1[0].1, sub2[0].1, inp, dir, S); }
+      } else {
+        if |sub1| == 0 { TreeLeavesFrameInside(t1, gm1, gm2, inp, dir, S); }
+      }
+    case LKFail(_, _) =>
+  }
+
   /** `GmAgreeOutside` is reflexive and transitive. */
   lemma GmAgreeOutsideRefl(gm: LG.GroupMap, S: set<LG.GroupId>)
     ensures GmAgreeOutside(gm, gm, S)
