@@ -2075,6 +2075,48 @@ module LindenElkMain {
     FFindMatchThreadFacts(bytecode, str, inits, ov, dir, cdn, ncap, nlook, nquant);
   }
 
+  /** The lookahead replay preserves register well-formedness: from a `VmRegsWf`
+      seed the FFindMatch result is `ThreadRegsWf` (`FFindMatchRegsWf`, no clock
+      bound), and `FReconstructPlus` is the identity (`FNulledPlusIdentity`), so
+      the FFindMatchPlus result is `ThreadRegsWf` too. Threads the fold's register
+      lengths + `CapRegWf` past each replay. */
+  lemma ReplayThreadWfLA(bytecode: RB.code, str: string, cp: int, cap: AReg.Regs, lk: AReg.Regs,
+                         qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
+                         body: R.regex, la: R.lookaround, ncap: int, nlook: int, nquant: int)
+    requires NR.LookBehindFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires la.Lookahead?
+    requires bytecode == CP.compile_to_bytecode(body)
+    requires 0 <= cp <= |str|
+    requires AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp)
+    requires PIV.CapRegWf(cap)
+    requires |cap.a_cp| == ncap && |cap.a_clk| == ncap
+    requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    ensures
+      var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Forward, cp, cap, lk, qt, 0, lookcdn).0;
+      result.Some? ==> CM.ThreadRegsWf(result.value, ncap, nlook, nquant)
+  {
+    var dir := LAnc.Forward;
+    var ctx := AI.cp_context(cp, str, dir);
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, ctx);
+    assert CM.VmRegsWf(inits, ncap, nlook, nquant) by {
+      assert CM.ThreadRegsWf(AI.init_thread(cap, lk, qt), ncap, nlook, nquant);
+      assert inits.active == [AI.init_thread(cap, lk, qt)];
+      forall t | t in inits.active ensures CM.ThreadRegsWf(t, ncap, nlook, nquant) {}
+    }
+    FFindMatchRegsWf(bytecode, str, inits, ov, dir, lookcdn, ncap, nlook, nquant);   // ThreadRegsWf(fmres)
+    NoTrueQuantStamp(body);
+    assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
+    FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
+    var (fmres, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+    if fmres.Some? {
+      FNulledPlusIdentity(body, fmres.value.capture_regs, fmres.value.look_regs, fmres.value.quant_regs,
+                          plus_bcv, str, ovx, dir);
+    }
+  }
+
   /** §4b ENGINE BRIDGE: the body replay from the MAIN thread's `cap/lk/qt`
       agrees, on `CaptureRegs(body)`, with the replay from FRESH registers. `cap`
       has the body's ids UNSET (the main pass writes only outside-look captures,
