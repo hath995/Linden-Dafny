@@ -546,7 +546,11 @@ module LindenElkEntryLk {
     case Sequence(r1, r2) => PikeLkRegex(r1) && PikeLkRegex(r2)
     case Quantified(_, _, _, r1) => PikeLkRegex(r1)
     case Group(_, r1) => PikeLkRegex(r1)
-    case LookaroundR(lk, r1) => SD.GroupFreeL(r1)
+    case LookaroundR(lk, r1) =>
+      // L3a: a POSITIVE FORWARD lookahead admits a look-free (but possibly
+      // capturing) body; every other flavour still requires a group-free body.
+      if L.Positivity(lk) && L.LkDir(lk) == WP.Forward then NoLkBrL(r1)
+      else SD.GroupFreeL(r1)
     case AnchorR(_) => true
     case Backreference(_) => false
   }
@@ -609,7 +613,12 @@ module LindenElkEntryLk {
     case Re_con(r1, r2) => TranslateFragmentPikeLk(r1); TranslateFragmentPikeLk(r2);
     case Re_quant(_, _, _, r1) => TranslateFragmentPikeLk(r1);
     case Re_capture(_, r1) => TranslateFragmentPikeLk(r1);
-    case Re_lookaround(lid, la, r1) => OS.TranslateGroupFree(r1);
+    case Re_lookaround(lid, la, r1) =>
+      // The fragment still keeps lookaround bodies capture-free, so the body's
+      // translation is `GroupFreeL`; bridge to `NoLkBrL` for the widened
+      // positive-forward arm of `PikeLkRegex`.
+      OS.TranslateGroupFree(r1);
+      GroupFreeLNoLkBr(T.Translate(r1));
     case _ =>
   }
 
@@ -875,7 +884,6 @@ module LindenElkEntryLk {
         // LkResultGmIndep (free, for any tree).
         BS.EncodeNext(b, inp, cont, r);
         var lkacts := [LS.Areg(r1)];
-        assert GroupFreeActs(lkacts);
         var treelkOpt := FS.ComputeTree(rer, lkacts, inp, gm, L.LkDir(lk), f);
         assert treelkOpt.Some?;                       // else ComputeTree gave None
         var tlk := treelkOpt.value;
@@ -884,7 +892,13 @@ module LindenElkEntryLk {
         assert tlk == FU.ComputeTr(rer, lkacts, inp, LG.Empty, L.LkDir(lk)) by {
           FS.ComputeTreeFuelIrrelevance(rer, lkacts, inp, gm, L.LkDir(lk), f,
                                         FS.ActionsFuel(lkacts, inp, L.LkDir(lk)) + 1);
-          ComputeTrGmIndep(rer, r1, inp, gm, L.LkDir(lk));
+          // The body's tree is group-map independent: a positive forward
+          // lookahead may capture (`NoLkBrL`), every other flavour is group-free.
+          if L.Positivity(lk) && L.LkDir(lk) == WP.Forward {
+            ComputeTrGmIndepLk(rer, r1, inp, gm, L.LkDir(lk));
+          } else {
+            ComputeTrGmIndep(rer, r1, inp, gm, L.LkDir(lk));
+          }
         }
         FS.LkAfterTermination(cont, inp, WP.Forward, lk, r1);
         LkResultGmIndep(lk, tlk, gm, inp);
