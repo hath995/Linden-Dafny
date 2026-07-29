@@ -3759,6 +3759,41 @@ module LindenElkPikeInv {
     case _ =>
   }
 
+  /** `CapIdsInLooks` is monotone under `BodyOf`: the inside-look captures of a
+      capture's body are inside-look captures of the whole (its body is embedded,
+      so its looks are looks of the whole). Lets the run-wide "inside-look regs
+      unset" invariant specialize to `gid`'s body at an open site. */
+  lemma CapIdsInLooksBodyOfSubset(re: R.regex, gid: nat)
+    requires gid in CapIds(re)
+    ensures CapIdsInLooks(BodyOf(re, gid)) <= CapIdsInLooks(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => if gid in CapIds(r1) { CapIdsInLooksBodyOfSubset(r1, gid); } else { CapIdsInLooksBodyOfSubset(r2, gid); }
+    case Re_con(r1, r2) => if gid in CapIds(r1) { CapIdsInLooksBodyOfSubset(r1, gid); } else { CapIdsInLooksBodyOfSubset(r2, gid); }
+    case Re_quant(_, _, _, r1) => CapIdsInLooksBodyOfSubset(r1, gid);
+    case Re_capture(cid, r1) => if cid == gid {} else { CapIdsInLooksBodyOfSubset(r1, gid); }
+    case Re_lookaround(_, _, r1) =>
+      CapIdsInLooksBodyOfSubset(r1, gid);   // ⊆ CapIdsInLooks(r1) ⊆ CapIds(r1) == CapIdsInLooks(re)
+      CapIdsSplit(r1);
+  }
+
+  /** `CapIdsInLooks` is monotone under `QidBody` (the quant-body analog). */
+  lemma CapIdsInLooksQidBodySubset(re: R.regex, qid: nat)
+    requires qid in QuantIds(re)
+    ensures CapIdsInLooks(QidBody(re, qid)) <= CapIdsInLooks(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => if qid in QuantIds(r1) { CapIdsInLooksQidBodySubset(r1, qid); } else { CapIdsInLooksQidBodySubset(r2, qid); }
+    case Re_con(r1, r2) => if qid in QuantIds(r1) { CapIdsInLooksQidBodySubset(r1, qid); } else { CapIdsInLooksQidBodySubset(r2, qid); }
+    case Re_quant(_, qid0, _, r1) => if qid0 >= 0 && (qid0 as nat) == qid {} else { CapIdsInLooksQidBodySubset(r1, qid); }
+    case Re_capture(_, r1) => CapIdsInLooksQidBodySubset(r1, qid);
+    case Re_lookaround(_, _, r1) =>
+      CapIdsInLooksQidBodySubset(r1, qid);
+      CapIdsSplit(r1);
+  }
+
   /** ...and, with unique ids, they are disjoint. */
   lemma CapIdsLooksDisjoint(r: R.regex)
     requires CapUnique(r)
