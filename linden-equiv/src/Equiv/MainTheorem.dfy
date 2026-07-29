@@ -1717,6 +1717,104 @@ module LindenElkMain {
       }
   }
 
+  /** L3a — the QUANT frame for the whole FLookLoop pass: the final quant bank
+      agrees with the initial one OUTSIDE `Sq`, where `Sq` covers every matched
+      body's own quant ids (`QIdsInt(body) <= Sq`, from `QuantIds(body) <=
+      QuantIdsInLooks(mainast)`). Each replay writes quant only inside its body
+      (`QuantWritesInsideBody` -> `FFindMatchQuantFrame` for lookaheads,
+      `ReplayFrames` for capture-free lookbehinds). Instantiate `Sq` with the int
+      image of `QuantIdsInLooks(mainast)`, disjoint from the outer quants the main
+      filter reads. Feeds P1 (`GmOfLiveFrameOutside`'s quant hypothesis). */
+  lemma FLookLoopQuantFrame(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
+                            cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                            mainast: R.regex, Sq: set<int>)
+    requires NR.LookBehindFragmentRE(mainast) && PIV.QuantUnique(mainast)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
+      exists la: R.lookaround, body: R.regex ::
+        LTB.LookEntryOk(crv, l, la, body)
+        && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+        && PIV.CapUnique(body) && PIV.QuantUnique(body)
+        && LKC.QIdsInt(body) <= Sq
+        && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
+    ensures var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
+      CM.RegsAgreeOutside(res.2, qt, Sq) && res.1 == lk
+    decreases maxlook - lid
+  {
+    if lid > maxlook { return; }
+    var next := lid + 1;
+    match AReg.get_cp(lk, lid)
+    case None =>
+      FLookLoopQuantFrame(crv, str, next, maxlook, cap, lk, qt, ov, mainast, Sq);
+    case Some(cp) =>
+      var looktype := if 0 <= lid < |crv.f_look_types| then crv.f_look_types[lid] else R.Lookahead;
+      if !AI.capture_type(looktype) {
+        FLookLoopQuantFrame(crv, str, next, maxlook, cap, lk, qt, ov, mainast, Sq);
+      } else {
+        var la: R.lookaround, body: R.regex :|
+          LTB.LookEntryOk(crv, lid, la, body)
+          && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+          && PIV.CapUnique(body) && PIV.QuantUnique(body)
+          && LKC.QIdsInt(body) <= Sq
+          && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
+        assert looktype == la && (la.Lookbehind? || la.Lookahead?);
+        var bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
+        var dir := AI.capture_direction(looktype);
+        var lookcdn := if 0 <= lid < |crv.f_look_cdns| then crv.f_look_cdns[lid] else [];
+        var lookast := if 0 <= lid < |crv.f_look_ast| then crv.f_look_ast[lid] else R.Re_empty;
+        assert bytecode == CP.compile_to_bytecode(CP.capture_regex(la, body));
+        assert lookast == body;
+        var (result, ov1) := AI.FFindMatchPlus(bytecode, lookast, crv.f_plus_bc, str, ov, dir,
+                                               cp, cap, lk, qt, 0, lookcdn);
+        var ncap, nlk, nqt := if result.None? then cap else result.value.capture_regs,
+                              if result.None? then lk else result.value.look_regs,
+                              if result.None? then qt else result.value.quant_regs;
+        var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
+        assert CM.VmQuantsAgree(inits, qt, LKC.QIdsInt(body)) by {
+          assert inits.active == [AI.init_thread(cap, lk, qt)];
+          assert AI.init_thread(cap, lk, qt).quant_regs == qt;
+          assert CM.RegsAgreeOutside(qt, qt, LKC.QIdsInt(body));
+        }
+        if la.Lookahead? {
+          assert dir == LAnc.Forward && CP.capture_regex(la, body) == body;
+          NR.PlusIsLookBehindFragmentRE(body);
+          ReplayPlusFrame(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+          QuantWritesInsideBody(body);   // QuantWritesInside(bytecode, QIdsInt(body))
+          CM.FFindMatchQuantFrame(bytecode, str, inits, ov, dir, lookcdn, qt, LKC.QIdsInt(body));
+          NoTrueQuantStamp(body);
+          assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
+          FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);   // res0 quant-final
+          var (res0, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+          if result.Some? {
+            assert res0.Some? && QuantRegsFinal(res0.value);
+            FNulledPlusIdentity(body, res0.value.capture_regs, res0.value.look_regs, res0.value.quant_regs,
+                                crv.f_plus_bc, str, ovx, dir);
+            assert nqt == res0.value.quant_regs;
+            CM.RegsAgreeOutsideWeaken(nqt, qt, LKC.QIdsInt(body), Sq);
+          }
+        } else {
+          ReplayFrames(bytecode, str, inits, ov, dir, lookcdn, cap, lk, qt, la, body);
+          var (res0, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+          assert result.Some? ==> res0.Some?;
+          if result.Some? {
+            var th := res0.value;
+            assert QuantRegsFinal(th);
+            FNulledPlusIdentity(lookast, th.capture_regs, th.look_regs, th.quant_regs,
+                                crv.f_plus_bc, str, ovx, dir);
+            assert nqt == th.quant_regs;
+            assert CM.RegsAgreeOutside(nqt, qt, LKC.QIdsInt(body));   // ReplayFrames
+            CM.RegsAgreeOutsideWeaken(nqt, qt, LKC.QIdsInt(body), Sq);
+          }
+        }
+        assert CM.RegsAgreeOutside(nqt, qt, Sq) && nlk == lk
+            && (forall k :: AI.get_idx(nqt.a_cp, k) < 0)
+            && (forall k :: AI.get_idx(nqt.a_clk, k) >= -1);
+        FLookLoopQuantFrame(crv, str, next, maxlook, ncap, nlk, nqt, ov1, mainast, Sq);
+        CM.RegsAgreeOutsideTrans(AI.FLookLoop(crv, str, next, maxlook, ncap, nlk, nqt, ov1).2, nqt, qt, Sq);
+      }
+  }
+
   /** One replay's register facts, packaged: the capture and look banks come out
       untouched, the quant bank agrees outside the body's ids, and the result
       thread is still quant-final. */
