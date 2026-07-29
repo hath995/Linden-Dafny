@@ -535,7 +535,10 @@ module LindenElkNfaRep {
       // swap commutation (OracleBuild.CompileToWriteSwap) reads that build as a
       // forward run of `compile_to_write(RevRE(body))` -- so anchors in the
       // body are handled, not forbidden.
-      CaptureFreeRE(r1) && LookFreeRE(r1) && PlusFragmentRE(r1)
+      // L3a: a POSITIVE FORWARD lookahead may now CAPTURE (its body's captures are
+      // reconstructed by FLookLoop -- see the value-lift/P1/P2 machinery); every
+      // other flavour still requires a capture-free body.
+      (la.Lookahead? || CaptureFreeRE(r1)) && LookFreeRE(r1) && PlusFragmentRE(r1)
   }
 
   /** The `raw_regex` counterpart of `LookBehindFragmentRE`. */
