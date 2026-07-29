@@ -4046,6 +4046,37 @@ module LindenElkPikeInv {
     }
   }
 
+  /** P2 value wrapper: for an L3a-present captured group, `GmOfLive` at `gid` is
+      the RAW range read straight off the capture bank -- filtering keeps both its
+      start (`FilterKeepsPresentLk`) and end (`FilterCaptureKeepsOdd`) registers.
+      So `GmOfLive(re, res.0, ..)[g]` on inside-look groups is exactly the
+      reconstruction the value-lift produced. */
+  lemma GmOfLiveKeepsPresentLk(re: R.regex, cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, gid: nat)
+    requires NR.LookBehindFragmentRE(re) && CapUnique(re)
+    requires gid in CapIds(re)
+    requires PathPresentLk(re, AReg.as_arrays(cap).1, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, gid)
+    requires AI.get_idx(AReg.as_arrays(cap).1, CP.start_reg(gid)) >= 0
+    requires AI.get_idx(AReg.as_arrays(cap).0, CP.start_reg(gid)) >= 0   // value set (clock-set => value-set)
+    requires AI.get_idx(AReg.as_arrays(cap).1, CP.start_reg(gid))
+               >= MxAtGidLk(re, AReg.as_arrays(cap).1, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, gid)
+    ensures gid in GmOfLive(re, cap, look, quant)
+    ensures GmOfLive(re, cap, look, quant)[gid]
+              == LiveRange(AReg.as_arrays(cap).0, AReg.as_arrays(cap).1, gid)
+  {
+    var cr := AReg.as_arrays(cap).0;  var cc := AReg.as_arrays(cap).1;
+    var lc := AReg.as_arrays(look).1; var qc := AReg.as_arrays(quant).1;
+    var f := AI.filter_reset(re, cap, look, quant, -1);
+    assert f == AI.filter_capture(re, cr, cc, lc, qc, -1);
+    FilterKeepsPresentLk(re, cr, cc, lc, qc, -1, gid);              // f[start_reg(gid)] == cr[start_reg(gid)]
+    FilterCaptureKeepsOdd(re, cr, cc, lc, qc, -1, CP.end_reg(gid)); // f[end_reg(gid)] == cr[end_reg(gid)]
+    assert AI.get_idx(f, CP.start_reg(gid)) == AI.get_idx(cr, CP.start_reg(gid));
+    assert AI.get_idx(f, CP.end_reg(gid)) == AI.get_idx(cr, CP.end_reg(gid));
+    // membership: f[start_reg(gid)] == cr[start_reg(gid)]; cr[start_reg(gid)] >= 0 needs the
+    // "clock set => value set" consistency (a captured group has a set value).
+    assert AI.get_idx(f, CP.start_reg(gid)) >= 0;
+    assert LiveRange(f, cc, gid) == LiveRange(cr, cc, gid);
+  }
+
   /** A lookaround node is TRANSPARENT to both filters when its body is
       capture-free (the L1 fragment's shape): every branch of
       `filter_capture`'s lookaround rule, and `filter_all`'s, returns the
