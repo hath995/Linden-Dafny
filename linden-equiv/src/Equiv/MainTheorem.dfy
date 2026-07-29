@@ -1157,6 +1157,7 @@ module LindenElkMain {
     requires !rer.ignoreCase && !rer.multiline
     requires cp <= |str|
     requires bodycode == CP.compile_to_bytecode(body)
+    requires NR.LookFreeRE(body)
     requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
     ensures var inp := PIV.InpOfCp(str, cp);
             var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Forward);
@@ -1186,7 +1187,11 @@ module LindenElkMain {
     }
     assert WO.WalkOk(acts, bodycode, 0, ATR.EaOf(BS.CannotExit));
     AR.CompileToBytecodeActionsRepLookBehind(rer, qm, body);   // ActionsRepL
-    LL.ComputeTrLkConfinedEmpty(rer, acts, inp, LG.Empty, WP.Forward);   // LkConfinedTree(t, {})
+    // The body is look-free, so its walk has no lookaround at all: the tree is
+    // `LkConfinedTree(_, {})` for the trivial (empty) inside-look set.
+    EL.TranslateNoLkBr(body);                                   // NoLkBrL(Translate(body))
+    assert LL.LkActsInS(acts, {}) by { LL.NoLkBrLkBodiesInS(T.Translate(body), {}); }
+    LL.ComputeTrLkConfined(rer, acts, inp, LG.Empty, WP.Forward, {});   // LkConfinedTree(t, {})
     var tstar := ATR.ActionsTreeRepRE(rer, qm, acts, bodycode, 0, inp, BS.CannotExit, t, {});
     assert TR.TreeRepRE(qm, tstar, bodycode, 0, inp, false);
     LL.LeavesAgreeAtOutsideEmpty(tstar, t, inp);               // Outside({}) -> full LeavesAgreeAt
@@ -1292,12 +1297,18 @@ module LindenElkMain {
     }
     assert WO.WalkOk([LS.Areg(T.Translate(re))], code, 0, ATR.EaOf(BS.CannotExit));
     assert LL.OracleOkSuffix(rer, qm, inp);
-    LL.ComputeTrLkConfinedEmpty(rer, [LS.Areg(T.Translate(re))], inp, LG.Empty, WP.Forward);  // LkConfinedTree(t, {})
-    var tstar := ATR.ActionsTreeRepRE(rer, qm, [LS.Areg(T.Translate(re))], code, 0, inp, BS.CannotExit, t, {});
+    // L3a: the checked tree `tstar` is gate-transparent, so it agrees with the
+    // capture-folding spec tree `t` only OUTSIDE the inside-look groups `S`. The
+    // inside-look groups are reconstructed by `FLookLoop` (§4a frame + value-lift).
+    var S := LL.LkBodyGroups(T.Translate(re));
+    assert LL.LkActsInS([LS.Areg(T.Translate(re))], S) by {
+      LL.LkBodyGroupsConfines(T.Translate(re), S);
+      assert LL.LkBodiesInS(T.Translate(re), S);
+    }
+    LL.ComputeTrLkConfined(rer, [LS.Areg(T.Translate(re))], inp, LG.Empty, WP.Forward, S);  // LkConfinedTree(t, S)
+    var tstar := ATR.ActionsTreeRepRE(rer, qm, [LS.Areg(T.Translate(re))], code, 0, inp, BS.CannotExit, t, S);
     assert TR.TreeRepRE(qm, tstar, code, 0, inp, false);
-    LL.LeavesAgreeAtOutsideEmpty(tstar, t, inp);              // Outside({}) -> full LeavesAgreeAt
-    LL.LAAtFirstLeaf(tstar, t, inp);
-    assert LT.FirstLeaf(tstar, inp) == LT.FirstLeaf(t, inp);
+    LL.FirstLeafAgreeOutside(tstar, t, inp, S);              // FirstLeaf(tstar) ~ FirstLeaf(t) OUTSIDE S
 
     // ---- the engine pipeline ---------------------------------------------
     var crv := CP.FFullCompilation(ast);
@@ -1889,6 +1900,7 @@ module LindenElkMain {
     requires !rer.ignoreCase && !rer.multiline
     requires cp <= |str|
     requires bodycode == CP.compile_to_bytecode(body)
+    requires NR.LookFreeRE(body)
     requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
     requires CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant

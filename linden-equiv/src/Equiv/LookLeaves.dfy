@@ -1,13 +1,13 @@
-// Lookaround campaign (L1), §6.6: dissolving the gate at the LEAF level.
+﻿// Lookaround campaign (L1), Â§6.6: dissolving the gate at the LEAF level.
 //
 // The checked tree the simulation runs on drops the `LK` wrapper entirely (see
 // TreeRepRE's gate rule): a passing gate carries the SAME tree onward, a
 // failing one is `Mismatch`. The entry construction has to justify that against
-// the spec tree, which does carry `LK`/`LKFail` nodes — i.e. it has to show the
+// the spec tree, which does carry `LK`/`LKFail` nodes â€” i.e. it has to show the
 // two denote the same leaves.
 //
 // THE CATCH: `CE.LeavesAgree` quantifies over EVERY group map, input, and
-// direction, and at that strength the gate is NOT transparent — at some other
+// direction, and at that strength the gate is NOT transparent â€” at some other
 // input the body's subtree may have no leaves, killing the `LK` side while the
 // dissolved side happily produces leaves. What IS true is agreement at the
 // input the walk actually reached, for every group map, which is all the entry
@@ -18,15 +18,15 @@
 // group-map-free. Two facts make that work at a gate:
 //   * whether the body's subtree has leaves does not depend on the group map
 //     (`ResGroupMapIndep`), so the gate's verdict is the same for all of them;
-//   * a group-free body's tree is GROUP-MAP NEUTRAL — every leaf it produces
+//   * a group-free body's tree is GROUP-MAP NEUTRAL â€” every leaf it produces
 //     carries the map it was given (its only group actions are `Reset([])`, and
-//     resetting nothing is the identity) — so the continuation of a passing
+//     resetting nothing is the identity) â€” so the continuation of a passing
 //     positive gate resumes at the very map the `LK` node was entered with.
 include "EntryLk.dfy"
 include "CheckErase.dfy"
 include "TreeRepRE.dfy"
 
-/** §6.6: `LeavesAgreeAt` (leaf agreement at one input, for every group map),
+/** Â§6.6: `LeavesAgreeAt` (leaf agreement at one input, for every group map),
     its congruences, group-map neutrality of group-free walks, and the two
     lemmas that dissolve a lookaround gate. */
 module LindenElkLookLeaves {
@@ -54,7 +54,7 @@ module LindenElkLookLeaves {
   // ===========================================================================
 
   /** `t1` and `t2` denote the same leaves at input `inp` (scanning forward),
-      under every group map — the weakening of `CE.LeavesAgree` that survives
+      under every group map â€” the weakening of `CE.LeavesAgree` that survives
       the gate. */
   ghost predicate LeavesAgreeAt(t1: LT.Tree, t2: LT.Tree, inp: LC.Input) {
     forall gm: LG.GroupMap :: LT.TreeLeaves(t1, gm, inp, WP.Forward)
@@ -258,7 +258,7 @@ module LindenElkLookLeaves {
       case Backreference(gid) =>   // excluded by GroupFreeL
   }
 
-  /** `ComputeTreeGmNeutral` in `ComputeTr` form — the shape the gate rule's
+  /** `ComputeTreeGmNeutral` in `ComputeTr` form â€” the shape the gate rule's
       body tree comes in. */
   lemma ComputeTrGmNeutral(rer: LW.RegExpRecord, r: L.Regex, inp: LC.Input, gm: LG.GroupMap,
                            dir: WP.Direction)
@@ -811,15 +811,108 @@ module LindenElkLookLeaves {
     case _ =>
   }
 
-  /** A `PikeLkActions` walk (lookaround bodies group-free) builds a tree that is
-      `LkConfinedTree(_, {})`: every gate body is group-free, hence GmNeutral,
-      hence `GmConfinedTree(_, {})`. What both checked-tree callers need at
-      `S == {}` for capture-free lookarounds. */
-  lemma ComputeTreeLkConfinedEmpty(rer: LW.RegExpRecord, act: LS.Actions, inp: LC.Input,
-                                   gm: LG.GroupMap, dir: WP.Direction, fuel: nat)
-    requires EL.PikeLkActions(act)
+  // ===========================================================================
+  // L3a: `LkConfinedTree(_, S)` for the WIDENED fragment (capturing lookaheads)
+  // ===========================================================================
+
+  /** Every positive-forward lookahead body captures only groups in `S`. L3a
+      bodies are `NoLkBrL` (no nesting), so this is shallow -- no recursion into
+      the body is needed. What `ComputeTreeLkConfined` demands of the walk. */
+  ghost predicate LkBodiesInS(r: L.Regex, S: set<LG.GroupId>)
+    decreases r
+  {
+    match r
+    case Epsilon => true
+    case Character(_) => true
+    case Disjunction(r1, r2) => LkBodiesInS(r1, S) && LkBodiesInS(r2, S)
+    case Sequence(r1, r2) => LkBodiesInS(r1, S) && LkBodiesInS(r2, S)
+    case Quantified(_, _, _, r1) => LkBodiesInS(r1, S)
+    case Group(_, r1) => LkBodiesInS(r1, S)
+    case LookaroundR(lk, r1) =>
+      (L.Positivity(lk) && L.LkDir(lk) == WP.Forward) ==> DefGroupsIn(r1, S)
+    case AnchorR(_) => true
+    case Backreference(_) => true
+  }
+
+  /** The action-level lift of `LkBodiesInS`. */
+  ghost predicate LkActsInS(act: LS.Actions, S: set<LG.GroupId>) {
+    forall i :: 0 <= i < |act| ==> (act[i].Areg? ==> LkBodiesInS(act[i].r, S))
+  }
+
+  lemma LkActsInSCons(x: LS.Action, cont: LS.Actions, S: set<LG.GroupId>)
+    requires (x.Areg? ==> LkBodiesInS(x.r, S)) && LkActsInS(cont, S)
+    ensures LkActsInS([x] + cont, S)
+  {
+    forall i | 0 <= i < |[x] + cont| ensures ([x] + cont)[i].Areg? ==> LkBodiesInS(([x] + cont)[i].r, S)
+    { if i == 0 {} else { assert ([x] + cont)[i] == cont[i - 1]; } }
+  }
+
+  lemma LkActsInSTail(act: LS.Actions, S: set<LG.GroupId>)
+    requires |act| > 0 && LkActsInS(act, S)
+    ensures LkActsInS(act[1..], S)
+  {
+    forall i | 0 <= i < |act[1..]| ensures act[1..][i].Areg? ==> LkBodiesInS(act[1..][i].r, S)
+    { assert act[1..][i] == act[i + 1]; }
+  }
+
+  /** A look-free body has no lookaround at all, so `LkBodiesInS` holds vacuously
+      for every `S` -- what a look-free `BodyTreeAtCp` needs at `S == {}`. */
+  lemma NoLkBrLkBodiesInS(r: L.Regex, S: set<LG.GroupId>)
+    requires EL.NoLkBrL(r)
+    ensures LkBodiesInS(r, S)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => NoLkBrLkBodiesInS(r1, S); NoLkBrLkBodiesInS(r2, S);
+    case Sequence(r1, r2) => NoLkBrLkBodiesInS(r1, S); NoLkBrLkBodiesInS(r2, S);
+    case Quantified(_, _, _, r1) => NoLkBrLkBodiesInS(r1, S);
+    case Group(_, r1) => NoLkBrLkBodiesInS(r1, S);
+    case _ =>
+  }
+
+  /** The set of all groups that occur inside a lookaround body of `r` -- the
+      canonical "inside-look" group set `S` the main-regex checked-tree caller
+      threads. (L3a bodies are look-free, so the body's own `DefGroups` is the
+      whole contribution; the `+ LkBodyGroups(r1)` term future-proofs nesting.) */
+  ghost function LkBodyGroups(r: L.Regex): set<LG.GroupId>
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => LkBodyGroups(r1) + LkBodyGroups(r2)
+    case Sequence(r1, r2) => LkBodyGroups(r1) + LkBodyGroups(r2)
+    case Quantified(_, _, _, r1) => LkBodyGroups(r1)
+    case Group(_, r1) => LkBodyGroups(r1)
+    case LookaroundR(lk, r1) => (set g | g in L.DefGroups(r1)) + LkBodyGroups(r1)
+    case _ => {}
+  }
+
+  /** `LkBodyGroups(r)` (or any superset) confines every lookaround body of `r`. */
+  lemma LkBodyGroupsConfines(r: L.Regex, S: set<LG.GroupId>)
+    requires LkBodyGroups(r) <= S
+    ensures LkBodiesInS(r, S)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => LkBodyGroupsConfines(r1, S); LkBodyGroupsConfines(r2, S);
+    case Sequence(r1, r2) => LkBodyGroupsConfines(r1, S); LkBodyGroupsConfines(r2, S);
+    case Quantified(_, _, _, r1) => LkBodyGroupsConfines(r1, S);
+    case Group(_, r1) => LkBodyGroupsConfines(r1, S);
+    case LookaroundR(lk, r1) =>
+      assert (set g | g in L.DefGroups(r1)) <= LkBodyGroups(r);   // <= S
+      assert DefGroupsIn(r1, S);
+    case _ =>
+  }
+
+  /** A `PikeLkActions` walk whose positive-forward lookahead bodies capture only
+      groups in `S` builds a tree that is `LkConfinedTree(_, S)`: a capturing gate
+      body is `GmConfinedTree(_, S)` by `ComputeTreeConfined` (`NoLkBrL`,
+      `DefGroups <= S`); a group-free gate body is `GmNeutral`, hence confined to
+      any `S`. The L3a generalisation of `ComputeTreeLkConfinedEmpty`. */
+  lemma ComputeTreeLkConfined(rer: LW.RegExpRecord, act: LS.Actions, inp: LC.Input,
+                              gm: LG.GroupMap, dir: WP.Direction, fuel: nat, S: set<LG.GroupId>)
+    requires EL.PikeLkActions(act) && LkActsInS(act, S)
     ensures FS.ComputeTree(rer, act, inp, gm, dir, fuel).Some?
-         ==> CE.LkConfinedTree(FS.ComputeTree(rer, act, inp, gm, dir, fuel).value, {})
+         ==> CE.LkConfinedTree(FS.ComputeTree(rer, act, inp, gm, dir, fuel).value, S)
     decreases fuel
   {
     if fuel == 0 || |act| == 0 { return; }
@@ -827,101 +920,129 @@ module LindenElkLookLeaves {
     var cont := act[1..];
     assert act == [act[0]] + cont;
     EL.PikeLkActionsConsIff(act[0], cont);
+    LkActsInSTail(act, S);
     match act[0]
     case Acheck(strcheck) =>
-      if SSx.IsStrictSuffix(inp, strcheck, dir) { ComputeTreeLkConfinedEmpty(rer, cont, inp, gm, dir, f); }
+      if SSx.IsStrictSuffix(inp, strcheck, dir) { ComputeTreeLkConfined(rer, cont, inp, gm, dir, f, S); }
     case Aclose(gid) =>
-      ComputeTreeLkConfinedEmpty(rer, cont, inp, LG.GMClose(LC.Idx(inp), gid, gm), dir, f);
+      ComputeTreeLkConfined(rer, cont, inp, LG.GMClose(LC.Idx(inp), gid, gm), dir, f, S);
     case Areg(r) =>
       match r
-      case Epsilon => ComputeTreeLkConfinedEmpty(rer, cont, inp, gm, dir, f);
+      case Epsilon => ComputeTreeLkConfined(rer, cont, inp, gm, dir, f, S);
       case Character(cd) =>
         match LC.ReadChar(rer, cd, inp, dir) {
           case None =>
-          case Some(pair) => ComputeTreeLkConfinedEmpty(rer, cont, pair.1, gm, dir, f);
+          case Some(pair) => ComputeTreeLkConfined(rer, cont, pair.1, gm, dir, f, S);
         }
       case Disjunction(r1, r2) =>
         EL.PikeLkActionsConsIff(LS.Areg(r1), cont);
         EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
-        ComputeTreeLkConfinedEmpty(rer, [LS.Areg(r1)] + cont, inp, gm, dir, f);
-        ComputeTreeLkConfinedEmpty(rer, [LS.Areg(r2)] + cont, inp, gm, dir, f);
+        LkActsInSCons(LS.Areg(r1), cont, S);
+        LkActsInSCons(LS.Areg(r2), cont, S);
+        ComputeTreeLkConfined(rer, [LS.Areg(r1)] + cont, inp, gm, dir, f, S);
+        ComputeTreeLkConfined(rer, [LS.Areg(r2)] + cont, inp, gm, dir, f, S);
       case Sequence(r1, r2) =>
         var na := LS.SeqList(r1, r2, dir) + cont;
-        assert EL.PikeLkActions(na) by {
+        assert EL.PikeLkActions(na) && LkActsInS(na, S) by {
           if dir.Forward? {
             assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
             EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
             EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
+            LkActsInSCons(LS.Areg(r2), cont, S);
+            LkActsInSCons(LS.Areg(r1), [LS.Areg(r2)] + cont, S);
           } else {
             assert na == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
             EL.PikeLkActionsConsIff(LS.Areg(r1), cont);
             EL.PikeLkActionsConsIff(LS.Areg(r2), [LS.Areg(r1)] + cont);
+            LkActsInSCons(LS.Areg(r1), cont, S);
+            LkActsInSCons(LS.Areg(r2), [LS.Areg(r1)] + cont, S);
           }
         }
-        ComputeTreeLkConfinedEmpty(rer, na, inp, gm, dir, f);
+        ComputeTreeLkConfined(rer, na, inp, gm, dir, f, S);
       case Quantified(greedy, min, delta, r1) =>
         var gidl := L.DefGroups(r1);
         if min > 0 {
           var quant := L.Quantified(greedy, min - 1, delta, r1);
           var na := [LS.Areg(r1), LS.Areg(quant)] + cont;
-          assert EL.PikeLkActions(na) by {
+          assert EL.PikeLkActions(na) && LkActsInS(na, S) by {
             assert na == [LS.Areg(r1)] + ([LS.Areg(quant)] + cont);
             EL.PikeLkActionsConsIff(LS.Areg(quant), cont);
             EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(quant)] + cont);
+            LkActsInSCons(LS.Areg(quant), cont, S);
+            LkActsInSCons(LS.Areg(r1), [LS.Areg(quant)] + cont, S);
           }
-          ComputeTreeLkConfinedEmpty(rer, na, inp, LG.GMReset(gidl, gm), dir, f);
+          ComputeTreeLkConfined(rer, na, inp, LG.GMReset(gidl, gm), dir, f, S);
         } else if delta == LN.NN(0) {
-          ComputeTreeLkConfinedEmpty(rer, cont, inp, gm, dir, f);
+          ComputeTreeLkConfined(rer, cont, inp, gm, dir, f, S);
         } else {
           var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
           var na := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
-          assert EL.PikeLkActions(na) by {
+          assert EL.PikeLkActions(na) && LkActsInS(na, S) by {
             assert na == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
             EL.PikeLkActionsConsIff(LS.Areg(quant), cont);
             EL.PikeLkActionsConsIff(LS.Acheck(inp), [LS.Areg(quant)] + cont);
             EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+            LkActsInSCons(LS.Areg(quant), cont, S);
+            LkActsInSCons(LS.Acheck(inp), [LS.Areg(quant)] + cont, S);
+            LkActsInSCons(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont), S);
           }
-          ComputeTreeLkConfinedEmpty(rer, na, inp, LG.GMReset(gidl, gm), dir, f);
-          ComputeTreeLkConfinedEmpty(rer, cont, inp, gm, dir, f);
+          ComputeTreeLkConfined(rer, na, inp, LG.GMReset(gidl, gm), dir, f, S);
+          ComputeTreeLkConfined(rer, cont, inp, gm, dir, f, S);
         }
       case Group(gid, r1) =>
         var na := [LS.Areg(r1), LS.Aclose(gid)] + cont;
-        assert EL.PikeLkActions(na) by {
+        assert EL.PikeLkActions(na) && LkActsInS(na, S) by {
           assert na == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
           EL.PikeLkActionsConsIff(LS.Aclose(gid), cont);
           EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+          LkActsInSCons(LS.Aclose(gid), cont, S);
+          LkActsInSCons(LS.Areg(r1), [LS.Aclose(gid)] + cont, S);
         }
-        ComputeTreeLkConfinedEmpty(rer, na, inp, LG.GMOpen(LC.Idx(inp), gid, gm), dir, f);
+        ComputeTreeLkConfined(rer, na, inp, LG.GMOpen(LC.Idx(inp), gid, gm), dir, f, S);
       case LookaroundR(lk, r1) =>
-        assert SD.GroupFreeL(r1);                      // PikeLkRegex(LookaroundR)
+        assert LkBodiesInS(L.LookaroundR(lk, r1), S);   // from LkActsInS(act, S)
         var bodyacts := [LS.Areg(r1)];
-        assert EL.GroupFreeActs(bodyacts) by {
-          forall i | 0 <= i < |bodyacts| ensures bodyacts[i].Acheck? || (bodyacts[i].Areg? && SD.GroupFreeL(bodyacts[i].r)) {}
-        }
         match FS.ComputeTree(rer, bodyacts, inp, gm, L.LkDir(lk), f) {
           case None =>
           case Some(treelk) =>
-            ComputeTreeGmNeutral(rer, bodyacts, inp, gm, L.LkDir(lk), f, treelk);   // GmNeutralTree(treelk)
-            GmNeutralConfined(treelk, {});                                          // GmConfinedTree(treelk, {})
+            if L.Positivity(lk) && L.LkDir(lk) == WP.Forward {
+              // capturing body: NoLkBrL and DefGroups(r1) <= S
+              assert EL.NoLkBrL(r1);                     // PikeLkRegex(LookaroundR) widened
+              assert DefGroupsIn(r1, S);                 // LkBodiesInS positive-forward arm
+              assert ConfinedActs(bodyacts, S) by {
+                assert EL.NoLkBrActs(bodyacts);
+                forall i | 0 <= i < |bodyacts|
+                  ensures (bodyacts[i].Areg? ==> DefGroupsIn(bodyacts[i].r, S)) && (bodyacts[i].Aclose? ==> bodyacts[i].gid in S) {}
+              }
+              ComputeTreeConfined(rer, bodyacts, inp, gm, L.LkDir(lk), f, S);   // GmConfinedTree(treelk, S)
+            } else {
+              assert SD.GroupFreeL(r1);                  // PikeLkRegex(LookaroundR) else-branch
+              var bacts := bodyacts;
+              assert EL.GroupFreeActs(bacts) by {
+                forall i | 0 <= i < |bacts| ensures bacts[i].Acheck? || (bacts[i].Areg? && SD.GroupFreeL(bacts[i].r)) {}
+              }
+              ComputeTreeGmNeutral(rer, bacts, inp, gm, L.LkDir(lk), f, treelk);   // GmNeutralTree(treelk)
+              GmNeutralConfined(treelk, S);                                        // GmConfinedTree(treelk, S)
+            }
             match LS.LkResult(lk, treelk, gm, inp) {
-              case Some(gmlk) => ComputeTreeLkConfinedEmpty(rer, cont, inp, gmlk, dir, f);
+              case Some(gmlk) => ComputeTreeLkConfined(rer, cont, inp, gmlk, dir, f, S);
               case None =>
             }
         }
       case AnchorR(a) =>
-        if LS.AnchorSatisfied(rer, a, inp) { ComputeTreeLkConfinedEmpty(rer, cont, inp, gm, dir, f); }
+        if LS.AnchorSatisfied(rer, a, inp) { ComputeTreeLkConfined(rer, cont, inp, gm, dir, f, S); }
       case Backreference(gid) =>                        // PikeLkRegex(Backreference) == false
   }
 
-  /** The `ComputeTr` form both callers apply. */
-  lemma ComputeTrLkConfinedEmpty(rer: LW.RegExpRecord, act: LS.Actions, inp: LC.Input,
-                                 gm: LG.GroupMap, dir: WP.Direction)
-    requires EL.PikeLkActions(act)
-    ensures CE.LkConfinedTree(FU.ComputeTr(rer, act, inp, gm, dir), {})
+  /** The `ComputeTr` form both callers apply for capturing lookaheads. */
+  lemma ComputeTrLkConfined(rer: LW.RegExpRecord, act: LS.Actions, inp: LC.Input,
+                            gm: LG.GroupMap, dir: WP.Direction, S: set<LG.GroupId>)
+    requires EL.PikeLkActions(act) && LkActsInS(act, S)
+    ensures CE.LkConfinedTree(FU.ComputeTr(rer, act, inp, gm, dir), S)
   {
     var fuel := FS.ActionsFuel(act, inp, dir) + 1;
     FS.FunctionalTerminates(rer, act, inp, gm, dir, fuel);
-    ComputeTreeLkConfinedEmpty(rer, act, inp, gm, dir, fuel);
+    ComputeTreeLkConfined(rer, act, inp, gm, dir, fuel, S);
   }
 
   /** THE L3a LK-case assembly (mirrors ActionsTreeRepRE:774-779 in "outside S"
@@ -972,7 +1093,7 @@ module LindenElkLookLeaves {
     }
   }
 
-  /** A FAILING gate denotes nothing — just like the `Mismatch` the checked
+  /** A FAILING gate denotes nothing â€” just like the `Mismatch` the checked
       tree puts in its place. */
   lemma LAAtGateFail(lk: L.Lookaround, tlk: LT.Tree, inp: LC.Input)
     ensures LeavesAgreeAt(LT.LKFail(lk, tlk), LT.Mismatch, inp)
@@ -985,7 +1106,7 @@ module LindenElkLookLeaves {
   /** The oracle column at `inp`'s position tells the truth about every
       lookaround the table knows: the bit is set exactly when the body's walk
       (in the lookaround's own direction) succeeds there. Stated over `Input`
-      rather than a string+cp pair because the construction is string-free —
+      rather than a string+cp pair because the construction is string-free â€”
       `TR.CpOf(inp)` is the column. */
   ghost predicate OracleOkAt(rer: LW.RegExpRecord, qm: AR.QMap, inp: LC.Input) {
     forall lid: int, lk: L.Lookaround, r1: L.Regex ::
@@ -995,7 +1116,7 @@ module LindenElkLookLeaves {
                          LG.Empty, inp, L.LkDir(lk)).Some?)
   }
 
-  /** `OracleOkAt` here and at every position the walk can still reach — the
+  /** `OracleOkAt` here and at every position the walk can still reach â€” the
       form the construction carries, since it recurses into suffixes. */
   ghost predicate OracleOkSuffix(rer: LW.RegExpRecord, qm: AR.QMap, inp0: LC.Input) {
     forall inp: LC.Input :: (inp == inp0 || SSx.IsStrictSuffix(inp, inp0, WP.Forward))
