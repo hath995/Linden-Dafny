@@ -717,6 +717,49 @@ module LindenElkMain {
     }
   }
 
+  /** A whole search preserves register WELL-FORMEDNESS (`ThreadRegsWf` -- array
+      lengths `ncap`/`nlook`/`nquant` and `CapRegWf`). Unlike `FFindMatchThreadFacts`
+      this needs NO clock bound (`FAdvanceEpsilon/FConsumeRegsWf` want only
+      `clock >= 0`), so it applies to the ACTUAL FLookLoop replay from a threaded
+      `cap` whose clocks may exceed 0 -- pinning the fold's register lengths. */
+  lemma FFindMatchRegsWf(c: RB.code, str: string, s: AI.VmState, ov: LOr.OracleView,
+                         dir: LAnc.direction, cdn: LCdn.cdns, ncap: int, nlook: int, nquant: int)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires dir.Forward? ==> s.context.nextchar == AI.get_char(str, s.cp)
+    requires dir.Backward? ==> s.context.nextchar == AI.get_char(str, s.cp - 1)
+    requires s.clock >= 0 && s.cp >= 0
+    requires CM.VmRegsWf(s, ncap, nlook, nquant)
+    ensures var r := AI.FFindMatch(c, str, s, ov, dir, cdn).0;
+      r.Some? ==> CM.ThreadRegsWf(r.value, ncap, nlook, nquant)
+    decreases if dir.Forward? then |str| - s.cp else s.cp
+  {
+    var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, dir));
+    assert CM.VmRegsWf(s0, ncap, nlook, nquant);
+    CM.FAdvanceEpsilonClockGrows(c, s0, ov, dir);
+    CM.FAdvanceEpsilonRegsWf(c, s0, ov, dir, ncap, nlook, nquant);
+    var (s1, ov1) := AI.FAdvanceEpsilon(c, s0, ov, dir);
+    assert s1.cp == s.cp && s1.context == s.context;
+    assert s1.clock >= s0.clock >= 0;
+    if |s1.blocked| == 0 {
+      assert AI.FFindMatch(c, str, s, ov, dir, cdn).0 == s1.bestmatch;
+    } else if s1.context.nextchar.None? {
+      assert AI.FFindMatch(c, str, s, ov, dir, cdn).0 == s1.bestmatch;
+    } else {
+      CM.FConsumeRegsWf(s1, ncap, nlook, nquant);
+      var s2 := AI.FConsume(s1);
+      var s3 := s2.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
+                    cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
+      var newchar := AI.get_char(str, s3.cp - AI.cp_offset(dir));
+      var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
+      assert CM.VmRegsWf(s4, ncap, nlook, nquant) by {
+        assert s4.active == s2.active && s4.blocked == s2.blocked && s4.bestmatch == s2.bestmatch;
+      }
+      assert s4.clock == s2.clock == s1.clock >= 0;
+      FFindMatchRegsWf(c, str, s4, ov1, dir, cdn, ncap, nlook, nquant);
+      assert AI.FFindMatch(c, str, s, ov, dir, cdn) == AI.FFindMatch(c, str, s4, ov1, dir, cdn);
+    }
+  }
+
   // ==========================================================================
   // The QMap builder: qid |-> DefGroups(Translate(body)), per quant node.
   // ==========================================================================
@@ -1996,6 +2039,40 @@ module LindenElkMain {
     }
     // the register-value-blind bisimulation: FFindMatch(from cap) ~ FFindMatch(from fresh).
     ReplayCapAgreeFresh(bytecode, str, cp, cap, lk, qt, ov, lookcdn, body, ncap, nlook, nquant);
+  }
+
+  /** A FRESH body match is well-formed (register arrays keep length `ncap`/etc.).
+      The fresh run's clocks start at -1 <= 0, so the clock/reg backbone applies
+      (`FInitState{ClocksLE,RegsWf}` + `FFindMatchThreadFacts`). This pins the
+      length of the value-lift's fresh reference, which `RegsAgreeInside` needs. */
+  lemma FreshMatchWf(bytecode: RB.code, str: string, cp: int, ov: LOr.OracleView, cdn: LCdn.cdns,
+                     body: R.regex, ncap: int, nlook: int, nquant: int)
+    requires NR.LookBehindFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires bytecode == CP.compile_to_bytecode(body)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires 0 <= cp <= |str|
+    requires AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp)
+    ensures var rf := AI.FFindMatch(bytecode, str,
+                        AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                      AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                        ov, LAnc.Forward, cdn).0;
+      rf.Some? ==> CM.ThreadRegsWf(rf.value, ncap, nlook, nquant)
+  {
+    var dir := LAnc.Forward;
+    var ctx := AI.cp_context(cp, str, dir);
+    var inits := AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                               AReg.init_regs(nquant), 0, ctx);
+    CM.RegsClocksLEInit(ncap, 0);
+    CM.RegsClocksLEInit(nlook, 0);
+    CM.RegsClocksLEInit(nquant, 0);
+    CM.FInitStateClocksLE(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                          AReg.init_regs(nquant), 0, ctx);
+    CM.FInitStateRegsWf(bytecode, cp, ncap, nlook, nquant, 0, ctx);
+    NoTrueQuantStamp(body);
+    assert VmQuantFinal(inits) by {
+      assert QuantRegsFinal(AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant)));
+    }
+    FFindMatchThreadFacts(bytecode, str, inits, ov, dir, cdn, ncap, nlook, nquant);
   }
 
   /** §4b ENGINE BRIDGE: the body replay from the MAIN thread's `cap/lk/qt`
