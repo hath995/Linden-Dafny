@@ -574,6 +574,12 @@ module LindenElkNestInv {
     ensures g !in PIV.CapIdsInLooks(r)
   { PIV.CapIdsSplit(r); }
 
+  /** The quant analog: not a quant id at all ⇒ not an inside-look quant id. */
+  lemma QuantInLooksNotIn(r: R.regex, q: nat)
+    requires q !in PIV.QuantIds(r)
+    ensures q !in PIV.QuantIdsInLooks(r)
+  { PIV.QuantIdsSplit(r); }
+
   lemma NestInvOpenSite(re: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
                         cc: seq<int>, qc: seq<int>, mx: int, gid: nat)
     requires NR.NfaRepRE(re, code, pcb, pce)
@@ -2843,7 +2849,8 @@ module LindenElkNestInv {
     requires NestInvMinRE(k, qn, r1, code, pcb, pce, pc, cc, qc, mx)
     requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
     ensures (qid as int) == qn
-         || (qid in PIV.QuantIds(r1) && AI.get_idx(qc, qn) >= mx
+         || (qid in PIV.QuantIds(r1) && qid in PIV.QuantIdsOutsideLooks(r1)
+             && AI.get_idx(qc, qn) >= mx
              && PIV.PathPresentQ(r1, cc, qc, AI.get_idx(qc, qn), qid))
     decreases CP.rsize(r1), k + 2
   {
@@ -2877,7 +2884,8 @@ module LindenElkNestInv {
     requires NestInvOptRE(k, greedy, qn, r1, code, pcb, pce, pc, cc, qc, mx)
     requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
     ensures (qid as int) == qn
-         || (qid in PIV.QuantIds(r1) && AI.get_idx(qc, qn) >= mx
+         || (qid in PIV.QuantIds(r1) && qid in PIV.QuantIdsOutsideLooks(r1)
+             && AI.get_idx(qc, qn) >= mx
              && PIV.PathPresentQ(r1, cc, qc, AI.get_idx(qc, qn), qid))
     decreases CP.rsize(r1), k + 2
   {
@@ -2918,6 +2926,7 @@ module LindenElkNestInv {
     requires NestInvRE(re, code, pcb, pce, pc, cc, qc, mx)
     requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
     ensures qid in PIV.QuantIds(re)
+    ensures qid in PIV.QuantIdsOutsideLooks(re)   // L3a: SetQuantToClock sites are outside-look
     ensures PIV.PathPresentQ(re, cc, qc, mx, qid)
     decreases CP.rsize(re), 1
   {

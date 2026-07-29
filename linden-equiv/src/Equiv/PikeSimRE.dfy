@@ -402,8 +402,12 @@ module LindenElkPikeSim {
     requires CM.RegsValsLE(th.capture_regs, cp)
     requires |th.capture_regs.a_cp| >= 2 * R.max_group(re) + 2
     requires cp >= 0 && S >= 0
+    requires PIV.LooksCapUnset(re, th.capture_regs.a_clk)   // L3a: inside-look regs unset
     // the tree step is an Open of the register's group
     ensures t.GroupActionT? && t.g.Open? && sreg == CP.start_reg(t.g.g as int)
+    // the open write is at an OUTSIDE-look reg, so inside-look regs stay unset
+    ensures var caps' := AReg.set_reg(th.capture_regs, sreg, Some(cp), S + 1);
+      PIV.LooksCapUnset(re, caps'.a_clk)
     ensures TT.TreeThreadRE(rer, qm, code, inp, t.t, pc + 1, th.exit_allowed)
     // the successor thread tracks GMOpen
     ensures var caps' := AReg.set_reg(th.capture_regs, sreg, Some(cp), S + 1);
@@ -457,7 +461,10 @@ module LindenElkPikeSim {
     assert clk >= PIV.MxAtGid(re, cc, qc, -1, gid);
     assert clk > AI.get_idx(cc, CP.end_reg(gid as int));
 
-    // The gm effect: exactly GMOpen.
+    // The gm effect: exactly GMOpen. gid is outside-look (NestInvOpenSite), and the
+    // body's inside-look caps are unset (subset of re's, which are unset by requires).
+    PIV.CapIdsInLooksBodyOfSubset(re, gid);
+    assert PIV.LooksCapUnset(PIV.BodyOf(re, gid), cc);
     PIV.GmOfLiveOpenGMOpen(re, caps, th.look_regs, th.quant_regs, gid, cp, clk);
     var caps' := AReg.set_reg(caps, sreg, Some(cp), clk);
     assert caps' == AReg.set_reg(caps, CP.start_reg(gid as int), Some(cp), clk);
@@ -466,6 +473,14 @@ module LindenElkPikeSim {
 
     // Positional invariant advances across the write.
     assert caps'.a_clk == cc[sreg := clk];
+    // The open write is at gid's (outside-look) start reg, so inside-look regs stay unset.
+    assert PIV.LooksCapUnset(re, caps'.a_clk) by {
+      forall c: nat | c in PIV.CapIdsInLooks(re) ensures AI.get_idx(caps'.a_clk, CP.start_reg(c)) < 0 {
+        assert c != gid;                              // gid !in CapIdsInLooks(re)
+        assert CP.start_reg(c) != sreg;
+        assert AI.get_idx(caps'.a_clk, CP.start_reg(c)) == AI.get_idx(cc, CP.start_reg(c));
+      }
+    }
     NI.NestInvOpenWrite(re, code, 0, endl, pc, cc, caps'.a_clk, qc, -1, sreg, clk);
     assert NI.NestTopRE(re, code, endl, pc + 1, caps'.a_clk, qc);
 
@@ -598,6 +613,7 @@ module LindenElkPikeSim {
     requires |th.quant_regs.a_clk| >= R.max_quant(re) + 1
     requires |th.quant_regs.a_cp| == |th.quant_regs.a_clk|
     requires S >= 0
+    requires PIV.LooksCapUnset(re, th.capture_regs.a_clk)   // L3a: inside-look regs unset
     ensures t.GroupActionT? && t.g.Reset? && qid0 in qm.quants && qm.quants[qid0] == t.g.gl
     ensures TT.TreeThreadRE(rer, qm, code, inp, t.t, pc + 1, th.exit_allowed)
     ensures var quant' := AReg.set_reg(th.quant_regs, qid0, None, S + 1);
@@ -644,7 +660,10 @@ module LindenElkPikeSim {
     assert forall sg: nat :: (sg in PIV.CapIds(PIV.QidBody(re, qid))
       ==> AI.get_idx(cc, CP.start_reg(sg)) < clk);
 
-    // The gm effect: exactly GMReset over qm's group list.
+    // The gm effect: exactly GMReset over qm's group list. qid is outside-look
+    // (NestInvResetSite), and qid's body's inside-look caps are unset (subset).
+    PIV.CapIdsInLooksQidBodySubset(re, qid);
+    assert PIV.LooksCapUnset(PIV.QidBody(re, qid), cc);
     PIV.GmOfLiveResetGMReset(re, qm, caps, th.look_regs, quant, qid, clk);
     var quant' := AReg.set_reg(quant, qid0, None, clk);
     assert quant' == AReg.set_reg(quant, qid, None, clk);
@@ -824,6 +843,10 @@ module LindenElkPikeSim {
     && (forall tb | tb in vms.blocked :: ThreadNestRE(re, code, endl, tb.0.pc + 1, tb.0))
     && (forall t | t in vms.active :: EaColdOkRE(code, t))
     && (pts.PTS? ==> IsblockedInclusionRE(rer, qm, code, pts.inp, pts.seen, vms.isblocked))
+    // L3a: the VM never writes inside-look capture registers (look bodies compile
+    // to CheckOracle, so no SetRegisterToCP fires for them) — they stay unset.
+    && (forall t | t in vms.active :: PIV.LooksCapUnset(re, t.capture_regs.a_clk))
+    && (forall tb | tb in vms.blocked :: PIV.LooksCapUnset(re, tb.0.capture_regs.a_clk))
   }
 
   // =========================================================================
@@ -1371,6 +1394,10 @@ module LindenElkPikeSim {
         assert !NI.ColdRE(code, pc);
         NotColdSucc(code, pc, pc + 1);
       }
+    }
+    // L3a: inside-look regs stay unset — th' via OpenStepThreadRE's LooksCapUnset ensures.
+    forall t2 | t2 in vms2.active ensures PIV.LooksCapUnset(re, t2.capture_regs.a_clk) {
+      if t2 != th' { assert t2 in vms.active; }
     }
     assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
   }
