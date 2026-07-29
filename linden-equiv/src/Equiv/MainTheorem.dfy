@@ -1036,6 +1036,62 @@ module LindenElkMain {
     }
   }
 
+  /** The translated regex's DEFINED group ids are exactly the engine's capture
+      ids: `Translate` maps `Re_capture(cid,_)` to `Group(cid,_)` and copies every
+      other constructor, so both collect the same cids. */
+  lemma TranslateDefGroupsEqCapIds(r: R.regex)
+    requires T.TransWf(r)
+    ensures (set g | g in L.DefGroups(T.Translate(r))) == PIV.CapIds(r)
+    decreases r
+  {
+    match r
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      TranslateDefGroupsEqCapIds(r1); TranslateDefGroupsEqCapIds(r2);
+      assert L.DefGroups(T.Translate(r)) == L.DefGroups(T.Translate(r1)) + L.DefGroups(T.Translate(r2));
+      assert forall g :: g in L.DefGroups(T.Translate(r)) <==>
+             g in L.DefGroups(T.Translate(r1)) || g in L.DefGroups(T.Translate(r2));
+    case Re_con(r1, r2) =>
+      TranslateDefGroupsEqCapIds(r1); TranslateDefGroupsEqCapIds(r2);
+      assert L.DefGroups(T.Translate(r)) == L.DefGroups(T.Translate(r1)) + L.DefGroups(T.Translate(r2));
+      assert forall g :: g in L.DefGroups(T.Translate(r)) <==>
+             g in L.DefGroups(T.Translate(r1)) || g in L.DefGroups(T.Translate(r2));
+    case Re_quant(_, _, q, r1) => TranslateDefGroupsEqCapIds(r1);
+    case Re_capture(cid, r1) =>
+      TranslateDefGroupsEqCapIds(r1);
+      assert L.DefGroups(T.Translate(r)) == [cid as nat] + L.DefGroups(T.Translate(r1));
+      assert forall g :: g in L.DefGroups(T.Translate(r)) <==> g == cid as nat || g in L.DefGroups(T.Translate(r1));
+    case Re_lookaround(_, lk, r1) => TranslateDefGroupsEqCapIds(r1);
+  }
+
+  /** The translated regex's inside-lookaround group ids equal the engine's
+      `CapIdsInLooks`. A `LookaroundR` contributes its whole body's `DefGroups`
+      (which subsumes the body's own nested look groups, `LkBodyGroupsSubDefs`),
+      matching `CapIdsInLooks(Re_lookaround) == CapIds(body)`. */
+  lemma LkBodyGroupsEqCapIdsInLooks(r: R.regex)
+    requires T.TransWf(r)
+    ensures LL.LkBodyGroups(T.Translate(r)) == PIV.CapIdsInLooks(r)
+    decreases r
+  {
+    match r
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_alt(r1, r2) => LkBodyGroupsEqCapIdsInLooks(r1); LkBodyGroupsEqCapIdsInLooks(r2);
+    case Re_con(r1, r2) => LkBodyGroupsEqCapIdsInLooks(r1); LkBodyGroupsEqCapIdsInLooks(r2);
+    case Re_quant(_, _, q, r1) => LkBodyGroupsEqCapIdsInLooks(r1);
+    case Re_capture(cid, r1) => LkBodyGroupsEqCapIdsInLooks(r1);
+    case Re_lookaround(_, lk, r1) =>
+      // LkBodyGroups(LookaroundR(_,T(r1))) == set(DefGroups(T(r1))) + LkBodyGroups(T(r1))
+      //                                    == set(DefGroups(T(r1)))         (subsumed)
+      //                                    == CapIds(r1) == CapIdsInLooks(r)
+      TranslateDefGroupsEqCapIds(r1);
+      LkBodyGroupsSubDefs(T.Translate(r1));
+      assert LL.LkBodyGroups(T.Translate(r)) == (set g | g in L.DefGroups(T.Translate(r1))) + LL.LkBodyGroups(T.Translate(r1));
+  }
+
   /** L3a value companion of `LookBodyLeafOpenSub`: when the look's body groups
       are UNSET in the incoming `gm` (the reset condition — a fresh or just-reset
       entry), the body's first leaf from `gm` agrees, on `S == DefGroups(r1)`, with
