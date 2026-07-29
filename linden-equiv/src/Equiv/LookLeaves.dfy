@@ -903,6 +903,21 @@ module LindenElkLookLeaves {
     case _ =>
   }
 
+  /** A group-free regex has no lookaround (empty `LkBodyGroups`) and no group
+      (empty `DefGroups`) -- so a capture-free lookaround body contributes
+      nothing to the inside-look group set. */
+  lemma GroupFreeLkBodyEmpty(r: L.Regex)
+    requires SD.GroupFreeL(r)
+    ensures LkBodyGroups(r) == {} && L.DefGroups(r) == []
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => GroupFreeLkBodyEmpty(r1); GroupFreeLkBodyEmpty(r2);
+    case Sequence(r1, r2) => GroupFreeLkBodyEmpty(r1); GroupFreeLkBodyEmpty(r2);
+    case Quantified(_, _, _, r1) => GroupFreeLkBodyEmpty(r1);
+    case _ =>
+  }
+
   /** A `PikeLkActions` walk whose positive-forward lookahead bodies capture only
       groups in `S` builds a tree that is `LkConfinedTree(_, S)`: a capturing gate
       body is `GmConfinedTree(_, S)` by `ComputeTreeConfined` (`NoLkBrL`,

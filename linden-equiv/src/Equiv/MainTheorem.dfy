@@ -39,6 +39,7 @@ module LindenElkMain {
   import SD = LindenSpanDuality
   import LL = LindenElkLookLeaves
   import OE = LindenElkOracleEntry
+  import OS = LindenElkOracleSpec
   import T = LindenElkTranslate
   import CM = LindenElkClockMono
   import NI = LindenElkNestInv
@@ -1344,6 +1345,11 @@ module LindenElkMain {
     // capture-folding spec tree `t` only OUTSIDE the inside-look groups `S`. The
     // inside-look groups are reconstructed by `FLookLoop` (§4a frame + value-lift).
     var S := LL.LkBodyGroups(T.Translate(re));
+    // CURRENT fragment: lookaround bodies are capture-free, so S == {} and the
+    // reframe collapses to full FirstLeaf agreement (L1/L2). The value-lift/P1/P2
+    // machinery is staged for when the fragment is widened for capturing lookaheads.
+    LkBodyGroupsEmpty(re);
+    assert S == {};
     assert LL.LkActsInS([LS.Areg(T.Translate(re))], S) by {
       LL.LkBodyGroupsConfines(T.Translate(re), S);
       assert LL.LkBodiesInS(T.Translate(re), S);
@@ -1351,7 +1357,9 @@ module LindenElkMain {
     LL.ComputeTrLkConfined(rer, [LS.Areg(T.Translate(re))], inp, LG.Empty, WP.Forward, S);  // LkConfinedTree(t, S)
     var tstar := ATR.ActionsTreeRepRE(rer, qm, [LS.Areg(T.Translate(re))], code, 0, inp, BS.CannotExit, t, S);
     assert TR.TreeRepRE(qm, tstar, code, 0, inp, false);
-    LL.FirstLeafAgreeOutside(tstar, t, inp, S);              // FirstLeaf(tstar) ~ FirstLeaf(t) OUTSIDE S
+    LL.LeavesAgreeAtOutsideEmpty(tstar, t, inp);            // S == {} -> full LeavesAgreeAt
+    LL.LAAtFirstLeaf(tstar, t, inp);
+    assert LT.FirstLeaf(tstar, inp) == LT.FirstLeaf(t, inp);
 
     // ---- the engine pipeline ---------------------------------------------
     var crv := CP.FFullCompilation(ast);
@@ -1933,6 +1941,28 @@ module LindenElkMain {
         assert NR.GetPcRE(code, endl) == Some(RB.Accept);
       }
     }
+  }
+
+  /** For the CURRENT (capture-free-lookaround) fragment, the inside-look group set
+      is EMPTY: every lookaround body is capture-free, so its translation is
+      group-free. So the L3a checked-tree reframe at `S = LkBodyGroups(Translate(re))`
+      collapses to `S = {}` -- recovering full `FirstLeaf(tstar) == FirstLeaf(t)`.
+      (When the fragment is widened for capturing lookaheads, `S` becomes non-empty
+      and the value-lift/P1/P2 machinery takes over.) */
+  lemma LkBodyGroupsEmpty(re: R.regex)
+    requires T.TransWf(re) && NR.LookBehindFragmentRE(re)
+    ensures LL.LkBodyGroups(T.Translate(re)) == {}
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => LkBodyGroupsEmpty(r1); LkBodyGroupsEmpty(r2);
+    case Re_con(r1, r2) => LkBodyGroupsEmpty(r1); LkBodyGroupsEmpty(r2);
+    case Re_quant(_, _, _, r1) => LkBodyGroupsEmpty(r1);
+    case Re_capture(_, r1) => LkBodyGroupsEmpty(r1);
+    case Re_lookaround(lid, la, r1) =>
+      OS.TranslateGroupFree(r1);                    // GroupFreeL(Translate(r1)) (body capture-free + look-free)
+      LL.GroupFreeLkBodyEmpty(T.Translate(r1));     // LkBodyGroups(Translate(r1)) == {} && DefGroups == []
+    case _ =>
   }
 
   /** L3a — the FULL replay capture frame: a capturing lookAHEAD's whole
