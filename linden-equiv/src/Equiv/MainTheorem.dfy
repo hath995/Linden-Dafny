@@ -1843,6 +1843,60 @@ module LindenElkMain {
     }
   }
 
+  /** A compiled body's bytecode holds no `WriteOracle` -- `compile_to_bytecode`
+      never emits one (only the oracle BUILD pass does). Lifts `NR.NoWriteInstrRE`
+      over the whole block; the `Accept` at `endl` is not a `WriteOracle`. */
+  lemma NoWriteOracleBodyCode(body: R.regex)
+    requires NR.LookBehindFragmentRE(body)
+    ensures CM.NoWriteOracleCode(CP.compile_to_bytecode(body))
+  {
+    var code := CP.compile_to_bytecode(body);
+    var next := CP.compile(body, 0, CP.Progress).1;
+    NR.CompileToBytecodeRepLookBehind(body);
+    var endl := next as nat;
+    forall pc: nat | pc < |code| ensures !code[pc].WriteOracle? {
+      assert NR.GetPcRE(code, pc) == Some(code[pc]);
+      if pc < endl {
+        NR.NoWriteInstrRE(body, code, 0, endl, pc);
+      } else {
+        assert pc == endl;
+        assert NR.GetPcRE(code, endl) == Some(RB.Accept);
+      }
+    }
+  }
+
+  /** §4b — ORACLE STABILITY of a look-free body's whole `FFindMatchPlus`. The
+      `FFindMatch` half reads the oracle (`NoWriteOracleBodyCode` -> `FFindMatchOvStable`);
+      the `FReconstructPlus` half is the identity on a `QuantRegsFinal` thread
+      (`FNulledPlusIdentity`), so it returns the view untouched. Lets the FLookLoop
+      value-lift keep the SAME `ov` across the whole fold (so `qm.ov == ov` survives
+      into every per-lid `ReplayCapIsBodyLeaf`). */
+  lemma FFindMatchPlusOvStable(bytecode: RB.code, str: string, ov: LOr.OracleView, dir: LAnc.direction,
+                               lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                               cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
+    requires NR.LookBehindFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires la.Lookahead? && dir == LAnc.Forward
+    requires bytecode == CP.compile_to_bytecode(body)
+    requires AI.cp_context(cp, str, dir).nextchar == AI.get_char(str, cp)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    ensures AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp, cap, lk, qt, 0, lookcdn).1 == ov
+  {
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
+    NoWriteOracleBodyCode(body);
+    CM.FFindMatchOvStable(bytecode, str, inits, ov, dir, lookcdn);   // FFindMatch(...).1 == ov
+    NoTrueQuantStamp(body);
+    assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
+    FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
+    var (res0, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+    assert ovx == ov;
+    if res0.Some? {
+      var th := res0.value;
+      assert QuantRegsFinal(th);
+      FNulledPlusIdentity(body, th.capture_regs, th.look_regs, th.quant_regs, plus_bcv, str, ovx, dir);
+    }
+  }
+
   /** §4b ENGINE BRIDGE: the body replay from the MAIN thread's `cap/lk/qt`
       agrees, on `CaptureRegs(body)`, with the replay from FRESH registers. `cap`
       has the body's ids UNSET (the main pass writes only outside-look captures,

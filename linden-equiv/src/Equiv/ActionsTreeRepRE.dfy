@@ -764,8 +764,15 @@ module LindenElkActionsTreeRep {
           var bit := LOr.view_get_oracle(qm.ov, TR.CpOf(inp), lid);
           assert bit <==> LT.TreeRes(tlkc, LG.Empty, inp, L.LkDir(lk)).Some?;
           LT.FirstTreeLeaf(tlkc, LG.Empty, inp, L.LkDir(lk));
-          EL.ComputeTrGmIndep(rer, r1, inp, LG.Empty, L.LkDir(lk));
-          LL.ComputeTrGmNeutral(rer, r1, inp, LG.Empty, L.LkDir(lk));
+          // L3a: a POSITIVE FORWARD lookahead body may CAPTURE (`NoLkBrL`, not
+          // group-free); its confinement is supplied by `LkConfinedTree(t, S)`
+          // in the pass branch below. Every OTHER flavour keeps a group-free
+          // body, so its body tree is `GmNeutral` -- exactly what the
+          // capture-free `LAAtGatePass` path requires.
+          if !(L.Positivity(lk) && L.LkDir(lk) == WP.Forward) {
+            assert EL.PikeLkRegex(r);   // == GroupFreeL(r1) in this (non-pos-fwd) branch
+            LL.ComputeTrGmNeutral(rer, r1, inp, LG.Empty, L.LkDir(lk));   // GmNeutralTree(tlkc)
+          }
           match t {
             case LK(lk2, tlk, tc) =>
               // the gate passed: `LkGateOk(.., true)` pins tlk == tlkc and the

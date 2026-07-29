@@ -427,6 +427,35 @@ module LindenElkClockMono {
     }
   }
 
+  /** THE oracle-stability frame: a whole search over oracle-write-free code (any
+      compiled body — `CheckOracle` READS, never writes) returns the oracle view
+      it was handed. Lets the FLookLoop fold reference every matched lookahead's
+      body match against ONE fixed `ov` (the fold never mutates it). */
+  lemma FFindMatchOvStable(c: RB.code, str: string, s: AI.VmState, ov: LOr.OracleView,
+                           dir: LAnc.direction, cdn: LCdn.cdns)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires dir.Forward? ==> s.context.nextchar == AI.get_char(str, s.cp)
+    requires dir.Backward? ==> s.context.nextchar == AI.get_char(str, s.cp - 1)
+    requires NoWriteOracleCode(c)
+    ensures AI.FFindMatch(c, str, s, ov, dir, cdn).1 == ov
+    decreases if dir.Forward? then |str| - s.cp else s.cp
+  {
+    var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, dir));
+    var (s1, ov1) := AI.FAdvanceEpsilon(c, s0, ov, dir);
+    FAdvanceEpsilonOvStable(c, s0, ov, dir);      // ov1 == ov
+    if |s1.blocked| == 0 { return; }
+    match s1.context.nextchar {
+      case None =>
+      case Some(_) =>
+        var s2 := AI.FConsume(s1);
+        var s3 := s2.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
+                      cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
+        var newchar := AI.get_char(str, s3.cp - AI.cp_offset(dir));
+        var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
+        FFindMatchOvStable(c, str, s4, ov1, dir, cdn);
+    }
+  }
+
   // ===========================================================================
   // §4b -- RELATIONAL capture frame. Two FFindMatch runs whose threads differ
   // only in register VALUES (agreeing on a capture set `Sc` and quant set `Sq`
