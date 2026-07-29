@@ -1170,6 +1170,17 @@ module LindenElkPikeInv {
     case _ =>
   }
 
+  /** L3a: every capture INSIDE a lookaround body of `r` is unset in `cc` — the
+      run invariant that the Pike VM never writes inside-look capture registers
+      (look bodies compile to CheckOracle, so no SetRegisterToCP fires for them;
+      see NestInvOpenSite's outside-look ensures). Discharges the stale-look
+      collapse in `FilterCaptureAllStale` and the open/reset frames without any
+      look-clock reasoning. */
+  ghost predicate LooksCapUnset(r: R.regex, cc: seq<int>)
+  {
+    forall c: nat :: c in CapIdsInLooks(r) ==> AI.get_idx(cc, CP.start_reg(c)) < 0
+  }
+
   /** Discharge cornerstone: when every capture in a subtree has a start clock
       below the reset threshold `M` AND every enclosing lookaround is stale
       (`LooksStale`), `filter_capture` clears the subtree exactly as `filter_all`
@@ -1182,7 +1193,7 @@ module LindenElkPikeInv {
     // look bodies compile to CheckOracle, not inline). This replaces the old
     // LooksStale hypothesis: a matched look's keep branch keeps only UNSET body
     // captures, which filter to the same -1 as filter_all's reset.
-    requires forall c: nat :: c in CapIdsInLooks(r) ==> AI.get_idx(cc, CP.start_reg(c)) < 0
+    requires LooksCapUnset(r, cc)
     requires forall cid: nat :: cid in CapIds(r)
                                ==> AI.get_idx(cc, CP.start_reg(cid)) < M
                                    || AI.get_idx(cc, CP.start_reg(cid)) < 0
@@ -1202,6 +1213,9 @@ module LindenElkPikeInv {
         // reset branch: filter_capture == filter_all(r1, cr) directly.
       } else {
         // keep branch: filter_capture(r1, cr, cc, lc, qc, -1) == filter_all(r1, cr).
+        // CapIdsInLooks(Re_lookaround) == CapIds(r1) ⊇ CapIdsInLooks(r1), all unset.
+        CapIdsSplit(r1);
+        assert LooksCapUnset(r1, cc);
         FilterCaptureAllStale(r1, cr, cc, lc, qc, -1);
       }
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
@@ -2647,7 +2661,7 @@ module LindenElkPikeInv {
     // L3a: every lookaround inside gid's body is stale at gid's birth stamp — the
     // body's looks haven't fired in this iteration, so a fresh open cannot keep
     // any inside-look captures (mirrors the sg capture-staleness above).
-    requires LooksStale(BodyOf(r, gid), lc, MxAtGid(r, cc, qc, mx, gid))
+    requires LooksCapUnset(BodyOf(r, gid), cc)
     ensures AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), CP.start_reg(gid)) < 0
     ensures AI.get_idx(AI.filter_capture(r, cr', cc', lc, qc, mx), CP.start_reg(gid)) == cp
     ensures forall j :: j != CP.start_reg(gid)
@@ -2754,7 +2768,15 @@ module LindenElkPikeInv {
           assert AI.get_idx(cc', CP.start_reg(cidx)) == AI.get_idx(cc, CP.start_reg(cidx));
         }
         assert BodyOf(r, gid) == r1 && MxAtGid(r, cc, qc, mx, gid) == mx;
-        assert LooksStale(r1, lc, mx);                     // == LooksStale(BodyOf(r,gid), lc, MxAtGid) from requires
+        // inside-look caps of the body are unset in cc (requires) and unchanged by
+        // the open write (they differ from gid's start), so unset in cc' too.
+        assert LooksCapUnset(r1, cc') by {
+          CapIdsSplit(r1);
+          forall c: nat | c in CapIdsInLooks(r1) ensures AI.get_idx(cc', CP.start_reg(c)) < 0 {
+            assert c != gid && CP.start_reg(c) != CP.start_reg(gid);
+            assert AI.get_idx(cc', CP.start_reg(c)) == AI.get_idx(cc, CP.start_reg(c));
+          }
+        }
         FilterCaptureAllStale(r1, cr', cc', lc, qc, mx);   // filter_capture(r1,cr',cc',mx) == filter_all(r1,cr')
         // f-side (before the write): two subcases, both land in a filter_all branch
         // whose input at start_reg(gid) is negative.
@@ -4782,8 +4804,7 @@ module LindenElkPikeInv {
     requires forall sg: nat :: sg in CapIds(BodyOf(ast, gid))
                               ==> AI.get_idx(caps.a_clk, CP.start_reg(sg)) < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
                                   || AI.get_idx(caps.a_clk, CP.start_reg(sg)) < 0
-    requires LooksStale(BodyOf(ast, gid), AReg.as_arrays(look).1,
-                        MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid))
+    requires LooksCapUnset(BodyOf(ast, gid), caps.a_clk)
     ensures gid !in GmOfLive(ast, caps, look, quant)
     ensures GmOfLive(ast, AReg.set_reg(caps, CP.start_reg(gid), Some(cp), clk), look, quant)
          == GmOfLive(ast, caps, look, quant)[gid := LG.Range(cp as nat, None)]
@@ -4831,8 +4852,7 @@ module LindenElkPikeInv {
     requires forall sg: nat :: sg in CapIds(BodyOf(ast, gid))
                               ==> AI.get_idx(caps.a_clk, CP.start_reg(sg)) < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
                                   || AI.get_idx(caps.a_clk, CP.start_reg(sg)) < 0
-    requires LooksStale(BodyOf(ast, gid), AReg.as_arrays(look).1,
-                        MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid))
+    requires LooksCapUnset(BodyOf(ast, gid), caps.a_clk)
     ensures GmOfLive(ast, AReg.set_reg(caps, CP.start_reg(gid), Some(cp), clk), look, quant)
          == LG.GMOpen(cp as nat, gid, GmOfLive(ast, caps, look, quant))
   {
@@ -4866,7 +4886,7 @@ module LindenElkPikeInv {
     requires forall sg: nat :: sg in CapIds(QidBody(r, qid)) ==> AI.get_idx(cc, CP.start_reg(sg)) < clk
     // L3a: every lookaround inside qid's body is stale at the fresh reset stamp —
     // so a stale look never keeps captures the reset should clear.
-    requires LooksStale(QidBody(r, qid), lc, clk)
+    requires LooksCapUnset(QidBody(r, qid), cc)
     requires forall k :: AI.get_idx(A, k) >= -1
     requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0 ==> AI.get_idx(A, CP.start_reg(c)) < 0
     ensures (forall g: nat :: g in CapIds(QidBody(r, qid)) ==> CP.start_reg(g) != j)
@@ -4896,7 +4916,7 @@ module LindenElkPikeInv {
         // f' present branch (clk >= M) → filter_capture(r1, A, cc, qc', clk) == filter_all(r1, A).
         forall cidx: nat | cidx in CapIds(r1)
           ensures AI.get_idx(cc, CP.start_reg(cidx)) < clk || AI.get_idx(cc, CP.start_reg(cidx)) < 0 {}
-        assert LooksStale(r1, lc, clk);   // == LooksStale(QidBody(r,qid), lc, clk) since QidBody(r,qid)==r1
+        assert LooksCapUnset(r1, cc);   // == LooksCapUnset(QidBody(r,qid), cc) since QidBody(r,qid)==r1
         FilterCaptureAllStale(r1, A, cc, lc, qc', clk);
         // reset: any gl start is cleared by filter_all(r1, A).
         if exists g: nat :: g in CapIds(r1) && CP.start_reg(g) == j {
@@ -4936,7 +4956,7 @@ module LindenElkPikeInv {
     requires forall q0: int :: q0 != qid ==> AI.get_idx(qc', q0) == AI.get_idx(qc, q0)
     requires AI.get_idx(qc', qid) == clk
     requires forall sg: nat :: sg in CapIds(QidBody(r, qid)) ==> AI.get_idx(cc, CP.start_reg(sg)) < clk
-    requires LooksStale(QidBody(r, qid), lc, clk)
+    requires LooksCapUnset(QidBody(r, qid), cc)
     requires forall k :: AI.get_idx(A, k) >= -1
     requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0 ==> AI.get_idx(A, CP.start_reg(c)) < 0
     ensures (forall g: nat :: g in CapIds(QidBody(r, qid)) ==> CP.start_reg(g) != j)
@@ -4959,7 +4979,7 @@ module LindenElkPikeInv {
           by { if r == R.Re_alt(r1, r2) {} else {} }
         QuantIdsSplit(r2);   // QuantIdsOutsideLooks(r2) ⊆ QuantIds(r2), and qid ∉ QuantIds(r2)
       }
-      assert LooksStale(QidBody(r1, qid), lc, clk);      // == LooksStale(QidBody(r,qid),..)
+      assert LooksCapUnset(QidBody(r1, qid), cc);      // == LooksCapUnset(QidBody(r,qid),..)
       CapIdsQidBodySubset(r1, qid);   // CapIds(QidBody(r1,qid)) ⊆ CapIds(r1)
       FilterResetFrame(r1, A, cc, lc, qc, qc', M, qid, clk, j);
       // r2: qid ∉ QuantIds(r2), gl ∩ CapIds(r2) = ∅.
@@ -4993,7 +5013,7 @@ module LindenElkPikeInv {
           by { if r == R.Re_alt(r1, r2) {} else {} }
         QuantIdsSplit(r1);   // QuantIdsOutsideLooks(r1) ⊆ QuantIds(r1), and qid ∉ QuantIds(r1)
       }
-      assert LooksStale(QidBody(r2, qid), lc, clk);
+      assert LooksCapUnset(QidBody(r2, qid), cc);
       FilterResetFrame(r2, X, cc, lc, qc, qc', M, qid, clk, j);
       FilterCaptureCrPointwise(r2, X', X, cc, lc, qc', M, j);
     }
@@ -5085,7 +5105,7 @@ module LindenElkPikeInv {
     requires clk >= MxAtQid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, qid)
     requires PathPresentQ(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, qid)
     requires forall sg: nat :: sg in CapIds(QidBody(ast, qid)) ==> AI.get_idx(caps.a_clk, CP.start_reg(sg)) < clk
-    requires LooksStale(QidBody(ast, qid), AReg.as_arrays(look).1, clk)
+    requires LooksCapUnset(QidBody(ast, qid), caps.a_clk)
     requires forall k :: AI.get_idx(caps.a_cp, k) >= -1
     requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
                              ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
@@ -5194,7 +5214,7 @@ module LindenElkPikeInv {
     requires clk >= MxAtQid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, qid)
     requires PathPresentQ(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, qid)
     requires forall sg: nat :: sg in CapIds(QidBody(ast, qid)) ==> AI.get_idx(caps.a_clk, CP.start_reg(sg)) < clk
-    requires LooksStale(QidBody(ast, qid), AReg.as_arrays(look).1, clk)
+    requires LooksCapUnset(QidBody(ast, qid), caps.a_clk)
     requires forall k :: AI.get_idx(caps.a_cp, k) >= -1
     requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
                              ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
