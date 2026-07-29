@@ -561,7 +561,9 @@ module LindenElkNfaRep {
       && LookBehindFragmentRaw(r1)
     case Raw_capture(r1) => LookBehindFragmentRaw(r1)
     case Raw_lookaround(look, r1) =>
-      CaptureFreeRaw(r1) && LookFreeRaw(r1) && PlusFragmentRaw(r1)
+      // L3a: a POSITIVE FORWARD lookahead may CAPTURE (mirrors LookBehindFragmentRE);
+      // every other flavour still requires a capture-free body.
+      (look.Lookahead? || CaptureFreeRaw(r1)) && LookFreeRaw(r1) && PlusFragmentRaw(r1)
   }
 
   /** The plus fragment embeds in the lookbehind fragment. */
@@ -660,7 +662,11 @@ module LindenElkNfaRep {
       AnnotateNullable(r1, c, l, q + 1);
     case Raw_capture(r1) => AnnotateLookBehindFragment(r1, c + 1, l, q);
     case Raw_lookaround(look, r1) =>
-      AnnotateCaptureFree(r1, c, l + 1, q);
+      // annotate copies the flavour `look` verbatim, so `la.Lookahead? == look.Lookahead?`.
+      // A capturing lookahead skips AnnotateCaptureFree (its precondition would fail).
+      if !look.Lookahead? {
+        AnnotateCaptureFree(r1, c, l + 1, q);
+      }
       AnnotateLookFree(r1, c, l + 1, q);
       AnnotatePlusFragment(r1, c, l + 1, q);
     case _ =>
