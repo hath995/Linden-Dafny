@@ -1811,6 +1811,32 @@ module LindenElkMain {
     }
   }
 
+  /** A body's compiled bytecode writes quant clocks only inside its own quant ids
+      -- capture-INDEPENDENT (the quant structure is the same whether or not the
+      body captures), so unlike `LKC.CaptureCodeClassified` this needs no
+      `CaptureFreeRE`. Via `NI.CodeShapeAt` (`sq >= 0 && sq in QuantIds(body)`).
+      Feeds the per-replay `CM.FFindMatchQuantFrame`. */
+  lemma QuantWritesInsideBody(body: R.regex)
+    requires NR.LookBehindFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    ensures CM.QuantWritesInside(CP.compile_to_bytecode(body), LKC.QIdsInt(body))
+  {
+    var code := CP.compile_to_bytecode(body);
+    var next := CP.compile(body, 0, CP.Progress).1;
+    NR.CompileToBytecodeRepLookBehind(body);
+    var endl := next as nat;
+    forall pc: nat | pc < |code|
+      ensures code[pc].SetQuantToClock? ==> code[pc].sq in LKC.QIdsInt(body)
+    {
+      assert NR.GetPcRE(code, pc) == Some(code[pc]);
+      if pc < endl {
+        NI.CodeShapeAt(body, code, 0, endl, pc);
+      } else {
+        assert pc == endl;
+        assert NR.GetPcRE(code, endl) == Some(RB.Accept);
+      }
+    }
+  }
+
   /** L3a — the FULL replay capture frame: a capturing lookAHEAD's whole
       `FFindMatchPlus` (= `FFindMatch` then `FReconstructPlus`) changes the
       capture bank only within `CaptureRegs(body)`. The `FReconstructPlus` half
