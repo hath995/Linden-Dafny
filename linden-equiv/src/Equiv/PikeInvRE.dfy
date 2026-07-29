@@ -1178,7 +1178,11 @@ module LindenElkPikeInv {
       never takes its keep branch). */
   lemma FilterCaptureAllStale(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, M: int)
     requires NR.LookBehindFragmentRE(r)
-    requires LooksStale(r, lc, M)
+    // L3a: inside-look captures are UNSET (never written during the Pike run —
+    // look bodies compile to CheckOracle, not inline). This replaces the old
+    // LooksStale hypothesis: a matched look's keep branch keeps only UNSET body
+    // captures, which filter to the same -1 as filter_all's reset.
+    requires forall c: nat :: c in CapIdsInLooks(r) ==> AI.get_idx(cc, CP.start_reg(c)) < 0
     requires forall cid: nat :: cid in CapIds(r)
                                ==> AI.get_idx(cc, CP.start_reg(cid)) < M
                                    || AI.get_idx(cc, CP.start_reg(cid)) < 0
@@ -1190,9 +1194,16 @@ module LindenElkPikeInv {
   {
     match r
     case Re_lookaround(lid, la, r1) =>
-      // stale look (lv < M from LooksStale): filter_capture takes filter_all(r1,
-      // cr); and filter_all(Re_lookaround) == filter_all(r1, cr) too.
-      assert AI.get_idx(lc, lid) < M;
+      // CapIdsInLooks(Re_lookaround) == CapIds(r1) are all unset, so BOTH filter
+      // branches collapse to filter_all(r1, cr).
+      NR.PlusIsLookBehindFragmentRE(r1);
+      var lv := AI.get_idx(lc, lid);
+      if lv < 0 || lv < M {
+        // reset branch: filter_capture == filter_all(r1, cr) directly.
+      } else {
+        // keep branch: filter_capture(r1, cr, cc, lc, qc, -1) == filter_all(r1, cr).
+        FilterCaptureAllStale(r1, cr, cc, lc, qc, -1);
+      }
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_alt(r1, r2) =>
       FilterCaptureAllStale(r1, cr, cc, lc, qc, M);
@@ -1214,8 +1225,7 @@ module LindenElkPikeInv {
         // filter_capture takes filter_all(r1, cr); filter_all(r) == filter_all(r1, cr) too.
       } else {
         // maxclock rises to qv >= M; every cap clock is still < qv or < 0, and
-        // every look is still stale (< M <= qv).
-        LooksStaleMono(r1, lc, M, qv);
+        // inside-look caps are still unset (independent of the threshold).
         FilterCaptureAllStale(r1, cr, cc, lc, qc, qv);
       }
     case Re_capture(cid, r1) =>

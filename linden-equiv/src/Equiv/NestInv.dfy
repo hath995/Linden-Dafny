@@ -492,6 +492,7 @@ module LindenElkNestInv {
     requires NestInvMinRE(k, qid, r1, code, pcb, pce, pc, cc, qc, mx)
     requires NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(CP.start_reg(gid)))
     ensures gid in PIV.CapIds(r1)
+    ensures gid !in PIV.CapIdsInLooks(r1)   // L3a: outside-look write site
     ensures AI.get_idx(qc, qid) >= mx
     ensures PIV.PathPresent(r1, cc, qc, AI.get_idx(qc, qid), gid)
     ensures AI.get_idx(cc, CP.start_reg(gid)) < PIV.MxAtGid(r1, cc, qc, AI.get_idx(qc, qid), gid)
@@ -530,6 +531,7 @@ module LindenElkNestInv {
     requires NestInvOptRE(k, greedy, qid, r1, code, pcb, pce, pc, cc, qc, mx)
     requires NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(CP.start_reg(gid)))
     ensures gid in PIV.CapIds(r1)
+    ensures gid !in PIV.CapIdsInLooks(r1)   // L3a: outside-look write site
     ensures AI.get_idx(qc, qid) >= mx
     ensures PIV.PathPresent(r1, cc, qc, AI.get_idx(qc, qid), gid)
     ensures AI.get_idx(cc, CP.start_reg(gid)) < PIV.MxAtGid(r1, cc, qc, AI.get_idx(qc, qid), gid)
@@ -565,6 +567,13 @@ module LindenElkNestInv {
     }
   }
 
+  /** `CapIdsInLooks ⊆ CapIds`, contrapositive form: not a capture id at all ⇒
+      not an inside-look capture id. */
+  lemma InLooksNotIn(r: R.regex, g: nat)
+    requires g !in PIV.CapIds(r)
+    ensures g !in PIV.CapIdsInLooks(r)
+  { PIV.CapIdsSplit(r); }
+
   lemma NestInvOpenSite(re: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
                         cc: seq<int>, qc: seq<int>, mx: int, gid: nat)
     requires NR.NfaRepRE(re, code, pcb, pce)
@@ -573,6 +582,7 @@ module LindenElkNestInv {
     requires NestInvRE(re, code, pcb, pce, pc, cc, qc, mx)
     requires NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(CP.start_reg(gid)))
     ensures gid in PIV.CapIds(re)
+    ensures gid !in PIV.CapIdsInLooks(re)   // L3a: SetRegisterToCP sites are outside-look (looks compile to CheckOracle)
     ensures PIV.PathPresent(re, cc, qc, mx, gid)
     ensures AI.get_idx(cc, CP.start_reg(gid)) < PIV.MxAtGid(re, cc, qc, mx, gid)
          || AI.get_idx(cc, CP.start_reg(gid)) < 0
@@ -601,6 +611,10 @@ module LindenElkNestInv {
         assert false;                               // Fork ≠ SetRegisterToCP
       } else if pcb + 1 <= pc < e1 {
         NestInvOpenSite(r1, code, pcb + 1, e1, pc, cc, qc, mx, gid);
+        assert gid !in PIV.CapIds(r2) by {
+          if gid in PIV.CapIds(r2) { assert gid in PIV.CapIds(r1) * PIV.CapIds(r2); }
+        }
+        InLooksNotIn(r2, gid);
         assert PIV.MxAtGid(re, cc, qc, mx, gid) == PIV.MxAtGid(r1, cc, qc, mx, gid);
         assert PIV.BodyOf(re, gid) == PIV.BodyOf(r1, gid);
       } else if pc == e1 {
@@ -610,6 +624,7 @@ module LindenElkNestInv {
         assert gid !in PIV.CapIds(r1) by {
           if gid in PIV.CapIds(r1) { assert gid in PIV.CapIds(r1) * PIV.CapIds(r2); }
         }
+        InLooksNotIn(r1, gid);
         assert PIV.MxAtGid(re, cc, qc, mx, gid) == PIV.MxAtGid(r2, cc, qc, mx, gid);
         assert PIV.BodyOf(re, gid) == PIV.BodyOf(r2, gid);
       }
@@ -619,6 +634,10 @@ module LindenElkNestInv {
            else NestInvRE(r2, code, e1, pce, pc, cc, qc, mx);
       if pc < e1 {
         NestInvOpenSite(r1, code, pcb, e1, pc, cc, qc, mx, gid);
+        assert gid !in PIV.CapIds(r2) by {
+          if gid in PIV.CapIds(r2) { assert gid in PIV.CapIds(r1) * PIV.CapIds(r2); }
+        }
+        InLooksNotIn(r2, gid);   // gid !in CapIdsInLooks(r2); combined with recursion ⇒ !in CapIdsInLooks(re)
         assert PIV.MxAtGid(re, cc, qc, mx, gid) == PIV.MxAtGid(r1, cc, qc, mx, gid);
         assert PIV.BodyOf(re, gid) == PIV.BodyOf(r1, gid);
       } else {
@@ -626,6 +645,7 @@ module LindenElkNestInv {
         assert gid !in PIV.CapIds(r1) by {
           if gid in PIV.CapIds(r1) { assert gid in PIV.CapIds(r1) * PIV.CapIds(r2); }
         }
+        InLooksNotIn(r1, gid);
         assert PIV.MxAtGid(re, cc, qc, mx, gid) == PIV.MxAtGid(r2, cc, qc, mx, gid);
         assert PIV.BodyOf(re, gid) == PIV.BodyOf(r2, gid);
       }
@@ -718,6 +738,8 @@ module LindenElkNestInv {
         assert CP.start_reg(cid) == CP.start_reg(gid);
         assert cid == gid;                          // 2cid == 2gid
         assert gid in PIV.CapIds(re);
+        assert (gid as nat) !in PIV.CapIds(r1);     // CapUnique(Re_capture)
+        InLooksNotIn(r1, gid);                       // gid !in CapIdsInLooks(r1) == CapIdsInLooks(re)
         assert PIV.MxAtGid(re, cc, qc, mx, gid) == mx;
         assert PIV.BodyOf(re, gid) == r1;
         // PathPresent base case at gid's own node; own + body claims verbatim.
