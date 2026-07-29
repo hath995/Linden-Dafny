@@ -2082,10 +2082,30 @@ module LindenElkPikeSim {
     assert vms2.active == [th2] + vms.active[1..];
     assert th2.pc == (pc + 1) as int && th2.exit_allowed == ea;
 
-    // The successor thread still denotes the same group map: GmOfLive cannot
-    // see the look bank while lookaround bodies are capture-free.
+    // The successor thread still denotes the same group map. L3a: the look_regs
+    // write can only steer INSIDE-look groups, which are ABSENT on both sides
+    // (their capture regs are unset — the run invariant); OUTSIDE-look groups
+    // agree by the (weakened) look independence.
+    assert th2.capture_regs == th.capture_regs && th2.quant_regs == th.quant_regs;
+    assert PIV.LooksCapUnset(re, th.capture_regs.a_clk);   // invariant conjunct (th ∈ active)
+    assert PIV.CapRegWf(th.capture_regs);
     assert PIV.ThreadTracksGm(re, th2, gm) by {
+      var g0 := PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs);   // == gm
+      var g1 := PIV.GmOfLive(re, th.capture_regs, th2.look_regs, th.quant_regs);  // th2's denotation
       PIV.GmOfLiveLookIndep(re, th.capture_regs, th.look_regs, th2.look_regs, th.quant_regs);
+      forall g: nat ensures (g in g0) <==> (g in g1) {
+        if g in PIV.CapIdsInLooks(re) {
+          PIV.GmOfLiveInsideLookAbsent(re, th.capture_regs, th.look_regs, th.quant_regs, g);
+          PIV.GmOfLiveInsideLookAbsent(re, th.capture_regs, th2.look_regs, th.quant_regs, g);
+        }
+      }
+      forall g: nat | g in g0 ensures g0[g] == g1[g] {
+        if g in PIV.CapIdsInLooks(re) {
+          PIV.GmOfLiveInsideLookAbsent(re, th.capture_regs, th.look_regs, th.quant_regs, g);   // g ∉ g0: vacuous
+        }
+      }
+      assert g0.Keys == g1.Keys;
+      assert g0 == g1;
     }
 
     // Backbones.
@@ -2678,6 +2698,16 @@ module LindenElkPikeSim {
     if |bl| > 0 { ResumeAllEa(bl[1..]); }
   }
 
+  /** L3a: `ResumeAll` only touches `pc`/`exit_allowed`, so it preserves the
+      inside-look-unset property of every thread's capture registers. */
+  lemma ResumeAllCapUnset(re: R.regex, bl: seq<(AI.Thread, RC.char_expectation)>)
+    requires forall p | p in bl :: PIV.LooksCapUnset(re, p.0.capture_regs.a_clk)
+    ensures forall t | t in ResumeAll(bl) :: PIV.LooksCapUnset(re, t.capture_regs.a_clk)
+    decreases bl
+  {
+    if |bl| > 0 { ResumeAllCapUnset(re, bl[1..]); }
+  }
+
   /** `ResumeAll` distributes over list append. */
   lemma ResumeAllApp(a: seq<(AI.Thread, RC.char_expectation)>, b: seq<(AI.Thread, RC.char_expectation)>)
     ensures ResumeAll(a + b) == ResumeAll(a) + ResumeAll(b)
@@ -3162,6 +3192,17 @@ module LindenElkPikeSim {
         }
         assert forall t2 | t2 in s4.active :: EaColdOkRE(code, t2) by {
           ResumeAllEa(filter);
+          assert s4.active == ResumeAll(filter);
+        }
+        // L3a: inside-look regs stay unset — the filter (⊆ s1.blocked) threads have
+        // it (PikeInvFullRE(s1)'s blocked conjunct), and ResumeAll preserves caps.
+        assert forall t2 | t2 in s4.active :: PIV.LooksCapUnset(re, t2.capture_regs.a_clk) by {
+          forall p | p in filter ensures PIV.LooksCapUnset(re, p.0.capture_regs.a_clk) {
+            MatchingBlockedSubset(LC.Reverse(s1.blocked), inp1, p);
+            ReverseMembership(s1.blocked, p);
+            assert p in s1.blocked;
+          }
+          ResumeAllCapUnset(re, filter);
           assert s4.active == ResumeAll(filter);
         }
         assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts2, s4, ncap, nlook, nquant);

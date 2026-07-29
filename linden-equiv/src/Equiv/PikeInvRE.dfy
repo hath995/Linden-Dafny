@@ -2895,6 +2895,28 @@ module LindenElkPikeInv {
     assert GmOfLive(ast, caps, look, quant).Keys == {};
   }
 
+  /** L3a: an inside-look group is ABSENT from `GmOfLive` when its capture regs are
+      unset — which they always are during the Pike run (the VM never writes them).
+      Combined with the outside-look `GmOfLiveLookIndep`, this makes a passing look
+      gate's `look_regs` write GmOfLive-neutral: outside-look groups agree by
+      independence, inside-look groups are absent on both sides. */
+  lemma GmOfLiveInsideLookAbsent(ast: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, g: nat)
+    requires g in CapIdsInLooks(ast)
+    requires CapRegWf(caps)
+    requires LooksCapUnset(ast, AReg.as_arrays(caps).1)
+    ensures g !in GmOfLive(ast, caps, look, quant)
+  {
+    var (cr, cc) := AReg.as_arrays(caps);
+    var lc := AReg.as_arrays(look).1;
+    var qc := AReg.as_arrays(quant).1;
+    var f := AI.filter_reset(ast, caps, look, quant, -1);
+    assert f == AI.filter_capture(ast, cr, cc, lc, qc, -1);
+    assert AI.get_idx(cc, CP.start_reg(g)) < 0;   // LooksCapUnset, g inside-look
+    assert AI.get_idx(cr, CP.start_reg(g)) < 0;   // CapRegWf: unset clock ⇒ unset value
+    FilterCaptureNeg(ast, cr, cc, lc, qc, -1, CP.start_reg(g));
+    assert AI.get_idx(f, CP.start_reg(g)) < 0;    // ⇒ g not in GmOfLive's domain
+  }
+
   // ===========================================================================
   // The look bank does not steer the denotation (L1: capture-free lookaround
   // bodies). filter_capture consults the look CLOCKS only at a Re_lookaround
