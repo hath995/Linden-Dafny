@@ -1036,6 +1036,33 @@ module LindenElkMain {
     }
   }
 
+  /** L3a value companion of `LookBodyLeafOpenSub`: when the look's body groups
+      are UNSET in the incoming `gm` (the reset condition — a fresh or just-reset
+      entry), the body's first leaf from `gm` agrees, on `S == DefGroups(r1)`, with
+      the body's first leaf from `LG.Empty`. Direct `TreeLeavesFrameInside`: `gm`
+      and `Empty` agree on `S` (both lack those groups), so all leaves agree on `S`. */
+  lemma LookBodyLeafValue(rer: LW.RegExpRecord, lk: L.Lookaround, r1: L.Regex, tlk: LT.Tree,
+                          gm: LG.GroupMap, inp: LC.Input, S: set<LG.GroupId>)
+    requires tlk == FU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk))
+    requires S == (set g | g in L.DefGroups(r1))
+    requires GmAgreeOn(gm, LG.Empty, S)      // body groups unset in gm (reset / fresh)
+    ensures var dir := L.LkDir(lk);
+            var sub := LT.TreeLeaves(tlk, gm, inp, dir);
+            var subE := LT.TreeLeaves(tlk, LG.Empty, inp, dir);
+            |sub| == |subE|
+            && forall i :: 0 <= i < |sub| ==> sub[i].0 == subE[i].0 && GmAgreeOn(sub[i].1, subE[i].1, S)
+  {
+    var dir := L.LkDir(lk);
+    assert LL.GmAgreeInside(gm, LG.Empty, S);      // GmAgreeOn ≡ GmAgreeInside
+    LL.TreeLeavesFrameInside(tlk, gm, LG.Empty, inp, dir, S);
+    forall i | 0 <= i < |LT.TreeLeaves(tlk, gm, inp, dir)|
+      ensures LT.TreeLeaves(tlk, gm, inp, dir)[i].0 == LT.TreeLeaves(tlk, LG.Empty, inp, dir)[i].0
+           && GmAgreeOn(LT.TreeLeaves(tlk, gm, inp, dir)[i].1, LT.TreeLeaves(tlk, LG.Empty, inp, dir)[i].1, S)
+    {
+      assert LL.GmAgreeInside(LT.TreeLeaves(tlk, gm, inp, dir)[i].1, LT.TreeLeaves(tlk, LG.Empty, inp, dir)[i].1, S);
+    }
+  }
+
   least lemma FirstLeafClosed(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input,
                               b: BS.LoopBool, t: LT.Tree, gm: LG.GroupMap, leaf: LT.Leaf)
     requires EL.BoolTreeLk(rer, acts, inp, b, t)
