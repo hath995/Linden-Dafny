@@ -1141,12 +1141,44 @@ module LindenElkPikeInv {
   // freshly-stamped clock (which becomes M for its subtree, and by global clock
   // monotonicity exceeds every prior-iteration subgroup clock) reset all stale
   // descendants — discharging the reset-scope / no-exposure preconditions. -----
-  /** Discharge cornerstone: when every capture in a (lookaround-free) subtree
-      has a start clock below the reset threshold `M`, `filter_capture` clears
-      the subtree exactly as `filter_all` does. This is what makes a freshly-
-      stamped `SetQuantToClock` clock reset all stale descendants. */
+  /** Every lookaround in `r` has a look clock below `M` (stale vs the reset
+      threshold). Covers every lid the filter reads, including negative ones. */
+  ghost predicate LooksStale(r: R.regex, lc: seq<int>, M: int)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => LooksStale(r1, lc, M) && LooksStale(r2, lc, M)
+    case Re_con(r1, r2) => LooksStale(r1, lc, M) && LooksStale(r2, lc, M)
+    case Re_quant(_, _, _, r1) => LooksStale(r1, lc, M)
+    case Re_capture(_, r1) => LooksStale(r1, lc, M)
+    case Re_lookaround(lid, _, r1) => AI.get_idx(lc, lid) < M && LooksStale(r1, lc, M)
+    case _ => true
+  }
+
+  /** `LooksStale` is monotone up in the threshold. */
+  lemma LooksStaleMono(r: R.regex, lc: seq<int>, M: int, M2: int)
+    requires LooksStale(r, lc, M) && M <= M2
+    ensures LooksStale(r, lc, M2)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => LooksStaleMono(r1, lc, M, M2); LooksStaleMono(r2, lc, M, M2);
+    case Re_con(r1, r2) => LooksStaleMono(r1, lc, M, M2); LooksStaleMono(r2, lc, M, M2);
+    case Re_quant(_, _, _, r1) => LooksStaleMono(r1, lc, M, M2);
+    case Re_capture(_, r1) => LooksStaleMono(r1, lc, M, M2);
+    case Re_lookaround(lid, _, r1) => LooksStaleMono(r1, lc, M, M2);
+    case _ =>
+  }
+
+  /** Discharge cornerstone: when every capture in a subtree has a start clock
+      below the reset threshold `M` AND every enclosing lookaround is stale
+      (`LooksStale`), `filter_capture` clears the subtree exactly as `filter_all`
+      does. This is what makes a freshly-stamped `SetQuantToClock` clock reset all
+      stale descendants (L3a: capturing lookahead bodies included -- a stale look
+      never takes its keep branch). */
   lemma FilterCaptureAllStale(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, M: int)
     requires NR.LookBehindFragmentRE(r)
+    requires LooksStale(r, lc, M)
     requires forall cid: nat :: cid in CapIds(r)
                                ==> AI.get_idx(cc, CP.start_reg(cid)) < M
                                    || AI.get_idx(cc, CP.start_reg(cid)) < 0
@@ -1158,7 +1190,9 @@ module LindenElkPikeInv {
   {
     match r
     case Re_lookaround(lid, la, r1) =>
-      FilterAtLookaround(lid, la, r1, cr, cc, lc, qc, M);
+      // stale look (lv < M from LooksStale): filter_capture takes filter_all(r1,
+      // cr); and filter_all(Re_lookaround) == filter_all(r1, cr) too.
+      assert AI.get_idx(lc, lid) < M;
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_alt(r1, r2) =>
       FilterCaptureAllStale(r1, cr, cc, lc, qc, M);
@@ -1179,7 +1213,9 @@ module LindenElkPikeInv {
       if qv < M {
         // filter_capture takes filter_all(r1, cr); filter_all(r) == filter_all(r1, cr) too.
       } else {
-        // maxclock rises to qv >= M; every cap clock is still < qv or < 0.
+        // maxclock rises to qv >= M; every cap clock is still < qv or < 0, and
+        // every look is still stale (< M <= qv).
+        LooksStaleMono(r1, lc, M, qv);
         FilterCaptureAllStale(r1, cr, cc, lc, qc, qv);
       }
     case Re_capture(cid, r1) =>
@@ -1262,7 +1298,14 @@ module LindenElkPikeInv {
   {
     match r
     case Re_lookaround(lid, la, r1) =>
-      FilterAtLookaround(lid, la, r1, cr, cc, lc, qc, mx);
+      // L3a: the body may capture, but g is outside it, so `start_reg(g)` passes
+      // through whichever branch the lookaround takes (it only writes r1's regs).
+      assert forall g0: nat :: g0 in CapIds(r1) ==> CP.start_reg(g0) != CP.start_reg(g) by {
+        forall g0: nat | g0 in CapIds(r1) ensures CP.start_reg(g0) != CP.start_reg(g) { assert g0 != g; }
+      }
+      var lv := AI.get_idx(lc, lid);
+      if lv < 0 || lv < mx { FilterAllAgreeOutsideOwn(r1, cr, CP.start_reg(g)); }
+      else { FilterCaptureAgreeOutsideOwn(r1, cr, cc, lc, qc, -1, CP.start_reg(g)); }
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_alt(r1, r2) =>
       FilterCaptureOutside(r1, cr, cc, lc, qc, mx, g);
