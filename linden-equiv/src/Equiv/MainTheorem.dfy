@@ -1897,6 +1897,62 @@ module LindenElkMain {
     }
   }
 
+  // ==========================================================================
+  // L3a §4 — the FLookLoop VALUE lift vocabulary. The §4a frame says what
+  // FLookLoop leaves UNCHANGED (outside S); the value lift says what it WRITES:
+  // each matched positive lookahead's body registers carry that body's FRESH
+  // match.
+  // ==========================================================================
+
+  /** `l` names a matched, capturing, positive (forward) lookahead. */
+  ghost predicate MatchedPosLA(crv: CP.FCompiled, lk: AReg.Regs, l: int) {
+    AReg.get_cp(lk, l).Some?
+    && AI.capture_type(if 0 <= l < |crv.f_look_types| then crv.f_look_types[l] else R.Lookahead)
+    && (if 0 <= l < |crv.f_look_types| then crv.f_look_types[l] else R.Lookahead).Lookahead?
+  }
+
+  /** The `l`-th lookaround body (default `Re_empty` off the table). */
+  ghost function VBody(crv: CP.FCompiled, l: int): R.regex {
+    if 0 <= l < |crv.f_look_ast| then crv.f_look_ast[l] else R.Re_empty
+  }
+
+  /** The body-`l` match from FRESH registers at the recorded cp, under `ov`. */
+  ghost function FreshBodyMatch(crv: CP.FCompiled, str: string, l: int, lk: AReg.Regs,
+                                ov: LOr.OracleView, ncap: int, nlook: int, nquant: int): Option<AI.Thread> {
+    var body := VBody(crv, l);
+    var cp := if AReg.get_cp(lk, l).Some? then AReg.get_cp(lk, l).value else 0;
+    var bc := CP.compile_to_bytecode(body);
+    var cdn := if 0 <= l < |crv.f_look_cdns| then crv.f_look_cdns[l] else [];
+    AI.FFindMatch(bc, str, AI.FInitState(bc, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                  AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)), ov, LAnc.Forward, cdn).0
+  }
+
+  /** The value-lift conclusion: on each matched positive lookahead's own capture
+      registers, `res0` carries the fresh body match (or stays unset if the fresh
+      body did not match). */
+  ghost predicate FLookLoopValueOk(crv: CP.FCompiled, str: string, res0: AReg.Regs, lid: int, maxlook: int,
+                                   lk: AReg.Regs, ov: LOr.OracleView, ncap: int, nlook: int, nquant: int) {
+    forall l: int :: lid <= l <= maxlook && MatchedPosLA(crv, lk, l) ==>
+      var rf := FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
+      (rf.Some? ==> CM.RegsAgreeInside(res0, rf.value.capture_regs, PIV.CaptureRegs(VBody(crv, l))))
+      && (rf.None? ==> CM.RegsAgreeInside(res0, AReg.init_regs(ncap), PIV.CaptureRegs(VBody(crv, l))))
+  }
+
+  /** `l == lid` is not a matched positive lookahead, so the value map for
+      `[lid, maxlook]` is exactly the one for `[lid+1, maxlook]`. */
+  lemma ValueOkSkipLid(crv: CP.FCompiled, str: string, res0: AReg.Regs, lid: int, maxlook: int,
+                       lk: AReg.Regs, ov: LOr.OracleView, ncap: int, nlook: int, nquant: int)
+    requires FLookLoopValueOk(crv, str, res0, lid + 1, maxlook, lk, ov, ncap, nlook, nquant)
+    requires !MatchedPosLA(crv, lk, lid)
+    ensures FLookLoopValueOk(crv, str, res0, lid, maxlook, lk, ov, ncap, nlook, nquant)
+  {
+    forall l: int | lid <= l <= maxlook && MatchedPosLA(crv, lk, l)
+      ensures var rf := FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
+              (rf.Some? ==> CM.RegsAgreeInside(res0, rf.value.capture_regs, PIV.CaptureRegs(VBody(crv, l))))
+              && (rf.None? ==> CM.RegsAgreeInside(res0, AReg.init_regs(ncap), PIV.CaptureRegs(VBody(crv, l))))
+    { assert l != lid; }
+  }
+
   /** §4 VALUE-LIFT ENGINE BRIDGE (per matched lid): the ACTUAL FFindMatchPlus
       replay from the fold's `cap` agrees, on `CaptureRegs(body)`, with a replay
       from FRESH registers, and matches iff-together. `FReconstructPlus` is the
