@@ -3929,66 +3929,86 @@ module LindenElkPikeInv {
     case _ =>
   }
 
-  /** THE frame: `filter_capture` only reads quant clocks at ids outside
-      lookaround bodies, so agreeing there is agreeing everywhere that
-      matters. */
+  /** THE frame: `filter_capture` reads quant clocks freely only OUTSIDE
+      lookaround bodies; a capturing keep-branch look body also reads the body's
+      (inside-look) quant clocks. So agreeing on `QuantIdsOutsideLooks` frames the
+      output at every position OUTSIDE `W = CaptureRegsSet(CapIdsInLooks(r))`.
+      (L2 had full equality — capture-free bodies read no clocks.) */
   lemma FilterCaptureQcFrameOutside(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>,
                                     qc: seq<int>, qc2: seq<int>, M: int, j: int)
     requires NR.LookBehindFragmentRE(r)
     requires forall q0: nat :: q0 in QuantIdsOutsideLooks(r)
                                ==> AI.get_idx(qc, q0) == AI.get_idx(qc2, q0)
+    ensures j !in CaptureRegsSet(CapIdsInLooks(r)) ==>
+            AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, M), j)
+         == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc2, M), j)
+    decreases r, 1
+  {
+    if j !in CaptureRegsSet(CapIdsInLooks(r)) {
+      match r
+      case Re_alt(r1, r2) => QcFrameOutsideSeqStep(r, r1, r2, cr, cc, lc, qc, qc2, M, j);
+      case Re_con(r1, r2) => QcFrameOutsideSeqStep(r, r1, r2, cr, cc, lc, qc, qc2, M, j);
+      case Re_quant(nul, qid, q, r1) =>
+        assert AI.get_idx(qc, qid) == AI.get_idx(qc2, qid);
+        var qv := AI.get_idx(qc, qid);
+        if qv < M { /* both filter_all(r1, cr): no qc read */ }
+        else { FilterCaptureQcFrameOutside(r1, cr, cc, lc, qc, qc2, qv, j); }   // W(quant)==W(r1)
+      case Re_capture(cid, r1) =>
+        var start := AI.get_idx(cc, CP.start_reg(cid));
+        if start < 0 { } else if start < M { }
+        else { FilterCaptureQcFrameOutside(r1, cr, cc, lc, qc, qc2, M, j); }    // W(capture)==W(r1)
+      case Re_lookaround(lid, la, r1) =>
+        NR.PlusIsLookBehindFragmentRE(r1);
+        assert forall cid: nat :: cid in CapIds(r1) ==> CP.start_reg(cid) != j by {
+          forall cid: nat | cid in CapIds(r1) ensures CP.start_reg(cid) != j { StartRegInCaptureRegsSet(CapIds(r1), cid); }
+        }
+        LkValAtNonStart(lid, la, r1, cr, cc, lc, qc, M, j);
+        LkValAtNonStart(lid, la, r1, cr, cc, lc, qc2, M, j);
+      case _ =>
+    }
+  }
+
+  /** Shared `alt`/`con` step for `FilterCaptureQcFrameOutside`: frame the prefix
+      `r1` outside `W(r1)`, then compose with `FilterCaptureCrPointwise` +
+      the suffix `r2` frame. */
+  lemma QcFrameOutsideSeqStep(r: R.regex, r1: R.regex, r2: R.regex, cr: seq<int>, cc: seq<int>,
+                              lc: seq<int>, qc: seq<int>, qc2: seq<int>, M: int, j: int)
+    requires r == R.Re_alt(r1, r2) || r == R.Re_con(r1, r2)
+    requires NR.LookBehindFragmentRE(r)
+    requires forall q0: nat :: q0 in QuantIdsOutsideLooks(r)
+                               ==> AI.get_idx(qc, q0) == AI.get_idx(qc2, q0)
+    requires j !in CaptureRegsSet(CapIdsInLooks(r))
     ensures AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, M), j)
          == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc2, M), j)
     decreases r, 0
   {
-    match r
-    case Re_alt(r1, r2) =>
-      FilterCaptureFullOutside(r1, cr, cc, lc, qc, qc2, M);
-      FilterCaptureQcFrameOutside(r2, AI.filter_capture(r1, cr, cc, lc, qc, M),
-                                  cc, lc, qc, qc2, M, j);
-    case Re_con(r1, r2) =>
-      FilterCaptureFullOutside(r1, cr, cc, lc, qc, qc2, M);
-      FilterCaptureQcFrameOutside(r2, AI.filter_capture(r1, cr, cc, lc, qc, M),
-                                  cc, lc, qc, qc2, M, j);
-    case Re_quant(nul, qid, q, r1) =>
-      assert AI.get_idx(qc, qid) == AI.get_idx(qc2, qid);
-      var qv := AI.get_idx(qc, qid);
-      if qv < M {
-      } else {
-        FilterCaptureQcFrameOutside(r1, cr, cc, lc, qc, qc2, qv, j);
-      }
-    case Re_capture(cid, r1) =>
-      var start := AI.get_idx(cc, CP.start_reg(cid));
-      if start < 0 {
-      } else if start < M {
-      } else {
-        FilterCaptureQcFrameOutside(r1, cr, cc, lc, qc, qc2, M, j);
-      }
-    case Re_lookaround(lid, la, r1) =>
-      FilterAtLookaround(lid, la, r1, cr, cc, lc, qc, M);
-      FilterAtLookaround(lid, la, r1, cr, cc, lc, qc2, M);
-    case _ =>
+    var Y  := AI.filter_capture(r1, cr, cc, lc, qc, M);
+    var Y2 := AI.filter_capture(r1, cr, cc, lc, qc2, M);
+    CaptureRegsSetMono(CapIdsInLooks(r1), CapIdsInLooks(r));
+    CaptureRegsSetMono(CapIdsInLooks(r2), CapIdsInLooks(r));
+    FilterCaptureFullOutside(r1, cr, cc, lc, qc, qc2, M);          // Y ~ Y2 outside W(r1); j!in W(r1)
+    assert AI.get_idx(Y, j) == AI.get_idx(Y2, j);
+    FilterCaptureQcFrameOutside(r2, Y2, cc, lc, qc, qc2, M, j);    // j!in W(r2) ==> f(r2,Y2,qc)[j]==f(r2,Y2,qc2)[j]
+    FilterCaptureCrPointwise(r2, Y, Y2, cc, lc, qc, M, j);         // f(r2,Y,qc)[j]==f(r2,Y2,qc)[j]
   }
 
-  /** The whole-sequence form of `FilterCaptureQcFrameOutside` (the `Re_alt` /
-      `Re_con` steps need the prefix's OUTPUT to coincide, not just one
-      slot). */
+  /** The whole-sequence form of `FilterCaptureQcFrameOutside`: outputs agree at
+      every position OUTSIDE `W = CaptureRegsSet(CapIdsInLooks(r))`. */
   lemma FilterCaptureFullOutside(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>,
                                  qc: seq<int>, qc2: seq<int>, M: int)
     requires NR.LookBehindFragmentRE(r)
     requires forall q0: nat :: q0 in QuantIdsOutsideLooks(r)
                                ==> AI.get_idx(qc, q0) == AI.get_idx(qc2, q0)
-    ensures AI.filter_capture(r, cr, cc, lc, qc, M) == AI.filter_capture(r, cr, cc, lc, qc2, M)
-    decreases r, 1
+    ensures forall i :: i !in CaptureRegsSet(CapIdsInLooks(r)) ==>
+            AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, M), i)
+         == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc2, M), i)
+    decreases r, 2
   {
-    var a := AI.filter_capture(r, cr, cc, lc, qc, M);
-    var b := AI.filter_capture(r, cr, cc, lc, qc2, M);
-    FilterCaptureLen(r, cr, cc, lc, qc, M);
-    FilterCaptureLen(r, cr, cc, lc, qc2, M);
-    assert |a| == |cr| == |b|;
-    forall i: nat | 0 <= i < |a| ensures a[i] == b[i] {
+    forall i: int | i !in CaptureRegsSet(CapIdsInLooks(r))
+      ensures AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, M), i)
+           == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc2, M), i)
+    {
       FilterCaptureQcFrameOutside(r, cr, cc, lc, qc, qc2, M, i);
-      assert AI.get_idx(a, i) == a[i] && AI.get_idx(b, i) == b[i];
     }
   }
 
@@ -4215,55 +4235,131 @@ module LindenElkPikeInv {
     case _ =>
   }
 
-  /** With capture-free lookaround bodies, `filter_capture` never depends on the
-      look clocks: the only node that reads them yields `cap_regs` on every
-      branch. */
+  /** A lookaround node's filter output at a position that is NOT one of the
+      body's capture-start registers equals the input there — whichever branch
+      (matched-keep or stale-reset) the look clock selects. The pointwise core of
+      the outside-`W` look-independence. */
+  lemma LkValAtNonStart(lid: R.lookid, la: R.lookaround, r1: R.regex, cr: seq<int>,
+                        cc: seq<int>, lc: seq<int>, qc: seq<int>, M: int, j: int)
+    requires NR.LookBehindFragmentRE(r1)
+    requires forall cid: nat :: cid in CapIds(r1) ==> CP.start_reg(cid) != j
+    ensures AI.get_idx(AI.filter_capture(R.Re_lookaround(lid, la, r1), cr, cc, lc, qc, M), j)
+         == AI.get_idx(cr, j)
+  {
+    var lv := AI.get_idx(lc, lid);
+    if lv < 0 || lv < M {
+      // reset branch: filter_all(r1, cr); non-start position passes through.
+      FilterAllKeepsNonStart(r1, cr, j);
+    } else {
+      // keep branch: filter_capture(r1, cr, cc, lc, qc, -1); == filter_all(r1,cr) at non-start j.
+      FilterCaptureVsAll(r1, cr, cc, lc, qc, -1, j);
+      FilterAllKeepsNonStart(r1, cr, j);
+    }
+  }
+
+  /** L3a: `filter_capture` reads the look bank ONLY at lookaround nodes, whose
+      effect is confined to their body's capture registers. So two look banks
+      produce filter outputs that agree at every position OUTSIDE
+      `W = CaptureRegsSet(CapIdsInLooks(r))` (the inside-look capture registers).
+      The old capture-free-body version had full equality; a capturing keep-branch
+      body genuinely depends on `lc`, so the honest statement frames outside `W`. */
   lemma FilterCaptureLookIndep(r: R.regex, cap_regs: seq<int>, cap_clocks: seq<int>,
                                lc1: seq<int>, lc2: seq<int>, quant_clocks: seq<int>, maxclock: int)
     requires NR.LookBehindFragmentRE(r)
-    ensures AI.filter_capture(r, cap_regs, cap_clocks, lc1, quant_clocks, maxclock)
-         == AI.filter_capture(r, cap_regs, cap_clocks, lc2, quant_clocks, maxclock)
+    ensures forall j :: j !in CaptureRegsSet(CapIdsInLooks(r)) ==>
+      AI.get_idx(AI.filter_capture(r, cap_regs, cap_clocks, lc1, quant_clocks, maxclock), j)
+      == AI.get_idx(AI.filter_capture(r, cap_regs, cap_clocks, lc2, quant_clocks, maxclock), j)
     decreases r
   {
     match r
+    case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_alt(r1, r2) =>
-      FilterCaptureLookIndep(r1, cap_regs, cap_clocks, lc1, lc2, quant_clocks, maxclock);
-      FilterCaptureLookIndep(r2, AI.filter_capture(r1, cap_regs, cap_clocks, lc1, quant_clocks, maxclock),
-                             cap_clocks, lc1, lc2, quant_clocks, maxclock);
+      var Y1 := AI.filter_capture(r1, cap_regs, cap_clocks, lc1, quant_clocks, maxclock);
+      var Y2 := AI.filter_capture(r1, cap_regs, cap_clocks, lc2, quant_clocks, maxclock);
+      FilterCaptureLookIndep(r1, cap_regs, cap_clocks, lc1, lc2, quant_clocks, maxclock);  // Y1~Y2 outside W(r1)
+      FilterCaptureLookIndep(r2, Y2, cap_clocks, lc1, lc2, quant_clocks, maxclock);        // outside W(r2)
+      forall j | j !in CaptureRegsSet(CapIdsInLooks(r))
+        ensures AI.get_idx(AI.filter_capture(r2, Y1, cap_clocks, lc1, quant_clocks, maxclock), j)
+             == AI.get_idx(AI.filter_capture(r2, Y2, cap_clocks, lc2, quant_clocks, maxclock), j)
+      {
+        CaptureRegsSetMono(CapIdsInLooks(r1), CapIdsInLooks(r));
+        CaptureRegsSetMono(CapIdsInLooks(r2), CapIdsInLooks(r));
+        assert AI.get_idx(Y1, j) == AI.get_idx(Y2, j);
+        FilterCaptureCrPointwise(r2, Y1, Y2, cap_clocks, lc1, quant_clocks, maxclock, j);
+      }
     case Re_con(r1, r2) =>
+      var Y1 := AI.filter_capture(r1, cap_regs, cap_clocks, lc1, quant_clocks, maxclock);
+      var Y2 := AI.filter_capture(r1, cap_regs, cap_clocks, lc2, quant_clocks, maxclock);
       FilterCaptureLookIndep(r1, cap_regs, cap_clocks, lc1, lc2, quant_clocks, maxclock);
-      FilterCaptureLookIndep(r2, AI.filter_capture(r1, cap_regs, cap_clocks, lc1, quant_clocks, maxclock),
-                             cap_clocks, lc1, lc2, quant_clocks, maxclock);
+      FilterCaptureLookIndep(r2, Y2, cap_clocks, lc1, lc2, quant_clocks, maxclock);
+      forall j | j !in CaptureRegsSet(CapIdsInLooks(r))
+        ensures AI.get_idx(AI.filter_capture(r2, Y1, cap_clocks, lc1, quant_clocks, maxclock), j)
+             == AI.get_idx(AI.filter_capture(r2, Y2, cap_clocks, lc2, quant_clocks, maxclock), j)
+      {
+        CaptureRegsSetMono(CapIdsInLooks(r1), CapIdsInLooks(r));
+        CaptureRegsSetMono(CapIdsInLooks(r2), CapIdsInLooks(r));
+        assert AI.get_idx(Y1, j) == AI.get_idx(Y2, j);
+        FilterCaptureCrPointwise(r2, Y1, Y2, cap_clocks, lc1, quant_clocks, maxclock, j);
+      }
     case Re_quant(_, qid, _, r1) =>
-      FilterCaptureLookIndep(r1, cap_regs, cap_clocks, lc1, lc2, quant_clocks,
-                             AI.get_idx(quant_clocks, qid));
+      // CapIdsInLooks(quant)==CapIdsInLooks(r1); branch depends on quant clock, not lc.
+      var qv := AI.get_idx(quant_clocks, qid);
+      if qv < maxclock { /* both filter_all(r1, cap_regs): no lc read */ }
+      else { FilterCaptureLookIndep(r1, cap_regs, cap_clocks, lc1, lc2, quant_clocks, qv); }
     case Re_capture(cid, r1) =>
-      FilterCaptureLookIndep(r1, cap_regs, cap_clocks, lc1, lc2, quant_clocks, maxclock);
-      FilterCaptureLookIndep(r1, AI.set_idx(cap_regs, CP.start_reg(cid), -1), cap_clocks,
-                             lc1, lc2, quant_clocks, maxclock);
+      // CapIdsInLooks(capture)==CapIdsInLooks(r1); branch depends on start clock, not lc.
+      var start := AI.get_idx(cap_clocks, CP.start_reg(cid));
+      if start < 0 { /* both filter_all(r1, cap_regs) */ }
+      else if start < maxclock { /* both filter_all(r1, set_idx(cap_regs, start_reg(cid), -1)) */ }
+      else { FilterCaptureLookIndep(r1, cap_regs, cap_clocks, lc1, lc2, quant_clocks, maxclock); }
     case Re_lookaround(lid, la, r1) =>
-      // every branch of the lookaround node is the identity for capture-free r1
-      FilterAllCaptureFree(r1, cap_regs);
-      FilterCaptureCaptureFree(r1, cap_regs, cap_clocks, lc1, quant_clocks, -1);
-      FilterCaptureCaptureFree(r1, cap_regs, cap_clocks, lc2, quant_clocks, -1);
-    case _ =>
+      NR.PlusIsLookBehindFragmentRE(r1);
+      forall j | j !in CaptureRegsSet(CapIdsInLooks(r))   // W == CaptureRegsSet(CapIds(r1))
+        ensures AI.get_idx(AI.filter_capture(r, cap_regs, cap_clocks, lc1, quant_clocks, maxclock), j)
+             == AI.get_idx(AI.filter_capture(r, cap_regs, cap_clocks, lc2, quant_clocks, maxclock), j)
+      {
+        assert forall cid: nat :: cid in CapIds(r1) ==> CP.start_reg(cid) != j by {
+          forall cid: nat | cid in CapIds(r1) ensures CP.start_reg(cid) != j { StartRegInCaptureRegsSet(CapIds(r1), cid); }
+        }
+        LkValAtNonStart(lid, la, r1, cap_regs, cap_clocks, lc1, quant_clocks, maxclock, j);
+        LkValAtNonStart(lid, la, r1, cap_regs, cap_clocks, lc2, quant_clocks, maxclock, j);
+      }
   }
 
-  /** THE consequence: `GmOfLive` — and so `ThreadTracksGm` — is independent of
-      the look register bank, so a `CheckOracle` pass's `look_regs` write cannot
-      disturb the group-map denotation. */
+  /** THE consequence: on OUTSIDE-look groups, `GmOfLive` — and so
+      `ThreadTracksGm` — is independent of the look register bank, so a
+      `CheckOracle` pass's `look_regs` write cannot disturb their denotation.
+      L3a: inside-look groups DO depend on the look bank (a matched look keeps its
+      body captures); those are handled by the value-lift / P2, not here. */
   lemma GmOfLiveLookIndep(ast: R.regex, caps: AReg.Regs, look1: AReg.Regs, look2: AReg.Regs,
                           quant: AReg.Regs)
     requires NR.LookBehindFragmentRE(ast)
-    ensures GmOfLive(ast, caps, look1, quant) == GmOfLive(ast, caps, look2, quant)
+    ensures forall g: nat :: g !in CapIdsInLooks(ast) ==>
+      ((g in GmOfLive(ast, caps, look1, quant)) <==> (g in GmOfLive(ast, caps, look2, quant)))
+      && (g in GmOfLive(ast, caps, look1, quant) ==>
+          GmOfLive(ast, caps, look1, quant)[g] == GmOfLive(ast, caps, look2, quant)[g])
   {
     var (cap_regs, cap_clocks) := AReg.as_arrays(caps);
     var lc1 := AReg.as_arrays(look1).1;
     var lc2 := AReg.as_arrays(look2).1;
     var qc := AReg.as_arrays(quant).1;
+    var W := CaptureRegsSet(CapIdsInLooks(ast));
     FilterCaptureLookIndep(ast, cap_regs, cap_clocks, lc1, lc2, qc, -1);
-    assert AI.filter_reset(ast, caps, look1, quant, -1)
-        == AI.filter_reset(ast, caps, look2, quant, -1);
+    var f1 := AI.filter_reset(ast, caps, look1, quant, -1);
+    var f2 := AI.filter_reset(ast, caps, look2, quant, -1);
+    assert f1 == AI.filter_capture(ast, cap_regs, cap_clocks, lc1, qc, -1);
+    assert f2 == AI.filter_capture(ast, cap_regs, cap_clocks, lc2, qc, -1);
+    forall g: nat | g !in CapIdsInLooks(ast)
+      ensures ((g in GmOfLive(ast, caps, look1, quant)) <==> (g in GmOfLive(ast, caps, look2, quant)))
+           && (g in GmOfLive(ast, caps, look1, quant) ==>
+               GmOfLive(ast, caps, look1, quant)[g] == GmOfLive(ast, caps, look2, quant)[g])
+    {
+      StartRegInCaptureRegsSet(CapIdsInLooks(ast), g);
+      EndRegInCaptureRegsSet(CapIdsInLooks(ast), g);
+      assert CP.start_reg(g) !in W && CP.end_reg(g) !in W;
+      assert AI.get_idx(f1, CP.start_reg(g)) == AI.get_idx(f2, CP.start_reg(g));
+      assert AI.get_idx(f1, CP.end_reg(g)) == AI.get_idx(f2, CP.end_reg(g));
+    }
   }
 
   // On a properly closed match (every present group with a set end has
@@ -4751,12 +4847,16 @@ module LindenElkPikeInv {
                          M: int, qid: nat, clk: int, j: int)
     requires NR.LookBehindFragmentRE(r) && CapUnique(r) && QuantUnique(r)
     requires qid in QuantIds(r)
+    requires qid in QuantIdsOutsideLooks(r)   // L3a: reset frame is for outside-look quantifiers
     requires clk >= 0
     requires clk >= MxAtQid(r, cc, qc, M, qid)
     requires PathPresentQ(r, cc, qc, M, qid)
     requires forall q0: int :: q0 != qid ==> AI.get_idx(qc', q0) == AI.get_idx(qc, q0)
     requires AI.get_idx(qc', qid) == clk
     requires forall sg: nat :: sg in CapIds(QidBody(r, qid)) ==> AI.get_idx(cc, CP.start_reg(sg)) < clk
+    // L3a: every lookaround inside qid's body is stale at the fresh reset stamp —
+    // so a stale look never keeps captures the reset should clear.
+    requires LooksStale(QidBody(r, qid), lc, clk)
     requires forall k :: AI.get_idx(A, k) >= -1
     requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0 ==> AI.get_idx(A, CP.start_reg(c)) < 0
     ensures (forall g: nat :: g in CapIds(QidBody(r, qid)) ==> CP.start_reg(g) != j)
@@ -4767,11 +4867,9 @@ module LindenElkPikeInv {
   {
     match r
     case Re_lookaround(lid, la, r1) =>
-      FilterAtLookaround(lid, la, r1, A, cc, lc, qc, M);
-      FilterAtLookaround(lid, la, r1, A, cc, lc, qc', M);
-      // the quantifier sits inside a capture-free body: no capture ids below it
-      CaptureFreeQidBody(r1, qid);
-      CaptureFreeNoCapIds(QidBody(r1, qid));
+      // qid is inside the look body, but the requires restricts to outside-look qids.
+      assert qid in QuantIdsOutsideLooks(r);   // == {} for a lookaround node — contradiction
+      assert false;
     case Re_capture(cid, r1) =>
       assert qid in QuantIds(r1);
       assert AI.get_idx(cc, CP.start_reg(cid)) >= M && AI.get_idx(cc, CP.start_reg(cid)) >= 0;  // PathPresentQ
@@ -4788,6 +4886,7 @@ module LindenElkPikeInv {
         // f' present branch (clk >= M) → filter_capture(r1, A, cc, qc', clk) == filter_all(r1, A).
         forall cidx: nat | cidx in CapIds(r1)
           ensures AI.get_idx(cc, CP.start_reg(cidx)) < clk || AI.get_idx(cc, CP.start_reg(cidx)) < 0 {}
+        assert LooksStale(r1, lc, clk);   // == LooksStale(QidBody(r,qid), lc, clk) since QidBody(r,qid)==r1
         FilterCaptureAllStale(r1, A, cc, lc, qc', clk);
         // reset: any gl start is cleared by filter_all(r1, A).
         if exists g: nat :: g in CapIds(r1) && CP.start_reg(g) == j {
@@ -4820,12 +4919,14 @@ module LindenElkPikeInv {
     requires r == R.Re_alt(r1, r2) || r == R.Re_con(r1, r2)
     requires NR.LookBehindFragmentRE(r) && CapUnique(r) && QuantUnique(r)
     requires qid in QuantIds(r)
+    requires qid in QuantIdsOutsideLooks(r)   // L3a: reset frame is for outside-look quantifiers
     requires clk >= 0
     requires clk >= MxAtQid(r, cc, qc, M, qid)
     requires PathPresentQ(r, cc, qc, M, qid)
     requires forall q0: int :: q0 != qid ==> AI.get_idx(qc', q0) == AI.get_idx(qc, q0)
     requires AI.get_idx(qc', qid) == clk
     requires forall sg: nat :: sg in CapIds(QidBody(r, qid)) ==> AI.get_idx(cc, CP.start_reg(sg)) < clk
+    requires LooksStale(QidBody(r, qid), lc, clk)
     requires forall k :: AI.get_idx(A, k) >= -1
     requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0 ==> AI.get_idx(A, CP.start_reg(c)) < 0
     ensures (forall g: nat :: g in CapIds(QidBody(r, qid)) ==> CP.start_reg(g) != j)
@@ -4843,6 +4944,12 @@ module LindenElkPikeInv {
       assert qid !in QuantIds(r2) by { if qid in QuantIds(r2) { assert qid in QuantIds(r1) * QuantIds(r2); } }
       assert MxAtQid(r, cc, qc, M, qid) == MxAtQid(r1, cc, qc, M, qid);
       assert QidBody(r, qid) == QidBody(r1, qid);
+      assert qid in QuantIdsOutsideLooks(r1) by {
+        assert QuantIdsOutsideLooks(r) == QuantIdsOutsideLooks(r1) + QuantIdsOutsideLooks(r2)
+          by { if r == R.Re_alt(r1, r2) {} else {} }
+        QuantIdsSplit(r2);   // QuantIdsOutsideLooks(r2) ⊆ QuantIds(r2), and qid ∉ QuantIds(r2)
+      }
+      assert LooksStale(QidBody(r1, qid), lc, clk);      // == LooksStale(QidBody(r,qid),..)
       CapIdsQidBodySubset(r1, qid);   // CapIds(QidBody(r1,qid)) ⊆ CapIds(r1)
       FilterResetFrame(r1, A, cc, lc, qc, qc', M, qid, clk, j);
       // r2: qid ∉ QuantIds(r2), gl ∩ CapIds(r2) = ∅.
@@ -4871,6 +4978,12 @@ module LindenElkPikeInv {
       }
       assert MxAtQid(r, cc, qc, M, qid) == MxAtQid(r2, cc, qc, M, qid);
       assert QidBody(r, qid) == QidBody(r2, qid);
+      assert qid in QuantIdsOutsideLooks(r2) by {
+        assert QuantIdsOutsideLooks(r) == QuantIdsOutsideLooks(r1) + QuantIdsOutsideLooks(r2)
+          by { if r == R.Re_alt(r1, r2) {} else {} }
+        QuantIdsSplit(r1);   // QuantIdsOutsideLooks(r1) ⊆ QuantIds(r1), and qid ∉ QuantIds(r1)
+      }
+      assert LooksStale(QidBody(r2, qid), lc, clk);
       FilterResetFrame(r2, X, cc, lc, qc, qc', M, qid, clk, j);
       FilterCaptureCrPointwise(r2, X', X, cc, lc, qc', M, j);
     }
@@ -4955,12 +5068,14 @@ module LindenElkPikeInv {
                           qid: nat, clk: int)
     requires NR.LookBehindFragmentRE(ast) && CapUnique(ast) && QuantUnique(ast)
     requires qid in QuantIds(ast)
+    requires qid in QuantIdsOutsideLooks(ast)   // L3a: reset is for outside-look quantifiers
     requires qid < |AReg.as_arrays(quant).1|
     requires |AReg.as_arrays(quant).0| == |AReg.as_arrays(quant).1|
     requires clk >= 0
     requires clk >= MxAtQid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, qid)
     requires PathPresentQ(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, qid)
     requires forall sg: nat :: sg in CapIds(QidBody(ast, qid)) ==> AI.get_idx(caps.a_clk, CP.start_reg(sg)) < clk
+    requires LooksStale(QidBody(ast, qid), AReg.as_arrays(look).1, clk)
     requires forall k :: AI.get_idx(caps.a_cp, k) >= -1
     requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
                              ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
@@ -5062,12 +5177,14 @@ module LindenElkPikeInv {
     requires NR.LookBehindFragmentRE(ast) && CapUnique(ast) && QuantUnique(ast)
     requires T.TransWf(ast) && AR.QmapOk(ast, qm)
     requires qid in QuantIds(ast)
+    requires qid in QuantIdsOutsideLooks(ast)   // L3a: reset is for outside-look quantifiers
     requires qid < |AReg.as_arrays(quant).1|
     requires |AReg.as_arrays(quant).0| == |AReg.as_arrays(quant).1|
     requires clk >= 0
     requires clk >= MxAtQid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, qid)
     requires PathPresentQ(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, qid)
     requires forall sg: nat :: sg in CapIds(QidBody(ast, qid)) ==> AI.get_idx(caps.a_clk, CP.start_reg(sg)) < clk
+    requires LooksStale(QidBody(ast, qid), AReg.as_arrays(look).1, clk)
     requires forall k :: AI.get_idx(caps.a_cp, k) >= -1
     requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
                              ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
