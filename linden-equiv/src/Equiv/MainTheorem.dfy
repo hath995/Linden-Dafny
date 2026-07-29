@@ -54,6 +54,7 @@ module LindenElkMain {
   import WP = WarblrePrimitives
   import LN = WarblreNumeric
   import LFS = FunctionalSemantics
+  import FU = FunctionalUtils
   import TR = LindenElkTreeRep
   import TT = LindenElkTreeThread
   import CE = LindenElkCheckErase
@@ -461,17 +462,314 @@ module LindenElkMain {
     forall g :: g in gm ==> gm[g].endIdx.Some?
   }
 
+  // ==========================================================================
+  // L3a: inside-look-group bookkeeping for FirstLeafClosed. A capturing lookahead
+  // body records CLOSED captures into the continuation's map; the disjointness
+  // invariant `DomLkDisjoint` (dom(gm) misses the still-pending inside-look
+  // groups) lets the LK case relate the body-from-gm computation to a
+  // body-from-Empty computation on the body's own groups.
+  // ==========================================================================
+
+  /** The inside-look groups of every regex still pending in `acts`. */
+  ghost function LkBodyGroupsActs(acts: LS.Actions): set<LG.GroupId>
+    decreases |acts|
+  {
+    if |acts| == 0 then {}
+    else (if acts[0].Areg? then LL.LkBodyGroups(acts[0].r) else {}) + LkBodyGroupsActs(acts[1..])
+  }
+
+  /** All group ids DEFINED across `acts`, in order — for the uniqueness invariant. */
+  ghost function AllDefsActs(acts: LS.Actions): seq<LG.GroupId>
+    decreases |acts|
+  {
+    if |acts| == 0 then []
+    else (if acts[0].Areg? then L.DefGroups(acts[0].r) else []) + AllDefsActs(acts[1..])
+  }
+
+  ghost predicate NoDupSeq(s: seq<LG.GroupId>) { forall i, j :: 0 <= i < j < |s| ==> s[i] != s[j] }
+
+  /** dom(gm) is disjoint from the inside-look groups still pending in `acts`. */
+  ghost predicate DomLkDisjoint(gm: LG.GroupMap, acts: LS.Actions) {
+    forall g :: g in gm ==> g !in LkBodyGroupsActs(acts)
+  }
+
+  lemma LkBodyGroupsActsCons(x: LS.Action, cont: LS.Actions)
+    ensures LkBodyGroupsActs([x] + cont) == (if x.Areg? then LL.LkBodyGroups(x.r) else {}) + LkBodyGroupsActs(cont)
+  { assert ([x] + cont)[0] == x && ([x] + cont)[1..] == cont; }
+
+  /** `NoDupSeq` is preserved on any suffix / removing a prefix. */
+  lemma NoDupTailSeq(a: seq<LG.GroupId>, b: seq<LG.GroupId>)
+    requires NoDupSeq(a + b)
+    ensures NoDupSeq(b)
+  { forall i, j | 0 <= i < j < |b| ensures b[i] != b[j] { assert (a + b)[|a| + i] == b[i] && (a + b)[|a| + j] == b[j]; } }
+
+  /** Dropping a middle chunk `b` preserves `NoDupSeq` (a+c ⊆ a+b+c, order kept). */
+  lemma NoDupMid(a: seq<LG.GroupId>, b: seq<LG.GroupId>, c: seq<LG.GroupId>)
+    requires NoDupSeq(a + b + c)
+    ensures NoDupSeq(a + c)
+  {
+    forall i, j | 0 <= i < j < |a + c| ensures (a + c)[i] != (a + c)[j] {
+      var s := a + b + c;
+      var i' := if i < |a| then i else i + |b|;
+      var j' := if j < |a| then j else j + |b|;
+      assert (a + c)[i] == s[i'] && (a + c)[j] == s[j'] && i' < j';
+    }
+  }
+
+  /** The invariant threads to the tail `cont` (with `gm` unchanged or domain-
+      shrunk): the head action contributes ⊇{} to `LkBodyGroupsActs` and a prefix
+      to `AllDefsActs`, both of which only shrink the constraint. */
+  lemma TailInv(gm: LG.GroupMap, gm2: LG.GroupMap, acts: LS.Actions)
+    requires |acts| > 0
+    requires DomLkDisjoint(gm, acts) && NoDupSeq(AllDefsActs(acts))
+    requires forall g :: g in gm2 ==> g in gm     // domain of gm2 ⊆ domain of gm
+    ensures DomLkDisjoint(gm2, acts[1..]) && NoDupSeq(AllDefsActs(acts[1..]))
+  {
+    var cont := acts[1..];
+    assert acts == [acts[0]] + cont;
+    LkBodyGroupsActsCons(acts[0], cont);
+    AllDefsActsCons(acts[0], cont);
+    NoDupTailSeq(if acts[0].Areg? then L.DefGroups(acts[0].r) else [], AllDefsActs(cont));
+  }
+
+  /** The invariant threads to a rewritten action list `sub` whose look groups and
+      defined groups are contained in `acts`' (the Disjunction/Sequence/Quantified
+      rewrites), given a no-dup witness for `sub`. */
+  lemma SubInv(gm: LG.GroupMap, gm2: LG.GroupMap, sub: LS.Actions, acts: LS.Actions)
+    requires DomLkDisjoint(gm, acts)
+    requires LkBodyGroupsActs(sub) <= LkBodyGroupsActs(acts)
+    requires NoDupSeq(AllDefsActs(sub))
+    requires forall g :: g in gm2 ==> g in gm
+    ensures DomLkDisjoint(gm2, sub) && NoDupSeq(AllDefsActs(sub))
+  {}
+
+  lemma AllDefsActsCons(x: LS.Action, cont: LS.Actions)
+    ensures AllDefsActs([x] + cont) == (if x.Areg? then L.DefGroups(x.r) else []) + AllDefsActs(cont)
+  { assert ([x] + cont)[0] == x && ([x] + cont)[1..] == cont; }
+
+  /** Inside-look groups of `r` are a subset of ALL its defined groups. */
+  lemma LkBodyGroupsSubDefs(r: L.Regex)
+    ensures LL.LkBodyGroups(r) <= (set g | g in L.DefGroups(r))
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => LkBodyGroupsSubDefs(r1); LkBodyGroupsSubDefs(r2);
+    case Sequence(r1, r2) => LkBodyGroupsSubDefs(r1); LkBodyGroupsSubDefs(r2);
+    case Quantified(_, _, _, r1) => LkBodyGroupsSubDefs(r1);
+    case Group(_, r1) => LkBodyGroupsSubDefs(r1);
+    case LookaroundR(_, r1) => LkBodyGroupsSubDefs(r1);
+    case _ =>
+  }
+
+  /** The action-level lift: pending inside-look groups ⊆ all defined groups. */
+  lemma LkBodyGroupsActsSubAllDefs(acts: LS.Actions)
+    ensures LkBodyGroupsActs(acts) <= (set g | g in AllDefsActs(acts))
+    decreases |acts|
+  {
+    if |acts| == 0 { return; }
+    LkBodyGroupsActsSubAllDefs(acts[1..]);
+    if acts[0].Areg? { LkBodyGroupsSubDefs(acts[0].r); }
+  }
+
+  /** `NoDupSeq` splits over concatenation: the two halves are individually
+      duplicate-free AND element-disjoint. */
+  lemma NoDupConcat(a: seq<LG.GroupId>, b: seq<LG.GroupId>)
+    requires NoDupSeq(a + b)
+    ensures NoDupSeq(a) && NoDupSeq(b) && (set g | g in a) * (set g | g in b) == {}
+  {
+    forall i, j | 0 <= i < j < |a| ensures a[i] != a[j] { assert (a + b)[i] == a[i] && (a + b)[j] == a[j]; }
+    forall i, j | 0 <= i < j < |b| ensures b[i] != b[j] { assert (a + b)[|a| + i] == b[i] && (a + b)[|a| + j] == b[j]; }
+    forall g | g in (set g | g in a) * (set g | g in b) ensures false {
+      var i :| 0 <= i < |a| && a[i] == g;
+      var j :| 0 <= j < |b| && b[j] == g;
+      assert (a + b)[i] == g && (a + b)[|a| + j] == g && i < |a| + j;
+    }
+  }
+
   /** The `GroupMap` of a `Match` leaf is always fully closed: whenever a
       tree's open groups are all covered by pending `Aclose` actions, its
       highest-priority leaf (`TreeRes`) leaves no group open. Grounds both
       `GmOfLiveEqGmOf`'s and `GmOfCapArrayBridge`'s hypotheses at the winning
       thread. */
+  /** All `Areg` regexes in `acts` are look-free (and backref-free). */
+  ghost predicate NoLkActs(acts: LS.Actions) {
+    forall i :: 0 <= i < |acts| ==> (acts[i].Areg? ==> EL.NoLkBrL(acts[i].r))
+  }
+
+  /** `FirstLeafClosed` restricted to LOOK-FREE actions: the LK case is
+      unreachable, so this is a self-contained least lemma with no inside-look
+      bookkeeping. `LookBodyLeafOpenSub` uses it on the (look-free) look body,
+      which is why the main `FirstLeafClosed` LK case can reuse the balance
+      without a least-lemma cycle. */
+  least lemma FirstLeafClosedNoLk(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input,
+                                  b: BS.LoopBool, t: LT.Tree, gm: LG.GroupMap, leaf: LT.Leaf)
+    requires EL.BoolTreeLk(rer, acts, inp, b, t)
+    requires EL.PikeLkActions(acts)
+    requires NoLkActs(acts)
+    requires OpenOf(gm) <= PendingCloses(acts)
+    requires LT.TreeRes(t, gm, inp, WP.Forward) == Some(leaf)
+    ensures ClosedGm(leaf.1)
+  {
+    if |acts| == 0 {
+      assert t == LT.Match;
+      assert leaf.1 == gm;
+      forall g | g in gm ensures gm[g].endIdx.Some? { if gm[g].endIdx.None? { assert g in OpenOf(gm); } }
+    } else {
+      var cont := acts[1..];
+      assert NoLkActs(cont) by { forall i | 0 <= i < |cont| ensures cont[i].Areg? ==> EL.NoLkBrL(cont[i].r) { assert cont[i] == acts[i + 1]; } }
+      assert PendingCloses(cont) <= PendingCloses(acts);
+      match acts[0]
+      case Acheck(strcheck) =>
+        if b == BS.CanExit { assert PendingCloses(acts) == PendingCloses(cont); FirstLeafClosedNoLk(rer, cont, inp, BS.CanExit, t.t, gm, leaf); }
+        else { assert t == LT.Mismatch; assert false; }
+      case Aclose(gid) =>
+        var gm2 := LG.GMUpdate(t.g, LC.Idx(inp), gm);
+        assert gm2 == LG.GMClose(LC.Idx(inp), gid, gm);
+        assert OpenOf(gm2) <= PendingCloses(cont) by {
+          forall g | g in OpenOf(gm2) ensures g in PendingCloses(cont) {
+            assert g != gid; assert g in OpenOf(gm); assert g in PendingCloses(acts);
+            var i :| 0 <= i < |acts| && acts[i].Aclose? && acts[i].gid == g;
+            assert i != 0; assert cont[i - 1] == acts[i];
+          }
+        }
+        FirstLeafClosedNoLk(rer, cont, inp, b, t.t, gm2, leaf);
+      case Areg(r) =>
+        assert EL.NoLkBrL(r);
+        match r
+        case Epsilon => assert PendingCloses(acts) == PendingCloses(cont); FirstLeafClosedNoLk(rer, cont, inp, b, t, gm, leaf);
+        case Character(cd) =>
+          if LC.ReadChar(rer, cd, inp, WP.Forward).None? { assert t == LT.Mismatch; assert false; }
+          else {
+            var pair := LC.ReadChar(rer, cd, inp, WP.Forward).value;
+            assert PendingCloses(acts) == PendingCloses(cont);
+            FirstLeafClosedNoLk(rer, cont, pair.1, BS.CanExit, t.t, gm, leaf);
+          }
+        case Disjunction(r1, r2) =>
+          var acts1 := [LS.Areg(r1)] + cont; var acts2 := [LS.Areg(r2)] + cont;
+          assert PendingCloses(acts1) == PendingCloses(cont) == PendingCloses(acts2) by { assert forall i :: 0 <= i < |cont| ==> acts1[i + 1] == cont[i] && acts2[i + 1] == cont[i]; }
+          assert NoLkActs(acts1) && NoLkActs(acts2) by {
+            forall i | 0 <= i < |acts1| ensures acts1[i].Areg? ==> EL.NoLkBrL(acts1[i].r) { if i == 0 {} else { assert acts1[i] == cont[i - 1]; } }
+            forall i | 0 <= i < |acts2| ensures acts2[i].Areg? ==> EL.NoLkBrL(acts2[i].r) { if i == 0 {} else { assert acts2[i] == cont[i - 1]; } }
+          }
+          if LT.TreeRes(t.t1, gm, inp, WP.Forward).Some? { FirstLeafClosedNoLk(rer, acts1, inp, b, t.t1, gm, leaf); }
+          else { FirstLeafClosedNoLk(rer, acts2, inp, b, t.t2, gm, leaf); }
+        case Sequence(r1, r2) =>
+          var acts1 := [LS.Areg(r1), LS.Areg(r2)] + cont;
+          assert PendingCloses(acts1) == PendingCloses(cont) by { assert forall i :: 0 <= i < |cont| ==> acts1[i + 2] == cont[i]; }
+          assert NoLkActs(acts1) by { forall i | 0 <= i < |acts1| ensures acts1[i].Areg? ==> EL.NoLkBrL(acts1[i].r) { if i < 2 {} else { assert acts1[i] == cont[i - 2]; } } }
+          FirstLeafClosedNoLk(rer, acts1, inp, b, t, gm, leaf);
+        case Quantified(greedy, min, delta, r1) =>
+          var gidl := L.DefGroups(r1);
+          if min > 0 {
+            var gm2 := LG.GMUpdate(t.g, LC.Idx(inp), gm);
+            assert gm2 == LG.GMReset(gidl, gm); assert OpenOf(gm2) <= OpenOf(gm);
+            var acts1 := [LS.Areg(r1), LS.Areg(L.Quantified(greedy, min - 1, delta, r1))] + cont;
+            assert PendingCloses(acts1) == PendingCloses(cont) by { assert forall i :: 0 <= i < |cont| ==> acts1[i + 2] == cont[i]; }
+            assert NoLkActs(acts1) by { forall i | 0 <= i < |acts1| ensures acts1[i].Areg? ==> EL.NoLkBrL(acts1[i].r) { if i < 2 {} else { assert acts1[i] == cont[i - 2]; } } }
+            FirstLeafClosedNoLk(rer, acts1, inp, b, t.t, gm2, leaf);
+          } else if delta == LN.NN(0) { assert PendingCloses(acts) == PendingCloses(cont); FirstLeafClosedNoLk(rer, cont, inp, b, t, gm, leaf); }
+          else {
+            var itert := if greedy then t.t1 else t.t2; var skipt := if greedy then t.t2 else t.t1;
+            var acts1 := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(L.Quantified(greedy, 0, LFS.NoiPred(delta), r1))] + cont;
+            assert PendingCloses(acts1) == PendingCloses(cont) by { assert forall i :: 0 <= i < |cont| ==> acts1[i + 3] == cont[i]; }
+            assert NoLkActs(acts1) by { forall i | 0 <= i < |acts1| ensures acts1[i].Areg? ==> EL.NoLkBrL(acts1[i].r) { if i < 3 {} else { assert acts1[i] == cont[i - 3]; } } }
+            assert PendingCloses(acts) == PendingCloses(cont);
+            if LT.TreeRes(t.t1, gm, inp, WP.Forward).Some? {
+              if greedy { var gm2 := LG.GMUpdate(itert.g, LC.Idx(inp), gm); assert gm2 == LG.GMReset(gidl, gm); assert OpenOf(gm2) <= OpenOf(gm); FirstLeafClosedNoLk(rer, acts1, inp, BS.CannotExit, itert.t, gm2, leaf); }
+              else { FirstLeafClosedNoLk(rer, cont, inp, b, skipt, gm, leaf); }
+            } else {
+              if greedy { FirstLeafClosedNoLk(rer, cont, inp, b, skipt, gm, leaf); }
+              else { var gm2 := LG.GMUpdate(itert.g, LC.Idx(inp), gm); assert gm2 == LG.GMReset(gidl, gm); assert OpenOf(gm2) <= OpenOf(gm); FirstLeafClosedNoLk(rer, acts1, inp, BS.CannotExit, itert.t, gm2, leaf); }
+            }
+          }
+        case Group(gid, r1) =>
+          var gm2 := LG.GMUpdate(t.g, LC.Idx(inp), gm);
+          assert gm2 == LG.GMOpen(LC.Idx(inp), gid, gm);
+          var acts1 := [LS.Areg(r1), LS.Aclose(gid)] + cont;
+          assert gid in PendingCloses(acts1) by { assert acts1[1].Aclose? && acts1[1].gid == gid; }
+          assert NoLkActs(acts1) by { forall i | 0 <= i < |acts1| ensures acts1[i].Areg? ==> EL.NoLkBrL(acts1[i].r) { if i == 0 {} else if i == 1 {} else { assert acts1[i] == cont[i - 2]; } } }
+          assert OpenOf(gm2) <= PendingCloses(acts1) by {
+            forall g | g in OpenOf(gm2) ensures g in PendingCloses(acts1) {
+              if g != gid { assert g in OpenOf(gm); assert g in PendingCloses(acts); var i :| 0 <= i < |acts| && acts[i].Aclose? && acts[i].gid == g; assert i != 0; assert acts1[i + 1] == cont[i - 1] == acts[i]; }
+            }
+          }
+          FirstLeafClosedNoLk(rer, acts1, inp, b, t.t, gm2, leaf);
+        case AnchorR(a) =>
+          if LS.AnchorSatisfied(rer, a, inp) { assert PendingCloses(acts) == PendingCloses(cont); FirstLeafClosedNoLk(rer, cont, inp, b, t.t, gm, leaf); }
+          else { assert t == LT.Mismatch; assert false; }
+        case LookaroundR(lk, r1) => assert false;   // NoLkBrL(r) excludes lookarounds
+        case Backreference(_) => assert false;
+    }
+  }
+
+  /** THE L3a payoff for the LK case: a positive look body's first leaf (evaluated
+      from the OUTER map `gm`) leaves NO group open beyond those already open in
+      `gm`, and adds only the body's own groups `S`. The body groups are fresh
+      (`dom(gm) ∩ S == {}`), so the from-`gm` leaf agrees with a from-`Empty` leaf
+      on `S` (`TreeLeavesFrameInside`); the from-`Empty` leaf is fully closed
+      (`FirstLeafClosedNoLk` — valid since the body is look-free); and outside `S`
+      the leaf equals `gm` (`GmConfinedLeaves`). */
+  lemma LookBodyLeafOpenSub(rer: LW.RegExpRecord, lk: L.Lookaround, r1: L.Regex, tlk: LT.Tree,
+                            gm: LG.GroupMap, inp: LC.Input, sub: seq<LT.Leaf>, S: set<LG.GroupId>)
+    requires tlk == FU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk))
+    requires EL.NoLkBrL(r1) && EL.PikeLkRegex(r1)
+    requires NoDupSeq(L.DefGroups(r1))
+    requires S == (set g | g in L.DefGroups(r1))
+    requires forall g :: g in gm ==> g !in S
+    requires sub == LT.TreeLeaves(tlk, gm, inp, L.LkDir(lk))
+    requires |sub| > 0
+    requires L.Positivity(lk)
+    requires L.DefGroups(r1) != [] ==> L.LkDir(lk) == WP.Forward
+    ensures OpenOf(sub[0].1) <= OpenOf(gm)
+    ensures forall g :: g in sub[0].1 ==> g in gm || g in S
+  {
+    var dir := L.LkDir(lk);
+    assert LL.DefGroupsIn(r1, S);
+    LL.ComputeTrConfined(rer, r1, inp, LG.Empty, dir, S);       // GmConfinedTree(tlk, S)
+    LL.GmConfinedLeaves(tlk, gm, inp, dir, S);                  // sub[i].1 ~outside-S~ gm
+    var subE := LT.TreeLeaves(tlk, LG.Empty, inp, dir);
+    assert LL.GmAgreeInside(gm, LG.Empty, S) by {
+      forall g | g in S ensures (g in gm <==> g in LG.Empty) && (g in gm ==> gm[g] == LG.Empty[g]) { assert g !in gm; }
+    }
+    LL.TreeLeavesFrameInside(tlk, gm, LG.Empty, inp, dir, S);   // sub[i].1 ~inside-S~ subE[i].1
+    assert |sub| == |subE|;
+    if dir == WP.Forward {
+      // The from-Empty body leaf is fully closed (look-free body ⇒ FirstLeafClosedNoLk).
+      LT.FirstTreeLeaf(tlk, LG.Empty, inp, dir);
+      assert LT.TreeRes(tlk, LG.Empty, inp, WP.Forward) == Some(subE[0]);
+      var fuel := LFS.ActionsFuel([LS.Areg(r1)], inp, WP.Forward) + 1;
+      LFS.FunctionalTerminates(rer, [LS.Areg(r1)], inp, LG.Empty, WP.Forward, fuel);
+      assert LFS.ComputeTree(rer, [LS.Areg(r1)], inp, LG.Empty, WP.Forward, fuel) == Some(tlk);
+      var b0 := BS.CannotExit;
+      assert BS.BoolEncoding(b0, inp, [LS.Areg(r1)]);   // single Areg ⇒ reduces to true
+      EL.ComputeBoolTreeLk(rer, [LS.Areg(r1)], inp, LG.Empty, b0, fuel, tlk);
+      assert EL.PikeLkActions([LS.Areg(r1)]);
+      assert NoLkActs([LS.Areg(r1)]);
+      assert OpenOf(LG.Empty) <= PendingCloses([LS.Areg(r1)]);
+      FirstLeafClosedNoLk(rer, [LS.Areg(r1)], inp, b0, tlk, LG.Empty, subE[0]);
+      assert ClosedGm(subE[0].1);
+      forall g | g in OpenOf(sub[0].1) ensures g in OpenOf(gm) {
+        if g in S {
+          assert sub[0].1[g] == subE[0].1[g];    // FrameInside on S
+          assert g in subE[0].1 && subE[0].1[g].endIdx.Some?;   // ClosedGm
+          assert false;
+        }
+      }
+    } else {
+      assert L.DefGroups(r1) == [] && S == {};   // contrapositive of the fragment requires
+      // GmConfinedLeaves with S == {}: sub[0].1 agrees with gm everywhere.
+    }
+    forall g | g in sub[0].1 ensures g in gm || g in S {}
+  }
+
   least lemma FirstLeafClosed(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input,
                               b: BS.LoopBool, t: LT.Tree, gm: LG.GroupMap, leaf: LT.Leaf)
     requires EL.BoolTreeLk(rer, acts, inp, b, t)
     requires EL.PikeLkActions(acts)
     requires OpenOf(gm) <= PendingCloses(acts)
     requires LT.TreeRes(t, gm, inp, WP.Forward) == Some(leaf)
+    requires DomLkDisjoint(gm, acts)            // L3a: outer map misses pending inside-look groups
+    requires NoDupSeq(AllDefsActs(acts))        // L3a: group ids across acts are distinct
     ensures ClosedGm(leaf.1)
   {
     if |acts| == 0 {
@@ -490,6 +788,7 @@ module LindenElkMain {
         if b == BS.CanExit {
           assert t.Progress?;
           assert PendingCloses(acts) == PendingCloses(cont);
+          TailInv(gm, gm, acts);
           FirstLeafClosed(rer, cont, inp, BS.CanExit, t.t, gm, leaf);
         } else {
           assert t == LT.Mismatch;
@@ -509,11 +808,14 @@ module LindenElkMain {
             assert cont[i - 1] == acts[i];
           }
         }
+        assert forall g :: g in gm2 ==> g in gm;   // GMClose keeps domain
+        TailInv(gm, gm2, acts);
         FirstLeafClosed(rer, cont, inp, b, t.t, gm2, leaf);
       case Areg(r) =>
         match r
         case Epsilon =>
           assert PendingCloses(acts) == PendingCloses(cont);
+          TailInv(gm, gm, acts);
           FirstLeafClosed(rer, cont, inp, b, t, gm, leaf);
         case Character(cd) =>
           if LC.ReadChar(rer, cd, inp, WP.Forward).None? {
@@ -524,6 +826,7 @@ module LindenElkMain {
             assert t.Read?;
             assert pair.1 == LC.AdvanceInputP(inp, WP.Forward);
             assert PendingCloses(acts) == PendingCloses(cont);
+            TailInv(gm, gm, acts);
             FirstLeafClosed(rer, cont, pair.1, BS.CanExit, t.t, gm, leaf);
           }
         case Disjunction(r1, r2) =>
@@ -534,9 +837,17 @@ module LindenElkMain {
             assert forall i :: 0 <= i < |cont| ==> acts1[i + 1] == cont[i] && acts2[i + 1] == cont[i];
           }
           assert PendingCloses(acts) == PendingCloses(cont);
+          LkBodyGroupsActsCons(LS.Areg(r), cont); LkBodyGroupsActsCons(LS.Areg(r1), cont); LkBodyGroupsActsCons(LS.Areg(r2), cont);
+          AllDefsActsCons(LS.Areg(r), cont); AllDefsActsCons(LS.Areg(r1), cont); AllDefsActsCons(LS.Areg(r2), cont);
+          assert L.DefGroups(r) == L.DefGroups(r1) + L.DefGroups(r2);
+          assert LL.LkBodyGroups(r) == LL.LkBodyGroups(r1) + LL.LkBodyGroups(r2);
           if LT.TreeRes(t.t1, gm, inp, WP.Forward).Some? {
+            NoDupMid(L.DefGroups(r1), L.DefGroups(r2), AllDefsActs(cont));
+            SubInv(gm, gm, acts1, acts);
             FirstLeafClosed(rer, acts1, inp, b, t.t1, gm, leaf);
           } else {
+            NoDupTailSeq(L.DefGroups(r1), L.DefGroups(r2) + AllDefsActs(cont));
+            SubInv(gm, gm, acts2, acts);
             FirstLeafClosed(rer, acts2, inp, b, t.t2, gm, leaf);
           }
         case Sequence(r1, r2) =>
@@ -545,6 +856,12 @@ module LindenElkMain {
             assert forall i :: 0 <= i < |cont| ==> acts1[i + 2] == cont[i];
           }
           assert PendingCloses(acts) == PendingCloses(cont);
+          assert acts1 == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+          LkBodyGroupsActsCons(LS.Areg(r), cont); LkBodyGroupsActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont); LkBodyGroupsActsCons(LS.Areg(r2), cont);
+          AllDefsActsCons(LS.Areg(r), cont); AllDefsActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont); AllDefsActsCons(LS.Areg(r2), cont);
+          assert L.DefGroups(r) == L.DefGroups(r1) + L.DefGroups(r2);
+          assert LL.LkBodyGroups(r) == LL.LkBodyGroups(r1) + LL.LkBodyGroups(r2);
+          SubInv(gm, gm, acts1, acts);
           FirstLeafClosed(rer, acts1, inp, b, t, gm, leaf);
         case Quantified(greedy, min, delta, r1) =>
           var gidl := L.DefGroups(r1);
@@ -625,23 +942,36 @@ module LindenElkMain {
             assert false;
           }
         case LookaroundR(lk, r1) =>
-          // the gate is zero-width and, for an L1 (group-free) body, hands the
-          // continuation the very map it was entered with — so the pending-
-          // closes invariant carries straight through
-          assert EL.PikeLkRegex(r) && SD.GroupFreeL(r1);
+          // L3a: a positive-forward lookahead body may CAPTURE. The gate is
+          // zero-width; a positive look hands the continuation the body's first
+          // leaf map (captures merged), a negative look the entry map. Either
+          // way OpenOf carries through: a matched body leaves NO group newly open
+          // (LookBodyLeafOpenSub), and the body groups are fresh (DomLkDisjoint).
+          var S := (set g | g in L.DefGroups(r1));
           match t {
             case LK(lk2, tlk, tc) =>
               assert PendingCloses(acts) == PendingCloses(cont);
-              LL.ComputeTrGmNeutral(rer, r1, inp, LG.Empty, L.LkDir(lk));
-              assert LL.GmNeutralTree(tlk);
-              var sub := LT.TreeLeaves(tlk, gm, inp, L.LkDir(lk));
-              LL.GmNeutralLeaves(tlk, gm, inp, L.LkDir(lk));
-              LT.FirstTreeLeaf(tlk, gm, inp, L.LkDir(lk));
+              LkBodyGroupsActsCons(LS.Areg(r), cont);        // LkBodyGroupsActs(acts) unfold
+              AllDefsActsCons(LS.Areg(r), cont);             // AllDefsActs(acts) unfold
+              NoDupConcat(L.DefGroups(r), AllDefsActs(cont));
+              assert L.DefGroups(r) == L.DefGroups(r1);      // DefGroups(LookaroundR)=DefGroups(body)
+              LkBodyGroupsActsSubAllDefs(cont);
+              assert S * LkBodyGroupsActs(cont) == {};       // DefGroups(r1) disjoint from cont's looks
               if L.Positivity(lk) {
-                assert |sub| > 0;              // else TreeRes(t, ..) would be None
-                assert sub[0].1 == gm;
+                var sub := LT.TreeLeaves(tlk, gm, inp, L.LkDir(lk));
+                LT.FirstTreeLeaf(tlk, gm, inp, L.LkDir(lk));
+                assert |sub| > 0;                            // else TreeRes(t, ..) would be None
+                LookBodyLeafOpenSub(rer, lk, r1, tlk, gm, inp, sub, S);
+                assert OpenOf(sub[0].1) <= OpenOf(gm);       // ensured
+                assert forall g :: g in sub[0].1 ==> g in gm || g in S;   // ensured
+                assert LT.TreeRes(tc, sub[0].1, inp, WP.Forward) == Some(leaf);  // LK positive unfold
+                assert DomLkDisjoint(sub[0].1, cont);
+                FirstLeafClosed(rer, cont, inp, b, tc, sub[0].1, leaf);
+              } else {
+                assert LT.TreeRes(tc, gm, inp, WP.Forward) == Some(leaf);        // LK negative unfold
+                assert DomLkDisjoint(gm, cont);
+                FirstLeafClosed(rer, cont, inp, b, tc, gm, leaf);
               }
-              FirstLeafClosed(rer, cont, inp, b, tc, gm, leaf);
             case LKFail(lk2, tlk) =>
               assert false;                    // LKFail has no leaves
             case _ =>
