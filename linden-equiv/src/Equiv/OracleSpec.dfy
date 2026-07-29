@@ -218,6 +218,128 @@ module LindenElkOracleSpec {
     case _ =>
   }
 
+  /** L3a: a LOOK-free RegElk body (captures allowed) translates into the
+      `GroupOkL` fragment — `GroupOkL` forbids only lookarounds and backreferences
+      (RegElk has no backref node), so captures (`Group` nodes) are fine. This is
+      what a CAPTURING lookahead body needs where the L1 lookbehind path used
+      `TranslateGroupFree` + `GroupFreeIsGroupOk`. */
+  lemma TranslateLookFreeGroupOk(re: R.regex)
+    requires T.TransWf(re)
+    requires NR.LookFreeRE(re)
+    ensures SD.GroupOkL(T.Translate(re))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => TranslateLookFreeGroupOk(r1); TranslateLookFreeGroupOk(r2);
+    case Re_con(r1, r2) => TranslateLookFreeGroupOk(r1); TranslateLookFreeGroupOk(r2);
+    case Re_quant(_, _, _, r1) => TranslateLookFreeGroupOk(r1);
+    case Re_capture(_, r1) => TranslateLookFreeGroupOk(r1);
+    case _ =>   // empty/char/anchor: GroupOkL true; Re_lookaround excluded by LookFreeRE
+  }
+
+  /** L3a: matching is GROUP-TRANSPARENT — a `Re_capture` node matches exactly its
+      child — so `remove_capture` preserves the match set. This bridges the oracle
+      (built over `remove_capture(body)`, group-free) to the body's own spans (over
+      which the `GroupOkL` span duality is stated). */
+  lemma MatchesRemoveCapture(re: R.regex, str: string, i: int, j: int)
+    ensures OB.Matches(R.remove_capture(re), str, i, j) <==> OB.Matches(re, str, i, j)
+    decreases CP.rsize(re), 0, 0
+  {
+    match re
+    case Re_alt(r1, r2) => MatchesRemoveCapture(r1, str, i, j); MatchesRemoveCapture(r2, str, i, j);
+    case Re_con(r1, r2) =>
+      forall m: int
+        ensures (OB.Matches(R.remove_capture(r1), str, i, m) && OB.Matches(R.remove_capture(r2), str, m, j))
+            <==> (OB.Matches(r1, str, i, m) && OB.Matches(r2, str, m, j))
+      { MatchesRemoveCapture(r1, str, i, m); MatchesRemoveCapture(r2, str, m, j); }
+    case Re_quant(nul, qid, q, r1) =>
+      forall k: nat
+        ensures OB.MatchesIter(R.remove_capture(r1), k, str, i, j) <==> OB.MatchesIter(r1, k, str, i, j)
+      { MatchesIterRemoveCapture(r1, k, str, i, j); }
+    case Re_capture(cid, r1) => MatchesRemoveCapture(r1, str, i, j);
+    case _ =>
+  }
+
+  /** The iteration-chain analogue of `MatchesRemoveCapture` (mutually recursive). */
+  lemma MatchesIterRemoveCapture(r: R.regex, k: nat, str: string, i: int, j: int)
+    ensures OB.MatchesIter(R.remove_capture(r), k, str, i, j) <==> OB.MatchesIter(r, k, str, i, j)
+    decreases CP.rsize(r), 1, k
+  {
+    if k > 0 {
+      forall m: int
+        ensures (OB.Matches(R.remove_capture(r), str, i, m) && OB.MatchesIter(R.remove_capture(r), k - 1, str, m, j))
+            <==> (OB.Matches(r, str, i, m) && OB.MatchesIter(r, k - 1, str, m, j))
+      { MatchesRemoveCapture(r, str, i, m); MatchesIterRemoveCapture(r, k - 1, str, m, j); }
+    }
+  }
+
+  /** `remove_capture` structural preservation: its output is capture-free, and it
+      preserves look-freeness, the plus fragment, and translation well-formedness
+      (it only deletes `Group` nodes). Establishes the fragment facts for the
+      capture-stripped body the oracle is actually built over. */
+  lemma RemoveCaptureCaptureFree(re: R.regex)
+    ensures NR.CaptureFreeRE(R.remove_capture(re))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => RemoveCaptureCaptureFree(r1); RemoveCaptureCaptureFree(r2);
+    case Re_con(r1, r2) => RemoveCaptureCaptureFree(r1); RemoveCaptureCaptureFree(r2);
+    case Re_quant(_, _, _, r1) => RemoveCaptureCaptureFree(r1);
+    case Re_capture(_, r1) => RemoveCaptureCaptureFree(r1);
+    case Re_lookaround(_, _, r1) => RemoveCaptureCaptureFree(r1);
+    case _ =>
+  }
+  lemma RemoveCaptureLookFree(re: R.regex)
+    requires NR.LookFreeRE(re)
+    ensures NR.LookFreeRE(R.remove_capture(re))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => RemoveCaptureLookFree(r1); RemoveCaptureLookFree(r2);
+    case Re_con(r1, r2) => RemoveCaptureLookFree(r1); RemoveCaptureLookFree(r2);
+    case Re_quant(_, _, _, r1) => RemoveCaptureLookFree(r1);
+    case Re_capture(_, r1) => RemoveCaptureLookFree(r1);
+    case _ =>
+  }
+  /** `remove_capture` preserves nullability (a `Group(r)` is nullable iff `r`
+      is) — the plus-fragment's `nullable(body) == NonNullable` side condition. */
+  lemma RemoveCaptureNullable(re: R.regex)
+    ensures R.nullable(R.remove_capture(re)) == R.nullable(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => RemoveCaptureNullable(r1); RemoveCaptureNullable(r2);
+    case Re_con(r1, r2) => RemoveCaptureNullable(r1); RemoveCaptureNullable(r2);
+    case Re_quant(_, _, _, r1) => RemoveCaptureNullable(r1);
+    case Re_capture(_, r1) => RemoveCaptureNullable(r1);
+    case Re_lookaround(_, _, r1) => RemoveCaptureNullable(r1);
+    case _ =>
+  }
+  lemma RemoveCapturePlusFragment(re: R.regex)
+    requires NR.PlusFragmentRE(re)
+    ensures NR.PlusFragmentRE(R.remove_capture(re))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => RemoveCapturePlusFragment(r1); RemoveCapturePlusFragment(r2);
+    case Re_con(r1, r2) => RemoveCapturePlusFragment(r1); RemoveCapturePlusFragment(r2);
+    case Re_quant(_, _, _, r1) => RemoveCapturePlusFragment(r1); RemoveCaptureNullable(r1);
+    case Re_capture(_, r1) => RemoveCapturePlusFragment(r1);
+    case _ =>
+  }
+  lemma RemoveCaptureTransWf(re: R.regex)
+    requires T.TransWf(re)
+    ensures T.TransWf(R.remove_capture(re))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => RemoveCaptureTransWf(r1); RemoveCaptureTransWf(r2);
+    case Re_con(r1, r2) => RemoveCaptureTransWf(r1); RemoveCaptureTransWf(r2);
+    case Re_quant(_, _, _, r1) => RemoveCaptureTransWf(r1);
+    case Re_capture(_, r1) => RemoveCaptureTransWf(r1);
+    case _ =>
+  }
+
   // ===========================================================================
   // The spec-level oracle characterization
   // ===========================================================================
@@ -404,7 +526,7 @@ module LindenElkOracleSpec {
     requires NR.LookBehindFragmentRE(re) && LT.LookUnique(re)
     requires LT.LookEntryOk(CP.FFullCompilation(re), lid, la, body)
     requires la.Lookahead? || la.NegLookahead?
-    requires NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    requires NR.LookFreeRE(body) && NR.PlusFragmentRE(body)   // L3a: capturing bodies allowed
     requires T.TransWf(body)
     requires 1 <= lid <= R.max_lookaround(re)
     requires 0 <= cp <= |str|
@@ -415,27 +537,36 @@ module LindenElkOracleSpec {
     var crv := CP.FFullCompilation(re);
     var n := |str|;
     var rstr := LC.Reverse(str);
-    var rb := R.reverse_regex(body);
-    var rrb := SD.RevRE(body);
+    // L3a: the oracle is built over the CAPTURE-STRIPPED body (oracle_regex uses
+    // remove_capture) — group-free, so the L1 oracle chain applies verbatim to
+    // `rcb`. The `MatchesRemoveCapture` bridge then transfers to the body's own
+    // spans (match existence is capture-blind), where the GroupOkL span duality
+    // reconstructs `SuccActs(Translate(body))`.
+    var rcb := R.remove_capture(body);
+    RemoveCaptureCaptureFree(body); RemoveCaptureLookFree(body);
+    RemoveCapturePlusFragment(body); RemoveCaptureTransWf(body);
+    TranslateLookFreeGroupOk(rcb);   // GroupOkL(Translate(rcb)) for MatchesReverseRE
+    TranslateLookFreeGroupOk(body);  // GroupOkL(Translate(body)) for the span duality
+    var rb := R.reverse_regex(rcb);
+    var rrb := SD.RevRE(rcb);
     SD.ReverseLength(str);
 
     // --- the build program for this row ------------------------------------
-    NR.RemoveCaptureFreeId(body);
-    assert CP.oracle_regex(la, body) == R.lazy_prefix(rb);
-    NR.ReverseLookFreeRE(body);
+    assert CP.oracle_regex(la, body) == R.lazy_prefix(rb);   // = lazy_prefix(reverse_regex(remove_capture(body)))
+    NR.ReverseLookFreeRE(rcb);
     OBu.LookFreeLazyPrefix(rb);
     var bc := CP.compile_to_write(R.lazy_prefix(rb), lid);
     assert AI.get_code_v(crv.f_look_build_bc, lid) == bc;
 
-    // --- the anchor-swapped build program IS compile_to_write(lazy_prefix(RevRE(body))) ---
+    // --- the anchor-swapped build program IS compile_to_write(lazy_prefix(RevRE(rcb))) ---
     OBu.CompileToWriteSwap(R.lazy_prefix(rb), lid);
     OBu.SwapAnchorsLazyPrefix(rb);
-    SwapReverseIsRevRE(body);
+    SwapReverseIsRevRE(rcb);
     assert MIR.SwapAnchorsCode(bc) == CP.compile_to_write(R.lazy_prefix(rrb), lid);
 
-    // --- fragment facts for RevRE(body) (it stays capture-/look-free + plus) ---
-    RevRELookFree(body);
-    RevREPlusFragment(body);
+    // --- fragment facts for RevRE(rcb) (capture-/look-free + plus) ---
+    RevRELookFree(rcb);
+    RevREPlusFragment(rcb);
 
     // --- oracle bit == a FORWARD reach of the swapped program over Reverse(str) ---
     OBu.FBuildOracleCorrect(re, str);
@@ -445,15 +576,12 @@ module LindenElkOracleSpec {
         <==> ORc.ReachesWrite(CP.compile_to_write(R.lazy_prefix(rrb), lid), rstr, 0, lid,
                               MIR.Mirror(cp, n));
 
-    // --- and that is a span of `body` starting at cp ------------------------
-    TranslateGroupFree(body);
-    SD.GroupFreeIsGroupOk(T.Translate(body));
-
     if LOr.view_get_oracle(AI.FBuildOracle(crv, str), cp, lid) {
       var m := OD.ReachesWriteToMatches(rrb, lid, rstr, MIR.Mirror(cp, n));
       // m is the span's START in the reversal; mirror it back
       var j := n - m;
-      MatchesReverseRE(rer, body, str, cp, j);
+      MatchesReverseRE(rer, rcb, str, cp, j);       // Matches(rcb, str, cp, j)
+      MatchesRemoveCapture(body, str, cp, j);        // <==> Matches(body, str, cp, j)
       assert OB.Matches(body, str, cp, j);
       MatchesTransfer(rer, body, str, cp, j);
       SD.SpanDualityForwardComplete(rer, T.Translate(body), str, cp, j, gm);
@@ -461,7 +589,8 @@ module LindenElkOracleSpec {
     if SD.SuccActs(rer, [LS.Areg(T.Translate(body))], T.InputAt(str, cp), gm, WP.Forward) {
       var j := SD.SpanDualityForwardSound(rer, T.Translate(body), str, cp, gm);
       MatchesTransfer(rer, body, str, cp, j);
-      MatchesReverseRE(rer, body, str, cp, j);
+      MatchesRemoveCapture(body, str, cp, j);        // Matches(body) <==> Matches(rcb)
+      MatchesReverseRE(rer, rcb, str, cp, j);
       assert OB.Matches(rrb, rstr, n - j, MIR.Mirror(cp, n));
       OB.MatchesToReachesWrite(rrb, lid, rstr, n - j, MIR.Mirror(cp, n));
     }
