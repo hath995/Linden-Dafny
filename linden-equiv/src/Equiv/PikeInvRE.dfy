@@ -821,6 +821,64 @@ module LindenElkPikeInv {
       else { FilterCaptureKeepsOdd(r1, cr, cc, lc, qc, -1, j); }
   }
 
+  /** `filter_all` writes only the START registers of `r`'s OWN groups, so any
+      register `k` that is no group's start register passes through unchanged. */
+  lemma FilterAllAgreeOutsideOwn(r: R.regex, regs: seq<int>, k: int)
+    requires k >= 0
+    requires forall g: nat :: g in CapIds(r) ==> CP.start_reg(g) != k
+    ensures AI.get_idx(AI.filter_all(r, regs), k) == AI.get_idx(regs, k)
+    decreases r
+  {
+    match r
+    case Re_empty => case Re_character(_) => case Re_anchor(_) =>
+    case Re_alt(r1, r2) => FilterAllAgreeOutsideOwn(r1, regs, k); FilterAllAgreeOutsideOwn(r2, AI.filter_all(r1, regs), k);
+    case Re_con(r1, r2) => FilterAllAgreeOutsideOwn(r1, regs, k); FilterAllAgreeOutsideOwn(r2, AI.filter_all(r1, regs), k);
+    case Re_quant(_, _, _, r1) => FilterAllAgreeOutsideOwn(r1, regs, k);
+    case Re_capture(cid, r1) =>
+      assert CP.start_reg(cid) != k by { if cid >= 0 { assert cid as nat in CapIds(r); } else { assert CP.start_reg(cid) == 2 * cid < 0; } }
+      SetIdxKeepsOther(regs, CP.start_reg(cid), k);
+      FilterAllAgreeOutsideOwn(r1, AI.set_idx(regs, CP.start_reg(cid), -1), k);
+    case Re_lookaround(_, _, r1) => FilterAllAgreeOutsideOwn(r1, regs, k);
+  }
+
+  /** `filter_capture` writes only the START registers of `r`'s OWN groups, so any
+      register `k` that is no group's start register passes through unchanged.
+      The frame that makes lookaround-body filtering invisible to outside groups. */
+  lemma FilterCaptureAgreeOutsideOwn(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, mx: int, k: int)
+    requires k >= 0
+    requires forall g: nat :: g in CapIds(r) ==> CP.start_reg(g) != k
+    ensures AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), k) == AI.get_idx(cr, k)
+    decreases r
+  {
+    match r
+    case Re_empty => case Re_character(_) => case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      FilterCaptureAgreeOutsideOwn(r1, cr, cc, lc, qc, mx, k);
+      FilterCaptureAgreeOutsideOwn(r2, AI.filter_capture(r1, cr, cc, lc, qc, mx), cc, lc, qc, mx, k);
+    case Re_con(r1, r2) =>
+      FilterCaptureAgreeOutsideOwn(r1, cr, cc, lc, qc, mx, k);
+      FilterCaptureAgreeOutsideOwn(r2, AI.filter_capture(r1, cr, cc, lc, qc, mx), cc, lc, qc, mx, k);
+    case Re_quant(nul, qid, q, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      if qv < mx { FilterAllAgreeOutsideOwn(r1, cr, k); } else { FilterCaptureAgreeOutsideOwn(r1, cr, cc, lc, qc, qv, k); }
+    case Re_capture(cid, r1) =>
+      assert CP.start_reg(cid) != k by { if cid >= 0 { assert cid as nat in CapIds(r); } else { assert CP.start_reg(cid) == 2 * cid < 0; } }
+      var start := AI.get_idx(cc, CP.start_reg(cid));
+      if start < 0 {
+        FilterAllAgreeOutsideOwn(r1, cr, k);
+      } else if start < mx {
+        SetIdxKeepsOther(cr, CP.start_reg(cid), k);
+        FilterAllAgreeOutsideOwn(r1, AI.set_idx(cr, CP.start_reg(cid), -1), k);
+      } else {
+        FilterCaptureAgreeOutsideOwn(r1, cr, cc, lc, qc, mx, k);
+      }
+    case Re_lookaround(lid, l, r1) =>
+      var lv := AI.get_idx(lc, lid);
+      if lv < 0 { FilterAllAgreeOutsideOwn(r1, cr, k); }
+      else if lv < mx { FilterAllAgreeOutsideOwn(r1, cr, k); }
+      else { FilterCaptureAgreeOutsideOwn(r1, cr, cc, lc, qc, -1, k); }
+  }
+
   // filter_reset preserves the register-array length.
   /** `filter_all` preserves the register-array length. */
   lemma FilterAllLen(r: R.regex, regs: seq<int>)
