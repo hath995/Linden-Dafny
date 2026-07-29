@@ -1897,6 +1897,51 @@ module LindenElkMain {
     }
   }
 
+  /** §4 VALUE-LIFT ENGINE BRIDGE (per matched lid): the ACTUAL FFindMatchPlus
+      replay from the fold's `cap` agrees, on `CaptureRegs(body)`, with a replay
+      from FRESH registers, and matches iff-together. `FReconstructPlus` is the
+      identity on the `QuantRegsFinal` result (`FNulledPlusIdentity`), so the
+      FFindMatchPlus capture bank IS the FFindMatch one; then the register-value-
+      blind bisimulation `ReplayCapAgreeFresh` ties it to the fresh replay. This
+      is the one non-trivial engine step the FLookLoop value induction consumes. */
+  lemma ReplayLidCapAgreeFresh(bytecode: RB.code, str: string, cp: int, cap: AReg.Regs, lk: AReg.Regs,
+                               qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
+                               body: R.regex, la: R.lookaround, ncap: int, nlook: int, nquant: int)
+    requires NR.LookBehindFragmentRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires la.Lookahead?
+    requires bytecode == CP.compile_to_bytecode(body)
+    requires 0 <= cp <= |str|
+    requires AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    requires CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+    ensures
+      var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Forward, cp, cap, lk, qt, 0, lookcdn).0;
+      var rf := AI.FFindMatch(bytecode, str,
+                  AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                  ov, LAnc.Forward, lookcdn).0;
+      (result.None? <==> rf.None?)
+      && (result.Some? ==> CM.RegsAgreeInside(result.value.capture_regs, rf.value.capture_regs, PIV.CaptureRegs(body)))
+  {
+    var dir := LAnc.Forward;
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
+    // the FFindMatchPlus capture bank == the FFindMatch capture bank (reconstruct
+    // is the identity for a QuantRegsFinal result).
+    NoTrueQuantStamp(body);
+    assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
+    FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
+    var (fmres, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+    if fmres.Some? {
+      FNulledPlusIdentity(body, fmres.value.capture_regs, fmres.value.look_regs, fmres.value.quant_regs,
+                          plus_bcv, str, ovx, dir);
+    }
+    // the register-value-blind bisimulation: FFindMatch(from cap) ~ FFindMatch(from fresh).
+    ReplayCapAgreeFresh(bytecode, str, cp, cap, lk, qt, ov, lookcdn, body, ncap, nlook, nquant);
+  }
+
   /** §4b ENGINE BRIDGE: the body replay from the MAIN thread's `cap/lk/qt`
       agrees, on `CaptureRegs(body)`, with the replay from FRESH registers. `cap`
       has the body's ids UNSET (the main pass writes only outside-look captures,
