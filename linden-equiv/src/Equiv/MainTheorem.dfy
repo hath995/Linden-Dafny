@@ -2855,6 +2855,44 @@ module LindenElkMain {
     }
   }
 
+  /** Lookbehind companion of `FFindMatchPlusOvStable`: a capture-free lookbehind
+      replay reads the oracle but never writes it, so it leaves `ov` unchanged.
+      The bytecode is `compile_to_bytecode(reverse_regex(body))` (the backward
+      capture regex); reversal preserves look-freedom / plus-fragment / quant
+      uniqueness, so the same no-oracle-write + quant-final argument applies. The
+      backward context fact (`nextchar == get_char(str, cp-1)`) is definitional. */
+  lemma FFindMatchPlusOvStableLB(bytecode: RB.code, str: string, ov: LOr.OracleView, dir: LAnc.direction,
+                                 lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                                 cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
+    requires NR.LookFreeRE(body) && NR.PlusFragmentRE(body) && NR.CaptureFreeRE(body) && PIV.QuantUnique(body)
+    requires la.Lookbehind? && dir == LAnc.Backward
+    requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    ensures AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp, cap, lk, qt, 0, lookcdn).1 == ov
+  {
+    var rbody := R.reverse_regex(body);
+    NR.ReversePlusFragmentRE(body);          // PlusFragmentRE(rbody)
+    NR.PlusIsLookBehindFragmentRE(rbody);    // LookBehindFragmentRE(rbody)
+    PIV.ReverseQuantUnique(body);            // QuantUnique(rbody)
+    PIV.ReverseCaptureFree(body);            // CaptureFreeRE(rbody)
+    LKC.CaptureFreeCapUnique(rbody);         // CapUnique(rbody)
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
+    assert inits.context.nextchar == AI.get_char(str, cp - 1);   // cp_context Backward definitional
+    NoWriteOracleBodyCode(rbody);
+    CM.FFindMatchOvStable(bytecode, str, inits, ov, dir, lookcdn);   // FFindMatch(...).1 == ov
+    NoTrueQuantStamp(rbody);
+    assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
+    FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
+    var (res0, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+    assert ovx == ov;
+    if res0.Some? {
+      var th := res0.value;
+      assert QuantRegsFinal(th);
+      FNulledPlusIdentity(body, th.capture_regs, th.look_regs, th.quant_regs, plus_bcv, str, ovx, dir);
+    }
+  }
+
   // ==========================================================================
   // L3a §4 — the FLookLoop VALUE lift vocabulary. The §4a frame says what
   // FLookLoop leaves UNCHANGED (outside S); the value lift says what it WRITES:
@@ -3072,10 +3110,10 @@ module LindenElkMain {
         && PIV.CaptureRegs(body) <= S
         && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(mainast))
         && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
-    // lookahead-only: every matched CAPTURING lid is a positive forward lookahead
-    requires forall l: int :: (lid <= l <= maxlook && AReg.get_cp(lk, l).Some?
-        && AI.capture_type(if 0 <= l < |crv.f_look_types| then crv.f_look_types[l] else R.Lookahead)) ==>
-      (if 0 <= l < |crv.f_look_types| then crv.f_look_types[l] else R.Lookahead).Lookahead?
+    // NOTE (L3a full fragment): NO lookahead-only requires. A capturing body is
+    // necessarily a positive forward lookahead (fragment), and capture-free
+    // positive lookbehinds are stepped through as the identity below -- so the
+    // value lift holds for the whole fragment (lookbehinds included).
     // each matched body's own registers are UNSET in the incoming `cap`
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
       CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(VBody(crv, l)))
@@ -3116,22 +3154,25 @@ module LindenElkMain {
           && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(mainast))
           && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
         assert looktype == la;
-        assert la.Lookahead?;                    // lookahead-only requires
         assert body == VBody(crv, lid);
         var bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
         var dir := AI.capture_direction(looktype);
         var lookcdn := if 0 <= lid < |crv.f_look_cdns| then crv.f_look_cdns[lid] else [];
         var lookast := if 0 <= lid < |crv.f_look_ast| then crv.f_look_ast[lid] else R.Re_empty;
-        assert dir == LAnc.Forward && CP.capture_regex(la, body) == body;
-        assert bytecode == CP.compile_to_bytecode(body) && lookast == body;
+        assert lookast == body;
+        assert bytecode == CP.compile_to_bytecode(CP.capture_regex(la, body));
         var (result, ov1) := AI.FFindMatchPlus(bytecode, lookast, crv.f_plus_bc, str, ov, dir,
                                                cp, cap, lk, qt, 0, lookcdn);
         var capN := if result.None? then cap else result.value.capture_regs;
         var lkN := if result.None? then lk else result.value.look_regs;
         var qtN := if result.None? then qt else result.value.quant_regs;
         assert res == AI.FLookLoop(crv, str, next, maxlook, capN, lkN, qtN, ov1);
-
         NR.PlusIsLookBehindFragmentRE(body);
+        // capture_type(la) holds => la is Lookahead (positive forward, may
+        // capture) or Lookbehind (capture-free -> the identity on captures).
+        if la.Lookahead? {
+        assert dir == LAnc.Forward && CP.capture_regex(la, body) == body;
+        assert bytecode == CP.compile_to_bytecode(body);
         FFindMatchPlusOvStable(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
         assert ov1 == ov;
         ReplayPlusFrame(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
@@ -3245,6 +3286,58 @@ module LindenElkMain {
               assert CM.RegsAgreeInside(res.0, AReg.init_regs(ncap), PIV.CaptureRegs(body));
             }
           }
+        }
+        } else {
+          // ---- capture-free positive LOOKBEHIND: the replay is the identity ----
+          // capture_type(la) && !la.Lookahead? => la.Lookbehind?; its body is
+          // capture-free, so the backward replay writes no captures. `res.0` is
+          // untouched on every value-relevant register and `MatchedPosLA(lid)` is
+          // false (not a lookahead), so the value conclusion is `ValueOkSkipLid`.
+          assert la.Lookbehind?;
+          assert NR.CaptureFreeRE(body);
+          assert dir == LAnc.Backward;
+          assert CP.capture_regex(la, body) == R.reverse_regex(body);
+          assert bytecode == CP.compile_to_bytecode(R.reverse_regex(body));
+          var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
+          ReplayFrames(bytecode, str, inits, ov, dir, lookcdn, cap, lk, qt, la, body);
+          var (res0, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+          FFindMatchPlusOvStableLB(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+          assert ov1 == ov;
+          // FReconstructPlus is the identity (quant-final), so result == res0 on regs
+          assert result.Some? ==> res0.Some?;
+          if result.Some? {
+            var th := res0.value;
+            assert QuantRegsFinal(th);
+            FNulledPlusIdentity(lookast, th.capture_regs, th.look_regs, th.quant_regs, crv.f_plus_bc, str, ovx, dir);
+            assert AI.FReconstructPlus(th, lookast, crv.f_plus_bc, str, ovx, dir).0 == th;
+            assert result.value == res0.value;          // FReconstructPlus identity: result == th == res0
+            assert qtN == res0.value.quant_regs;
+            // register lengths of the replay result, via FFindMatchRegsWf (direction-generic)
+            assert cp_ctx_ok(crv, str, lk, lid);
+            assert 0 <= cp <= |str|;
+            assert CM.VmRegsWf(inits, ncap, nlook, nquant) by {
+              assert CM.ThreadRegsWf(AI.init_thread(cap, lk, qt), ncap, nlook, nquant);
+              assert inits.active == [AI.init_thread(cap, lk, qt)];
+              forall t | t in inits.active ensures CM.ThreadRegsWf(t, ncap, nlook, nquant) {}
+            }
+            FFindMatchRegsWf(bytecode, str, inits, ov, dir, lookcdn, ncap, nlook, nquant);
+            assert CM.ThreadRegsWf(res0.value, ncap, nlook, nquant);      // res0 == FFindMatch(...)
+            assert |qtN.a_cp| == nquant && |qtN.a_clk| == nquant;
+            assert QuantRegsFinal(res0.value);
+            assert (forall k :: AI.get_idx(qtN.a_cp, k) < 0) && (forall k :: AI.get_idx(qtN.a_clk, k) >= -1);
+          } else {
+            assert qtN == qt && capN == cap && lkN == lk;
+            assert |qtN.a_cp| == nquant && |qtN.a_clk| == nquant;                       // qt incoming
+            assert (forall k :: AI.get_idx(qtN.a_cp, k) < 0) && (forall k :: AI.get_idx(qtN.a_clk, k) >= -1);
+          }
+          assert capN == cap && lkN == lk;              // identity on caps/looks
+          assert |capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN);   // capN == cap
+          assert |qtN.a_cp| == nquant && |qtN.a_clk| == nquant;
+          assert (forall k :: AI.get_idx(qtN.a_cp, k) < 0) && (forall k :: AI.get_idx(qtN.a_clk, k) >= -1);
+          FLookLoopValueLift(crv, str, next, maxlook, capN, lkN, qtN, ov1, mainast, S, ncap, nlook, nquant);
+          assert FLookLoopValueOk(crv, str, res.0, next, maxlook, lk, ov, ncap, nlook, nquant);   // lkN==lk, ov1==ov
+          assert !MatchedPosLA(crv, lk, lid);           // looktype == Lookbehind, not Lookahead
+          ValueOkSkipLid(crv, str, res.0, lid, maxlook, lk, ov, ncap, nlook, nquant);
         }
       }
   }
