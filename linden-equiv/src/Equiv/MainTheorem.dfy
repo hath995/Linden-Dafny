@@ -3502,6 +3502,79 @@ module LindenElkMain {
 
   }
 
+  /** L3a extension of `OE.LmOfInv`: mirrors its recursion but ALSO threads
+      `CapUnique(re)` to derive `CapUnique(body)` and `CapIds(body) <=
+      CapIdsInLooks(re)`. The body is pinned to the table row (`LookEntryOk`
+      forces `body == fc.f_look_ast[lid]`), so it agrees with `LmOfInv`'s body.
+      These are the two capture-side facts the L3a `FLookLoop` frame/value lift
+      ask of each matched lookaround, on top of what `LmOfInv` already gives. */
+  lemma LmOfInvL3a(re: R.regex, fc: CP.FCompiled, lid: int)
+    returns (la: R.lookaround, body: R.regex)
+    requires T.TransWf(re) && NR.LookBehindFragmentRE(re)
+    requires LTB.LookUnique(re) && LTB.LookTablesOk(re, fc)
+    requires PIV.QuantUnique(re) && PIV.CapUnique(re)
+    requires lid in OE.LmOf(re)
+    ensures T.TransWf(body)
+    ensures OE.LmOf(re)[lid] == (T.TrLookaround(la), T.Translate(body))
+    ensures LTB.LookEntryOk(fc, lid, la, body)
+    ensures (la.Lookahead? || NR.CaptureFreeRE(body)) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    ensures lid >= 0 && (lid as nat) in LTB.LookIds(re)
+    ensures PIV.QuantUnique(body)
+    ensures forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(re)
+    ensures PIV.CapUnique(body)
+    ensures PIV.CapIds(body) <= PIV.CapIdsInLooks(re)
+    decreases re
+  {
+    OE.LmOfDom(re);
+    // the L1 half of the body facts, from the shared inversion
+    la, body := OE.LmOfInv(re, fc, lid);
+    // the two capture facts, by a parallel recursion threading CapUnique(re)
+    match re
+    case Re_alt(r1, r2) =>
+      OE.LmOfDom(r1); OE.LmOfDom(r2);
+      if lid in OE.LmOf(r2) {
+        var la2, body2 := LmOfInvL3a(r2, fc, lid);
+        LookEntryBody(fc, lid, la, body, la2, body2);
+      } else {
+        assert lid in OE.LmOf(r1);
+        var la2, body2 := LmOfInvL3a(r1, fc, lid);
+        LookEntryBody(fc, lid, la, body, la2, body2);
+      }
+    case Re_con(r1, r2) =>
+      OE.LmOfDom(r1); OE.LmOfDom(r2);
+      if lid in OE.LmOf(r2) {
+        var la2, body2 := LmOfInvL3a(r2, fc, lid);
+        LookEntryBody(fc, lid, la, body, la2, body2);
+      } else {
+        assert lid in OE.LmOf(r1);
+        var la2, body2 := LmOfInvL3a(r1, fc, lid);
+        LookEntryBody(fc, lid, la, body, la2, body2);
+      }
+    case Re_quant(_, _, _, r1) =>
+      var la2, body2 := LmOfInvL3a(r1, fc, lid);
+      LookEntryBody(fc, lid, la, body, la2, body2);
+    case Re_capture(_, r1) =>
+      var la2, body2 := LmOfInvL3a(r1, fc, lid);
+      LookEntryBody(fc, lid, la, body, la2, body2);
+    case Re_lookaround(lid0, la0, r1) =>
+      OE.LmOfDom(r1);
+      OE.LookFreeLmOfEmpty(r1);
+      assert lid == lid0;
+      assert body == r1;                      // LookEntryOk pins body == r1
+      // CapIdsInLooks(Re_lookaround(_,_,r1)) == CapIds(r1); CapUnique(re) == CapUnique(r1)
+      assert PIV.CapIdsInLooks(re) == PIV.CapIds(r1);
+      assert PIV.CapUnique(r1);
+  }
+
+  /** Two inversions of the SAME lid share a body: `LookEntryOk` forces both to
+      equal `fc.f_look_ast[lid]`, so the sub-recursion's capture facts transfer
+      to the shared body. */
+  lemma LookEntryBody(fc: CP.FCompiled, lid: int, la: R.lookaround, body: R.regex,
+                      la2: R.lookaround, body2: R.regex)
+    requires LTB.LookEntryOk(fc, lid, la, body) && LTB.LookEntryOk(fc, lid, la2, body2)
+    ensures body == body2
+  {}
+
   /** Under the widened gate the look bank really can be written. Every slot
       the main pass sets names a lookaround id of `re`, and `LmOfInv` turns that
       id into its table row -- which the fragment forces to be an L1 lookbehind.
@@ -3576,6 +3649,95 @@ module LindenElkMain {
         assert (l as nat) in LTB.LookIds(ast);
         assert l in OE.LmOf(ast);
         var la, body := OE.LmOfInv(ast, crv, l);
+      }
+    }
+  }
+
+  /** L3a producer of the `FLookLoop` FRAME bundle. Same table-driven argument
+      as `LookRowsFromTables`, but (a) drops the universal `CaptureFreeRE(body)`
+      (only NON-lookahead flavours are capture-free now) and (b) adds the two
+      capture-side facts every `FLookLoop`-frame/value lemma asks of a matched
+      body: `CapUnique(body)` and `CaptureRegs(body) <= S`, where `S` is the
+      register set of ALL inside-look captures. Feeds `FLookLoopCaptureFrame` /
+      `FLookLoopQuantFrame` (outside bridge) and the existential half of the
+      `FLookLoopValueLift` hypothesis. Full fragment — capture-free lookbehinds
+      included. */
+  lemma LookRowsFromTablesL3a(ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code,
+                              str: string, ov: LOr.OracleView, cdn: LCdn.cdns,
+                              inits: AI.VmState, cap: AReg.Regs, look: AReg.Regs,
+                              quant: AReg.Regs, nlook: int, endl: nat,
+                              result: Option<AI.Thread>)
+    requires T.TransWf(ast) && T.TransWf(re) && re == R.lazy_prefix(ast)
+    requires NR.LookBehindFragmentRE(re) && LTB.LookUnique(re) && PIV.QuantUnique(re)
+    requires PIV.CapUnique(re)
+    requires crv == CP.FFullCompilation(ast)
+    requires code == CP.compile_to_bytecode(re)
+    requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires nlook == R.max_lookaround(ast) + 1 && look == AReg.init_regs(nlook)
+    requires |inits.processed.true_set| == RB.size(code)
+          && |inits.processed.false_set| == RB.size(code)
+    requires inits.context.nextchar == AI.get_char(str, inits.cp)
+    requires inits.active == [AI.init_thread(cap, look, quant)]
+    requires inits.blocked == [] && inits.bestmatch.None?
+    requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
+    ensures result.Some? ==>
+      forall l: int :: 1 <= l <= R.max_lookaround(ast)
+                       && AReg.get_cp(result.value.look_regs, l).Some? ==>
+        exists la: R.lookaround, body: R.regex ::
+          LTB.LookEntryOk(crv, l, la, body)
+          && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+          && PIV.CapUnique(body) && PIV.QuantUnique(body)
+          && PIV.CaptureRegs(body) <= PIV.CaptureRegsSet(PIV.CapIdsInLooks(ast))
+          && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
+          && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
+  {
+    var S: set<int> := set x: nat | x in LTB.LookIds(re) :: x as int;
+    // the code only gates on ids `re` actually owns
+    forall pc: nat | pc < |code|
+      ensures (code[pc].CheckOracle? ==> code[pc].col in S)
+           && (code[pc].NegCheckOracle? ==> code[pc].ncl in S)
+    {
+      assert NR.GetPcRE(code, pc) == Some(code[pc]);
+      if pc != endl { PIV.LookCheckIdsRE(re, code, 0, endl, pc); }
+    }
+    assert CM.LookChecksInside(code, S);
+    assert CM.VmLooksAgree(inits, look, S) by {
+      assert CM.RegsAgreeOutside(look, look, S);
+    }
+    CM.FFindMatchLookFrame(code, str, inits, ov, LAnc.Forward, cdn, look, S);
+
+    // the lazy prefix owns no lookaround, so `re`'s ids are `ast`'s
+    var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false),
+                          R.Re_character(R.Dot));
+    assert re == R.Re_con(pre, ast);
+    assert LTB.LookIds(pre) == {};
+    assert LTB.LookIds(re) == LTB.LookIds(ast);
+    assert PIV.QuantUnique(ast) && LTB.LookUnique(ast);
+    assert NR.LookBehindFragmentRE(ast);
+    assert PIV.CapUnique(ast);              // CapUnique(Re_con(pre, ast)) => CapUnique(ast)
+    LTB.FFullCompilationLookOk(ast);
+    OE.LmOfDom(ast);
+    RL.AInitLaws(nlook);
+
+    if result.Some? {
+      forall l: int | 1 <= l <= R.max_lookaround(ast)
+                      && AReg.get_cp(result.value.look_regs, l).Some?
+        ensures exists la: R.lookaround, body: R.regex ::
+          LTB.LookEntryOk(crv, l, la, body)
+          && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+          && PIV.CapUnique(body) && PIV.QuantUnique(body)
+          && PIV.CaptureRegs(body) <= PIV.CaptureRegsSet(PIV.CapIdsInLooks(ast))
+          && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
+          && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
+      {
+        assert l in S;
+        assert (l as nat) in LTB.LookIds(ast);
+        assert l in OE.LmOf(ast);
+        var la, body := LmOfInvL3a(ast, crv, l);
+        // CaptureRegs(body) <= CaptureRegsSet(CapIdsInLooks(ast))
+        PIV.CaptureRegsIsSet(body);          // CaptureRegs(body) == CaptureRegsSet(CapIds(body))
+        PIV.CaptureRegsSetMono(PIV.CapIds(body), PIV.CapIdsInLooks(ast));
       }
     }
   }
