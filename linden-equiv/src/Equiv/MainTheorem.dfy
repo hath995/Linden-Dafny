@@ -3575,6 +3575,86 @@ module LindenElkMain {
     ensures body == body2
   {}
 
+  /** DISTINCT lookaround ids own bodies with DISJOINT capture ids. A body's
+      captures sit under exactly one alt/con branch (lookaround bodies are
+      look-free, so looks never nest), and `CapUnique` makes sibling branches
+      share no ids. The cross-lid half of the value lift's per-body-disjoint
+      hypothesis (lifted to registers by `PIV.CaptureRegsDisjoint`). */
+  lemma LmOfBodiesDisjoint(re: R.regex, fc: CP.FCompiled, l1: int, l2: int)
+    returns (la1: R.lookaround, b1: R.regex, la2: R.lookaround, b2: R.regex)
+    requires T.TransWf(re) && NR.LookBehindFragmentRE(re)
+    requires LTB.LookUnique(re) && LTB.LookTablesOk(re, fc)
+    requires PIV.QuantUnique(re) && PIV.CapUnique(re)
+    requires l1 in OE.LmOf(re) && l2 in OE.LmOf(re) && l1 != l2
+    ensures LTB.LookEntryOk(fc, l1, la1, b1) && LTB.LookEntryOk(fc, l2, la2, b2)
+    ensures PIV.CapIds(b1) * PIV.CapIds(b2) == {}
+    decreases re
+  {
+    OE.LmOfDom(re);
+    match re
+    case Re_alt(r1, r2) =>
+      OE.LmOfDom(r1); OE.LmOfDom(r2);
+      if l1 in OE.LmOf(r2) && l2 in OE.LmOf(r2) {
+        la1, b1, la2, b2 := LmOfBodiesDisjoint(r2, fc, l1, l2);
+      } else if l1 in OE.LmOf(r1) && l2 in OE.LmOf(r1) {
+        la1, b1, la2, b2 := LmOfBodiesDisjoint(r1, fc, l1, l2);
+      } else {
+        AltConBodiesSplit(re, r1, r2, fc, l1, l2);
+        if l1 in OE.LmOf(r1) {
+          assert l2 in OE.LmOf(r2);
+          la1, b1 := LmOfInvL3a(r1, fc, l1);
+          la2, b2 := LmOfInvL3a(r2, fc, l2);
+        } else {
+          assert l1 in OE.LmOf(r2) && l2 in OE.LmOf(r1);
+          la1, b1 := LmOfInvL3a(r2, fc, l1);
+          la2, b2 := LmOfInvL3a(r1, fc, l2);
+        }
+        PIV.CapIdsSplit(r1); PIV.CapIdsSplit(r2);   // CapIdsInLooks(ri) <= CapIds(ri)
+      }
+    case Re_con(r1, r2) =>
+      OE.LmOfDom(r1); OE.LmOfDom(r2);
+      if l1 in OE.LmOf(r2) && l2 in OE.LmOf(r2) {
+        la1, b1, la2, b2 := LmOfBodiesDisjoint(r2, fc, l1, l2);
+      } else if l1 in OE.LmOf(r1) && l2 in OE.LmOf(r1) {
+        la1, b1, la2, b2 := LmOfBodiesDisjoint(r1, fc, l1, l2);
+      } else {
+        AltConBodiesSplit(re, r1, r2, fc, l1, l2);
+        if l1 in OE.LmOf(r1) {
+          assert l2 in OE.LmOf(r2);
+          la1, b1 := LmOfInvL3a(r1, fc, l1);
+          la2, b2 := LmOfInvL3a(r2, fc, l2);
+        } else {
+          assert l1 in OE.LmOf(r2) && l2 in OE.LmOf(r1);
+          la1, b1 := LmOfInvL3a(r2, fc, l1);
+          la2, b2 := LmOfInvL3a(r1, fc, l2);
+        }
+        PIV.CapIdsSplit(r1); PIV.CapIdsSplit(r2);
+      }
+    case Re_quant(_, _, _, r1) => la1, b1, la2, b2 := LmOfBodiesDisjoint(r1, fc, l1, l2);
+    case Re_capture(_, r1) => la1, b1, la2, b2 := LmOfBodiesDisjoint(r1, fc, l1, l2);
+    case Re_lookaround(lid0, la0, r1) =>
+      OE.LmOfDom(r1);
+      OE.LookFreeLmOfEmpty(r1);          // r1 look-free => LmOf(r1) == map[], so LmOf(re) == {lid0}
+      assert l1 == lid0 && l2 == lid0;   // both in the singleton dom, contradicting l1 != l2
+  }
+
+  /** In an alt/con `re == C(r1, r2)`, `LmOf(re) == LmOf(r1) + LmOf(r2)` with
+      DISJOINT domains (LookUnique), so each lid lands in exactly one branch. */
+  lemma AltConBodiesSplit(re: R.regex, r1: R.regex, r2: R.regex, fc: CP.FCompiled, l1: int, l2: int)
+    requires T.TransWf(re) && LTB.LookUnique(re)
+    requires re.Re_alt? || re.Re_con?
+    requires re.Re_alt? ==> re == R.Re_alt(r1, r2)
+    requires re.Re_con? ==> re == R.Re_con(r1, r2)
+    requires l1 in OE.LmOf(re) && l2 in OE.LmOf(re)
+    ensures (l1 in OE.LmOf(r1)) <==> (l1 !in OE.LmOf(r2))
+    ensures (l2 in OE.LmOf(r1)) <==> (l2 !in OE.LmOf(r2))
+    ensures l1 in OE.LmOf(r1) || l1 in OE.LmOf(r2)
+    ensures l2 in OE.LmOf(r1) || l2 in OE.LmOf(r2)
+  {
+    OE.LmOfDom(re); OE.LmOfDom(r1); OE.LmOfDom(r2);
+    // LookUnique(C(r1,r2)) => LookIds(r1) * LookIds(r2) == {}
+  }
+
   /** Under the widened gate the look bank really can be written. Every slot
       the main pass sets names a lookaround id of `re`, and `LmOfInv` turns that
       id into its table row -- which the fragment forces to be an L1 lookbehind.
@@ -3691,6 +3771,13 @@ module LindenElkMain {
           && PIV.CaptureRegs(body) <= PIV.CaptureRegsSet(PIV.CapIdsInLooks(ast))
           && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
           && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
+    // distinct matched lids own DISJOINT capture registers
+    ensures result.Some? ==>
+      forall l1: int, l2: int ::
+        1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 != l2
+        && AReg.get_cp(result.value.look_regs, l1).Some?
+        && AReg.get_cp(result.value.look_regs, l2).Some? ==>
+        PIV.CaptureRegs(VBody(crv, l1)) * PIV.CaptureRegs(VBody(crv, l2)) == {}
   {
     var S: set<int> := set x: nat | x in LTB.LookIds(re) :: x as int;
     // the code only gates on ids `re` actually owns
@@ -3738,6 +3825,19 @@ module LindenElkMain {
         // CaptureRegs(body) <= CaptureRegsSet(CapIdsInLooks(ast))
         PIV.CaptureRegsIsSet(body);          // CaptureRegs(body) == CaptureRegsSet(CapIds(body))
         PIV.CaptureRegsSetMono(PIV.CapIds(body), PIV.CapIdsInLooks(ast));
+      }
+      forall l1: int, l2: int |
+        1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 != l2
+        && AReg.get_cp(result.value.look_regs, l1).Some?
+        && AReg.get_cp(result.value.look_regs, l2).Some?
+        ensures PIV.CaptureRegs(VBody(crv, l1)) * PIV.CaptureRegs(VBody(crv, l2)) == {}
+      {
+        assert l1 in S && l2 in S;
+        assert (l1 as nat) in LTB.LookIds(ast) && (l2 as nat) in LTB.LookIds(ast);
+        assert l1 in OE.LmOf(ast) && l2 in OE.LmOf(ast);
+        var la1, b1, la2, b2 := LmOfBodiesDisjoint(ast, crv, l1, l2);
+        assert b1 == VBody(crv, l1) && b2 == VBody(crv, l2);   // LookEntryOk pins bodies
+        PIV.CaptureRegsDisjoint(b1, b2);
       }
     }
   }
