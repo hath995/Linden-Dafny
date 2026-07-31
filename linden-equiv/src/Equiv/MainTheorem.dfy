@@ -1124,6 +1124,87 @@ module LindenElkMain {
     }
   }
 
+  // ==========================================================================
+  // (E) The INSIDE-look ENGINE value bridge. For a group `g` owned by a matched
+  // lookahead body, the whole-regex live denotation of the RECONSTRUCTED bank
+  // `cap0` (= `FLookLoop`'s `res.0`) at `g` equals the body's own live
+  // denotation of the FRESH body match `cap1`. Both reduce to the same raw
+  // `LiveRange` (they agree on `g`'s registers, `RegsAgreeInside` on
+  // `CaptureRegs(body)`); the only work is that `filter_capture` KEEPS the value
+  // on both sides. Absent case: `filter_capture` can only make a group MORE
+  // absent, so an unset `g` is absent both sides (no path facts). Present case:
+  // `GmOfLiveKeepsPresentLk` on each side, taking the path-presence conditions as
+  // hypotheses (these are discharged at final wiring, alongside the position
+  // correspondence — the outer path to the matched look is a winning-thread fact).
+  // ==========================================================================
+
+  /** (E) ABSENT half: if `g`'s start value is unset in `cap0` (hence in `cap1`,
+      by agreement), then `g` is absent from BOTH live denotations. Fully
+      self-contained — `filter_capture` never resurrects an unset group. */
+  lemma GmOfLiveInsideLookAbsentEq(re: R.regex, body: R.regex,
+                                   cap0: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+                                   cap1: AReg.Regs, look1: AReg.Regs, quant1: AReg.Regs, g: nat)
+    requires g in PIV.CapIds(body)
+    requires CM.RegsAgreeInside(cap0, cap1, PIV.CaptureRegs(body))
+    requires AI.get_idx(AReg.as_arrays(cap0).0, CP.start_reg(g)) < 0
+    ensures g !in PIV.GmOfLive(re, cap0, look, quant)
+    ensures g !in PIV.GmOfLive(body, cap1, look1, quant1)
+  {
+    assert CP.start_reg(g) in PIV.CaptureRegs(body);
+    var cr0 := AReg.as_arrays(cap0).0; var cc0 := AReg.as_arrays(cap0).1;
+    var lc := AReg.as_arrays(look).1;  var qc := AReg.as_arrays(quant).1;
+    var f0 := AI.filter_reset(re, cap0, look, quant, -1);
+    assert f0 == AI.filter_capture(re, cr0, cc0, lc, qc, -1);
+    PIV.FilterCaptureNeg(re, cr0, cc0, lc, qc, -1, CP.start_reg(g));
+    assert AI.get_idx(f0, CP.start_reg(g)) < 0;
+
+    var cr1 := AReg.as_arrays(cap1).0; var cc1 := AReg.as_arrays(cap1).1;
+    var lc1 := AReg.as_arrays(look1).1; var qc1 := AReg.as_arrays(quant1).1;
+    assert AI.get_idx(cr1, CP.start_reg(g)) == AI.get_idx(cr0, CP.start_reg(g));   // RegsAgreeInside
+    var f1 := AI.filter_reset(body, cap1, look1, quant1, -1);
+    assert f1 == AI.filter_capture(body, cr1, cc1, lc1, qc1, -1);
+    PIV.FilterCaptureNeg(body, cr1, cc1, lc1, qc1, -1, CP.start_reg(g));
+    assert AI.get_idx(f1, CP.start_reg(g)) < 0;
+  }
+
+  /** (E) PRESENT half: when `g`'s start is set in the fresh body match `cap1`
+      and BOTH descents are path-present (the outer look matched + the inner body
+      captured `g`), each side's live denotation is the raw `LiveRange` of its own
+      bank, and the banks agree on `g`'s registers — so the two denotations are
+      equal and `g` is present both sides. The path-presence hypotheses are the
+      wiring's job (the outer `PathPresentLk(re, cap0)` is a winning-thread fact,
+      coupled to the position correspondence). */
+  lemma GmOfLiveInsideLookPresentEq(re: R.regex, body: R.regex,
+                                    cap0: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+                                    cap1: AReg.Regs, look1: AReg.Regs, quant1: AReg.Regs, g: nat)
+    requires NR.LookBehindFragmentRE(re) && PIV.CapUnique(re)
+    requires NR.LookBehindFragmentRE(body) && PIV.CapUnique(body)
+    requires g in PIV.CapIds(re) && g in PIV.CapIds(body)
+    requires CM.RegsAgreeInside(cap0, cap1, PIV.CaptureRegs(body))
+    requires AI.get_idx(AReg.as_arrays(cap1).1, CP.start_reg(g)) >= 0        // fresh clock set
+    requires AI.get_idx(AReg.as_arrays(cap1).0, CP.start_reg(g)) >= 0        // fresh value set
+    requires PIV.PathPresentLk(re, AReg.as_arrays(cap0).1, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, g)
+    requires AI.get_idx(AReg.as_arrays(cap0).1, CP.start_reg(g))
+               >= PIV.MxAtGidLk(re, AReg.as_arrays(cap0).1, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, g)
+    requires PIV.PathPresentLk(body, AReg.as_arrays(cap1).1, AReg.as_arrays(look1).1, AReg.as_arrays(quant1).1, -1, g)
+    requires AI.get_idx(AReg.as_arrays(cap1).1, CP.start_reg(g))
+               >= PIV.MxAtGidLk(body, AReg.as_arrays(cap1).1, AReg.as_arrays(look1).1, AReg.as_arrays(quant1).1, -1, g)
+    ensures g in PIV.GmOfLive(re, cap0, look, quant) && g in PIV.GmOfLive(body, cap1, look1, quant1)
+    ensures PIV.GmOfLive(re, cap0, look, quant)[g] == PIV.GmOfLive(body, cap1, look1, quant1)[g]
+  {
+    assert CP.start_reg(g) in PIV.CaptureRegs(body) && CP.end_reg(g) in PIV.CaptureRegs(body);
+    // cap0's start is set too (agreement with cap1 on CaptureRegs(body))
+    assert AI.get_idx(AReg.as_arrays(cap0).1, CP.start_reg(g)) == AI.get_idx(AReg.as_arrays(cap1).1, CP.start_reg(g));
+    assert AI.get_idx(AReg.as_arrays(cap0).0, CP.start_reg(g)) == AI.get_idx(AReg.as_arrays(cap1).0, CP.start_reg(g));
+    PIV.GmOfLiveKeepsPresentLk(re, cap0, look, quant, g);
+    PIV.GmOfLiveKeepsPresentLk(body, cap1, look1, quant1, g);
+    // both values are the raw LiveRange; cap0 == cap1 on {start_reg(g), end_reg(g)}
+    assert AI.get_idx(AReg.as_arrays(cap0).0, CP.end_reg(g)) == AI.get_idx(AReg.as_arrays(cap1).0, CP.end_reg(g));
+    assert AI.get_idx(AReg.as_arrays(cap0).1, CP.end_reg(g)) == AI.get_idx(AReg.as_arrays(cap1).1, CP.end_reg(g));
+    assert PIV.LiveRange(AReg.as_arrays(cap0).0, AReg.as_arrays(cap0).1, g)
+        == PIV.LiveRange(AReg.as_arrays(cap1).0, AReg.as_arrays(cap1).1, g);
+  }
+
   /** L3a value companion of `LookBodyLeafOpenSub`: when the look's body groups
       are UNSET in the incoming `gm` (the reset condition — a fresh or just-reset
       entry), the body's first leaf from `gm` agrees, on `S == DefGroups(r1)`, with
