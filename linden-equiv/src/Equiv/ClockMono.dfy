@@ -1305,7 +1305,199 @@ module LindenElkClockMono {
     }
   }
 
+  // ==========================================================================
+  // L3a (S-i) cp-BOUND: every look cp a thread records is a valid input
+  // position (<= |str|). The CheckOracle write sets a_cp[l] := s.cp, and the
+  // forward scan keeps s.cp <= |str|; every other instruction leaves look_regs
+  // alone. A PARALLEL induction on FFindMatch (does NOT touch PikeInvFullRE) --
+  // the weaker half of the position correspondence, and exactly what `cp_ctx_ok`
+  // needs. (Lower bound 0 is automatic: a recorded cp is `s.cp >= 0`.)
+  // ==========================================================================
 
+  /** Every look cp recorded in `lk` is `<= ub` (unset entries are `-1 <= ub`). */
+  ghost predicate LookCpsLE(lk: AReg.Regs, ub: int) {
+    forall l: int :: AI.get_idx(lk.a_cp, l) <= ub
+  }
+
+  /** Every thread in the state has all recorded look cps `<= ub`. */
+  ghost predicate VmLookCpOk(s: AI.VmState, ub: int) {
+    (forall t | t in s.active :: LookCpsLE(t.look_regs, ub))
+    && (forall tb | tb in s.blocked :: LookCpsLE(tb.0.look_regs, ub))
+    && (s.bestmatch.Some? ==> LookCpsLE(s.bestmatch.value.look_regs, ub))
+  }
+
+  /** Recording a look cp `cp <= ub` at key `l` preserves `LookCpsLE`. */
+  lemma SetRegLookCpLE(lk: AReg.Regs, l: int, cp: int, clk: int, ub: int)
+    requires LookCpsLE(lk, ub) && cp <= ub
+    ensures LookCpsLE(AReg.set_reg(lk, l, Some(cp), clk), ub)
+  {
+    forall k: int ensures AI.get_idx(AReg.set_reg(lk, l, Some(cp), clk).a_cp, k) <= ub {
+      if k != l {
+        SetRegOtherIdx(lk, l, Some(cp), clk, k);
+      } else {
+        var r2 := AReg.set_reg(lk, l, Some(cp), clk);
+        if 0 <= l < |lk.a_cp| && 0 <= l < |lk.a_clk| {
+          assert r2.a_cp == lk.a_cp[l := cp];              // int_of_opt(Some(cp)) == cp
+          assert AI.get_idx(r2.a_cp, l) == cp;
+        } else {
+          assert r2 == lk;
+        }
+      }
+    }
+  }
+
+  /** An epsilon phase records only look cps `<= ub` (the CheckOracle write is at
+      `s.cp <= ub`; everything else leaves `look_regs` alone). */
+  lemma FAdvanceEpsilonLookCpOk(c: RB.code, s: AI.VmState, ov: LOr.OracleView,
+                                dir: LAnc.direction, ub: int)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires s.cp <= ub
+    requires VmLookCpOk(s, ub)
+    ensures VmLookCpOk(AI.FAdvanceEpsilon(c, s, ov, dir).0, ub)
+    decreases AI.unprocessed(s.processed), |s.active|
+  {
+    if |s.active| == 0 { return; }
+    var t := s.active[0];
+    var ac := s.active[1..];
+    assert t in s.active;
+    assert forall x | x in ac :: x in s.active;
+    if AI.bpc_mem(s.processed, t.pc, t.exit_allowed) {
+      FAdvanceEpsilonLookCpOk(c, s.(active := ac), ov, dir, ub);
+      return;
+    }
+    var b0 := s.processed;
+    var s1 := s.(clock := s.clock + 1, processed := AI.bpc_add(b0, t.pc, t.exit_allowed));
+    assert AI.unprocessed(s1.processed) <= AI.unprocessed(b0)
+        && (0 <= t.pc < RB.size(c) ==> AI.unprocessed(s1.processed) < AI.unprocessed(b0))
+      by { AI.UnprocessedAdd(b0, t.pc, t.exit_allowed); }
+    match RB.get_instr(c, t.pc) {
+      case Consume(ce) =>
+        var (nb, ni) := AI.add_thread(t, ce, s1.blocked, s1.isblocked);
+        var s2 := s1.(blocked := nb, isblocked := ni, active := ac);
+        assert VmLookCpOk(s2, ub) by {
+          forall tb | tb in nb ensures LookCpsLE(tb.0.look_regs, ub) {
+            assert tb == (t, ce) || tb in s1.blocked;
+          }
+        }
+        FAdvanceEpsilonLookCpOk(c, s2, ov, dir, ub);
+      case Accept =>
+      case Jmp(x) =>
+        FAdvanceEpsilonLookCpOk(c, s1.(active := [t.(pc := x)] + ac), ov, dir, ub);
+      case Fork(x, y) =>
+        var newt := AI.Thread(x, t.capture_regs, t.look_regs, t.quant_regs, t.exit_allowed);
+        FAdvanceEpsilonLookCpOk(c, s1.(active := [newt, t.(pc := y)] + ac), ov, dir, ub);
+      case SetRegisterToCP(reg) =>
+        var t2 := t.(capture_regs := AReg.set_reg(t.capture_regs, reg, Some(s1.cp), s1.clock), pc := t.pc + 1);
+        FAdvanceEpsilonLookCpOk(c, s1.(active := [t2] + ac), ov, dir, ub);
+      case SetQuantToClock(q, bq) =>
+        var ocp := if bq then Some(s1.cp) else None;
+        var t2 := t.(quant_regs := AReg.set_reg(t.quant_regs, q, ocp, s1.clock), pc := t.pc + 1);
+        FAdvanceEpsilonLookCpOk(c, s1.(active := [t2] + ac), ov, dir, ub);
+      case CheckOracle(l) =>
+        if LOr.view_get_oracle(ov, s1.cp, l) {
+          var t2 := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(s1.cp), s1.clock));
+          assert LookCpsLE(t.look_regs, ub);        // t in s.active
+          SetRegLookCpLE(t.look_regs, l, s1.cp, s1.clock, ub);   // s1.cp == s.cp <= ub
+          FAdvanceEpsilonLookCpOk(c, s1.(active := [t2] + ac), ov, dir, ub);
+        } else {
+          FAdvanceEpsilonLookCpOk(c, s1.(active := ac), ov, dir, ub);
+        }
+      case NegCheckOracle(l) =>
+        if LOr.view_get_oracle(ov, s1.cp, l) {
+          FAdvanceEpsilonLookCpOk(c, s1.(active := ac), ov, dir, ub);
+        } else {
+          FAdvanceEpsilonLookCpOk(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir, ub);
+        }
+      case WriteOracle(l) =>
+        FAdvanceEpsilonLookCpOk(c, s1.(active := ac), LOr.view_set_oracle(ov, s1.cp, l), dir, ub);
+      case BeginLoop =>
+        FAdvanceEpsilonLookCpOk(c, s1.(active := [t.(exit_allowed := false, pc := t.pc + 1)] + ac), ov, dir, ub);
+      case EndLoop =>
+        if t.exit_allowed {
+          FAdvanceEpsilonLookCpOk(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir, ub);
+        } else {
+          FAdvanceEpsilonLookCpOk(c, s1.(active := ac), ov, dir, ub);
+        }
+      case CheckNullable(qid) =>
+        if LCdn.cdn_get(s1.cdn, qid) {
+          FAdvanceEpsilonLookCpOk(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir, ub);
+        } else {
+          FAdvanceEpsilonLookCpOk(c, s1.(active := ac), ov, dir, ub);
+        }
+      case AnchorAssertion(a) =>
+        if LAnc.is_satisfied(a, s1.context, dir) {
+          FAdvanceEpsilonLookCpOk(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir, ub);
+        } else {
+          FAdvanceEpsilonLookCpOk(c, s1.(active := ac), ov, dir, ub);
+        }
+      case Fail =>
+        FAdvanceEpsilonLookCpOk(c, s1.(active := ac), ov, dir, ub);
+    }
+  }
+
+  /** The consume phase moves blocked threads to active without touching
+      `look_regs`, so `VmLookCpOk` is preserved. */
+  lemma FConsumeLookCpOk(s: AI.VmState, ub: int)
+    requires VmLookCpOk(s, ub)
+    ensures VmLookCpOk(AI.FConsume(s), ub)
+    decreases |s.blocked|
+  {
+    if |s.blocked| == 0 { return; }
+    var t := s.blocked[0].0;
+    var ce := s.blocked[0].1;
+    var s1 := s.(blocked := s.blocked[1..]);
+    assert VmLookCpOk(s1, ub) by {
+      forall tb | tb in s1.blocked ensures LookCpsLE(tb.0.look_regs, ub) { assert tb in s.blocked; }
+    }
+    var s2 := if RC.is_accepted(s1.context.nextchar, ce)
+              then s1.(active := [t.(exit_allowed := true, pc := t.pc + 1)] + s1.active)
+              else s1;
+    assert VmLookCpOk(s2, ub) by {
+      assert s.blocked[0] in s.blocked;
+      assert LookCpsLE(t.look_regs, ub);
+      forall t2 | t2 in s2.active ensures LookCpsLE(t2.look_regs, ub) {
+        if t2 != t.(exit_allowed := true, pc := t.pc + 1) { assert t2 in s1.active; }
+      }
+    }
+    FConsumeLookCpOk(s2, ub);
+  }
+
+  /** THE cp-bound frame: a whole FORWARD search records only look cps `<= |str|`,
+      so the winning thread's every set look cp is a valid input position. Feeds
+      `cp_ctx_ok` (with the standing `a_cp >= -1` well-formedness giving the `0 <=`
+      lower bound for a SET cp). */
+  lemma FFindMatchLookCpOk(c: RB.code, str: string, s: AI.VmState, ov: LOr.OracleView,
+                           dir: LAnc.direction, cdn: LCdn.cdns)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires dir == LAnc.Forward
+    requires s.context.nextchar == AI.get_char(str, s.cp)
+    requires 0 <= s.cp <= |str|
+    requires VmLookCpOk(s, |str|)
+    ensures var r := AI.FFindMatch(c, str, s, ov, dir, cdn).0;
+      r.Some? ==> LookCpsLE(r.value.look_regs, |str|)
+    decreases |str| - s.cp
+  {
+    var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, dir));
+    assert VmLookCpOk(s0, |str|);
+    var (s1, ov1) := AI.FAdvanceEpsilon(c, s0, ov, dir);
+    FAdvanceEpsilonLookCpOk(c, s0, ov, dir, |str|);
+    assert VmLookCpOk(s1, |str|);
+    if |s1.blocked| == 0 { return; }
+    match s1.context.nextchar {
+      case None =>
+      case Some(_) =>
+        assert s.cp < |str|;                      // nextchar Some (forward) => in range
+        var s2 := AI.FConsume(s1);
+        FConsumeLookCpOk(s1, |str|);
+        var s3 := s2.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
+                      cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
+        var newchar := AI.get_char(str, s3.cp - AI.cp_offset(dir));
+        var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
+        assert s4.cp == s.cp + 1 <= |str|;
+        assert VmLookCpOk(s4, |str|);
+        FFindMatchLookCpOk(c, str, s4, ov1, dir, cdn);
+    }
+  }
 
   /** No position of `c` holds a `WriteOracle`. */
   ghost predicate NoWriteOracleCode(c: RB.code) {
