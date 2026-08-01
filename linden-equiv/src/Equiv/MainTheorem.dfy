@@ -718,6 +718,44 @@ module LindenElkMain {
     case _ =>
   }
 
+  /** Every defined group is EITHER outside every look OR inside some look body —
+      the `DefGroups` split (`OuterLkFromNoDup` gives disjointness; this gives
+      cover). Needed by the S-ii quant reset case. */
+  lemma DefGroupsInLkOrOutside(r: L.Regex)
+    ensures forall g :: g in L.DefGroups(r) ==> g in DefGroupsOutsideLooksL(r) || g in LL.LkBodyGroups(r)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => DefGroupsInLkOrOutside(r1); DefGroupsInLkOrOutside(r2);
+    case Sequence(r1, r2) => DefGroupsInLkOrOutside(r1); DefGroupsInLkOrOutside(r2);
+    case Quantified(_, _, _, r1) => DefGroupsInLkOrOutside(r1);
+    case Group(id, r1) => DefGroupsInLkOrOutside(r1);
+    case LookaroundR(lk, r1) =>
+      // DefGroups(LookaroundR) == DefGroups(r1) <= set(DefGroups(r1)) <= LkBodyGroups(LookaroundR)
+    case _ =>
+  }
+
+  /** S-ii: a SETTLED inside-look `S`-group (present-worthy, look no longer pending)
+      is NOT in a pending quantifier body's `DefGroups` — else it would be an inside-
+      look group of that body, hence still pending. So the `GMReset` never touches it. */
+  lemma QuantSettledNotReset(r: L.Regex, r1: L.Regex, cont: LS.Actions, acts: LS.Actions,
+                             S: set<LG.GroupId>, g: LG.GroupId)
+    requires r.Quantified? && r.r1 == r1 && acts == [LS.Areg(r)] + cont
+    requires forall g': LG.GroupId :: g' in S ==> g' !in OuterDefsActs(acts)
+    requires g in S && g !in LkBodyGroupsActs(acts)
+    ensures g !in L.DefGroups(r1)
+  {
+    if g in L.DefGroups(r1) {
+      DefGroupsInLkOrOutside(r1);
+      LkBodyGroupsActsCons(LS.Areg(r), cont);
+      OuterDefsActsCons(LS.Areg(r), cont);
+      assert DefGroupsOutsideLooksL(r) == DefGroupsOutsideLooksL(r1);   // r == Quantified(..,r1)
+      assert LL.LkBodyGroups(r) == LL.LkBodyGroups(r1);
+      // g in DefGroupsOutsideLooksL(r1) <= OuterDefsActs(acts): contradicts g in S;
+      // g in LkBodyGroups(r1) <= LkBodyGroupsActs(acts): contradicts g !in LkBodyGroupsActs(acts).
+    }
+  }
+
   lemma LkBodyGroupsActsCons(x: LS.Action, cont: LS.Actions)
     ensures LkBodyGroupsActs([x] + cont) == (if x.Areg? then LL.LkBodyGroups(x.r) else {}) + LkBodyGroupsActs(cont)
   { assert ([x] + cont)[0] == x && ([x] + cont)[1..] == cont; }
@@ -1491,6 +1529,410 @@ module LindenElkMain {
         case Backreference(_) =>
           assert false;
     }
+  }
+
+  /** The value-confinement predicate (S-ii core): every SETTLED inside-look
+      group (`g in S`, `g` present in `gm`, `g`'s look no longer pending in
+      `acts`) has its `gm` value preserved into the final leaf. */
+  ghost predicate ValConf(gm: LG.GroupMap, acts: LS.Actions, leaf: LT.Leaf, S: set<LG.GroupId>) {
+    forall g :: g in gm && g in S && g !in LkBodyGroupsActs(acts) ==>
+      g in leaf.1 && leaf.1[g] == gm[g]
+  }
+
+  /** One induction step of `ValConf`: given the child holds `ValConf` and each
+      settled `S`-group agrees (`gm2[g]==gm[g]`, still settled in `sub`), the
+      parent holds `ValConf`. Pure bookkeeping — isolates the per-case bridge. */
+  lemma ConfineStep(gm: LG.GroupMap, gm2: LG.GroupMap, acts: LS.Actions, sub: LS.Actions,
+                    leaf: LT.Leaf, S: set<LG.GroupId>)
+    requires ValConf(gm2, sub, leaf, S)
+    requires forall g :: g in gm && g in S && g !in LkBodyGroupsActs(acts) ==>
+               g in gm2 && gm2[g] == gm[g] && g !in LkBodyGroupsActs(sub)
+    ensures ValConf(gm, acts, leaf, S)
+  {}
+
+  /** S-ii value-confinement least-lemma: the value analogue of
+      `FirstLeafClosed`. Same recursion / same invariants (so `TailInv`/`SubInv`/
+      `QuantSubInv`/`QuantSubInvCheck` are reused), but ALSO concludes `ValConf`:
+      a settled inside-look group's value survives to the leaf. The LK case leans
+      on `LL.GmConfinedLeaves` (the look writes only its OWN groups `S_look`, so a
+      settled `g !in S_look` passes through); the Quant `GMReset` case uses the
+      `DefGroups = DefGroupsOutside (+) LkBodyGroups` split (a settled `S`-group in
+      `DefGroups(r1)` would be pending, contradiction). Vacuous at `gm==Empty`; an
+      existential-extraction layer turns it into the per-look leaf-value equality
+      the else-branch consumes. */
+  least lemma FirstLeafValueConfined(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input,
+                                     b: BS.LoopBool, t: LT.Tree, gm: LG.GroupMap, leaf: LT.Leaf,
+                                     S: set<LG.GroupId>)
+    requires EL.BoolTreeLk(rer, acts, inp, b, t)
+    requires EL.PikeLkActions(acts)
+    requires OpenOf(gm) <= PendingCloses(acts)
+    requires LT.TreeRes(t, gm, inp, WP.Forward) == Some(leaf)
+    requires LkClosedInGm(gm, acts)
+    requires OuterLkDisjoint(acts)
+    requires forall g :: g in S ==> g !in OuterDefsActs(acts)   // S = inside-look groups
+    ensures ClosedGm(leaf.1)
+    ensures ValConf(gm, acts, leaf, S)
+  {
+    if |acts| == 0 {
+      assert t == LT.Match;
+      assert leaf.1 == gm;
+      assert PendingCloses(acts) == {};
+      forall g | g in gm ensures gm[g].endIdx.Some? {
+        if gm[g].endIdx.None? { assert g in OpenOf(gm); }
+      }
+      assert LkBodyGroupsActs(acts) == {};
+    } else {
+      var cont := acts[1..];
+      assert forall i :: 0 <= i < |cont| ==> cont[i] == acts[i + 1];
+      assert PendingCloses(cont) <= PendingCloses(acts);
+      match acts[0]
+      case Acheck(strcheck) =>
+        if b == BS.CanExit {
+          assert t.Progress?;
+          assert PendingCloses(acts) == PendingCloses(cont);
+          TailInv(gm, gm, acts);
+          assert LkBodyGroupsActs(acts) == LkBodyGroupsActs(cont);   // Acheck contributes {}
+          FirstLeafValueConfined(rer, cont, inp, BS.CanExit, t.t, gm, leaf, S);
+          ConfineStep(gm, gm, acts, cont, leaf, S);
+        } else {
+          assert t == LT.Mismatch;
+          assert false;
+        }
+      case Aclose(gid) =>
+        assert t.GroupActionT? && t.g == LG.Close(gid);
+        var gm2 := LG.GMUpdate(t.g, LC.Idx(inp), gm);
+        assert gm2 == LG.GMClose(LC.Idx(inp), gid, gm);
+        assert OpenOf(gm2) <= PendingCloses(cont) by {
+          forall g | g in OpenOf(gm2) ensures g in PendingCloses(cont) {
+            assert g != gid;
+            assert g in OpenOf(gm);
+            assert g in PendingCloses(acts);
+            var i :| 0 <= i < |acts| && acts[i].Aclose? && acts[i].gid == g;
+            assert i != 0;
+            assert cont[i - 1] == acts[i];
+          }
+        }
+        assert forall g :: g in gm2 ==> g in gm && (gm2[g].endIdx.Some? || gm2[g] == gm[g]);
+        TailInv(gm, gm2, acts);
+        assert gid in OuterDefsActs(acts);
+        assert LkBodyGroupsActs(acts) == LkBodyGroupsActs(cont);   // Aclose contributes {}
+        FirstLeafValueConfined(rer, cont, inp, b, t.t, gm2, leaf, S);
+        assert forall g :: g in gm && g in S && g !in LkBodyGroupsActs(acts) ==>
+                 g in gm2 && gm2[g] == gm[g] && g !in LkBodyGroupsActs(cont)
+        by { forall g | g in gm && g in S && g !in LkBodyGroupsActs(acts) ensures g != gid { } }
+        ConfineStep(gm, gm2, acts, cont, leaf, S);
+      case Areg(r) =>
+        match r
+        case Epsilon =>
+          assert PendingCloses(acts) == PendingCloses(cont);
+          TailInv(gm, gm, acts);
+          assert LkBodyGroupsActs(acts) == LkBodyGroupsActs(cont);
+          FirstLeafValueConfined(rer, cont, inp, b, t, gm, leaf, S);
+          ConfineStep(gm, gm, acts, cont, leaf, S);
+        case Character(cd) =>
+          if LC.ReadChar(rer, cd, inp, WP.Forward).None? {
+            assert t == LT.Mismatch;
+            assert false;
+          } else {
+            var pair := LC.ReadChar(rer, cd, inp, WP.Forward).value;
+            assert t.Read?;
+            assert pair.1 == LC.AdvanceInputP(inp, WP.Forward);
+            assert PendingCloses(acts) == PendingCloses(cont);
+            TailInv(gm, gm, acts);
+            assert LkBodyGroupsActs(acts) == LkBodyGroupsActs(cont);
+            FirstLeafValueConfined(rer, cont, pair.1, BS.CanExit, t.t, gm, leaf, S);
+            ConfineStep(gm, gm, acts, cont, leaf, S);
+          }
+        case Disjunction(r1, r2) =>
+          assert t.Choice?;
+          var acts1 := [LS.Areg(r1)] + cont;
+          var acts2 := [LS.Areg(r2)] + cont;
+          assert PendingCloses(acts1) == PendingCloses(cont) == PendingCloses(acts2) by {
+            assert forall i :: 0 <= i < |cont| ==> acts1[i + 1] == cont[i] && acts2[i + 1] == cont[i];
+          }
+          assert PendingCloses(acts) == PendingCloses(cont);
+          LkBodyGroupsActsCons(LS.Areg(r), cont); LkBodyGroupsActsCons(LS.Areg(r1), cont); LkBodyGroupsActsCons(LS.Areg(r2), cont);
+          OuterDefsActsCons(LS.Areg(r), cont); OuterDefsActsCons(LS.Areg(r1), cont); OuterDefsActsCons(LS.Areg(r2), cont);
+          assert LL.LkBodyGroups(r) == LL.LkBodyGroups(r1) + LL.LkBodyGroups(r2);
+          assert DefGroupsOutsideLooksL(r) == DefGroupsOutsideLooksL(r1) + DefGroupsOutsideLooksL(r2);
+          if LT.TreeRes(t.t1, gm, inp, WP.Forward).Some? {
+            SubInv(gm, gm, acts1, acts);
+            FirstLeafValueConfined(rer, acts1, inp, b, t.t1, gm, leaf, S);
+            ConfineStep(gm, gm, acts, acts1, leaf, S);
+          } else {
+            SubInv(gm, gm, acts2, acts);
+            FirstLeafValueConfined(rer, acts2, inp, b, t.t2, gm, leaf, S);
+            ConfineStep(gm, gm, acts, acts2, leaf, S);
+          }
+        case Sequence(r1, r2) =>
+          var acts1 := [LS.Areg(r1), LS.Areg(r2)] + cont;
+          assert PendingCloses(acts1) == PendingCloses(cont) by {
+            assert forall i :: 0 <= i < |cont| ==> acts1[i + 2] == cont[i];
+          }
+          assert PendingCloses(acts) == PendingCloses(cont);
+          assert acts1 == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+          LkBodyGroupsActsCons(LS.Areg(r), cont); LkBodyGroupsActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont); LkBodyGroupsActsCons(LS.Areg(r2), cont);
+          OuterDefsActsCons(LS.Areg(r), cont); OuterDefsActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont); OuterDefsActsCons(LS.Areg(r2), cont);
+          assert LL.LkBodyGroups(r) == LL.LkBodyGroups(r1) + LL.LkBodyGroups(r2);
+          assert DefGroupsOutsideLooksL(r) == DefGroupsOutsideLooksL(r1) + DefGroupsOutsideLooksL(r2);
+          SubInv(gm, gm, acts1, acts);
+          FirstLeafValueConfined(rer, acts1, inp, b, t, gm, leaf, S);
+          ConfineStep(gm, gm, acts, acts1, leaf, S);
+        case Quantified(greedy, min, delta, r1) =>
+          var gidl := L.DefGroups(r1);
+          if min > 0 {
+            assert t.GroupActionT? && t.g == LG.Reset(gidl);
+            var gm2 := LG.GMUpdate(t.g, LC.Idx(inp), gm);
+            assert gm2 == LG.GMReset(gidl, gm);
+            assert OpenOf(gm2) <= OpenOf(gm);
+            assert forall g :: g in gm2 ==> g in gm && gm2[g] == gm[g];
+            var q' := L.Quantified(greedy, min - 1, delta, r1);
+            var acts1 := [LS.Areg(r1), LS.Areg(q')] + cont;
+            assert PendingCloses(acts1) == PendingCloses(cont) by {
+              assert forall i :: 0 <= i < |cont| ==> acts1[i + 2] == cont[i];
+            }
+            assert PendingCloses(acts) == PendingCloses(cont);
+            QuantSubInv(gm, gm2, r, r1, q', cont, acts, acts1);
+            QuantConfBridge(r, r1, q', gm, cont, acts, acts1, S);
+            FirstLeafValueConfined(rer, acts1, inp, b, t.t, gm2, leaf, S);
+            assert forall g :: g in gm && g in S && g !in LkBodyGroupsActs(acts) ==>
+                     g in gm2 && gm2[g] == gm[g] && g !in LkBodyGroupsActs(acts1)
+            by {
+              forall g | g in gm && g in S && g !in LkBodyGroupsActs(acts) ensures g !in gidl {
+                QuantSettledNotReset(r, r1, cont, acts, S, g);
+              }
+            }
+            ConfineStep(gm, gm2, acts, acts1, leaf, S);
+          } else if delta == LN.NN(0) {
+            assert PendingCloses(acts) == PendingCloses(cont);
+            TailInv(gm, gm, acts);
+            LkBodyGroupsActsCons(LS.Areg(r), cont);
+            FirstLeafValueConfined(rer, cont, inp, b, t, gm, leaf, S);
+            ConfineStep(gm, gm, acts, cont, leaf, S);
+          } else {
+            assert t.Choice?;
+            var itert := if greedy then t.t1 else t.t2;
+            var skipt := if greedy then t.t2 else t.t1;
+            assert itert.GroupActionT? && itert.g == LG.Reset(gidl);
+            assert PendingCloses(acts) == PendingCloses(cont);
+            if LT.TreeRes(t.t1, gm, inp, WP.Forward).Some? {
+              if greedy {
+                var gm2 := LG.GMUpdate(itert.g, LC.Idx(inp), gm);
+                assert gm2 == LG.GMReset(gidl, gm);
+                assert OpenOf(gm2) <= OpenOf(gm);
+                assert forall g :: g in gm2 ==> g in gm && gm2[g] == gm[g];
+                var q'' := L.Quantified(greedy, 0, LFS.NoiPred(delta), r1);
+                var acts1 := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q'')] + cont;
+                assert PendingCloses(acts1) == PendingCloses(cont) by {
+                  assert forall i :: 0 <= i < |cont| ==> acts1[i + 3] == cont[i];
+                }
+                QuantSubInvCheck(gm, gm2, r, r1, q'', inp, cont, acts, acts1);
+                QuantCheckConfBridge(r, r1, q'', inp, gm, cont, acts, acts1, S);
+                FirstLeafValueConfined(rer, acts1, inp, BS.CannotExit, itert.t, gm2, leaf, S);
+                assert forall g :: g in gm && g in S && g !in LkBodyGroupsActs(acts) ==>
+                         g in gm2 && gm2[g] == gm[g] && g !in LkBodyGroupsActs(acts1)
+                by {
+                  forall g | g in gm && g in S && g !in LkBodyGroupsActs(acts) ensures g !in gidl {
+                    QuantSettledNotReset(r, r1, cont, acts, S, g);
+                  }
+                }
+                ConfineStep(gm, gm2, acts, acts1, leaf, S);
+              } else {
+                TailInv(gm, gm, acts);
+                LkBodyGroupsActsCons(LS.Areg(r), cont);
+                FirstLeafValueConfined(rer, cont, inp, b, skipt, gm, leaf, S);
+                ConfineStep(gm, gm, acts, cont, leaf, S);
+              }
+            } else {
+              if greedy {
+                TailInv(gm, gm, acts);
+                LkBodyGroupsActsCons(LS.Areg(r), cont);
+                FirstLeafValueConfined(rer, cont, inp, b, skipt, gm, leaf, S);
+                ConfineStep(gm, gm, acts, cont, leaf, S);
+              } else {
+                var gm2 := LG.GMUpdate(itert.g, LC.Idx(inp), gm);
+                assert gm2 == LG.GMReset(gidl, gm);
+                assert OpenOf(gm2) <= OpenOf(gm);
+                assert forall g :: g in gm2 ==> g in gm && gm2[g] == gm[g];
+                var q'' := L.Quantified(greedy, 0, LFS.NoiPred(delta), r1);
+                var acts1 := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q'')] + cont;
+                assert PendingCloses(acts1) == PendingCloses(cont) by {
+                  assert forall i :: 0 <= i < |cont| ==> acts1[i + 3] == cont[i];
+                }
+                QuantSubInvCheck(gm, gm2, r, r1, q'', inp, cont, acts, acts1);
+                QuantCheckConfBridge(r, r1, q'', inp, gm, cont, acts, acts1, S);
+                FirstLeafValueConfined(rer, acts1, inp, BS.CannotExit, itert.t, gm2, leaf, S);
+                assert forall g :: g in gm && g in S && g !in LkBodyGroupsActs(acts) ==>
+                         g in gm2 && gm2[g] == gm[g] && g !in LkBodyGroupsActs(acts1)
+                by {
+                  forall g | g in gm && g in S && g !in LkBodyGroupsActs(acts) ensures g !in gidl {
+                    QuantSettledNotReset(r, r1, cont, acts, S, g);
+                  }
+                }
+                ConfineStep(gm, gm2, acts, acts1, leaf, S);
+              }
+            }
+          }
+        case Group(gid, r1) =>
+          assert t.GroupActionT? && t.g == LG.Open(gid);
+          var gm2 := LG.GMUpdate(t.g, LC.Idx(inp), gm);
+          assert gm2 == LG.GMOpen(LC.Idx(inp), gid, gm);
+          var acts1 := [LS.Areg(r1), LS.Aclose(gid)] + cont;
+          assert gid in PendingCloses(acts1) by { assert acts1[1].Aclose? && acts1[1].gid == gid; }
+          assert OpenOf(gm2) <= PendingCloses(acts1) by {
+            forall g | g in OpenOf(gm2) ensures g in PendingCloses(acts1) {
+              if g != gid {
+                assert g in OpenOf(gm);
+                assert g in PendingCloses(acts);
+                var i :| 0 <= i < |acts| && acts[i].Aclose? && acts[i].gid == g;
+                assert i != 0;
+                assert acts1[i + 1] == cont[i - 1] == acts[i];
+              }
+            }
+          }
+          assert acts1 == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
+          LkBodyGroupsActsCons(LS.Areg(r), cont); LkBodyGroupsActsCons(LS.Areg(r1), [LS.Aclose(gid)] + cont); LkBodyGroupsActsCons(LS.Aclose(gid), cont);
+          OuterDefsActsCons(LS.Areg(r), cont); OuterDefsActsCons(LS.Areg(r1), [LS.Aclose(gid)] + cont); OuterDefsActsCons(LS.Aclose(gid), cont);
+          assert L.DefGroups(r) == [gid] + L.DefGroups(r1);
+          assert gid in OuterDefsActs(acts) && gid !in LkBodyGroupsActs(acts);
+          assert LkBodyGroupsActs(acts1) == LkBodyGroupsActs(acts);
+          assert LkClosedInGm(gm2, acts1) by {
+            forall g | g in gm2 && g in LkBodyGroupsActs(acts1) ensures gm2[g].endIdx.Some? {
+              assert g != gid; assert g in gm && g in LkBodyGroupsActs(acts);
+            }
+          }
+          assert OuterLkDisjoint(acts1);
+          assert forall g :: g in S ==> g !in OuterDefsActs(acts1);
+          FirstLeafValueConfined(rer, acts1, inp, b, t.t, gm2, leaf, S);
+          assert forall g :: g in gm && g in S && g !in LkBodyGroupsActs(acts) ==>
+                   g in gm2 && gm2[g] == gm[g] && g !in LkBodyGroupsActs(acts1)
+          by { forall g | g in gm && g in S && g !in LkBodyGroupsActs(acts) ensures g != gid { } }
+          ConfineStep(gm, gm2, acts, acts1, leaf, S);
+        case AnchorR(a) =>
+          if LS.AnchorSatisfied(rer, a, inp) {
+            assert t.AnchorPass?;
+            assert PendingCloses(acts) == PendingCloses(cont);
+            TailInv(gm, gm, acts);
+            LkBodyGroupsActsCons(LS.Areg(r), cont);
+            FirstLeafValueConfined(rer, cont, inp, b, t.t, gm, leaf, S);
+            ConfineStep(gm, gm, acts, cont, leaf, S);
+          } else {
+            assert t == LT.Mismatch;
+            assert false;
+          }
+        case LookaroundR(lk, r1) =>
+          var Slook := (set g | g in L.DefGroups(r1));
+          match t {
+            case LK(lk2, tlk, tc) =>
+              assert PendingCloses(acts) == PendingCloses(cont);
+              assert EL.LkGateOk(rer, lk, r1, inp, tlk, true) && EL.BoolTreeLk(rer, cont, inp, b, tc);
+              assert tlk == FU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk));
+              assert EL.PikeLkRegex(r);
+              var dir := L.LkDir(lk);
+              LkBodyGroupsActsCons(LS.Areg(r), cont); OuterDefsActsCons(LS.Areg(r), cont);
+              assert L.DefGroups(r) == L.DefGroups(r1);
+              assert LL.LkBodyGroups(r) == Slook + LL.LkBodyGroups(r1);
+              assert Slook <= LkBodyGroupsActs(acts);
+              assert LkBodyGroupsActs(cont) <= LkBodyGroupsActs(acts);
+              assert OuterDefsActs(cont) <= OuterDefsActs(acts);
+              assert EL.NoLkBrL(r1) && EL.PikeLkRegex(r1) && (L.DefGroups(r1) != [] ==> dir == WP.Forward) by {
+                if L.Positivity(lk) && dir == WP.Forward { NoLkBrImpliesPikeLk(r1); }
+                else { assert SD.GroupFreeL(r1); LL.GroupFreeLkBodyEmpty(r1); GroupFreeImpliesNoLkBr(r1); NoLkBrImpliesPikeLk(r1); }
+              }
+              assert OuterLkDisjoint(cont);
+              assert forall g :: g in S ==> g !in OuterDefsActs(cont);
+              if L.Positivity(lk) {
+                assert forall g :: g in gm && g in Slook ==> gm[g].endIdx.Some? by {
+                  forall g | g in gm && g in Slook ensures gm[g].endIdx.Some? { assert g in LkBodyGroupsActs(acts); }
+                }
+                var sub := LT.TreeLeaves(tlk, gm, inp, dir);
+                LT.FirstTreeLeaf(tlk, gm, inp, dir);
+                assert |sub| > 0;
+                LookBodyLeafOpenSub(rer, lk, r1, tlk, gm, inp, sub, Slook);
+                assert LT.TreeRes(tc, sub[0].1, inp, WP.Forward) == Some(leaf);
+                assert LkClosedInGm(sub[0].1, cont) by {
+                  forall g | g in sub[0].1 && g in LkBodyGroupsActs(cont) ensures sub[0].1[g].endIdx.Some? {
+                    if g in Slook {} else { assert g in gm; assert g in LkBodyGroupsActs(acts); assert g !in OpenOf(gm); assert g !in OpenOf(sub[0].1); }
+                  }
+                }
+                // gm2 = sub[0].1 agrees with gm OUTSIDE Slook (the look writes only its own groups)
+                assert LL.DefGroupsIn(r1, Slook);
+                LL.ComputeTrConfined(rer, r1, inp, LG.Empty, dir, Slook);
+                LL.GmConfinedLeaves(tlk, gm, inp, dir, Slook);
+                FirstLeafValueConfined(rer, cont, inp, b, tc, sub[0].1, leaf, S);
+                assert forall g :: g in gm && g in S && g !in LkBodyGroupsActs(acts) ==>
+                         g in sub[0].1 && sub[0].1[g] == gm[g] && g !in LkBodyGroupsActs(cont)
+                by {
+                  forall g | g in gm && g in S && g !in LkBodyGroupsActs(acts)
+                    ensures g in sub[0].1 && sub[0].1[g] == gm[g]
+                  { assert g !in Slook; assert LL.GmAgreeOutside(sub[0].1, gm, Slook); }
+                }
+                ConfineStep(gm, sub[0].1, acts, cont, leaf, S);
+              } else {
+                assert LT.TreeRes(tc, gm, inp, WP.Forward) == Some(leaf);
+                assert LkClosedInGm(gm, cont) by {
+                  forall g | g in gm && g in LkBodyGroupsActs(cont) ensures gm[g].endIdx.Some? { assert g in LkBodyGroupsActs(acts); }
+                }
+                FirstLeafValueConfined(rer, cont, inp, b, tc, gm, leaf, S);
+                ConfineStep(gm, gm, acts, cont, leaf, S);
+              }
+            case LKFail(lk2, tlk) =>
+              assert false;
+            case _ =>
+          }
+        case Backreference(_) =>
+          assert false;
+    }
+  }
+
+  /** Quant `min>0` reset bridge: `LkBodyGroupsActs(acts1) == LkBodyGroupsActs(acts)`
+      when `acts = [Areg(Quant r1)] + cont` and `acts1 = [Areg(r1), Areg(q')] + cont`
+      with `q' = Quant(...,r1)` (both contribute `LkBodyGroups(r1)`). */
+  lemma QuantConfBridge(r: L.Regex, r1: L.Regex, q': L.Regex, gm: LG.GroupMap,
+                        cont: LS.Actions, acts: LS.Actions, acts1: LS.Actions, S: set<LG.GroupId>)
+    requires r.Quantified? && r.r1 == r1 && q'.Quantified? && q'.r1 == r1
+    requires acts == [LS.Areg(r)] + cont && acts1 == [LS.Areg(r1), LS.Areg(q')] + cont
+    requires forall g :: g in S ==> g !in OuterDefsActs(acts)
+    ensures LkBodyGroupsActs(acts1) == LkBodyGroupsActs(acts)
+    ensures forall g :: g in S ==> g !in OuterDefsActs(acts1)
+  {
+    assert acts1 == [LS.Areg(r1)] + ([LS.Areg(q')] + cont);
+    LkBodyGroupsActsCons(LS.Areg(r), cont);
+    LkBodyGroupsActsCons(LS.Areg(r1), [LS.Areg(q')] + cont);
+    LkBodyGroupsActsCons(LS.Areg(q'), cont);
+    OuterDefsActsCons(LS.Areg(r), cont);
+    OuterDefsActsCons(LS.Areg(r1), [LS.Areg(q')] + cont);
+    OuterDefsActsCons(LS.Areg(q'), cont);
+    assert LL.LkBodyGroups(r) == LL.LkBodyGroups(r1) && LL.LkBodyGroups(q') == LL.LkBodyGroups(r1);
+    assert DefGroupsOutsideLooksL(r) == DefGroupsOutsideLooksL(r1) && DefGroupsOutsideLooksL(q') == DefGroupsOutsideLooksL(r1);
+    assert LkBodyGroupsActs(acts1) == LkBodyGroupsActs(acts);
+    assert OuterDefsActs(acts1) == OuterDefsActs(acts);
+  }
+
+  /** Quant `min==0` Choice reset bridge (with the `Acheck`): same as
+      `QuantConfBridge` but `acts1 = [Areg(r1), Acheck, Areg(q'')] + cont`. */
+  lemma QuantCheckConfBridge(r: L.Regex, r1: L.Regex, q'': L.Regex, inp: LC.Input, gm: LG.GroupMap,
+                             cont: LS.Actions, acts: LS.Actions, acts1: LS.Actions, S: set<LG.GroupId>)
+    requires r.Quantified? && r.r1 == r1 && q''.Quantified? && q''.r1 == r1
+    requires acts == [LS.Areg(r)] + cont && acts1 == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q'')] + cont
+    requires forall g :: g in S ==> g !in OuterDefsActs(acts)
+    ensures LkBodyGroupsActs(acts1) == LkBodyGroupsActs(acts)
+    ensures forall g :: g in S ==> g !in OuterDefsActs(acts1)
+  {
+    assert acts1 == [LS.Areg(r1)] + ([LS.Acheck(inp), LS.Areg(q'')] + cont);
+    assert [LS.Acheck(inp), LS.Areg(q'')] + cont == [LS.Acheck(inp)] + ([LS.Areg(q'')] + cont);
+    LkBodyGroupsActsCons(LS.Areg(r), cont);
+    LkBodyGroupsActsCons(LS.Areg(r1), [LS.Acheck(inp), LS.Areg(q'')] + cont);
+    LkBodyGroupsActsCons(LS.Acheck(inp), [LS.Areg(q'')] + cont);
+    LkBodyGroupsActsCons(LS.Areg(q''), cont);
+    OuterDefsActsCons(LS.Areg(r), cont);
+    OuterDefsActsCons(LS.Areg(r1), [LS.Acheck(inp), LS.Areg(q'')] + cont);
+    OuterDefsActsCons(LS.Acheck(inp), [LS.Areg(q'')] + cont);
+    OuterDefsActsCons(LS.Areg(q''), cont);
+    assert LL.LkBodyGroups(r) == LL.LkBodyGroups(r1) && LL.LkBodyGroups(q'') == LL.LkBodyGroups(r1);
+    assert DefGroupsOutsideLooksL(r) == DefGroupsOutsideLooksL(r1) && DefGroupsOutsideLooksL(q'') == DefGroupsOutsideLooksL(r1);
+    assert LkBodyGroupsActs(acts1) == LkBodyGroupsActs(acts);
+    assert OuterDefsActs(acts1) == OuterDefsActs(acts);
   }
 
   // ==========================================================================
