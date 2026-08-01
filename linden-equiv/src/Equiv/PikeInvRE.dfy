@@ -2114,6 +2114,77 @@ module LindenElkPikeInv {
     FilterPresenceExtract(ast, cr, cc, lc, qc, -1, gid);
   }
 
+  /** For a LOOK-FREE regex the look-aware `MxAtGidLk` and the look-free `MxAtGid`
+      coincide (no `Re_lookaround` node ever resets `mx`). */
+  lemma LookFreeMxAtGidLkEq(r: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>, mx: int, gid: nat)
+    requires NR.LookFreeRE(r) && gid in CapIds(r)
+    ensures MxAtGidLk(r, cc, lc, qc, mx, gid) == MxAtGid(r, cc, qc, mx, gid)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => if gid in CapIds(r1) { LookFreeMxAtGidLkEq(r1, cc, lc, qc, mx, gid); } else { LookFreeMxAtGidLkEq(r2, cc, lc, qc, mx, gid); }
+    case Re_con(r1, r2) => if gid in CapIds(r1) { LookFreeMxAtGidLkEq(r1, cc, lc, qc, mx, gid); } else { LookFreeMxAtGidLkEq(r2, cc, lc, qc, mx, gid); }
+    case Re_quant(_, qid, _, r1) => LookFreeMxAtGidLkEq(r1, cc, lc, qc, AI.get_idx(qc, qid), gid);
+    case Re_capture(cid, r1) => if cid == gid {} else { LookFreeMxAtGidLkEq(r1, cc, lc, qc, mx, gid); }
+    case _ =>
+  }
+
+  /** For a LOOK-FREE regex the look-aware `PathPresentLk` follows from the
+      look-free `PathPresent` (the `Re_lookaround` gate never fires). */
+  lemma LookFreePathPresentLk(r: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>, mx: int, gid: nat)
+    requires NR.LookFreeRE(r) && gid in CapIds(r)
+    requires PathPresent(r, cc, qc, mx, gid)
+    ensures PathPresentLk(r, cc, lc, qc, mx, gid)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => if gid in CapIds(r1) { LookFreePathPresentLk(r1, cc, lc, qc, mx, gid); } else { LookFreePathPresentLk(r2, cc, lc, qc, mx, gid); }
+    case Re_con(r1, r2) => if gid in CapIds(r1) { LookFreePathPresentLk(r1, cc, lc, qc, mx, gid); } else { LookFreePathPresentLk(r2, cc, lc, qc, mx, gid); }
+    case Re_quant(_, qid, _, r1) => LookFreePathPresentLk(r1, cc, lc, qc, AI.get_idx(qc, qid), gid);
+    case Re_capture(cid, r1) => if cid == gid {} else { LookFreePathPresentLk(r1, cc, lc, qc, mx, gid); }
+    case _ =>
+  }
+
+  /** (E) BODY-side path presence, self-contained: a group `g` present in a
+      LOOK-FREE body's live denotation is path-present there, with its start
+      clock in scope. Composes `GmOfLivePresenceExtract` (body is look-free so
+      `g !in CapIdsInLooks(body)`) with the look-free `PathPresent -> PathPresentLk`
+      / `MxAtGid -> MxAtGidLk` bridges. Discharges the body half of
+      `GmOfLiveInsideLookPresentEq`'s path hypotheses WITHOUT the exact position. */
+  lemma BodyPathPresentLk(body: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, g: nat)
+    requires NR.LookBehindFragmentRE(body) && NR.LookFreeRE(body) && CapUnique(body)
+    requires g in CapIds(body)
+    requires forall c: nat :: c in CapIds(body) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
+                             ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
+    requires g in GmOfLive(body, caps, look, quant)
+    ensures PathPresentLk(body, AReg.as_arrays(caps).1, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, g)
+    ensures AI.get_idx(AReg.as_arrays(caps).1, CP.start_reg(g)) >= 0
+    ensures AI.get_idx(AReg.as_arrays(caps).1, CP.start_reg(g))
+              >= MxAtGidLk(body, AReg.as_arrays(caps).1, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, g)
+  {
+    LookFreeCapIdsInLooksEmpty(body);            // g !in CapIdsInLooks(body)
+    GmOfLivePresenceExtract(body, caps, look, quant, g);
+    var cc := AReg.as_arrays(caps).1;
+    var lc := AReg.as_arrays(look).1;
+    var qc := AReg.as_arrays(quant).1;
+    LookFreePathPresentLk(body, cc, lc, qc, -1, g);
+    LookFreeMxAtGidLkEq(body, cc, lc, qc, -1, g);
+  }
+
+  /** A look-free regex has no inside-look captures. */
+  lemma LookFreeCapIdsInLooksEmpty(r: R.regex)
+    requires NR.LookFreeRE(r)
+    ensures CapIdsInLooks(r) == {}
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => LookFreeCapIdsInLooksEmpty(r1); LookFreeCapIdsInLooksEmpty(r2);
+    case Re_con(r1, r2) => LookFreeCapIdsInLooksEmpty(r1); LookFreeCapIdsInLooksEmpty(r2);
+    case Re_quant(_, _, _, r1) => LookFreeCapIdsInLooksEmpty(r1);
+    case Re_capture(_, r1) => LookFreeCapIdsInLooksEmpty(r1);
+    case _ =>
+  }
+
   // ===========================================================================
   // Absence extraction: the dual. If gid's ancestors are all present (path in
   // capture mode) yet gid is ABSENT from the filter output, the failure is at
