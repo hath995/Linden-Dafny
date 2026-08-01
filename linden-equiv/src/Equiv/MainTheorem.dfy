@@ -3601,6 +3601,47 @@ module LindenElkMain {
     0 <= cp <= |str| && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp)
   }
 
+  /** (S-i) cp_ctx_ok on the WINNING thread, from the cp-bound. A forward main
+      match starting FRESH records only look cps in `[0, |str|]` (`CM.FFindMatch
+      LookCpOk`), and `cp_context`'s forward `nextchar` is definitional -- so every
+      recorded look cp satisfies `cp_ctx_ok`. This is the (S-i) piece the value
+      lift's `cp_ctx_ok` hypothesis needs; it does NOT require the exact
+      look-position <-> tree correspondence. */
+  lemma MainMatchCpCtxOk(crv: CP.FCompiled, code: RB.code, str: string, inits: AI.VmState,
+                         cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, nlook: int,
+                         ov: LOr.OracleView, cdn: LCdn.cdns, result: Option<AI.Thread>)
+    requires |inits.processed.true_set| == RB.size(code) && |inits.processed.false_set| == RB.size(code)
+    requires inits.context.nextchar == AI.get_char(str, inits.cp)
+    requires 0 <= inits.cp <= |str|
+    requires look == AReg.init_regs(nlook)
+    requires inits.active == [AI.init_thread(cap, look, quant)]
+    requires inits.blocked == [] && inits.bestmatch.None?
+    requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
+    ensures result.Some? ==>
+      forall l: int :: AReg.get_cp(result.value.look_regs, l).Some? ==>
+        cp_ctx_ok(crv, str, result.value.look_regs, l)
+  {
+    // fresh init threads have all look cps == -1 <= |str|
+    assert CM.VmLookCpOk(inits, |str|) by {
+      assert CM.LookCpsLE(look, |str|) by {
+        forall l: int ensures AI.get_idx(look.a_cp, l) <= |str| {
+          if 0 <= l < |look.a_cp| { assert look.a_cp[l] == -1; }
+        }
+      }
+      assert AI.init_thread(cap, look, quant).look_regs == look;
+    }
+    CM.FFindMatchLookCpOk(code, str, inits, ov, LAnc.Forward, cdn);
+    if result.Some? {
+      var lk := result.value.look_regs;
+      assert CM.LookCpsLE(lk, |str|);
+      forall l: int | AReg.get_cp(lk, l).Some? ensures cp_ctx_ok(crv, str, lk, l) {
+        var cp := AReg.get_cp(lk, l).value;
+        assert 0 <= l < |lk.a_cp| && cp == AI.get_idx(lk.a_cp, l) && cp >= 0;   // get_cp Some => a_cp[l] >= 0
+        assert cp <= |str|;                                                      // LookCpsLE
+      }
+    }
+  }
+
   /** Agreeing OUTSIDE `Sp` and equal lengths give agreement INSIDE any `T`
       disjoint from `Sp`. Isolated so the set step doesn't drag heavy context. */
   lemma RegsAgreeOutsideToInside(a: AReg.Regs, b: AReg.Regs, T: set<int>, Sp: set<int>)
