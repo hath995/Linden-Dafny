@@ -219,6 +219,15 @@ remaining grind; budget a dedicated session or two, verify per-symbol as you
 go, and keep `PikeInvFullRE` and the existing sim UNTOUCHED (everything is
 parallel; the green proofs carry zero risk).
 
+> **THE SCAFFOLD NOW COVERS THE WHOLE LADDER** (commit `0d4aba4`): beyond the
+> seven lift lemmas, `LiftSim.dfy` states the per-instruction walk inversions
+> (`TtLkAt*`, the sub-DAG under `LiftAdvanceEpsilon`), the `GateAheadClear`
+> preservation bricks, `PikeSubtreeLkComputeTr`, and `L3aValueBridge` (the
+> last glue into `MainExtraction`, whose FILL note pins the one un-banked (E)
+> piece: RE-side outer-path presence), ending in the else-branch assembly
+> recipe as a comment. Everything resolves (27 verified / 0 errors as a
+> scaffold). Fill bottom-up; L3 == all bodies filled + the recipe executed.
+>
 > **SCAFFOLD EXISTS (branch `l3a-liftsim-scaffold`): `src/Equiv/LiftSim.dfy`**
 > — definitions real and resolving, seven bodiless lemmas with FILL notes, in
 > fill order: `TtLkSameTree` → `GateStepValue` → `LiftInit` →
