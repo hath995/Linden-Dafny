@@ -67,6 +67,8 @@ module LindenElkLiftSim {
   import M = LindenElkMain
   import T = LindenElkTranslate
   import RC = Charclasses
+  import LL = LindenElkLookLeaves
+  import LFU = FunctionalUtils
 
   // ==========================================================================
   // SOLID definitions — the pairing.
@@ -255,6 +257,9 @@ module LindenElkLiftSim {
       && BestTieLk(re, crv, str, ov, S, bbest, vms.bestmatch, ncap, nlook, nquant)
       && SeenRepLk(rer, qm, code, inp, bseen, vms.processed,
                    PIV.HdTreeOf(bactive), PIV.HeadPcOf(vms.active))
+      // the gate helpers read the oracle column at the current input; the
+      // walk carries this (OracleOkSuffixStep advances it with cp)
+      && LL.OracleOkSuffix(rer, qm, inp)
   }
 
   // ==========================================================================
@@ -421,4 +426,241 @@ module LindenElkLiftSim {
       var leaf := LT.FirstLeaf(t, LC.InitInput(str)).value;
       GmtTieOutside(re, result.value, leaf.1, S)
       && GmtTieInside(crv, str, ov, result.value, leaf.1, S, ncap, nlook, nquant)
+
+  // ==========================================================================
+  // THE REST OF THE LADDER — the sub-DAG below LiftAdvanceEpsilon, plus the
+  // two bridges that reach MainTheorem. With these filled, L3 is:
+  //   helpers → LiftAdvanceEpsilon → LiftConsume → LiftFindMatch →
+  //   LiftEndpoint → L3aValueBridge → else-branch rewrite → delete
+  //   LkBodyGroupsEmpty / FilterUnmoved / L1 LookRowsFromTables → package
+  //   verify → repack.
+  // Confidence tiers: [SOLID] statement believed exact; [SEAM] shape right,
+  // details expected to shift during fill — adjust freely, the consumer is
+  // LiftAdvanceEpsilon's matching case.
+  // ==========================================================================
+
+  // ---- (H) per-instruction walk inversions: the B-side mirrors of
+  //      TT.TtAtJmp / TtAtBeginLoop, one per LiftAdvanceEpsilon case. Each
+  //      says what the B head MUST look like at that instruction and where
+  //      the walk stands after. FILL from the corresponding
+  //      ActionsTreeRepFRE case (it performs exactly this inversion inline).
+
+  /** [SOLID] Jmp is a pure stutter: same tree, walk at the target. */
+  lemma TtLkAtJmp(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                  tb: LT.Tree, pc: nat, ea: bool, x: int)
+    requires TtLk(rer, qm, code, inp, tb, pc, ea)
+    requires NR.GetPcRE(code, pc) == Some(RB.Jmp(x))
+    ensures x >= 0 && TtLk(rer, qm, code, inp, tb, x as nat, ea)
+
+  /** [SOLID] BeginLoop is a stutter that forces the flag false. */
+  lemma TtLkAtBeginLoop(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                        tb: LT.Tree, pc: nat, ea: bool)
+    requires TtLk(rer, qm, code, inp, tb, pc, ea)
+    requires NR.GetPcRE(code, pc) == Some(RB.BeginLoop)
+    ensures TtLk(rer, qm, code, inp, tb, pc + 1, false)
+
+  /** [SOLID] At Accept the walk is exhausted: the tree is `Match`. */
+  lemma TtLkAtAccept(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                     tb: LT.Tree, pc: nat, ea: bool)
+    requires TtLk(rer, qm, code, inp, tb, pc, ea)
+    requires NR.GetPcRE(code, pc) == Some(RB.Accept)
+    ensures tb == LT.Match
+
+  /** [SOLID] At Consume the tree is a `Read` (char accepted, post-Read walk at
+      `pc+1` on the advanced input with the flag re-armed) or `Mismatch`. */
+  lemma TtLkAtConsume(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                      tb: LT.Tree, pc: nat, ea: bool, ce: RC.char_expectation)
+    requires TtLk(rer, qm, code, inp, tb, pc, ea)
+    requires NR.GetPcRE(code, pc) == Some(RB.Consume(ce))
+    ensures tb.Read? || tb == LT.Mismatch
+    ensures tb.Read? ==> exists nextinp ::
+      AR.ReadCharE(ce, inp) == Some((tb.c, nextinp))
+      && TtLk(rer, qm, code, nextinp, tb.t, pc + 1, true)
+    ensures tb == LT.Mismatch ==> AR.ReadCharE(ce, inp) == None
+
+  /** [SOLID] At SetRegisterToCP the tree is a `GroupActionT` whose action is
+      `Open`/`Close` by register parity (mirror of tr_open/tr_close). */
+  lemma TtLkAtSetReg(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                     tb: LT.Tree, pc: nat, ea: bool, r: int)
+    requires TtLk(rer, qm, code, inp, tb, pc, ea)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(r))
+    ensures tb.GroupActionT?
+    ensures (tb.g.Open? && r == CP.start_reg(tb.g.g as int))
+         || (tb.g.Close? && r == CP.end_reg(tb.g.g as int))
+    ensures TtLk(rer, qm, code, inp, tb.t, pc + 1, ea)
+
+  /** [SEAM] At SetQuantToClock the tree is the quantifier's `Reset` stamp
+      (payload pinned by `qm.quants` — TreeRepDetermRE's note). The fragment
+      compiles every stamp with `bq == false` (`NI.CodeShapeAt`). */
+  lemma TtLkAtSetQuant(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                       tb: LT.Tree, pc: nat, ea: bool, q: int)
+    requires TtLk(rer, qm, code, inp, tb, pc, ea)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, false))
+    ensures tb.GroupActionT? && tb.g.Reset?
+    ensures TtLk(rer, qm, code, inp, tb.t, pc + 1, ea)
+
+  /** [SOLID] THE GATE, B side: at `CheckOracle(lid)` the tree IS the gate's
+      own node — `LK` when the bit is set (and its `LkResult` verdict agrees
+      via `OracleOkAt`), `LKFail` when clear; a passing gate's continuation
+      walks from `pc+1` at the SAME input. This is `GateNodeAtInp` +
+      `GateFiresAtWalkInp` transported into the pairing's vocabulary — the
+      point where LiftAdvanceEpsilon's CheckOracle case meets `GateStepValue`. */
+  lemma TtLkAtCheckOracle(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                          tb: LT.Tree, pc: nat, ea: bool, lid: int)
+    requires TtLk(rer, qm, code, inp, tb, pc, ea)
+    requires NR.GetPcRE(code, pc) == Some(RB.CheckOracle(lid))
+    requires LL.OracleOkAt(rer, qm, inp)
+    ensures lid in qm.looks
+    ensures var (lk, r1) := qm.looks[lid];
+      (LOr.view_get_oracle(qm.ov, TR_CpOf(inp), lid) ==>
+         tb.LK? && tb.lk == lk
+         && EL.LkGateOk(rer, lk, r1, inp, tb.tlk, true)
+         && TtLk(rer, qm, code, inp, tb.t, pc + 1, ea))
+      && (!LOr.view_get_oracle(qm.ov, TR_CpOf(inp), lid) ==>
+            tb.LKFail? && tb.lk == lk
+            && EL.LkGateOk(rer, lk, r1, inp, tb.tlk, false))
+
+  /** `TR.CpOf` re-exported locally (avoids importing TreeRep just for it). */
+  function TR_CpOf(inp: LC.Input): nat { |inp.pref| }
+
+  /** [SOLID] At an AnchorAssertion the tree is `AnchorPass` (satisfied) or
+      `Mismatch` (mirror of tr_anchorpass / tr_anchorfail). */
+  lemma TtLkAtAnchor(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                     tb: LT.Tree, pc: nat, ea: bool, a: R.anchor)
+    requires TtLk(rer, qm, code, inp, tb, pc, ea)
+    requires NR.GetPcRE(code, pc) == Some(RB.AnchorAssertion(a))
+    ensures tb.AnchorPass? || tb == LT.Mismatch
+    ensures tb.AnchorPass? ==> TtLk(rer, qm, code, inp, tb.t, pc + 1, ea)
+
+  /** [SOLID] At EndLoop: with the flag armed the tree is `Progress`
+      (tr_progress); with it cold the tree is `Mismatch` (tr_progressfail) and
+      the VM drops the thread. */
+  lemma TtLkAtEndLoop(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                      tb: LT.Tree, pc: nat, ea: bool)
+    requires TtLk(rer, qm, code, inp, tb, pc, ea)
+    requires NR.GetPcRE(code, pc) == Some(RB.EndLoop)
+    ensures ea ==> tb.Progress? && TtLk(rer, qm, code, inp, tb.t, pc + 1, true)
+    ensures !ea ==> tb == LT.Mismatch
+
+  /** [SEAM] At a Fork the tree is a `Choice` whose branches walk from the two
+      targets. TRUE for the forward forks (Disjunction, quantifier entry); the
+      do-while BACKWARD fork at the quant seam has the fused
+      `AtBackForkTreeRep` shape — derive the exact seam statement from that
+      lemma (615-line file; its fork case enumerates the shapes) and split
+      this into forward/backward versions if needed. */
+  lemma TtLkAtFork(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                   tb: LT.Tree, pc: nat, ea: bool, x: int, y: int)
+    requires TtLk(rer, qm, code, inp, tb, pc, ea)
+    requires NR.GetPcRE(code, pc) == Some(RB.Fork(x, y))
+    ensures x >= 0 && y >= 0
+    ensures (tb.Choice?
+             && TtLk(rer, qm, code, inp, tb.t1, x as nat, ea)
+             && TtLk(rer, qm, code, inp, tb.t2, y as nat, ea))
+         || tb == LT.Mismatch   // the zero-progress back-fork kill (tr's Fork-Mismatch rule)
+
+  // NOTE on CheckNullable / Fail / NegCheckOracle / WriteOracle: the L3a MAIN
+  // code should pin each as either absent (WriteOracle — NR.NoWriteInstrRE;
+  // likely CheckNullable under NonNullable plus-fragment bodies) or
+  // tree-trivial (Fail → Mismatch; NegCheckOracle → the negative gate, whose
+  // bodies are capture-free so B's merge is value-empty). FILL: prove the
+  // absence from the code shape (NI.CodeShapeAt) where possible instead of an
+  // inversion lemma; otherwise mirror TtLkAtCheckOracle.
+
+  // ---- (G) GateAheadClear preservation bricks --------------------------------
+
+  /** [SOLID] A `Reset` only removes groups, so clear-ness survives. */
+  lemma GateAheadClearAfterReset(acts: LS.Actions, gmt: LG.GroupMap, gidl: LG.GroupSet, idx: nat)
+    requires GateAheadClear(acts, gmt)
+    ensures GateAheadClear(acts, LG.GMUpdate(LG.Reset(gidl), idx, gmt))
+
+  /** [SEAM] An outside-S group action cannot populate a pending gate's body
+      groups (every pending body's groups sit inside S). */
+  lemma GateAheadClearAfterOutside(acts: LS.Actions, gmt: LG.GroupMap, a: LG.GroupAction, idx: nat,
+                                   S: set<LG.GroupId>)
+    requires GateAheadClear(acts, gmt)
+    requires forall lk: L.Lookaround, r1: L.Regex | GatePending(acts, lk, r1) ::
+               forall g :: g in L.DefGroups(r1) ==> g in S
+    requires a.Open? ==> a.g !in S
+    requires a.Close? ==> a.g !in S
+    requires a.Reset? ==> true
+    ensures GateAheadClear(acts, LG.GMUpdate(a, idx, gmt))
+
+  /** [SEAM] Crossing gate `(lk, r1)` merges ONLY `r1`'s groups
+      (`LmOfBodiesDisjoint`), and the crossed occurrence is consumed from the
+      continuation acts — every OTHER pending gate stays clear. FILL alongside
+      LiftAdvanceEpsilon's CheckOracle case; the acts-evolution premise below
+      is the SEAM to nail down (mirror the walk's gate case: `pcmid == pc+1`,
+      `cont == acts[1..]`-shaped). */
+  lemma GateAheadClearAfterMerge(acts: LS.Actions, cont: LS.Actions, gmt: LG.GroupMap,
+                                 gmerged: LG.GroupMap, lk: L.Lookaround, r1: L.Regex)
+    requires GateAheadClear(acts, gmt)
+    requires forall g :: g in gmerged ==> g in gmt || g in L.DefGroups(r1)
+    requires forall lk2: L.Lookaround, r2: L.Regex | GatePending(cont, lk2, r2) ::
+               GatePending(acts, lk2, r2) && (lk2 != lk || r2 != r1)
+    requires forall lk2: L.Lookaround, r2: L.Regex | GatePending(cont, lk2, r2) ::
+               forall g :: g in L.DefGroups(r2) ==> g !in L.DefGroups(r1)
+    ensures GateAheadClear(cont, gmerged)
+
+  // ---- (C) the ComputeTr shape fact -----------------------------------------
+
+  /** [SOLID] The spec tree builder only produces machine-B-explorable shapes
+      (no `ReadBackRef` in the fragment; LK bodies are unconstrained).
+      FILL: structural induction over `ComputeTr` mirroring
+      `LFU.ComputeTrIsTree`'s recursion; the fragment premise kills the
+      backreference case. */
+  lemma PikeSubtreeLkComputeTr(rer: LW.RegExpRecord, re: R.regex, str: string)
+    requires T.TransWf(re) && NR.LookBehindFragmentRE(re)
+    ensures PTL.PikeSubtreeLk(
+      LFU.ComputeTr(rer, [LS.Areg(T.Translate(re))], LC.InitInput(str), LG.Empty, WP.Forward))
+
+  // ---- (V) the value bridge into MainExtraction ------------------------------
+
+  /** [SEAM — THE LAST GLUE] From the endpoint's leaf ties and the engine's
+      FLookLoop facts, conclude MainExtraction's precondition: the leaf gm IS
+      the live denotation of the RECONSTRUCTED registers.
+
+      FILL ingredients (this is where the remaining (E) work lives):
+      - inside S, present: `GmtTieInside` gives the fresh-replay value;
+        `M.FLookLoopValueOk` gives the same value in `res.0`;
+        `PIV.GmOfLiveInsideLookPresentEq` + `PIV.BodyPathPresentLk` turn
+        register agreement into GmOfLive agreement — their RE-side outer-path
+        hypothesis (`PathPresentLk`'s outer ancestors + `lc >= mx`) is the ONE
+        (E) piece not yet banked: derive the outer-capture presence from the
+        t-side leaf (an inside-look g present in the leaf forces its ancestors'
+        opens on the same path — a FirstLeaf structural fact), and `lc >= 0`
+        from `M.MainMatchLookClkSet`.
+      - inside S, absent: `PIV.GmOfLiveInsideLookAbsentEq`.
+      - outside S: `GmtTieOutside` + `M.FLookLoopCaptureFrame` (the fold only
+        writes inside `CaptureRegsSet(CapIdsInLooks)`) + `FLookLoopQuantFrame`.
+      Statement uses the fold over the FULL lid range as the else branch calls
+      it (`lid == 0`, `maxlook == R.max_lookaround(ast)`). */
+  lemma L3aValueBridge(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, ast: R.regex,
+                       crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
+                       th: AI.Thread, leafgm: LG.GroupMap, maxlook: int,
+                       ncap: int, nlook: int, nquant: int)
+    requires qm.ov == ov
+    requires T.TransWf(re) && S == LL.LkBodyGroups(T.Translate(re))
+    requires GmtTieOutside(re, th, leafgm, S)
+    requires GmtTieInside(crv, str, ov, th, leafgm, S, ncap, nlook, nquant)
+    requires M.FLookLoopValueOk(crv, str,
+               AI.FLookLoop(crv, str, 0, maxlook, th.capture_regs, th.look_regs, th.quant_regs, ov).0,
+               0, maxlook, th.look_regs, ov, ncap, nlook, nquant)
+    ensures var res := AI.FLookLoop(crv, str, 0, maxlook, th.capture_regs, th.look_regs, th.quant_regs, ov);
+            leafgm == PIV.GmOfLive(re, res.0, th.look_regs, th.quant_regs)
+
+  // ---- (F) final assembly (no scaffold lemma — a recipe) ---------------------
+  //
+  // The else-branch rewrite of MainTheorem, once (H)/(G)/(C)/(V) and the seven
+  // lift lemmas are green:
+  //   1. Replace `LkBodyGroupsEmpty(re); assert S == {}` with
+  //      `PikeSubtreeLkComputeTr` + `LiftEndpoint` (feeding the entry facts it
+  //      requires — all are already established in the surrounding body).
+  //   2. Replace the L1 `FBuildCaptureUnfold` chain's leaf identification with
+  //      `L3aValueBridge`, then feed the SYNTHETIC thread carrying
+  //      `res.0/res.1/res.2` into the EXISTING `MainExtraction`
+  //      (`ReplayThreadWfLA`/`FreshMatchWf` supply its ThreadRegsWf +
+  //      QuantRegsFinal, per handoff §3).
+  //   3. Delete `LkBodyGroupsEmpty`, `FilterUnmoved`, and the L1
+  //      `LookRowsFromTables`; whole-package verify; repack (blocked on the
+  //      lem 10-minute wall until Lemmata's Native.cs is fixed).
 }
