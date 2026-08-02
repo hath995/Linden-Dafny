@@ -3782,6 +3782,47 @@ module LindenElkMain {
     GateNodeAtInp(rer, acts, inp, b, t, lk, r1);
   }
 
+  /** L3a §2 CHECKED-SIDE GATE POSITION — the mirror of `GateNodeAtInp`. At a
+      `CheckOracle(lid)` pc every other `TreeRepRE` disjunct pins a different
+      instruction, so only the gate rule can apply: on a set bit the derivation
+      carries the SAME tree on to `pc+1` at the SAME `inp` (the transparency
+      `TT.StuttersRE` records), and on a clear bit the tree is `Mismatch`.
+      Pure inversion, in the style of `TT.TtAtJmp`. */
+  lemma GateFiresAtWalkInp(qm: AR.QMap, tstar: LT.Tree, code: RB.code, pc: nat,
+                           inp: LC.Input, b: bool, lid: int)
+    requires TR.TreeRepRE(qm, tstar, code, pc, inp, b)
+    requires NR.GetPcRE(code, pc) == Some(RB.CheckOracle(lid))
+    ensures LOr.view_get_oracle(qm.ov, TR.CpOf(inp), lid) ==>
+              TR.TreeRepRE(qm, tstar, code, pc + 1, inp, b)
+    ensures !LOr.view_get_oracle(qm.ov, TR.CpOf(inp), lid) ==> tstar == LT.Mismatch
+  {
+  }
+
+  /** The cp-level reading of the mirror, in the form the simulation supplies
+      its inputs: a derivation standing at lid's gate with the VM at `cp` fires
+      that gate AT `cp` — because `PIV.PikeInvRE`'s `PTS` case carries
+      `inp == InpOfCp(str, vms.cp)`, so the derivation's input at every step IS
+      the VM's cp.
+
+      Together with `GateNodeAtInp` (spec side) both halves of §2's position
+      question are now local inversions: the gate fires at the walk's `inp` on
+      BOTH sides. What is still missing to close the gate is neither of these —
+      it is that the crossing which wrote the winning thread's FINAL `a_cp[l]`
+      is the one on the first-leaf path (the sim relates threads to `tstar`
+      subtrees, and a subtree does not know the path taken to reach it). */
+  lemma GateFiresAtCp(qm: AR.QMap, tstar: LT.Tree, code: RB.code, pc: nat,
+                      str: string, cp: nat, b: bool, lid: int)
+    requires cp <= |str|
+    requires TR.TreeRepRE(qm, tstar, code, pc, PIV.InpOfCp(str, cp), b)
+    requires NR.GetPcRE(code, pc) == Some(RB.CheckOracle(lid))
+    requires LOr.view_get_oracle(qm.ov, cp, lid)
+    ensures TR.TreeRepRE(qm, tstar, code, pc + 1, PIV.InpOfCp(str, cp), b)
+  {
+    var inp := PIV.InpOfCp(str, cp);
+    assert TR.CpOf(inp) == cp by { LS.ReverseLength(str[..cp]); }
+    GateFiresAtWalkInp(qm, tstar, code, pc, inp, b, lid);
+  }
+
   /** Agreeing OUTSIDE `Sp` and equal lengths give agreement INSIDE any `T`
       disjoint from `Sp`. Isolated so the set step doesn't drag heavy context. */
   lemma RegsAgreeOutsideToInside(a: AReg.Regs, b: AReg.Regs, T: set<int>, Sp: set<int>)
