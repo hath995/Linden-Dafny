@@ -3740,6 +3740,48 @@ module LindenElkMain {
     assert LOr.view_get_oracle(qm.ov, cp, l);         // LookCpsOracleTrue at l
   }
 
+  /** L3a §2 SPEC-SIDE GATE POSITION. When the action walk's head is a
+      lookaround, `BoolTreeLk` FORCES the spec tree at that point to be the
+      lookaround's own node — `LK` on a pass, `LKFail` on a kill — and
+      `LkGateOk` pins its body tree to `ComputeTr(.., inp, ..)` at THAT SAME
+      `inp`. So the LK node's position is definitionally the walk's current
+      input; there is no separate position theorem to prove on this side.
+      Pure inversion of the `least predicate`, so it costs nothing.
+
+      This is the half of §2's `GatePos(tstar,l) == inp_l` that lives on the
+      spec: `ActionsTreeRepFRE`'s gate case pins `lid` from the `CheckOracle`
+      instruction at `pc` while holding `t` at `inp`, and this says that `t`
+      is then lid's LK node AT `inp`. It is stated here rather than in
+      `EntryLk` to keep the change inside a file with a fresh baseline.
+
+      What it does NOT give: the tie to the ENGINE's `a_cp[l]`. That needs the
+      winning thread's PATH to be matched to the first-leaf path of `tstar`,
+      and the simulation state carries no history to express it (see the
+      session notes). */
+  lemma GateNodeAtInp(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input,
+                      b: BS.LoopBool, t: LT.Tree, lk: L.Lookaround, r1: L.Regex)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.LookaroundR(lk, r1))
+    requires EL.BoolTreeLk(rer, acts, inp, b, t)
+    ensures (t.LK? && t.lk == lk
+             && EL.LkGateOk(rer, lk, r1, inp, t.tlk, true)
+             && EL.BoolTreeLk(rer, acts[1..], inp, b, t.t))
+         || (t.LKFail? && t.lk == lk && EL.LkGateOk(rer, lk, r1, inp, t.tlk, false))
+  {
+    // unfold the gate case: the match on `t` admits only LK / LKFail
+  }
+
+  /** Corollary in the form §2 wants it: the body tree hanging at the gate is
+      the one computed AT `inp`, i.e. the gate's position is `TR.CpOf(inp)`. */
+  lemma GatePosIsWalkInp(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input,
+                         b: BS.LoopBool, t: LT.Tree, lk: L.Lookaround, r1: L.Regex)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.LookaroundR(lk, r1))
+    requires EL.BoolTreeLk(rer, acts, inp, b, t)
+    ensures t.LK? || t.LKFail?
+    ensures t.tlk == FU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk))
+  {
+    GateNodeAtInp(rer, acts, inp, b, t, lk, r1);
+  }
+
   /** Agreeing OUTSIDE `Sp` and equal lengths give agreement INSIDE any `T`
       disjoint from `Sp`. Isolated so the set step doesn't drag heavy context. */
   lemma RegsAgreeOutsideToInside(a: AReg.Regs, b: AReg.Regs, T: set<int>, Sp: set<int>)
