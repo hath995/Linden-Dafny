@@ -3683,6 +3683,63 @@ module LindenElkMain {
     }
   }
 
+  /** L3a (S-i): on the WINNING thread, every recorded look cp is a position
+      where that look's ORACLE BIT IS SET — `CheckOracle` writes `a_cp[l]` only
+      on the branch that just read the bit, and the main pass never writes the
+      view. Same fresh-entry shape as `MainMatchCpCtxOk`. */
+  lemma MainMatchLookOracleTrue(code: RB.code, str: string, inits: AI.VmState,
+                                cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, nlook: int,
+                                ov: LOr.OracleView, cdn: LCdn.cdns, result: Option<AI.Thread>)
+    requires |inits.processed.true_set| == RB.size(code) && |inits.processed.false_set| == RB.size(code)
+    requires CM.NoWriteOracleCode(code)
+    requires inits.context.nextchar == AI.get_char(str, inits.cp)
+    requires 0 <= inits.cp <= |str|
+    requires look == AReg.init_regs(nlook)
+    requires inits.active == [AI.init_thread(cap, look, quant)]
+    requires inits.blocked == [] && inits.bestmatch.None?
+    requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
+    ensures result.Some? ==> CM.LookCpsOracleTrue(result.value.look_regs, ov)
+  {
+    // fresh init threads have every look cp == -1, so the guard is vacuous
+    assert CM.VmLookOracleTrue(inits, ov) by {
+      assert CM.LookCpsOracleTrue(look, ov) by {
+        forall l: int | AI.get_idx(look.a_cp, l) >= 0
+          ensures LOr.view_get_oracle(ov, AI.get_idx(look.a_cp, l), l)
+        {
+          if 0 <= l < |look.a_cp| { assert look.a_cp[l] == -1; }
+        }
+      }
+      assert AI.init_thread(cap, look, quant).look_regs == look;
+    }
+    CM.FFindMatchLookOracleTrue(code, str, inits, ov, LAnc.Forward, cdn);
+  }
+
+  /** L3a (S-i) PAYOFF: the SPEC look `l` MATCHES at the engine's recorded
+      `a_cp[l]`. The engine says the bit is set there (`LookCpsOracleTrue`);
+      `OracleOkAt` says the bit at a position is exactly the spec body's verdict
+      there. So the two candidate positions of the §2 gate — the engine's
+      `a_cp[l]` and the spec LK node's `inp_l` — are BOTH positions at which look
+      `l` matches. That is the engine-side half of the oracle-uniqueness
+      argument; identifying them still needs the path-uniqueness half (that on
+      the priority-first winning path the look is crossed at a UNIQUE position),
+      which is NOT proved here. */
+  lemma LookCpSpecMatch(rer: LW.RegExpRecord, qm: AR.QMap, str: string, lk: AReg.Regs,
+                        l: int, lkr: L.Lookaround, r1: L.Regex)
+    requires CM.LookCpsOracleTrue(lk, qm.ov)
+    requires CM.LookCpsLE(lk, |str|)
+    requires AI.get_idx(lk.a_cp, l) >= 0
+    requires l in qm.looks && qm.looks[l] == (lkr, r1)
+    requires LL.OracleOkAt(rer, qm, PIV.InpOfCp(str, AI.get_idx(lk.a_cp, l) as nat))
+    ensures var inpl := PIV.InpOfCp(str, AI.get_idx(lk.a_cp, l) as nat);
+      LT.TreeRes(FU.ComputeTr(rer, [LS.Areg(r1)], inpl, LG.Empty, L.LkDir(lkr)),
+                 LG.Empty, inpl, L.LkDir(lkr)).Some?
+  {
+    var cp := AI.get_idx(lk.a_cp, l) as nat;          // 0 <= cp <= |str| (LookCpsLE)
+    var inpl := PIV.InpOfCp(str, cp);
+    assert TR.CpOf(inpl) == cp by { LS.ReverseLength(str[..cp]); }
+    assert LOr.view_get_oracle(qm.ov, cp, l);         // LookCpsOracleTrue at l
+  }
+
   /** Agreeing OUTSIDE `Sp` and equal lengths give agreement INSIDE any `T`
       disjoint from `Sp`. Isolated so the set step doesn't drag heavy context. */
   lemma RegsAgreeOutsideToInside(a: AReg.Regs, b: AReg.Regs, T: set<int>, Sp: set<int>)

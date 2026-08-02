@@ -1716,6 +1716,213 @@ module LindenElkClockMono {
     }
   }
 
+  // ==========================================================================
+  // L3a (S-i) look-ORACLE truth: every look cp a thread records is a position
+  // where that look's ORACLE BIT IS SET. CheckOracle writes `a_cp[l] := s.cp`
+  // ONLY on the branch where it has just READ `view_get_oracle(ov, s.cp, l)`
+  // as true, so the record is self-justifying -- provided the view is static,
+  // which the main pass guarantees (`NoWriteOracleCode`: the lookaround BUILD
+  // passes are the only writers and they ran before the search).
+  //
+  // Composed with `OracleOkSuffix` (the bit at cp <==> the spec look matches at
+  // `InpOfCp(str, cp)`) this reads: THE SPEC LOOK `l` MATCHES AT `a_cp[l]` --
+  // the engine-side half of the §2 gate's oracle-uniqueness argument, which
+  // needs both `a_cp[l]` and `CpOf(inp_l)` to be oracle-true positions before
+  // it can identify them. Parallel induction; PikeInvFullRE is untouched.
+  // ==========================================================================
+
+  /** Every look cp recorded in `lk` is a position where that look's bit is set. */
+  ghost predicate LookCpsOracleTrue(lk: AReg.Regs, ov: LOr.OracleView) {
+    forall l: int :: AI.get_idx(lk.a_cp, l) >= 0 ==>
+      LOr.view_get_oracle(ov, AI.get_idx(lk.a_cp, l), l)
+  }
+
+  /** Every thread in the state has `LookCpsOracleTrue` look registers. */
+  ghost predicate VmLookOracleTrue(s: AI.VmState, ov: LOr.OracleView) {
+    (forall t | t in s.active :: LookCpsOracleTrue(t.look_regs, ov))
+    && (forall tb | tb in s.blocked :: LookCpsOracleTrue(tb.0.look_regs, ov))
+    && (s.bestmatch.Some? ==> LookCpsOracleTrue(s.bestmatch.value.look_regs, ov))
+  }
+
+  /** Recording look `l`'s cp at a position whose bit is set preserves
+      `LookCpsOracleTrue` (a negative cp makes the guard vacuous). */
+  lemma SetRegLookOracleTrue(lk: AReg.Regs, l: int, cp: int, clk: int, ov: LOr.OracleView)
+    requires LookCpsOracleTrue(lk, ov)
+    requires LOr.view_get_oracle(ov, cp, l)
+    ensures LookCpsOracleTrue(AReg.set_reg(lk, l, Some(cp), clk), ov)
+  {
+    var r2 := AReg.set_reg(lk, l, Some(cp), clk);
+    forall k: int | AI.get_idx(r2.a_cp, k) >= 0
+      ensures LOr.view_get_oracle(ov, AI.get_idx(r2.a_cp, k), k)
+    {
+      if 0 <= l < |lk.a_cp| && 0 <= l < |lk.a_clk| {
+        if k == l {
+          assert r2.a_cp == lk.a_cp[l := cp];      // int_of_opt(Some(cp)) == cp
+          assert AI.get_idx(r2.a_cp, l) == cp;
+        } else {
+          SetRegOtherIdx(lk, l, Some(cp), clk, k);
+        }
+      } else {
+        assert r2 == lk;
+      }
+    }
+  }
+
+  /** An epsilon phase over write-free code preserves `VmLookOracleTrue`: the
+      only look write is CheckOracle's, on the branch that just read the bit. */
+  lemma FAdvanceEpsilonLookOracleTrue(c: RB.code, s: AI.VmState, ov: LOr.OracleView,
+                                      dir: LAnc.direction)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires NoWriteOracleCode(c)
+    requires VmLookOracleTrue(s, ov)
+    ensures VmLookOracleTrue(AI.FAdvanceEpsilon(c, s, ov, dir).0, ov)
+    decreases AI.unprocessed(s.processed), |s.active|
+  {
+    if |s.active| == 0 { return; }
+    var t := s.active[0];
+    var ac := s.active[1..];
+    assert t in s.active;
+    assert forall x | x in ac :: x in s.active;
+    if AI.bpc_mem(s.processed, t.pc, t.exit_allowed) {
+      FAdvanceEpsilonLookOracleTrue(c, s.(active := ac), ov, dir);
+      return;
+    }
+    var b0 := s.processed;
+    var s1 := s.(clock := s.clock + 1, processed := AI.bpc_add(b0, t.pc, t.exit_allowed));
+    assert AI.unprocessed(s1.processed) <= AI.unprocessed(b0)
+        && (0 <= t.pc < RB.size(c) ==> AI.unprocessed(s1.processed) < AI.unprocessed(b0))
+      by { AI.UnprocessedAdd(b0, t.pc, t.exit_allowed); }
+    match RB.get_instr(c, t.pc) {
+      case Consume(ce) =>
+        var (nb, ni) := AI.add_thread(t, ce, s1.blocked, s1.isblocked);
+        var s2 := s1.(blocked := nb, isblocked := ni, active := ac);
+        assert VmLookOracleTrue(s2, ov) by {
+          forall tb | tb in nb ensures LookCpsOracleTrue(tb.0.look_regs, ov) {
+            assert tb == (t, ce) || tb in s1.blocked;
+          }
+        }
+        FAdvanceEpsilonLookOracleTrue(c, s2, ov, dir);
+      case Accept =>
+      case Jmp(x) =>
+        FAdvanceEpsilonLookOracleTrue(c, s1.(active := [t.(pc := x)] + ac), ov, dir);
+      case Fork(x, y) =>
+        var newt := AI.Thread(x, t.capture_regs, t.look_regs, t.quant_regs, t.exit_allowed);
+        FAdvanceEpsilonLookOracleTrue(c, s1.(active := [newt, t.(pc := y)] + ac), ov, dir);
+      case SetRegisterToCP(reg) =>
+        var t2 := t.(capture_regs := AReg.set_reg(t.capture_regs, reg, Some(s1.cp), s1.clock), pc := t.pc + 1);
+        FAdvanceEpsilonLookOracleTrue(c, s1.(active := [t2] + ac), ov, dir);
+      case SetQuantToClock(q, bq) =>
+        var ocp := if bq then Some(s1.cp) else None;
+        var t2 := t.(quant_regs := AReg.set_reg(t.quant_regs, q, ocp, s1.clock), pc := t.pc + 1);
+        FAdvanceEpsilonLookOracleTrue(c, s1.(active := [t2] + ac), ov, dir);
+      case CheckOracle(l) =>
+        if LOr.view_get_oracle(ov, s1.cp, l) {
+          var t2 := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(s1.cp), s1.clock));
+          assert LookCpsOracleTrue(t.look_regs, ov);                    // t in s.active
+          SetRegLookOracleTrue(t.look_regs, l, s1.cp, s1.clock, ov);    // the branch just read the bit
+          FAdvanceEpsilonLookOracleTrue(c, s1.(active := [t2] + ac), ov, dir);
+        } else {
+          FAdvanceEpsilonLookOracleTrue(c, s1.(active := ac), ov, dir);
+        }
+      case NegCheckOracle(l) =>
+        if LOr.view_get_oracle(ov, s1.cp, l) {
+          FAdvanceEpsilonLookOracleTrue(c, s1.(active := ac), ov, dir);
+        } else {
+          FAdvanceEpsilonLookOracleTrue(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir);
+        }
+      case WriteOracle(l) =>
+        assert 0 <= t.pc < |c|;      // excluded by NoWriteOracleCode
+        assert false;
+      case BeginLoop =>
+        FAdvanceEpsilonLookOracleTrue(c, s1.(active := [t.(exit_allowed := false, pc := t.pc + 1)] + ac), ov, dir);
+      case EndLoop =>
+        if t.exit_allowed {
+          FAdvanceEpsilonLookOracleTrue(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir);
+        } else {
+          FAdvanceEpsilonLookOracleTrue(c, s1.(active := ac), ov, dir);
+        }
+      case CheckNullable(qid) =>
+        if LCdn.cdn_get(s1.cdn, qid) {
+          FAdvanceEpsilonLookOracleTrue(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir);
+        } else {
+          FAdvanceEpsilonLookOracleTrue(c, s1.(active := ac), ov, dir);
+        }
+      case AnchorAssertion(a) =>
+        if LAnc.is_satisfied(a, s1.context, dir) {
+          FAdvanceEpsilonLookOracleTrue(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir);
+        } else {
+          FAdvanceEpsilonLookOracleTrue(c, s1.(active := ac), ov, dir);
+        }
+      case Fail =>
+        FAdvanceEpsilonLookOracleTrue(c, s1.(active := ac), ov, dir);
+    }
+  }
+
+  /** The consume phase never touches `look_regs`, so `VmLookOracleTrue` survives. */
+  lemma FConsumeLookOracleTrue(s: AI.VmState, ov: LOr.OracleView)
+    requires VmLookOracleTrue(s, ov)
+    ensures VmLookOracleTrue(AI.FConsume(s), ov)
+    decreases |s.blocked|
+  {
+    if |s.blocked| == 0 { return; }
+    var t := s.blocked[0].0;
+    var ce := s.blocked[0].1;
+    var s1 := s.(blocked := s.blocked[1..]);
+    assert VmLookOracleTrue(s1, ov) by {
+      forall tb | tb in s1.blocked ensures LookCpsOracleTrue(tb.0.look_regs, ov) { assert tb in s.blocked; }
+    }
+    var s2 := if RC.is_accepted(s1.context.nextchar, ce)
+              then s1.(active := [t.(exit_allowed := true, pc := t.pc + 1)] + s1.active)
+              else s1;
+    assert VmLookOracleTrue(s2, ov) by {
+      assert s.blocked[0] in s.blocked;
+      assert LookCpsOracleTrue(t.look_regs, ov);
+      forall t2 | t2 in s2.active ensures LookCpsOracleTrue(t2.look_regs, ov) {
+        if t2 != t.(exit_allowed := true, pc := t.pc + 1) { assert t2 in s1.active; }
+      }
+    }
+    FConsumeLookOracleTrue(s2, ov);
+  }
+
+  /** THE oracle-truth frame: over write-free code, the winning thread's every
+      recorded look cp is a position where that look's bit is SET. With
+      `OracleOkSuffix` this says the SPEC look matches there. */
+  lemma FFindMatchLookOracleTrue(c: RB.code, str: string, s: AI.VmState, ov: LOr.OracleView,
+                                 dir: LAnc.direction, cdn: LCdn.cdns)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires dir == LAnc.Forward
+    requires NoWriteOracleCode(c)
+    requires s.context.nextchar == AI.get_char(str, s.cp)
+    requires 0 <= s.cp <= |str|
+    requires VmLookOracleTrue(s, ov)
+    ensures var r := AI.FFindMatch(c, str, s, ov, dir, cdn).0;
+      r.Some? ==> LookCpsOracleTrue(r.value.look_regs, ov)
+    decreases |str| - s.cp
+  {
+    var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, dir));
+    assert VmLookOracleTrue(s0, ov);
+    var (s1, ov1) := AI.FAdvanceEpsilon(c, s0, ov, dir);
+    FAdvanceEpsilonLookOracleTrue(c, s0, ov, dir);
+    FAdvanceEpsilonOvStable(c, s0, ov, dir);
+    assert ov1 == ov;                       // static view: the main pass only READS
+    assert VmLookOracleTrue(s1, ov);
+    if |s1.blocked| == 0 { return; }
+    match s1.context.nextchar {
+      case None =>
+      case Some(_) =>
+        assert s.cp < |str|;                // nextchar Some (forward) => in range
+        var s2 := AI.FConsume(s1);
+        FConsumeLookOracleTrue(s1, ov);
+        var s3 := s2.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
+                      cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
+        var newchar := AI.get_char(str, s3.cp - AI.cp_offset(dir));
+        var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
+        assert s4.cp == s.cp + 1 <= |str|;
+        assert VmLookOracleTrue(s4, ov);
+        FFindMatchLookOracleTrue(c, str, s4, ov1, dir, cdn);
+    }
+  }
+
   /** No position of `c` holds a `WriteOracle`. */
   ghost predicate NoWriteOracleCode(c: RB.code) {
     forall pc: nat :: pc < |c| ==> !c[pc].WriteOracle?
