@@ -219,7 +219,17 @@ remaining grind; budget a dedicated session or two, verify per-symbol as you
 go, and keep `PikeInvFullRE` and the existing sim UNTOUCHED (everything is
 parallel; the green proofs carry zero risk).
 
-### Architecture refinement — COMPOSE, don't re-prove
+> **SCAFFOLD EXISTS (branch `l3a-liftsim-scaffold`): `src/Equiv/LiftSim.dfy`**
+> — definitions real and resolving, seven bodiless lemmas with FILL notes, in
+> fill order: `TtLkSameTree` → `GateStepValue` → `LiftInit` →
+> `LiftAdvanceEpsilon` → `LiftConsume` → `LiftFindMatch` → `LiftEndpoint`.
+> Its header supersedes the "compose with the A-machine" idea below: B's own
+> correctness layer makes the lift a STANDALONE VM↔B frame at the ClockMono
+> trio granularity — no PikeSimRE composition needed. The section below is
+> kept for the landmine list, which still applies (SeenRepLk is the
+> placeholder-body seam; `PIV.SeenInclusionRE` is its template).
+
+### Architecture refinement — COMPOSE, don't re-prove (superseded by LiftSim.dfy's standalone design; landmines still apply)
 
 Do NOT mirror the whole of `PikeSimRE` from scratch. Define the composite
 invariant over `(vms, bst)` as `exists ast :: PikeInvFullRE(..., ast, vms,
