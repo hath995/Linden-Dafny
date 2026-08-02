@@ -219,6 +219,46 @@ remaining grind; budget a dedicated session or two, verify per-symbol as you
 go, and keep `PikeInvFullRE` and the existing sim UNTOUCHED (everything is
 parallel; the green proofs carry zero risk).
 
+### Architecture refinement — COMPOSE, don't re-prove
+
+Do NOT mirror the whole of `PikeSimRE` from scratch. Define the composite
+invariant over `(vms, bst)` as `exists ast :: PikeInvFullRE(..., ast, vms,
+...) && LiftRel(vms, ast, bst)` and INHERIT the thread/queue/priority
+mechanics from the proven sim:
+
+- `LiftRel`: A-state and B-state lists pair 1-1 — `ast.active[i].0` is the
+  DISSOLUTION of `bst.active[i].0` (LK wrappers stripped, `LKFail ↦
+  Mismatch`), gms tied outside `S`, and the per-thread inside-S/a_cp tie reads
+  `vms.active[i]`'s registers (three-way, VM-indexed).
+- Preservation per VM step: invoke the EXISTING `InvariantPreservationRE`
+  case lemma to move `ast`; then case on what A did. A stepped → B takes the
+  mirrored step (tree shapes are in lockstep outside gates). A stuttered on a
+  `CheckOracle` → B alone steps its head's LK (the keystone case). A stuttered
+  otherwise → B stutters.
+
+**Landmines found at design time (clear these FIRST, they shape the defs):**
+
+1. **B lags at gates.** `DissolveF(LK(lk, tlk, Match)) == Match`: when A's
+   head is already `Match`, B's paired head may still carry leading LK
+   wrappers, so one A-step lifts to k B-gate-steps + the mirrored step.
+   Either build the k-step consumption into the lift lemma, or normalize the
+   pairing to "B-head has no leading LK" with an eager-dissolution helper.
+2. **Seen-set pairing needs a t-side determinism lemma.** A skips when its
+   head is A-seen; B may only skip when ITS head is B-seen. Two different
+   B-trees with equal dissolutions would desync the skip. Rule it out with
+   the walk-side mirror of `TreeRepDetermRE`: at a fixed `(pc, ea, inp)` the
+   `BoolTreeLk`/walk tree is unique ("TtLkSameTree"), so pc-equal heads have
+   equal B-trees. Pair B-trees THROUGH the pc (the walk relation), not
+   through `DissolveF` alone.
+3. **Blocked realignment at `FConsume`.** The A side uses the
+   `MatchingBlocked` filter (`PikeInvRE:5601`); the B side must filter the
+   same sublist — define B's blocked pairing against the SAME filter verdicts
+   (char checks are gate-free, so the verdicts transfer verbatim).
+
+The reset invariant (keystone's `Empty` hypothesis) rides inside `LiftRel`'s
+inside-S tie as stated above; `LookRowsFromTablesL3a` supplies the per-lid
+static package at each gate application.
+
 Then: the else-branch rewrite (§3 below, unchanged except (S-ii) is gone) and
 the dead-lemma deletion.
 
