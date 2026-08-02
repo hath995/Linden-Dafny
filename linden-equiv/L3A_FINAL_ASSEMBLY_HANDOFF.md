@@ -1,15 +1,27 @@
-# L3a Final Assembly — Handoff (updated 2026-08-01)
+# L3a Final Assembly — Handoff (updated 2026-08-02)
 
 **Goal:** finish proving `MainTheorem` (and thus flip `Supported`) for **capturing
 positive lookaheads** — `(?=(a))`, `(?=(a))*`, etc. — so the engine's answer is
 shown to equal the ECMAScript tree semantics' first-leaf capture array, *including
 the reconstructed lookahead group captures*.
 
-**Branch:** `l3a-value-assembly` (tip `5bb7329`). All lemmas below are committed and
-individually verified.
+**Branch:** `l3a-position-gate` (tip `d165620`, on top of `l3a-value-assembly`'s
+`5bb7329` + the `5e8da65` doc commit merged to main). All lemmas below are
+committed and individually verified.
 
-**Dafny:** 4.11.0 at `C:\Users\Aaron-pc\Downloads\dafny-4.11.0-x64-windows-2022\dafny\Dafny.exe`
-(the `/c/Program Files/dafny` one is 4.10 and CANNOT load the 4.11 `.doo` deps).
+> **2026-08-02 REPLAN — READ §2 FIRST.** The §2 gate as previously framed
+> (augment `PikeInvFullRE` / truncate at the LK node) is the WRONG ROUTE — both
+> suggested attacks are dead ends, for reasons now proven in the code. The gate
+> dissolves into a different, validated design: the **LK-aware PikeTree machine**
+> (`PikeTreeLk.dfy`, fully verified) plus a parallel simulation. §2 below is
+> rewritten accordingly; the old (S-ii)-extraction layer is SUBSUMED and no
+> longer a separate work item. Sections 1's inventory is still accurate.
+
+**Dafny:** 4.11.0. On Linux: `~/.local/share/lemmata/toolchains/4.11.0/dafny/dafny`
+(lem-managed, hash-pinned; `lem toolchain install 4.11.0`). On the Windows box:
+`C:\Users\Aaron-pc\Downloads\dafny-4.11.0-x64-windows-2022\dafny\Dafny.exe`.
+(A 4.10 dafny CANNOT load the 4.11 `.doo` deps, and 4.11 refutes two proofs in
+Lemmata's own pipeline — keep the toolchains straight per project.)
 
 **Per-symbol verify** (fast; whole-file `MainTheorem` ≈ 15-20 min). Substring match;
 also surfaces resolution-time warnings (`allow-warnings = false`, so `set g | g in <seq>`
@@ -120,7 +132,99 @@ checked-tree reframe, `PIV.GmOfLiveFrameOutside`/`GmOfLiveKeepsPresentLk`/
 
 ---
 
-## 2. THE ONE REMAINING GATE — the winning-thread↔tree POSITION/STRUCTURE correspondence
+## 2-NEW (2026-08-02). THE VALIDATED ROUTE — the LK-aware machine + parallel sim
+
+### What was learned (all verified in code, commits `3ab6a00..d165620`)
+
+1. **The POSITION was never the hard part.** Both halves are local inversions,
+   now proven: `GateNodeAtInp`/`GatePosIsWalkInp` (spec: `BoolTreeLk` FORCES the
+   tree at a lookaround-headed walk to be that lookaround's LK/LKFail node with
+   `tlk` pinned to `ComputeTr(.., inp, ..)` at the SAME `inp`) and
+   `GateFiresAtWalkInp`/`GateFiresAtCp` (checked: at a `CheckOracle` pc only the
+   gate rule applies; `PikeInvRE` carries `inp == InpOfCp(str, vms.cp)`, so the
+   gate fires at the VM's cp). Also banked: `FFindMatchLookClkSet` (+ winning-
+   thread bridge; a recorded look cp has a recorded clock — the `lc[lid] >= 0`
+   half of `PathPresentLk`) and `FFindMatchLookOracleTrue`/`LookCpSpecMatch`
+   (the spec look MATCHES at the engine's recorded `a_cp[l]`).
+
+2. **Why the old framing cannot close:** each crossing of a quantified look
+   OVERWRITES `a_cp[l]`, so the two sides must take their LAST crossing at the
+   same place — a PATH fact. The sim pairs a thread with a SUBTREE of the
+   gate-transparent `tstar`; a subtree does not know the path that reached it,
+   `PikeTreeState` has no history component, and no state the sim holds
+   contains an LK node at all. Both of the old §2 attacks die on this.
+   (`ActionsTreeRepFRE`-strengthening also fails cheaper: its gate case at
+   `:750` already holds `(lid, inp)` simultaneously — the pair was never
+   missing, only un-exported; what's missing is the ENGINE tie, which no
+   walk-level export can supply.)
+
+3. **The pivot: give the spec side its own machine.** `PikeTreeLk.dfy`
+   (~700 lines, 29 verified, 0 errors) defines `TreeBfsStepLk`: identical to
+   `PT.TreeBfsStep` except `LK(lk, tlk, tc)` steps as a ZERO-WIDTH gm update
+   via `LkResult` (the `GroupActionT` shape; `None`/`LKFail` = dead) — which is
+   exactly `TreeRes`'s own LK case, so the whole `Piketreeinv` mirror goes
+   through case-by-case. Endpoint, proven:
+
+   > **`PikeTreeLkComputesFirstLeaf`:** a completed `TrcPikeTreeLk` trace on
+   > `t` from `PikeTreeInitialState(t, inp)` ends with `best == FirstLeaf(t,
+   > inp)` — LK merges included.
+
+   This kills, in one stroke: the position gate (no "position of the LK node"
+   is ever named), the old **(S-ii) extraction layer** (the machine's own gm
+   threading performs the LkResult merges — no existential extraction over `t`),
+   and the leaf-OCCURRENCE problem (which the per-thread-frame designs all hit:
+   `BestMatchRE` is value-level, and two leaves can share a value while
+   differing inside S — machine-B correctness handles priority on the t side
+   itself).
+
+### What remains: the parallel simulation (THE work item)
+
+Mirror `InvariantPreservationRE`/`FindMatchSimRE` with the tree side running
+machine B on `t` instead of machine A on `tstar`:
+
+- **Pairing:** per VM thread, ghost `(t_sub, gmt)` — `t_sub` the t-side
+  continuation (B reuses `PT.PikeTreeState`, so the shape is the sim's own),
+  related to the thread's pc by the WALK state (`ActionsRepL` + `BoolTreeLk`),
+  with `gmt` = the t-side accumulated map. Value ties: outside `S`, `gmt` ~
+  `GmOfLive(re, regs)` (today's `ThreadTracksGm` transported); inside `S`,
+  per-lid: `g ∈ gmt` (with the path-presence conditions) `==> a_cp[l]` set and
+  `gmt[g] ==` the `FreshBodyMatch`-at-`a_cp[l]` value of `g`.
+- **The gate step is ALREADY PROVEN:** when the VM crosses `CheckOracle(l)` at
+  cp (writing `a_cp[l] := cp`), B dissolves the LK node, `gmt` merges
+  `LkResult(...)` — and the keystone `LkReplayMatchesSpec` INSTANTIATED AT
+  `cp` ties the merged values to the fresh replay at `a_cp[l]`. The crux case
+  of the whole build is the existing keystone plus bookkeeping.
+- **Every other instruction is value-trivial inside S:** the main code never
+  writes inside-look capture regs (`LooksCapUnset` /
+  `CaptureBytecodeClassifiedOutside`), t-side `Open`/`Close` target outside-S
+  ids, and `SetQuantToClock`↔`Reset(gidl)` clears both sides coherently
+  (`FreshBodyMatch` depends on `lk` only via `a_cp[l]`, so the other lids'
+  ties are stable).
+- **The keystone's `GmAgreeOn(gmt, Empty, DefGroups(body))` hypothesis** needs
+  the acts-level reset invariant: any gate AHEAD of the walk without an
+  intervening quant `Reset` has its body groups absent from `gmt` (first
+  encounter: never set; re-entry: the iteration's `Reset(DefGroups(quant
+  body))` cleared them; other lids' merges are disjoint by
+  `LmOfBodiesDisjoint`). Carry it as part of the pairing.
+- **Final hop:** the sim yields a `TrcPikeTreeLk` trace whose final best is
+  the winner's `(pos, gmt)`; `PikeTreeLkComputesFirstLeaf` pins that to
+  `FirstLeaf(t, inp)`; the inside-S tie hands the else branch exactly
+  `leaf.1[g] == FreshBodyMatch-at-a_cp[l]` — which composes with (E) and
+  `FLookLoopValueOk` with NO position theorem in sight.
+
+**Scale/risk:** this is a structural mirror of `PikeSimRE` (~20 preservation
+lemmas). No new research inside — the crux (gate value) is the proven
+keystone, and B's correctness is proven. But it is the package's biggest
+remaining grind; budget a dedicated session or two, verify per-symbol as you
+go, and keep `PikeInvFullRE` and the existing sim UNTOUCHED (everything is
+parallel; the green proofs carry zero risk).
+
+Then: the else-branch rewrite (§3 below, unchanged except (S-ii) is gone) and
+the dead-lemma deletion.
+
+---
+
+## 2-OLD (superseded 2026-08-02; kept for the pinned observations) — the winning-thread↔tree POSITION/STRUCTURE correspondence
 
 Everything else is done. This single research build is the last thing between the assembled
 machinery and a green `MainTheorem`. It has TWO faces that are the SAME augmentation:
