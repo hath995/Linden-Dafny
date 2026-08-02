@@ -3642,6 +3642,47 @@ module LindenElkMain {
     }
   }
 
+  /** L3a (E): the `get_idx(lc, lid) >= 0` half of `PIV.PathPresentLk`'s
+      matched-lookaround condition, on the WINNING thread. A look whose cp was
+      recorded (its `CheckOracle` fired on this thread's path) also carries a
+      non-negative clock stamp, because both slots land in one `set_reg`. The
+      `>= mx` half is coupled to the enclosing quant clocks and is NOT proved
+      here — it is part of the outstanding position/structure gate. Companion to
+      `MainMatchCpCtxOk`, same fresh-entry shape. */
+  lemma MainMatchLookClkSet(code: RB.code, str: string, inits: AI.VmState,
+                            cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, nlook: int,
+                            ov: LOr.OracleView, cdn: LCdn.cdns, result: Option<AI.Thread>)
+    requires |inits.processed.true_set| == RB.size(code) && |inits.processed.false_set| == RB.size(code)
+    requires inits.context.nextchar == AI.get_char(str, inits.cp)
+    requires 0 <= inits.cp <= |str|
+    requires inits.clock >= 0
+    requires look == AReg.init_regs(nlook)
+    requires inits.active == [AI.init_thread(cap, look, quant)]
+    requires inits.blocked == [] && inits.bestmatch.None?
+    requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
+    ensures result.Some? ==>
+      forall l: int :: AReg.get_cp(result.value.look_regs, l).Some? ==>
+        AI.get_idx(result.value.look_regs.a_clk, l) >= 0
+  {
+    // fresh init threads have every look cp == -1, so the implication is vacuous
+    assert CM.VmLookClkSet(inits) by {
+      assert CM.LookClkSetWithCp(look) by {
+        forall l: int | AI.get_idx(look.a_cp, l) >= 0 ensures AI.get_idx(look.a_clk, l) >= 0 {
+          if 0 <= l < |look.a_cp| { assert look.a_cp[l] == -1; }
+        }
+      }
+      assert AI.init_thread(cap, look, quant).look_regs == look;
+    }
+    CM.FFindMatchLookClkSet(code, str, inits, ov, LAnc.Forward, cdn);
+    if result.Some? {
+      var lk := result.value.look_regs;
+      assert CM.LookClkSetWithCp(lk);
+      forall l: int | AReg.get_cp(lk, l).Some? ensures AI.get_idx(lk.a_clk, l) >= 0 {
+        assert 0 <= l < |lk.a_cp| && AI.get_idx(lk.a_cp, l) >= 0;   // get_cp Some => a_cp[l] >= 0
+      }
+    }
+  }
+
   /** Agreeing OUTSIDE `Sp` and equal lengths give agreement INSIDE any `T`
       disjoint from `Sp`. Isolated so the set step doesn't drag heavy context. */
   lemma RegsAgreeOutsideToInside(a: AReg.Regs, b: AReg.Regs, T: set<int>, Sp: set<int>)
