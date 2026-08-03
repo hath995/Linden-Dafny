@@ -192,7 +192,11 @@ module LindenElkLiftSim {
           && EL.PikeLkActions(acts)
           && ATR.EaOf(b) == ea
           && EL.BoolTreeLk(rer, acts, inp, b, tb)
-          && GateAheadClear(acts, gmt))
+          && GateAheadClear(acts, gmt)
+          // NoDup walk-invariant (audit 2026-08-03): the gate-disjointness the
+          // CheckOracle continuation needs. Established at entry via
+          // `TranslateDefGroupsNoDup`, preserved by every peel (`NoDupAllDefsTail`).
+          && M.NoDupSeq(M.AllDefsActs(acts)))
   }
 
   /** The full per-thread pairing: the B-side `(tb, gmt)` corresponds to VM
@@ -657,7 +661,7 @@ module LindenElkLiftSim {
                  crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                  t: LT.Tree, vms: AI.VmState, ncap: int, nlook: int, nquant: int)
     requires !rer.multiline
-    requires T.TransWf(re) && NR.LookBehindFragmentRE(re)
+    requires T.TransWf(re) && NR.LookBehindFragmentRE(re) && PIV.CapUnique(re)
     requires code == CP.compile_to_bytecode(re)
     requires AR.ActionsRepL(rer, qm, [LS.Areg(T.Translate(re))], code, 0)
     requires LL.OracleOkSuffix(rer, qm, LC.InitInput(str))
@@ -691,12 +695,16 @@ module LindenElkLiftSim {
       assert itr.pc == 0 && itr.exit_allowed == false;
       assert GateAheadClear(acts, LG.Empty);                 // Empty has no keys
       assert ATR.EaOf(BS.CannotExit) == itr.exit_allowed;
+      TranslateDefGroupsNoDup(re);                            // NoDupSeq(DefGroups(Translate(re)))
+      M.AllDefsActsCons(LS.Areg(T.Translate(re)), []);
+      assert M.AllDefsActs(acts) == L.DefGroups(T.Translate(re));   // AllDefsActs([]) == []
       assert exists actsw: LS.Actions, bw: BS.LoopBool ::
           AR.ActionsRepL(rer, qm, actsw, code, itr.pc as nat)
           && EL.PikeLkActions(actsw)
           && ATR.EaOf(bw) == itr.exit_allowed
           && EL.BoolTreeLk(rer, actsw, inp, bw, t)
-          && GateAheadClear(actsw, LG.Empty);
+          && GateAheadClear(actsw, LG.Empty)
+          && M.NoDupSeq(M.AllDefsActs(actsw));
       assert PIV.GmOfLive(re, itr.capture_regs, itr.look_regs, itr.quant_regs) == LG.Empty;
       assert GmtTieOutside(re, itr, LG.Empty, S);
       assert GmtTieInside(crv, str, ov, itr, LG.Empty, S, ncap, nlook, nquant);  // vacuous
@@ -2179,11 +2187,13 @@ module LindenElkLiftSim {
           GateAheadClearAfterMerge(acts, cont, gm, gm2, lk0, r1);   // GateAheadClear(cont, gm2)
           // Assemble WalkPairLk(tb.t, gm2, pc+1, g) via the existential (2nd) disjunct.
           assert EL.PikeLkActions(cont);
+          assert M.NoDupSeq(M.AllDefsActs(cont));   // from NoDupConcat(DefGroups(r1), AllDefsActs(cont))
           assert AR.ActionsRepL(rer, qm, cont, code, pc + 1)
               && EL.PikeLkActions(cont)
               && ATR.EaOf(b) == g
               && EL.BoolTreeLk(rer, cont, inp, b, tb.t)
-              && GateAheadClear(cont, gm2);
+              && GateAheadClear(cont, gm2)
+              && M.NoDupSeq(M.AllDefsActs(cont));
           assert WalkPairLk(rer, qm, code, inp, tb.t, gm2, pc + 1, g);
         } else {
           assert tb.LKFail?;   // GateNodeAtInp: only LK or LKFail
@@ -2742,6 +2752,71 @@ module LindenElkLiftSim {
     }
   }
 
+  /** Two dup-free translated `DefGroups` sequences over CAP-DISJOINT `R.regex`
+      concatenate dup-free — the alt/con step of `TranslateDefGroupsNoDup`. */
+  lemma NoDupAltCon(r1: R.regex, r2: R.regex)
+    requires T.TransWf(r1) && T.TransWf(r2)
+    requires M.NoDupSeq(L.DefGroups(T.Translate(r1))) && M.NoDupSeq(L.DefGroups(T.Translate(r2)))
+    requires (set g | g in L.DefGroups(T.Translate(r1))) == PIV.CapIds(r1)
+    requires (set g | g in L.DefGroups(T.Translate(r2))) == PIV.CapIds(r2)
+    requires PIV.CapIds(r1) * PIV.CapIds(r2) == {}
+    ensures M.NoDupSeq(L.DefGroups(T.Translate(r1)) + L.DefGroups(T.Translate(r2)))
+  {
+    var a := L.DefGroups(T.Translate(r1));
+    var b := L.DefGroups(T.Translate(r2));
+    assert forall i, j :: 0 <= i < |a| && 0 <= j < |b| ==> a[i] != b[j] by {
+      forall i, j | 0 <= i < |a| && 0 <= j < |b| ensures a[i] != b[j] {
+        assert a[i] in (set g | g in a) && a[i] in PIV.CapIds(r1);
+        assert b[j] in (set g | g in b) && b[j] in PIV.CapIds(r2);
+        if a[i] == b[j] { assert a[i] in PIV.CapIds(r1) * PIV.CapIds(r2); }   // contradicts disjoint
+      }
+    }
+    M.NoDupFromDisjoint(a, b);
+  }
+
+  /** The translated regex's `DefGroups` sequence has NO DUPLICATES: sibling
+      subtrees get disjoint cap ids (`CapUnique`), a capture's own id is fresh
+      (`cid ∉ CapIds(body)`). The seq-level companion of
+      `M.TranslateDefGroupsEqCapIds` (which gives only the set). This is what feeds
+      the `NoDupSeq(AllDefsActs)` walk-invariant at the entry (`LiftInit`). */
+  lemma TranslateDefGroupsNoDup(r: R.regex)
+    requires T.TransWf(r) && PIV.CapUnique(r)
+    ensures M.NoDupSeq(L.DefGroups(T.Translate(r)))
+    decreases r
+  {
+    match r
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      TranslateDefGroupsNoDup(r1); TranslateDefGroupsNoDup(r2);
+      M.TranslateDefGroupsEqCapIds(r1); M.TranslateDefGroupsEqCapIds(r2);
+      assert L.DefGroups(T.Translate(r)) == L.DefGroups(T.Translate(r1)) + L.DefGroups(T.Translate(r2));
+      NoDupAltCon(r1, r2);
+    case Re_con(r1, r2) =>
+      TranslateDefGroupsNoDup(r1); TranslateDefGroupsNoDup(r2);
+      M.TranslateDefGroupsEqCapIds(r1); M.TranslateDefGroupsEqCapIds(r2);
+      assert L.DefGroups(T.Translate(r)) == L.DefGroups(T.Translate(r1)) + L.DefGroups(T.Translate(r2));
+      NoDupAltCon(r1, r2);
+    case Re_quant(_, _, q, r1) =>
+      TranslateDefGroupsNoDup(r1);
+      assert L.DefGroups(T.Translate(r)) == L.DefGroups(T.Translate(r1));
+    case Re_capture(cid, r1) =>
+      TranslateDefGroupsNoDup(r1);
+      M.TranslateDefGroupsEqCapIds(r1);   // set(DefGroups(Translate(r1))) == CapIds(r1)
+      assert L.DefGroups(T.Translate(r)) == [cid as nat] + L.DefGroups(T.Translate(r1));
+      assert (cid as nat) !in PIV.CapIds(r1);   // CapUnique(capture)
+      assert forall j :: 0 <= j < |L.DefGroups(T.Translate(r1))| ==> L.DefGroups(T.Translate(r1))[j] != cid as nat by {
+        forall j | 0 <= j < |L.DefGroups(T.Translate(r1))| ensures L.DefGroups(T.Translate(r1))[j] != cid as nat {
+          assert L.DefGroups(T.Translate(r1))[j] in (set g | g in L.DefGroups(T.Translate(r1)));
+        }
+      }
+      M.NoDupPrepend(cid as nat, L.DefGroups(T.Translate(r1)));
+    case Re_lookaround(_, lk, r1) =>
+      TranslateDefGroupsNoDup(r1);
+      assert L.DefGroups(T.Translate(r)) == L.DefGroups(T.Translate(r1));
+  }
+
   // ---- (C) the ComputeTr shape fact -----------------------------------------
 
   /** No `Backreference` anywhere in a Linden regex (including inside lookaround
@@ -3199,7 +3274,7 @@ module LindenElkLiftSim {
     requires NR.NfaRepRE(re, code, 0, endl)
     requires PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str,
                                PT.PikeTreeInitialState(tstar, inp), vms, ncap, nlook, nquant)
-    requires T.TransWf(re) && NR.LookBehindFragmentRE(re)
+    requires T.TransWf(re) && NR.LookBehindFragmentRE(re) && PIV.CapUnique(re)
     requires AR.ActionsRepL(rer, qm, [LS.Areg(T.Translate(re))], code, 0)
     requires EL.BoolTreeLk(rer, [LS.Areg(T.Translate(re))], inp, BS.CannotExit, t)
     requires LL.OracleOkSuffix(rer, qm, inp)
@@ -3223,6 +3298,9 @@ module LindenElkLiftSim {
     EL.PikeLkActionsConsIff(LS.Areg(T.Translate(re)), []);
     assert EL.PikeLkActions(acts);
     assert GateAheadClear(acts, LG.Empty);              // Empty has no keys
+    TranslateDefGroupsNoDup(re);                        // NoDupSeq(DefGroups(Translate(re)))
+    M.AllDefsActsCons(LS.Areg(T.Translate(re)), []);
+    assert M.AllDefsActs(acts) == L.DefGroups(T.Translate(re));   // AllDefsActs([]) == []
     assert WalkPairLk(rer, qm, code, inp, t, LG.Empty, it.pc as nat, it.exit_allowed) by {
       assert it.pc as nat == 0;
       assert AR.ActionsRepL(rer, qm, acts, code, 0);
@@ -3233,7 +3311,8 @@ module LindenElkLiftSim {
           && EL.PikeLkActions(actsw)
           && ATR.EaOf(bw) == it.exit_allowed
           && EL.BoolTreeLk(rer, actsw, inp, bw, t)
-          && GateAheadClear(actsw, LG.Empty);
+          && GateAheadClear(actsw, LG.Empty)
+          && M.NoDupSeq(M.AllDefsActs(actsw));
     }
     assert GmtTieOutside(re, it, LG.Empty, S);          // gml == Empty, agrees with Empty
     assert GmtTieInside(crv, str, ov, it, LG.Empty, S, ncap, nlook, nquant);  // no g in Empty
