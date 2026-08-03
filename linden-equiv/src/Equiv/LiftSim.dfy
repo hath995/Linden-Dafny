@@ -1912,21 +1912,143 @@ module LindenElkLiftSim {
     TtLkAtEndLoopCore(rer, qm, code, inp, tb, pc, b, acts);
   }
 
-  /** [SEAM] At a Fork the tree is a `Choice` whose branches walk from the two
-      targets. TRUE for the forward forks (Disjunction, quantifier entry); the
-      do-while BACKWARD fork at the quant seam has the fused
-      `AtBackForkTreeRep` shape — derive the exact seam statement from that
-      lemma (615-line file; its fork case enumerates the shapes) and split
-      this into forward/backward versions if needed. */
+  /** Fueled core of `TtLkAtFork` (SHAPE only). At a `Fork` the head is a
+      `Disjunction` / free-star / bounded / loop-view quantifier (all ⇒ `Choice`)
+      or an `Acheck` at a backward fork (⇒ `Progress` when `CanExit`, else
+      `Mismatch`). `BoolTreeLk` FORCES the shape in every case. */
+  lemma TtLkAtForkCore(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                       tb: LT.Tree, pc: nat, b: BS.LoopBool, acts: LS.Actions, x: int, y: int)
+    requires AR.ActionsRepL(rer, qm, acts, code, pc)
+    requires EL.PikeLkActions(acts)
+    requires EL.BoolTreeLk(rer, acts, inp, b, tb)
+    requires NR.GetPcRE(code, pc) == Some(RB.Fork(x, y))
+    ensures x >= 0 && y >= 0
+    ensures tb.Choice? || tb.Progress? || tb == LT.Mismatch
+    decreases ATR.MsizeA(acts)
+  {
+    var pcmid: nat :| AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && AR.ActionsRepL(rer, qm, acts[1..], code, pcmid);
+    EL.PikeLkActionsTail(acts);
+    assert acts == [acts[0]] + acts[1..];
+    EL.PikeLkActionsConsIff(acts[0], acts[1..]);
+    var cont := acts[1..];
+    match acts[0]
+    case Acheck(strcheck) =>
+      // EndLoop != Fork, so the BackForkAt disjunct: pcmid == pc; BoolTreeLk ⇒ Progress / Mismatch
+      assert AR.BackForkAt(code, pc);
+      assert x >= 0 && y >= 0;
+    case Aclose(_) =>   // pins SetRegisterToCP — not Fork
+    case Areg(r0) =>
+      assert EL.PikeLkRegex(r0);
+      match r0
+      case Epsilon =>
+        assert pcmid == pc;
+        assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+        assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
+        TtLkAtForkCore(rer, qm, code, inp, tb, pc, b, cont, x, y);
+      case Sequence(r1, r2) =>
+        assert acts[0] == LS.Areg(L.Sequence(r1, r2));
+        assert AR.NfaRepL(rer, qm, L.Sequence(r1, r2), code, pc, pcmid);
+        var e1: nat :| AR.NfaRepL(rer, qm, r1, code, pc, e1) && AR.NfaRepL(rer, qm, r2, code, e1, pcmid);
+        var na := [LS.Areg(r1), LS.Areg(r2)] + cont;
+        assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+        AR.ActionsRepLCons(rer, qm, LS.Areg(r2), cont, code, e1, pcmid);
+        AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Areg(r2)] + cont, code, pc, e1);
+        assert AR.ActionsRepL(rer, qm, na, code, pc);
+        assert EL.PikeLkActions(na) by {
+          EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
+          EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
+        }
+        assert EL.BoolTreeLk(rer, na, inp, b, tb);
+        assert LS.ActionsRegexSize(acts) == RegSz(r1) + RegSz(r2) + 1 + LS.ActionsRegexSize(cont);
+        assert LS.ActionsRegexSize(na) == RegSz(r1) + RegSz(r2) + LS.ActionsRegexSize(cont);
+        assert ATR.MsizeA(na) < ATR.MsizeA(acts);
+        TtLkAtForkCore(rer, qm, code, inp, tb, pc, b, na, x, y);
+      case Disjunction(r1, r2) =>
+        // Fork(pc+1, e1+1) ⇒ x,y >= 0; BoolTreeLk ⇒ tb.Choice?
+        var e1: nat :| NR.GetPcRE(code, pc) == Some(RB.Fork(pc + 1, e1 + 1))
+          && AR.NfaRepL(rer, qm, r1, code, pc + 1, e1)
+          && NR.GetPcRE(code, e1) == Some(RB.Jmp(pcmid))
+          && AR.NfaRepL(rer, qm, r2, code, e1 + 1, pcmid);
+        assert x == pc + 1 && y == e1 + 1;
+        assert tb.Choice?;
+      case Quantified(greedy, min, delta, r1) =>
+        assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
+        assert AR.NfaRepL(rer, qm, L.Quantified(greedy, min, delta, r1), code, pc, pcmid);
+        if min == 0 && delta == LN.NN(0) {
+          var em: nat :| AR.NfaRepMinL(rer, qm, 0, r1, code, pc, em)
+                       && AR.NfaRepOptL(rer, qm, 0, greedy, r1, code, em, pcmid);
+          NfaRepMinLHeadPin(rer, qm, 0, r1, code, pc, em);
+          NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);
+          assert pcmid == pc;
+          assert AR.ActionsRepL(rer, qm, cont, code, pc);
+          assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+          assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
+          TtLkAtForkCore(rer, qm, code, inp, tb, pc, b, cont, x, y);
+        } else if min > 0 {
+          QuantHeadPinsForkOrSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);   // pins SQC ≠ Fork
+        } else {
+          // min==0, Inf or NN(kx>0): the star/bounded fork ⇒ tb.Choice?; targets are nats.
+          match delta
+          case Inf =>
+            if exists e1: nat :: NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1))
+                         && (exists qid: int :: NR.GetPcRE(code, pc + 1) == Some(RB.SetQuantToClock(qid, false))
+                                                && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
+                         && NR.GetPcRE(code, pc + 2) == Some(RB.BeginLoop)
+                         && AR.NfaRepL(rer, qm, r1, code, pc + 3, e1)
+                         && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                         && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(pc))
+                         && pcmid == e1 + 2 {
+              var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1));
+              assert x >= 0 && y >= 0;
+            } else {
+              var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
+              assert x >= 0 && y >= 0;
+            }
+            assert tb.Choice?;
+          case NN(kx) =>
+            var em: nat :| AR.NfaRepMinL(rer, qm, 0, r1, code, pc, em)
+                         && AR.NfaRepOptL(rer, qm, kx, greedy, r1, code, em, pcmid);
+            NfaRepMinLHeadPin(rer, qm, 0, r1, code, pc, em);
+            assert em == pc;
+            var e1x: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, pcmid) else RB.Fork(pcmid, pc + 1))
+              && (exists qid: int :: NR.GetPcRE(code, pc + 1) == Some(RB.SetQuantToClock(qid, false))
+                                     && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
+              && NR.GetPcRE(code, pc + 2) == Some(RB.BeginLoop)
+              && AR.NfaRepL(rer, qm, r1, code, pc + 3, e1x)
+              && NR.GetPcRE(code, e1x) == Some(RB.EndLoop)
+              && AR.NfaRepOptL(rer, qm, kx - 1, greedy, r1, code, e1x + 1, pcmid);
+            assert x >= 0 && y >= 0;
+            assert tb.Choice?;
+        }
+      case Character(_) =>   // pins Consume — not Fork
+      case Group(_, _) =>   // pins SetRegisterToCP — not Fork
+      case LookaroundR(_, _) =>   // pins CheckOracle/NegCheckOracle — not Fork
+      case AnchorR(_) =>   // pins AnchorAssertion — not Fork
+      case Backreference(_) =>   // NfaRepL false
+  }
+
+  /** At a `Fork` the tree is a `Choice` (Disjunction / quantifier fork), a
+      `Progress` (the do-while backward fork's `Acheck` guard when `CanExit`), or
+      `Mismatch`. SHAPE-only ensures: `TtLk` cannot pair the free-star fork's
+      iteration arm — that arm is `GroupActionT(Reset,...)` at `pc+1`, but `pc+1`
+      is `SetQuantToClock` and `pc+2` is `BeginLoop` (which has NO `ActionsRepL`),
+      so `ti` lives at `pc+3`. The branch-pairings are `LiftAdvanceEpsilon`'s job
+      (it steps through the `SetQuantToClock`/`BeginLoop` setup); a Disjunction
+      fork DOES pair `TtLk(t1,x)`/`TtLk(t2,y)` and can be recovered separately. */
   lemma TtLkAtFork(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                    tb: LT.Tree, pc: nat, ea: bool, x: int, y: int)
     requires TtLk(rer, qm, code, inp, tb, pc, ea)
     requires NR.GetPcRE(code, pc) == Some(RB.Fork(x, y))
     ensures x >= 0 && y >= 0
-    ensures (tb.Choice?
-             && TtLk(rer, qm, code, inp, tb.t1, x as nat, ea)
-             && TtLk(rer, qm, code, inp, tb.t2, y as nat, ea))
-         || tb == LT.Mismatch   // the zero-progress back-fork kill (tr's Fork-Mismatch rule)
+    ensures tb.Choice? || tb.Progress? || tb == LT.Mismatch
+  {
+    var acts: LS.Actions, b: BS.LoopBool :|
+      AR.ActionsRepL(rer, qm, acts, code, pc)
+      && EL.PikeLkActions(acts)
+      && ATR.EaOf(b) == ea
+      && EL.BoolTreeLk(rer, acts, inp, b, tb);
+    TtLkAtForkCore(rer, qm, code, inp, tb, pc, b, acts, x, y);
+  }
 
   // NOTE on CheckNullable / Fail / NegCheckOracle / WriteOracle: the L3a MAIN
   // code should pin each as either absent (WriteOracle — NR.NoWriteInstrRE;
