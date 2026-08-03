@@ -2627,6 +2627,158 @@ module LindenElkLiftSim {
     assert leafgm == gml;
   }
 
+  // ==========================================================================
+  // ---- (K) THE COMPOSITE SIM (backfill) --------------------------------------
+  //
+  // The standalone TtLk/BoolTreeLk VM-walk (above) is architecturally flawed:
+  // its `ActionsRepL` walk has no representation at a `BeginLoop`, so the VM↔B
+  // pairing cannot be threaded through a free-star iteration. The FIX is to ride
+  // the PROVEN machine-A simulation `PSM.PikeInvFullRE` for ALL VM mechanics
+  // (its `TreeRepRE` carries the `tr_begin`/BeginLoop disjunct), and add ONLY a
+  // machine-A(tstar)↔machine-B(t) tree pairing that carries the value payload.
+  //
+  // KEY STRUCTURAL FACTS (from the two machine audits):
+  //  * `PikeInvFullRE(ptsA, vms)` relates the VM to a machine-A PikeTree state
+  //    `ptsA` (on the gate-transparent `tstar`), element-wise `vms.active[i]`
+  //    ↔ `ptsA.active[i]` via `TreeRepRE`.
+  //  * A `CheckOracle` gate is a machine-A STUTTER (`PSM.PreserveOraclePass`:
+  //    `ptsA` unchanged, only the VM writes `a_cp[l] := cp`).
+  //  * Machine B (`PTL.PikeTreeStepLk`, on `t`) DOES step an `LK` node: it
+  //    merges `LS.LkResult(lk, tlk, gm, inp)` into the continuation.
+  //  * `tstar` and `t` agree only LEAF-wise (`LL.LeavesAgreeAtOutside`); there
+  //    is NO node-level dissolve function. BUT `LL.LAAtGatePassL3a` gives the
+  //    per-gate node dissolution: a passing positive `LK(lk,tlk,tc)` leaf-agrees
+  //    its continuation `tc` outside `S`. So the leaf pairing SURVIVES a gate.
+  //  * `GateStepValue` (verified) preserves `GmtTieInside` across that one gate
+  //    (payload: `th → th2` with the `a_cp` write, `gmt → LkResult(...).value`).
+  //
+  // So the gate step composes: `PreserveOraclePass` (VM+ptsA) ∥ machine-B LK
+  // merge (ptsB) ∥ `LAAtGatePassL3a` (leaf agreement) ∥ `GateStepValue`
+  // (payload). Non-gate steps move both machines the same way and leave the
+  // inside-`S` payload untouched (`GateAheadClear`).
+
+  /** Per-active-pair tie: the machine-A subtree `ta` (tstar side) and machine-B
+      subtree `tb` (t side) leaf-agree outside `S`, and the VM thread `th` carries
+      the two-sided value tie against `tb`'s group map `gm`. Replaces the flawed
+      `ThreadRepLk` (its `BoolTreeLk` walk clause is dropped — the VM↔ta link now
+      lives in `PikeInvFullRE`; only the ta↔tb leaf link and the payload remain). */
+  ghost predicate LiftPairC(re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                            inp: LC.Input, S: set<LG.GroupId>, ta: LT.Tree, tb: LT.Tree,
+                            gm: LG.GroupMap, th: AI.Thread, ncap: int, nlook: int, nquant: int) {
+    LL.LeavesAgreeAtOutside(ta, tb, inp, S)
+    && GmtTieOutside(re, th, gm, S)
+    && GmtTieInside(crv, str, ov, th, gm, S, ncap, nlook, nquant)
+  }
+
+  /** The three active worklists (machine A `al`, machine B `bl`, VM `vl`) pair
+      index-wise (priority is positional). Mirrors `ActiveRepLk`/`ActiveRepRE`. */
+  ghost predicate ActivePairC(re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                              inp: LC.Input, S: set<LG.GroupId>,
+                              al: seq<(LT.Tree, LG.GroupMap)>, bl: seq<(LT.Tree, LG.GroupMap)>,
+                              vl: seq<AI.Thread>, ncap: int, nlook: int, nquant: int)
+    decreases bl
+  {
+    (|al| == 0 && |bl| == 0 && |vl| == 0)
+    || (|al| > 0 && |bl| > 0 && |vl| > 0
+        && LiftPairC(re, crv, str, ov, inp, S, al[0].0, bl[0].0, bl[0].1, vl[0], ncap, nlook, nquant)
+        && ActivePairC(re, crv, str, ov, inp, S, al[1..], bl[1..], vl[1..], ncap, nlook, nquant))
+  }
+
+  /** THE COMPOSITE INVARIANT: machine-A sim (VM↔tstar, PROVEN) PLUS the
+      machine-A↔machine-B tree pairing + value payload. `ptsA` is the tstar
+      (gate-transparent) PikeTree state driven by `PikeInvFullRE`; `ptsB` is the
+      `t` (LK-aware) PikeTree state driven by `PTL.PikeTreeStepLk`. */
+  ghost predicate LiftInvC(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
+                           endl: nat, ngroups: nat, crv: CP.FCompiled, str: string,
+                           ov: LOr.OracleView, S: set<LG.GroupId>,
+                           ptsA: PT.PikeTreeState, ptsB: PT.PikeTreeState, vms: AI.VmState,
+                           ncap: int, nlook: int, nquant: int)
+    requires NR.NfaRepRE(re, code, 0, endl)
+  {
+    PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, ptsA, vms, ncap, nlook, nquant)
+    && (match ptsB
+        case PTS_final(bbest) =>
+          BestTieLk(re, crv, str, ov, S, bbest, vms.bestmatch, ncap, nlook, nquant)
+        case PTS(inp, bactive, bbest, bblocked, bseen) =>
+          ptsA.PTS? && ptsA.inp == inp
+          && ActivePairC(re, crv, str, ov, inp, S, ptsA.active, bactive, vms.active, ncap, nlook, nquant)
+          && BestTieLk(re, crv, str, ov, S, bbest, vms.bestmatch, ncap, nlook, nquant)
+          && LL.OracleOkSuffix(rer, qm, inp))
+  }
+
+  /** (K-init) The composite holds at the start: `PSM.InitialPikeInvFullRE` gives
+      the machine-A half; the single active pair `(tstar, t, init_thread)` ties
+      via `LeavesAgreeAtOutside(tstar, t)` (hypothesis) + a VACUOUS payload
+      (init thread's live map is `LG.Empty`, no `g in S`). BODILESS. */
+  lemma LiftInitC(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
+                  endl: nat, ngroups: nat, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                  S: set<LG.GroupId>, tstar: LT.Tree, t: LT.Tree, inp: LC.Input, vms: AI.VmState,
+                  ncap: int, nlook: int, nquant: int)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str,
+                               PT.PikeTreeInitialState(tstar, inp), vms, ncap, nlook, nquant)
+    requires LL.LeavesAgreeAtOutside(tstar, t, inp, S)
+    requires LL.OracleOkSuffix(rer, qm, inp)
+    requires inp == PIV.InpOfCp(str, vms.cp) && 0 <= vms.cp <= |str|
+    requires vms.active == [AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant))]
+    requires vms.bestmatch.None?
+    ensures LiftInvC(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
+                     PT.PikeTreeInitialState(tstar, inp), PT.PikeTreeInitialState(t, inp), vms,
+                     ncap, nlook, nquant)
+
+  /** (K-step) The composite is preserved across ONE position. Machine A advances
+      by `PSM.InvariantPreservationRE` (a whole-position `TrcRE`); machine B
+      advances by a matching `PTL.TrcPikeTreeLk` on `ptsB`; the pairing is
+      re-established pair-by-pair. The gate case is the crux: `PreserveOraclePass`
+      + machine-B `LK` merge + `LL.LAAtGatePassL3a` + `GateStepValue`. Non-gate
+      cases move both machines identically and leave inside-`S` untouched
+      (`GateAheadClear`). SEAM: also needs a real seen/processed pairing (the
+      standalone `SeenRepLk` is stubbed `true`). BODILESS. */
+  lemma LiftStepC(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
+                  endl: nat, ngroups: nat, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                  S: set<LG.GroupId>, ptsA: PT.PikeTreeState, ptsB: PT.PikeTreeState, vms: AI.VmState,
+                  ncap: int, nlook: int, nquant: int)
+    returns (ptsA': PT.PikeTreeState, ptsB': PT.PikeTreeState)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires PSM.StaticOkRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires qm.ov == ov && !rer.multiline
+    requires ptsA.PTS? && ptsB.PTS?
+    requires |vms.processed.true_set| == RB.size(code) && |vms.processed.false_set| == RB.size(code)
+    requires LiftInvC(rer, qm, re, code, endl, ngroups, crv, str, ov, S, ptsA, ptsB, vms, ncap, nlook, nquant)
+    ensures PTL.TrcPikeTreeLk(ptsB, ptsB')
+    ensures LiftInvC(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
+                     ptsA', ptsB', AI.FAdvanceEpsilon(code, vms, ov, LAnc.Forward).0, ncap, nlook, nquant)
+
+  /** (K-close) TOP-LEVEL: the winning VM thread and the spec tree's FIRST LEAF
+      satisfy the two-sided value tie (`BestTieLk` = `GmtTieOutside` +
+      `GmtTieInside`). Drives `LiftInitC` → `LiftStepC*` → the `PTS_final` case,
+      mirroring `FindMatchSimRE` on the machine-A side and `PTL.TrcPikeTreeLk` +
+      `PTL.PikeTreeLkComputesFirstLeaf` on the machine-B side. This is the SINGLE
+      remaining sim output; it feeds `WinningGmtTieOutside` (already banked) and,
+      per-`g`, `InsidePresentResBridge` → `L3aValueBridge`. BODILESS — this is
+      where the (E) path-presence, the reverse tie, and the position tie
+      (`a_cp[l]` == the LK node's first-leaf position) are discharged. */
+  lemma L3aCompositeClose(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
+                          endl: nat, ngroups: nat, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                          S: set<LG.GroupId>, tstar: LT.Tree, t: LT.Tree, inp: LC.Input,
+                          vms: AI.VmState, cdn: LCdn.cdns, result: Option<AI.Thread>,
+                          ncap: int, nlook: int, nquant: int)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires PSM.StaticOkRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires qm.ov == ov && !rer.multiline
+    requires LL.LeavesAgreeAtOutside(tstar, t, inp, S)
+    requires PTL.PikeSubtreeLk(t)
+    requires PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str,
+                               PT.PikeTreeInitialState(tstar, inp), vms, ncap, nlook, nquant)
+    requires LL.OracleOkSuffix(rer, qm, inp)
+    requires inp == PIV.InpOfCp(str, vms.cp) && 0 <= vms.cp <= |str|
+    requires vms.active == [AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant))]
+    requires vms.bestmatch.None?
+    requires |vms.processed.true_set| == RB.size(code) && |vms.processed.false_set| == RB.size(code)
+    requires vms.context.nextchar == AI.get_char(str, vms.cp)
+    requires result == AI.FFindMatch(code, str, vms, ov, LAnc.Forward, cdn).0
+    ensures BestTieLk(re, crv, str, ov, S, LT.FirstLeaf(t, inp), result, ncap, nlook, nquant)
+
   // ---- (F) final assembly (no scaffold lemma — a recipe) ---------------------
   //
   // The else-branch rewrite of MainTheorem, once (H)/(G)/(C)/(V) and the seven
