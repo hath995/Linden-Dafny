@@ -1090,6 +1090,63 @@ module LindenElkLiftSim {
     // the pc/exit_allowed update, so they transfer verbatim.
   }
 
+  /** THE CRUX per-instruction core: a thread crossing a PASSING positive-lookahead
+      gate (`CheckOracle(l)`, oracle TRUE). The VM records `a_cp[l]:=cp` (t → t');
+      the paired B-subtree `LK(lk,tlk,tc)` MERGES `LkResult` into `tc` (gm → gm2).
+      The inside-`S` value tie is exactly `GateStepValue` (proven) — this is where
+      it plugs in, and the POSITION TIE is automatic (`cp` is both the VM's write
+      and the gate's input position). The continuation walk `WalkPairLk(tc,gm2,…)`
+      (from the `TtLkAtCheckOracle` inversion + `GateAheadClearAfterMerge`) and the
+      outside-`S` frame `GmtTieOutside(t',gm2)` (from `LkResultAgreeOutside` + look-
+      register framing) are `requires` — the mechanical parts the caller supplies.
+      `GateStepValue`'s static look-table package is threaded verbatim. */
+  lemma ThreadRepLkStepCheckOracle(
+      rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, crv: CP.FCompiled,
+      str: string, ov: LOr.OracleView, S: set<LG.GroupId>, lk: L.Lookaround, r1: L.Regex,
+      tlk: LT.Tree, tc: LT.Tree, gm: LG.GroupMap, t: AI.Thread, l: int, cp: nat, clk: int,
+      body: R.regex, la: R.lookaround, bodycode: RB.code, endl: nat, ngroups: nat,
+      qt: AReg.Regs, ncap: int, nlook: int, nquant: int)
+    requires qm.ov == ov && !rer.ignoreCase && !rer.multiline
+    requires cp <= |str| && t.pc >= 0
+    requires l in qm.looks && qm.looks[l] == (lk, r1)
+    requires L.Positivity(lk) && L.LkDir(lk) == WP.Forward
+    requires LS.LkResult(lk, tlk, gm, PIV.InpOfCp(str, cp)).Some?
+    requires EL.LkGateOk(rer, lk, r1, PIV.InpOfCp(str, cp), tlk, true)
+    // the paired B-subtree at t.pc is the LK gate node (from TtLkAtCheckOracle):
+    requires ThreadRepLk(rer, qm, re, code, PIV.InpOfCp(str, cp), crv, str, ov, S,
+                         LT.LK(lk, tlk, tc), gm, t, ncap, nlook, nquant)
+    requires forall g :: g in L.DefGroups(r1) ==> g !in gm        // GateAheadClear at this gate
+    requires T.TransWf(body) && NR.LookFreeRE(body) && la.Lookahead?
+    requires r1 == T.Translate(body) && lk == T.TrLookaround(la) && body == M.VBody(crv, l)
+    requires bodycode == CP.compile_to_bytecode(body)
+    requires PSM.StaticOkRE(qm, body, bodycode, endl)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
+    requires 0 <= l < nlook && l < RL.ASize(t.look_regs)
+    requires 0 <= l < |crv.f_look_ast| && 0 <= l < |crv.f_look_cdns| && 0 <= l < |crv.f_look_types|
+    requires crv.f_look_types[l].Lookahead? && AI.capture_type(crv.f_look_types[l])
+    // the mechanical parts (continuation walk + outside frame), scoped to the caller:
+    requires var t' := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(cp as int), clk));
+             var gm2 := LS.LkResult(lk, tlk, gm, PIV.InpOfCp(str, cp)).value;
+             WalkPairLk(rer, qm, code, PIV.InpOfCp(str, cp), tc, gm2, (t.pc + 1) as nat, t.exit_allowed)
+             && GmtTieOutside(re, t', gm2, S)
+    ensures var t' := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(cp as int), clk));
+            var gm2 := LS.LkResult(lk, tlk, gm, PIV.InpOfCp(str, cp)).value;
+            ThreadRepLk(rer, qm, re, code, PIV.InpOfCp(str, cp), crv, str, ov, S, tc, gm2, t',
+                        ncap, nlook, nquant)
+  {
+    var inp := PIV.InpOfCp(str, cp);
+    var t' := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(cp as int), clk));
+    // ThreadRepLk(LK,...,t) delivers GmtTieInside(t, gm); GateStepValue lifts the
+    // inside tie across the gate to (t', gm2) with the a_cp[l]:=cp write.
+    assert th2witness: t' == t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(cp as int), clk));
+    GateStepValue(rer, qm, re, code, crv, str, ov, S, lk, r1, tlk, LT.LK(lk, tlk, tc),
+                  gm, t, t', l, cp, body, la, bodycode, endl, ngroups, qt, ncap, nlook, nquant);
+    // Now ThreadRepLk(tc, gm2, t') = t'.pc>=0 (pc+1>=0) && WalkPairLk (req)
+    //   && GmtTieOutside(t',gm2) (req) && GmtTieInside(t',gm2) (GateStepValue).
+  }
+
   /** Fueled core of `TtLkAtAccept`: at an `Accept` pc every `ActionsRepL` head
       is transparent (Epsilon / a spent `{0}` quantifier / a Sequence of those),
       so `BoolTreeLk` peels — expanding Sequences — down to the empty stack,
