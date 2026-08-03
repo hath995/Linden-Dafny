@@ -279,6 +279,114 @@ module LindenElkLiftSim {
   // THE FILLER'S WORKLIST — bodiless lemmas, in fill order.
   // ==========================================================================
 
+  /** PER-ACTS functional determinism: `BoolTreeLk` is a function of
+      `(acts, inp, b)`. Every head pins the tree's shape and recurses; the gate
+      case is closed by `LkGateOk` pinning `tlk == ComputeTr(...)` (so both
+      bodies agree) and the verdict `LkResult(...).Some?` being single-valued
+      (so both take the same `LK`/`LKFail` branch). */
+  least lemma BoolTreeLkDeterm(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input,
+                               b: BS.LoopBool, t1: LT.Tree, t2: LT.Tree)
+    requires EL.BoolTreeLk(rer, acts, inp, b, t1)
+    requires EL.BoolTreeLk(rer, acts, inp, b, t2)
+    ensures t1 == t2
+  {
+    if |acts| == 0 {
+    } else {
+      var cont := acts[1..];
+      match acts[0]
+      case Acheck(strcheck) =>
+        if b == BS.CanExit {
+          match t1 { case Progress(c1) => match t2 { case Progress(c2) =>
+            BoolTreeLkDeterm(rer, cont, inp, BS.CanExit, c1, c2); case _ => } case _ => }
+        }
+      case Aclose(gid) =>
+        match t1 { case GroupActionT(g1, c1) => match t2 { case GroupActionT(g2, c2) =>
+          BoolTreeLkDeterm(rer, cont, inp, b, c1, c2); case _ => } case _ => }
+      case Areg(r) =>
+        match r
+        case Epsilon => BoolTreeLkDeterm(rer, cont, inp, b, t1, t2);
+        case Character(cd) =>
+          match LC.ReadChar(rer, cd, inp, WP.Forward) {
+            case None =>
+            case Some(pair) =>
+              match t1 { case Read(cc1, c1) => match t2 { case Read(cc2, c2) =>
+                BoolTreeLkDeterm(rer, cont, pair.1, BS.CanExit, c1, c2); case _ => } case _ => }
+          }
+        case Disjunction(r1, r2) =>
+          match t1 { case Choice(a1, b1t) => match t2 { case Choice(a2, b2t) =>
+            BoolTreeLkDeterm(rer, [LS.Areg(r1)] + cont, inp, b, a1, a2);
+            BoolTreeLkDeterm(rer, [LS.Areg(r2)] + cont, inp, b, b1t, b2t); case _ => } case _ => }
+        case Sequence(r1, r2) =>
+          BoolTreeLkDeterm(rer, [LS.Areg(r1), LS.Areg(r2)] + cont, inp, b, t1, t2);
+        case Quantified(greedy, min, delta, r1) =>
+          var gidl := L.DefGroups(r1);
+          if min > 0 {
+            var q1 := L.Quantified(greedy, min - 1, delta, r1);
+            match t1 { case GroupActionT(g1, c1) => match t2 { case GroupActionT(g2, c2) =>
+              BoolTreeLkDeterm(rer, [LS.Areg(r1), LS.Areg(q1)] + cont, inp, b, c1, c2); case _ => } case _ => }
+          } else if delta == LN.NN(0) {
+            BoolTreeLkDeterm(rer, cont, inp, b, t1, t2);
+          } else {
+            var qn := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+            var iacts := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(qn)] + cont;
+            match t1 {
+              case Choice(a1, b1t) =>
+                match t2 {
+                  case Choice(a2, b2t) =>
+                    var it1 := if greedy then a1 else b1t;  var sk1 := if greedy then b1t else a1;
+                    var it2 := if greedy then a2 else b2t;  var sk2 := if greedy then b2t else a2;
+                    match it1 {
+                      case GroupActionT(g1, ti1) =>
+                        match it2 {
+                          case GroupActionT(g2, ti2) =>
+                            BoolTreeLkDeterm(rer, iacts, inp, BS.CannotExit, ti1, ti2);
+                            BoolTreeLkDeterm(rer, cont, inp, b, sk1, sk2);
+                          case _ =>
+                        }
+                      case _ =>
+                    }
+                  case _ =>
+                }
+              case _ =>
+            }
+          }
+        case Group(gid, r1) =>
+          match t1 { case GroupActionT(g1, c1) => match t2 { case GroupActionT(g2, c2) =>
+            BoolTreeLkDeterm(rer, [LS.Areg(r1), LS.Aclose(gid)] + cont, inp, b, c1, c2); case _ => } case _ => }
+        case AnchorR(a) =>
+          if LS.AnchorSatisfied(rer, a, inp) {
+            match t1 { case AnchorPass(a1, c1) => match t2 { case AnchorPass(a2, c2) =>
+              BoolTreeLkDeterm(rer, cont, inp, b, c1, c2); case _ => } case _ => }
+          }
+        case LookaroundR(lk, r1) =>
+          // LkGateOk pins tlk == ComputeTr(rer,[Areg(r1)],inp,Empty,LkDir(lk)) on BOTH
+          // sides; its verdict LkResult(lk,tlk,Empty,inp).Some? is single-valued.
+          var tlkc := LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk));
+          match t1 {
+            case LK(l1, k1, c1) =>
+              assert k1 == tlkc;
+              match t2 {
+                case LK(l2, k2, c2) =>
+                  assert k2 == tlkc;
+                  BoolTreeLkDeterm(rer, cont, inp, b, c1, c2);
+                case LKFail(l2, k2) =>
+                  assert k2 == tlkc;   // both verdicts read LkResult(lk,tlkc,Empty,inp).Some?
+                  assert false;
+                case _ =>
+              }
+            case LKFail(l1, k1) =>
+              assert k1 == tlkc;
+              match t2 {
+                case LK(l2, k2, c2) => assert k2 == tlkc; assert false;
+                case LKFail(l2, k2) => assert k2 == tlkc;
+                case _ =>
+              }
+            case _ =>
+          }
+        case Backreference(_) =>
+    }
+  }
+
   /** (1) t-side determinism: at a fixed `(pc, ea, inp)` the walk tree is
       unique. Kills the seen-desync (landmine 2): pc-equal heads have equal
       B-trees, so B's skip fires exactly when the VM drops a processed head.
