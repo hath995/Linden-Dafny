@@ -76,6 +76,7 @@ module LindenElkLiftSim {
   import RL = LindenElkRegsLaws
   import WkE = LindenElkWalkOkEntry
   import TT = LindenElkTreeThread
+  import NUL = LindenElkNullable
 
   // ==========================================================================
   // SOLID definitions — the pairing.
@@ -83,15 +84,21 @@ module LindenElkLiftSim {
 
   /** The t-side walk state at a pc: some action list represented at `pc`
       whose (checked-flag-erased) spec tree is `tb`. The B-side analogue of
-      `TT.TreeThreadRE`. (SEAM: the exact conjunct set — WalkOk / PikeLkActions
-      — may need trimming or augmenting once LiftAdvanceEpsilon's cases are
-      filled; the walk inversions in ActionsTreeRepFRE's cases show what each
-      instruction step preserves.) */
+      `TT.TreeThreadRE`.
+
+      NOTE (2026-08-03 do-while-seam reformulation): `WO.WalkOk` was DROPPED from
+      this bundle. It was a construction artifact of `ActionsTreeRepFRE` (which
+      builds `tstar` top-down and needs the star loop-view guard to proceed).
+      `EL.BoolTreeLk` ALREADY self-guards the do-while: its free-star iteration
+      arm hardcodes `Acheck` at `CannotExit`, so a nullable empty iteration
+      dead-ends at `Mismatch`. Keeping `WalkOk` made the `min==1 Inf` seam
+      unsatisfiable (`WalkOkQuantSeam` inserts an `Acheck` the `BoolTreeLk`
+      continuation lacks); without it the seam continuation
+      `[Areg(r1),Areg(star)]+cont` satisfies `ActionsRepL` + `BoolTreeLk` = tb.t. */
   ghost predicate TtLk(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                        tb: LT.Tree, pc: nat, ea: bool) {
     exists acts: LS.Actions, b: BS.LoopBool ::
       AR.ActionsRepL(rer, qm, acts, code, pc)
-      && WO.WalkOk(acts, code, pc, ea)
       && EL.PikeLkActions(acts)
       && ATR.EaOf(b) == ea
       && EL.BoolTreeLk(rer, acts, inp, b, tb)
@@ -169,7 +176,6 @@ module LindenElkLiftSim {
     th.pc >= 0
     && (exists acts: LS.Actions, b: BS.LoopBool ::
           AR.ActionsRepL(rer, qm, acts, code, th.pc as nat)
-          && WO.WalkOk(acts, code, th.pc as nat, th.exit_allowed)
           && EL.PikeLkActions(acts)
           && ATR.EaOf(b) == th.exit_allowed
           && EL.BoolTreeLk(rer, acts, inp, b, tb)
@@ -546,8 +552,6 @@ module LindenElkLiftSim {
     EL.TranslateFragmentPikeLk(re);                           // PikeLkRegex(Translate(re))
     EL.PikeLkActionsConsIff(LS.Areg(T.Translate(re)), []);    // PikeLkActions(acts)
     assert EL.PikeLkActions(acts);
-    WkE.WalkOkEntry(re);                                      // forall g :: WalkOk(acts, code, 0, g)
-    assert WO.WalkOk(acts, code, 0, false);
     PIV.GmOfLiveInit(re, ncap, nlook, nquant);               // GmOfLive(re, init...) == Empty
 
     // the single entry thread pairs with (t, Empty)
@@ -557,7 +561,6 @@ module LindenElkLiftSim {
       assert ATR.EaOf(BS.CannotExit) == itr.exit_allowed;
       assert exists actsw: LS.Actions, bw: BS.LoopBool ::
           AR.ActionsRepL(rer, qm, actsw, code, itr.pc as nat)
-          && WO.WalkOk(actsw, code, itr.pc as nat, itr.exit_allowed)
           && EL.PikeLkActions(actsw)
           && ATR.EaOf(bw) == itr.exit_allowed
           && EL.BoolTreeLk(rer, actsw, inp, bw, t)
@@ -878,12 +881,10 @@ module LindenElkLiftSim {
   {
     var acts: LS.Actions, b: BS.LoopBool :|
       AR.ActionsRepL(rer, qm, acts, code, pc)
-      && WO.WalkOk(acts, code, pc, ea)
       && EL.PikeLkActions(acts)
       && ATR.EaOf(b) == ea
       && EL.BoolTreeLk(rer, acts, inp, b, tb);
     ActionsRepLThruJmp(rer, qm, acts, code, pc, x);   // x >= 0 && ActionsRepL(acts, code, x)
-    WO.WalkOkJmp(acts, code, pc, ea, x);              // WalkOk(acts, code, x, ea)
     // same (acts, b) witness TtLk at x — only the pc moved
   }
 
@@ -901,7 +902,6 @@ module LindenElkLiftSim {
   {
     var acts: LS.Actions, b: BS.LoopBool :|
       AR.ActionsRepL(rer, qm, acts, code, pc)
-      && WO.WalkOk(acts, code, pc, ea)
       && EL.PikeLkActions(acts)
       && ATR.EaOf(b) == ea
       && EL.BoolTreeLk(rer, acts, inp, b, tb);
@@ -1045,7 +1045,6 @@ module LindenElkLiftSim {
   {
     var acts: LS.Actions, b: BS.LoopBool :|
       AR.ActionsRepL(rer, qm, acts, code, pc)
-      && WO.WalkOk(acts, code, pc, ea)
       && EL.PikeLkActions(acts)
       && ATR.EaOf(b) == ea
       && EL.BoolTreeLk(rer, acts, inp, b, tb);
@@ -1060,7 +1059,6 @@ module LindenElkLiftSim {
   lemma TtLkAtConsumeCore(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                           tb: LT.Tree, pc: nat, b: BS.LoopBool, acts: LS.Actions, ce: RC.char_expectation)
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
-    requires WO.WalkOk(acts, code, pc, ATR.EaOf(b))
     requires EL.PikeLkActions(acts)
     requires EL.BoolTreeLk(rer, acts, inp, b, tb)
     requires NR.GetPcRE(code, pc) == Some(RB.Consume(ce))
@@ -1086,7 +1084,6 @@ module LindenElkLiftSim {
       match r
       case Epsilon =>
         assert pcmid == pc;
-        WO.WalkOkEpsilon(acts, code, pc, g);
         assert EL.BoolTreeLk(rer, cont, inp, b, tb);
         assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
         TtLkAtConsumeCore(rer, qm, code, inp, tb, pc, b, cont, ce);
@@ -1099,7 +1096,6 @@ module LindenElkLiftSim {
         AR.ActionsRepLCons(rer, qm, LS.Areg(r2), cont, code, e1, pcmid);
         AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Areg(r2)] + cont, code, pc, e1);
         assert AR.ActionsRepL(rer, qm, na, code, pc);
-        WO.WalkOkSeq(acts, code, pc, g, r1, r2);
         assert EL.PikeLkActions(na) by {
           EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
           EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
@@ -1119,7 +1115,6 @@ module LindenElkLiftSim {
           NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);
           assert pcmid == pc;
           assert AR.ActionsRepL(rer, qm, cont, code, pc);
-          WO.WalkOkQuantSpent(acts, code, pc, g, greedy, r1);
           assert EL.BoolTreeLk(rer, cont, inp, b, tb);
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
           TtLkAtConsumeCore(rer, qm, code, inp, tb, pc, b, cont, ce);
@@ -1136,7 +1131,6 @@ module LindenElkLiftSim {
             assert tb == LT.Mismatch;
           case Some(pair) =>
             assert tb.Read? && tb.c == pair.0 && EL.BoolTreeLk(rer, cont, pair.1, BS.CanExit, tb.t);
-            WO.WalkOkCharacter(acts, code, pc, g);   // WalkOk(cont, code, pc+1, true)
             assert AR.ActionsRepL(rer, qm, cont, code, pc + 1);
             assert TtLk(rer, qm, code, pair.1, tb.t, pc + 1, true) by {
               assert ATR.EaOf(BS.CanExit) == true;
@@ -1208,7 +1202,6 @@ module LindenElkLiftSim {
   {
     var acts: LS.Actions, b: BS.LoopBool :|
       AR.ActionsRepL(rer, qm, acts, code, pc)
-      && WO.WalkOk(acts, code, pc, ea)
       && EL.PikeLkActions(acts)
       && ATR.EaOf(b) == ea
       && EL.BoolTreeLk(rer, acts, inp, b, tb);
@@ -1271,7 +1264,6 @@ module LindenElkLiftSim {
   lemma TtLkAtSetRegCore(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                          tb: LT.Tree, pc: nat, b: BS.LoopBool, acts: LS.Actions, r: int)
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
-    requires WO.WalkOk(acts, code, pc, ATR.EaOf(b))
     requires EL.PikeLkActions(acts)
     requires EL.BoolTreeLk(rer, acts, inp, b, tb)
     requires NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(r))
@@ -1293,14 +1285,12 @@ module LindenElkLiftSim {
       // ActionRepL(Aclose(gid)) pins SetRegisterToCP(end_reg(gid)), pcmid == pc+1
       assert pcmid == pc + 1 && r == CP.end_reg(gid as int);
       assert tb.GroupActionT? && tb.g == LG.Close(gid) && EL.BoolTreeLk(rer, cont, inp, b, tb.t);
-      WO.WalkOkAclose(acts, code, pc, g);   // WalkOk(cont, code, pc+1, g)
       assert TtLk(rer, qm, code, inp, tb.t, pc + 1, g);
     case Areg(r0) =>
       assert EL.PikeLkRegex(r0);
       match r0
       case Epsilon =>
         assert pcmid == pc;
-        WO.WalkOkEpsilon(acts, code, pc, g);
         assert EL.BoolTreeLk(rer, cont, inp, b, tb);
         assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
         TtLkAtSetRegCore(rer, qm, code, inp, tb, pc, b, cont, r);
@@ -1313,7 +1303,6 @@ module LindenElkLiftSim {
         AR.ActionsRepLCons(rer, qm, LS.Areg(r2), cont, code, e1, pcmid);
         AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Areg(r2)] + cont, code, pc, e1);
         assert AR.ActionsRepL(rer, qm, na, code, pc);
-        WO.WalkOkSeq(acts, code, pc, g, r1, r2);
         assert EL.PikeLkActions(na) by {
           EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
           EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
@@ -1336,7 +1325,6 @@ module LindenElkLiftSim {
         AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Aclose(gid)] + cont, code, pc + 1, e1);
         assert AR.ActionsRepL(rer, qm, ga, code, pc + 1);
         assert tb.GroupActionT? && tb.g == LG.Open(gid) && EL.BoolTreeLk(rer, ga, inp, b, tb.t);
-        WO.WalkOkGroup(acts, code, pc, g, gid, r1);   // WalkOk(ga, code, pc+1, g)
         assert EL.PikeLkActions(ga) by {
           EL.PikeLkActionsConsIff(LS.Aclose(gid), cont);
           EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Aclose(gid)] + cont);
@@ -1352,7 +1340,6 @@ module LindenElkLiftSim {
           NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);
           assert pcmid == pc;
           assert AR.ActionsRepL(rer, qm, cont, code, pc);
-          WO.WalkOkQuantSpent(acts, code, pc, g, greedy, r1);
           assert EL.BoolTreeLk(rer, cont, inp, b, tb);
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
           TtLkAtSetRegCore(rer, qm, code, inp, tb, pc, b, cont, r);
@@ -1381,22 +1368,206 @@ module LindenElkLiftSim {
   {
     var acts: LS.Actions, b: BS.LoopBool :|
       AR.ActionsRepL(rer, qm, acts, code, pc)
-      && WO.WalkOk(acts, code, pc, ea)
       && EL.PikeLkActions(acts)
       && ATR.EaOf(b) == ea
       && EL.BoolTreeLk(rer, acts, inp, b, tb);
     TtLkAtSetRegCore(rer, qm, code, inp, tb, pc, b, acts, r);
   }
 
-  /** [SEAM] At SetQuantToClock the tree is the quantifier's `Reset` stamp
-      (payload pinned by `qm.quants` — TreeRepDetermRE's note). The fragment
-      compiles every stamp with `bq == false` (`NI.CodeShapeAt`). */
+  /** THE forced-copy continuation builder: a `min>0` quantifier head crossing
+      its first `SetQuantToClock` at `pc` unfolds to `r1` then
+      `Quantified(min-1, delta)` — so the walk continuation
+      `[Areg(r1), Areg(Quantified(greedy, min-1, delta, r1))] + cont` is
+      represented at `pc+1`. NN via `NfaRepLQuantInv`+`Intro`; Inf via
+      `NfaRepLPlusInv` (min==1 rebuilds the star's loop-view by hand, min>1 via
+      `NfaRepLPlusIntro`). This is the piece the do-while seam blocked while
+      `WalkOk` was in `TtLk`; with `WalkOk` gone (no Acheck-mismatch), it closes. */
+  lemma QuantForcedContRep(rer: LW.RegExpRecord, qm: AR.QMap, greedy: bool, min: nat, delta: LN.NoI,
+                           r1: L.Regex, code: RB.code, pc: nat, pcmid: nat, cont: LS.Actions)
+    requires min > 0
+    requires AR.NfaRepL(rer, qm, L.Quantified(greedy, min, delta, r1), code, pc, pcmid)
+    requires AR.ActionsRepL(rer, qm, cont, code, pcmid)
+    ensures AR.ActionsRepL(rer, qm,
+              [LS.Areg(r1), LS.Areg(L.Quantified(greedy, min - 1, delta, r1))] + cont, code, pc + 1)
+  {
+    match delta
+    case NN(kx) =>
+      var quant1 := L.Quantified(greedy, min - 1, LN.NN(kx), r1);
+      var em := AR.NfaRepLQuantInv(rer, qm, greedy, min, kx, r1, code, pc, pcmid);
+      var e_body: nat :|
+        (exists qid: int :: NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
+                            && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
+        && AR.NfaRepL(rer, qm, r1, code, pc + 1, e_body)
+        && AR.NfaRepMinL(rer, qm, min - 1, r1, code, e_body, em);
+      AR.NfaRepLQuantIntro(rer, qm, greedy, min - 1, kx, r1, code, e_body, em, pcmid);
+      AR.ActionsRepLCons(rer, qm, LS.Areg(quant1), cont, code, e_body, pcmid);
+      assert [LS.Areg(r1), LS.Areg(quant1)] + cont == [LS.Areg(r1)] + ([LS.Areg(quant1)] + cont);
+      AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Areg(quant1)] + cont, code, pc + 1, e_body);
+    case Inf =>
+      var quant1 := L.Quantified(greedy, min - 1, LN.Inf, r1);
+      var em, e1 := AR.NfaRepLPlusInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+      var qid_em: int :| NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid_em, false))
+                       && qid_em in qm.quants && qm.quants[qid_em] == L.DefGroups(r1);
+      if min == 1 {
+        NfaRepMinLHeadPin(rer, qm, 0, r1, code, pc, em);   // em == pc
+        assert em == pc;
+        // quant1 == Quantified(greedy, 0, Inf, r1) == the star; build its loop-view NfaRepL at e1.
+        AR.NfaRepIncrL(rer, qm, r1, code, pc + 1, e1);   // pc + 1 <= e1, so pc <= e1
+        assert pc <= e1;
+        assert AR.NfaRepL(rer, qm, quant1, code, e1, e1 + 1) by {
+          assert NUL.NonNullableL(r1);
+          assert NR.GetPcRE(code, e1) == Some(if greedy then RB.Fork(pc, e1 + 1) else RB.Fork(e1 + 1, pc));
+          assert NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid_em, false))
+                 && qid_em in qm.quants && qm.quants[qid_em] == L.DefGroups(r1);   // em == pc
+          assert AR.NfaRepL(rer, qm, r1, code, pc + 1, e1);
+          // the loop-view disjunct holds with witness em2 == pc
+          assert NR.GetPcRE(code, e1) == Some(if greedy then RB.Fork(pc, e1 + 1) else RB.Fork(e1 + 1, pc))
+            && pc <= e1
+            && (exists qid: int :: NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
+                                   && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
+            && AR.NfaRepL(rer, qm, r1, code, pc + 1, e1)
+            && e1 + 1 == e1 + 1;
+        }
+        AR.ActionsRepLCons(rer, qm, LS.Areg(quant1), cont, code, e1, pcmid);
+        assert [LS.Areg(r1), LS.Areg(quant1)] + cont == [LS.Areg(r1)] + ([LS.Areg(quant1)] + cont);
+        AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Areg(quant1)] + cont, code, pc + 1, e1);
+      } else {
+        var e_body: nat :|
+          (exists qid: int :: NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
+                              && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
+          && AR.NfaRepL(rer, qm, r1, code, pc + 1, e_body)
+          && AR.NfaRepMinL(rer, qm, min - 2, r1, code, e_body, em);
+        AR.NfaRepLPlusIntro(rer, qm, greedy, min - 1, r1, code, e_body, em, e1, pcmid, qid_em);
+        AR.ActionsRepLCons(rer, qm, LS.Areg(quant1), cont, code, e_body, pcmid);
+        assert [LS.Areg(r1), LS.Areg(quant1)] + cont == [LS.Areg(r1)] + ([LS.Areg(quant1)] + cont);
+        AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Areg(quant1)] + cont, code, pc + 1, e_body);
+      }
+  }
+
+  /** Fueled core of `TtLkAtSetQuant`: peel the transparent prefix; the real head
+      is an `Areg(Quantified(min>0))` whose first `SetQuantToClock` stamps a
+      `Reset`, and the continuation `[Areg(r1),Areg(Quantified(min-1))]+cont` is
+      represented at `pc+1` by `QuantForcedContRep` (the do-while seam is now
+      satisfiable — `WalkOk` was dropped from `TtLk`). */
+  lemma TtLkAtSetQuantCore(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                           tb: LT.Tree, pc: nat, b: BS.LoopBool, acts: LS.Actions, q: int)
+    requires AR.ActionsRepL(rer, qm, acts, code, pc)
+    requires EL.PikeLkActions(acts)
+    requires EL.BoolTreeLk(rer, acts, inp, b, tb)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, false))
+    ensures tb.GroupActionT? && tb.g.Reset?
+    ensures TtLk(rer, qm, code, inp, tb.t, pc + 1, ATR.EaOf(b))
+    decreases ATR.MsizeA(acts)
+  {
+    var g := ATR.EaOf(b);
+    var pcmid: nat :| AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && AR.ActionsRepL(rer, qm, acts[1..], code, pcmid);
+    EL.PikeLkActionsTail(acts);
+    assert acts == [acts[0]] + acts[1..];
+    EL.PikeLkActionsConsIff(acts[0], acts[1..]);
+    var cont := acts[1..];
+    match acts[0]
+    case Acheck(_) =>   // pins EndLoop / backward Fork — not SetQuantToClock
+    case Aclose(_) =>   // pins SetRegisterToCP — not SetQuantToClock
+    case Areg(r0) =>
+      assert EL.PikeLkRegex(r0);
+      match r0
+      case Epsilon =>
+        assert pcmid == pc;
+        assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+        assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
+        TtLkAtSetQuantCore(rer, qm, code, inp, tb, pc, b, cont, q);
+      case Sequence(r1, r2) =>
+        assert acts[0] == LS.Areg(L.Sequence(r1, r2));
+        assert AR.NfaRepL(rer, qm, L.Sequence(r1, r2), code, pc, pcmid);
+        var e1: nat :| AR.NfaRepL(rer, qm, r1, code, pc, e1) && AR.NfaRepL(rer, qm, r2, code, e1, pcmid);
+        var na := [LS.Areg(r1), LS.Areg(r2)] + cont;
+        assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+        AR.ActionsRepLCons(rer, qm, LS.Areg(r2), cont, code, e1, pcmid);
+        AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Areg(r2)] + cont, code, pc, e1);
+        assert AR.ActionsRepL(rer, qm, na, code, pc);
+        assert EL.PikeLkActions(na) by {
+          EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
+          EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
+        }
+        assert EL.BoolTreeLk(rer, na, inp, b, tb);
+        assert LS.ActionsRegexSize(acts) == RegSz(r1) + RegSz(r2) + 1 + LS.ActionsRegexSize(cont);
+        assert LS.ActionsRegexSize(na) == RegSz(r1) + RegSz(r2) + LS.ActionsRegexSize(cont);
+        assert ATR.MsizeA(na) < ATR.MsizeA(acts);
+        TtLkAtSetQuantCore(rer, qm, code, inp, tb, pc, b, na, q);
+      case Quantified(greedy, min, delta, r1) =>
+        assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
+        assert AR.NfaRepL(rer, qm, L.Quantified(greedy, min, delta, r1), code, pc, pcmid);
+        if min > 0 {
+          // THE forced-copy real head: reset stamp + continuation via QuantForcedContRep.
+          var quant1 := L.Quantified(greedy, min - 1, delta, r1);
+          var contActs := [LS.Areg(r1), LS.Areg(quant1)] + cont;
+          assert tb.GroupActionT? && tb.g == LG.Reset(L.DefGroups(r1))
+                 && EL.BoolTreeLk(rer, contActs, inp, b, tb.t);
+          QuantForcedContRep(rer, qm, greedy, min, delta, r1, code, pc, pcmid, cont);   // ActionsRepL(contActs, pc+1)
+          assert EL.PikeLkRegex(r1) && EL.PikeLkRegex(quant1);
+          assert EL.PikeLkActions(contActs) by {
+            EL.PikeLkActionsConsIff(LS.Areg(quant1), cont);
+            EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(quant1)] + cont);
+          }
+          assert TtLk(rer, qm, code, inp, tb.t, pc + 1, g);
+        } else if delta == LN.NN(0) {
+          var em: nat :| AR.NfaRepMinL(rer, qm, 0, r1, code, pc, em)
+                       && AR.NfaRepOptL(rer, qm, 0, greedy, r1, code, em, pcmid);
+          NfaRepMinLHeadPin(rer, qm, 0, r1, code, pc, em);
+          NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);
+          assert pcmid == pc;
+          assert AR.ActionsRepL(rer, qm, cont, code, pc);
+          assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+          assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
+          TtLkAtSetQuantCore(rer, qm, code, inp, tb, pc, b, cont, q);
+        } else {
+          // min==0 with Inf or NN(kx>0): pins a Fork at pc, not SetQuantToClock.
+          match delta
+          case Inf =>
+            if exists e1: nat ::
+                 NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1))
+                 && (exists qid: int :: NR.GetPcRE(code, pc + 1) == Some(RB.SetQuantToClock(qid, false))
+                                        && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
+                 && NR.GetPcRE(code, pc + 2) == Some(RB.BeginLoop)
+                 && AR.NfaRepL(rer, qm, r1, code, pc + 3, e1)
+                 && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                 && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(pc))
+                 && pcmid == e1 + 2 {
+              var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1));
+            } else {
+              var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
+            }
+          case NN(kx) =>
+            var em: nat :| AR.NfaRepMinL(rer, qm, 0, r1, code, pc, em)
+                         && AR.NfaRepOptL(rer, qm, kx, greedy, r1, code, em, pcmid);
+            NfaRepMinLHeadPin(rer, qm, 0, r1, code, pc, em);
+            NfaRepOptLHeadPin(rer, qm, kx, greedy, r1, code, em, pcmid);   // kx>0 ⇒ Fork at pc
+        }
+      case Character(_) =>   // pins Consume — not SetQuantToClock
+      case Disjunction(_, _) =>   // pins Fork — not SetQuantToClock
+      case Group(_, _) =>   // pins SetRegisterToCP — not SetQuantToClock
+      case LookaroundR(_, _) =>   // pins CheckOracle/NegCheckOracle — not SetQuantToClock
+      case AnchorR(_) =>   // pins AnchorAssertion — not SetQuantToClock
+      case Backreference(_) =>   // NfaRepL false
+  }
+
+  /** [SOLID] At SetQuantToClock the tree is the quantifier's `Reset` stamp
+      (payload pinned by `qm.quants`). Resolved by the do-while-seam
+      reformulation (WalkOk dropped from TtLk) + `QuantForcedContRep`. */
   lemma TtLkAtSetQuant(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                        tb: LT.Tree, pc: nat, ea: bool, q: int)
     requires TtLk(rer, qm, code, inp, tb, pc, ea)
     requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, false))
     ensures tb.GroupActionT? && tb.g.Reset?
     ensures TtLk(rer, qm, code, inp, tb.t, pc + 1, ea)
+  {
+    var acts: LS.Actions, b: BS.LoopBool :|
+      AR.ActionsRepL(rer, qm, acts, code, pc)
+      && EL.PikeLkActions(acts)
+      && ATR.EaOf(b) == ea
+      && EL.BoolTreeLk(rer, acts, inp, b, tb);
+    TtLkAtSetQuantCore(rer, qm, code, inp, tb, pc, b, acts, q);
+  }
 
   /** [SOLID] THE GATE, B side: at `CheckOracle(lid)` the tree IS the gate's
       own node — `LK` when the bit is set (and its `LkResult` verdict agrees
@@ -1412,7 +1583,6 @@ module LindenElkLiftSim {
   lemma TtLkAtCheckOracleCore(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                               tb: LT.Tree, pc: nat, b: BS.LoopBool, acts: LS.Actions, lid: int)
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
-    requires WO.WalkOk(acts, code, pc, ATR.EaOf(b))
     requires EL.PikeLkActions(acts)
     requires EL.BoolTreeLk(rer, acts, inp, b, tb)
     requires NR.GetPcRE(code, pc) == Some(RB.CheckOracle(lid))
@@ -1442,7 +1612,6 @@ module LindenElkLiftSim {
       match r0
       case Epsilon =>
         assert pcmid == pc;
-        WO.WalkOkEpsilon(acts, code, pc, g);
         assert EL.BoolTreeLk(rer, cont, inp, b, tb);
         assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
         TtLkAtCheckOracleCore(rer, qm, code, inp, tb, pc, b, cont, lid);
@@ -1455,7 +1624,6 @@ module LindenElkLiftSim {
         AR.ActionsRepLCons(rer, qm, LS.Areg(r2), cont, code, e1, pcmid);
         AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Areg(r2)] + cont, code, pc, e1);
         assert AR.ActionsRepL(rer, qm, na, code, pc);
-        WO.WalkOkSeq(acts, code, pc, g, r1, r2);
         assert EL.PikeLkActions(na) by {
           EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
           EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
@@ -1475,7 +1643,6 @@ module LindenElkLiftSim {
           NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);
           assert pcmid == pc;
           assert AR.ActionsRepL(rer, qm, cont, code, pc);
-          WO.WalkOkQuantSpent(acts, code, pc, g, greedy, r1);
           assert EL.BoolTreeLk(rer, cont, inp, b, tb);
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
           TtLkAtCheckOracleCore(rer, qm, code, inp, tb, pc, b, cont, lid);
@@ -1498,7 +1665,6 @@ module LindenElkLiftSim {
         if tb.LK? {
           // LkGateOk(..,true) ⇒ LkResult.Some? ⇒ TreeRes.Some? ⇒ bit
           assert EL.BoolTreeLk(rer, cont, inp, b, tb.t);
-          WO.WalkOkLookaround(acts, code, pc, g);   // WalkOk(cont, code, pc+1, g)
           assert AR.ActionsRepL(rer, qm, cont, code, pc + 1);
           assert TtLk(rer, qm, code, inp, tb.t, pc + 1, g);
           assert bit;
@@ -1531,7 +1697,6 @@ module LindenElkLiftSim {
   {
     var acts: LS.Actions, b: BS.LoopBool :|
       AR.ActionsRepL(rer, qm, acts, code, pc)
-      && WO.WalkOk(acts, code, pc, ea)
       && EL.PikeLkActions(acts)
       && ATR.EaOf(b) == ea
       && EL.BoolTreeLk(rer, acts, inp, b, tb);
@@ -1548,7 +1713,6 @@ module LindenElkLiftSim {
   lemma TtLkAtAnchorCore(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                          tb: LT.Tree, pc: nat, b: BS.LoopBool, acts: LS.Actions, a: R.anchor)
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
-    requires WO.WalkOk(acts, code, pc, ATR.EaOf(b))
     requires EL.PikeLkActions(acts)
     requires EL.BoolTreeLk(rer, acts, inp, b, tb)
     requires NR.GetPcRE(code, pc) == Some(RB.AnchorAssertion(a))
@@ -1570,7 +1734,6 @@ module LindenElkLiftSim {
       match r0
       case Epsilon =>
         assert pcmid == pc;
-        WO.WalkOkEpsilon(acts, code, pc, g);
         assert EL.BoolTreeLk(rer, cont, inp, b, tb);
         assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
         TtLkAtAnchorCore(rer, qm, code, inp, tb, pc, b, cont, a);
@@ -1583,7 +1746,6 @@ module LindenElkLiftSim {
         AR.ActionsRepLCons(rer, qm, LS.Areg(r2), cont, code, e1, pcmid);
         AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Areg(r2)] + cont, code, pc, e1);
         assert AR.ActionsRepL(rer, qm, na, code, pc);
-        WO.WalkOkSeq(acts, code, pc, g, r1, r2);
         assert EL.PikeLkActions(na) by {
           EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
           EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
@@ -1603,7 +1765,6 @@ module LindenElkLiftSim {
           NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);
           assert pcmid == pc;
           assert AR.ActionsRepL(rer, qm, cont, code, pc);
-          WO.WalkOkQuantSpent(acts, code, pc, g, greedy, r1);
           assert EL.BoolTreeLk(rer, cont, inp, b, tb);
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
           TtLkAtAnchorCore(rer, qm, code, inp, tb, pc, b, cont, a);
@@ -1617,7 +1778,6 @@ module LindenElkLiftSim {
         assert pcmid == pc + 1;
         if LS.AnchorSatisfied(rer, la, inp) {
           assert tb.AnchorPass? && EL.BoolTreeLk(rer, cont, inp, b, tb.t);
-          WO.WalkOkAnchor(acts, code, pc, g);   // WalkOk(cont, code, pc+1, g)
           assert AR.ActionsRepL(rer, qm, cont, code, pc + 1);
           assert TtLk(rer, qm, code, inp, tb.t, pc + 1, g);
         } else {
@@ -1641,7 +1801,6 @@ module LindenElkLiftSim {
   {
     var acts: LS.Actions, b: BS.LoopBool :|
       AR.ActionsRepL(rer, qm, acts, code, pc)
-      && WO.WalkOk(acts, code, pc, ea)
       && EL.PikeLkActions(acts)
       && ATR.EaOf(b) == ea
       && EL.BoolTreeLk(rer, acts, inp, b, tb);
@@ -1655,7 +1814,6 @@ module LindenElkLiftSim {
   lemma TtLkAtEndLoopCore(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                           tb: LT.Tree, pc: nat, b: BS.LoopBool, acts: LS.Actions)
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
-    requires WO.WalkOk(acts, code, pc, ATR.EaOf(b))
     requires EL.PikeLkActions(acts)
     requires EL.BoolTreeLk(rer, acts, inp, b, tb)
     requires NR.GetPcRE(code, pc) == Some(RB.EndLoop)
@@ -1677,7 +1835,6 @@ module LindenElkLiftSim {
       if b == BS.CanExit {
         assert g == true;
         assert tb.Progress? && EL.BoolTreeLk(rer, cont, inp, BS.CanExit, tb.t);
-        WO.WalkOkAcheckEndLoop(acts, code, pc, g);   // WalkOk(cont, code, pc+1, true)
         assert AR.ActionsRepL(rer, qm, cont, code, pc + 1);
         assert TtLk(rer, qm, code, inp, tb.t, pc + 1, true);
       } else {
@@ -1690,7 +1847,6 @@ module LindenElkLiftSim {
       match r0
       case Epsilon =>
         assert pcmid == pc;
-        WO.WalkOkEpsilon(acts, code, pc, g);
         assert EL.BoolTreeLk(rer, cont, inp, b, tb);
         assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
         TtLkAtEndLoopCore(rer, qm, code, inp, tb, pc, b, cont);
@@ -1703,7 +1859,6 @@ module LindenElkLiftSim {
         AR.ActionsRepLCons(rer, qm, LS.Areg(r2), cont, code, e1, pcmid);
         AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Areg(r2)] + cont, code, pc, e1);
         assert AR.ActionsRepL(rer, qm, na, code, pc);
-        WO.WalkOkSeq(acts, code, pc, g, r1, r2);
         assert EL.PikeLkActions(na) by {
           EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
           EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
@@ -1723,7 +1878,6 @@ module LindenElkLiftSim {
           NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);
           assert pcmid == pc;
           assert AR.ActionsRepL(rer, qm, cont, code, pc);
-          WO.WalkOkQuantSpent(acts, code, pc, g, greedy, r1);
           assert EL.BoolTreeLk(rer, cont, inp, b, tb);
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
           TtLkAtEndLoopCore(rer, qm, code, inp, tb, pc, b, cont);
@@ -1752,7 +1906,6 @@ module LindenElkLiftSim {
   {
     var acts: LS.Actions, b: BS.LoopBool :|
       AR.ActionsRepL(rer, qm, acts, code, pc)
-      && WO.WalkOk(acts, code, pc, ea)
       && EL.PikeLkActions(acts)
       && ATR.EaOf(b) == ea
       && EL.BoolTreeLk(rer, acts, inp, b, tb);
