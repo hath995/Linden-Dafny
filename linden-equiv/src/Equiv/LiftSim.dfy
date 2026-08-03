@@ -176,6 +176,25 @@ module LindenElkLiftSim {
               g in gmb && gmt[g] == gmb[g]
   }
 
+  /** The tb-pairing walk at a `pc`, WITH the `GateAheadClear` invariant and the
+      same `tr_begin`-style BeginLoop stutter as `TtLk`. `ThreadRepLk` uses this
+      (rather than a bare `ActionsRepL` existential) so the per-thread pairing
+      survives a `BeginLoop` worklist step. Off a BeginLoop pc it is exactly the
+      old existential. */
+  ghost predicate WalkPairLk(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                             tb: LT.Tree, gmt: LG.GroupMap, pc: nat, ea: bool)
+    decreases RB.size(code) - pc
+  {
+    (pc < RB.size(code) && NR.GetPcRE(code, pc) == Some(RB.BeginLoop)
+     && WalkPairLk(rer, qm, code, inp, tb, gmt, pc + 1, false))
+    || (exists acts: LS.Actions, b: BS.LoopBool ::
+          AR.ActionsRepL(rer, qm, acts, code, pc)
+          && EL.PikeLkActions(acts)
+          && ATR.EaOf(b) == ea
+          && EL.BoolTreeLk(rer, acts, inp, b, tb)
+          && GateAheadClear(acts, gmt))
+  }
+
   /** The full per-thread pairing: the B-side `(tb, gmt)` corresponds to VM
       thread `th` — walk-represented at `th.pc`, reset-clear ahead, and
       value-tied on both sides of `S`. */
@@ -184,12 +203,7 @@ module LindenElkLiftSim {
                               S: set<LG.GroupId>, tb: LT.Tree, gmt: LG.GroupMap, th: AI.Thread,
                               ncap: int, nlook: int, nquant: int) {
     th.pc >= 0
-    && (exists acts: LS.Actions, b: BS.LoopBool ::
-          AR.ActionsRepL(rer, qm, acts, code, th.pc as nat)
-          && EL.PikeLkActions(acts)
-          && ATR.EaOf(b) == th.exit_allowed
-          && EL.BoolTreeLk(rer, acts, inp, b, tb)
-          && GateAheadClear(acts, gmt))
+    && WalkPairLk(rer, qm, code, inp, tb, gmt, th.pc as nat, th.exit_allowed)
     && GmtTieOutside(re, th, gmt, S)
     && GmtTieInside(crv, str, ov, th, gmt, S, ncap, nlook, nquant)
   }
@@ -1030,6 +1044,26 @@ module LindenElkLiftSim {
       }
     }
     // So TtLk(pc) holds via the BeginLoop stutter, whose payload is TtLk(pc+1, false).
+  }
+
+  /** The `WalkPairLk` analogue of `TtLkAtBeginLoop`: the gated pairing walk also
+      sees through a `BeginLoop` (the `ActionsRepL` disjunct is impossible there),
+      so the whole per-thread `ThreadRepLk` follows the VM's BeginLoop step. */
+  lemma WalkPairLkAtBeginLoop(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                              tb: LT.Tree, gmt: LG.GroupMap, pc: nat, ea: bool)
+    requires WalkPairLk(rer, qm, code, inp, tb, gmt, pc, ea)
+    requires NR.GetPcRE(code, pc) == Some(RB.BeginLoop)
+    ensures WalkPairLk(rer, qm, code, inp, tb, gmt, pc + 1, false)
+  {
+    forall acts: LS.Actions, b: BS.LoopBool
+      ensures !(AR.ActionsRepL(rer, qm, acts, code, pc)
+                && EL.PikeLkActions(acts) && ATR.EaOf(b) == ea
+                && EL.BoolTreeLk(rer, acts, inp, b, tb) && GateAheadClear(acts, gmt))
+    {
+      if AR.ActionsRepL(rer, qm, acts, code, pc) {
+        TT.ActionsRepNotAtBeginLoop(rer, qm, acts, code, pc);   // ⇒ false
+      }
+    }
   }
 
   /** Fueled core of `TtLkAtAccept`: at an `Accept` pc every `ActionsRepL` head
