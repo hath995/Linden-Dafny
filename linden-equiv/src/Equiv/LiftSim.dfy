@@ -2490,6 +2490,64 @@ module LindenElkLiftSim {
     }
   }
 
+  /** INSIDE `S`, PRESENT case — the crux value equality, modulo the (E)
+      RE-side path hypothesis. For a present inside-look group `g` captured by
+      look `l`, the winning leaf's value `leafgm[g]` equals the reconstructed
+      `GmOfLive(re, res0)[g]`. Chain: `GmtTieInside` (content passed as the
+      `gmb` requires) gives `leafgm[g] == gmb[g]` where `gmb = GmOfLive(body,
+      rf)`; `M.FLookLoopValueOk` (the `RegsAgreeInside` requires) ties `res0` to
+      the fresh match `rf` on `CaptureRegs(body)`; `PIV.BodyPathPresentLk`
+      discharges the BODY-side path hypotheses of `GmOfLiveInsideLookPresentEq`,
+      which then equates `GmOfLive(re, res0)[g]` with `gmb[g]`. The `rf` thread-
+      wf facts (value-set at `g` + clock-consistency, from `FreshMatchWf`) and
+      the (E) RE-side `PathPresentLk(re, res0)` + clock-dominance (the winning-
+      thread outer-path fact, coupled to the sim/position gate) are `requires` —
+      the caller pays them. This is the inside-`S` companion of the free
+      `WinningGmtTieOutside`; together they are `L3aValueBridge`'s two branches. */
+  lemma InsidePresentResBridge(
+      re: R.regex, body: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+      th: AI.Thread, leafgm: LG.GroupMap, res0: AReg.Regs, res2: AReg.Regs, l: int,
+      ncap: int, nlook: int, nquant: int, g: LG.GroupId)
+    requires NR.LookBehindFragmentRE(re) && PIV.CapUnique(re)
+    requires NR.LookBehindFragmentRE(body) && NR.LookFreeRE(body) && PIV.CapUnique(body)
+    requires body == M.VBody(crv, l)
+    requires g in PIV.CapIds(re)     // (from CapIds(body) <= CapIdsInLooks(re) <= CapIds(re), caller-side)
+    requires 0 <= l < nlook && g in PIV.CapIds(body) && M.MatchedPosLA(crv, th.look_regs, l)
+    // GmtTieInside content at (g, l): fresh match present, leaf value == its value.
+    requires var rf := M.FreshBodyMatch(crv, str, l, th.look_regs, ov, ncap, nlook, nquant);
+             rf.Some?
+             && var gmb := PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs);
+                g in gmb && g in leafgm && leafgm[g] == gmb[g]
+    // FLookLoopValueOk relation at l: res0 agrees with the fresh match on body regs.
+    requires var rf := M.FreshBodyMatch(crv, str, l, th.look_regs, ov, ncap, nlook, nquant);
+             rf.Some? ==> CM.RegsAgreeInside(res0, rf.value.capture_regs, PIV.CaptureRegs(body))
+    // rf thread-wf (value-set at g + clock-consistency on body's capture regs).
+    requires var rf := M.FreshBodyMatch(crv, str, l, th.look_regs, ov, ncap, nlook, nquant);
+             rf.Some? ==>
+               (forall c: nat :: c in PIV.CapIds(body)
+                  && AI.get_idx(rf.value.capture_regs.a_clk, CP.start_reg(c)) < 0
+                  ==> AI.get_idx(rf.value.capture_regs.a_cp, CP.start_reg(c)) < 0)
+               && AI.get_idx(AReg.as_arrays(rf.value.capture_regs).0, CP.start_reg(g)) >= 0
+    // (E) RE-side path-presence at g for the reconstructed (res0, res2) state
+    // (the sim-coupled gap, paid by caller; res2 is the reconstructed quant that
+    // carries the look bodies' clocks — th.quant leaves those unset).
+    requires PIV.PathPresentLk(re, AReg.as_arrays(res0).1, AReg.as_arrays(th.look_regs).1,
+                               AReg.as_arrays(res2).1, -1, g)
+    requires AI.get_idx(AReg.as_arrays(res0).1, CP.start_reg(g))
+               >= PIV.MxAtGidLk(re, AReg.as_arrays(res0).1, AReg.as_arrays(th.look_regs).1,
+                                AReg.as_arrays(res2).1, -1, g)
+    ensures g in leafgm && g in PIV.GmOfLive(re, res0, th.look_regs, res2)
+    ensures leafgm[g] == PIV.GmOfLive(re, res0, th.look_regs, res2)[g]
+  {
+    var rf := M.FreshBodyMatch(crv, str, l, th.look_regs, ov, ncap, nlook, nquant);
+    var gmb := PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs);
+    // Body-side path hypotheses of GmOfLiveInsideLookPresentEq.
+    PIV.BodyPathPresentLk(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs, g);
+    // The value equality: GmOfLive(re, res0, _, res2)[g] == GmOfLive(body, rf)[g] == gmb[g].
+    M.GmOfLiveInsideLookPresentEq(re, body, res0, th.look_regs, res2,
+                                  rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs, g);
+  }
+
   /** [SEAM — THE LAST GLUE] From the endpoint's leaf ties and the engine's
       FLookLoop facts, conclude MainExtraction's precondition: the leaf gm IS
       the live denotation of the RECONSTRUCTED registers.
@@ -2509,19 +2567,44 @@ module LindenElkLiftSim {
         writes inside `CaptureRegsSet(CapIdsInLooks)`) + `FLookLoopQuantFrame`.
       Statement uses the fold over the FULL lid range as the else branch calls
       it (`lid == 0`, `maxlook == R.max_lookaround(ast)`). */
-  lemma L3aValueBridge(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, ast: R.regex,
-                       crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
-                       th: AI.Thread, leafgm: LG.GroupMap, maxlook: int,
-                       ncap: int, nlook: int, nquant: int)
-    requires qm.ov == ov
-    requires T.TransWf(re) && S == LL.LkBodyGroups(T.Translate(re))
+  lemma L3aValueBridge(re: R.regex, th: AI.Thread, leafgm: LG.GroupMap,
+                       res0: AReg.Regs, res2: AReg.Regs, S: set<LG.GroupId>)
+    requires T.TransWf(re) && NR.LookBehindFragmentRE(re) && PIV.CapUnique(re)
+    requires S == PIV.CapIdsInLooks(re)
+    // OUTSIDE S: the winning-thread tie + FLookLoop frame conclusions.
     requires GmtTieOutside(re, th, leafgm, S)
-    requires GmtTieInside(crv, str, ov, th, leafgm, S, ncap, nlook, nquant)
-    requires M.FLookLoopValueOk(crv, str,
-               AI.FLookLoop(crv, str, 0, maxlook, th.capture_regs, th.look_regs, th.quant_regs, ov).0,
-               0, maxlook, th.look_regs, ov, ncap, nlook, nquant)
-    ensures var res := AI.FLookLoop(crv, str, 0, maxlook, th.capture_regs, th.look_regs, th.quant_regs, ov);
-            leafgm == PIV.GmOfLive(re, res.0, th.look_regs, th.quant_regs)
+    requires forall k: int :: k !in PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)) ==>
+               AI.get_idx(AReg.as_arrays(res0).0, k) == AI.get_idx(AReg.as_arrays(th.capture_regs).0, k)
+               && AI.get_idx(AReg.as_arrays(res0).1, k) == AI.get_idx(AReg.as_arrays(th.capture_regs).1, k)
+    requires forall q: nat :: q in PIV.QuantIdsOutsideLooks(re) ==>
+               AI.get_idx(AReg.as_arrays(res2).1, q) == AI.get_idx(AReg.as_arrays(th.quant_regs).1, q)
+    // INSIDE S, present: the reconstructed value equals the leaf value
+    // (aggregated per-g from `InsidePresentResBridge`).
+    requires forall g: LG.GroupId :: g in S && g in leafgm ==>
+               g in PIV.GmOfLive(re, res0, th.look_regs, res2)
+               && leafgm[g] == PIV.GmOfLive(re, res0, th.look_regs, res2)[g]
+    // INSIDE S, absent (reverse tie): the reconstruction invents no S-group the
+    // leaf lacks — the other half of the key-set equality.
+    requires forall g: LG.GroupId :: g in S
+               && g in PIV.GmOfLive(re, res0, th.look_regs, res2) ==> g in leafgm
+    ensures leafgm == PIV.GmOfLive(re, res0, th.look_regs, res2)
+  {
+    var gml := PIV.GmOfLive(re, res0, th.look_regs, res2);
+    var gmBest := PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs);
+    // S == LkBodyGroups(Translate(re)) so GmtTieOutside feeds OutsideLookValueBridge.
+    M.LkBodyGroupsEqCapIdsInLooks(re);
+    M.OutsideLookValueBridge(re, th.capture_regs, res0, th.look_regs, th.quant_regs, res2, gmBest, leafgm);
+    forall g: LG.GroupId
+      ensures (g in leafgm <==> g in gml) && (g in leafgm ==> leafgm[g] == gml[g])
+    {
+      if g in S {
+        // present ⟹ (requires) g in gml, values agree; absent ⟹ (reverse) g in leafgm.
+      } else {
+        // OutsideLookValueBridge: leafgm agrees gml outside CapIdsInLooks(re) == S.
+      }
+    }
+    assert leafgm == gml;
+  }
 
   // ---- (F) final assembly (no scaffold lemma — a recipe) ---------------------
   //
