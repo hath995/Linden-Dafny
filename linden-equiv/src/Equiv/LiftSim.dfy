@@ -1090,6 +1090,42 @@ module LindenElkLiftSim {
     // the pc/exit_allowed update, so they transfer verbatim.
   }
 
+  /** Discharges the CheckOracle core's OUTSIDE-`S` frame: crossing a positive gate
+      (gm → gm2 = `LkResult` merge, and `a_cp[l]` newly set in `t'`) preserves the
+      outside-`S` value tie. Three proven pieces chain: `LkResultAgreeOutside`
+      (merge touches only `DefGroups(r1) ⊆ S`), `GmtTieOutside(t)` (the incoming
+      tie), and `PIV.GmOfLiveLookIndep` (setting look register `l` cannot change
+      any group outside `CapIdsInLooks(re) == S`). */
+  lemma GmtTieOutsideAfterGate(rer: LW.RegExpRecord, re: R.regex, str: string, lk: L.Lookaround,
+                               r1: L.Regex, tlk: LT.Tree, gm: LG.GroupMap, t: AI.Thread,
+                               l: int, cp: nat, clk: int, S: set<LG.GroupId>)
+    requires cp <= |str|
+    requires NR.LookBehindFragmentRE(re) && T.TransWf(re)
+    requires S == LL.LkBodyGroups(T.Translate(re))
+    requires (set g | g in L.DefGroups(r1)) <= S
+    requires GmtTieOutside(re, t, gm, S)
+    requires L.Positivity(lk) && EL.NoLkBrL(r1)
+    requires tlk == LFU.ComputeTr(rer, [LS.Areg(r1)], PIV.InpOfCp(str, cp), LG.Empty, L.LkDir(lk))
+    requires LS.LkResult(lk, tlk, gm, PIV.InpOfCp(str, cp)).Some?
+    ensures var t' := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(cp as int), clk));
+            GmtTieOutside(re, t', LS.LkResult(lk, tlk, gm, PIV.InpOfCp(str, cp)).value, S)
+  {
+    var inp := PIV.InpOfCp(str, cp);
+    var gm2 := LS.LkResult(lk, tlk, gm, inp).value;
+    var t' := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(cp as int), clk));
+    LkResultAgreeOutside(rer, lk, r1, inp, tlk, gm);      // GmAgreeOutside(gm2, gm, DefGroups(r1))
+    M.LkBodyGroupsEqCapIdsInLooks(re);                    // S == CapIdsInLooks(re)
+    PIV.GmOfLiveLookIndep(re, t.capture_regs, t.look_regs, t'.look_regs, t.quant_regs);
+    forall g: LG.GroupId | g !in S
+      ensures (g in gm2 <==> g in PIV.GmOfLive(re, t'.capture_regs, t'.look_regs, t'.quant_regs))
+           && (g in gm2 ==> gm2[g] == PIV.GmOfLive(re, t'.capture_regs, t'.look_regs, t'.quant_regs)[g])
+    {
+      assert g !in (set g': LG.GroupId | g' in L.DefGroups(r1));   // DefGroups(r1) ⊆ S
+      assert g !in PIV.CapIdsInLooks(re);                          // S == CapIdsInLooks(re)
+      // gm2[g] ~ gm[g] (LkResultAgreeOutside) ~ gml[g] (GmtTieOutside t) ~ gml'[g] (LookIndep).
+    }
+  }
+
   /** THE CRUX per-instruction core: a thread crossing a PASSING positive-lookahead
       gate (`CheckOracle(l)`, oracle TRUE). The VM records `a_cp[l]:=cp` (t → t');
       the paired B-subtree `LK(lk,tlk,tc)` MERGES `LkResult` into `tc` (gm → gm2).
