@@ -2372,6 +2372,27 @@ module LindenElkLiftSim {
     WalkPairLkAtAnchorCore(rer, qm, code, inp, tb, gm, pc, b, acts, a);
   }
 
+  /** Per-thread ANCHOR preservation (a satisfied `AnchorAssertion`): the VM
+      steps `t → t.(pc:=pc+1)` with NO register change, so the value ties are
+      frame-invariant (like BeginLoop) and the walk relocates via
+      `WalkPairLkAtAnchor`. The B-machine steps the `AnchorPass` head to its
+      child `tb.t` (same `gm`). */
+  lemma ThreadRepLkStepAnchor(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
+                              inp: LC.Input, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                              S: set<LG.GroupId>, tb: LT.Tree, gm: LG.GroupMap, t: AI.Thread,
+                              ncap: int, nlook: int, nquant: int, a: R.anchor)
+    requires ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, tb, gm, t, ncap, nlook, nquant)
+    requires NR.GetPcRE(code, t.pc as nat) == Some(RB.AnchorAssertion(a))
+    requires tb.AnchorPass?     // the anchor is satisfied (else the VM drops the thread)
+    ensures ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, tb.t, gm,
+                        t.(pc := t.pc + 1), ncap, nlook, nquant)
+  {
+    WalkPairLkAtAnchor(rer, qm, code, inp, tb, gm, t.pc as nat, t.exit_allowed, a);
+    assert (t.pc + 1) as nat == (t.pc as nat) + 1;
+    // GmtTieOutside/GmtTieInside read only the capture/look/quant regs, unchanged
+    // by the pc update, so they transfer verbatim from ThreadRepLk(tb, gm, t).
+  }
+
   /** Fueled core of `TtLkAtAnchor`: peel the transparent prefix; the real head
       is an `Areg(AnchorR(la))` pinning `AnchorAssertion` — `BoolTreeLk` reads
       off `AnchorPass` (satisfied) or `Mismatch`, and the continuation walks from
