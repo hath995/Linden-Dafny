@@ -2490,6 +2490,29 @@ module LindenElkLiftSim {
     }
   }
 
+  /** The fresh body match at a recorded look cp is `CapRegWf` — straight from
+      `M.FreshMatchWf` (`ThreadRegsWf ⟹ CapRegWf`, since `FreshBodyMatch` IS the
+      `FFindMatch`-from-fresh-registers form `FreshMatchWf` covers). This is the
+      thread-wf `InsidePresentResBridge` needs: clock and value are set together,
+      so `BodyPathPresentLk`'s clock-set yields the value-set at `g` that
+      `GmOfLiveInsideLookPresentEq` requires. The cp-validity `requires`
+      (`0<=cp<=|str|`, context match) are the caller's look-table facts. */
+  lemma FreshBodyMatchCapWf(crv: CP.FCompiled, str: string, l: int, lk: AReg.Regs,
+                            ov: LOr.OracleView, ncap: int, nlook: int, nquant: int, body: R.regex)
+    requires body == M.VBody(crv, l)
+    requires NR.LookBehindFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires var cp := if AReg.get_cp(lk, l).Some? then AReg.get_cp(lk, l).value else 0;
+             0 <= cp <= |str| && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp)
+    ensures var rf := M.FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
+            rf.Some? ==> PIV.CapRegWf(rf.value.capture_regs)
+  {
+    var cp := if AReg.get_cp(lk, l).Some? then AReg.get_cp(lk, l).value else 0;
+    var bc := CP.compile_to_bytecode(body);
+    var cdn := if 0 <= l < |crv.f_look_cdns| then crv.f_look_cdns[l] else [];
+    M.FreshMatchWf(bc, str, cp, ov, cdn, body, ncap, nlook, nquant);
+  }
+
   /** INSIDE `S`, PRESENT case — the crux value equality, modulo the (E)
       RE-side path hypothesis. For a present inside-look group `g` captured by
       look `l`, the winning leaf's value `leafgm[g]` equals the reconstructed
@@ -2521,13 +2544,11 @@ module LindenElkLiftSim {
     // FLookLoopValueOk relation at l: res0 agrees with the fresh match on body regs.
     requires var rf := M.FreshBodyMatch(crv, str, l, th.look_regs, ov, ncap, nlook, nquant);
              rf.Some? ==> CM.RegsAgreeInside(res0, rf.value.capture_regs, PIV.CaptureRegs(body))
-    // rf thread-wf (value-set at g + clock-consistency on body's capture regs).
+    // rf thread-wf: clock and value are set together on the body's capture regs
+    // (`CapRegWf`, from `FreshBodyMatchCapWf`). This supplies BodyPathPresentLk's
+    // clock-consistency and, via its clock-set output, the value-set at g.
     requires var rf := M.FreshBodyMatch(crv, str, l, th.look_regs, ov, ncap, nlook, nquant);
-             rf.Some? ==>
-               (forall c: nat :: c in PIV.CapIds(body)
-                  && AI.get_idx(rf.value.capture_regs.a_clk, CP.start_reg(c)) < 0
-                  ==> AI.get_idx(rf.value.capture_regs.a_cp, CP.start_reg(c)) < 0)
-               && AI.get_idx(AReg.as_arrays(rf.value.capture_regs).0, CP.start_reg(g)) >= 0
+             rf.Some? ==> PIV.CapRegWf(rf.value.capture_regs)
     // (E) RE-side path-presence at g for the reconstructed (res0, res2) state
     // (the sim-coupled gap, paid by caller; res2 is the reconstructed quant that
     // carries the look bodies' clocks — th.quant leaves those unset).
