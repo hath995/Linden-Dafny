@@ -1066,6 +1066,30 @@ module LindenElkLiftSim {
     }
   }
 
+  /** Per-thread BeginLoop preservation — the reusable core of `LiftAdvanceEpsilon`'s
+      BeginLoop case. When the VM steps a thread through `BeginLoop`
+      (`exit_allowed:=false, pc:=pc+1`), its whole pairing to `(tb, gmt)` carries:
+      the walk sees through via `WalkPairLkAtBeginLoop`, and the value ties are
+      frame-invariant (BeginLoop touches only `pc`/`exit_allowed`, not the
+      capture/look/quant banks that `GmtTie*` reads). The B-machine does NOT step
+      (a `BeginLoop` is absorbed by the walk stutter — the loop shows up in `tb`
+      as `Choice` nodes, stepped later). */
+  lemma ThreadRepLkStepBeginLoop(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
+                                 inp: LC.Input, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                                 S: set<LG.GroupId>, tb: LT.Tree, gmt: LG.GroupMap, th: AI.Thread,
+                                 ncap: int, nlook: int, nquant: int)
+    requires ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, tb, gmt, th, ncap, nlook, nquant)
+    requires NR.GetPcRE(code, th.pc as nat) == Some(RB.BeginLoop)
+    ensures ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, tb, gmt,
+                        th.(exit_allowed := false, pc := th.pc + 1), ncap, nlook, nquant)
+  {
+    WalkPairLkAtBeginLoop(rer, qm, code, inp, tb, gmt, th.pc as nat, th.exit_allowed);
+    // th.pc >= 0 (from ThreadRepLk) so (th.pc+1) as nat == (th.pc as nat) + 1.
+    assert (th.pc + 1) as nat == (th.pc as nat) + 1;
+    // GmtTieOutside/GmtTieInside read only capture/look/quant regs, unchanged by
+    // the pc/exit_allowed update, so they transfer verbatim.
+  }
+
   /** Fueled core of `TtLkAtAccept`: at an `Accept` pc every `ActionsRepL` head
       is transparent (Epsilon / a spent `{0}` quantifier / a Sequence of those),
       so `BoolTreeLk` peels — expanding Sequences — down to the empty stack,
