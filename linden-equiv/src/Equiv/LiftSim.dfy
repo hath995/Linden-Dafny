@@ -1170,11 +1170,12 @@ module LindenElkLiftSim {
     requires 0 <= l < nlook && l < RL.ASize(t.look_regs)
     requires 0 <= l < |crv.f_look_ast| && 0 <= l < |crv.f_look_cdns| && 0 <= l < |crv.f_look_types|
     requires crv.f_look_types[l].Lookahead? && AI.capture_type(crv.f_look_types[l])
-    // the mechanical parts (continuation walk + outside frame), scoped to the caller:
-    requires var t' := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(cp as int), clk));
-             var gm2 := LS.LkResult(lk, tlk, gm, PIV.InpOfCp(str, cp)).value;
-             WalkPairLk(rer, qm, code, PIV.InpOfCp(str, cp), tc, gm2, (t.pc + 1) as nat, t.exit_allowed)
-             && GmtTieOutside(re, t', gm2, S)
+    // gate position + outside-frame well-formedness (caller supplies); the
+    // continuation walk and outside frame are now DERIVED in the body.
+    requires NR.GetPcRE(code, t.pc as nat) == Some(RB.CheckOracle(l))
+    requires T.TransWf(re) && NR.LookBehindFragmentRE(re)
+    requires S == LL.LkBodyGroups(T.Translate(re))
+    requires (set g | g in L.DefGroups(r1)) <= S
     ensures var t' := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(cp as int), clk));
             var gm2 := LS.LkResult(lk, tlk, gm, PIV.InpOfCp(str, cp)).value;
             ThreadRepLk(rer, qm, re, code, PIV.InpOfCp(str, cp), crv, str, ov, S, tc, gm2, t',
@@ -1182,13 +1183,23 @@ module LindenElkLiftSim {
   {
     var inp := PIV.InpOfCp(str, cp);
     var t' := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(cp as int), clk));
-    // ThreadRepLk(LK,...,t) delivers GmtTieInside(t, gm); GateStepValue lifts the
-    // inside tie across the gate to (t', gm2) with the a_cp[l]:=cp write.
-    assert th2witness: t' == t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(cp as int), clk));
+    var gm2 := LS.LkResult(lk, tlk, gm, inp).value;
+    // (1) INSIDE tie: GateStepValue lifts GmtTieInside(t,gm) across the gate to (t',gm2).
+    assert t' == t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(cp as int), clk));
     GateStepValue(rer, qm, re, code, crv, str, ov, S, lk, r1, tlk, LT.LK(lk, tlk, tc),
                   gm, t, t', l, cp, body, la, bodycode, endl, ngroups, qt, ncap, nlook, nquant);
-    // Now ThreadRepLk(tc, gm2, t') = t'.pc>=0 (pc+1>=0) && WalkPairLk (req)
-    //   && GmtTieOutside(t',gm2) (req) && GmtTieInside(t',gm2) (GateStepValue).
+    // (2) CONTINUATION walk: from the incoming ThreadRepLk's WalkPairLk on the LK head.
+    assert LL.OracleOkAt(rer, qm, inp);   // OracleOkSuffix instantiated at inp
+    assert WalkPairLk(rer, qm, code, inp, LT.LK(lk, tlk, tc), gm, t.pc as nat, t.exit_allowed);
+    WalkPairLkAtCheckOracle(rer, qm, code, inp, LT.LK(lk, tlk, tc), gm, t.pc as nat, t.exit_allowed, l);
+    assert LT.LK(lk, tlk, tc).LK?;        // ⟹ bit true (wrapper: !bit ==> LKFail?)
+    assert (t.pc + 1) as nat == (t.pc as nat) + 1 && t'.exit_allowed == t.exit_allowed;
+    assert WalkPairLk(rer, qm, code, inp, tc, gm2, (t.pc + 1) as nat, t.exit_allowed);
+    // (3) OUTSIDE frame.
+    assert GmtTieOutside(re, t, gm, S);   // from the incoming ThreadRepLk(LK, gm, t)
+    EL.TranslateNoLkBr(body);             // NoLkBrL(r1)  (r1 == Translate(body))
+    GmtTieOutsideAfterGate(rer, re, str, lk, r1, tlk, gm, t, l, cp, clk, S);   // GmtTieOutside(t',gm2,S)
+    // ThreadRepLk(tc,gm2,t') = t'.pc>=0 && WalkPairLk (2) && GmtTieOutside (3) && GmtTieInside (1).
   }
 
   /** Fueled core of `TtLkAtAccept`: at an `Accept` pc every `ActionsRepL` head
