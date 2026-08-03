@@ -2465,6 +2465,31 @@ module LindenElkLiftSim {
 
   // ---- (V) the value bridge into MainExtraction ------------------------------
 
+  /** The FREE half of the winning leaf's value tie: OUTSIDE `S`, the leaf gm
+      equals the winning thread's live denotation — no sim, no (E) path-presence.
+      It is pure machine-A + leaf agreement: `BestMatchRE` gives the tstar first
+      leaf's gm IS `GmOfLive(re, th.caps)`, and `FirstLeafAgreeOutside` gives that
+      same gm agrees with the t-side leaf `leafgm` outside `S`. `GmAgreeOutside`
+      is symmetric in the value clause, so it flips to `GmtTieOutside`'s shape
+      (leaf-keyed). This is the exact `GmtTieOutside` hypothesis `L3aValueBridge`
+      consumes for its outside-`S` branch, discharged from already-proven facts. */
+  lemma WinningGmtTieOutside(re: R.regex, th: AI.Thread, leafgm: LG.GroupMap,
+                             ftstar: LG.GroupMap, S: set<LG.GroupId>)
+    requires ftstar == PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs)
+    requires LL.GmAgreeOutside(ftstar, leafgm, S)
+    ensures GmtTieOutside(re, th, leafgm, S)
+  {
+    // GmtTieOutside's internal `gml` unfolds to exactly `ftstar` (the requires).
+    forall g: LG.GroupId | g !in S
+      ensures (g in leafgm <==> g in ftstar) && (g in leafgm ==> leafgm[g] == ftstar[g])
+    {
+      // GmAgreeOutside(ftstar, leafgm, S): g in ftstar <==> g in leafgm, and
+      // g in ftstar ==> ftstar[g] == leafgm[g]. The membership clause is
+      // symmetric; for the value, g in leafgm ==> g in ftstar (flip) ==>
+      // ftstar[g] == leafgm[g] ==> leafgm[g] == ftstar[g].
+    }
+  }
+
   /** [SEAM — THE LAST GLUE] From the endpoint's leaf ties and the engine's
       FLookLoop facts, conclude MainExtraction's precondition: the leaf gm IS
       the live denotation of the RECONSTRUCTED registers.
