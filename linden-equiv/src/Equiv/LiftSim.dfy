@@ -2250,6 +2250,128 @@ module LindenElkLiftSim {
     WalkPairLkAtCheckOracleCore(rer, qm, code, inp, tb, gm, pc, b, acts, lid);
   }
 
+  /** WalkPairLk core at an `AnchorAssertion` — the TEMPLATE for the peel-based
+      NON-GATE single-child cases. Mirrors `WalkPairLkAtCheckOracleCore`'s peel
+      but the head is `Areg(AnchorR)` and there is NO gate merge: `gm` is
+      UNCHANGED, so `GateAheadClear`/`NoDup` transfer to the continuation by the
+      plain tail bricks (`GateAheadClearTail`, `NoDupAllDefsTail`). */
+  lemma WalkPairLkAtAnchorCore(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                               tb: LT.Tree, gm: LG.GroupMap, pc: nat, b: BS.LoopBool,
+                               acts: LS.Actions, a: R.anchor)
+    requires AR.ActionsRepL(rer, qm, acts, code, pc)
+    requires EL.PikeLkActions(acts)
+    requires EL.BoolTreeLk(rer, acts, inp, b, tb)
+    requires NR.GetPcRE(code, pc) == Some(RB.AnchorAssertion(a))
+    requires GateAheadClear(acts, gm)
+    requires M.NoDupSeq(M.AllDefsActs(acts))
+    ensures tb.AnchorPass? || tb == LT.Mismatch
+    ensures tb.AnchorPass? ==> WalkPairLk(rer, qm, code, inp, tb.t, gm, pc + 1, ATR.EaOf(b))
+    decreases ATR.MsizeA(acts)
+  {
+    var g := ATR.EaOf(b);
+    var pcmid: nat :| AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && AR.ActionsRepL(rer, qm, acts[1..], code, pcmid);
+    EL.PikeLkActionsTail(acts);
+    assert acts == [acts[0]] + acts[1..];
+    EL.PikeLkActionsConsIff(acts[0], acts[1..]);
+    var cont := acts[1..];
+    match acts[0]
+    case Acheck(_) =>   // pins EndLoop / backward Fork — not AnchorAssertion
+    case Aclose(_) =>   // pins SetRegisterToCP — not AnchorAssertion
+    case Areg(r0) =>
+      assert EL.PikeLkRegex(r0);
+      match r0
+      case Epsilon =>
+        assert pcmid == pc;
+        assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+        assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
+        GateAheadClearTail(acts, gm);
+        NoDupAllDefsTail(acts);
+        WalkPairLkAtAnchorCore(rer, qm, code, inp, tb, gm, pc, b, cont, a);
+      case Sequence(r1, r2) =>
+        assert acts[0] == LS.Areg(L.Sequence(r1, r2));
+        assert AR.NfaRepL(rer, qm, L.Sequence(r1, r2), code, pc, pcmid);
+        var e1: nat :| AR.NfaRepL(rer, qm, r1, code, pc, e1) && AR.NfaRepL(rer, qm, r2, code, e1, pcmid);
+        var na := [LS.Areg(r1), LS.Areg(r2)] + cont;
+        assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+        AR.ActionsRepLCons(rer, qm, LS.Areg(r2), cont, code, e1, pcmid);
+        AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Areg(r2)] + cont, code, pc, e1);
+        assert AR.ActionsRepL(rer, qm, na, code, pc);
+        assert EL.PikeLkActions(na) by {
+          EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
+          EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
+        }
+        assert EL.BoolTreeLk(rer, na, inp, b, tb);
+        assert LS.ActionsRegexSize(acts) == RegSz(r1) + RegSz(r2) + 1 + LS.ActionsRegexSize(cont);
+        assert LS.ActionsRegexSize(na) == RegSz(r1) + RegSz(r2) + LS.ActionsRegexSize(cont);
+        assert ATR.MsizeA(na) < ATR.MsizeA(acts);
+        GateAheadClearSeqExpand(acts, r1, r2, gm);
+        M.AllDefsActsCons(acts[0], cont);
+        M.AllDefsActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont);
+        M.AllDefsActsCons(LS.Areg(r2), cont);
+        assert L.DefGroups(L.Sequence(r1, r2)) == L.DefGroups(r1) + L.DefGroups(r2);
+        assert L.DefGroups(r1) + (L.DefGroups(r2) + M.AllDefsActs(cont))
+            == (L.DefGroups(r1) + L.DefGroups(r2)) + M.AllDefsActs(cont);
+        assert M.AllDefsActs(na) == M.AllDefsActs(acts);
+        WalkPairLkAtAnchorCore(rer, qm, code, inp, tb, gm, pc, b, na, a);
+      case Quantified(greedy, min, delta, r1) =>
+        if min == 0 && delta == LN.NN(0) {
+          assert acts[0] == LS.Areg(L.Quantified(greedy, 0, LN.NN(0), r1));
+          assert AR.NfaRepL(rer, qm, L.Quantified(greedy, 0, LN.NN(0), r1), code, pc, pcmid);
+          var em: nat :| AR.NfaRepMinL(rer, qm, 0, r1, code, pc, em)
+                       && AR.NfaRepOptL(rer, qm, 0, greedy, r1, code, em, pcmid);
+          NfaRepMinLHeadPin(rer, qm, 0, r1, code, pc, em);
+          NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);
+          assert pcmid == pc;
+          assert AR.ActionsRepL(rer, qm, cont, code, pc);
+          assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+          assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
+          GateAheadClearTail(acts, gm);
+          NoDupAllDefsTail(acts);
+          WalkPairLkAtAnchorCore(rer, qm, code, inp, tb, gm, pc, b, cont, a);
+        } else {
+          assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
+          assert AR.NfaRepL(rer, qm, L.Quantified(greedy, min, delta, r1), code, pc, pcmid);
+          QuantHeadPinsForkOrSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
+        }
+      case AnchorR(la) =>
+        var a2: R.anchor :| NR.GetPcRE(code, pc) == Some(RB.AnchorAssertion(a2)) && T.TrAnchor(a2) == la;
+        assert pcmid == pc + 1;
+        if LS.AnchorSatisfied(rer, la, inp) {
+          assert tb.AnchorPass? && EL.BoolTreeLk(rer, cont, inp, b, tb.t);
+          assert AR.ActionsRepL(rer, qm, cont, code, pc + 1);
+          // gm UNCHANGED across AnchorPass ⟹ tail bricks give the continuation clear.
+          GateAheadClearTail(acts, gm);       // GateAheadClear(cont, gm)
+          NoDupAllDefsTail(acts);             // NoDupSeq(AllDefsActs(cont))
+          assert EL.PikeLkActions(cont);
+          assert WalkPairLk(rer, qm, code, inp, tb.t, gm, pc + 1, g);
+        } else {
+          assert tb == LT.Mismatch;
+        }
+      case Character(_) =>   // pins Consume — not AnchorAssertion
+      case Disjunction(_, _) =>   // pins Fork — not AnchorAssertion
+      case Group(_, _) =>   // pins SetRegisterToCP — not AnchorAssertion
+      case LookaroundR(_, _) =>   // pins CheckOracle/NegCheckOracle — not AnchorAssertion
+      case Backreference(_) =>   // NfaRepL false
+  }
+
+  /** WalkPairLk→WalkPairLk wrapper at an `AnchorAssertion`. */
+  lemma WalkPairLkAtAnchor(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                           tb: LT.Tree, gm: LG.GroupMap, pc: nat, ea: bool, a: R.anchor)
+    requires WalkPairLk(rer, qm, code, inp, tb, gm, pc, ea)
+    requires NR.GetPcRE(code, pc) == Some(RB.AnchorAssertion(a))
+    ensures tb.AnchorPass? || tb == LT.Mismatch
+    ensures tb.AnchorPass? ==> WalkPairLk(rer, qm, code, inp, tb.t, gm, pc + 1, ea)
+  {
+    var acts: LS.Actions, b: BS.LoopBool :|
+      AR.ActionsRepL(rer, qm, acts, code, pc)
+      && EL.PikeLkActions(acts)
+      && ATR.EaOf(b) == ea
+      && EL.BoolTreeLk(rer, acts, inp, b, tb)
+      && GateAheadClear(acts, gm)
+      && M.NoDupSeq(M.AllDefsActs(acts));
+    WalkPairLkAtAnchorCore(rer, qm, code, inp, tb, gm, pc, b, acts, a);
+  }
+
   /** Fueled core of `TtLkAtAnchor`: peel the transparent prefix; the real head
       is an `Areg(AnchorR(la))` pinning `AnchorAssertion` — `BoolTreeLk` reads
       off `AnchorPass` (satisfied) or `Mismatch`, and the continuation walks from
