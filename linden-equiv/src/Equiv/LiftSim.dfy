@@ -96,12 +96,22 @@ module LindenElkLiftSim {
       continuation lacks); without it the seam continuation
       `[Areg(r1),Areg(star)]+cont` satisfies `ActionsRepL` + `BoolTreeLk` = tb.t. */
   ghost predicate TtLk(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
-                       tb: LT.Tree, pc: nat, ea: bool) {
-    exists acts: LS.Actions, b: BS.LoopBool ::
-      AR.ActionsRepL(rer, qm, acts, code, pc)
-      && EL.PikeLkActions(acts)
-      && ATR.EaOf(b) == ea
-      && EL.BoolTreeLk(rer, acts, inp, b, tb)
+                       tb: LT.Tree, pc: nat, ea: bool)
+    decreases RB.size(code) - pc
+  {
+    // `tr_begin`-style transparency: `ActionsRepL` has no `BeginLoop` disjunct
+    // (TT.ActionsRepNotAtBeginLoop), yet the VM steps a `BeginLoop` thread
+    // straight to `pc+1` (exit_allowed:=false). This stutter lets the tb-pairing
+    // see through it, mirroring `TreeRepRE.tr_begin` on the tstar side — so
+    // `TtLkAtBeginLoop` becomes a REAL stutter and every non-BeginLoop `TtLkAt*`
+    // inversion is unaffected (the first disjunct is dead off a BeginLoop pc).
+    (pc < RB.size(code) && NR.GetPcRE(code, pc) == Some(RB.BeginLoop)
+     && TtLk(rer, qm, code, inp, tb, pc + 1, false))
+    || (exists acts: LS.Actions, b: BS.LoopBool ::
+          AR.ActionsRepL(rer, qm, acts, code, pc)
+          && EL.PikeLkActions(acts)
+          && ATR.EaOf(b) == ea
+          && EL.BoolTreeLk(rer, acts, inp, b, tb))
   }
 
   /** A lookaround occurrence at the TOP LEVEL of `r` — reachable without
@@ -996,24 +1006,30 @@ module LindenElkLiftSim {
     // same (acts, b) witness TtLk at x — only the pc moved
   }
 
-  /** [SOLID] BeginLoop: VACUOUS — no `ActionsRepL` derivation ever starts at a
-      `BeginLoop` (`TT.ActionsRepNotAtBeginLoop`), so `TtLk` there is
-      unsatisfiable and the ensures follows from the contradiction. (SEAM: the
-      VM does execute `BeginLoop`; if `LiftAdvanceEpsilon` ever pairs a thread at
-      one, the walk must be reformulated to see through it — machine-A's
-      `TreeRepRE` has a `tr_begin` rule that `ActionsRepL` lacks.) */
+  /** [SOLID] BeginLoop: a REAL stutter now. `TtLk`'s new first disjunct sees
+      through a `BeginLoop` to `pc+1` (mirroring `TreeRepRE.tr_begin`). The
+      `ActionsRepL` (second) disjunct is impossible at a `BeginLoop` pc
+      (`TT.ActionsRepNotAtBeginLoop`), so `TtLk(pc)` must hold via the stutter,
+      which IS `TtLk(pc+1, false)`. This unblocks `LiftAdvanceEpsilon`: the VM
+      steps a BeginLoop thread to `pc+1` with `exit_allowed:=false`, and the
+      pairing follows it. */
   lemma TtLkAtBeginLoop(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                         tb: LT.Tree, pc: nat, ea: bool)
     requires TtLk(rer, qm, code, inp, tb, pc, ea)
     requires NR.GetPcRE(code, pc) == Some(RB.BeginLoop)
     ensures TtLk(rer, qm, code, inp, tb, pc + 1, false)
   {
-    var acts: LS.Actions, b: BS.LoopBool :|
-      AR.ActionsRepL(rer, qm, acts, code, pc)
-      && EL.PikeLkActions(acts)
-      && ATR.EaOf(b) == ea
-      && EL.BoolTreeLk(rer, acts, inp, b, tb);
-    TT.ActionsRepNotAtBeginLoop(rer, qm, acts, code, pc);   // ⇒ false
+    // The ActionsRepL disjunct is unsatisfiable at a BeginLoop pc.
+    forall acts: LS.Actions, b: BS.LoopBool
+      ensures !(AR.ActionsRepL(rer, qm, acts, code, pc)
+                && EL.PikeLkActions(acts) && ATR.EaOf(b) == ea
+                && EL.BoolTreeLk(rer, acts, inp, b, tb))
+    {
+      if AR.ActionsRepL(rer, qm, acts, code, pc) {
+        TT.ActionsRepNotAtBeginLoop(rer, qm, acts, code, pc);   // ⇒ false
+      }
+    }
+    // So TtLk(pc) holds via the BeginLoop stutter, whose payload is TtLk(pc+1, false).
   }
 
   /** Fueled core of `TtLkAtAccept`: at an `Accept` pc every `ActionsRepL` head
