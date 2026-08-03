@@ -2661,7 +2661,24 @@ module LindenElkLiftSim {
       subtree `tb` (t side) leaf-agree outside `S`, and the VM thread `th` carries
       the two-sided value tie against `tb`'s group map `gm`. Replaces the flawed
       `ThreadRepLk` (its `BoolTreeLk` walk clause is dropped — the VM↔ta link now
-      lives in `PikeInvFullRE`; only the ta↔tb leaf link and the payload remain). */
+      lives in `PikeInvFullRE`; only the ta↔tb leaf link and the payload remain).
+
+      TWO NOTES FOR THE STEP FILL (`LiftStepC`):
+      (1) POSITION TIE IS AUTOMATIC. `LiftInvC` pins `ptsA.inp == inp ==
+          InpOfCp(str, vms.cp)`, so when the VM crosses `CheckOracle(l)` it writes
+          `a_cp[l] := vms.cp` — which IS the paired LK node's position `cp` that
+          `GateStepValue` consumes. No separate position-tie proof; it falls out of
+          position-synchronisation, and `GateStepValue` ties the value.
+      (2) MISSING STRUCTURAL LINK — this predicate is NOT yet strong enough for the
+          step. Leaf agreement alone does not tell me that when the VM is at
+          `CheckOracle(l)` the paired `tb` is `LK(lk_l, tlk, tc)` (needed to fire the
+          machine-B LK step + `GateStepValue`). `PikeInvFullRE` links VM↔ta (tstar,
+          gate-TRANSPARENT — no LK node), and `ta` is already one gate AHEAD of `tb`
+          at a gate. The fill must add a HEAD-level ta↔tb correspondence that (a)
+          lets `tb` be gate-ahead of `ta` (`tb == LK(..,tc)`, `ta` pairs `tc`), and
+          (b) survives BeginLoop (the reason the `BoolTreeLk` walk failed). Candidate:
+          a `GateAhead(ta, tb)` relation ("`tb` is `ta` with pending head gates"),
+          preserved by `LAAtGatePassL3a` at gates and by identical heads elsewhere. */
   ghost predicate LiftPairC(re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
                             inp: LC.Input, S: set<LG.GroupId>, ta: LT.Tree, tb: LT.Tree,
                             gm: LG.GroupMap, th: AI.Thread, ncap: int, nlook: int, nquant: int) {
