@@ -2397,8 +2397,11 @@ module LindenElkLiftSim {
                                  gmerged: LG.GroupMap, lk: L.Lookaround, r1: L.Regex)
     requires GateAheadClear(acts, gmt)
     requires forall g :: g in gmerged ==> g in gmt || g in L.DefGroups(r1)
+    // NOTE: `GatePending(acts,·)` alone (dropped the earlier `(lk2!=lk||r2!=r1)`
+    // clause — unsatisfiable for duplicate capture-free looks like `(?=a)(?=a)`,
+    // and unused: the body drives off `GatePending(acts,·)` + the disjointness).
     requires forall lk2: L.Lookaround, r2: L.Regex | GatePending(cont, lk2, r2) ::
-               GatePending(acts, lk2, r2) && (lk2 != lk || r2 != r1)
+               GatePending(acts, lk2, r2)
     requires forall lk2: L.Lookaround, r2: L.Regex | GatePending(cont, lk2, r2) ::
                forall g :: g in L.DefGroups(r2) ==> g !in L.DefGroups(r1)
     ensures GateAheadClear(cont, gmerged)
@@ -2412,6 +2415,115 @@ module LindenElkLiftSim {
         assert g !in L.DefGroups(r1);         // disjointness requires
         // gmerged only holds gmt-keys or r1-body groups, and g is in neither.
       }
+    }
+  }
+
+  // ---- (G+) transparent-peel bricks for the CheckOracle continuation walk ----
+  // These carry `GateAheadClear` and the `NoDupSeq(AllDefsActs)` walk-invariant
+  // through the SAME transparent peels the tb-pairing walk performs (Epsilon /
+  // spent-`{0}` quantifier ⤳ tail; `Sequence` ⤳ two-head expand), and supply the
+  // gate-head DefGroups-disjointness `GateAheadClearAfterMerge` needs — all from
+  // MainTheorem's already-proven `AllDefsActs`/`NoDupConcat` vocabulary.
+
+  /** A gate pending in the tail is pending in the whole list. */
+  lemma GatePendingTail(acts: LS.Actions, lk: L.Lookaround, r1: L.Regex)
+    requires |acts| > 0 && GatePending(acts[1..], lk, r1)
+    ensures GatePending(acts, lk, r1)
+  {
+    var i :| 0 <= i < |acts[1..]| && acts[1..][i].Areg? && RegexTopGate(acts[1..][i].r, lk, r1);
+    assert acts[1..][i] == acts[i + 1];
+    assert acts[i + 1].Areg? && RegexTopGate(acts[i + 1].r, lk, r1);   // witness i+1
+  }
+
+  /** `GateAheadClear` threads to the tail (Epsilon / spent-`{0}` quantifier peel). */
+  lemma GateAheadClearTail(acts: LS.Actions, gmt: LG.GroupMap)
+    requires |acts| > 0 && GateAheadClear(acts, gmt)
+    ensures GateAheadClear(acts[1..], gmt)
+  {
+    forall lk: L.Lookaround, r1: L.Regex | GatePending(acts[1..], lk, r1)
+      ensures forall g :: g in L.DefGroups(r1) ==> g !in gmt
+    { GatePendingTail(acts, lk, r1); }
+  }
+
+  /** A gate pending in the `Sequence`-expanded list `[Areg r1, Areg r2]+cont`
+      is pending in `[Areg (Sequence r1 r2)]+cont` (head 0/1 fold into the
+      `Sequence` top-gate; the tail is shared). */
+  lemma GatePendingSeqBack(acts: LS.Actions, r1: L.Regex, r2: L.Regex, lk: L.Lookaround, rr: L.Regex)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Sequence(r1, r2))
+    requires GatePending([LS.Areg(r1), LS.Areg(r2)] + acts[1..], lk, rr)
+    ensures GatePending(acts, lk, rr)
+  {
+    var cont := acts[1..];
+    var na := [LS.Areg(r1), LS.Areg(r2)] + cont;
+    var i :| 0 <= i < |na| && na[i].Areg? && RegexTopGate(na[i].r, lk, rr);
+    if i == 0 {
+      assert na[0] == LS.Areg(r1) && RegexTopGate(r1, lk, rr);
+      assert RegexTopGate(L.Sequence(r1, r2), lk, rr);            // def: a-arm
+      assert acts[0].Areg? && RegexTopGate(acts[0].r, lk, rr);   // witness 0
+    } else if i == 1 {
+      assert na[1] == LS.Areg(r2) && RegexTopGate(r2, lk, rr);
+      assert RegexTopGate(L.Sequence(r1, r2), lk, rr);           // def: b-arm
+      assert acts[0].Areg? && RegexTopGate(acts[0].r, lk, rr);   // witness 0
+    } else {
+      assert na[i] == cont[i - 2] == acts[i - 1];
+      assert acts[i - 1].Areg? && RegexTopGate(acts[i - 1].r, lk, rr);   // witness i-1
+    }
+  }
+
+  /** `GateAheadClear` threads across the `Sequence` two-head expand. */
+  lemma GateAheadClearSeqExpand(acts: LS.Actions, r1: L.Regex, r2: L.Regex, gmt: LG.GroupMap)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Sequence(r1, r2)) && GateAheadClear(acts, gmt)
+    ensures GateAheadClear([LS.Areg(r1), LS.Areg(r2)] + acts[1..], gmt)
+  {
+    forall lk: L.Lookaround, rr: L.Regex | GatePending([LS.Areg(r1), LS.Areg(r2)] + acts[1..], lk, rr)
+      ensures forall g :: g in L.DefGroups(rr) ==> g !in gmt
+    { GatePendingSeqBack(acts, r1, r2, lk, rr); }
+  }
+
+  /** A top-level gate's body groups are among the regex's defined groups. */
+  lemma RegexTopGateSubDefs(r: L.Regex, lk: L.Lookaround, r1: L.Regex)
+    requires RegexTopGate(r, lk, r1)
+    ensures (set g | g in L.DefGroups(r1)) <= (set g | g in L.DefGroups(r))
+    decreases r
+  {
+    match r
+    case LookaroundR(lk2, rb) =>
+      assert rb == r1 && L.DefGroups(r) == L.DefGroups(r1);
+    case Sequence(a, b) =>
+      assert L.DefGroups(r) == L.DefGroups(a) + L.DefGroups(b);
+      if RegexTopGate(a, lk, r1) { RegexTopGateSubDefs(a, lk, r1); }
+      else { RegexTopGateSubDefs(b, lk, r1); }
+      assert forall g :: g in L.DefGroups(a) || g in L.DefGroups(b) ==> g in L.DefGroups(a) + L.DefGroups(b);
+    case Disjunction(a, b) =>
+      assert L.DefGroups(r) == L.DefGroups(a) + L.DefGroups(b);
+      if RegexTopGate(a, lk, r1) { RegexTopGateSubDefs(a, lk, r1); }
+      else { RegexTopGateSubDefs(b, lk, r1); }
+      assert forall g :: g in L.DefGroups(a) || g in L.DefGroups(b) ==> g in L.DefGroups(a) + L.DefGroups(b);
+    case Group(id, rb) =>
+      assert L.DefGroups(r) == [id] + L.DefGroups(rb);
+      RegexTopGateSubDefs(rb, lk, r1);
+      assert forall g :: g in L.DefGroups(rb) ==> g in [id] + L.DefGroups(rb);
+    case Quantified(_, _, _, _) =>   // RegexTopGate false — vacuous
+    case Epsilon =>
+    case Character(_) =>
+    case AnchorR(_) =>
+    case Backreference(_) =>
+  }
+
+  /** An `Areg` member's body groups are among the action list's `AllDefsActs`. */
+  lemma AllDefsActsMemberSub(acts: LS.Actions, i: nat)
+    requires 0 <= i < |acts| && acts[i].Areg?
+    ensures (set g | g in L.DefGroups(acts[i].r)) <= (set g | g in M.AllDefsActs(acts))
+    decreases |acts|
+  {
+    assert acts == [acts[0]] + acts[1..];
+    M.AllDefsActsCons(acts[0], acts[1..]);   // AllDefsActs(acts) == DefGroups(acts[0].r) + AllDefsActs(acts[1..])
+    if i == 0 {
+      assert forall g :: g in L.DefGroups(acts[0].r) ==> g in M.AllDefsActs(acts);
+    } else {
+      AllDefsActsMemberSub(acts[1..], i - 1);
+      assert acts[1..][i - 1] == acts[i];
+      assert forall g :: g in M.AllDefsActs(acts[1..]) ==> g in M.AllDefsActs(acts);
     }
   }
 
