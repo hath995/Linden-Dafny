@@ -2393,6 +2393,45 @@ module LindenElkLiftSim {
     // by the pc update, so they transfer verbatim from ThreadRepLk(tb, gm, t).
   }
 
+  /** `WalkPairLk` is strictly stronger than `TtLk`: its existential adds
+      `GateAheadClear` + `NoDupSeq(AllDefsActs)`, which we simply drop. This
+      bridge lets the cases that need only the tree SHAPE (Accept ⟹ Match, the
+      Fork shape, and the dying LKFail/Mismatch cases) reuse the proven
+      `TtLkAt*` inversions directly, with no `WalkPairLk`-specific core. */
+  lemma WalkPairLkImpliesTtLk(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                              tb: LT.Tree, gm: LG.GroupMap, pc: nat, ea: bool)
+    requires WalkPairLk(rer, qm, code, inp, tb, gm, pc, ea)
+    ensures TtLk(rer, qm, code, inp, tb, pc, ea)
+    decreases RB.size(code) - pc
+  {
+    if (exists acts: LS.Actions, b: BS.LoopBool ::
+          AR.ActionsRepL(rer, qm, acts, code, pc) && EL.PikeLkActions(acts) && ATR.EaOf(b) == ea
+          && EL.BoolTreeLk(rer, acts, inp, b, tb) && GateAheadClear(acts, gm)
+          && M.NoDupSeq(M.AllDefsActs(acts))) {
+      // the existential disjunct: the same (acts, b) satisfy TtLk's exists.
+      var acts: LS.Actions, b: BS.LoopBool :|
+        AR.ActionsRepL(rer, qm, acts, code, pc) && EL.PikeLkActions(acts) && ATR.EaOf(b) == ea
+        && EL.BoolTreeLk(rer, acts, inp, b, tb) && GateAheadClear(acts, gm)
+        && M.NoDupSeq(M.AllDefsActs(acts));
+    } else {
+      // B false ⟹ the BeginLoop stutter disjunct holds; recurse at pc+1.
+      assert pc < RB.size(code) && NR.GetPcRE(code, pc) == Some(RB.BeginLoop)
+          && WalkPairLk(rer, qm, code, inp, tb, gm, pc + 1, false);
+      WalkPairLkImpliesTtLk(rer, qm, code, inp, tb, gm, pc + 1, false);
+    }
+  }
+
+  /** WalkPairLk at an `Accept`: the tree is `Match` (via the `TtLk` bridge). */
+  lemma WalkPairLkAtAccept(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                           tb: LT.Tree, gm: LG.GroupMap, pc: nat, ea: bool)
+    requires WalkPairLk(rer, qm, code, inp, tb, gm, pc, ea)
+    requires NR.GetPcRE(code, pc) == Some(RB.Accept)
+    ensures tb == LT.Match
+  {
+    WalkPairLkImpliesTtLk(rer, qm, code, inp, tb, gm, pc, ea);
+    TtLkAtAccept(rer, qm, code, inp, tb, pc, ea);
+  }
+
   /** Fueled core of `TtLkAtAnchor`: peel the transparent prefix; the real head
       is an `Areg(AnchorR(la))` pinning `AnchorAssertion` — `BoolTreeLk` reads
       off `AnchorPass` (satisfied) or `Mismatch`, and the continuation walks from
