@@ -2206,6 +2206,39 @@ module LindenElkLiftSim {
       case Backreference(_) =>   // NfaRepL false
   }
 
+  /** WalkPairLk analogue of `TtLkAtCheckOracle` — the `WalkPairLk`→`WalkPairLk`
+      wrapper. At a passing positive gate, the continuation `tc` walk-pairs with
+      the merged map `gm2` at `pc+1`. Extracts the walk's `acts` (now carrying
+      `GateAheadClear` + `NoDupSeq(AllDefsActs)` from the augmented `WalkPairLk`)
+      and applies the fueled Core. DISCHARGES `ThreadRepLkStepCheckOracle`'s
+      continuation `requires`. */
+  lemma WalkPairLkAtCheckOracle(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                                tb: LT.Tree, gm: LG.GroupMap, pc: nat, ea: bool, lid: int)
+    requires WalkPairLk(rer, qm, code, inp, tb, gm, pc, ea)
+    requires NR.GetPcRE(code, pc) == Some(RB.CheckOracle(lid))
+    requires LL.OracleOkAt(rer, qm, inp)
+    ensures lid in qm.looks
+    ensures var (lk, r1) := qm.looks[lid];
+      (LOr.view_get_oracle(qm.ov, TR_CpOf(inp), lid) ==>
+         tb.LK? && tb.lk == lk
+         && EL.LkGateOk(rer, lk, r1, inp, tb.tlk, true)
+         && LS.LkResult(lk, tb.tlk, gm, inp).Some?
+         && WalkPairLk(rer, qm, code, inp, tb.t, LS.LkResult(lk, tb.tlk, gm, inp).value, pc + 1, ea))
+      && (!LOr.view_get_oracle(qm.ov, TR_CpOf(inp), lid) ==>
+            tb.LKFail? && tb.lk == lk
+            && EL.LkGateOk(rer, lk, r1, inp, tb.tlk, false))
+  {
+    // GetPcRE==CheckOracle ≠ BeginLoop kills the stutter disjunct; extract the walk.
+    var acts: LS.Actions, b: BS.LoopBool :|
+      AR.ActionsRepL(rer, qm, acts, code, pc)
+      && EL.PikeLkActions(acts)
+      && ATR.EaOf(b) == ea
+      && EL.BoolTreeLk(rer, acts, inp, b, tb)
+      && GateAheadClear(acts, gm)
+      && M.NoDupSeq(M.AllDefsActs(acts));
+    WalkPairLkAtCheckOracleCore(rer, qm, code, inp, tb, gm, pc, b, acts, lid);
+  }
+
   /** Fueled core of `TtLkAtAnchor`: peel the transparent prefix; the real head
       is an `Areg(AnchorR(la))` pinning `AnchorAssertion` — `BoolTreeLk` reads
       off `AnchorPass` (satisfied) or `Mismatch`, and the continuation walks from
