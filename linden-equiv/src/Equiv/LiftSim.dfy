@@ -2725,6 +2725,18 @@ module LindenElkLiftSim {
     ensures LiftInvC(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
                      PT.PikeTreeInitialState(tstar, inp), PT.PikeTreeInitialState(t, inp), vms,
                      ncap, nlook, nquant)
+  {
+    // The one active pair (tstar, t, init_thread): leaf agreement is the
+    // hypothesis; the payload is vacuous because a fresh thread denotes Empty.
+    PIV.GmOfLiveInit(re, ncap, nlook, nquant);        // GmOfLive(re, init...) == Empty
+    var it := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
+    assert it.capture_regs == AReg.init_regs(ncap)
+        && it.look_regs == AReg.init_regs(nlook) && it.quant_regs == AReg.init_regs(nquant);
+    assert GmtTieOutside(re, it, LG.Empty, S);          // gml == Empty, agrees with Empty
+    assert GmtTieInside(crv, str, ov, it, LG.Empty, S, ncap, nlook, nquant);  // no g in Empty
+    // ptsB = PTS(inp, [(t, Empty)], None, [], InitialSeenTrees); its single active
+    // pair ties via LiftPairC; best is None both sides.
+  }
 
   /** (K-step) The composite is preserved across ONE position. Machine A advances
       by `PSM.InvariantPreservationRE` (a whole-position `TrcRE`); machine B
