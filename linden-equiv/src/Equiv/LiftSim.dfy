@@ -3224,6 +3224,38 @@ module LindenElkLiftSim {
     case Backreference(_) =>
   }
 
+  /** A top-level gate's body groups are among the regex's INSIDE-LOOK groups
+      (`LkBodyGroups`). The SET-based analog of `RegexTopGateSubDefs` — needed for
+      the quantifier-STABLE disjointness invariant (`LkBodyGroups` is a set, so
+      `LkBodyGroups(Quantified(..,r1)) == LkBodyGroups(r1)` absorbs the iteration
+      duplication that breaks the seq-based `NoDupSeq(AllDefsActs)`). */
+  lemma RegexTopGateSubLkBody(r: L.Regex, lk: L.Lookaround, r1: L.Regex)
+    requires RegexTopGate(r, lk, r1)
+    ensures (set g | g in L.DefGroups(r1)) <= LL.LkBodyGroups(r)
+    decreases r
+  {
+    match r
+    case LookaroundR(lk2, rb) =>
+      assert rb == r1;
+      assert LL.LkBodyGroups(r) == (set g | g in L.DefGroups(r1)) + LL.LkBodyGroups(r1);
+    case Sequence(a, b) =>
+      assert LL.LkBodyGroups(r) == LL.LkBodyGroups(a) + LL.LkBodyGroups(b);
+      if RegexTopGate(a, lk, r1) { RegexTopGateSubLkBody(a, lk, r1); }
+      else { RegexTopGateSubLkBody(b, lk, r1); }
+    case Disjunction(a, b) =>
+      assert LL.LkBodyGroups(r) == LL.LkBodyGroups(a) + LL.LkBodyGroups(b);
+      if RegexTopGate(a, lk, r1) { RegexTopGateSubLkBody(a, lk, r1); }
+      else { RegexTopGateSubLkBody(b, lk, r1); }
+    case Group(id, rb) =>
+      assert LL.LkBodyGroups(r) == LL.LkBodyGroups(rb);
+      RegexTopGateSubLkBody(rb, lk, r1);
+    case Quantified(_, _, _, _) =>   // RegexTopGate false — vacuous
+    case Epsilon =>
+    case Character(_) =>
+    case AnchorR(_) =>
+    case Backreference(_) =>
+  }
+
   /** An `Areg` member's body groups are among the action list's `AllDefsActs`. */
   lemma AllDefsActsMemberSub(acts: LS.Actions, i: nat)
     requires 0 <= i < |acts| && acts[i].Areg?
