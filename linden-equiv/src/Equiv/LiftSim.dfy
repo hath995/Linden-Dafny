@@ -3256,6 +3256,97 @@ module LindenElkLiftSim {
     case Backreference(_) =>
   }
 
+  // ---- TOP-LEVEL look def-list: the QUANTIFIER-STABLE disjointness carrier -----
+  // `AllDefsActs` is a seq and its `NoDupSeq` breaks at a min>0 quantifier unfold
+  // (`[Areg r1, Areg (Quantified .. r1)]` duplicates `DefGroups(r1)`). `TopLkDefsList`
+  // collects only the def-groups of TOP-LEVEL looks (mirrors `RegexTopGate` — STOPS
+  // at `Quantified`), so a re-entrant look under a quantifier contributes nothing
+  // and the duplication vanishes. `NoDupSeq(TopLkDefsListActs(acts))` gives the
+  // CheckOracle look-vs-look disjointness (crossed body ∩ sibling body == {}) and
+  // is the replacement target for the `NoDupSeq(AllDefsActs)` invariant.
+
+  /** Def-groups of the TOP-LEVEL looks of `r` (not under a quantifier). */
+  ghost function TopLkDefsList(r: L.Regex): seq<LG.GroupId>
+    decreases r
+  {
+    match r
+    case LookaroundR(lk, r1) => L.DefGroups(r1)
+    case Sequence(a, b) => TopLkDefsList(a) + TopLkDefsList(b)
+    case Disjunction(a, b) => TopLkDefsList(a) + TopLkDefsList(b)
+    case Group(_, r1) => TopLkDefsList(r1)
+    case Quantified(_, _, _, _) => []   // STOP: re-entrant looks handled by the Reset
+    case _ => []
+  }
+
+  /** Action-level lift of `TopLkDefsList`. */
+  ghost function TopLkDefsListActs(acts: LS.Actions): seq<LG.GroupId>
+    decreases |acts|
+  {
+    if |acts| == 0 then []
+    else (if acts[0].Areg? then TopLkDefsList(acts[0].r) else []) + TopLkDefsListActs(acts[1..])
+  }
+
+  lemma TopLkDefsListActsCons(x: LS.Action, cont: LS.Actions)
+    ensures TopLkDefsListActs([x] + cont)
+         == (if x.Areg? then TopLkDefsList(x.r) else []) + TopLkDefsListActs(cont)
+  { assert ([x] + cont)[0] == x && ([x] + cont)[1..] == cont; }
+
+  /** A top-level gate's body groups are among `r`'s top-level look def-list. */
+  lemma RegexTopGateSubTopLk(r: L.Regex, lk: L.Lookaround, r1: L.Regex)
+    requires RegexTopGate(r, lk, r1)
+    ensures (set g | g in L.DefGroups(r1)) <= (set g | g in TopLkDefsList(r))
+    decreases r
+  {
+    match r
+    case LookaroundR(lk2, rb) =>
+      assert rb == r1 && TopLkDefsList(r) == L.DefGroups(r1);
+    case Sequence(a, b) =>
+      assert TopLkDefsList(r) == TopLkDefsList(a) + TopLkDefsList(b);
+      if RegexTopGate(a, lk, r1) { RegexTopGateSubTopLk(a, lk, r1); }
+      else { RegexTopGateSubTopLk(b, lk, r1); }
+    case Disjunction(a, b) =>
+      assert TopLkDefsList(r) == TopLkDefsList(a) + TopLkDefsList(b);
+      if RegexTopGate(a, lk, r1) { RegexTopGateSubTopLk(a, lk, r1); }
+      else { RegexTopGateSubTopLk(b, lk, r1); }
+    case Group(id, rb) =>
+      assert TopLkDefsList(r) == TopLkDefsList(rb);
+      RegexTopGateSubTopLk(rb, lk, r1);
+    case Quantified(_, _, _, _) =>
+    case Epsilon =>
+    case Character(_) =>
+    case AnchorR(_) =>
+    case Backreference(_) =>
+  }
+
+  /** An `Areg` member's top-level look def-list is within the acts' `TopLkDefsListActs`. */
+  lemma TopLkDefsListMemberSub(acts: LS.Actions, i: nat)
+    requires 0 <= i < |acts| && acts[i].Areg?
+    ensures (set g | g in TopLkDefsList(acts[i].r)) <= (set g | g in TopLkDefsListActs(acts))
+    decreases |acts|
+  {
+    assert acts == [acts[0]] + acts[1..];
+    TopLkDefsListActsCons(acts[0], acts[1..]);
+    if i == 0 {
+      assert forall g :: g in TopLkDefsList(acts[0].r) ==> g in TopLkDefsListActs(acts);
+    } else {
+      TopLkDefsListMemberSub(acts[1..], i - 1);
+      assert acts[1..][i - 1] == acts[i];
+      assert forall g :: g in TopLkDefsListActs(acts[1..]) ==> g in TopLkDefsListActs(acts);
+    }
+  }
+
+  /** `NoDupSeq(TopLkDefsListActs)` threads to the tail. */
+  lemma NoDupTopLkTail(acts: LS.Actions)
+    requires |acts| > 0 && M.NoDupSeq(TopLkDefsListActs(acts))
+    ensures M.NoDupSeq(TopLkDefsListActs(acts[1..]))
+  {
+    assert acts == [acts[0]] + acts[1..];
+    TopLkDefsListActsCons(acts[0], acts[1..]);
+    var pre: seq<LG.GroupId> := if acts[0].Areg? then TopLkDefsList(acts[0].r) else [];
+    assert TopLkDefsListActs(acts) == pre + TopLkDefsListActs(acts[1..]);
+    M.NoDupConcat(pre, TopLkDefsListActs(acts[1..]));
+  }
+
   /** An `Areg` member's body groups are among the action list's `AllDefsActs`. */
   lemma AllDefsActsMemberSub(acts: LS.Actions, i: nat)
     requires 0 <= i < |acts| && acts[i].Areg?
