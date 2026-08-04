@@ -2669,6 +2669,32 @@ module LindenElkLiftSim {
     WalkPairLkAtSetRegCore(rer, qm, code, inp, tb, gm, pc, b, acts, r);
   }
 
+  /** WalkPairLk at a `Fork` — SHAPE only (via the `TtLk` bridge): the tree is a
+      `Choice` (forward fork), a `Progress` (do-while backward fork's dissolved
+      guard), or `Mismatch`. The BRANCH-PAIRING is handled at the `LiftStepC`
+      level, mirroring the PROVEN `PSM.PreserveForkCase`:
+       - FORWARD fork (both arms `> pc`: Disjunction / free-star initial /
+         bounded): `Choice(t1,t2)`, one `pts_active`, arms pair at `x`, `y`.
+       - BACKWARD fork (do-while re-entry): `Progress(Choice(t1,t2))`, `ea` forced
+         true, TWO tree steps (unwrap guard, then split), arms pair at `x`, `y`.
+      SEAM (the one genuine obstacle): the free-star ITERATION arm's `t1` at
+      `pc+1` is `GroupActionT(Reset,..)`, which `BoolTreeLk` does NOT represent at
+      a `SetQuantToClock` pc (unlike tstar's `TreeRepRE`). RESOLUTION: augment
+      `WalkPairLk` with a `SetQuantToClock`-`Reset` disjunct (analog of the
+      BeginLoop stutter, but consuming the `Reset` and applying `GMReset` via
+      `GateAheadClearAfterReset`), making `WalkPairLk(GroupActionT(Reset,..), pc)`
+      satisfiable at a `SetQuantToClock` pc. */
+  lemma WalkPairLkAtFork(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                         tb: LT.Tree, gm: LG.GroupMap, pc: nat, ea: bool, x: int, y: int)
+    requires WalkPairLk(rer, qm, code, inp, tb, gm, pc, ea)
+    requires NR.GetPcRE(code, pc) == Some(RB.Fork(x, y))
+    ensures x >= 0 && y >= 0
+    ensures tb.Choice? || tb.Progress? || tb == LT.Mismatch
+  {
+    WalkPairLkImpliesTtLk(rer, qm, code, inp, tb, gm, pc, ea);
+    TtLkAtFork(rer, qm, code, inp, tb, pc, ea, x, y);
+  }
+
   /** Fueled core of `TtLkAtAnchor`: peel the transparent prefix; the real head
       is an `Areg(AnchorR(la))` pinning `AnchorAssertion` — `BoolTreeLk` reads
       off `AnchorPass` (satisfied) or `Mismatch`, and the continuation walks from
