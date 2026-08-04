@@ -2432,6 +2432,243 @@ module LindenElkLiftSim {
     TtLkAtAccept(rer, qm, code, inp, tb, pc, ea);
   }
 
+  // ---- (G+) SetReg bricks: GroupActionT Open/Close preservation --------------
+
+  /** `GateAheadClear` survives ANY domain-shrinking `gm` change (the `Close`
+      case: `GMClose` keeps the domain, so nothing new appears). */
+  lemma GateAheadClearMono(acts: LS.Actions, gm: LG.GroupMap, gm2: LG.GroupMap)
+    requires GateAheadClear(acts, gm)
+    requires forall g :: g in gm2 ==> g in gm
+    ensures GateAheadClear(acts, gm2)
+  {
+    forall lk: L.Lookaround, r1: L.Regex | GatePending(acts, lk, r1)
+      ensures forall g :: g in L.DefGroups(r1) ==> g !in gm2
+    { forall g | g in L.DefGroups(r1) ensures g !in gm2 { assert g !in gm; } }
+  }
+
+  /** `GateAheadClear` survives an `Open(gid)` when `gid` is not in any pending
+      body (`GMOpen` adds only `gid`). */
+  lemma GateAheadClearAfterOpen(acts: LS.Actions, gm: LG.GroupMap, gid: LG.GroupId, idx: nat)
+    requires GateAheadClear(acts, gm)
+    requires forall lk: L.Lookaround, r1: L.Regex | GatePending(acts, lk, r1) :: gid !in L.DefGroups(r1)
+    ensures GateAheadClear(acts, LG.GMUpdate(LG.Open(gid), idx, gm))
+  {
+    var gm2 := LG.GMUpdate(LG.Open(gid), idx, gm);
+    assert gm2 == LG.GMOpen(idx, gid, gm);
+    forall lk: L.Lookaround, r1: L.Regex | GatePending(acts, lk, r1)
+      ensures forall g :: g in L.DefGroups(r1) ==> g !in gm2
+    {
+      forall g | g in L.DefGroups(r1) ensures g !in gm2 {
+        assert g !in gm;    // GateAheadClear(acts, gm)
+        assert g != gid;    // requires
+        assert forall gx :: gx in gm2 ==> gx == gid || gx in gm;   // GMOpen adds only gid
+      }
+    }
+  }
+
+  /** A gate pending in the `Group` open-expansion `[Areg r1, Aclose gid]+cont`
+      is pending in `[Areg (Group gid r1)]+cont` (head folds into the `Group`
+      top-gate; `Aclose` holds no gate; the tail is shared). */
+  lemma GatePendingGroupBack(acts: LS.Actions, gid: LG.GroupId, r1: L.Regex, lk: L.Lookaround, rr: L.Regex)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Group(gid, r1))
+    requires GatePending([LS.Areg(r1), LS.Aclose(gid)] + acts[1..], lk, rr)
+    ensures GatePending(acts, lk, rr)
+  {
+    var cont := acts[1..];
+    var ga := [LS.Areg(r1), LS.Aclose(gid)] + cont;
+    var i :| 0 <= i < |ga| && ga[i].Areg? && RegexTopGate(ga[i].r, lk, rr);
+    if i == 0 {
+      assert ga[0] == LS.Areg(r1) && RegexTopGate(r1, lk, rr);
+      assert RegexTopGate(L.Group(gid, r1), lk, rr);              // Group case
+      assert acts[0].Areg? && RegexTopGate(acts[0].r, lk, rr);    // witness 0
+    } else if i == 1 {
+      assert ga[1] == LS.Aclose(gid);   // not Areg — contradicts ga[i].Areg?
+    } else {
+      assert ga[i] == cont[i - 2] == acts[i - 1];
+      assert acts[i - 1].Areg? && RegexTopGate(acts[i - 1].r, lk, rr);   // witness i-1
+    }
+  }
+
+  /** WalkPairLk core at a `SetRegisterToCP` — the GROUP-ACTION case. Two real
+      heads (mirror of `TtLkAtSetRegCore`): `Aclose(gid)` ⟹ `Close`, `Group(gid,r1)`
+      ⟹ `Open` (expanding to `[Areg r1, Aclose gid]+cont`). `gm` steps by
+      `GMUpdate(tb.g, Idx(inp), gm)`; the continuation stays `GateAheadClear` —
+      Close shrinks the domain (`GateAheadClearMono`), Open's `gid` is NoDup-
+      disjoint from every pending body (`GateAheadClearAfterOpen`), so NO
+      outside/inside invariant is needed. */
+  lemma WalkPairLkAtSetRegCore(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                               tb: LT.Tree, gm: LG.GroupMap, pc: nat, b: BS.LoopBool,
+                               acts: LS.Actions, r: int)
+    requires AR.ActionsRepL(rer, qm, acts, code, pc)
+    requires EL.PikeLkActions(acts)
+    requires EL.BoolTreeLk(rer, acts, inp, b, tb)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(r))
+    requires GateAheadClear(acts, gm)
+    requires M.NoDupSeq(M.AllDefsActs(acts))
+    ensures tb.GroupActionT?
+    ensures (tb.g.Open? && r == CP.start_reg(tb.g.g as int))
+         || (tb.g.Close? && r == CP.end_reg(tb.g.g as int))
+    ensures WalkPairLk(rer, qm, code, inp, tb.t, LG.GMUpdate(tb.g, LC.Idx(inp), gm), pc + 1, ATR.EaOf(b))
+    decreases ATR.MsizeA(acts)
+  {
+    var g := ATR.EaOf(b);
+    var pcmid: nat :| AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && AR.ActionsRepL(rer, qm, acts[1..], code, pcmid);
+    EL.PikeLkActionsTail(acts);
+    assert acts == [acts[0]] + acts[1..];
+    EL.PikeLkActionsConsIff(acts[0], acts[1..]);
+    var cont := acts[1..];
+    match acts[0]
+    case Acheck(_) =>   // pins EndLoop / backward Fork — not SetRegisterToCP
+    case Aclose(gid) =>
+      assert pcmid == pc + 1 && r == CP.end_reg(gid as int);
+      assert tb.GroupActionT? && tb.g == LG.Close(gid) && EL.BoolTreeLk(rer, cont, inp, b, tb.t);
+      assert AR.ActionsRepL(rer, qm, cont, code, pc + 1);
+      var gm2 := LG.GMUpdate(LG.Close(gid), LC.Idx(inp), gm);
+      assert gm2 == LG.GMClose(LC.Idx(inp), gid, gm);
+      GateAheadClearTail(acts, gm);
+      GateAheadClearMono(cont, gm, gm2);   // GMClose keeps the domain
+      NoDupAllDefsTail(acts);
+      assert EL.PikeLkActions(cont);
+      assert WalkPairLk(rer, qm, code, inp, tb.t, gm2, pc + 1, g);
+    case Areg(r0) =>
+      assert EL.PikeLkRegex(r0);
+      match r0
+      case Epsilon =>
+        assert pcmid == pc;
+        assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+        assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
+        GateAheadClearTail(acts, gm);
+        NoDupAllDefsTail(acts);
+        WalkPairLkAtSetRegCore(rer, qm, code, inp, tb, gm, pc, b, cont, r);
+      case Sequence(r1, r2) =>
+        assert acts[0] == LS.Areg(L.Sequence(r1, r2));
+        assert AR.NfaRepL(rer, qm, L.Sequence(r1, r2), code, pc, pcmid);
+        var e1: nat :| AR.NfaRepL(rer, qm, r1, code, pc, e1) && AR.NfaRepL(rer, qm, r2, code, e1, pcmid);
+        var na := [LS.Areg(r1), LS.Areg(r2)] + cont;
+        assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+        AR.ActionsRepLCons(rer, qm, LS.Areg(r2), cont, code, e1, pcmid);
+        AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Areg(r2)] + cont, code, pc, e1);
+        assert AR.ActionsRepL(rer, qm, na, code, pc);
+        assert EL.PikeLkActions(na) by {
+          EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
+          EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
+        }
+        assert EL.BoolTreeLk(rer, na, inp, b, tb);
+        assert LS.ActionsRegexSize(acts) == RegSz(r1) + RegSz(r2) + 1 + LS.ActionsRegexSize(cont);
+        assert LS.ActionsRegexSize(na) == RegSz(r1) + RegSz(r2) + LS.ActionsRegexSize(cont);
+        assert ATR.MsizeA(na) < ATR.MsizeA(acts);
+        GateAheadClearSeqExpand(acts, r1, r2, gm);
+        M.AllDefsActsCons(acts[0], cont);
+        M.AllDefsActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont);
+        M.AllDefsActsCons(LS.Areg(r2), cont);
+        assert L.DefGroups(L.Sequence(r1, r2)) == L.DefGroups(r1) + L.DefGroups(r2);
+        assert L.DefGroups(r1) + (L.DefGroups(r2) + M.AllDefsActs(cont))
+            == (L.DefGroups(r1) + L.DefGroups(r2)) + M.AllDefsActs(cont);
+        assert M.AllDefsActs(na) == M.AllDefsActs(acts);
+        WalkPairLkAtSetRegCore(rer, qm, code, inp, tb, gm, pc, b, na, r);
+      case Group(gid, r1) =>
+        var e1: nat :| NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(CP.start_reg(gid as int)))
+          && AR.NfaRepL(rer, qm, r1, code, pc + 1, e1)
+          && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(gid as int)))
+          && pcmid == e1 + 1;
+        assert r == CP.start_reg(gid as int);
+        var ga := [LS.Areg(r1), LS.Aclose(gid)] + cont;
+        assert ga == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
+        AR.ActionsRepLCons(rer, qm, LS.Aclose(gid), cont, code, e1, pcmid);
+        AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Aclose(gid)] + cont, code, pc + 1, e1);
+        assert AR.ActionsRepL(rer, qm, ga, code, pc + 1);
+        assert tb.GroupActionT? && tb.g == LG.Open(gid) && EL.BoolTreeLk(rer, ga, inp, b, tb.t);
+        assert EL.PikeLkActions(ga) by {
+          EL.PikeLkActionsConsIff(LS.Aclose(gid), cont);
+          EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+        }
+        var gm2 := LG.GMUpdate(LG.Open(gid), LC.Idx(inp), gm);
+        // AllDefsActs(ga) == DefGroups(r1) + AllDefsActs(cont); AllDefsActs(acts) == [gid] + AllDefsActs(ga).
+        M.AllDefsActsCons(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+        M.AllDefsActsCons(LS.Aclose(gid), cont);
+        M.AllDefsActsCons(acts[0], cont);
+        assert L.DefGroups(L.Group(gid, r1)) == [gid] + L.DefGroups(r1);
+        assert M.AllDefsActs(ga) == L.DefGroups(r1) + M.AllDefsActs(cont);
+        assert M.AllDefsActs(acts) == [gid] + M.AllDefsActs(ga);
+        M.NoDupConcat([gid], M.AllDefsActs(ga));   // NoDup(AllDefsActs(ga)) && gid ∉ AllDefsActs(ga)
+        // GateAheadClear(ga, gm): pending-in-ga ⟹ pending-in-acts.
+        assert forall lk2: L.Lookaround, rr: L.Regex :: GatePending(ga, lk2, rr) ==> GatePending(acts, lk2, rr) by {
+          forall lk2: L.Lookaround, rr: L.Regex | GatePending(ga, lk2, rr) ensures GatePending(acts, lk2, rr) {
+            GatePendingGroupBack(acts, gid, r1, lk2, rr);
+          }
+        }
+        assert GateAheadClear(ga, gm) by {
+          forall lk2: L.Lookaround, rr: L.Regex | GatePending(ga, lk2, rr)
+            ensures forall gg :: gg in L.DefGroups(rr) ==> gg !in gm
+          { GatePendingGroupBack(acts, gid, r1, lk2, rr); }
+        }
+        // gid ∉ every pending body of ga (via NoDup: gid ∉ AllDefsActs(ga) ⊇ DefGroups(rr)).
+        assert forall lk2: L.Lookaround, rr: L.Regex :: GatePending(ga, lk2, rr) ==> gid !in L.DefGroups(rr) by {
+          forall lk2: L.Lookaround, rr: L.Regex | GatePending(ga, lk2, rr) ensures gid !in L.DefGroups(rr) {
+            var j :| 0 <= j < |ga| && ga[j].Areg? && RegexTopGate(ga[j].r, lk2, rr);
+            RegexTopGateSubDefs(ga[j].r, lk2, rr);
+            AllDefsActsMemberSub(ga, j);
+            var SRR := set gx | gx in L.DefGroups(rr);
+            var SGJ := set gx | gx in L.DefGroups(ga[j].r);
+            var SAG := set gx | gx in M.AllDefsActs(ga);
+            assert SRR <= SGJ && SGJ <= SAG;   // the two lemma subsets (named-set form)
+            assert (set gx | gx in [gid]) * SAG == {};   // NoDupConcat disjointness
+            if gid in L.DefGroups(rr) {
+              assert gid in SRR && gid in SAG;           // via SRR ⊆ SGJ ⊆ SAG
+              assert gid in (set gx | gx in [gid]);
+              assert gid in (set gx | gx in [gid]) * SAG;   // contradicts disjoint
+            }
+          }
+        }
+        GateAheadClearAfterOpen(ga, gm, gid, LC.Idx(inp));   // GateAheadClear(ga, gm2)
+        assert WalkPairLk(rer, qm, code, inp, tb.t, gm2, pc + 1, g);
+      case Quantified(greedy, min, delta, r1) =>
+        if min == 0 && delta == LN.NN(0) {
+          assert acts[0] == LS.Areg(L.Quantified(greedy, 0, LN.NN(0), r1));
+          assert AR.NfaRepL(rer, qm, L.Quantified(greedy, 0, LN.NN(0), r1), code, pc, pcmid);
+          var em: nat :| AR.NfaRepMinL(rer, qm, 0, r1, code, pc, em)
+                       && AR.NfaRepOptL(rer, qm, 0, greedy, r1, code, em, pcmid);
+          NfaRepMinLHeadPin(rer, qm, 0, r1, code, pc, em);
+          NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);
+          assert pcmid == pc;
+          assert AR.ActionsRepL(rer, qm, cont, code, pc);
+          assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+          assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
+          GateAheadClearTail(acts, gm);
+          NoDupAllDefsTail(acts);
+          WalkPairLkAtSetRegCore(rer, qm, code, inp, tb, gm, pc, b, cont, r);
+        } else {
+          assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
+          assert AR.NfaRepL(rer, qm, L.Quantified(greedy, min, delta, r1), code, pc, pcmid);
+          QuantHeadPinsForkOrSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
+        }
+      case Character(_) =>   // pins Consume — not SetRegisterToCP
+      case Disjunction(_, _) =>   // pins Fork — not SetRegisterToCP
+      case LookaroundR(_, _) =>   // pins CheckOracle/NegCheckOracle — not SetRegisterToCP
+      case AnchorR(_) =>   // pins AnchorAssertion — not SetRegisterToCP
+      case Backreference(_) =>   // NfaRepL false
+  }
+
+  /** WalkPairLk→WalkPairLk wrapper at a `SetRegisterToCP`. */
+  lemma WalkPairLkAtSetReg(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                           tb: LT.Tree, gm: LG.GroupMap, pc: nat, ea: bool, r: int)
+    requires WalkPairLk(rer, qm, code, inp, tb, gm, pc, ea)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(r))
+    ensures tb.GroupActionT?
+    ensures (tb.g.Open? && r == CP.start_reg(tb.g.g as int))
+         || (tb.g.Close? && r == CP.end_reg(tb.g.g as int))
+    ensures WalkPairLk(rer, qm, code, inp, tb.t, LG.GMUpdate(tb.g, LC.Idx(inp), gm), pc + 1, ea)
+  {
+    var acts: LS.Actions, b: BS.LoopBool :|
+      AR.ActionsRepL(rer, qm, acts, code, pc)
+      && EL.PikeLkActions(acts)
+      && ATR.EaOf(b) == ea
+      && EL.BoolTreeLk(rer, acts, inp, b, tb)
+      && GateAheadClear(acts, gm)
+      && M.NoDupSeq(M.AllDefsActs(acts));
+    WalkPairLkAtSetRegCore(rer, qm, code, inp, tb, gm, pc, b, acts, r);
+  }
+
   /** Fueled core of `TtLkAtAnchor`: peel the transparent prefix; the real head
       is an `Areg(AnchorR(la))` pinning `AnchorAssertion` — `BoolTreeLk` reads
       off `AnchorPass` (satisfied) or `Mismatch`, and the continuation walks from
