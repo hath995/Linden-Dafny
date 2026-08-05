@@ -275,7 +275,17 @@ module LindenElkLiftSim {
   ghost predicate SeenRepLk(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                             treeseen: SS.SeenTrees, processed: AI.Bpcset,
                             current: Option<LT.Tree>, currentpc: nat) {
-    true  // TODO(filler): mirror PIV.SeenInclusionRE — see the FILL note above
+    // Verbatim mirror of `PIV.SeenInclusionRE` with `TtLk` in place of
+    // `TT.TreeThreadRE`: every processed `(pc, b)` either has its B-tree recorded
+    // in `treeseen`, or it is a gate/loop STUTTER whose chain reaches the head
+    // currently being processed (`current` at `currentpc`). The stutter escape
+    // hatch is what lets `LiftStepC`'s `pts_skip` fire only on `SS.Inseen`.
+    forall pc: nat, b: bool :: AI.bpc_mem(processed, pc, b) ==>
+      (exists t: LT.Tree :: SS.Inseen(treeseen, t) && TtLk(rer, qm, code, inp, t, pc, b))
+      || (TT.StuttersRE(pc, code)
+          && exists t: LT.Tree ::
+               PIV.StutterChainTo(code, pc, currentpc) && current == Some(t)
+               && TtLk(rer, qm, code, inp, t, pc, b))
   }
 
   /** THE LIFT INVARIANT: the B state pairs with the VM state. Mirrors
@@ -301,6 +311,108 @@ module LindenElkLiftSim {
       // the gate helpers read the oracle column at the current input; the
       // walk carries this (OracleOkSuffixStep advances it with cp)
       && LL.OracleOkSuffix(rer, qm, inp)
+  }
+
+  // ---- seen-tracking bricks (mirror PIV's SeenInclusion bookkeeping) ---------
+
+  /** Initial state satisfies `SeenRepLk` vacuously (`init_bpcset` is all-false,
+      so no `(pc, b)` is processed). Mirror of `PIV.InitialInclusionRE`. Feeds the
+      `LiftInitC`/`L3aCompositeClose` entry (`bseen == SS.InitialSeenTrees`). */
+  lemma InitialSeenRepLk(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                         current: Option<LT.Tree>, currentpc: nat, n: int)
+    ensures SeenRepLk(rer, qm, code, inp, SS.InitialSeenTrees, AI.init_bpcset(n), current, currentpc)
+  {
+    forall pc: nat, b: bool | AI.bpc_mem(AI.init_bpcset(n), pc, b)
+      ensures false
+    { }
+  }
+
+  /** After memoizing the current tree `t` at `(pc, b)`, `SeenRepLk` still holds —
+      every entry resolves to the LEFT (seen-tree) disjunct. Mirror of
+      `PIV.AddInclusionRE`. Used at B's pts_active/pts_match/pts_blocked steps
+      (each does `SS.AddSeenTrees(seen, active[0].0)` on the just-processed head). */
+  lemma AddSeenRepLk(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                     treeseen: SS.SeenTrees, processed: AI.Bpcset, t: LT.Tree, pc: nat, b: bool,
+                     nextcurrent: Option<LT.Tree>, nextpc: nat)
+    requires SeenRepLk(rer, qm, code, inp, treeseen, processed, Some(t), pc)
+    requires TtLk(rer, qm, code, inp, t, pc, b)
+    ensures SeenRepLk(rer, qm, code, inp, SS.AddSeenTrees(treeseen, t),
+                      AI.bpc_add(processed, pc, b), nextcurrent, nextpc)
+  {
+    forall pc0: nat, b0: bool | AI.bpc_mem(AI.bpc_add(processed, pc, b), pc0, b0)
+      ensures (exists t': LT.Tree :: SS.Inseen(SS.AddSeenTrees(treeseen, t), t')
+                 && TtLk(rer, qm, code, inp, t', pc0, b0))
+           || (TT.StuttersRE(pc0, code) && exists t': LT.Tree ::
+                 PIV.StutterChainTo(code, pc0, nextpc) && nextcurrent == Some(t')
+                 && TtLk(rer, qm, code, inp, t', pc0, b0))
+    {
+      PIV.BpcAddMemFwd(processed, pc, b, pc0, b0);
+      if pc0 == pc && b0 == b {
+        SS.InAdd(treeseen, t, t);            // Inseen(AddSeenTrees(treeseen, t), t)
+      } else {
+        assert AI.bpc_mem(processed, pc0, b0);
+        if exists t': LT.Tree :: SS.Inseen(treeseen, t') && TtLk(rer, qm, code, inp, t', pc0, b0) {
+          var t': LT.Tree :| SS.Inseen(treeseen, t') && TtLk(rer, qm, code, inp, t', pc0, b0);
+          SS.InAdd(treeseen, t', t);
+        } else {
+          // right disjunct at (pc0,b0): current == Some(t) forces the witness to be
+          // t, now memoized ⟹ new LEFT disjunct.
+          var t': LT.Tree :| TT.StuttersRE(pc0, code) && PIV.StutterChainTo(code, pc0, pc)
+            && Some(t) == Some(t') && TtLk(rer, qm, code, inp, t', pc0, b0);
+          SS.InAdd(treeseen, t', t);
+        }
+      }
+    }
+  }
+
+  /** Growing only the seen set (no new processed slot) preserves `SeenRepLk`:
+      LEFT witnesses survive the add, the stutter disjunct is untouched. Mirror of
+      `PIV.SeenGrowInclusionRE` (B's do-while fork memoizes a second tree). */
+  lemma SeenGrowSeenRepLk(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                          treeseen: SS.SeenTrees, processed: AI.Bpcset, extra: LT.Tree,
+                          current: Option<LT.Tree>, currentpc: nat)
+    requires SeenRepLk(rer, qm, code, inp, treeseen, processed, current, currentpc)
+    ensures SeenRepLk(rer, qm, code, inp, SS.AddSeenTrees(treeseen, extra),
+                      processed, current, currentpc)
+  {
+    forall pc0: nat, b0: bool | AI.bpc_mem(processed, pc0, b0)
+      ensures (exists t': LT.Tree :: SS.Inseen(SS.AddSeenTrees(treeseen, extra), t')
+                 && TtLk(rer, qm, code, inp, t', pc0, b0))
+           || (TT.StuttersRE(pc0, code) && exists t': LT.Tree ::
+                 PIV.StutterChainTo(code, pc0, currentpc) && current == Some(t')
+                 && TtLk(rer, qm, code, inp, t', pc0, b0))
+    {
+      if exists t': LT.Tree :: SS.Inseen(treeseen, t') && TtLk(rer, qm, code, inp, t', pc0, b0) {
+        var t': LT.Tree :| SS.Inseen(treeseen, t') && TtLk(rer, qm, code, inp, t', pc0, b0);
+        SS.InAdd(treeseen, t', extra);
+      }
+    }
+  }
+
+  /** Skipping an already-seen tree leaves `SeenRepLk` intact (the stutter
+      disjunct promotes to LEFT since the tree is already memoized), advancing the
+      head pointer. Mirror of `PIV.SkipInclusionRE` — B's `pts_skip` case. */
+  lemma SkipSeenRepLk(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                      treeseen: SS.SeenTrees, processed: AI.Bpcset, tree: LT.Tree, currentpc: nat,
+                      current: Option<LT.Tree>, nextpc: nat)
+    requires SeenRepLk(rer, qm, code, inp, treeseen, processed, Some(tree), currentpc)
+    requires SS.Inseen(treeseen, tree)
+    ensures SeenRepLk(rer, qm, code, inp, treeseen, processed, current, nextpc)
+  {
+    forall pc0: nat, b0: bool | AI.bpc_mem(processed, pc0, b0)
+      ensures (exists t': LT.Tree :: SS.Inseen(treeseen, t')
+                 && TtLk(rer, qm, code, inp, t', pc0, b0))
+           || (TT.StuttersRE(pc0, code) && exists t': LT.Tree ::
+                 PIV.StutterChainTo(code, pc0, nextpc) && current == Some(t')
+                 && TtLk(rer, qm, code, inp, t', pc0, b0))
+    {
+      if exists t': LT.Tree :: SS.Inseen(treeseen, t') && TtLk(rer, qm, code, inp, t', pc0, b0) {
+      } else {
+        var t': LT.Tree :| TT.StuttersRE(pc0, code) && PIV.StutterChainTo(code, pc0, currentpc)
+          && Some(tree) == Some(t') && TtLk(rer, qm, code, inp, t', pc0, b0);
+        assert SS.Inseen(treeseen, t');   // t' == tree, already seen
+      }
+    }
   }
 
   // ==========================================================================
@@ -415,20 +527,347 @@ module LindenElkLiftSim {
     }
   }
 
-  /** (1) t-side determinism: at a fixed `(pc, ea, inp)` the walk tree is
-      unique. Kills the seen-desync (landmine 2): pc-equal heads have equal
-      B-trees, so B's skip fires exactly when the VM drops a processed head.
-      FILL: mirror `TR.TreeRepDetermRE`'s instruction-pinning induction at the
-      walk level — every `BoolTreeLk` node shape is pinned by the instruction
-      at its pc (the `ActionsTreeRepFRE` cases enumerate the pinnings), and
-      `LkGateOk` pins the LK body FUNCTIONALLY (`ComputeTr`), so LK nodes agree
-      too. Expect the bulk to be an `ActionsRepL`-determinism helper. */
+  // ==========================================================================
+  // ERASED-CANONICAL LK TREES — the determinism layer for the seen/skip pairing.
+  //
+  // WHY (2026-08-05): `TtLkSameTree` as originally stated is FALSE. At a
+  // do-while's backward fork BOTH `[Areg(star)]+cont` (the loop-view `NfaRepL`
+  // disjunct) and `[Acheck(s), Areg(star)]+cont` (`ActionRepL`'s zero-width
+  // Acheck at a `BackForkAt` pc, strcheck unconstrained) are
+  // `ActionsRepL`-representable at the same pc, and their `BoolTreeLk` trees
+  // differ by exactly a `Progress` wrapper — the per-`(pc, ea)` tree is NOT
+  // unique. This is real machine behavior, not a proof artifact: in `(a+)+` a
+  // first-outer-iteration thread and a re-entered thread reach the same inner
+  // fork in the same ε-phase carrying trees that differ by a planted
+  // `Progress`, so B's exact-tree-keyed `pts_skip` cannot fire where the VM's
+  // `(pc, ea)`-keyed skip does. Machine-A canonicalized by PLANTING the guard
+  // (`ActionsTreeRepFRE`'s tr_plus construction) and running the machine on
+  // canonical `TreeRepRE` trees; machine B runs the RAW spec tree, so the fix
+  // here is the QUOTIENT: `Progress` is leaf-transparent
+  // (`TreeLeaves(Progress(t)) == TreeLeaves(t)`, Tree.dfy), so erase it —
+  // key B's memoization on `ProgErase`d trees and prove walk confluence
+  // MODULO erasure. `ETreeRepLk` is the erased canonical form: a least
+  // predicate keyed on `(code, pc, inp, b)` alone (mirror of `TR.TreeRepRE`
+  // with LK/LKFail nodes KEPT at the gates, pinned functionally by
+  // `ComputeTr`/`LkResult`, and the two Progress-producing rules turned into
+  // stutters). Its determinism (`ETreeRepLkDeterm`) is a least lemma —
+  // termination by ordinal induction, no hand-rolled measure.
+  // ==========================================================================
+
+  /** Erase every `Progress` guard — the quotient map for the seen-key. Trees
+      that differ only by planted/dissolved progress checks collapse; leaves
+      are untouched (`ProgEraseLeavesEq`). */
+  function ProgErase(t: LT.Tree): LT.Tree
+    decreases t
+  {
+    match t
+    case Mismatch => LT.Mismatch
+    case Match => LT.Match
+    case Choice(t1, t2) => LT.Choice(ProgErase(t1), ProgErase(t2))
+    case Read(c, t1) => LT.Read(c, ProgErase(t1))
+    case ReadBackRef(s, t1) => LT.ReadBackRef(s, ProgErase(t1))
+    case Progress(t1) => ProgErase(t1)
+    case AnchorPass(a, t1) => LT.AnchorPass(a, ProgErase(t1))
+    case GroupActionT(g, t1) => LT.GroupActionT(g, ProgErase(t1))
+    case LK(lk, tlk, t1) => LT.LK(lk, ProgErase(tlk), ProgErase(t1))
+    case LKFail(lk, tlk) => LT.LKFail(lk, ProgErase(tlk))
+  }
+
+  /** `Progress` is leaf-transparent, so erasure preserves the leaf sequence —
+      the fact that keeps an erased seen-key SOUND for first-leaf memoization
+      (skipping a tree whose erasure was already processed skips equal
+      leaves). */
+  lemma ProgEraseLeavesEq(t: LT.Tree, gm: LG.GroupMap, inp: LC.Input, dir: WP.Direction)
+    ensures LT.TreeLeaves(ProgErase(t), gm, inp, dir) == LT.TreeLeaves(t, gm, inp, dir)
+    decreases t
+  {
+    match t
+    case Mismatch =>
+    case Match =>
+    case Choice(t1, t2) =>
+      ProgEraseLeavesEq(t1, gm, inp, dir);
+      ProgEraseLeavesEq(t2, gm, inp, dir);
+    case Read(c, t1) =>
+      ProgEraseLeavesEq(t1, gm, LC.AdvanceInputP(inp, dir), dir);
+    case ReadBackRef(s, t1) =>
+      ProgEraseLeavesEq(t1, gm, LC.AdvanceInputN(inp, |s|, dir), dir);
+    case Progress(t1) =>
+      ProgEraseLeavesEq(t1, gm, inp, dir);
+    case AnchorPass(a, t1) =>
+      ProgEraseLeavesEq(t1, gm, inp, dir);
+    case GroupActionT(g, t1) =>
+      ProgEraseLeavesEq(t1, LG.GMUpdate(g, LC.Idx(inp), gm), inp, dir);
+    case LK(lk, tlk, t1) =>
+      ProgEraseLeavesEq(tlk, gm, inp, L.LkDir(lk));
+      var sub := LT.TreeLeaves(tlk, gm, inp, L.LkDir(lk));
+      if L.Positivity(lk) {
+        if |sub| > 0 { ProgEraseLeavesEq(t1, sub[0].1, inp, dir); }
+      } else {
+        if |sub| == 0 { ProgEraseLeavesEq(t1, gm, inp, dir); }
+      }
+    case LKFail(lk, tlk) =>
+  }
+
+  /** The ERASED canonical LK tree at `(code, pc, inp, b)` — `TR.TreeRepRE`'s
+      rule set with (i) LK/LKFail nodes KEPT at the oracle gates, pinned
+      FUNCTIONALLY by `ComputeTr`/`LkResult` (`LkGateOk`'s shape — no oracle
+      consultation, no acts existential), and (ii) the two Progress-producing
+      rules (`tr_progress` at EndLoop, the guard of `tr_plus` at a backward
+      fork) turned into STUTTERS. This is the image of every `BoolTreeLk` walk
+      tree under `ProgErase`, and it is a FUNCTION of `(pc, inp, b)`
+      (`ETreeRepLkDeterm`). The gate cases are instruction-first with no
+      existential over `lid`, per `TreeRepRE`'s hard-won style note. */
+  least predicate ETreeRepLk(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                             t: LT.Tree, pc: nat, b: bool)
+  {
+    // e_match
+    (NR.GetPcRE(code, pc) == Some(RB.Accept) && t == LT.Match)
+    // e_jmp
+    || (exists nextpc: int :: NR.GetPcRE(code, pc) == Some(RB.Jmp(nextpc)) && nextpc >= 0
+          && ETreeRepLk(rer, qm, code, inp, t, nextpc as nat, b))
+    // e_begin
+    || (NR.GetPcRE(code, pc) == Some(RB.BeginLoop)
+        && ETreeRepLk(rer, qm, code, inp, t, pc + 1, false))
+    // e_reset
+    || (t.GroupActionT? && t.g.Reset? && exists qid: int ::
+          NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
+          && qid in qm.quants && qm.quants[qid] == t.g.gl
+          && ETreeRepLk(rer, qm, code, inp, t.t, pc + 1, b))
+    // e_choice (forward forks)
+    || (t.Choice? && exists pcl: int, pcr: int ::
+          NR.GetPcRE(code, pc) == Some(RB.Fork(pcl, pcr)) && pcl >= 0 && pcr >= 0
+          && pcl as nat > pc && pcr as nat > pc
+          && ETreeRepLk(rer, qm, code, inp, t.t1, pcl as nat, b)
+          && ETreeRepLk(rer, qm, code, inp, t.t2, pcr as nat, b))
+    // e_plus — tr_plus with the Progress guard ERASED: a BARE Choice at the
+    // do-while's backward fork, representable only at b == true (like tr_plus)
+    || (t.Choice? && b == true && exists pcl: int, pcr: int ::
+          NR.GetPcRE(code, pc) == Some(RB.Fork(pcl, pcr)) && pcl >= 0 && pcr >= 0
+          && (pcl as nat <= pc || pcr as nat <= pc)
+          && ETreeRepLk(rer, qm, code, inp, t.t1, pcl as nat, true)
+          && ETreeRepLk(rer, qm, code, inp, t.t2, pcr as nat, true))
+    // e_plusfail
+    || (t == LT.Mismatch && b == false && exists pcl: int, pcr: int ::
+          NR.GetPcRE(code, pc) == Some(RB.Fork(pcl, pcr)) && pcl >= 0 && pcr >= 0
+          && (pcl as nat <= pc || pcr as nat <= pc))
+    // e_read
+    || (t.Read? && exists ce, nextinp ::
+          NR.GetPcRE(code, pc) == Some(RB.Consume(ce))
+          && AR.ReadCharE(ce, inp) == Some((t.c, nextinp))
+          && ETreeRepLk(rer, qm, code, nextinp, t.t, pc + 1, true))
+    // e_progress — tr_progress ERASED to a stutter (EndLoop falls through)
+    || (b == true && NR.GetPcRE(code, pc) == Some(RB.EndLoop)
+        && ETreeRepLk(rer, qm, code, inp, t, pc + 1, true))
+    // e_progressfail
+    || (t == LT.Mismatch && b == false && NR.GetPcRE(code, pc) == Some(RB.EndLoop))
+    // e_open
+    || (t.GroupActionT? && t.g.Open?
+        && NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(CP.start_reg(t.g.g as int)))
+        && ETreeRepLk(rer, qm, code, inp, t.t, pc + 1, b))
+    // e_close
+    || (t.GroupActionT? && t.g.Close?
+        && NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(CP.end_reg(t.g.g as int)))
+        && ETreeRepLk(rer, qm, code, inp, t.t, pc + 1, b))
+    // e_anchorpass (Linden-side satisfaction; the anchor is pinned by the
+    // instruction through `TrAnchor`)
+    || (t.AnchorPass? && exists a: R.anchor ::
+          NR.GetPcRE(code, pc) == Some(RB.AnchorAssertion(a))
+          && T.TrAnchor(a) == t.a
+          && LS.AnchorSatisfied(rer, t.a, inp)
+          && ETreeRepLk(rer, qm, code, inp, t.t, pc + 1, b))
+    // e_anchorfail
+    || (t == LT.Mismatch && exists a: R.anchor ::
+          NR.GetPcRE(code, pc) == Some(RB.AnchorAssertion(a))
+          && !LS.AnchorSatisfied(rer, T.TrAnchor(a), inp))
+    // e_readfail
+    || (t == LT.Mismatch && exists ce ::
+          NR.GetPcRE(code, pc) == Some(RB.Consume(ce)) && AR.ReadCharE(ce, inp) == None)
+    // e_lk / e_lkfail — the gate, LK nodes KEPT. The body tree and verdict are
+    // functional in `(lk, r1, inp)`; the node stores the ERASED body image.
+    || (match NR.GetPcRE(code, pc)
+        case Some(CheckOracle(lid)) =>
+          lid in qm.looks
+          && var lk := qm.looks[lid].0;
+             var r1 := qm.looks[lid].1;
+             var tlk := LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk));
+             if LS.LkResult(lk, tlk, LG.Empty, inp).Some?
+             then t.LK? && t.lk == lk && t.tlk == ProgErase(tlk)
+                  && ETreeRepLk(rer, qm, code, inp, t.t, pc + 1, b)
+             else t == LT.LKFail(lk, ProgErase(tlk))
+        case Some(NegCheckOracle(lid)) =>
+          lid in qm.looks
+          && var lk := qm.looks[lid].0;
+             var r1 := qm.looks[lid].1;
+             var tlk := LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk));
+             if LS.LkResult(lk, tlk, LG.Empty, inp).Some?
+             then t.LK? && t.lk == lk && t.tlk == ProgErase(tlk)
+                  && ETreeRepLk(rer, qm, code, inp, t.t, pc + 1, b)
+             else t == LT.LKFail(lk, ProgErase(tlk))
+        case _ => false)
+  }
+
+  /** Determinism of the erased canonical form: at a fixed `(pc, inp, b)` the
+      represented tree is unique — the quotient replacement for the FALSE
+      exact-tree `TtLkSameTree`. Mirror of `TR.TreeRepDetermRE` (least-lemma
+      ordinal induction; `qm` pins the Reset payload, `SetRegisterToCP` parity
+      separates Open from Close); the erased stutters recurse on the SAME
+      trees, and the gate cases close functionally (both sides' `tlk` and
+      verdict are pinned by `ComputeTr`/`LkResult` at the instruction's
+      table entry). */
+  least lemma ETreeRepLkDeterm(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                               t1: LT.Tree, t2: LT.Tree, pc: nat, b: bool)
+    requires ETreeRepLk(rer, qm, code, inp, t1, pc, b)
+    requires ETreeRepLk(rer, qm, code, inp, t2, pc, b)
+    ensures t1 == t2
+  {
+    match NR.GetPcRE(code, pc)
+    case Some(Accept) =>            // both e_match
+    case Some(Jmp(np)) =>           // both e_jmp
+      ETreeRepLkDeterm(rer, qm, code, inp, t1, t2, np as nat, b);
+    case Some(BeginLoop) =>         // both e_begin
+      ETreeRepLkDeterm(rer, qm, code, inp, t1, t2, pc + 1, false);
+    case Some(SetQuantToClock(qid, bb)) =>  // both e_reset (only bb == false has a rule)
+      match t1 {
+        case GroupActionT(g1, tc1) =>
+          match t2 {
+            case GroupActionT(g2, tc2) =>
+              assert g1 == LG.Reset(qm.quants[qid]) && g2 == LG.Reset(qm.quants[qid]);
+              ETreeRepLkDeterm(rer, qm, code, inp, tc1, tc2, pc + 1, b);
+            case _ =>
+          }
+        case _ =>
+      }
+    case Some(Fork(pl, pr)) =>
+      if pl >= 0 && pr >= 0 && pl as nat > pc && pr as nat > pc {
+        // forward fork: both e_choice
+        match t1 {
+          case Choice(ta1, tb1) =>
+            match t2 {
+              case Choice(ta2, tb2) =>
+                ETreeRepLkDeterm(rer, qm, code, inp, ta1, ta2, pl as nat, b);
+                ETreeRepLkDeterm(rer, qm, code, inp, tb1, tb2, pr as nat, b);
+              case _ =>
+            }
+          case _ =>
+        }
+      } else if !b {
+        // backward-arm fork at b == false: both e_plusfail (Mismatch)
+      } else {
+        // backward-arm fork at b == true: both e_plus (bare Choice — the
+        // erased guard makes first- and re-traversal shapes IDENTICAL, which
+        // is the entire point of the quotient)
+        match t1 {
+          case Choice(ta1, tb1) =>
+            match t2 {
+              case Choice(ta2, tb2) =>
+                ETreeRepLkDeterm(rer, qm, code, inp, ta1, ta2, pl as nat, true);
+                ETreeRepLkDeterm(rer, qm, code, inp, tb1, tb2, pr as nat, true);
+              case _ =>
+            }
+          case _ =>
+        }
+      }
+    case Some(Consume(ce)) =>       // e_read (Some) or e_readfail (None)
+      match AR.ReadCharE(ce, inp) {
+        case None =>                // both Mismatch
+        case Some(pair) =>
+          match t1 {
+            case Read(c1, tc1) =>
+              match t2 {
+                case Read(c2, tc2) =>
+                  ETreeRepLkDeterm(rer, qm, code, pair.1, tc1, tc2, pc + 1, true);
+                case _ =>
+              }
+            case _ =>
+          }
+      }
+    case Some(EndLoop) =>           // e_progress stutter (b) or e_progressfail (!b)
+      if b {
+        ETreeRepLkDeterm(rer, qm, code, inp, t1, t2, pc + 1, true);
+      }
+    case Some(SetRegisterToCP(reg)) =>  // e_open (even reg) xor e_close (odd reg)
+      match t1 {
+        case GroupActionT(g1, tc1) =>
+          match t2 {
+            case GroupActionT(g2, tc2) =>
+              assert g1.Open? ==> reg == 2 * (g1.g as int);
+              assert g1.Close? ==> reg == 2 * (g1.g as int) + 1;
+              assert g2.Open? ==> reg == 2 * (g2.g as int);
+              assert g2.Close? ==> reg == 2 * (g2.g as int) + 1;
+              assert g1 == g2;
+              ETreeRepLkDeterm(rer, qm, code, inp, tc1, tc2, pc + 1, b);
+            case _ =>
+          }
+        case _ =>
+      }
+    case Some(AnchorAssertion(a)) =>  // e_anchorpass (satisfied) or e_anchorfail
+      if LS.AnchorSatisfied(rer, T.TrAnchor(a), inp) {
+        match t1 {
+          case AnchorPass(a1, tc1) =>
+            match t2 {
+              case AnchorPass(a2, tc2) =>
+                ETreeRepLkDeterm(rer, qm, code, inp, tc1, tc2, pc + 1, b);
+              case _ =>
+            }
+          case _ =>
+        }
+      }
+    case Some(CheckOracle(lid)) =>  // e_lk (verdict Some) or e_lkfail — functional split
+      if lid in qm.looks {
+        var lk := qm.looks[lid].0;
+        var r1 := qm.looks[lid].1;
+        var tlk := LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk));
+        if LS.LkResult(lk, tlk, LG.Empty, inp).Some? {
+          match t1 {
+            case LK(l1, k1, tc1) =>
+              match t2 {
+                case LK(l2, k2, tc2) =>
+                  ETreeRepLkDeterm(rer, qm, code, inp, tc1, tc2, pc + 1, b);
+                case _ =>
+              }
+            case _ =>
+          }
+        }
+        // verdict None: both == LKFail(lk, ProgErase(tlk)) directly
+      }
+    case Some(NegCheckOracle(lid)) =>
+      if lid in qm.looks {
+        var lk := qm.looks[lid].0;
+        var r1 := qm.looks[lid].1;
+        var tlk := LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk));
+        if LS.LkResult(lk, tlk, LG.Empty, inp).Some? {
+          match t1 {
+            case LK(l1, k1, tc1) =>
+              match t2 {
+                case LK(l2, k2, tc2) =>
+                  ETreeRepLkDeterm(rer, qm, code, inp, tc1, tc2, pc + 1, b);
+                case _ =>
+              }
+            case _ =>
+          }
+        }
+      }
+    case Some(_) =>                 // WriteOracle/CheckNullable/Fail: no rule — vacuous
+    case None =>                    // vacuous
+  }
+
+  /** (1) t-side determinism — QUOTIENTED (2026-08-05). The exact-tree
+      statement is FALSE (see the section header above: Progress-planting at
+      backward forks). The TRUE statement is confluence MODULO `ProgErase`,
+      which is what the seen/skip pairing actually needs once B's memo is
+      keyed on erased trees. FILL: bridge `ActionsRepL + BoolTreeLk ⟹
+      ETreeRepLk(ProgErase(t))` (mirror `ActionsTreeRepFRE`'s fuel induction,
+      LK nodes kept, no tstar construction), then `ETreeRepLkDeterm` closes.
+      The bridge needs the b == CanExit side condition at backward-fork heads
+      (from `NonNullableL` of loop-view bodies inductively; at the TOP from
+      the invariant fact that VM threads at a `BackForkAt` pc have
+      `exit_allowed` — carried in `LiftInvC`). */
   lemma TtLkSameTree(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                      t1: LT.Tree, t2: LT.Tree, pc: nat, ea: bool)
     requires !rer.multiline
     requires TtLk(rer, qm, code, inp, t1, pc, ea)
     requires TtLk(rer, qm, code, inp, t2, pc, ea)
-    ensures t1 == t2
+    ensures ProgErase(t1) == ProgErase(t2)
 
   /** FRAME for GateStepValue's non-owned-group carry: a positive gate's merged
       map `LkResult(lk, tlk, gmt, inp).value` differs from the incoming `gmt`
@@ -3347,6 +3786,190 @@ module LindenElkLiftSim {
     M.NoDupConcat(pre, TopLkDefsListActs(acts[1..]));
   }
 
+  /** A regex's top-level look def-list is a SUBSEQUENCE of its full `DefGroups`
+      (top-level looks contribute `DefGroups(body)`, which is among `DefGroups(r)`;
+      `Group` prepends only its own id, `Quantified` drops to `[]`). Membership form. */
+  lemma TopLkDefsListSubDefGroups(r: L.Regex)
+    ensures forall g :: g in TopLkDefsList(r) ==> g in L.DefGroups(r)
+    decreases r
+  {
+    match r
+    case LookaroundR(lk, r1) =>
+    case Sequence(a, b) =>
+      TopLkDefsListSubDefGroups(a); TopLkDefsListSubDefGroups(b);
+    case Disjunction(a, b) =>
+      TopLkDefsListSubDefGroups(a); TopLkDefsListSubDefGroups(b);
+    case Group(id, r1) =>
+      TopLkDefsListSubDefGroups(r1);
+    case Quantified(_, _, _, _) =>
+    case Epsilon =>
+    case Character(_) =>
+    case AnchorR(_) =>
+    case Backreference(_) =>
+  }
+
+  /** WITHIN one regex: `DefGroups` no-dup ⟹ its top-level look def-list is
+      no-dup (since the latter is a subsequence). The per-`Areg` half of the
+      structural NoDup. */
+  lemma TopLkNoDupFromDefGroups(r: L.Regex)
+    requires M.NoDupSeq(L.DefGroups(r))
+    ensures M.NoDupSeq(TopLkDefsList(r))
+    decreases r
+  {
+    match r
+    case LookaroundR(lk, r1) =>
+      assert TopLkDefsList(r) == L.DefGroups(r1) == L.DefGroups(r);
+    case Sequence(a, b) =>
+      assert L.DefGroups(r) == L.DefGroups(a) + L.DefGroups(b);
+      M.NoDupConcat(L.DefGroups(a), L.DefGroups(b));
+      var SA := set gx | gx in L.DefGroups(a);
+      var SB := set gx | gx in L.DefGroups(b);
+      assert SA * SB == {};
+      TopLkNoDupFromDefGroups(a); TopLkNoDupFromDefGroups(b);
+      TopLkDefsListSubDefGroups(a); TopLkDefsListSubDefGroups(b);
+      forall i, j | 0 <= i < |TopLkDefsList(a)| && 0 <= j < |TopLkDefsList(b)|
+        ensures TopLkDefsList(a)[i] != TopLkDefsList(b)[j]
+      {
+        if TopLkDefsList(a)[i] == TopLkDefsList(b)[j] {
+          var g := TopLkDefsList(a)[i];
+          assert g in TopLkDefsList(a) && g in TopLkDefsList(b);
+          assert g in L.DefGroups(a) && g in L.DefGroups(b);
+          assert g in SA && g in SB && g in SA * SB;
+          assert false;
+        }
+      }
+      M.NoDupFromDisjoint(TopLkDefsList(a), TopLkDefsList(b));
+      assert TopLkDefsList(r) == TopLkDefsList(a) + TopLkDefsList(b);
+    case Disjunction(a, b) =>
+      assert L.DefGroups(r) == L.DefGroups(a) + L.DefGroups(b);
+      M.NoDupConcat(L.DefGroups(a), L.DefGroups(b));
+      var SA := set gx | gx in L.DefGroups(a);
+      var SB := set gx | gx in L.DefGroups(b);
+      assert SA * SB == {};
+      TopLkNoDupFromDefGroups(a); TopLkNoDupFromDefGroups(b);
+      TopLkDefsListSubDefGroups(a); TopLkDefsListSubDefGroups(b);
+      forall i, j | 0 <= i < |TopLkDefsList(a)| && 0 <= j < |TopLkDefsList(b)|
+        ensures TopLkDefsList(a)[i] != TopLkDefsList(b)[j]
+      {
+        if TopLkDefsList(a)[i] == TopLkDefsList(b)[j] {
+          var g := TopLkDefsList(a)[i];
+          assert g in TopLkDefsList(a) && g in TopLkDefsList(b);
+          assert g in L.DefGroups(a) && g in L.DefGroups(b);
+          assert g in SA && g in SB && g in SA * SB;
+          assert false;
+        }
+      }
+      M.NoDupFromDisjoint(TopLkDefsList(a), TopLkDefsList(b));
+      assert TopLkDefsList(r) == TopLkDefsList(a) + TopLkDefsList(b);
+    case Group(id, r1) =>
+      assert L.DefGroups(r) == [id] + L.DefGroups(r1);
+      M.NoDupConcat([id], L.DefGroups(r1));
+      TopLkNoDupFromDefGroups(r1);
+      assert TopLkDefsList(r) == TopLkDefsList(r1);
+    case Quantified(_, _, _, _) =>
+    case Epsilon =>
+    case Character(_) =>
+    case AnchorR(_) =>
+    case Backreference(_) =>
+  }
+
+  /** Action-level: top-level look groups are a subset of ALL defined groups
+      (per-`Areg` subsequence, lifted). Membership form. */
+  lemma TopLkDefsListActsSubAllDefs(acts: LS.Actions)
+    ensures forall g :: g in TopLkDefsListActs(acts) ==> g in M.AllDefsActs(acts)
+    decreases |acts|
+  {
+    if |acts| == 0 { return; }
+    assert acts == [acts[0]] + acts[1..];
+    TopLkDefsListActsCons(acts[0], acts[1..]);
+    M.AllDefsActsCons(acts[0], acts[1..]);
+    TopLkDefsListActsSubAllDefs(acts[1..]);
+    if acts[0].Areg? { TopLkDefsListSubDefGroups(acts[0].r); }
+  }
+
+  /** ACROSS the whole action list: `AllDefsActs` no-dup ⟹ `TopLkDefsListActs`
+      no-dup (the latter is a per-`Areg` subsequence of the former). This is the
+      converter used at a quantifier unfold: the pre-unfold `NoDupSeq(AllDefsActs)`
+      establishes the post-unfold `NoDupSeq(TopLkDefsListActs)` (which the
+      re-entrant `Quantified` residual no longer breaks). */
+  lemma TopLkNoDupFromAllDefs(acts: LS.Actions)
+    requires M.NoDupSeq(M.AllDefsActs(acts))
+    ensures M.NoDupSeq(TopLkDefsListActs(acts))
+    decreases |acts|
+  {
+    if |acts| == 0 { return; }
+    assert acts == [acts[0]] + acts[1..];
+    var cont := acts[1..];
+    M.AllDefsActsCons(acts[0], cont);
+    TopLkDefsListActsCons(acts[0], cont);
+    var headAll: seq<LG.GroupId> := if acts[0].Areg? then L.DefGroups(acts[0].r) else [];
+    var headTop: seq<LG.GroupId> := if acts[0].Areg? then TopLkDefsList(acts[0].r) else [];
+    assert M.AllDefsActs(acts) == headAll + M.AllDefsActs(cont);
+    assert TopLkDefsListActs(acts) == headTop + TopLkDefsListActs(cont);
+    M.NoDupConcat(headAll, M.AllDefsActs(cont));
+    var SH := set gx | gx in headAll;
+    var SC := set gx | gx in M.AllDefsActs(cont);
+    assert SH * SC == {};
+    // head no-dup
+    if acts[0].Areg? { TopLkNoDupFromDefGroups(acts[0].r); TopLkDefsListSubDefGroups(acts[0].r); }
+    // tail no-dup
+    TopLkNoDupFromAllDefs(cont);
+    TopLkDefsListActsSubAllDefs(cont);
+    // cross-disjoint: headTop ⊆ headAll, TopLkDefsListActs(cont) ⊆ AllDefsActs(cont), disjoint
+    forall i, j | 0 <= i < |headTop| && 0 <= j < |TopLkDefsListActs(cont)|
+      ensures headTop[i] != TopLkDefsListActs(cont)[j]
+    {
+      if headTop[i] == TopLkDefsListActs(cont)[j] {
+        var g := headTop[i];
+        assert g in headTop && g in TopLkDefsListActs(cont);
+        assert g in headAll;                          // TopLkDefsListSubDefGroups / [] case
+        assert g in M.AllDefsActs(cont);              // TopLkDefsListActsSubAllDefs
+        assert g in SH && g in SC && g in SH * SC;
+        assert false;
+      }
+    }
+    M.NoDupFromDisjoint(headTop, TopLkDefsListActs(cont));
+  }
+
+  /** SetQuant-unfold converter: the PRE-unfold `NoDupSeq(DefGroups(r1) +
+      AllDefsActs(cont))` (= `NoDupSeq(AllDefsActs([Areg(Quantified(..,r1))]+cont))`,
+      since `DefGroups(Quantified(..,r1)) == DefGroups(r1)`) establishes the
+      POST-unfold `NoDupSeq(TopLkDefsListActs([Areg(r1), Areg(q')]+cont))`. The
+      re-entrant residual `q'=Quantified(..,r1)` contributes `[]` to
+      `TopLkDefsListActs` (STOPS at Quantified), so its duplicate of
+      `DefGroups(r1)` — which breaks `AllDefsActs` NoDup post-unfold — is invisible
+      to `TopLkDefsListActs`. Closes the (non-nested) quantifier body-copy case. */
+  lemma QuantUnfoldTopLkNoDup(r1: L.Regex, q': L.Regex, cont: LS.Actions)
+    requires q'.Quantified? && q'.r1 == r1
+    requires M.NoDupSeq(L.DefGroups(r1) + M.AllDefsActs(cont))
+    ensures M.NoDupSeq(TopLkDefsListActs([LS.Areg(r1), LS.Areg(q')] + cont))
+  {
+    var acts1 := [LS.Areg(r1), LS.Areg(q')] + cont;
+    assert acts1 == [LS.Areg(r1)] + ([LS.Areg(q')] + cont);
+    TopLkDefsListActsCons(LS.Areg(r1), [LS.Areg(q')] + cont);
+    TopLkDefsListActsCons(LS.Areg(q'), cont);
+    assert TopLkDefsList(q') == [];                                  // Quantified → []
+    assert TopLkDefsListActs(acts1) == TopLkDefsList(r1) + TopLkDefsListActs(cont);
+    M.NoDupConcat(L.DefGroups(r1), M.AllDefsActs(cont));
+    var SR := set gx | gx in L.DefGroups(r1);
+    var SC := set gx | gx in M.AllDefsActs(cont);
+    assert SR * SC == {};
+    TopLkNoDupFromDefGroups(r1); TopLkDefsListSubDefGroups(r1);       // NoDup(TopLk r1), ⊆ DefGroups(r1)
+    TopLkNoDupFromAllDefs(cont); TopLkDefsListActsSubAllDefs(cont);   // NoDup(TopLk cont), ⊆ AllDefsActs(cont)
+    forall i, j | 0 <= i < |TopLkDefsList(r1)| && 0 <= j < |TopLkDefsListActs(cont)|
+      ensures TopLkDefsList(r1)[i] != TopLkDefsListActs(cont)[j]
+    {
+      if TopLkDefsList(r1)[i] == TopLkDefsListActs(cont)[j] {
+        var g := TopLkDefsList(r1)[i];
+        assert g in TopLkDefsList(r1) && g in TopLkDefsListActs(cont);
+        assert g in L.DefGroups(r1) && g in M.AllDefsActs(cont);
+        assert g in SR && g in SC && g in SR * SC;
+        assert false;
+      }
+    }
+    M.NoDupFromDisjoint(TopLkDefsList(r1), TopLkDefsListActs(cont));
+  }
+
   /** An `Areg` member's body groups are among the action list's `AllDefsActs`. */
   lemma AllDefsActsMemberSub(acts: LS.Actions, i: nat)
     requires 0 <= i < |acts| && acts[i].Areg?
@@ -3872,6 +4495,11 @@ module LindenElkLiftSim {
           // only for PikeInvFullRE's VM backbone.
           && ActiveRepLk(rer, qm, re, code, inp, crv, str, ov, S, bactive, vms.active, ncap, nlook, nquant)
           && BestTieLk(re, crv, str, ov, S, bbest, vms.bestmatch, ncap, nlook, nquant)
+          // B-side seen ↔ VM processed (skip-lockstep): the B-machine's `pts_skip`
+          // fires on `SS.Inseen(bseen, head)`, the VM's on `bpc_mem(processed,...)`;
+          // `SeenRepLk` keeps them in step so `ActiveRepLk` survives a skip.
+          && SeenRepLk(rer, qm, code, inp, bseen, vms.processed,
+                       PIV.HdTreeOf(bactive), PIV.HeadPcOf(vms.active))
           && LL.OracleOkSuffix(rer, qm, inp))
   }
 
@@ -3893,6 +4521,7 @@ module LindenElkLiftSim {
     requires inp == PIV.InpOfCp(str, vms.cp) && 0 <= vms.cp <= |str|
     requires vms.active == [AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant))]
     requires vms.bestmatch.None?
+    requires vms.processed == AI.init_bpcset(RB.size(code))   // genuine start: nothing processed yet
     ensures LiftInvC(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
                      PT.PikeTreeInitialState(tstar, inp), PT.PikeTreeInitialState(t, inp), vms,
                      ncap, nlook, nquant)
@@ -3934,6 +4563,10 @@ module LindenElkLiftSim {
     assert PT.PikeTreeInitialState(t, inp) == PT.PTS(inp, [(t, LG.Empty)], None, [], SS.InitialSeenTrees);
     assert PT.PikeTreeInitialState(tstar, inp).PTS? && PT.PikeTreeInitialState(tstar, inp).inp == inp;
     assert BestTieLk(re, crv, str, ov, S, None, vms.bestmatch, ncap, nlook, nquant);
+    // B-side seen ↔ processed: at the genuine start nothing is processed, so
+    // `SeenRepLk` holds vacuously (mirror of `PIV.InitialInclusionRE`).
+    InitialSeenRepLk(rer, qm, code, inp,
+                     PIV.HdTreeOf([(t, LG.Empty)]), PIV.HeadPcOf([it]), RB.size(code));
   }
 
   /** (K-step) The composite is preserved across ONE position. Machine A advances
