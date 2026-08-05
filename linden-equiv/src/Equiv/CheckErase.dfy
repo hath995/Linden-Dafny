@@ -126,6 +126,27 @@ module LindenElkCheckErase {
     case LKFail(_, tlk) => 1 + PSize(tlk)
   }
 
+  /** Erase every `Progress` guard — the quotient map under which check
+      insertion is the IDENTITY (`BoolCheckInsert` only ever adds `Progress`
+      nodes). `Progress` is leaf-transparent, so erasure preserves
+      `TreeLeaves`; downstream (LiftSim) keys machine B's memoization on
+      erased trees and proves walk determinism at the erased level. */
+  function ProgErase(t: LT.Tree): LT.Tree
+    decreases t
+  {
+    match t
+    case Mismatch => LT.Mismatch
+    case Match => LT.Match
+    case Choice(t1, t2) => LT.Choice(ProgErase(t1), ProgErase(t2))
+    case Read(c, t1) => LT.Read(c, ProgErase(t1))
+    case ReadBackRef(s, t1) => LT.ReadBackRef(s, ProgErase(t1))
+    case Progress(t1) => ProgErase(t1)
+    case AnchorPass(a, t1) => LT.AnchorPass(a, ProgErase(t1))
+    case GroupActionT(g, t1) => LT.GroupActionT(g, ProgErase(t1))
+    case LK(lk, tlk, t1) => LT.LK(lk, ProgErase(tlk), ProgErase(t1))
+    case LKFail(lk, tlk) => LT.LKFail(lk, ProgErase(tlk))
+  }
+
   // ===========================================================================
   // Leaves agreement and its congruences
   // ===========================================================================
@@ -553,6 +574,7 @@ module LindenElkCheckErase {
     ensures EL.BoolTreeLk(rer, pre + [LS.Acheck(chk)] + rest, inp, b, tstar)
     ensures LeavesAgree(tstar, t)
     ensures PSize(tstar) == PSize(t)
+    ensures ProgErase(tstar) == ProgErase(t)
     ensures forall SS: set<LG.GroupId> :: LkConfinedTree(t, SS) ==> LkConfinedTree(tstar, SS)
     decreases LS.TreeSize(t), LS.ActionsRegexSize(pre)
   {

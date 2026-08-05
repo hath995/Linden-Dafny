@@ -44,6 +44,30 @@ bodyless (their `ensures` is currently assumed). That is the entire remaining su
   restate `SeenRepLk` on erased trees + tiny per-instruction `ETreeRepLkAt*` inversions
   (instruction-pinned, Fork arms now free via `e_choice`/`e_plus`); (d) resume `LiftStepC`.)*
 
+*(2026-08-05 session 2 — the bridge LANDED; then the PLANTED pivot (supersedes (b)/(c) above):*
+- *THE BRIDGE VERIFIED FIRST TRY (4285 assertion batches, 0 errors): `ActionsETreeRepFLk`
+  (fueled, `{:isolate_assertions}`) + `AtBackForkETreeLk` (fused-fork companion) +
+  `ActionsETreeRepLk` (wrapper). Supporting: `ProgErase` moved to `CheckErase.dfy` (whole file
+  32/0) and `BoolCheckInsert` strengthened with `ensures ProgErase(tstar) == ProgErase(t)`
+  (verified free — insertion is Progress-only).*
+- *DESIGN CATCH: the erased-memo re-key of `PikeTreeLk` (step (b) above) is UNSOUND for
+  lockstep — memoizing `ProgErase(head)` makes B wrongly skip the queued child `x` of a
+  processed `Progress(x)` (the VM processes it at pc+1). Erased keys conflate stutter-pcs; the
+  `Progress` wrapper IS the pc-discriminator.*
+- *CORRECT DESIGN (machine-A's, in full): B runs the PLANTED canonical tree — unique per
+  `(pc, ea)` AND stutter-discriminating — so `PikeTreeLk`'s exact-tree memo is UNCHANGED (its
+  29/0 stands untouched). New+verified first-try: `TreeRepLkRE` (planted canonical LK least
+  predicate, `TreeRepRE` rules verbatim with LK kept) + `TreeRepLkDetermRE` (least-lemma
+  determinism — closes B's skip in lockstep). `ProgErase`/`ProgEraseLeavesEq` remain the
+  ENDPOINT glue (`FirstLeaf(tcan) == FirstLeaf(t)`); the erased bridge is the SKELETON of the
+  remaining planted constructor. Value layer unaffected: planted subtrees are `BoolTreeLk`
+  trees of check-INSERTED stacks, so all proven cores still apply.*
+- *Remaining (task #15): (b′) convert the bridge to the value-returning planted constructor
+  `ActionsTreeRepLkF(...) returns (tcan)` ensuring `TreeRepLkRE(tcan, pc, EaOf(b))` and
+  `ProgErase(tcan) == ProgErase(t)`; (c′) LiftInvC: B runs `tcan` from init, per-head canonical
+  tie `TreeRepLkRE(tb_i, pc_i, ea_i)`, `SeenRepLk` restated with `TreeRepLkRE`, skip via
+  `TreeRepLkDetermRE`, steps via small `TreeRepLkRE`-At* inversions; (d′) resume `LiftStepC`.)*
+
 ---
 
 ## 0. The goal
