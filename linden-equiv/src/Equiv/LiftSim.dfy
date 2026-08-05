@@ -1090,48 +1090,51 @@ module LindenElkLiftSim {
   }
 
   // ==========================================================================
-  // THE BRIDGE: BoolTreeLk walk trees are ETreeRepLk-canonical after erasure.
+  // THE CONSTRUCTOR: from a represented, walk-guarded stack's BoolTreeLk tree
+  // to the PLANTED canonical tree machine B runs.
   //
   // Mirror of the PROVEN `ATR.ActionsTreeRepFRE` / `AtBackForkTreeRep` pair
-  // (ActionsTreeRepRE.dfy:177/:826) with three simplifications: no `tstar`
-  // construction (the ensures is about `ProgErase(t)` directly), no `S`/
-  // `LkConfinedTree`/leaf-agreement congruences (erasure equality replaces
-  // them), and no oracle (`ETreeRepLk`'s gate is decided by the FUNCTIONAL
-  // verdict, exactly like `BoolTreeLk`'s `LkGateOk`). `WalkOk` is kept — it
+  // (ActionsTreeRepRE.dfy:177/:826) with LK nodes KEPT and the S-machinery/
+  // leaf-agreement congruences replaced by ERASURE EQUALITY (`ProgErase(tcan)
+  // == ProgErase(t)` — the constructed tree differs from the spec walk tree
+  // only by planted `Progress` guards, so their leaves are EQUAL via
+  // `ProgEraseLeavesEq`). No oracle: the gate is decided by the FUNCTIONAL
+  // verdict, exactly like `BoolTreeLk`'s `LkGateOk`. `WalkOk` is kept — it
   // excludes the one adversarial config (a bare loop-view star at
-  // `CannotExit`, where the ensures would be false) and is available at the
-  // ONE place this bridge is invoked: the entry pairing (`WkE.WalkOkEntry`).
-  // The check-insertion seam (`min == 1, Inf`) uses `CE.BoolCheckInsert`,
-  // whose strengthened ensures `ProgErase(tstar) == ProgErase(t)` makes the
-  // insertion INVISIBLE here — the reason the quotient dissolves the old
-  // WalkOk-vs-BoolTreeLk seam tension.
+  // `CannotExit`) and is available at the ONE invocation site: the entry
+  // pairing (`WkE.WalkOkEntry`). The check-insertion seam (`min == 1, Inf`)
+  // uses `CE.BoolCheckInsert`, whose strengthened ensures makes the insertion
+  // invisible to the erasure tie.
   // ==========================================================================
 
-  /** Fuel-indexed core: a represented, walk-guarded action stack's
-      `BoolTreeLk` tree is, after `Progress`-erasure, the canonical
-      `ETreeRepLk` tree at `(pc, EaOf(b))`. One case per action/regex shape,
-      mirroring `ATR.ActionsTreeRepFRE` case-for-case. */
-  lemma {:isolate_assertions} ActionsETreeRepFLk(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions,
-                                                 code: RB.code, pc: nat, inp: LC.Input,
-                                                 b: BS.LoopBool, t: LT.Tree, n: nat)
+  /** Fuel-indexed core of the construction: returns the PLANTED canonical
+      tree — `TreeRepLkRE`-represented at `(pc, EaOf(b))` and erasure-equal to
+      the spec walk tree `t`. One case per action/regex shape, mirroring
+      `ATR.ActionsTreeRepFRE` case-for-case. */
+  lemma {:isolate_assertions} ActionsTreeRepLkF(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions,
+                                                code: RB.code, pc: nat, inp: LC.Input,
+                                                b: BS.LoopBool, t: LT.Tree, n: nat)
+    returns (tcan: LT.Tree)
     requires EL.PikeLkActions(acts)
     requires ATR.ActionsRepFuelL(rer, qm, acts, code, pc, n)
     requires WO.WalkOk(acts, code, pc, ATR.EaOf(b))
     requires EL.BoolTreeLk(rer, acts, inp, b, t)
-    ensures ETreeRepLk(rer, qm, code, inp, CE.ProgErase(t), pc, ATR.EaOf(b))
+    ensures TreeRepLkRE(rer, qm, code, inp, tcan, pc, ATR.EaOf(b))
+    ensures CE.ProgErase(tcan) == CE.ProgErase(t)
     decreases CE.PSize(t), ATR.MsizeA(acts), n, 1
   {
     if |acts| == 0 && NR.GetPcRE(code, pc) == Some(RB.Accept) {
       assert t == LT.Match;
-      // e_match
+      tcan := LT.Match;
+      // tr_match
     } else if exists pcstart: nat :: NR.GetPcRE(code, pc) == Some(RB.Jmp(pcstart))
                 && ATR.ActionsRepFuelL(rer, qm, acts, code, pcstart, n - 1) {
       var pcstart: nat :| NR.GetPcRE(code, pc) == Some(RB.Jmp(pcstart))
         && ATR.ActionsRepFuelL(rer, qm, acts, code, pcstart, n - 1);
       WO.WalkOkJmp(acts, code, pc, ATR.EaOf(b), pcstart);
-      ActionsETreeRepFLk(rer, qm, acts, code, pcstart, inp, b, t, n - 1);
-      // e_jmp
-      assert ETreeRepLk(rer, qm, code, inp, CE.ProgErase(t), pc, ATR.EaOf(b));
+      tcan := ActionsTreeRepLkF(rer, qm, acts, code, pcstart, inp, b, t, n - 1);
+      // tr_jmp
+      assert TreeRepLkRE(rer, qm, code, inp, tcan, pc, ATR.EaOf(b));
     } else {
       var cont := acts[1..];
       var pcmid: nat :| AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid)
@@ -1148,14 +1151,16 @@ module LindenElkLiftSim {
             match t {
               case Progress(tc) =>
                 WO.WalkOkAcheckEndLoop(acts, code, pc, ATR.EaOf(b));
-                ActionsETreeRepFLk(rer, qm, cont, code, pc + 1, inp, BS.CanExit, tc, n - 1);
-                // e_progress stutter: ProgErase(t) == ProgErase(tc)
-                assert ETreeRepLk(rer, qm, code, inp, CE.ProgErase(tc), pc, true);
+                var sub := ActionsTreeRepLkF(rer, qm, cont, code, pc + 1, inp, BS.CanExit, tc, n - 1);
+                tcan := LT.Progress(sub);
+                // tr_progress (fall-through EndLoop)
+                assert TreeRepLkRE(rer, qm, code, inp, tcan, pc, true);
               case _ =>
             }
           } else {
-            // t == Mismatch: e_progressfail
-            assert ETreeRepLk(rer, qm, code, inp, LT.Mismatch, pc, false);
+            // t == Mismatch: tr_progressfail
+            tcan := LT.Mismatch;
+            assert TreeRepLkRE(rer, qm, code, inp, tcan, pc, false);
           }
         } else {
           // the zero-width check at the do-while's backward fork
@@ -1164,16 +1169,18 @@ module LindenElkLiftSim {
             match t {
               case Progress(tc) =>
                 WO.WalkOkAcheckBackFork(acts, code, pc, ATR.EaOf(b));
-                AtBackForkETreeLk(rer, qm, cont, code, pc, inp, tc, n - 1);
-                // ProgErase(t) == ProgErase(tc), no wrapper to consume
-                assert ETreeRepLk(rer, qm, code, inp, CE.ProgErase(tc), pc, true);
+                var sub := AtBackForkTreeLkF(rer, qm, cont, code, pc, inp, tc, n - 1);
+                tcan := LT.Progress(sub);
+                // the companion's ensures IS tr_plus for Progress(sub)
+                assert TreeRepLkRE(rer, qm, code, inp, tcan, pc, true);
               case _ =>
             }
           } else {
-            // t == Mismatch: e_plusfail
+            // t == Mismatch: tr_plusfail
             var fx: int, fy: int :| NR.GetPcRE(code, pc) == Some(RB.Fork(fx, fy))
               && fx >= 0 && fy >= 0 && (fx as nat <= pc || fy as nat <= pc);
-            assert ETreeRepLk(rer, qm, code, inp, LT.Mismatch, pc, false);
+            tcan := LT.Mismatch;
+            assert TreeRepLkRE(rer, qm, code, inp, tcan, pc, false);
           }
         }
       case Aclose(gid) =>
@@ -1182,9 +1189,10 @@ module LindenElkLiftSim {
             assert g == LG.Close(gid);
             WO.WalkOkAclose(acts, code, pc, ATR.EaOf(b));
             assert CE.PSize(tc) < CE.PSize(t);
-            ActionsETreeRepFLk(rer, qm, cont, code, pc + 1, inp, b, tc, n - 1);
-            // e_close
-            assert ETreeRepLk(rer, qm, code, inp, CE.ProgErase(t), pc, ATR.EaOf(b));
+            var sub := ActionsTreeRepLkF(rer, qm, cont, code, pc + 1, inp, b, tc, n - 1);
+            tcan := LT.GroupActionT(g, sub);
+            // tr_close
+            assert TreeRepLkRE(rer, qm, code, inp, tcan, pc, ATR.EaOf(b));
           case _ =>
         }
       case Areg(r) =>
@@ -1194,24 +1202,26 @@ module LindenElkLiftSim {
           assert pcmid == pc;
           WO.WalkOkEpsilon(acts, code, pc, ATR.EaOf(b));
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
-          ActionsETreeRepFLk(rer, qm, cont, code, pc, inp, b, t, n - 1);
+          tcan := ActionsTreeRepLkF(rer, qm, cont, code, pc, inp, b, t, n - 1);
         case Character(cd) => {
           var ce :| NR.GetPcRE(code, pc) == Some(RB.Consume(ce)) && AR.ExpectationMatches(rer, ce, cd);
           AR.ReadAgree(rer, ce, cd, inp);
           match LC.ReadChar(rer, cd, inp, WP.Forward) {
             case None =>
-              // t == Mismatch; e_readfail (ReadCharE == None by ReadAgree)
-              assert ETreeRepLk(rer, qm, code, inp, LT.Mismatch, pc, ATR.EaOf(b));
+              // t == Mismatch; tr_readfail (ReadCharE == None by ReadAgree)
+              tcan := LT.Mismatch;
+              assert TreeRepLkRE(rer, qm, code, inp, tcan, pc, ATR.EaOf(b));
             case Some(pair) =>
               match t {
                 case Read(c, tc) =>
                   assert c == pair.0;
                   WO.WalkOkCharacter(acts, code, pc, ATR.EaOf(b));
                   assert CE.PSize(tc) < CE.PSize(t);
-                  ActionsETreeRepFLk(rer, qm, cont, code, pc + 1, pair.1, BS.CanExit, tc, n - 1);
-                  // e_read with witness (ce, pair.1)
+                  var sub := ActionsTreeRepLkF(rer, qm, cont, code, pc + 1, pair.1, BS.CanExit, tc, n - 1);
+                  tcan := LT.Read(c, sub);
+                  // tr_read with witness (ce, pair.1)
                   assert AR.ReadCharE(ce, inp) == Some((c, pair.1));
-                  assert ETreeRepLk(rer, qm, code, inp, CE.ProgErase(t), pc, ATR.EaOf(b));
+                  assert TreeRepLkRE(rer, qm, code, inp, tcan, pc, ATR.EaOf(b));
                 case _ =>
               }
           }
@@ -1239,7 +1249,7 @@ module LindenElkLiftSim {
               ATR.ActionsRepLToFuel(rer, qm, la, code, pc + 1);
               var na: nat :| ATR.ActionsRepFuelL(rer, qm, la, code, pc + 1, na);
               assert CE.PSize(ta) < CE.PSize(t);
-              ActionsETreeRepFLk(rer, qm, la, code, pc + 1, inp, b, ta, na);
+              var suba := ActionsTreeRepLkF(rer, qm, la, code, pc + 1, inp, b, ta, na);
               // right branch: [Areg r2]+cont at e1+1
               var lb := [LS.Areg(r2)] + cont;
               ATR.FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
@@ -1249,9 +1259,10 @@ module LindenElkLiftSim {
               ATR.ActionsRepLToFuel(rer, qm, lb, code, e1 + 1);
               var nb: nat :| ATR.ActionsRepFuelL(rer, qm, lb, code, e1 + 1, nb);
               assert CE.PSize(tb) < CE.PSize(t);
-              ActionsETreeRepFLk(rer, qm, lb, code, e1 + 1, inp, b, tb, nb);
-              // e_choice with the forward Fork(pc+1, e1+1): e1 >= pc+1 by NfaRepIncrL
-              assert ETreeRepLk(rer, qm, code, inp, CE.ProgErase(t), pc, ATR.EaOf(b));
+              var subb := ActionsTreeRepLkF(rer, qm, lb, code, e1 + 1, inp, b, tb, nb);
+              tcan := LT.Choice(suba, subb);
+              // tr_choice with the forward Fork(pc+1, e1+1): e1 >= pc+1 by NfaRepIncrL
+              assert TreeRepLkRE(rer, qm, code, inp, tcan, pc, ATR.EaOf(b));
             case _ =>
           }
         }
@@ -1274,7 +1285,7 @@ module LindenElkLiftSim {
           ATR.ActionsRepLToFuel(rer, qm, na, code, pc);
           var nn: nat :| ATR.ActionsRepFuelL(rer, qm, na, code, pc, nn);
           WO.WalkOkSeq(acts, code, pc, ATR.EaOf(b), r1, r2);
-          ActionsETreeRepFLk(rer, qm, na, code, pc, inp, b, t, nn);
+          tcan := ActionsTreeRepLkF(rer, qm, na, code, pc, inp, b, t, nn);
         }
         case Quantified(greedy, min, delta, r1) => {
           var gidl := L.DefGroups(r1);
@@ -1314,9 +1325,10 @@ module LindenElkLiftSim {
                       var ni: nat :| ATR.ActionsRepFuelL(rer, qm, ia, code, pc + 1, ni);
                       WO.WalkOkQuantForced(acts, code, pc, ATR.EaOf(b), greedy, min, delta, r1);
                       assert CE.PSize(tc) < CE.PSize(t);
-                      ActionsETreeRepFLk(rer, qm, ia, code, pc + 1, inp, b, tc, ni);
-                      // e_reset at pc (the copy's clock-mark carries the Reset)
-                      assert ETreeRepLk(rer, qm, code, inp, CE.ProgErase(t), pc, ATR.EaOf(b));
+                      var sub := ActionsTreeRepLkF(rer, qm, ia, code, pc + 1, inp, b, tc, ni);
+                      tcan := LT.GroupActionT(g, sub);
+                      // tr_reset at pc (the copy's clock-mark carries the Reset)
+                      assert TreeRepLkRE(rer, qm, code, inp, tcan, pc, ATR.EaOf(b));
                     case _ =>
                   }
                 } else {
@@ -1381,10 +1393,12 @@ module LindenElkLiftSim {
                       WO.WalkOkQuantSeam(acts, code, pc, ATR.EaOf(b), greedy, r1, inp);
                       assert CE.PSize(t1ck) == CE.PSize(tc);
                       assert CE.PSize(t1ck) < CE.PSize(t);
-                      ActionsETreeRepFLk(rer, qm, ia, code, pc + 1, inp, b, t1ck, ni);
-                      // ETreeRepLk(ProgErase(t1ck)) == ETreeRepLk(ProgErase(tc)); e_reset at pc
-                      assert ETreeRepLk(rer, qm, code, inp, CE.ProgErase(tc), pc + 1, ATR.EaOf(b));
-                      assert ETreeRepLk(rer, qm, code, inp, CE.ProgErase(t), pc, ATR.EaOf(b));
+                      var sub := ActionsTreeRepLkF(rer, qm, ia, code, pc + 1, inp, b, t1ck, ni);
+                      tcan := LT.GroupActionT(g, sub);
+                      // erasure: ProgErase(sub) == ProgErase(t1ck) == ProgErase(tc)
+                      // (BoolCheckInsert's insertion is Progress-only); tr_reset at pc
+                      assert CE.ProgErase(sub) == CE.ProgErase(tc);
+                      assert TreeRepLkRE(rer, qm, code, inp, tcan, pc, ATR.EaOf(b));
                     case _ =>
                   }
                 }
@@ -1417,9 +1431,10 @@ module LindenElkLiftSim {
                     var ni: nat :| ATR.ActionsRepFuelL(rer, qm, ia, code, pc + 1, ni);
                     WO.WalkOkQuantForced(acts, code, pc, ATR.EaOf(b), greedy, min, delta, r1);
                     assert CE.PSize(tc) < CE.PSize(t);
-                    ActionsETreeRepFLk(rer, qm, ia, code, pc + 1, inp, b, tc, ni);
-                    // e_reset at pc
-                    assert ETreeRepLk(rer, qm, code, inp, CE.ProgErase(t), pc, ATR.EaOf(b));
+                    var sub := ActionsTreeRepLkF(rer, qm, ia, code, pc + 1, inp, b, tc, ni);
+                    tcan := LT.GroupActionT(g, sub);
+                    // tr_reset at pc
+                    assert TreeRepLkRE(rer, qm, code, inp, tcan, pc, ATR.EaOf(b));
                   case _ =>
                 }
             }
@@ -1435,7 +1450,7 @@ module LindenElkLiftSim {
               WO.WalkOkQuantSpent(acts, code, pc, ATR.EaOf(b), greedy, r1);
               assert LS.ActionsRegexSize(cont) < LS.ActionsRegexSize(acts);
               assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
-              ActionsETreeRepFLk(rer, qm, cont, code, pcmid, inp, b, t, n - 1);
+              tcan := ActionsTreeRepLkF(rer, qm, cont, code, pcmid, inp, b, t, n - 1);
             } else {
               // one bounded layer: the fork skips to the common end pcmid
               var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
@@ -1462,7 +1477,7 @@ module LindenElkLiftSim {
                                           if greedy then pcmid else pc + 1, inp);
                       // skip branch: cont at the common end pcmid
                       assert CE.PSize(skipt) < CE.PSize(t);
-                      ActionsETreeRepFLk(rer, qm, cont, code, pcmid, inp, b, skipt, n - 1);
+                      var subs := ActionsTreeRepLkF(rer, qm, cont, code, pcmid, inp, b, skipt, n - 1);
                       // iteration branch at pc+3 with the NN(k-1) continuation at e1+1
                       EL.PikeLkActionsConsIff(LS.Areg(quant), cont);
                       EL.PikeLkActionsConsIff(LS.Acheck(inp), [LS.Areg(quant)] + cont);
@@ -1486,18 +1501,17 @@ module LindenElkLiftSim {
                       ATR.ActionsRepLToFuel(rer, qm, ia, code, pc + 3);
                       var ni: nat :| ATR.ActionsRepFuelL(rer, qm, ia, code, pc + 3, ni);
                       assert CE.PSize(ti) < CE.PSize(t);
-                      ActionsETreeRepFLk(rer, qm, ia, code, pc + 3, inp, BS.CannotExit, ti, ni);
-                      // assemble: erased iter at pc+3 (false) -> e_begin at pc+2 ->
-                      // e_reset at pc+1 -> e_choice with the skip at pcmid
-                      assert ETreeRepLk(rer, qm, code, inp, CE.ProgErase(ti), pc + 3, false);
-                      assert ETreeRepLk(rer, qm, code, inp, CE.ProgErase(ti), pc + 2, ATR.EaOf(b));
-                      var itere := LT.GroupActionT(g, CE.ProgErase(ti));
-                      assert itere == CE.ProgErase(itert);
-                      assert ETreeRepLk(rer, qm, code, inp, itere, pc + 1, ATR.EaOf(b));
-                      assert CE.ProgErase(t)
-                          == if greedy then LT.Choice(itere, CE.ProgErase(skipt))
-                                       else LT.Choice(CE.ProgErase(skipt), itere);
-                      assert ETreeRepLk(rer, qm, code, inp, CE.ProgErase(t), pc, ATR.EaOf(b));
+                      var subi := ActionsTreeRepLkF(rer, qm, ia, code, pc + 3, inp, BS.CannotExit, ti, ni);
+                      // assemble: subi at pc+3 (false) -> tr_begin at pc+2 ->
+                      // tr_reset at pc+1 -> tr_choice with the skip at pcmid
+                      assert TreeRepLkRE(rer, qm, code, inp, subi, pc + 3, false);
+                      assert TreeRepLkRE(rer, qm, code, inp, subi, pc + 2, ATR.EaOf(b));
+                      var iterstar := LT.GroupActionT(g, subi);
+                      assert TreeRepLkRE(rer, qm, code, inp, iterstar, pc + 1, ATR.EaOf(b));
+                      tcan := if greedy then LT.Choice(iterstar, subs) else LT.Choice(subs, iterstar);
+                      assert TreeRepLkRE(rer, qm, code, inp, tcan, pc, ATR.EaOf(b));
+                      assert CE.ProgErase(iterstar) == CE.ProgErase(itert);
+                      assert CE.ProgErase(tcan) == CE.ProgErase(t);
                     case _ =>
                   }
                 case _ =>
@@ -1540,7 +1554,7 @@ module LindenElkLiftSim {
                                         if greedy then pcmid else pc + 1, inp);
                     // skip branch at pcmid == e1+2
                     assert CE.PSize(skipt) < CE.PSize(t);
-                    ActionsETreeRepFLk(rer, qm, cont, code, pcmid, inp, b, skipt, n - 1);
+                    var subs := ActionsTreeRepLkF(rer, qm, cont, code, pcmid, inp, b, skipt, n - 1);
                     // iteration branch: [Areg r1, Acheck inp, Areg quant] + cont at pc+3
                     EL.PikeLkActionsConsIff(LS.Areg(quant), cont);
                     EL.PikeLkActionsConsIff(LS.Acheck(inp), [LS.Areg(quant)] + cont);
@@ -1563,25 +1577,24 @@ module LindenElkLiftSim {
                     ATR.ActionsRepLToFuel(rer, qm, ia, code, pc + 3);
                     var ni: nat :| ATR.ActionsRepFuelL(rer, qm, ia, code, pc + 3, ni);
                     assert CE.PSize(ti) < CE.PSize(t);
-                    ActionsETreeRepFLk(rer, qm, ia, code, pc + 3, inp, BS.CannotExit, ti, ni);
-                    // assemble: e_begin at pc+2, e_reset at pc+1, e_choice at pc
-                    assert ETreeRepLk(rer, qm, code, inp, CE.ProgErase(ti), pc + 3, false);
-                    assert ETreeRepLk(rer, qm, code, inp, CE.ProgErase(ti), pc + 2, ATR.EaOf(b));
-                    var itere := LT.GroupActionT(g, CE.ProgErase(ti));
-                    assert itere == CE.ProgErase(itert);
-                    assert ETreeRepLk(rer, qm, code, inp, itere, pc + 1, ATR.EaOf(b));
-                    assert CE.ProgErase(t)
-                        == if greedy then LT.Choice(itere, CE.ProgErase(skipt))
-                                     else LT.Choice(CE.ProgErase(skipt), itere);
-                    assert ETreeRepLk(rer, qm, code, inp, CE.ProgErase(t), pc, ATR.EaOf(b));
+                    var subi := ActionsTreeRepLkF(rer, qm, ia, code, pc + 3, inp, BS.CannotExit, ti, ni);
+                    // assemble: tr_begin at pc+2, tr_reset at pc+1, tr_choice at pc
+                    assert TreeRepLkRE(rer, qm, code, inp, subi, pc + 3, false);
+                    assert TreeRepLkRE(rer, qm, code, inp, subi, pc + 2, ATR.EaOf(b));
+                    var iterstar := LT.GroupActionT(g, subi);
+                    assert TreeRepLkRE(rer, qm, code, inp, iterstar, pc + 1, ATR.EaOf(b));
+                    tcan := if greedy then LT.Choice(iterstar, subs) else LT.Choice(subs, iterstar);
+                    assert TreeRepLkRE(rer, qm, code, inp, tcan, pc, ATR.EaOf(b));
+                    assert CE.ProgErase(iterstar) == CE.ProgErase(itert);
+                    assert CE.ProgErase(tcan) == CE.ProgErase(t);
                   case _ =>
                 }
               case _ =>
             }
           } else {
             // the LOOP VIEW: a bare star at the do-while's backward fork.
-            // WalkOk pins the flag to CanExit; delegate to the fused fork
-            // lemma — no Progress wrapper to plant at the erased level.
+            // WalkOk pins the flag to CanExit; the fused fork lemma builds the
+            // Choice and tr_plus consumes the PLANTED Progress with the fork.
             assert NUL.NonNullableL(r1);
             var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em))
               && em <= pc
@@ -1596,7 +1609,9 @@ module LindenElkLiftSim {
             assert ATR.EaOf(b) == true;
             assert b == BS.CanExit;
             assert AR.BackForkAt(code, pc);
-            AtBackForkETreeLk(rer, qm, acts, code, pc, inp, t, n);
+            var sub := AtBackForkTreeLkF(rer, qm, acts, code, pc, inp, t, n);
+            tcan := LT.Progress(sub);
+            assert TreeRepLkRE(rer, qm, code, inp, tcan, pc, ATR.EaOf(b));
           }
         }
         case Group(gid, r1) => {
@@ -1623,9 +1638,10 @@ module LindenElkLiftSim {
               ATR.ActionsRepLToFuel(rer, qm, ga, code, pc + 1);
               var ng: nat :| ATR.ActionsRepFuelL(rer, qm, ga, code, pc + 1, ng);
               assert CE.PSize(tc) < CE.PSize(t);
-              ActionsETreeRepFLk(rer, qm, ga, code, pc + 1, inp, b, tc, ng);
-              // e_open
-              assert ETreeRepLk(rer, qm, code, inp, CE.ProgErase(t), pc, ATR.EaOf(b));
+              var sub := ActionsTreeRepLkF(rer, qm, ga, code, pc + 1, inp, b, tc, ng);
+              tcan := LT.GroupActionT(g, sub);
+              // tr_open
+              assert TreeRepLkRE(rer, qm, code, inp, tcan, pc, ATR.EaOf(b));
             case _ =>
           }
         }
@@ -1638,20 +1654,23 @@ module LindenElkLiftSim {
                 assert la2 == la;
                 WO.WalkOkAnchor(acts, code, pc, ATR.EaOf(b));
                 assert CE.PSize(tc) < CE.PSize(t);
-                ActionsETreeRepFLk(rer, qm, cont, code, pc + 1, inp, b, tc, n - 1);
-                // e_anchorpass (Linden-side satisfaction, anchor pinned via ra)
-                assert ETreeRepLk(rer, qm, code, inp, CE.ProgErase(t), pc, ATR.EaOf(b));
+                var sub := ActionsTreeRepLkF(rer, qm, cont, code, pc + 1, inp, b, tc, n - 1);
+                tcan := LT.AnchorPass(la2, sub);
+                // tr_anchorpass (Linden-side satisfaction, anchor pinned via ra)
+                assert TreeRepLkRE(rer, qm, code, inp, tcan, pc, ATR.EaOf(b));
               case _ =>
             }
           } else {
-            // t == Mismatch; e_anchorfail via ra
-            assert ETreeRepLk(rer, qm, code, inp, LT.Mismatch, pc, ATR.EaOf(b));
+            // t == Mismatch; tr_anchorfail via ra
+            tcan := LT.Mismatch;
+            assert TreeRepLkRE(rer, qm, code, inp, tcan, pc, ATR.EaOf(b));
           }
         }
         case LookaroundR(lk, r1) => {
           // THE GATE. NfaRepL pins the oracle instruction + the looks-table
-          // row; ETreeRepLk's gate rule is decided by the same FUNCTIONAL
-          // verdict BoolTreeLk's LkGateOk used — no oracle bit involved.
+          // row; TreeRepLkRE's gate rule is decided by the same FUNCTIONAL
+          // verdict BoolTreeLk's LkGateOk used — no oracle bit involved. The
+          // node is KEPT with the RAW functional body.
           var lid: int :| NR.GetPcRE(code, pc)
                             == Some(if AR.PositiveL(lk) then RB.CheckOracle(lid)
                                                         else RB.NegCheckOracle(lid))
@@ -1663,15 +1682,15 @@ module LindenElkLiftSim {
               assert lk2 == lk && tlk == tlkc && LS.LkResult(lk, tlk, LG.Empty, inp).Some?;
               WO.WalkOkLookaround(acts, code, pc, ATR.EaOf(b));
               assert CE.PSize(tc) < CE.PSize(t);
-              ActionsETreeRepFLk(rer, qm, cont, code, pc + 1, inp, b, tc, n - 1);
-              // e_lk: node kept, tlk-field is the erased functional body
-              assert CE.ProgErase(t) == LT.LK(lk, CE.ProgErase(tlkc), CE.ProgErase(tc));
-              assert ETreeRepLk(rer, qm, code, inp, CE.ProgErase(t), pc, ATR.EaOf(b));
+              var sub := ActionsTreeRepLkF(rer, qm, cont, code, pc + 1, inp, b, tc, n - 1);
+              tcan := LT.LK(lk, tlkc, sub);
+              // tr_lk
+              assert TreeRepLkRE(rer, qm, code, inp, tcan, pc, ATR.EaOf(b));
             case LKFail(lk2, tlk) =>
               assert lk2 == lk && tlk == tlkc && LS.LkResult(lk, tlk, LG.Empty, inp).None?;
-              // e_lkfail: direct, no recursion
-              assert CE.ProgErase(t) == LT.LKFail(lk, CE.ProgErase(tlkc));
-              assert ETreeRepLk(rer, qm, code, inp, CE.ProgErase(t), pc, ATR.EaOf(b));
+              // tr_lkfail: direct, no recursion
+              tcan := LT.LKFail(lk, tlkc);
+              assert TreeRepLkRE(rer, qm, code, inp, tcan, pc, ATR.EaOf(b));
             case _ =>
           }
         }
@@ -1679,22 +1698,23 @@ module LindenElkLiftSim {
     }
   }
 
-  /** The fused fork lemma at the erased level: at the do-while's backward
-      fork with the walk allowed to exit, the continuation's spec tree is
-      erased-canonical AT the fork — no `Progress` wrapper to consume
-      (`e_plus` is the bare-Choice rule). Mirror of `ATR.AtBackForkTreeRep`:
-      pops `Acheck`/`Epsilon`/`Sequence`/spent heads; every other head shape
-      contradicts the pinned Fork; at the loop-view star the iteration is
-      lifted to `CanExit` (`CE.BoolFlagLift`) and both branches delegate to
-      the general bridge. */
-  lemma AtBackForkETreeLk(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code,
+  /** The fused fork lemma: at the do-while's backward fork with the walk
+      allowed to exit, builds the canonical Choice whose PLANTED `Progress`
+      wrapper is consumed by `tr_plus` together with the fork. Mirror of
+      `ATR.AtBackForkTreeRep`: pops `Acheck`/`Epsilon`/`Sequence`/spent heads;
+      every other head shape contradicts the pinned Fork; at the loop-view
+      star the iteration is lifted to `CanExit` (`CE.BoolFlagLift`) and both
+      branches delegate to the general construction. */
+  lemma AtBackForkTreeLkF(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code,
                           pc: nat, inp: LC.Input, tc: LT.Tree, n: nat)
+    returns (tcstar: LT.Tree)
     requires EL.PikeLkActions(acts)
     requires ATR.ActionsRepFuelL(rer, qm, acts, code, pc, n)
     requires WO.WalkOk(acts, code, pc, true)
     requires EL.BoolTreeLk(rer, acts, inp, BS.CanExit, tc)
     requires AR.BackForkAt(code, pc)
-    ensures ETreeRepLk(rer, qm, code, inp, CE.ProgErase(tc), pc, true)
+    ensures TreeRepLkRE(rer, qm, code, inp, LT.Progress(tcstar), pc, true)
+    ensures CE.ProgErase(tcstar) == CE.ProgErase(tc)
     decreases CE.PSize(tc), ATR.MsizeA(acts), n, 0
   {
     var fx: int, fy: int :| NR.GetPcRE(code, pc) == Some(RB.Fork(fx, fy))
@@ -1708,13 +1728,14 @@ module LindenElkLiftSim {
     EL.PikeLkActionsConsIff(acts[0], cont);
     match acts[0]
     case Acheck(strcheck) =>
-      // a stacked check: zero-width at the fork; its Progress erases away
+      // a stacked check: zero-width at the fork; its Progress collapses into
+      // the single planted guard
       assert pcmid == pc;
       assert LS.ActionsRegexSize(acts) == LS.ActionsRegexSize(cont);
       match tc {
         case Progress(tc2) =>
           WO.WalkOkAcheckBackFork(acts, code, pc, true);
-          AtBackForkETreeLk(rer, qm, cont, code, pc, inp, tc2, n - 1);
+          tcstar := AtBackForkTreeLkF(rer, qm, cont, code, pc, inp, tc2, n - 1);
           assert CE.ProgErase(tc) == CE.ProgErase(tc2);
         case _ =>
       }
@@ -1727,7 +1748,7 @@ module LindenElkLiftSim {
         assert pcmid == pc;
         WO.WalkOkEpsilon(acts, code, pc, true);
         assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
-        AtBackForkETreeLk(rer, qm, cont, code, pc, inp, tc, n - 1);
+        tcstar := AtBackForkTreeLkF(rer, qm, cont, code, pc, inp, tc, n - 1);
       case Character(cd) =>
         var ce :| NR.GetPcRE(code, pc) == Some(RB.Consume(ce)) && AR.ExpectationMatches(rer, ce, cd);
         assert false;   // Consume != Fork
@@ -1760,7 +1781,7 @@ module LindenElkLiftSim {
         ATR.ActionsRepLToFuel(rer, qm, na, code, pc);
         var nn: nat :| ATR.ActionsRepFuelL(rer, qm, na, code, pc, nn);
         WO.WalkOkSeq(acts, code, pc, true, r1, r2);
-        AtBackForkETreeLk(rer, qm, na, code, pc, inp, tc, nn);
+        tcstar := AtBackForkTreeLkF(rer, qm, na, code, pc, inp, tc, nn);
       case Quantified(greedy, min, delta, r1) =>
         var gidl := L.DefGroups(r1);
         if min > 0 {
@@ -1795,7 +1816,7 @@ module LindenElkLiftSim {
             WO.WalkOkQuantSpent(acts, code, pc, true, greedy, r1);
             assert LS.ActionsRegexSize(cont) < LS.ActionsRegexSize(acts);
             assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
-            AtBackForkETreeLk(rer, qm, cont, code, pc, inp, tc, n - 1);
+            tcstar := AtBackForkTreeLkF(rer, qm, cont, code, pc, inp, tc, n - 1);
           } else {
             var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, pcmid) else RB.Fork(pcmid, pc + 1))
               && (exists qid: int ::
@@ -1851,9 +1872,9 @@ module LindenElkLiftSim {
                     assert g == LG.Reset(gidl);
                     var il := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont;
                     assert EL.BoolTreeLk(rer, il, inp, BS.CannotExit, ti);
-                    // skip branch: the general bridge at the exit arm
+                    // skip branch: the general construction at the exit arm
                     assert CE.PSize(skipt) < CE.PSize(tc);
-                    ActionsETreeRepFLk(rer, qm, cont, code, pc + 1, inp, BS.CanExit, skipt, n - 1);
+                    var subs := ActionsTreeRepLkF(rer, qm, cont, code, pc + 1, inp, BS.CanExit, skipt, n - 1);
                     // iteration branch: lift to CanExit, then bridge
                     EL.PikeLkActionsConsIff(LS.Areg(q0), cont);
                     EL.PikeLkActionsConsIff(LS.Acheck(inp), [LS.Areg(q0)] + cont);
@@ -1898,17 +1919,17 @@ module LindenElkLiftSim {
                     ATR.ActionsRepLToFuel(rer, qm, il, code, em + 1);
                     var ni: nat :| ATR.ActionsRepFuelL(rer, qm, il, code, em + 1, ni);
                     assert CE.PSize(ti) < CE.PSize(tc);
-                    ActionsETreeRepFLk(rer, qm, il, code, em + 1, inp, BS.CanExit, ti, ni);
-                    // assemble: e_reset at the stamp, then e_plus (bare
-                    // Choice) at the fork — arms at (em, true)/(pc+1, true)
-                    assert ETreeRepLk(rer, qm, code, inp, CE.ProgErase(ti), em + 1, true);
-                    var itere := LT.GroupActionT(g, CE.ProgErase(ti));
-                    assert itere == CE.ProgErase(itert);
-                    assert ETreeRepLk(rer, qm, code, inp, itere, em, true);
-                    assert CE.ProgErase(tc)
-                        == if greedy then LT.Choice(itere, CE.ProgErase(skipt))
-                                     else LT.Choice(CE.ProgErase(skipt), itere);
-                    assert ETreeRepLk(rer, qm, code, inp, CE.ProgErase(tc), pc, true);
+                    var subi := ActionsTreeRepLkF(rer, qm, il, code, em + 1, inp, BS.CanExit, ti, ni);
+                    // assemble: tr_reset at the stamp, then tr_plus at the
+                    // fork — arms at (em, true)/(pc+1, true), the planted
+                    // Progress consumed with the Choice
+                    assert TreeRepLkRE(rer, qm, code, inp, subi, em + 1, true);
+                    var iterstar := LT.GroupActionT(g, subi);
+                    assert TreeRepLkRE(rer, qm, code, inp, iterstar, em, true);
+                    tcstar := if greedy then LT.Choice(iterstar, subs) else LT.Choice(subs, iterstar);
+                    assert TreeRepLkRE(rer, qm, code, inp, LT.Progress(tcstar), pc, true);
+                    assert CE.ProgErase(iterstar) == CE.ProgErase(itert);
+                    assert CE.ProgErase(tcstar) == CE.ProgErase(tc);
                   case _ =>
                 }
               case _ =>
@@ -1930,22 +1951,26 @@ module LindenElkLiftSim {
       case Backreference(_) =>     // not pike
   }
 
-  /** The bridge, fuel-free: a represented, walk-guarded stack's `BoolTreeLk`
-      tree is erased-canonical. THE ONE INVOCATION SITE is the entry pairing
-      (`WkE.WalkOkEntry` supplies `WalkOk` there); downstream the canonical
-      tie is maintained by per-instruction `ETreeRepLk` inversions, never by
-      re-running this. */
-  lemma ActionsETreeRepLk(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code,
-                          pc: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree)
+  /** The construction, fuel-free: from a represented, walk-guarded stack's
+      `BoolTreeLk` tree, the PLANTED canonical tree machine B runs — unique
+      per `(pc, ea)` (`TreeRepLkDetermRE`) and leaf-equal to the spec tree
+      (erasure-equal, then `ProgEraseLeavesEq`). THE ONE INVOCATION SITE is
+      the entry pairing (`WkE.WalkOkEntry` supplies `WalkOk` there);
+      downstream the canonical tie is maintained by per-instruction
+      `TreeRepLkRE` inversions, never by re-running this. */
+  lemma ActionsTreeRepLkRE(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code,
+                           pc: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree)
+    returns (tcan: LT.Tree)
     requires EL.PikeLkActions(acts)
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
     requires WO.WalkOk(acts, code, pc, ATR.EaOf(b))
     requires EL.BoolTreeLk(rer, acts, inp, b, t)
-    ensures ETreeRepLk(rer, qm, code, inp, CE.ProgErase(t), pc, ATR.EaOf(b))
+    ensures TreeRepLkRE(rer, qm, code, inp, tcan, pc, ATR.EaOf(b))
+    ensures CE.ProgErase(tcan) == CE.ProgErase(t)
   {
     ATR.ActionsRepLToFuel(rer, qm, acts, code, pc);
     var n: nat :| ATR.ActionsRepFuelL(rer, qm, acts, code, pc, n);
-    ActionsETreeRepFLk(rer, qm, acts, code, pc, inp, b, t, n);
+    tcan := ActionsTreeRepLkF(rer, qm, acts, code, pc, inp, b, t, n);
   }
 
   /** (1) t-side determinism — QUOTIENTED (2026-08-05). The exact-tree
