@@ -62,11 +62,16 @@ bodyless (their `ensures` is currently assumed). That is the entire remaining su
   ENDPOINT glue (`FirstLeaf(tcan) == FirstLeaf(t)`); the erased bridge is the SKELETON of the
   remaining planted constructor. Value layer unaffected: planted subtrees are `BoolTreeLk`
   trees of check-INSERTED stacks, so all proven cores still apply.*
-- *Remaining (task #15): (b′) convert the bridge to the value-returning planted constructor
-  `ActionsTreeRepLkF(...) returns (tcan)` ensuring `TreeRepLkRE(tcan, pc, EaOf(b))` and
-  `ProgErase(tcan) == ProgErase(t)`; (c′) LiftInvC: B runs `tcan` from init, per-head canonical
-  tie `TreeRepLkRE(tb_i, pc_i, ea_i)`, `SeenRepLk` restated with `TreeRepLkRE`, skip via
-  `TreeRepLkDetermRE`, steps via small `TreeRepLkRE`-At* inversions; (d′) resume `LiftStepC`.)*
+- *(b′) DONE (commit `b6a5b59`, first try, 4291/0): the bridge CONVERTED into the value-returning
+  planted constructor — `ActionsTreeRepLkF(...) returns (tcan)` + `AtBackForkTreeLkF` (companion,
+  `ensures TreeRepLkRE(Progress(tcstar), pc, true)`) + `ActionsTreeRepLkRE` wrapper, ensuring
+  `TreeRepLkRE(tcan, pc, EaOf(b))` and `ProgErase(tcan) == ProgErase(t)`. Machine B's canonical
+  tree machinery is COMPLETE: construct `tcan` once at entry (WalkOkEntry), leaf-equal to the spec
+  tree, unique per `(pc, ea)`, exact-tree memo unchanged.*
+- *Remaining (task #15 → #11): (c′) LiftInvC: B runs `tcan` from init, per-head canonical tie
+  `TreeRepLkRE(tb_i, pc_i, ea_i)`, `SeenRepLk` restated with `TreeRepLkRE` (+ re-prove the 4 seen
+  bricks), skip via `TreeRepLkDetermRE`, steps via small `TreeRepLkRE`-At* inversions (Fork arms
+  free via `tr_choice`/`tr_plus`); (d′) resume `LiftStepC`.)*
 
 ---
 
