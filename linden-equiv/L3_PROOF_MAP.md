@@ -73,6 +73,36 @@ bodyless (their `ensures` is currently assumed). That is the entire remaining su
   bricks), skip via `TreeRepLkDetermRE`, steps via small `TreeRepLkRE`-At* inversions (Fork arms
   free via `tr_choice`/`tr_plus`); (d′) resume `LiftStepC`.)*
 
+*(2026-08-07 update — (c′) COMPLETE, (d′) STRUCTURALLY COMPLETE (commits `11b405c..fd9c5cb`):*
+- *(c′) LANDED, all first-try. KEY DESIGN CORRECTION: `tcan` is NOT `BoolTreeLk`-representable
+  (the `min>0` forced-copy rule fixes the guardless continuation, so the planted first-arrival
+  `Progress` at a backfork exists under NO action stack — the old note's "WalkPairLk for tcan via
+  check-inserted stacks" is unrealizable). The fix: `ThreadRepLkC` = canonical tie
+  `TreeRepLkRE(tcan, pc, ea)` + an ERASURE EXISTENTIAL (`exists traw :: ProgErase(traw) ==
+  ProgErase(tcan) && ThreadRepLk(traw, gm, th)`) — the value layer rides raw witnesses, every
+  proven core applies verbatim. `ActiveRepLkC`/`BlockedRepLkC` likewise; `SeenRepLk` + 4 bricks
+  re-keyed on `TreeRepLkRE`; 5th brick `StutterSeenRepLk` added; `LiftInv` re-keyed canonical and
+  gains `IsblockedRepLk` (Consume-dedup skip) + `ContextOkRE` (anchor/char branch alignment);
+  `LiftInvC` = `PikeInvFullRE` + inp-link + `LiftInv`; `LiftInit`/`LiftInitC` construct and
+  return `tcan` (`ActionsTreeRepLkRE` + `WalkOkEntry`), ensuring `ProgErase(tcan)==ProgErase(t)`
+  (the endpoint FirstLeaf glue). The `TreeRepLkREAt*` inversion tier (10 lemmas): ALL EMPTY-BODY
+  — instruction-gated rules collapse the disjunction; Fork arms free.*
+- *(d′) `LiftStepC` FILLED (machine A whole-phase via `PSM.InvariantPreservationRE`, machine B via
+  `LiftAdvanceEpsilon`, inp-link via both invariants' `InpOfCp` pins). `LiftAdvanceEpsilon`
+  FILLED — the dispatcher mirrors `FAdvanceEpsilon` case-for-case over a new `LiftPreserve*Lk`
+  case tier (+ `TrcLk` closure kit, `TreeRepLkREInRange`, `IsblockedGrowLk`, `WalkPairLkAtJmp`,
+  `LiftDropDeadHeadLk`); `WriteOracle`/`CheckNullable`/`Fail` refuted by the canonical tie.
+  CASES PROVEN (7): **Skip** (THE payoff — `TreeRepLkDetermRE` + `NoStutterCycle`), Stutter
+  (Jmp/BeginLoop), Accept (BestTieLk straight from the head payload), EndLoopKill, AnchorKill,
+  AnchorPass (the pass-case TEMPLATE: canonical inversion pins head+child; the erasure tie pins
+  the raw witness's shape and transports the child pairing through `ThreadRepLkStepAnchor`),
+  + the shared dead-head brick. CASES BODILESS (8): ConsumeAdd/ConsumeDrop, SetReg (needs the
+  GmOfLive↔GMUpdate value tie), SetQuant (the NoDup research gap), Fork (branch pairing;
+  backward = 2 B steps), GatePass (thread the per-lid static look-table package into the proven
+  `ThreadRepLkStepCheckOracle`), NegGatePass, GateKill (bit⟺functional-verdict via the oracle
+  column), EndLoopPass (needs a WalkPairLk-level EndLoop peel core — Anchor's core is the
+  template).)*
+
 ---
 
 ## 0. The goal
@@ -197,15 +227,19 @@ These are the **simulation drivers** that thread the proven per-instruction core
 through the worklist recursion and the whole run. They are *engineering* (mirror the proven
 machine-A analogs), not new semantics — **except** where noted.
 
+*(2026-08-07: `LiftStepC` and `LiftAdvanceEpsilon` are now FILLED — the remaining surface is
+the 8 bodiless `LiftPreserve*Lk` ε-phase case lemmas (see the update note above) plus the rows
+still marked bodiless below.)*
+
 | bodyless | line | what it must do | mirror |
 |---|---|---|---|
-| `LiftStepC` | 4131 | one ε-phase of the **composite**: step `ptsB` by `TrcPikeTreeLk`, preserve `LiftInvC` across `FAdvanceEpsilon`. | `PSM.InvariantPreservationRE` (`:2461`) |
+| ~~`LiftStepC`~~ | — | **FILLED 2026-08-07** (A whole-phase driver ∥ B recursion). | `PSM.InvariantPreservationRE` (`:2461`) |
 | `L3aCompositeClose` | 4155 | **top-level:** drive `LiftInitC → LiftStepC* → PTS_final`, yielding `BestTieLk(FirstLeaf(t), result)` for the winner — the single sim output feeding §B. | `PSM.FindMatchSimRE` (`:3041`) + `PTL.PikeTreeLkComputesFirstLeaf` |
-| `LiftAdvanceEpsilon` | 739 | per-ε-phase over the *standalone* `LiftInv`; worklist recursion dispatching the §C/§D cores. | `AI.FAdvanceEpsilon` |
+| ~~`LiftAdvanceEpsilon`~~ | — | **FILLED 2026-08-07** (dispatcher over the `LiftPreserve*Lk` tier; 7 cases proven, 8 bodiless). | `AI.FAdvanceEpsilon` |
 | `LiftConsume` | 758 | consume/next-char phase (`pts_nextchar`, blocked→active). | `FConsume` |
 | `LiftFindMatch` | 774 | whole-run driver (standalone). | `FFindMatch` |
 | `LiftEndpoint` | 800 | endpoint extraction to `FirstLeaf`. | — |
-| `TtLkSameTree` | ~865 | RESTATED 2026-08-05 (exact-tree version FALSE): now `ensures ProgErase(t1)==ProgErase(t2)`. The skip case no longer routes through it — `ETreeRepLkDeterm` (PROVED) + the canonical-tie invariant close the skip directly; this wrapper needs the init bridge. | — |
+| `TtLkSameTree` | ~865 | RESTATED 2026-08-05 (exact-tree version FALSE): now `ensures ProgErase(t1)==ProgErase(t2)`. The skip case no longer routes through it — the canonical determinism + tie close the skip directly (DONE in `LiftPreserveSkipLk`); this wrapper is now likely DEAD — prune at cleanup. | — |
 
 *Note the two driver layers:* the **composite** spine (`LiftInitC`✓ → `LiftStepC` → `L3aCompositeClose`)
 is the settled top; the **standalone** `LiftAdvanceEpsilon/Consume/FindMatch/Endpoint` is the
