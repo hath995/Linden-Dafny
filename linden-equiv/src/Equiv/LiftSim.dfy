@@ -6399,12 +6399,29 @@ module LindenElkLiftSim {
       carry `NonNullableL(r1)`); BODILESS pending the structural induction
       (fuel over `MsizeA` with a Read-shielding measure). Consumed only by the
       BACKWARD (loop-view) fork arm, where the iteration thread runs at
-      `exit_allowed == true` with no interposed `BeginLoop` to absorb it. */
+      `exit_allowed == true` with no interposed `BeginLoop` to absorb it.
+      PROOF: the NonNullable head at index 0 shields EVERY `Acheck` in the
+      list (`ShieldedActs`' witness is j == 0 throughout), so the proven
+      `CE.BoolFlagLift` applies directly. */
   lemma BoolTreeLkGuardShield(rer: LW.RegExpRecord, r1: L.Regex, rest: LS.Actions,
                               inp: LC.Input, ti: LT.Tree)
     requires NUL.NonNullableL(r1)
+    requires EL.PikeLkActions([LS.Areg(r1)] + rest)
     requires EL.BoolTreeLk(rer, [LS.Areg(r1)] + rest, inp, BS.CannotExit, ti)
     ensures EL.BoolTreeLk(rer, [LS.Areg(r1)] + rest, inp, BS.CanExit, ti)
+  {
+    var acts := [LS.Areg(r1)] + rest;
+    assert CE.ShieldedActs(acts) by {
+      forall i | 0 <= i < |acts| && acts[i].Acheck?
+        ensures exists j :: 0 <= j < i && acts[j].Areg? && NUL.NonNullableL(acts[j].r)
+      {
+        assert acts[0] == LS.Areg(r1);
+        assert i >= 1;
+        assert acts[0].Areg? && NUL.NonNullableL(acts[0].r);
+      }
+    }
+    CE.BoolFlagLift(rer, acts, inp, ti);
+  }
 
   /** The star iteration arm's invariants across the unfold: `GateAheadClear`
       by the Reset itself (the fresh body pendings sit inside the reset set;
