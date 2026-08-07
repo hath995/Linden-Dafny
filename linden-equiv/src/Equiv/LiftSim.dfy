@@ -290,7 +290,12 @@ module LindenElkLiftSim {
 
   /** THE LIFT INVARIANT: the B state pairs with the VM state. Mirrors
       `PIV.PikeInvRE`'s shape with the B-side (t-based, value-carrying)
-      relations. `PTS_final` pairs through `BestTieLk` alone. */
+      relations. `PTS_final` pairs through `BestTieLk` alone.
+
+      RE-KEYED on the PLANTED CANONICAL pairing (2026-08-07): machine B runs
+      the `TreeRepLkRE`-canonical trees; `ActiveRepLkC`/`BlockedRepLkC` carry
+      the canonical tie per head plus the value layer through the raw
+      erasure-witness (see the §(c′) header before `ThreadRepLkC`). */
   ghost predicate LiftInv(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
                           crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                           bst: PT.PikeTreeState, vms: AI.VmState,
@@ -300,10 +305,10 @@ module LindenElkLiftSim {
     case PTS(inp, bactive, bbest, bblocked, bseen) =>
       0 <= vms.cp <= |str|
       && inp == PIV.InpOfCp(str, vms.cp)
-      && ActiveRepLk(rer, qm, re, code, inp, crv, str, ov, S, bactive, vms.active, ncap, nlook, nquant)
+      && ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, bactive, vms.active, ncap, nlook, nquant)
       && (forall nextinp :: LC.AdvanceInput(inp, WP.Forward) == Some(nextinp) ==>
-            BlockedRepLk(rer, qm, re, code, inp, nextinp, crv, str, ov, S, bblocked,
-                         PIV.MatchingBlocked(LC.Reverse(vms.blocked), inp), ncap, nlook, nquant))
+            BlockedRepLkC(rer, qm, re, code, inp, nextinp, crv, str, ov, S, bblocked,
+                          PIV.MatchingBlocked(LC.Reverse(vms.blocked), inp), ncap, nlook, nquant))
       && (LC.AdvanceInput(inp, WP.Forward) == None ==> bblocked == [])
       && BestTieLk(re, crv, str, ov, S, bbest, vms.bestmatch, ncap, nlook, nquant)
       && SeenRepLk(rer, qm, code, inp, bseen, vms.processed,
@@ -2334,14 +2339,15 @@ module LindenElkLiftSim {
     }
   }
 
-  /** (3) Initial pairing: fresh VM state ↔ `PikeTreeInitialState(t, inp)`.
-      FILL: `MainTheorem`'s entry construction supplies every conjunct
-      (`BoolTreeLk` of the entry acts is established there verbatim); the value
-      ties are vacuous on all-init registers; `GateAheadClear` from the
-      entry-time absence of every group. */
+  /** (3) Initial pairing: fresh VM state ↔ `PikeTreeInitialState(tcan, inp)`
+      where `tcan` is the PLANTED CANONICAL entry tree (constructed here from
+      the raw entry walk tree `t` by `ActionsTreeRepLkRE` + `WkE.WalkOkEntry`;
+      `t` remains the value layer's erasure witness, and
+      `ProgErase(tcan) == ProgErase(t)` is the endpoint `FirstLeaf` glue). */
   lemma LiftInit(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
                  crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                  t: LT.Tree, vms: AI.VmState, ncap: int, nlook: int, nquant: int)
+    returns (tcan: LT.Tree)
     requires !rer.multiline
     requires T.TransWf(re) && NR.LookBehindFragmentRE(re) && PIV.CapUnique(re)
     requires code == CP.compile_to_bytecode(re)
@@ -2352,14 +2358,14 @@ module LindenElkLiftSim {
     requires vms.active == [AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant))]
     requires vms.blocked == [] && vms.bestmatch.None?
     requires vms.processed == AI.init_bpcset(|code|)
+    ensures TreeRepLkRE(rer, qm, code, LC.InitInput(str), tcan, 0, false)
+    ensures CE.ProgErase(tcan) == CE.ProgErase(t)   // endpoint glue: FirstLeaf(tcan) == FirstLeaf(t)
     ensures LiftInv(rer, qm, re, code, crv, str, ov, S,
-                    PT.PikeTreeInitialState(t, LC.InitInput(str)), vms, ncap, nlook, nquant)
+                    PT.PikeTreeInitialState(tcan, LC.InitInput(str)), vms, ncap, nlook, nquant)
   {
     var inp := LC.InitInput(str);
     var itr := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
     var acts := [LS.Areg(T.Translate(re))];
-    var bst := PT.PikeTreeInitialState(t, inp);
-    assert bst == PT.PTS(inp, [(t, LG.Empty)], None, [], SS.InitialSeenTrees);
 
     // inp == InpOfCp(str, 0)
     assert str[..0] == [] && str[0..] == str;
@@ -2391,12 +2397,26 @@ module LindenElkLiftSim {
       assert GmtTieOutside(re, itr, LG.Empty, S);
       assert GmtTieInside(crv, str, ov, itr, LG.Empty, S, ncap, nlook, nquant);  // vacuous
     }
-    assert ActiveRepLk(rer, qm, re, code, inp, crv, str, ov, S, [(t, LG.Empty)], [itr], ncap, nlook, nquant);
+    // Construct machine B's PLANTED CANONICAL entry tree; the raw walk tree
+    // `t` is its value-layer erasure witness.
+    WkE.WalkOkEntry(re);
+    assert WO.WalkOk(acts, code, 0, false);
+    assert ATR.EaOf(BS.CannotExit) == false;
+    tcan := ActionsTreeRepLkRE(rer, qm, acts, code, 0, inp, BS.CannotExit, t);
+    var bst := PT.PikeTreeInitialState(tcan, inp);
+    assert bst == PT.PTS(inp, [(tcan, LG.Empty)], None, [], SS.InitialSeenTrees);
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, tcan, LG.Empty, itr,
+                        ncap, nlook, nquant) by {
+      assert TreeRepLkRE(rer, qm, code, inp, tcan, itr.pc as nat, itr.exit_allowed);
+      assert CE.ProgErase(t) == CE.ProgErase(tcan)
+          && ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, t, LG.Empty, itr, ncap, nlook, nquant);
+    }
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, [(tcan, LG.Empty)], [itr], ncap, nlook, nquant);
 
     // blocked: both sides empty (vms.blocked == [])
     forall nextinp | LC.AdvanceInput(inp, WP.Forward) == Some(nextinp)
-      ensures BlockedRepLk(rer, qm, re, code, inp, nextinp, crv, str, ov, S, [],
-                           PIV.MatchingBlocked(LC.Reverse(vms.blocked), inp), ncap, nlook, nquant)
+      ensures BlockedRepLkC(rer, qm, re, code, inp, nextinp, crv, str, ov, S, [],
+                            PIV.MatchingBlocked(LC.Reverse(vms.blocked), inp), ncap, nlook, nquant)
     {
       assert LC.Reverse(vms.blocked) == [];
       assert PIV.MatchingBlocked([], inp) == [];
@@ -5802,28 +5822,13 @@ module LindenElkLiftSim {
     requires NR.NfaRepRE(re, code, 0, endl)
   {
     PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, ptsA, vms, ncap, nlook, nquant)
-    && (match ptsB
-        case PTS_final(bbest) =>
-          BestTieLk(re, crv, str, ov, S, bbest, vms.bestmatch, ncap, nlook, nquant)
-        case PTS(inp, bactive, bbest, bblocked, bseen) =>
-          ptsA.PTS? && ptsA.inp == inp
-          // THREAD-ANCHORED pairing (audit 2026-08-03): each ptsB tree pairs with
-          // the VM thread via ThreadRepLkC (canonical tie + raw erasure witness),
-          // NOT with the tstar tree — so no ta↔tb link is needed (that was the
-          // dead §K route). ptsA is carried only for PikeInvFullRE's VM backbone.
-          && ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, bactive, vms.active, ncap, nlook, nquant)
-          && (forall nextinp :: LC.AdvanceInput(inp, WP.Forward) == Some(nextinp) ==>
-                BlockedRepLkC(rer, qm, re, code, inp, nextinp, crv, str, ov, S, bblocked,
-                              PIV.MatchingBlocked(LC.Reverse(vms.blocked), inp), ncap, nlook, nquant))
-          && (LC.AdvanceInput(inp, WP.Forward) == None ==> bblocked == [])
-          && BestTieLk(re, crv, str, ov, S, bbest, vms.bestmatch, ncap, nlook, nquant)
-          // B-side seen ↔ VM processed (skip-lockstep): the B-machine's `pts_skip`
-          // fires on `SS.Inseen(bseen, head)`, the VM's on `bpc_mem(processed,...)`;
-          // `SeenRepLk` (canonical-keyed) + `TreeRepLkDetermRE` keep them in step
-          // so `ActiveRepLkC` survives a skip.
-          && SeenRepLk(rer, qm, code, inp, bseen, vms.processed,
-                       PIV.HdTreeOf(bactive), PIV.HeadPcOf(vms.active))
-          && LL.OracleOkSuffix(rer, qm, inp))
+    // THREAD-ANCHORED pairing (audit 2026-08-03): each ptsB tree pairs with
+    // the VM thread via ThreadRepLkC (canonical tie + raw erasure witness),
+    // NOT with the tstar tree — so no ta↔tb link is needed (that was the
+    // dead §K route). ptsA is carried only for PikeInvFullRE's VM backbone;
+    // the whole B side IS the (canonical-keyed) standalone `LiftInv`.
+    && (ptsB.PTS? ==> ptsA.PTS? && ptsA.inp == ptsB.inp)
+    && LiftInv(rer, qm, re, code, crv, str, ov, S, ptsB, vms, ncap, nlook, nquant)
   }
 
   /** (K-init) The composite holds at the start: `PSM.InitialPikeInvFullRE` gives
