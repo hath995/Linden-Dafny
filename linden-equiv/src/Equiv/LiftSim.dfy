@@ -3539,9 +3539,9 @@ module LindenElkLiftSim {
       0 <= l < nlook
       && exists la: R.lookaround, body: R.regex ::
            LTB.LookEntryOk(crv, l, la, body)
+           && T.TransWf(body) && NR.LookFreeRE(body)
            && qm.looks[l].0 == T.TrLookaround(la)
            && qm.looks[l].1 == T.Translate(body)
-           && T.TransWf(body) && NR.LookFreeRE(body)
            && (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
            && var bodycode := CP.compile_to_bytecode(body);
               |bodycode| >= 1
@@ -3650,9 +3650,9 @@ module LindenElkLiftSim {
     // the per-lid static package
     var la: R.lookaround, body: R.regex :|
       LTB.LookEntryOk(crv, l, la, body)
+      && T.TransWf(body) && NR.LookFreeRE(body)
       && qm.looks[l].0 == T.TrLookaround(la)
       && qm.looks[l].1 == T.Translate(body)
-      && T.TransWf(body) && NR.LookFreeRE(body)
       && (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
       && var bodycode := CP.compile_to_bytecode(body);
          |bodycode| >= 1
