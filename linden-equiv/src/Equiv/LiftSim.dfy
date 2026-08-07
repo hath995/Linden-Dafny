@@ -79,6 +79,7 @@ module LindenElkLiftSim {
   import NUL = LindenElkNullable
   import CE = LindenElkCheckErase
   import TREP = LindenElkTreeRep
+  import LTB = LindenElkLookTables
 
   // ==========================================================================
   // SOLID definitions — the pairing.
@@ -3524,11 +3525,39 @@ module LindenElkLiftSim {
     ensures bst1.PTS?
     ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
 
+  /** The per-lid STATIC look-table package, bundled over `qm.looks`' domain:
+      each gated lid has a correct `crv` row whose body is look-free, well-
+      translated (`qm.looks[l]` IS the row's translation), compile-static
+      (`StaticOkRE`/`SizesOkRE` for the body's own bytecode), value-confined
+      (its groups are inside-look groups of `re`), and — for every flavour
+      except the capturing `Lookahead` — capture-free. Threaded through
+      `LiftStepC`/`LiftAdvanceEpsilon` into the gate-pass case; established
+      once at the composite entry from the `FFullCompilation` tables. */
+  ghost predicate GateStaticsOk(qm: AR.QMap, re: R.regex, crv: CP.FCompiled,
+                                ncap: int, nlook: int, nquant: int) {
+    forall l: int | l in qm.looks ::
+      0 <= l < nlook
+      && exists la: R.lookaround, body: R.regex ::
+           LTB.LookEntryOk(crv, l, la, body)
+           && qm.looks[l].0 == T.TrLookaround(la)
+           && qm.looks[l].1 == T.Translate(body)
+           && T.TransWf(body) && NR.LookFreeRE(body)
+           && (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
+           && var bodycode := CP.compile_to_bytecode(body);
+              |bodycode| >= 1
+              && PSM.StaticOkRE(qm, body, bodycode, |bodycode| - 1)
+              && PSM.SizesOkRE(body, ncap, nlook, nquant)
+           && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
+  }
+
   /** POSITIVE GATE, PASSING: the VM writes `a_cp[l] := cp` and continues; B
-      steps the `LK` head, `gmt` merges `LkResult` — the proven
-      `ThreadRepLkStepCheckOracle` (with `GateStepValue` inside) is the whole
-      content; this wrapper threads the per-lid static look-table package.
-      BODILESS. */
+      steps the `LK` head, `gmt` merges `LkResult`. Split by the lid's static
+      flavour: a capturing `Lookahead` goes through the proven
+      `ThreadRepLkStepCheckOracle` (with `GateStepValue` inside); a positive
+      `Lookbehind` is CAPTURE-FREE (fragment), so the merge agrees with `gm`
+      everywhere (`LkResultAgreeOutside` over an empty group set) and the
+      inside-`S` witnesses carry across the `a_cp[l]`-only write (Case B
+      pattern). Negative flavours are refuted by the polarity pin. */
   lemma LiftPreserveGatePassLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                                crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                                bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
@@ -3536,10 +3565,13 @@ module LindenElkLiftSim {
                                ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
     requires PSM.StaticOkRE(qm, re, code, endl)
-    requires qm.ov == ov
+    requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
+    requires S == PIV.CapIdsInLooks(re)
+    requires GateStaticsOk(qm, re, crv, ncap, nlook, nquant)
     requires bst.PTS?
     requires LiftInv(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
+    requires CM.ThreadRegsWf(s.active[0], ncap, nlook, nquant)
     requires !AI.bpc_mem(s.processed, s.active[0].pc, s.active[0].exit_allowed)
     requires s.active[0].pc >= 0
     requires NR.GetPcRE(code, s.active[0].pc as nat) == Some(RB.CheckOracle(l))
@@ -3552,6 +3584,184 @@ module LindenElkLiftSim {
     ensures PTL.TrcPikeTreeLk(bst, bst1)
     ensures bst1.PTS?
     ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tbl, seen) := bst;
+    var th := s.active[0];
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t, gm, th, ncap, nlook, nquant);
+    var pc: nat := th.pc as nat;
+    var ea := th.exit_allowed;
+    assert TreeRepLkRE(rer, qm, code, inp, t, pc, ea);
+
+    // gate pc interior + polarity pin
+    TreeRepLkREInRange(rer, qm, code, inp, t, pc, ea);
+    assert |code| == endl + 1 && NR.GetPcRE(code, endl) == Some(RB.Accept);
+    assert pc < endl;
+    GatePolarityRE(re, qm, code, 0, endl, pc);
+    assert l in qm.looks;
+    var lk := qm.looks[l].0;
+    var r1 := qm.looks[l].1;
+    assert AR.PositiveL(lk) && L.Positivity(lk);
+
+    // position glue
+    assert 0 <= s.cp <= |str| && inp == PIV.InpOfCp(str, s.cp);
+    var cp: nat := s.cp as nat;
+    PIV.IdxInpOfCp(str, cp);
+    assert TREP.CpOf(inp) == cp && TR_CpOf(inp) == cp;
+    assert LL.OracleOkAt(rer, qm, inp);
+
+    // raw witness at the gate: the walk lemma keys on the (true) oracle bit
+    var traw: LT.Tree :| CE.ProgErase(traw) == CE.ProgErase(t)
+      && ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, traw, gm, th, ncap, nlook, nquant);
+    assert WalkPairLk(rer, qm, code, inp, traw, gm, pc, ea);
+    WalkPairLkAtCheckOracle(rer, qm, code, inp, traw, gm, pc, ea, l);
+    assert LOr.view_get_oracle(qm.ov, TR_CpOf(inp), l);
+    assert traw.LK? && traw.lk == lk;
+    assert EL.LkGateOk(rer, lk, r1, inp, traw.tlk, true);
+    var tlk := LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk));
+    assert traw.tlk == tlk;                                   // LkGateOk pins tlk functionally
+    assert LS.LkResult(lk, tlk, LG.Empty, inp).Some?;
+    assert LS.LkResult(lk, tlk, gm, inp).Some?;
+    var gm2 := LS.LkResult(lk, tlk, gm, inp).value;
+    assert WalkPairLk(rer, qm, code, inp, traw.t, gm2, pc + 1, ea);
+    assert forall gg :: gg in L.DefGroups(r1) ==> gg !in gm;  // the gate's own clear instance
+
+    // canonical head: the LK branch of the gate rule (functional verdict Some)
+    TreeRepLkREAtCheckOracle(rer, qm, code, inp, t, pc, ea, l);
+    assert t.LK? && t.lk == lk && t.tlk == tlk
+        && TreeRepLkRE(rer, qm, code, inp, t.t, pc + 1, ea);
+
+    // erasure congruence: children tie
+    assert CE.ProgErase(traw) == LT.LK(lk, CE.ProgErase(traw.tlk), CE.ProgErase(traw.t));
+    assert CE.ProgErase(t) == LT.LK(lk, CE.ProgErase(t.tlk), CE.ProgErase(t.t));
+    assert CE.ProgErase(traw.t) == CE.ProgErase(t.t);
+
+    // B step on the canonical LK head: pts_active with the merged gm
+    assert LS.LkResult(t.lk, t.tlk, gm, inp) == Some(gm2);
+    assert PTL.TreeBfsStepLk(t, gm, inp) == PT.StepActive([(t.t, gm2)]);
+    bst1 := PT.PTS(inp, [(t.t, gm2)] + ta[1..], best, tbl, SS.AddSeenTrees(seen, t));
+    assert PTL.PikeTreeStepLk(bst, bst1);
+    TrcLkRefl(bst1);
+    TrcLkCons(bst, bst1, bst1);
+
+    // the per-lid static package
+    var la: R.lookaround, body: R.regex :|
+      LTB.LookEntryOk(crv, l, la, body)
+      && qm.looks[l].0 == T.TrLookaround(la)
+      && qm.looks[l].1 == T.Translate(body)
+      && T.TransWf(body) && NR.LookFreeRE(body)
+      && (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
+      && var bodycode := CP.compile_to_bytecode(body);
+         |bodycode| >= 1
+         && PSM.StaticOkRE(qm, body, bodycode, |bodycode| - 1)
+         && PSM.SizesOkRE(body, ncap, nlook, nquant)
+      && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
+    assert lk == T.TrLookaround(la) && r1 == T.Translate(body);
+    assert body == M.VBody(crv, l);
+    assert 0 <= l < nlook;
+
+    var clk := s1.clock;
+    assert th' == th.(pc := th.pc + 1, look_regs := AReg.set_reg(th.look_regs, l, Some(cp as int), clk));
+
+    // the polarity pin refutes the negative flavours
+    assert !la.NegLookahead? && !la.NegLookbehind? by {
+      if la.NegLookahead? || la.NegLookbehind? { assert !L.Positivity(lk); }
+    }
+    M.LkBodyGroupsEqCapIdsInLooks(re);
+    assert S == LL.LkBodyGroups(T.Translate(re));
+
+    if la.Lookahead? {
+      // ---- capturing-lookahead half: the proven crux core -------------------
+      assert crv.f_look_types[l] == la && crv.f_look_types[l].Lookahead?;
+      assert AI.capture_type(crv.f_look_types[l]);
+      assert L.LkDir(lk) == WP.Forward;
+      assert RL.ASize(th.look_regs) == nlook;
+      var bodycode := CP.compile_to_bytecode(body);
+      assert LT.LK(lk, tlk, traw.t) == traw;
+      ThreadRepLkStepCheckOracle(rer, qm, re, code, crv, str, ov, S, lk, r1, tlk, traw.t,
+                                 gm, th, l, cp, clk, body, la, bodycode, |bodycode| - 1, 0,
+                                 th.quant_regs, ncap, nlook, nquant);
+      assert ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, traw.t, gm2, th', ncap, nlook, nquant);
+    } else {
+      // ---- capture-free positive look (Lookbehind) --------------------------
+      assert la.Lookbehind?;
+      assert NR.CaptureFreeRE(body);
+      PIV.CaptureFreeNoCapIds(body);
+      M.TranslateDefGroupsEqCapIds(body);
+      assert (set g | g in L.DefGroups(r1)) == PIV.CapIds(body) == {};
+      // the merge over an EMPTY group set agrees with gm everywhere
+      EL.TranslateNoLkBr(body);
+      LkResultAgreeOutside(rer, lk, r1, inp, tlk, gm);
+      assert forall g: LG.GroupId :: (g in gm2 <==> g in gm) && (g in gm2 ==> gm2[g] == gm[g]) by {
+        forall g: LG.GroupId ensures (g in gm2 <==> g in gm) && (g in gm2 ==> gm2[g] == gm[g]) {
+          assert g !in (set gx | gx in L.DefGroups(r1)) by {
+            if g in (set gx | gx in L.DefGroups(r1)) { assert g in PIV.CapIds(body); }
+          }
+        }
+      }
+
+      // outside tie: the gate-crossing frame (works for backward gates too)
+      GmtTieOutsideAfterGate(rer, re, str, lk, r1, tlk, gm, th, l, cp, clk, S);
+      assert GmtTieOutside(re, th', gm2, S);
+
+      // inside tie: witnesses carry across the l-only look-reg write
+      assert GmtTieInside(crv, str, ov, th, gm, S, ncap, nlook, nquant);
+      assert GmtTieInside(crv, str, ov, th', gm2, S, ncap, nlook, nquant) by {
+        forall g: LG.GroupId | g in S && g in gm2
+          ensures exists l2: int ::
+            0 <= l2 < nlook
+            && g in PIV.CapIds(M.VBody(crv, l2))
+            && M.MatchedPosLA(crv, th'.look_regs, l2)
+            && var rf := M.FreshBodyMatch(crv, str, l2, th'.look_regs, ov, ncap, nlook, nquant);
+               rf.Some?
+               && var gmb := PIV.GmOfLive(M.VBody(crv, l2), rf.value.capture_regs,
+                                          rf.value.look_regs, rf.value.quant_regs);
+                  g in gmb && gm2[g] == gmb[g]
+        {
+          assert g in gm && gm2[g] == gm[g];
+          var l'': int :| 0 <= l'' < nlook
+            && g in PIV.CapIds(M.VBody(crv, l''))
+            && M.MatchedPosLA(crv, th.look_regs, l'')
+            && var rf'' := M.FreshBodyMatch(crv, str, l'', th.look_regs, ov, ncap, nlook, nquant);
+               rf''.Some?
+               && var gmb'' := PIV.GmOfLive(M.VBody(crv, l''), rf''.value.capture_regs,
+                                            rf''.value.look_regs, rf''.value.quant_regs);
+                  g in gmb'' && gm[g] == gmb''[g];
+          // l'' != l: the l-row's body is capture-free, so it owns no groups
+          assert l'' != l by {
+            if l'' == l { assert g in PIV.CapIds(M.VBody(crv, l)); assert g in PIV.CapIds(body); }
+          }
+          // th' differs from th only at slot l ⟹ l'' reads the SAME cp on both banks
+          RL.ASetLaws(th.look_regs, l, Some(cp as int), clk);
+          assert AReg.get_cp(th'.look_regs, l'') == AReg.get_cp(th.look_regs, l'');
+          assert M.MatchedPosLA(crv, th'.look_regs, l'');
+          assert M.FreshBodyMatch(crv, str, l'', th'.look_regs, ov, ncap, nlook, nquant)
+              == M.FreshBodyMatch(crv, str, l'', th.look_regs, ov, ncap, nlook, nquant);
+        }
+      }
+      assert (th.pc + 1) as nat == pc + 1;
+      assert ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, traw.t, gm2, th', ncap, nlook, nquant);
+    }
+
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t.t, gm2, th', ncap, nlook, nquant);
+
+    // list bookkeeping
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta[1..], s.active[1..],
+                        ncap, nlook, nquant);
+    assert vms2.active[0] == th' && vms2.active[1..] == s.active[1..];
+    assert ([(t.t, gm2)] + ta[1..])[0] == (t.t, gm2) && ([(t.t, gm2)] + ta[1..])[1..] == ta[1..];
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, [(t.t, gm2)] + ta[1..], vms2.active,
+                        ncap, nlook, nquant);
+
+    // seen + isblocked bookkeeping
+    assert PIV.HdTreeOf(ta) == Some(t) && PIV.HeadPcOf(s.active) == pc;
+    AddSeenRepLk(rer, qm, code, inp, seen, s.processed, t, pc, ea,
+                 PIV.HdTreeOf([(t.t, gm2)] + ta[1..]), PIV.HeadPcOf(vms2.active));
+    IsblockedGrowLk(rer, qm, code, inp, seen, s.isblocked, t);
+  }
 
   /** Fueled `WalkPairLk` core at a `NegCheckOracle` pc: the gate head is
       pinned by `ActionRepL`'s polarity split, and the PASSING merge is the
@@ -4279,9 +4489,10 @@ module LindenElkLiftSim {
                            bst: PT.PikeTreeState, dir: LAnc.direction,
                            ncap: int, nlook: int, nquant: int)
     returns (ptsA': PT.PikeTreeState, bst1: PT.PikeTreeState)
-    requires !rer.multiline && qm.ov == ov
+    requires !rer.multiline && !rer.ignoreCase && qm.ov == ov
     requires PSM.StaticOkRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires S == PIV.CapIdsInLooks(re)   // the value-tie boundary (SetReg/gate cases)
+    requires GateStaticsOk(qm, re, crv, ncap, nlook, nquant)   // per-lid look-table package (gate-pass case)
     requires dir == LAnc.Forward
     requires ptsA.PTS? && bst.PTS?
     requires |s.processed.true_set| == RB.size(code) && |s.processed.false_set| == RB.size(code)
@@ -4485,6 +4696,8 @@ module LindenElkLiftSim {
           var th' := th.(pc := th.pc + 1,
                          look_regs := AReg.set_reg(th.look_regs, l, Some(s1.cp), s1.clock));
           var vms2 := s1.(active := [th'] + ac);
+          assert th in s.active;
+          assert CM.ThreadRegsWf(th, ncap, nlook, nquant);   // PikeInvFullRE backbone
           var bstS := LiftPreserveGatePassLk(rer, qm, re, code, endl, crv, str, ov, S,
                                              bst, s, s1, l, th', vms2, ncap, nlook, nquant);
           PSM.PreserveOraclePass(rer, qm, re, code, endl, ngroups, str, ptsA, s,
@@ -5912,6 +6125,10 @@ module LindenElkLiftSim {
       && (!LOr.view_get_oracle(qm.ov, TR_CpOf(inp), lid) ==>
             tb.LKFail? && tb.lk == lk
             && EL.LkGateOk(rer, lk, r1, inp, tb.tlk, false))
+    // the gate's OWN GateAheadClear instance: it is pending at the real head,
+    // so its body groups are absent from the accumulated map (discharges
+    // `ThreadRepLkStepCheckOracle`'s absence hypothesis)
+    ensures forall gg :: gg in L.DefGroups(qm.looks[lid].1) ==> gg !in gm
     decreases ATR.MsizeA(acts)
   {
     var g := ATR.EaOf(b);
@@ -5987,6 +6204,12 @@ module LindenElkLiftSim {
         assert AR.PositiveL(lk0) && lid0 == lid;
         assert L.Positivity(lk0);
         assert lid in qm.looks && qm.looks[lid] == (lk0, r1);
+        // the gate is pending at index 0 ⟹ its body groups are clear NOW
+        assert RegexTopGate(L.LookaroundR(lk0, r1), lk0, r1);
+        assert GatePending(acts, lk0, r1) by {
+          assert acts[0].Areg? && RegexTopGate(acts[0].r, lk0, r1);
+        }
+        assert forall gg :: gg in L.DefGroups(r1) ==> gg !in gm;
         M.GateNodeAtInp(rer, acts, inp, b, tb, lk0, r1);   // tb is LK/LKFail with LkGateOk
         var bit := LOr.view_get_oracle(qm.ov, TR_CpOf(inp), lid);
         if tb.LK? {
@@ -6090,6 +6313,7 @@ module LindenElkLiftSim {
       && (!LOr.view_get_oracle(qm.ov, TR_CpOf(inp), lid) ==>
             tb.LKFail? && tb.lk == lk
             && EL.LkGateOk(rer, lk, r1, inp, tb.tlk, false))
+    ensures forall gg :: gg in L.DefGroups(qm.looks[lid].1) ==> gg !in gm
   {
     // GetPcRE==CheckOracle ≠ BeginLoop kills the stutter disjunct; extract the walk.
     var acts: LS.Actions, b: BS.LoopBool :|
@@ -8089,8 +8313,9 @@ module LindenElkLiftSim {
     returns (ptsA': PT.PikeTreeState, ptsB': PT.PikeTreeState)
     requires NR.NfaRepRE(re, code, 0, endl)
     requires PSM.StaticOkRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
-    requires qm.ov == ov && !rer.multiline
+    requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
     requires S == PIV.CapIdsInLooks(re)   // the value-tie boundary (SetReg/gate cases)
+    requires GateStaticsOk(qm, re, crv, ncap, nlook, nquant)   // per-lid look-table package (gate-pass case)
     requires ptsA.PTS? && ptsB.PTS?
     requires |vms.processed.true_set| == RB.size(code) && |vms.processed.false_set| == RB.size(code)
     requires LiftInvC(rer, qm, re, code, endl, ngroups, crv, str, ov, S, ptsA, ptsB, vms, ncap, nlook, nquant)
