@@ -3279,9 +3279,16 @@ module LindenElkLiftSim {
   }
 
   /** SETREG (group Open/Close): B steps the `GroupActionT` head, `gmt` moves
-      by `GMUpdate` at the current index; outside-`S` tie via the GmOfLive
-      machinery (the remaining SetReg VALUE-tie obligation), inside-`S` stable.
-      Mirror of `PSM.PreserveOpenCase`/`PreserveCloseCase`. BODILESS. */
+      by `GMUpdate` at the current index. The register-level gm effect
+      (`GmOfLive` across the write == `GMOpen`/`GMClose`) is a REQUIRES — the
+      dispatcher derives it from machine A's head via
+      `PSM.OpenStepThreadRE`/`CloseStepThreadRE` (whose heavy positional
+      hypotheses live in `PikeInvFullRE`). The written gid is OUTSIDE-look
+      (`CaptureWriteIdsOutsideRE`: looks compile to gates, so main-code SetReg
+      sites only target `CapIdsOutsideLooks`), hence outside `S`: the
+      outside-`S` tie moves pointwise through the same `GMUpdate` on both
+      sides, and the inside-`S` tie carries verbatim (look regs unchanged,
+      inside groups untouched by the update). */
   lemma LiftPreserveSetRegLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                              crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                              bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
@@ -3300,9 +3307,170 @@ module LindenElkLiftSim {
     requires th' == s.active[0].(capture_regs := AReg.set_reg(s.active[0].capture_regs, reg, Some(s1.cp), s1.clock),
                                  pc := s.active[0].pc + 1)
     requires vms2 == s1.(active := [th'] + s1.active[1..])
+    // the value-tie boundary: SetReg gids are outside-look, hence outside S
+    requires S == PIV.CapIdsInLooks(re)
+    requires reg >= 0 && 0 <= s1.cp
+    // the register-level gm effect, supplied by the dispatcher from machine A's
+    // proven step helpers (OpenStepThreadRE/CloseStepThreadRE)
+    requires PIV.GmOfLive(re, th'.capture_regs, th'.look_regs, th'.quant_regs)
+          == (if reg % 2 == 0
+              then LG.GMOpen(s1.cp as nat, (reg / 2) as nat,
+                             PIV.GmOfLive(re, s.active[0].capture_regs, s.active[0].look_regs,
+                                          s.active[0].quant_regs))
+              else LG.GMClose(s1.cp as nat, (reg / 2) as nat,
+                              PIV.GmOfLive(re, s.active[0].capture_regs, s.active[0].look_regs,
+                                           s.active[0].quant_regs)))
     ensures PTL.TrcPikeTreeLk(bst, bst1)
     ensures bst1.PTS?
     ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := bst;
+    var th := s.active[0];
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t, gm, th, ncap, nlook, nquant);
+    var pc: nat := th.pc as nat;
+    var ea := th.exit_allowed;
+    assert TreeRepLkRE(rer, qm, code, inp, t, pc, ea);
+
+    // canonical head: GroupActionT(Open/Close) with canonical child at (pc+1, ea)
+    TreeRepLkREAtSetReg(rer, qm, code, inp, t, pc, ea, reg);
+    assert t.GroupActionT? && (t.g.Open? || t.g.Close?);
+    assert TreeRepLkRE(rer, qm, code, inp, t.t, pc + 1, ea);
+    var gid: LG.GroupId := t.g.g;
+
+    // position: the B-side update index IS the VM's cp
+    assert 0 <= s.cp <= |str| && inp == PIV.InpOfCp(str, s.cp);
+    PIV.IdxInpOfCp(str, s.cp);
+    var cpn: nat := s1.cp as nat;
+    assert LC.Idx(inp) == cpn;
+    var gm2 := LG.GMUpdate(t.g, LC.Idx(inp), gm);
+
+    // the written gid is outside-look, hence outside S
+    assert pc < endl by {
+      TreeRepLkREInRange(rer, qm, code, inp, t, pc, ea);
+      assert pc < |code| == endl + 1;
+      if pc == endl {
+        assert NR.GetPcRE(code, pc) == Some(RB.Accept);
+        assert false;
+      }
+    }
+    var OL := PIV.CapIdsOutsideLooks(re);
+    PIV.CaptureWriteIdsOutsideRE(re, code, 0, endl, pc);
+    assert reg in PIV.CaptureRegsSet(OL);
+    assert gid in OL by {
+      if t.g.Open? { assert reg == CP.start_reg(gid as int) == 2 * (gid as int); }
+      else { assert reg == CP.end_reg(gid as int) == 2 * (gid as int) + 1; }
+      if reg in (set cid: nat | cid in OL :: CP.start_reg(cid)) {
+        var cid: nat :| cid in OL && reg == CP.start_reg(cid);
+        assert reg == 2 * (cid as int);
+        assert t.g.Open?;                              // parity
+        assert cid == gid;
+      } else {
+        var cid: nat :| cid in OL && reg == CP.end_reg(cid);
+        assert reg == 2 * (cid as int) + 1;
+        assert t.g.Close?;                             // parity
+        assert cid == gid;
+      }
+    }
+    PIV.CapIdsLooksDisjoint(re);
+    assert gid !in S by {
+      if gid in PIV.CapIdsInLooks(re) { assert gid in OL * PIV.CapIdsInLooks(re); }
+    }
+
+    // B step: pts_active queues the child with the GMUpdate-moved gm
+    assert PTL.TreeBfsStepLk(t, gm, inp) == PT.StepActive([(t.t, gm2)]);
+    bst1 := PT.PTS(inp, [(t.t, gm2)] + ta[1..], best, tb, SS.AddSeenTrees(seen, t));
+    assert PTL.PikeTreeStepLk(bst, bst1);
+    TrcLkRefl(bst1);
+    TrcLkCons(bst, bst1, bst1);
+
+    // raw witness: its walk peels the same GroupActionT (same reg pins the
+    // same action via the erasure congruence), child walks at gm2
+    var traw: LT.Tree :| CE.ProgErase(traw) == CE.ProgErase(t)
+      && ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, traw, gm, th, ncap, nlook, nquant);
+    WalkPairLkAtSetReg(rer, qm, code, inp, traw, gm, pc, ea, reg);
+    assert traw.GroupActionT?;
+    assert traw.g == t.g && CE.ProgErase(traw.t) == CE.ProgErase(t.t) by {
+      assert CE.ProgErase(traw) == LT.GroupActionT(traw.g, CE.ProgErase(traw.t));
+      assert CE.ProgErase(t) == LT.GroupActionT(t.g, CE.ProgErase(t.t));
+    }
+    assert WalkPairLk(rer, qm, code, inp, traw.t, gm2, pc + 1, ea);
+
+    // value ties for th': both sides move by the SAME GMUpdate at cpn
+    var gml := PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs);
+    var gml2 := PIV.GmOfLive(re, th'.capture_regs, th'.look_regs, th'.quant_regs);
+    assert gml2 == LG.GMUpdate(t.g, cpn, gml) by {
+      if t.g.Open? {
+        assert reg == 2 * (gid as int);
+        assert reg % 2 == 0 && (reg / 2) as nat == gid;
+      } else {
+        assert reg == 2 * (gid as int) + 1;
+        assert reg % 2 == 1 && (reg / 2) as nat == gid;
+      }
+    }
+    assert gm2 == LG.GMUpdate(t.g, cpn, gm);
+    assert GmtTieOutside(re, th, gm, S) && GmtTieInside(crv, str, ov, th, gm, S, ncap, nlook, nquant);
+
+    assert GmtTieOutside(re, th', gm2, S) by {
+      forall g: LG.GroupId | g !in S
+        ensures (g in gm2 <==> g in gml2) && (g in gm2 ==> gm2[g] == gml2[g])
+      {
+        assert (g in gm <==> g in gml) && (g in gm ==> gm[g] == gml[g]);
+        if g == gid {
+          if t.g.Close? {
+            // GMClose reads the incoming entry — it agrees on both sides
+            assert (gid in gm <==> gid in gml) && (gid in gm ==> gm[gid] == gml[gid]);
+          }
+        }
+        // g != gid: GMUpdate touches only gid, both maps unchanged at g
+      }
+    }
+    assert th'.look_regs == th.look_regs && th'.quant_regs == th.quant_regs;
+    assert GmtTieInside(crv, str, ov, th', gm2, S, ncap, nlook, nquant) by {
+      forall g: LG.GroupId | g in S && g in gm2
+        ensures exists l: int ::
+          0 <= l < nlook
+          && g in PIV.CapIds(M.VBody(crv, l))
+          && M.MatchedPosLA(crv, th'.look_regs, l)
+          && var rf := M.FreshBodyMatch(crv, str, l, th'.look_regs, ov, ncap, nlook, nquant);
+             rf.Some?
+             && var gmb := PIV.GmOfLive(M.VBody(crv, l), rf.value.capture_regs,
+                                        rf.value.look_regs, rf.value.quant_regs);
+                g in gmb && gm2[g] == gmb[g]
+      {
+        assert g != gid;
+        assert g in gm && gm2[g] == gm[g];             // GMUpdate touches only gid
+        var l: int :| 0 <= l < nlook
+          && g in PIV.CapIds(M.VBody(crv, l))
+          && M.MatchedPosLA(crv, th.look_regs, l)
+          && var rf := M.FreshBodyMatch(crv, str, l, th.look_regs, ov, ncap, nlook, nquant);
+             rf.Some?
+             && var gmb := PIV.GmOfLive(M.VBody(crv, l), rf.value.capture_regs,
+                                        rf.value.look_regs, rf.value.quant_regs);
+                g in gmb && gm[g] == gmb[g];
+      }
+    }
+    assert (th.pc + 1) as nat == pc + 1;
+    assert ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, traw.t, gm2, th', ncap, nlook, nquant);
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t.t, gm2, th', ncap, nlook, nquant);
+
+    // list bookkeeping
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta[1..], s.active[1..],
+                        ncap, nlook, nquant);
+    assert vms2.active[0] == th' && vms2.active[1..] == s.active[1..];
+    assert ([(t.t, gm2)] + ta[1..])[0] == (t.t, gm2) && ([(t.t, gm2)] + ta[1..])[1..] == ta[1..];
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, [(t.t, gm2)] + ta[1..], vms2.active,
+                        ncap, nlook, nquant);
+
+    // seen + isblocked bookkeeping
+    assert PIV.HdTreeOf(ta) == Some(t) && PIV.HeadPcOf(s.active) == pc;
+    AddSeenRepLk(rer, qm, code, inp, seen, s.processed, t, pc, ea,
+                 PIV.HdTreeOf([(t.t, gm2)] + ta[1..]), PIV.HeadPcOf(vms2.active));
+    IsblockedGrowLk(rer, qm, code, inp, seen, s.isblocked, t);
+  }
 
   /** SETQUANT (the quantifier Reset): B steps the `GroupActionT(Reset)` head.
       BLOCKED on the quantifier-NoDup research gap (the carried NoDup breaks
@@ -4113,6 +4281,7 @@ module LindenElkLiftSim {
     returns (ptsA': PT.PikeTreeState, bst1: PT.PikeTreeState)
     requires !rer.multiline && qm.ov == ov
     requires PSM.StaticOkRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires S == PIV.CapIdsInLooks(re)   // the value-tie boundary (SetReg/gate cases)
     requires dir == LAnc.Forward
     requires ptsA.PTS? && bst.PTS?
     requires |s.processed.true_set| == RB.size(code) && |s.processed.false_set| == RB.size(code)
@@ -4250,6 +4419,37 @@ module LindenElkLiftSim {
         var th' := th.(capture_regs := AReg.set_reg(th.capture_regs, reg, Some(s1.cp), s1.clock),
                        pc := th.pc + 1);
         var vms2 := s1.(active := [th'] + ac);
+        // A-side step helper on ptsA's head: yields the register-level gm
+        // effect (GMOpen/GMClose across the write) that the B-side value tie
+        // consumes — the whole point of carrying ptsA through the recursion.
+        var PTS(inpA, taA, bestA, tbA, seenA) := ptsA;
+        assert PIV.ActiveRepRE(rer, qm, re, code, inpA, taA, s.active);
+        assert |taA| > 0;
+        var tA := taA[0].0;
+        var gmA := taA[0].1;
+        assert TT.TreeThreadRE(rer, qm, code, inpA, tA, pc, th.exit_allowed);
+        assert PIV.ThreadTracksGm(re, th, gmA);
+        assert th in s.active;
+        assert PSM.ThreadNestRE(re, code, endl, th.pc, th);
+        assert CM.ThreadClocksLE(th, s.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant)
+            && CM.RegsValsLE(th.capture_regs, s.cp);
+        assert PIV.LooksCapUnset(re, th.capture_regs.a_clk);
+        assert 0 <= s1.cp;
+        if reg % 2 == 0 {
+          PSM.OpenStepThreadRE(rer, qm, re, code, endl, inpA, tA, gmA, th, pc, reg, s.cp, s.clock);
+          assert tA.GroupActionT? && tA.g.Open? && reg == CP.start_reg(tA.g.g as int);
+          assert reg == 2 * (tA.g.g as int) && (reg / 2) as nat == tA.g.g;
+          assert PIV.GmOfLive(re, th'.capture_regs, th'.look_regs, th'.quant_regs)
+              == LG.GMOpen(s1.cp as nat, (reg / 2) as nat,
+                           PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs));
+        } else {
+          PSM.CloseStepThreadRE(rer, qm, re, code, endl, inpA, tA, gmA, th, pc, reg, s.cp, s.clock);
+          assert tA.GroupActionT? && tA.g.Close? && reg == CP.end_reg(tA.g.g as int);
+          assert reg == 2 * (tA.g.g as int) + 1 && (reg / 2) as nat == tA.g.g;
+          assert PIV.GmOfLive(re, th'.capture_regs, th'.look_regs, th'.quant_regs)
+              == LG.GMClose(s1.cp as nat, (reg / 2) as nat,
+                            PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs));
+        }
         var bstS := LiftPreserveSetRegLk(rer, qm, re, code, endl, crv, str, ov, S,
                                          bst, s, s1, reg, th', vms2, ncap, nlook, nquant);
         var ptsS: PT.PikeTreeState;
@@ -7890,6 +8090,7 @@ module LindenElkLiftSim {
     requires NR.NfaRepRE(re, code, 0, endl)
     requires PSM.StaticOkRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires qm.ov == ov && !rer.multiline
+    requires S == PIV.CapIdsInLooks(re)   // the value-tie boundary (SetReg/gate cases)
     requires ptsA.PTS? && ptsB.PTS?
     requires |vms.processed.true_set| == RB.size(code) && |vms.processed.false_set| == RB.size(code)
     requires LiftInvC(rer, qm, re, code, endl, ngroups, crv, str, ov, S, ptsA, ptsB, vms, ncap, nlook, nquant)
