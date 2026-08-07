@@ -2445,9 +2445,11 @@ module LindenElkLiftSim {
     returns (bst1: PT.PikeTreeState)
     requires !rer.multiline && qm.ov == ov
     requires dir == LAnc.Forward
+    requires bst.PTS?
     requires |s.processed.true_set| == RB.size(code) && |s.processed.false_set| == RB.size(code)
     requires LiftInv(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     ensures PTL.TrcPikeTreeLk(bst, bst1)
+    ensures bst1.PTS?           // the ε-phase never finalizes; pts_final is LiftConsume's
     ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1,
                     AI.FAdvanceEpsilon(code, s, ov, dir).0, ncap, nlook, nquant)
     decreases AI.unprocessed(s.processed), |s.active|
@@ -5924,14 +5926,12 @@ module LindenElkLiftSim {
                      PIV.HdTreeOf([(tcan, LG.Empty)]), PIV.HeadPcOf([it]), RB.size(code));
   }
 
-  /** (K-step) The composite is preserved across ONE position. Machine A advances
-      by `PSM.InvariantPreservationRE` (a whole-position `TrcRE`); machine B
-      advances by a matching `PTL.TrcPikeTreeLk` on `ptsB`; the pairing is
-      re-established pair-by-pair. The gate case is the crux: `PreserveOraclePass`
-      + machine-B `LK` merge + `LL.LAAtGatePassL3a` + `GateStepValue`. Non-gate
-      cases move both machines identically and leave inside-`S` untouched
-      (`GateAheadClear`). SEAM: also needs a real seen/processed pairing (the
-      standalone `SeenRepLk` is stubbed `true`). BODILESS. */
+  /** (K-step) The composite is preserved across ONE ε-phase. Machine A
+      advances by the PROVEN `PSM.InvariantPreservationRE` (a whole-phase
+      `TrcRE` — queue/priority/loop mechanics inherited, never re-proved);
+      machine B advances by `LiftAdvanceEpsilon` (the B-side worklist
+      recursion over the SAME VM steps). The two sides never link directly:
+      each pins its `inp` to `InpOfCp(str, cp)` through its own invariant. */
   lemma LiftStepC(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
                   endl: nat, ngroups: nat, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
                   S: set<LG.GroupId>, ptsA: PT.PikeTreeState, ptsB: PT.PikeTreeState, vms: AI.VmState,
@@ -5944,8 +5944,22 @@ module LindenElkLiftSim {
     requires |vms.processed.true_set| == RB.size(code) && |vms.processed.false_set| == RB.size(code)
     requires LiftInvC(rer, qm, re, code, endl, ngroups, crv, str, ov, S, ptsA, ptsB, vms, ncap, nlook, nquant)
     ensures PTL.TrcPikeTreeLk(ptsB, ptsB')
+    ensures ptsA'.PTS? && ptsB'.PTS?
     ensures LiftInvC(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
                      ptsA', ptsB', AI.FAdvanceEpsilon(code, vms, ov, LAnc.Forward).0, ncap, nlook, nquant)
+  {
+    var vms' := AI.FAdvanceEpsilon(code, vms, ov, LAnc.Forward).0;
+    // machine A: the proven engine simulation moves ptsA across the whole phase
+    ptsA' := PSM.InvariantPreservationRE(rer, qm, re, code, endl, ngroups, str,
+                                         ptsA, vms, ov, LAnc.Forward, ncap, nlook, nquant);
+    // machine B: the canonical/value worklist recursion over the same phase
+    ptsB' := LiftAdvanceEpsilon(rer, qm, re, code, crv, str, ov, S,
+                                vms, ptsB, LAnc.Forward, ncap, nlook, nquant);
+    // the inp link: both sides pin their inp to InpOfCp(str, vms'.cp)
+    assert PIV.PikeInvRE(rer, qm, re, code, ngroups, str, ptsA', vms');
+    assert ptsA'.inp == PIV.InpOfCp(str, vms'.cp);
+    assert ptsB'.inp == PIV.InpOfCp(str, vms'.cp);
+  }
 
   /** (K-close) TOP-LEVEL: the winning VM thread and the spec tree's FIRST LEAF
       satisfy the two-sided value tie (`BestTieLk` = `GmtTieOutside` +
