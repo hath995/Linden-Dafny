@@ -3034,10 +3034,45 @@ module LindenElkLiftSim {
     assert vms2.active == s.active[1..];
   }
 
+  /** `BlockedRepLkC` commutes with appending one paired entry — the snoc
+      companion the `Consume` case uses to align the appended B `Read`-child
+      with the appended VM blocked pair. Mirror of `PSM.BlockedRepSnocRE`. */
+  lemma BlockedRepLkCSnoc(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
+                          inp: LC.Input, nextinp: LC.Input, crv: CP.FCompiled, str: string,
+                          ov: LOr.OracleView, S: set<LG.GroupId>,
+                          tl: seq<(LT.Tree, LG.GroupMap)>, bl: seq<(AI.Thread, RC.char_expectation)>,
+                          tp: (LT.Tree, LG.GroupMap), p: (AI.Thread, RC.char_expectation),
+                          ncap: int, nlook: int, nquant: int)
+    requires BlockedRepLkC(rer, qm, re, code, inp, nextinp, crv, str, ov, S, tl, bl, ncap, nlook, nquant)
+    requires p.0.pc >= 0
+    requires TreeRepLkRE(rer, qm, code, nextinp, tp.0, (p.0.pc + 1) as nat, true)
+    requires exists traw: LT.Tree ::
+      CE.ProgErase(traw) == CE.ProgErase(tp.0)
+      && TtLk(rer, qm, code, nextinp, traw, (p.0.pc + 1) as nat, true)
+    requires GmtTieOutside(re, p.0, tp.1, S)
+    requires GmtTieInside(crv, str, ov, p.0, tp.1, S, ncap, nlook, nquant)
+    ensures BlockedRepLkC(rer, qm, re, code, inp, nextinp, crv, str, ov, S, tl + [tp], bl + [p],
+                          ncap, nlook, nquant)
+    decreases tl
+  {
+    if |tl| == 0 {
+      assert |bl| == 0;
+      assert tl + [tp] == [tp] && bl + [p] == [p];
+      assert ([tp])[0] == tp && ([tp])[1..] == [] && ([p])[0] == p && ([p])[1..] == [];
+    } else {
+      assert |bl| > 0;
+      assert (tl + [tp])[0] == tl[0] && (bl + [p])[0] == bl[0];
+      assert (tl + [tp])[1..] == tl[1..] + [tp] && (bl + [p])[1..] == bl[1..] + [p];
+      BlockedRepLkCSnoc(rer, qm, re, code, inp, nextinp, crv, str, ov, S, tl[1..], bl[1..],
+                        tp, p, ncap, nlook, nquant);
+    }
+  }
+
   /** CONSUME, pc not yet blocked: the VM blocks the head unconditionally;
       B blocks a matching `Read` (`pts_blocked`, keeping `BlockedRepLkC`
       aligned through the `MatchingBlocked` filter) or drops a `Mismatch`
-      (empty `pts_active`). Mirror of `PSM.PreserveConsumeAdd`. BODILESS. */
+      (empty `pts_active` — the doomed blocked thread is invisible to the
+      filter). Mirror of `PSM.PreserveConsumeAdd`. */
   lemma LiftPreserveConsumeAddLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                                  crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                                  bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
@@ -3060,6 +3095,118 @@ module LindenElkLiftSim {
     ensures PTL.TrcPikeTreeLk(bst, bst1)
     ensures bst1.PTS?
     ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := bst;
+    var th := s.active[0];
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t, gm, th, ncap, nlook, nquant);
+    var pc: nat := th.pc as nat;
+    var ea := th.exit_allowed;
+    assert TreeRepLkRE(rer, qm, code, inp, t, pc, ea);
+    TreeRepLkREAtConsume(rer, qm, code, inp, t, pc, ea, ce);
+
+    // shared list bookkeeping
+    PSM.ReversePrepend((th, ce), s.blocked);
+    PSM.MatchingBlockedSnoc(LC.Reverse(s.blocked), (th, ce), inp);
+
+    // the new isblocked entry pc is covered by the freshly-seen head tree
+    assert IsblockedRepLk(rer, qm, code, inp, SS.AddSeenTrees(seen, t), vms2.isblocked) by {
+      forall pc0: nat | AI.pc_mem(vms2.isblocked, pc0)
+        ensures exists t0: LT.Tree, b0: bool ::
+          SS.Inseen(SS.AddSeenTrees(seen, t), t0) && TreeRepLkRE(rer, qm, code, inp, t0, pc0, b0)
+      {
+        PIV.PcAddMemFwd(s1.isblocked, th.pc, pc0);
+        if pc0 == pc {
+          SS.InAdd(seen, t, t);
+          assert SS.Inseen(SS.AddSeenTrees(seen, t), t) && TreeRepLkRE(rer, qm, code, inp, t, pc0, ea);
+        } else {
+          assert AI.pc_mem(s.isblocked, pc0);
+          var t0: LT.Tree, b0: bool :| SS.Inseen(seen, t0) && TreeRepLkRE(rer, qm, code, inp, t0, pc0, b0);
+          SS.InAdd(seen, t0, t);
+        }
+      }
+    }
+
+    if AR.ReadCharE(ce, inp).Some? {
+      // MATCHING: pts_blocked pairs the appended entries.
+      var (c, nextinp0) := AR.ReadCharE(ce, inp).value;
+      assert t.Read? && t.c == c
+          && TreeRepLkRE(rer, qm, code, nextinp0, t.t, pc + 1, true);
+      assert PTL.TreeBfsStepLk(t, gm, inp) == PT.StepBlocked(t.t);
+      bst1 := PT.PTS(inp, ta[1..], best, tb + [(t.t, gm)], SS.AddSeenTrees(seen, t));
+      assert PTL.PikeTreeStepLk(bst, bst1);
+      TrcLkRefl(bst1);
+      TrcLkCons(bst, bst1, bst1);
+
+      // the raw child witness for the blocked pair: the head's raw witness
+      // reads the same character (erasure pins the Read root)
+      var traw: LT.Tree :| CE.ProgErase(traw) == CE.ProgErase(t)
+        && ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, traw, gm, th, ncap, nlook, nquant);
+      assert WalkPairLk(rer, qm, code, inp, traw, gm, pc, ea);
+      WalkPairLkImpliesTtLk(rer, qm, code, inp, traw, gm, pc, ea);
+      TtLkAtConsume(rer, qm, code, inp, traw, pc, ea, ce);
+      assert traw.Read? by {
+        if !traw.Read? {
+          assert traw == LT.Mismatch;
+          assert CE.ProgErase(traw) == LT.Mismatch;
+          assert CE.ProgErase(t).Read?;
+          assert false;
+        }
+      }
+      var nextinpw: LC.Input :| AR.ReadCharE(ce, inp) == Some((traw.c, nextinpw))
+        && TtLk(rer, qm, code, nextinpw, traw.t, pc + 1, true);
+      assert traw.c == c && nextinpw == nextinp0;    // ReadCharE is a function
+      assert CE.ProgErase(traw.t) == CE.ProgErase(t.t) by {
+        assert CE.ProgErase(traw) == LT.Read(traw.c, CE.ProgErase(traw.t));
+        assert CE.ProgErase(t) == LT.Read(t.c, CE.ProgErase(t.t));
+      }
+
+      // blocked correspondence: the filter gains exactly the new pair
+      forall nextinp | LC.AdvanceInput(inp, WP.Forward) == Some(nextinp)
+        ensures BlockedRepLkC(rer, qm, re, code, inp, nextinp, crv, str, ov, S, tb + [(t.t, gm)],
+                              PIV.MatchingBlocked(LC.Reverse(vms2.blocked), inp), ncap, nlook, nquant)
+      {
+        assert nextinp == nextinp0;
+        assert PIV.MatchingBlocked(LC.Reverse(vms2.blocked), inp)
+            == PIV.MatchingBlocked(LC.Reverse(s.blocked), inp) + [(th, ce)];
+        assert GmtTieOutside(re, th, gm, S);
+        assert GmtTieInside(crv, str, ov, th, gm, S, ncap, nlook, nquant);
+        BlockedRepLkCSnoc(rer, qm, re, code, inp, nextinp, crv, str, ov, S, tb,
+                          PIV.MatchingBlocked(LC.Reverse(s.blocked), inp), (t.t, gm), (th, ce),
+                          ncap, nlook, nquant);
+      }
+      assert |inp.next| > 0;                          // ReadCharE Some
+      assert LC.AdvanceInput(inp, WP.Forward).Some?;
+
+      AddSeenRepLk(rer, qm, code, inp, seen, s.processed, t, pc, ea,
+                   PIV.HdTreeOf(ta[1..]), PIV.HeadPcOf(vms2.active));
+      assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta[1..], s.active[1..],
+                          ncap, nlook, nquant);
+      assert vms2.active == s.active[1..];
+    } else {
+      // MISMATCH: the tree is Mismatch and dies; the doomed blocked thread is
+      // invisible to the filter.
+      assert t == LT.Mismatch;
+      assert PTL.TreeBfsStepLk(t, gm, inp) == PT.StepActive([]);
+      bst1 := PT.PTS(inp, ta[1..], best, tb, SS.AddSeenTrees(seen, t));
+      assert [] + ta[1..] == ta[1..];
+      assert PTL.PikeTreeStepLk(bst, bst1);
+      TrcLkRefl(bst1);
+      TrcLkCons(bst, bst1, bst1);
+
+      assert PIV.MatchingBlocked(LC.Reverse(vms2.blocked), inp)
+          == PIV.MatchingBlocked(LC.Reverse(s.blocked), inp);
+
+      AddSeenRepLk(rer, qm, code, inp, seen, s.processed, t, pc, ea,
+                   PIV.HdTreeOf(ta[1..]), PIV.HeadPcOf(vms2.active));
+      assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta[1..], s.active[1..],
+                          ncap, nlook, nquant);
+      assert vms2.active == s.active[1..];
+    }
+  }
 
   /** CONSUME, pc already blocked (dedup): the VM drops the head; B fires
       `pts_skip` — `IsblockedRepLk` holds a canonical tree at the `Consume`
