@@ -3337,8 +3337,134 @@ module LindenElkLiftSim {
     TrcLkCons(bst, bst1, bst1);
   }
 
+  /** Fueled `WalkPairLk` core at an `EndLoop` pc: `TtLkAtEndLoopCore`'s case
+      structure with `WalkPairLkAtAnchorCore`'s invariant threading — the
+      `Acheck` head is consumed with `gm` UNCHANGED, so the tail bricks give
+      the continuation its `GateAheadClear`/NoDup. */
+  lemma WalkPairLkAtEndLoopCore(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                                tb: LT.Tree, gm: LG.GroupMap, pc: nat, b: BS.LoopBool,
+                                acts: LS.Actions)
+    requires AR.ActionsRepL(rer, qm, acts, code, pc)
+    requires EL.PikeLkActions(acts)
+    requires EL.BoolTreeLk(rer, acts, inp, b, tb)
+    requires NR.GetPcRE(code, pc) == Some(RB.EndLoop)
+    requires GateAheadClear(acts, gm)
+    requires M.NoDupSeq(M.AllDefsActs(acts))
+    ensures ATR.EaOf(b) ==> tb.Progress? && WalkPairLk(rer, qm, code, inp, tb.t, gm, pc + 1, true)
+    ensures !ATR.EaOf(b) ==> tb == LT.Mismatch
+    decreases ATR.MsizeA(acts)
+  {
+    var g := ATR.EaOf(b);
+    assert !AR.BackForkAt(code, pc);   // GetPcRE(pc)==EndLoop, not Fork
+    var pcmid: nat :| AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && AR.ActionsRepL(rer, qm, acts[1..], code, pcmid);
+    EL.PikeLkActionsTail(acts);
+    assert acts == [acts[0]] + acts[1..];
+    EL.PikeLkActionsConsIff(acts[0], acts[1..]);
+    var cont := acts[1..];
+    match acts[0]
+    case Acheck(strcheck) =>
+      // ActionRepL(Acheck): EndLoop disjunct (BackFork excluded) ⇒ pcmid == pc+1
+      assert pcmid == pc + 1;
+      if b == BS.CanExit {
+        assert g == true;
+        assert tb.Progress? && EL.BoolTreeLk(rer, cont, inp, BS.CanExit, tb.t);
+        assert AR.ActionsRepL(rer, qm, cont, code, pc + 1);
+        // gm UNCHANGED across the guard ⟹ tail bricks give the continuation clear.
+        GateAheadClearTail(acts, gm);       // GateAheadClear(cont, gm)
+        NoDupAllDefsTail(acts);             // NoDupSeq(AllDefsActs(cont))
+        assert EL.PikeLkActions(cont);
+        assert ATR.EaOf(BS.CanExit) == true;
+        assert WalkPairLk(rer, qm, code, inp, tb.t, gm, pc + 1, true);
+      } else {
+        assert b == BS.CannotExit && g == false;
+        assert tb == LT.Mismatch;
+      }
+    case Aclose(_) =>   // pins SetRegisterToCP — not EndLoop
+    case Areg(r0) =>
+      assert EL.PikeLkRegex(r0);
+      match r0
+      case Epsilon =>
+        assert pcmid == pc;
+        assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+        assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
+        GateAheadClearTail(acts, gm);
+        NoDupAllDefsTail(acts);
+        WalkPairLkAtEndLoopCore(rer, qm, code, inp, tb, gm, pc, b, cont);
+      case Sequence(r1, r2) =>
+        assert acts[0] == LS.Areg(L.Sequence(r1, r2));
+        assert AR.NfaRepL(rer, qm, L.Sequence(r1, r2), code, pc, pcmid);
+        var e1: nat :| AR.NfaRepL(rer, qm, r1, code, pc, e1) && AR.NfaRepL(rer, qm, r2, code, e1, pcmid);
+        var na := [LS.Areg(r1), LS.Areg(r2)] + cont;
+        assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+        AR.ActionsRepLCons(rer, qm, LS.Areg(r2), cont, code, e1, pcmid);
+        AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Areg(r2)] + cont, code, pc, e1);
+        assert AR.ActionsRepL(rer, qm, na, code, pc);
+        assert EL.PikeLkActions(na) by {
+          EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
+          EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
+        }
+        assert EL.BoolTreeLk(rer, na, inp, b, tb);
+        assert LS.ActionsRegexSize(acts) == RegSz(r1) + RegSz(r2) + 1 + LS.ActionsRegexSize(cont);
+        assert LS.ActionsRegexSize(na) == RegSz(r1) + RegSz(r2) + LS.ActionsRegexSize(cont);
+        assert ATR.MsizeA(na) < ATR.MsizeA(acts);
+        GateAheadClearSeqExpand(acts, r1, r2, gm);
+        M.AllDefsActsCons(acts[0], cont);
+        M.AllDefsActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont);
+        M.AllDefsActsCons(LS.Areg(r2), cont);
+        assert L.DefGroups(L.Sequence(r1, r2)) == L.DefGroups(r1) + L.DefGroups(r2);
+        assert L.DefGroups(r1) + (L.DefGroups(r2) + M.AllDefsActs(cont))
+            == (L.DefGroups(r1) + L.DefGroups(r2)) + M.AllDefsActs(cont);
+        assert M.AllDefsActs(na) == M.AllDefsActs(acts);
+        WalkPairLkAtEndLoopCore(rer, qm, code, inp, tb, gm, pc, b, na);
+      case Quantified(greedy, min, delta, r1) =>
+        if min == 0 && delta == LN.NN(0) {
+          assert acts[0] == LS.Areg(L.Quantified(greedy, 0, LN.NN(0), r1));
+          assert AR.NfaRepL(rer, qm, L.Quantified(greedy, 0, LN.NN(0), r1), code, pc, pcmid);
+          var em: nat :| AR.NfaRepMinL(rer, qm, 0, r1, code, pc, em)
+                       && AR.NfaRepOptL(rer, qm, 0, greedy, r1, code, em, pcmid);
+          NfaRepMinLHeadPin(rer, qm, 0, r1, code, pc, em);
+          NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);
+          assert pcmid == pc;
+          assert AR.ActionsRepL(rer, qm, cont, code, pc);
+          assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+          assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
+          GateAheadClearTail(acts, gm);
+          NoDupAllDefsTail(acts);
+          WalkPairLkAtEndLoopCore(rer, qm, code, inp, tb, gm, pc, b, cont);
+        } else {
+          assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
+          assert AR.NfaRepL(rer, qm, L.Quantified(greedy, min, delta, r1), code, pc, pcmid);
+          QuantHeadPinsForkOrSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
+        }
+      case Character(_) =>   // pins Consume — not EndLoop
+      case Disjunction(_, _) =>   // pins Fork — not EndLoop
+      case Group(_, _) =>   // pins SetRegisterToCP — not EndLoop
+      case LookaroundR(_, _) =>   // pins CheckOracle/NegCheckOracle — not EndLoop
+      case AnchorR(_) =>   // pins AnchorAssertion — not EndLoop
+      case Backreference(_) =>   // NfaRepL false
+  }
+
+  /** WalkPairLk→WalkPairLk wrapper at an `EndLoop`. */
+  lemma WalkPairLkAtEndLoop(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                            tb: LT.Tree, gm: LG.GroupMap, pc: nat, ea: bool)
+    requires WalkPairLk(rer, qm, code, inp, tb, gm, pc, ea)
+    requires NR.GetPcRE(code, pc) == Some(RB.EndLoop)
+    ensures ea ==> tb.Progress? && WalkPairLk(rer, qm, code, inp, tb.t, gm, pc + 1, true)
+    ensures !ea ==> tb == LT.Mismatch
+  {
+    var acts: LS.Actions, b: BS.LoopBool :|
+      AR.ActionsRepL(rer, qm, acts, code, pc)
+      && EL.PikeLkActions(acts)
+      && ATR.EaOf(b) == ea
+      && EL.BoolTreeLk(rer, acts, inp, b, tb)
+      && GateAheadClear(acts, gm)
+      && M.NoDupSeq(M.AllDefsActs(acts));
+    WalkPairLkAtEndLoopCore(rer, qm, code, inp, tb, gm, pc, b, acts);
+  }
+
   /** ENDLOOP, PASSING (`exit_allowed`): B steps the `Progress` head (unwrap,
-      same gm, child at `pc+1`/CanExit). BODILESS. */
+      same gm, child at `pc+1`/CanExit). `Progress` is erasure-transparent, so
+      the raw child witness is just the raw walk's own child. */
   lemma LiftPreserveEndLoopPassLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                                   crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                                   bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
@@ -3358,6 +3484,61 @@ module LindenElkLiftSim {
     ensures PTL.TrcPikeTreeLk(bst, bst1)
     ensures bst1.PTS?
     ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := bst;
+    var th := s.active[0];
+    var th' := th.(pc := th.pc + 1);
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t, gm, th, ncap, nlook, nquant);
+    var pc: nat := th.pc as nat;
+    var ea := th.exit_allowed;
+    assert TreeRepLkRE(rer, qm, code, inp, t, pc, ea);
+
+    // canonical head: Progress with canonical child at (pc+1, true)
+    TreeRepLkREAtEndLoop(rer, qm, code, inp, t, pc, ea);
+    assert t.Progress? && TreeRepLkRE(rer, qm, code, inp, t.t, pc + 1, true);
+
+    // B step: pts_active queues the child with the same gm
+    assert PTL.TreeBfsStepLk(t, gm, inp) == PT.StepActive([(t.t, gm)]);
+    bst1 := PT.PTS(inp, [(t.t, gm)] + ta[1..], best, tb, SS.AddSeenTrees(seen, t));
+    assert PTL.PikeTreeStepLk(bst, bst1);
+    TrcLkRefl(bst1);
+    TrcLkCons(bst, bst1, bst1);
+
+    // the child pairing: the raw witness unwraps its own Progress; erasure is
+    // transparent to the guard on BOTH sides
+    var traw: LT.Tree :| CE.ProgErase(traw) == CE.ProgErase(t)
+      && ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, traw, gm, th, ncap, nlook, nquant);
+    WalkPairLkAtEndLoop(rer, qm, code, inp, traw, gm, pc, ea);
+    assert traw.Progress? && WalkPairLk(rer, qm, code, inp, traw.t, gm, pc + 1, true);
+    assert (th.pc + 1) as nat == pc + 1;
+    assert th'.exit_allowed == true;
+    assert GmtTieOutside(re, th', gm, S);
+    assert GmtTieInside(crv, str, ov, th', gm, S, ncap, nlook, nquant);
+    assert ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, traw.t, gm, th', ncap, nlook, nquant);
+    assert CE.ProgErase(traw.t) == CE.ProgErase(t.t) by {
+      assert CE.ProgErase(traw) == CE.ProgErase(traw.t);   // Progress transparent
+      assert CE.ProgErase(t) == CE.ProgErase(t.t);
+    }
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t.t, gm, th', ncap, nlook, nquant);
+
+    // list bookkeeping
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta[1..], s.active[1..],
+                        ncap, nlook, nquant);
+    assert vms2.active[0] == th' && vms2.active[1..] == s.active[1..];
+    assert ([(t.t, gm)] + ta[1..])[0] == (t.t, gm) && ([(t.t, gm)] + ta[1..])[1..] == ta[1..];
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, [(t.t, gm)] + ta[1..], vms2.active,
+                        ncap, nlook, nquant);
+
+    // seen + isblocked bookkeeping
+    assert PIV.HdTreeOf(ta) == Some(t) && PIV.HeadPcOf(s.active) == pc;
+    AddSeenRepLk(rer, qm, code, inp, seen, s.processed, t, pc, ea,
+                 PIV.HdTreeOf([(t.t, gm)] + ta[1..]), PIV.HeadPcOf(vms2.active));
+    IsblockedGrowLk(rer, qm, code, inp, seen, s.isblocked, t);
+  }
 
   /** ENDLOOP, KILLING (`!exit_allowed`): the head canonical tree is
       `Mismatch` (`tr_progressfail`), B drops it. */
