@@ -2477,6 +2477,321 @@ module LindenElkLiftSim {
     assert BestTieLk(re, crv, str, ov, S, None, vms.bestmatch, ncap, nlook, nquant);
   }
 
+  // ==========================================================================
+  // (4a) THE ε-PHASE CASE TIER — per-VM-worklist-step preservation lemmas,
+  // mirroring PSM's Preserve*Case set. Each takes the pre-states (bst, s), the
+  // ticked state s1 (clock+1, slot marked processed) and the case's successor
+  // vms2, and returns the B successor with its step(s) and LiftInv(bst1, vms2).
+  // The canonical tie (TreeRepLkREAt*) pins the head shape; the raw
+  // erasure-witness carries the value layer through the proven cores.
+  // ==========================================================================
+
+  /** `TrcPikeTreeLk` is reflexive. */
+  lemma TrcLkRefl(s: PT.PikeTreeState)
+    ensures PTL.TrcPikeTreeLk(s, s)
+  {}
+
+  /** Prepending one `PikeTreeStepLk` keeps a `TrcPikeTreeLk` chain. */
+  lemma TrcLkCons(s1: PT.PikeTreeState, mid: PT.PikeTreeState, s2: PT.PikeTreeState)
+    requires PTL.PikeTreeStepLk(s1, mid)
+    requires PTL.TrcPikeTreeLk(mid, s2)
+    ensures PTL.TrcPikeTreeLk(s1, s2)
+  {}
+
+  /** Step-counted `TrcPikeTreeLk` — the nat-indexed detour that lets
+      transitivity avoid a two-least-requires induction (PSM's `TrcN` shape). */
+  ghost predicate TrcLkN(a: PT.PikeTreeState, b: PT.PikeTreeState, n: nat)
+    decreases n
+  {
+    (a == b && n == 0)
+    || (n > 0 && exists z :: PTL.PikeTreeStepLk(a, z) && TrcLkN(z, b, n - 1))
+  }
+
+  /** Every `TrcPikeTreeLk` chain has a finite step count. */
+  least lemma TrcLkToN(a: PT.PikeTreeState, b: PT.PikeTreeState)
+    requires PTL.TrcPikeTreeLk(a, b)
+    ensures exists n: nat :: TrcLkN(a, b, n)
+  {
+    if a == b {
+      assert TrcLkN(a, b, 0);
+    } else {
+      var z :| PTL.PikeTreeStepLk(a, z) && PTL.TrcPikeTreeLk(z, b);
+      TrcLkToN(z, b);
+      var n: nat :| TrcLkN(z, b, n);
+      assert TrcLkN(a, b, n + 1);
+    }
+  }
+
+  /** A counted chain is a plain chain. */
+  lemma TrcLkFromN(a: PT.PikeTreeState, b: PT.PikeTreeState, n: nat)
+    requires TrcLkN(a, b, n)
+    ensures PTL.TrcPikeTreeLk(a, b)
+    decreases n
+  {
+    if a == b && n == 0 {
+    } else {
+      var z :| PTL.PikeTreeStepLk(a, z) && TrcLkN(z, b, n - 1);
+      TrcLkFromN(z, b, n - 1);
+      TrcLkCons(a, z, b);
+    }
+  }
+
+  /** `TrcLkN` is transitive with counts adding. */
+  lemma TrcLkNTrans(a: PT.PikeTreeState, b: PT.PikeTreeState, c: PT.PikeTreeState, n: nat, m: nat)
+    requires TrcLkN(a, b, n)
+    requires TrcLkN(b, c, m)
+    ensures TrcLkN(a, c, n + m)
+    decreases n
+  {
+    if a == b && n == 0 {
+    } else {
+      var z :| PTL.PikeTreeStepLk(a, z) && TrcLkN(z, b, n - 1);
+      TrcLkNTrans(z, b, c, n - 1, m);
+    }
+  }
+
+  /** Concatenating `TrcPikeTreeLk` chains. */
+  lemma TrcLkTrans(a: PT.PikeTreeState, b: PT.PikeTreeState, c: PT.PikeTreeState)
+    requires PTL.TrcPikeTreeLk(a, b)
+    requires PTL.TrcPikeTreeLk(b, c)
+    ensures PTL.TrcPikeTreeLk(a, c)
+  {
+    TrcLkToN(a, b);
+    TrcLkToN(b, c);
+    var n: nat :| TrcLkN(a, b, n);
+    var m: nat :| TrcLkN(b, c, m);
+    TrcLkNTrans(a, b, c, n, m);
+    TrcLkFromN(a, c, n + m);
+  }
+
+  /** A canonical head sits at a fetchable pc (every rule pins an instruction). */
+  lemma TreeRepLkREInRange(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                           t: LT.Tree, pc: nat, b: bool)
+    requires TreeRepLkRE(rer, qm, code, inp, t, pc, b)
+    ensures NR.GetPcRE(code, pc).Some? && pc < |code|
+  { }
+
+  /** Growing the seen set preserves the isblocked pairing (witness carries).
+      Mirror of `PSM.IsblockedGrow`. */
+  lemma IsblockedGrowLk(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                        treeseen: SS.SeenTrees, isblocked: AI.pcset, extra: LT.Tree)
+    requires IsblockedRepLk(rer, qm, code, inp, treeseen, isblocked)
+    ensures IsblockedRepLk(rer, qm, code, inp, SS.AddSeenTrees(treeseen, extra), isblocked)
+  {
+    forall pc0: nat | AI.pc_mem(isblocked, pc0)
+      ensures exists t: LT.Tree, b: bool ::
+        SS.Inseen(SS.AddSeenTrees(treeseen, extra), t) && TreeRepLkRE(rer, qm, code, inp, t, pc0, b)
+    {
+      var t: LT.Tree, b: bool :| SS.Inseen(treeseen, t) && TreeRepLkRE(rer, qm, code, inp, t, pc0, b);
+      SS.InAdd(treeseen, t, extra);
+    }
+  }
+
+  /** WalkPairLk relocates through a `Jmp` — the SAME `(acts, b)` witness moves
+      via `ActionsRepLThruJmp`, so `GateAheadClear`/NoDup transfer verbatim. */
+  lemma WalkPairLkAtJmp(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                        tb: LT.Tree, gmt: LG.GroupMap, pc: nat, ea: bool, x: int)
+    requires WalkPairLk(rer, qm, code, inp, tb, gmt, pc, ea)
+    requires NR.GetPcRE(code, pc) == Some(RB.Jmp(x))
+    ensures x >= 0 && WalkPairLk(rer, qm, code, inp, tb, gmt, x as nat, ea)
+  {
+    var acts: LS.Actions, b: BS.LoopBool :|
+      AR.ActionsRepL(rer, qm, acts, code, pc)
+      && EL.PikeLkActions(acts)
+      && ATR.EaOf(b) == ea
+      && EL.BoolTreeLk(rer, acts, inp, b, tb)
+      && GateAheadClear(acts, gmt)
+      && M.NoDupSeq(M.AllDefsActs(acts));
+    ActionsRepLThruJmp(rer, qm, acts, code, pc, x);
+  }
+
+  /** SKIP: the head's `(pc, ea)` is already processed — the VM drops it, and
+      B fires `pts_skip`: the seen slot's canonical tree EQUALS the head's by
+      `TreeRepLkDetermRE` (the whole point of the planted-canonical pivot);
+      the stutter escape is killed by `NoStutterCycle`. */
+  lemma LiftPreserveSkipLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                           crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
+                           bst: PT.PikeTreeState, s: AI.VmState, ncap: int, nlook: int, nquant: int)
+    returns (bst1: PT.PikeTreeState)
+    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires bst.PTS?
+    requires LiftInv(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
+    requires |s.active| > 0
+    requires AI.bpc_mem(s.processed, s.active[0].pc, s.active[0].exit_allowed)
+    ensures PTL.PikeTreeStepLk(bst, bst1)
+    ensures bst1.PTS?
+    ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, s.(active := s.active[1..]),
+                    ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := bst;
+    var th := s.active[0];
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t, gm, th, ncap, nlook, nquant);
+    var pc: nat := th.pc as nat;
+    var ea := th.exit_allowed;
+    assert TreeRepLkRE(rer, qm, code, inp, t, pc, ea);
+    assert PIV.HdTreeOf(ta) == Some(t) && PIV.HeadPcOf(s.active) == pc;
+
+    // The processed slot resolves LEFT: the stutter escape would need
+    // StutterChainTo(pc, pc), impossible in tame code.
+    assert AI.bpc_mem(s.processed, pc, ea);
+    assert (exists t': LT.Tree :: SS.Inseen(seen, t') && TreeRepLkRE(rer, qm, code, inp, t', pc, ea))
+        || (TT.StuttersRE(pc, code)
+            && exists t': LT.Tree ::
+                 PIV.StutterChainTo(code, pc, pc) && Some(t) == Some(t')
+                 && TreeRepLkRE(rer, qm, code, inp, t', pc, ea));
+    if !(exists t': LT.Tree :: SS.Inseen(seen, t') && TreeRepLkRE(rer, qm, code, inp, t', pc, ea)) {
+      PIV.NoStutterCycle(code, pc);
+      assert false;
+    }
+    var t': LT.Tree :| SS.Inseen(seen, t') && TreeRepLkRE(rer, qm, code, inp, t', pc, ea);
+    TreeRepLkDetermRE(rer, qm, code, inp, t, t', pc, ea);
+    assert SS.Inseen(seen, t);
+
+    // pts_skip
+    bst1 := PT.PTS(inp, ta[1..], best, tb, seen);
+    assert PTL.PikeTreeStepLk(bst, bst1);
+
+    // invariant at the successor
+    SkipSeenRepLk(rer, qm, code, inp, seen, s.processed, t, pc,
+                  PIV.HdTreeOf(ta[1..]), PIV.HeadPcOf(s.active[1..]));
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta[1..], s.active[1..],
+                        ncap, nlook, nquant);
+  }
+
+  /** STUTTER (Jmp / BeginLoop): the VM relocates the head thread, B does not
+      step — the SAME canonical tree represents at the relocated `(pc', ea')`
+      (`tr_jmp`/`tr_begin`), the raw witness relocates with its stack, and the
+      seen escape chain extends one step (`StutterSeenRepLk`). */
+  lemma LiftPreserveStutterLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                              crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
+                              bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState, th': AI.Thread,
+                              vms2: AI.VmState, ncap: int, nlook: int, nquant: int)
+    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires bst.PTS?
+    requires LiftInv(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
+    requires |s.active| > 0
+    requires !AI.bpc_mem(s.processed, s.active[0].pc, s.active[0].exit_allowed)
+    requires s.active[0].pc >= 0
+    requires s1 == s.(clock := s.clock + 1,
+                      processed := AI.bpc_add(s.processed, s.active[0].pc, s.active[0].exit_allowed))
+    requires (exists x: int ::
+                NR.GetPcRE(code, s.active[0].pc as nat) == Some(RB.Jmp(x))
+                && th' == s.active[0].(pc := x))
+          || (NR.GetPcRE(code, s.active[0].pc as nat) == Some(RB.BeginLoop)
+              && th' == s.active[0].(exit_allowed := false, pc := s.active[0].pc + 1))
+    requires vms2 == s1.(active := [th'] + s1.active[1..])
+    ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := bst;
+    var th := s.active[0];
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t, gm, th, ncap, nlook, nquant);
+    var pc: nat := th.pc as nat;
+    var ea := th.exit_allowed;
+    assert TreeRepLkRE(rer, qm, code, inp, t, pc, ea);
+    var traw: LT.Tree :| CE.ProgErase(traw) == CE.ProgErase(t)
+      && ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, traw, gm, th, ncap, nlook, nquant);
+
+    // the relocated head pairing
+    var pc': nat;
+    if exists x: int :: NR.GetPcRE(code, pc) == Some(RB.Jmp(x)) && th' == th.(pc := x) {
+      var x: int :| NR.GetPcRE(code, pc) == Some(RB.Jmp(x)) && th' == th.(pc := x);
+      TreeRepLkREAtJmp(rer, qm, code, inp, t, pc, ea, x);
+      WalkPairLkAtJmp(rer, qm, code, inp, traw, gm, pc, ea, x);
+      pc' := x as nat;
+      assert PIV.StutterSuccIs(code, pc, pc');
+    } else {
+      TreeRepLkREAtBeginLoop(rer, qm, code, inp, t, pc, ea);
+      WalkPairLkAtBeginLoop(rer, qm, code, inp, traw, gm, pc, ea);
+      pc' := pc + 1;
+      assert PIV.StutterSuccIs(code, pc, pc');
+    }
+    assert th'.pc == pc' as int;
+    assert TreeRepLkRE(rer, qm, code, inp, t, pc', th'.exit_allowed);
+    assert WalkPairLk(rer, qm, code, inp, traw, gm, pc', th'.exit_allowed);
+    assert th'.capture_regs == th.capture_regs && th'.look_regs == th.look_regs
+        && th'.quant_regs == th.quant_regs;
+    assert GmtTieOutside(re, th', gm, S);
+    assert GmtTieInside(crv, str, ov, th', gm, S, ncap, nlook, nquant);
+    assert ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, traw, gm, th', ncap, nlook, nquant);
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t, gm, th', ncap, nlook, nquant);
+
+    // active: same (tree, gm) list against the relocated head
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta[1..], s.active[1..],
+                        ncap, nlook, nquant);
+    assert vms2.active[0] == th' && vms2.active[1..] == s.active[1..];
+    assert ta == [ta[0]] + ta[1..];
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta, vms2.active, ncap, nlook, nquant);
+
+    // seen: the escape chain extends by one stutter step
+    assert TT.StuttersRE(pc, code);
+    assert PIV.HdTreeOf(ta) == Some(t) && PIV.HeadPcOf(s.active) == pc;
+    StutterSeenRepLk(rer, qm, code, inp, seen, s.processed, t, pc, ea, pc');
+    assert PIV.HeadPcOf(vms2.active) == pc';
+  }
+
+  /** ACCEPT: the VM records the winner and CUTS the queue; B fires
+      `pts_match` — the head canonical tree IS `Match` and its `gm` carries
+      exactly the two-sided value tie (`BestTieLk` straight from
+      `ThreadRepLkC`'s payload). */
+  lemma LiftPreserveAcceptLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                             crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
+                             bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
+                             vms2: AI.VmState, ncap: int, nlook: int, nquant: int)
+    returns (bst1: PT.PikeTreeState)
+    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires bst.PTS?
+    requires LiftInv(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
+    requires |s.active| > 0
+    requires !AI.bpc_mem(s.processed, s.active[0].pc, s.active[0].exit_allowed)
+    requires s.active[0].pc >= 0
+    requires NR.GetPcRE(code, s.active[0].pc as nat) == Some(RB.Accept)
+    requires s1 == s.(clock := s.clock + 1,
+                      processed := AI.bpc_add(s.processed, s.active[0].pc, s.active[0].exit_allowed))
+    requires vms2 == s1.(active := [], bestmatch := Some(s.active[0]))
+    ensures PTL.PikeTreeStepLk(bst, bst1)
+    ensures bst1.PTS?
+    ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := bst;
+    var th := s.active[0];
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t, gm, th, ncap, nlook, nquant);
+    var pc: nat := th.pc as nat;
+    var ea := th.exit_allowed;
+    assert TreeRepLkRE(rer, qm, code, inp, t, pc, ea);
+    TreeRepLkREAtAccept(rer, qm, code, inp, t, pc, ea);
+    assert t == LT.Match;
+    assert PTL.TreeBfsStepLk(t, gm, inp) == PT.StepMatch;
+
+    // pts_match
+    bst1 := PT.PTS(inp, [], Some((inp, gm)), tb, SS.AddSeenTrees(seen, t));
+    assert PTL.PikeTreeStepLk(bst, bst1);
+
+    // the value tie for the recorded best — straight from the head's payload
+    var traw: LT.Tree :| CE.ProgErase(traw) == CE.ProgErase(t)
+      && ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, traw, gm, th, ncap, nlook, nquant);
+    assert GmtTieOutside(re, th, gm, S);
+    assert GmtTieInside(crv, str, ov, th, gm, S, ncap, nlook, nquant);
+    assert BestTieLk(re, crv, str, ov, S, Some((inp, gm)), vms2.bestmatch, ncap, nlook, nquant);
+
+    // bookkeeping: seen grows with the memoized head; active empty both sides
+    AddSeenRepLk(rer, qm, code, inp, seen, s.processed, t, pc, ea,
+                 PIV.HdTreeOf([]), PIV.HeadPcOf(vms2.active));
+    IsblockedGrowLk(rer, qm, code, inp, seen, s.isblocked, t);
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, [], vms2.active, ncap, nlook, nquant);
+  }
+
   /** (4) The epsilon-phase lift: one VM epsilon phase maps to a legal B-trace
       segment preserving the pairing. FILL: the ClockMono frame recursion
       (clone `FAdvanceEpsilonLookCpOk`'s skeleton), stepping B per case —
