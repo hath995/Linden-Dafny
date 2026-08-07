@@ -4111,6 +4111,7 @@ module LindenElkLiftSim {
     requires dir == LAnc.Forward
     requires bst.PTS?
     requires |s.processed.true_set| == RB.size(code) && |s.processed.false_set| == RB.size(code)
+    requires PSM.BBOf(s, ncap, nlook, nquant)   // the ClockMono backbones (SetReg/gate cases read them)
     requires LiftInv(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     ensures PTL.TrcPikeTreeLk(bst, bst1)
     ensures bst1.PTS?           // the ε-phase never finalizes; pts_final is LiftConsume's
@@ -4140,6 +4141,7 @@ module LindenElkLiftSim {
 
     if AI.bpc_mem(s.processed, th.pc, th.exit_allowed) {
       var bstS := LiftPreserveSkipLk(rer, qm, re, code, endl, crv, str, ov, S, bst, s, ncap, nlook, nquant);
+      PSM.BBDropHead(s, ncap, nlook, nquant);
       var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
                                      s.(active := ac), bstS, dir, ncap, nlook, nquant);
       TrcLkCons(bst, bstS, bst2);
@@ -4167,6 +4169,10 @@ module LindenElkLiftSim {
         var vms2 := s1.(active := [th'] + ac);
         LiftPreserveStutterLk(rer, qm, re, code, endl, crv, str, ov, S,
                               bst, s, s1, th', vms2, ncap, nlook, nquant);
+        PSM.BBTick(s, s1, ncap, nlook, nquant);
+        assert th in s.active;
+        CM.ThreadClocksLEMono(th, s.clock, s1.clock);
+        PSM.BBReplaceHead(s1, th', ncap, nlook, nquant);
         bst1 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
                                    vms2, bst, dir, ncap, nlook, nquant);
       case BeginLoop =>
@@ -4174,6 +4180,10 @@ module LindenElkLiftSim {
         var vms2 := s1.(active := [th'] + ac);
         LiftPreserveStutterLk(rer, qm, re, code, endl, crv, str, ov, S,
                               bst, s, s1, th', vms2, ncap, nlook, nquant);
+        PSM.BBTick(s, s1, ncap, nlook, nquant);
+        assert th in s.active;
+        CM.ThreadClocksLEMono(th, s.clock, s1.clock);
+        PSM.BBReplaceHead(s1, th', ncap, nlook, nquant);
         bst1 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
                                    vms2, bst, dir, ncap, nlook, nquant);
       case Consume(ce) =>
@@ -4184,6 +4194,8 @@ module LindenElkLiftSim {
           assert vms2 == s1.(active := ac);
           var bstS := LiftPreserveConsumeDropLk(rer, qm, re, code, endl, crv, str, ov, S,
                                                 bst, s, s1, ce, vms2, ncap, nlook, nquant);
+          PSM.BBTick(s, s1, ncap, nlook, nquant);
+          PSM.BBDropHead(s1, ncap, nlook, nquant);
           var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
                                          vms2, bstS, dir, ncap, nlook, nquant);
           TrcLkTrans(bst, bstS, bst2);
@@ -4193,6 +4205,8 @@ module LindenElkLiftSim {
           var vms2 := s1.(blocked := nb, isblocked := ni, active := ac);
           var bstS := LiftPreserveConsumeAddLk(rer, qm, re, code, endl, crv, str, ov, S,
                                                bst, s, s1, ce, vms2, ncap, nlook, nquant);
+          PSM.BBTick(s, s1, ncap, nlook, nquant);
+          PSM.BBBlockHead(s1, ce, ncap, nlook, nquant);
           var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
                                          vms2, bstS, dir, ncap, nlook, nquant);
           TrcLkTrans(bst, bstS, bst2);
@@ -4203,6 +4217,10 @@ module LindenElkLiftSim {
         var vms2 := s1.(active := [newt, th.(pc := y)] + ac);
         var bstS := LiftPreserveForkLk(rer, qm, re, code, endl, crv, str, ov, S,
                                        bst, s, s1, x, y, vms2, ncap, nlook, nquant);
+        PSM.BBTick(s, s1, ncap, nlook, nquant);
+        assert th in s.active;
+        CM.ThreadClocksLEMono(th, s.clock, s1.clock);
+        PSM.BBTwoHead(s1, newt, th.(pc := y), ncap, nlook, nquant);
         var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
                                        vms2, bstS, dir, ncap, nlook, nquant);
         TrcLkTrans(bst, bstS, bst2);
@@ -4213,6 +4231,14 @@ module LindenElkLiftSim {
         var vms2 := s1.(active := [th'] + ac);
         var bstS := LiftPreserveSetRegLk(rer, qm, re, code, endl, crv, str, ov, S,
                                          bst, s, s1, reg, th', vms2, ncap, nlook, nquant);
+        PSM.BBTick(s, s1, ncap, nlook, nquant);
+        assert th in s.active;
+        CM.ThreadClocksLEMono(th, s.clock, s1.clock);
+        CM.RegsClocksLESet(th.capture_regs, reg, Some(s1.cp), s1.clock, s1.clock);
+        CM.SetRegLens(th.capture_regs, reg, Some(s1.cp), s1.clock);
+        CM.RegsValsLESet(th.capture_regs, reg, s1.cp, s1.clock, s1.cp);
+        PIV.CapRegWfSet(th.capture_regs, reg, s1.cp, s1.clock);
+        PSM.BBReplaceHead(s1, th', ncap, nlook, nquant);
         var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
                                        vms2, bstS, dir, ncap, nlook, nquant);
         TrcLkTrans(bst, bstS, bst2);
@@ -4223,6 +4249,12 @@ module LindenElkLiftSim {
         var vms2 := s1.(active := [th'] + ac);
         var bstS := LiftPreserveSetQuantLk(rer, qm, re, code, endl, crv, str, ov, S,
                                            bst, s, s1, q, bq, th', vms2, ncap, nlook, nquant);
+        PSM.BBTick(s, s1, ncap, nlook, nquant);
+        assert th in s.active;
+        CM.ThreadClocksLEMono(th, s.clock, s1.clock);
+        CM.RegsClocksLESet(th.quant_regs, q, ocp, s1.clock, s1.clock);
+        CM.SetRegLens(th.quant_regs, q, ocp, s1.clock);
+        PSM.BBReplaceHead(s1, th', ncap, nlook, nquant);
         var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
                                        vms2, bstS, dir, ncap, nlook, nquant);
         TrcLkTrans(bst, bstS, bst2);
@@ -4234,6 +4266,12 @@ module LindenElkLiftSim {
           var vms2 := s1.(active := [th'] + ac);
           var bstS := LiftPreserveGatePassLk(rer, qm, re, code, endl, crv, str, ov, S,
                                              bst, s, s1, l, th', vms2, ncap, nlook, nquant);
+          PSM.BBTick(s, s1, ncap, nlook, nquant);
+          assert th in s.active;
+          CM.ThreadClocksLEMono(th, s.clock, s1.clock);
+          CM.RegsClocksLESet(th.look_regs, l, Some(s1.cp), s1.clock, s1.clock);
+          CM.SetRegLens(th.look_regs, l, Some(s1.cp), s1.clock);
+          PSM.BBReplaceHead(s1, th', ncap, nlook, nquant);
           var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
                                          vms2, bstS, dir, ncap, nlook, nquant);
           TrcLkTrans(bst, bstS, bst2);
@@ -4242,6 +4280,8 @@ module LindenElkLiftSim {
           var vms2 := s1.(active := ac);
           var bstS := LiftPreserveGateKillLk(rer, qm, re, code, endl, crv, str, ov, S,
                                              bst, s, s1, l, true, vms2, ncap, nlook, nquant);
+          PSM.BBTick(s, s1, ncap, nlook, nquant);
+          PSM.BBDropHead(s1, ncap, nlook, nquant);
           var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
                                          vms2, bstS, dir, ncap, nlook, nquant);
           TrcLkTrans(bst, bstS, bst2);
@@ -4252,6 +4292,8 @@ module LindenElkLiftSim {
           var vms2 := s1.(active := ac);
           var bstS := LiftPreserveGateKillLk(rer, qm, re, code, endl, crv, str, ov, S,
                                              bst, s, s1, l, false, vms2, ncap, nlook, nquant);
+          PSM.BBTick(s, s1, ncap, nlook, nquant);
+          PSM.BBDropHead(s1, ncap, nlook, nquant);
           var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
                                          vms2, bstS, dir, ncap, nlook, nquant);
           TrcLkTrans(bst, bstS, bst2);
@@ -4260,6 +4302,10 @@ module LindenElkLiftSim {
           var vms2 := s1.(active := [th.(pc := th.pc + 1)] + ac);
           var bstS := LiftPreserveNegGatePassLk(rer, qm, re, code, endl, crv, str, ov, S,
                                                 bst, s, s1, l, vms2, ncap, nlook, nquant);
+          PSM.BBTick(s, s1, ncap, nlook, nquant);
+          assert th in s.active;
+          CM.ThreadClocksLEMono(th, s.clock, s1.clock);
+          PSM.BBReplaceHead(s1, th.(pc := th.pc + 1), ncap, nlook, nquant);
           var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
                                          vms2, bstS, dir, ncap, nlook, nquant);
           TrcLkTrans(bst, bstS, bst2);
@@ -4274,6 +4320,10 @@ module LindenElkLiftSim {
           var vms2 := s1.(active := [th.(pc := th.pc + 1)] + ac);
           var bstS := LiftPreserveEndLoopPassLk(rer, qm, re, code, endl, crv, str, ov, S,
                                                 bst, s, s1, vms2, ncap, nlook, nquant);
+          PSM.BBTick(s, s1, ncap, nlook, nquant);
+          assert th in s.active;
+          CM.ThreadClocksLEMono(th, s.clock, s1.clock);
+          PSM.BBReplaceHead(s1, th.(pc := th.pc + 1), ncap, nlook, nquant);
           var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
                                          vms2, bstS, dir, ncap, nlook, nquant);
           TrcLkTrans(bst, bstS, bst2);
@@ -4282,6 +4332,8 @@ module LindenElkLiftSim {
           var vms2 := s1.(active := ac);
           var bstS := LiftPreserveEndLoopKillLk(rer, qm, re, code, endl, crv, str, ov, S,
                                                 bst, s, s1, vms2, ncap, nlook, nquant);
+          PSM.BBTick(s, s1, ncap, nlook, nquant);
+          PSM.BBDropHead(s1, ncap, nlook, nquant);
           var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
                                          vms2, bstS, dir, ncap, nlook, nquant);
           TrcLkTrans(bst, bstS, bst2);
@@ -4296,6 +4348,10 @@ module LindenElkLiftSim {
           var vms2 := s1.(active := [th.(pc := th.pc + 1)] + ac);
           var bstS := LiftPreserveAnchorPassLk(rer, qm, re, code, endl, crv, str, ov, S,
                                                bst, s, s1, a, vms2, ncap, nlook, nquant);
+          PSM.BBTick(s, s1, ncap, nlook, nquant);
+          assert th in s.active;
+          CM.ThreadClocksLEMono(th, s.clock, s1.clock);
+          PSM.BBReplaceHead(s1, th.(pc := th.pc + 1), ncap, nlook, nquant);
           var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
                                          vms2, bstS, dir, ncap, nlook, nquant);
           TrcLkTrans(bst, bstS, bst2);
@@ -4304,6 +4360,8 @@ module LindenElkLiftSim {
           var vms2 := s1.(active := ac);
           var bstS := LiftPreserveAnchorKillLk(rer, qm, re, code, endl, crv, str, ov, S,
                                                bst, s, s1, a, vms2, ncap, nlook, nquant);
+          PSM.BBTick(s, s1, ncap, nlook, nquant);
+          PSM.BBDropHead(s1, ncap, nlook, nquant);
           var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
                                          vms2, bstS, dir, ncap, nlook, nquant);
           TrcLkTrans(bst, bstS, bst2);
@@ -7817,6 +7875,8 @@ module LindenElkLiftSim {
     ptsA' := PSM.InvariantPreservationRE(rer, qm, re, code, endl, ngroups, str,
                                          ptsA, vms, ov, LAnc.Forward, ncap, nlook, nquant);
     // machine B: the canonical/value worklist recursion over the same phase
+    // (the ClockMono backbones come straight out of PikeInvFullRE)
+    assert PSM.BBOf(vms, ncap, nlook, nquant);
     ptsB' := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
                                 vms, ptsB, LAnc.Forward, ncap, nlook, nquant);
     // the inp link: both sides pin their inp to InpOfCp(str, vms'.cp)
