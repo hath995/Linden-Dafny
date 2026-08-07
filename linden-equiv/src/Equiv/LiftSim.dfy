@@ -2792,26 +2792,317 @@ module LindenElkLiftSim {
     assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, [], vms2.active, ncap, nlook, nquant);
   }
 
+  /** CONSUME, pc not yet blocked: the VM blocks the head unconditionally;
+      B blocks a matching `Read` (`pts_blocked`, keeping `BlockedRepLkC`
+      aligned through the `MatchingBlocked` filter) or drops a `Mismatch`
+      (empty `pts_active`). Mirror of `PSM.PreserveConsumeAdd`. BODILESS. */
+  lemma LiftPreserveConsumeAddLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                                 crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
+                                 bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
+                                 ce: RC.char_expectation, vms2: AI.VmState,
+                                 ncap: int, nlook: int, nquant: int)
+    returns (bst1: PT.PikeTreeState)
+    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires bst.PTS?
+    requires LiftInv(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
+    requires |s.active| > 0
+    requires !AI.bpc_mem(s.processed, s.active[0].pc, s.active[0].exit_allowed)
+    requires s.active[0].pc >= 0
+    requires NR.GetPcRE(code, s.active[0].pc as nat) == Some(RB.Consume(ce))
+    requires s1 == s.(clock := s.clock + 1,
+                      processed := AI.bpc_add(s.processed, s.active[0].pc, s.active[0].exit_allowed))
+    requires !AI.pc_mem(s1.isblocked, s.active[0].pc)
+    requires vms2 == s1.(blocked := [(s.active[0], ce)] + s1.blocked,
+                         isblocked := AI.pc_add(s1.isblocked, s.active[0].pc),
+                         active := s1.active[1..])
+    ensures PTL.TrcPikeTreeLk(bst, bst1)
+    ensures bst1.PTS?
+    ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+
+  /** CONSUME, pc already blocked (dedup): the VM drops the head; B fires
+      `pts_skip` — `IsblockedRepLk` holds a canonical tree at the `Consume`
+      pc, whose rule is flag-independent, so determinism identifies it with
+      the head's. Mirror of `PSM.PreserveConsumeDrop`. BODILESS. */
+  lemma LiftPreserveConsumeDropLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                                  crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
+                                  bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
+                                  ce: RC.char_expectation, vms2: AI.VmState,
+                                  ncap: int, nlook: int, nquant: int)
+    returns (bst1: PT.PikeTreeState)
+    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires bst.PTS?
+    requires LiftInv(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
+    requires |s.active| > 0
+    requires !AI.bpc_mem(s.processed, s.active[0].pc, s.active[0].exit_allowed)
+    requires s.active[0].pc >= 0
+    requires NR.GetPcRE(code, s.active[0].pc as nat) == Some(RB.Consume(ce))
+    requires s1 == s.(clock := s.clock + 1,
+                      processed := AI.bpc_add(s.processed, s.active[0].pc, s.active[0].exit_allowed))
+    requires AI.pc_mem(s1.isblocked, s.active[0].pc)
+    requires vms2 == s1.(active := s1.active[1..])
+    ensures PTL.TrcPikeTreeLk(bst, bst1)
+    ensures bst1.PTS?
+    ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+
+  /** SETREG (group Open/Close): B steps the `GroupActionT` head, `gmt` moves
+      by `GMUpdate` at the current index; outside-`S` tie via the GmOfLive
+      machinery (the remaining SetReg VALUE-tie obligation), inside-`S` stable.
+      Mirror of `PSM.PreserveOpenCase`/`PreserveCloseCase`. BODILESS. */
+  lemma LiftPreserveSetRegLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                             crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
+                             bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
+                             reg: int, th': AI.Thread, vms2: AI.VmState,
+                             ncap: int, nlook: int, nquant: int)
+    returns (bst1: PT.PikeTreeState)
+    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires bst.PTS?
+    requires LiftInv(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
+    requires |s.active| > 0
+    requires !AI.bpc_mem(s.processed, s.active[0].pc, s.active[0].exit_allowed)
+    requires s.active[0].pc >= 0
+    requires NR.GetPcRE(code, s.active[0].pc as nat) == Some(RB.SetRegisterToCP(reg))
+    requires s1 == s.(clock := s.clock + 1,
+                      processed := AI.bpc_add(s.processed, s.active[0].pc, s.active[0].exit_allowed))
+    requires th' == s.active[0].(capture_regs := AReg.set_reg(s.active[0].capture_regs, reg, Some(s1.cp), s1.clock),
+                                 pc := s.active[0].pc + 1)
+    requires vms2 == s1.(active := [th'] + s1.active[1..])
+    ensures PTL.TrcPikeTreeLk(bst, bst1)
+    ensures bst1.PTS?
+    ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+
+  /** SETQUANT (the quantifier Reset): B steps the `GroupActionT(Reset)` head.
+      BLOCKED on the quantifier-NoDup research gap (the carried NoDup breaks
+      at the unfold — see the campaign memory, option D). BODILESS. */
+  lemma LiftPreserveSetQuantLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                               crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
+                               bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
+                               q: int, bq: bool, th': AI.Thread, vms2: AI.VmState,
+                               ncap: int, nlook: int, nquant: int)
+    returns (bst1: PT.PikeTreeState)
+    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires bst.PTS?
+    requires LiftInv(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
+    requires |s.active| > 0
+    requires !AI.bpc_mem(s.processed, s.active[0].pc, s.active[0].exit_allowed)
+    requires s.active[0].pc >= 0
+    requires NR.GetPcRE(code, s.active[0].pc as nat) == Some(RB.SetQuantToClock(q, bq))
+    requires s1 == s.(clock := s.clock + 1,
+                      processed := AI.bpc_add(s.processed, s.active[0].pc, s.active[0].exit_allowed))
+    requires th' == s.active[0].(quant_regs := AReg.set_reg(s.active[0].quant_regs, q,
+                                                            if bq then Some(s1.cp) else None, s1.clock),
+                                 pc := s.active[0].pc + 1)
+    requires vms2 == s1.(active := [th'] + s1.active[1..])
+    ensures PTL.TrcPikeTreeLk(bst, bst1)
+    ensures bst1.PTS?
+    ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+
+  /** FORK: forward = one `pts_active` on the `Choice` head (arms at `x`/`y`
+      in VM priority order); backward = TWO B steps (`Progress` unwrap, then
+      `Choice` split) per one VM step. Mirror of `PSM.PreserveForkCase`.
+      BODILESS. */
+  lemma LiftPreserveForkLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                           crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
+                           bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
+                           x: int, y: int, vms2: AI.VmState,
+                           ncap: int, nlook: int, nquant: int)
+    returns (bst1: PT.PikeTreeState)
+    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires bst.PTS?
+    requires LiftInv(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
+    requires |s.active| > 0
+    requires !AI.bpc_mem(s.processed, s.active[0].pc, s.active[0].exit_allowed)
+    requires s.active[0].pc >= 0
+    requires NR.GetPcRE(code, s.active[0].pc as nat) == Some(RB.Fork(x, y))
+    requires s1 == s.(clock := s.clock + 1,
+                      processed := AI.bpc_add(s.processed, s.active[0].pc, s.active[0].exit_allowed))
+    requires vms2 == s1.(active := [AI.Thread(x, s.active[0].capture_regs, s.active[0].look_regs,
+                                              s.active[0].quant_regs, s.active[0].exit_allowed),
+                                    s.active[0].(pc := y)] + s1.active[1..])
+    ensures PTL.TrcPikeTreeLk(bst, bst1)
+    ensures bst1.PTS?
+    ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+
+  /** POSITIVE GATE, PASSING: the VM writes `a_cp[l] := cp` and continues; B
+      steps the `LK` head, `gmt` merges `LkResult` — the proven
+      `ThreadRepLkStepCheckOracle` (with `GateStepValue` inside) is the whole
+      content; this wrapper threads the per-lid static look-table package.
+      BODILESS. */
+  lemma LiftPreserveGatePassLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                               crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
+                               bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
+                               l: int, th': AI.Thread, vms2: AI.VmState,
+                               ncap: int, nlook: int, nquant: int)
+    returns (bst1: PT.PikeTreeState)
+    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires qm.ov == ov
+    requires bst.PTS?
+    requires LiftInv(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
+    requires |s.active| > 0
+    requires !AI.bpc_mem(s.processed, s.active[0].pc, s.active[0].exit_allowed)
+    requires s.active[0].pc >= 0
+    requires NR.GetPcRE(code, s.active[0].pc as nat) == Some(RB.CheckOracle(l))
+    requires LOr.view_get_oracle(ov, s.cp, l)
+    requires s1 == s.(clock := s.clock + 1,
+                      processed := AI.bpc_add(s.processed, s.active[0].pc, s.active[0].exit_allowed))
+    requires th' == s.active[0].(pc := s.active[0].pc + 1,
+                                 look_regs := AReg.set_reg(s.active[0].look_regs, l, Some(s1.cp), s1.clock))
+    requires vms2 == s1.(active := [th'] + s1.active[1..])
+    ensures PTL.TrcPikeTreeLk(bst, bst1)
+    ensures bst1.PTS?
+    ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+
+  /** NEGATIVE GATE, PASSING (clear bit): zero-width, no register write; B
+      steps the `LK` head (a negative look's merge adds nothing). BODILESS. */
+  lemma LiftPreserveNegGatePassLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                                  crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
+                                  bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
+                                  l: int, vms2: AI.VmState,
+                                  ncap: int, nlook: int, nquant: int)
+    returns (bst1: PT.PikeTreeState)
+    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires qm.ov == ov
+    requires bst.PTS?
+    requires LiftInv(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
+    requires |s.active| > 0
+    requires !AI.bpc_mem(s.processed, s.active[0].pc, s.active[0].exit_allowed)
+    requires s.active[0].pc >= 0
+    requires NR.GetPcRE(code, s.active[0].pc as nat) == Some(RB.NegCheckOracle(l))
+    requires !LOr.view_get_oracle(ov, s.cp, l)
+    requires s1 == s.(clock := s.clock + 1,
+                      processed := AI.bpc_add(s.processed, s.active[0].pc, s.active[0].exit_allowed))
+    requires vms2 == s1.(active := [s.active[0].(pc := s.active[0].pc + 1)] + s1.active[1..])
+    ensures PTL.TrcPikeTreeLk(bst, bst1)
+    ensures bst1.PTS?
+    ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+
+  /** GATE KILL (either polarity, failing bit): the head canonical tree is
+      `LKFail` (bit ⟺ functional verdict via the oracle column), B drops it
+      with an empty `pts_active`. BODILESS. */
+  lemma LiftPreserveGateKillLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                               crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
+                               bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
+                               l: int, pos: bool, vms2: AI.VmState,
+                               ncap: int, nlook: int, nquant: int)
+    returns (bst1: PT.PikeTreeState)
+    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires qm.ov == ov
+    requires bst.PTS?
+    requires LiftInv(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
+    requires |s.active| > 0
+    requires !AI.bpc_mem(s.processed, s.active[0].pc, s.active[0].exit_allowed)
+    requires s.active[0].pc >= 0
+    requires NR.GetPcRE(code, s.active[0].pc as nat)
+          == Some(if pos then RB.CheckOracle(l) else RB.NegCheckOracle(l))
+    requires LOr.view_get_oracle(ov, s.cp, l) != pos
+    requires s1 == s.(clock := s.clock + 1,
+                      processed := AI.bpc_add(s.processed, s.active[0].pc, s.active[0].exit_allowed))
+    requires vms2 == s1.(active := s1.active[1..])
+    ensures PTL.TrcPikeTreeLk(bst, bst1)
+    ensures bst1.PTS?
+    ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+
+  /** ENDLOOP, PASSING (`exit_allowed`): B steps the `Progress` head (unwrap,
+      same gm, child at `pc+1`/CanExit). BODILESS. */
+  lemma LiftPreserveEndLoopPassLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                                  crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
+                                  bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
+                                  vms2: AI.VmState, ncap: int, nlook: int, nquant: int)
+    returns (bst1: PT.PikeTreeState)
+    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires bst.PTS?
+    requires LiftInv(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
+    requires |s.active| > 0
+    requires !AI.bpc_mem(s.processed, s.active[0].pc, s.active[0].exit_allowed)
+    requires s.active[0].pc >= 0
+    requires NR.GetPcRE(code, s.active[0].pc as nat) == Some(RB.EndLoop)
+    requires s.active[0].exit_allowed
+    requires s1 == s.(clock := s.clock + 1,
+                      processed := AI.bpc_add(s.processed, s.active[0].pc, s.active[0].exit_allowed))
+    requires vms2 == s1.(active := [s.active[0].(pc := s.active[0].pc + 1)] + s1.active[1..])
+    ensures PTL.TrcPikeTreeLk(bst, bst1)
+    ensures bst1.PTS?
+    ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+
+  /** ENDLOOP, KILLING (`!exit_allowed`): the head canonical tree is
+      `Mismatch` (`tr_progressfail`), B drops it. BODILESS. */
+  lemma LiftPreserveEndLoopKillLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                                  crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
+                                  bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
+                                  vms2: AI.VmState, ncap: int, nlook: int, nquant: int)
+    returns (bst1: PT.PikeTreeState)
+    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires bst.PTS?
+    requires LiftInv(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
+    requires |s.active| > 0
+    requires !AI.bpc_mem(s.processed, s.active[0].pc, s.active[0].exit_allowed)
+    requires s.active[0].pc >= 0
+    requires NR.GetPcRE(code, s.active[0].pc as nat) == Some(RB.EndLoop)
+    requires !s.active[0].exit_allowed
+    requires s1 == s.(clock := s.clock + 1,
+                      processed := AI.bpc_add(s.processed, s.active[0].pc, s.active[0].exit_allowed))
+    requires vms2 == s1.(active := s1.active[1..])
+    ensures PTL.TrcPikeTreeLk(bst, bst1)
+    ensures bst1.PTS?
+    ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+
+  /** ANCHOR, PASSING: B steps the `AnchorPass` head (child, same gm); the
+      VM/spec branch agreement rides `ContextOkRE`. BODILESS. */
+  lemma LiftPreserveAnchorPassLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                                 crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
+                                 bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
+                                 a: R.anchor, vms2: AI.VmState, ncap: int, nlook: int, nquant: int)
+    returns (bst1: PT.PikeTreeState)
+    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires !rer.multiline
+    requires bst.PTS?
+    requires LiftInv(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
+    requires |s.active| > 0
+    requires !AI.bpc_mem(s.processed, s.active[0].pc, s.active[0].exit_allowed)
+    requires s.active[0].pc >= 0
+    requires NR.GetPcRE(code, s.active[0].pc as nat) == Some(RB.AnchorAssertion(a))
+    requires LAnc.is_satisfied(a, s.context, LAnc.Forward)
+    requires s1 == s.(clock := s.clock + 1,
+                      processed := AI.bpc_add(s.processed, s.active[0].pc, s.active[0].exit_allowed))
+    requires vms2 == s1.(active := [s.active[0].(pc := s.active[0].pc + 1)] + s1.active[1..])
+    ensures PTL.TrcPikeTreeLk(bst, bst1)
+    ensures bst1.PTS?
+    ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+
+  /** ANCHOR, KILLING: the head canonical tree is `Mismatch`
+      (`tr_anchorfail` via `ContextOkRE`), B drops it. BODILESS. */
+  lemma LiftPreserveAnchorKillLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                                 crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
+                                 bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
+                                 a: R.anchor, vms2: AI.VmState, ncap: int, nlook: int, nquant: int)
+    returns (bst1: PT.PikeTreeState)
+    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires !rer.multiline
+    requires bst.PTS?
+    requires LiftInv(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
+    requires |s.active| > 0
+    requires !AI.bpc_mem(s.processed, s.active[0].pc, s.active[0].exit_allowed)
+    requires s.active[0].pc >= 0
+    requires NR.GetPcRE(code, s.active[0].pc as nat) == Some(RB.AnchorAssertion(a))
+    requires !LAnc.is_satisfied(a, s.context, LAnc.Forward)
+    requires s1 == s.(clock := s.clock + 1,
+                      processed := AI.bpc_add(s.processed, s.active[0].pc, s.active[0].exit_allowed))
+    requires vms2 == s1.(active := s1.active[1..])
+    ensures PTL.TrcPikeTreeLk(bst, bst1)
+    ensures bst1.PTS?
+    ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+
   /** (4) The epsilon-phase lift: one VM epsilon phase maps to a legal B-trace
-      segment preserving the pairing. FILL: the ClockMono frame recursion
-      (clone `FAdvanceEpsilonLookCpOk`'s skeleton), stepping B per case —
-      skip → `pts_skip` (via `SeenRepLk` + `TtLkSameTree`); `Accept` →
-      `pts_match`; `Fork` → `pts_active` on a `Choice` head; `Consume` →
-      `pts_blocked`; `SetRegisterToCP`/`SetQuantToClock` → `pts_active` on a
-      `GroupActionT` head (`gmt` steps by `GMUpdate`, outside-S tie via the
-      standing GmOfLive machinery, inside-S stable since `FreshBodyMatch`
-      depends only on `a_cp`); `CheckOracle` pass → the gate: B `pts_active`
-      on the LK head with `GateStepValue`; fail → B `pts_active` to dead;
-      `Jmp`/`BeginLoop`/`EndLoop`/`AnchorAssertion`/`CheckNullable`/`Fail` →
-      walk stutters or dead branches, B follows the same shapes the walk's own
-      cases (ActionsTreeRepFRE) enumerate. `WriteOracle` is absent from main
-      code. */
-  lemma LiftAdvanceEpsilon(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
+      segment preserving the pairing. THE DISPATCHER (filled 2026-08-07):
+      mirrors `FAdvanceEpsilon`'s worklist recursion case-for-case, invoking
+      the `LiftPreserve*Lk` case tier; `WriteOracle`/`CheckNullable`/`Fail`
+      are refuted outright by the canonical tie (no `TreeRepLkRE` rule). */
+  lemma LiftAdvanceEpsilon(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                            crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                            s: AI.VmState, bst: PT.PikeTreeState, dir: LAnc.direction,
                            ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
     requires !rer.multiline && qm.ov == ov
+    requires PSM.StaticOkRE(qm, re, code, endl)
     requires dir == LAnc.Forward
     requires bst.PTS?
     requires |s.processed.true_set| == RB.size(code) && |s.processed.false_set| == RB.size(code)
@@ -2821,6 +3112,204 @@ module LindenElkLiftSim {
     ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1,
                     AI.FAdvanceEpsilon(code, s, ov, dir).0, ncap, nlook, nquant)
     decreases AI.unprocessed(s.processed), |s.active|
+  {
+    if |s.active| == 0 {
+      bst1 := bst;
+      TrcLkRefl(bst);
+      return;
+    }
+    var th := s.active[0];
+    var ac := s.active[1..];
+
+    // Head bounds from the canonical tie (machine A used ThreadNestRE here).
+    var PTS(inp, ta, best, tb, seen) := bst;
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
+    assert |ta| > 0 && th.pc >= 0;
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta[0].0, ta[0].1, th, ncap, nlook, nquant);
+    var pc: nat := th.pc as nat;
+    assert TreeRepLkRE(rer, qm, code, inp, ta[0].0, pc, th.exit_allowed);
+    TreeRepLkREInRange(rer, qm, code, inp, ta[0].0, pc, th.exit_allowed);
+    assert pc < |code| && RB.size(code) == |code|;
+    var i := RB.get_instr(code, th.pc);
+    assert i == code[pc] && NR.GetPcRE(code, pc) == Some(i);
+
+    if AI.bpc_mem(s.processed, th.pc, th.exit_allowed) {
+      var bstS := LiftPreserveSkipLk(rer, qm, re, code, endl, crv, str, ov, S, bst, s, ncap, nlook, nquant);
+      var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
+                                     s.(active := ac), bstS, dir, ncap, nlook, nquant);
+      TrcLkCons(bst, bstS, bst2);
+      bst1 := bst2;
+      return;
+    }
+
+    var s1 := s.(clock := s.clock + 1, processed := AI.bpc_add(s.processed, th.pc, th.exit_allowed));
+    assert AI.unprocessed(s1.processed) <= AI.unprocessed(s.processed)
+        && (0 <= th.pc < RB.size(code) ==> AI.unprocessed(s1.processed) < AI.unprocessed(s.processed))
+      by { AI.UnprocessedAdd(s.processed, th.pc, th.exit_allowed); }
+    assert AI.unprocessed(s1.processed) < AI.unprocessed(s.processed);
+    assert |s1.processed.true_set| == RB.size(code) && |s1.processed.false_set| == RB.size(code);
+
+    match i {
+      case Accept =>
+        var vms2 := s1.(active := [], bestmatch := Some(th));
+        bst1 := LiftPreserveAcceptLk(rer, qm, re, code, endl, crv, str, ov, S,
+                                     bst, s, s1, vms2, ncap, nlook, nquant);
+        TrcLkRefl(bst1);
+        TrcLkCons(bst, bst1, bst1);
+        assert AI.FAdvanceEpsilon(code, s, ov, dir).0 == vms2;
+      case Jmp(x) =>
+        var th' := th.(pc := x);
+        var vms2 := s1.(active := [th'] + ac);
+        LiftPreserveStutterLk(rer, qm, re, code, endl, crv, str, ov, S,
+                              bst, s, s1, th', vms2, ncap, nlook, nquant);
+        bst1 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
+                                   vms2, bst, dir, ncap, nlook, nquant);
+      case BeginLoop =>
+        var th' := th.(exit_allowed := false, pc := th.pc + 1);
+        var vms2 := s1.(active := [th'] + ac);
+        LiftPreserveStutterLk(rer, qm, re, code, endl, crv, str, ov, S,
+                              bst, s, s1, th', vms2, ncap, nlook, nquant);
+        bst1 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
+                                   vms2, bst, dir, ncap, nlook, nquant);
+      case Consume(ce) =>
+        var (nb, ni) := AI.add_thread(th, ce, s1.blocked, s1.isblocked);
+        if AI.pc_mem(s1.isblocked, th.pc) {
+          assert nb == s1.blocked && ni == s1.isblocked;
+          var vms2 := s1.(blocked := nb, isblocked := ni, active := ac);
+          assert vms2 == s1.(active := ac);
+          var bstS := LiftPreserveConsumeDropLk(rer, qm, re, code, endl, crv, str, ov, S,
+                                                bst, s, s1, ce, vms2, ncap, nlook, nquant);
+          var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
+                                         vms2, bstS, dir, ncap, nlook, nquant);
+          TrcLkTrans(bst, bstS, bst2);
+          bst1 := bst2;
+        } else {
+          assert nb == [(th, ce)] + s1.blocked && ni == AI.pc_add(s1.isblocked, th.pc);
+          var vms2 := s1.(blocked := nb, isblocked := ni, active := ac);
+          var bstS := LiftPreserveConsumeAddLk(rer, qm, re, code, endl, crv, str, ov, S,
+                                               bst, s, s1, ce, vms2, ncap, nlook, nquant);
+          var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
+                                         vms2, bstS, dir, ncap, nlook, nquant);
+          TrcLkTrans(bst, bstS, bst2);
+          bst1 := bst2;
+        }
+      case Fork(x, y) =>
+        var newt := AI.Thread(x, th.capture_regs, th.look_regs, th.quant_regs, th.exit_allowed);
+        var vms2 := s1.(active := [newt, th.(pc := y)] + ac);
+        var bstS := LiftPreserveForkLk(rer, qm, re, code, endl, crv, str, ov, S,
+                                       bst, s, s1, x, y, vms2, ncap, nlook, nquant);
+        var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
+                                       vms2, bstS, dir, ncap, nlook, nquant);
+        TrcLkTrans(bst, bstS, bst2);
+        bst1 := bst2;
+      case SetRegisterToCP(reg) =>
+        var th' := th.(capture_regs := AReg.set_reg(th.capture_regs, reg, Some(s1.cp), s1.clock),
+                       pc := th.pc + 1);
+        var vms2 := s1.(active := [th'] + ac);
+        var bstS := LiftPreserveSetRegLk(rer, qm, re, code, endl, crv, str, ov, S,
+                                         bst, s, s1, reg, th', vms2, ncap, nlook, nquant);
+        var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
+                                       vms2, bstS, dir, ncap, nlook, nquant);
+        TrcLkTrans(bst, bstS, bst2);
+        bst1 := bst2;
+      case SetQuantToClock(q, bq) =>
+        var ocp := if bq then Some(s1.cp) else None;
+        var th' := th.(quant_regs := AReg.set_reg(th.quant_regs, q, ocp, s1.clock), pc := th.pc + 1);
+        var vms2 := s1.(active := [th'] + ac);
+        var bstS := LiftPreserveSetQuantLk(rer, qm, re, code, endl, crv, str, ov, S,
+                                           bst, s, s1, q, bq, th', vms2, ncap, nlook, nquant);
+        var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
+                                       vms2, bstS, dir, ncap, nlook, nquant);
+        TrcLkTrans(bst, bstS, bst2);
+        bst1 := bst2;
+      case CheckOracle(l) =>
+        if LOr.view_get_oracle(ov, s1.cp, l) {
+          var th' := th.(pc := th.pc + 1,
+                         look_regs := AReg.set_reg(th.look_regs, l, Some(s1.cp), s1.clock));
+          var vms2 := s1.(active := [th'] + ac);
+          var bstS := LiftPreserveGatePassLk(rer, qm, re, code, endl, crv, str, ov, S,
+                                             bst, s, s1, l, th', vms2, ncap, nlook, nquant);
+          var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
+                                         vms2, bstS, dir, ncap, nlook, nquant);
+          TrcLkTrans(bst, bstS, bst2);
+          bst1 := bst2;
+        } else {
+          var vms2 := s1.(active := ac);
+          var bstS := LiftPreserveGateKillLk(rer, qm, re, code, endl, crv, str, ov, S,
+                                             bst, s, s1, l, true, vms2, ncap, nlook, nquant);
+          var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
+                                         vms2, bstS, dir, ncap, nlook, nquant);
+          TrcLkTrans(bst, bstS, bst2);
+          bst1 := bst2;
+        }
+      case NegCheckOracle(l) =>
+        if LOr.view_get_oracle(ov, s1.cp, l) {
+          var vms2 := s1.(active := ac);
+          var bstS := LiftPreserveGateKillLk(rer, qm, re, code, endl, crv, str, ov, S,
+                                             bst, s, s1, l, false, vms2, ncap, nlook, nquant);
+          var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
+                                         vms2, bstS, dir, ncap, nlook, nquant);
+          TrcLkTrans(bst, bstS, bst2);
+          bst1 := bst2;
+        } else {
+          var vms2 := s1.(active := [th.(pc := th.pc + 1)] + ac);
+          var bstS := LiftPreserveNegGatePassLk(rer, qm, re, code, endl, crv, str, ov, S,
+                                                bst, s, s1, l, vms2, ncap, nlook, nquant);
+          var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
+                                         vms2, bstS, dir, ncap, nlook, nquant);
+          TrcLkTrans(bst, bstS, bst2);
+          bst1 := bst2;
+        }
+      case WriteOracle(l) =>
+        // no TreeRepLkRE rule at WriteOracle — the canonical head tie is refuted
+        assert false;
+        bst1 := bst;
+      case EndLoop =>
+        if th.exit_allowed {
+          var vms2 := s1.(active := [th.(pc := th.pc + 1)] + ac);
+          var bstS := LiftPreserveEndLoopPassLk(rer, qm, re, code, endl, crv, str, ov, S,
+                                                bst, s, s1, vms2, ncap, nlook, nquant);
+          var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
+                                         vms2, bstS, dir, ncap, nlook, nquant);
+          TrcLkTrans(bst, bstS, bst2);
+          bst1 := bst2;
+        } else {
+          var vms2 := s1.(active := ac);
+          var bstS := LiftPreserveEndLoopKillLk(rer, qm, re, code, endl, crv, str, ov, S,
+                                                bst, s, s1, vms2, ncap, nlook, nquant);
+          var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
+                                         vms2, bstS, dir, ncap, nlook, nquant);
+          TrcLkTrans(bst, bstS, bst2);
+          bst1 := bst2;
+        }
+      case CheckNullable(qid) =>
+        // no TreeRepLkRE rule at CheckNullable — refuted
+        assert false;
+        bst1 := bst;
+      case AnchorAssertion(a) =>
+        if LAnc.is_satisfied(a, s1.context, dir) {
+          var vms2 := s1.(active := [th.(pc := th.pc + 1)] + ac);
+          var bstS := LiftPreserveAnchorPassLk(rer, qm, re, code, endl, crv, str, ov, S,
+                                               bst, s, s1, a, vms2, ncap, nlook, nquant);
+          var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
+                                         vms2, bstS, dir, ncap, nlook, nquant);
+          TrcLkTrans(bst, bstS, bst2);
+          bst1 := bst2;
+        } else {
+          var vms2 := s1.(active := ac);
+          var bstS := LiftPreserveAnchorKillLk(rer, qm, re, code, endl, crv, str, ov, S,
+                                               bst, s, s1, a, vms2, ncap, nlook, nquant);
+          var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
+                                         vms2, bstS, dir, ncap, nlook, nquant);
+          TrcLkTrans(bst, bstS, bst2);
+          bst1 := bst2;
+        }
+      case Fail =>
+        // no TreeRepLkRE rule at Fail — refuted
+        assert false;
+        bst1 := bst;
+    }
+  }
 
   /** (5) The consume/next-char lift: `FConsume` + the phase transition map to
       B's `pts_nextchar` (blocked lists become active at the advanced input;
@@ -6323,7 +6812,7 @@ module LindenElkLiftSim {
     ptsA' := PSM.InvariantPreservationRE(rer, qm, re, code, endl, ngroups, str,
                                          ptsA, vms, ov, LAnc.Forward, ncap, nlook, nquant);
     // machine B: the canonical/value worklist recursion over the same phase
-    ptsB' := LiftAdvanceEpsilon(rer, qm, re, code, crv, str, ov, S,
+    ptsB' := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
                                 vms, ptsB, LAnc.Forward, ncap, nlook, nquant);
     // the inp link: both sides pin their inp to InpOfCp(str, vms'.cp)
     assert PIV.PikeInvRE(rer, qm, re, code, ngroups, str, ptsA', vms');
