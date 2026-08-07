@@ -170,6 +170,42 @@ BeginLoop stutter disjunct) + the quantifier-NoDup gap (iteration-arm acts dupli
 `DefGroups(r1)`; option D: static `LmOfBodiesDisjoint` + `GMReset` re-arm). Also still owed:
 the `GateStaticsOk` establishment lemma (compile-side sweep).)*
 
+*(2026-08-07 session 5 — THE QUANTIFIER GAP IS CLOSED (carrier redesign) + SETQUANT PROVEN
+(15/16). FINDING: the old `NoDupSeq(AllDefsActs)` walk carrier was FALSE after any quantifier
+unfold (the forced copy duplicates `DefGroups(r1)`), so `LiftPreserveForkLk`/`SetQuantLk` were
+FALSE AS STATED and LiftInv was vacuous mid-loop for ANY grouped quantifier (`(a)*` suffices).
+FIX (all PROVEN, no debt): (1) carrier REPLACED by `WalkDefsOk` = (C1) `NoDupSeq(
+TopLkDefsListActs)` — `TopLkDefsList` REDEFINED to also carry `Group` ids ([gid] +) so the
+Open-crossing freshness stays derivable; (C2) per-action `NoDupSeq(DefGroups)`; (C3)
+`QuantsClearActs` — per-action `QuantsRightClear(r, TopLkSet(rights))`, Sequence widens the
+left arm's R, Quantified STOPS with its own clause `DG(body) ∩ R = ∅` — THE UNFOLD'S OWN
+freshness fact, which is why preservation closes (incl. NESTED quantifiers):
+`QuantsRightClearFromNoDup` re-establishes C3 for the copy from C2 + the folded node's clause.
+Bricks: `WalkDefsOk{Tail,SeqExpand,GroupExpand,Entry,Unfold}` (Unfold takes `mid ∈ {[],
+[Acheck]}` — forced-copy and star-arm shapes). CheckOracle merge req-4 now derives from C1
+(`RegexTopGateSubTopLk` + `TopLkDefsListMemberSub`) — simpler than the old NoDupConcat route.
+(2) SQC SEE-THROUGH disjuncts added to `WalkPairLk` AND `TtLk` (star/backfork iteration arms
+park threads AT the `SetQuantToClock` pc where no `ActionsRepL` exists): instruction-gated,
+child at `GMUpdate(Reset(qm.quants[q]), ·)`; `WalkPairLkImpliesTtLk`/`TtLkAtSetQuant`
+restructured for the third disjunct; all other inversion wrappers auto-refute it.
+(3) **`LiftPreserveSetQuantLk` PROVEN** (first try): canonical `TreeRepLkREAtSetQuant` refutes
+`bq`; raw layer via NEW `WalkPairLkAtSetQuant(Core)` (forced-copy actions route with
+`QuantHeadSQCPin` + `QuantForcedContRep` + Reset-re-established GateAheadClear + the Unfold
+brick ∥ see-through route); value ties: both maps shed the same `GMReset(qm.quants[q], ·)`
+(A-side effect via `PSM.ResetStepThreadRE`), inside witnesses carry verbatim (look regs
+untouched). Dispatcher effect derivations extracted to `DispatchSetRegEffect`/
+`DispatchResetEffect` (the dispatcher's single VC had hit the 900s limit).
+REMAINING ε-case: **Fork only.** FORWARD forks (Disjunction + star arms) are closeable with
+today's machinery — the star arm chains SQC-disjunct → BeginLoop-absorber (any incoming flag)
+→ the arm list at `CannotExit`. The BACKWARD (do-while) arm has NO BeginLoop absorber: the arm
+thread runs the body at `exit_allowed == true` while `BoolTreeLk`'s iteration tree is built at
+`CannotExit` — needs ONE new fact, `BoolTreeLk` FLAG-SHIELD for NonNullable bodies (every
+path to the guard crosses a Read, which re-arms the flag; `NUL.NonNullableL(r1)` is available
+at the seam). That shield + a `WalkPairLkAtForkCore` (Disjunction arms via sub-multiset C1;
+star arms via the disjunct chain + `WalkDefsOkUnfold` with `mid=[Acheck]`; backward via
+Acheck-peel recursion + the shield; `ea` pinned by the dispatcher from `EaColdOkRE`) is the
+whole remaining ε-surface.)*
+
 ---
 
 ## 0. The goal

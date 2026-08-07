@@ -110,6 +110,17 @@ module LindenElkLiftSim {
     // inversion is unaffected (the first disjunct is dead off a BeginLoop pc).
     (pc < RB.size(code) && NR.GetPcRE(code, pc) == Some(RB.BeginLoop)
      && TtLk(rer, qm, code, inp, tb, pc + 1, false))
+    // SQC see-through (2026-08-07 session 5): the star/backfork iteration arm
+    // parks a thread AT the `SetQuantToClock` pc, where NO `ActionsRepL`
+    // exists for the arm's `GroupActionT(Reset, ·)` tree (the body's actions
+    // live past the following BeginLoop). Instruction-gated, like the
+    // BeginLoop stutter — dead off an SQC pc.
+    || (pc < RB.size(code)
+        && exists q: int ::
+             NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, false))
+             && q in qm.quants
+             && tb.GroupActionT? && tb.g == LG.Reset(qm.quants[q])
+             && TtLk(rer, qm, code, inp, tb.t, pc + 1, ea))
     || (exists acts: LS.Actions, b: BS.LoopBool ::
           AR.ActionsRepL(rer, qm, acts, code, pc)
           && EL.PikeLkActions(acts)
@@ -190,16 +201,28 @@ module LindenElkLiftSim {
   {
     (pc < RB.size(code) && NR.GetPcRE(code, pc) == Some(RB.BeginLoop)
      && WalkPairLk(rer, qm, code, inp, tb, gmt, pc + 1, false))
+    // SQC see-through (2026-08-07 session 5): mirror of TtLk's — the iteration
+    // arm's `GroupActionT(Reset, ·)` pairs AT the `SetQuantToClock` pc with the
+    // child walking at the RESET-updated map (which is what re-clears the
+    // body's gates for `GateAheadClear` downstream).
+    || (pc < RB.size(code)
+        && exists q: int ::
+             NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, false))
+             && q in qm.quants
+             && tb.GroupActionT? && tb.g == LG.Reset(qm.quants[q])
+             && WalkPairLk(rer, qm, code, inp, tb.t,
+                           LG.GMUpdate(tb.g, LC.Idx(inp), gmt), pc + 1, ea))
     || (exists acts: LS.Actions, b: BS.LoopBool ::
           AR.ActionsRepL(rer, qm, acts, code, pc)
           && EL.PikeLkActions(acts)
           && ATR.EaOf(b) == ea
           && EL.BoolTreeLk(rer, acts, inp, b, tb)
           && GateAheadClear(acts, gmt)
-          // NoDup walk-invariant (audit 2026-08-03): the gate-disjointness the
-          // CheckOracle continuation needs. Established at entry via
-          // `TranslateDefGroupsNoDup`, preserved by every peel (`NoDupAllDefsTail`).
-          && M.NoDupSeq(M.AllDefsActs(acts)))
+          // Defs walk-invariant (carrier REPLACED 2026-08-07 session 5:
+          // `NoDupSeq(AllDefsActs)` is FALSE after any quantifier unfold —
+          // the (C1,C2,C3) `WalkDefsOk` is the quantifier-stable form; the
+          // CheckOracle merge consumes C1 via `RegexTopGateSubTopLk`).
+          && WalkDefsOk(acts))
   }
 
   /** The full per-thread pairing: the B-side `(tb, gmt)` corresponds to VM
@@ -2473,6 +2496,7 @@ module LindenElkLiftSim {
       assert GateAheadClear(acts, LG.Empty);                 // Empty has no keys
       assert ATR.EaOf(BS.CannotExit) == itr.exit_allowed;
       TranslateDefGroupsNoDup(re);                            // NoDupSeq(DefGroups(Translate(re)))
+      WalkDefsOkEntry(T.Translate(re));
       M.AllDefsActsCons(LS.Areg(T.Translate(re)), []);
       assert M.AllDefsActs(acts) == L.DefGroups(T.Translate(re));   // AllDefsActs([]) == []
       assert exists actsw: LS.Actions, bw: BS.LoopBool ::
@@ -2481,7 +2505,7 @@ module LindenElkLiftSim {
           && ATR.EaOf(bw) == itr.exit_allowed
           && EL.BoolTreeLk(rer, actsw, inp, bw, t)
           && GateAheadClear(actsw, LG.Empty)
-          && M.NoDupSeq(M.AllDefsActs(actsw));
+          && WalkDefsOk(actsw);
       assert PIV.GmOfLive(re, itr.capture_regs, itr.look_regs, itr.quant_regs) == LG.Empty;
       assert GmtTieOutside(re, itr, LG.Empty, S);
       assert GmtTieInside(crv, str, ov, itr, LG.Empty, S, ncap, nlook, nquant);  // vacuous
@@ -2637,7 +2661,7 @@ module LindenElkLiftSim {
       && ATR.EaOf(b) == ea
       && EL.BoolTreeLk(rer, acts, inp, b, tb)
       && GateAheadClear(acts, gmt)
-      && M.NoDupSeq(M.AllDefsActs(acts));
+      && WalkDefsOk(acts);
     ActionsRepLThruJmp(rer, qm, acts, code, pc, x);
   }
 
@@ -3473,9 +3497,15 @@ module LindenElkLiftSim {
     IsblockedGrowLk(rer, qm, code, inp, seen, s.isblocked, t);
   }
 
-  /** SETQUANT (the quantifier Reset): B steps the `GroupActionT(Reset)` head.
-      BLOCKED on the quantifier-NoDup research gap (the carried NoDup breaks
-      at the unfold — see the campaign memory, option D). BODILESS. */
+  /** SETQUANT (the quantifier Reset): B steps the `GroupActionT(Reset)` head;
+      both value maps shed the SAME group set (`GMReset(qm.quants[q], ·)` —
+      the A-side effect supplied by the dispatcher from
+      `PSM.ResetStepThreadRE`), so the outside-`S` tie moves pointwise and the
+      inside-`S` witnesses carry verbatim (look regs untouched; surviving
+      groups unchanged). The raw layer steps by `WalkPairLkAtSetQuant`
+      (forced-copy actions route OR the SQC see-through disjunct). `bq` is
+      refuted by the canonical tie (`TreeRepLkREAtSetQuant`: compiled SQC
+      sites always write `false`). */
   lemma LiftPreserveSetQuantLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                                crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                                bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
@@ -3495,9 +3525,112 @@ module LindenElkLiftSim {
                                                             if bq then Some(s1.cp) else None, s1.clock),
                                  pc := s.active[0].pc + 1)
     requires vms2 == s1.(active := [th'] + s1.active[1..])
+    // the register-level gm effect, supplied by the dispatcher from machine A's
+    // proven step helper (ResetStepThreadRE); q's table binding rides along
+    requires q in qm.quants
+    requires PIV.GmOfLive(re, th'.capture_regs, th'.look_regs, th'.quant_regs)
+          == LG.GMReset(qm.quants[q],
+                        PIV.GmOfLive(re, s.active[0].capture_regs, s.active[0].look_regs,
+                                     s.active[0].quant_regs))
     ensures PTL.TrcPikeTreeLk(bst, bst1)
     ensures bst1.PTS?
     ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := bst;
+    var th := s.active[0];
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t, gm, th, ncap, nlook, nquant);
+    var pc: nat := th.pc as nat;
+    var ea := th.exit_allowed;
+    assert TreeRepLkRE(rer, qm, code, inp, t, pc, ea);
+
+    // canonical head: Reset(qm.quants[q]) with canonical child at (pc+1, ea);
+    // pins !bq (compiled SQC sites always write false)
+    TreeRepLkREAtSetQuant(rer, qm, code, inp, t, pc, ea, q, bq);
+    assert !bq;
+    var gidl := qm.quants[q];
+    assert t.GroupActionT? && t.g == LG.Reset(gidl);
+    assert TreeRepLkRE(rer, qm, code, inp, t.t, pc + 1, ea);
+
+    var gm2 := LG.GMUpdate(t.g, LC.Idx(inp), gm);
+    assert gm2 == LG.GMReset(gidl, gm);
+
+    // B step: pts_active queues the child with the Reset-moved gm
+    assert PTL.TreeBfsStepLk(t, gm, inp) == PT.StepActive([(t.t, gm2)]);
+    bst1 := PT.PTS(inp, [(t.t, gm2)] + ta[1..], best, tb, SS.AddSeenTrees(seen, t));
+    assert PTL.PikeTreeStepLk(bst, bst1);
+    TrcLkRefl(bst1);
+    TrcLkCons(bst, bst1, bst1);
+
+    // raw witness: same Reset head via the SetQuant walk wrapper
+    var traw: LT.Tree :| CE.ProgErase(traw) == CE.ProgErase(t)
+      && ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, traw, gm, th, ncap, nlook, nquant);
+    WalkPairLkAtSetQuant(rer, qm, code, inp, traw, gm, pc, ea, q);
+    assert traw.GroupActionT? && traw.g == LG.Reset(gidl) == t.g;
+    assert CE.ProgErase(traw.t) == CE.ProgErase(t.t) by {
+      assert CE.ProgErase(traw) == LT.GroupActionT(traw.g, CE.ProgErase(traw.t));
+      assert CE.ProgErase(t) == LT.GroupActionT(t.g, CE.ProgErase(t.t));
+    }
+    assert WalkPairLk(rer, qm, code, inp, traw.t, gm2, pc + 1, ea);
+
+    // value ties: both maps shed the SAME set(gidl); everything else unchanged
+    var gml := PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs);
+    var gml2 := PIV.GmOfLive(re, th'.capture_regs, th'.look_regs, th'.quant_regs);
+    assert gml2 == LG.GMReset(gidl, gml);
+    assert GmtTieOutside(re, th, gm, S) && GmtTieInside(crv, str, ov, th, gm, S, ncap, nlook, nquant);
+
+    assert GmtTieOutside(re, th', gm2, S) by {
+      forall g: LG.GroupId | g !in S
+        ensures (g in gm2 <==> g in gml2) && (g in gm2 ==> gm2[g] == gml2[g])
+      {
+        assert (g in gm <==> g in gml) && (g in gm ==> gm[g] == gml[g]);
+      }
+    }
+    assert th'.look_regs == th.look_regs;
+    assert GmtTieInside(crv, str, ov, th', gm2, S, ncap, nlook, nquant) by {
+      forall g: LG.GroupId | g in S && g in gm2
+        ensures exists l2: int ::
+          0 <= l2 < nlook
+          && g in PIV.CapIds(M.VBody(crv, l2))
+          && M.MatchedPosLA(crv, th'.look_regs, l2)
+          && var rf := M.FreshBodyMatch(crv, str, l2, th'.look_regs, ov, ncap, nlook, nquant);
+             rf.Some?
+             && var gmb := PIV.GmOfLive(M.VBody(crv, l2), rf.value.capture_regs,
+                                        rf.value.look_regs, rf.value.quant_regs);
+                g in gmb && gm2[g] == gmb[g]
+      {
+        assert g in gm && gm2[g] == gm[g];   // survivors of the Reset are unchanged
+        var l'': int :| 0 <= l'' < nlook
+          && g in PIV.CapIds(M.VBody(crv, l''))
+          && M.MatchedPosLA(crv, th.look_regs, l'')
+          && var rf'' := M.FreshBodyMatch(crv, str, l'', th.look_regs, ov, ncap, nlook, nquant);
+             rf''.Some?
+             && var gmb'' := PIV.GmOfLive(M.VBody(crv, l''), rf''.value.capture_regs,
+                                          rf''.value.look_regs, rf''.value.quant_regs);
+                g in gmb'' && gm[g] == gmb''[g];
+      }
+    }
+    assert (th.pc + 1) as nat == pc + 1;
+    assert ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, traw.t, gm2, th', ncap, nlook, nquant);
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t.t, gm2, th', ncap, nlook, nquant);
+
+    // list bookkeeping
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta[1..], s.active[1..],
+                        ncap, nlook, nquant);
+    assert vms2.active[0] == th' && vms2.active[1..] == s.active[1..];
+    assert ([(t.t, gm2)] + ta[1..])[0] == (t.t, gm2) && ([(t.t, gm2)] + ta[1..])[1..] == ta[1..];
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, [(t.t, gm2)] + ta[1..], vms2.active,
+                        ncap, nlook, nquant);
+
+    // seen + isblocked bookkeeping
+    assert PIV.HdTreeOf(ta) == Some(t) && PIV.HeadPcOf(s.active) == pc;
+    AddSeenRepLk(rer, qm, code, inp, seen, s.processed, t, pc, ea,
+                 PIV.HdTreeOf([(t.t, gm2)] + ta[1..]), PIV.HeadPcOf(vms2.active));
+    IsblockedGrowLk(rer, qm, code, inp, seen, s.isblocked, t);
+  }
 
   /** FORK: forward = one `pts_active` on the `Choice` head (arms at `x`/`y`
       in VM priority order); backward = TWO B steps (`Progress` unwrap, then
@@ -3776,7 +3909,7 @@ module LindenElkLiftSim {
     requires EL.BoolTreeLk(rer, acts, inp, b, tb)
     requires NR.GetPcRE(code, pc) == Some(RB.NegCheckOracle(lid))
     requires GateAheadClear(acts, gm)
-    requires M.NoDupSeq(M.AllDefsActs(acts))
+    requires WalkDefsOk(acts)
     ensures lid in qm.looks
     ensures var (lk, r1) := qm.looks[lid];
       var tlk := LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk));
@@ -3804,7 +3937,7 @@ module LindenElkLiftSim {
         assert EL.BoolTreeLk(rer, cont, inp, b, tb);
         assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
         GateAheadClearTail(acts, gm);
-        NoDupAllDefsTail(acts);
+        WalkDefsOkTail(acts);
         WalkPairLkAtNegCheckOracleCore(rer, qm, code, inp, tb, gm, pc, b, cont, lid);
       case Sequence(r1, r2) =>
         assert acts[0] == LS.Areg(L.Sequence(r1, r2));
@@ -3831,6 +3964,7 @@ module LindenElkLiftSim {
         assert L.DefGroups(r1) + (L.DefGroups(r2) + M.AllDefsActs(cont))
             == (L.DefGroups(r1) + L.DefGroups(r2)) + M.AllDefsActs(cont);
         assert M.AllDefsActs(na) == M.AllDefsActs(acts);
+        WalkDefsOkSeqExpand(acts, r1, r2);
         WalkPairLkAtNegCheckOracleCore(rer, qm, code, inp, tb, gm, pc, b, na, lid);
       case Quantified(greedy, min, delta, r1) =>
         if min == 0 && delta == LN.NN(0) {
@@ -3845,7 +3979,7 @@ module LindenElkLiftSim {
           assert EL.BoolTreeLk(rer, cont, inp, b, tb);
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
           GateAheadClearTail(acts, gm);
-          NoDupAllDefsTail(acts);
+          WalkDefsOkTail(acts);
           WalkPairLkAtNegCheckOracleCore(rer, qm, code, inp, tb, gm, pc, b, cont, lid);
         } else {
           assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
@@ -3867,7 +4001,7 @@ module LindenElkLiftSim {
           assert AR.ActionsRepL(rer, qm, cont, code, pc + 1);
           // the passing negative merge is the identity ⟹ plain tail bricks
           GateAheadClearTail(acts, gm);
-          NoDupAllDefsTail(acts);
+          WalkDefsOkTail(acts);
           assert EL.PikeLkActions(cont);
           assert WalkPairLk(rer, qm, code, inp, tb.t, gm, pc + 1, g);
         } else {
@@ -3902,7 +4036,7 @@ module LindenElkLiftSim {
       && ATR.EaOf(b) == ea
       && EL.BoolTreeLk(rer, acts, inp, b, tb)
       && GateAheadClear(acts, gm)
-      && M.NoDupSeq(M.AllDefsActs(acts));
+      && WalkDefsOk(acts);
     WalkPairLkAtNegCheckOracleCore(rer, qm, code, inp, tb, gm, pc, b, acts, lid);
   }
 
@@ -4095,7 +4229,7 @@ module LindenElkLiftSim {
     requires EL.BoolTreeLk(rer, acts, inp, b, tb)
     requires NR.GetPcRE(code, pc) == Some(RB.EndLoop)
     requires GateAheadClear(acts, gm)
-    requires M.NoDupSeq(M.AllDefsActs(acts))
+    requires WalkDefsOk(acts)
     ensures ATR.EaOf(b) ==> tb.Progress? && WalkPairLk(rer, qm, code, inp, tb.t, gm, pc + 1, true)
     ensures !ATR.EaOf(b) ==> tb == LT.Mismatch
     decreases ATR.MsizeA(acts)
@@ -4117,7 +4251,7 @@ module LindenElkLiftSim {
         assert AR.ActionsRepL(rer, qm, cont, code, pc + 1);
         // gm UNCHANGED across the guard ⟹ tail bricks give the continuation clear.
         GateAheadClearTail(acts, gm);       // GateAheadClear(cont, gm)
-        NoDupAllDefsTail(acts);             // NoDupSeq(AllDefsActs(cont))
+        WalkDefsOkTail(acts);             // NoDupSeq(AllDefsActs(cont))
         assert EL.PikeLkActions(cont);
         assert ATR.EaOf(BS.CanExit) == true;
         assert WalkPairLk(rer, qm, code, inp, tb.t, gm, pc + 1, true);
@@ -4134,7 +4268,7 @@ module LindenElkLiftSim {
         assert EL.BoolTreeLk(rer, cont, inp, b, tb);
         assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
         GateAheadClearTail(acts, gm);
-        NoDupAllDefsTail(acts);
+        WalkDefsOkTail(acts);
         WalkPairLkAtEndLoopCore(rer, qm, code, inp, tb, gm, pc, b, cont);
       case Sequence(r1, r2) =>
         assert acts[0] == LS.Areg(L.Sequence(r1, r2));
@@ -4161,6 +4295,7 @@ module LindenElkLiftSim {
         assert L.DefGroups(r1) + (L.DefGroups(r2) + M.AllDefsActs(cont))
             == (L.DefGroups(r1) + L.DefGroups(r2)) + M.AllDefsActs(cont);
         assert M.AllDefsActs(na) == M.AllDefsActs(acts);
+        WalkDefsOkSeqExpand(acts, r1, r2);
         WalkPairLkAtEndLoopCore(rer, qm, code, inp, tb, gm, pc, b, na);
       case Quantified(greedy, min, delta, r1) =>
         if min == 0 && delta == LN.NN(0) {
@@ -4175,7 +4310,7 @@ module LindenElkLiftSim {
           assert EL.BoolTreeLk(rer, cont, inp, b, tb);
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
           GateAheadClearTail(acts, gm);
-          NoDupAllDefsTail(acts);
+          WalkDefsOkTail(acts);
           WalkPairLkAtEndLoopCore(rer, qm, code, inp, tb, gm, pc, b, cont);
         } else {
           assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
@@ -4204,7 +4339,7 @@ module LindenElkLiftSim {
       && ATR.EaOf(b) == ea
       && EL.BoolTreeLk(rer, acts, inp, b, tb)
       && GateAheadClear(acts, gm)
-      && M.NoDupSeq(M.AllDefsActs(acts));
+      && WalkDefsOk(acts);
     WalkPairLkAtEndLoopCore(rer, qm, code, inp, tb, gm, pc, b, acts);
   }
 
@@ -4392,7 +4527,7 @@ module LindenElkLiftSim {
           && ATR.EaOf(b) == ea
           && EL.BoolTreeLk(rer, acts, inp, b, traw)
           && GateAheadClear(acts, gm)
-          && M.NoDupSeq(M.AllDefsActs(acts));
+          && WalkDefsOk(acts);
         assert TtLk(rer, qm, code, inp, traw, pc, ea);
         TtLkAtAnchor(rer, qm, code, inp, traw, pc, ea, a);
         assert traw == LT.Mismatch;
@@ -4472,6 +4607,99 @@ module LindenElkLiftSim {
                                bst, s, s1, vms2, ncap, nlook, nquant);
     TrcLkRefl(bst1);
     TrcLkCons(bst, bst1, bst1);
+  }
+
+  /** Dispatcher helper (VC diet): the SetReg gm effect off machine A's head —
+      the `PreserveOpenCase`/`PreserveCloseCase` preamble + `OpenStepThreadRE`/
+      `CloseStepThreadRE`, packaged so the dispatcher's own VC stays small. */
+  lemma DispatchSetRegEffect(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                             ngroups: nat, str: string, ptsA: PT.PikeTreeState, s: AI.VmState,
+                             s1: AI.VmState, reg: int, th': AI.Thread,
+                             ncap: int, nlook: int, nquant: int)
+    requires !rer.multiline
+    requires PSM.StaticOkRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires ptsA.PTS?
+    requires PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, ptsA, s, ncap, nlook, nquant)
+    requires |s.active| > 0 && s.active[0].pc >= 0
+    requires NR.GetPcRE(code, s.active[0].pc as nat) == Some(RB.SetRegisterToCP(reg))
+    requires s1 == s.(clock := s.clock + 1,
+                      processed := AI.bpc_add(s.processed, s.active[0].pc, s.active[0].exit_allowed))
+    requires th' == s.active[0].(capture_regs := AReg.set_reg(s.active[0].capture_regs, reg, Some(s1.cp), s1.clock),
+                                 pc := s.active[0].pc + 1)
+    ensures reg >= 0 && 0 <= s1.cp
+    ensures PIV.GmOfLive(re, th'.capture_regs, th'.look_regs, th'.quant_regs)
+         == (if reg % 2 == 0
+             then LG.GMOpen(s1.cp as nat, (reg / 2) as nat,
+                            PIV.GmOfLive(re, s.active[0].capture_regs, s.active[0].look_regs,
+                                         s.active[0].quant_regs))
+             else LG.GMClose(s1.cp as nat, (reg / 2) as nat,
+                             PIV.GmOfLive(re, s.active[0].capture_regs, s.active[0].look_regs,
+                                          s.active[0].quant_regs)))
+  {
+    var th := s.active[0];
+    var pc: nat := th.pc as nat;
+    var PTS(inpA, taA, bestA, tbA, seenA) := ptsA;
+    assert PIV.ActiveRepRE(rer, qm, re, code, inpA, taA, s.active);
+    assert |taA| > 0;
+    var tA := taA[0].0;
+    var gmA := taA[0].1;
+    assert TT.TreeThreadRE(rer, qm, code, inpA, tA, pc, th.exit_allowed);
+    assert PIV.ThreadTracksGm(re, th, gmA);
+    assert th in s.active;
+    assert PSM.ThreadNestRE(re, code, endl, th.pc, th);
+    assert CM.ThreadClocksLE(th, s.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant)
+        && CM.RegsValsLE(th.capture_regs, s.cp);
+    assert PIV.LooksCapUnset(re, th.capture_regs.a_clk);
+    assert 0 <= s1.cp;
+    if reg % 2 == 0 {
+      PSM.OpenStepThreadRE(rer, qm, re, code, endl, inpA, tA, gmA, th, pc, reg, s.cp, s.clock);
+      assert tA.GroupActionT? && tA.g.Open? && reg == CP.start_reg(tA.g.g as int);
+      assert reg == 2 * (tA.g.g as int) && (reg / 2) as nat == tA.g.g;
+    } else {
+      PSM.CloseStepThreadRE(rer, qm, re, code, endl, inpA, tA, gmA, th, pc, reg, s.cp, s.clock);
+      assert tA.GroupActionT? && tA.g.Close? && reg == CP.end_reg(tA.g.g as int);
+      assert reg == 2 * (tA.g.g as int) + 1 && (reg / 2) as nat == tA.g.g;
+    }
+  }
+
+  /** Dispatcher helper (VC diet): the SetQuant `GMReset` gm effect off machine
+      A's head — the `PreserveResetCase` preamble + `ResetStepThreadRE`. `!bq`
+      is the caller's obligation (from the B-side canonical inversion). */
+  lemma DispatchResetEffect(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                            ngroups: nat, str: string, ptsA: PT.PikeTreeState, s: AI.VmState,
+                            s1: AI.VmState, q: int, th': AI.Thread,
+                            ncap: int, nlook: int, nquant: int)
+    requires !rer.multiline
+    requires PSM.StaticOkRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires ptsA.PTS?
+    requires PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, ptsA, s, ncap, nlook, nquant)
+    requires |s.active| > 0 && s.active[0].pc >= 0
+    requires NR.GetPcRE(code, s.active[0].pc as nat) == Some(RB.SetQuantToClock(q, false))
+    requires s1 == s.(clock := s.clock + 1,
+                      processed := AI.bpc_add(s.processed, s.active[0].pc, s.active[0].exit_allowed))
+    requires th' == s.active[0].(quant_regs := AReg.set_reg(s.active[0].quant_regs, q, None, s1.clock),
+                                 pc := s.active[0].pc + 1)
+    ensures q in qm.quants
+    ensures PIV.GmOfLive(re, th'.capture_regs, th'.look_regs, th'.quant_regs)
+         == LG.GMReset(qm.quants[q],
+                       PIV.GmOfLive(re, s.active[0].capture_regs, s.active[0].look_regs,
+                                    s.active[0].quant_regs))
+  {
+    var th := s.active[0];
+    var pc: nat := th.pc as nat;
+    var PTS(inpA, taA, bestA, tbA, seenA) := ptsA;
+    assert PIV.ActiveRepRE(rer, qm, re, code, inpA, taA, s.active);
+    assert |taA| > 0;
+    var tA := taA[0].0;
+    var gmA := taA[0].1;
+    assert TT.TreeThreadRE(rer, qm, code, inpA, tA, pc, th.exit_allowed);
+    assert PIV.ThreadTracksGm(re, th, gmA);
+    assert th in s.active;
+    assert PSM.ThreadNestRE(re, code, endl, th.pc, th);
+    assert CM.ThreadClocksLE(th, s.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant);
+    assert PIV.LooksCapUnset(re, th.capture_regs.a_clk);
+    PSM.ResetStepThreadRE(rer, qm, re, code, endl, inpA, tA, gmA, th, pc, q, s.clock);
+    assert tA.GroupActionT? && tA.g.Reset? && qm.quants[q] == tA.g.gl;
   }
 
   /** (4) The epsilon-phase lift — THE COMPOSITE DISPATCHER (restructured
@@ -4630,37 +4858,9 @@ module LindenElkLiftSim {
         var th' := th.(capture_regs := AReg.set_reg(th.capture_regs, reg, Some(s1.cp), s1.clock),
                        pc := th.pc + 1);
         var vms2 := s1.(active := [th'] + ac);
-        // A-side step helper on ptsA's head: yields the register-level gm
-        // effect (GMOpen/GMClose across the write) that the B-side value tie
-        // consumes — the whole point of carrying ptsA through the recursion.
-        var PTS(inpA, taA, bestA, tbA, seenA) := ptsA;
-        assert PIV.ActiveRepRE(rer, qm, re, code, inpA, taA, s.active);
-        assert |taA| > 0;
-        var tA := taA[0].0;
-        var gmA := taA[0].1;
-        assert TT.TreeThreadRE(rer, qm, code, inpA, tA, pc, th.exit_allowed);
-        assert PIV.ThreadTracksGm(re, th, gmA);
-        assert th in s.active;
-        assert PSM.ThreadNestRE(re, code, endl, th.pc, th);
-        assert CM.ThreadClocksLE(th, s.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant)
-            && CM.RegsValsLE(th.capture_regs, s.cp);
-        assert PIV.LooksCapUnset(re, th.capture_regs.a_clk);
-        assert 0 <= s1.cp;
-        if reg % 2 == 0 {
-          PSM.OpenStepThreadRE(rer, qm, re, code, endl, inpA, tA, gmA, th, pc, reg, s.cp, s.clock);
-          assert tA.GroupActionT? && tA.g.Open? && reg == CP.start_reg(tA.g.g as int);
-          assert reg == 2 * (tA.g.g as int) && (reg / 2) as nat == tA.g.g;
-          assert PIV.GmOfLive(re, th'.capture_regs, th'.look_regs, th'.quant_regs)
-              == LG.GMOpen(s1.cp as nat, (reg / 2) as nat,
-                           PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs));
-        } else {
-          PSM.CloseStepThreadRE(rer, qm, re, code, endl, inpA, tA, gmA, th, pc, reg, s.cp, s.clock);
-          assert tA.GroupActionT? && tA.g.Close? && reg == CP.end_reg(tA.g.g as int);
-          assert reg == 2 * (tA.g.g as int) + 1 && (reg / 2) as nat == tA.g.g;
-          assert PIV.GmOfLive(re, th'.capture_regs, th'.look_regs, th'.quant_regs)
-              == LG.GMClose(s1.cp as nat, (reg / 2) as nat,
-                            PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs));
-        }
+        // A-side gm effect off ptsA's head (helper keeps the dispatcher VC small)
+        DispatchSetRegEffect(rer, qm, re, code, endl, ngroups, str, ptsA, s, s1, reg, th',
+                             ncap, nlook, nquant);
         var bstS := LiftPreserveSetRegLk(rer, qm, re, code, endl, crv, str, ov, S,
                                          bst, s, s1, reg, th', vms2, ncap, nlook, nquant);
         var ptsS: PT.PikeTreeState;
@@ -4681,6 +4881,12 @@ module LindenElkLiftSim {
         var ocp := if bq then Some(s1.cp) else None;
         var th' := th.(quant_regs := AReg.set_reg(th.quant_regs, q, ocp, s1.clock), pc := th.pc + 1);
         var vms2 := s1.(active := [th'] + ac);
+        // the canonical tie pins bq == false (compiled SQC sites write false);
+        // then the A-side helper yields the GMReset gm effect.
+        TreeRepLkREAtSetQuant(rer, qm, code, inp, ta[0].0, pc, th.exit_allowed, q, bq);
+        assert !bq && q in qm.quants;
+        DispatchResetEffect(rer, qm, re, code, endl, ngroups, str, ptsA, s, s1, q, th',
+                            ncap, nlook, nquant);
         var bstS := LiftPreserveSetQuantLk(rer, qm, re, code, endl, crv, str, ov, S,
                                            bst, s, s1, q, bq, th', vms2, ncap, nlook, nquant);
         var ptsS := PSM.PreserveResetCase(rer, qm, re, code, endl, ngroups, str, ptsA, s,
@@ -5803,6 +6009,256 @@ module LindenElkLiftSim {
       }
   }
 
+  /** The forced-copy head's `qm.quants` binding: a `min>0` quantifier block
+      opens with `SetQuantToClock(qid, false)` whose `qid` the tables map to
+      exactly `DefGroups(r1)` — extracted from the same `NfaRepL` inversions
+      `QuantForcedContRep` uses, without building the continuation. */
+  lemma QuantHeadSQCPin(rer: LW.RegExpRecord, qm: AR.QMap, greedy: bool, min: nat, delta: LN.NoI,
+                        r1: L.Regex, code: RB.code, pc: nat, pcmid: nat)
+    requires min > 0
+    requires AR.NfaRepL(rer, qm, L.Quantified(greedy, min, delta, r1), code, pc, pcmid)
+    ensures exists qid: int ::
+      NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
+      && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1)
+  {
+    match delta
+    case NN(kx) =>
+      var em := AR.NfaRepLQuantInv(rer, qm, greedy, min, kx, r1, code, pc, pcmid);
+      var e_body: nat :|
+        (exists qid: int :: NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
+                            && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
+        && AR.NfaRepL(rer, qm, r1, code, pc + 1, e_body)
+        && AR.NfaRepMinL(rer, qm, min - 1, r1, code, e_body, em);
+    case Inf =>
+      var em, e1 := AR.NfaRepLPlusInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+      if min == 1 {
+        NfaRepMinLHeadPin(rer, qm, 0, r1, code, pc, em);
+        assert em == pc;
+        var qid_em: int :| NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid_em, false))
+                         && qid_em in qm.quants && qm.quants[qid_em] == L.DefGroups(r1);
+      } else {
+        var e_body: nat :|
+          (exists qid: int :: NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
+                              && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
+          && AR.NfaRepL(rer, qm, r1, code, pc + 1, e_body)
+          && AR.NfaRepMinL(rer, qm, min - 2, r1, code, e_body, em);
+      }
+  }
+
+  /** Fueled `WalkPairLk` core at a `SetQuantToClock(q, false)` pc — the
+      FORCED-COPY (min>0) route: the real head emits the `Reset` stamp
+      (payload pinned to `qm.quants[q]` by `QuantHeadSQCPin`), the continuation
+      `[Areg r1, Areg(Quantified(min-1))] + cont` is represented at `pc+1`
+      (`QuantForcedContRep`) and walks at the RESET-updated map:
+      `GateAheadClear` re-established BY the Reset (r1's pending bodies ⊆ the
+      reset set; cont's pendings survive the domain shrink), `WalkDefsOk` by
+      the unfold brick (`WalkDefsOkUnfold`, mid = []). */
+  lemma WalkPairLkAtSetQuantCore(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                                 tb: LT.Tree, gm: LG.GroupMap, pc: nat, b: BS.LoopBool,
+                                 acts: LS.Actions, q: int)
+    requires AR.ActionsRepL(rer, qm, acts, code, pc)
+    requires EL.PikeLkActions(acts)
+    requires EL.BoolTreeLk(rer, acts, inp, b, tb)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, false))
+    requires GateAheadClear(acts, gm)
+    requires WalkDefsOk(acts)
+    ensures q in qm.quants
+    ensures tb.GroupActionT? && tb.g == LG.Reset(qm.quants[q])
+    ensures WalkPairLk(rer, qm, code, inp, tb.t,
+                       LG.GMUpdate(tb.g, LC.Idx(inp), gm), pc + 1, ATR.EaOf(b))
+    decreases ATR.MsizeA(acts)
+  {
+    var g := ATR.EaOf(b);
+    var pcmid: nat :| AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && AR.ActionsRepL(rer, qm, acts[1..], code, pcmid);
+    EL.PikeLkActionsTail(acts);
+    assert acts == [acts[0]] + acts[1..];
+    EL.PikeLkActionsConsIff(acts[0], acts[1..]);
+    var cont := acts[1..];
+    match acts[0]
+    case Acheck(_) =>   // pins EndLoop / backward Fork — not SetQuantToClock
+    case Aclose(_) =>   // pins SetRegisterToCP — not SetQuantToClock
+    case Areg(r0) =>
+      assert EL.PikeLkRegex(r0);
+      match r0
+      case Epsilon =>
+        assert pcmid == pc;
+        assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+        assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
+        GateAheadClearTail(acts, gm);
+        WalkDefsOkTail(acts);
+        WalkPairLkAtSetQuantCore(rer, qm, code, inp, tb, gm, pc, b, cont, q);
+      case Sequence(r1, r2) =>
+        assert acts[0] == LS.Areg(L.Sequence(r1, r2));
+        assert AR.NfaRepL(rer, qm, L.Sequence(r1, r2), code, pc, pcmid);
+        var e1: nat :| AR.NfaRepL(rer, qm, r1, code, pc, e1) && AR.NfaRepL(rer, qm, r2, code, e1, pcmid);
+        var na := [LS.Areg(r1), LS.Areg(r2)] + cont;
+        assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+        AR.ActionsRepLCons(rer, qm, LS.Areg(r2), cont, code, e1, pcmid);
+        AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Areg(r2)] + cont, code, pc, e1);
+        assert AR.ActionsRepL(rer, qm, na, code, pc);
+        assert EL.PikeLkActions(na) by {
+          EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
+          EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
+        }
+        assert EL.BoolTreeLk(rer, na, inp, b, tb);
+        assert LS.ActionsRegexSize(acts) == RegSz(r1) + RegSz(r2) + 1 + LS.ActionsRegexSize(cont);
+        assert LS.ActionsRegexSize(na) == RegSz(r1) + RegSz(r2) + LS.ActionsRegexSize(cont);
+        assert ATR.MsizeA(na) < ATR.MsizeA(acts);
+        GateAheadClearSeqExpand(acts, r1, r2, gm);
+        WalkDefsOkSeqExpand(acts, r1, r2);
+        WalkPairLkAtSetQuantCore(rer, qm, code, inp, tb, gm, pc, b, na, q);
+      case Quantified(greedy, min, delta, r1) =>
+        assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
+        assert AR.NfaRepL(rer, qm, L.Quantified(greedy, min, delta, r1), code, pc, pcmid);
+        if min > 0 {
+          // THE forced-copy real head.
+          var quant1 := L.Quantified(greedy, min - 1, delta, r1);
+          var contActs := [LS.Areg(r1), LS.Areg(quant1)] + cont;
+          var gidl := L.DefGroups(r1);
+          assert tb.GroupActionT? && tb.g == LG.Reset(gidl)
+                 && EL.BoolTreeLk(rer, contActs, inp, b, tb.t);
+          // the qm.quants binding of THIS instruction's qid
+          QuantHeadSQCPin(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
+          var qid: int :| NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
+            && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1);
+          assert qid == q;
+          assert q in qm.quants && qm.quants[q] == gidl;
+          QuantForcedContRep(rer, qm, greedy, min, delta, r1, code, pc, pcmid, cont);   // ActionsRepL(contActs, pc+1)
+          assert EL.PikeLkRegex(r1) && EL.PikeLkRegex(quant1);
+          assert EL.PikeLkActions(contActs) by {
+            EL.PikeLkActionsConsIff(LS.Areg(quant1), cont);
+            EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(quant1)] + cont);
+          }
+          // gm moves by the Reset
+          var gm2 := LG.GMUpdate(LG.Reset(gidl), LC.Idx(inp), gm);
+          assert gm2 == LG.GMReset(gidl, gm);
+          // GateAheadClear(contActs, gm2): fresh r1-pendings ⊆ the reset set;
+          // cont's pendings carry (absent in gm, and Reset only removes keys)
+          assert GateAheadClear(contActs, gm2) by {
+            forall lk2: L.Lookaround, rr: L.Regex | GatePending(contActs, lk2, rr)
+              ensures forall gg :: gg in L.DefGroups(rr) ==> gg !in gm2
+            {
+              var j :| 0 <= j < |contActs| && contActs[j].Areg? && RegexTopGate(contActs[j].r, lk2, rr);
+              if j == 0 {
+                assert contActs[0] == LS.Areg(r1) && RegexTopGate(r1, lk2, rr);
+                RegexTopGateSubDefs(r1, lk2, rr);
+                var SRR := set gx | gx in L.DefGroups(rr);
+                var SR1 := set gx | gx in L.DefGroups(r1);
+                assert SRR <= SR1;
+                forall gg | gg in L.DefGroups(rr) ensures gg !in gm2 {
+                  assert gg in SRR;
+                  assert gg in SR1;
+                  assert gg in L.DefGroups(r1);
+                  assert gm2 == gm - (set gx | gx in gidl);
+                  assert gg in (set gx | gx in gidl);
+                }
+              } else if j == 1 {
+                assert !RegexTopGate(quant1, lk2, rr);   // Quantified: never pending
+                assert false;
+              } else {
+                assert contActs[j] == cont[j - 2];
+                assert GatePending(cont, lk2, rr) by {
+                  assert cont[j - 2].Areg? && RegexTopGate(cont[j - 2].r, lk2, rr);
+                }
+                GatePendingTail(acts, lk2, rr);
+                forall gg | gg in L.DefGroups(rr) ensures gg !in gm2 {
+                  assert gg !in gm;   // GateAheadClear(acts, gm)
+                }
+              }
+            }
+          }
+          // WalkDefsOk(contActs): the unfold brick (mid = [])
+          WalkDefsOkUnfold(acts, r1, quant1, []);
+          assert [LS.Areg(r1)] + [] + [LS.Areg(quant1)] + cont == contActs;
+          // pack the existential at pc+1
+          assert AR.ActionsRepL(rer, qm, contActs, code, pc + 1)
+              && EL.PikeLkActions(contActs)
+              && ATR.EaOf(b) == g
+              && EL.BoolTreeLk(rer, contActs, inp, b, tb.t)
+              && GateAheadClear(contActs, gm2)
+              && WalkDefsOk(contActs);
+          assert WalkPairLk(rer, qm, code, inp, tb.t, gm2, pc + 1, g);
+        } else if delta == LN.NN(0) {
+          var em: nat :| AR.NfaRepMinL(rer, qm, 0, r1, code, pc, em)
+                       && AR.NfaRepOptL(rer, qm, 0, greedy, r1, code, em, pcmid);
+          NfaRepMinLHeadPin(rer, qm, 0, r1, code, pc, em);
+          NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);
+          assert pcmid == pc;
+          assert AR.ActionsRepL(rer, qm, cont, code, pc);
+          assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+          assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
+          GateAheadClearTail(acts, gm);
+          WalkDefsOkTail(acts);
+          WalkPairLkAtSetQuantCore(rer, qm, code, inp, tb, gm, pc, b, cont, q);
+        } else {
+          // min==0 with Inf or NN(kx>0): pins a Fork at pc, not SetQuantToClock.
+          match delta
+          case Inf =>
+            if exists e1: nat ::
+                 NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1))
+                 && (exists qid: int :: NR.GetPcRE(code, pc + 1) == Some(RB.SetQuantToClock(qid, false))
+                                        && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
+                 && NR.GetPcRE(code, pc + 2) == Some(RB.BeginLoop)
+                 && AR.NfaRepL(rer, qm, r1, code, pc + 3, e1)
+                 && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                 && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(pc))
+                 && pcmid == e1 + 2 {
+              var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1));
+            } else {
+              var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
+            }
+          case NN(kx) =>
+            var em: nat :| AR.NfaRepMinL(rer, qm, 0, r1, code, pc, em)
+                         && AR.NfaRepOptL(rer, qm, kx, greedy, r1, code, em, pcmid);
+            NfaRepMinLHeadPin(rer, qm, 0, r1, code, pc, em);
+            NfaRepOptLHeadPin(rer, qm, kx, greedy, r1, code, em, pcmid);   // kx>0 ⇒ Fork at pc
+        }
+      case Character(_) =>   // pins Consume — not SetQuantToClock
+      case Disjunction(_, _) =>   // pins Fork — not SetQuantToClock
+      case Group(_, _) =>   // pins SetRegisterToCP — not SetQuantToClock
+      case LookaroundR(_, _) =>   // pins CheckOracle/NegCheckOracle — not SetQuantToClock
+      case AnchorR(_) =>   // pins AnchorAssertion — not SetQuantToClock
+      case Backreference(_) =>   // NfaRepL false
+  }
+
+  /** WalkPairLk→WalkPairLk wrapper at a `SetQuantToClock(q, false)`: EITHER
+      the walk's actions route (forced-copy head — the Core) OR the SQC
+      see-through disjunct (star/backfork iteration arm) — both yield the
+      `Reset` head and the child walking at the RESET-updated map. */
+  lemma WalkPairLkAtSetQuant(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                             tb: LT.Tree, gm: LG.GroupMap, pc: nat, ea: bool, q: int)
+    requires WalkPairLk(rer, qm, code, inp, tb, gm, pc, ea)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, false))
+    ensures q in qm.quants
+    ensures tb.GroupActionT? && tb.g == LG.Reset(qm.quants[q])
+    ensures WalkPairLk(rer, qm, code, inp, tb.t,
+                       LG.GMUpdate(tb.g, LC.Idx(inp), gm), pc + 1, ea)
+  {
+    if (exists acts: LS.Actions, b: BS.LoopBool ::
+          AR.ActionsRepL(rer, qm, acts, code, pc)
+          && EL.PikeLkActions(acts)
+          && ATR.EaOf(b) == ea
+          && EL.BoolTreeLk(rer, acts, inp, b, tb)
+          && GateAheadClear(acts, gm)
+          && WalkDefsOk(acts)) {
+      var acts: LS.Actions, b: BS.LoopBool :|
+        AR.ActionsRepL(rer, qm, acts, code, pc)
+        && EL.PikeLkActions(acts)
+        && ATR.EaOf(b) == ea
+        && EL.BoolTreeLk(rer, acts, inp, b, tb)
+        && GateAheadClear(acts, gm)
+        && WalkDefsOk(acts);
+      WalkPairLkAtSetQuantCore(rer, qm, code, inp, tb, gm, pc, b, acts, q);
+    } else {
+      // the SQC see-through disjunct is the live one
+      var q0: int :| NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q0, false))
+        && q0 in qm.quants
+        && tb.GroupActionT? && tb.g == LG.Reset(qm.quants[q0])
+        && WalkPairLk(rer, qm, code, inp, tb.t, LG.GMUpdate(tb.g, LC.Idx(inp), gm), pc + 1, ea);
+      assert q0 == q;
+    }
+  }
+
   /** Fueled core of `TtLkAtSetQuant`: peel the transparent prefix; the real head
       is an `Areg(Quantified(min>0))` whose first `SetQuantToClock` stamps a
       `Reset`, and the continuation `[Areg(r1),Areg(Quantified(min-1))]+cont` is
@@ -5920,12 +6376,24 @@ module LindenElkLiftSim {
     ensures tb.GroupActionT? && tb.g.Reset?
     ensures TtLk(rer, qm, code, inp, tb.t, pc + 1, ea)
   {
-    var acts: LS.Actions, b: BS.LoopBool :|
-      AR.ActionsRepL(rer, qm, acts, code, pc)
-      && EL.PikeLkActions(acts)
-      && ATR.EaOf(b) == ea
-      && EL.BoolTreeLk(rer, acts, inp, b, tb);
-    TtLkAtSetQuantCore(rer, qm, code, inp, tb, pc, b, acts, q);
+    if (exists acts: LS.Actions, b: BS.LoopBool ::
+          AR.ActionsRepL(rer, qm, acts, code, pc)
+          && EL.PikeLkActions(acts)
+          && ATR.EaOf(b) == ea
+          && EL.BoolTreeLk(rer, acts, inp, b, tb)) {
+      var acts: LS.Actions, b: BS.LoopBool :|
+        AR.ActionsRepL(rer, qm, acts, code, pc)
+        && EL.PikeLkActions(acts)
+        && ATR.EaOf(b) == ea
+        && EL.BoolTreeLk(rer, acts, inp, b, tb);
+      TtLkAtSetQuantCore(rer, qm, code, inp, tb, pc, b, acts, q);
+    } else {
+      // the SQC see-through disjunct gives the shape + child directly
+      var q0: int :| NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q0, false))
+        && q0 in qm.quants
+        && tb.GroupActionT? && tb.g == LG.Reset(qm.quants[q0])
+        && TtLk(rer, qm, code, inp, tb.t, pc + 1, ea);
+    }
   }
 
   /** [SOLID] THE GATE, B side: at `CheckOracle(lid)` the tree IS the gate's
@@ -6113,7 +6581,7 @@ module LindenElkLiftSim {
     requires NR.GetPcRE(code, pc) == Some(RB.CheckOracle(lid))
     requires LL.OracleOkAt(rer, qm, inp)
     requires GateAheadClear(acts, gm)
-    requires M.NoDupSeq(M.AllDefsActs(acts))
+    requires WalkDefsOk(acts)
     ensures lid in qm.looks
     ensures var (lk, r1) := qm.looks[lid];
       (LOr.view_get_oracle(qm.ov, TR_CpOf(inp), lid) ==>
@@ -6148,7 +6616,7 @@ module LindenElkLiftSim {
         assert EL.BoolTreeLk(rer, cont, inp, b, tb);
         assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
         GateAheadClearTail(acts, gm);
-        NoDupAllDefsTail(acts);
+        WalkDefsOkTail(acts);
         WalkPairLkAtCheckOracleCore(rer, qm, code, inp, tb, gm, pc, b, cont, lid);
       case Sequence(r1, r2) =>
         assert acts[0] == LS.Areg(L.Sequence(r1, r2));
@@ -6176,6 +6644,7 @@ module LindenElkLiftSim {
         assert L.DefGroups(r1) + (L.DefGroups(r2) + M.AllDefsActs(cont))
             == (L.DefGroups(r1) + L.DefGroups(r2)) + M.AllDefsActs(cont);
         assert M.AllDefsActs(na) == M.AllDefsActs(acts);
+        WalkDefsOkSeqExpand(acts, r1, r2);
         WalkPairLkAtCheckOracleCore(rer, qm, code, inp, tb, gm, pc, b, na, lid);
       case Quantified(greedy, min, delta, r1) =>
         if min == 0 && delta == LN.NN(0) {
@@ -6190,7 +6659,7 @@ module LindenElkLiftSim {
           assert EL.BoolTreeLk(rer, cont, inp, b, tb);
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
           GateAheadClearTail(acts, gm);
-          NoDupAllDefsTail(acts);
+          WalkDefsOkTail(acts);
           WalkPairLkAtCheckOracleCore(rer, qm, code, inp, tb, gm, pc, b, cont, lid);
         } else {
           assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
@@ -6240,22 +6709,25 @@ module LindenElkLiftSim {
               ensures GatePending(acts, lk2, r2)
             { GatePendingTail(acts, lk2, r2); }
           }
-          // AfterMerge req (4): every other pending gate's body disjoint from DefGroups(r1).
-          M.AllDefsActsCons(acts[0], cont);
-          assert L.DefGroups(L.LookaroundR(lk0, r1)) == L.DefGroups(r1);
-          assert M.AllDefsActs(acts) == L.DefGroups(r1) + M.AllDefsActs(cont);
-          M.NoDupConcat(L.DefGroups(r1), M.AllDefsActs(cont));   // set(DefGroups r1) ∩ set(AllDefsActs cont) == {}
+          // AfterMerge req (4): every other pending gate's body disjoint from
+          // DefGroups(r1) — from C1 (TopLk NoDup): the head gate contributes
+          // DefGroups(r1) as a block, pending bodies in cont sit inside
+          // TopLkDefsListActs(cont) (RegexTopGateSubTopLk).
+          TopLkDefsListActsCons(acts[0], cont);
+          assert TopLkDefsList(L.LookaroundR(lk0, r1)) == L.DefGroups(r1);
+          assert TopLkDefsListActs(acts) == L.DefGroups(r1) + TopLkDefsListActs(cont);
+          M.NoDupConcat(L.DefGroups(r1), TopLkDefsListActs(cont));
           assert forall lk2: L.Lookaround, r2: L.Regex :: GatePending(cont, lk2, r2) ==>
                    (forall gg :: gg in L.DefGroups(r2) ==> gg !in L.DefGroups(r1)) by {
             forall lk2: L.Lookaround, r2: L.Regex | GatePending(cont, lk2, r2)
               ensures forall gg :: gg in L.DefGroups(r2) ==> gg !in L.DefGroups(r1)
             {
               var j :| 0 <= j < |cont| && cont[j].Areg? && RegexTopGate(cont[j].r, lk2, r2);
-              RegexTopGateSubDefs(cont[j].r, lk2, r2);      // set(DefGroups r2) ⊆ set(DefGroups cont[j].r)
-              AllDefsActsMemberSub(cont, j);                // set(DefGroups cont[j].r) ⊆ set(AllDefsActs cont)
+              RegexTopGateSubTopLk(cont[j].r, lk2, r2);     // set(DefGroups r2) ⊆ set(TopLk cont[j].r)
+              TopLkDefsListMemberSub(cont, j);              // set(TopLk cont[j].r) ⊆ set(TopLkActs cont)
               var SR2 := set gx | gx in L.DefGroups(r2);
-              var SCJ := set gx | gx in L.DefGroups(cont[j].r);
-              var SAC := set gx | gx in M.AllDefsActs(cont);
+              var SCJ := set gx | gx in TopLkDefsList(cont[j].r);
+              var SAC := set gx | gx in TopLkDefsListActs(cont);
               var SR1 := set gx | gx in L.DefGroups(r1);
               assert SR2 <= SCJ && SCJ <= SAC;              // the two lemma subsets (named-set form)
               assert SR1 * SAC == {};                       // NoDupConcat disjointness
@@ -6271,15 +6743,15 @@ module LindenElkLiftSim {
             }
           }
           GateAheadClearAfterMerge(acts, cont, gm, gm2, lk0, r1);   // GateAheadClear(cont, gm2)
-          // Assemble WalkPairLk(tb.t, gm2, pc+1, g) via the existential (2nd) disjunct.
+          // Assemble WalkPairLk(tb.t, gm2, pc+1, g) via the existential disjunct.
           assert EL.PikeLkActions(cont);
-          assert M.NoDupSeq(M.AllDefsActs(cont));   // from NoDupConcat(DefGroups(r1), AllDefsActs(cont))
+          WalkDefsOkTail(acts);
           assert AR.ActionsRepL(rer, qm, cont, code, pc + 1)
               && EL.PikeLkActions(cont)
               && ATR.EaOf(b) == g
               && EL.BoolTreeLk(rer, cont, inp, b, tb.t)
               && GateAheadClear(cont, gm2)
-              && M.NoDupSeq(M.AllDefsActs(cont));
+              && WalkDefsOk(cont);
           assert WalkPairLk(rer, qm, code, inp, tb.t, gm2, pc + 1, g);
         } else {
           assert tb.LKFail?;   // GateNodeAtInp: only LK or LKFail
@@ -6322,7 +6794,7 @@ module LindenElkLiftSim {
       && ATR.EaOf(b) == ea
       && EL.BoolTreeLk(rer, acts, inp, b, tb)
       && GateAheadClear(acts, gm)
-      && M.NoDupSeq(M.AllDefsActs(acts));
+      && WalkDefsOk(acts);
     WalkPairLkAtCheckOracleCore(rer, qm, code, inp, tb, gm, pc, b, acts, lid);
   }
 
@@ -6339,7 +6811,7 @@ module LindenElkLiftSim {
     requires EL.BoolTreeLk(rer, acts, inp, b, tb)
     requires NR.GetPcRE(code, pc) == Some(RB.AnchorAssertion(a))
     requires GateAheadClear(acts, gm)
-    requires M.NoDupSeq(M.AllDefsActs(acts))
+    requires WalkDefsOk(acts)
     ensures tb.AnchorPass? || tb == LT.Mismatch
     ensures tb.AnchorPass? ==> WalkPairLk(rer, qm, code, inp, tb.t, gm, pc + 1, ATR.EaOf(b))
     decreases ATR.MsizeA(acts)
@@ -6361,7 +6833,7 @@ module LindenElkLiftSim {
         assert EL.BoolTreeLk(rer, cont, inp, b, tb);
         assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
         GateAheadClearTail(acts, gm);
-        NoDupAllDefsTail(acts);
+        WalkDefsOkTail(acts);
         WalkPairLkAtAnchorCore(rer, qm, code, inp, tb, gm, pc, b, cont, a);
       case Sequence(r1, r2) =>
         assert acts[0] == LS.Areg(L.Sequence(r1, r2));
@@ -6388,6 +6860,7 @@ module LindenElkLiftSim {
         assert L.DefGroups(r1) + (L.DefGroups(r2) + M.AllDefsActs(cont))
             == (L.DefGroups(r1) + L.DefGroups(r2)) + M.AllDefsActs(cont);
         assert M.AllDefsActs(na) == M.AllDefsActs(acts);
+        WalkDefsOkSeqExpand(acts, r1, r2);
         WalkPairLkAtAnchorCore(rer, qm, code, inp, tb, gm, pc, b, na, a);
       case Quantified(greedy, min, delta, r1) =>
         if min == 0 && delta == LN.NN(0) {
@@ -6402,7 +6875,7 @@ module LindenElkLiftSim {
           assert EL.BoolTreeLk(rer, cont, inp, b, tb);
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
           GateAheadClearTail(acts, gm);
-          NoDupAllDefsTail(acts);
+          WalkDefsOkTail(acts);
           WalkPairLkAtAnchorCore(rer, qm, code, inp, tb, gm, pc, b, cont, a);
         } else {
           assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
@@ -6417,7 +6890,7 @@ module LindenElkLiftSim {
           assert AR.ActionsRepL(rer, qm, cont, code, pc + 1);
           // gm UNCHANGED across AnchorPass ⟹ tail bricks give the continuation clear.
           GateAheadClearTail(acts, gm);       // GateAheadClear(cont, gm)
-          NoDupAllDefsTail(acts);             // NoDupSeq(AllDefsActs(cont))
+          WalkDefsOkTail(acts);             // NoDupSeq(AllDefsActs(cont))
           assert EL.PikeLkActions(cont);
           assert WalkPairLk(rer, qm, code, inp, tb.t, gm, pc + 1, g);
         } else {
@@ -6444,7 +6917,7 @@ module LindenElkLiftSim {
       && ATR.EaOf(b) == ea
       && EL.BoolTreeLk(rer, acts, inp, b, tb)
       && GateAheadClear(acts, gm)
-      && M.NoDupSeq(M.AllDefsActs(acts));
+      && WalkDefsOk(acts);
     WalkPairLkAtAnchorCore(rer, qm, code, inp, tb, gm, pc, b, acts, a);
   }
 
@@ -6470,10 +6943,11 @@ module LindenElkLiftSim {
   }
 
   /** `WalkPairLk` is strictly stronger than `TtLk`: its existential adds
-      `GateAheadClear` + `NoDupSeq(AllDefsActs)`, which we simply drop. This
-      bridge lets the cases that need only the tree SHAPE (Accept ⟹ Match, the
-      Fork shape, and the dying LKFail/Mismatch cases) reuse the proven
-      `TtLkAt*` inversions directly, with no `WalkPairLk`-specific core. */
+      `GateAheadClear` + `WalkDefsOk`, which we simply drop; the two stutter
+      disjuncts (BeginLoop, SQC see-through) map to `TtLk`'s. This bridge lets
+      the cases that need only the tree SHAPE (Accept ⟹ Match, the Fork shape,
+      and the dying LKFail/Mismatch cases) reuse the proven `TtLkAt*`
+      inversions directly, with no `WalkPairLk`-specific core. */
   lemma WalkPairLkImpliesTtLk(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                               tb: LT.Tree, gm: LG.GroupMap, pc: nat, ea: bool)
     requires WalkPairLk(rer, qm, code, inp, tb, gm, pc, ea)
@@ -6483,17 +6957,24 @@ module LindenElkLiftSim {
     if (exists acts: LS.Actions, b: BS.LoopBool ::
           AR.ActionsRepL(rer, qm, acts, code, pc) && EL.PikeLkActions(acts) && ATR.EaOf(b) == ea
           && EL.BoolTreeLk(rer, acts, inp, b, tb) && GateAheadClear(acts, gm)
-          && M.NoDupSeq(M.AllDefsActs(acts))) {
+          && WalkDefsOk(acts)) {
       // the existential disjunct: the same (acts, b) satisfy TtLk's exists.
       var acts: LS.Actions, b: BS.LoopBool :|
         AR.ActionsRepL(rer, qm, acts, code, pc) && EL.PikeLkActions(acts) && ATR.EaOf(b) == ea
         && EL.BoolTreeLk(rer, acts, inp, b, tb) && GateAheadClear(acts, gm)
-        && M.NoDupSeq(M.AllDefsActs(acts));
-    } else {
-      // B false ⟹ the BeginLoop stutter disjunct holds; recurse at pc+1.
-      assert pc < RB.size(code) && NR.GetPcRE(code, pc) == Some(RB.BeginLoop)
-          && WalkPairLk(rer, qm, code, inp, tb, gm, pc + 1, false);
+        && WalkDefsOk(acts);
+    } else if pc < RB.size(code) && NR.GetPcRE(code, pc) == Some(RB.BeginLoop)
+              && WalkPairLk(rer, qm, code, inp, tb, gm, pc + 1, false) {
+      // the BeginLoop stutter disjunct; recurse at pc+1.
       WalkPairLkImpliesTtLk(rer, qm, code, inp, tb, gm, pc + 1, false);
+    } else {
+      // the SQC see-through disjunct: recurse on the child, re-pack TtLk's.
+      var q: int :| NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, false))
+        && q in qm.quants
+        && tb.GroupActionT? && tb.g == LG.Reset(qm.quants[q])
+        && WalkPairLk(rer, qm, code, inp, tb.t, LG.GMUpdate(tb.g, LC.Idx(inp), gm), pc + 1, ea);
+      WalkPairLkImpliesTtLk(rer, qm, code, inp, tb.t, LG.GMUpdate(tb.g, LC.Idx(inp), gm), pc + 1, ea);
+      assert TtLk(rer, qm, code, inp, tb.t, pc + 1, ea);
     }
   }
 
@@ -6580,7 +7061,7 @@ module LindenElkLiftSim {
     requires EL.BoolTreeLk(rer, acts, inp, b, tb)
     requires NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(r))
     requires GateAheadClear(acts, gm)
-    requires M.NoDupSeq(M.AllDefsActs(acts))
+    requires WalkDefsOk(acts)
     ensures tb.GroupActionT?
     ensures (tb.g.Open? && r == CP.start_reg(tb.g.g as int))
          || (tb.g.Close? && r == CP.end_reg(tb.g.g as int))
@@ -6603,7 +7084,7 @@ module LindenElkLiftSim {
       assert gm2 == LG.GMClose(LC.Idx(inp), gid, gm);
       GateAheadClearTail(acts, gm);
       GateAheadClearMono(cont, gm, gm2);   // GMClose keeps the domain
-      NoDupAllDefsTail(acts);
+      WalkDefsOkTail(acts);
       assert EL.PikeLkActions(cont);
       assert WalkPairLk(rer, qm, code, inp, tb.t, gm2, pc + 1, g);
     case Areg(r0) =>
@@ -6614,7 +7095,7 @@ module LindenElkLiftSim {
         assert EL.BoolTreeLk(rer, cont, inp, b, tb);
         assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
         GateAheadClearTail(acts, gm);
-        NoDupAllDefsTail(acts);
+        WalkDefsOkTail(acts);
         WalkPairLkAtSetRegCore(rer, qm, code, inp, tb, gm, pc, b, cont, r);
       case Sequence(r1, r2) =>
         assert acts[0] == LS.Areg(L.Sequence(r1, r2));
@@ -6641,6 +7122,7 @@ module LindenElkLiftSim {
         assert L.DefGroups(r1) + (L.DefGroups(r2) + M.AllDefsActs(cont))
             == (L.DefGroups(r1) + L.DefGroups(r2)) + M.AllDefsActs(cont);
         assert M.AllDefsActs(na) == M.AllDefsActs(acts);
+        WalkDefsOkSeqExpand(acts, r1, r2);
         WalkPairLkAtSetRegCore(rer, qm, code, inp, tb, gm, pc, b, na, r);
       case Group(gid, r1) =>
         var e1: nat :| NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(CP.start_reg(gid as int)))
@@ -6659,14 +7141,18 @@ module LindenElkLiftSim {
           EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Aclose(gid)] + cont);
         }
         var gm2 := LG.GMUpdate(LG.Open(gid), LC.Idx(inp), gm);
-        // AllDefsActs(ga) == DefGroups(r1) + AllDefsActs(cont); AllDefsActs(acts) == [gid] + AllDefsActs(ga).
-        M.AllDefsActsCons(LS.Areg(r1), [LS.Aclose(gid)] + cont);
-        M.AllDefsActsCons(LS.Aclose(gid), cont);
-        M.AllDefsActsCons(acts[0], cont);
-        assert L.DefGroups(L.Group(gid, r1)) == [gid] + L.DefGroups(r1);
-        assert M.AllDefsActs(ga) == L.DefGroups(r1) + M.AllDefsActs(cont);
-        assert M.AllDefsActs(acts) == [gid] + M.AllDefsActs(ga);
-        M.NoDupConcat([gid], M.AllDefsActs(ga));   // NoDup(AllDefsActs(ga)) && gid ∉ AllDefsActs(ga)
+        // carrier across the Group expand; C1 pins gid ∉ TopLk of both parts
+        WalkDefsOkGroupExpand(acts, gid, r1);
+        TopLkDefsListActsCons(acts[0], cont);
+        TopLkDefsListActsCons(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+        TopLkDefsListActsCons(LS.Aclose(gid), cont);
+        assert TopLkDefsList(L.Group(gid, r1)) == [gid] + TopLkDefsList(r1);
+        assert TopLkDefsListActs(acts)
+            == ([gid] + TopLkDefsList(r1)) + TopLkDefsListActs(cont);
+        assert ([gid] + TopLkDefsList(r1)) + TopLkDefsListActs(cont)
+            == [gid] + (TopLkDefsList(r1) + TopLkDefsListActs(cont));
+        M.NoDupConcat([gid], TopLkDefsList(r1) + TopLkDefsListActs(cont));
+        assert TopLkDefsListActs(ga) == TopLkDefsList(r1) + TopLkDefsListActs(cont);
         // GateAheadClear(ga, gm): pending-in-ga ⟹ pending-in-acts.
         assert forall lk2: L.Lookaround, rr: L.Regex :: GatePending(ga, lk2, rr) ==> GatePending(acts, lk2, rr) by {
           forall lk2: L.Lookaround, rr: L.Regex | GatePending(ga, lk2, rr) ensures GatePending(acts, lk2, rr) {
@@ -6678,15 +7164,15 @@ module LindenElkLiftSim {
             ensures forall gg :: gg in L.DefGroups(rr) ==> gg !in gm
           { GatePendingGroupBack(acts, gid, r1, lk2, rr); }
         }
-        // gid ∉ every pending body of ga (via NoDup: gid ∉ AllDefsActs(ga) ⊇ DefGroups(rr)).
+        // gid ∉ every pending body of ga (via C1: gid ∉ TopLkDefsListActs(ga) ⊇ DefGroups(rr)).
         assert forall lk2: L.Lookaround, rr: L.Regex :: GatePending(ga, lk2, rr) ==> gid !in L.DefGroups(rr) by {
           forall lk2: L.Lookaround, rr: L.Regex | GatePending(ga, lk2, rr) ensures gid !in L.DefGroups(rr) {
             var j :| 0 <= j < |ga| && ga[j].Areg? && RegexTopGate(ga[j].r, lk2, rr);
-            RegexTopGateSubDefs(ga[j].r, lk2, rr);
-            AllDefsActsMemberSub(ga, j);
+            RegexTopGateSubTopLk(ga[j].r, lk2, rr);
+            TopLkDefsListMemberSub(ga, j);
             var SRR := set gx | gx in L.DefGroups(rr);
-            var SGJ := set gx | gx in L.DefGroups(ga[j].r);
-            var SAG := set gx | gx in M.AllDefsActs(ga);
+            var SGJ := set gx | gx in TopLkDefsList(ga[j].r);
+            var SAG := set gx | gx in TopLkDefsListActs(ga);
             assert SRR <= SGJ && SGJ <= SAG;   // the two lemma subsets (named-set form)
             assert (set gx | gx in [gid]) * SAG == {};   // NoDupConcat disjointness
             if gid in L.DefGroups(rr) {
@@ -6711,7 +7197,7 @@ module LindenElkLiftSim {
           assert EL.BoolTreeLk(rer, cont, inp, b, tb);
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
           GateAheadClearTail(acts, gm);
-          NoDupAllDefsTail(acts);
+          WalkDefsOkTail(acts);
           WalkPairLkAtSetRegCore(rer, qm, code, inp, tb, gm, pc, b, cont, r);
         } else {
           assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
@@ -6741,7 +7227,7 @@ module LindenElkLiftSim {
       && ATR.EaOf(b) == ea
       && EL.BoolTreeLk(rer, acts, inp, b, tb)
       && GateAheadClear(acts, gm)
-      && M.NoDupSeq(M.AllDefsActs(acts));
+      && WalkDefsOk(acts);
     WalkPairLkAtSetRegCore(rer, qm, code, inp, tb, gm, pc, b, acts, r);
   }
 
@@ -7341,7 +7827,10 @@ module LindenElkLiftSim {
   // CheckOracle look-vs-look disjointness (crossed body ∩ sibling body == {}) and
   // is the replacement target for the `NoDupSeq(AllDefsActs)` invariant.
 
-  /** Def-groups of the TOP-LEVEL looks of `r` (not under a quantifier). */
+  /** TOP-LEVEL def-list of `r` (not under a quantifier): look bodies contribute
+      their full `DefGroups`, `Group` prepends its OWN id (session 5: needed so
+      the carrier also pins Open-crossing freshness — the opened gid is absent
+      from every pending body ahead), quantifiers are OPAQUE. */
   ghost function TopLkDefsList(r: L.Regex): seq<LG.GroupId>
     decreases r
   {
@@ -7349,7 +7838,7 @@ module LindenElkLiftSim {
     case LookaroundR(lk, r1) => L.DefGroups(r1)
     case Sequence(a, b) => TopLkDefsList(a) + TopLkDefsList(b)
     case Disjunction(a, b) => TopLkDefsList(a) + TopLkDefsList(b)
-    case Group(_, r1) => TopLkDefsList(r1)
+    case Group(gid, r1) => [gid] + TopLkDefsList(r1)
     case Quantified(_, _, _, _) => []   // STOP: re-entrant looks handled by the Reset
     case _ => []
   }
@@ -7385,8 +7874,9 @@ module LindenElkLiftSim {
       if RegexTopGate(a, lk, r1) { RegexTopGateSubTopLk(a, lk, r1); }
       else { RegexTopGateSubTopLk(b, lk, r1); }
     case Group(id, rb) =>
-      assert TopLkDefsList(r) == TopLkDefsList(rb);
+      assert TopLkDefsList(r) == [id] + TopLkDefsList(rb);
       RegexTopGateSubTopLk(rb, lk, r1);
+      assert forall g :: g in TopLkDefsList(rb) ==> g in TopLkDefsList(r);
     case Quantified(_, _, _, _) =>
     case Epsilon =>
     case Character(_) =>
@@ -7502,7 +7992,18 @@ module LindenElkLiftSim {
       assert L.DefGroups(r) == [id] + L.DefGroups(r1);
       M.NoDupConcat([id], L.DefGroups(r1));
       TopLkNoDupFromDefGroups(r1);
-      assert TopLkDefsList(r) == TopLkDefsList(r1);
+      TopLkDefsListSubDefGroups(r1);
+      forall i, j | 0 <= i < |[id]| && 0 <= j < |TopLkDefsList(r1)|
+        ensures [id][i] != TopLkDefsList(r1)[j]
+      {
+        if [id][i] == TopLkDefsList(r1)[j] {
+          assert id in TopLkDefsList(r1);
+          assert id in L.DefGroups(r1);
+          assert id in (set gx | gx in [id]) * (set gx | gx in L.DefGroups(r1));
+        }
+      }
+      M.NoDupFromDisjoint([id], TopLkDefsList(r1));
+      assert TopLkDefsList(r) == [id] + TopLkDefsList(r1);
     case Quantified(_, _, _, _) =>
     case Epsilon =>
     case Character(_) =>
@@ -7605,6 +8106,313 @@ module LindenElkLiftSim {
       }
     }
     M.NoDupFromDisjoint(TopLkDefsList(r1), TopLkDefsListActs(cont));
+  }
+
+  // ---- THE (C1,C2,C3) WALK-DEFS CARRIER (2026-08-07 session 5) ---------------
+  // Replaces `NoDupSeq(AllDefsActs(acts))` in `WalkPairLk`/`TtLk`'s actions
+  // disjunct — which is FALSE after any quantifier unfold (`[Areg r1, ...,
+  // Areg(Quantified(..,r1))]` duplicates `DefGroups(r1)`, so the old carrier
+  // made the invariant vacuous for grouped quantifiers). C1 is the CheckOracle
+  // merge consumer (pending-vs-merged disjointness via `RegexTopGateSubTopLk`);
+  // C2 the per-action structural NoDup; C3 the rightward quantifier freshness
+  // that makes the UNFOLD self-maintaining: the unfolding `Quantified`'s OWN C3
+  // clause is exactly the freshness of its body against the tail's top-level
+  // looks, and `QuantsRightClearFromNoDup` re-establishes C3 for the copy.
+
+  ghost function TopLkSetActs(acts: LS.Actions): set<LG.GroupId> {
+    set g | g in TopLkDefsListActs(acts)
+  }
+
+  /** C3, per-regex: every top-level `Quantified` body's groups avoid `R` (the
+      top-level look groups of the RIGHT context); `Sequence` widens `R` for its
+      left arm by the right arm's contribution; `Disjunction` arms are
+      alternatives (same `R`); STOPS at `Quantified` (inner quantifiers are
+      re-established at their own unfold) and `LookaroundR` (look bodies never
+      enter the walk). */
+  ghost predicate QuantsRightClear(r: L.Regex, R: set<LG.GroupId>)
+    decreases r
+  {
+    match r
+    case Sequence(a, b) =>
+      QuantsRightClear(a, (set g | g in TopLkDefsList(b)) + R) && QuantsRightClear(b, R)
+    case Disjunction(a, b) => QuantsRightClear(a, R) && QuantsRightClear(b, R)
+    case Group(_, rb) => QuantsRightClear(rb, R)
+    case Quantified(_, _, _, r1) => forall g :: g in L.DefGroups(r1) ==> g !in R
+    case _ => true
+  }
+
+  /** C3, per-list: each action against the top-level look groups to its right. */
+  ghost predicate QuantsClearActs(acts: LS.Actions) {
+    forall i | 0 <= i < |acts| && acts[i].Areg? ::
+      QuantsRightClear(acts[i].r, TopLkSetActs(acts[i + 1..]))
+  }
+
+  /** THE CARRIER. */
+  ghost predicate WalkDefsOk(acts: LS.Actions) {
+    M.NoDupSeq(TopLkDefsListActs(acts))                                        // C1
+    && (forall i | 0 <= i < |acts| && acts[i].Areg? ::
+          M.NoDupSeq(L.DefGroups(acts[i].r)))                                  // C2
+    && QuantsClearActs(acts)                                                   // C3
+  }
+
+  lemma QuantsRightClearMono(r: L.Regex, R: set<LG.GroupId>, R2: set<LG.GroupId>)
+    requires QuantsRightClear(r, R) && R2 <= R
+    ensures QuantsRightClear(r, R2)
+    decreases r
+  {
+    match r
+    case Sequence(a, b) =>
+      QuantsRightClearMono(a, (set g | g in TopLkDefsList(b)) + R,
+                           (set g | g in TopLkDefsList(b)) + R2);
+      QuantsRightClearMono(b, R, R2);
+    case Disjunction(a, b) =>
+      QuantsRightClearMono(a, R, R2); QuantsRightClearMono(b, R, R2);
+    case Group(_, rb) => QuantsRightClearMono(rb, R, R2);
+    case Quantified(_, _, _, _) =>
+    case _ =>
+  }
+
+  /** C3 from structural NoDup + body-freshness — the unfold's re-establishment
+      workhorse: a dup-free-defs regex whose groups avoid `R` is
+      `QuantsRightClear` at `R`. */
+  lemma QuantsRightClearFromNoDup(r: L.Regex, R: set<LG.GroupId>)
+    requires M.NoDupSeq(L.DefGroups(r))
+    requires forall g :: g in L.DefGroups(r) ==> g !in R
+    ensures QuantsRightClear(r, R)
+    decreases r
+  {
+    match r
+    case Sequence(a, b) =>
+      assert L.DefGroups(r) == L.DefGroups(a) + L.DefGroups(b);
+      M.NoDupConcat(L.DefGroups(a), L.DefGroups(b));
+      TopLkDefsListSubDefGroups(b);
+      var Rb := (set g | g in TopLkDefsList(b)) + R;
+      forall g | g in L.DefGroups(a) ensures g !in Rb {
+        assert g in L.DefGroups(r);
+        if g in TopLkDefsList(b) {
+          assert g in L.DefGroups(b);
+          assert g in (set gx | gx in L.DefGroups(a)) * (set gx | gx in L.DefGroups(b));
+        }
+      }
+      QuantsRightClearFromNoDup(a, Rb);
+      forall g | g in L.DefGroups(b) ensures g !in R { assert g in L.DefGroups(r); }
+      QuantsRightClearFromNoDup(b, R);
+    case Disjunction(a, b) =>
+      assert L.DefGroups(r) == L.DefGroups(a) + L.DefGroups(b);
+      M.NoDupConcat(L.DefGroups(a), L.DefGroups(b));
+      forall g | g in L.DefGroups(a) ensures g !in R { assert g in L.DefGroups(r); }
+      QuantsRightClearFromNoDup(a, R);
+      forall g | g in L.DefGroups(b) ensures g !in R { assert g in L.DefGroups(r); }
+      QuantsRightClearFromNoDup(b, R);
+    case Group(id, rb) =>
+      assert L.DefGroups(r) == [id] + L.DefGroups(rb);
+      M.NoDupConcat([id], L.DefGroups(rb));
+      forall g | g in L.DefGroups(rb) ensures g !in R { assert g in L.DefGroups(r); }
+      QuantsRightClearFromNoDup(rb, R);
+    case Quantified(_, _, _, r1) =>
+      assert L.DefGroups(r) == L.DefGroups(r1);
+    case _ =>
+  }
+
+  /** Carrier tail: drop the head. */
+  lemma WalkDefsOkTail(acts: LS.Actions)
+    requires |acts| > 0 && WalkDefsOk(acts)
+    ensures WalkDefsOk(acts[1..])
+  {
+    NoDupTopLkTail(acts);
+    forall i | 0 <= i < |acts[1..]| && acts[1..][i].Areg?
+      ensures M.NoDupSeq(L.DefGroups(acts[1..][i].r))
+              && QuantsRightClear(acts[1..][i].r, TopLkSetActs(acts[1..][i + 1..]))
+    {
+      assert acts[1..][i] == acts[i + 1];
+      assert acts[1..][i + 1..] == acts[i + 2..];
+    }
+  }
+
+  /** Carrier across the `Sequence` two-head expand: the TopLk list is the SAME
+      sequence, the head's C3 clause unfolds DEFINITIONALLY into the two new
+      heads' clauses. */
+  lemma WalkDefsOkSeqExpand(acts: LS.Actions, r1: L.Regex, r2: L.Regex)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Sequence(r1, r2))
+    requires WalkDefsOk(acts)
+    ensures WalkDefsOk([LS.Areg(r1), LS.Areg(r2)] + acts[1..])
+  {
+    var cont := acts[1..];
+    var na := [LS.Areg(r1), LS.Areg(r2)] + cont;
+    assert acts == [acts[0]] + cont;
+    // C1: same TopLk sequence
+    TopLkDefsListActsCons(acts[0], cont);
+    TopLkDefsListActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont);
+    TopLkDefsListActsCons(LS.Areg(r2), cont);
+    assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+    assert TopLkDefsList(L.Sequence(r1, r2)) == TopLkDefsList(r1) + TopLkDefsList(r2);
+    assert TopLkDefsListActs(na)
+        == TopLkDefsList(r1) + (TopLkDefsList(r2) + TopLkDefsListActs(cont));
+    assert TopLkDefsList(r1) + (TopLkDefsList(r2) + TopLkDefsListActs(cont))
+        == (TopLkDefsList(r1) + TopLkDefsList(r2)) + TopLkDefsListActs(cont);
+    assert TopLkDefsListActs(na) == TopLkDefsListActs(acts);
+    // C2: split the head's NoDup
+    assert M.NoDupSeq(L.DefGroups(L.Sequence(r1, r2)));
+    assert L.DefGroups(L.Sequence(r1, r2)) == L.DefGroups(r1) + L.DefGroups(r2);
+    M.NoDupConcat(L.DefGroups(r1), L.DefGroups(r2));
+    // C3
+    assert QuantsRightClear(L.Sequence(r1, r2), TopLkSetActs(cont));
+    assert TopLkSetActs([LS.Areg(r2)] + cont)
+        == (set g | g in TopLkDefsList(r2)) + TopLkSetActs(cont) by {
+      forall g ensures g in TopLkSetActs([LS.Areg(r2)] + cont)
+                   <==> g in ((set gx | gx in TopLkDefsList(r2)) + TopLkSetActs(cont)) {
+      }
+    }
+    forall i | 0 <= i < |na| && na[i].Areg?
+      ensures M.NoDupSeq(L.DefGroups(na[i].r))
+              && QuantsRightClear(na[i].r, TopLkSetActs(na[i + 1..]))
+    {
+      if i == 0 {
+        assert na[0] == LS.Areg(r1) && na[1..] == [LS.Areg(r2)] + cont;
+      } else if i == 1 {
+        assert na[1] == LS.Areg(r2) && na[2..] == cont;
+      } else {
+        assert na[i] == cont[i - 2] == acts[i - 1];
+        assert na[i + 1..] == cont[i - 1..] == acts[i..];
+      }
+    }
+  }
+
+  /** Carrier across the `Group` expand (`[Areg rb, Aclose gid] + cont`). */
+  lemma WalkDefsOkGroupExpand(acts: LS.Actions, gid: LG.GroupId, rb: L.Regex)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Group(gid, rb))
+    requires WalkDefsOk(acts)
+    ensures WalkDefsOk([LS.Areg(rb), LS.Aclose(gid)] + acts[1..])
+  {
+    var cont := acts[1..];
+    var na := [LS.Areg(rb), LS.Aclose(gid)] + cont;
+    assert acts == [acts[0]] + cont;
+    // C1: Group is TopLk-transparent, Aclose contributes []
+    TopLkDefsListActsCons(acts[0], cont);
+    TopLkDefsListActsCons(LS.Areg(rb), [LS.Aclose(gid)] + cont);
+    TopLkDefsListActsCons(LS.Aclose(gid), cont);
+    assert na == [LS.Areg(rb)] + ([LS.Aclose(gid)] + cont);
+    assert TopLkDefsList(L.Group(gid, rb)) == [gid] + TopLkDefsList(rb);
+    assert TopLkDefsListActs(acts)
+        == ([gid] + TopLkDefsList(rb)) + TopLkDefsListActs(cont);
+    assert ([gid] + TopLkDefsList(rb)) + TopLkDefsListActs(cont)
+        == [gid] + (TopLkDefsList(rb) + TopLkDefsListActs(cont));
+    M.NoDupConcat([gid], TopLkDefsList(rb) + TopLkDefsListActs(cont));
+    assert TopLkDefsListActs(na) == TopLkDefsList(rb) + TopLkDefsListActs(cont);
+    // C2
+    assert M.NoDupSeq(L.DefGroups(L.Group(gid, rb)));
+    assert L.DefGroups(L.Group(gid, rb)) == [gid] + L.DefGroups(rb);
+    M.NoDupConcat([gid], L.DefGroups(rb));
+    // C3
+    assert QuantsRightClear(L.Group(gid, rb), TopLkSetActs(cont));
+    assert TopLkSetActs([LS.Aclose(gid)] + cont) == TopLkSetActs(cont) by {
+      forall g ensures g in TopLkSetActs([LS.Aclose(gid)] + cont) <==> g in TopLkSetActs(cont) {
+      }
+    }
+    forall i | 0 <= i < |na| && na[i].Areg?
+      ensures M.NoDupSeq(L.DefGroups(na[i].r))
+              && QuantsRightClear(na[i].r, TopLkSetActs(na[i + 1..]))
+    {
+      if i == 0 {
+        assert na[0] == LS.Areg(rb) && na[1..] == [LS.Aclose(gid)] + cont;
+      } else if i == 1 {
+      } else {
+        assert na[i] == cont[i - 2] == acts[i - 1];
+        assert na[i + 1..] == cont[i - 1..] == acts[i..];
+      }
+    }
+  }
+
+  /** Carrier at the single-action entry (`[Areg rex]`). */
+  lemma WalkDefsOkEntry(rex: L.Regex)
+    requires M.NoDupSeq(L.DefGroups(rex))
+    ensures WalkDefsOk([LS.Areg(rex)])
+  {
+    var acts := [LS.Areg(rex)];
+    TopLkDefsListActsCons(LS.Areg(rex), []);
+    assert TopLkDefsListActs(acts) == TopLkDefsList(rex) + [] == TopLkDefsList(rex);
+    TopLkNoDupFromDefGroups(rex);
+    assert acts[1..] == [];
+    assert TopLkSetActs([]) == {};
+    QuantsRightClearFromNoDup(rex, {});
+  }
+
+  /** THE UNFOLD: carrier across a quantifier body-copy expansion
+      `[Areg(Quantified(.., r1))] + cont  ⟶  [Areg r1] ++ mid ++ [Areg q'] + cont`
+      stated for the two shapes the walk produces (`mid` = `[]` for the min>0
+      forced copy, `[Acheck(inp0)]` for the star/backfork iteration arm). The
+      unfolding node's OWN C3 clause supplies the body-vs-tail freshness; C2
+      supplies the body's structural NoDup; the residual `q'` is TopLk-opaque. */
+  lemma WalkDefsOkUnfold(acts: LS.Actions, r1: L.Regex, q': L.Regex, mid: LS.Actions)
+    requires |acts| > 0 && acts[0].Areg? && acts[0].r.Quantified? && acts[0].r.r1 == r1
+    requires q'.Quantified? && q'.r1 == r1
+    requires mid == [] || (|mid| == 1 && mid[0].Acheck?)
+    requires WalkDefsOk(acts)
+    ensures WalkDefsOk([LS.Areg(r1)] + mid + [LS.Areg(q')] + acts[1..])
+  {
+    var cont := acts[1..];
+    var na := [LS.Areg(r1)] + mid + [LS.Areg(q')] + cont;
+    assert acts == [acts[0]] + cont;
+    // structural facts from the folded head
+    assert M.NoDupSeq(L.DefGroups(acts[0].r));
+    assert L.DefGroups(acts[0].r) == L.DefGroups(r1);
+    assert QuantsRightClear(acts[0].r, TopLkSetActs(cont));
+    assert forall g :: g in L.DefGroups(r1) ==> g !in TopLkSetActs(cont);
+    // the TopLk view of the unfolded list: TopLk(r1) ++ TopLk(cont)
+    var tail1 := mid + [LS.Areg(q')] + cont;
+    var tail2 := [LS.Areg(q')] + cont;
+    assert na == [LS.Areg(r1)] + tail1;
+    TopLkDefsListActsCons(LS.Areg(r1), tail1);
+    TopLkDefsListActsCons(LS.Areg(q'), cont);
+    assert TopLkDefsList(q') == [];
+    assert TopLkDefsListActs(tail2) == TopLkDefsListActs(cont);
+    if |mid| == 1 {
+      assert tail1 == [mid[0]] + tail2;
+      TopLkDefsListActsCons(mid[0], tail2);
+      assert TopLkDefsListActs(tail1) == TopLkDefsListActs(tail2);
+    } else {
+      assert tail1 == tail2;
+    }
+    assert TopLkDefsListActs(na) == TopLkDefsList(r1) + TopLkDefsListActs(cont);
+    // C1: NoDup(TopLk(r1)) structural + disjoint from TopLk(cont) via the C3 clause
+    TopLkNoDupFromDefGroups(r1);
+    TopLkDefsListSubDefGroups(r1);
+    NoDupTopLkTail(acts);
+    forall i, j | 0 <= i < |TopLkDefsList(r1)| && 0 <= j < |TopLkDefsListActs(cont)|
+      ensures TopLkDefsList(r1)[i] != TopLkDefsListActs(cont)[j]
+    {
+      if TopLkDefsList(r1)[i] == TopLkDefsListActs(cont)[j] {
+        var g := TopLkDefsList(r1)[i];
+        assert g in L.DefGroups(r1);
+        assert g in TopLkSetActs(cont);
+        assert false;
+      }
+    }
+    M.NoDupFromDisjoint(TopLkDefsList(r1), TopLkDefsListActs(cont));
+    // C2 + C3 per index
+    var koff := |mid| + 2;   // na[koff + k] == cont[k]
+    forall i | 0 <= i < |na| && na[i].Areg?
+      ensures M.NoDupSeq(L.DefGroups(na[i].r))
+              && QuantsRightClear(na[i].r, TopLkSetActs(na[i + 1..]))
+    {
+      if i == 0 {
+        assert na[0] == LS.Areg(r1) && na[1..] == tail1;
+        assert TopLkSetActs(tail1) == TopLkSetActs(cont) by {
+          forall g ensures g in TopLkSetActs(tail1) <==> g in TopLkSetActs(cont) {}
+        }
+        QuantsRightClearFromNoDup(r1, TopLkSetActs(cont));
+      } else if i < koff - 1 {
+        // mid slot (Acheck): not Areg — vacuous
+        assert na[i] == mid[i - 1];
+      } else if i == koff - 1 {
+        assert na[i] == LS.Areg(q') && na[i + 1..] == cont;
+        assert L.DefGroups(q') == L.DefGroups(r1);
+        forall g | g in L.DefGroups(q') ensures g !in TopLkSetActs(cont) {}
+      } else {
+        assert na[i] == cont[i - koff] == acts[i - koff + 1];
+        assert na[i + 1..] == cont[i - koff + 1..] == acts[i - koff + 2..];
+      }
+    }
   }
 
   /** An `Areg` member's body groups are among the action list's `AllDefsActs`. */
@@ -8253,6 +9061,7 @@ module LindenElkLiftSim {
     assert EL.PikeLkActions(acts);
     assert GateAheadClear(acts, LG.Empty);              // Empty has no keys
     TranslateDefGroupsNoDup(re);                        // NoDupSeq(DefGroups(Translate(re)))
+    WalkDefsOkEntry(T.Translate(re));
     M.AllDefsActsCons(LS.Areg(T.Translate(re)), []);
     assert M.AllDefsActs(acts) == L.DefGroups(T.Translate(re));   // AllDefsActs([]) == []
     assert WalkPairLk(rer, qm, code, inp, t, LG.Empty, it.pc as nat, it.exit_allowed) by {
@@ -8266,7 +9075,7 @@ module LindenElkLiftSim {
           && ATR.EaOf(bw) == it.exit_allowed
           && EL.BoolTreeLk(rer, actsw, inp, bw, t)
           && GateAheadClear(actsw, LG.Empty)
-          && M.NoDupSeq(M.AllDefsActs(actsw));
+          && WalkDefsOk(actsw);
     }
     assert GmtTieOutside(re, it, LG.Empty, S);          // gml == Empty, agrees with Empty
     assert GmtTieInside(crv, str, ov, it, LG.Empty, S, ncap, nlook, nquant);  // no g in Empty
