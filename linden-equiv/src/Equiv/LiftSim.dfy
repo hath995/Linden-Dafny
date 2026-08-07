@@ -2606,6 +2606,164 @@ module LindenElkLiftSim {
     ActionsRepLThruJmp(rer, qm, acts, code, pc, x);
   }
 
+  /** POLARITY PIN at gate pcs — the static sweep tying a `CheckOracle` /
+      `NegCheckOracle` instruction to its look's recorded flavour through
+      `qm.looks`: `NfaRepRE`'s lookaround rule CHOOSES the instruction by the
+      look's positivity, and `LmapOk` records the table row. This is what lets
+      the kill/pass gate cases read the FUNCTIONAL verdict off the oracle BIT
+      (`LkResult` branches on `Positivity`). `PIV.LookCheckIdsRE`'s skeleton. */
+  lemma GatePolarityRE(re: R.regex, qm: AR.QMap, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires T.TransWf(re) && AR.LmapOk(re, qm)
+    requires NR.NfaRepRE(re, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
+      var l := NR.GetPcRE(code, pc).value.col;
+      l in qm.looks && AR.PositiveL(qm.looks[l].0)
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.NegCheckOracle? ==>
+      var l := NR.GetPcRE(code, pc).value.ncl;
+      l in qm.looks && !AR.PositiveL(qm.looks[l].0)
+    decreases CP.rsize(re), 1
+  {
+    match re
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_lookaround(lid, la, r1) =>
+      assert pc == start;
+      assert lid in qm.looks && qm.looks[lid] == (T.TrLookaround(la), T.Translate(r1));
+      assert AR.PositiveL(T.TrLookaround(la)) <==> (la.Lookahead? || la.Lookbehind?);
+    case Re_alt(r1, r2) =>
+      var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
+        && NR.NfaRepRE(r1, code, start + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
+        && NR.NfaRepRE(r2, code, e1 + 1, endl);
+      NR.NfaRepIncrRE(r1, code, start + 1, e1);
+      NR.NfaRepIncrRE(r2, code, e1 + 1, endl);
+      if pc == start {
+      } else if pc < e1 {
+        GatePolarityRE(r1, qm, code, start + 1, e1, pc);
+      } else if pc == e1 {
+      } else {
+        GatePolarityRE(r2, qm, code, e1 + 1, endl, pc);
+      }
+    case Re_con(r1, r2) =>
+      var e1: nat :| NR.NfaRepRE(r1, code, start, e1) && NR.NfaRepRE(r2, code, e1, endl);
+      NR.NfaRepIncrRE(r1, code, start, e1);
+      NR.NfaRepIncrRE(r2, code, e1, endl);
+      if pc < e1 {
+        GatePolarityRE(r1, qm, code, start, e1, pc);
+      } else {
+        GatePolarityRE(r2, qm, code, e1, endl, pc);
+      }
+    case Re_capture(cid, r1) =>
+      var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
+        && NR.NfaRepRE(r1, code, start + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+        && endl == e1 + 1;
+      NR.NfaRepIncrRE(r1, code, start + 1, e1);
+      if pc == start {
+      } else if pc < e1 {
+        GatePolarityRE(r1, qm, code, start + 1, e1, pc);
+      } else {
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      if q.min == 0 && q.max == None {
+        var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
+          && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+          && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+          && NR.NfaRepRE(r1, code, start + 3, e1)
+          && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+          && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
+          && endl == e1 + 2;
+        NR.NfaRepIncrRE(r1, code, start + 3, e1);
+        if pc <= start + 2 {
+        } else if pc < e1 {
+          GatePolarityRE(r1, qm, code, start + 3, e1, pc);
+        } else {
+        }
+      } else if q.max.Some? {
+        var em := NR.NfaRepREQuantInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl);
+        if pc < em {
+          GatePolarityMinRE(q.min as nat, qid, r1, qm, code, start, em, pc);
+        } else {
+          GatePolarityOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, qm, code, em, endl, pc);
+        }
+      } else {
+        var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 1, e1);
+        if pc < em {
+          GatePolarityMinRE((q.min - 1) as nat, qid, r1, qm, code, start, em, pc);
+        } else if pc == em {
+        } else if pc < e1 {
+          GatePolarityRE(r1, qm, code, em + 1, e1, pc);
+        } else {
+        }
+      }
+  }
+
+  /** `GatePolarityRE` for the forced-copy chain. */
+  lemma GatePolarityMinRE(k: nat, qid: R.quantid, r1: R.regex, qm: AR.QMap, code: RB.code,
+                          start: nat, endl: nat, pc: nat)
+    requires T.TransWf(r1) && AR.LmapOk(r1, qm)
+    requires NR.NfaRepMinRE(k, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
+      var l := NR.GetPcRE(code, pc).value.col;
+      l in qm.looks && AR.PositiveL(qm.looks[l].0)
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.NegCheckOracle? ==>
+      var l := NR.GetPcRE(code, pc).value.ncl;
+      l in qm.looks && !AR.PositiveL(qm.looks[l].0)
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetQuantToClock(qid, false))
+      && NR.NfaRepRE(r1, code, start + 1, e1)
+      && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
+    NR.NfaRepIncrRE(r1, code, start + 1, e1);
+    NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
+    if pc == start {
+    } else if pc < e1 {
+      GatePolarityRE(r1, qm, code, start + 1, e1, pc);
+    } else {
+      GatePolarityMinRE(k - 1, qid, r1, qm, code, e1, endl, pc);
+    }
+  }
+
+  /** `GatePolarityRE` for the optional-layer chain. */
+  lemma GatePolarityOptRE(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, qm: AR.QMap,
+                          code: RB.code, start: nat, endl: nat, pc: nat)
+    requires T.TransWf(r1) && AR.LmapOk(r1, qm)
+    requires NR.NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
+      var l := NR.GetPcRE(code, pc).value.col;
+      l in qm.looks && AR.PositiveL(qm.looks[l].0)
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.NegCheckOracle? ==>
+      var l := NR.GetPcRE(code, pc).value.ncl;
+      l in qm.looks && !AR.PositiveL(qm.looks[l].0)
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| NR.GetPcRE(code, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
+      && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+      && NR.NfaRepRE(r1, code, start + 3, e1)
+      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+      && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+    NR.NfaRepIncrRE(r1, code, start + 3, e1);
+    NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+    if pc <= start + 2 {
+    } else if pc < e1 {
+      GatePolarityRE(r1, qm, code, start + 3, e1, pc);
+    } else if pc == e1 {
+    } else {
+      GatePolarityOptRE(k - 1, greedy, qid, r1, qm, code, e1 + 1, endl, pc);
+    }
+  }
+
   /** SKIP: the head's `(pc, ea)` is already processed — the VM drops it, and
       B fires `pts_skip`: the seen slot's canonical tree EQUALS the head's by
       `TreeRepLkDetermRE` (the whole point of the planted-canonical pivot);
@@ -3026,8 +3184,10 @@ module LindenElkLiftSim {
     ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
 
   /** GATE KILL (either polarity, failing bit): the head canonical tree is
-      `LKFail` (bit ⟺ functional verdict via the oracle column), B drops it
-      with an empty `pts_active`. BODILESS. */
+      `LKFail` — the polarity pin (`GatePolarityRE`) + the oracle column
+      (`OracleOkAt`) convert the failing BIT into a `None` functional verdict,
+      which is exactly the canonical rule's `LKFail` branch. B drops the head
+      with an empty `pts_active`. */
   lemma LiftPreserveGateKillLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                                crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                                bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
@@ -3050,6 +3210,53 @@ module LindenElkLiftSim {
     ensures PTL.TrcPikeTreeLk(bst, bst1)
     ensures bst1.PTS?
     ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := bst;
+    var th := s.active[0];
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t, gm, th, ncap, nlook, nquant);
+    var pc: nat := th.pc as nat;
+    var ea := th.exit_allowed;
+    assert TreeRepLkRE(rer, qm, code, inp, t, pc, ea);
+
+    // the gate pc is interior (endl holds Accept), so the polarity pin applies
+    TreeRepLkREInRange(rer, qm, code, inp, t, pc, ea);
+    assert |code| == endl + 1 && NR.GetPcRE(code, endl) == Some(RB.Accept);
+    assert pc < endl;
+    GatePolarityRE(re, qm, code, 0, endl, pc);
+    assert l in qm.looks;
+    var lk := qm.looks[l].0;
+    var r1 := qm.looks[l].1;
+    assert AR.PositiveL(lk) == L.Positivity(lk);
+    assert L.Positivity(lk) == pos;
+
+    // the bit at this position IS the body tree's verdict (oracle column)
+    var tlk := LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk));
+    assert LL.OracleOkAt(rer, qm, inp);          // inp == inp0 instance of OracleOkSuffix
+    PIV.IdxInpOfCp(str, s.cp as nat);
+    assert TREP.CpOf(inp) == s.cp as nat;
+    assert qm.looks[l] == (lk, r1);
+    assert LOr.view_get_oracle(qm.ov, TREP.CpOf(inp), l)
+       <==> LT.TreeRes(tlk, LG.Empty, inp, L.LkDir(lk)).Some?;
+    // failing bit + polarity ⟹ the functional verdict is None (both flavours)
+    assert LS.LkResult(lk, tlk, LG.Empty, inp).None?;
+
+    // canonical head: the LKFail branch of the gate rule
+    if pos {
+      TreeRepLkREAtCheckOracle(rer, qm, code, inp, t, pc, ea, l);
+    } else {
+      TreeRepLkREAtNegCheckOracle(rer, qm, code, inp, t, pc, ea, l);
+    }
+    assert t == LT.LKFail(lk, tlk);
+    assert PTL.TreeBfsStepLk(t, gm, inp) == PT.StepActive([]);
+    bst1 := LiftDropDeadHeadLk(rer, qm, re, code, endl, crv, str, ov, S,
+                               bst, s, s1, vms2, ncap, nlook, nquant);
+    TrcLkRefl(bst1);
+    TrcLkCons(bst, bst1, bst1);
+  }
 
   /** ENDLOOP, PASSING (`exit_allowed`): B steps the `Progress` head (unwrap,
       same gm, child at `pc+1`/CanExit). BODILESS. */
