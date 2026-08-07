@@ -4096,23 +4096,32 @@ module LindenElkLiftSim {
     TrcLkCons(bst, bst1, bst1);
   }
 
-  /** (4) The epsilon-phase lift: one VM epsilon phase maps to a legal B-trace
-      segment preserving the pairing. THE DISPATCHER (filled 2026-08-07):
-      mirrors `FAdvanceEpsilon`'s worklist recursion case-for-case, invoking
-      the `LiftPreserve*Lk` case tier; `WriteOracle`/`CheckNullable`/`Fail`
-      are refuted outright by the canonical tie (no `TreeRepLkRE` rule). */
+  /** (4) The epsilon-phase lift — THE COMPOSITE DISPATCHER (restructured
+      2026-08-07 to carry `ptsA`): mirrors `FAdvanceEpsilon`'s worklist
+      recursion case-for-case, stepping machine A by the PROVEN
+      `PSM.Preserve*Case` lemmas (inheriting `PikeInvFullRE`'s per-thread
+      facts — `ThreadNestRE`, the backbones, `LooksCapUnset` — at EVERY
+      intermediate state, which the SetReg/gate value cases consume) and
+      machine B by the `LiftPreserve*Lk` case tier.
+      `WriteOracle`/`CheckNullable`/`Fail` are refuted outright by the
+      canonical tie (no `TreeRepLkRE` rule). */
   lemma LiftAdvanceEpsilon(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
-                           crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
-                           s: AI.VmState, bst: PT.PikeTreeState, dir: LAnc.direction,
+                           ngroups: nat, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                           S: set<LG.GroupId>, ptsA: PT.PikeTreeState, s: AI.VmState,
+                           bst: PT.PikeTreeState, dir: LAnc.direction,
                            ncap: int, nlook: int, nquant: int)
-    returns (bst1: PT.PikeTreeState)
+    returns (ptsA': PT.PikeTreeState, bst1: PT.PikeTreeState)
     requires !rer.multiline && qm.ov == ov
-    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires PSM.StaticOkRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires dir == LAnc.Forward
-    requires bst.PTS?
+    requires ptsA.PTS? && bst.PTS?
     requires |s.processed.true_set| == RB.size(code) && |s.processed.false_set| == RB.size(code)
-    requires PSM.BBOf(s, ncap, nlook, nquant)   // the ClockMono backbones (SetReg/gate cases read them)
+    requires PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, ptsA, s, ncap, nlook, nquant)
     requires LiftInv(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
+    ensures PSM.TrcRE(ptsA, ptsA')
+    ensures ptsA'.PTS?
+    ensures PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, ptsA',
+                              AI.FAdvanceEpsilon(code, s, ov, dir).0, ncap, nlook, nquant)
     ensures PTL.TrcPikeTreeLk(bst, bst1)
     ensures bst1.PTS?           // the ε-phase never finalizes; pts_final is LiftConsume's
     ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1,
@@ -4120,7 +4129,9 @@ module LindenElkLiftSim {
     decreases AI.unprocessed(s.processed), |s.active|
   {
     if |s.active| == 0 {
+      ptsA' := ptsA;
       bst1 := bst;
+      PSM.TrcRefl(ptsA);
       TrcLkRefl(bst);
       return;
     }
@@ -4141,10 +4152,12 @@ module LindenElkLiftSim {
 
     if AI.bpc_mem(s.processed, th.pc, th.exit_allowed) {
       var bstS := LiftPreserveSkipLk(rer, qm, re, code, endl, crv, str, ov, S, bst, s, ncap, nlook, nquant);
-      PSM.BBDropHead(s, ncap, nlook, nquant);
-      var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
-                                     s.(active := ac), bstS, dir, ncap, nlook, nquant);
+      var ptsS := PSM.PreserveSkipCase(rer, qm, re, code, endl, ngroups, str, ptsA, s, ncap, nlook, nquant);
+      var ptsA2, bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
+                                            ptsS, s.(active := ac), bstS, dir, ncap, nlook, nquant);
+      PSM.TrcCons(ptsA, ptsS, ptsA2);
       TrcLkCons(bst, bstS, bst2);
+      ptsA' := ptsA2;
       bst1 := bst2;
       return;
     }
@@ -4161,6 +4174,10 @@ module LindenElkLiftSim {
         var vms2 := s1.(active := [], bestmatch := Some(th));
         bst1 := LiftPreserveAcceptLk(rer, qm, re, code, endl, crv, str, ov, S,
                                      bst, s, s1, vms2, ncap, nlook, nquant);
+        ptsA' := PSM.PreserveAcceptCase(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+                                        s1, vms2, ncap, nlook, nquant);
+        PSM.TrcRefl(ptsA');
+        PSM.TrcCons(ptsA, ptsA', ptsA');
         TrcLkRefl(bst1);
         TrcLkCons(bst, bst1, bst1);
         assert AI.FAdvanceEpsilon(code, s, ov, dir).0 == vms2;
@@ -4169,23 +4186,23 @@ module LindenElkLiftSim {
         var vms2 := s1.(active := [th'] + ac);
         LiftPreserveStutterLk(rer, qm, re, code, endl, crv, str, ov, S,
                               bst, s, s1, th', vms2, ncap, nlook, nquant);
-        PSM.BBTick(s, s1, ncap, nlook, nquant);
-        assert th in s.active;
-        CM.ThreadClocksLEMono(th, s.clock, s1.clock);
-        PSM.BBReplaceHead(s1, th', ncap, nlook, nquant);
-        bst1 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
-                                   vms2, bst, dir, ncap, nlook, nquant);
+        PSM.PreserveStutterCase(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+                                s1, th', vms2, ncap, nlook, nquant);
+        var ptsA2, bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
+                                              ptsA, vms2, bst, dir, ncap, nlook, nquant);
+        ptsA' := ptsA2;
+        bst1 := bst2;
       case BeginLoop =>
         var th' := th.(exit_allowed := false, pc := th.pc + 1);
         var vms2 := s1.(active := [th'] + ac);
         LiftPreserveStutterLk(rer, qm, re, code, endl, crv, str, ov, S,
                               bst, s, s1, th', vms2, ncap, nlook, nquant);
-        PSM.BBTick(s, s1, ncap, nlook, nquant);
-        assert th in s.active;
-        CM.ThreadClocksLEMono(th, s.clock, s1.clock);
-        PSM.BBReplaceHead(s1, th', ncap, nlook, nquant);
-        bst1 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
-                                   vms2, bst, dir, ncap, nlook, nquant);
+        PSM.PreserveStutterCase(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+                                s1, th', vms2, ncap, nlook, nquant);
+        var ptsA2, bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
+                                              ptsA, vms2, bst, dir, ncap, nlook, nquant);
+        ptsA' := ptsA2;
+        bst1 := bst2;
       case Consume(ce) =>
         var (nb, ni) := AI.add_thread(th, ce, s1.blocked, s1.isblocked);
         if AI.pc_mem(s1.isblocked, th.pc) {
@@ -4194,22 +4211,26 @@ module LindenElkLiftSim {
           assert vms2 == s1.(active := ac);
           var bstS := LiftPreserveConsumeDropLk(rer, qm, re, code, endl, crv, str, ov, S,
                                                 bst, s, s1, ce, vms2, ncap, nlook, nquant);
-          PSM.BBTick(s, s1, ncap, nlook, nquant);
-          PSM.BBDropHead(s1, ncap, nlook, nquant);
-          var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
-                                         vms2, bstS, dir, ncap, nlook, nquant);
+          var ptsS := PSM.PreserveConsumeDrop(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+                                              s1, ce, vms2, ncap, nlook, nquant);
+          var ptsA2, bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
+                                                ptsS, vms2, bstS, dir, ncap, nlook, nquant);
+          PSM.TrcCons(ptsA, ptsS, ptsA2);
           TrcLkTrans(bst, bstS, bst2);
+          ptsA' := ptsA2;
           bst1 := bst2;
         } else {
           assert nb == [(th, ce)] + s1.blocked && ni == AI.pc_add(s1.isblocked, th.pc);
           var vms2 := s1.(blocked := nb, isblocked := ni, active := ac);
           var bstS := LiftPreserveConsumeAddLk(rer, qm, re, code, endl, crv, str, ov, S,
                                                bst, s, s1, ce, vms2, ncap, nlook, nquant);
-          PSM.BBTick(s, s1, ncap, nlook, nquant);
-          PSM.BBBlockHead(s1, ce, ncap, nlook, nquant);
-          var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
-                                         vms2, bstS, dir, ncap, nlook, nquant);
+          var ptsS := PSM.PreserveConsumeAdd(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+                                             s1, ce, vms2, ncap, nlook, nquant);
+          var ptsA2, bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
+                                                ptsS, vms2, bstS, dir, ncap, nlook, nquant);
+          PSM.TrcCons(ptsA, ptsS, ptsA2);
           TrcLkTrans(bst, bstS, bst2);
+          ptsA' := ptsA2;
           bst1 := bst2;
         }
       case Fork(x, y) =>
@@ -4217,13 +4238,13 @@ module LindenElkLiftSim {
         var vms2 := s1.(active := [newt, th.(pc := y)] + ac);
         var bstS := LiftPreserveForkLk(rer, qm, re, code, endl, crv, str, ov, S,
                                        bst, s, s1, x, y, vms2, ncap, nlook, nquant);
-        PSM.BBTick(s, s1, ncap, nlook, nquant);
-        assert th in s.active;
-        CM.ThreadClocksLEMono(th, s.clock, s1.clock);
-        PSM.BBTwoHead(s1, newt, th.(pc := y), ncap, nlook, nquant);
-        var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
-                                       vms2, bstS, dir, ncap, nlook, nquant);
+        var ptsS := PSM.PreserveForkCase(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+                                         s1, x, y, vms2, ncap, nlook, nquant);
+        var ptsA2, bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
+                                              ptsS, vms2, bstS, dir, ncap, nlook, nquant);
+        PSM.TrcTrans(ptsA, ptsS, ptsA2);
         TrcLkTrans(bst, bstS, bst2);
+        ptsA' := ptsA2;
         bst1 := bst2;
       case SetRegisterToCP(reg) =>
         var th' := th.(capture_regs := AReg.set_reg(th.capture_regs, reg, Some(s1.cp), s1.clock),
@@ -4231,17 +4252,19 @@ module LindenElkLiftSim {
         var vms2 := s1.(active := [th'] + ac);
         var bstS := LiftPreserveSetRegLk(rer, qm, re, code, endl, crv, str, ov, S,
                                          bst, s, s1, reg, th', vms2, ncap, nlook, nquant);
-        PSM.BBTick(s, s1, ncap, nlook, nquant);
-        assert th in s.active;
-        CM.ThreadClocksLEMono(th, s.clock, s1.clock);
-        CM.RegsClocksLESet(th.capture_regs, reg, Some(s1.cp), s1.clock, s1.clock);
-        CM.SetRegLens(th.capture_regs, reg, Some(s1.cp), s1.clock);
-        CM.RegsValsLESet(th.capture_regs, reg, s1.cp, s1.clock, s1.cp);
-        PIV.CapRegWfSet(th.capture_regs, reg, s1.cp, s1.clock);
-        PSM.BBReplaceHead(s1, th', ncap, nlook, nquant);
-        var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
-                                       vms2, bstS, dir, ncap, nlook, nquant);
+        var ptsS: PT.PikeTreeState;
+        if reg % 2 == 0 {
+          ptsS := PSM.PreserveOpenCase(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+                                       s1, reg, vms2, ncap, nlook, nquant);
+        } else {
+          ptsS := PSM.PreserveCloseCase(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+                                        s1, reg, vms2, ncap, nlook, nquant);
+        }
+        var ptsA2, bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
+                                              ptsS, vms2, bstS, dir, ncap, nlook, nquant);
+        PSM.TrcCons(ptsA, ptsS, ptsA2);
         TrcLkTrans(bst, bstS, bst2);
+        ptsA' := ptsA2;
         bst1 := bst2;
       case SetQuantToClock(q, bq) =>
         var ocp := if bq then Some(s1.cp) else None;
@@ -4249,15 +4272,13 @@ module LindenElkLiftSim {
         var vms2 := s1.(active := [th'] + ac);
         var bstS := LiftPreserveSetQuantLk(rer, qm, re, code, endl, crv, str, ov, S,
                                            bst, s, s1, q, bq, th', vms2, ncap, nlook, nquant);
-        PSM.BBTick(s, s1, ncap, nlook, nquant);
-        assert th in s.active;
-        CM.ThreadClocksLEMono(th, s.clock, s1.clock);
-        CM.RegsClocksLESet(th.quant_regs, q, ocp, s1.clock, s1.clock);
-        CM.SetRegLens(th.quant_regs, q, ocp, s1.clock);
-        PSM.BBReplaceHead(s1, th', ncap, nlook, nquant);
-        var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
-                                       vms2, bstS, dir, ncap, nlook, nquant);
+        var ptsS := PSM.PreserveResetCase(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+                                          s1, q, bq, vms2, ncap, nlook, nquant);
+        var ptsA2, bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
+                                              ptsS, vms2, bstS, dir, ncap, nlook, nquant);
+        PSM.TrcCons(ptsA, ptsS, ptsA2);
         TrcLkTrans(bst, bstS, bst2);
+        ptsA' := ptsA2;
         bst1 := bst2;
       case CheckOracle(l) =>
         if LOr.view_get_oracle(ov, s1.cp, l) {
@@ -4266,25 +4287,24 @@ module LindenElkLiftSim {
           var vms2 := s1.(active := [th'] + ac);
           var bstS := LiftPreserveGatePassLk(rer, qm, re, code, endl, crv, str, ov, S,
                                              bst, s, s1, l, th', vms2, ncap, nlook, nquant);
-          PSM.BBTick(s, s1, ncap, nlook, nquant);
-          assert th in s.active;
-          CM.ThreadClocksLEMono(th, s.clock, s1.clock);
-          CM.RegsClocksLESet(th.look_regs, l, Some(s1.cp), s1.clock, s1.clock);
-          CM.SetRegLens(th.look_regs, l, Some(s1.cp), s1.clock);
-          PSM.BBReplaceHead(s1, th', ncap, nlook, nquant);
-          var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
-                                         vms2, bstS, dir, ncap, nlook, nquant);
+          PSM.PreserveOraclePass(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+                                 s1, th', vms2, l, true, ncap, nlook, nquant);
+          var ptsA2, bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
+                                                ptsA, vms2, bstS, dir, ncap, nlook, nquant);
           TrcLkTrans(bst, bstS, bst2);
+          ptsA' := ptsA2;
           bst1 := bst2;
         } else {
           var vms2 := s1.(active := ac);
           var bstS := LiftPreserveGateKillLk(rer, qm, re, code, endl, crv, str, ov, S,
                                              bst, s, s1, l, true, vms2, ncap, nlook, nquant);
-          PSM.BBTick(s, s1, ncap, nlook, nquant);
-          PSM.BBDropHead(s1, ncap, nlook, nquant);
-          var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
-                                         vms2, bstS, dir, ncap, nlook, nquant);
+          var ptsS := PSM.PreserveOracleKill(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+                                             s1, vms2, l, true, ncap, nlook, nquant);
+          var ptsA2, bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
+                                                ptsS, vms2, bstS, dir, ncap, nlook, nquant);
+          PSM.TrcCons(ptsA, ptsS, ptsA2);
           TrcLkTrans(bst, bstS, bst2);
+          ptsA' := ptsA2;
           bst1 := bst2;
         }
       case NegCheckOracle(l) =>
@@ -4292,84 +4312,92 @@ module LindenElkLiftSim {
           var vms2 := s1.(active := ac);
           var bstS := LiftPreserveGateKillLk(rer, qm, re, code, endl, crv, str, ov, S,
                                              bst, s, s1, l, false, vms2, ncap, nlook, nquant);
-          PSM.BBTick(s, s1, ncap, nlook, nquant);
-          PSM.BBDropHead(s1, ncap, nlook, nquant);
-          var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
-                                         vms2, bstS, dir, ncap, nlook, nquant);
+          var ptsS := PSM.PreserveOracleKill(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+                                             s1, vms2, l, false, ncap, nlook, nquant);
+          var ptsA2, bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
+                                                ptsS, vms2, bstS, dir, ncap, nlook, nquant);
+          PSM.TrcCons(ptsA, ptsS, ptsA2);
           TrcLkTrans(bst, bstS, bst2);
+          ptsA' := ptsA2;
           bst1 := bst2;
         } else {
           var vms2 := s1.(active := [th.(pc := th.pc + 1)] + ac);
           var bstS := LiftPreserveNegGatePassLk(rer, qm, re, code, endl, crv, str, ov, S,
                                                 bst, s, s1, l, vms2, ncap, nlook, nquant);
-          PSM.BBTick(s, s1, ncap, nlook, nquant);
-          assert th in s.active;
-          CM.ThreadClocksLEMono(th, s.clock, s1.clock);
-          PSM.BBReplaceHead(s1, th.(pc := th.pc + 1), ncap, nlook, nquant);
-          var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
-                                         vms2, bstS, dir, ncap, nlook, nquant);
+          PSM.PreserveOraclePass(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+                                 s1, th.(pc := th.pc + 1), vms2, l, false, ncap, nlook, nquant);
+          var ptsA2, bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
+                                                ptsA, vms2, bstS, dir, ncap, nlook, nquant);
           TrcLkTrans(bst, bstS, bst2);
+          ptsA' := ptsA2;
           bst1 := bst2;
         }
       case WriteOracle(l) =>
         // no TreeRepLkRE rule at WriteOracle — the canonical head tie is refuted
         assert false;
+        ptsA' := ptsA;
         bst1 := bst;
       case EndLoop =>
         if th.exit_allowed {
           var vms2 := s1.(active := [th.(pc := th.pc + 1)] + ac);
           var bstS := LiftPreserveEndLoopPassLk(rer, qm, re, code, endl, crv, str, ov, S,
                                                 bst, s, s1, vms2, ncap, nlook, nquant);
-          PSM.BBTick(s, s1, ncap, nlook, nquant);
-          assert th in s.active;
-          CM.ThreadClocksLEMono(th, s.clock, s1.clock);
-          PSM.BBReplaceHead(s1, th.(pc := th.pc + 1), ncap, nlook, nquant);
-          var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
-                                         vms2, bstS, dir, ncap, nlook, nquant);
+          var ptsS := PSM.PreserveEndLoopPass(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+                                              s1, vms2, ncap, nlook, nquant);
+          var ptsA2, bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
+                                                ptsS, vms2, bstS, dir, ncap, nlook, nquant);
+          PSM.TrcCons(ptsA, ptsS, ptsA2);
           TrcLkTrans(bst, bstS, bst2);
+          ptsA' := ptsA2;
           bst1 := bst2;
         } else {
           var vms2 := s1.(active := ac);
           var bstS := LiftPreserveEndLoopKillLk(rer, qm, re, code, endl, crv, str, ov, S,
                                                 bst, s, s1, vms2, ncap, nlook, nquant);
-          PSM.BBTick(s, s1, ncap, nlook, nquant);
-          PSM.BBDropHead(s1, ncap, nlook, nquant);
-          var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
-                                         vms2, bstS, dir, ncap, nlook, nquant);
+          var ptsS := PSM.PreserveEndLoopKill(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+                                              s1, vms2, ncap, nlook, nquant);
+          var ptsA2, bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
+                                                ptsS, vms2, bstS, dir, ncap, nlook, nquant);
+          PSM.TrcCons(ptsA, ptsS, ptsA2);
           TrcLkTrans(bst, bstS, bst2);
+          ptsA' := ptsA2;
           bst1 := bst2;
         }
       case CheckNullable(qid) =>
         // no TreeRepLkRE rule at CheckNullable — refuted
         assert false;
+        ptsA' := ptsA;
         bst1 := bst;
       case AnchorAssertion(a) =>
         if LAnc.is_satisfied(a, s1.context, dir) {
           var vms2 := s1.(active := [th.(pc := th.pc + 1)] + ac);
           var bstS := LiftPreserveAnchorPassLk(rer, qm, re, code, endl, crv, str, ov, S,
                                                bst, s, s1, a, vms2, ncap, nlook, nquant);
-          PSM.BBTick(s, s1, ncap, nlook, nquant);
-          assert th in s.active;
-          CM.ThreadClocksLEMono(th, s.clock, s1.clock);
-          PSM.BBReplaceHead(s1, th.(pc := th.pc + 1), ncap, nlook, nquant);
-          var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
-                                         vms2, bstS, dir, ncap, nlook, nquant);
+          var ptsS := PSM.PreserveAnchorPass(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+                                             s1, vms2, a, ncap, nlook, nquant);
+          var ptsA2, bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
+                                                ptsS, vms2, bstS, dir, ncap, nlook, nquant);
+          PSM.TrcCons(ptsA, ptsS, ptsA2);
           TrcLkTrans(bst, bstS, bst2);
+          ptsA' := ptsA2;
           bst1 := bst2;
         } else {
           var vms2 := s1.(active := ac);
           var bstS := LiftPreserveAnchorKillLk(rer, qm, re, code, endl, crv, str, ov, S,
                                                bst, s, s1, a, vms2, ncap, nlook, nquant);
-          PSM.BBTick(s, s1, ncap, nlook, nquant);
-          PSM.BBDropHead(s1, ncap, nlook, nquant);
-          var bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
-                                         vms2, bstS, dir, ncap, nlook, nquant);
+          var ptsS := PSM.PreserveAnchorKill(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+                                             s1, vms2, a, ncap, nlook, nquant);
+          var ptsA2, bst2 := LiftAdvanceEpsilon(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
+                                                ptsS, vms2, bstS, dir, ncap, nlook, nquant);
+          PSM.TrcCons(ptsA, ptsS, ptsA2);
           TrcLkTrans(bst, bstS, bst2);
+          ptsA' := ptsA2;
           bst1 := bst2;
         }
       case Fail =>
         // no TreeRepLkRE rule at Fail — refuted
         assert false;
+        ptsA' := ptsA;
         bst1 := bst;
     }
   }
@@ -7871,14 +7899,10 @@ module LindenElkLiftSim {
                      ptsA', ptsB', AI.FAdvanceEpsilon(code, vms, ov, LAnc.Forward).0, ncap, nlook, nquant)
   {
     var vms' := AI.FAdvanceEpsilon(code, vms, ov, LAnc.Forward).0;
-    // machine A: the proven engine simulation moves ptsA across the whole phase
-    ptsA' := PSM.InvariantPreservationRE(rer, qm, re, code, endl, ngroups, str,
-                                         ptsA, vms, ov, LAnc.Forward, ncap, nlook, nquant);
-    // machine B: the canonical/value worklist recursion over the same phase
-    // (the ClockMono backbones come straight out of PikeInvFullRE)
-    assert PSM.BBOf(vms, ncap, nlook, nquant);
-    ptsB' := LiftAdvanceEpsilon(rer, qm, re, code, endl, crv, str, ov, S,
-                                vms, ptsB, LAnc.Forward, ncap, nlook, nquant);
+    // ONE call: the composite dispatcher steps machine A per-case by the
+    // proven Preserve*Case lemmas and machine B by the LiftPreserve*Lk tier.
+    ptsA', ptsB' := LiftAdvanceEpsilon(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
+                                       ptsA, vms, ptsB, LAnc.Forward, ncap, nlook, nquant);
     // the inp link: both sides pin their inp to InpOfCp(str, vms'.cp)
     assert PIV.PikeInvRE(rer, qm, re, code, ngroups, str, ptsA', vms');
     assert ptsA'.inp == PIV.InpOfCp(str, vms'.cp);
