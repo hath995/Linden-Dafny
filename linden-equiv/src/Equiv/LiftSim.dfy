@@ -78,6 +78,7 @@ module LindenElkLiftSim {
   import TT = LindenElkTreeThread
   import NUL = LindenElkNullable
   import CE = LindenElkCheckErase
+  import TREP = LindenElkTreeRep
 
   // ==========================================================================
   // SOLID definitions — the pairing.
@@ -2792,6 +2793,55 @@ module LindenElkLiftSim {
     assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, [], vms2.active, ncap, nlook, nquant);
   }
 
+  /** DEAD HEAD, shared bookkeeping: the head canonical tree steps to an EMPTY
+      `pts_active` (`Mismatch`/`LKFail` — `StepDead() == StepActive([])`), the
+      VM drops the thread, B memoizes the dead tree. Every kill case
+      (EndLoop/Anchor/gate) reduces to this after pinning the head shape. */
+  lemma LiftDropDeadHeadLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                           crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
+                           bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
+                           vms2: AI.VmState, ncap: int, nlook: int, nquant: int)
+    returns (bst1: PT.PikeTreeState)
+    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires bst.PTS?
+    requires LiftInv(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
+    requires |s.active| > 0
+    requires !AI.bpc_mem(s.processed, s.active[0].pc, s.active[0].exit_allowed)
+    requires s.active[0].pc >= 0
+    requires |bst.active| > 0
+    requires PTL.TreeBfsStepLk(bst.active[0].0, bst.active[0].1, bst.inp) == PT.StepActive([])
+    requires s1 == s.(clock := s.clock + 1,
+                      processed := AI.bpc_add(s.processed, s.active[0].pc, s.active[0].exit_allowed))
+    requires vms2 == s1.(active := s1.active[1..])
+    ensures PTL.PikeTreeStepLk(bst, bst1)
+    ensures bst1.PTS?
+    ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := bst;
+    var th := s.active[0];
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t, gm, th, ncap, nlook, nquant);
+    var pc: nat := th.pc as nat;
+    var ea := th.exit_allowed;
+    assert TreeRepLkRE(rer, qm, code, inp, t, pc, ea);
+
+    // pts_active with an empty successor list: the branch dies on both sides.
+    bst1 := PT.PTS(inp, ta[1..], best, tb, SS.AddSeenTrees(seen, t));
+    assert [] + ta[1..] == ta[1..];
+    assert PTL.PikeTreeStepLk(bst, bst1);
+
+    // bookkeeping at the successor
+    assert PIV.HdTreeOf(ta) == Some(t) && PIV.HeadPcOf(s.active) == pc;
+    AddSeenRepLk(rer, qm, code, inp, seen, s.processed, t, pc, ea,
+                 PIV.HdTreeOf(ta[1..]), PIV.HeadPcOf(vms2.active));
+    IsblockedGrowLk(rer, qm, code, inp, seen, s.isblocked, t);
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta[1..], s.active[1..],
+                        ncap, nlook, nquant);
+    assert vms2.active == s.active[1..];
+  }
+
   /** CONSUME, pc not yet blocked: the VM blocks the head unconditionally;
       B blocks a matching `Read` (`pts_blocked`, keeping `BlockedRepLkC`
       aligned through the `MatchingBlocked` filter) or drops a `Mismatch`
@@ -3024,7 +3074,7 @@ module LindenElkLiftSim {
     ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
 
   /** ENDLOOP, KILLING (`!exit_allowed`): the head canonical tree is
-      `Mismatch` (`tr_progressfail`), B drops it. BODILESS. */
+      `Mismatch` (`tr_progressfail`), B drops it. */
   lemma LiftPreserveEndLoopKillLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                                   crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                                   bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
@@ -3044,9 +3094,28 @@ module LindenElkLiftSim {
     ensures PTL.TrcPikeTreeLk(bst, bst1)
     ensures bst1.PTS?
     ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := bst;
+    var th := s.active[0];
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t, ta[0].1, th, ncap, nlook, nquant);
+    var pc: nat := th.pc as nat;
+    assert TreeRepLkRE(rer, qm, code, inp, t, pc, th.exit_allowed);
+    TreeRepLkREAtEndLoop(rer, qm, code, inp, t, pc, th.exit_allowed);
+    assert t == LT.Mismatch;
+    assert PTL.TreeBfsStepLk(t, ta[0].1, inp) == PT.StepActive([]);
+    bst1 := LiftDropDeadHeadLk(rer, qm, re, code, endl, crv, str, ov, S,
+                               bst, s, s1, vms2, ncap, nlook, nquant);
+    TrcLkRefl(bst1);
+    TrcLkCons(bst, bst1, bst1);
+  }
 
   /** ANCHOR, PASSING: B steps the `AnchorPass` head (child, same gm); the
-      VM/spec branch agreement rides `ContextOkRE`. BODILESS. */
+      VM/spec branch agreement rides `ContextOkRE` + `AnchorAgreeInput`; the
+      erasure tie pins the RAW witness's shape (a `Mismatch` witness would
+      erase to `Mismatch`, contradicting the canonical `AnchorPass`). */
   lemma LiftPreserveAnchorPassLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                                  crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                                  bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
@@ -3067,9 +3136,85 @@ module LindenElkLiftSim {
     ensures PTL.TrcPikeTreeLk(bst, bst1)
     ensures bst1.PTS?
     ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := bst;
+    var th := s.active[0];
+    var th' := th.(pc := th.pc + 1);
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t, gm, th, ncap, nlook, nquant);
+    var pc: nat := th.pc as nat;
+    var ea := th.exit_allowed;
+    assert TreeRepLkRE(rer, qm, code, inp, t, pc, ea);
+
+    // the VM-side check IS the spec-side check
+    assert PIV.ContextOkRE(str, s.cp, s.context);
+    PSM.ContextOkIsCtxOf(str, s.cp as nat);
+    assert LAnc.is_satisfied(a, TREP.CtxOf(inp), LAnc.Forward);
+    TREP.AnchorAgreeInput(rer, a, inp);
+    assert LS.AnchorSatisfied(rer, T.TrAnchor(a), inp);
+
+    // canonical head: AnchorPass with canonical child at (pc+1, ea)
+    TreeRepLkREAtAnchor(rer, qm, code, inp, t, pc, ea, a);
+    assert t.AnchorPass? && TreeRepLkRE(rer, qm, code, inp, t.t, pc + 1, ea);
+
+    // B step: pts_active queues the child with the same gm
+    assert PTL.TreeBfsStepLk(t, gm, inp) == PT.StepActive([(t.t, gm)]);
+    bst1 := PT.PTS(inp, [(t.t, gm)] + ta[1..], best, tb, SS.AddSeenTrees(seen, t));
+    assert PTL.PikeTreeStepLk(bst, bst1);
+    TrcLkRefl(bst1);
+    TrcLkCons(bst, bst1, bst1);
+
+    // the child pairing: raw witness steps by the proven Anchor core; the
+    // erasure tie transports to the canonical child
+    var traw: LT.Tree :| CE.ProgErase(traw) == CE.ProgErase(t)
+      && ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, traw, gm, th, ncap, nlook, nquant);
+    assert traw.AnchorPass? by {
+      if !traw.AnchorPass? {
+        var acts: LS.Actions, b: BS.LoopBool :|
+          AR.ActionsRepL(rer, qm, acts, code, pc)
+          && EL.PikeLkActions(acts)
+          && ATR.EaOf(b) == ea
+          && EL.BoolTreeLk(rer, acts, inp, b, traw)
+          && GateAheadClear(acts, gm)
+          && M.NoDupSeq(M.AllDefsActs(acts));
+        assert TtLk(rer, qm, code, inp, traw, pc, ea);
+        TtLkAtAnchor(rer, qm, code, inp, traw, pc, ea, a);
+        assert traw == LT.Mismatch;
+        assert CE.ProgErase(traw) == LT.Mismatch;
+        assert CE.ProgErase(t).AnchorPass?;
+        assert false;
+      }
+    }
+    ThreadRepLkStepAnchor(rer, qm, re, code, inp, crv, str, ov, S, traw, gm, th,
+                          ncap, nlook, nquant, a);
+    assert ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, traw.t, gm, th', ncap, nlook, nquant);
+    assert CE.ProgErase(traw.t) == CE.ProgErase(t.t) by {
+      assert CE.ProgErase(traw) == LT.AnchorPass(traw.a, CE.ProgErase(traw.t));
+      assert CE.ProgErase(t) == LT.AnchorPass(t.a, CE.ProgErase(t.t));
+    }
+    assert (th.pc + 1) as nat == pc + 1;
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t.t, gm, th', ncap, nlook, nquant);
+
+    // list bookkeeping
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta[1..], s.active[1..],
+                        ncap, nlook, nquant);
+    assert vms2.active[0] == th' && vms2.active[1..] == s.active[1..];
+    assert ([(t.t, gm)] + ta[1..])[0] == (t.t, gm) && ([(t.t, gm)] + ta[1..])[1..] == ta[1..];
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, [(t.t, gm)] + ta[1..], vms2.active,
+                        ncap, nlook, nquant);
+
+    // seen + isblocked bookkeeping
+    assert PIV.HdTreeOf(ta) == Some(t) && PIV.HeadPcOf(s.active) == pc;
+    AddSeenRepLk(rer, qm, code, inp, seen, s.processed, t, pc, ea,
+                 PIV.HdTreeOf([(t.t, gm)] + ta[1..]), PIV.HeadPcOf(vms2.active));
+    IsblockedGrowLk(rer, qm, code, inp, seen, s.isblocked, t);
+  }
 
   /** ANCHOR, KILLING: the head canonical tree is `Mismatch`
-      (`tr_anchorfail` via `ContextOkRE`), B drops it. BODILESS. */
+      (`tr_anchorfail` via `ContextOkRE` + `AnchorAgreeInput`), B drops it. */
   lemma LiftPreserveAnchorKillLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                                  crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                                  bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
@@ -3090,6 +3235,31 @@ module LindenElkLiftSim {
     ensures PTL.TrcPikeTreeLk(bst, bst1)
     ensures bst1.PTS?
     ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := bst;
+    var th := s.active[0];
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t, ta[0].1, th, ncap, nlook, nquant);
+    var pc: nat := th.pc as nat;
+    assert TreeRepLkRE(rer, qm, code, inp, t, pc, th.exit_allowed);
+
+    // the VM-side check IS the spec-side check
+    assert PIV.ContextOkRE(str, s.cp, s.context);
+    PSM.ContextOkIsCtxOf(str, s.cp as nat);
+    assert !LAnc.is_satisfied(a, TREP.CtxOf(inp), LAnc.Forward);
+    TREP.AnchorAgreeInput(rer, a, inp);
+    assert !LS.AnchorSatisfied(rer, T.TrAnchor(a), inp);
+
+    TreeRepLkREAtAnchor(rer, qm, code, inp, t, pc, th.exit_allowed, a);
+    assert t == LT.Mismatch;
+    assert PTL.TreeBfsStepLk(t, ta[0].1, inp) == PT.StepActive([]);
+    bst1 := LiftDropDeadHeadLk(rer, qm, re, code, endl, crv, str, ov, S,
+                               bst, s, s1, vms2, ncap, nlook, nquant);
+    TrcLkRefl(bst1);
+    TrcLkCons(bst, bst1, bst1);
+  }
 
   /** (4) The epsilon-phase lift: one VM epsilon phase maps to a legal B-trace
       segment preserving the pairing. THE DISPATCHER (filled 2026-08-07):
