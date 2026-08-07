@@ -1088,6 +1088,128 @@ module LindenElkLiftSim {
     case None =>                    // vacuous
   }
 
+  // ---- per-instruction CANONICAL inversions (the `TreeRepLkRE`-At* tier) ----
+  //
+  // `LiftStepC`'s per-instruction cases use these to read off the canonical
+  // head's shape and re-establish the canonical tie for the children — the
+  // rules are instruction-gated, so at a pinned instruction exactly one rule
+  // family can fire (the same discrimination the determinism lemma performs).
+  // Fork arms come FREE here (tr_choice/tr_plus carry both arms) — the old
+  // "Fork branches hardest" problem does not exist at the canonical level.
+
+  lemma TreeRepLkREAtAccept(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                            t: LT.Tree, pc: nat, b: bool)
+    requires TreeRepLkRE(rer, qm, code, inp, t, pc, b)
+    requires NR.GetPcRE(code, pc) == Some(RB.Accept)
+    ensures t == LT.Match
+  { }
+
+  lemma TreeRepLkREAtJmp(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                         t: LT.Tree, pc: nat, b: bool, x: int)
+    requires TreeRepLkRE(rer, qm, code, inp, t, pc, b)
+    requires NR.GetPcRE(code, pc) == Some(RB.Jmp(x))
+    ensures x >= 0 && TreeRepLkRE(rer, qm, code, inp, t, x as nat, b)
+  { }
+
+  lemma TreeRepLkREAtBeginLoop(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                               t: LT.Tree, pc: nat, b: bool)
+    requires TreeRepLkRE(rer, qm, code, inp, t, pc, b)
+    requires NR.GetPcRE(code, pc) == Some(RB.BeginLoop)
+    ensures TreeRepLkRE(rer, qm, code, inp, t, pc + 1, false)
+  { }
+
+  lemma TreeRepLkREAtSetQuant(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                              t: LT.Tree, pc: nat, b: bool, qid: int, bb: bool)
+    requires TreeRepLkRE(rer, qm, code, inp, t, pc, b)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, bb))
+    ensures !bb && qid in qm.quants
+    ensures t.GroupActionT? && t.g == LG.Reset(qm.quants[qid])
+    ensures TreeRepLkRE(rer, qm, code, inp, t.t, pc + 1, b)
+  { }
+
+  lemma TreeRepLkREAtFork(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                          t: LT.Tree, pc: nat, b: bool, x: int, y: int)
+    requires TreeRepLkRE(rer, qm, code, inp, t, pc, b)
+    requires NR.GetPcRE(code, pc) == Some(RB.Fork(x, y))
+    ensures x >= 0 && y >= 0
+    ensures x as nat > pc && y as nat > pc ==>       // forward fork: tr_choice
+      t.Choice?
+      && TreeRepLkRE(rer, qm, code, inp, t.t1, x as nat, b)
+      && TreeRepLkRE(rer, qm, code, inp, t.t2, y as nat, b)
+    ensures (x as nat <= pc || y as nat <= pc) && b ==>   // backward fork: tr_plus
+      t.Progress? && t.t.Choice?
+      && TreeRepLkRE(rer, qm, code, inp, t.t.t1, x as nat, true)
+      && TreeRepLkRE(rer, qm, code, inp, t.t.t2, y as nat, true)
+    ensures (x as nat <= pc || y as nat <= pc) && !b ==>  // tr_plusfail
+      t == LT.Mismatch
+  { }
+
+  lemma TreeRepLkREAtConsume(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                             t: LT.Tree, pc: nat, b: bool, ce: RC.char_expectation)
+    requires TreeRepLkRE(rer, qm, code, inp, t, pc, b)
+    requires NR.GetPcRE(code, pc) == Some(RB.Consume(ce))
+    ensures AR.ReadCharE(ce, inp).None? ==> t == LT.Mismatch
+    ensures AR.ReadCharE(ce, inp).Some? ==>
+      t.Read? && t.c == AR.ReadCharE(ce, inp).value.0
+      && TreeRepLkRE(rer, qm, code, AR.ReadCharE(ce, inp).value.1, t.t, pc + 1, true)
+  { }
+
+  lemma TreeRepLkREAtEndLoop(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                             t: LT.Tree, pc: nat, b: bool)
+    requires TreeRepLkRE(rer, qm, code, inp, t, pc, b)
+    requires NR.GetPcRE(code, pc) == Some(RB.EndLoop)
+    ensures b ==> t.Progress? && TreeRepLkRE(rer, qm, code, inp, t.t, pc + 1, true)
+    ensures !b ==> t == LT.Mismatch
+  { }
+
+  lemma TreeRepLkREAtSetReg(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                            t: LT.Tree, pc: nat, b: bool, reg: int)
+    requires TreeRepLkRE(rer, qm, code, inp, t, pc, b)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(reg))
+    ensures t.GroupActionT? && (t.g.Open? || t.g.Close?)
+    ensures t.g.Open? ==> reg == CP.start_reg(t.g.g as int)
+    ensures t.g.Close? ==> reg == CP.end_reg(t.g.g as int)
+    ensures TreeRepLkRE(rer, qm, code, inp, t.t, pc + 1, b)
+  { }
+
+  lemma TreeRepLkREAtAnchor(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                            t: LT.Tree, pc: nat, b: bool, a: R.anchor)
+    requires TreeRepLkRE(rer, qm, code, inp, t, pc, b)
+    requires NR.GetPcRE(code, pc) == Some(RB.AnchorAssertion(a))
+    ensures LS.AnchorSatisfied(rer, T.TrAnchor(a), inp) ==>
+      t.AnchorPass? && t.a == T.TrAnchor(a)
+      && TreeRepLkRE(rer, qm, code, inp, t.t, pc + 1, b)
+    ensures !LS.AnchorSatisfied(rer, T.TrAnchor(a), inp) ==> t == LT.Mismatch
+  { }
+
+  lemma TreeRepLkREAtCheckOracle(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                                 t: LT.Tree, pc: nat, b: bool, lid: int)
+    requires TreeRepLkRE(rer, qm, code, inp, t, pc, b)
+    requires NR.GetPcRE(code, pc) == Some(RB.CheckOracle(lid))
+    ensures lid in qm.looks
+    ensures var lk := qm.looks[lid].0;
+            var r1 := qm.looks[lid].1;
+            var tlk := LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk));
+            if LS.LkResult(lk, tlk, LG.Empty, inp).Some?
+            then t.LK? && t.lk == lk && t.tlk == tlk
+                 && TreeRepLkRE(rer, qm, code, inp, t.t, pc + 1, b)
+            else t == LT.LKFail(lk, tlk)
+  { }
+
+  lemma TreeRepLkREAtNegCheckOracle(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                                    t: LT.Tree, pc: nat, b: bool, lid: int)
+    requires TreeRepLkRE(rer, qm, code, inp, t, pc, b)
+    requires NR.GetPcRE(code, pc) == Some(RB.NegCheckOracle(lid))
+    ensures lid in qm.looks
+    ensures var lk := qm.looks[lid].0;
+            var r1 := qm.looks[lid].1;
+            var tlk := LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk));
+            if LS.LkResult(lk, tlk, LG.Empty, inp).Some?
+            then t.LK? && t.lk == lk && t.tlk == tlk
+                 && TreeRepLkRE(rer, qm, code, inp, t.t, pc + 1, b)
+            else t == LT.LKFail(lk, tlk)
+  { }
+
   // ==========================================================================
   // THE CONSTRUCTOR: from a represented, walk-guarded stack's BoolTreeLk tree
   // to the PLANTED canonical tree machine B runs.
