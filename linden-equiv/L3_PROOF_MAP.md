@@ -140,6 +140,36 @@ single call. New: `BlockedRepLkCSnoc`. Remaining bodiless cases: SetReg (mirror
 `PSM.PreserveOpenCase`'s hypothesis-discharge recipe, th-facts passed from the dispatcher's
 `PikeInvFullRE`), GatePass/its statics bundle, Fork, SetQuant (research gap).)*
 
+*(2026-08-07 session 4 — SETREG + GATEPASS PROVEN (14/15) (commits `7c25e8e`, `99939aa`):
+**`LiftPreserveSetRegLk`** — the dispatcher's SetReg case runs `PSM.OpenStepThreadRE`/
+`CloseStepThreadRE` on `ptsA`'s head (the composite-restructure payoff) and hands the
+register-level gm effect (`GmOfLive` across the write == `GMOpen`/`GMClose` keyed by `reg`
+parity, gid = `reg/2`) to the case lemma as a requires; inside, the written gid is OUTSIDE-look
+(`CaptureWriteIdsOutsideRE` + parity pin + `CapIdsLooksDisjoint`) hence outside
+`S == CapIdsInLooks(re)` (NEW requires threaded through `LiftAdvanceEpsilon`/`LiftStepC`), so
+both value maps move by the SAME `GMUpdate` at cp: outside tie pointwise, inside witnesses
+verbatim.
+**`LiftPreserveGatePassLk`** — canonical LK head (verdict from the walk lemma's `LkGateOk`;
+`tlk` pinned functionally `== ComputeTr` on BOTH layers ⟹ merged maps coincide), split by the
+lid's static flavour via the NEW **`GateStaticsOk`** per-lid bundle (LookEntryOk row +
+`qm.looks[l]` == the row's translation + body `StaticOkRE`/`SizesOkRE` + inside-look
+confinement + capture-free for non-Lookahead flavours; threaded as a requires, to be
+ESTABLISHED at composite entry from `FFullCompilation` — still owed): capturing Lookahead →
+proven `ThreadRepLkStepCheckOracle` (qt := th.quant_regs, ngroups := 0 unconstrained);
+positive Lookbehind → capture-free identity-agreement merge (`LkResultAgreeOutside` over the
+empty set) + `GmtTieOutsideAfterGate` + Case-B witness carry across the l-only look-reg write;
+negatives refuted by `GatePolarityRE`. `WalkPairLkAtCheckOracle(Core)` EXTENDED with the gate's
+own `GateAheadClear` instance (pending at the real head ⟹ body groups absent from gm).
+New threading: `!rer.ignoreCase` + `GateStaticsOk` + `S == CapIdsInLooks(re)` on
+`LiftAdvanceEpsilon`/`LiftStepC`; `ThreadRegsWf` handed down at the pass case.
+REMAINING ε-cases: Fork + SetQuant — BOTH now blocked on the SAME star-transient design gap
+(the free-star iteration arm parks a thread at the `SetQuantToClock`/`BeginLoop` pcs where NO
+`ActionsRepL` exists, so `ThreadRepLk`'s raw erasure witness is UNSATISFIABLE there; candidate
+fix: add instruction-gated SQC-Reset see-through disjuncts to `WalkPairLk` mirroring the
+BeginLoop stutter disjunct) + the quantifier-NoDup gap (iteration-arm acts duplicate
+`DefGroups(r1)`; option D: static `LmOfBodiesDisjoint` + `GMReset` re-arm). Also still owed:
+the `GateStaticsOk` establishment lemma (compile-side sweep).)*
+
 ---
 
 ## 0. The goal
