@@ -80,6 +80,7 @@ module LindenElkLiftSim {
   import CE = LindenElkCheckErase
   import TREP = LindenElkTreeRep
   import LTB = LindenElkLookTables
+  import NI = LindenElkNestInv
 
   // ==========================================================================
   // SOLID definitions — the pairing.
@@ -3634,8 +3635,10 @@ module LindenElkLiftSim {
 
   /** FORK: forward = one `pts_active` on the `Choice` head (arms at `x`/`y`
       in VM priority order); backward = TWO B steps (`Progress` unwrap, then
-      `Choice` split) per one VM step. Mirror of `PSM.PreserveForkCase`.
-      BODILESS. */
+      `Choice` split) per one VM step, `ea` pinned by the dispatcher from
+      `EaColdOkRE`. Arms via `WalkPairLkAtForkArms` (erased-Choice witnesses);
+      registers unchanged on both arms so the value ties carry verbatim.
+      Mirror of `PSM.PreserveForkCase`. */
   lemma LiftPreserveForkLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                            crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                            bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
@@ -3649,6 +3652,8 @@ module LindenElkLiftSim {
     requires !AI.bpc_mem(s.processed, s.active[0].pc, s.active[0].exit_allowed)
     requires s.active[0].pc >= 0
     requires NR.GetPcRE(code, s.active[0].pc as nat) == Some(RB.Fork(x, y))
+    // backward-fork flag pin (the dispatcher discharges it from EaColdOkRE)
+    requires (x <= s.active[0].pc || y <= s.active[0].pc) ==> s.active[0].exit_allowed
     requires s1 == s.(clock := s.clock + 1,
                       processed := AI.bpc_add(s.processed, s.active[0].pc, s.active[0].exit_allowed))
     requires vms2 == s1.(active := [AI.Thread(x, s.active[0].capture_regs, s.active[0].look_regs,
@@ -3657,6 +3662,125 @@ module LindenElkLiftSim {
     ensures PTL.TrcPikeTreeLk(bst, bst1)
     ensures bst1.PTS?
     ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tbl, seen) := bst;
+    var th := s.active[0];
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t, gm, th, ncap, nlook, nquant);
+    var pc: nat := th.pc as nat;
+    var ea := th.exit_allowed;
+    assert TreeRepLkRE(rer, qm, code, inp, t, pc, ea);
+    TreeRepLkREAtFork(rer, qm, code, inp, t, pc, ea, x, y);
+    assert x >= 0 && y >= 0;
+    var th1 := AI.Thread(x, th.capture_regs, th.look_regs, th.quant_regs, ea);
+    var th2 := th.(pc := y);
+    assert vms2.active == [th1, th2] + s.active[1..];
+
+    // raw witness + its arms (erased-Choice existential)
+    var traw: LT.Tree :| CE.ProgErase(traw) == CE.ProgErase(t)
+      && ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, traw, gm, th, ncap, nlook, nquant);
+    WalkPairLkAtForkArms(rer, qm, code, inp, traw, gm, pc, ea, x, y);
+
+    // value ties carry: both arm threads keep th's registers
+    assert GmtTieOutside(re, th, gm, S) && GmtTieInside(crv, str, ov, th, gm, S, ncap, nlook, nquant);
+    assert th1.capture_regs == th.capture_regs && th1.look_regs == th.look_regs
+        && th1.quant_regs == th.quant_regs;
+    assert GmtTieOutside(re, th1, gm, S) && GmtTieInside(crv, str, ov, th1, gm, S, ncap, nlook, nquant);
+    assert GmtTieOutside(re, th2, gm, S) && GmtTieInside(crv, str, ov, th2, gm, S, ncap, nlook, nquant);
+
+    if x as nat > pc && y as nat > pc {
+      // ---- FORWARD: canonical Choice; one B step -------------------------
+      assert t.Choice?
+          && TreeRepLkRE(rer, qm, code, inp, t.t1, x as nat, ea)
+          && TreeRepLkRE(rer, qm, code, inp, t.t2, y as nat, ea);
+      assert CE.ProgErase(traw) == LT.Choice(CE.ProgErase(t.t1), CE.ProgErase(t.t2));
+      assert CE.ProgErase(traw) != LT.Mismatch;
+      var ta1: LT.Tree, ta2: LT.Tree :|
+        CE.ProgErase(traw) == LT.Choice(CE.ProgErase(ta1), CE.ProgErase(ta2))
+        && WalkPairLk(rer, qm, code, inp, ta1, gm, x as nat, ea)
+        && WalkPairLk(rer, qm, code, inp, ta2, gm, y as nat, ea);
+      assert CE.ProgErase(ta1) == CE.ProgErase(t.t1) && CE.ProgErase(ta2) == CE.ProgErase(t.t2);
+      assert th1.pc >= 0 && th2.pc >= 0;
+      assert ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, ta1, gm, th1, ncap, nlook, nquant);
+      assert ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, ta2, gm, th2, ncap, nlook, nquant);
+      assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t.t1, gm, th1, ncap, nlook, nquant);
+      assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t.t2, gm, th2, ncap, nlook, nquant);
+
+      var na := [(t.t1, gm), (t.t2, gm)];
+      assert PTL.TreeBfsStepLk(t, gm, inp) == PT.StepActive(na);
+      bst1 := PT.PTS(inp, na + ta[1..], best, tbl, SS.AddSeenTrees(seen, t));
+      assert PTL.PikeTreeStepLk(bst, bst1);
+      TrcLkRefl(bst1);
+      TrcLkCons(bst, bst1, bst1);
+
+      assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta[1..], s.active[1..],
+                          ncap, nlook, nquant);
+      assert (na + ta[1..])[0] == (t.t1, gm) && (na + ta[1..])[1..] == [(t.t2, gm)] + ta[1..];
+      assert ([(t.t2, gm)] + ta[1..])[0] == (t.t2, gm) && ([(t.t2, gm)] + ta[1..])[1..] == ta[1..];
+      assert vms2.active[0] == th1 && vms2.active[1..] == [th2] + s.active[1..];
+      assert ([th2] + s.active[1..])[0] == th2 && ([th2] + s.active[1..])[1..] == s.active[1..];
+      assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, na + ta[1..], vms2.active,
+                          ncap, nlook, nquant);
+
+      assert PIV.HdTreeOf(ta) == Some(t) && PIV.HeadPcOf(s.active) == pc;
+      AddSeenRepLk(rer, qm, code, inp, seen, s.processed, t, pc, ea,
+                   PIV.HdTreeOf(na + ta[1..]), PIV.HeadPcOf(vms2.active));
+      IsblockedGrowLk(rer, qm, code, inp, seen, s.isblocked, t);
+    } else {
+      // ---- BACKWARD (do-while): ea pinned; TWO B steps -------------------
+      assert ea;
+      assert t.Progress? && t.t.Choice?
+          && TreeRepLkRE(rer, qm, code, inp, t.t.t1, x as nat, true)
+          && TreeRepLkRE(rer, qm, code, inp, t.t.t2, y as nat, true);
+      assert CE.ProgErase(t) == LT.Choice(CE.ProgErase(t.t.t1), CE.ProgErase(t.t.t2));
+      assert CE.ProgErase(traw) != LT.Mismatch;
+      var ta1: LT.Tree, ta2: LT.Tree :|
+        CE.ProgErase(traw) == LT.Choice(CE.ProgErase(ta1), CE.ProgErase(ta2))
+        && WalkPairLk(rer, qm, code, inp, ta1, gm, x as nat, ea)
+        && WalkPairLk(rer, qm, code, inp, ta2, gm, y as nat, ea);
+      assert CE.ProgErase(ta1) == CE.ProgErase(t.t.t1) && CE.ProgErase(ta2) == CE.ProgErase(t.t.t2);
+      assert th1.pc >= 0 && th2.pc >= 0 && th1.exit_allowed && th2.exit_allowed;
+      assert ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, ta1, gm, th1, ncap, nlook, nquant);
+      assert ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, ta2, gm, th2, ncap, nlook, nquant);
+      assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t.t.t1, gm, th1, ncap, nlook, nquant);
+      assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t.t.t2, gm, th2, ncap, nlook, nquant);
+
+      var mta := [(t.t, gm)] + ta[1..];
+      assert PTL.TreeBfsStepLk(t, gm, inp) == PT.StepActive([(t.t, gm)]);
+      var mid := PT.PTS(inp, mta, best, tbl, SS.AddSeenTrees(seen, t));
+      assert PTL.PikeTreeStepLk(bst, mid);
+      var na := [(t.t.t1, gm), (t.t.t2, gm)];
+      assert mta[0] == (t.t, gm) && mta[1..] == ta[1..];
+      assert PTL.TreeBfsStepLk(t.t, gm, inp) == PT.StepActive(na);
+      bst1 := PT.PTS(inp, na + ta[1..], best, tbl,
+                     SS.AddSeenTrees(SS.AddSeenTrees(seen, t), t.t));
+      assert PTL.PikeTreeStepLk(mid, bst1);
+      TrcLkRefl(bst1);
+      TrcLkCons(mid, bst1, bst1);
+      TrcLkCons(bst, mid, bst1);
+
+      assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta[1..], s.active[1..],
+                          ncap, nlook, nquant);
+      assert (na + ta[1..])[0] == (t.t.t1, gm) && (na + ta[1..])[1..] == [(t.t.t2, gm)] + ta[1..];
+      assert ([(t.t.t2, gm)] + ta[1..])[0] == (t.t.t2, gm) && ([(t.t.t2, gm)] + ta[1..])[1..] == ta[1..];
+      assert vms2.active[0] == th1 && vms2.active[1..] == [th2] + s.active[1..];
+      assert ([th2] + s.active[1..])[0] == th2 && ([th2] + s.active[1..])[1..] == s.active[1..];
+      assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, na + ta[1..], vms2.active,
+                          ncap, nlook, nquant);
+
+      assert PIV.HdTreeOf(ta) == Some(t) && PIV.HeadPcOf(s.active) == pc;
+      AddSeenRepLk(rer, qm, code, inp, seen, s.processed, t, pc, ea,
+                   PIV.HdTreeOf(na + ta[1..]), PIV.HeadPcOf(vms2.active));
+      SeenGrowSeenRepLk(rer, qm, code, inp, SS.AddSeenTrees(seen, t),
+                        AI.bpc_add(s.processed, th.pc, ea), t.t,
+                        PIV.HdTreeOf(na + ta[1..]), PIV.HeadPcOf(vms2.active));
+      IsblockedGrowLk(rer, qm, code, inp, seen, s.isblocked, t);
+      IsblockedGrowLk(rer, qm, code, inp, SS.AddSeenTrees(seen, t), s.isblocked, t.t);
+    }
+  }
 
   /** The per-lid STATIC look-table package, bundled over `qm.looks`' domain:
       each gated lid has a correct `crv` row whose body is look-free, well-
@@ -4844,6 +4968,14 @@ module LindenElkLiftSim {
       case Fork(x, y) =>
         var newt := AI.Thread(x, th.capture_regs, th.look_regs, th.quant_regs, th.exit_allowed);
         var vms2 := s1.(active := [newt, th.(pc := y)] + ac);
+        // backward-fork flag pin: a false-thread never sits at a Cold pc
+        assert (x <= th.pc || y <= th.pc) ==> th.exit_allowed by {
+          if (x <= th.pc || y <= th.pc) && !th.exit_allowed {
+            assert th in s.active && PSM.EaColdOkRE(code, th);
+            assert NI.ColdF(code, pc, 1);
+            assert NI.ColdRE(code, pc);
+          }
+        }
         var bstS := LiftPreserveForkLk(rer, qm, re, code, endl, crv, str, ov, S,
                                        bst, s, s1, x, y, vms2, ncap, nlook, nquant);
         var ptsS := PSM.PreserveForkCase(rer, qm, re, code, endl, ngroups, str, ptsA, s,
@@ -6690,6 +6822,29 @@ module LindenElkLiftSim {
       case LookaroundR(_, _) =>   // pins CheckOracle/NegCheckOracle — not Fork
       case AnchorR(_) =>   // pins AnchorAssertion — not Fork
       case Backreference(_) =>   // NfaRepL false
+  }
+
+  /** WalkPairLk→arms wrapper at a `Fork(x, y)` (the two stutter disjuncts are
+      dead at a Fork pc). */
+  lemma WalkPairLkAtForkArms(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                             tb: LT.Tree, gm: LG.GroupMap, pc: nat, ea: bool, x: int, y: int)
+    requires WalkPairLk(rer, qm, code, inp, tb, gm, pc, ea)
+    requires NR.GetPcRE(code, pc) == Some(RB.Fork(x, y))
+    ensures x >= 0 && y >= 0
+    ensures CE.ProgErase(tb) == LT.Mismatch
+         || exists ta1: LT.Tree, ta2: LT.Tree ::
+              CE.ProgErase(tb) == LT.Choice(CE.ProgErase(ta1), CE.ProgErase(ta2))
+              && WalkPairLk(rer, qm, code, inp, ta1, gm, x as nat, ea)
+              && WalkPairLk(rer, qm, code, inp, ta2, gm, y as nat, ea)
+  {
+    var acts: LS.Actions, b: BS.LoopBool :|
+      AR.ActionsRepL(rer, qm, acts, code, pc)
+      && EL.PikeLkActions(acts)
+      && ATR.EaOf(b) == ea
+      && EL.BoolTreeLk(rer, acts, inp, b, tb)
+      && GateAheadClear(acts, gm)
+      && WalkDefsOk(acts);
+    WalkPairLkAtForkCore(rer, qm, code, inp, tb, gm, pc, b, acts, x, y);
   }
 
   /** Fueled core of `TtLkAtSetQuant`: peel the transparent prefix; the real head
