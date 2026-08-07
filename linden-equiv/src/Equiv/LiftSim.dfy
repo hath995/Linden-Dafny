@@ -436,6 +436,40 @@ module LindenElkLiftSim {
     }
   }
 
+  /** Marking a slot processed whose tree is ALREADY memoized (B skips, seen
+      unchanged): the new slot resolves LEFT with the head itself; old escape
+      entries promote to LEFT since their witness (the head) is seen. The
+      `Consume`-dedup drop's seen brick. */
+  lemma SeenAddProcessedSlotRepLk(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                                  treeseen: SS.SeenTrees, processed: AI.Bpcset, t: LT.Tree,
+                                  pc: nat, b: bool, current: Option<LT.Tree>, nextpc: nat)
+    requires SeenRepLk(rer, qm, code, inp, treeseen, processed, Some(t), pc)
+    requires SS.Inseen(treeseen, t)
+    requires TreeRepLkRE(rer, qm, code, inp, t, pc, b)
+    ensures SeenRepLk(rer, qm, code, inp, treeseen, AI.bpc_add(processed, pc, b), current, nextpc)
+  {
+    forall pc0: nat, b0: bool | AI.bpc_mem(AI.bpc_add(processed, pc, b), pc0, b0)
+      ensures (exists t': LT.Tree :: SS.Inseen(treeseen, t')
+                 && TreeRepLkRE(rer, qm, code, inp, t', pc0, b0))
+           || (TT.StuttersRE(pc0, code) && exists t': LT.Tree ::
+                 PIV.StutterChainTo(code, pc0, nextpc) && current == Some(t')
+                 && TreeRepLkRE(rer, qm, code, inp, t', pc0, b0))
+    {
+      PIV.BpcAddMemFwd(processed, pc, b, pc0, b0);
+      if pc0 == pc && b0 == b {
+        // LEFT with the head itself — already memoized.
+      } else {
+        assert AI.bpc_mem(processed, pc0, b0);
+        if exists t': LT.Tree :: SS.Inseen(treeseen, t') && TreeRepLkRE(rer, qm, code, inp, t', pc0, b0) {
+        } else {
+          var t': LT.Tree :| TT.StuttersRE(pc0, code) && PIV.StutterChainTo(code, pc0, pc)
+            && Some(t) == Some(t') && TreeRepLkRE(rer, qm, code, inp, t', pc0, b0);
+          assert SS.Inseen(treeseen, t');   // t' == t, already seen ⟹ LEFT
+        }
+      }
+    }
+  }
+
   /** Processing a STUTTER pc (Jmp/BeginLoop — B does not step, nothing is
       memoized): the new processed slot resolves to the stutter escape hatch,
       whose chain extends by the one stutter step to the head's new pc.
@@ -3051,6 +3085,51 @@ module LindenElkLiftSim {
     ensures PTL.TrcPikeTreeLk(bst, bst1)
     ensures bst1.PTS?
     ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := bst;
+    var th := s.active[0];
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t, gm, th, ncap, nlook, nquant);
+    var pc: nat := th.pc as nat;
+    var ea := th.exit_allowed;
+    assert TreeRepLkRE(rer, qm, code, inp, t, pc, ea);
+
+    // the blocked pc's memoized canonical tree IS the head's — the Consume
+    // rules are flag-independent, so the recorded flag transfers.
+    assert IsblockedRepLk(rer, qm, code, inp, seen, s.isblocked);
+    assert AI.pc_mem(s.isblocked, th.pc) && th.pc == pc as int;
+    assert AI.pc_mem(s.isblocked, pc);
+    var t': LT.Tree, b': bool :| SS.Inseen(seen, t') && TreeRepLkRE(rer, qm, code, inp, t', pc, b');
+    TreeRepLkREAtConsume(rer, qm, code, inp, t', pc, b', ce);
+    assert TreeRepLkRE(rer, qm, code, inp, t', pc, ea) by {
+      match AR.ReadCharE(ce, inp) {
+        case None =>
+          assert t' == LT.Mismatch;      // tr_readfail — flag-independent
+        case Some(pair) =>
+          assert t'.Read? && t'.c == pair.0
+              && TreeRepLkRE(rer, qm, code, pair.1, t'.t, pc + 1, true);   // tr_read — flag-independent
+      }
+    }
+    TreeRepLkDetermRE(rer, qm, code, inp, t, t', pc, ea);
+    assert SS.Inseen(seen, t);
+
+    // pts_skip
+    bst1 := PT.PTS(inp, ta[1..], best, tb, seen);
+    assert PTL.PikeTreeStepLk(bst, bst1);
+    TrcLkRefl(bst1);
+    TrcLkCons(bst, bst1, bst1);
+
+    // bookkeeping: the new processed slot's tree is already memoized
+    assert PIV.HdTreeOf(ta) == Some(t) && PIV.HeadPcOf(s.active) == pc;
+    SeenAddProcessedSlotRepLk(rer, qm, code, inp, seen, s.processed, t, pc, ea,
+                              PIV.HdTreeOf(ta[1..]), PIV.HeadPcOf(vms2.active));
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta[1..], s.active[1..],
+                        ncap, nlook, nquant);
+    assert vms2.active == s.active[1..];
+  }
 
   /** SETREG (group Open/Close): B steps the `GroupActionT` head, `gmt` moves
       by `GMUpdate` at the current index; outside-`S` tie via the GmOfLive
