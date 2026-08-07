@@ -3790,21 +3790,128 @@ module LindenElkLiftSim {
       except the capturing `Lookahead` — capture-free. Threaded through
       `LiftStepC`/`LiftAdvanceEpsilon` into the gate-pass case; established
       once at the composite entry from the `FFullCompilation` tables. */
+  ghost predicate GateStaticAt(qm: AR.QMap, re: R.regex, crv: CP.FCompiled, l: int,
+                               ncap: int, nlook: int, nquant: int) {
+    l in qm.looks
+    && exists la: R.lookaround, body: R.regex ::
+         LTB.LookEntryOk(crv, l, la, body)
+         && T.TransWf(body) && NR.LookFreeRE(body)
+         && qm.looks[l].0 == T.TrLookaround(la)
+         && qm.looks[l].1 == T.Translate(body)
+         && (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
+         && var bodycode := CP.compile_to_bytecode(body);
+            |bodycode| >= 1
+            && PSM.StaticOkRE(qm, body, bodycode, |bodycode| - 1)
+            && PSM.SizesOkRE(body, ncap, nlook, nquant)
+         && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
+  }
+
   ghost predicate GateStaticsOk(qm: AR.QMap, re: R.regex, crv: CP.FCompiled,
                                 ncap: int, nlook: int, nquant: int) {
     forall l: int | l in qm.looks ::
-      0 <= l < nlook
-      && exists la: R.lookaround, body: R.regex ::
-           LTB.LookEntryOk(crv, l, la, body)
-           && T.TransWf(body) && NR.LookFreeRE(body)
-           && qm.looks[l].0 == T.TrLookaround(la)
-           && qm.looks[l].1 == T.Translate(body)
-           && (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
-           && var bodycode := CP.compile_to_bytecode(body);
-              |bodycode| >= 1
-              && PSM.StaticOkRE(qm, body, bodycode, |bodycode| - 1)
-              && PSM.SizesOkRE(body, ncap, nlook, nquant)
-           && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
+      0 <= l < nlook && GateStaticAt(qm, re, crv, l, ncap, nlook, nquant)
+  }
+
+  /** `PlusFragmentRE` is look-free by construction, so it sits inside the
+      compile fragment (the two predicates differ only at the lookaround case,
+      which `PlusFragmentRE` forbids). */
+  lemma PlusFragmentIsLBF(r: R.regex)
+    requires NR.PlusFragmentRE(r)
+    ensures NR.LookBehindFragmentRE(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => PlusFragmentIsLBF(r1); PlusFragmentIsLBF(r2);
+    case Re_con(r1, r2) => PlusFragmentIsLBF(r1); PlusFragmentIsLBF(r2);
+    case Re_quant(_, _, _, r1) => PlusFragmentIsLBF(r1);
+    case Re_capture(_, r1) => PlusFragmentIsLBF(r1);
+    case _ =>
+  }
+
+  /** A look-free regex owns no lookaround ids. */
+  lemma LookFreeNoLids(r: R.regex)
+    requires NR.LookFreeRE(r)
+    ensures LTB.LookIds(r) == {}
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => LookFreeNoLids(r1); LookFreeNoLids(r2);
+    case Re_con(r1, r2) => LookFreeNoLids(r1); LookFreeNoLids(r2);
+    case Re_quant(_, _, _, r1) => LookFreeNoLids(r1);
+    case Re_capture(_, r1) => LookFreeNoLids(r1);
+    case _ =>
+  }
+
+  /** THE `GateStaticsOk` establishment sweep: every lid of `re` gets its
+      per-lid bundle. All the qm/fragment facts descend definitionally to the
+      lookaround node; the body's compile statics come from
+      `CompileToBytecodeRepLookBehind` + `CompileStutterTameRE` via
+      `PlusFragmentIsLBF`. `re0` carries the whole-regex confinement target. */
+  lemma GateStaticsSweepRE(qm: AR.QMap, re0: R.regex, re: R.regex, crv: CP.FCompiled,
+                           ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
+    requires NR.LookBehindFragmentRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires PIV.CapIdsInLooks(re) <= PIV.CapIdsInLooks(re0)
+    ensures forall l: int :: l >= 0 && (l as nat) in LTB.LookIds(re) ==>
+      GateStaticAt(qm, re0, crv, l, ncap, nlook, nquant)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) =>
+      GateStaticsSweepRE(qm, re0, r1, crv, ncap, nlook, nquant);
+      GateStaticsSweepRE(qm, re0, r2, crv, ncap, nlook, nquant);
+    case Re_con(r1, r2) =>
+      GateStaticsSweepRE(qm, re0, r1, crv, ncap, nlook, nquant);
+      GateStaticsSweepRE(qm, re0, r2, crv, ncap, nlook, nquant);
+    case Re_quant(_, _, _, r1) =>
+      GateStaticsSweepRE(qm, re0, r1, crv, ncap, nlook, nquant);
+    case Re_capture(_, r1) =>
+      GateStaticsSweepRE(qm, re0, r1, crv, ncap, nlook, nquant);
+    case Re_lookaround(lid, la, body) =>
+      LookFreeNoLids(body);
+      if lid >= 0 {
+        // the node's own bundle
+        assert LTB.LookEntryOk(crv, lid, la, body);
+        assert T.TransWf(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body);
+        assert lid in qm.looks && qm.looks[lid] == (T.TrLookaround(la), T.Translate(body));
+        // confinement: the body's groups are inside-look groups of re0
+        M.TranslateDefGroupsEqCapIds(body);
+        assert PIV.CapIdsInLooks(re) == PIV.CapIds(body);
+        assert (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re0);
+        // compile statics for the body's own bytecode
+        PlusFragmentIsLBF(body);
+        NR.CompileToBytecodeRepLookBehind(body);
+        PIV.CompileStutterTameRE(body);
+        var bodycode := CP.compile_to_bytecode(body);
+        var next := CP.compile(body, 0, CP.Progress).1;
+        assert next >= 0 && |bodycode| == next + 1 && |bodycode| >= 1;
+        assert NR.NfaRepRE(body, bodycode, 0, next as nat)
+            && NR.GetPcRE(bodycode, next as nat) == Some(RB.Accept);
+        assert (next as nat) == |bodycode| - 1;
+        assert PSM.StaticOkRE(qm, body, bodycode, |bodycode| - 1);
+        assert PSM.SizesOkRE(body, ncap, nlook, nquant);
+        assert (la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body);
+        assert GateStaticAt(qm, re0, crv, lid, ncap, nlook, nquant);
+      }
+    case _ =>
+  }
+
+  /** TOP-LEVEL establishment: `GateStaticsOk` from the compile tables + qm
+      well-formedness (`qm.looks`' domain within `re`'s lids is the caller's
+      obligation — true by qm's construction). */
+  lemma GateStaticsFromTables(qm: AR.QMap, re: R.regex, crv: CP.FCompiled,
+                              ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
+    requires NR.LookBehindFragmentRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires forall l: int :: l in qm.looks ==>
+      l >= 0 && (l as nat) in LTB.LookIds(re) && l < nlook
+    ensures GateStaticsOk(qm, re, crv, ncap, nlook, nquant)
+  {
+    GateStaticsSweepRE(qm, re, re, crv, ncap, nlook, nquant);
   }
 
   /** POSITIVE GATE, PASSING: the VM writes `a_cp[l] := cp` and continues; B
