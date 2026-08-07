@@ -129,6 +129,17 @@ body's `TreeRes` leaf map is its input map), but the `a_cp[l]` write still happe
 small new inside-tie-across-the-write lemma (owner-split, `RL.ASetLaws`; `GateStepValue`'s
 Case B is the exact pattern).)*
 
+*(2026-08-07 session 3 — ConsumeAdd PROVEN (12/15) + THE COMPOSITE RESTRUCTURE (commits
+`900ac92..20133c6`): `LiftAdvanceEpsilon` now CARRIES `ptsA` and steps machine A per worklist
+step by the PROVEN `PSM.Preserve*Case` lemmas (exact mirror of `InvariantPreservationRE`'s body)
+alongside machine B — so `PikeInvFullRE`'s per-thread facts (`ThreadNestRE`, backbones,
+`LooksCapUnset`, `EaColdOkRE`) are available at EVERY intermediate state. This is what the
+SetReg fill needs (`GmOfLiveOpenGMOpen`'s MxAtGid/PathPresent hypotheses) and the GatePass fill
+too; the interim hand-threaded `PSM.BBOf` layer was subsumed and removed. `LiftStepC` is now a
+single call. New: `BlockedRepLkCSnoc`. Remaining bodiless cases: SetReg (mirror
+`PSM.PreserveOpenCase`'s hypothesis-discharge recipe, th-facts passed from the dispatcher's
+`PikeInvFullRE`), GatePass/its statics bundle, Fork, SetQuant (research gap).)*
+
 ---
 
 ## 0. The goal
