@@ -206,6 +206,21 @@ star arms via the disjunct chain + `WalkDefsOkUnfold` with `mid=[Acheck]`; backw
 Acheck-peel recursion + the shield; `ea` pinned by the dispatcher from `EaColdOkRE`) is the
 whole remaining ε-surface.)*
 
+*(2026-08-07 session 6 — THE ε-PHASE IS COMPLETE (commits `98696ea..8ec8e3e`, full sweep
+**4592 verified, 0 errors**): **`LiftPreserveForkLk` PROVEN** (forward one B step; backward
+two, `ea` pinned from `EaColdOkRE`; `WalkPairLkAtForkCore` = the full branch pairing —
+Disjunction via `DisjArm` bricks, star arms via the SQC-chain with the BeginLoop absorber,
+the do-while loop-view via the shield); **`BoolTreeLkGuardShield` PROVEN** (the NonNullable
+head at index 0 shields every `Acheck` — `CE.ShieldedActs` witness j=0 — so the proven
+`CE.BoolFlagLift` closes it): ZERO bodiless walk debt remains. **`GateStaticsOk`
+ESTABLISHED**: `GateStaticAt` factoring + `PlusFragmentIsLBF`/`LookFreeNoLids` +
+`GateStaticsSweepRE` (all per-lid facts descend definitionally; body compile statics via
+`CompileToBytecodeRepLookBehind`+`CompileStutterTameRE`) + `GateStaticsFromTables` (requires:
+compile tables via `LTB.FFullCompilationLookOk` + the qm-domain bound, both dischargeable at
+MainTheorem integration). REMAINING L3a: the 4 top-level drivers (`LiftConsume` /
+`LiftFindMatch` / `LiftEndpoint` / `L3aCompositeClose`), then the MainTheorem else-branch
+rewrite; prune dead `TtLkSameTree`.)*
+
 ---
 
 ## 0. The goal
