@@ -103,6 +103,32 @@ bodyless (their `ensures` is currently assumed). That is the entire remaining su
   column), EndLoopPass (needs a WalkPairLk-level EndLoop peel core — Anchor's core is the
   template).)*
 
+*(2026-08-07 session 2 — FIVE MORE CASES PROVEN, all first-try (commits `6593664..e5b3a49`):
+**11 of 15** ε-phase case lemmas now have real bodies. NEW: `GatePolarityRE`(+Min/Opt — the
+static sweep: a `CheckOracle`/`NegCheckOracle` pc's lid is in `qm.looks` with the matching
+polarity; `LookCheckIdsRE`'s skeleton, sourced from `NfaRepRE`'s polarity split + `LmapOk`),
+`SeenAddProcessedSlotRepLk` (6th seen brick: mark a slot processed whose tree is already
+memoized), `WalkPairLkAtEndLoop`/`Core` (the EndLoop peel with invariant threading — the guard
+consumes with gm unchanged), `WalkPairLkAtNegCheckOracle`/`Core` (the negative gate's peel; the
+passing merge is the IDENTITY so no AfterMerge). PROVEN: **GateKill** (both polarities — polarity
+pin + `OracleOkAt` turn the failing bit into a `None` verdict = the canonical `LKFail` branch),
+**ConsumeDrop** (pts_skip via `IsblockedRepLk`; the Consume rules are flag-independent so the
+recorded flag transfers), **EndLoopPass** (`Progress` unwrap; the guard is erasure-transparent
+on both sides), **NegGatePass** (identity merge; `LkResultGmIndep` moves the verdict to the
+running map). REMAINING 4 bodiless: ConsumeAdd (BlockedRepLkC snoc through the `MatchingBlocked`
+filter — mirror `PreserveConsumeAdd`), SetReg (GmOfLive↔GMUpdate tie), SetQuant (research gap),
+Fork, GatePass. **GATEPASS DESIGN FINDING**: it SPLITS in two — (a) capturing positive
+LOOKAHEAD: the proven `ThreadRepLkStepCheckOracle` applies, but its wiring needs (i) a per-lid
+STATICS BUNDLE predicate (body/bodycode/`StaticOkRE`/`SizesOkRE`/`crv.f_look_*` indexing —
+`LookRowsFromTablesL3a`-shaped) added to `LiftAdvanceEpsilon`+`LiftStepC` requires, and (ii) the
+head thread's look-regs LENGTH (`ASize(look_regs) == nlook` — source per-active-thread as a
+requires the dispatcher re-establishes inline, or from `PikeInvFullRE`'s `CM.VmRegsWf` at the
+composite level); (b) CAPTURE-FREE positive looks (all lookbehinds + capture-free lookaheads —
+`LkDir` may be Backward, so the core does NOT apply): the merge is the IDENTITY (a capture-free
+body's `TreeRes` leaf map is its input map), but the `a_cp[l]` write still happens — needs a
+small new inside-tie-across-the-write lemma (owner-split, `RL.ASetLaws`; `GateStepValue`'s
+Case B is the exact pattern).)*
+
 ---
 
 ## 0. The goal
