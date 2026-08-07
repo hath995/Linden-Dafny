@@ -288,6 +288,19 @@ module LindenElkLiftSim {
                && TreeRepLkRE(rer, qm, code, inp, t, pc, b))
   }
 
+  /** The `isblocked` dedup pairing — mirror of `PSM.IsblockedInclusionRE`
+      with the canonical `TreeRepLkRE`: every pc the VM has already blocked
+      this phase has its canonical tree memoized, so the `Consume`-dedup drop
+      is a B `pts_skip` (at a `Consume` pc the canonical rule is
+      flag-independent, so the recorded `b` transfers to the head's). */
+  ghost predicate IsblockedRepLk(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code,
+                                 inp: LC.Input, treeseen: SS.SeenTrees, isblocked: AI.pcset)
+  {
+    forall pc0: nat :: AI.pc_mem(isblocked, pc0) ==>
+      exists t: LT.Tree, b: bool ::
+        SS.Inseen(treeseen, t) && TreeRepLkRE(rer, qm, code, inp, t, pc0, b)
+  }
+
   /** THE LIFT INVARIANT: the B state pairs with the VM state. Mirrors
       `PIV.PikeInvRE`'s shape with the B-side (t-based, value-carrying)
       relations. `PTS_final` pairs through `BestTieLk` alone.
@@ -305,6 +318,7 @@ module LindenElkLiftSim {
     case PTS(inp, bactive, bbest, bblocked, bseen) =>
       0 <= vms.cp <= |str|
       && inp == PIV.InpOfCp(str, vms.cp)
+      && PIV.ContextOkRE(str, vms.cp, vms.context)   // aligns VM anchor/char reads with the position
       && ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, bactive, vms.active, ncap, nlook, nquant)
       && (forall nextinp :: LC.AdvanceInput(inp, WP.Forward) == Some(nextinp) ==>
             BlockedRepLkC(rer, qm, re, code, inp, nextinp, crv, str, ov, S, bblocked,
@@ -313,6 +327,7 @@ module LindenElkLiftSim {
       && BestTieLk(re, crv, str, ov, S, bbest, vms.bestmatch, ncap, nlook, nquant)
       && SeenRepLk(rer, qm, code, inp, bseen, vms.processed,
                    PIV.HdTreeOf(bactive), PIV.HeadPcOf(vms.active))
+      && IsblockedRepLk(rer, qm, code, inp, bseen, vms.isblocked)
       // the gate helpers read the oracle column at the current input; the
       // walk carries this (OracleOkSuffixStep advances it with cp)
       && LL.OracleOkSuffix(rer, qm, inp)
@@ -416,6 +431,42 @@ module LindenElkLiftSim {
         var t': LT.Tree :| TT.StuttersRE(pc0, code) && PIV.StutterChainTo(code, pc0, currentpc)
           && Some(tree) == Some(t') && TreeRepLkRE(rer, qm, code, inp, t', pc0, b0);
         assert SS.Inseen(treeseen, t');   // t' == tree, already seen
+      }
+    }
+  }
+
+  /** Processing a STUTTER pc (Jmp/BeginLoop — B does not step, nothing is
+      memoized): the new processed slot resolves to the stutter escape hatch,
+      whose chain extends by the one stutter step to the head's new pc.
+      Mirror of `PIV.StutterInclusionRE`. */
+  lemma StutterSeenRepLk(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                         treeseen: SS.SeenTrees, processed: AI.Bpcset, t: LT.Tree, pc: nat, b: bool,
+                         nextpc: nat)
+    requires PIV.StutterSuccIs(code, pc, nextpc)
+    requires SeenRepLk(rer, qm, code, inp, treeseen, processed, Some(t), pc)
+    requires TT.StuttersRE(pc, code)
+    requires TreeRepLkRE(rer, qm, code, inp, t, pc, b)
+    ensures SeenRepLk(rer, qm, code, inp, treeseen, AI.bpc_add(processed, pc, b), Some(t), nextpc)
+  {
+    forall pc0: nat, b0: bool | AI.bpc_mem(AI.bpc_add(processed, pc, b), pc0, b0)
+      ensures (exists t': LT.Tree :: SS.Inseen(treeseen, t')
+                 && TreeRepLkRE(rer, qm, code, inp, t', pc0, b0))
+           || (TT.StuttersRE(pc0, code) && exists t': LT.Tree ::
+                 PIV.StutterChainTo(code, pc0, nextpc) && Some(t) == Some(t')
+                 && TreeRepLkRE(rer, qm, code, inp, t', pc0, b0))
+    {
+      PIV.BpcAddMemFwd(processed, pc, b, pc0, b0);
+      if pc0 == pc && b0 == b {
+        // RIGHT disjunct: the just-stuttered head, one step from nextpc.
+        assert PIV.StutterChainTo(code, pc, nextpc);   // base: StutterSuccIs(code, pc, nextpc)
+      } else {
+        assert AI.bpc_mem(processed, pc0, b0);
+        if exists t': LT.Tree :: SS.Inseen(treeseen, t') && TreeRepLkRE(rer, qm, code, inp, t', pc0, b0) {
+        } else {
+          var t': LT.Tree :| TT.StuttersRE(pc0, code) && PIV.StutterChainTo(code, pc0, pc)
+            && Some(t) == Some(t') && TreeRepLkRE(rer, qm, code, inp, t', pc0, b0);
+          PIV.StutterChainExtend(code, pc0, pc, nextpc);   // StutterChainTo(code, pc0, nextpc)
+        }
       }
     }
   }
@@ -2358,6 +2409,8 @@ module LindenElkLiftSim {
     requires vms.active == [AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant))]
     requires vms.blocked == [] && vms.bestmatch.None?
     requires vms.processed == AI.init_bpcset(|code|)
+    requires vms.isblocked == AI.init_pcset(|code|)
+    requires PIV.ContextOkRE(str, vms.cp, vms.context)
     ensures TreeRepLkRE(rer, qm, code, LC.InitInput(str), tcan, 0, false)
     ensures CE.ProgErase(tcan) == CE.ProgErase(t)   // endpoint glue: FirstLeaf(tcan) == FirstLeaf(t)
     ensures LiftInv(rer, qm, re, code, crv, str, ov, S,
@@ -5859,6 +5912,8 @@ module LindenElkLiftSim {
     requires vms.bestmatch.None?
     requires vms.blocked == []                                // genuine start: nothing blocked yet
     requires vms.processed == AI.init_bpcset(RB.size(code))   // genuine start: nothing processed yet
+    requires vms.isblocked == AI.init_pcset(RB.size(code))
+    requires PIV.ContextOkRE(str, vms.cp, vms.context)
     ensures TreeRepLkRE(rer, qm, code, inp, tcan, 0, false)
     ensures CE.ProgErase(tcan) == CE.ProgErase(t)             // endpoint glue: FirstLeaf(tcan) == FirstLeaf(t)
     ensures LiftInvC(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
