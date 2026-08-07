@@ -3238,8 +3238,152 @@ module LindenElkLiftSim {
     ensures bst1.PTS?
     ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
 
+  /** Fueled `WalkPairLk` core at a `NegCheckOracle` pc: the gate head is
+      pinned by `ActionRepL`'s polarity split, and the PASSING merge is the
+      IDENTITY (`LkResult` of a succeeding negative look returns `Some(gm)`),
+      so the continuation's `GateAheadClear`/NoDup come from the plain tail
+      bricks — no `AfterMerge` machinery. Keyed on the FUNCTIONAL verdict. */
+  lemma WalkPairLkAtNegCheckOracleCore(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                                       tb: LT.Tree, gm: LG.GroupMap, pc: nat, b: BS.LoopBool,
+                                       acts: LS.Actions, lid: int)
+    requires AR.ActionsRepL(rer, qm, acts, code, pc)
+    requires EL.PikeLkActions(acts)
+    requires EL.BoolTreeLk(rer, acts, inp, b, tb)
+    requires NR.GetPcRE(code, pc) == Some(RB.NegCheckOracle(lid))
+    requires GateAheadClear(acts, gm)
+    requires M.NoDupSeq(M.AllDefsActs(acts))
+    ensures lid in qm.looks
+    ensures var (lk, r1) := qm.looks[lid];
+      var tlk := LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk));
+      !AR.PositiveL(lk)
+      && (LS.LkResult(lk, tlk, LG.Empty, inp).Some? ==>
+            tb.LK? && tb.lk == lk && tb.tlk == tlk
+            && WalkPairLk(rer, qm, code, inp, tb.t, gm, pc + 1, ATR.EaOf(b)))
+      && (LS.LkResult(lk, tlk, LG.Empty, inp).None? ==> tb == LT.LKFail(lk, tlk))
+    decreases ATR.MsizeA(acts)
+  {
+    var g := ATR.EaOf(b);
+    var pcmid: nat :| AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && AR.ActionsRepL(rer, qm, acts[1..], code, pcmid);
+    EL.PikeLkActionsTail(acts);
+    assert acts == [acts[0]] + acts[1..];
+    EL.PikeLkActionsConsIff(acts[0], acts[1..]);
+    var cont := acts[1..];
+    match acts[0]
+    case Acheck(_) =>   // pins EndLoop / backward Fork — not NegCheckOracle
+    case Aclose(_) =>   // pins SetRegisterToCP — not NegCheckOracle
+    case Areg(r0) =>
+      assert EL.PikeLkRegex(r0);
+      match r0
+      case Epsilon =>
+        assert pcmid == pc;
+        assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+        assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
+        GateAheadClearTail(acts, gm);
+        NoDupAllDefsTail(acts);
+        WalkPairLkAtNegCheckOracleCore(rer, qm, code, inp, tb, gm, pc, b, cont, lid);
+      case Sequence(r1, r2) =>
+        assert acts[0] == LS.Areg(L.Sequence(r1, r2));
+        assert AR.NfaRepL(rer, qm, L.Sequence(r1, r2), code, pc, pcmid);
+        var e1: nat :| AR.NfaRepL(rer, qm, r1, code, pc, e1) && AR.NfaRepL(rer, qm, r2, code, e1, pcmid);
+        var na := [LS.Areg(r1), LS.Areg(r2)] + cont;
+        assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+        AR.ActionsRepLCons(rer, qm, LS.Areg(r2), cont, code, e1, pcmid);
+        AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Areg(r2)] + cont, code, pc, e1);
+        assert AR.ActionsRepL(rer, qm, na, code, pc);
+        assert EL.PikeLkActions(na) by {
+          EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
+          EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
+        }
+        assert EL.BoolTreeLk(rer, na, inp, b, tb);
+        assert LS.ActionsRegexSize(acts) == RegSz(r1) + RegSz(r2) + 1 + LS.ActionsRegexSize(cont);
+        assert LS.ActionsRegexSize(na) == RegSz(r1) + RegSz(r2) + LS.ActionsRegexSize(cont);
+        assert ATR.MsizeA(na) < ATR.MsizeA(acts);
+        GateAheadClearSeqExpand(acts, r1, r2, gm);
+        M.AllDefsActsCons(acts[0], cont);
+        M.AllDefsActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont);
+        M.AllDefsActsCons(LS.Areg(r2), cont);
+        assert L.DefGroups(L.Sequence(r1, r2)) == L.DefGroups(r1) + L.DefGroups(r2);
+        assert L.DefGroups(r1) + (L.DefGroups(r2) + M.AllDefsActs(cont))
+            == (L.DefGroups(r1) + L.DefGroups(r2)) + M.AllDefsActs(cont);
+        assert M.AllDefsActs(na) == M.AllDefsActs(acts);
+        WalkPairLkAtNegCheckOracleCore(rer, qm, code, inp, tb, gm, pc, b, na, lid);
+      case Quantified(greedy, min, delta, r1) =>
+        if min == 0 && delta == LN.NN(0) {
+          assert acts[0] == LS.Areg(L.Quantified(greedy, 0, LN.NN(0), r1));
+          assert AR.NfaRepL(rer, qm, L.Quantified(greedy, 0, LN.NN(0), r1), code, pc, pcmid);
+          var em: nat :| AR.NfaRepMinL(rer, qm, 0, r1, code, pc, em)
+                       && AR.NfaRepOptL(rer, qm, 0, greedy, r1, code, em, pcmid);
+          NfaRepMinLHeadPin(rer, qm, 0, r1, code, pc, em);
+          NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);
+          assert pcmid == pc;
+          assert AR.ActionsRepL(rer, qm, cont, code, pc);
+          assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+          assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
+          GateAheadClearTail(acts, gm);
+          NoDupAllDefsTail(acts);
+          WalkPairLkAtNegCheckOracleCore(rer, qm, code, inp, tb, gm, pc, b, cont, lid);
+        } else {
+          assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
+          assert AR.NfaRepL(rer, qm, L.Quantified(greedy, min, delta, r1), code, pc, pcmid);
+          QuantHeadPinsForkOrSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
+        }
+      case LookaroundR(lk0, r1) =>
+        // ActionRepL's polarity split: a NegCheckOracle pc hosts a NEGATIVE look
+        var lid0: int :| NR.GetPcRE(code, pc) == Some(if AR.PositiveL(lk0) then RB.CheckOracle(lid0)
+                                                     else RB.NegCheckOracle(lid0))
+          && lid0 in qm.looks && qm.looks[lid0] == (lk0, r1);
+        assert !AR.PositiveL(lk0) && lid0 == lid;
+        assert pcmid == pc + 1;
+        M.GateNodeAtInp(rer, acts, inp, b, tb, lk0, r1);   // tb is LK/LKFail with LkGateOk
+        var tlk := LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk0));
+        if tb.LK? {
+          assert tb.tlk == tlk && LS.LkResult(lk0, tlk, LG.Empty, inp).Some?;   // LkGateOk true
+          assert EL.BoolTreeLk(rer, cont, inp, b, tb.t);
+          assert AR.ActionsRepL(rer, qm, cont, code, pc + 1);
+          // the passing negative merge is the identity ⟹ plain tail bricks
+          GateAheadClearTail(acts, gm);
+          NoDupAllDefsTail(acts);
+          assert EL.PikeLkActions(cont);
+          assert WalkPairLk(rer, qm, code, inp, tb.t, gm, pc + 1, g);
+        } else {
+          assert tb.LKFail? && tb.tlk == tlk;               // LkGateOk false
+          assert LS.LkResult(lk0, tlk, LG.Empty, inp).None?;
+          assert tb == LT.LKFail(lk0, tlk);
+        }
+      case Character(_) =>   // pins Consume — not NegCheckOracle
+      case Disjunction(_, _) =>   // pins Fork — not NegCheckOracle
+      case Group(_, _) =>   // pins SetRegisterToCP — not NegCheckOracle
+      case AnchorR(_) =>   // pins AnchorAssertion — not NegCheckOracle
+      case Backreference(_) =>   // NfaRepL false
+  }
+
+  /** WalkPairLk→WalkPairLk wrapper at a `NegCheckOracle`. */
+  lemma WalkPairLkAtNegCheckOracle(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                                   tb: LT.Tree, gm: LG.GroupMap, pc: nat, ea: bool, lid: int)
+    requires WalkPairLk(rer, qm, code, inp, tb, gm, pc, ea)
+    requires NR.GetPcRE(code, pc) == Some(RB.NegCheckOracle(lid))
+    ensures lid in qm.looks
+    ensures var (lk, r1) := qm.looks[lid];
+      var tlk := LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk));
+      !AR.PositiveL(lk)
+      && (LS.LkResult(lk, tlk, LG.Empty, inp).Some? ==>
+            tb.LK? && tb.lk == lk && tb.tlk == tlk
+            && WalkPairLk(rer, qm, code, inp, tb.t, gm, pc + 1, ea))
+      && (LS.LkResult(lk, tlk, LG.Empty, inp).None? ==> tb == LT.LKFail(lk, tlk))
+  {
+    var acts: LS.Actions, b: BS.LoopBool :|
+      AR.ActionsRepL(rer, qm, acts, code, pc)
+      && EL.PikeLkActions(acts)
+      && ATR.EaOf(b) == ea
+      && EL.BoolTreeLk(rer, acts, inp, b, tb)
+      && GateAheadClear(acts, gm)
+      && M.NoDupSeq(M.AllDefsActs(acts));
+    WalkPairLkAtNegCheckOracleCore(rer, qm, code, inp, tb, gm, pc, b, acts, lid);
+  }
+
   /** NEGATIVE GATE, PASSING (clear bit): zero-width, no register write; B
-      steps the `LK` head (a negative look's merge adds nothing). BODILESS. */
+      steps the `LK` head — a succeeding negative look's merge IS the running
+      map (`LkResult` returns `Some(gm)`), so every tie transfers verbatim. */
   lemma LiftPreserveNegGatePassLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                                   crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                                   bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
@@ -3261,6 +3405,83 @@ module LindenElkLiftSim {
     ensures PTL.TrcPikeTreeLk(bst, bst1)
     ensures bst1.PTS?
     ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := bst;
+    var th := s.active[0];
+    var th' := th.(pc := th.pc + 1);
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t, gm, th, ncap, nlook, nquant);
+    var pc: nat := th.pc as nat;
+    var ea := th.exit_allowed;
+    assert TreeRepLkRE(rer, qm, code, inp, t, pc, ea);
+
+    // polarity + the bit ⟹ the functional verdict is Some (negative passes)
+    TreeRepLkREInRange(rer, qm, code, inp, t, pc, ea);
+    assert |code| == endl + 1 && NR.GetPcRE(code, endl) == Some(RB.Accept);
+    assert pc < endl;
+    GatePolarityRE(re, qm, code, 0, endl, pc);
+    assert l in qm.looks;
+    var lk := qm.looks[l].0;
+    var r1 := qm.looks[l].1;
+    assert AR.PositiveL(lk) == L.Positivity(lk);
+    assert !L.Positivity(lk);
+    var tlk := LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk));
+    assert LL.OracleOkAt(rer, qm, inp);
+    PIV.IdxInpOfCp(str, s.cp as nat);
+    assert TREP.CpOf(inp) == s.cp as nat;
+    assert qm.looks[l] == (lk, r1);
+    assert LOr.view_get_oracle(qm.ov, TREP.CpOf(inp), l)
+       <==> LT.TreeRes(tlk, LG.Empty, inp, L.LkDir(lk)).Some?;
+    assert LS.LkResult(lk, tlk, LG.Empty, inp).Some?;      // clear bit + negative
+
+    // canonical head: the LK branch of the gate rule
+    TreeRepLkREAtNegCheckOracle(rer, qm, code, inp, t, pc, ea, l);
+    assert t.LK? && t.lk == lk && t.tlk == tlk
+        && TreeRepLkRE(rer, qm, code, inp, t.t, pc + 1, ea);
+
+    // B step: the merge at the RUNNING map is Some(gm) — the identity
+    EL.LkResultGmIndep(lk, tlk, gm, inp);
+    assert LS.LkResult(lk, tlk, gm, inp).Some?;
+    assert LS.LkResult(lk, tlk, gm, inp).value == gm;      // negative: Some(gm)
+    assert PTL.TreeBfsStepLk(t, gm, inp) == PT.StepActive([(t.t, gm)]);
+    bst1 := PT.PTS(inp, [(t.t, gm)] + ta[1..], best, tb, SS.AddSeenTrees(seen, t));
+    assert PTL.PikeTreeStepLk(bst, bst1);
+    TrcLkRefl(bst1);
+    TrcLkCons(bst, bst1, bst1);
+
+    // the child pairing: the raw witness steps by the neg-gate walk core; the
+    // erasure tie transports the child
+    var traw: LT.Tree :| CE.ProgErase(traw) == CE.ProgErase(t)
+      && ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, traw, gm, th, ncap, nlook, nquant);
+    WalkPairLkAtNegCheckOracle(rer, qm, code, inp, traw, gm, pc, ea, l);
+    assert traw.LK? && WalkPairLk(rer, qm, code, inp, traw.t, gm, pc + 1, ea);
+    assert (th.pc + 1) as nat == pc + 1;
+    assert GmtTieOutside(re, th', gm, S);
+    assert GmtTieInside(crv, str, ov, th', gm, S, ncap, nlook, nquant);
+    assert ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, traw.t, gm, th', ncap, nlook, nquant);
+    assert CE.ProgErase(traw.t) == CE.ProgErase(t.t) by {
+      assert CE.ProgErase(traw) == LT.LK(traw.lk, CE.ProgErase(traw.tlk), CE.ProgErase(traw.t));
+      assert CE.ProgErase(t) == LT.LK(t.lk, CE.ProgErase(t.tlk), CE.ProgErase(t.t));
+    }
+    assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t.t, gm, th', ncap, nlook, nquant);
+
+    // list bookkeeping
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta[1..], s.active[1..],
+                        ncap, nlook, nquant);
+    assert vms2.active[0] == th' && vms2.active[1..] == s.active[1..];
+    assert ([(t.t, gm)] + ta[1..])[0] == (t.t, gm) && ([(t.t, gm)] + ta[1..])[1..] == ta[1..];
+    assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, [(t.t, gm)] + ta[1..], vms2.active,
+                        ncap, nlook, nquant);
+
+    // seen + isblocked bookkeeping
+    assert PIV.HdTreeOf(ta) == Some(t) && PIV.HeadPcOf(s.active) == pc;
+    AddSeenRepLk(rer, qm, code, inp, seen, s.processed, t, pc, ea,
+                 PIV.HdTreeOf([(t.t, gm)] + ta[1..]), PIV.HeadPcOf(vms2.active));
+    IsblockedGrowLk(rer, qm, code, inp, seen, s.isblocked, t);
+  }
 
   /** GATE KILL (either polarity, failing bit): the head canonical tree is
       `LKFail` — the polarity pin (`GatePolarityRE`) + the oracle column
