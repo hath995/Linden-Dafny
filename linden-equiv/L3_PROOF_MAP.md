@@ -221,6 +221,20 @@ MainTheorem integration). REMAINING L3a: the 4 top-level drivers (`LiftConsume` 
 `LiftFindMatch` / `LiftEndpoint` / `L3aCompositeClose`), then the MainTheorem else-branch
 rewrite; prune dead `TtLkSameTree`.)*
 
+*(2026-08-08 session 7 — **THE COMPOSITE SPINE IS COMPLETE** (commit `644582c`, full sweep
+**4599 verified, 0 errors**): `BlockedRepLkC` strengthened to a REACTIVATABLE payload
+(`WalkPairLk` at the advanced input via the new `WalkPairLkAtConsume(Core)`; ConsumeAdd/Snoc
+rewired); `BlockedToActiveLkC`; **`LiftFindMatchC` PROVEN first try** (whole-search composite
+mirroring `PSM.FindMatchSimRE`, both machines in lockstep, consume phase re-establishing both
+invariants); **`L3aCompositeClose` PROVEN first try** (`LiftInitC` → `LiftFindMatchC` →
+`PikeTreeLkComputesFirstLeaf(tcan)` via the new `PikeSubtreeLkEraseIff` + FirstLeaf glue).
+The pre-composite `LiftConsume`/`LiftFindMatch`/`LiftEndpoint` scaffolds DELETED. LiftSim.dfy
+now has NO bodiless lemmas except the dead restated `TtLkSameTree`. REMAINING FOR L3: only the
+MainTheorem else-branch integration per the (F) recipe — discharge `L3aCompositeClose`'s
+requires (`GateStaticsFromTables` + `LTB.FFullCompilationLookOk` + qm-domain + genuine-start
+vms fields), hook `L3aValueBridge` into `MainExtraction`, delete `LkBodyGroupsEmpty`/
+`FilterUnmoved`/L1 `LookRowsFromTables`, whole-package verify.)*
+
 ---
 
 ## 0. The goal
