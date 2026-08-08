@@ -4472,6 +4472,58 @@ module LindenElkNestInv {
       assert false;
   }
 
+  /** Every inside-look capture has a structural OWNER lid. */
+  lemma CapIdsInLooksHasOwner(r: R.regex, g: nat)
+    requires LTB.LookUnique(r)
+    requires g in PIV.CapIdsInLooks(r)
+    ensures exists lid: nat :: lid in LTB.LookIds(r) && g in PIV.CapIds(LookBodyOfRE(r, lid))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if g in PIV.CapIdsInLooks(r1) {
+        CapIdsInLooksHasOwner(r1, g);
+        var lid: nat :| lid in LTB.LookIds(r1) && g in PIV.CapIds(LookBodyOfRE(r1, lid));
+        assert LookBodyOfRE(r, lid) == LookBodyOfRE(r1, lid);
+      } else {
+        CapIdsInLooksHasOwner(r2, g);
+        var lid: nat :| lid in LTB.LookIds(r2) && g in PIV.CapIds(LookBodyOfRE(r2, lid));
+        assert lid !in LTB.LookIds(r1) by {
+          if lid in LTB.LookIds(r1) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); }
+        }
+        assert LookBodyOfRE(r, lid) == LookBodyOfRE(r2, lid);
+      }
+    case Re_con(r1, r2) =>
+      if g in PIV.CapIdsInLooks(r1) {
+        CapIdsInLooksHasOwner(r1, g);
+        var lid: nat :| lid in LTB.LookIds(r1) && g in PIV.CapIds(LookBodyOfRE(r1, lid));
+        assert LookBodyOfRE(r, lid) == LookBodyOfRE(r1, lid);
+      } else {
+        CapIdsInLooksHasOwner(r2, g);
+        var lid: nat :| lid in LTB.LookIds(r2) && g in PIV.CapIds(LookBodyOfRE(r2, lid));
+        assert lid !in LTB.LookIds(r1) by {
+          if lid in LTB.LookIds(r1) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); }
+        }
+        assert LookBodyOfRE(r, lid) == LookBodyOfRE(r2, lid);
+      }
+    case Re_quant(_, _, _, r1) =>
+      CapIdsInLooksHasOwner(r1, g);
+      var lid: nat :| lid in LTB.LookIds(r1) && g in PIV.CapIds(LookBodyOfRE(r1, lid));
+      assert LookBodyOfRE(r, lid) == LookBodyOfRE(r1, lid);
+    case Re_capture(_, r1) =>
+      CapIdsInLooksHasOwner(r1, g);
+      var lid: nat :| lid in LTB.LookIds(r1) && g in PIV.CapIds(LookBodyOfRE(r1, lid));
+      assert LookBodyOfRE(r, lid) == LookBodyOfRE(r1, lid);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 {
+        assert (lid0 as nat) in LTB.LookIds(r);
+        assert LookBodyOfRE(r, lid0 as nat) == r1;
+        assert g in PIV.CapIds(r1);
+      } else {
+        assert false;                     // LookUnique forces lid0 >= 0
+      }
+  }
+
   /** GATE-CROSS ESTABLISHMENT: at look `lid`'s `CheckOracle` pc, the thread's
       positional invariant (`NestTopRE`, `pc < endl`) plus a FRESH look stamp
       that beats every stored quant clock yield the full carrier fact for

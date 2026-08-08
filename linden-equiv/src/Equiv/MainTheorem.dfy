@@ -5146,13 +5146,18 @@ module LindenElkMain {
     ensures result.Some? ==>
       forall l: int :: 1 <= l <= R.max_lookaround(ast)
                        && AReg.get_cp(result.value.look_regs, l).Some? ==>
-        exists la: R.lookaround, body: R.regex ::
+        (l as nat) in LTB.LookIds(re)
+        && exists la: R.lookaround, body: R.regex ::
           LTB.LookEntryOk(crv, l, la, body)
           && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
           && PIV.CapUnique(body) && PIV.QuantUnique(body)
           && PIV.CaptureRegs(body) <= PIV.CaptureRegsSet(PIV.CapIdsInLooks(ast))
           && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
           && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
+    // (E4): every RECORDED look cp names one of re's lids (write confinement)
+    ensures result.Some? ==>
+      forall l: int :: AReg.get_cp(result.value.look_regs, l).Some? ==>
+        l >= 0 && (l as nat) in LTB.LookIds(re)
     // distinct matched lids own DISJOINT capture registers
     ensures result.Some? ==>
       forall l1: int, l2: int ::
@@ -5192,6 +5197,7 @@ module LindenElkMain {
     if result.Some? {
       forall l: int | 1 <= l <= R.max_lookaround(ast)
                       && AReg.get_cp(result.value.look_regs, l).Some?
+        ensures (l as nat) in LTB.LookIds(re)
         ensures exists la: R.lookaround, body: R.regex ::
           LTB.LookEntryOk(crv, l, la, body)
           && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
@@ -5202,11 +5208,18 @@ module LindenElkMain {
       {
         assert l in S;
         assert (l as nat) in LTB.LookIds(ast);
+        assert (l as nat) in LTB.LookIds(re);
         assert l in OE.LmOf(ast);
         var la, body := LmOfInvL3a(ast, crv, l);
         // CaptureRegs(body) <= CaptureRegsSet(CapIdsInLooks(ast))
         PIV.CaptureRegsIsSet(body);          // CaptureRegs(body) == CaptureRegsSet(CapIds(body))
         PIV.CaptureRegsSetMono(PIV.CapIds(body), PIV.CapIdsInLooks(ast));
+      }
+      forall l: int | AReg.get_cp(result.value.look_regs, l).Some?
+        ensures l >= 0 && (l as nat) in LTB.LookIds(re)
+      {
+        assert l in S;
+        assert (l as nat) in LTB.LookIds(re);
       }
       forall l1: int, l2: int |
         1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 != l2
