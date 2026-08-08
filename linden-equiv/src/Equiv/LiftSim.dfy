@@ -3074,7 +3074,7 @@ module LindenElkLiftSim {
     requires TreeRepLkRE(rer, qm, code, nextinp, tp.0, (p.0.pc + 1) as nat, true)
     requires exists traw: LT.Tree ::
       CE.ProgErase(traw) == CE.ProgErase(tp.0)
-      && TtLk(rer, qm, code, nextinp, traw, (p.0.pc + 1) as nat, true)
+      && WalkPairLk(rer, qm, code, nextinp, traw, tp.1, (p.0.pc + 1) as nat, true)
     requires GmtTieOutside(re, p.0, tp.1, S)
     requires GmtTieInside(crv, str, ov, p.0, tp.1, S, ncap, nlook, nquant)
     ensures BlockedRepLkC(rer, qm, re, code, inp, nextinp, crv, str, ov, S, tl + [tp], bl + [p],
@@ -3092,6 +3092,132 @@ module LindenElkLiftSim {
       BlockedRepLkCSnoc(rer, qm, re, code, inp, nextinp, crv, str, ov, S, tl[1..], bl[1..],
                         tp, p, ncap, nlook, nquant);
     }
+  }
+
+  /** Fueled `WalkPairLk` core at a `Consume(ce)` pc — the READ, with the full
+      carrier: the child walks at the ADVANCED input with the SAME map and
+      re-armed flag (`GateAheadClear`/`WalkDefsOk` are input-independent tail
+      facts). This is what lets `BlockedRepLkC` store a REACTIVATABLE payload. */
+  lemma WalkPairLkAtConsumeCore(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                                tb: LT.Tree, gm: LG.GroupMap, pc: nat, b: BS.LoopBool,
+                                acts: LS.Actions, ce: RC.char_expectation)
+    requires AR.ActionsRepL(rer, qm, acts, code, pc)
+    requires EL.PikeLkActions(acts)
+    requires EL.BoolTreeLk(rer, acts, inp, b, tb)
+    requires NR.GetPcRE(code, pc) == Some(RB.Consume(ce))
+    requires GateAheadClear(acts, gm)
+    requires WalkDefsOk(acts)
+    ensures tb.Read? || tb == LT.Mismatch
+    ensures tb.Read? ==> exists nextinp ::
+      AR.ReadCharE(ce, inp) == Some((tb.c, nextinp))
+      && WalkPairLk(rer, qm, code, nextinp, tb.t, gm, pc + 1, true)
+    ensures tb == LT.Mismatch ==> AR.ReadCharE(ce, inp) == None
+    decreases ATR.MsizeA(acts)
+  {
+    var g := ATR.EaOf(b);
+    var pcmid: nat :| AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && AR.ActionsRepL(rer, qm, acts[1..], code, pcmid);
+    EL.PikeLkActionsTail(acts);
+    assert acts == [acts[0]] + acts[1..];
+    EL.PikeLkActionsConsIff(acts[0], acts[1..]);
+    var cont := acts[1..];
+    match acts[0]
+    case Acheck(_) =>   // pins EndLoop / backward Fork — not Consume
+    case Aclose(_) =>   // pins SetRegisterToCP — not Consume
+    case Areg(r0) =>
+      assert EL.PikeLkRegex(r0);
+      match r0
+      case Epsilon =>
+        assert pcmid == pc;
+        assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+        assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
+        GateAheadClearTail(acts, gm);
+        WalkDefsOkTail(acts);
+        WalkPairLkAtConsumeCore(rer, qm, code, inp, tb, gm, pc, b, cont, ce);
+      case Sequence(r1, r2) =>
+        assert acts[0] == LS.Areg(L.Sequence(r1, r2));
+        assert AR.NfaRepL(rer, qm, L.Sequence(r1, r2), code, pc, pcmid);
+        var e1: nat :| AR.NfaRepL(rer, qm, r1, code, pc, e1) && AR.NfaRepL(rer, qm, r2, code, e1, pcmid);
+        var na := [LS.Areg(r1), LS.Areg(r2)] + cont;
+        assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+        AR.ActionsRepLCons(rer, qm, LS.Areg(r2), cont, code, e1, pcmid);
+        AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Areg(r2)] + cont, code, pc, e1);
+        assert AR.ActionsRepL(rer, qm, na, code, pc);
+        assert EL.PikeLkActions(na) by {
+          EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
+          EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
+        }
+        assert EL.BoolTreeLk(rer, na, inp, b, tb);
+        assert LS.ActionsRegexSize(acts) == RegSz(r1) + RegSz(r2) + 1 + LS.ActionsRegexSize(cont);
+        assert LS.ActionsRegexSize(na) == RegSz(r1) + RegSz(r2) + LS.ActionsRegexSize(cont);
+        assert ATR.MsizeA(na) < ATR.MsizeA(acts);
+        GateAheadClearSeqExpand(acts, r1, r2, gm);
+        WalkDefsOkSeqExpand(acts, r1, r2);
+        WalkPairLkAtConsumeCore(rer, qm, code, inp, tb, gm, pc, b, na, ce);
+      case Quantified(greedy, min, delta, r1) =>
+        if min == 0 && delta == LN.NN(0) {
+          assert acts[0] == LS.Areg(L.Quantified(greedy, 0, LN.NN(0), r1));
+          assert AR.NfaRepL(rer, qm, L.Quantified(greedy, 0, LN.NN(0), r1), code, pc, pcmid);
+          var em: nat :| AR.NfaRepMinL(rer, qm, 0, r1, code, pc, em)
+                       && AR.NfaRepOptL(rer, qm, 0, greedy, r1, code, em, pcmid);
+          NfaRepMinLHeadPin(rer, qm, 0, r1, code, pc, em);
+          NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);
+          assert pcmid == pc;
+          assert AR.ActionsRepL(rer, qm, cont, code, pc);
+          assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+          assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
+          GateAheadClearTail(acts, gm);
+          WalkDefsOkTail(acts);
+          WalkPairLkAtConsumeCore(rer, qm, code, inp, tb, gm, pc, b, cont, ce);
+        } else {
+          assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
+          assert AR.NfaRepL(rer, qm, L.Quantified(greedy, min, delta, r1), code, pc, pcmid);
+          QuantHeadPinsNonConsume(rer, qm, greedy, min, delta, r1, code, pc, pcmid, ce);
+        }
+      case Character(cd) =>
+        assert acts[0] == LS.Areg(L.Character(cd));
+        var ce2 :| NR.GetPcRE(code, pc) == Some(RB.Consume(ce2)) && AR.ExpectationMatches(rer, ce2, cd);
+        assert ce2 == ce && pcmid == pc + 1;
+        AR.ReadAgree(rer, ce, cd, inp);   // ReadCharE(ce, inp) == ReadChar(rer, cd, inp, Forward)
+        match LC.ReadChar(rer, cd, inp, WP.Forward) {
+          case None =>
+            assert tb == LT.Mismatch;
+          case Some(pair) =>
+            assert tb.Read? && tb.c == pair.0 && EL.BoolTreeLk(rer, cont, pair.1, BS.CanExit, tb.t);
+            assert AR.ActionsRepL(rer, qm, cont, code, pc + 1);
+            GateAheadClearTail(acts, gm);
+            WalkDefsOkTail(acts);
+            assert WalkPairLk(rer, qm, code, pair.1, tb.t, gm, pc + 1, true) by {
+              assert ATR.EaOf(BS.CanExit) == true;
+              assert EL.PikeLkActions(cont);
+            }
+            assert AR.ReadCharE(ce, inp) == Some((tb.c, pair.1));
+        }
+      case Disjunction(_, _) =>   // pins Fork — not Consume
+      case Group(_, _) =>   // pins SetRegisterToCP — not Consume
+      case LookaroundR(_, _) =>   // pins CheckOracle/NegCheckOracle — not Consume
+      case AnchorR(_) =>   // pins AnchorAssertion — not Consume
+      case Backreference(_) =>   // NfaRepL false
+  }
+
+  /** WalkPairLk→WalkPairLk wrapper at a `Consume(ce)`. */
+  lemma WalkPairLkAtConsume(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                            tb: LT.Tree, gm: LG.GroupMap, pc: nat, ea: bool, ce: RC.char_expectation)
+    requires WalkPairLk(rer, qm, code, inp, tb, gm, pc, ea)
+    requires NR.GetPcRE(code, pc) == Some(RB.Consume(ce))
+    ensures tb.Read? || tb == LT.Mismatch
+    ensures tb.Read? ==> exists nextinp ::
+      AR.ReadCharE(ce, inp) == Some((tb.c, nextinp))
+      && WalkPairLk(rer, qm, code, nextinp, tb.t, gm, pc + 1, true)
+    ensures tb == LT.Mismatch ==> AR.ReadCharE(ce, inp) == None
+  {
+    var acts: LS.Actions, b: BS.LoopBool :|
+      AR.ActionsRepL(rer, qm, acts, code, pc)
+      && EL.PikeLkActions(acts)
+      && ATR.EaOf(b) == ea
+      && EL.BoolTreeLk(rer, acts, inp, b, tb)
+      && GateAheadClear(acts, gm)
+      && WalkDefsOk(acts);
+    WalkPairLkAtConsumeCore(rer, qm, code, inp, tb, gm, pc, b, acts, ce);
   }
 
   /** CONSUME, pc not yet blocked: the VM blocks the head unconditionally;
@@ -3172,8 +3298,7 @@ module LindenElkLiftSim {
       var traw: LT.Tree :| CE.ProgErase(traw) == CE.ProgErase(t)
         && ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, traw, gm, th, ncap, nlook, nquant);
       assert WalkPairLk(rer, qm, code, inp, traw, gm, pc, ea);
-      WalkPairLkImpliesTtLk(rer, qm, code, inp, traw, gm, pc, ea);
-      TtLkAtConsume(rer, qm, code, inp, traw, pc, ea, ce);
+      WalkPairLkAtConsume(rer, qm, code, inp, traw, gm, pc, ea, ce);
       assert traw.Read? by {
         if !traw.Read? {
           assert traw == LT.Mismatch;
@@ -3183,7 +3308,7 @@ module LindenElkLiftSim {
         }
       }
       var nextinpw: LC.Input :| AR.ReadCharE(ce, inp) == Some((traw.c, nextinpw))
-        && TtLk(rer, qm, code, nextinpw, traw.t, pc + 1, true);
+        && WalkPairLk(rer, qm, code, nextinpw, traw.t, gm, pc + 1, true);
       assert traw.c == c && nextinpw == nextinp0;    // ReadCharE is a function
       assert CE.ProgErase(traw.t) == CE.ProgErase(t.t) by {
         assert CE.ProgErase(traw) == LT.Read(traw.c, CE.ProgErase(traw.t));
@@ -5260,71 +5385,9 @@ module LindenElkLiftSim {
     }
   }
 
-  /** (5) The consume/next-char lift: `FConsume` + the phase transition map to
-      B's `pts_nextchar` (blocked lists become active at the advanced input;
-      the matching filter's verdicts realign the lists — landmine 3).
-      FILL: mirror `FConsumeLookCpOk`'s recursion for the filter alignment,
-      then one `pts_nextchar` step. */
-  lemma LiftConsume(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
-                    crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
-                    s: AI.VmState, bst: PT.PikeTreeState, ncap: int, nlook: int, nquant: int)
-    returns (bst1: PT.PikeTreeState)
-    requires !rer.multiline && qm.ov == ov
-    requires LiftInv(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
-    ensures PTL.TrcPikeTreeLk(bst, bst1)
-    // SEAM: state the post-FConsume + cp-advance successor exactly as
-    // FFindMatch's else-branch constructs it (s2/s3/s4 in the frame clones).
-    decreases |s.blocked|
-
-  /** (6) The whole-search lift: `FFindMatch` from a paired state yields a
-      complete B trace to `PTS_final` paired with the result.
-      FILL: the `FFindMatchLookCpOk` skeleton — LiftAdvanceEpsilon, then
-      either finish (empty blocked → `pts_final`) or LiftConsume and recurse
-      on `|str| - s.cp`. */
-  lemma LiftFindMatch(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
-                      crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
-                      s: AI.VmState, bst: PT.PikeTreeState, cdn: LCdn.cdns,
-                      ncap: int, nlook: int, nquant: int)
-    returns (bst1: PT.PikeTreeState)
-    requires !rer.multiline && qm.ov == ov
-    requires |s.processed.true_set| == RB.size(code) && |s.processed.false_set| == RB.size(code)
-    requires s.context.nextchar == AI.get_char(str, s.cp)
-    requires 0 <= s.cp <= |str|
-    requires LiftInv(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
-    ensures bst1.PTS_final?
-    ensures PTL.TrcPikeTreeLk(bst, bst1)
-    ensures BestTieLk(re, crv, str, ov, S, bst1.best,
-                      AI.FFindMatch(code, str, s, ov, LAnc.Forward, cdn).0, ncap, nlook, nquant)
-    decreases |str| - s.cp
-
-  /** (7) THE ENDPOINT, shaped for the else branch: the winner's leaf IS
-      `FirstLeaf(t, InitInput(str))`, its values tied to the winning thread on
-      BOTH sides of `S`. Composes `LiftInit` + `LiftFindMatch` +
-      `PTL.PikeTreeLkComputesFirstLeaf` (which needs `PTL.PikeSubtreeLk(t)` —
-      a small structural lemma over `ComputeTr` output, also to fill).
-      The else branch then reads: outside-S values == `GmOfLive(winner)`
-      (replacing the old S=={} chain), inside-S values == the fresh replay at
-      the winner's `a_cp[l]` == (via the (E) bridge + `FLookLoopValueOk`) the
-      reconstructed registers `FBuildCapture` returns. NO position theorem,
-      NO (S-ii) extraction, NO leaf-occurrence reasoning. */
-  lemma LiftEndpoint(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
-                     crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
-                     t: LT.Tree, vms: AI.VmState, cdn: LCdn.cdns, result: Option<AI.Thread>,
-                     ncap: int, nlook: int, nquant: int)
-    requires !rer.multiline && qm.ov == ov
-    requires T.TransWf(re)
-    requires PTL.PikeSubtreeLk(t)
-    requires EL.BoolTreeLk(rer, [LS.Areg(T.Translate(re))], LC.InitInput(str), BS.CannotExit, t)
-    requires vms.cp == 0 && vms.context.nextchar == AI.get_char(str, 0)
-    requires |vms.processed.true_set| == RB.size(code) && |vms.processed.false_set| == RB.size(code)
-    requires vms.active == [AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant))]
-    requires vms.blocked == [] && vms.bestmatch.None?
-    requires result == AI.FFindMatch(code, str, vms, ov, LAnc.Forward, cdn).0
-    ensures (LT.FirstLeaf(t, LC.InitInput(str)).None? <==> result.None?)
-    ensures result.Some? ==>
-      var leaf := LT.FirstLeaf(t, LC.InitInput(str)).value;
-      GmtTieOutside(re, result.value, leaf.1, S)
-      && GmtTieInside(crv, str, ov, result.value, leaf.1, S, ncap, nlook, nquant)
+  // (5)/(6)/(7): the pre-composite LiftConsume / LiftFindMatch / LiftEndpoint
+  // scaffolds are SUPERSEDED by the composite spine (LiftInitC -> LiftFindMatchC
+  // -> L3aCompositeClose, all PROVEN) and were deleted 2026-08-08.
 
   // ==========================================================================
   // THE REST OF THE LADDER — the sub-DAG below LiftAdvanceEpsilon, plus the
@@ -9784,7 +9847,7 @@ module LindenElkLiftSim {
         && TreeRepLkRE(rer, qm, code, nextinp, tl[0].0, (bl[0].0.pc + 1) as nat, true)
         && (exists traw: LT.Tree ::
               CE.ProgErase(traw) == CE.ProgErase(tl[0].0)
-              && TtLk(rer, qm, code, nextinp, traw, (bl[0].0.pc + 1) as nat, true))
+              && WalkPairLk(rer, qm, code, nextinp, traw, tl[0].1, (bl[0].0.pc + 1) as nat, true))
         && GmtTieOutside(re, bl[0].0, tl[0].1, S)
         && GmtTieInside(crv, str, ov, bl[0].0, tl[0].1, S, ncap, nlook, nquant)
         && BlockedRepLkC(rer, qm, re, code, inp, nextinp, crv, str, ov, S, tl[1..], bl[1..],
@@ -9953,6 +10016,278 @@ module LindenElkLiftSim {
       per-`g`, `InsidePresentResBridge` → `L3aValueBridge`. BODILESS — this is
       where the (E) path-presence, the reverse tie, and the position tie
       (`a_cp[l]` == the LK node's first-leaf position) are discharged. */
+  /** `PikeSubtreeLk` transfers across erasure-equality: erasure drops only
+      `Progress` wrappers and maps every other constructor (incl. the
+      unconstrained LK bodies) in place, so `ReadBackRef`-freeness is
+      erasure-invariant. Lets the FirstLeaf theorem run on `tcan` from the raw
+      entry tree's shape fact. */
+  lemma PikeSubtreeLkEraseIff(x: LT.Tree)
+    ensures PTL.PikeSubtreeLk(x) <==> PTL.PikeSubtreeLk(CE.ProgErase(x))
+    decreases x
+  {
+    match x
+    case Choice(t1, t2) => PikeSubtreeLkEraseIff(t1); PikeSubtreeLkEraseIff(t2);
+    case Read(_, t1) => PikeSubtreeLkEraseIff(t1);
+    case ReadBackRef(_, t1) =>
+    case Progress(t1) => PikeSubtreeLkEraseIff(t1);
+    case AnchorPass(_, t1) => PikeSubtreeLkEraseIff(t1);
+    case GroupActionT(_, t1) => PikeSubtreeLkEraseIff(t1);
+    case LK(_, _, t1) => PikeSubtreeLkEraseIff(t1);
+    case _ =>
+  }
+
+  /** BLOCKED → ACTIVE at the consume: each stored pair reactivates into the
+      resumed thread (`pc+1`, flag re-armed, registers unchanged) — the
+      canonical tie and the strengthened `WalkPairLk` witness were stored at
+      exactly that shape, and the value ties read only the registers. */
+  lemma BlockedToActiveLkC(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
+                           inp: LC.Input, nextinp: LC.Input, crv: CP.FCompiled, str: string,
+                           ov: LOr.OracleView, S: set<LG.GroupId>,
+                           tl: seq<(LT.Tree, LG.GroupMap)>, bl: seq<(AI.Thread, RC.char_expectation)>,
+                           ncap: int, nlook: int, nquant: int)
+    requires BlockedRepLkC(rer, qm, re, code, inp, nextinp, crv, str, ov, S, tl, bl, ncap, nlook, nquant)
+    ensures ActiveRepLkC(rer, qm, re, code, nextinp, crv, str, ov, S, tl, PSM.ResumeAll(bl),
+                         ncap, nlook, nquant)
+    decreases tl
+  {
+    if |tl| == 0 {
+      assert |bl| == 0;
+    } else {
+      assert |bl| > 0;
+      var th := bl[0].0;
+      var rth := th.(exit_allowed := true, pc := th.pc + 1);
+      assert PSM.ResumeAll(bl) == [rth] + PSM.ResumeAll(bl[1..]);
+      assert rth.pc >= 0 && (rth.pc as nat) == (th.pc + 1) as nat;
+      assert TreeRepLkRE(rer, qm, code, nextinp, tl[0].0, rth.pc as nat, rth.exit_allowed);
+      var traw: LT.Tree :| CE.ProgErase(traw) == CE.ProgErase(tl[0].0)
+        && WalkPairLk(rer, qm, code, nextinp, traw, tl[0].1, (th.pc + 1) as nat, true);
+      assert rth.capture_regs == th.capture_regs && rth.look_regs == th.look_regs
+          && rth.quant_regs == th.quant_regs;
+      assert GmtTieOutside(re, rth, tl[0].1, S)
+          && GmtTieInside(crv, str, ov, rth, tl[0].1, S, ncap, nlook, nquant);
+      assert ThreadRepLk(rer, qm, re, code, nextinp, crv, str, ov, S, traw, tl[0].1, rth,
+                         ncap, nlook, nquant);
+      assert ThreadRepLkC(rer, qm, re, code, nextinp, crv, str, ov, S, tl[0].0, tl[0].1, rth,
+                          ncap, nlook, nquant);
+      BlockedToActiveLkC(rer, qm, re, code, inp, nextinp, crv, str, ov, S, tl[1..], bl[1..],
+                         ncap, nlook, nquant);
+      assert ([rth] + PSM.ResumeAll(bl[1..]))[0] == rth
+          && ([rth] + PSM.ResumeAll(bl[1..]))[1..] == PSM.ResumeAll(bl[1..]);
+    }
+  }
+
+  /** THE WHOLE-SEARCH COMPOSITE (mirror of `PSM.FindMatchSimRE`, both
+      machines in lockstep): `FFindMatch` from a paired state drives machine B
+      to `PTS_final(bestT)` with `bestT` tied to the VM's result. The consume
+      phase reactivates the blocked pairing (`BlockedToActiveLkC`) and
+      re-establishes both invariants at the advanced position. */
+  lemma LiftFindMatchC(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
+                       endl: nat, ngroups: nat, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                       S: set<LG.GroupId>, ptsA: PT.PikeTreeState, bst: PT.PikeTreeState,
+                       vms: AI.VmState, cdn: LCdn.cdns, ncap: int, nlook: int, nquant: int)
+    returns (bestT: Option<LT.Leaf>)
+    requires PSM.StaticOkRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
+    requires S == PIV.CapIdsInLooks(re)
+    requires GateStaticsOk(qm, re, crv, ncap, nlook, nquant)
+    requires ptsA.PTS? && bst.PTS?
+    requires |vms.processed.true_set| == RB.size(code) && |vms.processed.false_set| == RB.size(code)
+    requires vms.context.nextchar == AI.get_char(str, vms.cp)
+    requires PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, ptsA, vms, ncap, nlook, nquant)
+    requires LiftInv(rer, qm, re, code, crv, str, ov, S, bst, vms, ncap, nlook, nquant)
+    ensures PTL.TrcPikeTreeLk(bst, PT.PTS_final(bestT))
+    ensures BestTieLk(re, crv, str, ov, S, bestT,
+                      AI.FFindMatch(code, str, vms, ov, LAnc.Forward, cdn).0, ncap, nlook, nquant)
+    decreases |str| - vms.cp
+  {
+    var dir := LAnc.Forward;
+    var s0 := vms.(cdn := LCdn.build_cdn_v(cdn, vms.cp, ov, vms.context, dir));
+    // Neither invariant reads cdn.
+    assert PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, ptsA, s0, ncap, nlook, nquant);
+    assert LiftInv(rer, qm, re, code, crv, str, ov, S, bst, s0, ncap, nlook, nquant);
+    var ptsA1, bst1 := LiftAdvanceEpsilon(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
+                                          ptsA, s0, bst, dir, ncap, nlook, nquant);
+    var (s1, ov1) := AI.FAdvanceEpsilon(code, s0, ov, dir);
+    PSM.StaticOkNoWrite(qm, re, code, endl);
+    CM.FAdvanceEpsilonOvStable(code, s0, ov, dir);
+    assert ov1 == ov;
+    PSM.FAdvanceEpsilonActiveEmpty(code, s0, ov, dir);
+    assert s1.active == [] && s1.cp == s0.cp == vms.cp && s1.context == vms.context;
+    assert PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, ptsA1, s1, ncap, nlook, nquant);
+    assert LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, s1, ncap, nlook, nquant);
+
+    assert bst1.PTS?;
+    var PTS(inp1, ta1, best1, tb1, seen1) := bst1;
+    assert ActiveRepLkC(rer, qm, re, code, inp1, crv, str, ov, S, ta1, s1.active, ncap, nlook, nquant);
+    assert ta1 == [];
+    assert inp1 == PIV.InpOfCp(str, s1.cp) && 0 <= s1.cp <= |str|;
+    assert BestTieLk(re, crv, str, ov, S, best1, s1.bestmatch, ncap, nlook, nquant);
+
+    if |s1.blocked| == 0 {
+      assert LC.Reverse(s1.blocked) == [];
+      assert tb1 == [] by {
+        if LC.AdvanceInput(inp1, WP.Forward).Some? {
+          var nx :| LC.AdvanceInput(inp1, WP.Forward) == Some(nx);
+          assert BlockedRepLkC(rer, qm, re, code, inp1, nx, crv, str, ov, S, tb1,
+                               PIV.MatchingBlocked(LC.Reverse(s1.blocked), inp1), ncap, nlook, nquant);
+          assert PIV.MatchingBlocked([], inp1) == [];
+        }
+      }
+      bestT := best1;
+      assert PTL.PikeTreeStepLk(bst1, PT.PTS_final(best1));
+      TrcLkRefl(PT.PTS_final(best1));
+      TrcLkCons(bst1, PT.PTS_final(best1), PT.PTS_final(best1));
+      TrcLkTrans(bst, bst1, PT.PTS_final(best1));
+      assert AI.FFindMatch(code, str, vms, ov, dir, cdn).0 == s1.bestmatch;
+    } else if s1.context.nextchar.None? {
+      assert AI.get_char(str, vms.cp).None?;
+      assert vms.cp >= |str| && s1.cp == |str|;
+      assert inp1.next == str[s1.cp..] == [];
+      assert LC.AdvanceInput(inp1, WP.Forward).None?;
+      assert tb1 == [];
+      bestT := best1;
+      assert PTL.PikeTreeStepLk(bst1, PT.PTS_final(best1));
+      TrcLkRefl(PT.PTS_final(best1));
+      TrcLkCons(bst1, PT.PTS_final(best1), PT.PTS_final(best1));
+      TrcLkTrans(bst, bst1, PT.PTS_final(best1));
+      assert AI.FFindMatch(code, str, vms, ov, dir, cdn).0 == s1.bestmatch;
+    } else {
+      // A real character remains: consume it (the FFindMatch else-branch).
+      assert AI.get_char(str, vms.cp).Some?;
+      assert vms.cp < |str|;
+      assert inp1.next == str[s1.cp..] && |inp1.next| > 0;
+      assert s1.context.nextchar == Some(inp1.next[0]);
+      PSM.FConsumeResumes(s1, inp1);
+      var s2 := AI.FConsume(s1);
+      var filter := PIV.MatchingBlocked(LC.Reverse(s1.blocked), inp1);
+      assert PSM.ResumeAll(filter) + s1.active == PSM.ResumeAll(filter);
+      assert s2 == s1.(active := PSM.ResumeAll(filter), blocked := []);
+      var s3 := s2.(processed := AI.init_bpcset(RB.size(code)),
+                    isblocked := AI.init_pcset(RB.size(code)),
+                    cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
+      var newchar := AI.get_char(str, s3.cp - AI.cp_offset(dir));
+      var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
+      assert s4.cp == vms.cp + 1;
+      assert s4.context.nextchar == AI.get_char(str, s4.cp);
+      assert AI.FFindMatch(code, str, vms, ov, dir, cdn)
+          == AI.FFindMatch(code, str, s4, ov1, dir, cdn);
+
+      PSM.AdvanceInpOfCpBridge(str, vms.cp);
+      var nextinp := PT.NextInp(inp1);
+      assert nextinp == PIV.InpOfCp(str, vms.cp + 1);
+      assert LC.AdvanceInput(inp1, WP.Forward) == Some(nextinp);
+      assert BlockedRepLkC(rer, qm, re, code, inp1, nextinp, crv, str, ov, S, tb1, filter,
+                           ncap, nlook, nquant);
+
+      if |tb1| == 0 {
+        assert |filter| == 0;
+        assert s4.active == [] && s4.blocked == [];
+        PSM.FFindMatchInert(code, str, s4, ov1, dir, cdn);
+        assert AI.FFindMatch(code, str, s4, ov1, dir, cdn).0 == s4.bestmatch == s1.bestmatch;
+        bestT := best1;
+        assert PTL.PikeTreeStepLk(bst1, PT.PTS_final(best1));
+        TrcLkRefl(PT.PTS_final(best1));
+        TrcLkCons(bst1, PT.PTS_final(best1), PT.PTS_final(best1));
+        TrcLkTrans(bst, bst1, PT.PTS_final(best1));
+      } else {
+        // B: pts_nextchar — the blocked pairs become the next position's actives.
+        var bst2 := PT.PTS(nextinp, tb1, best1, [], SS.InitialSeenTrees);
+        assert PTL.PikeTreeStepLk(bst1, bst2);
+
+        // ---- machine A: re-establish PikeInvFullRE at (ptsA2, s4) — the
+        // FindMatchSimRE consume-phase block, verbatim.
+        assert ptsA1.PTS?;
+        var PTS(inpA1, taA1, bestA1, tbA1, seenA1) := ptsA1;
+        assert PIV.ActiveRepRE(rer, qm, re, code, inpA1, taA1, s1.active);
+        assert taA1 == [] && inpA1 == PIV.InpOfCp(str, s1.cp);
+        assert PIV.BlockedRepRE(rer, qm, re, code, inpA1, nextinp, tbA1, filter);
+        var ptsA2 := PT.PTS(nextinp, tbA1, bestA1, [], SS.InitialSeenTrees);
+        PSM.BlockedToActiveRE(rer, qm, re, code, inpA1, nextinp, tbA1, filter);
+        assert PIV.ActiveRepRE(rer, qm, re, code, nextinp, tbA1, s4.active);
+        CM.FConsumeClocksLE(s1);
+        CM.FConsumeRegsWf(s1, ncap, nlook, nquant);
+        CM.FConsumeCapsLE(s1);
+        assert CM.VmClocksLE(s4) by {
+          assert s4.active == s2.active && s4.blocked == s2.blocked
+              && s4.bestmatch == s2.bestmatch && s4.clock == s2.clock;
+        }
+        assert CM.VmRegsWf(s4, ncap, nlook, nquant) by {
+          assert s4.active == s2.active && s4.blocked == s2.blocked && s4.bestmatch == s2.bestmatch;
+        }
+        assert CM.VmCapsLE(s4) by { CM.VmCapsLEAdvance(s2, s4); }
+        assert forall t2 | t2 in s4.active :: PSM.ThreadNestRE(re, code, endl, t2.pc, t2) by {
+          forall p | p in filter ensures PSM.ThreadNestRE(re, code, endl, p.0.pc + 1, p.0) {
+            PSM.MatchingBlockedSubset(LC.Reverse(s1.blocked), inp1, p);
+            PSM.ReverseMembership(s1.blocked, p);
+            assert p in s1.blocked;
+          }
+          PSM.ResumeAllNest(re, code, endl, filter);
+        }
+        PIV.InitialInclusionRE(rer, qm, code, nextinp, PIV.HdTreeOf(tbA1),
+                               PIV.HeadPcOf(s4.active), RB.size(code));
+        assert PSM.IsblockedInclusionRE(rer, qm, code, nextinp, SS.InitialSeenTrees, s4.isblocked) by {
+          forall pc0: nat | AI.pc_mem(s4.isblocked, pc0)
+            ensures exists t0: LT.Tree, b0: bool ::
+              SS.Inseen(SS.InitialSeenTrees, t0) && TT.TreeThreadRE(rer, qm, code, nextinp, t0, pc0, b0)
+          {
+            assert s4.isblocked[pc0] == false;
+            assert false;
+          }
+        }
+        assert forall t2 | t2 in s4.active :: PSM.EaColdOkRE(code, t2) by {
+          PSM.ResumeAllEa(filter);
+          assert s4.active == PSM.ResumeAll(filter);
+        }
+        assert forall t2 | t2 in s4.active :: PIV.LooksCapUnset(re, t2.capture_regs.a_clk) by {
+          forall p | p in filter ensures PIV.LooksCapUnset(re, p.0.capture_regs.a_clk) {
+            PSM.MatchingBlockedSubset(LC.Reverse(s1.blocked), inp1, p);
+            PSM.ReverseMembership(s1.blocked, p);
+            assert p in s1.blocked;
+          }
+          PSM.ResumeAllCapUnset(re, filter);
+          assert s4.active == PSM.ResumeAll(filter);
+        }
+        assert PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, ptsA2, s4, ncap, nlook, nquant);
+
+        // ---- machine B: LiftInv at (bst2, s4).
+        BlockedToActiveLkC(rer, qm, re, code, inp1, nextinp, crv, str, ov, S, tb1, filter,
+                           ncap, nlook, nquant);
+        assert ActiveRepLkC(rer, qm, re, code, nextinp, crv, str, ov, S, tb1, s4.active,
+                            ncap, nlook, nquant);
+        assert PIV.ContextOkRE(str, s4.cp, s4.context);
+        forall nx2 | LC.AdvanceInput(nextinp, WP.Forward) == Some(nx2)
+          ensures BlockedRepLkC(rer, qm, re, code, nextinp, nx2, crv, str, ov, S, [],
+                                PIV.MatchingBlocked(LC.Reverse(s4.blocked), nextinp), ncap, nlook, nquant)
+        {
+          assert LC.Reverse(s4.blocked) == [];
+          assert PIV.MatchingBlocked([], nextinp) == [];
+        }
+        InitialSeenRepLk(rer, qm, code, nextinp, PIV.HdTreeOf(tb1), PIV.HeadPcOf(s4.active),
+                         RB.size(code));
+        assert IsblockedRepLk(rer, qm, code, nextinp, SS.InitialSeenTrees, s4.isblocked) by {
+          forall pc0: nat | AI.pc_mem(s4.isblocked, pc0)
+            ensures exists t0: LT.Tree, b0: bool ::
+              SS.Inseen(SS.InitialSeenTrees, t0) && TreeRepLkRE(rer, qm, code, nextinp, t0, pc0, b0)
+          {
+            assert s4.isblocked[pc0] == false;
+            assert false;
+          }
+        }
+        assert SSx.IsStrictSuffix(nextinp, inp1, WP.Forward);
+        LL.OracleOkSuffixStep(rer, qm, inp1, nextinp);
+        assert LiftInv(rer, qm, re, code, crv, str, ov, S, bst2, s4, ncap, nlook, nquant);
+
+        // recurse and chain.
+        bestT := LiftFindMatchC(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
+                                ptsA2, bst2, s4, cdn, ncap, nlook, nquant);
+        TrcLkCons(bst1, bst2, PT.PTS_final(bestT));
+        TrcLkTrans(bst, bst1, PT.PTS_final(bestT));
+        assert AI.FFindMatch(code, str, s4, ov1, dir, cdn).0
+            == AI.FFindMatch(code, str, vms, ov, dir, cdn).0;
+      }
+    }
+  }
+
   lemma L3aCompositeClose(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
                           endl: nat, ngroups: nat, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
                           S: set<LG.GroupId>, tstar: LT.Tree, t: LT.Tree, inp: LC.Input,
@@ -9961,6 +10296,14 @@ module LindenElkLiftSim {
     requires NR.NfaRepRE(re, code, 0, endl)
     requires PSM.StaticOkRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires qm.ov == ov && !rer.multiline
+    requires !rer.ignoreCase
+    requires S == PIV.CapIdsInLooks(re)
+    requires GateStaticsOk(qm, re, crv, ncap, nlook, nquant)
+    requires code == CP.compile_to_bytecode(re)
+    requires vms.blocked == []
+    requires vms.processed == AI.init_bpcset(RB.size(code))
+    requires vms.isblocked == AI.init_pcset(RB.size(code))
+    requires PIV.ContextOkRE(str, vms.cp, vms.context)
     // Thread-anchored entry facts (feed LiftInitC) — replace the dead
     // LeavesAgreeAtOutside(tstar, t) tree link.
     requires T.TransWf(re) && NR.LookBehindFragmentRE(re)
@@ -9977,6 +10320,33 @@ module LindenElkLiftSim {
     requires vms.context.nextchar == AI.get_char(str, vms.cp)
     requires result == AI.FFindMatch(code, str, vms, ov, LAnc.Forward, cdn).0
     ensures BestTieLk(re, crv, str, ov, S, LT.FirstLeaf(t, inp), result, ncap, nlook, nquant)
+  {
+    var tcan := LiftInitC(rer, qm, re, code, endl, ngroups, crv, str, ov, S, tstar, t, inp, vms,
+                          ncap, nlook, nquant);
+    assert LiftInv(rer, qm, re, code, crv, str, ov, S,
+                   PT.PikeTreeInitialState(tcan, inp), vms, ncap, nlook, nquant);
+    var bestT := LiftFindMatchC(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
+                                PT.PikeTreeInitialState(tstar, inp),
+                                PT.PikeTreeInitialState(tcan, inp),
+                                vms, cdn, ncap, nlook, nquant);
+    // bestT IS the canonical tree's first leaf ...
+    PikeSubtreeLkEraseIff(t);
+    PikeSubtreeLkEraseIff(tcan);
+    assert PTL.PikeSubtreeLk(tcan);
+    PTL.PikeTreeLkComputesFirstLeaf(tcan, inp, bestT);
+    assert bestT == LT.FirstLeaf(tcan, inp);
+    // ... which is the RAW entry tree's first leaf (Progress is leaf-transparent)
+    assert CE.LeavesAgree(tcan, t) by {
+      forall gm: LG.GroupMap, xinp: LC.Input, dr: WP.Direction
+        ensures LT.TreeLeaves(tcan, gm, xinp, dr) == LT.TreeLeaves(t, gm, xinp, dr)
+      {
+        ProgEraseLeavesEq(tcan, gm, xinp, dr);
+        ProgEraseLeavesEq(t, gm, xinp, dr);
+      }
+    }
+    CE.LAFirstLeaf(tcan, t, inp);
+    assert LT.FirstLeaf(t, inp) == bestT;
+  }
 
   // ---- (F) final assembly (no scaffold lemma — a recipe) ---------------------
   //
