@@ -33,6 +33,7 @@ module LindenElkNestInv {
   import AI = ArrayInterp
   import PIV = LindenElkPikeInv
   import AR = LindenElkActionsRep
+  import LTB = LindenElkLookTables
 
   // Every capture start clock in re is stale (below M) or unset.
   /** Every capture start clock inside `re` is either stale (below `M`) or
@@ -3081,5 +3082,589 @@ module LindenElkNestInv {
       }
     case Re_lookaround(_, _, _) =>
     case Re_anchor(_) =>
+  }
+
+  // ==========================================================================
+  // L3a (E): PATH PRESENCE TO A LOOKAROUND NODE. The outer half of the (E)
+  // path hypothesis `PIV.PathPresentLk(re, .., g)` for a group `g` INSIDE look
+  // `lid`'s body: the descent from the root to the `Re_lookaround(lid, ..)`
+  // node itself, carrying the same quant/ancestor-capture clock claims as
+  // `PathPresentLk` but stopping AT the look node (whose own `lc[lid] >= mx`
+  // clause is the consumer's, threaded via `MxAtLidLk`). Established at the
+  // gate-crossing site from the thread's positional invariant (`NestInvLookSite`
+  // — the `CheckOracle` analog of `NestInvResetSite`), composed with the
+  // body-side `PIV.BodyPathPresentLk` by `LookPathCompose`.
+  //
+  // Look-BLIND by design (no `lc` argument): in the lookbehind fragment every
+  // look body is `LookFreeRE`, so the path to a look node crosses no other
+  // look node — the single `lc[lid]` clause is peeled off to the consumer.
+  // ==========================================================================
+
+  /** `LookFreeRE` has no lookaround ids. */
+  lemma LookFreeNoLookIdsN(r: R.regex)
+    requires NR.LookFreeRE(r)
+    ensures LTB.LookIds(r) == {}
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => LookFreeNoLookIdsN(r1); LookFreeNoLookIdsN(r2);
+    case Re_con(r1, r2) => LookFreeNoLookIdsN(r1); LookFreeNoLookIdsN(r2);
+    case Re_quant(_, _, _, r1) => LookFreeNoLookIdsN(r1);
+    case Re_capture(_, r1) => LookFreeNoLookIdsN(r1);
+    case _ =>
+  }
+
+  /** The body of the `lid`-labelled lookaround node in `r`. */
+  ghost function LookBodyOfRE(r: R.regex, lid: nat): R.regex
+    requires lid in LTB.LookIds(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) then LookBodyOfRE(r1, lid) else LookBodyOfRE(r2, lid)
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) then LookBodyOfRE(r1, lid) else LookBodyOfRE(r2, lid)
+    case Re_quant(_, _, _, r1) => LookBodyOfRE(r1, lid)
+    case Re_capture(_, r1) => LookBodyOfRE(r1, lid)
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid then r1 else LookBodyOfRE(r1, lid)
+  }
+
+  /** The body's shape facts, from the fragment: look-free plus-fragment. */
+  lemma LookBodyOfFragment(r: R.regex, lid: nat)
+    requires NR.LookBehindFragmentRE(r)
+    requires lid in LTB.LookIds(r)
+    ensures NR.LookFreeRE(LookBodyOfRE(r, lid))
+    ensures NR.PlusFragmentRE(LookBodyOfRE(r, lid))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodyOfFragment(r1, lid); } else { LookBodyOfFragment(r2, lid); }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodyOfFragment(r1, lid); } else { LookBodyOfFragment(r2, lid); }
+    case Re_quant(_, _, _, r1) => LookBodyOfFragment(r1, lid);
+    case Re_capture(_, r1) => LookBodyOfFragment(r1, lid);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+      } else {
+        // fragment: the body is look-free, so no foreign lid lives below it
+        assert NR.LookFreeRE(r1);
+        LookFreeNoLookIdsN(r1);
+        assert false;
+      }
+  }
+
+  /** The body's captures are inside-look captures of `r` (hence captures of `r`). */
+  lemma LookBodyCapsIn(r: R.regex, lid: nat)
+    requires lid in LTB.LookIds(r)
+    ensures PIV.CapIds(LookBodyOfRE(r, lid)) <= PIV.CapIdsInLooks(r)
+    ensures PIV.CapIds(LookBodyOfRE(r, lid)) <= PIV.CapIds(r)
+    decreases r
+  {
+    PIV.CapIdsSplit(r);
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodyCapsIn(r1, lid); } else { LookBodyCapsIn(r2, lid); }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodyCapsIn(r1, lid); } else { LookBodyCapsIn(r2, lid); }
+    case Re_quant(_, _, _, r1) => LookBodyCapsIn(r1, lid);
+    case Re_capture(_, r1) => LookBodyCapsIn(r1, lid);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+      } else {
+        LookBodyCapsIn(r1, lid);
+      }
+  }
+
+  /** Path presence TO the `lid` node: every quantifier on the descent has its
+      stamp in scope and every ancestor capture's start clock is fresh and in
+      scope — `PIV.PathPresentLk`'s outer clauses, stopped AT the look node
+      (its own `lc` clause is the consumer's, thresholded by `MxAtLidLk`). */
+  ghost predicate LookPathPresent(r: R.regex, cc: seq<int>, qc: seq<int>, mx: int, lid: nat)
+    requires lid in LTB.LookIds(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) then LookPathPresent(r1, cc, qc, mx, lid)
+      else LookPathPresent(r2, cc, qc, mx, lid)
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) then LookPathPresent(r1, cc, qc, mx, lid)
+      else LookPathPresent(r2, cc, qc, mx, lid)
+    case Re_quant(nul, qid, q, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      qv >= mx && LookPathPresent(r1, cc, qc, qv, lid)
+    case Re_capture(cid, r1) =>
+      AI.get_idx(cc, CP.start_reg(cid)) >= 0 && AI.get_idx(cc, CP.start_reg(cid)) >= mx
+      && LookPathPresent(r1, cc, qc, mx, lid)
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid then true
+      else LookPathPresent(r1, cc, qc, -1, lid)
+  }
+
+  /** The `mx` threshold in force AT the `lid` node (the `MxAtGidLk` analog). */
+  ghost function MxAtLidLk(r: R.regex, qc: seq<int>, mx: int, lid: nat): int
+    requires lid in LTB.LookIds(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) then MxAtLidLk(r1, qc, mx, lid) else MxAtLidLk(r2, qc, mx, lid)
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) then MxAtLidLk(r1, qc, mx, lid) else MxAtLidLk(r2, qc, mx, lid)
+    case Re_quant(_, qid, _, r1) => MxAtLidLk(r1, qc, AI.get_idx(qc, qid), lid)
+    case Re_capture(_, r1) => MxAtLidLk(r1, qc, mx, lid)
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid then mx else MxAtLidLk(r1, qc, -1, lid)
+  }
+
+  /** `MxAtLidLk` thresholds are the `mx` parameter or a stored quant clock, so
+      the clock backbone bounds them (the `MxAtGidLE` analog). */
+  lemma MxAtLidLE(r: R.regex, qc: seq<int>, mx: int, lid: nat, S: int)
+    requires lid in LTB.LookIds(r)
+    requires -1 <= S && mx <= S
+    requires forall k :: AI.get_idx(qc, k) <= S
+    ensures MxAtLidLk(r, qc, mx, lid) <= S
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) { MxAtLidLE(r1, qc, mx, lid, S); } else { MxAtLidLE(r2, qc, mx, lid, S); }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) { MxAtLidLE(r1, qc, mx, lid, S); } else { MxAtLidLE(r2, qc, mx, lid, S); }
+    case Re_quant(_, qid, _, r1) => MxAtLidLE(r1, qc, AI.get_idx(qc, qid), lid, S);
+    case Re_capture(_, r1) => MxAtLidLE(r1, qc, mx, lid, S);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {} else { MxAtLidLE(r1, qc, -1, lid, S); }
+  }
+
+  /** THE COMPOSE STEP: outer path presence to the look node + the look's own
+      clock clause + body-side path presence assemble into the full
+      `PIV.PathPresentLk(r, .., g)`, and the `mx` reaching `g` is the body's
+      own (`-1`-rooted) threshold — the look node resets `mx`, so the outer
+      prefix is invisible to `MxAtGidLk`. */
+  lemma LookPathCompose(r: R.regex, body: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>,
+                        mx: int, lid: nat, g: nat)
+    requires NR.LookBehindFragmentRE(r) && PIV.CapUnique(r)
+    requires lid in LTB.LookIds(r)
+    requires body == LookBodyOfRE(r, lid)
+    requires g in PIV.CapIds(body)
+    requires LookPathPresent(r, cc, qc, mx, lid)
+    requires AI.get_idx(lc, lid as int) >= 0
+    requires AI.get_idx(lc, lid as int) >= MxAtLidLk(r, qc, mx, lid)
+    requires PIV.PathPresentLk(body, cc, lc, qc, -1, g)
+    ensures g in PIV.CapIds(r)
+    ensures PIV.PathPresentLk(r, cc, lc, qc, mx, g)
+    ensures PIV.MxAtGidLk(r, cc, lc, qc, mx, g) == PIV.MxAtGidLk(body, cc, lc, qc, -1, g)
+    decreases r
+  {
+    LookBodyCapsIn(r, lid);
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) {
+        LookBodyCapsIn(r1, lid);
+        assert g in PIV.CapIds(r1);
+        LookPathCompose(r1, body, cc, lc, qc, mx, lid, g);
+      } else {
+        LookBodyCapsIn(r2, lid);
+        assert g in PIV.CapIds(r2);
+        assert g !in PIV.CapIds(r1) by {
+          if g in PIV.CapIds(r1) { assert g in PIV.CapIds(r1) * PIV.CapIds(r2); }
+        }
+        LookPathCompose(r2, body, cc, lc, qc, mx, lid, g);
+      }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) {
+        LookBodyCapsIn(r1, lid);
+        assert g in PIV.CapIds(r1);
+        LookPathCompose(r1, body, cc, lc, qc, mx, lid, g);
+      } else {
+        LookBodyCapsIn(r2, lid);
+        assert g in PIV.CapIds(r2);
+        assert g !in PIV.CapIds(r1) by {
+          if g in PIV.CapIds(r1) { assert g in PIV.CapIds(r1) * PIV.CapIds(r2); }
+        }
+        LookPathCompose(r2, body, cc, lc, qc, mx, lid, g);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      assert qv >= mx;                               // LookPathPresent
+      LookPathCompose(r1, body, cc, lc, qc, qv, lid, g);
+    case Re_capture(cid, r1) =>
+      LookBodyCapsIn(r1, lid);
+      assert g in PIV.CapIds(r1);
+      assert cid >= 0 && (cid as nat) !in PIV.CapIds(r1);   // CapUnique
+      assert (cid as nat) != g;
+      assert AI.get_idx(cc, CP.start_reg(cid)) >= 0
+          && AI.get_idx(cc, CP.start_reg(cid)) >= mx;       // LookPathPresent
+      LookPathCompose(r1, body, cc, lc, qc, mx, lid, g);
+    case Re_lookaround(lid0, la, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+        assert body == r1;
+        assert MxAtLidLk(r, qc, mx, lid) == mx;
+        assert AI.get_idx(lc, lid0) >= 0 && AI.get_idx(lc, lid0) >= mx;
+      } else {
+        // fragment: bodies are look-free, so no foreign look sits on the path
+        assert NR.LookFreeRE(r1);
+        LookFreeNoLookIdsN(r1);
+        assert lid in LTB.LookIds(r1);
+        assert false;
+      }
+  }
+
+  /** `PathPresentLk`/`MxAtGidLk` read the register banks only at `r`'s own
+      capture-start slots, quant slots and look slots — congruence under
+      agreement there (the body-side transport: the reconstructed bank agrees
+      with the fresh replay's on `CaptureRegs(body)`). */
+  lemma PathPresentLkAgree(r: R.regex, cc1: seq<int>, lc1: seq<int>, qc1: seq<int>,
+                           cc2: seq<int>, lc2: seq<int>, qc2: seq<int>, mx: int, g: nat)
+    requires g in PIV.CapIds(r)
+    requires forall c: nat :: c in PIV.CapIds(r) ==>
+      AI.get_idx(cc1, CP.start_reg(c as int)) == AI.get_idx(cc2, CP.start_reg(c as int))
+    requires forall q: nat :: q in PIV.QuantIds(r) ==>
+      AI.get_idx(qc1, q as int) == AI.get_idx(qc2, q as int)
+    requires forall l: nat :: l in LTB.LookIds(r) ==>
+      AI.get_idx(lc1, l as int) == AI.get_idx(lc2, l as int)
+    ensures PIV.PathPresentLk(r, cc1, lc1, qc1, mx, g) == PIV.PathPresentLk(r, cc2, lc2, qc2, mx, g)
+    ensures PIV.MxAtGidLk(r, cc1, lc1, qc1, mx, g) == PIV.MxAtGidLk(r, cc2, lc2, qc2, mx, g)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      assert PIV.CapIds(r1) <= PIV.CapIds(r) && PIV.CapIds(r2) <= PIV.CapIds(r);
+      assert PIV.QuantIds(r1) <= PIV.QuantIds(r) && PIV.QuantIds(r2) <= PIV.QuantIds(r);
+      assert LTB.LookIds(r1) <= LTB.LookIds(r) && LTB.LookIds(r2) <= LTB.LookIds(r);
+      if g in PIV.CapIds(r1) { PathPresentLkAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, mx, g); }
+      else { PathPresentLkAgree(r2, cc1, lc1, qc1, cc2, lc2, qc2, mx, g); }
+    case Re_con(r1, r2) =>
+      assert PIV.CapIds(r1) <= PIV.CapIds(r) && PIV.CapIds(r2) <= PIV.CapIds(r);
+      assert PIV.QuantIds(r1) <= PIV.QuantIds(r) && PIV.QuantIds(r2) <= PIV.QuantIds(r);
+      assert LTB.LookIds(r1) <= LTB.LookIds(r) && LTB.LookIds(r2) <= LTB.LookIds(r);
+      if g in PIV.CapIds(r1) { PathPresentLkAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, mx, g); }
+      else { PathPresentLkAgree(r2, cc1, lc1, qc1, cc2, lc2, qc2, mx, g); }
+    case Re_quant(_, qid, _, r1) =>
+      assert PIV.CapIds(r1) <= PIV.CapIds(r);
+      assert PIV.QuantIds(r1) <= PIV.QuantIds(r);
+      assert LTB.LookIds(r1) <= LTB.LookIds(r);
+      assert AI.get_idx(qc1, qid) == AI.get_idx(qc2, qid) by {
+        if qid >= 0 { assert (qid as nat) in PIV.QuantIds(r); }
+      }
+      PathPresentLkAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, AI.get_idx(qc1, qid), g);
+    case Re_capture(cid, r1) =>
+      assert PIV.CapIds(r1) <= PIV.CapIds(r);
+      assert PIV.QuantIds(r1) <= PIV.QuantIds(r);
+      assert LTB.LookIds(r1) <= LTB.LookIds(r);
+      assert AI.get_idx(cc1, CP.start_reg(cid)) == AI.get_idx(cc2, CP.start_reg(cid)) by {
+        if cid >= 0 { assert (cid as nat) in PIV.CapIds(r); }
+        else { assert CP.start_reg(cid) < 0; }
+      }
+      if cid >= 0 && (cid as nat) == g {
+      } else {
+        assert g in PIV.CapIds(r1);
+        PathPresentLkAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, mx, g);
+      }
+    case Re_lookaround(lid0, _, r1) =>
+      assert PIV.CapIds(r1) <= PIV.CapIds(r);
+      assert PIV.QuantIds(r1) <= PIV.QuantIds(r);
+      assert LTB.LookIds(r1) <= LTB.LookIds(r);
+      assert AI.get_idx(lc1, lid0) == AI.get_idx(lc2, lid0) by {
+        if lid0 >= 0 { assert (lid0 as nat) in LTB.LookIds(r); }
+      }
+      PathPresentLkAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, -1, g);
+  }
+
+  /** `LookPathPresent`/`MxAtLidLk` read the banks only at OUTSIDE-look slots
+      (fragment: the path to a look node crosses no look body) — congruence
+      under outside-look agreement (the outer transport: the reconstructed
+      bank agrees with the winning thread's outside the look registers). */
+  lemma LookPathPresentAgree(r: R.regex, cc1: seq<int>, qc1: seq<int>,
+                             cc2: seq<int>, qc2: seq<int>, mx: int, lid: nat)
+    requires NR.LookBehindFragmentRE(r)
+    requires lid in LTB.LookIds(r)
+    requires forall c: nat :: c in PIV.CapIdsOutsideLooks(r) ==>
+      AI.get_idx(cc1, CP.start_reg(c as int)) == AI.get_idx(cc2, CP.start_reg(c as int))
+    requires forall q: nat :: q in PIV.QuantIdsOutsideLooks(r) ==>
+      AI.get_idx(qc1, q as int) == AI.get_idx(qc2, q as int)
+    ensures LookPathPresent(r, cc1, qc1, mx, lid) == LookPathPresent(r, cc2, qc2, mx, lid)
+    ensures MxAtLidLk(r, qc1, mx, lid) == MxAtLidLk(r, qc2, mx, lid)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      assert PIV.CapIdsOutsideLooks(r1) <= PIV.CapIdsOutsideLooks(r)
+          && PIV.CapIdsOutsideLooks(r2) <= PIV.CapIdsOutsideLooks(r);
+      assert PIV.QuantIdsOutsideLooks(r1) <= PIV.QuantIdsOutsideLooks(r)
+          && PIV.QuantIdsOutsideLooks(r2) <= PIV.QuantIdsOutsideLooks(r);
+      if lid in LTB.LookIds(r1) { LookPathPresentAgree(r1, cc1, qc1, cc2, qc2, mx, lid); }
+      else { LookPathPresentAgree(r2, cc1, qc1, cc2, qc2, mx, lid); }
+    case Re_con(r1, r2) =>
+      assert PIV.CapIdsOutsideLooks(r1) <= PIV.CapIdsOutsideLooks(r)
+          && PIV.CapIdsOutsideLooks(r2) <= PIV.CapIdsOutsideLooks(r);
+      assert PIV.QuantIdsOutsideLooks(r1) <= PIV.QuantIdsOutsideLooks(r)
+          && PIV.QuantIdsOutsideLooks(r2) <= PIV.QuantIdsOutsideLooks(r);
+      if lid in LTB.LookIds(r1) { LookPathPresentAgree(r1, cc1, qc1, cc2, qc2, mx, lid); }
+      else { LookPathPresentAgree(r2, cc1, qc1, cc2, qc2, mx, lid); }
+    case Re_quant(_, qid, _, r1) =>
+      assert PIV.CapIdsOutsideLooks(r1) <= PIV.CapIdsOutsideLooks(r);
+      assert PIV.QuantIdsOutsideLooks(r1) <= PIV.QuantIdsOutsideLooks(r);
+      assert AI.get_idx(qc1, qid) == AI.get_idx(qc2, qid) by {
+        if qid >= 0 { assert (qid as nat) in PIV.QuantIdsOutsideLooks(r); }
+      }
+      LookPathPresentAgree(r1, cc1, qc1, cc2, qc2, AI.get_idx(qc1, qid), lid);
+    case Re_capture(cid, r1) =>
+      assert PIV.CapIdsOutsideLooks(r1) <= PIV.CapIdsOutsideLooks(r);
+      assert PIV.QuantIdsOutsideLooks(r1) <= PIV.QuantIdsOutsideLooks(r);
+      assert AI.get_idx(cc1, CP.start_reg(cid)) == AI.get_idx(cc2, CP.start_reg(cid)) by {
+        if cid >= 0 { assert (cid as nat) in PIV.CapIdsOutsideLooks(r); }
+        else { assert CP.start_reg(cid) < 0; }
+      }
+      LookPathPresentAgree(r1, cc1, qc1, cc2, qc2, mx, lid);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+      } else {
+        assert NR.LookFreeRE(r1);
+        LookFreeNoLookIdsN(r1);
+        assert lid in LTB.LookIds(r1);
+        assert false;
+      }
+  }
+
+  // --------------------------------------------------------------------------
+  // The gate-site extraction: at a pc holding look `lid`'s `CheckOracle`, the
+  // thread's nesting claims assemble into `LookPathPresent` — the `CheckOracle`
+  // analog of `NestInvResetSite`, same chain-companion structure.
+  // --------------------------------------------------------------------------
+
+  /** `NestInvLookSite` for forced-copy chains. */
+  lemma NestInvLookSiteMin(k: nat, qn: R.quantid, r1: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
+                           cc: seq<int>, qc: seq<int>, mx: int, lid: int)
+    requires NR.NfaRepMinRE(k, qn, r1, code, pcb, pce)
+    requires NR.LookBehindFragmentRE(r1) && LTB.LookUnique(r1)
+    requires pcb <= pc < pce
+    requires NestInvMinRE(k, qn, r1, code, pcb, pce, pc, cc, qc, mx)
+    requires NR.GetPcRE(code, pc) == Some(RB.CheckOracle(lid))
+    ensures lid >= 0 && (lid as nat) in LTB.LookIds(r1)
+    ensures AI.get_idx(qc, qn) >= mx
+    ensures LookPathPresent(r1, cc, qc, AI.get_idx(qc, qn), lid as nat)
+    decreases CP.rsize(r1), k + 2
+  {
+    assert k > 0 by { if k == 0 { assert pcb == pce; } }
+    var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.SetQuantToClock(qn, false))
+      && NR.NfaRepRE(r1, code, pcb + 1, e1)
+      && NR.NfaRepMinRE(k - 1, qn, r1, code, e1, pce)
+      && (if pc == pcb then true
+          else if pcb + 1 <= pc < e1 then
+            AI.get_idx(qc, qn) >= mx
+            && NestInvRE(r1, code, pcb + 1, e1, pc, cc, qc, AI.get_idx(qc, qn))
+          else NestInvMinRE(k - 1, qn, r1, code, e1, pce, pc, cc, qc, mx));
+    NR.NfaRepIncrRE(r1, code, pcb + 1, e1);
+    if pc == pcb {
+      assert false;                                 // SetQuantToClock ≠ CheckOracle
+    } else if pcb + 1 <= pc < e1 {
+      var qv := AI.get_idx(qc, qn);
+      NestInvLookSite(r1, code, pcb + 1, e1, pc, cc, qc, qv, lid);
+    } else {
+      NestInvLookSiteMin(k - 1, qn, r1, code, e1, pce, pc, cc, qc, mx, lid);
+    }
+  }
+
+  /** `NestInvLookSite` for optional-layer chains. */
+  lemma NestInvLookSiteOpt(k: nat, greedy: bool, qn: R.quantid, r1: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
+                           cc: seq<int>, qc: seq<int>, mx: int, lid: int)
+    requires NR.NfaRepOptRE(k, greedy, qn, r1, code, pcb, pce)
+    requires NR.LookBehindFragmentRE(r1) && LTB.LookUnique(r1)
+    requires pcb <= pc < pce
+    requires NestInvOptRE(k, greedy, qn, r1, code, pcb, pce, pc, cc, qc, mx)
+    requires NR.GetPcRE(code, pc) == Some(RB.CheckOracle(lid))
+    ensures lid >= 0 && (lid as nat) in LTB.LookIds(r1)
+    ensures AI.get_idx(qc, qn) >= mx
+    ensures LookPathPresent(r1, cc, qc, AI.get_idx(qc, qn), lid as nat)
+    decreases CP.rsize(r1), k + 2
+  {
+    assert k > 0 by { if k == 0 { assert pcb == pce; } }
+    var e1: nat :| NR.GetPcRE(code, pcb) == Some(if greedy then RB.Fork(pcb + 1, pce) else RB.Fork(pce, pcb + 1))
+      && NR.GetPcRE(code, pcb + 1) == Some(RB.SetQuantToClock(qn, false))
+      && NR.GetPcRE(code, pcb + 2) == Some(RB.BeginLoop)
+      && NR.NfaRepRE(r1, code, pcb + 3, e1)
+      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+      && NR.NfaRepOptRE(k - 1, greedy, qn, r1, code, e1 + 1, pce)
+      && (if pc == pcb || pc == pcb + 1 then true
+          else if pc == pcb + 2 then
+            AI.get_idx(qc, qn) >= mx && AllStaleRE(r1, cc, AI.get_idx(qc, qn))
+          else if pcb + 3 <= pc < e1 then
+            AI.get_idx(qc, qn) >= mx
+            && NestInvRE(r1, code, pcb + 3, e1, pc, cc, qc, AI.get_idx(qc, qn))
+          else if pc == e1 then AI.get_idx(qc, qn) >= mx
+          else NestInvOptRE(k - 1, greedy, qn, r1, code, e1 + 1, pce, pc, cc, qc, mx));
+    NR.NfaRepIncrRE(r1, code, pcb + 3, e1);
+    if pc == pcb || pc == pcb + 1 || pc == pcb + 2 || pc == e1 {
+      assert false;                                 // Fork/SetQuantToClock/BeginLoop/EndLoop
+    } else if pcb + 3 <= pc < e1 {
+      var qv := AI.get_idx(qc, qn);
+      NestInvLookSite(r1, code, pcb + 3, e1, pc, cc, qc, qv, lid);
+    } else {
+      NestInvLookSiteOpt(k - 1, greedy, qn, r1, code, e1 + 1, pce, pc, cc, qc, mx, lid);
+    }
+  }
+
+  /** THE GATE-SITE EXTRACTION: at a `pc` holding look `lid`'s `CheckOracle`,
+      `NestInvRE`'s path claims assemble into `LookPathPresent(re, cc, qc, mx,
+      lid)` — every enclosing quantifier's stamp is in scope and every ancestor
+      capture's start clock is fresh. The look's own `lc[lid]` clause is the
+      consumer's: at the crossing the stamp is BRAND NEW, so it beats
+      `MxAtLidLk` via `MxAtLidLE` and the clock backbone. */
+  lemma NestInvLookSite(re: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
+                        cc: seq<int>, qc: seq<int>, mx: int, lid: int)
+    requires NR.NfaRepRE(re, code, pcb, pce)
+    requires NR.LookBehindFragmentRE(re) && LTB.LookUnique(re)
+    requires pcb <= pc < pce
+    requires NestInvRE(re, code, pcb, pce, pc, cc, qc, mx)
+    requires NR.GetPcRE(code, pc) == Some(RB.CheckOracle(lid))
+    ensures lid >= 0 && (lid as nat) in LTB.LookIds(re)
+    ensures LookPathPresent(re, cc, qc, mx, lid as nat)
+    decreases CP.rsize(re), 1
+  {
+    match re
+    case Re_empty =>
+    case Re_character(ch) =>
+      assert pc == pcb;
+      assert false;
+    case Re_alt(r1, r2) =>
+      var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.Fork(pcb + 1, e1 + 1))
+        && NR.NfaRepRE(r1, code, pcb + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.Jmp(pce))
+        && NR.NfaRepRE(r2, code, e1 + 1, pce)
+        && if pc == pcb then AllStaleRE(r1, cc, mx) && AllStaleRE(r2, cc, mx)
+           else if pcb + 1 <= pc < e1 then
+             NestInvRE(r1, code, pcb + 1, e1, pc, cc, qc, mx) && AllStaleRE(r2, cc, mx)
+           else if pc == e1 then true
+           else NestInvRE(r2, code, e1 + 1, pce, pc, cc, qc, mx);
+      if pc == pcb {
+        assert false;
+      } else if pcb + 1 <= pc < e1 {
+        NestInvLookSite(r1, code, pcb + 1, e1, pc, cc, qc, mx, lid);
+      } else if pc == e1 {
+        assert false;
+      } else {
+        NestInvLookSite(r2, code, e1 + 1, pce, pc, cc, qc, mx, lid);
+        assert (lid as nat) !in LTB.LookIds(r1) by {
+          if (lid as nat) in LTB.LookIds(r1) {
+            assert (lid as nat) in LTB.LookIds(r1) * LTB.LookIds(r2);
+          }
+        }
+      }
+    case Re_con(r1, r2) =>
+      var e1: nat :| NR.NfaRepRE(r1, code, pcb, e1) && NR.NfaRepRE(r2, code, e1, pce)
+        && if pc < e1 then NestInvRE(r1, code, pcb, e1, pc, cc, qc, mx) && AllStaleRE(r2, cc, mx)
+           else NestInvRE(r2, code, e1, pce, pc, cc, qc, mx);
+      if pc < e1 {
+        NestInvLookSite(r1, code, pcb, e1, pc, cc, qc, mx, lid);
+      } else {
+        NestInvLookSite(r2, code, e1, pce, pc, cc, qc, mx, lid);
+        assert (lid as nat) !in LTB.LookIds(r1) by {
+          if (lid as nat) in LTB.LookIds(r1) {
+            assert (lid as nat) in LTB.LookIds(r1) * LTB.LookIds(r2);
+          }
+        }
+      }
+    case Re_quant(nul, qid0, q, r1) =>
+      if q.max.Some? {
+        var mn := q.min as nat;
+        var kx := (q.max.value - q.min) as nat;
+        var em: nat :| NR.NfaRepMinRE(mn, qid0, r1, code, pcb, em)
+          && NR.NfaRepOptRE(kx, q.greedy, qid0, r1, code, em, pce)
+          && (if pc < em then NestInvMinRE(mn, qid0, r1, code, pcb, em, pc, cc, qc, mx)
+              else NestInvOptRE(kx, q.greedy, qid0, r1, code, em, pce, pc, cc, qc, mx));
+        NR.NfaRepIncrMinRE(mn, qid0, r1, code, pcb, em);
+        NR.NfaRepIncrOptRE(kx, q.greedy, qid0, r1, code, em, pce);
+        if pc < em {
+          NestInvLookSiteMin(mn, qid0, r1, code, pcb, em, pc, cc, qc, mx, lid);
+        } else {
+          NestInvLookSiteOpt(kx, q.greedy, qid0, r1, code, em, pce, pc, cc, qc, mx, lid);
+        }
+        return;
+      }
+      if !(q.min == 0 && q.max == None) {
+        var mn1 := (q.min - 1) as nat;
+        var em: nat, e1: nat :|
+          NR.NfaRepMinRE(mn1, qid0, r1, code, pcb, em)
+          && NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid0, false))
+          && NR.NfaRepRE(r1, code, em + 1, e1)
+          && NR.GetPcRE(code, e1) == Some(if q.greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
+          && pce == e1 + 1
+          && (if pc < em then NestInvMinRE(mn1, qid0, r1, code, pcb, em, pc, cc, qc, mx)
+              else if pc == em then true
+              else if em + 1 <= pc < e1 then
+                AI.get_idx(qc, qid0) >= mx
+                && NestInvRE(r1, code, em + 1, e1, pc, cc, qc, AI.get_idx(qc, qid0))
+              else AI.get_idx(qc, qid0) >= mx);
+        NR.NfaRepIncrMinRE(mn1, qid0, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 1, e1);
+        if pc < em {
+          NestInvLookSiteMin(mn1, qid0, r1, code, pcb, em, pc, cc, qc, mx, lid);
+        } else if pc == em {
+          assert false;                             // SetQuantToClock ≠ CheckOracle
+        } else if em + 1 <= pc < e1 {
+          var qv := AI.get_idx(qc, qid0);
+          NestInvLookSite(r1, code, em + 1, e1, pc, cc, qc, qv, lid);
+        } else {
+          assert pc == e1;
+          assert false;                             // Fork ≠ CheckOracle
+        }
+        return;
+      }
+      var e1: nat :| NR.GetPcRE(code, pcb) == Some(if q.greedy then RB.Fork(pcb + 1, e1 + 2) else RB.Fork(e1 + 2, pcb + 1))
+        && NR.GetPcRE(code, pcb + 1) == Some(RB.SetQuantToClock(qid0, false))
+        && NR.GetPcRE(code, pcb + 2) == Some(RB.BeginLoop)
+        && NR.NfaRepRE(r1, code, pcb + 3, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+        && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(pcb))
+        && pce == e1 + 2
+        && if pc == pcb || pc == pcb + 1 then true
+           else if pc == pcb + 2 then
+             AI.get_idx(qc, qid0) >= mx && AllStaleRE(r1, cc, AI.get_idx(qc, qid0))
+           else if pcb + 3 <= pc < e1 then
+             AI.get_idx(qc, qid0) >= mx
+             && NestInvRE(r1, code, pcb + 3, e1, pc, cc, qc, AI.get_idx(qc, qid0))
+           else AI.get_idx(qc, qid0) >= mx;
+      if pc == pcb || pc == pcb + 1 || pc == pcb + 2 || pc == e1 || pc == e1 + 1 {
+        assert false;                               // Fork/SetQuantToClock/BeginLoop/EndLoop/Jmp
+      } else {
+        assert pcb + 3 <= pc < e1;
+        var qv := AI.get_idx(qc, qid0);
+        NestInvLookSite(r1, code, pcb + 3, e1, pc, cc, qc, qv, lid);
+      }
+    case Re_capture(cid, r1) =>
+      var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
+        && NR.NfaRepRE(r1, code, pcb + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+        && pce == e1 + 1
+        && if pc == pcb then
+             (AI.get_idx(cc, CP.start_reg(cid)) < mx || AI.get_idx(cc, CP.start_reg(cid)) < 0)
+             && AllStaleRE(r1, cc, mx)
+           else
+             AI.get_idx(cc, CP.start_reg(cid)) >= mx
+             && AI.get_idx(cc, CP.start_reg(cid)) >= 0
+             && (pcb + 1 <= pc < e1 ==> NestInvRE(r1, code, pcb + 1, e1, pc, cc, qc, mx));
+      NR.NfaRepIncrRE(r1, code, pcb + 1, e1);
+      if pc == pcb || pc == e1 {
+        assert false;                               // SetRegisterToCP ≠ CheckOracle
+      } else {
+        assert pcb + 1 <= pc < e1;
+        NestInvLookSite(r1, code, pcb + 1, e1, pc, cc, qc, mx, lid);
+        // ancestor clause: own start fresh (from the NestInv claims above).
+      }
+    case Re_lookaround(lid0, la, r1) =>
+      // the whole block is the single gate instruction; a positive flavour
+      // compiles to CheckOracle(lid0), pinning lid == lid0.
+      assert pc == pcb;
+      assert la.Lookahead? || la.Lookbehind?;       // NegCheckOracle otherwise
+      assert lid == lid0;
+      assert lid0 >= 0;                             // LookUnique
+      assert (lid as nat) in LTB.LookIds(re);
+    case Re_anchor(_) =>
+      assert pc == pcb;
+      assert false;
   }
 }
