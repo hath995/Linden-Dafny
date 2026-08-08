@@ -235,6 +235,55 @@ requires (`GateStaticsFromTables` + `LTB.FFullCompilationLookOk` + qm-domain + g
 vms fields), hook `L3aValueBridge` into `MainExtraction`, delete `LkBodyGroupsEmpty`/
 `FilterUnmoved`/L1 `LookRowsFromTables`, whole-package verify.)*
 
+*(2026-08-08 session 8 — **THE (E) BLOCK OPENED: (E1) look-path layer PROVEN** (commit
+`d9b34a6`, NestInv.dfy full sweep **104 verified, 0 errors**). The one unbanked piece of the
+integration is `InsidePresentResBridge`'s pair `PathPresentLk(re, res0.clk, lk.clk, res2.clk,
+-1, g)` + start-clock ≥ `MxAtGidLk` for the RECONSTRUCTED registers. Decomposition settled:*
+- ***(E1) DONE** — the structural layer in `NestInv.dfy`: `LookBodyOfRE`/`LookPathPresent`/
+  `MxAtLidLk` (path presence TO the `lid` node, look-blind — fragment bodies are LookFree so
+  the descent crosses no other look; the node's own `lc[lid] ≥ mx` clause is peeled to the
+  consumer, bounded via `MxAtLidLE`); `LookPathCompose` (outer + lc clause + body-side
+  `PathPresentLk(body, −1)` ⟹ full `PathPresentLk(re, g)`, and `MxAtGidLk(re,g) ==
+  MxAtGidLk(body,−1,g)` — the look node resets mx); congruences `PathPresentLkAgree`
+  (body transport: banks agreeing on `CapIds/QuantIds/LookIds` slots) and
+  `LookPathPresentAgree` (outer transport: agreement on OUTSIDE-look slots — feeds from
+  `FLookLoopCaptureFrame`/`QuantFrame`); `NestInvLookSite`(+Min/Opt) — at a pc holding lid's
+  `CheckOracle`, `NestInvRE`'s claims assemble into `LookPathPresent` (the `CheckOracle`
+  analog of `NestInvResetSite`; consumed at gate-pass where the fresh lc stamp beats
+  `MxAtLidLk` via the clock backbone).*
+- ***(E2) NEXT (mechanical)** — the quant value lift through `FLookLoop`: `res.2` agrees with
+  the FRESH replay's quant bank on `QIdsInt(body)` per matched lid.
+  `CM.FFindMatchCapRel/ThreadRel` ALREADY thread an `Sq` quant-agreement set (the existing
+  `ReplayCapAgreeFresh` passes `Sq={}`) — so: a `ReplayLidQuantAgreeFresh` variant with
+  `Sq := LKC.QIdsInt(body)` + an induction mirroring `FLookLoopValueLift`. Its entry fact
+  (body-quant slots still INIT in the winning thread's bank) needs the MAIN-pass quant frame:
+  main `SetQuantToClock` sites target `QuantIdsOutsideLooks` (already an ensures of
+  `NestInvResetSite`; a static per-pc sweep + `CM.FFindMatchQuantFrame` deliver it), plus
+  matched-lid quant-set disjointness (QuantUnique analog of `LmOfBodiesDisjoint`).*
+- ***(E3) THE CARRIER (the real remaining work)** — the endpoint needs `LookPathPresent` on
+  the WINNING thread's own clocks for each lid owning a leaf-present g ∈ S. This is NOT
+  engine-only derivable: `lc[lid] ≥ enclosing qc` encodes "the look was crossed AFTER the
+  last enclosing-quant re-stamp", exactly the fact tracked by g surviving in `gmt` (B-side
+  Reset removes look-body groups at each `SetQuantToClock`). So carry a NEW LiftInv-level
+  conjunct (NOT inside `ThreadRepLk` — the 16 case lemmas stay untouched): per thread/gmt
+  pair, `∀ lid: (∃ g ∈ S ∩ gmt owned by lid) ⟹ LookPathPresent(re, th.cc.clk, th.qc.clk,
+  −1, lid) ∧ lc[lid] ≥ 0 ∧ lc[lid] ≥ MxAtLidLk(re, th.qc.clk, −1, lid)`. Preservation per
+  case (dispatcher-level helper lemmas, `DispatchSetRegEffect` pattern): GATE-PASS
+  establishes it fresh via `NestInvLookSite` (ThreadNestRE is in `PikeInvFullRE`, available
+  in the dispatcher) + fresh-stamp dominance; SETQUANT vacuates lids under q (B-side Reset
+  clears their groups — needs DefGroups(q-body) ⊇ their inside-look groups, definitional)
+  and preserves others (q not on their path — `LookPathPresentAgree`-style frame); SETREG
+  fresh-stamps a path capture (monotone, fresh beats mx); all other instructions touch
+  nothing; blocked/reactivate/init vacuous; Accept records the head's fact for bestmatch.*
+- ***(E4) ASSEMBLY** — endpoint: `BestTieLk` gives `GmtTieInside` (owner lid, fresh match,
+  values) + the (E3) fact for the winning thread; transport outer path to `(res0, res2)` via
+  `LookPathPresentAgree` + capture/quant frames (path slots are outside-look:
+  ancestors of a look are never inside another body); body side via `BodyPathPresentLk`(rf)
+  + `PathPresentLkAgree` with `FLookLoopValueOk` (caps) + (E2) (quants); `LookPathCompose`
+  closes both (E) requires; `VBody(crv,lid) == LookBodyOfRE(re,lid)` via `LookEntryOk` +
+  a table↔structure tie; then `InsidePresentResBridge` per g → `L3aValueBridge` →
+  `MainExtraction` per the session-7b recipe.)*
+
 ---
 
 ## 0. The goal
