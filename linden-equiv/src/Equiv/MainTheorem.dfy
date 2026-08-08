@@ -4087,6 +4087,93 @@ module LindenElkMain {
       }
   }
 
+  /** L3a (E2): the quant-bank companion of `ReplayCapAgreeFresh` — the same
+      lockstep bisimulation (`CM.FFindMatchCapRel` threads BOTH agreement sets),
+      with `Sq := QIdsInt(body)`: when the body's quant slots are still INITIAL
+      in the incoming bank (the main pass stamps only outside-look quants, and
+      earlier lids' replays write only their own disjoint slots), the replay's
+      final quant bank agrees with the FRESH replay's on the body's slots. This
+      is what lets the reconstructed `res.2` discharge the body-side quant
+      clauses of `PIV.PathPresentLk` via `PIV.BodyPathPresentLk` + congruence. */
+  lemma ReplayCapQuantAgreeFresh(bodycode: RB.code, str: string, cp: int, cap: AReg.Regs, lk: AReg.Regs,
+                                 qt: AReg.Regs, ov: LOr.OracleView, cdns: LCdn.cdns, body: R.regex,
+                                 ncap: int, nlook: int, nquant: int)
+    requires 0 <= cp <= |str|
+    requires AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp)
+    requires CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+    requires CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body))
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    ensures var ctxc := AI.cp_context(cp, str, LAnc.Forward);
+            var ra := AI.FFindMatch(bodycode, str,
+                        AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
+            var rf := AI.FFindMatch(bodycode, str,
+                        AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                      AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
+            (ra.None? <==> rf.None?)
+            && (ra.Some? ==>
+                  CM.RegsAgreeInside(ra.value.capture_regs, rf.value.capture_regs, PIV.CaptureRegs(body))
+                  && CM.RegsAgreeInside(ra.value.quant_regs, rf.value.quant_regs, LKC.QIdsInt(body)))
+  {
+    var ctxc := AI.cp_context(cp, str, LAnc.Forward);
+    var sa := AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc);
+    var sf := AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                            AReg.init_regs(nquant), 0, ctxc);
+    var Sc := PIV.CaptureRegs(body);
+    var Sq := LKC.QIdsInt(body);
+    assert CM.VmRel(sa, sf, Sc, Sq) by {
+      assert CM.ThreadRel(AI.init_thread(cap, lk, qt),
+                          AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant)),
+                          Sc, Sq);
+    }
+    CM.FFindMatchCapRel(bodycode, str, sa, sf, ov, LAnc.Forward, cdns, Sc, Sq);
+  }
+
+  /** L3a (E2): `ReplayLidCapAgreeFresh` with the quant conclusion — the ACTUAL
+      `FFindMatchPlus` replay's quant bank agrees with the FRESH body match's on
+      `QIdsInt(body)` (alongside the capture agreement). Same route: reconstruct
+      is the identity on a `QuantRegsFinal` result, then the `Sq`-threaded
+      bisimulation (`ReplayCapQuantAgreeFresh`). The extra entry fact — body
+      quant slots still INITIAL in the incoming bank — is the caller's (main
+      pass stamps only outside-look quants; earlier lids' replays write only
+      their own disjoint slots). */
+  lemma ReplayLidCapQuantAgreeFresh(bytecode: RB.code, str: string, cp: int, cap: AReg.Regs, lk: AReg.Regs,
+                                    qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
+                                    body: R.regex, la: R.lookaround, ncap: int, nlook: int, nquant: int)
+    requires NR.LookBehindFragmentRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires la.Lookahead?
+    requires bytecode == CP.compile_to_bytecode(body)
+    requires 0 <= cp <= |str|
+    requires AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    requires CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+    requires CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body))
+    ensures
+      var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Forward, cp, cap, lk, qt, 0, lookcdn).0;
+      var rf := AI.FFindMatch(bytecode, str,
+                  AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                  ov, LAnc.Forward, lookcdn).0;
+      (result.None? <==> rf.None?)
+      && (result.Some? ==>
+            CM.RegsAgreeInside(result.value.capture_regs, rf.value.capture_regs, PIV.CaptureRegs(body))
+            && CM.RegsAgreeInside(result.value.quant_regs, rf.value.quant_regs, LKC.QIdsInt(body)))
+  {
+    var dir := LAnc.Forward;
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
+    NoTrueQuantStamp(body);
+    assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
+    FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
+    var (fmres, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+    if fmres.Some? {
+      FNulledPlusIdentity(body, fmres.value.capture_regs, fmres.value.look_regs, fmres.value.quant_regs,
+                          plus_bcv, str, ovx, dir);
+    }
+    ReplayCapQuantAgreeFresh(bytecode, str, cp, cap, lk, qt, ov, lookcdn, body, ncap, nlook, nquant);
+  }
+
   /** §4b ENGINE BRIDGE: the body replay from the MAIN thread's `cap/lk/qt`
       agrees, on `CaptureRegs(body)`, with the replay from FRESH registers. `cap`
       has the body's ids UNSET (the main pass writes only outside-look captures,
