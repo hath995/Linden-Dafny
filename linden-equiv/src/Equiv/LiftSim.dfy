@@ -9585,6 +9585,146 @@ module LindenElkLiftSim {
       is symmetric in the value clause, so it flips to `GmtTieOutside`'s shape
       (leaf-keyed). This is the exact `GmtTieOutside` hypothesis `L3aValueBridge`
       consumes for its outside-`S` branch, discharged from already-proven facts. */
+  // ==========================================================================
+  // (E3) THE LOOK-PATH CARRIER (per-thread). For every lid owning a present
+  // inside-S group in gmt, the thread's OWN clocks witness the outer path to
+  // lid's node plus the look-stamp dominance pair — the coupled fact "the look
+  // was crossed AFTER the last enclosing-quant re-stamp" that no engine-only
+  // invariant can see (g surviving in gmt IS its tracker: the B-side Reset
+  // removes look-body groups at every SetQuantToClock). Established at gate
+  // pass (NI.GateCrossLookNest), vacated at SetQuantToClock (NI.LookBodyCaps-
+  // UnderQid), monotone elsewhere. Carried at LiftInv level — ThreadRepLk and
+  // the per-instruction case lemmas are untouched.
+  // ==========================================================================
+  ghost predicate LookNestOkT(re: R.regex, S: set<LG.GroupId>, gmt: LG.GroupMap, th: AI.Thread) {
+    forall lid: nat | lid in LTB.LookIds(re) ::
+      (exists g: LG.GroupId :: g in S && g in gmt && g in PIV.CapIds(NI.LookBodyOfRE(re, lid))) ==>
+        NI.LookPathPresent(re, th.capture_regs.a_clk, th.quant_regs.a_clk, -1, lid)
+        && AI.get_idx(th.look_regs.a_clk, lid as int) >= 0
+        && AI.get_idx(th.look_regs.a_clk, lid as int)
+             >= NI.MxAtLidLk(re, th.quant_regs.a_clk, -1, lid)
+  }
+
+  /** Carrier effect — FRESH CAPTURE STAMP (the SetReg case): the look and
+      quant banks are untouched, every capture-clock slot either keeps its
+      value or takes a stamp `>= B` beating every stored quant clock, and the
+      gm gains no inside-S group. */
+  lemma LookNestOkTFreshCap(re: R.regex, S: set<LG.GroupId>, gmt: LG.GroupMap, gmt': LG.GroupMap,
+                            th: AI.Thread, th': AI.Thread, B: int)
+    requires LookNestOkT(re, S, gmt, th)
+    requires th'.look_regs == th.look_regs && th'.quant_regs == th.quant_regs
+    requires -1 <= B
+    requires forall k :: AI.get_idx(th.quant_regs.a_clk, k) <= B
+    requires forall j: int ::
+      AI.get_idx(th'.capture_regs.a_clk, j) == AI.get_idx(th.capture_regs.a_clk, j)
+      || (AI.get_idx(th'.capture_regs.a_clk, j) >= 0 && AI.get_idx(th'.capture_regs.a_clk, j) >= B)
+    requires forall g: LG.GroupId :: g in S && g in gmt' ==> g in gmt
+    ensures LookNestOkT(re, S, gmt', th')
+  {
+    forall lid: nat | lid in LTB.LookIds(re)
+      && (exists g: LG.GroupId :: g in S && g in gmt' && g in PIV.CapIds(NI.LookBodyOfRE(re, lid)))
+      ensures NI.LookPathPresent(re, th'.capture_regs.a_clk, th'.quant_regs.a_clk, -1, lid)
+           && AI.get_idx(th'.look_regs.a_clk, lid as int) >= 0
+           && AI.get_idx(th'.look_regs.a_clk, lid as int)
+                >= NI.MxAtLidLk(re, th'.quant_regs.a_clk, -1, lid)
+    {
+      var g: LG.GroupId :| g in S && g in gmt' && g in PIV.CapIds(NI.LookBodyOfRE(re, lid));
+      assert g in gmt;
+      NI.LookPathPresentFreshCap(re, th.capture_regs.a_clk, th'.capture_regs.a_clk,
+                                 th.quant_regs.a_clk, -1, lid, B);
+    }
+  }
+
+  /** Carrier effect — QUANT RE-STAMP (the SetQuantToClock case): the B-side
+      `Reset` clears `qid`'s whole reset scope from the gm, so lids INSIDE
+      `qid`'s body are vacated (`NI.LookBodyCapsUnderQid`); for lids OUTSIDE,
+      `qid` is off their path and the re-stamp is invisible
+      (`NI.LookPathPresentQuantOffPath`). */
+  lemma LookNestOkTSetQuant(re: R.regex, S: set<LG.GroupId>, gmt: LG.GroupMap, gmt': LG.GroupMap,
+                            th: AI.Thread, th': AI.Thread, qid: nat)
+    requires PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LookNestOkT(re, S, gmt, th)
+    requires qid in PIV.QuantIds(re)
+    requires th'.capture_regs == th.capture_regs && th'.look_regs == th.look_regs
+    requires forall j: int :: j != qid as int ==>
+      AI.get_idx(th'.quant_regs.a_clk, j) == AI.get_idx(th.quant_regs.a_clk, j)
+    requires forall g: nat :: g in PIV.CapIds(PIV.QidBody(re, qid)) ==> g !in gmt'
+    requires forall g: LG.GroupId :: g in gmt' ==> g in gmt
+    ensures LookNestOkT(re, S, gmt', th')
+  {
+    forall lid: nat | lid in LTB.LookIds(re)
+      && (exists g: LG.GroupId :: g in S && g in gmt' && g in PIV.CapIds(NI.LookBodyOfRE(re, lid)))
+      ensures NI.LookPathPresent(re, th'.capture_regs.a_clk, th'.quant_regs.a_clk, -1, lid)
+           && AI.get_idx(th'.look_regs.a_clk, lid as int) >= 0
+           && AI.get_idx(th'.look_regs.a_clk, lid as int)
+                >= NI.MxAtLidLk(re, th'.quant_regs.a_clk, -1, lid)
+    {
+      var g: LG.GroupId :| g in S && g in gmt' && g in PIV.CapIds(NI.LookBodyOfRE(re, lid));
+      if lid in LTB.LookIds(PIV.QidBody(re, qid)) {
+        // ON path: Reset removed lid's whole ownership — no witness survives.
+        NI.LookBodyCapsUnderQid(re, qid, lid);
+        assert g in PIV.CapIds(PIV.QidBody(re, qid));
+        assert false;
+      } else {
+        assert g in gmt;
+        NI.LookPathPresentQuantOffPath(re, th.capture_regs.a_clk, th.quant_regs.a_clk,
+                                       th'.quant_regs.a_clk, -1, lid, qid);
+      }
+    }
+  }
+
+  /** Carrier effect — GATE PASS (the CheckOracle case): the crossing thread's
+      positional invariant plus the FRESH look stamp establish the fact for
+      `lid0` outright (`NI.GateCrossLookNest`); groups folded in are owned by
+      `lid0` alone, so other lids keep their old witnesses and unchanged
+      registers (`NI.LookBodiesCapsDisjoint` kills cross-ownership). */
+  lemma LookNestOkTGatePass(re: R.regex, code: RB.code, endl: nat, S: set<LG.GroupId>,
+                            gmt: LG.GroupMap, gmt': LG.GroupMap,
+                            th: AI.Thread, th': AI.Thread, pc: nat, lid0: int)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires NR.LookBehindFragmentRE(re) && LTB.LookUnique(re) && PIV.CapUnique(re)
+    requires LookNestOkT(re, S, gmt, th)
+    requires pc < endl && NR.GetPcRE(code, pc) == Some(RB.CheckOracle(lid0))
+    requires NI.NestInvRE(re, code, 0, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk, -1)
+    requires th'.capture_regs == th.capture_regs && th'.quant_regs == th.quant_regs
+    requires forall j: int :: j != lid0 ==>
+      AI.get_idx(th'.look_regs.a_clk, j) == AI.get_idx(th.look_regs.a_clk, j)
+    requires AI.get_idx(th'.look_regs.a_clk, lid0) >= 0
+    requires forall k :: AI.get_idx(th.quant_regs.a_clk, k) <= AI.get_idx(th'.look_regs.a_clk, lid0)
+    requires forall g: LG.GroupId :: g in S && g in gmt' && g !in gmt ==>
+      lid0 >= 0 && (lid0 as nat) in LTB.LookIds(re)
+      && g in PIV.CapIds(NI.LookBodyOfRE(re, lid0 as nat))
+    ensures LookNestOkT(re, S, gmt', th')
+  {
+    NI.GateCrossLookNest(re, code, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk,
+                         th'.look_regs.a_clk, lid0);
+    forall lid: nat | lid in LTB.LookIds(re)
+      && (exists g: LG.GroupId :: g in S && g in gmt' && g in PIV.CapIds(NI.LookBodyOfRE(re, lid)))
+      ensures NI.LookPathPresent(re, th'.capture_regs.a_clk, th'.quant_regs.a_clk, -1, lid)
+           && AI.get_idx(th'.look_regs.a_clk, lid as int) >= 0
+           && AI.get_idx(th'.look_regs.a_clk, lid as int)
+                >= NI.MxAtLidLk(re, th'.quant_regs.a_clk, -1, lid)
+    {
+      var g: LG.GroupId :| g in S && g in gmt' && g in PIV.CapIds(NI.LookBodyOfRE(re, lid));
+      if lid == lid0 as nat {
+        // established fresh at the crossing (caps/quant banks unchanged)
+      } else {
+        if g in gmt {
+          assert AI.get_idx(th'.look_regs.a_clk, lid as int)
+              == AI.get_idx(th.look_regs.a_clk, lid as int) by {
+            assert lid as int != lid0;
+          }
+        } else {
+          assert g in PIV.CapIds(NI.LookBodyOfRE(re, lid0 as nat));
+          NI.LookBodiesCapsDisjoint(re, lid, lid0 as nat);
+          assert g in PIV.CapIds(NI.LookBodyOfRE(re, lid))
+                   * PIV.CapIds(NI.LookBodyOfRE(re, lid0 as nat));
+          assert false;
+        }
+      }
+    }
+  }
+
   lemma WinningGmtTieOutside(re: R.regex, th: AI.Thread, leafgm: LG.GroupMap,
                              ftstar: LG.GroupMap, S: set<LG.GroupId>)
     requires ftstar == PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs)

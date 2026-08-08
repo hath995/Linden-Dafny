@@ -3952,6 +3952,75 @@ module LindenElkNestInv {
       }
   }
 
+  /** Distinct lids own DISJOINT capture ids (the re-structural version of the
+      table-level `LmOfBodiesDisjoint`): each body's captures sit under exactly
+      one branch and `CapUnique` makes sibling branches share none. */
+  lemma LookBodiesCapsDisjoint(r: R.regex, l1: nat, l2: nat)
+    requires NR.LookBehindFragmentRE(r)
+    requires PIV.CapUnique(r) && LTB.LookUnique(r)
+    requires l1 in LTB.LookIds(r) && l2 in LTB.LookIds(r) && l1 != l2
+    ensures PIV.CapIds(LookBodyOfRE(r, l1)) * PIV.CapIds(LookBodyOfRE(r, l2)) == {}
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if l1 in LTB.LookIds(r1) && l2 in LTB.LookIds(r1) {
+        LookBodiesCapsDisjoint(r1, l1, l2);
+      } else if l1 !in LTB.LookIds(r1) && l2 !in LTB.LookIds(r1) {
+        LookBodiesCapsDisjoint(r2, l1, l2);
+      } else {
+        // split: one body per branch; CapUnique makes the branches disjoint
+        if l1 in LTB.LookIds(r1) {
+          LookBodyCapsIn(r1, l1); LookBodyCapsIn(r2, l2);
+        } else {
+          LookBodyCapsIn(r2, l1); LookBodyCapsIn(r1, l2);
+        }
+        forall g: nat | g in PIV.CapIds(LookBodyOfRE(r, l1)) * PIV.CapIds(LookBodyOfRE(r, l2))
+          ensures false
+        {
+          assert g in PIV.CapIds(r1) * PIV.CapIds(r2);
+        }
+      }
+    case Re_con(r1, r2) =>
+      if l1 in LTB.LookIds(r1) && l2 in LTB.LookIds(r1) {
+        LookBodiesCapsDisjoint(r1, l1, l2);
+      } else if l1 !in LTB.LookIds(r1) && l2 !in LTB.LookIds(r1) {
+        LookBodiesCapsDisjoint(r2, l1, l2);
+      } else {
+        if l1 in LTB.LookIds(r1) {
+          LookBodyCapsIn(r1, l1); LookBodyCapsIn(r2, l2);
+        } else {
+          LookBodyCapsIn(r2, l1); LookBodyCapsIn(r1, l2);
+        }
+        forall g: nat | g in PIV.CapIds(LookBodyOfRE(r, l1)) * PIV.CapIds(LookBodyOfRE(r, l2))
+          ensures false
+        {
+          assert g in PIV.CapIds(r1) * PIV.CapIds(r2);
+        }
+      }
+    case Re_quant(_, _, _, r1) => LookBodiesCapsDisjoint(r1, l1, l2);
+    case Re_capture(_, r1) => LookBodiesCapsDisjoint(r1, l1, l2);
+    case Re_lookaround(lid0, _, r1) =>
+      // both lids under one look node: at most one can BE the node (l1 != l2),
+      // and the body is where the other lives — but a body inside r contains
+      // both only if both are in LookIds(r1), where the node's own lid cannot
+      // recur (LookUnique).
+      // fragment: the body is look-free, so it contains no look at all —
+      // whichever of l1/l2 is not THIS node has nowhere to live.
+      assert NR.LookFreeRE(r1);
+      LookFreeNoLookIdsN(r1);
+      if lid0 >= 0 && (lid0 as nat) == l1 {
+        assert l2 in LTB.LookIds(r1);
+        assert false;
+      } else if lid0 >= 0 && (lid0 as nat) == l2 {
+        assert l1 in LTB.LookIds(r1);
+        assert false;
+      } else {
+        assert l1 in LTB.LookIds(r1);
+        assert false;
+      }
+  }
+
   /** GATE-CROSS ESTABLISHMENT: at look `lid`'s `CheckOracle` pc, the thread's
       positional invariant (`NestTopRE`, `pc < endl`) plus a FRESH look stamp
       that beats every stored quant clock yield the full carrier fact for
