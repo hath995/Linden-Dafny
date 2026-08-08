@@ -74,6 +74,8 @@ module LindenElkLiftSim {
   import LN = WarblreNumeric
   import PSM = LindenElkPikeSim
   import RL = LindenElkRegsLaws
+  import LKC = LindenElkLookCapture
+  import OE = LindenElkOracleEntry
   import WkE = LindenElkWalkOkEntry
   import TT = LindenElkTreeThread
   import NUL = LindenElkNullable
@@ -11130,4 +11132,568 @@ module LindenElkLiftSim {
   //   3. Delete `LkBodyGroupsEmpty`, `FilterUnmoved`, and the L1
   //      `LookRowsFromTables`; whole-package verify; repack (blocked on the
   //      lem 10-minute wall until Lemmata's Native.cs is fixed).
+
+  // ==========================================================================
+  // (E4) THE ENDPOINT ASSEMBLY — from `BestTieLk`'s four tie directions and
+  // the genuine-start engine facts, the winning leaf's gm IS the live
+  // denotation of the FLookLoop-reconstructed registers, and the synthetic
+  // thread carrying them is well-formed. The last lemma before the theorem.
+  // ==========================================================================
+  lemma {:isolate_assertions} L3aEndpointAssembly(
+      ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, endl: nat,
+      str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
+      thread: AI.Thread, leaf: LT.Leaf,
+      inits: AI.VmState, cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, cdn: LCdn.cdns,
+      ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(ast) && T.TransWf(re) && re == R.lazy_prefix(ast)
+    requires NR.LookBehindFragmentRE(re) && LTB.LookUnique(re)
+    requires PIV.QuantUnique(re) && PIV.CapUnique(re)
+    requires crv == CP.FFullCompilation(ast)
+    requires LTB.LookTablesOk(re, crv)
+    requires code == CP.compile_to_bytecode(re)
+    requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires forall pc: nat, q: int, b: bool ::
+      NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
+    requires S == PIV.CapIdsInLooks(re)
+    requires forall lx: nat :: lx in LTB.LookIds(re) ==> 1 <= lx
+    requires ncap == 2 * R.max_group(ast) + 2 && ncap == 2 * R.max_group(re) + 2
+    requires nlook == R.max_lookaround(ast) + 1 && nlook == R.max_lookaround(re) + 1
+    requires nquant == R.max_quant(ast) + 1 && nquant == R.max_quant(re) + 1
+    requires cap == AReg.init_regs(ncap) && look == AReg.init_regs(nlook) && quant == AReg.init_regs(nquant)
+    requires inits == AI.FInitState(code, 0, cap, look, quant, 0, AI.cp_context(0, str, LAnc.Forward))
+    requires AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0 == Some(thread)
+    requires BestTieLk(re, crv, str, ov, S, Some(leaf), Some(thread), ncap, nlook, nquant)
+    ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                    thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
+      res.1 == thread.look_regs
+      && leaf.1 == PIV.GmOfLive(re, res.0, thread.look_regs, res.2)
+      && CM.ThreadRegsWf(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed),
+                         ncap, nlook, nquant)
+      && M.QuantRegsFinal(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed))
+  {
+    var maxlook := R.max_lookaround(ast);
+    var lk := thread.look_regs;
+    var leafgm := leaf.1;
+    var result := AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0;
+    var ctx0 := AI.cp_context(0, str, LAnc.Forward);
+    assert inits.context.nextchar == AI.get_char(str, 0) && inits.cp == 0;
+    assert |inits.processed.true_set| == RB.size(code) && |inits.processed.false_set| == RB.size(code);
+    assert inits.active == [AI.init_thread(cap, look, quant)]
+        && inits.blocked == [] && inits.bestmatch.None?;
+
+    // ---- winning-thread wf + genuine-start engine facts -------------------
+    CM.RegsClocksLEInit(ncap, 0);
+    CM.RegsClocksLEInit(nlook, 0);
+    CM.RegsClocksLEInit(nquant, 0);
+    CM.FInitStateClocksLE(code, 0, cap, look, quant, 0, ctx0);
+    CM.FInitStateRegsWf(code, 0, ncap, nlook, nquant, 0, ctx0);
+    assert M.VmQuantFinal(inits) by {
+      var th0 := AI.init_thread(cap, look, quant);
+      assert M.QuantRegsFinal(th0) by {
+        forall k ensures AI.get_idx(quant.a_cp, k) < 0 && AI.get_idx(quant.a_clk, k) >= -1 {
+          if 0 <= k < |quant.a_cp| { assert quant.a_cp[k] == -1; }
+          if 0 <= k < |quant.a_clk| { assert quant.a_clk[k] == -1; }
+        }
+      }
+      forall t2 | t2 in inits.active ensures M.QuantRegsFinal(t2) { assert t2 == th0; }
+    }
+    M.FFindMatchThreadFacts(code, str, inits, ov, LAnc.Forward, cdn, ncap, nlook, nquant);
+    assert CM.ThreadRegsWf(thread, ncap, nlook, nquant) && M.QuantRegsFinal(thread);
+
+    // rows / cp-context / stamps / init frames
+    M.LookRowsFromTablesL3a(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
+                            nlook, endl, result);
+    M.MainMatchCpCtxOk(crv, code, str, inits, cap, look, quant, nlook, ov, cdn, result);
+    M.MainMatchLookClkSet(code, str, inits, cap, look, quant, nlook, ov, cdn, result);
+    M.MainMatchBodyQuantsInit(re, code, endl, str, inits, cap, look, quant, ov, cdn, result);
+    M.MainMatchInsideCapsInit(re, code, endl, str, inits, cap, look, quant, ov, cdn, result);
+    var SqOut := set q: nat | q in PIV.QuantIdsOutsideLooks(re) :: q as int;
+    var ScOut := PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(re));
+    assert CM.RegsAgreeOutside(thread.quant_regs, quant, SqOut);
+    assert CM.RegsAgreeOutside(thread.capture_regs, cap, ScOut);
+
+    // set splits + prefix invisibility
+    PIV.CapIdsSplit(re); PIV.QuantIdsSplit(re);
+    PIV.CapIdsLooksDisjoint(re); PIV.QuantIdsLooksDisjoint(re);
+    var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
+    assert re == R.Re_con(pre, ast);
+    assert PIV.CapIdsInLooks(re) == PIV.CapIdsInLooks(ast);
+    assert PIV.QuantIdsInLooks(re) == PIV.QuantIdsInLooks(ast);
+    var Sreg := PIV.CaptureRegsSet(PIV.CapIdsInLooks(ast));
+    var Sq := set q: nat | q in PIV.QuantIdsInLooks(ast) :: q as int;
+    LTB.LookIdsLeMax(re);
+    assert forall lx: nat :: lx in LTB.LookIds(re) ==> 1 <= lx <= maxlook;
+
+    // inside-look slots are never outside-look slots (parity + disjointness)
+    assert forall c: nat :: c in PIV.CapIdsInLooks(re) ==>
+      CP.start_reg(c as int) !in ScOut && CP.end_reg(c as int) !in ScOut
+    by {
+      forall c: nat | c in PIV.CapIdsInLooks(re)
+        ensures CP.start_reg(c as int) !in ScOut && CP.end_reg(c as int) !in ScOut
+      {
+        if CP.start_reg(c as int) in ScOut {
+          if CP.start_reg(c as int) in (set cid | cid in PIV.CapIdsOutsideLooks(re) :: CP.start_reg(cid as int)) {
+            var cid: nat :| cid in PIV.CapIdsOutsideLooks(re) && CP.start_reg(cid as int) == CP.start_reg(c as int);
+            assert cid == c;
+            assert c in PIV.CapIdsOutsideLooks(re) * PIV.CapIdsInLooks(re);
+          } else {
+            var cid: nat :| cid in PIV.CapIdsOutsideLooks(re) && CP.end_reg(cid as int) == CP.start_reg(c as int);
+            assert 2 * (cid as int) + 1 == 2 * (c as int);
+          }
+          assert false;
+        }
+        if CP.end_reg(c as int) in ScOut {
+          if CP.end_reg(c as int) in (set cid | cid in PIV.CapIdsOutsideLooks(re) :: CP.end_reg(cid as int)) {
+            var cid: nat :| cid in PIV.CapIdsOutsideLooks(re) && CP.end_reg(cid as int) == CP.end_reg(c as int);
+            assert cid == c;
+            assert c in PIV.CapIdsOutsideLooks(re) * PIV.CapIdsInLooks(re);
+          } else {
+            var cid: nat :| cid in PIV.CapIdsOutsideLooks(re) && CP.start_reg(cid as int) == CP.end_reg(c as int);
+            assert 2 * (cid as int) == 2 * (c as int) + 1;
+          }
+          assert false;
+        }
+      }
+    }
+    // hence: the winning thread's inside-look capture slots are exactly INIT
+    assert forall c: nat :: c in PIV.CapIdsInLooks(ast) ==>
+      AI.get_idx(thread.capture_regs.a_cp, CP.start_reg(c as int)) == -1
+      && AI.get_idx(thread.capture_regs.a_clk, CP.start_reg(c as int)) == -1
+      && AI.get_idx(thread.capture_regs.a_cp, CP.end_reg(c as int)) == -1
+      && AI.get_idx(thread.capture_regs.a_clk, CP.end_reg(c as int)) == -1
+    by {
+      forall c: nat | c in PIV.CapIdsInLooks(ast)
+        ensures AI.get_idx(thread.capture_regs.a_cp, CP.start_reg(c as int)) == -1
+             && AI.get_idx(thread.capture_regs.a_clk, CP.start_reg(c as int)) == -1
+             && AI.get_idx(thread.capture_regs.a_cp, CP.end_reg(c as int)) == -1
+             && AI.get_idx(thread.capture_regs.a_clk, CP.end_reg(c as int)) == -1
+      {
+        assert c in PIV.CapIdsInLooks(re);
+        RL.AInitLaws(ncap);
+      }
+    }
+
+    // per-body unset entries for the value lifts
+    assert forall l: int :: 1 <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
+      CM.RegsAgreeInside(thread.capture_regs, AReg.init_regs(ncap), PIV.CaptureRegs(M.VBody(crv, l)))
+    by {
+      forall l: int | 1 <= l <= maxlook && AReg.get_cp(lk, l).Some?
+        ensures CM.RegsAgreeInside(thread.capture_regs, AReg.init_regs(ncap), PIV.CaptureRegs(M.VBody(crv, l)))
+      {
+        var la: R.lookaround, body: R.regex :|
+          LTB.LookEntryOk(crv, l, la, body)
+          && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+          && PIV.CapUnique(body) && PIV.QuantUnique(body)
+          && PIV.CaptureRegs(body) <= Sreg
+          && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
+          && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
+        assert body == M.VBody(crv, l);
+        forall k: int | k in PIV.CaptureRegs(body)
+          ensures AI.get_idx(thread.capture_regs.a_cp, k) == AI.get_idx(AReg.init_regs(ncap).a_cp, k)
+               && AI.get_idx(thread.capture_regs.a_clk, k) == AI.get_idx(AReg.init_regs(ncap).a_clk, k)
+        {
+          var c: nat :| c in PIV.CapIds(body)
+            && (k == CP.start_reg(c as int) || k == CP.end_reg(c as int));
+          assert c in PIV.CapIdsInLooks(ast) by {
+            assert CP.start_reg(c as int) in PIV.CaptureRegs(body);
+            assert CP.start_reg(c as int) in Sreg;
+            if CP.start_reg(c as int) in (set cid | cid in PIV.CapIdsInLooks(ast) :: CP.start_reg(cid as int)) {
+              var cid: nat :| cid in PIV.CapIdsInLooks(ast) && CP.start_reg(cid as int) == CP.start_reg(c as int);
+              assert cid == c;
+            } else {
+              var cid: nat :| cid in PIV.CapIdsInLooks(ast) && CP.end_reg(cid as int) == CP.start_reg(c as int);
+              assert 2 * (cid as int) + 1 == 2 * (c as int);
+              assert false;
+            }
+          }
+          RL.AInitLaws(ncap);
+        }
+      }
+    }
+    assert forall l: int :: 1 <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
+      CM.RegsAgreeInside(thread.quant_regs, AReg.init_regs(nquant), LKC.QIdsInt(M.VBody(crv, l)))
+    by {
+      forall l: int | 1 <= l <= maxlook && AReg.get_cp(lk, l).Some?
+        ensures CM.RegsAgreeInside(thread.quant_regs, AReg.init_regs(nquant), LKC.QIdsInt(M.VBody(crv, l)))
+      {
+        var la: R.lookaround, body: R.regex :|
+          LTB.LookEntryOk(crv, l, la, body)
+          && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+          && PIV.CapUnique(body) && PIV.QuantUnique(body)
+          && PIV.CaptureRegs(body) <= Sreg
+          && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
+          && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
+        assert body == M.VBody(crv, l);
+        forall k: int | k in LKC.QIdsInt(body)
+          ensures AI.get_idx(thread.quant_regs.a_cp, k) == AI.get_idx(AReg.init_regs(nquant).a_cp, k)
+               && AI.get_idx(thread.quant_regs.a_clk, k) == AI.get_idx(AReg.init_regs(nquant).a_clk, k)
+        {
+          assert k >= 0 && (k as nat) in PIV.QuantIds(body);
+          assert (k as nat) in PIV.QuantIdsInLooks(ast);
+          assert k !in SqOut by {
+            if k in SqOut {
+              var q2: nat :| q2 in PIV.QuantIdsOutsideLooks(re) && q2 as int == k;
+              assert q2 in PIV.QuantIdsOutsideLooks(re) * PIV.QuantIdsInLooks(re);
+            }
+          }
+          RL.AInitLaws(nquant);
+        }
+      }
+    }
+    // pairwise quant disjointness across matched lids
+    assert forall l1: int, l2: int ::
+      1 <= l1 <= maxlook && 1 <= l2 <= maxlook && l1 != l2
+      && AReg.get_cp(lk, l1).Some? && AReg.get_cp(lk, l2).Some? ==>
+      LKC.QIdsInt(M.VBody(crv, l1)) * LKC.QIdsInt(M.VBody(crv, l2)) == {}
+    by {
+      forall l1: int, l2: int |
+        1 <= l1 <= maxlook && 1 <= l2 <= maxlook && l1 != l2
+        && AReg.get_cp(lk, l1).Some? && AReg.get_cp(lk, l2).Some?
+        ensures LKC.QIdsInt(M.VBody(crv, l1)) * LKC.QIdsInt(M.VBody(crv, l2)) == {}
+      {
+        assert (l1 as nat) in LTB.LookIds(re) && (l2 as nat) in LTB.LookIds(re);
+        OE.LmOfDom(re);
+        assert l1 in OE.LmOf(re) && l2 in OE.LmOf(re);
+        var la1, b1, la2, b2 := M.LmOfBodiesDisjoint(re, crv, l1, l2);
+        assert b1 == M.VBody(crv, l1) && b2 == M.VBody(crv, l2);
+        forall k: int | k in LKC.QIdsInt(b1) * LKC.QIdsInt(b2) ensures false {
+          assert (k as nat) in PIV.QuantIds(b1) * PIV.QuantIds(b2);
+        }
+      }
+    }
+
+    // ---- run the lifts and frames ----------------------------------------
+    var qtF := thread.quant_regs;
+    assert (forall k :: AI.get_idx(qtF.a_cp, k) < 0) && (forall k :: AI.get_idx(qtF.a_clk, k) >= -1);
+    M.FLookLoopValueLift(crv, str, 1, maxlook, thread.capture_regs, lk, qtF, ov,
+                         ast, Sreg, ncap, nlook, nquant);
+    M.FLookLoopQuantValueLift(crv, str, 1, maxlook, thread.capture_regs, lk, qtF, ov,
+                              ast, Sq, ncap, nlook, nquant);
+    M.FLookLoopCaptureFrame(crv, str, 1, maxlook, thread.capture_regs, lk, qtF, ov, ast, Sreg);
+    M.FLookLoopQuantFrame(crv, str, 1, maxlook, thread.capture_regs, lk, qtF, ov, ast, Sq);
+    var res := AI.FLookLoop(crv, str, 1, maxlook, thread.capture_regs, lk, qtF, ov);
+    var res0 := res.0;
+    var res2 := res.2;
+    assert res.1 == lk;
+    assert CM.RegsAgreeOutside(res0, thread.capture_regs, Sreg);
+    assert CM.RegsAgreeOutside(res2, qtF, Sq);
+    assert M.FLookLoopValueOk(crv, str, res0, 1, maxlook, lk, ov, ncap, nlook, nquant);
+    assert M.FLookLoopQuantValueOk(crv, str, res2, 1, maxlook, lk, ov, ncap, nlook, nquant);
+    assert PIV.CapRegWf(res0) && |res0.a_cp| == ncap && |res0.a_clk| == ncap;
+    assert |res2.a_cp| == nquant && |res2.a_clk| == nquant;
+    assert (forall k :: AI.get_idx(res2.a_cp, k) < 0) && (forall k :: AI.get_idx(res2.a_clk, k) >= -1);
+
+    // outside-look agreements (for the transports and the value bridge)
+    assert forall c: nat :: c in PIV.CapIdsOutsideLooks(re) ==>
+      AI.get_idx(res0.a_cp, CP.start_reg(c as int)) == AI.get_idx(thread.capture_regs.a_cp, CP.start_reg(c as int))
+      && AI.get_idx(res0.a_clk, CP.start_reg(c as int)) == AI.get_idx(thread.capture_regs.a_clk, CP.start_reg(c as int))
+    by {
+      forall c: nat | c in PIV.CapIdsOutsideLooks(re)
+        ensures AI.get_idx(res0.a_cp, CP.start_reg(c as int)) == AI.get_idx(thread.capture_regs.a_cp, CP.start_reg(c as int))
+             && AI.get_idx(res0.a_clk, CP.start_reg(c as int)) == AI.get_idx(thread.capture_regs.a_clk, CP.start_reg(c as int))
+      {
+        assert CP.start_reg(c as int) !in Sreg by {
+          if CP.start_reg(c as int) in Sreg {
+            if CP.start_reg(c as int) in (set cid | cid in PIV.CapIdsInLooks(ast) :: CP.start_reg(cid as int)) {
+              var cid: nat :| cid in PIV.CapIdsInLooks(ast) && CP.start_reg(cid as int) == CP.start_reg(c as int);
+              assert cid == c;
+              assert c in PIV.CapIdsOutsideLooks(re) * PIV.CapIdsInLooks(re);
+            } else {
+              var cid: nat :| cid in PIV.CapIdsInLooks(ast) && CP.end_reg(cid as int) == CP.start_reg(c as int);
+              assert 2 * (cid as int) + 1 == 2 * (c as int);
+            }
+            assert false;
+          }
+        }
+      }
+    }
+    assert forall q: nat :: q in PIV.QuantIdsOutsideLooks(re) ==>
+      AI.get_idx(res2.a_clk, q as int) == AI.get_idx(qtF.a_clk, q as int)
+    by {
+      forall q: nat | q in PIV.QuantIdsOutsideLooks(re)
+        ensures AI.get_idx(res2.a_clk, q as int) == AI.get_idx(qtF.a_clk, q as int)
+      {
+        assert (q as int) !in Sq by {
+          if (q as int) in Sq {
+            var q2: nat :| q2 in PIV.QuantIdsInLooks(ast) && q2 as int == q as int;
+            assert q2 == q;
+            assert q in PIV.QuantIdsOutsideLooks(re) * PIV.QuantIdsInLooks(re);
+          }
+        }
+      }
+    }
+
+    // ---- FORWARD: every leaf-present inside-S group is reconstructed ------
+    assert GmtTieInside(crv, str, ov, thread, leafgm, S, ncap, nlook, nquant);
+    assert LookNestOkT(re, S, leafgm, thread);
+    assert LookNestBackT(re, crv, str, ov, S, leafgm, thread, ncap, nlook, nquant);
+    forall g: LG.GroupId | g in S && g in leafgm
+      ensures g in PIV.GmOfLive(re, res0, lk, res2)
+           && leafgm[g] == PIV.GmOfLive(re, res0, lk, res2)[g]
+    {
+      var l: int :| 0 <= l < nlook
+        && g in PIV.CapIds(M.VBody(crv, l))
+        && M.MatchedPosLA(crv, lk, l)
+        && var rf0 := M.FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
+           rf0.Some?
+           && var gmb := PIV.GmOfLive(M.VBody(crv, l), rf0.value.capture_regs,
+                                      rf0.value.look_regs, rf0.value.quant_regs);
+              g in gmb && leafgm[g] == gmb[g];
+      var rf := M.FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
+      assert AReg.get_cp(lk, l).Some?;
+      assert l >= 0 && (l as nat) in LTB.LookIds(re);
+      assert 1 <= l <= maxlook;
+      var la: R.lookaround, body: R.regex :|
+        LTB.LookEntryOk(crv, l, la, body)
+        && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+        && PIV.CapUnique(body) && PIV.QuantUnique(body)
+        && PIV.CaptureRegs(body) <= Sreg
+        && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
+        && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
+      assert body == M.VBody(crv, l);
+      NI.LookBodyOfTablesTie(re, crv, l as nat);
+      var la2: R.lookaround :| LTB.LookEntryOk(crv, l, la2, NI.LookBodyOfRE(re, l as nat));
+      assert NI.LookBodyOfRE(re, l as nat) == body;
+      NR.PlusIsLookBehindFragmentRE(body);
+      assert g in PIV.CapIds(re);
+      assert M.cp_ctx_ok(crv, str, lk, l);
+      FreshBodyMatchCapWf(crv, str, l, lk, ov, ncap, nlook, nquant, body);
+      // carrier forward at l
+      assert NI.LookPathPresent(re, thread.capture_regs.a_clk, qtF.a_clk, -1, l as nat)
+          && AI.get_idx(lk.a_clk, l) >= 0
+          && AI.get_idx(lk.a_clk, l) >= NI.MxAtLidLk(re, qtF.a_clk, -1, l as nat) by {
+        assert g in S && g in leafgm && g in PIV.CapIds(NI.LookBodyOfRE(re, l as nat));
+      }
+      // outer transport to the reconstructed banks
+      NI.LookPathPresentAgree(re, thread.capture_regs.a_clk, qtF.a_clk,
+                              res0.a_clk, res2.a_clk, -1, l as nat);
+      assert NI.LookPathPresent(re, res0.a_clk, res2.a_clk, -1, l as nat);
+      assert AI.get_idx(lk.a_clk, l) >= NI.MxAtLidLk(re, res2.a_clk, -1, l as nat);
+      // body side on the fresh banks, transported to the reconstructed banks
+      assert CM.RegsAgreeInside(res0, rf.value.capture_regs, PIV.CaptureRegs(body));
+      PIV.BodyPathPresentLk(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs, g);
+      assert CM.RegsAgreeInside(res2, rf.value.quant_regs, LKC.QIdsInt(body));
+      NI.LookFreeNoLookIdsN(body);
+      assert forall c: nat :: c in PIV.CapIds(body) ==>
+        AI.get_idx(AReg.as_arrays(rf.value.capture_regs).1, CP.start_reg(c as int))
+          == AI.get_idx(res0.a_clk, CP.start_reg(c as int)) by {
+        forall c: nat | c in PIV.CapIds(body)
+          ensures AI.get_idx(AReg.as_arrays(rf.value.capture_regs).1, CP.start_reg(c as int))
+               == AI.get_idx(res0.a_clk, CP.start_reg(c as int))
+        {
+          assert CP.start_reg(c as int) in PIV.CaptureRegs(body);
+        }
+      }
+      assert forall q: nat :: q in PIV.QuantIds(body) ==>
+        AI.get_idx(AReg.as_arrays(rf.value.quant_regs).1, q as int)
+          == AI.get_idx(res2.a_clk, q as int) by {
+        forall q: nat | q in PIV.QuantIds(body)
+          ensures AI.get_idx(AReg.as_arrays(rf.value.quant_regs).1, q as int)
+               == AI.get_idx(res2.a_clk, q as int)
+        {
+          assert (q as int) in LKC.QIdsInt(body);
+        }
+      }
+      NI.PathPresentLkAgree(body,
+        AReg.as_arrays(rf.value.capture_regs).1, AReg.as_arrays(rf.value.look_regs).1,
+        AReg.as_arrays(rf.value.quant_regs).1,
+        res0.a_clk, lk.a_clk, res2.a_clk, -1, g);
+      assert PIV.PathPresentLk(body, res0.a_clk, lk.a_clk, res2.a_clk, -1, g);
+      NI.LookPathCompose(re, body, res0.a_clk, lk.a_clk, res2.a_clk, -1, l as nat, g);
+      assert PIV.PathPresentLk(re, res0.a_clk, lk.a_clk, res2.a_clk, -1, g);
+      assert PIV.MxAtGidLk(re, res0.a_clk, lk.a_clk, res2.a_clk, -1, g)
+          == PIV.MxAtGidLk(body, res0.a_clk, lk.a_clk, res2.a_clk, -1, g);
+      assert AI.get_idx(res0.a_clk, CP.start_reg(g as int))
+          == AI.get_idx(AReg.as_arrays(rf.value.capture_regs).1, CP.start_reg(g as int)) by {
+        assert CP.start_reg(g as int) in PIV.CaptureRegs(body);
+      }
+      assert AI.get_idx(res0.a_clk, CP.start_reg(g as int))
+          >= PIV.MxAtGidLk(re, res0.a_clk, lk.a_clk, res2.a_clk, -1, g) by {
+        assert PIV.MxAtGidLk(body,
+                 AReg.as_arrays(rf.value.capture_regs).1, AReg.as_arrays(rf.value.look_regs).1,
+                 AReg.as_arrays(rf.value.quant_regs).1, -1, g)
+            == PIV.MxAtGidLk(body, res0.a_clk, lk.a_clk, res2.a_clk, -1, g);
+      }
+      assert AReg.as_arrays(res0).1 == res0.a_clk && AReg.as_arrays(lk).1 == lk.a_clk
+          && AReg.as_arrays(res2).1 == res2.a_clk;
+      InsidePresentResBridge(re, body, crv, str, ov, thread, leafgm, res0, res2, l,
+                             ncap, nlook, nquant, g);
+    }
+
+    // ---- REVERSE: the reconstruction invents no group the leaf lacks ------
+    forall g: LG.GroupId | g in S && g in PIV.GmOfLive(re, res0, lk, res2)
+      ensures g in leafgm
+    {
+      NI.CapIdsInLooksHasOwner(re, g);
+      var lid: nat :| lid in LTB.LookIds(re) && g in PIV.CapIds(NI.LookBodyOfRE(re, lid));
+      var LB := NI.LookBodyOfRE(re, lid);
+      NI.LookBodyOfTablesTie(re, crv, lid);
+      var laT: R.lookaround :| LTB.LookEntryOk(crv, lid as int, laT, LB);
+      assert M.VBody(crv, lid as int) == LB;
+      assert 1 <= lid <= maxlook;
+      NI.LookBodyOfFragment(re, lid);
+      NR.PlusIsLookBehindFragmentRE(LB);
+      assert g in PIV.CapIds(re);
+      if AReg.get_cp(lk, lid as int).None? {
+        // untouched owner: the slot is still INIT, so g cannot be present
+        var SpM := set lm: int, k: int |
+          1 <= lm <= maxlook && AReg.get_cp(lk, lm).Some? && k in PIV.CaptureRegs(M.VBody(crv, lm)) :: k;
+        M.FLookLoopCaptureFrame(crv, str, 1, maxlook, thread.capture_regs, lk, qtF, ov, ast, SpM);
+        assert CM.RegsAgreeOutside(res0, thread.capture_regs, SpM);
+        assert CP.start_reg(g as int) !in SpM by {
+          if CP.start_reg(g as int) in SpM {
+            var lm: int :| 1 <= lm <= maxlook && AReg.get_cp(lk, lm).Some?
+              && CP.start_reg(g as int) in PIV.CaptureRegs(M.VBody(crv, lm));
+            assert (lm as nat) in LTB.LookIds(re);
+            NI.LookBodyOfTablesTie(re, crv, lm as nat);
+            var laM: R.lookaround :| LTB.LookEntryOk(crv, lm, laM, NI.LookBodyOfRE(re, lm as nat));
+            assert M.VBody(crv, lm) == NI.LookBodyOfRE(re, lm as nat);
+            var c: nat :| c in PIV.CapIds(M.VBody(crv, lm))
+              && (CP.start_reg(g as int) == CP.start_reg(c as int)
+                  || CP.start_reg(g as int) == CP.end_reg(c as int));
+            assert c == g by {
+              if CP.start_reg(g as int) == CP.end_reg(c as int) {
+                assert 2 * (g as int) == 2 * (c as int) + 1;
+              }
+            }
+            assert (lm as nat) == lid by {
+              if (lm as nat) != lid {
+                NI.LookBodiesCapsDisjoint(re, lid, lm as nat);
+                assert g in PIV.CapIds(NI.LookBodyOfRE(re, lid))
+                         * PIV.CapIds(NI.LookBodyOfRE(re, lm as nat));
+              }
+            }
+            assert AReg.get_cp(lk, lid as int).Some?;
+            assert false;
+          }
+        }
+        assert AI.get_idx(res0.a_cp, CP.start_reg(g as int))
+            == AI.get_idx(thread.capture_regs.a_cp, CP.start_reg(g as int));
+        assert g in PIV.CapIdsInLooks(ast);
+        assert AI.get_idx(res0.a_cp, CP.start_reg(g as int)) == -1;
+        assert AReg.as_arrays(res0).0 == res0.a_cp;
+        M.GmOfLiveInsideLookAbsentEq(re, LB, res0, lk, res2, res0, lk, res2, g);
+        assert false;
+      } else {
+        var la: R.lookaround, body: R.regex :|
+          LTB.LookEntryOk(crv, lid as int, la, body)
+          && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+          && PIV.CapUnique(body) && PIV.QuantUnique(body)
+          && PIV.CaptureRegs(body) <= Sreg
+          && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
+          && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
+        assert body == LB;
+        assert la.Lookahead? by {
+          if !la.Lookahead? {
+            assert NR.CaptureFreeRE(body);
+            PIV.CaptureFreeNoCapIds(body);
+            assert g in PIV.CapIds(body);
+          }
+        }
+        assert M.MatchedPosLA(crv, lk, lid as int) by {
+          assert 0 <= (lid as int) < |crv.f_look_types|;
+          assert crv.f_look_types[lid as int] == la;
+        }
+        assert forall c: nat :: c in PIV.CapIds(re) && AI.get_idx(res0.a_clk, CP.start_reg(c as int)) < 0
+                               ==> AI.get_idx(res0.a_cp, CP.start_reg(c as int)) < 0;
+        PIV.GmOfLivePresenceExtractLk(re, res0, lk, res2, g);
+        assert AReg.as_arrays(res0).1 == res0.a_clk && AReg.as_arrays(lk).1 == lk.a_clk
+            && AReg.as_arrays(res2).1 == res2.a_clk && AReg.as_arrays(res0).0 == res0.a_cp;
+        assert PIV.PathPresentLk(re, res0.a_clk, lk.a_clk, res2.a_clk, -1, g);
+        NI.LookPathDecompose(re, LB, res0.a_clk, lk.a_clk, res2.a_clk, -1, lid, g);
+        assert NI.LookPathPresent(re, res0.a_clk, res2.a_clk, -1, lid);
+        var lcv := AI.get_idx(lk.a_clk, lid as int);
+        assert lcv >= 0 && lcv >= NI.MxAtLidLk(re, res2.a_clk, -1, lid);
+        NI.LookPathPresentAgree(re, res0.a_clk, res2.a_clk,
+                                thread.capture_regs.a_clk, qtF.a_clk, -1, lid);
+        assert NI.LookPathPresent(re, thread.capture_regs.a_clk, qtF.a_clk, -1, lid);
+        assert lcv >= NI.MxAtLidLk(re, qtF.a_clk, -1, lid);
+        NI.LookPathDomIntro(re, thread.capture_regs.a_clk, qtF.a_clk, -1, lid, lcv);
+        assert NI.LookPathDom(re, lcv, qtF.a_clk, lid);
+        var rf := M.FreshBodyMatch(crv, str, lid as int, lk, ov, ncap, nlook, nquant);
+        assert rf.Some? by {
+          if rf.None? {
+            assert CM.RegsAgreeInside(res0, AReg.init_regs(ncap), PIV.CaptureRegs(LB));
+            assert CP.start_reg(g as int) in PIV.CaptureRegs(LB);
+            RL.AInitLaws(ncap);
+            assert AI.get_idx(res0.a_cp, CP.start_reg(g as int)) == -1;
+            assert AI.get_idx(res0.a_cp, CP.start_reg(g as int)) >= 0;
+          }
+        }
+        assert CM.RegsAgreeInside(res0, rf.value.capture_regs, PIV.CaptureRegs(LB));
+        assert CM.RegsAgreeInside(res2, rf.value.quant_regs, LKC.QIdsInt(LB));
+        NI.LookFreeNoLookIdsN(LB);
+        assert forall c: nat :: c in PIV.CapIds(LB) ==>
+          AI.get_idx(res0.a_clk, CP.start_reg(c as int))
+            == AI.get_idx(AReg.as_arrays(rf.value.capture_regs).1, CP.start_reg(c as int)) by {
+          forall c: nat | c in PIV.CapIds(LB)
+            ensures AI.get_idx(res0.a_clk, CP.start_reg(c as int))
+                 == AI.get_idx(AReg.as_arrays(rf.value.capture_regs).1, CP.start_reg(c as int))
+          {
+            assert CP.start_reg(c as int) in PIV.CaptureRegs(LB);
+          }
+        }
+        assert forall q: nat :: q in PIV.QuantIds(LB) ==>
+          AI.get_idx(res2.a_clk, q as int)
+            == AI.get_idx(AReg.as_arrays(rf.value.quant_regs).1, q as int) by {
+          forall q: nat | q in PIV.QuantIds(LB)
+            ensures AI.get_idx(res2.a_clk, q as int)
+                 == AI.get_idx(AReg.as_arrays(rf.value.quant_regs).1, q as int)
+          {
+            assert (q as int) in LKC.QIdsInt(LB);
+          }
+        }
+        NI.PathPresentLkAgree(LB, res0.a_clk, lk.a_clk, res2.a_clk,
+          AReg.as_arrays(rf.value.capture_regs).1, AReg.as_arrays(rf.value.look_regs).1,
+          AReg.as_arrays(rf.value.quant_regs).1, -1, g);
+        assert PIV.PathPresentLk(LB,
+          AReg.as_arrays(rf.value.capture_regs).1, AReg.as_arrays(rf.value.look_regs).1,
+          AReg.as_arrays(rf.value.quant_regs).1, -1, g);
+        assert CP.start_reg(g as int) in PIV.CaptureRegs(LB);
+        assert AI.get_idx(AReg.as_arrays(rf.value.capture_regs).1, CP.start_reg(g as int))
+            == AI.get_idx(res0.a_clk, CP.start_reg(g as int));
+        assert AI.get_idx(AReg.as_arrays(rf.value.capture_regs).0, CP.start_reg(g as int))
+            == AI.get_idx(res0.a_cp, CP.start_reg(g as int));
+        assert AI.get_idx(res0.a_cp, CP.start_reg(g as int)) >= 0;
+        assert AI.get_idx(AReg.as_arrays(rf.value.capture_regs).1, CP.start_reg(g as int))
+            >= PIV.MxAtGidLk(LB,
+                 AReg.as_arrays(rf.value.capture_regs).1, AReg.as_arrays(rf.value.look_regs).1,
+                 AReg.as_arrays(rf.value.quant_regs).1, -1, g) by {
+          assert AI.get_idx(res0.a_clk, CP.start_reg(g as int))
+              >= PIV.MxAtGidLk(re, res0.a_clk, lk.a_clk, res2.a_clk, -1, g);
+          assert PIV.MxAtGidLk(re, res0.a_clk, lk.a_clk, res2.a_clk, -1, g)
+              == PIV.MxAtGidLk(LB, res0.a_clk, lk.a_clk, res2.a_clk, -1, g);
+          assert PIV.MxAtGidLk(LB, res0.a_clk, lk.a_clk, res2.a_clk, -1, g)
+              == PIV.MxAtGidLk(LB,
+                   AReg.as_arrays(rf.value.capture_regs).1, AReg.as_arrays(rf.value.look_regs).1,
+                   AReg.as_arrays(rf.value.quant_regs).1, -1, g);
+        }
+        PIV.GmOfLiveKeepsPresentLk(LB, rf.value.capture_regs, rf.value.look_regs,
+                                   rf.value.quant_regs, g);
+        assert g in PIV.GmOfLive(LB, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs);
+        assert g in leafgm by {
+          assert M.MatchedPosLA(crv, lk, lid as int)
+              && NI.LookPathDom(re, AI.get_idx(lk.a_clk, lid as int), qtF.a_clk, lid);
+        }
+      }
+    }
+
+    // ---- assemble ---------------------------------------------------------
+    WinningGmtTieOutside(re, thread, leafgm,
+      PIV.GmOfLive(re, thread.capture_regs, thread.look_regs, thread.quant_regs), S);
+    assert forall k: int :: k !in PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)) ==>
+      AI.get_idx(AReg.as_arrays(res0).0, k) == AI.get_idx(AReg.as_arrays(thread.capture_regs).0, k)
+      && AI.get_idx(AReg.as_arrays(res0).1, k) == AI.get_idx(AReg.as_arrays(thread.capture_regs).1, k)
+    by {
+      assert PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)) == Sreg;
+    }
+    assert forall q: nat :: q in PIV.QuantIdsOutsideLooks(re) ==>
+      AI.get_idx(AReg.as_arrays(res2).1, q as int) == AI.get_idx(AReg.as_arrays(thread.quant_regs).1, q as int);
+    L3aValueBridge(re, thread, leafgm, res0, res2, S);
+    assert leafgm == PIV.GmOfLive(re, res0, lk, res2);
+    assert CM.ThreadRegsWf(AI.Thread(thread.pc, res0, res.1, res2, thread.exit_allowed),
+                           ncap, nlook, nquant);
+    assert M.QuantRegsFinal(AI.Thread(thread.pc, res0, res.1, res2, thread.exit_allowed));
+  }
 }
