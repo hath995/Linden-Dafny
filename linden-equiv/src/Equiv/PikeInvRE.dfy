@@ -3150,6 +3150,11 @@ module LindenElkPikeInv {
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetQuantToClock? ==>
       var q := NR.GetPcRE(code, pc).value.sq;
       q >= 0 && (q as nat) in QuantIds(re)
+      // L3a sharpening: stamp sites live OUTSIDE lookaround bodies (a look
+      // compiles to a bare CheckOracle — its body's quants are never stamped
+      // by this code). Feeds the main-pass quant frame: body quant slots stay
+      // exactly INITIAL in the winning thread.
+      && (q as nat) in QuantIdsOutsideLooks(re)
     decreases CP.rsize(re), 1
   {
     match re
@@ -3236,7 +3241,7 @@ module LindenElkPikeInv {
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetQuantToClock? ==>
       var q := NR.GetPcRE(code, pc).value.sq;
-      q == qid || (q >= 0 && (q as nat) in QuantIds(r1))
+      q == qid || (q >= 0 && (q as nat) in QuantIds(r1) && (q as nat) in QuantIdsOutsideLooks(r1))
     decreases CP.rsize(r1), k + 2
   {
     if k == 0 { return; }
@@ -3260,7 +3265,7 @@ module LindenElkPikeInv {
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetQuantToClock? ==>
       var q := NR.GetPcRE(code, pc).value.sq;
-      q == qid || (q >= 0 && (q as nat) in QuantIds(r1))
+      q == qid || (q >= 0 && (q as nat) in QuantIds(r1) && (q as nat) in QuantIdsOutsideLooks(r1))
     decreases CP.rsize(r1), k + 2
   {
     if k == 0 { return; }
