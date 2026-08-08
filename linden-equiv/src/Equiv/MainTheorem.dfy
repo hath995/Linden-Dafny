@@ -3727,6 +3727,43 @@ module LindenElkMain {
     CM.FFindMatchQuantFrame(code, str, inits, ov, LAnc.Forward, cdn, quant, S);
   }
 
+  /** L3a (E4): the MAIN pass writes only OUTSIDE-look capture registers
+      (`PIV.CaptureWriteIdsOutsideRE` per pc), so a genuine-start search
+      returns a winning thread whose INSIDE-look capture slots are EXACTLY
+      initial — value and clock both `-1`. The reverse tie's unmatched-owner
+      case reads this: an untouched owner leaves `res0`'s slot unset. */
+  lemma MainMatchInsideCapsInit(re: R.regex, code: RB.code, endl: nat, str: string,
+                                inits: AI.VmState, cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+                                ov: LOr.OracleView, cdn: LCdn.cdns, result: Option<AI.Thread>)
+    requires NR.LookBehindFragmentRE(re) && PIV.CapUnique(re)
+    requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires |inits.processed.true_set| == RB.size(code) && |inits.processed.false_set| == RB.size(code)
+    requires inits.context.nextchar == AI.get_char(str, inits.cp)
+    requires inits.active == [AI.init_thread(cap, look, quant)]
+    requires inits.blocked == [] && inits.bestmatch.None?
+    requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
+    ensures var Sc := PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(re));
+      result.Some? ==> CM.RegsAgreeOutside(result.value.capture_regs, cap, Sc)
+  {
+    var Sc := PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(re));
+    assert CM.CaptureWritesInside(code, Sc) by {
+      forall pc: nat | pc < |code| ensures code[pc].SetRegisterToCP? ==> code[pc].reg in Sc {
+        assert NR.GetPcRE(code, pc) == Some(code[pc]);
+        if pc < endl {
+          PIV.CaptureWriteIdsOutsideRE(re, code, 0, endl, pc);
+        } else {
+          assert pc == endl;                          // the Accept terminator
+        }
+      }
+    }
+    assert CM.VmCapturesAgree(inits, cap, Sc) by {
+      assert AI.init_thread(cap, look, quant).capture_regs == cap;
+      assert CM.RegsAgreeOutside(cap, cap, Sc);
+    }
+    CM.FFindMatchCapWriteFrame(code, str, inits, ov, LAnc.Forward, cdn, cap, Sc);
+  }
+
   /** L3a (S-i): on the WINNING thread, every recorded look cp is a position
       where that look's ORACLE BIT IS SET — `CheckOracle` writes `a_cp[l]` only
       on the branch that just read the bit, and the main pass never writes the
@@ -3913,7 +3950,7 @@ module LindenElkMain {
       PIV.CaptureRegs(VBody(crv, l1)) * PIV.CaptureRegs(VBody(crv, l2)) == {}
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==> cp_ctx_ok(crv, str, lk, l)
     ensures var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
-      |res.0.a_cp| == ncap && |res.0.a_clk| == ncap
+      |res.0.a_cp| == ncap && |res.0.a_clk| == ncap && PIV.CapRegWf(res.0)
       && FLookLoopValueOk(crv, str, res.0, lid, maxlook, lk, ov, ncap, nlook, nquant)
     decreases maxlook - lid
   {
@@ -4244,6 +4281,8 @@ module LindenElkMain {
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==> cp_ctx_ok(crv, str, lk, l)
     ensures var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
       |res.2.a_cp| == nquant && |res.2.a_clk| == nquant
+      && (forall k :: AI.get_idx(res.2.a_cp, k) < 0)
+      && (forall k :: AI.get_idx(res.2.a_clk, k) >= -1)
       && FLookLoopQuantValueOk(crv, str, res.2, lid, maxlook, lk, ov, ncap, nlook, nquant)
     decreases maxlook - lid
   {

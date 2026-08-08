@@ -3313,6 +3313,76 @@ module LindenElkNestInv {
       }
   }
 
+  /** THE DECOMPOSE STEP (inverse of `LookPathCompose`): full path presence at
+      an inside-look `g` peels into the outer path presence TO the owner node,
+      the look's own clock clause, and the body-side presence — and the `mx`
+      reaching `g` is the body's own (the look node resets it). */
+  lemma LookPathDecompose(r: R.regex, body: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>,
+                          mx: int, lid: nat, g: nat)
+    requires NR.LookBehindFragmentRE(r) && PIV.CapUnique(r)
+    requires lid in LTB.LookIds(r)
+    requires body == LookBodyOfRE(r, lid)
+    requires g in PIV.CapIds(body)
+    requires g in PIV.CapIds(r)
+    requires PIV.PathPresentLk(r, cc, lc, qc, mx, g)
+    ensures LookPathPresent(r, cc, qc, mx, lid)
+    ensures AI.get_idx(lc, lid as int) >= 0
+    ensures AI.get_idx(lc, lid as int) >= MxAtLidLk(r, qc, mx, lid)
+    ensures PIV.PathPresentLk(body, cc, lc, qc, -1, g)
+    ensures PIV.MxAtGidLk(r, cc, lc, qc, mx, g) == PIV.MxAtGidLk(body, cc, lc, qc, -1, g)
+    decreases r
+  {
+    LookBodyCapsIn(r, lid);
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) {
+        LookBodyCapsIn(r1, lid);
+        assert g in PIV.CapIds(r1);
+        LookPathDecompose(r1, body, cc, lc, qc, mx, lid, g);
+      } else {
+        LookBodyCapsIn(r2, lid);
+        assert g in PIV.CapIds(r2);
+        assert g !in PIV.CapIds(r1) by {
+          if g in PIV.CapIds(r1) { assert g in PIV.CapIds(r1) * PIV.CapIds(r2); }
+        }
+        LookPathDecompose(r2, body, cc, lc, qc, mx, lid, g);
+      }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) {
+        LookBodyCapsIn(r1, lid);
+        assert g in PIV.CapIds(r1);
+        LookPathDecompose(r1, body, cc, lc, qc, mx, lid, g);
+      } else {
+        LookBodyCapsIn(r2, lid);
+        assert g in PIV.CapIds(r2);
+        assert g !in PIV.CapIds(r1) by {
+          if g in PIV.CapIds(r1) { assert g in PIV.CapIds(r1) * PIV.CapIds(r2); }
+        }
+        LookPathDecompose(r2, body, cc, lc, qc, mx, lid, g);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      assert qv >= mx;                               // PathPresentLk
+      LookPathDecompose(r1, body, cc, lc, qc, qv, lid, g);
+    case Re_capture(cid, r1) =>
+      LookBodyCapsIn(r1, lid);
+      assert g in PIV.CapIds(r1);
+      assert cid >= 0 && (cid as nat) !in PIV.CapIds(r1);   // CapUnique
+      assert (cid as nat) != g;
+      LookPathDecompose(r1, body, cc, lc, qc, mx, lid, g);
+    case Re_lookaround(lid0, la, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+        assert body == r1;
+        assert MxAtLidLk(r, qc, mx, lid) == mx;
+        // PathPresentLk's look clause supplies the lc facts and the body walk
+      } else {
+        assert NR.LookFreeRE(r1);
+        LookFreeNoLookIdsN(r1);
+        assert lid in LTB.LookIds(r1);
+        assert false;
+      }
+  }
+
   /** `PathPresentLk`/`MxAtGidLk` read the register banks only at `r`'s own
       capture-start slots, quant slots and look slots — congruence under
       agreement there (the body-side transport: the reconstructed bank agrees
