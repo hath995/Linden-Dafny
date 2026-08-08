@@ -4021,6 +4021,32 @@ module LindenElkNestInv {
       }
   }
 
+  /** The structural body IS the table row's body: `LookTablesOk` records a
+      `LookEntryOk` row at every look node, and the row at `lid` pins
+      `fc.f_look_ast[lid]` — so the table body and `LookBodyOfRE` agree. */
+  lemma LookBodyOfTablesTie(re: R.regex, fc: CP.FCompiled, lid: nat)
+    requires LTB.LookTablesOk(re, fc)
+    requires lid in LTB.LookIds(re)
+    ensures exists la: R.lookaround :: LTB.LookEntryOk(fc, lid as int, la, LookBodyOfRE(re, lid))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodyOfTablesTie(r1, fc, lid); }
+      else { LookBodyOfTablesTie(r2, fc, lid); }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodyOfTablesTie(r1, fc, lid); }
+      else { LookBodyOfTablesTie(r2, fc, lid); }
+    case Re_quant(_, _, _, r1) => LookBodyOfTablesTie(r1, fc, lid);
+    case Re_capture(_, r1) => LookBodyOfTablesTie(r1, fc, lid);
+    case Re_lookaround(lid0, la0, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+        assert LTB.LookEntryOk(fc, lid as int, la0, r1);
+      } else {
+        LookBodyOfTablesTie(r1, fc, lid);
+      }
+  }
+
   /** GATE-CROSS ESTABLISHMENT: at look `lid`'s `CheckOracle` pc, the thread's
       positional invariant (`NestTopRE`, `pc < endl`) plus a FRESH look stamp
       that beats every stored quant clock yield the full carrier fact for
