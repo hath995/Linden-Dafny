@@ -275,6 +275,15 @@ integration is `InsidePresentResBridge`'s pair `PathPresentLk(re, res0.clk, lk.c
   and preserves others (q not on their path — `LookPathPresentAgree`-style frame); SETREG
   fresh-stamps a path capture (monotone, fresh beats mx); all other instructions touch
   nothing; blocked/reactivate/init vacuous; Accept records the head's fact for bestmatch.*
+- ***(E2) DONE (session 8b, commits `fec542c` + `6634a63`)** — `FLookLoopQuantValueLift`
+  PROVEN (1253/0): `res.2` carries each matched lookahead's FRESH-match quant clocks on
+  `QIdsInt(body)`. Bricks: `QuantWriteIdsRE`(+Min/Opt) sharpened to `QuantIdsOutsideLooks`;
+  `LmOfBodiesDisjoint` + quant-disjoint ensures; `MainMatchBodyQuantsInit` (body quant slots
+  exactly INIT in the winning thread); `ReplayLidQuantAgreeFresh` (`Sc == {}` bisimulation —
+  no capture hypotheses); `FLookLoopQuantValueOk`/`QuantValueOkSkipLid`. SWEEP FINDING: the
+  full MainTheorem.dfy sweep (first since the `5fd9a38` widening) fails ONLY on
+  `LkBodyGroupsEmpty` + L1 `LookRowsFromTables` — both semantically false under the widened
+  fragment and both already on the (F) deletion list; do not repair, DELETE at integration.*
 - ***(E4) ASSEMBLY** — endpoint: `BestTieLk` gives `GmtTieInside` (owner lid, fresh match,
   values) + the (E3) fact for the winning thread; transport outer path to `(res0, res2)` via
   `LookPathPresentAgree` + capture/quant frames (path slots are outside-look:
