@@ -2114,6 +2114,139 @@ module LindenElkPikeInv {
     FilterPresenceExtract(ast, cr, cc, lc, qc, -1, gid);
   }
 
+  /** L3a (E4) — the LOOK-AWARE presence extraction: a group whose start
+      SURVIVES `filter_capture` is `PathPresentLk` — every enclosing quantifier
+      and capture took its keep branch AND every enclosing lookaround MATCHED
+      in scope (`lc[lid] >= 0 && >= mx`, resetting `mx` for the body) — with
+      its own start clock fresh and in scope. The inside-look dual of
+      `FilterPresenceExtract`; the reverse value tie's register-side handle. */
+  lemma FilterPresenceExtractLk(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>,
+                                mx: int, gid: nat)
+    requires NR.LookBehindFragmentRE(r)
+    requires CapUnique(r)
+    requires gid in CapIds(r)
+    requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0
+                             ==> AI.get_idx(cr, CP.start_reg(c)) < 0
+    requires AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), CP.start_reg(gid)) >= 0
+    ensures PathPresentLk(r, cc, lc, qc, mx, gid)
+    ensures AI.get_idx(cc, CP.start_reg(gid)) >= 0
+    ensures AI.get_idx(cc, CP.start_reg(gid)) >= MxAtGidLk(r, cc, lc, qc, mx, gid)
+    ensures AI.get_idx(cr, CP.start_reg(gid)) >= 0
+    decreases r
+  {
+    match r
+    case Re_empty => case Re_character(_) => case Re_anchor(_) =>
+    case Re_lookaround(lid, la, r1) =>
+      var lv := AI.get_idx(lc, lid);
+      if lv < 0 || lv < mx {
+        // both clear branches run filter_all: contradiction with survival.
+        FilterAllClearsStart(r1, cr, gid);
+        assert false;
+      } else {
+        NR.PlusIsLookBehindFragmentRE(r1);    // the body is a plus fragment
+        FilterPresenceExtractLk(r1, cr, cc, lc, qc, -1, gid);
+      }
+    case Re_alt(r1, r2) =>
+      var c1 := AI.filter_capture(r1, cr, cc, lc, qc, mx);
+      if gid in CapIds(r1) {
+        assert gid !in CapIds(r2) by { if gid in CapIds(r2) { assert gid in CapIds(r1) * CapIds(r2); } }
+        FilterCaptureOutside(r2, c1, cc, lc, qc, mx, gid);
+        FilterPresenceExtractLk(r1, cr, cc, lc, qc, mx, gid);
+      } else {
+        assert gid in CapIds(r2) && gid !in CapIds(r1);
+        forall c: nat | c in CapIds(r2) && AI.get_idx(cc, CP.start_reg(c)) < 0
+          ensures AI.get_idx(c1, CP.start_reg(c)) < 0
+        {
+          assert c !in CapIds(r1) by { if c in CapIds(r1) { assert c in CapIds(r1) * CapIds(r2); } }
+          FilterCaptureOutside(r1, cr, cc, lc, qc, mx, c);
+        }
+        FilterPresenceExtractLk(r2, c1, cc, lc, qc, mx, gid);
+        FilterCaptureOutside(r1, cr, cc, lc, qc, mx, gid);
+      }
+    case Re_con(r1, r2) =>
+      var c1 := AI.filter_capture(r1, cr, cc, lc, qc, mx);
+      if gid in CapIds(r1) {
+        assert gid !in CapIds(r2) by { if gid in CapIds(r2) { assert gid in CapIds(r1) * CapIds(r2); } }
+        FilterCaptureOutside(r2, c1, cc, lc, qc, mx, gid);
+        FilterPresenceExtractLk(r1, cr, cc, lc, qc, mx, gid);
+      } else {
+        assert gid in CapIds(r2) && gid !in CapIds(r1);
+        forall c: nat | c in CapIds(r2) && AI.get_idx(cc, CP.start_reg(c)) < 0
+          ensures AI.get_idx(c1, CP.start_reg(c)) < 0
+        {
+          assert c !in CapIds(r1) by { if c in CapIds(r1) { assert c in CapIds(r1) * CapIds(r2); } }
+          FilterCaptureOutside(r1, cr, cc, lc, qc, mx, c);
+        }
+        FilterPresenceExtractLk(r2, c1, cc, lc, qc, mx, gid);
+        FilterCaptureOutside(r1, cr, cc, lc, qc, mx, gid);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      if qv < mx {
+        FilterAllClearsStart(r1, cr, gid);
+        assert false;
+      } else {
+        FilterPresenceExtractLk(r1, cr, cc, lc, qc, qv, gid);
+      }
+    case Re_capture(cid, r1) =>
+      var start := AI.get_idx(cc, CP.start_reg(cid));
+      if cid >= 0 && (cid as nat) == gid {
+        assert gid !in CapIds(r1);                        // CapUnique
+        if start < 0 {
+          FilterAllOutside(r1, cr, gid);
+          assert AI.get_idx(cr, CP.start_reg(gid)) < 0;
+          assert false;
+        } else if start < mx {
+          var cr2 := AI.set_idx(cr, CP.start_reg(cid), -1);
+          FilterAllOutside(r1, cr2, gid);
+          assert AI.get_idx(cr2, CP.start_reg(gid)) <= -1;
+          assert false;
+        } else {
+          FilterCaptureOutside(r1, cr, cc, lc, qc, mx, gid);
+          assert MxAtGidLk(r, cc, lc, qc, mx, gid) == mx;
+        }
+      } else {
+        assert gid in CapIds(r1);
+        if start < 0 {
+          FilterAllClearsStart(r1, cr, gid);
+          assert false;
+        } else if start < mx {
+          var cr2 := AI.set_idx(cr, CP.start_reg(cid), -1);
+          FilterAllClearsStart(r1, cr2, gid);
+          assert false;
+        } else {
+          forall c: nat | c in CapIds(r1) && AI.get_idx(cc, CP.start_reg(c)) < 0
+            ensures AI.get_idx(cr, CP.start_reg(c)) < 0 {}
+          FilterPresenceExtractLk(r1, cr, cc, lc, qc, mx, gid);
+        }
+      }
+  }
+
+  /** gm-level wrapper for `FilterPresenceExtractLk`: any group present in the
+      live denotation — inside-look ones included — is look-aware path-present
+      with a fresh start clock and a SET start value. */
+  lemma GmOfLivePresenceExtractLk(ast: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, gid: nat)
+    requires NR.LookBehindFragmentRE(ast)
+    requires CapUnique(ast)
+    requires gid in CapIds(ast)
+    requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
+                             ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
+    requires gid in GmOfLive(ast, caps, look, quant)
+    ensures PathPresentLk(ast, caps.a_clk, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, gid)
+    ensures AI.get_idx(caps.a_clk, CP.start_reg(gid)) >= 0
+    ensures AI.get_idx(caps.a_clk, CP.start_reg(gid))
+              >= MxAtGidLk(ast, caps.a_clk, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, gid)
+    ensures AI.get_idx(caps.a_cp, CP.start_reg(gid)) >= 0
+  {
+    var (cr, cc) := AReg.as_arrays(caps);
+    var (_, lc) := AReg.as_arrays(look);
+    var (_, qc) := AReg.as_arrays(quant);
+    var f := AI.filter_reset(ast, caps, look, quant, -1);
+    assert f == AI.filter_capture(ast, cr, cc, lc, qc, -1);
+    assert AI.get_idx(f, CP.start_reg(gid)) >= 0;
+    FilterPresenceExtractLk(ast, cr, cc, lc, qc, -1, gid);
+  }
+
   /** For a LOOK-FREE regex the look-aware `MxAtGidLk` and the look-free `MxAtGid`
       coincide (no `Re_lookaround` node ever resets `mx`). */
   lemma LookFreeMxAtGidLkEq(r: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>, mx: int, gid: nat)
