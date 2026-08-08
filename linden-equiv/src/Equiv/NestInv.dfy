@@ -4047,6 +4047,431 @@ module LindenElkNestInv {
       }
   }
 
+  // ==========================================================================
+  // L3a (E4): the DOMINANCE predicate for the CONVERSE carrier — the look
+  // stamp beats EVERY quantifier clock on the path (not just the innermost
+  // threshold): exactly the fact that survives an outer-quant re-stamp check
+  // and breaks precisely when any enclosing quant re-stamps after the
+  // crossing. "Dominance at the end" therefore means "no reset touched the
+  // look's groups since the last crossing".
+  // ==========================================================================
+  ghost predicate LookPathDom(r: R.regex, L: int, qc: seq<int>, lid: nat)
+    requires lid in LTB.LookIds(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) then LookPathDom(r1, L, qc, lid) else LookPathDom(r2, L, qc, lid)
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) then LookPathDom(r1, L, qc, lid) else LookPathDom(r2, L, qc, lid)
+    case Re_quant(_, qid, _, r1) =>
+      L >= AI.get_idx(qc, qid) && LookPathDom(r1, L, qc, lid)
+    case Re_capture(_, r1) => LookPathDom(r1, L, qc, lid)
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid then true else LookPathDom(r1, L, qc, lid)
+  }
+
+  /** Under path presence the threshold at the look node bounds the running
+      `mx` from below (the path-quant clocks form an increasing chain).
+      Fragment-scoped: a foreign look on the path would reset the chain. */
+  lemma MxAtLidGeMx(r: R.regex, cc: seq<int>, qc: seq<int>, mx: int, lid: nat)
+    requires NR.LookBehindFragmentRE(r)
+    requires lid in LTB.LookIds(r)
+    requires LookPathPresent(r, cc, qc, mx, lid)
+    ensures MxAtLidLk(r, qc, mx, lid) >= mx
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) { MxAtLidGeMx(r1, cc, qc, mx, lid); }
+      else { MxAtLidGeMx(r2, cc, qc, mx, lid); }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) { MxAtLidGeMx(r1, cc, qc, mx, lid); }
+      else { MxAtLidGeMx(r2, cc, qc, mx, lid); }
+    case Re_quant(_, qid, _, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      assert qv >= mx;                          // LookPathPresent
+      MxAtLidGeMx(r1, cc, qc, qv, lid);
+    case Re_capture(_, r1) => MxAtLidGeMx(r1, cc, qc, mx, lid);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+      } else {
+        assert NR.LookFreeRE(r1);
+        LookFreeNoLookIdsN(r1);
+        assert lid in LTB.LookIds(r1);
+        assert false;
+      }
+  }
+
+  /** Path presence + look-stamp-over-threshold yield FULL dominance: the
+      quant clocks on the path form an increasing chain up to the threshold. */
+  lemma LookPathDomIntro(r: R.regex, cc: seq<int>, qc: seq<int>, mx: int, lid: nat, L: int)
+    requires NR.LookBehindFragmentRE(r)
+    requires lid in LTB.LookIds(r)
+    requires LookPathPresent(r, cc, qc, mx, lid)
+    requires L >= MxAtLidLk(r, qc, mx, lid)
+    ensures LookPathDom(r, L, qc, lid)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookPathDomIntro(r1, cc, qc, mx, lid, L); }
+      else { LookPathDomIntro(r2, cc, qc, mx, lid, L); }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookPathDomIntro(r1, cc, qc, mx, lid, L); }
+      else { LookPathDomIntro(r2, cc, qc, mx, lid, L); }
+    case Re_quant(_, qid, _, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      MxAtLidGeMx(r1, cc, qc, qv, lid);
+      assert MxAtLidLk(r1, qc, qv, lid) >= qv;
+      assert L >= qv;
+      LookPathDomIntro(r1, cc, qc, qv, lid, L);
+    case Re_capture(_, r1) =>
+      LookPathDomIntro(r1, cc, qc, mx, lid, L);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+      } else {
+        assert NR.LookFreeRE(r1);
+        LookFreeNoLookIdsN(r1);
+        assert lid in LTB.LookIds(r1);
+        assert false;
+      }
+  }
+
+  /** A stamp beating EVERY stored quant clock dominates any path outright. */
+  lemma LookPathDomAll(r: R.regex, L: int, qc: seq<int>, lid: nat)
+    requires lid in LTB.LookIds(r)
+    requires forall k :: AI.get_idx(qc, k) <= L
+    ensures LookPathDom(r, L, qc, lid)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookPathDomAll(r1, L, qc, lid); } else { LookPathDomAll(r2, L, qc, lid); }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookPathDomAll(r1, L, qc, lid); } else { LookPathDomAll(r2, L, qc, lid); }
+    case Re_quant(_, qid, _, r1) => LookPathDomAll(r1, L, qc, lid);
+    case Re_capture(_, r1) => LookPathDomAll(r1, L, qc, lid);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {} else { LookPathDomAll(r1, L, qc, lid); }
+  }
+
+  /** Dominance reads `qc` only at the subtree's own quant slots. */
+  lemma LookPathDomQcAgree(r: R.regex, L: int, qc: seq<int>, qc': seq<int>, lid: nat)
+    requires lid in LTB.LookIds(r)
+    requires forall q: nat :: q in PIV.QuantIds(r) ==>
+      AI.get_idx(qc, q as int) == AI.get_idx(qc', q as int)
+    ensures LookPathDom(r, L, qc, lid) == LookPathDom(r, L, qc', lid)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      assert PIV.QuantIds(r1) <= PIV.QuantIds(r) && PIV.QuantIds(r2) <= PIV.QuantIds(r);
+      if lid in LTB.LookIds(r1) { LookPathDomQcAgree(r1, L, qc, qc', lid); }
+      else { LookPathDomQcAgree(r2, L, qc, qc', lid); }
+    case Re_con(r1, r2) =>
+      assert PIV.QuantIds(r1) <= PIV.QuantIds(r) && PIV.QuantIds(r2) <= PIV.QuantIds(r);
+      if lid in LTB.LookIds(r1) { LookPathDomQcAgree(r1, L, qc, qc', lid); }
+      else { LookPathDomQcAgree(r2, L, qc, qc', lid); }
+    case Re_quant(_, qid, _, r1) =>
+      assert PIV.QuantIds(r1) <= PIV.QuantIds(r);
+      assert AI.get_idx(qc, qid) == AI.get_idx(qc', qid) by {
+        if qid >= 0 { assert (qid as nat) in PIV.QuantIds(r); }
+      }
+      LookPathDomQcAgree(r1, L, qc, qc', lid);
+    case Re_capture(_, r1) =>
+      assert PIV.QuantIds(r1) <= PIV.QuantIds(r);
+      LookPathDomQcAgree(r1, L, qc, qc', lid);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+      } else {
+        assert PIV.QuantIds(r1) <= PIV.QuantIds(r);
+        LookPathDomQcAgree(r1, L, qc, qc', lid);
+      }
+  }
+
+  /** OFF-PATH re-stamp is invisible to dominance (mirror of
+      `LookPathPresentQuantOffPath`). */
+  lemma LookPathDomQuantOffPath(r: R.regex, L: int, qc: seq<int>, qc': seq<int>, lid: nat, qid: nat)
+    requires PIV.QuantUnique(r)
+    requires lid in LTB.LookIds(r) && qid in PIV.QuantIds(r)
+    requires lid !in LTB.LookIds(PIV.QidBody(r, qid))
+    requires forall j: int :: j != qid as int ==> AI.get_idx(qc', j) == AI.get_idx(qc, j)
+    ensures LookPathDom(r, L, qc, lid) == LookPathDom(r, L, qc', lid)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) {
+        if qid in PIV.QuantIds(r1) {
+          LookPathDomQuantOffPath(r1, L, qc, qc', lid, qid);
+        } else {
+          assert forall q: nat :: q in PIV.QuantIds(r1) ==>
+            AI.get_idx(qc, q as int) == AI.get_idx(qc', q as int)
+          by {
+            forall q: nat | q in PIV.QuantIds(r1)
+              ensures AI.get_idx(qc, q as int) == AI.get_idx(qc', q as int)
+            {
+              assert q != qid by {
+                if q == qid { assert qid in PIV.QuantIds(r1) * PIV.QuantIds(r2); }
+              }
+            }
+          }
+          LookPathDomQcAgree(r1, L, qc, qc', lid);
+        }
+      } else {
+        if qid in PIV.QuantIds(r2) {
+          assert qid !in PIV.QuantIds(r1) by {
+            if qid in PIV.QuantIds(r1) { assert qid in PIV.QuantIds(r1) * PIV.QuantIds(r2); }
+          }
+          assert PIV.QidBody(r, qid) == PIV.QidBody(r2, qid);
+          LookPathDomQuantOffPath(r2, L, qc, qc', lid, qid);
+        } else {
+          assert qid in PIV.QuantIds(r1);
+          assert forall q: nat :: q in PIV.QuantIds(r2) ==>
+            AI.get_idx(qc, q as int) == AI.get_idx(qc', q as int)
+          by {
+            forall q: nat | q in PIV.QuantIds(r2)
+              ensures AI.get_idx(qc, q as int) == AI.get_idx(qc', q as int)
+            {
+              assert q != qid by {
+                if q == qid { assert qid in PIV.QuantIds(r1) * PIV.QuantIds(r2); }
+              }
+            }
+          }
+          LookPathDomQcAgree(r2, L, qc, qc', lid);
+        }
+      }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) {
+        if qid in PIV.QuantIds(r1) {
+          LookPathDomQuantOffPath(r1, L, qc, qc', lid, qid);
+        } else {
+          assert forall q: nat :: q in PIV.QuantIds(r1) ==>
+            AI.get_idx(qc, q as int) == AI.get_idx(qc', q as int)
+          by {
+            forall q: nat | q in PIV.QuantIds(r1)
+              ensures AI.get_idx(qc, q as int) == AI.get_idx(qc', q as int)
+            {
+              assert q != qid by {
+                if q == qid { assert qid in PIV.QuantIds(r1) * PIV.QuantIds(r2); }
+              }
+            }
+          }
+          LookPathDomQcAgree(r1, L, qc, qc', lid);
+        }
+      } else {
+        if qid in PIV.QuantIds(r2) {
+          assert qid !in PIV.QuantIds(r1) by {
+            if qid in PIV.QuantIds(r1) { assert qid in PIV.QuantIds(r1) * PIV.QuantIds(r2); }
+          }
+          assert PIV.QidBody(r, qid) == PIV.QidBody(r2, qid);
+          LookPathDomQuantOffPath(r2, L, qc, qc', lid, qid);
+        } else {
+          assert qid in PIV.QuantIds(r1);
+          assert forall q: nat :: q in PIV.QuantIds(r2) ==>
+            AI.get_idx(qc, q as int) == AI.get_idx(qc', q as int)
+          by {
+            forall q: nat | q in PIV.QuantIds(r2)
+              ensures AI.get_idx(qc, q as int) == AI.get_idx(qc', q as int)
+            {
+              assert q != qid by {
+                if q == qid { assert qid in PIV.QuantIds(r1) * PIV.QuantIds(r2); }
+              }
+            }
+          }
+          LookPathDomQcAgree(r2, L, qc, qc', lid);
+        }
+      }
+    case Re_quant(_, qid0, _, r1) =>
+      if qid0 >= 0 && (qid0 as nat) == qid {
+        assert PIV.QidBody(r, qid) == r1;
+        assert lid in LTB.LookIds(r1);
+        assert false;
+      } else {
+        assert qid in PIV.QuantIds(r1);
+        assert AI.get_idx(qc, qid0) == AI.get_idx(qc', qid0) by {
+          if qid0 >= 0 { assert (qid0 as nat) != qid; }
+          else { assert qid0 != qid as int; }
+        }
+        LookPathDomQuantOffPath(r1, L, qc, qc', lid, qid);
+      }
+    case Re_capture(_, r1) =>
+      LookPathDomQuantOffPath(r1, L, qc, qc', lid, qid);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+      } else {
+        assert lid in LTB.LookIds(r1);
+        LookPathDomQuantOffPath(r1, L, qc, qc', lid, qid);
+      }
+  }
+
+  /** ON-PATH re-stamp above the look stamp BREAKS dominance: the descent to
+      `lid` passes through `qid`'s node, whose clause fails. */
+  lemma LookPathDomOnPathBreaks(r: R.regex, L: int, qc': seq<int>, lid: nat, qid: nat)
+    requires NR.LookBehindFragmentRE(r) && LTB.LookUnique(r)
+    requires lid in LTB.LookIds(r) && qid in PIV.QuantIds(r)
+    requires lid in LTB.LookIds(PIV.QidBody(r, qid))
+    requires AI.get_idx(qc', qid as int) > L
+    ensures !LookPathDom(r, L, qc', lid)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if qid in PIV.QuantIds(r1) {
+        QidBodyLookIdsSub(r1, qid);
+        assert lid in LTB.LookIds(r1);
+        LookPathDomOnPathBreaks(r1, L, qc', lid, qid);
+      } else {
+        QidBodyLookIdsSub(r2, qid);
+        assert lid in LTB.LookIds(r2);
+        assert lid !in LTB.LookIds(r1) by {
+          if lid in LTB.LookIds(r1) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); }
+        }
+        LookPathDomOnPathBreaks(r2, L, qc', lid, qid);
+      }
+    case Re_con(r1, r2) =>
+      if qid in PIV.QuantIds(r1) {
+        QidBodyLookIdsSub(r1, qid);
+        assert lid in LTB.LookIds(r1);
+        LookPathDomOnPathBreaks(r1, L, qc', lid, qid);
+      } else {
+        QidBodyLookIdsSub(r2, qid);
+        assert lid in LTB.LookIds(r2);
+        assert lid !in LTB.LookIds(r1) by {
+          if lid in LTB.LookIds(r1) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); }
+        }
+        LookPathDomOnPathBreaks(r2, L, qc', lid, qid);
+      }
+    case Re_quant(_, qid0, _, r1) =>
+      if qid0 >= 0 && (qid0 as nat) == qid {
+        assert AI.get_idx(qc', qid0) > L;     // the node's own clause fails
+      } else {
+        LookPathDomOnPathBreaks(r1, L, qc', lid, qid);
+      }
+    case Re_capture(_, r1) =>
+      LookPathDomOnPathBreaks(r1, L, qc', lid, qid);
+    case Re_lookaround(lid0, _, r1) =>
+      // fragment: the body is look-free, so no qid-body below can hold lid.
+      assert NR.LookFreeRE(r1);
+      LookFreeNoLookIdsN(r1);
+      QidBodyLookIdsSub(r1, qid);
+      assert lid in LTB.LookIds(PIV.QidBody(r1, qid));
+      assert false;
+  }
+
+  /** `QidBody`'s captures are among `r`'s (a subtree). */
+  lemma QidBodyCapIdsSub(r: R.regex, qid: nat)
+    requires qid in PIV.QuantIds(r)
+    ensures PIV.CapIds(PIV.QidBody(r, qid)) <= PIV.CapIds(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if qid in PIV.QuantIds(r1) { QidBodyCapIdsSub(r1, qid); } else { QidBodyCapIdsSub(r2, qid); }
+    case Re_con(r1, r2) =>
+      if qid in PIV.QuantIds(r1) { QidBodyCapIdsSub(r1, qid); } else { QidBodyCapIdsSub(r2, qid); }
+    case Re_quant(_, qid0, _, r1) =>
+      if qid0 >= 0 && (qid0 as nat) == qid {} else { QidBodyCapIdsSub(r1, qid); }
+    case Re_capture(_, r1) => QidBodyCapIdsSub(r1, qid);
+    case Re_lookaround(_, _, r1) => QidBodyCapIdsSub(r1, qid);
+  }
+
+  /** An OUTSIDE-look quant whose body does NOT contain look `lid` owns a
+      reset scope DISJOINT from `lid`'s captures — so its `Reset` never touches
+      them (the converse carrier's off-path survival). */
+  lemma LookBodyQidBodyDisjoint(r: R.regex, qid: nat, lid: nat)
+    requires PIV.CapUnique(r) && PIV.QuantUnique(r)
+    requires qid in PIV.QuantIds(r) && qid in PIV.QuantIdsOutsideLooks(r)
+    requires lid in LTB.LookIds(r)
+    requires lid !in LTB.LookIds(PIV.QidBody(r, qid))
+    ensures PIV.CapIds(LookBodyOfRE(r, lid)) * PIV.CapIds(PIV.QidBody(r, qid)) == {}
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if qid in PIV.QuantIds(r1) && lid in LTB.LookIds(r1) {
+        assert qid in PIV.QuantIdsOutsideLooks(r1) by {
+          assert qid !in PIV.QuantIds(r2) by {
+            if qid in PIV.QuantIds(r2) { assert qid in PIV.QuantIds(r1) * PIV.QuantIds(r2); }
+          }
+          PIV.QuantIdsSplit(r2);
+          assert qid !in PIV.QuantIdsOutsideLooks(r2);
+        }
+        LookBodyQidBodyDisjoint(r1, qid, lid);
+      } else if qid !in PIV.QuantIds(r1) && lid !in LTB.LookIds(r1) {
+        assert qid in PIV.QuantIds(r2) && lid in LTB.LookIds(r2);
+        assert qid in PIV.QuantIdsOutsideLooks(r2) by {
+          PIV.QuantIdsSplit(r1);
+          assert qid !in PIV.QuantIdsOutsideLooks(r1);
+        }
+        LookBodyQidBodyDisjoint(r2, qid, lid);
+      } else {
+        // different branches: both bodies live in disjoint capture spaces
+        if qid in PIV.QuantIds(r1) {
+          assert lid in LTB.LookIds(r2);
+          QidBodyCapIdsSub(r1, qid); LookBodyCapsIn(r2, lid);
+          forall g: nat | g in PIV.CapIds(LookBodyOfRE(r, lid)) * PIV.CapIds(PIV.QidBody(r, qid))
+            ensures false
+          { assert g in PIV.CapIds(r1) * PIV.CapIds(r2); }
+        } else {
+          assert qid in PIV.QuantIds(r2) && lid in LTB.LookIds(r1);
+          QidBodyCapIdsSub(r2, qid); LookBodyCapsIn(r1, lid);
+          forall g: nat | g in PIV.CapIds(LookBodyOfRE(r, lid)) * PIV.CapIds(PIV.QidBody(r, qid))
+            ensures false
+          { assert g in PIV.CapIds(r1) * PIV.CapIds(r2); }
+        }
+      }
+    case Re_con(r1, r2) =>
+      if qid in PIV.QuantIds(r1) && lid in LTB.LookIds(r1) {
+        assert qid in PIV.QuantIdsOutsideLooks(r1) by {
+          assert qid !in PIV.QuantIds(r2) by {
+            if qid in PIV.QuantIds(r2) { assert qid in PIV.QuantIds(r1) * PIV.QuantIds(r2); }
+          }
+          PIV.QuantIdsSplit(r2);
+          assert qid !in PIV.QuantIdsOutsideLooks(r2);
+        }
+        LookBodyQidBodyDisjoint(r1, qid, lid);
+      } else if qid !in PIV.QuantIds(r1) && lid !in LTB.LookIds(r1) {
+        assert qid in PIV.QuantIds(r2) && lid in LTB.LookIds(r2);
+        assert qid in PIV.QuantIdsOutsideLooks(r2) by {
+          PIV.QuantIdsSplit(r1);
+          assert qid !in PIV.QuantIdsOutsideLooks(r1);
+        }
+        LookBodyQidBodyDisjoint(r2, qid, lid);
+      } else {
+        if qid in PIV.QuantIds(r1) {
+          assert lid in LTB.LookIds(r2);
+          QidBodyCapIdsSub(r1, qid); LookBodyCapsIn(r2, lid);
+          forall g: nat | g in PIV.CapIds(LookBodyOfRE(r, lid)) * PIV.CapIds(PIV.QidBody(r, qid))
+            ensures false
+          { assert g in PIV.CapIds(r1) * PIV.CapIds(r2); }
+        } else {
+          assert qid in PIV.QuantIds(r2) && lid in LTB.LookIds(r1);
+          QidBodyCapIdsSub(r2, qid); LookBodyCapsIn(r1, lid);
+          forall g: nat | g in PIV.CapIds(LookBodyOfRE(r, lid)) * PIV.CapIds(PIV.QidBody(r, qid))
+            ensures false
+          { assert g in PIV.CapIds(r1) * PIV.CapIds(r2); }
+        }
+      }
+    case Re_quant(_, qid0, _, r1) =>
+      if qid0 >= 0 && (qid0 as nat) == qid {
+        // qid's body is r1 and every look of the node is in r1 — lid included:
+        // contradicts the off-path hypothesis.
+        assert PIV.QidBody(r, qid) == r1;
+        assert lid in LTB.LookIds(r1);
+        assert false;
+      } else {
+        LookBodyQidBodyDisjoint(r1, qid, lid);
+      }
+    case Re_capture(_, r1) =>
+      LookBodyQidBodyDisjoint(r1, qid, lid);
+    case Re_lookaround(lid0, _, r1) =>
+      // an outside-look quant cannot sit below a look node
+      assert PIV.QuantIdsOutsideLooks(r) == {};
+      assert false;
+  }
+
   /** GATE-CROSS ESTABLISHMENT: at look `lid`'s `CheckOracle` pc, the thread's
       positional invariant (`NestTopRE`, `pc < endl`) plus a FRESH look stamp
       that beats every stored quant clock yield the full carrier fact for
