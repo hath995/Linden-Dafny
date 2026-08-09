@@ -76,6 +76,8 @@ module LindenElkLiftSim {
   import RL = LindenElkRegsLaws
   import LKC = LindenElkLookCapture
   import OE = LindenElkOracleEntry
+  import LES = LindenElkSpec
+  import WOE = LindenElkWalkOkEntry
   import WkE = LindenElkWalkOkEntry
   import TT = LindenElkTreeThread
   import NUL = LindenElkNullable
@@ -11695,5 +11697,263 @@ module LindenElkLiftSim {
     assert CM.ThreadRegsWf(AI.Thread(thread.pc, res0, res.1, res2, thread.exit_allowed),
                            ncap, nlook, nquant);
     assert M.QuantRegsFinal(AI.Thread(thread.pc, res0, res.1, res2, thread.exit_allowed));
+  }
+
+  // ==========================================================================
+  // THE MAIN THEOREM, L3a: capturing positive lookaheads included. The
+  // engine's full pipeline output IS the Linden tree-semantics answer, for
+  // the whole lookbehind fragment with capturing forward lookaheads. This is
+  // the (F) integration: the composite lockstep simulation delivers the leaf
+  // ties, the endpoint assembly converts them into the reconstructed-register
+  // denotation, and the existing extraction finishes.
+  // ==========================================================================
+  lemma {:isolate_assertions} MainTheoremL3(raw: R.raw_regex, str: string)
+    requires NR.LookBehindFragmentRaw(raw)
+    requires T.Latin1Wf(raw)
+    ensures LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)))
+  {
+    var ast := R.annotate(raw);
+    var re := R.lazy_prefix(ast);
+    var rer := LES.TheRer(raw);
+    var inp := LC.InitInput(str);
+    var ngroups := LES.NGroups(raw);
+    assert !rer.multiline && !rer.ignoreCase;
+
+    // ---- static packages -------------------------------------------------
+    T.AnnotateWf(raw);                     // TransWf(ast) && TransWf(re)
+    NR.SpecRegexLookBehindFragment(raw);   // LookBehindFragmentRE(re)
+    LTB.SpecRegexLookUnique(raw);          // unique lids, all >= 1
+    assert NR.LookBehindFragmentRE(ast);
+    PIV.SpecRegexCapUnique(raw);           // CapUnique(re)
+    PIV.SpecRegexQuantUnique(raw);         // QuantUnique(re)
+    var qm := AR.QMap(M.QmOfRE(re), OE.LmOf(re), AI.FBuildOracle(CP.FFullCompilation(ast), str));
+    M.LookStaticPackage(raw, str, qm);
+
+    NR.CompileToBytecodeRepLookBehind(re);
+    var code := CP.compile_to_bytecode(re);
+    var next := CP.compile(re, 0, CP.Progress).1;
+    var endl: nat := next as nat;
+    assert NR.NfaRepRE(re, code, 0, endl)
+        && NR.GetPcRE(code, endl) == Some(RB.Accept) && |code| == endl + 1;
+    PIV.CompileStutterTameRE(re);
+    assert PSM.StaticOkRE(qm, re, code, endl);
+
+    var maxcap := R.max_group(ast);
+    var maxquant := R.max_quant(ast);
+    assert R.max_group(re) == maxcap;
+    assert R.max_quant(re) == R.imax(0, maxquant) == maxquant;
+    var ncap := 2 * maxcap + 2;
+    var nlook := R.max_lookaround(ast) + 1;
+    var nquant := maxquant + 1;
+    assert PSM.SizesOkRE(re, ncap, nlook, nquant);
+    assert ngroups == (maxcap + 1) as nat;
+    assert R.max_lookaround(re) == R.max_lookaround(ast) by {
+      var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
+      assert re == R.Re_con(pre, ast);
+    }
+
+    // fragment code shape: every SetQuantToClock has b == false.
+    forall pc: nat, q: int, b: bool | NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, b))
+      ensures !b
+    {
+      if pc < endl {
+        NI.CodeShapeAt(re, code, 0, endl, pc);
+      } else if pc == endl {
+      } else {
+        assert pc >= |code|;
+      }
+    }
+
+    // ---- the spec tree ---------------------------------------------------
+    LFU.ComputeTrIsTree(rer, [LS.Areg(T.Translate(re))], inp, LG.Empty, WP.Forward);
+    var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(re))], inp, LG.Empty, WP.Forward);
+    assert LS.IsTree(rer, [LS.Areg(T.Translate(re))], inp, LG.Empty, WP.Forward, t);
+    assert LES.SpecRegex(raw) == T.Translate(re);
+    EL.TranslateFragmentPikeLk(re);
+    EL.BooleanCorrectLk(rer, T.Translate(re), inp, t);
+    assert forall i :: 0 <= i < |[LS.Areg(T.Translate(re))]| ==> ![LS.Areg(T.Translate(re))][i].Acheck?;
+    M.BoolTreeLbIrrel(rer, [LS.Areg(T.Translate(re))], inp, BS.CanExit, BS.CannotExit, t);
+    assert EL.BoolTreeLk(rer, [LS.Areg(T.Translate(re))], inp, BS.CannotExit, t);
+    TranslateNoBackref(re);
+    assert NoBackrefActions([LS.Areg(T.Translate(re))]);
+    var fuel0 := FS.ActionsFuel([LS.Areg(T.Translate(re))], inp, WP.Forward) + 1;
+    assert FS.ComputeTree(rer, [LS.Areg(T.Translate(re))], inp, LG.Empty, WP.Forward, fuel0) == Some(t);
+    ComputePikeSubtreeLk(rer, [LS.Areg(T.Translate(re))], inp, LG.Empty, WP.Forward, fuel0, t);
+    assert PTL.PikeSubtreeLk(t);
+
+    // ---- the CHECKED tree (machine A's carrier) ---------------------------
+    WOE.WalkOkEntry(re);
+    assert EL.PikeLkActions([LS.Areg(T.Translate(re))]) by {
+      assert [LS.Areg(T.Translate(re))] == [LS.Areg(T.Translate(re))] + [];
+      assert EL.PikeLkActions([]);
+      EL.PikeLkActionsConsIff(LS.Areg(T.Translate(re)), []);
+    }
+    assert LL.OracleOkSuffix(rer, qm, inp);
+    var S := PIV.CapIdsInLooks(re);
+    M.LkBodyGroupsEqCapIdsInLooks(re);
+    assert S == LL.LkBodyGroups(T.Translate(re));
+    assert LL.LkActsInS([LS.Areg(T.Translate(re))], S) by {
+      LL.LkBodyGroupsConfines(T.Translate(re), S);
+      assert LL.LkBodiesInS(T.Translate(re), S);
+    }
+    LL.ComputeTrLkConfined(rer, [LS.Areg(T.Translate(re))], inp, LG.Empty, WP.Forward, S);
+    var tstar := ATR.ActionsTreeRepRE(rer, qm, [LS.Areg(T.Translate(re))], code, 0, inp, BS.CannotExit, t, S);
+    assert TREP.TreeRepRE(qm, tstar, code, 0, inp, false);
+
+    // ---- the engine pipeline ---------------------------------------------
+    var crv := CP.FFullCompilation(ast);
+    M.FFullCompilationFacts(ast);
+    assert crv.f_main_ast == ast && crv.f_main_bc == code && crv.f_main_cdns == LCdn.compile_cdns(ast);
+    var ov := AI.FBuildOracle(crv, str);
+    var capture := AReg.init_regs(ncap);
+    var look := AReg.init_regs(nlook);
+    var quant := AReg.init_regs(nquant);
+    var ctx := AI.cp_context(0, str, LAnc.Forward);
+    var inits := AI.FInitState(code, 0, capture, look, quant, 0, ctx);
+    var fmres := AI.FFindMatch(code, str, inits, ov, LAnc.Forward, crv.f_main_cdns);
+    var result := fmres.0;
+    assert AI.FFindMatchPlus(code, ast, crv.f_plus_bc, str, ov, LAnc.Forward, 0,
+                             capture, look, quant, 0, crv.f_main_cdns).0
+        == (match result
+            case None => None
+            case Some(thread) => Some(AI.FReconstructPlus(thread, ast, crv.f_plus_bc, str, fmres.1, LAnc.Forward).0));
+
+    // ---- gate statics + look tables ---------------------------------------
+    LTB.FFullCompilationLookOk(ast);
+    assert LTB.LookTablesOk(re, crv) by {
+      var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
+      assert re == R.Re_con(pre, ast);
+      assert LTB.LookTablesOk(pre, crv);
+      assert LTB.LookTablesOk(ast, crv);
+    }
+    OE.LmOfDom(re);
+    LTB.LookIdsLeMax(re);
+    assert forall l: int :: l in qm.looks ==>
+      l >= 0 && (l as nat) in LTB.LookIds(re) && l < nlook;
+    GateStaticsFromTables(qm, re, crv, ncap, nlook, nquant);
+    assert GateStaticsOk(qm, re, crv, ncap, nlook, nquant);
+
+    // ---- the composite lockstep (both machines) ---------------------------
+    PSM.InitialPikeInvFullRE(rer, qm, re, code, endl, ngroups, str, tstar, inits, ncap, nlook, nquant);
+    assert ctx.nextchar == AI.get_char(str, 0);
+    assert PIV.ContextOkRE(str, inits.cp, inits.context);
+    assert qm.ov == ov;
+    L3aCompositeClose(rer, qm, re, code, endl, ngroups, crv, str, ov, S, tstar, t, inp,
+                      inits, crv.f_main_cdns, result, ncap, nlook, nquant);
+    assert BestTieLk(re, crv, str, ov, S, LT.FirstLeaf(t, inp), result, ncap, nlook, nquant);
+
+    // ---- stage the engine answer ------------------------------------------
+    var bc := AI.FBuildCapture(crv, str, ov);
+    assert AI.FMatcher(crv, str) == bc.0;
+    assert AI.FFullMatch(raw, str) == bc.0;
+    var fmp := AI.FFindMatchPlus(crv.f_main_bc, crv.f_main_ast, crv.f_plus_bc, str, ov,
+                                 LAnc.Forward, 0, capture, look, quant, 0, crv.f_main_cdns);
+    assert fmp == AI.FFindMatchPlus(code, ast, crv.f_plus_bc, str, ov,
+                                    LAnc.Forward, 0, capture, look, quant, 0, crv.f_main_cdns);
+    assert AI.FInitState(crv.f_main_bc, 0, capture, look, quant, 0,
+                         AI.cp_context(0, str, LAnc.Forward)) == inits;
+    assert fmp.0 == (match result
+                     case None => None
+                     case Some(thread) =>
+                       Some(AI.FReconstructPlus(thread, ast, crv.f_plus_bc, str, fmres.1, LAnc.Forward).0));
+    assert R.max_group(crv.f_main_ast) == maxcap && R.max_quant(crv.f_main_ast) == maxquant;
+    assert ncap == 2 * R.max_group(crv.f_main_ast) + 2;
+    assert nquant == R.max_quant(crv.f_main_ast) + 1;
+
+    if result.None? {
+      assert fmp.0 == None;
+      M.FBuildCaptureUnfoldL3a(crv, str, ov, ncap, nlook, nquant, capture, look, quant, fmp);
+      assert bc.0 == None;
+      assert LT.FirstLeaf(t, inp) == None;
+      assert LES.Normalize(AI.FFullMatch(raw, str)) == None;
+      assert LES.MatcherSpec(raw, str, None);
+    } else {
+      var thread := result.value;
+      // winning-thread wf (mirrors the endpoint's own derivation, needed here
+      // for the reconstruct identity)
+      CM.RegsClocksLEInit(ncap, 0);
+      CM.RegsClocksLEInit(nlook, 0);
+      CM.RegsClocksLEInit(nquant, 0);
+      CM.FInitStateClocksLE(code, 0, capture, look, quant, 0, ctx);
+      CM.FInitStateRegsWf(code, 0, ncap, nlook, nquant, 0, ctx);
+      assert M.VmQuantFinal(inits) by {
+        var th0 := AI.init_thread(capture, look, quant);
+        assert M.QuantRegsFinal(th0) by {
+          forall k ensures AI.get_idx(quant.a_cp, k) < 0 && AI.get_idx(quant.a_clk, k) >= -1 {
+            if 0 <= k < |quant.a_cp| { assert quant.a_cp[k] == -1; }
+            if 0 <= k < |quant.a_clk| { assert quant.a_clk[k] == -1; }
+          }
+        }
+        forall t2 | t2 in inits.active ensures M.QuantRegsFinal(t2) { assert t2 == th0; }
+      }
+      M.FFindMatchThreadFacts(code, str, inits, ov, LAnc.Forward, crv.f_main_cdns, ncap, nlook, nquant);
+      assert CM.ThreadRegsWf(thread, ncap, nlook, nquant) && M.QuantRegsFinal(thread);
+      M.FNulledPlusIdentity(ast, thread.capture_regs, thread.look_regs, thread.quant_regs,
+                            crv.f_plus_bc, str, fmres.1, LAnc.Forward);
+      assert AI.FReconstructPlus(thread, ast, crv.f_plus_bc, str, fmres.1, LAnc.Forward).0 == thread;
+      assert fmp.0 == Some(thread);
+
+      // the oracle is stable through the whole pipeline: fmp.1 == ov
+      PSM.StaticOkNoWrite(qm, re, code, endl);
+      CM.FFindMatchOvStable(code, str, inits, ov, LAnc.Forward, crv.f_main_cdns);
+      assert fmres.1 == ov;
+      assert fmp.1 == ov by {
+        assert fmp == (Some(AI.FReconstructPlus(thread, ast, crv.f_plus_bc, str, ov, LAnc.Forward).0),
+                       AI.FReconstructPlus(thread, ast, crv.f_plus_bc, str, ov, LAnc.Forward).1);
+        M.FNulledPlusIdentity(ast, thread.capture_regs, thread.look_regs, thread.quant_regs,
+                              crv.f_plus_bc, str, ov, LAnc.Forward);
+      }
+
+      // the leaf + the endpoint assembly
+      assert LT.FirstLeaf(t, inp).Some?;
+      var leaf := LT.FirstLeaf(t, inp).value;
+      assert BestTieLk(re, crv, str, ov, S, Some(leaf), Some(thread), ncap, nlook, nquant);
+      assert forall lx: nat :: lx in LTB.LookIds(re) ==> 1 <= lx;
+      L3aEndpointAssembly(ast, re, crv, code, endl, str, ov, S, thread, leaf,
+                          inits, capture, look, quant, crv.f_main_cdns, ncap, nlook, nquant);
+      var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                              thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
+      var synthetic := AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed);
+      assert leaf.1 == PIV.GmOfLive(re, res.0, thread.look_regs, res.2);
+      assert res.1 == thread.look_regs;
+      assert CM.ThreadRegsWf(synthetic, ncap, nlook, nquant) && M.QuantRegsFinal(synthetic);
+
+      // the engine answer via the L3a unfold, at the SAME res
+      M.FBuildCaptureUnfoldL3a(crv, str, ov, ncap, nlook, nquant, capture, look, quant, fmp);
+      assert bc.0 == Some(AI.filter_reset(crv.f_main_ast, res.0, res.1, res.2, -1)) by {
+        assert fmp.0.value == thread;
+        assert AI.FLookLoop(crv, str, 1, R.max_lookaround(crv.f_main_ast),
+                            thread.capture_regs, thread.look_regs, thread.quant_regs, fmp.1) == res;
+      }
+      assert AI.FFullMatch(raw, str)
+          == Some(AI.filter_reset(ast, synthetic.capture_regs, synthetic.look_regs,
+                                  synthetic.quant_regs, -1));
+
+      // ---- extraction (the L1 discipline: restate + hide) ------------------
+      assert EL.BoolTreeLk(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), BS.CannotExit, t);
+      assert LS.IsTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), LG.Empty, WP.Forward, t);
+      assert CM.ThreadRegsWf(synthetic, 2 * R.max_group(R.annotate(raw)) + 2,
+                             R.max_lookaround(R.annotate(raw)) + 1,
+                             R.max_quant(R.annotate(raw)) + 1) by {
+        hide *;
+        assert ast == R.annotate(raw);
+        assert R.max_lookaround(ast) + 1 == nlook;
+        assert CM.ThreadRegsWf(synthetic, ncap, nlook, nquant);
+      }
+      assert M.QuantRegsFinal(synthetic);
+      assert leaf.1 == PIV.GmOfLive(R.lazy_prefix(R.annotate(raw)), synthetic.capture_regs,
+                                    synthetic.look_regs, synthetic.quant_regs) by {
+        hide *;
+        assert ast == R.annotate(raw) && re == R.lazy_prefix(ast);
+        assert synthetic.capture_regs == res.0 && synthetic.look_regs == res.1 == thread.look_regs
+            && synthetic.quant_regs == res.2;
+        assert leaf.1 == PIV.GmOfLive(re, res.0, thread.look_regs, res.2);
+      }
+      assert LT.FirstLeaf(t, LC.InitInput(str)) == Some(leaf);
+      assert AI.FFullMatch(raw, str)
+          == Some(AI.filter_reset(R.annotate(raw), synthetic.capture_regs, synthetic.look_regs,
+                                  synthetic.quant_regs, -1));
+      { hide *; M.MainExtraction(raw, str, t, synthetic, leaf); }
+    }
   }
 }
