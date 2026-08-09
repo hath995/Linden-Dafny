@@ -9,7 +9,12 @@ This document records the campaign's design, the work completed so far, and —
 in enough detail that another person could carry it on — the intended proof
 structure for everything that remains.
 
-Status (2026-07-25):
+**Status (2026-08-09): L1, L2, and L3a are DONE.** The verified `Supported`
+fragment now includes **capturing positive lookaheads** — see §3.6 for the
+L3a outcome and §4.5 for the remaining-rungs outline (L3b, L4, small items).
+The theorem is `LiftSim.MainTheoremL3`; `ApiMatch.MatchCorrect` wraps it.
+
+Status of the original L1 campaign (2026-07-25):
 
 | Phase | Content | State |
 |---|---|---|
@@ -162,24 +167,210 @@ Costs and caveats:
     .doo). Lookahead adds a SECOND unexercised path -- its build scans
     backward.
 
+## 3.6 L3a OUTCOME (2026-08-09) — CAPTURING POSITIVE LOOKAHEADS ARE SUPPORTED
+
+`ApiMatch.Supported` is unchanged in spelling (`LookBehindFragmentRaw`) but
+the fragment now admits **captures inside positive forward lookaheads**:
+
+    (?<=...) / (?<!...)   body in the plus fragment, capture-free
+    (?!...)               body in the plus fragment, capture-free
+    (?=...)               body in the plus fragment, MAY CAPTURE
+
+(The L2-era star-shape restriction on lookahead bodies was already lifted —
+commit `387600b` proved the compile/anchor-swap commutation.)
+
+Whole package: `LiftSim.dfy` **8817 verified, 0 errors** (the theorem lives
+there — see caveats), `MainTheorem.dfy` 2512/0, `NestInv.dfy` 139/0,
+`ApiMatch` 6/0, `ApiReasoning` 16/0. The widening-broken L1 machinery
+(`LkBodyGroupsEmpty`, L1 `LookRowsFromTables`, `FBuildCaptureUnfold`,
+`FLookLoopFilterFrame`, `FilterUnmoved`, the old `MainTheorem`) is deleted;
+`MatchCorrect` wraps `LSIM.MainTheoremL3`.
+
+The architecture (none of it was in this doc's original L3 sketch; recorded
+in `L3_PROOF_MAP.md` + the `linden-l3-campaign` memory in full):
+
+  - **A thread-anchored two-machine lockstep composite** (`LiftSim.dfy`):
+    machine A is the proven gate-transparent simulation (`PikeInvFullRE`,
+    untouched); machine B runs the LK-aware `PikeTreeLk` on the SPEC tree
+    `t`, paired to the same VM threads index-wise. Per-instruction case
+    lemmas step both. Machine B is keyed on a PLANTED CANONICAL tree
+    (unique per `(pc, ea)`) so the memoization is exact-tree.
+  - **The quantifier-stable walk carrier** `WalkDefsOk` (the naive
+    `NoDupSeq(AllDefsActs)` is FALSE after any quantifier unfold) and the
+    SQC see-through disjuncts for iteration arms.
+  - **The value ties** ride `BestTieLk`: outside `S := CapIdsInLooks(re)`
+    the leaf gm equals the winning thread's live denotation; inside `S`,
+    each present group's value is the FRESH BODY REPLAY's at the recorded
+    `a_cp[l]` (`GmtTieInside`), which composes with the engine-side
+    `FLookLoop` value lift (`FLookLoopValueLift` for captures,
+    `FLookLoopQuantValueLift` for the body quant clocks — the replay
+    bisimulation `FFindMatchCapRel` was already direction- and
+    quant-agreement-generic).
+  - **The (E) path machinery**: presence of a reconstructed group under
+    `filter_reset` needs `PathPresentLk` (every enclosing quantifier and
+    capture in scope AND every enclosing look matched in scope). The outer
+    half is a CARRIED COUPLED INVARIANT — `LookNestOkT`: for every lid
+    owning a leaf-present inside-`S` group, the winning thread's own clocks
+    witness the path to the look node plus stamp dominance. Established at
+    gate pass from the positional invariant (`NestInvLookSite`, the
+    `CheckOracle` analog of `NestInvResetSite`), vacated at
+    `SetQuantToClock` by the B-side Reset, monotone elsewhere. No
+    engine-only invariant can see this: "the look was crossed after the
+    last enclosing re-stamp" is exactly what g surviving in gmt tracks.
+  - **The CONVERSE carrier** `LookNestBackT` (dominance ⟹ the fresh
+    match's groups survive in gmt) closes the reverse tie: presence in the
+    reconstructed bank exhibits dominance (`FilterPresenceExtractLk`), and
+    dominance means no reset fired since the last crossing. The gate-pass
+    coverage is ONE `LkReplayMatchesSpec` call at fresh banks (`GmAgreeOn`
+    is two-way).
+  - **The endpoint assembly** (`L3aEndpointAssembly`, 2341 batches)
+    converts `BestTieLk`'s four tie directions into `leaf.1 ==
+    GmOfLive(re, res.0, lk, res.2)` for the `FLookLoop` triple, plus the
+    synthetic thread's well-formedness; `MainExtraction` finishes
+    unchanged.
+
+Costs and caveats:
+  - **`MainTheoremL3` lives in `LiftSim.dfy`**, not `MainTheorem.dfy`: the
+    include order puts the composite downstream of `MainTheorem.dfy`, and
+    the theorem needs `BestTieLk`/`L3aCompositeClose`. Cosmetic; a final
+    assembly file (or re-layering) is pending.
+  - The splice discipline that made this tractable: carriers are
+    FORALL-INDEXED conjuncts at `LiftInv` level (never inside
+    `ThreadRepLk`), so 27 of 30 case-lemma VCs survived each splice
+    untouched and only SetReg/SetQuant/GatePass needed wiring.
+  - `TtLkSameTree` is dead (restated, caller-less) — prune at leisure.
+  - Runtime validation is still deferred (unchanged from L2).
+
 ## 4. The milestone ladder
 
-- **L1 — capture-free, non-nested LOOKBEHINDS** (this campaign): bodies in
-  the plus fragment, look-free, capture-free. Forward-only; LK
-  leaf-transparent.
-- **L2 — capture-free, non-nested LOOKAHEADS**: adds backward execution of
-  the build passes + the reversal theorem (`Backward ∘ reverse_regex ≡
-  Forward`). Sub-choice: parameterize the rep/sim by direction (mechanical,
-  wide) vs. prove the reversal once at the tree level and keep the pipeline
-  forward (preferable if tractable). The big one.
-- **L3 — captures inside positive lookarounds**: `FLookLoop`/`capture_regex`
-  reconstruction correctness + LkResult-fed gm in the extraction. Lookbehind
-  capture passes run Backward (needs L2's direction work); lookAHEAD
-  captures run Forward, so L3a can precede full L2.
-- **L4 — nesting**: the lid-induction over `FBuildLids` with "oracle correct
-  above lid" as hypothesis; mostly assembly once L1/L2 exist. (The
-  sweep-frame lemmas already support it: a build for lid only reads columns
-  of higher lids, only writes its own.)
+- **L1 — capture-free, non-nested LOOKBEHINDS** — **DONE 2026-07-25**
+  (§6.6): bodies in the plus fragment, look-free, capture-free.
+- **L2 — capture-free, non-nested LOOKAHEADS** — **DONE 2026-07-27**
+  (§3.5): via string-reversal transport (`Mirror.dfy`), not either option
+  originally sketched here; star-shape restriction later lifted.
+- **L3a — captures inside positive LOOKAHEADS** — **DONE 2026-08-09**
+  (§3.6): `FLookLoop` reconstruction correctness proven end-to-end via the
+  thread-anchored composite + the two coupled carriers + the endpoint
+  assembly. `MainTheoremL3` in `LiftSim.dfy`.
+- **L3b — captures inside positive LOOKBEHINDS** — OPEN. The capture pass
+  replays BACKWARD; everything value-flavoured is currently forward-only.
+  See §4.5.1.
+- **L4 — nesting** — OPEN. Oracle side ready (lid-induction hooks, sweep
+  frames); with captures now in the picture it also needs recursive
+  reconstruction. See §4.5.2.
+
+## 4.5 The remaining rungs — outline (2026-08-09)
+
+### 4.5.1 L3b — capturing positive lookbehinds
+
+**The crux, stated honestly.** L2's backward story went through because the
+oracle is BOOLEAN — `SpanDuality`'s reversal is existential, "no priority
+problem, which is exactly why the ORACLE is reachable this way and captures
+are not" (§3.5). L3b is the capture version: the backward replay's
+FIRST-LEAF (priority-correct) captures must be tied to the spec's backward
+body tree. The engine half of that priority transport is already solved —
+`Mirror.dfy`'s isomorphism preserves thread priority because the bytecode is
+the same object modulo the anchor swap. The genuinely new proof is the
+SPEC-side priority-aware backward leaf correspondence (the analog of
+`BodyTreeAtCp`/`ReplayCapIsBodyLeaf` for `LkDir == Backward`), plus the
+register-VALUE mirror: under `cp |-> |str| - cp` the recorded capture
+positions of the reversed-forward run map to the backward run's.
+
+Work items, in dependency order:
+
+1. **Fragment flip**: `Re_lookaround` clause becomes
+   `(la.Lookahead? || la.Lookbehind? || CaptureFreeRE(r1)) && ...` (raw
+   counterpart too). Everything structural downstream (`LookBodyOfRE`,
+   the path algebra, both carriers, `CapIdsInLooksHasOwner`,
+   `LookBodiesCapsDisjoint`) is FLAVOUR-AGNOSTIC and survives unchanged.
+2. **Direction-aware fresh replay**: `FreshBodyMatch` hard-codes Forward
+   (and `MatchedPosLA` tests `.Lookahead?`). Introduce the Backward twin
+   (reversed bytecode, `capture_direction` dispatch, cp-anchored context on
+   the other side) and widen `MatchedPosLA` to `capture_type` flavours.
+   `GmtTieInside`/`LookNestBackT` are stated over these — they widen with
+   the definitions; their PRESERVATION was proved per-case at the gate,
+   where the lookbehind branch currently discharges by capture-freeness and
+   will instead invoke the backward crux (item 4).
+3. **Backward replay bisimulation**: nearly free — `CM.FFindMatchCapRel` /
+   `ThreadRel` are ALREADY direction-generic; only the
+   `ReplayLidCapQuantAgreeFresh`-style wrappers need Backward instances
+   (the `FNulledPlusIdentity` reconstruct-identity is direction-generic
+   already).
+4. **The backward value crux** — the real work: `LkReplayMatchesSpec` for
+   `Lookbehind` (backward fresh replay ~ `LkResult` of the backward body
+   tree, `GmAgreeOn` both ways on the body's groups). Route: Mirror the
+   replay to a forward run over `Reverse(str)` (priority preserved), then a
+   spec-side reversal of the body TREE's first leaf with capture positions
+   mapped under `cp |-> |str| - cp`. This is the L3b analog of what
+   `GateStepValue` + `ReplayCapIsBodyLeaf` did for lookaheads, and the only
+   item without existing scaffolding.
+5. **Value lifts' lookbehind branch**: `FLookLoopValueLift` /
+   `FLookLoopQuantValueLift` — the branch currently proves the replay is
+   the identity on captures (capture-free); it becomes a real value case
+   using items 2–4. Same induction skeleton.
+6. **Gate + endpoint arms**: `LiftPreserveGatePassLk`'s lookbehind half
+   becomes value-carrying (today it routes through
+   `LkResultAgreeOutside` over an empty group set); the endpoint's
+   per-g dispatch gains the `Lookbehind?` owner arm. Both are
+   flavour-splits on existing structure.
+
+Estimated shape: one campaign, dominated by item 4; items 1–3 and 5–6 are
+mechanical against the L3a scaffolding.
+
+### 4.5.2 L4 — nesting
+
+Three independent axes, in increasing order of novelty:
+
+1. **Oracle side (as originally planned, still valid)**: the lid-induction
+   over `FBuildLids` with "oracle correct above lid" as hypothesis. The
+   sweep-frame lemmas already support it (a build for lid only reads
+   higher-lid columns, writes its own). This part remains "mostly
+   assembly".
+2. **Structural side**: bodies stop being `LookFreeRE`. Every place the
+   L3a path algebra kills the nested-look branch by contradiction
+   (`LookFreeNoLookIdsN ⟹ false` in `LookPathCompose`/`Decompose`/
+   `Agree`/`Dom*`, `LookBodyOfFragment`, `LookBodiesCapsDisjoint`, the
+   carriers' gate cases) must grow a real recursive arm. The predicates
+   were deliberately written with general nested clauses mirroring
+   `PathPresentLk`, so this is filling in dead branches, not redesign —
+   but it is WIDE (the whole NestInv (E1) layer plus both carriers).
+3. **Value side (new, post-L3 reality)**: a replayed body that itself
+   contains looks needs ITS oracle columns during the replay (already how
+   the engine works — the replay consults `ov`) and, for CAPTURES inside
+   the inner look, its own reconstruction layer: `FLookLoop` recursion
+   correctness becomes a lid-ordered induction ("values correct above
+   lid"), mirroring the oracle's. The (E) machinery generalizes per level
+   — `PathPresentLk` already threads nested-look clauses — but the fresh-
+   replay tie (`GmtTieInside`'s witness) becomes a TOWER of fresh replays.
+   This is the novel part of L4 and should be scoped like (E) was: carriers
+   first, then endpoint.
+
+### 4.5.3 Small items and out-of-ladder gaps
+
+- **Rename**: `LookBehindFragmentRaw`/`RE` now admits three lookaround
+  shapes — rename to `LookFragmentRaw`/`RE` (mechanical, wide touch).
+- **Re-home the theorem**: `MainTheoremL3` sits in `LiftSim.dfy` (include
+  order). Either a final `Theorem.dfy` including LiftSim, or accept the
+  location. Prune the dead `TtLkSameTree` while there.
+- **Negative-look captures (cheap widening)**: JS admits `(?!(a))`
+  syntactically; the groups are ALWAYS UNSET in any successful result (the
+  look asserts the body FAILS). Admitting the syntax means treating those
+  captures as permanently absent — a small fragment flip plus
+  "reset-scope contains them vacuously" facts, no replay machinery.
+- **Nullable-body unbounded quantifiers**: `+`/`{n,}` over nullable bodies
+  is excluded by the engine's do-while compile scheme (`NonNullable`
+  required). An engine-side compilation change or a spec-side nullable
+  desugaring; orthogonal to lookarounds.
+- **Backreferences**: excluded structurally (`NoBackref*` everywhere); the
+  tree/NFA correspondence assumes their absence. A separate project, if
+  ever.
+- **Character set**: `Latin1Wf` — Unicode is out of scope of this campaign.
+- **Flags**: NOT a gap — RegElk is flagless; `TheRer`'s fixed record
+  (case-sensitive, non-multiline, non-dotAll) IS the spec.
+- **Runtime smoke validation**: still deferred (`lem test` cannot see
+  locally packed `.doo`); now THREE unexercised paths (backward build,
+  capture replay, `FLookLoop` reconstruction) — worth prioritizing once
+  tooling allows.
 
 ## 5. Completed work — inventory
 
