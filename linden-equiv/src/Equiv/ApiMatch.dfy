@@ -4,7 +4,7 @@
 //
 // VMC-guideline style: Match is a plain function with NO postcondition; its
 // correctness is the separate lemma MatchCorrect.
-include "MainTheorem.dfy"
+include "LiftSim.dfy"
 
 /** The user-facing matcher API (prototype for the future
     `src/API/Match.dfy`): wraps `MainTheorem` behind a plain, postcondition-
@@ -24,6 +24,7 @@ module LindenRegexApi {
   import T = LindenElkTranslate
   import LES = LindenElkSpec
   import MAIN = LindenElkMain
+  import LSIM = LindenElkLiftSim
 
   // ==========================================================================
   // The supported fragment — total and executable, so callers can check
@@ -70,12 +71,12 @@ module LindenRegexApi {
   // ECMAScript tree semantics demands.
   /** THE contract: on any `Supported` pattern, `Match` computes exactly the
       answer the ECMAScript tree semantics (`LES.MatcherSpec`) demands. A thin
-      wrapper around `MAIN.MainTheorem`. */
+      wrapper around `LSIM.MainTheoremL3`. */
   lemma MatchCorrect(pattern: R.raw_regex, str: string)
     requires Supported(pattern)
     ensures LES.MatcherSpec(pattern, str, Match(pattern, str))
   {
-    MAIN.MainTheorem(pattern, str);
+    LSIM.MainTheoremL3(pattern, str);
   }
 
   // ==========================================================================
