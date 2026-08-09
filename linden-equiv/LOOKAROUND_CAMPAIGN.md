@@ -372,6 +372,47 @@ Three independent axes, in increasing order of novelty:
   capture replay, `FLookLoop` reconstruction) — worth prioritizing once
   tooling allows.
 
+### 4.5.4 Build-time cleanup — packing the stable layers (post-ladder or per-campaign)
+
+Verify time is dominated by re-resolving and re-sweeping ~29k lines of
+support files under `src/Equiv`. The fragment predicate
+(`NfaRepRE.LookBehindFragmentRE`) is the natural packing cut: a `.doo`
+freezes proofs against the definitions it was built with, and each rung
+REWRITES that predicate — a packed lemma with a fragment `requires` is
+invalidated by the flip (the widened predicate admits inputs the frozen
+proof never covered; the `LkBodyGroupsEmpty` incident is the cautionary
+tale).
+
+- **Tier 1 — fragment-free, pack ONCE (~7.8k lines)**: `OracleReach`,
+  `LookLeaves`, `CheckErase`, `PikeTreeLk`, `OracleSweep`, `TreeRepRE`,
+  `WalkOk`, `LookTables`, `TreeThreadRE`, `GenStepRE`, `Patterns`,
+  `RegsLaws`, `SeenSets`. Neither L3b nor L4 touches these. Two flags
+  before freezing: `Mirror` (fragment-free, but L3b's §4.5.1 item 4 may
+  need to STRENGTHEN its ensures with the capture-register value
+  correspondence under `cp |-> |str| - cp` — check its register clauses
+  first); `ClockMono` has only 2 fragment references — evict those two
+  lemmas and the other ~3k lines of direction-/quant-generic engine sweeps
+  join tier 1.
+- **Tier 2 — fragment-dependent but campaign-stable, pack PER CAMPAIGN
+  (~19k lines)**: `PikeInvRE`, `NestInv`, `PikeSimRE`, the
+  `OracleBuild/Bridge/Decomp/Spec` chain, `ActionsRepRE`, `EntryLk`.
+  No text changes needed for L3b, but every fragment-`requires` lemma must
+  RE-VERIFY at the flip — so repack on day one of each campaign, after the
+  flip. For L4, `NestInv` (nested-look branches) and `OracleBuild` (lid
+  induction) drop out of the pack and return to source.
+- **Stays source**: `LiftSim` (active), `MainTheorem` (L3b rewrites its
+  value layer), `NfaRepRE` (the cut point), `LookCapture`. Note L3b's
+  spec-side crux likely lands in **linden-reasoning** (`SpanDuality`'s
+  home), so that already-packed dep gets a rebuild too.
+- **Gate**: repacking is currently blocked on the lem tooling (the
+  "10-minute wall until Lemmata's `Native.cs` is fixed" note in
+  `L3_PROOF_MAP.md`). Resolve that first.
+- **Zero-tooling alternative, available now**: split `LiftSim.dfy` (~12k
+  lines) — carrier/walk/case-lemma layers below the dispatcher into one
+  file, dispatcher + spine + endpoint + `MainTheoremL3` into another. Cuts
+  per-run resolve cost and the day-to-day sweep radius even without
+  packing (only the three gate/value arms of the lower layer are L3b-hot).
+
 ## 5. Completed work — inventory
 
 All in `linden-equiv/src/Equiv/` unless noted; every file verifies clean
