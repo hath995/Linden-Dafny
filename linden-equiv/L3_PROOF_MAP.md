@@ -1,5 +1,13 @@
 # L3 Proof Map — what is proved, and how each piece reaches the goal
 
+> **2026-08-09 — THE L3a CAMPAIGN IS COMPLETE.** `MainTheoremL3` (LiftSim.dfy)
+> proves `MatcherSpec(raw, str, Normalize(FFullMatch(raw, str)))` for the full
+> fragment WITH capturing positive lookaheads; `ApiMatch.MatchCorrect` wraps
+> it. Whole package green: LiftSim 8817/0, MainTheorem 2512/0, NestInv 139/0,
+> ApiMatch 6/0, ApiReasoning 16/0. The dated update blocks below are the
+> campaign journal; for what remains ABOVE this milestone (L3b lookbehind
+> captures, L4 nesting, small items) see `LOOKAROUND_CAMPAIGN.md` §4.5.
+
 *Generated 2026-08-04 from a full signature sweep of `src/Equiv/LiftSim.dfy` (module
 `LindenElkLiftSim`) plus the reused infrastructure in `MainTheorem`/`PikeSimRE`/`PikeTreeLk`.*
 
