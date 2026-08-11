@@ -186,4 +186,54 @@ module LindenLookBehindValue {
     // (4) RawMirrorGm(MirrorGm(X)) == SwapGm(X)
     RawMirrorMirrorSwap(rb.value.1, n);
   }
+
+  // ===========================================================================
+  // Statics transport under RevRE (for instantiating ReplayCapIsBodyLeaf@RevRE
+  // in the keystone). LookFreeRE(RevRE) is OS.RevRELookFree; TransWf(RevRE) is
+  // SD.RevRETransWf; Translate(RevRE)==RevL(Translate) is SD.TranslateRevRE.
+  // ===========================================================================
+
+  /** The reversed run's input at `n-cp` over `Reverse(str)` is the swap of the
+      forward input at `cp` over `str`. `InpOfCp` is definitionally `T.InputAt`,
+      so this is `SD.InputAtSwap`. */
+  lemma InpOfCpSwap(str: string, cp: nat, n: nat)
+    requires n == |str| && cp <= n
+    ensures |LC.Reverse(str)| == n
+    ensures PIV.InpOfCp(LC.Reverse(str), n - cp) == SD.SwapInput(PIV.InpOfCp(str, cp))
+  {
+    SD.InputAtSwap(str, cp);              // |Reverse(str)|==n; InputAt swap
+    assert PIV.InpOfCp(str, cp) == T.InputAt(str, cp);
+    assert PIV.InpOfCp(LC.Reverse(str), n - cp) == T.InputAt(LC.Reverse(str), n - cp);
+  }
+
+  /** `RevRE` preserves the largest group id (`Re_con` reorder is `imax`-symmetric;
+      captures/anchors/looks keep their ids). */
+  lemma MaxGroupRevRE(re: R.regex)
+    ensures R.max_group(SD.RevRE(re)) == R.max_group(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => MaxGroupRevRE(r1); MaxGroupRevRE(r2);
+    case Re_con(r1, r2) =>
+      MaxGroupRevRE(r1); MaxGroupRevRE(r2);
+      assert R.imax(R.max_group(r1), R.max_group(r2)) == R.imax(R.max_group(r2), R.max_group(r1));
+    case Re_quant(_, _, _, r1) => MaxGroupRevRE(r1);
+    case Re_capture(_, r1) => MaxGroupRevRE(r1);
+    case _ =>
+  }
+
+  /** `RevRE` preserves the largest quantifier id. */
+  lemma MaxQuantRevRE(re: R.regex)
+    ensures R.max_quant(SD.RevRE(re)) == R.max_quant(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => MaxQuantRevRE(r1); MaxQuantRevRE(r2);
+    case Re_con(r1, r2) =>
+      MaxQuantRevRE(r1); MaxQuantRevRE(r2);
+      assert R.imax(R.max_quant(r1), R.max_quant(r2)) == R.imax(R.max_quant(r2), R.max_quant(r1));
+    case Re_quant(_, _, _, r1) => MaxQuantRevRE(r1);
+    case Re_capture(_, r1) => MaxQuantRevRE(r1);
+    case _ =>
+  }
 }
