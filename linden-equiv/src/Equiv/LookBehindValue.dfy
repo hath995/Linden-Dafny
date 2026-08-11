@@ -236,4 +236,57 @@ module LindenLookBehindValue {
     case Re_capture(_, r1) => MaxQuantRevRE(r1);
     case _ =>
   }
+
+  /** `RevRE` preserves the set of capture ids (reorder is set-union-symmetric). */
+  lemma CapIdsRevRE(re: R.regex)
+    ensures PIV.CapIds(SD.RevRE(re)) == PIV.CapIds(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => CapIdsRevRE(r1); CapIdsRevRE(r2);
+    case Re_con(r1, r2) => CapIdsRevRE(r1); CapIdsRevRE(r2);
+    case Re_quant(_, _, _, r1) => CapIdsRevRE(r1);
+    case Re_capture(_, r1) => CapIdsRevRE(r1);
+    case _ =>
+  }
+
+  lemma QuantIdsRevRE(re: R.regex)
+    ensures PIV.QuantIds(SD.RevRE(re)) == PIV.QuantIds(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => QuantIdsRevRE(r1); QuantIdsRevRE(r2);
+    case Re_con(r1, r2) => QuantIdsRevRE(r1); QuantIdsRevRE(r2);
+    case Re_quant(_, _, _, r1) => QuantIdsRevRE(r1);
+    case Re_capture(_, r1) => QuantIdsRevRE(r1);
+    case _ =>
+  }
+
+  /** `RevRE` preserves capture-id uniqueness (`StaticOkRE`'s `CapUnique`). */
+  lemma CapUniqueRevRE(re: R.regex)
+    requires PIV.CapUnique(re)
+    ensures PIV.CapUnique(SD.RevRE(re))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => CapUniqueRevRE(r1); CapUniqueRevRE(r2); CapIdsRevRE(r1); CapIdsRevRE(r2);
+    case Re_con(r1, r2) => CapUniqueRevRE(r1); CapUniqueRevRE(r2); CapIdsRevRE(r1); CapIdsRevRE(r2);
+    case Re_quant(_, _, _, r1) => CapUniqueRevRE(r1);
+    case Re_capture(_, r1) => CapUniqueRevRE(r1); CapIdsRevRE(r1);
+    case _ =>
+  }
+
+  /** `RevRE` preserves quant-id uniqueness (`StaticOkRE`'s `QuantUnique`). */
+  lemma QuantUniqueRevRE(re: R.regex)
+    requires PIV.QuantUnique(re)
+    ensures PIV.QuantUnique(SD.RevRE(re))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => QuantUniqueRevRE(r1); QuantUniqueRevRE(r2); QuantIdsRevRE(r1); QuantIdsRevRE(r2);
+    case Re_con(r1, r2) => QuantUniqueRevRE(r1); QuantUniqueRevRE(r2); QuantIdsRevRE(r1); QuantIdsRevRE(r2);
+    case Re_quant(_, _, _, r1) => QuantUniqueRevRE(r1); QuantIdsRevRE(r1);
+    case Re_capture(_, r1) => QuantUniqueRevRE(r1);
+    case _ =>
+  }
 }
