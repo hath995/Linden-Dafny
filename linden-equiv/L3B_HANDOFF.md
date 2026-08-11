@@ -1,4 +1,36 @@
-# L3b Handoff — captures inside positive LOOKBEHINDS (updated 2026-08-10)
+# L3b Handoff — captures inside positive LOOKBEHINDS (updated 2026-08-11)
+
+> **Session 11 (2026-08-11) — item 4 step 1 (the spec-side leaf-value crux) is
+> DONE, hypothesis included.** Two new verified files in `linden-reasoning`:
+> - `src/Equiv/TreeResMirror.dfy` (**19/0**) — `TreeResMirror`: folding the
+>   backward body tree at `gm1` and the forward mirror tree at `MirrorGm(gm1,n)`
+>   gives corresponding results (None-iff-None + on a match the winning leaf's
+>   input is `SwapInput`-related and captures are `MirrorGm`-related, i.e. the
+>   §2 decided range mirror). Plus `GMOpen/GMClose/GMResetMirror` (GMClose's own
+>   min/max normalization IS `MirrorRange`) and the `MirrorGm`/`GmInBounds`/
+>   `CloseDisc`/`OpenSubset` machinery.
+> - `src/Equiv/CloseDiscEstablish.dfy` (**29/0**) — discharges `TreeResMirror`'s
+>   `CloseDisc` hypothesis: `CloseDiscBody(rer, r, inp, gm, dir)` proves
+>   `CloseDisc(ComputeTr(rer,[Areg(r)],inp,gm,dir), {})` for group-OK, unique-id
+>   `r`. **The quantifier-stable invariant** (the campaign's old wall): relate
+>   each `Areg` head's `DefGroups` to the pending CLOSES below it
+>   (`HeadsFreshOfCloses`), never to other defs — a quantifier unfold pushes
+>   `Areg`s (never `Aclose`s), so the close-set doesn't grow and the invariant
+>   survives; it supplies exactly the freshness each `ComputeTree` case needs.
+> - **Key simplification found:** `TreeRes` None-ness is group-map/input/dir-
+>   independent (`Tree.ResGroupMapIndep`), so the None-iff-None half needs no
+>   mirror; only the value tie (winning path) uses `MirrorGm`+`CloseDisc`.
+>
+> Remaining for item 4: **step 2** (`GmOfLive` commutation under `MirrorRegs`,
+> engine-side, task #3) and **step 3** (`LkReplayMatchesSpecLB` assembly, which
+> consumes `TreeResMirror`+`CloseDiscBody`, task #4). `TreeResMirror`'s
+> `CloseDisc` hyp is now dischargeable at the step-3 call site via
+> `CloseDiscBody` (needs `GroupOkL(Translate(body))` + `NoDupG(DefGroups(...))`
+> from `CapUnique`/`TA_NoDup`).
+>
+> Verify recipe (both files, linden-reasoning deps):
+> `--filter-symbol=LindenTreeResMirror` / `--filter-symbol=LindenCloseDisc`.
+> `CloseDiscEstablish.dfy` includes `TreeResMirror.dfy` includes `TreeMirror.dfy`.
 
 **Goal:** extend `MainTheoremL3`/`ApiMatch.Supported` (L3a: capturing positive
 lookaheads, DONE — see `L3_PROOF_MAP.md`) to also admit **captures inside
@@ -221,19 +253,21 @@ essentially unblocked by this and can proceed in parallel once item 4's
 final lemma (`LkReplayMatchesSpecLB`, step 3 below) has a stated signature —
 they mostly consume its `ensures`, not its proof.
 
-1. **`TreeResMirror`** (new, linden-reasoning, next to `TreeMirror.dfy`): over
-   `TreeMirrorRel`-related trees plus a `CloseDisc` invariant (sketch: a
-   predicate on `(t, O)` where `O` is the set of group ids open at the walk's
-   current point — `Close(g)` requires `g in O`, `Open(g)` adds it,
-   `Reset(gs)` removes `gs`, everything else recurses unchanged — established
-   for `ComputeTr`'s output by a side induction that needs the body's group
-   ids to be `NoDup`, which `TranslateDefGroupsNoDup`-style facts already
-   supply upstream in `LiftSim.dfy`'s converter chain; a linden-reasoning-
-   local variant may be needed since that lemma currently lives in
-   linden-equiv), prove: `TreeRes`/`FirstLeaf` mirror — `None` iff `None`;
-   `Some` implies the endpoint inputs are `SwapInput`-related and the leaf
-   group maps are related by the **decided range mirror** from §2, pointwise
-   per group.
+1. **`TreeResMirror`** — ✅ **DONE 2026-08-11** (`TreeResMirror.dfy` 19/0 +
+   `CloseDiscEstablish.dfy` 29/0). Over `TreeMirrorRel`-related trees plus the
+   `CloseDisc` invariant (`CloseDisc(t, O)`: `Close(g)` requires `g in O`,
+   `Open(g)` adds, `Reset(gs)` removes; established for `ComputeTr` by
+   `CloseDiscBody` via the quantifier-stable `HeadsFreshOfCloses` invariant —
+   a linden-reasoning-local `NoDupG(DefGroups(·))` requires, discharged at the
+   call site from `CapUnique`/`TA_NoDup`), proves: `TreeRes` mirror — `None` iff
+   `None` (this half is gm-free by `ResGroupMapIndep`); `Some` implies the
+   endpoint inputs `SwapInput`-related and the leaf group maps `MirrorGm`-related
+   (the **decided range mirror** from §2), pointwise per group. The signature:
+   `TreeResMirror(t, tm, gm1, inp, n, O)` with forward side at `MirrorGm(gm1,n)`
+   over `SwapInput(inp)`. **NOTE for step 3:** `CloseDiscBody` is stated for a
+   single-`Areg` fresh stack (`[Areg(r)]`, empty pending closes) — the body
+   replay's shape; if the assembly folds a different stack shape, generalize via
+   the already-proved `CloseDiscComputeTr`(any `StackInv` stack).
 
 2. **`GmOfLive` commutation** (linden-equiv, likely `PikeInvRE.dfy` or a new
    small file): `PIV.GmOfLive(body, MirrorRegs(cap, n), ...)` vs
