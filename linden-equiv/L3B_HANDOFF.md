@@ -42,11 +42,30 @@
 > parametricity attempt TIMED OUT on disjunctive per-index quantifiers — use
 > sets, not arrays, for "value-independent zero-set" facts.)
 >
-> **STEPS 1 AND 2 ARE COMPLETE.** Remaining for item 4: **step 3**
-> (`LkReplayMatchesSpecLB` assembly, task #4) — the one large piece left.
-> `TreeResMirror`'s `CloseDisc` hyp is dischargeable at the call site via
-> `CloseDiscBody` (`GroupOkL(Translate(body))` + `NoDupG(DefGroups(...))` from
-> `CapUnique`/`TA_NoDup`).
+> **STEPS 1 AND 2 COMPLETE; STEP 3's VALUE CORE PROVED (item 4g).** The `.doo`
+> bridge was rebuilt with `lem pack` (reasoning 382/0), so linden-equiv now sees
+> the reasoning lemmas. New verified file `linden-equiv/src/Equiv/LookBehindValue.dfy`
+> (**8/0**): `BackBodyGmTie` (tree+value core — `ComputeTrReverse` + `TreeResMirror`
+> + `CloseDiscBody`), `RawMirrorMirrorSwap` (`RawMirrorGm(MirrorGm(X,n),n)==SwapGm(X)`,
+> n cancels), `GmOfLiveClockIndep`, and **`BackBodyEngineTie`** which composes
+> ALL proved pieces ⟹ `GmOfLive(body, MirrorRegs(rf.caps,n), MirrorRegs(rf.looks,n),
+> MirrorRegs(rf.quants,n)) == SwapGm(spec backward leaf)`, taking
+> `BackwardReplayMirror`'s mirror-regs relation and `ReplayCapIsBodyLeaf`@RevRE's
+> value equality as HYPOTHESES.
+>
+> **Remaining = the keystone glue only** (supply `BackBodyEngineTie`'s two
+> hypotheses + None-iff-None + the `LkResult(Lookbehind)` fold), in a file that
+> `include`s `MainTheorem.dfy`: (a) `BackwardReplayMirror`(BackValue:117) at the
+> fresh init regs ⟹ `capB=MirrorRegs(rf.caps,n)` etc.; (b) `ReplayCapIsBodyLeaf`
+> (MainTheorem:4363) @ `(RevRE(body), Reverse(str), n-cp)` ⟹ the value equality —
+> needs `StaticOkRE(qm',RevRE(body),compile(RevRE(body)),endl')`,
+> `SizesOkRE(RevRE(body),..)`, `LookFreeRE(RevRE(body))`, `OracleOkSuffix` for
+> `Reverse(str)@n-cp` (oracle is L1, already correct — transport via `MirrorView`),
+> `RegsAgreeInside`(trivial fresh); (c) `TranslateRevRE` to match
+> `Translate(RevRE(body))==RevL(Translate(body))`; (d) `InpOfCp(Reverse(str),n-cp)
+> ==SwapInput(InpOfCp(str,cp))` — provable from the `InpOfCp` def
+> (`Input(str[cp..],Reverse(str[..cp]))`) by slice/Reverse algebra. `T.Translate`
+> needs `TransWf(body)`.
 >
 > **`LkReplayMatchesSpecLB` signature** (mirror `LkReplayMatchesSpec`,
 > MainTheorem.dfy:4479, `la.Lookahead?`→`la.Lookbehind?`): the engine replay is
