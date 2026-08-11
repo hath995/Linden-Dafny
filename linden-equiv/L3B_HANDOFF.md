@@ -21,12 +21,39 @@
 >   independent (`Tree.ResGroupMapIndep`), so the None-iff-None half needs no
 >   mirror; only the value tie (winning path) uses `MirrorGm`+`CloseDisc`.
 >
-> Remaining for item 4: **step 2** (`GmOfLive` commutation under `MirrorRegs`,
-> engine-side, task #3) and **step 3** (`LkReplayMatchesSpecLB` assembly, which
-> consumes `TreeResMirror`+`CloseDiscBody`, task #4). `TreeResMirror`'s
-> `CloseDisc` hyp is now dischargeable at the step-3 call site via
-> `CloseDiscBody` (needs `GroupOkL(Translate(body))` + `NoDupG(DefGroups(...))`
-> from `CapUnique`/`TA_NoDup`).
+> **Step 2 (engine-side GmOfLive commutation) also DONE.** New verified file:
+> - `linden-equiv/src/Equiv/BackGmMirror.dfy` (**18/0**) — `GmOfLiveMirror`:
+>   `GmOfLive(body, MirrorRegs(cap,n), look, quant) == RawMirrorGm(GmOfLive(body,
+>   cap, look, quant), n)`, where `RawMirrorGm` is the RAW (reversed-span) range
+>   mirror `Range(s,Some e) |-> Range(n-s, Some(n-e))` — `LiveRange`/`RangeFromArr`
+>   read `start_reg`/`end_reg` positionally, so a closed lookbehind group reads
+>   out reversed (the item-0 quirk). Built on `FilterCaptureMirror`/
+>   `FilterResetMirror` (filter commutes with the mirror — it branches only on
+>   clocks, which `MirrorRegs` keeps, and writes only `-1`). The ORDERED spec
+>   mirror is `MirrorRange` = `Range(n-e, Some(n-s))`; the two differ by a
+>   start/end swap for closed lookbehind-owned groups — reconciled by the widened
+>   `NormalizeArr` (item 0) at `MainExtraction`.
+>
+> Remaining for item 4: **step 3** (`LkReplayMatchesSpecLB` assembly, task #4),
+> which consumes `TreeResMirror`+`CloseDiscBody`+`GmOfLiveMirror`+
+> `BackwardReplayMirror`+`ReplayCapIsBodyLeaf`@`(RevRE(body),Reverse(str),n-cp)`.
+> One remaining step-2/3 bridge lemma: **`GmOfLive(RevRE(body),X)==GmOfLive(body,
+> X)`** (RevRE preserves group structure; `filter_capture` con-commute — the
+> filter writes only `-1`, a value-independent set, so RevRE's con-reorder leaves
+> the result unchanged). `TreeResMirror`'s `CloseDisc` hyp is dischargeable at the
+> step-3 call site via `CloseDiscBody` (`GroupOkL(Translate(body))` +
+> `NoDupG(DefGroups(...))` from `CapUnique`/`TA_NoDup`).
+>
+> **The full step-3 value chain (traced this session):** engine backward caps
+> `capB = MirrorRegs(rf_F,n)` (`BackwardReplayMirror`); `ReplayCapIsBodyLeaf`@RevRE
+> ⟹ `GmOfLive(RevRE(body),rf_F) == FirstLeaf(t_F)` where `t_F` = forward tree of
+> `Translate(RevRE(body))==RevL(Translate(body))`; `ComputeTrReverse` ⟹ `t_F`
+> `TreeMirrorRel` `t_B` (backward tree of `Translate(body)`); `TreeResMirror` ⟹
+> `FirstLeaf(t_F) == MirrorGm(TreeRes(t_B,Empty,inp_B,Backward), n)`. So the spec
+> leaf `TreeRes(t_B,..,Backward) == MirrorGm(GmOfLive(RevRE(body),rf_F))` [ordered].
+> Engine answer `GmOfLive(body, capB) = RawMirrorGm(GmOfLive(body,rf_F))
+> = RawMirrorGm(GmOfLive(RevRE(body),rf_F))` [GmOfLiveMirror + RevRE bridge]
+> = reversed-span of the ordered spec leaf ⟹ `NormalizeArr` swap closes it.
 >
 > Verify recipe (both files, linden-reasoning deps):
 > `--filter-symbol=LindenTreeResMirror` / `--filter-symbol=LindenCloseDisc`.
