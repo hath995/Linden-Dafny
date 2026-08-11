@@ -1,5 +1,51 @@
 # L3b Handoff — captures inside positive LOOKBEHINDS (updated 2026-08-11)
 
+> **Session 12 (2026-08-11) — ITEM 4 (the backward value crux) is COMPLETE.**
+> New verified file `linden-equiv/src/Equiv/LookBehindKeystone.dfy` (**769/0**),
+> the sibling of the L3a keystone `LindenElkMain.LkReplayMatchesSpec`:
+> - **`LkReplayMatchesSpecLB`** (module `LindenLookBehindKeystone`) — for a
+>   positive LOOKBEHIND with a look-free plus-fragment body, the engine's BACKWARD
+>   capture replay `raB` (over `compile_to_bytecode(reverse_regex(body))`) matches
+>   the spec `LkResult` on the body's groups. **Ensures:** `raB.None? <==>
+>   LkResult(TrLookaround(la), tlk, gmMain, inp).None?`, and on a match
+>   `GmAgreeOn(SwapGm(LkResult(...).value), GmOfLive(body, MirrorRegs(rfF.caps,n),
+>   MirrorRegs(rfF.looks,n), MirrorRegs(rfF.quants,n)), S)` where `rfF` is the
+>   FRESH forward run of `compile_to_bytecode(RevRE(body))` over `Reverse(str)` at
+>   `n-cp` (mirror of the backward replay via `BackwardReplayMirror`), `S =
+>   DefGroups(Translate(body))`. The value tie is through the reversed-span mirror
+>   `SwapGm` (item-0 `NormalizeArr` reconciles at `MainExtraction`); note membership
+>   is swap-INVARIANT, so the gate-pass coverage (`g in ... ==> g in gm2`) needs no
+>   swap. **Preconditions** (consumer discharges): body facts (`TransWf`,
+>   `LookFreeRE`, `PlusFragmentRE`, `CapUnique`, `QuantUnique`), `GroupOkL(Translate
+>   (body))`, `NoDupG(DefGroups(Translate(body)))`, `SizesOkRE(body,...)`, the
+>   fresh-caps `RegsAgreeInside(cap, init_regs(ncap), CaptureRegs(body))`, `tlk ==
+>   ComputeTr([Areg(Translate(body))], InpOfCp(str,cp), gmMain, Backward)`, and
+>   `GmAgreeOn(gmMain, Empty, S)`. Consumer template: `LiftSim.dfy:4479` lookbehind
+>   arm (currently the capture-free stub) — items #5/#6.
+> - **Split for the solver:** `LBEngineLeaf` (engine half) + `LkReplayMatchesSpecLB`
+>   (spec/value half), both `{:isolate_assertions}` — a monolithic version TIMED
+>   OUT at 10min; isolating each VC + splitting the two fact-worlds made each
+>   tractable (~90s/task). Supporting: `FConsumeCapsLE`/`FFindMatchCapsLE` (the
+>   `VmCapsLE` forward invariant => `caps <= |str|`, feeds `GmOfLiveMirror`);
+>   `RevREStaticOk` (the whole `StaticOkRE(qm', RevRE(body), ...)` with `looks:=
+>   map[]` — `OracleOkSuffix` VACUOUS; `qm'.quants := M.QmOfRE(RevRE(body))` via
+>   `QmOfREEntries`+`QmapOkFromEntries`, `LmapOk` via `AR.PlusFragmentLmapOk`);
+>   `MirrorRegsAgreeInit`/`SwapGmAgree`/`CaptureRegsRevRE` bridges.
+> - **Ensures well-formedness gotcha:** state the RevRE forward tree in the ensures
+>   as `ComputeTr([Areg(RevL(Translate(body)))], SwapInput(InpOfCp(str,cp)), ...)`
+>   NOT `Translate(RevRE(body))` — the latter needs `TransWf(RevRE(body))` which is
+>   only a LEMMA (not derivable in ensures WF from the requires). Bridge in the
+>   proof via `TranslateRevRE`+`InpOfCpSwap`.
+> - **`.doo` note:** LookBehindKeystone.dfy is a linden-equiv file including
+>   MainTheorem.dfy + LookBehindValue.dfy; no cross-package `.doo` rebuild needed
+>   (the reasoning `.doo` bridge from session 11 is already in place). Verify with
+>   the linden-equiv recipe + `--allow-warnings` (a pre-existing NestInv.dfy trigger
+>   warning) + `--filter-symbol=LindenLookBehindKeystone`.
+>
+> **Remaining (items #1, #2, #3, #5, #6):** the fragment flip + the FLookLoop
+> value-lift / gate-pass consumers that WIRE `LkReplayMatchesSpecLB` — see §3 below.
+> They consume its `ensures`; the proof is done.
+
 > **Session 11 (2026-08-11) — item 4 step 1 (the spec-side leaf-value crux) is
 > DONE, hypothesis included.** Two new verified files in `linden-reasoning`:
 > - `src/Equiv/TreeResMirror.dfy` (**19/0**) — `TreeResMirror`: folding the
