@@ -53,19 +53,38 @@
 > `BackwardReplayMirror`'s mirror-regs relation and `ReplayCapIsBodyLeaf`@RevRE's
 > value equality as HYPOTHESES.
 >
-> **Remaining = the keystone glue only** (supply `BackBodyEngineTie`'s two
-> hypotheses + None-iff-None + the `LkResult(Lookbehind)` fold), in a file that
-> `include`s `MainTheorem.dfy`: (a) `BackwardReplayMirror`(BackValue:117) at the
-> fresh init regs ⟹ `capB=MirrorRegs(rf.caps,n)` etc.; (b) `ReplayCapIsBodyLeaf`
-> (MainTheorem:4363) @ `(RevRE(body), Reverse(str), n-cp)` ⟹ the value equality —
-> needs `StaticOkRE(qm',RevRE(body),compile(RevRE(body)),endl')`,
-> `SizesOkRE(RevRE(body),..)`, `LookFreeRE(RevRE(body))`, `OracleOkSuffix` for
-> `Reverse(str)@n-cp` (oracle is L1, already correct — transport via `MirrorView`),
-> `RegsAgreeInside`(trivial fresh); (c) `TranslateRevRE` to match
-> `Translate(RevRE(body))==RevL(Translate(body))`; (d) `InpOfCp(Reverse(str),n-cp)
-> ==SwapInput(InpOfCp(str,cp))` — provable from the `InpOfCp` def
-> (`Input(str[cp..],Reverse(str[..cp]))`) by slice/Reverse algebra. `T.Translate`
-> needs `TransWf(body)`.
+> **ALL self-contained statics DONE (item 4i, LookBehindValue 16/0).** RevRE
+> preservation lemmas for `StaticOkRE`: `CapUniqueRevRE`/`QuantUniqueRevRE` (via
+> `CapIdsRevRE`/`QuantIdsRevRE`), `MaxGroupRevRE`/`MaxQuantRevRE` (⟹ `SizesOkRE`),
+> `InpOfCpSwap`; plus pre-existing `OS.RevRELookFree`, `OS.RevREPlusFragment`,
+> `SD.RevRETransWf`, `SD.TranslateRevRE`.
+>
+> **THE ORACLE-DISSOLVING BREAKTHROUGH:** `OracleOkSuffix` (LookLeaves:1204)
+> quantifies over `qm.looks`. A look-free body has none, so use a **body-specific
+> `qm'` with empty `looks`** (and `qm'.ov := MirrorView(ov)`) — then
+> `OracleOkSuffix(rer, qm', ...)` is **VACUOUSLY TRUE**. The deep oracle transport
+> disappears. (The engine's actual lookbehind uses the main `qm`, but the forward
+> RevRE run needs `qm'.ov==MirrorView(ov)` anyway, so a fresh `qm'` is required
+> regardless — and empty looks come free.)
+>
+> **Remaining keystone = (in a `MainTheorem.dfy`-including file, slow to iterate):**
+> 1. Construct `qm'` for `RevRE(body)`: `quants` = `RevRE(body)`'s quant map,
+>    `looks := map[]`, `ov := MirrorView(ov)`. Prove `QmapOk(RevRE(body),qm')` &
+>    `LmapOk(RevRE(body),qm')` (look at `AR.QmapOk`/`LmapOk` + how the compiler
+>    builds a QMap — `M.QmOfRE`/`OE.LmOf` may give a canonical constructor).
+> 2. `StaticOkRE(qm', RevRE(body), compile(RevRE(body)), endl')`: fragment/uniques
+>    from the item-4i lemmas; `NfaRepRE(RevRE(body),compile(RevRE(body)),0,endl')`
+>    + `GetPcRE(code,endl')==Accept` + `|code|==endl'+1` + `StutterTameRE` from the
+>    compiler-correctness family `NR.CompileNfaRepRE`(NfaRepRE:1438).
+> 3. `OracleOkSuffix(rer,qm',InpOfCp(Reverse(str),n-cp))` — VACUOUS (empty looks).
+> 4. Wire: `ReplayCapIsBodyLeaf`(MainTheorem:4363)@`(RevRE(body),Reverse(str),n-cp,
+>    MirrorView(ov),SwapAnchorsCdns(cdns))` ⟹ `GmOfLive(RevRE(body),rf)==FirstLeaf(t_F)`;
+>    `BackwardReplayMirror`(BackValue:117)@fresh-init ⟹ `capB=MirrorRegs(rf)`;
+>    `InpOfCpSwap` for the input; `BackBodyEngineTie` ⟹ the value tie
+>    `GmOfLive(body,capB)==SwapGm(spec leaf)`; then None-iff-None + `LkResult(
+>    Lookbehind,LkDir=Backward)` fold (mirror `LkReplayMatchesSpec`'s final lines).
+>    The existing call template is `LiftSim.dfy:4495` (lookahead); `T.Translate`
+>    needs `TransWf(body)`.
 >
 > **`LkReplayMatchesSpecLB` signature** (mirror `LkReplayMatchesSpec`,
 > MainTheorem.dfy:4479, `la.Lookahead?`→`la.Lookbehind?`): the engine replay is
