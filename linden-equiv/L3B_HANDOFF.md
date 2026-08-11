@@ -34,15 +34,37 @@
 >   start/end swap for closed lookbehind-owned groups — reconciled by the widened
 >   `NormalizeArr` (item 0) at `MainExtraction`.
 >
-> Remaining for item 4: **step 3** (`LkReplayMatchesSpecLB` assembly, task #4),
-> which consumes `TreeResMirror`+`CloseDiscBody`+`GmOfLiveMirror`+
-> `BackwardReplayMirror`+`ReplayCapIsBodyLeaf`@`(RevRE(body),Reverse(str),n-cp)`.
-> One remaining step-2/3 bridge lemma: **`GmOfLive(RevRE(body),X)==GmOfLive(body,
-> X)`** (RevRE preserves group structure; `filter_capture` con-commute — the
-> filter writes only `-1`, a value-independent set, so RevRE's con-reorder leaves
-> the result unchanged). `TreeResMirror`'s `CloseDisc` hyp is dischargeable at the
-> step-3 call site via `CloseDiscBody` (`GroupOkL(Translate(body))` +
-> `NoDupG(DefGroups(...))` from `CapUnique`/`TA_NoDup`).
+> **RevRE bridge DONE** (item 4f, `GmOfLiveRevRE` in `BackGmMirror.dfy`, whole
+> file **31/0**): `GmOfLive(RevRE(body),X)==GmOfLive(body,X)`. Proved via the
+> SET characterization — `filter(r,a) == ApplyZero(ZeroSet(r), a)` (the filter
+> only zeroes a clock-determined, value-INDEPENDENT set), and set union commutes,
+> so `RevRE`'s `Re_con` reorder is a no-op (`ZeroSetCapRevRE`). (An earlier 2-array
+> parametricity attempt TIMED OUT on disjunctive per-index quantifiers — use
+> sets, not arrays, for "value-independent zero-set" facts.)
+>
+> **STEPS 1 AND 2 ARE COMPLETE.** Remaining for item 4: **step 3**
+> (`LkReplayMatchesSpecLB` assembly, task #4) — the one large piece left.
+> `TreeResMirror`'s `CloseDisc` hyp is dischargeable at the call site via
+> `CloseDiscBody` (`GroupOkL(Translate(body))` + `NoDupG(DefGroups(...))` from
+> `CapUnique`/`TA_NoDup`).
+>
+> **`LkReplayMatchesSpecLB` signature** (mirror `LkReplayMatchesSpec`,
+> MainTheorem.dfy:4479, `la.Lookahead?`→`la.Lookbehind?`): the engine replay is
+> BACKWARD over `compile_to_bytecode(reverse_regex(body))`; `tlk` is the BACKWARD
+> body tree `ComputeTr([Areg(Translate(body))], inp, gmMain, WP.Backward)`;
+> `LkResult` uses `LkDir(Lookbehind)==Backward`. The value tie is stated through
+> the RAW (reversed-span) mirror: `GmAgreeOn(LkResult(...).value,
+> RawMirrorGm(GmOfLive(body, rf.caps, ...), n), S)` — because the engine's raw
+> readout is reversed-span vs the ordered spec leaf; the `NormalizeArr` swap
+> (item 0) reconciles at `MainExtraction`. **Proof deps to transport for the
+> `ReplayCapIsBodyLeaf`@`(RevRE(body),Reverse(str),n-cp)` instantiation:** RevRE
+> preserves `LookFreeRE`/sizes/`TransWf` (`RevRETransWf` exists; audit
+> `LookFreeRE(RevRE)`), `StaticOkRE(qm', RevRE(body), compile(RevRE(body)),
+> endl')`, `OracleOkSuffix` for `Reverse(str)` at `n-cp`, and the
+> `InpOfCp(str,cp)`↔`SwapInput` alignment (`SD.InputAtSwap`; `PIV.InpOfCp` at
+> :5544). **The `.doo` bridge (handoff §0) MUST be rebuilt before step-3 code in
+> linden-equiv can see `TreeResMirror`/`CloseDiscBody`** — `deps/` is generated,
+> not git-tracked.
 >
 > **The full step-3 value chain (traced this session):** engine backward caps
 > `capB = MirrorRegs(rf_F,n)` (`BackwardReplayMirror`); `ReplayCapIsBodyLeaf`@RevRE
