@@ -306,4 +306,188 @@ module LindenBackGmMirror {
     }
     assert gL == RawMirrorGm(g0, n);
   }
+
+  // ===========================================================================
+  // The RevRE bridge: GmOfLive(RevRE(body), X) == GmOfLive(body, X)
+  //
+  // The capture filter only ever ZEROES registers: filter(r, a) is `a` with a
+  // clock-determined SET of registers set to -1, and that set is INDEPENDENT of
+  // a's values (every branch reads clocks, never a). RevRE only reorders Re_con
+  // children, and set union is commutative, so the zeroed set — hence the
+  // filtered result — is unchanged. Sets (not 2-array parametricity) keep this
+  // cheap for the solver.
+  // ===========================================================================
+
+  /** `a` with every register in `S` set to `-1`. */
+  function ApplyZero(S: set<int>, a: seq<int>): seq<int> {
+    seq(|a|, i requires 0 <= i < |a| => if i in S then -1 else a[i])
+  }
+
+  lemma ApplyZeroEmpty(a: seq<int>)
+    ensures ApplyZero({}, a) == a
+  {
+    forall i | 0 <= i < |a| ensures ApplyZero({}, a)[i] == a[i] {}
+  }
+
+  lemma ApplyZeroUnion(S1: set<int>, S2: set<int>, a: seq<int>)
+    ensures ApplyZero(S2, ApplyZero(S1, a)) == ApplyZero(S1 + S2, a)
+  {
+    forall i | 0 <= i < |a|
+      ensures ApplyZero(S2, ApplyZero(S1, a))[i] == ApplyZero(S1 + S2, a)[i] {}
+  }
+
+  lemma SetIdxZero(a: seq<int>, k: int)
+    ensures AI.set_idx(a, k, -1) == ApplyZero({k}, a)
+  {
+    forall i | 0 <= i < |a| ensures AI.set_idx(a, k, -1)[i] == ApplyZero({k}, a)[i] {}
+  }
+
+  /** Registers `filter_all(r, .)` zeroes: every capture start under `r`. */
+  function ZeroSetAll(r: R.regex): set<int>
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => ZeroSetAll(r1) + ZeroSetAll(r2)
+    case Re_con(r1, r2) => ZeroSetAll(r1) + ZeroSetAll(r2)
+    case Re_quant(_, _, _, r1) => ZeroSetAll(r1)
+    case Re_capture(cid, r1) => {CP.start_reg(cid)} + ZeroSetAll(r1)
+    case Re_lookaround(_, _, r1) => ZeroSetAll(r1)
+    case _ => {}
+  }
+
+  /** Registers `filter_capture(r, ., cc, lc, qc, mc)` zeroes — clock-determined,
+      independent of the register values. */
+  function ZeroSetCap(r: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>, mc: int): set<int>
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => ZeroSetCap(r1, cc, lc, qc, mc) + ZeroSetCap(r2, cc, lc, qc, mc)
+    case Re_con(r1, r2) => ZeroSetCap(r1, cc, lc, qc, mc) + ZeroSetCap(r2, cc, lc, qc, mc)
+    case Re_quant(nul, qid, quant, r1) =>
+      var quant_val := AI.get_idx(qc, qid);
+      if quant_val < mc then ZeroSetAll(r1) else ZeroSetCap(r1, cc, lc, qc, quant_val)
+    case Re_capture(cid, r1) =>
+      var start := AI.get_idx(cc, CP.start_reg(cid));
+      if start < 0 then ZeroSetAll(r1)
+      else if start < mc then {CP.start_reg(cid)} + ZeroSetAll(r1)
+      else ZeroSetCap(r1, cc, lc, qc, mc)
+    case Re_lookaround(lid, l, r1) =>
+      var look_val := AI.get_idx(lc, lid);
+      if look_val < 0 then ZeroSetAll(r1)
+      else if look_val < mc then ZeroSetAll(r1)
+      else ZeroSetCap(r1, cc, lc, qc, -1)
+    case _ => {}
+  }
+
+  lemma FilterAllZero(r: R.regex, a: seq<int>)
+    ensures AI.filter_all(r, a) == ApplyZero(ZeroSetAll(r), a)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      FilterAllZero(r1, a); FilterAllZero(r2, AI.filter_all(r1, a));
+      ApplyZeroUnion(ZeroSetAll(r1), ZeroSetAll(r2), a);
+    case Re_con(r1, r2) =>
+      FilterAllZero(r1, a); FilterAllZero(r2, AI.filter_all(r1, a));
+      ApplyZeroUnion(ZeroSetAll(r1), ZeroSetAll(r2), a);
+    case Re_quant(_, _, _, r1) => FilterAllZero(r1, a);
+    case Re_capture(cid, r1) =>
+      SetIdxZero(a, CP.start_reg(cid));
+      FilterAllZero(r1, AI.set_idx(a, CP.start_reg(cid), -1));
+      ApplyZeroUnion({CP.start_reg(cid)}, ZeroSetAll(r1), a);
+    case Re_lookaround(_, _, r1) => FilterAllZero(r1, a);
+    case _ => ApplyZeroEmpty(a);
+  }
+
+  lemma FilterCaptureZero(r: R.regex, a: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, mc: int)
+    ensures AI.filter_capture(r, a, cc, lc, qc, mc) == ApplyZero(ZeroSetCap(r, cc, lc, qc, mc), a)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      FilterCaptureZero(r1, a, cc, lc, qc, mc);
+      FilterCaptureZero(r2, AI.filter_capture(r1, a, cc, lc, qc, mc), cc, lc, qc, mc);
+      ApplyZeroUnion(ZeroSetCap(r1, cc, lc, qc, mc), ZeroSetCap(r2, cc, lc, qc, mc), a);
+    case Re_con(r1, r2) =>
+      FilterCaptureZero(r1, a, cc, lc, qc, mc);
+      FilterCaptureZero(r2, AI.filter_capture(r1, a, cc, lc, qc, mc), cc, lc, qc, mc);
+      ApplyZeroUnion(ZeroSetCap(r1, cc, lc, qc, mc), ZeroSetCap(r2, cc, lc, qc, mc), a);
+    case Re_quant(nul, qid, quant, r1) =>
+      var quant_val := AI.get_idx(qc, qid);
+      if quant_val < mc { FilterAllZero(r1, a); }
+      else { FilterCaptureZero(r1, a, cc, lc, qc, quant_val); }
+    case Re_capture(cid, r1) =>
+      var start := AI.get_idx(cc, CP.start_reg(cid));
+      if start < 0 { FilterAllZero(r1, a); }
+      else if start < mc {
+        SetIdxZero(a, CP.start_reg(cid));
+        FilterAllZero(r1, AI.set_idx(a, CP.start_reg(cid), -1));
+        ApplyZeroUnion({CP.start_reg(cid)}, ZeroSetAll(r1), a);
+      } else { FilterCaptureZero(r1, a, cc, lc, qc, mc); }
+    case Re_lookaround(lid, l, r1) =>
+      var look_val := AI.get_idx(lc, lid);
+      if look_val < 0 { FilterAllZero(r1, a); }
+      else if look_val < mc { FilterAllZero(r1, a); }
+      else { FilterCaptureZero(r1, a, cc, lc, qc, -1); }
+    case _ => ApplyZeroEmpty(a);
+  }
+
+  lemma ZeroSetAllRevRE(r: R.regex)
+    ensures ZeroSetAll(SD.RevRE(r)) == ZeroSetAll(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => ZeroSetAllRevRE(r1); ZeroSetAllRevRE(r2);
+    case Re_con(r1, r2) => ZeroSetAllRevRE(r1); ZeroSetAllRevRE(r2);
+    case Re_quant(_, _, _, r1) => ZeroSetAllRevRE(r1);
+    case Re_capture(cid, r1) => ZeroSetAllRevRE(r1);
+    case _ =>
+  }
+
+  lemma ZeroSetCapRevRE(r: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>, mc: int)
+    ensures ZeroSetCap(SD.RevRE(r), cc, lc, qc, mc) == ZeroSetCap(r, cc, lc, qc, mc)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => ZeroSetCapRevRE(r1, cc, lc, qc, mc); ZeroSetCapRevRE(r2, cc, lc, qc, mc);
+    case Re_con(r1, r2) => ZeroSetCapRevRE(r1, cc, lc, qc, mc); ZeroSetCapRevRE(r2, cc, lc, qc, mc);
+    case Re_quant(nul, qid, quant, r1) =>
+      var quant_val := AI.get_idx(qc, qid);
+      if quant_val < mc { ZeroSetAllRevRE(r1); }
+      else { ZeroSetCapRevRE(r1, cc, lc, qc, quant_val); }
+    case Re_capture(cid, r1) =>
+      var start := AI.get_idx(cc, CP.start_reg(cid));
+      if start < 0 { ZeroSetAllRevRE(r1); }
+      else if start < mc { ZeroSetAllRevRE(r1); }
+      else { ZeroSetCapRevRE(r1, cc, lc, qc, mc); }
+    case _ =>
+  }
+
+  lemma FilterCaptureRevRE(r: R.regex, a: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, mc: int)
+    ensures AI.filter_capture(SD.RevRE(r), a, cc, lc, qc, mc) == AI.filter_capture(r, a, cc, lc, qc, mc)
+  {
+    FilterCaptureZero(SD.RevRE(r), a, cc, lc, qc, mc);
+    FilterCaptureZero(r, a, cc, lc, qc, mc);
+    ZeroSetCapRevRE(r, cc, lc, qc, mc);
+  }
+
+  lemma FilterResetRevRE(r: R.regex, cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, mc: int)
+    ensures AI.filter_reset(SD.RevRE(r), cap, look, quant, mc)
+         == AI.filter_reset(r, cap, look, quant, mc)
+  {
+    FilterCaptureRevRE(r, AReg.as_arrays(cap).0, AReg.as_arrays(cap).1,
+                       AReg.as_arrays(look).1, AReg.as_arrays(quant).1, mc);
+  }
+
+  /** The bridge: reversing the body leaves its `GmOfLive` denotation unchanged
+      (`RevRE` preserves every capture's clock logic and group id; the filter's
+      con-reorder is a no-op). Lets the step-3 keystone move
+      `GmOfLive(RevRE(body), ...)` (from `ReplayCapIsBodyLeaf` at `RevRE(body)`)
+      to `GmOfLive(body, ...)` for the main endpoint. */
+  lemma GmOfLiveRevRE(body: R.regex, cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs)
+    ensures PIV.GmOfLive(SD.RevRE(body), cap, look, quant)
+         == PIV.GmOfLive(body, cap, look, quant)
+  {
+    FilterResetRevRE(body, cap, look, quant, -1);
+  }
 }
