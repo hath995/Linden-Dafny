@@ -5593,6 +5593,11 @@ module LindenElkPikeInv {
       |f| == 2 * ngroups
       && (forall i :: 0 <= i < |f| ==> f[i] >= -1)                                  // -1 encodes None
       && (forall g: nat :: 0 <= g < ngroups ==> (f[2 * g] >= 0 ==> f[2 * g + 1] >= 0))  // closed match
+      // FORWARD groups only: no reversed lookbehind span. The widened `NormalizeArr`
+      // (item 0) swaps reversed pairs; here we assert there are none, so it is the
+      // identity on `f` and the positional `GmOf` read still matches slot-for-slot.
+      && (forall g: nat :: 0 <= g < ngroups ==>
+            (f[2 * g] >= 0 && f[2 * g + 1] >= 0 ==> f[2 * g] <= f[2 * g + 1]))
     ensures LES.NormalizeArr(AI.filter_reset(ast, caps, look, quant, -1))
          == LES.CapArrayOfLeaf((inp, GmOf(ast, caps, look, quant)), ngroups)
   {
@@ -5608,6 +5613,7 @@ module LindenElkPikeInv {
       assert CP.start_reg(g) == 2 * g && CP.end_reg(g) == 2 * g + 1;
       assert AI.get_idx(f, 2 * g) == f[2 * g];             // 2*g < |f|
       assert AI.get_idx(f, 2 * g + 1) == f[2 * g + 1];     // 2*g+1 < |f|
+      assert !(f[2 * g] >= 0 && f[2 * g + 1] >= 0 && f[2 * g] > f[2 * g + 1]);  // no reversed pair
       if j % 2 == 0 {
         assert j == 2 * g;
       } else {

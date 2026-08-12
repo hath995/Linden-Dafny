@@ -49,11 +49,22 @@ module LindenElkSpec {
   // iff its START slot is >= 0; a stale END slot is forced to -1.
   /** RegElk's output convention: a group is defined iff its START slot is
       `>= 0`; a stale END slot left over from a prior iteration is forced
-      back to `-1`. Used to compare RegElk's raw output against `CapArrayOfLeaf`. */
+      back to `-1`. Used to compare RegElk's raw output against `CapArrayOfLeaf`.
+
+      L3b (item 0): a capturing LOOKBEHIND stores its span REVERSED — the START
+      slot holds the later position, the END slot the earlier one (the backward
+      replay writes `start_reg` first, at the larger `cp`). A reversed pair
+      (both `>= 0`, start slot `>` end slot) is swapped back into `(start, end)`
+      order, matching the spec's `GMClose`-normalized leaf. This is a NO-OP for
+      every forward/unset group (their start slot is already `<= ` their end
+      slot), so it does not disturb the L1/L2/L3a proofs. */
   function NormalizeArr(arr: seq<int>): seq<int> {
     seq(|arr|, j requires 0 <= j < |arr| =>
-      if j % 2 == 0 then arr[j]
+      if j % 2 == 0 then
+        (if j + 1 < |arr| && arr[j] >= 0 && arr[j+1] >= 0 && arr[j] > arr[j+1]
+         then arr[j+1] else arr[j])
       else if arr[j-1] < 0 then -1
+      else if arr[j] >= 0 && arr[j-1] > arr[j] then arr[j-1]
       else arr[j])
   }
 

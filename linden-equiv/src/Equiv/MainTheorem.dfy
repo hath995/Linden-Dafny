@@ -464,6 +464,89 @@ module LindenElkMain {
   }
 
   // ==========================================================================
+  // Item 0 support: every CLOSED range in a spec leaf is ORDERED (start <= end).
+  // `GMClose` always normalizes min/max, `GMOpen` records an OPEN range, `GMReset`
+  // removes — so ordering is a LOCAL per-range property preserved compositionally
+  // by every `TreeRes` step (including the LK-node merge, which just continues at
+  // the sub-run's ordered result). Used at `MainExtraction` to discharge the
+  // widened `NormalizeArr`'s "no reversed pairs" side condition for the FORWARD
+  // fragment (a lookbehind-owned group's engine spans are reversed; the spec leaf
+  // stays ordered because `GMClose` orders regardless of scan direction).
+  // ==========================================================================
+
+  /** Every closed range in `gm` is ordered (`startIdx <= endIdx.value`). */
+  ghost predicate OrderedGm(gm: LG.GroupMap) {
+    forall g :: g in gm && gm[g].endIdx.Some? ==> gm[g].startIdx <= gm[g].endIdx.value
+  }
+
+  /** `GMUpdate` preserves `OrderedGm`: `GMOpen` records an open range, `GMClose`
+      normalizes to `min <= max`, `GMReset` removes. */
+  lemma GMUpdateOrdered(a: LG.GroupAction, idx: nat, gm: LG.GroupMap)
+    requires OrderedGm(gm)
+    ensures OrderedGm(LG.GMUpdate(a, idx, gm))
+  {
+    match a
+    case Open(g) =>
+    case Close(g) =>
+      forall g' | g' in LG.GMClose(idx, g, gm) && LG.GMClose(idx, g, gm)[g'].endIdx.Some?
+        ensures LG.GMClose(idx, g, gm)[g'].startIdx <= LG.GMClose(idx, g, gm)[g'].endIdx.value
+      {
+        if g' == g {
+          match LG.Find(g, gm) case Some(rg) => case None => {}
+        }
+      }
+    case Reset(gs) =>
+  }
+
+  /** A spec `TreeRes` from an ordered gm lands (on a match) at an ordered leaf gm.
+      Structural induction; the LK node just continues at the (recursively ordered)
+      sub-run result. */
+  lemma TreeResOrdered(t: LT.Tree, gm: LG.GroupMap, inp: LC.Input, dir: WP.Direction)
+    requires OrderedGm(gm)
+    ensures LT.TreeRes(t, gm, inp, dir).Some? ==> OrderedGm(LT.TreeRes(t, gm, inp, dir).value.1)
+    decreases t
+  {
+    match t
+    case Mismatch =>
+    case Match =>
+    case Choice(t1, t2) =>
+      TreeResOrdered(t1, gm, inp, dir);
+      TreeResOrdered(t2, gm, inp, dir);
+    case Read(c, t1) =>
+      TreeResOrdered(t1, gm, LC.AdvanceInputP(inp, dir), dir);
+    case ReadBackRef(brStr, t1) =>
+      TreeResOrdered(t1, gm, LC.AdvanceInputN(inp, |brStr|, dir), dir);
+    case Progress(t1) =>
+      TreeResOrdered(t1, gm, inp, dir);
+    case AnchorPass(a, t1) =>
+      TreeResOrdered(t1, gm, inp, dir);
+    case GroupActionT(a, t1) =>
+      GMUpdateOrdered(a, LC.Idx(inp), gm);
+      TreeResOrdered(t1, LG.GMUpdate(a, LC.Idx(inp), gm), inp, dir);
+    case LK(lk, tlk, t1) =>
+      if L.Positivity(lk) {
+        TreeResOrdered(tlk, gm, inp, L.LkDir(lk));
+        match LT.TreeRes(tlk, gm, inp, L.LkDir(lk))
+        case None =>
+        case Some(pair) => TreeResOrdered(t1, pair.1, inp, dir);
+      } else {
+        match LT.TreeRes(tlk, gm, inp, L.LkDir(lk))
+        case None => TreeResOrdered(t1, gm, inp, dir);
+        case Some(_) =>
+      }
+    case LKFail(_, _) =>
+  }
+
+  /** The spec first leaf has all ordered ranges (folded from `LG.Empty`). */
+  lemma FirstLeafOrdered(t: LT.Tree, inp: LC.Input, leaf: LT.Leaf)
+    requires LT.FirstLeaf(t, inp) == Some(leaf)
+    ensures OrderedGm(leaf.1)
+  {
+    assert OrderedGm(LG.Empty);
+    TreeResOrdered(t, LG.Empty, inp, WP.Forward);
+  }
+
+  // ==========================================================================
   // L3a: inside-look-group bookkeeping for FirstLeafClosed. A capturing lookahead
   // body records CLOSED captures into the continuation's map; the disjointness
   // invariant `DomLkDisjoint` (dom(gm) misses the still-pending inside-look
@@ -4913,6 +4996,21 @@ module LindenElkMain {
       assert g in PIV.GmOfLive(re, caps, lk, qt);
       assert PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some?;
       assert AI.get_idx(f, CP.end_reg(g)) == f[2 * g + 1];
+    }
+    // item 0: no reversed pairs — the spec first leaf is GMClose-ordered, and
+    // `leaf.1 == GmOfLive`, so every closed group reads `f[2g] <= f[2g+1]`.
+    FirstLeafOrdered(t, inp, leaf);
+    forall g: nat | 0 <= g < ngroups && f[2 * g] >= 0 && f[2 * g + 1] >= 0
+      ensures f[2 * g] <= f[2 * g + 1]
+    {
+      assert AI.get_idx(f, CP.start_reg(g)) == f[2 * g];
+      assert AI.get_idx(f, CP.end_reg(g)) == f[2 * g + 1];
+      assert g in PIV.GmOfLive(re, caps, lk, qt);
+      assert PIV.GmOfLive(re, caps, lk, qt)[g] == PIV.LiveRange(f, cc, g);   // GmOfLive def
+      assert PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some?;
+      assert PIV.GmOfLive(re, caps, lk, qt)[g].startIdx as int == f[2 * g];
+      assert PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.value as int == f[2 * g + 1];
+      assert leaf.1[g] == PIV.GmOfLive(re, caps, lk, qt)[g];                 // leaf.1 == GmOfLive
     }
     PIV.GmOfCapArrayBridge(re, caps, lk, qt, inp, ngroups);
     assert LES.NormalizeArr(f) == LES.CapArrayOfLeaf((inp, PIV.GmOf(re, caps, lk, qt)), ngroups);
