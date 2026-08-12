@@ -535,10 +535,12 @@ module LindenElkNfaRep {
       // swap commutation (OracleBuild.CompileToWriteSwap) reads that build as a
       // forward run of `compile_to_write(RevRE(body))` -- so anchors in the
       // body are handled, not forbidden.
-      // L3a: a POSITIVE FORWARD lookahead may now CAPTURE (its body's captures are
-      // reconstructed by FLookLoop -- see the value-lift/P1/P2 machinery); every
-      // other flavour still requires a capture-free body.
-      (la.Lookahead? || CaptureFreeRE(r1)) && LookFreeRE(r1) && PlusFragmentRE(r1)
+      // L3a/L3b: a POSITIVE lookaround -- forward (lookAHEAD) OR backward
+      // (lookBEHIND) -- may now CAPTURE (its body's captures are reconstructed by
+      // FLookLoop; the lookbehind case runs the backward capture replay, keystone
+      // LkReplayMatchesSpecLB). Only the NEGATIVE flavours still require a
+      // capture-free body (a negative look records nothing).
+      (la.Lookahead? || la.Lookbehind? || CaptureFreeRE(r1)) && LookFreeRE(r1) && PlusFragmentRE(r1)
   }
 
   /** The `raw_regex` counterpart of `LookBehindFragmentRE`. */
@@ -561,9 +563,10 @@ module LindenElkNfaRep {
       && LookBehindFragmentRaw(r1)
     case Raw_capture(r1) => LookBehindFragmentRaw(r1)
     case Raw_lookaround(look, r1) =>
-      // L3a: a POSITIVE FORWARD lookahead may CAPTURE (mirrors LookBehindFragmentRE);
-      // every other flavour still requires a capture-free body.
-      (look.Lookahead? || CaptureFreeRaw(r1)) && LookFreeRaw(r1) && PlusFragmentRaw(r1)
+      // L3a/L3b: a POSITIVE lookaround (lookAHEAD or lookBEHIND) may CAPTURE
+      // (mirrors LookBehindFragmentRE); only the NEGATIVE flavours require a
+      // capture-free body.
+      (look.Lookahead? || look.Lookbehind? || CaptureFreeRaw(r1)) && LookFreeRaw(r1) && PlusFragmentRaw(r1)
   }
 
   /** The plus fragment embeds in the lookbehind fragment. */
@@ -662,9 +665,11 @@ module LindenElkNfaRep {
       AnnotateNullable(r1, c, l, q + 1);
     case Raw_capture(r1) => AnnotateLookBehindFragment(r1, c + 1, l, q);
     case Raw_lookaround(look, r1) =>
-      // annotate copies the flavour `look` verbatim, so `la.Lookahead? == look.Lookahead?`.
-      // A capturing lookahead skips AnnotateCaptureFree (its precondition would fail).
-      if !look.Lookahead? {
+      // annotate copies the flavour `look` verbatim. A capturing POSITIVE look
+      // (lookahead OR lookbehind) skips AnnotateCaptureFree (its precondition would
+      // fail); the RE fragment is satisfied by `la.Lookahead?`/`la.Lookbehind?`.
+      // Only the negative flavours carry the capture-free body onward.
+      if look.NegLookahead? || look.NegLookbehind? {
         AnnotateCaptureFree(r1, c, l + 1, q);
       }
       AnnotateLookFree(r1, c, l + 1, q);

@@ -112,9 +112,10 @@ module LindenElkOracleEntry {
     ensures LTB.LookEntryOk(fc, lid, la, body)
     // the fragment admits BOTH flavours over the whole plus fragment (the
     // lookAHEAD star-shape restriction is retired -- see OracleColumnSpecLookahead).
-    // L3a: a POSITIVE FORWARD lookahead body may now CAPTURE, so capture-freeness
-    // is conditional on the flavour; look-freeness and plus-fragment still hold.
-    ensures (la.Lookahead? || NR.CaptureFreeRE(body)) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    // L3a/L3b: a POSITIVE look body (lookAHEAD or lookBEHIND) may now CAPTURE, so
+    // capture-freeness is conditional on the flavour; look-freeness and
+    // plus-fragment still hold.
+    ensures (la.Lookahead? || la.Lookbehind? || NR.CaptureFreeRE(body)) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
     ensures lid >= 0 && (lid as nat) in LTB.LookIds(re)
     // the quant half: `body` sits under a lookaround, so every id it owns is
     // one of `re`'s in-look ids -- the disjointness the capture pass replays on

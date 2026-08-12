@@ -2708,7 +2708,7 @@ module LindenElkMain {
         && PIV.CapUnique(body) && PIV.QuantUnique(body)
         && PIV.CaptureRegs(body) <= S
         && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(mainast))
-        && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
+        && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
     ensures var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
       CM.RegsAgreeOutside(res.0, cap, S) && res.1 == lk
     decreases maxlook - lid
@@ -2729,7 +2729,7 @@ module LindenElkMain {
           && PIV.CapUnique(body) && PIV.QuantUnique(body)
           && PIV.CaptureRegs(body) <= S
           && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(mainast))
-          && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
+          && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
         assert looktype == la && (la.Lookbehind? || la.Lookahead?);
         var bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
         var dir := AI.capture_direction(looktype);
@@ -2791,7 +2791,7 @@ module LindenElkMain {
         && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
         && PIV.CapUnique(body) && PIV.QuantUnique(body)
         && LKC.QIdsInt(body) <= Sq
-        && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
+        && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
     ensures var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
       CM.RegsAgreeOutside(res.2, qt, Sq) && res.1 == lk
     decreases maxlook - lid
@@ -2811,7 +2811,7 @@ module LindenElkMain {
           && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
           && PIV.CapUnique(body) && PIV.QuantUnique(body)
           && LKC.QIdsInt(body) <= Sq
-          && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
+          && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
         assert looktype == la && (la.Lookbehind? || la.Lookahead?);
         var bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
         var dir := AI.capture_direction(looktype);
@@ -2934,6 +2934,39 @@ module LindenElkMain {
       assert CM.RegsAgreeOutside(cap, cap, PIV.CaptureRegs(body));
     }
     CM.FFindMatchCapWriteFrame(bytecode, str, inits, ov, dir, lookcdn, cap, PIV.CaptureRegs(body));
+  }
+
+  /** L3b: the BACKWARD capture-write frame — the lookbehind twin of
+      `ReplayCaptureFrame`. The engine compiles a capturing lookbehind's replay
+      over `compile_to_bytecode(reverse_regex(body))` and runs it BACKWARD, so the
+      capture bank agrees with the incoming `cap` OUTSIDE the body's own registers
+      (`CaptureRegs(reverse_regex(body)) == CaptureRegs(body)`, via `ReverseCapIds`).
+      Both engine cores (`CaptureBytecodeClassified`, `FFindMatchCapWriteFrame`) are
+      direction-generic; the reversed-body statics come from `ReversePlusFragment` +
+      `ReverseCapUnique`. */
+  lemma ReplayCaptureFrameLB(bytecode: RB.code, str: string, inits: AI.VmState, ov: LOr.OracleView,
+                             lookcdn: LCdn.cdns, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
+    requires NR.PlusFragmentRE(body) && PIV.CapUnique(body)
+    requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+    requires inits.active == [AI.init_thread(cap, lk, qt)]
+    requires inits.blocked == [] && inits.bestmatch.None?
+    requires |inits.processed.true_set| == RB.size(bytecode)
+          && |inits.processed.false_set| == RB.size(bytecode)
+    requires inits.context.nextchar == AI.get_char(str, inits.cp - 1)      // BACKWARD
+    ensures var r := AI.FFindMatch(bytecode, str, inits, ov, LAnc.Backward, lookcdn).0;
+      r.Some? ==> CM.RegsAgreeOutside(r.value.capture_regs, cap, PIV.CaptureRegs(body))
+  {
+    var rev := R.reverse_regex(body);
+    PIV.ReversePlusFragment(body);                 // PlusFragmentRE(rev)
+    NR.PlusIsLookBehindFragmentRE(rev);            // LookBehindFragmentRE(rev)
+    PIV.ReverseCapUnique(body);                    // CapUnique(rev)
+    PIV.ReverseCapIds(body);                       // CapIds(rev) == CapIds(body)
+    assert PIV.CaptureRegs(rev) == PIV.CaptureRegs(body);
+    CM.CaptureBytecodeClassified(rev);
+    assert CM.VmCapturesAgree(inits, cap, PIV.CaptureRegs(rev)) by {
+      assert CM.RegsAgreeOutside(cap, cap, PIV.CaptureRegs(rev));
+    }
+    CM.FFindMatchCapWriteFrame(bytecode, str, inits, ov, LAnc.Backward, lookcdn, cap, PIV.CaptureRegs(rev));
   }
 
   /** A plus-fragment body's compiled code never STAMPS a quantifier true
@@ -3667,7 +3700,7 @@ module LindenElkMain {
         && PIV.CapUnique(body) && PIV.QuantUnique(body)
         && PIV.CaptureRegs(body) <= S
         && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(mainast))
-        && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
+        && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
     // NOTE (L3a full fragment): NO lookahead-only requires. A capturing body is
     // necessarily a positive forward lookahead (fragment), and capture-free
     // positive lookbehinds are stepped through as the identity below -- so the
@@ -3710,7 +3743,7 @@ module LindenElkMain {
           && PIV.CapUnique(body) && PIV.QuantUnique(body)
           && PIV.CaptureRegs(body) <= S
           && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(mainast))
-          && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
+          && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
         assert looktype == la;
         assert body == VBody(crv, lid);
         var bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
@@ -3763,7 +3796,7 @@ module LindenElkMain {
             && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
             && PIV.CaptureRegs(body2) <= Sp
             && (forall q: nat :: q in PIV.QuantIds(body2) ==> q in PIV.QuantIdsInLooks(mainast))
-            && ((la2.Lookbehind? || la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
+            && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
         by {
           forall l: int | next <= l <= maxlook && AReg.get_cp(lkN, l).Some?
             ensures exists la2: R.lookaround, body2: R.regex ::
@@ -3772,7 +3805,7 @@ module LindenElkMain {
               && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
               && PIV.CaptureRegs(body2) <= Sp
               && (forall q: nat :: q in PIV.QuantIds(body2) ==> q in PIV.QuantIdsInLooks(mainast))
-              && ((la2.Lookbehind? || la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
+              && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
           {
             assert AReg.get_cp(lk, l).Some?;
             var la2: R.lookaround, body2: R.regex :|
@@ -3781,7 +3814,7 @@ module LindenElkMain {
               && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
               && PIV.CaptureRegs(body2) <= S
               && (forall q: nat :: q in PIV.QuantIds(body2) ==> q in PIV.QuantIdsInLooks(mainast))
-              && ((la2.Lookbehind? || la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2));
+              && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2));
             assert body2 == VBody(crv, l) && body == VBody(crv, lid);
             assert PIV.CaptureRegs(VBody(crv, l)) * PIV.CaptureRegs(VBody(crv, lid)) == {};   // pairwise
             assert PIV.CaptureRegs(body2) * PIV.CaptureRegs(body) == {};
@@ -4001,7 +4034,7 @@ module LindenElkMain {
         && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
         && PIV.CapUnique(body) && PIV.QuantUnique(body)
         && LKC.QIdsInt(body) <= Sq
-        && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
+        && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
     // each matched body's own quant slots are INITIAL in the incoming bank
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
       CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(VBody(crv, l)))
@@ -4043,7 +4076,7 @@ module LindenElkMain {
           && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
           && PIV.CapUnique(body) && PIV.QuantUnique(body)
           && LKC.QIdsInt(body) <= Sq
-          && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
+          && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
         assert looktype == la;
         assert body == VBody(crv, lid);
         var bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
@@ -4117,7 +4150,7 @@ module LindenElkMain {
               && NR.LookFreeRE(body2) && NR.PlusFragmentRE(body2)
               && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
               && LKC.QIdsInt(body2) <= Sqp
-              && ((la2.Lookbehind? || la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
+              && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
           by {
             forall l: int | next <= l <= maxlook && AReg.get_cp(lkN, l).Some?
               ensures exists la2: R.lookaround, body2: R.regex ::
@@ -4125,7 +4158,7 @@ module LindenElkMain {
                 && NR.LookFreeRE(body2) && NR.PlusFragmentRE(body2)
                 && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
                 && LKC.QIdsInt(body2) <= Sqp
-                && ((la2.Lookbehind? || la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
+                && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
             {
               assert AReg.get_cp(lk, l).Some?;
               var la2: R.lookaround, body2: R.regex :|
@@ -4133,7 +4166,7 @@ module LindenElkMain {
                 && NR.LookFreeRE(body2) && NR.PlusFragmentRE(body2)
                 && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
                 && LKC.QIdsInt(body2) <= Sq
-                && ((la2.Lookbehind? || la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2));
+                && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2));
               assert body2 == VBody(crv, l) && body == VBody(crv, lid);
               assert LKC.QIdsInt(VBody(crv, l)) * LKC.QIdsInt(VBody(crv, lid)) == {};   // pairwise
               assert LKC.QIdsInt(body2) * LKC.QIdsInt(body) == {};
@@ -4251,7 +4284,7 @@ module LindenElkMain {
               && NR.LookFreeRE(body2) && NR.PlusFragmentRE(body2)
               && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
               && LKC.QIdsInt(body2) <= Sqp
-              && ((la2.Lookbehind? || la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
+              && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
           by {
             forall l: int | next <= l <= maxlook && AReg.get_cp(lkN, l).Some?
               ensures exists la2: R.lookaround, body2: R.regex ::
@@ -4259,7 +4292,7 @@ module LindenElkMain {
                 && NR.LookFreeRE(body2) && NR.PlusFragmentRE(body2)
                 && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
                 && LKC.QIdsInt(body2) <= Sqp
-                && ((la2.Lookbehind? || la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
+                && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
             {
               assert AReg.get_cp(lk, l).Some?;
               var la2: R.lookaround, body2: R.regex :|
@@ -4267,7 +4300,7 @@ module LindenElkMain {
                 && NR.LookFreeRE(body2) && NR.PlusFragmentRE(body2)
                 && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
                 && LKC.QIdsInt(body2) <= Sq
-                && ((la2.Lookbehind? || la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2));
+                && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2));
               assert body2 == VBody(crv, l) && body == VBody(crv, lid);
               assert LKC.QIdsInt(VBody(crv, l)) * LKC.QIdsInt(VBody(crv, lid)) == {};   // pairwise
               assert LKC.QIdsInt(body2) * LKC.QIdsInt(body) == {};
@@ -4631,7 +4664,7 @@ module LindenElkMain {
     ensures T.TransWf(body)
     ensures OE.LmOf(re)[lid] == (T.TrLookaround(la), T.Translate(body))
     ensures LTB.LookEntryOk(fc, lid, la, body)
-    ensures (la.Lookahead? || NR.CaptureFreeRE(body)) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    ensures (la.Lookahead? || la.Lookbehind? || NR.CaptureFreeRE(body)) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
     ensures lid >= 0 && (lid as nat) in LTB.LookIds(re)
     ensures PIV.QuantUnique(body)
     ensures forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(re)
@@ -4804,7 +4837,7 @@ module LindenElkMain {
           && PIV.CapUnique(body) && PIV.QuantUnique(body)
           && PIV.CaptureRegs(body) <= PIV.CaptureRegsSet(PIV.CapIdsInLooks(ast))
           && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
-          && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
+          && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
     // (E4): every RECORDED look cp names one of re's lids (write confinement)
     ensures result.Some? ==>
       forall l: int :: AReg.get_cp(result.value.look_regs, l).Some? ==>
@@ -4855,7 +4888,7 @@ module LindenElkMain {
           && PIV.CapUnique(body) && PIV.QuantUnique(body)
           && PIV.CaptureRegs(body) <= PIV.CaptureRegsSet(PIV.CapIdsInLooks(ast))
           && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
-          && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
+          && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
       {
         assert l in S;
         assert (l as nat) in LTB.LookIds(ast);

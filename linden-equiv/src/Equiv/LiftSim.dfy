@@ -4078,7 +4078,7 @@ module LindenElkLiftSim {
             |bodycode| >= 1
             && PSM.StaticOkRE(qm, body, bodycode, |bodycode| - 1)
             && PSM.SizesOkRE(body, ncap, nlook, nquant)
-         && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
+         && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
   }
 
   ghost predicate GateStaticsOk(qm: AR.QMap, re: R.regex, crv: CP.FCompiled,
@@ -4167,7 +4167,7 @@ module LindenElkLiftSim {
         assert (next as nat) == |bodycode| - 1;
         assert PSM.StaticOkRE(qm, body, bodycode, |bodycode| - 1);
         assert PSM.SizesOkRE(body, ncap, nlook, nquant);
-        assert (la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body);
+        assert (la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body);
         assert GateStaticAt(qm, re0, crv, lid, ncap, nlook, nquant);
       }
     case _ =>
@@ -4303,7 +4303,7 @@ module LindenElkLiftSim {
          |bodycode| >= 1
          && PSM.StaticOkRE(qm, body, bodycode, |bodycode| - 1)
          && PSM.SizesOkRE(body, ncap, nlook, nquant)
-      && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
+      && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
     assert lk == T.TrLookaround(la) && r1 == T.Translate(body);
     assert body == M.VBody(crv, l);
     assert 0 <= l < nlook;
@@ -11289,7 +11289,7 @@ module LindenElkLiftSim {
           && PIV.CapUnique(body) && PIV.QuantUnique(body)
           && PIV.CaptureRegs(body) <= Sreg
           && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
-          && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
+          && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
         assert body == M.VBody(crv, l);
         forall k: int | k in PIV.CaptureRegs(body)
           ensures AI.get_idx(thread.capture_regs.a_cp, k) == AI.get_idx(AReg.init_regs(ncap).a_cp, k)
@@ -11325,7 +11325,7 @@ module LindenElkLiftSim {
           && PIV.CapUnique(body) && PIV.QuantUnique(body)
           && PIV.CaptureRegs(body) <= Sreg
           && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
-          && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
+          && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
         assert body == M.VBody(crv, l);
         forall k: int | k in LKC.QIdsInt(body)
           ensures AI.get_idx(thread.quant_regs.a_cp, k) == AI.get_idx(AReg.init_regs(nquant).a_cp, k)
@@ -11452,7 +11452,7 @@ module LindenElkLiftSim {
         && PIV.CapUnique(body) && PIV.QuantUnique(body)
         && PIV.CaptureRegs(body) <= Sreg
         && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
-        && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
+        && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
       assert body == M.VBody(crv, l);
       NI.LookBodyOfTablesTie(re, crv, l as nat);
       var la2: R.lookaround :| LTB.LookEntryOk(crv, l, la2, NI.LookBodyOfRE(re, l as nat));
@@ -11584,7 +11584,7 @@ module LindenElkLiftSim {
           && PIV.CapUnique(body) && PIV.QuantUnique(body)
           && PIV.CaptureRegs(body) <= Sreg
           && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
-          && ((la.Lookbehind? || la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
+          && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
         assert body == LB;
         assert la.Lookahead? by {
           if !la.Lookahead? {

@@ -28,6 +28,20 @@
 > + `MatchedPosLA` widen/`FreshBodyMatch` dispatch + the LB value/quant branches),
 > then steps 6–8. **Next: build the value machinery (green standalone), then these
 > stubs + the whole flip land green together.**
+>
+> **Step 1 STARTED: `ReplayCaptureFrameLB` (MainTheorem.dfy, verified 2/0)** — the
+> backward capture-write frame, lookbehind twin of `ReplayCaptureFrame`. Both engine
+> cores (`CM.CaptureBytecodeClassified`, `CM.FFindMatchCapWriteFrame`) are dir-generic;
+> reversed-body statics via `PIV.ReversePlusFragment` + `NR.PlusIsLookBehindFragmentRE`
+> + `PIV.ReverseCapUnique`/`ReverseCapIds`. **Next in step 1:** `ReplayPlusFrameLB`
+> (wrap it with the look/quant frames — `NoTrueQuantStamp(rev)`, `FNulledPlusIdentity`
+> Backward, `NoLookWriteBody(rev)` needs a `ReverseLookFree` helper) + widen
+> `FFindMatchPlusOvStableLB` (drop `CaptureFreeRE`, use `ReverseCapUnique`).
+>
+> **These WIP code changes are on a clearly-marked checkpoint commit (package RED by
+> design — the value-machinery stubs are stubbed out). Do NOT treat it as green;
+> the next green commit is when steps 1–8 complete.** Files: NfaRepRE.dfy,
+> OracleEntry.dfy, MainTheorem.dfy, LiftSim.dfy.
 
 > **Session 13 (2026-08-12) — ITEM 0 (the `NormalizeArr` reversed-span swap) is
 > COMPLETE (dormant).** Commit `5a94f24`, three files, top-level `MainTheoremL3`
