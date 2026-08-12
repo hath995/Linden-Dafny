@@ -53,6 +53,33 @@
 > The LB branches MIRROR the lookahead branches with the step-1/2 lemmas; the
 > suffix/IH/frame/assemble tails are direction-independent (copied verbatim).
 >
+> **EMPIRICAL RESIDUAL (probed after steps 1–4):** `MainExtraction` verifies in
+> ISOLATION (2/0) — its proof is self-consistent given `leaf.1 == GmOfLive`; the break
+> is at its CALLER `MainTheoremL3`, where for a capturing lookbehind `GmOfLive(re,
+> mainCaps)` is REVERSED on LB groups so `leaf.1 == GmOfLive` is FALSE. The gate pass
+> `LiftPreserveGatePassLk` breaks at **LiftSim:4336/4521** — the LB arm is a
+> value-carrying gate: it currently proves `gm2 == gm` (capture-free lookbehind adds
+> no groups), but a CAPTURING lookbehind's `gm2` = the folded `LkResult` WITH the
+> reconstructed (reversed) captures. So the LB arm needs a `ThreadRepLkStepCheckOracle`
+> twin (the value-carrying gate step) + the keystone `LkReplayMatchesSpecLB`. **KEY
+> STRUCTURAL FACT:** the keystone lives in `LookBehindKeystone.dfy` which `LiftSim`
+> does NOT include (LiftSim includes MainTheorem + PikeTreeLk). To wire it, either add
+> `include "LookBehindKeystone.dfy"` + `import LBK = LindenLookBehindKeystone` to
+> LiftSim (transitively pulls in LookBehindValue/BackValue — no cycle; slower), or move
+> the keystone (+ deps) into a file LiftSim already sees. GATE COVERAGE argument
+> (worked out): apply the keystone at `cap = init_regs` — then its `raB` IS the fresh
+> backward match `rfx = FreshBodyMatch`, and `BackwardReplayMirror` at `cap=init` gives
+> `rfx.caps == MirrorRegs(rfF.caps)` (because `MirrorRegs(init_regs) == init_regs`), so
+> `GmOfLive(body, rfx.caps)` is EXACTLY the keystone's `GmOfLive(body, MirrorRegs(rfF))`
+> term; membership is swap-invariant so `g in GmOfLive(body, rfx) ==> g in gm2` follows.
+> The DEEP piece (step 7): `MainTheorem`/`MainExtraction` must relate the reversed engine
+> `GmOfLive` to the ordered spec `leaf.1` via the per-LB-group `SwapGm`, threaded from
+> the gate/endpoint to the top — coupled with step 6, and where item-0's `NormalizeArr`
+> swap finally ACTIVATES (a NEW LB-aware `GmOfCapArrayBridge` beside the forward one).
+> Step 8 (oracle-column) is NOT purely mechanical: `OracleColumnSpec` requires
+> `CaptureFreeRE(body)` on the ORIGINAL body; widening needs "matching is capture-
+> independent" (`SuccActs(Translate(body)) == SuccActs(Translate(remove_capture(body)))`).
+>
 > **RESIDUAL RED now = steps 6–8 only:** the gate pass `LiftPreserveGatePassLk` LB arm
 > (LiftSim:~4522) + endpoint `L3aEndpointAssembly` LB arm (LiftSim:~11589) — wire the
 > keystone `LkReplayMatchesSpecLB`'s `GmAgreeOn(SwapGm(LkResult), GmOfLive(body,…))`
