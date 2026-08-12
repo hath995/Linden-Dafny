@@ -10498,10 +10498,36 @@ module LindenElkLiftSim {
         writes inside `CaptureRegsSet(CapIdsInLooks)`) + `FLookLoopQuantFrame`.
       Statement uses the fold over the FULL lid range as the else branch calls
       it (`lid == 0`, `maxlook == R.max_lookaround(ast)`). */
+
+  /** Convert `InsidePresentResBridge`'s LOOK-TYPE swap into the POSITIONAL
+      `NormRange`, using leaf-orderedness. For a lookbehind `lr == SwapRange(rg)`
+      and `lr` ordered ⟹ `rg` reversed ⟹ `NormRange(rg) == SwapRange(rg) == lr`;
+      for a lookahead `lr == rg` ordered ⟹ `NormRange(rg) == rg == lr`. So no
+      separate "LB ⟺ reversed" lemma is needed — it falls out of `lr` ordered. */
+  lemma NormRangeFromSwap(rg: LG.Range, lr: LG.Range, isLB: bool)
+    requires lr == (if isLB then LBV.SwapRange(rg) else rg)
+    requires lr.endIdx.Some? ==> lr.startIdx <= lr.endIdx.value          // lr ordered
+    ensures lr == PIV.NormRange(rg)
+  {
+    if isLB {
+      match rg.endIdx {
+        case None =>            // SwapRange / NormRange both identity on an open range
+        case Some(e) =>
+          assert lr == LG.Range(e, Some(rg.startIdx));                   // SwapRange def
+          assert e <= rg.startIdx;                                       // lr ordered
+      }
+    } else {
+      PIV.NormRangeOrdered(rg);
+    }
+  }
+
   lemma L3aValueBridge(re: R.regex, th: AI.Thread, leafgm: LG.GroupMap,
                        res0: AReg.Regs, res2: AReg.Regs, S: set<LG.GroupId>)
     requires T.TransWf(re) && NR.LookBehindFragmentRE(re) && PIV.CapUnique(re)
     requires S == PIV.CapIdsInLooks(re)
+    // L3b: the leaf value is ORDERED (spec GMClose ordering); this lets NormRange
+    // collapse to the identity on the outside/forward groups.
+    requires M.OrderedGm(leafgm)
     // OUTSIDE S: the winning-thread tie + FLookLoop frame conclusions.
     requires GmtTieOutside(re, th, leafgm, S)
     requires forall k: int :: k !in PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)) ==>
@@ -10509,32 +10535,39 @@ module LindenElkLiftSim {
                && AI.get_idx(AReg.as_arrays(res0).1, k) == AI.get_idx(AReg.as_arrays(th.capture_regs).1, k)
     requires forall q: nat :: q in PIV.QuantIdsOutsideLooks(re) ==>
                AI.get_idx(AReg.as_arrays(res2).1, q) == AI.get_idx(AReg.as_arrays(th.quant_regs).1, q)
-    // INSIDE S, present: the reconstructed value equals the leaf value
-    // (aggregated per-g from `InsidePresentResBridge`).
+    // INSIDE S, present: the leaf value is the POSITIONAL normalization of the
+    // reconstructed value (aggregated per-g from `InsidePresentResBridge`; the
+    // reversed lookbehind span is swapped, forward looks are unchanged).
     requires forall g: LG.GroupId :: g in S && g in leafgm ==>
                g in PIV.GmOfLive(re, res0, th.look_regs, res2)
-               && leafgm[g] == PIV.GmOfLive(re, res0, th.look_regs, res2)[g]
+               && leafgm[g] == PIV.NormRange(PIV.GmOfLive(re, res0, th.look_regs, res2)[g])
     // INSIDE S, absent (reverse tie): the reconstruction invents no S-group the
     // leaf lacks — the other half of the key-set equality.
     requires forall g: LG.GroupId :: g in S
                && g in PIV.GmOfLive(re, res0, th.look_regs, res2) ==> g in leafgm
-    ensures leafgm == PIV.GmOfLive(re, res0, th.look_regs, res2)
+    ensures leafgm == PIV.NormGm(PIV.GmOfLive(re, res0, th.look_regs, res2))
   {
     var gml := PIV.GmOfLive(re, res0, th.look_regs, res2);
+    var ngml := PIV.NormGm(gml);
     var gmBest := PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs);
     // S == LkBodyGroups(Translate(re)) so GmtTieOutside feeds OutsideLookValueBridge.
     M.LkBodyGroupsEqCapIdsInLooks(re);
     M.OutsideLookValueBridge(re, th.capture_regs, res0, th.look_regs, th.quant_regs, res2, gmBest, leafgm);
     forall g: LG.GroupId
-      ensures (g in leafgm <==> g in gml) && (g in leafgm ==> leafgm[g] == gml[g])
+      ensures (g in leafgm <==> g in ngml) && (g in leafgm ==> leafgm[g] == ngml[g])
     {
-      if g in S {
-        // present ⟹ (requires) g in gml, values agree; absent ⟹ (reverse) g in leafgm.
-      } else {
-        // OutsideLookValueBridge: leafgm agrees gml outside CapIdsInLooks(re) == S.
+      assert (g in ngml) <==> (g in gml);              // NormGm preserves keys
+      if g in leafgm {
+        if g in S {
+          // present ⟹ (requires) leafgm[g] == NormRange(gml[g]) == ngml[g].
+        } else {
+          // OutsideLookValueBridge: leafgm[g] == gml[g] off S; leafgm ORDERED ⟹
+          // gml[g] ordered ⟹ NormRange is identity.
+          PIV.NormRangeOrdered(gml[g]);
+        }
       }
     }
-    assert leafgm == gml;
+    assert leafgm == ngml;
   }
 
   // ==========================================================================
@@ -11253,10 +11286,13 @@ module LindenElkLiftSim {
     requires inits == AI.FInitState(code, 0, cap, look, quant, 0, AI.cp_context(0, str, LAnc.Forward))
     requires AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0 == Some(thread)
     requires BestTieLk(re, crv, str, ov, S, Some(leaf), Some(thread), ncap, nlook, nquant)
+    // L3b: the leaf value is ORDERED (spec GMClose ordering) — supplied by the
+    // caller via FirstLeafOrdered; lets the NormRange conversion collapse.
+    requires M.OrderedGm(leaf.1)
     ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
                                     thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
       res.1 == thread.look_regs
-      && leaf.1 == PIV.GmOfLive(re, res.0, thread.look_regs, res.2)
+      && leaf.1 == PIV.NormGm(PIV.GmOfLive(re, res.0, thread.look_regs, res.2))
       && CM.ThreadRegsWf(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed),
                          ncap, nlook, nquant)
       && M.QuantRegsFinal(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed))
@@ -11519,7 +11555,7 @@ module LindenElkLiftSim {
     assert LookNestBackT(re, crv, str, ov, S, leafgm, thread, ncap, nlook, nquant);
     forall g: LG.GroupId | g in S && g in leafgm
       ensures g in PIV.GmOfLive(re, res0, lk, res2)
-           && leafgm[g] == PIV.GmOfLive(re, res0, lk, res2)[g]
+           && leafgm[g] == PIV.NormRange(PIV.GmOfLive(re, res0, lk, res2)[g])
     {
       var l: int :| 0 <= l < nlook
         && g in PIV.CapIds(M.VBody(crv, l))
@@ -11609,6 +11645,11 @@ module LindenElkLiftSim {
           && AReg.as_arrays(res2).1 == res2.a_clk;
       InsidePresentResBridge(re, body, crv, str, ov, thread, leafgm, res0, res2, l,
                              ncap, nlook, nquant, g);
+      // InsidePresentResBridge gives the LOOK-TYPE swap; leaf-orderedness turns it
+      // into the POSITIONAL NormRange.
+      var looktype := if 0 <= l < |crv.f_look_types| then crv.f_look_types[l] else R.Lookahead;
+      assert leafgm[g].endIdx.Some? ==> leafgm[g].startIdx <= leafgm[g].endIdx.value;  // OrderedGm
+      NormRangeFromSwap(PIV.GmOfLive(re, res0, lk, res2)[g], leafgm[g], looktype.Lookbehind?);
     }
 
     // ---- REVERSE: the reconstruction invents no group the leaf lacks ------
@@ -11674,13 +11715,8 @@ module LindenElkLiftSim {
           && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
           && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
         assert body == LB;
-        assert la.Lookahead? by {
-          if !la.Lookahead? {
-            assert NR.CaptureFreeRE(body);
-            PIV.CaptureFreeNoCapIds(body);
-            assert g in PIV.CapIds(body);
-          }
-        }
+        // L3b: the matched lid may be a capturing LOOKBEHIND now — no lookahead pin.
+        // InsidePresentResBridge / NormRangeFromSwap absorb the direction via f_look_types.
         assert M.MatchedPosLA(crv, lk, lid as int) by {
           assert 0 <= (lid as int) < |crv.f_look_types|;
           assert crv.f_look_types[lid as int] == la;
@@ -11997,12 +12033,13 @@ module LindenElkLiftSim {
       var leaf := LT.FirstLeaf(t, inp).value;
       assert BestTieLk(re, crv, str, ov, S, Some(leaf), Some(thread), ncap, nlook, nquant);
       assert forall lx: nat :: lx in LTB.LookIds(re) ==> 1 <= lx;
+      M.FirstLeafOrdered(t, inp, leaf);                     // leaf.1 ORDERED (item 0)
       L3aEndpointAssembly(ast, re, crv, code, endl, str, ov, S, thread, leaf,
                           inits, capture, look, quant, crv.f_main_cdns, ncap, nlook, nquant);
       var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
                               thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
       var synthetic := AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed);
-      assert leaf.1 == PIV.GmOfLive(re, res.0, thread.look_regs, res.2);
+      assert leaf.1 == PIV.NormGm(PIV.GmOfLive(re, res.0, thread.look_regs, res.2));
       assert res.1 == thread.look_regs;
       assert CM.ThreadRegsWf(synthetic, ncap, nlook, nquant) && M.QuantRegsFinal(synthetic);
 
@@ -12029,13 +12066,13 @@ module LindenElkLiftSim {
         assert CM.ThreadRegsWf(synthetic, ncap, nlook, nquant);
       }
       assert M.QuantRegsFinal(synthetic);
-      assert leaf.1 == PIV.GmOfLive(R.lazy_prefix(R.annotate(raw)), synthetic.capture_regs,
-                                    synthetic.look_regs, synthetic.quant_regs) by {
+      assert leaf.1 == PIV.NormGm(PIV.GmOfLive(R.lazy_prefix(R.annotate(raw)), synthetic.capture_regs,
+                                    synthetic.look_regs, synthetic.quant_regs)) by {
         hide *;
         assert ast == R.annotate(raw) && re == R.lazy_prefix(ast);
         assert synthetic.capture_regs == res.0 && synthetic.look_regs == res.1 == thread.look_regs
             && synthetic.quant_regs == res.2;
-        assert leaf.1 == PIV.GmOfLive(re, res.0, thread.look_regs, res.2);
+        assert leaf.1 == PIV.NormGm(PIV.GmOfLive(re, res.0, thread.look_regs, res.2));
       }
       assert LT.FirstLeaf(t, LC.InitInput(str)) == Some(leaf);
       assert AI.FFullMatch(raw, str)

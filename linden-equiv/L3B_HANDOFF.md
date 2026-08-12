@@ -18,7 +18,20 @@ LiftPreserveGatePassLk, InsidePresentResBridge.
   (gate-pass `else` at ~4413) + the coverage `assume {:axiom}` (~4566) are wired.
 - Task #8 = fill this body.
 
-**THE LAST RED — the endpoint (task #9), FULLY DESIGNED:**
+**ENDPOINT (task #9) — IN PROGRESS, most pieces GREEN:**
+- `PIV.GmOfCapArrayBridgeNorm` + `NormRange`/`NormGm`/`NormRangeClosed`/`NormRangeOrdered`
+  (PikeInvRE): committed, 2/0.
+- `MainExtraction` (MainTheorem 5362): reworked to `leaf.1 == NormGm(GmOfLive)` +
+  `GmOfCapArrayBridgeNorm`. **2/0 GREEN.** (Closedness derived from NormGm BEFORE the
+  clock-order forall; `GmOfLiveEqGmOf` stays AFTER it — it needs the clock order.)
+- `L3aValueBridge` (LiftSim): `requires OrderedGm(leafgm)`, inside-present is now
+  `NormRange`, ensures `leafgm == NormGm(GmOfLive)`. **2/0 GREEN.**
+- `NormRangeFromSwap` (LiftSim): converts InsidePresentResBridge's look-type swap to
+  positional NormRange via leaf-orderedness. **2/0 GREEN.**
+- `L3aEndpointAssembly` + `MainTheoremL3`: reworked (forall→NormRange, ensures→NormGm,
+  FirstLeafOrdered supplies OrderedGm). VERIFICATION PENDING.
+
+**Original design (for reference):**
 `L3aEndpointAssembly` (LiftSim 11231) forward-forall (~11520) still claims the plain
 equality `leaf.1[g] == GmOfLive(re,res0)[g]`; for capturing LB the engine registers
 `res0` hold the REVERSED span, so `leaf.1[g] == SwapRange(GmOfLive(re,res0)[g])`.

@@ -5672,6 +5672,20 @@ module LindenElkPikeInv {
     map g | g in gm :: NormRange(gm[g])
   }
 
+  /** `NormRange` only reorders a CLOSED range's endpoints; it never opens or
+      closes one. So closedness (and openness) transfer across it. */
+  lemma NormRangeClosed(rg: LG.Range)
+    ensures NormRange(rg).endIdx.Some? <==> rg.endIdx.Some?
+    ensures NormRange(rg).endIdx.None? <==> rg.endIdx.None?
+  {}
+
+  /** `NormRange` is the IDENTITY on an already-ordered range (`start <= end`) —
+      only reversed spans are swapped. */
+  lemma NormRangeOrdered(rg: LG.Range)
+    requires rg.endIdx.Some? ==> rg.startIdx <= rg.endIdx.value
+    ensures NormRange(rg) == rg
+  {}
+
   /** The reversed-span-TOLERANT sibling of `GmOfCapArrayBridge`: DROPS the
       no-reversed-pairs precondition. `NormalizeArr` swaps each reversed pair
       positionally, which is EXACTLY `NormGm` on the `GmOf` read — so they match

@@ -5369,8 +5369,12 @@ module LindenElkMain {
                              R.max_lookaround(R.annotate(raw)) + 1,
                              R.max_quant(R.annotate(raw)) + 1)
     requires QuantRegsFinal(thread)
+    // L3b: for a CAPTURING lookbehind the engine registers hold the REVERSED span,
+    // so the ordered spec leaf is the POSITIONAL normalization (`NormGm`) of the
+    // reconstructed `GmOfLive`. NO-OP for forward matches (`NormGm` is identity on
+    // ordered ranges), so this subsumes the old `leaf.1 == GmOfLive`.
     requires var re := R.lazy_prefix(R.annotate(raw));
-      leaf.1 == PIV.GmOfLive(re, thread.capture_regs, thread.look_regs, thread.quant_regs)
+      leaf.1 == PIV.NormGm(PIV.GmOfLive(re, thread.capture_regs, thread.look_regs, thread.quant_regs))
     requires LT.FirstLeaf(t, LC.InitInput(str)) == Some(leaf)
     requires AI.FFullMatch(raw, str)
           == Some(AI.filter_reset(R.annotate(raw), thread.capture_regs, thread.look_regs,
@@ -5412,14 +5416,30 @@ module LindenElkMain {
     var cc := caps.a_clk;
     PIV.FilterCaptureLen(re, caps.a_cp, cc, lk.a_clk, qt.a_clk, -1);
     assert |f| == |caps.a_cp| == ncap == 2 * ngroups;
+    // closedness (item 0): `leaf.1 == NormGm(GmOfLive)` and `NormRange` preserves
+    // endIdx.Some?, so every present group of GmOfLive is closed. Needed by BOTH
+    // the clock-order forall below AND the closed-match forall. (NO `GmOfLiveEqGmOf`
+    // here — that needs the clock order the forall below produces.)
+    assert leaf.1 == PIV.NormGm(PIV.GmOfLive(re, caps, lk, qt));            // requires
+    assert forall g: LG.GroupId :: g in PIV.GmOfLive(re, caps, lk, qt)
+        ==> PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some? by {
+      forall g: LG.GroupId | g in PIV.GmOfLive(re, caps, lk, qt)
+        ensures PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some?
+      {
+        assert g in leaf.1;                               // NormGm preserves keys
+        assert leaf.1[g] == PIV.NormRange(PIV.GmOfLive(re, caps, lk, qt)[g]);  // NormGm def at g
+        assert leaf.1[g].endIdx.Some?;                    // ClosedGm(leaf.1)
+        PIV.NormRangeClosed(PIV.GmOfLive(re, caps, lk, qt)[g]);   // closedness transfers
+      }
+    }
     forall g: nat | 0 <= g < |f| && AI.get_idx(f, CP.start_reg(g)) >= 0 && AI.get_idx(f, CP.end_reg(g)) >= 0
       ensures AI.get_idx(cc, CP.end_reg(g)) >= AI.get_idx(cc, CP.start_reg(g))
     {
       assert g in PIV.GmOfLive(re, caps, lk, qt);
       assert PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some?;
     }
-    PIV.GmOfLiveEqGmOf(re, caps, lk, qt);
-    assert PIV.GmOf(re, caps, lk, qt) == leaf.1;
+    PIV.GmOfLiveEqGmOf(re, caps, lk, qt);                 // GmOfLive == GmOf (needs the clock order above)
+    assert PIV.NormGm(PIV.GmOf(re, caps, lk, qt)) == leaf.1;   // leaf.1 == NormGm(GmOfLive) == NormGm(GmOf)
 
     // the capture-array bridge
     forall i | 0 <= i < |f| ensures f[i] >= -1 {
@@ -5433,24 +5453,14 @@ module LindenElkMain {
       assert PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some?;
       assert AI.get_idx(f, CP.end_reg(g)) == f[2 * g + 1];
     }
-    // item 0: no reversed pairs — the spec first leaf is GMClose-ordered, and
-    // `leaf.1 == GmOfLive`, so every closed group reads `f[2g] <= f[2g+1]`.
-    FirstLeafOrdered(t, inp, leaf);
-    forall g: nat | 0 <= g < ngroups && f[2 * g] >= 0 && f[2 * g + 1] >= 0
-      ensures f[2 * g] <= f[2 * g + 1]
-    {
-      assert AI.get_idx(f, CP.start_reg(g)) == f[2 * g];
-      assert AI.get_idx(f, CP.end_reg(g)) == f[2 * g + 1];
-      assert g in PIV.GmOfLive(re, caps, lk, qt);
-      assert PIV.GmOfLive(re, caps, lk, qt)[g] == PIV.LiveRange(f, cc, g);   // GmOfLive def
-      assert PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some?;
-      assert PIV.GmOfLive(re, caps, lk, qt)[g].startIdx as int == f[2 * g];
-      assert PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.value as int == f[2 * g + 1];
-      assert leaf.1[g] == PIV.GmOfLive(re, caps, lk, qt)[g];                 // leaf.1 == GmOfLive
-    }
-    PIV.GmOfCapArrayBridge(re, caps, lk, qt, inp, ngroups);
-    assert LES.NormalizeArr(f) == LES.CapArrayOfLeaf((inp, PIV.GmOf(re, caps, lk, qt)), ngroups);
-    assert LES.CapArrayOfLeaf((inp, PIV.GmOf(re, caps, lk, qt)), ngroups)
+    // item 0 (capturing lookbehind): `f` MAY contain reversed pairs (backward
+    // spans). `NormalizeArr` swaps them POSITIONALLY, which is exactly `NormGm` on
+    // the `GmOf` read (`GmOfCapArrayBridgeNorm` — no no-reversed-pairs hypothesis),
+    // and `leaf.1 == NormGm(GmOfLive) == NormGm(GmOf)`.
+    PIV.GmOfCapArrayBridgeNorm(re, caps, lk, qt, inp, ngroups);
+    assert LES.NormalizeArr(f)
+        == LES.CapArrayOfLeaf((inp, PIV.NormGm(PIV.GmOf(re, caps, lk, qt))), ngroups);
+    assert LES.CapArrayOfLeaf((inp, PIV.NormGm(PIV.GmOf(re, caps, lk, qt))), ngroups)
         == LES.CapArrayOfLeaf(leaf, ngroups);
 
     // the lazy prefix is filter-transparent
