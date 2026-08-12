@@ -1,5 +1,51 @@
 # L3b Handoff — captures inside positive LOOKBEHINDS (updated 2026-08-12)
 
+## ★ LATEST (branch `l3b-gate-swapgm`, commit 9e8a2d6) — GmtTieInside threads SwapGm; gate DORMANT-GREEN; endpoint is the last red
+
+**The deep step-6/7 crux is RESOLVED structurally and committed.** `GmtTieInside`
+(LiftSim ~190) now compares the ordered spec value `gmt[g]` to the REVERSED engine
+read `gmb[g]` via `if looktype.Lookbehind? then LBV.SwapRange(gmb[g]) else gmb[g]`.
+The SAME if-form was threaded through all **11 manual restatements** (a script:
+`scratchpad/thread_swap*.py`) so the Swap cancels SYMBOLICALLY for lookaheads —
+DORMANT for every existing case. **Verified GREEN**: GateStepValue, LiftPreserveSetRegLk,
+ThreadRepLkStepCheckOracle, LiftPreserveConsumeAddLk, LiftPreserveForkLk,
+LiftPreserveGatePassLk, InsidePresentResBridge.
+
+**WIP {:axiom} surface (2, both dischargeable by `LBK.LkReplayMatchesSpecLB`):**
+- `ThreadRepLkStepCheckOracleLB` (LiftSim ~6074): backward-gate value step, body
+  pending. Chain: `FreshBodyMatch(LB)=raB` → `BV.BackwardReplayMirror` (rfF=MirrorThread(raB))
+  → keystone gives `SwapRange(gm2[g]) == GmOfLive(body, raB.caps)[g]`. Its call site
+  (gate-pass `else` at ~4413) + the coverage `assume {:axiom}` (~4566) are wired.
+- Task #8 = fill this body.
+
+**THE LAST RED — the endpoint (task #9), FULLY DESIGNED:**
+`L3aEndpointAssembly` (LiftSim 11231) forward-forall (~11520) still claims the plain
+equality `leaf.1[g] == GmOfLive(re,res0)[g]`; for capturing LB the engine registers
+`res0` hold the REVERSED span, so `leaf.1[g] == SwapRange(GmOfLive(re,res0)[g])`.
+`MainExtraction` (MainTheorem 5362, block 5439-5454) currently proves `f` has NO
+reversed pairs (making NormalizeArr a no-op) — FALSE for LB. The clean fix (4 steps):
+
+1. **`NormRange(r)`** = `if r reversed (start>end) then SwapRange(r) else r`;
+   **`NormGm(gm)`** = per-group `NormRange`. (positional — no look-type needed.)
+2. **NEW `PIV.GmOfCapArrayBridgeNorm`** (sibling of `GmOfCapArrayBridge`, PikeInvRE):
+   DROP the no-reversed-pairs precondition; conclude
+   `NormalizeArr(f) == CapArrayOfLeaf((inp, NormGm(GmOf(ast,caps))))`. This is the
+   POSITIONAL heart of item-0 — NormalizeArr's per-pair swap == NormRange's swap.
+   *Self-contained, highest-value to de-risk first.*
+3. **Endpoint** (L3aEndpointAssembly + L3aValueBridge ensures): conclude
+   `leaf.1 == NormGm(GmOf(re,res0))` instead of `leaf.1 == GmOf`. Per-group proof:
+   `leaf.1[g] == NormRange(GmOf[g])` from InsidePresentResBridge's look-type swap +
+   **FirstLeafOrdered (leaf ordered)** — the KEY: for LB, `leaf.1[g]==Swap(gmb)` ordered
+   ⟹ `gmb` reversed ⟹ `NormRange(gmb)==Swap(gmb)==leaf.1[g]`; for LA, `leaf.1[g]==gmb`
+   ordered ⟹ `NormRange(gmb)==gmb`. So NO separate "LB⟺reversed" lemma is needed — it
+   falls out of leaf-orderedness. (`InsidePresentResBridge` already delivers the swap-
+   aware per-g tie; its ensures is GREEN.)
+4. **MainExtraction**: replace the 5439-5454 no-reversed-pairs block with
+   `NormalizeArr(f) == CapArrayOfLeaf((inp,NormGm(GmOf))) == CapArrayOfLeaf(leaf)`
+   [via `leaf.1 == NormGm(GmOf)` from step 3 + the new bridge from step 2].
+
+---
+
 > **IN PROGRESS — the fragment flip + its ENTIRE MECHANICAL TIER are DONE and
 > VALIDATED (uncommitted WIP, package RED only on the value-machinery stubs).**
 > Working-tree changes (NfaRepRE.dfy, OracleEntry.dfy, MainTheorem.dfy, LiftSim.dfy),
