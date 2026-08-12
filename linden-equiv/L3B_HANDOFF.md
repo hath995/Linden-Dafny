@@ -1,6 +1,29 @@
 # L3b Handoff — captures inside positive LOOKBEHINDS (updated 2026-08-12)
 
-## ★ LATEST (branch `l3b-gate-swapgm`, commit 9e8a2d6) — GmtTieInside threads SwapGm; gate DORMANT-GREEN; endpoint is the last red
+## ★★ ENDPOINT COMPLETE (branch `l3b-gate-swapgm`, commit 832acc8) — only the gate axiom (task #8) remains
+
+**The entire L3b proof now verifies GREEN except ONE clearly-marked axiom.** The
+reversed-lookbehind-span endpoint reconciliation — the hard discovery of this run — is
+fully proven:
+- `MainTheoremL3` (TOP THEOREM): **1856 verified, 0 errors.**
+- `L3aEndpointAssembly`: **2356 verified, 0 errors.**
+- `MainExtraction`, `L3aValueBridge`, `NormRangeFromSwap`, `PIV.GmOfCapArrayBridgeNorm`
+  + the `NormRange`/`NormGm` family: all green.
+- `GmtTieInside` SwapGm threading: dormant-green (task #7).
+
+**THE ONLY REMAINING WORK — task #8:** fill `ThreadRepLkStepCheckOracleLB` (LiftSim ~6074,
+currently `{:axiom}`) + discharge the coverage `assume {:axiom}` (LiftSim ~4566). Both are
+the BACKWARD capturing-lookbehind gate, dischargeable by `LBK.LkReplayMatchesSpecLB` at
+cap=init + `BV.BackwardReplayMirror`. Value chain: `FreshBodyMatch(LB)=raB` (backward
+FFindMatch over `compile(reverse_regex(body))`) → BackwardReplayMirror gives
+`rfF==MirrorThread(raB)` → keystone yields `SwapRange(gm2[g])==GmOfLive(body,raB.caps)[g]`
+for `g in S`, i.e. `gm2[g]==SwapRange(gmb[g])` — exactly GmtTieInside's LB form. The gate
+also needs GmtTieOutside (direction-generic) + WalkPairLk (backward) + the key-set coverage
+(SwapGm preserves keys). Mirror the lookahead twin `ThreadRepLkStepCheckOracle` (~6120).
+
+---
+
+## (superseded) LATEST — GmtTieInside threads SwapGm; gate DORMANT-GREEN; endpoint is the last red
 
 **The deep step-6/7 crux is RESOLVED structurally and committed.** `GmtTieInside`
 (LiftSim ~190) now compares the ordered spec value `gmt[g]` to the REVERSED engine
