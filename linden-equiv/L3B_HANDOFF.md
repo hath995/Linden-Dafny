@@ -1,27 +1,33 @@
 # L3b Handoff — captures inside positive LOOKBEHINDS (updated 2026-08-12)
 
-> **IN PROGRESS — the fragment flip is STARTED and VALIDATED (uncommitted WIP,
-> package RED pending the value machinery).** Two working-tree changes, both
-> verified GREEN in isolation, NOT committed (the flip cannot reach package-green
-> until steps 1–4 of the integration land — the top-level theorem becomes
-> unprovable for a capturing lookbehind whose captures aren't yet reconstructed):
-> - `NfaRepRE.dfy` — flipped `LookBehindFragmentRE:541` + `LookBehindFragmentRaw:566`
->   (`(la.Lookahead? || …)` → `(la.Lookahead? || la.Lookbehind? || …)`) and regated
->   the `AnnotateLookBehindFragment` stub (`:667`, `!look.Lookahead?` →
->   `look.NegLookahead? || look.NegLookbehind?`). **Full file re-verifies 1325/0** —
->   the fragment file is entirely self-consistent with the flip.
-> - `OracleEntry.dfy` — weakened `LmOfInv`'s ensures (`:117`) to `(la.Lookahead? ||
->   la.Lookbehind? || CaptureFreeRE(body)) && …`. **Verifies 2/0** against the
->   flipped fragment.
-> This validates the flip's mechanical tier. REMAINING to reach green: the other 3
-> ensures roots (`LmOfInvL3a` MainTheorem:4551, `LookRowsFromTablesL3a` :4724,
-> `GateStaticsSweepRE`/`GateStaticAt` LiftSim:4170/4081 — weaken/antecedent-drop),
-> the ~15 consumer antecedent drops (`((la.Lookbehind? || la.NegLookbehind? ||
-> la.NegLookahead?) ==> CaptureFreeRE(body))` → drop `la.Lookbehind?`), and the
-> value-machinery STUBS (the `FLookLoop` LB value/quant branches, gate/endpoint) —
-> i.e. build-order steps 1–4 below MUST precede the flip landing green. **Sound
-> order: build the value machinery (steps 1–4) as green standalone pieces FIRST,
-> then this flip + the mechanical sweep land green together.**
+> **IN PROGRESS — the fragment flip + its ENTIRE MECHANICAL TIER are DONE and
+> VALIDATED (uncommitted WIP, package RED only on the value-machinery stubs).**
+> Working-tree changes (NfaRepRE.dfy, OracleEntry.dfy, MainTheorem.dfy, LiftSim.dfy),
+> NOT committed (the flip cannot reach package-green until the value-machinery stubs
+> are filled — the top-level theorem is unprovable for a capturing lookbehind whose
+> captures aren't yet reconstructed). DONE + verified GREEN in isolation:
+> - **Fragment flipped** (`NfaRepRE.dfy`): `LookBehindFragmentRE`/`…Raw` clauses
+>   (`(la.Lookahead? || …)` → `+ la.Lookbehind?`) + `AnnotateLookBehindFragment` stub
+>   regated (`!look.Lookahead?` → `look.NegLookahead? || look.NegLookbehind?`).
+>   **Full file 1325/0.**
+> - **All 4 ENSURES roots weakened + verified 2/0**: `OE.LmOfInv` (disjunction
+>   `+ la.Lookbehind?`), `LmOfInvL3a`, `LookRowsFromTablesL3a`, `LmOfBodiesDisjoint`
+>   (MainTheorem), `GateStaticsSweepRE` (LiftSim).
+> - **All ~26 consumer ANTECEDENT drops applied** (`(la.Lookbehind? || la.NegLookbehind?
+>   || la.NegLookahead?) ==> CaptureFreeRE` → drop `la.Lookbehind?`): 19 in
+>   MainTheorem.dfy (la/la2 variants), 7 in LiftSim.dfy. (`replace_all` on the exact
+>   pattern; safe — positive lookbehinds may now capture.)
+>
+> **RESIDUAL RED = ONLY the value-machinery stubs** (build-order steps 1–4 below):
+> `FLookLoopValueLift` LB branch (MainTheorem:~3848), `FLookLoopQuantValueLift` LB
+> branch, `FLookLoopCaptureFrame`/`FLookLoopQuantFrame` LB branches (they used
+> `ReplayFrames`' capture-IDENTITY, now unavailable), `LiftPreserveGatePassLk` LB arm
+> (LiftSim:~4522), `L3aEndpointAssembly` LB arm (LiftSim:~11589), the `MainExtraction`
+> rework (step 7), and the helper-precondition call sites (`OracleColumnSpec` etc.,
+> step 8). To close them: build steps 1–4 (backward capture frames + `ReplayLidCapAgreeFreshLB`
+> + `MatchedPosLA` widen/`FreshBodyMatch` dispatch + the LB value/quant branches),
+> then steps 6–8. **Next: build the value machinery (green standalone), then these
+> stubs + the whole flip land green together.**
 
 > **Session 13 (2026-08-12) — ITEM 0 (the `NormalizeArr` reversed-span swap) is
 > COMPLETE (dormant).** Commit `5a94f24`, three files, top-level `MainTheoremL3`
