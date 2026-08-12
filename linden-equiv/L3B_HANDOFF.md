@@ -1,5 +1,28 @@
 # L3b Handoff — captures inside positive LOOKBEHINDS (updated 2026-08-12)
 
+> **IN PROGRESS — the fragment flip is STARTED and VALIDATED (uncommitted WIP,
+> package RED pending the value machinery).** Two working-tree changes, both
+> verified GREEN in isolation, NOT committed (the flip cannot reach package-green
+> until steps 1–4 of the integration land — the top-level theorem becomes
+> unprovable for a capturing lookbehind whose captures aren't yet reconstructed):
+> - `NfaRepRE.dfy` — flipped `LookBehindFragmentRE:541` + `LookBehindFragmentRaw:566`
+>   (`(la.Lookahead? || …)` → `(la.Lookahead? || la.Lookbehind? || …)`) and regated
+>   the `AnnotateLookBehindFragment` stub (`:667`, `!look.Lookahead?` →
+>   `look.NegLookahead? || look.NegLookbehind?`). **Full file re-verifies 1325/0** —
+>   the fragment file is entirely self-consistent with the flip.
+> - `OracleEntry.dfy` — weakened `LmOfInv`'s ensures (`:117`) to `(la.Lookahead? ||
+>   la.Lookbehind? || CaptureFreeRE(body)) && …`. **Verifies 2/0** against the
+>   flipped fragment.
+> This validates the flip's mechanical tier. REMAINING to reach green: the other 3
+> ensures roots (`LmOfInvL3a` MainTheorem:4551, `LookRowsFromTablesL3a` :4724,
+> `GateStaticsSweepRE`/`GateStaticAt` LiftSim:4170/4081 — weaken/antecedent-drop),
+> the ~15 consumer antecedent drops (`((la.Lookbehind? || la.NegLookbehind? ||
+> la.NegLookahead?) ==> CaptureFreeRE(body))` → drop `la.Lookbehind?`), and the
+> value-machinery STUBS (the `FLookLoop` LB value/quant branches, gate/endpoint) —
+> i.e. build-order steps 1–4 below MUST precede the flip landing green. **Sound
+> order: build the value machinery (steps 1–4) as green standalone pieces FIRST,
+> then this flip + the mechanical sweep land green together.**
+
 > **Session 13 (2026-08-12) — ITEM 0 (the `NormalizeArr` reversed-span swap) is
 > COMPLETE (dormant).** Commit `5a94f24`, three files, top-level `MainTheoremL3`
 > re-verifies **1854/0**.
