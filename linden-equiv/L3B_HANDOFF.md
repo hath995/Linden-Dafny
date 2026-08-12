@@ -28,8 +28,14 @@ LiftPreserveGatePassLk, InsidePresentResBridge.
   `NormRange`, ensures `leafgm == NormGm(GmOfLive)`. **2/0 GREEN.**
 - `NormRangeFromSwap` (LiftSim): converts InsidePresentResBridge's look-type swap to
   positional NormRange via leaf-orderedness. **2/0 GREEN.**
-- `L3aEndpointAssembly` + `MainTheoremL3`: reworked (forall→NormRange, ensures→NormGm,
-  FirstLeafOrdered supplies OrderedGm). VERIFICATION PENDING.
+- `L3aEndpointAssembly`: reworked (forward-forall→NormRange via NormRangeFromSwap,
+  ensures→NormGm, requires OrderedGm; removed a stale `assert la.Lookahead?`; fixed the
+  post-L3aValueBridge assert to NormGm). **2330 verified, 0 ERRORS**, 2 perf timeouts at
+  11720 (heavy `:|`+MatchedPosLA — slow-but-finite; 400→500s dropped 5→2). Re-running at
+  800s / may extract the per-g body to a helper if needed.
+- `MainTheoremL3`: FirstLeafOrdered supplies OrderedGm(leaf.1); the three `leaf.1==GmOfLive`
+  asserts → NormGm. Verifying (trusts L3aEndpointAssembly's ensures regardless of its
+  internal perf timeouts).
 
 **Original design (for reference):**
 `L3aEndpointAssembly` (LiftSim 11231) forward-forall (~11520) still claims the plain
