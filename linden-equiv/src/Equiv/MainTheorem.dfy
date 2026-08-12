@@ -3089,6 +3089,55 @@ module LindenElkMain {
     }
   }
 
+  /** L3b: the BACKWARD plus-fragment replay frame — the lookbehind twin of
+      `ReplayPlusFrame`. The engine runs a capturing lookbehind's replay over
+      `compile_to_bytecode(reverse_regex(body))` BACKWARD; the capture bank agrees
+      with `cap` outside `CaptureRegs(body)` (`ReplayCaptureFrameLB`), looks are
+      unchanged (`NoLookWriteBody(rev)` + `FFindMatchLookEq`), quants stay final
+      (`NoTrueQuantStamp(rev)` + `FFindMatchQuantFinalAny`), and the plus
+      reconstruction is the identity (`FNulledPlusIdentity`). The `FFindMatchPlus`
+      reconstruction regex is `body` (matching the FLookLoop call `bytecode ==
+      compile_to_bytecode(capture_regex(la, body)) == compile(reverse_regex(body))`,
+      2nd arg `lookast == body`). */
+  lemma ReplayPlusFrameLB(bytecode: RB.code, str: string, ov: LOr.OracleView,
+                          lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                          cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
+    requires NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+    requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
+      r.Some? ==>
+        CM.RegsAgreeOutside(r.value.capture_regs, cap, PIV.CaptureRegs(body))
+        && r.value.look_regs == lk
+        && QuantRegsFinal(r.value)
+  {
+    var rev := R.reverse_regex(body);
+    PIV.ReversePlusFragment(body);                 // PlusFragmentRE(rev)
+    NR.PlusIsLookBehindFragmentRE(rev);            // LookBehindFragmentRE(rev)
+    PIV.ReverseLookFree(body);                     // LookFreeRE(rev)
+    PIV.ReverseCapUnique(body);                    // CapUnique(rev)
+    PIV.ReverseQuantUnique(body);                  // QuantUnique(rev)
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, LAnc.Backward));
+    ReplayCaptureFrameLB(bytecode, str, inits, ov, lookcdn, cap, lk, qt, body);
+    LKC.NoLookWriteBody(rev);
+    assert CM.VmLooksAre(inits, lk);
+    CM.FFindMatchLookEq(bytecode, str, inits, ov, LAnc.Backward, lookcdn, lk);
+    NoTrueQuantStamp(rev);
+    assert VmQuantFinal(inits) by {
+      assert QuantRegsFinal(AI.init_thread(cap, lk, qt));
+    }
+    FFindMatchQuantFinalAny(bytecode, str, inits, ov, LAnc.Backward, lookcdn);
+    var (res0, ovx) := AI.FFindMatch(bytecode, str, inits, ov, LAnc.Backward, lookcdn);
+    if res0.Some? {
+      var th := res0.value;
+      assert QuantRegsFinal(th);
+      FNulledPlusIdentity(body, th.capture_regs, th.look_regs, th.quant_regs, plus_bcv, str, ovx, LAnc.Backward);
+    }
+  }
+
   /** A compiled body's bytecode holds no `WriteOracle` -- `compile_to_bytecode`
       never emits one (only the oracle BUILD pass does). Lifts `NR.NoWriteInstrRE`
       over the whole block; the `Accept` at `endl` is not a `WriteOracle`. */
@@ -3152,7 +3201,10 @@ module LindenElkMain {
   lemma FFindMatchPlusOvStableLB(bytecode: RB.code, str: string, ov: LOr.OracleView, dir: LAnc.direction,
                                  lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
                                  cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
-    requires NR.LookFreeRE(body) && NR.PlusFragmentRE(body) && NR.CaptureFreeRE(body) && PIV.QuantUnique(body)
+    // L3b: capturing lookbehind bodies allowed -- `CaptureFreeRE` was only used to
+    // reach `CapUnique(reverse_regex(body))`, now supplied directly by
+    // `ReverseCapUnique`. Oracle stability is capture-INDEPENDENT.
+    requires NR.LookFreeRE(body) && NR.PlusFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires la.Lookbehind? && dir == LAnc.Backward
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
@@ -3163,8 +3215,7 @@ module LindenElkMain {
     NR.ReversePlusFragmentRE(body);          // PlusFragmentRE(rbody)
     NR.PlusIsLookBehindFragmentRE(rbody);    // LookBehindFragmentRE(rbody)
     PIV.ReverseQuantUnique(body);            // QuantUnique(rbody)
-    PIV.ReverseCaptureFree(body);            // CaptureFreeRE(rbody)
-    LKC.CaptureFreeCapUnique(rbody);         // CapUnique(rbody)
+    PIV.ReverseCapUnique(body);              // CapUnique(rbody)
     var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
     assert inits.context.nextchar == AI.get_char(str, cp - 1);   // cp_context Backward definitional
     NoWriteOracleBodyCode(rbody);
@@ -3280,6 +3331,52 @@ module LindenElkMain {
     }
     // the register-value-blind bisimulation: FFindMatch(from cap) ~ FFindMatch(from fresh).
     ReplayCapAgreeFresh(bytecode, str, cp, cap, lk, qt, ov, lookcdn, body, ncap, nlook, nquant);
+  }
+
+  /** L3b: the per-lid BACKWARD replay↔fresh capture agreement — lookbehind twin of
+      `ReplayLidCapAgreeFresh`. The `FFindMatchPlus` backward replay from the main
+      thread's `cap` (fresh on `CaptureRegs(body)`) agrees, on `CaptureRegs(body)`,
+      with the fresh backward `FFindMatch`. `FFindMatchPlus` caps == `FFindMatch`
+      caps (reconstruct is identity), then the dir-generic bisimulation
+      `ReplayCapAgreeFreshLB`. The bytecode is `compile_to_bytecode(reverse_regex
+      (body))`, the reconstruction reg is `body` (the FLookLoop call convention). */
+  lemma ReplayLidCapAgreeFreshLB(bytecode: RB.code, str: string, cp: int, cap: AReg.Regs, lk: AReg.Regs,
+                                 qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
+                                 body: R.regex, ncap: int, nlook: int, nquant: int)
+    requires NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+    requires 0 <= cp <= |str|
+    requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    requires CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+    ensures
+      var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
+      var rf := AI.FFindMatch(bytecode, str,
+                  AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
+                  ov, LAnc.Backward, lookcdn).0;
+      (result.None? <==> rf.None?)
+      && (result.Some? ==> CM.RegsAgreeInside(result.value.capture_regs, rf.value.capture_regs, PIV.CaptureRegs(body)))
+  {
+    var rev := R.reverse_regex(body);
+    PIV.ReversePlusFragment(body);
+    NR.PlusIsLookBehindFragmentRE(rev);
+    PIV.ReverseCapUnique(body);
+    PIV.ReverseQuantUnique(body);
+    var dir := LAnc.Backward;
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
+    NoTrueQuantStamp(rev);
+    assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
+    FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
+    var (fmres, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+    if fmres.Some? {
+      FNulledPlusIdentity(body, fmres.value.capture_regs, fmres.value.look_regs, fmres.value.quant_regs,
+                          plus_bcv, str, ovx, dir);
+    }
+    ReplayCapAgreeFreshLB(bytecode, str, cp, cap, lk, qt, ov, lookcdn, body, ncap, nlook, nquant);
   }
 
   /** A FRESH body match is well-formed (register arrays keep length `ncap`/etc.).
@@ -4466,6 +4563,43 @@ module LindenElkMain {
       }
     }
     CM.FFindMatchCapRel(bodycode, str, sa, sf, ov, LAnc.Forward, cdns, Sc, {});
+  }
+
+  /** L3b: the BACKWARD register-value-blind bisimulation — the lookbehind twin of
+      `ReplayCapAgreeFresh`. A backward `FFindMatch` from the main thread's `cap`
+      (fresh on `CaptureRegs(body)`) and one from a fully-fresh state agree on
+      `CaptureRegs(body)`. Direction is the ONLY difference: `CM.FFindMatchCapRel`
+      is dir-generic and control never reads register values, so no fragment /
+      uniqueness / capture-freeness hypotheses are needed. */
+  lemma ReplayCapAgreeFreshLB(bodycode: RB.code, str: string, cp: int, cap: AReg.Regs, lk: AReg.Regs,
+                              qt: AReg.Regs, ov: LOr.OracleView, cdns: LCdn.cdns, body: R.regex,
+                              ncap: int, nlook: int, nquant: int)
+    requires 0 <= cp <= |str|
+    requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
+    requires CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    ensures var ctxc := AI.cp_context(cp, str, LAnc.Backward);
+            var ra := AI.FFindMatch(bodycode, str,
+                        AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Backward, cdns).0;
+            var rf := AI.FFindMatch(bodycode, str,
+                        AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                      AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Backward, cdns).0;
+            (ra.None? <==> rf.None?)
+            && (ra.Some? ==> CM.RegsAgreeInside(ra.value.capture_regs, rf.value.capture_regs, PIV.CaptureRegs(body)))
+  {
+    var ctxc := AI.cp_context(cp, str, LAnc.Backward);
+    var sa := AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc);
+    var sf := AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                            AReg.init_regs(nquant), 0, ctxc);
+    var Sc := PIV.CaptureRegs(body);
+    assert CM.VmRel(sa, sf, Sc, {}) by {
+      assert CM.ThreadRel(AI.init_thread(cap, lk, qt),
+                          AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant)),
+                          Sc, {}) by {
+        assert CM.RegsAgreeInside(qt, AReg.init_regs(nquant), {});
+      }
+    }
+    CM.FFindMatchCapRel(bodycode, str, sa, sf, ov, LAnc.Backward, cdns, Sc, {});
   }
 
   /** §4b ENGINE VALUE BRIDGE (capstone): the body replay from the MAIN thread's

@@ -29,14 +29,27 @@
 > then steps 6–8. **Next: build the value machinery (green standalone), then these
 > stubs + the whole flip land green together.**
 >
-> **Step 1 STARTED: `ReplayCaptureFrameLB` (MainTheorem.dfy, verified 2/0)** — the
-> backward capture-write frame, lookbehind twin of `ReplayCaptureFrame`. Both engine
-> cores (`CM.CaptureBytecodeClassified`, `CM.FFindMatchCapWriteFrame`) are dir-generic;
-> reversed-body statics via `PIV.ReversePlusFragment` + `NR.PlusIsLookBehindFragmentRE`
-> + `PIV.ReverseCapUnique`/`ReverseCapIds`. **Next in step 1:** `ReplayPlusFrameLB`
-> (wrap it with the look/quant frames — `NoTrueQuantStamp(rev)`, `FNulledPlusIdentity`
-> Backward, `NoLookWriteBody(rev)` needs a `ReverseLookFree` helper) + widen
-> `FFindMatchPlusOvStableLB` (drop `CaptureFreeRE`, use `ReverseCapUnique`).
+> **STEPS 1 & 2 DONE — all backward frame/bisimulation lemmas verify 2/0** (MainTheorem.dfy):
+> - Step 1: `ReplayCaptureFrameLB` (backward capture-write frame), `ReplayPlusFrameLB`
+>   (wraps it with look/quant frames + `FNulledPlusIdentity` Backward), widened
+>   `FFindMatchPlusOvStableLB` (dropped `CaptureFreeRE` → `CapUnique` + `ReverseCapUnique`;
+>   oracle stability is capture-independent). Engine cores (`CM.CaptureBytecodeClassified`,
+>   `FFindMatchCapWriteFrame`, `FFindMatchLookEq`, `FFindMatchQuantFinalAny`,
+>   `FNulledPlusIdentity`) all dir-generic; reversed-body statics via
+>   `PIV.ReversePlusFragment`/`ReverseLookFree`/`ReverseCapUnique`/`ReverseQuantUnique`/
+>   `ReverseCapIds` + `NR.PlusIsLookBehindFragmentRE`.
+> - Step 2: `ReplayCapAgreeFreshLB` (backward register-value-blind bisimulation, twin of
+>   `ReplayCapAgreeFresh` — `CM.FFindMatchCapRel` is dir-generic, NO fragment/uniqueness
+>   hypotheses) + `ReplayLidCapAgreeFreshLB` (the per-lid backward replay↔fresh capture
+>   agreement, `RegsAgreeInside(result.caps, freshBackward.caps, CaptureRegs(body))`).
+>
+> **NEXT (step 3, the big-bang trigger): `MatchedPosLA` widen (MainTheorem:~3159,
+> `.Lookahead?` → `|| .Lookbehind?`) — ripples to ~10 LiftSim sites — + `FreshBodyMatch`
+> (MainTheorem:~3171) dispatch on `capture_direction` (backward + `reverse_regex(body)`
+> for LB). Then step 4: replace the `FLookLoop` LB value/quant STUB branches with the
+> step-1/2 lemmas + `ReplayLidCapAgreeFreshLB` to establish `FLookLoopValueOk` per LB
+> lid.** `FreshBodyMatch` for LB must be the backward fresh run over `compile_to_bytecode(
+> reverse_regex(body))` — the SAME reference `ReplayLidCapAgreeFreshLB`'s `rf` uses.
 >
 > **These WIP code changes are on a clearly-marked checkpoint commit (package RED by
 > design — the value-machinery stubs are stubbed out). Do NOT treat it as green;
