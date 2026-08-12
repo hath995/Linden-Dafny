@@ -11817,7 +11817,7 @@ module LindenElkLiftSim {
     assert forall q: nat :: q in PIV.QuantIdsOutsideLooks(re) ==>
       AI.get_idx(AReg.as_arrays(res2).1, q as int) == AI.get_idx(AReg.as_arrays(thread.quant_regs).1, q as int);
     L3aValueBridge(re, thread, leafgm, res0, res2, S);
-    assert leafgm == PIV.GmOfLive(re, res0, lk, res2);
+    assert leafgm == PIV.NormGm(PIV.GmOfLive(re, res0, lk, res2));
     assert CM.ThreadRegsWf(AI.Thread(thread.pc, res0, res.1, res2, thread.exit_allowed),
                            ncap, nlook, nquant);
     assert M.QuantRegsFinal(AI.Thread(thread.pc, res0, res.1, res2, thread.exit_allowed));
