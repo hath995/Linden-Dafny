@@ -5659,6 +5659,68 @@ module LindenElkPikeInv {
     assert na == ca;
   }
 
+  /** Positional normalization of one range: swap a REVERSED closed span
+      (`start > end`) to ordered; leave forward / open ranges alone. This is
+      exactly `NormalizeArr`'s per-pair action (item 0), lifted to `LG.Range`. */
+  function NormRange(rg: LG.Range): LG.Range {
+    match rg.endIdx
+    case None => rg
+    case Some(e) => if rg.startIdx > e then LG.Range(e, Some(rg.startIdx)) else rg
+  }
+
+  ghost function NormGm(gm: LG.GroupMap): LG.GroupMap {
+    map g | g in gm :: NormRange(gm[g])
+  }
+
+  /** The reversed-span-TOLERANT sibling of `GmOfCapArrayBridge`: DROPS the
+      no-reversed-pairs precondition. `NormalizeArr` swaps each reversed pair
+      positionally, which is EXACTLY `NormGm` on the `GmOf` read — so they match
+      slot-for-slot for ANY closed capture array (forward OR backward spans).
+      This is the item-0 hinge for a capturing lookbehind: the engine's reversed
+      span, normalized, is the ordered spec leaf. */
+  lemma GmOfCapArrayBridgeNorm(ast: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+                               inp: LC.Input, ngroups: nat)
+    requires var f := AI.filter_reset(ast, caps, look, quant, -1);
+      |f| == 2 * ngroups
+      && (forall i :: 0 <= i < |f| ==> f[i] >= -1)                                  // -1 encodes None
+      && (forall g: nat :: 0 <= g < ngroups ==> (f[2 * g] >= 0 ==> f[2 * g + 1] >= 0))  // closed match
+    ensures LES.NormalizeArr(AI.filter_reset(ast, caps, look, quant, -1))
+         == LES.CapArrayOfLeaf((inp, NormGm(GmOf(ast, caps, look, quant))), ngroups)
+  {
+    var f := AI.filter_reset(ast, caps, look, quant, -1);
+    var gm := GmOf(ast, caps, look, quant);
+    var ngm := NormGm(gm);
+    var na := LES.NormalizeArr(f);
+    var ca := LES.CapArrayOfLeaf((inp, ngm), ngroups);
+    forall j | 0 <= j < 2 * ngroups
+      ensures na[j] == ca[j]
+    {
+      var g: nat := j / 2;
+      GmOfMem(ast, caps, look, quant, g);
+      assert CP.start_reg(g) == 2 * g && CP.end_reg(g) == 2 * g + 1;
+      assert AI.get_idx(f, 2 * g) == f[2 * g];             // 2*g < |f|
+      assert AI.get_idx(f, 2 * g + 1) == f[2 * g + 1];     // 2*g+1 < |f|
+      assert (g in gm) <==> (f[2 * g] >= 0);               // GmOfMem
+      assert (g in ngm) <==> (g in gm);                    // NormGm preserves keys
+      if g in gm {
+        // closed match ⟹ both slots present; NormRange picks the swap iff reversed,
+        // which is NormalizeArr's positional min/max choice on the same pair.
+        assert f[2 * g] >= 0 && f[2 * g + 1] >= 0;
+        assert gm[g] == RangeFromArr(f, g);
+        assert gm[g] == LG.Range(f[2 * g] as nat, Some(f[2 * g + 1] as nat));
+        assert ngm[g] == NormRange(gm[g]);
+      } else {
+        assert f[2 * g] < 0 && f[2 * g] == -1;              // >= -1 and < 0
+      }
+      if j % 2 == 0 {
+        assert j == 2 * g;
+      } else {
+        assert j == 2 * g + 1 && j - 1 == 2 * g;
+      }
+    }
+    assert na == ca;
+  }
+
   // ===========================================================================
   // TreeThreadRE constructors (normal-lemma membership intros for its three
   // disjuncts). Needed to build tree-threads from inside `least lemma` contexts
