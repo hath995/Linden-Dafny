@@ -53,6 +53,33 @@
 > The LB branches MIRROR the lookahead branches with the step-1/2 lemmas; the
 > suffix/IH/frame/assemble tails are direction-independent (copied verbatim).
 >
+> **THE DEEP CRUX (step 6/7), pinpointed:** `ThreadRepLk` (LiftSim:236 — the core pike
+> simulation invariant) has a conjunct **`GmtTieInside`** (LiftSim) requiring, for each
+> inside-look group `g in gmt`: `gmt[g] == GmOfLive(VBody(l), FreshBodyMatch(l).caps)[g]`.
+> Since `FreshBodyMatch` now dispatches BACKWARD for lookbehinds, that engine read is
+> REVERSED, while `gmt = gm2 = LkResult(lk, tlk, gm, inp).value` is spec-ORDERED — they
+> differ by `SwapRange`. So `GmtTieInside(gm2)` is FALSE for a capturing lookbehind, and
+> the gate cannot establish `ThreadRepLk` as-is. **FIX:** thread `SwapGm` through
+> `GmtTieInside` — for a lookbehind lid, require `gmt[g] == SwapRange(gmb[g])` (lookahead
+> unchanged). This is DORMANT/value-identical for every existing case (lookahead lids
+> unchanged; capture-free lookbehinds have no groups `g`, so the branch is vacuous — like
+> the `FreshBodyMatch` change), so the existing pike-simulation proofs should re-verify
+> unchanged; only the NEW capturing-LB gate exercises the `SwapRange`. The keystone
+> `LkReplayMatchesSpecLB` provides EXACTLY that form: `GmAgreeOn(SwapGm(LkResult),
+> GmOfLive(body, MirrorRegs(rfF)))` ⟹ `gm2[g] == SwapRange(GmOfLive(fresh)[g])`. STEPS to
+> land step 6/7: (1) add `SwapRange` to `GmtTieInside` (dormant); re-verify the ThreadRepLk
+> consumers (LiftInv + step/preservation lemmas — most transparent). (2) build
+> `ThreadRepLkStepCheckOracleLB` (the LB twin of `ThreadRepLkStepCheckOracle` LiftSim:6038,
+> establishing `GmtTieInside`'s `SwapRange` form via the keystone at `cap=init`; needs the
+> keystone accessible in LiftSim — add `include "LookBehindKeystone.dfy"`). (3) wire both
+> LB stubs of `LiftPreserveGatePassLk` (LiftSim:4333–4370 the `gm2==gm` stub → real merged
+> gm2; 4520–4533 the coverage). (4) the endpoint `L3aEndpointAssembly` LB arm. (5) the
+> top reconciliation (step 7): with `GmtTieInside` SwapGm-threaded, the final leaf `gmt`
+> satisfies `leaf.1[g] == SwapRange(GmOfLive(mainCaps)[g])` on LB groups, so
+> `MainExtraction`/`MainTheoremL3` relate `NormalizeArr(f)` [item-0 swap] to
+> `CapArrayOfLeaf(leaf)` via that per-group swap. This is a large, coupled, deep effort on
+> the CORE invariant — a focused multi-session unit, but the crux and the shape are now nailed.
+>
 > **EMPIRICAL RESIDUAL (probed after steps 1–4):** `MainExtraction` verifies in
 > ISOLATION (2/0) — its proof is self-consistent given `leaf.1 == GmOfLive`; the break
 > is at its CALLER `MainTheoremL3`, where for a capturing lookbehind `GmOfLive(re,
