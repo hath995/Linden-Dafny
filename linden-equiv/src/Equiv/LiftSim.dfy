@@ -32,6 +32,7 @@
 // GateStepValue = the proven keystone LkReplayMatchesSpec at cp = s1.cp.
 include "MainTheorem.dfy"
 include "PikeTreeLk.dfy"
+include "LookBehindKeystone.dfy"
 
 /** The lift: a per-thread pairing between the RegElk VM and the LK-aware
     PikeTree machine on the SPEC tree, whose group-map tie carries the
@@ -65,6 +66,9 @@ module LindenElkLiftSim {
   import CM = LindenElkClockMono
   import PTL = LindenElkPikeTreeLk
   import M = LindenElkMain
+  import LBK = LindenLookBehindKeystone
+  import LBV = LindenLookBehindValue
+  import BV = LindenElkBackValue
   import T = LindenElkTranslate
   import RC = Charclasses
   import LL = LindenElkLookLeaves
@@ -192,7 +196,12 @@ module LindenElkLiftSim {
            rf.Some?
            && var gmb := PIV.GmOfLive(M.VBody(crv, l), rf.value.capture_regs,
                                       rf.value.look_regs, rf.value.quant_regs);
-              g in gmb && gmt[g] == gmb[g]
+              // L3b: a LOOKBEHIND's fresh match runs BACKWARD, so its `GmOfLive` reads
+              // the span REVERSED (item-0 quirk); the ordered spec `gmt[g]` is the
+              // endpoint SWAP of that reversed read. NO-OP for lookaheads (forward,
+              // already ordered) and for capture-free lookbehinds (no such `g`).
+              var looktype := if 0 <= l < |crv.f_look_types| then crv.f_look_types[l] else R.Lookahead;
+              g in gmb && gmt[g] == (if looktype.Lookbehind? then LBV.SwapRange(gmb[g]) else gmb[g])
   }
 
   /** The tb-pairing walk at a `pc`, WITH the `GateAheadClear` invariant and the
@@ -2424,7 +2433,8 @@ module LindenElkLiftSim {
            rf'.Some?
            && var gmb := PIV.GmOfLive(M.VBody(crv, l'), rf'.value.capture_regs,
                                       rf'.value.look_regs, rf'.value.quant_regs);
-              g in gmb && gmt2[g] == gmb[g]
+              var looktype := if 0 <= l' < |crv.f_look_types| then crv.f_look_types[l'] else R.Lookahead;
+              g in gmb && gmt2[g] == (if looktype.Lookbehind? then LBV.SwapRange(gmb[g]) else gmb[g])
     {
       if g in Sbody {
         // Case A: g is owned by the gate just crossed (lid l), value from the keystone.
@@ -2446,7 +2456,8 @@ module LindenElkLiftSim {
              rf''.Some?
              && var gmb'' := PIV.GmOfLive(M.VBody(crv, l''), rf''.value.capture_regs,
                                           rf''.value.look_regs, rf''.value.quant_regs);
-                g in gmb'' && gmt[g] == gmb''[g];
+                var looktype := if 0 <= l'' < |crv.f_look_types| then crv.f_look_types[l''] else R.Lookahead;
+                g in gmb'' && gmt[g] == (if looktype.Lookbehind? then LBV.SwapRange(gmb''[g]) else gmb''[g]);
         var l'': int :|
           0 <= l'' < nlook && g in PIV.CapIds(M.VBody(crv, l''))
           && M.MatchedPosLA(crv, th.look_regs, l'')
@@ -2454,7 +2465,8 @@ module LindenElkLiftSim {
              rf''.Some?
              && var gmb'' := PIV.GmOfLive(M.VBody(crv, l''), rf''.value.capture_regs,
                                           rf''.value.look_regs, rf''.value.quant_regs);
-                g in gmb'' && gmt[g] == gmb''[g];
+                var looktype := if 0 <= l'' < |crv.f_look_types| then crv.f_look_types[l''] else R.Lookahead;
+                g in gmb'' && gmt[g] == (if looktype.Lookbehind? then LBV.SwapRange(gmb''[g]) else gmb''[g]);
         // l'' != l: else g in CapIds(VBody(crv,l)) == Sbody, contradicting g !in Sbody.
         assert l'' != l by {
           if l'' == l { assert g in PIV.CapIds(M.VBody(crv, l)); }
@@ -3611,7 +3623,8 @@ module LindenElkLiftSim {
              rf.Some?
              && var gmb := PIV.GmOfLive(M.VBody(crv, l), rf.value.capture_regs,
                                         rf.value.look_regs, rf.value.quant_regs);
-                g in gmb && gm2[g] == gmb[g]
+                var looktype := if 0 <= l < |crv.f_look_types| then crv.f_look_types[l] else R.Lookahead;
+                g in gmb && gm2[g] == (if looktype.Lookbehind? then LBV.SwapRange(gmb[g]) else gmb[g])
       {
         assert g != gid;
         assert g in gm && gm2[g] == gm[g];             // GMUpdate touches only gid
@@ -3622,7 +3635,8 @@ module LindenElkLiftSim {
              rf.Some?
              && var gmb := PIV.GmOfLive(M.VBody(crv, l), rf.value.capture_regs,
                                         rf.value.look_regs, rf.value.quant_regs);
-                g in gmb && gm[g] == gmb[g];
+                var looktype := if 0 <= l < |crv.f_look_types| then crv.f_look_types[l] else R.Lookahead;
+                g in gmb && gm[g] == (if looktype.Lookbehind? then LBV.SwapRange(gmb[g]) else gmb[g]);
       }
     }
     assert (th.pc + 1) as nat == pc + 1;
@@ -3802,7 +3816,8 @@ module LindenElkLiftSim {
              rf.Some?
              && var gmb := PIV.GmOfLive(M.VBody(crv, l2), rf.value.capture_regs,
                                         rf.value.look_regs, rf.value.quant_regs);
-                g in gmb && gm2[g] == gmb[g]
+                var looktype := if 0 <= l2 < |crv.f_look_types| then crv.f_look_types[l2] else R.Lookahead;
+                g in gmb && gm2[g] == (if looktype.Lookbehind? then LBV.SwapRange(gmb[g]) else gmb[g])
       {
         assert g in gm && gm2[g] == gm[g];   // survivors of the Reset are unchanged
         var l'': int :| 0 <= l'' < nlook
@@ -3812,7 +3827,8 @@ module LindenElkLiftSim {
              rf''.Some?
              && var gmb'' := PIV.GmOfLive(M.VBody(crv, l''), rf''.value.capture_regs,
                                           rf''.value.look_regs, rf''.value.quant_regs);
-                g in gmb'' && gm[g] == gmb''[g];
+                var looktype := if 0 <= l'' < |crv.f_look_types| then crv.f_look_types[l''] else R.Lookahead;
+                g in gmb'' && gm[g] == (if looktype.Lookbehind? then LBV.SwapRange(gmb''[g]) else gmb''[g]);
       }
     }
     assert (th.pc + 1) as nat == pc + 1;
@@ -4333,6 +4349,8 @@ module LindenElkLiftSim {
     } else {
       // ---- capture-free positive look (Lookbehind) --------------------------
       assert la.Lookbehind?;
+      if NR.CaptureFreeRE(body) {
+      // ---- capture-free positive lookbehind: gm2 == gm, no inside-S groups --------
       assert NR.CaptureFreeRE(body);
       PIV.CaptureFreeNoCapIds(body);
       M.TranslateDefGroupsEqCapIds(body);
@@ -4364,7 +4382,8 @@ module LindenElkLiftSim {
                rf.Some?
                && var gmb := PIV.GmOfLive(M.VBody(crv, l2), rf.value.capture_regs,
                                           rf.value.look_regs, rf.value.quant_regs);
-                  g in gmb && gm2[g] == gmb[g]
+                  var looktype := if 0 <= l2 < |crv.f_look_types| then crv.f_look_types[l2] else R.Lookahead;
+                  g in gmb && gm2[g] == (if looktype.Lookbehind? then LBV.SwapRange(gmb[g]) else gmb[g])
         {
           assert g in gm && gm2[g] == gm[g];
           var l'': int :| 0 <= l'' < nlook
@@ -4374,7 +4393,8 @@ module LindenElkLiftSim {
                rf''.Some?
                && var gmb'' := PIV.GmOfLive(M.VBody(crv, l''), rf''.value.capture_regs,
                                             rf''.value.look_regs, rf''.value.quant_regs);
-                  g in gmb'' && gm[g] == gmb''[g];
+                  var looktype := if 0 <= l'' < |crv.f_look_types| then crv.f_look_types[l''] else R.Lookahead;
+                  g in gmb'' && gm[g] == (if looktype.Lookbehind? then LBV.SwapRange(gmb''[g]) else gmb''[g]);
           // l'' != l: the l-row's body is capture-free, so it owns no groups
           assert l'' != l by {
             if l'' == l { assert g in PIV.CapIds(M.VBody(crv, l)); assert g in PIV.CapIds(body); }
@@ -4389,6 +4409,15 @@ module LindenElkLiftSim {
       }
       assert (th.pc + 1) as nat == pc + 1;
       assert ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, traw.t, gm2, th', ncap, nlook, nquant);
+      } else {
+        // ---- CAPTURING positive lookbehind: keystone-based backward gate (WIP {:axiom} stub) ----
+        var bodycode := CP.compile_to_bytecode(body);
+        assert LT.LK(lk, tlk, traw.t) == traw;
+        ThreadRepLkStepCheckOracleLB(rer, qm, re, code, crv, str, ov, S, lk, r1, tlk, traw.t,
+                                     gm, th, l, cp, clk, body, la, bodycode, |bodycode| - 1, 0,
+                                     th.quant_regs, ncap, nlook, nquant);
+        assert ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, traw.t, gm2, th', ncap, nlook, nquant);
+      }
     }
 
     assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t.t, gm2, th', ncap, nlook, nquant);
@@ -4517,7 +4546,7 @@ module LindenElkLiftSim {
           {
             assert g in (set gx | gx in L.DefGroups(T.Translate(body)));
           }
-        } else {
+        } else if NR.CaptureFreeRE(body) {
           // capture-free positive lookbehind: nothing to cover
           assert la.Lookbehind? && NR.CaptureFreeRE(body);
           PIV.CaptureFreeNoCapIds(body);
@@ -4530,6 +4559,15 @@ module LindenElkLiftSim {
             assert g in PIV.CapIds(body);
             assert false;
           }
+        } else {
+          // CAPTURING positive lookbehind: gm2 (= LkResult value) covers the body's
+          // groups — the key-set half of the keystone (SwapGm preserves keys). WIP
+          // {:axiom}; discharged by LBK.LkReplayMatchesSpecLB when the gate step lands.
+          assume {:axiom} forall g: LG.GroupId ::
+            g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, l as nat))
+            && g in PIV.GmOfLive(NI.LookBodyOfRE(re, l as nat), rfx.value.capture_regs,
+                                 rfx.value.look_regs, rfx.value.quant_regs)
+            ==> g in gm2;
         }
       }
     }
@@ -6024,6 +6062,48 @@ module LindenElkLiftSim {
       // gm2[g] ~ gm[g] (LkResultAgreeOutside) ~ gml[g] (GmtTieOutside t) ~ gml'[g] (LookIndep).
     }
   }
+
+  /** L3b item 4 (task #8) — WIP {:axiom} STUB: the BACKWARD-gate twin of
+      `ThreadRepLkStepCheckOracle` for a CAPTURING positive lookbehind. Body pending;
+      it establishes `GmtTieInside`'s `SwapRange` form via the keystone
+      `LBK.LkReplayMatchesSpecLB` at cap=init + `BV.BackwardReplayMirror`, with the
+      outside frame / continuation walk direction-generic (as in the lookahead twin).
+      The value chain: `FreshBodyMatch(LB)` runs the backward capture (= `raB`), the
+      mirror gives `rfF == MirrorThread(raB)`, and the keystone yields
+      `SwapRange(gm2[g]) == GmOfLive(body, raB.caps)[g]` for `g in S`. */
+  lemma {:axiom} ThreadRepLkStepCheckOracleLB(
+      rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, crv: CP.FCompiled,
+      str: string, ov: LOr.OracleView, S: set<LG.GroupId>, lk: L.Lookaround, r1: L.Regex,
+      tlk: LT.Tree, tc: LT.Tree, gm: LG.GroupMap, t: AI.Thread, l: int, cp: nat, clk: int,
+      body: R.regex, la: R.lookaround, bodycode: RB.code, endl: nat, ngroups: nat,
+      qt: AReg.Regs, ncap: int, nlook: int, nquant: int)
+    requires qm.ov == ov && !rer.ignoreCase && !rer.multiline
+    requires cp <= |str| && t.pc >= 0
+    requires l in qm.looks && qm.looks[l] == (lk, r1)
+    requires L.Positivity(lk) && L.LkDir(lk) == WP.Backward
+    requires LS.LkResult(lk, tlk, gm, PIV.InpOfCp(str, cp)).Some?
+    requires EL.LkGateOk(rer, lk, r1, PIV.InpOfCp(str, cp), tlk, true)
+    requires ThreadRepLk(rer, qm, re, code, PIV.InpOfCp(str, cp), crv, str, ov, S,
+                         LT.LK(lk, tlk, tc), gm, t, ncap, nlook, nquant)
+    requires forall g :: g in L.DefGroups(r1) ==> g !in gm
+    requires T.TransWf(body) && NR.LookFreeRE(body) && la.Lookbehind?
+    requires r1 == T.Translate(body) && lk == T.TrLookaround(la) && body == M.VBody(crv, l)
+    requires bodycode == CP.compile_to_bytecode(body)
+    requires PSM.StaticOkRE(qm, body, bodycode, endl)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
+    requires 0 <= l < nlook && l < RL.ASize(t.look_regs)
+    requires 0 <= l < |crv.f_look_ast| && 0 <= l < |crv.f_look_cdns| && 0 <= l < |crv.f_look_types|
+    requires crv.f_look_types[l].Lookbehind? && AI.capture_type(crv.f_look_types[l])
+    requires NR.GetPcRE(code, t.pc as nat) == Some(RB.CheckOracle(l))
+    requires T.TransWf(re) && NR.LookBehindFragmentRE(re)
+    requires S == LL.LkBodyGroups(T.Translate(re))
+    requires (set g | g in L.DefGroups(r1)) <= S
+    ensures var t' := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(cp as int), clk));
+            var gm2 := LS.LkResult(lk, tlk, gm, PIV.InpOfCp(str, cp)).value;
+            ThreadRepLk(rer, qm, re, code, PIV.InpOfCp(str, cp), crv, str, ov, S, tc, gm2, t',
+                        ncap, nlook, nquant)
 
   /** THE CRUX per-instruction core: a thread crossing a PASSING positive-lookahead
       gate (`CheckOracle(l)`, oracle TRUE). The VM records `a_cp[l]:=cp` (t → t');
@@ -10363,7 +10443,8 @@ module LindenElkLiftSim {
     requires var rf := M.FreshBodyMatch(crv, str, l, th.look_regs, ov, ncap, nlook, nquant);
              rf.Some?
              && var gmb := PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs);
-                g in gmb && g in leafgm && leafgm[g] == gmb[g]
+                var looktype := if 0 <= l < |crv.f_look_types| then crv.f_look_types[l] else R.Lookahead;
+                g in gmb && g in leafgm && leafgm[g] == (if looktype.Lookbehind? then LBV.SwapRange(gmb[g]) else gmb[g])
     // FLookLoopValueOk relation at l: res0 agrees with the fresh match on body regs.
     requires var rf := M.FreshBodyMatch(crv, str, l, th.look_regs, ov, ncap, nlook, nquant);
              rf.Some? ==> CM.RegsAgreeInside(res0, rf.value.capture_regs, PIV.CaptureRegs(body))
@@ -10381,7 +10462,13 @@ module LindenElkLiftSim {
                >= PIV.MxAtGidLk(re, AReg.as_arrays(res0).1, AReg.as_arrays(th.look_regs).1,
                                 AReg.as_arrays(res2).1, -1, g)
     ensures g in leafgm && g in PIV.GmOfLive(re, res0, th.look_regs, res2)
-    ensures leafgm[g] == PIV.GmOfLive(re, res0, th.look_regs, res2)[g]
+    // L3b: for a LOOKBEHIND lid the reconstructed engine value is the REVERSED span
+    // (item-0 quirk); the ordered leaf value is its SWAP. NormalizeArr absorbs this
+    // at the top. NO-OP for lookaheads (forward) and capture-free lookbehinds.
+    ensures var looktype := if 0 <= l < |crv.f_look_types| then crv.f_look_types[l] else R.Lookahead;
+            leafgm[g] == (if looktype.Lookbehind?
+                          then LBV.SwapRange(PIV.GmOfLive(re, res0, th.look_regs, res2)[g])
+                          else PIV.GmOfLive(re, res0, th.look_regs, res2)[g])
   {
     var rf := M.FreshBodyMatch(crv, str, l, th.look_regs, ov, ncap, nlook, nquant);
     var gmb := PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs);
@@ -11441,7 +11528,8 @@ module LindenElkLiftSim {
            rf0.Some?
            && var gmb := PIV.GmOfLive(M.VBody(crv, l), rf0.value.capture_regs,
                                       rf0.value.look_regs, rf0.value.quant_regs);
-              g in gmb && leafgm[g] == gmb[g];
+              var looktype := if 0 <= l < |crv.f_look_types| then crv.f_look_types[l] else R.Lookahead;
+              g in gmb && leafgm[g] == (if looktype.Lookbehind? then LBV.SwapRange(gmb[g]) else gmb[g]);
       var rf := M.FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
       assert AReg.get_cp(lk, l).Some?;
       assert l >= 0 && (l as nat) in LTB.LookIds(re);
