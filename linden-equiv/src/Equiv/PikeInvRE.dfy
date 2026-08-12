@@ -3211,6 +3211,42 @@ module LindenElkPikeInv {
     case _ =>
   }
 
+  /** Reversal keeps the CAPTURE id set (`reverse_regex` reverses concatenation
+      order but keeps every capture node). L3b: needed to carry `CapUnique` onto
+      `reverse_regex(body)` for a CAPTURING lookbehind (the engine compiles the
+      capture pass over `compile_to_bytecode(reverse_regex(body))`). */
+  lemma ReverseCapIds(r: R.regex)
+    ensures CapIds(R.reverse_regex(r)) == CapIds(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => ReverseCapIds(r1); ReverseCapIds(r2);
+    case Re_con(r1, r2) => ReverseCapIds(r1); ReverseCapIds(r2);
+    case Re_quant(_, _, _, r1) => ReverseCapIds(r1);
+    case Re_capture(_, r1) => ReverseCapIds(r1);
+    case Re_lookaround(_, _, r1) => ReverseCapIds(r1);
+    case _ =>
+  }
+
+  /** Reversal preserves capture-id UNIQUENESS (the `reverse_regex` twin of
+      `SD.RevRE`'s `CapUniqueRevRE`; the two reversals differ only by an anchor
+      swap, which captures ignore). */
+  lemma ReverseCapUnique(r: R.regex)
+    requires CapUnique(r)
+    ensures CapUnique(R.reverse_regex(r))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      ReverseCapUnique(r1); ReverseCapUnique(r2); ReverseCapIds(r1); ReverseCapIds(r2);
+    case Re_con(r1, r2) =>
+      ReverseCapUnique(r1); ReverseCapUnique(r2); ReverseCapIds(r1); ReverseCapIds(r2);
+    case Re_quant(_, _, _, r1) => ReverseCapUnique(r1);
+    case Re_capture(_, r1) => ReverseCapUnique(r1); ReverseCapIds(r1);
+    case Re_lookaround(_, _, r1) => ReverseCapUnique(r1);
+    case _ =>
+  }
+
   /** Reversal keeps a regex in the plus fragment (the quantifier shapes and
       the nullability side conditions are node-local, and `nullable` itself is
       reversal-invariant). */
