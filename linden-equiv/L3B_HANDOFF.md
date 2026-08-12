@@ -43,13 +43,25 @@
 >   hypotheses) + `ReplayLidCapAgreeFreshLB` (the per-lid backward replay↔fresh capture
 >   agreement, `RegsAgreeInside(result.caps, freshBackward.caps, CaptureRegs(body))`).
 >
-> **NEXT (step 3, the big-bang trigger): `MatchedPosLA` widen (MainTheorem:~3159,
-> `.Lookahead?` → `|| .Lookbehind?`) — ripples to ~10 LiftSim sites — + `FreshBodyMatch`
-> (MainTheorem:~3171) dispatch on `capture_direction` (backward + `reverse_regex(body)`
-> for LB). Then step 4: replace the `FLookLoop` LB value/quant STUB branches with the
-> step-1/2 lemmas + `ReplayLidCapAgreeFreshLB` to establish `FLookLoopValueOk` per LB
-> lid.** `FreshBodyMatch` for LB must be the backward fresh run over `compile_to_bytecode(
-> reverse_regex(body))` — the SAME reference `ReplayLidCapAgreeFreshLB`'s `rf` uses.
+> **STEPS 3 & 4 DONE — the whole `FLookLoop` value machinery handles capturing
+> lookbehinds, all GREEN:** `MatchedPosLA` widened (`+ .Lookbehind?`) and `FreshBodyMatch`
+> dispatched on `capture_direction` (backward + `reverse_regex(body)` for LB;
+> VALUE-IDENTICAL for lookaheads so no LA regression). LB branches rewritten:
+> `FLookLoopValueLift` (**1236/0**), `FLookLoopQuantValueLift` (**1503/0**),
+> `FLookLoopCaptureFrame` (1/0), `FLookLoopQuantFrame` (1/0). New helpers (all 2/0):
+> `ReplayThreadWfLB`, `ReplayLidQuantAgreeFreshLB`, `ReplayQuantFrameLB`, `FreshMatchWfLB`.
+> The LB branches MIRROR the lookahead branches with the step-1/2 lemmas; the
+> suffix/IH/frame/assemble tails are direction-independent (copied verbatim).
+>
+> **RESIDUAL RED now = steps 6–8 only:** the gate pass `LiftPreserveGatePassLk` LB arm
+> (LiftSim:~4522) + endpoint `L3aEndpointAssembly` LB arm (LiftSim:~11589) — wire the
+> keystone `LkReplayMatchesSpecLB`'s `GmAgreeOn(SwapGm(LkResult), GmOfLive(body,…))`
+> (membership is swap-INVARIANT, so gate COVERAGE needs no swap); the `MainExtraction`
+> reversed-span rework (step 7, `leaf.1 == GmOfLive` is forward-only — relate
+> `NormalizeArr(f)` [item-0 swap] to `CapArrayOfLeaf(specLeaf)` for LB groups); and the
+> oracle-column widening (step 8, `OracleColumnSpec`/`OracleColumnCharacterized`
+> `CaptureFreeRE` → `CapUnique`, matching is capture-independent). Also audit any other
+> `MatchedPosLA`/`FreshBodyMatch` consumer + residual `ReplayFrames`-at-LB call sites.
 >
 > **These WIP code changes are on a clearly-marked checkpoint commit (package RED by
 > design — the value-machinery stubs are stubbed out). Do NOT treat it as green;
