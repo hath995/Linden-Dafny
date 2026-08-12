@@ -11715,11 +11715,21 @@ module LindenElkLiftSim {
           && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
           && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
         assert body == LB;
-        // L3b: the matched lid may be a capturing LOOKBEHIND now — no lookahead pin.
-        // InsidePresentResBridge / NormRangeFromSwap absorb the direction via f_look_types.
+        // L3b: the matched lid is a POSITIVE capturing look — lookAHEAD or lookBEHIND
+        // (negatives are capture-free, so g in CapIds(body) refutes them). This pin keeps
+        // the MatchedPosLA VC cheap; without it the SMT search blows up (2 timeouts).
+        assert la.Lookahead? || la.Lookbehind? by {
+          if !(la.Lookahead? || la.Lookbehind?) {
+            assert NR.CaptureFreeRE(body);
+            PIV.CaptureFreeNoCapIds(body);
+            assert g in PIV.CapIds(body);
+          }
+        }
         assert M.MatchedPosLA(crv, lk, lid as int) by {
           assert 0 <= (lid as int) < |crv.f_look_types|;
           assert crv.f_look_types[lid as int] == la;
+          assert AReg.get_cp(lk, lid as int).Some?;
+          assert la.Lookahead? || la.Lookbehind?;
         }
         assert forall c: nat :: c in PIV.CapIds(re) && AI.get_idx(res0.a_clk, CP.start_reg(c as int)) < 0
                                ==> AI.get_idx(res0.a_cp, CP.start_reg(c as int)) < 0;
