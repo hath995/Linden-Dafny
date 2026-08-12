@@ -45,6 +45,66 @@
 >   new oracle-column coverage (part of item #3/#6).
 > The keystone `LkReplayMatchesSpecLB` (item 4, `LookBehindKeystone.dfy`) supplies
 > the value the STUBS need; the flip + these repairs are the remaining #1/#2/#3/#5/#6.
+>
+> **INTEGRATION BUILD ORDER (the remaining capstone; sub-lemma map).** Groundwork
+> landed: `ReverseCapIds`/`ReverseCapUnique` (`PikeInvRE.dfy`, commit `8ceb5be`) —
+> `reverse_regex` preserves cap ids + uniqueness (the engine compiles the LB capture
+> pass over `compile_to_bytecode(reverse_regex(body))`, so every backward frame needs
+> `CapUnique(reverse_regex(body))`). Remaining, in dependency order:
+> 1. **Backward capture frames** (mirror the forward ones; the engine cores are
+>    already direction-generic — `CM.FFindMatchCapWriteFrame` ClockMono:1058,
+>    `FFindMatchRegsWf` MainTheorem:2093 — so the twins are mechanical):
+>    - `ReplayCaptureFrameLB` / `ReplayPlusFrameLB` (twin of `ReplayCaptureFrame`/
+>      `ReplayPlusFrame` MainTheorem:3025) over `bytecode==compile_to_bytecode(
+>      reverse_regex(body))`, `dir==Backward`, framing on `CaptureRegs(reverse_regex
+>      (body))==CaptureRegs(body)` (via `ReverseCapIds`). `FNulledPlusIdentity` and
+>      `NoLookWriteBody` are dir-generic / need a `reverse_regex` look-free twin.
+>    - WIDEN `FFindMatchPlusOvStableLB` (MainTheorem:3119): its `CaptureFreeRE(body)`
+>      is NOT load-bearing (used only to get `CapUnique(reverse_regex(body))`) — swap
+>      in `CapUnique(body)`+`ReverseCapUnique`. `ReplayThreadWfLA` needs NO twin (WF
+>      comes inline from dir-generic `FFindMatchRegsWf`, as the current LB stub does).
+> 2. **`ReplayLidCapAgreeFreshLB`** — the per-lid replay↔fresh cap agreement. NOT a
+>    reuse of `ReplayLidCapAgreeFresh` (3214, Forward-hardcoded via `ReplayCapAgreeFresh`
+>    4407): its LB analogue IS the keystone. But note the keystone's fresh reference
+>    is `rfF` = a FORWARD run of `compile_to_bytecode(SD.RevRE(body))` on `Reverse(str)`
+>    at `Mirror(cp,n)`, carrying the value as `GmOfLive(body, MirrorRegs(rfF...))` —
+>    NOT `FreshBodyMatch` (which is forward-over-`body`, wrong for LB). So this lemma
+>    dispatches into `LkReplayMatchesSpecLB`/`LBEngineLeaf`.
+> 3. **`MatchedPosLA` widening** (MainTheorem:3159, currently `.Lookahead?`-only) →
+>    `.Lookahead? || .Lookbehind?`. RIPPLES to ~10 `LiftSim.dfy` call sites (190,
+>    2422, 3609, 10042, 11439, …) + the value/quant lifts' skip logic — the big-bang
+>    trigger. Also make **`FreshBodyMatch`** (MainTheorem:3171) dispatch on
+>    `capture_direction` (backward + `reverse_regex(body)` for LB), OR restate
+>    `FLookLoopValueOk`/`FLookLoopQuantValueOk` (3184/3907) for LB against the reversed
+>    fresh form `GmOfLive(RevRE(body), MirrorRegs(rfF))`.
+> 4. **Value/quant lift LB branches** (`FLookLoopValueLift` else at MainTheorem:3848;
+>    `FLookLoopQuantValueLift` LB branch 4204 — the QUANT branch ALREADY runs the
+>    backward replay + WF + IH threading, a proven structural TEMPLATE, it just skips
+>    the value): replace the capture-free stub with the backward frames (#1) +
+>    `ReplayLidCapAgreeFreshLB` (#2) to establish the per-lid LB value.
+> 5. **Fragment flip + the 4 ensures roots** (`LookBehindFragmentRE:541`/`Raw:566`;
+>    `OE.LmOfInv`, `LmOfInvL3a`, `LookRowsFromTablesL3a`, `GateStaticsSweepRE`): drop
+>    the `(la.Lookbehind? ==> CaptureFreeRE(body))` conjunct from their ensures.
+> 6. **Gate pass + endpoint** (`LiftPreserveGatePassLk` LiftSim:4522, `L3aEndpointAssembly`
+>    LiftSim:11589): replace the capture-free arm with a value-carrying `Lookbehind?`
+>    arm wiring `LkReplayMatchesSpecLB`'s `GmAgreeOn(SwapGm(LkResult), GmOfLive(body,…))`.
+>    Membership is swap-invariant, so gate coverage (`g in … ==> g in gm2`) needs no swap.
+> 7. **`MainExtraction` rework** (MainTheorem:4843): its precondition `leaf.1 == GmOfLive`
+>    is FORWARD-ONLY (for a LB group, spec leaf is ordered but `GmOfLive` is reversed —
+>    they DIFFER by `SwapGm`). Change it to relate `NormalizeArr(f)` [item-0 swap active]
+>    directly to `CapArrayOfLeaf(specLeaf)` through the per-group swap; the item-0
+>    `GmOfCapArrayBridge` stays the forward bridge, a NEW lookbehind-aware bridge sits
+>    beside it. `FirstLeafOrdered` (item 0) still gives the spec leaf's ordering.
+> 8. **Oracle-column coverage gap**: `OracleColumnSpec` (OracleSpec:353) /
+>    `OracleColumnCharacterized` (OracleDecomp:1477) only SPECIFY capture-free LB gates.
+>    A capturing LB gate matches identically to its capture-free skeleton (matching is
+>    capture-independent), so widen their `CaptureFreeRE` to `CapUnique` — but AUDIT
+>    whether their proofs use capture-freeness beyond `CapUnique(reverse_regex(body))`.
+>
+> Verify each new frame standalone (`--filter-symbol=…`) before the #3 big-bang, which
+> re-verifies `FLookLoopValueLift`/`QuantValueLift` (heavy — use `{:isolate_assertions}`)
+> + the `LiftSim` `MatchedPosLA` consumers. No `.doo` rebuild needed unless a
+> linden-reasoning file changes.
 
 > **Session 12 (2026-08-11) — ITEM 4 (the backward value crux) is COMPLETE.**
 > New verified file `linden-equiv/src/Equiv/LookBehindKeystone.dfy` (**769/0**),
