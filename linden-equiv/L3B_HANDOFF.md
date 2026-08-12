@@ -1,4 +1,50 @@
-# L3b Handoff — captures inside positive LOOKBEHINDS (updated 2026-08-11)
+# L3b Handoff — captures inside positive LOOKBEHINDS (updated 2026-08-12)
+
+> **Session 13 (2026-08-12) — ITEM 0 (the `NormalizeArr` reversed-span swap) is
+> COMPLETE (dormant).** Commit `5a94f24`, three files, top-level `MainTheoremL3`
+> re-verifies **1854/0**.
+> - `NormalizeArr` (linden-reasoning/`Spec.dfy`) widened: a reversed pair (both
+>   `>= 0`, start slot `>` end slot) is swapped back to `(start,end)`. NO-OP for
+>   forward/unset groups, so L1/L2/L3a are undisturbed. Needs a `lem pack` rebuild
+>   (done) to propagate the new `.doo` into linden-equiv.
+> - Exactly ONE proof unfolds `NormalizeArr` element-wise — `PIV.GmOfCapArrayBridge`;
+>   it gained a "no reversed pairs" precondition (`f[2g] <= f[2g+1]` for forward
+>   groups), discharged at its sole caller `MainTheorem.MainExtraction` via the new
+>   **`FirstLeafOrdered`** (+ `OrderedGm`/`GMUpdateOrdered`/`TreeResOrdered`) — a
+>   clean structural induction: ordering is a LOCAL per-range property preserved by
+>   every `TreeRes` step incl. the `LK`-node merge, needing none of `FirstLeafClosed`'s
+>   pending-close bookkeeping (`GMClose` always orders min/max; `GMOpen` opens; `GMReset`
+>   removes). `leaf.1 == GmOfLive` ties the ordered spec leaf to the register array.
+> - The swap is **dormant** until item 1 admits capturing lookbehinds and their
+>   reversed spans reach `NormalizeArr`. It is the spec-side dual of the keystone's
+>   `SwapGm`, reconciling the engine's raw reversed readout with the ordered spec
+>   answer at `MainExtraction`.
+>
+> **ITEM 1 (fragment flip) is NOT a standalone green commit — it is the integration
+> trigger.** Flipping `LookBehindFragmentRE`'s `Re_lookaround` clause
+> (`NfaRepRE.dfy:541`, `(la.Lookahead? || CaptureFreeRE(r1))` → add `|| la.Lookbehind?`)
+> and its raw twin (`:566`) WEAKENS the fragment, so everything that derives "a
+> lookbehind body is capture-free" breaks. Blast-radius map (do these together as
+> the integration, wiring in `LkReplayMatchesSpecLB`):
+> - **4 ENSURES roots break** (they PRODUCE the capture-free fact): `OE.LmOfInv`
+>   (`OracleEntry.dfy:117`), `LmOfInvL3a` (`MainTheorem.dfy:4551`),
+>   `LookRowsFromTablesL3a` (`MainTheorem.dfy:4724`), `GateStaticsSweepRE`/`GateStaticAt`
+>   (`LiftSim.dfy:4170`/`4081`).
+> - **~6 capture-free STUBS go live** (branches assuming "nothing to do"): the
+>   lookbehind arms of `FLookLoopCaptureFrame` (`MainTheorem.dfy:2670`),
+>   `FLookLoopQuantFrame` (`:2750`), `FLookLoopValueLift` (`:3648` — item #5),
+>   `FLookLoopQuantValueLift` (`:3970`); `LiftPreserveGatePassLk` (`LiftSim.dfy:4522`
+>   — item #6); `L3aEndpointAssembly` (`LiftSim.dfy:11589`).
+> - **~10 helper preconditions become unmeetable** at capturing-lookbehind sites:
+>   `ReplayFrames` (`:2792`), `FFindMatchPlusOvStableLB` (`:3036`), `OracleColumnSpec`
+>   (`OracleSpec.dfy:353`), `OracleColumnCharacterized` (`OracleDecomp.dfy:1477`),
+>   `CaptureCodeClassified`, `NoCaptureInstrRE` family — plus the raw-side stub
+>   `AnnotateLookBehindFragment` (`NfaRepRE.dfy:667`) and `OracleRegexPlusFragment`
+>   (`:703`). **Real coverage gap:** `OracleColumnSpec`/`OracleColumnCharacterized`
+>   only SPECIFY capture-free lookbehind gates — capturing lookbehind gates need
+>   new oracle-column coverage (part of item #3/#6).
+> The keystone `LkReplayMatchesSpecLB` (item 4, `LookBehindKeystone.dfy`) supplies
+> the value the STUBS need; the flip + these repairs are the remaining #1/#2/#3/#5/#6.
 
 > **Session 12 (2026-08-11) — ITEM 4 (the backward value crux) is COMPLETE.**
 > New verified file `linden-equiv/src/Equiv/LookBehindKeystone.dfy` (**769/0**),
