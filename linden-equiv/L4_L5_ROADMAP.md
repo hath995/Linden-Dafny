@@ -180,6 +180,18 @@ parametrized) for trees with lookaround nodes. This is genuine spec-side proof w
 free" headline understates. Scaffolding ready: `NestedFragmentRE`/`NestDepth` + the embeddings
 (NfaRepRE) from W1.
 
+**W4 spec-half BRICK 1 DONE (commit 6ad4742) — the sharpened risk RESOLVED.** `TreeResGmFrameLk`
+(MainTheorem.dfy, after TreeResGmFrame) is the gm-frame GENERALIZED to LK-node trees, under
+`CE.LkConfinedTree(t, S)` instead of `NoLKTree(t)`. The move that cracks it: a confined look body is
+`GmConfinedTree(_, S)` ⇒ LK-FREE (`GmConfinedNoLK`), so the ORIGINAL `TreeResGmFrame` discharges each
+look body and only the CONTINUATIONS recurse — the depth-1 gm-frame lifts through exactly ONE layer
+of gates, which is one step of the keystone's depth induction. Filter-verified 2/0 (full-file
+MainTheorem sweep deferred — additive, no existing symbol touched). NEXT W4 spec-half bricks (the
+keystone depth induction proper, now UNBLOCKED — they can consume `TreeResGmFrameLk` where they used
+`TreeResGmFrame`): generalize `BodyTreeAtCp` (2888, the `{}`-confinement → depth-(k−1) keystone),
+then `ReplayCapIsBodyLeaf`, `LkReplayMatchesSpec`(/`LB`), `ReplayLidCapQuantAgreeFresh`, inducting on
+`NestDepth`.
+
 ### L5+ ladder pricing (validated 2026-08-13; corrects §3's one-paragraph sketch)
 
 The `Supported` boundary today: `Supported(p) == NR.LookBehindFragmentRaw(p) && T.Latin1Wf(p)`
