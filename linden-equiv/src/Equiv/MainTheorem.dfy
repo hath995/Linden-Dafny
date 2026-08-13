@@ -1115,18 +1115,61 @@ module LindenElkMain {
     case _ =>
   }
 
-  // ---- L3b backward-closedness helpers (bodies supplied separately; verified) ----
-  lemma {:axiom} GroupOkLNoLkBr(r: L.Regex)   // reverse of NoLkBrGroupOkL (identical defs)
+  // ---- L3b backward-closedness helpers (identical-def bridge + mirror closedness) ----
+  /** Reverse of `NoLkBrGroupOkL`: `SD.GroupOkL` and `EL.NoLkBrL` have IDENTICAL
+      definitions (both recurse through Disjunction/Sequence/Quantified/Group and
+      reject LookaroundR/Backreference), so group-OK implies look-/backref-free. */
+  lemma GroupOkLNoLkBr(r: L.Regex)
     requires SD.GroupOkL(r)
     ensures EL.NoLkBrL(r)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => GroupOkLNoLkBr(r1); GroupOkLNoLkBr(r2);
+    case Sequence(r1, r2) => GroupOkLNoLkBr(r1); GroupOkLNoLkBr(r2);
+    case Quantified(_, _, _, r1) => GroupOkLNoLkBr(r1);
+    case Group(_, r1) => GroupOkLNoLkBr(r1);
+    case _ =>
+  }
 
-  lemma {:axiom} MirrorGmClosedGm(gm: LG.GroupMap, n: nat)
+  /** The mirror preserves closedness both ways: `MirrorRange` maps a closed range
+      (endIdx.Some) to a closed range and an open range (None) to open, and
+      `MirrorGm` keeps the domain, so `ClosedGm` transfers across the mirror. */
+  lemma MirrorGmClosedGm(gm: LG.GroupMap, n: nat)
     requires TRM.GmInBounds(gm, n)
     ensures ClosedGm(gm) <==> ClosedGm(TRM.MirrorGm(gm, n))
+  {
+    forall g
+      ensures g in TRM.MirrorGm(gm, n) <==> g in gm
+      ensures g in gm ==> (TRM.MirrorGm(gm, n)[g].endIdx.None? <==> gm[g].endIdx.None?)
+    {
+      TRM.MirrorGmOpen(gm, n, g);
+    }
+  }
 
-  lemma {:axiom} MirrorGmOpenEmpty(gm: LG.GroupMap, n: nat)
+  /** Having no open groups transfers across the mirror (open<->open, domain kept):
+      `OpenOf(gm) == {}` is `ClosedGm(gm)`, which `MirrorGmClosedGm` carries over. */
+  lemma MirrorGmOpenEmpty(gm: LG.GroupMap, n: nat)
     requires TRM.GmInBounds(gm, n) && OpenOf(gm) == {}
     ensures OpenOf(TRM.MirrorGm(gm, n)) == {}
+  {
+    assert ClosedGm(gm) by {
+      forall g | g in gm ensures gm[g].endIdx.Some? {
+        if gm[g].endIdx.None? { assert g in OpenOf(gm); }
+      }
+    }
+    MirrorGmClosedGm(gm, n);
+    forall g | g in OpenOf(TRM.MirrorGm(gm, n)) ensures false {
+      assert g in TRM.MirrorGm(gm, n) && TRM.MirrorGm(gm, n)[g].endIdx.None?;
+    }
+  }
+
+  /** `NoDupSeq` (local) and `CDE.NoDupG` are the SAME predicate (identical
+      `forall i,j` definitions) — bridge for `CloseDiscBody`'s `NoDupG` requirement. */
+  lemma NoDupSeqIsNoDupG(s: seq<LG.GroupId>)
+    requires NoDupSeq(s)
+    ensures CDE.NoDupG(s)
+  {}
 
   /** L3b CRUX: a capturing lookBEHIND body's first leaf CLOSES its groups. The
       spec-side closedness machinery (`FirstLeafClosedNoLk`) is forward-only, so we
