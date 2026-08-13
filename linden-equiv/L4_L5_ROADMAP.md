@@ -122,15 +122,28 @@ lid whose body contains g" is now well-defined + subset-minimal. NestInv 149/0. 
 rewiring — `GmtTieInside`'s flat owner existential → innermost, and `LmOfBodiesDisjoint`
 (MainTheorem:5461) → the forest — is W6 (changes existing lemmas, wants the widened fragment live).
 
-**W3 brick 1 DONE (commit d8d993d) — the partial-view model + erasure, purely additive.**
-`OracleReach.dfy` now has `EpsEdgeV`/`ReachFV`/`ReachesWriteV` (blind model + `ov` + real gate
-edges) and `EpsEdgeVErasure`/`ReachFVErasureFwd`/`ReachFVErasureBwd`/`ReachesWriteVErasure` (on
-`NoOracleReads` code the V-model collapses to the blind model for every view — proved by paired
-least-lemma inductions). OracleReach 43/0, no existing proof touched. NEXT W3 bricks (these DO
-iterate against heavier files — want the ActionsTreeRepFRE decomposition + `AllGatesAbove` first):
-(2) `AllGatesAbove(bc,i)` predicate + drop `NoOracleReads` from `LidBuildOk`; (3) weaken
-`AdvanceOvIndep`/`FindMatchOvIndep` to `AgreeAbove(ov1,ov2,k)`; (4) wire the weakened form into
-`FBuildLidsCharacterized`'s high→low induction (column k against already-correct columns >k).
+**W3 bricks 1–3 DONE (commits d8d993d, 011f60c, 76fa0c2) — all purely additive.**
+- Brick 1 (OracleReach 43/0): `EpsEdgeV`/`ReachFV`/`ReachesWriteV` (blind model + `ov` + real gate
+  edges) and the erasure `EpsEdgeVErasure`/`ReachFVErasureFwd`/`Bwd`/`ReachesWriteVErasure` (on
+  `NoOracleReads` code the V-model collapses to the blind model for every view; paired least-lemma
+  inductions).
+- Brick 2 (OracleSweep 25/0): `AllGatesAbove(c,k)` (generalizes `NoOracleReads`: gates read >k),
+  `AgreeAbove(a,b,k)`, `AgreeAboveMonotone`, and the crux `GateReadAgrees` (AllGatesAbove +
+  AgreeAbove ⇒ both views answer a gate identically), plus `NoOracleReadsAllGatesAbove`.
+- Brick 3 (OracleSweep 29/0): `AdvanceOvIndepAbove`/`FindMatchOvIndepAbove` — the register-blind
+  independence step now HANDLES GATES. `NoOracleReads` swapped for `AllGatesAbove(c,k) &&
+  WritesOnlyLid(c,k)` + an `AgreeAbove(ov1,ov2,k)` premise; the CheckOracle/NegCheckOracle cases
+  (formerly `assert false`) are real via `GateReadAgrees` (both runs branch in lockstep); the
+  WriteOracle case preserves `AgreeAbove(k)` (writes hit column k, not above). `ensures
+  AgreeAbove(ov1',ov2',k)` self-threads. Originals untouched.
+
+**NEXT: W3 brick 4 (the assembly) — wire `AdvanceOvIndepAbove`/`FindMatchOvIndepAbove` into the
+build-correctness proof.** (a) generalize `CompileToWriteClassified`/`NoOracleInstrRE` (NfaRepRE)
+from `LookFreeRE` to `LidsWellNested`-backed `AllGatesAbove(bc, lid)`; (b) drop `NoOracleReads` from
+`LidBuildOk` (OracleBuild:158), replace with `AllGatesAbove(bc, i)`; (c) rework
+`FBuildLidsCharacterized` (OracleBuild:388) as a high→low induction — column k built against
+already-correct columns >k, feeding `AdvanceOvIndepAbove` with `AgreeAbove(_, _, k)`. This DOES
+iterate against OracleBuild/NfaRepRE compile lemmas; it is the remaining crux assembly.
 
 ### L5+ ladder pricing (validated 2026-08-13; corrects §3's one-paragraph sketch)
 
