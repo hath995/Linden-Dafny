@@ -5313,6 +5313,77 @@ module LindenElkMain {
       TreeResGmFrame(t1, LG.GMUpdate(a, LC.Idx(inp), gm1), LG.GMUpdate(a, LC.Idx(inp), gm2), inp, dir, S);
   }
 
+  /** A `GmConfinedTree` has no `LK`/`LKFail` node (those cases are `false`), so
+      it is a `NoLKTree` — the bridge that lets the ORIGINAL `TreeResGmFrame`
+      apply to a confined look body inside the L4 gm-frame below. */
+  lemma GmConfinedNoLK(t: LT.Tree, S: set<LG.GroupId>)
+    requires CE.GmConfinedTree(t, S)
+    ensures EL.NoLKTree(t)
+    decreases t
+  {
+    match t
+    case Choice(t1, t2) => GmConfinedNoLK(t1, S); GmConfinedNoLK(t2, S);
+    case Read(_, t1) => GmConfinedNoLK(t1, S);
+    case Progress(t1) => GmConfinedNoLK(t1, S);
+    case GroupActionT(_, t1) => GmConfinedNoLK(t1, S);
+    case AnchorPass(_, t1) => GmConfinedNoLK(t1, S);
+    case ReadBackRef(_, t1) => GmConfinedNoLK(t1, S);
+    case _ =>
+  }
+
+  /** L4 SPEC-side gm-frame, GENERALIZED to LK-node trees — the lemma the W4
+      keystone needs where `TreeResGmFrame` currently forces `NoLKTree(t)`. Under
+      `LkConfinedTree(t, S)` (every look body is confined to `S`, hence LK-free),
+      `TreeRes` from `S`-agreeing gms lands at the same position with `S`-agreeing
+      leaf gms. Each look body is discharged by the ORIGINAL `TreeResGmFrame`
+      (it is `NoLKTree` by `GmConfinedNoLK`); only the CONTINUATIONS recurse — so
+      the depth-1 gm-frame lifts through one layer of gates, exactly what one step
+      of the keystone's depth induction consumes. */
+  lemma TreeResGmFrameLk(t: LT.Tree, gm1: LG.GroupMap, gm2: LG.GroupMap, inp: LC.Input,
+                         dir: WP.Direction, S: set<LG.GroupId>)
+    requires CE.LkConfinedTree(t, S)
+    requires GmAgreeOn(gm1, gm2, S)
+    ensures (LT.TreeRes(t, gm1, inp, dir).None? <==> LT.TreeRes(t, gm2, inp, dir).None?)
+    ensures LT.TreeRes(t, gm1, inp, dir).Some? ==>
+              LT.TreeRes(t, gm1, inp, dir).value.0 == LT.TreeRes(t, gm2, inp, dir).value.0
+              && GmAgreeOn(LT.TreeRes(t, gm1, inp, dir).value.1, LT.TreeRes(t, gm2, inp, dir).value.1, S)
+    decreases t
+  {
+    match t
+    case Mismatch =>
+    case Match =>
+    case Choice(t1, t2) =>
+      TreeResGmFrameLk(t1, gm1, gm2, inp, dir, S);
+      TreeResGmFrameLk(t2, gm1, gm2, inp, dir, S);
+    case Read(c, t1) =>
+      TreeResGmFrameLk(t1, gm1, gm2, LC.AdvanceInputP(inp, dir), dir, S);
+    case ReadBackRef(brStr, t1) =>
+      TreeResGmFrameLk(t1, gm1, gm2, LC.AdvanceInputN(inp, |brStr|, dir), dir, S);
+    case Progress(t1) =>
+      TreeResGmFrameLk(t1, gm1, gm2, inp, dir, S);
+    case AnchorPass(a, t1) =>
+      TreeResGmFrameLk(t1, gm1, gm2, inp, dir, S);
+    case GroupActionT(a, t1) =>
+      GMUpdateAgree(a, LC.Idx(inp), gm1, gm2, S);
+      TreeResGmFrameLk(t1, LG.GMUpdate(a, LC.Idx(inp), gm1), LG.GMUpdate(a, LC.Idx(inp), gm2), inp, dir, S);
+    case LK(lk, tlk, t1) =>
+      // the confined body is LK-free -> the ORIGINAL frame discharges it
+      GmConfinedNoLK(tlk, S);
+      TreeResGmFrame(tlk, gm1, gm2, inp, L.LkDir(lk), S);
+      if L.Positivity(lk) {
+        match LT.TreeRes(tlk, gm1, inp, L.LkDir(lk))
+        case None =>
+        case Some(pair1) =>
+          var pair2 := LT.TreeRes(tlk, gm2, inp, L.LkDir(lk)).value;
+          TreeResGmFrameLk(t1, pair1.1, pair2.1, inp, dir, S);
+      } else {
+        match LT.TreeRes(tlk, gm1, inp, L.LkDir(lk))
+        case None => TreeResGmFrameLk(t1, gm1, gm2, inp, dir, S);
+        case Some(_) =>
+      }
+    case LKFail(lk, tlk) =>
+  }
+
   /** §4b KEYSTONE: the per-lookaround value theorem. For a positive lookAHEAD
       with a look-free body, the engine replay from the main thread's `cap/lk/qt`
       MATCHES the spec `LkResult` on the body's own groups. Composes every §4b
