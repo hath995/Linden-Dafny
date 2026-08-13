@@ -72,6 +72,39 @@ module LindenElkOracleSweep {
     forall pc :: 0 <= pc < |c| ==> !c[pc].Accept?
   }
 
+  /** L4 generalization of `NoOracleReads`: every oracle-consulting instruction
+      reads a column STRICTLY ABOVE `k`. A look body's build code at column `k`
+      satisfies this — by `LidsWellNested` its inner gates read only the
+      strictly-higher (already-built) inner columns. `NoOracleReads` is the
+      `k = +inf` special case (no gates at all). */
+  ghost predicate AllGatesAbove(c: RB.code, k: int) {
+    forall pc :: 0 <= pc < |c| ==>
+      (c[pc].CheckOracle? ==> c[pc].col > k) && (c[pc].NegCheckOracle? ==> c[pc].ncl > k)
+  }
+
+  /** Gate-free code has all gates above any floor (vacuously). The bridge that
+      lets the existing `NoOracleReads` sweep results feed the L4 gated form. */
+  lemma NoOracleReadsAllGatesAbove(c: RB.code, k: int)
+    requires NoOracleReads(c)
+    ensures AllGatesAbove(c, k)
+  {}
+
+  /** The crux the weakened independence step (W3 brick 3) turns on: if every
+      gate reads above `k` and the two views agree above `k`, then at any gate
+      the two views return the SAME answer — so both runs take the same branch,
+      even though the step now READS the oracle. */
+  lemma GateReadAgrees(c: RB.code, k: int, a: LOr.OracleView, b: LOr.OracleView, cp: int, pc: nat)
+    requires AllGatesAbove(c, k)
+    requires 0 <= pc < |c| && (c[pc].CheckOracle? || c[pc].NegCheckOracle?)
+    requires AgreeAbove(a, b, k)
+    ensures var l := if c[pc].CheckOracle? then c[pc].col else c[pc].ncl;
+            LOr.view_get_oracle(a, cp, l) == LOr.view_get_oracle(b, cp, l)
+  {
+    var l := if c[pc].CheckOracle? then c[pc].col else c[pc].ncl;
+    assert l > k;                    // AllGatesAbove at pc
+    assert CellAgree(a, b, cp, l);   // AgreeAbove at (cp, l)
+  }
+
   // ===========================================================================
   // Oracle-view plumbing
   // ===========================================================================
@@ -233,6 +266,22 @@ module LindenElkOracleSweep {
   ghost predicate CellAgree(a: LOr.OracleView, b: LOr.OracleView, cp: int, l: int) {
     LOr.view_get_oracle(a, cp, l) == LOr.view_get_oracle(b, cp, l)
   }
+
+  /** Two views agree on every column STRICTLY ABOVE `k` — the L4 weakening of
+      whole-view agreement. In the high->low build, column `k`'s sweep runs
+      against two views that already agree on the finished columns `> k`; that
+      is all the gates in column-`k` code read (`AllGatesAbove`), so the run is
+      view-independent exactly on the relevant cells. */
+  ghost predicate AgreeAbove(a: LOr.OracleView, b: LOr.OracleView, k: int) {
+    forall cp: int, l: int :: l > k ==> CellAgree(a, b, cp, l)
+  }
+
+  /** `AgreeAbove` weakens as the floor rises (agreement on more columns implies
+      agreement on fewer). */
+  lemma AgreeAboveMonotone(a: LOr.OracleView, b: LOr.OracleView, k: int, k2: int)
+    requires k <= k2 && AgreeAbove(a, b, k)
+    ensures AgreeAbove(a, b, k2)
+  {}
 
   /** With no oracle reads and no `CheckNullable`, one epsilon closure evolves
       the threads identically against any two oracle views (of equal shape),
