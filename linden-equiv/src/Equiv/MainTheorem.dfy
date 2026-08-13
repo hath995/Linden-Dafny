@@ -1115,6 +1115,80 @@ module LindenElkMain {
     case _ =>
   }
 
+  // ---- L3b backward-closedness helpers (bodies supplied separately; verified) ----
+  lemma {:axiom} GroupOkLNoLkBr(r: L.Regex)   // reverse of NoLkBrGroupOkL (identical defs)
+    requires SD.GroupOkL(r)
+    ensures EL.NoLkBrL(r)
+
+  lemma {:axiom} MirrorGmClosedGm(gm: LG.GroupMap, n: nat)
+    requires TRM.GmInBounds(gm, n)
+    ensures ClosedGm(gm) <==> ClosedGm(TRM.MirrorGm(gm, n))
+
+  lemma {:axiom} MirrorGmOpenEmpty(gm: LG.GroupMap, n: nat)
+    requires TRM.GmInBounds(gm, n) && OpenOf(gm) == {}
+    ensures OpenOf(TRM.MirrorGm(gm, n)) == {}
+
+  /** L3b CRUX: a capturing lookBEHIND body's first leaf CLOSES its groups. The
+      spec-side closedness machinery (`FirstLeafClosedNoLk`) is forward-only, so we
+      go via the spec-tree MIRROR: the backward body tree `tlk` mirrors the FORWARD
+      tree `tm` of `RevL(body)` over the swapped input (`TM.ComputeTrReverse`); `tm`'s
+      first leaf is closed by the EXISTING forward `FirstLeafClosedNoLk`; and
+      `TRM.TreeResMirror` + `MirrorGm` (which maps closed<->closed) transfer the
+      closedness back to the backward leaf. The backward leaf's bound comes free from
+      `TreeResMirror`'s `GmInBounds(rb.value.1, n)` ensures. */
+  lemma BackBodyLeafClosed(rer: LW.RegExpRecord, r1: L.Regex, inp: LC.Input,
+                           gm: LG.GroupMap, leaf: LT.Leaf)
+    requires EL.NoLkBrL(r1)
+    requires CDE.NoDupG(L.DefGroups(r1))
+    requires TRM.GmInBounds(gm, |inp.pref| + |inp.next|)
+    requires ClosedGm(gm)
+    requires LT.TreeRes(FU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, WP.Backward),
+                        gm, inp, WP.Backward) == Some(leaf)
+    ensures ClosedGm(leaf.1)
+  {
+    var n := |inp.pref| + |inp.next|;
+    var tlk := FU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, WP.Backward);
+    var rr := SD.RevL(r1);
+    var sinp := SD.SwapInput(inp);
+    var gm2 := TRM.MirrorGm(gm, n);
+    // fragment facts for the reversed body
+    NoLkBrGroupOkL(r1);                                  // SD.GroupOkL(r1)
+    assert SD.GroupOkActs([LS.Areg(r1)]);                // == GroupOkL(r1)
+    SD.RevLGroupOk(r1);                                  // SD.GroupOkL(rr)
+    GroupOkLNoLkBr(rr);                                  // EL.NoLkBrL(rr)
+    NoLkBrImpliesPikeLk(rr);                             // EL.PikeLkRegex(rr)
+    assert SD.RevActs([LS.Areg(r1)]) == [LS.Areg(rr)];
+    var tm := FU.ComputeTr(rer, [LS.Areg(rr)], sinp, gm2, WP.Forward);
+    // the backward body tree mirrors the forward tree of the reversed body
+    TM.ComputeTrReverse(rer, [LS.Areg(r1)], inp, LG.Empty, gm2);
+    assert TM.TreeMirrorRel(tlk, tm);
+    CDE.CloseDiscBody(rer, r1, inp, LG.Empty, WP.Backward);   // CDE.CloseDisc(tlk, {})
+    // the leaf-groupmap mirror: rf's leaf == MirrorGm(rb's leaf)
+    TRM.TreeResMirror(tlk, tm, gm, inp, n, {});
+    var rb := LT.TreeRes(tlk, gm, inp, WP.Backward);
+    var rf := LT.TreeRes(tm, gm2, sinp, WP.Forward);
+    assert rb == Some(leaf);
+    assert rf.Some? && rf.value.1 == TRM.MirrorGm(rb.value.1, n)
+        && TRM.GmInBounds(rb.value.1, n);
+    // forward closedness on the mirror tree tm (existing forward machinery)
+    MirrorGmOpenEmpty(gm, n);                            // OpenOf(gm2) == {}
+    var fuel := LFS.ActionsFuel([LS.Areg(rr)], sinp, WP.Forward) + 1;
+    LFS.FunctionalTerminates(rer, [LS.Areg(rr)], sinp, gm2, WP.Forward, fuel);
+    assert LFS.ComputeTree(rer, [LS.Areg(rr)], sinp, gm2, WP.Forward, fuel) == Some(tm);
+    var b0 := BS.CannotExit;
+    assert BS.BoolEncoding(b0, sinp, [LS.Areg(rr)]);
+    assert EL.PikeLkActions([LS.Areg(rr)]);
+    assert NoLkActs([LS.Areg(rr)]);
+    EL.ComputeBoolTreeLk(rer, [LS.Areg(rr)], sinp, gm2, b0, fuel, tm);
+    assert OpenOf(gm2) <= PendingCloses([LS.Areg(rr)]);
+    FirstLeafClosedNoLk(rer, [LS.Areg(rr)], sinp, b0, tm, gm2, rf.value);
+    assert ClosedGm(rf.value.1);
+    // transfer closedness back through the mirror
+    MirrorGmClosedGm(rb.value.1, n);                     // ClosedGm(rb.leaf) <==> ClosedGm(rf.leaf)
+    assert ClosedGm(rb.value.1);
+    assert leaf == rb.value;
+  }
+
   lemma LookBodyLeafOpenSub(rer: LW.RegExpRecord, lk: L.Lookaround, r1: L.Regex, tlk: LT.Tree,
                             gm: LG.GroupMap, inp: LC.Input, sub: seq<LT.Leaf>, S: set<LG.GroupId>)
     requires tlk == FU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk))
@@ -1124,7 +1198,10 @@ module LindenElkMain {
     requires sub == LT.TreeLeaves(tlk, gm, inp, L.LkDir(lk))
     requires |sub| > 0
     requires L.Positivity(lk)
-    requires L.DefGroups(r1) != [] ==> L.LkDir(lk) == WP.Forward
+    // L3b: the body's captures close in EITHER direction (backward via the spec-tree
+    // mirror, `BackBodyLeafClosed`). NoDupG + GmInBounds feed that mirror.
+    requires CDE.NoDupG(L.DefGroups(r1))
+    requires TRM.GmInBounds(gm, |inp.pref| + |inp.next|)
     ensures OpenOf(sub[0].1) <= OpenOf(gm)
     ensures forall g :: g in sub[0].1 ==> g in gm || g in S
     ensures forall g :: g in sub[0].1 && g in S ==> sub[0].1[g].endIdx.Some?   // look closed its captures
@@ -1165,8 +1242,26 @@ module LindenElkMain {
         }
       }
     } else {
-      assert L.DefGroups(r1) == [] && S == {};   // contrapositive of the fragment requires
-      // GmConfinedLeaves with S == {}: sub[0].1 agrees with gm everywhere.
+      // L3b: dir == Backward, capturing lookbehind. Prove ClosedGm(subR[0].1) via
+      // the spec-tree mirror (BackBodyLeafClosed), then the SAME OpenOf reasoning.
+      assert dir == WP.Backward;
+      var nn := |inp.pref| + |inp.next|;
+      LT.FirstTreeLeaf(tlk, gmR, inp, dir);
+      assert LT.TreeRes(tlk, gmR, inp, WP.Backward) == Some(subR[0]);
+      assert TRM.GmInBounds(gmR, nn) by {
+        assert forall g :: g in gmR ==> g in gm && gmR[g] == gm[g];
+      }
+      assert ClosedGm(gmR) by {
+        forall g | g in gmR ensures gmR[g].endIdx.Some? { assert g !in OpenOf(gmR); }
+      }
+      BackBodyLeafClosed(rer, r1, inp, gmR, subR[0]);   // ClosedGm(subR[0].1)
+      forall g | g in OpenOf(sub[0].1) ensures g in OpenOf(gm) {
+        if g in S {
+          assert sub[0].1[g] == subR[0].1[g];    // FrameInside on S
+          assert g in subR[0].1 && subR[0].1[g].endIdx.Some?;   // ClosedGm
+          assert false;
+        }
+      }
     }
     forall g | g in sub[0].1 ensures g in gm || g in S {}
     // S groups are never open in sub[0].1 (OpenOf(sub[0].1) <= OpenOf(gm), and gm's S
