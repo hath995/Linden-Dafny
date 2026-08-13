@@ -145,6 +145,28 @@ from `LookFreeRE` to `LidsWellNested`-backed `AllGatesAbove(bc, lid)`; (b) drop 
 already-correct columns >k, feeding `AdvanceOvIndepAbove` with `AgreeAbove(_, _, k)`. This DOES
 iterate against OracleBuild/NfaRepRE compile lemmas; it is the remaining crux assembly.
 
+**W3 brick 4 OUTCOME (commits 0785d73, 7136d47): 4a+4b DONE, 4c groundwork done, 4c-full BLOCKED
+on TWO walls.** 4a = `GatesAboveInstrRE`/`GatesAboveClassified` (compile gate-classification). 4b =
+`LidBuildOkAbove` (AllGatesAbove replaces NoOracleReads) + `AllLidsBuildOkAbove` establisher. 4c
+groundwork = the V-model reconciliation layer + the nested-correctness THEOREM SHAPES
+(`LidReachesV`, `LidReachesVErasure`, `FBuildLidsCharacterizedV`, `FBuildOracleCorrectV`) all verified
+on the depth-1 fragment (OracleBuild 54/0). The full gated high→low induction is BLOCKED on:
+(1) a missing `SweepCharacterizationV` — a GATE-FUL V-model sweep characterization (for
+`AllGatesAbove` code, `FFindMatch` writes exactly the `ReachesWriteV` cells). `FindMatchOvIndepAbove`
+proves view-INDEPENDENCE, not WHERE writes land; `SweepCharacterization` is `NoOracleReads`-only. This
+is genuine heavy new work: re-derive OracleReach soundness (`FindMatchReachSound`) + completeness
+(`ClosureInv`/`AdvanceReachComplete`) over `ReachFV`/`EpsEdgeV` with the two real gate edges.
+(2) the SAME depth-1 wall as the keystone — the compile→`NfaRepRE` correspondence
+(`CompileNfaRepRE`/`FreshCorrectRE`/`CompileToWriteRep`) still requires `LookBehindFragmentRE`, so no
+nested regex flows through `FFullCompilation` with a structural proof yet.
+
+**⚠ CORRECTION to the re-pricing below:** the oracle-build side is NOT fully "unaffected". Its MODEL
+layer (ReachFV, AdvanceOvIndepAbove, gate-classification, the V-model theorem shapes) generalizes
+cleanly and is DONE — but its compile-CORRESPONDENCE (`CompileNfaRepRE`) hits the SAME depth-1
+`LookBehindFragmentRE` wall as the keystone's `StaticOkRE`. So the wall is the ONE central blocker for
+BOTH halves of depth-k: generalize the `LookBehindFragmentRE`-gated static/correspondence stack to
+`NestedFragmentRE`, PLUS build `SweepCharacterizationV`. (Pricing scout in flight.)
+
 **W4 ENGINE HALF VALIDATED — CONFIRMED FREE (scout 2026-08-13, read-only).** The register-blind
 bisimulation is genuinely gate-agnostic; every look-free hypothesis in the keystone chain lives on
 the SPEC side. Evidence: `FAdvanceEpsilonRel` (ClockMono.dfy:526) requires only a processed-size
