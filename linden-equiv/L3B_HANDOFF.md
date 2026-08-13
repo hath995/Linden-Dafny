@@ -1,12 +1,43 @@
 # L3b Handoff — captures inside positive LOOKBEHINDS (updated 2026-08-13)
 
-## ⛔ REMAINING WORK: backward tree-closedness (the ONE gap left) — full recipe below
+## ★★★ L3b GENUINELY COMPLETE — WHOLE PACKAGE GREEN (branch l3b-gate-swapgm)
 
-The full-file sweep (2026-08-13) proved the prior "COMPLETE" was masked across THREE layers.
-Value-lift + oracle: DONE (d066355, green). Fragment/confinement/tree-rep: DONE (ae3a7b4,
-green — PikeLkRegex/LkBodiesInS/guards widened for positive-BACKWARD captures). **The ONE
-remaining gap:** `LookBodyLeafOpenSub` (MainTheorem.dfy) backward branch needs `ClosedGm` of a
-capturing lookbehind body's first leaf, but the spec-side closedness machinery
+**All 38 linden-equiv files verify with 0 errors** (full per-file sweep: MainTheorem 2961/0,
+LiftSim 9537/0, ActionsTreeRepRE 5276/0, NfaRepRE 1328/0, LookBehindKeystone 1356/0, …). Captures
+inside POSITIVE LOOKBEHINDS (`(?<=(a))`, `(?<=(ab))c`) are FULLY PROVEN. This is a whole-package
+proof, NOT a filter-verified top theorem (the mistake that masked the holes below).
+
+The earlier "COMPLETE at af4f063" was masked across THREE layers, all now closed:
+1. **Value-lift** `FreshBodyMatchCapWf` — was forward-only; direction-generic case-split
+   (FreshMatchWf / FreshMatchWfLB, MatchedPosLA positivity). [d066355]
+2. **Oracle characterization** `OracleColumnSpec`/`OracleColumnCharacterized`/`FBuildOracleCorrectAt`/
+   `LookTablesLidBuildOk` — required `CaptureFreeRE(body)`; now reason over `remove_capture(body)`
+   (what `oracle_regex` is built over) + `MatchesRemoveCapture` bridge. [d066355]
+3. **Fragment/confinement + spec-tree closedness** — `PikeLkRegex`/`LkBodiesInS` + ~12 forward-only
+   guards widened to admit positive-BACKWARD captures [ae3a7b4], then the HARD one: the spec-side
+   closedness machinery (`FirstLeafClosedNoLk`/`BoolTreeLk`) is FORWARD-only. [034576f]
+
+### The backward-closedness crux (034576f) — how the forward-only spec-tree layer was bypassed
+`LookBodyLeafOpenSub`'s backward branch needs `ClosedGm` of a capturing lookbehind body's first
+leaf. Instead of duplicating the ~200-line `BoolTreeLk` machinery for backward, `BackBodyLeafClosed`
+uses the spec-tree MIRROR (all in linden-reasoning): the backward body tree mirrors the FORWARD
+tree of `RevL(body)` over the swapped input (`TM.ComputeTrReverse`), whose first leaf is closed by
+the EXISTING forward `FirstLeafClosedNoLk`, and `TRM.TreeResMirror` + `MirrorGm` (closed<->closed)
+transfer closedness back. Then the `FirstLeafClosed`/`FirstLeafValueConfined` least-lemmas thread
+`GmInBounds(gm,n)` (leaf bound via the general `TreeLeavesInBounds`) and — crucially — the
+PER-REGEX `NoDupRegsActs` invariant. **Gotcha:** `NoDupSeq(AllDefsActs)` is UNSOUND (the Quantified
+unfold `[Areg(r1),Areg(q')]` duplicates `DefGroups(r1)`); use `NoDupRegsActs(acts) := forall i ::
+acts[i].Areg? ==> NoDupSeq(DefGroups(acts[i].r))`, which survives the unfold. Top caller discharges
+both trivially (LG.Empty + the NoDupSeq `SpecRegexOuterLkDisjoint` already ensures).
+
+deps/*.doo are current; NOT merged to main (awaiting explicit request).
+
+---
+
+## (historical) The gap that was open before 034576f — full recipe below
+
+**The ONE remaining gap (now closed):** `LookBodyLeafOpenSub` (MainTheorem.dfy) backward branch needs
+`ClosedGm` of a capturing lookbehind body's first leaf, but the spec-side closedness machinery
 (`FirstLeafClosedNoLk`/`BoolTreeLk`) is FORWARD-only.
 
 **DO NOT duplicate the ~200-line `BoolTreeLk` machinery.** Use the spec-tree MIRROR (all lemmas
