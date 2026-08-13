@@ -1,6 +1,48 @@
 # L3b Handoff — captures inside positive LOOKBEHINDS (updated 2026-08-13)
 
-## ★★★ L3b GENUINELY COMPLETE (branch `l3b-gate-swapgm`, commit d066355) — after closing TWO hidden holes
+## ⛔ REMAINING WORK: backward tree-closedness (the ONE gap left) — full recipe below
+
+The full-file sweep (2026-08-13) proved the prior "COMPLETE" was masked across THREE layers.
+Value-lift + oracle: DONE (d066355, green). Fragment/confinement/tree-rep: DONE (ae3a7b4,
+green — PikeLkRegex/LkBodiesInS/guards widened for positive-BACKWARD captures). **The ONE
+remaining gap:** `LookBodyLeafOpenSub` (MainTheorem.dfy) backward branch needs `ClosedGm` of a
+capturing lookbehind body's first leaf, but the spec-side closedness machinery
+(`FirstLeafClosedNoLk`/`BoolTreeLk`) is FORWARD-only.
+
+**DO NOT duplicate the ~200-line `BoolTreeLk` machinery.** Use the spec-tree MIRROR (all lemmas
+exist in linden-reasoning; imports `TM=LindenTreeMirror`, `TRM=LindenTreeResMirror`,
+`CDE=LindenCloseDisc` ALREADY ADDED to MainTheorem, plus the verified bridge
+`NoLkBrGroupOkL: EL.NoLkBrL(r) ==> SD.GroupOkL(r)`). RECIPE for `LookBodyLeafOpenSub`'s `else`
+(backward) branch — goal: `ClosedGm(subR[0].1)`, then mirror the forward branch's 1140-1146
+`OpenOf(sub[0].1) <= OpenOf(gm)` reasoning:
+  1. `n := |inp.pref| + |inp.next|`.  `r1` is `NoLkBrL` ⇒ `NoLkBrGroupOkL(r1)` ⇒ `SD.GroupOkL(r1)`.
+  2. `CDE.CloseDiscBody(rer, r1, inp, gmR, WP.Backward)` ⇒ `CDE.CloseDisc(tlk, {})`
+     (needs `GroupOkL(r1)` + `CDE.NoDupG(L.DefGroups(r1))` — see threading below).
+  3. `tm := FU.ComputeTr(rer, SD.RevActs([LS.Areg(r1)]), SD.SwapInput(inp), TRM.MirrorGm(gmR,n), Forward)`;
+     `SD.RevActs([Areg(r1)]) == [Areg(SD.RevL(r1))]`.  `TM.ComputeTrReverse(rer,[Areg(r1)],inp,gmR,MirrorGm(gmR,n))`
+     ⇒ `TM.TreeMirrorRel(tlk, tm)` (needs `SD.GroupOkActs([Areg(r1)])` from GroupOkL(r1)).
+  4. Forward closedness on `tm`: `RevL(r1)` is `GroupOkL` (`SD.RevLGroupOk`) ⇒ `NoLkBrL` (bridge back);
+     replicate the forward branch's ComputeTree→`EL.ComputeBoolTreeLk`→`FirstLeafClosedNoLk` setup
+     for `[Areg(RevL(r1))]` over `SwapInput(inp)` from `MirrorGm(gmR,n)` ⇒ `ClosedGm(rf.value.1)`
+     where `rf := LT.TreeRes(tm, MirrorGm(gmR,n), SwapInput(inp), Forward)`.
+  5. `TRM.TreeResMirror(tlk, tm, gmR, inp, n, {})` ⇒ `rf.value.1 == TRM.MirrorGm(rb.value.1, n)`,
+     `rb := LT.TreeRes(tlk, gmR, inp, Backward)` (== `subR[0]`, since `|subR|>0`).
+  6. `TRM.MirrorRange` maps closed→closed, so `ClosedGm(MirrorGm(rb.value.1,n)) ⇒ ClosedGm(rb.value.1)`
+     = `ClosedGm(subR[0].1)`. (May need a tiny `MirrorGm`-preserves-`ClosedGm` helper.)
+**THREADING (the cost):** `TreeResMirror` needs `TRM.GmInBounds(gmR, n)`; `gmR ⊆ gm` so add
+`requires TRM.GmInBounds(gm, |inp.pref|+|inp.next|)` to `LookBodyLeafOpenSub` AND thread it up
+through `FirstLeafClosed`/`FirstLeafValueConfined` (both `least lemma`s) to their callers. Also
+add `requires CDE.NoDupG(L.DefGroups(r1))` (from the regex's `CapUnique`, already threaded for L3a
+elsewhere). Both new requires discharge at the two call sites (MainTheorem:~1597, ~1942). Then
+REMOVE the forward-only `requires L.DefGroups(r1) != [] ==> L.LkDir(lk) == WP.Forward` (the L3a
+"only lookaheads capture" assumption). Re-verify MainTheorem (2941 VCs) + LiftSim full-file.
+
+Progress this session: imports + `NoLkBrGroupOkL` bridge added & verified; `FirstLeafClosed`/
+`FirstLeafValueConfined` asserts already widened (vestigial `dir==Forward` conjunct retired).
+
+---
+
+## (was) L3b GENUINELY COMPLETE (branch `l3b-gate-swapgm`, commit d066355) — after closing TWO hidden holes
 
 **Correction to the earlier "COMPLETE at af4f063" banner below.** That status came from
 filter-verifying `MainTheoremL3` — which does NOT check the *bodies* of the lemmas it calls

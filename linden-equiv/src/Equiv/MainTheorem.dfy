@@ -37,6 +37,9 @@ module LindenElkMain {
   import LKC = LindenElkLookCapture
   import LTB = LindenElkLookTables
   import SD = LindenSpanDuality
+  import TM = LindenTreeMirror        // L3b: spec-tree backward<->forward mirror
+  import TRM = LindenTreeResMirror    // L3b: leaf-groupmap mirror (TreeResMirror)
+  import CDE = LindenCloseDisc        // L3b: CloseDisc + NoDupG + CloseDiscBody
   import LL = LindenElkLookLeaves
   import OE = LindenElkOracleEntry
   import OS = LindenElkOracleSpec
@@ -1095,6 +1098,23 @@ module LindenElkMain {
       on `S` (`TreeLeavesFrameInside`); the from-`Empty` leaf is fully closed
       (`FirstLeafClosedNoLk` — valid since the body is look-free); and outside `S`
       the leaf equals `gm` (`GmConfinedLeaves`). */
+  /** L3b: `EL.NoLkBrL` and `SD.GroupOkL` have IDENTICAL definitions (both forbid
+      `LookaroundR` + `Backreference`, allow `Group`), so one implies the other.
+      Bridges the linden-equiv fragment predicate to the linden-reasoning one the
+      mirror machinery (`CloseDiscBody`, `RevLGroupOk`) is stated over. */
+  lemma NoLkBrGroupOkL(r: L.Regex)
+    requires EL.NoLkBrL(r)
+    ensures SD.GroupOkL(r)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => NoLkBrGroupOkL(r1); NoLkBrGroupOkL(r2);
+    case Sequence(r1, r2) => NoLkBrGroupOkL(r1); NoLkBrGroupOkL(r2);
+    case Quantified(_, _, _, r1) => NoLkBrGroupOkL(r1);
+    case Group(_, r1) => NoLkBrGroupOkL(r1);
+    case _ =>
+  }
+
   lemma LookBodyLeafOpenSub(rer: LW.RegExpRecord, lk: L.Lookaround, r1: L.Regex, tlk: LT.Tree,
                             gm: LG.GroupMap, inp: LC.Input, sub: seq<LT.Leaf>, S: set<LG.GroupId>)
     requires tlk == FU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk))
