@@ -10,6 +10,9 @@
     regex it was compiled from, restricted to the star fragment (`StarFragmentRE` /
     `StarFragmentRaw`). The central predicate `NfaRepRE` is the RegElk-bytecode port of
     Linden's proven `Engine/NFA.dfy` representation predicate. */
+include "LookTables.dfy"
+include "OracleSweep.dfy"
+
 module LindenElkNfaRep {
   import opened Std.Wrappers
   import R = RegElkRegex
@@ -17,6 +20,8 @@ module LindenElkNfaRep {
   import RB = Bytecode
   import CP = Compiler
   import T = LindenElkTranslate
+  import LTB = LindenElkLookTables
+  import OS = LindenElkOracleSweep
 
   // ===========================================================================
   // The Phase-4 fragment
@@ -2181,6 +2186,208 @@ module LindenElkNfaRep {
       }
     case Re_lookaround(_, _, _) =>
       // excluded by LookFreeRE: vacuous
+  }
+
+  // ===========================================================================
+  // L4: the GATE-FLOOR generalization of the NoOracle classification. Where
+  // `NoOracleInstrRE` FORBIDS oracle gates over a LOOK-FREE plus-fragment body,
+  // this family ADMITS them over a NESTED fragment and BOUNDS them: if every
+  // lookaround id in the shell sits strictly above a floor `k`, then every gate
+  // the code emits reads a column strictly above `k`. The look-free case
+  // (`NestDepth 0`, no gates) degenerates to `NoOracleReads`; each nested
+  // lookaround leaf contributes exactly one gate, at its own above-floor id.
+  // `LookUnique` supplies `lid >= 0` at each lookaround leaf so its id lands in
+  // `LookIds` and the floor hypothesis then bounds it.
+  // ===========================================================================
+
+  /** `GatesAboveInstrRE` for the `repeat_min` forced-copy chain. */
+  lemma GatesAboveInstrMinRE(cnt: nat, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, k: nat, pc: nat)
+    requires NestedFragmentRE(r1)
+    requires LTB.LookUnique(r1)
+    requires forall x: nat :: x in LTB.LookIds(r1) ==> x > k
+    requires NfaRepMinRE(cnt, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures GetPcRE(code, pc).Some? ==>
+      var i := GetPcRE(code, pc).value;
+      (i.CheckOracle? ==> i.col > k) && (i.NegCheckOracle? ==> i.ncl > k)
+    decreases CP.rsize(r1), cnt + 2
+  {
+    if cnt == 0 { return; }
+    var e1: nat :| GetPcRE(code, start) == Some(RB.SetQuantToClock(qid, false))
+      && NfaRepRE(r1, code, start + 1, e1)
+      && NfaRepMinRE(cnt - 1, qid, r1, code, e1, endl);
+    NfaRepIncrRE(r1, code, start + 1, e1);
+    NfaRepIncrMinRE(cnt - 1, qid, r1, code, e1, endl);
+    if pc == start {
+    } else if pc < e1 {
+      GatesAboveInstrRE(r1, code, start + 1, e1, k, pc);
+    } else {
+      GatesAboveInstrMinRE(cnt - 1, qid, r1, code, e1, endl, k, pc);
+    }
+  }
+
+  /** `GatesAboveInstrRE` for the `repeat_optional` layer chain. */
+  lemma GatesAboveInstrOptRE(cnt: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, k: nat, pc: nat)
+    requires NestedFragmentRE(r1)
+    requires LTB.LookUnique(r1)
+    requires forall x: nat :: x in LTB.LookIds(r1) ==> x > k
+    requires NfaRepOptRE(cnt, greedy, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures GetPcRE(code, pc).Some? ==>
+      var i := GetPcRE(code, pc).value;
+      (i.CheckOracle? ==> i.col > k) && (i.NegCheckOracle? ==> i.ncl > k)
+    decreases CP.rsize(r1), cnt + 2
+  {
+    if cnt == 0 { return; }
+    var e1: nat :| GetPcRE(code, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
+      && GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+      && GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+      && NfaRepRE(r1, code, start + 3, e1)
+      && GetPcRE(code, e1) == Some(RB.EndLoop)
+      && NfaRepOptRE(cnt - 1, greedy, qid, r1, code, e1 + 1, endl);
+    NfaRepIncrRE(r1, code, start + 3, e1);
+    NfaRepIncrOptRE(cnt - 1, greedy, qid, r1, code, e1 + 1, endl);
+    if pc <= start + 2 {
+    } else if pc < e1 {
+      GatesAboveInstrRE(r1, code, start + 3, e1, k, pc);
+    } else if pc == e1 {
+    } else {
+      GatesAboveInstrOptRE(cnt - 1, greedy, qid, r1, code, e1 + 1, endl, k, pc);
+    }
+  }
+
+  /** Nested-fragment code whose lookaround ids all sit strictly above `k` emits
+      only gates that READ strictly above `k`: at every position inside the
+      `NfaRepRE` block a `CheckOracle`/`NegCheckOracle` (if any) reads a column
+      `> k`. The additive L4 generalization of `NoOracleInstrRE` — which FORBADE
+      gates over a look-free body; here the gates are ADMITTED and BOUNDED. */
+  lemma GatesAboveInstrRE(re: R.regex, code: RB.code, start: nat, endl: nat, k: nat, pc: nat)
+    requires NestedFragmentRE(re)
+    requires LTB.LookUnique(re)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> x > k
+    requires NfaRepRE(re, code, start, endl)
+    requires start <= pc < endl
+    ensures GetPcRE(code, pc).Some? ==>
+      var i := GetPcRE(code, pc).value;
+      (i.CheckOracle? ==> i.col > k) && (i.NegCheckOracle? ==> i.ncl > k)
+    decreases CP.rsize(re), 1
+  {
+    match re
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      var e1: nat :| GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
+        && NfaRepRE(r1, code, start + 1, e1)
+        && GetPcRE(code, e1) == Some(RB.Jmp(endl))
+        && NfaRepRE(r2, code, e1 + 1, endl);
+      NfaRepIncrRE(r1, code, start + 1, e1);
+      NfaRepIncrRE(r2, code, e1 + 1, endl);
+      assert LTB.LookIds(re) == LTB.LookIds(r1) + LTB.LookIds(r2);
+      assert forall x: nat :: x in LTB.LookIds(r1) ==> x in LTB.LookIds(re);
+      assert forall x: nat :: x in LTB.LookIds(r2) ==> x in LTB.LookIds(re);
+      if pc == start {
+      } else if pc < e1 {
+        GatesAboveInstrRE(r1, code, start + 1, e1, k, pc);
+      } else if pc == e1 {
+      } else {
+        GatesAboveInstrRE(r2, code, e1 + 1, endl, k, pc);
+      }
+    case Re_con(r1, r2) =>
+      var e1: nat :| NfaRepRE(r1, code, start, e1) && NfaRepRE(r2, code, e1, endl);
+      NfaRepIncrRE(r1, code, start, e1);
+      NfaRepIncrRE(r2, code, e1, endl);
+      assert LTB.LookIds(re) == LTB.LookIds(r1) + LTB.LookIds(r2);
+      assert forall x: nat :: x in LTB.LookIds(r1) ==> x in LTB.LookIds(re);
+      assert forall x: nat :: x in LTB.LookIds(r2) ==> x in LTB.LookIds(re);
+      if pc < e1 {
+        GatesAboveInstrRE(r1, code, start, e1, k, pc);
+      } else {
+        GatesAboveInstrRE(r2, code, e1, endl, k, pc);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      assert LTB.LookIds(re) == LTB.LookIds(r1);
+      if q.min == 0 && q.max == None {
+        var e1: nat :| GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
+          && GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+          && GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+          && NfaRepRE(r1, code, start + 3, e1)
+          && GetPcRE(code, e1) == Some(RB.EndLoop)
+          && GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
+          && endl == e1 + 2;
+        NfaRepIncrRE(r1, code, start + 3, e1);
+        if pc <= start + 2 {
+        } else if pc < e1 {
+          GatesAboveInstrRE(r1, code, start + 3, e1, k, pc);
+        } else {
+        }
+      } else if q.max.Some? {
+        var em := NfaRepREQuantInv(nul, qid, q, r1, code, start, endl);
+        NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NfaRepIncrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl);
+        if pc < em {
+          GatesAboveInstrMinRE(q.min as nat, qid, r1, code, start, em, k, pc);
+        } else {
+          GatesAboveInstrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, k, pc);
+        }
+      } else {
+        var em, e1 := NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
+        NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NfaRepIncrRE(r1, code, em + 1, e1);
+        if pc < em {
+          GatesAboveInstrMinRE((q.min - 1) as nat, qid, r1, code, start, em, k, pc);
+        } else if pc == em {
+        } else if pc < e1 {
+          GatesAboveInstrRE(r1, code, em + 1, e1, k, pc);
+        } else {
+        }
+      }
+    case Re_capture(cid, r1) =>
+      var e1: nat :| GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
+        && NfaRepRE(r1, code, start + 1, e1)
+        && GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+        && endl == e1 + 1;
+      NfaRepIncrRE(r1, code, start + 1, e1);
+      assert LTB.LookIds(re) == LTB.LookIds(r1);
+      if pc == start {
+      } else if pc < e1 {
+        GatesAboveInstrRE(r1, code, start + 1, e1, k, pc);
+      } else {
+      }
+    case Re_lookaround(lid, la, r1) =>
+      // The whole block is the single gate at `start`: NfaRepRE pins
+      // `endl == start + 1`, so `start <= pc < endl` forces `pc == start`, and
+      // the instruction there is `CheckOracle(lid)`/`NegCheckOracle(lid)`.
+      assert pc == start;
+      assert GetPcRE(code, start)
+        == Some(if la.Lookahead? || la.Lookbehind? then RB.CheckOracle(lid) else RB.NegCheckOracle(lid));
+      // `LookUnique(re)` gives `lid >= 0`, so `lid` lands in `LookIds(re)` and
+      // the floor hypothesis bounds it: `lid > k`.
+      assert lid >= 0;
+      assert (lid as nat) in LTB.LookIds(re);
+      assert lid > k;
+  }
+
+  /** Bridge to the sweep-side floor predicate `OS.AllGatesAbove`: a STANDALONE
+      nested-fragment build whose whole program IS the block `[0, |code|)` and
+      whose lookaround ids all sit strictly above `k` has ALL its gates above
+      `k`. The L4 mirror of the `NoOracleReads` bridge (OracleBuild) — where a
+      look-free body classified to `NoOracleReads`, a nested body classifies to
+      the gated form. */
+  lemma GatesAboveClassified(re: R.regex, code: RB.code, k: nat)
+    requires NestedFragmentRE(re)
+    requires LTB.LookUnique(re)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> x > k
+    requires NfaRepRE(re, code, 0, |code|)
+    ensures OS.AllGatesAbove(code, k)
+  {
+    forall pc | 0 <= pc < |code|
+      ensures (code[pc].CheckOracle? ==> code[pc].col > k)
+              && (code[pc].NegCheckOracle? ==> code[pc].ncl > k)
+    {
+      GatesAboveInstrRE(re, code, 0, |code|, k, pc);
+      assert GetPcRE(code, pc) == Some(code[pc]);
+    }
   }
 
   /** `NoWriteInstrRE` for the `repeat_min` forced-copy chain. */
