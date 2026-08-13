@@ -54,6 +54,40 @@ oracle-view re-parameterization scouting (build the partial-view reachability mo
 standalone), in parallel with the ActionsTreeRepFRE decomposition (engineering gate). W1/W2 are
 cheap groundwork that can start immediately.
 
+### L5+ ladder pricing (validated 2026-08-13; corrects §3's one-paragraph sketch)
+
+The `Supported` boundary today: `Supported(p) == NR.LookBehindFragmentRaw(p) && T.Latin1Wf(p)`
+(ApiMatch.dfy:54-56). Beyond nesting (L4), it excludes: captures in NEGATIVE looks, nullable-bodied
+`+`/`{n,}`, non-Latin-1, backreferences (by TYPE), and the flags (pinned off via `TheRer` =
+`RER(false,false,false,…)`, Spec.dfy:94-96). Pricing the closing ladder against current code:
+
+- **`ignoreCase` / `multiline` — the roadmap's "M each" is WRONG; each is ~L (engine change), and
+  they need a DESIGN DECISION first.** The engine is flag-OBLIVIOUS: `regex-engine/src` has ZERO
+  references to `Canonicalize`/`ignoreCase`/`multiline` — char matching is a raw compare
+  (`Charclasses.dfy:174`), anchors are input-boundary only (`Anchors.dfy:44`). So it's NOT
+  "thread the `!rer` hypothesis + prove flag-on cases" (there are 63 `!rer.ignoreCase` / 62
+  `!rer.multiline` requires, but relaxing them is necessary-not-sufficient) — you must first CHANGE
+  the engine (compiler emits canonicalizing char-expectations; anchors go line-aware) and re-prove.
+  **Design conflict:** `LOOKAROUND_CAMPAIGN.md:373` declares RegElk flagless BY DESIGN ("`TheRer`'s
+  fixed record IS the spec"). So decide whether RegElk gains flags at all before this is a rung. If
+  yes: **multiline < ignoreCase** (multiline touches only the anchor matcher; ignoreCase touches
+  every char/class compare + the `Canonicalize` law throughout Translate/CaptureContent/OracleSpec).
+- **Backreferences — XL confirmed, a SEPARATE PROJECT.** Not a predicate exclusion but a TYPE wall:
+  `raw_regex`/`regex` have no backref constructor (Regex.dfy:70-79,119-128), the parser can't emit
+  one, so it's unrepresentable in the engine pipeline. Pike/NFA structurally cannot do backrefs
+  (linear NFA vs NP-hard). `ReadBackRef` is a dead end in every machine (PikeTree/PikeSubset/
+  PikeTreeLk/TreeRep). Needs a whole new stack (constructor+parser+instruction+interpreter+
+  correspondence). Out of the pike world entirely.
+- **`LookBehindFragment{Raw,RE}` → `Supported`/`LookFragment` rename — S, cosmetic but WIDE.** The
+  predicate is already semantically general (admits all shapes); only the NAME lags (ApiMatch.dfy:52).
+  247 occurrences across 18 files, pure rename, zero logic change, zero user payoff. **Do it
+  opportunistically BEFORE L4** so L4 generalizes cleanly-named predicates.
+
+**Recommendation:** L4 (nesting) remains the next real campaign. Fold in the rename as free
+housekeeping first. Flags are NOT rungs until a "does RegElk get flags?" design call is made — and
+if made, they're L-sized engine work (multiline the smaller), not M. Backreferences stay a separate
+XL project. All of these are INDEPENDENT of L4's oracle-sweep machinery (can proceed in parallel).
+
 ---
 
 ## L4 / L5 Roadmap (original, 2026-08-03)
