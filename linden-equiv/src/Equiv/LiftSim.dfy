@@ -71,6 +71,7 @@ module LindenElkLiftSim {
   import BV = LindenElkBackValue
   import SD = LindenSpanDuality
   import CD = LindenCloseDisc
+  import OS = LindenElkOracleSpec
   import T = LindenElkTranslate
   import RC = Charclasses
   import LL = LindenElkLookLeaves
@@ -4361,6 +4362,7 @@ module LindenElkLiftSim {
     returns (bst1: PT.PikeTreeState)
     requires PSM.StaticOkRE(qm, re, code, endl)
     requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
+    requires |ov| == |str| + 1                                    // L3b: the backward LB gate needs the mirror
     requires S == PIV.CapIdsInLooks(re)
     requires GateStaticsOk(qm, re, crv, ncap, nlook, nquant)
     requires bst.PTS?
@@ -4550,9 +4552,21 @@ module LindenElkLiftSim {
       assert (th.pc + 1) as nat == pc + 1;
       assert ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, traw.t, gm2, th', ncap, nlook, nquant);
       } else {
-        // ---- CAPTURING positive lookbehind: keystone-based backward gate (WIP {:axiom} stub) ----
+        // ---- CAPTURING positive lookbehind: keystone-based backward gate ----
         var bodycode := CP.compile_to_bytecode(body);
         assert LT.LK(lk, tlk, traw.t) == traw;
+        // ---- the keystone-gate static package for the body ----
+        assert PSM.StaticOkRE(qm, body, bodycode, |bodycode| - 1);   // ⟹ CapUnique(body) & QuantUnique(body)
+        assert PIV.CapUnique(body) && PIV.QuantUnique(body);
+        PIV.LookCheckIdsRE(re, code, 0, endl, pc);                   // (l as nat) in LookIds(re)
+        assert (l as nat) in LTB.LookIds(re);
+        NI.LookBodyOfTablesTie(re, crv, l as nat);                   // VBody(crv,l) == LookBodyOfRE(re,l)
+        NI.LookBodyOfFragment(re, l as nat);                        // PlusFragmentRE(body)
+        assert NR.PlusFragmentRE(body);
+        OS.TranslateLookFreeGroupOk(body);                         // GroupOkL(Translate(body))
+        TranslateDefGroupsNoDup(body);                             // NoDupSeq == CD.NoDupG (same def)
+        assert CD.NoDupG(L.DefGroups(T.Translate(body)));
+        assert |ov| == |str| + 1;
         ThreadRepLkStepCheckOracleLB(rer, qm, re, code, crv, str, ov, S, lk, r1, tlk, traw.t,
                                      gm, th, l, cp, clk, body, la, bodycode, |bodycode| - 1, 0,
                                      th.quant_regs, ncap, nlook, nquant);
@@ -4700,14 +4714,50 @@ module LindenElkLiftSim {
             assert false;
           }
         } else {
-          // CAPTURING positive lookbehind: gm2 (= LkResult value) covers the body's
-          // groups — the key-set half of the keystone (SwapGm preserves keys). WIP
-          // {:axiom}; discharged by LBK.LkReplayMatchesSpecLB when the gate step lands.
-          assume {:axiom} forall g: LG.GroupId ::
+          // CAPTURING positive lookbehind: gm2 covers the body's groups via the BACKWARD
+          // keystone's key-set (SwapGm preserves keys). Mirrors the lookahead arm above.
+          M.TranslateDefGroupsEqCapIds(body);
+          EL.TranslateNoLkBr(body);
+          EL.ComputeTrGmIndepLk(rer, r1, inp, gm, WP.Backward);
+          assert tlk == LFU.ComputeTr(rer, [LS.Areg(r1)], inp, gm, WP.Backward);
+          assert M.GmAgreeOn(gm, LG.Empty, set gx | gx in L.DefGroups(r1)) by {
+            forall g: LG.GroupId | g in (set gx | gx in L.DefGroups(r1))
+              ensures (g in gm <==> g in LG.Empty) && (g in gm ==> gm[g] == LG.Empty[g])
+            { assert g !in gm; }
+          }
+          var bodycode3 := CP.compile_to_bytecode(body);
+          assert AReg.get_cp(th'.look_regs, l) == Some(s1.cp) by {
+            RL.ASetLaws(th.look_regs, l, Some(cp as int), clk);
+          }
+          // static package for BackFreshBodyGmTie
+          NI.LookBodyOfFragment(re, l as nat);                    // PlusFragmentRE(body)
+          OS.TranslateLookFreeGroupOk(body);                      // GroupOkL(Translate(body))
+          TranslateDefGroupsNoDup(body);                          // NoDupG(DefGroups(Translate(body)))
+          assert PIV.CapUnique(body) && PIV.QuantUnique(body);
+          // rfx == the backward run raB
+          assert CP.capture_regex(crv.f_look_types[l], body) == R.reverse_regex(body);
+          assert AI.capture_direction(crv.f_look_types[l]) == LAnc.Backward;
+          LBK.BackFreshBodyGmTie(rer, body, str, cp, ov, crv.f_look_cdns[l], la, tlk, gm,
+                                 ncap, nlook, nquant, |str|);
+          var bcB := CP.compile_to_bytecode(R.reverse_regex(body));
+          var raB := AI.FFindMatch(bcB, str,
+                       AI.FInitState(bcB, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                     AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
+                       ov, LAnc.Backward, crv.f_look_cdns[l]).0;
+          assert rfx == raB;
+          assert LS.LkResult(T.TrLookaround(la), tlk, gm, inp).value == gm2 by {
+            assert lk == T.TrLookaround(la);
+          }
+          // BackFreshBodyGmTie: GmAgreeOn(SwapGm(gm2), GmOfLive(body, raB.caps), Sbody)
+          forall g: LG.GroupId |
             g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, l as nat))
             && g in PIV.GmOfLive(NI.LookBodyOfRE(re, l as nat), rfx.value.capture_regs,
                                  rfx.value.look_regs, rfx.value.quant_regs)
-            ==> g in gm2;
+            ensures g in gm2
+          {
+            assert g in (set gx | gx in L.DefGroups(T.Translate(body)));
+            assert g in LBV.SwapGm(gm2);                          // GmAgreeOn key-set at g in Sbody
+          }
         }
       }
     }
