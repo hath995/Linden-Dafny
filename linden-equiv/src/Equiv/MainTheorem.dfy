@@ -1232,6 +1232,97 @@ module LindenElkMain {
     assert leaf == rb.value;
   }
 
+  // ===================== L3b: GmInBounds threading helpers =====================
+  /** `AdvanceInputP` preserves the input length `|pref|+|next|` (both directions),
+      and `Idx(inp) = |inp.pref|` is within that length. */
+  lemma AdvancePreservesSum(inp: LC.Input, dir: WP.Direction)
+    ensures |LC.AdvanceInputP(inp, dir).pref| + |LC.AdvanceInputP(inp, dir).next|
+         == |inp.pref| + |inp.next|
+    ensures LC.Idx(inp) <= |inp.pref| + |inp.next|
+  {}
+
+  /** `AdvanceInputN` preserves the input length `|pref|+|next|` (both directions).
+      Reused for the (fragment-absent) backreference tree case. */
+  lemma AdvanceNPreservesSum(inp: LC.Input, k: nat, dir: WP.Direction)
+    ensures |LC.AdvanceInputN(inp, k, dir).pref| + |LC.AdvanceInputN(inp, k, dir).next|
+         == |inp.pref| + |inp.next|
+  {
+    match dir
+    case Forward => LS.ReverseLength(LC.Take(inp.next, k));
+    case Backward => LS.ReverseLength(LC.Take(inp.pref, k));
+  }
+
+  /** GM-op bound preservation: `GMOpen`/`GMClose` at an index `<= n` keep every
+      group's endpoints `<= n`; `GMReset` only removes keys; `GMUpdate` dispatches. */
+  lemma GMOpenBounds(currIdx: nat, gid: LG.GroupId, gm: LG.GroupMap, n: nat)
+    requires TRM.GmInBounds(gm, n)
+    requires currIdx <= n
+    ensures TRM.GmInBounds(LG.GMOpen(currIdx, gid, gm), n)
+  {}
+
+  lemma GMCloseBounds(currIdx: nat, gid: LG.GroupId, gm: LG.GroupMap, n: nat)
+    requires TRM.GmInBounds(gm, n)
+    requires currIdx <= n
+    ensures TRM.GmInBounds(LG.GMClose(currIdx, gid, gm), n)
+  {}
+
+  lemma GMResetBounds(gl: LG.GroupSet, gm: LG.GroupMap, n: nat)
+    requires TRM.GmInBounds(gm, n)
+    ensures TRM.GmInBounds(LG.GMReset(gl, gm), n)
+  {}
+
+  lemma GMUpdateBounds(op: LG.GroupAction, currIdx: nat, gm: LG.GroupMap, n: nat)
+    requires TRM.GmInBounds(gm, n)
+    requires currIdx <= n
+    ensures TRM.GmInBounds(LG.GMUpdate(op, currIdx, gm), n)
+  {}
+
+  /** GENERAL leaf bound: every leaf of `TreeLeaves(t, gm, inp, dir)` has all group
+      endpoints `<= n == |inp.pref|+|inp.next|`, provided the starting `gm` does.
+      Structural on `t`: `Read`/`ReadBackRef` advance the input (length preserved),
+      `GroupActionT` updates at `Idx(inp) <= n`, and a nested `LK` recurses on the
+      body (in `LkDir(lk)`, same `n`) then the continuation. `dir`-parametric, so it
+      also covers backward (lookbehind) bodies. */
+  lemma TreeLeavesInBounds(t: LT.Tree, gm: LG.GroupMap, inp: LC.Input, dir: WP.Direction, n: nat)
+    requires |inp.pref| + |inp.next| == n
+    requires TRM.GmInBounds(gm, n)
+    ensures forall i :: 0 <= i < |LT.TreeLeaves(t, gm, inp, dir)| ==>
+              TRM.GmInBounds(LT.TreeLeaves(t, gm, inp, dir)[i].1, n)
+    decreases t
+  {
+    match t
+    case Mismatch =>
+    case Match =>
+    case Choice(t1, t2) =>
+      TreeLeavesInBounds(t1, gm, inp, dir, n);
+      TreeLeavesInBounds(t2, gm, inp, dir, n);
+    case Read(c, t1) =>
+      AdvancePreservesSum(inp, dir);
+      TreeLeavesInBounds(t1, gm, LC.AdvanceInputP(inp, dir), dir, n);
+    case Progress(t1) =>
+      TreeLeavesInBounds(t1, gm, inp, dir, n);
+    case GroupActionT(a, t1) =>
+      GMUpdateBounds(a, LC.Idx(inp), gm, n);
+      TreeLeavesInBounds(t1, LG.GMUpdate(a, LC.Idx(inp), gm), inp, dir, n);
+    case LK(lk, tlk, t1) =>
+      TreeLeavesInBounds(tlk, gm, inp, L.LkDir(lk), n);
+      var sub := LT.TreeLeaves(tlk, gm, inp, L.LkDir(lk));
+      if L.Positivity(lk) {
+        if |sub| == 0 {} else {
+          TreeLeavesInBounds(t1, sub[0].1, inp, dir, n);
+        }
+      } else {
+        if |sub| == 0 { TreeLeavesInBounds(t1, gm, inp, dir, n); } else {}
+      }
+    case LKFail(_, _) =>
+    case AnchorPass(_, t0) =>
+      TreeLeavesInBounds(t0, gm, inp, dir, n);
+    case ReadBackRef(brStr, t0) =>
+      AdvanceNPreservesSum(inp, |brStr|, dir);
+      TreeLeavesInBounds(t0, gm, LC.AdvanceInputN(inp, |brStr|, dir), dir, n);
+  }
+  // =============================================================================
+
   lemma LookBodyLeafOpenSub(rer: LW.RegExpRecord, lk: L.Lookaround, r1: L.Regex, tlk: LT.Tree,
                             gm: LG.GroupMap, inp: LC.Input, sub: seq<LT.Leaf>, S: set<LG.GroupId>)
     requires tlk == FU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk))
@@ -1248,8 +1339,10 @@ module LindenElkMain {
     ensures OpenOf(sub[0].1) <= OpenOf(gm)
     ensures forall g :: g in sub[0].1 ==> g in gm || g in S
     ensures forall g :: g in sub[0].1 && g in S ==> sub[0].1[g].endIdx.Some?   // look closed its captures
+    ensures TRM.GmInBounds(sub[0].1, |inp.pref| + |inp.next|)   // L3b: leaf bound (for the caller's threading)
   {
     var dir := L.LkDir(lk);
+    TreeLeavesInBounds(tlk, gm, inp, dir, |inp.pref| + |inp.next|);   // GmInBounds(sub[i].1)
     assert LL.DefGroupsIn(r1, S);
     LL.ComputeTrConfined(rer, r1, inp, LG.Empty, dir, S);       // GmConfinedTree(tlk, S)
     LL.GmConfinedLeaves(tlk, gm, inp, dir, S);                  // sub[i].1 ~outside-S~ gm
