@@ -162,6 +162,41 @@ module LindenElkOracleBuild {
         && OS.NoAccept(bc))
   }
 
+  /** L4 GENERALIZATION of `LidBuildOk` (brick 4b). The one clause that nesting
+      breaks is `NoOracleReads`: an OUTER lookaround's build code contains
+      INNER gates (`CheckOracle`/`NegCheckOracle`) that read the already-built,
+      strictly-HIGHER inner columns (`LidsWellNested`). So we RELAX
+      `NoOracleReads(bc)` to `OS.AllGatesAbove(bc, i)` — gates are ADMITTED,
+      provided every one reads a column strictly above `i`. The other three
+      conjuncts are kept verbatim: build code still emits exactly one
+      `WriteOracle` (column `i`), no `CheckNullable`, no `Accept`. Since
+      `NoOracleReads(bc) ==> AllGatesAbove(bc, i)`
+      (`OS.NoOracleReadsAllGatesAbove`), `LidBuildOk` is the gate-free special
+      case — see `LidBuildOkImpliesAbove`. This is the side condition the
+      high->low build induction (brick 4c) needs at each nested column. */
+  ghost predicate LidBuildOkAbove(crv: CP.FCompiled, i: int) {
+    var bc := AI.get_code_v(crv.f_look_build_bc, i);
+    bc == []
+    || (OS.AllGatesAbove(bc, i) && OS.NoCheckNullable(bc) && OS.WritesOnlyLid(bc, i)
+        && OS.NoAccept(bc))
+  }
+
+  /** The gate-free `LidBuildOk` IMPLIES the gated `LidBuildOkAbove`: the only
+      changed clause weakens (`NoOracleReads ==> AllGatesAbove(_, i)` for any
+      floor `i`, via `OS.NoOracleReadsAllGatesAbove`), the other three are
+      identical. This is what lets the whole existing depth-1 chain feed the L4
+      form for free — every column that today satisfies `LidBuildOk` satisfies
+      `LidBuildOkAbove` unchanged. */
+  lemma LidBuildOkImpliesAbove(crv: CP.FCompiled, i: int)
+    requires LidBuildOk(crv, i)
+    ensures LidBuildOkAbove(crv, i)
+  {
+    var bc := AI.get_code_v(crv.f_look_build_bc, i);
+    if bc != [] {
+      OS.NoOracleReadsAllGatesAbove(bc, i);
+    }
+  }
+
   /** The direction a lid's oracle is built in: Forward for lookbehinds,
       Backward for lookaheads (`AI.oracle_direction`). */
   ghost function LidDir(crv: CP.FCompiled, i: int): LAnc.direction {
@@ -223,6 +258,68 @@ module LindenElkOracleBuild {
     ensures LidReaches(crv, str, i, cp)
         <==> ORc.ReachesWrite(AI.get_code_v(crv.f_look_build_bc, i), str, 0, i, cp)
   { reveal LidReaches(); }
+
+  // ===========================================================================
+  // L4 (brick 4c groundwork): the partial-oracle-VIEW per-lid reachability.
+  //
+  // `LidReaches` above is the BLIND model — correct only for gate-free build
+  // code. Under nesting an outer lid's build code contains INNER gates that the
+  // sweep DOES cross (reading the already-built, strictly-higher columns), so
+  // the recorded bits are the V-MODEL reachability `ReachesWriteV` against the
+  // view carrying those columns. `LidReachesV` is the exact V-analogue of
+  // `LidReaches`; the erasure `LidReachesVErasure` proves the two COINCIDE on a
+  // gate-free column, for ANY view — so the entire existing blind chain is the
+  // ov-erased specialization and only genuinely-nested columns see the view.
+  // ===========================================================================
+
+  /** The V-model analogue of `LidReaches`: the build sweep for lid `i` records
+      a bit at `cp` when run against the partial oracle view `ov` (which, in the
+      high->low build, holds the already-built strictly-higher columns the inner
+      gates read). Forward for lookbehinds; the anchor-swapped mirror for the
+      backward (lookahead) build, exactly as `LidReaches`. */
+  ghost opaque predicate LidReachesV(crv: CP.FCompiled, str: string, ov: LOr.OracleView, i: int, cp: int) {
+    var bc := AI.get_code_v(crv.f_look_build_bc, i);
+    if LidDir(crv, i) == LAnc.Forward
+    then ORc.ReachesWriteV(bc, str, ov, 0, i, cp)
+    else ORc.ReachesWriteV(MIR.SwapAnchorsCode(bc), LC.Reverse(str), ov, 0, i,
+                           MIR.Mirror(cp, |str|))
+  }
+
+  /** `SwapAnchorsCode` only rewrites `AnchorAssertion` instructions, so it
+      never introduces (or removes) an oracle-consulting instruction: gate-free
+      code stays gate-free after the swap. The bridge that lets the backward
+      (mirrored) build column reuse the forward erasure. */
+  lemma SwapAnchorsCodeNoOracleReads(c: RB.code)
+    requires OS.NoOracleReads(c)
+    ensures OS.NoOracleReads(MIR.SwapAnchorsCode(c))
+  {
+    var sc := MIR.SwapAnchorsCode(c);
+    forall pc | 0 <= pc < |sc| ensures !sc[pc].CheckOracle? && !sc[pc].NegCheckOracle? {
+      assert sc[pc] == (if c[pc].AnchorAssertion? then RB.AnchorAssertion(MIR.SwapAnchor(c[pc].aa)) else c[pc]);
+    }
+  }
+
+  /** ERASURE (brick 4c bridge): on a gate-free build column the V-model
+      per-lid reachability collapses to the blind `LidReaches`, for ANY view —
+      the forward build via `ORc.ReachesWriteVErasure`, the backward build the
+      same after `SwapAnchorsCodeNoOracleReads`. This is what reconciles the
+      partial-view characterization with the existing blind chain on every
+      column that remains gate-free (all of them at depth 1). */
+  lemma LidReachesVErasure(crv: CP.FCompiled, str: string, ov: LOr.OracleView, i: int, cp: int)
+    requires OS.NoOracleReads(AI.get_code_v(crv.f_look_build_bc, i))
+    ensures LidReachesV(crv, str, ov, i, cp) == LidReaches(crv, str, i, cp)
+  {
+    reveal LidReachesV();
+    reveal LidReaches();
+    var bc := AI.get_code_v(crv.f_look_build_bc, i);
+    if LidDir(crv, i) == LAnc.Forward {
+      ORc.ReachesWriteVErasure(bc, str, ov, 0, i, cp);
+    } else {
+      SwapAnchorsCodeNoOracleReads(bc);
+      ORc.ReachesWriteVErasure(MIR.SwapAnchorsCode(bc), LC.Reverse(str), ov, 0, i,
+                               MIR.Mirror(cp, |str|));
+    }
+  }
 
   /** Every lid OF the regex satisfies `LidBuildOk`: the fragment makes its
       flavour a lookbehind (Forward) and its body capture-free/look-free/
@@ -325,6 +422,23 @@ module LindenElkOracleBuild {
         assert AI.get_code_v(crv.f_look_build_bc, i) == [];
       }
     }
+  }
+
+  /** ESTABLISHER (brick 4b): every lid satisfies the L4 `LidBuildOkAbove`
+      against `FFullCompilation(re)`. On the currently-wired depth-1 fragment
+      this factors through `AllLidsBuildOk` (each column is gate-free) and the
+      `LidBuildOkImpliesAbove` weakening — the gate clause `AllGatesAbove(bc,i)`
+      is discharged from `NoOracleReads(bc)` (the empty-gate-set special case of
+      the `NR.GatesAboveClassified` discharge that W6 will use for genuinely
+      nested bodies, whose inner gates read strictly above `i` by
+      `LT.LidsWellNested`). Feeds the high->low build induction (brick 4c). */
+  lemma AllLidsBuildOkAbove(re: R.regex, i: int)
+    requires NR.LookBehindFragmentRE(re)
+    requires LT.LookUnique(re)
+    ensures LidBuildOkAbove(CP.FFullCompilation(re), i)
+  {
+    AllLidsBuildOk(re, i);
+    LidBuildOkImpliesAbove(CP.FFullCompilation(re), i);
   }
 
   /** A real row of a LOOKBEHIND-fragment regex builds Forward, since the
@@ -488,6 +602,52 @@ module LindenElkOracleBuild {
     }
   }
 
+  /** V-MODEL restatement of `FBuildLidsCharacterized` (brick 4c): every column
+      `1..lid` gains exactly its build code's `LidReachesV` positions AGAINST THE
+      FINAL VIEW `ov'`. On the currently-wired depth-1 fragment every column is
+      gate-free (`LidBuildOk` supplies `NoOracleReads`), so this reduces to the
+      blind theorem and reconciles column-by-column via `LidReachesVErasure` —
+      the `LidReaches` of the blind chain equals `LidReachesV(_, ov', _, _)` for
+      the (view-independent) gate-free columns. This lands the V-model
+      characterization vocabulary as a proven theorem and isolates the remaining
+      L4 crux: a GATE-FUL sweep characterization (the V-model soundness+
+      completeness for build columns whose code reads strictly-higher columns),
+      which is what a full `LidBuildOkAbove`-gated induction would additionally
+      need. See the L4_L5_ROADMAP W3 brick-4 notes. */
+  /** `LidBuildOk` supplies gate-freeness of the column: either the build code
+      is empty (`NoOracleReads([])` vacuously) or its `NoOracleReads` conjunct
+      holds directly. The small bridge the V-model reconciliation needs. */
+  lemma LidBuildOkNoOracleReads(crv: CP.FCompiled, i: int)
+    requires LidBuildOk(crv, i)
+    ensures OS.NoOracleReads(AI.get_code_v(crv.f_look_build_bc, i))
+  {}
+
+  lemma FBuildLidsCharacterizedV(crv: CP.FCompiled, str: string, lid: int, ov: LOr.OracleView)
+    requires forall i: int :: 1 <= i <= lid ==> LidBuildOk(crv, i)
+    requires |ov| == |str| + 1
+    requires forall r: int {:trigger ov[r]} :: 0 <= r < |ov| ==> lid < |ov[r]|
+    ensures var ov' := AI.FBuildLids(crv, str, lid, ov);
+      OS.SameShape(ov, ov')
+      && forall i: int, cp: int ::
+           LOr.view_get_oracle(ov', cp, i)
+           == (LOr.view_get_oracle(ov, cp, i)
+               || (1 <= i <= lid && LidReachesV(crv, str, ov', i, cp)))
+  {
+    FBuildLidsCharacterized(crv, str, lid, ov);
+    var ov' := AI.FBuildLids(crv, str, lid, ov);
+    forall i: int, cp: int
+      ensures LOr.view_get_oracle(ov', cp, i)
+           == (LOr.view_get_oracle(ov, cp, i)
+               || (1 <= i <= lid && LidReachesV(crv, str, ov', i, cp)))
+    {
+      if 1 <= i <= lid {
+        // LidBuildOk(crv,i): bc==[] (NoOracleReads vacuous) or NoOracleReads(bc)
+        LidBuildOkNoOracleReads(crv, i);
+        LidReachesVErasure(crv, str, ov', i, cp);
+      }
+    }
+  }
+
   /** The oracle build preserves the view LENGTH: each lid runs `FFindMatch`
       (which keeps `|ov|` — `MIR.FFindMatchViewLen`), so the whole fold does. */
   lemma FBuildLidsLen(crv: CP.FCompiled, str: string, lid: int, ov: LOr.OracleView)
@@ -561,6 +721,39 @@ module LindenElkOracleBuild {
       AllLidsBuildOk(re, i);
     }
     FBuildLidsCharacterized(crv, str, maxlook, ov0);
+  }
+
+  /** V-MODEL capstone (brick 4c): the §6.2 theorem restated against the
+      partial-oracle-view reachability, SELF-REFERENTIALLY — column `lid` of the
+      finished oracle `ovf` holds exactly the `LidReachesV(_, ovf, _, _)` bits
+      (the V-model reachability read against the finished oracle itself). On the
+      depth-1 fragment this reduces to `FBuildOracleCorrect` and reconciles per
+      column via `LidReachesVErasure` (each column gate-free). This is the shape
+      a full nested oracle-correctness theorem takes; landing it now fixes the
+      target statement and confines the open work to the gate-ful sweep
+      characterization (see `FBuildLidsCharacterizedV`). */
+  lemma FBuildOracleCorrectV(re: R.regex, str: string)
+    requires NR.LookBehindFragmentRE(re)
+    requires LT.LookUnique(re)
+    ensures var crv := CP.FFullCompilation(re);
+      var ovf := AI.FBuildOracle(crv, str);
+      forall lid: int, cp: int ::
+        LOr.view_get_oracle(ovf, cp, lid)
+        == (1 <= lid <= R.max_lookaround(re) && LidReachesV(crv, str, ovf, lid, cp))
+  {
+    var crv := CP.FFullCompilation(re);
+    var ovf := AI.FBuildOracle(crv, str);
+    FBuildOracleCorrect(re, str);
+    forall lid: int, cp: int
+      ensures LOr.view_get_oracle(ovf, cp, lid)
+           == (1 <= lid <= R.max_lookaround(re) && LidReachesV(crv, str, ovf, lid, cp))
+    {
+      if 1 <= lid <= R.max_lookaround(re) {
+        AllLidsBuildOk(re, lid);
+        LidBuildOkNoOracleReads(crv, lid);
+        LidReachesVErasure(crv, str, ovf, lid, cp);
+      }
+    }
   }
 
   /** `FBuildOracleCorrect` restated per lookaround, with the bytecode in its
