@@ -111,6 +111,16 @@ Current anchors re-verified (slight line drift from the earlier snapshot):
   `FBuildLidsCharacterized`:389, `FBuildOracleCorrect`:559). The erasure-equivalence strategy means
   most of these stay on the ov-erased `ReachF` and never see `ov`.
 
+**W3 brick 1 DONE (commit d8d993d) — the partial-view model + erasure, purely additive.**
+`OracleReach.dfy` now has `EpsEdgeV`/`ReachFV`/`ReachesWriteV` (blind model + `ov` + real gate
+edges) and `EpsEdgeVErasure`/`ReachFVErasureFwd`/`ReachFVErasureBwd`/`ReachesWriteVErasure` (on
+`NoOracleReads` code the V-model collapses to the blind model for every view — proved by paired
+least-lemma inductions). OracleReach 43/0, no existing proof touched. NEXT W3 bricks (these DO
+iterate against heavier files — want the ActionsTreeRepFRE decomposition + `AllGatesAbove` first):
+(2) `AllGatesAbove(bc,i)` predicate + drop `NoOracleReads` from `LidBuildOk`; (3) weaken
+`AdvanceOvIndep`/`FindMatchOvIndep` to `AgreeAbove(ov1,ov2,k)`; (4) wire the weakened form into
+`FBuildLidsCharacterized`'s high→low induction (column k against already-correct columns >k).
+
 ### L5+ ladder pricing (validated 2026-08-13; corrects §3's one-paragraph sketch)
 
 The `Supported` boundary today: `Supported(p) == NR.LookBehindFragmentRaw(p) && T.Latin1Wf(p)`
