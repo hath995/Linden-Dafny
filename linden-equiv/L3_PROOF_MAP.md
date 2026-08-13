@@ -1,5 +1,19 @@
 # L3 Proof Map — what is proved, and how each piece reaches the goal
 
+> **2026-08-13 — THE ENTIRE L3 CAMPAIGN IS COMPLETE (L3a + L3b), merged to main.**
+> Captures inside positive lookarounds — both lookAHEADS (L3a) and lookBEHINDS (L3b) —
+> are FULLY PROVEN. **Whole package green: all 38 linden-equiv files 0 errors**
+> (MainTheorem 2961/0, LiftSim 9537/0, ActionsTreeRepRE 5276/0, …) — a whole-package
+> proof, not a filter-verified top theorem. L3b closed three layers that a
+> filter-verified "complete" had masked: value-lift (`FreshBodyMatchCapWf`), the
+> lookbehind ORACLE layer (reason over `remove_capture(body)`), and the
+> fragment/confinement + spec-tree backward closedness (`BackBodyLeafClosed` via the
+> spec-tree MIRROR — the forward-only `FirstLeafClosedNoLk`/`BoolTreeLk` are NOT
+> duplicated; the backward body tree mirrors the forward tree of `RevL(body)`). The
+> `FirstLeafClosed`/`FirstLeafValueConfined` least-lemmas thread `GmInBounds` + the
+> per-regex `NoDupRegsActs` invariant. Full story in `L3B_HANDOFF.md`'s top section.
+> **What remains: L4 (nested lookarounds) — see `L4_L5_ROADMAP.md`.**
+
 > **2026-08-09 — THE L3a CAMPAIGN IS COMPLETE.** `MainTheoremL3` (LiftSim.dfy)
 > proves `MatcherSpec(raw, str, Normalize(FFullMatch(raw, str)))` for the full
 > fragment WITH capturing positive lookaheads; `ApiMatch.MatchCorrect` wraps

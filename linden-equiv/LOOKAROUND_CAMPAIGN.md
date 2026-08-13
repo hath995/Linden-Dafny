@@ -9,10 +9,15 @@ This document records the campaign's design, the work completed so far, and —
 in enough detail that another person could carry it on — the intended proof
 structure for everything that remains.
 
-**Status (2026-08-09): L1, L2, and L3a are DONE.** The verified `Supported`
-fragment now includes **capturing positive lookaheads** — see §3.6 for the
-L3a outcome and §4.5 for the remaining-rungs outline (L3b, L4, small items).
-The theorem is `LiftSim.MainTheoremL3`; `ApiMatch.MatchCorrect` wraps it.
+**Status (2026-08-13): L1, L2, L3a, AND L3b are DONE — merged to main.** The verified
+`Supported` fragment now includes **capturing positive lookarounds in BOTH directions** —
+lookAHEADS (L3a) and lookBEHINDS (L3b). Whole package green (all 38 linden-equiv files,
+0 errors; MainTheorem 2961/0, LiftSim 9537/0). The theorem is `LiftSim.MainTheoremL3`;
+`ApiMatch.MatchCorrect` wraps it. L3b's backward-capture closedness was proven via the
+spec-tree mirror (`BackBodyLeafClosed`), avoiding a direction-generic rewrite of the
+forward-only `BoolTreeLk` layer — see `L3B_HANDOFF.md` (top) and `L3_PROOF_MAP.md`.
+**What remains: L4 (nested lookarounds) — see §4.5 and `L4_L5_ROADMAP.md`.** (Negatives
+stay capture-free by the fragment restriction.)
 
 Status of the original L1 campaign (2026-07-25):
 
