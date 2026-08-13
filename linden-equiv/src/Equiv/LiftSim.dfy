@@ -6255,14 +6255,14 @@ module LindenElkLiftSim {
     }
   }
 
-  /** L3b item 4 (task #8) — WIP {:axiom} STUB: the BACKWARD-gate twin of
-      `ThreadRepLkStepCheckOracle` for a CAPTURING positive lookbehind. Body pending;
-      it establishes `GmtTieInside`'s `SwapRange` form via the keystone
-      `LBK.LkReplayMatchesSpecLB` at cap=init + `BV.BackwardReplayMirror`, with the
-      outside frame / continuation walk direction-generic (as in the lookahead twin).
-      The value chain: `FreshBodyMatch(LB)` runs the backward capture (= `raB`), the
-      mirror gives `rfF == MirrorThread(raB)`, and the keystone yields
-      `SwapRange(gm2[g]) == GmOfLive(body, raB.caps)[g]` for `g in S`. */
+  /** L3b item 4 (task #8) — PROVEN: the BACKWARD-gate twin of
+      `ThreadRepLkStepCheckOracle` for a CAPTURING positive lookbehind. It
+      establishes `GmtTieInside`'s `SwapRange` form via `GateStepValueLB` (which
+      calls the keystone `LBK.LkReplayMatchesSpecLB` at cap=init + `BV.BackwardReplayMirror`),
+      with the outside frame / continuation walk direction-generic (as in the
+      lookahead twin). The value chain: `FreshBodyMatch(LB)` runs the backward
+      capture (= `raB`), the mirror gives `rfF == MirrorThread(raB)`, and the
+      keystone yields `SwapRange(gm2[g]) == GmOfLive(body, raB.caps)[g]` for `g in S`. */
   lemma {:isolate_assertions} ThreadRepLkStepCheckOracleLB(
       rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, crv: CP.FCompiled,
       str: string, ov: LOr.OracleView, S: set<LG.GroupId>, lk: L.Lookaround, r1: L.Regex,
