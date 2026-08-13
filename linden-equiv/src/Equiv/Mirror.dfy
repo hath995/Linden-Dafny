@@ -515,6 +515,24 @@ module LindenElkMirror {
                r.a_clk)
   }
 
+  /** `MirrorRegs` is an INVOLUTION on a bank whose positions all lie in `[-1, n]`
+      (real cps reflect back, `-1` stays `-1`). Clocks are untouched throughout. */
+  lemma MirrorRegsInvol(r: AReg.Regs, n: int)
+    requires forall k :: 0 <= k < |r.a_cp| ==> -1 <= r.a_cp[k] <= n
+    ensures MirrorRegs(MirrorRegs(r, n), n) == r
+  {
+    var rr := MirrorRegs(MirrorRegs(r, n), n);
+    assert rr.a_clk == r.a_clk;
+    assert |rr.a_cp| == |r.a_cp|;
+    forall i | 0 <= i < |r.a_cp|
+      ensures rr.a_cp[i] == r.a_cp[i]
+    {
+      assert rr.a_cp[i] == MirrorCpVal(MirrorCpVal(r.a_cp[i], n), n);
+      // v in [-1,n]: v>=0 ⟹ n-v>=0 ⟹ n-(n-v)=v; v=-1 ⟹ -1 ⟹ -1.
+    }
+    assert rr.a_cp == r.a_cp;
+  }
+
   /** Writing a position commutes with the mirror. */
   lemma SetRegMirror(r: AReg.Regs, k: int, cp: int, clk: int, n: int)
     requires cp >= 0
