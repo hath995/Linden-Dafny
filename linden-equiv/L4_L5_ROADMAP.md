@@ -54,6 +54,63 @@ oracle-view re-parameterization scouting (build the partial-view reachability mo
 standalone), in parallel with the ActionsTreeRepFRE decomposition (engineering gate). W1/W2 are
 cheap groundwork that can start immediately.
 
+## 2026-08-13 — L4 EXECUTION STARTED (branch `l4-nesting`)
+
+**W1 DONE (commits 13a732e, 0449a40, 0a4fa75) — the depth vocabulary + lid-order backbone,
+all purely additive, verified green.**
+- `LookTables.dfy`: `LidsWellNested` (in every lookaround node the body's lids are STRICTLY
+  GREATER than the enclosing lid — the induction backbone) + `AnnotateLidsWellNested` +
+  `SpecRegexLidsWellNested`. Strengthens the flat `AnnotateLookUnique` range fact. LookTables 15/0.
+- `NfaRepRE.dfy`: `NestDepth` (W4's decreases measure); `NestedFragmentRE`/`NestedFragmentRaw`
+  (the L4 fragment = LookBehindFragment with the lookaround case's `LookFreeRE(body)` replaced by
+  a recursive `NestedFragmentRE(body)`); backward-compat embeddings `LookBehindFragmentIsNestedRE`/
+  `…Raw` + helpers (every currently-`Supported` input stays supported at L4); annotate bridge
+  `AnnotateNestedFragment`/`SpecRegexNestedFragment`. NfaRepRE 1337/0.
+- The eventual gate relaxation site is `LookBehindFragmentRE` at `NfaRepRE:543` (drop
+  `LookFreeRE(r1)`) — deferred to W6 (wire nested end-to-end + whole-package sweep).
+
+### W3 implementation sketch (scouted 2026-08-13; the CRUX blueprint)
+
+Current anchors re-verified (slight line drift from the earlier snapshot):
+`EpsEdge`=OracleReach.dfy:51, `ReachF`(least)=:76, `ReachesWrite`=:88, `SweepCharacterization`=:1042;
+`AdvanceOvIndep`=OracleSweep.dfy:241, `FindMatchOvIndep`=:327, `WritesOnlyLid`=:62,
+`NoOracleReads`=:49; `LidBuildOk`=OracleBuild.dfy:158, `LidReaches`(opaque)=:179,
+`FBuildLidsCharacterized`=:388, `FBuildOracleCorrect`=:530; `CompileToWriteClassified`=NfaRepRE:2372,
+`NoOracleInstrRE`=NfaRepRE:1995; interpreter gate semantics = Interpreter.dfy:315-325.
+
+- **Gate = dead end CONFIRMED.** `EpsEdge` matches only Jmp/Fork/SetRegisterToCP/SetQuantToClock/
+  BeginLoop/EndLoop/AnchorAssertion; `CheckOracle`/`NegCheckOracle`/`WriteOracle`/`CheckNullable`/
+  `Consume` all fall to `case _ => false` — a config on a gate has ZERO outgoing edges. Nesting
+  breaks this: the real interpreter advances past `CheckOracle(l)` to pc+1 WHEN
+  `view_get_oracle(ov,cp,l)`, so the blind model undercounts reachable configs in nested build code.
+- **`LidBuildOk` is stronger than "NoOracleReads" alone:** body is
+  `bc==[] || (NoOracleReads(bc) && NoCheckNullable(bc) && WritesOnlyLid(bc,i) && NoAccept(bc))`.
+  L4 form: DROP `NoOracleReads(bc)`, replace with `AllGatesAbove(bc,i)` (every `CheckOracle(l)`/
+  `NegCheckOracle(l)` in `bc` has `l>i`), keep the other three.
+- **`AdvanceOvIndep`/`FindMatchOvIndep` HAVE NO EXTERNAL CALLERS** (the big de-risker). They are a
+  self-contained, un-wired pair; the §6.2 theorem routes column-independence through
+  `FindMatchOracleFrame` + `SweepCharacterization` instead. So weakening them from whole-view
+  `SameShape(ov1,ov2)` to `SameShape ∧ AgreeAbove(ov1,ov2,k)` (agree on columns >k;
+  `AgreeAbove(a,b,k):=∀cp,l:: l>k ==> CellAgree(a,b,cp,l)`) has near-zero downstream churn — the
+  work is to NEWLY WIRE the weakened form into `FBuildLidsCharacterized`. Under the weakening the
+  two `assert false` gate cases (OracleSweep.dfy:285-290,308-310) become real recursive cases that
+  thread `AgreeAbove`; `LidsWellNested` (W1) is what guarantees every gate reads some `l>k`.
+- **MIGRATION STRATEGY (keeps existing chain untouched):** add partial-view variants
+  `EpsEdgeV(c,str,ov,cp,pc,eb,pc2,eb2)` (= `EpsEdge` plus two gate cases:
+  `CheckOracle(l) => view_get_oracle(ov,cp,l) && pc2==pc+1 && eb2==eb`, `NegCheckOracle(l) =>
+  !view_get_oracle(ov,cp,l) && …`), `ReachFV`, `ReachesWriteV`. Prove the ERASURE EQUIVALENCE
+  `NoOracleReads(c) ==> (ReachFV(c,str,ov,…) <==> ReachF(c,str,…))` for all `ov` (the gate cases are
+  vacuous when gate-free) — then the entire existing OracleReach/OracleBridge/OracleDecomp chain is
+  the ov-erased specialization, and ONLY nested-gate code paths need the new argument. This is a
+  clean ADDITIVE first W3 brick (new defs + one equivalence lemma; touches no existing proof).
+- **Blast radius if `ReachF`→`ReachFV` migrates (118 refs):** OracleBridge.dfy 61 (heaviest —
+  `ReachFEpsIntro`:234/`ReachFConsumeIntro`:244 are the highest-fanout primitives), OracleDecomp.dfy 7,
+  Mirror.dfy 1; plus OracleReach's own soundness (`AdvanceReachSound`:125/`FindMatchReachSound`:248)
+  and completeness (`ClosureInv`:314/`AdvanceReachComplete`:543/`FindMatchReachComplete`:909) chains.
+  `LidBuildOk` has 10 uses, ALL in OracleBuild.dfy (`LookTablesLidBuildOk`:235, `AllLidsBuildOk`:302,
+  `FBuildLidsCharacterized`:389, `FBuildOracleCorrect`:559). The erasure-equivalence strategy means
+  most of these stay on the ov-erased `ReachF` and never see `ov`.
+
 ### L5+ ladder pricing (validated 2026-08-13; corrects §3's one-paragraph sketch)
 
 The `Supported` boundary today: `Supported(p) == NR.LookBehindFragmentRaw(p) && T.Latin1Wf(p)`
