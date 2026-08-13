@@ -583,6 +583,94 @@ module LindenElkNfaRep {
     case _ =>
   }
 
+  // ===========================================================================
+  // The NESTED fragment (L4): lookaround bodies may themselves contain
+  // lookarounds. `LookBehindFragmentRE` forces `LookFreeRE(body)` at every
+  // lookaround leaf (depth-1 only); `NestedFragmentRE` replaces that leaf
+  // constraint with a RECURSIVE `NestedFragmentRE(body)`, admitting arbitrary
+  // nesting while keeping the same plus-fragment quant shapes and capture rule
+  // (negative flavours still need capture-free bodies). `NestDepth` is the
+  // induction measure the depth-parametric keystone (W4) decreases on.
+  // ===========================================================================
+
+  /** Maximum lookaround NESTING depth of `re`: 0 for a look-free regex, and
+      `1 + (deepest body)` at each lookaround node. The termination measure for
+      the depth-inductive keystone — a body's `NestDepth` is strictly smaller
+      than its enclosing lookaround's. */
+  function NestDepth(re: R.regex): nat
+    decreases re
+  {
+    match re
+    case Re_empty => 0
+    case Re_character(_) => 0
+    case Re_anchor(_) => 0
+    case Re_alt(r1, r2) => var a := NestDepth(r1); var b := NestDepth(r2); if a < b then b else a
+    case Re_con(r1, r2) => var a := NestDepth(r1); var b := NestDepth(r2); if a < b then b else a
+    case Re_quant(_, _, _, r1) => NestDepth(r1)
+    case Re_capture(_, r1) => NestDepth(r1)
+    case Re_lookaround(_, _, r1) => 1 + NestDepth(r1)
+  }
+
+  /** The nested lookaround fragment: every plus-fragment shape, plus
+      lookaround leaves `(?=...)`/`(?<=...)`/`(?!...)`/`(?<!...)` whose bodies
+      are THEMSELVES in the nested fragment (so looks may nest to any depth).
+      Identical to `LookBehindFragmentRE` except the lookaround case drops
+      `LookFreeRE(body) && PlusFragmentRE(body)` for the recursive
+      `NestedFragmentRE(body)`. `NestedFragmentRE(re) && NestDepth(re) == 0`
+      coincides with `LookBehindFragmentRE(re)` on look-free `re`. */
+  predicate NestedFragmentRE(re: R.regex)
+    decreases re
+  {
+    match re
+    case Re_empty => true
+    case Re_character(_) => true
+    case Re_anchor(_) => true
+    case Re_alt(r1, r2) => NestedFragmentRE(r1) && NestedFragmentRE(r2)
+    case Re_con(r1, r2) => NestedFragmentRE(r1) && NestedFragmentRE(r2)
+    case Re_quant(nul, qid, q, r1) =>
+      ((q.min == 0 && q.max == None)
+       || (0 <= q.min && q.max.Some? && q.min <= q.max.value)
+       || (q.min > 0 && q.max == None && nul == R.NonNullable
+           && R.nullable(r1) == R.NonNullable))
+      && NestedFragmentRE(r1)
+    case Re_capture(cid, r1) => NestedFragmentRE(r1)
+    case Re_lookaround(lid, la, r1) =>
+      (la.Lookahead? || la.Lookbehind? || CaptureFreeRE(r1)) && NestedFragmentRE(r1)
+  }
+
+  /** A look-free plus fragment is in the nested fragment (with `NestDepth 0`):
+      no lookaround nodes, so the two predicates enforce exactly the same
+      plus-fragment quant shapes. */
+  lemma LookFreePlusIsNestedRE(re: R.regex)
+    requires LookFreeRE(re) && PlusFragmentRE(re)
+    ensures NestedFragmentRE(re) && NestDepth(re) == 0
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => LookFreePlusIsNestedRE(r1); LookFreePlusIsNestedRE(r2);
+    case Re_con(r1, r2) => LookFreePlusIsNestedRE(r1); LookFreePlusIsNestedRE(r2);
+    case Re_quant(_, _, _, r1) => LookFreePlusIsNestedRE(r1);
+    case Re_capture(_, r1) => LookFreePlusIsNestedRE(r1);
+    case _ =>
+  }
+
+  /** The depth-1 lookbehind fragment embeds in the nested fragment — every
+      input supported today stays supported at L4. The lookaround case uses
+      `LookFreePlusIsNestedRE` on the (look-free) body. */
+  lemma LookBehindFragmentIsNestedRE(re: R.regex)
+    requires LookBehindFragmentRE(re)
+    ensures NestedFragmentRE(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => LookBehindFragmentIsNestedRE(r1); LookBehindFragmentIsNestedRE(r2);
+    case Re_con(r1, r2) => LookBehindFragmentIsNestedRE(r1); LookBehindFragmentIsNestedRE(r2);
+    case Re_quant(_, _, _, r1) => LookBehindFragmentIsNestedRE(r1);
+    case Re_capture(_, r1) => LookBehindFragmentIsNestedRE(r1);
+    case Re_lookaround(lid, la, r1) => LookFreePlusIsNestedRE(r1);
+    case _ =>
+  }
+
   /** The raw plus fragment embeds in the raw lookbehind fragment. */
   lemma PlusIsLookBehindFragmentRaw(ra: R.raw_regex)
     requires PlusFragmentRaw(ra)
