@@ -72,6 +72,7 @@ module LindenElkLiftSim {
   import SD = LindenSpanDuality
   import CD = LindenCloseDisc
   import OS = LindenElkOracleSpec
+  import OB = LindenElkOracleBuild
   import T = LindenElkTranslate
   import RC = Charclasses
   import LL = LindenElkLookLeaves
@@ -5611,6 +5612,7 @@ module LindenElkLiftSim {
                            ncap: int, nlook: int, nquant: int)
     returns (ptsA': PT.PikeTreeState, bst1: PT.PikeTreeState)
     requires !rer.multiline && !rer.ignoreCase && qm.ov == ov
+    requires |ov| == |str| + 1                                    // L3b: propagate to the backward LB gate
     requires PSM.StaticOkRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires S == PIV.CapIdsInLooks(re)   // the value-tie boundary (SetReg/gate cases)
     requires GateStaticsOk(qm, re, crv, ncap, nlook, nquant)   // per-lid look-table package (gate-pass case)
@@ -11027,6 +11029,7 @@ module LindenElkLiftSim {
                   ncap: int, nlook: int, nquant: int)
     returns (ptsA': PT.PikeTreeState, ptsB': PT.PikeTreeState)
     requires NR.NfaRepRE(re, code, 0, endl)
+    requires |ov| == |str| + 1                                    // L3b: propagate to the backward LB gate
     requires PSM.StaticOkRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
     requires S == PIV.CapIdsInLooks(re)   // the value-tie boundary (SetReg/gate cases)
@@ -11132,6 +11135,7 @@ module LindenElkLiftSim {
                        vms: AI.VmState, cdn: LCdn.cdns, ncap: int, nlook: int, nquant: int)
     returns (bestT: Option<LT.Leaf>)
     requires PSM.StaticOkRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires |ov| == |str| + 1                                    // L3b: propagate to the backward LB gate
     requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
     requires S == PIV.CapIdsInLooks(re)
     requires GateStaticsOk(qm, re, crv, ncap, nlook, nquant)
@@ -11395,6 +11399,7 @@ module LindenElkLiftSim {
                           vms: AI.VmState, cdn: LCdn.cdns, result: Option<AI.Thread>,
                           ncap: int, nlook: int, nquant: int)
     requires NR.NfaRepRE(re, code, 0, endl)
+    requires |ov| == |str| + 1                                    // L3b: propagate to the backward LB gate
     requires PSM.StaticOkRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires qm.ov == ov && !rer.multiline
     requires !rer.ignoreCase
@@ -12151,6 +12156,7 @@ module LindenElkLiftSim {
     M.FFullCompilationFacts(ast);
     assert crv.f_main_ast == ast && crv.f_main_bc == code && crv.f_main_cdns == LCdn.compile_cdns(ast);
     var ov := AI.FBuildOracle(crv, str);
+    OB.FBuildOracleViewLen(crv, str);                     // |ov| == |str| + 1 (for the backward LB gate)
     var capture := AReg.init_regs(ncap);
     var look := AReg.init_regs(nlook);
     var quant := AReg.init_regs(nquant);

@@ -485,6 +485,42 @@ module LindenElkOracleBuild {
     }
   }
 
+  /** The oracle build preserves the view LENGTH: each lid runs `FFindMatch`
+      (which keeps `|ov|` — `MIR.FFindMatchViewLen`), so the whole fold does. */
+  lemma FBuildLidsLen(crv: CP.FCompiled, str: string, lid: int, ov: LOr.OracleView)
+    ensures |AI.FBuildLids(crv, str, lid, ov)| == |ov|
+    decreases lid
+  {
+    if lid < 1 {
+    } else {
+      var bytecode := AI.get_code_v(crv.f_look_build_bc, lid);
+      var looktype := if 0 <= lid < |crv.f_look_types| then crv.f_look_types[lid] else R.Lookahead;
+      var dir := AI.oracle_direction(looktype);
+      var lookcdn := if 0 <= lid < |crv.f_look_cdns| then crv.f_look_cdns[lid] else [];
+      var initcp := AI.init_cp(dir, |str|);
+      var maxcap := R.max_group(crv.f_main_ast);
+      var maxlook := R.max_lookaround(crv.f_main_ast);
+      var maxquant := R.max_quant(crv.f_main_ast);
+      var capture := AReg.init_regs(2 * maxcap + 2);
+      var lookmem := AReg.init_regs(maxlook + 1);
+      var quant := AReg.init_regs(maxquant + 1);
+      var inits := AI.FInitState(bytecode, initcp, capture, lookmem, quant, 0,
+                                 AI.cp_context(initcp, str, dir));
+      var (_, ov1) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+      MIR.FFindMatchViewLen(bytecode, str, inits, ov, dir, lookcdn);   // |ov1| == |ov|
+      FBuildLidsLen(crv, str, lid - 1, ov1);
+    }
+  }
+
+  /** `|FBuildOracle(crv, str)| == |str| + 1` — the oracle has one column per
+      position. (Threaded to the backward capturing-lookbehind gate as `|ov|`.) */
+  lemma FBuildOracleViewLen(crv: CP.FCompiled, str: string)
+    ensures |AI.FBuildOracle(crv, str)| == |str| + 1
+  {
+    var maxlook := R.max_lookaround(crv.f_main_ast);
+    FBuildLidsLen(crv, str, maxlook, LOr.init_view(|str|, maxlook + 1));
+  }
+
   /** THE §6.2 theorem: after the oracle build for a lid-unique
       lookbehind-fragment regex, column `lid` holds EXACTLY the
       `ReachesWrite` positions of that lid's build bytecode. */

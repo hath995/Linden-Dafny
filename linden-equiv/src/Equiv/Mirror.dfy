@@ -674,6 +674,99 @@ module LindenElkMirror {
     case Fail => FAdvanceEpsilonViewLen(c, s1.(active := ac), ov);
   }
 
+  /** Direction-generic twin of `FAdvanceEpsilonViewLen`: the epsilon phase preserves
+      the oracle-view LENGTH regardless of direction (only `WriteOracle` mutates it,
+      and `view_set_oracle` keeps the length). Used by `FFindMatchViewLen`. */
+  lemma FAdvanceEpsilonViewLenD(c: RB.code, s: AI.VmState, ov: LOr.OracleView, dir: LAnc.direction)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    ensures |AI.FAdvanceEpsilon(c, s, ov, dir).1| == |ov|
+    decreases AI.unprocessed(s.processed), |s.active|
+  {
+    if |s.active| == 0 { return; }
+    var t := s.active[0];
+    var ac := s.active[1..];
+    var i := RB.get_instr(c, t.pc);
+    if AI.bpc_mem(s.processed, t.pc, t.exit_allowed) {
+      FAdvanceEpsilonViewLenD(c, s.(active := ac), ov, dir); return;
+    }
+    var b0 := s.processed;
+    var s1 := s.(clock := s.clock + 1, processed := AI.bpc_add(b0, t.pc, t.exit_allowed));
+    AI.UnprocessedAdd(b0, t.pc, t.exit_allowed);
+    match i
+    case Consume(ce) =>
+      var (nb, ni) := AI.add_thread(t, ce, s1.blocked, s1.isblocked);
+      FAdvanceEpsilonViewLenD(c, s1.(blocked := nb, isblocked := ni, active := ac), ov, dir);
+    case Accept =>
+    case Jmp(x) => FAdvanceEpsilonViewLenD(c, s1.(active := [t.(pc := x)] + ac), ov, dir);
+    case Fork(x, y) =>
+      var newt := AI.Thread(x, t.capture_regs, t.look_regs, t.quant_regs, t.exit_allowed);
+      FAdvanceEpsilonViewLenD(c, s1.(active := [newt, t.(pc := y)] + ac), ov, dir);
+    case SetRegisterToCP(reg) =>
+      FAdvanceEpsilonViewLenD(c, s1.(active := [t.(capture_regs := AReg.set_reg(t.capture_regs, reg, Some(s1.cp), s1.clock), pc := t.pc + 1)] + ac), ov, dir);
+    case SetQuantToClock(q, b) =>
+      var ocp := if b then Some(s1.cp) else None;
+      FAdvanceEpsilonViewLenD(c, s1.(active := [t.(quant_regs := AReg.set_reg(t.quant_regs, q, ocp, s1.clock), pc := t.pc + 1)] + ac), ov, dir);
+    case CheckOracle(l) =>
+      if LOr.view_get_oracle(ov, s1.cp, l) {
+        FAdvanceEpsilonViewLenD(c, s1.(active := [t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(s1.cp), s1.clock))] + ac), ov, dir);
+      } else { FAdvanceEpsilonViewLenD(c, s1.(active := ac), ov, dir); }
+    case NegCheckOracle(l) =>
+      if LOr.view_get_oracle(ov, s1.cp, l) { FAdvanceEpsilonViewLenD(c, s1.(active := ac), ov, dir); }
+      else { FAdvanceEpsilonViewLenD(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir); }
+    case WriteOracle(l) =>
+      FAdvanceEpsilonViewLenD(c, s1.(active := ac), LOr.view_set_oracle(ov, s1.cp, l), dir);
+    case BeginLoop =>
+      FAdvanceEpsilonViewLenD(c, s1.(active := [t.(exit_allowed := false, pc := t.pc + 1)] + ac), ov, dir);
+    case EndLoop =>
+      if t.exit_allowed { FAdvanceEpsilonViewLenD(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir); }
+      else { FAdvanceEpsilonViewLenD(c, s1.(active := ac), ov, dir); }
+    case CheckNullable(qid) =>
+      if LCdn.cdn_get(s1.cdn, qid) { FAdvanceEpsilonViewLenD(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir); }
+      else { FAdvanceEpsilonViewLenD(c, s1.(active := ac), ov, dir); }
+    case AnchorAssertion(a) =>
+      if LAnc.is_satisfied(a, s1.context, dir) {
+        FAdvanceEpsilonViewLenD(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir);
+      } else { FAdvanceEpsilonViewLenD(c, s1.(active := ac), ov, dir); }
+    case Fail => FAdvanceEpsilonViewLenD(c, s1.(active := ac), ov, dir);
+  }
+
+  /** `FFindMatch` preserves the oracle-view LENGTH (any direction): every epsilon
+      phase does (`FAdvanceEpsilonViewLenD`), and `FConsume` never touches the view.
+      Mirrors `FFindMatchRegsWf`'s direction-generic recursion. */
+  lemma FFindMatchViewLen(c: RB.code, str: string, s: AI.VmState, ov: LOr.OracleView,
+                          dir: LAnc.direction, cdn: LCdn.cdns)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires dir.Forward? ==> s.context.nextchar == AI.get_char(str, s.cp)
+    requires dir.Backward? ==> s.context.nextchar == AI.get_char(str, s.cp - 1)
+    requires s.cp >= 0
+    ensures |AI.FFindMatch(c, str, s, ov, dir, cdn).1| == |ov|
+    decreases if dir.Forward? then |str| - s.cp else s.cp
+  {
+    var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, dir));
+    FAdvanceEpsilonViewLenD(c, s0, ov, dir);
+    var (s1, ov1) := AI.FAdvanceEpsilon(c, s0, ov, dir);
+    assert s1.cp == s.cp && s1.context == s.context;
+    if |s1.blocked| == 0 {
+      assert AI.FFindMatch(c, str, s, ov, dir, cdn).1 == ov1;
+    } else if s1.context.nextchar.None? {
+      assert AI.FFindMatch(c, str, s, ov, dir, cdn).1 == ov1;
+    } else {
+      var s2 := AI.FConsume(s1);
+      assert s2.cp == s.cp;
+      var s3 := s2.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
+                    cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
+      var newchar := AI.get_char(str, s3.cp - AI.cp_offset(dir));
+      var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
+      // recursion preconditions (nextchar + cp), dir-generic
+      assert dir.Backward? ==> s.cp >= 1;                    // nextchar Some ⟹ s.cp-1 in range
+      assert dir.Forward? ==> s4.cp == s.cp + 1 && s4.context.nextchar == AI.get_char(str, s4.cp);
+      assert dir.Backward? ==> s4.cp == s.cp - 1 && s4.context.nextchar == AI.get_char(str, s4.cp - 1);
+      assert s4.cp >= 0;
+      FFindMatchViewLen(c, str, s4, ov1, dir, cdn);
+      assert AI.FFindMatch(c, str, s, ov, dir, cdn) == AI.FFindMatch(c, str, s4, ov1, dir, cdn);
+    }
+  }
+
   /** THE epsilon-phase isomorphism, now with the position mirror: running
       `c` BACKWARD on a state, then mirroring, is the same as mirroring first
       and running the anchor-swapped program FORWARD.
