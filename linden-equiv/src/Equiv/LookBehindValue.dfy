@@ -55,6 +55,12 @@ module LindenLookBehindValue {
     map g | g in gm :: SwapRange(gm[g])
   }
 
+  /** `SwapRange` is an involution (a closed range's endpoints swap back; open
+      ranges are fixed). */
+  lemma SwapRangeInvol(rg: LG.Range)
+    ensures SwapRange(SwapRange(rg)) == rg
+  {}
+
   /** The RAW (reversed-span) mirror of the ORDERED (spec) mirror is exactly the
       endpoint swap — `n` cancels. So the engine's raw readout of the mirrored
       registers is the swap of the spec leaf. */
