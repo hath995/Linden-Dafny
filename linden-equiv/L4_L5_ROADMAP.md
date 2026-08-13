@@ -235,6 +235,50 @@ today; they are additive scaffolding shaped for the eventual depth-k lift, not t
 **Net: L4's VALUE side is re-priced from L to L+ (adds the engine-static-stack generalization as a
 prerequisite front). The ORACLE-BUILD side (W1–W3) is unaffected — it generalizes independently.**
 
+### L4 depth-k DEFINITIVE PRICING (scout 2026-08-14; the bottleneck hypothesis was FALSIFIED)
+
+The architectural key: **a lookaround compiles to a SINGLE `CheckOracle`/`NegCheckOracle` LEAF**
+(NfaRepRE.dfy:1193-1199 — the body lives in the per-lookaround tables), so the proven Pike sim's code
+contains NO look-body structure. Therefore the "never-mutate-the-proven-sim" monolith `PikeInvFullRE`
+(PikeSimRE.dfy:831-850) has **NO structural depth-1 assumption** — it is an S-shaped parameter-swap,
+NOT the bottleneck. A repo note already states this boundary (MainTheorem.dfy:5586-5595).
+
+Per-component (LookBehindFragmentRE → NestedFragmentRE):
+- **StaticOkRE** (PikeSimRE:99): the fragment is ONE conjunct of 9 → **SWAP** [M], sound via the
+  already-proven `LookBehindFragmentIsNestedRE`. `SizesOkRE` has no depth dep (free). ~50 `StaticOkRE`
+  consumers (18 PikeSimRE + 26 LiftSim scaffold + 6 MainTheorem).
+- **PikeInvFullRE** (PikeSimRE:831): parameter-swap [S], LOW — its only look-conjunct `LooksCapUnset`
+  is depth-invariant (looks emit no `SetRegisterToCP`). NOT the bottleneck.
+- **GmConfinedTree/LkConfinedTree** (CheckErase:1081-1108): `LK=>false` is a structural cap →
+  **recursive REWRITE** [L], ~100 consumer sites (incl. the whole preservation family) — mechanical
+  but wide.
+- **PikeLkRegex/PikeLkActions/NoLkBrL** (EntryLk:214-567): `NoLkBrL` bans looks → recursive rewrite
+  [L]; ~412 sites but nearly all are HYPOTHESES a weaker predicate satisfies — only the destructors
+  (`TranslateNoLkBr`/`ComputeTrGmIndepLk`/`ComputeTrNoLK`) need real re-derivation.
+- **ComputeTrLkConfined/ActionsTreeRepRE**: already S-threaded, accept `LkConfinedTree(t,S)` LK-trees
+  → **mostly free** once the above land [M].
+- **#6 THE BOTTLENECK — `BodyTreeAtCp`/`LkReplayMatchesSpec`** (MainTheorem:2888/5620): a genuinely
+  NEW recursive theorem inducting on `NestDepth` [XL, HIGH], resting on the oracle-build passes
+  (OracleEntry/OracleBuild/OracleDecomp, all `requires LookBehindFragmentRE`) building SUB-ORACLES for
+  nested bodies. Cannot be unrolled. This is where the cost lives.
+
+**Additive vs mutate:** the SIM half is fully ADDITIVE (thread `NestedFragmentRE`, or a parallel
+`StaticOkNestedRE` derived via `LookBehindFragmentIsNestedRE` — all ~18 sim preservation lemmas stay
+green, monolith untouched). The VALUE half is genuinely new recursive scaffolding but STILL additive
+to the sim (no `PikeInvFullRE` edit). Plus the independent `SweepCharacterizationV` (W3 brick-4c gap).
+
+**SCOPING OPTIONS (value-per-cost):**
+1. **Full depth-k capturing** — L–XL, dominated by #6 + recursive #3/#4 + `SweepCharacterizationV`.
+2. **Non-capturing nested looks (CHEAPER PARTIAL WIN, ~40–50% cost)** — restrict nested bodies to
+   capture-free; SHEDS the entire capture-reconstruction lift (the 26 bodiless `LiftSim` scaffold
+   lemmas + the `LkReplayMatchesSpec` capture-agreement obligations). Keeps only the recursive
+   match-VERDICT half + recursive #3/#4. Delivers real nesting value (`(?=a(?=b)c)` — nested looks
+   that gate matching without capturing).
+3. **Bank the foundation** — spec side is ALREADY depth-generic (`TreeResGmFrameRec` +
+   `NestedFragmentRE`/`NestDepth`); the engine↔spec bridge (#6) is the only gap. Stop with the verified
+   model/spec/theorem-shape foundation and price full depth-k as its own campaign.
+- Depth-2-only is NOT worth it (the recursive step is already required at depth 2).
+
 ### L5+ ladder pricing (validated 2026-08-13; corrects §3's one-paragraph sketch)
 
 The `Supported` boundary today: `Supported(p) == NR.LookBehindFragmentRaw(p) && T.Latin1Wf(p)`
