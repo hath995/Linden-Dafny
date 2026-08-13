@@ -4159,6 +4159,113 @@ module LindenElkNestInv {
       }
   }
 
+  /** Every nested capture has a well-defined INNERMOST owner: a look id whose
+      body contains `g` DIRECTLY (`g !in CapIdsInLooks` of that body — it is not
+      buried in a still-deeper look). Constructed by descending into the branch
+      / nested look that carries `g`. Combined with the trichotomy this owner is
+      the subset-minimal container (see `InnermostOwnerMinimal`) — the lid whose
+      replay reconstructs `g`'s value at L4. */
+  lemma InnermostLookOwnerExists(r: R.regex, g: nat) returns (owner: nat)
+    requires LTB.LookUnique(r)
+    requires g in PIV.CapIdsInLooks(r)
+    ensures owner in LTB.LookIds(r)
+    ensures g in PIV.CapIds(LookBodyOfRE(r, owner))
+    ensures g !in PIV.CapIdsInLooks(LookBodyOfRE(r, owner))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if g in PIV.CapIdsInLooks(r1) {
+        owner := InnermostLookOwnerExists(r1, g);
+      } else {
+        owner := InnermostLookOwnerExists(r2, g);
+        assert owner !in LTB.LookIds(r1);   // LookUnique: disjoint sibling lids
+      }
+    case Re_con(r1, r2) =>
+      if g in PIV.CapIdsInLooks(r1) {
+        owner := InnermostLookOwnerExists(r1, g);
+      } else {
+        owner := InnermostLookOwnerExists(r2, g);
+        assert owner !in LTB.LookIds(r1);
+      }
+    case Re_quant(_, _, _, r1) => owner := InnermostLookOwnerExists(r1, g);
+    case Re_capture(_, r1) => owner := InnermostLookOwnerExists(r1, g);
+    case Re_lookaround(lid0, _, r1) =>
+      // CapIdsInLooks(r) == CapIds(r1): either g is buried in a nested look
+      // (recurse for a deeper owner), or it sits directly in r1 (this is it).
+      if g in PIV.CapIdsInLooks(r1) {
+        owner := InnermostLookOwnerExists(r1, g);
+        assert (lid0 as nat) != owner;   // LookUnique: lid0 !in LookIds(r1)
+      } else {
+        PIV.CapIdsSplit(r1);             // g in CapIds(r1) \ CapIdsInLooks(r1)
+        owner := lid0 as nat;
+      }
+  }
+
+  /** `LookBodyOfRE` composes: finding an INNER lid in the whole tree is the same
+      as finding it inside the OUTER lid's body (unique ids mean the inner node
+      occurs exactly there). The lens that turns "nested in owner's body" into a
+      capture fact about the whole tree. */
+  lemma LookBodyCompose(r: R.regex, outer: nat, inner: nat)
+    requires LTB.LookUnique(r)
+    requires outer in LTB.LookIds(r)
+    requires inner in LTB.LookIds(LookBodyOfRE(r, outer))
+    ensures inner in LTB.LookIds(r)
+    ensures LookBodyOfRE(r, inner) == LookBodyOfRE(LookBodyOfRE(r, outer), inner)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if outer in LTB.LookIds(r1) { LookBodyCompose(r1, outer, inner); assert inner in LTB.LookIds(r1); }
+      else { LookBodyCompose(r2, outer, inner); assert inner !in LTB.LookIds(r1); }
+    case Re_con(r1, r2) =>
+      if outer in LTB.LookIds(r1) { LookBodyCompose(r1, outer, inner); assert inner in LTB.LookIds(r1); }
+      else { LookBodyCompose(r2, outer, inner); assert inner !in LTB.LookIds(r1); }
+    case Re_quant(_, _, _, r1) => LookBodyCompose(r1, outer, inner);
+    case Re_capture(_, r1) => LookBodyCompose(r1, outer, inner);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == outer {
+        // outer IS this node: its body is r1, and inner lives in r1
+        assert LookBodyOfRE(r, outer) == r1;
+        assert inner in LTB.LookIds(r1);
+        assert (lid0 as nat) != inner;   // LookUnique: lid0 !in LookIds(r1)
+      } else {
+        // outer is nested deeper in r1
+        assert outer in LTB.LookIds(r1);
+        LookBodyCompose(r1, outer, inner);
+        assert (lid0 as nat) != inner;
+      }
+  }
+
+  /** The innermost owner is the SUBSET-MINIMAL container: any other look whose
+      body holds `g` has a superset of the owner's captures. Rules out the
+      trichotomy's disjoint arm (both bodies hold `g`) and its "l nested in
+      owner" arm (that would bury `g` in a look inside owner's body, but the
+      owner holds `g` DIRECTLY), leaving "owner nested in l" — the subset. */
+  lemma InnermostOwnerMinimal(r: R.regex, g: nat, owner: nat, l: nat)
+    requires PIV.CapUnique(r) && LTB.LookUnique(r)
+    requires owner in LTB.LookIds(r) && g in PIV.CapIds(LookBodyOfRE(r, owner))
+    requires g !in PIV.CapIdsInLooks(LookBodyOfRE(r, owner))
+    requires l in LTB.LookIds(r) && g in PIV.CapIds(LookBodyOfRE(r, l))
+    ensures PIV.CapIds(LookBodyOfRE(r, owner)) <= PIV.CapIds(LookBodyOfRE(r, l))
+  {
+    if owner == l {
+    } else {
+      LookBodiesCapsDisjointOrNested(r, owner, l);
+      if PIV.CapIds(LookBodyOfRE(r, owner)) * PIV.CapIds(LookBodyOfRE(r, l)) == {} {
+        assert g in PIV.CapIds(LookBodyOfRE(r, owner)) * PIV.CapIds(LookBodyOfRE(r, l));  // false
+      } else if l in LTB.LookIds(LookBodyOfRE(r, owner))
+                && PIV.CapIds(LookBodyOfRE(r, l)) <= PIV.CapIds(LookBodyOfRE(r, owner)) {
+        // l nested in owner's body: g would then sit in a nested look — contradiction
+        LookBodyCompose(r, owner, l);
+        LookBodyCapsIn(LookBodyOfRE(r, owner), l);
+        assert g in PIV.CapIdsInLooks(LookBodyOfRE(r, owner));
+      } else {
+        // owner nested in l: the subset holds
+      }
+    }
+  }
+
   /** The structural body IS the table row's body: `LookTablesOk` records a
       `LookEntryOk` row at every look node, and the row at `lid` pins
       `fc.f_look_ast[lid]` — so the table body and `LookBodyOfRE` agree. */
