@@ -357,25 +357,30 @@ module LindenElkOracleSpec {
     requires LT.LookUnique(re)
     requires LT.LookEntryOk(CP.FFullCompilation(re), lid, la, body)
     requires la.Lookbehind? || la.NegLookbehind?
-    requires NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    requires NR.LookFreeRE(body) && NR.PlusFragmentRE(body)   // L3b: capturing bodies allowed
     requires T.TransWf(body)
     requires 1 <= lid
     requires 0 <= cp <= |str|
     ensures LOr.view_get_oracle(AI.FBuildOracle(CP.FFullCompilation(re), str), cp, lid)
         <==> SD.SuccActs(rer, [LS.Areg(T.Translate(body))], T.InputAt(str, cp), gm, WP.Backward)
   {
-    OD.OracleColumnCharacterized(re, str, lid, la, body, cp);
-    TranslateGroupFree(body);
-    SD.GroupFreeIsGroupOk(T.Translate(body));   // SpanDuality now gates on GroupOkL (L3-0)
+    // L3b: the oracle characterizes a hit of the capture-STRIPPED `rcb`; match
+    // existence is capture-blind (`MatchesRemoveCapture`), so a hit of `rcb`
+    // transfers to a span of `body`, over which the `GroupOkL` span duality runs.
+    var rcb := R.remove_capture(body);
+    OD.OracleColumnCharacterized(re, str, lid, la, body, cp);   // oracle <==> RecorderHit(rcb)
+    TranslateLookFreeGroupOk(body);   // GroupOkL(Translate(body)) — captures (Group nodes) are fine
     if LOr.view_get_oracle(AI.FBuildOracle(CP.FFullCompilation(re), str), cp, lid) {
-      var i := OD.RecorderHitInv(body, str, cp);
+      var i := OD.RecorderHitInv(rcb, str, cp);       // Matches(rcb, str, i, cp)
+      MatchesRemoveCapture(body, str, i, cp);          // <==> Matches(body, str, i, cp)
       MatchesTransfer(rer, body, str, i, cp);
       SD.SpanDualityComplete(rer, T.Translate(body), str, i, cp, gm);
     }
     if SD.SuccActs(rer, [LS.Areg(T.Translate(body))], T.InputAt(str, cp), gm, WP.Backward) {
-      var i := SD.SpanDualitySound(rer, T.Translate(body), str, cp, gm);
+      var i := SD.SpanDualitySound(rer, T.Translate(body), str, cp, gm);   // Matches(body, str, i, cp)
       MatchesTransfer(rer, body, str, i, cp);
-      OD.RecorderHitIntro(body, str, cp, i);
+      MatchesRemoveCapture(body, str, i, cp);          // Matches(body) <==> Matches(rcb)
+      OD.RecorderHitIntro(rcb, str, cp, i);            // RecorderHit(rcb)
     }
   }
 

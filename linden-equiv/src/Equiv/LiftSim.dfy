@@ -10617,7 +10617,9 @@ module LindenElkLiftSim {
   lemma FreshBodyMatchCapWf(crv: CP.FCompiled, str: string, l: int, lk: AReg.Regs,
                             ov: LOr.OracleView, ncap: int, nlook: int, nquant: int, body: R.regex)
     requires body == M.VBody(crv, l)
-    requires NR.LookBehindFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires NR.LookBehindFragmentRE(body) && NR.PlusFragmentRE(body)
+          && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires M.MatchedPosLA(crv, lk, l)   // POSITIVE look: rules out the capture-free negatives
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires var cp := if AReg.get_cp(lk, l).Some? then AReg.get_cp(lk, l).value else 0;
              0 <= cp <= |str| && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp)
@@ -10625,9 +10627,22 @@ module LindenElkLiftSim {
             rf.Some? ==> PIV.CapRegWf(rf.value.capture_regs)
   {
     var cp := if AReg.get_cp(lk, l).Some? then AReg.get_cp(lk, l).value else 0;
-    var bc := CP.compile_to_bytecode(body);
+    var looktype := if 0 <= l < |crv.f_look_types| then crv.f_look_types[l] else R.Lookahead;
     var cdn := if 0 <= l < |crv.f_look_cdns| then crv.f_look_cdns[l] else [];
-    M.FreshMatchWf(bc, str, cp, ov, cdn, body, ncap, nlook, nquant);
+    // MatchedPosLA => looktype is Lookahead or Lookbehind. FreshBodyMatch runs the
+    // look's CAPTURE direction over `capture_regex(looktype, body)`: for a lookAHEAD
+    // that is `body` FORWARD (FreshMatchWf); for a lookBEHIND `reverse_regex(body)`
+    // BACKWARD (FreshMatchWfLB). Either yields `ThreadRegsWf`, whose first conjunct
+    // is `CapRegWf(capture_regs)`. The backward context fact is definitional.
+    if looktype.Lookbehind? {
+      var bc := CP.compile_to_bytecode(R.reverse_regex(body));
+      assert AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1);
+      M.FreshMatchWfLB(bc, str, cp, ov, cdn, body, ncap, nlook, nquant);
+    } else {
+      assert looktype.Lookahead?;
+      var bc := CP.compile_to_bytecode(body);
+      M.FreshMatchWf(bc, str, cp, ov, cdn, body, ncap, nlook, nquant);
+    }
   }
 
   /** INSIDE `S`, PRESENT case — the crux value equality, modulo the (E)

@@ -700,20 +700,65 @@ module LindenElkNfaRep {
     case _ =>
   }
 
+  /** `remove_capture` preserves look-freedom (it only deletes `Group` nodes). */
+  lemma RemoveCaptureLookFreeRE(re: R.regex)
+    requires LookFreeRE(re)
+    ensures LookFreeRE(R.remove_capture(re))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => RemoveCaptureLookFreeRE(r1); RemoveCaptureLookFreeRE(r2);
+    case Re_con(r1, r2) => RemoveCaptureLookFreeRE(r1); RemoveCaptureLookFreeRE(r2);
+    case Re_quant(_, _, _, r1) => RemoveCaptureLookFreeRE(r1);
+    case Re_capture(_, r1) => RemoveCaptureLookFreeRE(r1);
+    case _ =>
+  }
+
+  /** `remove_capture` preserves nullability (a `Group(r)` is nullable iff `r` is)
+      — the plus-fragment's `nullable(body) == NonNullable` side condition. */
+  lemma RemoveCaptureNullableRE(re: R.regex)
+    ensures R.nullable(R.remove_capture(re)) == R.nullable(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => RemoveCaptureNullableRE(r1); RemoveCaptureNullableRE(r2);
+    case Re_con(r1, r2) => RemoveCaptureNullableRE(r1); RemoveCaptureNullableRE(r2);
+    case Re_quant(_, _, _, r1) => RemoveCaptureNullableRE(r1);
+    case Re_capture(_, r1) => RemoveCaptureNullableRE(r1);
+    case Re_lookaround(_, _, r1) => RemoveCaptureNullableRE(r1);
+    case _ =>
+  }
+
+  /** `remove_capture` keeps a regex in the PLUS fragment (the `+` side condition
+      is phrased on the body's nullability, which `RemoveCaptureNullableRE`
+      preserves). */
+  lemma RemoveCapturePlusFragmentRE(re: R.regex)
+    requires PlusFragmentRE(re)
+    ensures PlusFragmentRE(R.remove_capture(re))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => RemoveCapturePlusFragmentRE(r1); RemoveCapturePlusFragmentRE(r2);
+    case Re_con(r1, r2) => RemoveCapturePlusFragmentRE(r1); RemoveCapturePlusFragmentRE(r2);
+    case Re_quant(_, _, _, r1) => RemoveCapturePlusFragmentRE(r1); RemoveCaptureNullableRE(r1);
+    case Re_capture(_, r1) => RemoveCapturePlusFragmentRE(r1);
+    case _ =>
+  }
+
   /** The oracle build regex of a lookbehind-fragment lookaround stays in the
-      PLUS fragment: for lookbehinds `oracle_regex` is
-      `lazy_prefix(remove_capture(body))`, `remove_capture` is the identity on
-      the capture-free body, and the lazy prefix's quantifier is star-shaped —
-      so the whole existing forward build pipeline applies unchanged. */
+      PLUS fragment: `oracle_regex` is `lazy_prefix(remove_capture(body))` (a
+      lookAHEAD reverses first), `remove_capture` preserves the plus fragment
+      (L3a/L3b: the body may now CAPTURE — no capture-freedom needed), and the
+      lazy prefix's quantifier is star-shaped. */
   lemma OracleRegexPlusFragment(la: R.lookaround, body: R.regex)
-    requires CaptureFreeRE(body) && PlusFragmentRE(body)
+    requires PlusFragmentRE(body)
     ensures PlusFragmentRE(CP.oracle_regex(la, body))
   {
-    RemoveCaptureFreeId(body);
+    RemoveCapturePlusFragmentRE(body);   // PlusFragmentRE(remove_capture(body))
     if la.Lookahead? || la.NegLookahead? {
-      // the lookAHEAD build reverses the body first; reversal preserves the
-      // plus fragment (only concatenation order and anchor identity change)
-      ReversePlusFragmentRE(body);
+      // the lookAHEAD build reverses the (capture-stripped) body first; reversal
+      // preserves the plus fragment (only concatenation order and anchors change)
+      ReversePlusFragmentRE(R.remove_capture(body));
     }
   }
 

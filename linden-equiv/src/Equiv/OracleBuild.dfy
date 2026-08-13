@@ -247,20 +247,23 @@ module LindenElkOracleBuild {
     case Re_lookaround(lid, la, body) =>
       LookFreeNoIds(body);   // the body is look-free, so i can only be lid itself
       assert lid >= 0 && (lid as nat) == i;
-      // the recorded row (LookEntryOk) with the fragment's body facts
-      NR.RemoveCaptureFreeId(body);
-      NR.OracleRegexPlusFragment(la, body);
-      // a lookBEHIND builds lazy_prefix(body); a lookAHEAD builds
-      // lazy_prefix(reverse_regex(body)). Both are classified build programs.
+      // L3a/L3b: the body may CAPTURE, so the oracle is built over the
+      // capture-STRIPPED body `remove_capture(body)` (`oracle_regex`); it is
+      // capture-free/look-free/plus, so the classification carries unchanged.
+      var rcb := R.remove_capture(body);
+      NR.RemoveCaptureLookFreeRE(body);       // LookFreeRE(rcb)
+      NR.OracleRegexPlusFragment(la, body);   // PlusFragmentRE(oracle_regex(la, body))
+      // a lookBEHIND builds lazy_prefix(rcb); a lookAHEAD builds
+      // lazy_prefix(reverse_regex(rcb)). Both are classified build programs.
       if la.Lookbehind? || la.NegLookbehind? {
-        assert CP.oracle_regex(la, body) == R.lazy_prefix(body);
-        LookFreeLazyPrefix(body);
-        NR.CompileToWriteClassified(R.lazy_prefix(body), lid);
+        assert CP.oracle_regex(la, body) == R.lazy_prefix(rcb);
+        LookFreeLazyPrefix(rcb);
+        NR.CompileToWriteClassified(R.lazy_prefix(rcb), lid);
       } else {
-        assert CP.oracle_regex(la, body) == R.lazy_prefix(R.reverse_regex(body));
-        NR.ReverseLookFreeRE(body);
-        LookFreeLazyPrefix(R.reverse_regex(body));
-        NR.CompileToWriteClassified(R.lazy_prefix(R.reverse_regex(body)), lid);
+        assert CP.oracle_regex(la, body) == R.lazy_prefix(R.reverse_regex(rcb));
+        NR.ReverseLookFreeRE(rcb);
+        LookFreeLazyPrefix(R.reverse_regex(rcb));
+        NR.CompileToWriteClassified(R.lazy_prefix(R.reverse_regex(rcb)), lid);
       }
   }
 
@@ -568,20 +571,20 @@ module LindenElkOracleBuild {
     requires LT.LookUnique(re)
     requires LT.LookEntryOk(CP.FFullCompilation(re), lid, la, body)
     requires la.Lookbehind? || la.NegLookbehind?
-    requires NR.CaptureFreeRE(body)
     requires 1 <= lid
+    // L3b: the oracle is built over the capture-STRIPPED body (a capturing
+    // lookbehind's `oracle_regex` is `lazy_prefix(remove_capture(body))`).
     ensures LOr.view_get_oracle(AI.FBuildOracle(CP.FFullCompilation(re), str), cp, lid)
-         == ORc.ReachesWrite(CP.compile_to_write(R.lazy_prefix(body), lid), str, 0, lid, cp)
+         == ORc.ReachesWrite(CP.compile_to_write(R.lazy_prefix(R.remove_capture(body)), lid), str, 0, lid, cp)
   {
     var crv := CP.FFullCompilation(re);
     FBuildOracleCorrect(re, str);
     // this row is a lookBEHIND, so its build is Forward and LidReaches is the
     // plain reachability the L1 chain consumes
     LidReachesIsReachesWrite(re, str, lid, cp);
-    NR.RemoveCaptureFreeId(body);
-    assert CP.oracle_regex(la, body) == R.lazy_prefix(body);
+    assert CP.oracle_regex(la, body) == R.lazy_prefix(R.remove_capture(body));
     assert AI.get_code_v(crv.f_look_build_bc, lid)
-        == CP.compile_to_write(R.lazy_prefix(body), lid);
+        == CP.compile_to_write(R.lazy_prefix(R.remove_capture(body)), lid);
     // lid is within 1..maxlook: the tables have maxlook+1 rows (seed lengths
     // survive the fold) and LookEntryOk puts lid inside them
     var maxlook0 := R.max_lookaround(re);

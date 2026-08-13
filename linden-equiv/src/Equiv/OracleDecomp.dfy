@@ -1480,20 +1480,26 @@ module LindenElkOracleDecomp {
     requires LT.LookUnique(re)
     requires LT.LookEntryOk(CP.FFullCompilation(re), lid, la, body)
     requires la.Lookbehind? || la.NegLookbehind?
-    requires NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    requires NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
     requires 1 <= lid
     requires 0 <= cp <= |str|
+    // L3b: the oracle characterizes a hit of the capture-STRIPPED body (the build
+    // runs `remove_capture(body)`). Match existence is capture-blind, so the
+    // caller bridges `RecorderHit(remove_capture(body)) <==> RecorderHit(body)`.
     ensures LOr.view_get_oracle(AI.FBuildOracle(CP.FFullCompilation(re), str), cp, lid)
-         <==> RecorderHit(body, str, cp)
+         <==> RecorderHit(R.remove_capture(body), str, cp)
   {
+    var rcb := R.remove_capture(body);
+    NR.RemoveCaptureLookFreeRE(body);       // LookFreeRE(rcb)
+    NR.RemoveCapturePlusFragmentRE(body);   // PlusFragmentRE(rcb)
     OBu.FBuildOracleCorrectAt(re, str, lid, la, body, cp);
     if LOr.view_get_oracle(AI.FBuildOracle(CP.FFullCompilation(re), str), cp, lid) {
-      var i := ReachesWriteToMatches(body, lid, str, cp);
-      RecorderHitIntro(body, str, cp, i);
+      var i := ReachesWriteToMatches(rcb, lid, str, cp);
+      RecorderHitIntro(rcb, str, cp, i);
     }
-    if RecorderHit(body, str, cp) {
-      var i := RecorderHitInv(body, str, cp);
-      OB.MatchesToReachesWrite(body, lid, str, i, cp);
+    if RecorderHit(rcb, str, cp) {
+      var i := RecorderHitInv(rcb, str, cp);
+      OB.MatchesToReachesWrite(rcb, lid, str, i, cp);
     }
   }
 }
