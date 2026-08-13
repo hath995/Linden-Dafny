@@ -985,6 +985,16 @@ module LindenElkMain {
     forall i :: 0 <= i < |acts| ==> (acts[i].Areg? ==> EL.NoLkBrL(acts[i].r))
   }
 
+  /** Every `Areg` regex in `acts` has DUPLICATE-FREE defined groups. This is the
+      per-regex (quantifier-STABLE) form of no-dup: a quantifier unfold
+      `[Areg(r1),Areg(q')]` repeats `DefGroups(r1)`, so `NoDupSeq(AllDefsActs)`
+      would be FALSE, but the per-regex property survives (both copies have the
+      same, dup-free, `DefGroups(r1)`). Feeds `NoDupG(DefGroups(r1))` at each
+      look body via `NoDupSeqIsNoDupG`. Same shape/threading as `NoLkActs`. */
+  ghost predicate NoDupRegsActs(acts: LS.Actions) {
+    forall i :: 0 <= i < |acts| ==> (acts[i].Areg? ==> NoDupSeq(L.DefGroups(acts[i].r)))
+  }
+
   /** `FirstLeafClosed` restricted to LOOK-FREE actions: the LK case is
       unreachable, so this is a self-contained least lemma with no inside-look
       bookkeeping. `LookBodyLeafOpenSub` uses it on the (look-free) look body,
@@ -1612,8 +1622,11 @@ module LindenElkMain {
     requires LT.TreeRes(t, gm, inp, WP.Forward) == Some(leaf)
     requires LkClosedInGm(gm, acts)             // L3a: reused pending inside-look groups are closed
     requires OuterLkDisjoint(acts)              // L3a: outer defs disjoint from inside-look groups
+    requires NoDupRegsActs(acts)                // L3b: each pending regex has dup-free groups (for NoDupG)
+    requires TRM.GmInBounds(gm, |inp.pref| + |inp.next|)   // L3b: gm ranges within input (for the mirror)
     ensures ClosedGm(leaf.1)
   {
+    var n := |inp.pref| + |inp.next|;
     if |acts| == 0 {
       assert t == LT.Match;
       assert leaf.1 == gm;
@@ -1625,6 +1638,7 @@ module LindenElkMain {
       var cont := acts[1..];
       assert forall i :: 0 <= i < |cont| ==> cont[i] == acts[i + 1];
       assert PendingCloses(cont) <= PendingCloses(acts);
+      assert NoDupRegsActs(cont) by { forall i | 0 <= i < |cont| ensures cont[i].Areg? ==> NoDupSeq(L.DefGroups(cont[i].r)) { assert cont[i] == acts[i + 1]; } }
       match acts[0]
       case Acheck(strcheck) =>
         if b == BS.CanExit {
@@ -1652,6 +1666,7 @@ module LindenElkMain {
         }
         // GMClose keeps the domain, closes gid, and leaves every other group as-is.
         assert forall g :: g in gm2 ==> g in gm && (gm2[g].endIdx.Some? || gm2[g] == gm[g]);
+        assert TRM.GmInBounds(gm2, n) by { assert LC.Idx(inp) <= n; }
         TailInv(gm, gm2, acts);
         FirstLeafClosed(rer, cont, inp, b, t.t, gm2, leaf);
       case Areg(r) =>
@@ -1668,6 +1683,7 @@ module LindenElkMain {
             var pair := LC.ReadChar(rer, cd, inp, WP.Forward).value;
             assert t.Read?;
             assert pair.1 == LC.AdvanceInputP(inp, WP.Forward);
+            assert |pair.1.pref| + |pair.1.next| == n;   // advance preserves total length
             assert PendingCloses(acts) == PendingCloses(cont);
             TailInv(gm, gm, acts);
             FirstLeafClosed(rer, cont, pair.1, BS.CanExit, t.t, gm, leaf);
@@ -1684,6 +1700,10 @@ module LindenElkMain {
           OuterDefsActsCons(LS.Areg(r), cont); OuterDefsActsCons(LS.Areg(r1), cont); OuterDefsActsCons(LS.Areg(r2), cont);
           assert LL.LkBodyGroups(r) == LL.LkBodyGroups(r1) + LL.LkBodyGroups(r2);
           assert DefGroupsOutsideLooksL(r) == DefGroupsOutsideLooksL(r1) + DefGroupsOutsideLooksL(r2);
+          assert NoDupSeq(L.DefGroups(r)) && L.DefGroups(r) == L.DefGroups(r1) + L.DefGroups(r2);
+          NoDupConcat(L.DefGroups(r1), L.DefGroups(r2));
+          assert NoDupRegsActs(acts1) by { forall i | 0 <= i < |acts1| ensures acts1[i].Areg? ==> NoDupSeq(L.DefGroups(acts1[i].r)) { if i == 0 {} else { assert acts1[i] == cont[i - 1]; } } }
+          assert NoDupRegsActs(acts2) by { forall i | 0 <= i < |acts2| ensures acts2[i].Areg? ==> NoDupSeq(L.DefGroups(acts2[i].r)) { if i == 0 {} else { assert acts2[i] == cont[i - 1]; } } }
           if LT.TreeRes(t.t1, gm, inp, WP.Forward).Some? {
             SubInv(gm, gm, acts1, acts);
             FirstLeafClosed(rer, acts1, inp, b, t.t1, gm, leaf);
@@ -1702,6 +1722,9 @@ module LindenElkMain {
           OuterDefsActsCons(LS.Areg(r), cont); OuterDefsActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont); OuterDefsActsCons(LS.Areg(r2), cont);
           assert LL.LkBodyGroups(r) == LL.LkBodyGroups(r1) + LL.LkBodyGroups(r2);
           assert DefGroupsOutsideLooksL(r) == DefGroupsOutsideLooksL(r1) + DefGroupsOutsideLooksL(r2);
+          assert NoDupSeq(L.DefGroups(r)) && L.DefGroups(r) == L.DefGroups(r1) + L.DefGroups(r2);
+          NoDupConcat(L.DefGroups(r1), L.DefGroups(r2));
+          assert NoDupRegsActs(acts1) by { forall i | 0 <= i < |acts1| ensures acts1[i].Areg? ==> NoDupSeq(L.DefGroups(acts1[i].r)) { if i < 2 {} else { assert acts1[i] == cont[i - 2]; } } }
           SubInv(gm, gm, acts1, acts);
           FirstLeafClosed(rer, acts1, inp, b, t, gm, leaf);
         case Quantified(greedy, min, delta, r1) =>
@@ -1718,6 +1741,9 @@ module LindenElkMain {
               assert forall i :: 0 <= i < |cont| ==> acts1[i + 2] == cont[i];
             }
             assert PendingCloses(acts) == PendingCloses(cont);
+            assert NoDupSeq(L.DefGroups(r)) && L.DefGroups(r) == L.DefGroups(r1) && L.DefGroups(q') == L.DefGroups(r1);
+            assert NoDupRegsActs(acts1) by { forall i | 0 <= i < |acts1| ensures acts1[i].Areg? ==> NoDupSeq(L.DefGroups(acts1[i].r)) { if i < 2 {} else { assert acts1[i] == cont[i - 2]; } } }
+            assert TRM.GmInBounds(gm2, n);   // GMReset only shrinks the domain
             QuantSubInv(gm, gm2, r, r1, q', cont, acts, acts1);
             FirstLeafClosed(rer, acts1, inp, b, t.t, gm2, leaf);
           } else if delta == LN.NN(0) {
@@ -1742,6 +1768,9 @@ module LindenElkMain {
                 assert PendingCloses(acts1) == PendingCloses(cont) by {
                   assert forall i :: 0 <= i < |cont| ==> acts1[i + 3] == cont[i];
                 }
+                assert NoDupSeq(L.DefGroups(r)) && L.DefGroups(r) == L.DefGroups(r1) && L.DefGroups(q'') == L.DefGroups(r1);
+                assert NoDupRegsActs(acts1) by { forall i | 0 <= i < |acts1| ensures acts1[i].Areg? ==> NoDupSeq(L.DefGroups(acts1[i].r)) { if i < 3 {} else { assert acts1[i] == cont[i - 3]; } } }
+                assert TRM.GmInBounds(gm2, n);
                 QuantSubInvCheck(gm, gm2, r, r1, q'', inp, cont, acts, acts1);
                 FirstLeafClosed(rer, acts1, inp, BS.CannotExit, itert.t, gm2, leaf);
               } else {
@@ -1762,6 +1791,9 @@ module LindenElkMain {
                 assert PendingCloses(acts1) == PendingCloses(cont) by {
                   assert forall i :: 0 <= i < |cont| ==> acts1[i + 3] == cont[i];
                 }
+                assert NoDupSeq(L.DefGroups(r)) && L.DefGroups(r) == L.DefGroups(r1) && L.DefGroups(q'') == L.DefGroups(r1);
+                assert NoDupRegsActs(acts1) by { forall i | 0 <= i < |acts1| ensures acts1[i].Areg? ==> NoDupSeq(L.DefGroups(acts1[i].r)) { if i < 3 {} else { assert acts1[i] == cont[i - 3]; } } }
+                assert TRM.GmInBounds(gm2, n);
                 QuantSubInvCheck(gm, gm2, r, r1, q'', inp, cont, acts, acts1);
                 FirstLeafClosed(rer, acts1, inp, BS.CannotExit, itert.t, gm2, leaf);
               }
@@ -1798,6 +1830,10 @@ module LindenElkMain {
             }
           }
           assert OuterLkDisjoint(acts1);
+          assert NoDupSeq(L.DefGroups(r)) && L.DefGroups(r) == [gid] + L.DefGroups(r1);
+          NoDupTailSeq([gid], L.DefGroups(r1));   // drop the leading [gid] ⇒ NoDupSeq(DefGroups(r1))
+          assert NoDupRegsActs(acts1) by { forall i | 0 <= i < |acts1| ensures acts1[i].Areg? ==> NoDupSeq(L.DefGroups(acts1[i].r)) { if i < 2 {} else { assert acts1[i] == cont[i - 2]; } } }
+          assert TRM.GmInBounds(gm2, n) by { assert LC.Idx(inp) <= n; }
           FirstLeafClosed(rer, acts1, inp, b, t.t, gm2, leaf);
         case AnchorR(a) =>
           if LS.AnchorSatisfied(rer, a, inp) {
@@ -1845,6 +1881,10 @@ module LindenElkMain {
                 var sub := LT.TreeLeaves(tlk, gm, inp, dir);
                 LT.FirstTreeLeaf(tlk, gm, inp, dir);
                 assert |sub| > 0;                            // else TreeRes(t, ..) would be None
+                // L3b NoDupG: acts[0]=Areg(r), r=LookaroundR(lk,r1), DefGroups(r)==DefGroups(r1);
+                // NoDupRegsActs(acts) ⇒ NoDupSeq(DefGroups(r1)) ⇒ CDE.NoDupG(DefGroups(r1)).
+                assert NoDupSeq(L.DefGroups(r1)) by { assert NoDupSeq(L.DefGroups(r)); assert L.DefGroups(r) == L.DefGroups(r1); }
+                NoDupSeqIsNoDupG(L.DefGroups(r1));
                 LookBodyLeafOpenSub(rer, lk, r1, tlk, gm, inp, sub, S);
                 assert LT.TreeRes(tc, sub[0].1, inp, WP.Forward) == Some(leaf);  // LK positive unfold
                 assert LkClosedInGm(sub[0].1, cont) by {
@@ -1908,9 +1948,12 @@ module LindenElkMain {
     requires LkClosedInGm(gm, acts)
     requires OuterLkDisjoint(acts)
     requires forall g :: g in S ==> g !in OuterDefsActs(acts)   // S = inside-look groups
+    requires NoDupRegsActs(acts)                // L3b: each pending regex has dup-free groups (for NoDupG)
+    requires TRM.GmInBounds(gm, |inp.pref| + |inp.next|)   // L3b: gm ranges within input (for the mirror)
     ensures ClosedGm(leaf.1)
     ensures ValConf(gm, acts, leaf, S)
   {
+    var n := |inp.pref| + |inp.next|;
     if |acts| == 0 {
       assert t == LT.Match;
       assert leaf.1 == gm;
@@ -1923,6 +1966,7 @@ module LindenElkMain {
       var cont := acts[1..];
       assert forall i :: 0 <= i < |cont| ==> cont[i] == acts[i + 1];
       assert PendingCloses(cont) <= PendingCloses(acts);
+      assert NoDupRegsActs(cont) by { forall i | 0 <= i < |cont| ensures cont[i].Areg? ==> NoDupSeq(L.DefGroups(cont[i].r)) { assert cont[i] == acts[i + 1]; } }
       match acts[0]
       case Acheck(strcheck) =>
         if b == BS.CanExit {
@@ -1954,6 +1998,7 @@ module LindenElkMain {
         TailInv(gm, gm2, acts);
         assert gid in OuterDefsActs(acts);
         assert LkBodyGroupsActs(acts) == LkBodyGroupsActs(cont);   // Aclose contributes {}
+        assert TRM.GmInBounds(gm2, n) by { assert LC.Idx(inp) <= n; }
         FirstLeafValueConfined(rer, cont, inp, b, t.t, gm2, leaf, S);
         assert forall g :: g in gm && g in S && g !in LkBodyGroupsActs(acts) ==>
                  g in gm2 && gm2[g] == gm[g] && g !in LkBodyGroupsActs(cont)
@@ -1975,6 +2020,7 @@ module LindenElkMain {
             var pair := LC.ReadChar(rer, cd, inp, WP.Forward).value;
             assert t.Read?;
             assert pair.1 == LC.AdvanceInputP(inp, WP.Forward);
+            assert |pair.1.pref| + |pair.1.next| == n;   // advance preserves total length
             assert PendingCloses(acts) == PendingCloses(cont);
             TailInv(gm, gm, acts);
             assert LkBodyGroupsActs(acts) == LkBodyGroupsActs(cont);
@@ -1993,6 +2039,10 @@ module LindenElkMain {
           OuterDefsActsCons(LS.Areg(r), cont); OuterDefsActsCons(LS.Areg(r1), cont); OuterDefsActsCons(LS.Areg(r2), cont);
           assert LL.LkBodyGroups(r) == LL.LkBodyGroups(r1) + LL.LkBodyGroups(r2);
           assert DefGroupsOutsideLooksL(r) == DefGroupsOutsideLooksL(r1) + DefGroupsOutsideLooksL(r2);
+          assert NoDupSeq(L.DefGroups(r)) && L.DefGroups(r) == L.DefGroups(r1) + L.DefGroups(r2);
+          NoDupConcat(L.DefGroups(r1), L.DefGroups(r2));
+          assert NoDupRegsActs(acts1) by { forall i | 0 <= i < |acts1| ensures acts1[i].Areg? ==> NoDupSeq(L.DefGroups(acts1[i].r)) { if i == 0 {} else { assert acts1[i] == cont[i - 1]; } } }
+          assert NoDupRegsActs(acts2) by { forall i | 0 <= i < |acts2| ensures acts2[i].Areg? ==> NoDupSeq(L.DefGroups(acts2[i].r)) { if i == 0 {} else { assert acts2[i] == cont[i - 1]; } } }
           if LT.TreeRes(t.t1, gm, inp, WP.Forward).Some? {
             SubInv(gm, gm, acts1, acts);
             FirstLeafValueConfined(rer, acts1, inp, b, t.t1, gm, leaf, S);
@@ -2013,6 +2063,9 @@ module LindenElkMain {
           OuterDefsActsCons(LS.Areg(r), cont); OuterDefsActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont); OuterDefsActsCons(LS.Areg(r2), cont);
           assert LL.LkBodyGroups(r) == LL.LkBodyGroups(r1) + LL.LkBodyGroups(r2);
           assert DefGroupsOutsideLooksL(r) == DefGroupsOutsideLooksL(r1) + DefGroupsOutsideLooksL(r2);
+          assert NoDupSeq(L.DefGroups(r)) && L.DefGroups(r) == L.DefGroups(r1) + L.DefGroups(r2);
+          NoDupConcat(L.DefGroups(r1), L.DefGroups(r2));
+          assert NoDupRegsActs(acts1) by { forall i | 0 <= i < |acts1| ensures acts1[i].Areg? ==> NoDupSeq(L.DefGroups(acts1[i].r)) { if i < 2 {} else { assert acts1[i] == cont[i - 2]; } } }
           SubInv(gm, gm, acts1, acts);
           FirstLeafValueConfined(rer, acts1, inp, b, t, gm, leaf, S);
           ConfineStep(gm, gm, acts, acts1, leaf, S);
@@ -2030,6 +2083,9 @@ module LindenElkMain {
               assert forall i :: 0 <= i < |cont| ==> acts1[i + 2] == cont[i];
             }
             assert PendingCloses(acts) == PendingCloses(cont);
+            assert NoDupSeq(L.DefGroups(r)) && L.DefGroups(r) == L.DefGroups(r1) && L.DefGroups(q') == L.DefGroups(r1);
+            assert NoDupRegsActs(acts1) by { forall i | 0 <= i < |acts1| ensures acts1[i].Areg? ==> NoDupSeq(L.DefGroups(acts1[i].r)) { if i < 2 {} else { assert acts1[i] == cont[i - 2]; } } }
+            assert TRM.GmInBounds(gm2, n);   // GMReset only shrinks the domain
             QuantSubInv(gm, gm2, r, r1, q', cont, acts, acts1);
             QuantConfBridge(r, r1, q', gm, cont, acts, acts1, S);
             FirstLeafValueConfined(rer, acts1, inp, b, t.t, gm2, leaf, S);
@@ -2064,6 +2120,9 @@ module LindenElkMain {
                 assert PendingCloses(acts1) == PendingCloses(cont) by {
                   assert forall i :: 0 <= i < |cont| ==> acts1[i + 3] == cont[i];
                 }
+                assert NoDupSeq(L.DefGroups(r)) && L.DefGroups(r) == L.DefGroups(r1) && L.DefGroups(q'') == L.DefGroups(r1);
+                assert NoDupRegsActs(acts1) by { forall i | 0 <= i < |acts1| ensures acts1[i].Areg? ==> NoDupSeq(L.DefGroups(acts1[i].r)) { if i < 3 {} else { assert acts1[i] == cont[i - 3]; } } }
+                assert TRM.GmInBounds(gm2, n);
                 QuantSubInvCheck(gm, gm2, r, r1, q'', inp, cont, acts, acts1);
                 QuantCheckConfBridge(r, r1, q'', inp, gm, cont, acts, acts1, S);
                 FirstLeafValueConfined(rer, acts1, inp, BS.CannotExit, itert.t, gm2, leaf, S);
@@ -2097,6 +2156,9 @@ module LindenElkMain {
                 assert PendingCloses(acts1) == PendingCloses(cont) by {
                   assert forall i :: 0 <= i < |cont| ==> acts1[i + 3] == cont[i];
                 }
+                assert NoDupSeq(L.DefGroups(r)) && L.DefGroups(r) == L.DefGroups(r1) && L.DefGroups(q'') == L.DefGroups(r1);
+                assert NoDupRegsActs(acts1) by { forall i | 0 <= i < |acts1| ensures acts1[i].Areg? ==> NoDupSeq(L.DefGroups(acts1[i].r)) { if i < 3 {} else { assert acts1[i] == cont[i - 3]; } } }
+                assert TRM.GmInBounds(gm2, n);
                 QuantSubInvCheck(gm, gm2, r, r1, q'', inp, cont, acts, acts1);
                 QuantCheckConfBridge(r, r1, q'', inp, gm, cont, acts, acts1, S);
                 FirstLeafValueConfined(rer, acts1, inp, BS.CannotExit, itert.t, gm2, leaf, S);
@@ -2141,6 +2203,10 @@ module LindenElkMain {
           }
           assert OuterLkDisjoint(acts1);
           assert forall g :: g in S ==> g !in OuterDefsActs(acts1);
+          assert NoDupSeq(L.DefGroups(r)) && L.DefGroups(r) == [gid] + L.DefGroups(r1);
+          NoDupTailSeq([gid], L.DefGroups(r1));   // drop the leading [gid] ⇒ NoDupSeq(DefGroups(r1))
+          assert NoDupRegsActs(acts1) by { forall i | 0 <= i < |acts1| ensures acts1[i].Areg? ==> NoDupSeq(L.DefGroups(acts1[i].r)) { if i < 2 {} else { assert acts1[i] == cont[i - 2]; } } }
+          assert TRM.GmInBounds(gm2, n) by { assert LC.Idx(inp) <= n; }
           FirstLeafValueConfined(rer, acts1, inp, b, t.t, gm2, leaf, S);
           assert forall g :: g in gm && g in S && g !in LkBodyGroupsActs(acts) ==>
                    g in gm2 && gm2[g] == gm[g] && g !in LkBodyGroupsActs(acts1)
@@ -2190,6 +2256,9 @@ module LindenElkMain {
                 var sub := LT.TreeLeaves(tlk, gm, inp, dir);
                 LT.FirstTreeLeaf(tlk, gm, inp, dir);
                 assert |sub| > 0;
+                // L3b NoDupG: DefGroups(r)==DefGroups(r1); NoDupRegsActs(acts) ⇒ NoDupSeq(DefGroups(r1)).
+                assert NoDupSeq(L.DefGroups(r1)) by { assert NoDupSeq(L.DefGroups(r)); assert L.DefGroups(r) == L.DefGroups(r1); }
+                NoDupSeqIsNoDupG(L.DefGroups(r1));
                 LookBodyLeafOpenSub(rer, lk, r1, tlk, gm, inp, sub, Slook);
                 assert LT.TreeRes(tc, sub[0].1, inp, WP.Forward) == Some(leaf);
                 assert LkClosedInGm(sub[0].1, cont) by {
@@ -5664,9 +5733,11 @@ module LindenElkMain {
       EL.PikeLkActionsConsIff(LS.Areg(T.Translate(re)), []);
     }
     assert LkClosedInGm(LG.Empty, [LS.Areg(T.Translate(re))]);   // Empty has no groups
-    SpecRegexOuterLkDisjoint(raw);
+    SpecRegexOuterLkDisjoint(raw);   // also ensures NoDupSeq(L.DefGroups(SpecRegex(raw)))
     assert T.Translate(re) == LES.SpecRegex(raw);
     assert OuterLkDisjoint([LS.Areg(T.Translate(re))]);
+    assert NoDupRegsActs([LS.Areg(T.Translate(re))]) by { assert NoDupSeq(L.DefGroups(T.Translate(re))); }
+    assert TRM.GmInBounds(LG.Empty, |inp.pref| + |inp.next|);   // Empty has no ranges
     FirstLeafClosed(rer, [LS.Areg(T.Translate(re))], inp, BS.CannotExit, t, LG.Empty, leaf);
     assert ClosedGm(leaf.1);
 
