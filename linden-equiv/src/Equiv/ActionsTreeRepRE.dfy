@@ -204,146 +204,20 @@ module LindenElkActionsTreeRep {
       EL.PikeLkActionsConsIff(acts[0], cont);
       match acts[0]
       case Acheck(strcheck) =>
-        assert LS.ActionsRegexSize(acts) == LS.ActionsRegexSize(cont);
-        if NR.GetPcRE(code, pc) == Some(RB.EndLoop) {
-          assert pcmid == pc + 1;
-          if b == BS.CanExit {
-            match t {
-              case Progress(tc) =>
-                WO.WalkOkAcheckEndLoop(acts, code, pc, EaOf(b));
-                var sub := ActionsTreeRepFRE(rer, qm, cont, code, pc + 1, inp, BS.CanExit, tc, n - 1, S);
-                tstar := LT.Progress(sub);
-                // tr_progress (fall-through EndLoop)
-                LL.LAAtCongProgressOutside(sub, tc, inp, S);
-              case _ =>
-            }
-          } else {
-            // t == Mismatch: tr_progressfail
-            tstar := LT.Mismatch;
-          }
-        } else {
-          // the zero-width check at the do-while's backward fork
-          assert AR.BackForkAt(code, pc) && pcmid == pc;
-          if b == BS.CanExit {
-            match t {
-              case Progress(tc) =>
-                WO.WalkOkAcheckBackFork(acts, code, pc, EaOf(b));
-                var sub := AtBackForkTreeRep(rer, qm, cont, code, pc, inp, tc, n - 1, S);
-                tstar := LT.Progress(sub);
-                LL.LAAtCongProgressOutside(sub, tc, inp, S);
-              case _ =>
-            }
-          } else {
-            // t == Mismatch: the dissolved guard fails â€” tr_plusfail
-            tstar := LT.Mismatch;
-            var fx: int, fy: int :| NR.GetPcRE(code, pc) == Some(RB.Fork(fx, fy))
-              && fx >= 0 && fy >= 0 && (fx as nat <= pc || fy as nat <= pc);
-            assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));
-          }
-        }
+        tstar := ATR_Acheck(rer, qm, acts, cont, code, pc, pcmid, inp, b, t, n, S);
       case Aclose(gid) =>
-        match t {
-          case GroupActionT(g, tc) =>
-            assert g == LG.Close(gid);
-            WO.WalkOkAclose(acts, code, pc, EaOf(b));
-            assert CE.PSize(tc) < CE.PSize(t);
-            var sub := ActionsTreeRepFRE(rer, qm, cont, code, pc + 1, inp, b, tc, n - 1, S);
-            tstar := LT.GroupActionT(g, sub);
-            // tr_close
-            LL.LAAtCongGroupOutside(g, sub, tc, inp, S);
-          case _ =>
-        }
+        tstar := ATR_Aclose(rer, qm, acts, cont, code, pc, pcmid, inp, b, t, n, gid, S);
       case Areg(r) =>
         assert EL.PikeLkRegex(r);
         match r
         case Epsilon =>
-          assert pcmid == pc;
-          WO.WalkOkEpsilon(acts, code, pc, EaOf(b));
-          assert MsizeA(cont) < MsizeA(acts);
-          tstar := ActionsTreeRepFRE(rer, qm, cont, code, pc, inp, b, t, n - 1, S);
-        case Character(cd) => {
-          var ce :| NR.GetPcRE(code, pc) == Some(RB.Consume(ce)) && AR.ExpectationMatches(rer, ce, cd);
-          AR.ReadAgree(rer, ce, cd, inp);
-          match LC.ReadChar(rer, cd, inp, WP.Forward) {
-            case None =>
-              // t == Mismatch; tr_readfail (ReadCharE == None by ReadAgree)
-              tstar := LT.Mismatch;
-            case Some(pair) =>
-              match t {
-                case Read(c, tc) =>
-                  assert c == pair.0;
-                  WO.WalkOkCharacter(acts, code, pc, EaOf(b));
-                  assert CE.PSize(tc) < CE.PSize(t);
-                  var sub := ActionsTreeRepFRE(rer, qm, cont, code, pc + 1, pair.1, BS.CanExit, tc, n - 1, S);
-                  tstar := LT.Read(c, sub);
-                  // tr_read with witness (ce, pair.1)
-                  assert AR.ReadCharE(ce, inp) == Some((c, pair.1));
-                  LL.LAAtCongReadOutside(c, sub, tc, inp, S);
-                case _ =>
-              }
-          }
-        }
-        case Disjunction(r1, r2) => {
-          EL.PikeLkActionsConsIff(LS.Areg(r1), cont);
-          EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
-          var e1: nat :| NR.GetPcRE(code, pc) == Some(RB.Fork(pc + 1, e1 + 1))
-                       && AR.NfaRepL(rer, qm, r1, code, pc + 1, e1)
-                       && NR.GetPcRE(code, e1) == Some(RB.Jmp(pcmid))
-                       && AR.NfaRepL(rer, qm, r2, code, e1 + 1, pcmid);
-          AR.NfaRepIncrL(rer, qm, r1, code, pc + 1, e1);
-          match t {
-            case Choice(ta, tb) =>
-              WO.WalkOkAlt(acts, code, pc, EaOf(b), r1, r2, pc + 1, e1 + 1);
-              // left branch: [Areg r1]+cont at pc+1 (cont reached via Jmp(e1â†’pcmid))
-              var la := [LS.Areg(r1)] + cont;
-              assert AR.ActionsRepL(rer, qm, cont, code, e1) by {
-                FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
-                assert NR.GetPcRE(code, e1) == Some(RB.Jmp(pcmid));
-              }
-              assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, pc + 1, e1);
-              assert la[0] == LS.Areg(r1) && la[1..] == cont;
-              assert AR.ActionsRepL(rer, qm, la, code, pc + 1);
-              ActionsRepLToFuel(rer, qm, la, code, pc + 1);
-              var na: nat :| ActionsRepFuelL(rer, qm, la, code, pc + 1, na);
-              assert CE.PSize(ta) < CE.PSize(t);
-              var suba := ActionsTreeRepFRE(rer, qm, la, code, pc + 1, inp, b, ta, na, S);
-              // right branch: [Areg r2]+cont at e1+1
-              var lb := [LS.Areg(r2)] + cont;
-              FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
-              assert AR.ActionRepL(rer, qm, LS.Areg(r2), code, e1 + 1, pcmid);
-              assert lb[0] == LS.Areg(r2) && lb[1..] == cont;
-              assert AR.ActionsRepL(rer, qm, lb, code, e1 + 1);
-              ActionsRepLToFuel(rer, qm, lb, code, e1 + 1);
-              var nb: nat :| ActionsRepFuelL(rer, qm, lb, code, e1 + 1, nb);
-              assert CE.PSize(tb) < CE.PSize(t);
-              var subb := ActionsTreeRepFRE(rer, qm, lb, code, e1 + 1, inp, b, tb, nb, S);
-              tstar := LT.Choice(suba, subb);
-              // tr_choice with the forward Fork(pc+1, e1+1)
-              LL.LAAtCongChoiceOutside(suba, ta, subb, tb, inp, S);
-            case _ =>
-          }
-        }
-        case Sequence(r1, r2) => {
-          EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
-          EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
-          assert AR.NfaRepL(rer, qm, L.Sequence(r1, r2), code, pc, pcmid);
-          var e1: nat :| AR.NfaRepL(rer, qm, r1, code, pc, e1) && AR.NfaRepL(rer, qm, r2, code, e1, pcmid);
-          var na := [LS.Areg(r1), LS.Areg(r2)] + cont;
-          assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
-          assert AR.ActionRepL(rer, qm, LS.Areg(r2), code, e1, pcmid);
-          assert ([LS.Areg(r2)] + cont)[0] == LS.Areg(r2) && ([LS.Areg(r2)] + cont)[1..] == cont;
-          FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
-          assert AR.ActionsRepL(rer, qm, [LS.Areg(r2)] + cont, code, e1);
-          assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, pc, e1);
-          assert na[0] == LS.Areg(r1) && na[1..] == [LS.Areg(r2)] + cont;
-          assert AR.ActionsRepL(rer, qm, na, code, pc);
-          assert LS.ActionsRegexSize(na) < LS.ActionsRegexSize(acts);
-          assert MsizeA(na) < MsizeA(acts);
-          ActionsRepLToFuel(rer, qm, na, code, pc);
-          var nn: nat :| ActionsRepFuelL(rer, qm, na, code, pc, nn);
-          WO.WalkOkSeq(acts, code, pc, EaOf(b), r1, r2);
-          tstar := ActionsTreeRepFRE(rer, qm, na, code, pc, inp, b, t, nn, S);
-        }
+          tstar := ATR_Epsilon(rer, qm, acts, cont, code, pc, pcmid, inp, b, t, n, S);
+        case Character(cd) =>
+          tstar := ATR_Character(rer, qm, acts, cont, code, pc, pcmid, inp, b, t, n, cd, S);
+        case Disjunction(r1, r2) =>
+          tstar := ATR_Disjunction(rer, qm, acts, cont, code, pc, pcmid, inp, b, t, n, r1, r2, S);
+        case Sequence(r1, r2) =>
+          tstar := ATR_Sequence(rer, qm, acts, cont, code, pc, pcmid, inp, b, t, n, r1, r2, S);
         case Quantified(greedy, min, delta, r1) => {
           var gidl := L.DefGroups(r1);
           if min > 0 {
@@ -694,7 +568,286 @@ module LindenElkActionsTreeRep {
             assert LL.LeavesAgreeAtOutside(tstar, t, inp, S);
           }
         }
-        case Group(gid, r1) => {
+        case Group(gid, r1) =>
+          tstar := ATR_Group(rer, qm, acts, cont, code, pc, pcmid, inp, b, t, n, gid, r1, S);
+        case AnchorR(la) =>
+          tstar := ATR_AnchorR(rer, qm, acts, cont, code, pc, pcmid, inp, b, t, n, la, S);
+        case LookaroundR(lk, r1) =>
+          tstar := ATR_LookaroundR(rer, qm, acts, cont, code, pc, pcmid, inp, b, t, n, lk, r1, S);
+        case Backreference(gid) =>   // not pike
+    }
+  }
+
+  lemma ATR_Acheck(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, cont: LS.Actions, code: RB.code, pc: nat, pcmid: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree, n: nat, S: set<LG.GroupId>)
+    returns (tstar: LT.Tree)
+    requires EL.PikeLkActions(acts)
+    requires !rer.multiline
+    requires ActionsRepFuelL(rer, qm, acts, code, pc, n)
+    requires WO.WalkOk(acts, code, pc, EaOf(b))
+    requires LL.OracleOkSuffix(rer, qm, inp)
+    requires EL.BoolTreeLk(rer, acts, inp, b, t)
+    requires CE.LkConfinedTree(t, S)
+    requires |acts| > 0 && acts[0].Acheck?
+    requires cont == acts[1..]
+    requires AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && ActionsRepFuelL(rer, qm, cont, code, pcmid, n - 1)
+    requires EL.PikeLkActions(cont)
+    ensures TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b))
+    ensures LL.LeavesAgreeAtOutside(tstar, t, inp, S)
+    decreases CE.PSize(t), MsizeA(acts), n, 0
+  {
+    assert acts == [acts[0]] + cont;
+        assert LS.ActionsRegexSize(acts) == LS.ActionsRegexSize(cont);
+        if NR.GetPcRE(code, pc) == Some(RB.EndLoop) {
+          assert pcmid == pc + 1;
+          if b == BS.CanExit {
+            match t {
+              case Progress(tc) =>
+                WO.WalkOkAcheckEndLoop(acts, code, pc, EaOf(b));
+                var sub := ActionsTreeRepFRE(rer, qm, cont, code, pc + 1, inp, BS.CanExit, tc, n - 1, S);
+                tstar := LT.Progress(sub);
+                // tr_progress (fall-through EndLoop)
+                LL.LAAtCongProgressOutside(sub, tc, inp, S);
+              case _ =>
+            }
+          } else {
+            // t == Mismatch: tr_progressfail
+            tstar := LT.Mismatch;
+          }
+        } else {
+          // the zero-width check at the do-while's backward fork
+          assert AR.BackForkAt(code, pc) && pcmid == pc;
+          if b == BS.CanExit {
+            match t {
+              case Progress(tc) =>
+                WO.WalkOkAcheckBackFork(acts, code, pc, EaOf(b));
+                var sub := AtBackForkTreeRep(rer, qm, cont, code, pc, inp, tc, n - 1, S);
+                tstar := LT.Progress(sub);
+                LL.LAAtCongProgressOutside(sub, tc, inp, S);
+              case _ =>
+            }
+          } else {
+            // t == Mismatch: the dissolved guard fails â€” tr_plusfail
+            tstar := LT.Mismatch;
+            var fx: int, fy: int :| NR.GetPcRE(code, pc) == Some(RB.Fork(fx, fy))
+              && fx >= 0 && fy >= 0 && (fx as nat <= pc || fy as nat <= pc);
+            assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));
+          }
+        }
+  }
+
+  lemma ATR_Aclose(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, cont: LS.Actions, code: RB.code, pc: nat, pcmid: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree, n: nat, gid: LG.GroupId, S: set<LG.GroupId>)
+    returns (tstar: LT.Tree)
+    requires EL.PikeLkActions(acts)
+    requires !rer.multiline
+    requires ActionsRepFuelL(rer, qm, acts, code, pc, n)
+    requires WO.WalkOk(acts, code, pc, EaOf(b))
+    requires LL.OracleOkSuffix(rer, qm, inp)
+    requires EL.BoolTreeLk(rer, acts, inp, b, t)
+    requires CE.LkConfinedTree(t, S)
+    requires |acts| > 0 && acts[0] == LS.Aclose(gid)
+    requires cont == acts[1..]
+    requires AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && ActionsRepFuelL(rer, qm, cont, code, pcmid, n - 1)
+    requires EL.PikeLkActions(cont)
+    ensures TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b))
+    ensures LL.LeavesAgreeAtOutside(tstar, t, inp, S)
+    decreases CE.PSize(t), MsizeA(acts), n, 0
+  {
+    assert acts == [acts[0]] + cont;
+        match t {
+          case GroupActionT(g, tc) =>
+            assert g == LG.Close(gid);
+            WO.WalkOkAclose(acts, code, pc, EaOf(b));
+            assert CE.PSize(tc) < CE.PSize(t);
+            var sub := ActionsTreeRepFRE(rer, qm, cont, code, pc + 1, inp, b, tc, n - 1, S);
+            tstar := LT.GroupActionT(g, sub);
+            // tr_close
+            LL.LAAtCongGroupOutside(g, sub, tc, inp, S);
+          case _ =>
+        }
+  }
+
+  lemma ATR_Epsilon(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, cont: LS.Actions, code: RB.code, pc: nat, pcmid: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree, n: nat, S: set<LG.GroupId>)
+    returns (tstar: LT.Tree)
+    requires EL.PikeLkActions(acts)
+    requires !rer.multiline
+    requires ActionsRepFuelL(rer, qm, acts, code, pc, n)
+    requires WO.WalkOk(acts, code, pc, EaOf(b))
+    requires LL.OracleOkSuffix(rer, qm, inp)
+    requires EL.BoolTreeLk(rer, acts, inp, b, t)
+    requires CE.LkConfinedTree(t, S)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Epsilon)
+    requires cont == acts[1..]
+    requires AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && ActionsRepFuelL(rer, qm, cont, code, pcmid, n - 1)
+    requires EL.PikeLkActions(cont)
+    ensures TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b))
+    ensures LL.LeavesAgreeAtOutside(tstar, t, inp, S)
+    decreases CE.PSize(t), MsizeA(acts), n, 0
+  {
+    assert acts == [acts[0]] + cont;
+          assert pcmid == pc;
+          WO.WalkOkEpsilon(acts, code, pc, EaOf(b));
+          assert MsizeA(cont) < MsizeA(acts);
+          tstar := ActionsTreeRepFRE(rer, qm, cont, code, pc, inp, b, t, n - 1, S);
+  }
+
+  lemma ATR_Character(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, cont: LS.Actions, code: RB.code, pc: nat, pcmid: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree, n: nat, cd: LC.CharDescr, S: set<LG.GroupId>)
+    returns (tstar: LT.Tree)
+    requires EL.PikeLkActions(acts)
+    requires !rer.multiline
+    requires ActionsRepFuelL(rer, qm, acts, code, pc, n)
+    requires WO.WalkOk(acts, code, pc, EaOf(b))
+    requires LL.OracleOkSuffix(rer, qm, inp)
+    requires EL.BoolTreeLk(rer, acts, inp, b, t)
+    requires CE.LkConfinedTree(t, S)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Character(cd))
+    requires cont == acts[1..]
+    requires AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && ActionsRepFuelL(rer, qm, cont, code, pcmid, n - 1)
+    requires EL.PikeLkActions(cont)
+    ensures TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b))
+    ensures LL.LeavesAgreeAtOutside(tstar, t, inp, S)
+    decreases CE.PSize(t), MsizeA(acts), n, 0
+  {
+    assert acts == [acts[0]] + cont;
+          var ce :| NR.GetPcRE(code, pc) == Some(RB.Consume(ce)) && AR.ExpectationMatches(rer, ce, cd);
+          AR.ReadAgree(rer, ce, cd, inp);
+          match LC.ReadChar(rer, cd, inp, WP.Forward) {
+            case None =>
+              // t == Mismatch; tr_readfail (ReadCharE == None by ReadAgree)
+              tstar := LT.Mismatch;
+            case Some(pair) =>
+              match t {
+                case Read(c, tc) =>
+                  assert c == pair.0;
+                  WO.WalkOkCharacter(acts, code, pc, EaOf(b));
+                  assert CE.PSize(tc) < CE.PSize(t);
+                  var sub := ActionsTreeRepFRE(rer, qm, cont, code, pc + 1, pair.1, BS.CanExit, tc, n - 1, S);
+                  tstar := LT.Read(c, sub);
+                  // tr_read with witness (ce, pair.1)
+                  assert AR.ReadCharE(ce, inp) == Some((c, pair.1));
+                  LL.LAAtCongReadOutside(c, sub, tc, inp, S);
+                case _ =>
+              }
+          }
+  }
+
+  lemma ATR_Disjunction(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, cont: LS.Actions, code: RB.code, pc: nat, pcmid: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree, n: nat, r1: L.Regex, r2: L.Regex, S: set<LG.GroupId>)
+    returns (tstar: LT.Tree)
+    requires EL.PikeLkActions(acts)
+    requires !rer.multiline
+    requires ActionsRepFuelL(rer, qm, acts, code, pc, n)
+    requires WO.WalkOk(acts, code, pc, EaOf(b))
+    requires LL.OracleOkSuffix(rer, qm, inp)
+    requires EL.BoolTreeLk(rer, acts, inp, b, t)
+    requires CE.LkConfinedTree(t, S)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Disjunction(r1, r2))
+    requires cont == acts[1..]
+    requires AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && ActionsRepFuelL(rer, qm, cont, code, pcmid, n - 1)
+    requires EL.PikeLkActions(cont)
+    requires EL.PikeLkRegex(L.Disjunction(r1, r2))
+    ensures TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b))
+    ensures LL.LeavesAgreeAtOutside(tstar, t, inp, S)
+    decreases CE.PSize(t), MsizeA(acts), n, 0
+  {
+    assert acts == [acts[0]] + cont;
+          EL.PikeLkActionsConsIff(LS.Areg(r1), cont);
+          EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
+          var e1: nat :| NR.GetPcRE(code, pc) == Some(RB.Fork(pc + 1, e1 + 1))
+                       && AR.NfaRepL(rer, qm, r1, code, pc + 1, e1)
+                       && NR.GetPcRE(code, e1) == Some(RB.Jmp(pcmid))
+                       && AR.NfaRepL(rer, qm, r2, code, e1 + 1, pcmid);
+          AR.NfaRepIncrL(rer, qm, r1, code, pc + 1, e1);
+          match t {
+            case Choice(ta, tb) =>
+              WO.WalkOkAlt(acts, code, pc, EaOf(b), r1, r2, pc + 1, e1 + 1);
+              // left branch: [Areg r1]+cont at pc+1 (cont reached via Jmp(e1â†’pcmid))
+              var la := [LS.Areg(r1)] + cont;
+              assert AR.ActionsRepL(rer, qm, cont, code, e1) by {
+                FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
+                assert NR.GetPcRE(code, e1) == Some(RB.Jmp(pcmid));
+              }
+              assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, pc + 1, e1);
+              assert la[0] == LS.Areg(r1) && la[1..] == cont;
+              assert AR.ActionsRepL(rer, qm, la, code, pc + 1);
+              ActionsRepLToFuel(rer, qm, la, code, pc + 1);
+              var na: nat :| ActionsRepFuelL(rer, qm, la, code, pc + 1, na);
+              assert CE.PSize(ta) < CE.PSize(t);
+              var suba := ActionsTreeRepFRE(rer, qm, la, code, pc + 1, inp, b, ta, na, S);
+              // right branch: [Areg r2]+cont at e1+1
+              var lb := [LS.Areg(r2)] + cont;
+              FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
+              assert AR.ActionRepL(rer, qm, LS.Areg(r2), code, e1 + 1, pcmid);
+              assert lb[0] == LS.Areg(r2) && lb[1..] == cont;
+              assert AR.ActionsRepL(rer, qm, lb, code, e1 + 1);
+              ActionsRepLToFuel(rer, qm, lb, code, e1 + 1);
+              var nb: nat :| ActionsRepFuelL(rer, qm, lb, code, e1 + 1, nb);
+              assert CE.PSize(tb) < CE.PSize(t);
+              var subb := ActionsTreeRepFRE(rer, qm, lb, code, e1 + 1, inp, b, tb, nb, S);
+              tstar := LT.Choice(suba, subb);
+              // tr_choice with the forward Fork(pc+1, e1+1)
+              LL.LAAtCongChoiceOutside(suba, ta, subb, tb, inp, S);
+            case _ =>
+          }
+  }
+
+  lemma ATR_Sequence(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, cont: LS.Actions, code: RB.code, pc: nat, pcmid: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree, n: nat, r1: L.Regex, r2: L.Regex, S: set<LG.GroupId>)
+    returns (tstar: LT.Tree)
+    requires EL.PikeLkActions(acts)
+    requires !rer.multiline
+    requires ActionsRepFuelL(rer, qm, acts, code, pc, n)
+    requires WO.WalkOk(acts, code, pc, EaOf(b))
+    requires LL.OracleOkSuffix(rer, qm, inp)
+    requires EL.BoolTreeLk(rer, acts, inp, b, t)
+    requires CE.LkConfinedTree(t, S)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Sequence(r1, r2))
+    requires cont == acts[1..]
+    requires AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && ActionsRepFuelL(rer, qm, cont, code, pcmid, n - 1)
+    requires EL.PikeLkActions(cont)
+    requires EL.PikeLkRegex(L.Sequence(r1, r2))
+    ensures TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b))
+    ensures LL.LeavesAgreeAtOutside(tstar, t, inp, S)
+    decreases CE.PSize(t), MsizeA(acts), n, 0
+  {
+    assert acts == [acts[0]] + cont;
+          EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
+          EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
+          assert AR.NfaRepL(rer, qm, L.Sequence(r1, r2), code, pc, pcmid);
+          var e1: nat :| AR.NfaRepL(rer, qm, r1, code, pc, e1) && AR.NfaRepL(rer, qm, r2, code, e1, pcmid);
+          var na := [LS.Areg(r1), LS.Areg(r2)] + cont;
+          assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+          assert AR.ActionRepL(rer, qm, LS.Areg(r2), code, e1, pcmid);
+          assert ([LS.Areg(r2)] + cont)[0] == LS.Areg(r2) && ([LS.Areg(r2)] + cont)[1..] == cont;
+          FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
+          assert AR.ActionsRepL(rer, qm, [LS.Areg(r2)] + cont, code, e1);
+          assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, pc, e1);
+          assert na[0] == LS.Areg(r1) && na[1..] == [LS.Areg(r2)] + cont;
+          assert AR.ActionsRepL(rer, qm, na, code, pc);
+          assert LS.ActionsRegexSize(na) < LS.ActionsRegexSize(acts);
+          assert MsizeA(na) < MsizeA(acts);
+          ActionsRepLToFuel(rer, qm, na, code, pc);
+          var nn: nat :| ActionsRepFuelL(rer, qm, na, code, pc, nn);
+          WO.WalkOkSeq(acts, code, pc, EaOf(b), r1, r2);
+          tstar := ActionsTreeRepFRE(rer, qm, na, code, pc, inp, b, t, nn, S);
+  }
+
+  lemma ATR_Group(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, cont: LS.Actions, code: RB.code, pc: nat, pcmid: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree, n: nat, gid: LG.GroupId, r1: L.Regex, S: set<LG.GroupId>)
+    returns (tstar: LT.Tree)
+    requires EL.PikeLkActions(acts)
+    requires !rer.multiline
+    requires ActionsRepFuelL(rer, qm, acts, code, pc, n)
+    requires WO.WalkOk(acts, code, pc, EaOf(b))
+    requires LL.OracleOkSuffix(rer, qm, inp)
+    requires EL.BoolTreeLk(rer, acts, inp, b, t)
+    requires CE.LkConfinedTree(t, S)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Group(gid, r1))
+    requires cont == acts[1..]
+    requires AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && ActionsRepFuelL(rer, qm, cont, code, pcmid, n - 1)
+    requires EL.PikeLkActions(cont)
+    requires EL.PikeLkRegex(L.Group(gid, r1))
+    ensures TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b))
+    ensures LL.LeavesAgreeAtOutside(tstar, t, inp, S)
+    decreases CE.PSize(t), MsizeA(acts), n, 0
+  {
+    assert acts == [acts[0]] + cont;
           EL.PikeLkActionsConsIff(LS.Aclose(gid), cont);
           EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Aclose(gid)] + cont);
           var e1: nat :| NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(CP.start_reg(gid as int)))
@@ -724,8 +877,26 @@ module LindenElkActionsTreeRep {
               LL.LAAtCongGroupOutside(g, sub, tc, inp, S);
             case _ =>
           }
-        }
-        case AnchorR(la) => {
+  }
+
+  lemma ATR_AnchorR(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, cont: LS.Actions, code: RB.code, pc: nat, pcmid: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree, n: nat, la: L.Anchor, S: set<LG.GroupId>)
+    returns (tstar: LT.Tree)
+    requires EL.PikeLkActions(acts)
+    requires !rer.multiline
+    requires ActionsRepFuelL(rer, qm, acts, code, pc, n)
+    requires WO.WalkOk(acts, code, pc, EaOf(b))
+    requires LL.OracleOkSuffix(rer, qm, inp)
+    requires EL.BoolTreeLk(rer, acts, inp, b, t)
+    requires CE.LkConfinedTree(t, S)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.AnchorR(la))
+    requires cont == acts[1..]
+    requires AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && ActionsRepFuelL(rer, qm, cont, code, pcmid, n - 1)
+    requires EL.PikeLkActions(cont)
+    ensures TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b))
+    ensures LL.LeavesAgreeAtOutside(tstar, t, inp, S)
+    decreases CE.PSize(t), MsizeA(acts), n, 0
+  {
+    assert acts == [acts[0]] + cont;
           // NfaRepL(AnchorR) => AnchorAssertion(ra) at pc with TrAnchor(ra) == la, pcmid == pc + 1
           var ra: R.anchor :| NR.GetPcRE(code, pc) == Some(RB.AnchorAssertion(ra))
                               && T.TrAnchor(ra) == la;
@@ -746,8 +917,28 @@ module LindenElkActionsTreeRep {
             // t == Mismatch; tr_anchorfail via the agreement
             tstar := LT.Mismatch;
           }
-        }
-        case LookaroundR(lk, r1) => {
+  }
+
+  lemma ATR_LookaroundR(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, cont: LS.Actions, code: RB.code, pc: nat, pcmid: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree, n: nat, lk: L.Lookaround, r1: L.Regex, S: set<LG.GroupId>)
+    returns (tstar: LT.Tree)
+    requires EL.PikeLkActions(acts)
+    requires !rer.multiline
+    requires ActionsRepFuelL(rer, qm, acts, code, pc, n)
+    requires WO.WalkOk(acts, code, pc, EaOf(b))
+    requires LL.OracleOkSuffix(rer, qm, inp)
+    requires EL.BoolTreeLk(rer, acts, inp, b, t)
+    requires CE.LkConfinedTree(t, S)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.LookaroundR(lk, r1))
+    requires cont == acts[1..]
+    requires AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && ActionsRepFuelL(rer, qm, cont, code, pcmid, n - 1)
+    requires EL.PikeLkActions(cont)
+    requires EL.PikeLkRegex(L.LookaroundR(lk, r1))
+    ensures TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b))
+    ensures LL.LeavesAgreeAtOutside(tstar, t, inp, S)
+    decreases CE.PSize(t), MsizeA(acts), n, 0
+  {
+    assert acts == [acts[0]] + cont;
+    var r := L.LookaroundR(lk, r1);
           // THE GATE. `NfaRepL`'s lookaround arm pins one zero-width
           // instruction at `pc`, whose bare lid the `looks` table maps back to
           // this (flavour, body); `OracleOkAt` says the oracle column agrees
@@ -810,9 +1001,6 @@ module LindenElkActionsTreeRep {
               LL.LeavesAgreeAtWeaken(LT.Mismatch, LT.LKFail(lk, tlk), inp, S);
             case _ =>
           }
-        }
-        case Backreference(gid) =>   // not pike
-    }
   }
 
   /** The fused fork lemma: at the do-while's backward fork with the walk
