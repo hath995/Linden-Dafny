@@ -3075,6 +3075,21 @@ module LindenElkPikeInv {
       :: LiveRange(f, cc, gid)
   }
 
+  /** `GmOfLive` reads the capture bank (full) but only the CLOCKS of the look and
+      quant banks — `filter_reset` destructures `(_, look_clocks)`, `(_, quant_clocks)`,
+      discarding their positions. So two states agreeing on caps + look/quant clocks
+      denote the same `GroupMap`. (Used to transport the backward run's `GmOfLive`
+      across the mirror, where only the caps are involuted.) */
+  lemma GmOfLiveClkCong(ast: R.regex, caps: AReg.Regs, look1: AReg.Regs, look2: AReg.Regs,
+                        quant1: AReg.Regs, quant2: AReg.Regs)
+    requires AReg.as_arrays(look1).1 == AReg.as_arrays(look2).1
+    requires AReg.as_arrays(quant1).1 == AReg.as_arrays(quant2).1
+    ensures GmOfLive(ast, caps, look1, quant1) == GmOfLive(ast, caps, look2, quant2)
+  {
+    assert AI.filter_reset(ast, caps, look1, quant1, -1)
+        == AI.filter_reset(ast, caps, look2, quant2, -1);
+  }
+
   // GmOfLive has the same DOMAIN as GmOf (both present iff start >= 0); at init
   // that domain is empty.
   /** Freshly-initialized registers denote the empty `GroupMap` under `GmOfLive`

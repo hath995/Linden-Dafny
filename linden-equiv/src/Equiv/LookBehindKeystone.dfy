@@ -152,6 +152,43 @@ module LindenLookBehindKeystone {
   // Small structural bridges
   // ===========================================================================
 
+  /** The BACKWARD run's capture bank lies in `[-1, n]` — WITHOUT a backward
+      caps-LE lemma. From `rfF.caps == MirrorRegs(raB.caps)` (BackwardReplayMirror)
+      + the FORWARD bound on `rfF.caps` (`FFindMatchCapsLE`, rfF is forward) + the
+      clock-coupling of `CapRegWf` on both banks: where `rfF` is present,
+      `n - raB.a_cp >= 0 ⟹ raB.a_cp <= n`; where `rfF` is absent, its clock is `<0`,
+      and `MirrorRegs` keeps `a_clk`, so `raB`'s clock is `<0`, forcing `raB.a_cp = -1`.
+      This is exactly `MirrorRegsInvol`'s precondition on `raB.caps`. */
+  lemma BackCapsInRange(raBc: AReg.Regs, rfFc: AReg.Regs, n: int)
+    requires rfFc == MIR.MirrorRegs(raBc, n)
+    requires PIV.CapRegWf(rfFc) && PIV.CapRegWf(raBc)
+    requires forall k :: AI.get_idx(rfFc.a_cp, k) <= n
+    ensures forall k :: 0 <= k < |raBc.a_cp| ==> -1 <= raBc.a_cp[k] <= n
+  {
+    assert |rfFc.a_cp| == |raBc.a_cp|;
+    assert rfFc.a_clk == raBc.a_clk;                        // MirrorRegs keeps a_clk
+    forall k | 0 <= k < |raBc.a_cp|
+      ensures -1 <= raBc.a_cp[k] <= n
+    {
+      assert rfFc.a_cp[k] == MIR.MirrorCpVal(raBc.a_cp[k], n);   // MirrorRegs def
+      assert AI.get_idx(raBc.a_cp, k) == raBc.a_cp[k];
+      assert raBc.a_cp[k] >= -1;                            // CapRegWf(raBc)
+      if raBc.a_cp[k] >= 0 {
+        if rfFc.a_cp[k] < 0 {
+          // rfFc.a_cp[k] = n - raBc.a_cp[k] would be < 0; CapRegWf forces a contradiction.
+          assert AI.get_idx(rfFc.a_cp, k) == rfFc.a_cp[k];
+          assert AI.get_idx(rfFc.a_clk, k) < 0;             // CapRegWf(rfFc): a_cp<0 ⟹ a_clk<0
+          assert AI.get_idx(rfFc.a_clk, k) == AI.get_idx(raBc.a_clk, k);
+          assert AI.get_idx(raBc.a_clk, k) < 0;
+          assert AI.get_idx(raBc.a_cp, k) < 0;              // CapRegWf(raBc): a_clk<0 ⟹ a_cp<0
+          assert false;
+        }
+        assert AI.get_idx(rfFc.a_cp, k) == rfFc.a_cp[k] && rfFc.a_cp[k] <= n;   // forward bound
+        // rfFc.a_cp[k] = n - raBc.a_cp[k] >= 0 ⟹ raBc.a_cp[k] <= n
+      }
+    }
+  }
+
   /** The endpoint swap preserves `S`-agreement (same keys, `SwapRange` pointwise). */
   lemma SwapGmAgree(gm1: LG.GroupMap, gm2: LG.GroupMap, S: set<LG.GroupId>)
     requires M.GmAgreeOn(gm1, gm2, S)
@@ -461,6 +498,116 @@ module LindenLookBehindKeystone {
           == LBV.SwapGm(rb.value.1);
       assert M.GmAgreeOn(lkr.value, rb.value.1, S);      // TreeResGmFrame (tlk==tB)
       SwapGmAgree(lkr.value, rb.value.1, S);
+    }
+  }
+
+  /** THE GATE-STEP CRUX, packaged for `GateStepValueLB`. For a positive LOOKBEHIND,
+      the FRESH backward body match `raB` (= `FreshBodyMatch(l)` at cap=init) ties to
+      the SPEC `LkResult` value through the endpoint swap directly:
+      `SwapGm(LkResult.value)` agrees on `Sbody` with `GmOfLive(body, raB.*)`. This
+      re-expresses the keystone's `rfF`-flavoured statement in terms of the actual
+      backward run, using `BackwardReplayMirror` (`rfF==MirrorThread(raB)`),
+      `BackCapsInRange`+`MirrorRegsInvol` (caps involution — the only bank `GmOfLive`
+      reads positionally), and `GmOfLiveClkCong` (look/quant banks agree on clocks). */
+  lemma {:isolate_assertions} BackFreshBodyGmTie(
+      rer: LW.RegExpRecord, body: R.regex, str: string, cp: nat,
+      ov: LOr.OracleView, cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
+      ncap: int, nlook: int, nquant: int, n: nat)
+    requires T.TransWf(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires SD.GroupOkL(T.Translate(body))
+    requires CD.NoDupG(L.DefGroups(T.Translate(body)))
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires !rer.ignoreCase && !rer.multiline
+    requires n == |str| && cp <= n && |ov| == n + 1
+    requires la.Lookbehind?
+    requires tlk == FU.ComputeTr(rer, [LS.Areg(T.Translate(body))], PIV.InpOfCp(str, cp), gmMain, WP.Backward)
+    requires M.GmAgreeOn(gmMain, LG.Empty, set g | g in L.DefGroups(T.Translate(body)))
+    ensures
+      var inp := PIV.InpOfCp(str, cp);
+      var bcB := CP.compile_to_bytecode(R.reverse_regex(body));
+      var raB := AI.FFindMatch(bcB, str,
+                   AI.FInitState(bcB, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                 AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
+                   ov, LAnc.Backward, cdns).0;
+      var lkr := LS.LkResult(T.TrLookaround(la), tlk, gmMain, inp);
+      var Sbody := set g | g in L.DefGroups(T.Translate(body));
+      (raB.None? <==> lkr.None?)
+      && (raB.Some? ==>
+            lkr.Some?
+            && M.GmAgreeOn(LBV.SwapGm(lkr.value),
+                           PIV.GmOfLive(body, raB.value.capture_regs, raB.value.look_regs,
+                                        raB.value.quant_regs),
+                           Sbody))
+  {
+    var inp := PIV.InpOfCp(str, cp);
+    var cap := AReg.init_regs(ncap);
+    var lk := AReg.init_regs(nlook);
+    var qt := AReg.init_regs(nquant);
+    // keystone preconditions at cap=lk=qt=init
+    assert CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body));
+    assert |qt.a_cp| == nquant && |qt.a_clk| == nquant;
+    LkReplayMatchesSpecLB(rer, body, str, cp, cap, lk, qt, ov, cdns, la, tlk, gmMain,
+                          ncap, nlook, nquant, n);
+
+    var bcB := CP.compile_to_bytecode(R.reverse_regex(body));
+    var ctxcB := AI.cp_context(cp, str, LAnc.Backward);
+    var raB := AI.FFindMatch(bcB, str, AI.FInitState(bcB, cp, cap, lk, qt, 0, ctxcB),
+                             ov, LAnc.Backward, cdns).0;
+    var bcF := CP.compile_to_bytecode(SD.RevRE(body));
+    var mcp := MIR.Mirror(cp, n);
+    var ctxcF := AI.cp_context(mcp, LC.Reverse(str), LAnc.Forward);
+    var rfF := AI.FFindMatch(bcF, LC.Reverse(str),
+                 AI.FInitState(bcF, mcp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                               AReg.init_regs(nquant), 0, ctxcF),
+                 MIR.MirrorView(ov, n), LAnc.Forward, MIR.SwapAnchorsCdns(cdns)).0;
+    var lkr := LS.LkResult(T.TrLookaround(la), tlk, gmMain, inp);
+    var Sbody := set g | g in L.DefGroups(T.Translate(body));
+
+    if raB.Some? {
+      // ---- rfF == MirrorThread(raB) (BackwardReplayMirror; init banks mirror to init) ----
+      MIR.MirrorInitRegs(ncap, n); MIR.MirrorInitRegs(nlook, n); MIR.MirrorInitRegs(nquant, n);
+      BV.BackwardReplayMirror(body, str, cp, cap, lk, qt, ov, cdns, n);
+      assert rfF.Some? && rfF.value == MIR.MirrorThread(raB.value, n);
+      assert rfF.value.capture_regs == MIR.MirrorRegs(raB.value.capture_regs, n);
+      assert rfF.value.look_regs == MIR.MirrorRegs(raB.value.look_regs, n);
+      assert rfF.value.quant_regs == MIR.MirrorRegs(raB.value.quant_regs, n);
+
+      // ---- wf + forward bound (rfF is forward; LBEngineLeaf gives rfF.caps <= n) ----
+      LBEngineLeaf(rer, body, str, cp, cap, lk, qt, ov, cdns, ncap, nlook, nquant, n);
+      assert forall k :: AI.get_idx(AReg.as_arrays(rfF.value.capture_regs).0, k) <= n;
+      // CapRegWf(raB.caps): backward fresh-match wf.
+      M.FreshMatchWfLB(bcB, str, cp, ov, cdns, body, ncap, nlook, nquant);
+      assert PIV.CapRegWf(raB.value.capture_regs);
+      // CapRegWf(rfF.caps): forward fresh-match wf over RevRE(body).
+      OS.RevREPlusFragment(body);
+      NR.PlusIsLookBehindFragmentRE(SD.RevRE(body));
+      LBV.CapUniqueRevRE(body);
+      LBV.QuantUniqueRevRE(body);
+      LBV.MaxGroupRevRE(body);
+      LBV.MaxQuantRevRE(body);
+      MIR.ReverseLen(str);
+      M.FreshMatchWf(bcF, LC.Reverse(str), mcp, MIR.MirrorView(ov, n), MIR.SwapAnchorsCdns(cdns),
+                     SD.RevRE(body), ncap, nlook, nquant);
+      assert PIV.CapRegWf(rfF.value.capture_regs);
+
+      // ---- caps: MirrorRegs(rfF.caps) == raB.caps (the only positionally-read bank) ----
+      BackCapsInRange(raB.value.capture_regs, rfF.value.capture_regs, n);
+      MIR.MirrorRegsInvol(raB.value.capture_regs, n);
+      assert MIR.MirrorRegs(rfF.value.capture_regs, n) == raB.value.capture_regs;
+
+      // ---- look/quant: clocks agree, GmOfLive ignores their positions ----
+      assert AReg.as_arrays(MIR.MirrorRegs(rfF.value.look_regs, n)).1
+          == AReg.as_arrays(raB.value.look_regs).1;
+      assert AReg.as_arrays(MIR.MirrorRegs(rfF.value.quant_regs, n)).1
+          == AReg.as_arrays(raB.value.quant_regs).1;
+      PIV.GmOfLiveClkCong(body, raB.value.capture_regs,
+                          MIR.MirrorRegs(rfF.value.look_regs, n), raB.value.look_regs,
+                          MIR.MirrorRegs(rfF.value.quant_regs, n), raB.value.quant_regs);
+      assert PIV.GmOfLive(body, MIR.MirrorRegs(rfF.value.capture_regs, n),
+                                MIR.MirrorRegs(rfF.value.look_regs, n),
+                                MIR.MirrorRegs(rfF.value.quant_regs, n))
+          == PIV.GmOfLive(body, raB.value.capture_regs, raB.value.look_regs, raB.value.quant_regs);
     }
   }
 }
