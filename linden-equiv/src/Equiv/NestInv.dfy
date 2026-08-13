@@ -4091,6 +4091,74 @@ module LindenElkNestInv {
       }
   }
 
+  /** The FOREST generalization of `LookBodiesCapsDisjoint` (nesting-aware, and
+      fragment-INDEPENDENT — pure structure + unique ids). For two distinct look
+      ids, either their bodies' captures are DISJOINT (sibling / unrelated
+      nodes), or one node is NESTED in the other's body and then the inner
+      body's captures are a SUBSET of the outer's. `LookBodiesCapsDisjoint`
+      proved only the disjoint arm by forcing look-free bodies; under L4 nesting
+      the capture pass needs this trichotomy (owner-of-g = the INNERMOST lid
+      whose body contains g, resolved by the subset ordering). */
+  lemma LookBodiesCapsDisjointOrNested(r: R.regex, l1: nat, l2: nat)
+    requires PIV.CapUnique(r) && LTB.LookUnique(r)
+    requires l1 in LTB.LookIds(r) && l2 in LTB.LookIds(r) && l1 != l2
+    ensures (PIV.CapIds(LookBodyOfRE(r, l1)) * PIV.CapIds(LookBodyOfRE(r, l2)) == {})
+         || (l2 in LTB.LookIds(LookBodyOfRE(r, l1))
+             && PIV.CapIds(LookBodyOfRE(r, l2)) <= PIV.CapIds(LookBodyOfRE(r, l1)))
+         || (l1 in LTB.LookIds(LookBodyOfRE(r, l2))
+             && PIV.CapIds(LookBodyOfRE(r, l1)) <= PIV.CapIds(LookBodyOfRE(r, l2)))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if l1 in LTB.LookIds(r1) && l2 in LTB.LookIds(r1) {
+        LookBodiesCapsDisjointOrNested(r1, l1, l2);
+      } else if l1 !in LTB.LookIds(r1) && l2 !in LTB.LookIds(r1) {
+        LookBodiesCapsDisjointOrNested(r2, l1, l2);
+      } else {
+        // split: one lid per branch; CapUnique makes their bodies' caps disjoint
+        if l1 in LTB.LookIds(r1) { LookBodyCapsIn(r1, l1); LookBodyCapsIn(r2, l2); }
+        else { LookBodyCapsIn(r2, l1); LookBodyCapsIn(r1, l2); }
+        forall g: nat | g in PIV.CapIds(LookBodyOfRE(r, l1)) * PIV.CapIds(LookBodyOfRE(r, l2))
+          ensures false
+        { assert g in PIV.CapIds(r1) * PIV.CapIds(r2); }
+      }
+    case Re_con(r1, r2) =>
+      if l1 in LTB.LookIds(r1) && l2 in LTB.LookIds(r1) {
+        LookBodiesCapsDisjointOrNested(r1, l1, l2);
+      } else if l1 !in LTB.LookIds(r1) && l2 !in LTB.LookIds(r1) {
+        LookBodiesCapsDisjointOrNested(r2, l1, l2);
+      } else {
+        if l1 in LTB.LookIds(r1) { LookBodyCapsIn(r1, l1); LookBodyCapsIn(r2, l2); }
+        else { LookBodyCapsIn(r2, l1); LookBodyCapsIn(r1, l2); }
+        forall g: nat | g in PIV.CapIds(LookBodyOfRE(r, l1)) * PIV.CapIds(LookBodyOfRE(r, l2))
+          ensures false
+        { assert g in PIV.CapIds(r1) * PIV.CapIds(r2); }
+      }
+    case Re_quant(_, _, _, r1) => LookBodiesCapsDisjointOrNested(r1, l1, l2);
+    case Re_capture(_, r1) => LookBodiesCapsDisjointOrNested(r1, l1, l2);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == l1 {
+        // l1 IS this node (body r1); l2 != lid0, so l2 is NESTED in r1
+        assert l2 in LTB.LookIds(r1);
+        assert LookBodyOfRE(r, l1) == r1;
+        assert LookBodyOfRE(r, l2) == LookBodyOfRE(r1, l2);   // lid0 != l2
+        LookBodyCapsIn(r1, l2);                               // caps(body l2) <= caps(r1)
+      } else if lid0 >= 0 && (lid0 as nat) == l2 {
+        // symmetric: l2 IS this node, l1 nested in r1
+        assert l1 in LTB.LookIds(r1);
+        assert LookBodyOfRE(r, l2) == r1;
+        assert LookBodyOfRE(r, l1) == LookBodyOfRE(r1, l1);
+        LookBodyCapsIn(r1, l1);
+      } else {
+        // neither IS this node: both nested deeper in r1
+        assert l1 in LTB.LookIds(r1) && l2 in LTB.LookIds(r1);
+        assert LookBodyOfRE(r, l1) == LookBodyOfRE(r1, l1);
+        assert LookBodyOfRE(r, l2) == LookBodyOfRE(r1, l2);
+        LookBodiesCapsDisjointOrNested(r1, l1, l2);
+      }
+  }
+
   /** The structural body IS the table row's body: `LookTablesOk` records a
       `LookEntryOk` row at every look node, and the row at `lid` pins
       `fc.f_look_ast[lid]` — so the table body and `LookBodyOfRE` agree. */
