@@ -90,6 +90,135 @@ module LindenElkOracleReach {
       ReachF(c, str, cp0, pc, eb, cp) && RB.get_instr(c, pc) == RB.WriteOracle(lid)
   }
 
+  // ===========================================================================
+  // L4: partial-oracle-view variants (nested build code reads inner columns).
+  //
+  // The blind model above sends every CheckOracle/NegCheckOracle to `case _ =>
+  // false` — a gate is a dead end. Under NESTING an outer look's build code
+  // contains inner gates that the interpreter DOES cross when the consulted
+  // (already-built, strictly-HIGHER: LidsWellNested) column says so. The
+  // V-variants carry a partial oracle view `ov` and give those gates real
+  // edges, matching the interpreter (Interpreter.dfy:315-325). When the code is
+  // gate-free (`NoOracleReads`) the two new cases are vacuous, so the V-model
+  // collapses to the blind model for EVERY `ov` (ReachFVErasure*) — making the
+  // whole existing OracleReach/OracleBridge/OracleDecomp chain the ov-erased
+  // specialization, and confining the genuinely-new argument to nested paths.
+  // ===========================================================================
+
+  /** `EpsEdge` extended with real gate edges: a `CheckOracle(l)` steps to pc+1
+      iff the partial view answers true at `(cp, l)`, a `NegCheckOracle(l)` iff
+      it answers false. Every other case is `EpsEdge`'s verbatim. */
+  ghost predicate EpsEdgeV(c: RB.code, str: string, ov: LOr.OracleView, cp: int,
+                           pc: nat, eb: bool, pc2: nat, eb2: bool) {
+    match RB.get_instr(c, pc)
+    case Jmp(x) => x >= 0 && pc2 == x && eb2 == eb
+    case Fork(x, y) => ((x >= 0 && pc2 == x) || (y >= 0 && pc2 == y)) && eb2 == eb
+    case SetRegisterToCP(_) => pc2 == pc + 1 && eb2 == eb
+    case SetQuantToClock(_, _) => pc2 == pc + 1 && eb2 == eb
+    case BeginLoop => pc2 == pc + 1 && eb2 == false
+    case EndLoop => eb && pc2 == pc + 1 && eb2 == eb
+    case AnchorAssertion(a) =>
+      LAnc.is_satisfied(a, CtxAt(str, cp), LAnc.Forward) && pc2 == pc + 1 && eb2 == eb
+    case CheckOracle(l) => LOr.view_get_oracle(ov, cp, l) && pc2 == pc + 1 && eb2 == eb
+    case NegCheckOracle(l) => !LOr.view_get_oracle(ov, cp, l) && pc2 == pc + 1 && eb2 == eb
+    case _ => false
+  }
+
+  /** Reachable configurations of the Forward run of `c` over `str` against the
+      partial view `ov` — the nesting-aware `ReachF`. */
+  least predicate ReachFV(c: RB.code, str: string, ov: LOr.OracleView,
+                          cp0: int, pc: nat, eb: bool, cp: int) {
+    (pc == 0 && eb == false && cp == cp0)
+    || (exists pc1: nat, eb1: bool ::
+          ReachFV(c, str, ov, cp0, pc1, eb1, cp) && EpsEdgeV(c, str, ov, cp, pc1, eb1, pc, eb))
+    || (eb == true && pc > 0
+        && (ReachFV(c, str, ov, cp0, pc - 1, false, cp - 1) || ReachFV(c, str, ov, cp0, pc - 1, true, cp - 1))
+        && ConsumeEdge(c, str, cp - 1, pc - 1))
+  }
+
+  /** The V-analogue of `ReachesWrite`. */
+  ghost predicate ReachesWriteV(c: RB.code, str: string, ov: LOr.OracleView, cp0: int, lid: int, cp: int) {
+    exists pc: nat, eb: bool ::
+      ReachFV(c, str, ov, cp0, pc, eb, cp) && RB.get_instr(c, pc) == RB.WriteOracle(lid)
+  }
+
+  /** Gate-free code (`NoOracleReads`): the two new gate cases are vacuous, so a
+      V-edge is exactly a blind edge — for any view and any `pc` (out-of-range
+      `get_instr` is `Fail`, also not a gate). */
+  lemma EpsEdgeVErasure(c: RB.code, str: string, ov: LOr.OracleView, cp: int,
+                        pc: nat, eb: bool, pc2: nat, eb2: bool)
+    requires OS.NoOracleReads(c)
+    ensures EpsEdgeV(c, str, ov, cp, pc, eb, pc2, eb2) == EpsEdge(c, str, cp, pc, eb, pc2, eb2)
+  {
+    var instr := RB.get_instr(c, pc);
+    assert !instr.CheckOracle? && !instr.NegCheckOracle?;
+  }
+
+  /** Erasure, forward: on gate-free code the V-reachable configs are exactly
+      the blind-reachable configs. */
+  least lemma ReachFVErasureFwd(c: RB.code, str: string, ov: LOr.OracleView,
+                                cp0: int, pc: nat, eb: bool, cp: int)
+    requires OS.NoOracleReads(c)
+    requires ReachFV(c, str, ov, cp0, pc, eb, cp)
+    ensures ReachF(c, str, cp0, pc, eb, cp)
+  {
+    if pc == 0 && eb == false && cp == cp0 {
+    } else if exists pc1: nat, eb1: bool ::
+                ReachFV(c, str, ov, cp0, pc1, eb1, cp) && EpsEdgeV(c, str, ov, cp, pc1, eb1, pc, eb) {
+      var pc1, eb1 :|
+        ReachFV(c, str, ov, cp0, pc1, eb1, cp) && EpsEdgeV(c, str, ov, cp, pc1, eb1, pc, eb);
+      ReachFVErasureFwd(c, str, ov, cp0, pc1, eb1, cp);
+      EpsEdgeVErasure(c, str, ov, cp, pc1, eb1, pc, eb);
+    } else {
+      if ReachFV(c, str, ov, cp0, pc - 1, false, cp - 1) {
+        ReachFVErasureFwd(c, str, ov, cp0, pc - 1, false, cp - 1);
+      } else {
+        ReachFVErasureFwd(c, str, ov, cp0, pc - 1, true, cp - 1);
+      }
+    }
+  }
+
+  /** Erasure, backward: the blind-reachable configs are V-reachable against any
+      view (the gate cases never arise, so the view is irrelevant). */
+  least lemma ReachFVErasureBwd(c: RB.code, str: string, ov: LOr.OracleView,
+                                cp0: int, pc: nat, eb: bool, cp: int)
+    requires OS.NoOracleReads(c)
+    requires ReachF(c, str, cp0, pc, eb, cp)
+    ensures ReachFV(c, str, ov, cp0, pc, eb, cp)
+  {
+    if pc == 0 && eb == false && cp == cp0 {
+    } else if exists pc1: nat, eb1: bool ::
+                ReachF(c, str, cp0, pc1, eb1, cp) && EpsEdge(c, str, cp, pc1, eb1, pc, eb) {
+      var pc1, eb1 :|
+        ReachF(c, str, cp0, pc1, eb1, cp) && EpsEdge(c, str, cp, pc1, eb1, pc, eb);
+      ReachFVErasureBwd(c, str, ov, cp0, pc1, eb1, cp);
+      EpsEdgeVErasure(c, str, ov, cp, pc1, eb1, pc, eb);
+    } else {
+      if ReachF(c, str, cp0, pc - 1, false, cp - 1) {
+        ReachFVErasureBwd(c, str, ov, cp0, pc - 1, false, cp - 1);
+      } else {
+        ReachFVErasureBwd(c, str, ov, cp0, pc - 1, true, cp - 1);
+      }
+    }
+  }
+
+  /** Erasure corollary at the write level: on gate-free code `ReachesWriteV`
+      against any view is exactly `ReachesWrite`. The bridge that lets the whole
+      existing sweep characterization be reused for gate-free sub-codes. */
+  lemma ReachesWriteVErasure(c: RB.code, str: string, ov: LOr.OracleView, cp0: int, lid: int, cp: int)
+    requires OS.NoOracleReads(c)
+    ensures ReachesWriteV(c, str, ov, cp0, lid, cp) == ReachesWrite(c, str, cp0, lid, cp)
+  {
+    if ReachesWriteV(c, str, ov, cp0, lid, cp) {
+      var pc: nat, eb: bool :| ReachFV(c, str, ov, cp0, pc, eb, cp) && RB.get_instr(c, pc) == RB.WriteOracle(lid);
+      ReachFVErasureFwd(c, str, ov, cp0, pc, eb, cp);
+    }
+    if ReachesWrite(c, str, cp0, lid, cp) {
+      var pc: nat, eb: bool :| ReachF(c, str, cp0, pc, eb, cp) && RB.get_instr(c, pc) == RB.WriteOracle(lid);
+      ReachFVErasureBwd(c, str, ov, cp0, pc, eb, cp);
+    }
+  }
+
   /** Reachability only visits positions at or after the start (Forward run) —
       a sanity bound used to keep cp arithmetic honest downstream. */
   least lemma ReachFGeStart(c: RB.code, str: string, cp0: int, pc: nat, eb: bool, cp: int)
