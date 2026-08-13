@@ -111,6 +111,17 @@ Current anchors re-verified (slight line drift from the earlier snapshot):
   `FBuildLidsCharacterized`:389, `FBuildOracleCorrect`:559). The erasure-equivalence strategy means
   most of these stay on the ov-erased `ReachF` and never see `ov`.
 
+**W2 classification DONE additively (commits bc28b5c, 04422bb) — the containment forest.**
+`NestInv.dfy` now has, all requiring only `CapUnique && LookUnique` (fragment-INDEPENDENT, so no
+existing consumer touched): `LookBodiesCapsDisjointOrNested` (distinct lids ⇒ body-caps DISJOINT or
+one NESTED-⊆-other — the trichotomy `LookBodiesCapsDisjoint` couldn't state, since it forced
+look-free bodies via `assert false`); `InnermostLookOwnerExists` (every nested capture g has an
+innermost owner whose body holds g DIRECTLY); `LookBodyCompose` (LookBodyOfRE composes through
+nesting); `InnermostOwnerMinimal` (that owner is subset-minimal). Together: "owner-of-g = innermost
+lid whose body contains g" is now well-defined + subset-minimal. NestInv 149/0. The consumer
+rewiring — `GmtTieInside`'s flat owner existential → innermost, and `LmOfBodiesDisjoint`
+(MainTheorem:5461) → the forest — is W6 (changes existing lemmas, wants the widened fragment live).
+
 **W3 brick 1 DONE (commit d8d993d) — the partial-view model + erasure, purely additive.**
 `OracleReach.dfy` now has `EpsEdgeV`/`ReachFV`/`ReachesWriteV` (blind model + `ov` + real gate
 edges) and `EpsEdgeVErasure`/`ReachFVErasureFwd`/`ReachFVErasureBwd`/`ReachesWriteVErasure` (on
