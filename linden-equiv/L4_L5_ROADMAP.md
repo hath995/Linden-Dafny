@@ -145,6 +145,41 @@ from `LookFreeRE` to `LidsWellNested`-backed `AllGatesAbove(bc, lid)`; (b) drop 
 already-correct columns >k, feeding `AdvanceOvIndepAbove` with `AgreeAbove(_, _, k)`. This DOES
 iterate against OracleBuild/NfaRepRE compile lemmas; it is the remaining crux assembly.
 
+**W4 ENGINE HALF VALIDATED — CONFIRMED FREE (scout 2026-08-13, read-only).** The register-blind
+bisimulation is genuinely gate-agnostic; every look-free hypothesis in the keystone chain lives on
+the SPEC side. Evidence: `FAdvanceEpsilonRel` (ClockMono.dfy:526) requires only a processed-size
+cond + `VmRel` over ARBITRARY `c: RB.code`, and PROVES the CheckOracle/NegCheckOracle/WriteOracle
+cases by branching on the oracle + recursing (ClockMono.dfy:590–607, no `assert false`); `ThreadRel`
+(ClockMono.dfy:502–506) keys on `pc + exit_allowed` and never mentions `look_regs`;
+`ReplayCapAgreeFresh` (MainTheorem.dfy:5134) has no look-free/nesting precondition; the arbitrary-
+code lift half exists as `LiftFindMatchC` (LiftSim.dfy:11147, no `LookFreeRE` — already handles gates
+via LiftInv/GateStaticsOk/LookTables). [Naming: roadmap's `LiftFindMatch` is superseded by
+`LiftFindMatchC`; the bisimulation family `FAdvanceEpsilonRel`/`FConsumeRel`/`FFindMatchCapRel`/
+`VmRel`/`ThreadRel` is clean, though ClockMono ALSO has two capture-classification helpers
+`CaptureBytecodeClassified{,Outside}` (1094/1118) that DO require `LookBehindFragmentRE` — not part
+of the bisimulation.]
+
+**W4 SPEC-HALF TO-DO (the real work — generalize these `LookFreeRE`/depth-1 preconditions to
+`NestedFragmentRE`/depth-k, decreasing on `NestDepth`):**
+1. `BodyTreeAtCp` (MainTheorem.dfy:2888, `requires LookFreeRE(body)` @2899) — THE crux: builds the
+   checked tree as `LkConfinedTree(t, {})` (empty inside-look set) via `TranslateNoLkBr`+
+   `ComputeTrLkConfined(...,{})`; at depth k the body tree has real `LK` nodes, so the `{}`-
+   confinement must be replaced by the depth-(k−1) keystone. (Its engine callee `FindMatchBodyAtCp`
+   @2834 is already look-free-free.)
+2. `ReplayCapIsBodyLeaf` (MainTheorem.dfy:5210 @5220) — inherits from BodyTreeAtCp.
+3. `LkReplayMatchesSpec` (forward keystone, MainTheorem.dfy:5326 @5337).
+4. `LkReplayMatchesSpecLB` (backward keystone, LookBehindKeystone.dfy:395 @400,
+   `LookFreeRE && PlusFragmentRE`).
+5. `ReplayLidCapQuantAgreeFresh` (quant companion, MainTheorem.dfy:5088 @5091).
+
+**W4 SHARPENED RISK:** the spec half is NOT merely "re-parametrize the keystone." The hard obstacle
+is `TreeResGmFrame` (MainTheorem.dfy:5287, `requires EL.NoLKTree(t)` @5289): the group-map-
+independence argument for own-group captures currently holds ONLY for look-FREE trees. At depth>0
+`tlk` contains `LK` nodes, which DO read `gm`, so this gm-frame must be RE-DERIVED (not re-
+parametrized) for trees with lookaround nodes. This is genuine spec-side proof work the "engine is
+free" headline understates. Scaffolding ready: `NestedFragmentRE`/`NestDepth` + the embeddings
+(NfaRepRE) from W1.
+
 ### L5+ ladder pricing (validated 2026-08-13; corrects §3's one-paragraph sketch)
 
 The `Supported` boundary today: `Supported(p) == NR.LookBehindFragmentRaw(p) && T.Latin1Wf(p)`
