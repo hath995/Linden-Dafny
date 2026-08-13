@@ -126,6 +126,81 @@ module LindenElkLookTables {
   }
 
   // ===========================================================================
+  // Lid nesting order (the L4 induction backbone)
+  // ===========================================================================
+
+  /** Well-nested lids: in every lookaround node the BODY's lids are all
+      STRICTLY GREATER than the enclosing lid. This is the backbone of the L4
+      nesting induction — it justifies the engine's high->low column build
+      order (an outer lid's build regex crosses only strictly-HIGHER, already-
+      built inner columns), and pins "innermost lid owns a nested capture"
+      (W2). `LookUnique` only says a lid is absent from its own body; this says
+      more: the body's whole lid set sits ABOVE the enclosing lid. Holds of
+      every annotated regex (`AnnotateLidsWellNested`), since annotate numbers
+      a lookaround body from `l + 1`. */
+  ghost predicate LidsWellNested(r: R.regex)
+    decreases r
+  {
+    match r
+    case Re_empty => true
+    case Re_character(_) => true
+    case Re_anchor(_) => true
+    case Re_alt(r1, r2) => LidsWellNested(r1) && LidsWellNested(r2)
+    case Re_con(r1, r2) => LidsWellNested(r1) && LidsWellNested(r2)
+    case Re_quant(_, _, _, r1) => LidsWellNested(r1)
+    case Re_capture(_, r1) => LidsWellNested(r1)
+    case Re_lookaround(lid, _, r1) =>
+      lid >= 0
+      && (forall x: nat :: x in LookIds(r1) ==> (lid as nat) < x)
+      && LidsWellNested(r1)
+  }
+
+  /** `annotate_regex` produces well-nested lids: a lookaround takes the
+      current `l` and its body is numbered from `l + 1`, so by the range fact
+      (`AnnotateLookUnique`) every body lid is `>= l + 1 > l`. The nesting
+      analogue of `AnnotateLookUnique`; the L4 induction's backbone. */
+  lemma AnnotateLidsWellNested(ra: R.raw_regex, c: int, l: int, q: int)
+    requires l >= 0
+    ensures LidsWellNested(R.annotate_regex(ra, c, l, q).0)
+    decreases ra
+  {
+    match ra
+    case Raw_empty => case Raw_character(_) => case Raw_anchor(_) =>
+    case Raw_alt(r1, r2) =>
+      var (ar1, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateLookUnique(r1, c, l, q);   // l <= l1, so l1 >= 0
+      AnnotateLidsWellNested(r1, c, l, q);
+      AnnotateLidsWellNested(r2, c1, l1, q1);
+    case Raw_con(r1, r2) =>
+      var (ar1, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateLookUnique(r1, c, l, q);   // l <= l1, so l1 >= 0
+      AnnotateLidsWellNested(r1, c, l, q);
+      AnnotateLidsWellNested(r2, c1, l1, q1);
+    case Raw_quant(quant, r1) => AnnotateLidsWellNested(r1, c, l, q + 1);
+    case Raw_count(quant, r1) => AnnotateLidsWellNested(r1, c, l, q + 1);
+    case Raw_capture(r1) => AnnotateLidsWellNested(r1, c + 1, l, q);
+    case Raw_lookaround(look, r1) =>
+      // body numbered from l+1: AnnotateLookUnique gives l+1 <= x for its lids
+      AnnotateLidsWellNested(r1, c, l + 1, q);
+      AnnotateLookUnique(r1, c, l + 1, q);
+  }
+
+  /** What is actually compiled — `lazy_prefix(annotate(raw))` — has
+      well-nested lids (the lazy prefix is look-free, contributing none). The
+      lid-nesting analogue of `SpecRegexLookUnique`. */
+  lemma SpecRegexLidsWellNested(raw: R.raw_regex)
+    ensures LidsWellNested(R.annotate(raw))
+    ensures LidsWellNested(R.lazy_prefix(R.annotate(raw)))
+  {
+    AnnotateLidsWellNested(R.Raw_capture(raw), 0, 1, 1);
+    var ast := R.annotate(raw);
+    var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false),
+                          R.Re_character(R.Dot));
+    assert R.lazy_prefix(ast) == R.Re_con(pre, ast);
+    assert LidsWellNested(pre);
+  }
+
+  // ===========================================================================
   // Table adherence
   // ===========================================================================
 
