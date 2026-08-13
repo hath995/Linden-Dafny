@@ -773,6 +773,110 @@ module LindenElkNfaRep {
     AnnotateLookBehindFragment(R.Raw_capture(raw), 0, 1, 1);
   }
 
+  // ---------------------------------------------------------------------------
+  // The raw counterpart of the NESTED fragment (L4), and its annotate bridge.
+  // ---------------------------------------------------------------------------
+
+  /** The `raw_regex` counterpart of `NestedFragmentRE`: identical to
+      `LookBehindFragmentRaw` except the lookaround case admits a body that is
+      itself in the nested fragment (so looks may nest to any depth). The
+      predicate the widened `Supported` will eventually use. */
+  predicate NestedFragmentRaw(raw: R.raw_regex)
+    decreases raw
+  {
+    match raw
+    case Raw_empty => true
+    case Raw_character(_) => true
+    case Raw_anchor(_) => true
+    case Raw_alt(r1, r2) => NestedFragmentRaw(r1) && NestedFragmentRaw(r2)
+    case Raw_con(r1, r2) => NestedFragmentRaw(r1) && NestedFragmentRaw(r2)
+    case Raw_quant(q, r1) =>
+      ((q.Plus? || q.LazyPlus?) ==> R.raw_nullable(r1) == R.NonNullable)
+      && NestedFragmentRaw(r1)
+    case Raw_count(q, r1) =>
+      ((q.min == 0 && q.max == None)
+       || (0 <= q.min && q.max.Some? && q.min <= q.max.value)
+       || (q.min > 0 && q.max == None && R.raw_nullable(r1) == R.NonNullable))
+      && NestedFragmentRaw(r1)
+    case Raw_capture(r1) => NestedFragmentRaw(r1)
+    case Raw_lookaround(look, r1) =>
+      (look.Lookahead? || look.Lookbehind? || CaptureFreeRaw(r1)) && NestedFragmentRaw(r1)
+  }
+
+  /** A look-free raw plus fragment is in the raw nested fragment. */
+  lemma LookFreePlusIsNestedRaw(ra: R.raw_regex)
+    requires LookFreeRaw(ra) && PlusFragmentRaw(ra)
+    ensures NestedFragmentRaw(ra)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) => LookFreePlusIsNestedRaw(r1); LookFreePlusIsNestedRaw(r2);
+    case Raw_con(r1, r2) => LookFreePlusIsNestedRaw(r1); LookFreePlusIsNestedRaw(r2);
+    case Raw_quant(_, r1) => LookFreePlusIsNestedRaw(r1);
+    case Raw_count(_, r1) => LookFreePlusIsNestedRaw(r1);
+    case Raw_capture(r1) => LookFreePlusIsNestedRaw(r1);
+    case _ =>
+  }
+
+  /** Today's raw lookbehind fragment embeds in the raw nested fragment —
+      every raw input `Supported` today stays supported at L4. */
+  lemma LookBehindFragmentIsNestedRaw(ra: R.raw_regex)
+    requires LookBehindFragmentRaw(ra)
+    ensures NestedFragmentRaw(ra)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) => LookBehindFragmentIsNestedRaw(r1); LookBehindFragmentIsNestedRaw(r2);
+    case Raw_con(r1, r2) => LookBehindFragmentIsNestedRaw(r1); LookBehindFragmentIsNestedRaw(r2);
+    case Raw_quant(_, r1) => LookBehindFragmentIsNestedRaw(r1);
+    case Raw_count(_, r1) => LookBehindFragmentIsNestedRaw(r1);
+    case Raw_capture(r1) => LookBehindFragmentIsNestedRaw(r1);
+    case Raw_lookaround(look, r1) => LookFreePlusIsNestedRaw(r1);
+    case _ =>
+  }
+
+  /** Annotation preserves the nested fragment: the flavour is copied verbatim
+      and the body recurses (nesting allowed). The nested analogue of
+      `AnnotateLookBehindFragment`. */
+  lemma AnnotateNestedFragment(ra: R.raw_regex, c: int, l: int, q: int)
+    requires NestedFragmentRaw(ra)
+    ensures NestedFragmentRE(R.annotate_regex(ra, c, l, q).0)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) =>
+      AnnotateNestedFragment(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateNestedFragment(r2, c1, l1, q1);
+    case Raw_con(r1, r2) =>
+      AnnotateNestedFragment(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateNestedFragment(r2, c1, l1, q1);
+    case Raw_quant(quant, r1) =>
+      AnnotateNestedFragment(r1, c, l, q + 1);
+      AnnotateNullable(r1, c, l, q + 1);
+    case Raw_count(quant, r1) =>
+      AnnotateNestedFragment(r1, c, l, q + 1);
+      AnnotateNullable(r1, c, l, q + 1);
+    case Raw_capture(r1) => AnnotateNestedFragment(r1, c + 1, l, q);
+    case Raw_lookaround(look, r1) =>
+      // flavour copied verbatim; negative flavours keep the capture-free body;
+      // the body recurses into the nested fragment (any depth).
+      if look.NegLookahead? || look.NegLookbehind? {
+        AnnotateCaptureFree(r1, c, l + 1, q);
+      }
+      AnnotateNestedFragment(r1, c, l + 1, q);
+    case _ =>
+  }
+
+  /** `lazy_prefix(annotate(raw))` stays in the nested fragment. */
+  lemma SpecRegexNestedFragment(raw: R.raw_regex)
+    requires NestedFragmentRaw(raw)
+    ensures NestedFragmentRE(R.lazy_prefix(R.annotate(raw)))
+  {
+    AnnotateNestedFragment(R.Raw_capture(raw), 0, 1, 1);
+  }
+
   /** On capture-free regexes `remove_capture` is the identity, so an L1
       lookbehind's oracle build regex is `lazy_prefix(body)` itself. */
   lemma RemoveCaptureFreeId(re: R.regex)
