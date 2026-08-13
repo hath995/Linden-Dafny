@@ -1,6 +1,38 @@
-# L3b Handoff — captures inside positive LOOKBEHINDS (updated 2026-08-12)
+# L3b Handoff — captures inside positive LOOKBEHINDS (updated 2026-08-13)
 
-## ★★★ L3b COMPLETE (branch `l3b-gate-swapgm`, commit af4f063) — captures inside positive lookbehinds PROVEN, ZERO axioms
+## ★★★ L3b GENUINELY COMPLETE (branch `l3b-gate-swapgm`, commit d066355) — after closing TWO hidden holes
+
+**Correction to the earlier "COMPLETE at af4f063" banner below.** That status came from
+filter-verifying `MainTheoremL3` — which does NOT check the *bodies* of the lemmas it calls
+(Dafny exports a lemma's postcondition to callers even when its own body is red). A full-file
+regression sweep of every L3b-touched file (2026-08-13) exposed **two load-bearing lemmas
+whose bodies never verified**. Both are now discharged with real proofs (no axioms/assumes),
+commit **d066355**:
+
+1. **`FreshBodyMatchCapWf`** (LiftSim). `FreshBodyMatch` is direction-generic
+   (`capture_regex(looktype,body)` in `capture_direction(looktype)`), but the body only proved
+   the forward/lookahead case → with `looktype` opaque, `CapRegWf` was undischarged. Fixed by a
+   case-split: `FreshMatchWf` (lookahead) / `FreshMatchWfLB` (lookbehind), `MatchedPosLA` giving
+   positivity; the backward context fact is definitional. (LiftSim full-file 9522/4 → **9537/0**)
+2. **The lookbehind oracle-characterization layer** — leftover red from `dcb7cc8 "WIP L3b
+   fragment flip (PACKAGE RED by design)"`. `OracleColumnSpec` → `OracleColumnCharacterized`
+   → `FBuildOracleCorrectAt` + `LookTablesLidBuildOk` all required `CaptureFreeRE(body)`, false
+   for a capturing lookbehind. Fixed by reasoning over `remove_capture(body)` (what `oracle_regex`
+   is literally built over — `lazy_prefix(remove_capture(body))`), then bridging to the capturing
+   body at the `OracleColumnSpec` top via capture-blind `MatchesRemoveCapture` +
+   `TranslateLookFreeGroupOk(body)`. Mirrors the L3a `OracleColumnSpecLookahead` upgrade. Added
+   NR `remove_capture` preservation lemmas (LookFree/Nullable/PlusFragment); loosened
+   `OracleRegexPlusFragment`. `OracleEntry` needed no source change. (OracleBuild 45/5 → **46/0**,
+   OracleEntry 23/5 → **24/0**, NfaRepRE 1328/0, OracleDecomp 72/0, OracleSpec 30/0)
+
+**Full-file green confirmed** for all edited files + MainTheorem (2941/0) + PikeInvRE (251/0);
+whole workspace re-packed in dependency order (`lem pack`: engine-model 72, engine 117,
+reasoning 382, … all 0 errors). `deps/*.doo` refreshed. **Lesson: never trust filter-verified
+`MainTheoremL3` alone — full-file verify every touched file.**
+
+---
+
+## (superseded — premature) L3b COMPLETE (commit af4f063) — captures inside positive lookbehinds, ZERO axioms
 
 `MainTheoremL3`: **1857 verified, 0 errors.** The whole lookbehind gate path has NO
 `{:axiom}` / `assume`. Task #8 (the backward capturing-lookbehind gate step) is DONE:
