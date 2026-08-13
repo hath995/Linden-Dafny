@@ -411,6 +411,175 @@ module LindenElkOracleSweep {
       FindMatchOvIndep(c, str, s14, s24, ov1', ov2', dir, cdn1, cdn2);
   }
 
+  // ===========================================================================
+  // 2'. L4 gated independence: gates allowed if they read strictly above `k`
+  //     and the two views agree strictly above `k`.
+  // ===========================================================================
+
+  /** AgreeAbove-weakened clone of `AdvanceOvIndep`: gates are now ALLOWED,
+      provided every gate reads a column strictly above `k` (`AllGatesAbove`),
+      every `WriteOracle` writes column `k` (`WritesOnlyLid`), and the two views
+      agree on all columns strictly above `k` (`AgreeAbove`). At a gate the two
+      views return the SAME answer (`GateReadAgrees`), so both runs take the
+      same branch and stay `SameModCdn`; the sole write is at column `k`, which
+      leaves columns `> k` untouched, so `AgreeAbove` is preserved for the
+      recursion. All non-gate/non-write cases are identical to `AdvanceOvIndep`. */
+  lemma AdvanceOvIndepAbove(c: RB.code, k: int, s1: AI.VmState, s2: AI.VmState,
+                            ov1: LOr.OracleView, ov2: LOr.OracleView, dir: LAnc.direction)
+    requires |s1.processed.true_set| == RB.size(c) && |s1.processed.false_set| == RB.size(c)
+    requires NoCheckNullable(c)
+    requires AllGatesAbove(c, k)
+    requires WritesOnlyLid(c, k)
+    requires SameModCdn(s1, s2)
+    requires SameShape(ov1, ov2)
+    requires AgreeAbove(ov1, ov2, k)
+    ensures var (s1', ov1') := AI.FAdvanceEpsilon(c, s1, ov1, dir);
+            var (s2', ov2') := AI.FAdvanceEpsilon(c, s2, ov2, dir);
+      SameModCdn(s1', s2') && s1'.cdn == s1.cdn && s2'.cdn == s2.cdn
+      && SameShape(ov1, ov1') && SameShape(ov2, ov2')
+      && (forall cp2: int, l2: int :: CellAgree(ov1, ov2, cp2, l2) ==> CellAgree(ov1', ov2', cp2, l2))
+      && AgreeAbove(ov1', ov2', k)
+    decreases AI.unprocessed(s1.processed), |s1.active|
+  {
+    if |s1.active| == 0 { return; }
+    var t := s1.active[0];
+    var ac := s1.active[1..];
+    var i := RB.get_instr(c, t.pc);
+    if AI.bpc_mem(s1.processed, t.pc, t.exit_allowed) {
+      AdvanceOvIndepAbove(c, k, s1.(active := ac), s2.(active := ac), ov1, ov2, dir);
+      return;
+    }
+    var b0 := s1.processed;
+    var s1a := s1.(clock := s1.clock + 1, processed := AI.bpc_add(b0, t.pc, t.exit_allowed));
+    var s2a := s2.(clock := s2.clock + 1, processed := AI.bpc_add(b0, t.pc, t.exit_allowed));
+    AI.UnprocessedAdd(b0, t.pc, t.exit_allowed);
+    match i
+    case Consume(ce) =>
+      var (nb, ni) := AI.add_thread(t, ce, s1a.blocked, s1a.isblocked);
+      AdvanceOvIndepAbove(c, k, s1a.(blocked := nb, isblocked := ni, active := ac),
+                          s2a.(blocked := nb, isblocked := ni, active := ac), ov1, ov2, dir);
+    case Accept =>
+    case Jmp(x) =>
+      AdvanceOvIndepAbove(c, k, s1a.(active := [t.(pc := x)] + ac), s2a.(active := [t.(pc := x)] + ac), ov1, ov2, dir);
+    case Fork(x, y) =>
+      var newt := AI.Thread(x, t.capture_regs, t.look_regs, t.quant_regs, t.exit_allowed);
+      AdvanceOvIndepAbove(c, k, s1a.(active := [newt, t.(pc := y)] + ac),
+                          s2a.(active := [newt, t.(pc := y)] + ac), ov1, ov2, dir);
+    case SetRegisterToCP(reg) =>
+      var t' := t.(capture_regs := AReg.set_reg(t.capture_regs, reg, Some(s1a.cp), s1a.clock), pc := t.pc + 1);
+      AdvanceOvIndepAbove(c, k, s1a.(active := [t'] + ac), s2a.(active := [t'] + ac), ov1, ov2, dir);
+    case SetQuantToClock(q, b) =>
+      var ocp := if b then Some(s1a.cp) else None;
+      var t' := t.(quant_regs := AReg.set_reg(t.quant_regs, q, ocp, s1a.clock), pc := t.pc + 1);
+      AdvanceOvIndepAbove(c, k, s1a.(active := [t'] + ac), s2a.(active := [t'] + ac), ov1, ov2, dir);
+    case CheckOracle(l) =>
+      // in-range gate (out-of-range reads Fail); column l > k, so both views agree here
+      assert 0 <= t.pc < |c| && c[t.pc].CheckOracle? && c[t.pc].col == l;
+      GateReadAgrees(c, k, ov1, ov2, s1a.cp, t.pc);
+      // GateReadAgrees + SameModCdn (s1a.cp == s2a.cp) => both runs take the same branch
+      if LOr.view_get_oracle(ov1, s1a.cp, l) {
+        var t' := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(s1a.cp), s1a.clock));
+        AdvanceOvIndepAbove(c, k, s1a.(active := [t'] + ac), s2a.(active := [t'] + ac), ov1, ov2, dir);
+      } else {
+        AdvanceOvIndepAbove(c, k, s1a.(active := ac), s2a.(active := ac), ov1, ov2, dir);
+      }
+    case NegCheckOracle(l) =>
+      assert 0 <= t.pc < |c| && c[t.pc].NegCheckOracle? && c[t.pc].ncl == l;
+      GateReadAgrees(c, k, ov1, ov2, s1a.cp, t.pc);
+      if LOr.view_get_oracle(ov1, s1a.cp, l) {
+        AdvanceOvIndepAbove(c, k, s1a.(active := ac), s2a.(active := ac), ov1, ov2, dir);
+      } else {
+        AdvanceOvIndepAbove(c, k, s1a.(active := [t.(pc := t.pc + 1)] + ac),
+                            s2a.(active := [t.(pc := t.pc + 1)] + ac), ov1, ov2, dir);
+      }
+    case WriteOracle(l) =>
+      // in-range write, so l == k by WritesOnlyLid — column k is not > k, so the
+      // write leaves all columns > k unchanged, preserving AgreeAbove.
+      assert 0 <= t.pc < |c| && c[t.pc].WriteOracle? && c[t.pc].wol == l;
+      assert l == k;
+      ViewSetFacts(ov1, s1a.cp, l);
+      ViewSetFacts(ov2, s2a.cp, l);
+      assert 0 <= s1a.cp < |ov1| ==> |ov1[s1a.cp]| == |ov2[s1a.cp]|;
+      assert AgreeAbove(LOr.view_set_oracle(ov1, s1a.cp, l), LOr.view_set_oracle(ov2, s2a.cp, l), k) by {
+        forall cp2: int, l2: int | l2 > k
+          ensures CellAgree(LOr.view_set_oracle(ov1, s1a.cp, l), LOr.view_set_oracle(ov2, s2a.cp, l), cp2, l2)
+        {
+          assert CellAgree(ov1, ov2, cp2, l2);  // AgreeAbove(ov1, ov2, k), l2 > k
+        }
+      }
+      AdvanceOvIndepAbove(c, k, s1a.(active := ac), s2a.(active := ac),
+                          LOr.view_set_oracle(ov1, s1a.cp, l), LOr.view_set_oracle(ov2, s2a.cp, l), dir);
+    case BeginLoop =>
+      AdvanceOvIndepAbove(c, k, s1a.(active := [t.(exit_allowed := false, pc := t.pc + 1)] + ac),
+                          s2a.(active := [t.(exit_allowed := false, pc := t.pc + 1)] + ac), ov1, ov2, dir);
+    case EndLoop =>
+      if t.exit_allowed {
+        AdvanceOvIndepAbove(c, k, s1a.(active := [t.(pc := t.pc + 1)] + ac),
+                            s2a.(active := [t.(pc := t.pc + 1)] + ac), ov1, ov2, dir);
+      } else {
+        AdvanceOvIndepAbove(c, k, s1a.(active := ac), s2a.(active := ac), ov1, ov2, dir);
+      }
+    case CheckNullable(qid) =>
+      assert 0 <= t.pc < |c| && c[t.pc].CheckNullable?;
+      assert false;
+    case AnchorAssertion(a) =>
+      if LAnc.is_satisfied(a, s1a.context, dir) {
+        AdvanceOvIndepAbove(c, k, s1a.(active := [t.(pc := t.pc + 1)] + ac),
+                            s2a.(active := [t.(pc := t.pc + 1)] + ac), ov1, ov2, dir);
+      } else {
+        AdvanceOvIndepAbove(c, k, s1a.(active := ac), s2a.(active := ac), ov1, ov2, dir);
+      }
+    case Fail =>
+      AdvanceOvIndepAbove(c, k, s1a.(active := ac), s2a.(active := ac), ov1, ov2, dir);
+  }
+
+  /** AgreeAbove-weakened clone of `FindMatchOvIndep`: a whole build run over
+      column-`k` code (gates reading `> k`, writing only column `k`) returns the
+      same result thread and preserves cellwise agreement, against any two views
+      agreeing on all columns `> k`. Calls `AdvanceOvIndepAbove`; `AgreeAbove` is
+      re-threaded across each `FConsume`/reset step (the views carry unchanged). */
+  lemma FindMatchOvIndepAbove(c: RB.code, k: int, str: string, s1: AI.VmState, s2: AI.VmState,
+                              ov1: LOr.OracleView, ov2: LOr.OracleView,
+                              dir: LAnc.direction, cdn1: LCdn.cdns, cdn2: LCdn.cdns)
+    requires |s1.processed.true_set| == RB.size(c) && |s1.processed.false_set| == RB.size(c)
+    requires dir.Forward? ==> s1.context.nextchar == AI.get_char(str, s1.cp)
+    requires dir.Backward? ==> s1.context.nextchar == AI.get_char(str, s1.cp - 1)
+    requires NoCheckNullable(c)
+    requires AllGatesAbove(c, k)
+    requires WritesOnlyLid(c, k)
+    requires SameModCdn(s1, s2)
+    requires SameShape(ov1, ov2)
+    requires AgreeAbove(ov1, ov2, k)
+    ensures var (r1, ov1') := AI.FFindMatch(c, str, s1, ov1, dir, cdn1);
+            var (r2, ov2') := AI.FFindMatch(c, str, s2, ov2, dir, cdn2);
+      r1 == r2
+      && SameShape(ov1, ov1') && SameShape(ov2, ov2')
+      && (forall cp2: int, l2: int :: CellAgree(ov1, ov2, cp2, l2) ==> CellAgree(ov1', ov2', cp2, l2))
+      && AgreeAbove(ov1', ov2', k)
+    decreases if dir.Forward? then |str| - s1.cp else s1.cp
+  {
+    var s10 := s1.(cdn := LCdn.build_cdn_v(cdn1, s1.cp, ov1, s1.context, dir));
+    var s20 := s2.(cdn := LCdn.build_cdn_v(cdn2, s2.cp, ov2, s2.context, dir));
+    var (s1', ov1') := AI.FAdvanceEpsilon(c, s10, ov1, dir);
+    var (s2', ov2') := AI.FAdvanceEpsilon(c, s20, ov2, dir);
+    AdvanceOvIndepAbove(c, k, s10, s20, ov1, ov2, dir);
+    if |s1'.blocked| == 0 { return; }
+    match s1'.context.nextchar
+    case None =>
+    case Some(_) =>
+      var s12 := AI.FConsume(s1');
+      var s22 := AI.FConsume(s2');
+      FConsumeSameModCdn(s1', s2');
+      var s13 := s12.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
+                      cdn := LCdn.init_cdn(), cp := AI.incr_cp(s12.cp, dir));
+      var s23 := s22.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
+                      cdn := LCdn.init_cdn(), cp := AI.incr_cp(s22.cp, dir));
+      var newchar := AI.get_char(str, s13.cp - AI.cp_offset(dir));
+      var s14 := s13.(context := LAnc.update_context(s13.context, newchar));
+      var s24 := s23.(context := LAnc.update_context(s23.context, newchar));
+      FindMatchOvIndepAbove(c, k, str, s14, s24, ov1', ov2', dir, cdn1, cdn2);
+  }
+
   /** `FConsume` preserves `SameModCdn` (it never reads the cdn table). */
   lemma FConsumeSameModCdn(s1: AI.VmState, s2: AI.VmState)
     requires SameModCdn(s1, s2)
