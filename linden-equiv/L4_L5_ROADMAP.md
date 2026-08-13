@@ -1,4 +1,62 @@
-# L4 / L5 Roadmap (2026-08-03)
+# L4 / L5 Roadmap (2026-08-03; L4 VALIDATED 2026-08-13)
+
+## 2026-08-13 — L4 investigation: roadmap validated against post-L3b code (2 agents + recon)
+
+**Status update: "L5" in this doc (capturing lookbehinds) IS DONE — it's the L3b now merged
+to main (whole package green).** So L4 (nesting) is next, and it starts from a STRONGER base than
+this doc assumed: the keystone is already direction-parametric (`LkReplayMatchesSpec` +
+`LkReplayMatchesSpecLB`), so W4 generalizes an already-2-param keystone once.
+
+Findings (file:line evidence in the agent transcripts):
+
+- **W1 backbone — SOLID & provable.** `annotate_regex` (regex-engine `Regex.dfy:219-221`) gives
+  the enclosing look lid `l` and annotates its body starting at `l+1`, so **inner lids are
+  STRICTLY GREATER than their enclosing lid** (pre-order DFS). Build sweeps high→low
+  (`FBuildLids`, inner-first), FLookLoop ascends 0→maxlook (outer-first reconstruct). The engine
+  ordering is exactly right for nesting. [DOC BUG to fix: `FBuildLids`'s comment
+  `Interpreter.dfy:521-524` says nested looks "get lower ids" — WRONG, they get HIGHER ids; the
+  high→low build order is what's correct. Don't trust that comment.]
+- **W2 flat→forest — CONFIRMED needed.** `LookBodiesCapsDisjoint` (NestInv:4028; distinct lids ⇒
+  disjoint CapIds) is genuinely FALSE under nesting (inner CapIds ⊂ outer). Becomes a containment
+  forest; owner = innermost lid; `GmtTieInside` owner existential → innermost. `CapIdsInLooks`
+  (PikeInvRE:4016) already collects nested captures. Wide but mechanical — [M].
+- **W4 keystone replay-entry — MECHANICAL, NOT A RISK (de-risked from L).** The register-value-
+  BLIND bisimulation `FAdvanceEpsilonRel` (ClockMono.dfy:526) ALREADY proves the
+  `CheckOracle`/`NegCheckOracle`/`WriteOracle` cases over ARBITRARY bytecode with NO look-free
+  precondition; `ThreadRel` leaves look banks unconstrained (engine never reads registers for
+  control; dedup keys on `(pc, exit_bool)`). `ReplayCapAgreeFresh` has no look-free requirement —
+  only the SPEC-side `ReplayCapIsBodyLeaf`/`BodyTreeAtCp` does. So W4's real work is the SPEC-half
+  depth induction ("keystone at depth k IS a lift at depth k-1"), reusing `LiftFindMatch`
+  depth-indexed — the engine half is free.
+- **W3 oracle build correctness — THE CRUX, confirmed campaign-sized (L, up from M).** The
+  oracle-build layer is ARCHITECTURALLY oracle-blind: `LidBuildOk` (OracleBuild:158) REQUIRES
+  `NoOracleReads` (no gate in the build); the reachability model `ReachF`/`ReachesWrite`/`EpsEdge`
+  (OracleReach:51-91) has NO oracle-view arg and models a gate as a DEAD END; the completeness
+  backbone `AdvanceOvIndep` (OracleSweep:241) proves each column is a function of `(bytecode,str)`
+  ALONE — the exact column-independence nesting destroys. `remove_capture` KEEPS inner lookaround
+  nodes (Regex.dfy:275), so the inner gate genuinely reaches the build bytecode. To fix: (1)
+  re-parameterize `ReachF`/`EpsEdge`/`ReachesWrite` on a PARTIAL oracle view + real gate edges
+  (semantics at Interpreter.dfy:315-325); (2) make `LidReaches`/`FBuildLidsCharacterized`
+  inductive over the high→low order (column k = reachable writes against already-built columns >k)
+  + a new "reads only columns >k, stable" frame; (3) weaken `AdvanceOvIndep`/`FindMatchOvIndep`
+  from independence to "agrees on columns >k"; (4) add a gate rule to `LidBuildOk` (every
+  `CheckOracle(j)` in column k has j>k) + generalize `CompileToWriteClassified`/`NoOracleInstrRE`
+  from `LookFreeRE` to `LookIds(body) ⊆ {j>lid}`. **This is the single biggest L4 piece.**
+
+**Prerequisites status:** #1 L3 green — DONE (merged). #2 decompose `ActionsTreeRepFRE` — NOT done
+(still a ~650-line `{:isolate_assertions}` monolith, ActionsTreeRepRE.dfy:177, the bulk of that
+file's 5276 VCs; the affordability gate). #3 `lem pack` 10-min wall — NOT fixed (hit it 2026-08-13).
+
+**Net L4 sizing: L (full campaign), unchanged.** But the risk profile sharpened: W4 is FREE
+(bisimulation already generic + L3b keystone already 2-param), and W3 (the oracle sweep) is the
+confirmed crux — a model rebuild, not a hypothesis relaxation. Recommended first move: the W3
+oracle-view re-parameterization scouting (build the partial-view reachability model + gate edges
+standalone), in parallel with the ActionsTreeRepFRE decomposition (engineering gate). W1/W2 are
+cheap groundwork that can start immediately.
+
+---
+
+## L4 / L5 Roadmap (original, 2026-08-03)
 
 Replaces the one-line L4 entry in `LOOKAROUND_CAMPAIGN.md` §4 ("mostly
 assembly once L1/L2 exist" — the same optimism that priced L3 at one session
