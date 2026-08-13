@@ -1,6 +1,27 @@
 # L3b Handoff — captures inside positive LOOKBEHINDS (updated 2026-08-12)
 
-## ★★ ENDPOINT COMPLETE (branch `l3b-gate-swapgm`, commit 832acc8) — only the gate axiom (task #8) remains
+## ★★★ L3b COMPLETE (branch `l3b-gate-swapgm`, commit af4f063) — captures inside positive lookbehinds PROVEN, ZERO axioms
+
+`MainTheoremL3`: **1857 verified, 0 errors.** The whole lookbehind gate path has NO
+`{:axiom}` / `assume`. Task #8 (the backward capturing-lookbehind gate step) is DONE:
+- `ThreadRepLkStepCheckOracleLB` (LiftSim ~6266): a real `lemma` — GateStepValueLB (inside
+  tie) + WalkPairLkAtCheckOracle + GmtTieOutsideAfterGate.
+- `GateStepValueLB` (337/0): Case A value = `SwapRange(gmbK[g])` from `LBK.BackFreshBodyGmTie`.
+- `BackFreshBodyGmTie` (585/0): the crux — `SwapGm(LkResult.value)` ≈ `GmOfLive(body, raB.*)`
+  via keystone + `BackwardReplayMirror` + `MirrorRegsInvol`/`BackCapsInRange` (only the caps
+  bank is positionally read — `GmOfLiveClkCong`; the backward caps≤n bound comes from the
+  FORWARD bound on `rfF` + `CapRegWf` clock-coupling, NO backward caps-LE lemma).
+- gate-pass call site + coverage: derived static package (`StaticOkRE`⟹CapUnique/QuantUnique,
+  `LookCheckIdsRE`, `NI.LookBodyOfFragment`, `OS.TranslateLookFreeGroupOk`,
+  `TranslateDefGroupsNoDup`); coverage = the keystone key-set (SwapGm preserves keys).
+- `|ov|==|str|+1`: `MIR.FAdvanceEpsilonViewLenD`/`FFindMatchViewLen` + `OB.FBuildLidsLen`/
+  `FBuildOracleViewLen`, threaded through the sim chain to the gate.
+
+Next: `lem pack` to propagate, then merge `l3b-gate-swapgm`.
+
+---
+
+## (superseded) ENDPOINT COMPLETE — only the gate axiom (task #8) remains
 
 **The entire L3b proof now verifies GREEN except ONE clearly-marked axiom.** The
 reversed-lookbehind-span endpoint reconciliation — the hard discovery of this run — is
