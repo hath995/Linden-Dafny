@@ -192,6 +192,27 @@ keystone depth induction proper, now UNBLOCKED — they can consume `TreeResGmFr
 then `ReplayCapIsBodyLeaf`, `LkReplayMatchesSpec`(/`LB`), `ReplayLidCapQuantAgreeFresh`, inducting on
 `NestDepth`.
 
+**W4 spec-half BRICKS 2-3 DONE + a CAMPAIGN RE-PRICING (commit ebfab62).** Additive: `TreeResGmFrameRec`
+(the gm-frame for LK trees generalized to ARBITRARY depth — drops `LkConfinedTree` entirely, since
+`TreeRes` control flow never branches on `gm`, so each LK body recurses on a strict subterm;
+SUPERSEDES `TreeResGmFrameLk`), `BodyTreeAtCpLk`/`ReplayCapIsBodyLeafLk` (`BodyTreeAtCp`/
+`ReplayCapIsBodyLeaf` minus `LookFreeRE`, admitting CAPTURING depth-1 looks, confined via
+`S = LL.LkBodyGroups(Translate(body))`, conclusion `GmAgreeOutside(_,_,S)`), `LookBehindFragmentDepth1`.
+
+**⚠ THE RE-PRICING — "engine half is FREE" was HALF-RIGHT.** The scout validated the runtime
+BISIMULATION (`FAdvanceEpsilonRel`) is gate-agnostic — TRUE. But the STATIC compilation/well-formedness
+stack is DEPTH-1-CAPPED, and the keystone RETAINS it: `BodyTreeAtCp`'s (undroppable) `PSM.StaticOkRE`
+DEFINITIONALLY embeds `NR.LookBehindFragmentRE(body)` (PikeSimRE.dfy:99) ⇒ `NestDepth(body) <= 1`
+(machine-checked: `LookBehindFragmentDepth1`). Same cap in `CE.GmConfinedTree` (bans LK nodes),
+`EL.PikeLkRegex`/`PikeLkActions`, `LL.ComputeTrLkConfined`, `ATR.ActionsTreeRepRE`, and `PikeInvFullRE`.
+So the depth-k VALUE/keystone side is blocked NOT on the spec gm-frame (that's now done, arbitrary
+depth) but on generalizing this whole ENGINE-STATIC stack `LookBehindFragmentRE → NestedFragmentRE` —
+a large sub-campaign the original roadmap under-priced as "proof-mirrors-design, zero engine changes".
+The `*Lk` bricks are correctly scoped to the depth-1 capturing fragment the static stack supports
+today; they are additive scaffolding shaped for the eventual depth-k lift, not the lift itself.
+**Net: L4's VALUE side is re-priced from L to L+ (adds the engine-static-stack generalization as a
+prerequisite front). The ORACLE-BUILD side (W1–W3) is unaffected — it generalizes independently.**
+
 ### L5+ ladder pricing (validated 2026-08-13; corrects §3's one-paragraph sketch)
 
 The `Supported` boundary today: `Supported(p) == NR.LookBehindFragmentRaw(p) && T.Latin1Wf(p)`
