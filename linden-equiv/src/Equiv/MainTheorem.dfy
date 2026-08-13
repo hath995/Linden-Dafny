@@ -2947,6 +2947,96 @@ module LindenElkMain {
     assert bestT == LT.FirstLeaf(tstar, inp) == LT.FirstLeaf(t, inp);
   }
 
+  /** §4b, the tree-construction port GENERALIZED off `LookFreeRE(body)` to the
+      CAPTURING-lookaround (depth-1) case — the confinement swap the L4 spec-half
+      needs. `BodyTreeAtCp` bakes in `LookFreeRE(body)` and builds the checked
+      tree at the EMPTY inside-look set `{}` (so its leaves agree with the spec
+      tree EVERYWHERE, giving raw `FirstLeaf` equality). Here `body` may contain
+      capturing lookarounds, so the checked tree's leaves agree with the spec tree
+      only OUTSIDE `S := LkBodyGroups(Translate(body))` (the groups captured inside
+      lookaround bodies): the `{}`-confinement chain (`TranslateNoLkBr` →
+      `LkActsInS(_,{})` → `ComputeTrLkConfined(_,{})`) becomes the `S`-chain
+      (`LkBodyGroupsConfines` → `LkActsInS(_,S)` → `ComputeTrLkConfined(_,S)`), and
+      `LeavesAgreeAtOutsideEmpty` + raw `FirstLeaf` equality becomes
+      `FirstLeafAgreeOutside` (`GmAgreeOutside(bestT.1, FirstLeaf(t).1, S)`).
+
+      SCOPE (honest): the retained `PSM.StaticOkRE(qm, body, ...)` requirement
+      DEFINITIONALLY contains `LookBehindFragmentRE(body)` (PikeSimRE.dfy:99),
+      which caps `NestDepth(body) <= 1` (see `LookBehindFragmentDepth1`). So this
+      lifts `BodyTreeAtCp` from look-free to depth-1 CAPTURING looks — exactly what
+      the current confinement predicates support (`GmConfinedTree` bans nested LK
+      nodes: `LK(_,_,_) => false`, CheckErase.dfy). Genuine (depth >= 2) nesting
+      additionally needs the engine confinement/compilation stack — `StaticOkRE`,
+      `NfaRepRE`, `PikeLkRegex`, `GmConfinedTree`/`LkConfinedTree`,
+      `ComputeTrLkConfined`, `ActionsTreeRepRE` — generalized off the depth-1
+      fragment, which is the ENGINE half, disjoint from this SPEC brick. */
+  lemma BodyTreeAtCpLk(
+      rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat,
+      ngroups: nat, str: string, cp: nat, ov: LOr.OracleView,
+      cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
+    returns (bestT: Option<LT.Leaf>)
+    requires PSM.StaticOkRE(qm, body, bodycode, endl)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires qm.ov == ov
+    requires !rer.ignoreCase && !rer.multiline
+    requires cp <= |str|
+    requires bodycode == CP.compile_to_bytecode(body)
+    requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
+    ensures var inp := PIV.InpOfCp(str, cp);
+            var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Forward);
+            var S := LL.LkBodyGroups(T.Translate(body));
+            var inits := AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                       AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward));
+            PIV.BestMatchRE(body, bestT, AI.FFindMatch(bodycode, str, inits, ov, LAnc.Forward, cdns).0)
+            && (bestT.None? <==> LT.FirstLeaf(t, inp).None?)
+            && (bestT.Some? ==>
+                  LT.FirstLeaf(t, inp).Some?
+                  && bestT.value.0 == LT.FirstLeaf(t, inp).value.0
+                  && LL.GmAgreeOutside(bestT.value.1, LT.FirstLeaf(t, inp).value.1, S))
+  {
+    var inp := PIV.InpOfCp(str, cp);
+    var acts := [LS.Areg(T.Translate(body))];
+    var S := LL.LkBodyGroups(T.Translate(body));
+
+    // ---- the spec tree ---------------------------------------------------
+    LFU.ComputeTrIsTree(rer, acts, inp, LG.Empty, WP.Forward);
+    var t := LFU.ComputeTr(rer, acts, inp, LG.Empty, WP.Forward);
+    assert LS.IsTree(rer, acts, inp, LG.Empty, WP.Forward, t);
+    EL.TranslateFragmentPikeLk(body);          // PikeLkRegex(Translate(body))
+    EL.BooleanCorrectLk(rer, T.Translate(body), inp, t);
+    assert forall i :: 0 <= i < |acts| ==> !acts[i].Acheck?;
+    BoolTreeLbIrrel(rer, acts, inp, BS.CanExit, BS.CannotExit, t);
+
+    // ---- the CHECKED tree the simulation runs on -------------------------
+    WOE.WalkOkEntry(body);
+    assert EL.PikeLkActions(acts) by {
+      assert acts == acts + [];
+      assert EL.PikeLkActions([]);
+      EL.PikeLkActionsConsIff(LS.Areg(T.Translate(body)), []);
+    }
+    assert WO.WalkOk(acts, bodycode, 0, ATR.EaOf(BS.CannotExit));
+    AR.CompileToBytecodeActionsRepLookBehind(rer, qm, body);   // ActionsRepL
+    // `body` may now hold CAPTURING lookarounds: the spec tree's LK bodies confine
+    // to `S = LkBodyGroups(Translate(body))`, so the tree is `LkConfinedTree(_, S)`.
+    LL.LkBodyGroupsConfines(T.Translate(body), S);             // LkBodiesInS(Translate(body), S)
+    assert LL.LkActsInS(acts, S) by { LL.LkActsInSCons(LS.Areg(T.Translate(body)), [], S); }
+    LL.ComputeTrLkConfined(rer, acts, inp, LG.Empty, WP.Forward, S);   // LkConfinedTree(t, S)
+    var tstar := ATR.ActionsTreeRepRE(rer, qm, acts, bodycode, 0, inp, BS.CannotExit, t, S);
+    assert TR.TreeRepRE(qm, tstar, bodycode, 0, inp, false);
+    // ActionsTreeRepRE ensures LeavesAgreeAtOutside(tstar, t, inp, S); lift to FirstLeaf.
+    LL.FirstLeafAgreeOutside(tstar, t, inp, S);
+
+    // TreeThreadRE is definitionally TreeRepRE, so the checked tree discharges
+    // both of FindMatchBodyAtCp's tree hypotheses.
+    assert TT.TreeThreadRE(rer, qm, bodycode, inp, tstar, 0, false);
+
+    // ---- run the simulation at cp ----------------------------------------
+    bestT := FindMatchBodyAtCp(rer, qm, body, bodycode, endl, ngroups, str, cp, tstar,
+                               ov, cdns, ncap, nlook, nquant);
+    assert bestT == LT.FirstLeaf(tstar, inp);
+    // FirstLeafAgreeOutside(tstar, t, S): same success/position, gms agree outside S.
+  }
+
   // {:isolate_assertions} is REQUIRED here, not a tuning knob. Admitting
   // lookaheads adds a second column-spec path and a second capture-regex
   // shape, and the combined VC runs past 900s. Isolated, every one of its
@@ -5243,6 +5333,60 @@ module LindenElkMain {
     // ReplayCapAgreeFresh:  ra.None? <==> rf.None? && captures agree on CaptureRegs(body)
   }
 
+  /** §4b ENGINE VALUE BRIDGE generalized off `LookFreeRE(body)` to the CAPTURING
+      (depth-1) lookaround case — the `ReplayCapIsBodyLeaf` twin built on
+      `BodyTreeAtCpLk`. The FRESH-match facts are UNCHANGED (`ReplayCapAgreeFresh`
+      is register-value-blind — no fragment / look-free hypothesis — and
+      `BestMatchRE` ties `bestT.1` to `GmOfLive(body, rf)` regardless of looks); the
+      only weakening is the CHECKED-tree relation to the spec first leaf, which
+      holds OUTSIDE `S := LkBodyGroups(Translate(body))` (the erased look captures)
+      rather than everywhere. A clean composition — no new proof obligations beyond
+      the two called lemmas. Downstream, closing the keystone `LkResult ~ GmOfLive`
+      on the body's FULL `DefGroups` (not merely outside `S`) additionally needs
+      the L3a look-capture RECONSTRUCTION (`FLookLoop`), which lies on the engine
+      side, not in this composition. */
+  lemma ReplayCapIsBodyLeafLk(rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code,
+                              endl: nat, ngroups: nat, str: string, cp: nat, cap: AReg.Regs, lk: AReg.Regs,
+                              qt: AReg.Regs, ov: LOr.OracleView, cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
+    returns (bestT: Option<LT.Leaf>)
+    requires PSM.StaticOkRE(qm, body, bodycode, endl)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires qm.ov == ov
+    requires !rer.ignoreCase && !rer.multiline
+    requires cp <= |str|
+    requires bodycode == CP.compile_to_bytecode(body)
+    requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
+    requires CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    ensures var inp := PIV.InpOfCp(str, cp);
+            var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Forward);
+            var S := LL.LkBodyGroups(T.Translate(body));
+            var ctxc := AI.cp_context(cp, str, LAnc.Forward);
+            var ra := AI.FFindMatch(bodycode, str,
+                        AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
+            var rf := AI.FFindMatch(bodycode, str,
+                        AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                      AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
+            // checked-tree first leaf, confined (replaces raw `bestT == FirstLeaf(t)`):
+            (bestT.None? <==> LT.FirstLeaf(t, inp).None?)
+            && (bestT.Some? ==>
+                  LT.FirstLeaf(t, inp).Some?
+                  && bestT.value.0 == LT.FirstLeaf(t, inp).value.0
+                  && LL.GmAgreeOutside(bestT.value.1, LT.FirstLeaf(t, inp).value.1, S))
+            // fresh-match facts (UNCHANGED from ReplayCapIsBodyLeaf):
+            && (ra.None? <==> bestT.None?)
+            && (ra.Some? ==>
+                  bestT.Some? && rf.Some?
+                  && CM.RegsAgreeInside(ra.value.capture_regs, rf.value.capture_regs, PIV.CaptureRegs(body))
+                  && bestT.value.1 == PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs))
+  {
+    bestT := BodyTreeAtCpLk(rer, qm, body, bodycode, endl, ngroups, str, cp, ov, cdns, ncap, nlook, nquant);
+    ReplayCapAgreeFresh(bodycode, str, cp, cap, lk, qt, ov, cdns, body, ncap, nlook, nquant);
+    // BodyTreeAtCpLk:  BestMatchRE(body, bestT, rf) (fresh) && confined FirstLeaf facts
+    //   -> bestT.1 == GmOfLive(body, rf.regs), bestT.None? <==> rf.None?
+    // ReplayCapAgreeFresh:  ra.None? <==> rf.None? && captures agree on CaptureRegs(body)
+  }
+
   // ===========================================================================
   // §4b -- SPEC-side gm-frame. `TreeRes` threads `gm` through the tree; a
   // look-free tree (`NoLKTree`) never branches on `gm` (only `LK` nodes read it),
@@ -5382,6 +5526,85 @@ module LindenElkMain {
         case Some(_) =>
       }
     case LKFail(lk, tlk) =>
+  }
+
+  /** L4 SPEC-side gm-frame, generalized to ARBITRARY lookaround NESTING depth —
+      the depth-parametric strengthening of the W4 brick `TreeResGmFrameLk`.
+      Unlike `TreeResGmFrameLk`, this needs NO confinement hypothesis at all
+      (`LkConfinedTree` is dropped): `TreeRes`'s CONTROL FLOW — its `None?` verdict
+      and end position — never branches on the group map. Backreference strings are
+      baked into the `ReadBackRef` node (not recomputed from `gm`), and a look
+      node's success is decided by running its body, whose own control flow is
+      likewise gm-blind. So every LK/LKFail body is discharged by a RECURSIVE call
+      (a strict subterm, hence any nesting depth) instead of the depth-1
+      `TreeResGmFrame` + `GmConfinedNoLK`, and `S`-agreement threads through
+      unconditionally. Strictly generalizes both `TreeResGmFrame` (drops
+      `NoLKTree`) and `TreeResGmFrameLk` (drops `LkConfinedTree`). */
+  lemma TreeResGmFrameRec(t: LT.Tree, gm1: LG.GroupMap, gm2: LG.GroupMap, inp: LC.Input,
+                          dir: WP.Direction, S: set<LG.GroupId>)
+    requires GmAgreeOn(gm1, gm2, S)
+    ensures (LT.TreeRes(t, gm1, inp, dir).None? <==> LT.TreeRes(t, gm2, inp, dir).None?)
+    ensures LT.TreeRes(t, gm1, inp, dir).Some? ==>
+              LT.TreeRes(t, gm1, inp, dir).value.0 == LT.TreeRes(t, gm2, inp, dir).value.0
+              && GmAgreeOn(LT.TreeRes(t, gm1, inp, dir).value.1, LT.TreeRes(t, gm2, inp, dir).value.1, S)
+    decreases t
+  {
+    match t
+    case Mismatch =>
+    case Match =>
+    case Choice(t1, t2) =>
+      TreeResGmFrameRec(t1, gm1, gm2, inp, dir, S);
+      TreeResGmFrameRec(t2, gm1, gm2, inp, dir, S);
+    case Read(c, t1) =>
+      TreeResGmFrameRec(t1, gm1, gm2, LC.AdvanceInputP(inp, dir), dir, S);
+    case ReadBackRef(brStr, t1) =>
+      TreeResGmFrameRec(t1, gm1, gm2, LC.AdvanceInputN(inp, |brStr|, dir), dir, S);
+    case Progress(t1) =>
+      TreeResGmFrameRec(t1, gm1, gm2, inp, dir, S);
+    case AnchorPass(a, t1) =>
+      TreeResGmFrameRec(t1, gm1, gm2, inp, dir, S);
+    case GroupActionT(a, t1) =>
+      GMUpdateAgree(a, LC.Idx(inp), gm1, gm2, S);
+      TreeResGmFrameRec(t1, LG.GMUpdate(a, LC.Idx(inp), gm1), LG.GMUpdate(a, LC.Idx(inp), gm2), inp, dir, S);
+    case LK(lk, tlk, t1) =>
+      // the look body is discharged by RECURSION (any depth), not the depth-1 frame
+      TreeResGmFrameRec(tlk, gm1, gm2, inp, L.LkDir(lk), S);
+      if L.Positivity(lk) {
+        match LT.TreeRes(tlk, gm1, inp, L.LkDir(lk))
+        case None =>
+        case Some(pair1) =>
+          var pair2 := LT.TreeRes(tlk, gm2, inp, L.LkDir(lk)).value;
+          TreeResGmFrameRec(t1, pair1.1, pair2.1, inp, dir, S);
+      } else {
+        match LT.TreeRes(tlk, gm1, inp, L.LkDir(lk))
+        case None => TreeResGmFrameRec(t1, gm1, gm2, inp, dir, S);
+        case Some(_) =>
+      }
+    case LKFail(lk, tlk) =>
+  }
+
+  /** L4 BOUNDARY (machine-checked): the depth-1 lookbehind fragment caps nesting
+      depth at 1 — every lookaround leaf's body is look-free (`NestDepth == 0` by
+      `LookFreePlusIsNestedRE`), so `1 + 0` is the deepest a node reaches. This
+      pins down WHY the `NestedFragmentRE` swap alone cannot lift `BodyTreeAtCp` /
+      `LkReplayMatchesSpec` to genuine nesting: those lemmas KEEP the required
+      `PSM.StaticOkRE`, which DEFINITIONALLY contains `LookBehindFragmentRE(body)`
+      (PikeSimRE.dfy), so any admissible `body` already satisfies `NestDepth <= 1`.
+      Lifting to depth >= 2 needs `StaticOkRE` (and the compilation-rep stack it
+      wraps: `NfaRepRE`, `PikeLkRegex`, the confinement predicates) generalized to
+      the nested fragment first — the ENGINE half, disjoint from this SPEC brick. */
+  lemma LookBehindFragmentDepth1(re: R.regex)
+    requires NR.LookBehindFragmentRE(re)
+    ensures NR.NestDepth(re) <= 1
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => LookBehindFragmentDepth1(r1); LookBehindFragmentDepth1(r2);
+    case Re_con(r1, r2) => LookBehindFragmentDepth1(r1); LookBehindFragmentDepth1(r2);
+    case Re_quant(_, _, _, r1) => LookBehindFragmentDepth1(r1);
+    case Re_capture(_, r1) => LookBehindFragmentDepth1(r1);
+    case Re_lookaround(lid, la, r1) => NR.LookFreePlusIsNestedRE(r1);   // NestDepth(r1) == 0
+    case _ =>
   }
 
   /** §4b KEYSTONE: the per-lookaround value theorem. For a positive lookAHEAD
