@@ -764,13 +764,13 @@ module LindenElkActionsTreeRep {
           var bit := LOr.view_get_oracle(qm.ov, TR.CpOf(inp), lid);
           assert bit <==> LT.TreeRes(tlkc, LG.Empty, inp, L.LkDir(lk)).Some?;
           LT.FirstTreeLeaf(tlkc, LG.Empty, inp, L.LkDir(lk));
-          // L3a: a POSITIVE FORWARD lookahead body may CAPTURE (`NoLkBrL`, not
+          // L3a/L3b: a POSITIVE look (fwd/bwd) body may CAPTURE (`NoLkBrL`, not
           // group-free); its confinement is supplied by `LkConfinedTree(t, S)`
-          // in the pass branch below. Every OTHER flavour keeps a group-free
+          // in the pass branch below. The NEGATIVE flavours keep a group-free
           // body, so its body tree is `GmNeutral` -- exactly what the
           // capture-free `LAAtGatePass` path requires.
-          if !(L.Positivity(lk) && L.LkDir(lk) == WP.Forward) {
-            assert EL.PikeLkRegex(r);   // == GroupFreeL(r1) in this (non-pos-fwd) branch
+          if !L.Positivity(lk) {
+            assert EL.PikeLkRegex(r);   // == GroupFreeL(r1) in this (negative) branch
             LL.ComputeTrGmNeutral(rer, r1, inp, LG.Empty, L.LkDir(lk));   // GmNeutralTree(tlkc)
           }
           match t {
@@ -784,10 +784,10 @@ module LindenElkActionsTreeRep {
               tstar := sub;
               // tr_lk / tr_neglk: the gate rule carries the SAME tree onward
               assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));
-              if L.Positivity(lk) && L.LkDir(lk) == WP.Forward {
-                // positive lookAHEAD: the gate may fold captures within S -- use
-                // the confinement path (works for capture-free bodies too, since
-                // GmNeutral => GmConfinedTree(_, S)).
+              if L.Positivity(lk) {
+                // L3a/L3b: a POSITIVE look (fwd/bwd) gate may fold captures within
+                // S -- use the confinement path (works for capture-free bodies
+                // too, since GmNeutral => GmConfinedTree(_, S)).
                 assert CE.GmConfinedTree(tlk, S);   // from LkConfinedTree(t, S), t == LK(_,tlk,tc)
                 assert |LT.TreeLeaves(tlk, LG.Empty, inp, L.LkDir(lk))| > 0 by {
                   assert LT.TreeRes(tlk, LG.Empty, inp, L.LkDir(lk)).Some?;   // LkResult(lk,tlk,Empty).Some?, positive

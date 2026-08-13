@@ -652,7 +652,7 @@ module LindenElkLookLeaves {
       matches folds captures within `S`, so the gate node's leaves agree with the
       continuation's OUTSIDE `S`. The capturing analogue of `LAAtGatePass`. */
   lemma LAAtGatePassL3a(lk: L.Lookaround, tlk: LT.Tree, tc: LT.Tree, inp: LC.Input, S: set<LG.GroupId>)
-    requires L.Positivity(lk) && L.LkDir(lk) == WP.Forward
+    requires L.Positivity(lk)   // L3a/L3b: positive look, forward (lookahead) OR backward (lookbehind)
     requires CE.GmConfinedTree(tlk, S)
     requires |LT.TreeLeaves(tlk, LG.Empty, inp, L.LkDir(lk))| > 0
     ensures LeavesAgreeAtOutside(LT.LK(lk, tlk, tc), tc, inp, S)
@@ -897,7 +897,9 @@ module LindenElkLookLeaves {
     case Quantified(_, _, _, r1) => LkBodiesInS(r1, S)
     case Group(_, r1) => LkBodiesInS(r1, S)
     case LookaroundR(lk, r1) =>
-      (L.Positivity(lk) && L.LkDir(lk) == WP.Forward) ==> DefGroupsIn(r1, S)
+      // L3a/L3b: a POSITIVE look (fwd/bwd) may capture; its captured groups must
+      // stay within `S`. The negatives capture nothing, so no constraint.
+      L.Positivity(lk) ==> DefGroupsIn(r1, S)
     case AnchorR(_) => true
     case Backreference(_) => true
   }
@@ -1088,10 +1090,11 @@ module LindenElkLookLeaves {
         match FS.ComputeTree(rer, bodyacts, inp, gm, L.LkDir(lk), f) {
           case None =>
           case Some(treelk) =>
-            if L.Positivity(lk) && L.LkDir(lk) == WP.Forward {
-              // capturing body: NoLkBrL and DefGroups(r1) <= S
+            if L.Positivity(lk) {
+              // L3a/L3b: a POSITIVE look (fwd/bwd) may capture: NoLkBrL body,
+              // DefGroups(r1) <= S.
               assert EL.NoLkBrL(r1);                     // PikeLkRegex(LookaroundR) widened
-              assert DefGroupsIn(r1, S);                 // LkBodiesInS positive-forward arm
+              assert DefGroupsIn(r1, S);                 // LkBodiesInS positive arm
               assert ConfinedActs(bodyacts, S) by {
                 assert EL.NoLkBrActs(bodyacts);
                 forall i | 0 <= i < |bodyacts|
@@ -1134,7 +1137,7 @@ module LindenElkLookLeaves {
       This is the single crux the `ActionsTreeRepFRE` reframing pivots on -- built
       standalone to prove the pieces compose before the plumbing. */
   lemma LKNodeOutside(lk: L.Lookaround, tlk: LT.Tree, tc: LT.Tree, sub: LT.Tree, inp: LC.Input, S: set<LG.GroupId>)
-    requires L.Positivity(lk) && L.LkDir(lk) == WP.Forward
+    requires L.Positivity(lk)   // L3a/L3b: positive look, forward (lookahead) OR backward (lookbehind)
     requires CE.GmConfinedTree(tlk, S)
     requires |LT.TreeLeaves(tlk, LG.Empty, inp, L.LkDir(lk))| > 0
     requires LeavesAgreeAtOutside(sub, tc, inp, S)

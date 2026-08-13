@@ -1578,8 +1578,12 @@ module LindenElkMain {
               assert S <= LkBodyGroupsActs(acts);
               assert LkBodyGroupsActs(cont) <= LkBodyGroupsActs(acts);
               assert OuterDefsActs(cont) <= OuterDefsActs(acts);
-              assert EL.NoLkBrL(r1) && EL.PikeLkRegex(r1) && (L.DefGroups(r1) != [] ==> dir == WP.Forward) by {
-                if L.Positivity(lk) && dir == WP.Forward { NoLkBrImpliesPikeLk(r1); }
+              // L3a/L3b: a POSITIVE look (fwd/bwd) may capture -> NoLkBrL body from
+              // the widened PikeLkRegex; a NEGATIVE look is group-free. (The old
+              // `DefGroups(r1) != [] ==> dir == Forward` "only lookaheads capture"
+              // conjunct is retired for L3b -- lookbehinds capture too.)
+              assert EL.NoLkBrL(r1) && EL.PikeLkRegex(r1) by {
+                if L.Positivity(lk) { NoLkBrImpliesPikeLk(r1); }
                 else { assert SD.GroupFreeL(r1); LL.GroupFreeLkBodyEmpty(r1); GroupFreeImpliesNoLkBr(r1); NoLkBrImpliesPikeLk(r1); }
               }
               assert OuterLkDisjoint(cont);
@@ -1918,8 +1922,12 @@ module LindenElkMain {
               assert Slook <= LkBodyGroupsActs(acts);
               assert LkBodyGroupsActs(cont) <= LkBodyGroupsActs(acts);
               assert OuterDefsActs(cont) <= OuterDefsActs(acts);
-              assert EL.NoLkBrL(r1) && EL.PikeLkRegex(r1) && (L.DefGroups(r1) != [] ==> dir == WP.Forward) by {
-                if L.Positivity(lk) && dir == WP.Forward { NoLkBrImpliesPikeLk(r1); }
+              // L3a/L3b: a POSITIVE look (fwd/bwd) may capture -> NoLkBrL body from
+              // the widened PikeLkRegex; a NEGATIVE look is group-free. (The old
+              // `DefGroups(r1) != [] ==> dir == Forward` "only lookaheads capture"
+              // conjunct is retired for L3b -- lookbehinds capture too.)
+              assert EL.NoLkBrL(r1) && EL.PikeLkRegex(r1) by {
+                if L.Positivity(lk) { NoLkBrImpliesPikeLk(r1); }
                 else { assert SD.GroupFreeL(r1); LL.GroupFreeLkBodyEmpty(r1); GroupFreeImpliesNoLkBr(r1); NoLkBrImpliesPikeLk(r1); }
               }
               assert OuterLkDisjoint(cont);

@@ -7920,15 +7920,15 @@ module LindenElkLiftSim {
   /** `TR.CpOf` re-exported locally (avoids importing TreeRep just for it). */
   function TR_CpOf(inp: LC.Input): nat { |inp.pref| }
 
-  /** A `PikeLk` lookaround head has a `NoLkBrL` body: positive-forward gives it
-      directly (`PikeLkRegex(LookaroundR)`), every other flavour is group-free
-      (⊆ `NoLkBrL`). Reusable at the gate for `LkResultAgreeOutside`. */
+  /** A `PikeLk` lookaround head has a `NoLkBrL` body: a POSITIVE look (fwd/bwd)
+      gives it directly (widened `PikeLkRegex(LookaroundR)`), the NEGATIVE flavours
+      are group-free (⊆ `NoLkBrL`). Reusable at the gate for `LkResultAgreeOutside`. */
   lemma LookBodyNoLkBr(lk: L.Lookaround, r1: L.Regex)
     requires EL.PikeLkRegex(L.LookaroundR(lk, r1))
     ensures EL.NoLkBrL(r1)
   {
-    if L.Positivity(lk) && L.LkDir(lk) == WP.Forward {
-      // PikeLkRegex(LookaroundR) == NoLkBrL(r1) in this branch.
+    if L.Positivity(lk) {
+      // widened PikeLkRegex(LookaroundR) == NoLkBrL(r1) for a positive look.
     } else {
       EL.GroupFreeLNoLkBr(r1);   // requires GroupFreeL(r1), the else-branch of PikeLkRegex
     }
