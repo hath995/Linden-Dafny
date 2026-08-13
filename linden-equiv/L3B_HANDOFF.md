@@ -11,15 +11,47 @@ fully proven:
   + the `NormRange`/`NormGm` family: all green.
 - `GmtTieInside` SwapGm threading: dormant-green (task #7).
 
-**THE ONLY REMAINING WORK — task #8:** fill `ThreadRepLkStepCheckOracleLB` (LiftSim ~6074,
-currently `{:axiom}`) + discharge the coverage `assume {:axiom}` (LiftSim ~4566). Both are
-the BACKWARD capturing-lookbehind gate, dischargeable by `LBK.LkReplayMatchesSpecLB` at
-cap=init + `BV.BackwardReplayMirror`. Value chain: `FreshBodyMatch(LB)=raB` (backward
-FFindMatch over `compile(reverse_regex(body))`) → BackwardReplayMirror gives
-`rfF==MirrorThread(raB)` → keystone yields `SwapRange(gm2[g])==GmOfLive(body,raB.caps)[g]`
-for `g in S`, i.e. `gm2[g]==SwapRange(gmb[g])` — exactly GmtTieInside's LB form. The gate
-also needs GmtTieOutside (direction-generic) + WalkPairLk (backward) + the key-set coverage
-(SwapGm preserves keys). Mirror the lookahead twin `ThreadRepLkStepCheckOracle` (~6120).
+**THE ONLY REMAINING WORK — task #8** (IN PROGRESS): fill `ThreadRepLkStepCheckOracleLB`
+(LiftSim ~6074, `{:axiom}`) + discharge the coverage `assume {:axiom}` (LiftSim ~4566).
+
+DONE so far: `MIR.MirrorRegsInvol` (Mirror.dfy) — `MirrorRegs(MirrorRegs(r,n),n)==r` for
+banks with `a_cp` in `[-1,n]` (2/0, committed).
+
+DETAILED ROADMAP (with the key simplifications found):
+1. **`BackFreshBodyGmTie`** (put in LookBehindKeystone.dfy) — the crux value helper:
+   `SwapGm(LkResult(TrLookaround(la),tlk,gmMain,inp).value)` agrees with
+   `GmOfLive(body, raB.caps, raB.looks, raB.quants)` on `Sbody`, where `raB` is the backward
+   FFindMatch (init regs, `cdns=crv.f_look_cdns[l]`). Proof:
+   - `LBK.LkReplayMatchesSpecLB(...init...)` → agrees with `GmOfLive(body,MirrorRegs(rfF.caps),
+     MirrorRegs(rfF.looks),MirrorRegs(rfF.quants))`.
+   - `BV.BackwardReplayMirror(...init...)` → `rfF==MirrorThread(raB)`, so `rfF.X==MirrorRegs(raB.X)`.
+     (Needs `MirrorRegs(init_regs)==init_regs` — see `MirrorRegsAgreeInit` at LBK ~191.)
+   - **KEY SIMPLIFICATION**: `GmOfLive` reads ONLY `caps.a_cp` + the three `a_clk` banks
+     (filter_reset ignores look/quant `a_cp` — see `GmOfLiveInit` destructuring `(_,lc)`,`(_,qc)`).
+     So only the CAPS need the involution; looks are init (look-free body) and quant `a_cp`
+     is unread. So: `GmOfLive(body,MirrorRegs(rfF.caps),·,·)==GmOfLive(body,raB.caps,·,·)`
+     via `MirrorRegsInvol(raB.caps,n)`. (Clocks already match — MirrorRegs keeps `a_clk`.)
+   - **THE ONE NEW INFRA PIECE**: `MirrorRegsInvol` needs `raB.caps.a_cp[k] in [-1,n]`.
+     `CapRegWf` gives `>=-1`; the `<=n` bound is `CM.RegsValsLE(raB.caps,n)` but
+     `FFindMatchCapsLE` (LBK ~100) is Forward-HARDCODED ("VmCapsLE is a forward invariant").
+     Build a BACKWARD twin (`FAdvanceEpsilonCapsLE`/`FConsumeCapsLE` are already dir-generic;
+     the FFindMatch recursion decreases `s.cp` for Backward) — OR a GmOfLive congruence over
+     `RegsAgreeInside` on `CaptureRegs(body)` that avoids the full-bank bound.
+2. **`GateStepValueLB`** (LiftSim, after GateStepValue ~2482): mirror GateStepValue's
+   131-line body with `la.Lookbehind?`, `LkDir==Backward`, and the extra keystone requires
+   (PlusFragmentRE, QuantUnique, GroupOkL, NoDupG). Case A uses `BackFreshBodyGmTie` +
+   `FreshBodyMatch(l,th2)==raB` (definitional: `capture_regex(Lookbehind,body)==reverse_regex(body)`,
+   `capture_direction(Lookbehind)==Backward`, `get_cp(th2.look_regs,l)==cp`); the ensures'
+   `if looktype.Lookbehind? then SwapRange(gmb) else gmb` picks SwapRange, matching
+   `gmt2[g]==SwapRange(gmbK[g])`. Case B (frame) is IDENTICAL to GateStepValue.
+3. **`ThreadRepLkStepCheckOracleLB` body**: mirror `ThreadRepLkStepCheckOracle` (~6155) —
+   (1) GateStepValueLB for the inside tie, (2) `WalkPairLkAtCheckOracle` (direction-generic),
+   (3) `GmtTieOutsideAfterGate` ("works for backward gates too"). Add the keystone static
+   package to its requires.
+4. **Call site** (LiftPreserveGatePassLk `else` at ~4413): supply the static package (the
+   `:|` at ~4312 already has LookEntryOk + fragment facts).
+5. **Coverage `assume {:axiom}`** (~4566): `g in gm2` from SwapGm preserving keys (BackFreshBodyGmTie
+   key-set) — or fold into GateStepValueLB.
 
 ---
 
