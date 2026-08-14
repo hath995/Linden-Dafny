@@ -3547,6 +3547,37 @@ module LindenElkMain {
     }
   }
 
+  /** L4 depth-k (ADDITIVE): nested-fragment twin of `NoTrueQuantStamp`. A
+      NESTED-fragment body's compiled bytecode never emits a TRUE quant stamp.
+      `NR.CompileToBytecodeRepNested` supplies the `NfaRepRE`, and `NI.CodeShapeAt`
+      (whose `Re_lookaround` case is trivial — a look compiles to a single
+      `CheckOracle` leaf, which is neither `SetQuantToClock` nor `SetRegisterToCP`)
+      discharges every pc, exactly as in the depth-1 proof. This is the ONE
+      depth-1-capped ingredient the per-lid replay bridge needs generalized off
+      `LookBehindFragmentRE`. */
+  lemma NoTrueQuantStampNested(body: R.regex)
+    requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    ensures var code := CP.compile_to_bytecode(body);
+      forall pc: nat, q: int, b: bool ::
+        NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
+  {
+    var code := CP.compile_to_bytecode(body);
+    var next := CP.compile(body, 0, CP.Progress).1;
+    NR.CompileToBytecodeRepNested(body);
+    var endl := next as nat;
+    forall pc: nat, q: int, b: bool | NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, b))
+      ensures !b
+    {
+      assert pc < |code|;
+      if pc < endl {
+        NI.CodeShapeAt(body, code, 0, endl, pc);
+      } else {
+        assert pc == endl;
+        assert NR.GetPcRE(code, endl) == Some(RB.Accept);
+      }
+    }
+  }
+
   /** A body's compiled bytecode writes quant clocks only inside its own quant ids
       -- capture-INDEPENDENT (the quant structure is the same whether or not the
       body captures), so unlike `LKC.CaptureCodeClassified` this needs no
@@ -3881,6 +3912,59 @@ module LindenElkMain {
     // the FFindMatchPlus capture bank == the FFindMatch capture bank (reconstruct
     // is the identity for a QuantRegsFinal result).
     NoTrueQuantStamp(body);
+    assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
+    FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
+    var (fmres, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+    if fmres.Some? {
+      FNulledPlusIdentity(body, fmres.value.capture_regs, fmres.value.look_regs, fmres.value.quant_regs,
+                          plus_bcv, str, ovx, dir);
+    }
+    // the register-value-blind bisimulation: FFindMatch(from cap) ~ FFindMatch(from fresh).
+    ReplayCapAgreeFresh(bytecode, str, cp, cap, lk, qt, ov, lookcdn, body, ncap, nlook, nquant);
+  }
+
+  /** L4 depth-k (ADDITIVE): the per-lid replay↔fresh capture bridge GENERALIZED off
+      the depth-1 fragment to a NESTED-fragment `body` — the value-lift engine step
+      for a positive lookAHEAD whose body may itself nest looks to any depth. Same
+      conclusion as `ReplayLidCapAgreeFresh` (FFindMatchPlus replay caps == fresh
+      FFindMatch caps on `CaptureRegs(body)`, matching iff-together). Every
+      ingredient is already gate-agnostic: `FNulledPlusIdentity` and
+      `FFindMatchQuantFinalAny` are structural, and the register-value-blind
+      bisimulation `ReplayCapAgreeFresh` carries NO fragment hypothesis. The ONE
+      depth-1-capped ingredient — the no-true-quant-stamp code-shape fact — is
+      supplied by `NoTrueQuantStampNested`. So the bridge drops
+      `LookFreeRE/PlusFragmentRE/LookBehindFragmentRE(body)` for `NestedFragmentRE`.
+      NOTE: this reconstructs `body`'s OWN capture registers as the fresh body
+      match writes them; `body`'s INNER-look captures (unset by that fresh match)
+      are reconstructed by the SEPARATE top-level `FLookLoop` iterations over the
+      inner lids (higher-numbered, so processed after `body`'s enclosing look). */
+  lemma ReplayLidCapAgreeFreshNested(bytecode: RB.code, str: string, cp: int, cap: AReg.Regs, lk: AReg.Regs,
+                               qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
+                               body: R.regex, la: R.lookaround, ncap: int, nlook: int, nquant: int)
+    requires NR.NestedFragmentRE(body)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires la.Lookahead?
+    requires bytecode == CP.compile_to_bytecode(body)
+    requires 0 <= cp <= |str|
+    requires AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    requires CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+    ensures
+      var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Forward, cp, cap, lk, qt, 0, lookcdn).0;
+      var rf := AI.FFindMatch(bytecode, str,
+                  AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                  ov, LAnc.Forward, lookcdn).0;
+      (result.None? <==> rf.None?)
+      && (result.Some? ==> CM.RegsAgreeInside(result.value.capture_regs, rf.value.capture_regs, PIV.CaptureRegs(body)))
+  {
+    var dir := LAnc.Forward;
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
+    // the FFindMatchPlus capture bank == the FFindMatch capture bank (reconstruct
+    // is the identity for a QuantRegsFinal result).
+    NoTrueQuantStampNested(body);
     assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
     FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
     var (fmres, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
@@ -5935,6 +6019,203 @@ module LindenElkMain {
 
     // LkResult of a positive lookAHEAD == TreeRes(tlk, gmMain, inp, Forward) folded.
     assert L.Positivity(T.TrLookaround(la)) && L.LkDir(T.TrLookaround(la)) == WP.Forward;
+  }
+
+  /** L4 depth-k (ADDITIVE): the FULL-`DefGroups` value keystone for a nested
+      positive lookAHEAD — the recursion target that EXTENDS `LkReplayMatchesSpecNested`
+      (agreement OUTSIDE the inner looks) to agreement on the WHOLE `DefGroups(tr)`,
+      i.e. ALSO on the captures recorded INSIDE nested look bodies.
+
+      Stated as the honest COMPOSITION over the partition
+      `DefGroups(tr) = (DefGroups(tr) \ LkBodyGroups(tr)) ∪ LkBodyGroups(tr)`: the
+      OUTER half is discharged INTERNALLY by `LkReplayMatchesSpecNested`; the INNER
+      half (`LkBodyGroups(tr)` — the groups sunk inside nested looks) is the explicit
+      reconstruction premise `recon_inner`, whose engine reference is a RECONSTRUCTED
+      register bank `(reccap, reclk, recqt)` — the depth-k `FLookLoop` output that
+      fills in the inner-look captures the fresh body match `rf` leaves UNSET (a
+      lookaround compiles to a single `CheckOracle` leaf, so `rf` never records its
+      body's inner-look captures). The companion premise `recon_outer` pins that the
+      reconstruction leaves the OUTER groups exactly as `rf` (FLookLoop writes only
+      inside looks).
+
+      WHY THE ENGINE REFERENCE IS NOT `rf`: for a body that is itself a single
+      capturing look (e.g. `(?=(a))`), `LkBodyGroups(tr) == DefGroups(tr)` and the
+      fresh body match `rf` sets NONE of those registers — so `GmOfLive(body, rf, …)`
+      disagrees with the spec `LkResult` on exactly the inner groups. The values live
+      in the reconstructed bank, which the top-level `FLookLoop` fills via the SEPARATE
+      iterations for the inner (higher-id) lids. This is why the full keystone is a
+      `FLookLoop`-reconstruction statement, not a fresh-match one.
+
+      The two premises are EXACTLY what the recursive depth-k value lift discharges:
+      `recon_outer` from the `FLookLoop` capture frame (`FLookLoopCaptureFrame`
+      generalized off look-free bodies), and `recon_inner` by applying THIS keystone
+      recursively to each of body's inner looks (`NestDepth(inner body) <
+      NestDepth(body)`), bridged spec-side by how an outer body leaf records an inner
+      look's own leaf and engine-side by the `FLookLoop` reconstruction merge.
+      `ReplayLidCapAgreeFreshNested` + `ReplayCapIsBodyLeafNested` supply the
+      per-inner-look replay↔fresh↔leaf tie. At `NestDepth(body) == 0` both premises
+      are vacuous (`LkBodyGroups(tr) == {}`), so the full keystone holds
+      unconditionally — see `LkReplayMatchesSpecNestedFullBase`. */
+  lemma LkReplayMatchesSpecNestedFull(
+      rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat, ngroups: nat,
+      str: string, cp: nat, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+      cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
+      ncap: int, nlook: int, nquant: int,
+      reccap: AReg.Regs, reclk: AReg.Regs, recqt: AReg.Regs)
+    requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
+    requires NR.NegLooksLookFreeRE(body)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires qm.ov == ov
+    requires !rer.ignoreCase && !rer.multiline
+    requires cp <= |str|
+    requires bodycode == CP.compile_to_bytecode(body)
+    requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
+    requires CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    requires la.Lookahead?
+    requires tlk == LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], PIV.InpOfCp(str, cp), gmMain, WP.Forward)
+    requires GmAgreeOn(gmMain, LG.Empty, set g | g in L.DefGroups(T.Translate(body)))
+    // recon_outer: the reconstruction leaves the OUTER groups exactly as the fresh
+    // body match (FLookLoop writes registers only inside look bodies).
+    requires var ctxc := AI.cp_context(cp, str, LAnc.Forward);
+             var rf := AI.FFindMatch(bodycode, str,
+                         AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                       AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
+             var Sout := set g | g in L.DefGroups(T.Translate(body)) && g !in LL.LkBodyGroups(T.Translate(body));
+             rf.Some? ==>
+               GmAgreeOn(PIV.GmOfLive(body, reccap, reclk, recqt),
+                         PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs), Sout)
+    // recon_inner: on the INNER groups, the reconstruction matches the spec LkResult
+    // (discharged by the recursive application to body's inner looks).
+    requires var inp := PIV.InpOfCp(str, cp);
+             var ctxc := AI.cp_context(cp, str, LAnc.Forward);
+             var ra := AI.FFindMatch(bodycode, str,
+                         AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
+             ra.Some? ==>
+               LS.LkResult(T.TrLookaround(la), tlk, gmMain, inp).Some?
+               && GmAgreeOn(LS.LkResult(T.TrLookaround(la), tlk, gmMain, inp).value,
+                            PIV.GmOfLive(body, reccap, reclk, recqt), LL.LkBodyGroups(T.Translate(body)))
+    ensures var inp := PIV.InpOfCp(str, cp);
+            var ctxc := AI.cp_context(cp, str, LAnc.Forward);
+            var ra := AI.FFindMatch(bodycode, str,
+                        AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
+            var Sfull := set g | g in L.DefGroups(T.Translate(body));
+            (ra.None? <==> LS.LkResult(T.TrLookaround(la), tlk, gmMain, inp).None?)
+            && (ra.Some? ==>
+                  LS.LkResult(T.TrLookaround(la), tlk, gmMain, inp).Some?
+                  && GmAgreeOn(LS.LkResult(T.TrLookaround(la), tlk, gmMain, inp).value,
+                               PIV.GmOfLive(body, reccap, reclk, recqt), Sfull))
+  {
+    var inp := PIV.InpOfCp(str, cp);
+    var ctxc := AI.cp_context(cp, str, LAnc.Forward);
+    var tr := T.Translate(body);
+    var Sout := set g | g in L.DefGroups(tr) && g !in LL.LkBodyGroups(tr);
+    var Slk := LL.LkBodyGroups(tr);
+    var Sfull := set g | g in L.DefGroups(tr);
+    var ra := AI.FFindMatch(bodycode, str,
+                AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
+    var rf := AI.FFindMatch(bodycode, str,
+                AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                              AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
+    var lkr := LS.LkResult(T.TrLookaround(la), tlk, gmMain, inp);
+    var gmRec := PIV.GmOfLive(body, reccap, reclk, recqt);
+
+    // OUTER half: LkReplayMatchesSpecNested ties LkResult to GmOfLive(body, rf) on Sout,
+    // and the None-iff. Its S is exactly Sout.
+    LkReplayMatchesSpecNested(rer, qm, body, bodycode, endl, ngroups, str, cp, cap, lk, qt, ov,
+                              cdns, la, tlk, gmMain, ncap, nlook, nquant);
+
+    if ra.Some? {
+      var gmRf := PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs);
+      // From Nested (ra.Some?): rf.Some?, lkr.Some?, and GmAgreeOn(lkr.value, gmRf, Sout).
+      assert rf.Some? && lkr.Some?;
+      assert GmAgreeOn(lkr.value, gmRf, Sout);       // Nested's outer-groups conclusion
+      assert GmAgreeOn(gmRec, gmRf, Sout);           // recon_outer premise (rf.Some?)
+      assert GmAgreeOn(lkr.value, gmRec, Slk);       // recon_inner premise (ra.Some?)
+      // Union: every g in DefGroups(tr) is either in Slk or in Sout.
+      forall g | g in Sfull
+        ensures (g in lkr.value <==> g in gmRec) && (g in lkr.value ==> lkr.value[g] == gmRec[g])
+      {
+        if g in Slk {
+          // recon_inner covers g directly.
+          assert g in Slk;
+        } else {
+          assert g in Sout;              // g in DefGroups(tr) and g not in Slk
+          // lkr.value ~ gmRf on Sout (Nested) and gmRec ~ gmRf on Sout (recon_outer),
+          // so lkr.value ~ gmRec on Sout by transitivity at g.
+        }
+      }
+      assert GmAgreeOn(lkr.value, gmRec, Sfull);
+    }
+  }
+
+  /** L4 depth-k (ADDITIVE): the BASE case of `LkReplayMatchesSpecNestedFull`. When
+      the body is look-free (`NestDepth(body) == 0`), `LkBodyGroups(Translate(body))
+      == {}`, so the reconstruction premises are vacuous and the fresh body match
+      IS the full reconstruction — the full-`DefGroups` keystone holds
+      UNCONDITIONALLY, coinciding with the depth-1 capturing keystone. This anchors
+      the depth induction. */
+  lemma LkReplayMatchesSpecNestedFullBase(
+      rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat, ngroups: nat,
+      str: string, cp: nat, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+      cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
+      ncap: int, nlook: int, nquant: int)
+    requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
+    requires NR.LookFreeRE(body)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires qm.ov == ov
+    requires !rer.ignoreCase && !rer.multiline
+    requires cp <= |str|
+    requires bodycode == CP.compile_to_bytecode(body)
+    requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
+    requires CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    requires la.Lookahead?
+    requires tlk == LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], PIV.InpOfCp(str, cp), gmMain, WP.Forward)
+    requires GmAgreeOn(gmMain, LG.Empty, set g | g in L.DefGroups(T.Translate(body)))
+    ensures var inp := PIV.InpOfCp(str, cp);
+            var ctxc := AI.cp_context(cp, str, LAnc.Forward);
+            var ra := AI.FFindMatch(bodycode, str,
+                        AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
+            var rf := AI.FFindMatch(bodycode, str,
+                        AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                      AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
+            var Sfull := set g | g in L.DefGroups(T.Translate(body));
+            (ra.None? <==> LS.LkResult(T.TrLookaround(la), tlk, gmMain, inp).None?)
+            && (ra.Some? ==>
+                  LS.LkResult(T.TrLookaround(la), tlk, gmMain, inp).Some?
+                  && rf.Some?
+                  && GmAgreeOn(LS.LkResult(T.TrLookaround(la), tlk, gmMain, inp).value,
+                               PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs), Sfull))
+  {
+    var inp := PIV.InpOfCp(str, cp);
+    var tr := T.Translate(body);
+    assert T.TransWf(body);                        // from StaticOkNestedRE(qm, body, bodycode, endl)
+    // look-free body => no LookaroundR node in Translate(body) => LkBodyGroups empty.
+    NR.LookFreeNegLooksLookFree(body);            // NegLooksLookFreeRE(body), for Nested
+    LkBodyGroupsEqCapIdsInLooks(body);            // LkBodyGroups(tr) == CapIdsInLooks(body)
+    LookFreeCapIdsInLooksEmpty(body);             // CapIdsInLooks(body) == {}
+    assert LL.LkBodyGroups(tr) == {};
+    // Nested's S = DefGroups \ LkBodyGroups == full DefGroups now.
+    assert (set g | g in L.DefGroups(tr) && g !in LL.LkBodyGroups(tr))
+        == (set g | g in L.DefGroups(tr));
+    LkReplayMatchesSpecNested(rer, qm, body, bodycode, endl, ngroups, str, cp, cap, lk, qt, ov,
+                              cdns, la, tlk, gmMain, ncap, nlook, nquant);
+  }
+
+  /** A look-free regex captures nothing inside looks: `CapIdsInLooks == {}` (only
+      lookaround nodes contribute, and there are none). */
+  lemma LookFreeCapIdsInLooksEmpty(re: R.regex)
+    requires NR.LookFreeRE(re)
+    ensures PIV.CapIdsInLooks(re) == {}
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => LookFreeCapIdsInLooksEmpty(r1); LookFreeCapIdsInLooksEmpty(r2);
+    case Re_con(r1, r2) => LookFreeCapIdsInLooksEmpty(r1); LookFreeCapIdsInLooksEmpty(r2);
+    case Re_quant(_, _, _, r1) => LookFreeCapIdsInLooksEmpty(r1);
+    case Re_capture(_, r1) => LookFreeCapIdsInLooksEmpty(r1);
+    case _ =>
   }
 
   /** L3a extension of `OE.LmOfInv`: threads `CapUnique(re)` to derive the two
