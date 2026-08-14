@@ -1458,4 +1458,678 @@ module LindenElkOracleReach {
       }
       FindMatchReachSoundV(c, k, str, cp0, s4, ovr, ov1, cdn);
   }
+
+  // ===========================================================================
+  // L4: the GATE-FUL sweep COMPLETENESS chain (mirrors ClosureInv /
+  // AdvanceReachComplete / FindMatchReachComplete over EpsEdgeV / ReachFV).
+  //
+  // The only substantive change from the blind completeness chain: the worklist
+  // FOLLOWS gate edges. `EpsEdgeV` (over the fixed reference view `ovr`) gives a
+  // CheckOracle/NegCheckOracle a real successor exactly when the interpreter
+  // (driven by the running view `ov`) crosses it — the two agree because the
+  // gate reads a column `> k` and `AgreeAbove(ov, ovr, k)` holds throughout
+  // (`GateAgreeV`). So the closure processes exactly the `EpsEdgeV(ovr)`-reachable
+  // configs. Every non-gate case copies the blind argument verbatim.
+  // ===========================================================================
+
+  /** V-analogue of `ReachFGeStart`: a Forward V-run visits only positions
+      `>= cp0`. */
+  least lemma ReachFVGeStart(c: RB.code, str: string, ov: LOr.OracleView, cp0: int, pc: nat, eb: bool, cp: int)
+    requires ReachFV(c, str, ov, cp0, pc, eb, cp)
+    ensures cp >= cp0
+  {
+  }
+
+  /** V-analogue of `EntryConfig` over `ReachFV`/`ConsumeEdge` against `ov`. */
+  ghost predicate EntryConfigV(c: RB.code, str: string, ov: LOr.OracleView, cp0: int, pc: nat, eb: bool, cp: int) {
+    (pc == 0 && eb == false && cp == cp0)
+    || (eb == true && pc > 0
+        && (ReachFV(c, str, ov, cp0, pc - 1, false, cp - 1) || ReachFV(c, str, ov, cp0, pc - 1, true, cp - 1))
+        && ConsumeEdge(c, str, cp - 1, pc - 1))
+  }
+
+  /** V-analogue of `ReachInProc`: if `w` has every in-range entry config of `cp`
+      processed and its processed set is `EpsEdgeV(ov)`-closed at `cp`, then every
+      in-range config `ReachFV(ov)`-reachable at `cp` is processed. */
+  least lemma ReachInProcV(c: RB.code, str: string, ov: LOr.OracleView, cp0: int, pc: nat, eb: bool, cp: int, w: AI.VmState)
+    requires ReachFV(c, str, ov, cp0, pc, eb, cp)
+    requires pc < RB.size(c)
+    requires forall p: nat, e: bool :: EntryConfigV(c, str, ov, cp0, p, e, cp) && p < RB.size(c) ==> InProc(w, p, e)
+    requires forall p: nat, e: bool, p2: nat, e2: bool ::
+        InProc(w, p, e) && p2 < RB.size(c) && EpsEdgeV(c, str, ov, cp, p, e, p2, e2) ==> InProc(w, p2, e2)
+    ensures InProc(w, pc, eb)
+  {
+    if pc == 0 && eb == false && cp == cp0 {
+    } else if eb == true && pc > 0
+              && (ReachFV(c, str, ov, cp0, pc - 1, false, cp - 1) || ReachFV(c, str, ov, cp0, pc - 1, true, cp - 1))
+              && ConsumeEdge(c, str, cp - 1, pc - 1) {
+    } else {
+      assert exists pc1: nat, eb1: bool ::
+        ReachFV(c, str, ov, cp0, pc1, eb1, cp) && EpsEdgeV(c, str, ov, cp, pc1, eb1, pc, eb);
+      var pc1: nat, eb1: bool :|
+        ReachFV(c, str, ov, cp0, pc1, eb1, cp) && EpsEdgeV(c, str, ov, cp, pc1, eb1, pc, eb);
+      assert 0 <= pc1 < RB.size(c) by {
+        if !(pc1 < RB.size(c)) { assert RB.get_instr(c, pc1) == RB.Fail; }
+      }
+      ReachInProcV(c, str, ov, cp0, pc1, eb1, cp, w);
+    }
+  }
+
+  /** V-analogue of `ReachFLeEnd`. */
+  least lemma ReachFVLeEnd(c: RB.code, str: string, ov: LOr.OracleView, cp0: int, pc: nat, eb: bool, cp: int)
+    requires ReachFV(c, str, ov, cp0, pc, eb, cp)
+    requires cp0 <= |str|
+    ensures cp <= |str|
+  {
+    if pc == 0 && eb == false && cp == cp0 {
+    } else if exists pc1: nat, eb1: bool ::
+                ReachFV(c, str, ov, cp0, pc1, eb1, cp) && EpsEdgeV(c, str, ov, cp, pc1, eb1, pc, eb) {
+      var pc1: nat, eb1: bool :|
+        ReachFV(c, str, ov, cp0, pc1, eb1, cp) && EpsEdgeV(c, str, ov, cp, pc1, eb1, pc, eb);
+      ReachFVLeEnd(c, str, ov, cp0, pc1, eb1, cp);
+    } else {
+      assert eb == true && pc > 0 && ConsumeEdge(c, str, cp - 1, pc - 1);
+      assert AI.get_char(str, cp - 1).Some?;
+    }
+  }
+
+  /** V-analogue of `HasAcceptedConsumeAt`. */
+  ghost predicate HasAcceptedConsumeAtV(c: RB.code, str: string, ov: LOr.OracleView, cp0: int, boundary: int) {
+    exists p: nat, e: bool :: ReachFV(c, str, ov, cp0, p, e, boundary) && ConsumeEdge(c, str, boundary, p)
+  }
+
+  /** V-analogue of `HasAcceptedConsumeAtIntro`. */
+  lemma HasAcceptedConsumeAtIntroV(c: RB.code, str: string, ov: LOr.OracleView, cp0: int, boundary: int, p: nat, e: bool)
+    requires ReachFV(c, str, ov, cp0, p, e, boundary) && ConsumeEdge(c, str, boundary, p)
+    ensures HasAcceptedConsumeAtV(c, str, ov, cp0, boundary)
+  {
+  }
+
+  /** V-analogue of `ReachBeyondNeedsConsume`. */
+  least lemma ReachBeyondNeedsConsumeV(c: RB.code, str: string, ov: LOr.OracleView, cp0: int, boundary: int,
+                                       pc: nat, eb: bool, cp: int)
+    requires ReachFV(c, str, ov, cp0, pc, eb, cp)
+    requires cp0 <= boundary
+    requires cp > boundary
+    ensures HasAcceptedConsumeAtV(c, str, ov, cp0, boundary)
+  {
+    if pc == 0 && eb == false && cp == cp0 {
+    } else if exists pc1: nat, eb1: bool ::
+                ReachFV(c, str, ov, cp0, pc1, eb1, cp) && EpsEdgeV(c, str, ov, cp, pc1, eb1, pc, eb) {
+      var pc1: nat, eb1: bool :|
+        ReachFV(c, str, ov, cp0, pc1, eb1, cp) && EpsEdgeV(c, str, ov, cp, pc1, eb1, pc, eb);
+      ReachBeyondNeedsConsumeV(c, str, ov, cp0, boundary, pc1, eb1, cp);
+    } else {
+      assert eb == true && pc > 0
+             && (ReachFV(c, str, ov, cp0, pc - 1, false, cp - 1) || ReachFV(c, str, ov, cp0, pc - 1, true, cp - 1))
+             && ConsumeEdge(c, str, cp - 1, pc - 1);
+      var e' :| (e' == false || e' == true) && ReachFV(c, str, ov, cp0, pc - 1, e', cp - 1);
+      if cp - 1 > boundary {
+        ReachBeyondNeedsConsumeV(c, str, ov, cp0, boundary, pc - 1, e', cp - 1);
+      } else {
+        assert cp - 1 == boundary;
+        var q: nat := pc - 1;
+        assert ReachFV(c, str, ov, cp0, q, e', boundary);
+        assert ConsumeEdge(c, str, boundary, q);
+        HasAcceptedConsumeAtIntroV(c, str, ov, cp0, boundary, q, e');
+      }
+    }
+  }
+
+  /** V-analogue of `ClosureInv`: Inv1 is `EpsEdgeV(ovr)`-closure into P ∪ A (so
+      gates carry edges), Inv4 checks the running view `ov` records column-`k`
+      writes. Inv2/Inv3 are unchanged (view-free). */
+  ghost predicate ClosureInvV(c: RB.code, k: int, str: string, s: AI.VmState, ovr: LOr.OracleView, ov: LOr.OracleView) {
+    (forall pc: nat, eb: bool, pc2: nat, eb2: bool ::
+        (InProc(s, pc, eb) && pc2 < RB.size(c) && EpsEdgeV(c, str, ovr, s.cp, pc, eb, pc2, eb2))
+          ==> (InProc(s, pc2, eb2) || InActive(s, pc2, eb2)))
+    && (forall pc: nat, eb: bool ::
+        InProc(s, pc, eb) && RB.get_instr(c, pc).Consume? ==> HasBlockedEntry(c, s.blocked, pc))
+    && (forall q: int :: AI.pc_mem(s.isblocked, q) ==> HasBlockedEntry(c, s.blocked, q))
+    && (forall pc: nat, eb: bool ::
+        (InProc(s, pc, eb) && RB.get_instr(c, pc) == RB.WriteOracle(k))
+          ==> LOr.view_get_oracle(ov, s.cp, k))
+  }
+
+  /** V-analogue of `ClosureInvSkip`. */
+  lemma ClosureInvSkipV(c: RB.code, k: int, str: string, s: AI.VmState, ovr: LOr.OracleView, ov: LOr.OracleView)
+    requires |s.active| > 0
+    requires AI.bpc_mem(s.processed, s.active[0].pc, s.active[0].exit_allowed)
+    requires ClosureInvV(c, k, str, s, ovr, ov)
+    ensures ClosureInvV(c, k, str, s.(active := s.active[1..]), ovr, ov)
+  {
+    var sr := s.(active := s.active[1..]);
+    forall pc: nat, eb: bool, pc2: nat, eb2: bool
+      | InProc(sr, pc, eb) && pc2 < RB.size(c) && EpsEdgeV(c, str, ovr, sr.cp, pc, eb, pc2, eb2)
+      ensures InProc(sr, pc2, eb2) || InActive(sr, pc2, eb2)
+    {
+      assert InProc(s, pc, eb);
+      if InActive(s, pc2, eb2) && !InProc(s, pc2, eb2) {
+        ActiveHeadTail(s, pc2, eb2);
+      }
+    }
+    forall pc: nat, eb: bool | InProc(sr, pc, eb) && RB.get_instr(c, pc).Consume?
+      ensures HasBlockedEntry(c, sr.blocked, pc)
+    {
+      assert InProc(s, pc, eb);
+    }
+    forall q: int | AI.pc_mem(sr.isblocked, q)
+      ensures HasBlockedEntry(c, sr.blocked, q)
+    {
+      assert AI.pc_mem(s.isblocked, q);
+    }
+    forall pc: nat, eb: bool | InProc(sr, pc, eb) && RB.get_instr(c, pc) == RB.WriteOracle(k)
+      ensures LOr.view_get_oracle(ov, sr.cp, k)
+    {
+      assert InProc(s, pc, eb);
+    }
+  }
+
+  /** V-analogue of `ClosureInvConsume`. */
+  lemma ClosureInvConsumeV(c: RB.code, k: int, str: string, s: AI.VmState, ovr: LOr.OracleView, ov: LOr.OracleView,
+                           ce: RC.char_expectation)
+    requires |s.active| > 0
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires !AI.bpc_mem(s.processed, s.active[0].pc, s.active[0].exit_allowed)
+    requires RB.get_instr(c, s.active[0].pc) == RB.Consume(ce)
+    requires ClosureInvV(c, k, str, s, ovr, ov)
+    ensures
+      var t := s.active[0];
+      var s1 := s.(clock := s.clock + 1, processed := AI.bpc_add(s.processed, t.pc, t.exit_allowed));
+      var r := AI.add_thread(t, ce, s1.blocked, s1.isblocked);
+      ClosureInvV(c, k, str, s1.(blocked := r.0, isblocked := r.1, active := s.active[1..]), ovr, ov)
+  {
+    var t := s.active[0];
+    var s1 := s.(clock := s.clock + 1, processed := AI.bpc_add(s.processed, t.pc, t.exit_allowed));
+    var (nb, ni) := AI.add_thread(t, ce, s1.blocked, s1.isblocked);
+    var sr := s1.(blocked := nb, isblocked := ni, active := s.active[1..]);
+    assert 0 <= t.pc < RB.size(c);
+    assert s1.blocked == s.blocked && s1.isblocked == s.isblocked;
+    forall pc: nat, eb: bool, pc2: nat, eb2: bool
+      | InProc(sr, pc, eb) && pc2 < RB.size(c) && EpsEdgeV(c, str, ovr, sr.cp, pc, eb, pc2, eb2)
+      ensures InProc(sr, pc2, eb2) || InActive(sr, pc2, eb2)
+    {
+      BpcAddMem(s.processed, t.pc, t.exit_allowed, pc, eb);
+      assert InProc(s, pc, eb);   // pc == t.pc would give i == Consume, no EpsEdgeV
+      BpcAddMem(s.processed, t.pc, t.exit_allowed, pc2, eb2);
+      if InActive(s, pc2, eb2) && !InProc(s, pc2, eb2) {
+        ActiveHeadTail(s, pc2, eb2);
+      }
+    }
+    forall pc: nat, eb: bool | InProc(sr, pc, eb) && RB.get_instr(c, pc).Consume?
+      ensures HasBlockedEntry(c, nb, pc)
+    {
+      BpcAddMem(s.processed, t.pc, t.exit_allowed, pc, eb);
+      if pc == t.pc {
+        if AI.pc_mem(s1.isblocked, t.pc) {
+          assert nb == s.blocked && AI.pc_mem(s.isblocked, t.pc);
+        } else {
+          assert nb == [(t, ce)] + s.blocked && nb[0] == (t, ce);
+        }
+      } else {
+        assert InProc(s, pc, eb);
+        assert HasBlockedEntry(c, s.blocked, pc);
+        if !AI.pc_mem(s1.isblocked, t.pc) {
+          assert nb == [(t, ce)] + s.blocked;
+          BlockedPrependPreserves(c, s.blocked, (t, ce), pc);
+        }
+      }
+    }
+    forall q: int | AI.pc_mem(ni, q)
+      ensures HasBlockedEntry(c, nb, q)
+    {
+      if AI.pc_mem(s1.isblocked, t.pc) {
+        assert ni == s.isblocked && nb == s.blocked;
+      } else {
+        PcAddMem(s.isblocked, t.pc, q);
+        assert nb == [(t, ce)] + s.blocked;
+        if q == t.pc {
+          assert nb[0] == (t, ce);
+        } else {
+          BlockedPrependPreserves(c, s.blocked, (t, ce), q);
+        }
+      }
+    }
+    forall pc: nat, eb: bool | InProc(sr, pc, eb) && RB.get_instr(c, pc) == RB.WriteOracle(k)
+      ensures LOr.view_get_oracle(ov, sr.cp, k)
+    {
+      BpcAddMem(s.processed, t.pc, t.exit_allowed, pc, eb);
+      assert InProc(s, pc, eb);
+    }
+  }
+
+  /** V-analogue of `ClosureInvStep`. Handles the register/loop/anchor heads AND
+      the two gate heads (CheckOracle/NegCheckOracle) — for a gate the
+      caller supplies `pre` = `[stepped thread]` (running-view crosses) or `[]`
+      (running-view drops), and the `EpsEdgeV(ovr)` coverage forall the caller
+      proves via `GateAgreeV`. */
+  lemma ClosureInvStepV(c: RB.code, k: int, str: string, s: AI.VmState, ovr: LOr.OracleView, ov: LOr.OracleView,
+                        hpc: nat, heb: bool, pre: seq<AI.Thread>, sr: AI.VmState)
+    requires |s.active| > 0
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires ClosureInvV(c, k, str, s, ovr, ov)
+    requires s.active[0].pc == hpc && s.active[0].exit_allowed == heb
+    requires sr.cp == s.cp && sr.blocked == s.blocked && sr.isblocked == s.isblocked
+    requires sr.active == pre + s.active[1..]
+    requires sr.processed == AI.bpc_add(s.processed, hpc, heb)
+    requires !RB.get_instr(c, hpc).Consume? && RB.get_instr(c, hpc) != RB.WriteOracle(k)
+    requires forall pc2: nat, eb2: bool ::
+        (pc2 < RB.size(c) && EpsEdgeV(c, str, ovr, s.cp, hpc, heb, pc2, eb2))
+          ==> (InProc(sr, pc2, eb2) || InActive(sr, pc2, eb2))
+    ensures ClosureInvV(c, k, str, sr, ovr, ov)
+  {
+    var ac := s.active[1..];
+    forall pc: nat, eb: bool, pc2: nat, eb2: bool
+      | InProc(sr, pc, eb) && pc2 < RB.size(c) && EpsEdgeV(c, str, ovr, sr.cp, pc, eb, pc2, eb2)
+      ensures InProc(sr, pc2, eb2) || InActive(sr, pc2, eb2)
+    {
+      BpcAddMem(s.processed, hpc, heb, pc, eb);
+      if pc == hpc && eb == heb {
+        assert EpsEdgeV(c, str, ovr, s.cp, hpc, heb, pc2, eb2);
+      } else {
+        assert InProc(s, pc, eb);
+        BpcAddMem(s.processed, hpc, heb, pc2, eb2);
+        if InActive(s, pc2, eb2) && !InProc(s, pc2, eb2) {
+          ActiveHeadTail(s, pc2, eb2);
+          if !(s.active[0].pc == pc2 && s.active[0].exit_allowed == eb2) {
+            var j :| 0 <= j < |ac| && ac[j].pc == pc2 && ac[j].exit_allowed == eb2;
+            assert sr.active[|pre| + j] == ac[j];
+          }
+        }
+      }
+    }
+    forall pc: nat, eb: bool | InProc(sr, pc, eb) && RB.get_instr(c, pc).Consume?
+      ensures HasBlockedEntry(c, sr.blocked, pc)
+    {
+      BpcAddMem(s.processed, hpc, heb, pc, eb);
+      assert InProc(s, pc, eb);
+    }
+    forall q: int | AI.pc_mem(sr.isblocked, q)
+      ensures HasBlockedEntry(c, sr.blocked, q)
+    {
+      assert AI.pc_mem(s.isblocked, q);
+    }
+    forall pc: nat, eb: bool | InProc(sr, pc, eb) && RB.get_instr(c, pc) == RB.WriteOracle(k)
+      ensures LOr.view_get_oracle(ov, sr.cp, k)
+    {
+      BpcAddMem(s.processed, hpc, heb, pc, eb);
+      assert InProc(s, pc, eb);
+    }
+  }
+
+  /** V-analogue of `AdvanceReachComplete`: one epsilon closure over gate-aware
+      `AllGatesAbove(c,k)` code processes every queued config, following gate
+      edges per the running view `ov` (which equals `ovr` above `k`). Ends with
+      `active == []`, re-establishes `ClosureInvV` of the result, and keeps
+      `AgreeAbove(ov', ovr, k)` (the closure only writes column `k`). */
+  lemma AdvanceReachCompleteV(c: RB.code, k: int, str: string, s: AI.VmState, ovr: LOr.OracleView, ov: LOr.OracleView)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires OS.AllGatesAbove(c, k) && OS.NoCheckNullable(c) && OS.WritesOnlyLid(c, k) && OS.NoAccept(c)
+    requires s.context == CtxAt(str, s.cp)
+    requires OS.AgreeAbove(ov, ovr, k)
+    requires 0 <= s.cp < |ov| && 0 <= k < |ov[s.cp]|
+    requires ClosureInvV(c, k, str, s, ovr, ov)
+    ensures var (s', ov') := AI.FAdvanceEpsilon(c, s, ov, LAnc.Forward);
+      s'.active == []
+      && s'.cp == s.cp
+      && (forall pc: nat, eb: bool ::
+            InProc(s, pc, eb) || (InActive(s, pc, eb) && pc < RB.size(c)) ==> InProc(s', pc, eb))
+      && ClosureInvV(c, k, str, s', ovr, ov')
+      && OS.AgreeAbove(ov', ovr, k)
+    decreases AI.unprocessed(s.processed), |s.active|
+  {
+    if |s.active| == 0 { return; }
+    var t := s.active[0];
+    var ac := s.active[1..];
+    var i := RB.get_instr(c, t.pc);
+    if AI.bpc_mem(s.processed, t.pc, t.exit_allowed) {
+      ClosureInvSkipV(c, k, str, s, ovr, ov);
+      AdvanceReachCompleteV(c, k, str, s.(active := ac), ovr, ov);
+      return;
+    }
+    var b0 := s.processed;
+    var s1 := s.(clock := s.clock + 1, processed := AI.bpc_add(b0, t.pc, t.exit_allowed));
+    AI.UnprocessedAdd(b0, t.pc, t.exit_allowed);
+    match i
+    case Consume(ce) =>
+      var (nb, ni) := AI.add_thread(t, ce, s1.blocked, s1.isblocked);
+      ClosureInvConsumeV(c, k, str, s, ovr, ov, ce);
+      AdvanceReachCompleteV(c, k, str, s1.(blocked := nb, isblocked := ni, active := ac), ovr, ov);
+    case Accept =>
+      assert 0 <= t.pc < |c| && c[t.pc].Accept?;
+      assert false;
+    case Jmp(x) =>
+      var sr := s1.(active := [t.(pc := x)] + ac);
+      assert x >= 0 ==> sr.active[0] == t.(pc := x);
+      ClosureInvStepV(c, k, str, s, ovr, ov, t.pc, t.exit_allowed, [t.(pc := x)], sr);
+      AdvanceReachCompleteV(c, k, str, sr, ovr, ov);
+    case Fork(x, y) =>
+      var newt := AI.Thread(x, t.capture_regs, t.look_regs, t.quant_regs, t.exit_allowed);
+      var sr := s1.(active := [newt, t.(pc := y)] + ac);
+      assert x >= 0 ==> sr.active[0] == newt;
+      assert y >= 0 ==> sr.active[1] == t.(pc := y);
+      ClosureInvStepV(c, k, str, s, ovr, ov, t.pc, t.exit_allowed, [newt, t.(pc := y)], sr);
+      AdvanceReachCompleteV(c, k, str, sr, ovr, ov);
+    case SetRegisterToCP(reg) =>
+      var t' := t.(capture_regs := AReg.set_reg(t.capture_regs, reg, Some(s1.cp), s1.clock), pc := t.pc + 1);
+      var sr := s1.(active := [t'] + ac);
+      assert sr.active[0] == t';
+      ClosureInvStepV(c, k, str, s, ovr, ov, t.pc, t.exit_allowed, [t'], sr);
+      AdvanceReachCompleteV(c, k, str, sr, ovr, ov);
+    case SetQuantToClock(q, b) =>
+      var ocp := if b then Some(s1.cp) else None;
+      var t' := t.(quant_regs := AReg.set_reg(t.quant_regs, q, ocp, s1.clock), pc := t.pc + 1);
+      var sr := s1.(active := [t'] + ac);
+      assert sr.active[0] == t';
+      ClosureInvStepV(c, k, str, s, ovr, ov, t.pc, t.exit_allowed, [t'], sr);
+      AdvanceReachCompleteV(c, k, str, sr, ovr, ov);
+    case CheckOracle(l) =>
+      assert 0 <= t.pc < |c| && c[t.pc].CheckOracle? && c[t.pc].col == l;
+      assert l > k;                                        // AllGatesAbove
+      GateAgreeV(c, k, ovr, ov, s.cp, l);                  // running gate == reference gate
+      if LOr.view_get_oracle(ov, s1.cp, l) {
+        var t' := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(s1.cp), s1.clock));
+        var sr := s1.(active := [t'] + ac);
+        assert sr.active[0] == t';
+        assert LOr.view_get_oracle(ovr, s.cp, l);          // EpsEdgeV edge to (pc+1, eb) exists
+        ClosureInvStepV(c, k, str, s, ovr, ov, t.pc, t.exit_allowed, [t'], sr);
+        AdvanceReachCompleteV(c, k, str, sr, ovr, ov);
+      } else {
+        var sr := s1.(active := ac);
+        assert !LOr.view_get_oracle(ovr, s.cp, l);          // no EpsEdgeV edge
+        ClosureInvStepV(c, k, str, s, ovr, ov, t.pc, t.exit_allowed, [], sr);
+        AdvanceReachCompleteV(c, k, str, sr, ovr, ov);
+      }
+    case NegCheckOracle(l) =>
+      assert 0 <= t.pc < |c| && c[t.pc].NegCheckOracle? && c[t.pc].ncl == l;
+      assert l > k;                                        // AllGatesAbove
+      GateAgreeV(c, k, ovr, ov, s.cp, l);
+      if LOr.view_get_oracle(ov, s1.cp, l) {
+        var sr := s1.(active := ac);
+        assert LOr.view_get_oracle(ovr, s.cp, l);           // NegCheck needs !ovr: no edge
+        ClosureInvStepV(c, k, str, s, ovr, ov, t.pc, t.exit_allowed, [], sr);
+        AdvanceReachCompleteV(c, k, str, sr, ovr, ov);
+      } else {
+        var sr := s1.(active := [t.(pc := t.pc + 1)] + ac);
+        assert sr.active[0] == t.(pc := t.pc + 1);
+        assert !LOr.view_get_oracle(ovr, s.cp, l);          // EpsEdgeV edge to (pc+1, eb) exists
+        ClosureInvStepV(c, k, str, s, ovr, ov, t.pc, t.exit_allowed, [t.(pc := t.pc + 1)], sr);
+        AdvanceReachCompleteV(c, k, str, sr, ovr, ov);
+      }
+    case WriteOracle(l) =>
+      assert 0 <= t.pc < |c| && c[t.pc] == RB.WriteOracle(l);
+      assert l == k;                                       // WritesOnlyLid
+      OS.ViewSetFacts(ov, s1.cp, l);
+      var ov' := LOr.view_set_oracle(ov, s1.cp, l);
+      var sr := s1.(active := ac);
+      assert LOr.view_get_oracle(ov', s.cp, k);            // freshly recorded bit (in range)
+      AgreeAbovePreservedByWrite(k, ovr, ov, s1.cp);       // AgreeAbove(ov', ovr, k)
+      forall pc: nat, eb: bool, pc2: nat, eb2: bool
+        | InProc(sr, pc, eb) && pc2 < RB.size(c) && EpsEdgeV(c, str, ovr, sr.cp, pc, eb, pc2, eb2)
+        ensures InProc(sr, pc2, eb2) || InActive(sr, pc2, eb2)
+      {
+        BpcAddMem(b0, t.pc, t.exit_allowed, pc, eb);
+        if pc != t.pc || eb != t.exit_allowed {
+          assert InProc(s, pc, eb);
+          BpcAddMem(b0, t.pc, t.exit_allowed, pc2, eb2);
+          if InActive(s, pc2, eb2) && !InProc(s, pc2, eb2) { ActiveHeadTail(s, pc2, eb2); }
+        }
+      }
+      forall pc: nat, eb: bool | InProc(sr, pc, eb) && RB.get_instr(c, pc).Consume?
+        ensures HasBlockedEntry(c, sr.blocked, pc)
+      {
+        BpcAddMem(b0, t.pc, t.exit_allowed, pc, eb);
+        assert InProc(s, pc, eb);
+      }
+      forall q: int | AI.pc_mem(sr.isblocked, q)
+        ensures HasBlockedEntry(c, sr.blocked, q)
+      {
+        assert AI.pc_mem(s.isblocked, q);
+      }
+      AdvanceReachCompleteV(c, k, str, sr, ovr, ov');
+    case BeginLoop =>
+      var sr := s1.(active := [t.(exit_allowed := false, pc := t.pc + 1)] + ac);
+      assert sr.active[0] == t.(exit_allowed := false, pc := t.pc + 1);
+      ClosureInvStepV(c, k, str, s, ovr, ov, t.pc, t.exit_allowed, [t.(exit_allowed := false, pc := t.pc + 1)], sr);
+      AdvanceReachCompleteV(c, k, str, sr, ovr, ov);
+    case EndLoop =>
+      if t.exit_allowed {
+        var sr := s1.(active := [t.(pc := t.pc + 1)] + ac);
+        assert sr.active[0] == t.(pc := t.pc + 1);
+        ClosureInvStepV(c, k, str, s, ovr, ov, t.pc, t.exit_allowed, [t.(pc := t.pc + 1)], sr);
+        AdvanceReachCompleteV(c, k, str, sr, ovr, ov);
+      } else {
+        var sr := s1.(active := ac);
+        ClosureInvStepV(c, k, str, s, ovr, ov, t.pc, t.exit_allowed, [], sr);
+        AdvanceReachCompleteV(c, k, str, sr, ovr, ov);
+      }
+    case CheckNullable(qid) =>
+      assert 0 <= t.pc < |c| && c[t.pc].CheckNullable?;
+      assert false;
+    case AnchorAssertion(a) =>
+      if LAnc.is_satisfied(a, s1.context, LAnc.Forward) {
+        var sr := s1.(active := [t.(pc := t.pc + 1)] + ac);
+        assert sr.active[0] == t.(pc := t.pc + 1);
+        ClosureInvStepV(c, k, str, s, ovr, ov, t.pc, t.exit_allowed, [t.(pc := t.pc + 1)], sr);
+        AdvanceReachCompleteV(c, k, str, sr, ovr, ov);
+      } else {
+        var sr := s1.(active := ac);
+        ClosureInvStepV(c, k, str, s, ovr, ov, t.pc, t.exit_allowed, [], sr);
+        AdvanceReachCompleteV(c, k, str, sr, ovr, ov);
+      }
+    case Fail =>
+      var sr := s1.(active := ac);
+      forall pc: nat, eb: bool, pc2: nat, eb2: bool
+        | InProc(sr, pc, eb) && pc2 < RB.size(c) && EpsEdgeV(c, str, ovr, sr.cp, pc, eb, pc2, eb2)
+        ensures InProc(sr, pc2, eb2) || InActive(sr, pc2, eb2)
+      {
+        BpcAddMem(b0, t.pc, t.exit_allowed, pc, eb);
+        if pc != t.pc || eb != t.exit_allowed {
+          assert InProc(s, pc, eb);
+          BpcAddMem(b0, t.pc, t.exit_allowed, pc2, eb2);
+          if InActive(s, pc2, eb2) && !InProc(s, pc2, eb2) { ActiveHeadTail(s, pc2, eb2); }
+        }
+      }
+      forall pc: nat, eb: bool | InProc(sr, pc, eb) && RB.get_instr(c, pc).Consume?
+        ensures HasBlockedEntry(c, sr.blocked, pc)
+      {
+        BpcAddMem(b0, t.pc, t.exit_allowed, pc, eb);
+        assert InProc(s, pc, eb);
+      }
+      forall q: int | AI.pc_mem(sr.isblocked, q)
+        ensures HasBlockedEntry(c, sr.blocked, q)
+      {
+        assert AI.pc_mem(s.isblocked, q);
+      }
+      forall pc: nat, eb: bool | InProc(sr, pc, eb) && RB.get_instr(c, pc) == RB.WriteOracle(k)
+        ensures LOr.view_get_oracle(ov, sr.cp, k)
+      {
+        BpcAddMem(b0, t.pc, t.exit_allowed, pc, eb);
+        assert InProc(s, pc, eb);
+      }
+      AdvanceReachCompleteV(c, k, str, sr, ovr, ov);
+  }
+
+  /** V-analogue of `FindMatchReachComplete`: a whole gate-aware `NoAccept`
+      Forward run is COMPLETE for column-`k` writes. If the run enters `s.cp`
+      with `active` covering the `EntryConfigV(ovr)` configs and the running view
+      already recording every `ReachesWriteV(ovr)` below `s.cp`, then every
+      reachable-`WriteOracle(k)` position gets its bit set in the final view.
+      Dual of `FindMatchReachSoundV`. */
+  lemma FindMatchReachCompleteV(c: RB.code, k: int, str: string, cp0: int, s: AI.VmState,
+                                ovr: LOr.OracleView, ov: LOr.OracleView, cdn: LCdn.cdns)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires s.context.nextchar == AI.get_char(str, s.cp)
+    requires OS.AllGatesAbove(c, k) && OS.NoCheckNullable(c) && OS.WritesOnlyLid(c, k) && OS.NoAccept(c)
+    requires s.context == CtxAt(str, s.cp)
+    requires OS.AgreeAbove(ov, ovr, k)
+    requires s.processed == AI.init_bpcset(RB.size(c))
+    requires s.isblocked == AI.init_pcset(RB.size(c))
+    requires s.blocked == []
+    requires 0 <= cp0 <= s.cp <= |str|
+    requires |str| < |ov|
+    requires forall i: int {:trigger ov[i]} :: 0 <= i < |ov| ==> 0 <= k < |ov[i]|
+    requires forall pc: nat, eb: bool ::
+        EntryConfigV(c, str, ovr, cp0, pc, eb, s.cp) && pc < RB.size(c) ==> InActive(s, pc, eb)
+    requires forall cp2: int ::
+        cp2 < s.cp && ReachesWriteV(c, str, ovr, cp0, k, cp2) ==> LOr.view_get_oracle(ov, cp2, k)
+    ensures var (_, ov') := AI.FFindMatch(c, str, s, ov, LAnc.Forward, cdn);
+      forall cp2: int :: ReachesWriteV(c, str, ovr, cp0, k, cp2) ==> LOr.view_get_oracle(ov', cp2, k)
+    decreases |str| - s.cp
+  {
+    var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, LAnc.Forward));
+    var (s1, ov1) := AI.FAdvanceEpsilon(c, s0, ov, LAnc.Forward);
+    assert ClosureInvV(c, k, str, s0, ovr, ov);   // s0's processed/isblocked empty, blocked == []
+    assert 0 <= s0.cp < |ov| && 0 <= k < |ov[s0.cp]|;
+    AdvanceReachCompleteV(c, k, str, s0, ovr, ov);
+    OS.AdvanceOracleFrame(c, s0, ov, LAnc.Forward, k);
+    // entries of s.cp are processed in s1, and s1's processed set is EpsEdgeV(ovr)-closed at s.cp
+    assert forall p: nat, e: bool ::
+        EntryConfigV(c, str, ovr, cp0, p, e, s.cp) && p < RB.size(c) ==> InProc(s1, p, e);
+    assert forall p: nat, e: bool, p2: nat, e2: bool ::
+        InProc(s1, p, e) && p2 < RB.size(c) && EpsEdgeV(c, str, ovr, s.cp, p, e, p2, e2) ==> InProc(s1, p2, e2);
+    // every reachable write at or below s.cp is now set in ov1
+    forall cp2: int | cp2 <= s.cp && ReachesWriteV(c, str, ovr, cp0, k, cp2)
+      ensures LOr.view_get_oracle(ov1, cp2, k)
+    {
+      if cp2 == s.cp {
+        var pc: nat, eb: bool :| ReachFV(c, str, ovr, cp0, pc, eb, cp2) && RB.get_instr(c, pc) == RB.WriteOracle(k);
+        assert pc < RB.size(c);
+        ReachInProcV(c, str, ovr, cp0, pc, eb, s.cp, s1);
+      }
+    }
+    if |s1.blocked| == 0 {
+      assert !HasAcceptedConsumeAtV(c, str, ovr, cp0, s.cp) by {
+        if HasAcceptedConsumeAtV(c, str, ovr, cp0, s.cp) {
+          var p: nat, e: bool :| ReachFV(c, str, ovr, cp0, p, e, s.cp) && ConsumeEdge(c, str, s.cp, p);
+          assert 0 <= p < RB.size(c) by {
+            if !(p < RB.size(c)) { assert RB.get_instr(c, p) == RB.Fail; }
+          }
+          ReachInProcV(c, str, ovr, cp0, p, e, s.cp, s1);
+          assert RB.get_instr(c, p).Consume?;
+          assert HasBlockedEntry(c, s1.blocked, p);   // Inv2 — but s1.blocked == []
+          assert false;
+        }
+      }
+      forall cp2: int | ReachesWriteV(c, str, ovr, cp0, k, cp2)
+        ensures LOr.view_get_oracle(ov1, cp2, k)
+      {
+        if cp2 > s.cp {
+          var pc: nat, eb: bool :| ReachFV(c, str, ovr, cp0, pc, eb, cp2) && RB.get_instr(c, pc) == RB.WriteOracle(k);
+          ReachBeyondNeedsConsumeV(c, str, ovr, cp0, s.cp, pc, eb, cp2);
+          assert false;
+        }
+      }
+      return;
+    }
+    match s1.context.nextchar
+    case None =>
+      forall cp2: int | ReachesWriteV(c, str, ovr, cp0, k, cp2)
+        ensures LOr.view_get_oracle(ov1, cp2, k)
+      {
+        if cp2 > s.cp {
+          var pc: nat, eb: bool :| ReachFV(c, str, ovr, cp0, pc, eb, cp2) && RB.get_instr(c, pc) == RB.WriteOracle(k);
+          ReachFVLeEnd(c, str, ovr, cp0, pc, eb, cp2);   // cp2 <= |str|
+          assert AI.get_char(str, s.cp) == None;          // nextchar None ==> s.cp >= |str|
+          assert false;                                   // cp2 > s.cp >= |str| >= cp2
+        }
+      }
+    case Some(_) =>
+      var s2 := AI.FConsume(s1);
+      var s3 := s2.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
+                    cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, LAnc.Forward));
+      var newchar := AI.get_char(str, s3.cp - AI.cp_offset(LAnc.Forward));
+      var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
+      FConsumeReachComplete(s1);
+      FConsumeDrainsBlocked(s1);
+      assert s4.blocked == [];
+      assert s4.cp == s.cp + 1;
+      assert s4.context == CtxAt(str, s4.cp);
+      assert OS.SameShape(ov, ov1);
+      assert |str| < |ov1|;                                // SameShape: |ov1| == |ov|
+      forall i: int | 0 <= i < |ov1|
+        ensures 0 <= k < |ov1[i]|
+      {
+        assert |ov[i]| == |ov1[i]|;                        // SameShape at i
+      }
+      // entries of s4.cp (= s.cp + 1) are covered by s4.active (== FConsume(s1).active)
+      forall pc: nat, eb: bool | EntryConfigV(c, str, ovr, cp0, pc, eb, s4.cp) && pc < RB.size(c)
+        ensures InActive(s4, pc, eb)
+      {
+        // EntryConfigV at s.cp+1 is a consume successor (base needs cp == cp0 <= s.cp)
+        assert eb == true && pc > 0
+               && (ReachFV(c, str, ovr, cp0, pc - 1, false, s.cp) || ReachFV(c, str, ovr, cp0, pc - 1, true, s.cp))
+               && ConsumeEdge(c, str, s.cp, pc - 1);
+        var e' :| (e' == false || e' == true) && ReachFV(c, str, ovr, cp0, pc - 1, e', s.cp);
+        var q: nat := pc - 1;
+        assert 0 <= q < RB.size(c) by {
+          if !(q < RB.size(c)) { assert RB.get_instr(c, q) == RB.Fail; }
+        }
+        ReachInProcV(c, str, ovr, cp0, q, e', s.cp, s1);
+        // Inv2: reachable Consume config q has a blocked entry at q
+        assert RB.get_instr(c, q).Consume?;
+        assert HasBlockedEntry(c, s1.blocked, q);
+        var j :| 0 <= j < |s1.blocked| && s1.blocked[j].0.pc == q
+                 && RB.get_instr(c, q) == RB.Consume(s1.blocked[j].1);
+        assert RC.is_accepted(s1.context.nextchar, s1.blocked[j].1);   // ConsumeEdge(s.cp, q)
+        // FConsumeReachComplete(s1) reactivated that entry at (q + 1, exit_allowed := true)
+        assert exists kk :: (0 <= kk < |AI.FConsume(s1).active|
+                            && AI.FConsume(s1).active[kk].pc == s1.blocked[j].0.pc + 1
+                            && AI.FConsume(s1).active[kk].exit_allowed);
+        var kk :| 0 <= kk < |AI.FConsume(s1).active|
+                 && AI.FConsume(s1).active[kk].pc == q + 1 && AI.FConsume(s1).active[kk].exit_allowed;
+        assert s4.active == AI.FConsume(s1).active;
+        assert s4.active[kk].pc == pc && s4.active[kk].exit_allowed == eb;   // q + 1 == pc, eb == true
+      }
+      // writes below s4.cp are already recorded in ov1 (cp2 <= s.cp handled above)
+      FindMatchReachCompleteV(c, k, str, cp0, s4, ovr, ov1, cdn);
+  }
+
+  /** The L4 GATE-FUL sweep characterization: running `FFindMatch` over gate-aware
+      `NoAccept` build code (`AllGatesAbove(c,k)`, `WritesOnlyLid(c,k)`) from the
+      initial (Forward, cp 0) state sets exactly the bits already set, plus the
+      `ReachesWriteV` positions — with the reference view taken to be the INPUT
+      view `ov` itself (its columns `> k` are the reference oracle the gates read;
+      the sweep only writes column `k`, so `AgreeAbove(ov, ov, k)` holds
+      throughout, reflexively). Soundness (`FindMatchReachSoundV`) gives ⊆;
+      completeness (`FindMatchReachCompleteV`) + monotonicity (`MonoAny`) give ⊇.
+      The `k = +inf` (NoOracleReads) specialization is `SweepCharacterization`. */
+  lemma SweepCharacterizationV(c: RB.code, k: int, str: string, ov: LOr.OracleView, cdn: LCdn.cdns,
+                               initcap: AReg.Regs, initlook: AReg.Regs, initquant: AReg.Regs, initclk: int)
+    requires OS.AllGatesAbove(c, k) && OS.NoCheckNullable(c) && OS.WritesOnlyLid(c, k) && OS.NoAccept(c)
+    requires |str| < |ov|
+    requires forall i: int {:trigger ov[i]} :: 0 <= i < |ov| ==> 0 <= k < |ov[i]|
+    ensures
+      var s := AI.FInitState(c, 0, initcap, initlook, initquant, initclk, AI.cp_context(0, str, LAnc.Forward));
+      var (_, ov') := AI.FFindMatch(c, str, s, ov, LAnc.Forward, cdn);
+      forall cp: int :: LOr.view_get_oracle(ov', cp, k)
+        == (LOr.view_get_oracle(ov, cp, k) || ReachesWriteV(c, str, ov, 0, k, cp))
+  {
+    var s := AI.FInitState(c, 0, initcap, initlook, initquant, initclk, AI.cp_context(0, str, LAnc.Forward));
+    assert s.cp == 0 && s.blocked == [];
+    assert OS.AgreeAbove(ov, ov, k);                          // reflexive: reference view == input view
+    assert ReachFV(c, str, ov, 0, 0, false, 0);              // the base config
+    assert ActiveOkV(c, str, ov, 0, s.active, s.cp);
+    assert BlockedOkV(c, str, ov, 0, s.blocked, s.cp);
+    FindMatchReachSoundV(c, k, str, 0, s, ov, ov, cdn);      // soundness: every set bit is old or reachable
+    // entry coverage at cp 0: only the base config (no consume edge into cp 0)
+    forall pc: nat, eb: bool | EntryConfigV(c, str, ov, 0, pc, eb, 0) && pc < RB.size(c)
+      ensures InActive(s, pc, eb)
+    {
+      assert AI.get_char(str, -1) == None;                    // no consume edge at cp -1
+      assert pc == 0 && eb == false;
+      assert s.active[0] == AI.init_thread(initcap, initlook, initquant);
+    }
+    // bits-below at cp 0 is vacuous: no write is reachable at a negative position
+    forall cp2: int | cp2 < s.cp && ReachesWriteV(c, str, ov, 0, k, cp2)
+      ensures LOr.view_get_oracle(ov, cp2, k)
+    {
+      var pc: nat, eb: bool :| ReachFV(c, str, ov, 0, pc, eb, cp2) && RB.get_instr(c, pc) == RB.WriteOracle(k);
+      ReachFVGeStart(c, str, ov, 0, pc, eb, cp2);   // cp2 >= 0 contradicts cp2 < s.cp == 0
+    }
+    assert |str| < |ov|;
+    assert forall i: int {:trigger ov[i]} :: 0 <= i < |ov| ==> 0 <= k < |ov[i]|;
+    FindMatchReachCompleteV(c, k, str, 0, s, ov, ov, cdn);   // completeness: every reachable write is set
+    OS.MonoAny(c, str, s, ov, LAnc.Forward, cdn);            // Submap(ov, ov'): old bits survive
+  }
 }
