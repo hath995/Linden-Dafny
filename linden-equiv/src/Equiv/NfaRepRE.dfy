@@ -1909,6 +1909,449 @@ module LindenElkNfaRep {
     }
   }
 
+  // ===========================================================================
+  // L4 (SHARED wall): the NESTED-fragment generalization of the
+  // compile -> NfaRepRE correspondence. Every lemma below is a VERBATIM copy of
+  // its `LookBehindFragmentRE`-gated original with the fragment hypothesis
+  // WEAKENED to `NestedFragmentRE` and the mutual recursion routed to the
+  // `*Nested` siblings. The swap is sound because the MAIN correspondence emits
+  // a SINGLE `CheckOracle`/`NegCheckOracle` gate leaf at each lookaround node
+  // (the body compiles into a separate per-lookaround table, NOT inline), so
+  // NEITHER the label-arithmetic pass NOR the representation proof ever
+  // destructs a look body: at `Re_lookaround` both proofs stop at the gate. The
+  // structural cases thread the fragment unchanged (NestedFragmentRE has the
+  // SAME plus-fragment quant shapes as LookBehindFragmentRE); the only relaxed
+  // leaf, the lookaround, is exactly the one the proofs treat opaquely. This is
+  // what lets a genuinely NESTED regex flow through the main correspondence.
+  // ===========================================================================
+
+  /** `FreshCorrectNestedRE` for `repeat_min` (nested-fragment variant of
+      `FreshCorrectMinRE`). */
+  lemma FreshCorrectMinNestedRE(k: nat, qid: R.quantid, r1: R.regex, start: nat, tl: CP.treelist, next: int)
+    requires NestedFragmentRE(r1)
+    requires CP.repeat_min(k, qid, r1, start, CP.Progress) == (tl, next)
+    ensures next == start + |Flat(tl)|
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 {
+      FlattenApp(CP.Leaf([]), []);
+    } else {
+      var (body_code, new_f) := CP.compile(r1, start + 1, CP.Progress);
+      FreshCorrectNestedRE(r1, start + 1, body_code, new_f);
+      var (next_code, next_f) := CP.repeat_min(k - 1, qid, r1, new_f, CP.Progress);
+      FreshCorrectMinNestedRE(k - 1, qid, r1, new_f as nat, next_code, next_f);
+      var ch := CP.chain([CP.Leaf([RB.SetQuantToClock(qid, false)]), body_code, next_code]);
+      assert Flat(ch) == [RB.SetQuantToClock(qid, false)] + Flat(body_code) + Flat(next_code) by {
+        ChainThree(CP.Leaf([RB.SetQuantToClock(qid, false)]), body_code, next_code);
+      }
+    }
+  }
+
+  /** `FreshCorrectNestedRE` for `repeat_optional` (nested-fragment variant of
+      `FreshCorrectOptRE`). */
+  lemma FreshCorrectOptNestedRE(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, start: nat, tl: CP.treelist, next: int)
+    requires NestedFragmentRE(r1)
+    requires CP.repeat_optional(k, qid, r1, start, CP.Progress, greedy) == (tl, next)
+    ensures next == start + |Flat(tl)|
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 {
+      FlattenApp(CP.Leaf([]), []);
+    } else {
+      var (body_code, new_f) := CP.compile(r1, start + 3, CP.Progress);
+      FreshCorrectNestedRE(r1, start + 3, body_code, new_f);
+      var (next_code, next_f) := CP.repeat_optional(k - 1, qid, r1, new_f + 1, CP.Progress, greedy);
+      FreshCorrectOptNestedRE(k - 1, greedy, qid, r1, (new_f + 1) as nat, next_code, next_f);
+      var fork := if greedy then RB.Fork(start + 1, next_f) else RB.Fork(next_f, start + 1);
+      var ch := CP.chain([CP.Leaf([fork, RB.SetQuantToClock(qid, false), RB.BeginLoop]), body_code, CP.Leaf([RB.EndLoop]), next_code]);
+      assert Flat(ch) == [fork, RB.SetQuantToClock(qid, false), RB.BeginLoop] + Flat(body_code) + [RB.EndLoop] + Flat(next_code) by {
+        ChainFour(CP.Leaf([fork, RB.SetQuantToClock(qid, false), RB.BeginLoop]), body_code, CP.Leaf([RB.EndLoop]), next_code);
+      }
+    }
+  }
+
+  /** Nested-fragment variant of `FreshCorrectRE`: the label-arithmetic pass for
+      a regex whose lookaround bodies may nest. The `Re_lookaround` case is
+      vacuous (the body is not touched — one gate leaf is emitted). */
+  lemma FreshCorrectNestedRE(re: R.regex, start: nat, tl: CP.treelist, next: int)
+    requires NestedFragmentRE(re)
+    requires CP.compile(re, start, CP.Progress) == (tl, next)
+    ensures next == start + |Flat(tl)|
+    decreases CP.rsize(re), 1
+  {
+    match re
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_lookaround(_, _, _) =>
+    case Re_alt(r1, r2) =>
+      var (l1, f1) := CP.compile(r1, start + 1, CP.Progress);
+      var (l2, f2) := CP.compile(r2, f1 + 1, CP.Progress);
+      FreshCorrectNestedRE(r1, start + 1, l1, f1);
+      assert f1 >= 0;
+      FreshCorrectNestedRE(r2, f1 + 1, l2, f2);
+      var ch := CP.chain([CP.Leaf([RB.Fork(start + 1, f1 + 1)]), l1, CP.Leaf([RB.Jmp(f2)]), l2]);
+      FlattenApp(l1, [RB.Jmp(f2)] + Flat(l2));
+      FlattenApp(l2, []);
+      assert Flat(ch) == [RB.Fork(start + 1, f1 + 1)] + Flat(l1) + [RB.Jmp(f2)] + Flat(l2) by {
+        ChainFour(CP.Leaf([RB.Fork(start + 1, f1 + 1)]), l1, CP.Leaf([RB.Jmp(f2)]), l2);
+      }
+    case Re_con(r1, r2) =>
+      var (l1, f1) := CP.compile(r1, start, CP.Progress);
+      FreshCorrectNestedRE(r1, start, l1, f1);
+      var (l2, f2) := CP.compile(r2, f1, CP.Progress);
+      FreshCorrectNestedRE(r2, f1, l2, f2);
+      FlattenApp(l1, Flat(l2));
+    case Re_quant(nul, qid, q, r1) =>
+      if q.min == 0 && q.max == None {
+        var (iter_code, iter_f) := CP.compile(r1, start + 3, CP.Progress);
+        FreshCorrectNestedRE(r1, start + 3, iter_code, iter_f);
+        var fork := if q.greedy then RB.Fork(start + 1, iter_f + 2) else RB.Fork(iter_f + 2, start + 1);
+        var ch := CP.chain([CP.Leaf([]),
+                            CP.Leaf([fork, RB.SetQuantToClock(qid, false), RB.BeginLoop]),
+                            iter_code,
+                            CP.Leaf([RB.EndLoop, RB.Jmp(start)])]);
+        assert Flat(ch) == [fork, RB.SetQuantToClock(qid, false), RB.BeginLoop] + Flat(iter_code) + [RB.EndLoop, RB.Jmp(start)] by {
+          ChainFour(CP.Leaf([]), CP.Leaf([fork, RB.SetQuantToClock(qid, false), RB.BeginLoop]), iter_code, CP.Leaf([RB.EndLoop, RB.Jmp(start)]));
+        }
+      } else if q.max.Some? {
+        var (min_code, min_f) := CP.repeat_min(q.min, qid, r1, start, CP.Progress);
+        FreshCorrectMinNestedRE(q.min as nat, qid, r1, start, min_code, min_f);
+        var (opt_code, opt_f) := CP.repeat_optional(q.max.value - q.min, qid, r1, min_f, CP.Progress, q.greedy);
+        FreshCorrectOptNestedRE((q.max.value - q.min) as nat, q.greedy, qid, r1, min_f as nat, opt_code, opt_f);
+        FlattenApp(min_code, Flat(opt_code));
+        assert Flat(tl) == Flat(min_code) + Flat(opt_code);
+      } else {
+        var (min_code, min_f) := CP.repeat_min(q.min - 1, qid, r1, start, CP.Progress);
+        FreshCorrectMinNestedRE((q.min - 1) as nat, qid, r1, start, min_code, min_f);
+        var (body_code, body_f) := CP.compile(r1, min_f + 1, CP.Progress);
+        FreshCorrectNestedRE(r1, (min_f + 1) as nat, body_code, body_f);
+        var fork := if q.greedy then RB.Fork(min_f, body_f + 1) else RB.Fork(body_f + 1, min_f);
+        var ch := CP.chain([min_code, CP.Leaf([RB.SetQuantToClock(qid, false)]), body_code, CP.Leaf([fork])]);
+        assert Flat(ch) == Flat(min_code) + [RB.SetQuantToClock(qid, false)] + Flat(body_code) + [fork] by {
+          ChainFour(min_code, CP.Leaf([RB.SetQuantToClock(qid, false)]), body_code, CP.Leaf([fork]));
+        }
+      }
+    case Re_capture(cid, r1) =>
+      var (l1, f1) := CP.compile(r1, start + 1, CP.Progress);
+      FreshCorrectNestedRE(r1, start + 1, l1, f1);
+      var ch := CP.chain([CP.Leaf([RB.SetRegisterToCP(CP.start_reg(cid))]), l1, CP.Leaf([RB.SetRegisterToCP(CP.end_reg(cid))])]);
+      assert Flat(ch) == [RB.SetRegisterToCP(CP.start_reg(cid))] + Flat(l1) + [RB.SetRegisterToCP(CP.end_reg(cid))] by {
+        ChainThree(CP.Leaf([RB.SetRegisterToCP(CP.start_reg(cid))]), l1, CP.Leaf([RB.SetRegisterToCP(CP.end_reg(cid))]));
+      }
+  }
+
+  /** Nested-fragment variant of `CompileNfaRepMinRE`. */
+  lemma {:isolate_assertions} CompileNfaRepMinNestedRE(k: nat, qid: R.quantid, r1: R.regex, start: nat, tl: CP.treelist, next: int, prev: RB.code)
+    requires NestedFragmentRE(r1)
+    requires CP.repeat_min(k, qid, r1, start, CP.Progress) == (tl, next)
+    requires start == |prev|
+    ensures next >= 0 && NfaRepMinRE(k, qid, r1, prev + Flat(tl), start, next as nat)
+    decreases CP.rsize(r1), k + 2
+  {
+    FreshCorrectMinNestedRE(k, qid, r1, start, tl, next);
+    if k == 0 {
+      assert prev + Flat(tl) == prev;
+    } else {
+      var (body_code, new_f) := CP.compile(r1, start + 1, CP.Progress);
+      var (next_code, next_f) := CP.repeat_min(k - 1, qid, r1, new_f, CP.Progress);
+      FreshCorrectNestedRE(r1, start + 1, body_code, new_f);
+      FreshCorrectMinNestedRE(k - 1, qid, r1, new_f as nat, next_code, next_f);
+      ChainThree(CP.Leaf([RB.SetQuantToClock(qid, false)]), body_code, next_code);
+      assert Flat(tl) == [RB.SetQuantToClock(qid, false)] + Flat(body_code) + Flat(next_code);
+      // body region
+      var pre1 := prev + [RB.SetQuantToClock(qid, false)];
+      assert |pre1| == start + 1;
+      CompileNfaRepNestedRE(r1, start + 1, body_code, new_f, pre1);
+      NfaRepExtendRE(r1, pre1 + Flat(body_code), start + 1, new_f as nat, Flat(next_code));
+      assert (pre1 + Flat(body_code)) + Flat(next_code) == prev + Flat(tl);
+      // remaining copies
+      var pre2 := prev + [RB.SetQuantToClock(qid, false)] + Flat(body_code);
+      assert |pre2| == new_f;
+      CompileNfaRepMinNestedRE(k - 1, qid, r1, new_f as nat, next_code, next_f, pre2);
+      assert pre2 + Flat(next_code) == prev + Flat(tl);
+      // instruction fact
+      GetFirstRE(Flat(tl), prev);
+      assert GetPcRE(prev + Flat(tl), start) == Some(RB.SetQuantToClock(qid, false))
+          && NfaRepRE(r1, prev + Flat(tl), start + 1, new_f as nat)
+          && NfaRepMinRE(k - 1, qid, r1, prev + Flat(tl), new_f as nat, next_f as nat);
+    }
+  }
+
+  /** Nested-fragment variant of `CompileNfaRepOptRE`. */
+  lemma {:isolate_assertions} CompileNfaRepOptNestedRE(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, start: nat, tl: CP.treelist, next: int, prev: RB.code)
+    requires NestedFragmentRE(r1)
+    requires CP.repeat_optional(k, qid, r1, start, CP.Progress, greedy) == (tl, next)
+    requires start == |prev|
+    ensures next >= 0 && NfaRepOptRE(k, greedy, qid, r1, prev + Flat(tl), start, next as nat)
+    decreases CP.rsize(r1), k + 2
+  {
+    FreshCorrectOptNestedRE(k, greedy, qid, r1, start, tl, next);
+    if k == 0 {
+      assert prev + Flat(tl) == prev;
+    } else {
+      var (body_code, new_f) := CP.compile(r1, start + 3, CP.Progress);
+      var (next_code, next_f) := CP.repeat_optional(k - 1, qid, r1, new_f + 1, CP.Progress, greedy);
+      FreshCorrectNestedRE(r1, start + 3, body_code, new_f);
+      FreshCorrectOptNestedRE(k - 1, greedy, qid, r1, (new_f + 1) as nat, next_code, next_f);
+      var fork := if greedy then RB.Fork(start + 1, next_f) else RB.Fork(next_f, start + 1);
+      var hdr := [fork, RB.SetQuantToClock(qid, false), RB.BeginLoop];
+      ChainFour(CP.Leaf(hdr), body_code, CP.Leaf([RB.EndLoop]), next_code);
+      assert Flat(tl) == hdr + Flat(body_code) + [RB.EndLoop] + Flat(next_code);
+      // body region
+      var pre1 := prev + hdr;
+      assert |pre1| == start + 3;
+      CompileNfaRepNestedRE(r1, start + 3, body_code, new_f, pre1);
+      NfaRepExtendRE(r1, pre1 + Flat(body_code), start + 3, new_f as nat, [RB.EndLoop] + Flat(next_code));
+      assert (pre1 + Flat(body_code)) + ([RB.EndLoop] + Flat(next_code)) == prev + Flat(tl);
+      // remaining layers
+      var pre2 := prev + hdr + Flat(body_code) + [RB.EndLoop];
+      assert |pre2| == new_f + 1;
+      CompileNfaRepOptNestedRE(k - 1, greedy, qid, r1, (new_f + 1) as nat, next_code, next_f, pre2);
+      assert pre2 + Flat(next_code) == prev + Flat(tl);
+      // instruction facts
+      GetPrefixRE(Flat(tl), 0, prev);
+      GetPrefixRE(Flat(tl), 1, prev);
+      GetPrefixRE(Flat(tl), 2, prev);
+      assert prev + Flat(tl) == (prev + hdr + Flat(body_code)) + ([RB.EndLoop] + Flat(next_code));
+      assert |prev + hdr + Flat(body_code)| == new_f;
+      GetFirstRE([RB.EndLoop] + Flat(next_code), prev + hdr + Flat(body_code));
+      assert GetPcRE(prev + Flat(tl), start) == Some(fork)
+          && GetPcRE(prev + Flat(tl), start + 1) == Some(RB.SetQuantToClock(qid, false))
+          && GetPcRE(prev + Flat(tl), start + 2) == Some(RB.BeginLoop)
+          && NfaRepRE(r1, prev + Flat(tl), start + 3, new_f as nat)
+          && GetPcRE(prev + Flat(tl), new_f as nat) == Some(RB.EndLoop)
+          && NfaRepOptRE(k - 1, greedy, qid, r1, prev + Flat(tl), (new_f + 1) as nat, next_f as nat);
+    }
+  }
+
+  /** The main compiler-correctness theorem, NESTED-fragment variant of
+      `CompileNfaRepRE`: for any regex in the nested lookaround fragment,
+      `CP.compile` emits code satisfying `NfaRepRE`. The `Re_lookaround` case is
+      unchanged from the depth-1 original — it emits the single gate leaf and
+      never inspects the (possibly nested) body. */
+  lemma {:isolate_assertions} CompileNfaRepNestedRE(re: R.regex, start: nat, tl: CP.treelist, next: int, prev: RB.code)
+    requires NestedFragmentRE(re)
+    requires CP.compile(re, start, CP.Progress) == (tl, next)
+    requires start == |prev|
+    ensures next >= 0 && NfaRepRE(re, prev + Flat(tl), start, next as nat)
+    decreases CP.rsize(re), 1
+  {
+    FreshCorrectNestedRE(re, start, tl, next);
+    match re
+    case Re_empty =>
+      assert prev + Flat(tl) == prev;
+    case Re_character(ch) =>
+      assert Flat(tl) == [RB.Consume(T.ExpectationOf(ch))];
+      GetFirstRE(Flat(tl), prev);
+    case Re_anchor(a) =>
+      assert Flat(tl) == [RB.AnchorAssertion(a)];
+      GetFirstRE(Flat(tl), prev);
+    case Re_lookaround(lid, la, _) =>
+      assert Flat(tl) == [if la.Lookahead? || la.Lookbehind?
+                          then RB.CheckOracle(lid) else RB.NegCheckOracle(lid)];
+      GetFirstRE(Flat(tl), prev);
+    case Re_alt(r1, r2) =>
+      var (l1, f1) := CP.compile(r1, start + 1, CP.Progress);
+      var (l2, f2) := CP.compile(r2, f1 + 1, CP.Progress);
+      FreshCorrectNestedRE(r1, start + 1, l1, f1);
+      FreshCorrectNestedRE(r2, f1 + 1, l2, f2);
+      ChainFour(CP.Leaf([RB.Fork(start + 1, f1 + 1)]), l1, CP.Leaf([RB.Jmp(f2)]), l2);
+      assert Flat(tl) == [RB.Fork(start + 1, f1 + 1)] + Flat(l1) + [RB.Jmp(f2)] + Flat(l2);
+      // r1 region
+      var pre1 := prev + [RB.Fork(start + 1, f1 + 1)];
+      CompileNfaRepNestedRE(r1, start + 1, l1, f1, pre1);
+      NfaRepExtendRE(r1, pre1 + Flat(l1), start + 1, f1 as nat, [RB.Jmp(f2)] + Flat(l2));
+      assert (pre1 + Flat(l1)) + ([RB.Jmp(f2)] + Flat(l2)) == prev + Flat(tl);
+      // r2 region
+      var pre2 := prev + [RB.Fork(start + 1, f1 + 1)] + Flat(l1) + [RB.Jmp(f2)];
+      assert |pre2| == f1 + 1;
+      CompileNfaRepNestedRE(r2, (f1 + 1) as nat, l2, f2, pre2);
+      assert pre2 + Flat(l2) == prev + Flat(tl);
+      // instruction facts
+      GetFirstRE(Flat(tl), prev);
+      assert prev + Flat(tl) == (prev + [RB.Fork(start + 1, f1 + 1)] + Flat(l1)) + ([RB.Jmp(f2)] + Flat(l2));
+      assert |prev + [RB.Fork(start + 1, f1 + 1)] + Flat(l1)| == f1;
+      GetFirstRE([RB.Jmp(f2)] + Flat(l2), prev + [RB.Fork(start + 1, f1 + 1)] + Flat(l1));
+      assert GetPcRE(prev + Flat(tl), start) == Some(RB.Fork(start + 1, f1 + 1))
+          && NfaRepRE(r1, prev + Flat(tl), start + 1, f1 as nat)
+          && GetPcRE(prev + Flat(tl), f1 as nat) == Some(RB.Jmp(f2))
+          && NfaRepRE(r2, prev + Flat(tl), (f1 + 1) as nat, f2 as nat);
+      assert next == f2;
+      // Guide the NfaRepRE(Re_alt) fold in a collapsed context (mirrors the
+      // depth-1 original: the fragment axiom otherwise loops the witness).
+      assert NfaRepRE(re, prev + Flat(tl), start, next as nat) by {
+        hide *;
+        reveal NfaRepRE;
+        assert GetPcRE(prev + Flat(tl), start) == Some(RB.Fork(start + 1, f1 + 1));
+        assert NfaRepRE(r1, prev + Flat(tl), start + 1, f1 as nat);
+        assert GetPcRE(prev + Flat(tl), f1 as nat) == Some(RB.Jmp(f2));
+        assert NfaRepRE(r2, prev + Flat(tl), (f1 + 1) as nat, f2 as nat);
+        assert next == f2;
+      }
+    case Re_con(r1, r2) =>
+      var (l1, f1) := CP.compile(r1, start, CP.Progress);
+      var (l2, f2) := CP.compile(r2, f1, CP.Progress);
+      FreshCorrectNestedRE(r1, start, l1, f1);
+      FreshCorrectNestedRE(r2, f1, l2, f2);
+      FlattenApp(l1, Flat(l2));
+      assert Flat(tl) == Flat(l1) + Flat(l2);
+      CompileNfaRepNestedRE(r1, start, l1, f1, prev);
+      NfaRepExtendRE(r1, prev + Flat(l1), start, f1 as nat, Flat(l2));
+      assert (prev + Flat(l1)) + Flat(l2) == prev + Flat(tl);
+      assert |prev + Flat(l1)| == f1;
+      CompileNfaRepNestedRE(r2, f1 as nat, l2, f2, prev + Flat(l1));
+      assert (prev + Flat(l1)) + Flat(l2) == prev + Flat(tl);
+      assert NfaRepRE(r1, prev + Flat(tl), start, f1 as nat) && NfaRepRE(r2, prev + Flat(tl), f1 as nat, f2 as nat);
+    case Re_quant(nul, qid, q, r1) =>
+      if q.min == 0 && q.max == None {
+        var (iter_code, iter_f) := CP.compile(r1, start + 3, CP.Progress);
+        FreshCorrectNestedRE(r1, start + 3, iter_code, iter_f);
+        var fork := if q.greedy then RB.Fork(start + 1, iter_f + 2) else RB.Fork(iter_f + 2, start + 1);
+        var hdr := [fork, RB.SetQuantToClock(qid, false), RB.BeginLoop];
+        ChainFour(CP.Leaf([]), CP.Leaf(hdr), iter_code, CP.Leaf([RB.EndLoop, RB.Jmp(start)]));
+        assert Flat(tl) == hdr + Flat(iter_code) + [RB.EndLoop, RB.Jmp(start)];
+        var pre1 := prev + hdr;
+        assert |pre1| == start + 3;
+        CompileNfaRepNestedRE(r1, start + 3, iter_code, iter_f, pre1);
+        NfaRepExtendRE(r1, pre1 + Flat(iter_code), start + 3, iter_f as nat, [RB.EndLoop, RB.Jmp(start)]);
+        assert (pre1 + Flat(iter_code)) + [RB.EndLoop, RB.Jmp(start)] == prev + Flat(tl);
+        GetPrefixRE(Flat(tl), 0, prev);
+        GetPrefixRE(Flat(tl), 1, prev);
+        GetPrefixRE(Flat(tl), 2, prev);
+        assert prev + Flat(tl) == (prev + hdr + Flat(iter_code)) + [RB.EndLoop, RB.Jmp(start)];
+        assert |prev + hdr + Flat(iter_code)| == iter_f;
+        GetFirstRE([RB.EndLoop, RB.Jmp(start)], prev + hdr + Flat(iter_code));
+        GetPrefixRE([RB.EndLoop, RB.Jmp(start)], 1, prev + hdr + Flat(iter_code));
+        assert GetPcRE(prev + Flat(tl), start) == Some(fork)
+            && GetPcRE(prev + Flat(tl), start + 1) == Some(RB.SetQuantToClock(qid, false))
+            && GetPcRE(prev + Flat(tl), start + 2) == Some(RB.BeginLoop)
+            && NfaRepRE(r1, prev + Flat(tl), start + 3, iter_f as nat)
+            && GetPcRE(prev + Flat(tl), iter_f as nat) == Some(RB.EndLoop)
+            && GetPcRE(prev + Flat(tl), (iter_f + 1) as nat) == Some(RB.Jmp(start))
+            && next == iter_f + 2;
+      } else if q.max.Some? {
+        var (min_code, min_f) := CP.repeat_min(q.min, qid, r1, start, CP.Progress);
+        var (opt_code, opt_f) := CP.repeat_optional(q.max.value - q.min, qid, r1, min_f, CP.Progress, q.greedy);
+        FreshCorrectMinNestedRE(q.min as nat, qid, r1, start, min_code, min_f);
+        FreshCorrectOptNestedRE((q.max.value - q.min) as nat, q.greedy, qid, r1, min_f as nat, opt_code, opt_f);
+        FlattenApp(min_code, Flat(opt_code));
+        assert Flat(tl) == Flat(min_code) + Flat(opt_code);
+        // forced copies
+        CompileNfaRepMinNestedRE(q.min as nat, qid, r1, start, min_code, min_f, prev);
+        NfaRepExtendMinRE(q.min as nat, qid, r1, prev + Flat(min_code), start, min_f as nat, Flat(opt_code));
+        assert (prev + Flat(min_code)) + Flat(opt_code) == prev + Flat(tl);
+        // optional layers
+        assert |prev + Flat(min_code)| == min_f;
+        CompileNfaRepOptNestedRE((q.max.value - q.min) as nat, q.greedy, qid, r1, min_f as nat, opt_code, opt_f, prev + Flat(min_code));
+        assert NfaRepMinRE(q.min as nat, qid, r1, prev + Flat(tl), start, min_f as nat)
+            && NfaRepOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, prev + Flat(tl), min_f as nat, opt_f as nat);
+        NfaRepREQuantIntro(nul, qid, q, r1, prev + Flat(tl), start, min_f as nat, opt_f as nat);
+      } else {
+        // the do-while scheme (Compiler.dfy:107-112)
+        var (min_code, min_f) := CP.repeat_min(q.min - 1, qid, r1, start, CP.Progress);
+        var (body_code, body_f) := CP.compile(r1, min_f + 1, CP.Progress);
+        FreshCorrectMinNestedRE((q.min - 1) as nat, qid, r1, start, min_code, min_f);
+        FreshCorrectNestedRE(r1, (min_f + 1) as nat, body_code, body_f);
+        var fork := if q.greedy then RB.Fork(min_f, body_f + 1) else RB.Fork(body_f + 1, min_f);
+        ChainFour(min_code, CP.Leaf([RB.SetQuantToClock(qid, false)]), body_code, CP.Leaf([fork]));
+        assert Flat(tl) == Flat(min_code) + [RB.SetQuantToClock(qid, false)] + Flat(body_code) + [fork];
+        // forced copies
+        CompileNfaRepMinNestedRE((q.min - 1) as nat, qid, r1, start, min_code, min_f, prev);
+        NfaRepExtendMinRE((q.min - 1) as nat, qid, r1, prev + Flat(min_code), start, min_f as nat,
+                          [RB.SetQuantToClock(qid, false)] + Flat(body_code) + [fork]);
+        assert (prev + Flat(min_code)) + ([RB.SetQuantToClock(qid, false)] + Flat(body_code) + [fork]) == prev + Flat(tl);
+        // the last copy's clock-mark
+        assert |prev + Flat(min_code)| == min_f;
+        GetFirstRE([RB.SetQuantToClock(qid, false)] + Flat(body_code) + [fork], prev + Flat(min_code));
+        // the guaranteed body
+        var pre1 := prev + Flat(min_code) + [RB.SetQuantToClock(qid, false)];
+        assert |pre1| == min_f + 1;
+        CompileNfaRepNestedRE(r1, (min_f + 1) as nat, body_code, body_f, pre1);
+        NfaRepExtendRE(r1, pre1 + Flat(body_code), (min_f + 1) as nat, body_f as nat, [fork]);
+        // Collapsed context (mirrors the depth-1 original's do-while guard).
+        assert (pre1 + Flat(body_code)) + [fork] == prev + Flat(tl) by {
+          hide *;
+          assert Flat(tl) == Flat(min_code) + [RB.SetQuantToClock(qid, false)] + Flat(body_code) + [fork];
+          assert pre1 == prev + Flat(min_code) + [RB.SetQuantToClock(qid, false)];
+        }
+        // the backward fork
+        assert |pre1 + Flat(body_code)| == body_f;
+        GetFirstRE([fork], pre1 + Flat(body_code));
+        assert GetPcRE(prev + Flat(tl), min_f as nat) == Some(RB.SetQuantToClock(qid, false))
+            && NfaRepRE(r1, prev + Flat(tl), (min_f + 1) as nat, body_f as nat)
+            && GetPcRE(prev + Flat(tl), body_f as nat) == Some(fork)
+            && next == body_f + 1;
+        NfaRepREPlusIntro(nul, qid, q, r1, prev + Flat(tl), start, min_f as nat, body_f as nat, (body_f + 1) as nat);
+      }
+    case Re_capture(cid, r1) =>
+      var (l1, f1) := CP.compile(r1, start + 1, CP.Progress);
+      FreshCorrectNestedRE(r1, start + 1, l1, f1);
+      ChainThree(CP.Leaf([RB.SetRegisterToCP(CP.start_reg(cid))]), l1, CP.Leaf([RB.SetRegisterToCP(CP.end_reg(cid))]));
+      assert Flat(tl) == [RB.SetRegisterToCP(CP.start_reg(cid))] + Flat(l1) + [RB.SetRegisterToCP(CP.end_reg(cid))];
+      var pre1 := prev + [RB.SetRegisterToCP(CP.start_reg(cid))];
+      assert |pre1| == start + 1;
+      CompileNfaRepNestedRE(r1, start + 1, l1, f1, pre1);
+      NfaRepExtendRE(r1, pre1 + Flat(l1), start + 1, f1 as nat, [RB.SetRegisterToCP(CP.end_reg(cid))]);
+      assert (pre1 + Flat(l1)) + [RB.SetRegisterToCP(CP.end_reg(cid))] == prev + Flat(tl);
+      GetFirstRE(Flat(tl), prev);
+      assert prev + Flat(tl) == (prev + [RB.SetRegisterToCP(CP.start_reg(cid))] + Flat(l1)) + [RB.SetRegisterToCP(CP.end_reg(cid))];
+      assert |prev + [RB.SetRegisterToCP(CP.start_reg(cid))] + Flat(l1)| == f1;
+      GetFirstRE([RB.SetRegisterToCP(CP.end_reg(cid))], prev + [RB.SetRegisterToCP(CP.start_reg(cid))] + Flat(l1));
+      assert GetPcRE(prev + Flat(tl), start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
+          && NfaRepRE(r1, prev + Flat(tl), start + 1, f1 as nat)
+          && GetPcRE(prev + Flat(tl), f1 as nat) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+          && next == f1 + 1;
+  }
+
+  /** Nested-fragment variant of `CompileToBytecodeRepLookBehind`: the whole
+      program represents a nested-fragment `re` from pc 0 to the fresh label
+      where the trailing `Accept` sits. */
+  lemma CompileToBytecodeRepNested(re: R.regex)
+    requires NestedFragmentRE(re)
+    ensures var code := CP.compile_to_bytecode(re);
+      var next := CP.compile(re, 0, CP.Progress).1;
+      next >= 0 && NfaRepRE(re, code, 0, next as nat)
+      && GetPcRE(code, next as nat) == Some(RB.Accept)
+      && |code| == next + 1
+  {
+    var (tl, next) := CP.compile(re, 0, CP.Progress);
+    FreshCorrectNestedRE(re, 0, tl, next);
+    CompileNfaRepNestedRE(re, 0, tl, next, []);
+    assert [] + Flat(tl) == Flat(tl);
+    FlattenApp(tl, [RB.Accept]);
+    assert CP.compile_to_bytecode(re) == Flat(tl) + [RB.Accept];
+    NfaRepExtendRE(re, Flat(tl), 0, next as nat, [RB.Accept]);
+    assert GetPcRE(Flat(tl) + [RB.Accept], next as nat) == Some(RB.Accept) by {
+      assert (Flat(tl) + [RB.Accept])[next as nat] == RB.Accept;
+    }
+  }
+
+  /** Nested-fragment variant of `CompileToWriteRep`: the ORACLE-BUILD entry
+      point for a nested-fragment `re` — the build program represents `re` from
+      pc 0 to the fresh label where the `WriteOracle(l)` recorder sits. This is
+      the correspondence the oracle-build establisher and the value keystone
+      need at depth k. */
+  lemma CompileToWriteRepNested(re: R.regex, l: R.lookid)
+    requires NestedFragmentRE(re)
+    ensures var code := CP.compile_to_write(re, l);
+      var next := CP.compile(re, 0, CP.Progress).1;
+      next >= 0 && NfaRepRE(re, code, 0, next as nat)
+      && GetPcRE(code, next as nat) == Some(RB.WriteOracle(l))
+      && |code| == next + 1
+  {
+    var (tl, next) := CP.compile(re, 0, CP.Progress);
+    FreshCorrectNestedRE(re, 0, tl, next);
+    CompileNfaRepNestedRE(re, 0, tl, next, []);
+    assert [] + Flat(tl) == Flat(tl);
+    FlattenApp(tl, [RB.WriteOracle(l)]);
+    assert CP.compile_to_write(re, l) == Flat(tl) + [RB.WriteOracle(l)];
+    NfaRepExtendRE(re, Flat(tl), 0, next as nat, [RB.WriteOracle(l)]);
+    assert GetPcRE(Flat(tl) + [RB.WriteOracle(l)], next as nat) == Some(RB.WriteOracle(l)) by {
+      assert (Flat(tl) + [RB.WriteOracle(l)])[next as nat] == RB.WriteOracle(l);
+    }
+  }
+
   /** `CompileToBytecodeRepLookBehind` restricted to the plus fragment — the
       signature the plus-gated downstream files consume. */
   lemma CompileToBytecodeRepPlus(re: R.regex)
