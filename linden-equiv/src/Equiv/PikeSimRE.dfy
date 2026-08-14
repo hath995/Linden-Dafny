@@ -104,6 +104,35 @@ module LindenElkPikeSim {
     && PIV.StutterTameRE(code)
   }
 
+  // L4 (ADDITIVE): the depth-AGNOSTIC static package. Verbatim `StaticOkRE`
+  // EXCEPT the depth-1 `LookBehindFragmentRE(re)` conjunct is weakened to the
+  // arbitrary-nesting `NestedFragmentRE(re)`. Every other conjunct is identical
+  // and depth-neutral (looks emit no capture writes; the 8 remaining conjuncts
+  // do not read look-body structure). This prices whether the SIM machinery is
+  // truly S (depth-agnostic).
+  /** The nested-fragment counterpart of `StaticOkRE`: identical except the
+      lookaround-fragment conjunct is `NR.NestedFragmentRE(re)` (any depth)
+      instead of `NR.LookBehindFragmentRE(re)` (depth-1). */
+  ghost predicate StaticOkNestedRE(qm: AR.QMap, re: R.regex, code: RB.code, endl: nat) {
+    NR.NestedFragmentRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re)
+    && T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
+    && NR.NfaRepRE(re, code, 0, endl)
+    && NR.GetPcRE(code, endl) == Some(RB.Accept)
+    && |code| == endl + 1
+    && PIV.StutterTameRE(code)
+  }
+
+  /** `StaticOkRE` implies `StaticOkNestedRE`: the depth-1 fragment embeds in
+      the nested fragment (`LookBehindFragmentIsNestedRE`); the other 8
+      conjuncts are literally identical. Every input supported today satisfies
+      the weaker package. */
+  lemma StaticOkRENestedFromRE(qm: AR.QMap, re: R.regex, code: RB.code, endl: nat)
+    requires StaticOkRE(qm, re, code, endl)
+    ensures StaticOkNestedRE(qm, re, code, endl)
+  {
+    NR.LookBehindFragmentIsNestedRE(re);
+  }
+
   // The main pass is a pure READER of the oracle: a lookbehind-fragment block
   // holds no WriteOracle (only the build passes write), so the view the search
   // starts with is the view it ends with — which is what lets `qm.ov` carry it
