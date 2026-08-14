@@ -1206,4 +1206,256 @@ module LindenElkOracleReach {
     FindMatchReachComplete(c, str, 0, s, ov, cdn, lid);       // completeness: every reachable write is set
     OS.MonoAny(c, str, s, ov, LAnc.Forward, cdn);             // Submap(ov, ov'): old bits survive
   }
+
+  // ===========================================================================
+  // L4: the GATE-FUL sweep characterization SweepCharacterizationV.
+  //
+  // The blind chain above requires NoOracleReads (no gates). Under nesting the
+  // column-`k` build code contains gates that read strictly-HIGHER columns
+  // (`AllGatesAbove(c, k)`, by LidsWellNested) and writes only column `k`
+  // (`WritesOnlyLid(c, k)`). The V-chain below re-derives soundness+completeness
+  // over the gate-aware `ReachFV`/`EpsEdgeV` graph against a partial view.
+  //
+  // The RUNNING view `ov` (threaded by FFindMatch, accumulating column-`k`
+  // writes) is kept separate from the REFERENCE view `ovr` (fixed, the whole
+  // run's input, which `ReachFV`/`EpsEdgeV`/`ReachesWriteV` consult). Since
+  // every write lands in column `k` and every gate reads a column `> k`, the two
+  // views agree on all columns `> k` throughout — `OS.AgreeAbove(ov, ovr, k)` —
+  // so at each gate the interpreter's `ov`-driven branch matches the `ovr`-driven
+  // `EpsEdgeV` edge exactly (the crux `OS.GateReadAgrees` supplies per cell). At
+  // `k = +inf` (NoOracleReads) this collapses to the blind chain (ReachFVErasure*).
+  // ===========================================================================
+
+  /** V-analogue of `ActiveOk`: every active thread's config is `ReachFV`-reachable
+      against the reference view `ovr`. */
+  ghost predicate ActiveOkV(c: RB.code, str: string, ovr: LOr.OracleView, cp0: int,
+                            ts: seq<AI.Thread>, cp: int) {
+    forall j :: 0 <= j < |ts| ==>
+      (ts[j].pc >= 0 ==> ReachFV(c, str, ovr, cp0, ts[j].pc, ts[j].exit_allowed, cp))
+  }
+
+  /** V-analogue of `BlockedOk`. */
+  ghost predicate BlockedOkV(c: RB.code, str: string, ovr: LOr.OracleView, cp0: int,
+                             bs: seq<(AI.Thread, RC.char_expectation)>, cp: int) {
+    forall j :: 0 <= j < |bs| ==>
+      bs[j].0.pc >= 0
+      && ReachFV(c, str, ovr, cp0, bs[j].0.pc, bs[j].0.exit_allowed, cp)
+      && RB.get_instr(c, bs[j].0.pc) == RB.Consume(bs[j].1)
+  }
+
+  /** Reference/running-view agreement propagates a running-view gate answer to
+      the reference view at any column `> k`. */
+  lemma GateAgreeV(c: RB.code, k: int, ovr: LOr.OracleView, ov: LOr.OracleView, cp: int, l: int)
+    requires OS.AgreeAbove(ov, ovr, k)
+    requires l > k
+    ensures LOr.view_get_oracle(ov, cp, l) == LOr.view_get_oracle(ovr, cp, l)
+  {
+    assert OS.CellAgree(ov, ovr, cp, l);
+  }
+
+  /** Writing column `k` into the running view preserves `AgreeAbove(_, ovr, k)`
+      (columns `> k` are untouched). */
+  lemma AgreeAbovePreservedByWrite(k: int, ovr: LOr.OracleView, ov: LOr.OracleView, cp: int)
+    requires OS.AgreeAbove(ov, ovr, k)
+    ensures OS.AgreeAbove(LOr.view_set_oracle(ov, cp, k), ovr, k)
+  {
+    OS.ViewSetFacts(ov, cp, k);
+    var ov' := LOr.view_set_oracle(ov, cp, k);
+    forall cp2: int, l2: int | l2 > k
+      ensures OS.CellAgree(ov', ovr, cp2, l2)
+    {
+      assert OS.CellAgree(ov, ovr, cp2, l2);   // AgreeAbove(ov, ovr, k), l2 > k
+    }
+  }
+
+  /** SOUNDNESS, one closure (V). Mirrors `AdvanceReachSound`; the two former
+      `assert false` gate cases now step per `EpsEdgeV` when the running view
+      (= reference view, above `k`) answers the gate, and drop otherwise. Every
+      column-`k` bit added is testified by a reachable `WriteOracle(k)`. */
+  lemma AdvanceReachSoundV(c: RB.code, k: int, str: string, cp0: int, s: AI.VmState,
+                           ovr: LOr.OracleView, ov: LOr.OracleView)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires OS.AllGatesAbove(c, k) && OS.NoCheckNullable(c) && OS.WritesOnlyLid(c, k)
+    requires s.context == CtxAt(str, s.cp)
+    requires OS.AgreeAbove(ov, ovr, k)
+    requires ActiveOkV(c, str, ovr, cp0, s.active, s.cp)
+    requires BlockedOkV(c, str, ovr, cp0, s.blocked, s.cp)
+    ensures var (s', ov') := AI.FAdvanceEpsilon(c, s, ov, LAnc.Forward);
+      s'.active == []
+      && BlockedOkV(c, str, ovr, cp0, s'.blocked, s.cp)
+      && (forall cp2: int :: LOr.view_get_oracle(ov', cp2, k) ==>
+            LOr.view_get_oracle(ov, cp2, k) || ReachesWriteV(c, str, ovr, cp0, k, cp2))
+      && (forall cp2: int, l2: int :: l2 != k ==>
+            LOr.view_get_oracle(ov', cp2, l2) == LOr.view_get_oracle(ov, cp2, l2))
+    decreases AI.unprocessed(s.processed), |s.active|
+  {
+    if |s.active| == 0 { return; }
+    var t := s.active[0];
+    var ac := s.active[1..];
+    var i := RB.get_instr(c, t.pc);
+    if AI.bpc_mem(s.processed, t.pc, t.exit_allowed) {
+      AdvanceReachSoundV(c, k, str, cp0, s.(active := ac), ovr, ov);
+      return;
+    }
+    var b0 := s.processed;
+    var s1 := s.(clock := s.clock + 1, processed := AI.bpc_add(b0, t.pc, t.exit_allowed));
+    AI.UnprocessedAdd(b0, t.pc, t.exit_allowed);
+    match i
+    case Consume(ce) =>
+      var (nb, ni) := AI.add_thread(t, ce, s1.blocked, s1.isblocked);
+      assert BlockedOkV(c, str, ovr, cp0, nb, s.cp);
+      AdvanceReachSoundV(c, k, str, cp0, s1.(blocked := nb, isblocked := ni, active := ac), ovr, ov);
+    case Accept =>
+    case Jmp(x) =>
+      assert x >= 0 ==> ReachFV(c, str, ovr, cp0, x, t.exit_allowed, s.cp) by {
+        if x >= 0 { assert EpsEdgeV(c, str, ovr, s.cp, t.pc, t.exit_allowed, x, t.exit_allowed); }
+      }
+      AdvanceReachSoundV(c, k, str, cp0, s1.(active := [t.(pc := x)] + ac), ovr, ov);
+    case Fork(x, y) =>
+      var newt := AI.Thread(x, t.capture_regs, t.look_regs, t.quant_regs, t.exit_allowed);
+      assert x >= 0 ==> ReachFV(c, str, ovr, cp0, x, t.exit_allowed, s.cp) by {
+        if x >= 0 { assert EpsEdgeV(c, str, ovr, s.cp, t.pc, t.exit_allowed, x, t.exit_allowed); }
+      }
+      assert y >= 0 ==> ReachFV(c, str, ovr, cp0, y, t.exit_allowed, s.cp) by {
+        if y >= 0 { assert EpsEdgeV(c, str, ovr, s.cp, t.pc, t.exit_allowed, y, t.exit_allowed); }
+      }
+      AdvanceReachSoundV(c, k, str, cp0, s1.(active := [newt, t.(pc := y)] + ac), ovr, ov);
+    case SetRegisterToCP(reg) =>
+      var t' := t.(capture_regs := AReg.set_reg(t.capture_regs, reg, Some(s1.cp), s1.clock), pc := t.pc + 1);
+      assert EpsEdgeV(c, str, ovr, s.cp, t.pc, t.exit_allowed, t.pc + 1, t.exit_allowed);
+      AdvanceReachSoundV(c, k, str, cp0, s1.(active := [t'] + ac), ovr, ov);
+    case SetQuantToClock(q, b) =>
+      var ocp := if b then Some(s1.cp) else None;
+      var t' := t.(quant_regs := AReg.set_reg(t.quant_regs, q, ocp, s1.clock), pc := t.pc + 1);
+      assert EpsEdgeV(c, str, ovr, s.cp, t.pc, t.exit_allowed, t.pc + 1, t.exit_allowed);
+      AdvanceReachSoundV(c, k, str, cp0, s1.(active := [t'] + ac), ovr, ov);
+    case CheckOracle(l) =>
+      assert 0 <= t.pc < |c| && c[t.pc].CheckOracle? && c[t.pc].col == l;
+      assert l > k;                                            // AllGatesAbove
+      if LOr.view_get_oracle(ov, s1.cp, l) {
+        var t' := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(s1.cp), s1.clock));
+        GateAgreeV(c, k, ovr, ov, s.cp, l);                    // running true => reference true
+        assert LOr.view_get_oracle(ovr, s.cp, l);
+        assert EpsEdgeV(c, str, ovr, s.cp, t.pc, t.exit_allowed, t.pc + 1, t.exit_allowed);
+        assert ReachFV(c, str, ovr, cp0, t.pc + 1, t.exit_allowed, s.cp);
+        AdvanceReachSoundV(c, k, str, cp0, s1.(active := [t'] + ac), ovr, ov);
+      } else {
+        AdvanceReachSoundV(c, k, str, cp0, s1.(active := ac), ovr, ov);
+      }
+    case NegCheckOracle(l) =>
+      assert 0 <= t.pc < |c| && c[t.pc].NegCheckOracle? && c[t.pc].ncl == l;
+      assert l > k;                                            // AllGatesAbove
+      if LOr.view_get_oracle(ov, s1.cp, l) {
+        AdvanceReachSoundV(c, k, str, cp0, s1.(active := ac), ovr, ov);
+      } else {
+        GateAgreeV(c, k, ovr, ov, s.cp, l);                    // running false => reference false
+        assert !LOr.view_get_oracle(ovr, s.cp, l);
+        assert EpsEdgeV(c, str, ovr, s.cp, t.pc, t.exit_allowed, t.pc + 1, t.exit_allowed);
+        assert ReachFV(c, str, ovr, cp0, t.pc + 1, t.exit_allowed, s.cp);
+        AdvanceReachSoundV(c, k, str, cp0, s1.(active := [t.(pc := t.pc + 1)] + ac), ovr, ov);
+      }
+    case WriteOracle(l) =>
+      assert 0 <= t.pc < |c| && c[t.pc] == RB.WriteOracle(l);
+      assert l == k;                                           // WritesOnlyLid
+      assert ReachesWriteV(c, str, ovr, cp0, k, s.cp) by {
+        assert ReachFV(c, str, ovr, cp0, t.pc, t.exit_allowed, s.cp)
+            && RB.get_instr(c, t.pc) == RB.WriteOracle(k);
+      }
+      OS.ViewSetFacts(ov, s1.cp, l);
+      AgreeAbovePreservedByWrite(k, ovr, ov, s1.cp);
+      AdvanceReachSoundV(c, k, str, cp0, s1.(active := ac), ovr, LOr.view_set_oracle(ov, s1.cp, l));
+    case BeginLoop =>
+      assert EpsEdgeV(c, str, ovr, s.cp, t.pc, t.exit_allowed, t.pc + 1, false);
+      AdvanceReachSoundV(c, k, str, cp0, s1.(active := [t.(exit_allowed := false, pc := t.pc + 1)] + ac), ovr, ov);
+    case EndLoop =>
+      if t.exit_allowed {
+        assert EpsEdgeV(c, str, ovr, s.cp, t.pc, t.exit_allowed, t.pc + 1, t.exit_allowed);
+        AdvanceReachSoundV(c, k, str, cp0, s1.(active := [t.(pc := t.pc + 1)] + ac), ovr, ov);
+      } else {
+        AdvanceReachSoundV(c, k, str, cp0, s1.(active := ac), ovr, ov);
+      }
+    case CheckNullable(qid) =>
+      assert 0 <= t.pc < |c| && c[t.pc].CheckNullable?;
+      assert false;
+    case AnchorAssertion(a) =>
+      if LAnc.is_satisfied(a, s1.context, LAnc.Forward) {
+        assert EpsEdgeV(c, str, ovr, s.cp, t.pc, t.exit_allowed, t.pc + 1, t.exit_allowed);
+        AdvanceReachSoundV(c, k, str, cp0, s1.(active := [t.(pc := t.pc + 1)] + ac), ovr, ov);
+      } else {
+        AdvanceReachSoundV(c, k, str, cp0, s1.(active := ac), ovr, ov);
+      }
+    case Fail =>
+      AdvanceReachSoundV(c, k, str, cp0, s1.(active := ac), ovr, ov);
+  }
+
+  /** V-analogue of `FConsumeReach`. Consume edges do not read the oracle, so
+      this is a verbatim mirror over `ReachFV`/`BlockedOkV`/`ActiveOkV`. */
+  lemma FConsumeReachV(c: RB.code, str: string, ovr: LOr.OracleView, cp0: int, s: AI.VmState)
+    requires s.context.nextchar == AI.get_char(str, s.cp)
+    requires BlockedOkV(c, str, ovr, cp0, s.blocked, s.cp)
+    requires ActiveOkV(c, str, ovr, cp0, s.active, s.cp + 1)
+    ensures AI.FConsume(s).blocked == []
+    ensures ActiveOkV(c, str, ovr, cp0, AI.FConsume(s).active, s.cp + 1)
+    decreases |s.blocked|
+  {
+    if |s.blocked| == 0 { return; }
+    var t := s.blocked[0].0;
+    var ce := s.blocked[0].1;
+    var s1 := s.(blocked := s.blocked[1..]);
+    if RC.is_accepted(s1.context.nextchar, ce) {
+      assert ConsumeEdge(c, str, s.cp, t.pc);
+      assert ReachFV(c, str, ovr, cp0, t.pc + 1, true, s.cp + 1);
+      FConsumeReachV(c, str, ovr, cp0, s1.(active := [t.(exit_allowed := true, pc := t.pc + 1)] + s1.active));
+    } else {
+      FConsumeReachV(c, str, ovr, cp0, s1);
+    }
+  }
+
+  /** SOUNDNESS, whole run (V). Mirrors `FindMatchReachSound`; every column-`k`
+      bit the run adds is testified by a `ReachesWriteV(c,str,ovr,...)` position.
+      The reference view `ovr` is fixed while the running view `ov` accumulates
+      column-`k` writes (`AgreeAbove(ov, ovr, k)` re-threaded at each position). */
+  lemma FindMatchReachSoundV(c: RB.code, k: int, str: string, cp0: int, s: AI.VmState,
+                             ovr: LOr.OracleView, ov: LOr.OracleView, cdn: LCdn.cdns)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires s.context.nextchar == AI.get_char(str, s.cp)
+    requires OS.AllGatesAbove(c, k) && OS.NoCheckNullable(c) && OS.WritesOnlyLid(c, k)
+    requires s.context == CtxAt(str, s.cp)
+    requires OS.AgreeAbove(ov, ovr, k)
+    requires ActiveOkV(c, str, ovr, cp0, s.active, s.cp)
+    requires BlockedOkV(c, str, ovr, cp0, s.blocked, s.cp)
+    ensures var (_, ov') := AI.FFindMatch(c, str, s, ov, LAnc.Forward, cdn);
+      (forall cp2: int :: LOr.view_get_oracle(ov', cp2, k) ==>
+         LOr.view_get_oracle(ov, cp2, k) || ReachesWriteV(c, str, ovr, cp0, k, cp2))
+      && (forall cp2: int, l2: int :: l2 != k ==>
+            LOr.view_get_oracle(ov', cp2, l2) == LOr.view_get_oracle(ov, cp2, l2))
+    decreases |str| - s.cp
+  {
+    var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, LAnc.Forward));
+    var (s1, ov1) := AI.FAdvanceEpsilon(c, s0, ov, LAnc.Forward);
+    AdvanceReachSoundV(c, k, str, cp0, s0, ovr, ov);
+    if |s1.blocked| == 0 { return; }
+    match s1.context.nextchar
+    case None =>
+    case Some(_) =>
+      var s2 := AI.FConsume(s1);
+      FConsumeReachV(c, str, ovr, cp0, s1);
+      var s3 := s2.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
+                    cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, LAnc.Forward));
+      var newchar := AI.get_char(str, s3.cp - AI.cp_offset(LAnc.Forward));
+      var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
+      assert s4.context == CtxAt(str, s4.cp);
+      assert BlockedOkV(c, str, ovr, cp0, s4.blocked, s4.cp);
+      // AgreeAbove(ov1, ovr, k): the closure only wrote column k, so columns > k
+      // are unchanged from ov, which agreed with ovr above k.
+      assert OS.AgreeAbove(ov1, ovr, k) by {
+        forall cp2: int, l2: int | l2 > k
+          ensures OS.CellAgree(ov1, ovr, cp2, l2)
+        {
+          assert LOr.view_get_oracle(ov1, cp2, l2) == LOr.view_get_oracle(ov, cp2, l2);  // frame l2 != k
+          assert OS.CellAgree(ov, ovr, cp2, l2);                                          // AgreeAbove(ov, ovr, k)
+        }
+      }
+      FindMatchReachSoundV(c, k, str, cp0, s4, ovr, ov1, cdn);
+  }
 }
