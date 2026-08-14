@@ -366,6 +366,160 @@ module LindenElkEntryLk {
     ComputeTreeGmIndepLk(rer, acts, inp, gm, LG.Empty, dir, fuel);
   }
 
+  // ===========================================================================
+  // L4 depth-k (ADDITIVE): group-map independence for the RECURSIVE fragment.
+  //
+  // `ComputeTreeGmIndepLk` proves `ComputeTree`'s output is gm-independent for
+  // LOOK-FREE (`NoLkBrL`) bodies — its `LookaroundR` case is vacuous. The tree
+  // is a SYNTACTIC object: group actions are recorded as `GroupActionT` NODES
+  // (the map's VALUES are applied only later, by `TreeLeaves`/`TreeRes`), so
+  // captures never make the tree gm-dependent. The only gm-reader that could is
+  // a lookaround gate — but a POSITIVE gate's verdict is gm-independent
+  // (`ResGroupMapIndep`) and its body tree + continuation are gm-independent by
+  // recursion. So the whole RECURSIVE fragment (`PikeLkActionsRec`) is
+  // gm-independent — the `tlk`-identification workhorse the depth-k BoolTree
+  // bridge needs where the depth-1 one used `ComputeTreeGmIndepLk`.
+  // ===========================================================================
+
+  /** The recursive-fragment analogue of `ComputeTreeGmIndepLk`: a
+      `PikeLkActionsRec` walk's tree is the same under any two group maps. The
+      `LookaroundR` case (vacuous in the depth-1 version) recurses on the body
+      (equal tree) and the continuation (equal tree at the — possibly differing —
+      gate-produced maps); the gate verdict is gm-independent. */
+  lemma ComputeTreeGmIndepLkRec(rer: LW.RegExpRecord, act: LS.Actions, inp: LC.Input,
+                                gm1: LG.GroupMap, gm2: LG.GroupMap, dir: WP.Direction, fuel: nat)
+    requires PikeLkActionsRec(act)
+    ensures FS.ComputeTree(rer, act, inp, gm1, dir, fuel)
+         == FS.ComputeTree(rer, act, inp, gm2, dir, fuel)
+    decreases fuel
+  {
+    if fuel == 0 || |act| == 0 { return; }
+    var f := fuel - 1;
+    var cont := act[1..];
+    assert act == [act[0]] + cont;
+    PikeLkActionsRecConsIff(act[0], cont);
+    PikeLkActionsRecTail(act);
+    match act[0]
+    case Acheck(strcheck) =>
+      if SSx.IsStrictSuffix(inp, strcheck, dir) {
+        ComputeTreeGmIndepLkRec(rer, cont, inp, gm1, gm2, dir, f);
+      }
+    case Aclose(gid) =>
+      ComputeTreeGmIndepLkRec(rer, cont, inp, LG.GMClose(LC.Idx(inp), gid, gm1),
+                              LG.GMClose(LC.Idx(inp), gid, gm2), dir, f);
+    case Areg(r) =>
+      match r
+      case Epsilon => ComputeTreeGmIndepLkRec(rer, cont, inp, gm1, gm2, dir, f);
+      case Character(cd) =>
+        match LC.ReadChar(rer, cd, inp, dir) {
+          case None =>
+          case Some(pair) => ComputeTreeGmIndepLkRec(rer, cont, pair.1, gm1, gm2, dir, f);
+        }
+      case Disjunction(r1, r2) =>
+        PikeLkActionsRecConsIff(LS.Areg(r1), cont);
+        PikeLkActionsRecConsIff(LS.Areg(r2), cont);
+        ComputeTreeGmIndepLkRec(rer, [LS.Areg(r1)] + cont, inp, gm1, gm2, dir, f);
+        ComputeTreeGmIndepLkRec(rer, [LS.Areg(r2)] + cont, inp, gm1, gm2, dir, f);
+      case Sequence(r1, r2) =>
+        var na := LS.SeqList(r1, r2, dir) + cont;
+        assert PikeLkActionsRec(na) by {
+          if dir.Forward? {
+            assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+            PikeLkActionsRecConsIff(LS.Areg(r2), cont);
+            PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
+          } else {
+            assert na == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
+            PikeLkActionsRecConsIff(LS.Areg(r1), cont);
+            PikeLkActionsRecConsIff(LS.Areg(r2), [LS.Areg(r1)] + cont);
+          }
+        }
+        ComputeTreeGmIndepLkRec(rer, na, inp, gm1, gm2, dir, f);
+      case Quantified(greedy, min, delta, r1) =>
+        var gidl := L.DefGroups(r1);
+        if min > 0 {
+          var quant := L.Quantified(greedy, min - 1, delta, r1);
+          var na := [LS.Areg(r1), LS.Areg(quant)] + cont;
+          assert PikeLkActionsRec(na) by {
+            assert na == [LS.Areg(r1)] + ([LS.Areg(quant)] + cont);
+            PikeLkActionsRecConsIff(LS.Areg(quant), cont);
+            PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(quant)] + cont);
+          }
+          ComputeTreeGmIndepLkRec(rer, na, inp, LG.GMReset(gidl, gm1), LG.GMReset(gidl, gm2), dir, f);
+        } else if delta == LN.NN(0) {
+          ComputeTreeGmIndepLkRec(rer, cont, inp, gm1, gm2, dir, f);
+        } else {
+          var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+          var na := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
+          assert PikeLkActionsRec(na) by {
+            assert na == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+            PikeLkActionsRecConsIff(LS.Areg(quant), cont);
+            PikeLkActionsRecConsIff(LS.Acheck(inp), [LS.Areg(quant)] + cont);
+            PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+          }
+          ComputeTreeGmIndepLkRec(rer, na, inp, LG.GMReset(gidl, gm1), LG.GMReset(gidl, gm2), dir, f);
+          ComputeTreeGmIndepLkRec(rer, cont, inp, gm1, gm2, dir, f);
+        }
+      case Group(gid, r1) =>
+        var na := [LS.Areg(r1), LS.Aclose(gid)] + cont;
+        assert PikeLkActionsRec(na) by {
+          assert na == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
+          PikeLkActionsRecConsIff(LS.Aclose(gid), cont);
+          PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+        }
+        ComputeTreeGmIndepLkRec(rer, na, inp, LG.GMOpen(LC.Idx(inp), gid, gm1),
+                                LG.GMOpen(LC.Idx(inp), gid, gm2), dir, f);
+      case LookaroundR(lk, r1) =>
+        var lkacts := [LS.Areg(r1)];
+        // PikeLkRegexRec(LookaroundR(lk,r1)): positive arm is PikeLkRegexRec(r1);
+        // negative arm is GroupFreeL(r1), which embeds into PikeLkRegexRec.
+        if !L.Positivity(lk) {
+          GroupFreeLNoLkBr(r1);          // GroupFreeL(r1) -> NoLkBrL(r1)
+          NoLkBrLIsPikeLkRegexRec(r1);   // NoLkBrL(r1) -> PikeLkRegexRec(r1)
+        }
+        assert PikeLkRegexRec(r1);
+        assert PikeLkActionsRec(lkacts) by { PikeLkActionsRecConsIff(LS.Areg(r1), []); }
+        ComputeTreeGmIndepLkRec(rer, lkacts, inp, gm1, gm2, L.LkDir(lk), f);   // body tree equal
+        match FS.ComputeTree(rer, lkacts, inp, gm1, L.LkDir(lk), f) {
+          case None =>
+          case Some(tl) =>
+            // gate verdict is gm-independent (both Some or both None)
+            if LT.TreeRes(tl, gm1, inp, L.LkDir(lk)).None? {
+              LT.ResGroupMapIndep(tl, gm1, gm2, inp, inp, L.LkDir(lk), L.LkDir(lk));
+            }
+            if LT.TreeRes(tl, gm2, inp, L.LkDir(lk)).None? {
+              LT.ResGroupMapIndep(tl, gm2, gm1, inp, inp, L.LkDir(lk), L.LkDir(lk));
+            }
+            match LS.LkResult(lk, tl, gm1, inp) {
+              case None =>
+              case Some(gmlk1) =>
+                var gmlk2 := LS.LkResult(lk, tl, gm2, inp).value;
+                ComputeTreeGmIndepLkRec(rer, cont, inp, gmlk1, gmlk2, dir, f);   // continuation equal
+            }
+        }
+      case AnchorR(a) =>
+        if LS.AnchorSatisfied(rer, a, inp) {
+          ComputeTreeGmIndepLkRec(rer, cont, inp, gm1, gm2, dir, f);
+        }
+      case Backreference(gid) =>   // PikeLkRegexRec(Backreference) == false
+  }
+
+  /** The `ComputeTr` form: a recursive-fragment body's tree at the running `gm`
+      equals its tree at `Empty` — the depth-k `tlk`-identification workhorse the
+      BoolTree bridge uses where the depth-1 path used `ComputeTrGmIndepLk`. */
+  lemma ComputeTrGmIndepLkRec(rer: LW.RegExpRecord, r: L.Regex, inp: LC.Input, gm: LG.GroupMap,
+                              dir: WP.Direction)
+    requires PikeLkRegexRec(r)
+    ensures FU.ComputeTr(rer, [LS.Areg(r)], inp, gm, dir)
+         == FU.ComputeTr(rer, [LS.Areg(r)], inp, LG.Empty, dir)
+  {
+    var acts := [LS.Areg(r)];
+    assert PikeLkActionsRec(acts) by { PikeLkActionsRecConsIff(LS.Areg(r), []); }
+    var fuel := FS.ActionsFuel(acts, inp, dir) + 1;
+    FS.FunctionalTerminates(rer, acts, inp, gm, dir, fuel);
+    FS.FunctionalTerminates(rer, acts, inp, LG.Empty, dir, fuel);
+    ComputeTreeGmIndepLkRec(rer, acts, inp, gm, LG.Empty, dir, fuel);
+  }
+
   /** A tree with no `LK`/`LKFail` node -- the tree of a look-free regex. */
   predicate NoLKTree(t: LT.Tree) {
     match t
@@ -632,6 +786,30 @@ module LindenElkEntryLk {
     forall i :: 0 <= i < |acts| ==> PikeLkActionRec(acts[i])
   }
 
+  /** `PikeLkActionsRec` of a cons (recursive-fragment analogue of
+      `PikeLkActionsConsIff`). */
+  lemma PikeLkActionsRecConsIff(x: LS.Action, cont: LS.Actions)
+    ensures PikeLkActionsRec([x] + cont) <==> (PikeLkActionRec(x) && PikeLkActionsRec(cont))
+  {
+    if PikeLkActionRec(x) && PikeLkActionsRec(cont) {
+      forall i | 0 <= i < |[x] + cont| ensures PikeLkActionRec(([x] + cont)[i]) {
+        if i == 0 {} else { assert ([x] + cont)[i] == cont[i - 1]; }
+      }
+    }
+    if PikeLkActionsRec([x] + cont) {
+      assert ([x] + cont)[0] == x;
+      forall i | 0 <= i < |cont| ensures PikeLkActionRec(cont[i]) { assert ([x] + cont)[i + 1] == cont[i]; }
+    }
+  }
+
+  /** `PikeLkActionsRec` of a tail. */
+  lemma PikeLkActionsRecTail(acts: LS.Actions)
+    requires |acts| > 0 && PikeLkActionsRec(acts)
+    ensures PikeLkActionsRec(acts[1..])
+  {
+    forall i | 0 <= i < |acts[1..]| ensures PikeLkActionRec(acts[1..][i]) { assert acts[1..][i] == acts[i + 1]; }
+  }
+
   /** A `NoLkBrL` (look- and backref-free) regex is in the recursive fragment:
       its `LookaroundR`/`Backreference` cases are vacuous. Used for the
       positive-look arm of the embedding below. */
@@ -712,6 +890,37 @@ module LindenElkEntryLk {
         TranslateNoLkBr(r1);        // LookFreeRE(r1) -> NoLkBrL(Translate(r1))
       } else {
         OS.TranslateGroupFree(r1);  // negative: CaptureFreeRE(r1) (fragment) -> GroupFreeL
+      }
+    case _ =>
+  }
+
+  /** L4 depth-k (ADDITIVE): the RECURSIVE analogue of `TranslateFragmentPikeLk`.
+      A regex in the POSITIVE-nesting sub-fragment (`NestedFragmentRE` +
+      `NegLooksLookFreeRE`) translates into the recursive Pike fragment
+      `PikeLkRegexRec`. POSITIVE-look bodies recurse into the fragment (depth-k);
+      NEGATIVE-look bodies are capture-free (fragment) AND look-free
+      (`NegLooksLookFreeRE`), hence group-free — exactly the depth-1 negative
+      shape `PikeLkRegexRec` keeps. This is Phase A's `TranslateNoLkBr`-analogue:
+      the RE->spec-fragment bridge the recursive keystone's confinement rests on. */
+  lemma TranslateFragmentPikeLkRec(re: R.regex)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.NegLooksLookFreeRE(re)
+    ensures PikeLkRegexRec(T.Translate(re))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => TranslateFragmentPikeLkRec(r1); TranslateFragmentPikeLkRec(r2);
+    case Re_con(r1, r2) => TranslateFragmentPikeLkRec(r1); TranslateFragmentPikeLkRec(r2);
+    case Re_quant(_, _, _, r1) => TranslateFragmentPikeLkRec(r1);
+    case Re_capture(_, r1) => TranslateFragmentPikeLkRec(r1);
+    case Re_lookaround(lid, la, r1) =>
+      assert L.Positivity(T.TrLookaround(la)) == (la.Lookahead? || la.Lookbehind?);
+      if la.Lookahead? || la.Lookbehind? {
+        // POSITIVE look (fwd/bwd): body recurses into the recursive fragment.
+        TranslateFragmentPikeLkRec(r1);   // PikeLkRegexRec(Translate(r1))
+      } else {
+        // NEGATIVE look: capture-free (NestedFragmentRE) + look-free
+        // (NegLooksLookFreeRE) body translates to group-free.
+        OS.TranslateGroupFree(r1);        // SD.GroupFreeL(Translate(r1))
       }
     case _ =>
   }
@@ -1035,5 +1244,251 @@ module LindenElkEntryLk {
     BS.EncodeNext(BS.CanExit, inp, [], r);
     assert [LS.Areg(r)] == [LS.Areg(r)] + [];
     EncodeEqualLk(rer, inp, [LS.Areg(r)], BS.CanExit, t, LG.Empty);
+  }
+
+  // ===========================================================================
+  // L4 depth-k (ADDITIVE): the BoolTree bridge for the RECURSIVE fragment.
+  //
+  // `ComputeBoolTreeLk`/`EncodeEqualLk`/`BooleanCorrectLk` establish the SAME
+  // depth-agnostic `BoolTreeLk` spec predicate from `PikeLkActions` (depth-1)
+  // walks. The `*Rec` copies establish the identical `BoolTreeLk` from
+  // `PikeLkActionsRec` walks — the only real change is the LookaroundR case's
+  // body-tree identification (`ComputeTrGmIndepLk` -> `ComputeTrGmIndepLkRec`
+  // for POSITIVE bodies; NEGATIVE bodies stay group-free, `ComputeTrGmIndep`).
+  // `BoolTreeLk` itself is not re-defined: its `LkGateOk` gate rule is depth-
+  // agnostic. This is the depth-k entry bridge the keystone's spec tree needs.
+  // ===========================================================================
+
+  /** `ComputeBoolTreeLk` for the recursive fragment: a `PikeLkActionsRec` walk's
+      tree is the `BoolTreeLk` the construction consumes. Verbatim
+      `ComputeBoolTreeLk` with `PikeLkActions -> PikeLkActionsRec` and the
+      positive-look `ComputeTrGmIndepLk -> ComputeTrGmIndepLkRec`. */
+  lemma ComputeBoolTreeLkRec(rer: LW.RegExpRecord, act: LS.Actions, inp: LC.Input, gm: LG.GroupMap,
+                             b: BS.LoopBool, fuel: nat, t: LT.Tree)
+    requires PikeLkActionsRec(act)
+    requires BS.BoolEncoding(b, inp, act)
+    requires fuel > FS.ActionsFuel(act, inp, WP.Forward)
+    requires FS.ComputeTree(rer, act, inp, gm, WP.Forward, fuel) == Some(t)
+    ensures BoolTreeLk(rer, act, inp, b, t)
+    decreases fuel
+  {
+    var f := fuel - 1;
+    if |act| == 0 { return; }
+    var cont := act[1..];
+    PikeLkActionsRecTail(act);
+    assert act == [act[0]] + cont;
+    PikeLkActionsRecConsIff(act[0], cont);
+    match act[0]
+    case Acheck(strcheck) =>
+      BS.EncodingSuffix(b, inp, act, strcheck);
+      if SSx.IsStrictSuffix(inp, strcheck, WP.Forward) {
+        assert SSx.StrictSuffix(inp, strcheck, WP.Forward);
+        SSx.SSNeq(inp, strcheck, WP.Forward);
+        BS.EncodingDifferent(b, inp, strcheck, cont);
+        FS.CheckTermination(cont, inp, strcheck, WP.Forward);
+        var sub := FS.ComputeTree(rer, cont, inp, gm, WP.Forward, f);
+        ComputeBoolTreeLkRec(rer, cont, inp, gm, BS.CanExit, f, sub.value);
+      } else {
+        assert inp == strcheck;
+        BS.EncodingSame(b, inp, cont);
+      }
+    case Aclose(gid) =>
+      BS.EncodeClose(b, inp, cont, gid);
+      var gm' := LG.GMClose(LC.Idx(inp), gid, gm);
+      FS.CloseTermination(cont, inp, WP.Forward, gid);
+      var sub := FS.ComputeTree(rer, cont, inp, gm', WP.Forward, f);
+      ComputeBoolTreeLkRec(rer, cont, inp, gm', b, f, sub.value);
+    case Areg(r) =>
+      assert PikeLkRegexRec(r);
+      match r
+      case Epsilon =>
+        BS.EncodeNext(b, inp, cont, L.Epsilon);
+        FS.EpsilonTermination(cont, inp, WP.Forward);
+        ComputeBoolTreeLkRec(rer, cont, inp, gm, b, f, t);
+      case Character(cd) => {
+        BS.EncodeNext(b, inp, cont, L.Character(cd));
+        match LC.ReadChar(rer, cd, inp, WP.Forward) {
+          case None =>
+          case Some(pair) =>
+            assert inp.next == [inp.next[0]] + inp.next[1..];
+            assert inp == LC.Input([inp.next[0]] + inp.next[1..], inp.pref);
+            assert pair.1 == LC.Input(inp.next[1..], [inp.next[0]] + inp.pref);
+            BS.TrueEncoding(inp.next[1..], inp.next[0], inp.pref, cont, b);
+            FS.CharacterTermination(rer, cont, inp, WP.Forward, cd, pair.0, pair.1);
+            var sub := FS.ComputeTree(rer, cont, pair.1, gm, WP.Forward, f);
+            ComputeBoolTreeLkRec(rer, cont, pair.1, gm, BS.CanExit, f, sub.value);
+        }
+      }
+      case Disjunction(r1, r2) =>
+        PikeLkActionsRecConsIff(LS.Areg(r1), cont);
+        PikeLkActionsRecConsIff(LS.Areg(r2), cont);
+        BS.EncodeNext(b, inp, cont, r1);
+        BS.EncodeNext(b, inp, cont, r2);
+        FS.DisjunctionLeftTermination(cont, inp, WP.Forward, r1, r2);
+        FS.DisjunctionRightTermination(cont, inp, WP.Forward, r1, r2);
+        var s1 := FS.ComputeTree(rer, [LS.Areg(r1)] + cont, inp, gm, WP.Forward, f);
+        var s2 := FS.ComputeTree(rer, [LS.Areg(r2)] + cont, inp, gm, WP.Forward, f);
+        ComputeBoolTreeLkRec(rer, [LS.Areg(r1)] + cont, inp, gm, b, f, s1.value);
+        ComputeBoolTreeLkRec(rer, [LS.Areg(r2)] + cont, inp, gm, b, f, s2.value);
+      case Sequence(r1, r2) =>
+        var na := LS.SeqList(r1, r2, WP.Forward) + cont;
+        assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+        assert PikeLkActionsRec(na) by {
+          PikeLkActionsRecConsIff(LS.Areg(r2), cont);
+          PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
+        }
+        assert BS.BoolEncoding(b, inp, na) by {
+          BS.EncodeNext(b, inp, cont, r2);
+          BS.EncodeNext(b, inp, [LS.Areg(r2)] + cont, r1);
+        }
+        FS.SequenceTermination(cont, inp, WP.Forward, r1, r2);
+        var sub := FS.ComputeTree(rer, na, inp, gm, WP.Forward, f);
+        ComputeBoolTreeLkRec(rer, na, inp, gm, b, f, sub.value);
+      case Quantified(greedy, min, delta, r1) =>
+        if min > 0 {
+          var gidl := L.DefGroups(r1);
+          var quant := L.Quantified(greedy, min - 1, delta, r1);
+          var na := [LS.Areg(r1), LS.Areg(quant)] + cont;
+          var gm' := LG.GMReset(gidl, gm);
+          assert PikeLkActionsRec(na) by {
+            assert na == [LS.Areg(r1)] + ([LS.Areg(quant)] + cont);
+            assert PikeLkRegexRec(quant);
+            PikeLkActionsRecConsIff(LS.Areg(quant), cont);
+            PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(quant)] + cont);
+          }
+          assert BS.BoolEncoding(b, inp, na) by {
+            assert na == [LS.Areg(r1)] + ([LS.Areg(quant)] + cont);
+            BS.EncodeNext(b, inp, cont, quant);
+            BS.EncodeNext(b, inp, [LS.Areg(quant)] + cont, r1);
+          }
+          FS.QuantForcedTermination(cont, inp, WP.Forward, r1, min - 1, delta, greedy);
+          var sub := FS.ComputeTree(rer, na, inp, gm', WP.Forward, f);
+          ComputeBoolTreeLkRec(rer, na, inp, gm', b, f, sub.value);
+          return;
+        }
+        if delta == LN.NN(0) {
+          assert BS.BoolEncoding(b, inp, cont) by {
+            BS.EncodeNext(b, inp, cont, L.Quantified(greedy, min, delta, r1));
+          }
+          FS.QuantDoneTermination(cont, inp, WP.Forward, r1, greedy);
+          var sub := FS.ComputeTree(rer, cont, inp, gm, WP.Forward, f);
+          ComputeBoolTreeLkRec(rer, cont, inp, gm, b, f, sub.value);
+          return;
+        }
+        var gidl := L.DefGroups(r1);
+        var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+        var na := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
+        var gm' := LG.GMReset(gidl, gm);
+        assert PikeLkRegexRec(quant);
+        assert PikeLkActionsRec(na) by {
+          assert na == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+          PikeLkActionsRecConsIff(LS.Areg(quant), cont);
+          PikeLkActionsRecConsIff(LS.Acheck(inp), [LS.Areg(quant)] + cont);
+          PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+        }
+        assert BS.BoolEncoding(b, inp, cont) by {
+          BS.EncodeNext(b, inp, cont, L.Quantified(greedy, min, delta, r1));
+        }
+        assert BS.BoolEncoding(BS.CannotExit, inp, na) by {
+          assert na == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+          BS.EncodeNext(b, inp, cont, quant);
+          assert ([LS.Acheck(inp)] + ([LS.Areg(quant)] + cont))[0] == LS.Acheck(inp);
+          assert ([LS.Acheck(inp)] + ([LS.Areg(quant)] + cont))[1..] == [LS.Areg(quant)] + cont;
+          assert BS.BoolEncoding(BS.CannotExit, inp, [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+          BS.EncodeNext(BS.CannotExit, inp, [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont), r1);
+        }
+        FS.QuantFreeIterTermination(cont, inp, WP.Forward, r1, greedy, delta);
+        FS.QuantFreeSkipTermination(cont, inp, WP.Forward, r1, greedy, delta);
+        var siter := FS.ComputeTree(rer, na, inp, gm', WP.Forward, f);
+        var sskip := FS.ComputeTree(rer, cont, inp, gm, WP.Forward, f);
+        ComputeBoolTreeLkRec(rer, na, inp, gm', BS.CannotExit, f, siter.value);
+        ComputeBoolTreeLkRec(rer, cont, inp, gm, b, f, sskip.value);
+      case Group(gid, r1) =>
+        var na := [LS.Areg(r1), LS.Aclose(gid)] + cont;
+        var gm' := LG.GMOpen(LC.Idx(inp), gid, gm);
+        assert PikeLkActionsRec(na) by {
+          assert na == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
+          PikeLkActionsRecConsIff(LS.Aclose(gid), cont);
+          PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+        }
+        assert BS.BoolEncoding(b, inp, na) by {
+          assert na == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
+          BS.EncodeClose(b, inp, cont, gid);
+          BS.EncodeNext(b, inp, [LS.Aclose(gid)] + cont, r1);
+        }
+        FS.GroupTermination(cont, inp, WP.Forward, r1, gid);
+        var sub := FS.ComputeTree(rer, na, inp, gm', WP.Forward, f);
+        ComputeBoolTreeLkRec(rer, na, inp, gm', b, f, sub.value);
+      case AnchorR(a) =>
+        BS.EncodeNext(b, inp, cont, L.AnchorR(a));
+        if LS.AnchorSatisfied(rer, a, inp) {
+          FS.AnchorTermination(cont, inp, WP.Forward, a);
+          var sub := FS.ComputeTree(rer, cont, inp, gm, WP.Forward, f);
+          ComputeBoolTreeLkRec(rer, cont, inp, gm, b, f, sub.value);
+        }
+      case LookaroundR(lk, r1) =>
+        // ComputeTree's gate case: body tree at the WALK's gm, then the
+        // continuation under the gate-produced map. Both transported to `Empty`:
+        // the tree by gm-independence (POSITIVE body PikeLkRegexRec via
+        // ComputeTrGmIndepLkRec; NEGATIVE body group-free via ComputeTrGmIndep),
+        // the verdict by LkResultGmIndep.
+        BS.EncodeNext(b, inp, cont, r);
+        var lkacts := [LS.Areg(r1)];
+        var treelkOpt := FS.ComputeTree(rer, lkacts, inp, gm, L.LkDir(lk), f);
+        assert treelkOpt.Some?;
+        var tlk := treelkOpt.value;
+        FS.LkLkTermination(cont, inp, WP.Forward, lk, r1);
+        assert f > FS.ActionsFuel(lkacts, inp, L.LkDir(lk));
+        assert tlk == FU.ComputeTr(rer, lkacts, inp, LG.Empty, L.LkDir(lk)) by {
+          FS.ComputeTreeFuelIrrelevance(rer, lkacts, inp, gm, L.LkDir(lk), f,
+                                        FS.ActionsFuel(lkacts, inp, L.LkDir(lk)) + 1);
+          if L.Positivity(lk) {
+            ComputeTrGmIndepLkRec(rer, r1, inp, gm, L.LkDir(lk));   // PikeLkRegexRec(r1) positive arm
+          } else {
+            ComputeTrGmIndep(rer, r1, inp, gm, L.LkDir(lk));        // GroupFreeL(r1) negative arm
+          }
+        }
+        FS.LkAfterTermination(cont, inp, WP.Forward, lk, r1);
+        LkResultGmIndep(lk, tlk, gm, inp);
+        match LS.LkResult(lk, tlk, gm, inp) {
+          case Some(gmlk) =>
+            var sub := FS.ComputeTree(rer, cont, inp, gmlk, WP.Forward, f);
+            ComputeBoolTreeLkRec(rer, cont, inp, gmlk, b, f, sub.value);
+          case None =>
+        }
+      case Backreference(gid) =>
+  }
+
+  /** `EncodeEqualLk` for the recursive fragment. */
+  lemma EncodeEqualLkRec(rer: LW.RegExpRecord, inp: LC.Input, cont: LS.Actions, b: BS.LoopBool,
+                         t: LT.Tree, gm: LG.GroupMap)
+    requires PikeLkActionsRec(cont)
+    requires BS.BoolEncoding(b, inp, cont)
+    requires LS.IsTree(rer, cont, inp, gm, WP.Forward, t)
+    ensures BoolTreeLk(rer, cont, inp, b, t)
+  {
+    var fuel := FS.ActionsFuel(cont, inp, WP.Forward) + 1;
+    FS.FunctionalTerminates(rer, cont, inp, gm, WP.Forward, fuel);
+    assert fuel > FS.ActionsFuel(cont, inp, WP.Forward);
+    var opt := FS.ComputeTree(rer, cont, inp, gm, WP.Forward, fuel);
+    CIT.ComputeIsTreeThm(rer, cont, inp, gm, WP.Forward, fuel, opt.value);
+    LS.IsTreeDeterm(rer, cont, inp, gm, WP.Forward, t, opt.value);
+    ComputeBoolTreeLkRec(rer, cont, inp, gm, b, fuel, opt.value);
+  }
+
+  /** THE depth-k entry bridge: `BooleanCorrectLk` for the recursive fragment —
+      a nested body's spec tree at the fresh initial state is the `BoolTreeLk`
+      the construction consumes. Requires `PikeLkRegexRec(r)` (any nesting depth
+      of positive looks). */
+  lemma BooleanCorrectLkRec(rer: LW.RegExpRecord, r: L.Regex, inp: LC.Input, t: LT.Tree)
+    requires PikeLkRegexRec(r)
+    requires LS.IsTree(rer, [LS.Areg(r)], inp, LG.Empty, WP.Forward, t)
+    ensures BoolTreeLk(rer, [LS.Areg(r)], inp, BS.CanExit, t)
+  {
+    assert PikeLkActionsRec([LS.Areg(r)]) by { PikeLkActionsRecConsIff(LS.Areg(r), []); }
+    assert BS.BoolEncoding(BS.CanExit, inp, []);
+    BS.EncodeNext(BS.CanExit, inp, [], r);
+    assert [LS.Areg(r)] == [LS.Areg(r)] + [];
+    EncodeEqualLkRec(rer, inp, [LS.Areg(r)], BS.CanExit, t, LG.Empty);
   }
 }

@@ -643,6 +643,71 @@ module LindenElkNfaRep {
       (la.Lookahead? || la.Lookbehind? || CaptureFreeRE(r1)) && NestedFragmentRE(r1)
   }
 
+  // ===========================================================================
+  // L4 depth-k (ADDITIVE): the POSITIVE-nesting sub-fragment of NestedFragmentRE.
+  //
+  // `NestedFragmentRE` admits nested looks inside NEGATIVE bodies too (as long as
+  // they capture nothing). The recursive Pike/spec fragment `EL.PikeLkRegexRec`,
+  // however, keeps NEGATIVE-look bodies GROUP-FREE (`SD.GroupFreeL`, records
+  // nothing) — exactly the depth-1 shape — and only lets POSITIVE looks nest.
+  // `NegLooksLookFreeRE` is the extra side condition (negative bodies look-free)
+  // that carves the sub-fragment `PikeLkRegexRec` supports out of the full
+  // nested fragment. This is the honest scope of the recursive keystone:
+  // arbitrarily nested CAPTURING positive looks, depth-1 negative gates.
+  // ===========================================================================
+
+  /** Every NEGATIVE-look body of `re` is look-free (no lookaround nodes). With
+      `NestedFragmentRE`, this is the image of `EL.PikeLkRegexRec` under
+      `Translate`: positive looks nest to any depth, negative looks stay
+      group-free. Additive. */
+  predicate NegLooksLookFreeRE(re: R.regex)
+    decreases re
+  {
+    match re
+    case Re_empty => true
+    case Re_character(_) => true
+    case Re_anchor(_) => true
+    case Re_alt(r1, r2) => NegLooksLookFreeRE(r1) && NegLooksLookFreeRE(r2)
+    case Re_con(r1, r2) => NegLooksLookFreeRE(r1) && NegLooksLookFreeRE(r2)
+    case Re_quant(_, _, _, r1) => NegLooksLookFreeRE(r1)
+    case Re_capture(_, r1) => NegLooksLookFreeRE(r1)
+    case Re_lookaround(lid, la, r1) =>
+      ((la.NegLookahead? || la.NegLookbehind?) ==> LookFreeRE(r1)) && NegLooksLookFreeRE(r1)
+  }
+
+  /** A look-free regex has no lookarounds at all, so it vacuously satisfies
+      `NegLooksLookFreeRE`. */
+  lemma LookFreeNegLooksLookFree(re: R.regex)
+    requires LookFreeRE(re)
+    ensures NegLooksLookFreeRE(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => LookFreeNegLooksLookFree(r1); LookFreeNegLooksLookFree(r2);
+    case Re_con(r1, r2) => LookFreeNegLooksLookFree(r1); LookFreeNegLooksLookFree(r2);
+    case Re_quant(_, _, _, r1) => LookFreeNegLooksLookFree(r1);
+    case Re_capture(_, r1) => LookFreeNegLooksLookFree(r1);
+    case _ =>
+  }
+
+  /** The depth-1 lookbehind fragment has look-free bodies at every lookaround
+      leaf, so every negative-look body is look-free: `NegLooksLookFreeRE`
+      holds. Every input supported today satisfies the recursive-keystone side
+      condition, so the recursive keystone genuinely subsumes the depth-1 one. */
+  lemma LookBehindNegLooksLookFree(re: R.regex)
+    requires LookBehindFragmentRE(re)
+    ensures NegLooksLookFreeRE(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => LookBehindNegLooksLookFree(r1); LookBehindNegLooksLookFree(r2);
+    case Re_con(r1, r2) => LookBehindNegLooksLookFree(r1); LookBehindNegLooksLookFree(r2);
+    case Re_quant(_, _, _, r1) => LookBehindNegLooksLookFree(r1);
+    case Re_capture(_, r1) => LookBehindNegLooksLookFree(r1);
+    case Re_lookaround(lid, la, r1) => LookFreeNegLooksLookFree(r1);
+    case _ =>
+  }
+
   /** A look-free plus fragment is in the nested fragment (with `NestDepth 0`):
       no lookaround nodes, so the two predicates enforce exactly the same
       plus-fragment quant shapes. */

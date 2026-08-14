@@ -1186,4 +1186,76 @@ module LindenElkCheckErase {
     case LKFail(lk, tlk) => LkConfinedTreeRecMono(tlk, S1, S2);
     case _ =>
   }
+
+  // ===========================================================================
+  // L4 depth-k (ADDITIVE): the OUTER-tree depth-k confinement.
+  //
+  // `LkConfinedTree(t,S)` is the shape the depth-1 engine bridge `ActionsTreeRepRE`
+  // consumes: TOP-LEVEL group actions UNCONSTRAINED (the body's own captures live
+  // OUTSIDE `S`, so they AGREE between checked and spec tree), and each LK/LKFail
+  // BODY `GmConfinedTree(tlk,S)` (depth-1: look-free). `LkConfinedTreeK` is the
+  // depth-k generalization: identical, but the LK/LKFail bodies are RECURSIVELY
+  // confined (`LkConfinedTreeRec(tlk,S)`) so they may nest to any depth. It keeps
+  // the top-level UNCONSTRAINED, so a nested body's spec tree confines with
+  // `S = LkBodyGroups(...)` (inside-look groups only) and the `LeavesAgreeAtOutside`
+  // conclusion still says the body's TOP-LEVEL captures agree. Embedding:
+  // `LkConfinedTree(t,S) ==> LkConfinedTreeK(t,S)` (`LkConfinedTreeEmbedsK`).
+  // ===========================================================================
+
+  /** Depth-k outer confinement: top-level group actions UNCONSTRAINED (as in
+      `LkConfinedTree`), but every LK/LKFail body RECURSIVELY confined to `S`. */
+  ghost predicate LkConfinedTreeK(t: LT.Tree, S: set<LG.GroupId>)
+    decreases t
+  {
+    match t
+    case Mismatch => true
+    case Match => true
+    case Choice(t1, t2) => LkConfinedTreeK(t1, S) && LkConfinedTreeK(t2, S)
+    case Read(_, t1) => LkConfinedTreeK(t1, S)
+    case ReadBackRef(_, t1) => LkConfinedTreeK(t1, S)
+    case Progress(t1) => LkConfinedTreeK(t1, S)
+    case AnchorPass(_, t1) => LkConfinedTreeK(t1, S)
+    case GroupActionT(_, t1) => LkConfinedTreeK(t1, S)
+    case LK(lk, tlk, t1) => LkConfinedTreeRec(tlk, S) && LkConfinedTreeK(t1, S)
+    case LKFail(lk, tlk) => LkConfinedTreeRec(tlk, S)
+  }
+
+  /** The depth-1 outer confinement embeds into the depth-k one: an
+      `LkConfinedTree` (LK bodies `GmConfinedTree`) is `LkConfinedTreeK` (LK
+      bodies `LkConfinedTreeRec`), since `GmConfinedTree ==> LkConfinedTreeRec`
+      (`GmConfinedTreeEmbedsRec`). So every depth-1 confined tree qualifies. */
+  lemma LkConfinedTreeEmbedsK(t: LT.Tree, S: set<LG.GroupId>)
+    requires LkConfinedTree(t, S)
+    ensures LkConfinedTreeK(t, S)
+    decreases t
+  {
+    match t
+    case Choice(t1, t2) => LkConfinedTreeEmbedsK(t1, S); LkConfinedTreeEmbedsK(t2, S);
+    case Read(_, t1) => LkConfinedTreeEmbedsK(t1, S);
+    case ReadBackRef(_, t1) => LkConfinedTreeEmbedsK(t1, S);
+    case Progress(t1) => LkConfinedTreeEmbedsK(t1, S);
+    case AnchorPass(_, t1) => LkConfinedTreeEmbedsK(t1, S);
+    case GroupActionT(_, t1) => LkConfinedTreeEmbedsK(t1, S);
+    case LK(lk, tlk, t1) => GmConfinedTreeEmbedsRec(tlk, S); LkConfinedTreeEmbedsK(t1, S);
+    case LKFail(lk, tlk) => GmConfinedTreeEmbedsRec(tlk, S);
+    case _ =>
+  }
+
+  /** `LkConfinedTreeK` is monotone in the group set. */
+  lemma LkConfinedTreeKMono(t: LT.Tree, S1: set<LG.GroupId>, S2: set<LG.GroupId>)
+    requires LkConfinedTreeK(t, S1) && S1 <= S2
+    ensures LkConfinedTreeK(t, S2)
+    decreases t
+  {
+    match t
+    case Choice(t1, t2) => LkConfinedTreeKMono(t1, S1, S2); LkConfinedTreeKMono(t2, S1, S2);
+    case Read(_, t1) => LkConfinedTreeKMono(t1, S1, S2);
+    case ReadBackRef(_, t1) => LkConfinedTreeKMono(t1, S1, S2);
+    case Progress(t1) => LkConfinedTreeKMono(t1, S1, S2);
+    case AnchorPass(_, t1) => LkConfinedTreeKMono(t1, S1, S2);
+    case GroupActionT(a, t1) => LkConfinedTreeKMono(t1, S1, S2);
+    case LK(lk, tlk, t1) => LkConfinedTreeRecMono(tlk, S1, S2); LkConfinedTreeKMono(t1, S1, S2);
+    case LKFail(lk, tlk) => LkConfinedTreeRecMono(tlk, S1, S2);
+    case _ =>
+  }
 }
