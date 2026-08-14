@@ -2650,6 +2650,21 @@ module LindenElkNestInv {
     }
   }
 
+  /** L4 depth-k (ADDITIVE): `NotColdEntryRE` under the nested fragment (uses
+      `ColdPropagatesFNested`). */
+  lemma NotColdEntryRENested(re: R.regex, c: RB.code, endl: nat)
+    requires NR.NestedFragmentRE(re) && NR.NfaRepRE(re, c, 0, endl)
+    requires NR.GetPcRE(c, endl) == Some(RB.Accept)
+    ensures !ColdRE(c, 0)
+  {
+    if ColdRE(c, 0) {
+      var n: nat :| ColdF(c, 0, n);
+      ColdPropagatesFNested(re, c, 0, endl, n);
+      assert !AR.BackForkAt(c, endl);
+      assert false;
+    }
+  }
+
   /** `BeginLoopColdSafeAt` for forced-copy chains. */
   lemma BeginLoopColdSafeAtMin(k: nat, qid: R.quantid, r1: R.regex, c: RB.code, pcb: nat, pce: nat, p: nat)
     requires NR.LookBehindFragmentRE(r1) && NR.NfaRepMinRE(k, qid, r1, c, pcb, pce)
@@ -2795,6 +2810,375 @@ module LindenElkNestInv {
           assert p != em && p != e1;
           assert em + 1 <= p < e1;
           BeginLoopColdSafeAt(r1, c, em + 1, e1, p);
+        }
+      }
+  }
+
+  // =========================================================================
+  // L4 depth-k (ADDITIVE): the Cold-propagation + BeginLoop-Cold tower
+  // generalized from `LookBehindFragmentRE` to the arbitrary-nesting
+  // `NestedFragmentRE`. Every `Re_lookaround` case is a SINGLE zero-width gate
+  // (the body lives in the per-lid tables, not in this code), so no case
+  // descends into the body — the proofs are depth-agnostic verbatim copies with
+  // the fragment swap + recursion redirected to the `*Nested` siblings. The
+  // `ColdFMono`/`NfaRepIncr*`/`NfaRep*Inv`/`AR.BackForkAt` helpers are already
+  // fragment-blind and reused directly.
+  // =========================================================================
+
+  /** `ColdNNF` under the nested fragment. */
+  lemma ColdNNFNested(re: R.regex, c: RB.code, pc1: nat, pc2: nat, n: nat)
+    requires NR.NestedFragmentRE(re) && NR.NfaRepRE(re, c, pc1, pc2)
+    requires R.nullable(re) == R.NonNullable
+    requires ColdF(c, pc1, n)
+    ensures false
+    decreases n, CP.rsize(re), 0
+  {
+    match re
+    case Re_empty =>
+    case Re_character(ch) =>
+      assert !AR.BackForkAt(c, pc1);
+    case Re_anchor(a) =>
+    case Re_lookaround(_, _, _) =>
+    case Re_alt(r1, r2) =>
+      var e1: nat :| NR.GetPcRE(c, pc1) == Some(RB.Fork(pc1 + 1, e1 + 1))
+        && NR.NfaRepRE(r1, c, pc1 + 1, e1)
+        && NR.GetPcRE(c, e1) == Some(RB.Jmp(pc2))
+        && NR.NfaRepRE(r2, c, e1 + 1, pc2);
+      NR.NfaRepIncrRE(r1, c, pc1 + 1, e1);
+      NR.NfaRepIncrRE(r2, c, e1 + 1, pc2);
+      assert !AR.BackForkAt(c, pc1);
+      if ColdF(c, pc1 + 1, n - 1) {
+        ColdNNFNested(r1, c, pc1 + 1, e1, n - 1);
+      } else {
+        ColdNNFNested(r2, c, e1 + 1, pc2, n - 1);
+      }
+    case Re_con(r1, r2) =>
+      var e1: nat :| NR.NfaRepRE(r1, c, pc1, e1) && NR.NfaRepRE(r2, c, e1, pc2);
+      if R.nullable(r1) == R.NonNullable {
+        ColdNNFNested(r1, c, pc1, e1, n);
+      } else {
+        assert R.nullable(r2) == R.NonNullable;
+        ColdPropagatesFNested(r1, c, pc1, e1, n);
+        ColdNNFNested(r2, c, e1, pc2, n);
+      }
+    case Re_capture(cid, r1) =>
+      var e1: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
+        && NR.NfaRepRE(r1, c, pc1 + 1, e1)
+        && NR.GetPcRE(c, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+        && pc2 == e1 + 1;
+      assert !AR.BackForkAt(c, pc1);
+      ColdNNFNested(r1, c, pc1 + 1, e1, n - 1);
+    case Re_quant(nul, qid, q, r1) =>
+      assert q.min > 0 && R.nullable(r1) == R.NonNullable;
+      if q.max.Some? {
+        var em := NR.NfaRepREQuantInv(nul, qid, q, r1, c, pc1, pc2);
+        var mn := q.min as nat;
+        var eb: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetQuantToClock(qid, false))
+          && NR.NfaRepRE(r1, c, pc1 + 1, eb)
+          && NR.NfaRepMinRE(mn - 1, qid, r1, c, eb, em);
+        assert !AR.BackForkAt(c, pc1);
+        ColdNNFNested(r1, c, pc1 + 1, eb, n - 1);
+      } else {
+        var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, c, pc1, pc2);
+        var mn1 := (q.min - 1) as nat;
+        if mn1 > 0 {
+          var eb: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetQuantToClock(qid, false))
+            && NR.NfaRepRE(r1, c, pc1 + 1, eb)
+            && NR.NfaRepMinRE(mn1 - 1, qid, r1, c, eb, em);
+          assert !AR.BackForkAt(c, pc1);
+          ColdNNFNested(r1, c, pc1 + 1, eb, n - 1);
+        } else {
+          assert em == pc1;
+          assert !AR.BackForkAt(c, pc1);
+          ColdNNFNested(r1, c, pc1 + 1, e1, n - 1);
+        }
+      }
+  }
+
+  /** `ColdPropagatesMinF` under the nested fragment. */
+  lemma ColdPropagatesMinFNested(k: nat, qid: R.quantid, r1: R.regex, c: RB.code, pcb: nat, pce: nat, n: nat)
+    requires NR.NestedFragmentRE(r1) && NR.NfaRepMinRE(k, qid, r1, c, pcb, pce)
+    requires ColdF(c, pcb, n)
+    ensures ColdF(c, pce, n)
+    decreases n, CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| NR.GetPcRE(c, pcb) == Some(RB.SetQuantToClock(qid, false))
+      && NR.NfaRepRE(r1, c, pcb + 1, e1)
+      && NR.NfaRepMinRE(k - 1, qid, r1, c, e1, pce);
+    assert !AR.BackForkAt(c, pcb);
+    assert ColdF(c, pcb + 1, n - 1);
+    ColdPropagatesFNested(r1, c, pcb + 1, e1, n - 1);
+    ColdPropagatesMinFNested(k - 1, qid, r1, c, e1, pce, n - 1);
+    ColdFMono(c, pce, n - 1, n);
+  }
+
+  /** `ColdPropagatesOptF` under the nested fragment. */
+  lemma ColdPropagatesOptFNested(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, c: RB.code, pcb: nat, pce: nat, n: nat)
+    requires NR.NestedFragmentRE(r1) && NR.NfaRepOptRE(k, greedy, qid, r1, c, pcb, pce)
+    requires ColdF(c, pcb, n)
+    ensures ColdF(c, pce, n)
+    decreases n, CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| NR.GetPcRE(c, pcb) == Some(if greedy then RB.Fork(pcb + 1, pce) else RB.Fork(pce, pcb + 1))
+      && NR.GetPcRE(c, pcb + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(c, pcb + 2) == Some(RB.BeginLoop)
+      && NR.NfaRepRE(r1, c, pcb + 3, e1)
+      && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+      && NR.NfaRepOptRE(k - 1, greedy, qid, r1, c, e1 + 1, pce);
+    NR.NfaRepIncrRE(r1, c, pcb + 3, e1);
+    NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, c, e1 + 1, pce);
+    assert !AR.BackForkAt(c, pcb);
+    if ColdF(c, pcb + 1, n - 1) {
+      assert !AR.BackForkAt(c, pcb + 1);
+      assert ColdF(c, pcb + 2, n - 2);
+      assert !AR.BackForkAt(c, pcb + 2);
+      assert ColdF(c, pcb + 3, n - 3);
+      ColdPropagatesFNested(r1, c, pcb + 3, e1, n - 3);
+      assert !AR.BackForkAt(c, e1);
+      assert false;
+    } else {
+      assert ColdF(c, pce, n - 1);
+      ColdFMono(c, pce, n - 1, n);
+    }
+  }
+
+  /** `ColdPropagatesF` under the nested fragment. */
+  lemma ColdPropagatesFNested(re: R.regex, c: RB.code, pc1: nat, pc2: nat, n: nat)
+    requires NR.NestedFragmentRE(re) && NR.NfaRepRE(re, c, pc1, pc2)
+    requires ColdF(c, pc1, n)
+    ensures ColdF(c, pc2, n)
+    decreases n, CP.rsize(re), 1
+  {
+    match re
+    case Re_empty =>
+      assert pc1 == pc2;
+    case Re_character(ch) =>
+      assert !AR.BackForkAt(c, pc1);
+      assert false;
+    case Re_anchor(a) =>
+      assert !AR.BackForkAt(c, pc1);
+      assert ColdF(c, pc1 + 1, n - 1);
+      ColdFMono(c, pc2, n - 1, n);
+    case Re_alt(r1, r2) =>
+      var e1: nat :| NR.GetPcRE(c, pc1) == Some(RB.Fork(pc1 + 1, e1 + 1))
+        && NR.NfaRepRE(r1, c, pc1 + 1, e1)
+        && NR.GetPcRE(c, e1) == Some(RB.Jmp(pc2))
+        && NR.NfaRepRE(r2, c, e1 + 1, pc2);
+      NR.NfaRepIncrRE(r1, c, pc1 + 1, e1);
+      NR.NfaRepIncrRE(r2, c, e1 + 1, pc2);
+      assert !AR.BackForkAt(c, pc1);
+      if ColdF(c, pc1 + 1, n - 1) {
+        ColdPropagatesFNested(r1, c, pc1 + 1, e1, n - 1);
+        assert !AR.BackForkAt(c, e1);
+        assert ColdF(c, pc2, n - 2);
+        ColdFMono(c, pc2, n - 2, n);
+      } else {
+        assert ColdF(c, e1 + 1, n - 1);
+        ColdPropagatesFNested(r2, c, e1 + 1, pc2, n - 1);
+        ColdFMono(c, pc2, n - 1, n);
+      }
+    case Re_con(r1, r2) =>
+      var e1: nat :| NR.NfaRepRE(r1, c, pc1, e1) && NR.NfaRepRE(r2, c, e1, pc2);
+      ColdPropagatesFNested(r1, c, pc1, e1, n);
+      ColdPropagatesFNested(r2, c, e1, pc2, n);
+    case Re_capture(cid, r1) =>
+      var e1: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
+        && NR.NfaRepRE(r1, c, pc1 + 1, e1)
+        && NR.GetPcRE(c, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+        && pc2 == e1 + 1;
+      assert !AR.BackForkAt(c, pc1);
+      assert ColdF(c, pc1 + 1, n - 1);
+      ColdPropagatesFNested(r1, c, pc1 + 1, e1, n - 1);
+      assert !AR.BackForkAt(c, e1);
+      assert ColdF(c, pc2, n - 2);
+      ColdFMono(c, pc2, n - 2, n);
+    case Re_lookaround(lid, la, r1) =>
+      assert !AR.BackForkAt(c, pc1);
+      assert ColdF(c, pc1 + 1, n - 1);
+      ColdFMono(c, pc2, n - 1, n);
+    case Re_quant(nul, qid, q, r1) =>
+      if q.min == 0 && q.max == None {
+        var e1: nat :| NR.GetPcRE(c, pc1) == Some(if q.greedy then RB.Fork(pc1 + 1, e1 + 2) else RB.Fork(e1 + 2, pc1 + 1))
+          && NR.GetPcRE(c, pc1 + 1) == Some(RB.SetQuantToClock(qid, false))
+          && NR.GetPcRE(c, pc1 + 2) == Some(RB.BeginLoop)
+          && NR.NfaRepRE(r1, c, pc1 + 3, e1)
+          && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+          && NR.GetPcRE(c, e1 + 1) == Some(RB.Jmp(pc1))
+          && pc2 == e1 + 2;
+        NR.NfaRepIncrRE(r1, c, pc1 + 3, e1);
+        assert !AR.BackForkAt(c, pc1);
+        if ColdF(c, pc1 + 1, n - 1) {
+          assert !AR.BackForkAt(c, pc1 + 1);
+          assert ColdF(c, pc1 + 2, n - 2);
+          assert !AR.BackForkAt(c, pc1 + 2);
+          assert ColdF(c, pc1 + 3, n - 3);
+          ColdPropagatesFNested(r1, c, pc1 + 3, e1, n - 3);
+          assert !AR.BackForkAt(c, e1);
+          assert false;
+        } else {
+          assert ColdF(c, pc2, n - 1);
+          ColdFMono(c, pc2, n - 1, n);
+        }
+      } else if q.max.Some? {
+        var em := NR.NfaRepREQuantInv(nul, qid, q, r1, c, pc1, pc2);
+        var mn := q.min as nat;
+        var kx := (q.max.value - q.min) as nat;
+        ColdPropagatesMinFNested(mn, qid, r1, c, pc1, em, n);
+        ColdPropagatesOptFNested(kx, q.greedy, qid, r1, c, em, pc2, n);
+      } else {
+        var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, c, pc1, pc2);
+        var mn1 := (q.min - 1) as nat;
+        ColdPropagatesMinFNested(mn1, qid, r1, c, pc1, em, n);
+        assert !AR.BackForkAt(c, em);
+        assert ColdF(c, em + 1, n - 1);
+        ColdNNFNested(r1, c, em + 1, e1, n - 1);
+        assert false;
+      }
+  }
+
+  /** `BeginLoopColdSafeAtMin` under the nested fragment. */
+  lemma BeginLoopColdSafeAtMinNested(k: nat, qid: R.quantid, r1: R.regex, c: RB.code, pcb: nat, pce: nat, p: nat)
+    requires NR.NestedFragmentRE(r1) && NR.NfaRepMinRE(k, qid, r1, c, pcb, pce)
+    requires pcb <= p < pce
+    requires NR.GetPcRE(c, p) == Some(RB.BeginLoop)
+    ensures !ColdRE(c, p + 1)
+    decreases CP.rsize(r1), k + 2
+  {
+    assert k > 0 by { if k == 0 { assert pcb == pce; } }
+    var e1: nat :| NR.GetPcRE(c, pcb) == Some(RB.SetQuantToClock(qid, false))
+      && NR.NfaRepRE(r1, c, pcb + 1, e1)
+      && NR.NfaRepMinRE(k - 1, qid, r1, c, e1, pce);
+    NR.NfaRepIncrRE(r1, c, pcb + 1, e1);
+    NR.NfaRepIncrMinRE(k - 1, qid, r1, c, e1, pce);
+    if pcb + 1 <= p < e1 {
+      BeginLoopColdSafeAtNested(r1, c, pcb + 1, e1, p);
+    } else {
+      assert p != pcb;
+      BeginLoopColdSafeAtMinNested(k - 1, qid, r1, c, e1, pce, p);
+    }
+  }
+
+  /** `BeginLoopColdSafeAtOpt` under the nested fragment. */
+  lemma BeginLoopColdSafeAtOptNested(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, c: RB.code, pcb: nat, pce: nat, p: nat)
+    requires NR.NestedFragmentRE(r1) && NR.NfaRepOptRE(k, greedy, qid, r1, c, pcb, pce)
+    requires pcb <= p < pce
+    requires NR.GetPcRE(c, p) == Some(RB.BeginLoop)
+    ensures !ColdRE(c, p + 1)
+    decreases CP.rsize(r1), k + 2
+  {
+    assert k > 0 by { if k == 0 { assert pcb == pce; } }
+    var e1: nat :| NR.GetPcRE(c, pcb) == Some(if greedy then RB.Fork(pcb + 1, pce) else RB.Fork(pce, pcb + 1))
+      && NR.GetPcRE(c, pcb + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(c, pcb + 2) == Some(RB.BeginLoop)
+      && NR.NfaRepRE(r1, c, pcb + 3, e1)
+      && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+      && NR.NfaRepOptRE(k - 1, greedy, qid, r1, c, e1 + 1, pce);
+    NR.NfaRepIncrRE(r1, c, pcb + 3, e1);
+    NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, c, e1 + 1, pce);
+    if p == pcb + 2 {
+      if ColdRE(c, p + 1) {
+        var n: nat :| ColdF(c, pcb + 3, n);
+        ColdPropagatesFNested(r1, c, pcb + 3, e1, n);
+        assert !AR.BackForkAt(c, e1);
+        assert false;
+      }
+    } else if pcb + 3 <= p < e1 {
+      BeginLoopColdSafeAtNested(r1, c, pcb + 3, e1, p);
+    } else {
+      assert p != pcb && p != pcb + 1 && p != e1;
+      BeginLoopColdSafeAtOptNested(k - 1, greedy, qid, r1, c, e1 + 1, pce, p);
+    }
+  }
+
+  /** `BeginLoopColdSafeAt` under the nested fragment. */
+  lemma BeginLoopColdSafeAtNested(re: R.regex, c: RB.code, pcb: nat, pce: nat, p: nat)
+    requires NR.NestedFragmentRE(re) && NR.NfaRepRE(re, c, pcb, pce)
+    requires pcb <= p < pce
+    requires NR.GetPcRE(c, p) == Some(RB.BeginLoop)
+    ensures !ColdRE(c, p + 1)
+    decreases CP.rsize(re), 1
+  {
+    match re
+    case Re_empty =>
+    case Re_character(ch) =>
+    case Re_anchor(a) =>
+    case Re_lookaround(_, _, _) =>
+    case Re_alt(r1, r2) =>
+      var e1: nat :| NR.GetPcRE(c, pcb) == Some(RB.Fork(pcb + 1, e1 + 1))
+        && NR.NfaRepRE(r1, c, pcb + 1, e1)
+        && NR.GetPcRE(c, e1) == Some(RB.Jmp(pce))
+        && NR.NfaRepRE(r2, c, e1 + 1, pce);
+      NR.NfaRepIncrRE(r1, c, pcb + 1, e1);
+      NR.NfaRepIncrRE(r2, c, e1 + 1, pce);
+      if pcb + 1 <= p < e1 {
+        BeginLoopColdSafeAtNested(r1, c, pcb + 1, e1, p);
+      } else {
+        assert p != pcb && p != e1;
+        BeginLoopColdSafeAtNested(r2, c, e1 + 1, pce, p);
+      }
+    case Re_con(r1, r2) =>
+      var e1: nat :| NR.NfaRepRE(r1, c, pcb, e1) && NR.NfaRepRE(r2, c, e1, pce);
+      NR.NfaRepIncrRE(r1, c, pcb, e1);
+      NR.NfaRepIncrRE(r2, c, e1, pce);
+      if p < e1 {
+        BeginLoopColdSafeAtNested(r1, c, pcb, e1, p);
+      } else {
+        BeginLoopColdSafeAtNested(r2, c, e1, pce, p);
+      }
+    case Re_capture(cid, r1) =>
+      var e1: nat :| NR.GetPcRE(c, pcb) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
+        && NR.NfaRepRE(r1, c, pcb + 1, e1)
+        && NR.GetPcRE(c, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+        && pce == e1 + 1;
+      NR.NfaRepIncrRE(r1, c, pcb + 1, e1);
+      assert p != pcb && p != e1;
+      BeginLoopColdSafeAtNested(r1, c, pcb + 1, e1, p);
+    case Re_quant(nul, qid, q, r1) =>
+      if q.min == 0 && q.max == None {
+        var e1: nat :| NR.GetPcRE(c, pcb) == Some(if q.greedy then RB.Fork(pcb + 1, e1 + 2) else RB.Fork(e1 + 2, pcb + 1))
+          && NR.GetPcRE(c, pcb + 1) == Some(RB.SetQuantToClock(qid, false))
+          && NR.GetPcRE(c, pcb + 2) == Some(RB.BeginLoop)
+          && NR.NfaRepRE(r1, c, pcb + 3, e1)
+          && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+          && NR.GetPcRE(c, e1 + 1) == Some(RB.Jmp(pcb))
+          && pce == e1 + 2;
+        NR.NfaRepIncrRE(r1, c, pcb + 3, e1);
+        if p == pcb + 2 {
+          if ColdRE(c, p + 1) {
+            var n: nat :| ColdF(c, pcb + 3, n);
+            ColdPropagatesFNested(r1, c, pcb + 3, e1, n);
+            assert !AR.BackForkAt(c, e1);
+            assert false;
+          }
+        } else {
+          assert p != pcb && p != pcb + 1 && p != e1 && p != e1 + 1;
+          assert pcb + 3 <= p < e1;
+          BeginLoopColdSafeAtNested(r1, c, pcb + 3, e1, p);
+        }
+      } else if q.max.Some? {
+        var em := NR.NfaRepREQuantInv(nul, qid, q, r1, c, pcb, pce);
+        var mn := q.min as nat;
+        var kx := (q.max.value - q.min) as nat;
+        NR.NfaRepIncrMinRE(mn, qid, r1, c, pcb, em);
+        NR.NfaRepIncrOptRE(kx, q.greedy, qid, r1, c, em, pce);
+        if p < em {
+          BeginLoopColdSafeAtMinNested(mn, qid, r1, c, pcb, em, p);
+        } else {
+          BeginLoopColdSafeAtOptNested(kx, q.greedy, qid, r1, c, em, pce, p);
+        }
+      } else {
+        var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, c, pcb, pce);
+        var mn1 := (q.min - 1) as nat;
+        NR.NfaRepIncrMinRE(mn1, qid, r1, c, pcb, em);
+        NR.NfaRepIncrRE(r1, c, em + 1, e1);
+        if p < em {
+          BeginLoopColdSafeAtMinNested(mn1, qid, r1, c, pcb, em, p);
+        } else {
+          assert p != em && p != e1;
+          assert em + 1 <= p < e1;
+          BeginLoopColdSafeAtNested(r1, c, em + 1, e1, p);
         }
       }
   }

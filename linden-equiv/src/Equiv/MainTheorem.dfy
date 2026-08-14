@@ -2875,6 +2875,59 @@ module LindenElkMain {
     assert bestT == LT.FirstLeaf(tstar, inp);
   }
 
+  /** L4 depth-k (ADDITIVE): `FindMatchBodyAtCp` under the nested fragment.
+      Verbatim `FindMatchBodyAtCp` with `StaticOkRE -> StaticOkNestedRE`, the
+      entry establisher `InitialPikeInvFullREAtCp -> ...Nested`, and the
+      simulation `FindMatchSimRE -> FindMatchSimRENested` (Phase 1). This runs a
+      NESTED-fragment body's forward match from `cp` through the depth-k sim and
+      pins the answer to the checked tree's first leaf — the engine half of the
+      depth-k keystone STEP, now unblocked by Phase 1. The tree-correctness
+      callees (`TrcREToLinden`/`TreeRepPikeSubtree`/`InitPiketreeInv`/
+      `PikeTreeTrcCorrect`) are depth-blind. */
+  lemma FindMatchBodyAtCpNested(
+      rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat,
+      ngroups: nat, str: string, cp: nat, tstar: LT.Tree, ov: LOr.OracleView,
+      cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
+    returns (bestT: Option<LT.Leaf>)
+    requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires qm.ov == ov
+    requires !rer.ignoreCase && !rer.multiline
+    requires cp <= |str|
+    requires bodycode == CP.compile_to_bytecode(body)
+    requires TT.TreeThreadRE(rer, qm, bodycode, PIV.InpOfCp(str, cp), tstar, 0, false)
+    requires TR.TreeRepRE(qm, tstar, bodycode, 0, PIV.InpOfCp(str, cp), false)
+    ensures var inp := PIV.InpOfCp(str, cp);
+            var inits := AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                       AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward));
+            PIV.BestMatchRE(body, bestT, AI.FFindMatch(bodycode, str, inits, ov, LAnc.Forward, cdns).0)
+            && bestT == LT.FirstLeaf(tstar, inp)
+  {
+    var inp := PIV.InpOfCp(str, cp);
+    var ctx := AI.cp_context(cp, str, LAnc.Forward);
+    var capture := AReg.init_regs(ncap);
+    var look := AReg.init_regs(nlook);
+    var quant := AReg.init_regs(nquant);
+    var inits := AI.FInitState(bodycode, cp, capture, look, quant, 0, ctx);
+
+    // Entry invariant at cp (fresh registers) -> the full simulation invariant.
+    PSM.InitialPikeInvFullREAtCpNested(rer, qm, body, bodycode, endl, ngroups, str, cp, tstar,
+                                       inits, ncap, nlook, nquant);
+    var pts0 := PT.PikeTreeInitialState(tstar, inp);
+    assert ctx.nextchar == AI.get_char(str, cp);
+    bestT := PSM.FindMatchSimRENested(rer, qm, body, bodycode, endl, ngroups, str, pts0, inits,
+                                ov, LAnc.Forward, cdns, ncap, nlook, nquant);
+    assert PSM.TrcRE(pts0, PT.PTS_final(bestT));
+    assert PIV.BestMatchRE(body, bestT, AI.FFindMatch(bodycode, str, inits, ov, LAnc.Forward, cdns).0);
+
+    // Pin bestT to the checked tree's first leaf.
+    TrcREToLinden(pts0, PT.PTS_final(bestT));
+    TR.TreeRepPikeSubtree(qm, tstar, bodycode, 0, inp, false);
+    PT.InitPiketreeInv(tstar, inp);
+    CR.PikeTreeTrcCorrect(pts0, PT.PTS_final(bestT), LT.FirstLeaf(tstar, inp));
+    assert bestT == LT.FirstLeaf(tstar, inp);
+  }
+
   /** §4b, the tree-construction port: for a fragment `body` (a look-free
       capturing plus-fragment is in `LookBehindFragmentRE`, since its
       `Re_lookaround` case — which still bans captures — never fires), the body

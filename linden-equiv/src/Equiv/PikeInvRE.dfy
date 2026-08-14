@@ -4711,6 +4711,205 @@ module LindenElkPikeInv {
     }
   }
 
+  // ===========================================================================
+  // L4 depth-k (ADDITIVE): the look-independence value tower generalized from
+  // `LookBehindFragmentRE` to the arbitrary-nesting `NestedFragmentRE`. THIS is
+  // the core value-layer recursion: at a `Re_lookaround` node these filter
+  // frames actually DESCEND INTO the body (the "keep" branch), which under
+  // nesting is legitimate because the body is itself a nested fragment. The
+  // depth-1 originals used `PlusIsLookBehindFragmentRE(r1)` to re-establish the
+  // fragment on the (plus-shaped, look-free) body; the nested variants simply
+  // drop that call and recurse into the `*Nested` sibling, since
+  // `NestedFragmentRE(Re_lookaround(_,_,r1)) ==> NestedFragmentRE(r1)`. The
+  // blind helpers (`FilterAllKeepsNonStart`, `FilterAllCrPointwise`,
+  // `SetIdxKeepsOther`, `CaptureRegsSetMono`, `Start/EndRegInCaptureRegsSet`)
+  // are reused directly, as is the already-blind `GmOfLiveInsideLookAbsent`.
+  // ===========================================================================
+
+  /** `FilterCaptureVsAll` under the nested fragment (recurses into the look body). */
+  lemma FilterCaptureVsAllNested(r: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, M: int, j: int)
+    requires NR.NestedFragmentRE(r)
+    requires forall cid: nat :: cid in CapIds(r) ==> CP.start_reg(cid) != j
+    ensures AI.get_idx(AI.filter_capture(r, A, cc, lc, qc, M), j) == AI.get_idx(AI.filter_all(r, A), j)
+    decreases r
+  {
+    match r
+    case Re_lookaround(lid, la, r1) =>
+      var lv := AI.get_idx(lc, lid);
+      if lv < 0 || lv < M {} else { FilterCaptureVsAllNested(r1, A, cc, lc, qc, -1, j); }
+    case Re_empty => case Re_character(_) => case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      FilterCaptureVsAllNested(r1, A, cc, lc, qc, M, j);
+      FilterCaptureVsAllNested(r2, AI.filter_capture(r1, A, cc, lc, qc, M), cc, lc, qc, M, j);
+      FilterAllKeepsNonStart(r2, AI.filter_capture(r1, A, cc, lc, qc, M), j);
+      FilterAllKeepsNonStart(r2, AI.filter_all(r1, A), j);
+    case Re_con(r1, r2) =>
+      FilterCaptureVsAllNested(r1, A, cc, lc, qc, M, j);
+      FilterCaptureVsAllNested(r2, AI.filter_capture(r1, A, cc, lc, qc, M), cc, lc, qc, M, j);
+      FilterAllKeepsNonStart(r2, AI.filter_capture(r1, A, cc, lc, qc, M), j);
+      FilterAllKeepsNonStart(r2, AI.filter_all(r1, A), j);
+    case Re_quant(nul, qid, q, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      if qv < M {} else { FilterCaptureVsAllNested(r1, A, cc, lc, qc, qv, j); }
+    case Re_capture(cid, r1) =>
+      var start := AI.get_idx(cc, CP.start_reg(cid));
+      if cid >= 0 { SetIdxKeepsOther(A, CP.start_reg(cid), j); }
+      if start < 0 {
+        FilterCaptureVsAllNested(r1, A, cc, lc, qc, M, j);
+        FilterAllKeepsNonStart(r1, A, j);
+        FilterAllKeepsNonStart(r1, AI.set_idx(A, CP.start_reg(cid), -1), j);
+      } else if start < M {
+      } else {
+        FilterCaptureVsAllNested(r1, A, cc, lc, qc, M, j);
+        FilterAllKeepsNonStart(r1, A, j);
+        FilterAllKeepsNonStart(r1, AI.set_idx(A, CP.start_reg(cid), -1), j);
+      }
+  }
+
+  /** `FilterCaptureCrPointwise` under the nested fragment (recurses into the look body). */
+  lemma FilterCaptureCrPointwiseNested(r: R.regex, X: seq<int>, Y: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, M: int, j: int)
+    requires NR.NestedFragmentRE(r)
+    requires AI.get_idx(X, j) == AI.get_idx(Y, j)
+    ensures AI.get_idx(AI.filter_capture(r, X, cc, lc, qc, M), j) == AI.get_idx(AI.filter_capture(r, Y, cc, lc, qc, M), j)
+    decreases r
+  {
+    match r
+    case Re_lookaround(lid, la, r1) =>
+      var lv := AI.get_idx(lc, lid);
+      if lv < 0 || lv < M { FilterAllCrPointwise(r1, X, Y, j); }
+      else { FilterCaptureCrPointwiseNested(r1, X, Y, cc, lc, qc, -1, j); }
+    case Re_empty => case Re_character(_) => case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      FilterCaptureCrPointwiseNested(r1, X, Y, cc, lc, qc, M, j);
+      FilterCaptureCrPointwiseNested(r2, AI.filter_capture(r1, X, cc, lc, qc, M), AI.filter_capture(r1, Y, cc, lc, qc, M), cc, lc, qc, M, j);
+    case Re_con(r1, r2) =>
+      FilterCaptureCrPointwiseNested(r1, X, Y, cc, lc, qc, M, j);
+      FilterCaptureCrPointwiseNested(r2, AI.filter_capture(r1, X, cc, lc, qc, M), AI.filter_capture(r1, Y, cc, lc, qc, M), cc, lc, qc, M, j);
+    case Re_quant(nul, qid, q, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      if qv < M { FilterAllCrPointwise(r1, X, Y, j); } else { FilterCaptureCrPointwiseNested(r1, X, Y, cc, lc, qc, qv, j); }
+    case Re_capture(cid, r1) =>
+      var start := AI.get_idx(cc, CP.start_reg(cid));
+      if start < 0 { FilterAllCrPointwise(r1, X, Y, j); }
+      else if start < M {
+        if j == CP.start_reg(cid) {} else { SetIdxKeepsOther(X, CP.start_reg(cid), j); SetIdxKeepsOther(Y, CP.start_reg(cid), j); }
+        FilterAllCrPointwise(r1, AI.set_idx(X, CP.start_reg(cid), -1), AI.set_idx(Y, CP.start_reg(cid), -1), j);
+      } else { FilterCaptureCrPointwiseNested(r1, X, Y, cc, lc, qc, M, j); }
+  }
+
+  /** `LkValAtNonStart` under the nested fragment: a look node's filter output at
+      a position outside the body's capture-starts is the input there, at any
+      body nesting depth (uses `FilterCaptureVsAllNested`). */
+  lemma LkValAtNonStartNested(lid: R.lookid, la: R.lookaround, r1: R.regex, cr: seq<int>,
+                              cc: seq<int>, lc: seq<int>, qc: seq<int>, M: int, j: int)
+    requires NR.NestedFragmentRE(r1)
+    requires forall cid: nat :: cid in CapIds(r1) ==> CP.start_reg(cid) != j
+    ensures AI.get_idx(AI.filter_capture(R.Re_lookaround(lid, la, r1), cr, cc, lc, qc, M), j)
+         == AI.get_idx(cr, j)
+  {
+    var lv := AI.get_idx(lc, lid);
+    if lv < 0 || lv < M {
+      FilterAllKeepsNonStart(r1, cr, j);
+    } else {
+      FilterCaptureVsAllNested(r1, cr, cc, lc, qc, -1, j);
+      FilterAllKeepsNonStart(r1, cr, j);
+    }
+  }
+
+  /** `FilterCaptureLookIndep` under the nested fragment: the filter output
+      agrees at every position outside `W = CaptureRegsSet(CapIdsInLooks(r))` for
+      two look banks, at any nesting depth. */
+  lemma FilterCaptureLookIndepNested(r: R.regex, cap_regs: seq<int>, cap_clocks: seq<int>,
+                                     lc1: seq<int>, lc2: seq<int>, quant_clocks: seq<int>, maxclock: int)
+    requires NR.NestedFragmentRE(r)
+    ensures forall j :: j !in CaptureRegsSet(CapIdsInLooks(r)) ==>
+      AI.get_idx(AI.filter_capture(r, cap_regs, cap_clocks, lc1, quant_clocks, maxclock), j)
+      == AI.get_idx(AI.filter_capture(r, cap_regs, cap_clocks, lc2, quant_clocks, maxclock), j)
+    decreases r
+  {
+    match r
+    case Re_empty => case Re_character(_) => case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      var Y1 := AI.filter_capture(r1, cap_regs, cap_clocks, lc1, quant_clocks, maxclock);
+      var Y2 := AI.filter_capture(r1, cap_regs, cap_clocks, lc2, quant_clocks, maxclock);
+      FilterCaptureLookIndepNested(r1, cap_regs, cap_clocks, lc1, lc2, quant_clocks, maxclock);
+      FilterCaptureLookIndepNested(r2, Y2, cap_clocks, lc1, lc2, quant_clocks, maxclock);
+      forall j | j !in CaptureRegsSet(CapIdsInLooks(r))
+        ensures AI.get_idx(AI.filter_capture(r2, Y1, cap_clocks, lc1, quant_clocks, maxclock), j)
+             == AI.get_idx(AI.filter_capture(r2, Y2, cap_clocks, lc2, quant_clocks, maxclock), j)
+      {
+        CaptureRegsSetMono(CapIdsInLooks(r1), CapIdsInLooks(r));
+        CaptureRegsSetMono(CapIdsInLooks(r2), CapIdsInLooks(r));
+        assert AI.get_idx(Y1, j) == AI.get_idx(Y2, j);
+        FilterCaptureCrPointwiseNested(r2, Y1, Y2, cap_clocks, lc1, quant_clocks, maxclock, j);
+      }
+    case Re_con(r1, r2) =>
+      var Y1 := AI.filter_capture(r1, cap_regs, cap_clocks, lc1, quant_clocks, maxclock);
+      var Y2 := AI.filter_capture(r1, cap_regs, cap_clocks, lc2, quant_clocks, maxclock);
+      FilterCaptureLookIndepNested(r1, cap_regs, cap_clocks, lc1, lc2, quant_clocks, maxclock);
+      FilterCaptureLookIndepNested(r2, Y2, cap_clocks, lc1, lc2, quant_clocks, maxclock);
+      forall j | j !in CaptureRegsSet(CapIdsInLooks(r))
+        ensures AI.get_idx(AI.filter_capture(r2, Y1, cap_clocks, lc1, quant_clocks, maxclock), j)
+             == AI.get_idx(AI.filter_capture(r2, Y2, cap_clocks, lc2, quant_clocks, maxclock), j)
+      {
+        CaptureRegsSetMono(CapIdsInLooks(r1), CapIdsInLooks(r));
+        CaptureRegsSetMono(CapIdsInLooks(r2), CapIdsInLooks(r));
+        assert AI.get_idx(Y1, j) == AI.get_idx(Y2, j);
+        FilterCaptureCrPointwiseNested(r2, Y1, Y2, cap_clocks, lc1, quant_clocks, maxclock, j);
+      }
+    case Re_quant(_, qid, _, r1) =>
+      var qv := AI.get_idx(quant_clocks, qid);
+      if qv < maxclock { } else { FilterCaptureLookIndepNested(r1, cap_regs, cap_clocks, lc1, lc2, quant_clocks, qv); }
+    case Re_capture(cid, r1) =>
+      var start := AI.get_idx(cap_clocks, CP.start_reg(cid));
+      if start < 0 { } else if start < maxclock { } else { FilterCaptureLookIndepNested(r1, cap_regs, cap_clocks, lc1, lc2, quant_clocks, maxclock); }
+    case Re_lookaround(lid, la, r1) =>
+      forall j | j !in CaptureRegsSet(CapIdsInLooks(r))   // W == CaptureRegsSet(CapIds(r1))
+        ensures AI.get_idx(AI.filter_capture(r, cap_regs, cap_clocks, lc1, quant_clocks, maxclock), j)
+             == AI.get_idx(AI.filter_capture(r, cap_regs, cap_clocks, lc2, quant_clocks, maxclock), j)
+      {
+        assert forall cid: nat :: cid in CapIds(r1) ==> CP.start_reg(cid) != j by {
+          forall cid: nat | cid in CapIds(r1) ensures CP.start_reg(cid) != j { StartRegInCaptureRegsSet(CapIds(r1), cid); }
+        }
+        LkValAtNonStartNested(lid, la, r1, cap_regs, cap_clocks, lc1, quant_clocks, maxclock, j);
+        LkValAtNonStartNested(lid, la, r1, cap_regs, cap_clocks, lc2, quant_clocks, maxclock, j);
+      }
+  }
+
+  /** `GmOfLiveLookIndep` under the nested fragment: on OUTSIDE-look groups,
+      `GmOfLive` (hence `ThreadTracksGm`) is independent of the look bank, at any
+      nesting depth. The keystone value fact `PreserveOraclePassNested` consumes. */
+  lemma GmOfLiveLookIndepNested(ast: R.regex, caps: AReg.Regs, look1: AReg.Regs, look2: AReg.Regs,
+                                quant: AReg.Regs)
+    requires NR.NestedFragmentRE(ast)
+    ensures forall g: nat :: g !in CapIdsInLooks(ast) ==>
+      ((g in GmOfLive(ast, caps, look1, quant)) <==> (g in GmOfLive(ast, caps, look2, quant)))
+      && (g in GmOfLive(ast, caps, look1, quant) ==>
+          GmOfLive(ast, caps, look1, quant)[g] == GmOfLive(ast, caps, look2, quant)[g])
+  {
+    var (cap_regs, cap_clocks) := AReg.as_arrays(caps);
+    var lc1 := AReg.as_arrays(look1).1;
+    var lc2 := AReg.as_arrays(look2).1;
+    var qc := AReg.as_arrays(quant).1;
+    var W := CaptureRegsSet(CapIdsInLooks(ast));
+    FilterCaptureLookIndepNested(ast, cap_regs, cap_clocks, lc1, lc2, qc, -1);
+    var f1 := AI.filter_reset(ast, caps, look1, quant, -1);
+    var f2 := AI.filter_reset(ast, caps, look2, quant, -1);
+    assert f1 == AI.filter_capture(ast, cap_regs, cap_clocks, lc1, qc, -1);
+    assert f2 == AI.filter_capture(ast, cap_regs, cap_clocks, lc2, qc, -1);
+    forall g: nat | g !in CapIdsInLooks(ast)
+      ensures ((g in GmOfLive(ast, caps, look1, quant)) <==> (g in GmOfLive(ast, caps, look2, quant)))
+           && (g in GmOfLive(ast, caps, look1, quant) ==>
+               GmOfLive(ast, caps, look1, quant)[g] == GmOfLive(ast, caps, look2, quant)[g])
+    {
+      StartRegInCaptureRegsSet(CapIdsInLooks(ast), g);
+      EndRegInCaptureRegsSet(CapIdsInLooks(ast), g);
+      assert CP.start_reg(g) !in W && CP.end_reg(g) !in W;
+      assert AI.get_idx(f1, CP.start_reg(g)) == AI.get_idx(f2, CP.start_reg(g));
+      assert AI.get_idx(f1, CP.end_reg(g)) == AI.get_idx(f2, CP.end_reg(g));
+    }
+  }
+
   // On a properly closed match (every present group with a set end has
   // end_clock >= start_clock), the live denotation coincides with GmOf — so the
   // final answer, extracted via GmOf + GmOfCapArrayBridge, is unaffected.
@@ -5091,6 +5290,425 @@ module LindenElkPikeInv {
     assert g1 == target;
   }
 
+  // ===========================================================================
+  // L4 depth-k (ADDITIVE): the OPEN value tower generalized from
+  // `LookBehindFragmentRE` to `NestedFragmentRE`. `FilterOpenFrame`/`FilterCapture*`
+  // frame a SINGLE outside-look start-register write. Two look-case shapes appear:
+  // the frame lemmas that DESCEND toward `gid` (`FilterOpenFrame`) hit `assert
+  // false` at a look node (an outside-look gid never lives in a look body); the
+  // sibling frames (`FilterCaptureFrameAt`/`Outside`/`GeqNeg1`/`AllStale`) RECURSE
+  // into the body's keep branch — legitimate under nesting. The blind helpers
+  // (`FilterAllFrameAt`/`FilterAllOutside`/`FilterAllGeqNeg1`/`FilterCaptureLen`/
+  // `FilterAllAgreeOutsideOwn`/`FilterCaptureAgreeOutsideOwn`/`SetIdxKeepsOther`/
+  // `CapIdsSplit`) and `GmOfLiveOpen` are reused directly.
+  // ===========================================================================
+
+  /** `FilterCaptureOutside` under the nested fragment. */
+  lemma FilterCaptureOutsideNested(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, mx: int, g: nat)
+    requires NR.NestedFragmentRE(r)
+    requires g !in CapIds(r)
+    ensures AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), CP.start_reg(g)) == AI.get_idx(cr, CP.start_reg(g))
+    decreases r
+  {
+    match r
+    case Re_lookaround(lid, la, r1) =>
+      assert forall g0: nat :: g0 in CapIds(r1) ==> CP.start_reg(g0) != CP.start_reg(g) by {
+        forall g0: nat | g0 in CapIds(r1) ensures CP.start_reg(g0) != CP.start_reg(g) { assert g0 != g; }
+      }
+      var lv := AI.get_idx(lc, lid);
+      if lv < 0 || lv < mx { FilterAllAgreeOutsideOwn(r1, cr, CP.start_reg(g)); }
+      else { FilterCaptureAgreeOutsideOwn(r1, cr, cc, lc, qc, -1, CP.start_reg(g)); }
+    case Re_empty => case Re_character(_) => case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, g);
+      FilterCaptureOutsideNested(r2, AI.filter_capture(r1, cr, cc, lc, qc, mx), cc, lc, qc, mx, g);
+    case Re_con(r1, r2) =>
+      FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, g);
+      FilterCaptureOutsideNested(r2, AI.filter_capture(r1, cr, cc, lc, qc, mx), cc, lc, qc, mx, g);
+    case Re_quant(nul, qid, q, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      if qv < mx { FilterAllOutside(r1, cr, g); } else { FilterCaptureOutsideNested(r1, cr, cc, lc, qc, qv, g); }
+    case Re_capture(cid, r1) =>
+      var start := AI.get_idx(cc, CP.start_reg(cid));
+      if start < 0 { FilterAllOutside(r1, cr, g); }
+      else if start < mx {
+        SetIdxKeepsOther(cr, CP.start_reg(cid), CP.start_reg(g));
+        FilterAllOutside(r1, AI.set_idx(cr, CP.start_reg(cid), -1), g);
+      } else { FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, g); }
+  }
+
+  /** `FilterCaptureGeqNeg1` under the nested fragment. */
+  lemma FilterCaptureGeqNeg1Nested(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, mx: int, i: int)
+    requires NR.NestedFragmentRE(r)
+    requires AI.get_idx(cr, i) >= -1
+    ensures AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), i) >= -1
+    decreases r
+  {
+    match r
+    case Re_lookaround(lid, la, r1) =>
+      var lv := AI.get_idx(lc, lid);
+      if lv < 0 || lv < mx { FilterAllGeqNeg1(r1, cr, i); }
+      else { FilterCaptureGeqNeg1Nested(r1, cr, cc, lc, qc, -1, i); }
+    case Re_empty => case Re_character(_) => case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      FilterCaptureGeqNeg1Nested(r1, cr, cc, lc, qc, mx, i);
+      FilterCaptureGeqNeg1Nested(r2, AI.filter_capture(r1, cr, cc, lc, qc, mx), cc, lc, qc, mx, i);
+    case Re_con(r1, r2) =>
+      FilterCaptureGeqNeg1Nested(r1, cr, cc, lc, qc, mx, i);
+      FilterCaptureGeqNeg1Nested(r2, AI.filter_capture(r1, cr, cc, lc, qc, mx), cc, lc, qc, mx, i);
+    case Re_quant(nul, qid, q, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      if qv < mx { FilterAllGeqNeg1(r1, cr, i); } else { FilterCaptureGeqNeg1Nested(r1, cr, cc, lc, qc, qv, i); }
+    case Re_capture(cid, r1) =>
+      var start := AI.get_idx(cc, CP.start_reg(cid));
+      if start < 0 { FilterAllGeqNeg1(r1, cr, i); }
+      else if start < mx {
+        if i == CP.start_reg(cid) {} else { SetIdxKeepsOther(cr, CP.start_reg(cid), i); }
+        FilterAllGeqNeg1(r1, AI.set_idx(cr, CP.start_reg(cid), -1), i);
+      } else { FilterCaptureGeqNeg1Nested(r1, cr, cc, lc, qc, mx, i); }
+  }
+
+  /** `FilterCaptureFrameAt` under the nested fragment. */
+  lemma FilterCaptureFrameAtNested(r: R.regex, A: seq<int>, B: seq<int>, cc: seq<int>, cc': seq<int>,
+                             lc: seq<int>, qc: seq<int>, mx: int, gid: nat)
+    requires NR.NestedFragmentRE(r)
+    requires gid !in CapIds(r)
+    requires |A| == |B|
+    requires forall j :: j != CP.start_reg(gid) ==> AI.get_idx(A, j) == AI.get_idx(B, j)
+    requires forall j :: j != CP.start_reg(gid) ==> AI.get_idx(cc, j) == AI.get_idx(cc', j)
+    ensures forall j :: j != CP.start_reg(gid)
+                        ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc, mx), j)
+                            == AI.get_idx(AI.filter_capture(r, B, cc', lc, qc, mx), j)
+    decreases r
+  {
+    FilterCaptureLen(r, A, cc, lc, qc, mx); FilterCaptureLen(r, B, cc', lc, qc, mx);
+    match r
+    case Re_lookaround(lid, la, r1) =>
+      var lv := AI.get_idx(lc, lid);
+      if lv < 0 || lv < mx { FilterAllFrameAt(r1, A, B, gid); }
+      else { FilterCaptureFrameAtNested(r1, A, B, cc, cc', lc, qc, -1, gid); }
+    case Re_empty => case Re_character(_) => case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      FilterCaptureFrameAtNested(r1, A, B, cc, cc', lc, qc, mx, gid);
+      FilterCaptureLen(r1, A, cc, lc, qc, mx); FilterCaptureLen(r1, B, cc', lc, qc, mx);
+      var a := AI.filter_capture(r1, A, cc, lc, qc, mx); var b := AI.filter_capture(r1, B, cc', lc, qc, mx);
+      forall j | j != CP.start_reg(gid) ensures AI.get_idx(a, j) == AI.get_idx(b, j) {}
+      FilterCaptureFrameAtNested(r2, a, b, cc, cc', lc, qc, mx, gid);
+    case Re_con(r1, r2) =>
+      FilterCaptureFrameAtNested(r1, A, B, cc, cc', lc, qc, mx, gid);
+      FilterCaptureLen(r1, A, cc, lc, qc, mx); FilterCaptureLen(r1, B, cc', lc, qc, mx);
+      var a := AI.filter_capture(r1, A, cc, lc, qc, mx); var b := AI.filter_capture(r1, B, cc', lc, qc, mx);
+      forall j | j != CP.start_reg(gid) ensures AI.get_idx(a, j) == AI.get_idx(b, j) {}
+      FilterCaptureFrameAtNested(r2, a, b, cc, cc', lc, qc, mx, gid);
+    case Re_quant(nul, qid, q, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      if qv < mx { FilterAllFrameAt(r1, A, B, gid); }
+      else { FilterCaptureFrameAtNested(r1, A, B, cc, cc', lc, qc, qv, gid); }
+    case Re_capture(cid, r1) =>
+      assert CP.start_reg(cid) != CP.start_reg(gid);
+      var start := AI.get_idx(cc, CP.start_reg(cid));
+      assert AI.get_idx(cc', CP.start_reg(cid)) == start;
+      if start < 0 { FilterAllFrameAt(r1, A, B, gid); }
+      else if start < mx {
+        var A2 := AI.set_idx(A, CP.start_reg(cid), -1); var B2 := AI.set_idx(B, CP.start_reg(cid), -1);
+        forall j | j != CP.start_reg(gid) ensures AI.get_idx(A2, j) == AI.get_idx(B2, j) {
+          if j == CP.start_reg(cid) {} else { SetIdxKeepsOther(A, CP.start_reg(cid), j); SetIdxKeepsOther(B, CP.start_reg(cid), j); }
+        }
+        FilterAllFrameAt(r1, A2, B2, gid);
+      } else {
+        FilterCaptureFrameAtNested(r1, A, B, cc, cc', lc, qc, mx, gid);
+      }
+  }
+
+  /** `FilterCaptureAllStale` under the nested fragment (recurses into the look body). */
+  lemma FilterCaptureAllStaleNested(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, M: int)
+    requires NR.NestedFragmentRE(r)
+    requires LooksCapUnset(r, cc)
+    requires forall cid: nat :: cid in CapIds(r)
+                               ==> AI.get_idx(cc, CP.start_reg(cid)) < M
+                                   || AI.get_idx(cc, CP.start_reg(cid)) < 0
+    requires forall k :: AI.get_idx(cr, k) >= -1
+    requires forall cid: nat :: cid in CapIds(r) && AI.get_idx(cc, CP.start_reg(cid)) < 0
+                               ==> AI.get_idx(cr, CP.start_reg(cid)) < 0
+    ensures AI.filter_capture(r, cr, cc, lc, qc, M) == AI.filter_all(r, cr)
+    decreases r
+  {
+    match r
+    case Re_lookaround(lid, la, r1) =>
+      var lv := AI.get_idx(lc, lid);
+      if lv < 0 || lv < M {
+      } else {
+        CapIdsSplit(r1);
+        assert LooksCapUnset(r1, cc);
+        FilterCaptureAllStaleNested(r1, cr, cc, lc, qc, -1);
+      }
+    case Re_empty => case Re_character(_) => case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      FilterCaptureAllStaleNested(r1, cr, cc, lc, qc, M);
+      var cr2 := AI.filter_all(r1, cr);
+      forall k ensures AI.get_idx(cr2, k) >= -1 { FilterAllGeqNeg1(r1, cr, k); }
+      forall cid: nat | cid in CapIds(r2) && AI.get_idx(cc, CP.start_reg(cid)) < 0
+        ensures AI.get_idx(cr2, CP.start_reg(cid)) < 0 { FilterAllNeg(r1, cr, CP.start_reg(cid)); }
+      FilterCaptureAllStaleNested(r2, cr2, cc, lc, qc, M);
+    case Re_con(r1, r2) =>
+      FilterCaptureAllStaleNested(r1, cr, cc, lc, qc, M);
+      var cr2 := AI.filter_all(r1, cr);
+      forall k ensures AI.get_idx(cr2, k) >= -1 { FilterAllGeqNeg1(r1, cr, k); }
+      forall cid: nat | cid in CapIds(r2) && AI.get_idx(cc, CP.start_reg(cid)) < 0
+        ensures AI.get_idx(cr2, CP.start_reg(cid)) < 0 { FilterAllNeg(r1, cr, CP.start_reg(cid)); }
+      FilterCaptureAllStaleNested(r2, cr2, cc, lc, qc, M);
+    case Re_quant(nul, qid, q, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      if qv < M {
+      } else {
+        FilterCaptureAllStaleNested(r1, cr, cc, lc, qc, qv);
+      }
+    case Re_capture(cid, r1) =>
+      var start := AI.get_idx(cc, CP.start_reg(cid));
+      if start < 0 {
+        assert AI.get_idx(cr, CP.start_reg(cid)) < 0;
+        assert AI.get_idx(cr, CP.start_reg(cid)) == -1;
+        assert AI.set_idx(cr, CP.start_reg(cid), -1) == cr;
+      }
+  }
+
+  /** `FilterOpenFrame` under the nested fragment: the look case is `assert false`
+      (an outside-look gid never lives in a look body); the sibling frames use the
+      `*Nested` filter frames. */
+  lemma FilterOpenFrameNested(r: R.regex, cr: seq<int>, cr': seq<int>, cc: seq<int>, cc': seq<int>,
+                        lc: seq<int>, qc: seq<int>, mx: int, gid: nat, cp: int, clk: int)
+    requires NR.NestedFragmentRE(r)
+    requires CapUnique(r)
+    requires gid in CapIds(r)
+    requires gid !in CapIdsInLooks(r)
+    requires cp >= 0 && clk >= 0
+    requires clk >= MxAtGid(r, cc, qc, mx, gid)
+    requires PathPresent(r, cc, qc, mx, gid)
+    requires |cr| == |cr'|
+    requires AI.get_idx(cc, CP.start_reg(gid)) < MxAtGid(r, cc, qc, mx, gid)
+          || AI.get_idx(cc, CP.start_reg(gid)) < 0
+    requires AI.get_idx(cr', CP.start_reg(gid)) == cp
+    requires AI.get_idx(cc', CP.start_reg(gid)) == clk
+    requires forall j :: j != CP.start_reg(gid) ==> AI.get_idx(cr', j) == AI.get_idx(cr, j)
+    requires forall j :: j != CP.start_reg(gid) ==> AI.get_idx(cc', j) == AI.get_idx(cc, j)
+    requires forall k :: AI.get_idx(cr, k) >= -1
+    requires forall k :: AI.get_idx(cr', k) >= -1
+    requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0 ==> AI.get_idx(cr, CP.start_reg(c)) < 0
+    requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc', CP.start_reg(c)) < 0 ==> AI.get_idx(cr', CP.start_reg(c)) < 0
+    requires forall sg: nat :: sg in CapIds(BodyOf(r, gid))
+                              ==> AI.get_idx(cc, CP.start_reg(sg)) < MxAtGid(r, cc, qc, mx, gid)
+                                  || AI.get_idx(cc, CP.start_reg(sg)) < 0
+    requires LooksCapUnset(BodyOf(r, gid), cc)
+    ensures AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), CP.start_reg(gid)) < 0
+    ensures AI.get_idx(AI.filter_capture(r, cr', cc', lc, qc, mx), CP.start_reg(gid)) == cp
+    ensures forall j :: j != CP.start_reg(gid)
+                        ==> AI.get_idx(AI.filter_capture(r, cr', cc', lc, qc, mx), j)
+                            == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), j)
+    decreases r
+  {
+    match r
+    case Re_empty => case Re_character(_) => case Re_anchor(_) =>
+    case Re_lookaround(_, _, r1) =>
+      assert gid in CapIdsInLooks(r);
+      assert false;
+    case Re_alt(r1, r2) =>
+      var X := AI.filter_capture(r1, cr, cc, lc, qc, mx);
+      var X' := AI.filter_capture(r1, cr', cc', lc, qc, mx);
+      FilterCaptureLen(r1, cr, cc, lc, qc, mx); FilterCaptureLen(r1, cr', cc', lc, qc, mx);
+      if gid in CapIds(r1) {
+        assert MxAtGid(r, cc, qc, mx, gid) == MxAtGid(r1, cc, qc, mx, gid);
+        assert BodyOf(r, gid) == BodyOf(r1, gid);
+        FilterOpenFrameNested(r1, cr, cr', cc, cc', lc, qc, mx, gid, cp, clk);
+        assert gid !in CapIds(r2) by { if gid in CapIds(r2) { assert gid in CapIds(r1) * CapIds(r2); } }
+        FilterCaptureFrameAtNested(r2, X', X, cc', cc, lc, qc, mx, gid);
+        FilterCaptureOutsideNested(r2, X, cc, lc, qc, mx, gid);
+        FilterCaptureOutsideNested(r2, X', cc', lc, qc, mx, gid);
+      } else {
+        assert gid in CapIds(r2) && gid !in CapIds(r1);
+        FilterCaptureFrameAtNested(r1, cr', cr, cc', cc, lc, qc, mx, gid);
+        FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, gid);
+        FilterCaptureOutsideNested(r1, cr', cc', lc, qc, mx, gid);
+        forall k ensures AI.get_idx(X, k) >= -1 { FilterCaptureGeqNeg1Nested(r1, cr, cc, lc, qc, mx, k); }
+        forall k ensures AI.get_idx(X', k) >= -1 { FilterCaptureGeqNeg1Nested(r1, cr', cc', lc, qc, mx, k); }
+        forall c: nat | c in CapIds(r2) && AI.get_idx(cc, CP.start_reg(c)) < 0
+          ensures AI.get_idx(X, CP.start_reg(c)) < 0
+        {
+          assert c !in CapIds(r1) by { if c in CapIds(r1) { assert c in CapIds(r1) * CapIds(r2); } }
+          FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, c);
+        }
+        forall c: nat | c in CapIds(r2) && AI.get_idx(cc', CP.start_reg(c)) < 0
+          ensures AI.get_idx(X', CP.start_reg(c)) < 0
+        {
+          assert c !in CapIds(r1) by { if c in CapIds(r1) { assert c in CapIds(r1) * CapIds(r2); } }
+          FilterCaptureOutsideNested(r1, cr', cc', lc, qc, mx, c);
+        }
+        assert MxAtGid(r, cc, qc, mx, gid) == MxAtGid(r2, cc, qc, mx, gid);
+        assert BodyOf(r, gid) == BodyOf(r2, gid);
+        FilterOpenFrameNested(r2, X, X', cc, cc', lc, qc, mx, gid, cp, clk);
+      }
+    case Re_con(r1, r2) =>
+      var X := AI.filter_capture(r1, cr, cc, lc, qc, mx);
+      var X' := AI.filter_capture(r1, cr', cc', lc, qc, mx);
+      FilterCaptureLen(r1, cr, cc, lc, qc, mx); FilterCaptureLen(r1, cr', cc', lc, qc, mx);
+      if gid in CapIds(r1) {
+        assert MxAtGid(r, cc, qc, mx, gid) == MxAtGid(r1, cc, qc, mx, gid);
+        assert BodyOf(r, gid) == BodyOf(r1, gid);
+        FilterOpenFrameNested(r1, cr, cr', cc, cc', lc, qc, mx, gid, cp, clk);
+        assert gid !in CapIds(r2) by { if gid in CapIds(r2) { assert gid in CapIds(r1) * CapIds(r2); } }
+        FilterCaptureFrameAtNested(r2, X', X, cc', cc, lc, qc, mx, gid);
+        FilterCaptureOutsideNested(r2, X, cc, lc, qc, mx, gid);
+        FilterCaptureOutsideNested(r2, X', cc', lc, qc, mx, gid);
+      } else {
+        assert gid in CapIds(r2) && gid !in CapIds(r1);
+        FilterCaptureFrameAtNested(r1, cr', cr, cc', cc, lc, qc, mx, gid);
+        FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, gid);
+        FilterCaptureOutsideNested(r1, cr', cc', lc, qc, mx, gid);
+        forall k ensures AI.get_idx(X, k) >= -1 { FilterCaptureGeqNeg1Nested(r1, cr, cc, lc, qc, mx, k); }
+        forall k ensures AI.get_idx(X', k) >= -1 { FilterCaptureGeqNeg1Nested(r1, cr', cc', lc, qc, mx, k); }
+        forall c: nat | c in CapIds(r2) && AI.get_idx(cc, CP.start_reg(c)) < 0
+          ensures AI.get_idx(X, CP.start_reg(c)) < 0
+        {
+          assert c !in CapIds(r1) by { if c in CapIds(r1) { assert c in CapIds(r1) * CapIds(r2); } }
+          FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, c);
+        }
+        forall c: nat | c in CapIds(r2) && AI.get_idx(cc', CP.start_reg(c)) < 0
+          ensures AI.get_idx(X', CP.start_reg(c)) < 0
+        {
+          assert c !in CapIds(r1) by { if c in CapIds(r1) { assert c in CapIds(r1) * CapIds(r2); } }
+          FilterCaptureOutsideNested(r1, cr', cc', lc, qc, mx, c);
+        }
+        assert MxAtGid(r, cc, qc, mx, gid) == MxAtGid(r2, cc, qc, mx, gid);
+        assert BodyOf(r, gid) == BodyOf(r2, gid);
+        FilterOpenFrameNested(r2, X, X', cc, cc', lc, qc, mx, gid, cp, clk);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      assert qv >= mx;
+      assert MxAtGid(r, cc, qc, mx, gid) == MxAtGid(r1, cc, qc, qv, gid);
+      assert BodyOf(r, gid) == BodyOf(r1, gid);
+      FilterOpenFrameNested(r1, cr, cr', cc, cc', lc, qc, qv, gid, cp, clk);
+    case Re_capture(cid, r1) =>
+      if cid == gid {
+        assert gid !in CapIds(r1);
+        assert MxAtGid(r, cc, qc, mx, gid) == mx;
+        var sclk := AI.get_idx(cc, CP.start_reg(cid));
+        assert sclk < mx || sclk < 0;
+        assert AI.get_idx(cc', CP.start_reg(cid)) == clk;
+        FilterCaptureOutsideNested(r1, cr', cc', lc, qc, mx, gid);
+        assert BodyOf(r, gid) == r1;
+        forall cidx: nat | cidx in CapIds(r1)
+          ensures AI.get_idx(cc', CP.start_reg(cidx)) < mx || AI.get_idx(cc', CP.start_reg(cidx)) < 0
+        {
+          assert cidx != gid;
+          assert CP.start_reg(cidx) != CP.start_reg(gid);
+          assert AI.get_idx(cc', CP.start_reg(cidx)) == AI.get_idx(cc, CP.start_reg(cidx));
+        }
+        assert BodyOf(r, gid) == r1 && MxAtGid(r, cc, qc, mx, gid) == mx;
+        assert LooksCapUnset(r1, cc') by {
+          CapIdsSplit(r1);
+          forall c: nat | c in CapIdsInLooks(r1) ensures AI.get_idx(cc', CP.start_reg(c)) < 0 {
+            assert c != gid && CP.start_reg(c) != CP.start_reg(gid);
+            assert AI.get_idx(cc', CP.start_reg(c)) == AI.get_idx(cc, CP.start_reg(c));
+          }
+        }
+        FilterCaptureAllStaleNested(r1, cr', cc', lc, qc, mx);
+        if sclk < 0 {
+          assert AI.get_idx(cr, CP.start_reg(gid)) < 0;
+          FilterAllOutside(r1, cr, gid);
+          FilterAllFrameAt(r1, cr', cr, gid);
+        } else {
+          var cr2 := AI.set_idx(cr, CP.start_reg(cid), -1);
+          assert AI.get_idx(cr2, CP.start_reg(gid)) <= -1;
+          FilterAllOutside(r1, cr2, gid);
+          assert |cr2| == |cr'|;
+          forall j | j != CP.start_reg(gid)
+            ensures AI.get_idx(cr', j) == AI.get_idx(cr2, j)
+          {
+            SetIdxKeepsOther(cr, CP.start_reg(cid), j);
+          }
+          FilterAllFrameAt(r1, cr', cr2, gid);
+        }
+      } else {
+        assert gid in CapIds(r1);
+        assert AI.get_idx(cc, CP.start_reg(cid)) >= mx && AI.get_idx(cc, CP.start_reg(cid)) >= 0;
+        assert AI.get_idx(cc', CP.start_reg(cid)) == AI.get_idx(cc, CP.start_reg(cid));
+        assert MxAtGid(r, cc, qc, mx, gid) == MxAtGid(r1, cc, qc, mx, gid);
+        assert BodyOf(r, gid) == BodyOf(r1, gid);
+        FilterOpenFrameNested(r1, cr, cr', cc, cc', lc, qc, mx, gid, cp, clk);
+      }
+  }
+
+  /** `GmOfLiveOpenFull` under the nested fragment (uses `FilterOpenFrameNested`
+      + the blind `GmOfLiveOpen`). */
+  lemma GmOfLiveOpenFullNested(ast: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+                         gid: nat, cp: int, clk: int)
+    requires |caps.a_cp| == |caps.a_clk|
+    requires CP.start_reg(gid) < |caps.a_cp|
+    requires cp >= 0 && clk >= 0
+    requires clk > AI.get_idx(caps.a_clk, CP.end_reg(gid))
+    requires NR.NestedFragmentRE(ast) && CapUnique(ast) && gid in CapIds(ast)
+    requires gid !in CapIdsInLooks(ast)
+    requires AI.get_idx(caps.a_clk, CP.start_reg(gid))
+               < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
+          || AI.get_idx(caps.a_clk, CP.start_reg(gid)) < 0
+    requires clk >= MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
+    requires PathPresent(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
+    requires forall k :: AI.get_idx(caps.a_cp, k) >= -1
+    requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
+                             ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
+    requires forall sg: nat :: sg in CapIds(BodyOf(ast, gid))
+                              ==> AI.get_idx(caps.a_clk, CP.start_reg(sg)) < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
+                                  || AI.get_idx(caps.a_clk, CP.start_reg(sg)) < 0
+    requires LooksCapUnset(BodyOf(ast, gid), caps.a_clk)
+    ensures gid !in GmOfLive(ast, caps, look, quant)
+    ensures GmOfLive(ast, AReg.set_reg(caps, CP.start_reg(gid), Some(cp), clk), look, quant)
+         == GmOfLive(ast, caps, look, quant)[gid := LG.Range(cp as nat, None)]
+  {
+    var caps' := AReg.set_reg(caps, CP.start_reg(gid), Some(cp), clk);
+    var (cr, cc) := AReg.as_arrays(caps);
+    var (cr', cc') := AReg.as_arrays(caps');
+    var (_, lc) := AReg.as_arrays(look);
+    var (_, qc) := AReg.as_arrays(quant);
+    assert cr' == cr[CP.start_reg(gid) := cp];
+    assert cc' == cc[CP.start_reg(gid) := clk];
+    forall j | j != CP.start_reg(gid) ensures AI.get_idx(cr', j) == AI.get_idx(cr, j) {}
+    forall j | j != CP.start_reg(gid) ensures AI.get_idx(cc', j) == AI.get_idx(cc, j) {}
+    forall k ensures AI.get_idx(cr', k) >= -1 {}
+    forall c: nat | c in CapIds(ast) && AI.get_idx(cc', CP.start_reg(c)) < 0
+      ensures AI.get_idx(cr', CP.start_reg(c)) < 0 {
+      if c == gid {} else { assert CP.start_reg(c) != CP.start_reg(gid); }
+    }
+    FilterOpenFrameNested(ast, cr, cr', cc, cc', lc, qc, -1, gid, cp, clk);
+    GmOfLiveOpen(ast, caps, look, quant, gid, cp, clk);
+  }
+
+  /** `GmOfLiveOpenGMOpen` under the nested fragment. */
+  lemma GmOfLiveOpenGMOpenNested(ast: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+                           gid: nat, cp: int, clk: int)
+    requires |caps.a_cp| == |caps.a_clk|
+    requires CP.start_reg(gid) < |caps.a_cp|
+    requires cp >= 0 && clk >= 0
+    requires clk > AI.get_idx(caps.a_clk, CP.end_reg(gid))
+    requires NR.NestedFragmentRE(ast) && CapUnique(ast) && gid in CapIds(ast)
+    requires gid !in CapIdsInLooks(ast)
+    requires AI.get_idx(caps.a_clk, CP.start_reg(gid))
+               < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
+          || AI.get_idx(caps.a_clk, CP.start_reg(gid)) < 0
+    requires clk >= MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
+    requires PathPresent(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
+    requires forall k :: AI.get_idx(caps.a_cp, k) >= -1
+    requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
+                             ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
+    requires forall sg: nat :: sg in CapIds(BodyOf(ast, gid))
+                              ==> AI.get_idx(caps.a_clk, CP.start_reg(sg)) < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
+                                  || AI.get_idx(caps.a_clk, CP.start_reg(sg)) < 0
+    requires LooksCapUnset(BodyOf(ast, gid), caps.a_clk)
+    ensures GmOfLive(ast, AReg.set_reg(caps, CP.start_reg(gid), Some(cp), clk), look, quant)
+         == LG.GMOpen(cp as nat, gid, GmOfLive(ast, caps, look, quant))
+  {
+    GmOfLiveOpenFullNested(ast, caps, look, quant, gid, cp, clk);
+  }
+
   // GmOfLiveOpen with the no-exposure precondition DISCHARGED by FilterOpenFrame.
   // Now the obligations are clean structural + clock predicates (PathPresent,
   // clk ≥ MxAtGid, body-staleness, register wf) that the preservation induction's
@@ -5190,6 +5808,264 @@ module LindenElkPikeInv {
       stamping `qid`'s quant clock to a fresh `clk` drives `filter_capture` to
       reset EXACTLY `qid`'s body captures `CapIds(QidBody(r,qid))` (their starts
       go negative) and leaves every other position unchanged. Stated per-`j`. */
+  // ===========================================================================
+  // L4 depth-k (ADDITIVE): the RESET value tower generalized from
+  // `LookBehindFragmentRE` to `NestedFragmentRE`. `FilterResetFrame` DESCENDS
+  // toward the reset qid — a lookaround node is `assert false` (qid is
+  // outside-look, and `QuantIdsOutsideLooks` at a look node is empty), so the
+  // descent NEVER enters a look body; that assertion is depth-independent. The
+  // sibling frames it invokes (`FilterCaptureQcFrame`/`VsAll`/`AllStale`/
+  // `Outside`/`CrPointwise`/`GeqNeg1`) recurse into look bodies and are the
+  // already-landed `*Nested` filter frames. `FilterCaptureQcFrame` itself
+  // recurses into the body keep branch, so it gets its own `*Nested`. The blind
+  // helpers (`FilterAllClearsStart`/`FilterCaptureLen`/`CapIdsQidBodySubset`/
+  // `QuantIdsSplit`/`GmOfLiveReset`/`QmapOkAtQid`) are reused directly.
+  // ===========================================================================
+
+  /** `FilterCaptureQcFrame` under the nested fragment (recurses into the look body). */
+  lemma FilterCaptureQcFrameNested(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, qc': seq<int>, M: int, qid: nat, j: int)
+    requires NR.NestedFragmentRE(r)
+    requires qid !in QuantIds(r)
+    requires forall q0: nat :: q0 in QuantIds(r) ==> AI.get_idx(qc, q0) == AI.get_idx(qc', q0)
+    ensures AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, M), j) == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc', M), j)
+    decreases r
+  {
+    match r
+    case Re_lookaround(lid, la, r1) =>
+      var lv := AI.get_idx(lc, lid);
+      if lv < 0 || lv < M {} else { FilterCaptureQcFrameNested(r1, cr, cc, lc, qc, qc', -1, qid, j); }
+    case Re_empty => case Re_character(_) => case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      FilterCaptureQcFrameNested(r1, cr, cc, lc, qc, qc', M, qid, j);
+      forall j0 ensures AI.get_idx(AI.filter_capture(r1, cr, cc, lc, qc, M), j0) == AI.get_idx(AI.filter_capture(r1, cr, cc, lc, qc', M), j0)
+      { FilterCaptureQcFrameNested(r1, cr, cc, lc, qc, qc', M, qid, j0); }
+      var Y := AI.filter_capture(r1, cr, cc, lc, qc, M);
+      var Y' := AI.filter_capture(r1, cr, cc, lc, qc', M);
+      FilterCaptureQcFrameNested(r2, Y, cc, lc, qc, qc', M, qid, j);
+      FilterCaptureCrPointwiseNested(r2, Y', Y, cc, lc, qc', M, j);
+    case Re_con(r1, r2) =>
+      forall j0 ensures AI.get_idx(AI.filter_capture(r1, cr, cc, lc, qc, M), j0) == AI.get_idx(AI.filter_capture(r1, cr, cc, lc, qc', M), j0)
+      { FilterCaptureQcFrameNested(r1, cr, cc, lc, qc, qc', M, qid, j0); }
+      var Y := AI.filter_capture(r1, cr, cc, lc, qc, M);
+      var Y' := AI.filter_capture(r1, cr, cc, lc, qc', M);
+      FilterCaptureQcFrameNested(r2, Y, cc, lc, qc, qc', M, qid, j);
+      FilterCaptureCrPointwiseNested(r2, Y', Y, cc, lc, qc', M, j);
+    case Re_quant(nul, qid0, q, r1) =>
+      if qid0 >= 0 { assert (qid0 as nat) in QuantIds(r); }
+      assert AI.get_idx(qc, qid0) == AI.get_idx(qc', qid0);
+      var qv := AI.get_idx(qc, qid0);
+      if qv < M {} else { FilterCaptureQcFrameNested(r1, cr, cc, lc, qc, qc', qv, qid, j); }
+    case Re_capture(cid, r1) =>
+      var start := AI.get_idx(cc, CP.start_reg(cid));
+      if start < 0 { FilterCaptureQcFrameNested(r1, cr, cc, lc, qc, qc', M, qid, j); }
+      else if start < M {}
+      else { FilterCaptureQcFrameNested(r1, cr, cc, lc, qc, qc', M, qid, j); }
+  }
+
+  /** `FilterResetFrame` under the nested fragment (look case `assert false`;
+      sibling frames use the `*Nested` filter frames). */
+  lemma FilterResetFrameNested(r: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, qc': seq<int>,
+                         M: int, qid: nat, clk: int, j: int)
+    requires NR.NestedFragmentRE(r) && CapUnique(r) && QuantUnique(r)
+    requires qid in QuantIds(r)
+    requires qid in QuantIdsOutsideLooks(r)
+    requires clk >= 0
+    requires clk >= MxAtQid(r, cc, qc, M, qid)
+    requires PathPresentQ(r, cc, qc, M, qid)
+    requires forall q0: int :: q0 != qid ==> AI.get_idx(qc', q0) == AI.get_idx(qc, q0)
+    requires AI.get_idx(qc', qid) == clk
+    requires forall sg: nat :: sg in CapIds(QidBody(r, qid)) ==> AI.get_idx(cc, CP.start_reg(sg)) < clk
+    requires LooksCapUnset(QidBody(r, qid), cc)
+    requires forall k :: AI.get_idx(A, k) >= -1
+    requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0 ==> AI.get_idx(A, CP.start_reg(c)) < 0
+    ensures (forall g: nat :: g in CapIds(QidBody(r, qid)) ==> CP.start_reg(g) != j)
+            ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc', M), j) == AI.get_idx(AI.filter_capture(r, A, cc, lc, qc, M), j)
+    ensures (exists g: nat :: g in CapIds(QidBody(r, qid)) && CP.start_reg(g) == j)
+            ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc', M), j) < 0
+    decreases r
+  {
+    match r
+    case Re_lookaround(lid, la, r1) =>
+      assert qid in QuantIdsOutsideLooks(r);
+      assert false;
+    case Re_capture(cid, r1) =>
+      assert qid in QuantIds(r1);
+      assert AI.get_idx(cc, CP.start_reg(cid)) >= M && AI.get_idx(cc, CP.start_reg(cid)) >= 0;
+      assert MxAtQid(r, cc, qc, M, qid) == MxAtQid(r1, cc, qc, M, qid);
+      assert QidBody(r, qid) == QidBody(r1, qid);
+      FilterResetFrameNested(r1, A, cc, lc, qc, qc', M, qid, clk, j);
+    case Re_quant(nul, qid0, q, r1) =>
+      if qid0 >= 0 && (qid0 as nat) == qid {
+        assert QidBody(r, qid) == r1;
+        assert MxAtQid(r, cc, qc, M, qid) == M;
+        assert AI.get_idx(qc', qid0) == clk;
+        var oldv := AI.get_idx(qc, qid0);
+        forall cidx: nat | cidx in CapIds(r1)
+          ensures AI.get_idx(cc, CP.start_reg(cidx)) < clk || AI.get_idx(cc, CP.start_reg(cidx)) < 0 {}
+        assert LooksCapUnset(r1, cc);
+        FilterCaptureAllStaleNested(r1, A, cc, lc, qc', clk);
+        if exists g: nat :: g in CapIds(r1) && CP.start_reg(g) == j {
+          var g: nat :| g in CapIds(r1) && CP.start_reg(g) == j;
+          FilterAllClearsStart(r1, A, g);
+        }
+        if forall g: nat :: g in CapIds(r1) ==> CP.start_reg(g) != j {
+          if oldv < M {} else { FilterCaptureVsAllNested(r1, A, cc, lc, qc, oldv, j); }
+        }
+      } else {
+        assert qid in QuantIds(r1);
+        var qv0 := AI.get_idx(qc, qid0);
+        assert AI.get_idx(qc', qid0) == qv0;
+        assert qv0 >= M;
+        assert MxAtQid(r, cc, qc, M, qid) == MxAtQid(r1, cc, qc, qv0, qid);
+        assert QidBody(r, qid) == QidBody(r1, qid);
+        FilterResetFrameNested(r1, A, cc, lc, qc, qc', qv0, qid, clk, j);
+      }
+    case Re_alt(r1, r2) => FilterResetFrameSeqNested(r, r1, r2, A, cc, lc, qc, qc', M, qid, clk, j);
+    case Re_con(r1, r2) => FilterResetFrameSeqNested(r, r1, r2, A, cc, lc, qc, qc', M, qid, clk, j);
+  }
+
+  /** Sequential (`alt`/`con`) handling for `FilterResetFrameNested`. */
+  lemma FilterResetFrameSeqNested(r: R.regex, r1: R.regex, r2: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>,
+                            qc: seq<int>, qc': seq<int>, M: int, qid: nat, clk: int, j: int)
+    requires r == R.Re_alt(r1, r2) || r == R.Re_con(r1, r2)
+    requires NR.NestedFragmentRE(r) && CapUnique(r) && QuantUnique(r)
+    requires qid in QuantIds(r)
+    requires qid in QuantIdsOutsideLooks(r)
+    requires clk >= 0
+    requires clk >= MxAtQid(r, cc, qc, M, qid)
+    requires PathPresentQ(r, cc, qc, M, qid)
+    requires forall q0: int :: q0 != qid ==> AI.get_idx(qc', q0) == AI.get_idx(qc, q0)
+    requires AI.get_idx(qc', qid) == clk
+    requires forall sg: nat :: sg in CapIds(QidBody(r, qid)) ==> AI.get_idx(cc, CP.start_reg(sg)) < clk
+    requires LooksCapUnset(QidBody(r, qid), cc)
+    requires forall k :: AI.get_idx(A, k) >= -1
+    requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0 ==> AI.get_idx(A, CP.start_reg(c)) < 0
+    ensures (forall g: nat :: g in CapIds(QidBody(r, qid)) ==> CP.start_reg(g) != j)
+            ==> AI.get_idx(AI.filter_capture(r2, AI.filter_capture(r1, A, cc, lc, qc', M), cc, lc, qc', M), j)
+                == AI.get_idx(AI.filter_capture(r2, AI.filter_capture(r1, A, cc, lc, qc, M), cc, lc, qc, M), j)
+    ensures (exists g: nat :: g in CapIds(QidBody(r, qid)) && CP.start_reg(g) == j)
+            ==> AI.get_idx(AI.filter_capture(r2, AI.filter_capture(r1, A, cc, lc, qc', M), cc, lc, qc', M), j) < 0
+    decreases r, 0
+  {
+    var X := AI.filter_capture(r1, A, cc, lc, qc, M);
+    var X' := AI.filter_capture(r1, A, cc, lc, qc', M);
+    FilterCaptureLen(r1, A, cc, lc, qc, M); FilterCaptureLen(r1, A, cc, lc, qc', M);
+    if qid in QuantIds(r1) {
+      assert qid !in QuantIds(r2) by { if qid in QuantIds(r2) { assert qid in QuantIds(r1) * QuantIds(r2); } }
+      assert MxAtQid(r, cc, qc, M, qid) == MxAtQid(r1, cc, qc, M, qid);
+      assert QidBody(r, qid) == QidBody(r1, qid);
+      assert qid in QuantIdsOutsideLooks(r1) by {
+        assert QuantIdsOutsideLooks(r) == QuantIdsOutsideLooks(r1) + QuantIdsOutsideLooks(r2)
+          by { if r == R.Re_alt(r1, r2) {} else {} }
+        QuantIdsSplit(r2);
+      }
+      assert LooksCapUnset(QidBody(r1, qid), cc);
+      CapIdsQidBodySubset(r1, qid);
+      FilterResetFrameNested(r1, A, cc, lc, qc, qc', M, qid, clk, j);
+      forall q0: nat | q0 in QuantIds(r2) ensures AI.get_idx(qc, q0) == AI.get_idx(qc', q0) {}
+      if exists g: nat :: g in CapIds(QidBody(r, qid)) && CP.start_reg(g) == j {
+        var g: nat :| g in CapIds(QidBody(r, qid)) && CP.start_reg(g) == j;
+        assert g in CapIds(r1);
+        assert g !in CapIds(r2) by { if g in CapIds(r2) { assert g in CapIds(r1) * CapIds(r2); } }
+        FilterCaptureOutsideNested(r2, X', cc, lc, qc', M, g);
+      }
+      if forall g: nat :: g in CapIds(QidBody(r, qid)) ==> CP.start_reg(g) != j {
+        FilterCaptureQcFrameNested(r2, X', cc, lc, qc, qc', M, qid, j);
+        FilterCaptureCrPointwiseNested(r2, X', X, cc, lc, qc, M, j);
+      }
+    } else {
+      assert qid in QuantIds(r2) && qid !in QuantIds(r1);
+      forall j0 ensures AI.get_idx(X, j0) == AI.get_idx(X', j0)
+      { FilterCaptureQcFrameNested(r1, A, cc, lc, qc, qc', M, qid, j0); }
+      forall k ensures AI.get_idx(X, k) >= -1 { FilterCaptureGeqNeg1Nested(r1, A, cc, lc, qc, M, k); }
+      forall c: nat | c in CapIds(r2) && AI.get_idx(cc, CP.start_reg(c)) < 0
+        ensures AI.get_idx(X, CP.start_reg(c)) < 0
+      {
+        assert c !in CapIds(r1) by { if c in CapIds(r1) { assert c in CapIds(r1) * CapIds(r2); } }
+        FilterCaptureOutsideNested(r1, A, cc, lc, qc, M, c);
+      }
+      assert MxAtQid(r, cc, qc, M, qid) == MxAtQid(r2, cc, qc, M, qid);
+      assert QidBody(r, qid) == QidBody(r2, qid);
+      assert qid in QuantIdsOutsideLooks(r2) by {
+        assert QuantIdsOutsideLooks(r) == QuantIdsOutsideLooks(r1) + QuantIdsOutsideLooks(r2)
+          by { if r == R.Re_alt(r1, r2) {} else {} }
+        QuantIdsSplit(r1);
+      }
+      assert LooksCapUnset(QidBody(r2, qid), cc);
+      FilterResetFrameNested(r2, X, cc, lc, qc, qc', M, qid, clk, j);
+      FilterCaptureCrPointwiseNested(r2, X', X, cc, lc, qc', M, j);
+    }
+  }
+
+  /** `GmOfLiveResetFull` under the nested fragment (uses `FilterResetFrameNested`
+      + the blind `GmOfLiveReset`). */
+  lemma GmOfLiveResetFullNested(ast: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+                          qid: nat, clk: int)
+    requires NR.NestedFragmentRE(ast) && CapUnique(ast) && QuantUnique(ast)
+    requires qid in QuantIds(ast)
+    requires qid in QuantIdsOutsideLooks(ast)
+    requires qid < |AReg.as_arrays(quant).1|
+    requires |AReg.as_arrays(quant).0| == |AReg.as_arrays(quant).1|
+    requires clk >= 0
+    requires clk >= MxAtQid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, qid)
+    requires PathPresentQ(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, qid)
+    requires forall sg: nat :: sg in CapIds(QidBody(ast, qid)) ==> AI.get_idx(caps.a_clk, CP.start_reg(sg)) < clk
+    requires LooksCapUnset(QidBody(ast, qid), caps.a_clk)
+    requires forall k :: AI.get_idx(caps.a_cp, k) >= -1
+    requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
+                             ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
+    ensures GmOfLive(ast, caps, look, AReg.set_reg(quant, qid, None, clk))
+         == GmOfLive(ast, caps, look, quant) - CapIds(QidBody(ast, qid))
+  {
+    var gl := CapIds(QidBody(ast, qid));
+    var quant' := AReg.set_reg(quant, qid, None, clk);
+    var (cr, cc) := AReg.as_arrays(caps);
+    var (_, lc) := AReg.as_arrays(look);
+    var (_, qc) := AReg.as_arrays(quant);
+    var (_, qc') := AReg.as_arrays(quant');
+    assert qc' == qc[qid := clk];
+    forall q0: int | q0 != qid ensures AI.get_idx(qc', q0) == AI.get_idx(qc, q0) {}
+    forall g: nat | g in gl
+      ensures AI.get_idx(AI.filter_capture(ast, cr, cc, lc, qc', -1), CP.start_reg(g)) < 0
+    {
+      FilterResetFrameNested(ast, cr, cc, lc, qc, qc', -1, qid, clk, CP.start_reg(g));
+    }
+    forall j | (forall g: nat :: g in gl ==> CP.start_reg(g) != j)
+      ensures AI.get_idx(AI.filter_capture(ast, cr, cc, lc, qc', -1), j)
+              == AI.get_idx(AI.filter_capture(ast, cr, cc, lc, qc, -1), j)
+    {
+      FilterResetFrameNested(ast, cr, cc, lc, qc, qc', -1, qid, clk, j);
+    }
+    GmOfLiveReset(ast, caps, look, quant, qid, clk, gl);
+  }
+
+  /** `GmOfLiveResetGMReset` under the nested fragment. */
+  lemma GmOfLiveResetGMResetNested(ast: R.regex, qm: AR.QMap, caps: AReg.Regs, look: AReg.Regs,
+                             quant: AReg.Regs, qid: nat, clk: int)
+    requires NR.NestedFragmentRE(ast) && CapUnique(ast) && QuantUnique(ast)
+    requires T.TransWf(ast) && AR.QmapOk(ast, qm)
+    requires qid in QuantIds(ast)
+    requires qid in QuantIdsOutsideLooks(ast)
+    requires qid < |AReg.as_arrays(quant).1|
+    requires |AReg.as_arrays(quant).0| == |AReg.as_arrays(quant).1|
+    requires clk >= 0
+    requires clk >= MxAtQid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, qid)
+    requires PathPresentQ(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, qid)
+    requires forall sg: nat :: sg in CapIds(QidBody(ast, qid)) ==> AI.get_idx(caps.a_clk, CP.start_reg(sg)) < clk
+    requires LooksCapUnset(QidBody(ast, qid), caps.a_clk)
+    requires forall k :: AI.get_idx(caps.a_cp, k) >= -1
+    requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
+                             ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
+    ensures (qid as int) in qm.quants
+    ensures GmOfLive(ast, caps, look, AReg.set_reg(quant, qid, None, clk))
+         == LG.GMReset(qm.quants[qid as int], GmOfLive(ast, caps, look, quant))
+  {
+    GmOfLiveResetFullNested(ast, caps, look, quant, qid, clk);
+    QmapOkAtQid(ast, qm, qid);
+    assert LG.GMReset(qm.quants[qid as int], GmOfLive(ast, caps, look, quant))
+        == GmOfLive(ast, caps, look, quant) - (set g: nat {:autotriggers false} | g in qm.quants[qid as int]);
+  }
+
   lemma FilterResetFrame(r: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, qc': seq<int>,
                          M: int, qid: nat, clk: int, j: int)
     requires NR.LookBehindFragmentRE(r) && CapUnique(r) && QuantUnique(r)
@@ -5981,6 +6857,33 @@ module LindenElkPikeInv {
     }
 
     // Seen inclusion is vacuous at the empty (init_bpcset) processed set.
+    InitialInclusionRE(rer, qm, code, inp, Some(tree), 0, |code|);
+  }
+
+  /** L4 depth-k (ADDITIVE): `InitialPikeInvREAtCp` under the nested fragment. The
+      `LookBehindFragmentRE(re)` requirement is vestigial here — the body uses only
+      the depth-blind `GmOfLiveInit`/`ActiveRepRE`/`InitialInclusionRE`. Verbatim
+      with `LookBehindFragmentRE -> NestedFragmentRE`. */
+  lemma InitialPikeInvREAtCpNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, ngroups: nat,
+                             str: string, cp: nat, tree: LT.Tree, vms: AI.VmState, ncap: int, nlook: int, nquant: int)
+    requires NR.NestedFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase && AR.QmapOk(re, qm)
+    requires code == CP.compile_to_bytecode(re)
+    requires cp <= |str|
+    requires TT.TreeThreadRE(rer, qm, code, InpOfCp(str, cp), tree, 0, false)
+    requires vms.cp == cp
+    requires vms.active == [AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant))]
+    requires vms.blocked == []
+    requires vms.bestmatch.None?
+    requires vms.processed == AI.init_bpcset(|code|)
+    requires vms.context == AI.cp_context(cp, str, LAnc.Forward)
+    ensures PikeInvRE(rer, qm, re, code, ngroups, str, PT.PikeTreeInitialState(tree, InpOfCp(str, cp)), vms)
+  {
+    var inp := InpOfCp(str, cp);
+    GmOfLiveInit(re, ncap, nlook, nquant);
+    var th := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
+    assert ActiveRepRE(rer, qm, re, code, inp, [(tree, LG.Empty)], [th]) by {
+      assert ActiveRepRE(rer, qm, re, code, inp, [], []);
+    }
     InitialInclusionRE(rer, qm, code, inp, Some(tree), 0, |code|);
   }
 }
