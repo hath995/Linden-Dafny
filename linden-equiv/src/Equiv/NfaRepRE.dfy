@@ -3267,4 +3267,414 @@ module LindenElkNfaRep {
     case Re_lookaround(_, _, _) =>
     case Re_anchor(_) =>
   }
+
+  // ===========================================================================
+  // L4 depth-k establisher support: the NESTED build-code classification.
+  //
+  // A nested lookaround's oracle build regex `oracle_regex(la, body)` stays in
+  // the NESTED fragment, keeps unique / position-preserved look ids, and — by
+  // `LidsWellNested` at the enclosing lookaround — has every look id strictly
+  // ABOVE the outer lid. So `compile_to_write(oracle_regex(la, body), lid)` is
+  // classified for `LidBuildOkAbove`: gates all read strictly above `lid`
+  // (`AllGatesAbove`), writes only column `lid`, no `CheckNullable`, no `Accept`.
+  // This is the L4 analogue of `CompileToWriteClassified` (depth-1, look-free).
+  // ===========================================================================
+
+  /** `remove_capture` yields a capture-free regex (it deletes every `Group`). */
+  lemma CaptureFreeRemoveCaptureRE(r: R.regex)
+    ensures CaptureFreeRE(R.remove_capture(r))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => CaptureFreeRemoveCaptureRE(r1); CaptureFreeRemoveCaptureRE(r2);
+    case Re_con(r1, r2) => CaptureFreeRemoveCaptureRE(r1); CaptureFreeRemoveCaptureRE(r2);
+    case Re_quant(_, _, _, r1) => CaptureFreeRemoveCaptureRE(r1);
+    case Re_capture(_, r1) => CaptureFreeRemoveCaptureRE(r1);
+    case Re_lookaround(_, _, r1) => CaptureFreeRemoveCaptureRE(r1);
+    case _ =>
+  }
+
+  /** `reverse_regex` preserves capture-freedom (it keeps `Group` nodes, only
+      reorders concatenation). */
+  lemma CaptureFreeReverseRE(r: R.regex)
+    requires CaptureFreeRE(r)
+    ensures CaptureFreeRE(R.reverse_regex(r))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => CaptureFreeReverseRE(r1); CaptureFreeReverseRE(r2);
+    case Re_con(r1, r2) => CaptureFreeReverseRE(r2); CaptureFreeReverseRE(r1);
+    case Re_quant(_, _, _, r1) => CaptureFreeReverseRE(r1);
+    case Re_lookaround(_, _, r1) => CaptureFreeReverseRE(r1);
+    case _ =>
+  }
+
+  /** `remove_capture` preserves the LOOK-ID SET (it keeps every lookaround with
+      its id, only deletes capture groups, which carry no look id). */
+  lemma LookIdsRemoveCaptureRE(r: R.regex)
+    ensures LTB.LookIds(R.remove_capture(r)) == LTB.LookIds(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => LookIdsRemoveCaptureRE(r1); LookIdsRemoveCaptureRE(r2);
+    case Re_con(r1, r2) => LookIdsRemoveCaptureRE(r1); LookIdsRemoveCaptureRE(r2);
+    case Re_quant(_, _, _, r1) => LookIdsRemoveCaptureRE(r1);
+    case Re_capture(_, r1) => LookIdsRemoveCaptureRE(r1);
+    case Re_lookaround(_, _, r1) => LookIdsRemoveCaptureRE(r1);
+    case _ =>
+  }
+
+  /** `reverse_regex` preserves the look-id set (only reorders concatenation). */
+  lemma LookIdsReverseRE(r: R.regex)
+    ensures LTB.LookIds(R.reverse_regex(r)) == LTB.LookIds(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => LookIdsReverseRE(r1); LookIdsReverseRE(r2);
+    case Re_con(r1, r2) => LookIdsReverseRE(r1); LookIdsReverseRE(r2);
+    case Re_quant(_, _, _, r1) => LookIdsReverseRE(r1);
+    case Re_capture(_, r1) => LookIdsReverseRE(r1);
+    case Re_lookaround(_, _, r1) => LookIdsReverseRE(r1);
+    case _ =>
+  }
+
+  /** `lazy_prefix` adds a look-free `.*?` head, so the look-id set is unchanged. */
+  lemma LookIdsLazyPrefixRE(r: R.regex)
+    ensures LTB.LookIds(R.lazy_prefix(r)) == LTB.LookIds(r)
+  {
+    var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
+    assert R.lazy_prefix(r) == R.Re_con(pre, r);
+    assert LTB.LookIds(pre) == {};
+  }
+
+  /** `remove_capture` keeps look ids unique (they are the same set, and the
+      structure is preserved but for deleted groups). */
+  lemma LookUniqueRemoveCaptureRE(r: R.regex)
+    requires LTB.LookUnique(r)
+    ensures LTB.LookUnique(R.remove_capture(r))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      LookUniqueRemoveCaptureRE(r1); LookUniqueRemoveCaptureRE(r2);
+      LookIdsRemoveCaptureRE(r1); LookIdsRemoveCaptureRE(r2);
+    case Re_con(r1, r2) =>
+      LookUniqueRemoveCaptureRE(r1); LookUniqueRemoveCaptureRE(r2);
+      LookIdsRemoveCaptureRE(r1); LookIdsRemoveCaptureRE(r2);
+    case Re_quant(_, _, _, r1) => LookUniqueRemoveCaptureRE(r1);
+    case Re_capture(_, r1) => LookUniqueRemoveCaptureRE(r1);
+    case Re_lookaround(lid, _, r1) => LookUniqueRemoveCaptureRE(r1); LookIdsRemoveCaptureRE(r1);
+    case _ =>
+  }
+
+  /** `reverse_regex` keeps look ids unique (the same set; `*` intersection is
+      commutative, covering the swapped concatenation order). */
+  lemma LookUniqueReverseRE(r: R.regex)
+    requires LTB.LookUnique(r)
+    ensures LTB.LookUnique(R.reverse_regex(r))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      LookUniqueReverseRE(r1); LookUniqueReverseRE(r2);
+      LookIdsReverseRE(r1); LookIdsReverseRE(r2);
+    case Re_con(r1, r2) =>
+      LookUniqueReverseRE(r1); LookUniqueReverseRE(r2);
+      LookIdsReverseRE(r1); LookIdsReverseRE(r2);
+    case Re_quant(_, _, _, r1) => LookUniqueReverseRE(r1);
+    case Re_capture(_, r1) => LookUniqueReverseRE(r1);
+    case Re_lookaround(lid, _, r1) => LookUniqueReverseRE(r1); LookIdsReverseRE(r1);
+    case _ =>
+  }
+
+  /** `lazy_prefix` keeps look ids unique (its `.*?` head is look-free). */
+  lemma LookUniqueLazyPrefixRE(r: R.regex)
+    requires LTB.LookUnique(r)
+    ensures LTB.LookUnique(R.lazy_prefix(r))
+  {
+    var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
+    assert R.lazy_prefix(r) == R.Re_con(pre, r);
+    assert LTB.LookIds(pre) == {};
+    assert LTB.LookUnique(pre);
+  }
+
+  /** `remove_capture` keeps a regex in the NESTED fragment: quant shapes survive
+      (nullability preserved), and every lookaround leaf stays admissible — its
+      body becomes capture-free, so the negative-flavour side condition holds
+      outright. */
+  lemma RemoveCaptureNestedFragmentRE(r: R.regex)
+    requires NestedFragmentRE(r)
+    ensures NestedFragmentRE(R.remove_capture(r))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => RemoveCaptureNestedFragmentRE(r1); RemoveCaptureNestedFragmentRE(r2);
+    case Re_con(r1, r2) => RemoveCaptureNestedFragmentRE(r1); RemoveCaptureNestedFragmentRE(r2);
+    case Re_quant(nul, qid, q, r1) => RemoveCaptureNestedFragmentRE(r1); RemoveCaptureNullableRE(r1);
+    case Re_capture(_, r1) => RemoveCaptureNestedFragmentRE(r1);
+    case Re_lookaround(lid, la, r1) =>
+      RemoveCaptureNestedFragmentRE(r1);
+      CaptureFreeRemoveCaptureRE(r1);   // remove_capture(r1) is capture-free -> disjunct holds
+    case _ =>
+  }
+
+  /** `reverse_regex` keeps a regex in the NESTED fragment (quant nullability
+      preserved; a negative lookaround's capture-free body stays capture-free). */
+  lemma ReverseNestedFragmentRE(r: R.regex)
+    requires NestedFragmentRE(r)
+    ensures NestedFragmentRE(R.reverse_regex(r))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => ReverseNestedFragmentRE(r1); ReverseNestedFragmentRE(r2);
+    case Re_con(r1, r2) => ReverseNestedFragmentRE(r1); ReverseNestedFragmentRE(r2);
+    case Re_quant(nul, qid, q, r1) => ReverseNestedFragmentRE(r1); ReverseNullableRE(r1);
+    case Re_capture(_, r1) => ReverseNestedFragmentRE(r1);
+    case Re_lookaround(lid, la, r1) =>
+      ReverseNestedFragmentRE(r1);
+      if !(la.Lookahead? || la.Lookbehind?) { CaptureFreeReverseRE(r1); }
+    case _ =>
+  }
+
+  /** `lazy_prefix` keeps a regex in the NESTED fragment (its `.*?` head is a
+      look-free star). */
+  lemma LazyPrefixNestedFragmentRE(r: R.regex)
+    requires NestedFragmentRE(r)
+    ensures NestedFragmentRE(R.lazy_prefix(r))
+  {
+    var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
+    assert R.lazy_prefix(r) == R.Re_con(pre, r);
+    assert NestedFragmentRE(pre);
+  }
+
+  /** `oracle_regex(la, body)` stays in the NESTED fragment when `body` does. */
+  lemma OracleRegexNestedFragment(la: R.lookaround, body: R.regex)
+    requires NestedFragmentRE(body)
+    ensures NestedFragmentRE(CP.oracle_regex(la, body))
+  {
+    RemoveCaptureNestedFragmentRE(body);
+    if la.Lookahead? || la.NegLookahead? {
+      assert CP.oracle_regex(la, body) == R.lazy_prefix(R.reverse_regex(R.remove_capture(body)));
+      ReverseNestedFragmentRE(R.remove_capture(body));
+      LazyPrefixNestedFragmentRE(R.reverse_regex(R.remove_capture(body)));
+    } else {
+      assert CP.oracle_regex(la, body) == R.lazy_prefix(R.remove_capture(body));
+      LazyPrefixNestedFragmentRE(R.remove_capture(body));
+    }
+  }
+
+  /** `oracle_regex(la, body)` keeps look ids unique. */
+  lemma OracleRegexLookUnique(la: R.lookaround, body: R.regex)
+    requires LTB.LookUnique(body)
+    ensures LTB.LookUnique(CP.oracle_regex(la, body))
+  {
+    LookUniqueRemoveCaptureRE(body);
+    if la.Lookahead? || la.NegLookahead? {
+      assert CP.oracle_regex(la, body) == R.lazy_prefix(R.reverse_regex(R.remove_capture(body)));
+      LookUniqueReverseRE(R.remove_capture(body));
+      LookUniqueLazyPrefixRE(R.reverse_regex(R.remove_capture(body)));
+    } else {
+      assert CP.oracle_regex(la, body) == R.lazy_prefix(R.remove_capture(body));
+      LookUniqueLazyPrefixRE(R.remove_capture(body));
+    }
+  }
+
+  /** `oracle_regex(la, body)` preserves the look-id SET — so `LidsWellNested`'s
+      "body ids above the outer lid" transfers to the build regex. */
+  lemma OracleRegexLookIds(la: R.lookaround, body: R.regex)
+    ensures LTB.LookIds(CP.oracle_regex(la, body)) == LTB.LookIds(body)
+  {
+    LookIdsRemoveCaptureRE(body);
+    if la.Lookahead? || la.NegLookahead? {
+      assert CP.oracle_regex(la, body) == R.lazy_prefix(R.reverse_regex(R.remove_capture(body)));
+      LookIdsReverseRE(R.remove_capture(body));
+      LookIdsLazyPrefixRE(R.reverse_regex(R.remove_capture(body)));
+    } else {
+      assert CP.oracle_regex(la, body) == R.lazy_prefix(R.remove_capture(body));
+      LookIdsLazyPrefixRE(R.remove_capture(body));
+    }
+  }
+
+  // --- the NESTED write/nullable/accept classification (NoWriteInstr family
+  //     with NestedFragmentRE, gates ADMITTED; identical shape to NoWriteInstrRE) ---
+
+  /** `NoWriteInstrNestedRE` for the `repeat_min` forced-copy chain. */
+  lemma NoWriteInstrMinNestedRE(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NestedFragmentRE(r1)
+    requires NfaRepMinRE(k, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures GetPcRE(code, pc).Some? ==>
+      var i := GetPcRE(code, pc).value;
+      !i.WriteOracle? && !i.CheckNullable? && !i.Accept?
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| GetPcRE(code, start) == Some(RB.SetQuantToClock(qid, false))
+      && NfaRepRE(r1, code, start + 1, e1)
+      && NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
+    NfaRepIncrRE(r1, code, start + 1, e1);
+    NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
+    if pc == start {
+    } else if pc < e1 {
+      NoWriteInstrNestedRE(r1, code, start + 1, e1, pc);
+    } else {
+      NoWriteInstrMinNestedRE(k - 1, qid, r1, code, e1, endl, pc);
+    }
+  }
+
+  /** `NoWriteInstrNestedRE` for the `repeat_optional` layer chain. */
+  lemma NoWriteInstrOptNestedRE(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NestedFragmentRE(r1)
+    requires NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures GetPcRE(code, pc).Some? ==>
+      var i := GetPcRE(code, pc).value;
+      !i.WriteOracle? && !i.CheckNullable? && !i.Accept?
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| GetPcRE(code, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
+      && GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+      && GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+      && NfaRepRE(r1, code, start + 3, e1)
+      && GetPcRE(code, e1) == Some(RB.EndLoop)
+      && NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+    NfaRepIncrRE(r1, code, start + 3, e1);
+    NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+    if pc <= start + 2 {
+    } else if pc < e1 {
+      NoWriteInstrNestedRE(r1, code, start + 3, e1, pc);
+    } else if pc == e1 {
+    } else {
+      NoWriteInstrOptNestedRE(k - 1, greedy, qid, r1, code, e1 + 1, endl, pc);
+    }
+  }
+
+  /** The NESTED analogue of `NoWriteInstrRE`: nested-fragment main code emits no
+      `WriteOracle`, `CheckNullable`, or `Accept` (the compiler adds those only at
+      the `compile_to_write`/`compile_to_bytecode` seam). Lookaround leaves are a
+      single gate (allowed); the plus-fragment quant shapes carry over verbatim. */
+  lemma NoWriteInstrNestedRE(re: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NestedFragmentRE(re)
+    requires NfaRepRE(re, code, start, endl)
+    requires start <= pc < endl
+    ensures GetPcRE(code, pc).Some? ==>
+      var i := GetPcRE(code, pc).value;
+      !i.WriteOracle? && !i.CheckNullable? && !i.Accept?
+    decreases CP.rsize(re), 1
+  {
+    match re
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      var e1: nat :| GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
+        && NfaRepRE(r1, code, start + 1, e1)
+        && GetPcRE(code, e1) == Some(RB.Jmp(endl))
+        && NfaRepRE(r2, code, e1 + 1, endl);
+      NfaRepIncrRE(r1, code, start + 1, e1);
+      NfaRepIncrRE(r2, code, e1 + 1, endl);
+      if pc == start {
+      } else if pc < e1 {
+        NoWriteInstrNestedRE(r1, code, start + 1, e1, pc);
+      } else if pc == e1 {
+      } else {
+        NoWriteInstrNestedRE(r2, code, e1 + 1, endl, pc);
+      }
+    case Re_con(r1, r2) =>
+      var e1: nat :| NfaRepRE(r1, code, start, e1) && NfaRepRE(r2, code, e1, endl);
+      NfaRepIncrRE(r1, code, start, e1);
+      NfaRepIncrRE(r2, code, e1, endl);
+      if pc < e1 {
+        NoWriteInstrNestedRE(r1, code, start, e1, pc);
+      } else {
+        NoWriteInstrNestedRE(r2, code, e1, endl, pc);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      if q.min == 0 && q.max == None {
+        var e1: nat :| GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
+          && GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+          && GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+          && NfaRepRE(r1, code, start + 3, e1)
+          && GetPcRE(code, e1) == Some(RB.EndLoop)
+          && GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
+          && endl == e1 + 2;
+        NfaRepIncrRE(r1, code, start + 3, e1);
+        if pc <= start + 2 {
+        } else if pc < e1 {
+          NoWriteInstrNestedRE(r1, code, start + 3, e1, pc);
+        } else {
+        }
+      } else if q.max.Some? {
+        var em := NfaRepREQuantInv(nul, qid, q, r1, code, start, endl);
+        NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NfaRepIncrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl);
+        if pc < em {
+          NoWriteInstrMinNestedRE(q.min as nat, qid, r1, code, start, em, pc);
+        } else {
+          NoWriteInstrOptNestedRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
+        }
+      } else {
+        var em, e1 := NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
+        NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NfaRepIncrRE(r1, code, em + 1, e1);
+        if pc < em {
+          NoWriteInstrMinNestedRE((q.min - 1) as nat, qid, r1, code, start, em, pc);
+        } else if pc == em {
+        } else if pc < e1 {
+          NoWriteInstrNestedRE(r1, code, em + 1, e1, pc);
+        } else {
+        }
+      }
+    case Re_capture(cid, r1) =>
+      var e1: nat :| GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
+        && NfaRepRE(r1, code, start + 1, e1)
+        && GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+        && endl == e1 + 1;
+      NfaRepIncrRE(r1, code, start + 1, e1);
+      if pc == start {
+      } else if pc < e1 {
+        NoWriteInstrNestedRE(r1, code, start + 1, e1, pc);
+      } else {
+      }
+    case Re_lookaround(lid, la, r1) =>
+      assert pc == start;
+  }
+
+  /** THE NESTED BUILD-CODE CLASSIFICATION. For a nested-fragment build regex
+      `og` with unique look ids all strictly above `lid`, the build program
+      `compile_to_write(og, lid)` satisfies exactly `LidBuildOkAbove`'s four
+      classification conjuncts: gates read strictly above `lid`, writes only
+      column `lid`, no `CheckNullable`, no `Accept`. Bounds gates via
+      `GatesAboveInstrRE` on the body block `[0, next)` and the write/accept via
+      `NoWriteInstrNestedRE`; the trailing pc `next` is the recorder
+      `WriteOracle(lid)`. */
+  lemma NestedCompileToWriteClassifiedAbove(og: R.regex, lid: R.lookid)
+    requires NestedFragmentRE(og)
+    requires LTB.LookUnique(og)
+    requires lid >= 0
+    requires forall x: nat :: x in LTB.LookIds(og) ==> x > lid
+    ensures var bc := CP.compile_to_write(og, lid);
+      OS.AllGatesAbove(bc, lid) && OS.NoCheckNullable(bc) && OS.WritesOnlyLid(bc, lid) && OS.NoAccept(bc)
+  {
+    CompileToWriteRepNested(og, lid);
+    var bc := CP.compile_to_write(og, lid);
+    var next := CP.compile(og, 0, CP.Progress).1;
+    assert forall x: nat :: x in LTB.LookIds(og) ==> x > (lid as nat);
+    forall pc | 0 <= pc < |bc|
+      ensures (bc[pc].CheckOracle? ==> bc[pc].col > lid)
+              && (bc[pc].NegCheckOracle? ==> bc[pc].ncl > lid)
+              && !bc[pc].CheckNullable? && !bc[pc].Accept?
+              && (bc[pc].WriteOracle? ==> bc[pc].wol == lid)
+    {
+      if pc < next as nat {
+        GatesAboveInstrRE(og, bc, 0, next as nat, lid as nat, pc);
+        NoWriteInstrNestedRE(og, bc, 0, next as nat, pc);
+        assert GetPcRE(bc, pc) == Some(bc[pc]);
+      } else {
+        assert pc == next as nat;
+        assert GetPcRE(bc, pc) == Some(RB.WriteOracle(lid));
+      }
+    }
+  }
 }

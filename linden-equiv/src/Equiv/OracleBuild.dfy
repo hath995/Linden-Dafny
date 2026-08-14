@@ -756,6 +756,448 @@ module LindenElkOracleBuild {
     }
   }
 
+  // ===========================================================================
+  // L4 depth-k (bricks 4c/§6.2): the GATED high->low build induction over the
+  // GENUINELY nested `LidBuildOkAbove` (gates admitted, reading strictly-higher
+  // columns) — not the gate-free `LidBuildOk` the blind chain erased to.
+  //
+  // THE REVERSED-SPAN FINDING. `LidReachesV`'s BACKWARD branch reads the
+  // reference view `ov` at the REVERSED-frame position — it is the correct
+  // characterization only when the build code is GATE-FREE (then the reference
+  // view is irrelevant, `LidReachesVErasure`). For a genuinely gate-ful backward
+  // (lookAHEAD) build the inner gate at reversed position `q` must read the
+  // oracle at the ORIGINAL position `n - q` — i.e. `MirrorView(ov, n)`, exactly
+  // what `Mirror.BackwardSweepCharacterizationV` produces — NOT `ov[q]`. So
+  // `LidReachesV` (unmirrored) is not the true target for nested lookaheads.
+  // `LidReachesVFinal` below is the additive fix: identical to `LidReachesV` on
+  // the forward branch, and reading `MirrorView(ov, n)` on the backward branch.
+  // On gate-free columns it collapses back to `LidReaches`/`LidReachesV`
+  // (`LidReachesVFinalErasure`), so it is a conservative extension of the
+  // existing depth-1 target and reconciles both directions cleanly.
+  // ===========================================================================
+
+  /** `AgreeAbove` is preserved by the row-permutation `MirrorView`: mirroring
+      reflects the positions but keeps each column, so agreement on columns `> k`
+      transports to the mirrored views. The bridge the backward reconcile needs
+      (`BackwardSweepCharacterizationV`'s reference view is `MirrorView(ov, n)`). */
+  lemma AgreeAboveMirror(a: LOr.OracleView, b: LOr.OracleView, k: int, n: int)
+    requires n >= 0 && |a| == n + 1 && |b| == n + 1
+    requires OS.AgreeAbove(a, b, k)
+    ensures OS.AgreeAbove(MIR.MirrorView(a, n), MIR.MirrorView(b, n), k)
+  {
+    forall cp2: int, l2: int | l2 > k
+      ensures OS.CellAgree(MIR.MirrorView(a, n), MIR.MirrorView(b, n), cp2, l2)
+    {
+      MIR.MirrorViewGet(a, n, MIR.Mirror(cp2, n), l2);   // read MV(a,n) at Mirror(Mirror(cp2))==cp2
+      MIR.MirrorViewGet(b, n, MIR.Mirror(cp2, n), l2);
+      MIR.MirrorInvolution(cp2, n);
+      assert OS.CellAgree(a, b, MIR.Mirror(cp2, n), l2);  // from AgreeAbove(a,b,k), l2 > k
+    }
+  }
+
+  /** THE CORRECTED V-MODEL TARGET (the reversed-span fix). Identical to
+      `LidReachesV` on the FORWARD (lookbehind) branch; on the BACKWARD
+      (lookahead) branch it reads the reference view through the position mirror
+      `MirrorView(ov, |str|)` — the view the actual backward build's inner gates
+      consult — guarded on the view being column-shaped (`|ov| == |str| + 1`),
+      the shape every oracle view in the build carries. */
+  ghost opaque predicate LidReachesVFinal(crv: CP.FCompiled, str: string, ov: LOr.OracleView, i: int, cp: int) {
+    var bc := AI.get_code_v(crv.f_look_build_bc, i);
+    if LidDir(crv, i) == LAnc.Forward
+    then ORc.ReachesWriteV(bc, str, ov, 0, i, cp)
+    else if |ov| == |str| + 1
+         then ORc.ReachesWriteV(MIR.SwapAnchorsCode(bc), LC.Reverse(str), MIR.MirrorView(ov, |str|),
+                                0, i, MIR.Mirror(cp, |str|))
+         else false
+  }
+
+  /** ERASURE. On a gate-free build column the corrected target collapses to the
+      blind `LidReaches`, for ANY (column-shaped) view — the reference view is
+      irrelevant when no gate reads it, so `MirrorView` drops out. This is what
+      makes `LidReachesVFinal` a conservative extension of `LidReachesV`
+      (they coincide on every gate-free column, in both directions). */
+  lemma LidReachesVFinalErasure(crv: CP.FCompiled, str: string, ov: LOr.OracleView, i: int, cp: int)
+    requires OS.NoOracleReads(AI.get_code_v(crv.f_look_build_bc, i))
+    requires |ov| == |str| + 1
+    ensures LidReachesVFinal(crv, str, ov, i, cp) == LidReaches(crv, str, i, cp)
+  {
+    reveal LidReachesVFinal();
+    reveal LidReaches();
+    var bc := AI.get_code_v(crv.f_look_build_bc, i);
+    if LidDir(crv, i) == LAnc.Forward {
+      ORc.ReachesWriteVErasure(bc, str, ov, 0, i, cp);
+    } else {
+      SwapAnchorsCodeNoOracleReads(bc);
+      ORc.ReachesWriteVErasure(MIR.SwapAnchorsCode(bc), LC.Reverse(str), MIR.MirrorView(ov, |str|),
+                               0, i, MIR.Mirror(cp, |str|));
+    }
+  }
+
+  /** An empty build column reaches no write, in either direction (empty code is
+      gate-free, so the erasure reduces it to `LidReachesEmpty`). */
+  lemma LidReachesVFinalEmpty(crv: CP.FCompiled, str: string, ov: LOr.OracleView, i: int, cp: int)
+    requires AI.get_code_v(crv.f_look_build_bc, i) == []
+    requires |ov| == |str| + 1
+    ensures !LidReachesVFinal(crv, str, ov, i, cp)
+  {
+    LidReachesVFinalErasure(crv, str, ov, i, cp);
+    LidReachesEmpty(crv, str, i, cp);
+  }
+
+  /** STEP 1 — THE FOLD-LEVEL COLUMN FRAME (the piece #22 identified). Under the
+      gated `LidBuildOkAbove` (each column's sweep `WritesOnlyLid` its own
+      column), the sub-fold `FBuildLids(crv, str, m, ov)` — which builds columns
+      `1..m` — leaves every column `> m` UNCHANGED. Equivalently
+      `AgreeAbove(ov, FBuildLids(...), m)`. This is the hypothesis
+      `ReachesWriteVBuildFinalReconcile` consumes to move a build-time
+      characterization to the final view. Framed per column via
+      `OS.FindMatchOracleFrame` and folded down the recursion. */
+  lemma FBuildLidsFrameAbove(crv: CP.FCompiled, str: string, m: int, ov: LOr.OracleView)
+    requires forall i: int :: 1 <= i <= m ==> LidBuildOkAbove(crv, i)
+    ensures var ov' := AI.FBuildLids(crv, str, m, ov);
+      forall cp2: int, l2: int :: l2 > m ==>
+        LOr.view_get_oracle(ov', cp2, l2) == LOr.view_get_oracle(ov, cp2, l2)
+    decreases m
+  {
+    if m < 1 { return; }
+    var bc := AI.get_code_v(crv.f_look_build_bc, m);
+    var looktype := if 0 <= m < |crv.f_look_types| then crv.f_look_types[m] else R.Lookahead;
+    var dir := AI.oracle_direction(looktype);
+    var lookcdn := if 0 <= m < |crv.f_look_cdns| then crv.f_look_cdns[m] else [];
+    var initcp := AI.init_cp(dir, |str|);
+    var maxcap := R.max_group(crv.f_main_ast);
+    var maxlook := R.max_lookaround(crv.f_main_ast);
+    var maxquant := R.max_quant(crv.f_main_ast);
+    var capture := AReg.init_regs(2 * maxcap + 2);
+    var lookmem := AReg.init_regs(maxlook + 1);
+    var quant := AReg.init_regs(maxquant + 1);
+    var inits := AI.FInitState(bc, initcp, capture, lookmem, quant, 0,
+                               AI.cp_context(initcp, str, dir));
+    var (_, ov1) := AI.FFindMatch(bc, str, inits, ov, dir, lookcdn);
+    assert AI.FBuildLids(crv, str, m, ov) == AI.FBuildLids(crv, str, m - 1, ov1);
+    if bc == [] {
+      FFindMatchEmpty(str, inits, ov, dir, lookcdn);   // ov1 == ov
+    } else {
+      assert LidBuildOkAbove(crv, m);
+      assert OS.WritesOnlyLid(bc, m);                  // the gate-ful column still writes only m
+      OS.FindMatchOracleFrame(bc, str, inits, ov, dir, lookcdn, m);   // cols != m unchanged
+    }
+    FBuildLidsFrameAbove(crv, str, m - 1, ov1);
+    var ov' := AI.FBuildLids(crv, str, m - 1, ov1);
+    forall cp2: int, l2: int | l2 > m
+      ensures LOr.view_get_oracle(ov', cp2, l2) == LOr.view_get_oracle(ov, cp2, l2)
+    {
+      // l2 > m ==> l2 > m-1 (recursion: ov' == ov1) and l2 != m (frame: ov1 == ov)
+    }
+  }
+
+  /** STEP 2 — THE GATED HIGH->LOW BUILD INDUCTION. The genuinely gated form of
+      `FBuildLidsCharacterized(V)`: over the gated `LidBuildOkAbove` (build code
+      whose gates read strictly-higher, already-built columns), every column
+      `1..lid` gains exactly its build code's `LidReachesVFinal` positions
+      AGAINST THE FINAL VIEW. Forward columns are characterized by the gate-ful
+      `ORc.SweepCharacterizationV`, backward (lookahead) columns by
+      `Mirror.BackwardSweepCharacterizationV`; the build-time reading is moved to
+      the final view by `ORc.ReachesWriteVBuildFinalReconcile` fed the fold-level
+      frame (step 1). The structure mirrors the blind `FBuildLidsCharacterized`,
+      swapping the gate-free sweep for the gated one and `LidReaches` for
+      `LidReachesVFinal`. */
+  lemma FBuildLidsCharacterizedAbove(crv: CP.FCompiled, str: string, lid: int, ov: LOr.OracleView)
+    requires forall i: int :: 1 <= i <= lid ==> LidBuildOkAbove(crv, i)
+    requires |ov| == |str| + 1
+    requires forall r: int {:trigger ov[r]} :: 0 <= r < |ov| ==> lid < |ov[r]|
+    ensures var ov' := AI.FBuildLids(crv, str, lid, ov);
+      OS.SameShape(ov, ov')
+      && forall i: int, cp: int ::
+           LOr.view_get_oracle(ov', cp, i)
+           == (LOr.view_get_oracle(ov, cp, i)
+               || (1 <= i <= lid && LidReachesVFinal(crv, str, ov', i, cp)))
+    decreases lid
+  {
+    if lid < 1 { return; }
+    var bc := AI.get_code_v(crv.f_look_build_bc, lid);
+    var looktype := if 0 <= lid < |crv.f_look_types| then crv.f_look_types[lid] else R.Lookahead;
+    var dir := AI.oracle_direction(looktype);
+    var lookcdn := if 0 <= lid < |crv.f_look_cdns| then crv.f_look_cdns[lid] else [];
+    var initcp := AI.init_cp(dir, |str|);
+    var maxcap := R.max_group(crv.f_main_ast);
+    var maxlook := R.max_lookaround(crv.f_main_ast);
+    var maxquant := R.max_quant(crv.f_main_ast);
+    var capture := AReg.init_regs(2 * maxcap + 2);
+    var lookmem := AReg.init_regs(maxlook + 1);
+    var quant := AReg.init_regs(maxquant + 1);
+    var inits := AI.FInitState(bc, initcp, capture, lookmem, quant, 0,
+                               AI.cp_context(initcp, str, dir));
+    var (_, ov1) := AI.FFindMatch(bc, str, inits, ov, dir, lookcdn);
+    var n := |str|;
+    assert AI.FBuildLids(crv, str, lid, ov) == AI.FBuildLids(crv, str, lid - 1, ov1);
+    if bc == [] {
+      FFindMatchEmpty(str, inits, ov, dir, lookcdn);
+      assert ov1 == ov;
+      FBuildLidsCharacterizedAbove(crv, str, lid - 1, ov1);
+      var ov' := AI.FBuildLids(crv, str, lid - 1, ov1);
+      forall i: int, cp: int
+        ensures LOr.view_get_oracle(ov', cp, i)
+             == (LOr.view_get_oracle(ov, cp, i)
+                 || (1 <= i <= lid && LidReachesVFinal(crv, str, ov', i, cp)))
+      {
+        if i == lid {
+          assert AI.get_code_v(crv.f_look_build_bc, i) == bc == [];
+          FBuildLidsLen(crv, str, lid - 1, ov1);      // |ov'| == |str| + 1
+          LidReachesVFinalEmpty(crv, str, ov', i, cp);
+        }
+      }
+    } else {
+      assert LidBuildOkAbove(crv, lid);
+      assert OS.AllGatesAbove(bc, lid) && OS.NoCheckNullable(bc) && OS.WritesOnlyLid(bc, lid)
+          && OS.NoAccept(bc);
+      assert LidDir(crv, lid) == dir;
+      assert AI.get_code_v(crv.f_look_build_bc, lid) == bc;
+      // The tail is split by direction ON PURPOSE (as in FBuildLidsCharacterized):
+      // LidReachesVFinal is an if-then-else on the build direction, so it only
+      // unfolds where `dir` is statically known.
+      if dir == LAnc.Forward {
+        assert initcp == 0;
+        ORc.SweepCharacterizationV(bc, lid, str, ov, lookcdn, capture, lookmem, quant, 0);
+        OS.FindMatchOracleFrame(bc, str, inits, ov, dir, lookcdn, lid);
+        assert OS.SameShape(ov, ov1);
+        assert |ov1| == |str| + 1;
+        forall r: int | 0 <= r < |ov1| ensures lid - 1 < |ov1[r]| { assert |ov1[r]| == |ov[r]|; }
+        FBuildLidsCharacterizedAbove(crv, str, lid - 1, ov1);
+        FBuildLidsFrameAbove(crv, str, lid - 1, ov1);
+        var ov' := AI.FBuildLids(crv, str, lid - 1, ov1);
+        FBuildLidsLen(crv, str, lid - 1, ov1);          // |ov'| == |str| + 1
+        // AgreeAbove(ov, ov', lid): cols > lid untouched by building lid (frame)
+        // and by the sub-fold (step-1 frame).
+        forall cp2: int, l2: int | l2 > lid ensures OS.CellAgree(ov, ov', cp2, l2) {}
+        assert OS.AgreeAbove(ov, ov', lid);
+        forall i: int, cp: int
+          ensures LOr.view_get_oracle(ov', cp, i)
+               == (LOr.view_get_oracle(ov, cp, i)
+                   || (1 <= i <= lid && LidReachesVFinal(crv, str, ov', i, cp)))
+        {
+          if i == lid {
+            reveal LidReachesVFinal();
+            assert LOr.view_get_oracle(ov', cp, i) == LOr.view_get_oracle(ov1, cp, i);
+            ORc.ReachesWriteVBuildFinalReconcile(bc, str, ov, ov', lid, 0, cp);
+          } else if 1 <= i <= lid - 1 {
+            assert LOr.view_get_oracle(ov1, cp, i) == LOr.view_get_oracle(ov, cp, i);
+          } else {
+            assert LOr.view_get_oracle(ov1, cp, i) == LOr.view_get_oracle(ov, cp, i);
+          }
+        }
+      } else {
+        assert dir == LAnc.Backward && initcp == AI.init_cp(LAnc.Backward, |str|);
+        MIR.BackwardSweepCharacterizationV(bc, lid, str, ov, lookcdn,
+                                           2 * maxcap + 2, maxlook + 1, maxquant + 1, |str|);
+        OS.FindMatchOracleFrame(bc, str, inits, ov, dir, lookcdn, lid);
+        assert OS.SameShape(ov, ov1);
+        assert |ov1| == |str| + 1;
+        forall r: int | 0 <= r < |ov1| ensures lid - 1 < |ov1[r]| { assert |ov1[r]| == |ov[r]|; }
+        FBuildLidsCharacterizedAbove(crv, str, lid - 1, ov1);
+        FBuildLidsFrameAbove(crv, str, lid - 1, ov1);
+        var ov' := AI.FBuildLids(crv, str, lid - 1, ov1);
+        FBuildLidsLen(crv, str, lid - 1, ov1);          // |ov'| == |str| + 1
+        forall cp2: int, l2: int | l2 > lid ensures OS.CellAgree(ov, ov', cp2, l2) {}
+        assert OS.AgreeAbove(ov, ov', lid);
+        // transport the agreement through the position mirror for the backward
+        // reference view, then reconcile the swapped program's reading.
+        AgreeAboveMirror(ov, ov', lid, n);
+        MIR.SwapPreservesAllGatesAbove(bc, lid);
+        forall i: int, cp: int
+          ensures LOr.view_get_oracle(ov', cp, i)
+               == (LOr.view_get_oracle(ov, cp, i)
+                   || (1 <= i <= lid && LidReachesVFinal(crv, str, ov', i, cp)))
+        {
+          if i == lid {
+            reveal LidReachesVFinal();
+            assert LOr.view_get_oracle(ov', cp, i) == LOr.view_get_oracle(ov1, cp, i);
+            ORc.ReachesWriteVBuildFinalReconcile(MIR.SwapAnchorsCode(bc), LC.Reverse(str),
+                                                 MIR.MirrorView(ov, n), MIR.MirrorView(ov', n),
+                                                 lid, 0, MIR.Mirror(cp, n));
+          } else if 1 <= i <= lid - 1 {
+            assert LOr.view_get_oracle(ov1, cp, i) == LOr.view_get_oracle(ov, cp, i);
+          } else {
+            assert LOr.view_get_oracle(ov1, cp, i) == LOr.view_get_oracle(ov, cp, i);
+          }
+        }
+      }
+    }
+  }
+
+  /** STEP 3 (capstone core) — THE GATED §6.2 THEOREM, isolated on its single
+      remaining obligation. Given the per-lid gated side condition
+      `LidBuildOkAbove` for EVERY row of `FFullCompilation(re)`, column `lid` of
+      the finished oracle holds EXACTLY the `LidReachesVFinal` positions of that
+      lid's build bytecode (read against the finished oracle itself). Pure
+      composition of the gated induction `FBuildLidsCharacterizedAbove` over the
+      all-false initial view. The one open piece for a genuinely nested `re` is
+      discharging the `LidBuildOkAbove` hypothesis — the nested build-code
+      classification (`NR.GatesAboveClassified` fed `LidsWellNested` + a nested
+      `oracle_regex`/write classification); on the depth-1 lookbehind fragment it
+      is discharged by `AllLidsBuildOkAbove` (see the corollary below). */
+  lemma FBuildOracleCorrectAbove(re: R.regex, str: string)
+    requires LT.LookUnique(re)
+    requires forall i: int :: LidBuildOkAbove(CP.FFullCompilation(re), i)
+    ensures var crv := CP.FFullCompilation(re);
+      var ovf := AI.FBuildOracle(crv, str);
+      forall lid: int, cp: int ::
+        LOr.view_get_oracle(ovf, cp, lid)
+        == (1 <= lid <= R.max_lookaround(re) && LidReachesVFinal(crv, str, ovf, lid, cp))
+  {
+    var crv := CP.FFullCompilation(re);
+    var ovf := AI.FBuildOracle(crv, str);
+    var maxlook0 := R.max_lookaround(re);
+    var maxquant0 := R.max_quant(re);
+    var nlook := if maxlook0 + 1 >= 0 then maxlook0 + 1 else 0;
+    var nquant := if maxquant0 + 1 >= 0 then maxquant0 + 1 else 0;
+    var seed := CP.FCompiled(re, CP.compile_to_bytecode(R.lazy_prefix(re)), LCdn.compile_cdns(re),
+                             seq(nlook, k => R.Lookahead), seq(nlook, k => R.Re_empty),
+                             seq(nlook, k => []), seq(nlook, k => []),
+                             seq(nlook, k => []), seq(nquant, k => []));
+    assert crv == CP.FCompileExtra(re, seed);
+    FCompileExtraMainAst(re, seed);
+    assert crv.f_main_ast == re;
+    var maxlook := R.max_lookaround(crv.f_main_ast);
+    assert maxlook == maxlook0;
+    var ov0 := LOr.init_view(|str|, maxlook + 1);
+    assert AI.FBuildOracle(crv, str) == AI.FBuildLids(crv, str, maxlook, ov0);
+    assert |ov0| == |str| + 1;
+    assert forall r: int {:trigger ov0[r]} :: 0 <= r < |ov0| ==> |ov0[r]| == maxlook + 1;
+    assert forall cp: int, i: int :: !LOr.view_get_oracle(ov0, cp, i);
+    forall r: int {:trigger ov0[r]} | 0 <= r < |ov0| ensures maxlook < |ov0[r]| {}
+    FBuildLidsCharacterizedAbove(crv, str, maxlook, ov0);
+  }
+
+  /** STEP 3 (capstone) — the GATED §6.2 theorem, fully closed on the depth-1
+      LOOKBEHIND fragment. Discharges the `LidBuildOkAbove` hypothesis of
+      `FBuildOracleCorrectAbove` via the establisher `AllLidsBuildOkAbove`, so the
+      currently-wired fragment's oracle correctness now flows through the
+      GENUINELY GATED induction (`FBuildLidsCharacterizedAbove`) rather than the
+      gate-free erasure of `FBuildOracleCorrectV`. The `NestedFragmentRE` version
+      is the same composition once the nested establisher discharges the same
+      hypothesis. */
+  lemma FBuildOracleCorrectAboveLookBehind(re: R.regex, str: string)
+    requires NR.LookBehindFragmentRE(re)
+    requires LT.LookUnique(re)
+    ensures var crv := CP.FFullCompilation(re);
+      var ovf := AI.FBuildOracle(crv, str);
+      forall lid: int, cp: int ::
+        LOr.view_get_oracle(ovf, cp, lid)
+        == (1 <= lid <= R.max_lookaround(re) && LidReachesVFinal(crv, str, ovf, lid, cp))
+  {
+    forall i: int ensures LidBuildOkAbove(CP.FFullCompilation(re), i) {
+      AllLidsBuildOkAbove(re, i);
+    }
+    FBuildOracleCorrectAbove(re, str);
+  }
+
+  // ===========================================================================
+  // THE NESTED ESTABLISHER (brick 4b at depth k): every lid of a nested-fragment
+  // regex satisfies `LidBuildOkAbove` against `FFullCompilation(re)`. This is the
+  // L4 analogue of `AllLidsBuildOk`, discharging the ADMITTED-gate form via the
+  // nested build-code classification `NR.NestedCompileToWriteClassifiedAbove`
+  // (which `NR.GatesAboveClassified` machinery + `LidsWellNested` supply).
+  // ===========================================================================
+
+  /** A lid OF a nested-fragment regex satisfies `LidBuildOkAbove`: recurse to the
+      lookaround node owning `i` and classify its build code
+      `compile_to_write(oracle_regex(la, body), i)`. The build regex is nested,
+      lid-unique, and — by `LidsWellNested` — has every gate strictly above `i`,
+      so `NR.NestedCompileToWriteClassifiedAbove` supplies the four conjuncts. */
+  lemma NestedLidBuildOkAbove(re: R.regex, fc: CP.FCompiled, i: nat)
+    requires NR.NestedFragmentRE(re)
+    requires LT.LidsWellNested(re)
+    requires LT.LookUnique(re)
+    requires LT.LookTablesOk(re, fc)
+    requires i in LT.LookIds(re)
+    ensures LidBuildOkAbove(fc, i)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) =>
+      if i in LT.LookIds(r1) { NestedLidBuildOkAbove(r1, fc, i); }
+      else { NestedLidBuildOkAbove(r2, fc, i); }
+    case Re_con(r1, r2) =>
+      if i in LT.LookIds(r1) { NestedLidBuildOkAbove(r1, fc, i); }
+      else { NestedLidBuildOkAbove(r2, fc, i); }
+    case Re_quant(_, _, _, r1) => NestedLidBuildOkAbove(r1, fc, i);
+    case Re_capture(_, r1) => NestedLidBuildOkAbove(r1, fc, i);
+    case Re_lookaround(lid, la, body) =>
+      assert lid >= 0;
+      if (i as int) == lid {
+        assert LT.LookEntryOk(fc, lid, la, body);
+        var og := CP.oracle_regex(la, body);
+        NR.OracleRegexNestedFragment(la, body);
+        NR.OracleRegexLookUnique(la, body);
+        NR.OracleRegexLookIds(la, body);   // LookIds(og) == LookIds(body)
+        assert forall x: nat :: x in LT.LookIds(og) ==> x > lid;
+        NR.NestedCompileToWriteClassifiedAbove(og, lid);
+        assert AI.get_code_v(fc.f_look_build_bc, i) == CP.compile_to_write(og, lid);
+      } else {
+        assert i in LT.LookIds(body);
+        NestedLidBuildOkAbove(body, fc, i);
+      }
+  }
+
+  /** ESTABLISHER (brick 4b, depth k): every row of `FFullCompilation(re)`
+      satisfies `LidBuildOkAbove` for a nested-fragment, well-nested, lid-unique
+      `re` — the real lids by `NestedLidBuildOkAbove`, all other rows because they
+      still hold the seed's empty bytecode. Discharges the sole hypothesis of
+      `FBuildOracleCorrectAbove` for the NESTED fragment. */
+  lemma AllLidsBuildOkAboveNested(re: R.regex, i: int)
+    requires NR.NestedFragmentRE(re)
+    requires LT.LidsWellNested(re)
+    requires LT.LookUnique(re)
+    ensures LidBuildOkAbove(CP.FFullCompilation(re), i)
+  {
+    var crv := CP.FFullCompilation(re);
+    if i >= 0 && (i as nat) in LT.LookIds(re) {
+      LT.FFullCompilationLookOk(re);
+      NestedLidBuildOkAbove(re, crv, i as nat);
+    } else {
+      var maxlook := R.max_lookaround(re);
+      var maxquant := R.max_quant(re);
+      var nlook := if maxlook + 1 >= 0 then maxlook + 1 else 0;
+      var nquant := if maxquant + 1 >= 0 then maxquant + 1 else 0;
+      var seed := CP.FCompiled(re, CP.compile_to_bytecode(R.lazy_prefix(re)), LCdn.compile_cdns(re),
+                               seq(nlook, k => R.Lookahead), seq(nlook, k => R.Re_empty),
+                               seq(nlook, k => []), seq(nlook, k => []),
+                               seq(nlook, k => []), seq(nquant, k => []));
+      assert crv == CP.FCompileExtra(re, seed);
+      LT.FCompileExtraLookFrame(re, seed);
+      if 0 <= i < |crv.f_look_build_bc| {
+        assert LT.AgreeAt(seed, crv, i as nat);
+        assert seed.f_look_build_bc[i] == [];
+        assert AI.get_code_v(crv.f_look_build_bc, i) == [];
+      } else {
+        assert AI.get_code_v(crv.f_look_build_bc, i) == [];
+      }
+    }
+  }
+
+  /** STEP 3 (nested capstone) — THE §6.2 THEOREM FOR THE NESTED FRAGMENT, fully
+      closed. For a nested-fragment, well-nested, lid-unique `re` (nesting to ANY
+      depth, both lookahead and lookbehind flavours), column `lid` of the built
+      oracle holds EXACTLY the `LidReachesVFinal` positions of that lid's build
+      code — the genuinely GATED depth-k oracle correctness. Discharges
+      `AllLidsBuildOkAboveNested` into `FBuildOracleCorrectAbove`. */
+  lemma FBuildOracleCorrectAboveNested(re: R.regex, str: string)
+    requires NR.NestedFragmentRE(re)
+    requires LT.LidsWellNested(re)
+    requires LT.LookUnique(re)
+    ensures var crv := CP.FFullCompilation(re);
+      var ovf := AI.FBuildOracle(crv, str);
+      forall lid: int, cp: int ::
+        LOr.view_get_oracle(ovf, cp, lid)
+        == (1 <= lid <= R.max_lookaround(re) && LidReachesVFinal(crv, str, ovf, lid, cp))
+  {
+    forall i: int ensures LidBuildOkAbove(CP.FFullCompilation(re), i) {
+      AllLidsBuildOkAboveNested(re, i);
+    }
+    FBuildOracleCorrectAbove(re, str);
+  }
+
   /** `FBuildOracleCorrect` restated per lookaround, with the bytecode in its
       `lazy_prefix(body)` form — the interface the §6.3 bridge consumes. The
       row facts come from `FFullCompilationLookOk` at the call site. */
