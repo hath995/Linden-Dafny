@@ -1129,6 +1129,25 @@ module LindenElkMirror {
     forall pc | 0 <= pc < |c| ensures SwapAnchorsCodeNonAnchorAt(c, pc) {}
   }
 
+  /** The L4 gate-floor analogue of `SwapPreservesClassification`: the anchor
+      swap rewrites `AnchorAssertion` ARGUMENTS only, so it neither introduces
+      nor moves an oracle-consulting instruction, and every gate keeps the very
+      column it read. `AllGatesAbove(c, k)` — every gate reads a column strictly
+      above `k` — is therefore preserved. This is what lets the L4 gate-ful
+      sweep characterization `ORc.SweepCharacterizationV` be pointed at the
+      swapped program of a backward (lookahead) build. */
+  lemma SwapPreservesAllGatesAbove(c: RB.code, k: int)
+    requires OS.AllGatesAbove(c, k)
+    ensures OS.AllGatesAbove(SwapAnchorsCode(c), k)
+  {
+    var sc := SwapAnchorsCode(c);
+    forall pc | 0 <= pc < |sc|
+      ensures (sc[pc].CheckOracle? ==> sc[pc].col > k) && (sc[pc].NegCheckOracle? ==> sc[pc].ncl > k)
+    {
+      assert sc[pc] == (if c[pc].AnchorAssertion? then RB.AnchorAssertion(SwapAnchor(c[pc].aa)) else c[pc]);
+    }
+  }
+
   /* ---------------------------------------------------------------------
      ITEM 2 (LidBuildOk / FBuildLidsCharacterized) -- ATTEMPTED, BACKED OUT.
 
@@ -1220,6 +1239,77 @@ module LindenElkMirror {
     {
       MirrorViewGet(ovb, n, cp, lid);
       MirrorViewGet(ov, n, cp, lid);
+    }
+  }
+
+  /** THE L4 GATE-FUL TRANSPORT. `SweepCharacterizationV` is forward-only; this
+      is its BACKWARD counterpart, obtained — exactly as `BackwardSweep-
+      Characterization` mirrors `SweepCharacterization` — not by re-proving it
+      but by running the anchor-swap / string-reversal / position-mirror
+      isomorphism underneath it.
+
+      A backward build's oracle column `k` at `cp` is set exactly when the
+      anchor-swapped program, run FORWARD over the reversed string against the
+      MIRRORED view (which carries the strictly-higher columns its admitted
+      gates read), reaches a write at the mirrored position. The gate reads make
+      `ReachesWriteV` view-dependent, so the reference view — `MirrorView(ov, n)`
+      — appears in the characterization, unlike the blind form. */
+  lemma BackwardSweepCharacterizationV(c: RB.code, k: int, str: string, ov: LOr.OracleView,
+                                       cdn: LCdn.cdns, ncap: int, nlook: int, nquant: int,
+                                       n: int)
+    requires n == |str| && |ov| == n + 1
+    requires OS.AllGatesAbove(c, k) && OS.NoCheckNullable(c) && OS.WritesOnlyLid(c, k)
+          && OS.NoAccept(c)
+    requires forall i: int :: 0 <= i < |ov| ==> 0 <= k < |ov[i]|
+    ensures
+      var initcp := AI.init_cp(LAnc.Backward, n);
+      var s := AI.FInitState(c, initcp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                             AReg.init_regs(nquant), 0,
+                             AI.cp_context(initcp, str, LAnc.Backward));
+      var ov' := AI.FFindMatch(c, str, s, ov, LAnc.Backward, cdn).1;
+      forall cp: int :: LOr.view_get_oracle(ov', cp, k)
+        == (LOr.view_get_oracle(ov, cp, k)
+            || ORc.ReachesWriteV(SwapAnchorsCode(c), LC.Reverse(str), MirrorView(ov, n),
+                                 0, k, Mirror(cp, n)))
+  {
+    ReverseLen(str);
+    var cs := SwapAnchorsCode(c);
+    var rstr := LC.Reverse(str);
+    var mv := MirrorView(ov, n);
+    SwapPreservesClassification(c, k);
+    SwapPreservesAllGatesAbove(c, k);
+    // the column-shape hypothesis, transported (see BackwardSweepCharacterization)
+    assert |mv| == n + 1;
+    forall j: int | 0 <= j < |mv| ensures 0 <= k < |mv[j]| {
+      assert mv[j] == ov[n - j];
+      assert 0 <= n - j < |ov|;
+    }
+    assert |rstr| < |mv|;
+
+    assert OS.AllGatesAbove(cs, k) && OS.NoCheckNullable(cs);
+    assert OS.WritesOnlyLid(cs, k) && OS.NoAccept(cs);
+    assert |rstr| < |mv|;
+    assert forall i: int {:trigger mv[i]} :: 0 <= i < |mv| ==> 0 <= k < |mv[i]|;
+    // the forward gate-ful statement, on the swapped program over the reversed
+    // string against the mirrored view
+    ORc.SweepCharacterizationV(cs, k, rstr, mv, SwapAnchorsCdns(cdn),
+                               AReg.init_regs(ncap), AReg.init_regs(nlook),
+                               AReg.init_regs(nquant), 0);
+    // ... and the isomorphism identifying that run with the backward build
+    BackwardBuildIsForward(c, str, ov, cdn, ncap, nlook, nquant, n);
+
+    var initcp := AI.init_cp(LAnc.Backward, n);
+    var sb := AI.FInitState(c, initcp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                            AReg.init_regs(nquant), 0,
+                            AI.cp_context(initcp, str, LAnc.Backward));
+    var ovb := AI.FFindMatch(c, str, sb, ov, LAnc.Backward, cdn).1;
+    forall cp: int
+      ensures LOr.view_get_oracle(ovb, cp, k)
+           == (LOr.view_get_oracle(ov, cp, k)
+               || ORc.ReachesWriteV(cs, rstr, mv, 0, k, Mirror(cp, n)))
+    {
+      MirrorViewGet(ovb, n, cp, k);
+      MirrorViewGet(ov, n, cp, k);
     }
   }
 }

@@ -219,6 +219,98 @@ module LindenElkOracleReach {
     }
   }
 
+  // ===========================================================================
+  // L4 (brick 4c reconcile): VIEW-INDEPENDENCE of gate-ful reachability.
+  //
+  // `SweepCharacterizationV` characterizes column `k` against the BUILD-TIME
+  // view, but `LidReachesV` states the target against the FINAL view. Since
+  // every gate in the column-`k` build code reads a column strictly ABOVE `k`
+  // (`AllGatesAbove(c, k)`) and the two views agree there (`AgreeAbove`, the
+  // higher columns being finished and untouched for the rest of the build),
+  // the whole `ReachFV` graph — hence `ReachesWriteV` — is IDENTICAL against
+  // the two views. This reconciles the two statements without re-running the
+  // sweep. (When `k = +inf`/`NoOracleReads` this is vacuous: no gate reads
+  // anything, so `ReachesWriteVErasure` already collapses every view.)
+  // ===========================================================================
+
+  /** One V-edge is view-independent above the gate floor: `AllGatesAbove(c, k)`
+      makes every gate read a column `> k`, and `AgreeAbove(a, b, k)` makes the
+      two views answer identically there; every non-gate case never consults the
+      view at all. So the edge relation is the SAME under `a` and under `b`. */
+  lemma EpsEdgeVAgreeAbove(c: RB.code, str: string, a: LOr.OracleView, b: LOr.OracleView, k: int,
+                           cp: int, pc: nat, eb: bool, pc2: nat, eb2: bool)
+    requires OS.AllGatesAbove(c, k)
+    requires OS.AgreeAbove(a, b, k)
+    ensures EpsEdgeV(c, str, a, cp, pc, eb, pc2, eb2) == EpsEdgeV(c, str, b, cp, pc, eb, pc2, eb2)
+  {
+    var instr := RB.get_instr(c, pc);
+    if instr.CheckOracle? || instr.NegCheckOracle? {
+      // out-of-range `get_instr` is `Fail`, so a gate instr means `pc` is in range
+      assert 0 <= pc < |c| && c[pc] == instr;
+      OS.GateReadAgrees(c, k, a, b, cp, pc);
+    }
+  }
+
+  /** VIEW-INDEPENDENCE of `ReachFV` above the gate floor: on `AllGatesAbove(c,k)`
+      code, a config reachable against view `a` is reachable against any view `b`
+      that agrees with `a` above `k`. Least induction over `ReachFV(a)`, mirroring
+      `ReachFVErasureFwd`: the eps-edge step transports its edge by
+      `EpsEdgeVAgreeAbove`; the base and consume steps never consult the view. */
+  least lemma ReachFVAgreeAbove(c: RB.code, str: string, a: LOr.OracleView, b: LOr.OracleView, k: int,
+                                cp0: int, pc: nat, eb: bool, cp: int)
+    requires OS.AllGatesAbove(c, k)
+    requires OS.AgreeAbove(a, b, k)
+    requires ReachFV(c, str, a, cp0, pc, eb, cp)
+    ensures ReachFV(c, str, b, cp0, pc, eb, cp)
+  {
+    if pc == 0 && eb == false && cp == cp0 {
+    } else if exists pc1: nat, eb1: bool ::
+                ReachFV(c, str, a, cp0, pc1, eb1, cp) && EpsEdgeV(c, str, a, cp, pc1, eb1, pc, eb) {
+      var pc1, eb1 :|
+        ReachFV(c, str, a, cp0, pc1, eb1, cp) && EpsEdgeV(c, str, a, cp, pc1, eb1, pc, eb);
+      ReachFVAgreeAbove(c, str, a, b, k, cp0, pc1, eb1, cp);
+      EpsEdgeVAgreeAbove(c, str, a, b, k, cp, pc1, eb1, pc, eb);
+    } else {
+      if ReachFV(c, str, a, cp0, pc - 1, false, cp - 1) {
+        ReachFVAgreeAbove(c, str, a, b, k, cp0, pc - 1, false, cp - 1);
+      } else {
+        ReachFVAgreeAbove(c, str, a, b, k, cp0, pc - 1, true, cp - 1);
+      }
+    }
+  }
+
+  /** THE RECONCILE (brick 4c). `SweepCharacterizationV` characterizes column
+      `lid` against the BUILD-TIME view `ov_build`; `LidReachesV` states it
+      against the FINAL view `ov'`. Because the build code's gates all read
+      columns strictly above `lid` (`AllGatesAbove(bc, lid)`) and those columns
+      are finished — so `AgreeAbove(ov_build, ov', lid)` — the two `ReachesWriteV`
+      readings COINCIDE. Both directions by `ReachFVAgreeAbove` (`AgreeAbove` is
+      symmetric). This is what lets the gated induction feed the final-view
+      target. */
+  lemma ReachesWriteVBuildFinalReconcile(bc: RB.code, str: string, ov_build: LOr.OracleView,
+                                         ov': LOr.OracleView, lid: int, cp0: int, cp: int)
+    requires OS.AllGatesAbove(bc, lid)
+    requires OS.AgreeAbove(ov_build, ov', lid)
+    ensures ReachesWriteV(bc, str, ov_build, cp0, lid, cp)
+         == ReachesWriteV(bc, str, ov', cp0, lid, cp)
+  {
+    // AgreeAbove is symmetric (CellAgree is `==`)
+    forall cp2: int, l2: int | l2 > lid ensures OS.CellAgree(ov', ov_build, cp2, l2) {
+      assert OS.CellAgree(ov_build, ov', cp2, l2);
+    }
+    assert OS.AgreeAbove(ov', ov_build, lid);
+    if ReachesWriteV(bc, str, ov_build, cp0, lid, cp) {
+      var pc: nat, eb: bool :|
+        ReachFV(bc, str, ov_build, cp0, pc, eb, cp) && RB.get_instr(bc, pc) == RB.WriteOracle(lid);
+      ReachFVAgreeAbove(bc, str, ov_build, ov', lid, cp0, pc, eb, cp);
+    }
+    if ReachesWriteV(bc, str, ov', cp0, lid, cp) {
+      var pc: nat, eb: bool :|
+        ReachFV(bc, str, ov', cp0, pc, eb, cp) && RB.get_instr(bc, pc) == RB.WriteOracle(lid);
+      ReachFVAgreeAbove(bc, str, ov', ov_build, lid, cp0, pc, eb, cp);
+    }
+  }
+
   /** Reachability only visits positions at or after the start (Forward run) —
       a sanity bound used to keep cp arithmetic honest downstream. */
   least lemma ReachFGeStart(c: RB.code, str: string, cp0: int, pc: nat, eb: bool, cp: int)
