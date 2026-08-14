@@ -705,4 +705,520 @@ module LindenElkWalkOkEntry {
       }
     }
   }
+
+  // =========================================================================
+  // L4 depth-k (ADDITIVE): the WalkOk-entry family widened from
+  // LookBehindFragmentRE to NestedFragmentRE. Every lookaround case is a
+  // single zero-width gate (no body recursion), so each depth-1 proof ports
+  // verbatim. The two continuation helpers WalkOkConsTransparent / WalkOkAtJmp
+  // are fragment-agnostic and reused as-is. Feeds WalkOkEntryNested ->
+  // WO.WalkOk for the nested engine bridge (BodyTreeAtCpNested).
+  // =========================================================================
+
+  lemma NfaRepREPinsNested(re: R.regex, c: RB.code, pc1: nat, pc2: nat)
+    requires NR.NestedFragmentRE(re) && T.TransWf(re)
+    requires NR.NfaRepRE(re, c, pc1, pc2)
+    requires NR.GetPcRE(c, pc1).Some? && NR.GetPcRE(c, pc1).value.Jmp?
+    ensures pc1 == pc2 && TransparentL(T.Translate(re))
+    decreases CP.rsize(re)
+  {
+    match re
+    case Re_empty =>
+    case Re_character(_) =>      // pins Consume: vacuous
+    case Re_anchor(_) =>         // pins AnchorAssertion: vacuous
+    case Re_alt(_, _) =>         // pins Fork: vacuous
+    case Re_con(r1, r2) =>
+      var e1: nat :| NR.NfaRepRE(r1, c, pc1, e1) && NR.NfaRepRE(r2, c, e1, pc2);
+      NfaRepREPinsNested(r1, c, pc1, e1);
+      NfaRepREPinsNested(r2, c, e1, pc2);
+    case Re_capture(_, _) =>     // pins SetRegisterToCP: vacuous
+    case Re_lookaround(_, _, _) =>
+    case Re_quant(nul, qid, q, r1) =>
+      if q.min == 0 && q.max == None {
+        // pins Fork: vacuous
+      } else if q.max.Some? {
+        var mn := q.min as nat;
+        var kx := (q.max.value - q.min) as nat;
+        var em: nat :| NR.NfaRepMinRE(mn, qid, r1, c, pc1, em)
+          && NR.NfaRepOptRE(kx, q.greedy, qid, r1, c, em, pc2);
+        if mn > 0 {
+          // the forced chain pins SetQuantToClock: vacuous
+          var e1: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetQuantToClock(qid, false))
+            && NR.NfaRepRE(r1, c, pc1 + 1, e1) && NR.NfaRepMinRE(mn - 1, qid, r1, c, e1, em);
+        } else if kx > 0 {
+          // the first layer pins Fork: vacuous
+          assert em == pc1;
+          var e1: nat :| NR.GetPcRE(c, pc1) == Some(if q.greedy then RB.Fork(pc1 + 1, pc2) else RB.Fork(pc2, pc1 + 1))
+            && NR.GetPcRE(c, pc1 + 1) == Some(RB.SetQuantToClock(qid, false))
+            && NR.GetPcRE(c, pc1 + 2) == Some(RB.BeginLoop)
+            && NR.NfaRepRE(r1, c, pc1 + 3, e1)
+            && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+            && NR.NfaRepOptRE(kx - 1, q.greedy, qid, r1, c, e1 + 1, pc2);
+        } else {
+          // spent {0,0}: no code — transparent
+          assert em == pc1 && pc2 == pc1;
+          assert T.TrDelta(q) == LN.NN(0);
+          assert T.Translate(re) == L.Quantified(q.greedy, 0, LN.NN(0), T.Translate(r1));
+        }
+      } else {
+        // the do-while chain head pins SetQuantToClock: vacuous
+        var mn1 := (q.min - 1) as nat;
+        var em: nat :| NR.NfaRepMinRE(mn1, qid, r1, c, pc1, em)
+          && NR.GetPcRE(c, em) == Some(RB.SetQuantToClock(qid, false))
+          && (exists e1: nat ::
+                NR.NfaRepRE(r1, c, em + 1, e1)
+                && NR.GetPcRE(c, e1) == Some(if q.greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
+                && pc2 == e1 + 1);
+        if mn1 > 0 {
+          var e1: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetQuantToClock(qid, false))
+            && NR.NfaRepRE(r1, c, pc1 + 1, e1) && NR.NfaRepMinRE(mn1 - 1, qid, r1, c, e1, em);
+        } else {
+          assert em == pc1;
+        }
+      }
+  }
+
+  lemma WalkOkCompFNested(n: nat, re: R.regex, c: RB.code, pc1: nat, pc2: nat, cont: LS.Actions, g: bool)
+    requires NR.NestedFragmentRE(re) && T.TransWf(re)
+    requires NR.NfaRepRE(re, c, pc1, pc2)
+    requires forall gp: bool, mm: nat {:trigger WO.WalkOkF(cont, c, pc2, gp, mm)} :: mm < n ==> WO.WalkOkF(cont, c, pc2, gp, mm)
+    ensures WO.WalkOkF([LS.Areg(T.Translate(re))] + cont, c, pc1, g, n)
+    decreases n, CP.rsize(re), 2
+  {
+    if n == 0 { return; }
+    var trre := T.Translate(re);
+    var tgt := [LS.Areg(trre)] + cont;
+    assert tgt[0] == LS.Areg(trre) && tgt[1..] == cont;
+    match re
+    case Re_empty =>
+      assert pc1 == pc2 && trre == L.Epsilon;
+      if NR.GetPcRE(c, pc1).Some? && NR.GetPcRE(c, pc1).value.Jmp? {
+        var np := NR.GetPcRE(c, pc1).value.jl;
+        if np >= 0 {
+          forall mm: nat {:trigger WO.WalkOkF(cont, c, np as nat, g, mm)} | mm < n - 1
+            ensures WO.WalkOkF(cont, c, np as nat, g, mm)
+          {
+            assert WO.WalkOkF(cont, c, pc1, g, mm + 1);
+          }
+          WalkOkConsTransparent(n - 1, trre, cont, c, np as nat, g);
+        }
+      }
+      assert WO.WalkOkF(cont, c, pc1, g, n - 1);
+      assert WO.WalkOkRegF(trre, cont, c, pc1, g, n);
+      assert WO.WalkOkF(tgt, c, pc1, g, n);
+    case Re_character(ch) =>
+      assert NR.GetPcRE(c, pc1) == Some(RB.Consume(T.ExpectationOf(ch))) && pc2 == pc1 + 1;
+      assert WO.WalkOkF(cont, c, pc1 + 1, true, n - 1);
+      assert WO.WalkOkRegF(trre, cont, c, pc1, g, n);
+      assert WO.WalkOkF(tgt, c, pc1, g, n);
+    case Re_anchor(a) =>
+      assert NR.GetPcRE(c, pc1) == Some(RB.AnchorAssertion(a)) && pc2 == pc1 + 1;
+      assert trre == L.AnchorR(T.TrAnchor(a));
+      assert WO.WalkOkF(cont, c, pc1 + 1, g, n - 1);
+      assert WO.WalkOkRegF(trre, cont, c, pc1, g, n);
+      assert WO.WalkOkF(tgt, c, pc1, g, n);
+    case Re_alt(r1, r2) =>
+      var e1: nat :| NR.GetPcRE(c, pc1) == Some(RB.Fork(pc1 + 1, e1 + 1))
+        && NR.NfaRepRE(r1, c, pc1 + 1, e1)
+        && NR.GetPcRE(c, e1) == Some(RB.Jmp(pc2))
+        && NR.NfaRepRE(r2, c, e1 + 1, pc2);
+      assert trre == L.Disjunction(T.Translate(r1), T.Translate(r2));
+      // right branch straight to the join
+      WalkOkCompFNested(n - 1, r2, c, e1 + 1, pc2, cont, g);
+      // left branch exits onto the join Jmp
+      forall gp: bool, mm: nat {:trigger WO.WalkOkF(cont, c, e1, gp, mm)} | mm < n - 1
+        ensures WO.WalkOkF(cont, c, e1, gp, mm)
+      {
+        WalkOkAtJmp(mm, cont, c, e1, pc2, gp);
+      }
+      WalkOkCompFNested(n - 1, r1, c, pc1 + 1, e1, cont, g);
+      assert WO.WalkOkRegF(trre, cont, c, pc1, g, n);
+      assert WO.WalkOkF(tgt, c, pc1, g, n);
+    case Re_con(r1, r2) =>
+      var e1: nat :| NR.NfaRepRE(r1, c, pc1, e1) && NR.NfaRepRE(r2, c, e1, pc2);
+      var tr1 := T.Translate(r1);
+      var tr2 := T.Translate(r2);
+      assert trre == L.Sequence(tr1, tr2);
+      forall gp: bool, mm: nat {:trigger WO.WalkOkF([LS.Areg(tr2)] + cont, c, e1, gp, mm)} | mm < n - 1
+        ensures WO.WalkOkF([LS.Areg(tr2)] + cont, c, e1, gp, mm)
+      {
+        WalkOkCompFNested(mm, r2, c, e1, pc2, cont, gp);
+      }
+      WalkOkCompFNested(n - 1, r1, c, pc1, e1, [LS.Areg(tr2)] + cont, g);
+      assert [LS.Areg(tr1)] + ([LS.Areg(tr2)] + cont) == [LS.Areg(tr1), LS.Areg(tr2)] + cont;
+      assert WO.WalkOkF([LS.Areg(tr1), LS.Areg(tr2)] + cont, c, pc1, g, n - 1);
+      // the Jmp corner: both blocks empty and transparent
+      if NR.GetPcRE(c, pc1).Some? && NR.GetPcRE(c, pc1).value.Jmp? {
+        NfaRepREPinsNested(r1, c, pc1, e1);
+        NfaRepREPinsNested(r2, c, e1, pc2);
+        var np := NR.GetPcRE(c, pc1).value.jl;
+        if np >= 0 {
+          forall mm: nat {:trigger WO.WalkOkF(cont, c, np as nat, g, mm)} | mm < n - 1
+            ensures WO.WalkOkF(cont, c, np as nat, g, mm)
+          {
+            assert WO.WalkOkF(cont, c, pc1, g, mm + 1);
+          }
+          WalkOkConsTransparent(n - 1, trre, cont, c, np as nat, g);
+        }
+      }
+      assert WO.WalkOkRegF(trre, cont, c, pc1, g, n);
+      assert WO.WalkOkF(tgt, c, pc1, g, n);
+    case Re_capture(cid, r1) =>
+      var e1: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
+        && NR.NfaRepRE(r1, c, pc1 + 1, e1)
+        && NR.GetPcRE(c, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+        && pc2 == e1 + 1;
+      var tr1 := T.Translate(r1);
+      var gid: nat := cid as nat;
+      assert trre == L.Group(gid, tr1);
+      var rest := [LS.Aclose(gid)] + cont;
+      forall gp: bool, mm: nat {:trigger WO.WalkOkF(rest, c, e1, gp, mm)} | mm < n - 1
+        ensures WO.WalkOkF(rest, c, e1, gp, mm)
+      {
+        if mm > 0 {
+          assert rest[0] == LS.Aclose(gid) && rest[1..] == cont;
+          assert WO.WalkOkF(cont, c, e1 + 1, gp, mm - 1);
+        }
+      }
+      WalkOkCompFNested(n - 1, r1, c, pc1 + 1, e1, rest, g);
+      assert [LS.Areg(tr1)] + rest == [LS.Areg(tr1), LS.Aclose(gid)] + cont;
+      assert WO.WalkOkF([LS.Areg(tr1), LS.Aclose(gid)] + cont, c, pc1 + 1, g, n - 1);
+      assert WO.WalkOkRegF(trre, cont, c, pc1, g, n);
+      assert WO.WalkOkF(tgt, c, pc1, g, n);
+    case Re_lookaround(lid, la, r1) =>
+      // the gate: one zero-width instruction, so the walk guard is just the
+      // continuation's guard one pc later — which the hypothesis supplies
+      assert pc2 == pc1 + 1;
+      assert WO.WalkOkF(cont, c, pc1 + 1, g, n - 1);
+      assert WO.WalkOkRegF(trre, cont, c, pc1, g, n);
+    case Re_quant(nul, qid, q, r1) =>
+      if q.min == 0 && q.max == None {
+        // the star
+        var e1: nat :| NR.GetPcRE(c, pc1) == Some(if q.greedy then RB.Fork(pc1 + 1, e1 + 2) else RB.Fork(e1 + 2, pc1 + 1))
+          && NR.GetPcRE(c, pc1 + 1) == Some(RB.SetQuantToClock(qid, false))
+          && NR.GetPcRE(c, pc1 + 2) == Some(RB.BeginLoop)
+          && NR.NfaRepRE(r1, c, pc1 + 3, e1)
+          && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+          && NR.GetPcRE(c, e1 + 1) == Some(RB.Jmp(pc1))
+          && pc2 == e1 + 2;
+        var tr1 := T.Translate(r1);
+        assert T.TrDelta(q) == LN.Inf;
+        assert trre == L.Quantified(q.greedy, 0, LN.Inf, tr1);
+        assert FS.NoiPred(LN.Inf) == LN.Inf;
+        // the iteration lists, for every recorded input
+        forall chk: LC.Input
+          ensures WO.WalkOkF([LS.Areg(tr1), LS.Acheck(chk), LS.Areg(trre)] + cont, c, pc1 + 3, false, n - 1)
+        {
+          var rest := [LS.Acheck(chk), LS.Areg(trre)] + cont;
+          forall gp: bool, mm: nat {:trigger WO.WalkOkF(rest, c, e1, gp, mm)} | mm < n - 1
+            ensures WO.WalkOkF(rest, c, e1, gp, mm)
+          {
+            WalkOkStarRestFNested(mm, re, c, pc1, pc2, e1, cont, gp, chk);
+          }
+          WalkOkCompFNested(n - 1, r1, c, pc1 + 3, e1, rest, false);
+          assert [LS.Areg(tr1)] + rest == [LS.Areg(tr1), LS.Acheck(chk), LS.Areg(trre)] + cont;
+        }
+        // the skip
+        assert WO.WalkOkF(cont, c, pc2, g, n - 1);
+        assert WO.WalkOkRegF(trre, cont, c, pc1, g, n);
+        assert WO.WalkOkF(tgt, c, pc1, g, n);
+      } else if q.max.Some? {
+        var mn := q.min as nat;
+        var kx := (q.max.value - q.min) as nat;
+        var em: nat :| NR.NfaRepMinRE(mn, qid, r1, c, pc1, em)
+          && NR.NfaRepOptRE(kx, q.greedy, qid, r1, c, em, pc2);
+        assert T.TrDelta(q) == LN.NN(kx);
+        assert trre == L.Quantified(q.greedy, mn, LN.NN(kx), T.Translate(r1));
+        assert CP.rsize(r1) < CP.rsize(re);
+        WalkOkMinChainFNested(n, mn, kx, q.greedy, qid, r1, c, pc1, em, pc2, cont, g);
+      } else {
+        var mn := q.min as nat;
+        var em: nat :| NR.NfaRepMinRE(mn - 1, qid, r1, c, pc1, em)
+          && NR.GetPcRE(c, em) == Some(RB.SetQuantToClock(qid, false))
+          && (exists e1: nat ::
+                NR.NfaRepRE(r1, c, em + 1, e1)
+                && NR.GetPcRE(c, e1) == Some(if q.greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
+                && pc2 == e1 + 1);
+        var e1: nat :| NR.NfaRepRE(r1, c, em + 1, e1)
+          && NR.GetPcRE(c, e1) == Some(if q.greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
+          && pc2 == e1 + 1;
+        assert T.TrDelta(q) == LN.Inf;
+        assert trre == L.Quantified(q.greedy, mn, LN.Inf, T.Translate(r1));
+        assert CP.rsize(r1) < CP.rsize(re);
+        WalkOkPlusChainFNested(n, mn, q.greedy, qid, r1, c, pc1, em, e1, pc2, cont, g);
+      }
+  }
+
+  lemma WalkOkMinChainFNested(n: nat, k: nat, kx: nat, greedy: bool, qid: R.quantid, r1: R.regex,
+                        c: RB.code, pc1: nat, em: nat, pc2: nat, cont: LS.Actions, g: bool)
+    requires NR.NestedFragmentRE(r1) && T.TransWf(r1)
+    requires NR.NfaRepMinRE(k, qid, r1, c, pc1, em)
+    requires NR.NfaRepOptRE(kx, greedy, qid, r1, c, em, pc2)
+    requires forall gp: bool, mm: nat {:trigger WO.WalkOkF(cont, c, pc2, gp, mm)} :: mm < n ==> WO.WalkOkF(cont, c, pc2, gp, mm)
+    ensures WO.WalkOkF([LS.Areg(L.Quantified(greedy, k, LN.NN(kx), T.Translate(r1)))] + cont, c, pc1, g, n)
+    decreases n, CP.rsize(r1), 1
+  {
+    if n == 0 { return; }
+    var tr1 := T.Translate(r1);
+    var qk := L.Quantified(greedy, k, LN.NN(kx), tr1);
+    var tgt := [LS.Areg(qk)] + cont;
+    assert tgt[0] == LS.Areg(qk) && tgt[1..] == cont;
+    if k == 0 {
+      assert pc1 == em;
+      WalkOkOptChainFNested(n, kx, greedy, qid, r1, c, pc1, pc2, cont, g);
+    } else {
+      var e1b: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetQuantToClock(qid, false))
+        && NR.NfaRepRE(r1, c, pc1 + 1, e1b)
+        && NR.NfaRepMinRE(k - 1, qid, r1, c, e1b, em);
+      var qk1 := L.Quantified(greedy, k - 1, LN.NN(kx), tr1);
+      forall gp: bool, mm: nat {:trigger WO.WalkOkF([LS.Areg(qk1)] + cont, c, e1b, gp, mm)} | mm < n - 1
+        ensures WO.WalkOkF([LS.Areg(qk1)] + cont, c, e1b, gp, mm)
+      {
+        WalkOkMinChainFNested(mm, k - 1, kx, greedy, qid, r1, c, e1b, em, pc2, cont, gp);
+      }
+      WalkOkCompFNested(n - 1, r1, c, pc1 + 1, e1b, [LS.Areg(qk1)] + cont, g);
+      assert [LS.Areg(tr1)] + ([LS.Areg(qk1)] + cont) == [LS.Areg(tr1), LS.Areg(qk1)] + cont;
+      assert WO.WalkOkF([LS.Areg(tr1), LS.Areg(qk1)] + cont, c, pc1 + 1, g, n - 1);
+      assert WO.WalkOkRegF(qk, cont, c, pc1, g, n);
+      assert WO.WalkOkF(tgt, c, pc1, g, n);
+    }
+  }
+
+  lemma WalkOkOptChainFNested(n: nat, k: nat, greedy: bool, qid: R.quantid, r1: R.regex,
+                        c: RB.code, pc1: nat, pc2: nat, cont: LS.Actions, g: bool)
+    requires NR.NestedFragmentRE(r1) && T.TransWf(r1)
+    requires NR.NfaRepOptRE(k, greedy, qid, r1, c, pc1, pc2)
+    requires forall gp: bool, mm: nat {:trigger WO.WalkOkF(cont, c, pc2, gp, mm)} :: mm < n ==> WO.WalkOkF(cont, c, pc2, gp, mm)
+    ensures WO.WalkOkF([LS.Areg(L.Quantified(greedy, 0, LN.NN(k), T.Translate(r1)))] + cont, c, pc1, g, n)
+    decreases n, CP.rsize(r1), 0
+  {
+    if n == 0 { return; }
+    var tr1 := T.Translate(r1);
+    var qk := L.Quantified(greedy, 0, LN.NN(k), tr1);
+    var tgt := [LS.Areg(qk)] + cont;
+    assert tgt[0] == LS.Areg(qk) && tgt[1..] == cont;
+    if k == 0 {
+      // spent: transparent
+      assert pc1 == pc2;
+      if NR.GetPcRE(c, pc1).Some? && NR.GetPcRE(c, pc1).value.Jmp? {
+        var np := NR.GetPcRE(c, pc1).value.jl;
+        if np >= 0 {
+          forall mm: nat {:trigger WO.WalkOkF(cont, c, np as nat, g, mm)} | mm < n - 1
+            ensures WO.WalkOkF(cont, c, np as nat, g, mm)
+          {
+            assert WO.WalkOkF(cont, c, pc1, g, mm + 1);
+          }
+          WalkOkConsTransparent(n - 1, qk, cont, c, np as nat, g);
+        }
+      }
+      assert WO.WalkOkF(cont, c, pc1, g, n - 1);
+      assert WO.WalkOkRegF(qk, cont, c, pc1, g, n);
+      assert WO.WalkOkF(tgt, c, pc1, g, n);
+    } else {
+      var e1: nat :| NR.GetPcRE(c, pc1) == Some(if greedy then RB.Fork(pc1 + 1, pc2) else RB.Fork(pc2, pc1 + 1))
+        && NR.GetPcRE(c, pc1 + 1) == Some(RB.SetQuantToClock(qid, false))
+        && NR.GetPcRE(c, pc1 + 2) == Some(RB.BeginLoop)
+        && NR.NfaRepRE(r1, c, pc1 + 3, e1)
+        && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+        && NR.NfaRepOptRE(k - 1, greedy, qid, r1, c, e1 + 1, pc2);
+      var qk1 := L.Quantified(greedy, 0, LN.NN(k - 1), tr1);
+      assert FS.NoiPred(LN.NN(k)) == LN.NN(k - 1);
+      // the iteration lists
+      forall chk: LC.Input
+        ensures WO.WalkOkF([LS.Areg(tr1), LS.Acheck(chk), LS.Areg(qk1)] + cont, c, pc1 + 3, false, n - 1)
+      {
+        var rest := [LS.Acheck(chk), LS.Areg(qk1)] + cont;
+        forall gp: bool, mm: nat {:trigger WO.WalkOkF(rest, c, e1, gp, mm)} | mm < n - 1
+          ensures WO.WalkOkF(rest, c, e1, gp, mm)
+        {
+          WalkOkOptRestFNested(mm, k - 1, greedy, qid, r1, c, e1, pc2, cont, gp, chk);
+        }
+        WalkOkCompFNested(n - 1, r1, c, pc1 + 3, e1, rest, false);
+        assert [LS.Areg(tr1)] + rest == [LS.Areg(tr1), LS.Acheck(chk), LS.Areg(qk1)] + cont;
+      }
+      // the skip
+      assert WO.WalkOkF(cont, c, pc2, g, n - 1);
+      assert WO.WalkOkRegF(qk, cont, c, pc1, g, n);
+      assert WO.WalkOkF(tgt, c, pc1, g, n);
+    }
+  }
+
+  lemma WalkOkOptRestFNested(m: nat, k: nat, greedy: bool, qid: R.quantid, r1: R.regex,
+                       c: RB.code, e1: nat, pc2: nat, cont: LS.Actions, gp: bool, chk: LC.Input)
+    requires NR.NestedFragmentRE(r1) && T.TransWf(r1)
+    requires NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+    requires NR.NfaRepOptRE(k, greedy, qid, r1, c, e1 + 1, pc2)
+    requires forall gp2: bool, mm: nat {:trigger WO.WalkOkF(cont, c, pc2, gp2, mm)} :: mm < m ==> WO.WalkOkF(cont, c, pc2, gp2, mm)
+    ensures WO.WalkOkF([LS.Acheck(chk), LS.Areg(L.Quantified(greedy, 0, LN.NN(k), T.Translate(r1)))] + cont, c, e1, gp, m)
+    decreases m, CP.rsize(r1), 0
+  {
+    if m == 0 { return; }
+    var qk := L.Quantified(greedy, 0, LN.NN(k), T.Translate(r1));
+    var tgt := [LS.Acheck(chk), LS.Areg(qk)] + cont;
+    assert tgt[0] == LS.Acheck(chk) && tgt[1..] == [LS.Areg(qk)] + cont;
+    assert !AR.BackForkAt(c, e1);
+    WalkOkOptChainFNested(m - 1, k, greedy, qid, r1, c, e1 + 1, pc2, cont, true);
+    assert WO.WalkOkF([LS.Areg(qk)] + cont, c, e1 + 1, true, m - 1);
+    assert WO.WalkOkF(tgt, c, e1, gp, m);
+  }
+
+  lemma WalkOkStarRestFNested(m: nat, re: R.regex, c: RB.code, pc1: nat, pc2: nat, e1: nat,
+                        cont: LS.Actions, gp: bool, chk: LC.Input)
+    requires NR.NestedFragmentRE(re) && T.TransWf(re)
+    requires NR.NfaRepRE(re, c, pc1, pc2)
+    requires NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+    requires NR.GetPcRE(c, e1 + 1) == Some(RB.Jmp(pc1))
+    requires forall gp2: bool, mm: nat {:trigger WO.WalkOkF(cont, c, pc2, gp2, mm)} :: mm < m ==> WO.WalkOkF(cont, c, pc2, gp2, mm)
+    ensures WO.WalkOkF([LS.Acheck(chk), LS.Areg(T.Translate(re))] + cont, c, e1, gp, m)
+    decreases m, CP.rsize(re), 0
+  {
+    if m == 0 { return; }
+    var trre := T.Translate(re);
+    var tgt := [LS.Acheck(chk), LS.Areg(trre)] + cont;
+    assert tgt[0] == LS.Acheck(chk) && tgt[1..] == [LS.Areg(trre)] + cont;
+    assert !AR.BackForkAt(c, e1);
+    // the fall-through lands on the back-Jmp: route to the star head (KNOT)
+    forall mm: nat {:trigger WO.WalkOkF([LS.Areg(trre)] + cont, c, pc1, true, mm)} | mm < m - 1
+      ensures WO.WalkOkF([LS.Areg(trre)] + cont, c, pc1, true, mm)
+    {
+      forall gp2: bool, mm2: nat {:trigger WO.WalkOkF(cont, c, pc2, gp2, mm2)} | mm2 < mm
+        ensures WO.WalkOkF(cont, c, pc2, gp2, mm2)
+      {
+        assert WO.WalkOkF(cont, c, pc2, gp2, mm2);
+      }
+      WalkOkCompFNested(mm, re, c, pc1, pc2, cont, true);
+    }
+    WalkOkAtJmp(m - 1, [LS.Areg(trre)] + cont, c, e1 + 1, pc1, true);
+    assert WO.WalkOkF([LS.Areg(trre)] + cont, c, e1 + 1, true, m - 1);
+    assert WO.WalkOkF(tgt, c, e1, gp, m);
+  }
+
+  lemma WalkOkPlusChainFNested(n: nat, k: nat, greedy: bool, qid: R.quantid, r1: R.regex,
+                         c: RB.code, pc1: nat, em: nat, e1: nat, pc2: nat, cont: LS.Actions, g: bool)
+    requires k >= 1
+    requires NR.NestedFragmentRE(r1) && T.TransWf(r1)
+    requires NR.NfaRepMinRE(k - 1, qid, r1, c, pc1, em)
+    requires NR.GetPcRE(c, em) == Some(RB.SetQuantToClock(qid, false))
+    requires NR.NfaRepRE(r1, c, em + 1, e1)
+    requires NR.GetPcRE(c, e1) == Some(if greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
+    requires pc2 == e1 + 1
+    requires forall gp: bool, mm: nat {:trigger WO.WalkOkF(cont, c, pc2, gp, mm)} :: mm < n ==> WO.WalkOkF(cont, c, pc2, gp, mm)
+    ensures WO.WalkOkF([LS.Areg(L.Quantified(greedy, k, LN.Inf, T.Translate(r1)))] + cont, c, pc1, g, n)
+    decreases n, CP.rsize(r1), 1
+  {
+    if n == 0 { return; }
+    var tr1 := T.Translate(r1);
+    var qk := L.Quantified(greedy, k, LN.Inf, tr1);
+    var tgt := [LS.Areg(qk)] + cont;
+    assert tgt[0] == LS.Areg(qk) && tgt[1..] == cont;
+    if k > 1 {
+      var e1b: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetQuantToClock(qid, false))
+        && NR.NfaRepRE(r1, c, pc1 + 1, e1b)
+        && NR.NfaRepMinRE(k - 2, qid, r1, c, e1b, em);
+      var qk1 := L.Quantified(greedy, k - 1, LN.Inf, tr1);
+      forall gp: bool, mm: nat {:trigger WO.WalkOkF([LS.Areg(qk1)] + cont, c, e1b, gp, mm)} | mm < n - 1
+        ensures WO.WalkOkF([LS.Areg(qk1)] + cont, c, e1b, gp, mm)
+      {
+        WalkOkPlusChainFNested(mm, k - 1, greedy, qid, r1, c, e1b, em, e1, pc2, cont, gp);
+      }
+      WalkOkCompFNested(n - 1, r1, c, pc1 + 1, e1b, [LS.Areg(qk1)] + cont, g);
+      assert [LS.Areg(tr1)] + ([LS.Areg(qk1)] + cont) == [LS.Areg(tr1), LS.Areg(qk1)] + cont;
+      assert WO.WalkOkF([LS.Areg(tr1), LS.Areg(qk1)] + cont, c, pc1 + 1, g, n - 1);
+      assert WO.WalkOkRegF(qk, cont, c, pc1, g, n);
+      assert WO.WalkOkF(tgt, c, pc1, g, n);
+    } else {
+      // k == 1: the SEAM — the stamp is at pc1
+      assert pc1 == em;
+      var q0L := L.Quantified(greedy, 0, LN.Inf, tr1);
+      forall chk: LC.Input
+        ensures WO.WalkOkF([LS.Areg(tr1), LS.Acheck(chk), LS.Areg(q0L)] + cont, c, pc1 + 1, g, n - 1)
+      {
+        var rest := [LS.Acheck(chk), LS.Areg(q0L)] + cont;
+        forall gp: bool, mm: nat {:trigger WO.WalkOkF(rest, c, e1, gp, mm)} | mm < n - 1
+          ensures WO.WalkOkF(rest, c, e1, gp, mm)
+        {
+          WalkOkDoWhileRestFNested(mm, greedy, qid, r1, c, em, e1, pc2, cont, gp, chk);
+        }
+        WalkOkCompFNested(n - 1, r1, c, em + 1, e1, rest, g);
+        assert [LS.Areg(tr1)] + rest == [LS.Areg(tr1), LS.Acheck(chk), LS.Areg(q0L)] + cont;
+      }
+      assert WO.WalkOkRegF(qk, cont, c, pc1, g, n);
+      assert WO.WalkOkF(tgt, c, pc1, g, n);
+    }
+  }
+
+  lemma WalkOkDoWhileRestFNested(m: nat, greedy: bool, qid: R.quantid, r1: R.regex,
+                           c: RB.code, em: nat, e1: nat, pc2: nat, cont: LS.Actions, gp: bool, chk: LC.Input)
+    requires NR.NestedFragmentRE(r1) && T.TransWf(r1)
+    requires NR.NfaRepRE(r1, c, em + 1, e1)
+    requires NR.GetPcRE(c, e1) == Some(if greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
+    requires pc2 == e1 + 1
+    requires forall gp2: bool, mm: nat {:trigger WO.WalkOkF(cont, c, pc2, gp2, mm)} :: mm < m ==> WO.WalkOkF(cont, c, pc2, gp2, mm)
+    ensures WO.WalkOkF([LS.Acheck(chk), LS.Areg(L.Quantified(greedy, 0, LN.Inf, T.Translate(r1)))] + cont, c, e1, gp, m)
+    decreases m, CP.rsize(r1), 0
+  {
+    if m == 0 { return; }
+    var tr1 := T.Translate(r1);
+    var q0L := L.Quantified(greedy, 0, LN.Inf, tr1);
+    var tgt := [LS.Acheck(chk), LS.Areg(q0L)] + cont;
+    assert tgt[0] == LS.Acheck(chk) && tgt[1..] == [LS.Areg(q0L)] + cont;
+    NR.NfaRepIncrRE(r1, c, em + 1, e1);
+    assert em < e1;
+    assert AR.BackForkAt(c, e1);
+    assert FS.NoiPred(LN.Inf) == LN.Inf;
+    // the dissolved check exposes the loop-view star at the fork
+    if m >= 2 {
+      var lv := [LS.Areg(q0L)] + cont;
+      assert lv[0] == LS.Areg(q0L) && lv[1..] == cont;
+      // the KNOT: the checked iteration lists at strictly smaller fuel
+      forall chk2: LC.Input
+        ensures WO.WalkOkF([LS.Areg(tr1), LS.Acheck(chk2), LS.Areg(q0L)] + cont, c, em + 1, true, m - 2)
+      {
+        var rest := [LS.Acheck(chk2), LS.Areg(q0L)] + cont;
+        forall gp2: bool, mm: nat {:trigger WO.WalkOkF(rest, c, e1, gp2, mm)} | mm < m - 2
+          ensures WO.WalkOkF(rest, c, e1, gp2, mm)
+        {
+          WalkOkDoWhileRestFNested(mm, greedy, qid, r1, c, em, e1, pc2, cont, gp2, chk2);
+        }
+        WalkOkCompFNested(m - 2, r1, c, em + 1, e1, rest, true);
+        assert [LS.Areg(tr1)] + rest == [LS.Areg(tr1), LS.Acheck(chk2), LS.Areg(q0L)] + cont;
+      }
+      // the skip onto the exit arm
+      assert WO.WalkOkF(cont, c, pc2, true, m - 2);
+      assert WO.WalkOkRegF(q0L, cont, c, e1, true, m - 1);
+      assert WO.WalkOkF(lv, c, e1, true, m - 1);
+    } else {
+      assert WO.WalkOkF([LS.Areg(q0L)] + cont, c, e1, true, m - 1);
+    }
+    assert WO.WalkOkF(tgt, c, e1, gp, m);
+  }
+
+  lemma WalkOkEntryNested(re: R.regex)
+    requires NR.NestedFragmentRE(re) && T.TransWf(re)
+    ensures forall g: bool ::
+      WO.WalkOk([LS.Areg(T.Translate(re))], CP.compile_to_bytecode(re), 0, g)
+  {
+    var code := CP.compile_to_bytecode(re);
+    var next := CP.compile(re, 0, CP.Progress).1;
+    NR.CompileToBytecodeRepNested(re);
+    assert NR.NfaRepRE(re, code, 0, next as nat);
+    assert NR.GetPcRE(code, next as nat) == Some(RB.Accept);
+    forall g: bool
+      ensures WO.WalkOk([LS.Areg(T.Translate(re))], code, 0, g)
+    {
+      var nil: LS.Actions := [];
+      forall n: nat {:trigger WO.WalkOkF([LS.Areg(T.Translate(re))], code, 0, g, n)}
+        ensures WO.WalkOkF([LS.Areg(T.Translate(re))], code, 0, g, n)
+      {
+        forall gp: bool, mm: nat {:trigger WO.WalkOkF(nil, code, next as nat, gp, mm)} | mm < n
+          ensures WO.WalkOkF(nil, code, next as nat, gp, mm)
+        {
+          assert |nil| == 0;
+        }
+        WalkOkCompFNested(n, re, code, 0, next as nat, nil, g);
+        assert [LS.Areg(T.Translate(re))] + nil == [LS.Areg(T.Translate(re))];
+      }
+    }
+  }
+
 }

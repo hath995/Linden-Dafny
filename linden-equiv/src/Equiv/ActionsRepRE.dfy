@@ -748,6 +748,190 @@ module LindenElkActionsRep {
     assert ActionsRepL(rer, qm, single, code, 0);
   }
 
+  // =========================================================================
+  // L4 depth-k (ADDITIVE): TransNfaRep{,Min,Opt}Nested -- the NfaRepRE ->
+  // ActionsRepL bridge widened from LookBehindFragmentRE to NestedFragmentRE.
+  // The lookaround case maps a single zero-width gate (no body recursion), so
+  // the depth-1 proof ports verbatim under the wider fragment predicate.
+  // =========================================================================
+
+  /** `TransNfaRepNested` for the forced-copy chains: `NfaRepMinRE` over the RegElk
+      body transports to `NfaRepMinL` over its translation. */
+  lemma TransNfaRepMinNested(rer: LW.RegExpRecord, qm: QMap, k: nat, qid: R.quantid, r1: R.regex, c: RB.code, pc1: nat, pc2: nat)
+    requires NR.NestedFragmentRE(r1) && T.TransWf(r1) && !rer.ignoreCase
+    requires QmapOk(r1, qm) && LmapOk(r1, qm)
+    requires qid in qm.quants && qm.quants[qid] == L.DefGroups(T.Translate(r1))
+    requires NR.NfaRepMinRE(k, qid, r1, c, pc1, pc2)
+    ensures NfaRepMinL(rer, qm, k, T.Translate(r1), c, pc1, pc2)
+    decreases CP.rsize(r1), k + 2
+  {
+    if k > 0 {
+      var e1: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetQuantToClock(qid, false))
+        && NR.NfaRepRE(r1, c, pc1 + 1, e1)
+        && NR.NfaRepMinRE(k - 1, qid, r1, c, e1, pc2);
+      TransNfaRepNested(rer, qm, r1, c, pc1 + 1, e1);
+      TransNfaRepMinNested(rer, qm, k - 1, qid, r1, c, e1, pc2);
+      assert (exists qd: int ::
+           NR.GetPcRE(c, pc1) == Some(RB.SetQuantToClock(qd, false))
+           && qd in qm.quants && qm.quants[qd] == L.DefGroups(T.Translate(r1)))
+        && NfaRepL(rer, qm, T.Translate(r1), c, pc1 + 1, e1)
+        && NfaRepMinL(rer, qm, k - 1, T.Translate(r1), c, e1, pc2);
+    }
+  }
+
+  /** `TransNfaRepNested` for the optional-layer chains: `NfaRepOptRE` over the
+      RegElk body transports to `NfaRepOptL` over its translation. */
+  lemma TransNfaRepOptNested(rer: LW.RegExpRecord, qm: QMap, k: nat, greedy: bool, qid: R.quantid, r1: R.regex, c: RB.code, pc1: nat, pc2: nat)
+    requires NR.NestedFragmentRE(r1) && T.TransWf(r1) && !rer.ignoreCase
+    requires QmapOk(r1, qm) && LmapOk(r1, qm)
+    requires qid in qm.quants && qm.quants[qid] == L.DefGroups(T.Translate(r1))
+    requires NR.NfaRepOptRE(k, greedy, qid, r1, c, pc1, pc2)
+    ensures NfaRepOptL(rer, qm, k, greedy, T.Translate(r1), c, pc1, pc2)
+    decreases CP.rsize(r1), k + 2
+  {
+    if k > 0 {
+      var e1: nat :| NR.GetPcRE(c, pc1) == Some(if greedy then RB.Fork(pc1 + 1, pc2) else RB.Fork(pc2, pc1 + 1))
+        && NR.GetPcRE(c, pc1 + 1) == Some(RB.SetQuantToClock(qid, false))
+        && NR.GetPcRE(c, pc1 + 2) == Some(RB.BeginLoop)
+        && NR.NfaRepRE(r1, c, pc1 + 3, e1)
+        && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+        && NR.NfaRepOptRE(k - 1, greedy, qid, r1, c, e1 + 1, pc2);
+      TransNfaRepNested(rer, qm, r1, c, pc1 + 3, e1);
+      TransNfaRepOptNested(rer, qm, k - 1, greedy, qid, r1, c, e1 + 1, pc2);
+      assert NR.GetPcRE(c, pc1) == Some(if greedy then RB.Fork(pc1 + 1, pc2) else RB.Fork(pc2, pc1 + 1))
+        && (exists qd: int ::
+              NR.GetPcRE(c, pc1 + 1) == Some(RB.SetQuantToClock(qd, false))
+              && qd in qm.quants && qm.quants[qd] == L.DefGroups(T.Translate(r1)))
+        && NR.GetPcRE(c, pc1 + 2) == Some(RB.BeginLoop)
+        && NfaRepL(rer, qm, T.Translate(r1), c, pc1 + 3, e1)
+        && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+        && NfaRepOptL(rer, qm, k - 1, greedy, T.Translate(r1), c, e1 + 1, pc2);
+    }
+  }
+
+  lemma TransNfaRepNested(rer: LW.RegExpRecord, qm: QMap, re: R.regex, c: RB.code, pc1: nat, pc2: nat)
+    requires NR.NestedFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase
+    requires QmapOk(re, qm) && LmapOk(re, qm)
+    requires NR.NfaRepRE(re, c, pc1, pc2)
+    ensures NfaRepL(rer, qm, T.Translate(re), c, pc1, pc2)
+    decreases CP.rsize(re), 1
+  {
+    match re
+    case Re_empty =>
+    case Re_anchor(a) =>
+      assert NR.GetPcRE(c, pc1) == Some(RB.AnchorAssertion(a));
+      assert T.Translate(re) == L.AnchorR(T.TrAnchor(a));
+    case Re_character(ch) =>
+      assert NR.GetPcRE(c, pc1) == Some(RB.Consume(T.ExpectationOf(ch)));
+      forall x: char ensures RC.is_accepted(Some(x), T.ExpectationOf(ch)) <==> LC.CharMatch(rer, x, T.CharToCd(ch)) {
+        T.CharSemAgree(rer, ch, x);
+      }
+      assert ExpectationMatches(rer, T.ExpectationOf(ch), T.CharToCd(ch));
+    case Re_alt(r1, r2) =>
+      var e1: nat :| NR.GetPcRE(c, pc1) == Some(RB.Fork(pc1 + 1, e1 + 1))
+        && NR.NfaRepRE(r1, c, pc1 + 1, e1)
+        && NR.GetPcRE(c, e1) == Some(RB.Jmp(pc2))
+        && NR.NfaRepRE(r2, c, e1 + 1, pc2);
+      TransNfaRepNested(rer, qm, r1, c, pc1 + 1, e1);
+      TransNfaRepNested(rer, qm, r2, c, e1 + 1, pc2);
+      assert NR.GetPcRE(c, pc1) == Some(RB.Fork(pc1 + 1, e1 + 1))
+          && NfaRepL(rer, qm, T.Translate(r1), c, pc1 + 1, e1)
+          && NR.GetPcRE(c, e1) == Some(RB.Jmp(pc2))
+          && NfaRepL(rer, qm, T.Translate(r2), c, e1 + 1, pc2);
+    case Re_con(r1, r2) =>
+      var e1: nat :| NR.NfaRepRE(r1, c, pc1, e1) && NR.NfaRepRE(r2, c, e1, pc2);
+      TransNfaRepNested(rer, qm, r1, c, pc1, e1);
+      TransNfaRepNested(rer, qm, r2, c, e1, pc2);
+      assert NfaRepL(rer, qm, T.Translate(r1), c, pc1, e1) && NfaRepL(rer, qm, T.Translate(r2), c, e1, pc2);
+    case Re_quant(nul, qid, q, r1) =>
+      if q.min == 0 && q.max == None {
+        var e1: nat :| NR.GetPcRE(c, pc1) == Some(if q.greedy then RB.Fork(pc1 + 1, e1 + 2) else RB.Fork(e1 + 2, pc1 + 1))
+          && NR.GetPcRE(c, pc1 + 1) == Some(RB.SetQuantToClock(qid, false))
+          && NR.GetPcRE(c, pc1 + 2) == Some(RB.BeginLoop)
+          && NR.NfaRepRE(r1, c, pc1 + 3, e1)
+          && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+          && NR.GetPcRE(c, e1 + 1) == Some(RB.Jmp(pc1))
+          && pc2 == e1 + 2;
+        TransNfaRepNested(rer, qm, r1, c, pc1 + 3, e1);
+        assert T.TrDelta(q) == LN.Inf;
+        assert T.Translate(re) == L.Quantified(q.greedy, 0, LN.Inf, T.Translate(r1));
+        assert qid in qm.quants && qm.quants[qid] == L.DefGroups(T.Translate(r1));
+        assert NR.GetPcRE(c, pc1) == Some(if q.greedy then RB.Fork(pc1 + 1, e1 + 2) else RB.Fork(e1 + 2, pc1 + 1))
+            && (exists qd: int ::
+                  NR.GetPcRE(c, pc1 + 1) == Some(RB.SetQuantToClock(qd, false))
+                  && qd in qm.quants && qm.quants[qd] == L.DefGroups(T.Translate(r1)))
+            && NR.GetPcRE(c, pc1 + 2) == Some(RB.BeginLoop)
+            && NfaRepL(rer, qm, T.Translate(r1), c, pc1 + 3, e1)
+            && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+            && NR.GetPcRE(c, e1 + 1) == Some(RB.Jmp(pc1))
+            && pc2 == e1 + 2;
+      } else if q.max.Some? {
+        var em := NR.NfaRepREQuantInv(nul, qid, q, r1, c, pc1, pc2);
+        var mn := q.min as nat;
+        var kx := (q.max.value - q.min) as nat;
+        TransNfaRepMinNested(rer, qm, mn, qid, r1, c, pc1, em);
+        TransNfaRepOptNested(rer, qm, kx, q.greedy, qid, r1, c, em, pc2);
+        assert T.TrDelta(q) == LN.NN(kx);
+        assert T.Translate(re) == L.Quantified(q.greedy, mn, LN.NN(kx), T.Translate(r1));
+        NfaRepLQuantIntro(rer, qm, q.greedy, mn, kx, T.Translate(r1), c, pc1, em, pc2);
+      } else {
+        // the do-while: transport the forced chain and the guaranteed body,
+        // and carry NonNullableL through the annotation agreement
+        var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, c, pc1, pc2);
+        var mn := q.min as nat;
+        TransNfaRepMinNested(rer, qm, mn - 1, qid, r1, c, pc1, em);
+        TransNfaRepNested(rer, qm, r1, c, em + 1, e1);
+        NUL.TransNonNullable(r1);
+        assert T.TrDelta(q) == LN.Inf;
+        assert T.Translate(re) == L.Quantified(q.greedy, mn, LN.Inf, T.Translate(r1));
+        assert qid in qm.quants && qm.quants[qid] == L.DefGroups(T.Translate(r1));
+        NfaRepLPlusIntro(rer, qm, q.greedy, mn, T.Translate(r1), c, pc1, em, e1, pc2, qid);
+      }
+    case Re_capture(cid, r1) =>
+      var e1: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
+        && NR.NfaRepRE(r1, c, pc1 + 1, e1)
+        && NR.GetPcRE(c, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+        && pc2 == e1 + 1;
+      TransNfaRepNested(rer, qm, r1, c, pc1 + 1, e1);
+      assert T.Translate(re) == L.Group(cid as nat, T.Translate(r1));
+      assert CP.start_reg((cid as nat) as int) == CP.start_reg(cid);
+      assert CP.end_reg((cid as nat) as int) == CP.end_reg(cid);
+      assert NR.GetPcRE(c, pc1) == Some(RB.SetRegisterToCP(CP.start_reg((cid as nat) as int)))
+          && NfaRepL(rer, qm, T.Translate(r1), c, pc1 + 1, e1)
+          && NR.GetPcRE(c, e1) == Some(RB.SetRegisterToCP(CP.end_reg((cid as nat) as int)))
+          && pc2 == e1 + 1;
+    case Re_lookaround(lid, la, r1) =>
+      // one zero-width instruction; the `looks` row carries the erased link
+      var lk := T.TrLookaround(la);
+      assert T.Translate(re) == L.LookaroundR(lk, T.Translate(r1));
+      assert PositiveL(lk) <==> (la.Lookahead? || la.Lookbehind?);
+      assert lid in qm.looks && qm.looks[lid] == (lk, T.Translate(r1));
+      assert NR.GetPcRE(c, pc1) == Some(if PositiveL(lk) then RB.CheckOracle(lid)
+                                                         else RB.NegCheckOracle(lid));
+  }
+
+  /** L4 depth-k (ADDITIVE): the nested-fragment analogue of
+      `CompileToBytecodeActionsRepLookBehind`. The whole compiled program
+      represents the single spec action for a NESTED-fragment `re`, routed
+      through `CompileToBytecodeRepNested` + `TransNfaRepNested`. */
+  lemma CompileToBytecodeActionsRepNested(rer: LW.RegExpRecord, qm: QMap, re: R.regex)
+    requires NR.NestedFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase
+    requires QmapOk(re, qm) && LmapOk(re, qm)
+    ensures var code := CP.compile_to_bytecode(re);
+      ActionsRepL(rer, qm, [LS.Areg(T.Translate(re))], code, 0)
+  {
+    var code := CP.compile_to_bytecode(re);
+    var next := CP.compile(re, 0, CP.Progress).1;
+    NR.CompileToBytecodeRepNested(re);
+    TransNfaRepNested(rer, qm, re, code, 0, next as nat);
+    assert ActionsRepL(rer, qm, [], code, next as nat);
+    var single := [LS.Areg(T.Translate(re))];
+    assert ActionRepL(rer, qm, single[0], code, 0, next as nat);
+    assert single[1..] == [];
+    assert ActionsRepL(rer, qm, single, code, 0);
+  }
+
+
   lemma CompileToBytecodeActionsRepPlus(rer: LW.RegExpRecord, qm: QMap, re: R.regex)
     requires NR.PlusFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase
     requires QmapOk(re, qm)
