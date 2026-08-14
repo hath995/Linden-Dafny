@@ -1106,4 +1106,84 @@ module LindenElkCheckErase {
     case LK(lk, tlk, t1) => GmConfinedTree(tlk, S) && LkConfinedTree(t1, S)
     case LKFail(lk, tlk) => GmConfinedTree(tlk, S)
   }
+
+  // ===========================================================================
+  // L4 depth-k: FULLY RECURSIVE confinement (ADDITIVE).
+  //
+  // `LkConfinedTreeRec` generalizes the depth-0 `GmConfinedTree` action
+  // confinement to trees with ARBITRARILY NESTED `LK`/`LKFail` nodes: every
+  // group action -- at any nesting depth, INCLUDING inside look bodies -- must
+  // touch only `S`, and every look body is itself recursively confined.
+  //
+  // Confinement lattice (all in group set `S`):
+  //   * GmConfinedTree(t,S):     actions confined AND look-free            (depth 0)
+  //   * LkConfinedTree(t,S):     depth-1 look bodies GmConfinedTree, but the
+  //                              TOP-LEVEL GroupActionT actions are UNCONSTRAINED
+  //   * LkConfinedTreeRec(t,S):  actions confined EVERYWHERE, look bodies
+  //                              recursively LkConfinedTreeRec               (depth k)
+  //
+  // Embedding: GmConfinedTree(t,S) ==> LkConfinedTreeRec(t,S)  (GmConfinedTreeEmbedsRec).
+  // NOTE (honest): `LkConfinedTree(t,S) ==> LkConfinedTreeRec(t,S)` is FALSE in
+  // general -- e.g. `t == GroupActionT(Open(g), Match)` with `g !in S` is
+  // `LkConfinedTree(t,S)` (that predicate ignores the top-level action) but NOT
+  // `LkConfinedTreeRec(t,S)` (which requires `GmActionIn(Open(g),S)`). The
+  // action-confining base class that DOES embed is `GmConfinedTree`.
+  // ===========================================================================
+
+  /** Recursive confinement: every group action (at any depth, including inside
+      `LK`/`LKFail` bodies) touches only `S`, and every look body is itself
+      recursively confined. The depth-k generalization of `GmConfinedTree`. */
+  ghost predicate LkConfinedTreeRec(t: LT.Tree, S: set<LG.GroupId>)
+    decreases t
+  {
+    match t
+    case Mismatch => true
+    case Match => true
+    case Choice(t1, t2) => LkConfinedTreeRec(t1, S) && LkConfinedTreeRec(t2, S)
+    case Read(_, t1) => LkConfinedTreeRec(t1, S)
+    case ReadBackRef(_, t1) => LkConfinedTreeRec(t1, S)
+    case Progress(t1) => LkConfinedTreeRec(t1, S)
+    case AnchorPass(_, t1) => LkConfinedTreeRec(t1, S)
+    case GroupActionT(a, t1) => GmActionIn(a, S) && LkConfinedTreeRec(t1, S)
+    case LK(lk, tlk, t1) => LkConfinedTreeRec(tlk, S) && LkConfinedTreeRec(t1, S)
+    case LKFail(lk, tlk) => LkConfinedTreeRec(tlk, S)
+  }
+
+  /** The depth-0 confinement embeds into the recursive one: a `GmConfinedTree`
+      (actions confined, look-free) is trivially `LkConfinedTreeRec`. This is the
+      action-confining "depth-1 embeds" analogue (its `LK`/`LKFail` cases are
+      vacuous, so no body-recursion is needed). */
+  lemma GmConfinedTreeEmbedsRec(t: LT.Tree, S: set<LG.GroupId>)
+    requires GmConfinedTree(t, S)
+    ensures LkConfinedTreeRec(t, S)
+    decreases t
+  {
+    match t
+    case Choice(t1, t2) => GmConfinedTreeEmbedsRec(t1, S); GmConfinedTreeEmbedsRec(t2, S);
+    case Read(_, t1) => GmConfinedTreeEmbedsRec(t1, S);
+    case ReadBackRef(_, t1) => GmConfinedTreeEmbedsRec(t1, S);
+    case Progress(t1) => GmConfinedTreeEmbedsRec(t1, S);
+    case AnchorPass(_, t1) => GmConfinedTreeEmbedsRec(t1, S);
+    case GroupActionT(_, t1) => GmConfinedTreeEmbedsRec(t1, S);
+    case _ =>  // Mismatch / Match trivial; LK / LKFail vacuous (GmConfinedTree bans them)
+  }
+
+  /** `LkConfinedTreeRec` is monotone in the group set (mirror of
+      `LookLeaves.GmConfinedTreeMono`). */
+  lemma LkConfinedTreeRecMono(t: LT.Tree, S1: set<LG.GroupId>, S2: set<LG.GroupId>)
+    requires LkConfinedTreeRec(t, S1) && S1 <= S2
+    ensures LkConfinedTreeRec(t, S2)
+    decreases t
+  {
+    match t
+    case Choice(t1, t2) => LkConfinedTreeRecMono(t1, S1, S2); LkConfinedTreeRecMono(t2, S1, S2);
+    case Read(_, t1) => LkConfinedTreeRecMono(t1, S1, S2);
+    case ReadBackRef(_, t1) => LkConfinedTreeRecMono(t1, S1, S2);
+    case Progress(t1) => LkConfinedTreeRecMono(t1, S1, S2);
+    case AnchorPass(_, t1) => LkConfinedTreeRecMono(t1, S1, S2);
+    case GroupActionT(a, t1) => LkConfinedTreeRecMono(t1, S1, S2);  // GmActionIn monotone in S
+    case LK(lk, tlk, t1) => LkConfinedTreeRecMono(tlk, S1, S2); LkConfinedTreeRecMono(t1, S1, S2);
+    case LKFail(lk, tlk) => LkConfinedTreeRecMono(tlk, S1, S2);
+    case _ =>
+  }
 }

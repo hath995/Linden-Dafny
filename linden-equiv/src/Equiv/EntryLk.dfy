@@ -589,6 +589,94 @@ module LindenElkEntryLk {
     forall i | 0 <= i < |acts[1..]| ensures PikeLkAction(acts[1..][i]) { assert acts[1..][i] == acts[i + 1]; }
   }
 
+  // ===========================================================================
+  // L4 depth-k: FULLY RECURSIVE fragment (ADDITIVE).
+  //
+  // `PikeLkRegexRec` widens `PikeLkRegex` so that a POSITIVE lookaround admits a
+  // body that is itself in the (recursive) fragment -- i.e. the body may contain
+  // further POSITIVE lookarounds, to arbitrary nesting depth -- rather than the
+  // depth-1 `NoLkBrL` (look-free) body. NEGATIVE looks are unchanged: their body
+  // still must be group-free (`SD.GroupFreeL`, records nothing). This is the
+  // regex analogue of `LkConfinedTreeRec`, aligned with `NfaRepRE.NestedFragmentRE`.
+  // ===========================================================================
+
+  /** `PikeLkRegex` with POSITIVE-look bodies recursed through the fragment
+      itself (depth-k nested positive lookarounds), instead of the depth-1
+      look-free `NoLkBrL` body. */
+  ghost predicate PikeLkRegexRec(r: L.Regex)
+    decreases r
+  {
+    match r
+    case Epsilon => true
+    case Character(_) => true
+    case Disjunction(r1, r2) => PikeLkRegexRec(r1) && PikeLkRegexRec(r2)
+    case Sequence(r1, r2) => PikeLkRegexRec(r1) && PikeLkRegexRec(r2)
+    case Quantified(_, _, _, r1) => PikeLkRegexRec(r1)
+    case Group(_, r1) => PikeLkRegexRec(r1)
+    case LookaroundR(lk, r1) =>
+      // POSITIVE look (fwd/bwd): body recurses into the fragment (depth-k).
+      // NEGATIVE look: body stays group-free, exactly as in `PikeLkRegex`.
+      if L.Positivity(lk) then PikeLkRegexRec(r1)
+      else SD.GroupFreeL(r1)
+    case AnchorR(_) => true
+    case Backreference(_) => false
+  }
+
+  /** `PikeLkAction` for the recursive fragment. */
+  ghost predicate PikeLkActionRec(a: LS.Action) {
+    match a case Areg(r) => PikeLkRegexRec(r) case Aclose(_) => true case Acheck(_) => true
+  }
+
+  /** `PikeLkActions` for the recursive fragment. */
+  ghost predicate PikeLkActionsRec(acts: LS.Actions) {
+    forall i :: 0 <= i < |acts| ==> PikeLkActionRec(acts[i])
+  }
+
+  /** A `NoLkBrL` (look- and backref-free) regex is in the recursive fragment:
+      its `LookaroundR`/`Backreference` cases are vacuous. Used for the
+      positive-look arm of the embedding below. */
+  lemma NoLkBrLIsPikeLkRegexRec(r: L.Regex)
+    requires NoLkBrL(r)
+    ensures PikeLkRegexRec(r)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => NoLkBrLIsPikeLkRegexRec(r1); NoLkBrLIsPikeLkRegexRec(r2);
+    case Sequence(r1, r2) => NoLkBrLIsPikeLkRegexRec(r1); NoLkBrLIsPikeLkRegexRec(r2);
+    case Quantified(_, _, _, r1) => NoLkBrLIsPikeLkRegexRec(r1);
+    case Group(_, r1) => NoLkBrLIsPikeLkRegexRec(r1);
+    case _ =>  // Epsilon/Character/AnchorR trivial; LookaroundR/Backreference vacuous
+  }
+
+  /** The depth-1 fragment embeds: `PikeLkRegex(r) ==> PikeLkRegexRec(r)`. For a
+      POSITIVE look, `PikeLkRegex` forces a `NoLkBrL` body, which embeds into the
+      recursive fragment; NEGATIVE looks share the same `SD.GroupFreeL` body. */
+  lemma PikeLkRegexEmbedsRec(r: L.Regex)
+    requires PikeLkRegex(r)
+    ensures PikeLkRegexRec(r)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => PikeLkRegexEmbedsRec(r1); PikeLkRegexEmbedsRec(r2);
+    case Sequence(r1, r2) => PikeLkRegexEmbedsRec(r1); PikeLkRegexEmbedsRec(r2);
+    case Quantified(_, _, _, r1) => PikeLkRegexEmbedsRec(r1);
+    case Group(_, r1) => PikeLkRegexEmbedsRec(r1);
+    case LookaroundR(lk, r1) =>
+      if L.Positivity(lk) { NoLkBrLIsPikeLkRegexRec(r1); }
+      // else: PikeLkRegex and PikeLkRegexRec both require SD.GroupFreeL(r1).
+    case _ =>
+  }
+
+  /** `PikeLkActions(acts) ==> PikeLkActionsRec(acts)`. */
+  lemma PikeLkActionsEmbedsRec(acts: LS.Actions)
+    requires PikeLkActions(acts)
+    ensures PikeLkActionsRec(acts)
+  {
+    forall i | 0 <= i < |acts| ensures PikeLkActionRec(acts[i]) {
+      if acts[i].Areg? { PikeLkRegexEmbedsRec(acts[i].r); }
+    }
+  }
+
   /** The pike fragment embeds. */
   lemma PikeIsPikeLkRegex(r: L.Regex)
     requires PS.PikeRegex(r)
