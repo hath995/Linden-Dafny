@@ -3459,4 +3459,867 @@ module LindenElkPikeSim {
       }
     }
   }
+
+  // =========================================================================
+  // L4 depth-k (ADDITIVE AUDIT): pure-sim `*Nested` variants. Each is the
+  // verbatim body of its `StaticOkRE` original with the static package
+  // weakened to `StaticOkNestedRE` (the arbitrary-nesting fragment). They
+  // verify because their proofs use only the 8 depth-neutral conjuncts and
+  // depth-agnostic step helpers (Consume/EndLoop/Anchor/Oracle-kill) --- no
+  // `LookBehindFragmentRE`/`GmOfLive==GM*`/`FilterResetFrame` value coupling.
+  // =========================================================================
+
+  /** ADDITIVE nested-fragment variant of `PreserveSkipCase` (audit: pure-sim). */
+  lemma PreserveSkipCaseNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                         ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                         ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticOkNestedRE(qm, re, code, endl)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    ensures PT.PikeTreeStep(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1,
+                          vms.(active := vms.active[1..]), ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := pts;
+    var th := vms.active[0];
+    var ea := th.exit_allowed;
+
+    // Head correspondence.
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert |ta| > 0 && th.pc >= 0;
+    var pc: nat := th.pc as nat;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
+
+    // The seen entry at (pc, ea) resolves to the LEFT disjunct: the stutter
+    // disjunct would need a >=1-step chain pc ->+ pc, killed by tameness.
+    assert PIV.SeenInclusionRE(rer, qm, code, inp, seen, vms.processed,
+                               PIV.HdTreeOf(ta), PIV.HeadPcOf(vms.active));
+    assert PIV.HdTreeOf(ta) == Some(t) && PIV.HeadPcOf(vms.active) == pc;
+    assert SS.Inseen(seen, t) by {
+      if exists ts: LT.Tree :: SS.Inseen(seen, ts) && TT.TreeThreadRE(rer, qm, code, inp, ts, pc, ea) {
+        var ts: LT.Tree :| SS.Inseen(seen, ts) && TT.TreeThreadRE(rer, qm, code, inp, ts, pc, ea);
+        TT.TtSameTreeRE(rer, qm, code, inp, ts, t, pc, ea);
+      } else {
+        var t': LT.Tree :| TT.StuttersRE(pc, code) && PIV.StutterChainTo(code, pc, pc)
+          && PIV.HdTreeOf(ta) == Some(t') && TT.TreeThreadRE(rer, qm, code, inp, t', pc, ea);
+        PIV.NoStutterCycle(code, pc);
+        assert false;
+      }
+    }
+
+    // The tree step: pts_skip.
+    pts1 := PT.PTS(inp, ta[1..], best, tb, seen);
+    assert PT.PikeTreeStep(pts, pts1);
+
+    // The full invariant at the successor.
+    var vms' := vms.(active := vms.active[1..]);
+    BBDropHead(vms, ncap, nlook, nquant);
+    PIV.SkipInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc,
+                        PIV.HdTreeOf(ta[1..]), PIV.HeadPcOf(vms'.active));
+    forall t2 | t2 in vms'.active ensures ThreadNestRE(re, code, endl, t2.pc, t2) {
+      assert t2 in vms.active;
+    }
+    assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms', ncap, nlook, nquant);
+  }
+
+  /** ADDITIVE nested-fragment variant of `PreserveAcceptCase` (audit: pure-sim). */
+  lemma PreserveAcceptCaseNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                           ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                           s1: AI.VmState, vms2: AI.VmState,
+                           ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticOkNestedRE(qm, re, code, endl)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.Accept)
+    requires vms2 == s1.(active := [], bestmatch := Some(vms.active[0]))
+    ensures PT.PikeTreeStep(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := pts;
+    var th := vms.active[0];
+    var ea := th.exit_allowed;
+    var pc: nat := th.pc as nat;
+
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
+    assert PIV.ThreadTracksGm(re, th, gm);
+
+    // StepSpec at Accept: the tree is Match.
+    assert !TT.StuttersRE(pc, code);
+    GS.GenStepRE(rer, qm, code, inp, t, pc, ea);
+    assert t == LT.Match;
+
+    // The tree step: pts_match.
+    assert PT.TreeBfsStep(t, gm, LC.Idx(inp)) == PT.StepMatch;
+    pts1 := PT.PTS(inp, [], Some((inp, gm)), tb, SS.AddSeenTrees(seen, t));
+    assert PT.PikeTreeStep(pts, pts1);
+
+    // The full invariant at the successor.
+    BBTick(vms, s1, ncap, nlook, nquant);
+    BBAccept(s1, ncap, nlook, nquant);
+    assert PIV.BestMatchRE(re, Some((inp, gm)), Some(th));
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, [], []);
+    PIV.AddInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea,
+                       PIV.HdTreeOf([]), PIV.HeadPcOf([]));
+    IsblockedGrow(rer, qm, code, inp, seen, vms.isblocked, t);
+    forall tb2 | tb2 in vms2.blocked ensures ThreadNestRE(re, code, endl, tb2.0.pc + 1, tb2.0) {
+      assert tb2 in vms.blocked;
+    }
+    assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
+  }
+
+  /** ADDITIVE nested-fragment variant of `PreserveForkCase` (audit: pure-sim). */
+  lemma PreserveForkCaseNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                         ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                         s1: AI.VmState, x: int, y: int, vms2: AI.VmState,
+                         ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticOkNestedRE(qm, re, code, endl)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.Fork(x, y))
+    requires vms2 == s1.(active :=
+      [AI.Thread(x, vms.active[0].capture_regs, vms.active[0].look_regs, vms.active[0].quant_regs, vms.active[0].exit_allowed),
+       vms.active[0].(pc := y)] + s1.active[1..])
+    ensures TrcRE(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := pts;
+    var th := vms.active[0];
+    var ea := th.exit_allowed;
+    var pc: nat := th.pc as nat;
+    var cc := th.capture_regs.a_clk;
+    var qc := th.quant_regs.a_clk;
+
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
+    assert PIV.ThreadTracksGm(re, th, gm);
+    assert ThreadNestRE(re, code, endl, th.pc, th);
+    assert !TT.StuttersRE(pc, code);
+    assert pc < endl;
+
+    // The step kernel; the Fork clause splits by direction.
+    GS.GenStepRE(rer, qm, code, inp, t, pc, ea);
+    assert x >= 0 && y >= 0;
+    var th1 := AI.Thread(x, th.capture_regs, th.look_regs, th.quant_regs, ea);
+    var th2 := th.(pc := y);
+    assert vms2.active == [th1, th2] + vms.active[1..];
+
+    // Positional facts advance along both arms (a backward arm lands on the
+    // do-while's stamp site, covered by NestInvAdvance's do-while branches).
+    assert NI.NestInvRE(re, code, 0, endl, pc, cc, qc, -1);
+    assert NI.StepEdgeRE(code, pc, x as nat);
+    NI.NestInvAdvance(re, code, 0, endl, pc, x as nat, cc, qc, -1);
+    assert NI.StepEdgeRE(code, pc, y as nat);
+    NI.NestInvAdvance(re, code, 0, endl, pc, y as nat, cc, qc, -1);
+    assert ThreadNestRE(re, code, endl, th1.pc, th1) && ThreadNestRE(re, code, endl, th2.pc, th2);
+
+    // Backbones.
+    BBTick(vms, s1, ncap, nlook, nquant);
+    assert th in vms.active;
+    CM.ThreadClocksLEMono(th, vms.clock, s1.clock);
+    BBTwoHead(s1, th1, th2, ncap, nlook, nquant);
+
+    if x as nat > pc && y as nat > pc {
+      // ---- a FORWARD fork: an alternation / optional-layer decision -------
+      assert t.Choice?;
+      assert TT.TreeThreadRE(rer, qm, code, inp, t.t1, x as nat, ea);
+      assert TT.TreeThreadRE(rer, qm, code, inp, t.t2, y as nat, ea);
+      var na := [(t.t1, gm), (t.t2, gm)];
+      assert PT.TreeBfsStep(t, gm, LC.Idx(inp)) == PT.StepActive(na);
+      pts1 := PT.PTS(inp, na + ta[1..], best, tb, SS.AddSeenTrees(seen, t));
+      assert PT.PikeTreeStep(pts, pts1);
+      TrcRefl(pts1);
+      TrcCons(pts, pts1, pts1);
+
+      // Active correspondence: two new head pairs, unchanged registers.
+      assert PIV.ActiveRepRE(rer, qm, re, code, inp, na + ta[1..], vms2.active) by {
+        assert PIV.ThreadTracksGm(re, th1, gm) && PIV.ThreadTracksGm(re, th2, gm);
+        assert (na + ta[1..])[0] == (t.t1, gm) && (na + ta[1..])[1] == (t.t2, gm);
+        assert (na + ta[1..])[1..] == [(t.t2, gm)] + ta[1..];
+        assert ((na + ta[1..])[1..])[1..] == ta[1..];
+        assert vms2.active[1..] == [th2] + vms.active[1..];
+        assert (vms2.active[1..])[1..] == vms.active[1..];
+      }
+
+      // Seen inclusion + isblocked.
+      PIV.AddInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea,
+                         PIV.HdTreeOf(na + ta[1..]), PIV.HeadPcOf(vms2.active));
+      IsblockedGrow(rer, qm, code, inp, seen, vms.isblocked, t);
+
+      // Remaining conjuncts.
+      forall t2 | t2 in vms2.active ensures ThreadNestRE(re, code, endl, t2.pc, t2) {
+        if t2 != th1 && t2 != th2 { assert t2 in vms.active; }
+      }
+      forall tb2 | tb2 in vms2.blocked ensures ThreadNestRE(re, code, endl, tb2.0.pc + 1, tb2.0) {
+        assert tb2 in vms.blocked;
+      }
+      forall t2 | t2 in vms2.active ensures EaColdOkRE(code, t2) {
+        if t2 != th1 && t2 != th2 { assert t2 in vms.active; }
+        else if !ea {
+          assert th in vms.active && EaColdOkRE(code, th);
+          assert !NI.ColdRE(code, pc);
+          NotColdSucc(code, pc, x as nat);
+          NotColdSucc(code, pc, y as nat);
+        }
+      }
+      assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
+    } else {
+      // ---- the do-while's BACKWARD fork -----------------------------------
+      assert AR.BackForkAt(code, pc);
+      // the invariant pins the flag: a false-thread never sits at a Cold pc
+      assert ea by {
+        if !ea {
+          assert th in vms.active && EaColdOkRE(code, th);
+          assert NI.ColdF(code, pc, 1);
+          assert NI.ColdRE(code, pc);
+        }
+      }
+      assert t.Progress? && t.t.Choice?;
+      assert TT.TreeThreadRE(rer, qm, code, inp, t.t.t1, x as nat, true);
+      assert TT.TreeThreadRE(rer, qm, code, inp, t.t.t2, y as nat, true);
+
+      // Two tree-machine steps: unwrap the dissolved progress guard, then
+      // split the Choice at the arms.
+      var mta := [(t.t, gm)] + ta[1..];
+      assert PT.TreeBfsStep(t, gm, LC.Idx(inp)) == PT.StepActive([(t.t, gm)]);
+      assert [(t.t, gm)] + ta[1..] == mta;
+      var mid := PT.PTS(inp, mta, best, tb, SS.AddSeenTrees(seen, t));
+      assert PT.PikeTreeStep(pts, mid);
+      var na := [(t.t.t1, gm), (t.t.t2, gm)];
+      assert mta[0] == (t.t, gm) && mta[1..] == ta[1..];
+      assert PT.TreeBfsStep(t.t, gm, LC.Idx(inp)) == PT.StepActive(na);
+      pts1 := PT.PTS(inp, na + ta[1..], best, tb,
+                     SS.AddSeenTrees(SS.AddSeenTrees(seen, t), t.t));
+      assert PT.PikeTreeStep(mid, pts1);
+      TrcRefl(pts1);
+      TrcCons(mid, pts1, pts1);
+      TrcCons(pts, mid, pts1);
+
+      // Active correspondence: both arm threads run at exit_allowed == true.
+      assert PIV.ActiveRepRE(rer, qm, re, code, inp, na + ta[1..], vms2.active) by {
+        assert th1.exit_allowed == true && th2.exit_allowed == true;
+        assert PIV.ThreadTracksGm(re, th1, gm) && PIV.ThreadTracksGm(re, th2, gm);
+        assert (na + ta[1..])[0] == (t.t.t1, gm) && (na + ta[1..])[1] == (t.t.t2, gm);
+        assert (na + ta[1..])[1..] == [(t.t.t2, gm)] + ta[1..];
+        assert ((na + ta[1..])[1..])[1..] == ta[1..];
+        assert vms2.active[1..] == [th2] + vms.active[1..];
+        assert (vms2.active[1..])[1..] == vms.active[1..];
+      }
+
+      // Seen inclusion: the (pc, ea) slot resolves to t; the extra t.t only
+      // grows the seen set.
+      PIV.AddInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea,
+                         PIV.HdTreeOf(na + ta[1..]), PIV.HeadPcOf(vms2.active));
+      PIV.SeenGrowInclusionRE(rer, qm, code, inp, SS.AddSeenTrees(seen, t),
+                              AI.bpc_add(vms.processed, th.pc, ea), t.t,
+                              PIV.HdTreeOf(na + ta[1..]), PIV.HeadPcOf(vms2.active));
+      IsblockedGrow(rer, qm, code, inp, seen, vms.isblocked, t);
+      IsblockedGrow(rer, qm, code, inp, SS.AddSeenTrees(seen, t), vms.isblocked, t.t);
+
+      // Remaining conjuncts.
+      forall t2 | t2 in vms2.active ensures ThreadNestRE(re, code, endl, t2.pc, t2) {
+        if t2 != th1 && t2 != th2 { assert t2 in vms.active; }
+      }
+      forall tb2 | tb2 in vms2.blocked ensures ThreadNestRE(re, code, endl, tb2.0.pc + 1, tb2.0) {
+        assert tb2 in vms.blocked;
+      }
+      forall t2 | t2 in vms2.active ensures EaColdOkRE(code, t2) {
+        if t2 != th1 && t2 != th2 { assert t2 in vms.active; }
+        // both arm threads carry exit_allowed == true: vacuous
+      }
+      assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
+    }
+  }
+
+  /** ADDITIVE nested-fragment variant of `PreserveEndLoopPass` (audit: pure-sim). */
+  lemma PreserveEndLoopPassNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                            ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                            s1: AI.VmState, vms2: AI.VmState,
+                            ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticOkNestedRE(qm, re, code, endl)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.EndLoop)
+    requires vms.active[0].exit_allowed
+    requires vms2 == s1.(active := [vms.active[0].(pc := vms.active[0].pc + 1)] + s1.active[1..])
+    ensures PT.PikeTreeStep(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := pts;
+    var th := vms.active[0];
+    var ea := th.exit_allowed;
+    var pc: nat := th.pc as nat;
+
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
+    assert PIV.ThreadTracksGm(re, th, gm);
+    assert ThreadNestRE(re, code, endl, th.pc, th);
+
+    // The bundled EndLoop step (armed branch).
+    EndLoopStepThreadRE(rer, qm, re, code, endl, inp, t, th, pc);
+    var th' := th.(pc := th.pc + 1);
+    assert vms2.active == [th'] + vms.active[1..];
+
+    // The tree step: pts_active with the unchanged gm.
+    var na := [(t.t, gm)];
+    assert PT.TreeBfsStep(t, gm, LC.Idx(inp)) == PT.StepActive(na);
+    pts1 := PT.PTS(inp, na + ta[1..], best, tb, SS.AddSeenTrees(seen, t));
+    assert PT.PikeTreeStep(pts, pts1);
+
+    // Backbones.
+    BBTick(vms, s1, ncap, nlook, nquant);
+    assert th in vms.active;
+    CM.ThreadClocksLEMono(th, vms.clock, s1.clock);
+    BBReplaceHead(s1, th', ncap, nlook, nquant);
+
+    // Active correspondence + seen + isblocked + remaining conjuncts.
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, na + ta[1..], vms2.active) by {
+      assert (na + ta[1..])[0] == (t.t, gm) && (na + ta[1..])[1..] == ta[1..];
+      assert vms2.active[0] == th' && vms2.active[1..] == vms.active[1..];
+      assert PIV.ThreadTracksGm(re, th', gm);
+    }
+    PIV.AddInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea,
+                       PIV.HdTreeOf(na + ta[1..]), PIV.HeadPcOf(vms2.active));
+    IsblockedGrow(rer, qm, code, inp, seen, vms.isblocked, t);
+    forall t2 | t2 in vms2.active ensures ThreadNestRE(re, code, endl, t2.pc, t2) {
+      if t2 != th' { assert t2 in vms.active; }
+    }
+    forall tb2 | tb2 in vms2.blocked ensures ThreadNestRE(re, code, endl, tb2.0.pc + 1, tb2.0) {
+      assert tb2 in vms.blocked;
+    }
+    forall t2 | t2 in vms2.active ensures EaColdOkRE(code, t2) {
+      if t2 != th' { assert t2 in vms.active; }
+      else if !t2.exit_allowed {
+        assert !ea;
+        assert th in vms.active && EaColdOkRE(code, th);
+        assert !NI.ColdRE(code, pc);
+        NotColdSucc(code, pc, pc + 1);
+      }
+    }
+    assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
+  }
+
+  /** ADDITIVE nested-fragment variant of `PreserveEndLoopKill` (audit: pure-sim). */
+  lemma PreserveEndLoopKillNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                            ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                            s1: AI.VmState, vms2: AI.VmState,
+                            ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticOkNestedRE(qm, re, code, endl)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.EndLoop)
+    requires !vms.active[0].exit_allowed
+    requires vms2 == s1.(active := s1.active[1..])
+    ensures PT.PikeTreeStep(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := pts;
+    var th := vms.active[0];
+    var ea := th.exit_allowed;
+    var pc: nat := th.pc as nat;
+
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
+    assert ThreadNestRE(re, code, endl, th.pc, th);
+
+    // The bundled EndLoop step (unarmed branch): the tree is Mismatch.
+    EndLoopStepThreadRE(rer, qm, re, code, endl, inp, t, th, pc);
+    assert t == LT.Mismatch;
+
+    // The tree step: an EMPTY pts_active — the branch dies on both sides.
+    assert PT.TreeBfsStep(t, gm, LC.Idx(inp)) == PT.StepActive([]);
+    pts1 := PT.PTS(inp, [] + ta[1..], best, tb, SS.AddSeenTrees(seen, t));
+    assert PT.PikeTreeStep(pts, pts1);
+    assert [] + ta[1..] == ta[1..];
+
+    // The full invariant at the successor.
+    BBTick(vms, s1, ncap, nlook, nquant);
+    BBDropHead(s1, ncap, nlook, nquant);
+    PIV.AddInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea,
+                       PIV.HdTreeOf(ta[1..]), PIV.HeadPcOf(vms2.active));
+    IsblockedGrow(rer, qm, code, inp, seen, vms.isblocked, t);
+    forall t2 | t2 in vms2.active ensures ThreadNestRE(re, code, endl, t2.pc, t2) {
+      assert t2 in vms.active;
+    }
+    forall tb2 | tb2 in vms2.blocked ensures ThreadNestRE(re, code, endl, tb2.0.pc + 1, tb2.0) {
+      assert tb2 in vms.blocked;
+    }
+    assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
+  }
+
+  /** ADDITIVE nested-fragment variant of `PreserveAnchorPass` (audit: pure-sim). */
+  lemma PreserveAnchorPassNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                           ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                           s1: AI.VmState, vms2: AI.VmState, a: R.anchor,
+                           ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticOkNestedRE(qm, re, code, endl)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.AnchorAssertion(a))
+    requires LAnc.is_satisfied(a, vms.context, LAnc.Forward)
+    requires vms2 == s1.(active := [vms.active[0].(pc := vms.active[0].pc + 1)] + s1.active[1..])
+    ensures PT.PikeTreeStep(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := pts;
+    var th := vms.active[0];
+    var ea := th.exit_allowed;
+    var pc: nat := th.pc as nat;
+
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
+    assert PIV.ThreadTracksGm(re, th, gm);
+    assert ThreadNestRE(re, code, endl, th.pc, th);
+
+    // The VM-side check IS the tree-side check (the invariant's context window).
+    assert PIV.ContextOkRE(str, vms.cp, vms.context);
+    ContextOkIsCtxOf(str, vms.cp as nat);
+    assert vms.context == TREP.CtxOf(inp);
+    assert LAnc.is_satisfied(a, TREP.CtxOf(inp), LAnc.Forward);
+
+    // The bundled anchor step (satisfied branch).
+    AnchorStepThreadRE(rer, qm, re, code, endl, inp, t, th, pc, a);
+    var th' := th.(pc := th.pc + 1);
+    assert vms2.active == [th'] + vms.active[1..];
+
+    // The tree step: pts_active with the unchanged gm.
+    var na := [(t.t, gm)];
+    assert PT.TreeBfsStep(t, gm, LC.Idx(inp)) == PT.StepActive(na);
+    pts1 := PT.PTS(inp, na + ta[1..], best, tb, SS.AddSeenTrees(seen, t));
+    assert PT.PikeTreeStep(pts, pts1);
+
+    // Backbones.
+    BBTick(vms, s1, ncap, nlook, nquant);
+    assert th in vms.active;
+    CM.ThreadClocksLEMono(th, vms.clock, s1.clock);
+    BBReplaceHead(s1, th', ncap, nlook, nquant);
+
+    // Active correspondence + seen + isblocked + remaining conjuncts.
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, na + ta[1..], vms2.active) by {
+      assert (na + ta[1..])[0] == (t.t, gm) && (na + ta[1..])[1..] == ta[1..];
+      assert vms2.active[0] == th' && vms2.active[1..] == vms.active[1..];
+      assert PIV.ThreadTracksGm(re, th', gm);
+    }
+    PIV.AddInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea,
+                       PIV.HdTreeOf(na + ta[1..]), PIV.HeadPcOf(vms2.active));
+    IsblockedGrow(rer, qm, code, inp, seen, vms.isblocked, t);
+    forall t2 | t2 in vms2.active ensures ThreadNestRE(re, code, endl, t2.pc, t2) {
+      if t2 != th' { assert t2 in vms.active; }
+    }
+    forall tb2 | tb2 in vms2.blocked ensures ThreadNestRE(re, code, endl, tb2.0.pc + 1, tb2.0) {
+      assert tb2 in vms.blocked;
+    }
+    forall t2 | t2 in vms2.active ensures EaColdOkRE(code, t2) {
+      if t2 != th' { assert t2 in vms.active; }
+      else if !t2.exit_allowed {
+        assert !ea;
+        assert th in vms.active && EaColdOkRE(code, th);
+        assert !NI.ColdRE(code, pc);
+        NotColdSucc(code, pc, pc + 1);
+      }
+    }
+    assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
+  }
+
+  /** ADDITIVE nested-fragment variant of `PreserveAnchorKill` (audit: pure-sim). */
+  lemma PreserveAnchorKillNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                           ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                           s1: AI.VmState, vms2: AI.VmState, a: R.anchor,
+                           ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticOkNestedRE(qm, re, code, endl)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.AnchorAssertion(a))
+    requires !LAnc.is_satisfied(a, vms.context, LAnc.Forward)
+    requires vms2 == s1.(active := s1.active[1..])
+    ensures PT.PikeTreeStep(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := pts;
+    var th := vms.active[0];
+    var ea := th.exit_allowed;
+    var pc: nat := th.pc as nat;
+
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
+    assert ThreadNestRE(re, code, endl, th.pc, th);
+
+    // The VM-side check IS the tree-side check.
+    assert PIV.ContextOkRE(str, vms.cp, vms.context);
+    ContextOkIsCtxOf(str, vms.cp as nat);
+    assert !LAnc.is_satisfied(a, TREP.CtxOf(inp), LAnc.Forward);
+
+    // The bundled anchor step (unsatisfied branch): the tree is Mismatch.
+    AnchorStepThreadRE(rer, qm, re, code, endl, inp, t, th, pc, a);
+    assert t == LT.Mismatch;
+
+    // The tree step: an EMPTY pts_active — the branch dies on both sides.
+    assert PT.TreeBfsStep(t, gm, LC.Idx(inp)) == PT.StepActive([]);
+    pts1 := PT.PTS(inp, [] + ta[1..], best, tb, SS.AddSeenTrees(seen, t));
+    assert PT.PikeTreeStep(pts, pts1);
+    assert [] + ta[1..] == ta[1..];
+
+    // The full invariant at the successor.
+    BBTick(vms, s1, ncap, nlook, nquant);
+    BBDropHead(s1, ncap, nlook, nquant);
+    PIV.AddInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea,
+                       PIV.HdTreeOf(ta[1..]), PIV.HeadPcOf(vms2.active));
+    IsblockedGrow(rer, qm, code, inp, seen, vms.isblocked, t);
+    forall t2 | t2 in vms2.active ensures ThreadNestRE(re, code, endl, t2.pc, t2) {
+      assert t2 in vms.active;
+    }
+    forall tb2 | tb2 in vms2.blocked ensures ThreadNestRE(re, code, endl, tb2.0.pc + 1, tb2.0) {
+      assert tb2 in vms.blocked;
+    }
+    assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
+  }
+
+  /** ADDITIVE nested-fragment variant of `PreserveOracleKill` (audit: pure-sim). */
+  lemma PreserveOracleKillNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                           ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                           s1: AI.VmState, vms2: AI.VmState, l: int, pos: bool,
+                           ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticOkNestedRE(qm, re, code, endl)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat)
+          == Some(if pos then RB.CheckOracle(l) else RB.NegCheckOracle(l))
+    requires LOr.view_get_oracle(qm.ov, vms.cp, l) != pos
+    requires vms2 == s1.(active := s1.active[1..])
+    ensures PT.PikeTreeStep(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := pts;
+    var th := vms.active[0];
+    var ea := th.exit_allowed;
+    var pc: nat := th.pc as nat;
+
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
+    assert ThreadNestRE(re, code, endl, th.pc, th);
+
+    PIV.IdxInpOfCp(str, vms.cp as nat);
+    assert TREP.CpOf(inp) == vms.cp as nat;
+
+    // The gate step (failing branch): the checked tree is Mismatch.
+    OracleStepThreadRE(rer, qm, re, code, endl, inp, t, th, pc, l, pos);
+    assert t == LT.Mismatch;
+
+    // The tree step: an EMPTY pts_active — the branch dies on both sides.
+    assert PT.TreeBfsStep(t, gm, LC.Idx(inp)) == PT.StepActive([]);
+    pts1 := PT.PTS(inp, [] + ta[1..], best, tb, SS.AddSeenTrees(seen, t));
+    assert PT.PikeTreeStep(pts, pts1);
+    assert [] + ta[1..] == ta[1..];
+
+    // The full invariant at the successor.
+    BBTick(vms, s1, ncap, nlook, nquant);
+    BBDropHead(s1, ncap, nlook, nquant);
+    PIV.AddInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea,
+                       PIV.HdTreeOf(ta[1..]), PIV.HeadPcOf(vms2.active));
+    IsblockedGrow(rer, qm, code, inp, seen, vms.isblocked, t);
+    forall t2 | t2 in vms2.active ensures ThreadNestRE(re, code, endl, t2.pc, t2) {
+      assert t2 in vms.active;
+    }
+    forall tb2 | tb2 in vms2.blocked ensures ThreadNestRE(re, code, endl, tb2.0.pc + 1, tb2.0) {
+      assert tb2 in vms.blocked;
+    }
+    assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
+  }
+
+  /** ADDITIVE nested-fragment variant of `PreserveConsumeAdd` (audit: pure-sim). */
+  lemma PreserveConsumeAddNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                           ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                           s1: AI.VmState, ce: RC.char_expectation, vms2: AI.VmState,
+                           ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticOkNestedRE(qm, re, code, endl)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.Consume(ce))
+    requires !AI.pc_mem(s1.isblocked, vms.active[0].pc)
+    requires vms2 == s1.(blocked := [(vms.active[0], ce)] + s1.blocked,
+                         isblocked := AI.pc_add(s1.isblocked, vms.active[0].pc),
+                         active := s1.active[1..])
+    ensures PT.PikeTreeStep(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := pts;
+    var th := vms.active[0];
+    var ea := th.exit_allowed;
+    var pc: nat := th.pc as nat;
+
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
+    assert PIV.ThreadTracksGm(re, th, gm);
+    assert ThreadNestRE(re, code, endl, th.pc, th);
+
+    // The bundled Consume step: Read or Mismatch by the current character.
+    ConsumeStepThreadRE(rer, qm, re, code, endl, inp, t, th, pc, ce);
+
+    // Shared backbone/bookkeeping.
+    BBTick(vms, s1, ncap, nlook, nquant);
+    BBBlockHead(s1, ce, ncap, nlook, nquant);
+    IsblockedGrow(rer, qm, code, inp, seen, vms.isblocked, t);
+    ReversePrepend((th, ce), vms.blocked);
+    MatchingBlockedSnoc(LC.Reverse(vms.blocked), (th, ce), inp);
+
+    // The new isblocked entry pc is covered by the freshly-seen head tree.
+    assert IsblockedInclusionRE(rer, qm, code, inp, SS.AddSeenTrees(seen, t), vms2.isblocked) by {
+      forall pc0: nat | AI.pc_mem(vms2.isblocked, pc0)
+        ensures exists t0: LT.Tree, b0: bool ::
+          SS.Inseen(SS.AddSeenTrees(seen, t), t0) && TT.TreeThreadRE(rer, qm, code, inp, t0, pc0, b0)
+      {
+        PIV.PcAddMemFwd(s1.isblocked, th.pc, pc0);
+        if pc0 == pc {
+          SS.InAdd(seen, t, t);
+          assert SS.Inseen(SS.AddSeenTrees(seen, t), t) && TT.TreeThreadRE(rer, qm, code, inp, t, pc0, ea);
+        } else {
+          assert AI.pc_mem(vms.isblocked, pc0);
+          var t0: LT.Tree, b0: bool :| SS.Inseen(seen, t0) && TT.TreeThreadRE(rer, qm, code, inp, t0, pc0, b0);
+          SS.InAdd(seen, t0, t);
+        }
+      }
+    }
+
+    if AR.ReadCharE(ce, inp).Some? {
+      // MATCHING: pts_blocked pairs the appended entries.
+      var (c, nextinp0) := AR.ReadCharE(ce, inp).value;
+      assert t.Read? && t.c == c;
+      assert PT.TreeBfsStep(t, gm, LC.Idx(inp)) == PT.StepBlocked(t.t);
+      pts1 := PT.PTS(inp, ta[1..], best, tb + [(t.t, gm)], SS.AddSeenTrees(seen, t));
+      assert PT.PikeTreeStep(pts, pts1);
+
+      // Blocked correspondence: the filter gains exactly the new pair.
+      forall nextinp | LC.AdvanceInput(inp, WP.Forward) == Some(nextinp)
+        ensures PIV.BlockedRepRE(rer, qm, re, code, inp, nextinp, tb + [(t.t, gm)],
+                                 PIV.MatchingBlocked(LC.Reverse(vms2.blocked), inp))
+      {
+        assert nextinp == nextinp0;
+        assert PIV.MatchingBlocked(LC.Reverse(vms2.blocked), inp)
+            == PIV.MatchingBlocked(LC.Reverse(vms.blocked), inp) + [(th, ce)];
+        BlockedRepSnocRE(rer, qm, re, code, inp, nextinp, tb,
+                         PIV.MatchingBlocked(LC.Reverse(vms.blocked), inp), (t.t, gm), (th, ce));
+      }
+      assert |inp.next| > 0;                          // ReadCharE Some
+      assert LC.AdvanceInput(inp, WP.Forward).Some?;
+
+      PIV.AddInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea,
+                         PIV.HdTreeOf(ta[1..]), PIV.HeadPcOf(vms2.active));
+      forall t2 | t2 in vms2.active ensures ThreadNestRE(re, code, endl, t2.pc, t2) {
+        assert t2 in vms.active;
+      }
+      forall tb2 | tb2 in vms2.blocked ensures ThreadNestRE(re, code, endl, tb2.0.pc + 1, tb2.0) {
+        if tb2 != (th, ce) { assert tb2 in vms.blocked; }
+      }
+      assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
+    } else {
+      // MISMATCH: the tree is Mismatch and dies; the doomed blocked thread is
+      // invisible to the filter.
+      assert t == LT.Mismatch;
+      assert PT.TreeBfsStep(t, gm, LC.Idx(inp)) == PT.StepActive([]);
+      pts1 := PT.PTS(inp, [] + ta[1..], best, tb, SS.AddSeenTrees(seen, t));
+      assert PT.PikeTreeStep(pts, pts1);
+      assert [] + ta[1..] == ta[1..];
+
+      assert PIV.MatchingBlocked(LC.Reverse(vms2.blocked), inp)
+          == PIV.MatchingBlocked(LC.Reverse(vms.blocked), inp);
+
+      PIV.AddInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea,
+                         PIV.HdTreeOf(ta[1..]), PIV.HeadPcOf(vms2.active));
+      forall t2 | t2 in vms2.active ensures ThreadNestRE(re, code, endl, t2.pc, t2) {
+        assert t2 in vms.active;
+      }
+      forall tb2 | tb2 in vms2.blocked ensures ThreadNestRE(re, code, endl, tb2.0.pc + 1, tb2.0) {
+        if tb2 != (th, ce) { assert tb2 in vms.blocked; }
+      }
+      assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
+    }
+  }
+
+  /** ADDITIVE nested-fragment variant of `PreserveConsumeDrop` (audit: pure-sim). */
+  lemma PreserveConsumeDropNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                            ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                            s1: AI.VmState, ce: RC.char_expectation, vms2: AI.VmState,
+                            ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticOkNestedRE(qm, re, code, endl)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.Consume(ce))
+    requires AI.pc_mem(s1.isblocked, vms.active[0].pc)
+    requires vms2 == s1.(active := s1.active[1..])
+    ensures PT.PikeTreeStep(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := pts;
+    var th := vms.active[0];
+    var ea := th.exit_allowed;
+    var pc: nat := th.pc as nat;
+
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
+    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
+
+    // The first blocker at pc supplied the seen tree; ea-independence at a
+    // Consume pc makes it THIS tree.
+    assert IsblockedInclusionRE(rer, qm, code, inp, seen, vms.isblocked);
+    assert AI.pc_mem(vms.isblocked, pc);
+    var t0: LT.Tree, b0: bool :| SS.Inseen(seen, t0) && TT.TreeThreadRE(rer, qm, code, inp, t0, pc, b0);
+    ConsumeTreeEaIndep(rer, qm, code, inp, t0, t, pc, b0, ea);
+    assert SS.Inseen(seen, t);
+
+    // The tree step: pts_skip.
+    pts1 := PT.PTS(inp, ta[1..], best, tb, seen);
+    assert PT.PikeTreeStep(pts, pts1);
+
+    // The full invariant at the successor: the new processed entry resolves
+    // LEFT (its tree is already seen); old entries via the skip promotion.
+    BBTick(vms, s1, ncap, nlook, nquant);
+    BBDropHead(s1, ncap, nlook, nquant);
+    assert PIV.SeenInclusionRE(rer, qm, code, inp, seen, vms2.processed,
+                               PIV.HdTreeOf(ta[1..]), PIV.HeadPcOf(vms2.active)) by {
+      forall pc0: nat, bb0: bool | AI.bpc_mem(vms2.processed, pc0, bb0)
+        ensures (exists t': LT.Tree :: SS.Inseen(seen, t')
+                   && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, bb0))
+             || (TT.StuttersRE(pc0, code) && exists t': LT.Tree ::
+                   PIV.StutterChainTo(code, pc0, PIV.HeadPcOf(vms2.active))
+                   && PIV.HdTreeOf(ta[1..]) == Some(t')
+                   && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, bb0))
+      {
+        PIV.BpcAddMemFwd(vms.processed, th.pc, ea, pc0, bb0);
+        if pc0 == pc && bb0 == ea {
+          // the fresh entry: its tree is t, already seen.
+        } else {
+          assert AI.bpc_mem(vms.processed, pc0, bb0);
+          if exists t': LT.Tree :: SS.Inseen(seen, t') && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, bb0) {
+          } else {
+            // old right disjunct: the witness is the (now-skipped) head tree t,
+            // which is seen — promote LEFT.
+            var t': LT.Tree :| TT.StuttersRE(pc0, code) && PIV.StutterChainTo(code, pc0, pc)
+              && PIV.HdTreeOf(ta) == Some(t') && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, bb0);
+            assert t' == t;
+          }
+        }
+      }
+    }
+    forall t2 | t2 in vms2.active ensures ThreadNestRE(re, code, endl, t2.pc, t2) {
+      assert t2 in vms.active;
+    }
+    forall tb2 | tb2 in vms2.blocked ensures ThreadNestRE(re, code, endl, tb2.0.pc + 1, tb2.0) {
+      assert tb2 in vms.blocked;
+    }
+    assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
+  }
 }
