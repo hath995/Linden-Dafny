@@ -532,3 +532,50 @@ backreferences (XL — outside the pike fragment entirely; `ReadBackRef` is
 dead in every machine), `ignoreCase`/`multiline` (M each — `rer` hypotheses
 threaded everywhere), and the `LookBehindFragmentRaw`→`Supported` rename
 housekeeping. None are rungs until priced by their own document.
+
+## 2026-08-15 — recon_inner sub-campaign (=W5 remainder) EXECUTION
+
+The seam `LkReplayMatchesSpecNestedFull` (MainTheorem, commit 7610cdb) reduced the full-`DefGroups`
+value keystone to two premises over a reconstructed bank `(reccap,reclk,recqt)`: `recon_outer`
+(reconstruction preserves outer groups) and `recon_inner` (on inner-look groups it matches the spec
+`LkResult`). This sub-campaign discharges them by instantiating the bank as the engine's `FLookLoop`
+output and recursing on `NestDepth`.
+
+**KEY SIMPLIFICATION (de-risk):** every nested capture `g` bottoms out at its INNERMOST OWNER lid,
+where `g` is an OUTER (direct) group of that lid's body — so `g`'s value is dischargeable by the
+ALREADY-PROVEN `LkReplayMatchesSpecNested` (outer-groups agreement). No deep seam recursion is
+needed; the depth recursion collapses into (i) innermost-owner resolution (structural, R1),
+(ii) recorded-position correctness (already proven at match level via `BodyTreeAtCpNested`), and
+(iii) `TreeRes` LK-composition (spec, R3b). The `FLookLoop` reconstruction is one FLAT loop; its
+only subtlety is that inner `a_cp` is written mid-loop by ancestor iterations, so the value-lift
+invariant must be keyed on the FINAL look bank `res.1`, not the input `lk`.
+
+Bricks (all ADDITIVE):
+- **R1 DONE (commit 4cb73aa):** innermost-owner classification. `NestInv`: `InnermostOwnerDirect`
+  (g resolves to an owner lid holding it DIRECTLY: `g in CapIds(body) && g !in CapIdsInLooks(body)`),
+  `NestDepthLookBodyDrops` (`NestDepth(LookBodyOfRE(r,l)) < NestDepth(r)`), `NestedGWriteFrame`
+  (only the owner directly holds `g`; any other lid holding `g` is a proper ancestor). `MainTheorem`:
+  `VBodyEqLookBody` (`LookTablesOk ==> VBody(crv,l)==LookBodyOfRE(re,l)`).
+- **R2 DONE (commit e3375dd):** FLookLoop frame + outer-caps value-lift for NESTED bodies.
+  `FLookLoopCaptureFrameNested` (writes only inside `S`; look bank grows only by inner-look a_cp:
+  `RegsAgreeOutside(res.1, lk, Slook)` — NOT `res.1==lk`, which is false at depth>=2) and
+  `FLookLoopValueLiftOuter`/`FLookLoopValueOkOuter` (on each matched look body's OUTER caps
+  `CaptureRegsSet(CapIdsOutsideLooks(body))`, `res.0` carries the fresh body match), per-lid
+  existential relaxed `LookFreeRE -> NegLooksLookFreeRE`, per-lid engine bridge
+  `ReplayLidCapAgreeFreshNested`. Verified in-tree 191/0 and 630/0. Scope: capturing looks are
+  Lookahead-only (matches the nested keystone).
+- **R3 IN FLIGHT:** `FLookLoopValueOkFull`/`FLookLoopValueLiftFull` — whole-loop lift re-keyed on the
+  FINAL bank `res.1`, retaining inner-owner coverage (R2's Outer version drops it). Induction reuses
+  R2's per-lid bridge + frame + R1 disjointness; a_cp[lid]-stability (no later replay writes look
+  index `lid`, by well-nestedness) bridges input-lk to final-res.1 keying. Stretch: DefGroups-coverage
+  corollary routing each `g in CapIdsInLooks(re)` through its innermost owner.
+- **R3b / W6-start (NEXT):** spec-side discharge — `LkReplayMatchesSpecNested` at each owner +
+  `TreeRes` LK-composition (owner LkResult[g] == outer LkResult[g]) + position via `BodyTreeAtCpNested`;
+  then instantiate the seam per look inside a nested `L3aEndpointAssembly`.
+
+**PROCESS NOTE (deps-symlink hazard):** worktree agents symlink `linden-equiv/deps` to the primary
+checkout; `git add -A` staged that symlink and a cherry-pick then overwrote the real `deps/` dir with
+a self-referential link (recovered by rebuilding from the versioned `*.doo` in each dep project dir).
+Fixes: `.gitignore` now ignores a `deps` SYMLINK (commit adca767); integrate agent commits by
+extracting the `.dfy`-only diff (`git show <c> -- <path> | git apply`), never cherry-pick whole
+commits; tell agents to `git add <file>` not `git add -A`.
