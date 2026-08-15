@@ -579,3 +579,39 @@ a self-referential link (recovered by rebuilding from the versioned `*.doo` in e
 Fixes: `.gitignore` now ignores a `deps` SYMLINK (commit adca767); integrate agent commits by
 extracting the `.dfy`-only diff (`git show <c> -- <path> | git apply`), never cherry-pick whole
 commits; tell agents to `git add <file>` not `git add -A`.
+
+### 2026-08-15 (cont.) — recon_inner: BOTH novel halves PROVEN; remaining = seam-closing GLUE
+
+- **R3 DONE (commit 2580012):** `FLookLoopValueLiftFull` + `FLookLoopFullCoversInLooks` — the whole-loop
+  FLookLoop capture reconstruction re-keyed on the FINAL look bank; `res.0` provably carries EVERY
+  `g in CapIdsInLooks(re)` at its innermost owner's fresh-body-match value, arbitrary depth. Adds
+  well-nested-lids hyp (h) + a_cp-stability helper `FLookLoopLidCpStable`. Verified in-tree 636/0, 2/0.
+  **This is the ENGINE-side recon_inner — the reconstruction is proven correct.**
+- **R3b DONE (commit eb75141):** the SPEC-side value composition toolkit —
+  `TreeResGValueFramed` (TreeRes leaf value at a single group `g` depends on incoming gm only through
+  `gm[g]`; NO confinement needed — control flow is gm-blind, group values evolve only from own writes),
+  `TreeResGIndepWhenWritten` (maps differing only at `g`: if `g` is written on the winning path the
+  leaf values AGREE at `g`, independent of the differing `gm[g]` — the owning look pins it),
+  `TreeResLkNodeGValue` (a matched look node's leaf value at `g` == that look's sub-tree `TreeRes`
+  value at `g`), + `AgreeOffG`/`GDefBeforeClose`/`GNotWritten` toolkit. Verified in-tree 4/0,2/0,2/0,2/0.
+  **This is the SPEC-side content of "inner capture value is determined by the owning look, not the
+  surrounding gm."**
+
+**Both mathematically novel obstacles of recon_inner are now cleared and verified.** What remains to
+DISCHARGE the seam `LkReplayMatchesSpecNestedFull` is structural GLUE (= W6 endpoint territory):
+1. **Regex↔spec-tree owner-node correspondence (the named blocker):** a new structural-induction lemma
+   over `ComputeTr`/`Translate` showing `tlk = ComputeTr(Translate(body))` has, on its winning path,
+   an `LK` node whose sub-tree `== ComputeTr(Translate(LookBodyOfRE(body, owner)))` and which is the
+   innermost owner of `g` (with `GDefBeforeClose`/continuation-`GNotWritten`). This is what lets
+   R3b's `TreeResLkNodeGValue` connect `owner-standalone-LkResult[g]` (from `LkReplayMatchesSpecNested`
+   at the owner) to `outer-LkResult[g]`. Ties to the winning-path/position via `BodyTreeAtCpNested`.
+2. **FLookLoop bank instantiation:** discharge hypotheses (a)-(h) of `FLookLoopFullCoversInLooks`/
+   `FLookLoopCaptureFrameNested` for the reconstruction range (a nested analogue of `LookRowsFromTablesL3a`),
+   supplying `recon_outer` and the engine side of `recon_inner`.
+3. **Assembly:** instantiate the seam per look; then W6 proper wires it into the whole-regex value
+   bridge (nested `GmtTieInside`/`L3aValueBridge`/`L3aEndpointAssembly`/`MainTheoremL3`) + widens the
+   `Supported` gate `LookBehindFragmentRaw -> NestedFragmentRaw`.
+
+Net recon_inner status: engine reconstruction + spec composition = DONE & verified (5 commits,
+~20 new lemmas, 0 red). Seam closure = a bounded multi-brick GLUE sub-campaign (items 1-3), which is
+the W6 endpoint. Cleanly checkpointed here.
