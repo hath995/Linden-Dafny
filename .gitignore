@@ -3,6 +3,9 @@
 
 # lem-materialized dependencies + build output (regenerable via `lem restore` / `lem pack`)
 **/deps/
+# also ignore a `deps` SYMLINK (worktrees symlink deps to the primary checkout;
+# the trailing-slash rule above matches only real directories, not the symlink)
+**/deps
 **/*-lib/
 **/*.doo
 **/.lem-publish/
