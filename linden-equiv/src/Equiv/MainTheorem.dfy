@@ -6664,4 +6664,18 @@ module LindenElkMain {
     }
     FConsumeQuantFinal(s2);
   }
+
+  /** R1 #4 (VBody bridge): the table-view body `VBody(crv, l)` is exactly the
+      structural body `LookBodyOfRE(r, l)`. `LookTablesOk` records a
+      `LookEntryOk` row at every look node (via `NI.LookBodyOfTablesTie`); that
+      row pins `crv.f_look_ast[l] == LookBodyOfRE(r, l)` and `0 <= l < |f_look_ast|`,
+      so the `VBody` lookup returns exactly that body. */
+  lemma VBodyEqLookBody(crv: CP.FCompiled, r: R.regex, l: nat)
+    requires LTB.LookTablesOk(r, crv)
+    requires l in LTB.LookIds(r)
+    ensures VBody(crv, l) == NI.LookBodyOfRE(r, l)
+  {
+    NI.LookBodyOfTablesTie(r, crv, l);
+    var la: R.lookaround :| LTB.LookEntryOk(crv, l as int, la, NI.LookBodyOfRE(r, l));
+  }
 }

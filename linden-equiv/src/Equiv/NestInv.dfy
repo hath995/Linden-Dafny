@@ -5173,4 +5173,83 @@ module LindenElkNestInv {
     NestInvLookSite(re, code, 0, endl, pc, cc, qc, -1, lid);
     MxAtLidLE(re, qc, -1, lid as nat, AI.get_idx(lc', lid));
   }
+
+  // ==========================================================================
+  // R1 (classification brick): innermost-direct owner, NestDepth drop, and the
+  // nested-write frame -- the tree-shape facts the depth-k capture recursion
+  // consumes.
+  // ==========================================================================
+
+  /** R1 #1: the innermost-DIRECT owner of a nested capture `g`. This refines
+      `InnermostLookOwnerExists`, which ALREADY ensures the three direct-write
+      facts; the only addition is carrying `PIV.CapUnique(r)` in the requires
+      for callers that need it downstream. Thin wrapper. */
+  lemma InnermostOwnerDirect(r: R.regex, g: nat) returns (owner: nat)
+    requires PIV.CapUnique(r) && LTB.LookUnique(r)
+    requires g in PIV.CapIdsInLooks(r)
+    ensures owner in LTB.LookIds(r)
+    ensures g in PIV.CapIds(LookBodyOfRE(r, owner))
+    ensures g !in PIV.CapIdsInLooks(LookBodyOfRE(r, owner))
+  {
+    owner := InnermostLookOwnerExists(r, g);
+  }
+
+  /** R1 #2: descending into a look body strictly DROPS the nesting depth --
+      the well-founded measure the depth-k capture recursion decreases on.
+      Structural induction following `LookBodyOfRE` / `LookIds`. */
+  lemma NestDepthLookBodyDrops(r: R.regex, l: nat)
+    requires l in LTB.LookIds(r)
+    ensures NR.NestDepth(LookBodyOfRE(r, l)) < NR.NestDepth(r)
+    decreases r
+  {
+    match r
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      if l in LTB.LookIds(r1) { NestDepthLookBodyDrops(r1, l); }
+      else { NestDepthLookBodyDrops(r2, l); }
+    case Re_con(r1, r2) =>
+      if l in LTB.LookIds(r1) { NestDepthLookBodyDrops(r1, l); }
+      else { NestDepthLookBodyDrops(r2, l); }
+    case Re_quant(_, _, _, r1) => NestDepthLookBodyDrops(r1, l);
+    case Re_capture(_, r1) => NestDepthLookBodyDrops(r1, l);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == l {
+      } else {
+        NestDepthLookBodyDrops(r1, l);
+      }
+  }
+
+  /** R1 #3: with `owner` the innermost-direct owner of `g` (as produced by
+      `InnermostOwnerDirect`), any OTHER look `l2` whose body ALSO contains `g`
+      has `owner` nested inside it -- `l2` is a proper ANCESTOR of `owner` that
+      only reaches `g` through the nested `owner` look, so it gates `g` rather
+      than writing it. Derived from `LookBodiesCapsDisjointOrNested` (rule out
+      the disjoint arm: `g` is in both bodies; rule out the "l2 nested in owner"
+      arm: that would bury `g` in a look inside owner's body, contradicting
+      `g !in CapIdsInLooks(owner-body)`), leaving "owner nested in l2". */
+  lemma NestedGWriteFrame(r: R.regex, g: nat, owner: nat, l2: nat)
+    requires PIV.CapUnique(r) && LTB.LookUnique(r)
+    requires g in PIV.CapIdsInLooks(r)
+    requires owner in LTB.LookIds(r)
+    requires g in PIV.CapIds(LookBodyOfRE(r, owner))
+    requires g !in PIV.CapIdsInLooks(LookBodyOfRE(r, owner))
+    requires l2 in LTB.LookIds(r) && l2 != owner
+    requires g in PIV.CapIds(LookBodyOfRE(r, l2))
+    ensures owner in LTB.LookIds(LookBodyOfRE(r, l2))
+  {
+    LookBodiesCapsDisjointOrNested(r, owner, l2);
+    if PIV.CapIds(LookBodyOfRE(r, owner)) * PIV.CapIds(LookBodyOfRE(r, l2)) == {} {
+      assert g in PIV.CapIds(LookBodyOfRE(r, owner)) * PIV.CapIds(LookBodyOfRE(r, l2));  // false
+    } else if l2 in LTB.LookIds(LookBodyOfRE(r, owner))
+              && PIV.CapIds(LookBodyOfRE(r, l2)) <= PIV.CapIds(LookBodyOfRE(r, owner)) {
+      // l2 nested in owner's body: g would then sit in a nested look -- contradiction
+      LookBodyCompose(r, owner, l2);
+      LookBodyCapsIn(LookBodyOfRE(r, owner), l2);
+      assert g in PIV.CapIdsInLooks(LookBodyOfRE(r, owner));
+    } else {
+      // owner nested in l2: the conclusion
+    }
+  }
 }
