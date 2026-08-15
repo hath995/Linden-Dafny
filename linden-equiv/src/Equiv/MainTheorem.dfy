@@ -5848,6 +5848,368 @@ module LindenElkMain {
     case LKFail(lk, tlk) =>
   }
 
+  // ===========================================================================
+  // R3b (ADDITIVE): pure-spec VALUE composition for captures defined inside looks.
+  //
+  // These are the SPEC-tree half of the nested value-reconstruction seam. They
+  // isolate how a SINGLE capture group `g` gets its value at the highest-priority
+  // leaf of a `TreeRes`, independent of the surrounding group map (`gmMain`) and
+  // of the continuation. Two orthogonal facts:
+  //   * `TreeResGValueFramed`  -- `g`'s leaf value depends on the incoming map
+  //     ONLY through its value AT `g` (changing OTHER groups is irrelevant).
+  //   * `TreeResGNotWritten` / `TreeResLkNodeGValue` -- if `g` is written only
+  //     inside a look, the value the look CONTRIBUTES flows out to the leaf
+  //     unchanged (the continuation, defining `g` nowhere, only threads it).
+  // Together: the value of an inner-look `g` at the OUTER leaf equals the owning
+  // look's own sub-result at `g` (`LkResult` of that look), which is the last hop
+  // of the `recon_inner` chain.
+  // ===========================================================================
+
+  /** A group action writes / touches group `g`. */
+  ghost predicate ActTouchesG(a: LG.GroupAction, g: LG.GroupId) {
+    match a
+    case Open(x) => x == g
+    case Close(x) => x == g
+    case Reset(gs) => g in gs
+  }
+
+  /** A group action that does NOT touch `g` leaves `g`'s entry (membership AND
+      value) unchanged under `GMUpdate`. */
+  lemma GMUpdateFindNotTouch(a: LG.GroupAction, idx: nat, gm: LG.GroupMap, g: LG.GroupId)
+    requires !ActTouchesG(a, g)
+    ensures LG.Find(g, LG.GMUpdate(a, idx, gm)) == LG.Find(g, gm)
+  {
+    match a
+    case Open(x) =>
+    case Close(x) =>
+      match LG.Find(x, gm) {
+        case Some(_) =>
+        case None =>
+      }
+    case Reset(gs) =>
+      assert g !in (set y | y in gs);
+  }
+
+  /** `GMUpdate` reads/writes `g` using ONLY `g`'s own incoming entry: two maps
+      that agree AT `g` (however they differ elsewhere) still agree at `g` after
+      the SAME action. The single-group core of the value-composition frame. */
+  lemma GMUpdateFindAgree(a: LG.GroupAction, idx: nat, gm1: LG.GroupMap, gm2: LG.GroupMap, g: LG.GroupId)
+    requires LG.Find(g, gm1) == LG.Find(g, gm2)
+    ensures LG.Find(g, LG.GMUpdate(a, idx, gm1)) == LG.Find(g, LG.GMUpdate(a, idx, gm2))
+  {
+    if !ActTouchesG(a, g) {
+      GMUpdateFindNotTouch(a, idx, gm1, g);
+      GMUpdateFindNotTouch(a, idx, gm2, g);
+    } else {
+      match a
+      case Open(x) =>            // x == g: both set Range(idx, None)
+      case Close(x) =>           // x == g: GMClose reads Find(g, .), equal by hyp
+      case Reset(gs) =>          // g in gs: both drop g
+        assert g in (set y | y in gs);
+    }
+  }
+
+  /** R3b MILESTONE: `TreeRes`'s leaf value at a SINGLE group `g` depends on the
+      incoming group map ONLY through its value at `g`. Changing the incoming map
+      at ANY OTHER group leaves `g`'s captured value at the highest-priority leaf
+      unchanged, and control flow (success / end position) is fully gm-blind. This
+      is the "surrounding groups are irrelevant" half of value composition for
+      nested-look captures: it lets the reconstruction swap the running `gmMain`
+      for `Empty` (they agree at `g` by the outer `DefGroups` hypothesis) without
+      disturbing `g`. Structural induction over `t`; the `LK` case recurses through
+      the look body at ANY depth -- the sub-look's leaf value at `g` is itself
+      `g`-framed, so the value threaded into the continuation agrees at `g`.
+      Needs NO confinement: a group's value flows only from its OWN writes (which
+      read the input position and, for `Close`, `g`'s own open entry), never from
+      another group's entry. */
+  lemma TreeResGValueFramed(t: LT.Tree, gm1: LG.GroupMap, gm2: LG.GroupMap, inp: LC.Input,
+                            dir: WP.Direction, g: LG.GroupId)
+    requires LG.Find(g, gm1) == LG.Find(g, gm2)
+    ensures (LT.TreeRes(t, gm1, inp, dir).None? <==> LT.TreeRes(t, gm2, inp, dir).None?)
+    ensures LT.TreeRes(t, gm1, inp, dir).Some? ==>
+              LT.TreeRes(t, gm1, inp, dir).value.0 == LT.TreeRes(t, gm2, inp, dir).value.0
+              && LG.Find(g, LT.TreeRes(t, gm1, inp, dir).value.1)
+                 == LG.Find(g, LT.TreeRes(t, gm2, inp, dir).value.1)
+    decreases t
+  {
+    match t
+    case Mismatch =>
+    case Match =>
+    case Choice(t1, t2) =>
+      TreeResGValueFramed(t1, gm1, gm2, inp, dir, g);
+      TreeResGValueFramed(t2, gm1, gm2, inp, dir, g);
+    case Read(c, t1) =>
+      TreeResGValueFramed(t1, gm1, gm2, LC.AdvanceInputP(inp, dir), dir, g);
+    case ReadBackRef(brStr, t1) =>
+      TreeResGValueFramed(t1, gm1, gm2, LC.AdvanceInputN(inp, |brStr|, dir), dir, g);
+    case Progress(t1) =>
+      TreeResGValueFramed(t1, gm1, gm2, inp, dir, g);
+    case AnchorPass(a, t1) =>
+      TreeResGValueFramed(t1, gm1, gm2, inp, dir, g);
+    case GroupActionT(a, t1) =>
+      GMUpdateFindAgree(a, LC.Idx(inp), gm1, gm2, g);
+      TreeResGValueFramed(t1, LG.GMUpdate(a, LC.Idx(inp), gm1), LG.GMUpdate(a, LC.Idx(inp), gm2), inp, dir, g);
+    case LK(lk, tlk, t1) =>
+      TreeResGValueFramed(tlk, gm1, gm2, inp, L.LkDir(lk), g);
+      if L.Positivity(lk) {
+        match LT.TreeRes(tlk, gm1, inp, L.LkDir(lk))
+        case None =>
+        case Some(pair1) =>
+          var pair2 := LT.TreeRes(tlk, gm2, inp, L.LkDir(lk)).value;
+          TreeResGValueFramed(t1, pair1.1, pair2.1, inp, dir, g);
+      } else {
+        match LT.TreeRes(tlk, gm1, inp, L.LkDir(lk))
+        case None => TreeResGValueFramed(t1, gm1, gm2, inp, dir, g);
+        case Some(_) =>
+      }
+    case LKFail(lk, tlk) =>
+  }
+
+  /** `g` is written by NO group action anywhere in `t` (at any depth, INCLUDING
+      inside look bodies). */
+  ghost predicate GNotWritten(t: LT.Tree, g: LG.GroupId)
+    decreases t
+  {
+    match t
+    case Mismatch => true
+    case Match => true
+    case Choice(t1, t2) => GNotWritten(t1, g) && GNotWritten(t2, g)
+    case Read(_, t1) => GNotWritten(t1, g)
+    case ReadBackRef(_, t1) => GNotWritten(t1, g)
+    case Progress(t1) => GNotWritten(t1, g)
+    case AnchorPass(_, t1) => GNotWritten(t1, g)
+    case GroupActionT(a, t1) => !ActTouchesG(a, g) && GNotWritten(t1, g)
+    case LK(_, tlk, t1) => GNotWritten(tlk, g) && GNotWritten(t1, g)
+    case LKFail(_, tlk) => GNotWritten(tlk, g)
+  }
+
+  /** If `g` is never written in `t`, the highest-priority leaf keeps `g`'s
+      incoming value. The frame that carries a look's contributed value through a
+      continuation which defines `g` nowhere. */
+  lemma TreeResGNotWritten(t: LT.Tree, gm: LG.GroupMap, inp: LC.Input, dir: WP.Direction, g: LG.GroupId)
+    requires GNotWritten(t, g)
+    ensures LT.TreeRes(t, gm, inp, dir).Some? ==>
+              LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1) == LG.Find(g, gm)
+    decreases t
+  {
+    match t
+    case Mismatch =>
+    case Match =>
+    case Choice(t1, t2) =>
+      TreeResGNotWritten(t1, gm, inp, dir, g);
+      TreeResGNotWritten(t2, gm, inp, dir, g);
+    case Read(c, t1) =>
+      TreeResGNotWritten(t1, gm, LC.AdvanceInputP(inp, dir), dir, g);
+    case ReadBackRef(brStr, t1) =>
+      TreeResGNotWritten(t1, gm, LC.AdvanceInputN(inp, |brStr|, dir), dir, g);
+    case Progress(t1) =>
+      TreeResGNotWritten(t1, gm, inp, dir, g);
+    case AnchorPass(a, t1) =>
+      TreeResGNotWritten(t1, gm, inp, dir, g);
+    case GroupActionT(a, t1) =>
+      GMUpdateFindNotTouch(a, LC.Idx(inp), gm, g);
+      TreeResGNotWritten(t1, LG.GMUpdate(a, LC.Idx(inp), gm), inp, dir, g);
+    case LK(lk, tlk, t1) =>
+      if L.Positivity(lk) {
+        match LT.TreeRes(tlk, gm, inp, L.LkDir(lk))
+        case None =>
+        case Some(pair) =>
+          TreeResGNotWritten(tlk, gm, inp, L.LkDir(lk), g);
+          TreeResGNotWritten(t1, pair.1, inp, dir, g);
+      } else {
+        match LT.TreeRes(tlk, gm, inp, L.LkDir(lk))
+        case None => TreeResGNotWritten(t1, gm, inp, dir, g);
+        case Some(_) =>
+      }
+    case LKFail(lk, tlk) =>
+  }
+
+  /** R3b (the task's clean "outer leaf value at an inner `g` == the LK sub-tree's
+      value at `g`" form, ONE step): at a matched POSITIVE look node whose
+      continuation `t1` never writes `g`, the whole node's leaf value at `g`
+      equals the look SUB-tree's highest-priority value at `g` -- i.e. exactly the
+      `LkResult` of that look at `g`. The continuation only THREADS the look's
+      contributed value; it never rewrites it (each capture is defined once). */
+  lemma TreeResLkNodeGValue(lk: L.Lookaround, tlk: LT.Tree, t1: LT.Tree, gm: LG.GroupMap,
+                            inp: LC.Input, dir: WP.Direction, g: LG.GroupId)
+    requires L.Positivity(lk)
+    requires GNotWritten(t1, g)
+    requires LT.TreeRes(LT.LK(lk, tlk, t1), gm, inp, dir).Some?
+    ensures LG.Find(g, LT.TreeRes(LT.LK(lk, tlk, t1), gm, inp, dir).value.1)
+            == LG.Find(g, LT.TreeRes(tlk, gm, inp, L.LkDir(lk)).value.1)
+  {
+    // node Some ==> sub Some (else the node is None); the node value is
+    // TreeRes(t1, sub.value.1, inp, dir), and t1 never rewrites g.
+    var pair := LT.TreeRes(tlk, gm, inp, L.LkDir(lk)).value;
+    TreeResGNotWritten(t1, pair.1, inp, dir, g);
+  }
+
+  /** R3b bridge to the file's `GmAgreeOn` vocabulary: `TreeResGValueFramed` at
+      the singleton `{g}`. Two maps agreeing at `g` yield leaves agreeing at `g`
+      (and identical success / position). */
+  lemma TreeResGValueFramedAgree(t: LT.Tree, gm1: LG.GroupMap, gm2: LG.GroupMap, inp: LC.Input,
+                                 dir: WP.Direction, g: LG.GroupId)
+    requires GmAgreeOn(gm1, gm2, {g})
+    ensures (LT.TreeRes(t, gm1, inp, dir).None? <==> LT.TreeRes(t, gm2, inp, dir).None?)
+    ensures LT.TreeRes(t, gm1, inp, dir).Some? ==>
+              LT.TreeRes(t, gm1, inp, dir).value.0 == LT.TreeRes(t, gm2, inp, dir).value.0
+              && GmAgreeOn(LT.TreeRes(t, gm1, inp, dir).value.1, LT.TreeRes(t, gm2, inp, dir).value.1, {g})
+  {
+    assert LG.Find(g, gm1) == LG.Find(g, gm2);
+    TreeResGValueFramed(t, gm1, gm2, inp, dir, g);
+  }
+
+  /** Two maps agree at every group OTHER than `g` (they may differ at `g`). */
+  ghost predicate AgreeOffG(gm1: LG.GroupMap, gm2: LG.GroupMap, g: LG.GroupId) {
+    forall h :: h != g ==> LG.Find(h, gm1) == LG.Find(h, gm2)
+  }
+
+  /** The SAME action preserves off-`g` agreement (it touches groups != `g` where
+      the two maps already agree, or `g` itself identically on both). */
+  lemma GMUpdateAgreeOffG(a: LG.GroupAction, idx: nat, gm1: LG.GroupMap, gm2: LG.GroupMap, g: LG.GroupId)
+    requires AgreeOffG(gm1, gm2, g)
+    ensures AgreeOffG(LG.GMUpdate(a, idx, gm1), LG.GMUpdate(a, idx, gm2), g)
+  {
+    forall h | h != g
+      ensures LG.Find(h, LG.GMUpdate(a, idx, gm1)) == LG.Find(h, LG.GMUpdate(a, idx, gm2))
+    {
+      GMUpdateFindAgree(a, idx, gm1, gm2, h);
+    }
+  }
+
+  /** Off-`g` agreement is preserved through `TreeRes` for ANY tree -- it is just
+      `TreeResGValueFramed` applied at every group != `g`. The companion of
+      `TreeResGValueFramed` that lets the disjunction induction below re-establish
+      its off-`g` hypothesis at each look boundary WITHOUT threading it through. */
+  lemma TreeResAgreeOffG(t: LT.Tree, gm1: LG.GroupMap, gm2: LG.GroupMap, inp: LC.Input,
+                         dir: WP.Direction, g: LG.GroupId)
+    requires AgreeOffG(gm1, gm2, g)
+    ensures LT.TreeRes(t, gm1, inp, dir).Some? ==>
+              LT.TreeRes(t, gm2, inp, dir).Some?
+              && AgreeOffG(LT.TreeRes(t, gm1, inp, dir).value.1, LT.TreeRes(t, gm2, inp, dir).value.1, g)
+  {
+    if LT.TreeRes(t, gm1, inp, dir).Some? {
+      TreeResGmFrameRec(t, gm1, gm2, inp, dir, {});   // None-iff: gm2 side Some too
+      forall h | h != g
+        ensures LG.Find(h, LT.TreeRes(t, gm1, inp, dir).value.1)
+                == LG.Find(h, LT.TreeRes(t, gm2, inp, dir).value.1)
+      {
+        TreeResGValueFramed(t, gm1, gm2, inp, dir, h);
+      }
+    }
+  }
+
+  /** `g` is never CLOSED (or reset while carrying an external value) before it is
+      OPENED on any path -- the "def-before-use" shape every capture in a compiled
+      tree has. Formally: a `Close(g)` node is forbidden UNLESS dominated by an
+      earlier `Open(g)`/`Reset({..g..})` (after which the subtree is unconstrained,
+      as `g`'s value is then input-determined). This is exactly the hypothesis that
+      makes the value at `g` gm[g]-INDEPENDENT once `g` is written on the path. */
+  ghost predicate GDefBeforeClose(t: LT.Tree, g: LG.GroupId)
+    decreases t
+  {
+    match t
+    case Mismatch => true
+    case Match => true
+    case Choice(t1, t2) => GDefBeforeClose(t1, g) && GDefBeforeClose(t2, g)
+    case Read(_, t1) => GDefBeforeClose(t1, g)
+    case ReadBackRef(_, t1) => GDefBeforeClose(t1, g)
+    case Progress(t1) => GDefBeforeClose(t1, g)
+    case AnchorPass(_, t1) => GDefBeforeClose(t1, g)
+    case GroupActionT(a, t1) =>
+      (match a
+       case Open(x) => if x == g then true else GDefBeforeClose(t1, g)
+       case Reset(gs) => if g in gs then true else GDefBeforeClose(t1, g)
+       case Close(x) => x != g && GDefBeforeClose(t1, g))
+    case LK(_, tlk, t1) => GDefBeforeClose(tlk, g) && GDefBeforeClose(t1, g)
+    case LKFail(_, tlk) => GDefBeforeClose(tlk, g)
+  }
+
+  /** R3b HEADLINE: for a def-before-use tree, the leaf value at `g` is either
+      contributed by a write on the highest-priority path -- and then it is
+      INDEPENDENT of the incoming `gm[g]` (the two runs from maps differing only
+      at `g` AGREE at `g`) -- or `g` was never written on that path, and each run
+      simply passes its own `gm[g]` through. This is the pure-spec content of
+      "the inner capture's value is determined by the owning look, not the
+      surrounding gm": at the owning look the first disjunct fires, pinning the
+      value to the look's own sub-result regardless of `gmMain`. Structural
+      induction; off-`g` agreement of intermediate maps is re-derived on demand via
+      `TreeResAgreeOffG`, so the induction carries only the single `g`-value. */
+  lemma TreeResGIndepWhenWritten(t: LT.Tree, gm1: LG.GroupMap, gm2: LG.GroupMap, inp: LC.Input,
+                                 dir: WP.Direction, g: LG.GroupId)
+    requires AgreeOffG(gm1, gm2, g)
+    requires GDefBeforeClose(t, g)
+    ensures (LT.TreeRes(t, gm1, inp, dir).None? <==> LT.TreeRes(t, gm2, inp, dir).None?)
+    ensures LT.TreeRes(t, gm1, inp, dir).Some? ==>
+              LG.Find(g, LT.TreeRes(t, gm1, inp, dir).value.1)
+                == LG.Find(g, LT.TreeRes(t, gm2, inp, dir).value.1)
+           || (LG.Find(g, LT.TreeRes(t, gm1, inp, dir).value.1) == LG.Find(g, gm1)
+               && LG.Find(g, LT.TreeRes(t, gm2, inp, dir).value.1) == LG.Find(g, gm2))
+    decreases t
+  {
+    TreeResGmFrameRec(t, gm1, gm2, inp, dir, {});   // None-iff + end position
+    match t
+    case Mismatch =>
+    case Match =>
+    case Choice(t1, t2) =>
+      TreeResGIndepWhenWritten(t1, gm1, gm2, inp, dir, g);
+      TreeResGIndepWhenWritten(t2, gm1, gm2, inp, dir, g);
+    case Read(c, t1) =>
+      TreeResGIndepWhenWritten(t1, gm1, gm2, LC.AdvanceInputP(inp, dir), dir, g);
+    case ReadBackRef(brStr, t1) =>
+      TreeResGIndepWhenWritten(t1, gm1, gm2, LC.AdvanceInputN(inp, |brStr|, dir), dir, g);
+    case Progress(t1) =>
+      TreeResGIndepWhenWritten(t1, gm1, gm2, inp, dir, g);
+    case AnchorPass(a, t1) =>
+      TreeResGIndepWhenWritten(t1, gm1, gm2, inp, dir, g);
+    case GroupActionT(a, t1) =>
+      var idx := LC.Idx(inp);
+      var gm1' := LG.GMUpdate(a, idx, gm1);
+      var gm2' := LG.GMUpdate(a, idx, gm2);
+      GMUpdateAgreeOffG(a, idx, gm1, gm2, g);
+      match a {
+        case Open(x) =>
+          if x == g {
+            assert LG.Find(g, gm1') == LG.Find(g, gm2');   // both Some(Range(idx, None))
+            TreeResGValueFramed(t1, gm1', gm2', inp, dir, g);
+          } else {
+            GMUpdateFindNotTouch(a, idx, gm1, g);
+            GMUpdateFindNotTouch(a, idx, gm2, g);
+            TreeResGIndepWhenWritten(t1, gm1', gm2', inp, dir, g);
+          }
+        case Reset(gs) =>
+          if g in gs {
+            assert g in (set y | y in gs);
+            assert LG.Find(g, gm1') == LG.Find(g, gm2');   // both None
+            TreeResGValueFramed(t1, gm1', gm2', inp, dir, g);
+          } else {
+            GMUpdateFindNotTouch(a, idx, gm1, g);
+            GMUpdateFindNotTouch(a, idx, gm2, g);
+            TreeResGIndepWhenWritten(t1, gm1', gm2', inp, dir, g);
+          }
+        case Close(x) =>
+          assert x != g;                                   // GDefBeforeClose
+          GMUpdateFindNotTouch(a, idx, gm1, g);
+          GMUpdateFindNotTouch(a, idx, gm2, g);
+          TreeResGIndepWhenWritten(t1, gm1', gm2', inp, dir, g);
+      }
+    case LK(lk, tlk, t1) =>
+      if L.Positivity(lk) {
+        match LT.TreeRes(tlk, gm1, inp, L.LkDir(lk))
+        case None =>
+        case Some(pair1) =>
+          var pair2 := LT.TreeRes(tlk, gm2, inp, L.LkDir(lk)).value;
+          TreeResGIndepWhenWritten(tlk, gm1, gm2, inp, L.LkDir(lk), g);   // disjunct for pair.1
+          TreeResAgreeOffG(tlk, gm1, gm2, inp, L.LkDir(lk), g);           // AgreeOffG(pair1.1, pair2.1, g)
+          TreeResGIndepWhenWritten(t1, pair1.1, pair2.1, inp, dir, g);    // disjunct for node
+      } else {
+        match LT.TreeRes(tlk, gm1, inp, L.LkDir(lk))
+        case None => TreeResGIndepWhenWritten(t1, gm1, gm2, inp, dir, g);
+        case Some(_) =>
+      }
+    case LKFail(lk, tlk) =>
+  }
+
   /** L4 BOUNDARY (machine-checked): the depth-1 lookbehind fragment caps nesting
       depth at 1 — every lookaround leaf's body is look-free (`NestDepth == 0` by
       `LookFreePlusIsNestedRE`), so `1 + 0` is the deepest a node reaches. This
