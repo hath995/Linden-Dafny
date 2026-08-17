@@ -3539,6 +3539,34 @@ module LindenElkNestInv {
       }
   }
 
+  /** (L4 NESTED) The body's shape facts under the POSITIVE-nesting sub-fragment:
+      the body is itself in the nested fragment (looks may nest to any depth) and
+      keeps the negative-look-free discipline. The depth-1 `LookBodyOfFragment`
+      forces the body look-free; here the else-branch recurses because a nested
+      body genuinely owns foreign lids. */
+  lemma LookBodyOfFragmentNested(r: R.regex, lid: nat)
+    requires NR.NestedFragmentRE(r) && NR.NegLooksLookFreeRE(r)
+    requires lid in LTB.LookIds(r)
+    ensures NR.NestedFragmentRE(LookBodyOfRE(r, lid))
+    ensures NR.NegLooksLookFreeRE(LookBodyOfRE(r, lid))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodyOfFragmentNested(r1, lid); } else { LookBodyOfFragmentNested(r2, lid); }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodyOfFragmentNested(r1, lid); } else { LookBodyOfFragmentNested(r2, lid); }
+    case Re_quant(_, _, _, r1) => LookBodyOfFragmentNested(r1, lid);
+    case Re_capture(_, r1) => LookBodyOfFragmentNested(r1, lid);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+        // body is r1; NestedFragmentRE(r1) & NegLooksLookFreeRE(r1) hold at the node
+      } else {
+        // a nested body genuinely owns foreign lids — recurse into r1
+        LookBodyOfFragmentNested(r1, lid);
+      }
+  }
+
   /** The body's captures are inside-look captures of `r` (hence captures of `r`). */
   lemma LookBodyCapsIn(r: R.regex, lid: nat)
     requires lid in LTB.LookIds(r)
