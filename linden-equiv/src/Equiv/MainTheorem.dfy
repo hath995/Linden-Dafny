@@ -10670,6 +10670,198 @@ module LindenElkMain {
     GetCpAgreeIdx(res.1, lk, lid);
   }
 
+  /** C4c STABILITY (clock twin of `FLookLoopLidCpStable`): the FINAL look bank's
+      CLOCK at index `lid` is unchanged by the fold. Same argument — the fold only
+      writes look ids in matched bodies' `LookIdSet`, none of which is `lid` by
+      well-nestedness (h), so `RegsAgreeOutside(res.1, lk, Slook - {lid})` (which
+      constrains BOTH `a_cp` and `a_clk`) pins the `a_clk` slot too. This is the
+      look-clock stability the ancestor-chain assembly needs: an ancestor look
+      `l`'s clock, set by an EARLIER stage (its parent's replay, or the main match
+      for a top-level `l`), survives every LATER fold iteration untouched — so the
+      chain read on the FINAL `res.1` equals the chain as each stage left it. */
+  lemma FLookLoopLidLookClkStable(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
+                                  cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                                  S: set<int>, Slook: set<int>)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    requires forall l: int, la: R.lookaround, body: R.regex ::
+      lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+    requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
+      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+    requires forall l1: int, la1: R.lookaround, b1: R.regex ::                                  // (h)@lid
+      lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> lid !in LookIdSet(b1)
+    ensures AI.get_idx(AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov).1.a_clk, lid)
+         == AI.get_idx(lk.a_clk, lid)
+  {
+    var Slookp := Slook - {lid};
+    forall l: int, la: R.lookaround, body: R.regex | lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body)
+      ensures FrameEntryOk(crv, la, body, S, Slookp)
+    {
+      assert FrameEntryOk(crv, la, body, S, Slook);   // LookIdSet(body) <= Slook
+      assert lid !in LookIdSet(body);                 // (h)@lid
+      assert LookIdSet(body) <= Slookp;
+    }
+    FLookLoopCaptureFrameNested(crv, str, lid, maxlook, cap, lk, qt, ov, S, Slookp);
+    var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
+    assert CM.RegsAgreeOutside(res.1, lk, Slookp);
+    assert lid !in Slookp;
+  }
+
+  /** C4c BODY-SIDE (look-clock independence): for a group `gid` OUTSIDE all of
+      `r`'s looks (`gid !in CapIdsInLooks(r)`), `PathPresentLk`/`MxAtGidLk` never
+      read the look-clock bank `lc` — the descent to `gid` crosses no
+      `Re_lookaround` node (one would place `gid` in `CapIdsInLooks(r)`). So both
+      are invariant under ANY change to `lc`. This is the congruence the body-side
+      transport needs that `NI.PathPresentLkAgree` cannot supply: the reconstructed
+      look bank `res.1` and the fresh replay's look bank differ on `body`'s DEEP
+      inner looks, but an INNERMOST-owned `gid` sits outside them, so its body
+      presence is unaffected — letting `PathPresentLk(body, res0.a_clk, res1.a_clk,
+      res2.a_clk, -1, gid)` be discharged from the fresh replay's presence keyed on
+      the replay's OWN look bank. */
+  lemma PathPresentLkLcIndep(r: R.regex, cc: seq<int>, lc1: seq<int>, lc2: seq<int>,
+                             qc: seq<int>, mx: int, gid: nat)
+    requires gid in PIV.CapIds(r)
+    requires gid !in PIV.CapIdsInLooks(r)
+    ensures PIV.PathPresentLk(r, cc, lc1, qc, mx, gid) == PIV.PathPresentLk(r, cc, lc2, qc, mx, gid)
+    ensures PIV.MxAtGidLk(r, cc, lc1, qc, mx, gid) == PIV.MxAtGidLk(r, cc, lc2, qc, mx, gid)
+    decreases r
+  {
+    match r
+    case Re_empty => case Re_character(_) => case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      if gid in PIV.CapIds(r1) { PathPresentLkLcIndep(r1, cc, lc1, lc2, qc, mx, gid); }
+      else { PathPresentLkLcIndep(r2, cc, lc1, lc2, qc, mx, gid); }
+    case Re_con(r1, r2) =>
+      if gid in PIV.CapIds(r1) { PathPresentLkLcIndep(r1, cc, lc1, lc2, qc, mx, gid); }
+      else { PathPresentLkLcIndep(r2, cc, lc1, lc2, qc, mx, gid); }
+    case Re_quant(nul, qid, q, r1) =>
+      PathPresentLkLcIndep(r1, cc, lc1, lc2, qc, AI.get_idx(qc, qid), gid);
+    case Re_capture(cid, r1) =>
+      if cid == gid {} else { PathPresentLkLcIndep(r1, cc, lc1, lc2, qc, mx, gid); }
+    case Re_lookaround(lid, l, r1) =>
+      assert PIV.CapIdsInLooks(r) == PIV.CapIds(r1);   // all body caps are inside this look
+      assert gid in PIV.CapIds(r1);                    // CapIds(lookaround) == CapIds(body)
+      assert false;                                    // contradicts gid !in CapIdsInLooks(r)
+  }
+
+  /** C4c BODY-SIDE TRANSPORT (piece (iii) of `NI.LookPathComposeNested`'s
+      premises). For an INNERMOST-owned inside-look group `g` (`g in CapIds(body)`,
+      `g !in CapIdsInLooks(body)`), the fresh body-match presence — extracted from
+      `g`'s liveness in the replay's OWN banks (`rfcap`,`rflk`,`rfqt`) via
+      `NI.GmOfLivePresenceExtractLkNested` — transports onto the RECONSTRUCTED banks
+      (`res0`,`res1`,`res2`), yielding `PIV.PathPresentLk(body, res0.a_clk,
+      res1.a_clk, res2.a_clk, -1, g)` and the clock-dominance bound. Two congruence
+      steps: `NI.PathPresentLkAgree` swaps the CAPTURE bank (`res0`~`rfcap` on
+      `CapIds(body)`, from the value lift) and the QUANT bank (`res2`~`rfqt` on
+      `QuantIds(body)`, the quant-clock reconcile — HYPOTHESIS here, deliverable 3)
+      while KEEPING the replay's look bank; then `PathPresentLkLcIndep` swaps the
+      look bank `rflk`->`res1` for free (`g` outside `body`'s looks, so `lc` is
+      never read). This is the body half of the endpoint's inside-`S` presence feed;
+      it needs NEITHER the ancestor-chain nor the engine's per-replay stamping. */
+  lemma ReconBodyPathPresentLk(body: R.regex,
+                               res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
+                               rfcap: AReg.Regs, rflk: AReg.Regs, rfqt: AReg.Regs, g: nat)
+    requires NR.NestedFragmentRE(body) && PIV.CapUnique(body)
+    requires g in PIV.CapIds(body)
+    requires g !in PIV.CapIdsInLooks(body)
+    requires forall c: nat :: c in PIV.CapIds(body) && AI.get_idx(rfcap.a_clk, CP.start_reg(c)) < 0
+                             ==> AI.get_idx(rfcap.a_cp, CP.start_reg(c)) < 0
+    requires g in PIV.GmOfLive(body, rfcap, rflk, rfqt)
+    // value-lift capture agreement: res0 ~ rfcap on body's capture-start clocks.
+    requires forall c: nat :: c in PIV.CapIds(body) ==>
+      AI.get_idx(res0.a_clk, CP.start_reg(c)) == AI.get_idx(rfcap.a_clk, CP.start_reg(c))
+    // quant-clock reconcile: res2 ~ rfqt on body's quant clocks (deliverable 3 feed).
+    requires forall qd: nat :: qd in PIV.QuantIds(body) ==>
+      AI.get_idx(res2.a_clk, qd as int) == AI.get_idx(rfqt.a_clk, qd as int)
+    ensures PIV.PathPresentLk(body, res0.a_clk, AReg.as_arrays(res1).1, res2.a_clk, -1, g)
+    ensures AI.get_idx(res0.a_clk, CP.start_reg(g)) >= 0
+    ensures AI.get_idx(res0.a_clk, CP.start_reg(g))
+              >= PIV.MxAtGidLk(body, res0.a_clk, AReg.as_arrays(res1).1, res2.a_clk, -1, g)
+  {
+    var rfcc := rfcap.a_clk;  var rflc := AReg.as_arrays(rflk).1;  var rfqc := AReg.as_arrays(rfqt).1;
+    var rc0 := res0.a_clk;    var rc1 := AReg.as_arrays(res1).1;   var rc2 := res2.a_clk;
+    // (1) fresh-replay presence on rf's OWN banks
+    NI.GmOfLivePresenceExtractLkNested(body, rfcap, rflk, rfqt, g);
+    assert PIV.PathPresentLk(body, rfcc, rflc, rfqc, -1, g);
+    assert AI.get_idx(rfcc, CP.start_reg(g)) >= 0;
+    assert AI.get_idx(rfcc, CP.start_reg(g)) >= PIV.MxAtGidLk(body, rfcc, rflc, rfqc, -1, g);
+    // (2) swap capture+quant banks (keep rf's look bank)
+    NI.PathPresentLkAgree(body, rfcc, rflc, rfqc, rc0, rflc, rc2, -1, g);
+    assert PIV.PathPresentLk(body, rc0, rflc, rc2, -1, g);
+    assert PIV.MxAtGidLk(body, rc0, rflc, rc2, -1, g) == PIV.MxAtGidLk(body, rfcc, rflc, rfqc, -1, g);
+    // (3) swap look bank rflc -> rc1 for free (g outside body's looks)
+    PathPresentLkLcIndep(body, rc0, rflc, rc1, rc2, -1, g);
+    assert PIV.PathPresentLk(body, rc0, rc1, rc2, -1, g);
+    assert PIV.MxAtGidLk(body, rc0, rc1, rc2, -1, g) == PIV.MxAtGidLk(body, rc0, rflc, rc2, -1, g);
+    // (4) the bound, transported through the two MxAtGidLk equalities + cap agreement at g
+    assert AI.get_idx(rc0, CP.start_reg(g)) == AI.get_idx(rfcc, CP.start_reg(g));   // cap agreement @ g
+  }
+
+  /** C4c CAPSTONE — the forward inside-`S` membership close on the RECONSTRUCTED
+      banks. For an innermost-owned inside-look group `g` this puts `g` into the
+      whole-regex live denotation of `(res0, res1, res2)` at the raw `LiveRange`
+      value — exactly the fact the endpoint's inside-`S` value chain bottoms out on
+      (the depth-k generalization of `M.GmOfLiveInsideLookPresentEq`'s RE-side
+      hypothesis, now keyed on the reconstructed look bank `res1` in place of the
+      main thread's). It isolates the two ENGINE feeds still owed by the recursive
+      walk tower:
+        (i)  the ancestor look-clock chain `NI.LookPathPresentLk(re, ·, owner)`, and
+        (ii) `owner`'s own look clock (set & dominating),
+      passing them as hypotheses; everything else is discharged here —
+      `ReconBodyPathPresentLk` (body side, via the value lift + quant reconcile),
+      C4b's `NI.LookPathComposeNested` (the ancestor assembly), and C4b's
+      `NI.GmOfLiveKeepsPresentLkNested` (the close). When the walk tower supplies
+      (i)/(ii) and the quant reconcile on the reconstructed banks, this lemma turns
+      them into the endpoint's `GmOfLive` equality with NO further algebra. */
+  lemma ReconInnerGmOfLiveClose(re: R.regex, body: R.regex, owner: nat,
+                                res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
+                                rfcap: AReg.Regs, rflk: AReg.Regs, rfqt: AReg.Regs, g: nat)
+    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re)
+    requires NR.NestedFragmentRE(body) && PIV.CapUnique(body)
+    // ownership: owner is g's innermost DIRECT owner in re; body is its structural body
+    requires owner in LTB.LookIds(re)
+    requires body == NI.LookBodyOfRE(re, owner)
+    requires g in PIV.CapIds(body)
+    requires g !in PIV.CapIdsInLooks(body)
+    // ---- ENGINE FEED (owed by the recursive walk tower) ----
+    // (i) ancestor look-clock chain to owner on the reconstructed banks
+    requires NI.LookPathPresentLk(re, res0.a_clk, AReg.as_arrays(res1).1, res2.a_clk, -1, owner)
+    // (ii) owner's own look clock (set & dominating)
+    requires AI.get_idx(AReg.as_arrays(res1).1, owner as int) >= 0
+    requires AI.get_idx(AReg.as_arrays(res1).1, owner as int)
+               >= NI.MxAtLidLk(re, res2.a_clk, -1, owner)
+    // ---- BODY-SIDE FEED (value lift + quant reconcile + fresh liveness) ----
+    requires forall c: nat :: c in PIV.CapIds(body) && AI.get_idx(rfcap.a_clk, CP.start_reg(c)) < 0
+                             ==> AI.get_idx(rfcap.a_cp, CP.start_reg(c)) < 0
+    requires g in PIV.GmOfLive(body, rfcap, rflk, rfqt)
+    requires forall c: nat :: c in PIV.CapIds(body) ==>
+      AI.get_idx(res0.a_clk, CP.start_reg(c)) == AI.get_idx(rfcap.a_clk, CP.start_reg(c))
+    requires forall qd: nat :: qd in PIV.QuantIds(body) ==>
+      AI.get_idx(res2.a_clk, qd as int) == AI.get_idx(rfqt.a_clk, qd as int)
+    // value set at g in res0 (from the value lift's cp coverage)
+    requires AI.get_idx(res0.a_cp, CP.start_reg(g)) >= 0
+    ensures g in PIV.CapIds(re)
+    ensures g in PIV.GmOfLive(re, res0, res1, res2)
+    ensures PIV.GmOfLive(re, res0, res1, res2)[g]
+              == PIV.LiveRange(res0.a_cp, res0.a_clk, g)
+  {
+    var cc := res0.a_clk;  var lc := AReg.as_arrays(res1).1;  var qc := res2.a_clk;
+    // (1) body-side presence on the reconstructed banks
+    ReconBodyPathPresentLk(body, res0, res1, res2, rfcap, rflk, rfqt, g);
+    assert PIV.PathPresentLk(body, cc, lc, qc, -1, g);
+    assert AI.get_idx(cc, CP.start_reg(g)) >= 0;
+    assert AI.get_idx(cc, CP.start_reg(g)) >= PIV.MxAtGidLk(body, cc, lc, qc, -1, g);
+    // (2) C4b ancestor assembly: full path presence to g in re
+    NI.LookPathComposeNested(re, body, cc, lc, qc, -1, owner, g);
+    assert g in PIV.CapIds(re);
+    assert PIV.PathPresentLk(re, cc, lc, qc, -1, g);
+    assert PIV.MxAtGidLk(re, cc, lc, qc, -1, g) == PIV.MxAtGidLk(body, cc, lc, qc, -1, g);
+    assert AI.get_idx(cc, CP.start_reg(g)) >= PIV.MxAtGidLk(re, cc, lc, qc, -1, g);
+    // (3) C4b close: g lands in GmOfLive at the raw LiveRange
+    assert lc == AReg.as_arrays(res1).1;
+    NI.GmOfLiveKeepsPresentLkNested(re, res0, res1, res2, g);
+  }
+
   /** R3 DELIVERABLE 1 (predicate): whole-loop value reconstruction keyed on the
       FINAL look bank `res1`. For EVERY (possibly inner) matched positive
       lookahead `owner` — matched in `res1`, not just the loop's input `lk` — the
