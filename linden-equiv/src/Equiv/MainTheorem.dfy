@@ -6588,6 +6588,250 @@ module LindenElkMain {
     TreeResLkNodeGValueFresh(lk, tbody, LT.Match, LG.Empty, inp, WP.Forward, g);
   }
 
+  /** R30b (2b) DEPTH-3 (NestDepth==3, TWO-layer descent): the concrete next step
+      beyond `SingleLookOuterLeafIsOwnerBody`, composing the atomic layer peel
+      TWICE. When `body` is a positive lookAHEAD `lk_o` whose body is ITSELF a
+      single positive look `LookaroundR(lk_i, tr1)` (the OWNER of a capture `g`
+      captured directly in the look-free `tr1`), the OUTER body-tree's leaf value
+      at `g` equals the OWNER body tree `ComputeTr([Areg(tr1)], inp, Empty,
+      LkDir(lk_i))`'s OWN (Empty-map) sub-result at `g`, at the owner's position
+      `inp` (looks at the head of the body do not advance the input, so the
+      recorded position is unchanged). Proof: `SingleLookOuterLeafIsOwnerBody` on
+      the INNER look (`lk_i, tr1`) ties the inner-look tree leaf at `g` to `tr1`'s
+      body tree at `g`; then `ComputeTrSingleLookUnfold` unfolds the OUTER look to
+      `LK(lk_o, t_inner, Match)` and `TreeResLkNodeGValueFresh` peels that layer,
+      tying the outer leaf at `g` to the inner-look tree leaf at `g`. Chaining the
+      two hops gives the depth-3 identity. `tr1 == Translate(LookBodyOfRE(body,
+      inner-owner))`, so this is the landed-owner-subtree == compiled-owner-body
+      identity for the two-layer case — the same recursion the general induction
+      on `NestDepth` iterates. */
+  lemma DoubleLookOuterLeafIsOwnerBody(rer: LW.RegExpRecord, lk_o: L.Lookaround, lk_i: L.Lookaround,
+                                       tr1: L.Regex, inp: LC.Input, g: LG.GroupId)
+    requires EL.PikeLkRegexRec(L.LookaroundR(lk_o, L.LookaroundR(lk_i, tr1)))
+    requires L.Positivity(lk_o) && L.LkDir(lk_o) == WP.Forward
+    requires L.Positivity(lk_i)
+    // inner look matches (its body tree at Empty succeeds under the gate)
+    requires LS.LkResult(lk_i, LFU.ComputeTr(rer, [LS.Areg(tr1)], inp, LG.Empty, L.LkDir(lk_i)),
+                         LG.Empty, inp).Some?
+    // outer look matches (its body — the inner-look tree — succeeds under the gate)
+    requires LS.LkResult(lk_o, LFU.ComputeTr(rer, [LS.Areg(L.LookaroundR(lk_i, tr1))], inp, LG.Empty, WP.Forward),
+                         LG.Empty, inp).Some?
+    ensures var tbody := LFU.ComputeTr(rer, [LS.Areg(tr1)], inp, LG.Empty, L.LkDir(lk_i));
+            var t := LFU.ComputeTr(rer, [LS.Areg(L.LookaroundR(lk_o, L.LookaroundR(lk_i, tr1)))],
+                                   inp, LG.Empty, WP.Forward);
+            LT.TreeRes(t, LG.Empty, inp, WP.Forward).Some?
+            && LT.TreeRes(tbody, LG.Empty, inp, L.LkDir(lk_i)).Some?
+            && LG.Find(g, LT.TreeRes(t, LG.Empty, inp, WP.Forward).value.1)
+               == LG.Find(g, LT.TreeRes(tbody, LG.Empty, inp, L.LkDir(lk_i)).value.1)
+  {
+    // the recursive fragment threads down the two POSITIVE-look layers.
+    assert EL.PikeLkRegexRec(L.LookaroundR(lk_i, tr1));   // outer positive => body recurses
+
+    var tbody := LFU.ComputeTr(rer, [LS.Areg(tr1)], inp, LG.Empty, L.LkDir(lk_i));
+    var tInner := LFU.ComputeTr(rer, [LS.Areg(L.LookaroundR(lk_i, tr1))], inp, LG.Empty, WP.Forward);
+    var t := LFU.ComputeTr(rer, [LS.Areg(L.LookaroundR(lk_o, L.LookaroundR(lk_i, tr1)))],
+                           inp, LG.Empty, WP.Forward);
+
+    // ---- INNER layer: tInner leaf at g == tbody value at g -------------------
+    SingleLookOuterLeafIsOwnerBody(rer, lk_i, tr1, inp, g);
+    assert LT.TreeRes(tInner, LG.Empty, inp, WP.Forward).Some?;
+    assert LT.TreeRes(tbody, LG.Empty, inp, L.LkDir(lk_i)).Some?;
+    assert LG.Find(g, LT.TreeRes(tInner, LG.Empty, inp, WP.Forward).value.1)
+           == LG.Find(g, LT.TreeRes(tbody, LG.Empty, inp, L.LkDir(lk_i)).value.1);
+
+    // ---- OUTER layer: unfold the outer look, then peel it --------------------
+    // LkDir(lk_o) == Forward, so ComputeTrSingleLookUnfold's `tbody` is exactly tInner.
+    ComputeTrSingleLookUnfold(rer, lk_o, L.LookaroundR(lk_i, tr1), inp);
+    assert t == LT.LK(lk_o, tInner, LT.Match);            // outer LkResult Some arm
+    assert LG.Find(g, LG.Empty) == None;
+    assert LT.TreeRes(t, LG.Empty, inp, WP.Forward).Some?;   // node Some: sub Some & cont Match Some
+    TreeResLkNodeGValueFresh(lk_o, tInner, LT.Match, LG.Empty, inp, WP.Forward, g);
+    // TreeResLkNodeGValueFresh: outer leaf at g == tInner leaf at LkDir(lk_o) == Forward.
+    assert LG.Find(g, LT.TreeRes(t, LG.Empty, inp, WP.Forward).value.1)
+           == LG.Find(g, LT.TreeRes(tInner, LG.Empty, inp, WP.Forward).value.1);
+  }
+
+  /** R30b (2b) chain shape: `r` is a LINEAR nest of POSITIVE forward lookaheads
+      down to a look-free core — every layer is `LookaroundR(lk, body)` with `lk`
+      a positive lookAHEAD (`LkDir == Forward`) and `body` EITHER look-free
+      (`NoLkBrL`, the innermost core) OR itself such a chain. This is the fragment
+      on which the depth-k owner descent is a straight iteration of the atomic
+      layer peel — no branching regex structure (con/alt/quant) between the looks,
+      so `ComputeTr` of each layer is EXACTLY `ComputeTrSingleLookUnfold`'s single
+      `LK` node and the input never advances (each look re-anchors at `inp`). */
+  ghost predicate FwdLookChain(r: L.Regex)
+    decreases r
+  {
+    match r
+    case LookaroundR(lk, r1) =>
+      L.Positivity(lk) && L.LkDir(lk) == WP.Forward
+      && (EL.NoLkBrL(r1) || FwdLookChain(r1))
+    case _ => false
+  }
+
+  /** The look-free core at the bottom of a `FwdLookChain` — the body of the
+      INNERMOST look, which owns any capture `g` recorded on the chain. */
+  ghost function InnermostChainCore(r: L.Regex): L.Regex
+    requires FwdLookChain(r)
+    decreases r
+  {
+    match r
+    case LookaroundR(lk, r1) => if EL.NoLkBrL(r1) then r1 else InnermostChainCore(r1)
+    case _ => r
+  }
+
+  /** R30b (2b) GENERAL DEPTH-k (linear positive-lookahead chain): the depth-k
+      analogue of `SingleLookOuterLeafIsOwnerBody`/`DoubleLookOuterLeafIsOwnerBody`,
+      proven by INDUCTION on the chain (measure: the regex term, equivalently
+      `NestDepth`). For a `FwdLookChain`, once the whole chain matches
+      (`TreeRes(t) Some` — which forces every nested look on the winning path to
+      have matched), the OUTER body-tree's leaf value at ANY `g` equals the
+      INNERMOST owner core body tree `ComputeTr([Areg(core)], inp, Empty,
+      Forward)`'s OWN (Empty-map) sub-result at `g`, at the shared position `inp`.
+      Each inductive step: `ComputeTrSingleLookUnfold` unfolds the current look to
+      `LK(lk, tbody, Match)` (the match hypothesis rules out `LKFail`), the IH ties
+      `tbody`'s leaf at `g` to the core's, and `TreeResLkNodeGValueFresh` peels the
+      layer — the SAME two-hop composition as the depth-3 case, iterated to the
+      bottom of the chain. This is the general owner↔tree correspondence on the
+      linear-nesting sub-fragment; the remaining gap to ARBITRARY body structure
+      (looks in con/alt/quant, i.e. an owner several regex-nodes deep) is exactly
+      the regex-tracking navigation of the abstract `TreeResGOwnerFresh` descent —
+      identifying its landed `tsub` with the compiled owner body — documented as
+      the open general step. */
+  lemma ChainOuterLeafIsOwnerBody(rer: LW.RegExpRecord, chain: L.Regex, inp: LC.Input, g: LG.GroupId)
+    requires EL.PikeLkRegexRec(chain)
+    requires FwdLookChain(chain)
+    requires LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(chain)], inp, LG.Empty, WP.Forward),
+                        LG.Empty, inp, WP.Forward).Some?
+    ensures var t := LFU.ComputeTr(rer, [LS.Areg(chain)], inp, LG.Empty, WP.Forward);
+            var tcore := LFU.ComputeTr(rer, [LS.Areg(InnermostChainCore(chain))], inp, LG.Empty, WP.Forward);
+            LT.TreeRes(tcore, LG.Empty, inp, WP.Forward).Some?
+            && LG.Find(g, LT.TreeRes(t, LG.Empty, inp, WP.Forward).value.1)
+               == LG.Find(g, LT.TreeRes(tcore, LG.Empty, inp, WP.Forward).value.1)
+    decreases chain
+  {
+    var lk := chain.lk;
+    var r1 := chain.r;
+    assert chain == L.LookaroundR(lk, r1);
+    assert L.Positivity(lk) && L.LkDir(lk) == WP.Forward;
+
+    var t := LFU.ComputeTr(rer, [LS.Areg(chain)], inp, LG.Empty, WP.Forward);
+    var tbody := LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk));   // == Forward
+
+    // ---- unfold THIS look: TreeRes Some rules out LKFail, so t == LK(lk,tbody,Match)
+    ComputeTrSingleLookUnfold(rer, lk, r1, inp);
+    if LS.LkResult(lk, tbody, LG.Empty, inp).None? {
+      assert t == LT.LKFail(lk, tbody);
+      assert LT.TreeRes(t, LG.Empty, inp, WP.Forward).None?;   // contradiction with hypothesis
+      assert false;
+    }
+    assert t == LT.LK(lk, tbody, LT.Match);
+    assert LT.TreeRes(tbody, LG.Empty, inp, WP.Forward).Some?;    // LkResult Some (positive, LkDir Forward)
+
+    var tcore := LFU.ComputeTr(rer, [LS.Areg(InnermostChainCore(chain))], inp, LG.Empty, WP.Forward);
+
+    if EL.NoLkBrL(r1) {
+      // base: r1 IS the innermost core; peel one layer.
+      assert InnermostChainCore(chain) == r1;
+      assert tcore == tbody;
+      TreeResLkNodeGValueFresh(lk, tbody, LT.Match, LG.Empty, inp, WP.Forward, g);
+    } else {
+      // recurse: r1 is itself a chain; the IH ties tbody's leaf to the core's.
+      assert FwdLookChain(r1);
+      assert EL.PikeLkRegexRec(r1);                            // outer positive => body recurses
+      assert InnermostChainCore(chain) == InnermostChainCore(r1);
+      ChainOuterLeafIsOwnerBody(rer, r1, inp, g);              // on ComputeTr([Areg(r1)],..) == tbody
+      assert LT.TreeRes(tcore, LG.Empty, inp, WP.Forward).Some?;
+      assert LG.Find(g, LT.TreeRes(tbody, LG.Empty, inp, WP.Forward).value.1)
+             == LG.Find(g, LT.TreeRes(tcore, LG.Empty, inp, WP.Forward).value.1);
+      // peel THIS layer: outer leaf at g == tbody leaf at g (LkDir(lk) == Forward).
+      TreeResLkNodeGValueFresh(lk, tbody, LT.Match, LG.Empty, inp, WP.Forward, g);
+    }
+  }
+
+  /** R30b (2b) REGEX-level chain: the RegElk-`regex` preimage of `FwdLookChain`.
+      `body` is a linear nest of POSITIVE lookAHEADs (`Re_lookaround(_, Lookahead,
+      _)`, which `Translate`s to a positive forward Linden look) down to a
+      look-free core. */
+  ghost predicate FwdLookChainRE(body: R.regex)
+    decreases body
+  {
+    match body
+    case Re_lookaround(lid, la, r1) =>
+      la.Lookahead? && (NR.LookFreeRE(r1) || FwdLookChainRE(r1))
+    case _ => false
+  }
+
+  /** The look-free core (innermost look's body) of a `FwdLookChainRE`. This is
+      exactly `NI.LookBodyOfRE(body, innermost-owner-lid)` (the lid bookkeeping is
+      pure structural recursion), i.e. the compiled owner body the engine replays. */
+  ghost function InnermostChainCoreRE(body: R.regex): (core: R.regex)
+    requires T.TransWf(body) && FwdLookChainRE(body)
+    ensures T.TransWf(core)
+    decreases body
+  {
+    match body
+    case Re_lookaround(lid, la, r1) => if NR.LookFreeRE(r1) then r1 else InnermostChainCoreRE(r1)
+    case _ => body
+  }
+
+  /** R30b (2b) TRANSLATE BRIDGE: a `FwdLookChainRE` regex translates to a
+      `FwdLookChain` Linden regex, and the Linden chain's innermost core is the
+      TRANSLATE of the regex chain's core. So the abstract `ChainOuterLeafIsOwner
+      Body` core IS the compiled owner body `Translate(InnermostChainCoreRE(body))`.
+      Structural induction following the two chain definitions; the look-free base
+      uses `EL.TranslateNoLkBr` (`LookFreeRE ==> NoLkBrL(Translate)`), the recursive
+      step uses that `Translate` of a lookaround is a `LookaroundR` node (so
+      `NoLkBrL(Translate(r1)) == false`, matching the recursion arm). */
+  lemma TranslateFwdLookChain(body: R.regex)
+    requires T.TransWf(body)
+    requires FwdLookChainRE(body)
+    ensures FwdLookChain(T.Translate(body))
+    ensures InnermostChainCore(T.Translate(body)) == T.Translate(InnermostChainCoreRE(body))
+    decreases body
+  {
+    match body
+    case Re_lookaround(lid, la, r1) =>
+      assert la.Lookahead?;
+      assert T.Translate(body) == L.LookaroundR(L.LookAhead, T.Translate(r1));   // TrLookaround(Lookahead)
+      assert L.Positivity(L.LookAhead) && L.LkDir(L.LookAhead) == WP.Forward;
+      if NR.LookFreeRE(r1) {
+        EL.TranslateNoLkBr(r1);                       // NoLkBrL(Translate(r1))
+        assert InnermostChainCoreRE(body) == r1;
+      } else {
+        assert FwdLookChainRE(r1);
+        assert r1.Re_lookaround?;                     // FwdLookChainRE false off lookaround
+        assert !EL.NoLkBrL(T.Translate(r1));          // Translate(lookaround) == LookaroundR
+        TranslateFwdLookChain(r1);
+        assert InnermostChainCoreRE(body) == InnermostChainCoreRE(r1);
+      }
+  }
+
+  /** R30b (2b) COMPILED-OWNER-BODY IDENTITY (linear fragment, headline of brick B):
+      restates `ChainOuterLeafIsOwnerBody` for a `body: R.regex`, pinning the core
+      to the actual compiled INNERMOST-OWNER body `Translate(InnermostChainCoreRE
+      (body))` — the exact tree the engine replays for the owner look. This is the
+      "landed-owner-subtree == compiled-owner-body" correspondence, at ARBITRARY
+      nesting depth, on the linear positive-lookahead-chain sub-fragment. */
+  lemma ChainOuterLeafIsCompiledOwnerBody(rer: LW.RegExpRecord, body: R.regex, inp: LC.Input, g: LG.GroupId)
+    requires T.TransWf(body)
+    requires FwdLookChainRE(body)
+    requires EL.PikeLkRegexRec(T.Translate(body))
+    requires LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Forward),
+                        LG.Empty, inp, WP.Forward).Some?
+    ensures var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Forward);
+            var obody := T.Translate(InnermostChainCoreRE(body));
+            var tcore := LFU.ComputeTr(rer, [LS.Areg(obody)], inp, LG.Empty, WP.Forward);
+            LT.TreeRes(tcore, LG.Empty, inp, WP.Forward).Some?
+            && LG.Find(g, LT.TreeRes(t, LG.Empty, inp, WP.Forward).value.1)
+               == LG.Find(g, LT.TreeRes(tcore, LG.Empty, inp, WP.Forward).value.1)
+  {
+    TranslateFwdLookChain(body);
+    ChainOuterLeafIsOwnerBody(rer, T.Translate(body), inp, g);
+    // ChainOuterLeafIsOwnerBody's core == InnermostChainCore(Translate(body))
+    //                                   == Translate(InnermostChainCoreRE(body)).
+  }
+
   /** L4 BOUNDARY (machine-checked): the depth-1 lookbehind fragment caps nesting
       depth at 1 — every lookaround leaf's body is look-free (`NestDepth == 0` by
       `LookFreePlusIsNestedRE`), so `1 + 0` is the deepest a node reaches. This
