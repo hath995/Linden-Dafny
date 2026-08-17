@@ -256,6 +256,23 @@ module LindenElkLiftSim {
     && GmtTieInside(crv, str, ov, th, gmt, S, ncap, nlook, nquant)
   }
 
+  /** (L4 NESTED) The per-thread pairing with the depth-1-hardwired
+      `GmtTieInside` conjunct DROPPED. Under look nesting an inside-S group can
+      be captured inside a NESTED look, for which `GmtTieInside` (which pins the
+      value to a SINGLE fresh-body replay `FreshBodyMatch(crv, str, l, ..)`) is
+      FALSE; the nested endpoint closes those inner groups post-hoc via the
+      already-proven components, so it drops the conjunct here. Everything else
+      (`WalkPairLk`, `GmtTieOutside`, and the structural `th.pc >= 0`) is kept
+      verbatim. */
+  ghost predicate ThreadRepLkNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
+                                    inp: LC.Input, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                                    S: set<LG.GroupId>, tb: LT.Tree, gmt: LG.GroupMap, th: AI.Thread,
+                                    ncap: int, nlook: int, nquant: int) {
+    th.pc >= 0
+    && WalkPairLk(rer, qm, code, inp, tb, gmt, th.pc as nat, th.exit_allowed)
+    && GmtTieOutside(re, th, gmt, S)
+  }
+
   /** Active lists pair index-wise, in order (priority is positional). */
   ghost predicate ActiveRepLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
                               inp: LC.Input, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
@@ -294,6 +311,25 @@ module LindenElkLiftSim {
                         ncap, nlook, nquant))
   }
 
+  /** (L4 NESTED) The blocked-list pairing with the depth-1-hardwired
+      `GmtTieInside` conjunct DROPPED (see `ThreadRepLkNested`). The blocked-tie
+      filter (`TtLk` at `pc+1`) and the outside value tie are kept verbatim. */
+  ghost predicate BlockedRepLkNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
+                                     inp: LC.Input, nextinp: LC.Input, crv: CP.FCompiled, str: string,
+                                     ov: LOr.OracleView, S: set<LG.GroupId>,
+                                     tl: seq<(LT.Tree, LG.GroupMap)>, bl: seq<(AI.Thread, RC.char_expectation)>,
+                                     ncap: int, nlook: int, nquant: int)
+    decreases tl
+  {
+    (|tl| == 0 && |bl| == 0)
+    || (|tl| > 0 && |bl| > 0
+        && bl[0].0.pc >= 0
+        && TtLk(rer, qm, code, nextinp, tl[0].0, (bl[0].0.pc + 1) as nat, true)
+        && GmtTieOutside(re, bl[0].0, tl[0].1, S)
+        && BlockedRepLkNested(rer, qm, re, code, inp, nextinp, crv, str, ov, S, tl[1..], bl[1..],
+                              ncap, nlook, nquant))
+  }
+
   /** Best-match tie: `None` together, or the recorded B leaf carries the
       winning thread's values on both sides of `S`. */
   ghost predicate BestTieLk(re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
@@ -309,6 +345,22 @@ module LindenElkLiftSim {
           && LookNestOkT(re, S, bbest.value.1, bm.value)
           // (E4) the CONVERSE: dominance-surviving fresh-match groups are in
           // the leaf — the reverse value tie's feed.
+          && LookNestBackT(re, crv, str, ov, S, bbest.value.1, bm.value, ncap, nlook, nquant))
+  }
+
+  /** (L4 NESTED) The best-match tie with the depth-1-hardwired `GmtTieInside`
+      conjunct DROPPED (see `ThreadRepLkNested`). The outside value tie and BOTH
+      look-path carriers (`LookNestOkT` (E3), `LookNestBackT` (E4)) are kept
+      verbatim — those are already stated over the depth-general ownership
+      machinery. */
+  ghost predicate BestTieLkNested(re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                                  S: set<LG.GroupId>, bbest: Option<LT.Leaf>, bm: Option<AI.Thread>,
+                                  ncap: int, nlook: int, nquant: int) {
+    (bbest.None? <==> bm.None?)
+    && (bbest.Some? ==>
+          bm.Some?
+          && GmtTieOutside(re, bm.value, bbest.value.1, S)
+          && LookNestOkT(re, S, bbest.value.1, bm.value)
           && LookNestBackT(re, crv, str, ov, S, bbest.value.1, bm.value, ncap, nlook, nquant))
   }
 
@@ -10590,6 +10642,100 @@ module LindenElkLiftSim {
     }
   }
 
+  /** (L4 NESTED) `LookNestOkTGatePass` under `NestedFragmentRE`. Two rewires
+      versus the depth-1 form:
+        (i)  `NI.GateCrossLookNest` → `NI.GateCrossLookNestNested` (the gate-site
+             extraction under the full nested fragment; a pure fragment swap);
+        (ii) `NI.LookBodiesCapsDisjoint` (FALSE at depth ≥ 2) → the trichotomy
+             `NI.LookBodiesCapsDisjointOrNested`, whose "one nests the other"
+             arms are BOTH ruled out for a FRESH fold:
+
+      The fold-ownership hypothesis is STRENGTHENED to DIRECT ownership — a
+      freshly-folded `g` sits DIRECTLY in `lid0`'s body, `g !in
+      CapIdsInLooks(body(lid0))` (at a top-level gate the endpoint folds only
+      `lid0`'s direct groups; inner-look groups are closed post-hoc). Then for
+      `lid != lid0` with `g` fresh and `g in CapIds(body(lid))`:
+        · disjoint arm  → `g` in an empty intersection, contradiction;
+        · `lid` nested in `lid0` → `LookBodyCompose`+`LookBodyCapsIn` put `g` in
+          `CapIdsInLooks(body(lid0))`, contradicting DIRECT;
+        · `lid0` nested in `lid` → IMPOSSIBLE: `lid0`'s `CheckOracle` is in the
+          MAIN code, so `lid0` is TOP-LEVEL (`NI.LookSiteTopNested`), hence sits
+          in no look body (`NI.TopLookNotNested`), contradicting the arm.
+      So a cross-lid fresh fold is vacuous exactly as at depth 1; only the
+      argument that kills it changed. */
+  lemma LookNestOkTGatePassNested(re: R.regex, code: RB.code, endl: nat, S: set<LG.GroupId>,
+                                  gmt: LG.GroupMap, gmt': LG.GroupMap,
+                                  th: AI.Thread, th': AI.Thread, pc: nat, lid0: int)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires NR.NestedFragmentRE(re) && LTB.LookUnique(re) && PIV.CapUnique(re)
+    requires LookNestOkT(re, S, gmt, th)
+    requires pc < endl && NR.GetPcRE(code, pc) == Some(RB.CheckOracle(lid0))
+    requires NI.NestInvRE(re, code, 0, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk, -1)
+    requires th'.capture_regs == th.capture_regs && th'.quant_regs == th.quant_regs
+    requires forall j: int :: j != lid0 ==>
+      AI.get_idx(th'.look_regs.a_clk, j) == AI.get_idx(th.look_regs.a_clk, j)
+    requires AI.get_idx(th'.look_regs.a_clk, lid0) >= 0
+    requires forall k :: AI.get_idx(th.quant_regs.a_clk, k) <= AI.get_idx(th'.look_regs.a_clk, lid0)
+    // DIRECT ownership: a fresh fold sits directly in lid0's body, not buried in
+    // a nested look (the endpoint's top-level-gate fold; inner groups post-hoc).
+    requires forall g: LG.GroupId :: g in S && g in gmt' && g !in gmt ==>
+      lid0 >= 0 && (lid0 as nat) in LTB.LookIds(re)
+      && g in PIV.CapIds(NI.LookBodyOfRE(re, lid0 as nat))
+      && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, lid0 as nat))
+    ensures LookNestOkT(re, S, gmt', th')
+  {
+    NI.GateCrossLookNestNested(re, code, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk,
+                               th'.look_regs.a_clk, lid0);
+    // lid0's CheckOracle is in the MAIN code ⟹ lid0 is a TOP-LEVEL look.
+    NI.LookSiteTopNested(re, code, 0, endl, pc);
+    assert lid0 >= 0 && (lid0 as nat) in NI.TopLookIds(re);
+    forall lid: nat | lid in LTB.LookIds(re)
+      && (exists g: LG.GroupId :: g in S && g in gmt' && g in PIV.CapIds(NI.LookBodyOfRE(re, lid)))
+      ensures NI.LookPathPresent(re, th'.capture_regs.a_clk, th'.quant_regs.a_clk, -1, lid)
+           && AI.get_idx(th'.look_regs.a_clk, lid as int) >= 0
+           && AI.get_idx(th'.look_regs.a_clk, lid as int)
+                >= NI.MxAtLidLk(re, th'.quant_regs.a_clk, -1, lid)
+    {
+      var g: LG.GroupId :| g in S && g in gmt' && g in PIV.CapIds(NI.LookBodyOfRE(re, lid));
+      if lid == lid0 as nat {
+        // established fresh at the crossing (caps/quant banks unchanged)
+      } else {
+        if g in gmt {
+          assert AI.get_idx(th'.look_regs.a_clk, lid as int)
+              == AI.get_idx(th.look_regs.a_clk, lid as int) by {
+            assert lid as int != lid0;
+          }
+        } else {
+          // FRESH fold: g is DIRECT in lid0's body.
+          assert g in PIV.CapIds(NI.LookBodyOfRE(re, lid0 as nat));
+          assert g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, lid0 as nat));
+          NI.LookBodiesCapsDisjointOrNested(re, lid, lid0 as nat);
+          if PIV.CapIds(NI.LookBodyOfRE(re, lid)) * PIV.CapIds(NI.LookBodyOfRE(re, lid0 as nat)) == {} {
+            assert g in PIV.CapIds(NI.LookBodyOfRE(re, lid))
+                     * PIV.CapIds(NI.LookBodyOfRE(re, lid0 as nat));
+            assert false;
+          } else if lid0 as nat in LTB.LookIds(NI.LookBodyOfRE(re, lid))
+                    && PIV.CapIds(NI.LookBodyOfRE(re, lid0 as nat))
+                         <= PIV.CapIds(NI.LookBodyOfRE(re, lid)) {
+            // lid0 nested in lid — impossible: lid0 is top-level.
+            NI.TopLookNotNested(re, lid0 as nat, lid);
+            assert lid0 as nat !in LTB.LookIds(NI.LookBodyOfRE(re, lid));
+            assert false;
+          } else {
+            // lid nested in lid0 — g would then be in CapIdsInLooks(body(lid0)).
+            assert lid in LTB.LookIds(NI.LookBodyOfRE(re, lid0 as nat));
+            NI.LookBodyCompose(re, lid0 as nat, lid);
+            assert NI.LookBodyOfRE(re, lid)
+                == NI.LookBodyOfRE(NI.LookBodyOfRE(re, lid0 as nat), lid);
+            NI.LookBodyCapsIn(NI.LookBodyOfRE(re, lid0 as nat), lid);
+            assert g in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, lid0 as nat));
+            assert false;
+          }
+        }
+      }
+    }
+  }
+
   lemma WinningGmtTieOutside(re: R.regex, th: AI.Thread, leafgm: LG.GroupMap,
                              ftstar: LG.GroupMap, S: set<LG.GroupId>)
     requires ftstar == PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs)
@@ -10875,6 +11021,20 @@ module LindenElkLiftSim {
          && ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, traw, gmt, th, ncap, nlook, nquant)
   }
 
+  /** (L4 NESTED) Canonical per-thread pairing riding the `*Nested` payload:
+      identical to `ThreadRepLkC` but the erasure-witnessed raw pairing is
+      `ThreadRepLkNested` (the `GmtTieInside`-free form). */
+  ghost predicate ThreadRepLkCNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
+                                     inp: LC.Input, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                                     S: set<LG.GroupId>, tcan: LT.Tree, gmt: LG.GroupMap, th: AI.Thread,
+                                     ncap: int, nlook: int, nquant: int) {
+    th.pc >= 0
+    && TreeRepLkRE(rer, qm, code, inp, tcan, th.pc as nat, th.exit_allowed)
+    && exists traw: LT.Tree ::
+         CE.ProgErase(traw) == CE.ProgErase(tcan)
+         && ThreadRepLkNested(rer, qm, re, code, inp, crv, str, ov, S, traw, gmt, th, ncap, nlook, nquant)
+  }
+
   /** Canonical active-list pairing (index-wise, priority positional) —
       `ActiveRepLk`'s shape with `ThreadRepLkC`. */
   ghost predicate ActiveRepLkC(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
@@ -10912,6 +11072,28 @@ module LindenElkLiftSim {
         && GmtTieInside(crv, str, ov, bl[0].0, tl[0].1, S, ncap, nlook, nquant)
         && BlockedRepLkC(rer, qm, re, code, inp, nextinp, crv, str, ov, S, tl[1..], bl[1..],
                          ncap, nlook, nquant))
+  }
+
+  /** (L4 NESTED) Canonical blocked-list pairing with the depth-1-hardwired
+      `GmtTieInside` conjunct DROPPED (see `ThreadRepLkNested`). Canonical tie
+      + raw-`WalkPairLk` erasure witness + outside value tie kept verbatim. */
+  ghost predicate BlockedRepLkCNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
+                                      inp: LC.Input, nextinp: LC.Input, crv: CP.FCompiled, str: string,
+                                      ov: LOr.OracleView, S: set<LG.GroupId>,
+                                      tl: seq<(LT.Tree, LG.GroupMap)>, bl: seq<(AI.Thread, RC.char_expectation)>,
+                                      ncap: int, nlook: int, nquant: int)
+    decreases tl
+  {
+    (|tl| == 0 && |bl| == 0)
+    || (|tl| > 0 && |bl| > 0
+        && bl[0].0.pc >= 0
+        && TreeRepLkRE(rer, qm, code, nextinp, tl[0].0, (bl[0].0.pc + 1) as nat, true)
+        && (exists traw: LT.Tree ::
+              CE.ProgErase(traw) == CE.ProgErase(tl[0].0)
+              && WalkPairLk(rer, qm, code, nextinp, traw, tl[0].1, (bl[0].0.pc + 1) as nat, true))
+        && GmtTieOutside(re, bl[0].0, tl[0].1, S)
+        && BlockedRepLkCNested(rer, qm, re, code, inp, nextinp, crv, str, ov, S, tl[1..], bl[1..],
+                               ncap, nlook, nquant))
   }
 
   /** THE COMPOSITE INVARIANT: machine-A sim (VM↔tstar, PROVEN) PLUS the
