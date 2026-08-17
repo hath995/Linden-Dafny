@@ -6337,6 +6337,257 @@ module LindenElkMain {
       }
   }
 
+  /** R31b UNIQUENESS SHAPE. `TreeResGSpineValue` above descends to the
+      structurally-DEEPEST matched positive look on the winning spine — its value
+      equation holds by value PRESERVATION (pass-through), NOT by the returned look
+      OWNING `g`. For a body like `(?=(?<g>a))(?=b)` its returned `tsub` is `(?=b)`'s
+      body (which never writes `g`), so a naive iterate-to-`!GWriteOnlyInLooks` would
+      mis-identify the owner. `GOwnerWF(t, g)` is the extra hypothesis that makes
+      owner-finding SOUND: no `g`-write on the spine, and at every `LK` node at most
+      ONE of {body `tlk`, continuation `t1`} writes `g` (`GNotWritten(tlk,g) ||
+      GNotWritten(t1,g)`) — i.e. along any single spine path `g`'s write lives in a
+      UNIQUE look body. A compiled `ComputeTr(Translate(body))` tree satisfies this
+      for `g in LkBodyGroups` by `CapUnique` (`g` captured in exactly one look body),
+      EXCEPT where quantifier unrolling of the OWNER look itself duplicates that body
+      on one path (quantified capturing lookaround) — flagged as the deeper-nesting
+      obstruction. Strictly stronger than `GWriteOnlyInLooks`. */
+  ghost predicate GOwnerWF(t: LT.Tree, g: LG.GroupId)
+    decreases t
+  {
+    match t
+    case Mismatch => true
+    case Match => true
+    case Choice(t1, t2) => GOwnerWF(t1, g) && GOwnerWF(t2, g)
+    case Read(_, t1) => GOwnerWF(t1, g)
+    case ReadBackRef(_, t1) => GOwnerWF(t1, g)
+    case Progress(t1) => GOwnerWF(t1, g)
+    case AnchorPass(_, t1) => GOwnerWF(t1, g)
+    case GroupActionT(a, t1) => !ActTouchesG(a, g) && GOwnerWF(t1, g)
+    case LK(_, tlk, t1) =>
+      GOwnerWF(tlk, g) && GOwnerWF(t1, g) && (GNotWritten(tlk, g) || GNotWritten(t1, g))
+    case LKFail(_, tlk) => GOwnerWF(tlk, g)
+  }
+
+  /** `GOwnerWF` refines `GWriteOnlyInLooks` (no spine writes, look bodies free). */
+  lemma GOwnerWFImpliesSpine(t: LT.Tree, g: LG.GroupId)
+    requires GOwnerWF(t, g)
+    ensures GWriteOnlyInLooks(t, g)
+    decreases t
+  {
+    match t
+    case Mismatch =>
+    case Match =>
+    case Choice(t1, t2) => GOwnerWFImpliesSpine(t1, g); GOwnerWFImpliesSpine(t2, g);
+    case Read(_, t1) => GOwnerWFImpliesSpine(t1, g);
+    case ReadBackRef(_, t1) => GOwnerWFImpliesSpine(t1, g);
+    case Progress(t1) => GOwnerWFImpliesSpine(t1, g);
+    case AnchorPass(_, t1) => GOwnerWFImpliesSpine(t1, g);
+    case GroupActionT(a, t1) => GOwnerWFImpliesSpine(t1, g);
+    case LK(_, tlk, t1) => GOwnerWFImpliesSpine(t1, g);
+    case LKFail(_, tlk) =>
+  }
+
+  /** R31b (2a) — SOUND iterate-to-owner. Under `GOwnerWF` the winning-path value at
+      `g` is EITHER the incoming `gm[g]` (top level: `g` never written on the winning
+      path — HONEST, no intermediate map leaks) OR the OWN sub-result at `g` of a
+      matched positive look whose body writes `g` DIRECTLY on its spine
+      (`!GWriteOnlyInLooks(tsub, g)`): the genuine INNERMOST owner. Unlike
+      `TreeResGSpineValue`, the descent recurses into the BODY that carries the
+      `g`-write (not blindly into the continuation), so it lands on the writer. The
+      pass-through invariant `Find(g, threaded gm) == Find(g, gm)` is maintained
+      because we only thread through subtrees proven `GNotWritten(_, g)`. */
+  lemma TreeResGOwnerDescent(t: LT.Tree, gm: LG.GroupMap, inp: LC.Input, dir: WP.Direction, g: LG.GroupId)
+      returns (found: bool, lk: L.Lookaround, tsub: LT.Tree, gmo: LG.GroupMap, inpo: LC.Input)
+    requires GOwnerWF(t, g)
+    requires LT.TreeRes(t, gm, inp, dir).Some?
+    ensures found ==> tsub < t
+    ensures found ==> LG.Find(g, gmo) == LG.Find(g, gm)   // g unwritten before the owner
+    ensures !found ==> LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1) == LG.Find(g, gm)
+    ensures found ==>
+        L.Positivity(lk)
+        && !GWriteOnlyInLooks(tsub, g)
+        && LT.TreeRes(tsub, gmo, inpo, L.LkDir(lk)).Some?
+        && LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1)
+           == LG.Find(g, LT.TreeRes(tsub, gmo, inpo, L.LkDir(lk)).value.1)
+    decreases t
+  {
+    match t
+    case Match =>
+      found, lk, tsub, gmo, inpo := false, L.LookAhead, t, gm, inp;
+    case Mismatch =>
+      found, lk, tsub, gmo, inpo := false, L.LookAhead, t, gm, inp;   // TreeRes None: vacuous
+    case LKFail(lk0, tsub0) =>
+      found, lk, tsub, gmo, inpo := false, L.LookAhead, tsub0, gm, inp;   // TreeRes None: vacuous
+    case Choice(t1, t2) =>
+      if LT.TreeRes(t1, gm, inp, dir).Some? {
+        found, lk, tsub, gmo, inpo := TreeResGOwnerDescent(t1, gm, inp, dir, g);
+      } else {
+        found, lk, tsub, gmo, inpo := TreeResGOwnerDescent(t2, gm, inp, dir, g);
+      }
+    case Read(c, t1) =>
+      found, lk, tsub, gmo, inpo := TreeResGOwnerDescent(t1, gm, LC.AdvanceInputP(inp, dir), dir, g);
+    case ReadBackRef(brStr, t1) =>
+      found, lk, tsub, gmo, inpo := TreeResGOwnerDescent(t1, gm, LC.AdvanceInputN(inp, |brStr|, dir), dir, g);
+    case Progress(t1) =>
+      found, lk, tsub, gmo, inpo := TreeResGOwnerDescent(t1, gm, inp, dir, g);
+    case AnchorPass(a, t1) =>
+      found, lk, tsub, gmo, inpo := TreeResGOwnerDescent(t1, gm, inp, dir, g);
+    case GroupActionT(a, t1) =>
+      GMUpdateFindNotTouch(a, LC.Idx(inp), gm, g);           // Find(g, GMUpdate) == Find(g, gm)
+      found, lk, tsub, gmo, inpo := TreeResGOwnerDescent(t1, LG.GMUpdate(a, LC.Idx(inp), gm), inp, dir, g);
+    case LK(lk0, tsub0, t1) =>
+      if L.Positivity(lk0) {
+        var sub := LT.TreeRes(tsub0, gm, inp, L.LkDir(lk0));
+        assert sub.Some?;                                    // node Some ==> sub Some
+        if GNotWritten(tsub0, g) {
+          // body is g-free: value passes through the look, then descend continuation.
+          TreeResGNotWritten(tsub0, gm, inp, L.LkDir(lk0), g);   // Find(g, sub.value.1) == Find(g, gm)
+          var fc, lkc, tsubc, gmoc, inpoc := TreeResGOwnerDescent(t1, sub.value.1, inp, dir, g);
+          if fc {
+            found, lk, tsub, gmo, inpo := true, lkc, tsubc, gmoc, inpoc;
+            assert tsubc < t1;
+          } else {
+            found, lk, tsub, gmo, inpo := false, lk0, tsub0, gm, inp;
+          }
+        } else {
+          // body writes g: by GOwnerWF the continuation does NOT, so the node's leaf
+          // value at g equals the look sub-result at g (TreeResLkNodeGValue).
+          assert GNotWritten(t1, g);
+          TreeResLkNodeGValue(lk0, tsub0, t1, gm, inp, dir, g);
+          if !GWriteOnlyInLooks(tsub0, g) {
+            // g written directly on tsub0's spine: this look is the innermost owner.
+            found, lk, tsub, gmo, inpo := true, lk0, tsub0, gm, inp;
+          } else {
+            // g is deeper inside tsub0's own looks: recurse into the body.
+            var fc, lkc, tsubc, gmoc, inpoc := TreeResGOwnerDescent(tsub0, gm, inp, L.LkDir(lk0), g);
+            if fc {
+              found, lk, tsub, gmo, inpo := true, lkc, tsubc, gmoc, inpoc;
+              assert tsubc < tsub0;
+            } else {
+              found, lk, tsub, gmo, inpo := false, lk0, tsub0, gm, inp;
+            }
+          }
+        }
+      } else {
+        var sub := LT.TreeRes(tsub0, gm, inp, L.LkDir(lk0));
+        assert sub.None?;                                    // node Some (negative) ==> sub None
+        found, lk, tsub, gmo, inpo := TreeResGOwnerDescent(t1, gm, inp, dir, g);
+      }
+  }
+
+  /** R31b (2a) — FRESH-map owner form: `TreeResGOwnerDescent` with the incoming
+      `g` fresh (`Find(g, gm) == None`, as at the body-tree root `Empty`). Because
+      `g` is unwritten before the owner (`Find(g, gmo) == Find(g, gm) == None`), the
+      owner sub-result value at `g` is frame-invariant in its incoming map at `g`
+      (`TreeResGValueFramed`), so it may be read at `Empty` — the exact form the
+      engine's per-owner fresh replay records. So on the winning path the outer leaf
+      value at `g` is EITHER unset (`None`) OR the owner body's OWN `Empty`-map
+      `TreeRes` value at `g`, at the descent-recorded position `inpo`. This is the
+      spec half of `recon_inner`'s per-`g` obligation; (2b) must identify `tsub` with
+      `ComputeTr(Translate(LookBodyOfRE(body, owner)))` at the engine cp of `inpo`. */
+  lemma TreeResGOwnerFresh(t: LT.Tree, gm: LG.GroupMap, inp: LC.Input, dir: WP.Direction, g: LG.GroupId)
+      returns (found: bool, lk: L.Lookaround, tsub: LT.Tree, gmo: LG.GroupMap, inpo: LC.Input)
+    requires GOwnerWF(t, g)
+    requires LT.TreeRes(t, gm, inp, dir).Some?
+    requires LG.Find(g, gm) == None
+    ensures found ==> tsub < t
+    ensures !found ==> LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1) == None
+    ensures found ==>
+        L.Positivity(lk)
+        && !GWriteOnlyInLooks(tsub, g)
+        && LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk)).Some?
+        && LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1)
+           == LG.Find(g, LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk)).value.1)
+  {
+    found, lk, tsub, gmo, inpo := TreeResGOwnerDescent(t, gm, inp, dir, g);
+    if found {
+      assert LG.Find(g, gmo) == LG.Find(g, gm) == None;
+      assert LG.Find(g, LG.Empty) == None;                    // fresh map has no g
+      TreeResGValueFramed(tsub, gmo, LG.Empty, inpo, L.LkDir(lk), g);
+    }
+  }
+
+  /** R31b (2b) — the ATOMIC per-layer ComputeTr↔look-body bridge, the concrete
+      realization of "the tree node an `LK` carries has sub-tree ==
+      `ComputeTr(Translate(body of that look))` BY CONSTRUCTION of ComputeTr". For a
+      single-look action list `[Areg(LookaroundR(lk, r1))]` (the shape `Translate`
+      emits at a look node), the spec tree at `Empty` is EXACTLY
+      `LK(lk, ComputeTr([Areg(r1)], inp, Empty, LkDir(lk)), Match)` when the gate
+      passes, or `LKFail(lk, that body)` when it fails — its LK BODY subtree is the
+      compiled body tree of the look's OWN body `r1`. Proven off `BoolTreeLk`'s
+      `LookaroundR` case (its `LkGateOk` pins the body subtree). A regex-tracking
+      owner descent composes THIS at each layer to identify the landed owner subtree
+      with `ComputeTr(Translate(LookBodyOfRE(body, owner)))`. */
+  lemma ComputeTrSingleLookUnfold(rer: LW.RegExpRecord, lk: L.Lookaround, r1: L.Regex, inp: LC.Input)
+    requires EL.PikeLkRegexRec(L.LookaroundR(lk, r1))
+    ensures var tbody := LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk));
+            var t := LFU.ComputeTr(rer, [LS.Areg(L.LookaroundR(lk, r1))], inp, LG.Empty, WP.Forward);
+            (LS.LkResult(lk, tbody, LG.Empty, inp).Some? ==> t == LT.LK(lk, tbody, LT.Match))
+            && (LS.LkResult(lk, tbody, LG.Empty, inp).None? ==> t == LT.LKFail(lk, tbody))
+  {
+    var acts := [LS.Areg(L.LookaroundR(lk, r1))];
+    LFU.ComputeTrIsTree(rer, acts, inp, LG.Empty, WP.Forward);
+    var t := LFU.ComputeTr(rer, acts, inp, LG.Empty, WP.Forward);
+    assert LS.IsTree(rer, acts, inp, LG.Empty, WP.Forward, t);
+    EL.BooleanCorrectLkRec(rer, L.LookaroundR(lk, r1), inp, t);
+    assert EL.BoolTreeLk(rer, acts, inp, BS.CanExit, t);
+    var tbody := LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk));
+    // BoolTreeLk's LookaroundR case forces t to LK/LKFail; LkGateOk pins tlk == tbody.
+    match t
+    case LK(lk2, tlk, tc) =>
+      assert lk2 == lk && EL.LkGateOk(rer, lk, r1, inp, tlk, true)
+          && EL.BoolTreeLk(rer, [], inp, BS.CanExit, tc);
+      assert tlk == tbody;                                   // LkGateOk: tlk == ComputeTr([Areg(r1)],..)
+      assert tc == LT.Match;                                 // BoolTreeLk on empty cont
+      assert LS.LkResult(lk, tbody, LG.Empty, inp).Some?;    // LkGateOk ok == true
+    case LKFail(lk2, tlk) =>
+      assert lk2 == lk && EL.LkGateOk(rer, lk, r1, inp, tlk, false);
+      assert tlk == tbody;
+      assert LS.LkResult(lk, tbody, LG.Empty, inp).None?;    // LkGateOk ok == false
+    case Mismatch =>  assert false;
+    case Match =>     assert false;
+    case Choice(_, _) => assert false;
+    case Read(_, _) => assert false;
+    case ReadBackRef(_, _) => assert false;
+    case Progress(_) => assert false;
+    case AnchorPass(_, _) => assert false;
+    case GroupActionT(_, _) => assert false;
+  }
+
+  /** R31b (2b) SINGLE-DIRECT-OWNER (NestDepth==2). When `body` IS a single positive
+      look `LookaroundR(lk, tr1)` (the owner) that MATCHES, the OUTER body-tree's leaf
+      value at any `g` equals the OWNER body tree `ComputeTr([Areg(tr1)], inp, Empty,
+      LkDir(lk))`'s OWN (Empty-map) sub-result at `g`, at the owner's position `inp`.
+      Composes `ComputeTrSingleLookUnfold` (outer tree == `LK(lk, tbody, Match)`) with
+      the fresh single-layer peel `TreeResLkNodeGValueFresh`. `tbody` IS
+      `ComputeTr(Translate(LookBodyOfRE(body, owner)))`, so this is the
+      landed-owner-subtree == compiled-owner-body identity for the one-layer case —
+      the SPEC half of `recon_inner`. The engine tie (owner replay == owner
+      `LkResult`) is then `LkReplayMatchesSpecNested` applied to `tr1`, whose OUTER
+      groups `S` include a directly-captured `g` (`g !in LkBodyGroups(tr1)`). */
+  lemma SingleLookOuterLeafIsOwnerBody(rer: LW.RegExpRecord, lk: L.Lookaround, tr1: L.Regex,
+                                       inp: LC.Input, g: LG.GroupId)
+    requires EL.PikeLkRegexRec(L.LookaroundR(lk, tr1))
+    requires L.Positivity(lk)
+    requires LS.LkResult(lk, LFU.ComputeTr(rer, [LS.Areg(tr1)], inp, LG.Empty, L.LkDir(lk)),
+                         LG.Empty, inp).Some?
+    ensures var tbody := LFU.ComputeTr(rer, [LS.Areg(tr1)], inp, LG.Empty, L.LkDir(lk));
+            var t := LFU.ComputeTr(rer, [LS.Areg(L.LookaroundR(lk, tr1))], inp, LG.Empty, WP.Forward);
+            LT.TreeRes(t, LG.Empty, inp, WP.Forward).Some?
+            && LT.TreeRes(tbody, LG.Empty, inp, L.LkDir(lk)).Some?
+            && LG.Find(g, LT.TreeRes(t, LG.Empty, inp, WP.Forward).value.1)
+               == LG.Find(g, LT.TreeRes(tbody, LG.Empty, inp, L.LkDir(lk)).value.1)
+  {
+    var tbody := LFU.ComputeTr(rer, [LS.Areg(tr1)], inp, LG.Empty, L.LkDir(lk));
+    var t := LFU.ComputeTr(rer, [LS.Areg(L.LookaroundR(lk, tr1))], inp, LG.Empty, WP.Forward);
+    ComputeTrSingleLookUnfold(rer, lk, tr1, inp);
+    assert t == LT.LK(lk, tbody, LT.Match);                 // LkResult Some arm
+    assert LT.TreeRes(tbody, LG.Empty, inp, L.LkDir(lk)).Some?;   // LkResult Some (positive)
+    assert LG.Find(g, LG.Empty) == None;
+    assert LT.TreeRes(t, LG.Empty, inp, WP.Forward).Some?;  // node Some: sub Some & cont Match Some
+    TreeResLkNodeGValueFresh(lk, tbody, LT.Match, LG.Empty, inp, WP.Forward, g);
+  }
+
   /** L4 BOUNDARY (machine-checked): the depth-1 lookbehind fragment caps nesting
       depth at 1 — every lookaround leaf's body is look-free (`NestDepth == 0` by
       `LookFreePlusIsNestedRE`), so `1 + 0` is the deepest a node reaches. This
