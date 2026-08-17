@@ -235,3 +235,58 @@ Chain, for inside-look `g`: `GmOfLive(re,res.0,…)[g]` == owner fresh value (R3
 `GmtTieInside`/`L3aValueBridge`/`L3aEndpointAssembly`/`MainTheoremL3`, + `Supported` widening
 `LookBehindFragmentRaw->NestedFragmentRaw`. Substantial W6 integration; depth-2 first, then the two
 full-depth-k follow-ons above.
+
+---
+
+## FULL-DEPTH-K PUSH (2026-08-17) — components ALL PROVEN; brick C = the endpoint (composite-sim territory)
+
+User chose "full depth-k". Every reusable COMPONENT is now proven & green on `l4-nesting` (HEAD `351bd51`).
+Scope of the fragment being closed: nested FORWARD capturing lookaheads (`NoPosLookbehindRE`), captures
+NOT under a quantifier inside looks (`GNotUnderQuantL` — a quantifier emits a spine `Reset(DefGroups)`
+touching the group, proven necessary).
+
+### DONE (commits, all whole-file-certified green)
+- **A** `2ae7a92` — ENGINE reconstruction DEPTH-GENERAL. Finding: the disjoint-or-nested trichotomy is
+  insufficient for (f) look-stability at depth≥3; real fix = a TIGHT `DirectLidSet` frame replacing (g)
+  with ordered `l1<l2 ==> DirectLookIds(b1)*LookIds(b2)=={}`. Re-proved `FLookLoopValueLiftOuter` 693/0,
+  `FLookLoopValueLiftFull` 699/0; `FLookLoopFullCoversFromTables` is premise-free at ALL depths (cap gone).
+- **B** `d6fc655` — spec owner↔tree for the LINEAR lookahead-chain fragment, all depths.
+- **B'** `53db9ea` — general-branching VALUE HALF (`OuterLeafGOwnerSubtree`) + `ComputeTrGOwnerWF2`
+  (side cond `GNotUnderQuantL`). FINDING: R31b's `TreeResGOwnerDescent/Fresh` were VACUOUS
+  (`GOwnerWF<==>GNotWritten`) — replaced by the live `GOwnerWF2`/`TreeResGOwnerDescentV/FreshV`.
+- **B''** `ed12289` — ACTION-SPACE owner-naming descent (`ComputeTrOwnerNamed`/`Acts`,
+  `ComputeTrAllLkBodiesNamed`). Insight: push the owner look to the action HEAD → each peel is atomic;
+  ComputeTr(build)/TreeRes(eval) position alignment falls out for free.
+- **R↔L** `351bd51` — TURNKEY `OuterLeafInnerGEqOwnerBody`: outer leaf[g] == NAMED owner body
+  `ComputeTr(Translate(LookBodyOfRE(body,owner)))` sub-result at g, general branching all depths.
+  Via `TranslateOwnerBodyIsRR` (R↔L identity). **The spec side of recon_inner is COMPLETE.**
+
+### recon_inner FULL-DEPTH-K COMPONENT INVENTORY (all proven)
+1. Engine: `M.FLookLoopFullCoversFromTables` (premise-free, depth-general) — res.0[g] == innermost-owner
+   fresh value for every g in CapIdsInLooks(re).
+2. Spec: `M.OuterLeafInnerGEqOwnerBody` (turnkey, general branching) — winning leaf[g] == owner body
+   spec sub-result[g].
+3. Tie: `M.LkReplayMatchesSpecNested` (existing) — owner fresh value[g] == owner body spec sub-result[g].
+   Chain: leaf[g] == owner sub-result[g] == owner fresh[g] == res.0[g]. recon_outer from
+   `FLookLoopCaptureFrameNested`.
+
+### REMAINING = brick C (task #33) — the whole-regex endpoint. IT IS COMPOSITE-SIM TERRITORY, not a quick assembly.
+Endpoint chain (scout, single-caller linear): `ApiMatch.MatchCorrect(:75) -> LSIM.MainTheoremL3
+(LiftSim:12076) -> {L3aCompositeClose(:11411), L3aEndpointAssembly(:11496), MainExtraction(MainTheorem)}`,
+`L3aEndpointAssembly -> L3aValueBridge(:10753)`. Each has exactly ONE caller ⇒ **additive nested variants**
+(`MainTheoremL4`/`L3aEndpointAssemblyNested`/`L3aValueBridgeNested` + widened `Supported` at ApiMatch:55)
+disturb zero existing callers. `L3aValueBridge` + `MainExtraction` are structure-agnostic (only the
+fragment NAME caps them).
+THE HARD PART: `GmtTieInside` (LiftSim:191) — its flat single-owner existential + single `FreshBodyMatch`
+is FALSE for a nested g (an outer look's fresh match records no inner captures), AND during the MAIN walk
+inner a_cp is never recorded. So the nested `BestTieLk` must DROP `GmtTieInside` and establish inner-group
+agreement POST-HOC at the endpoint via components 1-3 above. That means a nested composite sim
+(`ThreadRepLk`-minus-`GmtTieInside` variant of `LiftInitC`/`LiftFindMatchC`/the ~24 `LiftPreserve*`) that
+produces (match-verdict + `GmtTieOutside` only). The nested MATCH sim is already proven
+(`FindMatchSimRENested` #20) and `GmtTieOutside` is depth-agnostic (outer captures recorded directly), so
+the nested composite sim is FEASIBLE but LARGE. Then `L3aEndpointAssemblyNested` swaps the flat
+`FLookLoop*` reconstruction for `FLookLoopFullCoversFromTables` and closes inner groups via
+`OuterLeafInnerGEqOwnerBody` + `LkReplayMatchesSpecNested`, and `MainTheoremL4` widens the raw gate.
+
+Bottom line: full depth-k CAPTURING is component-complete; brick C is a bounded-but-major final
+integration (a nested composite-sim endpoint), comparable to an earlier campaign phase.
