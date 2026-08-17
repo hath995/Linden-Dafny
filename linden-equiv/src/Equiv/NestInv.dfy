@@ -31,6 +31,7 @@ module LindenElkNestInv {
   import CP = Compiler
   import NR = LindenElkNfaRep
   import AI = ArrayInterp
+  import AReg = Array_Regs
   import PIV = LindenElkPikeInv
   import AR = LindenElkActionsRep
   import LTB = LindenElkLookTables
@@ -5449,6 +5450,431 @@ module LindenElkNestInv {
       assert lid in LTB.LookIds(r1);
       assert (lid0 as nat) != lid;                    // LookUnique: lid0 !in LookIds(r1)
       LookPathDomOnPathBreaksNested(r1, L, qc', lid, qid);
+  }
+
+  // ==========================================================================
+  // (L4 depth-k, ADDITIVE) LOOK-CLOCK-AWARE path presence to a look node.
+  //
+  // The depth-1 `LookPathPresent(r, cc, qc, mx, lid)` records only the
+  // CAPTURE/QUANT clocks on the descent to `lid` — it IGNORES ancestor look
+  // clocks, because in the depth-1 fragment the path to a look never crosses a
+  // look body. Under NESTING the path to an inner look `lid` DOES cross the
+  // outer looks' nodes, and `PIV.PathPresentLk` (the predicate `GmOfLive`
+  // membership reads) requires EACH of those ancestor look clocks be set and in
+  // scope. `LookPathPresentLk` is `LookPathPresent` PLUS the ancestor-look-clock
+  // clauses (exactly as `PathPresentLk` treats a look node) — the presence-to-
+  // node primitive that composes with a body-side `PathPresentLk` into the full
+  // `PathPresentLk(r, .., g)` under arbitrary positive nesting.
+  // ==========================================================================
+  ghost predicate LookPathPresentLk(r: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>,
+                                    mx: int, lid: nat)
+    requires lid in LTB.LookIds(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) then LookPathPresentLk(r1, cc, lc, qc, mx, lid)
+      else LookPathPresentLk(r2, cc, lc, qc, mx, lid)
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) then LookPathPresentLk(r1, cc, lc, qc, mx, lid)
+      else LookPathPresentLk(r2, cc, lc, qc, mx, lid)
+    case Re_quant(nul, qid, q, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      qv >= mx && LookPathPresentLk(r1, cc, lc, qc, qv, lid)
+    case Re_capture(cid, r1) =>
+      AI.get_idx(cc, CP.start_reg(cid)) >= 0 && AI.get_idx(cc, CP.start_reg(cid)) >= mx
+      && LookPathPresentLk(r1, cc, lc, qc, mx, lid)
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid then true
+      else AI.get_idx(lc, lid0) >= 0 && AI.get_idx(lc, lid0) >= mx
+           && LookPathPresentLk(r1, cc, lc, qc, -1, lid)
+  }
+
+  /** (L4 depth-k) the NESTED counterpart of `LookPathCompose`. Same alt/con/
+      quant/capture descent; the `Re_lookaround(lid0 != lid)` case is no longer
+      vacuous (the body may nest looks), so it RECURSES into the body. The extra
+      power over the depth-1 lemma is that the outer look node's OWN clock clause
+      (which `PIV.PathPresentLk` demands) is now SUPPLIED by the look-clock-aware
+      `LookPathPresentLk` premise — so the composition still lands the full
+      `PIV.PathPresentLk(r, .., g)` at a DEEPLY-nested owner. */
+  lemma LookPathComposeNested(r: R.regex, body: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>,
+                              mx: int, lid: nat, g: nat)
+    requires NR.NestedFragmentRE(r) && PIV.CapUnique(r)
+    requires lid in LTB.LookIds(r)
+    requires body == LookBodyOfRE(r, lid)
+    requires g in PIV.CapIds(body)
+    requires LookPathPresentLk(r, cc, lc, qc, mx, lid)
+    requires AI.get_idx(lc, lid as int) >= 0
+    requires AI.get_idx(lc, lid as int) >= MxAtLidLk(r, qc, mx, lid)
+    requires PIV.PathPresentLk(body, cc, lc, qc, -1, g)
+    ensures g in PIV.CapIds(r)
+    ensures PIV.PathPresentLk(r, cc, lc, qc, mx, g)
+    ensures PIV.MxAtGidLk(r, cc, lc, qc, mx, g) == PIV.MxAtGidLk(body, cc, lc, qc, -1, g)
+    decreases r
+  {
+    LookBodyCapsIn(r, lid);
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) {
+        LookBodyCapsIn(r1, lid);
+        assert g in PIV.CapIds(r1);
+        LookPathComposeNested(r1, body, cc, lc, qc, mx, lid, g);
+      } else {
+        LookBodyCapsIn(r2, lid);
+        assert g in PIV.CapIds(r2);
+        assert g !in PIV.CapIds(r1) by {
+          if g in PIV.CapIds(r1) { assert g in PIV.CapIds(r1) * PIV.CapIds(r2); }
+        }
+        LookPathComposeNested(r2, body, cc, lc, qc, mx, lid, g);
+      }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) {
+        LookBodyCapsIn(r1, lid);
+        assert g in PIV.CapIds(r1);
+        LookPathComposeNested(r1, body, cc, lc, qc, mx, lid, g);
+      } else {
+        LookBodyCapsIn(r2, lid);
+        assert g in PIV.CapIds(r2);
+        assert g !in PIV.CapIds(r1) by {
+          if g in PIV.CapIds(r1) { assert g in PIV.CapIds(r1) * PIV.CapIds(r2); }
+        }
+        LookPathComposeNested(r2, body, cc, lc, qc, mx, lid, g);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      assert qv >= mx;                               // LookPathPresentLk
+      LookPathComposeNested(r1, body, cc, lc, qc, qv, lid, g);
+    case Re_capture(cid, r1) =>
+      LookBodyCapsIn(r1, lid);
+      assert g in PIV.CapIds(r1);
+      assert cid >= 0 && (cid as nat) !in PIV.CapIds(r1);   // CapUnique
+      assert (cid as nat) != g;
+      assert AI.get_idx(cc, CP.start_reg(cid)) >= 0
+          && AI.get_idx(cc, CP.start_reg(cid)) >= mx;       // LookPathPresentLk
+      LookPathComposeNested(r1, body, cc, lc, qc, mx, lid, g);
+    case Re_lookaround(lid0, la, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+        assert body == r1;
+        assert MxAtLidLk(r, qc, mx, lid) == mx;
+        assert AI.get_idx(lc, lid0) >= 0 && AI.get_idx(lc, lid0) >= mx;
+      } else {
+        // (L4) the outer look node: descend into the body, its lid0 clock
+        // clause carried by the look-clock-aware premise.
+        assert lid in LTB.LookIds(r1);
+        assert body == LookBodyOfRE(r1, lid);
+        assert AI.get_idx(lc, lid0) >= 0 && AI.get_idx(lc, lid0) >= mx;   // LookPathPresentLk
+        assert LookPathPresentLk(r1, cc, lc, qc, -1, lid);
+        assert MxAtLidLk(r, qc, mx, lid) == MxAtLidLk(r1, qc, -1, lid);
+        LookBodyCapsIn(r1, lid);
+        assert g in PIV.CapIds(r1);
+        LookPathComposeNested(r1, body, cc, lc, qc, -1, lid, g);
+      }
+  }
+
+  /** (L4 depth-k) the NESTED counterpart of `LookPathDecompose` (inverse of
+      `LookPathComposeNested`): the full `PIV.PathPresentLk(r, .., g)` at a
+      DEEPLY-nested inside-look `g` peels into the look-clock-aware path presence
+      TO the owner (`LookPathPresentLk`, which now records the ancestor look
+      clocks the outer path crosses), the owner's own clock clause, and the
+      body-side presence. The `Re_lookaround(lid0 != lid)` case recurses. */
+  lemma LookPathDecomposeNested(r: R.regex, body: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>,
+                                mx: int, lid: nat, g: nat)
+    requires NR.NestedFragmentRE(r) && PIV.CapUnique(r)
+    requires lid in LTB.LookIds(r)
+    requires body == LookBodyOfRE(r, lid)
+    requires g in PIV.CapIds(body)
+    requires g in PIV.CapIds(r)
+    requires PIV.PathPresentLk(r, cc, lc, qc, mx, g)
+    ensures LookPathPresentLk(r, cc, lc, qc, mx, lid)
+    ensures AI.get_idx(lc, lid as int) >= 0
+    ensures AI.get_idx(lc, lid as int) >= MxAtLidLk(r, qc, mx, lid)
+    ensures PIV.PathPresentLk(body, cc, lc, qc, -1, g)
+    ensures PIV.MxAtGidLk(r, cc, lc, qc, mx, g) == PIV.MxAtGidLk(body, cc, lc, qc, -1, g)
+    decreases r
+  {
+    LookBodyCapsIn(r, lid);
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) {
+        LookBodyCapsIn(r1, lid);
+        assert g in PIV.CapIds(r1);
+        LookPathDecomposeNested(r1, body, cc, lc, qc, mx, lid, g);
+      } else {
+        LookBodyCapsIn(r2, lid);
+        assert g in PIV.CapIds(r2);
+        assert g !in PIV.CapIds(r1) by {
+          if g in PIV.CapIds(r1) { assert g in PIV.CapIds(r1) * PIV.CapIds(r2); }
+        }
+        LookPathDecomposeNested(r2, body, cc, lc, qc, mx, lid, g);
+      }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) {
+        LookBodyCapsIn(r1, lid);
+        assert g in PIV.CapIds(r1);
+        LookPathDecomposeNested(r1, body, cc, lc, qc, mx, lid, g);
+      } else {
+        LookBodyCapsIn(r2, lid);
+        assert g in PIV.CapIds(r2);
+        assert g !in PIV.CapIds(r1) by {
+          if g in PIV.CapIds(r1) { assert g in PIV.CapIds(r1) * PIV.CapIds(r2); }
+        }
+        LookPathDecomposeNested(r2, body, cc, lc, qc, mx, lid, g);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      assert qv >= mx;                               // PathPresentLk
+      LookPathDecomposeNested(r1, body, cc, lc, qc, qv, lid, g);
+    case Re_capture(cid, r1) =>
+      LookBodyCapsIn(r1, lid);
+      assert g in PIV.CapIds(r1);
+      assert cid >= 0 && (cid as nat) !in PIV.CapIds(r1);   // CapUnique
+      assert (cid as nat) != g;
+      LookPathDecomposeNested(r1, body, cc, lc, qc, mx, lid, g);
+    case Re_lookaround(lid0, la, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+        assert body == r1;
+        assert MxAtLidLk(r, qc, mx, lid) == mx;
+        // PathPresentLk's look clause supplies the lc facts and the body walk
+      } else {
+        // (L4) descend into the body; the outer look clock clause is recorded
+        // in the produced LookPathPresentLk.
+        assert lid in LTB.LookIds(r1);
+        assert body == LookBodyOfRE(r1, lid);
+        LookBodyCapsIn(r1, lid);
+        assert g in PIV.CapIds(r1);
+        assert AI.get_idx(lc, lid0) >= 0 && AI.get_idx(lc, lid0) >= mx;   // PathPresentLk
+        LookPathDecomposeNested(r1, body, cc, lc, qc, -1, lid, g);
+        assert MxAtLidLk(r, qc, mx, lid) == MxAtLidLk(r1, qc, -1, lid);
+      }
+  }
+
+  /** (L4 depth-k) `LookPathPresentLk`/`MxAtLidLk` read the banks only at `r`'s
+      OWN capture-start slots, quant slots and look slots — congruence under
+      agreement there. The look-clock-aware analog of the depth-1
+      `LookPathPresentAgree`, but keyed on ALL of `CapIds`/`QuantIds`/`LookIds`
+      (not just the outside-look ones): under nesting the descent to a look node
+      genuinely crosses inside-look captures/quants and ancestor look clocks. */
+  lemma LookPathPresentLkAgree(r: R.regex, cc1: seq<int>, lc1: seq<int>, qc1: seq<int>,
+                               cc2: seq<int>, lc2: seq<int>, qc2: seq<int>, mx: int, lid: nat)
+    requires lid in LTB.LookIds(r)
+    requires forall c: nat :: c in PIV.CapIds(r) ==>
+      AI.get_idx(cc1, CP.start_reg(c as int)) == AI.get_idx(cc2, CP.start_reg(c as int))
+    requires forall q: nat :: q in PIV.QuantIds(r) ==>
+      AI.get_idx(qc1, q as int) == AI.get_idx(qc2, q as int)
+    requires forall l: nat :: l in LTB.LookIds(r) ==>
+      AI.get_idx(lc1, l as int) == AI.get_idx(lc2, l as int)
+    ensures LookPathPresentLk(r, cc1, lc1, qc1, mx, lid) == LookPathPresentLk(r, cc2, lc2, qc2, mx, lid)
+    ensures MxAtLidLk(r, qc1, mx, lid) == MxAtLidLk(r, qc2, mx, lid)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      assert PIV.CapIds(r1) <= PIV.CapIds(r) && PIV.CapIds(r2) <= PIV.CapIds(r);
+      assert PIV.QuantIds(r1) <= PIV.QuantIds(r) && PIV.QuantIds(r2) <= PIV.QuantIds(r);
+      assert LTB.LookIds(r1) <= LTB.LookIds(r) && LTB.LookIds(r2) <= LTB.LookIds(r);
+      if lid in LTB.LookIds(r1) { LookPathPresentLkAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, mx, lid); }
+      else { LookPathPresentLkAgree(r2, cc1, lc1, qc1, cc2, lc2, qc2, mx, lid); }
+    case Re_con(r1, r2) =>
+      assert PIV.CapIds(r1) <= PIV.CapIds(r) && PIV.CapIds(r2) <= PIV.CapIds(r);
+      assert PIV.QuantIds(r1) <= PIV.QuantIds(r) && PIV.QuantIds(r2) <= PIV.QuantIds(r);
+      assert LTB.LookIds(r1) <= LTB.LookIds(r) && LTB.LookIds(r2) <= LTB.LookIds(r);
+      if lid in LTB.LookIds(r1) { LookPathPresentLkAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, mx, lid); }
+      else { LookPathPresentLkAgree(r2, cc1, lc1, qc1, cc2, lc2, qc2, mx, lid); }
+    case Re_quant(_, qid, _, r1) =>
+      assert PIV.CapIds(r1) <= PIV.CapIds(r);
+      assert PIV.QuantIds(r1) <= PIV.QuantIds(r);
+      assert LTB.LookIds(r1) <= LTB.LookIds(r);
+      assert AI.get_idx(qc1, qid) == AI.get_idx(qc2, qid) by {
+        if qid >= 0 { assert (qid as nat) in PIV.QuantIds(r); }
+      }
+      LookPathPresentLkAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, AI.get_idx(qc1, qid), lid);
+    case Re_capture(cid, r1) =>
+      assert PIV.CapIds(r1) <= PIV.CapIds(r);
+      assert PIV.QuantIds(r1) <= PIV.QuantIds(r);
+      assert LTB.LookIds(r1) <= LTB.LookIds(r);
+      assert AI.get_idx(cc1, CP.start_reg(cid)) == AI.get_idx(cc2, CP.start_reg(cid)) by {
+        if cid >= 0 { assert (cid as nat) in PIV.CapIds(r); }
+        else { assert CP.start_reg(cid) < 0; }
+      }
+      LookPathPresentLkAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, mx, lid);
+    case Re_lookaround(lid0, _, r1) =>
+      assert PIV.CapIds(r1) == PIV.CapIds(r);
+      assert PIV.QuantIds(r1) == PIV.QuantIds(r);
+      assert LTB.LookIds(r1) <= LTB.LookIds(r);
+      assert AI.get_idx(lc1, lid0) == AI.get_idx(lc2, lid0) by {
+        if lid0 >= 0 { assert (lid0 as nat) in LTB.LookIds(r); }
+      }
+      if lid0 >= 0 && (lid0 as nat) == lid {
+      } else {
+        assert lid in LTB.LookIds(r1);
+        LookPathPresentLkAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, -1, lid);
+      }
+  }
+
+  /** (L4 depth-k) the NESTED counterpart of `PIV.FilterPresenceExtractLk`: a
+      surviving start register under `filter_capture` yields the look-clock-aware
+      `PIV.PathPresentLk` — under arbitrary positive nesting. The depth-1 lemma
+      re-derives `LookBehindFragmentRE(body)` at each look node
+      (`PlusIsLookBehindFragmentRE`); here the recursion is directly under
+      `NestedFragmentRE`, and the outside-own frame steps route through the
+      nested `PIV.FilterCaptureOutsideNested`. */
+  lemma FilterPresenceExtractLkNested(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>,
+                                      mx: int, gid: nat)
+    requires NR.NestedFragmentRE(r)
+    requires PIV.CapUnique(r)
+    requires gid in PIV.CapIds(r)
+    requires forall c: nat :: c in PIV.CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0
+                             ==> AI.get_idx(cr, CP.start_reg(c)) < 0
+    requires AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), CP.start_reg(gid)) >= 0
+    ensures PIV.PathPresentLk(r, cc, lc, qc, mx, gid)
+    ensures AI.get_idx(cc, CP.start_reg(gid)) >= 0
+    ensures AI.get_idx(cc, CP.start_reg(gid)) >= PIV.MxAtGidLk(r, cc, lc, qc, mx, gid)
+    ensures AI.get_idx(cr, CP.start_reg(gid)) >= 0
+    decreases r
+  {
+    match r
+    case Re_empty => case Re_character(_) => case Re_anchor(_) =>
+    case Re_lookaround(lid, la, r1) =>
+      var lv := AI.get_idx(lc, lid);
+      if lv < 0 || lv < mx {
+        PIV.FilterAllClearsStart(r1, cr, gid);
+        assert false;
+      } else {
+        FilterPresenceExtractLkNested(r1, cr, cc, lc, qc, -1, gid);
+      }
+    case Re_alt(r1, r2) =>
+      var c1 := AI.filter_capture(r1, cr, cc, lc, qc, mx);
+      if gid in PIV.CapIds(r1) {
+        assert gid !in PIV.CapIds(r2) by { if gid in PIV.CapIds(r2) { assert gid in PIV.CapIds(r1) * PIV.CapIds(r2); } }
+        PIV.FilterCaptureOutsideNested(r2, c1, cc, lc, qc, mx, gid);
+        FilterPresenceExtractLkNested(r1, cr, cc, lc, qc, mx, gid);
+      } else {
+        assert gid in PIV.CapIds(r2) && gid !in PIV.CapIds(r1);
+        forall c: nat | c in PIV.CapIds(r2) && AI.get_idx(cc, CP.start_reg(c)) < 0
+          ensures AI.get_idx(c1, CP.start_reg(c)) < 0
+        {
+          assert c !in PIV.CapIds(r1) by { if c in PIV.CapIds(r1) { assert c in PIV.CapIds(r1) * PIV.CapIds(r2); } }
+          PIV.FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, c);
+        }
+        FilterPresenceExtractLkNested(r2, c1, cc, lc, qc, mx, gid);
+        PIV.FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, gid);
+      }
+    case Re_con(r1, r2) =>
+      var c1 := AI.filter_capture(r1, cr, cc, lc, qc, mx);
+      if gid in PIV.CapIds(r1) {
+        assert gid !in PIV.CapIds(r2) by { if gid in PIV.CapIds(r2) { assert gid in PIV.CapIds(r1) * PIV.CapIds(r2); } }
+        PIV.FilterCaptureOutsideNested(r2, c1, cc, lc, qc, mx, gid);
+        FilterPresenceExtractLkNested(r1, cr, cc, lc, qc, mx, gid);
+      } else {
+        assert gid in PIV.CapIds(r2) && gid !in PIV.CapIds(r1);
+        forall c: nat | c in PIV.CapIds(r2) && AI.get_idx(cc, CP.start_reg(c)) < 0
+          ensures AI.get_idx(c1, CP.start_reg(c)) < 0
+        {
+          assert c !in PIV.CapIds(r1) by { if c in PIV.CapIds(r1) { assert c in PIV.CapIds(r1) * PIV.CapIds(r2); } }
+          PIV.FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, c);
+        }
+        FilterPresenceExtractLkNested(r2, c1, cc, lc, qc, mx, gid);
+        PIV.FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, gid);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      if qv < mx {
+        PIV.FilterAllClearsStart(r1, cr, gid);
+        assert false;
+      } else {
+        FilterPresenceExtractLkNested(r1, cr, cc, lc, qc, qv, gid);
+      }
+    case Re_capture(cid, r1) =>
+      var start := AI.get_idx(cc, CP.start_reg(cid));
+      if cid >= 0 && (cid as nat) == gid {
+        assert gid !in PIV.CapIds(r1);                        // CapUnique
+        if start < 0 {
+          PIV.FilterAllOutside(r1, cr, gid);
+          assert AI.get_idx(cr, CP.start_reg(gid)) < 0;
+          assert false;
+        } else if start < mx {
+          var cr2 := AI.set_idx(cr, CP.start_reg(cid), -1);
+          PIV.FilterAllOutside(r1, cr2, gid);
+          assert AI.get_idx(cr2, CP.start_reg(gid)) <= -1;
+          assert false;
+        } else {
+          PIV.FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, gid);
+          assert PIV.MxAtGidLk(r, cc, lc, qc, mx, gid) == mx;
+        }
+      } else {
+        assert gid in PIV.CapIds(r1);
+        if start < 0 {
+          PIV.FilterAllClearsStart(r1, cr, gid);
+          assert false;
+        } else if start < mx {
+          var cr2 := AI.set_idx(cr, CP.start_reg(cid), -1);
+          PIV.FilterAllClearsStart(r1, cr2, gid);
+          assert false;
+        } else {
+          forall c: nat | c in PIV.CapIds(r1) && AI.get_idx(cc, CP.start_reg(c)) < 0
+            ensures AI.get_idx(cr, CP.start_reg(c)) < 0 {}
+          FilterPresenceExtractLkNested(r1, cr, cc, lc, qc, mx, gid);
+        }
+      }
+  }
+
+  /** (L4 depth-k) gm-level wrapper — the NESTED `PIV.GmOfLivePresenceExtractLk`:
+      any group present in the live denotation (inside-look ones included, to any
+      depth) is look-aware path-present with a fresh, set start clock. */
+  lemma GmOfLivePresenceExtractLkNested(ast: R.regex, caps: AReg.Regs, look: AReg.Regs,
+                                        quant: AReg.Regs, gid: nat)
+    requires NR.NestedFragmentRE(ast)
+    requires PIV.CapUnique(ast)
+    requires gid in PIV.CapIds(ast)
+    requires forall c: nat :: c in PIV.CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
+                             ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
+    requires gid in PIV.GmOfLive(ast, caps, look, quant)
+    ensures PIV.PathPresentLk(ast, caps.a_clk, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, gid)
+    ensures AI.get_idx(caps.a_clk, CP.start_reg(gid)) >= 0
+    ensures AI.get_idx(caps.a_clk, CP.start_reg(gid))
+              >= PIV.MxAtGidLk(ast, caps.a_clk, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, gid)
+    ensures AI.get_idx(caps.a_cp, CP.start_reg(gid)) >= 0
+  {
+    var (cr, cc) := AReg.as_arrays(caps);
+    var (_, lc) := AReg.as_arrays(look);
+    var (_, qc) := AReg.as_arrays(quant);
+    var f := AI.filter_reset(ast, caps, look, quant, -1);
+    assert f == AI.filter_capture(ast, cr, cc, lc, qc, -1);
+    assert AI.get_idx(f, CP.start_reg(gid)) >= 0;
+    FilterPresenceExtractLkNested(ast, cr, cc, lc, qc, -1, gid);
+  }
+
+  /** (L4 depth-k) the NESTED `PIV.GmOfLiveKeepsPresentLk` — the FORWARD closing
+      step: look-aware path presence + a set/in-scope start clock puts `gid` into
+      the live denotation with the raw `LiveRange` value. The depth-1 lemma's
+      proof uses no fragment fact at all (`FilterKeepsPresentLk`/
+      `FilterCaptureKeepsOdd` need only `CapUnique`), so this is a pure
+      fragment-relabel that re-exposes it under `NestedFragmentRE`. */
+  lemma GmOfLiveKeepsPresentLkNested(re: R.regex, cap: AReg.Regs, look: AReg.Regs,
+                                     quant: AReg.Regs, gid: nat)
+    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re)
+    requires gid in PIV.CapIds(re)
+    requires PIV.PathPresentLk(re, AReg.as_arrays(cap).1, AReg.as_arrays(look).1,
+                               AReg.as_arrays(quant).1, -1, gid)
+    requires AI.get_idx(AReg.as_arrays(cap).1, CP.start_reg(gid)) >= 0
+    requires AI.get_idx(AReg.as_arrays(cap).0, CP.start_reg(gid)) >= 0   // value set
+    requires AI.get_idx(AReg.as_arrays(cap).1, CP.start_reg(gid))
+               >= PIV.MxAtGidLk(re, AReg.as_arrays(cap).1, AReg.as_arrays(look).1,
+                                AReg.as_arrays(quant).1, -1, gid)
+    ensures gid in PIV.GmOfLive(re, cap, look, quant)
+    ensures PIV.GmOfLive(re, cap, look, quant)[gid]
+              == PIV.LiveRange(AReg.as_arrays(cap).0, AReg.as_arrays(cap).1, gid)
+  {
+    var cr := AReg.as_arrays(cap).0;  var cc := AReg.as_arrays(cap).1;
+    var lc := AReg.as_arrays(look).1; var qc := AReg.as_arrays(quant).1;
+    var f := AI.filter_reset(re, cap, look, quant, -1);
+    assert f == AI.filter_capture(re, cr, cc, lc, qc, -1);
+    PIV.FilterKeepsPresentLk(re, cr, cc, lc, qc, -1, gid);
+    PIV.FilterCaptureKeepsOdd(re, cr, cc, lc, qc, -1, CP.end_reg(gid));
+    assert AI.get_idx(f, CP.start_reg(gid)) == AI.get_idx(cr, CP.start_reg(gid));
+    assert AI.get_idx(f, CP.end_reg(gid)) == AI.get_idx(cr, CP.end_reg(gid));
+    assert AI.get_idx(f, CP.start_reg(gid)) >= 0;
+    assert PIV.LiveRange(f, cc, gid) == PIV.LiveRange(cr, cc, gid);
   }
 
   /** `QidBody`'s captures are among `r`'s (a subtree). */
