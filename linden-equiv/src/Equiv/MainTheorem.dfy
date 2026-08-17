@@ -64,6 +64,7 @@ module LindenElkMain {
   import CE = LindenElkCheckErase
   import WO = LindenElkWalkOk
   import WOE = LindenElkWalkOkEntry
+  import SS = StrictSuffix
 
   // ==========================================================================
   // Bridge: our local closure IS Linden's (identical definitions over the
@@ -7443,6 +7444,554 @@ module LindenElkMain {
     var t := LFU.ComputeTr(rer, [LS.Areg(r)], inp, gm, dir);
     ComputeTrGOwnerWF2(rer, r, inp, gm, dir, g);
     found, lk, tsub, gmo, inpo := TreeResGOwnerFreshV(t, gm, inp, dir, g);
+  }
+
+  // ==========================================================================
+  // B'' STRUCTURAL NAMING (milestone #1 core). A compiled `ComputeTr` tree
+  // records, at EVERY `LK`/`LKFail` node, a body subtree that IS the compiled
+  // body tree of that look's OWN body regex — `ComputeTr([Areg(r1)], inpX,
+  // Empty, LkDir(lk0))` for a recursive-fragment body `r1` and the position
+  // `inpX` at which `ComputeTr` built it. This is the general (all-depth,
+  // all-branching) analogue of `ComputeTrSingleLookUnfold`'s per-layer pinning:
+  // it holds uniformly over the whole tree by construction of `ComputeTr`. The
+  // body map is pinned to `Empty` via `ComputeTrGmIndepLkRec` (positive bodies
+  // recurse; negative bodies are group-free, hence still `PikeLkRegexRec`).
+  // ==========================================================================
+
+  /** `tlk` is the compiled body tree of SOME recursive-fragment body regex, at
+      `Empty` map, in the look's own direction — the naming an `LK`/`LKFail`
+      node's subtree carries by construction of `ComputeTr`. */
+  ghost predicate NamedLkBody(rer: LW.RegExpRecord, lk0: L.Lookaround, tlk: LT.Tree) {
+    exists r1: L.Regex, inpX: LC.Input ::
+      EL.PikeLkRegexRec(r1)
+      && tlk == LFU.ComputeTr(rer, [LS.Areg(r1)], inpX, LG.Empty, L.LkDir(lk0))
+  }
+
+  /** Every `LK`/`LKFail` body subtree of `t` is a `NamedLkBody`. Threaded down
+      the sound owner descent so the innermost-owner subtree it lands on is
+      recognized as a compiled look-body tree. */
+  ghost predicate AllLkBodiesNamed(rer: LW.RegExpRecord, t: LT.Tree)
+    decreases t
+  {
+    match t
+    case Mismatch => true
+    case Match => true
+    case Choice(t1, t2) => AllLkBodiesNamed(rer, t1) && AllLkBodiesNamed(rer, t2)
+    case Read(_, t1) => AllLkBodiesNamed(rer, t1)
+    case ReadBackRef(_, t1) => AllLkBodiesNamed(rer, t1)
+    case Progress(t1) => AllLkBodiesNamed(rer, t1)
+    case AnchorPass(_, t1) => AllLkBodiesNamed(rer, t1)
+    case GroupActionT(_, t1) => AllLkBodiesNamed(rer, t1)
+    case LK(lk0, tlk, t1) =>
+      NamedLkBody(rer, lk0, tlk) && AllLkBodiesNamed(rer, tlk) && AllLkBodiesNamed(rer, t1)
+    case LKFail(lk0, tlk) =>
+      NamedLkBody(rer, lk0, tlk) && AllLkBodiesNamed(rer, tlk)
+  }
+
+  /** B'' STRUCTURAL WALK: a recursive-fragment `ComputeTr` tree has every `LK`
+      body subtree `NamedLkBody`. Mirrors `ComputeTrRw`'s one-step unfold
+      (`decreases ActionsFuel`), recursing into every sub-`ComputeTr`; at the
+      `LookaroundR` case the body subtree is `ComputeTr([Areg(r1)], inp, gm,
+      LkDir(lk))`, pinned to `Empty` by `ComputeTrGmIndepLkRec`, so `(r1, inp)`
+      witnesses `NamedLkBody`. */
+  lemma ComputeTrAllLkBodiesNamed(rer: LW.RegExpRecord, act: LS.Actions, inp: LC.Input,
+                                  gm: LG.GroupMap, dir: WP.Direction)
+    requires EL.PikeLkActionsRec(act)
+    ensures AllLkBodiesNamed(rer, LFU.ComputeTr(rer, act, inp, gm, dir))
+    decreases LFS.ActionsFuel(act, inp, dir)
+  {
+    LFU.ComputeTrRw(rer, act, inp, gm, dir);
+    var t := LFU.ComputeTr(rer, act, inp, gm, dir);
+    if |act| == 0 { assert t == LT.Match; return; }
+    var cont := act[1..];
+    assert act == [act[0]] + cont;
+    EL.PikeLkActionsRecConsIff(act[0], cont);
+    EL.PikeLkActionsRecTail(act);
+    match act[0]
+    case Acheck(strcheck) =>
+      if SS.IsStrictSuffix(inp, strcheck, dir) {
+        LFS.CheckTermination(cont, inp, strcheck, dir);
+        ComputeTrAllLkBodiesNamed(rer, cont, inp, gm, dir);
+        assert t == LT.Progress(LFU.ComputeTr(rer, cont, inp, gm, dir));
+      } else {
+        assert t == LT.Mismatch;
+      }
+    case Aclose(gid) =>
+      LFS.CloseTermination(cont, inp, dir, gid);
+      ComputeTrAllLkBodiesNamed(rer, cont, inp, LG.GMClose(LC.Idx(inp), gid, gm), dir);
+      assert t == LT.GroupActionT(LG.Close(gid), LFU.ComputeTr(rer, cont, inp, LG.GMClose(LC.Idx(inp), gid, gm), dir));
+    case Areg(r) =>
+      match r
+      case Epsilon =>
+        LFS.EpsilonTermination(cont, inp, dir);
+        ComputeTrAllLkBodiesNamed(rer, cont, inp, gm, dir);
+        assert t == LFU.ComputeTr(rer, cont, inp, gm, dir);
+      case Character(cd) =>
+        match LC.ReadChar(rer, cd, inp, dir) {
+          case None => assert t == LT.Mismatch;
+          case Some(pair) =>
+            LFS.CharacterTermination(rer, cont, inp, dir, cd, pair.0, pair.1);
+            ComputeTrAllLkBodiesNamed(rer, cont, pair.1, gm, dir);
+            assert t == LT.Read(pair.0, LFU.ComputeTr(rer, cont, pair.1, gm, dir));
+        }
+      case Disjunction(r1, r2) =>
+        assert EL.PikeLkActionsRec([LS.Areg(r1)] + cont) by { EL.PikeLkActionsRecConsIff(LS.Areg(r1), cont); }
+        assert EL.PikeLkActionsRec([LS.Areg(r2)] + cont) by { EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont); }
+        LFS.DisjunctionLeftTermination(cont, inp, dir, r1, r2);
+        LFS.DisjunctionRightTermination(cont, inp, dir, r1, r2);
+        ComputeTrAllLkBodiesNamed(rer, [LS.Areg(r1)] + cont, inp, gm, dir);
+        ComputeTrAllLkBodiesNamed(rer, [LS.Areg(r2)] + cont, inp, gm, dir);
+        assert t == LT.Choice(LFU.ComputeTr(rer, [LS.Areg(r1)] + cont, inp, gm, dir),
+                              LFU.ComputeTr(rer, [LS.Areg(r2)] + cont, inp, gm, dir));
+      case Sequence(r1, r2) =>
+        var na := LS.SeqList(r1, r2, dir) + cont;
+        assert EL.PikeLkActionsRec(na) by {
+          if dir.Forward? {
+            assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+            EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont); EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
+          } else {
+            assert na == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
+            EL.PikeLkActionsRecConsIff(LS.Areg(r1), cont); EL.PikeLkActionsRecConsIff(LS.Areg(r2), [LS.Areg(r1)] + cont);
+          }
+        }
+        LFS.SequenceTermination(cont, inp, dir, r1, r2);
+        ComputeTrAllLkBodiesNamed(rer, na, inp, gm, dir);
+        assert t == LFU.ComputeTr(rer, na, inp, gm, dir);
+      case Quantified(greedy, min, delta, r1) =>
+        var gidl := L.DefGroups(r1);
+        if min > 0 {
+          var quant := L.Quantified(greedy, min - 1, delta, r1);
+          var na := [LS.Areg(r1), LS.Areg(quant)] + cont;
+          assert EL.PikeLkActionsRec(na) by {
+            assert na == [LS.Areg(r1)] + ([LS.Areg(quant)] + cont);
+            EL.PikeLkActionsRecConsIff(LS.Areg(quant), cont); EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(quant)] + cont);
+          }
+          LFS.QuantForcedTermination(cont, inp, dir, r1, min - 1, delta, greedy);
+          assert (min - 1) + 1 == min;
+          ComputeTrAllLkBodiesNamed(rer, na, inp, LG.GMReset(gidl, gm), dir);
+          assert t == LT.GroupActionT(LG.Reset(gidl), LFU.ComputeTr(rer, na, inp, LG.GMReset(gidl, gm), dir));
+        } else if delta == LN.NN(0) {
+          LFS.QuantDoneTermination(cont, inp, dir, r1, greedy);
+          ComputeTrAllLkBodiesNamed(rer, cont, inp, gm, dir);
+          assert t == LFU.ComputeTr(rer, cont, inp, gm, dir);
+        } else {
+          var quant := L.Quantified(greedy, 0, LFS.NoiPred(delta), r1);
+          var na := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
+          assert EL.PikeLkActionsRec(na) by {
+            assert na == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+            EL.PikeLkActionsRecConsIff(LS.Areg(quant), cont); EL.PikeLkActionsRecConsIff(LS.Acheck(inp), [LS.Areg(quant)] + cont);
+            EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+          }
+          LFS.QuantFreeIterTermination(cont, inp, dir, r1, greedy, delta);
+          LFS.QuantFreeSkipTermination(cont, inp, dir, r1, greedy, delta);
+          ComputeTrAllLkBodiesNamed(rer, na, inp, LG.GMReset(gidl, gm), dir);
+          ComputeTrAllLkBodiesNamed(rer, cont, inp, gm, dir);
+          assert t == LT.GreedyChoice(greedy, LT.GroupActionT(LG.Reset(gidl), LFU.ComputeTr(rer, na, inp, LG.GMReset(gidl, gm), dir)),
+                                      LFU.ComputeTr(rer, cont, inp, gm, dir));
+        }
+      case Group(gid, r1) =>
+        var na := [LS.Areg(r1), LS.Aclose(gid)] + cont;
+        assert EL.PikeLkActionsRec(na) by {
+          assert na == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
+          EL.PikeLkActionsRecConsIff(LS.Aclose(gid), cont); EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+        }
+        LFS.GroupTermination(cont, inp, dir, r1, gid);
+        ComputeTrAllLkBodiesNamed(rer, na, inp, LG.GMOpen(LC.Idx(inp), gid, gm), dir);
+        assert t == LT.GroupActionT(LG.Open(gid), LFU.ComputeTr(rer, na, inp, LG.GMOpen(LC.Idx(inp), gid, gm), dir));
+      case LookaroundR(lk, r1) =>
+        assert EL.PikeLkRegexRec(r1) by {
+          if L.Positivity(lk) { } else { assert SD.GroupFreeL(r1); GroupFreeImpliesNoLkBr(r1); EL.NoLkBrLIsPikeLkRegexRec(r1); }
+        }
+        assert EL.PikeLkActionsRec([LS.Areg(r1)]) by { EL.PikeLkActionsRecConsIff(LS.Areg(r1), []); }
+        LFS.LkLkTermination(cont, inp, dir, lk, r1);
+        ComputeTrAllLkBodiesNamed(rer, [LS.Areg(r1)], inp, gm, L.LkDir(lk));
+        var treelk := LFU.ComputeTr(rer, [LS.Areg(r1)], inp, gm, L.LkDir(lk));
+        EL.ComputeTrGmIndepLkRec(rer, r1, inp, gm, L.LkDir(lk));
+        assert treelk == LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk));
+        assert NamedLkBody(rer, lk, treelk);   // witness (r1, inp)
+        match LS.LkResult(lk, treelk, gm, inp) {
+          case Some(gmlk) =>
+            LFS.LkAfterTermination(cont, inp, dir, lk, r1);
+            ComputeTrAllLkBodiesNamed(rer, cont, inp, gmlk, dir);
+            assert t == LT.LK(lk, treelk, LFU.ComputeTr(rer, cont, inp, gmlk, dir));
+          case None =>
+            assert t == LT.LKFail(lk, treelk);
+        }
+      case AnchorR(a) =>
+        if LS.AnchorSatisfied(rer, a, inp) {
+          LFS.AnchorTermination(cont, inp, dir, a);
+          ComputeTrAllLkBodiesNamed(rer, cont, inp, gm, dir);
+          assert t == LT.AnchorPass(a, LFU.ComputeTr(rer, cont, inp, gm, dir));
+        } else {
+          assert t == LT.Mismatch;
+        }
+      case Backreference(gid) =>
+        assert false;   // PikeLkRegexRec(Backreference) == false, excluded by PikeLkActionsRec
+  }
+
+  // ==========================================================================
+  // B'' HEADLINE (deliverable #1): the ACTION-SPACE regex-tracking owner descent
+  // that NAMES the owner subtree as the owner look's compiled body tree. Fuses
+  // `ComputeTreeGBodyOK`'s per-case ACTION bookkeeping (`decreases ActionsFuel`,
+  // `ComputeTrRw` one-step unfold) with `TreeResGOwnerFreshV`'s winning-path
+  // following. Because the walk always PUSHES the owner look to the ACTION HEAD
+  // before processing it, at that point the whole current tree IS the `LK` node
+  // `LK(lk, treelk, tcont)` and the owner peel is the ATOMIC
+  // `TreeResLkNodeGValueFresh` (no deep tree navigation). The single group map
+  // threaded by `ComputeTr` (build) and `TreeRes` (evaluate) COINCIDE at every
+  // step (GMUpdate mirrors GMOpen/GMClose/GMReset; the look continuation runs at
+  // `LkResult == TreeRes(body)`), so the descent-recorded position `inpo` is BOTH
+  // the owner body's BUILD position and its TreeRes position — resolving the
+  // ComputeTr/TreeRes position alignment for free. The named owner subtree is
+  // pinned to `Empty` by `ComputeTrGmIndepLkRec`.
+  // ==========================================================================
+
+  /** B'' deliverable #1. On the winning path of a recursive-fragment action
+      list, the leaf value at an inside-look capture `g` is EITHER unset (`None`)
+      OR the value at `g` of the OWNER positive look's compiled body tree
+      `ComputeTr([Areg(rr)], inpo, Empty, LkDir(lk0))`, at the descent-recorded
+      position `inpo`. `rr` is that look's OWN body regex, named off the action
+      list. Composes with `TreeResLkNodeGValueFresh` at the owner (peeled atomicly
+      because the owner look is at the action head). */
+  lemma ComputeTrOwnerNamedActs(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input,
+                                gm: LG.GroupMap, dir: WP.Direction, g: LG.GroupId)
+      returns (found: bool, lk0: L.Lookaround, rr: L.Regex, inpo: LC.Input, gmo: LG.GroupMap)
+    requires EL.PikeLkActionsRec(acts)
+    requires GNQActs(acts, g)
+    requires GOnceInv(acts, g)
+    requires g !in OuterDefsActs(acts)
+    requires LG.Find(g, gm) == None
+    requires LT.TreeRes(LFU.ComputeTr(rer, acts, inp, gm, dir), gm, inp, dir).Some?
+    ensures var t := LFU.ComputeTr(rer, acts, inp, gm, dir);
+      (!found ==> LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1) == None)
+      && (found ==>
+            L.Positivity(lk0)
+            && EL.PikeLkRegexRec(rr)
+            && g in DefGroupsOutsideLooksL(rr)          // g DIRECTLY captured in the owner body
+            && gmo == LG.Empty
+            && var tsub := LFU.ComputeTr(rer, [LS.Areg(rr)], inpo, gmo, L.LkDir(lk0));
+               LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk0)).Some?
+               && LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1)
+                  == LG.Find(g, LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk0)).value.1))
+    decreases LFS.ActionsFuel(acts, inp, dir)
+  {
+    found, lk0, rr, inpo, gmo := false, L.LookAhead, L.Epsilon, inp, gm;   // !found default
+    LFU.ComputeTrRw(rer, acts, inp, gm, dir);
+    var t := LFU.ComputeTr(rer, acts, inp, gm, dir);
+    if |acts| == 0 {
+      assert t == LT.Match;
+      assert LT.TreeRes(t, gm, inp, dir) == Some((inp, gm));
+      return;
+    }
+    var cont := acts[1..];
+    assert acts == [acts[0]] + cont;
+    EL.PikeLkActionsRecConsIff(acts[0], cont);
+    EL.PikeLkActionsRecTail(acts);
+    GNQActsCons(acts[0], cont, g);
+    GNQActsTail(acts, g);
+    OuterDefsActsCons(acts[0], cont);
+    AllDefsActsMsCons(acts[0], cont, g);
+    PendingClosesCons(acts[0], cont);
+    assert multiset(AllDefsActs(cont))[g] <= multiset(AllDefsActs(acts))[g];
+    assert (g in PendingCloses(cont)) ==> (g in PendingCloses(acts));
+    assert GOnceInv(cont, g);
+    assert g !in OuterDefsActs(cont);
+    match acts[0]
+    case Acheck(strcheck) =>
+      if SS.IsStrictSuffix(inp, strcheck, dir) {
+        LFS.CheckTermination(cont, inp, strcheck, dir);
+        assert t == LT.Progress(LFU.ComputeTr(rer, cont, inp, gm, dir));
+        assert LT.TreeRes(t, gm, inp, dir) == LT.TreeRes(LFU.ComputeTr(rer, cont, inp, gm, dir), gm, inp, dir);
+        found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, cont, inp, gm, dir, g);
+      } else {
+        assert t == LT.Mismatch;
+        assert false;   // TreeRes(Mismatch) == None contradicts .Some?
+      }
+    case Aclose(gid) =>
+      assert gid != g;   // g !in OuterDefsActs (Aclose contributes {gid})
+      LFS.CloseTermination(cont, inp, dir, gid);
+      var gm2 := LG.GMClose(LC.Idx(inp), gid, gm);
+      assert t == LT.GroupActionT(LG.Close(gid), LFU.ComputeTr(rer, cont, inp, gm2, dir));
+      GMUpdateFindNotTouch(LG.Close(gid), LC.Idx(inp), gm, g);   // Find(g, gm2) == None
+      assert LT.TreeRes(t, gm, inp, dir) == LT.TreeRes(LFU.ComputeTr(rer, cont, inp, gm2, dir), gm2, inp, dir);
+      found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, cont, inp, gm2, dir, g);
+    case Areg(r) =>
+      match r
+      case Epsilon =>
+        LFS.EpsilonTermination(cont, inp, dir);
+        assert t == LFU.ComputeTr(rer, cont, inp, gm, dir);
+        found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, cont, inp, gm, dir, g);
+      case Character(cd) =>
+        match LC.ReadChar(rer, cd, inp, dir) {
+          case None => assert t == LT.Mismatch; assert false;
+          case Some(pair) =>
+            LFS.CharacterTermination(rer, cont, inp, dir, cd, pair.0, pair.1);
+            LC.CanReadCorrect(inp, rer, cd, dir, pair.1);
+            LC.AdvanceInputSuccess(inp, dir, pair.1);   // pair.1 == AdvanceInputP(inp, dir)
+            assert t == LT.Read(pair.0, LFU.ComputeTr(rer, cont, pair.1, gm, dir));
+            assert LT.TreeRes(t, gm, inp, dir) == LT.TreeRes(LFU.ComputeTr(rer, cont, pair.1, gm, dir), gm, pair.1, dir);
+            found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, cont, pair.1, gm, dir, g);
+        }
+      case Disjunction(r1, r2) =>
+        var a1 := [LS.Areg(r1)] + cont; var a2 := [LS.Areg(r2)] + cont;
+        assert GNQActs(a1, g) && GNQActs(a2, g) by { GNQActsCons(LS.Areg(r1), cont, g); GNQActsCons(LS.Areg(r2), cont, g); }
+        assert EL.PikeLkActionsRec(a1) && EL.PikeLkActionsRec(a2) by { EL.PikeLkActionsRecConsIff(LS.Areg(r1), cont); EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont); }
+        assert GOnceInv(a1, g) && GOnceInv(a2, g) by {
+          AllDefsActsMsCons(LS.Areg(r1), cont, g); AllDefsActsMsCons(LS.Areg(r2), cont, g);
+          PendingClosesCons(LS.Areg(r1), cont); PendingClosesCons(LS.Areg(r2), cont);
+          assert multiset(L.DefGroups(r))[g] == multiset(L.DefGroups(r1))[g] + multiset(L.DefGroups(r2))[g];
+        }
+        assert g !in OuterDefsActs(a1) && g !in OuterDefsActs(a2) by {
+          OuterDefsActsCons(LS.Areg(r1), cont); OuterDefsActsCons(LS.Areg(r2), cont);
+          assert L.DefGroups(r) == L.DefGroups(r1) + L.DefGroups(r2);
+        }
+        LFS.DisjunctionLeftTermination(cont, inp, dir, r1, r2);
+        LFS.DisjunctionRightTermination(cont, inp, dir, r1, r2);
+        var tA := LFU.ComputeTr(rer, a1, inp, gm, dir);
+        var tB := LFU.ComputeTr(rer, a2, inp, gm, dir);
+        assert t == LT.Choice(tA, tB);
+        if LT.TreeRes(tA, gm, inp, dir).Some? {
+          assert LT.TreeRes(t, gm, inp, dir) == LT.TreeRes(tA, gm, inp, dir);
+          found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, a1, inp, gm, dir, g);
+        } else {
+          assert LT.TreeRes(t, gm, inp, dir) == LT.TreeRes(tB, gm, inp, dir);
+          found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, a2, inp, gm, dir, g);
+        }
+      case Sequence(r1, r2) =>
+        var na := LS.SeqList(r1, r2, dir) + cont;
+        assert EL.PikeLkActionsRec(na) && GNQActs(na, g) && GOnceInv(na, g) && g !in OuterDefsActs(na) by {
+          if dir.Forward? {
+            assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+            EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont); EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
+            GNQActsCons(LS.Areg(r2), cont, g); GNQActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont, g);
+            AllDefsActsMsCons(LS.Areg(r2), cont, g); AllDefsActsMsCons(LS.Areg(r1), [LS.Areg(r2)] + cont, g);
+            PendingClosesCons(LS.Areg(r2), cont); PendingClosesCons(LS.Areg(r1), [LS.Areg(r2)] + cont);
+            OuterDefsActsCons(LS.Areg(r2), cont); OuterDefsActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont);
+          } else {
+            assert na == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
+            EL.PikeLkActionsRecConsIff(LS.Areg(r1), cont); EL.PikeLkActionsRecConsIff(LS.Areg(r2), [LS.Areg(r1)] + cont);
+            GNQActsCons(LS.Areg(r1), cont, g); GNQActsCons(LS.Areg(r2), [LS.Areg(r1)] + cont, g);
+            AllDefsActsMsCons(LS.Areg(r1), cont, g); AllDefsActsMsCons(LS.Areg(r2), [LS.Areg(r1)] + cont, g);
+            PendingClosesCons(LS.Areg(r1), cont); PendingClosesCons(LS.Areg(r2), [LS.Areg(r1)] + cont);
+            OuterDefsActsCons(LS.Areg(r1), cont); OuterDefsActsCons(LS.Areg(r2), [LS.Areg(r1)] + cont);
+          }
+          assert multiset(L.DefGroups(r))[g] == multiset(L.DefGroups(r1))[g] + multiset(L.DefGroups(r2))[g];
+          assert L.DefGroups(r) == L.DefGroups(r1) + L.DefGroups(r2);
+        }
+        LFS.SequenceTermination(cont, inp, dir, r1, r2);
+        assert t == LFU.ComputeTr(rer, na, inp, gm, dir);
+        found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, na, inp, gm, dir, g);
+      case Quantified(greedy, min, delta, r1) =>
+        var gidl := L.DefGroups(r1);
+        assert g !in (set x | x in L.DefGroups(r1));   // GNotUnderQuantL(Quantified)
+        assert multiset(L.DefGroups(r1))[g] == 0;
+        assert L.DefGroups(r) == gidl;
+        assert LG.Find(g, LG.GMReset(gidl, gm)) == None by { GMUpdateFindNotTouch(LG.Reset(gidl), LC.Idx(inp), gm, g); }
+        if min > 0 {
+          var quant := L.Quantified(greedy, min - 1, delta, r1);
+          var na := [LS.Areg(r1), LS.Areg(quant)] + cont;
+          assert EL.PikeLkActionsRec(na) && GNQActs(na, g) && GOnceInv(na, g) && g !in OuterDefsActs(na) by {
+            assert na == [LS.Areg(r1)] + ([LS.Areg(quant)] + cont);
+            EL.PikeLkActionsRecConsIff(LS.Areg(quant), cont); EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(quant)] + cont);
+            GNQActsCons(LS.Areg(quant), cont, g); GNQActsCons(LS.Areg(r1), [LS.Areg(quant)] + cont, g);
+            AllDefsActsMsCons(LS.Areg(quant), cont, g); AllDefsActsMsCons(LS.Areg(r1), [LS.Areg(quant)] + cont, g);
+            PendingClosesCons(LS.Areg(quant), cont); PendingClosesCons(LS.Areg(r1), [LS.Areg(quant)] + cont);
+            OuterDefsActsCons(LS.Areg(quant), cont); OuterDefsActsCons(LS.Areg(r1), [LS.Areg(quant)] + cont);
+            assert L.DefGroups(quant) == gidl;
+            assert DefGroupsOutsideLooksL(quant) == DefGroupsOutsideLooksL(r1);
+          }
+          LFS.QuantForcedTermination(cont, inp, dir, r1, min - 1, delta, greedy);
+          assert (min - 1) + 1 == min;
+          var titer := LFU.ComputeTr(rer, na, inp, LG.GMReset(gidl, gm), dir);
+          assert t == LT.GroupActionT(LG.Reset(gidl), titer);
+          assert LT.TreeRes(t, gm, inp, dir) == LT.TreeRes(titer, LG.GMReset(gidl, gm), inp, dir);
+          found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, na, inp, LG.GMReset(gidl, gm), dir, g);
+        } else if delta == LN.NN(0) {
+          LFS.QuantDoneTermination(cont, inp, dir, r1, greedy);
+          assert t == LFU.ComputeTr(rer, cont, inp, gm, dir);
+          found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, cont, inp, gm, dir, g);
+        } else {
+          var quant := L.Quantified(greedy, 0, LFS.NoiPred(delta), r1);
+          var na := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
+          assert EL.PikeLkActionsRec(na) && GNQActs(na, g) && GOnceInv(na, g) && g !in OuterDefsActs(na) by {
+            assert na == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+            EL.PikeLkActionsRecConsIff(LS.Areg(quant), cont); EL.PikeLkActionsRecConsIff(LS.Acheck(inp), [LS.Areg(quant)] + cont);
+            EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+            GNQActsCons(LS.Areg(quant), cont, g); GNQActsCons(LS.Acheck(inp), [LS.Areg(quant)] + cont, g);
+            GNQActsCons(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont), g);
+            AllDefsActsMsCons(LS.Areg(quant), cont, g); AllDefsActsMsCons(LS.Acheck(inp), [LS.Areg(quant)] + cont, g);
+            AllDefsActsMsCons(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont), g);
+            PendingClosesCons(LS.Areg(quant), cont); PendingClosesCons(LS.Acheck(inp), [LS.Areg(quant)] + cont);
+            PendingClosesCons(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+            OuterDefsActsCons(LS.Areg(quant), cont); OuterDefsActsCons(LS.Acheck(inp), [LS.Areg(quant)] + cont);
+            OuterDefsActsCons(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+            assert L.DefGroups(quant) == gidl;
+            assert DefGroupsOutsideLooksL(quant) == DefGroupsOutsideLooksL(r1);
+          }
+          LFS.QuantFreeIterTermination(cont, inp, dir, r1, greedy, delta);
+          LFS.QuantFreeSkipTermination(cont, inp, dir, r1, greedy, delta);
+          var titer := LFU.ComputeTr(rer, na, inp, LG.GMReset(gidl, gm), dir);
+          var tskip := LFU.ComputeTr(rer, cont, inp, gm, dir);
+          var X := LT.GroupActionT(LG.Reset(gidl), titer);
+          assert t == LT.GreedyChoice(greedy, X, tskip);
+          assert LT.TreeRes(X, gm, inp, dir) == LT.TreeRes(titer, LG.GMReset(gidl, gm), inp, dir);
+          var iterRes := LT.TreeRes(titer, LG.GMReset(gidl, gm), inp, dir);
+          var skipRes := LT.TreeRes(tskip, gm, inp, dir);
+          if greedy {
+            assert t == LT.Choice(X, tskip);
+            if iterRes.Some? {
+              assert LT.TreeRes(t, gm, inp, dir) == iterRes;
+              found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, na, inp, LG.GMReset(gidl, gm), dir, g);
+            } else {
+              assert LT.TreeRes(t, gm, inp, dir) == skipRes;
+              found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, cont, inp, gm, dir, g);
+            }
+          } else {
+            assert t == LT.Choice(tskip, X);
+            if skipRes.Some? {
+              assert LT.TreeRes(t, gm, inp, dir) == skipRes;
+              found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, cont, inp, gm, dir, g);
+            } else {
+              assert LT.TreeRes(t, gm, inp, dir) == iterRes;
+              found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, na, inp, LG.GMReset(gidl, gm), dir, g);
+            }
+          }
+        }
+      case Group(gid, r1) =>
+        var na := [LS.Areg(r1), LS.Aclose(gid)] + cont;
+        assert gid != g;   // g !in OuterDefsActs (Group contributes {gid})
+        assert L.DefGroups(r) == [gid] + L.DefGroups(r1);
+        assert EL.PikeLkActionsRec(na) && GNQActs(na, g) && GOnceInv(na, g) && g !in OuterDefsActs(na) by {
+          assert na == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
+          EL.PikeLkActionsRecConsIff(LS.Aclose(gid), cont); EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+          GNQActsCons(LS.Aclose(gid), cont, g); GNQActsCons(LS.Areg(r1), [LS.Aclose(gid)] + cont, g);
+          AllDefsActsMsCons(LS.Aclose(gid), cont, g); AllDefsActsMsCons(LS.Areg(r1), [LS.Aclose(gid)] + cont, g);
+          PendingClosesCons(LS.Aclose(gid), cont); PendingClosesCons(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+          OuterDefsActsCons(LS.Aclose(gid), cont); OuterDefsActsCons(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+        }
+        LFS.GroupTermination(cont, inp, dir, r1, gid);
+        var gm2 := LG.GMOpen(LC.Idx(inp), gid, gm);
+        GMUpdateFindNotTouch(LG.Open(gid), LC.Idx(inp), gm, g);   // Find(g, gm2) == None
+        var tc := LFU.ComputeTr(rer, na, inp, gm2, dir);
+        assert t == LT.GroupActionT(LG.Open(gid), tc);
+        assert LT.TreeRes(t, gm, inp, dir) == LT.TreeRes(tc, gm2, inp, dir);
+        found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, na, inp, gm2, dir, g);
+      case LookaroundR(lk, r1) =>
+        assert EL.PikeLkRegexRec(r1) by {
+          if L.Positivity(lk) { } else { assert SD.GroupFreeL(r1); GroupFreeImpliesNoLkBr(r1); EL.NoLkBrLIsPikeLkRegexRec(r1); }
+        }
+        var bodyacts := [LS.Areg(r1)];
+        assert EL.PikeLkActionsRec(bodyacts) by { EL.PikeLkActionsRecConsIff(LS.Areg(r1), []); }
+        var treelk := LFU.ComputeTr(rer, bodyacts, inp, gm, L.LkDir(lk));
+        match LS.LkResult(lk, treelk, gm, inp) {
+          case None =>
+            assert t == LT.LKFail(lk, treelk);
+            assert LT.TreeRes(t, gm, inp, dir).None?;
+            assert false;
+          case Some(gmlk) =>
+            var tcont := LFU.ComputeTr(rer, cont, inp, gmlk, dir);
+            assert t == LT.LK(lk, treelk, tcont);
+            assert LT.TreeRes(t, gm, inp, dir) == LT.TreeRes(tcont, gmlk, inp, dir);
+            if g in (set x | x in L.DefGroups(r1)) {
+              // g is written in this positive look's body (somewhere).
+              assert L.Positivity(lk) by {
+                if !L.Positivity(lk) { assert SD.GroupFreeL(r1); SD.GroupFreeDefGroups(r1); }
+              }
+              assert L.DefGroups(r) == L.DefGroups(r1);
+              assert multiset(L.DefGroups(r1))[g] >= 1;
+              assert multiset(L.DefGroups(r1))[g] <= 1;   // GOnceInv on acts
+              assert multiset(AllDefsActs(cont))[g] == 0;
+              assert g !in (set x | x in AllDefsActs(cont));
+              assert g !in PendingCloses(cont);
+              GNotWrittenComputeTrActs(rer, cont, inp, gmlk, dir, g);   // GNotWritten(tcont, g)
+              // OUTER peel: leaf value at g == body-tree value at g (at Empty), position `inp`.
+              TreeResLkNodeGValueFresh(lk, treelk, tcont, gm, inp, dir, g);
+              if g in DefGroupsOutsideLooksL(r1) {
+                // g on r1's OWN spine: THIS look is the INNERMOST owner.
+                EL.ComputeTrGmIndepLkRec(rer, r1, inp, gm, L.LkDir(lk));   // treelk == ComputeTr(bodyacts, inp, Empty, LkDir)
+                assert treelk == LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk));
+                found, lk0, rr, inpo, gmo := true, lk, r1, inp, LG.Empty;
+              } else {
+                // g DEEPER inside r1's own looks: recurse into the body to find the
+                // innermost owner, then chain through the outer peel.
+                assert GNQActs([LS.Areg(r1)], g) by { GNQActsCons(LS.Areg(r1), [], g); }
+                assert EL.PikeLkActionsRec([LS.Areg(r1)]) by { EL.PikeLkActionsRecConsIff(LS.Areg(r1), []); }
+                assert GOnceInv([LS.Areg(r1)], g) by { AllDefsActsMsCons(LS.Areg(r1), [], g); PendingClosesCons(LS.Areg(r1), []); }
+                assert g !in OuterDefsActs([LS.Areg(r1)]) by { OuterDefsActsCons(LS.Areg(r1), []); }
+                assert LT.TreeRes(treelk, gm, inp, L.LkDir(lk)).Some?;   // LkResult Some (positive)
+                LFS.LkLkTermination(cont, inp, dir, lk, r1);
+                var f2, l2, rr2, i2, gmo2 := ComputeTrOwnerNamedActs(rer, [LS.Areg(r1)], inp, gm, L.LkDir(lk), g);
+                // frame body-tree value at g: Empty vs gm agree (both None at g).
+                TreeResGValueFramed(treelk, LG.Empty, gm, inp, L.LkDir(lk), g);
+                if f2 {
+                  found, lk0, rr, inpo, gmo := f2, l2, rr2, i2, gmo2;
+                } else {
+                  found := false;   // body leaf at g None ==> outer leaf at g None
+                }
+              }
+            } else {
+              // g-free body: recurse into cont at the gate map gmlk.
+              assert g !in (set x | x in L.DefGroups(r1));
+              GNotWrittenComputeTr(rer, r1, inp, gm, L.LkDir(lk), g);   // GNotWritten(treelk, g)
+              if L.Positivity(lk) {
+                TreeResGNotWritten(treelk, gm, inp, L.LkDir(lk), g);
+              }
+              assert LG.Find(g, gmlk) == None;
+              LFS.LkAfterTermination(cont, inp, dir, lk, r1);
+              found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, cont, inp, gmlk, dir, g);
+            }
+        }
+      case AnchorR(a) =>
+        if LS.AnchorSatisfied(rer, a, inp) {
+          LFS.AnchorTermination(cont, inp, dir, a);
+          assert t == LT.AnchorPass(a, LFU.ComputeTr(rer, cont, inp, gm, dir));
+          assert LT.TreeRes(t, gm, inp, dir) == LT.TreeRes(LFU.ComputeTr(rer, cont, inp, gm, dir), gm, inp, dir);
+          found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, cont, inp, gm, dir, g);
+        } else {
+          assert t == LT.Mismatch;
+          assert false;
+        }
+      case Backreference(gid) =>
+        assert false;   // excluded by PikeLkActionsRec
+  }
+
+  /** B'' deliverable #1 (turnkey single-regex form). Same signature/side
+      conditions as `OuterLeafGOwnerSubtree`, but the owner subtree is NAMED as the
+      owner look's compiled body tree `ComputeTr([Areg(rr)], inpo, Empty,
+      LkDir(lk0))` (built AND evaluated at the descent-recorded `inpo`) rather than
+      left abstract. Wraps `ComputeTrOwnerNamedActs` at `acts = [Areg(r)]`. The
+      value tie to `OuterLeafGOwnerSubtree`'s abstract `tsub` is immediate: BOTH
+      the named `tsub` here and `OuterLeafGOwnerSubtree`'s `tsub` have `Find(g, .)`
+      equal to `Find(g, TreeRes(t, gm, inp, dir).value.1)` (found), or both give
+      the leaf value `None` (`!found`) — the winning path writes `g` in exactly one
+      (innermost owner) look body, or nowhere. */
+  lemma ComputeTrOwnerNamed(rer: LW.RegExpRecord, r: L.Regex, inp: LC.Input, gm: LG.GroupMap,
+                            dir: WP.Direction, g: LG.GroupId)
+      returns (found: bool, lk0: L.Lookaround, rr: L.Regex, inpo: LC.Input, gmo: LG.GroupMap)
+    requires EL.PikeLkRegexRec(r)
+    requires GNotUnderQuantL(r, g)
+    requires g !in DefGroupsOutsideLooksL(r)
+    requires multiset(L.DefGroups(r))[g] <= 1
+    requires LG.Find(g, gm) == None
+    requires LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(r)], inp, gm, dir), gm, inp, dir).Some?
+    ensures var t := LFU.ComputeTr(rer, [LS.Areg(r)], inp, gm, dir);
+      (!found ==> LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1) == None)
+      && (found ==>
+            L.Positivity(lk0)
+            && EL.PikeLkRegexRec(rr)
+            && g in DefGroupsOutsideLooksL(rr)          // g DIRECTLY captured in the owner body
+            && gmo == LG.Empty
+            && var tsub := LFU.ComputeTr(rer, [LS.Areg(rr)], inpo, gmo, L.LkDir(lk0));
+               LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk0)).Some?
+               && LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1)
+                  == LG.Find(g, LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk0)).value.1))
+  {
+    var acts := [LS.Areg(r)];
+    assert EL.PikeLkActionsRec(acts) by { EL.PikeLkActionsRecConsIff(LS.Areg(r), []); }
+    assert GNQActs(acts, g) by { GNQActsCons(LS.Areg(r), [], g); }
+    assert GOnceInv(acts, g) by { AllDefsActsMsCons(LS.Areg(r), [], g); PendingClosesCons(LS.Areg(r), []); }
+    assert g !in OuterDefsActs(acts) by { OuterDefsActsCons(LS.Areg(r), []); }
+    found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, acts, inp, gm, dir, g);
   }
 
   /** R31b (2b) — the ATOMIC per-layer ComputeTr↔look-body bridge, the concrete
