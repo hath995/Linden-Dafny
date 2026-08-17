@@ -5392,6 +5392,65 @@ module LindenElkNestInv {
       assert false;
   }
 
+  /** (L4 depth-k, ADDITIVE) the NESTED-fragment counterpart of
+      `LookPathDomOnPathBreaks`. Identical alt/con/quant/capture descent; the
+      `Re_lookaround` case is no longer vacuous (the body may hold looks), so it
+      RECURSES into the body instead of `assert false`: `QuantIds`/`QidBody`
+      descend transparently through a look node, and `LookPathDom` reduces to
+      the body (the outer lid is `LookUnique`-distinct from any body lid). */
+  lemma LookPathDomOnPathBreaksNested(r: R.regex, L: int, qc': seq<int>, lid: nat, qid: nat)
+    requires NR.NestedFragmentRE(r) && LTB.LookUnique(r)
+    requires lid in LTB.LookIds(r) && qid in PIV.QuantIds(r)
+    requires lid in LTB.LookIds(PIV.QidBody(r, qid))
+    requires AI.get_idx(qc', qid as int) > L
+    ensures !LookPathDom(r, L, qc', lid)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if qid in PIV.QuantIds(r1) {
+        QidBodyLookIdsSub(r1, qid);
+        assert lid in LTB.LookIds(r1);
+        LookPathDomOnPathBreaksNested(r1, L, qc', lid, qid);
+      } else {
+        QidBodyLookIdsSub(r2, qid);
+        assert lid in LTB.LookIds(r2);
+        assert lid !in LTB.LookIds(r1) by {
+          if lid in LTB.LookIds(r1) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); }
+        }
+        LookPathDomOnPathBreaksNested(r2, L, qc', lid, qid);
+      }
+    case Re_con(r1, r2) =>
+      if qid in PIV.QuantIds(r1) {
+        QidBodyLookIdsSub(r1, qid);
+        assert lid in LTB.LookIds(r1);
+        LookPathDomOnPathBreaksNested(r1, L, qc', lid, qid);
+      } else {
+        QidBodyLookIdsSub(r2, qid);
+        assert lid in LTB.LookIds(r2);
+        assert lid !in LTB.LookIds(r1) by {
+          if lid in LTB.LookIds(r1) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); }
+        }
+        LookPathDomOnPathBreaksNested(r2, L, qc', lid, qid);
+      }
+    case Re_quant(_, qid0, _, r1) =>
+      if qid0 >= 0 && (qid0 as nat) == qid {
+        assert AI.get_idx(qc', qid0) > L;     // the node's own clause fails
+      } else {
+        LookPathDomOnPathBreaksNested(r1, L, qc', lid, qid);
+      }
+    case Re_capture(_, r1) =>
+      LookPathDomOnPathBreaksNested(r1, L, qc', lid, qid);
+    case Re_lookaround(lid0, _, r1) =>
+      // (L4) the body may hold looks: QuantIds/QidBody descend, so qid lives in
+      // r1 and lid in LookIds(QidBody(r1,qid)) <= LookIds(r1). The outer lid0 is
+      // LookUnique-distinct from every body lid, so LookPathDom reduces to r1.
+      QidBodyLookIdsSub(r1, qid);
+      assert lid in LTB.LookIds(r1);
+      assert (lid0 as nat) != lid;                    // LookUnique: lid0 !in LookIds(r1)
+      LookPathDomOnPathBreaksNested(r1, L, qc', lid, qid);
+  }
+
   /** `QidBody`'s captures are among `r`'s (a subtree). */
   lemma QidBodyCapIdsSub(r: R.regex, qid: nat)
     requires qid in PIV.QuantIds(r)

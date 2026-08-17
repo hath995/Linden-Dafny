@@ -3471,6 +3471,154 @@ module LindenElkPikeInv {
   }
 
   // ==========================================================================
+  // L4 depth-k (ADDITIVE): the NESTED-fragment counterpart of the quant-write
+  // classification trio. VERBATIM clones of `QuantWriteIdsRE`/`...MinRE`/
+  // `...OptRE` with `NR.LookBehindFragmentRE` weakened to `NR.NestedFragmentRE`.
+  // The `Re_lookaround` case is empty (a look compiles to a bare gate — no
+  // main-code SetQuantToClock), and the quant shapes descend identically, so
+  // the proofs are unchanged. Used by `LiftPreserveSetQuantLkNested`.
+  // ==========================================================================
+
+  lemma QuantWriteIdsRENested(re: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentRE(re) && QuantUnique(re)
+    requires NR.NfaRepRE(re, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetQuantToClock? ==>
+      var q := NR.GetPcRE(code, pc).value.sq;
+      q >= 0 && (q as nat) in QuantIds(re)
+      && (q as nat) in QuantIdsOutsideLooks(re)
+    decreases CP.rsize(re), 1
+  {
+    match re
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_lookaround(_, _, _) =>
+    case Re_alt(r1, r2) =>
+      var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
+        && NR.NfaRepRE(r1, code, start + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
+        && NR.NfaRepRE(r2, code, e1 + 1, endl);
+      NR.NfaRepIncrRE(r1, code, start + 1, e1);
+      NR.NfaRepIncrRE(r2, code, e1 + 1, endl);
+      if pc == start {
+      } else if pc < e1 {
+        QuantWriteIdsRENested(r1, code, start + 1, e1, pc);
+      } else if pc == e1 {
+      } else {
+        QuantWriteIdsRENested(r2, code, e1 + 1, endl, pc);
+      }
+    case Re_con(r1, r2) =>
+      var e1: nat :| NR.NfaRepRE(r1, code, start, e1) && NR.NfaRepRE(r2, code, e1, endl);
+      NR.NfaRepIncrRE(r1, code, start, e1);
+      NR.NfaRepIncrRE(r2, code, e1, endl);
+      if pc < e1 {
+        QuantWriteIdsRENested(r1, code, start, e1, pc);
+      } else {
+        QuantWriteIdsRENested(r2, code, e1, endl, pc);
+      }
+    case Re_capture(cid, r1) =>
+      var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
+        && NR.NfaRepRE(r1, code, start + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+        && endl == e1 + 1;
+      NR.NfaRepIncrRE(r1, code, start + 1, e1);
+      if pc == start {
+      } else if pc < e1 {
+        QuantWriteIdsRENested(r1, code, start + 1, e1, pc);
+      } else {
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      if q.min == 0 && q.max == None {
+        var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
+          && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+          && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+          && NR.NfaRepRE(r1, code, start + 3, e1)
+          && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+          && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
+          && endl == e1 + 2;
+        NR.NfaRepIncrRE(r1, code, start + 3, e1);
+        if pc <= start + 2 {
+        } else if pc < e1 {
+          QuantWriteIdsRENested(r1, code, start + 3, e1, pc);
+        } else {
+        }
+      } else if q.max.Some? {
+        var em := NR.NfaRepREQuantInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl);
+        if pc < em {
+          QuantWriteIdsMinRENested(q.min as nat, qid, r1, code, start, em, pc);
+        } else {
+          QuantWriteIdsOptRENested((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
+        }
+      } else {
+        var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 1, e1);
+        if pc < em {
+          QuantWriteIdsMinRENested((q.min - 1) as nat, qid, r1, code, start, em, pc);
+        } else if pc == em {
+        } else if pc < e1 {
+          QuantWriteIdsRENested(r1, code, em + 1, e1, pc);
+        } else {
+        }
+      }
+  }
+
+  /** `QuantWriteIdsRENested` for the forced-copy chain. */
+  lemma QuantWriteIdsMinRENested(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentRE(r1) && QuantUnique(r1)
+    requires NR.NfaRepMinRE(k, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetQuantToClock? ==>
+      var q := NR.GetPcRE(code, pc).value.sq;
+      q == qid || (q >= 0 && (q as nat) in QuantIds(r1) && (q as nat) in QuantIdsOutsideLooks(r1))
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetQuantToClock(qid, false))
+      && NR.NfaRepRE(r1, code, start + 1, e1)
+      && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
+    NR.NfaRepIncrRE(r1, code, start + 1, e1);
+    NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
+    if pc == start {
+    } else if pc < e1 {
+      QuantWriteIdsRENested(r1, code, start + 1, e1, pc);
+    } else {
+      QuantWriteIdsMinRENested(k - 1, qid, r1, code, e1, endl, pc);
+    }
+  }
+
+  /** `QuantWriteIdsRENested` for the optional-layer chain. */
+  lemma QuantWriteIdsOptRENested(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentRE(r1) && QuantUnique(r1)
+    requires NR.NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetQuantToClock? ==>
+      var q := NR.GetPcRE(code, pc).value.sq;
+      q == qid || (q >= 0 && (q as nat) in QuantIds(r1) && (q as nat) in QuantIdsOutsideLooks(r1))
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| NR.GetPcRE(code, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
+      && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+      && NR.NfaRepRE(r1, code, start + 3, e1)
+      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+      && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+    NR.NfaRepIncrRE(r1, code, start + 3, e1);
+    NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+    if pc <= start + 2 {
+    } else if pc < e1 {
+      QuantWriteIdsRENested(r1, code, start + 3, e1, pc);
+    } else if pc == e1 {
+    } else {
+      QuantWriteIdsOptRENested(k - 1, greedy, qid, r1, code, e1 + 1, endl, pc);
+    }
+  }
+
+  // ==========================================================================
   // The capture-write CLASSIFICATION (L3a): the compiled code of a capturing
   // body writes capture registers only for the body's OWN group ids. Paired
   // with CM.FFindMatchCapWriteFrame, this pins FLookLoop's capture replay: it
@@ -3834,6 +3982,161 @@ module LindenElkPikeInv {
     }
   }
 
+  // ==========================================================================
+  // L4 depth-k (ADDITIVE): the NESTED-fragment counterpart of the
+  // outside-look capture-write classification trio. VERBATIM clones of
+  // `CaptureWriteIdsOutsideRE`/`...MinRE`/`...OptRE` EXCEPT the depth-1
+  // `NR.LookBehindFragmentRE` fragment conjunct is weakened to the
+  // arbitrary-nesting `NR.NestedFragmentRE`. The proofs are IDENTICAL: the
+  // `Re_lookaround` case is empty (a look compiles to a single gate — no
+  // main-code SetRegisterToCP — so its body's fragment shape is never read),
+  // and every other case (alt/con/capture/quant) descends into children with
+  // the SAME quant shapes, which `NestedFragmentRE` preserves conjunct-for-
+  // conjunct with `LookBehindFragmentRE`. Used by `LiftPreserveSetRegLkNested`.
+  // ==========================================================================
+
+  lemma CaptureWriteIdsOutsideRENested(re: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentRE(re) && CapUnique(re)
+    requires NR.NfaRepRE(re, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetRegisterToCP? ==>
+      NR.GetPcRE(code, pc).value.reg in CaptureRegsSet(CapIdsOutsideLooks(re))
+    decreases CP.rsize(re), 1
+  {
+    match re
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_lookaround(_, _, _) =>
+    case Re_alt(r1, r2) =>
+      var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
+        && NR.NfaRepRE(r1, code, start + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
+        && NR.NfaRepRE(r2, code, e1 + 1, endl);
+      NR.NfaRepIncrRE(r1, code, start + 1, e1);
+      NR.NfaRepIncrRE(r2, code, e1 + 1, endl);
+      if pc == start {
+      } else if pc < e1 {
+        CaptureWriteIdsOutsideRENested(r1, code, start + 1, e1, pc);
+        CaptureRegsSetMono(CapIdsOutsideLooks(r1), CapIdsOutsideLooks(re));
+      } else if pc == e1 {
+      } else {
+        CaptureWriteIdsOutsideRENested(r2, code, e1 + 1, endl, pc);
+        CaptureRegsSetMono(CapIdsOutsideLooks(r2), CapIdsOutsideLooks(re));
+      }
+    case Re_con(r1, r2) =>
+      var e1: nat :| NR.NfaRepRE(r1, code, start, e1) && NR.NfaRepRE(r2, code, e1, endl);
+      NR.NfaRepIncrRE(r1, code, start, e1);
+      NR.NfaRepIncrRE(r2, code, e1, endl);
+      if pc < e1 {
+        CaptureWriteIdsOutsideRENested(r1, code, start, e1, pc);
+        CaptureRegsSetMono(CapIdsOutsideLooks(r1), CapIdsOutsideLooks(re));
+      } else {
+        CaptureWriteIdsOutsideRENested(r2, code, e1, endl, pc);
+        CaptureRegsSetMono(CapIdsOutsideLooks(r2), CapIdsOutsideLooks(re));
+      }
+    case Re_capture(cid, r1) =>
+      var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
+        && NR.NfaRepRE(r1, code, start + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+        && endl == e1 + 1;
+      NR.NfaRepIncrRE(r1, code, start + 1, e1);
+      assert cid >= 0 && (cid as nat) in CapIdsOutsideLooks(re);   // CapUnique; Re_capture adds it outside
+      if pc == start {
+        assert CP.start_reg(cid) in CaptureRegsSet(CapIdsOutsideLooks(re));
+      } else if pc < e1 {
+        CaptureWriteIdsOutsideRENested(r1, code, start + 1, e1, pc);
+        CaptureRegsSetMono(CapIdsOutsideLooks(r1), CapIdsOutsideLooks(re));
+      } else {
+        assert CP.end_reg(cid) in CaptureRegsSet(CapIdsOutsideLooks(re));
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      // CapIdsOutsideLooks(Re_quant) == CapIdsOutsideLooks(r1)
+      if q.min == 0 && q.max == None {
+        var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
+          && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+          && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+          && NR.NfaRepRE(r1, code, start + 3, e1)
+          && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+          && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
+          && endl == e1 + 2;
+        NR.NfaRepIncrRE(r1, code, start + 3, e1);
+        if pc <= start + 2 {
+        } else if pc < e1 {
+          CaptureWriteIdsOutsideRENested(r1, code, start + 3, e1, pc);
+        } else {
+        }
+      } else if q.max.Some? {
+        var em := NR.NfaRepREQuantInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl);
+        if pc < em {
+          CaptureWriteIdsOutsideMinRENested(q.min as nat, qid, r1, code, start, em, pc);
+        } else {
+          CaptureWriteIdsOutsideOptRENested((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
+        }
+      } else {
+        var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 1, e1);
+        if pc < em {
+          CaptureWriteIdsOutsideMinRENested((q.min - 1) as nat, qid, r1, code, start, em, pc);
+        } else if pc == em {
+        } else if pc < e1 {
+          CaptureWriteIdsOutsideRENested(r1, code, em + 1, e1, pc);
+        } else {
+        }
+      }
+  }
+
+  lemma CaptureWriteIdsOutsideMinRENested(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentRE(r1) && CapUnique(r1)
+    requires NR.NfaRepMinRE(k, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetRegisterToCP? ==>
+      NR.GetPcRE(code, pc).value.reg in CaptureRegsSet(CapIdsOutsideLooks(r1))
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetQuantToClock(qid, false))
+      && NR.NfaRepRE(r1, code, start + 1, e1)
+      && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
+    NR.NfaRepIncrRE(r1, code, start + 1, e1);
+    NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
+    if pc == start {
+    } else if pc < e1 {
+      CaptureWriteIdsOutsideRENested(r1, code, start + 1, e1, pc);
+    } else {
+      CaptureWriteIdsOutsideMinRENested(k - 1, qid, r1, code, e1, endl, pc);
+    }
+  }
+
+  lemma CaptureWriteIdsOutsideOptRENested(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentRE(r1) && CapUnique(r1)
+    requires NR.NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetRegisterToCP? ==>
+      NR.GetPcRE(code, pc).value.reg in CaptureRegsSet(CapIdsOutsideLooks(r1))
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| NR.GetPcRE(code, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
+      && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+      && NR.NfaRepRE(r1, code, start + 3, e1)
+      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+      && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+    NR.NfaRepIncrRE(r1, code, start + 3, e1);
+    NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+    if pc <= start + 2 {
+    } else if pc < e1 {
+      CaptureWriteIdsOutsideRENested(r1, code, start + 3, e1, pc);
+    } else if pc == e1 {
+    } else {
+      CaptureWriteIdsOutsideOptRENested(k - 1, greedy, qid, r1, code, e1 + 1, endl, pc);
+    }
+  }
+
   /** Every `SetQuantToClock` inside a compiled block targets one of that
       regex's own quant ids. */
   lemma LookCheckIdsRE(re: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
@@ -3984,6 +4287,165 @@ module LindenElkPikeInv {
     } else if pc == e1 {
     } else {
       LookCheckIdsOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl, pc);
+    }
+  }
+
+  // ==========================================================================
+  // L4 depth-k (ADDITIVE): the NESTED-fragment counterpart of the
+  // lid-classification trio. Clones of `LookCheckIdsRE`/`...MinRE`/`...OptRE`
+  // with `NR.LookBehindFragmentRE` weakened to `NR.NestedFragmentRE`. The
+  // `Re_lookaround` case is `pc == start` (the whole block is the single gate,
+  // whose lid is this node's own — the body compiles to SEPARATE bytecode at
+  // ANY nesting depth, so it is never descended), and the other cases descend
+  // identically. Used by `LiftPreserveGatePassLkNested`.
+  // ==========================================================================
+
+  lemma LookCheckIdsRENested(re: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentRE(re) && LTB.LookUnique(re)
+    requires NR.NfaRepRE(re, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
+      var l := NR.GetPcRE(code, pc).value.col;
+      l >= 0 && (l as nat) in LTB.LookIds(re)
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.NegCheckOracle? ==>
+      var l := NR.GetPcRE(code, pc).value.ncl;
+      l >= 0 && (l as nat) in LTB.LookIds(re)
+    decreases CP.rsize(re), 1
+  {
+    match re
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_lookaround(lid, la, r1) =>
+      assert pc == start;
+      assert lid >= 0;                                  // LookUnique
+    case Re_alt(r1, r2) =>
+      var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
+        && NR.NfaRepRE(r1, code, start + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
+        && NR.NfaRepRE(r2, code, e1 + 1, endl);
+      NR.NfaRepIncrRE(r1, code, start + 1, e1);
+      NR.NfaRepIncrRE(r2, code, e1 + 1, endl);
+      if pc == start {
+      } else if pc < e1 {
+        LookCheckIdsRENested(r1, code, start + 1, e1, pc);
+      } else if pc == e1 {
+      } else {
+        LookCheckIdsRENested(r2, code, e1 + 1, endl, pc);
+      }
+    case Re_con(r1, r2) =>
+      var e1: nat :| NR.NfaRepRE(r1, code, start, e1) && NR.NfaRepRE(r2, code, e1, endl);
+      NR.NfaRepIncrRE(r1, code, start, e1);
+      NR.NfaRepIncrRE(r2, code, e1, endl);
+      if pc < e1 {
+        LookCheckIdsRENested(r1, code, start, e1, pc);
+      } else {
+        LookCheckIdsRENested(r2, code, e1, endl, pc);
+      }
+    case Re_capture(cid, r1) =>
+      var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
+        && NR.NfaRepRE(r1, code, start + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+        && endl == e1 + 1;
+      NR.NfaRepIncrRE(r1, code, start + 1, e1);
+      if pc == start {
+      } else if pc < e1 {
+        LookCheckIdsRENested(r1, code, start + 1, e1, pc);
+      } else {
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      if q.min == 0 && q.max == None {
+        var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
+          && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+          && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+          && NR.NfaRepRE(r1, code, start + 3, e1)
+          && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+          && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
+          && endl == e1 + 2;
+        NR.NfaRepIncrRE(r1, code, start + 3, e1);
+        if pc <= start + 2 {
+        } else if pc < e1 {
+          LookCheckIdsRENested(r1, code, start + 3, e1, pc);
+        } else {
+        }
+      } else if q.max.Some? {
+        var em := NR.NfaRepREQuantInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl);
+        if pc < em {
+          LookCheckIdsMinRENested(q.min as nat, qid, r1, code, start, em, pc);
+        } else {
+          LookCheckIdsOptRENested((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
+        }
+      } else {
+        var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 1, e1);
+        if pc < em {
+          LookCheckIdsMinRENested((q.min - 1) as nat, qid, r1, code, start, em, pc);
+        } else if pc == em {
+        } else if pc < e1 {
+          LookCheckIdsRENested(r1, code, em + 1, e1, pc);
+        } else {
+        }
+      }
+  }
+
+  /** `LookCheckIdsRENested` for the forced-copy chain. */
+  lemma LookCheckIdsMinRENested(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentRE(r1) && LTB.LookUnique(r1)
+    requires NR.NfaRepMinRE(k, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
+      var l := NR.GetPcRE(code, pc).value.col;
+      l >= 0 && (l as nat) in LTB.LookIds(r1)
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.NegCheckOracle? ==>
+      var l := NR.GetPcRE(code, pc).value.ncl;
+      l >= 0 && (l as nat) in LTB.LookIds(r1)
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetQuantToClock(qid, false))
+      && NR.NfaRepRE(r1, code, start + 1, e1)
+      && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
+    NR.NfaRepIncrRE(r1, code, start + 1, e1);
+    NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
+    if pc == start {
+    } else if pc < e1 {
+      LookCheckIdsRENested(r1, code, start + 1, e1, pc);
+    } else {
+      LookCheckIdsMinRENested(k - 1, qid, r1, code, e1, endl, pc);
+    }
+  }
+
+  /** `LookCheckIdsRENested` for the optional-layer chain. */
+  lemma LookCheckIdsOptRENested(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentRE(r1) && LTB.LookUnique(r1)
+    requires NR.NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
+      var l := NR.GetPcRE(code, pc).value.col;
+      l >= 0 && (l as nat) in LTB.LookIds(r1)
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.NegCheckOracle? ==>
+      var l := NR.GetPcRE(code, pc).value.ncl;
+      l >= 0 && (l as nat) in LTB.LookIds(r1)
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| NR.GetPcRE(code, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
+      && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+      && NR.NfaRepRE(r1, code, start + 3, e1)
+      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+      && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+    NR.NfaRepIncrRE(r1, code, start + 3, e1);
+    NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+    if pc <= start + 2 {
+    } else if pc < e1 {
+      LookCheckIdsRENested(r1, code, start + 3, e1, pc);
+    } else if pc == e1 {
+    } else {
+      LookCheckIdsOptRENested(k - 1, greedy, qid, r1, code, e1 + 1, endl, pc);
     }
   }
 

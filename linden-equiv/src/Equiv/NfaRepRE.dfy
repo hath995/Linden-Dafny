@@ -724,6 +724,24 @@ module LindenElkNfaRep {
     case _ =>
   }
 
+  /** On a LOOK-FREE regex the lookbehind and plus fragments coincide: with no
+      lookaround nodes, both predicates exercise only the alt/con/quant/capture
+      cases, which are conjunct-for-conjunct identical (same quant shapes). Lets
+      a gate body — known look-free (`GateStaticsOk`) and `LookBehindFragmentRE`
+      (`StaticOkRE(body)`) — recover `PlusFragmentRE` under the nested flip. */
+  lemma LookFreeIsPlusFragmentRE(re: R.regex)
+    requires LookFreeRE(re) && LookBehindFragmentRE(re)
+    ensures PlusFragmentRE(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => LookFreeIsPlusFragmentRE(r1); LookFreeIsPlusFragmentRE(r2);
+    case Re_con(r1, r2) => LookFreeIsPlusFragmentRE(r1); LookFreeIsPlusFragmentRE(r2);
+    case Re_quant(_, _, _, r1) => LookFreeIsPlusFragmentRE(r1);
+    case Re_capture(_, r1) => LookFreeIsPlusFragmentRE(r1);
+    case _ =>
+  }
+
   /** The depth-1 lookbehind fragment embeds in the nested fragment — every
       input supported today stays supported at L4. The lookaround case uses
       `LookFreePlusIsNestedRE` on the (look-free) body. */

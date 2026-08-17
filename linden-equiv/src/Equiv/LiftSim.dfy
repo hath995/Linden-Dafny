@@ -3178,7 +3178,7 @@ module LindenElkLiftSim {
                            crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                            bst: PT.PikeTreeState, s: AI.VmState, ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires PSM.StaticOkNestedRE(qm, re, code, endl)
     requires bst.PTS?
     requires LiftInvNested(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
@@ -3307,7 +3307,7 @@ module LindenElkLiftSim {
                               crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                               bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState, th': AI.Thread,
                               vms2: AI.VmState, ncap: int, nlook: int, nquant: int)
-    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires PSM.StaticOkNestedRE(qm, re, code, endl)
     requires bst.PTS?
     requires LiftInvNested(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
@@ -3434,7 +3434,7 @@ module LindenElkLiftSim {
                              bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
                              vms2: AI.VmState, ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires PSM.StaticOkNestedRE(qm, re, code, endl)
     requires bst.PTS?
     requires LiftInvNested(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
@@ -3536,7 +3536,7 @@ module LindenElkLiftSim {
                            bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
                            vms2: AI.VmState, ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires PSM.StaticOkNestedRE(qm, re, code, endl)
     requires bst.PTS?
     requires LiftInvNested(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
@@ -3914,7 +3914,7 @@ module LindenElkLiftSim {
                                  ce: RC.char_expectation, vms2: AI.VmState,
                                  ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires PSM.StaticOkNestedRE(qm, re, code, endl)
     requires bst.PTS?
     requires LiftInvNested(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
@@ -4118,7 +4118,7 @@ module LindenElkLiftSim {
                                   ce: RC.char_expectation, vms2: AI.VmState,
                                   ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires PSM.StaticOkNestedRE(qm, re, code, endl)
     requires bst.PTS?
     requires LiftInvNested(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
@@ -4432,7 +4432,7 @@ module LindenElkLiftSim {
                              reg: int, th': AI.Thread, vms2: AI.VmState,
                              ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires PSM.StaticOkNestedRE(qm, re, code, endl)
     requires bst.PTS?
     requires LiftInvNested(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
@@ -4497,7 +4497,7 @@ module LindenElkLiftSim {
       }
     }
     var OL := PIV.CapIdsOutsideLooks(re);
-    PIV.CaptureWriteIdsOutsideRE(re, code, 0, endl, pc);
+    PIV.CaptureWriteIdsOutsideRENested(re, code, 0, endl, pc);
     assert reg in PIV.CaptureRegsSet(OL);
     assert gid in OL by {
       if t.g.Open? { assert reg == CP.start_reg(gid as int) == 2 * (gid as int); }
@@ -4860,7 +4860,7 @@ module LindenElkLiftSim {
                                q: int, bq: bool, th': AI.Thread, vms2: AI.VmState,
                                ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires PSM.StaticOkNestedRE(qm, re, code, endl)
     requires bst.PTS?
     requires LiftInvNested(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
@@ -4964,7 +4964,7 @@ module LindenElkLiftSim {
       assert pc < |code| == endl + 1;
       if pc == endl { assert NR.GetPcRE(code, pc) == Some(RB.Accept); assert false; }
     }
-    PIV.QuantWriteIdsRE(re, code, 0, endl, pc);
+    PIV.QuantWriteIdsRENested(re, code, 0, endl, pc);
     assert q >= 0 && (q as nat) in PIV.QuantIds(re);
     var qn: nat := q as nat;
     M.TransWfQidBody(re, qn);
@@ -5015,7 +5015,7 @@ module LindenElkLiftSim {
         assert g !in gidl;
       }
     }
-    LookNestBackTSetQuant(re, crv, str, ov, S, gm, gm2, th, th', qn, ncap, nlook, nquant);
+    LookNestBackTSetQuantNested(re, crv, str, ov, S, gm, gm2, th, th', qn, ncap, nlook, nquant);
     assert LookNestBackRepC(re, crv, str, ov, S, [(t.t, gm2)] + ta[1..], vms2.active,
                             ncap, nlook, nquant) by {
       forall i | 0 <= i < |[(t.t, gm2)] + ta[1..]|
@@ -5193,7 +5193,7 @@ module LindenElkLiftSim {
                            x: int, y: int, vms2: AI.VmState,
                            ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires PSM.StaticOkNestedRE(qm, re, code, endl)
     requires bst.PTS?
     requires LiftInvNested(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
@@ -5912,7 +5912,7 @@ module LindenElkLiftSim {
                                l: int, th': AI.Thread, vms2: AI.VmState,
                                ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires PSM.StaticOkNestedRE(qm, re, code, endl)
     requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
     requires |ov| == |str| + 1                                    // L3b: the backward LB gate needs the mirror
     requires S == PIV.CapIdsInLooks(re)
@@ -5940,7 +5940,7 @@ module LindenElkLiftSim {
     ensures bst1.PTS?
     ensures LiftInvNested(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
   {
-    NR.LookBehindFragmentIsNestedRE(re);   // (L4 NESTED) NestedFragmentRE(re) from the depth-1 fragment
+    // (L4 NESTED) NestedFragmentRE(re) is now DIRECT from StaticOkNestedRE
     var PTS(inp, ta, best, tbl, seen) := bst;
     var th := s.active[0];
     assert ActiveRepLkCNested(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
@@ -6040,11 +6040,12 @@ module LindenElkLiftSim {
       // (L4 NESTED) the gate-step lemma wants the body in the positive-nesting
       // sub-fragment; under the depth-1 fragment the body is look-free, so
       // NestedFragmentRE + NegLooksLookFreeRE follow from LookFreeRE+PlusFragmentRE.
-      PIV.LookCheckIdsRE(re, code, 0, endl, pc);
+      PIV.LookCheckIdsRENested(re, code, 0, endl, pc);
       NI.LookBodyOfTablesTie(re, crv, l as nat);
-      NI.LookBodyOfFragment(re, l as nat);
-      NR.LookFreePlusIsNestedRE(body);
-      NR.LookFreeNegLooksLookFree(body);
+      assert PSM.StaticOkRE(qm, body, bodycode, |bodycode| - 1);   // (⟹ LookBehindFragmentRE(body))
+      NR.LookFreeIsPlusFragmentRE(body);                          // PlusFragmentRE(body)
+      NR.LookFreePlusIsNestedRE(body);                            // NestedFragmentRE(body)
+      NR.LookFreeNegLooksLookFree(body);                          // NegLooksLookFreeRE(body)
       ThreadRepLkStepCheckOracleNested(rer, qm, re, code, crv, str, ov, S, lk, r1, tlk, traw.t,
                                  gm, th, l, cp, clk, body, la, bodycode, |bodycode| - 1, 0,
                                  th.quant_regs, ncap, nlook, nquant);
@@ -6085,10 +6086,10 @@ module LindenElkLiftSim {
         // ---- the keystone-gate static package for the body ----
         assert PSM.StaticOkRE(qm, body, bodycode, |bodycode| - 1);   // ⟹ CapUnique(body) & QuantUnique(body)
         assert PIV.CapUnique(body) && PIV.QuantUnique(body);
-        PIV.LookCheckIdsRE(re, code, 0, endl, pc);                   // (l as nat) in LookIds(re)
+        PIV.LookCheckIdsRENested(re, code, 0, endl, pc);                   // (l as nat) in LookIds(re)
         assert (l as nat) in LTB.LookIds(re);
         NI.LookBodyOfTablesTie(re, crv, l as nat);                   // VBody(crv,l) == LookBodyOfRE(re,l)
-        NI.LookBodyOfFragment(re, l as nat);                        // PlusFragmentRE(body)
+        NR.LookFreeIsPlusFragmentRE(body);                         // PlusFragmentRE(body) from StaticOkRE(body)+LookFreeRE(body)
         assert NR.PlusFragmentRE(body);
         NR.LookFreePlusIsNestedRE(body);                           // NestedFragmentRE(body)
         NR.LookFreeNegLooksLookFree(body);                         // NegLooksLookFreeRE(body)
@@ -6125,7 +6126,7 @@ module LindenElkLiftSim {
     assert forall j: int :: j != l ==>
       AI.get_idx(th'.look_regs.a_clk, j) == AI.get_idx(th.look_regs.a_clk, j);
     // ownership: the fold adds only l-owned groups (LmapOk row + fold confinement)
-    PIV.LookCheckIdsRE(re, code, 0, endl, pc);
+    PIV.LookCheckIdsRENested(re, code, 0, endl, pc);
     assert l >= 0 && (l as nat) in LTB.LookIds(re);
     LmapOkAtLid(re, qm, l as nat);
     var LB := NI.LookBodyOfRE(re, l as nat);
@@ -6147,7 +6148,12 @@ module LindenElkLiftSim {
         }
       }
     }
-    LookNestOkTGatePass(re, code, endl, S, gm, gm2, th, th', pc, l);
+    // (L4 NESTED) the fold sits DIRECTLY in lid l's body, not a nested look:
+    // the gate body (GateStaticsOk) is look-free, so CapIdsInLooks(body) == {}.
+    NI.LookBodyOfTablesTie(re, crv, l as nat);       // VBody(crv,l) == LookBodyOfRE(re,l) == body
+    PIV.LookFreeCapIdsInLooksEmpty(body);            // CapIdsInLooks(body) == {}
+    assert PIV.CapIdsInLooks(NI.LookBodyOfRE(re, l as nat)) == {};
+    LookNestOkTGatePassNested(re, code, endl, S, gm, gm2, th, th', pc, l);
     assert LookNestRepC(re, S, [(t.t, gm2)] + ta[1..], vms2.active) by {
       forall i | 0 <= i < |[(t.t, gm2)] + ta[1..]|
         ensures LookNestOkT(re, S, ([(t.t, gm2)] + ta[1..])[i].1, vms2.active[i])
@@ -6256,7 +6262,8 @@ module LindenElkLiftSim {
             RL.ASetLaws(th.look_regs, l, Some(cp as int), clk);
           }
           // static package for BackFreshBodyGmTie
-          NI.LookBodyOfFragment(re, l as nat);                    // PlusFragmentRE(body)
+          assert PSM.StaticOkRE(qm, body, bodycode3, |bodycode3| - 1);   // (⇒ LookBehindFragmentRE(body))
+          NR.LookFreeIsPlusFragmentRE(body);                     // PlusFragmentRE(body)
           OS.TranslateLookFreeGroupOk(body);                      // GroupOkL(Translate(body))
           TranslateDefGroupsNoDup(body);                          // NoDupG(DefGroups(Translate(body)))
           assert PIV.CapUnique(body) && PIV.QuantUnique(body);
@@ -6568,7 +6575,7 @@ module LindenElkLiftSim {
                                   l: int, vms2: AI.VmState,
                                   ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires PSM.StaticOkNestedRE(qm, re, code, endl)
     requires qm.ov == ov
     requires bst.PTS?
     requires LiftInvNested(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
@@ -6742,7 +6749,7 @@ module LindenElkLiftSim {
                                l: int, pos: bool, vms2: AI.VmState,
                                ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires PSM.StaticOkNestedRE(qm, re, code, endl)
     requires qm.ov == ov
     requires bst.PTS?
     requires LiftInvNested(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
@@ -7016,7 +7023,7 @@ module LindenElkLiftSim {
                                   bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
                                   vms2: AI.VmState, ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires PSM.StaticOkNestedRE(qm, re, code, endl)
     requires bst.PTS?
     requires LiftInvNested(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
@@ -7130,7 +7137,7 @@ module LindenElkLiftSim {
                                   bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
                                   vms2: AI.VmState, ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires PSM.StaticOkNestedRE(qm, re, code, endl)
     requires bst.PTS?
     requires LiftInvNested(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
@@ -7269,7 +7276,7 @@ module LindenElkLiftSim {
                                  bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
                                  a: R.anchor, vms2: AI.VmState, ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires PSM.StaticOkNestedRE(qm, re, code, endl)
     requires !rer.multiline
     requires bst.PTS?
     requires LiftInvNested(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
@@ -7415,7 +7422,7 @@ module LindenElkLiftSim {
                                  bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
                                  a: R.anchor, vms2: AI.VmState, ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkRE(qm, re, code, endl)
+    requires PSM.StaticOkNestedRE(qm, re, code, endl)
     requires !rer.multiline
     requires bst.PTS?
     requires LiftInvNested(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
@@ -7546,6 +7553,100 @@ module LindenElkLiftSim {
     assert CM.ThreadClocksLE(th, s.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant);
     assert PIV.LooksCapUnset(re, th.capture_regs.a_clk);
     PSM.ResetStepThreadRE(rer, qm, re, code, endl, inpA, tA, gmA, th, pc, q, s.clock);
+    assert tA.GroupActionT? && tA.g.Reset? && qm.quants[q] == tA.g.gl;
+  }
+
+  /** (L4 NESTED) clone of `DispatchSetRegEffect` under `StaticOkNestedRE`: the
+      Open/Close gm-effect callees are swapped to their nested-fragment
+      counterparts (`OpenStepThreadRENested`/`CloseStepThreadRENested`, which
+      take `NestedFragmentRE(re)` in place of `LookBehindFragmentRE(re)`). The
+      body is otherwise verbatim — every other fact rides `PikeInvFullRE`. */
+  lemma DispatchSetRegEffectNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                             ngroups: nat, str: string, ptsA: PT.PikeTreeState, s: AI.VmState,
+                             s1: AI.VmState, reg: int, th': AI.Thread,
+                             ncap: int, nlook: int, nquant: int)
+    requires !rer.multiline
+    requires PSM.StaticOkNestedRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires ptsA.PTS?
+    requires PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, ptsA, s, ncap, nlook, nquant)
+    requires |s.active| > 0 && s.active[0].pc >= 0
+    requires NR.GetPcRE(code, s.active[0].pc as nat) == Some(RB.SetRegisterToCP(reg))
+    requires s1 == s.(clock := s.clock + 1,
+                      processed := AI.bpc_add(s.processed, s.active[0].pc, s.active[0].exit_allowed))
+    requires th' == s.active[0].(capture_regs := AReg.set_reg(s.active[0].capture_regs, reg, Some(s1.cp), s1.clock),
+                                 pc := s.active[0].pc + 1)
+    ensures reg >= 0 && 0 <= s1.cp
+    ensures PIV.GmOfLive(re, th'.capture_regs, th'.look_regs, th'.quant_regs)
+         == (if reg % 2 == 0
+             then LG.GMOpen(s1.cp as nat, (reg / 2) as nat,
+                            PIV.GmOfLive(re, s.active[0].capture_regs, s.active[0].look_regs,
+                                         s.active[0].quant_regs))
+             else LG.GMClose(s1.cp as nat, (reg / 2) as nat,
+                             PIV.GmOfLive(re, s.active[0].capture_regs, s.active[0].look_regs,
+                                          s.active[0].quant_regs)))
+  {
+    var th := s.active[0];
+    var pc: nat := th.pc as nat;
+    var PTS(inpA, taA, bestA, tbA, seenA) := ptsA;
+    assert PIV.ActiveRepRE(rer, qm, re, code, inpA, taA, s.active);
+    assert |taA| > 0;
+    var tA := taA[0].0;
+    var gmA := taA[0].1;
+    assert TT.TreeThreadRE(rer, qm, code, inpA, tA, pc, th.exit_allowed);
+    assert PIV.ThreadTracksGm(re, th, gmA);
+    assert th in s.active;
+    assert PSM.ThreadNestRE(re, code, endl, th.pc, th);
+    assert CM.ThreadClocksLE(th, s.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant)
+        && CM.RegsValsLE(th.capture_regs, s.cp);
+    assert PIV.LooksCapUnset(re, th.capture_regs.a_clk);
+    assert 0 <= s1.cp;
+    if reg % 2 == 0 {
+      PSM.OpenStepThreadRENested(rer, qm, re, code, endl, inpA, tA, gmA, th, pc, reg, s.cp, s.clock);
+      assert tA.GroupActionT? && tA.g.Open? && reg == CP.start_reg(tA.g.g as int);
+      assert reg == 2 * (tA.g.g as int) && (reg / 2) as nat == tA.g.g;
+    } else {
+      PSM.CloseStepThreadRENested(rer, qm, re, code, endl, inpA, tA, gmA, th, pc, reg, s.cp, s.clock);
+      assert tA.GroupActionT? && tA.g.Close? && reg == CP.end_reg(tA.g.g as int);
+      assert reg == 2 * (tA.g.g as int) + 1 && (reg / 2) as nat == tA.g.g;
+    }
+  }
+
+  /** (L4 NESTED) clone of `DispatchResetEffect` under `StaticOkNestedRE`: the
+      `GMReset` gm-effect callee is `ResetStepThreadRENested`. Body verbatim. */
+  lemma DispatchResetEffectNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                            ngroups: nat, str: string, ptsA: PT.PikeTreeState, s: AI.VmState,
+                            s1: AI.VmState, q: int, th': AI.Thread,
+                            ncap: int, nlook: int, nquant: int)
+    requires !rer.multiline
+    requires PSM.StaticOkNestedRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires ptsA.PTS?
+    requires PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, ptsA, s, ncap, nlook, nquant)
+    requires |s.active| > 0 && s.active[0].pc >= 0
+    requires NR.GetPcRE(code, s.active[0].pc as nat) == Some(RB.SetQuantToClock(q, false))
+    requires s1 == s.(clock := s.clock + 1,
+                      processed := AI.bpc_add(s.processed, s.active[0].pc, s.active[0].exit_allowed))
+    requires th' == s.active[0].(quant_regs := AReg.set_reg(s.active[0].quant_regs, q, None, s1.clock),
+                                 pc := s.active[0].pc + 1)
+    ensures q in qm.quants
+    ensures PIV.GmOfLive(re, th'.capture_regs, th'.look_regs, th'.quant_regs)
+         == LG.GMReset(qm.quants[q],
+                       PIV.GmOfLive(re, s.active[0].capture_regs, s.active[0].look_regs,
+                                    s.active[0].quant_regs))
+  {
+    var th := s.active[0];
+    var pc: nat := th.pc as nat;
+    var PTS(inpA, taA, bestA, tbA, seenA) := ptsA;
+    assert PIV.ActiveRepRE(rer, qm, re, code, inpA, taA, s.active);
+    assert |taA| > 0;
+    var tA := taA[0].0;
+    var gmA := taA[0].1;
+    assert TT.TreeThreadRE(rer, qm, code, inpA, tA, pc, th.exit_allowed);
+    assert PIV.ThreadTracksGm(re, th, gmA);
+    assert th in s.active;
+    assert PSM.ThreadNestRE(re, code, endl, th.pc, th);
+    assert CM.ThreadClocksLE(th, s.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant);
+    assert PIV.LooksCapUnset(re, th.capture_regs.a_clk);
+    PSM.ResetStepThreadRENested(rer, qm, re, code, endl, inpA, tA, gmA, th, pc, q, s.clock);
     assert tA.GroupActionT? && tA.g.Reset? && qm.quants[q] == tA.g.gl;
   }
 
@@ -7895,7 +7996,7 @@ module LindenElkLiftSim {
     returns (ptsA': PT.PikeTreeState, bst1: PT.PikeTreeState)
     requires !rer.multiline && !rer.ignoreCase && qm.ov == ov
     requires |ov| == |str| + 1                                    // L3b: propagate to the backward LB gate
-    requires PSM.StaticOkRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires PSM.StaticOkNestedRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires S == PIV.CapIdsInLooks(re)   // the value-tie boundary (SetReg/gate cases)
     requires GateStaticsOk(qm, re, crv, ncap, nlook, nquant)   // per-lid look-table package (gate-pass case)
     requires LTB.LookUnique(re)           // (E3) cross-lid ownership pinning
@@ -7939,7 +8040,7 @@ module LindenElkLiftSim {
 
     if AI.bpc_mem(s.processed, th.pc, th.exit_allowed) {
       var bstS := LiftPreserveSkipLkNested(rer, qm, re, code, endl, crv, str, ov, S, bst, s, ncap, nlook, nquant);
-      var ptsS := PSM.PreserveSkipCase(rer, qm, re, code, endl, ngroups, str, ptsA, s, ncap, nlook, nquant);
+      var ptsS := PSM.PreserveSkipCaseNested(rer, qm, re, code, endl, ngroups, str, ptsA, s, ncap, nlook, nquant);
       var ptsA2, bst2 := LiftAdvanceEpsilonNested(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
                                             ptsS, s.(active := ac), bstS, dir, ncap, nlook, nquant);
       PSM.TrcCons(ptsA, ptsS, ptsA2);
@@ -7961,7 +8062,7 @@ module LindenElkLiftSim {
         var vms2 := s1.(active := [], bestmatch := Some(th));
         bst1 := LiftPreserveAcceptLkNested(rer, qm, re, code, endl, crv, str, ov, S,
                                      bst, s, s1, vms2, ncap, nlook, nquant);
-        ptsA' := PSM.PreserveAcceptCase(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+        ptsA' := PSM.PreserveAcceptCaseNested(rer, qm, re, code, endl, ngroups, str, ptsA, s,
                                         s1, vms2, ncap, nlook, nquant);
         PSM.TrcRefl(ptsA');
         PSM.TrcCons(ptsA, ptsA', ptsA');
@@ -7973,7 +8074,7 @@ module LindenElkLiftSim {
         var vms2 := s1.(active := [th'] + ac);
         LiftPreserveStutterLkNested(rer, qm, re, code, endl, crv, str, ov, S,
                               bst, s, s1, th', vms2, ncap, nlook, nquant);
-        PSM.PreserveStutterCase(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+        PSM.PreserveStutterCaseNested(rer, qm, re, code, endl, ngroups, str, ptsA, s,
                                 s1, th', vms2, ncap, nlook, nquant);
         var ptsA2, bst2 := LiftAdvanceEpsilonNested(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
                                               ptsA, vms2, bst, dir, ncap, nlook, nquant);
@@ -7984,7 +8085,7 @@ module LindenElkLiftSim {
         var vms2 := s1.(active := [th'] + ac);
         LiftPreserveStutterLkNested(rer, qm, re, code, endl, crv, str, ov, S,
                               bst, s, s1, th', vms2, ncap, nlook, nquant);
-        PSM.PreserveStutterCase(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+        PSM.PreserveStutterCaseNested(rer, qm, re, code, endl, ngroups, str, ptsA, s,
                                 s1, th', vms2, ncap, nlook, nquant);
         var ptsA2, bst2 := LiftAdvanceEpsilonNested(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
                                               ptsA, vms2, bst, dir, ncap, nlook, nquant);
@@ -7998,7 +8099,7 @@ module LindenElkLiftSim {
           assert vms2 == s1.(active := ac);
           var bstS := LiftPreserveConsumeDropLkNested(rer, qm, re, code, endl, crv, str, ov, S,
                                                 bst, s, s1, ce, vms2, ncap, nlook, nquant);
-          var ptsS := PSM.PreserveConsumeDrop(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+          var ptsS := PSM.PreserveConsumeDropNested(rer, qm, re, code, endl, ngroups, str, ptsA, s,
                                               s1, ce, vms2, ncap, nlook, nquant);
           var ptsA2, bst2 := LiftAdvanceEpsilonNested(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
                                                 ptsS, vms2, bstS, dir, ncap, nlook, nquant);
@@ -8011,7 +8112,7 @@ module LindenElkLiftSim {
           var vms2 := s1.(blocked := nb, isblocked := ni, active := ac);
           var bstS := LiftPreserveConsumeAddLkNested(rer, qm, re, code, endl, crv, str, ov, S,
                                                bst, s, s1, ce, vms2, ncap, nlook, nquant);
-          var ptsS := PSM.PreserveConsumeAdd(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+          var ptsS := PSM.PreserveConsumeAddNested(rer, qm, re, code, endl, ngroups, str, ptsA, s,
                                              s1, ce, vms2, ncap, nlook, nquant);
           var ptsA2, bst2 := LiftAdvanceEpsilonNested(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
                                                 ptsS, vms2, bstS, dir, ncap, nlook, nquant);
@@ -8033,7 +8134,7 @@ module LindenElkLiftSim {
         }
         var bstS := LiftPreserveForkLkNested(rer, qm, re, code, endl, crv, str, ov, S,
                                        bst, s, s1, x, y, vms2, ncap, nlook, nquant);
-        var ptsS := PSM.PreserveForkCase(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+        var ptsS := PSM.PreserveForkCaseNested(rer, qm, re, code, endl, ngroups, str, ptsA, s,
                                          s1, x, y, vms2, ncap, nlook, nquant);
         var ptsA2, bst2 := LiftAdvanceEpsilonNested(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
                                               ptsS, vms2, bstS, dir, ncap, nlook, nquant);
@@ -8046,7 +8147,7 @@ module LindenElkLiftSim {
                        pc := th.pc + 1);
         var vms2 := s1.(active := [th'] + ac);
         // A-side gm effect off ptsA's head (helper keeps the dispatcher VC small)
-        DispatchSetRegEffect(rer, qm, re, code, endl, ngroups, str, ptsA, s, s1, reg, th',
+        DispatchSetRegEffectNested(rer, qm, re, code, endl, ngroups, str, ptsA, s, s1, reg, th',
                              ncap, nlook, nquant);
         assert th in s.active;
         assert CM.ThreadClocksLE(th, s.clock) && s.clock >= 0;   // PikeInvFullRE backbone
@@ -8054,10 +8155,10 @@ module LindenElkLiftSim {
                                          bst, s, s1, reg, th', vms2, ncap, nlook, nquant);
         var ptsS: PT.PikeTreeState;
         if reg % 2 == 0 {
-          ptsS := PSM.PreserveOpenCase(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+          ptsS := PSM.PreserveOpenCaseNested(rer, qm, re, code, endl, ngroups, str, ptsA, s,
                                        s1, reg, vms2, ncap, nlook, nquant);
         } else {
-          ptsS := PSM.PreserveCloseCase(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+          ptsS := PSM.PreserveCloseCaseNested(rer, qm, re, code, endl, ngroups, str, ptsA, s,
                                         s1, reg, vms2, ncap, nlook, nquant);
         }
         var ptsA2, bst2 := LiftAdvanceEpsilonNested(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
@@ -8077,11 +8178,11 @@ module LindenElkLiftSim {
         assert th in s.active;
         assert CM.ThreadRegsWf(th, ncap, nlook, nquant);   // PikeInvFullRE backbone
         assert CM.ThreadClocksLE(th, s.clock) && s.clock >= 0;
-        DispatchResetEffect(rer, qm, re, code, endl, ngroups, str, ptsA, s, s1, q, th',
+        DispatchResetEffectNested(rer, qm, re, code, endl, ngroups, str, ptsA, s, s1, q, th',
                             ncap, nlook, nquant);
         var bstS := LiftPreserveSetQuantLkNested(rer, qm, re, code, endl, crv, str, ov, S,
                                            bst, s, s1, q, bq, th', vms2, ncap, nlook, nquant);
-        var ptsS := PSM.PreserveResetCase(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+        var ptsS := PSM.PreserveResetCaseNested(rer, qm, re, code, endl, ngroups, str, ptsA, s,
                                           s1, q, bq, vms2, ncap, nlook, nquant);
         var ptsA2, bst2 := LiftAdvanceEpsilonNested(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
                                               ptsS, vms2, bstS, dir, ncap, nlook, nquant);
@@ -8100,7 +8201,7 @@ module LindenElkLiftSim {
           assert PSM.ThreadNestRE(re, code, endl, th.pc, th);
           var bstS := LiftPreserveGatePassLkNested(rer, qm, re, code, endl, crv, str, ov, S,
                                              bst, s, s1, l, th', vms2, ncap, nlook, nquant);
-          PSM.PreserveOraclePass(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+          PSM.PreserveOraclePassNested(rer, qm, re, code, endl, ngroups, str, ptsA, s,
                                  s1, th', vms2, l, true, ncap, nlook, nquant);
           var ptsA2, bst2 := LiftAdvanceEpsilonNested(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
                                                 ptsA, vms2, bstS, dir, ncap, nlook, nquant);
@@ -8111,7 +8212,7 @@ module LindenElkLiftSim {
           var vms2 := s1.(active := ac);
           var bstS := LiftPreserveGateKillLkNested(rer, qm, re, code, endl, crv, str, ov, S,
                                              bst, s, s1, l, true, vms2, ncap, nlook, nquant);
-          var ptsS := PSM.PreserveOracleKill(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+          var ptsS := PSM.PreserveOracleKillNested(rer, qm, re, code, endl, ngroups, str, ptsA, s,
                                              s1, vms2, l, true, ncap, nlook, nquant);
           var ptsA2, bst2 := LiftAdvanceEpsilonNested(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
                                                 ptsS, vms2, bstS, dir, ncap, nlook, nquant);
@@ -8125,7 +8226,7 @@ module LindenElkLiftSim {
           var vms2 := s1.(active := ac);
           var bstS := LiftPreserveGateKillLkNested(rer, qm, re, code, endl, crv, str, ov, S,
                                              bst, s, s1, l, false, vms2, ncap, nlook, nquant);
-          var ptsS := PSM.PreserveOracleKill(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+          var ptsS := PSM.PreserveOracleKillNested(rer, qm, re, code, endl, ngroups, str, ptsA, s,
                                              s1, vms2, l, false, ncap, nlook, nquant);
           var ptsA2, bst2 := LiftAdvanceEpsilonNested(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
                                                 ptsS, vms2, bstS, dir, ncap, nlook, nquant);
@@ -8137,7 +8238,7 @@ module LindenElkLiftSim {
           var vms2 := s1.(active := [th.(pc := th.pc + 1)] + ac);
           var bstS := LiftPreserveNegGatePassLkNested(rer, qm, re, code, endl, crv, str, ov, S,
                                                 bst, s, s1, l, vms2, ncap, nlook, nquant);
-          PSM.PreserveOraclePass(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+          PSM.PreserveOraclePassNested(rer, qm, re, code, endl, ngroups, str, ptsA, s,
                                  s1, th.(pc := th.pc + 1), vms2, l, false, ncap, nlook, nquant);
           var ptsA2, bst2 := LiftAdvanceEpsilonNested(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
                                                 ptsA, vms2, bstS, dir, ncap, nlook, nquant);
@@ -8155,7 +8256,7 @@ module LindenElkLiftSim {
           var vms2 := s1.(active := [th.(pc := th.pc + 1)] + ac);
           var bstS := LiftPreserveEndLoopPassLkNested(rer, qm, re, code, endl, crv, str, ov, S,
                                                 bst, s, s1, vms2, ncap, nlook, nquant);
-          var ptsS := PSM.PreserveEndLoopPass(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+          var ptsS := PSM.PreserveEndLoopPassNested(rer, qm, re, code, endl, ngroups, str, ptsA, s,
                                               s1, vms2, ncap, nlook, nquant);
           var ptsA2, bst2 := LiftAdvanceEpsilonNested(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
                                                 ptsS, vms2, bstS, dir, ncap, nlook, nquant);
@@ -8167,7 +8268,7 @@ module LindenElkLiftSim {
           var vms2 := s1.(active := ac);
           var bstS := LiftPreserveEndLoopKillLkNested(rer, qm, re, code, endl, crv, str, ov, S,
                                                 bst, s, s1, vms2, ncap, nlook, nquant);
-          var ptsS := PSM.PreserveEndLoopKill(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+          var ptsS := PSM.PreserveEndLoopKillNested(rer, qm, re, code, endl, ngroups, str, ptsA, s,
                                               s1, vms2, ncap, nlook, nquant);
           var ptsA2, bst2 := LiftAdvanceEpsilonNested(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
                                                 ptsS, vms2, bstS, dir, ncap, nlook, nquant);
@@ -8186,7 +8287,7 @@ module LindenElkLiftSim {
           var vms2 := s1.(active := [th.(pc := th.pc + 1)] + ac);
           var bstS := LiftPreserveAnchorPassLkNested(rer, qm, re, code, endl, crv, str, ov, S,
                                                bst, s, s1, a, vms2, ncap, nlook, nquant);
-          var ptsS := PSM.PreserveAnchorPass(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+          var ptsS := PSM.PreserveAnchorPassNested(rer, qm, re, code, endl, ngroups, str, ptsA, s,
                                              s1, vms2, a, ncap, nlook, nquant);
           var ptsA2, bst2 := LiftAdvanceEpsilonNested(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
                                                 ptsS, vms2, bstS, dir, ncap, nlook, nquant);
@@ -8198,7 +8299,7 @@ module LindenElkLiftSim {
           var vms2 := s1.(active := ac);
           var bstS := LiftPreserveAnchorKillLkNested(rer, qm, re, code, endl, crv, str, ov, S,
                                                bst, s, s1, a, vms2, ncap, nlook, nquant);
-          var ptsS := PSM.PreserveAnchorKill(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+          var ptsS := PSM.PreserveAnchorKillNested(rer, qm, re, code, endl, ngroups, str, ptsA, s,
                                              s1, vms2, a, ncap, nlook, nquant);
           var ptsA2, bst2 := LiftAdvanceEpsilonNested(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
                                                 ptsS, vms2, bstS, dir, ncap, nlook, nquant);
@@ -12851,6 +12952,66 @@ module LindenElkLiftSim {
     }
   }
 
+  /** (L4 NESTED) clone of `LookNestBackTSetQuant` under `NestedFragmentRE`: the
+      on-path dominance-break appeals to the nested `LookPathDomOnPathBreaksNested`
+      (its lookaround case recurses into the body). Body otherwise verbatim. */
+  lemma LookNestBackTSetQuantNested(re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                              S: set<LG.GroupId>, gmt: LG.GroupMap, gmt': LG.GroupMap,
+                              th: AI.Thread, th': AI.Thread, qn: nat,
+                              ncap: int, nlook: int, nquant: int)
+    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires LTB.LookUnique(re)
+    requires LookNestBackT(re, crv, str, ov, S, gmt, th, ncap, nlook, nquant)
+    requires qn in PIV.QuantIds(re) && qn in PIV.QuantIdsOutsideLooks(re)
+    requires th'.look_regs == th.look_regs
+    requires forall j: int :: j != qn as int ==>
+      AI.get_idx(th'.quant_regs.a_clk, j) == AI.get_idx(th.quant_regs.a_clk, j)
+    // the fresh stamp beats every stored look stamp
+    requires forall j: int ::
+      AI.get_idx(th.look_regs.a_clk, j) < AI.get_idx(th'.quant_regs.a_clk, qn as int)
+    // the Reset removes only qn's scope
+    requires forall g: LG.GroupId :: g in gmt && g !in PIV.CapIds(PIV.QidBody(re, qn)) ==> g in gmt'
+    ensures LookNestBackT(re, crv, str, ov, S, gmt', th', ncap, nlook, nquant)
+  {
+    forall lid: nat | lid in LTB.LookIds(re)
+      && M.MatchedPosLA(crv, th'.look_regs, lid as int)
+      && NI.LookPathDom(re, AI.get_idx(th'.look_regs.a_clk, lid as int), th'.quant_regs.a_clk, lid)
+      ensures var rf := M.FreshBodyMatch(crv, str, lid as int, th'.look_regs, ov, ncap, nlook, nquant);
+              rf.Some? ==>
+                forall g: LG.GroupId ::
+                  g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, lid))
+                  && g in PIV.GmOfLive(NI.LookBodyOfRE(re, lid), rf.value.capture_regs,
+                                       rf.value.look_regs, rf.value.quant_regs)
+                  ==> g in gmt'
+    {
+      var L := AI.get_idx(th.look_regs.a_clk, lid as int);
+      if lid in LTB.LookIds(PIV.QidBody(re, qn)) {
+        // ON path: the fresh stamp broke dominance — hypothesis impossible.
+        assert AI.get_idx(th'.quant_regs.a_clk, qn as int) > L;
+        NI.LookPathDomOnPathBreaksNested(re, L, th'.quant_regs.a_clk, lid, qn);
+        assert false;
+      } else {
+        NI.LookPathDomQuantOffPath(re, L, th.quant_regs.a_clk, th'.quant_regs.a_clk, lid, qn);
+        assert NI.LookPathDom(re, L, th.quant_regs.a_clk, lid);
+        NI.LookBodyQidBodyDisjoint(re, qn, lid);
+        var rf := M.FreshBodyMatch(crv, str, lid as int, th'.look_regs, ov, ncap, nlook, nquant);
+        forall g: LG.GroupId |
+          rf.Some? && g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, lid))
+          && g in PIV.GmOfLive(NI.LookBodyOfRE(re, lid), rf.value.capture_regs,
+                               rf.value.look_regs, rf.value.quant_regs)
+          ensures g in gmt'
+        {
+          assert g in gmt;
+          assert g !in PIV.CapIds(PIV.QidBody(re, qn)) by {
+            if g in PIV.CapIds(PIV.QidBody(re, qn)) {
+              assert g in PIV.CapIds(NI.LookBodyOfRE(re, lid)) * PIV.CapIds(PIV.QidBody(re, qn));
+            }
+          }
+        }
+      }
+    }
+  }
+
   /** Converse effect — GATE PASS at `l0`: the crossing's own coverage is the
       caller's (from the replay↔spec agreement); every other lid keeps its
       stamp, dominance, fresh match, and old witnesses. */
@@ -13760,7 +13921,7 @@ module LindenElkLiftSim {
     returns (ptsA': PT.PikeTreeState, ptsB': PT.PikeTreeState)
     requires NR.NfaRepRE(re, code, 0, endl)
     requires |ov| == |str| + 1                                    // L3b: propagate to the backward LB gate
-    requires PSM.StaticOkRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires PSM.StaticOkNestedRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
     requires S == PIV.CapIdsInLooks(re)   // the value-tie boundary (SetReg/gate cases)
     requires GateStaticsOk(qm, re, crv, ncap, nlook, nquant)   // per-lid look-table package (gate-pass case)
@@ -14166,7 +14327,7 @@ module LindenElkLiftSim {
                        S: set<LG.GroupId>, ptsA: PT.PikeTreeState, bst: PT.PikeTreeState,
                        vms: AI.VmState, cdn: LCdn.cdns, ncap: int, nlook: int, nquant: int)
     returns (bestT: Option<LT.Leaf>)
-    requires PSM.StaticOkRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires PSM.StaticOkNestedRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires |ov| == |str| + 1                                    // L3b: propagate to the backward LB gate
     requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
     requires S == PIV.CapIdsInLooks(re)
@@ -14191,7 +14352,7 @@ module LindenElkLiftSim {
     var ptsA1, bst1 := LiftAdvanceEpsilonNested(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
                                           ptsA, s0, bst, dir, ncap, nlook, nquant);
     var (s1, ov1) := AI.FAdvanceEpsilon(code, s0, ov, dir);
-    PSM.StaticOkNoWrite(qm, re, code, endl);
+    PSM.StaticOkNoWriteNested(qm, re, code, endl);
     CM.FAdvanceEpsilonOvStable(code, s0, ov, dir);
     assert ov1 == ov;
     PSM.FAdvanceEpsilonActiveEmpty(code, s0, ov, dir);
@@ -14529,6 +14690,12 @@ module LindenElkLiftSim {
                           ncap, nlook, nquant);
     assert LiftInvNested(rer, qm, re, code, crv, str, ov, S,
                    PT.PikeTreeInitialState(tcan, inp), vms, ncap, nlook, nquant);
+    // (L4 NESTED) the preservation/consume chain is genuinely nested-typed; the
+    // depth-1 STATIC package embeds into it. The ENTRY (LiftInitCNested) remains
+    // depth-1 — its `WalkPairLk` uses the depth-1 `EL.PikeLkActions` (positive
+    // look bodies must be look-free); a recursive walk tower is the residual
+    // sub-brick, so this endpoint keeps `StaticOkRE` and bridges for the sweep.
+    PSM.StaticOkRENestedFromRE(qm, re, code, endl);
     var bestT := LiftFindMatchCNested(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
                                 PT.PikeTreeInitialState(tstar, inp),
                                 PT.PikeTreeInitialState(tcan, inp),
