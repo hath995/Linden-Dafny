@@ -6024,6 +6024,134 @@ module LindenElkMain {
     case LKFail(lk, tlk) =>
   }
 
+  /** B' BRIDGE (structural): a recursively-confined tree — every group action at
+      ANY depth (spine or inside a look body) touches only `S` (`GmActionIn`) —
+      never writes a group `g` OUTSIDE `S`. `GmActionIn(a,S)` bans `a` from
+      touching any `g !in S`, so this is exactly the complement of `GNotWritten`.
+      The lever that turns the campaign's depth-k confinement (`LkConfinedTreeRec`,
+      already established for compiled bodies) into the `GNotWritten` frame the
+      value-composition lemmas consume. */
+  lemma LkConfinedTreeRecGNotWritten(t: LT.Tree, S: set<LG.GroupId>, g: LG.GroupId)
+    requires CE.LkConfinedTreeRec(t, S)
+    requires g !in S
+    ensures GNotWritten(t, g)
+    decreases t
+  {
+    match t
+    case Mismatch =>
+    case Match =>
+    case Choice(t1, t2) => LkConfinedTreeRecGNotWritten(t1, S, g); LkConfinedTreeRecGNotWritten(t2, S, g);
+    case Read(_, t1) => LkConfinedTreeRecGNotWritten(t1, S, g);
+    case ReadBackRef(_, t1) => LkConfinedTreeRecGNotWritten(t1, S, g);
+    case Progress(t1) => LkConfinedTreeRecGNotWritten(t1, S, g);
+    case AnchorPass(_, t1) => LkConfinedTreeRecGNotWritten(t1, S, g);
+    case GroupActionT(a, t1) =>
+      assert !ActTouchesG(a, g) by {
+        match a case Open(x) => case Close(x) => case Reset(gs) => assert g !in gs;
+      }
+      LkConfinedTreeRecGNotWritten(t1, S, g);
+    case LK(_, tlk, t1) => LkConfinedTreeRecGNotWritten(tlk, S, g); LkConfinedTreeRecGNotWritten(t1, S, g);
+    case LKFail(_, tlk) => LkConfinedTreeRecGNotWritten(tlk, S, g);
+  }
+
+  /** B' UTILITY: a recursive-fragment regex's spec tree does NOT write a group `g`
+      it does not define (`g !in DefGroups(r)`), at ANY depth (spine or inside a
+      nested look body). `L.DefGroups` recurses THROUGH lookaround bodies, so
+      `g !in DefGroups(r)` genuinely covers every capture position. This is the
+      `GNotWritten` frame every value-composition step needs for a subtree whose
+      regex is free of `g` — a sibling alternation branch, a look-free prefix, or
+      (the branching owner-peel's key use) the SETTLED continuation AFTER `g`'s
+      unique owner look, where `CapUnique` gives `g !in DefGroups(rest)`. Via
+      `LL.ComputeTrConfinedRec` (`LkConfinedTreeRec` at `S = DefGroups(r)`) composed
+      with the `LkConfinedTreeRecGNotWritten` bridge. */
+  lemma GNotWrittenComputeTr(rer: LW.RegExpRecord, r: L.Regex, inp: LC.Input, gm: LG.GroupMap,
+                             dir: WP.Direction, g: LG.GroupId)
+    requires EL.PikeLkRegexRec(r)
+    requires g !in (set x | x in L.DefGroups(r))
+    ensures GNotWritten(LFU.ComputeTr(rer, [LS.Areg(r)], inp, gm, dir), g)
+  {
+    var S := set x | x in L.DefGroups(r);
+    assert LL.DefGroupsIn(r, S);
+    LL.ComputeTrConfinedRec(rer, r, inp, gm, dir, S);
+    LkConfinedTreeRecGNotWritten(LFU.ComputeTr(rer, [LS.Areg(r)], inp, gm, dir), S, g);
+  }
+
+  /** Every group defined by an `Areg` of `acts` is in `AllDefsActs(acts)`. */
+  lemma DefInAllDefsActs(acts: LS.Actions, i: int, x: LG.GroupId)
+    requires 0 <= i < |acts| && acts[i].Areg? && x in L.DefGroups(acts[i].r)
+    ensures x in (set y | y in AllDefsActs(acts))
+    decreases |acts|
+  {
+    AllDefsActsCons(acts[0], acts[1..]);
+    assert acts == [acts[0]] + acts[1..];
+    if i == 0 { } else { DefInAllDefsActs(acts[1..], i - 1, x); assert acts[1..][i - 1] == acts[i]; }
+  }
+
+  /** B' UTILITY (actions form of `GNotWrittenComputeTr`): a recursive-fragment
+      ACTION LIST whose defined groups and pending closes both miss `g` builds a
+      spec tree that never writes `g`. This is the SETTLED-continuation frame the
+      branching owner-peel needs: AFTER `g`'s unique owner look, the remaining
+      action list defines `g` nowhere (`g !in AllDefsActs`) and has no pending
+      `Aclose(g)` (`g !in PendingCloses`), so its subtree is `GNotWritten(_, g)` —
+      the single-writer disjunct of `GBodyOK`/`GOwnerWF2` at each `LK` node. Via
+      `LL.ComputeTreeConfinedRec` at `S = AllDefsActs ∪ PendingCloses` (∌ g) + the
+      `LkConfinedTreeRecGNotWritten` bridge. */
+  lemma GNotWrittenComputeTrActs(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input, gm: LG.GroupMap,
+                                 dir: WP.Direction, g: LG.GroupId)
+    requires EL.PikeLkActionsRec(acts)
+    requires g !in (set x | x in AllDefsActs(acts))
+    requires g !in PendingCloses(acts)
+    ensures GNotWritten(LFU.ComputeTr(rer, acts, inp, gm, dir), g)
+  {
+    var S := (set x | x in AllDefsActs(acts)) + PendingCloses(acts);
+    assert g !in S;
+    assert LL.ConfinedActsRec(acts, S) by {
+      forall i | 0 <= i < |acts|
+        ensures (acts[i].Areg? ==> LL.DefGroupsIn(acts[i].r, S))
+             && (acts[i].Aclose? ==> acts[i].gid in S)
+      {
+        if acts[i].Areg? {
+          forall x | x in L.DefGroups(acts[i].r) ensures x in S { DefInAllDefsActs(acts, i, x); }
+        }
+        if acts[i].Aclose? { assert acts[i].gid in PendingCloses(acts); }
+      }
+    }
+    var fuel := LFS.ActionsFuel(acts, inp, dir) + 1;
+    LFS.FunctionalTerminates(rer, acts, inp, gm, dir, fuel);
+    LL.ComputeTreeConfinedRec(rer, acts, inp, gm, dir, fuel, S);
+    LkConfinedTreeRecGNotWritten(LFU.ComputeTr(rer, acts, inp, gm, dir), S, g);
+  }
+
+  /** Fuel form of `GNotWrittenComputeTrActs`: usable INSIDE a `ComputeTree` walk
+      (no fuel saturation needed), so the single-writer disjunct can be discharged
+      on the body/continuation subtrees at the walk's own fuel. */
+  lemma GNotWrittenComputeTreeActs(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input, gm: LG.GroupMap,
+                                   dir: WP.Direction, fuel: nat, g: LG.GroupId)
+    requires EL.PikeLkActionsRec(acts)
+    requires g !in (set x | x in AllDefsActs(acts))
+    requires g !in PendingCloses(acts)
+    ensures LFS.ComputeTree(rer, acts, inp, gm, dir, fuel).Some?
+         ==> GNotWritten(LFS.ComputeTree(rer, acts, inp, gm, dir, fuel).value, g)
+  {
+    var S := (set x | x in AllDefsActs(acts)) + PendingCloses(acts);
+    assert g !in S;
+    assert LL.ConfinedActsRec(acts, S) by {
+      forall i | 0 <= i < |acts|
+        ensures (acts[i].Areg? ==> LL.DefGroupsIn(acts[i].r, S))
+             && (acts[i].Aclose? ==> acts[i].gid in S)
+      {
+        if acts[i].Areg? {
+          forall x | x in L.DefGroups(acts[i].r) ensures x in S { DefInAllDefsActs(acts, i, x); }
+        }
+        if acts[i].Aclose? { assert acts[i].gid in PendingCloses(acts); }
+      }
+    }
+    LL.ComputeTreeConfinedRec(rer, acts, inp, gm, dir, fuel, S);
+    if LFS.ComputeTree(rer, acts, inp, gm, dir, fuel).Some? {
+      LkConfinedTreeRecGNotWritten(LFS.ComputeTree(rer, acts, inp, gm, dir, fuel).value, S, g);
+    }
+  }
+
   /** R3b (the task's clean "outer leaf value at an inner `g` == the LK sub-tree's
       value at `g`" form, ONE step): at a matched POSITIVE look node whose
       continuation `t1` never writes `g`, the whole node's leaf value at `g`
@@ -6387,6 +6515,74 @@ module LindenElkMain {
     case LKFail(_, tlk) =>
   }
 
+  // ==========================================================================
+  // B' FINDING (machine-checked): `GOwnerWF` COLLAPSES to `GNotWritten`, so the
+  // "sound owner descent" `TreeResGOwnerDescent`/`TreeResGOwnerFresh` is VACUOUS
+  // for any `g` that is actually WRITTEN (every captured inside-look group).
+  //
+  // `GOwnerWF`'s `LK` case requires `GOwnerWF(tlk, g)` on the look BODY. But the
+  // owner look's body writes `g` DIRECTLY on its spine, and `GOwnerWF`'s
+  // `GroupActionT` case bans `ActTouchesG(a,g)` at every level INCLUDING inside
+  // look bodies (it recurses `GOwnerWF` into `tlk`). Hence `GOwnerWF(t,g) ==>
+  // GNotWritten(t,g)` (below), and trivially the converse, so `GOwnerWF <==>
+  // GNotWritten`. In `TreeResGOwnerDescent`'s `LK` case the owner-found branch is
+  // guarded by `!GNotWritten(tsub0,g)` (the body writes `g`); under the precond
+  // `GOwnerWF(t,g)` we have `GOwnerWF(tsub0,g) ==> GNotWritten(tsub0,g)`, so that
+  // branch is DEAD. The descent therefore NEVER returns `found`, proving only the
+  // trivial pass-through `Find(g,leaf) == Find(g,gm)`.
+  //
+  // CONSEQUENCE for brick B' milestone #2: composing the general owner↔tree
+  // identity with `TreeResGOwnerFresh` cannot work as-is. The fix is to WEAKEN
+  // `GOwnerWF`'s `LK` case so the owner look body is NOT required write-free:
+  // split into an outer-context predicate (no `g` on the outer spine; ≤1 of
+  // {body,cont} writes `g` per path) and a BODY predicate that PERMITS the owner
+  // body's own spine to write `g` while still confining `g` to a unique look per
+  // deeper path. The correct outer-spine-only invariant (`GWriteOnlyInLooks`) is
+  // now established for the compiled tree by `ComputeTrGWriteOnlyInLooks` above.
+  // ==========================================================================
+
+  /** B' FINDING: `GOwnerWF` is no stronger than `GNotWritten` — its recursion
+      into look bodies (`GOwnerWF(tlk,g)`) plus the spine-write ban collapses it to
+      "`g` never written anywhere". Machine-checked witness that the current
+      `TreeResGOwnerDescent`/`Fresh` scaffolding cannot find a genuine owner. */
+  lemma GOwnerWFImpliesGNotWritten(t: LT.Tree, g: LG.GroupId)
+    requires GOwnerWF(t, g)
+    ensures GNotWritten(t, g)
+    decreases t
+  {
+    match t
+    case Mismatch =>
+    case Match =>
+    case Choice(t1, t2) => GOwnerWFImpliesGNotWritten(t1, g); GOwnerWFImpliesGNotWritten(t2, g);
+    case Read(_, t1) => GOwnerWFImpliesGNotWritten(t1, g);
+    case ReadBackRef(_, t1) => GOwnerWFImpliesGNotWritten(t1, g);
+    case Progress(t1) => GOwnerWFImpliesGNotWritten(t1, g);
+    case AnchorPass(_, t1) => GOwnerWFImpliesGNotWritten(t1, g);
+    case GroupActionT(a, t1) => GOwnerWFImpliesGNotWritten(t1, g);
+    case LK(_, tlk, t1) => GOwnerWFImpliesGNotWritten(tlk, g); GOwnerWFImpliesGNotWritten(t1, g);
+    case LKFail(_, tlk) => GOwnerWFImpliesGNotWritten(tlk, g);
+  }
+
+  /** B' FINDING (converse): `GNotWritten ==> GOwnerWF`, so the two are EQUIVALENT.
+      Together with `GOwnerWFImpliesGNotWritten` this pins the collapse exactly. */
+  lemma GNotWrittenImpliesGOwnerWF(t: LT.Tree, g: LG.GroupId)
+    requires GNotWritten(t, g)
+    ensures GOwnerWF(t, g)
+    decreases t
+  {
+    match t
+    case Mismatch =>
+    case Match =>
+    case Choice(t1, t2) => GNotWrittenImpliesGOwnerWF(t1, g); GNotWrittenImpliesGOwnerWF(t2, g);
+    case Read(_, t1) => GNotWrittenImpliesGOwnerWF(t1, g);
+    case ReadBackRef(_, t1) => GNotWrittenImpliesGOwnerWF(t1, g);
+    case Progress(t1) => GNotWrittenImpliesGOwnerWF(t1, g);
+    case AnchorPass(_, t1) => GNotWrittenImpliesGOwnerWF(t1, g);
+    case GroupActionT(a, t1) => GNotWrittenImpliesGOwnerWF(t1, g);
+    case LK(_, tlk, t1) => GNotWrittenImpliesGOwnerWF(tlk, g); GNotWrittenImpliesGOwnerWF(t1, g);
+    case LKFail(_, tlk) => GNotWrittenImpliesGOwnerWF(tlk, g);
+  }
+
   /** R31b (2a) — SOUND iterate-to-owner. Under `GOwnerWF` the winning-path value at
       `g` is EITHER the incoming `gm[g]` (top level: `g` never written on the winning
       path — HONEST, no intermediate map leaks) OR the OWN sub-result at `g` of a
@@ -6505,6 +6701,748 @@ module LindenElkMain {
       assert LG.Find(g, LG.Empty) == None;                    // fresh map has no g
       TreeResGValueFramed(tsub, gmo, LG.Empty, inpo, L.LkDir(lk), g);
     }
+  }
+
+  // ==========================================================================
+  // B' CORRECTED SOUND DESCENT (ADDITIVE). `GOwnerWF` collapses to `GNotWritten`
+  // (see `GOwnerWFImpliesGNotWritten`), so `TreeResGOwnerFresh` never finds an
+  // owner. The fix splits the well-formedness into two predicates:
+  //   * `GBodyOK(t,g)`  — the LOOK-BODY context: `g` MAY be written on this spine
+  //     (the owner writes it here), but along any single spine path `g`'s write
+  //     lives in a UNIQUE look body (`GNotWritten(tlk,g) || GNotWritten(t1,g)` at
+  //     each `LK`), and every look body is itself `GBodyOK`.
+  //   * `GOwnerWF2(t,g)` — the OUTER context: identical, but ALSO no `g`-write on
+  //     THIS (outer) spine (`!ActTouchesG(a,g)` at `GroupActionT`). The look
+  //     bodies are `GBodyOK` (NOT `GOwnerWF2`), so the owner body is free to write
+  //     `g` — this is exactly the conjunct the broken `GOwnerWF` got wrong.
+  // `GOwnerWF2` does NOT collapse (`GOwnerWF2NonCollapse` exhibits a `g`-writing
+  // witness), and `TreeResGOwnerDescentV` below is the genuinely SOUND owner
+  // descent milestone #2 needs — it FINDS the innermost owner subtree and pins the
+  // outer leaf value at `g` to that owner's own sub-result at `g`.
+  // ==========================================================================
+
+  /** LOOK-BODY well-formedness for `g`: `g`'s writes are confined to a UNIQUE
+      look body per spine path (this spine MAY write `g`). */
+  ghost predicate GBodyOK(t: LT.Tree, g: LG.GroupId)
+    decreases t
+  {
+    match t
+    case Mismatch => true
+    case Match => true
+    case Choice(t1, t2) => GBodyOK(t1, g) && GBodyOK(t2, g)
+    case Read(_, t1) => GBodyOK(t1, g)
+    case ReadBackRef(_, t1) => GBodyOK(t1, g)
+    case Progress(t1) => GBodyOK(t1, g)
+    case AnchorPass(_, t1) => GBodyOK(t1, g)
+    case GroupActionT(a, t1) => GBodyOK(t1, g)          // spine write to g PERMITTED
+    case LK(_, tlk, t1) =>
+      GBodyOK(tlk, g) && GBodyOK(t1, g) && (GNotWritten(tlk, g) || GNotWritten(t1, g))
+    case LKFail(_, tlk) => GBodyOK(tlk, g)
+  }
+
+  /** OUTER well-formedness for `g`: as `GBodyOK`, but NO `g`-write on THIS spine
+      (`GroupActionT` bans `ActTouchesG`). Crucially the `LK` body is only required
+      `GBodyOK` (may write `g` — the owner), NOT `GOwnerWF2`; this is where the
+      broken `GOwnerWF` over-constrained and collapsed to `GNotWritten`. */
+  ghost predicate GOwnerWF2(t: LT.Tree, g: LG.GroupId)
+    decreases t
+  {
+    match t
+    case Mismatch => true
+    case Match => true
+    case Choice(t1, t2) => GOwnerWF2(t1, g) && GOwnerWF2(t2, g)
+    case Read(_, t1) => GOwnerWF2(t1, g)
+    case ReadBackRef(_, t1) => GOwnerWF2(t1, g)
+    case Progress(t1) => GOwnerWF2(t1, g)
+    case AnchorPass(_, t1) => GOwnerWF2(t1, g)
+    case GroupActionT(a, t1) => !ActTouchesG(a, g) && GOwnerWF2(t1, g)
+    case LK(_, tlk, t1) =>
+      GBodyOK(tlk, g) && GOwnerWF2(t1, g) && (GNotWritten(tlk, g) || GNotWritten(t1, g))
+    case LKFail(_, tlk) => GBodyOK(tlk, g)
+  }
+
+  /** `GNotWritten` refines both (nothing written ⇒ trivially well-formed). */
+  lemma GNotWrittenImpliesGBodyOK(t: LT.Tree, g: LG.GroupId)
+    requires GNotWritten(t, g)
+    ensures GBodyOK(t, g)
+    decreases t
+  {
+    match t
+    case Choice(t1, t2) => GNotWrittenImpliesGBodyOK(t1, g); GNotWrittenImpliesGBodyOK(t2, g);
+    case Read(_, t1) => GNotWrittenImpliesGBodyOK(t1, g);
+    case ReadBackRef(_, t1) => GNotWrittenImpliesGBodyOK(t1, g);
+    case Progress(t1) => GNotWrittenImpliesGBodyOK(t1, g);
+    case AnchorPass(_, t1) => GNotWrittenImpliesGBodyOK(t1, g);
+    case GroupActionT(a, t1) => GNotWrittenImpliesGBodyOK(t1, g);
+    case LK(_, tlk, t1) => GNotWrittenImpliesGBodyOK(tlk, g); GNotWrittenImpliesGBodyOK(t1, g);
+    case LKFail(_, tlk) => GNotWrittenImpliesGBodyOK(tlk, g);
+    case _ =>
+  }
+
+  /** THE BRIDGE: a `GBodyOK` tree whose OUTER spine happens to be `g`-write-free
+      (`GWriteOnlyInLooks`) is `GOwnerWF2`. Used by the descent to re-enter the
+      outer context when it recurses into a look body that carries `g` only DEEPER
+      (its own spine is `g`-free). */
+  lemma GBodyOKSpineImpliesOwnerWF2(t: LT.Tree, g: LG.GroupId)
+    requires GBodyOK(t, g)
+    requires GWriteOnlyInLooks(t, g)
+    ensures GOwnerWF2(t, g)
+    decreases t
+  {
+    match t
+    case Choice(t1, t2) => GBodyOKSpineImpliesOwnerWF2(t1, g); GBodyOKSpineImpliesOwnerWF2(t2, g);
+    case Read(_, t1) => GBodyOKSpineImpliesOwnerWF2(t1, g);
+    case ReadBackRef(_, t1) => GBodyOKSpineImpliesOwnerWF2(t1, g);
+    case Progress(t1) => GBodyOKSpineImpliesOwnerWF2(t1, g);
+    case AnchorPass(_, t1) => GBodyOKSpineImpliesOwnerWF2(t1, g);
+    case GroupActionT(a, t1) => GBodyOKSpineImpliesOwnerWF2(t1, g);   // GWriteOnlyInLooks: !ActTouchesG
+    case LK(_, tlk, t1) => GBodyOKSpineImpliesOwnerWF2(t1, g);        // GWriteOnlyInLooks(LK) == on t1
+    case LKFail(_, tlk) =>
+    case _ =>
+  }
+
+  /** `GOwnerWF2` refines `GWriteOnlyInLooks` (no `g`-write on the OUTER spine) —
+      the companion of `GOwnerWFImpliesSpine` for the corrected predicate. */
+  lemma GOwnerWF2ImpliesSpine(t: LT.Tree, g: LG.GroupId)
+    requires GOwnerWF2(t, g)
+    ensures GWriteOnlyInLooks(t, g)
+    decreases t
+  {
+    match t
+    case Choice(t1, t2) => GOwnerWF2ImpliesSpine(t1, g); GOwnerWF2ImpliesSpine(t2, g);
+    case Read(_, t1) => GOwnerWF2ImpliesSpine(t1, g);
+    case ReadBackRef(_, t1) => GOwnerWF2ImpliesSpine(t1, g);
+    case Progress(t1) => GOwnerWF2ImpliesSpine(t1, g);
+    case AnchorPass(_, t1) => GOwnerWF2ImpliesSpine(t1, g);
+    case GroupActionT(a, t1) => GOwnerWF2ImpliesSpine(t1, g);
+    case LK(_, tlk, t1) => GOwnerWF2ImpliesSpine(t1, g);
+    case _ =>
+  }
+
+  /** `GOwnerWF2` does NOT collapse to `GNotWritten` (unlike `GOwnerWF`): the tree
+      `LK(LookAhead, GroupActionT(Open(g), Match), Match)` — a positive look whose
+      body WRITES `g` — is `GOwnerWF2` yet NOT `GNotWritten`. This is precisely the
+      shape the broken `GOwnerWF` excluded, so the corrected descent is non-vacuous. */
+  lemma GOwnerWF2NonCollapse(g: LG.GroupId)
+    ensures var t := LT.LK(L.LookAhead, LT.GroupActionT(LG.Open(g), LT.Match), LT.Match);
+            GOwnerWF2(t, g) && !GNotWritten(t, g)
+  {
+    var body := LT.GroupActionT(LG.Open(g), LT.Match);
+    assert GBodyOK(body, g);
+    assert GNotWritten(LT.Match, g);
+    assert !GNotWritten(body, g) by { assert ActTouchesG(LG.Open(g), g); }
+  }
+
+  /** B' CORRECTED SOUND DESCENT. Same navigation as `TreeResGOwnerDescent`, but
+      under the corrected `GOwnerWF2` the owner-found branch (`!GWriteOnlyInLooks
+      (tsub0,g)`, the body writes `g` on its spine) is LIVE — `GOwnerWF2` supplies
+      `GNotWritten(t1,g)` (single-writer disjunct) WITHOUT forcing the body itself
+      write-free, so the descent genuinely lands on the innermost owner. The
+      deeper-recurse branch re-enters the outer context via the
+      `GBodyOKSpineImpliesOwnerWF2` bridge. */
+  lemma TreeResGOwnerDescentV(t: LT.Tree, gm: LG.GroupMap, inp: LC.Input, dir: WP.Direction, g: LG.GroupId)
+      returns (found: bool, lk: L.Lookaround, tsub: LT.Tree, gmo: LG.GroupMap, inpo: LC.Input)
+    requires GOwnerWF2(t, g)
+    requires LT.TreeRes(t, gm, inp, dir).Some?
+    ensures found ==> tsub < t
+    ensures found ==> LG.Find(g, gmo) == LG.Find(g, gm)
+    ensures !found ==> LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1) == LG.Find(g, gm)
+    ensures found ==>
+        L.Positivity(lk)
+        && !GWriteOnlyInLooks(tsub, g)
+        && LT.TreeRes(tsub, gmo, inpo, L.LkDir(lk)).Some?
+        && LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1)
+           == LG.Find(g, LT.TreeRes(tsub, gmo, inpo, L.LkDir(lk)).value.1)
+    decreases t
+  {
+    match t
+    case Match =>
+      found, lk, tsub, gmo, inpo := false, L.LookAhead, t, gm, inp;
+    case Mismatch =>
+      found, lk, tsub, gmo, inpo := false, L.LookAhead, t, gm, inp;
+    case LKFail(lk0, tsub0) =>
+      found, lk, tsub, gmo, inpo := false, L.LookAhead, tsub0, gm, inp;
+    case Choice(t1, t2) =>
+      if LT.TreeRes(t1, gm, inp, dir).Some? {
+        found, lk, tsub, gmo, inpo := TreeResGOwnerDescentV(t1, gm, inp, dir, g);
+      } else {
+        found, lk, tsub, gmo, inpo := TreeResGOwnerDescentV(t2, gm, inp, dir, g);
+      }
+    case Read(c, t1) =>
+      found, lk, tsub, gmo, inpo := TreeResGOwnerDescentV(t1, gm, LC.AdvanceInputP(inp, dir), dir, g);
+    case ReadBackRef(brStr, t1) =>
+      found, lk, tsub, gmo, inpo := TreeResGOwnerDescentV(t1, gm, LC.AdvanceInputN(inp, |brStr|, dir), dir, g);
+    case Progress(t1) =>
+      found, lk, tsub, gmo, inpo := TreeResGOwnerDescentV(t1, gm, inp, dir, g);
+    case AnchorPass(a, t1) =>
+      found, lk, tsub, gmo, inpo := TreeResGOwnerDescentV(t1, gm, inp, dir, g);
+    case GroupActionT(a, t1) =>
+      GMUpdateFindNotTouch(a, LC.Idx(inp), gm, g);           // !ActTouchesG from GOwnerWF2
+      found, lk, tsub, gmo, inpo := TreeResGOwnerDescentV(t1, LG.GMUpdate(a, LC.Idx(inp), gm), inp, dir, g);
+    case LK(lk0, tsub0, t1) =>
+      if L.Positivity(lk0) {
+        var sub := LT.TreeRes(tsub0, gm, inp, L.LkDir(lk0));
+        assert sub.Some?;
+        if GNotWritten(tsub0, g) {
+          TreeResGNotWritten(tsub0, gm, inp, L.LkDir(lk0), g);
+          var fc, lkc, tsubc, gmoc, inpoc := TreeResGOwnerDescentV(t1, sub.value.1, inp, dir, g);
+          if fc {
+            found, lk, tsub, gmo, inpo := true, lkc, tsubc, gmoc, inpoc;
+            assert tsubc < t1;
+          } else {
+            found, lk, tsub, gmo, inpo := false, lk0, tsub0, gm, inp;
+          }
+        } else {
+          // body writes g: GOwnerWF2 gives GNotWritten(t1,g) (single-writer) AND GBodyOK(tsub0,g).
+          assert GNotWritten(t1, g);
+          TreeResLkNodeGValue(lk0, tsub0, t1, gm, inp, dir, g);
+          if !GWriteOnlyInLooks(tsub0, g) {
+            // g on tsub0's OWN spine: this look is the innermost owner. (LIVE under GOwnerWF2!)
+            found, lk, tsub, gmo, inpo := true, lk0, tsub0, gm, inp;
+          } else {
+            // g deeper inside tsub0's looks: re-enter the outer context and recurse.
+            GBodyOKSpineImpliesOwnerWF2(tsub0, g);            // GOwnerWF2(tsub0, g)
+            var fc, lkc, tsubc, gmoc, inpoc := TreeResGOwnerDescentV(tsub0, gm, inp, L.LkDir(lk0), g);
+            if fc {
+              found, lk, tsub, gmo, inpo := true, lkc, tsubc, gmoc, inpoc;
+              assert tsubc < tsub0;
+            } else {
+              found, lk, tsub, gmo, inpo := false, lk0, tsub0, gm, inp;
+            }
+          }
+        }
+      } else {
+        var sub := LT.TreeRes(tsub0, gm, inp, L.LkDir(lk0));
+        assert sub.None?;
+        found, lk, tsub, gmo, inpo := TreeResGOwnerDescentV(t1, gm, inp, dir, g);
+      }
+  }
+
+  /** B' CORRECTED FRESH-map owner form (the genuinely non-vacuous `TreeResGOwner
+      Fresh`). Under `GOwnerWF2` with `g` fresh, on the winning path the outer leaf
+      value at `g` is EITHER unset (`None`) OR the INNERMOST OWNER look body's OWN
+      `Empty`-map `TreeRes` value at `g`, at the descent-recorded position `inpo` —
+      the SPEC half of `recon_inner` at GENERAL branching body structure. */
+  lemma TreeResGOwnerFreshV(t: LT.Tree, gm: LG.GroupMap, inp: LC.Input, dir: WP.Direction, g: LG.GroupId)
+      returns (found: bool, lk: L.Lookaround, tsub: LT.Tree, gmo: LG.GroupMap, inpo: LC.Input)
+    requires GOwnerWF2(t, g)
+    requires LT.TreeRes(t, gm, inp, dir).Some?
+    requires LG.Find(g, gm) == None
+    ensures found ==> tsub < t
+    ensures !found ==> LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1) == None
+    ensures found ==>
+        L.Positivity(lk)
+        && !GWriteOnlyInLooks(tsub, g)
+        && LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk)).Some?
+        && LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1)
+           == LG.Find(g, LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk)).value.1)
+  {
+    found, lk, tsub, gmo, inpo := TreeResGOwnerDescentV(t, gm, inp, dir, g);
+    if found {
+      assert LG.Find(g, gmo) == LG.Find(g, gm) == None;
+      assert LG.Find(g, LG.Empty) == None;
+      TreeResGValueFramed(tsub, gmo, LG.Empty, inpo, L.LkDir(lk), g);
+    }
+  }
+
+  // ==========================================================================
+  // B' (ADDITIVE): the SPINE-write-freedom of a compiled body tree for an
+  // inside-look capture `g`, at GENERAL (branching) body structure.
+  //
+  // `g in LkBodyGroups(tr)` is written ONLY inside a look body, never on the outer
+  // spine — EXCEPT that a quantifier wrapping `g`'s owner look emits a spine
+  // `Reset(DefGroups(body))` that DOES touch `g` (`L.DefGroups` recurses through
+  // looks). `GNotUnderQuantL(tr, g)` is exactly the side condition that rules this
+  // out: `g` is not captured under any quantifier of `tr`. Under it (plus `g` being
+  // an inside-look, hence non-openable, group — `g !in OuterDefsActs`), every SPINE
+  // group action misses `g`, i.e. `GWriteOnlyInLooks(ComputeTr(tr), g)`. This is
+  // the branching analogue of the chain fragment's implicit spine-freedom (a chain
+  // has NO spine group actions at all), and the precondition that makes the SOUND
+  // owner descent `TreeResGOwnerFresh` applicable at general body structure.
+  // ==========================================================================
+
+  /** `g` is not captured inside any QUANTIFIER body of `r` (at any depth). The
+      side condition that keeps a compiled tree's SPINE free of `g`-writes: a
+      quantifier over `g`'s owner look would emit a spine `Reset(DefGroups(body))`
+      touching `g` (since `L.DefGroups` recurses through look bodies). The honest
+      scope caveat flagged for `GOwnerWF` — a QUANTIFIED capturing lookaround. */
+  ghost predicate GNotUnderQuantL(r: L.Regex, g: LG.GroupId)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => GNotUnderQuantL(r1, g) && GNotUnderQuantL(r2, g)
+    case Sequence(r1, r2) => GNotUnderQuantL(r1, g) && GNotUnderQuantL(r2, g)
+    case Quantified(_, _, _, r1) => g !in (set x | x in L.DefGroups(r1)) && GNotUnderQuantL(r1, g)
+    case Group(_, r1) => GNotUnderQuantL(r1, g)
+    case LookaroundR(_, r1) => GNotUnderQuantL(r1, g)
+    case _ => true
+  }
+
+  /** Action-list lift of `GNotUnderQuantL`: every pending `Areg` regex keeps `g`
+      out of its quantifier bodies. Threaded down the `ComputeTree` walk. */
+  ghost predicate GNQActs(act: LS.Actions, g: LG.GroupId) {
+    forall i :: 0 <= i < |act| ==> (act[i].Areg? ==> GNotUnderQuantL(act[i].r, g))
+  }
+
+  lemma GNQActsCons(x: LS.Action, cont: LS.Actions, g: LG.GroupId)
+    ensures GNQActs([x] + cont, g) <==> ((x.Areg? ==> GNotUnderQuantL(x.r, g)) && GNQActs(cont, g))
+  {
+    if (x.Areg? ==> GNotUnderQuantL(x.r, g)) && GNQActs(cont, g) {
+      forall i | 0 <= i < |[x] + cont| ensures ([x] + cont)[i].Areg? ==> GNotUnderQuantL(([x] + cont)[i].r, g) {
+        if i == 0 {} else { assert ([x] + cont)[i] == cont[i - 1]; }
+      }
+    }
+    if GNQActs([x] + cont, g) {
+      assert ([x] + cont)[0] == x;
+      forall i | 0 <= i < |cont| ensures cont[i].Areg? ==> GNotUnderQuantL(cont[i].r, g) { assert ([x] + cont)[i + 1] == cont[i]; }
+    }
+  }
+
+  lemma GNQActsTail(act: LS.Actions, g: LG.GroupId)
+    requires |act| > 0 && GNQActs(act, g)
+    ensures GNQActs(act[1..], g)
+  {
+    forall i | 0 <= i < |act[1..]| ensures act[1..][i].Areg? ==> GNotUnderQuantL(act[1..][i].r, g) { assert act[1..][i] == act[i + 1]; }
+  }
+
+  /** B' SPINE-FREEDOM WALK: a `ComputeTree` walk whose pending actions keep `g`
+      out of every OPENABLE outer group (`g !in OuterDefsActs`) AND out of every
+      quantifier body (`GNQActs`) builds a tree in which `g` is written only inside
+      look bodies (`GWriteOnlyInLooks(_, g)`). Mirrors `ComputeTreeConfinedRec`'s
+      case structure, but the LK case recurses ONLY into the CONTINUATION (look
+      bodies are unconstrained for `GWriteOnlyInLooks`). Each spine group action
+      misses `g`: `Aclose(gid)`/`Group(gid,..)` open/close an OUTER group `gid in
+      OuterDefsActs`, so `gid != g`; a `Quantified` reset targets `DefGroups(r1)`,
+      which `GNQActs` keeps `g` out of. */
+  lemma ComputeTreeGWriteOnlyInLooks(rer: LW.RegExpRecord, act: LS.Actions, inp: LC.Input,
+                                     gm: LG.GroupMap, dir: WP.Direction, fuel: nat, g: LG.GroupId)
+    requires g !in OuterDefsActs(act)
+    requires GNQActs(act, g)
+    ensures LFS.ComputeTree(rer, act, inp, gm, dir, fuel).Some?
+         ==> GWriteOnlyInLooks(LFS.ComputeTree(rer, act, inp, gm, dir, fuel).value, g)
+    decreases fuel
+  {
+    if fuel == 0 || |act| == 0 { return; }
+    var f := fuel - 1;
+    var cont := act[1..];
+    assert act == [act[0]] + cont;
+    OuterDefsActsCons(act[0], cont);
+    GNQActsCons(act[0], cont, g);
+    GNQActsTail(act, g);
+    // OuterDefsActs(cont) <= OuterDefsActs(act) always, so g misses it on the tail.
+    assert g !in OuterDefsActs(cont);
+    match act[0]
+    case Acheck(strcheck) =>
+      // suffix pass => Progress(rec(cont)); suffix fail => Mismatch (GWriteOnlyInLooks trivially).
+      ComputeTreeGWriteOnlyInLooks(rer, cont, inp, gm, dir, f, g);
+    case Aclose(gid) =>
+      assert gid in OuterDefsActs(act);                    // Aclose contributes {gid}
+      assert gid != g;
+      ComputeTreeGWriteOnlyInLooks(rer, cont, inp, LG.GMClose(LC.Idx(inp), gid, gm), dir, f, g);
+    case Areg(r) =>
+      match r
+      case Epsilon => ComputeTreeGWriteOnlyInLooks(rer, cont, inp, gm, dir, f, g);
+      case Character(cd) =>
+        match LC.ReadChar(rer, cd, inp, dir) {
+          case None =>
+          case Some(pair) => ComputeTreeGWriteOnlyInLooks(rer, cont, pair.1, gm, dir, f, g);
+        }
+      case Disjunction(r1, r2) =>
+        assert DefGroupsOutsideLooksL(r) == DefGroupsOutsideLooksL(r1) + DefGroupsOutsideLooksL(r2);
+        OuterDefsActsCons(LS.Areg(r1), cont); OuterDefsActsCons(LS.Areg(r2), cont);
+        GNQActsCons(LS.Areg(r1), cont, g); GNQActsCons(LS.Areg(r2), cont, g);
+        ComputeTreeGWriteOnlyInLooks(rer, [LS.Areg(r1)] + cont, inp, gm, dir, f, g);
+        ComputeTreeGWriteOnlyInLooks(rer, [LS.Areg(r2)] + cont, inp, gm, dir, f, g);
+      case Sequence(r1, r2) =>
+        var na := LS.SeqList(r1, r2, dir) + cont;
+        assert g !in OuterDefsActs(na) && GNQActs(na, g) by {
+          assert DefGroupsOutsideLooksL(r) == DefGroupsOutsideLooksL(r1) + DefGroupsOutsideLooksL(r2);
+          if dir.Forward? {
+            assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+            OuterDefsActsCons(LS.Areg(r2), cont); OuterDefsActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont);
+            GNQActsCons(LS.Areg(r2), cont, g); GNQActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont, g);
+          } else {
+            assert na == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
+            OuterDefsActsCons(LS.Areg(r1), cont); OuterDefsActsCons(LS.Areg(r2), [LS.Areg(r1)] + cont);
+            GNQActsCons(LS.Areg(r1), cont, g); GNQActsCons(LS.Areg(r2), [LS.Areg(r1)] + cont, g);
+          }
+        }
+        ComputeTreeGWriteOnlyInLooks(rer, na, inp, gm, dir, f, g);
+      case Quantified(greedy, min, delta, r1) =>
+        var gidl := L.DefGroups(r1);
+        assert g !in (set x | x in gidl);                  // GNotUnderQuantL(Quantified,..)
+        assert DefGroupsOutsideLooksL(r) == DefGroupsOutsideLooksL(r1);
+        if min > 0 {
+          var quant := L.Quantified(greedy, min - 1, delta, r1);
+          var na := [LS.Areg(r1), LS.Areg(quant)] + cont;
+          assert g !in OuterDefsActs(na) && GNQActs(na, g) by {
+            assert na == [LS.Areg(r1)] + ([LS.Areg(quant)] + cont);
+            OuterDefsActsCons(LS.Areg(quant), cont); OuterDefsActsCons(LS.Areg(r1), [LS.Areg(quant)] + cont);
+            GNQActsCons(LS.Areg(quant), cont, g); GNQActsCons(LS.Areg(r1), [LS.Areg(quant)] + cont, g);
+          }
+          ComputeTreeGWriteOnlyInLooks(rer, na, inp, LG.GMReset(gidl, gm), dir, f, g);
+        } else if delta == LN.NN(0) {
+          ComputeTreeGWriteOnlyInLooks(rer, cont, inp, gm, dir, f, g);
+        } else {
+          var quant := L.Quantified(greedy, 0, LFS.NoiPred(delta), r1);
+          var na := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
+          assert g !in OuterDefsActs(na) && GNQActs(na, g) by {
+            assert na == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+            OuterDefsActsCons(LS.Areg(quant), cont); OuterDefsActsCons(LS.Acheck(inp), [LS.Areg(quant)] + cont);
+            OuterDefsActsCons(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+            GNQActsCons(LS.Areg(quant), cont, g); GNQActsCons(LS.Acheck(inp), [LS.Areg(quant)] + cont, g);
+            GNQActsCons(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont), g);
+          }
+          ComputeTreeGWriteOnlyInLooks(rer, na, inp, LG.GMReset(gidl, gm), dir, f, g);
+          ComputeTreeGWriteOnlyInLooks(rer, cont, inp, gm, dir, f, g);
+        }
+      case Group(gid, r1) =>
+        assert gid in OuterDefsActs(act);                  // gid in DefGroupsOutsideLooksL(Group)
+        assert gid != g;
+        assert DefGroupsOutsideLooksL(r) == {gid} + DefGroupsOutsideLooksL(r1);
+        var na := [LS.Areg(r1), LS.Aclose(gid)] + cont;
+        assert g !in OuterDefsActs(na) && GNQActs(na, g) by {
+          assert na == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
+          OuterDefsActsCons(LS.Aclose(gid), cont); OuterDefsActsCons(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+          GNQActsCons(LS.Aclose(gid), cont, g); GNQActsCons(LS.Areg(r1), [LS.Aclose(gid)] + cont, g);
+        }
+        ComputeTreeGWriteOnlyInLooks(rer, na, inp, LG.GMOpen(LC.Idx(inp), gid, gm), dir, f, g);
+      case LookaroundR(lk, r1) =>
+        var bodyacts := [LS.Areg(r1)];
+        match LFS.ComputeTree(rer, bodyacts, inp, gm, L.LkDir(lk), f) {
+          case None =>
+          case Some(treelk) =>
+            match LS.LkResult(lk, treelk, gm, inp) {
+              case Some(gmlk) => ComputeTreeGWriteOnlyInLooks(rer, cont, inp, gmlk, dir, f, g);  // LK body unconstrained
+              case None =>                                                                        // LKFail: GWriteOnlyInLooks true
+            }
+        }
+      case AnchorR(a) =>
+        if LS.AnchorSatisfied(rer, a, inp) { ComputeTreeGWriteOnlyInLooks(rer, cont, inp, gm, dir, f, g); }
+      case Backreference(gid) =>
+        match LS.ReadBackref(rer, gm, gid, inp, dir) {
+          case None =>
+          case Some(pair) => ComputeTreeGWriteOnlyInLooks(rer, cont, pair.1, gm, dir, f, g);
+        }
+  }
+
+  /** B' SPINE-FREEDOM (`ComputeTr` form): a compiled body tree writes an
+      inside-look capture `g` ONLY inside look bodies, provided `g` is not an
+      openable outer group of `r` (`g !in DefGroupsOutsideLooksL(r)`) and not
+      captured under any quantifier (`GNotUnderQuantL(r, g)`). For `r = Translate
+      (body)` with `g in LkBodyGroups(tr)` the first side condition is automatic
+      (inside-look ∩ outside-look = ∅ under unique group ids); the second is the
+      honest "no capturing look under repetition" scope caveat. This is the
+      hypothesis `TreeResGOwnerFresh`/`GOwnerWF`'s descent needs at general body
+      structure. */
+  lemma ComputeTrGWriteOnlyInLooks(rer: LW.RegExpRecord, r: L.Regex, inp: LC.Input, gm: LG.GroupMap,
+                                   dir: WP.Direction, g: LG.GroupId)
+    requires g !in DefGroupsOutsideLooksL(r)
+    requires GNotUnderQuantL(r, g)
+    ensures GWriteOnlyInLooks(LFU.ComputeTr(rer, [LS.Areg(r)], inp, gm, dir), g)
+  {
+    var acts := [LS.Areg(r)];
+    OuterDefsActsCons(LS.Areg(r), []);
+    assert OuterDefsActs(acts) == DefGroupsOutsideLooksL(r);
+    assert g !in OuterDefsActs(acts);
+    assert GNQActs(acts, g) by { GNQActsCons(LS.Areg(r), [], g); }
+    var fuel := LFS.ActionsFuel(acts, inp, dir) + 1;
+    LFS.FunctionalTerminates(rer, acts, inp, gm, dir, fuel);
+    ComputeTreeGWriteOnlyInLooks(rer, acts, inp, gm, dir, fuel, g);
+  }
+
+  // ==========================================================================
+  // B' SINGLE-WRITER (ADDITIVE): `GBodyOK`/`GOwnerWF2` for a compiled body tree.
+  //
+  // The single-writer condition of the corrected descent — along each spine path
+  // `g`'s write lives in a UNIQUE look body — is exactly `CapUnique` lifted to the
+  // `ComputeTree` walk. The invariant is `GOnceInv`: across the pending action
+  // list, `g` is "accounted for" AT MOST ONCE, counting BOTH the defs it still
+  // appears in (`multiset(AllDefsActs)[g]`) AND a pending `Aclose(g)` (`g in
+  // PendingCloses`) — a `Group(g,·)` moves `g` from the first to the second,
+  // preserving the sum. Under `GNotUnderQuantL` (no `g` under a quantifier, so the
+  // min>0 unfold does NOT duplicate `g`) the invariant is preserved, and at each
+  // `LK` it yields the disjunct: `g in DefGroups(r1)` ⇒ `g` misses the whole
+  // continuation (`GNotWrittenComputeTreeActs`), else `g` misses the body.
+  // ==========================================================================
+
+  /** `PendingCloses` of a cons. */
+  lemma PendingClosesCons(x: LS.Action, cont: LS.Actions)
+    ensures PendingCloses([x] + cont) == (if x.Aclose? then {x.gid} + PendingCloses(cont) else PendingCloses(cont))
+  {
+    var acts := [x] + cont;
+    assert acts[0] == x && forall i :: 1 <= i < |acts| ==> acts[i] == cont[i - 1];
+    forall y
+      ensures (y in PendingCloses(acts))
+          <==> (y in (if x.Aclose? then {x.gid} + PendingCloses(cont) else PendingCloses(cont)))
+    {
+      if y in PendingCloses(acts) {
+        var i :| 0 <= i < |acts| && acts[i].Aclose? && acts[i].gid == y;
+        if i == 0 { } else { assert cont[i - 1].Aclose? && cont[i - 1].gid == y; }
+      }
+      if x.Aclose? && y == x.gid { assert acts[0].Aclose? && acts[0].gid == y; }
+      if y in PendingCloses(cont) {
+        var j :| 0 <= j < |cont| && cont[j].Aclose? && cont[j].gid == y;
+        assert acts[j + 1].Aclose? && acts[j + 1].gid == y;
+      }
+    }
+  }
+
+  /** `multiset` count of `g` in `AllDefsActs` of a cons. */
+  lemma AllDefsActsMsCons(x: LS.Action, cont: LS.Actions, g: LG.GroupId)
+    ensures multiset(AllDefsActs([x] + cont))[g]
+         == (if x.Areg? then multiset(L.DefGroups(x.r))[g] else 0) + multiset(AllDefsActs(cont))[g]
+  {
+    AllDefsActsCons(x, cont);
+  }
+
+  /** THE INVARIANT: `g` is defined-or-pending AT MOST ONCE across `acts`. */
+  ghost predicate GOnceInv(acts: LS.Actions, g: LG.GroupId) {
+    multiset(AllDefsActs(acts))[g] + (if g in PendingCloses(acts) then 1 else 0) <= 1
+  }
+
+  /** B' SINGLE-WRITER WALK: under `GOnceInv` + `GNQActs` a `ComputeTree` walk
+      builds a `GBodyOK(_, g)` tree — `g`'s write lives in a unique look body per
+      spine path. At each `LK` the disjunct comes from `GOnceInv`: `g in DefGroups
+      (r1)` forces `g` out of the whole continuation, else out of the body. */
+  lemma ComputeTreeGBodyOK(rer: LW.RegExpRecord, act: LS.Actions, inp: LC.Input,
+                           gm: LG.GroupMap, dir: WP.Direction, fuel: nat, g: LG.GroupId)
+    requires EL.PikeLkActionsRec(act)
+    requires GNQActs(act, g)
+    requires GOnceInv(act, g)
+    ensures LFS.ComputeTree(rer, act, inp, gm, dir, fuel).Some?
+         ==> GBodyOK(LFS.ComputeTree(rer, act, inp, gm, dir, fuel).value, g)
+    decreases fuel
+  {
+    if fuel == 0 || |act| == 0 { return; }
+    var f := fuel - 1;
+    var cont := act[1..];
+    assert act == [act[0]] + cont;
+    EL.PikeLkActionsRecConsIff(act[0], cont);
+    EL.PikeLkActionsRecTail(act);
+    GNQActsCons(act[0], cont, g);
+    GNQActsTail(act, g);
+    AllDefsActsMsCons(act[0], cont, g);
+    PendingClosesCons(act[0], cont);
+    // tail INV: cont only DROPS defs/closes of the head, so GOnceInv(cont) holds.
+    assert multiset(AllDefsActs(cont))[g] <= multiset(AllDefsActs(act))[g];
+    assert (g in PendingCloses(cont)) ==> (g in PendingCloses(act));
+    assert GOnceInv(cont, g);
+    match act[0]
+    case Acheck(strcheck) =>
+      ComputeTreeGBodyOK(rer, cont, inp, gm, dir, f, g);
+    case Aclose(gid) =>
+      ComputeTreeGBodyOK(rer, cont, inp, LG.GMClose(LC.Idx(inp), gid, gm), dir, f, g);
+    case Areg(r) =>
+      match r
+      case Epsilon => ComputeTreeGBodyOK(rer, cont, inp, gm, dir, f, g);
+      case Character(cd) =>
+        match LC.ReadChar(rer, cd, inp, dir) {
+          case None =>
+          case Some(pair) => ComputeTreeGBodyOK(rer, cont, pair.1, gm, dir, f, g);
+        }
+      case Disjunction(r1, r2) =>
+        var a1 := [LS.Areg(r1)] + cont; var a2 := [LS.Areg(r2)] + cont;
+        assert L.DefGroups(r) == L.DefGroups(r1) + L.DefGroups(r2);
+        assert GNQActs(a1, g) && GNQActs(a2, g) by { GNQActsCons(LS.Areg(r1), cont, g); GNQActsCons(LS.Areg(r2), cont, g); }
+        assert EL.PikeLkActionsRec(a1) && EL.PikeLkActionsRec(a2) by { EL.PikeLkActionsRecConsIff(LS.Areg(r1), cont); EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont); }
+        assert GOnceInv(a1, g) && GOnceInv(a2, g) by {
+          AllDefsActsMsCons(LS.Areg(r1), cont, g); AllDefsActsMsCons(LS.Areg(r2), cont, g);
+          PendingClosesCons(LS.Areg(r1), cont); PendingClosesCons(LS.Areg(r2), cont);
+          assert multiset(L.DefGroups(r))[g] == multiset(L.DefGroups(r1))[g] + multiset(L.DefGroups(r2))[g];
+        }
+        ComputeTreeGBodyOK(rer, a1, inp, gm, dir, f, g);
+        ComputeTreeGBodyOK(rer, a2, inp, gm, dir, f, g);
+      case Sequence(r1, r2) =>
+        var na := LS.SeqList(r1, r2, dir) + cont;
+        assert L.DefGroups(r) == L.DefGroups(r1) + L.DefGroups(r2);
+        assert EL.PikeLkActionsRec(na) && GNQActs(na, g) && GOnceInv(na, g) by {
+          if dir.Forward? {
+            assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+            EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont); EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
+            GNQActsCons(LS.Areg(r2), cont, g); GNQActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont, g);
+            AllDefsActsMsCons(LS.Areg(r2), cont, g); AllDefsActsMsCons(LS.Areg(r1), [LS.Areg(r2)] + cont, g);
+            PendingClosesCons(LS.Areg(r2), cont); PendingClosesCons(LS.Areg(r1), [LS.Areg(r2)] + cont);
+          } else {
+            assert na == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
+            EL.PikeLkActionsRecConsIff(LS.Areg(r1), cont); EL.PikeLkActionsRecConsIff(LS.Areg(r2), [LS.Areg(r1)] + cont);
+            GNQActsCons(LS.Areg(r1), cont, g); GNQActsCons(LS.Areg(r2), [LS.Areg(r1)] + cont, g);
+            AllDefsActsMsCons(LS.Areg(r1), cont, g); AllDefsActsMsCons(LS.Areg(r2), [LS.Areg(r1)] + cont, g);
+            PendingClosesCons(LS.Areg(r1), cont); PendingClosesCons(LS.Areg(r2), [LS.Areg(r1)] + cont);
+          }
+          assert multiset(L.DefGroups(r))[g] == multiset(L.DefGroups(r1))[g] + multiset(L.DefGroups(r2))[g];
+        }
+        ComputeTreeGBodyOK(rer, na, inp, gm, dir, f, g);
+      case Quantified(greedy, min, delta, r1) =>
+        var gidl := L.DefGroups(r1);
+        assert g !in (set x | x in L.DefGroups(r1));             // GNotUnderQuantL
+        assert g !in L.DefGroups(r1);
+        assert multiset(L.DefGroups(r1))[g] == 0;
+        assert L.DefGroups(r) == gidl;
+        if min > 0 {
+          var quant := L.Quantified(greedy, min - 1, delta, r1);
+          var na := [LS.Areg(r1), LS.Areg(quant)] + cont;
+          assert EL.PikeLkActionsRec(na) && GNQActs(na, g) && GOnceInv(na, g) by {
+            assert na == [LS.Areg(r1)] + ([LS.Areg(quant)] + cont);
+            EL.PikeLkActionsRecConsIff(LS.Areg(quant), cont); EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(quant)] + cont);
+            GNQActsCons(LS.Areg(quant), cont, g); GNQActsCons(LS.Areg(r1), [LS.Areg(quant)] + cont, g);
+            AllDefsActsMsCons(LS.Areg(quant), cont, g); AllDefsActsMsCons(LS.Areg(r1), [LS.Areg(quant)] + cont, g);
+            PendingClosesCons(LS.Areg(quant), cont); PendingClosesCons(LS.Areg(r1), [LS.Areg(quant)] + cont);
+            assert L.DefGroups(quant) == gidl;
+          }
+          ComputeTreeGBodyOK(rer, na, inp, LG.GMReset(gidl, gm), dir, f, g);
+        } else if delta == LN.NN(0) {
+          ComputeTreeGBodyOK(rer, cont, inp, gm, dir, f, g);
+        } else {
+          var quant := L.Quantified(greedy, 0, LFS.NoiPred(delta), r1);
+          var na := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
+          assert EL.PikeLkActionsRec(na) && GNQActs(na, g) && GOnceInv(na, g) by {
+            assert na == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+            EL.PikeLkActionsRecConsIff(LS.Areg(quant), cont); EL.PikeLkActionsRecConsIff(LS.Acheck(inp), [LS.Areg(quant)] + cont);
+            EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+            GNQActsCons(LS.Areg(quant), cont, g); GNQActsCons(LS.Acheck(inp), [LS.Areg(quant)] + cont, g);
+            GNQActsCons(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont), g);
+            AllDefsActsMsCons(LS.Areg(quant), cont, g); AllDefsActsMsCons(LS.Acheck(inp), [LS.Areg(quant)] + cont, g);
+            AllDefsActsMsCons(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont), g);
+            PendingClosesCons(LS.Areg(quant), cont); PendingClosesCons(LS.Acheck(inp), [LS.Areg(quant)] + cont);
+            PendingClosesCons(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+            assert L.DefGroups(quant) == gidl;
+          }
+          ComputeTreeGBodyOK(rer, na, inp, LG.GMReset(gidl, gm), dir, f, g);
+          ComputeTreeGBodyOK(rer, cont, inp, gm, dir, f, g);
+        }
+      case Group(gid, r1) =>
+        var na := [LS.Areg(r1), LS.Aclose(gid)] + cont;
+        assert L.DefGroups(r) == [gid] + L.DefGroups(r1);
+        assert EL.PikeLkActionsRec(na) && GNQActs(na, g) && GOnceInv(na, g) by {
+          assert na == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
+          EL.PikeLkActionsRecConsIff(LS.Aclose(gid), cont); EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+          GNQActsCons(LS.Aclose(gid), cont, g); GNQActsCons(LS.Areg(r1), [LS.Aclose(gid)] + cont, g);
+          AllDefsActsMsCons(LS.Aclose(gid), cont, g); AllDefsActsMsCons(LS.Areg(r1), [LS.Aclose(gid)] + cont, g);
+          PendingClosesCons(LS.Aclose(gid), cont); PendingClosesCons(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+          // gid==g: def→pending (sum preserved); gid!=g: unchanged. (multiset(DefGroups(r))
+          // == multiset([gid]) + multiset(DefGroups(r1)) from the DefGroups equality above.)
+        }
+        ComputeTreeGBodyOK(rer, na, inp, LG.GMOpen(LC.Idx(inp), gid, gm), dir, f, g);
+      case LookaroundR(lk, r1) =>
+        var bodyacts := [LS.Areg(r1)];
+        assert EL.PikeLkRegexRec(r1) by {
+          if L.Positivity(lk) { } else { assert SD.GroupFreeL(r1); GroupFreeImpliesNoLkBr(r1); EL.NoLkBrLIsPikeLkRegexRec(r1); }
+        }
+        assert EL.PikeLkActionsRec(bodyacts) by { EL.PikeLkActionsRecConsIff(LS.Areg(r1), []); }
+        assert GNQActs(bodyacts, g) by { GNQActsCons(LS.Areg(r1), [], g); }   // GNotUnderQuantL(r1,g) from head
+        assert L.DefGroups(r) == L.DefGroups(r1);
+        AllDefsActsMsCons(LS.Areg(r1), [], g);
+        assert multiset(AllDefsActs(bodyacts))[g] == multiset(L.DefGroups(r1))[g];
+        assert multiset(L.DefGroups(r1))[g] <= multiset(AllDefsActs(act))[g];   // head contributes DefGroups(r1)
+        assert GOnceInv(bodyacts, g) by { PendingClosesCons(LS.Areg(r1), []); }
+        match LFS.ComputeTree(rer, bodyacts, inp, gm, L.LkDir(lk), f) {
+          case None =>
+          case Some(treelk) =>
+            ComputeTreeGBodyOK(rer, bodyacts, inp, gm, L.LkDir(lk), f, g);        // GBodyOK(treelk, g)
+            match LS.LkResult(lk, treelk, gm, inp) {
+              case Some(gmlk) =>
+                ComputeTreeGBodyOK(rer, cont, inp, gmlk, dir, f, g);              // GBodyOK(treecont, g)
+                // single-writer disjunct (at gmlk, the continuation's own gm):
+                if g in (set x | x in L.DefGroups(r1)) {
+                  // g in the look body ⇒ (GOnceInv) g misses the whole continuation.
+                  assert multiset(L.DefGroups(r1))[g] >= 1;
+                  assert multiset(AllDefsActs(cont))[g] == 0;
+                  assert g !in PendingCloses(act);                                // GOnceInv, def already ≥1
+                  PendingClosesCons(act[0], cont);
+                  assert g !in PendingCloses(cont) && g !in (set x | x in AllDefsActs(cont));
+                  GNotWrittenComputeTreeActs(rer, cont, inp, gmlk, dir, f, g);    // GNotWritten(treecont, g)
+                } else {
+                  GNotWrittenComputeTreeActs(rer, bodyacts, inp, gm, L.LkDir(lk), f, g);  // GNotWritten(treelk, g)
+                }
+              case None =>                                                       // LKFail: only GBodyOK(treelk)
+            }
+        }
+      case AnchorR(a) =>
+        ComputeTreeGBodyOK(rer, cont, inp, gm, dir, f, g);
+      case Backreference(gid) =>                                                  // PikeLkRegexRec false: vacuous
+  }
+
+  /** B' SINGLE-WRITER (`ComputeTr` form): a recursive-fragment regex's spec tree
+      confines `g`'s writes to a UNIQUE look body per spine path (`GBodyOK`),
+      provided `g` occurs at most once in `r`'s group ids (`multiset(DefGroups(r))
+      [g] <= 1`, automatic under `NoDupSeq`) and is not captured under a quantifier
+      (`GNotUnderQuantL`). */
+  lemma ComputeTrGBodyOK(rer: LW.RegExpRecord, r: L.Regex, inp: LC.Input, gm: LG.GroupMap,
+                         dir: WP.Direction, g: LG.GroupId)
+    requires EL.PikeLkRegexRec(r)
+    requires GNotUnderQuantL(r, g)
+    requires multiset(L.DefGroups(r))[g] <= 1
+    ensures GBodyOK(LFU.ComputeTr(rer, [LS.Areg(r)], inp, gm, dir), g)
+  {
+    var acts := [LS.Areg(r)];
+    assert EL.PikeLkActionsRec(acts) by { EL.PikeLkActionsRecConsIff(LS.Areg(r), []); }
+    assert GNQActs(acts, g) by { GNQActsCons(LS.Areg(r), [], g); }
+    assert GOnceInv(acts, g) by { AllDefsActsMsCons(LS.Areg(r), [], g); PendingClosesCons(LS.Areg(r), []); }
+    var fuel := LFS.ActionsFuel(acts, inp, dir) + 1;
+    LFS.FunctionalTerminates(rer, acts, inp, gm, dir, fuel);
+    ComputeTreeGBodyOK(rer, acts, inp, gm, dir, fuel, g);
+  }
+
+  /** B' HEADLINE (`GOwnerWF2` for a compiled body tree): the corrected
+      well-formedness `TreeResGOwnerFreshV` needs, established for `ComputeTr([Areg
+      (r)])` at GENERAL branching structure. Combines the SPINE-freedom
+      (`ComputeTrGWriteOnlyInLooks`) and SINGLE-WRITER (`ComputeTrGBodyOK`) halves
+      via the `GBodyOKSpineImpliesOwnerWF2` bridge. Side conditions (all discharged
+      for `r = Translate(body)`, `g in LkBodyGroups(tr)` from `CapUnique`/`LookUnique`
+      + no capturing look under repetition): `g` non-openable (`g !in
+      DefGroupsOutsideLooksL`), `g` at most once in `DefGroups`, `g` not under a
+      quantifier (`GNotUnderQuantL`). With this, `TreeResGOwnerFreshV` delivers the
+      general-branching SPEC value identity `Find(g, outer leaf) == Find(g, owner
+      body sub-result)` — the value half of `recon_inner`/milestone #2. */
+  lemma ComputeTrGOwnerWF2(rer: LW.RegExpRecord, r: L.Regex, inp: LC.Input, gm: LG.GroupMap,
+                           dir: WP.Direction, g: LG.GroupId)
+    requires EL.PikeLkRegexRec(r)
+    requires GNotUnderQuantL(r, g)
+    requires g !in DefGroupsOutsideLooksL(r)
+    requires multiset(L.DefGroups(r))[g] <= 1
+    ensures GOwnerWF2(LFU.ComputeTr(rer, [LS.Areg(r)], inp, gm, dir), g)
+  {
+    ComputeTrGBodyOK(rer, r, inp, gm, dir, g);
+    ComputeTrGWriteOnlyInLooks(rer, r, inp, gm, dir, g);
+    GBodyOKSpineImpliesOwnerWF2(LFU.ComputeTr(rer, [LS.Areg(r)], inp, gm, dir), g);
+  }
+
+  /** B' MILESTONE #2 VALUE HALF (general branching, turnkey). For a recursive-
+      fragment regex `r` (the shape `Translate(body)` emits) and an inside-look
+      capture `g` (fresh in `gm`) whose write is confined by the side conditions,
+      the compiled tree's winning-leaf value at `g` is EITHER unset (`None`) OR the
+      INNERMOST OWNER look body subtree's OWN `Empty`-map sub-result value at `g`,
+      at the descent-recorded position `inpo`. This composes `ComputeTrGOwnerWF2`
+      (the corrected well-formedness, established for general branching) with the
+      corrected sound descent `TreeResGOwnerFreshV`. The returned `tsub` is the
+      abstract owner subtree (`!GWriteOnlyInLooks(tsub,g)`); the ONE remaining step
+      to the displayed `recon_inner` identity is milestone #1 — structurally
+      identifying `tsub` with `ComputeTr([Areg(Translate(LookBodyOfRE(body,owner)))]
+      , inpo, Empty, LkDir(lk))` via `ComputeTrSingleLookUnfold`/`BoolTreeLk`'s LK
+      pinning threaded through the regex-tracking descent. */
+  lemma OuterLeafGOwnerSubtree(rer: LW.RegExpRecord, r: L.Regex, inp: LC.Input, gm: LG.GroupMap,
+                               dir: WP.Direction, g: LG.GroupId)
+      returns (found: bool, lk: L.Lookaround, tsub: LT.Tree, gmo: LG.GroupMap, inpo: LC.Input)
+    requires EL.PikeLkRegexRec(r)
+    requires GNotUnderQuantL(r, g)
+    requires g !in DefGroupsOutsideLooksL(r)
+    requires multiset(L.DefGroups(r))[g] <= 1
+    requires LG.Find(g, gm) == None
+    requires LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(r)], inp, gm, dir), gm, inp, dir).Some?
+    ensures var t := LFU.ComputeTr(rer, [LS.Areg(r)], inp, gm, dir);
+            (found ==> tsub < t)
+            && (!found ==> LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1) == None)
+            && (found ==>
+                  L.Positivity(lk)
+                  && !GWriteOnlyInLooks(tsub, g)
+                  && LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk)).Some?
+                  && LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1)
+                     == LG.Find(g, LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk)).value.1))
+  {
+    var t := LFU.ComputeTr(rer, [LS.Areg(r)], inp, gm, dir);
+    ComputeTrGOwnerWF2(rer, r, inp, gm, dir, g);
+    found, lk, tsub, gmo, inpo := TreeResGOwnerFreshV(t, gm, inp, dir, g);
   }
 
   /** R31b (2b) — the ATOMIC per-layer ComputeTr↔look-body bridge, the concrete
