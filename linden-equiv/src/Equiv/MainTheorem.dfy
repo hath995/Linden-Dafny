@@ -6210,6 +6210,133 @@ module LindenElkMain {
     case LKFail(lk, tlk) =>
   }
 
+  // ===========================================================================
+  // R30b (ADDITIVE): SPEC-structural link from the OUTER tree's leaf value at an
+  // inner capture `g` to the innermost OWNER lookaround's OWN sub-result at `g`.
+  // The value flows outer-tree -> (through possibly several matched positive LK
+  // layers) -> the owner look's body tree, and by R3b it is pinned by that body
+  // (gm-blind except through gm[g], and `g` written once), so it equals the
+  // owner sub-tree's OWN (fresh, Empty-map) `TreeRes` value at `g`.
+  // ===========================================================================
+
+  /** R30b (single-layer, composable): the "outer-leaf-at-`g` == owner sub-result
+      -at-`g`" identity for ONE lookaround layer, with the owner sub-result taken
+      at the FRESH map `Empty` (matching the engine fresh-match form). At a matched
+      positive look node whose continuation `t1` never writes `g`, if `g` is FRESH
+      at the node (`Find(g, gm) == None`), the whole node's leaf value at `g`
+      equals the look SUB-tree's OWN (Empty-map) `TreeRes` value at `g`. Peels the
+      layer with `TreeResLkNodeGValue` (node[g] == sub[g] at `gm`), then swaps `gm`
+      for `Empty` with `TreeResGValueFramed` (they agree at `g`, both `None`). This
+      is exactly the last hop the seam's `recon_inner` needs at each look layer. */
+  lemma TreeResLkNodeGValueFresh(lk: L.Lookaround, tlk: LT.Tree, t1: LT.Tree, gm: LG.GroupMap,
+                                 inp: LC.Input, dir: WP.Direction, g: LG.GroupId)
+    requires L.Positivity(lk)
+    requires GNotWritten(t1, g)
+    requires LG.Find(g, gm) == None
+    requires LT.TreeRes(LT.LK(lk, tlk, t1), gm, inp, dir).Some?
+    ensures LT.TreeRes(tlk, LG.Empty, inp, L.LkDir(lk)).Some?
+    ensures LG.Find(g, LT.TreeRes(LT.LK(lk, tlk, t1), gm, inp, dir).value.1)
+            == LG.Find(g, LT.TreeRes(tlk, LG.Empty, inp, L.LkDir(lk)).value.1)
+  {
+    // node Some (positive lk) ==> sub Some at `gm`; framing carries Some to Empty.
+    assert LT.TreeRes(tlk, gm, inp, L.LkDir(lk)).Some?;
+    assert LG.Find(g, gm) == LG.Find(g, LG.Empty);   // both None
+    TreeResGValueFramed(tlk, gm, LG.Empty, inp, L.LkDir(lk), g);
+    TreeResLkNodeGValue(lk, tlk, t1, gm, inp, dir, g);
+  }
+
+  /** `g` is written by NO group action on the SPINE of `t` — i.e. anywhere
+      OUTSIDE a look-body subtree. Writes to `g` INSIDE an `LK` body (`tlk`) are
+      unconstrained: this is exactly the shape `ComputeTr(Translate(body))` has for
+      a capture `g in LkBodyGroups(Translate(body))`, which by `CapUnique` occurs
+      only inside one lookaround body and never on the outer spine. Strictly weaker
+      than `GNotWritten` (which also forbids writes inside look bodies). */
+  ghost predicate GWriteOnlyInLooks(t: LT.Tree, g: LG.GroupId)
+    decreases t
+  {
+    match t
+    case Mismatch => true
+    case Match => true
+    case Choice(t1, t2) => GWriteOnlyInLooks(t1, g) && GWriteOnlyInLooks(t2, g)
+    case Read(_, t1) => GWriteOnlyInLooks(t1, g)
+    case ReadBackRef(_, t1) => GWriteOnlyInLooks(t1, g)
+    case Progress(t1) => GWriteOnlyInLooks(t1, g)
+    case AnchorPass(_, t1) => GWriteOnlyInLooks(t1, g)
+    case GroupActionT(a, t1) => !ActTouchesG(a, g) && GWriteOnlyInLooks(t1, g)
+    case LK(_, tlk, t1) => GWriteOnlyInLooks(t1, g)     // tlk (look body) unconstrained
+    case LKFail(_, tlk) => true
+  }
+
+  /** R30b MULTI-LAYER ENGINE (the task's "single highest-priority matched LK node"
+      helper): for a tree whose `g`-writes all live inside look bodies
+      (`GWriteOnlyInLooks`), the highest-priority leaf's value at `g` is EITHER the
+      incoming `gm[g]` (no matched look on the path contributed `g`) OR the OWN
+      sub-result value at `g` of a matched POSITIVE look node reached on that path
+      — `Find(g, TreeRes(t)…) == Find(g, TreeRes(tsub, gmo, inpo, LkDir(lk))…)`.
+      The look body `tsub` is itself a tree of the same shape (its own `g`-writes
+      are again confined to its inner looks), so applying THIS lemma to `tsub`
+      peels the next nesting layer; iterating (measure: nesting depth) descends to
+      the INNERMOST owner whose body writes `g` directly on its spine. This is the
+      pure-tree content of "the inner capture's value is pinned by the owning
+      look, regardless of the surrounding group map". Structural induction over `t`
+      (mirrors the `TreeResGmFrameRec` template); the LK case peels one layer with
+      the R3b `TreeResLkNodeGValue` reasoning inlined and recurses into the
+      CONTINUATION only. */
+  lemma TreeResGSpineValue(t: LT.Tree, gm: LG.GroupMap, inp: LC.Input, dir: WP.Direction, g: LG.GroupId)
+      returns (found: bool, lk: L.Lookaround, tsub: LT.Tree, gmo: LG.GroupMap, inpo: LC.Input)
+    requires GWriteOnlyInLooks(t, g)
+    requires LT.TreeRes(t, gm, inp, dir).Some?
+    ensures found ==> tsub < t
+    ensures !found ==> LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1) == LG.Find(g, gm)
+    ensures found ==>
+        L.Positivity(lk)
+        && LT.TreeRes(tsub, gmo, inpo, L.LkDir(lk)).Some?
+        && LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1)
+           == LG.Find(g, LT.TreeRes(tsub, gmo, inpo, L.LkDir(lk)).value.1)
+    decreases t
+  {
+    match t
+    case Match =>
+      found, lk, tsub, gmo, inpo := false, L.LookAhead, t, gm, inp;
+    case Mismatch =>
+      found, lk, tsub, gmo, inpo := false, L.LookAhead, t, gm, inp;   // TreeRes None: vacuous
+    case LKFail(lk0, tsub0) =>
+      found, lk, tsub, gmo, inpo := false, L.LookAhead, tsub0, gm, inp;   // TreeRes None: vacuous
+    case Choice(t1, t2) =>
+      if LT.TreeRes(t1, gm, inp, dir).Some? {
+        found, lk, tsub, gmo, inpo := TreeResGSpineValue(t1, gm, inp, dir, g);
+      } else {
+        found, lk, tsub, gmo, inpo := TreeResGSpineValue(t2, gm, inp, dir, g);
+      }
+    case Read(c, t1) =>
+      found, lk, tsub, gmo, inpo := TreeResGSpineValue(t1, gm, LC.AdvanceInputP(inp, dir), dir, g);
+    case ReadBackRef(brStr, t1) =>
+      found, lk, tsub, gmo, inpo := TreeResGSpineValue(t1, gm, LC.AdvanceInputN(inp, |brStr|, dir), dir, g);
+    case Progress(t1) =>
+      found, lk, tsub, gmo, inpo := TreeResGSpineValue(t1, gm, inp, dir, g);
+    case AnchorPass(a, t1) =>
+      found, lk, tsub, gmo, inpo := TreeResGSpineValue(t1, gm, inp, dir, g);
+    case GroupActionT(a, t1) =>
+      GMUpdateFindNotTouch(a, LC.Idx(inp), gm, g);           // Find(g, GMUpdate) == Find(g, gm)
+      found, lk, tsub, gmo, inpo := TreeResGSpineValue(t1, LG.GMUpdate(a, LC.Idx(inp), gm), inp, dir, g);
+    case LK(lk0, tsub0, t1) =>
+      if L.Positivity(lk0) {
+        var sub := LT.TreeRes(tsub0, gm, inp, L.LkDir(lk0));
+        assert sub.Some?;                                    // node Some ==> sub Some
+        var fc, lkc, tsubc, gmoc, inpoc := TreeResGSpineValue(t1, sub.value.1, inp, dir, g);
+        if fc {
+          found, lk, tsub, gmo, inpo := true, lkc, tsubc, gmoc, inpoc;
+        } else {
+          // Find(g, leaf) == Find(g, sub.value.1) == Find(g, TreeRes(tsub0, gm, inp, LkDir).value.1)
+          found, lk, tsub, gmo, inpo := true, lk0, tsub0, gm, inp;
+        }
+      } else {
+        var sub := LT.TreeRes(tsub0, gm, inp, L.LkDir(lk0));
+        assert sub.None?;                                    // node Some (negative) ==> sub None
+        found, lk, tsub, gmo, inpo := TreeResGSpineValue(t1, gm, inp, dir, g);
+      }
+  }
+
   /** L4 BOUNDARY (machine-checked): the depth-1 lookbehind fragment caps nesting
       depth at 1 — every lookaround leaf's body is look-free (`NestDepth == 0` by
       `LookFreePlusIsNestedRE`), so `1 + 0` is the deepest a node reaches. This
@@ -8698,6 +8825,87 @@ module LindenElkMain {
     }
     var l2: nat :| l2 in LTB.LookIds(body) && (l2 as int) == l;
     assert l as nat == l2;
+  }
+
+  // ==========================================================================
+  // R30a (L4 depth-k, ADDITIVE): discharge the (a)-(h) hypotheses of R3's
+  // `FLookLoopValueLiftFull` / `FLookLoopFullCoversInLooks` (and R2's
+  // `FLookLoopCaptureFrameNested`) from the compilation tables — the nested
+  // analogue of `LookRowsFromTablesL3a`. The frame data comes from
+  // `LookBodyFactsNested` (each look body is a nested fragment with its own
+  // uniqueness/tables), well-nesting from `LTB.LidsWellNested`, and cross-lid
+  // capture disjointness from `NI.LookBodiesCapsDisjointOrNested`.
+  //
+  // SCOPE: capturing looks are Lookahead-only (`NoPosLookbehindRE`), matching
+  // the nested keystone; `FrameEntryOk`'s `capture_type(la) ==> la.Lookahead?`
+  // clause forbids POSITIVE lookbehinds. And the (g) hypothesis
+  // (`LookIds(b1)*LookIds(b2)=={}` for distinct table rows) is only TRUE at
+  // lookaround-nesting depth <= 2 (an inner look whose body itself has looks
+  // makes `LookIds(b1)*LookIds(b2) == LookIds(b2) != {}`), so `GDisjointFrom
+  // TablesNested` / the assembled `LookRowsFromTablesNested` carry a
+  // `NR.NestDepth(re) <= 2` premise; every other hypothesis is depth-general.
+  // ==========================================================================
+
+  /** No POSITIVE lookbehind occurs anywhere in `re`: at every lookaround node
+      `la` is not `Lookbehind` (it may be `Lookahead`, `NegLookahead`, or
+      `NegLookbehind`). This is exactly the side condition that makes
+      `FrameEntryOk`'s `AI.capture_type(la) ==> la.Lookahead?` clause hold
+      (`capture_type` is `Lookahead? || Lookbehind?`), i.e. the Lookahead-only
+      scope of the nested capture-reconstruction bricks. */
+  ghost predicate NoPosLookbehindRE(re: R.regex)
+    decreases re
+  {
+    match re
+    case Re_empty => true
+    case Re_character(_) => true
+    case Re_anchor(_) => true
+    case Re_alt(r1, r2) => NoPosLookbehindRE(r1) && NoPosLookbehindRE(r2)
+    case Re_con(r1, r2) => NoPosLookbehindRE(r1) && NoPosLookbehindRE(r2)
+    case Re_quant(_, _, _, r1) => NoPosLookbehindRE(r1)
+    case Re_capture(_, r1) => NoPosLookbehindRE(r1)
+    case Re_lookaround(lid, la, r1) => !la.Lookbehind? && NoPosLookbehindRE(r1)
+  }
+
+  /** The body of a look node in a nested-fragment regex is itself a nested
+      fragment with its own uniqueness/tables, its lids sit among `re`'s, and
+      the enclosing look is not a positive lookbehind. The nested analogue of
+      `LookBodyOfFragment` + the uniqueness/table transfers, in one recursion
+      mirroring `NI.LookBodyOfRE`. Depth-general. */
+  lemma LookBodyFactsNested(re: R.regex, crv: CP.FCompiled, lid: nat)
+    requires NR.NestedFragmentRE(re)
+    requires NoPosLookbehindRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires lid in LTB.LookIds(re)
+    ensures var body := NI.LookBodyOfRE(re, lid);
+      NR.NestedFragmentRE(body)
+      && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+      && LTB.LookTablesOk(body, crv)
+      && LTB.LookIds(body) <= LTB.LookIds(re)
+      && (exists la: R.lookaround :: LTB.LookEntryOk(crv, lid as int, la, body) && !la.Lookbehind?)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodyFactsNested(r1, crv, lid); }
+      else { LookBodyFactsNested(r2, crv, lid); }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodyFactsNested(r1, crv, lid); }
+      else { LookBodyFactsNested(r2, crv, lid); }
+    case Re_quant(_, _, _, r1) => LookBodyFactsNested(r1, crv, lid);
+    case Re_capture(_, r1) => LookBodyFactsNested(r1, crv, lid);
+    case Re_lookaround(lid0, la0, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+        // this node IS the owner: body == r1
+        assert NI.LookBodyOfRE(re, lid) == r1;
+        assert LTB.LookEntryOk(crv, lid as int, la0, r1);   // LookTablesOk's lookaround case
+        assert !la0.Lookbehind?;                            // NoPosLookbehindRE
+      } else {
+        // owner nested in r1
+        assert lid in LTB.LookIds(r1);
+        LookBodyFactsNested(r1, crv, lid);
+        assert LTB.LookIds(r1) <= LTB.LookIds(re);
+      }
   }
 
   /** R2: transfer of "unset on `Bset`" across a write confined to `Dset`
