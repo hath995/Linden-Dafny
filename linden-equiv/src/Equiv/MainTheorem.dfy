@@ -8151,6 +8151,46 @@ module LindenElkMain {
     }
   }
 
+  /** recon A: the TIGHT twin of `ReplayPlusLookFrameNested`. The replay's main
+      pass `compile_to_bytecode(body)` gates ONLY on `body`'s DIRECT (top-level)
+      look ids (`DirectLidClassified`), so the result look bank agrees with the
+      incoming `lk` OUTSIDE `DirectLidSet(body)` -- strictly tighter than
+      `LookIdSet(body)`. This is the frame that makes the (f) look-stability
+      invariant re-establishable at ALL nesting depths: a newly-set look id is a
+      DIRECT child of `body`, never a grandchild. Verbatim clone of
+      `ReplayPlusLookFrameNested` with `LookBytecodeClassifiedNested`/`LookIdSet`
+      replaced by `DirectLidClassified`/`DirectLidSet`. */
+  lemma ReplayPlusLookFrameDirectNested(bytecode: RB.code, str: string, ov: LOr.OracleView, dir: LAnc.direction,
+                               lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                               cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
+    requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires la.Lookahead? && dir == LAnc.Forward
+    requires bytecode == CP.compile_to_bytecode(body)
+    requires AI.cp_context(cp, str, dir).nextchar == AI.get_char(str, cp)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp, cap, lk, qt, 0, lookcdn).0;
+      r.Some? ==> CM.RegsAgreeOutside(r.value.look_regs, lk, DirectLidSet(body))
+  {
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
+    DirectLidClassified(body);
+    assert CM.VmLooksAgree(inits, lk, DirectLidSet(body)) by {
+      assert CM.RegsAgreeOutside(lk, lk, DirectLidSet(body));
+    }
+    CM.FFindMatchLookFrame(bytecode, str, inits, ov, dir, lookcdn, lk, DirectLidSet(body));
+    NoTrueQuantStampNested(body);
+    assert VmQuantFinal(inits) by {
+      assert QuantRegsFinal(AI.init_thread(cap, lk, qt));
+    }
+    FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
+    var (res0, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+    if res0.Some? {
+      var th := res0.value;
+      assert QuantRegsFinal(th);
+      FNulledPlusIdentity(body, th.capture_regs, th.look_regs, th.quant_regs, plus_bcv, str, ovx, dir);
+    }
+  }
+
   /** R2: every look id of `re` has a correct table row, given `re`'s rows are
       all correct (`LookTablesOk`). Lets a body's replay-set inner-look id be
       resolved to a real look entry (with a body in the fragment) so the
@@ -8517,10 +8557,10 @@ module LindenElkMain {
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (f) look-stability
       lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
       && lid <= l2 <= maxlook && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
-    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g)
-      lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 != l2
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
+      lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 < l2
       && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      LTB.LookIds(b1) * LTB.LookIds(b2) == {}
+      DirectLookIds(b1) * LTB.LookIds(b2) == {}
     ensures var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
       |res.0.a_cp| == ncap && |res.0.a_clk| == ncap && PIV.CapRegWf(res.0)
       && FLookLoopValueOkOuter(crv, str, res.0, lid, maxlook, lk, ov, ncap, nlook, nquant)
@@ -8579,6 +8619,11 @@ module LindenElkMain {
           if result.Some? {} else { assert capN == cap; }
         }
         assert CM.RegsAgreeOutside(nlk, lk, LookIdSet(body)) by {
+          if result.Some? {} else { assert nlk == lk; }
+        }
+        // recon A: TIGHT look frame -- the replay writes only body's DIRECT children
+        ReplayPlusLookFrameDirectNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        assert CM.RegsAgreeOutside(nlk, lk, DirectLidSet(body)) by {
           if result.Some? {} else { assert nlk == lk; }
         }
         assert (forall k :: AI.get_idx(nqt.a_cp, k) < 0) && (forall k :: AI.get_idx(nqt.a_clk, k) >= -1) by {
@@ -8650,12 +8695,13 @@ module LindenElkMain {
             if AReg.get_cp(lk, l2).Some? {
               // (f)@lk
             } else {
-              // l2 newly set => l2 in LookIds(body); (g) with (lid, l1) gives disjointness
+              // recon A: l2 newly set => l2 is a DIRECT child of body; (g_new) (lid < l1) => l2 !in LookIds(b1)
               assert result.Some?;
-              assert CM.RegsAgreeOutside(nlk, lk, LookIdSet(body));
-              NewLookInBody(nlk, lk, body, l2);
-              assert (l2 as nat) in LTB.LookIds(body);
-              assert LTB.LookIds(body) * LTB.LookIds(b1) == {};   // (g) lid != l1
+              assert CM.RegsAgreeOutside(nlk, lk, DirectLidSet(body));
+              NewLookInBodyDirect(nlk, lk, body, l2);
+              assert (l2 as nat) in DirectLookIds(body);
+              assert lid < l1;                                          // l1 >= next
+              assert DirectLookIds(body) * LTB.LookIds(b1) == {};       // (g_new) with (lid, l1)
               assert (l2 as nat) !in LTB.LookIds(b1);
               if l2 in LookIdSet(b1) {
                 var q: nat :| q in LTB.LookIds(b1) && (q as int) == l2;
@@ -8883,10 +8929,10 @@ module LindenElkMain {
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (f) look-stability
       lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
       && lid <= l2 <= maxlook && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
-    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g)
-      lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 != l2
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
+      lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 < l2
       && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      LTB.LookIds(b1) * LTB.LookIds(b2) == {}
+      DirectLookIds(b1) * LTB.LookIds(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (h) well-nested lids
       lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) && lid <= l2 <= l1 ==> l2 !in LookIdSet(b1)
     ensures var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
@@ -8954,6 +9000,11 @@ module LindenElkMain {
           if result.Some? {} else { assert capN == cap; }
         }
         assert CM.RegsAgreeOutside(nlk, lk, LookIdSet(body)) by {
+          if result.Some? {} else { assert nlk == lk; }
+        }
+        // recon A: TIGHT look frame -- the replay writes only body's DIRECT children
+        ReplayPlusLookFrameDirectNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        assert CM.RegsAgreeOutside(nlk, lk, DirectLidSet(body)) by {
           if result.Some? {} else { assert nlk == lk; }
         }
         assert (forall k :: AI.get_idx(nqt.a_cp, k) < 0) && (forall k :: AI.get_idx(nqt.a_clk, k) >= -1) by {
@@ -9025,12 +9076,13 @@ module LindenElkMain {
             if AReg.get_cp(lk, l2).Some? {
               // (f)@lk
             } else {
-              // l2 newly set => l2 in LookIds(body); (g) with (lid, l1) gives disjointness
+              // recon A: l2 newly set => l2 is a DIRECT child of body; (g_new) (lid < l1) => l2 !in LookIds(b1)
               assert result.Some?;
-              assert CM.RegsAgreeOutside(nlk, lk, LookIdSet(body));
-              NewLookInBody(nlk, lk, body, l2);
-              assert (l2 as nat) in LTB.LookIds(body);
-              assert LTB.LookIds(body) * LTB.LookIds(b1) == {};   // (g) lid != l1
+              assert CM.RegsAgreeOutside(nlk, lk, DirectLidSet(body));
+              NewLookInBodyDirect(nlk, lk, body, l2);
+              assert (l2 as nat) in DirectLookIds(body);
+              assert lid < l1;                                          // l1 >= next
+              assert DirectLookIds(body) * LTB.LookIds(b1) == {};       // (g_new) with (lid, l1)
               assert (l2 as nat) !in LTB.LookIds(b1);
               if l2 in LookIdSet(b1) {
                 var q: nat :| q in LTB.LookIds(b1) && (q as int) == l2;
@@ -9171,10 +9223,10 @@ module LindenElkMain {
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (f)
       1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
       && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
-    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g)
-      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 != l2
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
+      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
       && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      LTB.LookIds(b1) * LTB.LookIds(b2) == {}
+      DirectLookIds(b1) * LTB.LookIds(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (h)
       1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==> l2 !in LookIdSet(b1)
     ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov);
@@ -9322,6 +9374,34 @@ module LindenElkMain {
     assert l as nat == l2;
   }
 
+  /** recon A: DIRECT twin of `NewLookInBody`. Under the TIGHT replay frame
+      (`RegsAgreeOutside(nlk, lk, DirectLidSet(body))`), any look id `l` newly
+      set by the replay is a DIRECT (top-level) look id of `body`. Mirror of
+      `NewLookInBody` with `LookIdSet`/`LookIds` replaced by `DirectLidSet`/
+      `DirectLookIds`. */
+  lemma NewLookInBodyDirect(nlk: AReg.Regs, lk: AReg.Regs, body: R.regex, l: int)
+    requires CM.RegsAgreeOutside(nlk, lk, DirectLidSet(body))
+    requires AReg.get_cp(nlk, l).Some?
+    requires AReg.get_cp(lk, l).None?
+    ensures l >= 0 && (l as nat) in DirectLookIds(body)
+  {
+    assert AI.get_idx(nlk.a_cp, l) >= 0 by {
+      assert 0 <= l < |nlk.a_cp|;
+      assert nlk.a_cp[l] >= 0;
+    }
+    assert AI.get_idx(lk.a_cp, l) < 0 by {
+      if 0 <= l < |lk.a_cp| { assert lk.a_cp[l] < 0; }
+    }
+    assert l in DirectLidSet(body) by {
+      if l !in DirectLidSet(body) {
+        assert AI.get_idx(nlk.a_cp, l) == AI.get_idx(lk.a_cp, l);
+        assert false;
+      }
+    }
+    var l2: nat :| l2 in DirectLookIds(body) && (l2 as int) == l;
+    assert l as nat == l2;
+  }
+
   // ==========================================================================
   // R30a (L4 depth-k, ADDITIVE): discharge the (a)-(h) hypotheses of R3's
   // `FLookLoopValueLiftFull` / `FLookLoopFullCoversInLooks` (and R2's
@@ -9333,12 +9413,15 @@ module LindenElkMain {
   //
   // SCOPE: capturing looks are Lookahead-only (`NoPosLookbehindRE`), matching
   // the nested keystone; `FrameEntryOk`'s `capture_type(la) ==> la.Lookahead?`
-  // clause forbids POSITIVE lookbehinds. And the (g) hypothesis
-  // (`LookIds(b1)*LookIds(b2)=={}` for distinct table rows) is only TRUE at
-  // lookaround-nesting depth <= 2 (an inner look whose body itself has looks
-  // makes `LookIds(b1)*LookIds(b2) == LookIds(b2) != {}`), so `GDisjointFrom
-  // TablesNested` / the assembled `LookRowsFromTablesNested` carry a
-  // `NR.NestDepth(re) <= 2` premise; every other hypothesis is depth-general.
+  // clause forbids POSITIVE lookbehinds. recon A: the old (g) hypothesis
+  // (`LookIds(b1)*LookIds(b2)=={}` for distinct rows) was only TRUE at nesting
+  // depth <= 2; it is REPLACED by the ordered depth-general (g_new)
+  // (`l1 < l2 ==> DirectLookIds(b1)*LookIds(b2)=={}`, `GNewFromTablesNested` via
+  // `DirectEarlyNotInLateBody`), so `LookRowsFromTablesNested` /
+  // `FLookLoopFullCoversFromTables` are now depth-GENERAL — the
+  // `NR.NestDepth(re) <= 2` premise is GONE. The strong-(g) cluster
+  // (`GDisjointBodies`/`GDisjointFromTablesNested`/`NestDepth0NoLookIds`) is kept
+  // as dead code. ALL hypotheses are depth-general.
   // ==========================================================================
 
   /** No POSITIVE lookbehind occurs anywhere in `re`: at every lookaround node
@@ -9428,7 +9511,8 @@ module LindenElkMain {
   // InLooks` and R2's `FLookLoopCaptureFrameNested` require, from the
   // whole-regex compilation setup — the nested analogue of
   // `LookRowsFromTablesL3a`. S := CaptureRegsSet(CapIdsInLooks(re)), Slook :=
-  // LookIdSet(re). (g) carries `NR.NestDepth(re) <= 2`; all others depth-general.
+  // LookIdSet(re). recon A: (g) is replaced by the ordered (g_new); ALL
+  // hypotheses are now depth-general (no `NR.NestDepth(re) <= 2` premise).
   // ==========================================================================
 
   /** `tl_flatten` never shrinks below its `tail`: the compiled body sits in
@@ -9762,18 +9846,51 @@ module LindenElkMain {
     GDisjointBodies(re, lid1, lid2);
   }
 
-  /** The STATIC quartet (a)/(D-ord)/(g)/(h): the hypotheses of R3's
+  /** recon A: (g_new) per-pair from the tables, DEPTH-GENERAL. For ordered rows
+      `l1 < l2`, the DIRECT children of the earlier body never land in the later
+      body (`DirectEarlyNotInLateBody`). Replaces the `NestDepth(re) <= 2`
+      `GDisjointFromTablesNested`. Maps rows to `LookBodyOfRE` (determinism) as
+      before, then calls the structural core. */
+  lemma GNewFromTablesNested(ast: R.regex, re: R.regex, crv: CP.FCompiled,
+                             l1: int, la1: R.lookaround, b1: R.regex,
+                             l2: int, la2: R.lookaround, b2: R.regex)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires LTB.LookUnique(re) && LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
+    requires 1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+    requires LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2)
+    ensures DirectLookIds(b1) * LTB.LookIds(b2) == {}
+  {
+    var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false),
+                          R.Re_character(R.Dot));
+    assert re == R.Re_con(pre, ast);
+    assert LTB.LookIds(re) == LTB.LookIds(ast);
+    LookEntryOnlyReal(ast, crv, l1, la1, b1);
+    LookEntryOnlyReal(ast, crv, l2, la2, b2);
+    var lid1 := l1 as nat;
+    var lid2 := l2 as nat;
+    NI.LookBodyOfTablesTie(re, crv, lid1);
+    NI.LookBodyOfTablesTie(re, crv, lid2);
+    var la01: R.lookaround :| LTB.LookEntryOk(crv, lid1 as int, la01, NI.LookBodyOfRE(re, lid1));
+    var la02: R.lookaround :| LTB.LookEntryOk(crv, lid2 as int, la02, NI.LookBodyOfRE(re, lid2));
+    assert b1 == NI.LookBodyOfRE(re, lid1);
+    assert b2 == NI.LookBodyOfRE(re, lid2);
+    DirectEarlyNotInLateBody(re, lid1, lid2);
+  }
+
+  /** The STATIC quartet (a)/(D-ord)/(g_new)/(h): the hypotheses of R3's
       `FLookLoopFullCoversInLooks` that depend only on the look tables + nesting
       (not on the running register banks), at S := CaptureRegsSet(CapIdsInLooks
-      (re)), Slook := LookIdSet(re). Depth-general EXCEPT (g), which carries
-      `NR.NestDepth(re) <= 2`. Each forall dispatches to its per-row helper. */
+      (re)), Slook := LookIdSet(re). recon A: ALL FOUR are now DEPTH-GENERAL --
+      (g) was replaced by the ordered (g_new) (`GNewFromTablesNested` via
+      `DirectEarlyNotInLateBody`), so the `NR.NestDepth(re) <= 2` premise is GONE.
+      Each forall dispatches to its per-row helper. */
   lemma LookRowsStaticNested(ast: R.regex, re: R.regex, crv: CP.FCompiled)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
-    requires NR.NestDepth(re) <= 2
     ensures forall l: int, la: R.lookaround, body: R.regex ::                                  // (a)
       1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
       FrameEntryOk(crv, la, body, PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), LookIdSet(re))
@@ -9781,10 +9898,10 @@ module LindenElkMain {
       1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
       && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
       PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
-    ensures forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g)
-      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 != l2
+    ensures forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
+      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
       && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      LTB.LookIds(b1) * LTB.LookIds(b2) == {}
+      DirectLookIds(b1) * LTB.LookIds(b2) == {}
     ensures forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (h)
       1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==>
       l2 !in LookIdSet(b1)
@@ -9801,10 +9918,10 @@ module LindenElkMain {
     { DOrdFromTables(ast, re, crv, l1, la1, b1, l2, la2, b2); }
 
     forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex |
-      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 != l2
+      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
       && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2)
-      ensures LTB.LookIds(b1) * LTB.LookIds(b2) == {}
-    { GDisjointFromTablesNested(ast, re, crv, l1, la1, b1, l2, la2, b2); }
+      ensures DirectLookIds(b1) * LTB.LookIds(b2) == {}
+    { GNewFromTablesNested(ast, re, crv, l1, la1, b1, l2, la2, b2); }
 
     forall l1: int, la1: R.lookaround, b1: R.regex, l2: int |
       1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1
@@ -10191,6 +10308,73 @@ module LindenElkMain {
       }
   }
 
+  /** recon A: the STRUCTURAL core of the replacement hypothesis (g_new). For two
+      distinct rows ordered `l1 < l2`, the DIRECT (top-level) look ids of the
+      EARLIER row's body never land inside the LATER row's body. Depth-general
+      (no `NestDepth` cap): a direct child of `l1`'s body has `l1` as its parent;
+      were it inside `l2`'s body it would be nested under `l2`, forcing `l2` to be
+      an ancestor of a child of `l1`, i.e. `l2 <= l1` -- contradicting `l1 < l2`.
+      The `l2 IS this node` case is impossible by well-nesting (`l1 in LookIds(r1)`
+      forces `l1 > lid0 == l2`); the `l1 IS this node` case reduces to
+      `DirectLidsNotInBody`; siblings are disjoint by `LookUnique`. Mirrors
+      `GDisjointBodies`/`DirectLidsNotInBody` structure. */
+  lemma DirectEarlyNotInLateBody(r: R.regex, l1: nat, l2: nat)
+    requires LTB.LookUnique(r) && LTB.LidsWellNested(r)
+    requires l1 in LTB.LookIds(r) && l2 in LTB.LookIds(r) && l1 < l2
+    ensures DirectLookIds(NI.LookBodyOfRE(r, l1)) * LTB.LookIds(NI.LookBodyOfRE(r, l2)) == {}
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if l1 in LTB.LookIds(r1) && l2 in LTB.LookIds(r1) {
+        DirectEarlyNotInLateBody(r1, l1, l2);
+      } else if l1 !in LTB.LookIds(r1) && l2 !in LTB.LookIds(r1) {
+        DirectEarlyNotInLateBody(r2, l1, l2);
+      } else {
+        if l1 in LTB.LookIds(r1) {
+          LookBodyLidsSubset(r1, l1); LookBodyLidsSubset(r2, l2);
+          DirectLidsSubLookIds(NI.LookBodyOfRE(r1, l1));
+        } else {
+          LookBodyLidsSubset(r2, l1); LookBodyLidsSubset(r1, l2);
+          DirectLidsSubLookIds(NI.LookBodyOfRE(r2, l1));
+        }
+      }
+    case Re_con(r1, r2) =>
+      if l1 in LTB.LookIds(r1) && l2 in LTB.LookIds(r1) {
+        DirectEarlyNotInLateBody(r1, l1, l2);
+      } else if l1 !in LTB.LookIds(r1) && l2 !in LTB.LookIds(r1) {
+        DirectEarlyNotInLateBody(r2, l1, l2);
+      } else {
+        if l1 in LTB.LookIds(r1) {
+          LookBodyLidsSubset(r1, l1); LookBodyLidsSubset(r2, l2);
+          DirectLidsSubLookIds(NI.LookBodyOfRE(r1, l1));
+        } else {
+          LookBodyLidsSubset(r2, l1); LookBodyLidsSubset(r1, l2);
+          DirectLidsSubLookIds(NI.LookBodyOfRE(r2, l1));
+        }
+      }
+    case Re_quant(_, _, _, r1) => DirectEarlyNotInLateBody(r1, l1, l2);
+    case Re_capture(_, r1) => DirectEarlyNotInLateBody(r1, l1, l2);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == l1 {
+        // l1 IS this node: body(l1) == r1; l2 (!= l1) nested in r1
+        assert NI.LookBodyOfRE(r, l1) == r1;
+        assert l2 in LTB.LookIds(r1);
+        assert NI.LookBodyOfRE(r, l2) == NI.LookBodyOfRE(r1, l2);
+        DirectLidsNotInBody(r1, l2);   // DirectLookIds(r1) * LookIds(LookBodyOfRE(r1,l2)) == {}
+      } else if lid0 >= 0 && (lid0 as nat) == l2 {
+        // l2 IS this node: l1 nested in r1 => l1 > lid0 == l2 (well-nesting), contradicting l1 < l2
+        assert l1 in LTB.LookIds(r1);
+        assert lid0 as nat < l1;       // LidsWellNested at this node
+        assert false;
+      } else {
+        assert l1 in LTB.LookIds(r1) && l2 in LTB.LookIds(r1);
+        assert NI.LookBodyOfRE(r, l1) == NI.LookBodyOfRE(r1, l1);
+        assert NI.LookBodyOfRE(r, l2) == NI.LookBodyOfRE(r1, l2);
+        DirectEarlyNotInLateBody(r1, l1, l2);
+      }
+  }
+
   /** (f) look-stability from the MAIN match: every recorded lid `l2` is DIRECT
       (the main bytecode gates only on direct lids, `DirectLidClassified` +
       look-frame), and no direct lid lands inside another look's body
@@ -10260,11 +10444,11 @@ module LindenElkMain {
       `FLookLoopValueLiftFull`/`FLookLoopFullCoversInLooks` and R2's
       `FLookLoopCaptureFrameNested` require, at cap/lk/qt := the winning thread's
       register banks, S := CaptureRegsSet(CapIdsInLooks(re)), Slook :=
-      LookIdSet(re). (a)/(D-ord)/(h) are unconditional (table+nesting only); (g)
-      carries `NR.NestDepth(re) <= 2`; (b)/(c')/(e)/(f) + register wf + quant
-      finality read the winning thread and are guarded by `result.Some?`.
-      Assembles `LookRowsStaticNested` + `LookRowsDynamicNested` +
-      `FStabilityNested` + `FFindMatchQuantFinalAny`. */
+      LookIdSet(re). recon A: (a)/(D-ord)/(g_new)/(h) are ALL unconditional
+      (table+nesting only, DEPTH-GENERAL — no `NestDepth` cap); (b)/(c')/(e)/(f)
+      + register wf + quant finality read the winning thread and are guarded by
+      `result.Some?`. Assembles `LookRowsStaticNested` + `LookRowsDynamicNested`
+      + `FStabilityNested` + `FFindMatchQuantFinalAny`. */
   lemma LookRowsFromTablesNested(
       ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
       ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
@@ -10276,7 +10460,6 @@ module LindenElkMain {
     requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
-    requires NR.NestDepth(re) <= 2
     requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
     requires NR.GetPcRE(code, endl) == Some(RB.Accept)
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
@@ -10296,11 +10479,11 @@ module LindenElkMain {
       1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
       && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
       PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
-    // ---- (g) [depth <= 2] ----
+    // ---- (g_new) [depth-general] ----
     ensures forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::
-      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 != l2
+      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
       && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      LTB.LookIds(b1) * LTB.LookIds(b2) == {}
+      DirectLookIds(b1) * LTB.LookIds(b2) == {}
     // ---- (h) ----
     ensures forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
       1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==>
@@ -10366,7 +10549,6 @@ module LindenElkMain {
     requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
-    requires NR.NestDepth(re) <= 2
     requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
     requires NR.GetPcRE(code, endl) == Some(RB.Accept)
     requires g in PIV.CapIdsInLooks(re)
