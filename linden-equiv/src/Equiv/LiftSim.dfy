@@ -13661,6 +13661,121 @@ module LindenElkLiftSim {
     assert leafgm == ngml;
   }
 
+  /** (L4 NESTED) Structure-agnostic clone of `L3aValueBridge`. The depth-1
+      original derives the OUTSIDE-`S` leaf/reconstruction agreement internally
+      from register frames via `M.OutsideLookValueBridge`, which requires
+      `LookBehindFragmentRE(re)` (FALSE under nesting). Here that outside-`S`
+      agreement is taken as a DIRECT premise (the endpoint supplies it via the
+      nested outside frame), so the assembly carries NO fragment hypothesis and
+      is entirely depth-agnostic. The INSIDE-`S` present/absent premises keep
+      their EXACT shape (C4 supplies them from the 3-component chain). */
+  lemma L3aValueBridgeNested(re: R.regex, th: AI.Thread, leafgm: LG.GroupMap,
+                             res0: AReg.Regs, res2: AReg.Regs, S: set<LG.GroupId>)
+    requires S == PIV.CapIdsInLooks(re)
+    // L3b: the leaf value is ORDERED (spec GMClose ordering); this lets NormRange
+    // collapse to the identity on the outside/forward groups.
+    requires M.OrderedGm(leafgm)
+    // OUTSIDE S: leaf agrees with the reconstructed GmOfLive (membership + value)
+    // — supplied by the caller (endpoint) via the nested outside frame.
+    requires forall g: LG.GroupId :: g !in S ==>
+               (g in leafgm <==> g in PIV.GmOfLive(re, res0, th.look_regs, res2))
+               && (g in leafgm ==> leafgm[g] == PIV.GmOfLive(re, res0, th.look_regs, res2)[g])
+    // INSIDE S, present: the leaf value is the POSITIONAL normalization of the
+    // reconstructed value (aggregated per-g from the 3-component chain).
+    requires forall g: LG.GroupId :: g in S && g in leafgm ==>
+               g in PIV.GmOfLive(re, res0, th.look_regs, res2)
+               && leafgm[g] == PIV.NormRange(PIV.GmOfLive(re, res0, th.look_regs, res2)[g])
+    // INSIDE S, absent (reverse tie): the reconstruction invents no S-group the
+    // leaf lacks — the other half of the key-set equality.
+    requires forall g: LG.GroupId :: g in S
+               && g in PIV.GmOfLive(re, res0, th.look_regs, res2) ==> g in leafgm
+    ensures leafgm == PIV.NormGm(PIV.GmOfLive(re, res0, th.look_regs, res2))
+  {
+    var gml := PIV.GmOfLive(re, res0, th.look_regs, res2);
+    var ngml := PIV.NormGm(gml);
+    forall g: LG.GroupId
+      ensures (g in leafgm <==> g in ngml) && (g in leafgm ==> leafgm[g] == ngml[g])
+    {
+      assert (g in ngml) <==> (g in gml);              // NormGm preserves keys
+      if g in leafgm {
+        if g in S {
+          // present ⟹ (requires) leafgm[g] == NormRange(gml[g]) == ngml[g].
+        } else {
+          // outside: leafgm[g] == gml[g] (direct premise); leafgm ORDERED ⟹
+          // gml[g] ordered ⟹ NormRange is identity.
+          PIV.NormRangeOrdered(gml[g]);
+        }
+      }
+    }
+    assert leafgm == ngml;
+  }
+
+  /** (L4 NESTED) `M.OutsideLookValueBridge` under `NestedFragmentRE`. The depth-1
+      original goes through `PIV.GmOfLiveFrameOutside`, whose `LookBehindFragmentRE`
+      requirement is FALSE under nesting. But the underlying combined cap+quant
+      frame `PIV.FilterFrameOutside` is FRAGMENT-FREE (it recurses purely on the
+      register-layout W-set, handling `Re_lookaround` via `FilterCaptureAgreeOutsideOwn`),
+      so the nested outside frame is a SINGLE `FilterFrameOutside` call — no
+      fragment hypothesis anywhere. Feeds the endpoint's outside-`S` half. */
+  lemma OutsideLookValueBridgeNested(re: R.regex, capT: AReg.Regs, capR: AReg.Regs, look: AReg.Regs,
+                                     quantT: AReg.Regs, quantR: AReg.Regs, gmBest: LG.GroupMap, ft: LG.GroupMap)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re) && PIV.CapUnique(re)
+    requires gmBest == PIV.GmOfLive(re, capT, look, quantT)
+    requires forall g: nat :: g !in LL.LkBodyGroups(T.Translate(re)) ==>
+      (g in ft <==> g in gmBest) && (g in ft ==> ft[g] == gmBest[g])
+    requires forall k: int :: k !in PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)) ==>
+      AI.get_idx(AReg.as_arrays(capR).0, k) == AI.get_idx(AReg.as_arrays(capT).0, k)
+      && AI.get_idx(AReg.as_arrays(capR).1, k) == AI.get_idx(AReg.as_arrays(capT).1, k)
+    requires forall q: nat :: q in PIV.QuantIdsOutsideLooks(re) ==>
+      AI.get_idx(AReg.as_arrays(quantR).1, q) == AI.get_idx(AReg.as_arrays(quantT).1, q)
+    ensures forall g: nat :: g !in PIV.CapIdsInLooks(re) ==>
+      (g in ft <==> g in PIV.GmOfLive(re, capR, look, quantR))
+      && (g in ft ==> ft[g] == PIV.GmOfLive(re, capR, look, quantR)[g])
+  {
+    M.LkBodyGroupsEqCapIdsInLooks(re);                 // LkBodyGroups(Translate(re)) == CapIdsInLooks(re)
+    var W := PIV.CaptureRegsSet(PIV.CapIdsInLooks(re));
+    var crA := AReg.as_arrays(capT).0;  var ccA := AReg.as_arrays(capT).1;
+    var crB := AReg.as_arrays(capR).0;  var ccB := AReg.as_arrays(capR).1;
+    var lc := AReg.as_arrays(look).1;
+    var qcA := AReg.as_arrays(quantT).1; var qcB := AReg.as_arrays(quantR).1;
+
+    // structural requires of FilterFrameOutside (mirrors GmOfLiveFrameOutside)
+    PIV.CapIdsLooksDisjoint(re);
+    assert forall g: nat :: g in PIV.CapIdsInLooks(re) ==> CP.start_reg(g) in W by {
+      forall g: nat | g in PIV.CapIdsInLooks(re) ensures CP.start_reg(g) in W { PIV.StartRegInCaptureRegsSet(PIV.CapIdsInLooks(re), g); }
+    }
+    assert forall g: nat :: g in PIV.CapIdsOutsideLooks(re) ==> CP.start_reg(g) !in W by {
+      forall g: nat | g in PIV.CapIdsOutsideLooks(re) ensures CP.start_reg(g) !in W {
+        assert g !in PIV.CapIdsInLooks(re) by { if g in PIV.CapIdsInLooks(re) { assert g in PIV.CapIdsOutsideLooks(re) * PIV.CapIdsInLooks(re); } }
+        PIV.StartRegInCaptureRegsSet(PIV.CapIdsInLooks(re), g);
+      }
+    }
+    assert forall x: int :: x in W ==> x >= 0 by {
+      forall x: int | x in W ensures x >= 0 {}
+    }
+    // single combined cap+quant swap outside W (FRAGMENT-FREE).
+    PIV.FilterFrameOutside(re, crA, crB, ccA, ccB, lc, qcA, qcB, -1, W);
+
+    var f1 := AI.filter_reset(re, capT, look, quantT, -1);
+    var f2 := AI.filter_reset(re, capR, look, quantR, -1);
+    assert f1 == AI.filter_capture(re, crA, ccA, lc, qcA, -1);
+    assert f2 == AI.filter_capture(re, crB, ccB, lc, qcB, -1);
+
+    forall g: nat | g !in PIV.CapIdsInLooks(re)
+      ensures (g in ft <==> g in PIV.GmOfLive(re, capR, look, quantR))
+           && (g in ft ==> ft[g] == PIV.GmOfLive(re, capR, look, quantR)[g])
+    {
+      assert g !in LL.LkBodyGroups(T.Translate(re));       // set identity
+      PIV.StartRegInCaptureRegsSet(PIV.CapIdsInLooks(re), g);
+      PIV.EndRegInCaptureRegsSet(PIV.CapIdsInLooks(re), g);
+      assert CP.start_reg(g) !in W && CP.end_reg(g) !in W;
+      assert AI.get_idx(f1, CP.start_reg(g)) == AI.get_idx(f2, CP.start_reg(g));
+      assert AI.get_idx(f1, CP.end_reg(g)) == AI.get_idx(f2, CP.end_reg(g));
+      assert AI.get_idx(ccA, CP.start_reg(g)) == AI.get_idx(ccB, CP.start_reg(g));
+      assert AI.get_idx(ccA, CP.end_reg(g)) == AI.get_idx(ccB, CP.end_reg(g));
+    }
+  }
+
   // ==========================================================================
   // ---- (K) THE COMPOSITE SIM (thread-anchored — audit 2026-08-03) ------------
   //
@@ -15485,6 +15600,124 @@ module LindenElkLiftSim {
     assert CM.ThreadRegsWf(AI.Thread(thread.pc, res0, res.1, res2, thread.exit_allowed),
                            ncap, nlook, nquant);
     assert M.QuantRegsFinal(AI.Thread(thread.pc, res0, res.1, res2, thread.exit_allowed));
+  }
+
+  // ==========================================================================
+  // (E4 NESTED) THE ENDPOINT ASSEMBLY under look NESTING. Consumes the nested
+  // best-tie `BestTieLkNested` (which DROPS `GmtTieInside`) and closes the
+  // whole-regex value theorem `leaf.1 == NormGm(GmOfLive(re, res.0, res.1, res.2))`.
+  //
+  // KEY RETARGET vs. the depth-1 endpoint: the value reads the RECONSTRUCTED look
+  // bank `res.1` (NOT `thread.look_regs`) — under nesting `FLookLoop` writes the
+  // inner-look banks, so `res.1 != thread.look_regs` inside `LookIdSet(re)`. On
+  // OUTSIDE-`S` groups the two coincide (`PIV.GmOfLiveLookIndepNested`), which is
+  // how the outside half still rides the winning-thread's `GmtTieOutside`.
+  //
+  // WHAT IS DERIVED GREEN HERE: the entire OUTSIDE-`S` half —
+  //   BestTieLkNested ⟹ GmtTieOutside(re, thread, leafgm, S)
+  //     --[GmOfLiveLookIndepNested: thread.look_regs ~ res.1 outside S]-->
+  //   leafgm ~ GmOfLive(re, thread.cap, res.1, thread.quant) outside S
+  //     --[OutsideLookValueBridgeNested: cap/quant frame res.0/res.2 ~ thread]-->
+  //   leafgm ~ GmOfLive(re, res.0, res.1, res.2) outside S
+  //   --[L3aValueBridgeNested]--> leaf.1 == NormGm(GmOfLive(re, res.0, res.1, res.2)).
+  //
+  // WHAT REMAINS (TODO C4 — the genuinely-novel INSIDE glue + nested FLookLoop
+  // plumbing), stated as the residual `requires`:
+  //  (a) recon_outer cap frame + quant frame + synthetic-`res` well-formedness —
+  //      the nested FLookLoop scaffolding (`M.FLookLoopFullCoversFromTables`
+  //      supplies recon_outer/recon_inner; the quant frame + `CapRegWf(res.0)` +
+  //      `QuantRegsFinal` need the nested `FLookLoopQuantFrame`/`FLookLoopValueLiftFull`
+  //      table-side-condition preamble — mechanical but large).
+  //  (b) INSIDE-`S` FORWARD value: `leaf.1[g] == NormRange(GmOfLive(re,res0,res1,res2)[g])`.
+  //      The 3-component chain (`FLookLoopFullCoversFromTables` -> `res.0` carries `g`
+  //      at its innermost owner's fresh value; `OuterLeafInnerGEqOwnerBody` -> `leaf[g]`
+  //      == owner-body spec sub-result; `LkReplayMatchesSpecNested` -> owner-fresh ==
+  //      owner-sub-result). This chain needs (i) the SPEC tree `t` with `leaf ==
+  //      FirstLeaf(t, inp)` threaded in — `BestTieLkNested` does NOT carry it (unlike
+  //      the depth-1 `GmtTieInside`); and (ii) nested `LookPath*` ownership lemmas
+  //      (`LookPathCompose/Decompose/PresentAgree`), which currently exist only for
+  //      `LookBehindFragmentRE` in `NestInv.dfy`.
+  //  (c) INSIDE-`S` REVERSE: `g in GmOfLive(re,res0,res1,res2) ==> g in leaf.1`, fed
+  //      by the KEPT carrier `LookNestBackT` (in `BestTieLkNested`) — but the depth-1
+  //      reverse block routes through `LookPathDecompose`/`LookPathDomIntro`/
+  //      `LookFreeNoLookIdsN`, all `LookBehindFragmentRE`-gated; nested twins pending.
+  // ==========================================================================
+  lemma {:isolate_assertions} L3aEndpointAssemblyNested(
+      ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, endl: nat,
+      str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
+      thread: AI.Thread, leaf: LT.Leaf, ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.NegLooksLookFreeRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires S == PIV.CapIdsInLooks(re)
+    requires R.max_lookaround(re) == R.max_lookaround(ast)
+    // L3b: the leaf value is ORDERED (spec GMClose ordering) — lets the NormRange
+    // conversion collapse on the outside/forward groups.
+    requires M.OrderedGm(leaf.1)
+    // the nested best-match tie (GmtTieInside dropped; GmtTieOutside + the two
+    // LookNest carriers kept).
+    requires BestTieLkNested(re, crv, str, ov, S, Some(leaf), Some(thread), ncap, nlook, nquant)
+    // ---- the depth-general FLookLoop reconstruction + residual (TODO C4) ----
+    requires var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                     thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
+      // (a) recon_outer cap frame — FLookLoop writes captures only inside look bodies
+      //     (supplied by M.FLookLoopFullCoversFromTables).
+      (forall k: int :: k !in PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)) ==>
+         AI.get_idx(AReg.as_arrays(res.0).0, k) == AI.get_idx(AReg.as_arrays(thread.capture_regs).0, k)
+         && AI.get_idx(AReg.as_arrays(res.0).1, k) == AI.get_idx(AReg.as_arrays(thread.capture_regs).1, k))
+      // (a) quant frame outside looks (nested FLookLoopQuantFrame).
+      && (forall q: nat :: q in PIV.QuantIdsOutsideLooks(re) ==>
+         AI.get_idx(AReg.as_arrays(res.2).1, q as int) == AI.get_idx(AReg.as_arrays(thread.quant_regs).1, q as int))
+      // (b) INSIDE-S FORWARD value chain (spec tree + nested LookPath* + Range↔GmOfLive).
+      && (forall g: LG.GroupId :: g in S && g in leaf.1 ==>
+           g in PIV.GmOfLive(re, res.0, res.1, res.2)
+           && leaf.1[g] == PIV.NormRange(PIV.GmOfLive(re, res.0, res.1, res.2)[g]))
+      // (c) INSIDE-S REVERSE (LookNestBackT + nested LookPathDecompose/DomIntro).
+      && (forall g: LG.GroupId :: g in S
+           && g in PIV.GmOfLive(re, res.0, res.1, res.2) ==> g in leaf.1)
+      // (a) synthetic-res well-formedness (nested FLookLoopValueLiftFull).
+      && CM.ThreadRegsWf(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed), ncap, nlook, nquant)
+      && M.QuantRegsFinal(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed))
+    ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                    thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
+      leaf.1 == PIV.NormGm(PIV.GmOfLive(re, res.0, res.1, res.2))
+      && CM.ThreadRegsWf(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed), ncap, nlook, nquant)
+      && M.QuantRegsFinal(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed))
+  {
+    var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                            thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
+    var leafgm := leaf.1;
+    var synthetic := AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed);
+
+    // ---- OUTSIDE S (derived green) ----------------------------------------
+    // BestTieLkNested ⟹ GmtTieOutside(re, thread, leafgm, S).
+    assert GmtTieOutside(re, thread, leafgm, S);
+    var gmThread := PIV.GmOfLive(re, thread.capture_regs, thread.look_regs, thread.quant_regs);
+    var gmBest := PIV.GmOfLive(re, thread.capture_regs, res.1, thread.quant_regs);
+    // look-bank independence OUTSIDE CapIdsInLooks(re): move thread.look_regs -> res.1.
+    PIV.GmOfLiveLookIndepNested(re, thread.capture_regs, thread.look_regs, res.1, thread.quant_regs);
+    M.LkBodyGroupsEqCapIdsInLooks(re);                     // LkBodyGroups(Translate(re)) == S
+    assert forall g: nat :: g !in LL.LkBodyGroups(T.Translate(re)) ==>
+      (g in leafgm <==> g in gmBest) && (g in leafgm ==> leafgm[g] == gmBest[g])
+    by {
+      forall g: nat | g !in LL.LkBodyGroups(T.Translate(re))
+        ensures (g in leafgm <==> g in gmBest) && (g in leafgm ==> leafgm[g] == gmBest[g])
+      {
+        assert g !in S;
+        // GmtTieOutside: leafgm ~ gmThread off S; LookIndep: gmThread ~ gmBest off S.
+        assert (g in leafgm <==> g in gmThread) && (g in leafgm ==> leafgm[g] == gmThread[g]);
+        assert (g in gmThread <==> g in gmBest) && (g in gmThread ==> gmThread[g] == gmBest[g]);
+      }
+    }
+    OutsideLookValueBridgeNested(re, thread.capture_regs, res.0, res.1, thread.quant_regs, res.2,
+                                 gmBest, leafgm);
+    assert forall g: LG.GroupId :: g !in S ==>
+      (g in leafgm <==> g in PIV.GmOfLive(re, res.0, res.1, res.2))
+      && (g in leafgm ==> leafgm[g] == PIV.GmOfLive(re, res.0, res.1, res.2)[g]);
+
+    // ---- assemble (outside frame + the TODO-C4 inside premises) -----------
+    assert synthetic.look_regs == res.1;
+    L3aValueBridgeNested(re, synthetic, leafgm, res.0, res.2, S);
+    assert leafgm == PIV.NormGm(PIV.GmOfLive(re, res.0, res.1, res.2));
   }
 
   // ==========================================================================
