@@ -191,3 +191,47 @@ To salvage a branch's work: extract the `.dfy`-only diff and re-verify (see §6)
    then brick 3 (assembly → `LkReplayMatchesSpecNestedFullClosed`).
 4. Full-file re-certify `MainTheorem.dfy` (whole-file, no filter) before declaring done.
 5. Then W6 (#15).
+
+---
+
+## RESUME PROGRESS (2026-08-17) — bricks 1 & 2 landed; remaining = brick-3 assembly (W6)
+
+Resumed from the halt: salvaged both in-flight partials green, then finished bricks 1 & 2.
+Branch `l4-nesting` HEAD `1967b78` (pending full-file re-cert). New commits since the halt:
+
+- **`e08ef38` (salvage R30a+R30b):** `NoPosLookbehindRE`, `LookBodyFactsNested` (sub-body facts);
+  `GWriteOnlyInLooks`, `TreeResLkNodeGValueFresh`, `TreeResGSpineValue` (spec descent — but see below).
+- **`4919254` (R31b, brick 2 = owner-node correspondence):** CORRECTS a subtlety — the salvaged
+  `TreeResGSpineValue` returns the structurally DEEPEST matched look, NOT g's owner (value holds by
+  pass-through). Sound owner-finder added: `GOwnerWF` + `GOwnerWFImpliesSpine`, `TreeResGOwnerDescent`
+  (sound iterate-to-innermost-owner), `TreeResGOwnerFresh` (Empty-map form), `ComputeTrSingleLookUnfold`
+  (atomic `ComputeTr(single look)==LK(lk,ComputeTr(body),Match)`), `SingleLookOuterLeafIsOwnerBody`
+  (**depth-2 single-direct-owner spec identity CLOSED**).
+- **`1967b78` (R31a, brick 1 = tables-discharge, COMPLETE, depth<=2):** `LookRowsFromTablesNested`
+  (produces all (a)-(h) from the compilation tables) + `FLookLoopFullCoversFromTables` (PREMISE-FREE:
+  recon_outer + recon_inner engine coverage) + 22 supporting lemmas. Mirrors `LookRowsFromTablesL3a`.
+
+### The two scope findings (both converge at depth 2)
+1. **(g) caps at depth 2.** R2/R3's hypothesis (g) `LookIds(b1)*LookIds(b2)=={}` is FALSE at depth>=3
+   (`l1>l2>l3` shares l3), CONFIRMED essential. `FLookLoopFullCoversFromTables` carries `NestDepth<=2`.
+   Full depth-k needs (g) weakened to "disjoint-or-nested" + R2/R3 (630/636 VC) re-proven.
+2. **General multi-layer 2b is a mini-campaign.** `TreeResGOwnerFresh` gives an ABSTRACT owner subtree;
+   pinning it to `ComputeTr(Translate(LookBodyOfRE(body,owner)))` GENERALLY needs a regex-tracking
+   descent threading `EL.BoolTreeLk` (a nested `BodyTreeAtCpNested`) + handle the `GOwnerWF` caveat
+   (quantified capturing lookarounds duplicating the owner body). Depth-2 single-owner IS closed.
+
+### recon_inner COMPONENT INVENTORY (all proven & green, reusable)
+- Engine reconstruction: `FLookLoopValueLiftFull`/`FLookLoopFullCoversInLooks` (R3) +
+  `FLookLoopFullCoversFromTables` (R31a, premise-free, depth<=2).
+- Spec composition/descent: R3b toolkit + `TreeResGOwnerDescent`/`TreeResGOwnerFresh`/
+  `SingleLookOuterLeafIsOwnerBody` (R31b).
+- Per-owner tie: existing `LkReplayMatchesSpecNested` (5964).
+
+### REMAINING = brick-3 assembly = W6 (task #30 -> #15)
+Chain, for inside-look `g`: `GmOfLive(re,res.0,…)[g]` == owner fresh value (R31a) == owner
+`LkResult[g]` (`LkReplayMatchesSpecNested`, supplying its engine hyps + the position match
+`res.1[owner]`==spec owner-eval position via `BodyTreeAtCpNested`) == outer/winning leaf`[g]`
+(R31b spec identity). This IS the whole-regex nested inside-look value bridge = nested
+`GmtTieInside`/`L3aValueBridge`/`L3aEndpointAssembly`/`MainTheoremL3`, + `Supported` widening
+`LookBehindFragmentRaw->NestedFragmentRaw`. Substantial W6 integration; depth-2 first, then the two
+full-depth-k follow-ons above.
