@@ -1475,6 +1475,235 @@ module LindenElkMain {
       assert LL.LkBodyGroups(T.Translate(r)) == (set g | g in L.DefGroups(T.Translate(r1))) + LL.LkBodyGroups(T.Translate(r1));
   }
 
+  // ==========================================================================
+  // B'' deliverable #1: the R<->L "innermost owner body" correspondence. The
+  // B'' descent (`ComputeTrOwnerNamed`) records `rr` as the L-look-body of
+  // `Translate(body)` that DIRECTLY captures `g`. This block identifies that
+  // `rr` with `Translate(LookBodyOfRE(body, InnermostOwnerDirect(body, g)))`.
+  // ==========================================================================
+
+  /** `w` is the body of SOME `LookaroundR` node inside `r` — the L-side "is a
+      look body of" relation. The B'' descent records its `rr` as such a body of
+      `Translate(body)`; this pins it structurally so it can be identified with
+      a `Translate(LookBodyOfRE(...))`. */
+  ghost predicate SubLkBody(r: L.Regex, w: L.Regex)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => SubLkBody(r1, w) || SubLkBody(r2, w)
+    case Sequence(r1, r2) => SubLkBody(r1, w) || SubLkBody(r2, w)
+    case Quantified(_, _, _, r1) => SubLkBody(r1, w)
+    case Group(_, r1) => SubLkBody(r1, w)
+    case LookaroundR(_, r1) => (w == r1) || SubLkBody(r1, w)
+    case _ => false
+  }
+
+  /** Action-list lift of `SubLkBody`: `w` is a look body of some pending `Areg`
+      regex. The invariant the B'' descent threads to expose `rr`'s origin. */
+  ghost predicate SubLkBodyActs(acts: LS.Actions, w: L.Regex)
+    decreases |acts|
+  {
+    if |acts| == 0 then false
+    else (acts[0].Areg? && SubLkBody(acts[0].r, w)) || SubLkBodyActs(acts[1..], w)
+  }
+
+  lemma SubLkBodyActsCons(x: LS.Action, cont: LS.Actions, w: L.Regex)
+    ensures SubLkBodyActs([x] + cont, w) <==> ((x.Areg? && SubLkBody(x.r, w)) || SubLkBodyActs(cont, w))
+  { assert ([x] + cont)[0] == x && ([x] + cont)[1..] == cont; }
+
+  /** SubLk lift for the free-iteration quantifier unfold
+      `na = [Areg(r1), Acheck(inp), Areg(quant)] + cont` with `quant`/`head`
+      quantifiers over `r1`: a look body of `na` is one of `acts = [head] + cont`,
+      since `r1`, `quant`, and `head` share the same look bodies. */
+  lemma SubLkFreeQuantNaLift(r1: L.Regex, quant: L.Regex, inp: LC.Input, cont: LS.Actions,
+                             head: LS.Action, acts: LS.Actions, rr: L.Regex)
+    requires head.Areg? && SubLkBody(head.r, rr) == SubLkBody(r1, rr)
+    requires SubLkBody(quant, rr) == SubLkBody(r1, rr)
+    requires acts == [head] + cont
+    requires SubLkBodyActs([LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont, rr)
+    ensures SubLkBodyActs(acts, rr)
+  {
+    assert [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont
+        == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+    SubLkBodyActsCons(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont), rr);
+    SubLkBodyActsCons(LS.Acheck(inp), [LS.Areg(quant)] + cont, rr);
+    SubLkBodyActsCons(LS.Areg(quant), cont, rr);
+    SubLkBodyActsCons(head, cont, rr);
+  }
+
+  /** Translate structural bridge: the OUTSIDE-look defined groups of the
+      translated regex equal the engine's OUTSIDE-look capture ids. Mirrors
+      `TranslateDefGroupsEqCapIds`; the `Re_lookaround` case is `{}` on both
+      sides. */
+  lemma TranslateDefGroupsOutsideEqCapIdsOutside(re: R.regex)
+    requires T.TransWf(re)
+    ensures DefGroupsOutsideLooksL(T.Translate(re)) == PIV.CapIdsOutsideLooks(re)
+    decreases re
+  {
+    match re
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      TranslateDefGroupsOutsideEqCapIdsOutside(r1); TranslateDefGroupsOutsideEqCapIdsOutside(r2);
+    case Re_con(r1, r2) =>
+      TranslateDefGroupsOutsideEqCapIdsOutside(r1); TranslateDefGroupsOutsideEqCapIdsOutside(r2);
+    case Re_quant(_, _, q, r1) => TranslateDefGroupsOutsideEqCapIdsOutside(r1);
+    case Re_capture(cid, r1) =>
+      assert cid >= 0;                                       // TransWf(Re_capture)
+      TranslateDefGroupsOutsideEqCapIdsOutside(r1);
+    case Re_lookaround(_, lk, r1) =>
+  }
+
+  /** `LookBodyOfRE` preserves `TransWf` (its result is a subterm of `r`). Makes
+      the `T.Translate(LookBodyOfRE(...))` terms in the specs below well-formed. */
+  lemma TransWfLookBodyOfRE(r: R.regex, lid: nat)
+    requires T.TransWf(r) && lid in LTB.LookIds(r)
+    ensures T.TransWf(NI.LookBodyOfRE(r, lid))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => if lid in LTB.LookIds(r1) { TransWfLookBodyOfRE(r1, lid); } else { TransWfLookBodyOfRE(r2, lid); }
+    case Re_con(r1, r2) => if lid in LTB.LookIds(r1) { TransWfLookBodyOfRE(r1, lid); } else { TransWfLookBodyOfRE(r2, lid); }
+    case Re_quant(_, _, _, r1) => TransWfLookBodyOfRE(r1, lid);
+    case Re_capture(_, r1) => TransWfLookBodyOfRE(r1, lid);
+    case Re_lookaround(lid0, _, r1) => if lid0 >= 0 && (lid0 as nat) == lid { } else { TransWfLookBodyOfRE(r1, lid); }
+    case _ =>
+  }
+
+  /** `LookBodyOfRE` preserves `CapUnique` (its result is a subterm of `r`). */
+  lemma CapUniqueLookBodyOfRE(r: R.regex, lid: nat)
+    requires PIV.CapUnique(r) && lid in LTB.LookIds(r)
+    ensures PIV.CapUnique(NI.LookBodyOfRE(r, lid))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => if lid in LTB.LookIds(r1) { CapUniqueLookBodyOfRE(r1, lid); } else { CapUniqueLookBodyOfRE(r2, lid); }
+    case Re_con(r1, r2) => if lid in LTB.LookIds(r1) { CapUniqueLookBodyOfRE(r1, lid); } else { CapUniqueLookBodyOfRE(r2, lid); }
+    case Re_quant(_, _, _, r1) => CapUniqueLookBodyOfRE(r1, lid);
+    case Re_capture(_, r1) => CapUniqueLookBodyOfRE(r1, lid);
+    case Re_lookaround(lid0, _, r1) => if lid0 >= 0 && (lid0 as nat) == lid { } else { CapUniqueLookBodyOfRE(r1, lid); }
+    case _ =>
+  }
+
+  /** Translate structural bridge: every L-look-body of `Translate(body)` is the
+      translation of an R-look-body of `body`. `Translate` maps `Re_lookaround`
+      to `LookaroundR` and nothing else creates a `LookaroundR`, so the L-look
+      nodes of `Translate(body)` correspond exactly to the lookaround nodes of
+      `body`. The `TransWf` conjunct keeps the `Translate` in the witness
+      well-formed. */
+  lemma TranslateSubLkBodyIsLookBody(body: R.regex, w: L.Regex)
+    requires T.TransWf(body) && LTB.LookUnique(body)
+    requires SubLkBody(T.Translate(body), w)
+    ensures exists lid: nat :: lid in LTB.LookIds(body)
+              && T.TransWf(NI.LookBodyOfRE(body, lid)) && w == T.Translate(NI.LookBodyOfRE(body, lid))
+    decreases body
+  {
+    match body
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      assert T.Translate(body) == L.Disjunction(T.Translate(r1), T.Translate(r2));
+      if SubLkBody(T.Translate(r1), w) {
+        TranslateSubLkBodyIsLookBody(r1, w);
+        var lid: nat :| lid in LTB.LookIds(r1) && T.TransWf(NI.LookBodyOfRE(r1, lid)) && w == T.Translate(NI.LookBodyOfRE(r1, lid));
+        assert lid in LTB.LookIds(body);
+        assert NI.LookBodyOfRE(body, lid) == NI.LookBodyOfRE(r1, lid);
+      } else {
+        TranslateSubLkBodyIsLookBody(r2, w);
+        var lid: nat :| lid in LTB.LookIds(r2) && T.TransWf(NI.LookBodyOfRE(r2, lid)) && w == T.Translate(NI.LookBodyOfRE(r2, lid));
+        assert lid !in LTB.LookIds(r1);                      // LookUnique disjoint
+        assert lid in LTB.LookIds(body);
+        assert NI.LookBodyOfRE(body, lid) == NI.LookBodyOfRE(r2, lid);
+      }
+    case Re_con(r1, r2) =>
+      assert T.Translate(body) == L.Sequence(T.Translate(r1), T.Translate(r2));
+      if SubLkBody(T.Translate(r1), w) {
+        TranslateSubLkBodyIsLookBody(r1, w);
+        var lid: nat :| lid in LTB.LookIds(r1) && T.TransWf(NI.LookBodyOfRE(r1, lid)) && w == T.Translate(NI.LookBodyOfRE(r1, lid));
+        assert lid in LTB.LookIds(body);
+        assert NI.LookBodyOfRE(body, lid) == NI.LookBodyOfRE(r1, lid);
+      } else {
+        TranslateSubLkBodyIsLookBody(r2, w);
+        var lid: nat :| lid in LTB.LookIds(r2) && T.TransWf(NI.LookBodyOfRE(r2, lid)) && w == T.Translate(NI.LookBodyOfRE(r2, lid));
+        assert lid !in LTB.LookIds(r1);                      // LookUnique disjoint
+        assert lid in LTB.LookIds(body);
+        assert NI.LookBodyOfRE(body, lid) == NI.LookBodyOfRE(r2, lid);
+      }
+    case Re_quant(_, _, q, r1) =>
+      assert T.Translate(body) == L.Quantified(q.greedy, q.min as nat, T.TrDelta(q), T.Translate(r1));
+      TranslateSubLkBodyIsLookBody(r1, w);
+      var lid: nat :| lid in LTB.LookIds(r1) && T.TransWf(NI.LookBodyOfRE(r1, lid)) && w == T.Translate(NI.LookBodyOfRE(r1, lid));
+      assert lid in LTB.LookIds(body);
+      assert NI.LookBodyOfRE(body, lid) == NI.LookBodyOfRE(r1, lid);
+    case Re_capture(cid, r1) =>
+      assert T.Translate(body) == L.Group(cid as nat, T.Translate(r1));
+      TranslateSubLkBodyIsLookBody(r1, w);
+      var lid: nat :| lid in LTB.LookIds(r1) && T.TransWf(NI.LookBodyOfRE(r1, lid)) && w == T.Translate(NI.LookBodyOfRE(r1, lid));
+      assert lid in LTB.LookIds(body);
+      assert NI.LookBodyOfRE(body, lid) == NI.LookBodyOfRE(r1, lid);
+    case Re_lookaround(lid0, lk, r1) =>
+      assert lid0 >= 0;                                       // LookUnique
+      assert T.Translate(body) == L.LookaroundR(T.TrLookaround(lk), T.Translate(r1));
+      if w == T.Translate(r1) {
+        assert (lid0 as nat) in LTB.LookIds(body);
+        assert NI.LookBodyOfRE(body, lid0 as nat) == r1;      // direct hit
+        assert T.TransWf(NI.LookBodyOfRE(body, lid0 as nat));
+      } else {
+        assert SubLkBody(T.Translate(r1), w);
+        TranslateSubLkBodyIsLookBody(r1, w);
+        var lid: nat :| lid in LTB.LookIds(r1) && T.TransWf(NI.LookBodyOfRE(r1, lid)) && w == T.Translate(NI.LookBodyOfRE(r1, lid));
+        assert (lid0 as nat) != lid;                          // LookUnique: lid0 !in LookIds(r1)
+        assert lid in LTB.LookIds(body);
+        assert NI.LookBodyOfRE(body, lid) == NI.LookBodyOfRE(r1, lid);
+      }
+  }
+
+  /** B'' deliverable #1 — the R<->L innermost-owner-body correspondence. Given a
+      look body `rr` of `Translate(body)` that DIRECTLY captures `g` (`g` outside
+      `rr`'s own looks), `rr` is exactly the translation of the R-side innermost
+      DIRECT owner's body. Both are "the unique look body directly capturing g";
+      capture/look uniqueness forces them to coincide. Proven from the two
+      Translate structural bridges plus the innermost-owner uniqueness
+      (`NestedGWriteFrame` + `LookBodyCompose` + `LookBodyCapsIn`). */
+  lemma TranslateOwnerBodyIsRR(body: R.regex, g: nat, rr: L.Regex, owner: nat)
+    requires T.TransWf(body) && PIV.CapUnique(body) && LTB.LookUnique(body)
+    requires g in LL.LkBodyGroups(T.Translate(body))
+    requires owner in LTB.LookIds(body)
+    requires T.TransWf(NI.LookBodyOfRE(body, owner))
+    requires g in PIV.CapIds(NI.LookBodyOfRE(body, owner))
+    requires g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(body, owner))
+    requires SubLkBody(T.Translate(body), rr)
+    requires g in DefGroupsOutsideLooksL(rr)
+    ensures rr == T.Translate(NI.LookBodyOfRE(body, owner))
+  {
+    // 1. rr is Translate of SOME R-look-body `lb == LookBodyOfRE(body, lid)`.
+    TranslateSubLkBodyIsLookBody(body, rr);
+    var lid: nat :| lid in LTB.LookIds(body)
+      && T.TransWf(NI.LookBodyOfRE(body, lid)) && rr == T.Translate(NI.LookBodyOfRE(body, lid));
+    var lb := NI.LookBodyOfRE(body, lid);
+    CapUniqueLookBodyOfRE(body, lid);                         // CapUnique(lb)
+    // 2. g is directly captured in lb (outside its own looks).
+    TranslateDefGroupsOutsideEqCapIdsOutside(lb);
+    assert g in PIV.CapIdsOutsideLooks(lb);                   // == DefGroupsOutsideLooksL(rr)
+    PIV.CapIdsSplit(lb);
+    assert g in PIV.CapIds(lb);
+    PIV.CapIdsLooksDisjoint(lb);                              // Outside * InLooks == {}
+    assert g !in PIV.CapIdsInLooks(lb);
+    // 3. uniqueness of the innermost direct owner: lid == owner.
+    LkBodyGroupsEqCapIdsInLooks(body);                        // g in CapIdsInLooks(body)
+    assert g in PIV.CapIdsInLooks(body);
+    if lid != owner {
+      NI.NestedGWriteFrame(body, g, owner, lid);              // owner in LookIds(lb)
+      NI.LookBodyCompose(body, lid, owner);                   // LookBodyOfRE(body,owner)==LookBodyOfRE(lb,owner)
+      NI.LookBodyCapsIn(lb, owner);                           // CapIds(LookBodyOfRE(lb,owner)) <= CapIdsInLooks(lb)
+      assert g in PIV.CapIds(NI.LookBodyOfRE(lb, owner));     // req + compose
+      assert g in PIV.CapIdsInLooks(lb);                      // contradicts step 2
+    }
+    assert lid == owner;
+  }
+
   /** L3a OUTSIDE-look value bridge: the spec first leaf `ft` (which agrees with
       the main thread's denotation `gmBest` OUTSIDE the tree inside-look set) agrees
       with `GmOfLive(re, capR, look, quantR)` (the FLookLoop-reconstructed answer) on
@@ -7664,6 +7893,7 @@ module LindenElkMain {
     requires LT.TreeRes(LFU.ComputeTr(rer, acts, inp, gm, dir), gm, inp, dir).Some?
     ensures var t := LFU.ComputeTr(rer, acts, inp, gm, dir);
       (!found ==> LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1) == None)
+      && (found ==> SubLkBodyActs(acts, rr))       // rr is a look body of a pending Areg
       && (found ==>
             L.Positivity(lk0)
             && EL.PikeLkRegexRec(rr)
@@ -7703,6 +7933,7 @@ module LindenElkMain {
         assert t == LT.Progress(LFU.ComputeTr(rer, cont, inp, gm, dir));
         assert LT.TreeRes(t, gm, inp, dir) == LT.TreeRes(LFU.ComputeTr(rer, cont, inp, gm, dir), gm, inp, dir);
         found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, cont, inp, gm, dir, g);
+        if found { SubLkBodyActsCons(acts[0], cont, rr); assert SubLkBodyActs(acts, rr); }   // SubLk tail-lift
       } else {
         assert t == LT.Mismatch;
         assert false;   // TreeRes(Mismatch) == None contradicts .Some?
@@ -7715,12 +7946,14 @@ module LindenElkMain {
       GMUpdateFindNotTouch(LG.Close(gid), LC.Idx(inp), gm, g);   // Find(g, gm2) == None
       assert LT.TreeRes(t, gm, inp, dir) == LT.TreeRes(LFU.ComputeTr(rer, cont, inp, gm2, dir), gm2, inp, dir);
       found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, cont, inp, gm2, dir, g);
+      if found { SubLkBodyActsCons(acts[0], cont, rr); assert SubLkBodyActs(acts, rr); }   // SubLk tail-lift
     case Areg(r) =>
       match r
       case Epsilon =>
         LFS.EpsilonTermination(cont, inp, dir);
         assert t == LFU.ComputeTr(rer, cont, inp, gm, dir);
         found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, cont, inp, gm, dir, g);
+        if found { SubLkBodyActsCons(acts[0], cont, rr); assert SubLkBodyActs(acts, rr); }   // SubLk tail-lift
       case Character(cd) =>
         match LC.ReadChar(rer, cd, inp, dir) {
           case None => assert t == LT.Mismatch; assert false;
@@ -7731,6 +7964,7 @@ module LindenElkMain {
             assert t == LT.Read(pair.0, LFU.ComputeTr(rer, cont, pair.1, gm, dir));
             assert LT.TreeRes(t, gm, inp, dir) == LT.TreeRes(LFU.ComputeTr(rer, cont, pair.1, gm, dir), gm, pair.1, dir);
             found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, cont, pair.1, gm, dir, g);
+            if found { SubLkBodyActsCons(acts[0], cont, rr); assert SubLkBodyActs(acts, rr); }   // SubLk tail-lift
         }
       case Disjunction(r1, r2) =>
         var a1 := [LS.Areg(r1)] + cont; var a2 := [LS.Areg(r2)] + cont;
@@ -7753,9 +7987,11 @@ module LindenElkMain {
         if LT.TreeRes(tA, gm, inp, dir).Some? {
           assert LT.TreeRes(t, gm, inp, dir) == LT.TreeRes(tA, gm, inp, dir);
           found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, a1, inp, gm, dir, g);
+          if found { SubLkBodyActsCons(LS.Areg(r1), cont, rr); SubLkBodyActsCons(acts[0], cont, rr); assert SubLkBodyActs(acts, rr); }   // SubLk: r1 in Disjunction
         } else {
           assert LT.TreeRes(t, gm, inp, dir) == LT.TreeRes(tB, gm, inp, dir);
           found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, a2, inp, gm, dir, g);
+          if found { SubLkBodyActsCons(LS.Areg(r2), cont, rr); SubLkBodyActsCons(acts[0], cont, rr); assert SubLkBodyActs(acts, rr); }   // SubLk: r2 in Disjunction
         }
       case Sequence(r1, r2) =>
         var na := LS.SeqList(r1, r2, dir) + cont;
@@ -7781,6 +8017,16 @@ module LindenElkMain {
         LFS.SequenceTermination(cont, inp, dir, r1, r2);
         assert t == LFU.ComputeTr(rer, na, inp, gm, dir);
         found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, na, inp, gm, dir, g);
+        if found {   // SubLk: r1,r2 both in Sequence(r1,r2)
+          if dir.Forward? {
+            assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+            SubLkBodyActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont, rr); SubLkBodyActsCons(LS.Areg(r2), cont, rr);
+          } else {
+            assert na == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
+            SubLkBodyActsCons(LS.Areg(r2), [LS.Areg(r1)] + cont, rr); SubLkBodyActsCons(LS.Areg(r1), cont, rr);
+          }
+          SubLkBodyActsCons(acts[0], cont, rr); assert SubLkBodyActs(acts, rr);
+        }
       case Quantified(greedy, min, delta, r1) =>
         var gidl := L.DefGroups(r1);
         assert g !in (set x | x in L.DefGroups(r1));   // GNotUnderQuantL(Quantified)
@@ -7806,10 +8052,17 @@ module LindenElkMain {
           assert t == LT.GroupActionT(LG.Reset(gidl), titer);
           assert LT.TreeRes(t, gm, inp, dir) == LT.TreeRes(titer, LG.GMReset(gidl, gm), inp, dir);
           found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, na, inp, LG.GMReset(gidl, gm), dir, g);
+          if found {   // SubLk: r1 in Quantified(_,_,_,r1); quant's body is r1 too
+            assert na == [LS.Areg(r1)] + ([LS.Areg(quant)] + cont);
+            SubLkBodyActsCons(LS.Areg(r1), [LS.Areg(quant)] + cont, rr); SubLkBodyActsCons(LS.Areg(quant), cont, rr);
+            assert SubLkBody(quant, rr) == SubLkBody(r1, rr);
+            SubLkBodyActsCons(acts[0], cont, rr); assert SubLkBodyActs(acts, rr);
+          }
         } else if delta == LN.NN(0) {
           LFS.QuantDoneTermination(cont, inp, dir, r1, greedy);
           assert t == LFU.ComputeTr(rer, cont, inp, gm, dir);
           found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, cont, inp, gm, dir, g);
+          if found { SubLkBodyActsCons(acts[0], cont, rr); assert SubLkBodyActs(acts, rr); }   // SubLk tail-lift
         } else {
           var quant := L.Quantified(greedy, 0, LFS.NoiPred(delta), r1);
           var na := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
@@ -7842,18 +8095,22 @@ module LindenElkMain {
             if iterRes.Some? {
               assert LT.TreeRes(t, gm, inp, dir) == iterRes;
               found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, na, inp, LG.GMReset(gidl, gm), dir, g);
+              if found { SubLkFreeQuantNaLift(r1, quant, inp, cont, acts[0], acts, rr); }   // SubLk: r1 in Quantified
             } else {
               assert LT.TreeRes(t, gm, inp, dir) == skipRes;
               found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, cont, inp, gm, dir, g);
+              if found { SubLkBodyActsCons(acts[0], cont, rr); assert SubLkBodyActs(acts, rr); }   // SubLk tail-lift
             }
           } else {
             assert t == LT.Choice(tskip, X);
             if skipRes.Some? {
               assert LT.TreeRes(t, gm, inp, dir) == skipRes;
               found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, cont, inp, gm, dir, g);
+              if found { SubLkBodyActsCons(acts[0], cont, rr); assert SubLkBodyActs(acts, rr); }   // SubLk tail-lift
             } else {
               assert LT.TreeRes(t, gm, inp, dir) == iterRes;
               found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, na, inp, LG.GMReset(gidl, gm), dir, g);
+              if found { SubLkFreeQuantNaLift(r1, quant, inp, cont, acts[0], acts, rr); }   // SubLk: r1 in Quantified
             }
           }
         }
@@ -7876,6 +8133,11 @@ module LindenElkMain {
         assert t == LT.GroupActionT(LG.Open(gid), tc);
         assert LT.TreeRes(t, gm, inp, dir) == LT.TreeRes(tc, gm2, inp, dir);
         found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, na, inp, gm2, dir, g);
+        if found {   // SubLk: r1 in Group(gid, r1)
+          assert na == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
+          SubLkBodyActsCons(LS.Areg(r1), [LS.Aclose(gid)] + cont, rr); SubLkBodyActsCons(LS.Aclose(gid), cont, rr);
+          SubLkBodyActsCons(acts[0], cont, rr); assert SubLkBodyActs(acts, rr);
+        }
       case LookaroundR(lk, r1) =>
         assert EL.PikeLkRegexRec(r1) by {
           if L.Positivity(lk) { } else { assert SD.GroupFreeL(r1); GroupFreeImpliesNoLkBr(r1); EL.NoLkBrLIsPikeLkRegexRec(r1); }
@@ -7911,6 +8173,8 @@ module LindenElkMain {
                 EL.ComputeTrGmIndepLkRec(rer, r1, inp, gm, L.LkDir(lk));   // treelk == ComputeTr(bodyacts, inp, Empty, LkDir)
                 assert treelk == LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk));
                 found, lk0, rr, inpo, gmo := true, lk, r1, inp, LG.Empty;
+                SubLkBodyActsCons(acts[0], cont, rr);           // SubLk: rr == r1 is THIS look's body
+                assert SubLkBody(r, rr); assert SubLkBodyActs(acts, rr);
               } else {
                 // g DEEPER inside r1's own looks: recurse into the body to find the
                 // innermost owner, then chain through the outer peel.
@@ -7925,6 +8189,10 @@ module LindenElkMain {
                 TreeResGValueFramed(treelk, LG.Empty, gm, inp, L.LkDir(lk), g);
                 if f2 {
                   found, lk0, rr, inpo, gmo := f2, l2, rr2, i2, gmo2;
+                  SubLkBodyActsCons(LS.Areg(r1), [], rr2);       // SubLkBodyActs([Areg(r1)],rr2) => SubLkBody(r1,rr2)
+                  SubLkBodyActsCons(acts[0], cont, rr);
+                  assert SubLkBody(r1, rr2) ==> SubLkBody(r, rr);   // rr==rr2, r==LookaroundR(lk,r1)
+                  assert SubLkBodyActs(acts, rr);
                 } else {
                   found := false;   // body leaf at g None ==> outer leaf at g None
                 }
@@ -7939,6 +8207,7 @@ module LindenElkMain {
               assert LG.Find(g, gmlk) == None;
               LFS.LkAfterTermination(cont, inp, dir, lk, r1);
               found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, cont, inp, gmlk, dir, g);
+              if found { SubLkBodyActsCons(acts[0], cont, rr); assert SubLkBodyActs(acts, rr); }   // SubLk tail-lift
             }
         }
       case AnchorR(a) =>
@@ -7947,6 +8216,7 @@ module LindenElkMain {
           assert t == LT.AnchorPass(a, LFU.ComputeTr(rer, cont, inp, gm, dir));
           assert LT.TreeRes(t, gm, inp, dir) == LT.TreeRes(LFU.ComputeTr(rer, cont, inp, gm, dir), gm, inp, dir);
           found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, cont, inp, gm, dir, g);
+          if found { SubLkBodyActsCons(acts[0], cont, rr); assert SubLkBodyActs(acts, rr); }   // SubLk tail-lift
         } else {
           assert t == LT.Mismatch;
           assert false;
@@ -7976,6 +8246,7 @@ module LindenElkMain {
     requires LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(r)], inp, gm, dir), gm, inp, dir).Some?
     ensures var t := LFU.ComputeTr(rer, [LS.Areg(r)], inp, gm, dir);
       (!found ==> LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1) == None)
+      && (found ==> SubLkBody(r, rr))              // rr is a look body of r
       && (found ==>
             L.Positivity(lk0)
             && EL.PikeLkRegexRec(rr)
@@ -7992,6 +8263,63 @@ module LindenElkMain {
     assert GOnceInv(acts, g) by { AllDefsActsMsCons(LS.Areg(r), [], g); PendingClosesCons(LS.Areg(r), []); }
     assert g !in OuterDefsActs(acts) by { OuterDefsActsCons(LS.Areg(r), []); }
     found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, acts, inp, gm, dir, g);
+    if found { SubLkBodyActsCons(LS.Areg(r), [], rr); }   // SubLkBodyActs([Areg(r)],rr) => SubLkBody(r,rr)
+  }
+
+  /** B'' deliverable #2 — the TURNKEY owner<->tree correspondence. Composes
+      `ComputeTrOwnerNamed` (at `r := Translate(body)`, `Forward`) with deliverable
+      #1: the winning leaf value at `g` in the whole tree is EITHER absent (`None`)
+      OR equal to the leaf value at `g` of the innermost DIRECT owner's OWN
+      compiled body tree, built at the descent-recorded position `inpo` in the
+      owner look's direction. The owner body is NAMED on the R-side as
+      `Translate(LookBodyOfRE(body, InnermostOwnerDirect(body, g)))` via #1's
+      identification of the L-descent's `rr`. `PikeLkRegexRec(Translate(body))` is
+      discharged from the nested fragment (`TranslateFragmentPikeLkRec`); the
+      remaining side conditions are `ComputeTrOwnerNamed`'s. */
+  lemma OuterLeafInnerGEqOwnerBody(rer: LW.RegExpRecord, body: R.regex, g: nat,
+                                   inp: LC.Input, gm: LG.GroupMap)
+      returns (found: bool, owner: nat, lk0: L.Lookaround, inpo: LC.Input)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires PIV.CapUnique(body) && LTB.LookUnique(body)
+    requires GNotUnderQuantL(T.Translate(body), g)
+    requires g in LL.LkBodyGroups(T.Translate(body))
+    requires multiset(L.DefGroups(T.Translate(body)))[g] <= 1
+    requires LG.Find(g, gm) == None
+    requires LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, gm, WP.Forward), gm, inp, WP.Forward).Some?
+    ensures owner in LTB.LookIds(body)
+    ensures g in PIV.CapIds(NI.LookBodyOfRE(body, owner))
+    ensures g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(body, owner))
+    ensures T.TransWf(NI.LookBodyOfRE(body, owner))
+    ensures var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, gm, WP.Forward);
+      (!found ==> LG.Find(g, LT.TreeRes(t, gm, inp, WP.Forward).value.1) == None)
+      && (found ==>
+            L.Positivity(lk0)
+            && var owb := T.Translate(NI.LookBodyOfRE(body, owner));
+               var tsub := LFU.ComputeTr(rer, [LS.Areg(owb)], inpo, LG.Empty, L.LkDir(lk0));
+               LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk0)).Some?
+               && LG.Find(g, LT.TreeRes(t, gm, inp, WP.Forward).value.1)
+                  == LG.Find(g, LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk0)).value.1))
+  {
+    var tr := T.Translate(body);
+    // g sits inside a look of body; get the innermost DIRECT owner.
+    LkBodyGroupsEqCapIdsInLooks(body);                         // g in CapIdsInLooks(body)
+    assert g in PIV.CapIdsInLooks(body);
+    owner := NI.InnermostOwnerDirect(body, g);
+    TransWfLookBodyOfRE(body, owner);                          // TransWf(LookBodyOfRE(body,owner))
+    // side conditions of ComputeTrOwnerNamed
+    EL.TranslateFragmentPikeLkRec(body);                       // PikeLkRegexRec(tr)
+    TranslateDefGroupsOutsideEqCapIdsOutside(body);            // DefGroupsOutsideLooksL(tr)==CapIdsOutsideLooks(body)
+    PIV.CapIdsLooksDisjoint(body);                             // Outside * InLooks == {}
+    assert g !in DefGroupsOutsideLooksL(tr);
+    // run the descent
+    var rr, gmo;
+    found, lk0, rr, inpo, gmo := ComputeTrOwnerNamed(rer, tr, inp, gm, WP.Forward, g);
+    if found {
+      // identify the descent's owner body rr with the named R-owner body
+      TranslateOwnerBodyIsRR(body, g, rr, owner);
+      assert rr == T.Translate(NI.LookBodyOfRE(body, owner));
+      assert gmo == LG.Empty;
+    }
   }
 
   /** R31b (2b) — the ATOMIC per-layer ComputeTr↔look-body bridge, the concrete
