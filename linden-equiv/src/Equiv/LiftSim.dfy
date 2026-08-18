@@ -22925,4 +22925,553 @@ module LindenElkLiftSim {
     }
   }
 
+  // ==========================================================================
+  // BRICK D4: the RECONSTRUCTED-bank ancestor look-clock chain (feeds (i)/(ii)
+  // of `M.ReconInnerGmOfLiveClose`). Two structural spine lemmas first.
+  // ==========================================================================
+
+  /** (BRICK D4 infra) Lk-LIFT for TOP-LEVEL looks: for `lid in TopLookIds(re)`
+      the descent to `lid` crosses no OTHER lookaround node, so `LookPathPresentLk`
+      (which records the ancestor look clocks) coincides with the lc-free
+      `LookPathPresent`. The only differing branch — `Re_lookaround(lid0 != lid)`
+      — is unreachable: a top-level id equals the node's own id there. */
+  lemma LookPathPresentLkOfTop(re: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>, mx: int, lid: nat)
+    requires LTB.LookUnique(re)
+    requires lid in NI.TopLookIds(re)
+    requires lid in LTB.LookIds(re)
+    requires NI.LookPathPresent(re, cc, qc, mx, lid)
+    ensures NI.LookPathPresentLk(re, cc, lc, qc, mx, lid)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) {
+        NI.TopLookIdsIn(r2);
+        assert lid !in NI.TopLookIds(r2);
+        assert lid in NI.TopLookIds(r1);
+        LookPathPresentLkOfTop(r1, cc, lc, qc, mx, lid);
+      } else {
+        assert lid in LTB.LookIds(r2);
+        NI.TopLookIdsIn(r1);
+        assert lid !in NI.TopLookIds(r1);
+        assert lid in NI.TopLookIds(r2);
+        LookPathPresentLkOfTop(r2, cc, lc, qc, mx, lid);
+      }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) {
+        NI.TopLookIdsIn(r2);
+        assert lid !in NI.TopLookIds(r2);
+        assert lid in NI.TopLookIds(r1);
+        LookPathPresentLkOfTop(r1, cc, lc, qc, mx, lid);
+      } else {
+        assert lid in LTB.LookIds(r2);
+        NI.TopLookIdsIn(r1);
+        assert lid !in NI.TopLookIds(r1);
+        assert lid in NI.TopLookIds(r2);
+        LookPathPresentLkOfTop(r2, cc, lc, qc, mx, lid);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      LookPathPresentLkOfTop(r1, cc, lc, qc, AI.get_idx(qc, qid), lid);
+    case Re_capture(cid, r1) =>
+      LookPathPresentLkOfTop(r1, cc, lc, qc, mx, lid);
+    case Re_lookaround(lid0, la, r1) =>
+      assert lid0 >= 0 && (lid0 as nat) == lid;    // lid in TopLookIds == {lid0}
+  }
+
+  /** (BRICK D4 infra) COMPOSE-TO-LOOK: the `LookPathComposeNested` analogue whose
+      TARGET is a nested LOOK `lid2` in `body` rather than a capture group. Stitches
+      the ancestor-chain presence to `lid` + `lid`'s own look-clock clause + the
+      body-side presence to `lid2` into the full presence to `lid2` in `r`. Same
+      alt/con/quant/capture descent as `LookPathComposeNested`; the lookaround base
+      case walks the body via the supplied body premise. */
+  lemma LookPathComposeLkNested(r: R.regex, body: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>,
+                                mx: int, lid: nat, lid2: nat)
+    requires NR.NestedFragmentRE(r) && LTB.LookUnique(r)
+    requires lid in LTB.LookIds(r)
+    requires body == NI.LookBodyOfRE(r, lid)
+    requires lid2 in LTB.LookIds(body)
+    requires NI.LookPathPresentLk(r, cc, lc, qc, mx, lid)
+    requires AI.get_idx(lc, lid as int) >= 0
+    requires AI.get_idx(lc, lid as int) >= NI.MxAtLidLk(r, qc, mx, lid)
+    requires NI.LookPathPresentLk(body, cc, lc, qc, -1, lid2)
+    ensures lid2 in LTB.LookIds(r)
+    ensures NI.LookPathPresentLk(r, cc, lc, qc, mx, lid2)
+    ensures NI.MxAtLidLk(r, qc, mx, lid2) == NI.MxAtLidLk(body, qc, -1, lid2)
+    decreases r
+  {
+    NI.LookBodyLookIdsIn(r, lid);
+    assert lid2 in LTB.LookIds(r);
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) {
+        assert body == NI.LookBodyOfRE(r1, lid);
+        NI.LookBodyLookIdsIn(r1, lid);
+        assert lid2 in LTB.LookIds(r1);
+        LookPathComposeLkNested(r1, body, cc, lc, qc, mx, lid, lid2);
+      } else {
+        assert lid in LTB.LookIds(r2);
+        assert body == NI.LookBodyOfRE(r2, lid);
+        NI.LookBodyLookIdsIn(r2, lid);
+        assert lid2 in LTB.LookIds(r2);
+        assert lid2 !in LTB.LookIds(r1) by {
+          if lid2 in LTB.LookIds(r1) { assert lid2 in LTB.LookIds(r1) * LTB.LookIds(r2); }
+        }
+        LookPathComposeLkNested(r2, body, cc, lc, qc, mx, lid, lid2);
+      }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) {
+        assert body == NI.LookBodyOfRE(r1, lid);
+        NI.LookBodyLookIdsIn(r1, lid);
+        assert lid2 in LTB.LookIds(r1);
+        LookPathComposeLkNested(r1, body, cc, lc, qc, mx, lid, lid2);
+      } else {
+        assert lid in LTB.LookIds(r2);
+        assert body == NI.LookBodyOfRE(r2, lid);
+        NI.LookBodyLookIdsIn(r2, lid);
+        assert lid2 in LTB.LookIds(r2);
+        assert lid2 !in LTB.LookIds(r1) by {
+          if lid2 in LTB.LookIds(r1) { assert lid2 in LTB.LookIds(r1) * LTB.LookIds(r2); }
+        }
+        LookPathComposeLkNested(r2, body, cc, lc, qc, mx, lid, lid2);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      assert qv >= mx;                               // LookPathPresentLk(r,..,lid)
+      LookPathComposeLkNested(r1, body, cc, lc, qc, qv, lid, lid2);
+    case Re_capture(cid, r1) =>
+      NI.LookBodyLookIdsIn(r1, lid);
+      assert lid2 in LTB.LookIds(r1);
+      LookPathComposeLkNested(r1, body, cc, lc, qc, mx, lid, lid2);
+    case Re_lookaround(lid0, la, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+        assert body == r1;
+        assert NI.MxAtLidLk(r, qc, mx, lid) == mx;
+        assert (lid0 as nat) !in LTB.LookIds(r1);    // LookUnique
+        assert lid2 != lid;                          // lid2 in LookIds(r1)
+        assert AI.get_idx(lc, lid0) >= 0 && AI.get_idx(lc, lid0) >= mx;
+      } else {
+        assert lid in LTB.LookIds(r1);
+        assert body == NI.LookBodyOfRE(r1, lid);
+        assert AI.get_idx(lc, lid0) >= 0 && AI.get_idx(lc, lid0) >= mx;   // LookPathPresentLk(r,..,lid)
+        assert NI.LookPathPresentLk(r1, cc, lc, qc, -1, lid);
+        assert NI.MxAtLidLk(r, qc, mx, lid) == NI.MxAtLidLk(r1, qc, -1, lid);
+        NI.LookBodyLookIdsIn(r1, lid);
+        assert lid2 in LTB.LookIds(r1);
+        assert (lid0 as nat) !in LTB.LookIds(r1);    // LookUnique
+        assert lid2 != lid0 as nat;
+        LookPathComposeLkNested(r1, body, cc, lc, qc, -1, lid, lid2);
+      }
+  }
+
+  /** (BRICK D4 infra) `LookPathPresentAgree` for a NESTED `re` restricted to a
+      TOP-LEVEL `lid`. The depth-1 form needs the whole fragment look-free to kill
+      the outer `Re_lookaround(lid0 != lid)` branch; under nesting that branch is
+      instead unreachable because a top-level id equals the node's own id. So the
+      path to `lid` still crosses only OUTSIDE-look captures/quants, and
+      `LookPathPresent`/`MxAtLidLk` are congruent under outside-look agreement —
+      the transport that moves the main thread's presence onto the RECONSTRUCTED
+      banks (which agree with it outside the look registers). */
+  lemma LookPathPresentAgreeTopNested(r: R.regex, cc1: seq<int>, qc1: seq<int>,
+                                      cc2: seq<int>, qc2: seq<int>, mx: int, lid: nat)
+    requires LTB.LookUnique(r)
+    requires lid in NI.TopLookIds(r)
+    requires lid in LTB.LookIds(r)
+    requires forall c: nat :: c in PIV.CapIdsOutsideLooks(r) ==>
+      AI.get_idx(cc1, CP.start_reg(c as int)) == AI.get_idx(cc2, CP.start_reg(c as int))
+    requires forall q: nat :: q in PIV.QuantIdsOutsideLooks(r) ==>
+      AI.get_idx(qc1, q as int) == AI.get_idx(qc2, q as int)
+    ensures NI.LookPathPresent(r, cc1, qc1, mx, lid) == NI.LookPathPresent(r, cc2, qc2, mx, lid)
+    ensures NI.MxAtLidLk(r, qc1, mx, lid) == NI.MxAtLidLk(r, qc2, mx, lid)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      assert PIV.CapIdsOutsideLooks(r1) <= PIV.CapIdsOutsideLooks(r)
+          && PIV.CapIdsOutsideLooks(r2) <= PIV.CapIdsOutsideLooks(r);
+      assert PIV.QuantIdsOutsideLooks(r1) <= PIV.QuantIdsOutsideLooks(r)
+          && PIV.QuantIdsOutsideLooks(r2) <= PIV.QuantIdsOutsideLooks(r);
+      if lid in LTB.LookIds(r1) {
+        NI.TopLookIdsIn(r2);
+        assert lid !in NI.TopLookIds(r2);
+        assert lid in NI.TopLookIds(r1);
+        LookPathPresentAgreeTopNested(r1, cc1, qc1, cc2, qc2, mx, lid);
+      } else {
+        assert lid in LTB.LookIds(r2);
+        NI.TopLookIdsIn(r1);
+        assert lid !in NI.TopLookIds(r1);
+        assert lid in NI.TopLookIds(r2);
+        LookPathPresentAgreeTopNested(r2, cc1, qc1, cc2, qc2, mx, lid);
+      }
+    case Re_con(r1, r2) =>
+      assert PIV.CapIdsOutsideLooks(r1) <= PIV.CapIdsOutsideLooks(r)
+          && PIV.CapIdsOutsideLooks(r2) <= PIV.CapIdsOutsideLooks(r);
+      assert PIV.QuantIdsOutsideLooks(r1) <= PIV.QuantIdsOutsideLooks(r)
+          && PIV.QuantIdsOutsideLooks(r2) <= PIV.QuantIdsOutsideLooks(r);
+      if lid in LTB.LookIds(r1) {
+        NI.TopLookIdsIn(r2);
+        assert lid !in NI.TopLookIds(r2);
+        assert lid in NI.TopLookIds(r1);
+        LookPathPresentAgreeTopNested(r1, cc1, qc1, cc2, qc2, mx, lid);
+      } else {
+        assert lid in LTB.LookIds(r2);
+        NI.TopLookIdsIn(r1);
+        assert lid !in NI.TopLookIds(r1);
+        assert lid in NI.TopLookIds(r2);
+        LookPathPresentAgreeTopNested(r2, cc1, qc1, cc2, qc2, mx, lid);
+      }
+    case Re_quant(_, qid, _, r1) =>
+      assert PIV.CapIdsOutsideLooks(r1) <= PIV.CapIdsOutsideLooks(r);
+      assert PIV.QuantIdsOutsideLooks(r1) <= PIV.QuantIdsOutsideLooks(r);
+      assert AI.get_idx(qc1, qid) == AI.get_idx(qc2, qid) by {
+        if qid >= 0 { assert (qid as nat) in PIV.QuantIdsOutsideLooks(r); }
+      }
+      LookPathPresentAgreeTopNested(r1, cc1, qc1, cc2, qc2, AI.get_idx(qc1, qid), lid);
+    case Re_capture(cid, r1) =>
+      assert PIV.CapIdsOutsideLooks(r1) <= PIV.CapIdsOutsideLooks(r);
+      assert PIV.QuantIdsOutsideLooks(r1) <= PIV.QuantIdsOutsideLooks(r);
+      assert AI.get_idx(cc1, CP.start_reg(cid)) == AI.get_idx(cc2, CP.start_reg(cid)) by {
+        if cid >= 0 { assert (cid as nat) in PIV.CapIdsOutsideLooks(r); }
+        else { assert CP.start_reg(cid) < 0; }
+      }
+      LookPathPresentAgreeTopNested(r1, cc1, qc1, cc2, qc2, mx, lid);
+    case Re_lookaround(lid0, _, r1) =>
+      assert lid0 >= 0 && (lid0 as nat) == lid;    // lid in TopLookIds == {lid0}
+  }
+
+  /** (BRICK D4) TOP-ANCESTOR base step: turns the MAIN thread's `LookNestOkTTop`
+      presence at a TOP-LEVEL `owner` into the RECONSTRUCTED-bank feeds (i)/(ii) of
+      `M.ReconInnerGmOfLiveClose`. The three engine facts owed by the whole-regex
+      setup are the hypotheses (matching how `ReconInnerGmOfLiveClose` isolates
+      (i)/(ii)):
+        - (P1)-(P3): `owner`'s main-thread presence + look-clock (from
+          `LookNestOkTTop`, its guard discharged by the caller's live witness);
+        - (A1)/(A2): the recon_outer capture/quant frames (`res.0`/`res.2` agree
+          with the main thread OUTSIDE the look registers — `FLookLoopFullCovers
+          FromTables`/`FLookLoopQuantCoversFromTables`);
+        - (S): the top-look-clock stability `res.1[owner] == thread[owner]`
+          (`M.FLookLoopLidLookClkStable`).
+      Transports the presence via `LookPathPresentAgreeTopNested`, lifts to the
+      look-clock-aware `LookPathPresentLk` via `LookPathPresentLkOfTop`, and moves
+      the two clock bounds across the stability + the `MxAtLidLk` congruence. */
+  lemma TopAncestorClockReconStep(re: R.regex,
+                                  rcc: seq<int>, rlc: seq<int>, rqc: seq<int>,
+                                  tcc: seq<int>, tlc: seq<int>, tqc: seq<int>, owner: nat)
+    requires LTB.LookUnique(re)
+    requires owner in NI.TopLookIds(re)
+    requires owner in LTB.LookIds(re)
+    // (P1)-(P3): main-thread presence at owner (from LookNestOkTTop)
+    requires NI.LookPathPresent(re, tcc, tqc, -1, owner)
+    requires AI.get_idx(tlc, owner as int) >= 0
+    requires AI.get_idx(tlc, owner as int) >= NI.MxAtLidLk(re, tqc, -1, owner)
+    // (A1)/(A2): recon_outer frames on the OUTSIDE-look slots
+    requires forall c: nat :: c in PIV.CapIdsOutsideLooks(re) ==>
+      AI.get_idx(rcc, CP.start_reg(c as int)) == AI.get_idx(tcc, CP.start_reg(c as int))
+    requires forall q: nat :: q in PIV.QuantIdsOutsideLooks(re) ==>
+      AI.get_idx(rqc, q as int) == AI.get_idx(tqc, q as int)
+    // (S): top-look-clock stability
+    requires AI.get_idx(rlc, owner as int) == AI.get_idx(tlc, owner as int)
+    ensures NI.LookPathPresentLk(re, rcc, rlc, rqc, -1, owner)
+    ensures AI.get_idx(rlc, owner as int) >= 0
+    ensures AI.get_idx(rlc, owner as int) >= NI.MxAtLidLk(re, rqc, -1, owner)
+  {
+    // transport the presence + MxAtLidLk from the main thread to the recon banks
+    LookPathPresentAgreeTopNested(re, tcc, tqc, rcc, rqc, -1, owner);
+    assert NI.LookPathPresent(re, rcc, rqc, -1, owner);
+    assert NI.MxAtLidLk(re, rqc, -1, owner) == NI.MxAtLidLk(re, tqc, -1, owner);
+    // lift to the look-clock-aware LookPathPresentLk (owner top-level: lc unread)
+    LookPathPresentLkOfTop(re, rcc, rlc, rqc, -1, owner);
+    // the two clock bounds cross via stability + the MxAtLidLk equality
+    assert AI.get_idx(rlc, owner as int) == AI.get_idx(tlc, owner as int);
+  }
+
+  /** (BRICK D4) ANCESTOR PEEL: one level of the nesting recursion. Given the
+      reconstructed-bank feed (i)/(ii) at a TOP-LEVEL ancestor `A` (from
+      `TopAncestorClockReconStep`) and the feed at `owner` WITHIN `A`'s body `bA`
+      (from `A`'s replay tower — `LookNestOkTFromBodyReplay(bA)` reconciled onto the
+      recon banks), `LookPathComposeLkNested` stitches them into the feed at `owner`
+      in the whole `re`. `owner` may sit at ANY depth inside `bA`: supplying its
+      within-`bA` feed by a recursive peel drives the chain to arbitrary nesting. */
+  lemma AncestorChainPeelStep(re: R.regex, rcc: seq<int>, rlc: seq<int>, rqc: seq<int>,
+                              A: nat, owner: nat)
+    requires NR.NestedFragmentRE(re) && LTB.LookUnique(re)
+    requires A in LTB.LookIds(re)
+    requires owner in LTB.LookIds(NI.LookBodyOfRE(re, A))
+    // A's feed on the reconstructed banks (base step)
+    requires NI.LookPathPresentLk(re, rcc, rlc, rqc, -1, A)
+    requires AI.get_idx(rlc, A as int) >= 0
+    requires AI.get_idx(rlc, A as int) >= NI.MxAtLidLk(re, rqc, -1, A)
+    // owner's feed WITHIN bA on the reconstructed banks (A's replay tower)
+    requires NI.LookPathPresentLk(NI.LookBodyOfRE(re, A), rcc, rlc, rqc, -1, owner)
+    requires AI.get_idx(rlc, owner as int) >= 0
+    requires AI.get_idx(rlc, owner as int) >= NI.MxAtLidLk(NI.LookBodyOfRE(re, A), rqc, -1, owner)
+    ensures owner in LTB.LookIds(re)
+    ensures NI.LookPathPresentLk(re, rcc, rlc, rqc, -1, owner)
+    ensures AI.get_idx(rlc, owner as int) >= 0
+    ensures AI.get_idx(rlc, owner as int) >= NI.MxAtLidLk(re, rqc, -1, owner)
+  {
+    var bA := NI.LookBodyOfRE(re, A);
+    NI.LookBodyLookIdsIn(re, A);
+    assert owner in LTB.LookIds(re);
+    LookPathComposeLkNested(re, bA, rcc, rlc, rqc, -1, A, owner);
+    assert NI.MxAtLidLk(re, rqc, -1, owner) == NI.MxAtLidLk(bA, rqc, -1, owner);
+  }
+
+  // ---- driver plumbing: the per-body base evidence + nesting recursion ----
+
+  /** `S <= T` with a witness `x in T \ S` ⟹ `|S| < |T|` — robust strict subset
+      cardinality via the disjoint partition `T == S + (T - S)`. */
+  lemma SubsetCardLt(S: set<nat>, T: set<nat>, x: nat)
+    requires S <= T && x in T && x !in S
+    ensures |S| < |T|
+  {
+    assert S + (T - S) == T;
+    assert S * (T - S) == {};
+    assert |S + (T - S)| == |S| + |T - S|;   // disjoint union
+    assert x in T - S;                        // T - S nonempty
+  }
+
+  /** A look's own id is not among its body's look ids (LookUnique). */
+  lemma LookIdNotInOwnBody(re: R.regex, lid: nat)
+    requires LTB.LookUnique(re)
+    requires lid in LTB.LookIds(re)
+    ensures lid !in LTB.LookIds(NI.LookBodyOfRE(re, lid))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookIdNotInOwnBody(r1, lid); } else { LookIdNotInOwnBody(r2, lid); }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookIdNotInOwnBody(r1, lid); } else { LookIdNotInOwnBody(r2, lid); }
+    case Re_quant(_, _, _, r1) => LookIdNotInOwnBody(r1, lid);
+    case Re_capture(_, r1) => LookIdNotInOwnBody(r1, lid);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+        assert (lid0 as nat) !in LTB.LookIds(r1);   // LookUnique
+      } else {
+        LookIdNotInOwnBody(r1, lid);
+      }
+  }
+
+  /** `LookUnique` descends into a look body. */
+  lemma LookBodyLookUnique(re: R.regex, lid: nat)
+    requires LTB.LookUnique(re)
+    requires lid in LTB.LookIds(re)
+    ensures LTB.LookUnique(NI.LookBodyOfRE(re, lid))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodyLookUnique(r1, lid); } else { LookBodyLookUnique(r2, lid); }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodyLookUnique(r1, lid); } else { LookBodyLookUnique(r2, lid); }
+    case Re_quant(_, _, _, r1) => LookBodyLookUnique(r1, lid);
+    case Re_capture(_, r1) => LookBodyLookUnique(r1, lid);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid { } else { LookBodyLookUnique(r1, lid); }
+  }
+
+  /** Every NON-top look has a TOP-LEVEL ancestor whose body contains it. The
+      outermost-ancestor witness the peel recursion consumes. */
+  lemma TopAncestorExists(re: R.regex, owner: nat) returns (A0: nat)
+    requires LTB.LookUnique(re)
+    requires owner in LTB.LookIds(re)
+    requires owner !in NI.TopLookIds(re)
+    ensures A0 in NI.TopLookIds(re)
+    ensures A0 in LTB.LookIds(re)
+    ensures owner in LTB.LookIds(NI.LookBodyOfRE(re, A0))
+    decreases re
+  {
+    match re
+    case Re_empty => assert false; A0 := 0;
+    case Re_character(_) => assert false; A0 := 0;
+    case Re_anchor(_) => assert false; A0 := 0;
+    case Re_alt(r1, r2) =>
+      if owner in LTB.LookIds(r1) {
+        assert owner !in NI.TopLookIds(r1);
+        A0 := TopAncestorExists(r1, owner);
+        NI.TopLookIdsIn(r1);
+        assert A0 in LTB.LookIds(r1);
+      } else {
+        assert owner in LTB.LookIds(r2);
+        assert owner !in NI.TopLookIds(r2);
+        A0 := TopAncestorExists(r2, owner);
+        NI.TopLookIdsIn(r2);
+        assert A0 in LTB.LookIds(r2);
+        assert A0 !in LTB.LookIds(r1) by {
+          if A0 in LTB.LookIds(r1) { assert A0 in LTB.LookIds(r1) * LTB.LookIds(r2); }
+        }
+      }
+    case Re_con(r1, r2) =>
+      if owner in LTB.LookIds(r1) {
+        assert owner !in NI.TopLookIds(r1);
+        A0 := TopAncestorExists(r1, owner);
+        NI.TopLookIdsIn(r1);
+        assert A0 in LTB.LookIds(r1);
+      } else {
+        assert owner in LTB.LookIds(r2);
+        assert owner !in NI.TopLookIds(r2);
+        A0 := TopAncestorExists(r2, owner);
+        NI.TopLookIdsIn(r2);
+        assert A0 in LTB.LookIds(r2);
+        assert A0 !in LTB.LookIds(r1) by {
+          if A0 in LTB.LookIds(r1) { assert A0 in LTB.LookIds(r1) * LTB.LookIds(r2); }
+        }
+      }
+    case Re_quant(_, _, _, r1) => A0 := TopAncestorExists(r1, owner);
+    case Re_capture(_, r1) => A0 := TopAncestorExists(r1, owner);
+    case Re_lookaround(lid0, _, r1) =>
+      assert lid0 >= 0;                         // LookUnique
+      assert (lid0 as nat) != owner;            // owner !in TopLookIds == {lid0}
+      assert owner in LTB.LookIds(r1);
+      assert (lid0 as nat) in LTB.LookIds(re);
+      A0 := lid0 as nat;
+  }
+
+  /** The per-body BASE EVIDENCE at one body `host`: every TOP-LEVEL look of `host`
+      carries feed (i)/(ii) on the reconstructed banks. For `host == re` this is
+      the main thread's `LookNestOkTTop` reconciled by `TopAncestorClockReconStep`;
+      for `host` a look body it is that look's REPLAY tower (`LookNestOkTFrom
+      BodyReplay`) reconciled the same way. */
+  ghost predicate LocalTopFeed(host: R.regex, rcc: seq<int>, rlc: seq<int>, rqc: seq<int>) {
+    forall l: nat :: l in LTB.LookIds(host) && l in NI.TopLookIds(host)
+      // GUARD: some inner capture of `l`'s body is SET on the reconstructed capture
+      // bank — the reconstructed-bank echo of `LookNestOkTTop`'s live-witness guard,
+      // so the base evidence is demanded only at LIVE (matched) top looks.
+      && (exists g2: nat :: g2 in PIV.CapIds(NI.LookBodyOfRE(host, l))
+                            && AI.get_idx(rcc, CP.start_reg(g2)) >= 0)
+      ==>
+        NI.LookPathPresentLk(host, rcc, rlc, rqc, -1, l)
+        && AI.get_idx(rlc, l as int) >= 0
+        && AI.get_idx(rlc, l as int) >= NI.MxAtLidLk(host, rqc, -1, l)
+  }
+
+  /** (BRICK D4) The per-body DISCHARGE bridge: reduces one body's `LocalTopFeed`
+      to that body's `LookNestOkTTop` (main thread at `re`, or the look's replay
+      tower at a look body) plus the reconstruction frames — a per-top-look loop
+      over `TopAncestorClockReconStep`. The remaining obligations are exactly:
+        - the recon_outer capture/quant frames + top-look-clock stability
+          (mechanical — the clock twins of the value-side `FLookLoopFullCovers*`);
+        - the GUARD BRIDGE (the value-coupled piece): a reconstructed-bank live
+          witness for `l`'s body implies a `gmt` live witness (from the value tie
+          `LookNestBackTTop`/`GmtTie`) — taken here as a hypothesis. */
+  lemma LocalTopFeedFromNestOkT(host: R.regex, S: set<LG.GroupId>, gmt: LG.GroupMap, th: AI.Thread,
+                                rcc: seq<int>, rlc: seq<int>, rqc: seq<int>)
+    requires LTB.LookUnique(host)
+    requires LookNestOkTTop(host, S, gmt, th)
+    // recon_outer frames (global) + top-look-clock stability (per top look)
+    requires forall c: nat :: c in PIV.CapIdsOutsideLooks(host) ==>
+      AI.get_idx(rcc, CP.start_reg(c as int)) == AI.get_idx(th.capture_regs.a_clk, CP.start_reg(c as int))
+    requires forall q: nat :: q in PIV.QuantIdsOutsideLooks(host) ==>
+      AI.get_idx(rqc, q as int) == AI.get_idx(th.quant_regs.a_clk, q as int)
+    requires forall l: nat :: l in NI.TopLookIds(host) ==>
+      AI.get_idx(rlc, l as int) == AI.get_idx(th.look_regs.a_clk, l as int)
+    // GUARD BRIDGE (value-coupled): reconstructed-bank live witness ==> gmt witness
+    requires forall l: nat :: l in LTB.LookIds(host) && l in NI.TopLookIds(host)
+      && (exists g2: nat :: g2 in PIV.CapIds(NI.LookBodyOfRE(host, l)) && AI.get_idx(rcc, CP.start_reg(g2)) >= 0)
+      ==> (exists g3: LG.GroupId :: g3 in S && g3 in gmt && g3 in PIV.CapIds(NI.LookBodyOfRE(host, l)))
+    ensures LocalTopFeed(host, rcc, rlc, rqc)
+  {
+    forall l: nat | l in LTB.LookIds(host) && l in NI.TopLookIds(host)
+      && (exists g2: nat :: g2 in PIV.CapIds(NI.LookBodyOfRE(host, l)) && AI.get_idx(rcc, CP.start_reg(g2)) >= 0)
+      ensures NI.LookPathPresentLk(host, rcc, rlc, rqc, -1, l)
+           && AI.get_idx(rlc, l as int) >= 0
+           && AI.get_idx(rlc, l as int) >= NI.MxAtLidLk(host, rqc, -1, l)
+    {
+      // gmt live witness (guard bridge) -> LookNestOkTTop delivers th-bank presence at l
+      assert exists g3: LG.GroupId :: g3 in S && g3 in gmt && g3 in PIV.CapIds(NI.LookBodyOfRE(host, l));
+      assert NI.LookPathPresent(host, th.capture_regs.a_clk, th.quant_regs.a_clk, -1, l)
+          && AI.get_idx(th.look_regs.a_clk, l as int) >= 0
+          && AI.get_idx(th.look_regs.a_clk, l as int) >= NI.MxAtLidLk(host, th.quant_regs.a_clk, -1, l);
+      // reconcile onto the reconstructed banks
+      TopAncestorClockReconStep(host, rcc, rlc, rqc,
+        th.capture_regs.a_clk, th.look_regs.a_clk, th.quant_regs.a_clk, l);
+    }
+  }
+
+  /** The base evidence at `re` AND at every look body of `re` (any depth). The
+      hereditary hypothesis the nesting recursion peels one body at a time. */
+  ghost predicate AllBodyTopFeeds(re: R.regex, rcc: seq<int>, rlc: seq<int>, rqc: seq<int>) {
+    LocalTopFeed(re, rcc, rlc, rqc)
+    && forall a: nat :: a in LTB.LookIds(re) ==> LocalTopFeed(NI.LookBodyOfRE(re, a), rcc, rlc, rqc)
+  }
+
+  /** `AllBodyTopFeeds` descends into a look body: the body's own base evidence is
+      the outer hypothesis at that body, and the body's sub-bodies coincide with
+      `re`'s (`LookBodyCompose`). */
+  lemma AllBodyTopFeedsDescend(re: R.regex, rcc: seq<int>, rlc: seq<int>, rqc: seq<int>, A0: nat)
+    requires LTB.LookUnique(re)
+    requires A0 in LTB.LookIds(re)
+    requires AllBodyTopFeeds(re, rcc, rlc, rqc)
+    ensures AllBodyTopFeeds(NI.LookBodyOfRE(re, A0), rcc, rlc, rqc)
+  {
+    var bA := NI.LookBodyOfRE(re, A0);
+    assert LocalTopFeed(bA, rcc, rlc, rqc);          // AllBodyTopFeeds(re) at a := A0
+    forall a2: nat | a2 in LTB.LookIds(bA)
+      ensures LocalTopFeed(NI.LookBodyOfRE(bA, a2), rcc, rlc, rqc)
+    {
+      NI.LookBodyCompose(re, A0, a2);                // a2 in LookIds(re) & bodies coincide
+      assert LocalTopFeed(NI.LookBodyOfRE(re, a2), rcc, rlc, rqc);   // AllBodyTopFeeds(re) at a := a2
+    }
+  }
+
+  /** (BRICK D4 CAPSTONE) The whole-loop ancestor look-clock chain: for ANY captured
+      inner look `owner` (at any nesting depth), the RECONSTRUCTED banks carry the
+      ancestor chain SET+DOMINATING — feeds (i)/(ii) of `M.ReconInnerGmOfLiveClose`.
+      Assembled by peeling `owner`'s outermost top-level ancestor `A0` off the chain
+      (`AncestorChainPeelStep`), taking `A0`'s feed from the base evidence at `re`
+      and `owner`'s within-`bA0` feed from the recursion (nesting strictly drops one
+      look id). The remaining engine obligation is `AllBodyTopFeeds` — the per-body
+      base evidence: `TopAncestorClockReconStep` reconciles each body's
+      `LookNestOkTTop` (main thread at `re`, replay tower at each look body) onto the
+      reconstructed banks. */
+  lemma {:isolate_assertions} FLookLoopAncestorClockChain(re: R.regex, rcc: seq<int>, rlc: seq<int>, rqc: seq<int>,
+                                    owner: nat, g: nat)
+    requires NR.NestedFragmentRE(re) && NR.NegLooksLookFreeRE(re) && LTB.LookUnique(re)
+    requires owner in LTB.LookIds(re)
+    // the LIVE captured group whose owner this is (its owner's-body membership +
+    // reconstructed-bank liveness discharge each ancestor's base-evidence guard)
+    requires g in PIV.CapIds(NI.LookBodyOfRE(re, owner))
+    requires AI.get_idx(rcc, CP.start_reg(g)) >= 0
+    requires AllBodyTopFeeds(re, rcc, rlc, rqc)
+    ensures NI.LookPathPresentLk(re, rcc, rlc, rqc, -1, owner)
+    ensures AI.get_idx(rlc, owner as int) >= 0
+    ensures AI.get_idx(rlc, owner as int) >= NI.MxAtLidLk(re, rqc, -1, owner)
+    decreases |LTB.LookIds(re)|
+  {
+    assert LocalTopFeed(re, rcc, rlc, rqc);
+    if owner in NI.TopLookIds(re) {
+      // base: owner is top-level in re; g in owner's body + g live discharge the guard
+      assert g in PIV.CapIds(NI.LookBodyOfRE(re, owner)) && AI.get_idx(rcc, CP.start_reg(g)) >= 0;
+    } else {
+      var A0 := TopAncestorExists(re, owner);
+      NI.TopLookIdsIn(re);
+      assert A0 in LTB.LookIds(re);
+      var bA0 := NI.LookBodyOfRE(re, A0);
+      // g sits in A0's body too: owner nests in bA0, and g is in owner's-body caps
+      NI.LookBodyCompose(re, A0, owner);        // owner in LookIds(re); bodies compose
+      assert NI.LookBodyOfRE(re, owner) == NI.LookBodyOfRE(bA0, owner);
+      NI.LookBodyCapsIn(bA0, owner);            // CapIds(LookBodyOfRE(bA0,owner)) <= CapIds(bA0)
+      assert g in PIV.CapIds(bA0);
+      // A0's feed from LocalTopFeed(re): guard discharged by the g-witness in bA0
+      assert g in PIV.CapIds(NI.LookBodyOfRE(re, A0)) && AI.get_idx(rcc, CP.start_reg(g)) >= 0;
+      assert NI.LookPathPresentLk(re, rcc, rlc, rqc, -1, A0)
+          && AI.get_idx(rlc, A0 as int) >= 0
+          && AI.get_idx(rlc, A0 as int) >= NI.MxAtLidLk(re, rqc, -1, A0);
+      // body facts + strict measure decrease
+      NI.LookBodyOfFragmentNested(re, A0);      // NestedFragmentRE(bA0) & NegLooksLookFreeRE(bA0)
+      LookBodyLookUnique(re, A0);               // LookUnique(bA0)
+      NI.LookBodyLookIdsIn(re, A0);             // LookIds(bA0) <= LookIds(re)
+      LookIdNotInOwnBody(re, A0);               // A0 !in LookIds(bA0)
+      assert A0 in LTB.LookIds(re) && A0 !in LTB.LookIds(bA0) && LTB.LookIds(bA0) <= LTB.LookIds(re);
+      SubsetCardLt(LTB.LookIds(bA0), LTB.LookIds(re), A0);
+      assert |LTB.LookIds(bA0)| < |LTB.LookIds(re)|;
+      // recurse for owner within bA0 (same live g: g in LookBodyOfRE(bA0,owner))
+      assert g in PIV.CapIds(NI.LookBodyOfRE(bA0, owner));
+      AllBodyTopFeedsDescend(re, rcc, rlc, rqc, A0);
+      FLookLoopAncestorClockChain(bA0, rcc, rlc, rqc, owner, g);
+      // stitch
+      AncestorChainPeelStep(re, rcc, rlc, rqc, A0, owner);
+    }
+  }
+
 }
