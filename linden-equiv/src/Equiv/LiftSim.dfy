@@ -21000,6 +21000,120 @@ module LindenElkLiftSim {
   }
 
 
+  /** (BRICK D5) The (E4) INSIDE-look coverage VACATOR for the gate-pass preserver.
+      The FRESH body match of a nested positive-lookAHEAD body records NONE of its
+      INNER-look capture groups (a lookaround compiles to a single `CheckOracle`
+      leaf, so the body's MAIN pass never writes inner-look captures), so those
+      groups are ABSENT from `GmOfLive(body, rf)`. Proof: the body's main pass
+      writes only OUTSIDE-look capture registers (`M.MainMatchInsideCapsInitNested`),
+      leaving the inside-look start clocks at their `-1` init (`PIV.LooksCapUnset`,
+      via the outside/inside register PARITY), and `PIV.GmOfLiveInsideLookAbsent`
+      then drops each such group. The `FInitState` preconditions of
+      `M.FFindMatchThreadFacts` (for `CapRegWf`) + `M.MainMatchInsideCapsInitNested`
+      are discharged verbatim off the fresh-entry VM (mirror
+      `LookNestOkTFromBodyReplay` / `L3aEndpointAssembly`). This complements
+      `M.LkReplayMatchesSpecNested` (which covers the OUTER groups
+      `DefGroups(tr) \ LkBodyGroups(tr)`) to close the WHOLE `CapIds(body)` in the
+      backward (E4) crossing arm. */
+  lemma FreshBodyMatchGmOuter(
+      qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat,
+      str: string, cp: nat, ov: LOr.OracleView, cdn: LCdn.cdns,
+      ncap: int, nlook: int, nquant: int)
+    requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires cp <= |str|
+    requires bodycode == CP.compile_to_bytecode(body)
+    ensures
+      var rf := AI.FFindMatch(bodycode, str,
+                  AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                  ov, LAnc.Forward, cdn).0;
+      rf.Some? ==>
+        forall g: nat :: g in PIV.CapIdsInLooks(body) ==>
+          g !in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)
+  {
+    var ctx := AI.cp_context(cp, str, LAnc.Forward);
+    var capture := AReg.init_regs(ncap);
+    var look := AReg.init_regs(nlook);
+    var quant := AReg.init_regs(nquant);
+    var vms := AI.FInitState(bodycode, cp, capture, look, quant, 0, ctx);
+    assert ctx.nextchar == AI.get_char(str, cp);
+
+    // code shape: every SetQuantToClock has b == false (mirror LookNestOkTFromBodyReplay)
+    forall pc: nat, q: int, b: bool | NR.GetPcRE(bodycode, pc) == Some(RB.SetQuantToClock(q, b))
+      ensures !b
+    {
+      if pc < endl {
+        NI.CodeShapeAt(body, bodycode, 0, endl, pc);
+      } else if pc == endl {
+      } else {
+        assert pc >= |bodycode|;
+      }
+    }
+
+    // fresh-entry engine facts: winning-thread register wf + quant-final.
+    CM.RegsClocksLEInit(ncap, 0);
+    CM.RegsClocksLEInit(nlook, 0);
+    CM.RegsClocksLEInit(nquant, 0);
+    CM.FInitStateClocksLE(bodycode, cp, capture, look, quant, 0, ctx);
+    CM.FInitStateRegsWf(bodycode, cp, ncap, nlook, nquant, 0, ctx);
+    assert M.VmQuantFinal(vms) by {
+      var th0 := AI.init_thread(capture, look, quant);
+      assert M.QuantRegsFinal(th0) by {
+        forall k ensures AI.get_idx(quant.a_cp, k) < 0 && AI.get_idx(quant.a_clk, k) >= -1 {
+          if 0 <= k < |quant.a_cp| { assert quant.a_cp[k] == -1; }
+          if 0 <= k < |quant.a_clk| { assert quant.a_clk[k] == -1; }
+        }
+      }
+      forall t2 | t2 in vms.active ensures M.QuantRegsFinal(t2) { assert t2 == th0; }
+    }
+
+    var rf := AI.FFindMatch(bodycode, str, vms, ov, LAnc.Forward, cdn).0;
+    M.FFindMatchThreadFacts(bodycode, str, vms, ov, LAnc.Forward, cdn, ncap, nlook, nquant);
+    M.MainMatchInsideCapsInitNested(body, bodycode, endl, str, vms, capture, look, quant, ov, cdn, rf);
+
+    if rf.Some? {
+      var caps := rf.value.capture_regs;
+      var Sc := PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body));
+      assert CM.RegsAgreeOutside(caps, capture, Sc);         // MainMatchInsideCapsInitNested
+      assert CM.ThreadRegsWf(rf.value, ncap, nlook, nquant);  // FFindMatchThreadFacts
+      assert PIV.CapRegWf(caps);
+      PIV.CapIdsLooksDisjoint(body);
+
+      // inside-look start slots are OUTSIDE `Sc` (parity + disjointness), so they
+      // remain at their -1 init: LooksCapUnset(body, caps.a_clk).
+      assert PIV.LooksCapUnset(body, caps.a_clk) by {
+        forall c: nat | c in PIV.CapIdsInLooks(body)
+          ensures AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
+        {
+          assert CP.start_reg(c as int) !in Sc by {
+            if CP.start_reg(c as int) in Sc {
+              if CP.start_reg(c as int) in (set cid | cid in PIV.CapIdsOutsideLooks(body) :: CP.start_reg(cid as int)) {
+                var cid: nat :| cid in PIV.CapIdsOutsideLooks(body) && CP.start_reg(cid as int) == CP.start_reg(c as int);
+                assert cid == c;
+                assert c in PIV.CapIdsOutsideLooks(body) * PIV.CapIdsInLooks(body);
+              } else {
+                var cid: nat :| cid in PIV.CapIdsOutsideLooks(body) && CP.end_reg(cid as int) == CP.start_reg(c as int);
+                assert 2 * (cid as int) + 1 == 2 * (c as int);
+              }
+              assert false;
+            }
+          }
+          assert AI.get_idx(caps.a_clk, CP.start_reg(c as int))
+              == AI.get_idx(capture.a_clk, CP.start_reg(c as int));   // RegsAgreeOutside off Sc
+          RL.AInitLaws(ncap);                                          // init clock == -1
+        }
+      }
+
+      forall g: nat | g in PIV.CapIdsInLooks(body)
+        ensures g !in PIV.GmOfLive(body, caps, rf.value.look_regs, rf.value.quant_regs)
+      {
+        PIV.GmOfLiveInsideLookAbsent(body, caps, rf.value.look_regs, rf.value.quant_regs, g);
+      }
+    }
+  }
+
+
   lemma {:isolate_assertions} LiftPreserveGatePassLkRec(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                                crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                                bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
@@ -21010,7 +21124,12 @@ module LindenElkLiftSim {
     requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
     requires |ov| == |str| + 1                                    // L3b: the backward LB gate needs the mirror
     requires S == PIV.CapIdsInLooks(re)
-    requires GateStaticsOk(qm, re, crv, ncap, nlook, nquant)
+    // (BRICK D5) NON-VACUITY FLIP: the driver's per-lid static package is the
+    // depth-AGNOSTIC `GateStaticsOkNested` (nested gate bodies), qualified by the
+    // positive-lookahead-nesting scope `M.NoPosLookbehindRE(re)` — the composite
+    // sim is now non-vacuous at nesting depth >= 2.
+    requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
+    requires M.NoPosLookbehindRE(re)
     requires bst.PTS?
     requires LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
@@ -21097,16 +21216,21 @@ module LindenElkLiftSim {
     TrcLkRefl(bst1);
     TrcLkCons(bst, bst1, bst1);
 
-    // the per-lid static package
+    // (BRICK D5) the per-lid NESTED static package (off `GateStaticsOkNested`):
+    // the gate body may nest positive looks to ANY depth (negative bodies stay
+    // look-free, `NR.NegLooksLookFreeRE`; positive nesting is lookAHEAD-only,
+    // `M.NoPosLookbehindRE`), with the body's compile statics as `StaticOkNestedRE`.
+    assert GateStaticAtNested(qm, re, crv, l, ncap, nlook, nquant);
     var la: R.lookaround, body: R.regex :|
       LTB.LookEntryOk(crv, l, la, body)
-      && T.TransWf(body) && NR.LookFreeRE(body)
+      && T.TransWf(body) && NR.NestedFragmentRE(body)
+      && NR.NegLooksLookFreeRE(body) && M.NoPosLookbehindRE(body)
       && qm.looks[l].0 == T.TrLookaround(la)
       && qm.looks[l].1 == T.Translate(body)
       && (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
       && var bodycode := CP.compile_to_bytecode(body);
          |bodycode| >= 1
-         && PSM.StaticOkRE(qm, body, bodycode, |bodycode| - 1)
+         && PSM.StaticOkNestedRE(qm, body, bodycode, |bodycode| - 1)
          && PSM.SizesOkRE(body, ncap, nlook, nquant)
       && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
     assert lk == T.TrLookaround(la) && r1 == T.Translate(body);
@@ -21120,6 +21244,20 @@ module LindenElkLiftSim {
     assert !la.NegLookahead? && !la.NegLookbehind? by {
       if la.NegLookahead? || la.NegLookbehind? { assert !L.Positivity(lk); }
     }
+    // (BRICK D5) `M.NoPosLookbehindRE(re)` forbids a positive LOOKBEHIND at lid l:
+    // the functional row (`LTB.LookEntryOk` pins `la == crv.f_look_types[l]`)
+    // matches `M.LookBodyFactsNested`'s `!la0.Lookbehind?`. Combined with the
+    // polarity pin this leaves ONLY the capturing lookAHEAD arm live.
+    PIV.LookCheckIdsRENested(re, code, 0, endl, pc);
+    assert l >= 0 && (l as nat) in LTB.LookIds(re);
+    NI.LookBodyOfTablesTie(re, crv, l as nat);
+    assert body == NI.LookBodyOfRE(re, l as nat);
+    assert !la.Lookbehind? by {
+      M.LookBodyFactsNested(re, crv, l as nat);
+      var la0: R.lookaround :| LTB.LookEntryOk(crv, l as int, la0, NI.LookBodyOfRE(re, l as nat))
+                            && !la0.Lookbehind?;
+      assert la0 == crv.f_look_types[l] == la;   // LookEntryOk pins f_look_types[l]
+    }
     M.LkBodyGroupsEqCapIdsInLooks(re);
     assert S == LL.LkBodyGroups(T.Translate(re));
 
@@ -21131,68 +21269,19 @@ module LindenElkLiftSim {
       assert RL.ASize(th.look_regs) == nlook;
       var bodycode := CP.compile_to_bytecode(body);
       assert LT.LK(lk, tlk, traw.t) == traw;
-      // (L4 NESTED) the gate-step lemma wants the body in the positive-nesting
-      // sub-fragment; under the depth-1 fragment the body is look-free, so
-      // NestedFragmentRE + NegLooksLookFreeRE follow from LookFreeRE+PlusFragmentRE.
-      PIV.LookCheckIdsRENested(re, code, 0, endl, pc);
-      NI.LookBodyOfTablesTie(re, crv, l as nat);
-      assert PSM.StaticOkRE(qm, body, bodycode, |bodycode| - 1);   // (⟹ LookBehindFragmentRE(body))
-      NR.LookFreeIsPlusFragmentRE(body);                          // PlusFragmentRE(body)
-      NR.LookFreePlusIsNestedRE(body);                            // NestedFragmentRE(body)
-      NR.LookFreeNegLooksLookFree(body);                          // NegLooksLookFreeRE(body)
+      // (BRICK D5) the gate-step lemma takes the body in the positive-nesting
+      // sub-fragment DIRECTLY from the nested package: `NestedFragmentRE(body)` +
+      // `NegLooksLookFreeRE(body)` are hypotheses of the package (no LookFree
+      // conversions), and the value body-package requires are DROPPED with the call.
       ThreadRepLkStepCheckOracleRec(rer, qm, re, code, crv, str, ov, S, lk, r1, tlk, traw.t,
                                  gm, th, l, cp, clk, body, la, bodycode, |bodycode| - 1, 0,
                                  th.quant_regs, ncap, nlook, nquant);
       assert ThreadRepLkRec(rer, qm, re, code, inp, crv, str, ov, S, traw.t, gm2, th', ncap, nlook, nquant);
     } else {
-      // ---- capture-free positive look (Lookbehind) --------------------------
-      assert la.Lookbehind?;
-      if NR.CaptureFreeRE(body) {
-      // ---- capture-free positive lookbehind: gm2 == gm, no inside-S groups --------
-      assert NR.CaptureFreeRE(body);
-      PIV.CaptureFreeNoCapIds(body);
-      M.TranslateDefGroupsEqCapIds(body);
-      assert (set g | g in L.DefGroups(r1)) == PIV.CapIds(body) == {};
-      // the merge over an EMPTY group set agrees with gm everywhere
-      EL.TranslateNoLkBr(body);
-      LkResultAgreeOutside(rer, lk, r1, inp, tlk, gm);
-      assert forall g: LG.GroupId :: (g in gm2 <==> g in gm) && (g in gm2 ==> gm2[g] == gm[g]) by {
-        forall g: LG.GroupId ensures (g in gm2 <==> g in gm) && (g in gm2 ==> gm2[g] == gm[g]) {
-          assert g !in (set gx | gx in L.DefGroups(r1)) by {
-            if g in (set gx | gx in L.DefGroups(r1)) { assert g in PIV.CapIds(body); }
-          }
-        }
-      }
-
-      // outside tie: the gate-crossing frame (works for backward gates too);
-      // NoLkBrL(r1) (look-free body) ⟹ the recursive PikeLkRegexRec(r1).
-      EL.NoLkBrLIsPikeLkRegexRec(r1);
-      GmtTieOutsideAfterGateNested(rer, re, str, lk, r1, tlk, gm, th, l, cp, clk, S);
-      assert GmtTieOutside(re, th', gm2, S);
-
-      // inside tie: witnesses carry across the l-only look-reg write
-      assert (th.pc + 1) as nat == pc + 1;
-      assert ThreadRepLkRec(rer, qm, re, code, inp, crv, str, ov, S, traw.t, gm2, th', ncap, nlook, nquant);
-      } else {
-        // ---- CAPTURING positive lookbehind: keystone-based backward gate ----
-        var bodycode := CP.compile_to_bytecode(body);
-        assert LT.LK(lk, tlk, traw.t) == traw;
-        // ---- the keystone-gate static package for the body ----
-        assert PSM.StaticOkRE(qm, body, bodycode, |bodycode| - 1);   // ⟹ CapUnique(body) & QuantUnique(body)
-        assert PIV.CapUnique(body) && PIV.QuantUnique(body);
-        PIV.LookCheckIdsRENested(re, code, 0, endl, pc);                   // (l as nat) in LookIds(re)
-        assert (l as nat) in LTB.LookIds(re);
-        NI.LookBodyOfTablesTie(re, crv, l as nat);                   // VBody(crv,l) == LookBodyOfRE(re,l)
-        NR.LookFreeIsPlusFragmentRE(body);                         // PlusFragmentRE(body) from StaticOkRE(body)+LookFreeRE(body)
-        assert NR.PlusFragmentRE(body);
-        NR.LookFreePlusIsNestedRE(body);                           // NestedFragmentRE(body)
-        NR.LookFreeNegLooksLookFree(body);                         // NegLooksLookFreeRE(body)
-        assert |ov| == |str| + 1;
-        ThreadRepLkStepCheckOracleLBRec(rer, qm, re, code, crv, str, ov, S, lk, r1, tlk, traw.t,
-                                     gm, th, l, cp, clk, body, la, bodycode, |bodycode| - 1, 0,
-                                     th.quant_regs, ncap, nlook, nquant);
-        assert ThreadRepLkRec(rer, qm, re, code, inp, crv, str, ov, S, traw.t, gm2, th', ncap, nlook, nquant);
-      }
+      // (BRICK D5) DEAD arm: `!la.Lookahead?` together with the polarity pin
+      // (`!la.NegLookahead? && !la.NegLookbehind?`) and `!la.Lookbehind?` (no
+      // positive lookbehind survives `M.NoPosLookbehindRE(re)`) is impossible.
+      assert false;
     }
 
     assert ThreadRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, t.t, gm2, th', ncap, nlook, nquant);
@@ -21207,7 +21296,7 @@ module LindenElkLiftSim {
 
     // ---- (E3) the look-path carrier: the crossing establishes lid l fresh ----
     // (D3) `*Top` carrier: only the TOP-LEVEL gate lid l fires an obligation.
-    assert LookNestRepCTop(re, S, ta, s.active);
+    assert LookNestRepCTop(re, S, ta, s.active);   // (BRICK D5) Rec/Top carrier anchor
     assert LookNestOkTTop(re, S, gm, th);
     assert NI.NestInvRE(re, code, 0, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk, -1) by {
       assert PSM.ThreadNestRE(re, code, endl, th.pc, th);
@@ -21228,9 +21317,13 @@ module LindenElkLiftSim {
     assert r1 == T.Translate(LB);
     M.TranslateDefGroupsEqCapIds(LB);
     assert (set gx | gx in L.DefGroups(r1)) == PIV.CapIds(LB);
-    EL.TranslateNoLkBr(body);
-    assert EL.NoLkBrL(r1);
-    LkResultAgreeOutside(rer, lk, r1, inp, tlk, gm);
+    // (BRICK D5) the gate body may nest looks: the DEPTH-K outside-S agreement
+    // (`LkResultAgreeOutsideNested` on the recursive `PikeLkRegexRec(r1)`) replaces
+    // the depth-1 look-free `NoLkBrL(r1)` frame. The fold still writes only
+    // `DefGroups(r1)`, so any newly-set S-group of gm2 lies in the gate body.
+    EL.TranslateFragmentPikeLkRec(body);
+    assert EL.PikeLkRegexRec(r1);
+    LkResultAgreeOutsideNested(rer, lk, r1, inp, tlk, gm);
     assert forall g: LG.GroupId :: g in S && g in gm2 && g !in gm ==>
       l >= 0 && (l as nat) in LTB.LookIds(re) && g in PIV.CapIds(NI.LookBodyOfRE(re, l as nat))
     by {
@@ -21288,8 +21381,11 @@ module LindenElkLiftSim {
       if rfx.Some? {
         if la.Lookahead? {
           M.TranslateDefGroupsEqCapIds(body);
-          EL.TranslateNoLkBr(body);
-          EL.ComputeTrGmIndepLk(rer, r1, inp, gm, WP.Forward);
+          M.LkBodyGroupsEqCapIdsInLooks(body);
+          PIV.CapIdsLooksDisjoint(body);
+          // (BRICK D5) depth-k gm-independence (recursive PikeLkRegexRec body).
+          EL.TranslateFragmentPikeLkRec(body);
+          EL.ComputeTrGmIndepLkRec(rer, r1, inp, gm, WP.Forward);
           assert tlk == LFU.ComputeTr(rer, [LS.Areg(r1)], inp, gm, WP.Forward);
           assert M.GmAgreeOn(gm, LG.Empty, set gx | gx in L.DefGroups(r1)) by {
             forall g: LG.GroupId | g in (set gx | gx in L.DefGroups(r1))
@@ -21302,7 +21398,9 @@ module LindenElkLiftSim {
           assert AReg.get_cp(th'.look_regs, l) == Some(s1.cp) by {
             RL.ASetLaws(th.look_regs, l, Some(cp as int), clk);
           }
-          M.LkReplayMatchesSpec(rer, qm, body, bodycode3, |bodycode3| - 1, 0, str, cp,
+          // (BRICK D5) the NESTED value keystone: agreement on the OUTER groups
+          // `Sout = DefGroups(tr) \ LkBodyGroups(tr)` (fresh cap == cap here).
+          M.LkReplayMatchesSpecNested(rer, qm, body, bodycode3, |bodycode3| - 1, 0, str, cp,
                                 AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant),
                                 ov, LCdn.compile_cdns(body), la, tlk, gm, ncap, nlook, nquant);
           assert crv.f_look_cdns[l] == LCdn.compile_cdns(body);      // LookEntryOk row
@@ -21315,77 +21413,43 @@ module LindenElkLiftSim {
               && LS.LkResult(T.TrLookaround(la), tlk, gm, inp).value == gm2 by {
             assert lk == T.TrLookaround(la);
           }
+          var Sout := set gx | gx in L.DefGroups(T.Translate(body))
+                             && gx !in LL.LkBodyGroups(T.Translate(body));
           assert M.GmAgreeOn(gm2,
                              PIV.GmOfLive(body, rfSpec.value.capture_regs,
                                           rfSpec.value.look_regs, rfSpec.value.quant_regs),
-                             set gx | gx in L.DefGroups(T.Translate(body)));
+                             Sout);
+          // (BRICK D5) the INNER groups (`LkBodyGroups(tr) == CapIdsInLooks(body)`)
+          // are ABSENT from the fresh body match's live denotation — a lookaround
+          // compiles to a single CheckOracle leaf, so the fresh match records none
+          // of them (`FreshBodyMatchGmOuter`). So the (E4) coverage reduces to the
+          // OUTER groups, discharged by `LkReplayMatchesSpecNested`.
+          FreshBodyMatchGmOuter(qm, body, bodycode3, |bodycode3| - 1, str, cp, ov,
+                                LCdn.compile_cdns(body), ncap, nlook, nquant);
           forall g: LG.GroupId |
             g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, l as nat))
             && g in PIV.GmOfLive(NI.LookBodyOfRE(re, l as nat), rfx.value.capture_regs,
                                  rfx.value.look_regs, rfx.value.quant_regs)
             ensures g in gm2
           {
-            assert g in (set gx | gx in L.DefGroups(T.Translate(body)));
-          }
-        } else if NR.CaptureFreeRE(body) {
-          // capture-free positive lookbehind: nothing to cover
-          assert la.Lookbehind? && NR.CaptureFreeRE(body);
-          PIV.CaptureFreeNoCapIds(body);
-          forall g: LG.GroupId |
-            g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, l as nat))
-            && g in PIV.GmOfLive(NI.LookBodyOfRE(re, l as nat), rfx.value.capture_regs,
-                                 rfx.value.look_regs, rfx.value.quant_regs)
-            ensures g in gm2
-          {
-            assert g in PIV.CapIds(body);
-            assert false;
+            assert g in PIV.CapIds(body);                                  // body == LookBodyOfRE(re,l)
+            assert g in PIV.GmOfLive(body, rfSpec.value.capture_regs,
+                                     rfSpec.value.look_regs, rfSpec.value.quant_regs);  // rfx == rfSpec
+            assert g in (set gx | gx in L.DefGroups(T.Translate(body)));   // TranslateDefGroupsEqCapIds
+            if g in PIV.CapIdsInLooks(body) {
+              // fresh match records no inner-look captures ⇒ contradicts g live
+              assert g !in PIV.GmOfLive(body, rfSpec.value.capture_regs,
+                                        rfSpec.value.look_regs, rfSpec.value.quant_regs);
+              assert false;
+            }
+            assert g !in LL.LkBodyGroups(T.Translate(body));   // == CapIdsInLooks(body)
+            assert g in Sout;                                  // hence g in the OUTER set
           }
         } else {
-          // CAPTURING positive lookbehind: gm2 covers the body's groups via the BACKWARD
-          // keystone's key-set (SwapGm preserves keys). Mirrors the lookahead arm above.
-          M.TranslateDefGroupsEqCapIds(body);
-          EL.TranslateNoLkBr(body);
-          EL.ComputeTrGmIndepLk(rer, r1, inp, gm, WP.Backward);
-          assert tlk == LFU.ComputeTr(rer, [LS.Areg(r1)], inp, gm, WP.Backward);
-          assert M.GmAgreeOn(gm, LG.Empty, set gx | gx in L.DefGroups(r1)) by {
-            forall g: LG.GroupId | g in (set gx | gx in L.DefGroups(r1))
-              ensures (g in gm <==> g in LG.Empty) && (g in gm ==> gm[g] == LG.Empty[g])
-            { assert g !in gm; }
-          }
-          var bodycode3 := CP.compile_to_bytecode(body);
-          assert AReg.get_cp(th'.look_regs, l) == Some(s1.cp) by {
-            RL.ASetLaws(th.look_regs, l, Some(cp as int), clk);
-          }
-          // static package for BackFreshBodyGmTie
-          assert PSM.StaticOkRE(qm, body, bodycode3, |bodycode3| - 1);   // (⇒ LookBehindFragmentRE(body))
-          NR.LookFreeIsPlusFragmentRE(body);                     // PlusFragmentRE(body)
-          OS.TranslateLookFreeGroupOk(body);                      // GroupOkL(Translate(body))
-          TranslateDefGroupsNoDup(body);                          // NoDupG(DefGroups(Translate(body)))
-          assert PIV.CapUnique(body) && PIV.QuantUnique(body);
-          // rfx == the backward run raB
-          assert CP.capture_regex(crv.f_look_types[l], body) == R.reverse_regex(body);
-          assert AI.capture_direction(crv.f_look_types[l]) == LAnc.Backward;
-          LBK.BackFreshBodyGmTie(rer, body, str, cp, ov, crv.f_look_cdns[l], la, tlk, gm,
-                                 ncap, nlook, nquant, |str|);
-          var bcB := CP.compile_to_bytecode(R.reverse_regex(body));
-          var raB := AI.FFindMatch(bcB, str,
-                       AI.FInitState(bcB, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                     AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
-                       ov, LAnc.Backward, crv.f_look_cdns[l]).0;
-          assert rfx == raB;
-          assert LS.LkResult(T.TrLookaround(la), tlk, gm, inp).value == gm2 by {
-            assert lk == T.TrLookaround(la);
-          }
-          // BackFreshBodyGmTie: GmAgreeOn(SwapGm(gm2), GmOfLive(body, raB.caps), Sbody)
-          forall g: LG.GroupId |
-            g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, l as nat))
-            && g in PIV.GmOfLive(NI.LookBodyOfRE(re, l as nat), rfx.value.capture_regs,
-                                 rfx.value.look_regs, rfx.value.quant_regs)
-            ensures g in gm2
-          {
-            assert g in (set gx | gx in L.DefGroups(T.Translate(body)));
-            assert g in LBV.SwapGm(gm2);                          // GmAgreeOn key-set at g in Sbody
-          }
+          // (BRICK D5) DEAD arm: `!la.Lookahead?` is impossible under the polarity
+          // pin + `!la.Lookbehind?` (no positive lookbehind survives
+          // `M.NoPosLookbehindRE(re)`).
+          assert false;
         }
       }
     }
@@ -21856,7 +21920,8 @@ module LindenElkLiftSim {
     requires |ov| == |str| + 1                                    // L3b: propagate to the backward LB gate
     requires PSM.StaticOkNestedRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires S == PIV.CapIdsInLooks(re)   // the value-tie boundary (SetReg/gate cases)
-    requires GateStaticsOk(qm, re, crv, ncap, nlook, nquant)   // per-lid look-table package (gate-pass case)
+    requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)   // (BRICK D5) NESTED per-lid package
+    requires M.NoPosLookbehindRE(re)      // (BRICK D5) positive-lookahead-nesting scope
     requires LTB.LookUnique(re)           // (E3) cross-lid ownership pinning
     requires LTB.LookTablesOk(re, crv)    // (E4) row↔structure tie (gate converse)
     requires dir == LAnc.Forward
@@ -22185,7 +22250,8 @@ module LindenElkLiftSim {
     requires PSM.StaticOkNestedRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
     requires S == PIV.CapIdsInLooks(re)   // the value-tie boundary (SetReg/gate cases)
-    requires GateStaticsOk(qm, re, crv, ncap, nlook, nquant)   // per-lid look-table package (gate-pass case)
+    requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)   // (BRICK D5) NESTED per-lid package
+    requires M.NoPosLookbehindRE(re)      // (BRICK D5) positive-lookahead-nesting scope
     requires LTB.LookUnique(re)           // (E3) cross-lid ownership pinning
     requires LTB.LookTablesOk(re, crv)    // (E4) row↔structure tie (gate converse)
     requires ptsA.PTS? && ptsB.PTS?
@@ -22254,7 +22320,8 @@ module LindenElkLiftSim {
     requires |ov| == |str| + 1                                    // L3b: propagate to the backward LB gate
     requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
     requires S == PIV.CapIdsInLooks(re)
-    requires GateStaticsOk(qm, re, crv, ncap, nlook, nquant)
+    requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)   // (BRICK D5) NESTED per-lid package
+    requires M.NoPosLookbehindRE(re)                                 // (BRICK D5) positive-nesting scope
     requires LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires ptsA.PTS? && bst.PTS?
@@ -22615,7 +22682,12 @@ module LindenElkLiftSim {
     requires qm.ov == ov && !rer.multiline
     requires !rer.ignoreCase
     requires S == PIV.CapIdsInLooks(re)
-    requires GateStaticsOk(qm, re, crv, ncap, nlook, nquant)
+    // (BRICK D5) NON-VACUITY: the composite sim's per-lid static package is the
+    // depth-AGNOSTIC `GateStaticsOkNested` (nested gate bodies) under the positive-
+    // lookahead-nesting scope `M.NoPosLookbehindRE(re)` — this driver is now
+    // NON-VACUOUS at nesting depth >= 2.
+    requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
+    requires M.NoPosLookbehindRE(re)
     requires LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires code == CP.compile_to_bytecode(re)
@@ -22724,7 +22796,10 @@ module LindenElkLiftSim {
     requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
     requires |ov| == |str| + 1
     // crv-keyed statics (caller descends from the top-level regex)
-    requires GateStaticsOk(qm, body, crv, ncap, nlook, nquant)
+    // (BRICK D5) NESTED per-lid package + positive-lookahead-nesting scope, so the
+    // per-body composite sim `L3aCompositeCloseRec` applies at depth >= 2.
+    requires GateStaticsOkNested(qm, body, crv, ncap, nlook, nquant)
+    requires M.NoPosLookbehindRE(body)
     requires LTB.LookUnique(body)
     requires LTB.LookTablesOk(body, crv)
     ensures
