@@ -23075,6 +23075,155 @@ module LindenElkLiftSim {
     }
   }
 
+  /** (BRICK D-8 FINDING 1) The BACKWARD per-body carrier: a verbatim twin of
+      `LookNestOkTFromBodyReplay` whose only difference is the projected conjunct.
+      The SAME `BestTieLkNestedTop(body, ...)` (obtained at :23036 via
+      `L3aCompositeCloseRec`) ALSO ensures `LookNestBackTTop(body, ...)` (its third
+      conjunct); we project THAT out of the winning body replay instead of the
+      forward `LookNestOkTTop`. Used by the reverse-recon descent lemma to tie a
+      deep, recon-live inner capture into the body's spec group map. */
+  lemma LookNestBackTFromBodyReplay(
+      rer: LW.RegExpRecord, qm: AR.QMap, la: R.lookaround, body: R.regex, bodycode: RB.code,
+      endl: nat, ngroups: nat, crv: CP.FCompiled, str: string, cp: nat, ov: LOr.OracleView,
+      lookcdn: LCdn.cdns, plus_bc: seq<RB.code>, ncap: int, nlook: int, nquant: int)
+    requires la.Lookahead?
+    requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
+    requires NR.NegLooksLookFreeRE(body)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
+    requires cp <= |str|
+    requires bodycode == CP.compile_to_bytecode(body)
+    requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
+    requires |ov| == |str| + 1
+    requires GateStaticsOkNested(qm, body, crv, ncap, nlook, nquant)
+    requires M.NoPosLookbehindRE(body)
+    requires LTB.LookUnique(body)
+    requires LTB.LookTablesOk(body, crv)
+    ensures
+      var inp := PIV.InpOfCp(str, cp);
+      var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Forward);
+      var rf := AI.FFindMatchPlus(bodycode, body, plus_bc, str, ov, LAnc.Forward, cp,
+                                  AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant),
+                                  0, lookcdn).0;
+      rf.Some? ==>
+        LT.FirstLeaf(t, inp).Some?
+        && LookNestBackTTop(body, crv, str, ov, PIV.CapIdsInLooks(body),
+                            LT.FirstLeaf(t, inp).value.1, rf.value, ncap, nlook, nquant)
+  {
+    var inp := PIV.InpOfCp(str, cp);
+    var acts := [LS.Areg(T.Translate(body))];
+    var S := PIV.CapIdsInLooks(body);
+
+    // ---- the spec tree (mirror BodyTreeAtCpNested) -----------------------
+    LFU.ComputeTrIsTree(rer, acts, inp, LG.Empty, WP.Forward);
+    var t := LFU.ComputeTr(rer, acts, inp, LG.Empty, WP.Forward);
+    assert LS.IsTree(rer, acts, inp, LG.Empty, WP.Forward, t);
+    EL.TranslateFragmentPikeLkRec(body);
+    EL.BooleanCorrectLkRec(rer, T.Translate(body), inp, t);
+    assert forall i :: 0 <= i < |acts| ==> !acts[i].Acheck?;
+    M.BoolTreeLbIrrel(rer, acts, inp, BS.CanExit, BS.CannotExit, t);
+    assert EL.BoolTreeLk(rer, acts, inp, BS.CannotExit, t);
+
+    // PikeSubtreeLk(t) (mirror the whole-regex entry, :15798)
+    TranslateNoBackref(body);
+    assert NoBackrefActions(acts);
+    var fuel0 := FS.ActionsFuel(acts, inp, WP.Forward) + 1;
+    FS.FunctionalTerminates(rer, acts, inp, LG.Empty, WP.Forward, fuel0);
+    assert FS.ComputeTree(rer, acts, inp, LG.Empty, WP.Forward, fuel0) == Some(t);
+    ComputePikeSubtreeLk(rer, acts, inp, LG.Empty, WP.Forward, fuel0, t);
+    assert PTL.PikeSubtreeLk(t);
+
+    // ---- the CHECKED tree (mirror BodyTreeAtCpNested) --------------------
+    WkE.WalkOkEntryNested(body);
+    assert EL.PikeLkActionsRec(acts) by {
+      assert acts == acts + [];
+      assert EL.PikeLkActionsRec([]);
+      EL.PikeLkActionsRecConsIff(LS.Areg(T.Translate(body)), []);
+    }
+    assert WO.WalkOk(acts, bodycode, 0, ATR.EaOf(BS.CannotExit));
+    AR.CompileToBytecodeActionsRepNested(rer, qm, body);
+    assert AR.ActionsRepL(rer, qm, acts, bodycode, 0);
+    M.LkBodyGroupsEqCapIdsInLooks(body);
+    assert S == LL.LkBodyGroups(T.Translate(body));
+    LL.LkBodyGroupsConfines(T.Translate(body), S);
+    assert LL.LkActsInS(acts, S) by { LL.LkActsInSCons(LS.Areg(T.Translate(body)), [], S); }
+    LL.ComputeTrLkConfinedK(rer, acts, inp, LG.Empty, WP.Forward, S);
+    var tstar := ATR.ActionsTreeRepRENested(rer, qm, acts, bodycode, 0, inp, BS.CannotExit, t, S);
+    assert TREP.TreeRepRE(qm, tstar, bodycode, 0, inp, false);
+    assert TT.TreeThreadRE(rer, qm, bodycode, inp, tstar, 0, false);
+
+    // ---- the fresh entry VM + PikeInvFullRE (mirror FindMatchBodyAtCpNested) --
+    var ctx := AI.cp_context(cp, str, LAnc.Forward);
+    var capture := AReg.init_regs(ncap);
+    var look := AReg.init_regs(nlook);
+    var quant := AReg.init_regs(nquant);
+    var vms := AI.FInitState(bodycode, cp, capture, look, quant, 0, ctx);
+    assert ctx.nextchar == AI.get_char(str, cp);
+    PSM.InitialPikeInvFullREAtCpNested(rer, qm, body, bodycode, endl, ngroups, str, cp, tstar,
+                                       vms, ncap, nlook, nquant);
+    assert PSM.PikeInvFullRE(rer, qm, body, bodycode, endl, ngroups, str,
+                             PT.PikeTreeInitialState(tstar, inp), vms, ncap, nlook, nquant);
+    assert PIV.ContextOkRE(str, vms.cp, vms.context);
+
+    // code shape: every SetQuantToClock has b == false (mirror :15777)
+    forall pc: nat, q: int, b: bool | NR.GetPcRE(bodycode, pc) == Some(RB.SetQuantToClock(q, b))
+      ensures !b
+    {
+      if pc < endl {
+        NI.CodeShapeAt(body, bodycode, 0, endl, pc);
+      } else if pc == endl {
+      } else {
+        assert pc >= |bodycode|;
+      }
+    }
+
+    // ---- run the composite sim on the body match -------------------------
+    var result := AI.FFindMatch(bodycode, str, vms, ov, LAnc.Forward, lookcdn).0;
+    L3aCompositeCloseRec(rer, qm, body, bodycode, endl, ngroups, crv, str, ov, S, tstar, t, inp,
+                         vms, lookcdn, result, ncap, nlook, nquant);
+    assert BestTieLkNestedTop(body, crv, str, ov, S, LT.FirstLeaf(t, inp), result, ncap, nlook, nquant);
+
+    // ---- reconcile FFindMatchPlus (fresh) with FFindMatch ----------------
+    var fmres := AI.FFindMatch(bodycode, str, vms, ov, LAnc.Forward, lookcdn);
+    assert result == fmres.0;
+    var rf := AI.FFindMatchPlus(bodycode, body, plus_bc, str, ov, LAnc.Forward, cp,
+                                capture, look, quant, 0, lookcdn);
+    assert rf.0 == (match result
+                    case None => None
+                    case Some(thread) =>
+                      Some(AI.FReconstructPlus(thread, body, plus_bc, str, fmres.1, LAnc.Forward).0));
+    if rf.0.Some? {
+      assert result.Some?;
+      var thread := result.value;
+      // winning-thread wf + quant-final -> reconstruct identity (mirror :15896)
+      CM.RegsClocksLEInit(ncap, 0);
+      CM.RegsClocksLEInit(nlook, 0);
+      CM.RegsClocksLEInit(nquant, 0);
+      CM.FInitStateClocksLE(bodycode, cp, capture, look, quant, 0, ctx);
+      CM.FInitStateRegsWf(bodycode, cp, ncap, nlook, nquant, 0, ctx);
+      assert M.VmQuantFinal(vms) by {
+        var th0 := AI.init_thread(capture, look, quant);
+        assert M.QuantRegsFinal(th0) by {
+          forall k ensures AI.get_idx(quant.a_cp, k) < 0 && AI.get_idx(quant.a_clk, k) >= -1 {
+            if 0 <= k < |quant.a_cp| { assert quant.a_cp[k] == -1; }
+            if 0 <= k < |quant.a_clk| { assert quant.a_clk[k] == -1; }
+          }
+        }
+        forall t2 | t2 in vms.active ensures M.QuantRegsFinal(t2) { assert t2 == th0; }
+      }
+      M.FFindMatchThreadFacts(bodycode, str, vms, ov, LAnc.Forward, lookcdn, ncap, nlook, nquant);
+      assert CM.ThreadRegsWf(thread, ncap, nlook, nquant) && M.QuantRegsFinal(thread);
+      M.FNulledPlusIdentity(body, thread.capture_regs, thread.look_regs, thread.quant_regs,
+                            plus_bc, str, fmres.1, LAnc.Forward);
+      assert AI.FReconstructPlus(thread, body, plus_bc, str, fmres.1, LAnc.Forward).0 == thread;
+      assert rf.0.value == thread;
+      // project the (E4) BACKWARD carrier out of BestTieLkNestedTop and transport it
+      assert LT.FirstLeaf(t, inp).Some?;
+      assert LookNestBackTTop(body, crv, str, ov, S, LT.FirstLeaf(t, inp).value.1, thread,
+                              ncap, nlook, nquant);
+    }
+  }
+
   // ==========================================================================
   // BRICK D4: the RECONSTRUCTED-bank ancestor look-clock chain (feeds (i)/(ii)
   // of `M.ReconInnerGmOfLiveClose`). Two structural spine lemmas first.
@@ -23667,6 +23816,62 @@ module LindenElkLiftSim {
           && g2 in PIV.GmOfLive(NI.LookBodyOfRE(re, l), rf.value.capture_regs,
                                 rf.value.look_regs, rf.value.quant_regs);        // (A)@(l,g2)
       assert g2 in gmt;                               // LookNestBackTTop@(l, g:=g2)
+    }
+  }
+
+  /** (BRICK D-8 FINDING 3) The GUARD BRIDGE re-derived from the REVERSE-RECON
+      DESCENT conclusion (FINDING 2) in place of the false-for-deep-caps connective
+      `(A)`. The descent conclusion — every recon-live in-look capture of `re` lands
+      in the spec group map `gmt` — makes the guard bridge trivial: the recon-live
+      witness `g2` of top look `l`'s body IS the `gmt` witness `g3` (`g2 in S` by
+      `LookBodyCapsIn`, `g2 in gmt` by the descent, `g2 in CapIds(body(l))` given).
+      This is the exact shape `LocalTopFeedFromNestOkT`/`LocalTopFeedAtReFromFrames`
+      consume — with NO dependence on the (deep-false) reverse-recon connective. */
+  lemma GuardBridgeFromDescent(
+      re: R.regex, S: set<LG.GroupId>, gmt: LG.GroupMap, res0: AReg.Regs)
+    requires S == PIV.CapIdsInLooks(re)
+    // DESCENT conclusion (FINDING 2): every recon-live in-look capture is in gmt.
+    requires forall g2: nat :: g2 in S && AI.get_idx(res0.a_clk, CP.start_reg(g2)) >= 0 ==> g2 in gmt
+    ensures forall l: nat :: l in LTB.LookIds(re) && l in NI.TopLookIds(re)
+      && (exists g2: nat :: g2 in PIV.CapIds(NI.LookBodyOfRE(re, l)) && AI.get_idx(res0.a_clk, CP.start_reg(g2)) >= 0)
+      ==> (exists g3: LG.GroupId :: g3 in S && g3 in gmt && g3 in PIV.CapIds(NI.LookBodyOfRE(re, l)))
+  {
+    forall l: nat | l in LTB.LookIds(re) && l in NI.TopLookIds(re)
+      && (exists g2: nat :: g2 in PIV.CapIds(NI.LookBodyOfRE(re, l)) && AI.get_idx(res0.a_clk, CP.start_reg(g2)) >= 0)
+      ensures exists g3: LG.GroupId :: g3 in S && g3 in gmt && g3 in PIV.CapIds(NI.LookBodyOfRE(re, l))
+    {
+      var g2: nat :| g2 in PIV.CapIds(NI.LookBodyOfRE(re, l)) && AI.get_idx(res0.a_clk, CP.start_reg(g2)) >= 0;
+      NI.LookBodyCapsIn(re, l);                        // CapIds(body(l)) <= CapIdsInLooks(re) == S
+      assert g2 in S;
+      assert g2 in gmt;                                // DESCENT@(g2)
+    }
+  }
+
+  /** (BRICK D-8 FINDING 2 consumer) The endpoint's inside-`S` REVERSE (c) residual
+      re-derived from the REVERSE-RECON DESCENT conclusion. `g in GmOfLive(re, res)`
+      is STRONGER than recon-live: `GmOfLivePresenceExtractLkNested` peels off the
+      look-aware path presence, exposing `res0`'s start clock SET at `g` — then the
+      descent lands `g` in `gmt`. This reduces the endpoint's third owed hypothesis
+      (`:16346`) to the single descent conclusion. */
+  lemma ReverseCFromDescent(re: R.regex, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
+                            gmt: LG.GroupMap, S: set<LG.GroupId>)
+    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re)
+    requires S == PIV.CapIdsInLooks(re)
+    // synthetic-res wf: an unset start clock forces an unset start cp (extract premise)
+    requires forall c: nat :: c in PIV.CapIds(re) && AI.get_idx(res0.a_clk, CP.start_reg(c)) < 0
+                             ==> AI.get_idx(res0.a_cp, CP.start_reg(c)) < 0
+    // DESCENT conclusion (FINDING 2): every recon-live in-look capture is in gmt.
+    requires forall g2: nat :: g2 in S && AI.get_idx(res0.a_clk, CP.start_reg(g2)) >= 0 ==> g2 in gmt
+    ensures forall g: LG.GroupId :: g in S && g in PIV.GmOfLive(re, res0, res1, res2) ==> g in gmt
+  {
+    forall g: LG.GroupId | g in S && g in PIV.GmOfLive(re, res0, res1, res2)
+      ensures g in gmt
+    {
+      PIV.CapIdsSplit(re);                              // CapIdsInLooks(re) <= CapIds(re)
+      assert g in PIV.CapIds(re);
+      NI.GmOfLivePresenceExtractLkNested(re, res0, res1, res2, g);
+      assert AI.get_idx(res0.a_clk, CP.start_reg(g)) >= 0;
+      assert g in gmt;                                 // DESCENT@(g)
     }
   }
 
