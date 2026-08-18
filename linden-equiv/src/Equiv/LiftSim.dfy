@@ -16268,6 +16268,156 @@ module LindenElkLiftSim {
     assert leafgm == PIV.NormGm(PIV.GmOfLive(re, res.0, res.1, res.2));
   }
 
+  /** (BRICK D6 — THE VALUE THEOREM, forward chain DISCHARGED) `L3aEndpointAssembly
+      Nested` with its inside-`S` FORWARD `TODO(C4)` premise (b) no longer assumed
+      but PROVED, via the D6 wiring `ReconInnerForwardWired` (= D4
+      `FLookLoopAncestorClockChain` feeds (i)/(ii) ∘ C4c `M.ReconInnerGmOfLiveClose`)
+      applied per live inside-`S` group at its innermost owner. Consumes
+      `BestTieLkNestedTop` (the sim's `L3aCompositeCloseRec` output) and threads the
+      spec tree (`leaf == LT.FirstLeaf(t, inp)`), so it chains directly after the
+      composite sim.
+
+      RESIDUAL premises (the deferred ENGINE half, NOT value/spec algebra):
+        - `AllBodyTopFeeds` on the reconstructed banks — the per-body ancestor-clock
+          base evidence (its `re`-arm is discharged by `LocalTopFeedAtReFromFrames`
+          modulo top-look-clock stability + the guard bridge; its body-arms need the
+          per-body replay-tower reconcile);
+        - `EndpointForwardFeeds` — per live inside-`S` `g`, the innermost owner and
+          its fresh body match with the value-lift/quant-reconcile agreements (from
+          `M.FLookLoopValueLiftFull` + `M.FLookLoopQuantCoversFromTables`) plus the
+          leaf value tie `leaf.1[g] == NormRange(LiveRange(...))`;
+        - the inside-`S` REVERSE (c) — still owed (needs the reverse-recon connective
+          `(A)` of `GuardBridgeFromLookNestBackTTop`, which does not yet exist);
+        - the recon_outer capture/quant frames + synthetic wf + `QuantRegsFinal`
+          (mechanical, from the `*CoversFromTables` capstones).
+      Everything from the canonical feeds to the endpoint conclusion is GREEN. */
+  lemma {:isolate_assertions} L3aEndpointAssemblyNestedFull(
+      ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, endl: nat,
+      str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
+      thread: AI.Thread, leaf: LT.Leaf, ncap: int, nlook: int, nquant: int,
+      rer: LW.RegExpRecord, qm: AR.QMap, t: LT.Tree, inp: LC.Input)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.NegLooksLookFreeRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires S == PIV.CapIdsInLooks(re)
+    requires R.max_lookaround(re) == R.max_lookaround(ast)
+    requires M.OrderedGm(leaf.1)
+    // the spec tree threaded: the sim's best is this leaf.
+    requires LT.FirstLeaf(t, inp) == Some(leaf)
+    // the nested best-match tie — the sim's `L3aCompositeCloseRec` output.
+    requires BestTieLkNestedTop(re, crv, str, ov, S, Some(leaf), Some(thread), ncap, nlook, nquant)
+    // ---- the depth-general FLookLoop reconstruction + residual (engine half) ----
+    requires var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                     thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
+      // (a) recon_outer cap frame (M.FLookLoopFullCoversFromTables).
+      (forall k: int :: k !in PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)) ==>
+         AI.get_idx(AReg.as_arrays(res.0).0, k) == AI.get_idx(AReg.as_arrays(thread.capture_regs).0, k)
+         && AI.get_idx(AReg.as_arrays(res.0).1, k) == AI.get_idx(AReg.as_arrays(thread.capture_regs).1, k))
+      // (a) quant frame outside looks (nested FLookLoopQuantFrame).
+      && (forall q: nat :: q in PIV.QuantIdsOutsideLooks(re) ==>
+         AI.get_idx(AReg.as_arrays(res.2).1, q as int) == AI.get_idx(AReg.as_arrays(thread.quant_regs).1, q as int))
+      // (a) synthetic-res well-formedness (nested FLookLoopValueLiftFull).
+      && CM.ThreadRegsWf(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed), ncap, nlook, nquant)
+      && M.QuantRegsFinal(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed))
+    // ---- ENGINE-HALF residuals feeding the FORWARD wiring ----
+    requires var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                     thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
+      AllBodyTopFeeds(re, res.0.a_clk, AReg.as_arrays(res.1).1, res.2.a_clk)
+    requires var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                     thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
+      // per live inside-S group: innermost owner + fresh body match + agreements + value tie
+      forall g: LG.GroupId :: g in S && g in leaf.1 ==>
+        exists owner: nat, rfcap: AReg.Regs, rflk: AReg.Regs, rfqt: AReg.Regs ::
+          owner in LTB.LookIds(re)
+          && NR.NestedFragmentRE(NI.LookBodyOfRE(re, owner)) && PIV.CapUnique(NI.LookBodyOfRE(re, owner))
+          && g in PIV.CapIds(NI.LookBodyOfRE(re, owner))
+          && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
+          && AI.get_idx(res.0.a_clk, CP.start_reg(g)) >= 0
+          && AI.get_idx(res.0.a_cp, CP.start_reg(g)) >= 0
+          && (forall c: nat :: c in PIV.CapIds(NI.LookBodyOfRE(re, owner))
+                               && AI.get_idx(rfcap.a_clk, CP.start_reg(c)) < 0
+                               ==> AI.get_idx(rfcap.a_cp, CP.start_reg(c)) < 0)
+          && g in PIV.GmOfLive(NI.LookBodyOfRE(re, owner), rfcap, rflk, rfqt)
+          && (forall c: nat :: c in PIV.CapIds(NI.LookBodyOfRE(re, owner)) ==>
+                AI.get_idx(res.0.a_clk, CP.start_reg(c)) == AI.get_idx(rfcap.a_clk, CP.start_reg(c)))
+          && (forall qd: nat :: qd in PIV.QuantIds(NI.LookBodyOfRE(re, owner)) ==>
+                AI.get_idx(res.2.a_clk, qd as int) == AI.get_idx(rfqt.a_clk, qd as int))
+          && leaf.1[g] == PIV.NormRange(PIV.LiveRange(res.0.a_cp, res.0.a_clk, g))
+    // ---- inside-S REVERSE (c) — still owed (reverse-recon connective (A)) ----
+    requires var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                     thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
+      forall g: LG.GroupId :: g in S
+        && g in PIV.GmOfLive(re, res.0, res.1, res.2) ==> g in leaf.1
+    ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                    thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
+      leaf.1 == PIV.NormGm(PIV.GmOfLive(re, res.0, res.1, res.2))
+      && CM.ThreadRegsWf(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed), ncap, nlook, nquant)
+      && M.QuantRegsFinal(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed))
+  {
+    var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                            thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
+    var leafgm := leaf.1;
+    var synthetic := AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed);
+
+    // ---- DISCHARGE the inside-S FORWARD (b) via the D6 wiring --------------
+    assert forall g: LG.GroupId :: g in S && g in leafgm ==>
+             g in PIV.GmOfLive(re, res.0, res.1, res.2)
+             && leafgm[g] == PIV.NormRange(PIV.GmOfLive(re, res.0, res.1, res.2)[g])
+    by {
+      forall g: LG.GroupId | g in S && g in leafgm
+        ensures g in PIV.GmOfLive(re, res.0, res.1, res.2)
+             && leafgm[g] == PIV.NormRange(PIV.GmOfLive(re, res.0, res.1, res.2)[g])
+      {
+        var owner: nat, rfcap: AReg.Regs, rflk: AReg.Regs, rfqt: AReg.Regs :|
+          owner in LTB.LookIds(re)
+          && NR.NestedFragmentRE(NI.LookBodyOfRE(re, owner)) && PIV.CapUnique(NI.LookBodyOfRE(re, owner))
+          && g in PIV.CapIds(NI.LookBodyOfRE(re, owner))
+          && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
+          && AI.get_idx(res.0.a_clk, CP.start_reg(g)) >= 0
+          && AI.get_idx(res.0.a_cp, CP.start_reg(g)) >= 0
+          && (forall c: nat :: c in PIV.CapIds(NI.LookBodyOfRE(re, owner))
+                               && AI.get_idx(rfcap.a_clk, CP.start_reg(c)) < 0
+                               ==> AI.get_idx(rfcap.a_cp, CP.start_reg(c)) < 0)
+          && g in PIV.GmOfLive(NI.LookBodyOfRE(re, owner), rfcap, rflk, rfqt)
+          && (forall c: nat :: c in PIV.CapIds(NI.LookBodyOfRE(re, owner)) ==>
+                AI.get_idx(res.0.a_clk, CP.start_reg(c)) == AI.get_idx(rfcap.a_clk, CP.start_reg(c)))
+          && (forall qd: nat :: qd in PIV.QuantIds(NI.LookBodyOfRE(re, owner)) ==>
+                AI.get_idx(res.2.a_clk, qd as int) == AI.get_idx(rfqt.a_clk, qd as int))
+          && leafgm[g] == PIV.NormRange(PIV.LiveRange(res.0.a_cp, res.0.a_clk, g));
+        ReconInnerForwardWired(re, owner, res.0, res.1, res.2, rfcap, rflk, rfqt, g);
+        // membership + LiveRange value in hand; value tie closes NormRange.
+        assert PIV.GmOfLive(re, res.0, res.1, res.2)[g] == PIV.LiveRange(res.0.a_cp, res.0.a_clk, g);
+      }
+    }
+
+    // ---- OUTSIDE S (derived green, verbatim from L3aEndpointAssemblyNested) -
+    assert GmtTieOutside(re, thread, leafgm, S);            // from BestTieLkNestedTop
+    var gmThread := PIV.GmOfLive(re, thread.capture_regs, thread.look_regs, thread.quant_regs);
+    var gmBest := PIV.GmOfLive(re, thread.capture_regs, res.1, thread.quant_regs);
+    PIV.GmOfLiveLookIndepNested(re, thread.capture_regs, thread.look_regs, res.1, thread.quant_regs);
+    M.LkBodyGroupsEqCapIdsInLooks(re);
+    assert forall g: nat :: g !in LL.LkBodyGroups(T.Translate(re)) ==>
+      (g in leafgm <==> g in gmBest) && (g in leafgm ==> leafgm[g] == gmBest[g])
+    by {
+      forall g: nat | g !in LL.LkBodyGroups(T.Translate(re))
+        ensures (g in leafgm <==> g in gmBest) && (g in leafgm ==> leafgm[g] == gmBest[g])
+      {
+        assert g !in S;
+        assert (g in leafgm <==> g in gmThread) && (g in leafgm ==> leafgm[g] == gmThread[g]);
+        assert (g in gmThread <==> g in gmBest) && (g in gmThread ==> gmThread[g] == gmBest[g]);
+      }
+    }
+    OutsideLookValueBridgeNested(re, thread.capture_regs, res.0, res.1, thread.quant_regs, res.2,
+                                 gmBest, leafgm);
+    assert forall g: LG.GroupId :: g !in S ==>
+      (g in leafgm <==> g in PIV.GmOfLive(re, res.0, res.1, res.2))
+      && (g in leafgm ==> leafgm[g] == PIV.GmOfLive(re, res.0, res.1, res.2)[g]);
+
+    // ---- assemble (outside frame + derived (b) + kept (c)) -----------------
+    assert synthetic.look_regs == res.1;
+    L3aValueBridgeNested(re, synthetic, leafgm, res.0, res.2, S);
+    assert leafgm == PIV.NormGm(PIV.GmOfLive(re, res.0, res.1, res.2));
+  }
+
   // ==========================================================================
   // THE MAIN THEOREM, L3a: capturing positive lookaheads included. The
   // engine's full pipeline output IS the Linden tree-semantics answer, for
@@ -23388,6 +23538,138 @@ module LindenElkLiftSim {
     }
   }
 
+  /** (BRICK D6 clock-frame twin — CAPTURE) The `a_clk` face of
+      `M.FLookLoopFullCoversFromTables`'s recon_outer capture frame, in the exact
+      shape `LocalTopFeedFromNestOkT` demands: for every OUTSIDE-look group `c`,
+      the reconstructed capture-clock bank agrees with the host thread's at
+      `start_reg(c)`. `RegsAgreeOutside` already covers `a_clk`; the only work is
+      moving OFF `CaptureRegsSet(CapIdsInLooks(host))` onto `CapIdsOutsideLooks`
+      via `CapIdsLooksDisjoint` + `StartRegInCaptureRegsSet` (start-reg parity). */
+  lemma CapClkFrameOutsideLooksTwin(host: R.regex, res0: AReg.Regs, thcap: AReg.Regs)
+    requires PIV.CapUnique(host)
+    requires CM.RegsAgreeOutside(res0, thcap, PIV.CaptureRegsSet(PIV.CapIdsInLooks(host)))
+    ensures forall c: nat :: c in PIV.CapIdsOutsideLooks(host) ==>
+      AI.get_idx(res0.a_clk, CP.start_reg(c as int)) == AI.get_idx(thcap.a_clk, CP.start_reg(c as int))
+  {
+    PIV.CapIdsLooksDisjoint(host);
+    forall c: nat | c in PIV.CapIdsOutsideLooks(host)
+      ensures AI.get_idx(res0.a_clk, CP.start_reg(c as int)) == AI.get_idx(thcap.a_clk, CP.start_reg(c as int))
+    {
+      assert c !in PIV.CapIdsInLooks(host);
+      PIV.StartRegInCaptureRegsSet(PIV.CapIdsInLooks(host), c);
+      assert CP.start_reg(c as int) !in PIV.CaptureRegsSet(PIV.CapIdsInLooks(host));
+    }
+  }
+
+  /** (BRICK D6 clock-frame twin — QUANT) The `a_clk` face of
+      `M.FLookLoopQuantCoversFromTables`'s recon_outer quant frame, in the shape
+      `LocalTopFeedFromNestOkT` demands: for every OUTSIDE-look quant `q`, the
+      reconstructed quant-clock bank agrees with the host thread's at `q`. Off
+      the in-look quant int-image via `QuantIdsLooksDisjoint`. */
+  lemma QuantClkFrameOutsideLooksTwin(host: R.regex, res2: AReg.Regs, thqt: AReg.Regs)
+    requires PIV.QuantUnique(host)
+    requires CM.RegsAgreeOutside(res2, thqt, (set q: nat | q in PIV.QuantIdsInLooks(host) :: q as int))
+    ensures forall q: nat :: q in PIV.QuantIdsOutsideLooks(host) ==>
+      AI.get_idx(res2.a_clk, q as int) == AI.get_idx(thqt.a_clk, q as int)
+  {
+    PIV.QuantIdsLooksDisjoint(host);
+    var Sq := set q: nat | q in PIV.QuantIdsInLooks(host) :: q as int;
+    forall q: nat | q in PIV.QuantIdsOutsideLooks(host)
+      ensures AI.get_idx(res2.a_clk, q as int) == AI.get_idx(thqt.a_clk, q as int)
+    {
+      assert (q as int) !in Sq by {
+        if (q as int) in Sq {
+          var q2: nat :| q2 in PIV.QuantIdsInLooks(host) && q2 as int == q as int;
+          assert q2 == q;
+          assert q in PIV.QuantIdsOutsideLooks(host) * PIV.QuantIdsInLooks(host);
+        }
+      }
+    }
+  }
+
+  /** (BRICK D6) The host==re BASE-EVIDENCE PRODUCER: `LocalTopFeed(re, res0.a_clk,
+      res1.a_clk, res2.a_clk)` with the two MECHANICAL clock frames DISCHARGED via
+      the D6 twins. Consumes the FromTables recon_outer frames DIRECTLY
+      (`RegsAgreeOutside`, which the `M.FLookLoop{Full,Quant}CoversFromTables`
+      capstones already emit) and the `LookNestOkTTop` carrier (available from
+      `BestTieLkNestedTop`), leaving only the two value/engine-coupled residuals as
+      hypotheses: TOP-LOOK-CLOCK stability (the whole-loop tight look frame) and the
+      GUARD BRIDGE. This is the exact base-evidence witness the `re` arm of
+      `AllBodyTopFeeds` needs; the body-host arms need their per-body replay-tower
+      analogues (the deferred engine half). */
+  lemma LocalTopFeedAtReFromFrames(
+      re: R.regex, S: set<LG.GroupId>, gmt: LG.GroupMap, th: AI.Thread,
+      res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs)
+    requires LTB.LookUnique(re) && PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires LookNestOkTTop(re, S, gmt, th)
+    // recon_outer frames straight from FromTables (a_clk faces via the twins)
+    requires CM.RegsAgreeOutside(res0, th.capture_regs, PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)))
+    requires CM.RegsAgreeOutside(res2, th.quant_regs, (set q: nat | q in PIV.QuantIdsInLooks(re) :: q as int))
+    // TOP-LOOK-CLOCK stability (whole-loop tight look frame — owed)
+    requires forall l: nat :: l in NI.TopLookIds(re) ==>
+      AI.get_idx(AReg.as_arrays(res1).1, l as int) == AI.get_idx(th.look_regs.a_clk, l as int)
+    // GUARD BRIDGE (value-coupled — owed): recon-bank live witness ==> gmt witness
+    requires forall l: nat :: l in LTB.LookIds(re) && l in NI.TopLookIds(re)
+      && (exists g2: nat :: g2 in PIV.CapIds(NI.LookBodyOfRE(re, l)) && AI.get_idx(res0.a_clk, CP.start_reg(g2)) >= 0)
+      ==> (exists g3: LG.GroupId :: g3 in S && g3 in gmt && g3 in PIV.CapIds(NI.LookBodyOfRE(re, l)))
+    ensures LocalTopFeed(re, res0.a_clk, AReg.as_arrays(res1).1, res2.a_clk)
+  {
+    CapClkFrameOutsideLooksTwin(re, res0, th.capture_regs);
+    QuantClkFrameOutsideLooksTwin(re, res2, th.quant_regs);
+    LocalTopFeedFromNestOkT(re, S, gmt, th, res0.a_clk, AReg.as_arrays(res1).1, res2.a_clk);
+  }
+
+  /** (BRICK D6 — the GUARD BRIDGE, reduced) `LocalTopFeedFromNestOkT`'s guard
+      bridge (reconstructed-bank live witness ==> `gmt` live witness) discharged
+      via the `LookNestBackTTop` carrier of `BestTieLkNestedTop`, MODULO exactly one
+      owed engine connective: the REVERSE of `M.FLookLoopFullCoversFromTables`'s
+      recon_inner. That connective (hypothesis `(A)`) says a res0-live inner cap
+      `g2` of a top look `l`'s body pins `l` matched+dominating in the thread's look
+      bank WITH a live fresh body match carrying `g2`. The forward route (through
+      `ReconInnerGmOfLiveClose`) is CIRCULAR here — it feeds `AllBodyTopFeeds`, which
+      feeds this guard — so the tie MUST come from the backward carrier, which does
+      not depend on `AllBodyTopFeeds`. Given `(A)`, `g2` itself is the `gmt` witness:
+      `g2 in S` structurally (`LookBodyCapsIn`), `g2 in gmt` from `LookNestBackTTop`. */
+  lemma GuardBridgeFromLookNestBackTTop(
+      re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+      S: set<LG.GroupId>, gmt: LG.GroupMap, th: AI.Thread, res0: AReg.Regs,
+      ncap: int, nlook: int, nquant: int)
+    requires LTB.LookUnique(re)
+    requires S == PIV.CapIdsInLooks(re)
+    requires LookNestBackTTop(re, crv, str, ov, S, gmt, th, ncap, nlook, nquant)
+    // (A) REVERSE-RECON connective — the sole owed engine piece.
+    requires forall l: nat, g2: nat ::
+      l in NI.TopLookIds(re) && l in LTB.LookIds(re)
+      && g2 in PIV.CapIds(NI.LookBodyOfRE(re, l))
+      && AI.get_idx(res0.a_clk, CP.start_reg(g2)) >= 0
+      ==>
+        M.MatchedPosLA(crv, th.look_regs, l as int)
+        && NI.LookPathDom(re, AI.get_idx(th.look_regs.a_clk, l as int), th.quant_regs.a_clk, l)
+        && var rf := M.FreshBodyMatch(crv, str, l as int, th.look_regs, ov, ncap, nlook, nquant);
+           rf.Some?
+           && g2 in PIV.GmOfLive(NI.LookBodyOfRE(re, l), rf.value.capture_regs,
+                                 rf.value.look_regs, rf.value.quant_regs)
+    ensures forall l: nat :: l in LTB.LookIds(re) && l in NI.TopLookIds(re)
+      && (exists g2: nat :: g2 in PIV.CapIds(NI.LookBodyOfRE(re, l)) && AI.get_idx(res0.a_clk, CP.start_reg(g2)) >= 0)
+      ==> (exists g3: LG.GroupId :: g3 in S && g3 in gmt && g3 in PIV.CapIds(NI.LookBodyOfRE(re, l)))
+  {
+    forall l: nat | l in LTB.LookIds(re) && l in NI.TopLookIds(re)
+      && (exists g2: nat :: g2 in PIV.CapIds(NI.LookBodyOfRE(re, l)) && AI.get_idx(res0.a_clk, CP.start_reg(g2)) >= 0)
+      ensures exists g3: LG.GroupId :: g3 in S && g3 in gmt && g3 in PIV.CapIds(NI.LookBodyOfRE(re, l))
+    {
+      var g2: nat :| g2 in PIV.CapIds(NI.LookBodyOfRE(re, l)) && AI.get_idx(res0.a_clk, CP.start_reg(g2)) >= 0;
+      NI.LookBodyCapsIn(re, l);                       // CapIds(body(l)) <= CapIdsInLooks(re) == S
+      assert g2 in S;
+      var rf := M.FreshBodyMatch(crv, str, l as int, th.look_regs, ov, ncap, nlook, nquant);
+      assert M.MatchedPosLA(crv, th.look_regs, l as int)
+          && NI.LookPathDom(re, AI.get_idx(th.look_regs.a_clk, l as int), th.quant_regs.a_clk, l)
+          && rf.Some?
+          && g2 in PIV.GmOfLive(NI.LookBodyOfRE(re, l), rf.value.capture_regs,
+                                rf.value.look_regs, rf.value.quant_regs);        // (A)@(l,g2)
+      assert g2 in gmt;                               // LookNestBackTTop@(l, g:=g2)
+    }
+  }
+
   /** The base evidence at `re` AND at every look body of `re` (any depth). The
       hereditary hypothesis the nesting recursion peels one body at a time. */
   ghost predicate AllBodyTopFeeds(re: R.regex, rcc: seq<int>, rlc: seq<int>, rqc: seq<int>) {
@@ -23472,6 +23754,49 @@ module LindenElkLiftSim {
       // stitch
       AncestorChainPeelStep(re, rcc, rlc, rqc, A0, owner);
     }
+  }
+
+  /** (BRICK D6 — forward inside-`S` per-g WIRING) The composition of the two
+      capstones the endpoint's inside-`S` FORWARD chain bottoms out on: the D4
+      whole-loop ancestor-clock chain (`FLookLoopAncestorClockChain`, supplying
+      feeds (i)/(ii)) feeding `M.ReconInnerGmOfLiveClose` (the C4c close). For an
+      innermost-owned inside-look group `g` this lands `g` in the whole-regex live
+      denotation of the RECONSTRUCTED banks at the raw `LiveRange`, GREEN, isolating
+      the residuals to exactly `AllBodyTopFeeds` (the engine half) + the body-side
+      value-lift/quant-reconcile feeds (from `M.FLookLoopValueLiftFull` +
+      `M.FLookLoopQuantCoversFromTables`). No further algebra — the endpoint then
+      only converts `LiveRange` to `NormRange` against the ordered leaf. */
+  lemma ReconInnerForwardWired(
+      re: R.regex, owner: nat, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
+      rfcap: AReg.Regs, rflk: AReg.Regs, rfqt: AReg.Regs, g: nat)
+    requires NR.NestedFragmentRE(re) && NR.NegLooksLookFreeRE(re)
+    requires PIV.CapUnique(re) && LTB.LookUnique(re)
+    requires owner in LTB.LookIds(re)
+    requires NR.NestedFragmentRE(NI.LookBodyOfRE(re, owner)) && PIV.CapUnique(NI.LookBodyOfRE(re, owner))
+    requires g in PIV.CapIds(NI.LookBodyOfRE(re, owner))
+    requires g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
+    // engine feeds (i)/(ii) input: the whole-loop ancestor-chain base evidence.
+    requires AllBodyTopFeeds(re, res0.a_clk, AReg.as_arrays(res1).1, res2.a_clk)
+    requires AI.get_idx(res0.a_clk, CP.start_reg(g)) >= 0
+    // body-side feeds (value lift + quant reconcile + fresh liveness).
+    requires forall c: nat :: c in PIV.CapIds(NI.LookBodyOfRE(re, owner))
+                             && AI.get_idx(rfcap.a_clk, CP.start_reg(c)) < 0
+                             ==> AI.get_idx(rfcap.a_cp, CP.start_reg(c)) < 0
+    requires g in PIV.GmOfLive(NI.LookBodyOfRE(re, owner), rfcap, rflk, rfqt)
+    requires forall c: nat :: c in PIV.CapIds(NI.LookBodyOfRE(re, owner)) ==>
+      AI.get_idx(res0.a_clk, CP.start_reg(c)) == AI.get_idx(rfcap.a_clk, CP.start_reg(c))
+    requires forall qd: nat :: qd in PIV.QuantIds(NI.LookBodyOfRE(re, owner)) ==>
+      AI.get_idx(res2.a_clk, qd as int) == AI.get_idx(rfqt.a_clk, qd as int)
+    requires AI.get_idx(res0.a_cp, CP.start_reg(g)) >= 0
+    ensures g in PIV.CapIds(re)
+    ensures g in PIV.GmOfLive(re, res0, res1, res2)
+    ensures PIV.GmOfLive(re, res0, res1, res2)[g] == PIV.LiveRange(res0.a_cp, res0.a_clk, g)
+  {
+    // feeds (i)/(ii) from the D4 capstone
+    FLookLoopAncestorClockChain(re, res0.a_clk, AReg.as_arrays(res1).1, res2.a_clk, owner, g);
+    // C4c close via M's capstone
+    M.ReconInnerGmOfLiveClose(re, NI.LookBodyOfRE(re, owner), owner, res0, res1, res2,
+                              rfcap, rflk, rfqt, g);
   }
 
 }
