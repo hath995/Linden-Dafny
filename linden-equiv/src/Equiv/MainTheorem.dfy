@@ -4626,6 +4626,47 @@ module LindenElkMain {
     CM.FFindMatchCapWriteFrame(code, str, inits, ov, LAnc.Forward, cdn, cap, Sc);
   }
 
+  /** (L4 NESTED, D3) `MainMatchInsideCapsInit` for the NESTED fragment: the MAIN
+      code of a nested body writes only OUTSIDE-look capture registers
+      (`PIV.CaptureWriteIdsOutsideRENested` per pc — a lookaround is a single
+      `CheckOracle` leaf, so inner-look captures are never touched by the body's
+      main pass). So a genuine-start search leaves the INSIDE-look capture slots
+      EXACTLY at `cap`. The gate-pass preserver's (E4) backward coverage reads
+      this: the fresh body match leaves inner-look groups unset, so
+      `GmOfLive(body, rf)` is confined to the body's OUTER groups
+      (`GmOfLiveInsideLookAbsent`), which `LkReplayMatchesSpecNested` covers. */
+  lemma MainMatchInsideCapsInitNested(re: R.regex, code: RB.code, endl: nat, str: string,
+                                inits: AI.VmState, cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+                                ov: LOr.OracleView, cdn: LCdn.cdns, result: Option<AI.Thread>)
+    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re)
+    requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires |inits.processed.true_set| == RB.size(code) && |inits.processed.false_set| == RB.size(code)
+    requires inits.context.nextchar == AI.get_char(str, inits.cp)
+    requires inits.active == [AI.init_thread(cap, look, quant)]
+    requires inits.blocked == [] && inits.bestmatch.None?
+    requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
+    ensures var Sc := PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(re));
+      result.Some? ==> CM.RegsAgreeOutside(result.value.capture_regs, cap, Sc)
+  {
+    var Sc := PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(re));
+    assert CM.CaptureWritesInside(code, Sc) by {
+      forall pc: nat | pc < |code| ensures code[pc].SetRegisterToCP? ==> code[pc].reg in Sc {
+        assert NR.GetPcRE(code, pc) == Some(code[pc]);
+        if pc < endl {
+          PIV.CaptureWriteIdsOutsideRENested(re, code, 0, endl, pc);
+        } else {
+          assert pc == endl;                          // the Accept terminator
+        }
+      }
+    }
+    assert CM.VmCapturesAgree(inits, cap, Sc) by {
+      assert AI.init_thread(cap, look, quant).capture_regs == cap;
+      assert CM.RegsAgreeOutside(cap, cap, Sc);
+    }
+    CM.FFindMatchCapWriteFrame(code, str, inits, ov, LAnc.Forward, cdn, cap, Sc);
+  }
+
   /** L3a (S-i): on the WINNING thread, every recorded look cp is a position
       where that look's ORACLE BIT IS SET — `CheckOracle` writes `a_cp[l]` only
       on the branch that just read the bit, and the main pass never writes the
