@@ -93,3 +93,34 @@ PHASE-SIZED (comparable to the composite-sim build itself). Sharp boundary: need
   `git show/diff … | git apply --3way`, never cherry-pick whole commits (avoids the deps-symlink trap).
 - Two latent soundness bugs were caught + fixed this campaign: R31b's vacuous owner descent; the
   hyp-(g) depth-3 failure (fixed via the tight `DirectLidSet` frame). Trust the current green code.
+
+## 7. SESSION-2 PROGRESS (2026-08-18) — forward chain green; endpoint conditional on ONE descent
+The §4 "recursive per-body composite sim" gap was BUILT as the D-brick arc (D1–D6, all green, `b0caf59`):
+the FORWARD value chain is green and `L3aEndpointAssemblyNestedFull` (LiftSim:16294) ensures
+`leaf.1 == NormGm(GmOfLive(re,res))` for nested input — **CONDITIONAL** on residual `requires`.
+Banked since: `a987d34` premise-3 (`M.FLookLoopTopLookClkStableFull`, third clock twin);
+`2f88043` D8 (`LookNestBackTFromBodyReplay` backward per-body carrier + `GuardBridgeFromDescent` +
+`ReverseCFromDescent` — both endpoint engine residuals reduced to ONE hypothesis, the DESCENT
+CONCLUSION); `427d8b2` D9 (`M.FLookLoopInLookLiveOwnerMatched` = connective (A1): res0-live ⟹ innermost
+owner MatchedPosLA).
+
+**The DESCENT CONCLUSION** (the single producer still owed, task #35):
+`forall g2 :: g2 in CapIdsInLooks(re) && res0-live(g2) ==> g2 in gmt` (PRESENCE-only; gmt = leaf.1 from
+`BestTieLkNestedTop`). D11 (in flight, branch `brickD-11`) builds it as the reverse-mirror of the green
+`FLookLoopAncestorClockChain` (LiftSim:23904, `decreases |LookIds|`): compose per-body backward carriers
+`LookNestBackTTop`(top, green)/`LookNestBackTFromBodyReplay`(per-body, green) UP the nesting via
+`NI.LookPathComposeNested`, using (A1) + `FLookLoopFullCoversInLooks` for the per-level (A2) tie.
+A scout confirmed the LITERAL position correspondence (`get_cp(res.1,owner)==spec-cp`) is NOT needed —
+the sim carries it as the presence invariant `LookNestBackTTop`; route through carriers, not raw positions.
+
+**REMAINING MAP after D11 (~3 more bricks to `ApiMatch.MatchCorrect`):**
+1. D11 descent producer → discharges endpoint reverse-(c) + `AllBodyTopFeeds` re-arm guard bridge.
+2. Forward-existence residual (LiftSim:16325-44): the VALUE tie `leaf.1[g]==NormRange(LiveRange(res.0,g))`
+   (spec value == engine reconstructed value). Owed separately — the forward value carrier (depth-1
+   `GmtTieInside`) was DROPPED for the nested tier, so this needs the recon_inner spec-tie
+   `M.LkReplayMatchesSpecNestedFull` (proven modulo its inner recursive premise, MainTheorem:8957) driven
+   recursively, OR a rebuilt forward value carrier. Likely its own brick.
+3. `AllBodyTopFeeds` body-arms: `LocalTopFeed(body(a),…)` per look a — the descent producer is general
+   over `re` so it applies to each body(a); wire `LocalTopFeedFromNestOkT`(:23507) with the per-body
+   fwd carrier (D1) + bwd carrier (D8) + `GuardBridgeFromDescent`. Depends on D11.
+4. Endpoint UNCONDITIONAL + C5 (`MainTheoremL4` + `Supported` disjunction + `MatchCorrect`) per §5.
