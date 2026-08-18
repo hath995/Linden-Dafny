@@ -104,23 +104,48 @@ Banked since: `a987d34` premise-3 (`M.FLookLoopTopLookClkStableFull`, third cloc
 CONCLUSION); `427d8b2` D9 (`M.FLookLoopInLookLiveOwnerMatched` = connective (A1): res0-live ⟹ innermost
 owner MatchedPosLA).
 
-**The DESCENT CONCLUSION** (the single producer still owed, task #35):
+**The DESCENT CONCLUSION** (what both consumers need):
 `forall g2 :: g2 in CapIdsInLooks(re) && res0-live(g2) ==> g2 in gmt` (PRESENCE-only; gmt = leaf.1 from
-`BestTieLkNestedTop`). D11 (in flight, branch `brickD-11`) builds it as the reverse-mirror of the green
-`FLookLoopAncestorClockChain` (LiftSim:23904, `decreases |LookIds|`): compose per-body backward carriers
-`LookNestBackTTop`(top, green)/`LookNestBackTFromBodyReplay`(per-body, green) UP the nesting via
-`NI.LookPathComposeNested`, using (A1) + `FLookLoopFullCoversInLooks` for the per-level (A2) tie.
-A scout confirmed the LITERAL position correspondence (`get_cp(res.1,owner)==spec-cp`) is NOT needed —
-the sim carries it as the presence invariant `LookNestBackTTop`; route through carriers, not raw positions.
+`BestTieLkNestedTop`). `ffdabee` D11 built its **position-free half** GREEN — the reverse-mirror of the
+green `FLookLoopAncestorClockChain` (LiftSim:23904): `DescentLandTop` (level step, instantiates the
+`LookNestBackTTop` carrier), `ReconLiveTopAncestor` (top-ancestor peel), `DescentProducerTopOwners` (emits
+the target from a per-`g2` backward-carrier package), `DescentProducerWiringCheck` (confirms it discharges
+`GuardBridgeFromDescent`+`ReverseCFromDescent` verbatim). **At DEPTH 1 this is the COMPLETE descent.**
 
-**REMAINING MAP after D11 (~3 more bricks to `ApiMatch.MatchCorrect`):**
-1. D11 descent producer → discharges endpoint reverse-(c) + `AllBodyTopFeeds` re-arm guard bridge.
-2. Forward-existence residual (LiftSim:16325-44): the VALUE tie `leaf.1[g]==NormRange(LiveRange(res.0,g))`
-   (spec value == engine reconstructed value). Owed separately — the forward value carrier (depth-1
-   `GmtTieInside`) was DROPPED for the nested tier, so this needs the recon_inner spec-tie
-   `M.LkReplayMatchesSpecNestedFull` (proven modulo its inner recursive premise, MainTheorem:8957) driven
-   recursively, OR a rebuilt forward value carrier. Likely its own brick.
-3. `AllBodyTopFeeds` body-arms: `LocalTopFeed(body(a),…)` per look a — the descent producer is general
-   over `re` so it applies to each body(a); wire `LocalTopFeedFromNestOkT`(:23507) with the per-body
-   fwd carrier (D1) + bwd carrier (D8) + `GuardBridgeFromDescent`. Depends on D11.
-4. Endpoint UNCONDITIONAL + C5 (`MainTheoremL4` + `Supported` disjunction + `MatchCorrect`) per §5.
+## 8. THE ISOLATED KERNEL (banked, user chose to STOP here 2026-08-19) — R1 + R2
+D11 proved (by reading defs) that depth-≥2 nested CAPTURING reduces to exactly TWO facts, and that they
+are the **SHARED FRONTIER of BOTH the forward and the backward chains** — `L3aEndpointAssemblyNestedFull`
+(backward reverse-(c) + `AllBodyTopFeeds` re-arm) AND `ReconInnerForwardWired`/`ReconBodyPathPresentLk`
+(MainTheorem:11080, forward-existence VALUE tie) all take the SAME per-`g2` fresh-membership package as an
+unproven hypothesis. So this is ONE kernel, not several bricks:
+
+- **R1 (TRACTABLE, not yet built):** `res0`-live DIRECT `g2` at its innermost owner `l''` ⟹
+  `g2 in PIV.GmOfLive(body(l''), FreshBodyMatch(l''))`. Route: (A1) `M.FLookLoopInLookLiveOwnerMatched`
+  gives `l''` matched; `FLookLoopFullCoversInLooks` gives `res0 ~ fresh` on `{g2}` (so fresh's clock set);
+  then a NEW structural lemma "DIRECT, not-under-quant group: clock-set ⟹ `PathPresentLk`" (mirror
+  `PikeInvRE.LookFreePathPresentLk`/`BodyPathPresentLk` :2287 but restricted to `g2`'s own LOOK-FREE PATH,
+  NOT whole-body `LookFreeRE`) + the `FilterAbsenceExtract` (:2333) contrapositive ⟹ `GmOfLive` membership.
+  (D11 missed this by only trying the existing membership lemmas, which take `PathPresentLk` as INPUT.)
+- **R2 (THE WALL, not built):** presence-only `g2 in leaf_{A0} ==> g2 in leaf` — inner sub-look spec leaf
+  ⟹ parent spec leaf, for a DEEP `g2` (innermost owner `A1` nested inside top ancestor `A0`; the top
+  carrier can't land deep `g2` since `GmOfLiveInsideLookAbsent` puts `g2 ∉ GmOfLive(body(A0), fresh_{A0})`,
+  and the nested carrier `LookNestBackTFromBodyReplay` lands it only in `leaf_{A0}`). The only bridge,
+  `M.OuterLeafInnerGEqOwnerBody` (:8378), is keyed on the descent-recorded position `inpo` and gives
+  outer→inner. Closing R2 needs the **position correspondence** `get_cp(res.1,A0)==spec-A0-cp` in the
+  "sub-leaf embeds in parent leaf" form — the tie the sim ARCHITECTURE DELIBERATELY DROPS (`GmtTieInside`
+  dropped at the nested tier, C1). Scout + source comments (MainTheorem:4741-4796: sim "carries no history
+  to express it"; `LookCpSpecMatch` :4710 gets oracle-uniqueness but NOT path-uniqueness) confirm this is
+  NOT a small lemma: it needs either a direct position-correspondence proof (path-history the sim omits) or
+  a depth-k SIM REBUILD re-carrying the inner value/presence tie. **This is the fundamental wall.**
+
+**To RESUME depth-≥2 capturing:** build R1 (tractable, banks progress + narrows to R2), then attack R2 via
+either (a) augment the composite sim to track which gate-crossing is on the winning first-leaf path (adds
+the missing path-uniqueness half of `LookCpSpecMatch`), or (b) a standalone position-correspondence
+capstone. R1's conclusion + R2's conclusion together discharge the per-`g2` package that D11's
+`DescentProducerTopOwners` (backward) AND the forward-existence residual both consume — closing BOTH.
+Then: endpoint UNCONDITIONAL + C5 (`MainTheoremL4` + `Supported` disjunction + `MatchCorrect`) per §5.
+
+**What IS shipped (depth-k, banked green on `l4-nesting`):** full-depth-k nested-lookahead MATCHING
+(end-to-end, pre-existing); the entire depth-k CAPTURING FORWARD value chain (green, conditional endpoint
+`L3aEndpointAssemblyNestedFull`); depth-1 nested capturing (complete). The depth-≥2 capturing NOVELTY is
+gated solely on R1+R2 above.
