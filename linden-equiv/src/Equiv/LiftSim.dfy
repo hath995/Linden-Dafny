@@ -24004,4 +24004,140 @@ module LindenElkLiftSim {
                               rfcap, rflk, rfqt, g);
   }
 
+  /** (BRICK D-11 descent — LEVEL STEP) Land a fresh-body-live capture into a
+      level's spec leaf via the SIM BACKWARD carrier. For a TOP look `A0`
+      matched + dominating on the carrier thread's banks, any `g2` (in `S`, in
+      `body(A0)`'s caps) that the FRESH body match of `A0` carries LIVE in its
+      OWN banks lands in that level's `gmt`. Pure instantiation of the
+      `LookNestBackTTop` carrier — delivered at the top by `BestTieLkNestedTop`
+      (winning thread) and one nesting level down by `LookNestBackTFromBodyReplay`
+      (a look body's replay). This is the "use the backward carrier to land g2 in
+      that level's gmt" step of the reverse-recon descent. */
+  lemma DescentLandTop(
+      re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+      S: set<LG.GroupId>, gmt: LG.GroupMap, thread: AI.Thread, A0: nat, g2: nat,
+      ncap: int, nlook: int, nquant: int)
+    requires S == PIV.CapIdsInLooks(re)
+    requires LookNestBackTTop(re, crv, str, ov, S, gmt, thread, ncap, nlook, nquant)
+    requires A0 in NI.TopLookIds(re)
+    requires A0 in LTB.LookIds(re)
+    requires M.MatchedPosLA(crv, thread.look_regs, A0 as int)
+    requires NI.LookPathDom(re, AI.get_idx(thread.look_regs.a_clk, A0 as int), thread.quant_regs.a_clk, A0)
+    requires g2 in S && g2 in PIV.CapIds(NI.LookBodyOfRE(re, A0))
+    requires var rf := M.FreshBodyMatch(crv, str, A0 as int, thread.look_regs, ov, ncap, nlook, nquant);
+             rf.Some?
+             && g2 in PIV.GmOfLive(NI.LookBodyOfRE(re, A0), rf.value.capture_regs,
+                                   rf.value.look_regs, rf.value.quant_regs)
+    ensures g2 in gmt
+  {
+  }
+
+  /** (BRICK D-11 descent — TOP-ANCESTOR PEEL) The REVERSE mirror of the forward
+      `FLookLoopAncestorClockChain`'s `A0 := TopAncestorExists` peel. Given a
+      recon-live inside-look capture `g2` with its innermost-DIRECT owner `owner0`
+      (as delivered by `M.FLookLoopInLookLiveOwnerMatched` / `InnermostOwnerDirect`),
+      exposes `g2`'s outermost TOP-level ancestor look `A0`: a top look of `re`
+      whose body still contains `g2`, with `owner0` nested inside `body(A0)` (or
+      `A0 == owner0` when `owner0` is already top). Pure structural descent
+      (`TopAncestorExists` + `LookBodyCompose` + `LookBodyCapsIn`); this is the
+      "descend to `g2`'s innermost owner, peel its top ancestor" skeleton of the
+      reverse-recon descent. */
+  lemma ReconLiveTopAncestor(re: R.regex, g2: nat, owner0: nat) returns (A0: nat)
+    requires PIV.CapUnique(re) && LTB.LookUnique(re)
+    requires g2 in PIV.CapIdsInLooks(re)
+    requires owner0 in LTB.LookIds(re)
+    requires g2 in PIV.CapIds(NI.LookBodyOfRE(re, owner0))
+    requires g2 !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner0))
+    ensures A0 in NI.TopLookIds(re)
+    ensures A0 in LTB.LookIds(re)
+    ensures g2 in PIV.CapIds(NI.LookBodyOfRE(re, A0))
+    ensures A0 == owner0 || owner0 in LTB.LookIds(NI.LookBodyOfRE(re, A0))
+  {
+    if owner0 in NI.TopLookIds(re) {
+      A0 := owner0;
+      NI.TopLookIdsIn(re);
+    } else {
+      A0 := TopAncestorExists(re, owner0);   // owner0 in LookIds(body(A0)); A0 top
+      NI.LookBodyCompose(re, A0, owner0);     // body(owner0) == LookBodyOfRE(body(A0), owner0)
+      NI.LookBodyCapsIn(NI.LookBodyOfRE(re, A0), owner0);  // CapIds(body(owner0)) <= CapIds(body(A0))
+    }
+  }
+
+  /** (BRICK D-11 descent — TOP-OWNER PRODUCER) The reverse-recon descent
+      conclusion assembled for every recon-live capture whose descent bottoms out
+      at a TOP look (the depth-1 shape, and the top-ancestor slice of the general
+      descent): from the per-`g2` backward-carrier package — `g2`'s top ancestor
+      `A0` matched + dominating on the carrier thread's banks, and `A0`'s FRESH
+      body match carrying `g2` LIVE — the SIM carrier `LookNestBackTTop` lands each
+      `g2` in `gmt`. Produces EXACTLY the conclusion `GuardBridgeFromDescent` /
+      `ReverseCFromDescent` consume as a `requires`. The remaining obligation is
+      the per-`g2` package itself: matched/dominating is the reverse-liveness
+      connective `M.FLookLoopInLookLiveOwnerMatched` transported onto the carrier
+      banks, and the fresh-body membership is the (A2) producer (see the D-11
+      residual note). At depth 1 every innermost owner is top, so this IS the full
+      descent; at depth >= 2 it covers the top-ancestor case and leaves the
+      leaf-to-parent-leaf compose-up for a deeper owner. */
+  lemma DescentProducerTopOwners(
+      re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+      S: set<LG.GroupId>, gmt: LG.GroupMap, thread: AI.Thread, res0: AReg.Regs,
+      ncap: int, nlook: int, nquant: int)
+    requires S == PIV.CapIdsInLooks(re)
+    requires LookNestBackTTop(re, crv, str, ov, S, gmt, thread, ncap, nlook, nquant)
+    // per recon-live inside-look g2: a TOP ancestor A0 matched + dominating on the
+    // carrier thread's banks, whose FRESH body match carries g2 LIVE. (The (A1)
+    // connective transported onto the carrier banks + the (A2) fresh-membership.)
+    requires forall g2: nat :: g2 in S && AI.get_idx(res0.a_clk, CP.start_reg(g2)) >= 0 ==>
+      exists A0: nat ::
+        A0 in NI.TopLookIds(re) && A0 in LTB.LookIds(re)
+        && g2 in PIV.CapIds(NI.LookBodyOfRE(re, A0))
+        && M.MatchedPosLA(crv, thread.look_regs, A0 as int)
+        && NI.LookPathDom(re, AI.get_idx(thread.look_regs.a_clk, A0 as int), thread.quant_regs.a_clk, A0)
+        && var rf := M.FreshBodyMatch(crv, str, A0 as int, thread.look_regs, ov, ncap, nlook, nquant);
+           rf.Some?
+           && g2 in PIV.GmOfLive(NI.LookBodyOfRE(re, A0), rf.value.capture_regs,
+                                 rf.value.look_regs, rf.value.quant_regs)
+    ensures forall g2: nat :: g2 in S && AI.get_idx(res0.a_clk, CP.start_reg(g2)) >= 0 ==> g2 in gmt
+  {
+    forall g2: nat | g2 in S && AI.get_idx(res0.a_clk, CP.start_reg(g2)) >= 0
+      ensures g2 in gmt
+    {
+      var A0: nat :|
+        A0 in NI.TopLookIds(re) && A0 in LTB.LookIds(re)
+        && g2 in PIV.CapIds(NI.LookBodyOfRE(re, A0))
+        && M.MatchedPosLA(crv, thread.look_regs, A0 as int)
+        && NI.LookPathDom(re, AI.get_idx(thread.look_regs.a_clk, A0 as int), thread.quant_regs.a_clk, A0)
+        && var rf := M.FreshBodyMatch(crv, str, A0 as int, thread.look_regs, ov, ncap, nlook, nquant);
+           rf.Some?
+           && g2 in PIV.GmOfLive(NI.LookBodyOfRE(re, A0), rf.value.capture_regs,
+                                 rf.value.look_regs, rf.value.quant_regs);
+      DescentLandTop(re, crv, str, ov, S, gmt, thread, A0, g2, ncap, nlook, nquant);
+    }
+  }
+
+  /** (BRICK D-11 — INTERFACE CHECK) Confirms the reverse-recon descent
+      conclusion `DescentProducerTopOwners` emits (its `ensures`, restated here
+      verbatim as the sole descent `requires`) is EXACTLY what both D-8 descent
+      consumers take: it discharges `GuardBridgeFromDescent` and
+      `ReverseCFromDescent` with no adaptation. Green here means the produced
+      descent conclusion type-matches and closes both consumers directly. */
+  lemma DescentProducerWiringCheck(
+      re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+      S: set<LG.GroupId>, gmt: LG.GroupMap,
+      res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs)
+    requires S == PIV.CapIdsInLooks(re)
+    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re)
+    requires forall c: nat :: c in PIV.CapIds(re) && AI.get_idx(res0.a_clk, CP.start_reg(c)) < 0
+                             ==> AI.get_idx(res0.a_cp, CP.start_reg(c)) < 0
+    // the reverse-recon descent conclusion — DescentProducerTopOwners' `ensures`.
+    requires forall g2: nat :: g2 in S && AI.get_idx(res0.a_clk, CP.start_reg(g2)) >= 0 ==> g2 in gmt
+    // both consumers' conclusions, derived through the produced descent conclusion:
+    ensures forall l: nat :: l in LTB.LookIds(re) && l in NI.TopLookIds(re)
+      && (exists g2: nat :: g2 in PIV.CapIds(NI.LookBodyOfRE(re, l)) && AI.get_idx(res0.a_clk, CP.start_reg(g2)) >= 0)
+      ==> (exists g3: LG.GroupId :: g3 in S && g3 in gmt && g3 in PIV.CapIds(NI.LookBodyOfRE(re, l)))
+    ensures forall g: LG.GroupId :: g in S && g in PIV.GmOfLive(re, res0, res1, res2) ==> g in gmt
+  {
+    GuardBridgeFromDescent(re, S, gmt, res0);
+    ReverseCFromDescent(re, res0, res1, res2, gmt, S);
+  }
+
 }
