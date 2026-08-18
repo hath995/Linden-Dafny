@@ -5534,6 +5534,41 @@ module LindenElkLiftSim {
       0 <= l < nlook && GateStaticAt(qm, re, crv, l, ncap, nlook, nquant)
   }
 
+  /** (L4 NESTED) depth-agnostic sibling of `GateStaticAt`: the per-lid look-
+      table package with the body cap generalized off the DEPTH-1 look-free leaf.
+      `NR.LookFreeRE(body)` becomes `NR.NestedFragmentRE(body)` (arbitrary look
+      nesting) qualified by the positive-lookahead-nesting side conditions
+      (`NR.NegLooksLookFreeRE(body)` — negative bodies stay look-free; and
+      `M.NoPosLookbehindRE(body)` — positive nesting is lookAHEAD-only, matching
+      the recursive value keystone `M.LkReplayMatchesSpecNested` and the per-body
+      feed `LookNestOkTFromBodyReplay`). The body's compile statics lift from
+      `PSM.StaticOkRE` to `PSM.StaticOkNestedRE`. The `DefGroups(body) ⊆
+      CapIdsInLooks(re)` confinement + the negative-capture-free clause are
+      verbatim. On look-free bodies (`NestDepth(body) == 0`) it coincides with
+      `GateStaticAt` (`GateStaticAtFromDepth1`). */
+  ghost predicate GateStaticAtNested(qm: AR.QMap, re: R.regex, crv: CP.FCompiled, l: int,
+                                     ncap: int, nlook: int, nquant: int) {
+    l in qm.looks
+    && exists la: R.lookaround, body: R.regex ::
+         LTB.LookEntryOk(crv, l, la, body)
+         && T.TransWf(body) && NR.NestedFragmentRE(body)
+         && NR.NegLooksLookFreeRE(body) && M.NoPosLookbehindRE(body)
+         && qm.looks[l].0 == T.TrLookaround(la)
+         && qm.looks[l].1 == T.Translate(body)
+         && (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
+         && var bodycode := CP.compile_to_bytecode(body);
+            |bodycode| >= 1
+            && PSM.StaticOkNestedRE(qm, body, bodycode, |bodycode| - 1)
+            && PSM.SizesOkRE(body, ncap, nlook, nquant)
+         && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
+  }
+
+  ghost predicate GateStaticsOkNested(qm: AR.QMap, re: R.regex, crv: CP.FCompiled,
+                                      ncap: int, nlook: int, nquant: int) {
+    forall l: int | l in qm.looks ::
+      0 <= l < nlook && GateStaticAtNested(qm, re, crv, l, ncap, nlook, nquant)
+  }
+
   /** `PlusFragmentRE` is look-free by construction, so it sits inside the
       compile fragment (the two predicates differ only at the lookaround case,
       which `PlusFragmentRE` forbids). */
@@ -5634,6 +5669,179 @@ module LindenElkLiftSim {
     ensures GateStaticsOk(qm, re, crv, ncap, nlook, nquant)
   {
     GateStaticsSweepRE(qm, re, re, crv, ncap, nlook, nquant);
+  }
+
+  /** (L4 NESTED) `PIV.CompileStutterTameRE` off the depth-1 fragment: the Jmp-
+      target tameness of a compiled block depends only on `NfaRepRE(re, code, 0,
+      endl)` (which `PIV.CompileJumpsRE` consumes — it takes NO fragment
+      hypothesis), so `NR.CompileToBytecodeRepNested` supplies it for any nested
+      fragment. Depth-general. */
+  lemma CompileStutterTameRENested(re: R.regex)
+    requires NR.NestedFragmentRE(re)
+    ensures PIV.StutterTameRE(CP.compile_to_bytecode(re))
+  {
+    var code := CP.compile_to_bytecode(re);
+    var endl := CP.compile(re, 0, CP.Progress).1;
+    NR.CompileToBytecodeRepNested(re);   // NfaRepRE(re, code, 0, endl), GetPc(endl)==Accept, |code|==endl+1
+    forall pc: nat | pc < |code|
+      ensures match NR.GetPcRE(code, pc)
+              case Some(Jmp(next)) =>
+                pc < next
+                || (next >= 0 && NR.GetPcRE(code, next as nat).Some? && NR.GetPcRE(code, next as nat).value.Fork?)
+              case _ => true
+    {
+      match NR.GetPcRE(code, pc)
+      case Some(Jmp(n)) =>
+        assert pc < endl as nat;   // code[endl] == Accept ≠ Jmp, and pc < |code| == endl+1
+        PIV.CompileJumpsRE(re, code, 0, endl as nat, pc, n);
+      case _ =>
+    }
+  }
+
+  /** (L4 NESTED) `GateStaticsSweepRENested` — the nested-fragment establishment
+      sweep, off `GateStaticsSweepRE`. Two changes: the body-cap facts are the
+      NESTED ones (`NestedFragmentRE`/`StaticOkNestedRE` via
+      `CompileToBytecodeRepNested`+`CompileStutterTameRENested`), and — crucially —
+      the sweep RECURSES INTO each lookaround body (`GateStaticsSweepRE` stopped at
+      the leaf because look-free bodies own no lids). Every static fact descends
+      DEFINITIONALLY to the body at a `Re_lookaround` node (TransWf/QmapOk/LmapOk/
+      CapUnique/QuantUnique/NestedFragmentRE/NegLooksLookFreeRE/NoPosLookbehindRE/
+      LookTablesOk/SizesOkRE); the confinement descends via `CapIdsInLooks(body) ⊆
+      CapIds(body) == CapIdsInLooks(re) ⊆ CapIdsInLooks(re0)`. `re0` carries the
+      whole-regex confinement target. */
+  lemma GateStaticsSweepRENested(qm: AR.QMap, re0: R.regex, re: R.regex, crv: CP.FCompiled,
+                                 ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
+    requires NR.NestedFragmentRE(re) && NR.NegLooksLookFreeRE(re) && M.NoPosLookbehindRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires PIV.CapIdsInLooks(re) <= PIV.CapIdsInLooks(re0)
+    ensures forall l: int :: l >= 0 && (l as nat) in LTB.LookIds(re) ==>
+      GateStaticAtNested(qm, re0, crv, l, ncap, nlook, nquant)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) =>
+      GateStaticsSweepRENested(qm, re0, r1, crv, ncap, nlook, nquant);
+      GateStaticsSweepRENested(qm, re0, r2, crv, ncap, nlook, nquant);
+    case Re_con(r1, r2) =>
+      GateStaticsSweepRENested(qm, re0, r1, crv, ncap, nlook, nquant);
+      GateStaticsSweepRENested(qm, re0, r2, crv, ncap, nlook, nquant);
+    case Re_quant(_, _, _, r1) =>
+      GateStaticsSweepRENested(qm, re0, r1, crv, ncap, nlook, nquant);
+    case Re_capture(_, r1) =>
+      GateStaticsSweepRENested(qm, re0, r1, crv, ncap, nlook, nquant);
+    case Re_lookaround(lid, la, body) =>
+      // confinement: CapIdsInLooks(body) ⊆ CapIds(body) == CapIdsInLooks(re) ⊆ CapIdsInLooks(re0)
+      PIV.CapIdsSplit(body);
+      assert PIV.CapIdsInLooks(re) == PIV.CapIds(body);
+      assert PIV.CapIdsInLooks(body) <= PIV.CapIdsInLooks(re0);
+      // recurse into the body for its OWN inner lids
+      GateStaticsSweepRENested(qm, re0, body, crv, ncap, nlook, nquant);
+      if lid >= 0 {
+        // the node's own bundle
+        assert LTB.LookEntryOk(crv, lid, la, body);
+        assert T.TransWf(body) && NR.NestedFragmentRE(body)
+            && NR.NegLooksLookFreeRE(body) && M.NoPosLookbehindRE(body);
+        assert lid in qm.looks && qm.looks[lid] == (T.TrLookaround(la), T.Translate(body));
+        // confinement: the body's groups are inside-look groups of re0
+        M.TranslateDefGroupsEqCapIds(body);
+        assert (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re0);
+        // compile statics for the body's own bytecode (NESTED)
+        NR.CompileToBytecodeRepNested(body);
+        CompileStutterTameRENested(body);
+        var bodycode := CP.compile_to_bytecode(body);
+        var next := CP.compile(body, 0, CP.Progress).1;
+        assert next >= 0 && |bodycode| == next + 1 && |bodycode| >= 1;
+        assert NR.NfaRepRE(body, bodycode, 0, next as nat)
+            && NR.GetPcRE(bodycode, next as nat) == Some(RB.Accept);
+        assert (next as nat) == |bodycode| - 1;
+        assert PSM.StaticOkNestedRE(qm, body, bodycode, |bodycode| - 1);
+        assert PSM.SizesOkRE(body, ncap, nlook, nquant);
+        assert (la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body);
+        assert GateStaticAtNested(qm, re0, crv, lid, ncap, nlook, nquant);
+      }
+    case _ =>
+  }
+
+  /** (L4 NESTED) TOP-LEVEL establishment of `GateStaticsOkNested` from the
+      compile tables + nested-fragment well-formedness (`M.NoPosLookbehindRE` +
+      `NR.NegLooksLookFreeRE` pin the positive-lookahead-nesting scope). Proves
+      `GateStaticsOkNested` is DISCHARGEABLE for the nested fragment — the
+      "requires-side" of the non-vacuity claim. Off `GateStaticsFromTables`. */
+  lemma GateStaticsFromTablesNested(qm: AR.QMap, re: R.regex, crv: CP.FCompiled,
+                                    ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
+    requires NR.NestedFragmentRE(re) && NR.NegLooksLookFreeRE(re) && M.NoPosLookbehindRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires forall l: int :: l in qm.looks ==>
+      l >= 0 && (l as nat) in LTB.LookIds(re) && l < nlook
+    ensures GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
+  {
+    GateStaticsSweepRENested(qm, re, re, crv, ncap, nlook, nquant);
+  }
+
+  /** A look-free regex has no lookaround nodes, so it vacuously has no positive
+      lookbehinds (`M.NoPosLookbehindRE` only constrains lookaround leaves). */
+  lemma LookFreeNoPosLookbehindRE(re: R.regex)
+    requires NR.LookFreeRE(re)
+    ensures M.NoPosLookbehindRE(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => LookFreeNoPosLookbehindRE(r1); LookFreeNoPosLookbehindRE(r2);
+    case Re_con(r1, r2) => LookFreeNoPosLookbehindRE(r1); LookFreeNoPosLookbehindRE(r2);
+    case Re_quant(_, _, _, r1) => LookFreeNoPosLookbehindRE(r1);
+    case Re_capture(_, r1) => LookFreeNoPosLookbehindRE(r1);
+    case _ =>
+  }
+
+  /** (L4 NESTED) the depth-1 gate-static package embeds in the nested one:
+      `GateStaticAt ⟹ GateStaticAtNested` on look-free bodies. Confirms
+      `GateStaticAtNested` is a genuine WEAKENING (every depth-1 caller feeds the
+      nested chain) and that the two coincide at `NestDepth(body) == 0`. The
+      look-free body's nested facts come from `LookFreePlusIsNestedRE`/
+      `LookFreeNegLooksLookFree`/`LookFreeNoPosLookbehindRE`, and its
+      `StaticOkNestedRE` from `PSM.StaticOkRENestedFromRE`. */
+  lemma GateStaticAtImpliesNested(qm: AR.QMap, re: R.regex, crv: CP.FCompiled, l: int,
+                                  ncap: int, nlook: int, nquant: int)
+    requires GateStaticAt(qm, re, crv, l, ncap, nlook, nquant)
+    ensures GateStaticAtNested(qm, re, crv, l, ncap, nlook, nquant)
+  {
+    var la: R.lookaround, body: R.regex :|
+      LTB.LookEntryOk(crv, l, la, body)
+      && T.TransWf(body) && NR.LookFreeRE(body)
+      && qm.looks[l].0 == T.TrLookaround(la)
+      && qm.looks[l].1 == T.Translate(body)
+      && (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
+      && var bodycode := CP.compile_to_bytecode(body);
+         |bodycode| >= 1
+         && PSM.StaticOkRE(qm, body, bodycode, |bodycode| - 1)
+         && PSM.SizesOkRE(body, ncap, nlook, nquant)
+      && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
+    var bodycode := CP.compile_to_bytecode(body);
+    // look-free body ⟹ the nested-fragment side conditions
+    NR.LookFreeIsPlusFragmentRE(body);      // PlusFragmentRE(body) (StaticOkRE ⟹ LookBehindFragmentRE(body))
+    NR.LookFreePlusIsNestedRE(body);        // NestedFragmentRE(body)
+    NR.LookFreeNegLooksLookFree(body);      // NegLooksLookFreeRE(body)
+    LookFreeNoPosLookbehindRE(body);        // NoPosLookbehindRE(body)
+    PSM.StaticOkRENestedFromRE(qm, body, bodycode, |bodycode| - 1);  // StaticOkNestedRE(body)
+    assert GateStaticAtNested(qm, re, crv, l, ncap, nlook, nquant);
+  }
+
+  lemma GateStaticsOkImpliesNested(qm: AR.QMap, re: R.regex, crv: CP.FCompiled,
+                                   ncap: int, nlook: int, nquant: int)
+    requires GateStaticsOk(qm, re, crv, ncap, nlook, nquant)
+    ensures GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
+  {
+    forall l: int | l in qm.looks
+      ensures 0 <= l < nlook && GateStaticAtNested(qm, re, crv, l, ncap, nlook, nquant)
+    {
+      GateStaticAtImpliesNested(qm, re, crv, l, ncap, nlook, nquant);
+    }
   }
 
   /** POSITIVE GATE, PASSING: the VM writes `a_cp[l] := cp` and continues; B
