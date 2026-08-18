@@ -4206,6 +4206,64 @@ module LindenElkMain {
     ReplayCapAgreeFresh(bytecode, str, cp, cap, lk, qt, ov, lookcdn, body, ncap, nlook, nquant);
   }
 
+  /** C4e: the per-lid FORWARD replay↔fresh QUANT agreement for a NESTED body —
+      nested twin of `ReplayLidQuantAgreeFresh` (:5076) and quant analogue of
+      `ReplayLidCapAgreeFreshNested`. The `FFindMatchPlus` lookahead replay's quant
+      bank agrees, on `QIdsInt(body)`, with the fresh `FFindMatch`, with NO capture
+      hypotheses (the register-value-blind bisimulation `CM.FFindMatchCapRel` runs
+      at `Sc == {}`: control never reads register values, so it stays in lockstep
+      regardless of the incoming capture bank). Entry: the body's quant slots are
+      still INITIAL in the incoming bank. The ONE depth-1-capped ingredient is
+      `NoTrueQuantStampNested` (nested twin of `NoTrueQuantStamp`); `FNulledPlus
+      Identity` and `FFindMatchCapRel` are already fragment-generic. */
+  lemma ReplayLidQuantAgreeFreshNested(bytecode: RB.code, str: string, cp: int, cap: AReg.Regs, lk: AReg.Regs,
+                                       qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
+                                       body: R.regex, la: R.lookaround, ncap: int, nlook: int, nquant: int)
+    requires NR.NestedFragmentRE(body)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires la.Lookahead?
+    requires bytecode == CP.compile_to_bytecode(body)
+    requires 0 <= cp <= |str|
+    requires AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    requires |cap.a_cp| == ncap && |cap.a_clk| == ncap
+    requires CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body))
+    ensures
+      var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Forward, cp, cap, lk, qt, 0, lookcdn).0;
+      var rf := AI.FFindMatch(bytecode, str,
+                  AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                  ov, LAnc.Forward, lookcdn).0;
+      (result.None? <==> rf.None?)
+      && (result.Some? ==>
+            CM.RegsAgreeInside(result.value.quant_regs, rf.value.quant_regs, LKC.QIdsInt(body)))
+  {
+    var dir := LAnc.Forward;
+    var ctxc := AI.cp_context(cp, str, dir);
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, ctxc);
+    NoTrueQuantStampNested(body);
+    assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
+    FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
+    var (fmres, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+    if fmres.Some? {
+      FNulledPlusIdentity(body, fmres.value.capture_regs, fmres.value.look_regs, fmres.value.quant_regs,
+                          plus_bcv, str, ovx, dir);
+    }
+    var sf := AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                            AReg.init_regs(nquant), 0, ctxc);
+    assert CM.VmRel(inits, sf, {}, LKC.QIdsInt(body)) by {
+      assert CM.ThreadRel(AI.init_thread(cap, lk, qt),
+                          AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant)),
+                          {}, LKC.QIdsInt(body)) by {
+        assert CM.RegsAgreeInside(cap, AReg.init_regs(ncap), {});
+        assert CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body));
+      }
+    }
+    CM.FFindMatchCapRel(bytecode, str, inits, sf, ov, dir, lookcdn, {}, LKC.QIdsInt(body));
+  }
+
   /** L3b: the per-lid BACKWARD replay↔fresh capture agreement — lookbehind twin of
       `ReplayLidCapAgreeFresh`. The `FFindMatchPlus` backward replay from the main
       thread's `cap` (fresh on `CaptureRegs(body)`) agrees, on `CaptureRegs(body)`,
@@ -10068,6 +10126,87 @@ module LindenElkMain {
     }
   }
 
+  /** C4e: the int-lid image of `body`'s OUTSIDE-look quant ids — the quant-bank
+      indices a replay of `body` may touch (its inner looks are CheckOracle
+      leaves, so their quants never appear in `body`'s code). Quant analogue of
+      `PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body))`. */
+  ghost function QIdsOuter(body: R.regex): set<int> {
+    set q: nat | q in PIV.QuantIdsOutsideLooks(body) :: q as int
+  }
+
+  /** C4e: nested twin of `CaptureBytecodeClassifiedNestedOuter` for QUANTS — a
+      NESTED body's compiled bytecode writes quant clocks only inside its
+      OUTSIDE-look quant ids (`QuantWriteIdsRENested`, the L3a-sharpened classifier
+      that already excludes inside-look quants). `NR.CompileToBytecodeRepNested`
+      supplies the `NfaRepRE` + `Accept` terminator. */
+  lemma QuantBytecodeClassifiedNestedOuter(body: R.regex)
+    requires NR.NestedFragmentRE(body) && PIV.QuantUnique(body)
+    ensures CM.QuantWritesInside(CP.compile_to_bytecode(body), QIdsOuter(body))
+  {
+    var code := CP.compile_to_bytecode(body);
+    var next := CP.compile(body, 0, CP.Progress).1;
+    NR.CompileToBytecodeRepNested(body);
+    var endl := next as nat;
+    var Sq := QIdsOuter(body);
+    forall pc: nat | pc < |code|
+      ensures code[pc].SetQuantToClock? ==> code[pc].sq in Sq
+    {
+      assert NR.GetPcRE(code, pc) == Some(code[pc]);
+      if pc < endl {
+        PIV.QuantWriteIdsRENested(body, code, 0, endl, pc);
+        if code[pc].SetQuantToClock? {
+          var qn: nat := code[pc].sq as nat;
+          assert qn in PIV.QuantIdsOutsideLooks(body);
+          assert (qn as int) in Sq;
+        }
+      } else {
+        assert pc == endl;
+        assert NR.GetPcRE(code, endl) == Some(RB.Accept);
+      }
+    }
+  }
+
+  /** C4e: nested twin of `ReplayPlusCaptureFrameNestedOuter` for QUANTS. The
+      `FFindMatchPlus` capturing lookAHEAD replay over a NESTED body writes its
+      quant bank only inside the body's OUTSIDE-look quant ids `QIdsOuter(body)`
+      (its inner looks are CheckOracle leaves). The plus reconstruction is the
+      identity on the `QuantRegsFinal` result (`FNulledPlusIdentity`), so the
+      `FFindMatchPlus` quant bank IS the `FFindMatch` one, which the outer-quant
+      write classification + `CM.FFindMatchQuantFrame` frames. */
+  lemma ReplayPlusQuantFrameNestedOuter(bytecode: RB.code, str: string, ov: LOr.OracleView, dir: LAnc.direction,
+                               lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                               cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
+    requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires la.Lookahead? && dir == LAnc.Forward
+    requires bytecode == CP.compile_to_bytecode(body)
+    requires AI.cp_context(cp, str, dir).nextchar == AI.get_char(str, cp)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp, cap, lk, qt, 0, lookcdn).0;
+      r.Some? ==> CM.RegsAgreeOutside(r.value.quant_regs, qt, QIdsOuter(body))
+  {
+    var Sq := QIdsOuter(body);
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
+    QuantBytecodeClassifiedNestedOuter(body);
+    assert CM.VmQuantsAgree(inits, qt, Sq) by {
+      assert inits.active == [AI.init_thread(cap, lk, qt)];
+      assert AI.init_thread(cap, lk, qt).quant_regs == qt;
+      assert CM.RegsAgreeOutside(qt, qt, Sq);
+    }
+    CM.FFindMatchQuantFrame(bytecode, str, inits, ov, dir, lookcdn, qt, Sq);
+    NoTrueQuantStampNested(body);
+    assert VmQuantFinal(inits) by {
+      assert QuantRegsFinal(AI.init_thread(cap, lk, qt));
+    }
+    FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
+    var (res0, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+    if res0.Some? {
+      var th := res0.value;
+      assert QuantRegsFinal(th);
+      FNulledPlusIdentity(body, th.capture_regs, th.look_regs, th.quant_regs, plus_bcv, str, ovx, dir);
+    }
+  }
+
   /** R2: per-look-entry side condition for the nested FLookLoop frame. Each
       lookaround body in range is a nested-fragment regex with unique cap/quant/
       look ids and correct sub-rows; its OUTER capture regs land in `S`, its own
@@ -10188,6 +10327,104 @@ module LindenElkMain {
         var resTail := AI.FLookLoop(crv, str, next, maxlook, ncap, nlk, nqt, ov1);
         CM.RegsAgreeOutsideTrans(resTail.0, ncap, cap, S);
         CM.RegsAgreeOutsideTrans(resTail.1, nlk, lk, Slook);
+      }
+  }
+
+  /** C4e: the L4 nested QUANT frame for `FLookLoop` — quant twin of
+      `FLookLoopCaptureFrameNested`. Every matched positive-lookahead body may
+      NEST looks; the quant bank is written only inside `Sq` (each body's
+      OUTSIDE-look quant ids land in `Sq`; its inner-look quants come from the
+      body's OWN inner lids, which are OTHER rows also covered by `Sq`). This is
+      the nested weakening of `FLookLoopQuantFrame`: NOT the depth-1 LookFree
+      per-body hypothesis, but the STATIC `FrameEntryOk` rows (surviving look-bank
+      growth) plus the per-row `QIdsOuter(body) <= Sq`. The "matched look has a
+      table row" invariant is preserved across each replay via the own-look-ids
+      look frame (`ReplayPlusLookFrameNested`) + `LookIdEntryExists`, exactly as
+      on the capture side. `decreases maxlook - lid`. */
+  lemma {:isolate_assertions} FLookLoopQuantFrameNested(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
+                              cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                              S: set<int>, Slook: set<int>, Sq: set<int>)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    requires forall l: int, la: R.lookaround, body: R.regex ::
+      lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==>
+      FrameEntryOk(crv, la, body, S, Slook) && QIdsOuter(body) <= Sq
+    requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
+      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+    ensures var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
+      CM.RegsAgreeOutside(res.2, qt, Sq)
+    decreases maxlook - lid
+  {
+    if lid > maxlook { return; }
+    var next := lid + 1;
+    match AReg.get_cp(lk, lid)
+    case None =>
+      FLookLoopQuantFrameNested(crv, str, next, maxlook, cap, lk, qt, ov, S, Slook, Sq);
+    case Some(cp) =>
+      var looktype := if 0 <= lid < |crv.f_look_types| then crv.f_look_types[lid] else R.Lookahead;
+      if !AI.capture_type(looktype) {
+        FLookLoopQuantFrameNested(crv, str, next, maxlook, cap, lk, qt, ov, S, Slook, Sq);
+      } else {
+        var la: R.lookaround, body: R.regex :| LTB.LookEntryOk(crv, lid, la, body);
+        assert 0 <= lid < |crv.f_look_types| && crv.f_look_types[lid] == la;
+        assert looktype == la;
+        assert FrameEntryOk(crv, la, body, S, Slook) && QIdsOuter(body) <= Sq;
+        assert la.Lookahead?;
+        var bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
+        var dir := AI.capture_direction(looktype);
+        var lookcdn := if 0 <= lid < |crv.f_look_cdns| then crv.f_look_cdns[lid] else [];
+        var lookast := if 0 <= lid < |crv.f_look_ast| then crv.f_look_ast[lid] else R.Re_empty;
+        assert lookast == body;
+        assert bytecode == CP.compile_to_bytecode(CP.capture_regex(la, body));
+        assert CP.capture_regex(la, body) == body;
+        assert bytecode == CP.compile_to_bytecode(body);
+        var (result, ov1) := AI.FFindMatchPlus(bytecode, lookast, crv.f_plus_bc, str, ov, dir,
+                                               cp, cap, lk, qt, 0, lookcdn);
+        var ncap := if result.None? then cap else result.value.capture_regs;
+        var nlk := if result.None? then lk else result.value.look_regs;
+        var nqt := if result.None? then qt else result.value.quant_regs;
+        assert dir == LAnc.Forward;
+        assert AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp);
+        ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        ReplayPlusQuantFrameNestedOuter(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+
+        // ---- this replay's quant frame, weakened to Sq ----
+        assert CM.RegsAgreeOutside(nqt, qt, Sq) by {
+          if result.Some? {
+            assert CM.RegsAgreeOutside(nqt, qt, QIdsOuter(body));
+            CM.RegsAgreeOutsideWeaken(nqt, qt, QIdsOuter(body), Sq);
+          } else {
+            assert CM.RegsAgreeOutside(qt, qt, Sq);
+          }
+        }
+        assert (forall k :: AI.get_idx(nqt.a_cp, k) < 0) && (forall k :: AI.get_idx(nqt.a_clk, k) >= -1) by {
+          if result.Some? { assert QuantRegsFinal(result.value); }
+        }
+        assert CM.RegsAgreeOutside(nlk, lk, LookIdSet(body)) by {
+          if result.Some? {} else { assert nlk == lk; }
+        }
+
+        // ---- preserve the "matched look has a table row" invariant for nlk ----
+        assert forall l: int :: next <= l <= maxlook && AReg.get_cp(nlk, l).Some? ==>
+          exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
+        by {
+          forall l: int | next <= l <= maxlook && AReg.get_cp(nlk, l).Some?
+            ensures exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
+          {
+            if AReg.get_cp(lk, l).Some? {
+            } else {
+              assert result.Some?;
+              assert CM.RegsAgreeOutside(nlk, lk, LookIdSet(body));
+              NewLookInBody(nlk, lk, body, l);
+              assert LTB.LookTablesOk(body, crv);
+              LookIdEntryExists(body, crv, l as nat);
+            }
+          }
+        }
+
+        FLookLoopQuantFrameNested(crv, str, next, maxlook, ncap, nlk, nqt, ov1, S, Slook, Sq);
+        var resTail := AI.FLookLoop(crv, str, next, maxlook, ncap, nlk, nqt, ov1);
+        CM.RegsAgreeOutsideTrans(resTail.2, nqt, qt, Sq);
       }
   }
 
@@ -11282,6 +11519,447 @@ module LindenElkMain {
                  PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)));
         RegsAgreeInsideWeakenSub(res.0, AReg.init_regs(ncap),
           PIV.CaptureRegsSet({g}), PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)));
+      }
+    }
+  }
+
+  /** C4e: a body's OUTSIDE-look quant ids are among ALL its quant ids — quant
+      twin of `OuterCapsLeCaptureRegs`. Via `PIV.QuantIdsSplit`. */
+  lemma QIdsOuterLeQIdsInt(body: R.regex)
+    ensures QIdsOuter(body) <= LKC.QIdsInt(body)
+  {
+    PIV.QuantIdsSplit(body);
+    forall k: int | k in QIdsOuter(body) ensures k in LKC.QIdsInt(body) {
+      var q: nat :| q in PIV.QuantIdsOutsideLooks(body) && (q as int) == k;
+      assert q in PIV.QuantIds(body);
+    }
+  }
+
+  /** C4e DELIVERABLE 2 (predicate): whole-loop QUANT reconstruction keyed on the
+      FINAL look bank `res1` — quant twin of `FLookLoopValueOkFull`. For EVERY
+      (possibly inner) matched positive lookahead `owner`, the fold's quant bank
+      `res2` carries that body's FRESH match clocks on its OWN OUTSIDE-look quant
+      ids `QIdsOuter(VBody(crv, owner))`. (Inner-look quants of the body come from
+      the body's own inner lids — other owners — so, like inner-look CAPTURES on
+      the capture side, they are covered per-owner and stitched by the endpoint,
+      not claimed here.) */
+  ghost predicate FLookLoopQuantValueOkFull(crv: CP.FCompiled, str: string, res2: AReg.Regs, res1: AReg.Regs,
+                                            lid: int, maxlook: int, ov: LOr.OracleView, ncap: int, nlook: int, nquant: int) {
+    forall owner: int :: lid <= owner <= maxlook && MatchedPosLA(crv, res1, owner) ==>
+      var rf := FreshBodyMatch(crv, str, owner, res1, ov, ncap, nlook, nquant);
+      (rf.Some? ==> CM.RegsAgreeInside(res2, rf.value.quant_regs, QIdsOuter(VBody(crv, owner))))
+      && (rf.None? ==> CM.RegsAgreeInside(res2, AReg.init_regs(nquant), QIdsOuter(VBody(crv, owner))))
+  }
+
+  /** C4e: `owner == lid` is not a matched positive lookahead in `res1`, so the
+      full quant map for `[lid, maxlook]` (keyed on `res1`) is exactly the one for
+      `[lid+1, maxlook]`. Quant twin of `ValueOkFullSkipLid`. */
+  lemma QuantValueOkFullSkipLid(crv: CP.FCompiled, str: string, res2: AReg.Regs, res1: AReg.Regs,
+                                lid: int, maxlook: int, ov: LOr.OracleView, ncap: int, nlook: int, nquant: int)
+    requires FLookLoopQuantValueOkFull(crv, str, res2, res1, lid + 1, maxlook, ov, ncap, nlook, nquant)
+    requires !MatchedPosLA(crv, res1, lid)
+    ensures FLookLoopQuantValueOkFull(crv, str, res2, res1, lid, maxlook, ov, ncap, nlook, nquant)
+  {
+    forall owner: int | lid <= owner <= maxlook && MatchedPosLA(crv, res1, owner)
+      ensures var rf := FreshBodyMatch(crv, str, owner, res1, ov, ncap, nlook, nquant);
+              (rf.Some? ==> CM.RegsAgreeInside(res2, rf.value.quant_regs, QIdsOuter(VBody(crv, owner))))
+              && (rf.None? ==> CM.RegsAgreeInside(res2, AReg.init_regs(nquant), QIdsOuter(VBody(crv, owner))))
+    { assert owner != lid; }
+  }
+
+  /** C4e DELIVERABLE 2 (value lift): THE nested FLookLoop QUANT value lift keyed
+      on the FINAL look bank `res.1` — quant twin of `FLookLoopValueLiftFull`,
+      generalizing depth-1 `FLookLoopQuantValueLift` from `lk`-keyed to `res.1`-
+      keyed (retaining inner looks matched part-way). The capture bank enters
+      through its LENGTH alone; the per-lid value comes from `ReplayLidQuant
+      AgreeFreshNested`, the per-replay quant write frame from `ReplayPlusQuant
+      FrameNestedOuter`, and the suffix frame from `FLookLoopQuantFrameNested`.
+      Same (a),(b),(e),(f),(g_new),(h) look-bank hypotheses as the capture lift,
+      plus quant twins: (c'q) each body's quant slots INITIAL, (D-ord-q) outer
+      quants of earlier ⟂ all quants of later, (Sq-bound) each body's outer quant
+      ids land in `Sq`. `decreases maxlook - lid`. */
+  lemma {:isolate_assertions} FLookLoopQuantValueLiftFull(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
+                           cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                           S: set<int>, Slook: set<int>, Sq: set<int>, ncap: int, nlook: int, nquant: int)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
+    requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
+    requires CM.LookCpsLE(lk, |str|)                                                            // (e)
+    requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (a)
+      lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+    requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>                // (b)
+      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+    requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (c'q) per-body quant-unset
+      lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==>
+      CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body))
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (D-ord-q)
+      lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 < l2
+      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+      QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (f) look-stability
+      lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
+      && lid <= l2 <= maxlook && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
+      lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 < l2
+      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+      DirectLookIds(b1) * LTB.LookIds(b2) == {}
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (h) well-nested lids
+      lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) && lid <= l2 <= l1 ==> l2 !in LookIdSet(b1)
+    requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (Sq-bound)
+      lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> QIdsOuter(body) <= Sq
+    ensures var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
+      |res.2.a_cp| == nquant && |res.2.a_clk| == nquant
+      && (forall k :: AI.get_idx(res.2.a_cp, k) < 0)
+      && (forall k :: AI.get_idx(res.2.a_clk, k) >= -1)
+      && FLookLoopQuantValueOkFull(crv, str, res.2, res.1, lid, maxlook, ov, ncap, nlook, nquant)
+    decreases maxlook - lid
+  {
+    var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
+    if lid > maxlook {
+      assert res.2 == qt;
+      return;
+    }
+    var next := lid + 1;
+    match AReg.get_cp(lk, lid)
+    case None =>
+      assert res == AI.FLookLoop(crv, str, next, maxlook, cap, lk, qt, ov);
+      FLookLoopQuantValueLiftFull(crv, str, next, maxlook, cap, lk, qt, ov, S, Slook, Sq, ncap, nlook, nquant);
+      assert forall l1: int, la1: R.lookaround, b1: R.regex ::
+        lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> lid !in LookIdSet(b1);   // (h)@lid, l2:=lid
+      FLookLoopLidCpStable(crv, str, lid, maxlook, cap, lk, qt, ov, S, Slook);
+      assert AReg.get_cp(res.1, lid) == AReg.get_cp(lk, lid);
+      assert !MatchedPosLA(crv, res.1, lid);
+      QuantValueOkFullSkipLid(crv, str, res.2, res.1, lid, maxlook, ov, ncap, nlook, nquant);
+    case Some(cp) =>
+      var looktype := if 0 <= lid < |crv.f_look_types| then crv.f_look_types[lid] else R.Lookahead;
+      if !AI.capture_type(looktype) {
+        assert res == AI.FLookLoop(crv, str, next, maxlook, cap, lk, qt, ov);
+        FLookLoopQuantValueLiftFull(crv, str, next, maxlook, cap, lk, qt, ov, S, Slook, Sq, ncap, nlook, nquant);
+        assert !MatchedPosLA(crv, res.1, lid);   // !capture_type(looktype), looktype == f_look_types[lid]
+        QuantValueOkFullSkipLid(crv, str, res.2, res.1, lid, maxlook, ov, ncap, nlook, nquant);
+      } else {
+        var la: R.lookaround, body: R.regex :| LTB.LookEntryOk(crv, lid, la, body);
+        assert 0 <= lid < |crv.f_look_types| && crv.f_look_types[lid] == la;
+        assert looktype == la;
+        assert body == VBody(crv, lid);
+        assert FrameEntryOk(crv, la, body, S, Slook);
+        assert la.Lookahead?;
+        var bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
+        var dir := AI.capture_direction(looktype);
+        var lookcdn := if 0 <= lid < |crv.f_look_cdns| then crv.f_look_cdns[lid] else [];
+        var lookast := if 0 <= lid < |crv.f_look_ast| then crv.f_look_ast[lid] else R.Re_empty;
+        assert lookast == body;
+        assert bytecode == CP.compile_to_bytecode(CP.capture_regex(la, body));
+        assert CP.capture_regex(la, body) == body;
+        assert bytecode == CP.compile_to_bytecode(body);
+        var (result, ov1) := AI.FFindMatchPlus(bytecode, lookast, crv.f_plus_bc, str, ov, dir,
+                                               cp, cap, lk, qt, 0, lookcdn);
+        var capN := if result.None? then cap else result.value.capture_regs;
+        var nlk := if result.None? then lk else result.value.look_regs;
+        var nqt := if result.None? then qt else result.value.quant_regs;
+        assert res == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1);
+        assert dir == LAnc.Forward;
+        assert 0 <= cp <= |str| by {
+          assert cp == AI.get_idx(lk.a_cp, lid) && cp >= 0;   // get_cp(lk,lid)==Some(cp)
+          assert AI.get_idx(lk.a_cp, lid) <= |str|;            // LookCpsLE
+        }
+        assert AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp);
+
+        // per-lid replay frames / wf / cp / value
+        FFindMatchPlusOvStableNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        assert ov1 == ov;
+        ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        ReplayPlusQuantFrameNestedOuter(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        assert CM.RegsAgreeOutside(nqt, qt, QIdsOuter(body)) by {
+          if result.Some? {} else { assert nqt == qt; }
+        }
+        assert CM.RegsAgreeOutside(nlk, lk, LookIdSet(body)) by {
+          if result.Some? {} else { assert nlk == lk; }
+        }
+        // recon A: TIGHT look frame -- the replay writes only body's DIRECT children
+        ReplayPlusLookFrameDirectNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        assert CM.RegsAgreeOutside(nlk, lk, DirectLidSet(body)) by {
+          if result.Some? {} else { assert nlk == lk; }
+        }
+        assert (forall k :: AI.get_idx(nqt.a_cp, k) < 0) && (forall k :: AI.get_idx(nqt.a_clk, k) >= -1) by {
+          if result.Some? { assert QuantRegsFinal(result.value); }
+        }
+        ReplayThreadWfLANested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant);
+        assert |capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN)
+            && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook by {
+          if result.Some? { assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant); }
+        }
+        ReplayLookCpOkNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
+        assert CM.LookCpsLE(nlk, |str|) by {
+          if result.Some? {} else { assert nlk == lk; }
+        }
+
+        // value at lid: result ~ rfLid on QIdsInt(body); iff-together
+        assert CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body));   // (c'q)@lid
+        ReplayLidQuantAgreeFreshNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant);
+        var rfLid := FreshBodyMatch(crv, str, lid, lk, ov, ncap, nlook, nquant);
+        var rf := AI.FFindMatch(bytecode, str,
+                    AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                  AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                    ov, LAnc.Forward, lookcdn).0;
+        assert rfLid == rf;
+
+        var Sqp := Sq - QIdsOuter(body);
+
+        // ---- recursion hypothesis transfer at [next] with (capN, nlk, nqt) ----
+        // (b) matched-look-has-entry for nlk
+        assert forall l: int :: next <= l <= maxlook && AReg.get_cp(nlk, l).Some? ==>
+          exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
+        by {
+          forall l: int | next <= l <= maxlook && AReg.get_cp(nlk, l).Some?
+            ensures exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
+          {
+            if AReg.get_cp(lk, l).Some? {
+            } else {
+              assert result.Some?;
+              assert CM.RegsAgreeOutside(nlk, lk, LookIdSet(body));
+              NewLookInBody(nlk, lk, body, l);
+              assert LTB.LookTablesOk(body, crv);
+              LookIdEntryExists(body, crv, l as nat);
+            }
+          }
+        }
+        // (c'q) per-body quant-unset for nqt
+        assert forall l: int, la2: R.lookaround, body2: R.regex ::
+          next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==>
+          CM.RegsAgreeInside(nqt, AReg.init_regs(nquant), LKC.QIdsInt(body2))
+        by {
+          forall l: int, la2: R.lookaround, body2: R.regex | next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2)
+            ensures CM.RegsAgreeInside(nqt, AReg.init_regs(nquant), LKC.QIdsInt(body2))
+          {
+            assert CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body2));   // (c'q)@qt
+            assert QIdsOuter(body) * LKC.QIdsInt(body2) == {};   // (D-ord-q) lid<l
+            assert CM.RegsAgreeOutside(nqt, qt, QIdsOuter(body));
+            UnsetOffTransfer(nqt, qt, nquant, LKC.QIdsInt(body2), QIdsOuter(body));
+          }
+        }
+        // (f) look-stability for nlk
+        assert forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
+          next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
+          && next <= l2 <= maxlook && l2 != l1 && AReg.get_cp(nlk, l2).Some? ==> l2 !in LookIdSet(b1)
+        by {
+          forall l1: int, la1: R.lookaround, b1: R.regex, l2: int |
+            next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
+            && next <= l2 <= maxlook && l2 != l1 && AReg.get_cp(nlk, l2).Some?
+            ensures l2 !in LookIdSet(b1)
+          {
+            if AReg.get_cp(lk, l2).Some? {
+              // (f)@lk
+            } else {
+              assert result.Some?;
+              assert CM.RegsAgreeOutside(nlk, lk, DirectLidSet(body));
+              NewLookInBodyDirect(nlk, lk, body, l2);
+              assert (l2 as nat) in DirectLookIds(body);
+              assert lid < l1;                                          // l1 >= next
+              assert DirectLookIds(body) * LTB.LookIds(b1) == {};       // (g_new) with (lid, l1)
+              assert (l2 as nat) !in LTB.LookIds(b1);
+              if l2 in LookIdSet(b1) {
+                var q: nat :| q in LTB.LookIds(b1) && (q as int) == l2;
+                assert q == l2 as nat;
+              }
+            }
+          }
+        }
+        // (h) well-nested lids for [next] — sub-instance of (h)@lid
+        assert forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
+          next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) && next <= l2 <= l1 ==> l2 !in LookIdSet(b1);
+
+        FLookLoopQuantValueLiftFull(crv, str, next, maxlook, capN, nlk, nqt, ov1, S, Slook, Sq, ncap, nlook, nquant);
+        assert res.0 == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1).0;
+        assert res.1 == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1).1;
+        assert FLookLoopQuantValueOkFull(crv, str, res.2, res.1, next, maxlook, ov, ncap, nlook, nquant);
+        assert |res.2.a_cp| == nquant && |res.2.a_clk| == nquant
+            && (forall k :: AI.get_idx(res.2.a_cp, k) < 0) && (forall k :: AI.get_idx(res.2.a_clk, k) >= -1);
+
+        // ---- R3 stability: res.1 agrees with lk at lid ----
+        assert forall l1: int, la1: R.lookaround, b1: R.regex ::
+          lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> lid !in LookIdSet(b1);   // (h)@lid, l2:=lid
+        FLookLoopLidCpStable(crv, str, lid, maxlook, cap, lk, qt, ov, S, Slook);
+        assert AReg.get_cp(res.1, lid) == AReg.get_cp(lk, lid);
+
+        // ---- suffix frame: res.2 == nqt on QIdsOuter(body) ----
+        assert forall l: int, la2: R.lookaround, body2: R.regex ::
+          next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==>
+          FrameEntryOk(crv, la2, body2, S, Slook) && QIdsOuter(body2) <= Sqp
+        by {
+          forall l: int, la2: R.lookaround, body2: R.regex | next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2)
+            ensures FrameEntryOk(crv, la2, body2, S, Slook) && QIdsOuter(body2) <= Sqp
+          {
+            assert FrameEntryOk(crv, la2, body2, S, Slook);   // (a)
+            QIdsOuterLeQIdsInt(body2);
+            assert QIdsOuter(body) * LKC.QIdsInt(body2) == {};   // (D-ord-q) lid<l
+            assert QIdsOuter(body2) <= Sqp by {
+              forall k: int | k in QIdsOuter(body2) ensures k in Sqp {
+                assert k in Sq;   // (Sq-bound)
+                assert k !in QIdsOuter(body) by {
+                  if k in QIdsOuter(body) { assert k in QIdsOuter(body) * LKC.QIdsInt(body2); }
+                }
+              }
+            }
+          }
+        }
+        FLookLoopQuantFrameNested(crv, str, next, maxlook, capN, nlk, nqt, ov1, S, Slook, Sqp);
+        assert CM.RegsAgreeOutside(res.2, nqt, Sqp);
+        assert forall k: int :: k in QIdsOuter(body) ==> k !in Sqp;
+        RegsAgreeOutsideToInside(res.2, nqt, QIdsOuter(body), Sqp);
+        assert CM.RegsAgreeInside(res.2, nqt, QIdsOuter(body));
+
+        // ---- assemble FLookLoopQuantValueOkFull for [lid] keyed on res.1 ----
+        forall owner: int | lid <= owner <= maxlook && MatchedPosLA(crv, res.1, owner)
+          ensures var rf2 := FreshBodyMatch(crv, str, owner, res.1, ov, ncap, nlook, nquant);
+                  (rf2.Some? ==> CM.RegsAgreeInside(res.2, rf2.value.quant_regs, QIdsOuter(VBody(crv, owner))))
+                  && (rf2.None? ==> CM.RegsAgreeInside(res.2, AReg.init_regs(nquant), QIdsOuter(VBody(crv, owner))))
+        {
+          if owner == lid {
+            // re-key lid's coverage from lk onto res.1 via stability
+            var rf2 := FreshBodyMatch(crv, str, lid, res.1, ov, ncap, nlook, nquant);
+            assert rf2 == rfLid by {
+              assert AReg.get_cp(res.1, lid) == AReg.get_cp(lk, lid);   // stability
+            }
+            assert VBody(crv, lid) == body;
+            QIdsOuterLeQIdsInt(body);
+            assert QIdsOuter(body) <= LKC.QIdsInt(body);
+            if rfLid.Some? {
+              assert result.Some? && nqt == result.value.quant_regs;
+              assert CM.RegsAgreeInside(nqt, rf.value.quant_regs, LKC.QIdsInt(body));   // ReplayLidQuantAgreeFreshNested
+              assert CM.RegsAgreeInside(res.2, rfLid.value.quant_regs, QIdsOuter(VBody(crv, owner))) by {
+                forall k: int | k in QIdsOuter(body)
+                  ensures AI.get_idx(res.2.a_cp, k) == AI.get_idx(rfLid.value.quant_regs.a_cp, k)
+                       && AI.get_idx(res.2.a_clk, k) == AI.get_idx(rfLid.value.quant_regs.a_clk, k)
+                {
+                  assert k in LKC.QIdsInt(body);
+                  assert AI.get_idx(res.2.a_cp, k) == AI.get_idx(nqt.a_cp, k)
+                      && AI.get_idx(res.2.a_clk, k) == AI.get_idx(nqt.a_clk, k);   // suffix frame
+                }
+              }
+            } else {
+              assert result.None? && nqt == qt && rfLid.None?;
+              assert CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body));   // (c'q)@lid
+              assert CM.RegsAgreeInside(res.2, AReg.init_regs(nquant), QIdsOuter(VBody(crv, owner))) by {
+                forall k: int | k in QIdsOuter(body)
+                  ensures AI.get_idx(res.2.a_cp, k) == AI.get_idx(AReg.init_regs(nquant).a_cp, k)
+                       && AI.get_idx(res.2.a_clk, k) == AI.get_idx(AReg.init_regs(nquant).a_clk, k)
+                {
+                  assert k in LKC.QIdsInt(body);
+                  assert AI.get_idx(res.2.a_cp, k) == AI.get_idx(nqt.a_cp, k)
+                      && AI.get_idx(res.2.a_clk, k) == AI.get_idx(nqt.a_clk, k);   // suffix frame
+                }
+              }
+            }
+          } else {
+            // owner in [next, maxlook]: DIRECT from the IH (already keyed on res.1)
+            assert next <= owner <= maxlook;
+            assert MatchedPosLA(crv, res.1, owner);
+            assert FLookLoopQuantValueOkFull(crv, str, res.2, res.1, next, maxlook, ov, ncap, nlook, nquant);
+          }
+        }
+      }
+  }
+
+  /** C4e DELIVERABLE 2 (QuantIds coverage corollary): quant twin of
+      `FLookLoopFullCoversInLooks`. Under the whole-regex setup, EVERY inside-look
+      quant id `qd` whose innermost-DIRECT owner is matched in the FINAL look bank
+      `res.1` has `res.2` carrying `qd`'s FRESH-body-match clock at that owner.
+      The bridge the endpoint's inside-value capstone consumes for feed (iii).
+      Proof mirrors the capture corollary: the `owner` guard is `NI.Innermost
+      OwnerDirect`'s three facts (with `QuantIds`/`QuantIdsInLooks` for `qd`),
+      `VBodyEqLookBody` translates the table body to the structural body,
+      `QuantIdsSplit` places `qd` in `QuantIdsOutsideLooks(VBody(crv,owner))`, so
+      `qd as int` sits in `QIdsOuter`; then DELIVERABLE 2 (`FLookLoopQuantValue
+      LiftFull`) at `owner` supplies the value, weakened onto `{qd as int}`.
+      Takes the lift's hypotheses (a),(b),(e),(f),(g_new),(h) plus the quant
+      twins (c'q),(D-ord-q),(Sq-bound) as premises. */
+  lemma FLookLoopQuantCoversInLooks(crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
+                                    cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                                    S: set<int>, Slook: set<int>, Sq: set<int>, ncap: int, nlook: int, nquant: int, qd: nat)
+    // ---- whole-regex setup ----
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires LTB.LookTablesOk(re, crv)
+    requires PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires qd in PIV.QuantIdsInLooks(re)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)   // lid range
+    // ---- lift hypotheses (a),(b),(e),(f),(g_new),(h) + quant (c'q),(D-ord-q),(Sq-bound) at lid=1 ----
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
+    requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
+    requires CM.LookCpsLE(lk, |str|)                                                            // (e)
+    requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (a)
+      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+    requires forall l: int :: 1 <= l <= R.max_lookaround(ast) && AReg.get_cp(lk, l).Some? ==>    // (b)
+      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+    requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (c'q)
+      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
+      CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body))
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (D-ord-q)
+      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+      QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (f)
+      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+      && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
+      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+      DirectLookIds(b1) * LTB.LookIds(b2) == {}
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (h)
+      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==> l2 !in LookIdSet(b1)
+    requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (Sq-bound)
+      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==> QIdsOuter(body) <= Sq
+    ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov);
+      forall owner: nat :: owner in LTB.LookIds(re)
+          && qd in PIV.QuantIds(NI.LookBodyOfRE(re, owner))
+          && qd !in PIV.QuantIdsInLooks(NI.LookBodyOfRE(re, owner))
+          && MatchedPosLA(crv, res.1, owner) ==>
+        var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
+        (rf.Some? ==> CM.RegsAgreeInside(res.2, rf.value.quant_regs, {qd as int}))
+        && (rf.None? ==> CM.RegsAgreeInside(res.2, AReg.init_regs(nquant), {qd as int}))
+  {
+    var maxlook := R.max_lookaround(ast);
+    FLookLoopQuantValueLiftFull(crv, str, 1, maxlook, cap, lk, qt, ov, S, Slook, Sq, ncap, nlook, nquant);
+    var res := AI.FLookLoop(crv, str, 1, maxlook, cap, lk, qt, ov);
+    assert FLookLoopQuantValueOkFull(crv, str, res.2, res.1, 1, maxlook, ov, ncap, nlook, nquant);
+
+    forall owner: nat | owner in LTB.LookIds(re)
+        && qd in PIV.QuantIds(NI.LookBodyOfRE(re, owner))
+        && qd !in PIV.QuantIdsInLooks(NI.LookBodyOfRE(re, owner))
+        && MatchedPosLA(crv, res.1, owner)
+      ensures var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
+              (rf.Some? ==> CM.RegsAgreeInside(res.2, rf.value.quant_regs, {qd as int}))
+              && (rf.None? ==> CM.RegsAgreeInside(res.2, AReg.init_regs(nquant), {qd as int}))
+    {
+      // owner lands in the fold range [1, maxlook]
+      assert 1 <= (owner as int) <= maxlook;                    // lid-range premise
+      // table body == structural body; qd sits OUTSIDE looks of it
+      VBodyEqLookBody(crv, re, owner);
+      var body := VBody(crv, owner as int);
+      assert body == NI.LookBodyOfRE(re, owner);
+      assert qd in PIV.QuantIds(body) && qd !in PIV.QuantIdsInLooks(body);
+      PIV.QuantIdsSplit(body);
+      assert qd in PIV.QuantIdsOutsideLooks(body);
+      // qd's register sits in owner's OUTSIDE-look quant set
+      assert {qd as int} <= QIdsOuter(body) by {
+        assert (qd as int) in QIdsOuter(body);
+      }
+      // deliverable 2 at owner supplies the value; weaken onto {qd as int}
+      var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
+      if rf.Some? {
+        assert CM.RegsAgreeInside(res.2, rf.value.quant_regs, QIdsOuter(VBody(crv, owner as int)));
+        RegsAgreeInsideWeakenSub(res.2, rf.value.quant_regs, {qd as int}, QIdsOuter(body));
+      } else {
+        assert CM.RegsAgreeInside(res.2, AReg.init_regs(nquant), QIdsOuter(VBody(crv, owner as int)));
+        RegsAgreeInsideWeakenSub(res.2, AReg.init_regs(nquant), {qd as int}, QIdsOuter(body));
       }
     }
   }
@@ -12535,6 +13213,91 @@ module LindenElkMain {
     FFindMatchQuantFinalAny(code, str, inits, ov, LAnc.Forward, cdn);
   }
 
+  /** C4e: quant twin of `NI.LookBodyCapsIn` — a look body's own quant ids are
+      inside-look quant ids of `r` (hence quant ids of `r`). Pure structural
+      induction over `LookBodyOfRE`, mirroring the capture version. */
+  lemma LookBodyQuantsIn(r: R.regex, lid: nat)
+    requires lid in LTB.LookIds(r)
+    ensures PIV.QuantIds(NI.LookBodyOfRE(r, lid)) <= PIV.QuantIdsInLooks(r)
+    ensures PIV.QuantIds(NI.LookBodyOfRE(r, lid)) <= PIV.QuantIds(r)
+    decreases r
+  {
+    PIV.QuantIdsSplit(r);
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodyQuantsIn(r1, lid); } else { LookBodyQuantsIn(r2, lid); }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodyQuantsIn(r1, lid); } else { LookBodyQuantsIn(r2, lid); }
+    case Re_quant(_, _, _, r1) => LookBodyQuantsIn(r1, lid);
+    case Re_capture(_, r1) => LookBodyQuantsIn(r1, lid);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+      } else {
+        LookBodyQuantsIn(r1, lid);
+      }
+  }
+
+  /** C4e: quant twin of `NI.LookBodiesCapsDisjointOrNested`. For two distinct
+      look ids, either their bodies' QUANT ids are DISJOINT (siblings) or one is
+      nested in the other and the inner body's quants are a SUBSET. Pure
+      structure + unique ids; mirrors the capture trichotomy with `QuantUnique` +
+      `LookBodyQuantsIn`. */
+  lemma LookBodiesQuantsDisjointOrNested(r: R.regex, l1: nat, l2: nat)
+    requires PIV.QuantUnique(r) && LTB.LookUnique(r)
+    requires l1 in LTB.LookIds(r) && l2 in LTB.LookIds(r) && l1 != l2
+    ensures (PIV.QuantIds(NI.LookBodyOfRE(r, l1)) * PIV.QuantIds(NI.LookBodyOfRE(r, l2)) == {})
+         || (l2 in LTB.LookIds(NI.LookBodyOfRE(r, l1))
+             && PIV.QuantIds(NI.LookBodyOfRE(r, l2)) <= PIV.QuantIds(NI.LookBodyOfRE(r, l1)))
+         || (l1 in LTB.LookIds(NI.LookBodyOfRE(r, l2))
+             && PIV.QuantIds(NI.LookBodyOfRE(r, l1)) <= PIV.QuantIds(NI.LookBodyOfRE(r, l2)))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if l1 in LTB.LookIds(r1) && l2 in LTB.LookIds(r1) {
+        LookBodiesQuantsDisjointOrNested(r1, l1, l2);
+      } else if l1 !in LTB.LookIds(r1) && l2 !in LTB.LookIds(r1) {
+        LookBodiesQuantsDisjointOrNested(r2, l1, l2);
+      } else {
+        if l1 in LTB.LookIds(r1) { LookBodyQuantsIn(r1, l1); LookBodyQuantsIn(r2, l2); }
+        else { LookBodyQuantsIn(r2, l1); LookBodyQuantsIn(r1, l2); }
+        forall q: nat | q in PIV.QuantIds(NI.LookBodyOfRE(r, l1)) * PIV.QuantIds(NI.LookBodyOfRE(r, l2))
+          ensures false
+        { assert q in PIV.QuantIds(r1) * PIV.QuantIds(r2); }
+      }
+    case Re_con(r1, r2) =>
+      if l1 in LTB.LookIds(r1) && l2 in LTB.LookIds(r1) {
+        LookBodiesQuantsDisjointOrNested(r1, l1, l2);
+      } else if l1 !in LTB.LookIds(r1) && l2 !in LTB.LookIds(r1) {
+        LookBodiesQuantsDisjointOrNested(r2, l1, l2);
+      } else {
+        if l1 in LTB.LookIds(r1) { LookBodyQuantsIn(r1, l1); LookBodyQuantsIn(r2, l2); }
+        else { LookBodyQuantsIn(r2, l1); LookBodyQuantsIn(r1, l2); }
+        forall q: nat | q in PIV.QuantIds(NI.LookBodyOfRE(r, l1)) * PIV.QuantIds(NI.LookBodyOfRE(r, l2))
+          ensures false
+        { assert q in PIV.QuantIds(r1) * PIV.QuantIds(r2); }
+      }
+    case Re_quant(_, _, _, r1) => LookBodiesQuantsDisjointOrNested(r1, l1, l2);
+    case Re_capture(_, r1) => LookBodiesQuantsDisjointOrNested(r1, l1, l2);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == l1 {
+        assert l2 in LTB.LookIds(r1);
+        assert NI.LookBodyOfRE(r, l1) == r1;
+        assert NI.LookBodyOfRE(r, l2) == NI.LookBodyOfRE(r1, l2);
+        LookBodyQuantsIn(r1, l2);
+      } else if lid0 >= 0 && (lid0 as nat) == l2 {
+        assert l1 in LTB.LookIds(r1);
+        assert NI.LookBodyOfRE(r, l2) == r1;
+        assert NI.LookBodyOfRE(r, l1) == NI.LookBodyOfRE(r1, l1);
+        LookBodyQuantsIn(r1, l1);
+      } else {
+        assert l1 in LTB.LookIds(r1) && l2 in LTB.LookIds(r1);
+        assert NI.LookBodyOfRE(r, l1) == NI.LookBodyOfRE(r1, l1);
+        assert NI.LookBodyOfRE(r, l2) == NI.LookBodyOfRE(r1, l2);
+        LookBodiesQuantsDisjointOrNested(r1, l1, l2);
+      }
+  }
+
   /** DELIVERABLE #4: the PREMISE-FREE corollary (engine side of recon_inner +
       recon_outer). From the whole-regex main-match setup alone (all (a)-(h)
       discharged by `LookRowsFromTablesNested`), the whole-regex `FLookLoop`'s
@@ -12594,6 +13357,263 @@ module LindenElkMain {
       assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant);
       FLookLoopFullCoversInLooks(crv, str, ast, re, c, l, q, ov, S, Slook, ncap, nlook, nquant, g);
       FLookLoopCaptureFrameNested(crv, str, 1, R.max_lookaround(ast), c, l, q, ov, S, Slook);
+    }
+  }
+
+  /** C4e: (D-ord-q) per-pair — quant twin of `DOrdFromTables`. For `l1 < l2`,
+      `QIdsOuter(b1)` is disjoint from `QIdsInt(b2)`. The two bodies are disjoint
+      siblings or `b2` is nested in `b1` (`LookBodiesQuantsDisjointOrNested`); the
+      third arm is killed by well-nesting. In the nested arm `b2`'s quants sit in
+      `b1`'s INSIDE-look quants, disjoint from `b1`'s OUTSIDE-look quants. */
+  lemma DOrdQuantFromTables(ast: R.regex, re: R.regex, crv: CP.FCompiled,
+                            l1: int, la1: R.lookaround, b1: R.regex,
+                            l2: int, la2: R.lookaround, b2: R.regex)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
+    requires 1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+    requires LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2)
+    ensures QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
+  {
+    var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false),
+                          R.Re_character(R.Dot));
+    assert re == R.Re_con(pre, ast);
+    assert LTB.LookIds(re) == LTB.LookIds(ast);
+    LookEntryOnlyReal(ast, crv, l1, la1, b1);
+    LookEntryOnlyReal(ast, crv, l2, la2, b2);
+    var lid1 := l1 as nat;
+    var lid2 := l2 as nat;
+    NI.LookBodyOfTablesTie(re, crv, lid1);
+    NI.LookBodyOfTablesTie(re, crv, lid2);
+    var la01: R.lookaround :| LTB.LookEntryOk(crv, lid1 as int, la01, NI.LookBodyOfRE(re, lid1));
+    var la02: R.lookaround :| LTB.LookEntryOk(crv, lid2 as int, la02, NI.LookBodyOfRE(re, lid2));
+    assert b1 == NI.LookBodyOfRE(re, lid1);
+    assert b2 == NI.LookBodyOfRE(re, lid2);
+    PIV.QuantIdsSplit(b1);                               // QuantIdsOutsideLooks(b1) <= QuantIds(b1)
+    LookBodyFactsNested(re, crv, lid1);                  // QuantUnique(b1)
+    LookBodiesQuantsDisjointOrNested(re, lid1, lid2);
+    // nat-set disjointness: QuantIdsOutsideLooks(b1) * QuantIds(b2) == {}
+    if PIV.QuantIds(b1) * PIV.QuantIds(b2) == {} {
+      assert PIV.QuantIdsOutsideLooks(b1) * PIV.QuantIds(b2) == {};
+    } else if lid2 in LTB.LookIds(b1) && PIV.QuantIds(b2) <= PIV.QuantIds(b1) {
+      NI.LookBodyCompose(re, lid1, lid2);               // b2 == LookBodyOfRE(b1, lid2)
+      LookBodyQuantsIn(b1, lid2);                        // QuantIds(b2) <= QuantIdsInLooks(b1)
+      PIV.QuantIdsLooksDisjoint(b1);                     // outside(b1) * inside(b1) == {}
+      assert PIV.QuantIdsOutsideLooks(b1) * PIV.QuantIds(b2) == {};
+    } else {
+      assert lid1 in LTB.LookIds(b2);
+      LookBodyLidsGt(re, lid2);                          // x in LookIds(b2) ==> l2 < x
+      assert lid2 < lid1;                                // contra l1 < l2
+      assert false;
+    }
+    // transfer nat-disjointness to the int images
+    forall k: int | k in QIdsOuter(b1) * LKC.QIdsInt(b2) ensures false {
+      var q1: nat :| q1 in PIV.QuantIdsOutsideLooks(b1) && (q1 as int) == k;
+      var q2: nat :| q2 in PIV.QuantIds(b2) && (q2 as int) == k;
+      assert q1 == q2;
+      assert q1 in PIV.QuantIdsOutsideLooks(b1) * PIV.QuantIds(b2);
+    }
+  }
+
+  /** C4e: (Sq-bound) per-row — each body's OUTSIDE-look quant ids land in the
+      int image of `re`'s in-look quant ids. Via `LookBodyQuantsIn` (`QuantIds
+      (body) <= QuantIdsInLooks(re)`) + `QuantIdsSplit`. */
+  lemma SqBoundQuantFromTables(ast: R.regex, re: R.regex, crv: CP.FCompiled,
+                               l: int, la: R.lookaround, body: R.regex)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires 1 <= l <= R.max_lookaround(ast)
+    requires LTB.LookEntryOk(crv, l, la, body)
+    ensures QIdsOuter(body) <= (set q: nat | q in PIV.QuantIdsInLooks(re) :: q as int)
+  {
+    var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false),
+                          R.Re_character(R.Dot));
+    assert re == R.Re_con(pre, ast);
+    assert LTB.LookIds(re) == LTB.LookIds(ast);
+    LookEntryOnlyReal(ast, crv, l, la, body);
+    var lid := l as nat;
+    NI.LookBodyOfTablesTie(re, crv, lid);
+    var la0: R.lookaround :| LTB.LookEntryOk(crv, lid as int, la0, NI.LookBodyOfRE(re, lid));
+    assert body == NI.LookBodyOfRE(re, lid);
+    LookBodyQuantsIn(re, lid);                           // QuantIds(body) <= QuantIdsInLooks(re)
+    PIV.QuantIdsSplit(body);                             // QuantIdsOutsideLooks(body) <= QuantIds(body)
+    forall k: int | k in QIdsOuter(body)
+      ensures k in (set q: nat | q in PIV.QuantIdsInLooks(re) :: q as int)
+    {
+      var q: nat :| q in PIV.QuantIdsOutsideLooks(body) && (q as int) == k;
+      assert q in PIV.QuantIds(body);
+      assert q in PIV.QuantIdsInLooks(re);
+    }
+  }
+
+  /** C4e: nested twin of `MainMatchBodyQuantsInit` — the main pass never stamps
+      an inside-look quant, so a genuine-start search returns a winning thread
+      whose quant bank agrees with the INITIAL bank OUTSIDE `QIdsOuter(re)`. Via
+      the nested outer-quant classifier `QuantBytecodeClassifiedNestedOuter` +
+      `CM.FFindMatchQuantFrame`. */
+  lemma MainMatchBodyQuantsInitNested(re: R.regex, code: RB.code, str: string,
+                                      inits: AI.VmState, cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+                                      ov: LOr.OracleView, cdn: LCdn.cdns, result: Option<AI.Thread>)
+    requires NR.NestedFragmentRE(re) && PIV.QuantUnique(re)
+    requires code == CP.compile_to_bytecode(re)
+    requires |inits.processed.true_set| == RB.size(code) && |inits.processed.false_set| == RB.size(code)
+    requires inits.context.nextchar == AI.get_char(str, inits.cp)
+    requires 0 <= inits.cp <= |str|
+    requires inits.active == [AI.init_thread(cap, look, quant)]
+    requires inits.blocked == [] && inits.bestmatch.None?
+    requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
+    ensures result.Some? ==> CM.RegsAgreeOutside(result.value.quant_regs, quant, QIdsOuter(re))
+  {
+    QuantBytecodeClassifiedNestedOuter(re);              // QuantWritesInside(code, QIdsOuter(re))
+    assert CM.VmQuantsAgree(inits, quant, QIdsOuter(re)) by {
+      assert AI.init_thread(cap, look, quant).quant_regs == quant;
+      assert CM.RegsAgreeOutside(quant, quant, QIdsOuter(re));
+    }
+    CM.FFindMatchQuantFrame(code, str, inits, ov, LAnc.Forward, cdn, quant, QIdsOuter(re));
+  }
+
+  /** C4e: a look body's quant ids are disjoint from `re`'s OUTSIDE-look quant
+      ids — `QIdsInt(body)` (int image of `QuantIds(body)`) misses `QIdsOuter(re)`.
+      Via `LookBodyQuantsIn` (`QuantIds(body) <= QuantIdsInLooks(re)`) +
+      `QuantIdsLooksDisjoint`. Feeds the (c'q) discharge in the premise-free
+      quant corollary. */
+  lemma BodyQIdsIntDisjointOuterRe(ast: R.regex, re: R.regex, crv: CP.FCompiled,
+                                   l: int, la: R.lookaround, body: R.regex)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires 1 <= l <= R.max_lookaround(ast)
+    requires LTB.LookEntryOk(crv, l, la, body)
+    ensures LKC.QIdsInt(body) * QIdsOuter(re) == {}
+  {
+    var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false),
+                          R.Re_character(R.Dot));
+    assert re == R.Re_con(pre, ast);
+    assert LTB.LookIds(re) == LTB.LookIds(ast);
+    LookEntryOnlyReal(ast, crv, l, la, body);
+    var lid := l as nat;
+    NI.LookBodyOfTablesTie(re, crv, lid);
+    var la0: R.lookaround :| LTB.LookEntryOk(crv, lid as int, la0, NI.LookBodyOfRE(re, lid));
+    assert body == NI.LookBodyOfRE(re, lid);
+    LookBodyQuantsIn(re, lid);                           // QuantIds(body) <= QuantIdsInLooks(re)
+    PIV.QuantIdsLooksDisjoint(re);                       // outside(re) * inside(re) == {}
+    forall k: int | k in LKC.QIdsInt(body) * QIdsOuter(re) ensures false {
+      var q1: nat :| q1 in PIV.QuantIds(body) && (q1 as int) == k;
+      var q2: nat :| q2 in PIV.QuantIdsOutsideLooks(re) && (q2 as int) == k;
+      assert q1 == q2;
+      assert q1 in PIV.QuantIdsInLooks(re);
+      assert q2 in PIV.QuantIdsOutsideLooks(re) * PIV.QuantIdsInLooks(re);
+    }
+  }
+
+  /** C4e DELIVERABLE 3: the PREMISE-FREE quant corollary — quant analogue of
+      `FLookLoopFullCoversFromTables`, supplying the endpoint's inside-value feed
+      (iii) directly. From the whole-regex main-match setup alone, the whole-regex
+      `FLookLoop`'s quant bank `res.2`:
+      - (recon_outer) writes only inside look bodies: agrees with the main-match
+        quant bank OUTSIDE the int image of `QuantIdsInLooks(re)`
+        (`FLookLoopQuantFrameNested`);
+      - (recon_inner) carries every `qd in QuantIdsInLooks(re)` whose innermost
+        owner is a matched positive lookahead, at the owner's fresh-body value
+        (`FLookLoopQuantCoversInLooks`).
+      `LookRowsFromTablesNested` discharges the shared (a),(b),(e),(f),(g_new),(h)
+      + register wf + quant finality; the quant twins (c'q)/(D-ord-q)/(Sq-bound)
+      are discharged here from `MainMatchBodyQuantsInitNested`/`DOrdQuantFrom
+      Tables`/`SqBoundQuantFromTables`. */
+  lemma FLookLoopQuantCoversFromTables(
+      ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
+      ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
+      cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+      ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>, qd: nat)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires code == CP.compile_to_bytecode(re)
+    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
+    requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires qd in PIV.QuantIdsInLooks(re)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires cap == AReg.init_regs(ncap) && look == AReg.init_regs(nlook) && quant == AReg.init_regs(nquant)
+    requires |inits.processed.true_set| == RB.size(code) && |inits.processed.false_set| == RB.size(code)
+    requires inits.context.nextchar == AI.get_char(str, inits.cp)
+    requires 0 <= inits.cp <= |str| && inits.clock >= 0
+    requires inits.active == [AI.init_thread(cap, look, quant)]
+    requires inits.blocked == [] && inits.bestmatch.None?
+    requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
+    ensures result.Some? ==>
+      var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                              result.value.capture_regs, result.value.look_regs, result.value.quant_regs, ov);
+      // recon_outer: FLookLoop writes quants only inside look bodies
+      CM.RegsAgreeOutside(res.2, result.value.quant_regs,
+                          (set q: nat | q in PIV.QuantIdsInLooks(re) :: q as int))
+      // recon_inner: res.2 carries every matched qd at its innermost owner's fresh value
+      && (forall owner: nat :: owner in LTB.LookIds(re)
+            && qd in PIV.QuantIds(NI.LookBodyOfRE(re, owner))
+            && qd !in PIV.QuantIdsInLooks(NI.LookBodyOfRE(re, owner))
+            && MatchedPosLA(crv, res.1, owner) ==>
+          var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
+          (rf.Some? ==> CM.RegsAgreeInside(res.2, rf.value.quant_regs, {qd as int}))
+          && (rf.None? ==> CM.RegsAgreeInside(res.2, AReg.init_regs(nquant), {qd as int})))
+  {
+    LookRowsFromTablesNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
+                             ncap, nlook, nquant, endl, result);
+    if result.Some? {
+      var S := PIV.CaptureRegsSet(PIV.CapIdsInLooks(re));
+      var Slook := LookIdSet(re);
+      var Sq := set q: nat | q in PIV.QuantIdsInLooks(re) :: q as int;
+      var c := result.value.capture_regs;
+      var l := result.value.look_regs;
+      var q := result.value.quant_regs;
+      assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant);
+
+      // ---- quant twins of (c'q)/(D-ord-q)/(Sq-bound) at the winning thread ----
+      MainMatchBodyQuantsInitNested(re, code, str, inits, cap, look, quant, ov, cdn, result);
+      assert CM.RegsAgreeOutside(q, quant, QIdsOuter(re));
+      PIV.QuantIdsLooksDisjoint(re);
+      // (c'q): each body's quant slots are INITIAL in the winning quant bank
+      assert forall lx: int, lax: R.lookaround, body: R.regex ::
+        1 <= lx <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, lx, lax, body) ==>
+        CM.RegsAgreeInside(q, AReg.init_regs(nquant), LKC.QIdsInt(body))
+      by {
+        forall lx: int, lax: R.lookaround, body: R.regex |
+          1 <= lx <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, lx, lax, body)
+          ensures CM.RegsAgreeInside(q, AReg.init_regs(nquant), LKC.QIdsInt(body))
+        {
+          BodyQIdsIntDisjointOuterRe(ast, re, crv, lx, lax, body);
+          assert forall k: int :: k in LKC.QIdsInt(body) ==> k !in QIdsOuter(re);
+          RegsAgreeOutsideToInside(q, AReg.init_regs(nquant), LKC.QIdsInt(body), QIdsOuter(re));
+        }
+      }
+      assert forall lx1: int, lax1: R.lookaround, b1: R.regex, lx2: int, lax2: R.lookaround, b2: R.regex ::  // (D-ord-q)
+        1 <= lx1 <= R.max_lookaround(ast) && 1 <= lx2 <= R.max_lookaround(ast) && lx1 < lx2
+        && LTB.LookEntryOk(crv, lx1, lax1, b1) && LTB.LookEntryOk(crv, lx2, lax2, b2) ==>
+        QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
+      by {
+        forall lx1: int, lax1: R.lookaround, b1: R.regex, lx2: int, lax2: R.lookaround, b2: R.regex |
+          1 <= lx1 <= R.max_lookaround(ast) && 1 <= lx2 <= R.max_lookaround(ast) && lx1 < lx2
+          && LTB.LookEntryOk(crv, lx1, lax1, b1) && LTB.LookEntryOk(crv, lx2, lax2, b2)
+          ensures QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
+        { DOrdQuantFromTables(ast, re, crv, lx1, lax1, b1, lx2, lax2, b2); }
+      }
+      assert forall lx: int, lax: R.lookaround, body: R.regex ::                                   // (Sq-bound)
+        1 <= lx <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, lx, lax, body) ==> QIdsOuter(body) <= Sq
+      by {
+        forall lx: int, lax: R.lookaround, body: R.regex |
+          1 <= lx <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, lx, lax, body)
+          ensures QIdsOuter(body) <= Sq
+        { SqBoundQuantFromTables(ast, re, crv, lx, lax, body); }
+      }
+
+      FLookLoopQuantCoversInLooks(crv, str, ast, re, c, l, q, ov, S, Slook, Sq, ncap, nlook, nquant, qd);
+      FLookLoopQuantFrameNested(crv, str, 1, R.max_lookaround(ast), c, l, q, ov, S, Slook, Sq);
     }
   }
 }
