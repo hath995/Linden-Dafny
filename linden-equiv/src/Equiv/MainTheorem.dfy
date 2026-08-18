@@ -10985,6 +10985,47 @@ module LindenElkMain {
     assert lid !in Slookp;
   }
 
+  /** (BRICK D7 — premise 3, the THIRD CLOCK TWIN) WHOLE-LOOP top-look-clock
+      stability: for ANY stable index `l` that lands in NO replayed body's
+      `LookIdSet` (in particular any TOP-LEVEL look of `re`, `TopLookNotNested`),
+      the FINAL look bank's clock at `l` is unchanged by the ENTIRE fold from
+      `lid` to `maxlook`. Generalizes `FLookLoopLidLookClkStable` (which pins only
+      the fold-START index `lid`) to an arbitrary framed index `l`: the fold only
+      writes look ids in matched bodies' `LookIdSet`, none of which is `l`, so
+      framing against `Slook - {l}` (`FLookLoopCaptureFrameNested`, which
+      constrains BOTH `a_cp` and `a_clk`) pins the `a_clk` slot at `l`. This is
+      the whole-loop stability the `re`-arm of `AllBodyTopFeeds` demands — a top
+      look `l`'s clock, set by the MAIN match before the fold, survives every
+      iteration untouched. Proof identical to `FLookLoopLidLookClkStable` with the
+      stable index decoupled from the fold start. */
+  lemma FLookLoopTopLookClkStableFull(crv: CP.FCompiled, str: string, lid: int, maxlook: int, l: int,
+                                      cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                                      S: set<int>, Slook: set<int>)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    requires forall l0: int, la: R.lookaround, body: R.regex ::
+      lid <= l0 <= maxlook && LTB.LookEntryOk(crv, l0, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+    requires forall l0: int :: lid <= l0 <= maxlook && AReg.get_cp(lk, l0).Some? ==>
+      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l0, la, body)
+    requires forall l1: int, la1: R.lookaround, b1: R.regex ::                                  // (h')@l
+      lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> l !in LookIdSet(b1)
+    ensures AI.get_idx(AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov).1.a_clk, l)
+         == AI.get_idx(lk.a_clk, l)
+  {
+    var Slookp := Slook - {l};
+    forall l0: int, la: R.lookaround, body: R.regex | lid <= l0 <= maxlook && LTB.LookEntryOk(crv, l0, la, body)
+      ensures FrameEntryOk(crv, la, body, S, Slookp)
+    {
+      assert FrameEntryOk(crv, la, body, S, Slook);   // LookIdSet(body) <= Slook
+      assert l !in LookIdSet(body);                   // (h')@l
+      assert LookIdSet(body) <= Slookp;
+    }
+    FLookLoopCaptureFrameNested(crv, str, lid, maxlook, cap, lk, qt, ov, S, Slookp);
+    var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
+    assert CM.RegsAgreeOutside(res.1, lk, Slookp);
+    assert l !in Slookp;
+  }
+
   /** C4c BODY-SIDE (look-clock independence): for a group `gid` OUTSIDE all of
       `r`'s looks (`gid !in CapIdsInLooks(r)`), `PathPresentLk`/`MxAtGidLk` never
       read the look-clock bank `lc` — the descent to `gid` crosses no
