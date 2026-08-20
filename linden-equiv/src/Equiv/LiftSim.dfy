@@ -9070,6 +9070,229 @@ module LindenElkLiftSim {
     }
   }
 
+  /** (R2 — DEEP-CAPTURE CROSSING BRIDGE) The generalization of the gate crossing's
+      DIRECT-capture tie to the WHOLE sub-first-leaf. When a positive look with body
+      `r1` passes at `inp` with its body groups CLEAR coming in (`GmAgreeOn(gm, Empty,
+      DefGroups(r1))` — the GateAheadClear reset condition), the merged `LkResult`
+      group map `gm2` agrees, on EVERY group of `r1` (INNER/deep looks included, not
+      just the DIRECT ones), with the look body's OWN first leaf `leafSub =
+      FirstLeaf(tlk, inp)` computed from `Empty`. This is exactly the tie the
+      direct-only carrier gets from `LkReplayMatchesSpecNested` — but there the fresh
+      Pike replay STRUCTURALLY omits inner-look captures (a look compiles to a single
+      `CheckOracle` leaf), whereas `LkResult == TreeRes(tlk, gm, inp, dir).1` threads
+      the WHOLE body group map (`Semantics.TreeRes` LK case), so the deep captures ARE
+      present in `gm2`. The tie is a PURE spec-tree fact — `M.LookBodyLeafValue`
+      (`TreeLeavesFrameInside`: `gm` and `Empty` agree on the cleared body groups, so
+      all leaves agree there) — needing NO oracle, NO fresh replay, and NO winning-
+      thread path history. `leafSub` is taken at THIS crossing's `inp`, so the position
+      is the crossing position by construction: the "position correspondence" prior
+      scouts flagged is a non-issue for the carrier route. This packages the crossing
+      half of the deep descent bridge `g2 in leaf_{A0} ==> g2 in leaf`. */
+  lemma LkResultLandsSubFirstLeaf(rer: LW.RegExpRecord, lk: L.Lookaround, r1: L.Regex,
+                                  inp: LC.Input, tlk: LT.Tree, gm: LG.GroupMap, S: set<LG.GroupId>)
+    requires L.Positivity(lk)
+    requires EL.PikeLkRegexRec(r1)
+    requires tlk == LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk))
+    requires LS.LkResult(lk, tlk, gm, inp).Some?
+    requires S == (set g | g in L.DefGroups(r1))
+    requires M.GmAgreeOn(gm, LG.Empty, S)
+    ensures var dir := L.LkDir(lk);
+            var gm2 := LS.LkResult(lk, tlk, gm, inp).value;
+            var leafSub := LT.TreeRes(tlk, LG.Empty, inp, dir);
+            leafSub.Some?
+            && forall g: LG.GroupId :: g in S ==>
+                 (g in leafSub.value.1 ==> g in gm2 && gm2[g] == leafSub.value.1[g])
+  {
+    var dir := L.LkDir(lk);
+    var gm2 := LS.LkResult(lk, tlk, gm, inp).value;
+    // positive-gate unfold: LkResult.value == TreeRes(tlk, gm, inp, dir).value.1
+    var tr := LT.TreeRes(tlk, gm, inp, dir);
+    assert tr.Some? && gm2 == tr.value.1;
+    // both leaf lists (from gm and from Empty) agree on S, equal length (LookBodyLeafValue)
+    M.LookBodyLeafValue(rer, lk, r1, tlk, gm, inp, S);
+    var sub := LT.TreeLeaves(tlk, gm, inp, dir);
+    var subE := LT.TreeLeaves(tlk, LG.Empty, inp, dir);
+    // tie TreeRes to the head of TreeLeaves on BOTH runs
+    LT.FirstTreeLeaf(tlk, gm, inp, dir);
+    LT.FirstTreeLeaf(tlk, LG.Empty, inp, dir);
+    assert |sub| > 0 && tr.value == sub[0];          // tr.Some? ⟹ HdError(sub) = Some(sub[0])
+    assert |subE| == |sub| && |subE| > 0;            // LookBodyLeafValue: equal length
+    var leafSub := LT.TreeRes(tlk, LG.Empty, inp, dir);
+    assert leafSub == LT.HdError(subE) && leafSub.Some? && leafSub.value == subE[0];
+    // per-leaf S-agreement at the head leaf
+    assert M.GmAgreeOn(sub[0].1, subE[0].1, S);      // LookBodyLeafValue at i == 0
+    assert gm2 == sub[0].1 && leafSub.value.1 == subE[0].1;
+  }
+
+  /** (R2 — the sub-first-leaf of a top look at its RECORDED position) The spec-tree
+      analogue of `M.FreshBodyMatch`: the whole first leaf of `l`'s body tree, from
+      `Empty`, at the position the winning thread RECORDED for `l`
+      (`AReg.get_cp(lk, l)`). Unlike `FreshBodyMatch` — an engine Pike replay that
+      compiles nested looks to `CheckOracle` leaves and so records ONLY `l`'s direct
+      captures — this is the SPEC tree, whose `TreeRes` threads the whole body group
+      map, so it carries `l`'s DEEP (inner-look) captures too. Reads only
+      `AReg.get_cp(lk, l)`, so it is congruent under any `look_regs` change off `l`
+      (the property the gate-pass maintenance needs). Positive lookAHEAD only
+      (`WP.Forward`), the scope of `M.NoPosLookbehindRE`. */
+  ghost function SubFirstLeafAt(rer: LW.RegExpRecord, crv: CP.FCompiled, str: string, l: int,
+                                lk: AReg.Regs): Option<LG.GroupMap> {
+    var body := M.VBody(crv, l);
+    var cp := if AReg.get_cp(lk, l).Some? then AReg.get_cp(lk, l).value else 0;
+    var inp := PIV.InpOfCp(str, cp);
+    var tlk := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Forward);
+    var res := LT.TreeRes(tlk, LG.Empty, inp, WP.Forward);
+    if res.Some? then Some(res.value.1) else None
+  }
+
+  /** (R2 — the DEEP carrier) The strengthening of `LookNestBackTTop` from `l`'s
+      DIRECT captures (`GmOfLive(body(l), FreshBodyMatch(l))`) to `l`'s WHOLE
+      sub-first-leaf (`SubFirstLeafAt(l)`, deep/inner-look captures included). Same
+      shape, same hypotheses (matched + path-dominant top look on `th`'s banks);
+      only the landed set grows. This is the carrier the reverse-recon DEEP descent
+      needs: at the final leaf it lands every recon-live inside-look capture, not
+      just the directly-owned ones. `LookNestBackTTop` is its DIRECT-slice
+      specialization (`GmOfLive(body(l), fresh) ⊆ SubFirstLeafAt(l)` on the outer
+      groups). */
+  ghost predicate LookNestBackTTopDeep(rer: LW.RegExpRecord, re: R.regex, crv: CP.FCompiled,
+                                       str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
+                                       gmt: LG.GroupMap, th: AI.Thread,
+                                       ncap: int, nlook: int, nquant: int) {
+    forall lid: nat | lid in NI.TopLookIds(re) ::
+      (M.MatchedPosLA(crv, th.look_regs, lid as int)
+       && NI.LookPathDom(re, AI.get_idx(th.look_regs.a_clk, lid as int), th.quant_regs.a_clk, lid))
+      ==>
+      var lsub := SubFirstLeafAt(rer, crv, str, lid as int, th.look_regs);
+      lsub.Some? ==>
+        forall g: LG.GroupId ::
+          g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, lid)) && g in lsub.value
+          ==> g in gmt
+  }
+
+  /** (R2 — DEEP gate-pass maintenance) `LookNestBackTGatePassTop` for the DEEP
+      carrier. Verbatim structure: for the crossed lid `l0` the caller supplies the
+      landing (its `SubFirstLeafAt(l0)` groups are in `gmt'` — dischargeable by
+      `LkResultLandsSubFirstLeaf` at the crossing, since `gm2 == LkResult` contains
+      the whole sub-first-leaf); every other top lid is transported by CONGRUENCE —
+      `SubFirstLeafAt` and `MatchedPosLA` read only `look_regs`'s `l`-th cp, which is
+      unchanged off `l0`, and `gmt` only grows. So the STRENGTHENED carrier threads
+      the gate exactly as the direct one does — the position tie is definitional at
+      the crossing (LEAD 1), NOT a path-history obligation. */
+  lemma LookNestBackTGatePassTopDeep(rer: LW.RegExpRecord, re: R.regex, crv: CP.FCompiled,
+                                     str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
+                                     gmt: LG.GroupMap, gmt': LG.GroupMap,
+                                     th: AI.Thread, th': AI.Thread, l0: int,
+                                     ncap: int, nlook: int, nquant: int)
+    requires LookNestBackTTopDeep(rer, re, crv, str, ov, S, gmt, th, ncap, nlook, nquant)
+    requires th'.quant_regs == th.quant_regs
+    requires forall j: int :: j != l0 ==>
+      AI.get_idx(th'.look_regs.a_clk, j) == AI.get_idx(th.look_regs.a_clk, j)
+      && AI.get_idx(th'.look_regs.a_cp, j) == AI.get_idx(th.look_regs.a_cp, j)
+    requires forall g: LG.GroupId :: g in gmt ==> g in gmt'
+    requires l0 >= 0 && (l0 as nat) in LTB.LookIds(re) ==>
+      var lsub := SubFirstLeafAt(rer, crv, str, l0, th'.look_regs);
+      lsub.Some? ==>
+        forall g: LG.GroupId ::
+          g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, l0 as nat)) && g in lsub.value
+          ==> g in gmt'
+    ensures LookNestBackTTopDeep(rer, re, crv, str, ov, S, gmt', th', ncap, nlook, nquant)
+  {
+    NI.TopLookIdsIn(re);
+    forall lid: nat | lid in NI.TopLookIds(re)
+      && M.MatchedPosLA(crv, th'.look_regs, lid as int)
+      && NI.LookPathDom(re, AI.get_idx(th'.look_regs.a_clk, lid as int), th'.quant_regs.a_clk, lid)
+      ensures var lsub := SubFirstLeafAt(rer, crv, str, lid as int, th'.look_regs);
+              lsub.Some? ==>
+                forall g: LG.GroupId ::
+                  g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, lid)) && g in lsub.value
+                  ==> g in gmt'
+    {
+      if lid as int == l0 {
+        // established fresh at the crossing (caller's requires), gmt' monotone
+      } else {
+        assert AI.get_idx(th'.look_regs.a_clk, lid as int) == AI.get_idx(th.look_regs.a_clk, lid as int);
+        assert AReg.get_cp(th'.look_regs, lid as int) == AReg.get_cp(th.look_regs, lid as int) by {
+          assert AI.get_idx(th'.look_regs.a_cp, lid as int) == AI.get_idx(th.look_regs.a_cp, lid as int);
+        }
+        assert M.MatchedPosLA(crv, th.look_regs, lid as int);
+        assert SubFirstLeafAt(rer, crv, str, lid as int, th'.look_regs)
+            == SubFirstLeafAt(rer, crv, str, lid as int, th.look_regs);   // reads only get_cp at lid
+      }
+    }
+  }
+
+  /** (R2 — DEEP landing) The deep analogue of the empty-bodied `DescentLandTop`:
+      pure instantiation of the DEEP carrier. For a matched + path-dominant top look
+      `A0` whose sub-first-leaf `SubFirstLeafAt(A0)` carries a deep inside-look
+      capture `g2`, the carrier lands `g2` in `gmt`. */
+  lemma DescentLandTopDeep(
+      rer: LW.RegExpRecord, re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+      S: set<LG.GroupId>, gmt: LG.GroupMap, thread: AI.Thread, A0: nat, g2: nat,
+      ncap: int, nlook: int, nquant: int)
+    requires S == PIV.CapIdsInLooks(re)
+    requires LookNestBackTTopDeep(rer, re, crv, str, ov, S, gmt, thread, ncap, nlook, nquant)
+    requires A0 in NI.TopLookIds(re)
+    requires A0 in LTB.LookIds(re)
+    requires M.MatchedPosLA(crv, thread.look_regs, A0 as int)
+    requires NI.LookPathDom(re, AI.get_idx(thread.look_regs.a_clk, A0 as int), thread.quant_regs.a_clk, A0)
+    requires g2 in S && g2 in PIV.CapIds(NI.LookBodyOfRE(re, A0))
+    requires var lsub := SubFirstLeafAt(rer, crv, str, A0 as int, thread.look_regs);
+             lsub.Some? && g2 in lsub.value
+    ensures g2 in gmt
+  {
+  }
+
+  /** (R2 — the crossing DISCHARGES the deep gate-pass requires) Ties rung 1 to the
+      deep gate-pass: at a positive-lookAHEAD gate crossing (`l`'s cp just written
+      as `cp`, body groups cleared coming in), the DEEP carrier's crossing
+      obligation — every group of `l`'s sub-first-leaf `SubFirstLeafAt(l, th')` is
+      in the new leaf `gm2 == LkResult` — holds, straight from
+      `LkResultLandsSubFirstLeaf`. `SubFirstLeafAt(l, th')` unfolds to exactly the
+      spec-tree first leaf at the just-written cp (position tie DEFINITIONAL), and
+      `M.TranslateDefGroupsEqCapIds` matches `CapIds(body(l)) == DefGroups(r1)`. So
+      `LookNestBackTGatePassTopDeep`'s crossing `requires` is NOT vacuous — it is
+      produced at every real crossing, exactly as the direct carrier's is at
+      LiftSim:21522-21605. This is the concrete seam that would slot the deep
+      carrier into the `LiftInvRec` step. */
+  lemma DeepGateReqFromCrossing(
+      rer: LW.RegExpRecord, re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+      S: set<LG.GroupId>, gm: LG.GroupMap, gm2: LG.GroupMap, lk: L.Lookaround, r1: L.Regex,
+      tlk: LT.Tree, th': AI.Thread, l: int, cp: nat, body: R.regex, ncap: int, nlook: int, nquant: int)
+    requires cp <= |str|
+    requires l >= 0 && (l as nat) in LTB.LookIds(re)
+    requires T.TransWf(body)
+    requires L.Positivity(lk) && L.LkDir(lk) == WP.Forward
+    requires EL.PikeLkRegexRec(r1)
+    requires r1 == T.Translate(body)
+    requires body == M.VBody(crv, l) && NI.LookBodyOfRE(re, l as nat) == body
+    requires tlk == LFU.ComputeTr(rer, [LS.Areg(r1)], PIV.InpOfCp(str, cp), LG.Empty, L.LkDir(lk))
+    requires LS.LkResult(lk, tlk, gm, PIV.InpOfCp(str, cp)).Some?
+    requires gm2 == LS.LkResult(lk, tlk, gm, PIV.InpOfCp(str, cp)).value
+    requires M.GmAgreeOn(gm, LG.Empty, set g | g in L.DefGroups(r1))
+    requires AReg.get_cp(th'.look_regs, l) == Some(cp as int)
+    ensures var lsub := SubFirstLeafAt(rer, crv, str, l, th'.look_regs);
+            lsub.Some? ==>
+              forall g: LG.GroupId ::
+                g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, l as nat)) && g in lsub.value
+                ==> g in gm2
+  {
+    var inp := PIV.InpOfCp(str, cp);
+    var Sr1 := set g | g in L.DefGroups(r1);
+    // (1) SubFirstLeafAt(l, th') unfolds to the spec first leaf of `tlk` at `cp`.
+    assert SubFirstLeafAt(rer, crv, str, l, th'.look_regs)
+        == (var res := LT.TreeRes(tlk, LG.Empty, inp, WP.Forward);
+            if res.Some? then Some(res.value.1) else None)
+    by {
+      assert M.VBody(crv, l) == body;
+      assert T.Translate(body) == r1;
+      assert L.LkDir(lk) == WP.Forward;
+    }
+    // (2) rung 1: every Sr1-group of the from-Empty first leaf is in gm2.
+    LkResultLandsSubFirstLeaf(rer, lk, r1, inp, tlk, gm, Sr1);
+    // (3) CapIds(body(l)) == DefGroups(r1) == Sr1.
+    M.TranslateDefGroupsEqCapIds(body);
+    assert PIV.CapIds(NI.LookBodyOfRE(re, l as nat)) == Sr1;
+  }
+
   /** L3b item 4 (task #8) — PROVEN: the BACKWARD-gate twin of
       `ThreadRepLkStepCheckOracle` for a CAPTURING positive lookbehind. It
       establishes `GmtTieInside`'s `SwapRange` form via `GateStepValueLB` (which
@@ -24111,6 +24334,49 @@ module LindenElkLiftSim {
            && g2 in PIV.GmOfLive(NI.LookBodyOfRE(re, A0), rf.value.capture_regs,
                                  rf.value.look_regs, rf.value.quant_regs);
       DescentLandTop(re, crv, str, ov, S, gmt, thread, A0, g2, ncap, nlook, nquant);
+    }
+  }
+
+  /** (R2 — DEEP top-owner producer) The reverse-recon descent conclusion assembled
+      for EVERY recon-live inside-look capture — DIRECT or DEEP — via the DEEP
+      carrier. Same shape as `DescentProducerTopOwners`, but the per-`g2` package is
+      keyed on `SubFirstLeafAt(A0)` (the whole sub-first-leaf at `A0`'s recorded
+      position) instead of `GmOfLive(body(A0), FreshBodyMatch(A0))` (direct captures
+      only). Since the sub-first-leaf carries `A0`'s deep captures too, this single
+      producer lands both the top-owner (`g2` directly in `body(A0)`) and the DEEP
+      cases (`g2` nested below `A0`, delivered into `SubFirstLeafAt(A0)` by the
+      body-level replay `LookNestBackTFromBodyReplay` + inner descent). Closes the
+      R2 wall's conclusion side: the missing bridge `g2 in leaf_{A0} ==> g2 in leaf`
+      is exactly the per-`g2` `SubFirstLeafAt` membership feeding `DescentLandTopDeep`. */
+  lemma DescentProducerTopOwnersDeep(
+      rer: LW.RegExpRecord, re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+      S: set<LG.GroupId>, gmt: LG.GroupMap, thread: AI.Thread, res0: AReg.Regs,
+      ncap: int, nlook: int, nquant: int)
+    requires S == PIV.CapIdsInLooks(re)
+    requires LookNestBackTTopDeep(rer, re, crv, str, ov, S, gmt, thread, ncap, nlook, nquant)
+    // per recon-live inside-look g2 (DIRECT or DEEP): a TOP ancestor A0 matched +
+    // dominating on the carrier thread's banks, whose sub-first-leaf carries g2.
+    requires forall g2: nat :: g2 in S && AI.get_idx(res0.a_clk, CP.start_reg(g2)) >= 0 ==>
+      exists A0: nat ::
+        A0 in NI.TopLookIds(re) && A0 in LTB.LookIds(re)
+        && g2 in PIV.CapIds(NI.LookBodyOfRE(re, A0))
+        && M.MatchedPosLA(crv, thread.look_regs, A0 as int)
+        && NI.LookPathDom(re, AI.get_idx(thread.look_regs.a_clk, A0 as int), thread.quant_regs.a_clk, A0)
+        && var lsub := SubFirstLeafAt(rer, crv, str, A0 as int, thread.look_regs);
+           lsub.Some? && g2 in lsub.value
+    ensures forall g2: nat :: g2 in S && AI.get_idx(res0.a_clk, CP.start_reg(g2)) >= 0 ==> g2 in gmt
+  {
+    forall g2: nat | g2 in S && AI.get_idx(res0.a_clk, CP.start_reg(g2)) >= 0
+      ensures g2 in gmt
+    {
+      var A0: nat :|
+        A0 in NI.TopLookIds(re) && A0 in LTB.LookIds(re)
+        && g2 in PIV.CapIds(NI.LookBodyOfRE(re, A0))
+        && M.MatchedPosLA(crv, thread.look_regs, A0 as int)
+        && NI.LookPathDom(re, AI.get_idx(thread.look_regs.a_clk, A0 as int), thread.quant_regs.a_clk, A0)
+        && var lsub := SubFirstLeafAt(rer, crv, str, A0 as int, thread.look_regs);
+           lsub.Some? && g2 in lsub.value;
+      DescentLandTopDeep(rer, re, crv, str, ov, S, gmt, thread, A0, g2, ncap, nlook, nquant);
     }
   }
 

@@ -149,3 +149,43 @@ Then: endpoint UNCONDITIONAL + C5 (`MainTheoremL4` + `Supported` disjunction + `
 (end-to-end, pre-existing); the entire depth-k CAPTURING FORWARD value chain (green, conditional endpoint
 `L3aEndpointAssemblyNestedFull`); depth-1 nested capturing (complete). The depth-≥2 capturing NOVELTY is
 gated solely on R1+R2 above.
+
+## 9. BOTH WALLS DISSOLVED (2026-08-20) — remaining work is MECHANICAL WIRING, no conceptual gap
+§8's "R1 tractable / R2 the fundamental wall" is SUPERSEDED. Applying the fragment hypotheses (which prior
+wall-verdicts omitted) collapsed BOTH:
+- **R1 built green** (`94c4509`): `DirectPathPresentLk`/`DirectMxAtGidLkEq`/`DirectBodyPathPresentLk`/
+  `DirectBodyKeepsPresentLk` (PikeInvRE) — direct-group membership keyed on directness (look case vacuous).
+- **(A2) — the residual R1 bottomed out on — DISSOLVED green** (`7e71f38`,`df56cc1`,`efc3a5f`): the fresh
+  match's own path-presence. Prior agents called it the R2 wall via a counterexample with `g` UNDER A
+  QUANTIFIER — which `M.GNotUnderQuantL` (fragment hyp) FORBIDS. In-fragment `MxAtGid(body,·,g)==-1`
+  (`MxAtGidNoQuant`) so dominance is free, and `PathPresent` collapses to "ancestor captures set", a MONOTONE
+  register invariant `AncSetInvRE` (raw capture regs are never cleared — only `SetRegisterToCP` writes caps;
+  `Reset` writes quants). Step-preservation both green: `AncSetFrameStart` (non-Open), `AncSetOpenStep` (Open,
+  via `NI.NestInvOpenSite`). `AncSetToMemberNested` closes R1's `g in GmOfLive(body,rf)`.
+- **R2 — DISSOLVED green** (`753d07d`,`d93380e`,`1d260f8`,`1a2a557`, LiftSim): NOT a path-history wall. The
+  position tie is DEFINITIONAL at the gate crossing (`CheckOracle` writes `a_cp[l]:=cp`; `gm2=LkResult`
+  formed at that same `cp`). Deep captures are IN `gm2` ("untracked, not absent"). `LkResultLandsSubFirstLeaf`
+  is the crux (the fact scouts said needs path history): at a positive-look crossing with body groups cleared,
+  `gm2==LkResult` agrees with the look body's own first-leaf on EVERY body group (deep incl.), via
+  `M.LookBodyLeafValue`/`TreeLeavesFrameInside` — pure spec-tree, no oracle/replay/history. Plus
+  `SubFirstLeafAt`(fn)+`LookNestBackTTopDeep`(pred)+`LookNestBackTGatePassTopDeep`+`DescentLandTopDeep`+
+  `DescentProducerTopOwnersDeep` (unified producer landing EVERY recon-live cap, direct or deep) +
+  `DeepGateReqFromCrossing`.
+
+**REMAINING = mechanical wiring (every step has a proven green discharge; NO conceptual unknowns):**
+1. **(A2) wiring** — add `AncSetInvRE(re, t.capture_regs.a_clk)` as a `PSM.PikeInvFullRE` conjunct; discharge
+   entry (vacuous), all non-Open cases (`AncSetFrameStart`), Open cases (`AncSetOpenStep`); read off
+   `bestmatch` in `FindMatchBodyAtCpNested`. + small bridge `GNotUnderQuantL(Translate(body),g) ⟹
+   PIV.AncQuants(body,g)=={}`. (Big all-or-nothing edit — the conjunct reddens PikeSimRE until all ~8 cases
+   re-discharged, but each discharge is one of the two green lemmas.)
+2. **R2 wiring** — thread `LookNestBackTTopDeep` alongside `LookNestBackTTop` in `BestTieLkNestedTop` (:355)
+   → `L3aCompositeCloseRec` (:22878) → `LiftFindMatchCRec`/`LiftInvRec` + step lemmas; gate step via
+   `DeepGateReqFromCrossing`; deep clones of `LookNestBackTRegSame`/`LookNestBackTSetQuant` (mechanical —
+   `SubFirstLeafAt` depends only on `look_regs[lid]`, exactly like `FreshBodyMatch`).
+3. **Descent assembly** — feed `DescentProducerTopOwnersDeep` the per-`g2` `SubFirstLeafAt(A0)` membership
+   (direct: `Sout` of `LkReplayMatchesSpecNested`; deep: `LookNestBackTFromBodyReplay`(body(A0)) + inner
+   recursion of `DescentProducerTopOwnersDeep`). Its green consumers `GuardBridgeFromDescent`/
+   `ReverseCFromDescent` then discharge the endpoint reverse-(c)+`AllBodyTopFeeds`. Forward-existence VALUE
+   residual uses the SAME (A2)+deep-embedding machinery.
+4. **Endpoint UNCONDITIONAL + C5** (`MainTheoremL4` + `Supported` `NestedFragmentRaw` disjunction +
+   `MatchCorrect`) per §5.
