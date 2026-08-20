@@ -12436,6 +12436,40 @@ module LindenElkMain {
     NI.GmOfLiveKeepsPresentLkNested(body, caps, look, quant, g);  // the nested look-aware close
   }
 
+  /** (A2) MEMBERSHIP -> VALUE, NESTED. The converse-free companion of
+      `DirectBodyKeepsPresentLkNested`: instead of PRODUCING `g in GmOfLive` from
+      look-free path presence, it takes membership `g in GmOfLive(body, caps, look,
+      quant)` as GIVEN (plus `PIV.CapRegWf(caps)`, the free real-match "set-together"
+      consistency: an unset clock forces an unset value) and reads off the RAW
+      `LiveRange(caps.a_cp, caps.a_clk, g)`. This is not automatic: `GmOfLive` maps
+      every present `gid` to `LiveRange(f, cc, gid)` over the FILTERED array `f`, so
+      recovering the raw value needs `g`'s filter slots to survive unchanged. The
+      proof re-extracts `g`'s look-aware path presence (`NI.GmOfLivePresenceExtractLk
+      Nested`, fed the `CapRegWf` cp/clk consistency) and re-runs the close
+      (`NI.GmOfLiveKeepsPresentLkNested`), whose tail proves exactly `LiveRange(f, cc,
+      g) == LiveRange(cr, cc, g)`. Needs NEITHER `g`'s directness NOR any look-free
+      bridge — the pure "present ⟹ raw LiveRange" fact for any nested body. */
+  lemma DirectMemberValueNested(body: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, g: nat)
+    requires NR.NestedFragmentRE(body) && PIV.CapUnique(body)
+    requires g in PIV.CapIds(body)
+    requires PIV.CapRegWf(caps)
+    requires g in PIV.GmOfLive(body, caps, look, quant)
+    requires AI.get_idx(AReg.as_arrays(caps).0, CP.start_reg(g)) >= 0   // value set at g (free from membership)
+    ensures PIV.GmOfLive(body, caps, look, quant)[g]
+              == PIV.LiveRange(AReg.as_arrays(caps).0, AReg.as_arrays(caps).1, g)
+  {
+    // set-together consistency for every body capture, from CapRegWf(caps).
+    forall c: nat | c in PIV.CapIds(body) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
+      ensures AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
+    {
+      assert AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0;   // CapRegWf: clk<0 => cp<0
+    }
+    // (1) membership -> look-aware path presence + set/in-scope start clock & value.
+    NI.GmOfLivePresenceExtractLkNested(body, caps, look, quant, g);
+    // (2) re-run the close: present + dominating clock -> raw LiveRange value.
+    NI.GmOfLiveKeepsPresentLkNested(body, caps, look, quant, g);
+  }
+
   /** (A2) R1 CLOSE — REDUCTION FORM. Completes the R1 target `FreshBodyDirect
       Member` — that an `res0`-live inside-look `g` is present in its innermost
       DIRECT owner's FRESH body match's own live denotation — MODULO the single
@@ -12547,6 +12581,120 @@ module LindenElkMain {
     assert AI.get_idx(AReg.as_arrays(rf.value.capture_regs).1, CP.start_reg(g)) >= 0;   // clock set
     // (4) close with the (A2) producer residual (value-set + PathPresent + dominance).
     DirectBodyKeepsPresentLkNested(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs, g);
+  }
+
+  /** (A2) R1 CLOSE — MEMBERSHIP-RESIDUAL FORM. The SHARPEST reduction of the R1
+      target `FreshBodyDirectMember`: identical ensures to `FreshBodyDirectMember
+      FromPresent`, but the owed `(A2)` residual is collapsed from the three-part
+      register producer (value-set + look-free `PathPresent` + clock-dominance) down
+      to the SINGLE match-soundness fact `g in GmOfLive(body, rf)` — that `g` is a
+      member of the winning fresh body match's own live denotation. Via `PIV.Best
+      MatchRE` at that fresh match's `PTS_final` state this is EXACTLY "`g` is
+      captured in the Linden body-match first-leaf's group map" — the thread<->leaf
+      membership tie (the R2 wall). Everything else is discharged GREEN here:
+      `FreshBodyDirectLive` supplies `owner`, `rf.Some?`, `g`'s directness in the
+      owner body and `rf`'s set start clock at `g`; `LookBodyFactsNested` the body's
+      `NestedFragmentRE`/`CapUnique`; the free `CapRegWf(rf.caps)` (dischargeable via
+      `FreshMatchWfNested`) turns clock-set into value-set and feeds the "set-
+      together" consistency; and `DirectMemberValueNested` reads off the raw
+      `LiveRange` from membership. NO look-free bridge, NO `PathPresentIntro`
+      ancestor chain — the entire clock/path algebra of the producer is absorbed
+      into the one membership premise. */
+  lemma FreshBodyDirectMemberFromMembership(crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
+                            cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                            S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int, g: nat)
+      returns (owner: nat)
+    // ---- whole-regex setup (verbatim from FreshBodyDirectLive) ----
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires LTB.LookTablesOk(re, crv)
+    requires PIV.CapUnique(re) && LTB.LookUnique(re)
+    requires g in PIV.CapIdsInLooks(re)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    // ---- extra structural facts (for LookBodyFactsNested) ----
+    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re) && PIV.QuantUnique(re)
+    // ---- deliverable-1 hypotheses (a)-(h) (verbatim from FreshBodyDirectLive) ----
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
+    requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
+    requires CM.LookCpsLE(lk, |str|)
+    requires forall l: int, la: R.lookaround, body: R.regex ::
+      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+    requires forall l: int :: 1 <= l <= R.max_lookaround(ast) && AReg.get_cp(lk, l).Some? ==>
+      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+    requires forall l: int, la: R.lookaround, body: R.regex ::
+      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
+      CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::
+      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+      PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
+      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+      && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::
+      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+      DirectLookIds(b1) * LTB.LookIds(b2) == {}
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
+      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==> l2 !in LookIdSet(b1)
+    // ---- res0-liveness at g (verbatim from FreshBodyDirectLive) ----
+    requires AI.get_idx(AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov).0.a_clk, CP.start_reg(g)) >= 0
+    // ==== THE ISOLATED (A2) MEMBERSHIP RESIDUAL (owed match-soundness) ====
+    // For the (unique) innermost-DIRECT owner's FRESH winning body match `rf`,
+    // `g` is a MEMBER of the body's OWN live denotation — the SOLE owed fact
+    // (equivalently, via BestMatchRE at rf's PTS_final, `g` captured in the
+    // Linden body-match first-leaf). `CapRegWf(rf.caps)` is the free register-wf
+    // side condition (dischargeable via `FreshMatchWfNested`). Stated over ALL
+    // owners matching the characterization (unique by `InnermostOwnerUnique`).
+    requires var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov);
+             forall owner0: nat ::
+               owner0 in LTB.LookIds(re)
+               && g in PIV.CapIds(NI.LookBodyOfRE(re, owner0))
+               && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner0))
+               && MatchedPosLA(crv, res.1, owner0) ==>
+                 var body := NI.LookBodyOfRE(re, owner0);
+                 var rf := FreshBodyMatch(crv, str, owner0 as int, res.1, ov, ncap, nlook, nquant);
+                 rf.Some? ==>
+                   PIV.CapRegWf(rf.value.capture_regs)
+                   && AI.get_idx(AReg.as_arrays(rf.value.capture_regs).0, CP.start_reg(g)) >= 0   // value set (free from CapRegWf)
+                   && g in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)
+    ensures owner in LTB.LookIds(re)
+    ensures g in PIV.CapIds(NI.LookBodyOfRE(re, owner)) && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
+    ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov);
+            MatchedPosLA(crv, res.1, owner)
+            && var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
+               rf.Some?
+               && var body := NI.LookBodyOfRE(re, owner);
+                  g in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)
+               && PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)[g]
+                    == PIV.LiveRange(AReg.as_arrays(rf.value.capture_regs).0,
+                                     AReg.as_arrays(rf.value.capture_regs).1, g)
+  {
+    // (1) the register-side half: owner, rf.Some?, g captured (start clock >= 0).
+    owner := FreshBodyDirectLive(crv, str, ast, re, cap, lk, qt, ov, S, Slook, ncap, nlook, nquant, g);
+    var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov);
+    var body := NI.LookBodyOfRE(re, owner);
+    var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
+    assert MatchedPosLA(crv, res.1, owner);
+    assert rf.Some?;
+    assert g in PIV.CapIds(body) && g !in PIV.CapIdsInLooks(body);
+    assert AI.get_idx(rf.value.capture_regs.a_clk, CP.start_reg(g)) >= 0;
+    // (2) the owner body's shape: NestedFragmentRE + CapUnique (owner in LookIds(re)).
+    LookBodyFactsNested(re, crv, owner);
+    assert NR.NestedFragmentRE(body) && PIV.CapUnique(body);
+    // (3) the membership residual, instantiated at this owner.
+    assert PIV.CapRegWf(rf.value.capture_regs)
+        && g in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs);
+    // (4) value-set at g: CapRegWf turns the set start clock into a set start value.
+    assert AReg.as_arrays(rf.value.capture_regs).0 == rf.value.capture_regs.a_cp;
+    assert AReg.as_arrays(rf.value.capture_regs).1 == rf.value.capture_regs.a_clk;
+    assert AI.get_idx(rf.value.capture_regs.a_cp, CP.start_reg(g)) >= 0;   // CapRegWf: clk>=0 => cp>=0
+    // (5) read off the raw LiveRange value from membership.
+    DirectMemberValueNested(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs, g);
   }
 
   /** R2: nested twin of `NoWriteOracleBodyCode` — a nested body's compiled
