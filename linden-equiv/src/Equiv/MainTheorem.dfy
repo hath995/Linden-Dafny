@@ -7307,6 +7307,46 @@ module LindenElkMain {
     case _ => true
   }
 
+  /** (A2) THE QUANT-BRIDGE: the RE-side shadow of `GNotUnderQuantL`. If a capture
+      `g` of `body` is placed under NO quantifier by Linden's translation
+      (`GNotUnderQuantL(Translate(body), g)`), then `g` has NO ancestor quantifier
+      on the RE side either (`PIV.AncQuants(body, g) == {}`) — exactly the no-quant
+      precondition `AncSetToMemberNested` consumes. Structural induction over
+      `body`: the `Re_quant` case is VACUOUS for a captured `g` (it forces
+      `g !in DefGroups(Translate(r1)) == CapIds(r1) ∋ g`, via
+      `TranslateDefGroupsEqCapIds`); every other constructor descends. */
+  lemma GNotUnderQuantLNoAncQuants(body: R.regex, g: nat)
+    requires T.TransWf(body)
+    requires g in PIV.CapIds(body)
+    requires GNotUnderQuantL(T.Translate(body), g)
+    ensures PIV.AncQuants(body, g) == {}
+    decreases body
+  {
+    match body
+    case Re_alt(r1, r2) =>
+      if g in PIV.CapIds(r1) { GNotUnderQuantLNoAncQuants(r1, g); }
+      else { GNotUnderQuantLNoAncQuants(r2, g); }
+    case Re_con(r1, r2) =>
+      if g in PIV.CapIds(r1) { GNotUnderQuantLNoAncQuants(r1, g); }
+      else { GNotUnderQuantLNoAncQuants(r2, g); }
+    case Re_quant(nul, qid, q, r1) =>
+      // Translate(body) == Quantified(_,_,_,Translate(r1)); GNotUnderQuantL forces
+      // g !in DefGroups(Translate(r1)), yet g in CapIds(r1) == that set.
+      TranslateDefGroupsEqCapIds(r1);
+      assert g in (set x | x in L.DefGroups(T.Translate(r1)));
+      assert false;
+    case Re_capture(cid, r1) =>
+      if cid >= 0 && (cid as nat) == g {
+      } else {
+        GNotUnderQuantLNoAncQuants(r1, g);
+      }
+    case Re_lookaround(lid, l, r1) =>
+      GNotUnderQuantLNoAncQuants(r1, g);
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+  }
+
   /** Action-list lift of `GNotUnderQuantL`: every pending `Areg` regex keeps `g`
       out of its quantifier bodies. Threaded down the `ComputeTree` walk. */
   ghost predicate GNQActs(act: LS.Actions, g: LG.GroupId) {
@@ -12697,6 +12737,120 @@ module LindenElkMain {
     DirectMemberValueNested(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs, g);
   }
 
+  /** (A2) R1 CLOSE — ANCESTOR-SET-RESIDUAL FORM. The SHARPEST reduction of the R1
+      target `FreshBodyDirectMember` yet: identical ensures to `FreshBodyDirect
+      MemberFromMembership`, but the owed `(A2)` residual is collapsed from the
+      SEMANTIC membership `g in GmOfLive(body, rf)` (an R2-flavored thread<->leaf
+      tie) down to the PURE REGISTER invariant `AncSetInvRE(body, rf.caps.a_clk)` —
+      "every DIRECT set capture of the winning fresh body match has all its ancestor
+      captures set", an anytime, monotone, NOT-pc-tied fact. Everything else is
+      discharged GREEN here: `FreshBodyDirectLive` supplies `owner`, `rf.Some?`, `g`'s
+      directness in the owner body and `rf`'s set start clock at `g`; `LookBodyFacts
+      Nested` the body's `NestedFragmentRE`/`CapUnique`/`QuantUnique`; and
+      `AncSetToMemberNested` turns the register invariant + set clock + the no-quant
+      side condition `AncQuants(body, g) == {}` (the RE-side shadow of
+      `GNotUnderQuantL`, itself dischargeable via `GNotUnderQuantLNoAncQuants`) into
+      the membership AND the raw `LiveRange` value. This isolates the ENTIRE remaining
+      (A2) obligation to the single step-preserved register invariant, owed only its
+      threading through the fresh-body sim driver (the `FFindMatchAncSet` rider). */
+  lemma FreshBodyDirectMemberFromAncSet(crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
+                            cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                            S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int, g: nat)
+      returns (owner: nat)
+    // ---- whole-regex setup (verbatim from FreshBodyDirectMemberFromMembership) ----
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires LTB.LookTablesOk(re, crv)
+    requires PIV.CapUnique(re) && LTB.LookUnique(re)
+    requires g in PIV.CapIdsInLooks(re)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    // ---- extra structural facts (for LookBodyFactsNested) ----
+    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re) && PIV.QuantUnique(re)
+    // ---- deliverable-1 hypotheses (a)-(h) (verbatim) ----
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
+    requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
+    requires CM.LookCpsLE(lk, |str|)
+    requires forall l: int, la: R.lookaround, body: R.regex ::
+      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+    requires forall l: int :: 1 <= l <= R.max_lookaround(ast) && AReg.get_cp(lk, l).Some? ==>
+      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+    requires forall l: int, la: R.lookaround, body: R.regex ::
+      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
+      CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::
+      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+      PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
+      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+      && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::
+      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+      DirectLookIds(b1) * LTB.LookIds(b2) == {}
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
+      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==> l2 !in LookIdSet(b1)
+    // ---- res0-liveness at g (verbatim) ----
+    requires AI.get_idx(AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov).0.a_clk, CP.start_reg(g)) >= 0
+    // ==== THE ISOLATED (A2) ANCESTOR-SET RESIDUAL (owed match-soundness) ====
+    // For the (unique) innermost-DIRECT owner's FRESH winning body match `rf`, the
+    // anytime register invariant `AncSetInvRE(body, rf.caps.a_clk)` holds (plus the
+    // free `CapRegWf(rf.caps)` and the no-quant side condition `AncQuants(body,g)==
+    // {}`). Stated over ALL owners matching the characterization (unique by
+    // `InnermostOwnerUnique`).
+    requires var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov);
+             forall owner0: nat ::
+               owner0 in LTB.LookIds(re)
+               && g in PIV.CapIds(NI.LookBodyOfRE(re, owner0))
+               && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner0))
+               && MatchedPosLA(crv, res.1, owner0) ==>
+                 var body := NI.LookBodyOfRE(re, owner0);
+                 PIV.AncQuants(body, g) == {}
+                 && var rf := FreshBodyMatch(crv, str, owner0 as int, res.1, ov, ncap, nlook, nquant);
+                    (rf.Some? ==>
+                      PIV.CapRegWf(rf.value.capture_regs)
+                      && AI.get_idx(AReg.as_arrays(rf.value.capture_regs).0, CP.start_reg(g)) >= 0   // value set (free from CapRegWf)
+                      && AncSetInvRE(body, rf.value.capture_regs.a_clk))
+    ensures owner in LTB.LookIds(re)
+    ensures g in PIV.CapIds(NI.LookBodyOfRE(re, owner)) && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
+    ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov);
+            MatchedPosLA(crv, res.1, owner)
+            && var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
+               rf.Some?
+               && var body := NI.LookBodyOfRE(re, owner);
+                  g in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)
+               && PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)[g]
+                    == PIV.LiveRange(AReg.as_arrays(rf.value.capture_regs).0,
+                                     AReg.as_arrays(rf.value.capture_regs).1, g)
+  {
+    // (1) the register-side half: owner, rf.Some?, g captured (start clock >= 0).
+    owner := FreshBodyDirectLive(crv, str, ast, re, cap, lk, qt, ov, S, Slook, ncap, nlook, nquant, g);
+    var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov);
+    var body := NI.LookBodyOfRE(re, owner);
+    var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
+    assert MatchedPosLA(crv, res.1, owner);
+    assert rf.Some?;
+    assert g in PIV.CapIds(body) && g !in PIV.CapIdsInLooks(body);
+    assert AI.get_idx(rf.value.capture_regs.a_clk, CP.start_reg(g)) >= 0;
+    // (2) the owner body's shape: NestedFragmentRE + CapUnique + QuantUnique.
+    LookBodyFactsNested(re, crv, owner);
+    assert NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body);
+    // (3) the ancestor-set residual, instantiated at this owner.
+    assert PIV.AncQuants(body, g) == {}
+        && PIV.CapRegWf(rf.value.capture_regs)
+        && AncSetInvRE(body, rf.value.capture_regs.a_clk);
+    // (4) as_arrays projections coincide with the record's clock array.
+    assert AReg.as_arrays(rf.value.capture_regs).1 == rf.value.capture_regs.a_clk;
+    assert AncSetInvRE(body, AReg.as_arrays(rf.value.capture_regs).1);
+    assert AI.get_idx(AReg.as_arrays(rf.value.capture_regs).1, CP.start_reg(g)) >= 0;
+    // (5) close: the register invariant + set clock + no-quant -> membership + LiveRange.
+    AncSetToMemberNested(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs, g);
+  }
+
   /** (A2 in-fragment) NO-QUANT `MxAtGid` COLLAPSE. When `g` has NO quantifier
       ancestor on its root->g path (`PIV.AncQuants(body, g) == {}`, the RE-side
       shadow of `GNotUnderQuantL`), the maxclock threshold `PIV.MxAtGid` never
@@ -12864,6 +13018,18 @@ module LindenElkMain {
     forall g: nat :: g in PIV.CapIds(re) && g !in PIV.CapIdsInLooks(re)
                      && AI.get_idx(cc, CP.start_reg(g)) >= 0
       ==> (forall c: nat :: c in PIV.AncCaps(re, g) ==> AI.get_idx(cc, CP.start_reg(c)) >= 0)
+  }
+
+  /** (A2 in-fragment) ENTRY (base case) of the `AncSetInvRE` rider: the FRESH
+      init registers (all clocks `< 0`, so NO capture start clock is set) satisfy
+      `AncSetInvRE` VACUOUSLY. This is the base case the sim driver threads forward
+      via `AncSetFrameStart` (non-Open steps) and `AncSetOpenStep` (the Open step)
+      to the winning fresh thread. */
+  lemma AncSetInitVacuous(re: R.regex, cc: seq<int>)
+    requires forall k :: AI.get_idx(cc, k) < 0
+    ensures AncSetInvRE(re, cc)
+  {
+    // The antecedent `AI.get_idx(cc, CP.start_reg(g)) >= 0` is false for every g.
   }
 
   /** (A2 in-fragment) FRAME preservation of `AncSetInvRE`: any VM step that leaves
