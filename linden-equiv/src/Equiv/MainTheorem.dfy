@@ -12697,6 +12697,292 @@ module LindenElkMain {
     DirectMemberValueNested(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs, g);
   }
 
+  /** (A2 in-fragment) NO-QUANT `MxAtGid` COLLAPSE. When `g` has NO quantifier
+      ancestor on its root->g path (`PIV.AncQuants(body, g) == {}`, the RE-side
+      shadow of `GNotUnderQuantL`), the maxclock threshold `PIV.MxAtGid` never
+      climbs above its `-1` seed: `MxAtGid` rises only at a `Re_quant` node, and an
+      empty ancestor-quant set forces any quant node on the path to carry a negative
+      id whose stamp reads `-1` (so `mx` stays `-1`). This is the fact that makes the
+      clock-DOMINANCE input to `PathPresentIntro`/`DirectBodyKeepsPresentLkNested`
+      (`clk >= MxAtGid == -1`) FREE from a merely set (`>= 0`) clock. */
+  lemma MxAtGidNoQuant(body: R.regex, cc: seq<int>, qc: seq<int>, g: nat)
+    requires g in PIV.CapIds(body)
+    requires PIV.AncQuants(body, g) == {}
+    ensures PIV.MxAtGid(body, cc, qc, -1, g) == -1
+    decreases body
+  {
+    match body
+    case Re_alt(r1, r2) =>
+      if g in PIV.CapIds(r1) { MxAtGidNoQuant(r1, cc, qc, g); } else { MxAtGidNoQuant(r2, cc, qc, g); }
+    case Re_con(r1, r2) =>
+      if g in PIV.CapIds(r1) { MxAtGidNoQuant(r1, cc, qc, g); } else { MxAtGidNoQuant(r2, cc, qc, g); }
+    case Re_quant(nul, qid, q, r1) =>
+      if qid >= 0 { assert (qid as nat) in PIV.AncQuants(body, g); }   // contradicts == {}
+      assert qid < 0;
+      assert AI.get_idx(qc, qid) == -1;                               // negative slot reads -1
+      assert PIV.AncQuants(r1, g) == {};
+      MxAtGidNoQuant(r1, cc, qc, g);
+    case Re_capture(cid, r1) =>
+      if cid >= 0 && (cid as nat) == g {} else { MxAtGidNoQuant(r1, cc, qc, g); }
+    case Re_lookaround(lid, l, r1) => MxAtGidNoQuant(r1, cc, qc, g);
+    case _ =>
+  }
+
+  /** (A2 in-fragment) EMPTINESS PROPAGATION to ancestor captures: if `g` has no
+      quantifier ancestor, neither does any capture `c` strictly enclosing `g`
+      (`c in PIV.AncCaps(body, g)`) — `c`'s root->c path is a prefix of `g`'s, so
+      its ancestor-quant set is a subset of `g`'s empty one. Lets `MxAtGidNoQuant`
+      fire at each ancestor `c`, discharging `PathPresentIntro`'s per-ancestor
+      clock-dominance. */
+  lemma AncQuantsEmptyAncCap(body: R.regex, g: nat, c: nat)
+    requires g in PIV.CapIds(body)
+    requires PIV.CapUnique(body)
+    requires c in PIV.AncCaps(body, g)
+    requires PIV.AncQuants(body, g) == {}
+    ensures c in PIV.CapIds(body)
+    ensures PIV.AncQuants(body, c) == {}
+    decreases body
+  {
+    match body
+    case Re_alt(r1, r2) =>
+      if g in PIV.CapIds(r1) {
+        AncQuantsEmptyAncCap(r1, g, c);
+        assert c !in PIV.CapIds(r2) by { if c in PIV.CapIds(r2) { assert c in PIV.CapIds(r1) * PIV.CapIds(r2); } }
+      } else {
+        AncQuantsEmptyAncCap(r2, g, c);
+        assert c !in PIV.CapIds(r1) by { if c in PIV.CapIds(r1) { assert c in PIV.CapIds(r1) * PIV.CapIds(r2); } }
+      }
+    case Re_con(r1, r2) =>
+      if g in PIV.CapIds(r1) {
+        AncQuantsEmptyAncCap(r1, g, c);
+        assert c !in PIV.CapIds(r2) by { if c in PIV.CapIds(r2) { assert c in PIV.CapIds(r1) * PIV.CapIds(r2); } }
+      } else {
+        AncQuantsEmptyAncCap(r2, g, c);
+        assert c !in PIV.CapIds(r1) by { if c in PIV.CapIds(r1) { assert c in PIV.CapIds(r1) * PIV.CapIds(r2); } }
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      if qid >= 0 { assert (qid as nat) in PIV.AncQuants(body, g); }   // contradicts == {}
+      assert qid < 0;
+      assert PIV.AncQuants(r1, g) == {};
+      assert c in PIV.AncCaps(r1, g);
+      AncQuantsEmptyAncCap(r1, g, c);
+    case Re_capture(cid, r1) =>
+      // cid != g (else AncCaps(body,g) == {}, no member c)
+      if cid >= 0 && (cid as nat) == c {
+        // c is the immediate parent capture: its own path carries no ancestor quant
+        assert PIV.AncQuants(body, c) == {};
+        assert c in PIV.CapIds(body);
+      } else {
+        assert g in PIV.CapIds(r1);
+        assert c in PIV.AncCaps(r1, g);
+        AncQuantsEmptyAncCap(r1, g, c);
+      }
+    case Re_lookaround(lid, l, r1) => AncQuantsEmptyAncCap(r1, g, c);
+    case _ =>
+  }
+
+  /** (A2 in-fragment) THE PRODUCER, MODULO ANCESTOR-CAPTURE-SET. Assembles
+      `PIV.PathPresent(body, cc, qc, -1, g)` for a DIRECT `g` with NO quantifier
+      ancestor from the SINGLE remaining register fact — every ancestor capture of
+      `g` has its start clock SET (`>= 0`). Discharges `PIV.PathPresentIntro`'s two
+      per-ancestor obligations: the quant obligation is VACUOUS (`AncQuants(body,g)
+      == {}`); the capture obligation's clock-dominance is FREE (`MxAtGidNoQuant`
+      makes every ancestor threshold `-1`, and `AncQuantsEmptyAncCap` lets it fire
+      per ancestor), leaving only the set-clock hypothesis. Also emits the top-level
+      `MxAtGid == -1` so `g`'s own dominance `clk(g) >= MxAtGid == -1` is free. This
+      is the in-fragment reduction the coordinator identified: the whole clock/path
+      algebra collapses to "ancestor captures are set". */
+  lemma PathPresentNoQuantFromAncCapsSet(body: R.regex, cc: seq<int>, qc: seq<int>, g: nat)
+    requires g in PIV.CapIds(body)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires PIV.AncQuants(body, g) == {}
+    requires forall c: nat :: c in PIV.AncCaps(body, g) ==> AI.get_idx(cc, CP.start_reg(c)) >= 0
+    ensures PIV.PathPresent(body, cc, qc, -1, g)
+    ensures PIV.MxAtGid(body, cc, qc, -1, g) == -1
+  {
+    forall c: nat | c in PIV.AncCaps(body, g)
+      ensures AI.get_idx(cc, CP.start_reg(c)) >= 0
+           && AI.get_idx(cc, CP.start_reg(c)) >= PIV.MxAtGid(body, cc, qc, -1, c)
+    {
+      AncQuantsEmptyAncCap(body, g, c);       // c in CapIds(body), AncQuants(body,c) == {}
+      MxAtGidNoQuant(body, cc, qc, c);        // MxAtGid(body,cc,qc,-1,c) == -1
+    }
+    forall q: nat | q in PIV.AncQuants(body, g)
+      ensures AI.get_idx(qc, q) >= PIV.MxAtQid(body, cc, qc, -1, q)
+    {
+      // vacuous: AncQuants(body, g) == {}
+    }
+    PIV.PathPresentIntro(body, cc, qc, -1, g);
+    MxAtGidNoQuant(body, cc, qc, g);
+  }
+
+  /** (A2 in-fragment) `PathPresent` -> RAW ANCESTOR-SET (the converse of
+      `PIV.PathPresentIntro`'s capture half): every capture strictly enclosing `g`
+      has its start clock SET (`>= 0`). Read off the `Re_capture` clause of
+      `PIV.PathPresent` along the descent — it demands each enclosing `cid`'s start
+      clock be `>= 0` (and `>= mx`). This is the fact `NI.NestInvOpenSite` yields at
+      `g`'s Open site (via `PathPresent`) and that the anytime register invariant
+      `AncSetInvRE` maintains to `Accept`. */
+  lemma PathPresentAncCapSet(re: R.regex, cc: seq<int>, qc: seq<int>, mx: int, g: nat)
+    requires g in PIV.CapIds(re)
+    requires PIV.PathPresent(re, cc, qc, mx, g)
+    ensures forall c: nat :: c in PIV.AncCaps(re, g) ==> AI.get_idx(cc, CP.start_reg(c)) >= 0
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) =>
+      if g in PIV.CapIds(r1) { PathPresentAncCapSet(r1, cc, qc, mx, g); } else { PathPresentAncCapSet(r2, cc, qc, mx, g); }
+    case Re_con(r1, r2) =>
+      if g in PIV.CapIds(r1) { PathPresentAncCapSet(r1, cc, qc, mx, g); } else { PathPresentAncCapSet(r2, cc, qc, mx, g); }
+    case Re_quant(nul, qid, q, r1) =>
+      PathPresentAncCapSet(r1, cc, qc, AI.get_idx(qc, qid), g);
+    case Re_capture(cid, r1) =>
+      if cid >= 0 && (cid as nat) == g {
+        // AncCaps(re, g) == {} : nothing to prove
+      } else {
+        assert g in PIV.CapIds(r1);
+        assert AI.get_idx(cc, CP.start_reg(cid)) >= 0;   // PathPresent's enclosing-capture clause
+        PathPresentAncCapSet(r1, cc, qc, mx, g);
+      }
+    case Re_lookaround(lid, l, r1) => PathPresentAncCapSet(r1, cc, qc, mx, g);
+    case _ =>
+  }
+
+  /** (A2 in-fragment) THE ANYTIME REGISTER INVARIANT. `AncSetInvRE(re, cc)`: for
+      every DIRECT capture `g` (`g !in CapIdsInLooks`) whose start clock is SET in
+      `cc`, every capture strictly enclosing `g` is ALSO set. This is a pure
+      register fact — NOT tied to a `pc` — so it does NOT collapse at the `Accept`
+      terminator the way the positional `NestTopRE` does. It is MONOTONE and holds
+      universally (any fragment): the engine never CLEARS a capture register (only
+      `SetRegisterToCP` writes them, always to `Some(cp)` with `clk >= 0`; quantifier
+      `Reset` writes only QUANT registers), and to reach `Open(g)` in the bytecode
+      the thread must first pass `Open(c)` for each ancestor `c` (nesting). Reading
+      it off the winning thread + `PathPresentNoQuantFromAncCapsSet` (for a no-quant
+      `g`) yields the (A2) producer. */
+  ghost predicate AncSetInvRE(re: R.regex, cc: seq<int>)
+  {
+    forall g: nat :: g in PIV.CapIds(re) && g !in PIV.CapIdsInLooks(re)
+                     && AI.get_idx(cc, CP.start_reg(g)) >= 0
+      ==> (forall c: nat :: c in PIV.AncCaps(re, g) ==> AI.get_idx(cc, CP.start_reg(c)) >= 0)
+  }
+
+  /** (A2 in-fragment) FRAME preservation of `AncSetInvRE`: any VM step that leaves
+      every capture START clock unchanged preserves it. Covers ALL non-Open steps
+      the sim takes — `Close` (writes `end_reg`), quantifier `Reset` (writes a QUANT
+      register), `Consume`, and every control step (`Fork`/`Jmp`/`BeginLoop`/
+      `EndLoop`/anchors/`CheckOracle`) that touches no capture register — since
+      `AncSetInvRE` reads only start clocks (`CP.start_reg` over `CapIds`, and
+      `AncCaps <= CapIds`). */
+  lemma AncSetFrameStart(re: R.regex, cc: seq<int>, cc': seq<int>)
+    requires forall g: nat :: g in PIV.CapIds(re) ==> AI.get_idx(cc', CP.start_reg(g)) == AI.get_idx(cc, CP.start_reg(g))
+    requires AncSetInvRE(re, cc)
+    ensures AncSetInvRE(re, cc')
+  {
+    forall g: nat | g in PIV.CapIds(re) && g !in PIV.CapIdsInLooks(re) && AI.get_idx(cc', CP.start_reg(g)) >= 0
+      ensures forall c: nat :: c in PIV.AncCaps(re, g) ==> AI.get_idx(cc', CP.start_reg(c)) >= 0
+    {
+      assert AI.get_idx(cc, CP.start_reg(g)) >= 0;       // g in CapIds(re)
+      forall c: nat | c in PIV.AncCaps(re, g)
+        ensures AI.get_idx(cc', CP.start_reg(c)) >= 0
+      {
+        assert c in PIV.CapIds(re);                      // AncCaps <= CapIds
+        assert AI.get_idx(cc, CP.start_reg(c)) >= 0;     // AncSetInvRE(re, cc)
+      }
+    }
+  }
+
+  /** (A2 in-fragment) OPEN-STEP preservation of `AncSetInvRE` — the ONLY
+      non-trivial VM step, and the mathematical HEART of the producer. When the
+      thread executes `Open(g)` (`SetRegisterToCP(start_reg(g))`), writing `g`'s
+      start clock, `AncSetInvRE` is preserved: the newly-set `g`'s own ancestor
+      captures were ALREADY set, which `NI.NestInvOpenSite` certifies from the
+      positional invariant `NestInvRE` (already threaded by `PikeInvFullRE`) as
+      `PIV.PathPresent(re, cc, qc, mx, g)`, read off as raw ancestor-set by
+      `PathPresentAncCapSet`; every OTHER set direct group keeps its (unchanged)
+      start clock and its ancestors' (`start_reg` is injective: `== 2*·`), so
+      `AncSetInvRE(re, cc)` carries them. This is the single step that consumes the
+      bytecode Open-nesting; all others are `AncSetFrameStart`. Together they show
+      `AncSetInvRE` is a genuine step-preserved invariant — inductively true from
+      the fresh init state (vacuous: no capture set) to the winning thread at
+      `Accept`, where the positional invariant is vacuous but this register fact is
+      not. */
+  lemma AncSetOpenStep(re: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
+                       cc: seq<int>, cc': seq<int>, qc: seq<int>, mx: int, g: nat)
+    requires NR.NfaRepRE(re, code, pcb, pce)
+    requires PIV.CapUnique(re)
+    requires pcb <= pc < pce
+    requires NI.NestInvRE(re, code, pcb, pce, pc, cc, qc, mx)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(CP.start_reg(g)))
+    requires AncSetInvRE(re, cc)
+    requires AI.get_idx(cc', CP.start_reg(g)) >= 0
+    requires forall k :: k != CP.start_reg(g) ==> AI.get_idx(cc', k) == AI.get_idx(cc, k)
+    ensures AncSetInvRE(re, cc')
+  {
+    NI.NestInvOpenSite(re, code, pcb, pce, pc, cc, qc, mx, g);   // g in CapIds, direct, PathPresent(re,cc,qc,mx,g)
+    PathPresentAncCapSet(re, cc, qc, mx, g);                     // forall c in AncCaps(re,g): cc[start_reg(c)]>=0
+    forall h: nat | h in PIV.CapIds(re) && h !in PIV.CapIdsInLooks(re) && AI.get_idx(cc', CP.start_reg(h)) >= 0
+      ensures forall c: nat :: c in PIV.AncCaps(re, h) ==> AI.get_idx(cc', CP.start_reg(c)) >= 0
+    {
+      forall c: nat | c in PIV.AncCaps(re, h)
+        ensures AI.get_idx(cc', CP.start_reg(c)) >= 0
+      {
+        assert c in PIV.CapIds(re);                              // AncCaps <= CapIds
+        if CP.start_reg(c) == CP.start_reg(g) {
+          // cc'[start_reg(c)] == cc'[start_reg(g)] >= 0
+        } else {
+          // cc'[start_reg(c)] == cc[start_reg(c)]; show cc[start_reg(c)] >= 0
+          if h == g {
+            // c in AncCaps(re,g): PathPresentAncCapSet
+          } else {
+            assert CP.start_reg(h) == 2 * h && CP.start_reg(g) == 2 * g;   // injective
+            assert CP.start_reg(h) != CP.start_reg(g);                     // h != g
+            assert AI.get_idx(cc, CP.start_reg(h)) >= 0;                   // cc' == cc off start_reg(g)
+            // AncSetInvRE(re,cc): h direct & set => every ancestor set, incl. c
+          }
+        }
+      }
+    }
+  }
+
+  /** (A2 in-fragment) LAST MILE: `AncSetInvRE` -> the R1 close. For a DIRECT,
+      no-quantifier-ancestor `g` of a nested body, the anytime register invariant
+      `AncSetInvRE(body, caps.a_clk)` (which `AncSetFrameStart`/`AncSetOpenStep`
+      prove step-preserved, hence hold at the winning fresh thread) + a set start
+      clock for `g` deliver the FULL (A2) close: `g in GmOfLive(body, ·)` at the raw
+      `LiveRange`. Chains `PathPresentNoQuantFromAncCapsSet` (the no-quant collapse:
+      `AncSetInvRE` gives every ancestor of `g` set, which becomes `PIV.PathPresent`
+      + the free `-1` dominance) with the committed consumer `DirectBodyKeepsPresent
+      LkNested`. `PIV.AncQuants(body, g) == {}` is the RE-side shadow of
+      `GNotUnderQuantL(T.Translate(body), g)`; `PIV.CapRegWf(caps)` turns the set
+      clock into a set value. This isolates the ENTIRE remaining (A2) obligation to
+      the SINGLE register fact `AncSetInvRE(body, rf.caps.a_clk)` — a proven
+      step-preserved invariant, owed only its threading through the sim driver. */
+  lemma AncSetToMemberNested(body: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, g: nat)
+    requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires g in PIV.CapIds(body)
+    requires g !in PIV.CapIdsInLooks(body)
+    requires PIV.AncQuants(body, g) == {}          // RE-side shadow of GNotUnderQuantL
+    requires AncSetInvRE(body, AReg.as_arrays(caps).1)   // the step-preserved register invariant
+    requires PIV.CapRegWf(caps)
+    requires AI.get_idx(AReg.as_arrays(caps).1, CP.start_reg(g)) >= 0   // g's start clock set
+    ensures g in PIV.GmOfLive(body, caps, look, quant)
+    ensures PIV.GmOfLive(body, caps, look, quant)[g]
+              == PIV.LiveRange(AReg.as_arrays(caps).0, AReg.as_arrays(caps).1, g)
+  {
+    var cc := AReg.as_arrays(caps).1;
+    var qc := AReg.as_arrays(quant).1;
+    // AncSetInvRE at the DIRECT, set g: every ancestor capture of g is set.
+    assert forall c: nat :: c in PIV.AncCaps(body, g) ==> AI.get_idx(cc, CP.start_reg(c)) >= 0;
+    // no-quant collapse: PathPresent + MxAtGid == -1.
+    PathPresentNoQuantFromAncCapsSet(body, cc, qc, g);
+    assert PIV.PathPresent(body, cc, qc, -1, g);
+    assert PIV.MxAtGid(body, cc, qc, -1, g) == -1;
+    // value set at g (CapRegWf: clk>=0 => cp>=0).
+    assert AI.get_idx(AReg.as_arrays(caps).0, CP.start_reg(g)) >= 0;
+    // close via the committed nested consumer.
+    DirectBodyKeepsPresentLkNested(body, caps, look, quant, g);
+  }
+
   /** R2: nested twin of `NoWriteOracleBodyCode` — a nested body's compiled
       bytecode holds no `WriteOracle` (its inner looks compile to CheckOracle
       leaves; WriteOracle only comes from the build pass). Via
