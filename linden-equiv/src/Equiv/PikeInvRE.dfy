@@ -2319,6 +2319,112 @@ module LindenElkPikeInv {
   }
 
   // ===========================================================================
+  // L3a DIRECT analogues: the look-free bridges keyed on DIRECTNESS of the gid
+  // (`gid !in CapIdsInLooks(r)`) rather than whole-body `LookFreeRE`. At a
+  // `Re_lookaround(lid, l, r1)` node `CapIds == CapIdsInLooks == CapIds(r1)`, so a
+  // DIRECT gid can never descend into a look body — that case is VACUOUS. Hence
+  // `PathPresentLk` / `MxAtGidLk` reduce to their look-free counterparts exactly
+  // as under `LookFreeRE`, but only along the (look-free) descent to the direct gid.
+  // ===========================================================================
+
+  /** DIRECT analogue of `LookFreeMxAtGidLkEq`: for a gid NOT inside any lookaround
+      body (`gid !in CapIdsInLooks(r)`) the look-aware `MxAtGidLk` and the look-free
+      `MxAtGid` coincide. The `Re_lookaround` case is VACUOUS (`CapIds(Re_lookaround)
+      == CapIdsInLooks(Re_lookaround) == CapIds(r1)`, so a direct gid can never be
+      inside the look body). */
+  lemma DirectMxAtGidLkEq(r: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>, mx: int, gid: nat)
+    requires CapUnique(r) && gid in CapIds(r) && gid !in CapIdsInLooks(r)
+    ensures MxAtGidLk(r, cc, lc, qc, mx, gid) == MxAtGid(r, cc, qc, mx, gid)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => if gid in CapIds(r1) { DirectMxAtGidLkEq(r1, cc, lc, qc, mx, gid); } else { DirectMxAtGidLkEq(r2, cc, lc, qc, mx, gid); }
+    case Re_con(r1, r2) => if gid in CapIds(r1) { DirectMxAtGidLkEq(r1, cc, lc, qc, mx, gid); } else { DirectMxAtGidLkEq(r2, cc, lc, qc, mx, gid); }
+    case Re_quant(_, qid, _, r1) => DirectMxAtGidLkEq(r1, cc, lc, qc, AI.get_idx(qc, qid), gid);
+    case Re_capture(cid, r1) => if cid == gid {} else { DirectMxAtGidLkEq(r1, cc, lc, qc, mx, gid); }
+    case Re_lookaround(lid, l, r1) => assert gid in CapIds(r1); assert gid in CapIdsInLooks(r);   // VACUOUS: contradicts gid !in CapIdsInLooks
+    case _ =>
+  }
+
+  /** DIRECT analogue of `LookFreePathPresentLk`: for a gid NOT inside any lookaround
+      body, look-aware `PathPresentLk` follows from the look-free `PathPresent` — the
+      `Re_lookaround` gate is never crossed on the descent to a direct gid (that case
+      is VACUOUS, exactly as in `DirectMxAtGidLkEq`). */
+  lemma DirectPathPresentLk(r: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>, mx: int, gid: nat)
+    requires CapUnique(r) && gid in CapIds(r) && gid !in CapIdsInLooks(r)
+    requires PathPresent(r, cc, qc, mx, gid)
+    ensures PathPresentLk(r, cc, lc, qc, mx, gid)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => if gid in CapIds(r1) { DirectPathPresentLk(r1, cc, lc, qc, mx, gid); } else { DirectPathPresentLk(r2, cc, lc, qc, mx, gid); }
+    case Re_con(r1, r2) => if gid in CapIds(r1) { DirectPathPresentLk(r1, cc, lc, qc, mx, gid); } else { DirectPathPresentLk(r2, cc, lc, qc, mx, gid); }
+    case Re_quant(_, qid, _, r1) => DirectPathPresentLk(r1, cc, lc, qc, AI.get_idx(qc, qid), gid);
+    case Re_capture(cid, r1) => if cid == gid {} else { DirectPathPresentLk(r1, cc, lc, qc, mx, gid); }
+    case Re_lookaround(lid, l, r1) => assert gid in CapIds(r1); assert gid in CapIdsInLooks(r);   // VACUOUS
+    case _ =>
+  }
+
+  /** DIRECT analogue of `BodyPathPresentLk`: identical body-side path presence, but
+      keyed on DIRECTNESS (`g !in CapIdsInLooks(body)`) rather than whole-body
+      `LookFreeRE`. Composes `GmOfLivePresenceExtract` (the look-free presence
+      extract) with the DIRECT `PathPresent -> PathPresentLk` / `MxAtGid -> MxAtGidLk`
+      bridges. Discharges the body half of the path hypotheses WITHOUT the exact
+      position, for a body that MAY contain lookarounds as long as `g` is outside them. */
+  lemma DirectBodyPathPresentLk(body: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, g: nat)
+    requires NR.LookBehindFragmentRE(body) && CapUnique(body)
+    requires g in CapIds(body)
+    requires g !in CapIdsInLooks(body)
+    requires forall c: nat :: c in CapIds(body) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
+                             ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
+    requires g in GmOfLive(body, caps, look, quant)
+    ensures PathPresentLk(body, AReg.as_arrays(caps).1, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, g)
+    ensures AI.get_idx(AReg.as_arrays(caps).1, CP.start_reg(g)) >= 0
+    ensures AI.get_idx(AReg.as_arrays(caps).1, CP.start_reg(g))
+              >= MxAtGidLk(body, AReg.as_arrays(caps).1, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, g)
+  {
+    GmOfLivePresenceExtract(body, caps, look, quant, g);
+    var cc := AReg.as_arrays(caps).1;
+    var lc := AReg.as_arrays(look).1;
+    var qc := AReg.as_arrays(quant).1;
+    DirectPathPresentLk(body, cc, lc, qc, -1, g);
+    DirectMxAtGidLkEq(body, cc, lc, qc, -1, g);
+  }
+
+  /** CONVERSE of `DirectBodyPathPresentLk` and the DIRECT analogue of the body-side
+      close: a group `g` that a match SET (clock + value) and reached in look-free
+      capture mode (`PathPresent`, clock dominating `MxAtGid`) lands in the body's
+      live denotation `GmOfLive`. Bridges the look-free `PathPresent`/`MxAtGid` to
+      their look-aware forms via the DIRECT lemmas (the `Re_lookaround` case is
+      vacuous for a direct `g`), then applies the generic close `GmOfLiveKeepsPresentLk`.
+      This is EXACTLY the primitive that converts a FRESH BODY MATCH's captured direct
+      group into `GmOfLive` membership — the register-side close of the R1 wrapper's
+      step (c), once the fresh-match path-presence (the owed "(A2) producer") is
+      supplied. */
+  lemma DirectBodyKeepsPresentLk(body: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, g: nat)
+    requires NR.LookBehindFragmentRE(body) && CapUnique(body)
+    requires g in CapIds(body)
+    requires g !in CapIdsInLooks(body)
+    // the fresh match SET g (clock and value) ...
+    requires AI.get_idx(AReg.as_arrays(caps).1, CP.start_reg(g)) >= 0
+    requires AI.get_idx(AReg.as_arrays(caps).0, CP.start_reg(g)) >= 0
+    // ... and reached g in look-free capture mode with a dominating clock (real-match invariant).
+    requires PathPresent(body, AReg.as_arrays(caps).1, AReg.as_arrays(quant).1, -1, g)
+    requires AI.get_idx(AReg.as_arrays(caps).1, CP.start_reg(g))
+               >= MxAtGid(body, AReg.as_arrays(caps).1, AReg.as_arrays(quant).1, -1, g)
+    ensures g in GmOfLive(body, caps, look, quant)
+    ensures GmOfLive(body, caps, look, quant)[g]
+              == LiveRange(AReg.as_arrays(caps).0, AReg.as_arrays(caps).1, g)
+  {
+    var cc := AReg.as_arrays(caps).1;
+    var lc := AReg.as_arrays(look).1;
+    var qc := AReg.as_arrays(quant).1;
+    DirectPathPresentLk(body, cc, lc, qc, -1, g);          // PathPresent -> PathPresentLk
+    DirectMxAtGidLkEq(body, cc, lc, qc, -1, g);            // MxAtGidLk == MxAtGid (so clock dominates MxAtGidLk)
+    GmOfLiveKeepsPresentLk(body, caps, look, quant, g);    // the generic look-aware close
+  }
+
+  // ===========================================================================
   // Absence extraction: the dual. If gid's ancestors are all present (path in
   // capture mode) yet gid is ABSENT from the filter output, the failure is at
   // gid's own node — its start clock is stale or unset. This is exactly the

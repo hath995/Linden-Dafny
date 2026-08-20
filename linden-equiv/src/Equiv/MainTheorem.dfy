@@ -12307,6 +12307,98 @@ module LindenElkMain {
     }
   }
 
+  /** R1 (clean half): under the whole-regex `FLookLoopFullCoversInLooks` setup,
+      an `res0`-LIVE inside-look group `g` (its start clock set after the fold) is
+      OWNED-and-CAPTURED by its innermost-DIRECT owner's FRESH body match. Composes
+      `FLookLoopInLookLiveOwnerMatched` (res0-live ⟹ some direct owner matched) with
+      `InnermostOwnerUnique` (that owner IS `InnermostOwnerDirect(re,g)`) and
+      `FLookLoopFullCoversInLooks` (the fresh match `rf` agrees with `res0` on `g`'s
+      registers) — the `rf.None?` branch is ruled out because it would force `g`'s
+      clock back to its `-1` init, contradicting `res0`-liveness. Delivers
+      `rf.Some?` and that `rf` captured `g` (start clock ≥ 0). This is the
+      register-side half of `FreshBodyDirectMember`; the remaining `GmOfLive`
+      membership needs the fresh body match's own path-presence (real-match invariant
+      / body spec run). */
+  lemma FreshBodyDirectLive(crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
+                            cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                            S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int, g: nat)
+      returns (owner: nat)
+    // ---- whole-regex setup ----
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires LTB.LookTablesOk(re, crv)
+    requires PIV.CapUnique(re) && LTB.LookUnique(re)
+    requires g in PIV.CapIdsInLooks(re)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)   // lid range
+    // ---- deliverable-1 hypotheses (a)-(h) at lid=1, maxlook=max_lookaround(ast) ----
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
+    requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
+    requires CM.LookCpsLE(lk, |str|)                                                            // (e)
+    requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (a)
+      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+    requires forall l: int :: 1 <= l <= R.max_lookaround(ast) && AReg.get_cp(lk, l).Some? ==>    // (b)
+      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+    requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (c')
+      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
+      CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (D-ord)
+      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+      PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (f)
+      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+      && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
+      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+      DirectLookIds(b1) * LTB.LookIds(b2) == {}
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (h)
+      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==> l2 !in LookIdSet(b1)
+    // ---- res0-liveness at g (the fold set g's start clock) ----
+    requires AI.get_idx(AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov).0.a_clk, CP.start_reg(g)) >= 0
+    ensures owner in LTB.LookIds(re)
+    ensures g in PIV.CapIds(NI.LookBodyOfRE(re, owner)) && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
+    ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov);
+            MatchedPosLA(crv, res.1, owner)
+            && var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
+               rf.Some?
+               && CM.RegsAgreeInside(res.0, rf.value.capture_regs, PIV.CaptureRegsSet({g}))
+               && AI.get_idx(rf.value.capture_regs.a_clk, CP.start_reg(g)) >= 0
+  {
+    var maxlook := R.max_lookaround(ast);
+    var res := AI.FLookLoop(crv, str, 1, maxlook, cap, lk, qt, ov);
+    assert AI.get_idx(res.0.a_clk, CP.start_reg(g)) >= 0;                     // requires
+    // (a) res0-live ⟹ SOME direct owner of g is matched in res.1
+    FLookLoopInLookLiveOwnerMatched(crv, str, ast, re, cap, lk, qt, ov, S, Slook, ncap, nlook, nquant, g);
+    owner := NI.InnermostOwnerDirect(re, g);   // owner in LookIds(re); g in CapIds(body); g !in CapIdsInLooks(body)
+    var owner_ex: nat :| owner_ex in LTB.LookIds(re)
+          && g in PIV.CapIds(NI.LookBodyOfRE(re, owner_ex))
+          && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner_ex))
+          && MatchedPosLA(crv, res.1, owner_ex);
+    // (a') pin the existential owner to InnermostOwnerDirect via uniqueness
+    InnermostOwnerUnique(re, g, owner, owner_ex);
+    assert owner_ex == owner;
+    assert MatchedPosLA(crv, res.1, owner);
+    // (b) coverage gives the rf.Some?/None? dichotomy on {g}
+    FLookLoopFullCoversInLooks(crv, str, ast, re, cap, lk, qt, ov, S, Slook, ncap, nlook, nquant, g);
+    var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
+    PIV.StartRegInCaptureRegsSet({g}, g);   // start_reg(g) in CaptureRegsSet({g})
+    // (c) rf.None? is impossible: it would force g's start clock back to its -1 init
+    if rf.None? {
+      assert CM.RegsAgreeInside(res.0, AReg.init_regs(ncap), PIV.CaptureRegsSet({g}));
+      InitRegsClkUnset(ncap, CP.start_reg(g));
+      assert AI.get_idx(res.0.a_clk, CP.start_reg(g))
+          == AI.get_idx(AReg.init_regs(ncap).a_clk, CP.start_reg(g)) == -1;
+      assert false;
+    }
+    assert rf.Some?;
+    assert CM.RegsAgreeInside(res.0, rf.value.capture_regs, PIV.CaptureRegsSet({g}));
+  }
+
   /** R2: nested twin of `NoWriteOracleBodyCode` — a nested body's compiled
       bytecode holds no `WriteOracle` (its inner looks compile to CheckOracle
       leaves; WriteOracle only comes from the build pass). Via
