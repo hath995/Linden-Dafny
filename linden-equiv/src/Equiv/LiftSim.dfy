@@ -24866,6 +24866,55 @@ module LindenElkLiftSim {
     }
   }
 
+  /** (DEEP reverse-recon — MATCHED + DOMINANT for a deep g2's top ancestor) The
+      DEEP-case analogue of the res1-side facts `DescentPackageDirectFull` gets from
+      A1 for a DIRECT g2: for a deep-nested live capture `g2` whose OUTERMOST top
+      ancestor is `A0`, both existential gate conjuncts on the WINNING thread's
+      banks — `MatchedPosLA(A0)` and `LookPathDom(A0)`. Dominance comes from the
+      liveness connective `NI.LookPathDomFromLivenessThread` directly; matched comes
+      from `A0`'s look clock being SET on the reconstructed banks (`LocalTopFeed` at
+      `A0`, whose live-witness guard `g2` discharges) reconciled onto the thread
+      banks (`get_idx(res1.a_clk,A0)==get_idx(thread.look_regs.a_clk,A0)`), then the
+      reverse look-bank invariant `M.TopLookMatchedFromDom`. A1 delivers only the
+      INNERMOST owner matched, so `A0`-matched needs exactly this clock-set route.
+      Everything but the deep LANDING (`g2 in SubFirstLeafAt(A0)`) of the deep
+      per-`g2` existential is produced here. */
+  lemma DeepTopAncestorMatchedDom(
+      crv: CP.FCompiled, re: R.regex, thread: AI.Thread,
+      res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs, A0: nat, g2: nat)
+    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re) && LTB.LookUnique(re)
+    requires g2 in PIV.CapIdsInLooks(re)
+    requires A0 in NI.TopLookIds(re) && A0 in LTB.LookIds(re)
+    requires g2 in PIV.CapIds(NI.LookBodyOfRE(re, A0))
+    requires forall c: nat :: c in PIV.CapIds(re) && AI.get_idx(res0.a_clk, CP.start_reg(c)) < 0
+                             ==> AI.get_idx(res0.a_cp, CP.start_reg(c)) < 0
+    requires g2 in PIV.GmOfLive(re, res0, res1, res2)
+    requires AI.get_idx(res0.a_clk, CP.start_reg(g2)) >= 0            // res0-live (LocalTopFeed guard)
+    requires AllBodyTopFeeds(re, res0.a_clk, AReg.as_arrays(res1).1, res2.a_clk)
+    // reconciliation res -> thread at the TOP look A0.
+    requires AI.get_idx(res1.a_clk, A0 as int) == AI.get_idx(thread.look_regs.a_clk, A0 as int)
+    requires forall q: nat :: q in PIV.QuantIdsOutsideLooks(re) ==>
+      AI.get_idx(res2.a_clk, q as int) == AI.get_idx(thread.quant_regs.a_clk, q as int)
+    // winning-thread reverse look-bank invariant + fragment static.
+    requires CM.LookCpSetWithClk(thread.look_regs)
+    requires |thread.look_regs.a_cp| == |thread.look_regs.a_clk|
+    requires 0 <= (A0 as int) < |crv.f_look_types| && crv.f_look_types[A0 as int].Lookahead?
+    ensures M.MatchedPosLA(crv, thread.look_regs, A0 as int)
+    ensures NI.LookPathDom(re, AI.get_idx(thread.look_regs.a_clk, A0 as int), thread.quant_regs.a_clk, A0)
+  {
+    // (1) dominance from the liveness connective.
+    NI.LookPathDomFromLivenessThread(re, res0, res1, res2, thread, g2, A0);
+    // (2) A0's look clock is SET on the reconstructed banks (LocalTopFeed at A0).
+    assert LocalTopFeed(re, res0.a_clk, AReg.as_arrays(res1).1, res2.a_clk);   // from AllBodyTopFeeds
+    assert AReg.as_arrays(res1).1 == res1.a_clk;                               // definitional
+    assert exists g3: nat :: g3 in PIV.CapIds(NI.LookBodyOfRE(re, A0))
+                             && AI.get_idx(res0.a_clk, CP.start_reg(g3)) >= 0;  // witness g2
+    assert AI.get_idx(res1.a_clk, A0 as int) >= 0;                            // LocalTopFeed at A0
+    assert AI.get_idx(thread.look_regs.a_clk, A0 as int) >= 0;                // reconciliation
+    // (3) matched via the reverse look-bank invariant.
+    M.TopLookMatchedFromDom(crv, re, thread, A0);
+  }
+
   /** (SINGLE-THREADED) FULL-LIVENESS descent producer — keyed on
       `g2 in GmOfLive(re,res)` instead of bare res0-live. This is the CORRECT key:
       bare res0-live is NOT producible (an ESCAPED look — matched early, its enclosing
