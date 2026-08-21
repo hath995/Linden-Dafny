@@ -23813,6 +23813,8 @@ module LindenElkLiftSim {
         LT.FirstLeaf(t, inp).Some?
         && LookNestBackTTop(body, crv, str, ov, PIV.CapIdsInLooks(body),
                             LT.FirstLeaf(t, inp).value.1, rf.value, ncap, nlook, nquant)
+        && LookNestBackTTopDeep(rer, body, crv, str, ov, PIV.CapIdsInLooks(body),
+                                LT.FirstLeaf(t, inp).value.1, rf.value, ncap, nlook, nquant)
   {
     var inp := PIV.InpOfCp(str, cp);
     var acts := [LS.Areg(T.Translate(body))];
@@ -23925,6 +23927,9 @@ module LindenElkLiftSim {
       assert LT.FirstLeaf(t, inp).Some?;
       assert LookNestBackTTop(body, crv, str, ov, S, LT.FirstLeaf(t, inp).value.1, thread,
                               ncap, nlook, nquant);
+      // project the DEEP carrier too (BestTieLkNestedTop now carries it after R2 wiring).
+      assert LookNestBackTTopDeep(rer, body, crv, str, ov, S, LT.FirstLeaf(t, inp).value.1, thread,
+                                  ncap, nlook, nquant);
     }
   }
 
