@@ -12008,7 +12008,7 @@ module LindenElkMain {
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
           && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
-    requires |cap.a_cp| == ncap && |cap.a_clk| == ncap
+    requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
     requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
     requires CM.LookCpsLE(lk, |str|)                                                            // (e)
     requires CM.LookCpSetWithClk(lk)
@@ -12017,6 +12017,7 @@ module LindenElkMain {
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>                // (b)
       exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
     ensures CM.LookCpSetWithClk(AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov).1)
+    ensures CM.LookCpsLE(AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov).1, |str|)
     decreases maxlook - lid
   {
     var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
@@ -12081,7 +12082,7 @@ module LindenElkMain {
           if result.Some? { assert QuantRegsFinal(result.value); }
         }
         ReplayThreadWfLANested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant);
-        assert |capN.a_cp| == ncap && |capN.a_clk| == ncap
+        assert |capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN)
             && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook by {
           if result.Some? { assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant); }
         }
