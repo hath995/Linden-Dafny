@@ -303,3 +303,51 @@ g2 — NO pre-built lemma exists (confirmed: `GmOfLiveInsideLook{Absent,Present}
 compose banks; the forward `ReconInnerForwardWired` goes body→re, the WRONG way); (c) constructing
 `res_body` (body(A0)'s FLookLoop recon at `rf_{A0}`) + the hereditary body(A0) hyps. (b)+(c) are the last
 kernel; (a) the recursion skeleton (`decreases |LookIds|`, `SubsetCardLt`+`LookIdNotInOwnBody`) is mapped.
+
+## 14. THE ENDGAME SPRINT (2026-08-21 late) — everything but the nested ORACLE ENTRY
+Single session, single-threaded. The BIG outcome: the whole L4 value theorem is now assembled
+END-TO-END with exactly ONE owed hypothesis. New green (uncommitted at the time of writing —
+commit follows the final verification round):
+- **DeepFindRec** (LiftSim) — the deep landing recursion (committed `7c04ecd`).
+- **REGION-EQUALITY carrier**: `LookNestBackTTopDeep` strengthened from membership to
+  region equality (⊆ + ⊇ + values) — `LkResultLandsSubFirstLeaf` biconditional, gate-pass +
+  step twins + `GatePassDeepRepStep` + off-body frame (`LkResultAgreeOutsideNested`), and the
+  ENTIRE `LiftInvRec` tower re-verified green (`LiftPreserveGatePassLkRec` 1620/0,
+  `L3aCompositeCloseRec`, Accept/SetReg/SetQuant/FindMatchC, `LookNestBackTFromBodyReplay`
+  — which now ALSO exports the None-iff, `LookNestOkTTop`, and the fresh winner's look-bank
+  invariants).
+- **ForwardFindRec / ForwardMemberOne** (LiftSim) — the forward membership+VALUE recursion
+  (leaf ⟹ engine): the ⊆ carrier direction + `SubFirstLeafDirectInFresh` (green) +
+  `PathPresentLkDirectAgree`/`LookPathPresentAgreeTop`/`LookPathPresentLkFromPresentTop`
+  (NestInv, green) + `LookPathComposeNested` compose-up.
+- **ReverseCDeepFull** (LiftSim) — reverse membership complete (descent wrapper).
+- **L3aEndpointAssemblyNestedFull2** — the final endpoint: takes (F) forward-membership+value
+  and (R) reverse-membership; outside-S verbatim; concludes `leaf.1 == NormGm(GmOfLive(re,res))`.
+- **FirstLeafClosedRec** (MainTheorem, green) — depth-k first-leaf closedness via the
+  NestDepth STRATIFICATION (`ClosedBelow(D)` ∀-hypothesis + `BodyLeafClosedFromBelow` regular
+  helper to dodge least-lemma prefix semantics + `ClosedBelowAll` ladder).
+- **MainExtractionNested** (green) — extraction clone on the Rec tier
+  (`FilterCaptureGeqNeg1Nested`, `TranslateFragmentPikeLkRec`, `NoPosLookbehindFwdPosL`).
+- **MainTheoremL4** (LiftSim, verifying) — the full assembly mirroring `MainTheoremL3` on the
+  Rec tier: nested statics, Rec trees/walk (`ActionsTreeRepRENested`), `L3aCompositeCloseRec`,
+  the FLookLoop bank-invariant context (`LookRowsFromTablesNested` + Value/Quant lifts +
+  `FLookLoopChildLinkLift` + `FLookLoopLookCpSet`/`FLookLoopLookOracleTrue` + frames + top-look
+  stability), the A2 owner packages (`FreshBodyDirectMember`), both wrappers, endpoint2,
+  extraction. Scope: `L4Scope(raw)` = NoPosLookbehindRE + NegLooksLookFreeRE + GNotUnderQuantL-∀.
+
+**THE ONE REMAINING HYPOTHESIS** (MainTheoremL4's sole non-scope requires):
+`LL.OracleOkSuffix(rer, qm, InitInput(str))` for the NESTED regex — the nested ORACLE ENTRY.
+The depth-1 producer is `OE.OracleOkFromColumns` → `OracleColumnSpecLookahead` (per row: oracle
+bit ⟺ spec body-tree matches at the column). For nested rows the chain must compose:
+`OB.FBuildOracleCorrectAboveNested` (green: bit ⟺ `LidReachesVFinal`) with a NESTED column
+spec `LidReachesVFinal(lid, cp) ⟺ TreeRes(body-tree@cp).Some?`. The missing middle is the
+V-MODEL two-block decomposition (`ReachesWriteVToMatches`-Nested): OracleDecomp's
+`ReachesWriteToMatches`/`MatchesToReachesWrite` exist only for LOOK-FREE bodies; the V-code
+variants (gates inside the body block, target = FFindMatch-of-capture-bytecode instead of
+`Matches`, then `BodyTreeAtCpNested` to the spec tree) are UNBUILT. That is the last brick:
+**OracleOkFromColumnsNested** = FBuildOracleCorrectAboveNested + ReachesWriteVTo(Body)MatchV
++ BodyTreeAtCpNested(+depth-downward induction is already inside CorrectAbove). Then C5:
+drop the requires, widen `Supported` with the raw-executable scope predicates
+(NestedFragmentRaw ✓ exists; NoPosLookbehindRaw / NegLooksLookFreeRaw / the GNotUnderQuantL
+raw shadow + annotate transfers — mechanical structural lemmas), and switch `MatchCorrect`
+to dispatch L3/L4.
