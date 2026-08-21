@@ -352,7 +352,7 @@ module LindenElkLiftSim {
       TOP-LEVEL looks (`*Top` variants). Consumed ONLY by the `*Rec` tier
       (`LiftInvRec`, `L3aCompositeCloseRec`) — leaves the depth-1/`Nested`
       tiers' `BestTieLkNested` untouched. */
-  ghost predicate BestTieLkNestedTop(re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+  ghost predicate BestTieLkNestedTop(rer: LW.RegExpRecord, re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
                                   S: set<LG.GroupId>, bbest: Option<LT.Leaf>, bm: Option<AI.Thread>,
                                   ncap: int, nlook: int, nquant: int) {
     (bbest.None? <==> bm.None?)
@@ -360,7 +360,10 @@ module LindenElkLiftSim {
           bm.Some?
           && GmtTieOutside(re, bm.value, bbest.value.1, S)
           && LookNestOkTTop(re, S, bbest.value.1, bm.value)
-          && LookNestBackTTop(re, crv, str, ov, S, bbest.value.1, bm.value, ncap, nlook, nquant))
+          && LookNestBackTTop(re, crv, str, ov, S, bbest.value.1, bm.value, ncap, nlook, nquant)
+          // (R2 DEEP CARRIER) the strengthened converse: lands l's WHOLE
+          // sub-first-leaf captures (inner-look included), not just direct ones.
+          && LookNestBackTTopDeep(rer, re, crv, str, ov, S, bbest.value.1, bm.value, ncap, nlook, nquant))
   }
 
   /** (L4 NESTED) The best-match tie with the depth-1-hardwired `GmtTieInside`
@@ -520,7 +523,7 @@ module LindenElkLiftSim {
                           bst: PT.PikeTreeState, vms: AI.VmState,
                           ncap: int, nlook: int, nquant: int) {
     match bst
-    case PTS_final(bbest) => BestTieLkNestedTop(re, crv, str, ov, S, bbest, vms.bestmatch, ncap, nlook, nquant)
+    case PTS_final(bbest) => BestTieLkNestedTop(rer, re, crv, str, ov, S, bbest, vms.bestmatch, ncap, nlook, nquant)
     case PTS(inp, bactive, bbest, bblocked, bseen) =>
       0 <= vms.cp <= |str|
       && inp == PIV.InpOfCp(str, vms.cp)
@@ -537,7 +540,14 @@ module LindenElkLiftSim {
       && (LC.AdvanceInput(inp, WP.Forward).Some? ==>
             LookNestBackRepBTop(re, crv, str, ov, S, bblocked,
                              PIV.MatchingBlocked(LC.Reverse(vms.blocked), inp), ncap, nlook, nquant))
-      && BestTieLkNestedTop(re, crv, str, ov, S, bbest, vms.bestmatch, ncap, nlook, nquant)
+      // (R2 DEEP CARRIER) the deep-carrier rep predicates, threaded PARALLEL to
+      // the direct `LookNestBackRepCTop`/`…BTop` (same shape, `SubFirstLeafAt`
+      // landed set), so the best-match tie can carry `LookNestBackTTopDeep`.
+      && LookNestBackRepCTopDeep(rer, re, crv, str, ov, S, bactive, vms.active, ncap, nlook, nquant)
+      && (LC.AdvanceInput(inp, WP.Forward).Some? ==>
+            LookNestBackRepBTopDeep(rer, re, crv, str, ov, S, bblocked,
+                             PIV.MatchingBlocked(LC.Reverse(vms.blocked), inp), ncap, nlook, nquant))
+      && BestTieLkNestedTop(rer, re, crv, str, ov, S, bbest, vms.bestmatch, ncap, nlook, nquant)
       && SeenRepLk(rer, qm, code, inp, bseen, vms.processed,
                    PIV.HdTreeOf(bactive), PIV.HeadPcOf(vms.active))
       && IsblockedRepLk(rer, qm, code, inp, bseen, vms.isblocked)
@@ -16631,7 +16641,7 @@ module LindenElkLiftSim {
     // the spec tree threaded: the sim's best is this leaf.
     requires LT.FirstLeaf(t, inp) == Some(leaf)
     // the nested best-match tie — the sim's `L3aCompositeCloseRec` output.
-    requires BestTieLkNestedTop(re, crv, str, ov, S, Some(leaf), Some(thread), ncap, nlook, nquant)
+    requires BestTieLkNestedTop(rer, re, crv, str, ov, S, Some(leaf), Some(thread), ncap, nlook, nquant)
     // ---- the depth-general FLookLoop reconstruction + residual (engine half) ----
     requires var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
                                      thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
@@ -20727,7 +20737,10 @@ module LindenElkLiftSim {
     assert LookNestBackRepCTop(re, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
     assert LookNestOkTTop(re, S, gm, th);
     assert LookNestBackTTop(re, crv, str, ov, S, gm, th, ncap, nlook, nquant);
-    assert BestTieLkNestedTop(re, crv, str, ov, S, Some((inp, gm)), vms2.bestmatch, ncap, nlook, nquant);
+    // (R2 DEEP CARRIER) the head's deep carrier feeds the best-match tie's deep conjunct.
+    assert LookNestBackRepCTopDeep(rer, re, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
+    assert LookNestBackTTopDeep(rer, re, crv, str, ov, S, gm, th, ncap, nlook, nquant);
+    assert BestTieLkNestedTop(rer, re, crv, str, ov, S, Some((inp, gm)), vms2.bestmatch, ncap, nlook, nquant);
 
     // bookkeeping: seen grows with the memoized head; active empty both sides
     AddSeenRepLk(rer, qm, code, inp, seen, s.processed, t, pc, ea,
@@ -21141,6 +21154,23 @@ module LindenElkLiftSim {
       }
     }
 
+    // ---- (E4 DEEP) the deep carrier: register-inert (same banks, gm grows) ----
+    assert LookNestBackRepCTopDeep(rer, re, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
+    LookNestBackTRegSameTopDeep(rer, re, crv, str, ov, S, gm, gm2, th, th', ncap, nlook, nquant);
+    assert LookNestBackRepCTopDeep(rer, re, crv, str, ov, S, [(t.t, gm2)] + ta[1..], vms2.active,
+                            ncap, nlook, nquant) by {
+      forall i | 0 <= i < |[(t.t, gm2)] + ta[1..]|
+        ensures LookNestBackTTopDeep(rer, re, crv, str, ov, S, ([(t.t, gm2)] + ta[1..])[i].1, vms2.active[i],
+                              ncap, nlook, nquant)
+      {
+        if i == 0 {
+        } else {
+          assert ([(t.t, gm2)] + ta[1..])[i] == ta[i];
+          assert vms2.active[i] == s.active[i];
+        }
+      }
+    }
+
     // seen + isblocked bookkeeping
     assert PIV.HdTreeOf(ta) == Some(t) && PIV.HeadPcOf(s.active) == pc;
     AddSeenRepLk(rer, qm, code, inp, seen, s.processed, t, pc, ea,
@@ -21315,6 +21345,23 @@ module LindenElkLiftSim {
                             ncap, nlook, nquant) by {
       forall i | 0 <= i < |[(t.t, gm2)] + ta[1..]|
         ensures LookNestBackTTop(re, crv, str, ov, S, ([(t.t, gm2)] + ta[1..])[i].1, vms2.active[i],
+                              ncap, nlook, nquant)
+      {
+        if i == 0 {
+        } else {
+          assert ([(t.t, gm2)] + ta[1..])[i] == ta[i];
+          assert vms2.active[i] == s.active[i];
+        }
+      }
+    }
+
+    // ---- (E4 DEEP) the deep carrier: off-path SetQuant re-stamp (same shape) ----
+    assert LookNestBackRepCTopDeep(rer, re, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
+    LookNestBackTSetQuantNestedTopDeep(rer, re, crv, str, ov, S, gm, gm2, th, th', qn, ncap, nlook, nquant);
+    assert LookNestBackRepCTopDeep(rer, re, crv, str, ov, S, [(t.t, gm2)] + ta[1..], vms2.active,
+                            ncap, nlook, nquant) by {
+      forall i | 0 <= i < |[(t.t, gm2)] + ta[1..]|
+        ensures LookNestBackTTopDeep(rer, re, crv, str, ov, S, ([(t.t, gm2)] + ta[1..])[i].1, vms2.active[i],
                               ncap, nlook, nquant)
       {
         if i == 0 {
@@ -21590,6 +21637,62 @@ module LindenElkLiftSim {
     }
   }
 
+
+  /** (R2 DEEP CARRIER — the gate-pass rep step, EXTRACTED from
+      `LiftPreserveGatePassLkRec`) The deep-carrier converse across a positive
+      lookAHEAD gate crossing, packaged as a standalone (non-isolate-assertions)
+      lemma so the giant gate-pass preserver's VC count does not balloon. Composes
+      `DeepGateReqFromCrossing` (the crossing lands l's whole sub-first-leaf into
+      `gm2`) with `LookNestBackTGatePassTopDeep` (every other top lid transports by
+      congruence), then rebuilds the deep active rep for the stepped head + tail.
+      MIRRORS the DIRECT gate-pass rep threading verbatim, `SubFirstLeafAt` landed
+      set in place of `GmOfLive(body, FreshBodyMatch)`. */
+  lemma GatePassDeepRepStep(
+      rer: LW.RegExpRecord, re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+      S: set<LG.GroupId>, ta: seq<(LT.Tree, LG.GroupMap)>, sactive: seq<AI.Thread>,
+      tt: LT.Tree, gm: LG.GroupMap, gm2: LG.GroupMap, th: AI.Thread, th': AI.Thread,
+      l: int, lk: L.Lookaround, r1: L.Regex, tlk: LT.Tree, body: R.regex, cp: nat,
+      ncap: int, nlook: int, nquant: int)
+    requires |ta| > 0 && |sactive| == |ta|
+    requires sactive[0] == th && ta[0].1 == gm
+    requires LookNestBackRepCTopDeep(rer, re, crv, str, ov, S, ta, sactive, ncap, nlook, nquant)
+    // frame: gate touches only look_regs at l; gm only grows
+    requires th'.quant_regs == th.quant_regs
+    requires forall j: int :: j != l ==>
+      AI.get_idx(th'.look_regs.a_clk, j) == AI.get_idx(th.look_regs.a_clk, j)
+      && AI.get_idx(th'.look_regs.a_cp, j) == AI.get_idx(th.look_regs.a_cp, j)
+    requires forall g: LG.GroupId :: g in gm ==> g in gm2
+    // the crossing seam (feeds `DeepGateReqFromCrossing`)
+    requires cp <= |str|
+    requires l >= 0 && (l as nat) in LTB.LookIds(re)
+    requires T.TransWf(body)
+    requires L.Positivity(lk) && L.LkDir(lk) == WP.Forward
+    requires EL.PikeLkRegexRec(r1)
+    requires r1 == T.Translate(body)
+    requires body == M.VBody(crv, l) && NI.LookBodyOfRE(re, l as nat) == body
+    requires tlk == LFU.ComputeTr(rer, [LS.Areg(r1)], PIV.InpOfCp(str, cp), LG.Empty, L.LkDir(lk))
+    requires LS.LkResult(lk, tlk, gm, PIV.InpOfCp(str, cp)).Some?
+    requires gm2 == LS.LkResult(lk, tlk, gm, PIV.InpOfCp(str, cp)).value
+    requires M.GmAgreeOn(gm, LG.Empty, set g | g in L.DefGroups(r1))
+    requires AReg.get_cp(th'.look_regs, l) == Some(cp as int)
+    ensures LookNestBackRepCTopDeep(rer, re, crv, str, ov, S, [(tt, gm2)] + ta[1..],
+                                    [th'] + sactive[1..], ncap, nlook, nquant)
+  {
+    assert LookNestBackTTopDeep(rer, re, crv, str, ov, S, gm, th, ncap, nlook, nquant);  // rep element 0
+    DeepGateReqFromCrossing(rer, re, crv, str, ov, S, gm, gm2, lk, r1, tlk, th', l, cp, body,
+                            ncap, nlook, nquant);
+    LookNestBackTGatePassTopDeep(rer, re, crv, str, ov, S, gm, gm2, th, th', l, ncap, nlook, nquant);
+    forall i | 0 <= i < |[(tt, gm2)] + ta[1..]|
+      ensures LookNestBackTTopDeep(rer, re, crv, str, ov, S, ([(tt, gm2)] + ta[1..])[i].1,
+                                   ([th'] + sactive[1..])[i], ncap, nlook, nquant)
+    {
+      if i == 0 {
+      } else {
+        assert ([(tt, gm2)] + ta[1..])[i] == ta[i];
+        assert ([th'] + sactive[1..])[i] == sactive[i];
+      }
+    }
+  }
 
   lemma {:isolate_assertions} LiftPreserveGatePassLkRec(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                                crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
@@ -21949,6 +22052,34 @@ module LindenElkLiftSim {
           assert vms2.active[i] == s.active[i];
         }
       }
+    }
+
+    // ---- (E4 DEEP) the crossing's coverage for the DEEP carrier ----
+    // Delegated to `GatePassDeepRepStep` (a standalone lemma) so the crossing
+    // discharge + gate-pass congruence do NOT balloon this isolate-assertions
+    // lemma's VC count. `la.Lookahead?` holds (dead else-arm above); the seam
+    // facts (`GmAgreeOn`, `get_cp`, `LkDir`) are established here.
+    assert LookNestBackRepCTopDeep(rer, re, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
+    if la.Lookahead? {
+      assert L.LkDir(lk) == WP.Forward;
+      assert M.GmAgreeOn(gm, LG.Empty, set g | g in L.DefGroups(r1)) by {
+        forall g: LG.GroupId | g in (set gx | gx in L.DefGroups(r1))
+          ensures (g in gm <==> g in LG.Empty) && (g in gm ==> gm[g] == LG.Empty[g])
+        {
+          assert g !in gm;
+        }
+      }
+      assert AReg.get_cp(th'.look_regs, l) == Some(cp as int) by {
+        RL.ASetLaws(th.look_regs, l, Some(cp as int), clk);
+      }
+      GatePassDeepRepStep(rer, re, crv, str, ov, S, ta, s.active, t.t, gm, gm2, th, th', l, lk, r1,
+                          tlk, body, cp, ncap, nlook, nquant);
+      assert LookNestBackRepCTopDeep(rer, re, crv, str, ov, S, [(t.t, gm2)] + ta[1..], vms2.active,
+                              ncap, nlook, nquant) by {
+        assert vms2.active == [th'] + s.active[1..];
+      }
+    } else {
+      assert false;
     }
 
     // seen + isblocked bookkeeping
@@ -22807,7 +22938,7 @@ module LindenElkLiftSim {
     requires PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, ptsA, vms, ncap, nlook, nquant)
     requires LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst, vms, ncap, nlook, nquant)
     ensures PTL.TrcPikeTreeLk(bst, PT.PTS_final(bestT))
-    ensures BestTieLkNestedTop(re, crv, str, ov, S, bestT,
+    ensures BestTieLkNestedTop(rer, re, crv, str, ov, S, bestT,
                       AI.FFindMatch(code, str, vms, ov, LAnc.Forward, cdn).0, ncap, nlook, nquant)
     decreases |str| - vms.cp
   {
@@ -22832,7 +22963,7 @@ module LindenElkLiftSim {
     assert ActiveRepLkCRec(rer, qm, re, code, inp1, crv, str, ov, S, ta1, s1.active, ncap, nlook, nquant);
     assert ta1 == [];
     assert inp1 == PIV.InpOfCp(str, s1.cp) && 0 <= s1.cp <= |str|;
-    assert BestTieLkNestedTop(re, crv, str, ov, S, best1, s1.bestmatch, ncap, nlook, nquant);
+    assert BestTieLkNestedTop(rer, re, crv, str, ov, S, best1, s1.bestmatch, ncap, nlook, nquant);
 
     if |s1.blocked| == 0 {
       assert LC.Reverse(s1.blocked) == [];
@@ -23041,6 +23172,33 @@ module LindenElkLiftSim {
           assert LC.Reverse(s4.blocked) == [];
           assert PIV.MatchingBlocked([], nextinp) == [];
         }
+        // (R2 DEEP CARRIER) the deep reps cross the consume PARALLEL to the direct.
+        assert LookNestBackRepBTopDeep(rer, re, crv, str, ov, S, tb1, filter, ncap, nlook, nquant) by {
+          assert LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst1, s1, ncap, nlook, nquant);
+          assert bst1 == PT.PTS(inp1, ta1, best1, tb1, seen1);
+          assert LC.AdvanceInput(inp1, WP.Forward).Some?;
+        }
+        assert LookNestBackRepCTopDeep(rer, re, crv, str, ov, S, tb1, s4.active, ncap, nlook, nquant) by {
+          assert s4.active == PSM.ResumeAll(filter);
+          ResumeAllLen(filter);
+          forall i | 0 <= i < |tb1|
+            ensures LookNestBackTTopDeep(rer, re, crv, str, ov, S, tb1[i].1, s4.active[i], ncap, nlook, nquant)
+          {
+            assert LookNestBackTTopDeep(rer, re, crv, str, ov, S, tb1[i].1, filter[i].0, ncap, nlook, nquant);
+            ResumeAllIndex(filter, i);
+            assert s4.active[i] == filter[i].0.(exit_allowed := true, pc := filter[i].0.pc + 1);
+            assert s4.active[i].look_regs == filter[i].0.look_regs
+                && s4.active[i].quant_regs == filter[i].0.quant_regs;
+            LookNestBackTRegSameTopDeep(rer, re, crv, str, ov, S, tb1[i].1, tb1[i].1, filter[i].0, s4.active[i],
+                                 ncap, nlook, nquant);
+          }
+        }
+        assert LC.AdvanceInput(nextinp, WP.Forward).Some? ==>
+          LookNestBackRepBTopDeep(rer, re, crv, str, ov, S, [],
+                           PIV.MatchingBlocked(LC.Reverse(s4.blocked), nextinp), ncap, nlook, nquant) by {
+          assert LC.Reverse(s4.blocked) == [];
+          assert PIV.MatchingBlocked([], nextinp) == [];
+        }
         assert LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst2, s4, ncap, nlook, nquant);
 
         // recurse and chain.
@@ -23134,7 +23292,7 @@ module LindenElkLiftSim {
     // ptsB = PTS(inp, [(tcan, Empty)], None, [], InitialSeenTrees); best None both sides.
     assert PT.PikeTreeInitialState(tcan, inp) == PT.PTS(inp, [(tcan, LG.Empty)], None, [], SS.InitialSeenTrees);
     assert PT.PikeTreeInitialState(tstar, inp).PTS? && PT.PikeTreeInitialState(tstar, inp).inp == inp;
-    assert BestTieLkNestedTop(re, crv, str, ov, S, None, vms.bestmatch, ncap, nlook, nquant);
+    assert BestTieLkNestedTop(rer, re, crv, str, ov, S, None, vms.bestmatch, ncap, nlook, nquant);
     // Blocked: genuine start — both sides empty.
     assert PIV.MatchingBlocked(LC.Reverse(vms.blocked), inp) == [];
     forall nextinp | LC.AdvanceInput(inp, WP.Forward) == Some(nextinp)
@@ -23187,7 +23345,7 @@ module LindenElkLiftSim {
     requires |vms.processed.true_set| == RB.size(code) && |vms.processed.false_set| == RB.size(code)
     requires vms.context.nextchar == AI.get_char(str, vms.cp)
     requires result == AI.FFindMatch(code, str, vms, ov, LAnc.Forward, cdn).0
-    ensures BestTieLkNestedTop(re, crv, str, ov, S, LT.FirstLeaf(t, inp), result, ncap, nlook, nquant)
+    ensures BestTieLkNestedTop(rer, re, crv, str, ov, S, LT.FirstLeaf(t, inp), result, ncap, nlook, nquant)
   {
     var tcan := LiftInitCRec(rer, qm, re, code, endl, ngroups, crv, str, ov, S, tstar, t, inp, vms,
                           ncap, nlook, nquant);
@@ -23360,7 +23518,7 @@ module LindenElkLiftSim {
     var result := AI.FFindMatch(bodycode, str, vms, ov, LAnc.Forward, lookcdn).0;
     L3aCompositeCloseRec(rer, qm, body, bodycode, endl, ngroups, crv, str, ov, S, tstar, t, inp,
                          vms, lookcdn, result, ncap, nlook, nquant);
-    assert BestTieLkNestedTop(body, crv, str, ov, S, LT.FirstLeaf(t, inp), result, ncap, nlook, nquant);
+    assert BestTieLkNestedTop(rer, body, crv, str, ov, S, LT.FirstLeaf(t, inp), result, ncap, nlook, nquant);
 
     // ---- reconcile FFindMatchPlus (fresh) with FFindMatch ----------------
     var fmres := AI.FFindMatch(bodycode, str, vms, ov, LAnc.Forward, lookcdn);
@@ -23508,7 +23666,7 @@ module LindenElkLiftSim {
     var result := AI.FFindMatch(bodycode, str, vms, ov, LAnc.Forward, lookcdn).0;
     L3aCompositeCloseRec(rer, qm, body, bodycode, endl, ngroups, crv, str, ov, S, tstar, t, inp,
                          vms, lookcdn, result, ncap, nlook, nquant);
-    assert BestTieLkNestedTop(body, crv, str, ov, S, LT.FirstLeaf(t, inp), result, ncap, nlook, nquant);
+    assert BestTieLkNestedTop(rer, body, crv, str, ov, S, LT.FirstLeaf(t, inp), result, ncap, nlook, nquant);
 
     // ---- reconcile FFindMatchPlus (fresh) with FFindMatch ----------------
     var fmres := AI.FFindMatch(bodycode, str, vms, ov, LAnc.Forward, lookcdn);
