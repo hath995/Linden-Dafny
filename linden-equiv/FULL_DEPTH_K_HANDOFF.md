@@ -215,3 +215,32 @@ Then: **descent assembly** (feed `DescentProducerTopOwnersDeep` via `FreshBodyDi
 discharge endpoint reverse-(c)+`AllBodyTopFeeds`), **forward-existence VALUE tie** (same machinery),
 **endpoint UNCONDITIONAL** (drop `L3aEndpointAssemblyNestedFull`'s residual requires), **C5** per §5.
 NO conceptual walls remain — all discharges are proven green; this is mechanical threading only.
+
+## 11. WIRING COMPLETE THROUGH THE DIRECT CASE (2026-08-21, HEAD `187e2d5`)
+Both tower wirings + the connective + the direct-case descent package are GREEN and integrated:
+- **(A2) producer** `5a642e3`: `M.FreshBodyDirectMember` UNCONDITIONAL (via `FAdvanceEpsilonAncSet`
+  joint invariant through the ε-driver).
+- **R2 wiring** `4ab152e`: `BestTieLkNestedTop` carries `LookNestBackTTopDeep`; `L3aCompositeCloseRec`
+  re-discharged (`LiftPreserveGatePassLkRec` fully re-confirmed 1542/0).
+- **descent Phase-1** `ba157ef`: position reconciliation (`FLookLoopTopLookCpStableFull`,
+  `MatchedPosLAFreshBodyCpCong`) + `FreshBodyDirectInSubFirstLeaf` + `DescentPackageDirectFromRes1`.
+- **the CONNECTIVE by EXTRACTION** `5b5a48f`: `NI.LookPathDomFromLivenessThread` — `g2 in GmOfLive(re,res)`
+  + res→thread frames ⟹ `LookPathDom` at top ancestor A0 (via `GmOfLivePresenceExtractLkNested`;
+  `PathPresentLk`'s `Re_lookaround` case IS A0's dominance). Sidesteps the escaped-look issue (bare
+  `MatchedPosLA`⟹dom is FALSE; FULL liveness excludes escaped looks). `MxAtLidGeMxTop`/`LookPathDomIntroTop`
+  are the top-look assemblers (`4426989`).
+- **direct-case package** `187e2d5`: `DescentPackageDirectFull` — the DIRECT per-`g2` package for
+  `DescentProducerTopOwnersDeep` produced UNCONDITIONALLY from full liveness (connective + package).
+
+**REMAINING (single-threaded from here per user request):**
+1. **DEEP-case recursion**: for `g2 in CapIdsInLooks(body(A0))` (deep), land `g2 in SubFirstLeafAt(A0)`
+   via `LookNestBackTFromBodyReplay(body(A0))` + an inner recursion on `body(A0)` (mirror
+   `FLookLoopAncestorClockChain`, `decreases |LookIds(re)|`); threads body(A0)'s banks/carrier + a
+   liveness frame `g2 in GmOfLive(re,res) → g2 in GmOfLive(body(A0),·)`.
+2. **descent conclusion**: `forall g2 in S && g2 in GmOfLive(re,res) ==> g2 in gmt` via
+   `DescentProducerTopOwnersDeep` fed by (1)+`DescentPackageDirectFull`.
+3. **reverse-(c)**: re-prove `ReverseCFromDescent` to feed FULL liveness directly (drop the res0-live
+   weakening) — discharges `L3aEndpointAssemblyNestedFull`'s reverse-(c) residual.
+4. **AllBodyTopFeeds** (body-arms via per-body descent; re-arm via `GuardBridgeFromDescent` — note its
+   res0-live guard may need the full-liveness restatement too) + **forward-existence VALUE tie**
+   (`FreshBodyDirectMember` + `LkReplayMatchesSpecNested`) → **endpoint UNCONDITIONAL** → **C5**.
