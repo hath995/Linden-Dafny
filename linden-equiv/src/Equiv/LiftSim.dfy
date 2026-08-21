@@ -5598,6 +5598,80 @@ module LindenElkLiftSim {
       0 <= l < nlook && GateStaticAtNested(qm, re, crv, l, ncap, nlook, nquant)
   }
 
+  // ==========================================================================
+  // (DEEP reverse-recon) The BODY-RESTRICTED qmap: `GateStaticsOkNested(·, host,
+  // crv, ·)` quantifies over the table's WHOLE look domain, but its per-row
+  // confinement (`DefGroups(row body) ⊆ CapIdsInLooks(host)`) can only hold for
+  // rows INSIDE `host`. The recursion therefore instantiates the per-body sim
+  // with `qm_b := qm` restricted to `host`'s own lids — these three transfer
+  // lemmas move every qm-keyed hypothesis across the restriction.
+  // ==========================================================================
+
+  /** `QmapOk` reads only `qm.quants`: any looks-map change is irrelevant. */
+  lemma QmapOkLooksIrrel(r: R.regex, qm: AR.QMap, qm2: AR.QMap)
+    requires T.TransWf(r)
+    requires AR.QmapOk(r, qm)
+    requires qm2.quants == qm.quants
+    ensures AR.QmapOk(r, qm2)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => QmapOkLooksIrrel(r1, qm, qm2); QmapOkLooksIrrel(r2, qm, qm2);
+    case Re_con(r1, r2) => QmapOkLooksIrrel(r1, qm, qm2); QmapOkLooksIrrel(r2, qm, qm2);
+    case Re_quant(_, _, _, r1) => QmapOkLooksIrrel(r1, qm, qm2);
+    case Re_capture(_, r1) => QmapOkLooksIrrel(r1, qm, qm2);
+    case Re_lookaround(_, _, r1) => QmapOkLooksIrrel(r1, qm, qm2);
+    case _ =>
+  }
+
+  /** `LmapOk` survives restricting the looks map to a superset of `r`'s own
+      lids: every look node of `r` keeps its (unchanged) entry. */
+  lemma LmapOkRestrict(r: R.regex, qm: AR.QMap, qm2: AR.QMap)
+    requires T.TransWf(r)
+    requires AR.LmapOk(r, qm)
+    requires forall l: int :: l in qm.looks ==> l >= 0
+    requires forall l: int :: l in qm.looks && (l as nat) in LTB.LookIds(r) ==>
+      l in qm2.looks && qm2.looks[l] == qm.looks[l]
+    ensures AR.LmapOk(r, qm2)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => LmapOkRestrict(r1, qm, qm2); LmapOkRestrict(r2, qm, qm2);
+    case Re_con(r1, r2) => LmapOkRestrict(r1, qm, qm2); LmapOkRestrict(r2, qm, qm2);
+    case Re_quant(_, _, _, r1) => LmapOkRestrict(r1, qm, qm2);
+    case Re_capture(_, r1) => LmapOkRestrict(r1, qm, qm2);
+    case Re_lookaround(lid, la, r1) =>
+      assert lid in qm.looks;              // LmapOk at the node
+      assert lid >= 0;                     // qm key fact
+      assert (lid as nat) in LTB.LookIds(r);
+      assert lid in qm2.looks && qm2.looks[lid] == qm.looks[lid];
+      LmapOkRestrict(r1, qm, qm2);
+    case _ =>
+  }
+
+  /** `OracleOkSuffix` survives restricting the looks map (fewer rows, same
+      entries, same oracle view): the per-row bit truth is monotone down. */
+  lemma OracleOkSuffixRestrict(rer: LW.RegExpRecord, qm: AR.QMap, qm2: AR.QMap, inp0: LC.Input)
+    requires LL.OracleOkSuffix(rer, qm, inp0)
+    requires qm2.ov == qm.ov
+    requires forall l: int :: l in qm2.looks ==> l in qm.looks && qm2.looks[l] == qm.looks[l]
+    ensures LL.OracleOkSuffix(rer, qm2, inp0)
+  {
+    forall inp: LC.Input | inp == inp0 || SSx.IsStrictSuffix(inp, inp0, WP.Forward)
+      ensures LL.OracleOkAt(rer, qm2, inp)
+    {
+      assert LL.OracleOkAt(rer, qm, inp);
+      forall lid: int, lk: L.Lookaround, r1: L.Regex |
+        lid in qm2.looks && qm2.looks[lid] == (lk, r1)
+        ensures LOr.view_get_oracle(qm2.ov, TREP.CpOf(inp), lid)
+             <==> LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk)),
+                             LG.Empty, inp, L.LkDir(lk)).Some?
+      {
+        assert lid in qm.looks && qm.looks[lid] == (lk, r1);
+      }
+    }
+  }
+
   /** `PlusFragmentRE` is look-free by construction, so it sits inside the
       compile fragment (the two predicates differ only at the lookaround case,
       which `PlusFragmentRE` forbids). */
@@ -23839,12 +23913,18 @@ module LindenElkLiftSim {
       var rf := AI.FFindMatchPlus(bodycode, body, plus_bc, str, ov, LAnc.Forward, cp,
                                   AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant),
                                   0, lookcdn).0;
-      rf.Some? ==>
+      (rf.Some? <==> LT.FirstLeaf(t, inp).Some?)
+      && (rf.Some? ==>
         LT.FirstLeaf(t, inp).Some?
         && LookNestBackTTop(body, crv, str, ov, PIV.CapIdsInLooks(body),
                             LT.FirstLeaf(t, inp).value.1, rf.value, ncap, nlook, nquant)
         && LookNestBackTTopDeep(rer, body, crv, str, ov, PIV.CapIdsInLooks(body),
                                 LT.FirstLeaf(t, inp).value.1, rf.value, ncap, nlook, nquant)
+        // the carrier thread's own look-bank invariants (fresh run): the deep
+        // per-g2 package reads them at the crossed inner lids.
+        && CM.LookClkSetWithCp(rf.value.look_regs)
+        && CM.LookCpSetWithClk(rf.value.look_regs)
+        && CM.LookCpsLE(rf.value.look_regs, |str|))
   {
     var inp := PIV.InpOfCp(str, cp);
     var acts := [LS.Areg(T.Translate(body))];
@@ -23960,6 +24040,30 @@ module LindenElkLiftSim {
       // project the DEEP carrier too (BestTieLkNestedTop now carries it after R2 wiring).
       assert LookNestBackTTopDeep(rer, body, crv, str, ov, S, LT.FirstLeaf(t, inp).value.1, thread,
                                   ncap, nlook, nquant);
+      // fresh-run look-bank invariants on the winner (init banks are all-unset)
+      RL.AInitLaws(nlook);
+      assert CM.VmLookClkSet(vms) by {
+        assert AI.init_thread(capture, look, quant).look_regs == look;
+        forall l: int | AI.get_idx(look.a_cp, l) >= 0 ensures AI.get_idx(look.a_clk, l) >= 0 {
+          if 0 <= l < |look.a_cp| { assert look.a_cp[l] == -1; }
+        }
+      }
+      CM.FFindMatchLookClkSet(bodycode, str, vms, ov, LAnc.Forward, lookcdn);
+      assert CM.LookClkSetWithCp(thread.look_regs);
+      assert CM.VmLookCpSet(vms) by {
+        forall l: int | AI.get_idx(look.a_clk, l) >= 0 ensures AI.get_idx(look.a_cp, l) >= 0 {
+          if 0 <= l < |look.a_clk| { assert look.a_clk[l] == -1; }
+        }
+      }
+      CM.FFindMatchLookCpSet(bodycode, str, vms, ov, LAnc.Forward, lookcdn);
+      assert CM.LookCpSetWithClk(thread.look_regs);
+      assert CM.VmLookCpOk(vms, |str|) by {
+        forall l: int ensures AI.get_idx(look.a_cp, l) <= |str| {
+          if 0 <= l < |look.a_cp| { assert look.a_cp[l] == -1; }
+        }
+      }
+      CM.FFindMatchLookCpOk(bodycode, str, vms, ov, LAnc.Forward, lookcdn);
+      assert CM.LookCpsLE(thread.look_regs, |str|);
     }
   }
 

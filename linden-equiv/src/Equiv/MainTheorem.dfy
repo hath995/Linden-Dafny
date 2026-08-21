@@ -12112,6 +12112,128 @@ module LindenElkMain {
       }
   }
 
+  /** (DEEP reverse-recon) `LookCpsOracleTrue` — every recorded look cp is an
+      ORACLE-TRUE position — is preserved through the WHOLE `FLookLoop` fold:
+      each iteration's banks are an `FFindMatchPlus` winner over WRITE-FREE body
+      code (`NoWriteOracleBodyCodeNested`), so the per-run invariant
+      (`CM.FFindMatchLookOracleTrue`) carries, and `FReconstructPlus` is the
+      identity. With `OracleOkAt` (bit ⟺ the spec body matches there), this
+      makes EVERY `res.1`-recorded position — any depth — a position where the
+      recorded look's SPEC BODY TREE has a leaf: the `rf.Some?`/`FirstLeaf.Some?`
+      feed of the deep landing recursion at every level. */
+  lemma FLookLoopLookOracleTrue(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
+                                cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                                S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
+    requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
+    requires CM.LookCpsLE(lk, |str|)                                                            // (e)
+    requires CM.LookCpsOracleTrue(lk, ov)
+    requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (a)
+      lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+    requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>                // (b)
+      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+    ensures CM.LookCpsOracleTrue(AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov).1, ov)
+    decreases maxlook - lid
+  {
+    var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
+    if lid > maxlook {
+      return;
+    }
+    var next := lid + 1;
+    match AReg.get_cp(lk, lid)
+    case None =>
+      FLookLoopLookOracleTrue(crv, str, next, maxlook, cap, lk, qt, ov, S, Slook, ncap, nlook, nquant);
+    case Some(cp) =>
+      var looktype := if 0 <= lid < |crv.f_look_types| then crv.f_look_types[lid] else R.Lookahead;
+      if !AI.capture_type(looktype) {
+        FLookLoopLookOracleTrue(crv, str, next, maxlook, cap, lk, qt, ov, S, Slook, ncap, nlook, nquant);
+      } else {
+        var la: R.lookaround, body: R.regex :| LTB.LookEntryOk(crv, lid, la, body);
+        assert 0 <= lid < |crv.f_look_types| && crv.f_look_types[lid] == la;
+        assert looktype == la;
+        assert FrameEntryOk(crv, la, body, S, Slook);
+        assert la.Lookahead?;                              // capture_type ==> Lookahead (FrameEntryOk)
+        var bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
+        var dir := AI.capture_direction(looktype);
+        assert dir == LAnc.Forward;
+        var lookcdn := if 0 <= lid < |crv.f_look_cdns| then crv.f_look_cdns[lid] else [];
+        var lookast := if 0 <= lid < |crv.f_look_ast| then crv.f_look_ast[lid] else R.Re_empty;
+        assert lookast == body && bytecode == CP.compile_to_bytecode(body) by {
+          assert bytecode == CP.compile_to_bytecode(CP.capture_regex(la, body));
+          assert CP.capture_regex(la, body) == body;
+        }
+        var (result, ov1) := AI.FFindMatchPlus(bytecode, lookast, crv.f_plus_bc, str, ov, dir,
+                                               cp, cap, lk, qt, 0, lookcdn);
+        var capN := if result.None? then cap else result.value.capture_regs;
+        var nlk := if result.None? then lk else result.value.look_regs;
+        var nqt := if result.None? then qt else result.value.quant_regs;
+        assert res == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1);
+        assert 0 <= cp <= |str| by {
+          assert cp == AI.get_idx(lk.a_cp, lid) && cp >= 0;
+          assert AI.get_idx(lk.a_cp, lid) <= |str|;         // LookCpsLE
+        }
+
+        // the oracle is stable through the replay; the winner keeps OracleTrue
+        FFindMatchPlusOvStableNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        assert ov1 == ov;
+        var ctxc := AI.cp_context(cp, str, dir);
+        var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, ctxc);
+        assert CM.VmLookOracleTrue(inits, ov) by {
+          assert AI.init_thread(cap, lk, qt).look_regs == lk;
+          assert inits.active == [AI.init_thread(cap, lk, qt)];
+        }
+        assert ctxc.nextchar == AI.get_char(str, cp);
+        NoWriteOracleBodyCodeNested(body);
+        CM.FFindMatchLookOracleTrue(bytecode, str, inits, ov, dir, lookcdn);
+        NoTrueQuantStampNested(body);
+        assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
+        FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
+        var (fmres, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+        if fmres.Some? {
+          FNulledPlusIdentity(body, fmres.value.capture_regs, fmres.value.look_regs, fmres.value.quant_regs,
+                              crv.f_plus_bc, str, ovx, dir);
+        }
+        assert CM.LookCpsOracleTrue(nlk, ov) by {
+          if result.Some? { assert nlk == fmres.value.look_regs; } else { assert nlk == lk; }
+        }
+        assert (forall k :: AI.get_idx(nqt.a_cp, k) < 0) && (forall k :: AI.get_idx(nqt.a_clk, k) >= -1) by {
+          if result.Some? { assert QuantRegsFinal(result.value); }
+        }
+        ReplayThreadWfLANested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant);
+        assert |capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN)
+            && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook by {
+          if result.Some? { assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant); }
+        }
+        ReplayLookCpOkNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
+        assert CM.LookCpsLE(nlk, |str|) by {
+          if result.Some? {} else { assert nlk == lk; }
+        }
+        // (b)@nlk (verbatim transfer)
+        ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        assert forall l: int :: next <= l <= maxlook && AReg.get_cp(nlk, l).Some? ==>
+          exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
+        by {
+          forall l: int | next <= l <= maxlook && AReg.get_cp(nlk, l).Some?
+            ensures exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
+          {
+            if AReg.get_cp(lk, l).Some? {
+            } else {
+              assert result.Some?;
+              assert CM.RegsAgreeOutside(nlk, lk, LookIdSet(body));
+              NewLookInBody(nlk, lk, body, l);
+              assert LTB.LookTablesOk(body, crv);
+              LookIdEntryExists(body, crv, l as nat);
+            }
+          }
+        }
+        FLookLoopLookOracleTrue(crv, str, next, maxlook, capN, nlk, nqt, ov1, S, Slook, ncap, nlook, nquant);
+      }
+  }
+
   /** R3 DELIVERABLE 2 (DefGroups coverage corollary): under the whole-regex
       setup, EVERY inside-look group `g` whose innermost-DIRECT owner is matched
       in the FINAL look bank `res.1` has `res.0` carrying `g` at that owner's
