@@ -24866,6 +24866,48 @@ module LindenElkLiftSim {
     }
   }
 
+  /** (SINGLE-THREADED) FULL-LIVENESS descent producer — keyed on
+      `g2 in GmOfLive(re,res)` instead of bare res0-live. This is the CORRECT key:
+      bare res0-live is NOT producible (an ESCAPED look — matched early, its enclosing
+      quantifier re-stamped later — stays res0-live [quant `Reset` clears capture regs,
+      not look clocks] yet is non-dominant, so `res0`-live ⟹ gmt is FALSE for it). Full
+      `GmOfLive` membership excludes escaped looks by construction (it checks dominance),
+      so the per-`g2` package is establishable. The `ensures` IS the endpoint's
+      reverse-(c) residual (`forall g in S && g in GmOfLive(re,res) ==> g in gmt`),
+      discharged DIRECTLY — no `ReverseCFromDescent` weakening. */
+  lemma DescentProducerTopOwnersDeepFull(
+      rer: LW.RegExpRecord, re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+      S: set<LG.GroupId>, gmt: LG.GroupMap, thread: AI.Thread,
+      res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
+      ncap: int, nlook: int, nquant: int)
+    requires S == PIV.CapIdsInLooks(re)
+    requires LookNestBackTTopDeep(rer, re, crv, str, ov, S, gmt, thread, ncap, nlook, nquant)
+    // per LIVE inside-look g2 (DIRECT or DEEP): a TOP ancestor A0 matched + dominating
+    // on the winning thread's banks, whose sub-first-leaf carries g2.
+    requires forall g2: nat :: g2 in S && g2 in PIV.GmOfLive(re, res0, res1, res2) ==>
+      exists A0: nat ::
+        A0 in NI.TopLookIds(re) && A0 in LTB.LookIds(re)
+        && g2 in PIV.CapIds(NI.LookBodyOfRE(re, A0))
+        && M.MatchedPosLA(crv, thread.look_regs, A0 as int)
+        && NI.LookPathDom(re, AI.get_idx(thread.look_regs.a_clk, A0 as int), thread.quant_regs.a_clk, A0)
+        && var lsub := SubFirstLeafAt(rer, crv, str, A0 as int, thread.look_regs);
+           lsub.Some? && g2 in lsub.value
+    ensures forall g2: nat :: g2 in S && g2 in PIV.GmOfLive(re, res0, res1, res2) ==> g2 in gmt
+  {
+    forall g2: nat | g2 in S && g2 in PIV.GmOfLive(re, res0, res1, res2)
+      ensures g2 in gmt
+    {
+      var A0: nat :|
+        A0 in NI.TopLookIds(re) && A0 in LTB.LookIds(re)
+        && g2 in PIV.CapIds(NI.LookBodyOfRE(re, A0))
+        && M.MatchedPosLA(crv, thread.look_regs, A0 as int)
+        && NI.LookPathDom(re, AI.get_idx(thread.look_regs.a_clk, A0 as int), thread.quant_regs.a_clk, A0)
+        && var lsub := SubFirstLeafAt(rer, crv, str, A0 as int, thread.look_regs);
+           lsub.Some? && g2 in lsub.value;
+      DescentLandTopDeep(rer, re, crv, str, ov, S, gmt, thread, A0, g2, ncap, nlook, nquant);
+    }
+  }
+
   /** (BRICK D-11 — INTERFACE CHECK) Confirms the reverse-recon descent
       conclusion `DescentProducerTopOwners` emits (its `ensures`, restated here
       verbatim as the sole descent `requires`) is EXACTLY what both D-8 descent
