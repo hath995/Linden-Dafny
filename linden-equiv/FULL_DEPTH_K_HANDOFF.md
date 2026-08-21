@@ -189,3 +189,29 @@ wall-verdicts omitted) collapsed BOTH:
    residual uses the SAME (A2)+deep-embedding machinery.
 4. **Endpoint UNCONDITIONAL + C5** (`MainTheoremL4` + `Supported` `NestedFragmentRaw` disjunction +
    `MatchCorrect`) per §5.
+
+## 10. WIRING PROGRESS + RESUME POINT (2026-08-21, HEAD `d50b455`) — cut off by weekly usage limit
+Both tower wirings were dispatched and made green progress before a WEEKLY USAGE LIMIT killed the agents
+mid-work (NOT a proof problem). Banked green:
+- **R1 residual reduced** (`4966a31`): `M.FreshBodyDirectMemberFromAncSet` closes the R1 target from the
+  single register invariant `M.AncSetInvRE(body, rf.caps.a_clk)`; `GNotUnderQuantLNoAncQuants` bridge +
+  `AncSetInitVacuous` base case green.
+- **R2 wiring Phase 1** (`d50b455`): deep step-twins `LookNestBackTRegSameTopDeep`,
+  `LookNestBackTSetQuantNestedTopDeep`, `LookNestBackRepBTopDeep`, `LookNestBackRepCTopDeep` green.
+
+**RESUME (two independent mechanical bricks, files disjoint — can run in parallel):**
+- **(A2) producer** (NestInv/ClockMono/MainTheorem): thread `AncSetInvRE` (+ positional `NestInvRE`
+  companion) through the fresh-body ε-closure driver → `FFindMatchAncSet` → `M.FreshBodyDirectMember`
+  UNCONDITIONAL. NOTE the agent found the "missing `NestInvResetWrite`" ALREADY EXISTS as `NI.NestInvStamp`.
+  Mirror `ClockMono.FAdvanceEpsilonClocksLE` (:2090) + `M.FFindMatchThreadFacts` (:2588); entry via
+  `AncSetInitVacuous`. Nothing was committed on `brickA2prod` (branch retired; restart fresh).
+- **R2 wiring Phase 2** (LiftSim): add the `LookNestBackTTopDeep` conjunct to `BestTieLkNestedTop` (:355)
+  and re-discharge `L3aCompositeCloseRec`(:23047)/`LiftFindMatchCRec`(:22687)/`LiftInvRec` using the Phase-1
+  deep step-twins + the green `DeepGateReqFromCrossing`/`LookNestBackTGatePassTopDeep`. (The gate-pass step
+  was already verified 1611/0 before cutoff.) All-or-nothing conjunct-add; close green then commit.
+
+Then: **descent assembly** (feed `DescentProducerTopOwnersDeep` via `FreshBodyDirectMember` [direct] +
+`LookNestBackTFromBodyReplay`+recursion [deep]; consumers `GuardBridgeFromDescent`/`ReverseCFromDescent`
+discharge endpoint reverse-(c)+`AllBodyTopFeeds`), **forward-existence VALUE tie** (same machinery),
+**endpoint UNCONDITIONAL** (drop `L3aEndpointAssemblyNestedFull`'s residual requires), **C5** per §5.
+NO conceptual walls remain — all discharges are proven green; this is mechanical threading only.
