@@ -275,3 +275,31 @@ for deep g; (c) hereditary body(A0) hyps for `LookNestBackTFromBodyReplay`/`Desc
 (`NestedFragmentRE`/`GateStaticsOkNested`/`LookTablesOk` — from `NI.LookBodyOfFragmentNested` etc.).
 Then reverse-(c) is `DescentProducerTopOwnersDeepFull(re)` fed by `DescentPerGFullRec`. Then endpoint
 AllBodyTopFeeds + forward-existence + UNCONDITIONAL + C5 (§5).
+
+## 13. DEEP-CASE "top-ancestor matched+dominant" SOLVED (2026-08-21, HEAD `beb8082`)
+Single-threaded grind on `DescentPerGFullRec`'s DEEP branch. The deep per-`g2` existential has two halves:
+the gate half (`MatchedPosLA(A0)` + `LookPathDom(A0)` on the winning thread) and the LANDING
+(`g2 in SubFirstLeafAt(A0)`). **The gate half is now fully GREEN from green pieces:**
+- `305ec35` **reverse look-bank invariant** (ClockMono): `LookCpSetWithClk` (clk-set ⟹ cp-set) +
+  `VmLookCpSet`/`SetRegLookCpSet`/`FAdvanceEpsilonLookCpSet`/`FConsumeLookCpSet`/`FFindMatchLookCpSet` —
+  the exact mirror of the `LookClkSetWithCp` tower (cp and clock land in the same `set_reg` at a CheckOracle
+  crossing). Carries clk⟹cp on the FFindMatch winning thread.
+- `6a2a94c` **`M.TopLookMatchedFromDom`** (MainTheorem): A0's look clock set on the winning thread +
+  `LookCpSetWithClk` + lookahead-type ⟹ `MatchedPosLA(A0)`. (A1 gives only the INNERMOST owner matched;
+  this recovers the TOP ancestor matched.)
+- `7d111e1` **`DeepTopAncestorMatchedDom`** (LiftSim): for a deep live `g2` with top ancestor `A0`, BOTH
+  gate conjuncts — dominance from `NI.LookPathDomFromLivenessThread`, matched from A0's clock set
+  (`LocalTopFeed` at A0, guard discharged by `g2`, reconciled onto thread banks) + `TopLookMatchedFromDom`.
+- `beb8082` **`BodyReplayGmtIsSubFirstLeaf`** (LiftSim): definitional identity — the body replay's first-leaf
+  gmt (`FirstLeaf(t).value.1`, what `LookNestBackTFromBodyReplay` carries) IS `SubFirstLeafAt(A0).value`.
+  So the body carrier feeds the landing target with NO adaptation.
+
+**REMAINING = the deep LANDING recursion only** (`g2 in SubFirstLeafAt(A0)` for deep g2): apply
+`DescentProducerTopOwnersDeepFull(body(A0))` with `gmt := SubFirstLeafAt(A0)` (identity via `beb8082`),
+carrier `LookNestBackTTopDeep(body(A0), rf_{A0})` (via `LookNestBackTFromBodyReplay`), per-`g2` hypothesis
+from the RECURSION `DescentPerGFullRec(body(A0))`. The two hard sub-pieces (unchanged from §12): (b) the
+**FLookLoop-compositibility frame** `g2 in GmOfLive(re,res) ⟹ g2 in GmOfLive(body(A0), res_body)` for deep
+g2 — NO pre-built lemma exists (confirmed: `GmOfLiveInsideLook{Absent,Present}Eq` are the closest and don't
+compose banks; the forward `ReconInnerForwardWired` goes body→re, the WRONG way); (c) constructing
+`res_body` (body(A0)'s FLookLoop recon at `rf_{A0}`) + the hereditary body(A0) hyps. (b)+(c) are the last
+kernel; (a) the recursion skeleton (`decreases |LookIds|`, `SubsetCardLt`+`LookIdNotInOwnBody`) is mapped.
