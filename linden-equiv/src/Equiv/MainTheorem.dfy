@@ -14343,6 +14343,31 @@ module LindenElkMain {
     ReverseGateResidualFromInv(re, thread, A0);
   }
 
+  /** (DEEP reverse-recon descent — TOP-ANCESTOR MATCHED) The reverse of
+      `ReverseGateResidualFromInvMatched`'s cp->clk step, keyed on the DEEP case's
+      available fact. For a top look `A0` whose LOOK CLOCK is set on the winning
+      thread — delivered by the whole-loop ancestor-clock chain / `LocalTopFeed` at
+      `A0` (a res0-live capture in `A0`'s body forces `A0`'s clock set) reconciled
+      onto the thread banks — the REVERSE look-bank invariant `CM.LookCpSetWithClk`
+      (carried on the winning thread by `CM.FFindMatchLookCpSet`) recovers that
+      `A0`'s cp is RECORDED, i.e. `MatchedPosLA(crv, thread.look_regs, A0)`. This is
+      the top-ancestor-matched fact the DEEP case needs (`A1`/`FLookLoopInLookLive
+      OwnerMatched` gives only the INNERMOST owner matched); the lookahead-type pin
+      is the fragment static the caller discharges from `LookTablesOk` +
+      `NoPosLookbehindRE` (as for `DescentPackageDirectFull`). */
+  lemma TopLookMatchedFromDom(crv: CP.FCompiled, re: R.regex, thread: AI.Thread, A0: nat)
+    requires 0 <= (A0 as int) < |crv.f_look_types| && crv.f_look_types[A0 as int].Lookahead?
+    requires AI.get_idx(thread.look_regs.a_clk, A0 as int) >= 0
+    requires CM.LookCpSetWithClk(thread.look_regs)
+    requires |thread.look_regs.a_cp| == |thread.look_regs.a_clk|
+    ensures MatchedPosLA(crv, thread.look_regs, A0 as int)
+  {
+    assert AI.get_idx(thread.look_regs.a_cp, A0 as int) >= 0;   // LookCpSetWithClk at A0
+    RL.AAsArraysLaws(thread.look_regs);
+    assert AReg.get_cp(thread.look_regs, A0 as int).Some?;      // as_arrays tie
+    assert AI.capture_type(crv.f_look_types[A0 as int]);        // Lookahead captures
+  }
+
   /** R2: nested twin of `NoWriteOracleBodyCode` — a nested body's compiled
       bytecode holds no `WriteOracle` (its inner looks compile to CheckOracle
       leaves; WriteOracle only comes from the build pass). Via
