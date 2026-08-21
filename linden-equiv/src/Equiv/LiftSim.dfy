@@ -9413,6 +9413,63 @@ module LindenElkLiftSim {
     assert g2 in PIV.CapIds(NI.LookBodyOfRE(re, A0));
   }
 
+  /** (SINGLE-THREADED) The DIRECT-case per-`g2` package with the SOLE owed residual
+      of `DescentPackageDirectFromRes1` (the gate-crossing `LookPathDom` on the winning
+      thread's banks) DISCHARGED by the extraction connective `NI.LookPathDomFromLivenessThread`.
+      Input is FULL recon-bank liveness `g2 in GmOfLive(re,res)` (which the endpoint's
+      reverse-(c) hypothesis carries) plus the res->thread frames at the top look A0
+      (look-clock via `M.FLookLoopTopLookClkStableFull`, cp via `M.FLookLoopTopLookCpStableFull`,
+      quant via the outside-look quant frame). Produces the exact
+      `DescentProducerTopOwnersDeep` per-`g2` package. */
+  lemma DescentPackageDirectFull(
+      rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+      re: R.regex, S: set<LG.GroupId>, thread: AI.Thread, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
+      A0: nat, g2: nat, body: R.regex, bodycode: RB.code, endl: nat, ngroups: nat,
+      ncap: int, nlook: int, nquant: int)
+    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re) && LTB.LookUnique(re)
+    requires S == PIV.CapIdsInLooks(re)
+    requires A0 in NI.TopLookIds(re) && A0 in LTB.LookIds(re)
+    requires body == NI.LookBodyOfRE(re, A0) && body == M.VBody(crv, A0 as int)
+    requires g2 in S && g2 in PIV.CapIds(body) && g2 !in PIV.CapIdsInLooks(body)   // DIRECT
+    // ---- body facts for the landing bridge (same as DescentPackageDirectFromRes1) ----
+    requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
+    requires NR.NegLooksLookFreeRE(body)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires qm.ov == ov && !rer.ignoreCase && !rer.multiline
+    requires bodycode == CP.compile_to_bytecode(body)
+    requires T.TransWf(body)
+    requires 0 <= (A0 as int) < |crv.f_look_types| && crv.f_look_types[A0 as int].Lookahead?
+    requires 0 <= (A0 as int) < |crv.f_look_cdns|
+    // ---- A1/A2 res1-side facts (matched + fresh-live g2) ----
+    requires M.MatchedPosLA(crv, res1, A0 as int)
+    requires var rf := M.FreshBodyMatch(crv, str, A0 as int, res1, ov, ncap, nlook, nquant);
+             rf.Some?
+             && g2 in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)
+    // ---- res1 <-> thread reconciliation at the top look A0 ----
+    requires AReg.get_cp(res1, A0 as int) == AReg.get_cp(thread.look_regs, A0 as int)
+    requires var cp := AReg.get_cp(res1, A0 as int).value;
+             0 <= cp <= |str| && LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
+    requires AI.get_idx(res1.a_clk, A0 as int) == AI.get_idx(thread.look_regs.a_clk, A0 as int)
+    requires forall q: nat :: q in PIV.QuantIdsOutsideLooks(re) ==>
+      AI.get_idx(res2.a_clk, q as int) == AI.get_idx(thread.quant_regs.a_clk, q as int)
+    // ---- FULL recon-bank liveness (replaces the owed LookPathDom) ----
+    requires forall c: nat :: c in PIV.CapIds(re) && AI.get_idx(res0.a_clk, CP.start_reg(c)) < 0
+                             ==> AI.get_idx(res0.a_cp, CP.start_reg(c)) < 0
+    requires g2 in PIV.GmOfLive(re, res0, res1, res2)
+    ensures A0 in NI.TopLookIds(re) && A0 in LTB.LookIds(re)
+         && g2 in PIV.CapIds(NI.LookBodyOfRE(re, A0))
+         && M.MatchedPosLA(crv, thread.look_regs, A0 as int)
+         && NI.LookPathDom(re, AI.get_idx(thread.look_regs.a_clk, A0 as int), thread.quant_regs.a_clk, A0)
+         && var lsub := SubFirstLeafAt(rer, crv, str, A0 as int, thread.look_regs);
+            lsub.Some? && g2 in lsub.value
+  {
+    // discharge the owed LookPathDom on thread banks by EXTRACTION from full liveness.
+    NI.LookPathDomFromLivenessThread(re, res0, res1, res2, thread, g2, A0);
+    // then the direct-case package.
+    DescentPackageDirectFromRes1(rer, qm, crv, str, ov, re, S, thread, res1,
+                                 A0, g2, body, bodycode, endl, ngroups, ncap, nlook, nquant);
+  }
+
   /** (R2 — the crossing DISCHARGES the deep gate-pass requires) Ties rung 1 to the
       deep gate-pass: at a positive-lookAHEAD gate crossing (`l`'s cp just written
       as `cp`, body groups cleared coming in), the DEEP carrier's crossing
