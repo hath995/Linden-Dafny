@@ -9154,6 +9154,36 @@ module LindenElkLiftSim {
     if res.Some? then Some(res.value.1) else None
   }
 
+  /** (R2 — definitional identification) `SubFirstLeafAt(A0, lk)` IS the body
+      replay's first-leaf group map: the spec body tree `t` that
+      `LookNestBackTFromBodyReplay` builds at `cp = get_cp(lk, A0)` over
+      `Translate(body)` has `FirstLeaf(t, inp) == TreeRes(t, Empty, inp, Forward)`
+      (definitional), and `SubFirstLeafAt` unfolds to exactly that `TreeRes`'s group
+      map (`body == VBody(crv, A0)`, same `cp`, same `inp`). This lets the body
+      replay's DEEP carrier — stated on `FirstLeaf(t).value.1` — feed the deep
+      per-`g2` existential, whose landing target is `SubFirstLeafAt(A0)`. */
+  lemma BodyReplayGmtIsSubFirstLeaf(rer: LW.RegExpRecord, crv: CP.FCompiled, str: string,
+                                    A0: int, lk: AReg.Regs, body: R.regex)
+    requires body == M.VBody(crv, A0)
+    requires T.TransWf(body)
+    requires AReg.get_cp(lk, A0).Some? && AReg.get_cp(lk, A0).value <= |str|
+    ensures var cp := AReg.get_cp(lk, A0).value;
+            var inp := PIV.InpOfCp(str, cp);
+            var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Forward);
+            (LT.FirstLeaf(t, inp).Some? <==> SubFirstLeafAt(rer, crv, str, A0, lk).Some?)
+            && (LT.FirstLeaf(t, inp).Some? ==>
+                  SubFirstLeafAt(rer, crv, str, A0, lk) == Some(LT.FirstLeaf(t, inp).value.1))
+  {
+    var cp := AReg.get_cp(lk, A0).value;
+    var inp := PIV.InpOfCp(str, cp);
+    var acts := [LS.Areg(T.Translate(body))];
+    LFU.ComputeTrIsTree(rer, acts, inp, LG.Empty, WP.Forward);
+    var t := LFU.ComputeTr(rer, acts, inp, LG.Empty, WP.Forward);
+    assert LS.IsTree(rer, acts, inp, LG.Empty, WP.Forward, t);
+    assert LT.FirstLeaf(t, inp) == LT.TreeRes(t, LG.Empty, inp, WP.Forward);   // definitional
+    // SubFirstLeafAt unfolds to TreeRes(t, Empty, inp, Forward) at the same cp/body.
+  }
+
   /** (R2 — the DEEP carrier) The strengthening of `LookNestBackTTop` from `l`'s
       DIRECT captures (`GmOfLive(body(l), FreshBodyMatch(l))`) to `l`'s WHOLE
       sub-first-leaf (`SubFirstLeafAt(l)`, deep/inner-look captures included). Same
