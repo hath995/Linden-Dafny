@@ -715,6 +715,228 @@ module LindenElkClockMono {
     }
   }
 
+  // ==========================================================================
+  // The LOOK-extended relational frame: `ThreadRel` + look-bank agreement on a
+  // fixed index set `SL`. The ONLY look write is CheckOracle's, and both runs
+  // write the SAME (l, cp, clock) at every crossing (control is register-blind),
+  // so agreement inside ANY `SL` is preserved verbatim. This is the engine core
+  // of the reverse-recon LEVEL-LINK: the FLookLoop iteration's replay-from-banks
+  // and the model's FRESH body match agree on the DIRECT-child look records.
+  // ==========================================================================
+
+  /** `ThreadRel` plus look-bank agreement inside `SL`. */
+  ghost predicate ThreadRelLk(ta: AI.Thread, tb: AI.Thread, Sc: set<int>, Sq: set<int>, SL: set<int>) {
+    ThreadRel(ta, tb, Sc, Sq)
+    && RegsAgreeInside(ta.look_regs, tb.look_regs, SL)
+  }
+
+  /** `VmRel` with `ThreadRelLk` threads. */
+  ghost predicate VmRelLk(sa: AI.VmState, sb: AI.VmState, Sc: set<int>, Sq: set<int>, SL: set<int>) {
+    sa.cp == sb.cp && sa.processed == sb.processed && sa.isblocked == sb.isblocked
+    && sa.context == sb.context && sa.clock == sb.clock && sa.cdn == sb.cdn
+    && |sa.active| == |sb.active|
+    && (forall i :: 0 <= i < |sa.active| ==> ThreadRelLk(sa.active[i], sb.active[i], Sc, Sq, SL))
+    && |sa.blocked| == |sb.blocked|
+    && (forall i :: 0 <= i < |sa.blocked| ==>
+          sa.blocked[i].1 == sb.blocked[i].1 && ThreadRelLk(sa.blocked[i].0, sb.blocked[i].0, Sc, Sq, SL))
+    && (sa.bestmatch.None? <==> sb.bestmatch.None?)
+    && (sa.bestmatch.Some? ==> ThreadRelLk(sa.bestmatch.value, sb.bestmatch.value, Sc, Sq, SL))
+  }
+
+  /** Epsilon step preserves `VmRelLk`: verbatim `FAdvanceEpsilonRel` with the
+      CheckOracle case additionally maintaining the look agreement via
+      `SetRegAgreeInside` (both runs write the same (l, cp, clock)). */
+  lemma FAdvanceEpsilonRelLk(c: RB.code, sa: AI.VmState, sb: AI.VmState, ov: LOr.OracleView,
+                             dir: LAnc.direction, Sc: set<int>, Sq: set<int>, SL: set<int>)
+    requires |sa.processed.true_set| == RB.size(c) && |sa.processed.false_set| == RB.size(c)
+    requires VmRelLk(sa, sb, Sc, Sq, SL)
+    ensures var (sa', ova') := AI.FAdvanceEpsilon(c, sa, ov, dir);
+            var (sb', ovb') := AI.FAdvanceEpsilon(c, sb, ov, dir);
+            VmRelLk(sa', sb', Sc, Sq, SL) && ova' == ovb'
+    decreases AI.unprocessed(sa.processed), |sa.active|
+  {
+    if |sa.active| == 0 {
+      assert |sb.active| == 0;
+      return;
+    }
+    var ta := sa.active[0];  var tb := sb.active[0];
+    assert ThreadRelLk(ta, tb, Sc, Sq, SL);
+    var aca := sa.active[1..];  var acb := sb.active[1..];
+    assert VmRelLk(sa.(active := aca), sb.(active := acb), Sc, Sq, SL) by {
+      forall i | 0 <= i < |aca| ensures ThreadRelLk(aca[i], acb[i], Sc, Sq, SL) {
+        assert aca[i] == sa.active[i + 1] && acb[i] == sb.active[i + 1];
+      }
+    }
+    var i := RB.get_instr(c, ta.pc);
+    if AI.bpc_mem(sa.processed, ta.pc, ta.exit_allowed) {
+      FAdvanceEpsilonRelLk(c, sa.(active := aca), sb.(active := acb), ov, dir, Sc, Sq, SL);
+    } else {
+      var s1a := sa.(clock := sa.clock + 1, processed := AI.bpc_add(sa.processed, ta.pc, ta.exit_allowed));
+      var s1b := sb.(clock := sb.clock + 1, processed := AI.bpc_add(sb.processed, tb.pc, tb.exit_allowed));
+      AI.UnprocessedAdd(sa.processed, ta.pc, ta.exit_allowed);
+      match i {
+        case Consume(ce) =>
+          var (nba, nia) := AI.add_thread(ta, ce, s1a.blocked, s1a.isblocked);
+          var (nbb, nib) := AI.add_thread(tb, ce, s1b.blocked, s1b.isblocked);
+          assert VmRelLk(s1a.(blocked := nba, isblocked := nia, active := aca),
+                         s1b.(blocked := nbb, isblocked := nib, active := acb), Sc, Sq, SL) by {
+            if !AI.pc_mem(s1a.isblocked, ta.pc) {
+              forall j | 0 <= j < |nba| ensures nba[j].1 == nbb[j].1 && ThreadRelLk(nba[j].0, nbb[j].0, Sc, Sq, SL) {
+                if j == 0 { } else { assert nba[j] == s1a.blocked[j - 1] && nbb[j] == s1b.blocked[j - 1]; }
+              }
+            }
+          }
+          FAdvanceEpsilonRelLk(c, s1a.(blocked := nba, isblocked := nia, active := aca),
+                               s1b.(blocked := nbb, isblocked := nib, active := acb), ov, dir, Sc, Sq, SL);
+        case Accept =>
+        case Jmp(x) =>
+          FAdvanceEpsilonRelLk(c, s1a.(active := [ta.(pc := x)] + aca),
+                               s1b.(active := [tb.(pc := x)] + acb), ov, dir, Sc, Sq, SL);
+        case Fork(x, y) =>
+          var newta := AI.Thread(x, ta.capture_regs, ta.look_regs, ta.quant_regs, ta.exit_allowed);
+          var newtb := AI.Thread(x, tb.capture_regs, tb.look_regs, tb.quant_regs, tb.exit_allowed);
+          FAdvanceEpsilonRelLk(c, s1a.(active := [newta, ta.(pc := y)] + aca),
+                               s1b.(active := [newtb, tb.(pc := y)] + acb), ov, dir, Sc, Sq, SL);
+        case SetRegisterToCP(reg) =>
+          var ta' := ta.(capture_regs := AReg.set_reg(ta.capture_regs, reg, Some(s1a.cp), s1a.clock), pc := ta.pc + 1);
+          var tb' := tb.(capture_regs := AReg.set_reg(tb.capture_regs, reg, Some(s1b.cp), s1b.clock), pc := tb.pc + 1);
+          SetRegAgreeInside(ta.capture_regs, tb.capture_regs, Sc, reg, Some(s1a.cp), s1a.clock);
+          FAdvanceEpsilonRelLk(c, s1a.(active := [ta'] + aca), s1b.(active := [tb'] + acb), ov, dir, Sc, Sq, SL);
+        case SetQuantToClock(q, b) =>
+          var ocpa := if b then Some(s1a.cp) else None;
+          var ocpb := if b then Some(s1b.cp) else None;
+          var ta' := ta.(quant_regs := AReg.set_reg(ta.quant_regs, q, ocpa, s1a.clock), pc := ta.pc + 1);
+          var tb' := tb.(quant_regs := AReg.set_reg(tb.quant_regs, q, ocpb, s1b.clock), pc := tb.pc + 1);
+          SetRegAgreeInside(ta.quant_regs, tb.quant_regs, Sq, q, ocpa, s1a.clock);
+          FAdvanceEpsilonRelLk(c, s1a.(active := [ta'] + aca), s1b.(active := [tb'] + acb), ov, dir, Sc, Sq, SL);
+        case CheckOracle(l) =>
+          if LOr.view_get_oracle(ov, s1a.cp, l) {
+            var ta' := ta.(pc := ta.pc + 1, look_regs := AReg.set_reg(ta.look_regs, l, Some(s1a.cp), s1a.clock));
+            var tb' := tb.(pc := tb.pc + 1, look_regs := AReg.set_reg(tb.look_regs, l, Some(s1b.cp), s1b.clock));
+            SetRegAgreeInside(ta.look_regs, tb.look_regs, SL, l, Some(s1a.cp), s1a.clock);
+            FAdvanceEpsilonRelLk(c, s1a.(active := [ta'] + aca), s1b.(active := [tb'] + acb), ov, dir, Sc, Sq, SL);
+          } else {
+            FAdvanceEpsilonRelLk(c, s1a.(active := aca), s1b.(active := acb), ov, dir, Sc, Sq, SL);
+          }
+        case NegCheckOracle(l) =>
+          if LOr.view_get_oracle(ov, s1a.cp, l) {
+            FAdvanceEpsilonRelLk(c, s1a.(active := aca), s1b.(active := acb), ov, dir, Sc, Sq, SL);
+          } else {
+            FAdvanceEpsilonRelLk(c, s1a.(active := [ta.(pc := ta.pc + 1)] + aca),
+                                 s1b.(active := [tb.(pc := tb.pc + 1)] + acb), ov, dir, Sc, Sq, SL);
+          }
+        case WriteOracle(l) =>
+          FAdvanceEpsilonRelLk(c, s1a.(active := aca), s1b.(active := acb),
+                               LOr.view_set_oracle(ov, s1a.cp, l), dir, Sc, Sq, SL);
+        case BeginLoop =>
+          FAdvanceEpsilonRelLk(c, s1a.(active := [ta.(exit_allowed := false, pc := ta.pc + 1)] + aca),
+                               s1b.(active := [tb.(exit_allowed := false, pc := tb.pc + 1)] + acb), ov, dir, Sc, Sq, SL);
+        case EndLoop =>
+          if ta.exit_allowed {
+            FAdvanceEpsilonRelLk(c, s1a.(active := [ta.(pc := ta.pc + 1)] + aca),
+                                 s1b.(active := [tb.(pc := tb.pc + 1)] + acb), ov, dir, Sc, Sq, SL);
+          } else {
+            FAdvanceEpsilonRelLk(c, s1a.(active := aca), s1b.(active := acb), ov, dir, Sc, Sq, SL);
+          }
+        case CheckNullable(qid) =>
+          if LCdn.cdn_get(s1a.cdn, qid) {
+            FAdvanceEpsilonRelLk(c, s1a.(active := [ta.(pc := ta.pc + 1)] + aca),
+                                 s1b.(active := [tb.(pc := tb.pc + 1)] + acb), ov, dir, Sc, Sq, SL);
+          } else {
+            FAdvanceEpsilonRelLk(c, s1a.(active := aca), s1b.(active := acb), ov, dir, Sc, Sq, SL);
+          }
+        case AnchorAssertion(a) =>
+          if LAnc.is_satisfied(a, s1a.context, dir) {
+            FAdvanceEpsilonRelLk(c, s1a.(active := [ta.(pc := ta.pc + 1)] + aca),
+                                 s1b.(active := [tb.(pc := tb.pc + 1)] + acb), ov, dir, Sc, Sq, SL);
+          } else {
+            FAdvanceEpsilonRelLk(c, s1a.(active := aca), s1b.(active := acb), ov, dir, Sc, Sq, SL);
+          }
+        case Fail =>
+          FAdvanceEpsilonRelLk(c, s1a.(active := aca), s1b.(active := acb), ov, dir, Sc, Sq, SL);
+      }
+    }
+  }
+
+  /** The consume step preserves `VmRelLk` (verbatim `FConsumeRel`). */
+  lemma FConsumeRelLk(sa: AI.VmState, sb: AI.VmState, Sc: set<int>, Sq: set<int>, SL: set<int>)
+    requires VmRelLk(sa, sb, Sc, Sq, SL)
+    ensures VmRelLk(AI.FConsume(sa), AI.FConsume(sb), Sc, Sq, SL)
+    decreases |sa.blocked|
+  {
+    if |sa.blocked| == 0 {
+      assert |sb.blocked| == 0;
+      return;
+    }
+    var ta := sa.blocked[0].0;  var ce := sa.blocked[0].1;
+    var tb := sb.blocked[0].0;
+    assert sa.blocked[0].1 == sb.blocked[0].1 && ThreadRelLk(ta, tb, Sc, Sq, SL);
+    var s1a := sa.(blocked := sa.blocked[1..]);
+    var s1b := sb.(blocked := sb.blocked[1..]);
+    assert VmRelLk(s1a, s1b, Sc, Sq, SL) by {
+      forall j | 0 <= j < |s1a.blocked|
+        ensures s1a.blocked[j].1 == s1b.blocked[j].1 && ThreadRelLk(s1a.blocked[j].0, s1b.blocked[j].0, Sc, Sq, SL)
+      { assert s1a.blocked[j] == sa.blocked[j + 1] && s1b.blocked[j] == sb.blocked[j + 1]; }
+    }
+    var s2a := if RC.is_accepted(s1a.context.nextchar, ce)
+               then s1a.(active := [ta.(exit_allowed := true, pc := ta.pc + 1)] + s1a.active) else s1a;
+    var s2b := if RC.is_accepted(s1b.context.nextchar, ce)
+               then s1b.(active := [tb.(exit_allowed := true, pc := tb.pc + 1)] + s1b.active) else s1b;
+    assert VmRelLk(s2a, s2b, Sc, Sq, SL) by {
+      if RC.is_accepted(s1a.context.nextchar, ce) {
+        forall j | 0 <= j < |s2a.active| ensures ThreadRelLk(s2a.active[j], s2b.active[j], Sc, Sq, SL) {
+          if j == 0 { } else { assert s2a.active[j] == s1a.active[j - 1] && s2b.active[j] == s1b.active[j - 1]; }
+        }
+      }
+    }
+    FConsumeRelLk(s2a, s2b, Sc, Sq, SL);
+  }
+
+  /** THE look-extended relational frame: two `FFindMatch` runs from
+      `VmRelLk`-related states end with `ThreadRelLk`-related best matches —
+      agreeing on (Sc, Sq) AND on the look bank inside `SL` — and an identical
+      oracle. Verbatim `FFindMatchCapRel` on the extended relation. */
+  lemma FFindMatchLookRel(c: RB.code, str: string, sa: AI.VmState, sb: AI.VmState, ov: LOr.OracleView,
+                          dir: LAnc.direction, cdn: LCdn.cdns, Sc: set<int>, Sq: set<int>, SL: set<int>)
+    requires |sa.processed.true_set| == RB.size(c) && |sa.processed.false_set| == RB.size(c)
+    requires dir.Forward? ==> sa.context.nextchar == AI.get_char(str, sa.cp)
+    requires dir.Backward? ==> sa.context.nextchar == AI.get_char(str, sa.cp - 1)
+    requires VmRelLk(sa, sb, Sc, Sq, SL)
+    ensures var (ra, ova) := AI.FFindMatch(c, str, sa, ov, dir, cdn);
+            var (rb, ovb) := AI.FFindMatch(c, str, sb, ov, dir, cdn);
+            (ra.None? <==> rb.None?)
+            && (ra.Some? ==> ThreadRelLk(ra.value, rb.value, Sc, Sq, SL))
+            && ova == ovb
+    decreases if dir.Forward? then |str| - sa.cp else sa.cp
+  {
+    var s0a := sa.(cdn := LCdn.build_cdn_v(cdn, sa.cp, ov, sa.context, dir));
+    var s0b := sb.(cdn := LCdn.build_cdn_v(cdn, sb.cp, ov, sb.context, dir));
+    assert VmRelLk(s0a, s0b, Sc, Sq, SL);
+    FAdvanceEpsilonRelLk(c, s0a, s0b, ov, dir, Sc, Sq, SL);
+    var (s1a, ov1a) := AI.FAdvanceEpsilon(c, s0a, ov, dir);
+    var (s1b, ov1b) := AI.FAdvanceEpsilon(c, s0b, ov, dir);
+    assert VmRelLk(s1a, s1b, Sc, Sq, SL) && ov1a == ov1b;
+    if |s1a.blocked| == 0 {
+      assert |s1b.blocked| == 0;
+      return;
+    }
+    match s1a.context.nextchar {
+      case None =>
+      case Some(_) =>
+        var s2a := AI.FConsume(s1a);  var s2b := AI.FConsume(s1b);
+        FConsumeRelLk(s1a, s1b, Sc, Sq, SL);
+        var s3a := s2a.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
+                        cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2a.cp, dir));
+        var s3b := s2b.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
+                        cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2b.cp, dir));
+        var newchar := AI.get_char(str, s3a.cp - AI.cp_offset(dir));
+        var s4a := s3a.(context := LAnc.update_context(s3a.context, newchar));
+        var s4b := s3b.(context := LAnc.update_context(s3b.context, newchar));
+        assert VmRelLk(s4a, s4b, Sc, Sq, SL);
+        FFindMatchLookRel(c, str, s4a, s4b, ov1a, dir, cdn, Sc, Sq, SL);
+    }
+  }
+
   /** Every `SetQuantToClock` in `c` targets an id in `S`. */
   ghost predicate QuantWritesInside(c: RB.code, S: set<int>) {
     forall pc: nat :: pc < |c| ==> (c[pc].SetQuantToClock? ==> c[pc].sq in S)

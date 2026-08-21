@@ -5171,6 +5171,77 @@ module LindenElkNestInv {
       }
   }
 
+  /** (DEEP reverse-recon — BODY-LEVEL dominance is TRIVIAL under no-anc-quants)
+      For a look `lid` whose body owns a capture `g2` that sits under NO quantifier
+      in `r` (`AncQuants(r, g2) == {}` — the fragment's `GNotUnderQuantL` shadow
+      via `M.GNotUnderQuantLNoAncQuants`), the path from `r`'s root to `lid`'s node
+      crosses NO `Re_quant` — so `LookPathDom(r, L, qc, lid)` holds for EVERY stamp
+      `L >= -1` and EVERY quant bank `qc`, structurally. This is why the deep
+      descent's per-LEVEL dominance obligations (inside look bodies) are free: an
+      escaped-look scenario needs the look under a quantifier, which would put its
+      captures under a quantifier inside an enclosing look — out of fragment. Only
+      the TOP level (quants outside looks) needs the real dominance connective. */
+  lemma LookPathDomNoAncQuants(r: R.regex, L: int, qc: seq<int>, lid: nat, g2: nat)
+    requires PIV.CapUnique(r)
+    requires lid in LTB.LookIds(r)
+    requires g2 in PIV.CapIds(r)
+    requires g2 in PIV.CapIds(LookBodyOfRE(r, lid))
+    requires PIV.AncQuants(r, g2) == {}
+    requires L >= -1
+    ensures LookPathDom(r, L, qc, lid)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) {
+        LookBodyCapsIn(r1, lid);                       // g2 in CapIds(r1)
+        assert g2 in PIV.CapIds(r1);
+        LookPathDomNoAncQuants(r1, L, qc, lid, g2);
+      } else {
+        LookBodyCapsIn(r2, lid);
+        assert g2 in PIV.CapIds(r2);
+        assert g2 !in PIV.CapIds(r1) by {
+          if g2 in PIV.CapIds(r1) { assert g2 in PIV.CapIds(r1) * PIV.CapIds(r2); }
+        }
+        LookPathDomNoAncQuants(r2, L, qc, lid, g2);
+      }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) {
+        LookBodyCapsIn(r1, lid);
+        assert g2 in PIV.CapIds(r1);
+        LookPathDomNoAncQuants(r1, L, qc, lid, g2);
+      } else {
+        LookBodyCapsIn(r2, lid);
+        assert g2 in PIV.CapIds(r2);
+        assert g2 !in PIV.CapIds(r1) by {
+          if g2 in PIV.CapIds(r1) { assert g2 in PIV.CapIds(r1) * PIV.CapIds(r2); }
+        }
+        LookPathDomNoAncQuants(r2, L, qc, lid, g2);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      // a real quant id on g2's path would land in AncQuants(r, g2) == {}.
+      LookBodyCapsIn(r1, lid);
+      assert g2 in PIV.CapIds(r1);
+      assert qid < 0 by {
+        if qid >= 0 { assert (qid as nat) in PIV.AncQuants(r, g2); }
+      }
+      assert AI.get_idx(qc, qid) == -1;                // out-of-range read
+      LookPathDomNoAncQuants(r1, L, qc, lid, g2);
+    case Re_capture(cid, r1) =>
+      LookBodyCapsIn(r1, lid);
+      assert g2 in PIV.CapIds(r1);
+      assert !(cid >= 0 && (cid as nat) == g2);        // CapUnique: cid !in CapIds(r1)
+      LookPathDomNoAncQuants(r1, L, qc, lid, g2);
+    case Re_lookaround(lid0, la, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+        // LookPathDom returns true at the target node
+      } else {
+        LookBodyCapsIn(r1, lid);
+        assert g2 in PIV.CapIds(r1);
+        LookPathDomNoAncQuants(r1, L, qc, lid, g2);
+      }
+  }
+
   /** (L4 depth-k, ADDITIVE) TOP-look twin of `MxAtLidGeMx` for the NESTED
       fragment. The depth-1 `MxAtLidGeMx` requires `LookBehindFragmentRE` because
       its `Re_lookaround` else-branch (lid inside a look body) is discharged by
