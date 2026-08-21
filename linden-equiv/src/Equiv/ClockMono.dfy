@@ -1717,6 +1717,203 @@ module LindenElkClockMono {
   }
 
   // ==========================================================================
+  // The REVERSE look-bank invariant: clock-set ==> cp-set. Exact mirror of the
+  // `LookClkSetWithCp` tower (cp-set ==> clock-set): a look's cp and clock land
+  // in the SAME `set_reg` (at a CheckOracle crossing), so both directions hold on
+  // every thread. This direction feeds the DEEP reverse-recon descent: a top
+  // ancestor `A0` whose look clock is SET on the winning thread (delivered by the
+  // dominance connective `NI.LookPathDom`) therefore has its cp RECORDED, i.e. is
+  // `MatchedPosLA` — the top-ancestor-matched fact the deep case needs.
+  // ==========================================================================
+
+  /** Every look entry with a recorded (`>= 0`) clock also has a recorded cp. */
+  ghost predicate LookCpSetWithClk(lk: AReg.Regs) {
+    forall l: int :: AI.get_idx(lk.a_clk, l) >= 0 ==> AI.get_idx(lk.a_cp, l) >= 0
+  }
+
+  /** Every thread in the state has `LookCpSetWithClk` look registers. */
+  ghost predicate VmLookCpSet(s: AI.VmState) {
+    (forall t | t in s.active :: LookCpSetWithClk(t.look_regs))
+    && (forall tb | tb in s.blocked :: LookCpSetWithClk(tb.0.look_regs))
+    && (s.bestmatch.Some? ==> LookCpSetWithClk(s.bestmatch.value.look_regs))
+  }
+
+  /** Recording a look cp (a `>= 0` position) under any stamp preserves
+      `LookCpSetWithClk` (the cp and the clock land in the same `set_reg`). */
+  lemma SetRegLookCpSet(lk: AReg.Regs, l: int, cp: int, clk: int)
+    requires LookCpSetWithClk(lk) && cp >= 0
+    ensures LookCpSetWithClk(AReg.set_reg(lk, l, Some(cp), clk))
+  {
+    var r2 := AReg.set_reg(lk, l, Some(cp), clk);
+    forall k: int | AI.get_idx(r2.a_clk, k) >= 0 ensures AI.get_idx(r2.a_cp, k) >= 0 {
+      if 0 <= l < |lk.a_cp| && 0 <= l < |lk.a_clk| {
+        if k == l {
+          assert r2.a_cp == lk.a_cp[l := cp];      // int_of_opt(Some(cp)) == cp
+          assert AI.get_idx(r2.a_cp, l) == cp;
+        } else {
+          SetRegOtherIdx(lk, l, Some(cp), clk, k);
+        }
+      } else {
+        assert r2 == lk;
+      }
+    }
+  }
+
+  /** An epsilon phase preserves `VmLookCpSet`: the CheckOracle write records
+      `s.cp >= 0`, every other instruction leaves `look_regs` alone. */
+  lemma FAdvanceEpsilonLookCpSet(c: RB.code, s: AI.VmState, ov: LOr.OracleView,
+                                 dir: LAnc.direction)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires s.cp >= 0
+    requires VmLookCpSet(s)
+    ensures VmLookCpSet(AI.FAdvanceEpsilon(c, s, ov, dir).0)
+    decreases AI.unprocessed(s.processed), |s.active|
+  {
+    if |s.active| == 0 { return; }
+    var t := s.active[0];
+    var ac := s.active[1..];
+    assert t in s.active;
+    assert forall x | x in ac :: x in s.active;
+    if AI.bpc_mem(s.processed, t.pc, t.exit_allowed) {
+      FAdvanceEpsilonLookCpSet(c, s.(active := ac), ov, dir);
+      return;
+    }
+    var b0 := s.processed;
+    var s1 := s.(clock := s.clock + 1, processed := AI.bpc_add(b0, t.pc, t.exit_allowed));
+    assert AI.unprocessed(s1.processed) <= AI.unprocessed(b0)
+        && (0 <= t.pc < RB.size(c) ==> AI.unprocessed(s1.processed) < AI.unprocessed(b0))
+      by { AI.UnprocessedAdd(b0, t.pc, t.exit_allowed); }
+    match RB.get_instr(c, t.pc) {
+      case Consume(ce) =>
+        var (nb, ni) := AI.add_thread(t, ce, s1.blocked, s1.isblocked);
+        var s2 := s1.(blocked := nb, isblocked := ni, active := ac);
+        assert VmLookCpSet(s2) by {
+          forall tb | tb in nb ensures LookCpSetWithClk(tb.0.look_regs) {
+            assert tb == (t, ce) || tb in s1.blocked;
+          }
+        }
+        FAdvanceEpsilonLookCpSet(c, s2, ov, dir);
+      case Accept =>
+      case Jmp(x) =>
+        FAdvanceEpsilonLookCpSet(c, s1.(active := [t.(pc := x)] + ac), ov, dir);
+      case Fork(x, y) =>
+        var newt := AI.Thread(x, t.capture_regs, t.look_regs, t.quant_regs, t.exit_allowed);
+        FAdvanceEpsilonLookCpSet(c, s1.(active := [newt, t.(pc := y)] + ac), ov, dir);
+      case SetRegisterToCP(reg) =>
+        var t2 := t.(capture_regs := AReg.set_reg(t.capture_regs, reg, Some(s1.cp), s1.clock), pc := t.pc + 1);
+        FAdvanceEpsilonLookCpSet(c, s1.(active := [t2] + ac), ov, dir);
+      case SetQuantToClock(q, bq) =>
+        var ocp := if bq then Some(s1.cp) else None;
+        var t2 := t.(quant_regs := AReg.set_reg(t.quant_regs, q, ocp, s1.clock), pc := t.pc + 1);
+        FAdvanceEpsilonLookCpSet(c, s1.(active := [t2] + ac), ov, dir);
+      case CheckOracle(l) =>
+        if LOr.view_get_oracle(ov, s1.cp, l) {
+          var t2 := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(s1.cp), s1.clock));
+          assert LookCpSetWithClk(t.look_regs);        // t in s.active
+          SetRegLookCpSet(t.look_regs, l, s1.cp, s1.clock);   // s1.cp == s.cp >= 0
+          FAdvanceEpsilonLookCpSet(c, s1.(active := [t2] + ac), ov, dir);
+        } else {
+          FAdvanceEpsilonLookCpSet(c, s1.(active := ac), ov, dir);
+        }
+      case NegCheckOracle(l) =>
+        if LOr.view_get_oracle(ov, s1.cp, l) {
+          FAdvanceEpsilonLookCpSet(c, s1.(active := ac), ov, dir);
+        } else {
+          FAdvanceEpsilonLookCpSet(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir);
+        }
+      case WriteOracle(l) =>
+        FAdvanceEpsilonLookCpSet(c, s1.(active := ac), LOr.view_set_oracle(ov, s1.cp, l), dir);
+      case BeginLoop =>
+        FAdvanceEpsilonLookCpSet(c, s1.(active := [t.(exit_allowed := false, pc := t.pc + 1)] + ac), ov, dir);
+      case EndLoop =>
+        if t.exit_allowed {
+          FAdvanceEpsilonLookCpSet(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir);
+        } else {
+          FAdvanceEpsilonLookCpSet(c, s1.(active := ac), ov, dir);
+        }
+      case CheckNullable(qid) =>
+        if LCdn.cdn_get(s1.cdn, qid) {
+          FAdvanceEpsilonLookCpSet(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir);
+        } else {
+          FAdvanceEpsilonLookCpSet(c, s1.(active := ac), ov, dir);
+        }
+      case AnchorAssertion(a) =>
+        if LAnc.is_satisfied(a, s1.context, dir) {
+          FAdvanceEpsilonLookCpSet(c, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, dir);
+        } else {
+          FAdvanceEpsilonLookCpSet(c, s1.(active := ac), ov, dir);
+        }
+      case Fail =>
+        FAdvanceEpsilonLookCpSet(c, s1.(active := ac), ov, dir);
+    }
+  }
+
+  /** The consume phase moves blocked threads to active without touching
+      `look_regs`, so `VmLookCpSet` is preserved. */
+  lemma FConsumeLookCpSet(s: AI.VmState)
+    requires VmLookCpSet(s)
+    ensures VmLookCpSet(AI.FConsume(s))
+    decreases |s.blocked|
+  {
+    if |s.blocked| == 0 { return; }
+    var t := s.blocked[0].0;
+    var ce := s.blocked[0].1;
+    var s1 := s.(blocked := s.blocked[1..]);
+    assert VmLookCpSet(s1) by {
+      forall tb | tb in s1.blocked ensures LookCpSetWithClk(tb.0.look_regs) { assert tb in s.blocked; }
+    }
+    var s2 := if RC.is_accepted(s1.context.nextchar, ce)
+              then s1.(active := [t.(exit_allowed := true, pc := t.pc + 1)] + s1.active)
+              else s1;
+    assert VmLookCpSet(s2) by {
+      assert s.blocked[0] in s.blocked;
+      assert LookCpSetWithClk(t.look_regs);
+      forall t2 | t2 in s2.active ensures LookCpSetWithClk(t2.look_regs) {
+        if t2 != t.(exit_allowed := true, pc := t.pc + 1) { assert t2 in s1.active; }
+      }
+    }
+    FConsumeLookCpSet(s2);
+  }
+
+  /** THE reverse look-clock frame: on a whole FORWARD search from a `>= 0` start
+      position, the winning thread's every look entry with a recorded clock also
+      has a recorded (`>= 0`) cp. The mirror of `FFindMatchLookClkSet`; feeds the
+      DEEP descent's top-ancestor `MatchedPosLA` (cp recorded) from the connective's
+      dominance (clock set). */
+  lemma FFindMatchLookCpSet(c: RB.code, str: string, s: AI.VmState, ov: LOr.OracleView,
+                            dir: LAnc.direction, cdn: LCdn.cdns)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires dir == LAnc.Forward
+    requires s.context.nextchar == AI.get_char(str, s.cp)
+    requires 0 <= s.cp <= |str|
+    requires VmLookCpSet(s)
+    ensures var r := AI.FFindMatch(c, str, s, ov, dir, cdn).0;
+      r.Some? ==> LookCpSetWithClk(r.value.look_regs)
+    decreases |str| - s.cp
+  {
+    var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, dir));
+    assert VmLookCpSet(s0) && s0.cp >= 0;
+    var (s1, ov1) := AI.FAdvanceEpsilon(c, s0, ov, dir);
+    FAdvanceEpsilonLookCpSet(c, s0, ov, dir);
+    assert VmLookCpSet(s1);
+    if |s1.blocked| == 0 { return; }
+    match s1.context.nextchar {
+      case None =>
+      case Some(_) =>
+        assert s.cp < |str|;                      // nextchar Some (forward) => in range
+        var s2 := AI.FConsume(s1);
+        FConsumeLookCpSet(s1);
+        var s3 := s2.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
+                      cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
+        var newchar := AI.get_char(str, s3.cp - AI.cp_offset(dir));
+        var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
+        assert s4.cp == s.cp + 1 <= |str|;
+        assert VmLookCpSet(s4);
+        FFindMatchLookCpSet(c, str, s4, ov1, dir, cdn);
+    }
+  }
+
+  // ==========================================================================
   // L3a (S-i) look-ORACLE truth: every look cp a thread records is a position
   // where that look's ORACLE BIT IS SET. CheckOracle writes `a_cp[l] := s.cp`
   // ONLY on the branch where it has just READ `view_get_oracle(ov, s.cp, l)`
