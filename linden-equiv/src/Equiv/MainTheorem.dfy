@@ -11066,6 +11066,65 @@ module LindenElkMain {
     assert l !in Slookp;
   }
 
+  /** (cp twin of `FLookLoopTopLookClkStableFull`) WHOLE-LOOP top-look POSITION
+      stability: for ANY stable index `l` in NO replayed body's `LookIdSet` (in
+      particular any TOP-LEVEL look of `re`, `TopLookNotNested`), the FINAL look
+      bank's recorded position at `l` is unchanged by the ENTIRE fold from `lid` to
+      `maxlook`. Same argument as `FLookLoopTopLookClkStableFull` read off the
+      `a_cp` slot and finished by `GetCpAgreeIdx`. This is the whole-loop POSITION
+      stability the reverse-recon descent needs to transport `MatchedPosLA` /
+      `FreshBodyMatch` (which read only `get_cp(lk, l)` at index `l`) from the
+      reconstructed bank `res.1 = FLookLoop(...).1` back onto the winning thread's
+      `look_regs` at a top look `l`. */
+  lemma FLookLoopTopLookCpStableFull(crv: CP.FCompiled, str: string, lid: int, maxlook: int, l: int,
+                                     cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                                     S: set<int>, Slook: set<int>)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    requires forall l0: int, la: R.lookaround, body: R.regex ::
+      lid <= l0 <= maxlook && LTB.LookEntryOk(crv, l0, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+    requires forall l0: int :: lid <= l0 <= maxlook && AReg.get_cp(lk, l0).Some? ==>
+      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l0, la, body)
+    requires forall l1: int, la1: R.lookaround, b1: R.regex ::                                  // (h')@l
+      lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> l !in LookIdSet(b1)
+    ensures AReg.get_cp(AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov).1, l)
+         == AReg.get_cp(lk, l)
+  {
+    var Slookp := Slook - {l};
+    forall l0: int, la: R.lookaround, body: R.regex | lid <= l0 <= maxlook && LTB.LookEntryOk(crv, l0, la, body)
+      ensures FrameEntryOk(crv, la, body, S, Slookp)
+    {
+      assert FrameEntryOk(crv, la, body, S, Slook);   // LookIdSet(body) <= Slook
+      assert l !in LookIdSet(body);                   // (h')@l
+      assert LookIdSet(body) <= Slookp;
+    }
+    FLookLoopCaptureFrameNested(crv, str, lid, maxlook, cap, lk, qt, ov, S, Slookp);
+    var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
+    assert CM.RegsAgreeOutside(res.1, lk, Slookp);
+    assert l !in Slookp;
+    assert AI.get_idx(res.1.a_cp, l) == AI.get_idx(lk.a_cp, l);
+    GetCpAgreeIdx(res.1, lk, l);
+  }
+
+  /** (reconciliation) `MatchedPosLA` and `FreshBodyMatch` at index `l` read the
+      look bank ONLY through `AReg.get_cp(lk, l)` (the recorded position of look
+      `l`). So two look banks that agree at that one slot yield the SAME
+      `MatchedPosLA` verdict and the SAME fresh body match. Combined with
+      `FLookLoopTopLookCpStableFull` (`get_cp` stable at a top look under the
+      whole fold), this transports both `MatchedPosLA` and `FreshBodyMatch` from
+      the reconstructed bank `res.1 = FLookLoop(...).1` onto the winning thread's
+      `look_regs` at a top look — the reconciliation the reverse-recon descent
+      needs to key A1/A2's outputs (stated on `res.1`) onto the SIM carrier's
+      thread banks. */
+  lemma MatchedPosLAFreshBodyCpCong(crv: CP.FCompiled, str: string, l: int, a: AReg.Regs, b: AReg.Regs,
+                                    ov: LOr.OracleView, ncap: int, nlook: int, nquant: int)
+    requires AReg.get_cp(a, l) == AReg.get_cp(b, l)
+    ensures MatchedPosLA(crv, a, l) == MatchedPosLA(crv, b, l)
+    ensures FreshBodyMatch(crv, str, l, a, ov, ncap, nlook, nquant)
+         == FreshBodyMatch(crv, str, l, b, ov, ncap, nlook, nquant)
+  {
+  }
+
   /** C4c BODY-SIDE (look-clock independence): for a group `gid` OUTSIDE all of
       `r`'s looks (`gid !in CapIdsInLooks(r)`), `PathPresentLk`/`MxAtGidLk` never
       read the look-clock bank `lc` — the descent to `gid` crosses no

@@ -9251,6 +9251,168 @@ module LindenElkLiftSim {
   {
   }
 
+  /** (R2 direct-capture landing) A DIRECTLY-owned inside-look capture `g2` (in
+      `body`'s caps but OUTSIDE `body`'s own inner looks) that the FRESH body match
+      of a top lookAHEAD `A0` carries LIVE lands in `A0`'s sub-first-leaf
+      `SubFirstLeafAt(A0, lk)`. `M.ReplayCapIsBodyLeafNested` ties the fresh body
+      match to `A0`'s CHECKED first leaf (`bestT.value.1 == GmOfLive(body, fresh)`)
+      and `GmAgreeOutside(bestT.value.1, FirstLeaf(t).value.1, LkBodyGroups)`; since
+      `g2` is DIRECT (outside `CapIdsInLooks(body) == LkBodyGroups(Translate(body))`)
+      it survives into `FirstLeaf(t).value.1`, which is definitionally the
+      `SubFirstLeafAt(A0, lk).value` (`FirstLeaf == TreeRes(·,Empty,·,Forward)`).
+      This is the concrete `g2 in GmOfLive(body(A0), FreshBodyMatch(A0)) ==> g2 in
+      SubFirstLeafAt(A0)` bridge the DIRECT case of the reverse-recon deep descent
+      needs (the deep case is delivered by the per-body replay `LookNestBackTFrom
+      BodyReplay` + inner descent instead). */
+  lemma FreshBodyDirectInSubFirstLeaf(
+      rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+      A0: nat, lk: AReg.Regs, body: R.regex, bodycode: RB.code, endl: nat, ngroups: nat,
+      g2: nat, ncap: int, nlook: int, nquant: int)
+    requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
+    requires NR.NegLooksLookFreeRE(body)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires qm.ov == ov && !rer.ignoreCase && !rer.multiline
+    requires bodycode == CP.compile_to_bytecode(body)
+    requires T.TransWf(body)
+    // A0's table row: VBody == body, cdns row present, look type is a lookAHEAD.
+    requires body == M.VBody(crv, A0 as int)
+    requires 0 <= (A0 as int) < |crv.f_look_types| && crv.f_look_types[A0 as int].Lookahead?
+    requires 0 <= (A0 as int) < |crv.f_look_cdns|
+    requires M.MatchedPosLA(crv, lk, A0 as int)
+    requires var cp := AReg.get_cp(lk, A0 as int).value;
+             0 <= cp <= |str| && LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
+    requires g2 in PIV.CapIds(body) && g2 !in PIV.CapIdsInLooks(body)
+    requires var rf := M.FreshBodyMatch(crv, str, A0 as int, lk, ov, ncap, nlook, nquant);
+             rf.Some?
+             && g2 in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)
+    ensures var lsub := SubFirstLeafAt(rer, crv, str, A0 as int, lk);
+            lsub.Some? && g2 in lsub.value
+  {
+    var l := A0 as int;
+    var cp := AReg.get_cp(lk, l).value;                       // MatchedPosLA ==> Some
+    var cdns := crv.f_look_cdns[l];
+    var inp := PIV.InpOfCp(str, cp);
+    var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Forward);
+    var Sb := LL.LkBodyGroups(T.Translate(body));
+
+    // (1) FreshBodyMatch(A0, lk) unfolds to the from-FRESH FFindMatch over `bodycode`.
+    var rf := M.FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
+    var looktype := crv.f_look_types[l];
+    assert looktype.Lookahead?;
+    assert AI.capture_direction(looktype) == LAnc.Forward;
+    assert CP.capture_regex(looktype, body) == body;
+    assert M.VBody(crv, l) == body;
+    var ctxc := AI.cp_context(cp, str, LAnc.Forward);
+    var rfExplicit := AI.FFindMatch(bodycode, str,
+                        AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                      AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
+    assert rf == rfExplicit;
+
+    // (2) ReplayCapIsBodyLeafNested (from-fresh actual regs so `ra == rf`).
+    var cap0 := AReg.init_regs(ncap);
+    var lk0 := AReg.init_regs(nlook);
+    var qt0 := AReg.init_regs(nquant);
+    RL.AInitLaws(ncap); RL.AInitLaws(nquant);
+    assert CM.RegsAgreeInside(cap0, AReg.init_regs(ncap), PIV.CaptureRegs(body));
+    var bestT := M.ReplayCapIsBodyLeafNested(rer, qm, body, bodycode, endl, ngroups, str, cp,
+                                             cap0, lk0, qt0, ov, cdns, ncap, nlook, nquant);
+    var ra := AI.FFindMatch(bodycode, str,
+                AI.FInitState(bodycode, cp, cap0, lk0, qt0, 0, ctxc), ov, LAnc.Forward, cdns).0;
+    assert ra == rfExplicit == rf;                            // same expression from fresh
+    assert ra.Some?;                                          // rf.Some?
+
+    // (3) bestT.value.1 == GmOfLive(body, fresh) carries g2; g2 is DIRECT so it
+    //     survives into the spec first leaf FirstLeaf(t).value.1.
+    assert bestT.Some? && LT.FirstLeaf(t, inp).Some?;
+    assert bestT.value.1 == PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs);
+    assert g2 in bestT.value.1;
+    M.LkBodyGroupsEqCapIdsInLooks(body);                     // Sb == CapIdsInLooks(body)
+    assert g2 !in Sb;
+    assert LL.GmAgreeOutside(bestT.value.1, LT.FirstLeaf(t, inp).value.1, Sb);
+    assert g2 in LT.FirstLeaf(t, inp).value.1;
+
+    // (4) FirstLeaf(t).value.1 IS SubFirstLeafAt(A0, lk).value (definitional).
+    assert LT.FirstLeaf(t, inp) == LT.TreeRes(t, LG.Empty, inp, WP.Forward);
+    var lsub := SubFirstLeafAt(rer, crv, str, l, lk);
+    assert lsub.Some? && lsub.value == LT.FirstLeaf(t, inp).value.1;
+  }
+
+  /** (R2 — DIRECT-case per-`g2` package assembler) Given the RECONSTRUCTED-bank
+      facts that A1/A2 (`M.FLookLoopInLookLiveOwnerMatched` / `M.FreshBodyDirect
+      Member`) deliver for a res0-live inside-look capture `g2` whose innermost
+      owner is a TOP look `A0` — `MatchedPosLA(res1, A0)` + a fresh body match of
+      `A0` carrying `g2` LIVE — this assembles EXACTLY the `DescentProducerTop
+      OwnersDeep` per-`g2` existential body ON THE WINNING THREAD'S BANKS, for the
+      DIRECT case (`g2` directly owned by `A0`). The res1→thread.look_regs transport
+      is the committed reconciliation: `MatchedPosLAFreshBodyCpCong` moves both
+      `MatchedPosLA` and `FreshBodyMatch` across the top-look POSITION agreement
+      (`get_cp(res1, A0) == get_cp(thread.look_regs, A0)`, produced by
+      `M.FLookLoopTopLookCpStableFull`), and `FreshBodyDirectInSubFirstLeaf` lands
+      the transported live `g2` in `SubFirstLeafAt(A0, thread.look_regs)`.
+
+      SOLE ENGINE RESIDUAL (a `requires` here): the gate-crossing dominance
+      `LookPathDom(re, thread.look_regs.a_clk[A0], thread.quant_regs.a_clk, A0)` on
+      the winning thread's banks — the "winning thread crossed A0's gate and
+      dominates" reverse connective, which no lemma yet establishes (`LookNestOkTTop`
+      proves the CLOCK-set + `LookPathPresent` + dominance ingredients only under a
+      `gmt`-witness guard, circular for the res0-live descent; deriving it non-
+      circularly is the owed reverse of `FLookLoopAncestorClockChain`). Everything
+      ELSE in the package is discharged green here. */
+  lemma DescentPackageDirectFromRes1(
+      rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+      re: R.regex, S: set<LG.GroupId>, thread: AI.Thread, res1: AReg.Regs,
+      A0: nat, g2: nat, body: R.regex, bodycode: RB.code, endl: nat, ngroups: nat,
+      ncap: int, nlook: int, nquant: int)
+    requires S == PIV.CapIdsInLooks(re)
+    requires A0 in NI.TopLookIds(re) && A0 in LTB.LookIds(re)
+    requires body == NI.LookBodyOfRE(re, A0) && body == M.VBody(crv, A0 as int)
+    requires g2 in S && g2 in PIV.CapIds(body) && g2 !in PIV.CapIdsInLooks(body)   // DIRECT
+    // ---- body facts for the landing bridge ----
+    requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
+    requires NR.NegLooksLookFreeRE(body)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires qm.ov == ov && !rer.ignoreCase && !rer.multiline
+    requires bodycode == CP.compile_to_bytecode(body)
+    requires T.TransWf(body)
+    requires 0 <= (A0 as int) < |crv.f_look_types| && crv.f_look_types[A0 as int].Lookahead?
+    requires 0 <= (A0 as int) < |crv.f_look_cdns|
+    // ---- A1/A2 res1-side facts (matched + fresh-live g2) ----
+    requires M.MatchedPosLA(crv, res1, A0 as int)
+    requires var rf := M.FreshBodyMatch(crv, str, A0 as int, res1, ov, ncap, nlook, nquant);
+             rf.Some?
+             && g2 in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)
+    // ---- res1 <-> thread.look_regs POSITION reconciliation at the top look A0
+    //      (produced by M.FLookLoopTopLookCpStableFull) ----
+    requires AReg.get_cp(res1, A0 as int) == AReg.get_cp(thread.look_regs, A0 as int)
+    requires var cp := AReg.get_cp(res1, A0 as int).value;
+             0 <= cp <= |str| && LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
+    // ---- SOLE OWED ENGINE RESIDUAL: gate-crossing dominance on thread banks ----
+    requires NI.LookPathDom(re, AI.get_idx(thread.look_regs.a_clk, A0 as int), thread.quant_regs.a_clk, A0)
+    ensures A0 in NI.TopLookIds(re) && A0 in LTB.LookIds(re)
+         && g2 in PIV.CapIds(NI.LookBodyOfRE(re, A0))
+         && M.MatchedPosLA(crv, thread.look_regs, A0 as int)
+         && NI.LookPathDom(re, AI.get_idx(thread.look_regs.a_clk, A0 as int), thread.quant_regs.a_clk, A0)
+         && var lsub := SubFirstLeafAt(rer, crv, str, A0 as int, thread.look_regs);
+            lsub.Some? && g2 in lsub.value
+  {
+    // (1) transport MatchedPosLA + FreshBodyMatch from res1 onto thread.look_regs.
+    M.MatchedPosLAFreshBodyCpCong(crv, str, A0 as int, res1, thread.look_regs, ov, ncap, nlook, nquant);
+    assert M.MatchedPosLA(crv, thread.look_regs, A0 as int);
+    assert M.FreshBodyMatch(crv, str, A0 as int, res1, ov, ncap, nlook, nquant)
+        == M.FreshBodyMatch(crv, str, A0 as int, thread.look_regs, ov, ncap, nlook, nquant);
+    // the fresh body match on thread.look_regs carries g2 live (transported).
+    var rf := M.FreshBodyMatch(crv, str, A0 as int, thread.look_regs, ov, ncap, nlook, nquant);
+    assert rf.Some?
+        && g2 in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs);
+    // cp agreement transports the oracle-suffix / bound side condition to thread.look_regs.
+    assert AReg.get_cp(thread.look_regs, A0 as int) == AReg.get_cp(res1, A0 as int);
+    // (2) land g2 in SubFirstLeafAt(A0, thread.look_regs) via the DIRECT bridge.
+    FreshBodyDirectInSubFirstLeaf(rer, qm, crv, str, ov, A0, thread.look_regs, body, bodycode,
+                                  endl, ngroups, g2, ncap, nlook, nquant);
+    // (3) g2 in CapIds(LookBodyOfRE(re, A0)) == CapIds(body); LookPathDom is the owed input.
+    assert g2 in PIV.CapIds(NI.LookBodyOfRE(re, A0));
+  }
+
   /** (R2 — the crossing DISCHARGES the deep gate-pass requires) Ties rung 1 to the
       deep gate-pass: at a positive-lookAHEAD gate crossing (`l`'s cp just written
       as `cp`, body groups cleared coming in), the DEEP carrier's crossing
