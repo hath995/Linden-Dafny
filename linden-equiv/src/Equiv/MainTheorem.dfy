@@ -12851,6 +12851,179 @@ module LindenElkMain {
     AncSetToMemberNested(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs, g);
   }
 
+  /** (A2) R1 CLOSE — UNCONDITIONAL. The R1 target: an `res0`-live inside-look
+      DIRECT `g` is present in its innermost DIRECT owner's FRESH body match's own
+      live denotation at the raw `LiveRange`. The (A2) match-soundness PRODUCER —
+      the anytime register invariant `AncSetInvRE(body, rf.caps.a_clk)` — is now
+      PROVEN here (not owed): `FreshBodyMatchAncSet` threads it through the fresh
+      body match's whole `FFindMatch` run from the vacuous init state. The remaining
+      residual conjuncts are STANDARD fresh-match well-formedness the R1 keystone
+      supplies: `SizesOkRE(body, ·)` (register files cover the body's writes),
+      `cp_ctx_ok` (the recorded look position is in `[0,|str|]`), `TransWf(body)`,
+      and `GNotUnderQuantL(Translate(body), g)` (the no-quant side condition). Given
+      those, every owed fact is discharged: `AncSetInvRE` via `FreshBodyMatchAncSet`;
+      `CapRegWf(rf.caps)` via `FreshMatchWfNested`; the value-set at `g` from
+      `CapRegWf` + `FreshBodyDirectLive`'s set clock (the owner is unique by
+      `InnermostOwnerUnique`); `AncQuants(body,g)=={}` via `GNotUnderQuantLNoAncQuants`.
+      Then `FreshBodyDirectMemberFromAncSet` closes to `g in GmOfLive` + `LiveRange`.
+      The deep (A2) register wall is thus dissolved — the owed producer is gone. */
+  lemma FreshBodyDirectMember(crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
+                            cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                            S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int, g: nat)
+      returns (owner: nat)
+    // ---- whole-regex setup (verbatim from FreshBodyDirectMemberFromAncSet) ----
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires LTB.LookTablesOk(re, crv)
+    requires PIV.CapUnique(re) && LTB.LookUnique(re)
+    requires g in PIV.CapIdsInLooks(re)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    // ---- extra structural facts (for LookBodyFactsNested) ----
+    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re) && PIV.QuantUnique(re)
+    // ---- deliverable-1 hypotheses (a)-(h) (verbatim) ----
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
+    requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
+    requires CM.LookCpsLE(lk, |str|)
+    requires forall l: int, la: R.lookaround, body: R.regex ::
+      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+    requires forall l: int :: 1 <= l <= R.max_lookaround(ast) && AReg.get_cp(lk, l).Some? ==>
+      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+    requires forall l: int, la: R.lookaround, body: R.regex ::
+      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
+      CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::
+      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+      PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
+      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+      && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::
+      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+      DirectLookIds(b1) * LTB.LookIds(b2) == {}
+    requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
+      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==> l2 !in LookIdSet(b1)
+    // ---- res0-liveness at g (verbatim) ----
+    requires AI.get_idx(AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov).0.a_clk, CP.start_reg(g)) >= 0
+    // ==== STANDARD FRESH-MATCH WELL-FORMEDNESS (supplied by the R1 keystone) ====
+    // For each innermost-DIRECT owner of `g` that matched, the fresh body match
+    // runs with register files sized to the body, at a recorded look position in
+    // `[0,|str|]`, over a translation-well-formed body whose `g` is placed under
+    // no Linden quantifier. These are shallow structural side conditions — NOT the
+    // deep (A2) register producer, which is proven internally.
+    requires var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov);
+             forall owner0: nat ::
+               owner0 in LTB.LookIds(re)
+               && g in PIV.CapIds(NI.LookBodyOfRE(re, owner0))
+               && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner0))
+               && MatchedPosLA(crv, res.1, owner0) ==>
+                 var body := NI.LookBodyOfRE(re, owner0);
+                 PSM.SizesOkRE(body, ncap, nlook, nquant)
+                 && (AReg.get_cp(res.1, owner0).Some? ==> cp_ctx_ok(crv, str, res.1, owner0))
+                 && T.TransWf(body)
+                 && GNotUnderQuantL(T.Translate(body), g)
+    ensures owner in LTB.LookIds(re)
+    ensures g in PIV.CapIds(NI.LookBodyOfRE(re, owner)) && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
+    ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov);
+            MatchedPosLA(crv, res.1, owner)
+            && var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
+               rf.Some?
+               && AI.get_idx(AReg.as_arrays(rf.value.capture_regs).0, CP.start_reg(g)) >= 0
+               && var body := NI.LookBodyOfRE(re, owner);
+                  g in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)
+               && PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)[g]
+                    == PIV.LiveRange(AReg.as_arrays(rf.value.capture_regs).0,
+                                     AReg.as_arrays(rf.value.capture_regs).1, g)
+  {
+    var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov);
+    // (1) the winning owner: register-side half (rf.Some?, g captured with set clock).
+    var winner := FreshBodyDirectLive(crv, str, ast, re, cap, lk, qt, ov, S, Slook, ncap, nlook, nquant, g);
+    var wbody := NI.LookBodyOfRE(re, winner);
+    var wrf := FreshBodyMatch(crv, str, winner as int, res.1, ov, ncap, nlook, nquant);
+    assert winner in LTB.LookIds(re) && g in PIV.CapIds(wbody) && g !in PIV.CapIdsInLooks(wbody);
+    assert MatchedPosLA(crv, res.1, winner) && wrf.Some?;
+    assert AI.get_idx(wrf.value.capture_regs.a_clk, CP.start_reg(g)) >= 0;   // winner clock set at g
+
+    // (2) discharge the (A2) ancestor-set residual for the consumer.
+    forall owner0: nat |
+        owner0 in LTB.LookIds(re)
+        && g in PIV.CapIds(NI.LookBodyOfRE(re, owner0))
+        && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner0))
+        && MatchedPosLA(crv, res.1, owner0)
+      ensures var body := NI.LookBodyOfRE(re, owner0);
+              PIV.AncQuants(body, g) == {}
+              && var rf := FreshBodyMatch(crv, str, owner0 as int, res.1, ov, ncap, nlook, nquant);
+                 (rf.Some? ==>
+                   PIV.CapRegWf(rf.value.capture_regs)
+                   && AI.get_idx(AReg.as_arrays(rf.value.capture_regs).0, CP.start_reg(g)) >= 0
+                   && AncSetInvRE(body, rf.value.capture_regs.a_clk))
+    {
+      var body := NI.LookBodyOfRE(re, owner0);
+      // body shape + a lookahead table row (VBody == body, cdn == compile_cdns(body)).
+      LookBodyFactsNested(re, crv, owner0);
+      assert NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body);
+      var la0: R.lookaround, b0: R.regex :| LTB.LookEntryOk(crv, owner0 as int, la0, b0) && !la0.Lookbehind?;
+      VBodyEqLookBody(crv, re, owner0);
+      assert b0 == VBody(crv, owner0 as int) == body;                         // LookEntryOk: f_look_ast
+      // MatchedPosLA + !Lookbehind pins la0 to Lookahead.
+      assert crv.f_look_types[owner0] == la0;                                  // LookEntryOk
+      assert la0.Lookahead?;
+      // no-quant side condition.
+      GNotUnderQuantLNoAncQuants(body, g);                                      // requires TransWf + GNotUnderQuantL
+      assert PIV.AncQuants(body, g) == {};
+      var rf := FreshBodyMatch(crv, str, owner0 as int, res.1, ov, ncap, nlook, nquant);
+      if rf.Some? {
+        // unfold FreshBodyMatch to its FFindMatch form over compile_to_bytecode(body).
+        var bc := CP.compile_to_bytecode(body);
+        NR.CompileToBytecodeRepNested(body);
+        var endl := CP.compile(body, 0, CP.Progress).1 as nat;
+        assert NR.NfaRepRE(body, bc, 0, endl) && NR.GetPcRE(bc, endl) == Some(RB.Accept) && |bc| == endl + 1;
+        var cp := AReg.get_cp(res.1, owner0).value;
+        var cdn := if 0 <= (owner0 as int) < |crv.f_look_cdns| then crv.f_look_cdns[owner0 as int] else [];
+        assert cp_ctx_ok(crv, str, res.1, owner0);                            // residual hyp (MatchedPosLA -> Some)
+        assert 0 <= cp <= |str| && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp);
+        assert rf == AI.FFindMatch(bc, str,
+                       AI.FInitState(bc, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                     AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                       ov, LAnc.Forward, cdn).0;
+        // (a) the (A2) PRODUCER: AncSetInvRE, threaded through the fresh body match.
+        FreshBodyMatchAncSet(bc, str, cp, ov, cdn, body, endl, ncap, nlook, nquant);
+        assert AncSetInvRE(body, rf.value.capture_regs.a_clk);
+        // (b) register well-formedness (CapRegWf).
+        FreshMatchWfNested(bc, str, cp, ov, cdn, body, ncap, nlook, nquant);
+        assert CM.ThreadRegsWf(rf.value, ncap, nlook, nquant);
+        assert PIV.CapRegWf(rf.value.capture_regs);
+        // (c) value-set at g: owner0 is the unique winner, whose clock at g is set.
+        InnermostOwnerUnique(re, g, winner, owner0);
+        assert owner0 == winner;
+        assert rf == wrf;
+        assert AI.get_idx(rf.value.capture_regs.a_clk, CP.start_reg(g)) >= 0;   // winner clock set
+        assert AI.get_idx(rf.value.capture_regs.a_cp, CP.start_reg(g)) >= 0;    // CapRegWf: clk>=0 => cp>=0
+        assert AReg.as_arrays(rf.value.capture_regs).0 == rf.value.capture_regs.a_cp;
+      }
+    }
+
+    // (3) close via the ancestor-set consumer (now unconditional).
+    owner := FreshBodyDirectMemberFromAncSet(crv, str, ast, re, cap, lk, qt, ov, S, Slook, ncap, nlook, nquant, g);
+
+    // (4) value-set at the returned owner (for the `LiveRange` ensures's well-formedness):
+    // owner matches the characterization (FromAncSet's ensures), so the residual applies.
+    var rfo := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
+    assert MatchedPosLA(crv, res.1, owner)
+        && owner in LTB.LookIds(re)
+        && g in PIV.CapIds(NI.LookBodyOfRE(re, owner))
+        && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
+        && rfo.Some?;
+    assert PIV.CapRegWf(rfo.value.capture_regs)
+        && AI.get_idx(AReg.as_arrays(rfo.value.capture_regs).0, CP.start_reg(g)) >= 0;   // residual at owner
+    assert AI.get_idx(rfo.value.capture_regs.a_cp, CP.start_reg(g)) >= 0;
+  }
+
   /** (A2 in-fragment) NO-QUANT `MxAtGid` COLLAPSE. When `g` has NO quantifier
       ancestor on its root->g path (`PIV.AncQuants(body, g) == {}`, the RE-side
       shadow of `GNotUnderQuantL`), the maxclock threshold `PIV.MxAtGid` never
@@ -13147,6 +13320,778 @@ module LindenElkMain {
     assert AI.get_idx(AReg.as_arrays(caps).0, CP.start_reg(g)) >= 0;
     // close via the committed nested consumer.
     DirectBodyKeepsPresentLkNested(body, caps, look, quant, g);
+  }
+
+  // ===========================================================================
+  // (A2) PRODUCER: threading `AncSetInvRE` through the fresh-body sim driver.
+  //
+  // `AncSetInvRE(re, cc)` is a MONOTONE, anytime register invariant that does
+  // NOT collapse at Accept (unlike the positional `NestTopRE`). To read it off
+  // the winning thread we thread a JOINT per-thread invariant through the whole
+  // `FFindMatch` run: for every live thread, `AncSetInvRE` on its capture clocks
+  // AND (guarded by an in-range pc) the positional companion `NI.NestTopRE`.
+  // The positional companion is needed ONLY at the Open write, where
+  // `AncSetOpenStep` consumes it to certify that the newly-opened group's
+  // ancestors were already set. Every other step preserves `AncSetInvRE` via
+  // `AncSetFrameStart` (capture start clocks unchanged) and advances the
+  // positional companion via `NI.NestInvAdvance`/`NestInvStamp`/`NestInvFrameOdd`.
+  // The positional claim is CONDITIONAL on `0 <= pc <= endl`, which makes the
+  // control-flow successor cases self-supplying (a target's non-negativity is
+  // free inside the guard), so no separate target-range lemma is needed.
+  // ===========================================================================
+
+  /** Per active thread: the anytime register invariant `AncSetInvRE`, plus the
+      positional companion `NI.NestTopRE` guarded by an in-range pc. */
+  ghost predicate ThreadAncNestRE(re: R.regex, code: RB.code, endl: nat, t: AI.Thread)
+    requires NR.NfaRepRE(re, code, 0, endl)
+  {
+    AncSetInvRE(re, t.capture_regs.a_clk)
+    && (0 <= t.pc <= endl ==>
+          NI.NestTopRE(re, code, endl, t.pc as nat, t.capture_regs.a_clk, t.quant_regs.a_clk))
+  }
+
+  /** Per blocked thread: like `ThreadAncNestRE` but the positional companion is
+      at `pc + 1` (blocked threads resume one instruction on after consuming). */
+  ghost predicate BlkAncNestRE(re: R.regex, code: RB.code, endl: nat, t: AI.Thread)
+    requires NR.NfaRepRE(re, code, 0, endl)
+  {
+    AncSetInvRE(re, t.capture_regs.a_clk)
+    && (0 <= t.pc + 1 <= endl ==>
+          NI.NestTopRE(re, code, endl, (t.pc + 1) as nat, t.capture_regs.a_clk, t.quant_regs.a_clk))
+  }
+
+  /** The joint invariant over the whole VM state: `ThreadAncNestRE` for every
+      active thread, `BlkAncNestRE` for every blocked thread, and `AncSetInvRE`
+      on `bestmatch` (the positional companion collapses at Accept, but the
+      register invariant does not — this is exactly what the producer reads off). */
+  ghost predicate VmAncNestRE(re: R.regex, code: RB.code, endl: nat, s: AI.VmState)
+    requires NR.NfaRepRE(re, code, 0, endl)
+  {
+    (forall t | t in s.active :: ThreadAncNestRE(re, code, endl, t))
+    && (forall tb | tb in s.blocked :: BlkAncNestRE(re, code, endl, tb.0))
+    && (s.bestmatch.Some? ==> AncSetInvRE(re, s.bestmatch.value.capture_regs.a_clk))
+  }
+
+  /** (A2) THE ε-CLOSURE RIDER. `FAdvanceEpsilon` preserves the joint invariant
+      `VmClocksLE ∧ VmRegsWf ∧ VmAncNestRE`. Mirrors `CM.FAdvanceEpsilonClocksLE`
+      and `CM.FAdvanceEpsilonRegsWf` case-for-case over the ε-closure fuel, adding
+      the `AncSetInvRE`/`NestTopRE` advance at each step: the Open write uses
+      `AncSetOpenStep` + `NI.NestInvOpenWrite`; a Close write uses `AncSetFrameStart`
+      + `NI.NestInvFrameOdd` + `NI.NestInvAdvance`; the quant stamp uses
+      `AncSetFrameStart` + `NI.NestInvStamp`; every non-writing control step uses
+      `NI.NestInvAdvance` (registers unchanged, so `AncSetInvRE` carries verbatim). */
+  lemma FAdvanceEpsilonAncSet(re: R.regex, code: RB.code, endl: nat, s: AI.VmState,
+                              ov: LOr.OracleView, dir: LAnc.direction,
+                              ncap: int, nlook: int, nquant: int)
+    requires NR.NestedFragmentRE(re)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires |code| == endl + 1
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires forall pc: nat, q: int, b: bool ::
+      NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
+    requires |s.processed.true_set| == RB.size(code) && |s.processed.false_set| == RB.size(code)
+    requires CM.VmClocksLE(s) && CM.VmRegsWf(s, ncap, nlook, nquant)
+    requires s.clock >= 0 && s.cp >= 0
+    requires VmAncNestRE(re, code, endl, s)
+    ensures var r := AI.FAdvanceEpsilon(code, s, ov, dir).0;
+      CM.VmClocksLE(r) && CM.VmRegsWf(r, ncap, nlook, nquant) && VmAncNestRE(re, code, endl, r)
+    decreases AI.unprocessed(s.processed), |s.active|
+  {
+    if |s.active| == 0 {
+      return;                       // FAdvanceEpsilon returns (s, ov)
+    }
+    var t := s.active[0];
+    var ac := s.active[1..];
+    assert t in s.active;
+    assert forall x | x in ac :: x in s.active;
+    var i := RB.get_instr(code, t.pc);
+
+    if AI.bpc_mem(s.processed, t.pc, t.exit_allowed) {
+      var s' := s.(active := ac);
+      assert CM.VmClocksLE(s') && CM.VmRegsWf(s', ncap, nlook, nquant) && VmAncNestRE(re, code, endl, s');
+      FAdvanceEpsilonAncSet(re, code, endl, s', ov, dir, ncap, nlook, nquant);
+      return;
+    }
+
+    var b0 := s.processed;
+    var s1 := s.(clock := s.clock + 1, processed := AI.bpc_add(b0, t.pc, t.exit_allowed));
+    assert AI.unprocessed(s1.processed) <= AI.unprocessed(b0)
+        && (0 <= t.pc < RB.size(code) ==> AI.unprocessed(s1.processed) < AI.unprocessed(b0))
+      by { AI.UnprocessedAdd(b0, t.pc, t.exit_allowed); }
+    assert s.clock <= s1.clock;
+    // Clock/positional facts for the head thread.
+    assert CM.ThreadClocksLE(t, s.clock);                       // VmClocksLE(s), t in active
+    assert CM.ThreadRegsWf(t, ncap, nlook, nquant);             // VmRegsWf(s), t in active
+    assert ThreadAncNestRE(re, code, endl, t);                  // VmAncNestRE(s), t in active
+    assert CM.ThreadClocksLE(t, s1.clock) by { CM.ThreadClocksLEMono(t, s.clock, s1.clock); }
+    var cc := t.capture_regs.a_clk;
+    var qc := t.quant_regs.a_clk;
+    var clk := s1.clock;
+    assert forall k :: AI.get_idx(cc, k) <= s.clock;            // ThreadClocksLE(t, s.clock)
+    assert forall k :: AI.get_idx(qc, k) <= s.clock;
+
+    match i {
+      case Consume(ce) =>
+        var (nb, ni) := AI.add_thread(t, ce, s1.blocked, s1.isblocked);
+        var s' := s1.(blocked := nb, isblocked := ni, active := ac);
+        assert 0 <= t.pc < |code|;
+        // blocked-thread positional advance (guarded): pc -> pc+1 via a Consume edge.
+        assert BlkAncNestRE(re, code, endl, t) by {
+          if 0 <= t.pc + 1 <= endl {
+            var pc: nat := t.pc as nat;
+            assert pc < endl;                                   // Consume != Accept
+            assert NI.NestTopRE(re, code, endl, pc, cc, qc);   // ThreadAncNestRE(t), 0<=pc<=endl
+            assert NI.NestInvRE(re, code, 0, endl, pc, cc, qc, -1);
+            assert NI.StepEdgeRE(code, pc, pc + 1);
+            NI.NestInvAdvance(re, code, 0, endl, pc, pc + 1, cc, qc, -1);
+          }
+        }
+        assert CM.VmClocksLE(s') by {
+          forall t2 | t2 in s'.active ensures CM.ThreadClocksLE(t2, s'.clock) {
+            assert t2 in s.active; CM.ThreadClocksLEMono(t2, s.clock, s'.clock);
+          }
+          forall tb | tb in s'.blocked ensures CM.ThreadClocksLE(tb.0, s'.clock) {
+            assert tb == (t, ce) || tb in s.blocked;
+          }
+        }
+        assert CM.VmRegsWf(s', ncap, nlook, nquant) by {
+          forall tb | tb in s'.blocked ensures CM.ThreadRegsWf(tb.0, ncap, nlook, nquant) {
+            assert tb == (t, ce) || tb in s.blocked;
+          }
+        }
+        assert VmAncNestRE(re, code, endl, s') by {
+          forall t2 | t2 in s'.active ensures ThreadAncNestRE(re, code, endl, t2) { assert t2 in s.active; }
+          forall tb | tb in s'.blocked ensures BlkAncNestRE(re, code, endl, tb.0) {
+            assert tb == (t, ce) || tb in s.blocked;
+          }
+        }
+        FAdvanceEpsilonAncSet(re, code, endl, s', ov, dir, ncap, nlook, nquant);
+
+      case Accept =>
+        // FAdvanceEpsilon returns (s1.(active := [], bestmatch := Some(t)), ov).
+        assert CM.ThreadClocksLE(t, s1.clock);
+        assert CM.ThreadRegsWf(t, ncap, nlook, nquant);
+        assert AncSetInvRE(re, t.capture_regs.a_clk);          // ThreadAncNestRE(t)
+
+      case Jmp(x) =>
+        var s' := s1.(active := [t.(pc := x)] + ac);
+        assert 0 <= t.pc < |code|;
+        var pc: nat := t.pc as nat;
+        assert pc < endl;
+        var th' := t.(pc := x);
+        assert ThreadAncNestRE(re, code, endl, th') by {
+          if 0 <= x <= endl {
+            assert NI.NestTopRE(re, code, endl, pc, cc, qc);
+            assert NI.NestInvRE(re, code, 0, endl, pc, cc, qc, -1);
+            assert NI.StepEdgeRE(code, pc, x as nat);
+            NI.NestInvAdvance(re, code, 0, endl, pc, x as nat, cc, qc, -1);
+          }
+        }
+        assert CM.VmClocksLE(s') by {
+          forall t2 | t2 in s'.active ensures CM.ThreadClocksLE(t2, s'.clock) {
+            if t2 == th' { } else { assert t2 in s.active; CM.ThreadClocksLEMono(t2, s.clock, s'.clock); }
+          }
+        }
+        assert CM.VmRegsWf(s', ncap, nlook, nquant) by {
+          forall t2 | t2 in s'.active ensures CM.ThreadRegsWf(t2, ncap, nlook, nquant) {
+            if t2 != th' { assert t2 in s.active; }
+          }
+        }
+        assert VmAncNestRE(re, code, endl, s') by {
+          forall t2 | t2 in s'.active ensures ThreadAncNestRE(re, code, endl, t2) {
+            if t2 != th' { assert t2 in s.active; }
+          }
+        }
+        FAdvanceEpsilonAncSet(re, code, endl, s', ov, dir, ncap, nlook, nquant);
+
+      case Fork(x, y) =>
+        var newt := AI.Thread(x, t.capture_regs, t.look_regs, t.quant_regs, t.exit_allowed);
+        var s' := s1.(active := [newt, t.(pc := y)] + ac);
+        assert 0 <= t.pc < |code|;
+        var pc: nat := t.pc as nat;
+        assert pc < endl;
+        var th2 := t.(pc := y);
+        assert NI.NestTopRE(re, code, endl, pc, cc, qc);
+        assert NI.NestInvRE(re, code, 0, endl, pc, cc, qc, -1);
+        assert ThreadAncNestRE(re, code, endl, newt) by {
+          if 0 <= x <= endl {
+            assert NI.StepEdgeRE(code, pc, x as nat);
+            NI.NestInvAdvance(re, code, 0, endl, pc, x as nat, cc, qc, -1);
+          }
+        }
+        assert ThreadAncNestRE(re, code, endl, th2) by {
+          if 0 <= y <= endl {
+            assert NI.StepEdgeRE(code, pc, y as nat);
+            NI.NestInvAdvance(re, code, 0, endl, pc, y as nat, cc, qc, -1);
+          }
+        }
+        assert CM.VmClocksLE(s') by {
+          forall t2 | t2 in s'.active ensures CM.ThreadClocksLE(t2, s'.clock) {
+            if t2 == newt || t2 == th2 { } else { assert t2 in s.active; CM.ThreadClocksLEMono(t2, s.clock, s'.clock); }
+          }
+        }
+        assert CM.VmRegsWf(s', ncap, nlook, nquant) by {
+          forall t2 | t2 in s'.active ensures CM.ThreadRegsWf(t2, ncap, nlook, nquant) {
+            if t2 != newt && t2 != th2 { assert t2 in s.active; }
+          }
+        }
+        assert VmAncNestRE(re, code, endl, s') by {
+          forall t2 | t2 in s'.active ensures ThreadAncNestRE(re, code, endl, t2) {
+            if t2 != newt && t2 != th2 { assert t2 in s.active; }
+          }
+        }
+        FAdvanceEpsilonAncSet(re, code, endl, s', ov, dir, ncap, nlook, nquant);
+
+      case SetRegisterToCP(reg) =>
+        var t' := t.(capture_regs := AReg.set_reg(t.capture_regs, reg, Some(s1.cp), s1.clock), pc := t.pc + 1);
+        var s' := s1.(active := [t'] + ac);
+        assert 0 <= t.pc < |code|;
+        var pc: nat := t.pc as nat;
+        assert pc < endl;
+        var cc' := t'.capture_regs.a_clk;
+        // register lengths & the write bridge
+        assert |cc| == ncap;                                   // VmRegsWf(t)
+        assert CM.ThreadRegsWf(t', ncap, nlook, nquant) by {
+          CM.SetRegLens(t.capture_regs, reg, Some(s1.cp), s1.clock);
+          PIV.CapRegWfSet(t.capture_regs, reg, s1.cp, s1.clock);
+        }
+        assert CM.ThreadClocksLE(t', s1.clock) by {
+          CM.RegsClocksLESet(t.capture_regs, reg, Some(s1.cp), s1.clock, s1.clock);
+        }
+        // which register did we write? CodeShapeAt pins reg to a start/end reg of some cap.
+        NI.CodeShapeAt(re, code, 0, endl, pc);
+        var gid: nat :| gid in PIV.CapIds(re) && (reg == CP.start_reg(gid) || reg == CP.end_reg(gid));
+        NI.CapIdsLEMaxGroup(re);
+        assert gid <= R.max_group(re);
+        assert ncap >= 2 * R.max_group(re) + 2;                // SizesOkRE
+        assert CP.start_reg(gid) == 2 * gid && CP.end_reg(gid) == 2 * gid + 1;
+        assert NI.NestTopRE(re, code, endl, pc, cc, qc);
+        assert NI.NestInvRE(re, code, 0, endl, pc, cc, qc, -1);
+        assert forall k :: AI.get_idx(cc, k) < clk;            // <= s.clock < clk
+        assert forall k :: AI.get_idx(qc, k) < clk;
+        assert 0 <= reg < |cc|;                                // reg in {2gid, 2gid+1}, both < 2*maxg+2 <= ncap == |cc|
+        assert cc' == cc[reg := clk];
+        assert forall k :: k != reg ==> AI.get_idx(cc', k) == AI.get_idx(cc, k)
+          by { forall k | k != reg ensures AI.get_idx(cc', k) == AI.get_idx(cc, k) {
+                 CM.SetRegOtherIdx(t.capture_regs, reg, Some(s1.cp), s1.clock, k); } }
+        if reg % 2 == 0 {
+          // OPEN write: reg == start_reg(gid).
+          assert reg == CP.start_reg(gid);                     // end_reg is odd
+          assert AI.get_idx(cc', reg) == clk >= 0;
+          AncSetOpenStep(re, code, 0, endl, pc, cc, cc', qc, -1, gid);
+          NI.NestInvOpenWrite(re, code, 0, endl, pc, cc, cc', qc, -1, reg, clk);
+          assert NI.NestTopRE(re, code, endl, pc + 1, cc', qc);
+          assert AncSetInvRE(re, cc');
+        } else {
+          // CLOSE write: reg is odd, no start clock changes.
+          assert forall g: nat :: g in PIV.CapIds(re) ==>
+            AI.get_idx(cc', CP.start_reg(g)) == AI.get_idx(cc, CP.start_reg(g))
+            by { forall g: nat | g in PIV.CapIds(re)
+                   ensures AI.get_idx(cc', CP.start_reg(g)) == AI.get_idx(cc, CP.start_reg(g)) {
+                   assert CP.start_reg(g) == 2 * g && CP.start_reg(g) != reg;   // reg odd
+                   CM.SetRegOtherIdx(t.capture_regs, reg, Some(s1.cp), s1.clock, CP.start_reg(g)); } }
+          AncSetFrameStart(re, cc, cc');
+          assert AncSetInvRE(re, cc');
+          assert forall j :: j % 2 == 0 ==> AI.get_idx(cc', j) == AI.get_idx(cc, j)
+            by { forall j | j % 2 == 0 ensures AI.get_idx(cc', j) == AI.get_idx(cc, j) {
+                   assert j != reg; CM.SetRegOtherIdx(t.capture_regs, reg, Some(s1.cp), s1.clock, j); } }
+          NI.NestInvFrameOdd(re, code, 0, endl, pc, cc, cc', qc, -1);
+          assert NI.NestInvRE(re, code, 0, endl, pc, cc', qc, -1);
+          assert NI.StepEdgeRE(code, pc, pc + 1);
+          NI.NestInvAdvance(re, code, 0, endl, pc, pc + 1, cc', qc, -1);
+          assert NI.NestTopRE(re, code, endl, pc + 1, cc', qc);
+        }
+        assert ThreadAncNestRE(re, code, endl, t');
+        assert CM.VmClocksLE(s') by {
+          forall t2 | t2 in s'.active ensures CM.ThreadClocksLE(t2, s'.clock) {
+            if t2 == t' { } else { assert t2 in s.active; CM.ThreadClocksLEMono(t2, s.clock, s'.clock); }
+          }
+        }
+        assert CM.VmRegsWf(s', ncap, nlook, nquant) by {
+          forall t2 | t2 in s'.active ensures CM.ThreadRegsWf(t2, ncap, nlook, nquant) {
+            if t2 != t' { assert t2 in s.active; }
+          }
+        }
+        assert VmAncNestRE(re, code, endl, s') by {
+          forall t2 | t2 in s'.active ensures ThreadAncNestRE(re, code, endl, t2) {
+            if t2 != t' { assert t2 in s.active; }
+          }
+        }
+        FAdvanceEpsilonAncSet(re, code, endl, s', ov, dir, ncap, nlook, nquant);
+
+      case SetQuantToClock(q, bq) =>
+        assert 0 <= t.pc < |code|;
+        assert NR.GetPcRE(code, t.pc) == Some(i);              // get_instr <-> GetPcRE bridge
+        assert !bq;                                            // no-true-stamp requires
+        var ocp := if bq then Some(s1.cp) else None;
+        var t' := t.(quant_regs := AReg.set_reg(t.quant_regs, q, ocp, s1.clock), pc := t.pc + 1);
+        var s' := s1.(active := [t'] + ac);
+        var pc: nat := t.pc as nat;
+        assert pc < endl;
+        var qc' := t'.quant_regs.a_clk;
+        assert |qc| == nquant;                                 // VmRegsWf(t)
+        assert CM.ThreadRegsWf(t', ncap, nlook, nquant) by {
+          CM.SetRegLens(t.quant_regs, q, ocp, s1.clock);
+        }
+        assert CM.ThreadClocksLE(t', s1.clock) by {
+          CM.RegsClocksLESet(t.quant_regs, q, ocp, s1.clock, s1.clock);
+        }
+        NI.CodeShapeAt(re, code, 0, endl, pc);
+        assert q >= 0 && (q as nat) in PIV.QuantIds(re);
+        NI.QuantIdsLEMaxQuant(re);
+        assert (q as nat) <= R.max_quant(re);
+        assert 0 <= q < |qc|;
+        assert NI.NestTopRE(re, code, endl, pc, cc, qc);
+        assert NI.NestInvRE(re, code, 0, endl, pc, cc, qc, -1);
+        assert forall k :: AI.get_idx(cc, k) < clk;
+        assert forall k :: AI.get_idx(qc, k) < clk;
+        assert qc' == qc[q := clk];
+        NI.NestInvStamp(re, code, 0, endl, pc, cc, qc, qc', -1, q, clk);
+        assert NI.NestTopRE(re, code, endl, pc + 1, cc, qc');
+        // AncSetInvRE reads only capture clocks (unchanged).
+        assert t'.capture_regs.a_clk == cc;
+        assert AncSetInvRE(re, cc);
+        assert ThreadAncNestRE(re, code, endl, t');
+        assert CM.VmClocksLE(s') by {
+          forall t2 | t2 in s'.active ensures CM.ThreadClocksLE(t2, s'.clock) {
+            if t2 == t' { } else { assert t2 in s.active; CM.ThreadClocksLEMono(t2, s.clock, s'.clock); }
+          }
+        }
+        assert CM.VmRegsWf(s', ncap, nlook, nquant) by {
+          forall t2 | t2 in s'.active ensures CM.ThreadRegsWf(t2, ncap, nlook, nquant) {
+            if t2 != t' { assert t2 in s.active; }
+          }
+        }
+        assert VmAncNestRE(re, code, endl, s') by {
+          forall t2 | t2 in s'.active ensures ThreadAncNestRE(re, code, endl, t2) {
+            if t2 != t' { assert t2 in s.active; }
+          }
+        }
+        FAdvanceEpsilonAncSet(re, code, endl, s', ov, dir, ncap, nlook, nquant);
+
+      case CheckOracle(l) =>
+        assert 0 <= t.pc < |code|;
+        var pc: nat := t.pc as nat;
+        assert pc < endl;
+        if LOr.view_get_oracle(ov, s1.cp, l) {
+          var t' := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(s1.cp), s1.clock));
+          var s' := s1.(active := [t'] + ac);
+          assert CM.ThreadClocksLE(t', s1.clock) by {
+            CM.RegsClocksLESet(t.look_regs, l, Some(s1.cp), s1.clock, s1.clock);
+          }
+          assert CM.ThreadRegsWf(t', ncap, nlook, nquant) by {
+            CM.SetRegLens(t.look_regs, l, Some(s1.cp), s1.clock);
+          }
+          // look write is positional-neutral (NestInvRE reads capture+quant only).
+          assert t'.capture_regs.a_clk == cc && t'.quant_regs.a_clk == qc;
+          assert ThreadAncNestRE(re, code, endl, t') by {
+            if 0 <= t.pc + 1 <= endl {
+              assert NI.NestTopRE(re, code, endl, pc, cc, qc);
+              assert NI.NestInvRE(re, code, 0, endl, pc, cc, qc, -1);
+              assert NI.StepEdgeRE(code, pc, pc + 1);
+              NI.NestInvAdvance(re, code, 0, endl, pc, pc + 1, cc, qc, -1);
+            }
+          }
+          assert CM.VmClocksLE(s') by {
+            forall t2 | t2 in s'.active ensures CM.ThreadClocksLE(t2, s'.clock) {
+              if t2 == t' { } else { assert t2 in s.active; CM.ThreadClocksLEMono(t2, s.clock, s'.clock); }
+            }
+          }
+          assert CM.VmRegsWf(s', ncap, nlook, nquant) by {
+            forall t2 | t2 in s'.active ensures CM.ThreadRegsWf(t2, ncap, nlook, nquant) {
+              if t2 != t' { assert t2 in s.active; }
+            }
+          }
+          assert VmAncNestRE(re, code, endl, s') by {
+            forall t2 | t2 in s'.active ensures ThreadAncNestRE(re, code, endl, t2) {
+              if t2 != t' { assert t2 in s.active; }
+            }
+          }
+          FAdvanceEpsilonAncSet(re, code, endl, s', ov, dir, ncap, nlook, nquant);
+        } else {
+          var s' := s1.(active := ac);
+          assert CM.VmClocksLE(s') by {
+            forall t2 | t2 in s'.active ensures CM.ThreadClocksLE(t2, s'.clock) {
+              assert t2 in s.active; CM.ThreadClocksLEMono(t2, s.clock, s'.clock);
+            }
+          }
+          assert CM.VmRegsWf(s', ncap, nlook, nquant);
+          assert VmAncNestRE(re, code, endl, s') by {
+            forall t2 | t2 in s'.active ensures ThreadAncNestRE(re, code, endl, t2) { assert t2 in s.active; }
+          }
+          FAdvanceEpsilonAncSet(re, code, endl, s', ov, dir, ncap, nlook, nquant);
+        }
+
+      case NegCheckOracle(l) =>
+        assert 0 <= t.pc < |code|;
+        var pc: nat := t.pc as nat;
+        assert pc < endl;
+        if LOr.view_get_oracle(ov, s1.cp, l) {
+          var s' := s1.(active := ac);
+          assert CM.VmClocksLE(s') by {
+            forall t2 | t2 in s'.active ensures CM.ThreadClocksLE(t2, s'.clock) {
+              assert t2 in s.active; CM.ThreadClocksLEMono(t2, s.clock, s'.clock);
+            }
+          }
+          assert CM.VmRegsWf(s', ncap, nlook, nquant);
+          assert VmAncNestRE(re, code, endl, s') by {
+            forall t2 | t2 in s'.active ensures ThreadAncNestRE(re, code, endl, t2) { assert t2 in s.active; }
+          }
+          FAdvanceEpsilonAncSet(re, code, endl, s', ov, dir, ncap, nlook, nquant);
+        } else {
+          var th' := t.(pc := t.pc + 1);
+          var s' := s1.(active := [th'] + ac);
+          assert ThreadAncNestRE(re, code, endl, th') by {
+            if 0 <= t.pc + 1 <= endl {
+              assert NI.NestTopRE(re, code, endl, pc, cc, qc);
+              assert NI.NestInvRE(re, code, 0, endl, pc, cc, qc, -1);
+              assert NI.StepEdgeRE(code, pc, pc + 1);
+              NI.NestInvAdvance(re, code, 0, endl, pc, pc + 1, cc, qc, -1);
+            }
+          }
+          assert CM.VmClocksLE(s') by {
+            forall t2 | t2 in s'.active ensures CM.ThreadClocksLE(t2, s'.clock) {
+              if t2 == th' { } else { assert t2 in s.active; CM.ThreadClocksLEMono(t2, s.clock, s'.clock); }
+            }
+          }
+          assert CM.VmRegsWf(s', ncap, nlook, nquant) by {
+            forall t2 | t2 in s'.active ensures CM.ThreadRegsWf(t2, ncap, nlook, nquant) {
+              if t2 != th' { assert t2 in s.active; }
+            }
+          }
+          assert VmAncNestRE(re, code, endl, s') by {
+            forall t2 | t2 in s'.active ensures ThreadAncNestRE(re, code, endl, t2) {
+              if t2 != th' { assert t2 in s.active; }
+            }
+          }
+          FAdvanceEpsilonAncSet(re, code, endl, s', ov, dir, ncap, nlook, nquant);
+        }
+
+      case WriteOracle(l) =>
+        var s' := s1.(active := ac);
+        assert 0 <= t.pc < |code|;
+        assert CM.VmClocksLE(s') by {
+          forall t2 | t2 in s'.active ensures CM.ThreadClocksLE(t2, s'.clock) {
+            assert t2 in s.active; CM.ThreadClocksLEMono(t2, s.clock, s'.clock);
+          }
+        }
+        assert CM.VmRegsWf(s', ncap, nlook, nquant);
+        assert VmAncNestRE(re, code, endl, s') by {
+          forall t2 | t2 in s'.active ensures ThreadAncNestRE(re, code, endl, t2) { assert t2 in s.active; }
+        }
+        FAdvanceEpsilonAncSet(re, code, endl, s', LOr.view_set_oracle(ov, s1.cp, l), dir, ncap, nlook, nquant);
+
+      case BeginLoop =>
+        var th' := t.(exit_allowed := false, pc := t.pc + 1);
+        var s' := s1.(active := [th'] + ac);
+        assert 0 <= t.pc < |code|;
+        var pc: nat := t.pc as nat;
+        assert pc < endl;
+        assert ThreadAncNestRE(re, code, endl, th') by {
+          if 0 <= t.pc + 1 <= endl {
+            assert NI.NestTopRE(re, code, endl, pc, cc, qc);
+            assert NI.NestInvRE(re, code, 0, endl, pc, cc, qc, -1);
+            assert NI.StepEdgeRE(code, pc, pc + 1);
+            NI.NestInvAdvance(re, code, 0, endl, pc, pc + 1, cc, qc, -1);
+          }
+        }
+        assert CM.VmClocksLE(s') by {
+          forall t2 | t2 in s'.active ensures CM.ThreadClocksLE(t2, s'.clock) {
+            if t2 == th' { } else { assert t2 in s.active; CM.ThreadClocksLEMono(t2, s.clock, s'.clock); }
+          }
+        }
+        assert CM.VmRegsWf(s', ncap, nlook, nquant) by {
+          forall t2 | t2 in s'.active ensures CM.ThreadRegsWf(t2, ncap, nlook, nquant) {
+            if t2 != th' { assert t2 in s.active; }
+          }
+        }
+        assert VmAncNestRE(re, code, endl, s') by {
+          forall t2 | t2 in s'.active ensures ThreadAncNestRE(re, code, endl, t2) {
+            if t2 != th' { assert t2 in s.active; }
+          }
+        }
+        FAdvanceEpsilonAncSet(re, code, endl, s', ov, dir, ncap, nlook, nquant);
+
+      case EndLoop =>
+        assert 0 <= t.pc < |code|;
+        var pc: nat := t.pc as nat;
+        assert pc < endl;
+        if t.exit_allowed {
+          var th' := t.(pc := t.pc + 1);
+          var s' := s1.(active := [th'] + ac);
+          assert ThreadAncNestRE(re, code, endl, th') by {
+            if 0 <= t.pc + 1 <= endl {
+              assert NI.NestTopRE(re, code, endl, pc, cc, qc);
+              assert NI.NestInvRE(re, code, 0, endl, pc, cc, qc, -1);
+              assert NI.StepEdgeRE(code, pc, pc + 1);
+              NI.NestInvAdvance(re, code, 0, endl, pc, pc + 1, cc, qc, -1);
+            }
+          }
+          assert CM.VmClocksLE(s') by {
+            forall t2 | t2 in s'.active ensures CM.ThreadClocksLE(t2, s'.clock) {
+              if t2 == th' { } else { assert t2 in s.active; CM.ThreadClocksLEMono(t2, s.clock, s'.clock); }
+            }
+          }
+          assert CM.VmRegsWf(s', ncap, nlook, nquant) by {
+            forall t2 | t2 in s'.active ensures CM.ThreadRegsWf(t2, ncap, nlook, nquant) {
+              if t2 != th' { assert t2 in s.active; }
+            }
+          }
+          assert VmAncNestRE(re, code, endl, s') by {
+            forall t2 | t2 in s'.active ensures ThreadAncNestRE(re, code, endl, t2) {
+              if t2 != th' { assert t2 in s.active; }
+            }
+          }
+          FAdvanceEpsilonAncSet(re, code, endl, s', ov, dir, ncap, nlook, nquant);
+        } else {
+          var s' := s1.(active := ac);
+          assert CM.VmClocksLE(s') by {
+            forall t2 | t2 in s'.active ensures CM.ThreadClocksLE(t2, s'.clock) {
+              assert t2 in s.active; CM.ThreadClocksLEMono(t2, s.clock, s'.clock);
+            }
+          }
+          assert CM.VmRegsWf(s', ncap, nlook, nquant);
+          assert VmAncNestRE(re, code, endl, s') by {
+            forall t2 | t2 in s'.active ensures ThreadAncNestRE(re, code, endl, t2) { assert t2 in s.active; }
+          }
+          FAdvanceEpsilonAncSet(re, code, endl, s', ov, dir, ncap, nlook, nquant);
+        }
+
+      case CheckNullable(qid) =>
+        // CheckNullable never occurs in nested main code (NoWriteInstrNestedRE).
+        assert 0 <= t.pc < |code|;
+        var pc: nat := t.pc as nat;
+        assert pc < endl;
+        assert NR.GetPcRE(code, pc) == Some(i);
+        NR.NoWriteInstrNestedRE(re, code, 0, endl, pc);
+        assert false;
+
+      case AnchorAssertion(a) =>
+        assert 0 <= t.pc < |code|;
+        var pc: nat := t.pc as nat;
+        assert pc < endl;
+        if LAnc.is_satisfied(a, s1.context, dir) {
+          var th' := t.(pc := t.pc + 1);
+          var s' := s1.(active := [th'] + ac);
+          assert ThreadAncNestRE(re, code, endl, th') by {
+            if 0 <= t.pc + 1 <= endl {
+              assert NI.NestTopRE(re, code, endl, pc, cc, qc);
+              assert NI.NestInvRE(re, code, 0, endl, pc, cc, qc, -1);
+              assert NI.StepEdgeRE(code, pc, pc + 1);
+              NI.NestInvAdvance(re, code, 0, endl, pc, pc + 1, cc, qc, -1);
+            }
+          }
+          assert CM.VmClocksLE(s') by {
+            forall t2 | t2 in s'.active ensures CM.ThreadClocksLE(t2, s'.clock) {
+              if t2 == th' { } else { assert t2 in s.active; CM.ThreadClocksLEMono(t2, s.clock, s'.clock); }
+            }
+          }
+          assert CM.VmRegsWf(s', ncap, nlook, nquant) by {
+            forall t2 | t2 in s'.active ensures CM.ThreadRegsWf(t2, ncap, nlook, nquant) {
+              if t2 != th' { assert t2 in s.active; }
+            }
+          }
+          assert VmAncNestRE(re, code, endl, s') by {
+            forall t2 | t2 in s'.active ensures ThreadAncNestRE(re, code, endl, t2) {
+              if t2 != th' { assert t2 in s.active; }
+            }
+          }
+          FAdvanceEpsilonAncSet(re, code, endl, s', ov, dir, ncap, nlook, nquant);
+        } else {
+          var s' := s1.(active := ac);
+          assert CM.VmClocksLE(s') by {
+            forall t2 | t2 in s'.active ensures CM.ThreadClocksLE(t2, s'.clock) {
+              assert t2 in s.active; CM.ThreadClocksLEMono(t2, s.clock, s'.clock);
+            }
+          }
+          assert CM.VmRegsWf(s', ncap, nlook, nquant);
+          assert VmAncNestRE(re, code, endl, s') by {
+            forall t2 | t2 in s'.active ensures ThreadAncNestRE(re, code, endl, t2) { assert t2 in s.active; }
+          }
+          FAdvanceEpsilonAncSet(re, code, endl, s', ov, dir, ncap, nlook, nquant);
+        }
+
+      case Fail =>
+        var s' := s1.(active := ac);
+        assert CM.VmClocksLE(s') by {
+          forall t2 | t2 in s'.active ensures CM.ThreadClocksLE(t2, s'.clock) {
+            assert t2 in s.active; CM.ThreadClocksLEMono(t2, s.clock, s'.clock);
+          }
+        }
+        assert CM.VmRegsWf(s', ncap, nlook, nquant);
+        assert VmAncNestRE(re, code, endl, s') by {
+          forall t2 | t2 in s'.active ensures ThreadAncNestRE(re, code, endl, t2) { assert t2 in s.active; }
+        }
+        FAdvanceEpsilonAncSet(re, code, endl, s', ov, dir, ncap, nlook, nquant);
+    }
+  }
+
+  /** (A2) `FConsume` preserves the joint invariant. Blocked threads carry
+      `BlkAncNestRE` (positional companion at `pc + 1`); the ones that accept the
+      next char resume as active threads at `pc + 1`, which is exactly
+      `ThreadAncNestRE`. Mirrors `CM.FConsumeClocksLE` + `CM.FConsumeRegsWf`. */
+  lemma FConsumeAncSet(re: R.regex, code: RB.code, endl: nat, s: AI.VmState,
+                       ncap: int, nlook: int, nquant: int)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires CM.VmClocksLE(s) && CM.VmRegsWf(s, ncap, nlook, nquant)
+    requires VmAncNestRE(re, code, endl, s)
+    ensures var r := AI.FConsume(s);
+      CM.VmClocksLE(r) && CM.VmRegsWf(r, ncap, nlook, nquant) && VmAncNestRE(re, code, endl, r)
+    decreases |s.blocked|
+  {
+    if |s.blocked| == 0 { return; }
+    var t := s.blocked[0].0;
+    var ce := s.blocked[0].1;
+    var s1 := s.(blocked := s.blocked[1..]);
+    assert s.blocked[0] in s.blocked;
+    assert forall x | x in s1.blocked :: x in s.blocked;
+    var th' := t.(exit_allowed := true, pc := t.pc + 1);
+    var s2 := if RC.is_accepted(s1.context.nextchar, ce)
+              then s1.(active := [th'] + s1.active)
+              else s1;
+    assert BlkAncNestRE(re, code, endl, t);                 // t == s.blocked[0].0
+    assert CM.VmClocksLE(s2) by {
+      assert s2.clock == s.clock;
+      forall t2 | t2 in s2.active ensures CM.ThreadClocksLE(t2, s2.clock) {
+        if t2 == th' { assert CM.ThreadClocksLE(t, s.clock); } else { assert t2 in s.active; }
+      }
+      forall tb | tb in s2.blocked ensures CM.ThreadClocksLE(tb.0, s2.clock) { assert tb in s.blocked; }
+      if s2.bestmatch.Some? { assert CM.ThreadClocksLE(s2.bestmatch.value, s2.clock); }
+    }
+    assert CM.VmRegsWf(s2, ncap, nlook, nquant) by {
+      forall t2 | t2 in s2.active ensures CM.ThreadRegsWf(t2, ncap, nlook, nquant) {
+        if t2 == th' { assert CM.ThreadRegsWf(t, ncap, nlook, nquant); } else { assert t2 in s.active; }
+      }
+      forall tb | tb in s2.blocked ensures CM.ThreadRegsWf(tb.0, ncap, nlook, nquant) { assert tb in s.blocked; }
+    }
+    assert VmAncNestRE(re, code, endl, s2) by {
+      forall t2 | t2 in s2.active ensures ThreadAncNestRE(re, code, endl, t2) {
+        if t2 == th' {
+          // th'.capture_regs == t.capture_regs, th'.quant_regs == t.quant_regs, th'.pc == t.pc + 1
+          assert th'.capture_regs.a_clk == t.capture_regs.a_clk;
+          assert th'.quant_regs.a_clk == t.quant_regs.a_clk;
+        } else { assert t2 in s.active; }
+      }
+      forall tb | tb in s2.blocked ensures BlkAncNestRE(re, code, endl, tb.0) { assert tb in s.blocked; }
+    }
+    FConsumeAncSet(re, code, endl, s2, ncap, nlook, nquant);
+  }
+
+  /** (A2) THE OUTER DRIVER: a whole `FFindMatch` run preserves `AncSetInvRE` to
+      the winning thread. Threads the joint invariant across the per-char
+      `FAdvanceEpsilon`/`FConsume` phases (via `FAdvanceEpsilonAncSet` and
+      `FConsumeAncSet`), so the returned best-match thread satisfies the anytime
+      register invariant `AncSetInvRE(re, r.capture_regs.a_clk)`. Mirrors
+      `M.FFindMatchThreadFacts`'s driver structure (`decreases |str| - s.cp`). */
+  lemma FFindMatchAncSet(re: R.regex, code: RB.code, endl: nat, str: string, s: AI.VmState,
+                         ov: LOr.OracleView, dir: LAnc.direction, cdn: LCdn.cdns,
+                         ncap: int, nlook: int, nquant: int)
+    requires NR.NestedFragmentRE(re)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires |code| == endl + 1
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires forall pc: nat, q: int, b: bool ::
+      NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
+    requires |s.processed.true_set| == RB.size(code) && |s.processed.false_set| == RB.size(code)
+    requires dir == LAnc.Forward
+    requires s.context.nextchar == AI.get_char(str, s.cp)
+    requires s.clock >= 0 && s.cp >= 0
+    requires CM.VmClocksLE(s) && CM.VmRegsWf(s, ncap, nlook, nquant)
+    requires VmAncNestRE(re, code, endl, s)
+    ensures var r := AI.FFindMatch(code, str, s, ov, dir, cdn).0;
+      r.Some? ==> AncSetInvRE(re, r.value.capture_regs.a_clk)
+    decreases |str| - s.cp
+  {
+    var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, dir));
+    assert CM.VmClocksLE(s0) && CM.VmRegsWf(s0, ncap, nlook, nquant) && VmAncNestRE(re, code, endl, s0);
+    FAdvanceEpsilonAncSet(re, code, endl, s0, ov, dir, ncap, nlook, nquant);
+    CM.FAdvanceEpsilonClocksLE(code, s0, ov, dir);         // r.clock >= s0.clock
+    var (s1, ov1) := AI.FAdvanceEpsilon(code, s0, ov, dir);
+    assert s1.cp == s.cp && s1.context == s.context;
+    assert s1.clock >= s0.clock >= 0;
+    assert CM.VmClocksLE(s1) && CM.VmRegsWf(s1, ncap, nlook, nquant) && VmAncNestRE(re, code, endl, s1);
+
+    if |s1.blocked| == 0 {
+      assert AI.FFindMatch(code, str, s, ov, dir, cdn).0 == s1.bestmatch;
+    } else if s1.context.nextchar.None? {
+      assert AI.FFindMatch(code, str, s, ov, dir, cdn).0 == s1.bestmatch;
+    } else {
+      assert AI.get_char(str, s.cp).Some?;
+      assert 0 <= s.cp < |str|;
+      FConsumeAncSet(re, code, endl, s1, ncap, nlook, nquant);
+      CM.FConsumeClocksLE(s1);                             // r.clock == s1.clock
+      var s2 := AI.FConsume(s1);
+      var s3 := s2.(processed := AI.init_bpcset(RB.size(code)), isblocked := AI.init_pcset(RB.size(code)),
+                    cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
+      var newchar := AI.get_char(str, s3.cp - AI.cp_offset(dir));
+      var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
+      assert s4.cp == s.cp + 1;
+      assert s4.context.nextchar == AI.get_char(str, s4.cp);
+      assert s4.active == s2.active && s4.blocked == s2.blocked
+          && s4.bestmatch == s2.bestmatch && s4.clock == s2.clock;
+      assert CM.VmClocksLE(s4);
+      assert CM.VmRegsWf(s4, ncap, nlook, nquant);
+      assert VmAncNestRE(re, code, endl, s4);
+      assert s4.clock >= 0 by { assert s4.clock == s2.clock == s1.clock; }
+      FFindMatchAncSet(re, code, endl, str, s4, ov1, dir, cdn, ncap, nlook, nquant);
+      assert AI.FFindMatch(code, str, s, ov, dir, cdn) == AI.FFindMatch(code, str, s4, ov1, dir, cdn);
+    }
+  }
+
+  /** (A2) THE FRESH-BODY-MATCH BRIDGE: a fresh (init-register) FORWARD match of a
+      NESTED-fragment body from position `cp` yields `AncSetInvRE(body, ·)` on the
+      winning thread. Establishes the ε-closure driver's entry invariant at
+      `FInitState` — `AncSetInvRE` VACUOUSLY (fresh clocks all `< 0`, via
+      `AncSetInitVacuous`) and the positional companion at `pc == 0` (via
+      `NI.NestTopInit`) — then threads it with `FFindMatchAncSet`. Mirrors
+      `FreshMatchWfNested`'s entry setup; this is the (A2) producer at the fresh
+      body match, ready to discharge `FreshBodyDirectMemberFromAncSet`'s residual. */
+  lemma FreshBodyMatchAncSet(bytecode: RB.code, str: string, cp: int, ov: LOr.OracleView, cdn: LCdn.cdns,
+                             body: R.regex, endl: nat, ncap: int, nlook: int, nquant: int)
+    requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires bytecode == CP.compile_to_bytecode(body)
+    requires NR.NfaRepRE(body, bytecode, 0, endl)
+    requires NR.GetPcRE(bytecode, endl) == Some(RB.Accept)
+    requires |bytecode| == endl + 1
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires 0 <= cp <= |str|
+    requires AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp)
+    ensures var rf := AI.FFindMatch(bytecode, str,
+                        AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                      AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                        ov, LAnc.Forward, cdn).0;
+      rf.Some? ==> AncSetInvRE(body, rf.value.capture_regs.a_clk)
+  {
+    var dir := LAnc.Forward;
+    var ctx := AI.cp_context(cp, str, dir);
+    var inits := AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                               AReg.init_regs(nquant), 0, ctx);
+    CM.RegsClocksLEInit(ncap, 0); CM.RegsClocksLEInit(nlook, 0); CM.RegsClocksLEInit(nquant, 0);
+    CM.FInitStateClocksLE(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                          AReg.init_regs(nquant), 0, ctx);
+    CM.FInitStateRegsWf(bytecode, cp, ncap, nlook, nquant, 0, ctx);
+    NoTrueQuantStampNested(body);
+    // entry joint invariant: AncSetInvRE vacuously, NestTop at pc 0.
+    CM.RegsClocksLEInit(ncap, -1);                       // init capture clocks all < 0
+    CM.RegsClocksLEInit(nquant, -1);
+    assert VmAncNestRE(body, bytecode, endl, inits) by {
+      var th := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
+      assert inits.active == [th];
+      forall t | t in inits.active ensures ThreadAncNestRE(body, bytecode, endl, t) {
+        assert t == th;
+        assert forall k :: AI.get_idx(th.capture_regs.a_clk, k) < 0;   // RegsClocksLEInit(ncap,-1)
+        AncSetInitVacuous(body, th.capture_regs.a_clk);
+        if 0 <= th.pc <= endl {
+          assert th.pc == 0;
+          NI.NestTopInit(body, bytecode, endl, th.capture_regs.a_clk, th.quant_regs.a_clk);
+        }
+      }
+    }
+    FFindMatchAncSet(body, bytecode, endl, str, inits, ov, dir, cdn, ncap, nlook, nquant);
   }
 
   /** R2: nested twin of `NoWriteOracleBodyCode` — a nested body's compiled
