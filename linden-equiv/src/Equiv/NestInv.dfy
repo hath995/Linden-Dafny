@@ -5171,6 +5171,139 @@ module LindenElkNestInv {
       }
   }
 
+  /** (L4 depth-k, ADDITIVE) TOP-look twin of `MxAtLidGeMx` for the NESTED
+      fragment. The depth-1 `MxAtLidGeMx` requires `LookBehindFragmentRE` because
+      its `Re_lookaround` else-branch (lid inside a look body) is discharged by
+      `LookFreeRE(r1)` (`assert false`). For a TOP look (`lid in TopLookIds(r)`)
+      that else-branch is VACUOUS outright (`TopLookIds(Re_lookaround) == {lid0}`,
+      so `lid == lid0`), so the same increasing-chain argument runs under
+      `NestedFragmentRE` with no look-free hypothesis. `LookUnique` routes the
+      alt/con descent to the branch actually holding `lid`. */
+  lemma MxAtLidGeMxTop(r: R.regex, cc: seq<int>, qc: seq<int>, mx: int, lid: nat)
+    requires NR.NestedFragmentRE(r) && LTB.LookUnique(r)
+    requires lid in LTB.LookIds(r)
+    requires lid in TopLookIds(r)
+    requires LookPathPresent(r, cc, qc, mx, lid)
+    ensures MxAtLidLk(r, qc, mx, lid) >= mx
+    decreases r
+  {
+    TopLookIdsIn(r);                        // lid in LookIds(r)
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) {
+        assert lid in TopLookIds(r1) by {
+          if lid !in TopLookIds(r1) {
+            assert lid in TopLookIds(r2); TopLookIdsIn(r2);
+            assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
+          }
+        }
+        MxAtLidGeMxTop(r1, cc, qc, mx, lid);
+      } else {
+        assert lid in LTB.LookIds(r2);
+        assert lid in TopLookIds(r2) by {
+          if lid !in TopLookIds(r2) {
+            assert lid in TopLookIds(r1); TopLookIdsIn(r1);
+            assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
+          }
+        }
+        MxAtLidGeMxTop(r2, cc, qc, mx, lid);
+      }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) {
+        assert lid in TopLookIds(r1) by {
+          if lid !in TopLookIds(r1) {
+            assert lid in TopLookIds(r2); TopLookIdsIn(r2);
+            assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
+          }
+        }
+        MxAtLidGeMxTop(r1, cc, qc, mx, lid);
+      } else {
+        assert lid in LTB.LookIds(r2);
+        assert lid in TopLookIds(r2) by {
+          if lid !in TopLookIds(r2) {
+            assert lid in TopLookIds(r1); TopLookIdsIn(r1);
+            assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
+          }
+        }
+        MxAtLidGeMxTop(r2, cc, qc, mx, lid);
+      }
+    case Re_quant(_, qid, _, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      assert qv >= mx;                       // LookPathPresent
+      MxAtLidGeMxTop(r1, cc, qc, qv, lid);
+    case Re_capture(_, r1) => MxAtLidGeMxTop(r1, cc, qc, mx, lid);
+    case Re_lookaround(lid0, _, r1) =>
+      // lid in TopLookIds(r) == {lid0 as nat} (lid0 >= 0 under LookUnique): lid == lid0.
+      assert lid0 >= 0 && (lid0 as nat) == lid;
+  }
+
+  /** (L4 depth-k, ADDITIVE) TOP-look twin of `LookPathDomIntro` for the NESTED
+      fragment. Assembles full dominance `LookPathDom(r, L, qc, lid)` from path
+      presence + a look stamp `L` beating the node threshold `MxAtLidLk`, for a
+      TOP look `lid` (path never crosses a look body). Identical increasing-chain
+      argument to `LookPathDomIntro`, but the `Re_lookaround` else-branch is
+      vacuous for a top look, so it runs under `NestedFragmentRE`. */
+  lemma LookPathDomIntroTop(r: R.regex, cc: seq<int>, qc: seq<int>, mx: int, lid: nat, L: int)
+    requires NR.NestedFragmentRE(r) && LTB.LookUnique(r)
+    requires lid in LTB.LookIds(r)
+    requires lid in TopLookIds(r)
+    requires LookPathPresent(r, cc, qc, mx, lid)
+    requires L >= MxAtLidLk(r, qc, mx, lid)
+    ensures LookPathDom(r, L, qc, lid)
+    decreases r
+  {
+    TopLookIdsIn(r);
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) {
+        assert lid in TopLookIds(r1) by {
+          if lid !in TopLookIds(r1) {
+            assert lid in TopLookIds(r2); TopLookIdsIn(r2);
+            assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
+          }
+        }
+        LookPathDomIntroTop(r1, cc, qc, mx, lid, L);
+      } else {
+        assert lid in LTB.LookIds(r2);
+        assert lid in TopLookIds(r2) by {
+          if lid !in TopLookIds(r2) {
+            assert lid in TopLookIds(r1); TopLookIdsIn(r1);
+            assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
+          }
+        }
+        LookPathDomIntroTop(r2, cc, qc, mx, lid, L);
+      }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) {
+        assert lid in TopLookIds(r1) by {
+          if lid !in TopLookIds(r1) {
+            assert lid in TopLookIds(r2); TopLookIdsIn(r2);
+            assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
+          }
+        }
+        LookPathDomIntroTop(r1, cc, qc, mx, lid, L);
+      } else {
+        assert lid in LTB.LookIds(r2);
+        assert lid in TopLookIds(r2) by {
+          if lid !in TopLookIds(r2) {
+            assert lid in TopLookIds(r1); TopLookIdsIn(r1);
+            assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
+          }
+        }
+        LookPathDomIntroTop(r2, cc, qc, mx, lid, L);
+      }
+    case Re_quant(_, qid, _, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      MxAtLidGeMxTop(r1, cc, qc, qv, lid);
+      assert MxAtLidLk(r1, qc, qv, lid) >= qv;
+      assert L >= qv;
+      LookPathDomIntroTop(r1, cc, qc, qv, lid, L);
+    case Re_capture(_, r1) =>
+      LookPathDomIntroTop(r1, cc, qc, mx, lid, L);
+    case Re_lookaround(lid0, _, r1) =>
+      assert lid0 >= 0 && (lid0 as nat) == lid;
+  }
+
   /** A stamp beating EVERY stored quant clock dominates any path outright. */
   lemma LookPathDomAll(r: R.regex, L: int, qc: seq<int>, lid: nat)
     requires lid in LTB.LookIds(r)

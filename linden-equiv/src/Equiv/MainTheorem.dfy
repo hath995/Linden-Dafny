@@ -14153,6 +14153,196 @@ module LindenElkMain {
     FFindMatchAncSet(body, bytecode, endl, str, inits, ov, dir, cdn, ncap, nlook, nquant);
   }
 
+  // ===========================================================================
+  // (REVERSE GATE-CROSSING CONNECTIVE) The winning-thread LOOK-DOMINANCE register
+  // read-off. Mirrors the (A2) `AncSetInvRE` producer's LAST MILE
+  // (`AncSetToMemberNested`): a register predicate `LookDomInvRE` that, for every
+  // matched TOP look `lid`, carries `LookPathPresent` + the look-stamp-over-
+  // threshold bound, and reads off `NI.LookPathDom(re, lc[lid], qc, lid)` via the
+  // nested top-look assembler `NI.LookPathDomIntroTop`. This is the exact residual
+  // `LiftSim.DescentPackageDirectFromRes1` owes on the winning thread's banks.
+  // ===========================================================================
+
+  /** (REVERSE GATE) THE LOOK-DOMINANCE REGISTER INVARIANT. For every matched TOP
+      look `lid` (`lc[lid] >= 0`), path presence to the gate holds and the look
+      stamp dominates the node threshold `MxAtLidLk`. Restricted to `TopLookIds`
+      (the deliverable's scope): a top look's descent never crosses a look body,
+      so the depth-1 `LookPathPresent`/`MxAtLidLk` read exactly the path. The
+      guard `lid in LookIds(re)` keeps the `LookPathPresent`/`MxAtLidLk` calls
+      well-formed (`TopLookIds <= LookIds`, but a predicate body cannot invoke the
+      subset lemma). */
+  ghost predicate LookDomInvRE(re: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>)
+  {
+    forall lid: nat :: lid in LTB.LookIds(re) && lid in NI.TopLookIds(re)
+                       && AI.get_idx(lc, lid as int) >= 0
+      ==> NI.LookPathPresent(re, cc, qc, -1, lid)
+          && AI.get_idx(lc, lid as int) >= NI.MxAtLidLk(re, qc, -1, lid)
+  }
+
+  /** (REVERSE GATE) LAST MILE: `LookDomInvRE` -> `NI.LookPathDom` at a matched
+      TOP look `A0`. Reads the per-`A0` conjunct off the invariant and closes with
+      `NI.LookPathDomIntroTop` (the nested top-look dominance assembler). This is
+      exactly the shape `DescentPackageDirectFromRes1`'s residual `requires`
+      consumes on the winning thread's banks. */
+  lemma LookDomInvToLookPathDom(re: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>, A0: nat)
+    requires NR.NestedFragmentRE(re) && LTB.LookUnique(re)
+    requires A0 in NI.TopLookIds(re)
+    requires AI.get_idx(lc, A0 as int) >= 0
+    requires LookDomInvRE(re, cc, lc, qc)
+    ensures A0 in LTB.LookIds(re)
+    ensures NI.LookPathDom(re, AI.get_idx(lc, A0 as int), qc, A0)
+  {
+    NI.TopLookIdsIn(re);
+    assert A0 in LTB.LookIds(re);
+    assert NI.LookPathPresent(re, cc, qc, -1, A0)
+        && AI.get_idx(lc, A0 as int) >= NI.MxAtLidLk(re, qc, -1, A0);
+    NI.LookPathDomIntroTop(re, cc, qc, -1, A0, AI.get_idx(lc, A0 as int));
+  }
+
+  /** (REVERSE GATE — the CROSSING step, analog of `AncSetOpenStep`) A gate
+      crossing `CheckOracle(l)` that stamps `lc'[l] := clk` (a FRESH clock beating
+      every stored quant clock, `clk > B >= qc[k]`) ESTABLISHES the invariant for
+      the newly-matched look, and frames it for every other. For the top look `l`
+      itself (when `l in TopLookIds`), the positional `NI.NestInvLookSiteNested`
+      reads `LookPathPresent(re, cc, qc, -1, l)` straight off the gate-site
+      `NestInvRE`, and `NI.MxAtLidLE` bounds the node threshold below the fresh
+      stamp (`MxAtLidLk <= B < clk`) — the "crossing establishes dominance
+      outright" fact. For every OTHER matched top look the look bank is unchanged
+      at its slot and `cc`/`qc` are untouched, so the conjunct carries from
+      `LookDomInvRE(re, cc, lc, qc)`. This is the sole invariant-ESTABLISHING step;
+      it is proven NON-CIRCULARLY from the winning thread's own gate-site
+      positional invariant. */
+  lemma LookCrossEstablishesDomTop(re: R.regex, code: RB.code, endl: nat, pc: nat,
+                                   cc: seq<int>, lc: seq<int>, lc': seq<int>, qc: seq<int>,
+                                   l: int, clk: int, B: int)
+    requires NR.NestedFragmentRE(re) && LTB.LookUnique(re)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires 0 <= pc < endl
+    requires NI.NestInvRE(re, code, 0, endl, pc, cc, qc, -1)
+    requires NR.GetPcRE(code, pc) == Some(RB.CheckOracle(l))
+    requires -1 <= B
+    requires forall k :: AI.get_idx(qc, k) <= B
+    requires clk > B
+    requires forall j: int :: j != l ==> AI.get_idx(lc', j) == AI.get_idx(lc, j)
+    requires AI.get_idx(lc', l) == clk
+    requires LookDomInvRE(re, cc, lc, qc)
+    ensures LookDomInvRE(re, cc, lc', qc)
+  {
+    forall lid: nat | lid in LTB.LookIds(re) && lid in NI.TopLookIds(re)
+                      && AI.get_idx(lc', lid as int) >= 0
+      ensures NI.LookPathPresent(re, cc, qc, -1, lid)
+              && AI.get_idx(lc', lid as int) >= NI.MxAtLidLk(re, qc, -1, lid)
+    {
+      if lid as int == l {
+        NI.NestInvLookSiteNested(re, code, 0, endl, pc, cc, qc, -1, l);
+        assert NI.LookPathPresent(re, cc, qc, -1, lid);
+        NI.MxAtLidLE(re, qc, -1, lid, B);          // MxAtLidLk(re,qc,-1,lid) <= B < clk
+        assert AI.get_idx(lc', lid as int) == clk;
+      } else {
+        assert AI.get_idx(lc', lid as int) == AI.get_idx(lc, lid as int);
+        assert AI.get_idx(lc, lid as int) >= 0;
+      }
+    }
+  }
+
+  /** (REVERSE GATE — capture-write frame) A fresh capture-clock write (`Open`)
+      preserves `LookDomInvRE`: `NI.LookPathPresentFreshCap` shows path presence
+      is monotone under a stamp beating every quant clock, and `MxAtLidLk` reads
+      no capture slot so the look-stamp bound is untouched (`qc`, `lc` unchanged).
+      Mirrors `AncSetFrameStart` for the capture writes. */
+  lemma LookDomFrameCap(re: R.regex, cc: seq<int>, cc': seq<int>, lc: seq<int>, qc: seq<int>, B: int)
+    requires NR.NestedFragmentRE(re) && LTB.LookUnique(re)
+    requires -1 <= B
+    requires forall k :: AI.get_idx(qc, k) <= B
+    requires forall j: int :: AI.get_idx(cc', j) == AI.get_idx(cc, j)
+                           || (AI.get_idx(cc', j) >= 0 && AI.get_idx(cc', j) >= B)
+    requires LookDomInvRE(re, cc, lc, qc)
+    ensures LookDomInvRE(re, cc', lc, qc)
+  {
+    forall lid: nat | lid in LTB.LookIds(re) && lid in NI.TopLookIds(re)
+                      && AI.get_idx(lc, lid as int) >= 0
+      ensures NI.LookPathPresent(re, cc', qc, -1, lid)
+              && AI.get_idx(lc, lid as int) >= NI.MxAtLidLk(re, qc, -1, lid)
+    {
+      NI.LookPathPresentFreshCap(re, cc, cc', qc, -1, lid, B);
+    }
+  }
+
+  /** (REVERSE GATE — OFF-path quant re-stamp frame) A `SetQuantToClock(q)` whose
+      quantifier `q` encloses NO look (`LookIds(QidBody(re,q)) == {}`) preserves
+      `LookDomInvRE`: every look is off `q`'s path, so `NI.LookPathPresentQuant
+      OffPath` leaves both `LookPathPresent` and `MxAtLidLk` unchanged. NOTE: this
+      is the COMPLEMENT of the genuine obstruction — an ON-path re-stamp (an
+      enclosing quant of a MATCHED top look) BREAKS dominance (`NI.LookPathDom
+      OnPathBreaksNested`), which is exactly why the anytime register invariant is
+      NOT step-preserved in general (see the reverse-gate residual note). */
+  lemma LookDomFrameQuantOffPath(re: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>,
+                                 qc': seq<int>, q: nat)
+    requires NR.NestedFragmentRE(re) && LTB.LookUnique(re) && PIV.QuantUnique(re)
+    requires q in PIV.QuantIds(re)
+    requires LTB.LookIds(PIV.QidBody(re, q)) == {}
+    requires forall j: int :: j != q as int ==> AI.get_idx(qc', j) == AI.get_idx(qc, j)
+    requires LookDomInvRE(re, cc, lc, qc)
+    ensures LookDomInvRE(re, cc, lc, qc')
+  {
+    forall lid: nat | lid in LTB.LookIds(re) && lid in NI.TopLookIds(re)
+                      && AI.get_idx(lc, lid as int) >= 0
+      ensures NI.LookPathPresent(re, cc, qc', -1, lid)
+              && AI.get_idx(lc, lid as int) >= NI.MxAtLidLk(re, qc', -1, lid)
+    {
+      assert lid !in LTB.LookIds(PIV.QidBody(re, q));
+      NI.LookPathPresentQuantOffPath(re, cc, qc, qc', -1, lid, q);
+    }
+  }
+
+  /** (REVERSE GATE — THREAD-LEVEL INTERFACE) The deliverable's reduction, made
+      explicit and machine-checked ON THE WINNING THREAD: given `LookDomInvRE` on
+      the thread's own banks and a matched top look `A0` (clock set), reads off
+      EXACTLY `DescentPackageDirectFromRes1`'s owed residual
+      `NI.LookPathDom(re, thread.look_regs.a_clk[A0], thread.quant_regs.a_clk, A0)`.
+      Thin wrapper over `LookDomInvToLookPathDom`; this isolates the ENTIRE
+      remaining reverse-gate obligation to the SINGLE producer of `LookDomInvRE`
+      on the whole-regex `FFindMatch` winning thread (the (A2)-mirror driver). */
+  lemma ReverseGateResidualFromInv(re: R.regex, thread: AI.Thread, A0: nat)
+    requires NR.NestedFragmentRE(re) && LTB.LookUnique(re)
+    requires A0 in NI.TopLookIds(re)
+    requires A0 in LTB.LookIds(re)
+    requires AI.get_idx(thread.look_regs.a_clk, A0 as int) >= 0
+    requires LookDomInvRE(re, thread.capture_regs.a_clk, thread.look_regs.a_clk,
+                          thread.quant_regs.a_clk)
+    ensures NI.LookPathDom(re, AI.get_idx(thread.look_regs.a_clk, A0 as int),
+                           thread.quant_regs.a_clk, A0)
+  {
+    LookDomInvToLookPathDom(re, thread.capture_regs.a_clk, thread.look_regs.a_clk,
+                            thread.quant_regs.a_clk, A0);
+  }
+
+  /** (REVERSE GATE — `MatchedPosLA` form) The interface stated with the descent's
+      native `MatchedPosLA` hypothesis (a recorded look cp). Bridges cp-set to
+      clock-set via `CM.LookClkSetWithCp` (the anytime look-clock producer's
+      invariant, carried on every VM thread) + `RL.AAsArraysLaws`, then closes
+      through `ReverseGateResidualFromInv`. This is the deliverable's exact shape:
+      `MatchedPosLA(crv, thread.look_regs, A0) ⟹ LookPathDom(...)`, modulo the
+      single producer of `LookDomInvRE` on the winning thread. */
+  lemma ReverseGateResidualFromInvMatched(crv: CP.FCompiled, re: R.regex, thread: AI.Thread, A0: nat)
+    requires NR.NestedFragmentRE(re) && LTB.LookUnique(re)
+    requires A0 in NI.TopLookIds(re)
+    requires A0 in LTB.LookIds(re)
+    requires MatchedPosLA(crv, thread.look_regs, A0 as int)
+    requires CM.LookClkSetWithCp(thread.look_regs)
+    requires |thread.look_regs.a_cp| == |thread.look_regs.a_clk|
+    requires LookDomInvRE(re, thread.capture_regs.a_clk, thread.look_regs.a_clk,
+                          thread.quant_regs.a_clk)
+    ensures NI.LookPathDom(re, AI.get_idx(thread.look_regs.a_clk, A0 as int),
+                           thread.quant_regs.a_clk, A0)
+  {
+    assert AReg.get_cp(thread.look_regs, A0 as int).Some?;      // MatchedPosLA
+    RL.AAsArraysLaws(thread.look_regs);
+    assert AI.get_idx(thread.look_regs.a_cp, A0 as int) >= 0;   // as_arrays tie
+    assert AI.get_idx(thread.look_regs.a_clk, A0 as int) >= 0;  // LookClkSetWithCp
+    ReverseGateResidualFromInv(re, thread, A0);
+  }
+
   /** R2: nested twin of `NoWriteOracleBodyCode` — a nested body's compiled
       bytecode holds no `WriteOracle` (its inner looks compile to CheckOracle
       leaves; WriteOracle only comes from the build pass). Via
