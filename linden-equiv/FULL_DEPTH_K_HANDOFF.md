@@ -244,3 +244,34 @@ Both tower wirings + the connective + the direct-case descent package are GREEN 
 4. **AllBodyTopFeeds** (body-arms via per-body descent; re-arm via `GuardBridgeFromDescent` — note its
    res0-live guard may need the full-liveness restatement too) + **forward-existence VALUE tie**
    (`FreshBodyDirectMember` + `LkReplayMatchesSpecNested`) → **endpoint UNCONDITIONAL** → **C5**.
+
+## 12. FULL-LIVENESS DESCENT: direct case GREEN; deep recursion is the last kernel (2026-08-21, HEAD `47cbb2b`)
+The escaped-look finding forced the descent onto FULL `GmOfLive(re,res)` liveness (bare res0-live is
+unsatisfiable-as-conclusion — quant `Reset` clears capture regs, NOT look clocks, so an escaped look stays
+res0-live yet non-dominant). GREEN + committed:
+- `5b5a48f` **the CONNECTIVE by extraction**: `NI.LookPathDomFromLivenessThread` — `g2 in GmOfLive(re,res)`
+  + res→thread frames ⟹ `LookPathDom` at top ancestor A0 (via `GmOfLivePresenceExtractLkNested`).
+- `187e2d5` **`DescentPackageDirectFull`** (LiftSim): the DIRECT per-`g2` package produced UNCONDITIONALLY
+  from full liveness (connective discharges `DescentPackageDirectFromRes1`'s owed `LookPathDom`).
+- `8dcffaa` **deep carrier prereq**: `LookNestBackTFromBodyReplay` now ALSO projects `LookNestBackTTopDeep`
+  for the per-body replay (from the R2-strengthened `BestTieLkNestedTop(body)`).
+- `47cbb2b` **`DescentProducerTopOwnersDeepFull`** (LiftSim): the full-liveness producer — its `ensures`
+  IS the endpoint reverse-(c) (`forall g in S && g in GmOfLive(re,res) ==> g in gmt`), from the per-`g`
+  existence + `DescentLandTopDeep`.
+
+**THE LAST KERNEL — the deep per-`g` existence recursion (`DescentPerGFullRec`):** for `g in GmOfLive(re,res)`,
+let `A0 := TopAncestorExists(re, InnermostOwnerDirect(re,g))`. A0 matched+dominant on `thread` come from the
+connective (`LookPathDomFromLivenessThread`) + liveness. Then `g in SubFirstLeafAt(A0)`:
+  - DIRECT (`g !in CapIdsInLooks(body(A0))`): `DescentPackageDirectFull` (GREEN).
+  - DEEP (`g in CapIdsInLooks(body(A0))`): apply `DescentProducerTopOwnersDeepFull` to **body(A0)** with
+    `gmt := SubFirstLeafAt(A0)`, carrier `LookNestBackTTopDeep(body(A0))` (from `LookNestBackTFromBodyReplay`),
+    thread `rf_{A0}`, and body(A0)'s reconstruction banks — which needs `DescentPerGFullRec(body(A0))`
+    RECURSIVELY (`decreases |LookIds(re)|`, strict via `SubsetCardLt`+`LookIdNotInOwnBody` as in
+    `FLookLoopAncestorClockChain`).
+The intricate residual is threading body(A0)'s context: (a) **body(A0)'s recon banks** = FLookLoop on
+`rf_{A0}` (relate to global `res` via `FLookLoopFullCovers` locality — g's innermost owner l'' reconstructs
+identically); (b) the **liveness frame** `g in GmOfLive(re,res) ==> g in GmOfLive(body(A0), body-recon)`
+for deep g; (c) hereditary body(A0) hyps for `LookNestBackTFromBodyReplay`/`DescentProducerTopOwnersDeepFull`
+(`NestedFragmentRE`/`GateStaticsOkNested`/`LookTablesOk` — from `NI.LookBodyOfFragmentNested` etc.).
+Then reverse-(c) is `DescentProducerTopOwnersDeepFull(re)` fed by `DescentPerGFullRec`. Then endpoint
+AllBodyTopFeeds + forward-existence + UNCONDITIONAL + C5 (§5).
