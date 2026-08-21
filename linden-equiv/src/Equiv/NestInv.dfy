@@ -5844,6 +5844,192 @@ module LindenElkNestInv {
       }
   }
 
+  /** (L4 depth-k) `LookPathPresentLk` is STRICTLY STRONGER than `LookPathPresent`:
+      the two predicates agree on every case except `Re_lookaround(lid0 != lid)`,
+      where `LookPathPresentLk` ADDS the crossed look's own clock clause
+      (`lc[lid0] >= 0 && >= mx`) on top of the plain body recursion. So the
+      look-clock-aware presence always entails the plain one — a trivial forgetful
+      structural induction. (Used to feed the look-clock-UNAWARE `LookPathDomIntroTop`
+      from the `LookPathDecomposeNested` output.) */
+  lemma LookPathPresentLkImpliesPresent(r: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>,
+                                        mx: int, lid: nat)
+    requires lid in LTB.LookIds(r)
+    requires LookPathPresentLk(r, cc, lc, qc, mx, lid)
+    ensures LookPathPresent(r, cc, qc, mx, lid)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookPathPresentLkImpliesPresent(r1, cc, lc, qc, mx, lid); }
+      else { LookPathPresentLkImpliesPresent(r2, cc, lc, qc, mx, lid); }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookPathPresentLkImpliesPresent(r1, cc, lc, qc, mx, lid); }
+      else { LookPathPresentLkImpliesPresent(r2, cc, lc, qc, mx, lid); }
+    case Re_quant(_, qid, _, r1) =>
+      LookPathPresentLkImpliesPresent(r1, cc, lc, qc, AI.get_idx(qc, qid), lid);
+    case Re_capture(_, r1) =>
+      LookPathPresentLkImpliesPresent(r1, cc, lc, qc, mx, lid);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+      } else {
+        LookPathPresentLkImpliesPresent(r1, cc, lc, qc, -1, lid);
+      }
+  }
+
+  /** (L4 depth-k — THE REVERSE-RECON CONNECTIVE, res-bank half) The KEY EXTRACTION:
+      from FULL recon-bank liveness of an inside-look capture `g2` (`g2 in
+      GmOfLive(re, res0, res1, res2)`), the top-ancestor look `A0`'s look clock
+      DOMINATES its whole path — `LookPathDom(re, res1.a_clk[A0], res2.a_clk, A0)`.
+
+      ROUTE: `GmOfLivePresenceExtractLkNested` turns liveness into look-aware path
+      presence `PathPresentLk(re, res0.a_clk, res1.a_clk, res2.a_clk, -1, g2)`. Since
+      `g2` sits in `A0`'s body and `A0` is a TOP look, `LookPathDecomposeNested`
+      peels off the path-to-`A0` (`LookPathPresentLk`) together with `A0`'s own clock
+      clause `res1.a_clk[A0] >= 0 && >= MxAtLidLk(re, res2.a_clk, -1, A0)`. Forgetting
+      the crossed-look clocks (`LookPathPresentLkImpliesPresent`) yields the plain
+      `LookPathPresent`, and `LookPathDomIntroTop` assembles the dominance from path
+      presence + the look stamp beating the node threshold. Under FULL liveness this
+      is a clean extraction — the escaped-matched-look failure mode of `res0`-live-
+      alone never arises. */
+  lemma LookPathDomFromLivenessRes(re: R.regex, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
+                                   g2: nat, A0: nat)
+    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re) && LTB.LookUnique(re)
+    requires g2 in PIV.CapIdsInLooks(re)
+    requires forall c: nat :: c in PIV.CapIds(re) && AI.get_idx(res0.a_clk, CP.start_reg(c)) < 0
+                             ==> AI.get_idx(res0.a_cp, CP.start_reg(c)) < 0
+    requires g2 in PIV.GmOfLive(re, res0, res1, res2)
+    requires A0 in TopLookIds(re) && A0 in LTB.LookIds(re)
+    requires g2 in PIV.CapIds(LookBodyOfRE(re, A0))
+    ensures LookPathDom(re, AI.get_idx(res1.a_clk, A0 as int), res2.a_clk, A0)
+  {
+    PIV.CapIdsSplit(re);                              // CapIdsInLooks(re) <= CapIds(re)
+    assert g2 in PIV.CapIds(re);
+    var cc := res0.a_clk;
+    var lc := AReg.as_arrays(res1).1;                 // == res1.a_clk definitionally
+    var qc := AReg.as_arrays(res2).1;                 // == res2.a_clk definitionally
+    var body := LookBodyOfRE(re, A0);
+    // (1) FULL liveness -> look-aware path presence at g2.
+    GmOfLivePresenceExtractLkNested(re, res0, res1, res2, g2);
+    assert PIV.PathPresentLk(re, cc, lc, qc, -1, g2);
+    // (2) peel off the path-to-A0 + A0's own look-clock clause.
+    LookPathDecomposeNested(re, body, cc, lc, qc, -1, A0, g2);
+    assert LookPathPresentLk(re, cc, lc, qc, -1, A0);
+    assert AI.get_idx(lc, A0 as int) >= 0;
+    assert AI.get_idx(lc, A0 as int) >= MxAtLidLk(re, qc, -1, A0);
+    // (3) forget crossed-look clocks -> plain path presence.
+    LookPathPresentLkImpliesPresent(re, cc, lc, qc, -1, A0);
+    assert LookPathPresent(re, cc, qc, -1, A0);
+    // (4) assemble dominance from presence + the stamp beating the threshold.
+    LookPathDomIntroTop(re, cc, qc, -1, A0, AI.get_idx(lc, A0 as int));
+    assert LookPathDom(re, AI.get_idx(lc, A0 as int), qc, A0);
+  }
+
+  /** (L4 depth-k) TOP-look qc-congruence for `LookPathDom`: for a TOP look `lid`
+      the path never enters a look body, so `LookPathDom` reads `qc` only at the
+      OUTSIDE-look quants it crosses. Hence agreement on `QuantIdsOutsideLooks(r)`
+      alone suffices — the exact frame the endpoint's recon quant frame supplies
+      (`res2.a_clk == thread.quant_regs.a_clk` on `QuantIdsOutsideLooks(re)`).
+      Same TopLookIds alt/con routing as `MxAtLidGeMxTop`. */
+  lemma LookPathDomQcAgreeTop(r: R.regex, L: int, qc: seq<int>, qc': seq<int>, lid: nat)
+    requires NR.NestedFragmentRE(r) && LTB.LookUnique(r)
+    requires lid in LTB.LookIds(r)
+    requires lid in TopLookIds(r)
+    requires forall q: nat :: q in PIV.QuantIdsOutsideLooks(r) ==>
+      AI.get_idx(qc, q as int) == AI.get_idx(qc', q as int)
+    ensures LookPathDom(r, L, qc, lid) == LookPathDom(r, L, qc', lid)
+    decreases r
+  {
+    TopLookIdsIn(r);
+    match r
+    case Re_alt(r1, r2) =>
+      assert PIV.QuantIdsOutsideLooks(r1) <= PIV.QuantIdsOutsideLooks(r)
+          && PIV.QuantIdsOutsideLooks(r2) <= PIV.QuantIdsOutsideLooks(r);
+      if lid in LTB.LookIds(r1) {
+        assert lid in TopLookIds(r1) by {
+          if lid !in TopLookIds(r1) {
+            assert lid in TopLookIds(r2); TopLookIdsIn(r2);
+            assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
+          }
+        }
+        LookPathDomQcAgreeTop(r1, L, qc, qc', lid);
+      } else {
+        assert lid in LTB.LookIds(r2);
+        assert lid in TopLookIds(r2) by {
+          if lid !in TopLookIds(r2) {
+            assert lid in TopLookIds(r1); TopLookIdsIn(r1);
+            assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
+          }
+        }
+        LookPathDomQcAgreeTop(r2, L, qc, qc', lid);
+      }
+    case Re_con(r1, r2) =>
+      assert PIV.QuantIdsOutsideLooks(r1) <= PIV.QuantIdsOutsideLooks(r)
+          && PIV.QuantIdsOutsideLooks(r2) <= PIV.QuantIdsOutsideLooks(r);
+      if lid in LTB.LookIds(r1) {
+        assert lid in TopLookIds(r1) by {
+          if lid !in TopLookIds(r1) {
+            assert lid in TopLookIds(r2); TopLookIdsIn(r2);
+            assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
+          }
+        }
+        LookPathDomQcAgreeTop(r1, L, qc, qc', lid);
+      } else {
+        assert lid in LTB.LookIds(r2);
+        assert lid in TopLookIds(r2) by {
+          if lid !in TopLookIds(r2) {
+            assert lid in TopLookIds(r1); TopLookIdsIn(r1);
+            assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
+          }
+        }
+        LookPathDomQcAgreeTop(r2, L, qc, qc', lid);
+      }
+    case Re_quant(_, qid, _, r1) =>
+      assert PIV.QuantIdsOutsideLooks(r1) <= PIV.QuantIdsOutsideLooks(r);
+      assert AI.get_idx(qc, qid) == AI.get_idx(qc', qid) by {
+        if qid >= 0 { assert (qid as nat) in PIV.QuantIdsOutsideLooks(r); }
+      }
+      LookPathDomQcAgreeTop(r1, L, qc, qc', lid);
+    case Re_capture(_, r1) =>
+      assert PIV.QuantIdsOutsideLooks(r1) <= PIV.QuantIdsOutsideLooks(r);
+      LookPathDomQcAgreeTop(r1, L, qc, qc', lid);
+    case Re_lookaround(lid0, _, r1) =>
+      assert lid0 >= 0 && (lid0 as nat) == lid;
+  }
+
+  /** (L4 depth-k — THE REVERSE-RECON CONNECTIVE, thread-bank half) The res-bank
+      connective transferred onto the WINNING THREAD's banks. Given the res->thread
+      transfer facts at the TOP look `A0` — the look clock unchanged
+      (`res1.a_clk[A0] == thread.look_regs.a_clk[A0]`, from `FLookLoopTopLookClk-
+      StableFull`) and the recon quant frame outside looks (`res2.a_clk ==
+      thread.quant_regs.a_clk` on `QuantIdsOutsideLooks(re)`, from the endpoint's
+      `FLookLoopQuantFrame`) — the dominance carries over verbatim: the L stamp is
+      the same look clock, and `LookPathDom` at a top look reads `qc` only on
+      outside-look path quants (`LookPathDomQcAgreeTop`). This is the exact
+      `LookPathDom`-on-thread the DIRECT descent package owes. */
+  lemma LookPathDomFromLivenessThread(re: R.regex, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
+                                      thread: AI.Thread, g2: nat, A0: nat)
+    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re) && LTB.LookUnique(re)
+    requires g2 in PIV.CapIdsInLooks(re)
+    requires forall c: nat :: c in PIV.CapIds(re) && AI.get_idx(res0.a_clk, CP.start_reg(c)) < 0
+                             ==> AI.get_idx(res0.a_cp, CP.start_reg(c)) < 0
+    requires g2 in PIV.GmOfLive(re, res0, res1, res2)
+    requires A0 in TopLookIds(re) && A0 in LTB.LookIds(re)
+    requires g2 in PIV.CapIds(LookBodyOfRE(re, A0))
+    // res -> thread transfer facts at the TOP look A0.
+    requires AI.get_idx(res1.a_clk, A0 as int) == AI.get_idx(thread.look_regs.a_clk, A0 as int)
+    requires forall q: nat :: q in PIV.QuantIdsOutsideLooks(re) ==>
+      AI.get_idx(res2.a_clk, q as int) == AI.get_idx(thread.quant_regs.a_clk, q as int)
+    ensures LookPathDom(re, AI.get_idx(thread.look_regs.a_clk, A0 as int), thread.quant_regs.a_clk, A0)
+  {
+    LookPathDomFromLivenessRes(re, res0, res1, res2, g2, A0);
+    assert LookPathDom(re, AI.get_idx(res1.a_clk, A0 as int), res2.a_clk, A0);
+    // look clock unchanged: rewrite the L stamp.
+    assert AI.get_idx(res1.a_clk, A0 as int) == AI.get_idx(thread.look_regs.a_clk, A0 as int);
+    // quant frame outside looks: LookPathDom at a top look reads only those.
+    LookPathDomQcAgreeTop(re, AI.get_idx(thread.look_regs.a_clk, A0 as int),
+                          res2.a_clk, thread.quant_regs.a_clk, A0);
+  }
+
   /** (L4 depth-k) the NESTED counterpart of `PIV.FilterPresenceExtractLk`: a
       surviving start register under `filter_capture` yields the look-clock-aware
       `PIV.PathPresentLk` — under arbitrary positive nesting. The depth-1 lemma
