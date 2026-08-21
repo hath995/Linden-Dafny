@@ -14148,6 +14148,110 @@ module LindenElkLiftSim {
     }
   }
 
+  // ==========================================================================
+  // (R2 — DEEP CARRIER wiring) rep-predicate twins + register-inert / SetQuant
+  // step twins for the DEEP carrier `LookNestBackTTopDeep`. Exact clones of the
+  // `LookNestBackRepCTop`/`LookNestBackTRegSameTop`/`LookNestBackTSetQuantNestedTop`
+  // family with the DIRECT landed set `GmOfLive(body(lid), FreshBodyMatch(lid))`
+  // replaced by the DEEP `SubFirstLeafAt(lid)`. `SubFirstLeafAt` /
+  // `MatchedPosLA` / `LookPathDom` read only `th.look_regs`/`th.quant_regs` —
+  // EXACTLY as `FreshBodyMatch`/the direct carrier do — so every preservation
+  // argument ports verbatim (`gm` congruence via `get_cp`).
+  // ==========================================================================
+
+  ghost predicate LookNestBackRepCTopDeep(rer: LW.RegExpRecord, re: R.regex, crv: CP.FCompiled,
+                                   str: string, ov: LOr.OracleView,
+                                   S: set<LG.GroupId>, tl: seq<(LT.Tree, LG.GroupMap)>,
+                                   vl: seq<AI.Thread>, ncap: int, nlook: int, nquant: int) {
+    |tl| == |vl|
+    && forall i | 0 <= i < |tl| ::
+         LookNestBackTTopDeep(rer, re, crv, str, ov, S, tl[i].1, vl[i], ncap, nlook, nquant)
+  }
+
+  ghost predicate LookNestBackRepBTopDeep(rer: LW.RegExpRecord, re: R.regex, crv: CP.FCompiled,
+                                   str: string, ov: LOr.OracleView,
+                                   S: set<LG.GroupId>, tl: seq<(LT.Tree, LG.GroupMap)>,
+                                   bl: seq<(AI.Thread, RC.char_expectation)>,
+                                   ncap: int, nlook: int, nquant: int) {
+    |tl| == |bl|
+    && forall i | 0 <= i < |tl| ::
+         LookNestBackTTopDeep(rer, re, crv, str, ov, S, tl[i].1, bl[i].0, ncap, nlook, nquant)
+  }
+
+  /** DEEP twin of `LookNestBackTRegSameTop` — register-inert step. Both banks
+      untouched, `gmt` grows; the deep carrier reads only `th.look_regs`/
+      `th.quant_regs` (via `SubFirstLeafAt`/`MatchedPosLA`/`LookPathDom`), so it is
+      preserved for free (as the direct twin). */
+  lemma LookNestBackTRegSameTopDeep(rer: LW.RegExpRecord, re: R.regex, crv: CP.FCompiled, str: string,
+                             ov: LOr.OracleView, S: set<LG.GroupId>, gmt: LG.GroupMap, gmt': LG.GroupMap,
+                             th: AI.Thread, th': AI.Thread,
+                             ncap: int, nlook: int, nquant: int)
+    requires LookNestBackTTopDeep(rer, re, crv, str, ov, S, gmt, th, ncap, nlook, nquant)
+    requires th'.look_regs == th.look_regs && th'.quant_regs == th.quant_regs
+    requires forall g: LG.GroupId :: g in gmt ==> g in gmt'
+    ensures LookNestBackTTopDeep(rer, re, crv, str, ov, S, gmt', th', ncap, nlook, nquant)
+  {
+  }
+
+  /** DEEP twin of `LookNestBackTSetQuantNestedTop` — an off-path SetQuant clock
+      re-stamp. The `LookPathDom`-break / off-path-congruence argument is IDENTICAL
+      (it depends only on the look/quant clocks, not on the landed set); the landed
+      set `SubFirstLeafAt(lid, th'.look_regs) == SubFirstLeafAt(lid, th.look_regs)`
+      since `th'.look_regs == th.look_regs`, and `g in CapIds(body(lid))` is disjoint
+      from `CapIds(QidBody(re, qn))` by `LookBodyQidBodyDisjoint`, so the survivor
+      `g in gmt` transports to `g in gmt'`. */
+  lemma LookNestBackTSetQuantNestedTopDeep(rer: LW.RegExpRecord, re: R.regex, crv: CP.FCompiled,
+                              str: string, ov: LOr.OracleView,
+                              S: set<LG.GroupId>, gmt: LG.GroupMap, gmt': LG.GroupMap,
+                              th: AI.Thread, th': AI.Thread, qn: nat,
+                              ncap: int, nlook: int, nquant: int)
+    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires LTB.LookUnique(re)
+    requires LookNestBackTTopDeep(rer, re, crv, str, ov, S, gmt, th, ncap, nlook, nquant)
+    requires qn in PIV.QuantIds(re) && qn in PIV.QuantIdsOutsideLooks(re)
+    requires th'.look_regs == th.look_regs
+    requires forall j: int :: j != qn as int ==>
+      AI.get_idx(th'.quant_regs.a_clk, j) == AI.get_idx(th.quant_regs.a_clk, j)
+    requires forall j: int ::
+      AI.get_idx(th.look_regs.a_clk, j) < AI.get_idx(th'.quant_regs.a_clk, qn as int)
+    requires forall g: LG.GroupId :: g in gmt && g !in PIV.CapIds(PIV.QidBody(re, qn)) ==> g in gmt'
+    ensures LookNestBackTTopDeep(rer, re, crv, str, ov, S, gmt', th', ncap, nlook, nquant)
+  {
+    NI.TopLookIdsIn(re);
+    forall lid: nat | lid in NI.TopLookIds(re)
+      && M.MatchedPosLA(crv, th'.look_regs, lid as int)
+      && NI.LookPathDom(re, AI.get_idx(th'.look_regs.a_clk, lid as int), th'.quant_regs.a_clk, lid)
+      ensures var lsub := SubFirstLeafAt(rer, crv, str, lid as int, th'.look_regs);
+              lsub.Some? ==>
+                forall g: LG.GroupId ::
+                  g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, lid)) && g in lsub.value
+                  ==> g in gmt'
+    {
+      var L := AI.get_idx(th.look_regs.a_clk, lid as int);
+      if lid in LTB.LookIds(PIV.QidBody(re, qn)) {
+        assert AI.get_idx(th'.quant_regs.a_clk, qn as int) > L;
+        NI.LookPathDomOnPathBreaksNested(re, L, th'.quant_regs.a_clk, lid, qn);
+        assert false;
+      } else {
+        NI.LookPathDomQuantOffPath(re, L, th.quant_regs.a_clk, th'.quant_regs.a_clk, lid, qn);
+        assert NI.LookPathDom(re, L, th.quant_regs.a_clk, lid);
+        NI.LookBodyQidBodyDisjoint(re, qn, lid);
+        var lsub := SubFirstLeafAt(rer, crv, str, lid as int, th'.look_regs);
+        forall g: LG.GroupId |
+          lsub.Some? && g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, lid)) && g in lsub.value
+          ensures g in gmt'
+        {
+          assert g in gmt;
+          assert g !in PIV.CapIds(PIV.QidBody(re, qn)) by {
+            if g in PIV.CapIds(PIV.QidBody(re, qn)) {
+              assert g in PIV.CapIds(NI.LookBodyOfRE(re, lid)) * PIV.CapIds(PIV.QidBody(re, qn));
+            }
+          }
+        }
+      }
+    }
+  }
+
   /** (D3) `LookNestOkTGatePassNested` on the `*Top` carrier. The DIRECT-ownership
       hypothesis (`g !in CapIdsInLooks(body(lid0))`) is DROPPED — a fresh fold may
       land an inner-look group, but inner looks are NOT in `TopLookIds`, so they
