@@ -398,8 +398,9 @@ checks of `FLookLoopValueLiftFull`/`QuantValueLiftFull`/`ChildLinkLift`/`LookCpS
 the `|res.1.a_cp|==nlook` by-block, and the TopLook-frame nested `forall`) TIME OUT
 even at a 900s per-assertion budget under `{:isolate_assertions}`. These are the
 SAME assertions as §14 (my V5 edit shifts them +15 lines, otherwise untouched) —
-the discharge itself verifies. 900s→still-timeout (not merely slow: looks like
-trigger-matching blowup, so a bigger budget won't converge). THE FIX is
+the discharge itself verifies. 900s AND 1800s give the IDENTICAL result (4455/0, same 14
+timeouts) — CONFIRMED trigger-matching blowup, NOT merely slow; a bigger budget
+will never converge (do not retry higher limits). THE FIX is
 STRUCTURAL: hoist MainTheoremL4's endpoint half (≈26811 onward: the FLookLoop
 bank-invariant block + the descent/owner-package tail) into a helper lemma with a
 MINIMAL context, so each precondition check / frame `forall` matches against only
