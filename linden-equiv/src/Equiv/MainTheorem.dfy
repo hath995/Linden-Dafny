@@ -12247,6 +12247,8 @@ module LindenElkMain {
       lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) && lid <= l2 <= l1 ==> l2 !in LookIdSet(b1)
     ensures var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
       |res.0.a_cp| == ncap && |res.0.a_clk| == ncap && PIV.CapRegWf(res.0)
+      && |res.1.a_cp| == nlook && |res.1.a_clk| == nlook          // L4 PERF: expose the look-bank length
+      && |res.2.a_cp| == nquant && |res.2.a_clk| == nquant        // L4 PERF: expose the quant-bank length
       && FLookLoopValueOkFull(crv, str, res.0, res.1, lid, maxlook, ov, ncap, nlook, nquant)
     decreases maxlook - lid
   {
@@ -17507,6 +17509,395 @@ module LindenElkMain {
 
       FLookLoopQuantCoversInLooks(crv, str, ast, re, c, l, q, ov, S, Slook, Sq, ncap, nlook, nquant, qd);
       FLookLoopQuantFrameNested(crv, str, 1, R.max_lookaround(ast), c, l, q, ov, S, Slook, Sq);
+    }
+  }
+
+  /** (L4 PERF adapter) The whole-bank `FLookLoopQuantValueOkFull` invariant from
+      the STATIC package alone — the endpoint needs it (ForwardMemberOne), and
+      proving the lift's `(c'q)/(D-ord-q)/(Sq-bound)` preconditions inline in
+      MainTheoremL4 timed out. This mirrors `FLookLoopQuantCoversFromTables`'s
+      variant setup verbatim (a minimal context) and then calls the lift, so the
+      expensive quantifier matching happens once, here, not in the whole lemma. */
+  lemma EndpointQuantValueOk(
+      ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
+      ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
+      cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+      ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires code == CP.compile_to_bytecode(re)
+    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
+    requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires cap == AReg.init_regs(ncap) && look == AReg.init_regs(nlook) && quant == AReg.init_regs(nquant)
+    requires |inits.processed.true_set| == RB.size(code) && |inits.processed.false_set| == RB.size(code)
+    requires inits.context.nextchar == AI.get_char(str, inits.cp)
+    requires 0 <= inits.cp <= |str| && inits.clock >= 0
+    requires inits.active == [AI.init_thread(cap, look, quant)]
+    requires inits.blocked == [] && inits.bestmatch.None?
+    requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
+    ensures result.Some? ==>
+      var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                              result.value.capture_regs, result.value.look_regs, result.value.quant_regs, ov);
+      FLookLoopQuantValueOkFull(crv, str, res.2, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+      && |res.2.a_cp| == nquant && |res.2.a_clk| == nquant
+      && (forall k :: AI.get_idx(res.2.a_cp, k) < 0) && (forall k :: AI.get_idx(res.2.a_clk, k) >= -1)
+      && CM.RegsAgreeOutside(res.2, result.value.quant_regs,
+                             (set qz: nat | qz in PIV.QuantIdsInLooks(re) :: qz as int))
+  {
+    LookRowsFromTablesNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
+                             ncap, nlook, nquant, endl, result);
+    if result.Some? {
+      var S := PIV.CaptureRegsSet(PIV.CapIdsInLooks(re));
+      var Slook := LookIdSet(re);
+      var Sq := set qz: nat | qz in PIV.QuantIdsInLooks(re) :: qz as int;
+      var c := result.value.capture_regs;
+      var l := result.value.look_regs;
+      var q := result.value.quant_regs;
+      assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant);
+      var maxlook := R.max_lookaround(ast);
+
+      // ---- quant twins of (c'q)/(D-ord-q)/(Sq-bound) — verbatim from FLookLoopQuantCoversFromTables ----
+      MainMatchBodyQuantsInitNested(re, code, str, inits, cap, look, quant, ov, cdn, result);
+      assert CM.RegsAgreeOutside(q, quant, QIdsOuter(re));
+      PIV.QuantIdsLooksDisjoint(re);
+      assert forall lx: int, lax: R.lookaround, body: R.regex ::
+        1 <= lx <= maxlook && LTB.LookEntryOk(crv, lx, lax, body) ==>
+        CM.RegsAgreeInside(q, AReg.init_regs(nquant), LKC.QIdsInt(body))
+      by {
+        forall lx: int, lax: R.lookaround, body: R.regex |
+          1 <= lx <= maxlook && LTB.LookEntryOk(crv, lx, lax, body)
+          ensures CM.RegsAgreeInside(q, AReg.init_regs(nquant), LKC.QIdsInt(body))
+        {
+          BodyQIdsIntDisjointOuterRe(ast, re, crv, lx, lax, body);
+          RegsAgreeOutsideToInside(q, AReg.init_regs(nquant), LKC.QIdsInt(body), QIdsOuter(re));
+        }
+      }
+      assert forall lx1: int, lax1: R.lookaround, b1: R.regex, lx2: int, lax2: R.lookaround, b2: R.regex ::
+        1 <= lx1 <= maxlook && 1 <= lx2 <= maxlook && lx1 < lx2
+        && LTB.LookEntryOk(crv, lx1, lax1, b1) && LTB.LookEntryOk(crv, lx2, lax2, b2) ==>
+        QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
+      by {
+        forall lx1: int, lax1: R.lookaround, b1: R.regex, lx2: int, lax2: R.lookaround, b2: R.regex |
+          1 <= lx1 <= maxlook && 1 <= lx2 <= maxlook && lx1 < lx2
+          && LTB.LookEntryOk(crv, lx1, lax1, b1) && LTB.LookEntryOk(crv, lx2, lax2, b2)
+          ensures QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
+        { DOrdQuantFromTables(ast, re, crv, lx1, lax1, b1, lx2, lax2, b2); }
+      }
+      assert forall lx: int, lax: R.lookaround, body: R.regex ::
+        1 <= lx <= maxlook && LTB.LookEntryOk(crv, lx, lax, body) ==> QIdsOuter(body) <= Sq
+      by {
+        forall lx: int, lax: R.lookaround, body: R.regex |
+          1 <= lx <= maxlook && LTB.LookEntryOk(crv, lx, lax, body)
+          ensures QIdsOuter(body) <= Sq
+        { SqBoundQuantFromTables(ast, re, crv, lx, lax, body); }
+      }
+
+      FLookLoopQuantValueLiftFull(crv, str, 1, maxlook, c, l, q, ov, S, Slook, Sq, ncap, nlook, nquant);
+      // the quant frame (RegsAgreeOutside(res.2, q, Sq)) — same (a)/(Sq-bound) setup
+      assert forall lx: int, lax: R.lookaround, body: R.regex ::
+        1 <= lx <= maxlook && LTB.LookEntryOk(crv, lx, lax, body) ==>
+        FrameEntryOk(crv, lax, body, S, Slook) && QIdsOuter(body) <= Sq;
+      FLookLoopQuantFrameNested(crv, str, 1, maxlook, c, l, q, ov, S, Slook, Sq);
+    }
+  }
+
+  /** (L4 PERF adapter) The whole-bank `FLookLoopValueOkFull` from the STATIC
+      package. `FLookLoopValueLiftFull`'s preconditions are ALL directly ensured
+      by `LookRowsFromTablesNested` (no quant/look variant needed), so this is a
+      thin two-call wrapper — but isolating it keeps the value-lift out of
+      MainTheoremL4's ambient context. */
+  lemma EndpointValueOk(
+      ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
+      ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
+      cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+      ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires code == CP.compile_to_bytecode(re)
+    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
+    requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires cap == AReg.init_regs(ncap) && look == AReg.init_regs(nlook) && quant == AReg.init_regs(nquant)
+    requires |inits.processed.true_set| == RB.size(code) && |inits.processed.false_set| == RB.size(code)
+    requires inits.context.nextchar == AI.get_char(str, inits.cp)
+    requires 0 <= inits.cp <= |str| && inits.clock >= 0
+    requires inits.active == [AI.init_thread(cap, look, quant)]
+    requires inits.blocked == [] && inits.bestmatch.None?
+    requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
+    ensures result.Some? ==>
+      var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                              result.value.capture_regs, result.value.look_regs, result.value.quant_regs, ov);
+      FLookLoopValueOkFull(crv, str, res.0, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+      && |res.0.a_cp| == ncap && |res.0.a_clk| == ncap && PIV.CapRegWf(res.0)
+      && |res.1.a_cp| == nlook && |res.1.a_clk| == nlook
+      && |res.2.a_cp| == nquant && |res.2.a_clk| == nquant
+  {
+    LookRowsFromTablesNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
+                             ncap, nlook, nquant, endl, result);
+    if result.Some? {
+      var S := PIV.CaptureRegsSet(PIV.CapIdsInLooks(re));
+      var Slook := LookIdSet(re);
+      var c := result.value.capture_regs;
+      var l := result.value.look_regs;
+      var q := result.value.quant_regs;
+      assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant);
+      FLookLoopValueLiftFull(crv, str, 1, R.max_lookaround(ast), c, l, q, ov, S, Slook, ncap, nlook, nquant);
+    }
+  }
+
+  /** (L4 PERF adapter) `FLookLoopChildLinkOk` from the STATIC package. Unlike the
+      value/quant lifts, `FLookLoopChildLinkLift` needs the (c'-look) precondition
+      (the winning look bank is INITIAL on every look body's direct-child lids),
+      which no existing `FromTables` wrapper produces — proving it inline in
+      MainTheoremL4 timed out. Here it is built once, in a minimal context: the
+      main code gates only DIRECT lids (`DirectLidClassified` -> `LookChecksInside
+      (code, DirectLidSet(re))`), so the winning look bank agrees with the initial
+      bank OUTSIDE `DirectLidSet(re)` (`CM.FFindMatchLookFrame`); and a look body's
+      direct children are disjoint from `re`'s direct lids (`DirectLidsNotInBody`),
+      so the bank is initial on each `DirectLidSet(body)`. */
+  lemma EndpointChildLinkOk(
+      ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
+      ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
+      cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+      ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires code == CP.compile_to_bytecode(re)
+    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
+    requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires cap == AReg.init_regs(ncap) && look == AReg.init_regs(nlook) && quant == AReg.init_regs(nquant)
+    requires |inits.processed.true_set| == RB.size(code) && |inits.processed.false_set| == RB.size(code)
+    requires inits.context.nextchar == AI.get_char(str, inits.cp)
+    requires 0 <= inits.cp <= |str| && inits.clock >= 0
+    requires inits.active == [AI.init_thread(cap, look, quant)]
+    requires inits.blocked == [] && inits.bestmatch.None?
+    requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
+    ensures result.Some? ==>
+      var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                              result.value.capture_regs, result.value.look_regs, result.value.quant_regs, ov);
+      FLookLoopChildLinkOk(crv, str, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+  {
+    LookRowsFromTablesNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
+                             ncap, nlook, nquant, endl, result);
+    var maxlook := R.max_lookaround(ast);
+    var initlk := AReg.init_regs(nlook);
+    var Sd := DirectLidSet(re);
+
+    // main-run look-bank frame: writes look only at DIRECT lids of re
+    DirectLidClassified(re);                                   // LookChecksInside(code, Sd)
+    assert CM.VmLooksAgree(inits, initlk, Sd) by {
+      forall t | t in inits.active ensures CM.RegsAgreeOutside(t.look_regs, initlk, Sd) {
+        assert t == AI.init_thread(cap, look, quant);
+      }
+    }
+    CM.FFindMatchLookFrame(code, str, inits, ov, LAnc.Forward, cdn, initlk, Sd);
+
+    if result.Some? {
+      var S := PIV.CaptureRegsSet(PIV.CapIdsInLooks(re));
+      var Slook := LookIdSet(re);
+      var c := result.value.capture_regs;
+      var l := result.value.look_regs;
+      var q := result.value.quant_regs;
+      assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant);
+      assert CM.RegsAgreeOutside(l, initlk, Sd);              // FFindMatchLookFrame
+
+      // (c'-look): the winning look bank is INITIAL on each body's direct children
+      assert forall lx: int, lax: R.lookaround, body: R.regex ::
+        1 <= lx <= maxlook && LTB.LookEntryOk(crv, lx, lax, body) ==>
+        CM.RegsAgreeInside(l, initlk, DirectLidSet(body))
+      by {
+        forall lx: int, lax: R.lookaround, body: R.regex |
+          1 <= lx <= maxlook && LTB.LookEntryOk(crv, lx, lax, body)
+          ensures CM.RegsAgreeInside(l, initlk, DirectLidSet(body))
+        {
+          LookEntryOnlyReal(ast, crv, lx, lax, body);          // (lx as nat) in LookIds(ast) == LookIds(re)
+          var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
+          assert re == R.Re_con(pre, ast);
+          assert LTB.LookIds(re) == LTB.LookIds(ast);
+          NI.LookBodyOfTablesTie(re, crv, lx as nat);
+          var la0: R.lookaround :| LTB.LookEntryOk(crv, lx as nat as int, la0, NI.LookBodyOfRE(re, lx as nat));
+          assert body == NI.LookBodyOfRE(re, lx as nat);
+          DirectLidsNotInBody(re, lx as nat);                  // DirectLookIds(re) * LookIds(body) == {}
+          DirectLidsSubLookIds(body);                          // DirectLookIds(body) <= LookIds(body)
+          forall k: int | k in DirectLidSet(body) ensures k !in Sd {
+            var kn: nat :| kn in DirectLookIds(body) && (kn as int) == k;
+            assert kn in LTB.LookIds(body);
+            if k in Sd {
+              var kr: nat :| kr in DirectLookIds(re) && (kr as int) == k;
+              assert kr == kn;
+              assert kr in DirectLookIds(re) * LTB.LookIds(body);
+            }
+          }
+          RegsAgreeOutsideToInside(l, initlk, DirectLidSet(body), Sd);
+        }
+      }
+
+      FLookLoopChildLinkLift(crv, str, 1, maxlook, c, l, q, ov, S, Slook, ncap, nlook, nquant);
+    }
+  }
+
+  /** (L4 PERF adapter) The res.1 look-bank invariants `LookCpsOracleTrue`,
+      `LookCpSetWithClk`, `LookCpsLE` from the STATIC package — the winning main
+      look bank carries the clk/cp/oracle-true shape (`CM.FFindMatchLook*`), and
+      `FLookLoopLookOracleTrue`/`FLookLoopLookCpSet` lift it through the fold. */
+  lemma EndpointLookInv(
+      ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
+      ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
+      cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+      ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires code == CP.compile_to_bytecode(re)
+    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
+    requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires cap == AReg.init_regs(ncap) && look == AReg.init_regs(nlook) && quant == AReg.init_regs(nquant)
+    requires |inits.processed.true_set| == RB.size(code) && |inits.processed.false_set| == RB.size(code)
+    requires inits.context.nextchar == AI.get_char(str, inits.cp)
+    requires 0 <= inits.cp <= |str| && inits.clock >= 0
+    requires inits.active == [AI.init_thread(cap, look, quant)]
+    requires inits.blocked == [] && inits.bestmatch.None?
+    requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
+    ensures result.Some? ==>
+      var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                              result.value.capture_regs, result.value.look_regs, result.value.quant_regs, ov);
+      CM.LookCpsOracleTrue(res.1, ov) && CM.LookCpSetWithClk(res.1) && CM.LookCpsLE(res.1, |str|)
+  {
+    LookRowsFromTablesNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
+                             ncap, nlook, nquant, endl, result);
+    NoWriteOracleBodyCodeNested(re);                           // NoWriteOracleCode(code)
+    var maxlook := R.max_lookaround(ast);
+    if result.Some? {
+      var S := PIV.CaptureRegsSet(PIV.CapIdsInLooks(re));
+      var Slook := LookIdSet(re);
+      var c := result.value.capture_regs;
+      var l := result.value.look_regs;
+      var q := result.value.quant_regs;
+      assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant);
+      assert CM.VmLookClkSet(inits) by {
+        RL.AInitLaws(nlook);
+        forall lz | AI.get_idx(look.a_cp, lz) >= 0 ensures AI.get_idx(look.a_clk, lz) >= 0 {
+          if 0 <= lz < nlook { assert look.a_cp[lz] == -1; }
+        }
+      }
+      CM.FFindMatchLookClkSet(code, str, inits, ov, LAnc.Forward, cdn);
+      assert CM.LookClkSetWithCp(l);
+      assert CM.VmLookCpSet(inits) by {
+        RL.AInitLaws(nlook);
+        forall lz | AI.get_idx(look.a_clk, lz) >= 0 ensures AI.get_idx(look.a_cp, lz) >= 0 {
+          if 0 <= lz < nlook { assert look.a_clk[lz] == -1; }
+        }
+      }
+      CM.FFindMatchLookCpSet(code, str, inits, ov, LAnc.Forward, cdn);
+      assert CM.LookCpSetWithClk(l);
+      assert CM.VmLookOracleTrue(inits, ov) by {
+        RL.AInitLaws(nlook);
+        forall lz | AI.get_idx(look.a_cp, lz) >= 0
+          ensures LOr.view_get_oracle(ov, AI.get_idx(look.a_cp, lz), lz)
+        {
+          if 0 <= lz < nlook { assert look.a_cp[lz] == -1; }
+        }
+      }
+      CM.FFindMatchLookOracleTrue(code, str, inits, ov, LAnc.Forward, cdn);
+      assert CM.LookCpsOracleTrue(l, ov);
+      FLookLoopLookOracleTrue(crv, str, 1, maxlook, c, l, q, ov, S, Slook, ncap, nlook, nquant);
+      FLookLoopLookCpSet(crv, str, 1, maxlook, c, l, q, ov, S, Slook, ncap, nlook, nquant);
+    }
+  }
+
+  /** (L4 PERF adapter) The TOP-look frame: `FLookLoop` leaves every TOP lid's
+      look record untouched (the fold replays nested children, never top rows).
+      Verbatim from MainTheoremL4's block — per top lid `l`, the (h')@l premise
+      (`l !in LookIdSet` of every row's body, via `TopLookNotNested`) feeds
+      `FLookLoopTopLook{Clk,Cp}StableFull`. */
+  lemma EndpointTopLookFrame(
+      ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
+      ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
+      cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+      ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires code == CP.compile_to_bytecode(re)
+    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
+    requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires cap == AReg.init_regs(ncap) && look == AReg.init_regs(nlook) && quant == AReg.init_regs(nquant)
+    requires |inits.processed.true_set| == RB.size(code) && |inits.processed.false_set| == RB.size(code)
+    requires inits.context.nextchar == AI.get_char(str, inits.cp)
+    requires 0 <= inits.cp <= |str| && inits.clock >= 0
+    requires inits.active == [AI.init_thread(cap, look, quant)]
+    requires inits.blocked == [] && inits.bestmatch.None?
+    requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
+    ensures result.Some? ==>
+      var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                              result.value.capture_regs, result.value.look_regs, result.value.quant_regs, ov);
+      forall lz: nat :: lz in NI.TopLookIds(re) ==>
+        AI.get_idx(res.1.a_clk, lz as int) == AI.get_idx(result.value.look_regs.a_clk, lz as int)
+        && AReg.get_cp(res.1, lz as int) == AReg.get_cp(result.value.look_regs, lz as int)
+  {
+    LookRowsFromTablesNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
+                             ncap, nlook, nquant, endl, result);
+    var maxlook := R.max_lookaround(ast);
+    if result.Some? {
+      var S := PIV.CaptureRegsSet(PIV.CapIdsInLooks(re));
+      var Slook := LookIdSet(re);
+      var c := result.value.capture_regs;
+      var l := result.value.look_regs;
+      var q := result.value.quant_regs;
+      assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant);
+      NI.TopLookIdsIn(re);
+      forall lz: nat | lz in NI.TopLookIds(re)
+        ensures AI.get_idx(AI.FLookLoop(crv, str, 1, maxlook, c, l, q, ov).1.a_clk, lz as int)
+                == AI.get_idx(l.a_clk, lz as int)
+             && AReg.get_cp(AI.FLookLoop(crv, str, 1, maxlook, c, l, q, ov).1, lz as int)
+                == AReg.get_cp(l, lz as int)
+      {
+        assert forall l1: int, la1: R.lookaround, b1: R.regex ::
+          1 <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> (lz as int) !in LookIdSet(b1)
+        by {
+          forall l1: int, la1: R.lookaround, b1: R.regex |
+            1 <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
+            ensures (lz as int) !in LookIdSet(b1)
+          {
+            LookEntryOnlyReal(ast, crv, l1, la1, b1);
+            var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
+            assert re == R.Re_con(pre, ast);
+            assert LTB.LookIds(re) == LTB.LookIds(ast);
+            NI.LookBodyOfTablesTie(re, crv, l1 as nat);
+            var laT: R.lookaround :| LTB.LookEntryOk(crv, l1, laT, NI.LookBodyOfRE(re, l1 as nat));
+            assert b1 == NI.LookBodyOfRE(re, l1 as nat);
+            NI.TopLookNotNested(re, lz, l1 as nat);
+            if (lz as int) in LookIdSet(b1) {
+              var x: nat :| x in LTB.LookIds(b1) && (x as int) == lz as int;
+              assert x == lz;
+            }
+          }
+        }
+        FLookLoopTopLookClkStableFull(crv, str, 1, maxlook, lz as int, c, l, q, ov, S, Slook);
+        FLookLoopTopLookCpStableFull(crv, str, 1, maxlook, lz as int, c, l, q, ov, S, Slook);
+      }
     }
   }
 }

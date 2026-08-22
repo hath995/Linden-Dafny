@@ -26809,6 +26809,10 @@ module LindenElkLiftSim {
       M.FirstLeafOrdered(t, inp, leaf);
 
       // ==== THE ENDPOINT CONTEXT (the FLookLoop bank invariants) ============
+      // L4 PERF: the bank-invariant lifts run through per-fact adapters
+      // (`M.Endpoint*`), each of which proves the lift's heavy
+      // (c'q)/(c'-look)/(Sq-bound) preconditions in its OWN minimal context.
+      // Inline, those precondition checks timed out even at a 1800s budget.
       var res := AI.FLookLoop(crv, str, 1, maxlook, thread.capture_regs, thread.look_regs,
                               thread.quant_regs, ov);
       var lkT := thread.look_regs;
@@ -26817,99 +26821,28 @@ module LindenElkLiftSim {
       var Slook := M.LookIdSet(re);
       var Sq := set q: nat | q in PIV.QuantIdsInLooks(re) :: q as int;
 
-      // (a)-(h) from the tables + the winning thread
+      // (a)-(h) tables for the frame lemmas kept inline below
       M.LookRowsFromTablesNested(ast, re, crv, code, str, ov, crv.f_main_cdns, inits,
                                  capture, look, quant, ncap, nlook, nquant, endl, result);
-      // whole-loop invariants of the reconstruction banks
-      M.FLookLoopValueLiftFull(crv, str, 1, maxlook, thread.capture_regs, lkT, qtT, ov,
-                               Sreg, Slook, ncap, nlook, nquant);
-      M.FLookLoopQuantValueLiftFull(crv, str, 1, maxlook, thread.capture_regs, lkT, qtT, ov,
-                                    Sreg, Slook, Sq, ncap, nlook, nquant);
-      M.FLookLoopChildLinkLift(crv, str, 1, maxlook, thread.capture_regs, lkT, qtT, ov,
-                               Sreg, Slook, ncap, nlook, nquant);
-      M.FLookLoopLookCpSet(crv, str, 1, maxlook, thread.capture_regs, lkT, qtT, ov,
-                           Sreg, Slook, ncap, nlook, nquant);
-      // thread-side look invariants (main run from all-unset banks)
-      assert CM.VmLookClkSet(inits) by {
-        RL.AInitLaws(nlook);
-        forall l: int | AI.get_idx(look.a_cp, l) >= 0 ensures AI.get_idx(look.a_clk, l) >= 0 {
-          if 0 <= l < nlook { assert look.a_cp[l] == -1; }
-        }
-      }
-      CM.FFindMatchLookClkSet(code, str, inits, ov, LAnc.Forward, crv.f_main_cdns);
-      assert CM.LookClkSetWithCp(lkT);
-      assert CM.VmLookCpSet(inits) by {
-        RL.AInitLaws(nlook);
-        forall l: int | AI.get_idx(look.a_clk, l) >= 0 ensures AI.get_idx(look.a_cp, l) >= 0 {
-          if 0 <= l < nlook { assert look.a_clk[l] == -1; }
-        }
-      }
-      CM.FFindMatchLookCpSet(code, str, inits, ov, LAnc.Forward, crv.f_main_cdns);
-      assert CM.LookCpSetWithClk(lkT);
-      assert CM.VmLookOracleTrue(inits, ov) by {
-        RL.AInitLaws(nlook);
-        forall l: int | AI.get_idx(look.a_cp, l) >= 0
-          ensures LOr.view_get_oracle(ov, AI.get_idx(look.a_cp, l), l)
-        {
-          if 0 <= l < nlook { assert look.a_cp[l] == -1; }
-        }
-      }
-      CM.FFindMatchLookOracleTrue(code, str, inits, ov, LAnc.Forward, crv.f_main_cdns);
-      assert CM.LookCpsOracleTrue(lkT, ov);
-      M.FLookLoopLookOracleTrue(crv, str, 1, maxlook, thread.capture_regs, lkT, qtT, ov,
-                                Sreg, Slook, ncap, nlook, nquant);
-      assert CM.LookCpsOracleTrue(res.1, ov);
-      assert CM.LookCpSetWithClk(res.1) && CM.LookCpsLE(res.1, |str|);
-      assert M.FLookLoopChildLinkOk(crv, str, res.1, 1, maxlook, ov, ncap, nlook, nquant);
-      assert M.FLookLoopValueOkFull(crv, str, res.0, res.1, 1, maxlook, ov, ncap, nlook, nquant);
-      assert M.FLookLoopQuantValueOkFull(crv, str, res.2, res.1, 1, maxlook, ov, ncap, nlook, nquant);
-      assert PIV.CapRegWf(res.0) && |res.0.a_cp| == ncap && |res.0.a_clk| == ncap;
-      assert |res.1.a_cp| == nlook && |res.1.a_clk| == nlook by {
-        // hmm: the loop preserves look-bank lengths (ThreadRegsWf of the banks)
-        M.FLookLoopLookCpSet(crv, str, 1, maxlook, thread.capture_regs, lkT, qtT, ov,
-                             Sreg, Slook, ncap, nlook, nquant);
-      }
 
-      // (a) recon_outer frames
+      // the endpoint OkFull/look invariants + lengths, via the PERF adapters
+      M.EndpointValueOk(ast, re, crv, code, str, ov, crv.f_main_cdns, inits, capture, look, quant, ncap, nlook, nquant, endl, result);
+      M.EndpointQuantValueOk(ast, re, crv, code, str, ov, crv.f_main_cdns, inits, capture, look, quant, ncap, nlook, nquant, endl, result);
+      M.EndpointChildLinkOk(ast, re, crv, code, str, ov, crv.f_main_cdns, inits, capture, look, quant, ncap, nlook, nquant, endl, result);
+      M.EndpointLookInv(ast, re, crv, code, str, ov, crv.f_main_cdns, inits, capture, look, quant, ncap, nlook, nquant, endl, result);
+
+      // (a) recon_outer frames (inline — these never timed out)
       M.FLookLoopCaptureFrameNested(crv, str, 1, maxlook, thread.capture_regs, lkT, qtT, ov, Sreg, Slook);
-      M.FLookLoopQuantFrameNested(crv, str, 1, maxlook, thread.capture_regs, lkT, qtT, ov, Sreg, Slook, Sq);
       assert CM.RegsAgreeOutside(res.0, thread.capture_regs, Sreg);
       assert CM.RegsAgreeOutside(res.1, lkT, Slook);
       assert CM.RegsAgreeOutside(res.2, qtT, Sq);
 
-      // res -> thread frames at TOP looks ((h')-for-top via TopLookNotNested)
+      // res -> thread frames at TOP looks (PERF adapter)
+      M.EndpointTopLookFrame(ast, re, crv, code, str, ov, crv.f_main_cdns, inits, capture, look, quant, ncap, nlook, nquant, endl, result);
       assert forall l: nat :: l in NI.TopLookIds(re) ==>
         AI.get_idx(res.1.a_clk, l as int) == AI.get_idx(lkT.a_clk, l as int)
-        && AReg.get_cp(res.1, l as int) == AReg.get_cp(lkT, l as int)
-      by {
-        NI.TopLookIdsIn(re);
-        forall l: nat | l in NI.TopLookIds(re)
-          ensures AI.get_idx(res.1.a_clk, l as int) == AI.get_idx(lkT.a_clk, l as int)
-               && AReg.get_cp(res.1, l as int) == AReg.get_cp(lkT, l as int)
-        {
-          assert forall l1: int, la1: R.lookaround, b1: R.regex ::
-            1 <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> (l as int) !in M.LookIdSet(b1)
-          by {
-            forall l1: int, la1: R.lookaround, b1: R.regex |
-              1 <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
-              ensures (l as int) !in M.LookIdSet(b1)
-            {
-              NI.LookBodyOfTablesTie(re, crv, l1 as nat) by { M.LookEntryOnlyReal(ast, crv, l1, la1, b1); }
-              var laT: R.lookaround :| LTB.LookEntryOk(crv, l1, laT, NI.LookBodyOfRE(re, l1 as nat));
-              assert b1 == NI.LookBodyOfRE(re, l1 as nat);
-              NI.TopLookNotNested(re, l, l1 as nat);
-              if (l as int) in M.LookIdSet(b1) {
-                var x: nat :| x in LTB.LookIds(b1) && (x as int) == l as int;
-                assert x == l;
-              }
-            }
-          }
-          M.FLookLoopTopLookClkStableFull(crv, str, 1, maxlook, l as int,
-                                          thread.capture_regs, lkT, qtT, ov, Sreg, Slook);
-          M.FLookLoopTopLookCpStableFull(crv, str, 1, maxlook, l as int,
-                                         thread.capture_regs, lkT, qtT, ov, Sreg, Slook);
-        }
-      }
+        && AReg.get_cp(res.1, l as int) == AReg.get_cp(lkT, l as int);
+
       // quant frame outside looks, res2 vs thread
       assert forall q: nat :: q in PIV.QuantIdsOutsideLooks(re) ==>
         AI.get_idx(res.2.a_clk, q as int) == AI.get_idx(qtT.a_clk, q as int)
