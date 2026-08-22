@@ -408,3 +408,40 @@ its own `requires` instead of MainTheoremL4's thousands of accumulated facts
 (the §14 "minimal context" pattern, e.g. `FFullCompilationFacts`). Big but
 mechanical; deferred per the commit-cadence directive (don't block on the
 expensive whole-lemma sweeps). Everything the brick needed is proven.
+
+## 16. PERF ATTEMPT — one REAL GAP fixed; the hoist was the WRONG fix (2026-08-22)
+Investigating the ~14 MainTheoremL4 timeouts under "continue the perf refactoring":
+
+**A REAL SOUNDNESS GAP, FOUND + FIXED (not perf).** MainTheoremL4 called
+`M.FFullCompilationFacts(ast)`, whose `requires NR.LookBehindFragmentRE(ast)` is
+FALSE for a genuinely nested `ast` (that predicate forces look-free look bodies —
+the depth-1 fragment). Z3 thrashed on the false precondition and reported a
+TIMEOUT rather than an error, masking the hole. `FCompileExtra` only ever writes
+`f_plus_bc` + the five `f_look_*` tables — never the three main fields — so the
+main-field frame holds for ANY regex. FIX (both GREEN, 1/0): `M.FCompileExtraFrameAny`
+(no fragment premise) + `M.FFullCompilationFactsNested`, and MainTheoremL4 now
+calls the Nested variant. **This is the banked win of the perf pass** (LiftSim: the
+one-line call swap; MainTheorem: the two new lemmas).
+
+**THE HOIST DOESN'T HELP — REVERTED.** Hypothesis was that the remaining ~13
+timeouts (the FLookLoop-lift precondition checks at the endpoint block + the
+TopLook/quant frames) were slow only because of MainTheoremL4's huge ambient
+context, so hoisting the block into a minimal-context helper
+(`MainTheoremL4EndpointFrames`) would make them fast. IT DID NOT: the isolated
+helper still would not verify (killed after 68 min, no diagnostics — Dafny buffers
+`{:isolate_assertions}` output to the end; `--progress` buffers when redirected;
+`--filter-position` did not isolate as hoped). Decisive evidence the cost is
+INTRINSIC, not context-driven: the whole-lemma runs at 250s / 900s / 1800s
+per-assertion budgets give BYTE-IDENTICAL results (4455 verified, 13 timeouts) —
+more context budget changes nothing, and isolation changes nothing. The helper was
+reverted; MainTheoremL4 keeps its inline block.
+
+**THE REAL FIX (next, larger).** The intrinsic cost is Z3 matching the FLookLoop
+lift lemmas' 8 nested-quantifier `(a)-(h)` preconditions. Bundle `(a)-(h)` into ONE
+opaque predicate `EndpointHyps(crv, str, re, lid, maxlook, cap, lk, qt, ov, S, Slook, …)`
+that `LookRowsFromTablesNested` ENSURES and every FLookLoop lift lemma REQUIRES
+(and threads through its own recursion) — so Dafny matches ONE hypothesis instead
+of exploding 8 nested `forall`s. That is a signature refactor across the ~6
+FLookLoop lift lemmas in MainTheorem.dfy (each a long verify); real but bounded.
+Until then MainTheoremL4 stays at 4455/0-plus-13-timeouts (the 13 are slow, not
+false: they mirror the GREEN L3a frames and use purpose-built nested lemmas).

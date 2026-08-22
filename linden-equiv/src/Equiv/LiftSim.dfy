@@ -26705,7 +26705,7 @@ module LindenElkLiftSim {
 
     // ---- the engine pipeline ---------------------------------------------
     var crv := CP.FFullCompilation(ast);
-    M.FFullCompilationFacts(ast);
+    M.FFullCompilationFactsNested(ast);   // L4: nested ast is NOT LookBehindFragmentRE
     assert crv.f_main_ast == ast && crv.f_main_bc == code && crv.f_main_cdns == LCdn.compile_cdns(ast);
     var ov := AI.FBuildOracle(crv, str);
     OB.FBuildOracleViewLen(crv, str);                     // |ov| == |str| + 1

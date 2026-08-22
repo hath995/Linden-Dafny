@@ -3929,6 +3929,61 @@ module LindenElkMain {
     FCompileExtraFrame(ast, base);
   }
 
+  /** (L4 NESTED) The main-field frame of `FCompileExtra`, with NO fragment
+      hypothesis. `FCompileExtra` only ever writes `f_plus_bc` (quant case) and
+      the five `f_look_*` tables (lookaround case) — it never touches the three
+      main fields — so the invariance holds for ANY regex, nested looks
+      included. The depth-1 `FCompileExtraFrame` needed `LookBehindFragmentRE`
+      only to recurse into a look body via `PlusIsLookBehindFragmentRE`; the
+      recursion here just descends structurally, so the premise is dropped. */
+  lemma FCompileExtraFrameAny(r: R.regex, c: CP.FCompiled)
+    ensures CP.FCompileExtra(r, c).f_main_ast == c.f_main_ast
+    ensures CP.FCompileExtra(r, c).f_main_bc == c.f_main_bc
+    ensures CP.FCompileExtra(r, c).f_main_cdns == c.f_main_cdns
+    decreases r
+  {
+    match r
+    case Re_empty => case Re_character(_) => case Re_anchor(_) =>
+    case Re_capture(_, r1) => FCompileExtraFrameAny(r1, c);
+    case Re_alt(r1, r2) => FCompileExtraFrameAny(r1, c); FCompileExtraFrameAny(r2, CP.FCompileExtra(r1, c));
+    case Re_con(r1, r2) => FCompileExtraFrameAny(r1, c); FCompileExtraFrameAny(r2, CP.FCompileExtra(r1, c));
+    case Re_quant(nul, qid, quant, r1) =>
+      var c1 := if quant.min > 0 && quant.max == None && nul != R.NonNullable && quant.greedy
+                then c.(f_plus_bc := CP.upd(c.f_plus_bc, qid, CP.compile_reconstruct_nulled(r1)))
+                else c;
+      FCompileExtraFrameAny(r1, c1);
+    case Re_lookaround(lid, la, body) =>
+      var c1 := c.(f_look_types := CP.upd(c.f_look_types, lid, la));
+      var c2 := c1.(f_look_cdns := CP.upd(c1.f_look_cdns, lid, LCdn.compile_cdns(body)));
+      var c3 := c2.(f_look_ast := CP.upd(c2.f_look_ast, lid, body));
+      var c4 := c3.(f_look_build_bc :=
+                      CP.upd(c3.f_look_build_bc, lid,
+                             CP.compile_to_write(CP.oracle_regex(la, body), lid)));
+      var c5 := c4.(f_look_capture_bc :=
+                      CP.upd(c4.f_look_capture_bc, lid,
+                             CP.compile_to_bytecode(CP.capture_regex(la, body))));
+      FCompileExtraFrameAny(body, c5);
+  }
+
+  /** (L4 NESTED) `FFullCompilationFacts` for the NESTED fragment: the three
+      main fields of `FFullCompilation(ast)` are the obvious compile outputs,
+      for a nested-fragment `ast`. Same base literal as the depth-1 version,
+      the frame discharged by `FCompileExtraFrameAny` (no fragment premise). */
+  lemma FFullCompilationFactsNested(ast: R.regex)
+    ensures CP.FFullCompilation(ast).f_main_ast == ast
+    ensures CP.FFullCompilation(ast).f_main_bc == CP.compile_to_bytecode(R.lazy_prefix(ast))
+    ensures CP.FFullCompilation(ast).f_main_cdns == LCdn.compile_cdns(ast)
+  {
+    var nlook0 := R.max_lookaround(ast) + 1;
+    var nquant0 := R.max_quant(ast) + 1;
+    var base := CP.FCompiled(ast, CP.compile_to_bytecode(R.lazy_prefix(ast)), LCdn.compile_cdns(ast),
+                             seq(nlook0, i => R.Lookahead), seq(nlook0, i => R.Re_empty),
+                             seq(nlook0, i => []), seq(nlook0, i => []),
+                             seq(nlook0, i => []), seq(nquant0, i => []));
+    assert CP.FFullCompilation(ast) == CP.FCompileExtra(ast, base);
+    FCompileExtraFrameAny(ast, base);
+  }
+
   // ==========================================================================
   // The lookaround CAPTURE pass leaves the answer alone (L1).
   //
