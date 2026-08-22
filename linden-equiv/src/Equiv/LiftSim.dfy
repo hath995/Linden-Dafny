@@ -26569,6 +26569,100 @@ module LindenElkLiftSim {
       M.GNQLTop(re, c);
     }
   }
+  // ==========================================================================
+  // L4 PERF: the deep-case CONCLUSION — the two descent wrappers + endpoint
+  // assembly, hoisted into a MINIMAL context. In MainTheoremL4 the
+  // `ReverseCDeepFull` / `ForwardMemberOne` precondition CHECKS timed out (even
+  // at 450s) — not from any hard proof (their preconditions are all assumptions
+  // produced by the endpoint adapters and the owner-package forall) but from Z3
+  // MATCHING ~25 quantified requires against MainTheoremL4's thousands of
+  // ambient facts. Here they match against only this lemma's own requires.
+  // ==========================================================================
+  lemma {:isolate_assertions} MainTheoremL4DeepConclude(
+      rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
+      code: RB.code, endl: nat, ov: LOr.OracleView, thread: AI.Thread, leaf: LT.Leaf,
+      t: LT.Tree, inp: LC.Input, S: set<LG.GroupId>, ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re) && M.NoPosLookbehindRE(re) && NR.NegLooksLookFreeRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> (x as int) in qm.looks
+    requires nlook == R.max_lookaround(ast) + 1
+    requires R.max_lookaround(re) == R.max_lookaround(ast)
+    requires qm.ov == ov && !rer.multiline && !rer.ignoreCase && |ov| == |str| + 1
+    requires forall l: int :: l in qm.looks ==> l >= 0
+    requires forall cp: nat :: cp <= |str| ==> LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
+    requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
+    requires forall l: int, la: R.lookaround, b: R.regex ::
+      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, b) ==>
+      M.FrameEntryOk(crv, la, b, PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re))
+    requires forall c: nat :: c in PIV.CapIdsInLooks(re) ==> M.GNotUnderQuantL(T.Translate(re), c)
+    requires S == PIV.CapIdsInLooks(re)
+    requires M.OrderedGm(leaf.1)
+    requires LT.FirstLeaf(t, inp) == Some(leaf)
+    requires BestTieLkNestedTop(rer, re, crv, str, ov, S, Some(leaf), Some(thread), ncap, nlook, nquant)
+    // ---- global res-side facts (the endpoint adapters' outputs) ----
+    requires var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                     thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
+      |res.1.a_cp| == nlook && |res.1.a_clk| == nlook
+      && CM.LookCpSetWithClk(res.1) && CM.LookCpsLE(res.1, |str|) && CM.LookCpsOracleTrue(res.1, ov)
+      && M.FLookLoopChildLinkOk(crv, str, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+      && M.FLookLoopValueOkFull(crv, str, res.0, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+      && M.FLookLoopQuantValueOkFull(crv, str, res.2, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+      && (forall c: nat :: c in PIV.CapIds(re) && AI.get_idx(res.0.a_clk, CP.start_reg(c)) < 0
+                          ==> AI.get_idx(res.0.a_cp, CP.start_reg(c)) < 0)
+      && (forall l: nat :: l in NI.TopLookIds(re) ==>
+            AI.get_idx(res.1.a_clk, l as int) == AI.get_idx(thread.look_regs.a_clk, l as int)
+            && AReg.get_cp(res.1, l as int) == AReg.get_cp(thread.look_regs, l as int))
+      && (forall q: nat :: q in PIV.QuantIdsOutsideLooks(re) ==>
+            AI.get_idx(res.2.a_clk, q as int) == AI.get_idx(thread.quant_regs.a_clk, q as int))
+      && (forall k: int :: k !in PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)) ==>
+            AI.get_idx(res.0.a_cp, k) == AI.get_idx(thread.capture_regs.a_cp, k)
+            && AI.get_idx(res.0.a_clk, k) == AI.get_idx(thread.capture_regs.a_clk, k))
+      && CM.ThreadRegsWf(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed), ncap, nlook, nquant)
+      && M.QuantRegsFinal(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed))
+    // ---- thread invariants ----
+    requires CM.LookCpSetWithClk(thread.look_regs)
+    requires CM.LookCpsOracleTrue(thread.look_regs, ov)
+    requires CM.LookCpsLE(thread.look_regs, |str|)
+    requires |thread.look_regs.a_cp| == |thread.look_regs.a_clk|
+    // ---- the OWNER-package forall (proven inline in MainTheoremL4) ----
+    requires var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                     thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
+      forall g: LG.GroupId :: g in S && g in PIV.GmOfLive(re, res.0, res.1, res.2) ==>
+        exists owner: nat :: OwnerPkg(crv, str, re, ov, res.1, g, owner, ncap, nlook, nquant)
+    ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                    thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
+      leaf.1 == PIV.NormGm(PIV.GmOfLive(re, res.0, res.1, res.2))
+  {
+    var maxlook := R.max_lookaround(ast);
+    var res := AI.FLookLoop(crv, str, 1, maxlook, thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
+
+    // (R): reverse membership
+    ReverseCDeepFull(rer, qm, crv, str, ast, re, ov, thread, res.0, res.1, res.2,
+                     S, leaf.1, ncap, nlook, nquant);
+    assert forall g: LG.GroupId :: g in S && g in PIV.GmOfLive(re, res.0, res.1, res.2) ==> g in leaf.1;
+
+    // (F): forward membership + value
+    assert forall g: LG.GroupId :: g in S && g in leaf.1 ==>
+      g in PIV.GmOfLive(re, res.0, res.1, res.2)
+      && leaf.1[g] == PIV.GmOfLive(re, res.0, res.1, res.2)[g]
+    by {
+      forall g: LG.GroupId | g in S && g in leaf.1
+        ensures g in PIV.GmOfLive(re, res.0, res.1, res.2)
+             && leaf.1[g] == PIV.GmOfLive(re, res.0, res.1, res.2)[g]
+      {
+        ForwardMemberOne(rer, qm, crv, str, ast, re, ov, thread, res.0, res.1, res.2,
+                         S, leaf.1, g, ncap, nlook, nquant);
+      }
+    }
+
+    // endpoint assembly
+    L3aEndpointAssemblyNestedFull2(ast, re, crv, code, endl, str, ov, S, thread, leaf,
+                                   ncap, nlook, nquant, rer, qm, t, inp);
+  }
+
+
 
   // ==========================================================================
   // THE MAIN THEOREM, L4: arbitrarily NESTED capturing positive lookaheads.
@@ -26936,28 +27030,11 @@ module LindenElkLiftSim {
           assert OwnerPkg(crv, str, re, ov, res.1, g, owner, ncap, nlook, nquant);
         }
       }
-      ReverseCDeepFull(rer, qm, crv, str, ast, re, ov, thread, res.0, res.1, res.2,
-                       S, leaf.1, ncap, nlook, nquant);
-      assert forall g: LG.GroupId :: g in S && g in PIV.GmOfLive(re, res.0, res.1, res.2) ==> g in leaf.1;
-
-      // (F): forward membership + value
-      assert forall g: LG.GroupId :: g in S && g in leaf.1 ==>
-        g in PIV.GmOfLive(re, res.0, res.1, res.2)
-        && leaf.1[g] == PIV.GmOfLive(re, res.0, res.1, res.2)[g]
-      by {
-        forall g: LG.GroupId | g in S && g in leaf.1
-          ensures g in PIV.GmOfLive(re, res.0, res.1, res.2)
-               && leaf.1[g] == PIV.GmOfLive(re, res.0, res.1, res.2)[g]
-        {
-          ForwardMemberOne(rer, qm, crv, str, ast, re, ov, thread, res.0, res.1, res.2,
-                           S, leaf.1, g, ncap, nlook, nquant);
-          assert PIV.GmOfLive(re, res.0, res.1, res.2)[g] == PIV.LiveRange(res.0.a_cp, res.0.a_clk, g);
-        }
-      }
-
-      // ==== the endpoint + extraction =======================================
-      L3aEndpointAssemblyNestedFull2(ast, re, crv, code, endl, str, ov, S, thread, leaf,
-                                     ncap, nlook, nquant, rer, qm, t, inp);
+      // (R)+(F) descent wrappers + endpoint assembly — hoisted to a minimal
+      // context (`MainTheoremL4DeepConclude`); inline, the two wrappers'
+      // precondition checks timed out even at 450s.
+      MainTheoremL4DeepConclude(rer, qm, crv, str, ast, re, code, endl, ov, thread, leaf,
+                                t, inp, S, ncap, nlook, nquant);
       assert leaf.1 == PIV.NormGm(PIV.GmOfLive(re, res.0, res.1, res.2));
 
       // the engine answer via the L3a unfold, at the SAME res
