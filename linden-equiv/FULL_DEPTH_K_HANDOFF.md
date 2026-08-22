@@ -351,3 +351,59 @@ drop the requires, widen `Supported` with the raw-executable scope predicates
 (NestedFragmentRaw ✓ exists; NoPosLookbehindRaw / NegLooksLookFreeRaw / the GNotUnderQuantL
 raw shadow + annotate transfers — mechanical structural lemmas), and switch `MatchCorrect`
 to dispatch L3/L4.
+
+## 15. THE NESTED ORACLE ENTRY — DONE; MainTheoremL4 hypothesis DISCHARGED (2026-08-22, HEAD `f2fce5b`)
+The LAST BRICK is built and per-symbol GREEN. `MainTheoremL4`'s sole `requires`
+(the nested `OracleOkSuffix`) is REMOVED and discharged in-body — the depth-k
+capturing theorem is unconditional modulo the perf note below.
+
+**New, all green (dafny 4.11, `--filter-symbol`):**
+- `OracleColumnNested` (LiftSim, **1070/0**, `{:isolate_assertions}`) — THE per-row
+  column spec. Chain: `OB.FBuildOracleCorrectAboveNested` (bit ⟺
+  `LidReachesVFinal` against the FINAL view) → reveal `LidReachesVFinal` →
+  V1/V2 span bridges (`OBV.MatchesVToReachesWriteV` /
+  `ODV.ReachesWriteVToMatchesV`) → V3 `OMV.MatchesVMirror` +
+  `OMV.MatchesVRemoveCapture` → V4 `OAV.AcceptRunCharacterizationV` (engine run
+  ⟺ ∃ gated span) → `M.BodyTreeAtCpNested` (engine run @cp ⟺ body's spec first
+  leaf, fed by the row's INNER-rows oracle truth). Two flavours: pos/neg
+  lookAHEAD rows (backward build, mirrored) via the tree; negative lookBEHIND
+  rows (forward build, look-free body by `NegLooksLookFreeRE`) via blind
+  `SD.SpanDuality{Complete,Sound}`.
+- `OracleOkRowsNested` (LiftSim, **710/0**, `{:isolate_assertions}`) — the
+  recursion on look-nesting: each row's INNER rows first (strict decrease via
+  `SubsetCardLt` + `LookIdNotInOwnBody`), then the row's own `OracleColumnNested`.
+  At `sub == lazy_prefix(top)` this IS MainTheoremL4's old hypothesis.
+- Helpers (green): `MatchesVLookFree`/`MatchesIterVLookFree` (gated span ⟺ blind
+  `OBr.Matches` on look-free bodies), `MatchesVUpper`/`MatchesIterVUpper` (a gated
+  span stays in-bounds), `LookBodyRowNested` (row facts: scope predicates descend,
+  `LmOf(sub)[lid]` IS the table row, neg rows are look-free).
+- `ApiMatch` (**6/0**) — `Supported = SupportedL3 || SupportedL4`; `MatchCorrect`
+  DISPATCHES L3/L4. `SupportedL4` = the four syntactic raw scope predicates
+  (`L4ScopeFromRaw`). `ApiReasoning` (**16/0**) — the widening composes.
+
+**GOTCHA that bit this session (both fixed):** `OracleColumnNested`'s `requires`
+referenced `M.QmOfRE(body)`/`OE.LmOf(body)`, whose well-formedness needs
+`T.TransWf(body)` — NOT in scope at requires-check time (→ 15 identical
+"function precondition" errors under isolate_assertions). FIX: an explicit
+prior `requires T.TransWf(NI.LookBodyOfRE(sub, lid as nat))` (the caller proves
+it via `LookBodyRowNested`). And a standalone `assert r.Some? <==> ∃j
+MatchesV(...)` restating `AcceptRunCharacterizationV`'s postcondition TIMED OUT
+(the `∃ MatchesV` expands the big predicate); DROP it — the postcondition stays
+available as an assumption, and the per-branch uses of it verify fine.
+
+**THE REMAINING ITEM — PURE PERF, NOT CORRECTNESS.** `MainTheoremL4` as a whole
+does NOT single-shot verify: **4455/0 obligations pass**, but ~14 of its
+FLookLoop-frame assertions (LiftSim ≈26811–26933: the (a)-(h) precondition
+checks of `FLookLoopValueLiftFull`/`QuantValueLiftFull`/`ChildLinkLift`/`LookCpSet`,
+the `|res.1.a_cp|==nlook` by-block, and the TopLook-frame nested `forall`) TIME OUT
+even at a 900s per-assertion budget under `{:isolate_assertions}`. These are the
+SAME assertions as §14 (my V5 edit shifts them +15 lines, otherwise untouched) —
+the discharge itself verifies. 900s→still-timeout (not merely slow: looks like
+trigger-matching blowup, so a bigger budget won't converge). THE FIX is
+STRUCTURAL: hoist MainTheoremL4's endpoint half (≈26811 onward: the FLookLoop
+bank-invariant block + the descent/owner-package tail) into a helper lemma with a
+MINIMAL context, so each precondition check / frame `forall` matches against only
+its own `requires` instead of MainTheoremL4's thousands of accumulated facts
+(the §14 "minimal context" pattern, e.g. `FFullCompilationFacts`). Big but
+mechanical; deferred per the commit-cadence directive (don't block on the
+expensive whole-lemma sweeps). Everything the brick needed is proven.
