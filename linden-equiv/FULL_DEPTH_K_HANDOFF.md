@@ -445,3 +445,49 @@ of exploding 8 nested `forall`s. That is a signature refactor across the ~6
 FLookLoop lift lemmas in MainTheorem.dfy (each a long verify); real but bounded.
 Until then MainTheoremL4 stays at 4455/0-plus-13-timeouts (the 13 are slow, not
 false: they mirror the GREEN L3a frames and use purpose-built nested lemmas).
+
+## 17. THE PERF PASS — 14→2 TIMEOUTS, then a NON-CONVERGENT WALL (2026-08-22/23)
+Under "fix the MainTheoremL4 timeouts", a large perf pass. RESULT: MainTheoremL4
+went from 14 timeouts to **2** (committed `bb2e351`), one of the original 14 was a
+MASKED SOUNDNESS GAP (fixed, §16). The final 2 are a genuine, thoroughly-established
+Dafny/Z3 wall.
+
+**GREEN, committed (bb2e351):** six per-fact endpoint ADAPTERS in MainTheorem.dfy —
+`M.Endpoint{ValueOk,QuantValueOk,ChildLinkOk,LookInv,TopLookFrame}` (each proves its
+FLookLoop lift's heavy (c'q)/(c'-look)/(Sq-bound) preconditions in its OWN minimal
+context, mirroring the green `*FromTables` setup; `EndpointChildLinkOk` builds a NEW
+(c'-look) producer from `CM.FFindMatchLookFrame` over `DirectLidClassified` +
+`DirectLidsNotInBody`) — plus `FLookLoopValueLiftFull` extended to expose the look/quant
+bank LENGTHS. `MainTheoremL4DeepConclude` hoists the (R)/(F) descent wrappers + endpoint
+assembly. Each helper verifies in isolation (<150s adapters; DeepConclude 419/0).
+
+**THE 2 REMAINING TIMEOUTS (LiftSim `MainTheoremL4`, the DeepConclude CALL + the
+`M.MainExtractionNested` CALL): NON-CONVERGENT precondition-matching.** Both are Z3
+matching ~10–20 QUANTIFIED preconditions against MainTheoremL4's ~5000-obligation
+context; the cost is CUMULATIVE (more quantified facts in scope ⇒ every match slower).
+Confirmed non-convergent: **250s = 900s = 1800s all give the identical 2-timeout
+result**, and the correctness is not in doubt (5044/0; every referenced lemma verifies in
+isolation — the timeouts are matching-TIME, not soundness).
+
+**WHAT WAS TRIED AND FAILED (do not repeat):**
+- Opaque BUNDLE (`DeepReady` = one opaque predicate of the ~30 requires): ESTABLISHING
+  the bundle (proving the conjunction, via `reveal`) is itself NON-CONVERGENT — timed out
+  at 250s AND 700s AND 1500s, whether in MainTheoremL4 (5000 facts) or a clean helper
+  `ProduceDeepReady` (1253 facts). Reason: all quantifiers active in ONE conjunction VC.
+- UNBUNDLE (`ProduceDeepReady` ensures the facts separately): each individual quantified
+  ensures ALSO exceeds 250s against the 1253-fact block context (cumulative cost again).
+- NO `{:isolate_assertions}` (the whole lemma as one VC): non-convergent even at 1800s
+  (the monolith is exactly what isolate exists to avoid).
+- Higher budgets / `.doo` banking: cannot bank a proof that never passes at any budget.
+
+**THE ONE UNTRIED TECHNIQUE (the right fix, LARGE): opaque AT THE SOURCE.** Give each
+heavy quantified fact its OWN opaque predicate (`ValueOkOpaque`, `ChildLinkOpaque`,
+`TopLookFrameOpaque`, `OwnerForallOpaque`, …), ESTABLISHED cheaply inside its producing
+adapter (`assert OpaqueP() by { reveal OpaqueP(); }` right after the raw fact is proven —
+a direct match in the adapter's SMALL context), and REQUIRED (opaque, atomic, NO
+triggers) by `ReverseCDeepFull` / `ForwardMemberOne` / `L3aEndpointAssemblyNestedFull2` /
+`DeepConclude` / `MainExtractionNested`, each `reveal`ing internally to recover the raw
+fact for its own (already-green) body. This keeps facts SEPARATE (no bundle conjunction)
+and removes their triggers from every call-site context (no cumulative match cost). Cost:
+~8 big lemmas + ~15 opaque predicates + re-verification. Not yet attempted; recommended if
+0-timeouts on MainTheoremL4 is required. Otherwise `bb2e351` (2 provable timeouts) stands.
