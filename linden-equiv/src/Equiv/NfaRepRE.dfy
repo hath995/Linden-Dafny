@@ -498,6 +498,148 @@ module LindenElkNfaRep {
     case Raw_lookaround(_, r1) => CaptureFreeRaw(r1)
   }
 
+
+  // ==========================================================================
+  // (C5 scope predicates) The L4 fragment's EXECUTABLE raw-level scope — the
+  // `GNotUnderQuantL` shadow ((1) no capture under a quant INSIDE look bodies,
+  // (2) no capturing-look under any quant) + positive-lookbehind exclusion +
+  // look-free negative bodies — with their RE twins and annotate transfers.
+  // ==========================================================================
+
+  /** RE: no capture sits under any quantifier (recursing through everything). */
+  predicate NoCapUnderQuantRE(re: R.regex)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => NoCapUnderQuantRE(r1) && NoCapUnderQuantRE(r2)
+    case Re_con(r1, r2) => NoCapUnderQuantRE(r1) && NoCapUnderQuantRE(r2)
+    case Re_quant(_, _, _, r1) => CaptureFreeRE(r1) && NoCapUnderQuantRE(r1)
+    case Re_capture(_, r1) => NoCapUnderQuantRE(r1)
+    case Re_lookaround(_, _, r1) => NoCapUnderQuantRE(r1)
+    case _ => true
+  }
+
+  /** RE: every look body is capture-free. */
+  predicate LookBodiesCaptureFreeRE(re: R.regex)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => LookBodiesCaptureFreeRE(r1) && LookBodiesCaptureFreeRE(r2)
+    case Re_con(r1, r2) => LookBodiesCaptureFreeRE(r1) && LookBodiesCaptureFreeRE(r2)
+    case Re_quant(_, _, _, r1) => LookBodiesCaptureFreeRE(r1)
+    case Re_capture(_, r1) => LookBodiesCaptureFreeRE(r1)
+    case Re_lookaround(_, _, r1) => CaptureFreeRE(r1)
+    case _ => true
+  }
+
+  /** RE: inside every look body, no capture under a quant. */
+  predicate LookBodiesNoCapUnderQuantRE(re: R.regex)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => LookBodiesNoCapUnderQuantRE(r1) && LookBodiesNoCapUnderQuantRE(r2)
+    case Re_con(r1, r2) => LookBodiesNoCapUnderQuantRE(r1) && LookBodiesNoCapUnderQuantRE(r2)
+    case Re_quant(_, _, _, r1) => LookBodiesNoCapUnderQuantRE(r1)
+    case Re_capture(_, r1) => LookBodiesNoCapUnderQuantRE(r1)
+    case Re_lookaround(_, _, r1) => NoCapUnderQuantRE(r1)
+    case _ => true
+  }
+
+  /** RE: every quantifier body's look bodies are capture-free. */
+  predicate QuantsLookCapFreeRE(re: R.regex)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => QuantsLookCapFreeRE(r1) && QuantsLookCapFreeRE(r2)
+    case Re_con(r1, r2) => QuantsLookCapFreeRE(r1) && QuantsLookCapFreeRE(r2)
+    case Re_quant(_, _, _, r1) => LookBodiesCaptureFreeRE(r1) && QuantsLookCapFreeRE(r1)
+    case Re_capture(_, r1) => QuantsLookCapFreeRE(r1)
+    case Re_lookaround(_, _, r1) => QuantsLookCapFreeRE(r1)
+    case _ => true
+  }
+
+  /** RAW twins. */
+  predicate NoCapUnderQuantRaw(ra: R.raw_regex)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) => NoCapUnderQuantRaw(r1) && NoCapUnderQuantRaw(r2)
+    case Raw_con(r1, r2) => NoCapUnderQuantRaw(r1) && NoCapUnderQuantRaw(r2)
+    case Raw_quant(_, r1) => CaptureFreeRaw(r1) && NoCapUnderQuantRaw(r1)
+    case Raw_count(_, r1) => CaptureFreeRaw(r1) && NoCapUnderQuantRaw(r1)
+    case Raw_capture(r1) => NoCapUnderQuantRaw(r1)
+    case Raw_lookaround(_, r1) => NoCapUnderQuantRaw(r1)
+    case _ => true
+  }
+
+  predicate LookBodiesCaptureFreeRaw(ra: R.raw_regex)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) => LookBodiesCaptureFreeRaw(r1) && LookBodiesCaptureFreeRaw(r2)
+    case Raw_con(r1, r2) => LookBodiesCaptureFreeRaw(r1) && LookBodiesCaptureFreeRaw(r2)
+    case Raw_quant(_, r1) => LookBodiesCaptureFreeRaw(r1)
+    case Raw_count(_, r1) => LookBodiesCaptureFreeRaw(r1)
+    case Raw_capture(r1) => LookBodiesCaptureFreeRaw(r1)
+    case Raw_lookaround(_, r1) => CaptureFreeRaw(r1)
+    case _ => true
+  }
+
+  predicate LookBodiesNoCapUnderQuantRaw(ra: R.raw_regex)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) => LookBodiesNoCapUnderQuantRaw(r1) && LookBodiesNoCapUnderQuantRaw(r2)
+    case Raw_con(r1, r2) => LookBodiesNoCapUnderQuantRaw(r1) && LookBodiesNoCapUnderQuantRaw(r2)
+    case Raw_quant(_, r1) => LookBodiesNoCapUnderQuantRaw(r1)
+    case Raw_count(_, r1) => LookBodiesNoCapUnderQuantRaw(r1)
+    case Raw_capture(r1) => LookBodiesNoCapUnderQuantRaw(r1)
+    case Raw_lookaround(_, r1) => NoCapUnderQuantRaw(r1)
+    case _ => true
+  }
+
+  predicate QuantsLookCapFreeRaw(ra: R.raw_regex)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) => QuantsLookCapFreeRaw(r1) && QuantsLookCapFreeRaw(r2)
+    case Raw_con(r1, r2) => QuantsLookCapFreeRaw(r1) && QuantsLookCapFreeRaw(r2)
+    case Raw_quant(_, r1) => LookBodiesCaptureFreeRaw(r1) && QuantsLookCapFreeRaw(r1)
+    case Raw_count(_, r1) => LookBodiesCaptureFreeRaw(r1) && QuantsLookCapFreeRaw(r1)
+    case Raw_capture(r1) => QuantsLookCapFreeRaw(r1)
+    case Raw_lookaround(_, r1) => QuantsLookCapFreeRaw(r1)
+    case _ => true
+  }
+
+  /** RAW: no POSITIVE lookbehind. */
+  predicate NoPosLookbehindRaw(ra: R.raw_regex)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) => NoPosLookbehindRaw(r1) && NoPosLookbehindRaw(r2)
+    case Raw_con(r1, r2) => NoPosLookbehindRaw(r1) && NoPosLookbehindRaw(r2)
+    case Raw_quant(_, r1) => NoPosLookbehindRaw(r1)
+    case Raw_count(_, r1) => NoPosLookbehindRaw(r1)
+    case Raw_capture(r1) => NoPosLookbehindRaw(r1)
+    case Raw_lookaround(look, r1) => !look.Lookbehind? && NoPosLookbehindRaw(r1)
+    case _ => true
+  }
+
+  /** RAW: every NEGATIVE-look body is look-free. */
+  predicate NegLooksLookFreeRaw(ra: R.raw_regex)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) => NegLooksLookFreeRaw(r1) && NegLooksLookFreeRaw(r2)
+    case Raw_con(r1, r2) => NegLooksLookFreeRaw(r1) && NegLooksLookFreeRaw(r2)
+    case Raw_quant(_, r1) => NegLooksLookFreeRaw(r1)
+    case Raw_count(_, r1) => NegLooksLookFreeRaw(r1)
+    case Raw_capture(r1) => NegLooksLookFreeRaw(r1)
+    case Raw_lookaround(look, r1) =>
+      ((look.NegLookahead? || look.NegLookbehind?) ==> LookFreeRaw(r1)) && NegLooksLookFreeRaw(r1)
+    case _ => true
+  }
+
   /** The `raw_regex` counterpart of `LookFreeRE`. */
   predicate LookFreeRaw(raw: R.raw_regex)
     decreases raw
@@ -660,6 +802,127 @@ module LindenElkNfaRep {
       `NestedFragmentRE`, this is the image of `EL.PikeLkRegexRec` under
       `Translate`: positive looks nest to any depth, negative looks stay
       group-free. Additive. */
+
+  /** Annotation transfers `NoCapUnderQuantRaw`. */
+  lemma AnnotateNoCapUnderQuant(ra: R.raw_regex, c: int, l: int, q: int)
+    requires NoCapUnderQuantRaw(ra)
+    ensures NoCapUnderQuantRE(R.annotate_regex(ra, c, l, q).0)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) =>
+      AnnotateNoCapUnderQuant(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateNoCapUnderQuant(r2, c1, l1, q1);
+    case Raw_con(r1, r2) =>
+      AnnotateNoCapUnderQuant(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateNoCapUnderQuant(r2, c1, l1, q1);
+    case Raw_quant(_, r1) =>
+      AnnotateCaptureFree(r1, c, l, q + 1);
+      AnnotateNoCapUnderQuant(r1, c, l, q + 1);
+    case Raw_count(_, r1) =>
+      AnnotateCaptureFree(r1, c, l, q + 1);
+      AnnotateNoCapUnderQuant(r1, c, l, q + 1);
+    case Raw_capture(r1) => AnnotateNoCapUnderQuant(r1, c + 1, l, q);
+    case Raw_lookaround(_, r1) => AnnotateNoCapUnderQuant(r1, c, l + 1, q);
+    case _ =>
+  }
+
+  /** Annotation transfers `LookBodiesCaptureFreeRaw`. */
+  lemma AnnotateLookBodiesCaptureFree(ra: R.raw_regex, c: int, l: int, q: int)
+    requires LookBodiesCaptureFreeRaw(ra)
+    ensures LookBodiesCaptureFreeRE(R.annotate_regex(ra, c, l, q).0)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) =>
+      AnnotateLookBodiesCaptureFree(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateLookBodiesCaptureFree(r2, c1, l1, q1);
+    case Raw_con(r1, r2) =>
+      AnnotateLookBodiesCaptureFree(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateLookBodiesCaptureFree(r2, c1, l1, q1);
+    case Raw_quant(_, r1) => AnnotateLookBodiesCaptureFree(r1, c, l, q + 1);
+    case Raw_count(_, r1) => AnnotateLookBodiesCaptureFree(r1, c, l, q + 1);
+    case Raw_capture(r1) => AnnotateLookBodiesCaptureFree(r1, c + 1, l, q);
+    case Raw_lookaround(_, r1) => AnnotateCaptureFree(r1, c, l + 1, q);
+    case _ =>
+  }
+
+  /** Annotation transfers `LookBodiesNoCapUnderQuantRaw`. */
+  lemma AnnotateLookBodiesNoCapUnderQuant(ra: R.raw_regex, c: int, l: int, q: int)
+    requires LookBodiesNoCapUnderQuantRaw(ra)
+    ensures LookBodiesNoCapUnderQuantRE(R.annotate_regex(ra, c, l, q).0)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) =>
+      AnnotateLookBodiesNoCapUnderQuant(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateLookBodiesNoCapUnderQuant(r2, c1, l1, q1);
+    case Raw_con(r1, r2) =>
+      AnnotateLookBodiesNoCapUnderQuant(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateLookBodiesNoCapUnderQuant(r2, c1, l1, q1);
+    case Raw_quant(_, r1) => AnnotateLookBodiesNoCapUnderQuant(r1, c, l, q + 1);
+    case Raw_count(_, r1) => AnnotateLookBodiesNoCapUnderQuant(r1, c, l, q + 1);
+    case Raw_capture(r1) => AnnotateLookBodiesNoCapUnderQuant(r1, c + 1, l, q);
+    case Raw_lookaround(_, r1) => AnnotateNoCapUnderQuant(r1, c, l + 1, q);
+    case _ =>
+  }
+
+  /** Annotation transfers `QuantsLookCapFreeRaw`. */
+  lemma AnnotateQuantsLookCapFree(ra: R.raw_regex, c: int, l: int, q: int)
+    requires QuantsLookCapFreeRaw(ra)
+    ensures QuantsLookCapFreeRE(R.annotate_regex(ra, c, l, q).0)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) =>
+      AnnotateQuantsLookCapFree(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateQuantsLookCapFree(r2, c1, l1, q1);
+    case Raw_con(r1, r2) =>
+      AnnotateQuantsLookCapFree(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateQuantsLookCapFree(r2, c1, l1, q1);
+    case Raw_quant(_, r1) =>
+      AnnotateLookBodiesCaptureFree(r1, c, l, q + 1);
+      AnnotateQuantsLookCapFree(r1, c, l, q + 1);
+    case Raw_count(_, r1) =>
+      AnnotateLookBodiesCaptureFree(r1, c, l, q + 1);
+      AnnotateQuantsLookCapFree(r1, c, l, q + 1);
+    case Raw_capture(r1) => AnnotateQuantsLookCapFree(r1, c + 1, l, q);
+    case Raw_lookaround(_, r1) => AnnotateQuantsLookCapFree(r1, c, l + 1, q);
+    case _ =>
+  }
+
+  /** Annotation transfers `NegLooksLookFreeRaw`. */
+  lemma AnnotateNegLooksLookFree(ra: R.raw_regex, c: int, l: int, q: int)
+    requires NegLooksLookFreeRaw(ra)
+    ensures NegLooksLookFreeRE(R.annotate_regex(ra, c, l, q).0)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) =>
+      AnnotateNegLooksLookFree(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateNegLooksLookFree(r2, c1, l1, q1);
+    case Raw_con(r1, r2) =>
+      AnnotateNegLooksLookFree(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateNegLooksLookFree(r2, c1, l1, q1);
+    case Raw_quant(_, r1) => AnnotateNegLooksLookFree(r1, c, l, q + 1);
+    case Raw_count(_, r1) => AnnotateNegLooksLookFree(r1, c, l, q + 1);
+    case Raw_capture(r1) => AnnotateNegLooksLookFree(r1, c + 1, l, q);
+    case Raw_lookaround(look, r1) =>
+      if look.NegLookahead? || look.NegLookbehind? { AnnotateLookFree(r1, c, l + 1, q); }
+      AnnotateNegLooksLookFree(r1, c, l + 1, q);
+    case _ =>
+  }
+
   predicate NegLooksLookFreeRE(re: R.regex)
     decreases re
   {

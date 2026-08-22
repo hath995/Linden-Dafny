@@ -51,8 +51,33 @@ module LindenRegexApi {
 
       NOTE the predicate below is still spelled `LookBehindFragmentRaw` for
       historical reasons; it admits both flavours. Renaming is pending. */
-  predicate Supported(pattern: R.raw_regex) {
+  predicate SupportedL3(pattern: R.raw_regex) {
     NR.LookBehindFragmentRaw(pattern) && T.Latin1Wf(pattern)
+  }
+
+  /** L4: arbitrarily NESTED capturing positive lookaheads. The nested fragment
+      (`NR.NestedFragmentRaw`: look bodies may themselves contain looks) under
+      four purely syntactic, executable scope conditions:
+        - no POSITIVE lookbehind anywhere (`NoPosLookbehindRaw`; negative
+          lookbehinds are fine);
+        - NEGATIVE look bodies are look-free (`NegLooksLookFreeRaw`);
+        - inside a look body no capture sits under a quantifier
+          (`LookBodiesNoCapUnderQuantRaw`);
+        - a quantifier body's look bodies are capture-free
+          (`QuantsLookCapFreeRaw`).
+      Exactly `MainTheoremL4`'s precondition (via `LSIM.L4ScopeFromRaw`). */
+  predicate SupportedL4(pattern: R.raw_regex) {
+    NR.NestedFragmentRaw(pattern) && T.Latin1Wf(pattern)
+    && NR.NoPosLookbehindRaw(pattern)
+    && NR.NegLooksLookFreeRaw(pattern)
+    && NR.LookBodiesNoCapUnderQuantRaw(pattern)
+    && NR.QuantsLookCapFreeRaw(pattern)
+  }
+
+  /** The supported fragment: the depth-1 fragment (`SupportedL3`) or the
+      nested fragment (`SupportedL4`). */
+  predicate Supported(pattern: R.raw_regex) {
+    SupportedL3(pattern) || SupportedL4(pattern)
   }
 
   // ==========================================================================
@@ -71,12 +96,18 @@ module LindenRegexApi {
   // ECMAScript tree semantics demands.
   /** THE contract: on any `Supported` pattern, `Match` computes exactly the
       answer the ECMAScript tree semantics (`LES.MatcherSpec`) demands. A thin
-      wrapper around `LSIM.MainTheoremL3`. */
+      dispatch over `LSIM.MainTheoremL3` (depth-1) / `LSIM.MainTheoremL4`
+      (nested). */
   lemma MatchCorrect(pattern: R.raw_regex, str: string)
     requires Supported(pattern)
     ensures LES.MatcherSpec(pattern, str, Match(pattern, str))
   {
-    LSIM.MainTheoremL3(pattern, str);
+    if SupportedL3(pattern) {
+      LSIM.MainTheoremL3(pattern, str);
+    } else {
+      LSIM.L4ScopeFromRaw(pattern);
+      LSIM.MainTheoremL4(pattern, str);
+    }
   }
 
   // ==========================================================================

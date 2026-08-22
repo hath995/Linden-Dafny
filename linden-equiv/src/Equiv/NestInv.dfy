@@ -5242,6 +5242,209 @@ module LindenElkNestInv {
       }
   }
 
+  /** (FORWARD base) `PathPresentLk` transport for a DIRECT no-anc-quant capture:
+      the path from the root to `g` crosses NO look node (g outside looks) and NO
+      quant node (`AncQuants == {}`), so it reads ONLY capture-start clocks — two
+      bank tuples agreeing there give the same verdict and the same `MxAtGidLk`.
+      This moves the fresh-body-match presence onto the reconstructed banks with
+      no look/quant agreement at all (which would be false at deep lids). */
+  lemma PathPresentLkDirectAgree(r: R.regex, cc1: seq<int>, lc1: seq<int>, qc1: seq<int>,
+                                 cc2: seq<int>, lc2: seq<int>, qc2: seq<int>, g: nat)
+    requires PIV.CapUnique(r)
+    requires g in PIV.CapIds(r) && g !in PIV.CapIdsInLooks(r)
+    requires PIV.AncQuants(r, g) == {}
+    requires forall c: nat :: c in PIV.CapIdsOutsideLooks(r) ==>
+      AI.get_idx(cc1, CP.start_reg(c)) == AI.get_idx(cc2, CP.start_reg(c))
+    requires PIV.PathPresentLk(r, cc2, lc2, qc2, -1, g)
+    ensures PIV.PathPresentLk(r, cc1, lc1, qc1, -1, g)
+    ensures PIV.MxAtGidLk(r, cc1, lc1, qc1, -1, g) == PIV.MxAtGidLk(r, cc2, lc2, qc2, -1, g)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if g in PIV.CapIds(r1) {
+        assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r1) ==> c in PIV.CapIdsOutsideLooks(r);
+        PathPresentLkDirectAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, g);
+      } else {
+        assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r2) ==> c in PIV.CapIdsOutsideLooks(r);
+        PathPresentLkDirectAgree(r2, cc1, lc1, qc1, cc2, lc2, qc2, g);
+      }
+    case Re_con(r1, r2) =>
+      if g in PIV.CapIds(r1) {
+        assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r1) ==> c in PIV.CapIdsOutsideLooks(r);
+        PathPresentLkDirectAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, g);
+      } else {
+        assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r2) ==> c in PIV.CapIdsOutsideLooks(r);
+        PathPresentLkDirectAgree(r2, cc1, lc1, qc1, cc2, lc2, qc2, g);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      assert qid < 0 by {
+        if qid >= 0 { assert (qid as nat) in PIV.AncQuants(r, g); }
+      }
+      assert AI.get_idx(qc1, qid) == -1 == AI.get_idx(qc2, qid);
+      PathPresentLkDirectAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, g);
+    case Re_capture(cid, r1) =>
+      if cid >= 0 && (cid as nat) == g {
+        assert (g as int) == cid;
+        assert AI.get_idx(cc1, CP.start_reg(cid)) == AI.get_idx(cc2, CP.start_reg(cid)) by {
+          assert (cid as nat) in PIV.CapIdsOutsideLooks(r);
+        }
+      } else {
+        assert g in PIV.CapIds(r1);
+        assert AI.get_idx(cc1, CP.start_reg(cid)) == AI.get_idx(cc2, CP.start_reg(cid)) by {
+          if cid >= 0 {
+            assert (cid as nat) in PIV.CapIdsOutsideLooks(r);
+          } else {
+            assert CP.start_reg(cid) < 0;
+            assert AI.get_idx(cc1, CP.start_reg(cid)) == -1 == AI.get_idx(cc2, CP.start_reg(cid));
+          }
+        }
+        assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r1) ==> c in PIV.CapIdsOutsideLooks(r);
+        PathPresentLkDirectAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, g);
+      }
+    case Re_lookaround(lid, la, r1) =>
+      // g inside a look's body would put g in CapIdsInLooks(r)
+      assert g in PIV.CapIds(r1);
+      assert g in PIV.CapIdsInLooks(r);
+      assert false;
+  }
+
+  /** (FORWARD wrapper) TOP-look twin of `LookPathPresentAgree` for the NESTED
+      fragment: for a TOP lid the presence path reads only OUTSIDE-look capture
+      starts and OUTSIDE-look quant clocks (it never enters a look body —
+      `TopLookIds(Re_lookaround) == {lid0}` kills the else-branch), so two bank
+      pairs agreeing there give the same `LookPathPresent` verdict and the same
+      `MxAtLidLk`. */
+  lemma LookPathPresentAgreeTop(r: R.regex, cc1: seq<int>, qc1: seq<int>,
+                                cc2: seq<int>, qc2: seq<int>, mx: int, lid: nat)
+    requires NR.NestedFragmentRE(r) && LTB.LookUnique(r)
+    requires lid in LTB.LookIds(r) && lid in TopLookIds(r)
+    requires forall c: nat :: c in PIV.CapIdsOutsideLooks(r) ==>
+      AI.get_idx(cc1, CP.start_reg(c as int)) == AI.get_idx(cc2, CP.start_reg(c as int))
+    requires forall q: nat :: q in PIV.QuantIdsOutsideLooks(r) ==>
+      AI.get_idx(qc1, q as int) == AI.get_idx(qc2, q as int)
+    ensures LookPathPresent(r, cc1, qc1, mx, lid) == LookPathPresent(r, cc2, qc2, mx, lid)
+    ensures MxAtLidLk(r, qc1, mx, lid) == MxAtLidLk(r, qc2, mx, lid)
+    decreases r
+  {
+    TopLookIdsIn(r);
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) {
+        assert lid in TopLookIds(r1) by {
+          if lid !in TopLookIds(r1) {
+            assert lid in TopLookIds(r2); TopLookIdsIn(r2);
+            assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
+          }
+        }
+        assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r1) ==> c in PIV.CapIdsOutsideLooks(r);
+        assert forall q0: nat :: q0 in PIV.QuantIdsOutsideLooks(r1) ==> q0 in PIV.QuantIdsOutsideLooks(r);
+        LookPathPresentAgreeTop(r1, cc1, qc1, cc2, qc2, mx, lid);
+      } else {
+        assert lid in TopLookIds(r2) by { TopLookIdsIn(r1); }
+        assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r2) ==> c in PIV.CapIdsOutsideLooks(r);
+        assert forall q0: nat :: q0 in PIV.QuantIdsOutsideLooks(r2) ==> q0 in PIV.QuantIdsOutsideLooks(r);
+        LookPathPresentAgreeTop(r2, cc1, qc1, cc2, qc2, mx, lid);
+      }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) {
+        assert lid in TopLookIds(r1) by {
+          if lid !in TopLookIds(r1) {
+            assert lid in TopLookIds(r2); TopLookIdsIn(r2);
+            assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
+          }
+        }
+        assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r1) ==> c in PIV.CapIdsOutsideLooks(r);
+        assert forall q0: nat :: q0 in PIV.QuantIdsOutsideLooks(r1) ==> q0 in PIV.QuantIdsOutsideLooks(r);
+        LookPathPresentAgreeTop(r1, cc1, qc1, cc2, qc2, mx, lid);
+      } else {
+        assert lid in TopLookIds(r2) by { TopLookIdsIn(r1); }
+        assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r2) ==> c in PIV.CapIdsOutsideLooks(r);
+        assert forall q0: nat :: q0 in PIV.QuantIdsOutsideLooks(r2) ==> q0 in PIV.QuantIdsOutsideLooks(r);
+        LookPathPresentAgreeTop(r2, cc1, qc1, cc2, qc2, mx, lid);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      assert AI.get_idx(qc1, qid) == AI.get_idx(qc2, qid) by {
+        if qid >= 0 {
+          assert (qid as nat) in PIV.QuantIdsOutsideLooks(r);   // own node, definitional
+        } else {
+          assert AI.get_idx(qc1, qid) == -1 == AI.get_idx(qc2, qid);
+        }
+      }
+      assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r1) ==> c in PIV.CapIdsOutsideLooks(r);
+      assert forall q0: nat :: q0 in PIV.QuantIdsOutsideLooks(r1) ==> q0 in PIV.QuantIdsOutsideLooks(r);
+      LookPathPresentAgreeTop(r1, cc1, qc1, cc2, qc2, AI.get_idx(qc1, qid), lid);
+    case Re_capture(cid, r1) =>
+      assert cid >= 0 ==> (cid as nat) in PIV.CapIdsOutsideLooks(r);
+      assert AI.get_idx(cc1, CP.start_reg(cid)) == AI.get_idx(cc2, CP.start_reg(cid)) by {
+        if cid >= 0 {
+          assert (cid as nat) in PIV.CapIdsOutsideLooks(r);
+        } else {
+          assert CP.start_reg(cid) < 0;
+        }
+      }
+      assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r1) ==> c in PIV.CapIdsOutsideLooks(r);
+      assert forall q0: nat :: q0 in PIV.QuantIdsOutsideLooks(r1) ==> q0 in PIV.QuantIdsOutsideLooks(r);
+      LookPathPresentAgreeTop(r1, cc1, qc1, cc2, qc2, mx, lid);
+    case Re_lookaround(lid0, la, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+      } else {
+        assert lid !in TopLookIds(r);
+        assert false;
+      }
+  }
+
+  /** (FORWARD wrapper) For a TOP lid the Lk-presence path crosses no look node,
+      so plain `LookPathPresent` already IS `LookPathPresentLk` (the two differ
+      only at the else-lookaround branch, vacuous for top lids). */
+  lemma LookPathPresentLkFromPresentTop(r: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>,
+                                        mx: int, lid: nat)
+    requires NR.NestedFragmentRE(r) && LTB.LookUnique(r)
+    requires lid in LTB.LookIds(r) && lid in TopLookIds(r)
+    requires LookPathPresent(r, cc, qc, mx, lid)
+    ensures LookPathPresentLk(r, cc, lc, qc, mx, lid)
+    decreases r
+  {
+    TopLookIdsIn(r);
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) {
+        assert lid in TopLookIds(r1) by {
+          if lid !in TopLookIds(r1) {
+            assert lid in TopLookIds(r2); TopLookIdsIn(r2);
+            assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
+          }
+        }
+        LookPathPresentLkFromPresentTop(r1, cc, lc, qc, mx, lid);
+      } else {
+        assert lid in TopLookIds(r2) by { TopLookIdsIn(r1); }
+        LookPathPresentLkFromPresentTop(r2, cc, lc, qc, mx, lid);
+      }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) {
+        assert lid in TopLookIds(r1) by {
+          if lid !in TopLookIds(r1) {
+            assert lid in TopLookIds(r2); TopLookIdsIn(r2);
+            assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
+          }
+        }
+        LookPathPresentLkFromPresentTop(r1, cc, lc, qc, mx, lid);
+      } else {
+        assert lid in TopLookIds(r2) by { TopLookIdsIn(r1); }
+        LookPathPresentLkFromPresentTop(r2, cc, lc, qc, mx, lid);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      LookPathPresentLkFromPresentTop(r1, cc, lc, qc, AI.get_idx(qc, qid), lid);
+    case Re_capture(cid, r1) =>
+      LookPathPresentLkFromPresentTop(r1, cc, lc, qc, mx, lid);
+    case Re_lookaround(lid0, la, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+      } else {
+        assert lid !in TopLookIds(r);
+        assert false;
+      }
+  }
+
   /** (L4 depth-k, ADDITIVE) TOP-look twin of `MxAtLidGeMx` for the NESTED
       fragment. The depth-1 `MxAtLidGeMx` requires `LookBehindFragmentRE` because
       its `Re_lookaround` else-branch (lid inside a look body) is discharged by
