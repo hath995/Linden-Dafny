@@ -1690,6 +1690,17 @@ module LindenElkLookLeaves {
                          LG.Empty, inp, L.LkDir(lk)).Some?)
   }
 
+  /** Extract the per-lid bit characterization from `OracleOkAt` (instantiates
+      the inner forall for one known lookaround). */
+  lemma OracleOkAtGet(rer: LW.RegExpRecord, qm: AR.QMap, inp: LC.Input,
+                      lid: int, lk: L.Lookaround, r1: L.Regex)
+    requires OracleOkAt(rer, qm, inp)
+    requires lid in qm.looks && qm.looks[lid] == (lk, r1)
+    ensures LOr.view_get_oracle(qm.ov, TR.CpOf(inp), lid)
+        <==> LT.TreeRes(FU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk)),
+                        LG.Empty, inp, L.LkDir(lk)).Some?
+  {}
+
   /** `OracleOkAt` here and at every position the walk can still reach â€” the
       form the construction carries, since it recurses into suffixes. */
   ghost predicate OracleOkSuffix(rer: LW.RegExpRecord, qm: AR.QMap, inp0: LC.Input) {
