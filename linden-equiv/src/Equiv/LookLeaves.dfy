@@ -1595,6 +1595,30 @@ module LindenElkLookLeaves {
     ComputeTreeLkConfinedK(rer, act, inp, gm, dir, fuel, S);
   }
 
+  /** L5 backward foundation (nested capturing lookBEHIND). For a nested-fragment
+      body `tr` whose look bodies confine to `S`, the BACKWARD spec tree of
+      `[Areg(tr)]` is `LkConfinedTreeK(_, S)` — the direction-generic confinement
+      (`ComputeTrLkConfinedK`) instantiated at `WP.Backward`. This is the spec-side
+      stepping stone for a backward `BodyTreeAtCpNested` analogue: the outer
+      lookbehind body is walked backward DIRECTLY (no `reverse_regex`/mirror — the
+      mirror is a dead end for nested looks), so surface groups agree outside `S`
+      and the nested-look inner captures live inside `S`. */
+  lemma BackwardBodyConfinedTree(rer: LW.RegExpRecord, tr: L.Regex, inp: LC.Input,
+                                 S: set<LG.GroupId>)
+    requires EL.PikeLkRegexRec(tr)
+    requires LkBodyGroups(tr) <= S
+    ensures CE.LkConfinedTreeK(FU.ComputeTr(rer, [LS.Areg(tr)], inp, LG.Empty, WP.Backward), S)
+  {
+    var acts := [LS.Areg(tr)];
+    assert acts == [LS.Areg(tr)] + [];
+    assert EL.PikeLkActionsRec([]);
+    EL.PikeLkActionsRecConsIff(LS.Areg(tr), []);       // PikeLkActionsRec(acts)
+    LkBodyGroupsConfines(tr, S);                        // LkBodiesInS(tr, S)
+    assert LkActsInS([], S);
+    LkActsInSCons(LS.Areg(tr), [], S);                  // LkActsInS(acts, S)
+    ComputeTrLkConfinedK(rer, acts, inp, LG.Empty, WP.Backward, S);
+  }
+
   /** THE L3a LK-case assembly (mirrors ActionsTreeRepRE:774-779 in "outside S"
       form): the continuation's checked tree `sub`, already agreeing with `tc`
       outside `S`, also agrees with the gate node `LK(lk,tlk,tc)` outside `S`.
