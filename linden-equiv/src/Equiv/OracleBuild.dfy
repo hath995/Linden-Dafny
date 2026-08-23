@@ -468,6 +468,35 @@ module LindenElkOracleBuild {
       assert fc.f_look_types[i] == la;
   }
 
+  /** `LookTablesLidDirForward` for the NESTED fragment: recurses into look
+      bodies (which now carry their own lids) instead of stopping at a look-free
+      body. A lookBEHIND row still builds Forward. */
+  lemma LookTablesLidDirForwardNested(r: R.regex, fc: CP.FCompiled, i: nat)
+    requires NR.NestedFragmentRE(r)
+    requires LT.LookTablesOk(r, fc)
+    requires i in LT.LookIds(r)
+    ensures 0 <= i < |fc.f_look_types|
+    ensures (fc.f_look_types[i].Lookbehind? || fc.f_look_types[i].NegLookbehind?)
+            ==> LidDir(fc, i) == LAnc.Forward
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if i in LT.LookIds(r1) { LookTablesLidDirForwardNested(r1, fc, i); }
+      else { LookTablesLidDirForwardNested(r2, fc, i); }
+    case Re_con(r1, r2) =>
+      if i in LT.LookIds(r1) { LookTablesLidDirForwardNested(r1, fc, i); }
+      else { LookTablesLidDirForwardNested(r2, fc, i); }
+    case Re_quant(_, _, _, r1) => LookTablesLidDirForwardNested(r1, fc, i);
+    case Re_capture(_, r1) => LookTablesLidDirForwardNested(r1, fc, i);
+    case Re_lookaround(lid, la, body) =>
+      if lid >= 0 && (lid as nat) == i {
+        assert fc.f_look_types[i] == la;              // LookEntryOk(fc, lid, la, body)
+      } else {
+        LookTablesLidDirForwardNested(body, fc, i);   // i in LookIds(body)
+      }
+  }
+
   /** On the lookbehind fragment `LidReaches` IS the plain forward
       reachability -- a real row builds Forward, and a row that is not a
       lookaround of `re` holds empty bytecode, where both sides are false.
@@ -1234,6 +1263,47 @@ module LindenElkOracleBuild {
     LT.FCompileExtraLookFrame(re, seed);
     assert |crv.f_look_build_bc| == nlook;
     assert lid <= maxlook0;
+  }
+
+  /** `FBuildOracleCorrectAt` for the NESTED fragment: the oracle bit is the
+      V-MODEL reachability (`ReachesWriteV`, which crosses inner gates against
+      the finished view) of the lid's build bytecode. Same shape as the look-free
+      version but off `FBuildOracleCorrectAboveNested` + `LidReachesVFinal`. */
+  lemma FBuildOracleCorrectAtNested(re: R.regex, str: string, lid: int, la: R.lookaround, body: R.regex, cp: int)
+    requires NR.NestedFragmentRE(re)
+    requires LT.LidsWellNested(re)
+    requires LT.LookUnique(re)
+    requires LT.LookEntryOk(CP.FFullCompilation(re), lid, la, body)
+    requires la.Lookbehind? || la.NegLookbehind?
+    requires 1 <= lid
+    requires 0 <= cp <= |str|
+    ensures LOr.view_get_oracle(AI.FBuildOracle(CP.FFullCompilation(re), str), cp, lid)
+         <==> ORc.ReachesWriteV(CP.compile_to_write(R.lazy_prefix(R.remove_capture(body)), lid),
+                                str, AI.FBuildOracle(CP.FFullCompilation(re), str), 0, lid, cp)
+  {
+    var crv := CP.FFullCompilation(re);
+    var ovf := AI.FBuildOracle(crv, str);
+    FBuildOracleCorrectAboveNested(re, str);         // oracle bit == LidReachesVFinal (for 1<=lid<=maxlook)
+    assert crv.f_look_types[lid] == la;              // LookEntryOk
+    assert LidDir(crv, lid) == LAnc.Forward;         // oracle_direction(lookbehind) == Forward
+    // table size: lid <= maxlook0 (identical to the look-free version)
+    var maxlook0 := R.max_lookaround(re);
+    var maxquant0 := R.max_quant(re);
+    var nlook := if maxlook0 + 1 >= 0 then maxlook0 + 1 else 0;
+    var nquant := if maxquant0 + 1 >= 0 then maxquant0 + 1 else 0;
+    var seed := CP.FCompiled(re, CP.compile_to_bytecode(R.lazy_prefix(re)), LCdn.compile_cdns(re),
+                             seq(nlook, k => R.Lookahead), seq(nlook, k => R.Re_empty),
+                             seq(nlook, k => []), seq(nlook, k => []),
+                             seq(nlook, k => []), seq(nquant, k => []));
+    assert crv == CP.FCompileExtra(re, seed);
+    LT.FCompileExtraLookFrame(re, seed);
+    assert |crv.f_look_build_bc| == nlook;
+    assert lid <= maxlook0;
+    // LidReachesVFinal (Forward branch) unfolds to ReachesWriteV of the build bytecode
+    reveal LidReachesVFinal();
+    assert CP.oracle_regex(la, body) == R.lazy_prefix(R.remove_capture(body));
+    assert AI.get_code_v(crv.f_look_build_bc, lid)
+        == CP.compile_to_write(R.lazy_prefix(R.remove_capture(body)), lid);
   }
 
   // ===========================================================================
