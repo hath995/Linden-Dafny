@@ -811,3 +811,62 @@ currently `false`) so look-node leaf VALUES read from the reconstructed bank; (4
 family (`BwdComplete*`) off `GroupFreeL` — the authors' quantifier-proof blocker — only where the
 gate characterization needs it. This is a DESIGN decision point; committing a look case before the
 gate-vs-flip choice is settled would risk a wrong lemma. Everything green + committed at this checkpoint.
+
+---
+
+## L5 — T2b SPAN/SUCCESS SIDE COMPLETE + architecture correction (HEAD `3d55dc8`)
+
+The `53e6021` crux above was RIGHT that `ComputeTreeReverse` can't mirror a nested look's body
+sub-trees — but WRONG to locate the whole nested-look problem there. The keystone actually rests on
+TWO INDEPENDENT mirror facts, and they must be handled in different places:
+
+### (A) Span/success duality — "does the zero-width gate PASS?" — **DONE, green**
+
+This lives ENTIRELY in the `Bwd*`/`MatchesL`/`SpanDuality*` family (linden-reasoning
+`SpanDuality.dfy`) and NEVER touches `ComputeTreeReverse`. Delivered this session:
+
+- **`GroupOkLB`** (new predicate) = `GroupOkL` + nested lookBEHINDs (`LookaroundR(lk,r1) =>
+  (lk.LookBehind? || lk.NegLookBehind?) && GroupOkLB(r1)`). Lookaheads stay excluded — `MatchesL`'s
+  look clause only characterises the zero-width lookbehind. Companions `GroupOkIsGroupOkLB`,
+  `GroupOkLBIsNoBackref` (`NoBackrefL` already admitted looks, so the map-independence infra —
+  `SuccActsGmIndep` etc. — carried over free).
+- **`BwdComplete`/`BwdSound` `LookaroundR` arm:** the gate `LkResult` passes iff the body's backward
+  walk succeeds iff `∃m: MatchesL(r1,str,m,i)` — established by the body's OWN `BwdComplete`/`BwdSound`
+  (MUTUAL recursion on the strictly-smaller body `r1`, `decreases r`). Then `Positivity(lk) <==>
+  bodySucc` fixes the gate; the continuation's map shift (`gm`→`gmlk`) is discharged by
+  `SuccActsGmIndep`. `TreeRes(LK)` re-evaluates the gate on `gm` and threads `gmlk` to the
+  continuation — consistent with `ComputeTr`'s `LkResult`. `BwdCompleteQuant`/`BwdCompleteFree`/
+  `BwdSoundQuant` widened to `GroupOkLB(r1)` in lockstep.
+- **Public API unchanged:** `SpanDualityComplete`/`SpanDualitySound` keep their `GroupOkL(r)` requires
+  (equiv-side consumers in `OracleSpec.dfy`/`LiftSim.dfy` untouched) and bridge via
+  `GroupOkIsGroupOkLB` to new `SpanDualityCompleteLB`/`SpanDualitySoundLB` (`GroupOkLB(r)`).
+
+**NOTE the earlier roadmap claim "widen `Bwd*` from `GroupFreeL` to `GroupOkL`, blocked by the
+quantifier proofs" was STALE:** the Group case had already been widened to `GroupOkL`; only the look
+arm was missing, and it needed no quantifier surgery — just the mutual body recursion above.
+
+Green ledger: `SpanDuality.dfy` full-file 129/0 → `lem build` 389/0 → pack/copy `.doo` → L3b keystone
+`LkReplayMatchesSpecLB` 404/0 (no regression). Committed `3d55dc8`.
+
+### (B) Value/capture mirror — "WHAT does it capture?" — **the remaining hard piece (T2c-value)**
+
+`BackBodyGmTie` (LookBehindValue.dfy:108) proves the backward body tree's leaf group-map is the
+ordered mirror of the forward `RevL(tr)` tree's first leaf, via `TM.ComputeTrReverse` +
+`TRM.TreeResMirror` + `CD.CloseDiscBody` — all gated `GroupOkL(tr)` (no looks). **This is where the
+`53e6021` flip-vs-gate crux ACTUALLY lives.** A nested lookbehind is zero-width but captures its
+INNER groups; those inner captures come from the L4 `recon_inner`/`LkReplayMatchesSpecNestedFull`
+oracle reconstruction, NOT the tree mirror. So the value-side work is exactly the `53e6021`
+resolution, now correctly scoped to value only:
+
+1. define `TreeMirrorRel`'s `LK`/`LKFail` case = continuations mirror + look-kind agree, body
+   sub-trees EXCLUDED (proven unmirrorable: a nested lookahead is walked Forward on both outer sides,
+   but `ComputeTreeReverse` only ever relates Forward-of-`RevL` to BACKWARD-of-body);
+2. prove `ComputeTreeReverse`'s `LookaroundR` arm with that gate;
+3. thread `TreeResMirror`'s `LK` case (TreeResMirror.dfy:330, currently `false`) so the look node's
+   leaf VALUE reads inner captures from the reconstructed bank (recon_inner);
+4. widen `BackBodyGmTie` off `GroupOkL`.
+
+**Don't commit a value-side look case before settling how recon_inner supplies the inner-leaf
+group-map correspondence.** Then T2d assembles `LkReplayMatchesSpecLBNested` (reuse T2a `BackwardReplayMirrorNested`
++ T1 `GmOfLiveXRev` + (A) + (B)), T3 wires (drop `assert false` LiftSim:22441), T4 drops
+`NoPosLookbehind` + §18 opaque-at-source perf pass, T5 API/doc.
