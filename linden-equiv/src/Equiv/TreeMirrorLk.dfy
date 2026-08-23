@@ -487,4 +487,30 @@ module LindenElkTreeMirrorLk {
     MIR.MirrorViewGet(qm.ov, n, cp, lid);
     assert MIR.Mirror(cp, n) == n - cp;
   }
+
+  // ===========================================================================
+  // BRICK 3b: the tree-building mirror (ComputeTrReverseLk)
+  // ===========================================================================
+
+  /** LOOK-FREE base: for a look-free body the extended mirror is just the
+      existing `TM.ComputeTrReverse` lifted through `TreeMirrorRelLkFromRel`.
+      This is the depth-0 base of the nested builder's look-nesting
+      stratification (and directly serves a look-free surface segment). */
+  lemma ComputeTrReverseLkLookFree(rer: LW.RegExpRecord, tr: L.Regex, inpB: LC.Input,
+                                   Sin: set<LG.GroupId>)
+    requires SD.GroupOkL(tr)
+    ensures TreeMirrorRelLk(
+      FU.ComputeTr(rer, [LS.Areg(tr)], inpB, LG.Empty, WP.Backward),
+      FU.ComputeTr(rer, [LS.Areg(SD.RevL(tr))], SD.SwapInput(inpB), LG.Empty, WP.Forward),
+      Sin)
+  {
+    var acts := [LS.Areg(tr)];
+    assert SD.GroupOkActs(acts) by { SD.GroupOkActsCons(LS.Areg(tr), []); }
+    TM.ComputeTrReverse(rer, acts, inpB, LG.Empty, LG.Empty);
+    assert SD.RevActs(acts) == [LS.Areg(SD.RevL(tr))] by { SD.RevActsCons(LS.Areg(tr), []); }
+    var tB := FU.ComputeTr(rer, acts, inpB, LG.Empty, WP.Backward);
+    var tF := FU.ComputeTr(rer, [LS.Areg(SD.RevL(tr))], SD.SwapInput(inpB), LG.Empty, WP.Forward);
+    assert TM.TreeMirrorRel(tB, tF);
+    TreeMirrorRelLkFromRel(tB, tF, Sin);
+  }
 }
