@@ -870,3 +870,32 @@ resolution, now correctly scoped to value only:
 group-map correspondence.** Then T2d assembles `LkReplayMatchesSpecLBNested` (reuse T2a `BackwardReplayMirrorNested`
 + T1 `GmOfLiveXRev` + (A) + (B)), T3 wires (drop `assert false` LiftSim:22441), T4 drops
 `NoPosLookbehind` + §18 opaque-at-source perf pass, T5 API/doc.
+
+### (B) RESOLVED — inner captures split off via `GmAgreeOutside(.., LkBodyGroups)` (L4 pattern)
+
+The contradiction above is resolved, and NOT by armchair reasoning — by reading how L4 already handles
+it. `ReplayCapIsBodyLeaf` (look-free, MainTheorem.dfy:6462) binds the engine value to the spec-forward
+tree leaf FULLY (`bestT == FirstLeaf(t)`). Its nested sibling `ReplayCapIsBodyLeafNested`
+(MainTheorem.dfy:6557, from L4) deliberately WEAKENS that to
+`GmAgreeOutside(bestT.value.1, FirstLeaf(t).value.1, LkBodyGroups(Translate(body)))` — the tie holds
+only on gids OUTSIDE `LkBodyGroups` (surface gids); inner-look captures come from the confined nested
+machinery (`BodyTreeAtCpNested`, MainTheorem.dfy:3836 / the oracle), never the re-walk.
+
+So the char-level trace was RIGHT: full `MirrorGm` fails on inner-look gids (backward-`r1`-at-p reads
+chars before p; backward-`RevL(r1)`-over-swap reads chars after p). The mirrored-oracle intuition was
+right that the engine gets inner captures correctly, but wrong that this makes the TREE mirror hold on
+them. Reconciliation = SPLIT: surface via mirror, inner via the nested oracle machinery.
+
+**Sharp de-risked (B):**
+1. widen `BackBodyGmTie`/`TreeResMirror`/`TreeMirrorRel`/`ComputeTreeReverse` to nested with a
+   SURFACE-only value claim: `GmAgreeOutside(MirrorGm(rb.leaf), rf.leaf, LkBodyGroups(tr))` instead of
+   full `MirrorGm` equality. `TreeMirrorRel` LK case = continuations mirror + look-kind agree, body
+   sub-trees EXCLUDED. Surface-preservation across an LK node is `TreeResPreservesGid`
+   (CaptureContent.dfy:501, already nesting-aware).
+2. inner-look gids: a BACKWARD nested replay tied to the spec-backward `LkResult` inner captures — the
+   backward analogue of `ReplayCapIsBodyLeafNested`/`BodyTreeAtCpNested`. The forward-mirror (RevRE)
+   side gives RevL(tr)'s inner captures ("after p", wrong for the original), so inner captures MUST be
+   read from the ORIGINAL backward run's oracle, not the mirror. This is where "engine tables run
+   nested lookbehinds backward today" is the payoff.
+3. keystone `LkReplayMatchesSpecLBNested` = surface(1) + inner(2) assembled into
+   `GmAgreeOn(.., S=DefGroups(tr))`.
