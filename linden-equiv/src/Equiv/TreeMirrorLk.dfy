@@ -513,4 +513,82 @@ module LindenElkTreeMirrorLk {
     assert TM.TreeMirrorRel(tB, tF);
     TreeMirrorRelLkFromRel(tB, tF, Sin);
   }
+
+  // ===========================================================================
+  // BRICK 3b scaffolding: the abstract gate-mirror hypothesis + acts plumbing
+  // ===========================================================================
+
+  /** The gate-agreement fact the builder needs at ONE inner look, ONE input:
+      the body's LkDir walk succeeds iff its RevL image's LkDir walk over the
+      swapped input succeeds. Discharged (over all inputs) by `InnerGateAgree`
+      through the oracle; stated abstractly here so the builder recursion stays
+      oracle-free. */
+  ghost predicate GateAgree(rer: LW.RegExpRecord, lk: L.Lookaround, r1: L.Regex, inp2: LC.Input) {
+    LT.TreeRes(FU.ComputeTr(rer, [LS.Areg(r1)], inp2, LG.Empty, L.LkDir(lk)),
+               LG.Empty, inp2, L.LkDir(lk)).Some?
+    == LT.TreeRes(FU.ComputeTr(rer, [LS.Areg(SD.RevL(r1))], SD.SwapInput(inp2), LG.Empty, L.LkDir(lk)),
+                  LG.Empty, SD.SwapInput(inp2), L.LkDir(lk)).Some?
+  }
+
+  /** Every inner look in `r` has its gate mirror (at every input). Structural
+      over `r`, so a subterm inherits it directly. */
+  ghost predicate RegLookGatesMirror(r: L.Regex, rer: LW.RegExpRecord)
+    decreases r
+  {
+    match r
+    case LookaroundR(lk, r1) =>
+      (forall inp2: LC.Input :: GateAgree(rer, lk, r1, inp2)) && RegLookGatesMirror(r1, rer)
+    case Disjunction(a, b) => RegLookGatesMirror(a, rer) && RegLookGatesMirror(b, rer)
+    case Sequence(a, b) => RegLookGatesMirror(a, rer) && RegLookGatesMirror(b, rer)
+    case Quantified(_, _, _, r1) => RegLookGatesMirror(r1, rer)
+    case Group(_, r1) => RegLookGatesMirror(r1, rer)
+    case _ => true
+  }
+
+  /** Lifted to an action stack. */
+  ghost predicate ActsLookGatesMirror(acts: LS.Actions, rer: LW.RegExpRecord) {
+    forall i :: 0 <= i < |acts| && acts[i].Areg? ==> RegLookGatesMirror(acts[i].r, rer)
+  }
+
+  /** Per-`Areg` `GroupOkLB` (allows nested lookbehinds; bans backrefs and
+      lookaheads on the surface). The builder's fragment invariant. */
+  ghost predicate GroupOkLBActs(acts: LS.Actions) {
+    forall i :: 0 <= i < |acts| && acts[i].Areg? ==> SD.GroupOkLB(acts[i].r)
+  }
+
+  lemma GroupOkLBActsTail(acts: LS.Actions)
+    requires |acts| > 0 && GroupOkLBActs(acts)
+    ensures GroupOkLBActs(acts[1..])
+  {
+    forall i | 0 <= i < |acts[1..]| && acts[1..][i].Areg? ensures SD.GroupOkLB(acts[1..][i].r) {
+      assert acts[1..][i] == acts[i + 1];
+    }
+  }
+
+  lemma GroupOkLBActsCons(a: LS.Action, acts: LS.Actions)
+    requires GroupOkLBActs(acts) && (a.Areg? ==> SD.GroupOkLB(a.r))
+    ensures GroupOkLBActs([a] + acts)
+  {
+    forall i | 0 <= i < |[a] + acts| && ([a] + acts)[i].Areg? ensures SD.GroupOkLB(([a] + acts)[i].r) {
+      if i == 0 {} else { assert ([a] + acts)[i] == acts[i - 1]; }
+    }
+  }
+
+  lemma ActsLookGatesMirrorTail(acts: LS.Actions, rer: LW.RegExpRecord)
+    requires |acts| > 0 && ActsLookGatesMirror(acts, rer)
+    ensures ActsLookGatesMirror(acts[1..], rer)
+  {
+    forall i | 0 <= i < |acts[1..]| && acts[1..][i].Areg? ensures RegLookGatesMirror(acts[1..][i].r, rer) {
+      assert acts[1..][i] == acts[i + 1];
+    }
+  }
+
+  lemma ActsLookGatesMirrorCons(a: LS.Action, acts: LS.Actions, rer: LW.RegExpRecord)
+    requires ActsLookGatesMirror(acts, rer) && (a.Areg? ==> RegLookGatesMirror(a.r, rer))
+    ensures ActsLookGatesMirror([a] + acts, rer)
+  {
+    forall i | 0 <= i < |[a] + acts| && ([a] + acts)[i].Areg? ensures RegLookGatesMirror(([a] + acts)[i].r, rer) {
+      if i == 0 {} else { assert ([a] + acts)[i] == acts[i - 1]; }
+    }
+  }
 }
