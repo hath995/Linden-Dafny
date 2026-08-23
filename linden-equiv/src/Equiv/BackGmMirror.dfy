@@ -23,6 +23,7 @@ module LindenBackGmMirror {
   import BV = LindenElkBackValue
   import PIV = LindenElkPikeInv
   import LG = Groups
+  import OBu = LindenElkOracleBuild
 
   /** The pointwise position mirror on a raw register array. */
   function MirrorArr(a: seq<int>, n: int): seq<int> {
@@ -489,5 +490,100 @@ module LindenBackGmMirror {
          == PIV.GmOfLive(body, cap, look, quant)
   {
     FilterResetRevRE(body, cap, look, quant, -1);
+  }
+
+  // ===========================================================================
+  // The XRev bridge (L5 / NESTED lookbehind): GmOfLive is invariant under
+  // XRev := SwapAnchorsRegex o reverse_regex. Unlike the RevRE bridge above,
+  // XRev RECURSES into lookaround bodies (RevRE is identity there) and swaps
+  // anchors. GmOfLive reads `ast` only through `filter_reset(ast,.,-1)`
+  // (PikeInvRE.dfy:3176), whose zero-set is clock-determined, permutation-
+  // invariant (set union), and anchor-blind -- so the denotation is unchanged
+  // at ANY nesting depth. This is the T1 brick of the L5 campaign; it replaces
+  // the depth-1-only RevRE route (whose SD.RevRE has an identity lookaround
+  // case) so the nested backward value keystone can read the reversed run.
+  // ===========================================================================
+  function XRV(r: R.regex): R.regex { OBu.SwapAnchorsRegex(R.reverse_regex(r)) }
+
+  lemma ZeroSetAllXRev(r: R.regex)
+    ensures ZeroSetAll(XRV(r)) == ZeroSetAll(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      assert XRV(r) == R.Re_alt(XRV(r1), XRV(r2));
+      ZeroSetAllXRev(r1); ZeroSetAllXRev(r2);
+    case Re_con(r1, r2) =>
+      assert XRV(r) == R.Re_con(XRV(r2), XRV(r1));
+      ZeroSetAllXRev(r1); ZeroSetAllXRev(r2);
+    case Re_quant(nul, qid, q, r1) =>
+      assert XRV(r) == R.Re_quant(nul, qid, q, XRV(r1));
+      ZeroSetAllXRev(r1);
+    case Re_capture(cid, r1) =>
+      assert XRV(r) == R.Re_capture(cid, XRV(r1));
+      ZeroSetAllXRev(r1);
+    case Re_lookaround(lid, la, r1) =>
+      assert XRV(r) == R.Re_lookaround(lid, la, XRV(r1));
+      ZeroSetAllXRev(r1);
+    case _ =>
+      assert ZeroSetAll(XRV(r)) == {};
+  }
+
+  lemma ZeroSetCapXRev(r: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>, mc: int)
+    ensures ZeroSetCap(XRV(r), cc, lc, qc, mc) == ZeroSetCap(r, cc, lc, qc, mc)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      assert XRV(r) == R.Re_alt(XRV(r1), XRV(r2));
+      ZeroSetCapXRev(r1, cc, lc, qc, mc); ZeroSetCapXRev(r2, cc, lc, qc, mc);
+    case Re_con(r1, r2) =>
+      assert XRV(r) == R.Re_con(XRV(r2), XRV(r1));
+      ZeroSetCapXRev(r1, cc, lc, qc, mc); ZeroSetCapXRev(r2, cc, lc, qc, mc);
+    case Re_quant(nul, qid, quant, r1) =>
+      assert XRV(r) == R.Re_quant(nul, qid, quant, XRV(r1));
+      var quant_val := AI.get_idx(qc, qid);
+      if quant_val < mc { ZeroSetAllXRev(r1); }
+      else { ZeroSetCapXRev(r1, cc, lc, qc, quant_val); }
+    case Re_capture(cid, r1) =>
+      assert XRV(r) == R.Re_capture(cid, XRV(r1));
+      var start := AI.get_idx(cc, CP.start_reg(cid));
+      if start < 0 { ZeroSetAllXRev(r1); }
+      else if start < mc { ZeroSetAllXRev(r1); }
+      else { ZeroSetCapXRev(r1, cc, lc, qc, mc); }
+    case Re_lookaround(lid, la, r1) =>
+      assert XRV(r) == R.Re_lookaround(lid, la, XRV(r1));
+      var look_val := AI.get_idx(lc, lid);
+      if look_val < 0 { ZeroSetAllXRev(r1); }
+      else if look_val < mc { ZeroSetAllXRev(r1); }
+      else { ZeroSetCapXRev(r1, cc, lc, qc, -1); }
+    case _ =>
+      assert ZeroSetCap(XRV(r), cc, lc, qc, mc) == {};
+  }
+
+  lemma FilterCaptureXRev(r: R.regex, a: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, mc: int)
+    ensures AI.filter_capture(XRV(r), a, cc, lc, qc, mc) == AI.filter_capture(r, a, cc, lc, qc, mc)
+  {
+    FilterCaptureZero(XRV(r), a, cc, lc, qc, mc);
+    FilterCaptureZero(r, a, cc, lc, qc, mc);
+    ZeroSetCapXRev(r, cc, lc, qc, mc);
+  }
+
+  lemma FilterResetXRev(r: R.regex, cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, mc: int)
+    ensures AI.filter_reset(XRV(r), cap, look, quant, mc)
+         == AI.filter_reset(r, cap, look, quant, mc)
+  {
+    FilterCaptureXRev(r, AReg.as_arrays(cap).0, AReg.as_arrays(cap).1,
+                      AReg.as_arrays(look).1, AReg.as_arrays(quant).1, mc);
+  }
+
+  /** THE T1 BRIDGE: reversing the body (nested-aware, via XRev) leaves its
+      `GmOfLive` denotation unchanged at any depth. Sibling of `GmOfLiveRevRE`,
+      lifted from the identity-lookaround `SD.RevRE` to the recursive `XRev`. */
+  lemma GmOfLiveXRev(body: R.regex, cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs)
+    ensures PIV.GmOfLive(XRV(body), cap, look, quant)
+         == PIV.GmOfLive(body, cap, look, quant)
+  {
+    FilterResetXRev(body, cap, look, quant, -1);
   }
 }
