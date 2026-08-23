@@ -51,6 +51,9 @@ module LindenElkTreeMirrorLk {
   import AR = LindenElkActionsRep
   import LOr = Oracle
   import PIV = LindenElkPikeInv
+  import EL = LindenElkEntryLk
+  import FS = FunctionalSemantics
+  import CI = ComputeIsTree
 
   // ===========================================================================
   // BRICK 1: the LK-extended mirror relation
@@ -590,5 +593,63 @@ module LindenElkTreeMirrorLk {
     forall i | 0 <= i < |[a] + acts| && ([a] + acts)[i].Areg? ensures RegLookGatesMirror(([a] + acts)[i].r, rer) {
       if i == 0 {} else { assert ([a] + acts)[i] == acts[i - 1]; }
     }
+  }
+
+  // ===========================================================================
+  // BRICK 3b: the LK-case gate plumbing (de-risking the builder's hard case)
+  // ===========================================================================
+
+  /** `RevL` preserves the recursive fragment (kinds unchanged; positive bodies
+      recurse, negative bodies stay group-free via `SD.RevLGroupFree`). Needed to
+      apply `ComputeTrGmIndepLkRec` on the RevL side. */
+  lemma RevLPreservesPikeLkRec(r: L.Regex)
+    requires EL.PikeLkRegexRec(r)
+    ensures EL.PikeLkRegexRec(SD.RevL(r))
+    decreases r
+  {
+    match r
+    case Disjunction(a, b) => RevLPreservesPikeLkRec(a); RevLPreservesPikeLkRec(b);
+    case Sequence(a, b) => RevLPreservesPikeLkRec(a); RevLPreservesPikeLkRec(b);
+    case Quantified(_, _, _, r1) => RevLPreservesPikeLkRec(r1);
+    case Group(_, r1) => RevLPreservesPikeLkRec(r1);
+    case LookaroundR(lk, r1) =>
+      if L.Positivity(lk) { RevLPreservesPikeLkRec(r1); }
+      else { SD.RevLGroupFree(r1); }
+    case _ =>
+  }
+
+  /** THE LK-case gate plumbing. Given the abstract gate mirror (`GateAgree`) and
+      the two fuel-computed body trees, the two `LkResult` gate verdicts agree
+      (both Some ⇒ both trees are `LK`; both None ⇒ both `LKFail`). Composes
+      determinism (`ComputeTree` Some ⇒ `ComputeTr`), tree gm-independence
+      (`ComputeTrGmIndepLkRec`), and gate gm-independence (`LkResultGmIndep`). */
+  lemma LookGateAgree(rer: LW.RegExpRecord, lk: L.Lookaround, r1: L.Regex, inp: LC.Input,
+                      gm1: LG.GroupMap, gm2: LG.GroupMap, sinp: LC.Input,
+                      treelk_B: LT.Tree, treelk_F: LT.Tree, fB: nat, fF: nat)
+    requires EL.PikeLkRegexRec(r1)
+    requires sinp == SD.SwapInput(inp)
+    requires GateAgree(rer, lk, r1, inp)
+    requires FS.ComputeTree(rer, [LS.Areg(r1)], inp, gm1, L.LkDir(lk), fB) == Some(treelk_B)
+    requires FS.ComputeTree(rer, [LS.Areg(SD.RevL(r1))], sinp, gm2, L.LkDir(lk), fF) == Some(treelk_F)
+    ensures LS.LkResult(lk, treelk_B, gm1, inp).Some? == LS.LkResult(lk, treelk_F, gm2, sinp).Some?
+  {
+    // treelk_B == ComputeTr([Areg(r1)], inp, Empty, LkDir)
+    CI.ComputeIsTreeThm(rer, [LS.Areg(r1)], inp, gm1, L.LkDir(lk), fB, treelk_B);
+    FU.IsTreeEqComputeTr(rer, [LS.Areg(r1)], inp, gm1, L.LkDir(lk), treelk_B);
+    EL.ComputeTrGmIndepLkRec(rer, r1, inp, gm1, L.LkDir(lk));
+    assert treelk_B == FU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk));
+    // treelk_F == ComputeTr([Areg(RevL(r1))], sinp, Empty, LkDir)
+    RevLPreservesPikeLkRec(r1);
+    CI.ComputeIsTreeThm(rer, [LS.Areg(SD.RevL(r1))], sinp, gm2, L.LkDir(lk), fF, treelk_F);
+    FU.IsTreeEqComputeTr(rer, [LS.Areg(SD.RevL(r1))], sinp, gm2, L.LkDir(lk), treelk_F);
+    EL.ComputeTrGmIndepLkRec(rer, SD.RevL(r1), sinp, gm2, L.LkDir(lk));
+    assert treelk_F == FU.ComputeTr(rer, [LS.Areg(SD.RevL(r1))], sinp, LG.Empty, L.LkDir(lk));
+    // gate gm-independence (unconditional)
+    EL.LkResultGmIndep(lk, treelk_B, gm1, inp);
+    EL.LkResultGmIndep(lk, treelk_F, gm2, sinp);
+    // Empty-gates: LkResult.Some? is a function (identity or negation, per Positivity)
+    // of TreeRes(t, Empty, ., LkDir).Some?, which GateAgree equates across sides.
+    assert LT.TreeRes(treelk_B, LG.Empty, inp, L.LkDir(lk)).Some?
+        == LT.TreeRes(treelk_F, LG.Empty, sinp, L.LkDir(lk)).Some?;   // == GateAgree
   }
 }
