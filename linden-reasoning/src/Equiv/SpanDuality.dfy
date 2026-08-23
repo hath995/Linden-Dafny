@@ -946,6 +946,57 @@ module LindenSpanDuality {
     case _ =>
   }
 
+  /** `GroupOkL` widened to admit nested capturing lookBEHINDs (L5). A
+      lookAHEAD stays excluded: `MatchesL`'s look clause characterises only the
+      zero-width lookbehind, so the span duality below covers lookbehind nesting
+      only. Groups inside a look body are fine (this is the whole point of the
+      nested-CAPTURING generalisation); backreferences still are not. */
+  ghost predicate GroupOkLB(r: L.Regex)
+    decreases r
+  {
+    match r
+    case Epsilon => true
+    case Character(_) => true
+    case AnchorR(_) => true
+    case Disjunction(r1, r2) => GroupOkLB(r1) && GroupOkLB(r2)
+    case Sequence(r1, r2) => GroupOkLB(r1) && GroupOkLB(r2)
+    case Quantified(_, _, _, r1) => GroupOkLB(r1)
+    case Group(_, r1) => GroupOkLB(r1)
+    case LookaroundR(lk, r1) => (lk.LookBehind? || lk.NegLookBehind?) && GroupOkLB(r1)
+    case Backreference(_) => false
+  }
+
+  /** `GroupOkL` is in particular `GroupOkLB` (looks only make the wider
+      predicate strictly larger). */
+  lemma GroupOkIsGroupOkLB(r: L.Regex)
+    requires GroupOkL(r)
+    ensures GroupOkLB(r)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => GroupOkIsGroupOkLB(r1); GroupOkIsGroupOkLB(r2);
+    case Sequence(r1, r2) => GroupOkIsGroupOkLB(r1); GroupOkIsGroupOkLB(r2);
+    case Quantified(_, _, _, r1) => GroupOkIsGroupOkLB(r1);
+    case Group(_, r1) => GroupOkIsGroupOkLB(r1);
+    case _ =>
+  }
+
+  /** The nested-lookbehind fragment is still backreference-free, so the
+      map-independence machinery (`SuccActsGmIndep` etc.) applies unchanged. */
+  lemma GroupOkLBIsNoBackref(r: L.Regex)
+    requires GroupOkLB(r)
+    ensures NoBackrefL(r)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => GroupOkLBIsNoBackref(r1); GroupOkLBIsNoBackref(r2);
+    case Sequence(r1, r2) => GroupOkLBIsNoBackref(r1); GroupOkLBIsNoBackref(r2);
+    case Quantified(_, _, _, r1) => GroupOkLBIsNoBackref(r1);
+    case Group(_, r1) => GroupOkLBIsNoBackref(r1);
+    case LookaroundR(_, r1) => GroupOkLBIsNoBackref(r1);
+    case _ =>
+  }
+
   lemma GroupOkActsIsNoBackref(acts: LS.Actions)
     requires GroupOkActs(acts)
     ensures NoBackrefActs(acts)
@@ -1304,7 +1355,7 @@ module LindenSpanDuality {
       the group map constant throughout. */
   lemma BwdComplete(rer: LW.RegExpRecord, r: L.Regex, cont: LS.Actions, str: string,
                     i: int, j: int, gm: LG.GroupMap)
-    requires GroupOkL(r)
+    requires GroupOkLB(r)
     requires NoBackrefActs(cont)
     requires 0 <= i <= j <= |str|
     requires MatchesL(rer, r, str, i, j)
@@ -1347,7 +1398,7 @@ module LindenSpanDuality {
       var m: int :| MatchesL(rer, r1, str, i, m) && MatchesL(rer, r2, str, m, j);
       MatchesLBounds(rer, r1, str, i, m);
       MatchesLBounds(rer, r2, str, m, j);
-      GroupOkIsNoBackref(r1);
+      GroupOkLBIsNoBackref(r1);
       NoBackrefActsCons(LS.Areg(r1), cont);
       BwdComplete(rer, r1, cont, str, i, m, gm);
       BwdComplete(rer, r2, [LS.Areg(r1)] + cont, str, m, j, gm);
@@ -1368,7 +1419,7 @@ module LindenSpanDuality {
       // the opened map. The body match is MatchesL(r1) (group-transparent), and
       // cont resumes at the CLOSED map, which SuccActsGmIndep discards.
       assert MatchesL(rer, r1, str, i, j);            // MatchesL(Group) == MatchesL(r1)
-      GroupOkIsNoBackref(r1);
+      GroupOkLBIsNoBackref(r1);
       var gmO := LG.GMOpen(LC.Idx(inp), gid, gm);
       var acont := [LS.Aclose(gid)] + cont;
       NoBackrefActsCons(LS.Aclose(gid), cont);
@@ -1385,7 +1436,52 @@ module LindenSpanDuality {
       assert [LS.Areg(r1)] + acont == [LS.Areg(r1), LS.Aclose(gid)] + cont;
       var titer := FU.ComputeTr(rer, [LS.Areg(r1), LS.Aclose(gid)] + cont, inp, gmO, WP.Backward);
       assert FU.ComputeTr(rer, acts, inp, gm, WP.Backward) == LT.GroupActionT(LG.Open(gid), titer);
-    case LookaroundR(_, _) =>
+    case LookaroundR(lk, r1) =>
+      // A nested lookBEHIND is zero-width: `MatchesL` gives `i == j` and pins the
+      // gate to the body span. `L.LkDir(lk) == Backward`; the body's backward walk
+      // from `i` succeeds iff some `[m, i)` spans `r1` (BwdComplete/BwdSound on the
+      // strictly-smaller body -- the mutual step). The look node's `LkResult` then
+      // matches `Positivity(lk)`, and `cont` resumes under a map that
+      // `SuccActsGmIndep` reconciles.
+      assert i == j;
+      assert lk.LookBehind? || lk.NegLookBehind?;   // from GroupOkLB(r)
+      assert L.LkDir(lk) == WP.Backward;
+      GroupOkLBIsNoBackref(r1);
+      var treelk := FU.ComputeTr(rer, [LS.Areg(r1)], inp, gm, WP.Backward);
+      // Sub-fact A: body walk succeeds  <==>  some [m, i) spans r1
+      var bodySucc := LT.TreeRes(treelk, gm, inp, WP.Backward).Some?;
+      assert SuccActs(rer, [LS.Areg(r1)], inp, gm, WP.Backward) == bodySucc;
+      if (exists m: int :: 0 <= m <= i && MatchesL(rer, r1, str, m, i)) {
+        var m: int :| 0 <= m <= i && MatchesL(rer, r1, str, m, i);
+        assert SuccActs(rer, [], T.InputAt(str, m), gm, WP.Backward) by {
+          FU.ComputeTrRw(rer, [], T.InputAt(str, m), gm, WP.Backward);
+        }
+        BwdComplete(rer, r1, [], str, m, i, gm);
+        assert [LS.Areg(r1)] + [] == [LS.Areg(r1)];
+        assert bodySucc;
+      }
+      if bodySucc {
+        assert [LS.Areg(r1)] + [] == [LS.Areg(r1)];
+        assert SuccActs(rer, [LS.Areg(r1)], inp, gm, WP.Backward);
+        var m := BwdSound(rer, r1, [], str, i, gm);
+        assert 0 <= m <= i && MatchesL(rer, r1, str, m, i);
+      }
+      // gate agreement: Positivity(lk) <==> bodySucc
+      assert L.Positivity(lk) <==> bodySucc;
+      match LS.LkResult(lk, treelk, gm, inp) {
+        case Some(gmlk) =>
+          // positive+succeeds (gmlk = leaf map) or negative+fails (gmlk = gm);
+          // either way TreeRes(LK) reduces to SuccActs(cont) under gmlk
+          FU.ComputeTrRw(rer, acts, inp, gm, WP.Backward);
+          assert FU.ComputeTr(rer, acts, inp, gm, WP.Backward)
+              == LT.LK(lk, treelk, FU.ComputeTr(rer, cont, inp, gmlk, WP.Backward));
+          SuccActsGmIndep(rer, cont, inp, gm, gmlk, WP.Backward);
+          assert SuccActs(rer, cont, inp, gmlk, WP.Backward);
+        case None =>
+          // impossible: LkResult is None only when a positive body fails or a
+          // negative body succeeds, contradicting the gate agreement above.
+          assert false;
+      }
     case Backreference(_) =>
   }
 
@@ -1397,7 +1493,7 @@ module LindenSpanDuality {
   lemma BwdCompleteQuant(rer: LW.RegExpRecord, greedy: bool, min: nat, delta: LN.NoI,
                          r1: L.Regex, cont: LS.Actions, str: string,
                          i: int, j: int, gm: LG.GroupMap, k: nat)
-    requires GroupOkL(r1)
+    requires GroupOkLB(r1)
     requires NoBackrefActs(cont)
     requires 0 <= i <= j <= |str|
     requires min <= k
@@ -1413,7 +1509,7 @@ module LindenSpanDuality {
     var acts := [LS.Areg(q)] + cont;
     FU.ComputeTrRw(rer, acts, inp, gm, WP.Backward);
     assert acts[0] == LS.Areg(q) && acts[1..] == cont;
-    GroupOkIsNoBackref(r1);
+    GroupOkLBIsNoBackref(r1);
     if min > 0 {
       // Each iteration RESETS the body's groups: the quantifier tree is
       // GroupActionT(Reset(DefGroups(r1)), titer), and titer is built under
@@ -1452,7 +1548,7 @@ module LindenSpanDuality {
   lemma BwdCompleteFree(rer: LW.RegExpRecord, greedy: bool, delta: LN.NoI,
                         r1: L.Regex, cont: LS.Actions, str: string,
                         i: int, j: int, gm: LG.GroupMap, k2: nat)
-    requires GroupOkL(r1)
+    requires GroupOkLB(r1)
     requires NoBackrefActs(cont)
     requires 0 <= i <= j <= |str|
     requires delta != LN.NN(0) || k2 == 0
@@ -1468,7 +1564,7 @@ module LindenSpanDuality {
     var acts := [LS.Areg(q)] + cont;
     FU.ComputeTrRw(rer, acts, inp, gm, WP.Backward);
     assert acts[0] == LS.Areg(q) && acts[1..] == cont;
-    GroupOkIsNoBackref(r1);
+    GroupOkLBIsNoBackref(r1);
     var gidl := L.DefGroups(r1);
     if k2 == 0 {
       // i == j: the skip branch carries the continuation's success (unaffected
@@ -1529,6 +1625,18 @@ module LindenSpanDuality {
     requires MatchesL(rer, r, str, i, cp)
     ensures SuccActs(rer, [LS.Areg(r)], T.InputAt(str, cp), gm, WP.Backward)
   {
+    GroupOkIsGroupOkLB(r);
+    SpanDualityCompleteLB(rer, r, str, i, cp, gm);
+  }
+
+  /** `SpanDualityComplete` for the nested-lookbehind fragment (L5). */
+  lemma SpanDualityCompleteLB(rer: LW.RegExpRecord, r: L.Regex, str: string,
+                              i: int, cp: int, gm: LG.GroupMap)
+    requires GroupOkLB(r)
+    requires 0 <= i <= cp <= |str|
+    requires MatchesL(rer, r, str, i, cp)
+    ensures SuccActs(rer, [LS.Areg(r)], T.InputAt(str, cp), gm, WP.Backward)
+  {
     SuccActsNil(rer, T.InputAt(str, i), gm, WP.Backward);
     assert NoBackrefActs([]);
     BwdComplete(rer, r, [], str, i, cp, gm);
@@ -1560,7 +1668,7 @@ module LindenSpanDuality {
       continuation's walk succeeds from `i`. */
   lemma BwdSound(rer: LW.RegExpRecord, r: L.Regex, cont: LS.Actions, str: string,
                  j: int, gm: LG.GroupMap) returns (i: int)
-    requires GroupOkL(r)
+    requires GroupOkLB(r)
     requires NoBackrefActs(cont)
     requires 0 <= j <= |str|
     requires SuccActs(rer, [LS.Areg(r)] + cont, T.InputAt(str, j), gm, WP.Backward)
@@ -1611,7 +1719,7 @@ module LindenSpanDuality {
         i := BwdSound(rer, r2, cont, str, j, gm);
       }
     case Sequence(r1, r2) =>
-      GroupOkIsNoBackref(r1);
+      GroupOkLBIsNoBackref(r1);
       NoBackrefActsCons(LS.Areg(r1), cont);
       assert LS.SeqList(r1, r2, WP.Backward) + cont == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
       var m := BwdSound(rer, r2, [LS.Areg(r1)] + cont, str, j, gm);
@@ -1626,7 +1734,7 @@ module LindenSpanDuality {
       //   so the body's backward walk under gmO succeeds. Recover its span (=
       //   MatchesL(Group)==MatchesL(r1)); cont resumes at the closed map, shifted
       //   back to gm by SuccActsGmIndep.
-      GroupOkIsNoBackref(r1);
+      GroupOkLBIsNoBackref(r1);
       var gmO := LG.GMOpen(LC.Idx(inp), gid, gm);
       var acont := [LS.Aclose(gid)] + cont;
       NoBackrefActsCons(LS.Aclose(gid), cont);
@@ -1646,8 +1754,48 @@ module LindenSpanDuality {
       assert SuccActs(rer, cont, inpI, gmC, WP.Backward);
       SuccActsGmIndep(rer, cont, inpI, gmC, gm, WP.Backward);
       i := i2;
-    case LookaroundR(_, _) =>
-      i := j; assert false;
+    case LookaroundR(lk, r1) =>
+      // Zero-width lookBEHIND: the span ends where it began, `i := j`. The walk
+      // succeeded, so the node is `LK` (an `LKFail` reads `None`), which fixes
+      // the gate to `Positivity(lk)`; the body span then follows from
+      // BwdComplete/BwdSound on the strictly-smaller body (the mutual step).
+      assert lk.LookBehind? || lk.NegLookBehind?;   // from GroupOkLB(r)
+      assert L.LkDir(lk) == WP.Backward;
+      GroupOkLBIsNoBackref(r1);
+      var treelk := FU.ComputeTr(rer, [LS.Areg(r1)], inp, gm, WP.Backward);
+      var bodySucc := LT.TreeRes(treelk, gm, inp, WP.Backward).Some?;
+      assert SuccActs(rer, [LS.Areg(r1)], inp, gm, WP.Backward) == bodySucc;
+      FU.ComputeTrRw(rer, acts, inp, gm, WP.Backward);
+      // the walk succeeded, so the look node is LK (LKFail would give TreeRes None)
+      match LS.LkResult(lk, treelk, gm, inp) {
+        case None =>
+          assert FU.ComputeTr(rer, acts, inp, gm, WP.Backward) == LT.LKFail(lk, treelk);
+          assert LT.TreeRes(FU.ComputeTr(rer, acts, inp, gm, WP.Backward), gm, inp, WP.Backward) == None;
+          assert false;
+        case Some(gmlk) =>
+          assert FU.ComputeTr(rer, acts, inp, gm, WP.Backward)
+              == LT.LK(lk, treelk, FU.ComputeTr(rer, cont, inp, gmlk, WP.Backward));
+          // gate agreement: LkResult Some pins Positivity(lk) == bodySucc
+          assert L.Positivity(lk) <==> bodySucc;
+          // Sub-fact A: bodySucc <==> some [m, j) spans r1
+          if bodySucc {
+            assert [LS.Areg(r1)] + [] == [LS.Areg(r1)];
+            var m := BwdSound(rer, r1, [], str, j, gm);
+            assert 0 <= m <= j && MatchesL(rer, r1, str, m, j);
+          }
+          if (exists m: int :: 0 <= m <= j && MatchesL(rer, r1, str, m, j)) {
+            var m: int :| 0 <= m <= j && MatchesL(rer, r1, str, m, j);
+            assert SuccActs(rer, [], T.InputAt(str, m), gm, WP.Backward) by {
+              FU.ComputeTrRw(rer, [], T.InputAt(str, m), gm, WP.Backward);
+            }
+            BwdComplete(rer, r1, [], str, m, j, gm);
+            assert [LS.Areg(r1)] + [] == [LS.Areg(r1)];
+            assert bodySucc;
+          }
+          // continuation success at gmlk transfers back to gm
+          SuccActsGmIndep(rer, cont, inp, gmlk, gm, WP.Backward);
+      }
+      i := j;
     case Backreference(_) =>
       i := j; assert false;
   }
@@ -1659,7 +1807,7 @@ module LindenSpanDuality {
   lemma BwdSoundQuant(rer: LW.RegExpRecord, greedy: bool, min: nat, delta: LN.NoI,
                       r1: L.Regex, cont: LS.Actions, str: string,
                       j: int, gm: LG.GroupMap) returns (i: int, k: nat)
-    requires GroupOkL(r1)
+    requires GroupOkLB(r1)
     requires NoBackrefActs(cont)
     requires 0 <= j <= |str|
     requires SuccActs(rer, [LS.Areg(L.Quantified(greedy, min, delta, r1))] + cont,
@@ -1675,7 +1823,7 @@ module LindenSpanDuality {
     var acts := [LS.Areg(q)] + cont;
     FU.ComputeTrRw(rer, acts, inp, gm, WP.Backward);
     assert acts[0] == LS.Areg(q) && acts[1..] == cont;
-    GroupOkIsNoBackref(r1);
+    GroupOkLBIsNoBackref(r1);
     var gidl := L.DefGroups(r1);
     if min > 0 {
       // the iterate subtree is built under gm' = GMReset(gidl, gm); recover the
@@ -1757,6 +1905,18 @@ module LindenSpanDuality {
   lemma SpanDualitySound(rer: LW.RegExpRecord, r: L.Regex, str: string,
                          cp: int, gm: LG.GroupMap) returns (i: int)
     requires GroupOkL(r)
+    requires 0 <= cp <= |str|
+    requires SuccActs(rer, [LS.Areg(r)], T.InputAt(str, cp), gm, WP.Backward)
+    ensures 0 <= i <= cp && MatchesL(rer, r, str, i, cp)
+  {
+    GroupOkIsGroupOkLB(r);
+    i := SpanDualitySoundLB(rer, r, str, cp, gm);
+  }
+
+  /** `SpanDualitySound` for the nested-lookbehind fragment (L5). */
+  lemma SpanDualitySoundLB(rer: LW.RegExpRecord, r: L.Regex, str: string,
+                           cp: int, gm: LG.GroupMap) returns (i: int)
+    requires GroupOkLB(r)
     requires 0 <= cp <= |str|
     requires SuccActs(rer, [LS.Areg(r)], T.InputAt(str, cp), gm, WP.Backward)
     ensures 0 <= i <= cp && MatchesL(rer, r, str, i, cp)
