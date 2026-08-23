@@ -346,7 +346,7 @@ module LindenSpanDuality {
     case Sequence(r1, r2) => L.Sequence(RevL(r2), RevL(r1))
     case Quantified(g, min, delta, r1) => L.Quantified(g, min, delta, RevL(r1))
     case Group(gid, r1) => L.Group(gid, RevL(r1))
-    case LookaroundR(lk, r1) => r
+    case LookaroundR(lk, r1) => L.LookaroundR(lk, RevL(r1))
     case Backreference(_) => r
   }
 
@@ -1982,6 +1982,7 @@ module LindenSpanDuality {
     case Quantified(_, _, _, r1) => RevLInvolution(r1);
     case Group(_, r1) => RevLInvolution(r1);
     case AnchorR(a) => assert SwapAnchorL(SwapAnchorL(a)) == a;
+    case LookaroundR(_, r1) => RevLInvolution(r1);
     case _ =>
   }
 
@@ -2094,7 +2095,7 @@ module LindenSpanDuality {
     case Re_con(r1, r2) => RE.Re_con(RevRE(r2), RevRE(r1))
     case Re_quant(n, q, qt, r1) => RE.Re_quant(n, q, qt, RevRE(r1))
     case Re_capture(c, r1) => RE.Re_capture(c, RevRE(r1))
-    case Re_lookaround(l, lk, r1) => r
+    case Re_lookaround(l, lk, r1) => RE.Re_lookaround(l, lk, RevRE(r1))
   }
 
   lemma RevRETransWf(r: RE.regex)
@@ -2107,6 +2108,7 @@ module LindenSpanDuality {
     case Re_con(r1, r2) => RevRETransWf(r1); RevRETransWf(r2);
     case Re_quant(_, _, _, r1) => RevRETransWf(r1);
     case Re_capture(_, r1) => RevRETransWf(r1);
+    case Re_lookaround(_, _, r1) => RevRETransWf(r1);
     case _ =>
   }
 
@@ -2125,6 +2127,7 @@ module LindenSpanDuality {
     case Re_quant(_, _, _, r1) => TranslateRevRE(r1);
     case Re_capture(_, r1) => TranslateRevRE(r1);
     case Re_anchor(a) => assert T.TrAnchor(SwapAnchorRE(a)) == SwapAnchorL(T.TrAnchor(a));
+    case Re_lookaround(_, _, r1) => TranslateRevRE(r1);
     case _ =>
   }
 }
