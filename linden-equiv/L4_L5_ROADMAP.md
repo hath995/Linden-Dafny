@@ -776,3 +776,38 @@ to look-bearing is **blocked on the quantifier proofs** (`BwdCompleteQuant`/`Bwd
 That is the substantial remaining reasoning-layer work. After it: `SD.TranslateRevRE` already gives
 `Translate(RevRE)==RevL` at any depth now (so `Translate(XRev(body))==RevL(Translate(body))` is FREE
 via `RevRE==XRev`), then the nested `BackBodyGmTie`/`BackBodyEngineTie` analogs → T2c assembly.
+
+### L5 T2b(ii) — the CRUX identified: flip-vs-gate for the nested-look tree mirror (2026-08-23)
+
+Pushed into `TM.ComputeTreeReverse` (TreeMirror.dfy:123) widening and hit the central semantic
+decision. `ComputeTreeReverse` relates a BACKWARD walk to a FORWARD walk of `RevActs` over
+`SwapInput`. `TreeMirrorRel` (TreeMirror.dfy:72) has NO `LK` case. The spec walks a look body in its
+INTRINSIC `L.LkDir(lk)` (SpanDuality.dfy:1072, CaptureContent.dfy:527) — a lookbehind body is ALWAYS
+walked Backward. So in the mirror:
+
+- **No-flip `RevL`** (what T2b(i) committed): the mirrored look keeps `lk`, so its body sub-walk is
+  STILL Backward — but `ComputeTreeReverse` relates Backward↔Forward, so it CANNOT relate the two
+  look sub-trees. `TranslateRevRE` (no-flip) is a true theorem but is NOT obviously the reversal the
+  tree mirror wants.
+- **Flip `RevL`** (lookbehind↔lookahead): the mirrored look's `LkDir` flips to Forward, so
+  `ComputeTreeReverse` relates the sub-walks cleanly — BUT then `Translate(XRev(body)) != RevL(...)`
+  because the engine `XRev` keeps `la` (oracle-based, `MatchesVMirror` at OracleMirrorV.dfy:279-283
+  proves the nested span mirror with `la` UNCHANGED, relating oracle bits via `MirrorView`, NO flip).
+
+**Resolution direction (gate-based, consistent with no-flip + the L4 architecture):** treat a nested
+look in the tree mirror as a zero-width GATE, not a re-walk. `TreeMirrorRel`'s new `LK` case should
+require the two look nodes to AGREE ON PASS/FAIL (both `LK` or both `LKFail`), characterized by the
+ORACLE (`MatchesVMirror`-style, no flip) — NOT that their sub-trees fully mirror. The look's INNER
+captures are NOT carried by the tree mirror; they come from `recon_inner` (the L4 `FLookLoop`
+per-inner-lid reconstruction, `LkReplayMatchesSpecNestedFull`). This matches the authors' note
+(SpanDuality ~1112: "a nested lookBEHIND is zero-width, succeeds exactly when the sub-walk of its
+body from the SAME position does — the MatchesL clause"). It keeps T2b(i)'s no-flip `RevL`/`RevRE`.
+
+**Remaining T2b(ii) work (next session, design-first):** (1) define `TreeMirrorRel`'s `LK`/`LKFail`
+cases as oracle-gated pass/fail agreement (sub-tree captures excluded); (2) prove `ComputeTreeReverse`'s
+`LookaroundR` case using the oracle mirror for the gate (reusing `MatchesVMirror` reasoning), body
+captures deferred to recon_inner; (3) thread this through `TreeResMirror` (its `LK` case, TreeResMirror.dfy:330,
+currently `false`) so look-node leaf VALUES read from the reconstructed bank; (4) widen the `Bwd*`
+family (`BwdComplete*`) off `GroupFreeL` — the authors' quantifier-proof blocker — only where the
+gate characterization needs it. This is a DESIGN decision point; committing a look case before the
+gate-vs-flip choice is settled would risk a wrong lemma. Everything green + committed at this checkpoint.
