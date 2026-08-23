@@ -46,6 +46,11 @@ module LindenElkTreeMirrorLk {
   import CE = LindenElkCheckErase
   import CC = CaptureContent
   import LL = LindenElkLookLeaves
+  import TR = LindenElkTreeRep
+  import MIR = LindenElkMirror
+  import AR = LindenElkActionsRep
+  import LOr = Oracle
+  import PIV = LindenElkPikeInv
 
   // ===========================================================================
   // BRICK 1: the LK-extended mirror relation
@@ -438,5 +443,48 @@ module LindenElkTreeMirrorLk {
         case LKFail(lk2, tlkm) =>
         case _ =>
       }
+  }
+
+  // ===========================================================================
+  // BRICK 3a: the inner-look GATE AGREEMENT via the oracle (the crux)
+  // ===========================================================================
+
+  /** The core of the nested tree mirror: a nested inner look's BACKWARD gate at
+      `cp` (original string) agrees with its RevL forward-of-mirror gate at
+      `n-cp` (reversed string). This is the fact the raw span/tree mirror CANNOT
+      give (a nested lookbehind is walked in its intrinsic direction on both
+      sides, reading opposite sides of the point). It holds because BOTH gates
+      equal the SAME oracle bit: `OracleOkAt` (direction-generic) ties each
+      side's re-walk gate to its oracle, and `MirrorViewGet` (position-consistent,
+      no direction flip) ties the two oracle bits. `qm` is the original static
+      package, `qm'` its mirror (oracle `MirrorView`, look bodies `RevL`). */
+  lemma InnerGateAgree(rer: LW.RegExpRecord, qm: AR.QMap, qm': AR.QMap, str: string, rstr: string,
+                       n: nat, cp: nat, lid: int, lk: L.Lookaround, r1: L.Regex)
+    requires n == |str| && cp <= n && |qm.ov| == n + 1
+    requires rstr == LC.Reverse(str) && |rstr| == n
+    requires qm'.ov == MIR.MirrorView(qm.ov, n)
+    requires LL.OracleOkAt(rer, qm, PIV.InpOfCp(str, cp))
+    requires LL.OracleOkAt(rer, qm', PIV.InpOfCp(rstr, n - cp))
+    requires lid in qm.looks && qm.looks[lid] == (lk, r1)
+    requires lid in qm'.looks && qm'.looks[lid] == (lk, SD.RevL(r1))
+    ensures
+      var inpB := PIV.InpOfCp(str, cp);
+      var inpF := PIV.InpOfCp(rstr, n - cp);
+      LT.TreeRes(FU.ComputeTr(rer, [LS.Areg(r1)], inpB, LG.Empty, L.LkDir(lk)),
+                 LG.Empty, inpB, L.LkDir(lk)).Some?
+      == LT.TreeRes(FU.ComputeTr(rer, [LS.Areg(SD.RevL(r1))], inpF, LG.Empty, L.LkDir(lk)),
+                    LG.Empty, inpF, L.LkDir(lk)).Some?
+  {
+    var inpB := PIV.InpOfCp(str, cp);
+    var inpF := PIV.InpOfCp(rstr, n - cp);
+    PIV.IdxInpOfCp(str, cp);
+    PIV.IdxInpOfCp(rstr, n - cp);
+    assert TR.CpOf(inpB) == cp;
+    assert TR.CpOf(inpF) == n - cp;
+    LL.OracleOkAtGet(rer, qm, inpB, lid, lk, r1);
+    LL.OracleOkAtGet(rer, qm', inpF, lid, lk, SD.RevL(r1));
+    // MirrorViewGet: view(MirrorView(ov,n), n-cp, lid) == view(ov, cp, lid)
+    MIR.MirrorViewGet(qm.ov, n, cp, lid);
+    assert MIR.Mirror(cp, n) == n - cp;
   }
 }
