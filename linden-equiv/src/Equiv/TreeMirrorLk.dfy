@@ -28,6 +28,7 @@
 
 include "LookBehindValue.dfy"
 include "CheckErase.dfy"
+include "LookLeaves.dfy"
 
 module LindenElkTreeMirrorLk {
   import opened Std.Wrappers
@@ -43,6 +44,8 @@ module LindenElkTreeMirrorLk {
   import TM = LindenTreeMirror
   import TRM = LindenTreeResMirror
   import CE = LindenElkCheckErase
+  import CC = CaptureContent
+  import LL = LindenElkLookLeaves
 
   // ===========================================================================
   // BRICK 1: the LK-extended mirror relation
@@ -96,5 +99,134 @@ module LindenElkTreeMirrorLk {
     case (AnchorPass(x, a), AnchorPass(xm, am)) => TreeMirrorRelLkFromRel(a, am, Sin);
     case (GroupActionT(ga, a), GroupActionT(gam, am)) => TreeMirrorRelLkFromRel(a, am, Sin);
     case _ =>
+  }
+
+  // ===========================================================================
+  // BRICK 2 helpers: bounds, confinement bridges, mirror-agree
+  // ===========================================================================
+
+  /** One group action keeps a bounded map bounded (all endpoints stay `<= n`
+      because `currIdx <= n` and existing endpoints are `<= n`). */
+  lemma GMUpdateInBounds(op: LG.GroupAction, idx: nat, gm: LG.GroupMap, n: nat)
+    requires idx <= n
+    requires TRM.GmInBounds(gm, n)
+    ensures TRM.GmInBounds(LG.GMUpdate(op, idx, gm), n)
+  {
+    match op
+    case Open(g) =>
+    case Close(g) => { match LG.Find(g, gm) { case Some(rg) => case None => } }
+    case Reset(gs) =>
+  }
+
+  /** A tree's `TreeRes` leaf stays within `[0, n]` when the starting map is
+      bounded and the input length is `n` (every captured endpoint is some
+      `Idx(inp') <= n`). Direction-generic; recurses through look bodies. */
+  lemma TreeResGmInBounds(t: LT.Tree, gm: LG.GroupMap, inp: LC.Input, dir: WP.Direction, n: nat)
+    requires n == |inp.pref| + |inp.next|
+    requires TRM.GmInBounds(gm, n)
+    requires LT.TreeRes(t, gm, inp, dir).Some?
+    ensures TRM.GmInBounds(LT.TreeRes(t, gm, inp, dir).value.1, n)
+    decreases t
+  {
+    match t
+    case Match =>
+    case Choice(t1, t2) =>
+      if LT.TreeRes(t1, gm, inp, dir).Some? { TreeResGmInBounds(t1, gm, inp, dir, n); }
+      else { TreeResGmInBounds(t2, gm, inp, dir, n); }
+    case Read(_, t1) =>
+      var inp' := LC.AdvanceInputP(inp, dir);
+      assert n == |inp'.pref| + |inp'.next|;
+      TreeResGmInBounds(t1, gm, inp', dir, n);
+    case ReadBackRef(brStr, t1) =>
+      var inp' := LC.AdvanceInputN(inp, |brStr|, dir);
+      AdvanceInputNLen(inp, |brStr|, dir);
+      TreeResGmInBounds(t1, gm, inp', dir, n);
+    case Progress(t1) => TreeResGmInBounds(t1, gm, inp, dir, n);
+    case AnchorPass(_, t1) => TreeResGmInBounds(t1, gm, inp, dir, n);
+    case GroupActionT(a, t1) =>
+      assert LC.Idx(inp) <= n;
+      GMUpdateInBounds(a, LC.Idx(inp), gm, n);
+      TreeResGmInBounds(t1, LG.GMUpdate(a, LC.Idx(inp), gm), inp, dir, n);
+    case LK(lk, tlk, t1) =>
+      if L.Positivity(lk) {
+        match LT.TreeRes(tlk, gm, inp, L.LkDir(lk)) {
+          case Some(pair) =>
+            TreeResGmInBounds(tlk, gm, inp, L.LkDir(lk), n);
+            TreeResGmInBounds(t1, pair.1, inp, dir, n);
+          case None =>
+        }
+      } else {
+        match LT.TreeRes(tlk, gm, inp, L.LkDir(lk)) {
+          case None => TreeResGmInBounds(t1, gm, inp, dir, n);
+          case Some(_) =>
+        }
+      }
+    case Mismatch =>
+    case LKFail(_, _) =>
+  }
+
+  /** `AdvanceInputN` keeps the total length. */
+  lemma AdvanceInputNLen(inp: LC.Input, k: nat, dir: WP.Direction)
+    ensures |LC.AdvanceInputN(inp, k, dir).pref| + |LC.AdvanceInputN(inp, k, dir).next|
+         == |inp.pref| + |inp.next|
+  {
+    match dir
+    case Forward => LS.ReverseLength(LC.Take(inp.next, k));
+    case Backward => LS.ReverseLength(LC.Take(inp.pref, k));
+  }
+
+  /** A tree confined to `S` never touches a group outside `S` (bridge from
+      `CE.LkConfinedTreeRec` to `CC.NoGidAction`). */
+  lemma ConfinedNoGid(t: LT.Tree, S: set<LG.GroupId>, g: LG.GroupId)
+    requires CE.LkConfinedTreeRec(t, S)
+    requires g !in S
+    ensures CC.NoGidAction(t, g)
+    decreases t
+  {
+    match t
+    case Mismatch =>
+    case Match =>
+    case Choice(t1, t2) => ConfinedNoGid(t1, S, g); ConfinedNoGid(t2, S, g);
+    case Read(_, t1) => ConfinedNoGid(t1, S, g);
+    case ReadBackRef(_, t1) => ConfinedNoGid(t1, S, g);
+    case Progress(t1) => ConfinedNoGid(t1, S, g);
+    case AnchorPass(_, t1) => ConfinedNoGid(t1, S, g);
+    case GroupActionT(a, t1) =>
+      assert CC.GidUntouched(a, g) by { match a case Open(x) => case Close(x) => case Reset(gs) => assert g !in gs; }
+      ConfinedNoGid(t1, S, g);
+    case LK(_, tlk, t1) => ConfinedNoGid(tlk, S, g); ConfinedNoGid(t1, S, g);
+    case LKFail(_, tlk) => ConfinedNoGid(tlk, S, g);
+  }
+
+  /** A confined tree's `TreeRes` leaf agrees with its starting map OUTSIDE `S`
+      (it only writes groups inside `S`). */
+  lemma ConfinedLeafAgree(t: LT.Tree, gm: LG.GroupMap, inp: LC.Input, dir: WP.Direction,
+                          S: set<LG.GroupId>)
+    requires CE.LkConfinedTreeRec(t, S)
+    requires LT.TreeRes(t, gm, inp, dir).Some?
+    ensures LL.GmAgreeOutside(LT.TreeRes(t, gm, inp, dir).value.1, gm, S)
+  {
+    var leaf := LT.TreeRes(t, gm, inp, dir).value.1;
+    forall g | g !in S ensures (g in leaf <==> g in gm) && (g in leaf ==> leaf[g] == gm[g]) {
+      ConfinedNoGid(t, S, g);
+      CC.TreeResPreservesGid(t, gm, inp, dir, g);
+      assert LG.Find(g, leaf) == LG.Find(g, gm);
+    }
+  }
+
+  /** `MirrorGm` preserves outside-`S` agreement (it maps each range pointwise,
+      so groups the two maps agree on are mapped identically). */
+  lemma MirrorGmAgreeOutside(a: LG.GroupMap, b: LG.GroupMap, n: nat, S: set<LG.GroupId>)
+    requires TRM.GmInBounds(a, n) && TRM.GmInBounds(b, n)
+    requires LL.GmAgreeOutside(a, b, S)
+    ensures LL.GmAgreeOutside(TRM.MirrorGm(a, n), TRM.MirrorGm(b, n), S)
+  {
+    forall g | g !in S
+      ensures (g in TRM.MirrorGm(a, n) <==> g in TRM.MirrorGm(b, n))
+           && (g in TRM.MirrorGm(a, n) ==> TRM.MirrorGm(a, n)[g] == TRM.MirrorGm(b, n)[g])
+    {
+      TRM.MirrorGmAt(a, n);
+      TRM.MirrorGmAt(b, n);
+    }
   }
 }
