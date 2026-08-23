@@ -155,4 +155,52 @@ module LindenElkBackValue {
     SwapRevIsRevRE(body);
     assert MIR.SwapAnchorsCode(bc) == CP.compile_to_bytecode(SD.RevRE(body));
   }
+
+  /** L5 T2a: the NESTED engine transport. Identical to `BackwardReplayMirror`
+      but routed through `XRev := SwapAnchorsRegex o reverse_regex` instead of the
+      depth-1 `SD.RevRE`, so it needs NO `LookFreeRE` premise and holds for
+      arbitrarily nested bodies. The only place the depth-1 version used
+      `LookFreeRE` was `SwapRevIsRevRE` (to spell the forward bytecode as
+      `compile(RevRE(body))`); `CompileToBytecodeSwap` alone gives
+      `SwapAnchorsCode(bc) == compile(XRev(body))` for ANY body. */
+  lemma BackwardReplayMirrorNested(body: R.regex, str: string, cp: int, cap: AReg.Regs,
+                                   lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                                   cdn: LCdn.cdns, n: int)
+    requires n == |str| && |ov| == n + 1
+    requires 0 <= cp <= n
+    ensures
+      var bc := CP.compile_to_bytecode(R.reverse_regex(body));
+      var initsB := AI.FInitState(bc, cp, cap, lk, qt, 0,
+                                  AI.cp_context(cp, str, LAnc.Backward));
+      var bcF := CP.compile_to_bytecode(OBu.SwapAnchorsRegex(R.reverse_regex(body)));
+      var initsF := AI.FInitState(bcF, MIR.Mirror(cp, n),
+                                  MIR.MirrorRegs(cap, n), MIR.MirrorRegs(lk, n),
+                                  MIR.MirrorRegs(qt, n), 0,
+                                  AI.cp_context(MIR.Mirror(cp, n), LC.Reverse(str),
+                                                LAnc.Forward));
+      var resB := AI.FFindMatch(bc, str, initsB, ov, LAnc.Backward, cdn);
+      var resF := AI.FFindMatch(bcF, LC.Reverse(str), initsF,
+                                MIR.MirrorView(ov, n), LAnc.Forward,
+                                MIR.SwapAnchorsCdns(cdn));
+      |resB.1| == n + 1
+      && resF == ((match resB.0
+                   case None => None
+                   case Some(t) => Some(MIR.MirrorThread(t, n))),
+                  MIR.MirrorView(resB.1, n))
+  {
+    var bc := CP.compile_to_bytecode(R.reverse_regex(body));
+    var initsB := AI.FInitState(bc, cp, cap, lk, qt, 0,
+                                AI.cp_context(cp, str, LAnc.Backward));
+    MIR.ReverseLen(str);
+    MIR.GetCharMirror(str, cp);
+    assert initsB.context.nextchar == AI.get_char(str, cp - 1);
+    assert initsB.context.nextchar == AI.get_char(LC.Reverse(str), n - cp);
+    assert |initsB.processed.true_set| == RB.size(bc)
+        && |initsB.processed.false_set| == RB.size(bc);
+    MIR.FFindMatchMirror(bc, str, initsB, ov, cdn, n);
+    FInitStateMirrorAt(bc, str, cp, cap, lk, qt, n);
+    CompileToBytecodeSwap(R.reverse_regex(body));
+    assert MIR.SwapAnchorsCode(bc)
+        == CP.compile_to_bytecode(OBu.SwapAnchorsRegex(R.reverse_regex(body)));
+  }
 }
