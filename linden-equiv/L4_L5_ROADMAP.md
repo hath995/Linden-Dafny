@@ -1041,3 +1041,38 @@ this mirror (the oracle gates make it valid where the re-walk mirror fails), ins
 `FwdPosLooksL` (only the closedness gate needs it), assemble `LkReplayMatchesSpecLBNested`, and finally
 lift `NoPosLookbehindRE` through `OracleColumnNested`/`OracleOkRowsNested`/`MainTheorem` (wiring in both
 the gate atoms already green AND the captures). This is the endgame; it needs a fresh focused session.
+
+### (CAPTURES campaign) STARTED — independent re-derivation confirms the oracle-gated mirror
+
+Re-scouted the whole value tie from scratch this session and INDEPENDENTLY confirmed the
+architecture (was worried the earlier note conflated `LkGateOk` with the oracle):
+
+- **Gate agreement is ORACLE-based, NOT span-based.** Tried `MatchesLReverse` (SpanDuality:372,
+  the span-side mirror) as the inner-look gate-agreement source: it DIES for nested looks by the
+  SAME direction-flip. `RevL(LookBehind(r1)) = LookBehind(RevL(r1))` (no flip), so on `Reverse(str)`
+  a mirrored lookbehind reads span `[m', n-i)` = chars AFTER i in the original, while the original
+  lookbehind read chars BEFORE i. The span mirror `MatchesLReverse` requires `GroupOkL` (look-free)
+  precisely because of this — it CANNOT widen to nested lookbehinds. So the inner-gate agreement must
+  come from the ORACLE: `MirrorView(ov,n)[n-i] == ov[i]` (position-consistent, NO flip), and
+  `OracleOkAt` (direction-generic, `LkDir`) ties each side's bit to the body's LkDir-walk. This
+  settles the LOCATION: the nested tree mirror lives in linden-EQUIV (needs the oracle), not
+  reasoning.
+
+- **The LK fold is confinement-safe.** `TreeRes(LK(lk,tlk,tc), gm, inp, dir)` for positive `lk`
+  threads the inner body's first-leaf gm `pair.1` into the continuation `tc`. Since the inner body
+  writes only `LkBodyGroups` (=Sin), `pair.1` agrees with `gm` OUTSIDE Sin — so the SURFACE part of
+  the fold is independent of inner captures (`LkConfinedTreeK`, direction-generic). Gate re-eval at
+  the fold gm matches the node type (LK vs LKFail) by `ComputeTrGmIndepLkRec` (nested gm-independence,
+  already used by `LkReplayMatchesSpecNested`).
+
+**BRICK PLAN (new file `src/Equiv/TreeMirrorLk.dfy`, module `LindenElkTreeMirrorLk`):**
+1. `TreeMirrorRelLk(t, tm, Sin)` — `TreeMirrorRel` + LK/LKFail cases (same `lk`, continuation mirror,
+   inner subtrees EXCLUDED); `(LK,LKFail)` mixed = false (encodes gate agreement structurally).
+2. `TreeResMirrorLk` — the surface leaf fold: outside Sin, `TreeRes(t,Backward)` ~ `TreeRes(tm,Forward)`
+   under `MirrorGm`, given confinement + `CloseDiscLk`.
+3. `ComputeTrReverseLk` — the tree BUILDER: `ComputeTr(nested tr, Backward)` ~TreeMirrorRelLk~
+   `ComputeTr(RevL(tr), Forward)`, discharging each inner-look gate agreement via the oracle
+   (`OracleOkAt` + `MirrorView`). THE hard brick.
+4. `BackBodyGmTieNested` — compose 2+3 → surface leaf mirror (analogue of `BackBodyGmTie`).
+5. `LkReplayMatchesSpecLBNested` — surface via 4 + inner via the backward oracle reconstruction.
+6. Wire into MainTheorem; lift `NoPosLookbehindRE`.
