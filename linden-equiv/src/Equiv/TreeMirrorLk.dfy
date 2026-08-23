@@ -229,4 +229,214 @@ module LindenElkTreeMirrorLk {
       TRM.MirrorGmAt(b, n);
     }
   }
+
+  // ===========================================================================
+  // BRICK 2: the surface leaf fold
+  // ===========================================================================
+
+  /** Close discipline for LK-bearing trees: like `TRM.CloseDisc` on the surface,
+      but an `LK` node's Close discipline is just its CONTINUATION's (the inner
+      sub-tree is a self-contained confined walk), and `LKFail` has no leaves. */
+  ghost predicate CloseDiscLk(t: LT.Tree, O: set<LG.GroupId>)
+    decreases t
+  {
+    match t
+    case Mismatch => true
+    case Match => true
+    case Choice(a, b) => CloseDiscLk(a, O) && CloseDiscLk(b, O)
+    case Read(_, a) => CloseDiscLk(a, O)
+    case ReadBackRef(_, a) => CloseDiscLk(a, O)
+    case Progress(a) => CloseDiscLk(a, O)
+    case AnchorPass(_, a) => CloseDiscLk(a, O)
+    case GroupActionT(ga, a) =>
+      match ga {
+        case Open(g) => CloseDiscLk(a, O + {g})
+        case Close(g) => g in O && CloseDiscLk(a, O - {g})
+        case Reset(gl) => CloseDiscLk(a, O - (set g | g in gl))
+      }
+    case LK(_, _, tc) => CloseDiscLk(tc, O)
+    case LKFail(_, _) => true
+  }
+
+  /** One group action's groups are disjoint from `Sin`. */
+  ghost predicate GADisjoint(ga: LG.GroupAction, Sin: set<LG.GroupId>) {
+    match ga
+    case Open(g) => g !in Sin
+    case Close(g) => g !in Sin
+    case Reset(gl) => forall g :: g in gl ==> g !in Sin
+  }
+
+  /** Every SURFACE group action (outside inner looks) acts on groups disjoint
+      from `Sin`. True for a spec tree of a nested body: surface groups are
+      `DefGroups(tr) \ LkBodyGroups(tr)`, disjoint from `Sin = LkBodyGroups`. */
+  ghost predicate GActsOutsideSin(t: LT.Tree, Sin: set<LG.GroupId>)
+    decreases t
+  {
+    match t
+    case Mismatch => true
+    case Match => true
+    case Choice(a, b) => GActsOutsideSin(a, Sin) && GActsOutsideSin(b, Sin)
+    case Read(_, a) => GActsOutsideSin(a, Sin)
+    case ReadBackRef(_, a) => GActsOutsideSin(a, Sin)
+    case Progress(a) => GActsOutsideSin(a, Sin)
+    case AnchorPass(_, a) => GActsOutsideSin(a, Sin)
+    case GroupActionT(ga, a) => GADisjoint(ga, Sin) && GActsOutsideSin(a, Sin)
+    case LK(_, _, tc) => GActsOutsideSin(tc, Sin)
+    case LKFail(_, _) => true
+  }
+
+  /** Gate stability: at every reachable LK node the gate re-evaluates the same
+      way for ANY group map (positive => always Some, negative => always None),
+      so the STRUCTURAL node type (LK vs LKFail) matches the folded gate. Holds
+      for spec trees of the fragment by `EL.ComputeTrGmIndepLkRec`. */
+  ghost predicate GateStableLk(t: LT.Tree, inp: LC.Input, dir: WP.Direction)
+    decreases t
+  {
+    match t
+    case Mismatch => true
+    case Match => true
+    case Choice(a, b) => GateStableLk(a, inp, dir) && GateStableLk(b, inp, dir)
+    case Read(_, a) => GateStableLk(a, LC.AdvanceInputP(inp, dir), dir)
+    case ReadBackRef(brStr, a) => GateStableLk(a, LC.AdvanceInputN(inp, |brStr|, dir), dir)
+    case Progress(a) => GateStableLk(a, inp, dir)
+    case AnchorPass(_, a) => GateStableLk(a, inp, dir)
+    case GroupActionT(_, a) => GateStableLk(a, inp, dir)
+    case LK(lk, tlk, tc) =>
+      (if L.Positivity(lk) then (forall gm :: LT.TreeRes(tlk, gm, inp, L.LkDir(lk)).Some?)
+                           else (forall gm :: LT.TreeRes(tlk, gm, inp, L.LkDir(lk)).None?))
+      && GateStableLk(tc, inp, dir)
+    case LKFail(_, _) => true
+  }
+
+  /** THE SURFACE FOLD. Two `TreeMirrorRelLk`-related trees fold to leaves that
+      mirror OUTSIDE the inner-look groups `Sin`: `None` iff `None`, and on a
+      match the winning-leaf inputs swap and the group maps agree outside `Sin`
+      under `MirrorGm`. The forward map `gm2` need only agree with `MirrorGm(gm1)`
+      OUTSIDE `Sin` (the inner captures, which don't mirror, are free). */
+  lemma TreeResMirrorLk(t: LT.Tree, tm: LT.Tree, gm1: LG.GroupMap, gm2: LG.GroupMap,
+                        inp: LC.Input, n: nat, O: set<LG.GroupId>, Sin: set<LG.GroupId>)
+    requires TreeMirrorRelLk(t, tm, Sin)
+    requires n == |inp.pref| + |inp.next|
+    requires TRM.GmInBounds(gm1, n)
+    requires CloseDiscLk(t, O)
+    requires TRM.OpenSubset(gm1, O)
+    requires O !! Sin
+    requires GActsOutsideSin(t, Sin)
+    requires LL.GmAgreeOutside(gm2, TRM.MirrorGm(gm1, n), Sin)
+    requires CE.LkConfinedTreeK(t, Sin)
+    requires CE.LkConfinedTreeK(tm, Sin)
+    requires GateStableLk(t, inp, WP.Backward)
+    requires GateStableLk(tm, SD.SwapInput(inp), WP.Forward)
+    ensures var rb := LT.TreeRes(t, gm1, inp, WP.Backward);
+            var rf := LT.TreeRes(tm, gm2, SD.SwapInput(inp), WP.Forward);
+            && (rb.None? <==> rf.None?)
+            && (rb.Some? ==>
+                  && rf.Some?
+                  && rf.value.0 == SD.SwapInput(rb.value.0)
+                  && TRM.GmInBounds(rb.value.1, n)
+                  && LL.GmAgreeOutside(rf.value.1, TRM.MirrorGm(rb.value.1, n), Sin))
+    decreases t
+  {
+    var sinp := SD.SwapInput(inp);
+    assert LC.Idx(sinp) == n - LC.Idx(inp);
+    match t
+    case Mismatch =>
+    case Match =>
+    case Choice(a, b) =>
+      match tm {
+        case Choice(am, bm) =>
+          TreeResMirrorLk(a, am, gm1, gm2, inp, n, O, Sin);
+          TreeResMirrorLk(b, bm, gm1, gm2, inp, n, O, Sin);
+        case _ =>
+      }
+    case Read(c, a) =>
+      match tm {
+        case Read(cm, am) =>
+          var inp' := LC.AdvanceInputP(inp, WP.Backward);
+          TRM.AdvanceInputPSwap(inp);
+          TRM.AdvanceInputPLen(inp, WP.Backward);
+          assert LC.AdvanceInputP(sinp, WP.Forward) == SD.SwapInput(inp');
+          TreeResMirrorLk(a, am, gm1, gm2, inp', n, O, Sin);
+        case _ =>
+      }
+    case Progress(a) =>
+      match tm {
+        case Progress(am) => TreeResMirrorLk(a, am, gm1, gm2, inp, n, O, Sin);
+        case _ =>
+      }
+    case AnchorPass(x, a) =>
+      match tm {
+        case AnchorPass(xm, am) => TreeResMirrorLk(a, am, gm1, gm2, inp, n, O, Sin);
+        case _ =>
+      }
+    case GroupActionT(ga, a) =>
+      match tm {
+        case GroupActionT(gam, am) =>
+        var gm2' := LG.GMUpdate(gam, LC.Idx(sinp), gm2);
+        var gm1' := LG.GMUpdate(ga, LC.Idx(inp), gm1);
+        GMUpdateInBounds(ga, LC.Idx(inp), gm1, n);
+        // MirrorGm(gm1') == GMUpdate(gam, Idx(sinp), MirrorGm(gm1))
+        match ga {
+          case Open(g) =>
+            assert gam == LG.Open(g);
+            TRM.GMOpenMirror(gm1, g, LC.Idx(inp), n);
+          case Close(g) =>
+            assert gam == LG.Close(g);
+            assert g in O by { assert CloseDiscLk(t, O); }
+            assert g in gm1 && gm1[g].endIdx.None?;
+            TRM.GMCloseMirror(gm1, g, LC.Idx(inp), n);
+          case Reset(gl) =>
+            assert gam.Reset?;
+            TRM.GMResetMirror(gm1, gl, gam.gl, n);
+        }
+        // per-case GM*Mirror above gives: MirrorGm(gm1') == GMUpdate(gam, Idx(sinp), MirrorGm(gm1))
+        assert TRM.MirrorGm(gm1', n) == LG.GMUpdate(gam, LC.Idx(sinp), TRM.MirrorGm(gm1, n));
+        LL.GMUpdateAgreeOutside(gam, LC.Idx(sinp), gm2, TRM.MirrorGm(gm1, n), Sin);
+        // GMUpdateAgreeOutside: GmAgreeOutside(gm2', GMUpdate(gam,Idx(sinp),MirrorGm(gm1)), Sin)
+        //                     == GmAgreeOutside(gm2', MirrorGm(gm1'), Sin)
+        var O' := match ga case Open(g) => O + {g} case Close(g) => O - {g} case Reset(gl) => O - (set g | g in gl);
+        assert TRM.OpenSubset(gm1', O') by {
+          forall h | h in O' ensures h in gm1' && gm1'[h].endIdx.None? {}
+        }
+        assert O' !! Sin;
+        TreeResMirrorLk(a, am, gm1', gm2', inp, n, O', Sin);
+        case _ =>
+      }
+    case LK(lk, tlk, tc) =>
+      match tm {
+        case LK(lk2, tlkm, tcm) =>
+        assert lk2 == lk;
+        if L.Positivity(lk) {
+          assert LT.TreeRes(tlk, gm1, inp, L.LkDir(lk)).Some?;
+          assert LT.TreeRes(tlkm, gm2, sinp, L.LkDir(lk)).Some?;
+          var pairB := LT.TreeRes(tlk, gm1, inp, L.LkDir(lk)).value;
+          var pairF := LT.TreeRes(tlkm, gm2, sinp, L.LkDir(lk)).value;
+          ConfinedLeafAgree(tlk, gm1, inp, L.LkDir(lk), Sin);
+          ConfinedLeafAgree(tlkm, gm2, sinp, L.LkDir(lk), Sin);
+          TreeResGmInBounds(tlk, gm1, inp, L.LkDir(lk), n);
+          // pairF.1 agrees with MirrorGm(pairB.1) outside Sin
+          MirrorGmAgreeOutside(pairB.1, gm1, n, Sin);
+          LL.GmAgreeOutsideSym(pairB.1, gm1, Sin);
+          LL.GmAgreeOutsideTrans(pairF.1, gm2, TRM.MirrorGm(gm1, n), Sin);
+          LL.GmAgreeOutsideTrans(pairF.1, TRM.MirrorGm(gm1, n), TRM.MirrorGm(pairB.1, n), Sin);
+          assert LL.GmAgreeOutside(pairF.1, TRM.MirrorGm(pairB.1, n), Sin);
+          assert TRM.OpenSubset(pairB.1, O) by {
+            forall h | h in O ensures h in pairB.1 && pairB.1[h].endIdx.None? {
+              assert h !in Sin;
+            }
+          }
+          TreeResMirrorLk(tc, tcm, pairB.1, pairF.1, inp, n, O, Sin);
+        } else {
+          assert LT.TreeRes(tlk, gm1, inp, L.LkDir(lk)).None?;
+          assert LT.TreeRes(tlkm, gm2, sinp, L.LkDir(lk)).None?;
+          TreeResMirrorLk(tc, tcm, gm1, gm2, inp, n, O, Sin);
+        }
+        case _ =>
+      }
+    case LKFail(lk, tlk) =>
+      match tm {
+        case LKFail(lk2, tlkm) =>
+        case _ =>
+      }
+  }
 }
