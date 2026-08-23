@@ -713,3 +713,40 @@ T2 mirrors), and the `dir`-parameterized frame family (`ReplayPlus*Nested`, `FFi
 Negative-lookaround captures (spec contributes no groupmap; `capture_type` excludes negatives).
 Flags (`ignoreCase`/`multiline`), non-Latin-1, backreferences — all orthogonal, priced separately
 in the "L5+ ladder pricing" section above; none are L5.
+
+### L5 progress (2026-08-23, session cont.) — T1 + T2a GREEN; T2b precisely located
+
+**T1 GREEN (`183e465`).** `GmOfLiveXRev` + chain (`BackGmMirror.dfy`, whole file 36/0):
+`GmOfLive(XRev(body),·)==GmOfLive(body,·)` at any depth. Risk gate retired on first try.
+
+**T2a GREEN (`<this commit>` BackValue.dfy).** `BackwardReplayMirrorNested` (2/0): the backward
+body replay of `compile(reverse_regex(body))` = mirror of the forward run of `compile(XRev(body))`
+over `Reverse(str)`, for ANY body (no `LookFreeRE`). The depth-1 `BackwardReplayMirror` used
+`LookFree` only via `SwapRevIsRevRE`; `CompileToBytecodeSwap` alone gives
+`SwapAnchorsCode(bc)==compile(XRev(body))`. So the ENGINE half of T2 is done and generic.
+
+**T2b — the dominant remaining work — is in the linden-reasoning DEPENDENCY.** The spec-side
+nested tree mirror. Depth-1 `LkReplayMatchesSpecLB` routes the value tie through
+`LBV.BackBodyGmTie`/`BackBodyEngineTie`, which stand on:
+- **`SD.RevL`** (SpanDuality.dfy:338, linden-reasoning) — `case LookaroundR(lk, r1) => r` is IDENTITY
+  on lookarounds (the L-spec twin of RevRE's blocker). Needs a recursive lookaround case.
+  **SEMANTIC DECISION REQUIRED:** under string reversal a lookBEHIND faces forward — does the
+  recursive `RevL` FLIP the look kind (Lookbehind↔Lookahead) or keep it? NB the engine
+  `reverse_regex` keeps `la` UNCHANGED (`XRev(Re_lookaround(lid,la,r1))==Re_lookaround(lid,la,XRev(r1))`,
+  OracleMirrorV.dfy:280), so `RevL` must match whatever makes `Translate(XRev(body))==RevL(Translate(body))`
+  hold — resolve this equivalence FIRST (it pins the flip question).
+- **`TM.ComputeTrReverse` / `TreeMirrorRel`** (TreeMirror.dfy, linden-reasoning) — gated by
+  `SD.GroupOkActs` = NO lookarounds (header lines 7-13 explicitly: "no lookarounds ... the L3b
+  lookbehind-body fragment"). Needs generalization to look-bearing stacks.
+- `SD.TranslateRevRE` (`Translate(RevRE)==RevL(Translate)`) → an `XRev`/nested analog.
+- `TRM.TreeResMirror` (tree-level, takes `TreeMirrorRel`) likely extends once its `TreeMirrorRel`
+  input is nested-aware; check its `CloseDisc`/`OpenSubset` handling of look sub-trees.
+
+**Scope correction:** T2b is a cross-project sub-campaign in linden-reasoning (edit source → rebuild
+`deps/linden-reasoning.doo` → consume), NOT a single linden-equiv brick. It is the true bulk of L5
+("T2 [L] dominant"). Recommended entry: resolve `Translate(XRev(body))==RevL_nested(Translate(body))`
+(pins the look-kind flip), then generalize `RevL` + `ComputeTrReverse`, then assemble
+`LkReplayMatchesSpecLBNested` (T2c) in linden-equiv reusing T2a + `GmOfLiveXRev` (T1).
+
+**Remaining after T2b:** T2c (assemble `LkReplayMatchesSpecLBNested`), T3 (wire in / drop the
+`assert false`), T4 (drop `NoPosLookbehind` + re-run the §18 perf pass), T5 (API/`MatchCorrect`).
