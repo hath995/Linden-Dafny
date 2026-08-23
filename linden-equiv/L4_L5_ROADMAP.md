@@ -899,3 +899,38 @@ them. Reconciliation = SPLIT: surface via mirror, inner via the nested oracle ma
    nested lookbehinds backward today" is the payoff.
 3. keystone `LkReplayMatchesSpecLBNested` = surface(1) + inner(2) assembled into
    `GmAgreeOn(.., S=DefGroups(tr))`.
+
+### (B) STARTED — the direct-backward value-side campaign scoped + first stone green
+
+L5's value side = mirror the L4 forward nested-capture apparatus to BACKWARD (the outer lookbehind
+body walked backward directly; no `reverse_regex`/mirror, which is a proven dead-end for nested looks).
+Scouting the L4 machinery (`BodyTreeAtCpNested` MainTheorem.dfy:3836 is the forward template) splits it
+cleanly by direction:
+
+**Direction-generic — REUSE AS-IS at `WP.Backward` (verified):**
+- `ComputeTrLkConfinedK(.., dir, S)` (LookLeaves.dfy:1588) — takes `dir`.
+- `FirstLeafAgreeOutside`, `LeavesAgreeAtOutside`, `LkBodyGroupsConfines`, `LkActsInS*` — pure-tree /
+  structural, no direction.
+- `GmAgreeOutside` / `LkBodyGroups` (the surface-vs-inner split) — the whole L4 confinement layer.
+- The span side (A): `Bwd*`/`MatchesL`/`SpanDuality*LB` — the DIRECT-backward span tool.
+
+**Forward-tied — NEED BACKWARD ANALOGUES:**
+- `BooleanCorrectLkRec` / `EncodeEqualLkRec` (EntryLk.dfy:1483/1463) — model the FORWARD VM boolean
+  tree encoding (`BoolTreeLk`, `IsTree(.., WP.Forward)`); genuinely direction-tied.
+- `FindMatchBodyAtCpNested` (MainTheorem.dfy:3620) — the engine simulation, `LAnc.Forward`. THE deep
+  piece; "engine tables run nested lookbehinds backward today" is where the backward version is fed.
+- the `ClosedBelow`/`ClosedBelowAll` closedness ladder (MainTheorem.dfy:~2190, `WP.Forward`,
+  `FwdPosActsL`-gated) — first-leaf closedness for the nested fragment; L3b's backward closedness went
+  via the MIRROR (`BackBodyLeafClosed`) which is dead for nested, so this needs a DIRECT backward
+  redo, stratified on `NestDepthL` like `ClosedBelow`.
+- `BodyTreeAtCpNested` itself (the assembly of all the above).
+
+The current forward gate is `NoPosLookbehindRaw` (NfaRepRE.dfy:615) / `FwdPosLooksL`
+(MainTheorem.dfy:2178) = "positive looks are forward-only"; L5 lifts it to allow positive lookbehinds.
+
+**First stone (green, `4468878`):** `BackwardBodyConfinedTree` (LookLeaves.dfy) — the backward spec
+tree of a nested body is `LkConfinedTreeK(_, LkBodyGroups)`, via the direction-generic confinement at
+`WP.Backward`. Confirms the surface/inner split composes backward with no mirror. Next stones: the
+backward boolean-tree correctness (analogue of `BooleanCorrectLkRec`), then the backward engine sim
+(`FindMatchBodyAtCpNested` backward), then backward `ClosedBelow`, then assemble
+`BodyTreeAtCpNestedBackward` → `LkReplayMatchesSpecLBNested`.
