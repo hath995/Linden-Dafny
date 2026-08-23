@@ -959,3 +959,31 @@ multi-session campaign (either parameterize `BoolTreeLk` by `dir` — big ripple
 twins). It is deliberately NOT started in a session tail; it needs a focused run. The direction-
 generic confinement layer (first stone `BackwardBodyConfinedTree`) and the span side (A) are the parts
 that WERE free; the simulation is the wall.
+
+### (GATE side) BREAKTHROUGH — MatchesVTransfer: the gate half sidesteps the wall (green)
+
+The backward-simulation "wall" is only for the CAPTURES (value tie). The GATE side (does the nested
+lookbehind PASS? = oracle correctness) is tractable via a DIRECT-backward oracle route, no mirror, no
+simulation — and my (A) `SpanDuality*LB` work unblocked it.
+
+`MatchesV` (OracleBridgeV, from the L4 oracle-entry V-work) is the nesting-aware span predicate: it
+treats a nested look as a zero-width ORACLE GATE (`view_get_oracle(ov, i, lid)`), direction-generically.
+`MatchesVTransfer` (OracleEntry.dfy, NEW, full-file 39/0) proves `MatchesV(re) <==>
+MatchesL(Translate(re))` for a nested-lookbehind body (`GroupOkLB` after `Translate`). The look case:
+- `MatchesV(look)` = the oracle bit;
+- `OracleOkAt` (direction-generic, `LkDir(lk)`) equates the bit to the body's BACKWARD walk succeeding
+  (new helper `OracleOkAtGet` instantiates its per-lid forall; `LookLeaves.dfy`);
+- `SpanDuality{Complete,Sound}LB` (my (A) work) equates the backward walk to a body span;
+- which is exactly `MatchesL`'s lookbehind clause.
+
+Proof notes: `MatchesVTransfer`/`IterVTransfer` mirror `MatchesTransfer`/`IterTransfer` structurally;
+the look case is isolated in `MatchesVLookCase`; the gate chain is `LookGateSpec`, written
+WITNESS-BASED (construct/destruct the span witness, never assert existential-equivalence) to sidestep
+trigger friction that made the bulk `oracle <==> ∃m` assert flaky full-file.
+
+**This unblocks widening `OracleColumnSpec` (OracleSpec.dfy:353, oracle bit <==> backward walk) from
+`LookFreeRE` to nested bodies** — the capstone that `OracleOk`/`StaticOkRE` consume. The remaining
+gates there: `MatchesTransfer` (look-free, but the nested route uses `MatchesVTransfer` instead),
+`OracleColumnCharacterized` (oracle-build side, "nesting-agnostic" per authors), `TranslateGroupFree`
+-> a `GroupOkLB` variant. NEXT: assemble a nested `OracleColumnSpec` from `MatchesVTransfer` +
+`SpanDuality*LB`. The CAPTURES/value tie (the backward-simulation wall) stays a separate campaign.
