@@ -1014,3 +1014,30 @@ Green chain (all this session, OracleEntry.dfy full-file 43/0):
    skeleton, inner-look gids via the backward oracle). This is the remaining hard campaign; the gate
    side does NOT need it.
 3. Drop `NoPosLookbehindRaw`/`FwdPosLooksL`, wire the `assert false` (LiftSim), §18 perf pass, API.
+
+### (CAPTURES side) the wall, sharpened — the checked-tree mirror is the key
+
+Confirmed from several angles that the captures/value tie needs new tree machinery; the analysis
+sharpened WHICH and pointed at the tractable approach:
+
+- The captures for a nested positive lookbehind reduce to CLOSEDNESS of the backward body leaf
+  (`FwdPosActsL` gates the L4 capture machinery `BodyTreeAtCpNested` ONLY through the closedness ladder
+  `ClosedBelow`/`FirstLeafClosed`; the span/gate side needed no such gate, which is why it went green).
+- `FirstLeafClosed`/`FirstLeafClosedNoLk` are `least lemma`s over the FORWARD `BoolTreeLk` (MainTheorem
+  has 9 such least-lemmas; ~18 `WP.Forward` sites in the ClosedBelow region). Closedness is
+  direction-SYMMETRIC in principle (group open/close balance), but the machinery is forward-tied.
+- KEY DISTINCTION (the crux, now correctly placed): the RE-WALK tree (`ComputeTr`) does NOT mirror for
+  nested looks (proven — before-p vs after-p). But the CHECKED tree (`BoolTreeLk`, whose look nodes are
+  ORACLE gates via `LkGateOk`, not re-walks) SHOULD mirror, because oracle bits are position-consistent
+  across `MirrorView`. So the previous "gate in `TreeMirrorRel`" resolution was right — for the CHECKED
+  tree, not the re-walk tree.
+
+**Approach for the captures campaign (next):** build the CHECKED-tree mirror — give `TreeMirrorRel`
+(TreeMirror.dfy, linden-reasoning) an `LK`/`LKFail` case = oracle-gate agreement (via `MirrorView`) +
+continuation mirror, body sub-trees EXCLUDED; extend `ComputeTreeReverse` for oracle-gated trees. Then
+the backward closedness/captures for a nested positive lookbehind body reuse the FORWARD closedness via
+this mirror (the oracle gates make it valid where the re-walk mirror fails), instead of building a
+~200-line backward `ComputeBoolTreeLk` twin from scratch. Then widen `BodyTreeAtCpNested` off
+`FwdPosLooksL` (only the closedness gate needs it), assemble `LkReplayMatchesSpecLBNested`, and finally
+lift `NoPosLookbehindRE` through `OracleColumnNested`/`OracleOkRowsNested`/`MainTheorem` (wiring in both
+the gate atoms already green AND the captures). This is the endgame; it needs a fresh focused session.
