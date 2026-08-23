@@ -750,3 +750,29 @@ nested tree mirror. Depth-1 `LkReplayMatchesSpecLB` routes the value tie through
 
 **Remaining after T2b:** T2c (assemble `LkReplayMatchesSpecLBNested`), T3 (wire in / drop the
 `assert false`), T4 (drop `NoPosLookbehind` + re-run the §18 perf pass), T5 (API/`MatchCorrect`).
+
+### L5 T2b(i) GREEN — RevL/RevRE nested + dependency pipeline validated (2026-08-23, `9e785cc`)
+
+First linden-reasoning brick landed. `SD.RevL` and `SD.RevRE` now recurse into lookarounds
+(`LookaroundR(lk,r1) => LookaroundR(lk, RevL(r1))`; no look-KIND flip — pinned by
+`Translate(XRev(body))==RevL(Translate(body))` since `Translate` keeps `TrLookaround(la)` and
+`XRev`/`reverse_regex` keep `la`). Because `RevRE` reverses AND swaps anchors, recursive
+`RevRE == XRev` at any depth (extends `SwapRevIsRevRE` off look-free).
+Conservative for all existing (look-free) consumers; companion proofs updated
+(`RevLInvolution`, `RevRETransWf`, `TranslateRevRE`).
+
+**Dependency-update pipeline VALIDATED end-to-end:** edit linden-reasoning src → SpanDuality 122/0
+→ `lem build` 382/0 → `lem pack` → copy `linden-reasoning-1.0.1.doo` to `linden-equiv/deps/` →
+L3b keystone `LkReplayMatchesSpecLB` re-verifies 404/0 (no regression). `deps/*.doo` gitignored
+(rebuildable), so only the `.dfy` source is committed. Rebuild recipe:
+`cd linden-reasoning && lem build && lem pack && cp linden-reasoning-*.doo ../linden-equiv/deps/linden-reasoning.doo`.
+
+**NEXT T2b brick — `TM.ComputeTrReverse` / `TreeMirrorRel` widening (the authors' noted blocker).**
+`TreeMirror.dfy` gates on `SD.GroupOkActs` (= no lookarounds). The SpanDuality notes (~lines 1112-1140)
+lay out the plan: the `LookaroundR` arm is zero-width (succeeds iff the body sub-walk from the SAME
+position does — the `MatchesL` clause; `ComputeTreeGroupOkGmIndep` already has a real `LookaroundR`
+case and admits nesting), but a ONE-SHOT widening of the `Bwd*` family from `GroupFreeL`/`GroupOkActs`
+to look-bearing is **blocked on the quantifier proofs** (`BwdCompleteQuant`/`BwdCompleteFree`/...).
+That is the substantial remaining reasoning-layer work. After it: `SD.TranslateRevRE` already gives
+`Translate(RevRE)==RevL` at any depth now (so `Translate(XRev(body))==RevL(Translate(body))` is FREE
+via `RevRE==XRev`), then the nested `BackBodyGmTie`/`BackBodyEngineTie` analogs → T2c assembly.
