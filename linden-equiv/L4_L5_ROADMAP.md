@@ -934,3 +934,28 @@ tree of a nested body is `LkConfinedTreeK(_, LkBodyGroups)`, via the direction-g
 backward boolean-tree correctness (analogue of `BooleanCorrectLkRec`), then the backward engine sim
 (`FindMatchBodyAtCpNested` backward), then backward `ClosedBelow`, then assemble
 `BodyTreeAtCpNestedBackward` → `LkReplayMatchesSpecLBNested`.
+
+### (B) the wall is the backward SIMULATION stack (checked/oracle-gated tree), not the raw tree
+
+Robust conclusion after scouting the backward tie end to end:
+- There is NO existing direct-backward simulation tie. The L3b lookbehind work characterizes the
+  engine backward run ONLY via the mirror (Mirror.dfy) — `BackwardReplayMirror`: bcB(backward) <->
+  bcF(forward RevRE). For nested bodies the ENGINE mirror still holds (oracle-consistent, T2a done),
+  but the pure-spec mirror `BackBodyGmTie` (spec-backward-tr <-> spec-forward-RevL(tr)) breaks even on
+  SURFACE groups: the two spec trees RE-WALK the nested look and disagree on its gate ("before p" vs
+  "after p"), which flips a surface continuation's None/Some.
+- THE KEY: the RAW spec tree (`ComputeTr`, which re-walks nested looks) cannot mirror; the CHECKED
+  tree can. `BoolTreeLk`'s `LookaroundR` case pins the gate via `LkGateOk` (the ORACLE), not a
+  re-walk. Oracle gates are position-indexed and mirror-consistent, so a checked tree mirrors on
+  surface and its nested captures come from the oracle (confined to `LkBodyGroups`). So L5 must route
+  the value tie through the ORACLE-GATED checked tree, exactly as the L4 forward keystone does — but
+  backward.
+
+So the next major sub-brick is a BACKWARD simulation stack: `BoolTreeLk` (least predicate, Character
+case hardcodes `WP.Forward`) + `ComputeBoolTreeLk` (~200-line least lemma) + `EncodeEqualLkRec` +
+`ActionsTreeRepRENested`/`TreeRepRE` + `FindMatchBodyAtCpNested`, each needing a `WP.Backward`/
+`LAnc.Backward` twin. `BoolTreeLk` alone has ~378 consumer sites, so this is a large, invasive,
+multi-session campaign (either parameterize `BoolTreeLk` by `dir` — big ripple — or add `*Back`
+twins). It is deliberately NOT started in a session tail; it needs a focused run. The direction-
+generic confinement layer (first stone `BackwardBodyConfinedTree`) and the span side (A) are the parts
+that WERE free; the simulation is the wall.
