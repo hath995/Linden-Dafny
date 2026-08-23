@@ -17,6 +17,7 @@ include "LookLeaves.dfy"
 include "LookTables.dfy"
 include "PikeInvRE.dfy"
 include "OracleBridgeV.dfy"
+include "OracleDecompV.dfy"
 
 /** §6.6: the lookaround table `LmOf`, its correctness (`LmapOkOfLmOf`), and
     the `OracleOkSuffix` discharge that feeds the entry construction. */
@@ -49,6 +50,7 @@ module LindenElkOracleEntry {
   import MIR = LindenElkMirror
   import LN = WarblreNumeric
   import LAnc = Anchors
+  import ODV = LindenElkOracleDecompV
 
   // ===========================================================================
   // The lookaround table
@@ -637,6 +639,36 @@ module LindenElkOracleEntry {
         IterVTransfer(rer, qm, r, k - 1, str, m, j);
         IterVConsRE(r, k - 1, str, qm.ov, i, m, j);
       }
+    }
+  }
+
+  /** The value bridge: a nested-lookbehind body's oracle-recorder hit
+      (`RecorderHitV` = some `MatchesV` span ends at `cp`) is EXACTLY the success
+      of the body's BACKWARD walk from `cp`. Chains `MatchesVTransfer` (MatchesV
+      <==> MatchesL) with `SpanDuality{Complete,Sound}LB` (span <==> walk),
+      witness-based through `RecorderHitV`'s intro/inv. This is what a nested
+      `OracleColumnSpec` composes with the oracle-build side
+      (`oracle bit <==> RecorderHitV`, the V-model). */
+  lemma RecorderHitVBackWalk(rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, str: string, cp: int)
+    requires !rer.ignoreCase && !rer.multiline
+    requires T.TransWf(body)
+    requires NR.NestedFragmentRE(body)
+    requires SD.GroupOkLB(T.Translate(body))
+    requires AR.LmapOk(body, qm)
+    requires OracleColsOk(rer, qm, str)
+    requires 0 <= cp <= |str|
+    ensures ODV.RecorderHitV(body, str, qm.ov, cp)
+        <==> SD.SuccActs(rer, [LS.Areg(T.Translate(body))], T.InputAt(str, cp), LG.Empty, WP.Backward)
+  {
+    if ODV.RecorderHitV(body, str, qm.ov, cp) {
+      var i := ODV.RecorderHitVInv(body, str, qm.ov, cp);   // MatchesV(body, i, cp), 0<=i<=cp
+      MatchesVTransfer(rer, qm, body, str, i, cp);          // MatchesL(Translate(body), i, cp)
+      SD.SpanDualityCompleteLB(rer, T.Translate(body), str, i, cp, LG.Empty);   // SuccActs
+    }
+    if SD.SuccActs(rer, [LS.Areg(T.Translate(body))], T.InputAt(str, cp), LG.Empty, WP.Backward) {
+      var i := SD.SpanDualitySoundLB(rer, T.Translate(body), str, cp, LG.Empty);   // MatchesL(Translate(body), i, cp)
+      MatchesVTransfer(rer, qm, body, str, i, cp);          // MatchesV(body, i, cp)
+      ODV.RecorderHitVIntro(body, str, qm.ov, cp, i);       // RecorderHitV
     }
   }
 }
