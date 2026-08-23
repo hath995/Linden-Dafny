@@ -461,6 +461,11 @@ build regexes) and W4's replay-entry conditions.
 
 ## 2. L5 — capturing LOOKBEHINDS (defining the rung)
 
+> **SUPERSEDED (2026-08-23).** This section prices the *depth-1* capturing lookbehind, which
+> shipped as **L3b** (done). With L4 (nested capturing lookahead) now complete, the current
+> **L5 = NESTED capturing lookbehind**. See the section **"L5 (nested capturing lookbehind) —
+> SCOPE + T0 SCOUTING"** at the end of this file for the up-to-date scope.
+
 The ladder never defined L5; this document does. L3 delivers captures in
 positive lookAHEADS only — the fragment still requires capture-free
 lookbehind bodies, and `FLookLoopValueLift` steps a matched capture-free
@@ -615,3 +620,96 @@ DISCHARGE the seam `LkReplayMatchesSpecNestedFull` is structural GLUE (= W6 endp
 Net recon_inner status: engine reconstruction + spec composition = DONE & verified (5 commits,
 ~20 new lemmas, 0 red). Seam closure = a bounded multi-brick GLUE sub-campaign (items 1-3), which is
 the W6 endpoint. Cleanly checkpointed here.
+
+---
+
+## L5 (nested capturing lookbehind) — SCOPE + T0 SCOUTING (2026-08-23, after L4 complete)
+
+**Context.** L4 (nested capturing *lookahead*) is complete: `MainTheoremL4` single-shot green
+(4722/0/0, commit `117b6aa`), `ApiMatch.MatchCorrect` green over `Supported = SupportedL3 || SupportedL4`.
+The old §2 "L5" (depth-1 capturing lookbehind) shipped as **L3b** (`LkReplayMatchesSpecLB`
+`LookBehindKeystone.dfy:395`, re-verified 404/0 on `l4-nesting`). The **current L5 = NESTED capturing
+lookbehind**: lift L4's nesting to lookbehinds by removing `NoPosLookbehind`.
+
+### Headline — L5 is a PURE PROOF LIFT (no engine or table work)
+
+The engine and compile-tables are already fully direction-generic and run nested lookbehinds backward
+*today*:
+- `AI.FLookLoop` dispatches direction per-look via `capture_direction` (`Lookbehind → Backward`);
+  `AI.FFindMatchPlus` takes `dir` first-class.
+- `oracle_regex`/`capture_regex` already reverse lookbehind bodies; `LookEntryOk`
+  (`LookTables.dfy:209`) / `LookTablesOk` (`:221`) recurse through `Re_lookaround(_, Lookbehind, body)`
+  at any depth.
+- `NR.NestedFragmentRaw` (`NfaRepRE.dfy:1153`) **already admits** capturing positive lookbehind;
+  `NR.NoPosLookbehindRaw` (`:624`) is the single conjunct that subtracts it.
+
+The Forward-only restriction lives entirely in the PROOF layer, concentrated at **one dead branch**:
+`LiftSim.dfy:22441`, BRICK D5's `else { assert false }` for the lookbehind arm of the nested
+lookaround step. It is dead only because the nested value keystone `LkReplayMatchesSpecNested`
+(`MainTheorem.dfy:9642`) is `requires la.Lookahead?`.
+
+**The single missing lemma:** a lookbehind analog of `LkReplayMatchesSpecNested` — i.e. generalize the
+depth-1 lookbehind keystone `LkReplayMatchesSpecLB` from `requires LookFreeRE(body)` to
+`requires NestedFragmentRE(body)`.
+
+### T0 SCOUTING RESULT (2026-08-23) — route the value tie through `MatchesVMirror`/`XRev`, NOT recursive `RevRE`
+
+The feared blocker was that the depth-1 lookbehind value tie reverses the SPEC regex via
+`SD.RevRE`, whose lookaround case is **identity** (`SpanDuality.dfy:2086`, does not recurse) — so
+lifting that path looked like it needed a recursive `RevRE` + re-derivation of the whole SpanDuality
+`Bwd*/Fwd*` value duality. **Scouting says that is avoidable.** Verdict: **VIABLE, RevRE-recursion
+retired.** Findings:
+
+1. **Span level — DONE, nested-ready.** `XRev(re) := SwapAnchorsRegex(reverse_regex(re))`
+   (`OracleMirrorV.dfy:44`) IS nested-recursive (recurses into look bodies), preserves the fragment
+   (`ensures NestedFragmentRE(XRev(re))`, `:189`), and is involutive (`XRev(XRev(re))==re`, `:210`).
+   `MatchesVMirror` (`:306`) gives `MatchesV(re,str,ov,i,j) <==> MatchesV(XRev(re),Reverse(str),
+   MirrorView(ov),|str|-j,|str|-i)` at any depth. **RevRE stays untouched** (depth-1 L3b keeps using
+   it); L5 uses `XRev` in parallel.
+2. **Engine value level — DONE, structure-generic.** `FFindMatchMirror` (`Mirror.dfy:963`) has NO
+   `LookFree`/`NestedFragment` requirement — its backward-run ↔ forward-run-on-reversed value
+   isomorphism (`MirrorState`/`MirrorRegs`) works for nested-look bytecode as-is.
+3. **Groupmap register-mirror — DONE, depth-generic.** `GmOfLiveMirror` (`BackGmMirror.dfy:260`):
+   `GmOfLive(body, MirrorRegs(cap,n), look, quant) == RawMirrorGm(GmOfLive(body, cap, look, quant), n)`
+   — structure-agnostic, reusable verbatim. Mirror/`SwapGm` involutions likewise.
+4. **THE ONE NEW VALUE-LEVEL PIECE.** The value tie needs the reversal bridge
+   `GmOfLive(XRev(body), X) == GmOfLive(body, X)` (to let the FORWARD nested keystone
+   `LkReplayMatchesSpecNested`, applied to `XRev(body)` which is `NestedFragmentRE`, read the reversed
+   forward run's value). Today this bridge exists only for `RevRE` (`BackGmMirror.dfy:311`,
+   "RevRE bridge"). Its proof reason is structural and reversal-generic: the capture filter only ZEROES
+   a **clock-determined** register set that is independent of positions, and reversal only reorders
+   `Re_con` children (set union commutes). Generalizing it to `XRev` adds the **lookaround-recursion
+   case** (reversing a look body preserves its `DefGroups` set). **Bounded structural induction — S-to-M,
+   not the feared duality re-derivation.**
+
+**Net effect on pricing:** the old T1 ("recursive spec reversal" — M, risky) collapses to reusing the
+already-built `XRev` + one bounded `GmOfLive`-under-`XRev` bridge. The campaign's dominant risk is
+retired before it starts.
+
+### Work items (revised post-T0)
+
+| # | Item | Size | Anchors |
+|---|---|---|---|
+| **T1** | `GmOfLive(XRev(body),X)==GmOfLive(body,X)` bridge (extend the `RevRE`-bridge argument with the lookaround-recursion case) | **S–M** | `BackGmMirror.dfy:311` |
+| **T2** | `LkReplayMatchesSpecLBNested` — the nested backward value keystone: fuse `LkReplayMatchesSpecNested`'s depth-k induction with `FFindMatchMirror` + `MatchesVMirror`(`XRev`) + T1 + `GmOfLiveMirror` + `SwapGm` | **L** (dominant) | mirror of `MainTheorem.dfy:9642` and `LookBehindKeystone.dfy:395` |
+| **T3** | Wire in: replace `assert false` (`LiftSim.dfy:22441`) with T2; restore the dropped value package in `ThreadRepLkStepCheckOracleLBNested` (`LiftSim.dfy:9818`, `// (1) INSIDE tie DROPPED`); admit lookbehind bodies in `GateStaticAtNested` (`LiftSim.dfy:5592`) | S–M | |
+| **T4** | Drop `NoPosLookbehind*` from `L4Scope` (`LiftSim.dfy:26517`), `LookRowsFromTablesNested` (`MainTheorem.dfy:17015`), `SupportedL4` (`ApiMatch.dfy:71`); **re-run the opaque-at-source perf pass** on the nested tower now covering lookbehind (toolkit from §18 of `FULL_DEPTH_K_HANDOFF.md` is ready: `FreshWfO`/`FreshWfAtG` pattern + `ThreadRegsWf`-into-scope + opaque `MatchCorrect` requires) | **M** | |
+| **T5** | Generalize `Supported`/`MatchCorrect`; fix the stale `SupportedL3` "capture-free lookbehind" doc comment (`ApiMatch.dfy`) | S | |
+
+**Order:** T1 → T2 → T3 → T4 → T5. **Overall:** a medium multi-phase campaign dominated by T2,
+smaller than L4 itself (no new machine; the nested span-mirror and depth-1 value keystone both exist;
+the boolean gate already handles nested lookbehind). Payoff: user-visible nested capturing `(?<=…)`.
+
+### Reusable inventory (green today)
+`XRev`/`MatchesVMirror`/`MatchesVMirrorFwd` (`OracleMirrorV.dfy`), `FFindMatchMirror`/`MirrorRegs`/
+`MirrorRegsInvol`/`SwapAnchorsCode` (`Mirror.dfy`), `GmOfLiveMirror`/`RawMirrorGm`/the RevRE bridge
+(`BackGmMirror.dfy`), `SwapGm`/`SwapRange` involutions (`LookBehindValue.dfy`),
+`BackwardReplayMirror`/`SwapRevIsRevRE` (`BackValue.dfy`, depth-1 template),
+`LkReplayMatchesSpecLB`/`BackFreshBodyGmTie`/`LBEngineLeaf` (`LookBehindKeystone.dfy`, depth-1 keystone
+to lift), `LkReplayMatchesSpecNested` (`MainTheorem.dfy:9642`, the forward nested keystone whose shape
+T2 mirrors), and the `dir`-parameterized frame family (`ReplayPlus*Nested`, `FFindMatchRegsWf`).
+
+### Non-items (do not let creep in)
+Negative-lookaround captures (spec contributes no groupmap; `capture_type` excludes negatives).
+Flags (`ignoreCase`/`multiline`), non-Latin-1, backreferences — all orthogonal, priced separately
+in the "L5+ ladder pricing" section above; none are L5.
