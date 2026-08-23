@@ -491,3 +491,58 @@ fact for its own (already-green) body. This keeps facts SEPARATE (no bundle conj
 and removes their triggers from every call-site context (no cumulative match cost). Cost:
 ~8 big lemmas + ~15 opaque predicates + re-verification. Not yet attempted; recommended if
 0-timeouts on MainTheoremL4 is required. Otherwise `bb2e351` (2 provable timeouts) stands.
+
+## 18. PERF PASS COMPLETE — MainTheoremL4 SINGLE-SHOT GREEN (2026-08-23, HEAD `117b6aa`)
+
+**Done.** `MainTheoremL4` verifies single-shot: **4722 verified, 0 errors, 0 timeouts.**
+The §17 "ONE UNTRIED TECHNIQUE" (opaque-at-source) was the right call, applied to the two
+remaining call sites (owner-forall + DeepConclude). L4 depth-k capturing is now
+unconditional AND performance-clean.
+
+### Owner-forall — `ProduceOwnerForall` 10-11 timeouts → **413/0**
+The nested `forall g { forall owner0 { … } }` under `{:isolate_assertions}` re-proved
+g-independent facts per-g in the bloated context; then the timeout chased down the call chain.
+Four moves, in order of discovery:
+1. **`FreshWfGIndep`** (new, LiftSim, 79/0): the g-INDEPENDENT fresh-wf trio
+   (`SizesOkRE`/`cp_ctx_ok`/`TransWf`) proven ONCE in a minimal context. `cp_ctx_ok` was the
+   original stubborn timeout — the `0 <= cp` half is NOT free from `get_cp Some`; make it
+   explicit: `assert 0 <= (owner0 as int) < |res1.a_cp| && cpv == AI.get_idx(res1.a_cp, owner0 as int) && cpv >= 0;`
+   (get_cp Some ⇒ in-range & a_cp ≥ 0, definitional) then `cpv <= |str|` from `LookCpsLE`.
+2. **`FreshWfAtG`** (new, LiftSim, 143/0): the FULL per-g fresh-wf forall (adds the
+   g-dependent `GNotUnderQuantL` via `GNotUnderQuantLLookBody`) in a minimal context;
+   `ensures` the new opaque `FreshWfO`.
+3. **`FreshWfO`** (new opaque predicate, MainTheorem): wraps the per-g fresh-wf forall so its
+   `cp_ctx_ok`/`GNotUnderQuantL` triggers never enter the `FreshBodyDirectMember` CALL
+   context. `FreshBodyDirectMember` now `requires FreshWfO(...)` (was the raw forall) and
+   `reveal`s it internally. Its sole caller is `ProduceOwnerForall`.
+4. **THE FINAL BOTTLENECK (register-wf):** `FreshBodyDirectMember`'s register-wf
+   preconditions (`CapRegWf(cap)`, `|cap.a_cp|==ncap`, `|lk|`, `|qt|`, quant `a_cp<0`/`a_clk>=-1`)
+   were derived per-VC from `thread==result.value` + `result==FFindMatch(...)` — an expensive
+   FFindMatch unfold ×10. Fix: broaden the AhO-establishment by-block (which already calls
+   `LookRowsFromTablesNested`) to ALSO conclude `CM.ThreadRegsWf(thread, ncap,nlook,nquant)` +
+   the quant-reg facts into METHOD scope (LookRows ensures them) ⇒ all register-wf
+   preconditions become DIRECT HITS. This one move flipped 10 timeouts → 0.
+
+### DeepConclude CALL (in MainTheoremL4) — 2 timeouts → **gone**
+`MainTheoremL4DeepConclude` REQUIRED the RAW `forall cp :: OracleOkSuffix(...)` and RAW
+`forall l,la,b :: LookEntryOk ⇒ FrameEntryOk(...)`, but MainTheoremL4 only holds them
+OPAQUE-wrapped (`M.OracleSufAllO` / `M.FrameEntryAllO`; the raw versions are scoped away in
+by-blocks). The raw-required-vs-opaque-in-context mismatch made Z3 re-prove both foralls from
+scratch. Fix: DeepConclude now `requires M.OracleSufAllO(rer,qm,str)` and
+`requires M.FrameEntryAllO(crv,re,ast)` (its body already `reveal`s both). DeepConclude 418/0.
+
+### Green ledger (individual `--filter-symbol`, 250s, cores 6-10)
+`FreshWfGIndep` 79/0 · `FreshWfAtG` 143/0 · `FreshBodyDirectMember` 8/0 ·
+`ProduceOwnerForall` 413/0 · `MainTheoremL4DeepConclude` 418/0 · **`MainTheoremL4` 4722/0/0.**
+
+### General lesson (reusable)
+When a hoisted lemma's CALL times out under isolate_assertions, the cause is almost always
+one of: (a) a heavy quantified precondition present only in OPAQUE-wrapped form at the call
+(require the opaque wrapper, don't leave the raw forall in the signature); or (b) a
+precondition being DERIVED per-VC from a deep unfold (e.g. FFindMatch) — establish it ONCE
+into method scope so it's a direct hit. Minimal-context extraction (`FreshWf*`) handles the
+PROOF cost; opaque-at-source handles the MATCH cost. Both were needed here.
+
+### Cleanup note (non-blocking)
+`ProduceOwnerForall` still has a now-redundant `FreshWfGIndep(...)` call before the `forall g`
+(FreshWfAtG calls it internally). Harmless — 413/0 with it — remove in a follow-up if desired.
