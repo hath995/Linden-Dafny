@@ -1076,3 +1076,55 @@ architecture (was worried the earlier note conflated `LkGateOk` with the oracle)
 4. `BackBodyGmTieNested` — compose 2+3 → surface leaf mirror (analogue of `BackBodyGmTie`).
 5. `LkReplayMatchesSpecLBNested` — surface via 4 + inner via the backward oracle reconstruction.
 6. Wire into MainTheorem; lift `NoPosLookbehindRE`.
+
+### (CAPTURES campaign) SESSION PROGRESS — foundation + crux GREEN (5 commits)
+
+New file `src/Equiv/TreeMirrorLk.dfy` (module `LindenElkTreeMirrorLk`), full-file 19/0:
+- **B1 `TreeMirrorRelLk(t,tm,Sin)`** — the LK-extended mirror relation (LK/LKFail cases: same
+  look-kind + continuation mirror, inner sub-trees EXCLUDED; mixed LK/LKFail disallowed ⇒ gate
+  agreement is STRUCTURAL). `TreeMirrorRelLkFromRel` lifts the look-free `TM.TreeMirrorRel`.
+- **B2 `TreeResMirrorLk`** — the SURFACE leaf fold. Two `TreeMirrorRelLk`-related trees fold to
+  leaves that mirror OUTSIDE `Sin`: None-iff, input swap, `GmAgreeOutside(rf.1, MirrorGm(rb.1,n),
+  Sin)`. Carries the WEAKER `GmAgreeOutside(gm2, MirrorGm(gm1,n), Sin)` invariant uniformly (not
+  exact `gm2==MirrorGm(gm1)`), since inner captures don't mirror. Helpers: `GMUpdateInBounds`,
+  `TreeResGmInBounds` (leaf bounds, direction-generic), `ConfinedNoGid`/`ConfinedLeafAgree`
+  (confined leaf agrees with input gm outside Sin, via `CC.TreeResPreservesGid`),
+  `MirrorGmAgreeOutside`. Aux predicates `CloseDiscLk`, `GActsOutsideSin`, `GateStableLk`.
+- **B3a `InnerGateAgree` — THE CRUX, GREEN.** A nested inner look's BACKWARD gate at cp (original)
+  == its RevL forward-of-mirror gate at n-cp (reversed). Proof = `OracleOkAtGet(qm)` +
+  `OracleOkAtGet(qm', RevL body)` + `MIR.MirrorViewGet` (MirrorView[n-cp]==ov[cp], NO direction
+  flip). This is the fact the span/tree walk-mirror provably CANNOT give (confirmed a 3rd way:
+  `MatchesLReverse` requires GroupOkL; nested lookbehind reads opposite sides). It de-risks the
+  whole builder.
+- **B3b-base `ComputeTrReverseLkLookFree`** — depth-0 base: look-free body ⇒ `TM.ComputeTrReverse`
+  lifted through `TreeMirrorRelLkFromRel`.
+
+**KEY STRUCTURAL FINDING (unblocks the builder): `SD.RevActs` KEEPS LIST ORDER** (maps each action
+pointwise Areg(r)->Areg(RevL(r)); only `Sequence` reorders internally via `SeqList`). So a look
+`Areg(LookaroundR(lk,r1))` at list position i has `racts[i]=Areg(LookaroundR(lk,RevL(r1)))` at the
+SAME position, evaluated (zero-width) at the SAME starting input on both sides (inp backward,
+SwapInput(inp) forward). Therefore the two LK nodes ALIGN, and the gate agreement needed is EXACTLY
+`InnerGateAgree`'s conclusion. The builder's LK case is LOCALIZED.
+
+**REMAINING (brick 3b-main + 4 + 5 + 6):**
+1. **B3b-main `ComputeTreeReverseLk`** — the fuel recursion. MECHANICAL COPY of reasoning's
+   `ComputeTreeReverse` (TreeMirror.dfy:123-270, ~150 lines) into equiv, changing (a) ensures
+   `TreeMirrorRel`->`TreeMirrorRelLk(_,_,Sin)`, (b) requires `GroupOkActs`->a nested-fragment/GroupOkLB
+   acts predicate, (c) each recursive call ->`ComputeTreeReverseLk`, (d) the `case LookaroundR(lk,r1)
+   => assert false` -> the REAL case: both trees produce `LK(lk,tlk,tc)` or both `LKFail(lk,tlk)`
+   (gate agreement from the hypothesis), continuation via `ComputeTreeReverseLk(cont,...)`, inner
+   sub-trees tlk EXCLUDED. **Recommended: state the gate agreement as an ABSTRACT hypothesis**
+   `RegLookGatesMirror(r, rer)` (structural over r: at each look (lk,r1), `forall inp2 ::
+   TreeRes(ComputeTr([Areg(r1)],inp2,Empty,LkDir)).Some? == TreeRes(ComputeTr([Areg(RevL(r1))],
+   SwapInput(inp2),Empty,LkDir)).Some?`, recursing into r1) lifted to `ActsLookGatesMirror(acts)`.
+   Inherited trivially by sub-regexes/cont. Keeps the builder recursion PURE (no oracle/lids).
+2. **B3b-discharge** — `ActsLookGatesMirror` from the oracle: for each look body, `forall inp2` gate
+   agreement via `InnerGateAgree` (needs qm/qm' with matching lids + `OracleOkSuffix` original AND
+   mirror). This is where oracle+lids enter, SEPARATED from the builder.
+3. **B4 `BackBodyGmTieNested`** — compose B3b + `TreeResMirrorLk` ⇒ surface leaf mirror (analogue of
+   `LBV.BackBodyGmTie`).
+4. **B5 `LkReplayMatchesSpecLBNested`** — engine wire: SURFACE via B4 + T2a engine mirror
+   (`BackwardReplayMirrorNested`) + forward `BodyTreeAtCpNested` on RevRE(body); INNER-look gids via
+   the backward oracle reconstruction (the L4 `LkReplayMatchesSpecNestedFull` recon_inner pattern,
+   direction-generic).
+5. **B6** — wire into MainTheorem, lift `NoPosLookbehindRE`, drop `assert false` (LiftSim), perf, API.
