@@ -987,3 +987,30 @@ gates there: `MatchesTransfer` (look-free, but the nested route uses `MatchesVTr
 `OracleColumnCharacterized` (oracle-build side, "nesting-agnostic" per authors), `TranslateGroupFree`
 -> a `GroupOkLB` variant. NEXT: assemble a nested `OracleColumnSpec` from `MatchesVTransfer` +
 `SpanDuality*LB`. The CAPTURES/value tie (the backward-simulation wall) stays a separate campaign.
+
+### (GATE side) COMPLETE — OracleColumnSpecNested green (oracle bit <==> backward walk, nested)
+
+The whole GATE half of L5 is now green — the direct-backward oracle route, no mirror, no
+simulation. `OracleColumnSpecNested` (OracleEntry.dfy) proves: for a nested-lookbehind body, the
+oracle bit at (cp, lid) holds EXACTLY when `Translate(body)`'s BACKWARD walk from cp succeeds. It
+is the direct-backward analogue of the look-free `OS.OracleColumnSpec`, and it is what §6.5's
+`OracleOk`/`StaticOkRE` consumes for a nested column.
+
+Green chain (all this session, OracleEntry.dfy full-file 43/0):
+- `MatchesVTransfer` (MatchesV <==> MatchesL, `74ecdc1`) — the gate transfer, via OracleOkAt + (A).
+- `RecorderHitVBackWalk` (RecorderHitV <==> backward walk, `bf21340`) — the value bridge.
+- `FBuildOracleCorrectAtNested` (oracle bit <==> ReachesWriteV, `846d6fa`) — nested oracle-build
+  correctness, off `FBuildOracleCorrectAboveNested` + `LidReachesVFinal`; + `LookTablesLidDirForwardNested`.
+- `OracleColumnSpecNested` (oracle bit <==> backward walk, `a8a06f1`) — the capstone, composing the
+  above with the L4 V-work bridges (`ReachesWriteVToMatchesV`/`MatchesVToReachesWriteV`,
+  `MatchesVRemoveCapture`).
+
+**What remains for L5:**
+1. WIRE `OracleColumnSpecNested` into the actual `OracleOk`/`StaticOkRE` establishment for nested
+   lookbehind columns (the L1/§6.5 chain — the look-free path uses `OracleColumnSpec`; point the
+   nested path at `OracleColumnSpecNested`). Mechanical-ish.
+2. The CAPTURES / value tie (the backward-simulation WALL) — the keystone
+   `LkReplayMatchesSpecLBNested` reconstructs the body's actual captures (surface via mirror-of-
+   skeleton, inner-look gids via the backward oracle). This is the remaining hard campaign; the gate
+   side does NOT need it.
+3. Drop `NoPosLookbehindRaw`/`FwdPosLooksL`, wire the `assert false` (LiftSim), §18 perf pass, API.
