@@ -54,6 +54,8 @@ module LindenElkTreeMirrorLk {
   import EL = LindenElkEntryLk
   import FS = FunctionalSemantics
   import CI = ComputeIsTree
+  import LN = WarblreNumeric
+  import SSx = StrictSuffix
 
   // ===========================================================================
   // BRICK 1: the LK-extended mirror relation
@@ -651,5 +653,295 @@ module LindenElkTreeMirrorLk {
     // of TreeRes(t, Empty, ., LkDir).Some?, which GateAgree equates across sides.
     assert LT.TreeRes(treelk_B, LG.Empty, inp, L.LkDir(lk)).Some?
         == LT.TreeRes(treelk_F, LG.Empty, sinp, L.LkDir(lk)).Some?;   // == GateAgree
+  }
+
+  // ===========================================================================
+  // BRICK 3b-main: the tree-building mirror (fuel helper + fuel-free wrapper)
+  // ===========================================================================
+
+  /** `GroupFreeL` bodies are in the recursive fragment (group-free ⇒ no
+      lookarounds/backrefs ⇒ `PikeLkRegexRec`). */
+  lemma GroupFreeLIsPikeLkRec(r: L.Regex)
+    requires SD.GroupFreeL(r)
+    ensures EL.PikeLkRegexRec(r)
+  {
+    EL.GroupFreeLNoLkBr(r);
+    EL.NoLkBrLIsPikeLkRegexRec(r);
+  }
+
+  /** THE BUILDER (fuel helper). A backward `ComputeTree` and the forward
+      `ComputeTree` of the reversed stack over the swapped input, when both
+      terminate, are `TreeMirrorRelLk`-related. Look-free cases mirror
+      `TM.ComputeTreeReverse`; the `LookaroundR` case uses `LookGateAgree` for the
+      gate verdict and the IH for the continuation (inner body trees excluded).
+      Guarded ensures only (no None-iff) — the wrapper runs at adequate fuel. */
+  lemma ComputeTreeReverseLk(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input,
+                             gm1: LG.GroupMap, gm2: LG.GroupMap, fuel: nat, Sin: set<LG.GroupId>)
+    requires EL.PikeLkActionsRec(acts)
+    requires ActsLookGatesMirror(acts, rer)
+    ensures var b := FS.ComputeTree(rer, acts, inp, gm1, WP.Backward, fuel);
+            var fw := FS.ComputeTree(rer, SD.RevActs(acts), SD.SwapInput(inp), gm2, WP.Forward, fuel);
+            b.Some? && fw.Some? ==> TreeMirrorRelLk(b.value, fw.value, Sin)
+    decreases fuel
+  {
+    var racts := SD.RevActs(acts);
+    var sinp := SD.SwapInput(inp);
+    if fuel == 0 { return; }
+    var f := fuel - 1;
+    if |acts| == 0 { assert racts == []; return; }
+    var cont := acts[1..];
+    SD.RevActsTail(acts);
+    assert racts[1..] == SD.RevActs(cont);
+    EL.PikeLkActionsRecConsIff(acts[0], cont);       // PikeLkActionRec(acts[0]) && PikeLkActionsRec(cont)
+    ActsLookGatesMirrorTail(acts, rer);              // ActsLookGatesMirror(cont)
+    match acts[0]
+    case Acheck(strcheck) =>
+      assert racts[0] == LS.Acheck(SD.SwapInput(strcheck));
+      SD.IsStrictSuffixSwap(inp, strcheck);
+      if SSx.IsStrictSuffix(inp, strcheck, WP.Backward) {
+        ComputeTreeReverseLk(rer, cont, inp, gm1, gm2, f, Sin);
+      }
+    case Aclose(gid) =>
+      assert racts[0] == LS.Aclose(gid);
+      ComputeTreeReverseLk(rer, cont, inp, LG.GMClose(LC.Idx(inp), gid, gm1),
+                           LG.GMClose(LC.Idx(sinp), gid, gm2), f, Sin);
+    case Areg(r) =>
+      assert racts[0] == LS.Areg(SD.RevL(r));
+      assert EL.PikeLkRegexRec(r);
+      match r
+      case Epsilon =>
+        ComputeTreeReverseLk(rer, cont, inp, gm1, gm2, f, Sin);
+      case Character(cd) =>
+        SD.ReadCharSwap(rer, cd, inp);
+        match LC.ReadChar(rer, cd, inp, WP.Backward) {
+          case Some(pair) => ComputeTreeReverseLk(rer, cont, pair.1, gm1, gm2, f, Sin);
+          case None =>
+        }
+      case Disjunction(r1, r2) =>
+        assert SD.RevL(r) == L.Disjunction(SD.RevL(r1), SD.RevL(r2));
+        LkActsRegHelper(acts, r, r1, r2, cont, rer);
+        SD.RevActsCons(LS.Areg(r1), cont);
+        SD.RevActsCons(LS.Areg(r2), cont);
+        ComputeTreeReverseLk(rer, [LS.Areg(r1)] + cont, inp, gm1, gm2, f, Sin);
+        ComputeTreeReverseLk(rer, [LS.Areg(r2)] + cont, inp, gm1, gm2, f, Sin);
+      case Sequence(r1, r2) =>
+        assert SD.RevL(r) == L.Sequence(SD.RevL(r2), SD.RevL(r1));
+        assert LS.SeqList(r1, r2, WP.Backward) == [LS.Areg(r2), LS.Areg(r1)];
+        SD.SeqListReverse(r1, r2);
+        TM.RevActsAppend([LS.Areg(r2), LS.Areg(r1)], cont);
+        assert [LS.Areg(r2), LS.Areg(r1)] + cont == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
+        SeqFragHelper(acts, r, r1, r2, cont, rer);
+        ComputeTreeReverseLk(rer, [LS.Areg(r2), LS.Areg(r1)] + cont, inp, gm1, gm2, f, Sin);
+      case Quantified(greedy, min, delta, r1) =>
+        assert SD.RevL(r) == L.Quantified(greedy, min, delta, SD.RevL(r1));
+        var gidl := L.DefGroups(r1);
+        var gidlm := L.DefGroups(SD.RevL(r1));
+        SD.RevLDefGroupsSet(r1);
+        QuantFragHelper(acts, r, r1, cont, rer, greedy, min, delta);
+        if min > 0 {
+          var q1 := L.Quantified(greedy, min - 1, delta, r1);
+          assert SD.RevL(q1) == L.Quantified(greedy, min - 1, delta, SD.RevL(r1));
+          TM.RevActsAppend([LS.Areg(r1), LS.Areg(q1)], cont);
+          assert SD.RevActs([LS.Areg(r1), LS.Areg(q1)]) == [LS.Areg(SD.RevL(r1)), LS.Areg(SD.RevL(q1))]
+            by { SD.RevActsCons(LS.Areg(r1), [LS.Areg(q1)]); SD.RevActsCons(LS.Areg(q1), []); }
+          assert [LS.Areg(r1), LS.Areg(q1)] + cont == [LS.Areg(r1)] + ([LS.Areg(q1)] + cont);
+          QuantMinHelper(r1, q1, cont, rer, greedy, min, delta);
+          ComputeTreeReverseLk(rer, [LS.Areg(r1), LS.Areg(q1)] + cont, inp,
+                               LG.GMReset(gidl, gm1), LG.GMReset(gidlm, gm2), f, Sin);
+          var bi := FS.ComputeTree(rer, [LS.Areg(r1), LS.Areg(q1)] + cont, inp,
+                                   LG.GMReset(gidl, gm1), WP.Backward, f);
+          var fi := FS.ComputeTree(rer, SD.RevActs([LS.Areg(r1), LS.Areg(q1)] + cont), sinp,
+                                   LG.GMReset(gidlm, gm2), WP.Forward, f);
+          if bi.Some? && fi.Some? {
+            assert TM.GroupActionMirror(LG.Reset(gidl), LG.Reset(gidlm));
+            assert TreeMirrorRelLk(LT.GroupActionT(LG.Reset(gidl), bi.value),
+                                   LT.GroupActionT(LG.Reset(gidlm), fi.value), Sin);
+          }
+        } else if delta == LN.NN(0) {
+          ComputeTreeReverseLk(rer, cont, inp, gm1, gm2, f, Sin);
+        } else {
+          var q0 := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+          assert SD.RevL(q0) == L.Quantified(greedy, 0, FS.NoiPred(delta), SD.RevL(r1));
+          TM.RevActsAppend([LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)], cont);
+          assert SD.RevActs([LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)])
+              == [LS.Areg(SD.RevL(r1)), LS.Acheck(sinp), LS.Areg(SD.RevL(q0))]
+            by { SD.RevActsCons(LS.Areg(r1), [LS.Acheck(inp), LS.Areg(q0)]);
+                 SD.RevActsCons(LS.Acheck(inp), [LS.Areg(q0)]); SD.RevActsCons(LS.Areg(q0), []); }
+          assert [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont
+              == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
+          QuantFreeHelper(r1, q0, cont, rer, greedy, delta, inp);
+          ComputeTreeReverseLk(rer, [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont, inp,
+                               LG.GMReset(gidl, gm1), LG.GMReset(gidlm, gm2), f, Sin);
+          ComputeTreeReverseLk(rer, cont, inp, gm1, gm2, f, Sin);
+          var bi := FS.ComputeTree(rer, [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont,
+                                   inp, LG.GMReset(gidl, gm1), WP.Backward, f);
+          var fi := FS.ComputeTree(rer, SD.RevActs([LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont),
+                                   sinp, LG.GMReset(gidlm, gm2), WP.Forward, f);
+          var bs := FS.ComputeTree(rer, cont, inp, gm1, WP.Backward, f);
+          var fs := FS.ComputeTree(rer, SD.RevActs(cont), sinp, gm2, WP.Forward, f);
+          if bi.Some? && bs.Some? && fi.Some? && fs.Some? {
+            assert TM.GroupActionMirror(LG.Reset(gidl), LG.Reset(gidlm));
+            assert TreeMirrorRelLk(LT.GroupActionT(LG.Reset(gidl), bi.value),
+                                   LT.GroupActionT(LG.Reset(gidlm), fi.value), Sin);
+            assert TreeMirrorRelLk(bs.value, fs.value, Sin);
+          }
+        }
+      case Group(gid, r1) =>
+        assert SD.RevL(r) == L.Group(gid, SD.RevL(r1));
+        TM.RevActsAppend([LS.Areg(r1), LS.Aclose(gid)], cont);
+        assert SD.RevActs([LS.Areg(r1), LS.Aclose(gid)]) == [LS.Areg(SD.RevL(r1)), LS.Aclose(gid)]
+          by { SD.RevActsCons(LS.Areg(r1), [LS.Aclose(gid)]); SD.RevActsCons(LS.Aclose(gid), []); }
+        assert [LS.Areg(r1), LS.Aclose(gid)] + cont == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
+        GroupFragHelper(r1, gid, cont, rer);
+        ComputeTreeReverseLk(rer, [LS.Areg(r1), LS.Aclose(gid)] + cont, inp,
+                             LG.GMOpen(LC.Idx(inp), gid, gm1),
+                             LG.GMOpen(LC.Idx(sinp), gid, gm2), f, Sin);
+      case LookaroundR(lk, r1) =>
+        assert EL.PikeLkRegexRec(r1) by {
+          if L.Positivity(lk) {} else { GroupFreeLIsPikeLkRec(r1); }
+        }
+        assert RegLookGatesMirror(r, rer);
+        assert GateAgree(rer, lk, r1, inp);
+        assert SD.RevL(r) == L.LookaroundR(lk, SD.RevL(r1));
+        var tB := FS.ComputeTree(rer, [LS.Areg(r1)], inp, gm1, L.LkDir(lk), f);
+        var tF := FS.ComputeTree(rer, [LS.Areg(SD.RevL(r1))], sinp, gm2, L.LkDir(lk), f);
+        EL.PikeLkActionsRecConsIff(LS.Areg(r1), []);
+        if tB.Some? && tF.Some? {
+          LookGateAgree(rer, lk, r1, inp, gm1, gm2, sinp, tB.value, tF.value, f, f);
+          if LS.LkResult(lk, tB.value, gm1, inp).Some? {
+            var gmlkB := LS.LkResult(lk, tB.value, gm1, inp).value;
+            var gmlkF := LS.LkResult(lk, tF.value, gm2, sinp).value;
+            ComputeTreeReverseLk(rer, cont, inp, gmlkB, gmlkF, f, Sin);
+          }
+        }
+      case AnchorR(a) =>
+        assert SD.RevL(r) == L.AnchorR(SD.SwapAnchorL(a));
+        SD.AnchorSatisfiedSwap(rer, a, inp);
+        if LS.AnchorSatisfied(rer, a, inp) {
+          ComputeTreeReverseLk(rer, cont, inp, gm1, gm2, f, Sin);
+        }
+      case Backreference(gid) =>
+        assert EL.PikeLkRegexRec(r);
+        assert false;
+  }
+
+  // --- fragment/gate-hypothesis threading helpers for the builder recursion ---
+
+  lemma LkActsRegHelper(acts: LS.Actions, r: L.Regex, r1: L.Regex, r2: L.Regex, cont: LS.Actions, rer: LW.RegExpRecord)
+    requires |acts| > 0 && acts[0] == LS.Areg(r) && cont == acts[1..]
+    requires r == L.Disjunction(r1, r2)
+    requires EL.PikeLkActionsRec(acts) && ActsLookGatesMirror(acts, rer)
+    ensures EL.PikeLkActionsRec([LS.Areg(r1)] + cont) && ActsLookGatesMirror([LS.Areg(r1)] + cont, rer)
+    ensures EL.PikeLkActionsRec([LS.Areg(r2)] + cont) && ActsLookGatesMirror([LS.Areg(r2)] + cont, rer)
+  {
+    EL.PikeLkActionsRecConsIff(acts[0], cont);
+    ActsLookGatesMirrorTail(acts, rer);
+    assert EL.PikeLkRegexRec(r) && RegLookGatesMirror(r, rer);
+    EL.PikeLkActionsRecConsIff(LS.Areg(r1), cont);
+    EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont);
+    ActsLookGatesMirrorCons(LS.Areg(r1), cont, rer);
+    ActsLookGatesMirrorCons(LS.Areg(r2), cont, rer);
+  }
+
+  lemma SeqFragHelper(acts: LS.Actions, r: L.Regex, r1: L.Regex, r2: L.Regex, cont: LS.Actions, rer: LW.RegExpRecord)
+    requires |acts| > 0 && acts[0] == LS.Areg(r) && cont == acts[1..]
+    requires r == L.Sequence(r1, r2)
+    requires EL.PikeLkActionsRec(acts) && ActsLookGatesMirror(acts, rer)
+    ensures EL.PikeLkActionsRec([LS.Areg(r2), LS.Areg(r1)] + cont)
+    ensures ActsLookGatesMirror([LS.Areg(r2), LS.Areg(r1)] + cont, rer)
+  {
+    EL.PikeLkActionsRecConsIff(acts[0], cont);
+    ActsLookGatesMirrorTail(acts, rer);
+    assert [LS.Areg(r2), LS.Areg(r1)] + cont == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
+    EL.PikeLkActionsRecConsIff(LS.Areg(r1), cont);
+    EL.PikeLkActionsRecConsIff(LS.Areg(r2), [LS.Areg(r1)] + cont);
+    ActsLookGatesMirrorCons(LS.Areg(r1), cont, rer);
+    ActsLookGatesMirrorCons(LS.Areg(r2), [LS.Areg(r1)] + cont, rer);
+  }
+
+  lemma QuantFragHelper(acts: LS.Actions, r: L.Regex, r1: L.Regex, cont: LS.Actions, rer: LW.RegExpRecord,
+                        greedy: bool, min: nat, delta: LN.NoI)
+    requires |acts| > 0 && acts[0] == LS.Areg(r) && cont == acts[1..]
+    requires r == L.Quantified(greedy, min, delta, r1)
+    requires EL.PikeLkActionsRec(acts) && ActsLookGatesMirror(acts, rer)
+    ensures EL.PikeLkRegexRec(r1) && RegLookGatesMirror(r1, rer)
+    ensures EL.PikeLkActionsRec(cont) && ActsLookGatesMirror(cont, rer)
+  {
+    EL.PikeLkActionsRecConsIff(acts[0], cont);
+    ActsLookGatesMirrorTail(acts, rer);
+  }
+
+  lemma QuantMinHelper(r1: L.Regex, q1: L.Regex, cont: LS.Actions, rer: LW.RegExpRecord,
+                       greedy: bool, min: nat, delta: LN.NoI)
+    requires min > 0 && q1 == L.Quantified(greedy, min - 1, delta, r1)
+    requires EL.PikeLkRegexRec(r1) && RegLookGatesMirror(r1, rer)
+    requires EL.PikeLkActionsRec(cont) && ActsLookGatesMirror(cont, rer)
+    ensures EL.PikeLkActionsRec([LS.Areg(r1), LS.Areg(q1)] + cont)
+    ensures ActsLookGatesMirror([LS.Areg(r1), LS.Areg(q1)] + cont, rer)
+  {
+    assert EL.PikeLkRegexRec(q1) && RegLookGatesMirror(q1, rer);
+    assert [LS.Areg(r1), LS.Areg(q1)] + cont == [LS.Areg(r1)] + ([LS.Areg(q1)] + cont);
+    EL.PikeLkActionsRecConsIff(LS.Areg(q1), cont);
+    EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(q1)] + cont);
+    ActsLookGatesMirrorCons(LS.Areg(q1), cont, rer);
+    ActsLookGatesMirrorCons(LS.Areg(r1), [LS.Areg(q1)] + cont, rer);
+  }
+
+  lemma QuantFreeHelper(r1: L.Regex, q0: L.Regex, cont: LS.Actions, rer: LW.RegExpRecord,
+                        greedy: bool, delta: LN.NoI, inp: LC.Input)
+    requires q0 == L.Quantified(greedy, 0, FS.NoiPred(delta), r1)
+    requires EL.PikeLkRegexRec(r1) && RegLookGatesMirror(r1, rer)
+    requires EL.PikeLkActionsRec(cont) && ActsLookGatesMirror(cont, rer)
+    ensures EL.PikeLkActionsRec([LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont)
+    ensures ActsLookGatesMirror([LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont, rer)
+  {
+    assert EL.PikeLkRegexRec(q0) && RegLookGatesMirror(q0, rer);
+    assert [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont
+        == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
+    EL.PikeLkActionsRecConsIff(LS.Areg(q0), cont);
+    EL.PikeLkActionsRecConsIff(LS.Acheck(inp), [LS.Areg(q0)] + cont);
+    EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
+    ActsLookGatesMirrorCons(LS.Areg(q0), cont, rer);
+    ActsLookGatesMirrorCons(LS.Acheck(inp), [LS.Areg(q0)] + cont, rer);
+    ActsLookGatesMirrorCons(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(q0)] + cont), rer);
+  }
+
+  lemma GroupFragHelper(r1: L.Regex, gid: nat, cont: LS.Actions, rer: LW.RegExpRecord)
+    requires EL.PikeLkRegexRec(r1) && RegLookGatesMirror(r1, rer)
+    requires EL.PikeLkActionsRec(cont) && ActsLookGatesMirror(cont, rer)
+    ensures EL.PikeLkActionsRec([LS.Areg(r1), LS.Aclose(gid)] + cont)
+    ensures ActsLookGatesMirror([LS.Areg(r1), LS.Aclose(gid)] + cont, rer)
+  {
+    assert [LS.Areg(r1), LS.Aclose(gid)] + cont == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
+    EL.PikeLkActionsRecConsIff(LS.Aclose(gid), cont);
+    EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+    ActsLookGatesMirrorCons(LS.Aclose(gid), cont, rer);
+    ActsLookGatesMirrorCons(LS.Areg(r1), [LS.Aclose(gid)] + cont, rer);
+  }
+
+  /** Fuel-free wrapper: `ComputeTr` backward mirrors `ComputeTr` of the reversed
+      stack over the swapped input (`TreeMirrorRelLk`). */
+  lemma ComputeTrReverseLk(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input,
+                           gm1: LG.GroupMap, gm2: LG.GroupMap, Sin: set<LG.GroupId>)
+    requires EL.PikeLkActionsRec(acts)
+    requires ActsLookGatesMirror(acts, rer)
+    ensures TreeMirrorRelLk(FU.ComputeTr(rer, acts, inp, gm1, WP.Backward),
+                            FU.ComputeTr(rer, SD.RevActs(acts), SD.SwapInput(inp), gm2, WP.Forward), Sin)
+  {
+    var sinp := SD.SwapInput(inp);
+    var racts := SD.RevActs(acts);
+    var fb := FS.ActionsFuel(acts, inp, WP.Backward) + 1;
+    var ff := FS.ActionsFuel(racts, sinp, WP.Forward) + 1;
+    var fuel := if fb >= ff then fb else ff;
+    FS.FunctionalTerminates(rer, acts, inp, gm1, WP.Backward, fuel);
+    FS.FunctionalTerminates(rer, racts, sinp, gm2, WP.Forward, fuel);
+    var b := FS.ComputeTree(rer, acts, inp, gm1, WP.Backward, fuel);
+    var fw := FS.ComputeTree(rer, racts, sinp, gm2, WP.Forward, fuel);
+    ComputeTreeReverseLk(rer, acts, inp, gm1, gm2, fuel, Sin);
+    // pin both computed trees to ComputeTr (determinism, any adequate fuel)
+    CI.ComputeIsTreeThm(rer, acts, inp, gm1, WP.Backward, fuel, b.value);
+    FU.IsTreeEqComputeTr(rer, acts, inp, gm1, WP.Backward, b.value);
+    CI.ComputeIsTreeThm(rer, racts, sinp, gm2, WP.Forward, fuel, fw.value);
+    FU.IsTreeEqComputeTr(rer, racts, sinp, gm2, WP.Forward, fw.value);
   }
 }
