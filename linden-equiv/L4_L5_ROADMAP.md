@@ -1190,3 +1190,31 @@ forward `tF`), each a fuel-recursion over `ComputeTree` (like the builder helper
   `ComputeTrLkConfinedK`@Forward on `RevL(tr)` (with `LkBodyGroups(RevL(tr))==LkBodyGroups(tr)`).
 All establishments are direction-generic → apply to `tB`@Backward AND `tF`@Forward(RevL(tr)). Then B4
 composes → surface leaf mirror. Then B5 (engine wire + mirror-oracle setup discharges B2's hyps), B6.
+
+### (CAPTURES campaign) B4 establishments 2/3 green — GateStableLk + GActsOutsideSin
+
+TreeMirrorLk.dfy full-file 73/0. Two of the three B4 tree-property establishments landed (both fuel
+helper + fuel-free wrapper, mirroring `ComputeTree` case-for-case):
+- `ComputeTrGateStable` — `GateStableLk(ComputeTr([Areg(tr)],...), inp, dir)` for `PikeLkRegexRec(tr)`.
+  LK case = `LookGateStableAt`, needs ONLY `LkResultGmIndep` (unconditional). Clean.
+- `ComputeTrGActsOutside` — `GActsOutsideSin(ComputeTr(...), Sin)` given `RegOpensOutside(tr, Sin)`.
+  **Also fixed a latent vacuity: `GADisjoint`'s `Reset` case is now `true`** (a quantifier over a
+  nested look resets inner gids ∈ Sin — harmless for `O!!Sin`; only `Open` needs `g∉Sin`). Fold
+  re-verified. `RegOpensOutside`/`ActsOpensOutside` predicates + threading helpers added.
+
+**Remaining for B4:**
+- **`CloseDiscLk` establishment (the heavy one)** — needs the `StackInv`/`ClosesActs`/`HeadsFresh`/
+  `HeadsNoDupDefs` invariant machinery from reasoning's `CloseDiscEstablish.dfy` (`CloseDiscComputeTr`
+  requires `StackInv` = `NoDupG(ClosesActs) && HeadsFreshOfCloses && HeadsNoDupDefs && GroupOkActs`).
+  Two routes: (a) fresh EQUIV twin replicating that machinery + the LK case (recurse continuation) —
+  ~200 lines but the fuel pattern is proven; (b) widen reasoning's `CloseDiscComputeTr` to the
+  fragment + add LK case, but it produces reasoning's `CloseDisc` not equiv's `CloseDiscLk`, so a
+  bridge or a reasoning-side `CloseDiscLk` is needed. Route (a) is cleaner.
+- **`RegOpensOutside(tr, LkBodyGroups(tr))` from `NoDupG(DefGroups(tr))`** — surface Group gids ∉
+  LkBodyGroups (partition under NoDupG). Structural induction; check for an existing L4 "surface ∩
+  LkBodyGroups = ∅" lemma first.
+- **B4 `BackBodyGmTieNested`** — compose: builder (`ComputeTrReverseLk`, needs `RegLookGatesMirror`
+  from brick 2's discharge) + `ComputeTrGateStable`×2 (tB, tF) + `ComputeTrGActsOutside`(tB) +
+  `BackwardBodyConfinedTree`(tB) + `ComputeTrLkConfinedK`@Forward(tF) + `CloseDiscLk`(tB) →
+  `TreeResMirrorLk` → surface leaf mirror `GmAgreeOutside(FirstLeaf(tF).1, MirrorGm(FirstLeaf(tB).1,n), Sin)`.
+Then B5 (engine wire + discharge brick 2's mirror-oracle hyps), B6 (integration).
