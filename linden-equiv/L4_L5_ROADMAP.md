@@ -1161,3 +1161,32 @@ arbitrary inputs). Threaded `str, cp0` (inp == InpOfCp(str, cp0)) through the bu
   `BodyTreeAtCpNested`@RevRE(body) (with MirrorView oracle); INNER-look gids via backward oracle
   reconstruction (L4 `recon_inner` pattern). Establishes B3b-discharge's mirror-oracle hypotheses.
 - **B6** — lift `NoPosLookbehindRE` through MainTheorem, drop `assert false` (LiftSim), perf, API.
+
+### (CAPTURES campaign) BRICK 2 (discharge) COMPLETE — bricks 1+2 green
+
+`RegLookGatesMirrorDischarge` (TreeMirrorLk.dfy, full-file 52/0) discharges the builder's gate
+hypothesis from the oracle: recurse over the RegElk `re` (via `AR.LmapOk`), at each look use
+`InnerGateAgree` with original `qm` + RevRE-mirror `qm'` (`qm'.ov==MirrorView`, bodies via
+`TranslateRevRE`); `LookGateDischargeOne` does one look/position (endpoint swap `SD.InputAtSwap`).
+Oracle hyps inlined (`forall k :: OracleOkAt`), so TreeMirrorLk.dfy stays independent of the gate
+side. So: **the nested tree mirror BUILDS (brick 1) and its gate hypothesis is oracle-DISCHARGED
+(brick 2), all green.**
+
+**BRICK 3 (B4 `BackBodyGmTieNested`) — the establishment sub-campaign.** Compose builder
+(`ComputeTrReverseLk`) + fold (`TreeResMirrorLk`) at gm1=gm2=Empty, O={}. `TreeResMirrorLk` needs
+these tree-property establishments of `tB = ComputeTr([Areg(tr)], inpB, Empty, Backward)` (and
+forward `tF`), each a fuel-recursion over `ComputeTree` (like the builder helper, ~120 lines):
+- `GateStableLk(tB, inpB, Backward)` — ALL-EQUIV, only needs gm-indep (`ComputeTrGmIndepLkRec` +
+  `LkResultGmIndep`); the LK case proves `forall gm :: TreeRes(tlk,gm,inp,LkDir).Some?` (pos) from the
+  node being LK (gate gm-constant). NO NoDupG. Easiest — start here.
+- `GActsOutsideSin(tB, LkBodyGroups(tr))` — surface GroupActionT gids ∉ LkBodyGroups; needs
+  `NoDupG(DefGroups(tr))` (surface gids disjoint from inner). Track surface-gid-outside-Sin through
+  the recursion.
+- `CloseDiscLk(tB, {})` — LK-aware close discipline. The look-free `CD.CloseDiscBody`
+  (CloseDiscEstablish.dfy, reasoning) delegates to `CloseDiscComputeTr` (a fuel recursion, requires
+  GroupOkL); widen THAT to the nested fragment + add the LK case (recurse continuation, inner
+  excluded) — a cross-project edit to linden-reasoning, OR write a fresh equiv twin.
+- `LkConfinedTreeK(tB, Sin)` — EXISTS (`BackwardBodyConfinedTree`); forward `tF` via
+  `ComputeTrLkConfinedK`@Forward on `RevL(tr)` (with `LkBodyGroups(RevL(tr))==LkBodyGroups(tr)`).
+All establishments are direction-generic → apply to `tB`@Backward AND `tF`@Forward(RevL(tr)). Then B4
+composes → surface leaf mirror. Then B5 (engine wire + mirror-oracle setup discharges B2's hyps), B6.
