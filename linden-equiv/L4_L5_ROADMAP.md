@@ -1218,3 +1218,32 @@ helper + fuel-free wrapper, mirroring `ComputeTree` case-for-case):
   `BackwardBodyConfinedTree`(tB) + `ComputeTrLkConfinedK`@Forward(tF) + `CloseDiscLk`(tB) →
   `TreeResMirrorLk` → surface leaf mirror `GmAgreeOutside(FirstLeaf(tF).1, MirrorGm(FirstLeaf(tB).1,n), Sin)`.
 Then B5 (engine wire + discharge brick 2's mirror-oracle hyps), B6 (integration).
+
+### (CAPTURES campaign) BRICKS 1+2+3 COMPLETE — the SPEC-SIDE nested tree mirror is done
+
+TreeMirrorLk.dfy full-file **98/0**. The entire spec-side is green:
+- **B1 builder** `ComputeTrReverseLk` (+ relation `TreeMirrorRelLk`, fold `TreeResMirrorLk`, cruxes
+  `InnerGateAgree`/`LookGateAgree`).
+- **B2 discharge** `RegLookGatesMirrorDischarge` — the builder's gate hypothesis from the oracle
+  (via `AR.LmapOk` + RevRE-mirror `qm'`).
+- **B3 (B4) composition** `BackBodyGmTieNested` — the SURFACE leaf mirror
+  `GmAgreeOutside(FirstLeaf(tF).1, MirrorGm(FirstLeaf(tB).1, n), Sin)`. Composes the builder + all
+  three establishments (`ComputeTrGateStable`, `ComputeTrGActsOutside`, `ComputeTrCloseDiscLk` — the
+  last replicating CD's `StackInv`/`ClosesActs` machinery with `PikeLkActionsRec` + the LK case) +
+  confinement (`BackwardBodyConfinedTree` tB, `ComputeTrLkConfinedK`@Forward tF via `LkBodyGroupsRevL`)
+  + the fold. Discharges: `RegOpensOutsideFromNoDup` (surface Opens avoid LkBodyGroups under NoDupG).
+  Fixed TWO latent vacuity bugs (string-relative gate hyp; `GADisjoint` Reset).
+
+**REMAINING (bricks 4-5 = B5, B6):**
+- **B5 `LkReplayMatchesSpecLBNested`** — the ENGINE WIRE. Nested analogue of the depth-1
+  `LBK.LkReplayMatchesSpecLB` (LookBehindKeystone.dfy). SURFACE tie: `BackBodyGmTieNested` (B4) +
+  the engine mirror `BV.BackwardReplayMirrorNested` (T2a) + forward `M.BodyTreeAtCpNested` applied to
+  `RevRE(body)` on `rstr` with `MirrorView(ov)` (ties rfF to FirstLeaf(tF)). This ALSO establishes
+  B2's mirror-oracle hypotheses (compile `RevRE(body)` → `qm'`, `LmapOk(RevRE(body), qm')`,
+  `OracleColsOk(qm', rstr)` via a MirrorView oracle-correctness transport). INNER-look gids: the
+  backward oracle reconstruction (L4 `recon_inner`/`FLookLoop` pattern, direction-generic) — the
+  separate inner half, as in the L4 forward keystone. Then wrap `BackFreshBodyGmTie`-style at cap=init.
+  Large (couples to compilation + engine mirror infra), but the spec-side surface tie it needs is DONE.
+- **B6** — lift `NoPosLookbehindRE` through `OracleColumnNested`/`OracleOkRowsNested`/`MainTheorem`,
+  wire the green gate atoms (`OracleColumnSpecNested`) + the captures (`LkReplayMatchesSpecLBNested`),
+  drop the `assert false` (LiftSim), §18 opaque-at-source perf pass, API (`ApiMatch`/`Supported`).
