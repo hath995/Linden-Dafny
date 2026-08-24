@@ -556,6 +556,33 @@ module LindenElkTreeMirrorLk {
                   LG.Empty, SD.SwapInput(inp2), L.LkDir(lk)).Some?
   }
 
+  /** !!! DEAD-END WITNESS: `GateAgree` is UNSATISFIABLE for nested inner looks !!!
+      `SD.SwapInput` merely swaps pref<->next, so the RevL-side backward walk reads
+      the char AFTER the point while the original reads the char BEFORE — opposite
+      sides. Hence `GateAgree`, `RegLookGatesMirror`/`ActsLookGatesMirror`, and every
+      lemma gated on them (`ComputeTrReverseLk`, `RegLookGatesMirrorDischarge`,
+      `BackBodyGmTieNested`) are VACUOUS for a nested capturing lookbehind: the
+      ComputeTr RE-WALK tree does NOT mirror for nested looks (the documented
+      dead-end). The tree-property establishments (GateStableLk/GActsOutsideSin/
+      CloseDiscLk) and confinement ARE sound (independent of the mirror). The correct
+      captures route is the ORACLE-GATED / backward-simulation stack, not this. */
+  lemma GateAgreeIsFalse(rer: LW.RegExpRecord, cd: LC.CharDescr)
+    requires LC.CharMatch(rer, 'a', cd) && !LC.CharMatch(rer, 'b', cd)
+    ensures !GateAgree(rer, L.LookBehind, L.Character(cd), LC.Input(['b'], ['a']))
+  {
+    var r1 := L.Character(cd);
+    var inp2 := LC.Input(['b'], ['a']);
+    var sinp := SD.SwapInput(inp2);
+    assert L.LkDir(L.LookBehind) == WP.Backward;
+    assert SD.RevL(r1) == r1;
+    FU.ComputeTrRw(rer, [LS.Areg(r1)], inp2, LG.Empty, WP.Backward);
+    FU.ComputeTrRw(rer, [LS.Areg(r1)], sinp, LG.Empty, WP.Backward);
+    assert inp2.pref == ['a'] && inp2.pref[0] == 'a';
+    assert LC.ReadChar(rer, cd, inp2, WP.Backward).Some?;
+    assert sinp == LC.Input(['a'], ['b']);
+    assert LC.ReadChar(rer, cd, sinp, WP.Backward).None?;
+  }
+
   /** Every inner look in `r` has its gate mirror at every POSITION of `str`.
       String-relative (not input-generic): a nested inner look's re-walks only
       agree at views of the fixed `str`, via the oracle (`InnerGateAgree`).
