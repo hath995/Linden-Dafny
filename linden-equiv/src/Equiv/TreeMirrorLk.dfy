@@ -55,6 +55,7 @@ module LindenElkTreeMirrorLk {
   import FS = FunctionalSemantics
   import CI = ComputeIsTree
   import T = LindenElkTranslate
+  import R = RegElkRegex
   import LN = WarblreNumeric
   import SSx = StrictSuffix
 
@@ -966,5 +967,93 @@ module LindenElkTreeMirrorLk {
     FU.IsTreeEqComputeTr(rer, acts, inp, gm1, WP.Backward, b.value);
     CI.ComputeIsTreeThm(rer, racts, sinp, gm2, WP.Forward, fuel, fw.value);
     FU.IsTreeEqComputeTr(rer, racts, sinp, gm2, WP.Forward, fw.value);
+  }
+
+  // ===========================================================================
+  // BRICK 2: discharge the builder's gate hypothesis from the oracle
+  // ===========================================================================
+
+  /** One inner look, one position: `GateAgree` from the oracle. Instantiates
+      `InnerGateAgree` with the look's lid (via `AR.LmapOk` on the original and
+      the RevRE-mirrored regex) and the oracle bit at `cp`/`n-cp`; the endpoint
+      swap `InpOfCp(rstr, n-cp) == SwapInput(InpOfCp(str, cp))` (`SD.InputAtSwap`)
+      reconciles `InnerGateAgree`'s conclusion with `GateAgree`. */
+  lemma LookGateDischargeOne(rer: LW.RegExpRecord, re: R.regex, r1: R.regex, qm: AR.QMap, qm': AR.QMap,
+                             str: string, rstr: string, n: nat, cp: nat, lid: int, la: R.lookaround)
+    requires re == R.Re_lookaround(lid, la, r1) && T.TransWf(re)
+    requires n == |str| && rstr == LC.Reverse(str) && |rstr| == n && |qm.ov| == n + 1 && cp <= n
+    requires AR.LmapOk(re, qm) && T.TransWf(SD.RevRE(re)) && AR.LmapOk(SD.RevRE(re), qm')
+    requires qm'.ov == MIR.MirrorView(qm.ov, n)
+    requires forall k: nat :: k <= n ==> LL.OracleOkAt(rer, qm, PIV.InpOfCp(str, k))
+    requires forall k: nat :: k <= n ==> LL.OracleOkAt(rer, qm', PIV.InpOfCp(rstr, k))
+    ensures GateAgree(rer, T.TrLookaround(la), T.Translate(r1), PIV.InpOfCp(str, cp))
+  {
+    var lk := T.TrLookaround(la);
+    var r1L := T.Translate(r1);
+    // lid correspondence, both sides
+    assert lid in qm.looks && qm.looks[lid] == (lk, r1L);
+    assert SD.RevRE(re) == R.Re_lookaround(lid, la, SD.RevRE(r1));
+    SD.TranslateRevRE(r1);
+    assert lid in qm'.looks && qm'.looks[lid] == (lk, SD.RevL(r1L));
+    // oracle correctness at the two mirror positions
+    assert LL.OracleOkAt(rer, qm, PIV.InpOfCp(str, cp));
+    assert LL.OracleOkAt(rer, qm', PIV.InpOfCp(rstr, n - cp));
+    InnerGateAgree(rer, qm, qm', str, rstr, n, cp, lid, lk, r1L);
+    // endpoint swap: InpOfCp(rstr, n-cp) == SwapInput(InpOfCp(str, cp))
+    SD.InputAtSwap(str, cp);
+    assert PIV.InpOfCp(str, cp) == T.InputAt(str, cp) by { LS.ReverseLength(str[..cp]); }
+    assert PIV.InpOfCp(rstr, n - cp) == T.InputAt(rstr, n - cp) by { LS.ReverseLength(rstr[..n - cp]); }
+  }
+
+  /** THE DISCHARGE: the builder's string-relative gate hypothesis
+      `RegLookGatesMirror(Translate(re), rer, str)` holds when the oracle is
+      correct on `str` (for `qm`) and on `rstr = Reverse(str)` (for the mirror
+      `qm'`, whose look bodies are `RevRE` of `re`'s and whose view is
+      `MirrorView`). Recurses over the RegElk `re` (lids live there); each look
+      is discharged by `LookGateDischargeOne`. */
+  lemma RegLookGatesMirrorDischarge(rer: LW.RegExpRecord, re: R.regex, qm: AR.QMap, qm': AR.QMap,
+                                    str: string, rstr: string, n: nat)
+    requires T.TransWf(re)
+    requires n == |str| && rstr == LC.Reverse(str) && |rstr| == n && |qm.ov| == n + 1
+    requires AR.LmapOk(re, qm)
+    requires T.TransWf(SD.RevRE(re)) && AR.LmapOk(SD.RevRE(re), qm')
+    requires qm'.ov == MIR.MirrorView(qm.ov, n)
+    requires forall k: nat :: k <= n ==> LL.OracleOkAt(rer, qm, PIV.InpOfCp(str, k))
+    requires forall k: nat :: k <= n ==> LL.OracleOkAt(rer, qm', PIV.InpOfCp(rstr, k))
+    ensures RegLookGatesMirror(T.Translate(re), rer, str)
+    decreases re
+  {
+    match re
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      assert SD.RevRE(re) == R.Re_alt(SD.RevRE(r1), SD.RevRE(r2));
+      SD.RevRETransWf(r1); SD.RevRETransWf(r2);
+      RegLookGatesMirrorDischarge(rer, r1, qm, qm', str, rstr, n);
+      RegLookGatesMirrorDischarge(rer, r2, qm, qm', str, rstr, n);
+    case Re_con(r1, r2) =>
+      assert SD.RevRE(re) == R.Re_con(SD.RevRE(r2), SD.RevRE(r1));
+      SD.RevRETransWf(r1); SD.RevRETransWf(r2);
+      RegLookGatesMirrorDischarge(rer, r1, qm, qm', str, rstr, n);
+      RegLookGatesMirrorDischarge(rer, r2, qm, qm', str, rstr, n);
+    case Re_quant(qn, qq, qt, r1) =>
+      assert SD.RevRE(re) == R.Re_quant(qn, qq, qt, SD.RevRE(r1));
+      SD.RevRETransWf(r1);
+      RegLookGatesMirrorDischarge(rer, r1, qm, qm', str, rstr, n);
+    case Re_capture(cid, r1) =>
+      assert SD.RevRE(re) == R.Re_capture(cid, SD.RevRE(r1));
+      SD.RevRETransWf(r1);
+      RegLookGatesMirrorDischarge(rer, r1, qm, qm', str, rstr, n);
+    case Re_lookaround(lid, la, r1) =>
+      var lk := T.TrLookaround(la);
+      var r1L := T.Translate(r1);
+      assert T.Translate(re) == L.LookaroundR(lk, r1L);
+      forall cp': nat | cp' <= n ensures GateAgree(rer, lk, r1L, PIV.InpOfCp(str, cp')) {
+        LookGateDischargeOne(rer, re, r1, qm, qm', str, rstr, n, cp', lid, la);
+      }
+      assert SD.RevRE(re) == R.Re_lookaround(lid, la, SD.RevRE(r1));
+      SD.RevRETransWf(r1);
+      RegLookGatesMirrorDischarge(rer, r1, qm, qm', str, rstr, n);
   }
 }
