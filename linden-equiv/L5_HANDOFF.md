@@ -42,9 +42,10 @@ not an engine limitation.
 | (A) SPAN/SUCCESS side — `Bwd*`/`SpanDuality*LB`/`GroupOkLB` (linden-reasoning) | ✅ green |
 | GATE side — oracle correctness for nested lookbehind (`OracleColumnSpecNested`) | ✅ green |
 | T1 — `GmOfLiveXRev` bridge; T2a — `BackwardReplayMirrorNested` (engine mirror) | ✅ green |
-| CAPTURES — the value tie (`LkReplayMatchesSpecLBNested`) | ❌ **the wall (see §4, §5)** |
+| F0 — the KIND-FLIP wedge (`FlipRev.dfy`: `FlipCompileToBytecode`, cured witness) | ✅ green (18/0) |
+| CAPTURES — the value tie (`LkReplayMatchesSpecLBNested`) | ❌ **the FLIP route, §5 (F1–F5)** |
 | Tree-mirror attempt (TreeMirrorLk.dfy bricks 1-3) | ⚠️ **VACUOUS — dead-end (see §4)** |
-| Integration — lift `NoPosLookbehindRE`, drop `assert false`, API | ❌ not started |
+| Integration — lift `NoPosLookbehindRE`, drop `assert false`, API | ❌ not started (F6–F7) |
 
 ---
 
@@ -93,6 +94,13 @@ ALSO re-walks (it is `ComputeTr`+`LkResult`, NOT the oracle) — so `BoolTreeLk`
 The ONLY tree whose inner gates are position-consistent oracle bits is the ENGINE tree
 (`tstar`/`TreeRepRE`), and its mirror IS the engine mirror T2a.
 
+**DEEPER root cause (identified 2026-08-24, see §5.0): the NO-FLIP itself.** The re-walk tree fails
+to mirror only under the kind-PRESERVING reversal; under the kind-FLIPPING reversal (lookbehind <->
+lookahead, the classical duality) the mirrored sub-walk reads the SAME chars and the tree mirror is
+TRUE — `FlipGateAgreeAtDeadEndWitness` (FlipRev.dfy, green) proves the flip agreement at the exact
+`GateAgreeIsFalse` witness. The no-flip constraint was inherited from the engine's `reverse_regex`,
+but the bytecode is look-kind-blind (`FlipCompileToBytecode`), so the inheritance was an illusion.
+
 **SOUND / REUSABLE from TreeMirrorLk.dfy** (mirror-independent, general ComputeTr-tree facts — keep):
 - `ComputeTrGateStable` (+ `LookGateStableAt`) — every LK node's gate is gm-constant.
 - `ComputeTrGActsOutside` (+ `RegOpensOutside`/`ActsOpensOutside`) — surface Opens avoid a set.
@@ -108,36 +116,116 @@ The ONLY tree whose inner gates are position-consistent oracle bits is the ENGIN
 
 ---
 
-## 5. THE CORRECT CAPTURES ROUTE (the genuine remaining work = "the wall")
+## 5. THE CORRECT CAPTURES ROUTE — **THE FLIP ROUTE** (validated 2026-08-24, F0 green)
 
-`LkReplayMatchesSpecLBNested` — the per-lookaround value keystone. Nested analogue of the depth-1
-`LookBehindKeystone.dfy:LkReplayMatchesSpecLB` (which required `LookFreeRE`). It is NOT a widening of
-the L3b mirror keystone — it is a **DIRECT engine-backward ↔ spec-backward tie**:
-- **SURFACE gids** (`DefGroups(tr) \ LkBodyGroups(tr)`): reconciled by the engine mirror T2a
-  (`BackwardReplayMirrorNested`, BackValue.dfy — the oracle-gated mirror at the ENGINE level, which
-  DOES hold for nested because the engine reads position-indexed oracle bits, not re-walks).
-- **INNER-look gids** (`LkBodyGroups(tr)`): reconstructed by the direction-generic BACKWARD ORACLE at
-  ORIGINAL positions (no RevL mirror) — the L4 `recon_inner`/`FLookLoop` pattern.
+### 5.0 The diagnosis that unlocks it
 
-The load-bearing missing piece is a **`WP.Backward` twin of the L4 forward capture apparatus**
-(`BodyTreeAtCpNested` MainTheorem.dfy:3836 is the template) that ties the backward engine run `raB`
-of `reverse_regex(body)` (oracle `ov`) to the backward SPEC tree's first leaf. Forward-tied pieces
-needing a backward analogue:
-- `BooleanCorrectLkRec`/`EncodeEqualLkRec` (EntryLk.dfy) — model the VM boolean tree `BoolTreeLk` at
-  `IsTree(..,Forward)`. **`BoolTreeLk` hardcodes `WP.Forward` (ReadChar) and has ~378 consumers** →
-  either parameterize by `dir` (big ripple) or add `*Back` twins.
-- `ActionsTreeRepRENested`/`TreeRepRE` (ActionsTreeRepRE.dfy) — the engine↔checked-tree correspondence.
-- `FindMatchBodyAtCpNested` (MainTheorem.dfy:3620, `LAnc.Forward`) — the engine sim
-  (`FindMatchSimRENested`).
-- The closedness ladder `ClosedBelow`/`FirstLeafClosedRec` (MainTheorem.dfy ~2190) — 9 forward
-  `least lemma`s over the FORWARD `BoolTreeLk`; `FwdPosActsL`-gated. Direction-symmetric in principle
-  (group open/close balance) but forward-tied. The reusable `ComputeTrCloseDiscLk`/`GActsOutsideSin`
-  (§4) may help here.
-- First stone already green: `BackwardBodyConfinedTree` (LookLeaves.dfy) — backward spec tree of a
-  nested body is `LkConfinedTreeK(_, LkBodyGroups)`, direction-generic confinement at Backward.
+Every mirror attempt died on ONE inherited constraint: "the spec reversal must keep look KINDS,
+because the engine's `reverse_regex` does" (`RevL`/`XRev` keep `Lookbehind` a `Lookbehind`). Under
+string reversal a kind-preserving inner look re-walks in the SAME intrinsic direction over the
+swapped window and reads the OPPOSITE side of the point — `GateAgreeIsFalse`. **But the constraint
+is an illusion: the MAIN BYTECODE IS LOOK-KIND-BLIND.** `CP.compile`'s lookaround case
+(Compiler.dfy:160-165) emits the identical single `CheckOracle(lid)` for Lookahead AND Lookbehind
+(`NegCheckOracle` for both negatives) — only POSITIVITY reaches the instruction stream; the body
+lives in the tables; even label layout is kind-independent (proof-side twin NfaRepRE.dfy:1539-1545).
+So the spec-side reversal is FREE to flip `Lookbehind <-> Lookahead` — the CLASSICAL reversal
+duality, under which the mirrored look walks the OTHER direction over the swapped window and reads
+the SAME chars. `SD.ReadCharSwap` (SpanDuality.dfy:531) is already exactly this transport at the
+char level — **the look-free mirror `TM.ComputeTreeReverse` was the flip mirror all along**,
+restricted to bodies with nothing to flip; the vacuous LK case was the one alien addition that
+didn't follow the lemma's own transport pattern.
 
-This backward-simulation stack is LARGE and INVASIVE (multi-session). Do NOT attempt any RevL/
-ComputeTr/`MatchesLReverse` mirror for the inner looks — proven dead (`GateAgreeIsFalse`, `4b829b9`).
+**F0 = `src/Equiv/FlipRev.dfy` (green, 18/0) machine-checks the wedge:**
+- `FlipLk`/`FlipL`/`FlipRE` (kind-only flips; lids/structure untouched), involutions,
+  `FlipLkLaws` (`LkDir` flips, `Positivity` preserved), `FlipReverseComm`/`FlipSwapAnchorsComm`,
+  `FlipTransWf`/`TranslateFlip` (`Translate(FlipRE(r)) == FlipL(Translate(r))`).
+- **`FlipCompile`/`FlipCompileToBytecode`/`FlipCompileToWrite`** — `compile(FlipRE(r)) ==
+  compile(r)` exactly. The engine cannot distinguish a regex from its flip.
+- **`FlipGateAgreeAtDeadEndWitness`** — the FLIP gate agreement is TRUE at the exact
+  `GateAgreeIsFalse` witness (`Input(['b'],['a'])`, same kind, same body), and
+  `FlipGateAgreeCharacter` at EVERY input for a Character body. The dead-end was the missing flip,
+  not the mirror idea.
+
+### 5.1 Why the forward keystone is reusable as-is (verified against code)
+
+- `BodyTreeAtCpNested` (MainTheorem.dfy:3836) requires ONLY `StaticOkNestedRE` +
+  `NegLooksLookFreeRE(body)` + `SizesOkRE` + `compile_to_bytecode` + **SEMANTIC**
+  `LL.OracleOkSuffix` (no build-level facts, no `FFindMatch` hypothesis — it constructs the run).
+  **NO `NoPosLookbehind`/`FwdPos*` premise.** Same for `FindMatchBodyAtCpNested` (:3620) and
+  `LkReplayMatchesSpecNested` (:9642) — the `la.Lookahead?` at :9657 restricts only the OUTER
+  replay direction.
+- `FwdPosLooksL`/`FwdPosActsL` (:2174-2188) appear as `requires` in EXACTLY three lemmas — the
+  closedness ladder (`BodyLeafClosedFromBelow`:2216, `FirstLeafClosedRecAux`:2257,
+  `FirstLeafClosedRec`:2630) — whose single caller is `MainExtractionNested`:10280 (top-level).
+  Nothing in the keystone chain touches it.
+- `OracleOkAt` (LookLeaves.dfy:1685) is direction-generic (`L.LkDir(lk)` per lid). The nested-LB
+  bits it needs are EXACTLY what the green gate side (`OracleColumnSpecNested`) supplies.
+- The depth-1 LB keystone discharges `OracleOkSuffix` for the reversed body VACUOUSLY
+  (`RevREStaticOk` builds `qm'.looks == map[]`, LookBehindKeystone.dfy:273). That trick — not the
+  simulation — is the precise nested break point, and the flip repairs it: with FLIPPED kinds in the
+  mirrored looks-map, `OracleOkAt` under `MirrorView(ov)` becomes TRUE (`MirrorViewGet`: the bit at
+  `n-cp` IS `ov[cp]`; the flipped walk reads the same chars as the original walk at `cp`).
+- **Depth-1 consistency check:** on look-free bodies `FlipRE` is the identity, so the flip route
+  DEGENERATES exactly to the proven `LkReplayMatchesSpecLB` architecture. It is the unique
+  generalization that restricts to the working depth-1 proof.
+
+### 5.2 The keystone chain (surface gids)
+
+For a positive lookbehind body at cp (raB = backward replay of `compile(reverse_regex(body))`,
+original `str`/`ov`/positions — the exact run `GateStepValueLB` ties):
+
+```
+raB  == MirrorThread of ==>  rfF                         [T2a BackwardReplayMirrorNested, green]
+rfF runs compile(XRev(body)) over rstr with MirrorView(ov)
+     == the SAME bytecode as ==>  compile(FlipRE(XRev(body)))        [F0 FlipCompileToBytecode]
+rfF  == fwd keystone @ FlipRE(XRev(body)) ==>  FirstLeaf(tF') surface [L4 chain, §5.1: its looks
+        are Lookahead-flavoured after the flip; OracleOkSuffix(qm'') from F3]
+FirstLeaf(tF')  == FLIP spec tree mirror ==>  MirrorGm(FirstLeaf(tB))  [F1/F2 — the one new mirror]
+FirstLeaf(tB) = the spec backward tree's leaf = LkResult side of the keystone.
+```
+
+INNER-look gids (`LkBodyGroups`): NOT through any mirror — the direction-generic
+`recon_inner`/`FLookLoop` reconstruction at ORIGINAL positions (the L4
+`LkReplayMatchesSpecNestedFull` seam), recursing on `NestDepth` through the keystone at strictly
+smaller bodies (innermost owner holds each gid as a SURFACE group of its own body).
+
+### 5.3 Work items (F-bricks)
+
+| # | Item | Size |
+|---|---|---|
+| **F0** | `FlipRev.dfy` — flips, involutions, `TranslateFlip`, **`FlipCompileToBytecode`**, cured witness | ✅ DONE (18/0) |
+| **F1** | The FLIP spec tree mirror (the crux): `FlipRevL(tr) := FlipL(RevL(tr))`; `TreeMirrorRelF` = `TM.TreeMirrorRel` cases + REAL LK/LKFail cases (`lkm == FlipLk(lk)`, **FULL sub-tree recursion** — sub-walks read the same chars, so inner captures mirror too); builder `ComputeTreeReverseF` (copy of TM.ComputeTreeReverse:123-268's fuel recursion; the `LookaroundR` case recurses the body sub-walk through the SAME lemma — for the v1 GroupOkLB scope every inner sub-walk stays Backward↔Forward, no direction-parametrization); fold `TreeResMirrorF` (TreeResMirror:241 shape + LK case, EXACT `MirrorGm` equality — needs a FULL-tree `CloseDiscLkFull` variant established by the TreeMirrorLk fuel pattern). **NO gate hypothesis anywhere** — unlike the vacuous `ComputeTrReverseLk` there is nothing to assume; the LK case is PROVEN. Lives in linden-equiv (reuse TreeMirrorLk's sound establishments); **no linden-reasoning edits**. | M–L |
+| **F2** | `BackBodyGmTieFlip` — compose F1 builder+fold at Empty gm: None-iff + `FirstLeaf(tF') == MirrorGm(FirstLeaf(tB), n)` (full-gm; surface is a corollary) | M |
+| **F3** | `MirrorOracleOkNested` — `OracleOkSuffix(rer, qm'', ·)` for `qm''` = (looks of `FlipRE(XRev(body))`, view `MirrorView(ov)`) from the ORIGINAL `OracleOkSuffix` + `MirrorViewGet` + F2's None-iff + `InpOfCpSwap` + `TranslateFlip`/`TranslateRevRE`. **Non-circular** (F1/F2 are oracle-free). This kills the B5 circularity that sank the old route. | S–M |
+| **F4** | `FlipXRevStaticOkNested` — `StaticOkNestedRE(qm'', FlipRE(XRev(body)), bc', endl')` from body facts (nested `RevREStaticOk` analogue): F0 compile lemmas + `XRevNestedFragment` (OracleMirrorV:187) + flip preservation of fragment/`CapUnique`/`QuantUnique`/`SizesOk`/`StutterTame`/`NegLooksLookFree`; plus `GmOfLiveFlip` (`GmOfLive(FlipRE(r),X)==GmOfLive(r,X)`, the `FilterReset*` pattern from `GmOfLiveXRev`) | M |
+| **F5** | `LkReplayMatchesSpecLBNested` — the keystone assembly, copying `LkReplayMatchesSpecLB`:395's proof shape: T2a + F0 + `LkReplayMatchesSpecNested`/`ReplayCapIsBodyLeafNested` @ `FlipRE(XRev(body))` on `rstr`/`MirrorView(ov)` (surface tie; `MirrorRegs(init)==init` so the fresh run aligns) + F2 (transport back to tB) + `GmOfLiveXRev`+`GmOfLiveFlip`+`GmOfLiveMirror`+`RawMirrorMirrorSwap` (readout normalization, as depth-1) + `ComputeTrGmIndepLkRec`+`TreeResGmFrameRec` (gmMain framing). Conclusion: None-iff + surface `GmAgreeOn` (`S = DefGroups \ LkBodyGroups`) | L |
+| **F6** | `GateStepValueLBNested` (copy `GateStepValueLB` LiftSim.dfy:2824's shape) into the D5 dead arm (LiftSim.dfy:22436-22441); inner gids via the direction-generic recon_inner seam (`NestDepth` recursion through F5 at smaller bodies; L4 R1–R3b innermost-owner machinery is direction-generic) | M–L |
+| **F7** | Integration: closedness-ladder LB case (the ONLY `FwdPos*` surface, §5.1 — discharge the LB LK sub-leaf's closedness by transporting across F1's mirror (`ClosedGm` is `MirrorGm`-invariant) or from the keystone's engine tie); lift `NoPosLookbehind*` to the v1 fragment; wire `OracleColumnSpecNested` (§3) into `OracleOk`; drop the `assert false`; §18 perf pass; API | L |
+
+**Order: F1 (crux, do FIRST) → F2 → F3 → F4 → F5 → F6 → F7.**
+
+### 5.4 Scope (v1) + anti-vacuity discipline
+
+**v1 fragment:** positive lookbehinds whose bodies are `NestedFragmentRE` + `NegLooksLookFreeRE`
+with ALL nested looks lookbehind-flavoured (`Translate(body)` in `SD.GroupOkLB`) — exactly the
+scope the GREEN gate side already has (`OracleColumnSpecNested` requires `la.Lookbehind? ||
+la.NegLookbehind?` per look + `GroupOkLB` body; `MatchesL`'s look clause is lookbehind-only,
+SpanDuality.dfy:120-128). Covers the headline `(?<=a(?<=b)(c))`. Mixed nesting (lookaheads inside
+lookbehinds and vice versa) is a LATER rung: it needs a `MatchesL` lookahead clause
+(linden-reasoning spec extension), the Forward↔Backward twin orientation of F1, and the gate-side
+extension — the flip machinery generalizes (mutual induction over {Fwd,Bwd} × depth).
+
+**Anti-vacuity discipline (the lesson of §4): every F1/F2 mirror lemma ships WITH a concrete
+instantiation witness** (e.g. body shape `a(?<=b)(c)`) proving its hypotheses satisfiable, the way
+F0 ships `FlipGateAgreeAtDeadEndWitness`. A mirror lemma with an unwitnessed hypothesis is not a
+result. F1's statements should carry NO agreement hypothesis at all (None-iff and the relation are
+CONCLUSIONS).
+
+### 5.5 The shelved fallback (do not start unless F1 fails on a witnessed obstacle)
+
+The old plan — a `WP.Backward` twin of the forward sim stack (`BoolTreeLk`(~378 consumers)/
+`ActionsTreeRepRENested`/`FindMatchBodyAtCpNested`/the 9-lemma closedness ladder) — remains sound
+but is strictly dominated: multi-session, invasive, high regression risk. Keep as fallback only.
 
 ---
 
@@ -172,14 +260,17 @@ so captures + integration do not complete independently.
 | `src/Equiv/MainTheorem.dfy` | `BodyTreeAtCpNested` (fwd template for §5), `LkReplayMatchesSpecNested`, closedness ladder, `FwdPosLooksL` |
 | `src/Equiv/LookLeaves.dfy` | `OracleOkAt`/`OracleOkSuffix`, `LkBodyGroups`, `LkConfinedTreeK`, `BackwardBodyConfinedTree`, `ComputeTrLkConfinedK` |
 | `src/Equiv/TreeMirrorLk.dfy` | ⚠️ mirror lemmas VACUOUS (§4); establishments/confinement SOUND & reusable |
-| `src/Equiv/LiftSim.dfy` | wire-in points: `OracleColumnNested`/`OracleOkRowsNested` (27337/27494), the `assert false` (~22441) |
+| `src/Equiv/FlipRev.dfy` | **F0 (green 18/0)**: `FlipLk`/`FlipL`/`FlipRE`, `TranslateFlip`, `FlipCompileToBytecode` (the wedge), `FlipGateAgree*` (cured witness) |
+| `src/Equiv/LiftSim.dfy` | wire-in points: `GateStepValueLB` (2824, the depth-1 template for F6), `OracleColumnNested`/`OracleOkRowsNested` (27337/27494), the D5 `assert false` (~22441) |
 
 ---
 
 ## 8. ONE-LINE RESUME
 
-Gate side of L5 is DONE (`OracleColumnSpecNested`). The captures value tie is the WALL: a
-`WP.Backward` twin of L4's forward `BodyTreeAtCpNested` sim stack (surface via engine mirror T2a,
-inner via backward oracle at original positions). The tree-mirror shortcut attempted this session is a
-proven dead-end (`GateAgreeIsFalse`) — do not revisit it. Reuse the sound establishments in
-TreeMirrorLk.dfy; build the backward sim next.
+Gate side of L5 is DONE (`OracleColumnSpecNested`). The captures route is the **FLIP route** (§5):
+the bytecode is look-kind-blind (`FlipCompileToBytecode`, FlipRev.dfy, green), so the T2a-mirrored
+forward run IS a run of the kind-FLIPPED regex, whose looks are Lookahead-flavoured — the EXISTING
+L4 forward keystone applies, and the spec side closes with the FLIP tree mirror (TRUE where the
+no-flip one is `GateAgreeIsFalse`-vacuous; the flip agreement is proven at that exact witness).
+Next brick: **F1** (the flip tree mirror, §5.3) — with instantiation witnesses, per the
+anti-vacuity discipline. No backward `BoolTreeLk` twin stack; that plan is shelved (§5.5).
