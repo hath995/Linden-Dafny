@@ -1286,3 +1286,36 @@ no looks ⇒ vacuous). For NESTED, `RevRE(body)` HAS looks, so this is a real ob
 NEXT: (1) refactor brick 2 to regex-scoped oracle correctness; (2) prove `MirrorOracleOk` (depth
 induction) in TreeMirrorLk.dfy; (3) build `LkReplayMatchesSpecLBNested` engine wire in a new file;
 (4) B6 integration.
+
+### (CAPTURES campaign) ⚠️ CRITICAL CORRECTION — the nested tree mirror (bricks 1-3) is VACUOUS
+
+While building B5 I discovered — and PROVED (`GateAgreeIsFalse`, verified) — that the whole
+spec-side nested tree mirror this session rests on an UNSATISFIABLE hypothesis:
+- `GateAgree(rer, LookBehind, r1, inp2)` compares `backward-walk(r1)@inp2` to
+  `backward-walk(RevL(r1))@SwapInput(inp2)`. **`SD.SwapInput` merely swaps pref<->next**, so the
+  RevL-side backward read hits `inp2.next[0]` (the char AFTER the point) while the original hits
+  `inp2.pref[0]` (the char BEFORE) — opposite sides. Disproved concretely for a single Character
+  body: at `Input(['b'],['a'])` the LHS reads 'a' (Some) and the RHS reads 'b' (None).
+- Hence `RegLookGatesMirror`/`ActsLookGatesMirror` are FALSE for any nested capturing lookbehind, and
+  `ComputeTrReverseLk`, `RegLookGatesMirrorDischarge`, `InnerGateAgree`, `LookGateAgree`, and
+  `BackBodyGmTieNested` are all VACUOUS (they verified only because the premise can't be satisfied).
+- This is EXACTLY the documented dead-end (`4b829b9`): the ComputeTr RE-WALK tree cannot mirror for
+  nested looks — I built on the WRONG tree. `LkGateOk` in `BoolTreeLk` ALSO re-walks (not the oracle),
+  so BoolTreeLk doesn't mirror either. The only tree whose inner gates are position-consistent oracle
+  bits is the ENGINE tree (`tstar`/`TreeRepRE`), and its mirror IS the engine mirror T2a
+  (`BackwardReplayMirrorNested`).
+
+**SOUND / SALVAGEABLE (mirror-independent):** the tree-property establishments `ComputeTrGateStable`,
+`ComputeTrGActsOutside`, `ComputeTrCloseDiscLk` (+ `StackInvLk` twin of CD), confinement
+`LkBodyGroupsRevL`, `RegOpensOutsideFromNoDup`, `TreeResGmInBounds`, `ConfinedLeafAgree`,
+`MirrorGmAgreeOutside`, `RevLPreservesPikeLkRec`, `LookGateStableAt`. These are general ComputeTr-tree
+facts, reusable for the correct route.
+
+**THE CORRECT ROUTE (re-affirmed):** SURFACE captures via the ENGINE mirror (T2a — the oracle-gated
+checked-tree mirror at the engine level) + INNER-look gids via the direction-generic BACKWARD ORACLE
+at ORIGINAL positions (no RevL mirror). Connecting the backward engine run `raB` (of
+`reverse_regex(body)`, oracle `ov`) to the spec `LkResult(tB)` needs a DIRECT backward
+engine<->spec-backward-tree tie — the "wall" (a `WP.Backward` twin of the L4 forward
+`BodyTreeAtCpNested`/`BooleanCorrectLkRec`/`ActionsTreeRepRENested` sim), NOT any RevL/ComputeTr
+mirror. That backward-simulation stack is the genuine remaining L5 captures work; this session's
+tree-mirror tower does not shortcut it.
