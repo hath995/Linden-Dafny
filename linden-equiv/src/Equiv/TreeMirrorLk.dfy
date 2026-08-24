@@ -1056,4 +1056,151 @@ module LindenElkTreeMirrorLk {
       SD.RevRETransWf(r1);
       RegLookGatesMirrorDischarge(rer, r1, qm, qm', str, rstr, n);
   }
+
+  // ===========================================================================
+  // BRICK 4 establishment (1/3): GateStableLk for ComputeTr trees
+  // ===========================================================================
+
+  /** An LK node's gate is gm-CONSTANT: since the node exists (`LkResult` at the
+      build map is `Some`), the gate re-evaluates the same way for ANY map — Some
+      for positive, None for negative. Pure `LkResultGmIndep` (unconditional). */
+  lemma LookGateStableAt(lk: L.Lookaround, tlk: LT.Tree, inp: LC.Input, gm: LG.GroupMap)
+    requires LS.LkResult(lk, tlk, gm, inp).Some?
+    ensures L.Positivity(lk) ==> (forall gm2: LG.GroupMap :: LT.TreeRes(tlk, gm2, inp, L.LkDir(lk)).Some?)
+    ensures !L.Positivity(lk) ==> (forall gm2: LG.GroupMap :: LT.TreeRes(tlk, gm2, inp, L.LkDir(lk)).None?)
+  {
+    EL.LkResultGmIndep(lk, tlk, gm, inp);
+    forall gm2: LG.GroupMap
+      ensures L.Positivity(lk) ==> LT.TreeRes(tlk, gm2, inp, L.LkDir(lk)).Some?
+      ensures !L.Positivity(lk) ==> LT.TreeRes(tlk, gm2, inp, L.LkDir(lk)).None?
+    {
+      EL.LkResultGmIndep(lk, tlk, gm2, inp);
+    }
+  }
+
+  /** Fuel helper: every LK node in a `ComputeTree`-built tree of a recursive-
+      fragment stack has a gm-constant gate (`GateStableLk`). Mirrors
+      `ComputeTree`'s construction case-for-case. */
+  lemma ComputeTreeGateStable(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input,
+                              gm: LG.GroupMap, dir: WP.Direction, fuel: nat)
+    requires EL.PikeLkActionsRec(acts)
+    ensures FS.ComputeTree(rer, acts, inp, gm, dir, fuel).Some? ==>
+            GateStableLk(FS.ComputeTree(rer, acts, inp, gm, dir, fuel).value, inp, dir)
+    decreases fuel
+  {
+    if fuel == 0 { return; }
+    var f := fuel - 1;
+    if |acts| == 0 { return; }
+    var cont := acts[1..];
+    EL.PikeLkActionsRecConsIff(acts[0], cont);
+    match acts[0]
+    case Acheck(strcheck) =>
+      if SSx.IsStrictSuffix(inp, strcheck, dir) {
+        ComputeTreeGateStable(rer, cont, inp, gm, dir, f);
+      }
+    case Aclose(gid) =>
+      ComputeTreeGateStable(rer, cont, inp, LG.GMClose(LC.Idx(inp), gid, gm), dir, f);
+    case Areg(r) =>
+      match r
+      case Epsilon => ComputeTreeGateStable(rer, cont, inp, gm, dir, f);
+      case Character(cd) =>
+        match LC.ReadChar(rer, cd, inp, dir) {
+          case Some(pair) => ComputeTreeGateStable(rer, cont, pair.1, gm, dir, f);
+          case None =>
+        }
+      case Disjunction(r1, r2) =>
+        EL.PikeLkActionsRecConsIff(LS.Areg(r1), cont);
+        EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont);
+        ComputeTreeGateStable(rer, [LS.Areg(r1)] + cont, inp, gm, dir, f);
+        ComputeTreeGateStable(rer, [LS.Areg(r2)] + cont, inp, gm, dir, f);
+      case Sequence(r1, r2) =>
+        assert EL.PikeLkActionsRec(LS.SeqList(r1, r2, dir) + cont) by {
+          SeqListFrag(r1, r2, dir, cont);
+        }
+        ComputeTreeGateStable(rer, LS.SeqList(r1, r2, dir) + cont, inp, gm, dir, f);
+      case Quantified(greedy, min, delta, r1) =>
+        var gidl := L.DefGroups(r1);
+        if min > 0 {
+          var q1 := L.Quantified(greedy, min - 1, delta, r1);
+          assert EL.PikeLkActionsRec([LS.Areg(r1), LS.Areg(q1)] + cont) by {
+            assert [LS.Areg(r1), LS.Areg(q1)] + cont == [LS.Areg(r1)] + ([LS.Areg(q1)] + cont);
+            EL.PikeLkActionsRecConsIff(LS.Areg(q1), cont);
+            EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(q1)] + cont);
+          }
+          ComputeTreeGateStable(rer, [LS.Areg(r1), LS.Areg(q1)] + cont, inp, LG.GMReset(gidl, gm), dir, f);
+        } else if delta == LN.NN(0) {
+          ComputeTreeGateStable(rer, cont, inp, gm, dir, f);
+        } else {
+          var q0 := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+          assert EL.PikeLkActionsRec([LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont) by {
+            assert [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont
+                == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
+            EL.PikeLkActionsRecConsIff(LS.Areg(q0), cont);
+            EL.PikeLkActionsRecConsIff(LS.Acheck(inp), [LS.Areg(q0)] + cont);
+            EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
+          }
+          ComputeTreeGateStable(rer, [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont, inp,
+                                LG.GMReset(gidl, gm), dir, f);
+          ComputeTreeGateStable(rer, cont, inp, gm, dir, f);
+        }
+      case Group(gid, r1) =>
+        assert EL.PikeLkActionsRec([LS.Areg(r1), LS.Aclose(gid)] + cont) by {
+          assert [LS.Areg(r1), LS.Aclose(gid)] + cont == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
+          EL.PikeLkActionsRecConsIff(LS.Aclose(gid), cont);
+          EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+        }
+        ComputeTreeGateStable(rer, [LS.Areg(r1), LS.Aclose(gid)] + cont, inp,
+                              LG.GMOpen(LC.Idx(inp), gid, gm), dir, f);
+      case LookaroundR(lk, r1) =>
+        var treelk := FS.ComputeTree(rer, [LS.Areg(r1)], inp, gm, L.LkDir(lk), f);
+        if treelk.Some? {
+          match LS.LkResult(lk, treelk.value, gm, inp) {
+            case Some(gmlk) =>
+              var tc := FS.ComputeTree(rer, cont, inp, gmlk, dir, f);
+              if tc.Some? {
+                ComputeTreeGateStable(rer, cont, inp, gmlk, dir, f);
+                LookGateStableAt(lk, treelk.value, inp, gm);
+              }
+            case None =>
+          }
+        }
+      case AnchorR(a) =>
+        if LS.AnchorSatisfied(rer, a, inp) {
+          ComputeTreeGateStable(rer, cont, inp, gm, dir, f);
+        }
+      case Backreference(gid) =>
+        assert EL.PikeLkRegexRec(r);
+        assert false;
+  }
+
+  /** `SeqList` of fragment regexes is a fragment stack. */
+  lemma SeqListFrag(r1: L.Regex, r2: L.Regex, dir: WP.Direction, cont: LS.Actions)
+    requires EL.PikeLkRegexRec(r1) && EL.PikeLkRegexRec(r2) && EL.PikeLkActionsRec(cont)
+    ensures EL.PikeLkActionsRec(LS.SeqList(r1, r2, dir) + cont)
+  {
+    match dir
+    case Forward =>
+      assert LS.SeqList(r1, r2, dir) + cont == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+      EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont);
+      EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
+    case Backward =>
+      assert LS.SeqList(r1, r2, dir) + cont == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
+      EL.PikeLkActionsRecConsIff(LS.Areg(r1), cont);
+      EL.PikeLkActionsRecConsIff(LS.Areg(r2), [LS.Areg(r1)] + cont);
+  }
+
+  /** Fuel-free: the spec tree of a recursive-fragment regex is `GateStableLk`. */
+  lemma ComputeTrGateStable(rer: LW.RegExpRecord, tr: L.Regex, inp: LC.Input, gm: LG.GroupMap, dir: WP.Direction)
+    requires EL.PikeLkRegexRec(tr)
+    ensures GateStableLk(FU.ComputeTr(rer, [LS.Areg(tr)], inp, gm, dir), inp, dir)
+  {
+    var acts := [LS.Areg(tr)];
+    EL.PikeLkActionsRecConsIff(LS.Areg(tr), []);
+    var fuel := FS.ActionsFuel(acts, inp, dir) + 1;
+    FS.FunctionalTerminates(rer, acts, inp, gm, dir, fuel);
+    var b := FS.ComputeTree(rer, acts, inp, gm, dir, fuel);
+    ComputeTreeGateStable(rer, acts, inp, gm, dir, fuel);
+    CI.ComputeIsTreeThm(rer, acts, inp, gm, dir, fuel, b.value);
+    FU.IsTreeEqComputeTr(rer, acts, inp, gm, dir, b.value);
+  }
 }
