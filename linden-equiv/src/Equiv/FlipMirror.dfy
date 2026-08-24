@@ -547,6 +547,337 @@ module LindenElkFlipMirror {
   }
 
   // ===========================================================================
+  // The LK-aware close discipline (for the VALUE fold)
+  // ===========================================================================
+
+  /** No `Close`/`Reset` anywhere in `t` (inner look sub-trees included) touches
+      `S` — the frame that lets a look sub-walk preserve the openness of the
+      OUTER walk's pending groups. */
+  ghost predicate AvoidsCR(t: LT.Tree, S: set<LG.GroupId>)
+    decreases t
+  {
+    match t
+    case Mismatch => true
+    case Match => true
+    case Choice(a, b) => AvoidsCR(a, S) && AvoidsCR(b, S)
+    case Read(_, a) => AvoidsCR(a, S)
+    case ReadBackRef(_, a) => AvoidsCR(a, S)
+    case Progress(a) => AvoidsCR(a, S)
+    case AnchorPass(_, a) => AvoidsCR(a, S)
+    case GroupActionT(ga, a) =>
+      (match ga
+       case Open(_) => true
+       case Close(g) => g !in S
+       case Reset(gl) => forall g :: g in gl ==> g !in S)
+      && AvoidsCR(a, S)
+    case LK(_, tlk, tc) => AvoidsCR(tlk, S) && AvoidsCR(tc, S)
+    case LKFail(_, tlk) => AvoidsCR(tlk, S)
+  }
+
+  lemma AvoidsCRUnion(t: LT.Tree, A: set<LG.GroupId>, B: set<LG.GroupId>)
+    requires AvoidsCR(t, A) && AvoidsCR(t, B)
+    ensures AvoidsCR(t, A + B)
+    decreases t
+  {
+    match t
+    case Choice(a, b) => AvoidsCRUnion(a, A, B); AvoidsCRUnion(b, A, B);
+    case Read(_, a) => AvoidsCRUnion(a, A, B);
+    case ReadBackRef(_, a) => AvoidsCRUnion(a, A, B);
+    case Progress(a) => AvoidsCRUnion(a, A, B);
+    case AnchorPass(_, a) => AvoidsCRUnion(a, A, B);
+    case GroupActionT(_, a) => AvoidsCRUnion(a, A, B);
+    case LK(_, tlk, tc) => AvoidsCRUnion(tlk, A, B); AvoidsCRUnion(tc, A, B);
+    case LKFail(_, tlk) => AvoidsCRUnion(tlk, A, B);
+    case _ =>
+  }
+
+  /** The FULL-tree close discipline: `TRM.CloseDisc` on the surface, PLUS at
+      each `LK` node the inner sub-tree keeps its own discipline at the running
+      set AND avoids closing/resetting it (so the sub-walk preserves the outer
+      opens). `LKFail` folds to `None` — no obligations. */
+  ghost predicate CloseDiscF(t: LT.Tree, O: set<LG.GroupId>)
+    decreases t
+  {
+    match t
+    case Mismatch => true
+    case Match => true
+    case Choice(a, b) => CloseDiscF(a, O) && CloseDiscF(b, O)
+    case Read(_, a) => CloseDiscF(a, O)
+    case ReadBackRef(_, a) => CloseDiscF(a, O)
+    case Progress(a) => CloseDiscF(a, O)
+    case AnchorPass(_, a) => CloseDiscF(a, O)
+    case GroupActionT(ga, a) =>
+      match ga {
+        case Open(g) => CloseDiscF(a, O + {g})
+        case Close(g) => g in O && CloseDiscF(a, O - {g})
+        case Reset(gl) => CloseDiscF(a, O - (set g | g in gl))
+      }
+    case LK(_, tlk, tc) => CloseDiscF(tlk, O) && AvoidsCR(tlk, O) && CloseDiscF(tc, O)
+    case LKFail(_, _) => true
+  }
+
+  /** Widening: the discipline survives adding pending groups the tree never
+      closes or resets. (Plain monotonicity fails at LK nodes — their
+      `AvoidsCR` component is anti-monotone — so the widening carries the
+      avoidance premise.) */
+  lemma CloseDiscFWiden(t: LT.Tree, O: set<LG.GroupId>, D: set<LG.GroupId>)
+    requires CloseDiscF(t, O) && AvoidsCR(t, D)
+    ensures CloseDiscF(t, O + D)
+    decreases t
+  {
+    match t
+    case Choice(a, b) => CloseDiscFWiden(a, O, D); CloseDiscFWiden(b, O, D);
+    case Read(_, a) => CloseDiscFWiden(a, O, D);
+    case ReadBackRef(_, a) => CloseDiscFWiden(a, O, D);
+    case Progress(a) => CloseDiscFWiden(a, O, D);
+    case AnchorPass(_, a) => CloseDiscFWiden(a, O, D);
+    case GroupActionT(ga, a) =>
+      match ga {
+        case Open(g) =>
+          CloseDiscFWiden(a, O + {g}, D);
+          assert (O + {g}) + D == (O + D) + {g};
+        case Close(g) =>
+          assert g !in D;
+          CloseDiscFWiden(a, O - {g}, D);
+          assert (O - {g}) + D == (O + D) - {g};
+        case Reset(gl) =>
+          var sgl := set g | g in gl;
+          CloseDiscFWiden(a, O - sgl, D);
+          assert (O - sgl) + D == (O + D) - sgl;
+      }
+    case LK(_, tlk, tc) =>
+      CloseDiscFWiden(tlk, O, D);
+      AvoidsCRUnion(tlk, O, D);
+      CloseDiscFWiden(tc, O, D);
+    case LKFail(_, _) =>
+    case _ =>
+  }
+
+  /** All group actions in `t` (inner sub-trees included) act within `S`. */
+  ghost predicate GActsIn(t: LT.Tree, S: set<LG.GroupId>)
+    decreases t
+  {
+    match t
+    case Mismatch => true
+    case Match => true
+    case Choice(a, b) => GActsIn(a, S) && GActsIn(b, S)
+    case Read(_, a) => GActsIn(a, S)
+    case ReadBackRef(_, a) => GActsIn(a, S)
+    case Progress(a) => GActsIn(a, S)
+    case AnchorPass(_, a) => GActsIn(a, S)
+    case GroupActionT(ga, a) =>
+      (match ga
+       case Open(g) => g in S
+       case Close(g) => g in S
+       case Reset(gl) => forall g :: g in gl ==> g in S)
+      && GActsIn(a, S)
+    case LK(_, tlk, tc) => GActsIn(tlk, S) && GActsIn(tc, S)
+    case LKFail(_, tlk) => GActsIn(tlk, S)
+  }
+
+  /** Confinement + disjointness = avoidance. */
+  lemma GActsInAvoids(t: LT.Tree, S: set<LG.GroupId>, O: set<LG.GroupId>)
+    requires GActsIn(t, S) && S !! O
+    ensures AvoidsCR(t, O)
+    decreases t
+  {
+    match t
+    case Choice(a, b) => GActsInAvoids(a, S, O); GActsInAvoids(b, S, O);
+    case Read(_, a) => GActsInAvoids(a, S, O);
+    case ReadBackRef(_, a) => GActsInAvoids(a, S, O);
+    case Progress(a) => GActsInAvoids(a, S, O);
+    case AnchorPass(_, a) => GActsInAvoids(a, S, O);
+    case GroupActionT(_, a) => GActsInAvoids(a, S, O);
+    case LK(_, tlk, tc) => GActsInAvoids(tlk, S, O); GActsInAvoids(tc, S, O);
+    case LKFail(_, tlk) => GActsInAvoids(tlk, S, O);
+    case _ =>
+  }
+
+  /** A walk that never closes or resets `O` preserves the openness of `O`'s
+      groups from entry to leaf — what lets the fold thread the outer pending
+      set through a look sub-walk. Direction-generic. */
+  lemma TreeResPreservesOpen(t: LT.Tree, gm: LG.GroupMap, inp: LC.Input, dir: WP.Direction,
+                             O: set<LG.GroupId>)
+    requires AvoidsCR(t, O)
+    requires TRM.OpenSubset(gm, O)
+    requires LT.TreeRes(t, gm, inp, dir).Some?
+    ensures TRM.OpenSubset(LT.TreeRes(t, gm, inp, dir).value.1, O)
+    decreases t
+  {
+    match t
+    case Match =>
+    case Choice(a, b) =>
+      if LT.TreeRes(a, gm, inp, dir).Some? {
+        TreeResPreservesOpen(a, gm, inp, dir, O);
+      } else {
+        TreeResPreservesOpen(b, gm, inp, dir, O);
+      }
+    case Read(_, a) =>
+      TreeResPreservesOpen(a, gm, LC.AdvanceInputP(inp, dir), dir, O);
+    case ReadBackRef(brStr, a) =>
+      TreeResPreservesOpen(a, gm, LC.AdvanceInputN(inp, |brStr|, dir), dir, O);
+    case Progress(a) =>
+      TreeResPreservesOpen(a, gm, inp, dir, O);
+    case AnchorPass(_, a) =>
+      TreeResPreservesOpen(a, gm, inp, dir, O);
+    case GroupActionT(ga, a) =>
+      var gm' := LG.GMUpdate(ga, LC.Idx(inp), gm);
+      assert TRM.OpenSubset(gm', O) by {
+        match ga {
+          case Open(g) =>
+            forall h | h in O ensures h in gm' && gm'[h].endIdx.None? {}
+          case Close(g) =>
+            assert g !in O;
+            forall h | h in O ensures h in gm' && gm'[h].endIdx.None? {}
+          case Reset(gl) =>
+            forall h | h in O ensures h in gm' && gm'[h].endIdx.None? {
+              assert h !in gl;
+            }
+        }
+      }
+      TreeResPreservesOpen(a, gm', inp, dir, O);
+    case LK(lk, tlk, tc) =>
+      if L.Positivity(lk) {
+        var sb := LT.TreeRes(tlk, gm, inp, L.LkDir(lk));
+        assert sb.Some?;
+        TreeResPreservesOpen(tlk, gm, inp, L.LkDir(lk), O);
+        TreeResPreservesOpen(tc, sb.value.1, inp, dir, O);
+      } else {
+        var sb := LT.TreeRes(tlk, gm, inp, L.LkDir(lk));
+        assert sb.None?;
+        TreeResPreservesOpen(tc, gm, inp, dir, O);
+      }
+    case _ =>
+  }
+
+  // ===========================================================================
+  // THE VALUE FOLD: leaf group maps mirror EXACTLY (inner captures included)
+  // ===========================================================================
+
+  /** The flip payoff at the leaf level: folding relation-related trees at
+      `gm1` (backward) and `MirrorGm(gm1)` (forward, swapped input) gives
+      corresponding results — None iff None, inputs swap, and the leaf group
+      maps are EXACT `MirrorGm` images, INNER-LOOK CAPTURES INCLUDED (the old
+      surface-only `GmAgreeOutside` slack is gone: with the flip, the look
+      sub-walks genuinely mirror). */
+  lemma TreeResMirrorF(t: LT.Tree, tm: LT.Tree, gm1: LG.GroupMap,
+                       inp: LC.Input, n: nat, O: set<LG.GroupId>)
+    requires TreeMirrorRelF(t, tm)
+    requires n == |inp.pref| + |inp.next|
+    requires TRM.GmInBounds(gm1, n)
+    requires CloseDiscF(t, O)
+    requires TRM.OpenSubset(gm1, O)
+    ensures var rb := LT.TreeRes(t, gm1, inp, WP.Backward);
+            var rf := LT.TreeRes(tm, TRM.MirrorGm(gm1, n), SD.SwapInput(inp), WP.Forward);
+            && (rb.None? <==> rf.None?)
+            && (rb.Some? ==>
+                  && rf.Some?
+                  && rf.value.0 == SD.SwapInput(rb.value.0)
+                  && TRM.GmInBounds(rb.value.1, n)
+                  && rf.value.1 == TRM.MirrorGm(rb.value.1, n))
+    decreases t
+  {
+    var gm2 := TRM.MirrorGm(gm1, n);
+    var sinp := SD.SwapInput(inp);
+    assert LC.Idx(sinp) == n - LC.Idx(inp);
+    match t
+    case Mismatch =>
+    case Match =>
+    case Choice(a, b) =>
+      match tm {
+        case Choice(am, bm) =>
+          TreeResMirrorF(a, am, gm1, inp, n, O);
+          TreeResMirrorF(b, bm, gm1, inp, n, O);
+        case _ =>
+      }
+    case Read(c, a) =>
+      match tm {
+        case Read(cm, am) =>
+          var inp' := LC.AdvanceInputP(inp, WP.Backward);
+          TRM.AdvanceInputPSwap(inp);
+          TRM.AdvanceInputPLen(inp, WP.Backward);
+          assert LC.AdvanceInputP(sinp, WP.Forward) == SD.SwapInput(inp');
+          TreeResMirrorF(a, am, gm1, inp', n, O);
+        case _ =>
+      }
+    case Progress(a) =>
+      match tm {
+        case Progress(am) => TreeResMirrorF(a, am, gm1, inp, n, O);
+        case _ =>
+      }
+    case AnchorPass(x, a) =>
+      match tm {
+        case AnchorPass(xm, am) => TreeResMirrorF(a, am, gm1, inp, n, O);
+        case _ =>
+      }
+    case GroupActionT(ga, a) =>
+      match tm {
+        case GroupActionT(gam, am) =>
+          match ga {
+            case Open(g) =>
+              assert gam == LG.Open(g);
+              TRM.GMOpenMirror(gm1, g, LC.Idx(inp), n);
+              var gm1' := LG.GMOpen(LC.Idx(inp), g, gm1);
+              assert LG.GMUpdate(gam, LC.Idx(sinp), gm2)
+                  == LG.GMOpen(n - LC.Idx(inp), g, gm2);
+              assert TRM.OpenSubset(gm1', O + {g}) by {
+                forall h | h in O + {g} ensures h in gm1' && gm1'[h].endIdx.None? {}
+              }
+              TreeResMirrorF(a, am, gm1', inp, n, O + {g});
+            case Close(g) =>
+              assert gam == LG.Close(g);
+              assert g in O;
+              assert g in gm1 && gm1[g].endIdx.None?;
+              TRM.GMCloseMirror(gm1, g, LC.Idx(inp), n);
+              var gm1' := LG.GMClose(LC.Idx(inp), g, gm1);
+              assert LG.GMUpdate(gam, LC.Idx(sinp), gm2)
+                  == LG.GMClose(n - LC.Idx(inp), g, gm2);
+              assert TRM.OpenSubset(gm1', O - {g}) by {
+                forall h | h in O - {g} ensures h in gm1' && gm1'[h].endIdx.None? {}
+              }
+              TreeResMirrorF(a, am, gm1', inp, n, O - {g});
+            case Reset(gl) =>
+              assert gam.Reset?;
+              TRM.GMResetMirror(gm1, gl, gam.gl, n);
+              var gm1' := LG.GMReset(gl, gm1);
+              assert LG.GMUpdate(gam, LC.Idx(sinp), gm2) == LG.GMReset(gam.gl, gm2);
+              assert TRM.OpenSubset(gm1', O - (set x | x in gl)) by {
+                forall h | h in O - (set x | x in gl)
+                  ensures h in gm1' && gm1'[h].endIdx.None? {}
+              }
+              TreeResMirrorF(a, am, gm1', inp, n, O - (set x | x in gl));
+          }
+        case _ =>
+      }
+    case LK(lk, tlk, tc) =>
+      match tm {
+        case LK(lkm, tlkm, tcm) =>
+          // the flip re-orients the sub-walks onto the fold's own orientation
+          assert L.LkDir(lk) == WP.Backward && L.LkDir(lkm) == WP.Forward;
+          assert L.Positivity(lkm) == L.Positivity(lk);
+          TreeResMirrorF(tlk, tlkm, gm1, inp, n, O);
+          var sb := LT.TreeRes(tlk, gm1, inp, WP.Backward);
+          var sf := LT.TreeRes(tlkm, gm2, sinp, WP.Forward);
+          if L.Positivity(lk) {
+            match sb {
+              case Some(pair) =>
+                TreeResPreservesOpen(tlk, gm1, inp, WP.Backward, O);
+                TreeResMirrorF(tc, tcm, pair.1, inp, n, O);
+              case None =>
+            }
+          } else {
+            match sb {
+              case None => TreeResMirrorF(tc, tcm, gm1, inp, n, O);
+              case Some(_) =>
+            }
+          }
+        case _ =>
+      }
+    case LKFail(_, _) =>
+    case ReadBackRef(_, _) =>
+  }
+
+  // ===========================================================================
   // ANTI-VACUITY WITNESS: the mirror APPLIES to nested-look stacks
   // ===========================================================================
 
