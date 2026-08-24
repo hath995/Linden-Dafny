@@ -457,6 +457,29 @@ module LindenElkTreeMirrorLk {
   // BRICK 3a: the inner-look GATE AGREEMENT via the oracle (the crux)
   // ===========================================================================
 
+  /** REGEX-SCOPED oracle correctness: at every position, the oracle bit of each
+      look IN `re` characterizes that look body's LkDir walk. Unlike `LL.OracleOkAt`
+      (a forall over ALL of `qm.looks`), this is scoped to `re`'s own looks, so it
+      inherits to sub-regexes and supports the mirror-oracle depth induction. */
+  ghost predicate OracleColsOkRE(rer: LW.RegExpRecord, qm: AR.QMap, str: string, re: R.regex)
+    requires T.TransWf(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => OracleColsOkRE(rer, qm, str, r1) && OracleColsOkRE(rer, qm, str, r2)
+    case Re_con(r1, r2) => OracleColsOkRE(rer, qm, str, r1) && OracleColsOkRE(rer, qm, str, r2)
+    case Re_quant(_, _, _, r1) => OracleColsOkRE(rer, qm, str, r1)
+    case Re_capture(_, r1) => OracleColsOkRE(rer, qm, str, r1)
+    case Re_lookaround(lid, la, r1) =>
+      (forall k: nat :: k <= |str| ==>
+         (LOr.view_get_oracle(qm.ov, k, lid)
+          <==> LT.TreeRes(FU.ComputeTr(rer, [LS.Areg(T.Translate(r1))], PIV.InpOfCp(str, k),
+                                       LG.Empty, L.LkDir(T.TrLookaround(la))),
+                          LG.Empty, PIV.InpOfCp(str, k), L.LkDir(T.TrLookaround(la))).Some?))
+      && OracleColsOkRE(rer, qm, str, r1)
+    case _ => true
+  }
+
   /** The core of the nested tree mirror: a nested inner look's BACKWARD gate at
       `cp` (original string) agrees with its RevL forward-of-mirror gate at
       `n-cp` (reversed string). This is the fact the raw span/tree mirror CANNOT
@@ -471,10 +494,13 @@ module LindenElkTreeMirrorLk {
     requires n == |str| && cp <= n && |qm.ov| == n + 1
     requires rstr == LC.Reverse(str) && |rstr| == n
     requires qm'.ov == MIR.MirrorView(qm.ov, n)
-    requires LL.OracleOkAt(rer, qm, PIV.InpOfCp(str, cp))
-    requires LL.OracleOkAt(rer, qm', PIV.InpOfCp(rstr, n - cp))
-    requires lid in qm.looks && qm.looks[lid] == (lk, r1)
-    requires lid in qm'.looks && qm'.looks[lid] == (lk, SD.RevL(r1))
+    // the two per-lid oracle bits (regex-scoped: the caller supplies only THIS look's bits)
+    requires LOr.view_get_oracle(qm.ov, cp, lid)
+        <==> LT.TreeRes(FU.ComputeTr(rer, [LS.Areg(r1)], PIV.InpOfCp(str, cp), LG.Empty, L.LkDir(lk)),
+                        LG.Empty, PIV.InpOfCp(str, cp), L.LkDir(lk)).Some?
+    requires LOr.view_get_oracle(qm'.ov, n - cp, lid)
+        <==> LT.TreeRes(FU.ComputeTr(rer, [LS.Areg(SD.RevL(r1))], PIV.InpOfCp(rstr, n - cp), LG.Empty, L.LkDir(lk)),
+                        LG.Empty, PIV.InpOfCp(rstr, n - cp), L.LkDir(lk)).Some?
     ensures
       var inpB := PIV.InpOfCp(str, cp);
       var inpF := PIV.InpOfCp(rstr, n - cp);
@@ -483,15 +509,7 @@ module LindenElkTreeMirrorLk {
       == LT.TreeRes(FU.ComputeTr(rer, [LS.Areg(SD.RevL(r1))], inpF, LG.Empty, L.LkDir(lk)),
                     LG.Empty, inpF, L.LkDir(lk)).Some?
   {
-    var inpB := PIV.InpOfCp(str, cp);
-    var inpF := PIV.InpOfCp(rstr, n - cp);
-    PIV.IdxInpOfCp(str, cp);
-    PIV.IdxInpOfCp(rstr, n - cp);
-    assert TR.CpOf(inpB) == cp;
-    assert TR.CpOf(inpF) == n - cp;
-    LL.OracleOkAtGet(rer, qm, inpB, lid, lk, r1);
-    LL.OracleOkAtGet(rer, qm', inpF, lid, lk, SD.RevL(r1));
-    // MirrorViewGet: view(MirrorView(ov,n), n-cp, lid) == view(ov, cp, lid)
+    // MirrorViewGet: view(MirrorView(ov,n), n-cp, lid) == view(ov, cp, lid); the two bits chain.
     MIR.MirrorViewGet(qm.ov, n, cp, lid);
     assert MIR.Mirror(cp, n) == n - cp;
   }
@@ -983,22 +1001,25 @@ module LindenElkTreeMirrorLk {
                              str: string, rstr: string, n: nat, cp: nat, lid: int, la: R.lookaround)
     requires re == R.Re_lookaround(lid, la, r1) && T.TransWf(re)
     requires n == |str| && rstr == LC.Reverse(str) && |rstr| == n && |qm.ov| == n + 1 && cp <= n
-    requires AR.LmapOk(re, qm) && T.TransWf(SD.RevRE(re)) && AR.LmapOk(SD.RevRE(re), qm')
+    requires T.TransWf(SD.RevRE(re))
     requires qm'.ov == MIR.MirrorView(qm.ov, n)
-    requires forall k: nat :: k <= n ==> LL.OracleOkAt(rer, qm, PIV.InpOfCp(str, k))
-    requires forall k: nat :: k <= n ==> LL.OracleOkAt(rer, qm', PIV.InpOfCp(rstr, k))
+    requires OracleColsOkRE(rer, qm, str, re)
+    requires OracleColsOkRE(rer, qm', rstr, SD.RevRE(re))
     ensures GateAgree(rer, T.TrLookaround(la), T.Translate(r1), PIV.InpOfCp(str, cp))
   {
     var lk := T.TrLookaround(la);
     var r1L := T.Translate(r1);
-    // lid correspondence, both sides
-    assert lid in qm.looks && qm.looks[lid] == (lk, r1L);
+    // backward bit from OracleColsOkRE(qm, str, re) at k = cp
+    assert LOr.view_get_oracle(qm.ov, cp, lid)
+        <==> LT.TreeRes(FU.ComputeTr(rer, [LS.Areg(r1L)], PIV.InpOfCp(str, cp), LG.Empty, L.LkDir(lk)),
+                        LG.Empty, PIV.InpOfCp(str, cp), L.LkDir(lk)).Some?;
+    // mirror bit from OracleColsOkRE(qm', rstr, RevRE(re)) at k = n-cp; Translate(RevRE(r1)) == RevL(r1L)
     assert SD.RevRE(re) == R.Re_lookaround(lid, la, SD.RevRE(r1));
     SD.TranslateRevRE(r1);
-    assert lid in qm'.looks && qm'.looks[lid] == (lk, SD.RevL(r1L));
-    // oracle correctness at the two mirror positions
-    assert LL.OracleOkAt(rer, qm, PIV.InpOfCp(str, cp));
-    assert LL.OracleOkAt(rer, qm', PIV.InpOfCp(rstr, n - cp));
+    assert T.Translate(SD.RevRE(r1)) == SD.RevL(r1L);
+    assert LOr.view_get_oracle(qm'.ov, n - cp, lid)
+        <==> LT.TreeRes(FU.ComputeTr(rer, [LS.Areg(SD.RevL(r1L))], PIV.InpOfCp(rstr, n - cp), LG.Empty, L.LkDir(lk)),
+                        LG.Empty, PIV.InpOfCp(rstr, n - cp), L.LkDir(lk)).Some?;
     InnerGateAgree(rer, qm, qm', str, rstr, n, cp, lid, lk, r1L);
     // endpoint swap: InpOfCp(rstr, n-cp) == SwapInput(InpOfCp(str, cp))
     SD.InputAtSwap(str, cp);
@@ -1016,11 +1037,10 @@ module LindenElkTreeMirrorLk {
                                     str: string, rstr: string, n: nat)
     requires T.TransWf(re)
     requires n == |str| && rstr == LC.Reverse(str) && |rstr| == n && |qm.ov| == n + 1
-    requires AR.LmapOk(re, qm)
-    requires T.TransWf(SD.RevRE(re)) && AR.LmapOk(SD.RevRE(re), qm')
+    requires T.TransWf(SD.RevRE(re))
     requires qm'.ov == MIR.MirrorView(qm.ov, n)
-    requires forall k: nat :: k <= n ==> LL.OracleOkAt(rer, qm, PIV.InpOfCp(str, k))
-    requires forall k: nat :: k <= n ==> LL.OracleOkAt(rer, qm', PIV.InpOfCp(rstr, k))
+    requires OracleColsOkRE(rer, qm, str, re)
+    requires OracleColsOkRE(rer, qm', rstr, SD.RevRE(re))
     ensures RegLookGatesMirror(T.Translate(re), rer, str)
     decreases re
   {
