@@ -1247,3 +1247,42 @@ TreeMirrorLk.dfy full-file **98/0**. The entire spec-side is green:
 - **B6** — lift `NoPosLookbehindRE` through `OracleColumnNested`/`OracleOkRowsNested`/`MainTheorem`,
   wire the green gate atoms (`OracleColumnSpecNested`) + the captures (`LkReplayMatchesSpecLBNested`),
   drop the `assert false` (LiftSim), §18 opaque-at-source perf pass, API (`ApiMatch`/`Supported`).
+
+### (CAPTURES campaign) BRICK 4 (B5) ANALYZED — the crux is MIRROR-ORACLE CORRECTNESS
+
+Studied the depth-1 keystone `LBK.LkReplayMatchesSpecLB` + `LBEngineLeaf` in full. Structure of B5
+(nested engine wire):
+- ENGINE: `BV.BackwardReplayMirrorNested` (T2a, DONE) — backward run raB of `reverse_regex(body)` =
+  mirror of forward run rfF of `RevRE(body)` on rstr with `MirrorView(ov)`.
+- ENGINE↔SPEC: forward `M.BodyTreeAtCpNested` applied to `RevRE(body)` — ties rfF to `FirstLeaf(tF)`
+  (surface). REQUIRES `OracleOkSuffix(rer, qm', InpOfCp(rstr, mcp))` for the compiled `qm'` of
+  `RevRE(body)`.
+- SPEC: `BackBodyGmTieNested` (B3, DONE) — `FirstLeaf(tF)` surface ~ `MirrorGm(FirstLeaf(tB))`.
+- Compose + `LkResult` fold (`ComputeTrGmIndepLkRec` + `TreeResGmFrameRec`) → surface value tie.
+
+**THE CRUX (the one hard new piece): `OracleOkSuffix(qm', RevRE(body))` — the MIRROR-ORACLE
+CORRECTNESS.** For depth-1 it is TRIVIAL: `RevREStaticOk` builds `qm'.looks == map[]` (look-free ⇒
+no looks ⇒ vacuous). For NESTED, `RevRE(body)` HAS looks, so this is a real obligation, and:
+- It is NOT derivable from `InnerGateAgree` — that is CIRCULAR (`InnerGateAgree(cp)` requires
+  `OracleOkAt(qm', n-cp)`, exactly what we're proving).
+- It IS a DEPTH-STRATIFIED induction on `NestDepth(body)`: `OracleOkAt(qm', InpOfCp(rstr, k))` for
+  body's look `lid` (body `body_lid`) reduces (via `MirrorViewGet` + original `OracleOkAt(qm, n-k)`)
+  to the gate agreement `backward-walk(Translate(body_lid))@(n-k) <==> forward-walk(RevL Translate
+  body_lid)@k` = `BackBodyGmTieNested(Translate(body_lid))`'s None-iff — which needs
+  `ActsLookGatesMirror(Translate(body_lid))`, discharged by `RegLookGatesMirrorDischarge(body_lid)`,
+  which needs the mirror-oracle for body_lid's OWN (deeper) looks = **`MirrorOracleOk(body_lid)`, the
+  IH one nesting level down.** Base: look-free inner (vacuous; the surface reads mirror via
+  `MatchesLReverse`).
+- **SUBTLETY to resolve first:** `RegLookGatesMirrorDischarge`/`InnerGateAgree` currently require the
+  FULL `OracleColsOk(qm', rstr)` (a forall over ALL of `qm'.looks`), but the IH only gives body_lid's
+  looks. Re-state brick 2's oracle requirement as REGEX-SCOPED (only the looks IN the regex being
+  discharged) so the IH suffices. Small refactor of brick 2.
+- `MirrorOracleOk` can live in TreeMirrorLk.dfy — it needs only `BackBodyGmTieNested`,
+  `RegLookGatesMirrorDischarge`, `MIR.MirrorViewGet`, `LL.OracleOkAt`, `AR.LmapOk` (all present, no
+  MainTheorem dependency). The ENGINE wire (`LkReplayMatchesSpecLBNested` itself) goes in a NEW file
+  including TreeMirrorLk + MainTheorem/keystone infra (like LookBehindKeystone.dfy), and consumes
+  `MirrorOracleOk` + `BackBodyGmTieNested` + T2a + forward `BodyTreeAtCpNested`.
+
+NEXT: (1) refactor brick 2 to regex-scoped oracle correctness; (2) prove `MirrorOracleOk` (depth
+induction) in TreeMirrorLk.dfy; (3) build `LkReplayMatchesSpecLBNested` engine wire in a new file;
+(4) B6 integration.
