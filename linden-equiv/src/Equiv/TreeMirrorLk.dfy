@@ -274,8 +274,8 @@ module LindenElkTreeMirrorLk {
   ghost predicate GADisjoint(ga: LG.GroupAction, Sin: set<LG.GroupId>) {
     match ga
     case Open(g) => g !in Sin
-    case Close(g) => g !in Sin
-    case Reset(gl) => forall g :: g in gl ==> g !in Sin
+    case Close(g) => true   // O!!Sin gives g∉Sin from g∈O; a Close needn't be constrained
+    case Reset(gl) => true   // a quantifier over a nested-look body resets inner gids ∈ Sin — harmless
   }
 
   /** Every SURFACE group action (outside inner looks) acts on groups disjoint
@@ -1200,6 +1200,195 @@ module LindenElkTreeMirrorLk {
     FS.FunctionalTerminates(rer, acts, inp, gm, dir, fuel);
     var b := FS.ComputeTree(rer, acts, inp, gm, dir, fuel);
     ComputeTreeGateStable(rer, acts, inp, gm, dir, fuel);
+    CI.ComputeIsTreeThm(rer, acts, inp, gm, dir, fuel, b.value);
+    FU.IsTreeEqComputeTr(rer, acts, inp, gm, dir, b.value);
+  }
+
+  // ===========================================================================
+  // BRICK 4 establishment (2/3): GActsOutsideSin for ComputeTr trees
+  // ===========================================================================
+
+  /** Every SURFACE `Group` (Open) gid in `r` is outside `Sin` (looks excluded —
+      inner gids live in Sin). Only Opens matter (Close/Reset are unconstrained
+      in `GADisjoint`). */
+  ghost predicate RegOpensOutside(r: L.Regex, Sin: set<LG.GroupId>)
+    decreases r
+  {
+    match r
+    case Group(gid, r1) => gid !in Sin && RegOpensOutside(r1, Sin)
+    case Disjunction(a, b) => RegOpensOutside(a, Sin) && RegOpensOutside(b, Sin)
+    case Sequence(a, b) => RegOpensOutside(a, Sin) && RegOpensOutside(b, Sin)
+    case Quantified(_, _, _, r1) => RegOpensOutside(r1, Sin)
+    case LookaroundR(_, _) => true
+    case _ => true
+  }
+
+  ghost predicate ActsOpensOutside(acts: LS.Actions, Sin: set<LG.GroupId>) {
+    forall i :: 0 <= i < |acts| && acts[i].Areg? ==> RegOpensOutside(acts[i].r, Sin)
+  }
+
+  lemma ActsOpensOutsideTail(acts: LS.Actions, Sin: set<LG.GroupId>)
+    requires |acts| > 0 && ActsOpensOutside(acts, Sin)
+    ensures ActsOpensOutside(acts[1..], Sin)
+  { forall i | 0 <= i < |acts[1..]| && acts[1..][i].Areg? ensures RegOpensOutside(acts[1..][i].r, Sin) { assert acts[1..][i] == acts[i + 1]; } }
+
+  lemma ActsOpensOutsideCons(a: LS.Action, acts: LS.Actions, Sin: set<LG.GroupId>)
+    requires ActsOpensOutside(acts, Sin) && (a.Areg? ==> RegOpensOutside(a.r, Sin))
+    ensures ActsOpensOutside([a] + acts, Sin)
+  { forall i | 0 <= i < |[a] + acts| && ([a] + acts)[i].Areg? ensures RegOpensOutside(([a] + acts)[i].r, Sin) { if i == 0 {} else { assert ([a] + acts)[i] == acts[i - 1]; } } }
+
+  /** Fuel helper: a `ComputeTree`-built tree of an `ActsOpensOutside` stack has
+      all its SURFACE Open actions outside `Sin` (`GActsOutsideSin`). */
+  lemma ComputeTreeGActsOutside(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input,
+                                gm: LG.GroupMap, dir: WP.Direction, fuel: nat, Sin: set<LG.GroupId>)
+    requires EL.PikeLkActionsRec(acts) && ActsOpensOutside(acts, Sin)
+    ensures FS.ComputeTree(rer, acts, inp, gm, dir, fuel).Some? ==>
+            GActsOutsideSin(FS.ComputeTree(rer, acts, inp, gm, dir, fuel).value, Sin)
+    decreases fuel
+  {
+    if fuel == 0 { return; }
+    var f := fuel - 1;
+    if |acts| == 0 { return; }
+    var cont := acts[1..];
+    EL.PikeLkActionsRecConsIff(acts[0], cont);
+    ActsOpensOutsideTail(acts, Sin);
+    match acts[0]
+    case Acheck(strcheck) =>
+      if SSx.IsStrictSuffix(inp, strcheck, dir) { ComputeTreeGActsOutside(rer, cont, inp, gm, dir, f, Sin); }
+    case Aclose(gid) =>
+      ComputeTreeGActsOutside(rer, cont, inp, LG.GMClose(LC.Idx(inp), gid, gm), dir, f, Sin);
+    case Areg(r) =>
+      match r
+      case Epsilon => ComputeTreeGActsOutside(rer, cont, inp, gm, dir, f, Sin);
+      case Character(cd) =>
+        match LC.ReadChar(rer, cd, inp, dir) {
+          case Some(pair) => ComputeTreeGActsOutside(rer, cont, pair.1, gm, dir, f, Sin);
+          case None =>
+        }
+      case Disjunction(r1, r2) =>
+        RegActsHelper2(acts[0], r, r1, r2, cont, Sin);
+        ComputeTreeGActsOutside(rer, [LS.Areg(r1)] + cont, inp, gm, dir, f, Sin);
+        ComputeTreeGActsOutside(rer, [LS.Areg(r2)] + cont, inp, gm, dir, f, Sin);
+      case Sequence(r1, r2) =>
+        assert EL.PikeLkActionsRec(LS.SeqList(r1, r2, dir) + cont) by { SeqListFrag(r1, r2, dir, cont); }
+        assert ActsOpensOutside(LS.SeqList(r1, r2, dir) + cont, Sin) by { SeqListOpens(r1, r2, dir, cont, Sin); }
+        ComputeTreeGActsOutside(rer, LS.SeqList(r1, r2, dir) + cont, inp, gm, dir, f, Sin);
+      case Quantified(greedy, min, delta, r1) =>
+        var gidl := L.DefGroups(r1);
+        if min > 0 {
+          var q1 := L.Quantified(greedy, min - 1, delta, r1);
+          QuantOpensHelper(r1, q1, cont, Sin, greedy, min, delta);
+          assert EL.PikeLkActionsRec([LS.Areg(r1), LS.Areg(q1)] + cont) by {
+            assert [LS.Areg(r1), LS.Areg(q1)] + cont == [LS.Areg(r1)] + ([LS.Areg(q1)] + cont);
+            EL.PikeLkActionsRecConsIff(LS.Areg(q1), cont);
+            EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(q1)] + cont);
+          }
+          ComputeTreeGActsOutside(rer, [LS.Areg(r1), LS.Areg(q1)] + cont, inp, LG.GMReset(gidl, gm), dir, f, Sin);
+        } else if delta == LN.NN(0) {
+          ComputeTreeGActsOutside(rer, cont, inp, gm, dir, f, Sin);
+        } else {
+          var q0 := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+          QuantFreeOpensHelper(r1, q0, cont, Sin, greedy, delta, inp);
+          assert EL.PikeLkActionsRec([LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont) by {
+            assert [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont
+                == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
+            EL.PikeLkActionsRecConsIff(LS.Areg(q0), cont);
+            EL.PikeLkActionsRecConsIff(LS.Acheck(inp), [LS.Areg(q0)] + cont);
+            EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
+          }
+          ComputeTreeGActsOutside(rer, [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont, inp, LG.GMReset(gidl, gm), dir, f, Sin);
+          ComputeTreeGActsOutside(rer, cont, inp, gm, dir, f, Sin);
+        }
+      case Group(gid, r1) =>
+        assert gid !in Sin && RegOpensOutside(r1, Sin);   // from RegOpensOutside(Group)
+        GroupOpensHelper(r1, gid, cont, Sin);
+        assert EL.PikeLkActionsRec([LS.Areg(r1), LS.Aclose(gid)] + cont) by {
+          assert [LS.Areg(r1), LS.Aclose(gid)] + cont == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
+          EL.PikeLkActionsRecConsIff(LS.Aclose(gid), cont);
+          EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+        }
+        ComputeTreeGActsOutside(rer, [LS.Areg(r1), LS.Aclose(gid)] + cont, inp, LG.GMOpen(LC.Idx(inp), gid, gm), dir, f, Sin);
+      case LookaroundR(lk, r1) =>
+        var treelk := FS.ComputeTree(rer, [LS.Areg(r1)], inp, gm, L.LkDir(lk), f);
+        if treelk.Some? {
+          match LS.LkResult(lk, treelk.value, gm, inp) {
+            case Some(gmlk) =>
+              var tc := FS.ComputeTree(rer, cont, inp, gmlk, dir, f);
+              if tc.Some? { ComputeTreeGActsOutside(rer, cont, inp, gmlk, dir, f, Sin); }
+            case None =>
+          }
+        }
+      case AnchorR(a) =>
+        if LS.AnchorSatisfied(rer, a, inp) { ComputeTreeGActsOutside(rer, cont, inp, gm, dir, f, Sin); }
+      case Backreference(gid) => assert EL.PikeLkRegexRec(r); assert false;
+  }
+
+  // --- ActsOpensOutside threading helpers (mirror the fragment helpers) ---
+  lemma RegActsHelper2(a0: LS.Action, r: L.Regex, r1: L.Regex, r2: L.Regex, cont: LS.Actions, Sin: set<LG.GroupId>)
+    requires a0 == LS.Areg(r) && (r == L.Disjunction(r1, r2))
+    requires EL.PikeLkActionsRec([a0] + cont) && ActsOpensOutside([a0] + cont, Sin)
+    ensures EL.PikeLkActionsRec([LS.Areg(r1)] + cont) && ActsOpensOutside([LS.Areg(r1)] + cont, Sin)
+    ensures EL.PikeLkActionsRec([LS.Areg(r2)] + cont) && ActsOpensOutside([LS.Areg(r2)] + cont, Sin)
+  {
+    assert ([a0] + cont)[0] == a0 && ([a0] + cont)[1..] == cont;
+    EL.PikeLkActionsRecConsIff(a0, cont); ActsOpensOutsideTail([a0] + cont, Sin);
+    assert RegOpensOutside(r, Sin);
+    EL.PikeLkActionsRecConsIff(LS.Areg(r1), cont); EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont);
+    ActsOpensOutsideCons(LS.Areg(r1), cont, Sin); ActsOpensOutsideCons(LS.Areg(r2), cont, Sin);
+  }
+  lemma SeqListOpens(r1: L.Regex, r2: L.Regex, dir: WP.Direction, cont: LS.Actions, Sin: set<LG.GroupId>)
+    requires RegOpensOutside(r1, Sin) && RegOpensOutside(r2, Sin) && ActsOpensOutside(cont, Sin)
+    ensures ActsOpensOutside(LS.SeqList(r1, r2, dir) + cont, Sin)
+  {
+    match dir
+    case Forward =>
+      assert LS.SeqList(r1, r2, dir) + cont == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+      ActsOpensOutsideCons(LS.Areg(r2), cont, Sin); ActsOpensOutsideCons(LS.Areg(r1), [LS.Areg(r2)] + cont, Sin);
+    case Backward =>
+      assert LS.SeqList(r1, r2, dir) + cont == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
+      ActsOpensOutsideCons(LS.Areg(r1), cont, Sin); ActsOpensOutsideCons(LS.Areg(r2), [LS.Areg(r1)] + cont, Sin);
+  }
+  lemma QuantOpensHelper(r1: L.Regex, q1: L.Regex, cont: LS.Actions, Sin: set<LG.GroupId>, greedy: bool, min: nat, delta: LN.NoI)
+    requires min > 0 && q1 == L.Quantified(greedy, min - 1, delta, r1)
+    requires RegOpensOutside(r1, Sin) && ActsOpensOutside(cont, Sin)
+    ensures ActsOpensOutside([LS.Areg(r1), LS.Areg(q1)] + cont, Sin)
+  {
+    assert RegOpensOutside(q1, Sin);
+    assert [LS.Areg(r1), LS.Areg(q1)] + cont == [LS.Areg(r1)] + ([LS.Areg(q1)] + cont);
+    ActsOpensOutsideCons(LS.Areg(q1), cont, Sin); ActsOpensOutsideCons(LS.Areg(r1), [LS.Areg(q1)] + cont, Sin);
+  }
+  lemma QuantFreeOpensHelper(r1: L.Regex, q0: L.Regex, cont: LS.Actions, Sin: set<LG.GroupId>, greedy: bool, delta: LN.NoI, inp: LC.Input)
+    requires q0 == L.Quantified(greedy, 0, FS.NoiPred(delta), r1)
+    requires RegOpensOutside(r1, Sin) && ActsOpensOutside(cont, Sin)
+    ensures ActsOpensOutside([LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont, Sin)
+  {
+    assert RegOpensOutside(q0, Sin);
+    assert [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
+    ActsOpensOutsideCons(LS.Areg(q0), cont, Sin); ActsOpensOutsideCons(LS.Acheck(inp), [LS.Areg(q0)] + cont, Sin);
+    ActsOpensOutsideCons(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(q0)] + cont), Sin);
+  }
+  lemma GroupOpensHelper(r1: L.Regex, gid: nat, cont: LS.Actions, Sin: set<LG.GroupId>)
+    requires RegOpensOutside(r1, Sin) && ActsOpensOutside(cont, Sin)
+    ensures ActsOpensOutside([LS.Areg(r1), LS.Aclose(gid)] + cont, Sin)
+  {
+    assert [LS.Areg(r1), LS.Aclose(gid)] + cont == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
+    ActsOpensOutsideCons(LS.Aclose(gid), cont, Sin); ActsOpensOutsideCons(LS.Areg(r1), [LS.Aclose(gid)] + cont, Sin);
+  }
+
+  /** Fuel-free: the spec tree of a fragment regex whose surface Opens avoid
+      `Sin` is `GActsOutsideSin`. */
+  lemma ComputeTrGActsOutside(rer: LW.RegExpRecord, tr: L.Regex, inp: LC.Input, gm: LG.GroupMap,
+                              dir: WP.Direction, Sin: set<LG.GroupId>)
+    requires EL.PikeLkRegexRec(tr) && RegOpensOutside(tr, Sin)
+    ensures GActsOutsideSin(FU.ComputeTr(rer, [LS.Areg(tr)], inp, gm, dir), Sin)
+  {
+    var acts := [LS.Areg(tr)];
+    EL.PikeLkActionsRecConsIff(LS.Areg(tr), []);
+    assert ActsOpensOutside(acts, Sin);
+    var fuel := FS.ActionsFuel(acts, inp, dir) + 1;
+    FS.FunctionalTerminates(rer, acts, inp, gm, dir, fuel);
+    var b := FS.ComputeTree(rer, acts, inp, gm, dir, fuel);
+    ComputeTreeGActsOutside(rer, acts, inp, gm, dir, fuel, Sin);
     CI.ComputeIsTreeThm(rer, acts, inp, gm, dir, fuel, b.value);
     FU.IsTreeEqComputeTr(rer, acts, inp, gm, dir, b.value);
   }
