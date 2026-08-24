@@ -46,7 +46,10 @@ not an engine limitation.
 | F1 — the FLIP tree mirror (`FlipMirror.dfy`: builder + Someness + VALUE fold) | ✅ green (32/0) |
 | F1c+F2 — `CloseDiscF` establishment + **`BackBodyGmTieFlip`** (`FlipDisc.dfy`) | ✅ green (14/0) |
 | F3 — mirror-oracle transport `MirrorOracleColsOk` (`FlipOracle.dfy`) | ✅ green (8/0) |
-| CAPTURES — the keystone assembly (`LkReplayMatchesSpecLBNested`) | ❌ **remaining: F4–F7, §5.3/§5.6** |
+| F4 — statics of the flip-reversed body (`FlipStatics.dfy` + `FlipXRevStaticOkNested`) | ✅ green (39/0) |
+| **F5 — CAPTURES keystone `LkReplayMatchesSpecLBNested` (`FlipKeystone.dfy`)** | ✅ **green (1201/0)** |
+| F6 — gate step at the LiftSim D5 dead arm + inner gids (recon_inner LB arm) | ❌ next |
+| F7 — integration: lift `NoPosLookbehind*`, closedness LB case, wire gate atoms, API | ❌ |
 | Tree-mirror attempt (TreeMirrorLk.dfy bricks 1-3) | ⚠️ **VACUOUS — dead-end (see §4)** |
 | Integration — lift `NoPosLookbehindRE`, drop `assert false`, API | ❌ not started (F6–F7) |
 
@@ -246,7 +249,44 @@ CONCLUSIONS).
   **`MirrorOracleColsOk`** (MirrorView IS correct for the flipped looks-map — the B5 circularity is
   dead), `ColsOkToSuffix` (columns ⇒ the `OracleOkSuffix` the keystone consumes).
 
-**F4/F5 scouting results (verified ingredient list, next session starts here):**
+**F4+F5 LANDED (2026-08-24 session 2, cont.):**
+- **F4** `FlipStatics.dfy` 39/0 (`aa27401`) — exactly the ingredient list below, all green:
+  `XRevIsRevRENested`, `TranslateFlipXRev`, the Flip*/XRV* preservation family (incl.
+  `FlipNullable`/`OMV.XRevNullable` for the quantifier arm of `NestedFragmentRE`), `FXRStructural`,
+  `FXRCompileFacts`, `FlipLooksMap`/`FlipLooksMapTie`/`LmapOkFlipXRev`, `OracleOkAtSubmap`,
+  `GmOfLiveFlip`/`GmOfLiveFXR`, `LBOnlyLooksRE` + `TranslateGroupOkLB`/`TranslateNegBodiesGroupFree`,
+  `LkBodyGroupsFlipL`.
+- **F5** `FlipKeystone.dfy` 1201/0 **first try** (`{:isolate_assertions}`) — `FlipXRevStaticOkNested`
+  (the M-half of F4: `StaticOkNestedRE(qm'', FXR(body), …)` with `qm''.looks == FlipLooksMap(LmOf(body))`),
+  `LmOfBodiesLBOk`, `LmapOkEntriesMatchLmOf`, `TranslateDefGroupsNoDupK` (LiftSim-local copy),
+  `LBEngineLeafFlip` (engine half), `RawMirrorAgreeOutside`, and **`LkReplayMatchesSpecLBNested`**.
+  Its signature (the F6 consumer contract): premises = body structural facts (`TransWf`,
+  `NestedFragmentRE`, `NegLooksLookFreeRE`, `LBOnlyLooksRE`, `CapUnique`, `QuantUnique`,
+  `LTB.LookUnique`, `SizesOkRE`), `rer` flags, `n == |str| && cp <= n && |ov| == n+1`, a site table
+  `qm` with `qm.ov == ov && LmapOk(body, qm) && OE.OracleColsOk(rer, qm, str)` (**ALL columns** — the
+  backward body reads positions ≤ cp, so a from-cp `OracleOkSuffix` is NOT enough; the site has
+  whole-string correctness via `OracleOkFromColumns`/`OracleSufAllO`), `RegsAgreeInside(cap, init,
+  CaptureRegs(body))`, qt sizes, `la.Lookbehind?`, `tlk == ComputeTr(...gmMain, Backward)`,
+  `GmAgreeOn(gmMain, Empty, DefGroups)`. Conclusion: the depth-1 keystone's shape with `bcF :=
+  compile(FST.FXR(body))` and SURFACE `S = DefGroups \ LkBodyGroups`.
+
+**F6/F7 — what remains (next session):**
+- **F6a** `BackFreshBodyGmTieNested`: re-express F5's `rfF`-form in terms of `raB`'s own registers
+  (depth-1 template `LBK.BackFreshBodyGmTie` LookBehindKeystone.dfy:~510: `BackwardReplayMirror` +
+  `BackCapsInRange` + `MirrorRegsInvol` + `GmOfLiveClkCong`) — nested: swap in T2a + F0.
+- **F6b** `GateStepValueLBNested` at the LiftSim D5 dead arm (LiftSim.dfy:22436-22441): copy
+  `GateStepValueLB` (:2824) → nested premises; supply `OE.OracleColsOk(rer, qm, str)` from the site's
+  all-columns fact; establish `LBOnlyLooksRE(body)` from the NEW v1 fragment predicate; `GmtTieInside`
+  re-establishment for INNER gids via the direction-generic recon_inner seam
+  (`LkReplayMatchesSpecNestedFull` pattern, innermost-owner resolution; inner LB lids recurse through
+  F5 at strictly smaller bodies).
+- **F7**: lift `NoPosLookbehind*` (LiftSim `L4Scope`:26517, `LookRowsFromTablesNested`
+  MainTheorem:17015, `SupportedL4` ApiMatch:71) to "positive lookbehinds allowed iff their bodies are
+  `LBOnlyLooksRE`"; closedness ladder LB case (`FirstLeafClosedRec` MainTheorem:2627 — transport
+  `ClosedGm` across F1's mirror or derive from the keystone's engine tie); wire `OracleColumnSpecNested`
+  into `OracleOk`; §18 opaque-at-source perf pass; API.
+
+**F4/F5 scouting results (the ingredient list that was executed above, kept for reference):**
 - Put F4+F5 in one `FlipKeystone.dfy` including `MainTheorem.dfy` + `FlipOracle.dfy` (+
   `BackGmMirror.dfy` for `GmOfLiveXRev`), template = `RevREStaticOk`+`LBEngineLeaf`+
   `LkReplayMatchesSpecLB` (LookBehindKeystone.dfy:254/291/395).
@@ -337,8 +377,8 @@ the bytecode is look-kind-blind (`FlipCompileToBytecode`, FlipRev.dfy, green), s
 forward run IS a run of the kind-FLIPPED regex, whose looks are Lookahead-flavoured — the EXISTING
 L4 forward keystone applies, and the spec side closes with the FLIP tree mirror (TRUE where the
 no-flip one is `GateAgreeIsFalse`-vacuous; the flip agreement is proven at that exact witness).
-**F0–F3 are ALL GREEN** (`FlipRev.dfy` 18/0, `FlipMirror.dfy` 32/0, `FlipDisc.dfy` 14/0,
-`FlipOracle.dfy` 8/0 — builder with a PROVEN look case, exact-`MirrorGm` value fold,
-`BackBodyGmTieFlip`, non-circular `MirrorOracleColsOk`). Next: **F4+F5** in a `FlipKeystone.dfy`
-(include MainTheorem) — the verified ingredient list is in §5.6; then F6/F7 integration. No
-backward `BoolTreeLk` twin stack; that plan is shelved (§5.5).
+**F0–F5 are ALL GREEN — the captures keystone `LkReplayMatchesSpecLBNested` is PROVEN**
+(`FlipRev.dfy` 18/0, `FlipMirror.dfy` 32/0, `FlipDisc.dfy` 14/0, `FlipOracle.dfy` 8/0,
+`FlipStatics.dfy` 39/0, `FlipKeystone.dfy` 1201/0). Next: **F6** (`BackFreshBodyGmTieNested` +
+`GateStepValueLBNested` at the LiftSim D5 dead arm + inner gids via recon_inner) and **F7**
+integration — see §5.6. No backward `BoolTreeLk` twin stack; that plan is shelved (§5.5).

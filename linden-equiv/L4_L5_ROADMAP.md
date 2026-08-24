@@ -1387,3 +1387,28 @@ a later rung (MatchesL lookahead clause + the twin orientation).
 an instantiation witness; no agreement hypotheses — the LK case is proven, not assumed): see
 `L5_HANDOFF.md` §5 (rewritten this session).** The backward-simulation stack (`BoolTreeLk` twins,
 ~378 consumers) is SHELVED as a dominated fallback (§5.5).
+
+### FLIP ROUTE EXECUTED — F0–F5 GREEN, THE KEYSTONE IS PROVEN (2026-08-24, session 2)
+
+Six new files, every brick committed on green, each within 0–1 fix iterations:
+- `FlipRev.dfy` 18/0 — F0 (flips, `FlipCompileToBytecode`, cured witness).
+- `FlipMirror.dfy` 32/0 — F1: `TreeMirrorRelF` (REAL LK/LKFail cases, full sub-tree recursion),
+  `TreeResSomeMirrorF` (gm-blind success — the gate verdict, no oracle), fuel transport,
+  **`ComputeTreeReverseF`/`ComputeTrReverseF`** (the builder; LookaroundR arm PROVEN),
+  `FlipMirrorSatisfiableNested` (anti-vacuity witness), `CloseDiscF`/`AvoidsCR`/`CloseDiscFWiden`/
+  `GActsIn`/`TreeResPreservesOpen`, **`TreeResMirrorF`** (exact-`MirrorGm` value fold, inner captures
+  included).
+- `FlipDisc.dfy` 14/0 — F1c establishment (`ComputeTreeCloseDiscF` = TML's + extended LK case) +
+  **F2 `BackBodyGmTieFlip`**.
+- `FlipOracle.dfy` 8/0 — **F3 `MirrorOracleColsOk`** (the B5 circularity is dead) + `ColsOkToSuffix`.
+- `FlipStatics.dfy` 39/0 — F4 (`XRevIsRevRENested`, `TranslateFlipXRev`, preservation family,
+  `FXRCompileFacts`, `FlipLooksMap`/`LmapOkFlipXRev`, `GmOfLiveFXR`, `LBOnlyLooksRE` bridges).
+- `FlipKeystone.dfy` 1201/0 — **F5 `LkReplayMatchesSpecLBNested`** (+ `FlipXRevStaticOkNested`,
+  `LBEngineLeafFlip`), first try.
+
+The route's soundness is now EMPIRICALLY confirmed end-to-end at the keystone: the value tie the
+old plan priced as an XL backward-simulation campaign closed as ~1,900 lines of additive, first-try
+bricks. Remaining: F6 (gate step at the LiftSim D5 dead arm + inner gids) and F7 integration —
+`L5_HANDOFF.md` §5.6 has the exact pointers and the keystone's consumer contract (note: it needs
+ALL-columns oracle correctness, `OE.OracleColsOk`, not a from-cp suffix — the backward body reads
+positions ≤ cp).
