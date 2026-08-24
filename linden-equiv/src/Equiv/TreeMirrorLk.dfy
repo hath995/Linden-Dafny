@@ -1712,4 +1712,110 @@ module LindenElkTreeMirrorLk {
     CI.ComputeIsTreeThm(rer, acts, inp, gm, dir, fuel, b.value);
     FU.IsTreeEqComputeTr(rer, acts, inp, gm, dir, b.value);
   }
+
+  // ===========================================================================
+  // BRICK 4 discharge: RegOpensOutside(tr, LkBodyGroups(tr)) from NoDupG
+  // ===========================================================================
+
+  /** Inner-look gids are among the defined gids. */
+  lemma LkBodyGroupsSubDefsLocal(r: L.Regex)
+    ensures LL.LkBodyGroups(r) <= (set g | g in L.DefGroups(r))
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => LkBodyGroupsSubDefsLocal(r1); LkBodyGroupsSubDefsLocal(r2);
+      assert L.DefGroups(r) == L.DefGroups(r1) + L.DefGroups(r2);
+    case Sequence(r1, r2) => LkBodyGroupsSubDefsLocal(r1); LkBodyGroupsSubDefsLocal(r2);
+      assert L.DefGroups(r) == L.DefGroups(r1) + L.DefGroups(r2);
+    case Quantified(_, _, _, r1) => LkBodyGroupsSubDefsLocal(r1);
+    case Group(gid, r1) => LkBodyGroupsSubDefsLocal(r1); assert L.DefGroups(r) == [gid] + L.DefGroups(r1);
+    case LookaroundR(lk, r1) => LkBodyGroupsSubDefsLocal(r1); assert L.DefGroups(r) == L.DefGroups(r1);
+    case _ =>
+  }
+
+  /** `NoDupG(a+b)`: an element of `a` is not in `b`. */
+  lemma NoDupGNotBoth(a: seq<LG.GroupId>, b: seq<LG.GroupId>, g: LG.GroupId)
+    requires CD.NoDupG(a + b) && g in a
+    ensures g !in b
+  {
+    if g in b {
+      var i :| 0 <= i < |a| && a[i] == g;
+      var j :| 0 <= j < |b| && b[j] == g;
+      assert (a + b)[i] == g && (a + b)[|a| + j] == g && i < |a| + j;
+    }
+  }
+
+  /** THE discharge: surface Opens of `r` avoid `S`, when `S` meets `DefGroups(r)`
+      only inside looks and `r`'s defs are dup-free. At `S = LkBodyGroups(r)` the
+      side condition is trivial (`g in LkBodyGroups ==> g in LkBodyGroups`). */
+  lemma RegOpensOutsideFromNoDup(r: L.Regex, S: set<LG.GroupId>)
+    requires CD.NoDupG(L.DefGroups(r))
+    requires forall g: LG.GroupId :: g in L.DefGroups(r) && g in S ==> g in LL.LkBodyGroups(r)
+    ensures RegOpensOutside(r, S)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => DisjSeqOpensNoDup(r, r1, r2, S);
+    case Sequence(r1, r2) => DisjSeqOpensNoDup(r, r1, r2, S);
+    case Quantified(_, _, _, r1) =>
+      assert L.DefGroups(r) == L.DefGroups(r1) && LL.LkBodyGroups(r) == LL.LkBodyGroups(r1);
+      RegOpensOutsideFromNoDup(r1, S);
+    case Group(gid, r1) =>
+      assert L.DefGroups(r) == [gid] + L.DefGroups(r1);
+      CD.NoDupGTail(gid, L.DefGroups(r1));
+      assert LL.LkBodyGroups(r) == LL.LkBodyGroups(r1);
+      LkBodyGroupsSubDefsLocal(r1);
+      assert gid !in S by {
+        if gid in S { assert gid in LL.LkBodyGroups(r); assert gid in L.DefGroups(r1); }
+      }
+      forall g: LG.GroupId | g in L.DefGroups(r1) && g in S ensures g in LL.LkBodyGroups(r1) {
+        assert g in L.DefGroups(r);
+      }
+      RegOpensOutsideFromNoDup(r1, S);
+    case LookaroundR(lk, r1) =>
+    case _ =>
+  }
+
+  /** Disjunction/Sequence case of `RegOpensOutsideFromNoDup` (same shape). */
+  lemma DisjSeqOpensNoDup(r: L.Regex, r1: L.Regex, r2: L.Regex, S: set<LG.GroupId>)
+    requires r == L.Disjunction(r1, r2) || r == L.Sequence(r1, r2)
+    requires CD.NoDupG(L.DefGroups(r))
+    requires forall g: LG.GroupId :: g in L.DefGroups(r) && g in S ==> g in LL.LkBodyGroups(r)
+    ensures RegOpensOutside(r1, S) && RegOpensOutside(r2, S)
+    decreases r, 0
+  {
+    assert L.DefGroups(r) == L.DefGroups(r1) + L.DefGroups(r2);
+    assert LL.LkBodyGroups(r) == LL.LkBodyGroups(r1) + LL.LkBodyGroups(r2);
+    CD.DefGroupsConcatNoDup(r1, r2);
+    NoDupGSuffix(L.DefGroups(r1), L.DefGroups(r2));
+    LkBodyGroupsSubDefsLocal(r1); LkBodyGroupsSubDefsLocal(r2);
+    forall g: LG.GroupId | g in L.DefGroups(r1) && g in S ensures g in LL.LkBodyGroups(r1) {
+      assert g in L.DefGroups(r);          // DefGroups(r1) ⊆ DefGroups(r)
+      assert g in LL.LkBodyGroups(r);      // hypothesis
+      if g in LL.LkBodyGroups(r2) {
+        assert g in L.DefGroups(r2);       // LkBodyGroupsSubDefsLocal(r2)
+        NoDupGNotBoth(L.DefGroups(r1), L.DefGroups(r2), g);   // g in DefGroups(r1) => g !in DefGroups(r2)
+        assert false;
+      }
+    }
+    forall g: LG.GroupId | g in L.DefGroups(r2) && g in S ensures g in LL.LkBodyGroups(r2) {
+      assert g in L.DefGroups(r);
+      assert g in LL.LkBodyGroups(r);
+      if g in LL.LkBodyGroups(r1) {
+        assert g in L.DefGroups(r1);       // LkBodyGroupsSubDefsLocal(r1)
+        NoDupGNotBoth(L.DefGroups(r1), L.DefGroups(r2), g);   // g in DefGroups(r1) => g !in DefGroups(r2)
+        assert false;
+      }
+    }
+    RegOpensOutsideFromNoDup(r1, S);
+    RegOpensOutsideFromNoDup(r2, S);
+  }
+
+  /** At `S = LkBodyGroups(tr)` the discharge is unconditional beyond `NoDupG`. */
+  lemma RegOpensOutsideLkBody(tr: L.Regex)
+    requires CD.NoDupG(L.DefGroups(tr))
+    ensures RegOpensOutside(tr, LL.LkBodyGroups(tr))
+  {
+    RegOpensOutsideFromNoDup(tr, LL.LkBodyGroups(tr));
+  }
 }
