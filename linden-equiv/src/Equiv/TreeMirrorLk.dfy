@@ -51,6 +51,7 @@ module LindenElkTreeMirrorLk {
   import AR = LindenElkActionsRep
   import LOr = Oracle
   import PIV = LindenElkPikeInv
+  import CD = LindenCloseDisc
   import EL = LindenElkEntryLk
   import FS = FunctionalSemantics
   import CI = ComputeIsTree
@@ -1389,6 +1390,325 @@ module LindenElkTreeMirrorLk {
     FS.FunctionalTerminates(rer, acts, inp, gm, dir, fuel);
     var b := FS.ComputeTree(rer, acts, inp, gm, dir, fuel);
     ComputeTreeGActsOutside(rer, acts, inp, gm, dir, fuel, Sin);
+    CI.ComputeIsTreeThm(rer, acts, inp, gm, dir, fuel, b.value);
+    FU.IsTreeEqComputeTr(rer, acts, inp, gm, dir, b.value);
+  }
+
+  // ===========================================================================
+  // BRICK 4 establishment (3/3): CloseDiscLk for ComputeTr trees
+  // ===========================================================================
+
+  /** The nested analogue of `CD.StackInv`: the close-discipline invariant, but
+      with `PikeLkActionsRec` (allows looks) instead of `GroupOkActs`. The
+      look-agnostic components (`ClosesActs`/`HeadsFresh`/`HeadsNoDup`) are reused
+      from `CD` unchanged. */
+  ghost predicate StackInvLk(acts: LS.Actions) {
+    && CD.NoDupG(CD.ClosesActs(acts))
+    && CD.HeadsFreshOfCloses(acts)
+    && CD.HeadsNoDupDefs(acts)
+    && EL.PikeLkActionsRec(acts)
+  }
+
+  lemma StackInvLkTail(acts: LS.Actions)
+    requires |acts| > 0 && StackInvLk(acts)
+    ensures StackInvLk(acts[1..])
+  {
+    assert acts == [acts[0]] + acts[1..];
+    if acts[0].Aclose? {
+      CD.ClosesActsConsClose(acts[0].gid, acts[1..]);
+      CD.NoDupGTail(acts[0].gid, CD.ClosesActs(acts[1..]));
+    } else {
+      CD.ClosesActsConsNonClose(acts[0], acts[1..]);
+    }
+    EL.PikeLkActionsRecConsIff(acts[0], acts[1..]);
+  }
+
+  /** Prepend a fragment `Areg`/`Acheck` whose defs avoid the current closes. */
+  lemma StackInvLkConsFront(a: LS.Action, cont: LS.Actions)
+    requires StackInvLk(cont)
+    requires a.Acheck? || (a.Areg? && EL.PikeLkRegexRec(a.r)
+                           && CD.NoDupG(L.DefGroups(a.r))
+                           && (forall g :: g in L.DefGroups(a.r) ==> g !in CD.ClosesActs(cont)))
+    ensures StackInvLk([a] + cont)
+  {
+    CD.ClosesActsConsNonClose(a, cont);
+    assert ([a] + cont)[1..] == cont;
+    EL.PikeLkActionsRecConsIff(a, cont);
+  }
+
+  lemma StackInvLkConsRegAvoid(r: L.Regex, cont: LS.Actions)
+    requires StackInvLk(cont)
+    requires EL.PikeLkRegexRec(r) && CD.NoDupG(L.DefGroups(r))
+    requires forall g :: g in L.DefGroups(r) ==> g !in CD.ClosesActs(cont)
+    ensures StackInvLk([LS.Areg(r)] + cont)
+  {
+    StackInvLkConsFront(LS.Areg(r), cont);
+  }
+
+  lemma StackInvLkGroup(gid: LG.GroupId, r1: L.Regex, cont: LS.Actions)
+    requires StackInvLk([LS.Areg(L.Group(gid, r1))] + cont)
+    ensures StackInvLk([LS.Areg(r1), LS.Aclose(gid)] + cont)
+  {
+    var acts := [LS.Areg(L.Group(gid, r1))] + cont;
+    assert acts[0] == LS.Areg(L.Group(gid, r1)) && acts[1..] == cont;
+    StackInvLkTail(acts);
+    assert L.DefGroups(L.Group(gid, r1)) == [gid] + L.DefGroups(r1);
+    assert CD.NoDupG([gid] + L.DefGroups(r1));
+    CD.NoDupGTail(gid, L.DefGroups(r1));
+    assert forall g :: g in [gid] + L.DefGroups(r1) ==> g !in CD.ClosesActs(cont);
+    assert gid !in CD.ClosesActs(cont);
+    assert EL.PikeLkRegexRec(L.Group(gid, r1));
+    assert EL.PikeLkRegexRec(r1);
+    var mid := [LS.Aclose(gid)] + cont;
+    CD.ClosesActsConsClose(gid, cont);
+    CD.NoDupGPrepend(gid, CD.ClosesActs(cont));
+    assert mid[0] == LS.Aclose(gid) && mid[1..] == cont;
+    assert CD.HeadsFreshOfCloses(mid);
+    assert CD.HeadsNoDupDefs(mid);
+    EL.PikeLkActionsRecConsIff(LS.Aclose(gid), cont);
+    assert StackInvLk(mid);
+    forall g | g in L.DefGroups(r1) ensures g !in CD.ClosesActs(mid) {
+      assert g != gid;
+      assert g !in CD.ClosesActs(cont);
+    }
+    StackInvLkConsFront(LS.Areg(r1), mid);
+    assert [LS.Areg(r1)] + mid == [LS.Areg(r1), LS.Aclose(gid)] + cont;
+  }
+
+  lemma SeqListStackInvLk(r1: L.Regex, r2: L.Regex, dir: WP.Direction, cont: LS.Actions)
+    requires StackInvLk(cont)
+    requires EL.PikeLkRegexRec(r1) && EL.PikeLkRegexRec(r2)
+    requires CD.NoDupG(L.DefGroups(r1) + L.DefGroups(r2))
+    requires forall g :: g in L.DefGroups(r1) + L.DefGroups(r2) ==> g !in CD.ClosesActs(cont)
+    ensures StackInvLk(LS.SeqList(r1, r2, dir) + cont)
+  {
+    CD.DefGroupsConcatNoDup(r1, r2);
+    NoDupGSuffix(L.DefGroups(r1), L.DefGroups(r2));
+    CD.DefGroupsConcatAvoid(r1, r2, cont);
+    DefGroupsConcatAvoidSym(r1, r2, cont);
+    match dir
+    case Forward =>
+      assert LS.SeqList(r1, r2, dir) + cont == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+      StackInvLkConsRegAvoid(r2, cont);
+      forall g | g in L.DefGroups(r1) ensures g !in CD.ClosesActs([LS.Areg(r2)] + cont) {
+        CD.ClosesActsConsNonClose(LS.Areg(r2), cont);
+      }
+      StackInvLkConsRegAvoid(r1, [LS.Areg(r2)] + cont);
+    case Backward =>
+      assert LS.SeqList(r1, r2, dir) + cont == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
+      StackInvLkConsRegAvoid(r1, cont);
+      forall g | g in L.DefGroups(r2) ensures g !in CD.ClosesActs([LS.Areg(r1)] + cont) {
+        CD.ClosesActsConsNonClose(LS.Areg(r1), cont);
+      }
+      StackInvLkConsRegAvoid(r2, [LS.Areg(r1)] + cont);
+  }
+
+  lemma DefGroupsConcatAvoidSym(r1: L.Regex, r2: L.Regex, cont: LS.Actions)
+    requires forall g :: g in L.DefGroups(r1) + L.DefGroups(r2) ==> g !in CD.ClosesActs(cont)
+    ensures forall g :: g in L.DefGroups(r2) ==> g !in CD.ClosesActs(cont)
+  {}
+
+  /** `NoDupG` of a concatenation implies `NoDupG` of the suffix. */
+  lemma NoDupGSuffix(a: seq<LG.GroupId>, b: seq<LG.GroupId>)
+    requires CD.NoDupG(a + b)
+    ensures CD.NoDupG(b)
+  {
+    forall i, j | 0 <= i < j < |b| ensures b[i] != b[j] {
+      assert (a + b)[|a| + i] == b[i] && (a + b)[|a| + j] == b[j];
+    }
+  }
+
+  /** `SeqList` prepends two non-Aclose heads, so it doesn't change the closes. */
+  lemma SeqListClosesSetLk(r1: L.Regex, r2: L.Regex, dir: WP.Direction, cont: LS.Actions)
+    ensures CD.ClosesSet(LS.SeqList(r1, r2, dir) + cont) == CD.ClosesSet(cont)
+  {
+    match dir
+    case Forward =>
+      assert LS.SeqList(r1, r2, dir) + cont == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+      CD.ClosesActsConsNonClose(LS.Areg(r2), cont);
+      CD.ClosesActsConsNonClose(LS.Areg(r1), [LS.Areg(r2)] + cont);
+    case Backward =>
+      assert LS.SeqList(r1, r2, dir) + cont == [LS.Areg(r2)] + ([LS.Areg(r1)] + cont);
+      CD.ClosesActsConsNonClose(LS.Areg(r1), cont);
+      CD.ClosesActsConsNonClose(LS.Areg(r2), [LS.Areg(r1)] + cont);
+  }
+
+  lemma QuantStackInvLk(greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex, cont: LS.Actions)
+    requires min > 0 && StackInvLk(cont)
+    requires EL.PikeLkRegexRec(r1) && CD.NoDupG(L.DefGroups(r1))
+    requires forall g :: g in L.DefGroups(r1) ==> g !in CD.ClosesActs(cont)
+    ensures StackInvLk([LS.Areg(r1), LS.Areg(L.Quantified(greedy, min - 1, delta, r1))] + cont)
+  {
+    var q1 := L.Quantified(greedy, min - 1, delta, r1);
+    assert L.DefGroups(q1) == L.DefGroups(r1);
+    assert EL.PikeLkRegexRec(q1);
+    StackInvLkConsRegAvoid(q1, cont);
+    forall g | g in L.DefGroups(r1) ensures g !in CD.ClosesActs([LS.Areg(q1)] + cont) {
+      CD.ClosesActsConsNonClose(LS.Areg(q1), cont);
+    }
+    StackInvLkConsRegAvoid(r1, [LS.Areg(q1)] + cont);
+    assert [LS.Areg(r1)] + ([LS.Areg(q1)] + cont) == [LS.Areg(r1), LS.Areg(q1)] + cont;
+  }
+
+  lemma QuantFreeStackInvLk(greedy: bool, delta: LN.NoI, r1: L.Regex, inpc: LC.Input, cont: LS.Actions)
+    requires StackInvLk(cont)
+    requires EL.PikeLkRegexRec(r1) && CD.NoDupG(L.DefGroups(r1))
+    requires forall g :: g in L.DefGroups(r1) ==> g !in CD.ClosesActs(cont)
+    ensures StackInvLk([LS.Areg(r1), LS.Acheck(inpc), LS.Areg(L.Quantified(greedy, 0, FS.NoiPred(delta), r1))] + cont)
+  {
+    var q0 := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+    assert L.DefGroups(q0) == L.DefGroups(r1);
+    assert EL.PikeLkRegexRec(q0);
+    StackInvLkConsRegAvoid(q0, cont);
+    var m1 := [LS.Areg(q0)] + cont;
+    forall g | g in L.DefGroups(r1) ensures g !in CD.ClosesActs(m1) { CD.ClosesActsConsNonClose(LS.Areg(q0), cont); }
+    StackInvLkConsFront(LS.Acheck(inpc), m1);
+    var m2 := [LS.Acheck(inpc)] + m1;
+    forall g | g in L.DefGroups(r1) ensures g !in CD.ClosesActs(m2) { CD.ClosesActsConsNonClose(LS.Acheck(inpc), m1); }
+    StackInvLkConsRegAvoid(r1, m2);
+    assert [LS.Areg(r1)] + m2 == [LS.Areg(r1), LS.Acheck(inpc), LS.Areg(q0)] + cont;
+  }
+
+  /** Fuel helper: a `ComputeTree`-built tree of a `StackInvLk` stack satisfies
+      `CloseDiscLk` at `ClosesSet(acts)`. Mirrors `CD.CloseDiscCT` case-for-case,
+      + the `LookaroundR` case (LK/LKFail; inner body EXCLUDED). */
+  lemma ComputeTreeCloseDiscLk(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input,
+                               gm: LG.GroupMap, dir: WP.Direction, fuel: nat)
+    requires StackInvLk(acts)
+    ensures var o := FS.ComputeTree(rer, acts, inp, gm, dir, fuel);
+            o.Some? ==> CloseDiscLk(o.value, CD.ClosesSet(acts))
+    decreases fuel
+  {
+    if fuel == 0 { return; }
+    var f := fuel - 1;
+    if |acts| == 0 { return; }
+    var cont := acts[1..];
+    var O := CD.ClosesSet(acts);
+    match acts[0]
+    case Acheck(strcheck) =>
+      CD.ClosesActsConsNonClose(acts[0], cont);
+      assert acts == [acts[0]] + cont;
+      if SSx.IsStrictSuffix(inp, strcheck, dir) {
+        StackInvLkTail(acts);
+        ComputeTreeCloseDiscLk(rer, cont, inp, gm, dir, f);
+      }
+    case Aclose(gid) =>
+      CD.ClosesActsConsClose(gid, cont);
+      assert acts == [LS.Aclose(gid)] + cont;
+      CD.NoDupGTail(gid, CD.ClosesActs(cont));
+      StackInvLkTail(acts);
+      ComputeTreeCloseDiscLk(rer, cont, inp, LG.GMClose(LC.Idx(inp), gid, gm), dir, f);
+      var sub := FS.ComputeTree(rer, cont, inp, LG.GMClose(LC.Idx(inp), gid, gm), dir, f);
+      if sub.Some? { assert gid in O; assert O - {gid} == CD.ClosesSet(cont); }
+    case Areg(r) =>
+      assert acts == [LS.Areg(r)] + cont;
+      CD.ClosesActsConsNonClose(acts[0], cont);
+      assert CD.ClosesSet(acts) == CD.ClosesSet(cont);
+      assert EL.PikeLkRegexRec(r);
+      assert CD.NoDupG(L.DefGroups(r));
+      assert forall g :: g in L.DefGroups(r) ==> g !in CD.ClosesActs(cont);
+      match r
+      case Epsilon => StackInvLkTail(acts); ComputeTreeCloseDiscLk(rer, cont, inp, gm, dir, f);
+      case Character(cd) =>
+        match LC.ReadChar(rer, cd, inp, dir) {
+          case Some(pair) => StackInvLkTail(acts); ComputeTreeCloseDiscLk(rer, cont, pair.1, gm, dir, f);
+          case None =>
+        }
+      case Disjunction(r1, r2) =>
+        assert L.DefGroups(r) == L.DefGroups(r1) + L.DefGroups(r2);
+        CD.DefGroupsConcatAvoid(r1, r2, cont);
+        DefGroupsConcatAvoidSym(r1, r2, cont);
+        CD.DefGroupsConcatNoDup(r1, r2);
+        NoDupGSuffix(L.DefGroups(r1), L.DefGroups(r2));
+        StackInvLkTail(acts);
+        StackInvLkConsRegAvoid(r1, cont);
+        StackInvLkConsRegAvoid(r2, cont);
+        ComputeTreeCloseDiscLk(rer, [LS.Areg(r1)] + cont, inp, gm, dir, f);
+        ComputeTreeCloseDiscLk(rer, [LS.Areg(r2)] + cont, inp, gm, dir, f);
+        assert CD.ClosesSet([LS.Areg(r1)] + cont) == CD.ClosesSet(cont) by { CD.ClosesActsConsNonClose(LS.Areg(r1), cont); }
+        assert CD.ClosesSet([LS.Areg(r2)] + cont) == CD.ClosesSet(cont) by { CD.ClosesActsConsNonClose(LS.Areg(r2), cont); }
+      case Sequence(r1, r2) =>
+        assert L.DefGroups(r) == L.DefGroups(r1) + L.DefGroups(r2);
+        StackInvLkTail(acts);
+        SeqListStackInvLk(r1, r2, dir, cont);
+        ComputeTreeCloseDiscLk(rer, LS.SeqList(r1, r2, dir) + cont, inp, gm, dir, f);
+        assert CD.ClosesSet(LS.SeqList(r1, r2, dir) + cont) == O by { SeqListClosesSetLk(r1, r2, dir, cont); }
+      case Quantified(greedy, min, delta, r1) =>
+        var gidl := L.DefGroups(r1);
+        assert L.DefGroups(r) == gidl;
+        StackInvLkTail(acts);
+        assert (set g | g in gidl) * O == {} by {
+          forall g | g in gidl && g in O ensures false { assert g !in CD.ClosesActs(cont); }
+        }
+        assert O - (set g | g in gidl) == O;
+        if min > 0 {
+          var q1 := L.Quantified(greedy, min - 1, delta, r1);
+          QuantStackInvLk(greedy, min, delta, r1, cont);
+          ComputeTreeCloseDiscLk(rer, [LS.Areg(r1), LS.Areg(q1)] + cont, inp, LG.GMReset(gidl, gm), dir, f);
+          var titer := FS.ComputeTree(rer, [LS.Areg(r1), LS.Areg(q1)] + cont, inp, LG.GMReset(gidl, gm), dir, f);
+          if titer.Some? {
+            assert CD.ClosesSet([LS.Areg(r1), LS.Areg(q1)] + cont) == O by { CD.QuantClosesSet(r1, q1, cont); }
+            assert CloseDiscLk(LT.GroupActionT(LG.Reset(gidl), titer.value), O);
+          }
+        } else if delta == LN.NN(0) {
+          ComputeTreeCloseDiscLk(rer, cont, inp, gm, dir, f);
+        } else {
+          var q0 := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+          QuantFreeStackInvLk(greedy, delta, r1, inp, cont);
+          ComputeTreeCloseDiscLk(rer, [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont, inp, LG.GMReset(gidl, gm), dir, f);
+          ComputeTreeCloseDiscLk(rer, cont, inp, gm, dir, f);
+          var titer := FS.ComputeTree(rer, [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont, inp, LG.GMReset(gidl, gm), dir, f);
+          var tskip := FS.ComputeTree(rer, cont, inp, gm, dir, f);
+          if titer.Some? && tskip.Some? {
+            assert CD.ClosesSet([LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont) == O by { CD.QuantFreeClosesSet(r1, q0, inp, cont); }
+            assert CloseDiscLk(LT.GroupActionT(LG.Reset(gidl), titer.value), O);
+            assert CloseDiscLk(tskip.value, O);
+            assert CloseDiscLk(LT.GreedyChoice(greedy, LT.GroupActionT(LG.Reset(gidl), titer.value), tskip.value), O);
+          }
+        }
+      case Group(gid, r1) =>
+        StackInvLkGroup(gid, r1, cont);
+        ComputeTreeCloseDiscLk(rer, [LS.Areg(r1), LS.Aclose(gid)] + cont, inp, LG.GMOpen(LC.Idx(inp), gid, gm), dir, f);
+        var sub := FS.ComputeTree(rer, [LS.Areg(r1), LS.Aclose(gid)] + cont, inp, LG.GMOpen(LC.Idx(inp), gid, gm), dir, f);
+        if sub.Some? {
+          assert CD.ClosesSet([LS.Areg(r1), LS.Aclose(gid)] + cont) == O + {gid} by { CD.GroupClosesSet(r1, gid, cont); }
+        }
+      case AnchorR(a) =>
+        if LS.AnchorSatisfied(rer, a, inp) { StackInvLkTail(acts); ComputeTreeCloseDiscLk(rer, cont, inp, gm, dir, f); }
+      case LookaroundR(lk, r1) =>
+        var treelk := FS.ComputeTree(rer, [LS.Areg(r1)], inp, gm, L.LkDir(lk), f);
+        if treelk.Some? {
+          match LS.LkResult(lk, treelk.value, gm, inp) {
+            case Some(gmlk) =>
+              var tc := FS.ComputeTree(rer, cont, inp, gmlk, dir, f);
+              if tc.Some? {
+                StackInvLkTail(acts);
+                ComputeTreeCloseDiscLk(rer, cont, inp, gmlk, dir, f);
+              }
+            case None =>
+          }
+        }
+      case Backreference(gid) => assert EL.PikeLkRegexRec(r); assert false;
+  }
+
+  /** Fuel-free: the spec tree of a fragment regex with dup-free defs has an
+      LK-aware close discipline at the empty open set. */
+  lemma ComputeTrCloseDiscLk(rer: LW.RegExpRecord, tr: L.Regex, inp: LC.Input, gm: LG.GroupMap, dir: WP.Direction)
+    requires EL.PikeLkRegexRec(tr) && CD.NoDupG(L.DefGroups(tr))
+    ensures CloseDiscLk(FU.ComputeTr(rer, [LS.Areg(tr)], inp, gm, dir), {})
+  {
+    var acts := [LS.Areg(tr)];
+    EL.PikeLkActionsRecConsIff(LS.Areg(tr), []);
+    CD.ClosesActsConsNonClose(LS.Areg(tr), []);
+    assert CD.ClosesActs(acts) == [];
+    assert CD.HeadsFreshOfCloses(acts);
+    assert CD.HeadsNoDupDefs(acts);
+    assert StackInvLk(acts);
+    assert CD.ClosesSet(acts) == {};
+    var fuel := FS.ActionsFuel(acts, inp, dir) + 1;
+    FS.FunctionalTerminates(rer, acts, inp, gm, dir, fuel);
+    var b := FS.ComputeTree(rer, acts, inp, gm, dir, fuel);
+    ComputeTreeCloseDiscLk(rer, acts, inp, gm, dir, fuel);
     CI.ComputeIsTreeThm(rer, acts, inp, gm, dir, fuel, b.value);
     FU.IsTreeEqComputeTr(rer, acts, inp, gm, dir, b.value);
   }
