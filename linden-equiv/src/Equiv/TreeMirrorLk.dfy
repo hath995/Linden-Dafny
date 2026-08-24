@@ -1818,4 +1818,90 @@ module LindenElkTreeMirrorLk {
   {
     RegOpensOutsideFromNoDup(tr, LL.LkBodyGroups(tr));
   }
+
+  // ===========================================================================
+  // BRICK 3 (B4): BackBodyGmTieNested — compose builder + fold -> surface mirror
+  // ===========================================================================
+
+  /** `RevL` preserves the inner-look group set (it keeps gids, reverses
+      structure). */
+  lemma LkBodyGroupsRevL(r: L.Regex)
+    ensures LL.LkBodyGroups(SD.RevL(r)) == LL.LkBodyGroups(r)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => LkBodyGroupsRevL(r1); LkBodyGroupsRevL(r2);
+    case Sequence(r1, r2) => LkBodyGroupsRevL(r1); LkBodyGroupsRevL(r2);
+    case Quantified(_, _, _, r1) => LkBodyGroupsRevL(r1);
+    case Group(_, r1) => LkBodyGroupsRevL(r1);
+    case LookaroundR(lk, r1) =>
+      LkBodyGroupsRevL(r1);
+      SD.RevLDefGroupsSet(r1);
+      assert (set g | g in L.DefGroups(SD.RevL(r1))) == (set g | g in L.DefGroups(r1));
+    case _ =>
+  }
+
+  /** THE B4 CORE: for a nested body `tr` (recursive fragment, dup-free defs),
+      the backward spec tree's first leaf and the forward RevL spec tree's first
+      leaf mirror on the SURFACE (`GmAgreeOutside(_, MirrorGm(_), Sin)`), given
+      the oracle-discharged gate hypothesis. The nested analogue of
+      `LBV.BackBodyGmTie` — surface-only, since the inner-look captures come from
+      the oracle, not the mirror. */
+  lemma BackBodyGmTieNested(rer: LW.RegExpRecord, tr: L.Regex, str: string, cp: nat, n: nat,
+                            Sin: set<LG.GroupId>)
+    requires EL.PikeLkRegexRec(tr) && CD.NoDupG(L.DefGroups(tr))
+    requires Sin == LL.LkBodyGroups(tr)
+    requires n == |str| && cp <= n
+    requires ActsLookGatesMirror([LS.Areg(tr)], rer, str)
+    ensures
+      var inpB := PIV.InpOfCp(str, cp);
+      var tB := FU.ComputeTr(rer, [LS.Areg(tr)], inpB, LG.Empty, WP.Backward);
+      var tF := FU.ComputeTr(rer, [LS.Areg(SD.RevL(tr))], SD.SwapInput(inpB), LG.Empty, WP.Forward);
+      var rb := LT.TreeRes(tB, LG.Empty, inpB, WP.Backward);
+      var rf := LT.TreeRes(tF, LG.Empty, SD.SwapInput(inpB), WP.Forward);
+      && (rb.None? <==> rf.None?)
+      && (rb.Some? ==>
+            rf.Some?
+            && rf.value.0 == SD.SwapInput(rb.value.0)
+            && TRM.GmInBounds(rb.value.1, n)
+            && LL.GmAgreeOutside(rf.value.1, TRM.MirrorGm(rb.value.1, n), Sin))
+  {
+    var inpB := PIV.InpOfCp(str, cp);
+    var sinp := SD.SwapInput(inpB);
+    var acts := [LS.Areg(tr)];
+    var racts := [LS.Areg(SD.RevL(tr))];
+    LS.ReverseLength(str[..cp]);
+    assert n == |inpB.pref| + |inpB.next|;
+    EL.PikeLkActionsRecConsIff(LS.Areg(tr), []);
+
+    // ---- the two trees ----
+    var tB := FU.ComputeTr(rer, acts, inpB, LG.Empty, WP.Backward);
+    var tF := FU.ComputeTr(rer, racts, sinp, LG.Empty, WP.Forward);
+    // builder: TreeMirrorRelLk(tB, tF, Sin). RevActs([Areg(tr)]) == [Areg(RevL(tr))].
+    assert SD.RevActs(acts) == racts by { SD.RevActsCons(LS.Areg(tr), []); }
+    ComputeTrReverseLk(rer, acts, inpB, LG.Empty, LG.Empty, str, cp, Sin);
+    assert TreeMirrorRelLk(tB, tF, Sin);
+
+    // ---- tree-property establishments ----
+    ComputeTrGateStable(rer, tr, inpB, LG.Empty, WP.Backward);           // GateStableLk(tB, inpB, Backward)
+    RevLPreservesPikeLkRec(tr);
+    ComputeTrGateStable(rer, SD.RevL(tr), sinp, LG.Empty, WP.Forward);   // GateStableLk(tF, sinp, Forward)
+    RegOpensOutsideLkBody(tr);                                           // RegOpensOutside(tr, Sin)
+    ComputeTrGActsOutside(rer, tr, inpB, LG.Empty, WP.Backward, Sin);    // GActsOutsideSin(tB, Sin)
+    ComputeTrCloseDiscLk(rer, tr, inpB, LG.Empty, WP.Backward);          // CloseDiscLk(tB, {})
+
+    // ---- confinement (both trees) ----
+    LL.BackwardBodyConfinedTree(rer, tr, inpB, Sin);                     // LkConfinedTreeK(tB, Sin)
+    LkBodyGroupsRevL(tr);                                                // LkBodyGroups(RevL(tr)) == Sin
+    EL.PikeLkActionsRecConsIff(LS.Areg(SD.RevL(tr)), []);
+    LL.LkBodyGroupsConfines(SD.RevL(tr), Sin);
+    LL.LkActsInSCons(LS.Areg(SD.RevL(tr)), [], Sin);
+    LL.ComputeTrLkConfinedK(rer, racts, sinp, LG.Empty, WP.Forward, Sin); // LkConfinedTreeK(tF, Sin)
+
+    // ---- the surface fold ----
+    assert TRM.GmInBounds(LG.Empty, n);
+    assert LL.GmAgreeOutside(LG.Empty, TRM.MirrorGm(LG.Empty, n), Sin) by { assert TRM.MirrorGm(LG.Empty, n) == LG.Empty; }
+    assert TRM.OpenSubset(LG.Empty, {});
+    TreeResMirrorLk(tB, tF, LG.Empty, LG.Empty, inpB, n, {}, Sin);
+  }
 }
