@@ -1451,3 +1451,15 @@ positions ≤ cp).
   before `TransWf`) — fixed (2663/0, 0 timeouts, HEAD baseline 2351 verified, 0 errors, 23 timeouts at the same three sites); the two
   admitted bodyless lemmas `TtLkSameTree`/`TtLkSameTreeRec` were dead (0 callers) and are deleted.
   `src/Equiv` has no `assume`/`{:axiom}`/`{:verify false}`/`{:extern}`.
+
+### L5 F7c-1 GREEN (2026-08-25, session 3): the L5 scope + the per-lid dispatch lemma
+
+`NR.L5ScopeRE` (positive lookbehinds allowed iff their bodies are `NR.LBOnlyLooksRE`) with raw twins
+and annotation transfers; `M.NoPosImpliesL5Scope`; **`M.LookBodyFactsL5`** (the dispatch every L5
+consumer makes: `LookEntryOk && (la.Lookbehind? ==> LBOnlyLooksRE(body))`); five statics lifted
+(`DOrd*FromTables`, `FreshBodyDirectMemberFrom*`); `LSIM.L5ScopeFromRaw`; `FG.LBOnlyEquiv`. All first
+try (commit `2cd7df7`). The honest F7c sizing is now a LEDGER (`L5_HANDOFF.md` §5.7): the 40
+`NoPosLookbehindRE`-dependent symbols form 10 call-graph layers; the hub is `GateStaticAtNested`
+(LiftSim:5569, `NoPosLookbehindRE(body)` inside the lift invariant), which can only flip after the
+descent (layers 6–9) has lookbehind arms; the first real LB arm is `FrameEntryOk`'s
+`capture_type(la) ==> la.Lookahead?` clause, consumed by the ten nested `FLookLoop*` frame lemmas.
