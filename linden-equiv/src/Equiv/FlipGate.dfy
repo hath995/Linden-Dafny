@@ -384,4 +384,75 @@ module LindenElkFlipGate {
       }
     }
   }
+
+  // ===========================================================================
+  // (E4) crossing coverage, LB nested — the value fact the gate step's coverage
+  // arm consumes (LiftSim `LiftPreserveGatePassLkRec`, the `la.Lookahead?` twin
+  // at its `M.LkReplayMatchesSpecNested` + `FreshBodyMatchGmOuter` block)
+  // ===========================================================================
+
+  /** Every group of the body that is LIVE in the fresh backward match `raB`
+      lands in the passing gate's `LkResult`. Inner-look gids are never live in
+      `raB` (F6b); the surface ones are covered by F6a (`SwapGm` preserves keys). */
+  lemma {:isolate_assertions} GateCrossCoverageLBNested(
+      rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, str: string, cp: nat,
+      ov: LOr.OracleView, cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
+      ncap: int, nlook: int, nquant: int, n: nat)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires FST.LBOnlyLooksRE(body)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires !rer.ignoreCase && !rer.multiline
+    requires n == |str| && cp <= n && |ov| == n + 1
+    requires qm.ov == ov && AR.LmapOk(body, qm) && OE.OracleColsOk(rer, qm, str)
+    requires la.Lookbehind?
+    requires tlk == FU.ComputeTr(rer, [LS.Areg(T.Translate(body))], PIV.InpOfCp(str, cp), gmMain, WP.Backward)
+    requires M.GmAgreeOn(gmMain, LG.Empty, set g | g in L.DefGroups(T.Translate(body)))
+    ensures
+      var inp := PIV.InpOfCp(str, cp);
+      var bcB := CP.compile_to_bytecode(R.reverse_regex(body));
+      var raB := AI.FFindMatch(bcB, str,
+                   AI.FInitState(bcB, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                 AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
+                   ov, LAnc.Backward, cdns).0;
+      var lkr := LS.LkResult(T.TrLookaround(la), tlk, gmMain, inp);
+      raB.Some? ==>
+        lkr.Some?
+        && forall g: nat ::
+             g in PIV.CapIds(body)
+             && g in PIV.GmOfLive(body, raB.value.capture_regs, raB.value.look_regs,
+                                  raB.value.quant_regs)
+             ==> g in lkr.value
+  {
+    var inp := PIV.InpOfCp(str, cp);
+    var tr := T.Translate(body);
+    BackFreshBodyGmTieNested(rer, qm, body, str, cp, ov, cdns, la, tlk, gmMain, ncap, nlook, nquant, n);
+    FreshBodyMatchGmOuterLBNested(rer, qm, body, str, cp, ov, cdns, ncap, nlook, nquant, n);
+    M.TranslateDefGroupsEqCapIds(body);
+    M.LkBodyGroupsEqCapIdsInLooks(body);
+    var bcB := CP.compile_to_bytecode(R.reverse_regex(body));
+    var raB := AI.FFindMatch(bcB, str,
+                 AI.FInitState(bcB, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                               AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
+                 ov, LAnc.Backward, cdns).0;
+    var lkr := LS.LkResult(T.TrLookaround(la), tlk, gmMain, inp);
+    var S := set g | g in L.DefGroups(tr) && g !in LL.LkBodyGroups(tr);
+    if raB.Some? {
+      assert lkr.Some?;
+      var G := PIV.GmOfLive(body, raB.value.capture_regs, raB.value.look_regs, raB.value.quant_regs);
+      var Lsw := LBV.SwapGm(lkr.value);
+      assert M.GmAgreeOn(Lsw, G, S);
+      forall g: nat | g in PIV.CapIds(body) && g in G
+        ensures g in lkr.value
+      {
+        assert g !in PIV.CapIdsInLooks(body);                       // F6b
+        assert g in (set gx | gx in L.DefGroups(tr));               // TranslateDefGroupsEqCapIds
+        assert g !in LL.LkBodyGroups(tr);                           // LkBodyGroupsEqCapIdsInLooks
+        assert g in S;
+        assert (g in Lsw <==> g in G) && (g in Lsw ==> Lsw[g] == G[g]);
+        assert g in Lsw;
+        assert g in lkr.value;                                      // SwapGm keeps keys
+      }
+    }
+  }
 }
