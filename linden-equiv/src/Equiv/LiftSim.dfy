@@ -2,7 +2,8 @@
 //
 // SCAFFOLD (2026-08-02): definitions are REAL and resolve; the lemmas are
 // BODILESS — each carries a FILL note naming its template and ingredients.
-// Fill order: TtLkSameTree → GateStepValue → LiftInit → LiftAdvanceEpsilon →
+// Fill order (historical; `TtLkSameTree` was superseded by the quotient
+// `ETreeRepLkDeterm` and its dead admitted statement removed 2026-08-25): TtLkSameTree → GateStepValue → LiftInit → LiftAdvanceEpsilon →
 // LiftConsume → LiftFindMatch → LiftEndpoint. Verify per-symbol as you go
 // (bodiless lemmas verify trivially and warn; the warnings disappear as
 // bodies land).
@@ -34,6 +35,7 @@ include "MainTheorem.dfy"
 include "PikeTreeLk.dfy"
 include "LookBehindKeystone.dfy"
 include "OracleMirrorV.dfy"
+include "FlipGate.dfy"
 
 /** The lift: a per-thread pairing between the RegElk VM and the LK-aware
     PikeTree machine on the SPEC tree, whose group-map tie carries the
@@ -68,6 +70,8 @@ module LindenElkLiftSim {
   import PTL = LindenElkPikeTreeLk
   import M = LindenElkMain
   import LBK = LindenLookBehindKeystone
+  import FG = LindenElkFlipGate
+  import FST = LindenElkFlipStatics
   import LBV = LindenLookBehindValue
   import BV = LindenElkBackValue
   import SD = LindenSpanDuality
@@ -2542,24 +2546,6 @@ module LindenElkLiftSim {
     var n: nat :| ATR.ActionsRepFuelL(rer, qm, acts, code, pc, n);
     tcan := ActionsTreeRepLkF(rer, qm, acts, code, pc, inp, b, t, n);
   }
-
-  /** (1) t-side determinism — QUOTIENTED (2026-08-05). The exact-tree
-      statement is FALSE (see the section header above: Progress-planting at
-      backward forks). The TRUE statement is confluence MODULO `ProgErase`,
-      which is what the seen/skip pairing actually needs once B's memo is
-      keyed on erased trees. FILL: bridge `ActionsRepL + BoolTreeLk ⟹
-      ETreeRepLk(CE.ProgErase(t))` (mirror `ActionsTreeRepFRE`'s fuel induction,
-      LK nodes kept, no tstar construction), then `ETreeRepLkDeterm` closes.
-      The bridge needs the b == CanExit side condition at backward-fork heads
-      (from `NonNullableL` of loop-view bodies inductively; at the TOP from
-      the invariant fact that VM threads at a `BackForkAt` pc have
-      `exit_allowed` — carried in `LiftInvC`). */
-  lemma TtLkSameTree(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
-                     t1: LT.Tree, t2: LT.Tree, pc: nat, ea: bool)
-    requires !rer.multiline
-    requires TtLk(rer, qm, code, inp, t1, pc, ea)
-    requires TtLk(rer, qm, code, inp, t2, pc, ea)
-    ensures CE.ProgErase(t1) == CE.ProgErase(t2)
 
   /** FRAME for GateStepValue's non-owned-group carry: a positive gate's merged
       map `LkResult(lk, tlk, gmt, inp).value` differs from the incoming `gmt`
@@ -9225,16 +9211,34 @@ module LindenElkLiftSim {
       captures — this is the SPEC tree, whose `TreeRes` threads the whole body group
       map, so it carries `l`'s DEEP (inner-look) captures too. Reads only
       `AReg.get_cp(lk, l)`, so it is congruent under any `look_regs` change off `l`
-      (the property the gate-pass maintenance needs). Positive lookAHEAD only
-      (`WP.Forward`), the scope of `M.NoPosLookbehindRE`. */
+      (the property the gate-pass maintenance needs). (L5 F7a) The body tree is
+      walked in the lid's OWN direction `LidDir(crv, l)` — Backward for a
+      lookbehind lid, Forward otherwise — so the deep carrier is direction-generic
+      (spec-to-spec: both sides are ordered spec maps, no `SwapGm` enters). Under
+      the L4 scope `M.NoPosLookbehindRE` every lid is Forward. */
   ghost function SubFirstLeafAt(rer: LW.RegExpRecord, crv: CP.FCompiled, str: string, l: int,
                                 lk: AReg.Regs): Option<LG.GroupMap> {
     var body := M.VBody(crv, l);
     var cp := if AReg.get_cp(lk, l).Some? then AReg.get_cp(lk, l).value else 0;
-    var inp := PIV.InpOfCp(str, cp);
-    var tlk := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Forward);
-    var res := LT.TreeRes(tlk, LG.Empty, inp, WP.Forward);
-    if res.Some? then Some(res.value.1) else None
+    // (2026-08-25) totality guard: `InpOfCp` needs `0 <= cp <= |str|` and
+    // `Translate` needs `TransWf(body)`; every consumer that unfolds this has both.
+    // (The unguarded original failed its own well-formedness check — never
+    // individually verified.)
+    if 0 <= cp <= |str| && T.TransWf(body) then
+      var inp := PIV.InpOfCp(str, cp);
+      var dir := LidDir(crv, l);
+      var tlk := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, dir);
+      var res := LT.TreeRes(tlk, LG.Empty, inp, dir);
+      if res.Some? then Some(res.value.1) else None
+    else None
+  }
+
+  /** (L5 F7a) The direction a lid's body tree is walked in, read off the look
+      table: `Lookbehind` ⇒ Backward, every other kind ⇒ Forward (out-of-range
+      lids default to Forward; they never occur under `LookTablesOk`). Agrees
+      with `L.LkDir(T.TrLookaround(crv.f_look_types[l]))` for positive lids. */
+  ghost function LidDir(crv: CP.FCompiled, l: int): WP.Direction {
+    if 0 <= l < |crv.f_look_types| && crv.f_look_types[l].Lookbehind? then WP.Backward else WP.Forward
   }
 
   /** (R2 — definitional identification) `SubFirstLeafAt(A0, lk)` IS the body
@@ -9249,6 +9253,7 @@ module LindenElkLiftSim {
                                     A0: int, lk: AReg.Regs, body: R.regex)
     requires body == M.VBody(crv, A0)
     requires T.TransWf(body)
+    requires LidDir(crv, A0) == WP.Forward                   // (L5 F7a) a lookAHEAD lid
     requires AReg.get_cp(lk, A0).Some? && AReg.get_cp(lk, A0).value <= |str|
     ensures var cp := AReg.get_cp(lk, A0).value;
             var inp := PIV.InpOfCp(str, cp);
@@ -9282,6 +9287,7 @@ module LindenElkLiftSim {
                                        ncap: int, nlook: int, nquant: int) {
     forall lid: nat | lid in NI.TopLookIds(re) ::
       (M.MatchedPosLA(crv, th.look_regs, lid as int)
+       && lid in LTB.LookIds(re)   // (2026-08-25) wf guard for `LookPathDom` (TopLookIds ⊆ LookIds)
        && NI.LookPathDom(re, AI.get_idx(th.look_regs.a_clk, lid as int), th.quant_regs.a_clk, lid))
       ==>
       var lsub := SubFirstLeafAt(rer, crv, str, lid as int, th.look_regs);
@@ -9443,6 +9449,7 @@ module LindenElkLiftSim {
     var rf := M.FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
     var looktype := crv.f_look_types[l];
     assert looktype.Lookahead?;
+    assert LidDir(crv, l) == WP.Forward;                      // (L5 F7a)
     assert AI.capture_direction(looktype) == LAnc.Forward;
     assert CP.capture_regex(looktype, body) == body;
     assert M.VBody(crv, l) == body;
@@ -9523,6 +9530,7 @@ module LindenElkLiftSim {
     var rf := M.FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
     var looktype := crv.f_look_types[l];
     assert looktype.Lookahead?;
+    assert LidDir(crv, l) == WP.Forward;                      // (L5 F7a)
     assert AI.capture_direction(looktype) == LAnc.Forward;
     assert CP.capture_regex(looktype, body) == body;
     assert M.VBody(crv, l) == body;
@@ -9558,6 +9566,85 @@ module LindenElkLiftSim {
     assert g2 in LT.FirstLeaf(t, inp).value.1;
     assert g2 in bestT.value.1 && bestT.value.1[g2] == LT.FirstLeaf(t, inp).value.1[g2];
   }
+  // ==========================================================================
+  // (L5 F7b) LOOKBEHIND lids: `SubFirstLeafAt` is the explicit backward leaf
+  // `FG.BackLeafAt`, and the per-lid engine<->spec ties are the FlipGate LB
+  // twins of `FreshBodyDirectInSubFirstLeaf` / `SubFirstLeafDirectInFresh`
+  // (values through the endpoint swap, exactly `GmtTieInside`'s Lookbehind arm).
+  // ==========================================================================
+
+  /** For a LOOKBEHIND lid, `SubFirstLeafAt` unfolds (`LidDir == Backward`) to
+      the explicit backward leaf `FG.BackLeafAt(body, cp)` at the recorded cp. */
+  lemma SubFirstLeafAtIsBackLeaf(rer: LW.RegExpRecord, crv: CP.FCompiled, str: string, l: int,
+                                 lk: AReg.Regs, body: R.regex)
+    requires body == M.VBody(crv, l) && T.TransWf(body)
+    requires 0 <= l < |crv.f_look_types| && crv.f_look_types[l].Lookbehind?
+    requires AReg.get_cp(lk, l).Some? && 0 <= AReg.get_cp(lk, l).value <= |str|
+    ensures SubFirstLeafAt(rer, crv, str, l, lk)
+         == FG.BackLeafAt(rer, body, str, AReg.get_cp(lk, l).value)
+  {
+    assert LidDir(crv, l) == WP.Backward;
+  }
+
+  /** LB twin of `FreshBodyDirectInSubFirstLeaf`: a DIRECT group of the body live
+      in the fresh BACKWARD body match lands in `SubFirstLeafAt`. */
+  lemma FreshBodyDirectInSubFirstLeafLB(
+      rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+      A0: nat, lk: AReg.Regs, body: R.regex, g2: nat, ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires FST.LBOnlyLooksRE(body)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires !rer.ignoreCase && !rer.multiline
+    requires |ov| == |str| + 1
+    requires qm.ov == ov && AR.LmapOk(body, qm) && OE.OracleColsOk(rer, qm, str)
+    requires body == M.VBody(crv, A0 as int)
+    requires 0 <= (A0 as int) < |crv.f_look_types| && crv.f_look_types[A0 as int].Lookbehind?
+    requires 0 <= (A0 as int) < |crv.f_look_cdns|
+    requires M.MatchedPosLA(crv, lk, A0 as int)
+    requires var cp := AReg.get_cp(lk, A0 as int).value; 0 <= cp <= |str|
+    requires g2 in PIV.CapIds(body) && g2 !in PIV.CapIdsInLooks(body)
+    requires var rf := M.FreshBodyMatch(crv, str, A0 as int, lk, ov, ncap, nlook, nquant);
+             rf.Some?
+             && g2 in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)
+    ensures var lsub := SubFirstLeafAt(rer, crv, str, A0 as int, lk);
+            lsub.Some? && g2 in lsub.value
+  {
+    FG.FreshBodyDirectInBackLeaf(rer, qm, crv, str, ov, A0, lk, body, g2, ncap, nlook, nquant);
+    SubFirstLeafAtIsBackLeaf(rer, crv, str, A0 as int, lk, body);
+  }
+
+  /** LB twin of `SubFirstLeafDirectInFresh`: a DIRECT group present in
+      `SubFirstLeafAt` is live in the fresh BACKWARD body match, with the leaf's
+      ordered range = `SwapRange` of the backward match's reversed read. */
+  lemma SubFirstLeafDirectInFreshLB(
+      rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+      A0: nat, lk: AReg.Regs, body: R.regex, g2: nat, ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires FST.LBOnlyLooksRE(body)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires !rer.ignoreCase && !rer.multiline
+    requires |ov| == |str| + 1
+    requires qm.ov == ov && AR.LmapOk(body, qm) && OE.OracleColsOk(rer, qm, str)
+    requires body == M.VBody(crv, A0 as int)
+    requires 0 <= (A0 as int) < |crv.f_look_types| && crv.f_look_types[A0 as int].Lookbehind?
+    requires 0 <= (A0 as int) < |crv.f_look_cdns|
+    requires M.MatchedPosLA(crv, lk, A0 as int)
+    requires var cp := AReg.get_cp(lk, A0 as int).value; 0 <= cp <= |str|
+    requires g2 in PIV.CapIds(body) && g2 !in PIV.CapIdsInLooks(body)
+    requires M.FreshBodyMatch(crv, str, A0 as int, lk, ov, ncap, nlook, nquant).Some?
+    requires var lsub := SubFirstLeafAt(rer, crv, str, A0 as int, lk);
+             lsub.Some? && g2 in lsub.value
+    ensures var rf := M.FreshBodyMatch(crv, str, A0 as int, lk, ov, ncap, nlook, nquant);
+            var gmb := PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs);
+            g2 in gmb
+            && SubFirstLeafAt(rer, crv, str, A0 as int, lk).value[g2] == LBV.SwapRange(gmb[g2])
+  {
+    SubFirstLeafAtIsBackLeaf(rer, crv, str, A0 as int, lk, body);
+    FG.BackLeafDirectInFresh(rer, qm, crv, str, ov, A0, lk, body, g2, ncap, nlook, nquant);
+  }
+
 
   /** (R2 — DIRECT-case per-`g2` package assembler) Given the RECONSTRUCTED-bank
       facts that A1/A2 (`M.FLookLoopInLookLiveOwnerMatched` / `M.FreshBodyDirect
@@ -9711,7 +9798,7 @@ module LindenElkLiftSim {
     requires cp <= |str|
     requires l >= 0 && (l as nat) in LTB.LookIds(re)
     requires T.TransWf(body)
-    requires L.Positivity(lk) && L.LkDir(lk) == WP.Forward
+    requires L.Positivity(lk) && L.LkDir(lk) == LidDir(crv, l)   // (L5 F7a) direction-generic
     requires EL.PikeLkRegexRec(r1)
     requires r1 == T.Translate(body)
     requires body == M.VBody(crv, l) && NI.LookBodyOfRE(re, l as nat) == body
@@ -9733,12 +9820,12 @@ module LindenElkLiftSim {
     var Sr1 := set g | g in L.DefGroups(r1);
     // (1) SubFirstLeafAt(l, th') unfolds to the spec first leaf of `tlk` at `cp`.
     assert SubFirstLeafAt(rer, crv, str, l, th'.look_regs)
-        == (var res := LT.TreeRes(tlk, LG.Empty, inp, WP.Forward);
+        == (var res := LT.TreeRes(tlk, LG.Empty, inp, L.LkDir(lk));
             if res.Some? then Some(res.value.1) else None)
     by {
       assert M.VBody(crv, l) == body;
       assert T.Translate(body) == r1;
-      assert L.LkDir(lk) == WP.Forward;
+      assert LidDir(crv, l) == L.LkDir(lk);
     }
     // (2) rung 1: the from-Empty first leaf and gm2 agree BOTH ways on Sr1.
     LkResultLandsSubFirstLeaf(rer, lk, r1, inp, tlk, gm, Sr1);
@@ -13983,6 +14070,7 @@ module LindenElkLiftSim {
                                 ncap: int, nlook: int, nquant: int) {
     forall lid: nat | lid in NI.TopLookIds(re) ::
       (M.MatchedPosLA(crv, th.look_regs, lid as int)
+       && lid in LTB.LookIds(re)   // (2026-08-25) wf guard for `LookPathDom` (TopLookIds ⊆ LookIds)
        && NI.LookPathDom(re, AI.get_idx(th.look_regs.a_clk, lid as int), th.quant_regs.a_clk, lid))
       ==>
       var rf := M.FreshBodyMatch(crv, str, lid as int, th.look_regs, ov, ncap, nlook, nquant);
@@ -14844,6 +14932,41 @@ module LindenElkLiftSim {
       M.FreshMatchWf(bc, str, cp, ov, cdn, body, ncap, nlook, nquant);
     }
   }
+  /** (2026-08-25) NESTED twin of `FreshBodyMatchCapWf` (whose depth-1 fragment
+      requires `LookBehindFragmentRE && PlusFragmentRE` cannot hold for a nested
+      host — `ForwardFindRec` called it on one; unprovable precondition). Register
+      wf of the fresh body match for a NESTED body, either direction: the
+      lookahead arm is `M.FreshMatchWfNested`; the lookbehind arm needs no
+      fragment at all (`FFindMatchRegsWf` is fragment-blind). */
+  lemma FreshBodyMatchCapWfNested(crv: CP.FCompiled, str: string, l: int, lk: AReg.Regs,
+                                  ov: LOr.OracleView, ncap: int, nlook: int, nquant: int, body: R.regex)
+    requires body == M.VBody(crv, l)
+    requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires M.MatchedPosLA(crv, lk, l)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires var cp := if AReg.get_cp(lk, l).Some? then AReg.get_cp(lk, l).value else 0;
+             0 <= cp <= |str| && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp)
+    ensures var rf := M.FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
+            rf.Some? ==> PIV.CapRegWf(rf.value.capture_regs)
+  {
+    var cp := if AReg.get_cp(lk, l).Some? then AReg.get_cp(lk, l).value else 0;
+    var looktype := if 0 <= l < |crv.f_look_types| then crv.f_look_types[l] else R.Lookahead;
+    var cdn := if 0 <= l < |crv.f_look_cdns| then crv.f_look_cdns[l] else [];
+    if looktype.Lookbehind? {
+      var bc := CP.compile_to_bytecode(R.reverse_regex(body));
+      var ctx := AI.cp_context(cp, str, LAnc.Backward);
+      assert ctx.nextchar == AI.get_char(str, cp - 1);
+      var inits := AI.FInitState(bc, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                 AReg.init_regs(nquant), 0, ctx);
+      CM.FInitStateRegsWf(bc, cp, ncap, nlook, nquant, 0, ctx);
+      M.FFindMatchRegsWf(bc, str, inits, ov, LAnc.Backward, cdn, ncap, nlook, nquant);
+    } else {
+      assert looktype.Lookahead?;
+      var bc := CP.compile_to_bytecode(body);
+      M.FreshMatchWfNested(bc, str, cp, ov, cdn, body, ncap, nlook, nquant);
+    }
+  }
+
 
   /** INSIDE `S`, PRESENT case — the crux value equality, modulo the (E)
       RE-side path hypothesis. For a present inside-look group `g` captured by
@@ -19978,13 +20101,6 @@ module LindenElkLiftSim {
     TtLkAtForkCoreRec(rer, qm, code, inp, tb, pc, b, acts, x, y);
   }
 
-  lemma TtLkSameTreeRec(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
-                     t1: LT.Tree, t2: LT.Tree, pc: nat, ea: bool)
-    requires !rer.multiline
-    requires TtLkRec(rer, qm, code, inp, t1, pc, ea)
-    requires TtLkRec(rer, qm, code, inp, t2, pc, ea)
-    ensures CE.ProgErase(t1) == CE.ProgErase(t2)
-
   lemma ThreadRepLkStepBeginLoopRec(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
                                  inp: LC.Input, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
                                  S: set<LG.GroupId>, tb: LT.Tree, gmt: LG.GroupMap, th: AI.Thread,
@@ -22297,7 +22413,7 @@ module LindenElkLiftSim {
     requires cp <= |str|
     requires l >= 0 && (l as nat) in LTB.LookIds(re) && (l as nat) in NI.TopLookIds(re)
     requires T.TransWf(body)
-    requires L.Positivity(lk) && L.LkDir(lk) == WP.Forward
+    requires L.Positivity(lk) && L.LkDir(lk) == LidDir(crv, l)   // (L5 F7a) direction-generic
     requires EL.PikeLkRegexRec(r1)
     requires r1 == T.Translate(body)
     requires body == M.VBody(crv, l) && NI.LookBodyOfRE(re, l as nat) == body
@@ -22698,6 +22814,7 @@ module LindenElkLiftSim {
     assert LookNestBackRepCTopDeep(rer, re, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
     if la.Lookahead? {
       assert L.LkDir(lk) == WP.Forward;
+      assert LidDir(crv, l) == WP.Forward by { assert crv.f_look_types[l] == la; }   // (L5 F7a)
       assert M.GmAgreeOn(gm, LG.Empty, set g | g in L.DefGroups(r1)) by {
         forall g: LG.GroupId | g in (set gx | gx in L.DefGroups(r1))
           ensures (g in gm <==> g in LG.Empty) && (g in gm ==> gm[g] == LG.Empty[g])
@@ -25547,6 +25664,10 @@ module LindenElkLiftSim {
             lsub.Some? && g2 in lsub.value
     decreases |LTB.LookIds(host)|
   {
+    // (2026-08-25) this lemma takes the L4-perf OPAQUE bundles (`117b6aa`) but its
+    // body reads their foralls (`FrameEntryOk` at A, `OracleOkSuffix` at cps) —
+    // reveal them. (Never re-verified after the perf pass; failed 3 asserts.)
+    reveal M.OracleSufAllO(), M.FrameEntryAllO();
     var maxlook := R.max_lookaround(ast);
     var cpA := AReg.get_cp(res1, A as int).value;
     RL.AAsArraysLaws(res1);
@@ -25774,6 +25895,10 @@ module LindenElkLiftSim {
       // (κ) LAND via the DEEP carrier, then identify the leaf with SubFirstLeafAt(A, res1)
       DescentLandTopDeep(rer, host, crv, str, ov, Sh, gmtH, rfA, A1, g2, ncap, nlook, nquant);
       assert g2 in gmtH;
+      assert LidDir(crv, A as int) == WP.Forward by {                                   // (L5 F7a)
+        M.LookBodyFactsNested(re, crv, A);
+        var laN: R.lookaround :| LTB.LookEntryOk(crv, A as int, laN, NI.LookBodyOfRE(re, A)) && !laN.Lookbehind?;
+      }
       BodyReplayGmtIsSubFirstLeaf(rer, crv, str, A as int, res1, host);
       assert SubFirstLeafAt(rer, crv, str, A as int, res1) == Some(gmtH);
     }
@@ -25907,6 +26032,10 @@ module LindenElkLiftSim {
                                  0, cdnA).0;
     // the leaf exists (hypothesis) — unfold SubFirstLeafAt to FirstLeaf(t)
     assert LT.FirstLeaf(t, inpA) == LT.TreeRes(t, LG.Empty, inpA, WP.Forward);
+    assert LidDir(crv, A as int) == WP.Forward by {                                     // (L5 F7a)
+      M.LookBodyFactsNested(re, crv, A);
+      var laN: R.lookaround :| LTB.LookEntryOk(crv, A as int, laN, NI.LookBodyOfRE(re, A)) && !laN.Lookbehind?;
+    }
     var lsubA := SubFirstLeafAt(rer, crv, str, A as int, res1);
     assert lsubA.Some? && lsubA.value == LT.FirstLeaf(t, inpA).value.1 && LT.FirstLeaf(t, inpA).Some?;
     assert rfP.Some?;                                            // None-iff
@@ -25974,7 +26103,9 @@ module LindenElkLiftSim {
       assert g in PIV.GmOfLive(host, rfc, rfl, rfq)
           && lsubA.value[g] == PIV.GmOfLive(host, rfc, rfl, rfq)[g];
       // presence + dominance on the FRESH banks
-      FreshBodyMatchCapWf(crv, str, A as int, res1, ov, ncap, nlook, nquant, host);
+      // (2026-08-25) nested host: the depth-1 `FreshBodyMatchCapWf` was unprovable here.
+      M.LookBodyFactsNested(re, crv, A);          // NestedFragmentRE/CapUnique/QuantUnique(host)
+      FreshBodyMatchCapWfNested(crv, str, A as int, res1, ov, ncap, nlook, nquant, host);
       assert PIV.CapRegWf(rfc);
       assert forall c: nat :: c in PIV.CapIds(host) && AI.get_idx(rfc.a_clk, CP.start_reg(c)) < 0
                              ==> AI.get_idx(rfc.a_cp, CP.start_reg(c)) < 0;
@@ -26044,7 +26175,18 @@ module LindenElkLiftSim {
       assert AReg.get_cp(rfA.look_regs, A1 as int).Some?;        // get_idx >= 0 ==> in-range, Some
       assert M.MatchedPosLA(crv, rfA.look_regs, A1 as int) by {
         assert GateStaticAtNested(qm, re, crv, A1 as int, ncap, nlook, nquant);
-        var la1: R.lookaround, b1: R.regex :| LTB.LookEntryOk(crv, A1 as int, la1, b1)
+        // (2026-08-25) full conjunct list (a subset timed out under {:isolate_assertions})
+        var la1: R.lookaround, b1: R.regex :|
+          LTB.LookEntryOk(crv, A1 as int, la1, b1)
+          && T.TransWf(b1) && NR.NestedFragmentRE(b1)
+          && NR.NegLooksLookFreeRE(b1) && M.NoPosLookbehindRE(b1)
+          && qm.looks[A1 as int].0 == T.TrLookaround(la1)
+          && qm.looks[A1 as int].1 == T.Translate(b1)
+          && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(b1))) <= PIV.CapIdsInLooks(re)
+          && var bodycode1 := CP.compile_to_bytecode(b1);
+             |bodycode1| >= 1
+             && PSM.StaticOkNestedRE(qm, b1, bodycode1, |bodycode1| - 1)
+             && PSM.SizesOkRE(b1, ncap, nlook, nquant)
           && ((la1.NegLookbehind? || la1.NegLookahead?) ==> NR.CaptureFreeRE(b1));
         assert crv.f_look_types[A1 as int] == la1;
         assert b1 == bodyA1 by {
@@ -26094,8 +26236,8 @@ module LindenElkLiftSim {
         assert CM.LookCpsLE(rfA.look_regs, |str|);
       }
       var inp1 := PIV.InpOfCp(str, cp1);
+      assert T.TransWf(bodyA1) by { M.TransWfLookBodyOfRE(re, A1); }   // (2026-08-25) hoisted above the Translate use
       var t1 := LFU.ComputeTr(rer, [LS.Areg(T.Translate(bodyA1))], inp1, LG.Empty, WP.Forward);
-      assert T.TransWf(bodyA1) by { M.TransWfLookBodyOfRE(re, A1); }
       assert LT.FirstLeaf(t1, inp1).Some? by {
         assert LL.OracleOkSuffix(rer, qm, inp1);
         assert LL.OracleOkAt(rer, qm, inp1);
@@ -26121,6 +26263,10 @@ module LindenElkLiftSim {
         assert LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(T.Translate(bodyA1))], inp1, LG.Empty, WP.Forward),
                           LG.Empty, inp1, WP.Forward).Some?;
         assert LT.FirstLeaf(t1, inp1) == LT.TreeRes(t1, LG.Empty, inp1, WP.Forward);
+      }
+      assert LidDir(crv, A1 as int) == WP.Forward by {                                  // (L5 F7a)
+        M.LookBodyFactsNested(re, crv, A1);
+        var laN: R.lookaround :| LTB.LookEntryOk(crv, A1 as int, laN, NI.LookBodyOfRE(re, A1)) && !laN.Lookbehind?;
       }
       var lsub1rf := SubFirstLeafAt(rer, crv, str, A1 as int, rfA.look_regs);
       assert bodyA1 == M.VBody(crv, A1 as int) by {
@@ -26347,6 +26493,10 @@ module LindenElkLiftSim {
                         LG.Empty, inpA0, WP.Forward).Some?;
       assert LT.FirstLeaf(t0, inpA0) == LT.TreeRes(t0, LG.Empty, inpA0, WP.Forward);
     }
+    assert LidDir(crv, A0 as int) == WP.Forward by {                                    // (L5 F7a)
+      M.LookBodyFactsNested(re, crv, A0);
+      var laN: R.lookaround :| LTB.LookEntryOk(crv, A0 as int, laN, NI.LookBodyOfRE(re, A0)) && !laN.Lookbehind?;
+    }
     var lsubTh := SubFirstLeafAt(rer, crv, str, A0 as int, thread.look_regs);
     assert bA0 == M.VBody(crv, A0 as int) by {
       NI.LookBodyOfTablesTie(re, crv, A0);
@@ -26531,7 +26681,19 @@ module LindenElkLiftSim {
       assert AReg.get_cp(res1, A0 as int).Some? by { RL.AAsArraysLaws(res1); }
       assert (A0 as int) in qm.looks && 1 <= A0 <= maxlook;
       assert GateStaticAtNested(qm, re, crv, A0 as int, ncap, nlook, nquant);
-      var laA0: R.lookaround, bT: R.regex :| LTB.LookEntryOk(crv, A0 as int, laA0, bT)
+      // (2026-08-25) full conjunct list of `GateStaticAtNested`'s exists (a subset
+      // is not reliably instantiated under {:isolate_assertions}).
+      var laA0: R.lookaround, bT: R.regex :|
+        LTB.LookEntryOk(crv, A0 as int, laA0, bT)
+        && T.TransWf(bT) && NR.NestedFragmentRE(bT)
+        && NR.NegLooksLookFreeRE(bT) && M.NoPosLookbehindRE(bT)
+        && qm.looks[A0 as int].0 == T.TrLookaround(laA0)
+        && qm.looks[A0 as int].1 == T.Translate(bT)
+        && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(bT))) <= PIV.CapIdsInLooks(re)
+        && var bodycode := CP.compile_to_bytecode(bT);
+           |bodycode| >= 1
+           && PSM.StaticOkNestedRE(qm, bT, bodycode, |bodycode| - 1)
+           && PSM.SizesOkRE(bT, ncap, nlook, nquant)
         && ((laA0.NegLookbehind? || laA0.NegLookahead?) ==> NR.CaptureFreeRE(bT));
       assert bT == bA0 by {
         NI.LookBodyOfTablesTie(re, crv, A0);
@@ -26554,6 +26716,12 @@ module LindenElkLiftSim {
         assert AI.capture_type(crv.f_look_types[A0 as int]);
       }
       // the deep landing recursion at (body(A0), A0)
+      // (2026-08-25) `DeepFindRec` takes the L4-perf OPAQUE bundles (`117b6aa`);
+      // this lemma carries their unfolded foralls — reveal to hand them over.
+      // (This call site was never re-verified after the perf pass.)
+      reveal M.OracleSufAllO(), M.FrameEntryAllO();
+      assert M.OracleSufAllO(rer, qm, str);
+      assert M.FrameEntryAllO(crv, re, ast);
       DeepFindRec(rer, qm, crv, str, ast, re, ov, res0, res1, res2,
                   bA0, A0, owner, g, ncap, nlook, nquant);
       var lsub := SubFirstLeafAt(rer, crv, str, A0 as int, res1);

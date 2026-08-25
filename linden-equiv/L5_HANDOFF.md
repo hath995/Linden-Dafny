@@ -49,7 +49,8 @@ not an engine limitation.
 | F4 — statics of the flip-reversed body (`FlipStatics.dfy` + `FlipXRevStaticOkNested`) | ✅ green (39/0) |
 | **F5 — CAPTURES keystone `LkReplayMatchesSpecLBNested` (`FlipKeystone.dfy`)** | ✅ **green (1201/0)** |
 | **F6 — the keystone in `raB`'s OWN registers + the D5 arm's consumer atoms (`FlipGate.dfy`; `ThreadRepLkStepCheckOracleRecLB` in LiftSim)** | ✅ **green (1294/0 + 407/0; F6c LiftSim 2/0)** |
-| F7 — integration: direction-generalize the DEEP carrier (`SubFirstLeafAt`), lift `NoPosLookbehind*`, closedness LB case, all-columns oracle plumbing, API | ❌ **next — multi-session, see §5.7** |
+| **F7a — `SubFirstLeafAt` direction-generic (`LidDir`) + totality guards; F7b — per-lid LB engine↔spec ties (`FlipGate` value half + LiftSim wrappers)** | ✅ **green (all 24 `SubFirstLeafAt` consumers by prefix sweeps, ≤8 in parallel: `SubFirstLeaf` 3/0, `LookNestBackT` 23/0, `Descent` 16/0, `BodyReplayGmtIsSubFirstLeaf` 2/0, `FreshBodyDirectInSubFirstLeaf` 2/0, `DeepGateReqFromCrossing` 2/0, `GatePassDeepRepStep` 2/0, `LiftInvRec` 1/0, `LookNestBackRepBTopDeep` 1/0, `FreshBodyMatchGmOuter` 2/0, `GNotUnderQuantLLookBody` 2/0, `ForwardMemberOne` 1046/0, `LiftPreserveGatePassLkRec` 1623/0, `ReverseCDeepFull` 626/0, `DeepFindRec` 1751/0, `ForwardFindRec` 2663/0, 0 timeouts)** |
+| F7c–F7g — scope lift (`NoPosLookbehind*`), all-columns oracle plumbing, closedness LB case, the D5 arm, API | ❌ **next — see §5.7** |
 | Tree-mirror attempt (TreeMirrorLk.dfy bricks 1-3) | ⚠️ **VACUOUS — dead-end (see §4)** |
 | Integration — lift `NoPosLookbehindRE`, drop `assert false`, API | ❌ not started (= F7, §5.7) |
 
@@ -295,7 +296,42 @@ CONCLUSIONS).
   and both ingredients (`WalkPairLkAtCheckOracleRec`, `GmtTieOutsideAfterGateNested`) are
   direction-generic — **green (2/0, filter-symbol, 3.5 min)**.
 
-**F7 — see §5.7 (the honest sizing; it is a direction-generalization pass, not a wiring pass).**
+**F7a + F7b LANDED (2026-08-25, session 2):**
+- **F7a** LiftSim: `LidDir(crv, l)` (`Lookbehind` ⇒ Backward, else Forward) and `SubFirstLeafAt`
+  walks the lid's body tree in `LidDir`; `DeepGateReqFromCrossing`/`GatePassDeepRepStep` require
+  `L.LkDir(lk) == LidDir(crv, l)` (direction-generic); `BodyReplayGmtIsSubFirstLeaf` takes
+  `LidDir == Forward`; seven lookahead unfold sites discharge `LidDir == Forward` by one
+  `LookBodyFactsNested`/`LookEntryOk` line each. ALL 24 `SubFirstLeafAt` consumers re-verified by
+  prefix sweeps (all 24 `SubFirstLeafAt` consumers by prefix sweeps, ≤8 in parallel: `SubFirstLeaf` 3/0, `LookNestBackT` 23/0, `Descent` 16/0, `BodyReplayGmtIsSubFirstLeaf` 2/0, `FreshBodyDirectInSubFirstLeaf` 2/0, `DeepGateReqFromCrossing` 2/0, `GatePassDeepRepStep` 2/0, `LiftInvRec` 1/0, `LookNestBackRepBTopDeep` 1/0, `FreshBodyMatchGmOuter` 2/0, `GNotUnderQuantLLookBody` 2/0, `ForwardMemberOne` 1046/0, `LiftPreserveGatePassLkRec` 1623/0, `ReverseCDeepFull` 626/0, `DeepFindRec` 1751/0, `ForwardFindRec` 2663/0, 0 timeouts).
+- **F7b** `FlipGate.dfy`: `BackLeafAt` (the explicit backward leaf), `LkResultIsBackLeaf`,
+  `FreshBodyMatchLBUnfold`, **`FreshBodyDirectInBackLeaf`**, **`BackLeafDirectInFresh`** (values through
+  `SwapRange`) — `BackLeaf` 380/0, `LkResultIsBackLeaf` 2/0, `FreshBody` 682/0. LiftSim now
+  `include`s `FlipGate.dfy` (`FG`/`FST` imports; resolution +~15 s) and carries the thin wrappers
+  `SubFirstLeafAtIsBackLeaf`, `FreshBodyDirectInSubFirstLeafLB`, `SubFirstLeafDirectInFreshLB`
+  (2/0 each).
+- **⚠️ AUDIT FINDINGS (pre-existing, all fixed this session; see also `FULL_DEPTH_K_HANDOFF.md`
+  end note):** (1) `SubFirstLeafAt` and the predicates `LookNestBackTTop`/`LookNestBackTTopDeep`
+  FAILED their own well-formedness checks on HEAD (`InpOfCp`/`Translate` and `NI.LookPathDom`
+  preconditions) — never individually verified; per-symbol runs of a top lemma do NOT wf-check
+  helper functions/predicates. Fixed with totality guards (`if 0 <= cp <= |str| && TransWf(body)`;
+  `lid in LookIds(re)` conjunct). (2) **`ReverseCDeepFull` AND `DeepFindRec` (the L4 endpoint's reverse-membership
+  wrapper and its deep per-g landing kernel) have been BROKEN since the perf commit `117b6aa`**:
+  `DeepFindRec`'s requires were switched to the opaque `M.OracleSufAllO`/`M.FrameEntryAllO` bundles,
+  but neither its own body (which reads `FrameEntryOk`/`OracleOkSuffix` from them — no `reveal`
+  anywhere; 3 failed asserts + 6 timeouts) nor `ReverseCDeepFull`'s call site (unfolded foralls)
+  was re-verified — fixed with `reveal M.OracleSufAllO(), M.FrameEntryAllO();` in both
+  (`ReverseCDeepFull` 626/0, `DeepFindRec` 1751/0). (3) **`ForwardFindRec` had three real defects**:
+  it called the DEPTH-1 `FreshBodyMatchCapWf` (requires `LookBehindFragmentRE && PlusFragmentRE`) on a
+  NESTED host — an unprovable precondition; a subset-form `:|` from `GateStaticAtNested` (timeouts);
+  and `T.Translate(bodyA1)` used one line before `TransWf(bodyA1)` was asserted. Fixed: new
+  `FreshBodyMatchCapWfNested` (either direction; the LB arm is fragment-free), full-conjunct `:|`,
+  hoisted assert (2663/0, 0 timeouts; HEAD baseline 2351 verified, 0 errors, 23 timeouts at the same three sites).
+  (3) The two bodyless (admitted, `{:axiom}`-less) lemmas `TtLkSameTree`/`TtLkSameTreeRec` were
+  DEAD (zero callers; superseded by the proven quotient `ETreeRepLkDeterm`) — deleted. `src/Equiv`
+  has NO `assume`/`{:axiom}`/`{:verify false}`/`{:extern}`. Recommendation: a full-file LiftSim
+  verify (or a complete prefix sweep) before any "green" claim is repeated.
+
+**F7c–F7g — see §5.7.**
 
 ### 5.7 F7 — THE REAL PICTURE (scouted 2026-08-25): the DEEP carrier is Forward-hardwired
 
@@ -315,13 +351,13 @@ actually consumes, and which of it is direction-generic:
 `DeepFindRec`/`ReverseCDeepFull`/`DescentProducerTopOwners*`). So F7 is a direction-generalization
 pass over the deep carrier + the scope lift, multi-session. Plan, in order:
 
-- **F7a** `SubFirstLeafAt` → per-lid direction `dir(l) := if crv.f_look_types[l].Lookbehind? then
+- ~~**F7a**~~ ✅ DONE — `SubFirstLeafAt` → per-lid direction `dir(l) := if crv.f_look_types[l].Lookbehind? then
   WP.Backward else WP.Forward` (the deep carrier's value equality is SPEC-to-SPEC — both sides are
   ordered spec maps — so NO `SwapGm` enters here). Re-verify the ~25 consumers: most already state
   `tlk == ComputeTr(..., L.LkDir(lk))`, so their proofs swap `LkDir(lk) == Forward` for
   `LkDir(lk) == dir(l)` (`LookEntryOk` pins `la == f_look_types[l]`). `GatePassDeepRepStep` (:22281)
   and `DeepGateReqFromCrossing` then become generic (drop their Forward `requires`).
-- **F7b** LB twins of the endpoint's per-lid engine↔spec ties `LookNestBackTFromBodyReplay`,
+- ~~**F7b**~~ ✅ DONE (`FG.FreshBodyDirectInBackLeaf`/`FG.BackLeafDirectInFresh` + LiftSim wrappers; `LookNestBackTFromBodyReplay`'s LB twin is F7c/F7f work) — LB twins of the endpoint's per-lid engine↔spec ties `LookNestBackTFromBodyReplay`,
   `FreshBodyDirectInSubFirstLeaf`, `SubFirstLeafDirectInFresh`: the Forward ones consume
   `M.LkReplayMatchesSpecNested` + `FreshBodyMatchGmOuter`; the LB ones consume F6a
   `FG.BackFreshBodyGmTieNested` (with `SwapGm`/`SwapRange`, exactly `GmtTieInside`'s Lookbehind
@@ -440,6 +476,8 @@ no-flip one is `GateAgreeIsFalse`-vacuous; the flip agreement is proven at that 
 (`FlipRev.dfy` 18/0, `FlipMirror.dfy` 32/0, `FlipDisc.dfy` 14/0, `FlipOracle.dfy` 8/0,
 `FlipStatics.dfy` 39/0, `FlipKeystone.dfy` 1201/0). **F6 is GREEN too** (`FlipGate.dfy` 1294/0 +
 407/0: the keystone in `raB`'s own registers, inner-gids-absent, (E4) coverage; LiftSim
-`ThreadRepLkStepCheckOracleRecLB`). Next: **F7** — NOT a wiring pass: the DEEP carrier's
-`SubFirstLeafAt` is Forward-hardwired (72 uses) — see §5.7 for F7a–F7g in order. No backward
-`BoolTreeLk` twin stack; that plan is shelved (§5.5).
+`ThreadRepLkStepCheckOracleRecLB`). **F7a+F7b are GREEN** (the deep carrier is direction-generic via
+`LidDir`; the per-lid LB engine↔spec ties exist as `FG.*` + LiftSim wrappers). Next: **F7c** (scope
+lift replacing `NoPosLookbehindRE`, ~37 requires sites, real consumers listed in §5.7) → F7d–F7g.
+Audit this session fixed three pre-existing LiftSim holes (§5.6 ⚠️). No backward `BoolTreeLk` twin
+stack; that plan is shelved (§5.5).

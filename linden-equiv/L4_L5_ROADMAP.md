@@ -1433,3 +1433,21 @@ positions ≤ cp).
   F7 is therefore a direction-generalization pass (`dir(l)` from `f_look_types[l]`; spec-to-spec, no
   SwapGm in the carrier itself) + the scope lift + all-columns oracle plumbing + the closedness
   ladder LB case — F7a–F7g in `L5_HANDOFF.md` §5.7, multi-session.
+
+### L5 F7a+F7b GREEN + LiftSim AUDIT (2026-08-25, session 2)
+
+- **F7a**: `SubFirstLeafAt` now walks each lid's body tree in `LidDir(crv, l)` (Backward for a
+  lookbehind lid); `DeepGateReqFromCrossing`/`GatePassDeepRepStep` are direction-generic; all 24
+  consumers re-verified by prefix sweeps (all 24 `SubFirstLeafAt` consumers by prefix sweeps, ≤8 in parallel: `SubFirstLeaf` 3/0, `LookNestBackT` 23/0, `Descent` 16/0, `BodyReplayGmtIsSubFirstLeaf` 2/0, `FreshBodyDirectInSubFirstLeaf` 2/0, `DeepGateReqFromCrossing` 2/0, `GatePassDeepRepStep` 2/0, `LiftInvRec` 1/0, `LookNestBackRepBTopDeep` 1/0, `FreshBodyMatchGmOuter` 2/0, `GNotUnderQuantLLookBody` 2/0, `ForwardMemberOne` 1046/0, `LiftPreserveGatePassLkRec` 1623/0, `ReverseCDeepFull` 626/0, `DeepFindRec` 1751/0, `ForwardFindRec` 2663/0, 0 timeouts).
+- **F7b**: `FlipGate.dfy` `BackLeafAt` + `FreshBodyDirectInBackLeaf` + `BackLeafDirectInFresh`
+  (380/0, 2/0, 682/0) and LiftSim wrappers `SubFirstLeafAtIsBackLeaf`/`FreshBodyDirectInSubFirstLeafLB`/
+  `SubFirstLeafDirectInFreshLB` (2/0 each); LiftSim includes FlipGate.
+- **AUDIT (pre-existing, fixed):** `SubFirstLeafAt`, `LookNestBackTTop`, `LookNestBackTTopDeep` failed
+  their own wf checks on HEAD (never individually verified — per-symbol verification of a top lemma
+  does not wf-check helpers); `ReverseCDeepFull` AND `DeepFindRec` were broken since perf commit `117b6aa`
+  (the opaque `OracleSufAllO`/`FrameEntryAllO` bundles were never `reveal`ed — neither in
+  `DeepFindRec`'s body nor at `ReverseCDeepFull`'s call; fixed: 626/0 and 1751/0); `ForwardFindRec` had three real defects
+  (depth-1 `FreshBodyMatchCapWf` on a nested host — unprovable precondition; subset `:|`; `Translate`
+  before `TransWf`) — fixed (2663/0, 0 timeouts, HEAD baseline 2351 verified, 0 errors, 23 timeouts at the same three sites); the two
+  admitted bodyless lemmas `TtLkSameTree`/`TtLkSameTreeRec` were dead (0 callers) and are deleted.
+  `src/Equiv` has no `assume`/`{:axiom}`/`{:verify false}`/`{:extern}`.

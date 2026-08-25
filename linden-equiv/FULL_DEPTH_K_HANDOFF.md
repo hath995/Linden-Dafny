@@ -546,3 +546,30 @@ PROOF cost; opaque-at-source handles the MATCH cost. Both were needed here.
 ### Cleanup note (non-blocking)
 `ProduceOwnerForall` still has a now-redundant `FreshWfGIndep(...)` call before the `forall g`
 (FreshWfAtG calls it internally). Harmless — 413/0 with it — remove in a follow-up if desired.
+
+
+## POST-L4 AUDIT NOTE (2026-08-25, during L5 F7a)
+
+Three pre-existing holes in `LiftSim.dfy` were found and FIXED while generalizing `SubFirstLeafAt`:
+1. **`DeepFindRec` and `ReverseCDeepFull` were broken since `117b6aa`** (the §18 perf pass):
+   `DeepFindRec`'s requires were switched to the opaque `M.OracleSufAllO`/`M.FrameEntryAllO`
+   bundles, but its body reads their foralls with no `reveal` (3 failed asserts, 6 timeouts on HEAD),
+   and `ReverseCDeepFull`'s call site kept the unfolded foralls (3 errors) — neither was re-verified.
+   The "MainTheoremL4 single-shot green" verified only `MainTheoremL4DeepConclude`'s body against
+   callee CONTRACTS, so these two links of the chain were unverified. Fixed with
+   `reveal M.OracleSufAllO(), M.FrameEntryAllO();` in both (`ReverseCDeepFull` 626/0, `DeepFindRec`
+   1751/0); `ReverseCDeepFull`'s `:|` also restated with the full conjunct list.
+1b. **`ForwardFindRec` had three real defects** (HEAD baseline 2351 verified, 0 errors, 23 timeouts at the same three sites): it called the DEPTH-1
+   `FreshBodyMatchCapWf` (requires the look-free `LookBehindFragmentRE && PlusFragmentRE`) on a NESTED
+   host — an unprovable precondition; a subset-form `:|` from `GateStaticAtNested` (timeouts under
+   `{:isolate_assertions}`); `T.Translate(bodyA1)` used before `TransWf(bodyA1)` was asserted. Fixed:
+   `FreshBodyMatchCapWfNested` (LiftSim, either direction), full-conjunct `:|`, hoisted assert (2663/0, 0 timeouts).
+2. **Well-formedness failures never seen**: `SubFirstLeafAt` (`InpOfCp`/`Translate` preconditions)
+   and `LookNestBackTTop`/`LookNestBackTTopDeep` (`NI.LookPathDom` precondition) failed their own wf
+   checks on HEAD — `--filter-symbol` on a lemma never wf-checks the helper functions/predicates it
+   uses. Fixed with totality guards. LESSON: run prefix sweeps over helpers before claiming green.
+3. **Dead admits**: `TtLkSameTree`/`TtLkSameTreeRec` (bodyless, no `{:axiom}`) had zero callers —
+   superseded by the proven `ETreeRepLkDeterm` — deleted.
+Recommendation: one full-file `LiftSim.dfy` verify (or a complete prefix sweep) to certify the L4
+result end-to-end; nothing else in `src/Equiv` is admitted (`assume`/`{:axiom}`/`{:verify false}`/
+`{:extern}`: none).
