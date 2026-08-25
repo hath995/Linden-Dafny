@@ -21115,6 +21115,66 @@ module LindenElkLiftSim {
     GmtTieOutsideAfterGateNested(rer, re, str, lk, r1, tlk, gm, t, l, cp, clk, S);   // GmtTieOutside(t',gm2,S)
   }
 
+  /** (L5 F6c) The LOOKBEHIND twin of `ThreadRepLkStepCheckOracleRec`: the same
+      gate step for a POSITIVE LOOKBEHIND gate (`L.LkDir(lk) == WP.Backward`,
+      `la.Lookbehind?`). Every ingredient is direction-generic
+      (`WalkPairLkAtCheckOracleRec` is oracle-bit based; `GmtTieOutsideAfterGateNested`
+      takes the direction from `L.LkDir(lk)`), so the proof body is verbatim; only
+      the direction pin differs. Fills the (BRICK D5) dead arm of
+      `LiftPreserveGatePassLkRec` once `NoPosLookbehindRE` is lifted (F7). */
+  lemma ThreadRepLkStepCheckOracleRecLB(
+      rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, crv: CP.FCompiled,
+      str: string, ov: LOr.OracleView, S: set<LG.GroupId>, lk: L.Lookaround, r1: L.Regex,
+      tlk: LT.Tree, tc: LT.Tree, gm: LG.GroupMap, t: AI.Thread, l: int, cp: nat, clk: int,
+      body: R.regex, la: R.lookaround, bodycode: RB.code, endl: nat, ngroups: nat,
+      qt: AReg.Regs, ncap: int, nlook: int, nquant: int)
+    requires qm.ov == ov && !rer.ignoreCase && !rer.multiline
+    requires cp <= |str| && t.pc >= 0
+    requires l in qm.looks && qm.looks[l] == (lk, r1)
+    requires L.Positivity(lk) && L.LkDir(lk) == WP.Backward
+    requires LS.LkResult(lk, tlk, gm, PIV.InpOfCp(str, cp)).Some?
+    requires EL.LkGateOk(rer, lk, r1, PIV.InpOfCp(str, cp), tlk, true)
+    // the paired B-subtree at t.pc is the LK gate node (from TtLkAtCheckOracleRec):
+    requires ThreadRepLkRec(rer, qm, re, code, PIV.InpOfCp(str, cp), crv, str, ov, S,
+                         LT.LK(lk, tlk, tc), gm, t, ncap, nlook, nquant)
+    requires forall g :: g in L.DefGroups(r1) ==> g !in gm        // GateAheadClear at this gate
+    // (L4 NESTED) the body may itself contain looks: the depth-1 LookFreeRE(body)
+    // is replaced by the positive-nesting sub-fragment (feeds PikeLkRegexRec(r1)
+    // for the recursive outside-tie); the GateStepValue body-package requires
+    // (StaticOkRE(body)/bodycode/qt/f_look_* rows) are DROPPED with the call.
+    requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body) && la.Lookbehind?
+    requires r1 == T.Translate(body) && lk == T.TrLookaround(la)
+    requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
+    requires 0 <= l < nlook && l < RL.ASize(t.look_regs)
+    // gate position + outside-frame well-formedness (caller supplies); the
+    // continuation walk and outside frame are now DERIVED in the body.
+    requires NR.GetPcRE(code, t.pc as nat) == Some(RB.CheckOracle(l))
+    requires T.TransWf(re) && NR.NestedFragmentRE(re)
+    requires S == LL.LkBodyGroups(T.Translate(re))
+    requires (set g | g in L.DefGroups(r1)) <= S
+    ensures var t' := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(cp as int), clk));
+            var gm2 := LS.LkResult(lk, tlk, gm, PIV.InpOfCp(str, cp)).value;
+            ThreadRepLkRec(rer, qm, re, code, PIV.InpOfCp(str, cp), crv, str, ov, S, tc, gm2, t',
+                        ncap, nlook, nquant)
+  {
+    var inp := PIV.InpOfCp(str, cp);
+    var t' := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(cp as int), clk));
+    var gm2 := LS.LkResult(lk, tlk, gm, inp).value;
+    // (1) INSIDE tie DROPPED (GmtTieInside is not part of ThreadRepLkRec).
+    assert t' == t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(cp as int), clk));
+    // (2) CONTINUATION walk: from the incoming ThreadRepLk's WalkPairLkRec on the LK head.
+    assert LL.OracleOkAt(rer, qm, inp);   // OracleOkSuffix instantiated at inp
+    assert WalkPairLkRec(rer, qm, code, inp, LT.LK(lk, tlk, tc), gm, t.pc as nat, t.exit_allowed);
+    WalkPairLkAtCheckOracleRec(rer, qm, code, inp, LT.LK(lk, tlk, tc), gm, t.pc as nat, t.exit_allowed, l);
+    assert LT.LK(lk, tlk, tc).LK?;        // ⟹ bit true (wrapper: !bit ==> LKFail?)
+    assert (t.pc + 1) as nat == (t.pc as nat) + 1 && t'.exit_allowed == t.exit_allowed;
+    assert WalkPairLkRec(rer, qm, code, inp, tc, gm2, (t.pc + 1) as nat, t.exit_allowed);
+    // (3) OUTSIDE frame: recursive-body confinement (PikeLkRegexRec(r1)).
+    assert GmtTieOutside(re, t, gm, S);   // from the incoming ThreadRepLkRec(LK, gm, t)
+    EL.TranslateFragmentPikeLkRec(body);  // PikeLkRegexRec(Translate(body)) == PikeLkRegexRec(r1)
+    GmtTieOutsideAfterGateNested(rer, re, str, lk, r1, tlk, gm, t, l, cp, clk, S);   // GmtTieOutside(t',gm2,S)
+  }
+
 
   lemma LiftPreserveSkipLkRec(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                            crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,

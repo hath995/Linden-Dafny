@@ -48,10 +48,10 @@ not an engine limitation.
 | F3 — mirror-oracle transport `MirrorOracleColsOk` (`FlipOracle.dfy`) | ✅ green (8/0) |
 | F4 — statics of the flip-reversed body (`FlipStatics.dfy` + `FlipXRevStaticOkNested`) | ✅ green (39/0) |
 | **F5 — CAPTURES keystone `LkReplayMatchesSpecLBNested` (`FlipKeystone.dfy`)** | ✅ **green (1201/0)** |
-| F6 — gate step at the LiftSim D5 dead arm + inner gids (recon_inner LB arm) | ❌ next |
-| F7 — integration: lift `NoPosLookbehind*`, closedness LB case, wire gate atoms, API | ❌ |
+| **F6 — the keystone in `raB`'s OWN registers + the D5 arm's consumer atoms (`FlipGate.dfy`; `ThreadRepLkStepCheckOracleRecLB` in LiftSim)** | ✅ **green (1294/0 + 407/0; F6c LiftSim 2/0)** |
+| F7 — integration: direction-generalize the DEEP carrier (`SubFirstLeafAt`), lift `NoPosLookbehind*`, closedness LB case, all-columns oracle plumbing, API | ❌ **next — multi-session, see §5.7** |
 | Tree-mirror attempt (TreeMirrorLk.dfy bricks 1-3) | ⚠️ **VACUOUS — dead-end (see §4)** |
-| Integration — lift `NoPosLookbehindRE`, drop `assert false`, API | ❌ not started (F6–F7) |
+| Integration — lift `NoPosLookbehindRE`, drop `assert false`, API | ❌ not started (= F7, §5.7) |
 
 ---
 
@@ -270,21 +270,79 @@ CONCLUSIONS).
   `GmAgreeOn(gmMain, Empty, DefGroups)`. Conclusion: the depth-1 keystone's shape with `bcF :=
   compile(FST.FXR(body))` and SURFACE `S = DefGroups \ LkBodyGroups`.
 
-**F6/F7 — what remains (next session):**
-- **F6a** `BackFreshBodyGmTieNested`: re-express F5's `rfF`-form in terms of `raB`'s own registers
-  (depth-1 template `LBK.BackFreshBodyGmTie` LookBehindKeystone.dfy:~510: `BackwardReplayMirror` +
-  `BackCapsInRange` + `MirrorRegsInvol` + `GmOfLiveClkCong`) — nested: swap in T2a + F0.
-- **F6b** `GateStepValueLBNested` at the LiftSim D5 dead arm (LiftSim.dfy:22436-22441): copy
-  `GateStepValueLB` (:2824) → nested premises; supply `OE.OracleColsOk(rer, qm, str)` from the site's
-  all-columns fact; establish `LBOnlyLooksRE(body)` from the NEW v1 fragment predicate; `GmtTieInside`
-  re-establishment for INNER gids via the direction-generic recon_inner seam
-  (`LkReplayMatchesSpecNestedFull` pattern, innermost-owner resolution; inner LB lids recurse through
-  F5 at strictly smaller bodies).
-- **F7**: lift `NoPosLookbehind*` (LiftSim `L4Scope`:26517, `LookRowsFromTablesNested`
-  MainTheorem:17015, `SupportedL4` ApiMatch:71) to "positive lookbehinds allowed iff their bodies are
-  `LBOnlyLooksRE`"; closedness ladder LB case (`FirstLeafClosedRec` MainTheorem:2627 — transport
-  `ClosedGm` across F1's mirror or derive from the keystone's engine tie); wire `OracleColumnSpecNested`
-  into `OracleOk`; §18 opaque-at-source perf pass; API.
+**F6 LANDED (2026-08-25):**
+- **F6a+F6b** `FlipGate.dfy` (`LindenElkFlipGate`, includes `FlipKeystone.dfy`; **1294/0 first try**,
+  4 min): `BackFreshCoreNested` (the T2a+F0 core: `rfF == MirrorThread(raB)`, caps involution via
+  `LBK.BackCapsInRange`+`MIR.MirrorRegsInvol`, wf via `M.FFindMatchRegsWf` on the backward run
+  (NO fragment premise needed — `FreshMatchWfLB`'s `PlusFragmentRE` was never used) +
+  `M.FreshMatchWfNested` at `FXR(body)`, `PIV.GmOfLiveClkCong` readout congruence);
+  **`BackFreshBodyGmTieNested`** (F6a — the nested twin of `LBK.BackFreshBodyGmTie`:
+  `SwapGm(LkResult.value) ~ GmOfLive(body, raB.*)` on the SURFACE gids; premises = F5's minus the
+  cap/lk/qt banks); `CapIdsInLooksFXR` (`CapIdsInLooks(FXR(body)) == CapIdsInLooks(body)` via
+  `LkBodyGroupsEqCapIdsInLooks` + `LkBodyGroupsFlipL` + `TML.LkBodyGroupsRevL`);
+  **`FreshBodyMatchGmOuterLBNested`** (F6b — the nested-backward twin of LiftSim's
+  `FreshBodyMatchGmOuter`: `raB.caps` shares its CLOCK bank with `rfF.caps` (`MirrorRegs` keeps
+  `a_clk`), `M.MainMatchInsideCapsInitNested` at `FXR(body)` keeps the inside-look start slots at
+  init, then `PIV.GmOfLiveInsideLookAbsent`; `MainMatchInsideCapsInitNested` is Forward-only, hence
+  the mirror route).
+- **(E4) coverage** `GateCrossCoverageLBNested` (**407/0 first try**): every body group LIVE in
+  `raB` lands in the passing gate's `LkResult` — inner gids never live (F6b), surface via F6a
+  (`SwapGm` keeps keys). The LB twin of the `la.Lookahead?` (E4) block in
+  `LiftPreserveGatePassLkRec` (its `M.LkReplayMatchesSpecNested` + `FreshBodyMatchGmOuter` use).
+- **F6c** `ThreadRepLkStepCheckOracleRecLB` (LiftSim:21125): the VERBATIM body of the Forward nested
+  gate step with `L.LkDir(lk) == WP.Backward` / `la.Lookbehind?` — the nested `*Rec` path carries NO
+  inside tie at the gate (`GmtTieInside` is dropped there; captures are consumed at the endpoint),
+  and both ingredients (`WalkPairLkAtCheckOracleRec`, `GmtTieOutsideAfterGateNested`) are
+  direction-generic — **green (2/0, filter-symbol, 3.5 min)**.
+
+**F7 — see §5.7 (the honest sizing; it is a direction-generalization pass, not a wiring pass).**
+
+### 5.7 F7 — THE REAL PICTURE (scouted 2026-08-25): the DEEP carrier is Forward-hardwired
+
+F6 scouting established what the LiftSim D5 dead arm (`LiftPreserveGatePassLkRec`, LiftSim:22333;
+its three `assert false` LB arms at :22500 gate step / :22668 (E4) coverage / :22720 (E4 DEEP))
+actually consumes, and which of it is direction-generic:
+
+| D5 obligation | direction status | LB atom |
+|---|---|---|
+| gate step: continuation walk + outside frame (`ThreadRepLkStepCheckOracleRec` :21065) | GENERIC (`WalkPairLkAtCheckOracleRec` is oracle-bit based; `GmtTieOutsideAfterGateNested` takes `L.LkDir(lk)`); no inside tie in the nested `*Rec` path | `ThreadRepLkStepCheckOracleRecLB` (:21125, F6c) |
+| (E4) KEY-level crossing coverage, carrier `LookNestBackTTop` (:13981) | GENERIC (dispatches through `M.FreshBodyMatch` on `f_look_types`) | `FG.GateCrossCoverageLBNested` (F6) |
+| (E4 DEEP) VALUE-level crossing coverage, carrier `LookNestBackTTopDeep` (:9279) | **Forward-HARDWIRED**: `SubFirstLeafAt` (:9230) builds `ComputeTr(..., WP.Forward)`/`TreeRes(..., WP.Forward)` for EVERY lid; `DeepGateReqFromCrossing` (:9707) pins `LkDir(lk) == Forward` to identify it; `LookNestBackTFromBodyReplay` (:24208) requires `la.Lookahead?` + `NoPosLookbehindRE(body)` | none yet — F7a |
+
+`SubFirstLeafAt` has 72 uses in ~25 LiftSim lemmas/predicates (incl. `LiftInvRec` :529 via
+`LookNestBackTTopDeep`, `BodyReplayGmtIsSubFirstLeaf` :9248, `FreshBodyDirectInSubFirstLeaf` :9411,
+`SubFirstLeafDirectInFresh` :9490, and the descent stack `DescentPackageDirectFull`/`ForwardFindRec`/
+`DeepFindRec`/`ReverseCDeepFull`/`DescentProducerTopOwners*`). So F7 is a direction-generalization
+pass over the deep carrier + the scope lift, multi-session. Plan, in order:
+
+- **F7a** `SubFirstLeafAt` → per-lid direction `dir(l) := if crv.f_look_types[l].Lookbehind? then
+  WP.Backward else WP.Forward` (the deep carrier's value equality is SPEC-to-SPEC — both sides are
+  ordered spec maps — so NO `SwapGm` enters here). Re-verify the ~25 consumers: most already state
+  `tlk == ComputeTr(..., L.LkDir(lk))`, so their proofs swap `LkDir(lk) == Forward` for
+  `LkDir(lk) == dir(l)` (`LookEntryOk` pins `la == f_look_types[l]`). `GatePassDeepRepStep` (:22281)
+  and `DeepGateReqFromCrossing` then become generic (drop their Forward `requires`).
+- **F7b** LB twins of the endpoint's per-lid engine↔spec ties `LookNestBackTFromBodyReplay`,
+  `FreshBodyDirectInSubFirstLeaf`, `SubFirstLeafDirectInFresh`: the Forward ones consume
+  `M.LkReplayMatchesSpecNested` + `FreshBodyMatchGmOuter`; the LB ones consume F6a
+  `FG.BackFreshBodyGmTieNested` (with `SwapGm`/`SwapRange`, exactly `GmtTieInside`'s Lookbehind
+  arm) + F6b `FG.FreshBodyMatchGmOuterLBNested`.
+- **F7c** scope predicate + lifts: replace `M.NoPosLookbehindRE(re)` (MainTheorem:15963; ~25
+  `requires` sites at 14065–17954, `LookBodyFactsNested` :16006's `!la0.Lookbehind?` pin,
+  `LookRowsFromTablesNested` :17006, LiftSim `L4Scope` :26577, `SupportedL4` ApiMatch:69) by an L5
+  scope "positive lookbehinds allowed iff their bodies are `FST.LBOnlyLooksRE` (+ the v1 fragment)",
+  with the per-lid dispatch `la.Lookahead? ⇒ forward keystone | la.Lookbehind? ⇒ F6`.
+- **F7d** all-columns oracle plumbing: F5/F6 need `OE.OracleColsOk(rer, qm, str)` (the backward body
+  reads positions ≤ cp) whereas the lift invariant carries only the from-cp `LL.OracleOkSuffix`.
+  Thread the whole-string fact (available at the top via `OracleOkFromColumns`/`OracleSufAllO`) as an
+  extra `requires` down to `LiftPreserveGatePassLkRec` and the endpoint ties.
+- **F7e** closedness ladder LB case (`BodyLeafClosedFromBelow` :2212, `FirstLeafClosedRecAux` :2254,
+  `FirstLeafClosedRec` :2627 — the ONLY `FwdPos*` surface; single caller `MainExtractionNested`
+  :10224): transport `ClosedGm` across F1's mirror or derive it from the keystone's engine tie.
+- **F7f** the D5 arm itself: replace the three `assert false` with F6c + `GateCrossCoverageLBNested`
+  + the F7a-generalized `GatePassDeepRepStep`; site statics: `LBOnlyLooksRE(body)` from the F7c
+  scope, `LmapOk(body, qm)` from `StaticOkNestedRE`, `LookUnique(body)` via `LookBodyLookUnique`.
+- **F7g** wire `OracleColumnSpecNested` (§3) into `OracleOk`; §18 opaque-at-source perf pass on
+  `MainTheorem`; `SupportedL5`/`ApiReasoning`.
 
 **F4/F5 scouting results (the ingredient list that was executed above, kept for reference):**
 - Put F4+F5 in one `FlipKeystone.dfy` including `MainTheorem.dfy` + `FlipOracle.dfy` (+
@@ -366,7 +424,8 @@ so captures + integration do not complete independently.
 | `src/Equiv/LookLeaves.dfy` | `OracleOkAt`/`OracleOkSuffix`, `LkBodyGroups`, `LkConfinedTreeK`, `BackwardBodyConfinedTree`, `ComputeTrLkConfinedK` |
 | `src/Equiv/TreeMirrorLk.dfy` | ⚠️ mirror lemmas VACUOUS (§4); establishments/confinement SOUND & reusable |
 | `src/Equiv/FlipRev.dfy` | **F0 (green 18/0)**: `FlipLk`/`FlipL`/`FlipRE`, `TranslateFlip`, `FlipCompileToBytecode` (the wedge), `FlipGateAgree*` (cured witness) |
-| `src/Equiv/LiftSim.dfy` | wire-in points: `GateStepValueLB` (2824, the depth-1 template for F6), `OracleColumnNested`/`OracleOkRowsNested` (27337/27494), the D5 `assert false` (~22441) |
+| `src/Equiv/FlipGate.dfy` | **F6 (green 1294/0 + 407/0)**: `BackFreshCoreNested`, `BackFreshBodyGmTieNested` (F6a), `CapIdsInLooksFXR`, `FreshBodyMatchGmOuterLBNested` (F6b), `GateCrossCoverageLBNested` (E4) |
+| `src/Equiv/LiftSim.dfy` | wire-in points: `GateStepValueLB` (2824, the depth-1 template for F6), `OracleColumnNested`/`OracleOkRowsNested` (27337/27494), the D5 `assert false` arms (22500/22668/22720), `ThreadRepLkStepCheckOracleRecLB` (21125, F6c), `SubFirstLeafAt` (9230 — the F7a target) |
 
 ---
 
@@ -379,6 +438,8 @@ L4 forward keystone applies, and the spec side closes with the FLIP tree mirror 
 no-flip one is `GateAgreeIsFalse`-vacuous; the flip agreement is proven at that exact witness).
 **F0–F5 are ALL GREEN — the captures keystone `LkReplayMatchesSpecLBNested` is PROVEN**
 (`FlipRev.dfy` 18/0, `FlipMirror.dfy` 32/0, `FlipDisc.dfy` 14/0, `FlipOracle.dfy` 8/0,
-`FlipStatics.dfy` 39/0, `FlipKeystone.dfy` 1201/0). Next: **F6** (`BackFreshBodyGmTieNested` +
-`GateStepValueLBNested` at the LiftSim D5 dead arm + inner gids via recon_inner) and **F7**
-integration — see §5.6. No backward `BoolTreeLk` twin stack; that plan is shelved (§5.5).
+`FlipStatics.dfy` 39/0, `FlipKeystone.dfy` 1201/0). **F6 is GREEN too** (`FlipGate.dfy` 1294/0 +
+407/0: the keystone in `raB`'s own registers, inner-gids-absent, (E4) coverage; LiftSim
+`ThreadRepLkStepCheckOracleRecLB`). Next: **F7** — NOT a wiring pass: the DEEP carrier's
+`SubFirstLeafAt` is Forward-hardwired (72 uses) — see §5.7 for F7a–F7g in order. No backward
+`BoolTreeLk` twin stack; that plan is shelved (§5.5).

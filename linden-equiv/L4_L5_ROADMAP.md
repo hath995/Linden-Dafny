@@ -1412,3 +1412,24 @@ bricks. Remaining: F6 (gate step at the LiftSim D5 dead arm + inner gids) and F7
 `L5_HANDOFF.md` §5.6 has the exact pointers and the keystone's consumer contract (note: it needs
 ALL-columns oracle correctness, `OE.OracleColsOk`, not a from-cp suffix — the backward body reads
 positions ≤ cp).
+
+### L5 F6 GREEN (2026-08-25): the keystone in the backward run's OWN registers; F7 sized honestly
+
+- `FlipGate.dfy` (**1294/0 + 407/0, both first try**): `BackFreshCoreNested` (T2a+F0 core — rfF ==
+  MirrorThread(raB), caps involution, wf, readout congruence), **`BackFreshBodyGmTieNested`** (F6a —
+  the nested twin of `LBK.BackFreshBodyGmTie`: `SwapGm(LkResult) ~ GmOfLive(body, raB.*)` on the
+  surface gids), `CapIdsInLooksFXR`, **`FreshBodyMatchGmOuterLBNested`** (F6b — inner gids are never
+  live in the fresh backward match; via the mirror's shared clock bank because
+  `MainMatchInsideCapsInitNested` is Forward-only), **`GateCrossCoverageLBNested`** ((E4) coverage:
+  every live body group lands in the gate's LkResult). LiftSim: `ThreadRepLkStepCheckOracleRecLB`
+  (F6c — the Forward nested gate step's body verbatim under `LkDir == Backward`; the nested `*Rec`
+  path carries no inside tie at the gate, and both ingredients are direction-generic).
+- **F7 finding (the important one):** the D5 dead arm has THREE obligations. The gate step and the
+  KEY-level (E4) coverage (`LookNestBackTTop`, dispatching through `M.FreshBodyMatch`) are
+  direction-generic and now have LB atoms. The VALUE-level (E4 DEEP) coverage is NOT: the deep
+  carrier `LookNestBackTTopDeep` goes through **`SubFirstLeafAt` (LiftSim:9230), which builds the
+  spec sub-tree with `WP.Forward` hard-wired for every lid** (72 uses in ~25 lemmas/predicates, incl.
+  `LiftInvRec`, the descent stack, and `LookNestBackTFromBodyReplay` which requires `la.Lookahead?`).
+  F7 is therefore a direction-generalization pass (`dir(l)` from `f_look_types[l]`; spec-to-spec, no
+  SwapGm in the carrier itself) + the scope lift + all-columns oracle plumbing + the closedness
+  ladder LB case — F7a–F7g in `L5_HANDOFF.md` §5.7, multi-session.
