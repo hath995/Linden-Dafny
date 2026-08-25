@@ -455,4 +455,182 @@ module LindenElkFlipGate {
       }
     }
   }
+
+  // ===========================================================================
+  // F7b (value half): the fresh BACKWARD body match vs the lid's OWN backward
+  // spec leaf — the LB twins of LiftSim's `FreshBodyDirectInSubFirstLeaf` /
+  // `SubFirstLeafDirectInFresh`, stated on the explicit backward `TreeRes`
+  // (`BackLeafAt`). LiftSim identifies `BackLeafAt` with `SubFirstLeafAt` under
+  // `LidDir(crv, l) == WP.Backward` (thin wrappers, F7b proper).
+  // ===========================================================================
+
+  /** The lid's own BACKWARD spec leaf at the recorded cp: exactly what LiftSim's
+      `SubFirstLeafAt` unfolds to for a lookbehind lid. */
+  ghost function BackLeafAt(rer: LW.RegExpRecord, body: R.regex, str: string, cp: nat)
+      : Option<LG.GroupMap>
+    requires T.TransWf(body) && cp <= |str|
+  {
+    var inp := PIV.InpOfCp(str, cp);
+    var tlk := FU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Backward);
+    var res := LT.TreeRes(tlk, LG.Empty, inp, WP.Backward);
+    if res.Some? then Some(res.value.1) else None
+  }
+
+  /** `LkResult(LookBehind, tlk, Empty, inp)` at the body's own backward tree IS
+      `BackLeafAt` (definitional: a positive look's `LkResult` is the tree's
+      `TreeRes` group map in `LkDir`). */
+  lemma LkResultIsBackLeaf(rer: LW.RegExpRecord, body: R.regex, str: string, cp: nat)
+    requires T.TransWf(body) && cp <= |str|
+    ensures var inp := PIV.InpOfCp(str, cp);
+            var tlk := FU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Backward);
+            LS.LkResult(T.TrLookaround(R.Lookbehind), tlk, LG.Empty, inp) == BackLeafAt(rer, body, str, cp)
+  {
+    var inp := PIV.InpOfCp(str, cp);
+    var tlk := FU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Backward);
+    assert T.TrLookaround(R.Lookbehind) == L.LookBehind;
+    assert L.Positivity(L.LookBehind) && L.LkDir(L.LookBehind) == WP.Backward;
+    assert LS.LkResult(L.LookBehind, tlk, LG.Empty, inp)
+        == (match LT.TreeRes(tlk, LG.Empty, inp, WP.Backward)
+            case None => None
+            case Some(pair) => Some(pair.1));
+  }
+
+  /** The fresh body match of a LOOKBEHIND lid, spelled out: the backward run of
+      `compile(reverse_regex(body))` from init registers at the recorded cp with
+      the lid's cdns row. */
+  lemma FreshBodyMatchLBUnfold(crv: CP.FCompiled, str: string, l: int, lk: AReg.Regs,
+                               ov: LOr.OracleView, body: R.regex, ncap: int, nlook: int, nquant: int)
+    requires body == M.VBody(crv, l)
+    requires 0 <= l < |crv.f_look_types| && crv.f_look_types[l].Lookbehind?
+    requires 0 <= l < |crv.f_look_cdns|
+    requires AReg.get_cp(lk, l).Some?
+    ensures var cp := AReg.get_cp(lk, l).value;
+            var bcB := CP.compile_to_bytecode(R.reverse_regex(body));
+            M.FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant)
+            == AI.FFindMatch(bcB, str,
+                 AI.FInitState(bcB, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                               AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
+                 ov, LAnc.Backward, crv.f_look_cdns[l]).0
+  {
+    var looktype := crv.f_look_types[l];
+    assert looktype.Lookbehind?;
+    assert AI.capture_direction(looktype) == LAnc.Backward;
+    assert CP.capture_regex(looktype, body) == R.reverse_regex(body);
+  }
+
+  /** LB twin of LiftSim's `FreshBodyDirectInSubFirstLeaf`: a DIRECT group of the
+      body (not inside an inner look) that is LIVE in the fresh BACKWARD body match
+      lands in the lid's own backward spec leaf. Via `GateCrossCoverageLBNested`
+      at `gmMain = Empty`. */
+  lemma {:isolate_assertions} FreshBodyDirectInBackLeaf(
+      rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+      A0: nat, lk: AReg.Regs, body: R.regex, g2: nat, ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires FST.LBOnlyLooksRE(body)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires !rer.ignoreCase && !rer.multiline
+    requires |ov| == |str| + 1
+    requires qm.ov == ov && AR.LmapOk(body, qm) && OE.OracleColsOk(rer, qm, str)
+    // A0's table row: VBody == body, cdns row present, look type is a lookBEHIND.
+    requires body == M.VBody(crv, A0 as int)
+    requires 0 <= (A0 as int) < |crv.f_look_types| && crv.f_look_types[A0 as int].Lookbehind?
+    requires 0 <= (A0 as int) < |crv.f_look_cdns|
+    requires M.MatchedPosLA(crv, lk, A0 as int)
+    requires var cp := AReg.get_cp(lk, A0 as int).value; 0 <= cp <= |str|
+    requires g2 in PIV.CapIds(body) && g2 !in PIV.CapIdsInLooks(body)
+    requires var rf := M.FreshBodyMatch(crv, str, A0 as int, lk, ov, ncap, nlook, nquant);
+             rf.Some?
+             && g2 in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)
+    ensures var cp := AReg.get_cp(lk, A0 as int).value;
+            var lsub := BackLeafAt(rer, body, str, cp);
+            lsub.Some? && g2 in lsub.value
+  {
+    var l := A0 as int;
+    var cpN: nat := AReg.get_cp(lk, l).value;
+    var inp := PIV.InpOfCp(str, cpN);
+    var cdns := crv.f_look_cdns[l];
+    var rf := M.FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
+    FreshBodyMatchLBUnfold(crv, str, l, lk, ov, body, ncap, nlook, nquant);
+    var bcB := CP.compile_to_bytecode(R.reverse_regex(body));
+    var raB := AI.FFindMatch(bcB, str,
+                 AI.FInitState(bcB, cpN, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                               AReg.init_regs(nquant), 0, AI.cp_context(cpN, str, LAnc.Backward)),
+                 ov, LAnc.Backward, cdns).0;
+    assert rf == raB;
+    var tlk := FU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Backward);
+    assert M.GmAgreeOn(LG.Empty, LG.Empty, set g | g in L.DefGroups(T.Translate(body)));
+    GateCrossCoverageLBNested(rer, qm, body, str, cpN, ov, cdns, R.Lookbehind, tlk, LG.Empty,
+                              ncap, nlook, nquant, |str|);
+    var lkr := LS.LkResult(T.TrLookaround(R.Lookbehind), tlk, LG.Empty, inp);
+    assert lkr.Some? && g2 in lkr.value;
+    LkResultIsBackLeaf(rer, body, str, cpN);
+    assert BackLeafAt(rer, body, str, cpN) == lkr;
+  }
+
+  /** LB twin of LiftSim's `SubFirstLeafDirectInFresh`: a DIRECT group present in
+      the lid's own backward spec leaf is live in the fresh BACKWARD body match,
+      and the leaf's (ordered) range is the ENDPOINT SWAP of the backward match's
+      (reversed) read — the `looktype.Lookbehind?` arm of `GmtTieInside`. Via F6a. */
+  lemma {:isolate_assertions} BackLeafDirectInFresh(
+      rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+      A0: nat, lk: AReg.Regs, body: R.regex, g2: nat, ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires FST.LBOnlyLooksRE(body)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires !rer.ignoreCase && !rer.multiline
+    requires |ov| == |str| + 1
+    requires qm.ov == ov && AR.LmapOk(body, qm) && OE.OracleColsOk(rer, qm, str)
+    requires body == M.VBody(crv, A0 as int)
+    requires 0 <= (A0 as int) < |crv.f_look_types| && crv.f_look_types[A0 as int].Lookbehind?
+    requires 0 <= (A0 as int) < |crv.f_look_cdns|
+    requires M.MatchedPosLA(crv, lk, A0 as int)
+    requires var cp := AReg.get_cp(lk, A0 as int).value; 0 <= cp <= |str|
+    requires g2 in PIV.CapIds(body) && g2 !in PIV.CapIdsInLooks(body)
+    requires M.FreshBodyMatch(crv, str, A0 as int, lk, ov, ncap, nlook, nquant).Some?
+    requires var cp := AReg.get_cp(lk, A0 as int).value;
+             var lsub := BackLeafAt(rer, body, str, cp);
+             lsub.Some? && g2 in lsub.value
+    ensures var cp := AReg.get_cp(lk, A0 as int).value;
+            var rf := M.FreshBodyMatch(crv, str, A0 as int, lk, ov, ncap, nlook, nquant);
+            var gmb := PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs);
+            g2 in gmb
+            && BackLeafAt(rer, body, str, cp).value[g2] == LBV.SwapRange(gmb[g2])
+  {
+    var l := A0 as int;
+    var cpN: nat := AReg.get_cp(lk, l).value;
+    var inp := PIV.InpOfCp(str, cpN);
+    var cdns := crv.f_look_cdns[l];
+    var rf := M.FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
+    FreshBodyMatchLBUnfold(crv, str, l, lk, ov, body, ncap, nlook, nquant);
+    var bcB := CP.compile_to_bytecode(R.reverse_regex(body));
+    var raB := AI.FFindMatch(bcB, str,
+                 AI.FInitState(bcB, cpN, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                               AReg.init_regs(nquant), 0, AI.cp_context(cpN, str, LAnc.Backward)),
+                 ov, LAnc.Backward, cdns).0;
+    assert rf == raB;
+    var tr := T.Translate(body);
+    var tlk := FU.ComputeTr(rer, [LS.Areg(tr)], inp, LG.Empty, WP.Backward);
+    assert M.GmAgreeOn(LG.Empty, LG.Empty, set g | g in L.DefGroups(tr));
+    BackFreshBodyGmTieNested(rer, qm, body, str, cpN, ov, cdns, R.Lookbehind, tlk, LG.Empty,
+                             ncap, nlook, nquant, |str|);
+    var lkr := LS.LkResult(T.TrLookaround(R.Lookbehind), tlk, LG.Empty, inp);
+    LkResultIsBackLeaf(rer, body, str, cpN);
+    assert BackLeafAt(rer, body, str, cpN) == lkr;
+    assert lkr.Some? && g2 in lkr.value;
+    var G := PIV.GmOfLive(body, raB.value.capture_regs, raB.value.look_regs, raB.value.quant_regs);
+    var S := set g | g in L.DefGroups(tr) && g !in LL.LkBodyGroups(tr);
+    var Lsw := LBV.SwapGm(lkr.value);
+    assert M.GmAgreeOn(Lsw, G, S);
+    M.TranslateDefGroupsEqCapIds(body);
+    M.LkBodyGroupsEqCapIdsInLooks(body);
+    assert g2 in (set gx | gx in L.DefGroups(tr)) && g2 !in LL.LkBodyGroups(tr);
+    assert g2 in S;
+    assert g2 in Lsw && Lsw[g2] == LBV.SwapRange(lkr.value[g2]);
+    assert (g2 in Lsw <==> g2 in G) && (g2 in Lsw ==> Lsw[g2] == G[g2]);
+    assert g2 in G && LBV.SwapRange(lkr.value[g2]) == G[g2];
+    LBV.SwapRangeInvol(lkr.value[g2]);
+    assert lkr.value[g2] == LBV.SwapRange(G[g2]);
+  }
 }
