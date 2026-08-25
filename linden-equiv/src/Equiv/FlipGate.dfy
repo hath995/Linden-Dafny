@@ -633,4 +633,21 @@ module LindenElkFlipGate {
     LBV.SwapRangeInvol(lkr.value[g2]);
     assert lkr.value[g2] == LBV.SwapRange(G[g2]);
   }
+
+  // ===========================================================================
+  // (L5 F7c) scope bridge: the Flip bricks' `FST.LBOnlyLooksRE` IS the base
+  // `NR.LBOnlyLooksRE` (identical definitions; NfaRepRE cannot see FlipStatics).
+  // ===========================================================================
+  lemma LBOnlyEquiv(r: R.regex)
+    ensures FST.LBOnlyLooksRE(r) <==> NR.LBOnlyLooksRE(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => LBOnlyEquiv(r1); LBOnlyEquiv(r2);
+    case Re_con(r1, r2) => LBOnlyEquiv(r1); LBOnlyEquiv(r2);
+    case Re_quant(_, _, _, r1) => LBOnlyEquiv(r1);
+    case Re_capture(_, r1) => LBOnlyEquiv(r1);
+    case Re_lookaround(_, _, r1) => LBOnlyEquiv(r1);
+    case _ =>
+  }
 }

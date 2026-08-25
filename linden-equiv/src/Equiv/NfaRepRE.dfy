@@ -625,6 +625,38 @@ module LindenElkNfaRep {
     case _ => true
   }
 
+  /** RAW (L5): every look inside is LOOKBEHIND-flavoured (positive or negative)
+      — the v1 shape of a positive lookbehind's body (`Translate` lands in
+      `SD.GroupOkLB`; the gate side `OracleColumnSpecNested` and the captures
+      keystone `LkReplayMatchesSpecLBNested` both need it). */
+  predicate LBOnlyLooksRaw(ra: R.raw_regex)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) => LBOnlyLooksRaw(r1) && LBOnlyLooksRaw(r2)
+    case Raw_con(r1, r2) => LBOnlyLooksRaw(r1) && LBOnlyLooksRaw(r2)
+    case Raw_quant(_, r1) => LBOnlyLooksRaw(r1)
+    case Raw_count(_, r1) => LBOnlyLooksRaw(r1)
+    case Raw_capture(r1) => LBOnlyLooksRaw(r1)
+    case Raw_lookaround(look, r1) => (look.Lookbehind? || look.NegLookbehind?) && LBOnlyLooksRaw(r1)
+    case _ => true
+  }
+
+  /** RAW (L5 scope): positive lookbehinds are allowed iff their bodies are
+      `LBOnlyLooksRaw`. Strictly weaker than `NoPosLookbehindRaw`. */
+  predicate L5ScopeRaw(ra: R.raw_regex)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) => L5ScopeRaw(r1) && L5ScopeRaw(r2)
+    case Raw_con(r1, r2) => L5ScopeRaw(r1) && L5ScopeRaw(r2)
+    case Raw_quant(_, r1) => L5ScopeRaw(r1)
+    case Raw_count(_, r1) => L5ScopeRaw(r1)
+    case Raw_capture(r1) => L5ScopeRaw(r1)
+    case Raw_lookaround(look, r1) => (look.Lookbehind? ==> LBOnlyLooksRaw(r1)) && L5ScopeRaw(r1)
+    case _ => true
+  }
+
   /** RAW: every NEGATIVE-look body is look-free. */
   predicate NegLooksLookFreeRaw(ra: R.raw_regex)
     decreases ra
@@ -937,6 +969,113 @@ module LindenElkNfaRep {
     case Re_lookaround(lid, la, r1) =>
       ((la.NegLookahead? || la.NegLookbehind?) ==> LookFreeRE(r1)) && NegLooksLookFreeRE(r1)
   }
+  /** (L5) Every look inside is LOOKBEHIND-flavoured (RE level; identical to
+      `LindenElkFlipStatics.LBOnlyLooksRE`, which the Flip bricks use — the
+      equivalence is `LindenElkFlipGate.LBOnlyEquiv`). */
+  predicate LBOnlyLooksRE(r: R.regex)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => LBOnlyLooksRE(r1) && LBOnlyLooksRE(r2)
+    case Re_con(r1, r2) => LBOnlyLooksRE(r1) && LBOnlyLooksRE(r2)
+    case Re_quant(_, _, _, r1) => LBOnlyLooksRE(r1)
+    case Re_capture(_, r1) => LBOnlyLooksRE(r1)
+    case Re_lookaround(_, la, r1) => (la.Lookbehind? || la.NegLookbehind?) && LBOnlyLooksRE(r1)
+    case _ => true
+  }
+
+  /** (L5 scope, RE level) positive lookbehinds are allowed iff their bodies are
+      `LBOnlyLooksRE`. `LindenElkMain.NoPosLookbehindRE(re) ==> L5ScopeRE(re)`
+      (`NoPosImpliesL5Scope`). */
+  predicate L5ScopeRE(re: R.regex)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => L5ScopeRE(r1) && L5ScopeRE(r2)
+    case Re_con(r1, r2) => L5ScopeRE(r1) && L5ScopeRE(r2)
+    case Re_quant(_, _, _, r1) => L5ScopeRE(r1)
+    case Re_capture(_, r1) => L5ScopeRE(r1)
+    case Re_lookaround(_, la, r1) => (la.Lookbehind? ==> LBOnlyLooksRE(r1)) && L5ScopeRE(r1)
+    case _ => true
+  }
+
+  /** Annotation transfers `LBOnlyLooksRaw` (the look constructor is preserved). */
+  lemma AnnotateLBOnlyLooks(ra: R.raw_regex, c: int, l: int, q: int)
+    requires LBOnlyLooksRaw(ra)
+    ensures LBOnlyLooksRE(R.annotate_regex(ra, c, l, q).0)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) =>
+      AnnotateLBOnlyLooks(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateLBOnlyLooks(r2, c1, l1, q1);
+    case Raw_con(r1, r2) =>
+      AnnotateLBOnlyLooks(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateLBOnlyLooks(r2, c1, l1, q1);
+    case Raw_quant(_, r1) => AnnotateLBOnlyLooks(r1, c, l, q + 1);
+    case Raw_count(_, r1) => AnnotateLBOnlyLooks(r1, c, l, q + 1);
+    case Raw_capture(r1) => AnnotateLBOnlyLooks(r1, c + 1, l, q);
+    case Raw_lookaround(_, r1) => AnnotateLBOnlyLooks(r1, c, l + 1, q);
+    case _ =>
+  }
+
+  /** Annotation transfers `L5ScopeRaw`. */
+  lemma AnnotateL5Scope(ra: R.raw_regex, c: int, l: int, q: int)
+    requires L5ScopeRaw(ra)
+    ensures L5ScopeRE(R.annotate_regex(ra, c, l, q).0)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) =>
+      AnnotateL5Scope(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateL5Scope(r2, c1, l1, q1);
+    case Raw_con(r1, r2) =>
+      AnnotateL5Scope(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateL5Scope(r2, c1, l1, q1);
+    case Raw_quant(_, r1) => AnnotateL5Scope(r1, c, l, q + 1);
+    case Raw_count(_, r1) => AnnotateL5Scope(r1, c, l, q + 1);
+    case Raw_capture(r1) => AnnotateL5Scope(r1, c + 1, l, q);
+    case Raw_lookaround(look, r1) =>
+      if look.Lookbehind? { AnnotateLBOnlyLooks(r1, c, l + 1, q); }
+      AnnotateL5Scope(r1, c, l + 1, q);
+    case _ =>
+  }
+
+  /** A lookbehind-only body is itself in the L5 scope (its positive lookbehinds
+      have lookbehind-only bodies by construction). */
+  lemma LBOnlyImpliesL5Scope(r: R.regex)
+    requires LBOnlyLooksRE(r)
+    ensures L5ScopeRE(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => LBOnlyImpliesL5Scope(r1); LBOnlyImpliesL5Scope(r2);
+    case Re_con(r1, r2) => LBOnlyImpliesL5Scope(r1); LBOnlyImpliesL5Scope(r2);
+    case Re_quant(_, _, _, r1) => LBOnlyImpliesL5Scope(r1);
+    case Re_capture(_, r1) => LBOnlyImpliesL5Scope(r1);
+    case Re_lookaround(_, _, r1) => LBOnlyImpliesL5Scope(r1);
+    case _ =>
+  }
+
+  /** Look-free regexes are trivially lookbehind-only and in scope (the
+      `lazy_prefix` dot-star wrapper). */
+  lemma LookFreeLBOnly(r: R.regex)
+    requires LookFreeRE(r)
+    ensures LBOnlyLooksRE(r) && L5ScopeRE(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => LookFreeLBOnly(r1); LookFreeLBOnly(r2);
+    case Re_con(r1, r2) => LookFreeLBOnly(r1); LookFreeLBOnly(r2);
+    case Re_quant(_, _, _, r1) => LookFreeLBOnly(r1);
+    case Re_capture(_, r1) => LookFreeLBOnly(r1);
+    case _ =>
+  }
+
 
   /** A look-free regex has no lookarounds at all, so it vacuously satisfies
       `NegLooksLookFreeRE`. */

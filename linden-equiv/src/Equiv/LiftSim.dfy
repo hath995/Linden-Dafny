@@ -26805,6 +26805,25 @@ module LindenElkLiftSim {
       M.GNQLTop(re, c);
     }
   }
+  /** (L5 F7c) The L5 scope at the annotated, lazy-prefixed regex from the raw
+      syntactic predicate `NR.L5ScopeRaw` — the L5 leg of `L4ScopeFromRaw`
+      (annotation preserves look constructors; the dot-star prefix is look-free). */
+  lemma L5ScopeFromRaw(raw: R.raw_regex)
+    requires NR.L5ScopeRaw(raw)
+    ensures NR.L5ScopeRE(R.lazy_prefix(R.annotate(raw)))
+  {
+    var ast := R.annotate(raw);
+    var re := R.lazy_prefix(ast);
+    assert ast == R.annotate_regex(R.Raw_capture(raw), 0, 1, 1).0;
+    assert NR.L5ScopeRaw(R.Raw_capture(raw));
+    NR.AnnotateL5Scope(R.Raw_capture(raw), 0, 1, 1);
+    assert NR.L5ScopeRE(ast);
+    var pfx := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
+    assert re == R.Re_con(pfx, ast);
+    assert NR.L5ScopeRE(pfx);
+    assert NR.L5ScopeRE(re);
+  }
+
   /** L4 PERF: the g-INDEPENDENT half of the fresh-wf side condition, hoisted
       into a MINIMAL context. `SizesOkRE(body)`, `cp_ctx_ok` and `TransWf(body)`
       depend only on `owner0` (and `res1`), never on the capture `g`, yet the

@@ -14062,7 +14062,7 @@ module LindenElkMain {
     requires g in PIV.CapIdsInLooks(re)
     requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
     // ---- extra structural facts (for LookBodyFactsNested) ----
-    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re) && PIV.QuantUnique(re)
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && PIV.QuantUnique(re)   // (L5 F7c) lifted from NoPosLookbehindRE
     // ---- deliverable-1 hypotheses (a)-(h) (verbatim from FreshBodyDirectLive) ----
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
@@ -14139,7 +14139,7 @@ module LindenElkMain {
     assert g in PIV.CapIds(body) && g !in PIV.CapIdsInLooks(body);
     assert AI.get_idx(rf.value.capture_regs.a_clk, CP.start_reg(g)) >= 0;
     // (2) the owner body's shape: NestedFragmentRE + CapUnique (owner in LookIds(re)).
-    LookBodyFactsNested(re, crv, owner);
+    LookBodyFactsL5(re, crv, owner);
     assert NR.NestedFragmentRE(body) && PIV.CapUnique(body);
     // (3) as_arrays projections coincide with the record fields.
     assert AReg.as_arrays(rf.value.capture_regs).1 == rf.value.capture_regs.a_clk;
@@ -14178,7 +14178,7 @@ module LindenElkMain {
     requires g in PIV.CapIdsInLooks(re)
     requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
     // ---- extra structural facts (for LookBodyFactsNested) ----
-    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re) && PIV.QuantUnique(re)
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && PIV.QuantUnique(re)   // (L5 F7c) lifted from NoPosLookbehindRE
     // ---- deliverable-1 hypotheses (a)-(h) (verbatim from FreshBodyDirectLive) ----
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
@@ -14250,7 +14250,7 @@ module LindenElkMain {
     assert g in PIV.CapIds(body) && g !in PIV.CapIdsInLooks(body);
     assert AI.get_idx(rf.value.capture_regs.a_clk, CP.start_reg(g)) >= 0;
     // (2) the owner body's shape: NestedFragmentRE + CapUnique (owner in LookIds(re)).
-    LookBodyFactsNested(re, crv, owner);
+    LookBodyFactsL5(re, crv, owner);
     assert NR.NestedFragmentRE(body) && PIV.CapUnique(body);
     // (3) the membership residual, instantiated at this owner.
     assert PIV.CapRegWf(rf.value.capture_regs)
@@ -14291,7 +14291,7 @@ module LindenElkMain {
     requires g in PIV.CapIdsInLooks(re)
     requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
     // ---- extra structural facts (for LookBodyFactsNested) ----
-    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re) && PIV.QuantUnique(re)
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && PIV.QuantUnique(re)   // (L5 F7c) lifted from NoPosLookbehindRE
     // ---- deliverable-1 hypotheses (a)-(h) (verbatim) ----
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
@@ -14363,7 +14363,7 @@ module LindenElkMain {
     assert g in PIV.CapIds(body) && g !in PIV.CapIdsInLooks(body);
     assert AI.get_idx(rf.value.capture_regs.a_clk, CP.start_reg(g)) >= 0;
     // (2) the owner body's shape: NestedFragmentRE + CapUnique + QuantUnique.
-    LookBodyFactsNested(re, crv, owner);
+    LookBodyFactsL5(re, crv, owner);
     assert NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body);
     // (3) the ancestor-set residual, instantiated at this owner.
     assert PIV.AncQuants(body, g) == {}
@@ -14509,6 +14509,7 @@ module LindenElkMain {
     }
 
     // (3) close via the ancestor-set consumer (now unconditional).
+    NoPosImpliesL5Scope(re);                                   // (L5 F7c) callee is L5-scoped
     owner := FreshBodyDirectMemberFromAncSet(crv, str, ast, re, cap, lk, qt, ov, S, Slook, ncap, nlook, nquant, g);
 
     // (4) value-set at the returned owner (for the `LiveRange` ensures's well-formedness):
@@ -16039,6 +16040,64 @@ module LindenElkMain {
         assert LTB.LookIds(r1) <= LTB.LookIds(re);
       }
   }
+  /** (L5) The L4 scope is a special case of the L5 scope (no positive
+      lookbehinds at all ⇒ nothing to constrain). */
+  lemma NoPosImpliesL5Scope(re: R.regex)
+    requires NoPosLookbehindRE(re)
+    ensures NR.L5ScopeRE(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => NoPosImpliesL5Scope(r1); NoPosImpliesL5Scope(r2);
+    case Re_con(r1, r2) => NoPosImpliesL5Scope(r1); NoPosImpliesL5Scope(r2);
+    case Re_quant(_, _, _, r1) => NoPosImpliesL5Scope(r1);
+    case Re_capture(_, r1) => NoPosImpliesL5Scope(r1);
+    case Re_lookaround(_, _, r1) => NoPosImpliesL5Scope(r1);
+    case _ =>
+  }
+
+  /** (L5) The L5-scope twin of `LookBodyFactsNested`: the same body facts, the
+      body is itself in the L5 scope, and the owning look is EITHER not a
+      positive lookbehind OR a positive lookbehind whose body is lookbehind-only
+      (`NR.LBOnlyLooksRE`) — the per-lid dispatch every L5 consumer makes. */
+  lemma LookBodyFactsL5(re: R.regex, crv: CP.FCompiled, lid: nat)
+    requires NR.NestedFragmentRE(re)
+    requires NR.L5ScopeRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires lid in LTB.LookIds(re)
+    ensures var body := NI.LookBodyOfRE(re, lid);
+      NR.NestedFragmentRE(body)
+      && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+      && LTB.LookTablesOk(body, crv)
+      && LTB.LookIds(body) <= LTB.LookIds(re)
+      && NR.L5ScopeRE(body)
+      && (exists la: R.lookaround :: LTB.LookEntryOk(crv, lid as int, la, body)
+                                     && (la.Lookbehind? ==> NR.LBOnlyLooksRE(body)))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodyFactsL5(r1, crv, lid); }
+      else { LookBodyFactsL5(r2, crv, lid); }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodyFactsL5(r1, crv, lid); }
+      else { LookBodyFactsL5(r2, crv, lid); }
+    case Re_quant(_, _, _, r1) => LookBodyFactsL5(r1, crv, lid);
+    case Re_capture(_, r1) => LookBodyFactsL5(r1, crv, lid);
+    case Re_lookaround(lid0, la0, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+        assert NI.LookBodyOfRE(re, lid) == r1;
+        assert LTB.LookEntryOk(crv, lid as int, la0, r1);   // LookTablesOk's lookaround case
+        assert la0.Lookbehind? ==> NR.LBOnlyLooksRE(r1);    // L5ScopeRE
+        assert NR.L5ScopeRE(r1);
+      } else {
+        assert lid in LTB.LookIds(r1);
+        LookBodyFactsL5(r1, crv, lid);
+        assert LTB.LookIds(r1) <= LTB.LookIds(re);
+      }
+  }
+
 
   /** R2: transfer of "unset on `Bset`" across a write confined to `Dset`
       (disjoint from `Bset`): if `cap` is init on `Bset` and `capN` agrees with
@@ -16230,7 +16289,7 @@ module LindenElkMain {
                        l2: int, la2: R.lookaround, b2: R.regex)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
-    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re)
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)   // (L5 F7c) lifted from NoPosLookbehindRE
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
     requires 1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
@@ -16251,7 +16310,7 @@ module LindenElkMain {
     var la02: R.lookaround :| LTB.LookEntryOk(crv, lid2 as int, la02, NI.LookBodyOfRE(re, lid2));
     assert b1 == NI.LookBodyOfRE(re, lid1);
     assert b2 == NI.LookBodyOfRE(re, lid2);
-    LookBodyFactsNested(re, crv, lid1);                 // CapUnique(b1)
+    LookBodyFactsL5(re, crv, lid1);                 // CapUnique(b1)
     PIV.CaptureRegsIsSet(b2);                           // CaptureRegs(b2) == CaptureRegsSet(CapIds(b2))
     PIV.CapIdsSplit(b1);                                // CapIdsOutsideLooks(b1) <= CapIds(b1)
     NI.LookBodiesCapsDisjointOrNested(re, lid1, lid2);
@@ -16469,7 +16528,7 @@ module LindenElkMain {
       1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
       && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2)
       ensures PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
-    { DOrdFromTables(ast, re, crv, l1, la1, b1, l2, la2, b2); }
+    { NoPosImpliesL5Scope(re); DOrdFromTables(ast, re, crv, l1, la1, b1, l2, la2, b2); }
 
     forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex |
       1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
@@ -17239,7 +17298,7 @@ module LindenElkMain {
                             l2: int, la2: R.lookaround, b2: R.regex)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
-    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re)
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)   // (L5 F7c) lifted from NoPosLookbehindRE
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
     requires 1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
@@ -17261,7 +17320,7 @@ module LindenElkMain {
     assert b1 == NI.LookBodyOfRE(re, lid1);
     assert b2 == NI.LookBodyOfRE(re, lid2);
     PIV.QuantIdsSplit(b1);                               // QuantIdsOutsideLooks(b1) <= QuantIds(b1)
-    LookBodyFactsNested(re, crv, lid1);                  // QuantUnique(b1)
+    LookBodyFactsL5(re, crv, lid1);                  // QuantUnique(b1)
     LookBodiesQuantsDisjointOrNested(re, lid1, lid2);
     // nat-set disjointness: QuantIdsOutsideLooks(b1) * QuantIds(b2) == {}
     if PIV.QuantIds(b1) * PIV.QuantIds(b2) == {} {
@@ -17470,7 +17529,7 @@ module LindenElkMain {
           1 <= lx1 <= R.max_lookaround(ast) && 1 <= lx2 <= R.max_lookaround(ast) && lx1 < lx2
           && LTB.LookEntryOk(crv, lx1, lax1, b1) && LTB.LookEntryOk(crv, lx2, lax2, b2)
           ensures QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
-        { DOrdQuantFromTables(ast, re, crv, lx1, lax1, b1, lx2, lax2, b2); }
+        { NoPosImpliesL5Scope(re); DOrdQuantFromTables(ast, re, crv, lx1, lax1, b1, lx2, lax2, b2); }
       }
       assert forall lx: int, lax: R.lookaround, body: R.regex ::                                   // (Sq-bound)
         1 <= lx <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, lx, lax, body) ==> QIdsOuter(body) <= Sq
@@ -17662,7 +17721,7 @@ module LindenElkMain {
           1 <= lx1 <= maxlook && 1 <= lx2 <= maxlook && lx1 < lx2
           && LTB.LookEntryOk(crv, lx1, lax1, b1) && LTB.LookEntryOk(crv, lx2, lax2, b2)
           ensures QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
-        { DOrdQuantFromTables(ast, re, crv, lx1, lax1, b1, lx2, lax2, b2); }
+        { NoPosImpliesL5Scope(re); DOrdQuantFromTables(ast, re, crv, lx1, lax1, b1, lx2, lax2, b2); }
       }
       assert forall lx: int, lax: R.lookaround, body: R.regex ::
         1 <= lx <= maxlook && LTB.LookEntryOk(crv, lx, lax, body) ==> QIdsOuter(body) <= Sq

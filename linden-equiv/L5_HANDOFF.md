@@ -362,7 +362,7 @@ pass over the deep carrier + the scope lift, multi-session. Plan, in order:
   `M.LkReplayMatchesSpecNested` + `FreshBodyMatchGmOuter`; the LB ones consume F6a
   `FG.BackFreshBodyGmTieNested` (with `SwapGm`/`SwapRange`, exactly `GmtTieInside`'s Lookbehind
   arm) + F6b `FG.FreshBodyMatchGmOuterLBNested`.
-- **F7c** scope predicate + lifts: replace `M.NoPosLookbehindRE(re)` (MainTheorem:15963; ~25
+- **F7c** (IN PROGRESS 2026-08-25 s3 — groundwork green, see the ledger below) scope predicate + lifts: replace `M.NoPosLookbehindRE(re)` (MainTheorem:15963; ~25
   `requires` sites at 14065–17954, `LookBodyFactsNested` :16006's `!la0.Lookbehind?` pin,
   `LookRowsFromTablesNested` :17006, LiftSim `L4Scope` :26577, `SupportedL4` ApiMatch:69) by an L5
   scope "positive lookbehinds allowed iff their bodies are `FST.LBOnlyLooksRE` (+ the v1 fragment)",
@@ -379,6 +379,34 @@ pass over the deep carrier + the scope lift, multi-session. Plan, in order:
   scope, `LmapOk(body, qm)` from `StaticOkNestedRE`, `LookUnique(body)` via `LookBodyLookUnique`.
 - **F7g** wire `OracleColumnSpecNested` (§3) into `OracleOk`; §18 opaque-at-source perf pass on
   `MainTheorem`; `SupportedL5`/`ApiReasoning`.
+
+#### F7c LEDGER (2026-08-25, session 3) — bottom-up over the `NoPosLookbehindRE` call graph
+
+Scope (GREEN): `NR.LBOnlyLooksRE`/`NR.L5ScopeRE` (+ raw twins `LBOnlyLooksRaw`/`L5ScopeRaw`,
+`AnnotateLBOnlyLooks`/`AnnotateL5Scope`, `LBOnlyImpliesL5Scope`, `LookFreeLBOnly`) in NfaRepRE;
+`M.NoPosImpliesL5Scope`, **`M.LookBodyFactsL5`** (the per-lid dispatch: `exists la :: LookEntryOk
+&& (la.Lookbehind? ==> LBOnlyLooksRE(body))` + `L5ScopeRE(body)`), `LSIM.L5ScopeFromRaw`,
+`FG.LBOnlyEquiv` (`FST.LBOnlyLooksRE <==> NR.LBOnlyLooksRE`). Verification (all first try except one requires typo): NfaRepRE `L5Scope` 2/0, `LBOnly` 3/0, `AnnotateL` 6/0, `LookFreeLBOnly` 1/0; MainTheorem `NoPosImpliesL5Scope` 1/0, `LookBodyFactsL5` 2/0, `FreshBodyDirectMember*` 8/0, `DOrdFromTables` 1/0, `DOrdQuantFromTables` 1/0, `LookRowsStaticNested` 1/0, `FLookLoopQuantCoversFromTables` 2/0, `EndpointQuantValueOk` 2/0; FlipGate `LBOnlyEquiv` 1/0; LiftSim `L5ScopeFromRaw` 1/0.
+
+The 40 `NoPosLookbehindRE`-dependent symbols form 10 layers (leaves first). Status per layer
+(✅ lifted to `L5ScopeRE`; 🔧 mechanical, pending; ❌ needs a real LOOKBEHIND arm):
+| layer | symbols | status / what the LB arm needs |
+|---|---|---|
+| 1 | `LookBodyFactsNested` | ✅ twin `LookBodyFactsL5` (old kept for NoPos callers) |
+| 1 | `GateStaticAtNested` (LiftSim:5569, the HUB: `M.NoPosLookbehindRE(body)` inside its exists) / `GateStaticsOkNested` / `L4Scope` | ❌ definition change ⇒ every `:|` that lists the conjunct (LiftSim 5843, 22559, 25685, 25982, 26182, 26689) and every consumer that passes `NoPos(body)` to a callee must move in the SAME step ⇒ only after layers 6–9 have LB arms |
+| 1 | `LookBodyRowNested` (LiftSim:27507), `NoPosLookbehindFwdPosL` (F7e) | 🔧 / ❌ (closedness ladder) |
+| 2 | `DOrdFromTables`, `DOrdQuantFromTables`, `FreshBodyDirectMemberFrom{Present,Membership,AncSet}` | ✅ lifted (only body facts used) |
+| 2 | `FrameEntryOkFromTables` | ❌ `FrameEntryOk`'s clause `capture_type(la) ==> la.Lookahead?` (MainTheorem:11187) must become `la.Lookbehind? ==> LBOnlyLooksRE(body)`; consumed by the TEN nested `FLookLoop*` frame lemmas (`FLookLoopCaptureFrameNested`, `FLookLoopQuantFrameNested`, `FLookLoopValueLift{Outer,Full}`, `FLookLoopChildLinkLift`, `FLookLoopLookCpSet`, `FLookLoopLookOracleTrue`, `FLookLoopGRegUnsetFrame`, `FLookLoopQuantValueLiftFull`, `ReplayPlusQuantFrameNestedOuter`) which derive `capture_direction == Forward` — each needs the BACKWARD replay arm (`capture_regex = reverse_regex(body)`, `FFindMatchPlus(.., Backward, ..)`; the L3b depth-1 FLookLoop already has this shape — port it to the nested frame) |
+| 2 | `GateStaticsSweepRENested`, `LiftPreserveGatePassLkRec` (F7f), `MainExtractionNested` (F7e), `OracleColumnNested` (F7g: LB arm = `OracleColumnSpecNested`) | ❌ |
+| 3 | `FreshBodyDirectMember` | ❌ pins `la0.Lookahead?` for `FreshBodyMatchAncSet`/`FreshMatchWfNested` (forward fresh run); LB arm = backward twins (`FreshBodyMatchLBUnfold` + `FFindMatchRegsWf` for wf; `AncSetInvRE` of the BACKWARD run of `reverse_regex(body)` is NEW) |
+| 3 | `GateStaticsFromTablesNested`, `LiftAdvanceEpsilonRec`, `LookRowsStaticNested`, `OracleOkRowsNested` | 🔧 pass-through once their callees are lifted |
+| 4–5 | `LiftFindMatchCRec`, `LiftStepCRec`, `LookRowsFromTablesNested`, `Endpoint{ChildLinkOk,LookInv,QuantValueOk,TopLookFrame,ValueOk}`, `FLookLoop{Full,Quant}CoversFromTables`, `L3aCompositeCloseRec`, `ProduceOwnerForall` | 🔧 pass-through |
+| 6 | `LookNestOkTFromBodyReplay` (150 l.), `LookNestBackTFromBodyReplay` (191 l.) | ❌ the body-replay carriers: LB twins over the BACKWARD replay + backward spec tree (F5 `LkReplayMatchesSpecLBNested` for the surface; inner lids via the backward tree's LK composition — the deferred "inner gids via recon_inner" work) |
+| 7–9 | `DeepFindRec`, `ForwardFindRec`, `ForwardMemberOne`, `ReverseCDeepFull`, `MainTheoremL4DeepConclude` | ❌ each has 1–3 `la.Lookahead?` dispatch sites; LB arms consume F7b (`FreshBodyDirectInSubFirstLeafLB`/`SubFirstLeafDirectInFreshLB`), `FreshBodyMatchCapWfNested` (either direction, done), and the layer-6 LB carriers |
+
+Order for the next sessions: FrameEntryOk clause + the ten FLookLoop nested frames (the engine-side
+LB reconstruction frame) → `FreshBodyDirectMember` → layer-6 carriers → descent dispatch → hub
+`GateStaticAtNested` flip + `L4Scope`→`L5Scope` → F7d/e/f/g.
 
 **F4/F5 scouting results (the ingredient list that was executed above, kept for reference):**
 - Put F4+F5 in one `FlipKeystone.dfy` including `MainTheorem.dfy` + `FlipOracle.dfy` (+
