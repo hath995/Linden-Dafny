@@ -1463,3 +1463,29 @@ try (commit `2cd7df7`). The honest F7c sizing is now a LEDGER (`L5_HANDOFF.md` �
 (LiftSim:5569, `NoPosLookbehindRE(body)` inside the lift invariant), which can only flip after the
 descent (layers 6–9) has lookbehind arms; the first real LB arm is `FrameEntryOk`'s
 `capture_type(la) ==> la.Lookahead?` clause, consumed by the ten nested `FLookLoop*` frame lemmas.
+
+### L5 F7d GREEN (2026-08-25, session 3): whole-string oracle correctness reaches the gate step
+
+`OE.OracleColsOk(rer, qm, str)` (every column — a lookbehind body reads positions <= cp, and an
+inner lookbehind of a lookahead body can read before the lookahead's start) is now a `requires` of
+the whole lift chain down to `LiftPreserveGatePassLkRec` and of both body-replay carriers; bridges
+`SufAllToColsOk` (from the opaque `OracleSufAllO`), `SufForallToColsOk` (unfolded form),
+`OracleColsOkRestrict` (to the body-restricted `qmB`). Supplied at `MainTheoremL4`, `DeepFindRec`,
+`ForwardFindRec`. all 12 re-verified green: bridges 1/0, 2/0, 2/0; `LiftStepCRec` 2/0, `L3aCompositeCloseRec` 2/0, both carriers 2/0, `LiftFindMatchCRec` 2/0, `LiftAdvanceEpsilonRec` 2/0, `LiftPreserveGatePassLkRec` 1623/0, `DeepFindRec` 1757/0, `ForwardFindRec` 2669/0, **`MainTheoremL4` 4729/0 (single-shot, 46 min)**.
+
+### L5 F7g (ORACLE HALF) (2026-08-25, session 3): the nested oracle entry admits positive lookbehinds
+
+`OracleColumnNested` lifted to `NR.L5ScopeRE` with the positive-lookbehind arm = the gate-side
+capstone `OE.OracleColumnSpecNested` (§3 of L5_HANDOFF, green since the gate work) — its `GroupOkLB`
+premise from the L5 dispatch's `LBOnlyLooksRE`, its whole-string-columns premise for the body's rows
+from the inner-rows induction hypothesis. `LookBodyRowL5`; `OracleOkRowsL5` (L5 twin of the nested
+oracle entry; the L4 `OracleOkRowsNested` is now a wrapper). 2/0, 752/0, 1348/0 — all first try.
+
+### L5 F7e (PART 1) (2026-08-25, session 3): backward body sub-leaf closedness via the flip
+
+`FlipClosed.dfy`: `BackBodyLeafClosedFromBelow` — the closedness ladder's missing LOOKBEHIND
+ingredient. The ladder's positive-look arm needs only "the body sub-leaf from the closed `gmR` is
+closed"; for a lookbehind-only body that follows from the FORWARD `ClosedBelow` at the flipped
+instance: F1's `ComputeTrReverseF` relates the backward tree to the flipped forward tree, the
+general-gm fold `TreeResMirrorF` (under `ComputeTrCloseDiscF`) maps the walk from `gmR` to the walk
+from `MirrorGm(gmR)`, and closedness is `MirrorGm`-invariant. 486/0 + 14/0, first try.

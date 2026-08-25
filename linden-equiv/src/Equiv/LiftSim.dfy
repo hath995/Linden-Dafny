@@ -5665,6 +5665,50 @@ module LindenElkLiftSim {
       }
     }
   }
+  // ==========================================================================
+  // (L5 F7d) WHOLE-STRING oracle-column correctness for the backward keystone.
+  // The lift carries only the from-cp `OracleOkSuffix`; a lookbehind body reads
+  // positions <= cp, so `FG.*`/F5/F6 need `OE.OracleColsOk(rer, qm, str)` — a
+  // STATIC fact, threaded as a `requires` from the top down to the gate step.
+  // ==========================================================================
+
+  /** From the opaque all-cps suffix bundle (column `cp` is in its own suffix). */
+  lemma SufAllToColsOk(rer: LW.RegExpRecord, qm: AR.QMap, str: string)
+    requires M.OracleSufAllO(rer, qm, str)
+    ensures OE.OracleColsOk(rer, qm, str)
+  {
+    reveal M.OracleSufAllO();
+    forall k: int | 0 <= k <= |str| ensures LL.OracleOkAt(rer, qm, T.InputAt(str, k)) {
+      var kn: nat := k;
+      assert LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, kn));
+      assert PIV.InpOfCp(str, kn) == T.InputAt(str, kn);
+    }
+  }
+
+  /** From the unfolded all-cps forall (the form the descent lemmas carry). */
+  lemma SufForallToColsOk(rer: LW.RegExpRecord, qm: AR.QMap, str: string)
+    requires forall cp: nat :: cp <= |str| ==> LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
+    ensures OE.OracleColsOk(rer, qm, str)
+  {
+    forall k: int | 0 <= k <= |str| ensures LL.OracleOkAt(rer, qm, T.InputAt(str, k)) {
+      var kn: nat := k;
+      assert LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, kn));
+      assert PIV.InpOfCp(str, kn) == T.InputAt(str, kn);
+    }
+  }
+
+  /** Restriction to a sub-table (the body-restricted `qmB` of the descent). */
+  lemma OracleColsOkRestrict(rer: LW.RegExpRecord, qm: AR.QMap, qm2: AR.QMap, str: string)
+    requires OE.OracleColsOk(rer, qm, str)
+    requires qm2.ov == qm.ov
+    requires forall l: int :: l in qm2.looks ==> l in qm.looks && qm2.looks[l] == qm.looks[l]
+    ensures OE.OracleColsOk(rer, qm2, str)
+  {
+    forall k: int | 0 <= k <= |str| ensures LL.OracleOkAt(rer, qm2, T.InputAt(str, k)) {
+      FST.OracleOkAtSubmap(rer, qm, qm2, T.InputAt(str, k));
+    }
+  }
+
 
   /** `PlusFragmentRE` is look-free by construction, so it sits inside the
       compile fragment (the two predicates differ only at the lookaround case,
@@ -22455,6 +22499,7 @@ module LindenElkLiftSim {
     requires PSM.StaticOkNestedRE(qm, re, code, endl)
     requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
     requires |ov| == |str| + 1                                    // L3b: the backward LB gate needs the mirror
+    requires OE.OracleColsOk(rer, qm, str)                    // (L5 F7d) whole-string oracle correctness (backward keystone)
     requires S == PIV.CapIdsInLooks(re)
     // (BRICK D5) NON-VACUITY FLIP: the driver's per-lid static package is the
     // depth-AGNOSTIC `GateStaticsOkNested` (nested gate bodies), qualified by the
@@ -23281,6 +23326,7 @@ module LindenElkLiftSim {
     returns (ptsA': PT.PikeTreeState, bst1: PT.PikeTreeState)
     requires !rer.multiline && !rer.ignoreCase && qm.ov == ov
     requires |ov| == |str| + 1                                    // L3b: propagate to the backward LB gate
+    requires OE.OracleColsOk(rer, qm, str)                    // (L5 F7d) whole-string oracle correctness (backward keystone)
     requires PSM.StaticOkNestedRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires S == PIV.CapIdsInLooks(re)   // the value-tie boundary (SetReg/gate cases)
     requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)   // (BRICK D5) NESTED per-lid package
@@ -23610,6 +23656,7 @@ module LindenElkLiftSim {
     returns (ptsA': PT.PikeTreeState, ptsB': PT.PikeTreeState)
     requires NR.NfaRepRE(re, code, 0, endl)
     requires |ov| == |str| + 1                                    // L3b: propagate to the backward LB gate
+    requires OE.OracleColsOk(rer, qm, str)                    // (L5 F7d) whole-string oracle correctness (backward keystone)
     requires PSM.StaticOkNestedRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
     requires S == PIV.CapIdsInLooks(re)   // the value-tie boundary (SetReg/gate cases)
@@ -23681,6 +23728,7 @@ module LindenElkLiftSim {
     returns (bestT: Option<LT.Leaf>)
     requires PSM.StaticOkNestedRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires |ov| == |str| + 1                                    // L3b: propagate to the backward LB gate
+    requires OE.OracleColsOk(rer, qm, str)                    // (L5 F7d) whole-string oracle correctness (backward keystone)
     requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
     requires S == PIV.CapIdsInLooks(re)
     requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)   // (BRICK D5) NESTED per-lid package
@@ -24068,6 +24116,7 @@ module LindenElkLiftSim {
                           ncap: int, nlook: int, nquant: int)
     requires NR.NfaRepRE(re, code, 0, endl)
     requires |ov| == |str| + 1                                    // L3b: propagate to the backward LB gate
+    requires OE.OracleColsOk(rer, qm, str)                    // (L5 F7d) whole-string oracle correctness (backward keystone)
     requires PSM.StaticOkNestedRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires qm.ov == ov && !rer.multiline
     requires !rer.ignoreCase
@@ -24185,6 +24234,7 @@ module LindenElkLiftSim {
     requires bodycode == CP.compile_to_bytecode(body)
     requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
     requires |ov| == |str| + 1
+    requires OE.OracleColsOk(rer, qm, str)                    // (L5 F7d) whole-string oracle correctness (backward keystone)
     // crv-keyed statics (caller descends from the top-level regex)
     // (BRICK D5) NESTED per-lid package + positive-lookahead-nesting scope, so the
     // per-body composite sim `L3aCompositeCloseRec` applies at depth >= 2.
@@ -24335,6 +24385,7 @@ module LindenElkLiftSim {
     requires bodycode == CP.compile_to_bytecode(body)
     requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
     requires |ov| == |str| + 1
+    requires OE.OracleColsOk(rer, qm, str)                    // (L5 F7d) whole-string oracle correctness (backward keystone)
     requires GateStaticsOkNested(qm, body, crv, ncap, nlook, nquant)
     requires M.NoPosLookbehindRE(body)
     requires LTB.LookUnique(body)
@@ -25798,6 +25849,10 @@ module LindenElkLiftSim {
       assert GateStaticsOkNested(qmB, host, crv, ncap, nlook, nquant) by {
         GateStaticsFromTablesNested(qmB, host, crv, ncap, nlook, nquant);
       }
+      assert OE.OracleColsOk(rer, qmB, str) by {                       // (L5 F7d)
+        SufAllToColsOk(rer, qm, str);
+        OracleColsOkRestrict(rer, qm, qmB, str);
+      }
 
       // (ε) the per-body replay: both carriers + None-iff + bank invariants at rf_A
       var cdnA := crv.f_look_cdns[A as int];
@@ -26022,6 +26077,10 @@ module LindenElkLiftSim {
     }
     assert GateStaticsOkNested(qmB, host, crv, ncap, nlook, nquant) by {
       GateStaticsFromTablesNested(qmB, host, crv, ncap, nlook, nquant);
+    }
+    assert OE.OracleColsOk(rer, qmB, str) by {                         // (L5 F7d)
+      SufForallToColsOk(rer, qm, str);
+      OracleColsOkRestrict(rer, qm, qmB, str);
     }
     var cdnA := crv.f_look_cdns[A as int];
     LookNestBackTFromBodyReplay(rer, qmB, laA, host, bodycode, endlH, 0, crv, str, cpA, ov,
@@ -27255,6 +27314,13 @@ module LindenElkLiftSim {
                                        inits, ncap, nlook, nquant);
     assert ctx.nextchar == AI.get_char(str, 0);
     assert PIV.ContextOkRE(str, inits.cp, inits.context);
+    assert M.OracleSufAllO(rer, qm, str) by {                          // (L5 F7d) hoisted from below
+      reveal M.OracleSufAllO();
+      forall cp: nat | cp <= |str| ensures LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp)) {
+        OracleOkSuffixAtCp(rer, qm, str, cp);
+      }
+    }
+    SufAllToColsOk(rer, qm, str);
     L3aCompositeCloseRec(rer, qm, re, code, endl, ngroups, crv, str, ov, S, tstar, t, inp,
                          inits, crv.f_main_cdns, result, ncap, nlook, nquant);
     assert BestTieLkNestedTop(rer, re, crv, str, ov, S, LT.FirstLeaf(t, inp), result, ncap, nlook, nquant);
@@ -27576,6 +27642,65 @@ module LindenElkLiftSim {
         assert OE.LmOf(sub)[lid as int] == OE.LmOf(r1)[lid as int];
       }
   }
+  /** (L5) The L5-scope twin of `LookBodyRowNested`: the row facts under
+      `NR.L5ScopeRE` — the owning look is either not a positive lookbehind or one
+      whose body is lookbehind-only; the body is itself in scope. */
+  lemma LookBodyRowL5(sub: R.regex, crv: CP.FCompiled, lid: nat)
+    requires T.TransWf(sub) && LTB.LookUnique(sub) && LTB.LookTablesOk(sub, crv)
+    requires NR.L5ScopeRE(sub) && NR.NegLooksLookFreeRE(sub)
+    requires lid in LTB.LookIds(sub)
+    ensures var body := NI.LookBodyOfRE(sub, lid);
+      T.TransWf(body) && NR.L5ScopeRE(body) && NR.NegLooksLookFreeRE(body)
+      && (lid as int) in OE.LmOf(sub)
+      && exists la: R.lookaround ::
+           LTB.LookEntryOk(crv, lid as int, la, body)
+           && OE.LmOf(sub)[lid as int] == (T.TrLookaround(la), T.Translate(body))
+           && (la.Lookbehind? ==> NR.LBOnlyLooksRE(body))
+           && ((la.NegLookahead? || la.NegLookbehind?) ==> NR.LookFreeRE(body))
+    decreases sub
+  {
+    OE.LmOfDom(sub);
+    match sub
+    case Re_alt(r1, r2) =>
+      OE.LmOfDom(r1); OE.LmOfDom(r2);
+      if lid in LTB.LookIds(r1) {
+        LookBodyRowL5(r1, crv, lid);
+        assert lid !in LTB.LookIds(r2);                    // LookUnique disjointness
+        assert (lid as int) !in OE.LmOf(r2);
+        assert OE.LmOf(sub)[lid as int] == OE.LmOf(r1)[lid as int];
+      } else {
+        LookBodyRowL5(r2, crv, lid);
+        assert OE.LmOf(sub)[lid as int] == OE.LmOf(r2)[lid as int];
+      }
+    case Re_con(r1, r2) =>
+      OE.LmOfDom(r1); OE.LmOfDom(r2);
+      if lid in LTB.LookIds(r1) {
+        LookBodyRowL5(r1, crv, lid);
+        assert lid !in LTB.LookIds(r2);                    // LookUnique disjointness
+        assert (lid as int) !in OE.LmOf(r2);
+        assert OE.LmOf(sub)[lid as int] == OE.LmOf(r1)[lid as int];
+      } else {
+        LookBodyRowL5(r2, crv, lid);
+        assert OE.LmOf(sub)[lid as int] == OE.LmOf(r2)[lid as int];
+      }
+    case Re_quant(_, _, _, r1) => LookBodyRowL5(r1, crv, lid);
+    case Re_capture(_, r1) => LookBodyRowL5(r1, crv, lid);
+    case Re_lookaround(lid0, la0, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+        assert NI.LookBodyOfRE(sub, lid) == r1;
+        assert LTB.LookEntryOk(crv, lid as int, la0, r1);   // LookTablesOk's lookaround case
+        assert OE.LmOf(sub)[lid as int] == (T.TrLookaround(la0), T.Translate(r1));
+        assert la0.Lookbehind? ==> NR.LBOnlyLooksRE(r1);     // L5ScopeRE
+        assert NR.L5ScopeRE(r1);
+        assert (la0.NegLookahead? || la0.NegLookbehind?) ==> NR.LookFreeRE(r1);   // NegLooksLookFreeRE
+      } else {
+        assert lid in LTB.LookIds(r1);
+        OE.LmOfDom(r1);
+        LookBodyRowL5(r1, crv, lid);
+        assert lid0 != lid as int;
+        assert OE.LmOf(sub)[lid as int] == OE.LmOf(r1)[lid as int];
+      }
+  }
 
   /** THE NESTED COLUMN SPEC, one row at one column. Given the oracle truth of
       the row's INNER rows (the body's own rows, from the initial input), the
@@ -27588,7 +27713,7 @@ module LindenElkLiftSim {
     requires crv == CP.FFullCompilation(top)
     requires NR.NestedFragmentRE(top) && LTB.LidsWellNested(top) && LTB.LookUnique(top)
     requires forall x: nat :: x in LTB.LookIds(top) ==> 1 <= x
-    requires NR.NestedFragmentRE(sub) && M.NoPosLookbehindRE(sub) && NR.NegLooksLookFreeRE(sub)
+    requires NR.NestedFragmentRE(sub) && NR.L5ScopeRE(sub) && NR.NegLooksLookFreeRE(sub)   // (L5 F7g) lifted
     requires T.TransWf(sub) && LTB.LookUnique(sub) && PIV.CapUnique(sub) && PIV.QuantUnique(sub)
     requires LTB.LookTablesOk(sub, crv)
     requires LTB.LookIds(sub) <= LTB.LookIds(top)
@@ -27606,12 +27731,12 @@ module LindenElkLiftSim {
     var n := |str|;
     var ovf := AI.FBuildOracle(crv, str);
     var lidn: nat := lid as nat;
-    M.LookBodyFactsNested(sub, crv, lidn);
-    LookBodyRowNested(sub, crv, lidn);
+    M.LookBodyFactsL5(sub, crv, lidn);
+    LookBodyRowL5(sub, crv, lidn);
     var body := NI.LookBodyOfRE(sub, lidn);
     var la: R.lookaround :| LTB.LookEntryOk(crv, lid, la, body)
         && OE.LmOf(sub)[lid] == (T.TrLookaround(la), T.Translate(body))
-        && !la.Lookbehind?
+        && (la.Lookbehind? ==> NR.LBOnlyLooksRE(body))
         && ((la.NegLookahead? || la.NegLookbehind?) ==> NR.LookFreeRE(body));
     assert lk == T.TrLookaround(la) && r1 == T.Translate(body);
     assert lidn in LTB.LookIds(top);
@@ -27702,7 +27827,7 @@ module LindenElkLiftSim {
         OBV.MatchesVToReachesWriteV(x, lid, rstr, mv, n - j, n - cp);
         assert bit;
       }
-    } else {
+    } else if la.NegLookbehind? {
       // ---- negative lookBEHIND row: forward build, look-free body; spec walk BACKWARD ----
       assert la.NegLookbehind?;
       assert NR.LookFreeRE(body);
@@ -27730,6 +27855,29 @@ module LindenElkLiftSim {
       assert SD.SuccActs(rer, [LS.Areg(r1)], inp, LG.Empty, WP.Backward)
           == LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, WP.Backward),
                         LG.Empty, inp, WP.Backward).Some?;
+    } else {
+      // ---- (L5 F7g) POSITIVE lookBEHIND row (lookbehind-only nested body): the
+      //      gate-side CAPSTONE `OE.OracleColumnSpecNested` — the final view's bit
+      //      IS the body's BACKWARD walk at cp. Its whole-string column premise
+      //      for the body's own rows comes from the inner-rows induction hypothesis.
+      assert la.Lookbehind?;
+      assert NR.LBOnlyLooksRE(body);
+      assert L.LkDir(lk) == WP.Backward;
+      var qmb := AR.QMap(M.QmOfRE(body), OE.LmOf(body), ovf);
+      OE.LmapOkOfLmOf(body, qmb);
+      assert OE.OracleColsOk(rer, qmb, str) by {
+        forall c: nat | c <= |str| ensures LL.OracleOkSuffix(rer, qmb, PIV.InpOfCp(str, c)) {
+          OracleOkSuffixAtCp(rer, qmb, str, c);
+        }
+        SufForallToColsOk(rer, qmb, str);
+      }
+      FG.LBOnlyEquiv(body);
+      FST.TranslateGroupOkLB(body);
+      OE.OracleColumnSpecNested(rer, qmb, top, str, lid, la, body, cp);
+      assert bit <==> SD.SuccActs(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Backward);
+      assert SD.SuccActs(rer, [LS.Areg(r1)], inp, LG.Empty, WP.Backward)
+          == LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, WP.Backward),
+                        LG.Empty, inp, WP.Backward).Some?;
     }
   }
 
@@ -27738,13 +27886,16 @@ module LindenElkLiftSim {
       by recursion on the nesting (each row's inner rows first, then the row's
       own column spec `OracleColumnNested`). At `sub == lazy_prefix(top)` this is
       exactly `MainTheoremL4`'s former hypothesis. */
-  lemma {:isolate_assertions} OracleOkRowsNested(rer: LW.RegExpRecord, top: R.regex, crv: CP.FCompiled,
+  /** (L5 F7g) THE NESTED ORACLE ENTRY under the L5 scope (positive lookbehinds
+      with lookbehind-only bodies admitted — their column is `OracleColumnNested`'s
+      new arm). `OracleOkRowsNested` below is the L4-scope wrapper. */
+  lemma {:isolate_assertions} OracleOkRowsL5(rer: LW.RegExpRecord, top: R.regex, crv: CP.FCompiled,
                                                  str: string, sub: R.regex)
     requires !rer.ignoreCase && !rer.multiline
     requires crv == CP.FFullCompilation(top)
     requires NR.NestedFragmentRE(top) && LTB.LidsWellNested(top) && LTB.LookUnique(top)
     requires forall x: nat :: x in LTB.LookIds(top) ==> 1 <= x
-    requires NR.NestedFragmentRE(sub) && M.NoPosLookbehindRE(sub) && NR.NegLooksLookFreeRE(sub)
+    requires NR.NestedFragmentRE(sub) && NR.L5ScopeRE(sub) && NR.NegLooksLookFreeRE(sub)   // (L5 F7g) lifted
     requires T.TransWf(sub) && LTB.LookUnique(sub) && PIV.CapUnique(sub) && PIV.QuantUnique(sub)
     requires LTB.LookTablesOk(sub, crv)
     requires LTB.LookIds(sub) <= LTB.LookIds(top)
@@ -27779,17 +27930,35 @@ module LindenElkLiftSim {
       {
         assert lid >= 0 && (lid as nat) in LTB.LookIds(sub);
         var lidn: nat := lid as nat;
-        M.LookBodyFactsNested(sub, crv, lidn);
-        LookBodyRowNested(sub, crv, lidn);
+        M.LookBodyFactsL5(sub, crv, lidn);
+        LookBodyRowL5(sub, crv, lidn);
         var body := NI.LookBodyOfRE(sub, lidn);
         // the inner rows first (strictly fewer look ids: the owner's own id is gone)
         LookIdNotInOwnBody(sub, lidn);
         SubsetCardLt(LTB.LookIds(body), LTB.LookIds(sub), lidn);
-        OracleOkRowsNested(rer, top, crv, str, body);
+        OracleOkRowsL5(rer, top, crv, str, body);
         // then this row's column
         OracleColumnNested(rer, top, crv, str, sub, lid, lk, r1, cp);
       }
     }
   }
+  lemma OracleOkRowsNested(rer: LW.RegExpRecord, top: R.regex, crv: CP.FCompiled,
+                                                 str: string, sub: R.regex)
+    requires !rer.ignoreCase && !rer.multiline
+    requires crv == CP.FFullCompilation(top)
+    requires NR.NestedFragmentRE(top) && LTB.LidsWellNested(top) && LTB.LookUnique(top)
+    requires forall x: nat :: x in LTB.LookIds(top) ==> 1 <= x
+    requires NR.NestedFragmentRE(sub) && M.NoPosLookbehindRE(sub) && NR.NegLooksLookFreeRE(sub)
+    requires T.TransWf(sub) && LTB.LookUnique(sub) && PIV.CapUnique(sub) && PIV.QuantUnique(sub)
+    requires LTB.LookTablesOk(sub, crv)
+    requires LTB.LookIds(sub) <= LTB.LookIds(top)
+    ensures LL.OracleOkSuffix(rer, AR.QMap(M.QmOfRE(sub), OE.LmOf(sub), AI.FBuildOracle(crv, str)),
+                              LC.InitInput(str))
+    decreases |LTB.LookIds(sub)|
+  {
+    M.NoPosImpliesL5Scope(sub);      // (L5 F7g) the L4 scope is a special case
+    OracleOkRowsL5(rer, top, crv, str, sub);
+  }
+
 
 }

@@ -367,18 +367,30 @@ pass over the deep carrier + the scope lift, multi-session. Plan, in order:
   `LookRowsFromTablesNested` :17006, LiftSim `L4Scope` :26577, `SupportedL4` ApiMatch:69) by an L5
   scope "positive lookbehinds allowed iff their bodies are `FST.LBOnlyLooksRE` (+ the v1 fragment)",
   with the per-lid dispatch `la.Lookahead? ⇒ forward keystone | la.Lookbehind? ⇒ F6`.
-- **F7d** all-columns oracle plumbing: F5/F6 need `OE.OracleColsOk(rer, qm, str)` (the backward body
+- ~~**F7d**~~ ✅ DONE (2026-08-25 s3: `SufAllToColsOk`/`SufForallToColsOk`/`OracleColsOkRestrict` + `requires OE.OracleColsOk(rer, qm, str)` threaded through `L3aCompositeCloseRec → LiftFindMatchCRec → LiftStepCRec → LiftAdvanceEpsilonRec → LiftPreserveGatePassLkRec` and both body-replay carriers; supplied at `MainTheoremL4` (hoisted `OracleSufAllO`) and at `DeepFindRec`/`ForwardFindRec` for `qmB` — all 12 re-verified green: bridges 1/0, 2/0, 2/0; `LiftStepCRec` 2/0, `L3aCompositeCloseRec` 2/0, both carriers 2/0, `LiftFindMatchCRec` 2/0, `LiftAdvanceEpsilonRec` 2/0, `LiftPreserveGatePassLkRec` 1623/0, `DeepFindRec` 1757/0, `ForwardFindRec` 2669/0, **`MainTheoremL4` 4729/0 (single-shot, 46 min)**) — all-columns oracle plumbing: F5/F6 need `OE.OracleColsOk(rer, qm, str)` (the backward body
   reads positions ≤ cp) whereas the lift invariant carries only the from-cp `LL.OracleOkSuffix`.
   Thread the whole-string fact (available at the top via `OracleOkFromColumns`/`OracleSufAllO`) as an
   extra `requires` down to `LiftPreserveGatePassLkRec` and the endpoint ties.
-- **F7e** closedness ladder LB case (`BodyLeafClosedFromBelow` :2212, `FirstLeafClosedRecAux` :2254,
+- **F7e** ✅ PART 1 DONE (2026-08-25 s3, `FlipClosed.dfy`): **`BackBodyLeafClosedFromBelow`** — the Backward twin of
+  `BodyLeafClosedFromBelow`: a positive lookbehind's from-`gmR` body sub-leaf is closed under the FORWARD
+  `ClosedBelow(rer, D)` at the FLIPPED instance (F1 builder `ComputeTrReverseF` + the general-gm fold
+  `TreeResMirrorF` under `ComputeTrCloseDiscF`; closedness is `MirrorGm`-invariant) + side lemmas
+  (`NoDupSeqFlipRevL`, `NestDepthFlipRevL`, `FlipRevLFwdPos`, `FlipRevLPikeLkRec`, `MirrorGmClosedIff`) —
+  `BackBodyLeafClosedFromBelow` 486/0 + side lemmas 14/0, all first try. PART 2 (next): the L5 ladder `FirstLeafClosedRecAuxL5` (copy of the 370-line least lemma with
+  `L5PosActsL` and the LB arm calling part 1) + `FirstLeafClosedRecL5`, in `FlipClosed.dfy` (MainTheorem
+  cannot see FlipDisc), consumed by the L5 twin of `MainExtractionNested`.
+  ORIGINAL SIZING — closedness ladder LB case (`BodyLeafClosedFromBelow` :2212, `FirstLeafClosedRecAux` :2254,
   `FirstLeafClosedRec` :2627 — the ONLY `FwdPos*` surface; single caller `MainExtractionNested`
   :10224): transport `ClosedGm` across F1's mirror or derive it from the keystone's engine tie.
 - **F7f** the D5 arm itself: replace the three `assert false` with F6c + `GateCrossCoverageLBNested`
   + the F7a-generalized `GatePassDeepRepStep`; site statics: `LBOnlyLooksRE(body)` from the F7c
   scope, `LmapOk(body, qm)` from `StaticOkNestedRE`, `LookUnique(body)` via `LookBodyLookUnique`.
-- **F7g** wire `OracleColumnSpecNested` (§3) into `OracleOk`; §18 opaque-at-source perf pass on
-  `MainTheorem`; `SupportedL5`/`ApiReasoning`.
+- **F7g** ✅ ORACLE HALF DONE (2026-08-25 s3): `OracleColumnNested` lifted to `NR.L5ScopeRE` with its new
+  POSITIVE-LOOKBEHIND arm = `OE.OracleColumnSpecNested` (the §3 capstone; `GroupOkLB` from the L5 dispatch's
+  `LBOnlyLooksRE` via `FG.LBOnlyEquiv`+`FST.TranslateGroupOkLB`, whole-string columns of the body's rows
+  from the inner-rows IH via `OracleOkSuffixAtCp`+`SufForallToColsOk`); `LookBodyRowL5`; **`OracleOkRowsL5`**
+  (the nested oracle entry under the L5 scope; `OracleOkRowsNested` kept as the L4 wrapper) — `LookBodyRowL5` 2/0, `OracleOkRows*` 752/0, `OracleColumnNested` 1348/0, all first try.
+  REMAINING: §18 opaque-at-source perf pass on `MainTheorem`; `SupportedL5`/`ApiReasoning`.
 
 #### F7c LEDGER (2026-08-25, session 3) — bottom-up over the `NoPosLookbehindRE` call graph
 
