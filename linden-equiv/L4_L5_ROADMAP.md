@@ -1533,3 +1533,21 @@ the `LookCpsLE` instance and the `get_cp` `None`-contrapositives spelled out). G
 `LookNestBackTTopLidFlip` 276/0, `LookNestBackTTopDeepLidFlip` 694/0, `FreshMatchLidFlip` 588/0,
 **`LookNestBackTFromBodyReplayLB` 1886/0**. Remaining F7c: the descent dispatch (layers 7–9) and the
 `GateStaticAtNested` hub flip.
+
+### NEXT — L5 F7c-4 the descent dispatch (scouted 2026-08-26 s4; full site table in L5_HANDOFF §5.7.1)
+
+Five descent lemmas (`ReverseCDeepFull`, `ForwardMemberOne`, `DeepFindRec`, `ForwardFindRec`,
+`MainTheoremL4DeepConclude`) each prove `la.Lookahead?` for the owner lid from
+`M.NoPosLookbehindRE(re)`; the LB arms are dispatches onto existing atoms — kind via
+`M.LookBodyFactsL5`, engine run via `FG.FreshBodyMatchLBUnfold`, spec leaf via `SubFirstLeafAtIsBackLeaf`,
+carrier via `LookNestBackTFromBodyReplayLB` (needs no `GateStaticsOkNested` at the site: it builds
+the flipped world's statics through the UNLIFTED hub since `FXR(host)` has no positive lookbehinds),
+BASE arms via the F7b wrappers (⚠️ the LB value tie is a `SwapRange`, check each downstream use),
+DEEP arms via the LB carrier's None-iff at the inner lid. Provable now; USEFUL end-to-end only after
+the `GateStaticAtNested` hub flip (`NoPosLookbehindRE(body)` → `L5ScopeRE(body)`), which is
+entangled with F7f (the D5 arm reads the hub's NoPos conjunct to kill its three LB `assert false`
+arms — fillings: `ThreadRepLkStepCheckOracleRecLB`, `FG.GateCrossCoverageLBNested`,
+`LkResultIsBackLeaf`+`SubFirstLeafAtIsBackLeaf`). Order: dispatch arms smallest-first → hub flip +
+`:|` re-sweep → F7f → `L4Scope`→`L5Scope`/`SupportedL5`/API → F7e-2. Process: launch LiftSim batches
+DETACHED (`setsid nohup … & disown` + a Monitor on `summary.txt`); a plain Bash launch dies at the
+tool's 10-min timeout and takes the batch with it.
