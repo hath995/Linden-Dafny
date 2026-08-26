@@ -1720,6 +1720,41 @@ module LindenElkClockMono {
         FFindMatchLookCpOk(c, str, s4, ov1, dir, cdn);
     }
   }
+  /** (L5) Backward twin of `FFindMatchLookCpOk`: the look cps a BACKWARD run
+      records stay `<= |str|` (they are the current cp, which only decreases). */
+  lemma FFindMatchLookCpOkB(c: RB.code, str: string, s: AI.VmState, ov: LOr.OracleView,
+                            dir: LAnc.direction, cdn: LCdn.cdns)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires dir == LAnc.Backward
+    requires s.context.nextchar == AI.get_char(str, s.cp - 1)
+    requires 0 <= s.cp <= |str|
+    requires VmLookCpOk(s, |str|)
+    ensures var r := AI.FFindMatch(c, str, s, ov, dir, cdn).0;
+      r.Some? ==> LookCpsLE(r.value.look_regs, |str|)
+    decreases s.cp
+  {
+    var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, dir));
+    assert VmLookCpOk(s0, |str|);
+    var (s1, ov1) := AI.FAdvanceEpsilon(c, s0, ov, dir);
+    FAdvanceEpsilonLookCpOk(c, s0, ov, dir, |str|);
+    assert VmLookCpOk(s1, |str|);
+    if |s1.blocked| == 0 { return; }
+    match s1.context.nextchar {
+      case None =>
+      case Some(_) =>
+        assert s.cp > 0;                          // nextchar Some (backward) => cp - 1 in range
+        var s2 := AI.FConsume(s1);
+        FConsumeLookCpOk(s1, |str|);
+        var s3 := s2.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
+                      cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
+        var newchar := AI.get_char(str, s3.cp - AI.cp_offset(dir));
+        var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
+        assert s4.cp == s.cp - 1 >= 0;
+        assert VmLookCpOk(s4, |str|);
+        FFindMatchLookCpOkB(c, str, s4, ov1, dir, cdn);
+    }
+  }
+
 
   // ==========================================================================
   // L3a (S-i) look-CLOCK companion to the cp bound: a look entry whose cp is
@@ -2134,6 +2169,40 @@ module LindenElkClockMono {
         FFindMatchLookCpSet(c, str, s4, ov1, dir, cdn);
     }
   }
+  /** (L5) Backward twin of `FFindMatchLookCpSet`. */
+  lemma FFindMatchLookCpSetB(c: RB.code, str: string, s: AI.VmState, ov: LOr.OracleView,
+                             dir: LAnc.direction, cdn: LCdn.cdns)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires dir == LAnc.Backward
+    requires s.context.nextchar == AI.get_char(str, s.cp - 1)
+    requires 0 <= s.cp <= |str|
+    requires VmLookCpSet(s)
+    ensures var r := AI.FFindMatch(c, str, s, ov, dir, cdn).0;
+      r.Some? ==> LookCpSetWithClk(r.value.look_regs)
+    decreases s.cp
+  {
+    var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, dir));
+    assert VmLookCpSet(s0) && s0.cp >= 0;
+    var (s1, ov1) := AI.FAdvanceEpsilon(c, s0, ov, dir);
+    FAdvanceEpsilonLookCpSet(c, s0, ov, dir);
+    assert VmLookCpSet(s1);
+    if |s1.blocked| == 0 { return; }
+    match s1.context.nextchar {
+      case None =>
+      case Some(_) =>
+        assert s.cp > 0;                          // nextchar Some (backward) => cp - 1 in range
+        var s2 := AI.FConsume(s1);
+        FConsumeLookCpSet(s1);
+        var s3 := s2.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
+                      cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
+        var newchar := AI.get_char(str, s3.cp - AI.cp_offset(dir));
+        var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
+        assert s4.cp == s.cp - 1 >= 0;
+        assert VmLookCpSet(s4);
+        FFindMatchLookCpSetB(c, str, s4, ov1, dir, cdn);
+    }
+  }
+
 
   // ==========================================================================
   // L3a (S-i) look-ORACLE truth: every look cp a thread records is a position
@@ -2341,6 +2410,43 @@ module LindenElkClockMono {
         FFindMatchLookOracleTrue(c, str, s4, ov1, dir, cdn);
     }
   }
+  /** (L5) Backward twin of `FFindMatchLookOracleTrue`. */
+  lemma FFindMatchLookOracleTrueB(c: RB.code, str: string, s: AI.VmState, ov: LOr.OracleView,
+                                  dir: LAnc.direction, cdn: LCdn.cdns)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires dir == LAnc.Backward
+    requires NoWriteOracleCode(c)
+    requires s.context.nextchar == AI.get_char(str, s.cp - 1)
+    requires 0 <= s.cp <= |str|
+    requires VmLookOracleTrue(s, ov)
+    ensures var r := AI.FFindMatch(c, str, s, ov, dir, cdn).0;
+      r.Some? ==> LookCpsOracleTrue(r.value.look_regs, ov)
+    decreases s.cp
+  {
+    var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, dir));
+    assert VmLookOracleTrue(s0, ov);
+    var (s1, ov1) := AI.FAdvanceEpsilon(c, s0, ov, dir);
+    FAdvanceEpsilonLookOracleTrue(c, s0, ov, dir);
+    FAdvanceEpsilonOvStable(c, s0, ov, dir);
+    assert ov1 == ov;
+    assert VmLookOracleTrue(s1, ov);
+    if |s1.blocked| == 0 { return; }
+    match s1.context.nextchar {
+      case None =>
+      case Some(_) =>
+        assert s.cp > 0;
+        var s2 := AI.FConsume(s1);
+        FConsumeLookOracleTrue(s1, ov);
+        var s3 := s2.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
+                      cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
+        var newchar := AI.get_char(str, s3.cp - AI.cp_offset(dir));
+        var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
+        assert s4.cp == s.cp - 1 >= 0;
+        assert VmLookOracleTrue(s4, ov);
+        FFindMatchLookOracleTrueB(c, str, s4, ov1, dir, cdn);
+    }
+  }
+
 
   /** No position of `c` holds a `WriteOracle`. */
   ghost predicate NoWriteOracleCode(c: RB.code) {

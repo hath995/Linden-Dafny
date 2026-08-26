@@ -1489,3 +1489,25 @@ closed"; for a lookbehind-only body that follows from the FORWARD `ClosedBelow` 
 instance: F1's `ComputeTrReverseF` relates the backward tree to the flipped forward tree, the
 general-gm fold `TreeResMirrorF` (under `ComputeTrCloseDiscF`) maps the walk from `gmR` to the walk
 from `MirrorGm(gmR)`, and closedness is `MirrorGm`-invariant. 486/0 + 14/0, first try.
+
+### L5 F7c-2 (2026-08-26, session 4): the nested FLookLoop frames admit positive lookbehinds
+
+The engine's `FLookLoop` replays a positive lookbehind lid as `compile(reverse_regex(body))` run
+BACKWARD (ast = `body`). `reverse_regex(body)` is itself a nested fragment with the same capture /
+quant / look ids, and every engine lemma underneath the forward helpers already takes `dir` — so the
+lookbehind helper twins (`...LB`, 17 of them in MainTheorem) are the forward proofs over
+`rev := reverse_regex(body)`. Three ClockMono lemmas were Forward-only (`FFindMatchLookCpOk`,
+`FFindMatchLookCpSet`, `FFindMatchLookOracleTrue`) — Backward twins added. `FrameEntryOk` lost its
+lookahead-only clause; the ten nested `FLookLoop*` frames dispatch per kind. all first try except one missed dispatch: twins 15×(1–2)/0; frames `CaptureFrameNested` 252/0, `QuantFrameNested` 333/0, `GRegUnsetFrame` 276/0, `LookCpSet` 1/0, `LookOracleTrue` 1/0, `ValueLiftOuter` 1007/0, `ValueLiftFull` 1021/0, `ChildLinkLift` 987/0, `QuantValueLiftFull` 1104/0; ClockMono twins 2/0 each.
+
+### L5 F7c-2b/2c (2026-08-26, session 4): FreshBodyDirectMember dispatches; the statics tower is L5-scoped
+
+`FreshBodyDirectMember` (layer 3) now dispatches on the owner's kind: the lookbehind arm uses
+`FreshBodyMatchAncSetLB` over `FFindMatchAncSetB` (Backward twin of the 55-line ancestor-set
+induction; its step lemmas were already direction-generic) with `AncSetInvREReverse`
+(`AncCaps` is `reverse_regex`-invariant under `CapUnique`). The whole statics tower above it
+(`FrameEntryOkFromTables`, `LookRowsStaticNested`, `LookRowsFromTablesNested`, the five `Endpoint*`,
+both `FLookLoop*CoversFromTables`, `ProduceOwnerForall`) is lifted to `NR.L5ScopeRE`; `MainTheoremL4`
+bridges with `NoPosImpliesL5Scope`. `FrameEntryOkFromTables` 1/0, `LookRowsStaticNested` 1/0, `LookRowsFromTablesNested` 2/0, the five `Endpoint*` 2/0 each, both `FLookLoop*CoversFromTables` 2/0, `ProduceOwnerForall` 433/0, **`MainTheoremL4` 4811/0 (single-shot, 41 min)**. What remains of F7c is exactly the hard rung: the
+layer-6 body-replay carriers (flip-transport of the forward lift at `FXR(body)`), then the descent
+dispatch, then the `GateStaticAtNested` hub flip.

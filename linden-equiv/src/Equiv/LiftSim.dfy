@@ -26986,7 +26986,7 @@ module LindenElkLiftSim {
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires code == CP.compile_to_bytecode(re)
-    requires NR.NestedFragmentRE(re) && M.NoPosLookbehindRE(re) && T.TransWf(re)
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && T.TransWf(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
     requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
@@ -27394,6 +27394,7 @@ module LindenElkLiftSim {
       // triggers for them; DeepConclude matches them atomically and reveals
       // internally. The a-h tables the owner-forall needs stay SCOPED to its
       // by-block, never entering the outer context.
+      M.NoPosImpliesL5Scope(re);                   // (L5 F7c-2c) the Endpoint*/owner lemmas are L5-scoped
       M.EndpointValueOk(ast, re, crv, code, str, ov, crv.f_main_cdns, inits, capture, look, quant, ncap, nlook, nquant, endl, result);
       M.EndpointQuantValueOk(ast, re, crv, code, str, ov, crv.f_main_cdns, inits, capture, look, quant, ncap, nlook, nquant, endl, result);
       M.EndpointChildLinkOk(ast, re, crv, code, str, ov, crv.f_main_cdns, inits, capture, look, quant, ncap, nlook, nquant, endl, result);
@@ -27414,6 +27415,7 @@ module LindenElkLiftSim {
       assert forall c: nat :: c in PIV.CapIdsInLooks(re) ==> M.GNotUnderQuantL(T.Translate(re), c);
 
       // owner-forall -> OwnerForallO (a-h tables SCOPED to this by-block)
+      M.NoPosImpliesL5Scope(re);                   // (L5 F7c-2c)
       ProduceOwnerForall(qm, crv, str, ast, re, code, endl, ov, thread, S, inits,
                          capture, look, quant, result, ncap, nlook, nquant);
 

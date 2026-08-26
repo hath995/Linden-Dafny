@@ -4821,6 +4821,570 @@ module LindenElkMain {
     }
     CM.FFindMatchCapRel(bytecode, str, inits, sf, ov, dir, lookcdn, {}, LKC.QIdsInt(body));
   }
+  // ===========================================================================
+  // (L5 F7c-2) LOOKBEHIND twins of the nested replay helpers. `FLookLoop`
+  // replays a positive LOOKBEHIND lid with `capture_regex(Lookbehind, body) ==
+  // reverse_regex(body)` run BACKWARD (`capture_direction`), ast = `body`.
+  // `rev := reverse_regex(body)` is itself a nested fragment with the SAME
+  // capture / quant / look ids, so every code-shape fact of the forward helpers
+  // applies to `compile(rev)`, and every engine lemma underneath already takes
+  // `dir`. Conclusions are stated on `body`'s id sets (transferred by
+  // `ReverseIdSets`).
+  // ===========================================================================
+
+  lemma ReverseCapIdsOutsideLooks(r: R.regex)
+    ensures PIV.CapIdsOutsideLooks(R.reverse_regex(r)) == PIV.CapIdsOutsideLooks(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => ReverseCapIdsOutsideLooks(r1); ReverseCapIdsOutsideLooks(r2);
+    case Re_con(r1, r2) => ReverseCapIdsOutsideLooks(r1); ReverseCapIdsOutsideLooks(r2);
+    case Re_quant(_, _, _, r1) => ReverseCapIdsOutsideLooks(r1);
+    case Re_capture(_, r1) => ReverseCapIdsOutsideLooks(r1);
+    case _ =>
+  }
+
+  lemma ReverseCapIdsInLooks(r: R.regex)
+    ensures PIV.CapIdsInLooks(R.reverse_regex(r)) == PIV.CapIdsInLooks(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => ReverseCapIdsInLooks(r1); ReverseCapIdsInLooks(r2);
+    case Re_con(r1, r2) => ReverseCapIdsInLooks(r1); ReverseCapIdsInLooks(r2);
+    case Re_quant(_, _, _, r1) => ReverseCapIdsInLooks(r1);
+    case Re_capture(_, r1) => ReverseCapIdsInLooks(r1);
+    case Re_lookaround(_, _, r1) => PIV.ReverseCapIds(r1);
+    case _ =>
+  }
+
+  lemma ReverseDirectLookIds(r: R.regex)
+    ensures DirectLookIds(R.reverse_regex(r)) == DirectLookIds(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => ReverseDirectLookIds(r1); ReverseDirectLookIds(r2);
+    case Re_con(r1, r2) => ReverseDirectLookIds(r1); ReverseDirectLookIds(r2);
+    case Re_quant(_, _, _, r1) => ReverseDirectLookIds(r1);
+    case Re_capture(_, r1) => ReverseDirectLookIds(r1);
+    case _ =>
+  }
+
+  /** All the id sets the replay frames speak about are `reverse_regex`-invariant. */
+  lemma ReverseIdSets(body: R.regex)
+    ensures PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(R.reverse_regex(body)))
+         == PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body))
+    ensures LookIdSet(R.reverse_regex(body)) == LookIdSet(body)
+    ensures DirectLidSet(R.reverse_regex(body)) == DirectLidSet(body)
+    ensures LKC.QIdsInt(R.reverse_regex(body)) == LKC.QIdsInt(body)
+    ensures PIV.CaptureRegs(R.reverse_regex(body)) == PIV.CaptureRegs(body)
+  {
+    ReverseCapIdsOutsideLooks(body);
+    NR.LookIdsReverseRE(body);
+    ReverseDirectLookIds(body);
+    PIV.ReverseQuantIds(body);
+    PIV.ReverseCapIds(body);
+  }
+
+  /** The reversed body's structural package. */
+  lemma ReverseNestedPackage(body: R.regex)
+    requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    ensures NR.NestedFragmentRE(R.reverse_regex(body))
+    ensures PIV.CapUnique(R.reverse_regex(body)) && PIV.QuantUnique(R.reverse_regex(body))
+    ensures LTB.LookUnique(body) ==> LTB.LookUnique(R.reverse_regex(body))
+  {
+    NR.ReverseNestedFragmentRE(body);
+    PIV.ReverseCapUnique(body);
+    PIV.ReverseQuantUnique(body);
+    if LTB.LookUnique(body) { NR.LookUniqueReverseRE(body); }
+  }
+
+  /** LB twin of `ReplayCaptureFrameNestedOuter`. */
+  lemma ReplayCaptureFrameNestedOuterLB(bytecode: RB.code, str: string, inits: AI.VmState, ov: LOr.OracleView,
+                           lookcdn: LCdn.cdns, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
+    requires NR.NestedFragmentRE(body) && PIV.CapUnique(body)
+    requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+    requires inits.active == [AI.init_thread(cap, lk, qt)]
+    requires inits.blocked == [] && inits.bestmatch.None?
+    requires |inits.processed.true_set| == RB.size(bytecode)
+          && |inits.processed.false_set| == RB.size(bytecode)
+    requires inits.context.nextchar == AI.get_char(str, inits.cp - 1)
+    ensures var r := AI.FFindMatch(bytecode, str, inits, ov, LAnc.Backward, lookcdn).0;
+      r.Some? ==> CM.RegsAgreeOutside(r.value.capture_regs, cap,
+                                      PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)))
+  {
+    var rev := R.reverse_regex(body);
+    NR.ReverseNestedFragmentRE(body);
+    PIV.ReverseCapUnique(body);
+    var Sc := PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body));
+    ReverseCapIdsOutsideLooks(body);
+    CaptureBytecodeClassifiedNestedOuter(rev);
+    assert CM.CaptureWritesInside(bytecode, Sc);
+    assert CM.VmCapturesAgree(inits, cap, Sc) by {
+      assert CM.RegsAgreeOutside(cap, cap, Sc);
+    }
+    CM.FFindMatchCapWriteFrame(bytecode, str, inits, ov, LAnc.Backward, lookcdn, cap, Sc);
+  }
+
+  /** LB twin of `ReplayPlusCaptureFrameNestedOuter`. */
+  lemma ReplayPlusCaptureFrameNestedOuterLB(bytecode: RB.code, str: string, ov: LOr.OracleView,
+                               lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                               cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
+    requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+    requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
+      r.Some? ==> CM.RegsAgreeOutside(r.value.capture_regs, cap,
+                                      PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)))
+  {
+    var dir := LAnc.Backward;
+    var rev := R.reverse_regex(body);
+    ReverseNestedPackage(body);
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
+    ReplayCaptureFrameNestedOuterLB(bytecode, str, inits, ov, lookcdn, cap, lk, qt, body);
+    NoTrueQuantStampNested(rev);
+    assert VmQuantFinal(inits) by {
+      assert QuantRegsFinal(AI.init_thread(cap, lk, qt));
+    }
+    FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
+    var (res0, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+    if res0.Some? {
+      var th := res0.value;
+      assert QuantRegsFinal(th);
+      FNulledPlusIdentity(body, th.capture_regs, th.look_regs, th.quant_regs, plus_bcv, str, ovx, dir);
+    }
+  }
+
+  /** LB twin of `ReplayPlusLookFrameNested`. */
+  lemma ReplayPlusLookFrameNestedLB(bytecode: RB.code, str: string, ov: LOr.OracleView,
+                               lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                               cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
+    requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+    requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
+      r.Some? ==> CM.RegsAgreeOutside(r.value.look_regs, lk, LookIdSet(body))
+  {
+    var dir := LAnc.Backward;
+    var rev := R.reverse_regex(body);
+    ReverseNestedPackage(body);
+    ReverseIdSets(body);
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
+    LookBytecodeClassifiedNested(rev);
+    assert CM.LookChecksInside(bytecode, LookIdSet(body));
+    assert CM.VmLooksAgree(inits, lk, LookIdSet(body)) by {
+      assert CM.RegsAgreeOutside(lk, lk, LookIdSet(body));
+    }
+    CM.FFindMatchLookFrame(bytecode, str, inits, ov, dir, lookcdn, lk, LookIdSet(body));
+    NoTrueQuantStampNested(rev);
+    assert VmQuantFinal(inits) by {
+      assert QuantRegsFinal(AI.init_thread(cap, lk, qt));
+    }
+    FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
+    var (res0, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+    if res0.Some? {
+      var th := res0.value;
+      assert QuantRegsFinal(th);
+      FNulledPlusIdentity(body, th.capture_regs, th.look_regs, th.quant_regs, plus_bcv, str, ovx, dir);
+    }
+  }
+
+  /** LB twin of `ReplayPlusLookFrameDirectNested`. */
+  lemma ReplayPlusLookFrameDirectNestedLB(bytecode: RB.code, str: string, ov: LOr.OracleView,
+                               lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                               cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
+    requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+    requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
+      r.Some? ==> CM.RegsAgreeOutside(r.value.look_regs, lk, DirectLidSet(body))
+  {
+    var dir := LAnc.Backward;
+    var rev := R.reverse_regex(body);
+    ReverseNestedPackage(body);
+    ReverseIdSets(body);
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
+    DirectLidClassified(rev);
+    assert CM.LookChecksInside(bytecode, DirectLidSet(body));
+    assert CM.VmLooksAgree(inits, lk, DirectLidSet(body)) by {
+      assert CM.RegsAgreeOutside(lk, lk, DirectLidSet(body));
+    }
+    CM.FFindMatchLookFrame(bytecode, str, inits, ov, dir, lookcdn, lk, DirectLidSet(body));
+    NoTrueQuantStampNested(rev);
+    assert VmQuantFinal(inits) by {
+      assert QuantRegsFinal(AI.init_thread(cap, lk, qt));
+    }
+    FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
+    var (res0, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+    if res0.Some? {
+      var th := res0.value;
+      assert QuantRegsFinal(th);
+      FNulledPlusIdentity(body, th.capture_regs, th.look_regs, th.quant_regs, plus_bcv, str, ovx, dir);
+    }
+  }
+
+  /** LB twin of `ReplayPlusFrameNested`. */
+  lemma ReplayPlusFrameNestedLB(bytecode: RB.code, str: string, ov: LOr.OracleView,
+                        lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                        cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
+    requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+    requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
+      r.Some? ==>
+        CM.RegsAgreeOutside(r.value.capture_regs, cap, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)))
+        && CM.RegsAgreeOutside(r.value.look_regs, lk, LookIdSet(body))
+        && QuantRegsFinal(r.value)
+  {
+    var dir := LAnc.Backward;
+    var rev := R.reverse_regex(body);
+    ReverseNestedPackage(body);
+    ReplayPlusCaptureFrameNestedOuterLB(bytecode, str, ov, lookcdn, plus_bcv, cp, cap, lk, qt, body);
+    ReplayPlusLookFrameNestedLB(bytecode, str, ov, lookcdn, plus_bcv, cp, cap, lk, qt, body);
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
+    NoTrueQuantStampNested(rev);
+    assert VmQuantFinal(inits) by {
+      assert QuantRegsFinal(AI.init_thread(cap, lk, qt));
+    }
+    FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
+    var (res0, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+    if res0.Some? {
+      var th := res0.value;
+      FNulledPlusIdentity(body, th.capture_regs, th.look_regs, th.quant_regs, plus_bcv, str, ovx, dir);
+    }
+  }
+
+  /** LB twin of `FFindMatchPlusOvStableNested`. */
+  lemma FFindMatchPlusOvStableNestedLB(bytecode: RB.code, str: string, ov: LOr.OracleView,
+                               lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                               cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
+    requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+    requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    ensures AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).1 == ov
+  {
+    var dir := LAnc.Backward;
+    var rev := R.reverse_regex(body);
+    ReverseNestedPackage(body);
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
+    NoWriteOracleBodyCodeNested(rev);
+    CM.FFindMatchOvStable(bytecode, str, inits, ov, dir, lookcdn);
+    NoTrueQuantStampNested(rev);
+    assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
+    FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
+    var (res0, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+    assert ovx == ov;
+    if res0.Some? {
+      var th := res0.value;
+      assert QuantRegsFinal(th);
+      FNulledPlusIdentity(body, th.capture_regs, th.look_regs, th.quant_regs, plus_bcv, str, ovx, dir);
+    }
+  }
+
+  /** LB twin of `ReplayThreadWfLANested`. */
+  lemma ReplayThreadWfLBNested(bytecode: RB.code, str: string, cp: int, cap: AReg.Regs, lk: AReg.Regs,
+                         qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
+                         body: R.regex, ncap: int, nlook: int, nquant: int)
+    requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+    requires 0 <= cp <= |str|
+    requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
+    requires PIV.CapRegWf(cap)
+    requires |cap.a_cp| == ncap && |cap.a_clk| == ncap
+    requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    ensures
+      var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
+      result.Some? ==> CM.ThreadRegsWf(result.value, ncap, nlook, nquant)
+  {
+    var dir := LAnc.Backward;
+    var rev := R.reverse_regex(body);
+    ReverseNestedPackage(body);
+    var ctx := AI.cp_context(cp, str, dir);
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, ctx);
+    assert CM.VmRegsWf(inits, ncap, nlook, nquant) by {
+      assert CM.ThreadRegsWf(AI.init_thread(cap, lk, qt), ncap, nlook, nquant);
+      assert inits.active == [AI.init_thread(cap, lk, qt)];
+      forall t | t in inits.active ensures CM.ThreadRegsWf(t, ncap, nlook, nquant) {}
+    }
+    FFindMatchRegsWf(bytecode, str, inits, ov, dir, lookcdn, ncap, nlook, nquant);
+    NoTrueQuantStampNested(rev);
+    assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
+    FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
+    var (fmres, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+    if fmres.Some? {
+      FNulledPlusIdentity(body, fmres.value.capture_regs, fmres.value.look_regs, fmres.value.quant_regs,
+                          plus_bcv, str, ovx, dir);
+    }
+  }
+
+  /** LB twin of `ReplayLookCpOkNested`. */
+  lemma ReplayLookCpOkNestedLB(bytecode: RB.code, str: string, ov: LOr.OracleView,
+                             lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                             cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
+    requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+    requires 0 <= cp <= |str|
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    requires CM.LookCpsLE(lk, |str|)
+    ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
+      r.Some? ==> CM.LookCpsLE(r.value.look_regs, |str|)
+  {
+    var dir := LAnc.Backward;
+    var rev := R.reverse_regex(body);
+    ReverseNestedPackage(body);
+    var ctx := AI.cp_context(cp, str, dir);
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, ctx);
+    assert CM.VmLookCpOk(inits, |str|) by {
+      assert AI.init_thread(cap, lk, qt).look_regs == lk;
+      assert inits.active == [AI.init_thread(cap, lk, qt)];
+    }
+    assert ctx.nextchar == AI.get_char(str, cp - 1);
+    CM.FFindMatchLookCpOkB(bytecode, str, inits, ov, dir, lookcdn);
+    NoTrueQuantStampNested(rev);
+    assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
+    FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
+    var (res0, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+    if res0.Some? {
+      var th := res0.value;
+      FNulledPlusIdentity(body, th.capture_regs, th.look_regs, th.quant_regs, plus_bcv, str, ovx, dir);
+    }
+  }
+
+  /** LB twin of `ReplayCapAgreeFresh` (the register-value-blind bisimulation, Backward). */
+  lemma ReplayCapAgreeFreshLBNested(bodycode: RB.code, str: string, cp: int, cap: AReg.Regs, lk: AReg.Regs,
+                              qt: AReg.Regs, ov: LOr.OracleView, cdns: LCdn.cdns, body: R.regex,
+                              ncap: int, nlook: int, nquant: int)
+    requires 0 <= cp <= |str|
+    requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
+    requires CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    ensures var ctxc := AI.cp_context(cp, str, LAnc.Backward);
+            var ra := AI.FFindMatch(bodycode, str,
+                        AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Backward, cdns).0;
+            var rf := AI.FFindMatch(bodycode, str,
+                        AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                      AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Backward, cdns).0;
+            (ra.None? <==> rf.None?)
+            && (ra.Some? ==> CM.RegsAgreeInside(ra.value.capture_regs, rf.value.capture_regs, PIV.CaptureRegs(body)))
+  {
+    var ctxc := AI.cp_context(cp, str, LAnc.Backward);
+    var sa := AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc);
+    var sf := AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                            AReg.init_regs(nquant), 0, ctxc);
+    var Sc := PIV.CaptureRegs(body);
+    assert CM.VmRel(sa, sf, Sc, {}) by {
+      assert CM.ThreadRel(AI.init_thread(cap, lk, qt),
+                          AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant)),
+                          Sc, {}) by {
+        assert CM.RegsAgreeInside(qt, AReg.init_regs(nquant), {});
+      }
+    }
+    CM.FFindMatchCapRel(bodycode, str, sa, sf, ov, LAnc.Backward, cdns, Sc, {});
+  }
+
+  /** LB twin of `ReplayLidCapAgreeFreshNested`. */
+  lemma ReplayLidCapAgreeFreshNestedLB(bytecode: RB.code, str: string, cp: int, cap: AReg.Regs, lk: AReg.Regs,
+                               qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
+                               body: R.regex, ncap: int, nlook: int, nquant: int)
+    requires NR.NestedFragmentRE(body)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+    requires 0 <= cp <= |str|
+    requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    requires CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+    ensures
+      var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
+      var rf := AI.FFindMatch(bytecode, str,
+                  AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
+                  ov, LAnc.Backward, lookcdn).0;
+      (result.None? <==> rf.None?)
+      && (result.Some? ==> CM.RegsAgreeInside(result.value.capture_regs, rf.value.capture_regs, PIV.CaptureRegs(body)))
+  {
+    var dir := LAnc.Backward;
+    var rev := R.reverse_regex(body);
+    ReverseNestedPackage(body);
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
+    NoTrueQuantStampNested(rev);
+    assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
+    FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
+    var (fmres, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+    if fmres.Some? {
+      FNulledPlusIdentity(body, fmres.value.capture_regs, fmres.value.look_regs, fmres.value.quant_regs,
+                          plus_bcv, str, ovx, dir);
+    }
+    ReplayCapAgreeFreshLBNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, body, ncap, nlook, nquant);
+  }
+
+  /** LB twin of `ReplayLidLookAgreeFreshNested`. */
+  lemma ReplayLidLookAgreeFreshNestedLB(bytecode: RB.code, str: string, cp: int, cap: AReg.Regs, lk: AReg.Regs,
+                                      qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
+                                      body: R.regex, SL: set<int>, ncap: int, nlook: int, nquant: int)
+    requires NR.NestedFragmentRE(body)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+    requires 0 <= cp <= |str|
+    requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    requires |cap.a_cp| == ncap && |cap.a_clk| == ncap
+    requires CM.RegsAgreeInside(lk, AReg.init_regs(nlook), SL)
+    ensures
+      var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
+      var rf := AI.FFindMatch(bytecode, str,
+                  AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
+                  ov, LAnc.Backward, lookcdn).0;
+      (result.None? <==> rf.None?)
+      && (result.Some? ==>
+            CM.RegsAgreeInside(result.value.look_regs, rf.value.look_regs, SL))
+  {
+    var dir := LAnc.Backward;
+    var rev := R.reverse_regex(body);
+    ReverseNestedPackage(body);
+    var ctxc := AI.cp_context(cp, str, dir);
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, ctxc);
+    NoTrueQuantStampNested(rev);
+    assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
+    FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
+    var (fmres, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+    if fmres.Some? {
+      FNulledPlusIdentity(body, fmres.value.capture_regs, fmres.value.look_regs, fmres.value.quant_regs,
+                          plus_bcv, str, ovx, dir);
+    }
+    var sf := AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                            AReg.init_regs(nquant), 0, ctxc);
+    assert CM.VmRelLk(inits, sf, {}, {}, SL) by {
+      assert CM.ThreadRelLk(AI.init_thread(cap, lk, qt),
+                            AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant)),
+                            {}, {}, SL) by {
+        assert CM.RegsAgreeInside(cap, AReg.init_regs(ncap), {});
+        assert CM.RegsAgreeInside(qt, AReg.init_regs(nquant), {});
+        assert CM.RegsAgreeInside(lk, AReg.init_regs(nlook), SL);
+      }
+    }
+    CM.FFindMatchLookRel(bytecode, str, inits, sf, ov, dir, lookcdn, {}, {}, SL);
+  }
+
+  /** LB twin of `ReplayLidQuantAgreeFreshNested`. */
+  lemma ReplayLidQuantAgreeFreshNestedLB(bytecode: RB.code, str: string, cp: int, cap: AReg.Regs, lk: AReg.Regs,
+                                       qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
+                                       body: R.regex, ncap: int, nlook: int, nquant: int)
+    requires NR.NestedFragmentRE(body)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+    requires 0 <= cp <= |str|
+    requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    requires |cap.a_cp| == ncap && |cap.a_clk| == ncap
+    requires CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body))
+    ensures
+      var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
+      var rf := AI.FFindMatch(bytecode, str,
+                  AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
+                  ov, LAnc.Backward, lookcdn).0;
+      (result.None? <==> rf.None?)
+      && (result.Some? ==>
+            CM.RegsAgreeInside(result.value.quant_regs, rf.value.quant_regs, LKC.QIdsInt(body)))
+  {
+    var dir := LAnc.Backward;
+    var rev := R.reverse_regex(body);
+    ReverseNestedPackage(body);
+    var ctxc := AI.cp_context(cp, str, dir);
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, ctxc);
+    NoTrueQuantStampNested(rev);
+    assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
+    FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
+    var (fmres, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+    if fmres.Some? {
+      FNulledPlusIdentity(body, fmres.value.capture_regs, fmres.value.look_regs, fmres.value.quant_regs,
+                          plus_bcv, str, ovx, dir);
+    }
+    var sf := AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                            AReg.init_regs(nquant), 0, ctxc);
+    assert CM.VmRel(inits, sf, {}, LKC.QIdsInt(body)) by {
+      assert CM.ThreadRel(AI.init_thread(cap, lk, qt),
+                          AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant)),
+                          {}, LKC.QIdsInt(body)) by {
+        assert CM.RegsAgreeInside(cap, AReg.init_regs(ncap), {});
+        assert CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body));
+      }
+    }
+    CM.FFindMatchCapRel(bytecode, str, inits, sf, ov, dir, lookcdn, {}, LKC.QIdsInt(body));
+  }
+  lemma ReverseQuantIdsOutsideLooks(r: R.regex)
+    ensures PIV.QuantIdsOutsideLooks(R.reverse_regex(r)) == PIV.QuantIdsOutsideLooks(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => ReverseQuantIdsOutsideLooks(r1); ReverseQuantIdsOutsideLooks(r2);
+    case Re_con(r1, r2) => ReverseQuantIdsOutsideLooks(r1); ReverseQuantIdsOutsideLooks(r2);
+    case Re_quant(_, _, _, r1) => ReverseQuantIdsOutsideLooks(r1);
+    case Re_capture(_, r1) => ReverseQuantIdsOutsideLooks(r1);
+    case _ =>
+  }
+
+  /** LB twin of `ReplayPlusQuantFrameNestedOuter`. */
+  lemma ReplayPlusQuantFrameNestedOuterLB(bytecode: RB.code, str: string, ov: LOr.OracleView,
+                               lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                               cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
+    requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+    requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
+          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
+      r.Some? ==> CM.RegsAgreeOutside(r.value.quant_regs, qt, QIdsOuter(body))
+  {
+    var dir := LAnc.Backward;
+    var rev := R.reverse_regex(body);
+    ReverseNestedPackage(body);
+    ReverseQuantIdsOutsideLooks(body);
+    var Sq := QIdsOuter(body);
+    assert QIdsOuter(rev) == Sq;
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
+    QuantBytecodeClassifiedNestedOuter(rev);
+    assert CM.QuantWritesInside(bytecode, Sq);
+    assert CM.VmQuantsAgree(inits, qt, Sq) by {
+      assert inits.active == [AI.init_thread(cap, lk, qt)];
+      assert AI.init_thread(cap, lk, qt).quant_regs == qt;
+      assert CM.RegsAgreeOutside(qt, qt, Sq);
+    }
+    CM.FFindMatchQuantFrame(bytecode, str, inits, ov, dir, lookcdn, qt, Sq);
+    NoTrueQuantStampNested(rev);
+    assert VmQuantFinal(inits) by {
+      assert QuantRegsFinal(AI.init_thread(cap, lk, qt));
+    }
+    FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
+    var (res0, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+    if res0.Some? {
+      var th := res0.value;
+      assert QuantRegsFinal(th);
+      FNulledPlusIdentity(body, th.capture_regs, th.look_regs, th.quant_regs, plus_bcv, str, ovx, dir);
+    }
+  }
+
+
 
   /** (DEEP reverse-recon LEVEL-LINK, engine half) the per-lid replay↔fresh LOOK
       agreement for a NESTED body — look twin of `ReplayLidQuantAgreeFreshNested`.
@@ -11184,7 +11748,9 @@ module LindenElkMain {
     && LTB.LookTablesOk(body, crv)
     && PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)) <= S
     && LookIdSet(body) <= Slook
-    && (AI.capture_type(la) ==> la.Lookahead?)
+    // (L5 F7c-2) the former `capture_type(la) ==> la.Lookahead?` clause is GONE:
+    // the nested `FLookLoop*` frames now dispatch per kind (a positive LOOKBEHIND
+    // lid replays `reverse_regex(body)` BACKWARD — the `...LB` helper twins).
   }
 
   /** R2 DELIVERABLE 1: the L4 nested capture+look frame for `FLookLoop`. Every
@@ -11227,23 +11793,32 @@ module LindenElkMain {
         assert 0 <= lid < |crv.f_look_types| && crv.f_look_types[lid] == la;
         assert looktype == la;
         assert FrameEntryOk(crv, la, body, S, Slook);
-        assert la.Lookahead?;
+        assert la.Lookahead? || la.Lookbehind?;            // (L5 F7c-2) capture_type; per-kind dispatch below
         var bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
         var dir := AI.capture_direction(looktype);
         var lookcdn := if 0 <= lid < |crv.f_look_cdns| then crv.f_look_cdns[lid] else [];
         var lookast := if 0 <= lid < |crv.f_look_ast| then crv.f_look_ast[lid] else R.Re_empty;
         assert lookast == body;
         assert bytecode == CP.compile_to_bytecode(CP.capture_regex(la, body));
-        assert CP.capture_regex(la, body) == body;
-        assert bytecode == CP.compile_to_bytecode(body);
         var (result, ov1) := AI.FFindMatchPlus(bytecode, lookast, crv.f_plus_bc, str, ov, dir,
                                                cp, cap, lk, qt, 0, lookcdn);
         var ncap := if result.None? then cap else result.value.capture_regs;
         var nlk := if result.None? then lk else result.value.look_regs;
         var nqt := if result.None? then qt else result.value.quant_regs;
-        assert dir == LAnc.Forward;
-        assert AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp);
-        ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        // (L5 F7c-2) per-kind replay frames
+        if la.Lookahead? {
+          assert CP.capture_regex(la, body) == body;
+          assert bytecode == CP.compile_to_bytecode(body);
+          assert dir == LAnc.Forward;
+          assert AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp);
+          ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        } else {
+          assert CP.capture_regex(la, body) == R.reverse_regex(body);
+          assert bytecode == CP.compile_to_bytecode(R.reverse_regex(body));
+          assert dir == LAnc.Backward;
+          assert AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1);
+          ReplayPlusFrameNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
+        }
 
         // ---- this replay's frames, weakened to S / Slook ----
         assert CM.RegsAgreeOutside(ncap, cap, S) by {
@@ -11335,24 +11910,34 @@ module LindenElkMain {
         assert 0 <= lid < |crv.f_look_types| && crv.f_look_types[lid] == la;
         assert looktype == la;
         assert FrameEntryOk(crv, la, body, S, Slook) && QIdsOuter(body) <= Sq;
-        assert la.Lookahead?;
+        assert la.Lookahead? || la.Lookbehind?;            // (L5 F7c-2) capture_type; per-kind dispatch below
         var bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
         var dir := AI.capture_direction(looktype);
         var lookcdn := if 0 <= lid < |crv.f_look_cdns| then crv.f_look_cdns[lid] else [];
         var lookast := if 0 <= lid < |crv.f_look_ast| then crv.f_look_ast[lid] else R.Re_empty;
         assert lookast == body;
         assert bytecode == CP.compile_to_bytecode(CP.capture_regex(la, body));
-        assert CP.capture_regex(la, body) == body;
-        assert bytecode == CP.compile_to_bytecode(body);
         var (result, ov1) := AI.FFindMatchPlus(bytecode, lookast, crv.f_plus_bc, str, ov, dir,
                                                cp, cap, lk, qt, 0, lookcdn);
         var ncap := if result.None? then cap else result.value.capture_regs;
         var nlk := if result.None? then lk else result.value.look_regs;
         var nqt := if result.None? then qt else result.value.quant_regs;
-        assert dir == LAnc.Forward;
-        assert AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp);
-        ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
-        ReplayPlusQuantFrameNestedOuter(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        // (L5 F7c-2) per-kind replay frames
+        if la.Lookahead? {
+          assert CP.capture_regex(la, body) == body;
+          assert bytecode == CP.compile_to_bytecode(body);
+          assert dir == LAnc.Forward;
+          assert AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp);
+          ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+          ReplayPlusQuantFrameNestedOuter(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        } else {
+          assert CP.capture_regex(la, body) == R.reverse_regex(body);
+          assert bytecode == CP.compile_to_bytecode(R.reverse_regex(body));
+          assert dir == LAnc.Backward;
+          assert AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1);
+          ReplayPlusFrameNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
+          ReplayPlusQuantFrameNestedOuterLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
+        }
 
         // ---- this replay's quant frame, weakened to Sq ----
         assert CM.RegsAgreeOutside(nqt, qt, Sq) by {
@@ -11607,32 +12192,37 @@ module LindenElkMain {
         assert looktype == la;
         assert body == VBody(crv, lid);
         assert FrameEntryOk(crv, la, body, S, Slook);
-        assert la.Lookahead?;
+        assert la.Lookahead? || la.Lookbehind?;            // (L5 F7c-2) capture_type
         var bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
         var dir := AI.capture_direction(looktype);
         var lookcdn := if 0 <= lid < |crv.f_look_cdns| then crv.f_look_cdns[lid] else [];
         var lookast := if 0 <= lid < |crv.f_look_ast| then crv.f_look_ast[lid] else R.Re_empty;
         assert lookast == body;
         assert bytecode == CP.compile_to_bytecode(CP.capture_regex(la, body));
-        assert CP.capture_regex(la, body) == body;
-        assert bytecode == CP.compile_to_bytecode(body);
         var (result, ov1) := AI.FFindMatchPlus(bytecode, lookast, crv.f_plus_bc, str, ov, dir,
                                                cp, cap, lk, qt, 0, lookcdn);
         var capN := if result.None? then cap else result.value.capture_regs;
         var nlk := if result.None? then lk else result.value.look_regs;
         var nqt := if result.None? then qt else result.value.quant_regs;
+        // (L5 F7c-2) per-kind replay facts (the `...LB` twins take the BACKWARD ones)
+        assert la.Lookahead? ==> (dir == LAnc.Forward && CP.capture_regex(la, body) == body
+          && bytecode == CP.compile_to_bytecode(body)
+          && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp));
+        assert la.Lookbehind? ==> (dir == LAnc.Backward && CP.capture_regex(la, body) == R.reverse_regex(body)
+          && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+          && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1));
         assert res == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1);
-        assert dir == LAnc.Forward;
         assert 0 <= cp <= |str| by {
           assert cp == AI.get_idx(lk.a_cp, lid) && cp >= 0;   // get_cp(lk,lid)==Some(cp)
           assert AI.get_idx(lk.a_cp, lid) <= |str|;            // LookCpsLE
         }
-        assert AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp);
 
         // per-lid replay frames / wf / cp / value
-        FFindMatchPlusOvStableNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        if la.Lookahead? { FFindMatchPlusOvStableNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
+        else { FFindMatchPlusOvStableNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
         assert ov1 == ov;
-        ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        if la.Lookahead? { ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
+        else { ReplayPlusFrameNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
         assert CM.RegsAgreeOutside(capN, cap, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body))) by {
           if result.Some? {} else { assert capN == cap; }
         }
@@ -11640,30 +12230,34 @@ module LindenElkMain {
           if result.Some? {} else { assert nlk == lk; }
         }
         // recon A: TIGHT look frame -- the replay writes only body's DIRECT children
-        ReplayPlusLookFrameDirectNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        if la.Lookahead? { ReplayPlusLookFrameDirectNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
+        else { ReplayPlusLookFrameDirectNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
         assert CM.RegsAgreeOutside(nlk, lk, DirectLidSet(body)) by {
           if result.Some? {} else { assert nlk == lk; }
         }
         assert (forall k :: AI.get_idx(nqt.a_cp, k) < 0) && (forall k :: AI.get_idx(nqt.a_clk, k) >= -1) by {
           if result.Some? { assert QuantRegsFinal(result.value); }
         }
-        ReplayThreadWfLANested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant);
+        if la.Lookahead? { ReplayThreadWfLANested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant); }
+        else { ReplayThreadWfLBNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant); }
         assert |capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN)
             && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook by {
           if result.Some? { assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant); }
         }
-        ReplayLookCpOkNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
+        if la.Lookahead? { ReplayLookCpOkNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
+        else { ReplayLookCpOkNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
         assert CM.LookCpsLE(nlk, |str|) by {
           if result.Some? {} else { assert nlk == lk; }
         }
 
         // value at lid: result ~ rfLid on CaptureRegs(body); iff-together
-        ReplayLidCapAgreeFreshNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant);
+        if la.Lookahead? { ReplayLidCapAgreeFreshNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant); }
+        else { ReplayLidCapAgreeFreshNestedLB(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant); }
         var rfLid := FreshBodyMatch(crv, str, lid, lk, ov, ncap, nlook, nquant);
         var rf := AI.FFindMatch(bytecode, str,
                     AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                  AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
-                    ov, LAnc.Forward, lookcdn).0;
+                                  AReg.init_regs(nquant), 0, AI.cp_context(cp, str, dir)),
+                    ov, dir, lookcdn).0;   // (L5 F7c-2) in the lid's own direction
         assert rfLid == rf;
 
         var Sp := S - PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body));
@@ -12282,32 +12876,37 @@ module LindenElkMain {
         assert looktype == la;
         assert body == VBody(crv, lid);
         assert FrameEntryOk(crv, la, body, S, Slook);
-        assert la.Lookahead?;
+        assert la.Lookahead? || la.Lookbehind?;            // (L5 F7c-2) capture_type
         var bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
         var dir := AI.capture_direction(looktype);
         var lookcdn := if 0 <= lid < |crv.f_look_cdns| then crv.f_look_cdns[lid] else [];
         var lookast := if 0 <= lid < |crv.f_look_ast| then crv.f_look_ast[lid] else R.Re_empty;
         assert lookast == body;
         assert bytecode == CP.compile_to_bytecode(CP.capture_regex(la, body));
-        assert CP.capture_regex(la, body) == body;
-        assert bytecode == CP.compile_to_bytecode(body);
         var (result, ov1) := AI.FFindMatchPlus(bytecode, lookast, crv.f_plus_bc, str, ov, dir,
                                                cp, cap, lk, qt, 0, lookcdn);
         var capN := if result.None? then cap else result.value.capture_regs;
         var nlk := if result.None? then lk else result.value.look_regs;
         var nqt := if result.None? then qt else result.value.quant_regs;
+        // (L5 F7c-2) per-kind replay facts (the `...LB` twins take the BACKWARD ones)
+        assert la.Lookahead? ==> (dir == LAnc.Forward && CP.capture_regex(la, body) == body
+          && bytecode == CP.compile_to_bytecode(body)
+          && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp));
+        assert la.Lookbehind? ==> (dir == LAnc.Backward && CP.capture_regex(la, body) == R.reverse_regex(body)
+          && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+          && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1));
         assert res == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1);
-        assert dir == LAnc.Forward;
         assert 0 <= cp <= |str| by {
           assert cp == AI.get_idx(lk.a_cp, lid) && cp >= 0;   // get_cp(lk,lid)==Some(cp)
           assert AI.get_idx(lk.a_cp, lid) <= |str|;            // LookCpsLE
         }
-        assert AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp);
 
         // per-lid replay frames / wf / cp / value
-        FFindMatchPlusOvStableNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        if la.Lookahead? { FFindMatchPlusOvStableNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
+        else { FFindMatchPlusOvStableNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
         assert ov1 == ov;
-        ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        if la.Lookahead? { ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
+        else { ReplayPlusFrameNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
         assert CM.RegsAgreeOutside(capN, cap, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body))) by {
           if result.Some? {} else { assert capN == cap; }
         }
@@ -12315,30 +12914,34 @@ module LindenElkMain {
           if result.Some? {} else { assert nlk == lk; }
         }
         // recon A: TIGHT look frame -- the replay writes only body's DIRECT children
-        ReplayPlusLookFrameDirectNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        if la.Lookahead? { ReplayPlusLookFrameDirectNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
+        else { ReplayPlusLookFrameDirectNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
         assert CM.RegsAgreeOutside(nlk, lk, DirectLidSet(body)) by {
           if result.Some? {} else { assert nlk == lk; }
         }
         assert (forall k :: AI.get_idx(nqt.a_cp, k) < 0) && (forall k :: AI.get_idx(nqt.a_clk, k) >= -1) by {
           if result.Some? { assert QuantRegsFinal(result.value); }
         }
-        ReplayThreadWfLANested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant);
+        if la.Lookahead? { ReplayThreadWfLANested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant); }
+        else { ReplayThreadWfLBNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant); }
         assert |capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN)
             && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook by {
           if result.Some? { assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant); }
         }
-        ReplayLookCpOkNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
+        if la.Lookahead? { ReplayLookCpOkNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
+        else { ReplayLookCpOkNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
         assert CM.LookCpsLE(nlk, |str|) by {
           if result.Some? {} else { assert nlk == lk; }
         }
 
         // value at lid: result ~ rfLid on CaptureRegs(body); iff-together
-        ReplayLidCapAgreeFreshNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant);
+        if la.Lookahead? { ReplayLidCapAgreeFreshNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant); }
+        else { ReplayLidCapAgreeFreshNestedLB(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant); }
         var rfLid := FreshBodyMatch(crv, str, lid, lk, ov, ncap, nlook, nquant);
         var rf := AI.FFindMatch(bytecode, str,
                     AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                  AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
-                    ov, LAnc.Forward, lookcdn).0;
+                                  AReg.init_regs(nquant), 0, AI.cp_context(cp, str, dir)),
+                    ov, dir, lookcdn).0;   // (L5 F7c-2) in the lid's own direction
         assert rfLid == rf;
 
         var Sp := S - PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body));
@@ -12601,63 +13204,71 @@ module LindenElkMain {
         assert looktype == la;
         assert body == VBody(crv, lid);
         assert FrameEntryOk(crv, la, body, S, Slook);
-        assert la.Lookahead?;
+        assert la.Lookahead? || la.Lookbehind?;            // (L5 F7c-2) capture_type
         var bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
         var dir := AI.capture_direction(looktype);
         var lookcdn := if 0 <= lid < |crv.f_look_cdns| then crv.f_look_cdns[lid] else [];
         var lookast := if 0 <= lid < |crv.f_look_ast| then crv.f_look_ast[lid] else R.Re_empty;
         assert lookast == body;
         assert bytecode == CP.compile_to_bytecode(CP.capture_regex(la, body));
-        assert CP.capture_regex(la, body) == body;
-        assert bytecode == CP.compile_to_bytecode(body);
         var (result, ov1) := AI.FFindMatchPlus(bytecode, lookast, crv.f_plus_bc, str, ov, dir,
                                                cp, cap, lk, qt, 0, lookcdn);
         var capN := if result.None? then cap else result.value.capture_regs;
         var nlk := if result.None? then lk else result.value.look_regs;
         var nqt := if result.None? then qt else result.value.quant_regs;
+        // (L5 F7c-2) per-kind replay facts (the `...LB` twins take the BACKWARD ones)
+        assert la.Lookahead? ==> (dir == LAnc.Forward && CP.capture_regex(la, body) == body
+          && bytecode == CP.compile_to_bytecode(body)
+          && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp));
+        assert la.Lookbehind? ==> (dir == LAnc.Backward && CP.capture_regex(la, body) == R.reverse_regex(body)
+          && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+          && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1));
         assert res == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1);
-        assert dir == LAnc.Forward;
         assert 0 <= cp <= |str| by {
           assert cp == AI.get_idx(lk.a_cp, lid) && cp >= 0;   // get_cp(lk,lid)==Some(cp)
           assert AI.get_idx(lk.a_cp, lid) <= |str|;            // LookCpsLE
         }
-        assert AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp);
 
         // per-lid replay frames / wf / cp (verbatim from FLookLoopValueLiftFull)
-        FFindMatchPlusOvStableNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        if la.Lookahead? { FFindMatchPlusOvStableNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
+        else { FFindMatchPlusOvStableNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
         assert ov1 == ov;
-        ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        if la.Lookahead? { ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
+        else { ReplayPlusFrameNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
         assert CM.RegsAgreeOutside(capN, cap, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body))) by {
           if result.Some? {} else { assert capN == cap; }
         }
         assert CM.RegsAgreeOutside(nlk, lk, LookIdSet(body)) by {
           if result.Some? {} else { assert nlk == lk; }
         }
-        ReplayPlusLookFrameDirectNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        if la.Lookahead? { ReplayPlusLookFrameDirectNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
+        else { ReplayPlusLookFrameDirectNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
         assert CM.RegsAgreeOutside(nlk, lk, DirectLidSet(body)) by {
           if result.Some? {} else { assert nlk == lk; }
         }
         assert (forall k :: AI.get_idx(nqt.a_cp, k) < 0) && (forall k :: AI.get_idx(nqt.a_clk, k) >= -1) by {
           if result.Some? { assert QuantRegsFinal(result.value); }
         }
-        ReplayThreadWfLANested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant);
+        if la.Lookahead? { ReplayThreadWfLANested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant); }
+        else { ReplayThreadWfLBNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant); }
         assert |capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN)
             && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook by {
           if result.Some? { assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant); }
         }
-        ReplayLookCpOkNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
+        if la.Lookahead? { ReplayLookCpOkNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
+        else { ReplayLookCpOkNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
         assert CM.LookCpsLE(nlk, |str|) by {
           if result.Some? {} else { assert nlk == lk; }
         }
 
         // THE level-link engine step: replay ~ fresh on lid's DIRECT children
-        ReplayLidLookAgreeFreshNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc,
-                                      body, la, DirectLidSet(body), ncap, nlook, nquant);
+        if la.Lookahead? { ReplayLidLookAgreeFreshNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, DirectLidSet(body), ncap, nlook, nquant); }
+        else { ReplayLidLookAgreeFreshNestedLB(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, DirectLidSet(body), ncap, nlook, nquant); }
         var rfLid := FreshBodyMatch(crv, str, lid, lk, ov, ncap, nlook, nquant);
         var rf := AI.FFindMatch(bytecode, str,
                     AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                  AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
-                    ov, LAnc.Forward, lookcdn).0;
+                                  AReg.init_regs(nquant), 0, AI.cp_context(cp, str, dir)),
+                    ov, dir, lookcdn).0;   // (L5 F7c-2) in the lid's own direction
         assert rfLid == rf;
 
         // ---- recursion hypothesis transfer at [next] (verbatim + (c'-look)) ----
@@ -12872,21 +13483,25 @@ module LindenElkMain {
         assert 0 <= lid < |crv.f_look_types| && crv.f_look_types[lid] == la;
         assert looktype == la;
         assert FrameEntryOk(crv, la, body, S, Slook);
-        assert la.Lookahead?;                              // capture_type ==> Lookahead (FrameEntryOk)
+        assert la.Lookahead? || la.Lookbehind?;            // (L5 F7c-2) capture_type
         var bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
         var dir := AI.capture_direction(looktype);
-        assert dir == LAnc.Forward;
         var lookcdn := if 0 <= lid < |crv.f_look_cdns| then crv.f_look_cdns[lid] else [];
         var lookast := if 0 <= lid < |crv.f_look_ast| then crv.f_look_ast[lid] else R.Re_empty;
-        assert lookast == body && bytecode == CP.compile_to_bytecode(body) by {
-          assert bytecode == CP.compile_to_bytecode(CP.capture_regex(la, body));
-          assert CP.capture_regex(la, body) == body;
-        }
+        assert lookast == body;
+        assert bytecode == CP.compile_to_bytecode(CP.capture_regex(la, body));
         var (result, ov1) := AI.FFindMatchPlus(bytecode, lookast, crv.f_plus_bc, str, ov, dir,
                                                cp, cap, lk, qt, 0, lookcdn);
         var capN := if result.None? then cap else result.value.capture_regs;
         var nlk := if result.None? then lk else result.value.look_regs;
         var nqt := if result.None? then qt else result.value.quant_regs;
+        // (L5 F7c-2) per-kind replay facts (the `...LB` twins take the BACKWARD ones)
+        assert la.Lookahead? ==> (dir == LAnc.Forward && CP.capture_regex(la, body) == body
+          && bytecode == CP.compile_to_bytecode(body)
+          && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp));
+        assert la.Lookbehind? ==> (dir == LAnc.Backward && CP.capture_regex(la, body) == R.reverse_regex(body)
+          && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+          && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1));
         assert res == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1);
         assert 0 <= cp <= |str| by {
           assert cp == AI.get_idx(lk.a_cp, lid) && cp >= 0;
@@ -12900,9 +13515,12 @@ module LindenElkMain {
           assert AI.init_thread(cap, lk, qt).look_regs == lk;
           assert inits.active == [AI.init_thread(cap, lk, qt)];
         }
-        assert ctxc.nextchar == AI.get_char(str, cp);
-        CM.FFindMatchLookCpSet(bytecode, str, inits, ov, dir, lookcdn);
-        NoTrueQuantStampNested(body);
+        if la.Lookahead? { assert ctxc.nextchar == AI.get_char(str, cp); }
+        else { assert ctxc.nextchar == AI.get_char(str, cp - 1); }
+        if la.Lookahead? { CM.FFindMatchLookCpSet(bytecode, str, inits, ov, dir, lookcdn); }
+        else { CM.FFindMatchLookCpSetB(bytecode, str, inits, ov, dir, lookcdn); }
+        if la.Lookahead? { NoTrueQuantStampNested(body); }
+        else { ReverseNestedPackage(body); NoTrueQuantStampNested(R.reverse_regex(body)); }
         assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
         FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
         var (fmres, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
@@ -12916,17 +13534,20 @@ module LindenElkMain {
         assert (forall k :: AI.get_idx(nqt.a_cp, k) < 0) && (forall k :: AI.get_idx(nqt.a_clk, k) >= -1) by {
           if result.Some? { assert QuantRegsFinal(result.value); }
         }
-        ReplayThreadWfLANested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant);
+        if la.Lookahead? { ReplayThreadWfLANested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant); }
+        else { ReplayThreadWfLBNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant); }
         assert |capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN)
             && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook by {
           if result.Some? { assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant); }
         }
-        ReplayLookCpOkNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
+        if la.Lookahead? { ReplayLookCpOkNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
+        else { ReplayLookCpOkNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
         assert CM.LookCpsLE(nlk, |str|) by {
           if result.Some? {} else { assert nlk == lk; }
         }
         // (b)@nlk (verbatim transfer)
-        ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        if la.Lookahead? { ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
+        else { ReplayPlusFrameNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
         assert forall l: int :: next <= l <= maxlook && AReg.get_cp(nlk, l).Some? ==>
           exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
         by {
@@ -12991,21 +13612,25 @@ module LindenElkMain {
         assert 0 <= lid < |crv.f_look_types| && crv.f_look_types[lid] == la;
         assert looktype == la;
         assert FrameEntryOk(crv, la, body, S, Slook);
-        assert la.Lookahead?;                              // capture_type ==> Lookahead (FrameEntryOk)
+        assert la.Lookahead? || la.Lookbehind?;            // (L5 F7c-2) capture_type
         var bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
         var dir := AI.capture_direction(looktype);
-        assert dir == LAnc.Forward;
         var lookcdn := if 0 <= lid < |crv.f_look_cdns| then crv.f_look_cdns[lid] else [];
         var lookast := if 0 <= lid < |crv.f_look_ast| then crv.f_look_ast[lid] else R.Re_empty;
-        assert lookast == body && bytecode == CP.compile_to_bytecode(body) by {
-          assert bytecode == CP.compile_to_bytecode(CP.capture_regex(la, body));
-          assert CP.capture_regex(la, body) == body;
-        }
+        assert lookast == body;
+        assert bytecode == CP.compile_to_bytecode(CP.capture_regex(la, body));
         var (result, ov1) := AI.FFindMatchPlus(bytecode, lookast, crv.f_plus_bc, str, ov, dir,
                                                cp, cap, lk, qt, 0, lookcdn);
         var capN := if result.None? then cap else result.value.capture_regs;
         var nlk := if result.None? then lk else result.value.look_regs;
         var nqt := if result.None? then qt else result.value.quant_regs;
+        // (L5 F7c-2) per-kind replay facts (the `...LB` twins take the BACKWARD ones)
+        assert la.Lookahead? ==> (dir == LAnc.Forward && CP.capture_regex(la, body) == body
+          && bytecode == CP.compile_to_bytecode(body)
+          && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp));
+        assert la.Lookbehind? ==> (dir == LAnc.Backward && CP.capture_regex(la, body) == R.reverse_regex(body)
+          && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+          && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1));
         assert res == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1);
         assert 0 <= cp <= |str| by {
           assert cp == AI.get_idx(lk.a_cp, lid) && cp >= 0;
@@ -13013,7 +13638,8 @@ module LindenElkMain {
         }
 
         // the oracle is stable through the replay; the winner keeps OracleTrue
-        FFindMatchPlusOvStableNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        if la.Lookahead? { FFindMatchPlusOvStableNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
+        else { FFindMatchPlusOvStableNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
         assert ov1 == ov;
         var ctxc := AI.cp_context(cp, str, dir);
         var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, ctxc);
@@ -13021,10 +13647,14 @@ module LindenElkMain {
           assert AI.init_thread(cap, lk, qt).look_regs == lk;
           assert inits.active == [AI.init_thread(cap, lk, qt)];
         }
-        assert ctxc.nextchar == AI.get_char(str, cp);
-        NoWriteOracleBodyCodeNested(body);
-        CM.FFindMatchLookOracleTrue(bytecode, str, inits, ov, dir, lookcdn);
-        NoTrueQuantStampNested(body);
+        if la.Lookahead? { assert ctxc.nextchar == AI.get_char(str, cp); }
+        else { assert ctxc.nextchar == AI.get_char(str, cp - 1); }
+        if la.Lookahead? { NoWriteOracleBodyCodeNested(body); }
+        else { ReverseNestedPackage(body); NoWriteOracleBodyCodeNested(R.reverse_regex(body)); }
+        if la.Lookahead? { CM.FFindMatchLookOracleTrue(bytecode, str, inits, ov, dir, lookcdn); }
+        else { CM.FFindMatchLookOracleTrueB(bytecode, str, inits, ov, dir, lookcdn); }
+        if la.Lookahead? { NoTrueQuantStampNested(body); }
+        else { ReverseNestedPackage(body); NoTrueQuantStampNested(R.reverse_regex(body)); }
         assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
         FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
         var (fmres, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
@@ -13038,17 +13668,20 @@ module LindenElkMain {
         assert (forall k :: AI.get_idx(nqt.a_cp, k) < 0) && (forall k :: AI.get_idx(nqt.a_clk, k) >= -1) by {
           if result.Some? { assert QuantRegsFinal(result.value); }
         }
-        ReplayThreadWfLANested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant);
+        if la.Lookahead? { ReplayThreadWfLANested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant); }
+        else { ReplayThreadWfLBNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant); }
         assert |capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN)
             && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook by {
           if result.Some? { assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant); }
         }
-        ReplayLookCpOkNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
+        if la.Lookahead? { ReplayLookCpOkNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
+        else { ReplayLookCpOkNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
         assert CM.LookCpsLE(nlk, |str|) by {
           if result.Some? {} else { assert nlk == lk; }
         }
         // (b)@nlk (verbatim transfer)
-        ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        if la.Lookahead? { ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
+        else { ReplayPlusFrameNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
         assert forall l: int :: next <= l <= maxlook && AReg.get_cp(nlk, l).Some? ==>
           exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
         by {
@@ -13252,24 +13885,28 @@ module LindenElkMain {
         assert 0 <= lid < |crv.f_look_types| && crv.f_look_types[lid] == la;
         assert looktype == la;
         assert FrameEntryOk(crv, la, body, S, Slook);
-        assert la.Lookahead?;
+        assert la.Lookahead? || la.Lookbehind?;            // (L5 F7c-2) capture_type
         var bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
         var dir := AI.capture_direction(looktype);
         var lookcdn := if 0 <= lid < |crv.f_look_cdns| then crv.f_look_cdns[lid] else [];
         var lookast := if 0 <= lid < |crv.f_look_ast| then crv.f_look_ast[lid] else R.Re_empty;
         assert lookast == body;
         assert bytecode == CP.compile_to_bytecode(CP.capture_regex(la, body));
-        assert CP.capture_regex(la, body) == body;
-        assert bytecode == CP.compile_to_bytecode(body);
         var (result, ov1) := AI.FFindMatchPlus(bytecode, lookast, crv.f_plus_bc, str, ov, dir,
                                                cp, cap, lk, qt, 0, lookcdn);
         var capN := if result.None? then cap else result.value.capture_regs;
         var nlk := if result.None? then lk else result.value.look_regs;
         var nqt := if result.None? then qt else result.value.quant_regs;
+        // (L5 F7c-2) per-kind replay facts (the `...LB` twins take the BACKWARD ones)
+        assert la.Lookahead? ==> (dir == LAnc.Forward && CP.capture_regex(la, body) == body
+          && bytecode == CP.compile_to_bytecode(body)
+          && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp));
+        assert la.Lookbehind? ==> (dir == LAnc.Backward && CP.capture_regex(la, body) == R.reverse_regex(body)
+          && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+          && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1));
         assert res == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1);
-        assert dir == LAnc.Forward;
-        assert AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp);
-        ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        if la.Lookahead? { ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
+        else { ReplayPlusFrameNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
 
         if g in PIV.CapIdsOutsideLooks(body) {
           // this step OWNS g -> it is owner0 (uniqueness); it RAN -> owner0 matched -> contradiction
@@ -13555,33 +14192,39 @@ module LindenElkMain {
         assert looktype == la;
         assert body == VBody(crv, lid);
         assert FrameEntryOk(crv, la, body, S, Slook);
-        assert la.Lookahead?;
+        assert la.Lookahead? || la.Lookbehind?;            // (L5 F7c-2) capture_type
         var bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
         var dir := AI.capture_direction(looktype);
         var lookcdn := if 0 <= lid < |crv.f_look_cdns| then crv.f_look_cdns[lid] else [];
         var lookast := if 0 <= lid < |crv.f_look_ast| then crv.f_look_ast[lid] else R.Re_empty;
         assert lookast == body;
         assert bytecode == CP.compile_to_bytecode(CP.capture_regex(la, body));
-        assert CP.capture_regex(la, body) == body;
-        assert bytecode == CP.compile_to_bytecode(body);
         var (result, ov1) := AI.FFindMatchPlus(bytecode, lookast, crv.f_plus_bc, str, ov, dir,
                                                cp, cap, lk, qt, 0, lookcdn);
         var capN := if result.None? then cap else result.value.capture_regs;
         var nlk := if result.None? then lk else result.value.look_regs;
         var nqt := if result.None? then qt else result.value.quant_regs;
+        // (L5 F7c-2) per-kind replay facts (the `...LB` twins take the BACKWARD ones)
+        assert la.Lookahead? ==> (dir == LAnc.Forward && CP.capture_regex(la, body) == body
+          && bytecode == CP.compile_to_bytecode(body)
+          && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp));
+        assert la.Lookbehind? ==> (dir == LAnc.Backward && CP.capture_regex(la, body) == R.reverse_regex(body)
+          && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+          && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1));
         assert res == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1);
-        assert dir == LAnc.Forward;
         assert 0 <= cp <= |str| by {
           assert cp == AI.get_idx(lk.a_cp, lid) && cp >= 0;   // get_cp(lk,lid)==Some(cp)
           assert AI.get_idx(lk.a_cp, lid) <= |str|;            // LookCpsLE
         }
-        assert AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp);
 
         // per-lid replay frames / wf / cp / value
-        FFindMatchPlusOvStableNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        if la.Lookahead? { FFindMatchPlusOvStableNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
+        else { FFindMatchPlusOvStableNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
         assert ov1 == ov;
-        ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
-        ReplayPlusQuantFrameNestedOuter(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        if la.Lookahead? { ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
+        else { ReplayPlusFrameNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
+        if la.Lookahead? { ReplayPlusQuantFrameNestedOuter(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
+        else { ReplayPlusQuantFrameNestedOuterLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
         assert CM.RegsAgreeOutside(nqt, qt, QIdsOuter(body)) by {
           if result.Some? {} else { assert nqt == qt; }
         }
@@ -13589,31 +14232,35 @@ module LindenElkMain {
           if result.Some? {} else { assert nlk == lk; }
         }
         // recon A: TIGHT look frame -- the replay writes only body's DIRECT children
-        ReplayPlusLookFrameDirectNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+        if la.Lookahead? { ReplayPlusLookFrameDirectNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
+        else { ReplayPlusLookFrameDirectNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
         assert CM.RegsAgreeOutside(nlk, lk, DirectLidSet(body)) by {
           if result.Some? {} else { assert nlk == lk; }
         }
         assert (forall k :: AI.get_idx(nqt.a_cp, k) < 0) && (forall k :: AI.get_idx(nqt.a_clk, k) >= -1) by {
           if result.Some? { assert QuantRegsFinal(result.value); }
         }
-        ReplayThreadWfLANested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant);
+        if la.Lookahead? { ReplayThreadWfLANested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant); }
+        else { ReplayThreadWfLBNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant); }
         assert |capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN)
             && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook by {
           if result.Some? { assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant); }
         }
-        ReplayLookCpOkNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
+        if la.Lookahead? { ReplayLookCpOkNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
+        else { ReplayLookCpOkNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
         assert CM.LookCpsLE(nlk, |str|) by {
           if result.Some? {} else { assert nlk == lk; }
         }
 
         // value at lid: result ~ rfLid on QIdsInt(body); iff-together
         assert CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body));   // (c'q)@lid
-        ReplayLidQuantAgreeFreshNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant);
+        if la.Lookahead? { ReplayLidQuantAgreeFreshNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant); }
+        else { ReplayLidQuantAgreeFreshNestedLB(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant); }
         var rfLid := FreshBodyMatch(crv, str, lid, lk, ov, ncap, nlook, nquant);
         var rf := AI.FFindMatch(bytecode, str,
                     AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                  AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
-                    ov, LAnc.Forward, lookcdn).0;
+                                  AReg.init_regs(nquant), 0, AI.cp_context(cp, str, dir)),
+                    ov, dir, lookcdn).0;   // (L5 F7c-2) in the lid's own direction
         assert rfLid == rf;
 
         var Sqp := Sq - QIdsOuter(body);
@@ -14405,7 +15052,7 @@ module LindenElkMain {
     requires g in PIV.CapIdsInLooks(re)
     requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
     // ---- extra structural facts (for LookBodyFactsNested) ----
-    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re) && PIV.QuantUnique(re)
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && PIV.QuantUnique(re)   // (L5 F7c-2b) lifted
     // ---- deliverable-1 hypotheses (a)-(h) (verbatim) ----
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
@@ -14465,38 +15112,63 @@ module LindenElkMain {
     {
       var body := NI.LookBodyOfRE(re, owner0);
       // body shape + a lookahead table row (VBody == body, cdn == compile_cdns(body)).
-      LookBodyFactsNested(re, crv, owner0);
+      LookBodyFactsL5(re, crv, owner0);
       assert NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body);
-      var la0: R.lookaround, b0: R.regex :| LTB.LookEntryOk(crv, owner0 as int, la0, b0) && !la0.Lookbehind?;
+      var la0: R.lookaround :| LTB.LookEntryOk(crv, owner0 as int, la0, body)
+        && (la0.Lookbehind? ==> NR.LBOnlyLooksRE(body));
+      var b0 := body;
       VBodyEqLookBody(crv, re, owner0);
       assert b0 == VBody(crv, owner0 as int) == body;                         // LookEntryOk: f_look_ast
-      // MatchedPosLA + !Lookbehind pins la0 to Lookahead.
+      // MatchedPosLA pins la0 to a POSITIVE look (either kind under the L5 scope).
       assert crv.f_look_types[owner0] == la0;                                  // LookEntryOk
-      assert la0.Lookahead?;
+      assert la0.Lookahead? || la0.Lookbehind?;
       // no-quant side condition.
       GNotUnderQuantLNoAncQuants(body, g);                                      // requires TransWf + GNotUnderQuantL
       assert PIV.AncQuants(body, g) == {};
       var rf := FreshBodyMatch(crv, str, owner0 as int, res.1, ov, ncap, nlook, nquant);
       if rf.Some? {
-        // unfold FreshBodyMatch to its FFindMatch form over compile_to_bytecode(body).
-        var bc := CP.compile_to_bytecode(body);
-        NR.CompileToBytecodeRepNested(body);
-        var endl := CP.compile(body, 0, CP.Progress).1 as nat;
-        assert NR.NfaRepRE(body, bc, 0, endl) && NR.GetPcRE(bc, endl) == Some(RB.Accept) && |bc| == endl + 1;
         var cp := AReg.get_cp(res.1, owner0).value;
         var cdn := if 0 <= (owner0 as int) < |crv.f_look_cdns| then crv.f_look_cdns[owner0 as int] else [];
         assert cp_ctx_ok(crv, str, res.1, owner0);                            // residual hyp (MatchedPosLA -> Some)
-        assert 0 <= cp <= |str| && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp);
-        assert rf == AI.FFindMatch(bc, str,
-                       AI.FInitState(bc, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                     AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
-                       ov, LAnc.Forward, cdn).0;
-        // (a) the (A2) PRODUCER: AncSetInvRE, threaded through the fresh body match.
-        FreshBodyMatchAncSet(bc, str, cp, ov, cdn, body, endl, ncap, nlook, nquant);
-        assert AncSetInvRE(body, rf.value.capture_regs.a_clk);
-        // (b) register well-formedness (CapRegWf).
-        FreshMatchWfNested(bc, str, cp, ov, cdn, body, ncap, nlook, nquant);
-        assert CM.ThreadRegsWf(rf.value, ncap, nlook, nquant);
+        assert 0 <= cp <= |str|;
+        if la0.Lookahead? {
+          // unfold FreshBodyMatch to its FFindMatch form over compile_to_bytecode(body).
+          var bc := CP.compile_to_bytecode(body);
+          NR.CompileToBytecodeRepNested(body);
+          var endl := CP.compile(body, 0, CP.Progress).1 as nat;
+          assert NR.NfaRepRE(body, bc, 0, endl) && NR.GetPcRE(bc, endl) == Some(RB.Accept) && |bc| == endl + 1;
+          assert AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp);
+          assert rf == AI.FFindMatch(bc, str,
+                         AI.FInitState(bc, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                       AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                         ov, LAnc.Forward, cdn).0;
+          // (a) the (A2) PRODUCER: AncSetInvRE, threaded through the fresh body match.
+          FreshBodyMatchAncSet(bc, str, cp, ov, cdn, body, endl, ncap, nlook, nquant);
+          assert AncSetInvRE(body, rf.value.capture_regs.a_clk);
+          // (b) register well-formedness (CapRegWf).
+          FreshMatchWfNested(bc, str, cp, ov, cdn, body, ncap, nlook, nquant);
+          assert CM.ThreadRegsWf(rf.value, ncap, nlook, nquant);
+        } else {
+          // (L5 F7c-2b) LOOKBEHIND owner: the fresh body match is the BACKWARD run of
+          // compile(reverse_regex(body)); the ancestor-set rider and wf transfer.
+          var rev := R.reverse_regex(body);
+          var bc := CP.compile_to_bytecode(rev);
+          ReverseNestedPackage(body);
+          NR.CompileToBytecodeRepNested(rev);
+          var endl := CP.compile(rev, 0, CP.Progress).1 as nat;
+          assert NR.NfaRepRE(rev, bc, 0, endl) && NR.GetPcRE(bc, endl) == Some(RB.Accept) && |bc| == endl + 1;
+          assert CP.capture_regex(la0, body) == rev && AI.capture_direction(la0) == LAnc.Backward;
+          var ctxB := AI.cp_context(cp, str, LAnc.Backward);
+          assert ctxB.nextchar == AI.get_char(str, cp - 1);
+          var initsB := AI.FInitState(bc, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                      AReg.init_regs(nquant), 0, ctxB);
+          assert rf == AI.FFindMatch(bc, str, initsB, ov, LAnc.Backward, cdn).0;
+          FreshBodyMatchAncSetLB(bc, str, cp, ov, cdn, body, endl, ncap, nlook, nquant);
+          assert AncSetInvRE(body, rf.value.capture_regs.a_clk);
+          CM.FInitStateRegsWf(bc, cp, ncap, nlook, nquant, 0, ctxB);
+          FFindMatchRegsWf(bc, str, initsB, ov, LAnc.Backward, cdn, ncap, nlook, nquant);
+          assert CM.ThreadRegsWf(rf.value, ncap, nlook, nquant);
+        }
         assert PIV.CapRegWf(rf.value.capture_regs);
         // (c) value-set at g: owner0 is the unique winner, whose clock at g is set.
         InnermostOwnerUnique(re, g, winner, owner0);
@@ -14509,7 +15181,6 @@ module LindenElkMain {
     }
 
     // (3) close via the ancestor-set consumer (now unconditional).
-    NoPosImpliesL5Scope(re);                                   // (L5 F7c) callee is L5-scoped
     owner := FreshBodyDirectMemberFromAncSet(crv, str, ast, re, cap, lk, qt, ov, S, Slook, ncap, nlook, nquant, g);
 
     // (4) value-set at the returned owner (for the `LiveRange` ensures's well-formedness):
@@ -15594,6 +16265,206 @@ module LindenElkMain {
     }
     FFindMatchAncSet(body, bytecode, endl, str, inits, ov, dir, cdn, ncap, nlook, nquant);
   }
+  // ===========================================================================
+  // (L5 F7c-2b) LOOKBEHIND twins for the ancestor-set rider of the fresh body
+  // match: the BACKWARD run of `compile(reverse_regex(body))`. The invariant
+  // `AncSetInvRE` is `reverse_regex`-invariant (capture NESTING is untouched).
+  // ===========================================================================
+
+  lemma ReverseMaxGroup(r: R.regex)
+    ensures R.max_group(R.reverse_regex(r)) == R.max_group(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => ReverseMaxGroup(r1); ReverseMaxGroup(r2);
+    case Re_con(r1, r2) => ReverseMaxGroup(r1); ReverseMaxGroup(r2);
+    case Re_quant(_, _, _, r1) => ReverseMaxGroup(r1);
+    case Re_capture(_, r1) => ReverseMaxGroup(r1);
+    case Re_lookaround(_, _, r1) => ReverseMaxGroup(r1);
+    case _ =>
+  }
+  lemma ReverseMaxQuant(r: R.regex)
+    ensures R.max_quant(R.reverse_regex(r)) == R.max_quant(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => ReverseMaxQuant(r1); ReverseMaxQuant(r2);
+    case Re_con(r1, r2) => ReverseMaxQuant(r1); ReverseMaxQuant(r2);
+    case Re_quant(_, _, _, r1) => ReverseMaxQuant(r1);
+    case Re_capture(_, r1) => ReverseMaxQuant(r1);
+    case Re_lookaround(_, _, r1) => ReverseMaxQuant(r1);
+    case _ =>
+  }
+  lemma ReverseSizesOk(body: R.regex, ncap: int, nlook: int, nquant: int)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    ensures PSM.SizesOkRE(R.reverse_regex(body), ncap, nlook, nquant)
+  { ReverseMaxGroup(body); ReverseMaxQuant(body); }
+
+  /** Capture NESTING is `reverse_regex`-invariant (unique ids pick the same branch). */
+  lemma ReverseAncCaps(r: R.regex, gid: nat)
+    requires PIV.CapUnique(r) && gid in PIV.CapIds(r)
+    ensures gid in PIV.CapIds(R.reverse_regex(r))
+    ensures PIV.AncCaps(R.reverse_regex(r), gid) == PIV.AncCaps(r, gid)
+    decreases r
+  {
+    PIV.ReverseCapIds(r);
+    match r
+    case Re_alt(r1, r2) =>
+      PIV.ReverseCapIds(r1); PIV.ReverseCapIds(r2);
+      assert R.reverse_regex(r) == R.Re_alt(R.reverse_regex(r1), R.reverse_regex(r2));
+      if gid in PIV.CapIds(r1) {
+        ReverseAncCaps(r1, gid);
+      } else {
+        assert gid in PIV.CapIds(r2);
+        ReverseAncCaps(r2, gid);
+      }
+    case Re_con(r1, r2) =>
+      PIV.ReverseCapIds(r1); PIV.ReverseCapIds(r2);
+      assert PIV.CapIds(r1) * PIV.CapIds(r2) == {};                          // CapUnique
+      assert R.reverse_regex(r) == R.Re_con(R.reverse_regex(r2), R.reverse_regex(r1));
+      if gid in PIV.CapIds(r1) {
+        assert gid !in PIV.CapIds(r2) by { assert gid in PIV.CapIds(r1) * PIV.CapIds(r2) ==> false; }
+        assert gid !in PIV.CapIds(R.reverse_regex(r2));
+        ReverseAncCaps(r1, gid);
+        assert PIV.AncCaps(R.reverse_regex(r), gid) == PIV.AncCaps(R.reverse_regex(r1), gid);
+      } else {
+        assert gid in PIV.CapIds(r2);
+        assert gid in PIV.CapIds(R.reverse_regex(r2));
+        ReverseAncCaps(r2, gid);
+        assert PIV.AncCaps(R.reverse_regex(r), gid) == PIV.AncCaps(R.reverse_regex(r2), gid);
+      }
+    case Re_quant(_, _, _, r1) => ReverseAncCaps(r1, gid);
+    case Re_lookaround(_, _, r1) => ReverseAncCaps(r1, gid);
+    case Re_capture(cid, r1) =>
+      if cid >= 0 && (cid as nat) == gid {
+      } else {
+        ReverseAncCaps(r1, gid);
+      }
+    case _ =>
+  }
+
+  lemma AncSetInvREReverse(re: R.regex, cc: seq<int>)
+    requires PIV.CapUnique(re)
+    ensures AncSetInvRE(R.reverse_regex(re), cc) <==> AncSetInvRE(re, cc)
+  {
+    var rev := R.reverse_regex(re);
+    PIV.ReverseCapIds(re);
+    ReverseCapIdsInLooks(re);
+    forall g: nat | g in PIV.CapIds(re) ensures PIV.AncCaps(rev, g) == PIV.AncCaps(re, g) {
+      ReverseAncCaps(re, g);
+    }
+  }
+
+  /** Backward twin of `FFindMatchAncSet` (the step lemmas are direction-generic). */
+  lemma FFindMatchAncSetB(re: R.regex, code: RB.code, endl: nat, str: string, s: AI.VmState,
+                          ov: LOr.OracleView, dir: LAnc.direction, cdn: LCdn.cdns,
+                          ncap: int, nlook: int, nquant: int)
+    requires NR.NestedFragmentRE(re)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires |code| == endl + 1
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires forall pc: nat, q: int, b: bool ::
+      NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
+    requires |s.processed.true_set| == RB.size(code) && |s.processed.false_set| == RB.size(code)
+    requires dir == LAnc.Backward
+    requires s.context.nextchar == AI.get_char(str, s.cp - 1)
+    requires s.clock >= 0 && 0 <= s.cp <= |str|
+    requires CM.VmClocksLE(s) && CM.VmRegsWf(s, ncap, nlook, nquant)
+    requires VmAncNestRE(re, code, endl, s)
+    ensures var r := AI.FFindMatch(code, str, s, ov, dir, cdn).0;
+      r.Some? ==> AncSetInvRE(re, r.value.capture_regs.a_clk)
+    decreases s.cp
+  {
+    var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, dir));
+    assert CM.VmClocksLE(s0) && CM.VmRegsWf(s0, ncap, nlook, nquant) && VmAncNestRE(re, code, endl, s0);
+    FAdvanceEpsilonAncSet(re, code, endl, s0, ov, dir, ncap, nlook, nquant);
+    CM.FAdvanceEpsilonClocksLE(code, s0, ov, dir);
+    var (s1, ov1) := AI.FAdvanceEpsilon(code, s0, ov, dir);
+    assert s1.cp == s.cp && s1.context == s.context;
+    assert s1.clock >= s0.clock >= 0;
+    assert CM.VmClocksLE(s1) && CM.VmRegsWf(s1, ncap, nlook, nquant) && VmAncNestRE(re, code, endl, s1);
+
+    if |s1.blocked| == 0 {
+      assert AI.FFindMatch(code, str, s, ov, dir, cdn).0 == s1.bestmatch;
+    } else if s1.context.nextchar.None? {
+      assert AI.FFindMatch(code, str, s, ov, dir, cdn).0 == s1.bestmatch;
+    } else {
+      assert AI.get_char(str, s.cp - 1).Some?;
+      assert 0 < s.cp <= |str|;
+      FConsumeAncSet(re, code, endl, s1, ncap, nlook, nquant);
+      CM.FConsumeClocksLE(s1);
+      var s2 := AI.FConsume(s1);
+      var s3 := s2.(processed := AI.init_bpcset(RB.size(code)), isblocked := AI.init_pcset(RB.size(code)),
+                    cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
+      var newchar := AI.get_char(str, s3.cp - AI.cp_offset(dir));
+      var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
+      assert s4.cp == s.cp - 1;
+      assert s4.context.nextchar == AI.get_char(str, s4.cp - 1);
+      assert s4.active == s2.active && s4.blocked == s2.blocked
+          && s4.bestmatch == s2.bestmatch && s4.clock == s2.clock;
+      assert CM.VmClocksLE(s4);
+      assert CM.VmRegsWf(s4, ncap, nlook, nquant);
+      assert VmAncNestRE(re, code, endl, s4);
+      assert s4.clock >= 0 by { assert s4.clock == s2.clock == s1.clock; }
+      FFindMatchAncSetB(re, code, endl, str, s4, ov1, dir, cdn, ncap, nlook, nquant);
+      assert AI.FFindMatch(code, str, s, ov, dir, cdn) == AI.FFindMatch(code, str, s4, ov1, dir, cdn);
+    }
+  }
+
+  /** LB twin of `FreshBodyMatchAncSet`: the ancestor-set rider for the fresh
+      BACKWARD body match of `compile(reverse_regex(body))`, stated on `body`. */
+  lemma FreshBodyMatchAncSetLB(bytecode: RB.code, str: string, cp: int, ov: LOr.OracleView, cdn: LCdn.cdns,
+                               body: R.regex, endl: nat, ncap: int, nlook: int, nquant: int)
+    requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+    requires NR.NfaRepRE(R.reverse_regex(body), bytecode, 0, endl)
+    requires NR.GetPcRE(bytecode, endl) == Some(RB.Accept)
+    requires |bytecode| == endl + 1
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires 0 <= cp <= |str|
+    requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
+    ensures var rf := AI.FFindMatch(bytecode, str,
+                        AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                      AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
+                        ov, LAnc.Backward, cdn).0;
+      rf.Some? ==> AncSetInvRE(body, rf.value.capture_regs.a_clk)
+  {
+    var dir := LAnc.Backward;
+    var rev := R.reverse_regex(body);
+    ReverseNestedPackage(body);
+    ReverseSizesOk(body, ncap, nlook, nquant);
+    var ctx := AI.cp_context(cp, str, dir);
+    var inits := AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                               AReg.init_regs(nquant), 0, ctx);
+    CM.RegsClocksLEInit(ncap, 0); CM.RegsClocksLEInit(nlook, 0); CM.RegsClocksLEInit(nquant, 0);
+    CM.FInitStateClocksLE(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                          AReg.init_regs(nquant), 0, ctx);
+    CM.FInitStateRegsWf(bytecode, cp, ncap, nlook, nquant, 0, ctx);
+    NoTrueQuantStampNested(rev);
+    CM.RegsClocksLEInit(ncap, -1);
+    CM.RegsClocksLEInit(nquant, -1);
+    assert VmAncNestRE(rev, bytecode, endl, inits) by {
+      var th := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
+      assert inits.active == [th];
+      forall t | t in inits.active ensures ThreadAncNestRE(rev, bytecode, endl, t) {
+        assert t == th;
+        assert forall k :: AI.get_idx(th.capture_regs.a_clk, k) < 0;
+        AncSetInitVacuous(rev, th.capture_regs.a_clk);
+        if 0 <= th.pc <= endl {
+          assert th.pc == 0;
+          NI.NestTopInit(rev, bytecode, endl, th.capture_regs.a_clk, th.quant_regs.a_clk);
+        }
+      }
+    }
+    FFindMatchAncSetB(rev, bytecode, endl, str, inits, ov, dir, cdn, ncap, nlook, nquant);
+    var rf := AI.FFindMatch(bytecode, str, inits, ov, dir, cdn).0;
+    if rf.Some? {
+      AncSetInvREReverse(body, rf.value.capture_regs.a_clk);
+    }
+  }
+
 
   // ===========================================================================
   // (REVERSE GATE-CROSSING CONNECTIVE) The winning-thread LOOK-DOMINANCE register
@@ -16214,7 +17085,7 @@ module LindenElkMain {
                                l: int, la: R.lookaround, body: R.regex)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
-    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re)
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires 1 <= l <= R.max_lookaround(ast)
@@ -16230,12 +17101,12 @@ module LindenElkMain {
     LookEntryOnlyReal(ast, crv, l, la, body);           // (l as nat) in LookIds(ast) == LookIds(re)
     var lid := l as nat;
     assert lid in LTB.LookIds(re);
-    LookBodyFactsNested(re, crv, lid);
+    LookBodyFactsL5(re, crv, lid);
     var body' := NI.LookBodyOfRE(re, lid);
-    var la0: R.lookaround :| LTB.LookEntryOk(crv, lid as int, la0, body') && !la0.Lookbehind?;
-    // LookEntryOk determinism at row lid pins body == body', la == la0
+    // LookEntryOk determinism at row lid pins body == body' (via the table tie).
+    NI.LookBodyOfTablesTie(re, crv, lid);
+    var la0: R.lookaround :| LTB.LookEntryOk(crv, lid as int, la0, body');
     assert body == crv.f_look_ast[lid] == body';
-    assert la == crv.f_look_types[lid] == la0;
     // CaptureRegsSet(CapIdsOutsideLooks(body)) <= CaptureRegsSet(CapIdsInLooks(re))
     NI.LookBodyCapsIn(re, lid);                          // CapIds(body') <= CapIdsInLooks(re)
     PIV.CapIdsSplit(body');                              // CapIdsOutsideLooks(body') <= CapIds(body')
@@ -16243,8 +17114,6 @@ module LindenElkMain {
     // LookIdSet(body) <= LookIdSet(re)
     assert LTB.LookIds(body') <= LTB.LookIds(re);
     assert LookIdSet(body') <= LookIdSet(re);
-    // lookahead-only
-    assert AI.capture_type(la) ==> la.Lookahead?;        // !la0.Lookbehind? && la == la0
   }
 
   /** (h) per-row: `l2 !in LookIdSet(b1)` for `l2 <= l1`. The row `b1` is
@@ -16501,7 +17370,7 @@ module LindenElkMain {
   lemma LookRowsStaticNested(ast: R.regex, re: R.regex, crv: CP.FCompiled)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
-    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re)
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
     ensures forall l: int, la: R.lookaround, body: R.regex ::                                  // (a)
@@ -16528,7 +17397,7 @@ module LindenElkMain {
       1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
       && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2)
       ensures PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
-    { NoPosImpliesL5Scope(re); DOrdFromTables(ast, re, crv, l1, la1, b1, l2, la2, b2); }
+    { DOrdFromTables(ast, re, crv, l1, la1, b1, l2, la2, b2); }
 
     forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex |
       1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
@@ -17070,7 +17939,7 @@ module LindenElkMain {
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires code == CP.compile_to_bytecode(re)
-    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re)
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
     requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
@@ -17244,7 +18113,7 @@ module LindenElkMain {
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires code == CP.compile_to_bytecode(re)
-    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re)
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
     requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
@@ -17461,7 +18330,7 @@ module LindenElkMain {
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires code == CP.compile_to_bytecode(re)
-    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re)
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
     requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
@@ -17529,7 +18398,7 @@ module LindenElkMain {
           1 <= lx1 <= R.max_lookaround(ast) && 1 <= lx2 <= R.max_lookaround(ast) && lx1 < lx2
           && LTB.LookEntryOk(crv, lx1, lax1, b1) && LTB.LookEntryOk(crv, lx2, lax2, b2)
           ensures QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
-        { NoPosImpliesL5Scope(re); DOrdQuantFromTables(ast, re, crv, lx1, lax1, b1, lx2, lax2, b2); }
+        { DOrdQuantFromTables(ast, re, crv, lx1, lax1, b1, lx2, lax2, b2); }
       }
       assert forall lx: int, lax: R.lookaround, body: R.regex ::                                   // (Sq-bound)
         1 <= lx <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, lx, lax, body) ==> QIdsOuter(body) <= Sq
@@ -17661,7 +18530,7 @@ module LindenElkMain {
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires code == CP.compile_to_bytecode(re)
-    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re)
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
     requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
@@ -17721,7 +18590,7 @@ module LindenElkMain {
           1 <= lx1 <= maxlook && 1 <= lx2 <= maxlook && lx1 < lx2
           && LTB.LookEntryOk(crv, lx1, lax1, b1) && LTB.LookEntryOk(crv, lx2, lax2, b2)
           ensures QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
-        { NoPosImpliesL5Scope(re); DOrdQuantFromTables(ast, re, crv, lx1, lax1, b1, lx2, lax2, b2); }
+        { DOrdQuantFromTables(ast, re, crv, lx1, lax1, b1, lx2, lax2, b2); }
       }
       assert forall lx: int, lax: R.lookaround, body: R.regex ::
         1 <= lx <= maxlook && LTB.LookEntryOk(crv, lx, lax, body) ==> QIdsOuter(body) <= Sq
@@ -17772,7 +18641,7 @@ module LindenElkMain {
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires code == CP.compile_to_bytecode(re)
-    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re)
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
     requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
@@ -17842,7 +18711,7 @@ module LindenElkMain {
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires code == CP.compile_to_bytecode(re)
-    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re)
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
     requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
@@ -17933,7 +18802,7 @@ module LindenElkMain {
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires code == CP.compile_to_bytecode(re)
-    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re)
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
     requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
@@ -18010,7 +18879,7 @@ module LindenElkMain {
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires code == CP.compile_to_bytecode(re)
-    requires NR.NestedFragmentRE(re) && NoPosLookbehindRE(re)
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
     requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
