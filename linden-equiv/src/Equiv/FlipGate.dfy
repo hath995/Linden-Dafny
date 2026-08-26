@@ -60,6 +60,8 @@ module LindenElkFlipGate {
   import FST = LindenElkFlipStatics
   import FK = LindenElkFlipKeystone
   import RL = LindenElkRegsLaws
+  import NI = LindenElkNestInv
+  import OBu = LindenElkOracleBuild
 
   // ===========================================================================
   // F6-core: the fresh backward run and its T2a mirror, in consumer form
@@ -648,6 +650,334 @@ module LindenElkFlipGate {
     case Re_quant(_, _, _, r1) => LBOnlyEquiv(r1);
     case Re_capture(_, r1) => LBOnlyEquiv(r1);
     case Re_lookaround(_, _, r1) => LBOnlyEquiv(r1);
+    case _ =>
+  }
+
+  // ===========================================================================
+  // (L5 F7c-3) The FLIPPED WORLD of a lookbehind body: structural facts about
+  // `FXR(body) = FlipRE(SwapAnchorsRegex(reverse_regex(body)))` and the
+  // MIRRORED LOOK TABLES `MirrorTables(crv)`. A positive-lookbehind lid's body
+  // replay is the BACKWARD run of `compile(reverse_regex(body))`; by T2a it
+  // mirrors to the FORWARD run of `compile(FXR(body))` over `Reverse(str)`, and
+  // `FXR(body)` (all looks flipped to lookaheads) sits in the L4 scope — so the
+  // L4 FORWARD body-replay carrier applies to it verbatim, given tables that
+  // describe `FXR(body)`'s rows. Every id / path predicate below is
+  // `FXR`-invariant (ids, quantifier ids and nesting are untouched).
+  // ===========================================================================
+
+  lemma FXRAlt(r1: R.regex, r2: R.regex)
+    ensures FST.FXR(R.Re_alt(r1, r2)) == R.Re_alt(FST.FXR(r1), FST.FXR(r2))
+  {}
+  lemma FXRCon(r1: R.regex, r2: R.regex)
+    ensures FST.FXR(R.Re_con(r1, r2)) == R.Re_con(FST.FXR(r2), FST.FXR(r1))
+  {}
+  lemma FXRQuant(nul: R.nullability, qid: R.quantid, q: R.counted_quantifier, r1: R.regex)
+    ensures FST.FXR(R.Re_quant(nul, qid, q, r1)) == R.Re_quant(nul, qid, q, FST.FXR(r1))
+  {}
+  lemma FXRCapture(cid: R.capture, r1: R.regex)
+    ensures FST.FXR(R.Re_capture(cid, r1)) == R.Re_capture(cid, FST.FXR(r1))
+  {}
+  lemma FXRLook(lid: R.lookid, la: R.lookaround, r1: R.regex)
+    ensures FST.FXR(R.Re_lookaround(lid, la, r1)) == R.Re_lookaround(lid, FR.FlipLkRE(la), FST.FXR(r1))
+  {}
+
+  lemma LookIdsFXR(r: R.regex)
+    ensures LTB.LookIds(FST.FXR(r)) == LTB.LookIds(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => FXRAlt(r1, r2); LookIdsFXR(r1); LookIdsFXR(r2);
+    case Re_con(r1, r2) => FXRCon(r1, r2); LookIdsFXR(r1); LookIdsFXR(r2);
+    case Re_quant(nul, qid, q, r1) => FXRQuant(nul, qid, q, r1); LookIdsFXR(r1);
+    case Re_capture(cid, r1) => FXRCapture(cid, r1); LookIdsFXR(r1);
+    case Re_lookaround(lid, la, r1) => FXRLook(lid, la, r1); LookIdsFXR(r1);
+    case _ =>
+  }
+
+  lemma LookUniqueFXR(r: R.regex)
+    requires LTB.LookUnique(r)
+    ensures LTB.LookUnique(FST.FXR(r))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => FXRAlt(r1, r2); LookUniqueFXR(r1); LookUniqueFXR(r2); LookIdsFXR(r1); LookIdsFXR(r2);
+    case Re_con(r1, r2) => FXRCon(r1, r2); LookUniqueFXR(r1); LookUniqueFXR(r2); LookIdsFXR(r1); LookIdsFXR(r2);
+    case Re_quant(nul, qid, q, r1) => FXRQuant(nul, qid, q, r1); LookUniqueFXR(r1);
+    case Re_capture(cid, r1) => FXRCapture(cid, r1); LookUniqueFXR(r1);
+    case Re_lookaround(lid, la, r1) => FXRLook(lid, la, r1); LookUniqueFXR(r1); LookIdsFXR(r1);
+    case _ =>
+  }
+
+  lemma TopLookIdsFXR(r: R.regex)
+    ensures NI.TopLookIds(FST.FXR(r)) == NI.TopLookIds(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => FXRAlt(r1, r2); TopLookIdsFXR(r1); TopLookIdsFXR(r2);
+    case Re_con(r1, r2) => FXRCon(r1, r2); TopLookIdsFXR(r1); TopLookIdsFXR(r2);
+    case Re_quant(nul, qid, q, r1) => FXRQuant(nul, qid, q, r1); TopLookIdsFXR(r1);
+    case Re_capture(cid, r1) => FXRCapture(cid, r1); TopLookIdsFXR(r1);
+    case Re_lookaround(lid, la, r1) => FXRLook(lid, la, r1);
+    case _ =>
+  }
+
+  lemma CapIdsFXR(r: R.regex)
+    ensures PIV.CapIds(FST.FXR(r)) == PIV.CapIds(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => FXRAlt(r1, r2); CapIdsFXR(r1); CapIdsFXR(r2);
+    case Re_con(r1, r2) => FXRCon(r1, r2); CapIdsFXR(r1); CapIdsFXR(r2);
+    case Re_quant(nul, qid, q, r1) => FXRQuant(nul, qid, q, r1); CapIdsFXR(r1);
+    case Re_capture(cid, r1) => FXRCapture(cid, r1); CapIdsFXR(r1);
+    case Re_lookaround(lid, la, r1) => FXRLook(lid, la, r1); CapIdsFXR(r1);
+    case _ =>
+  }
+
+  /** The look body of a lid is `FXR`-invariant up to `FXR` (unique lids pick the same branch). */
+  lemma LookBodyOfREFXR(r: R.regex, lid: nat)
+    requires LTB.LookUnique(r) && lid in LTB.LookIds(r)
+    ensures lid in LTB.LookIds(FST.FXR(r))
+    ensures NI.LookBodyOfRE(FST.FXR(r), lid) == FST.FXR(NI.LookBodyOfRE(r, lid))
+    decreases r
+  {
+    LookIdsFXR(r);
+    match r
+    case Re_alt(r1, r2) =>
+      FXRAlt(r1, r2); LookIdsFXR(r1); LookIdsFXR(r2);
+      if lid in LTB.LookIds(r1) { LookBodyOfREFXR(r1, lid); } else { LookBodyOfREFXR(r2, lid); }
+    case Re_con(r1, r2) =>
+      FXRCon(r1, r2); LookIdsFXR(r1); LookIdsFXR(r2);
+      assert LTB.LookIds(r1) * LTB.LookIds(r2) == {};
+      if lid in LTB.LookIds(r1) {
+        assert lid !in LTB.LookIds(FST.FXR(r2));
+        LookBodyOfREFXR(r1, lid);
+      } else {
+        LookBodyOfREFXR(r2, lid);
+      }
+    case Re_quant(nul, qid, q, r1) => FXRQuant(nul, qid, q, r1); LookBodyOfREFXR(r1, lid);
+    case Re_capture(cid, r1) => FXRCapture(cid, r1); LookBodyOfREFXR(r1, lid);
+    case Re_lookaround(lid0, la, r1) =>
+      FXRLook(lid0, la, r1);
+      if lid0 >= 0 && (lid0 as nat) == lid {
+      } else {
+        LookBodyOfREFXR(r1, lid);
+      }
+    case _ =>
+  }
+
+  lemma LookPathDomFXR(r: R.regex, L: int, qc: seq<int>, lid: nat)
+    requires LTB.LookUnique(r) && lid in LTB.LookIds(r)
+    ensures lid in LTB.LookIds(FST.FXR(r))
+    ensures NI.LookPathDom(FST.FXR(r), L, qc, lid) <==> NI.LookPathDom(r, L, qc, lid)
+    decreases r
+  {
+    LookIdsFXR(r);
+    match r
+    case Re_alt(r1, r2) =>
+      FXRAlt(r1, r2); LookIdsFXR(r1); LookIdsFXR(r2);
+      if lid in LTB.LookIds(r1) { LookPathDomFXR(r1, L, qc, lid); } else { LookPathDomFXR(r2, L, qc, lid); }
+    case Re_con(r1, r2) =>
+      FXRCon(r1, r2); LookIdsFXR(r1); LookIdsFXR(r2);
+      assert LTB.LookIds(r1) * LTB.LookIds(r2) == {};
+      if lid in LTB.LookIds(r1) {
+        assert lid !in LTB.LookIds(FST.FXR(r2));
+        LookPathDomFXR(r1, L, qc, lid);
+      } else {
+        LookPathDomFXR(r2, L, qc, lid);
+      }
+    case Re_quant(nul, qid, q, r1) => FXRQuant(nul, qid, q, r1); LookPathDomFXR(r1, L, qc, lid);
+    case Re_capture(cid, r1) => FXRCapture(cid, r1); LookPathDomFXR(r1, L, qc, lid);
+    case Re_lookaround(lid0, la, r1) =>
+      FXRLook(lid0, la, r1);
+      if lid0 >= 0 && (lid0 as nat) == lid {} else { LookPathDomFXR(r1, L, qc, lid); }
+    case _ =>
+  }
+
+  lemma LookPathPresentFXR(r: R.regex, cc: seq<int>, qc: seq<int>, mx: int, lid: nat)
+    requires LTB.LookUnique(r) && lid in LTB.LookIds(r)
+    ensures lid in LTB.LookIds(FST.FXR(r))
+    ensures NI.LookPathPresent(FST.FXR(r), cc, qc, mx, lid) <==> NI.LookPathPresent(r, cc, qc, mx, lid)
+    decreases r
+  {
+    LookIdsFXR(r);
+    match r
+    case Re_alt(r1, r2) =>
+      FXRAlt(r1, r2); LookIdsFXR(r1); LookIdsFXR(r2);
+      if lid in LTB.LookIds(r1) { LookPathPresentFXR(r1, cc, qc, mx, lid); } else { LookPathPresentFXR(r2, cc, qc, mx, lid); }
+    case Re_con(r1, r2) =>
+      FXRCon(r1, r2); LookIdsFXR(r1); LookIdsFXR(r2);
+      assert LTB.LookIds(r1) * LTB.LookIds(r2) == {};
+      if lid in LTB.LookIds(r1) {
+        assert lid !in LTB.LookIds(FST.FXR(r2));
+        LookPathPresentFXR(r1, cc, qc, mx, lid);
+      } else {
+        LookPathPresentFXR(r2, cc, qc, mx, lid);
+      }
+    case Re_quant(nul, qid, q, r1) => FXRQuant(nul, qid, q, r1); LookPathPresentFXR(r1, cc, qc, AI.get_idx(qc, qid), lid);
+    case Re_capture(cid, r1) => FXRCapture(cid, r1); LookPathPresentFXR(r1, cc, qc, mx, lid);
+    case Re_lookaround(lid0, la, r1) =>
+      FXRLook(lid0, la, r1);
+      if lid0 >= 0 && (lid0 as nat) == lid {} else { LookPathPresentFXR(r1, cc, qc, -1, lid); }
+    case _ =>
+  }
+
+  lemma MxAtLidLkFXR(r: R.regex, qc: seq<int>, mx: int, lid: nat)
+    requires LTB.LookUnique(r) && lid in LTB.LookIds(r)
+    ensures lid in LTB.LookIds(FST.FXR(r))
+    ensures NI.MxAtLidLk(FST.FXR(r), qc, mx, lid) == NI.MxAtLidLk(r, qc, mx, lid)
+    decreases r
+  {
+    LookIdsFXR(r);
+    match r
+    case Re_alt(r1, r2) =>
+      FXRAlt(r1, r2); LookIdsFXR(r1); LookIdsFXR(r2);
+      if lid in LTB.LookIds(r1) { MxAtLidLkFXR(r1, qc, mx, lid); } else { MxAtLidLkFXR(r2, qc, mx, lid); }
+    case Re_con(r1, r2) =>
+      FXRCon(r1, r2); LookIdsFXR(r1); LookIdsFXR(r2);
+      assert LTB.LookIds(r1) * LTB.LookIds(r2) == {};
+      if lid in LTB.LookIds(r1) {
+        assert lid !in LTB.LookIds(FST.FXR(r2));
+        MxAtLidLkFXR(r1, qc, mx, lid);
+      } else {
+        MxAtLidLkFXR(r2, qc, mx, lid);
+      }
+    case Re_quant(nul, qid, q, r1) => FXRQuant(nul, qid, q, r1); MxAtLidLkFXR(r1, qc, AI.get_idx(qc, qid), lid);
+    case Re_capture(cid, r1) => FXRCapture(cid, r1); MxAtLidLkFXR(r1, qc, mx, lid);
+    case Re_lookaround(lid0, la, r1) =>
+      FXRLook(lid0, la, r1);
+      if lid0 >= 0 && (lid0 as nat) == lid {} else { MxAtLidLkFXR(r1, qc, -1, lid); }
+    case _ =>
+  }
+
+  /** A nested-fragment regex records NO cdns (`compile_cdns` only collects
+      conditionally-nullable greedy PLUS quantifiers, which the fragment forbids). */
+  lemma NestedCdnsRec(r: R.regex, c: LCdn.cdns)
+    requires NR.NestedFragmentRE(r)
+    ensures LCdn.compile_cdns_rec(r, c) == c
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => NestedCdnsRec(r1, c); NestedCdnsRec(r2, c);
+    case Re_con(r1, r2) => NestedCdnsRec(r1, c); NestedCdnsRec(r2, c);
+    case Re_quant(nul, qid, q, r1) =>
+      if nul == R.CDNullable && q.min > 0 && q.max == None && q.greedy {
+        assert nul == R.NonNullable;      // NestedFragmentRE's plus arm
+        assert false;
+      }
+      NestedCdnsRec(r1, c);
+    case Re_capture(_, r1) => NestedCdnsRec(r1, c);
+    case Re_lookaround(_, _, r1) => NestedCdnsRec(r1, c);
+    case _ =>
+  }
+  lemma NestedCdnsEmpty(r: R.regex)
+    requires NR.NestedFragmentRE(r)
+    ensures LCdn.compile_cdns(r) == []
+  { NestedCdnsRec(r, []); }
+
+  /** A lookbehind-only body flips into the L4 scope (no positive lookbehinds). */
+  lemma NoPosLookbehindFXR(body: R.regex)
+    requires FST.LBOnlyLooksRE(body)
+    ensures M.NoPosLookbehindRE(FST.FXR(body))
+    decreases body
+  {
+    match body
+    case Re_alt(r1, r2) => FXRAlt(r1, r2); NoPosLookbehindFXR(r1); NoPosLookbehindFXR(r2);
+    case Re_con(r1, r2) => FXRCon(r1, r2); NoPosLookbehindFXR(r1); NoPosLookbehindFXR(r2);
+    case Re_quant(nul, qid, q, r1) => FXRQuant(nul, qid, q, r1); NoPosLookbehindFXR(r1);
+    case Re_capture(cid, r1) => FXRCapture(cid, r1); NoPosLookbehindFXR(r1);
+    case Re_lookaround(lid, la, r1) =>
+      FXRLook(lid, la, r1); NoPosLookbehindFXR(r1);
+      assert la.Lookbehind? || la.NegLookbehind?;
+      assert !FR.FlipLkRE(la).Lookbehind?;
+    case _ =>
+  }
+
+  /** `FlipLooksMap` distributes over map union and update. */
+  lemma FlipLooksMapUnion(m1: map<int, (L.Lookaround, L.Regex)>, m2: map<int, (L.Lookaround, L.Regex)>)
+    ensures FST.FlipLooksMap(m1 + m2) == FST.FlipLooksMap(m1) + FST.FlipLooksMap(m2)
+  {}
+  lemma FlipLooksMapUpdate(m: map<int, (L.Lookaround, L.Regex)>, k: int, v: (L.Lookaround, L.Regex))
+    ensures FST.FlipLooksMap(m[k := v]) == FST.FlipLooksMap(m)[k := (FR.FlipLk(v.0), FM.FlipRevL(v.1))]
+  {}
+
+  /** The flipped body's looks-map IS the flipped looks-map (F4's `FlipLooksMap`). */
+  lemma LmOfFXR(body: R.regex)
+    requires T.TransWf(body) && LTB.LookUnique(body)
+    ensures T.TransWf(FST.FXR(body))
+    ensures OE.LmOf(FST.FXR(body)) == FST.FlipLooksMap(OE.LmOf(body))
+    decreases body
+  {
+    FST.TranslateFlipXRev(body);
+    match body
+    case Re_alt(r1, r2) =>
+      FXRAlt(r1, r2); LmOfFXR(r1); LmOfFXR(r2);
+      FlipLooksMapUnion(OE.LmOf(r1), OE.LmOf(r2));
+    case Re_con(r1, r2) =>
+      FXRCon(r1, r2); LmOfFXR(r1); LmOfFXR(r2);
+      // disjoint domains (LookUnique): the union commutes
+      OE.LmOfDom(r1); OE.LmOfDom(r2);
+      assert LTB.LookIds(r1) * LTB.LookIds(r2) == {};
+      assert OE.LmOf(r1) + OE.LmOf(r2) == OE.LmOf(r2) + OE.LmOf(r1) by {
+        forall k | k in OE.LmOf(r1) + OE.LmOf(r2)
+          ensures (OE.LmOf(r1) + OE.LmOf(r2))[k] == (OE.LmOf(r2) + OE.LmOf(r1))[k]
+        {
+          if k in OE.LmOf(r1) { assert k !in OE.LmOf(r2); }
+        }
+      }
+      FlipLooksMapUnion(OE.LmOf(r2), OE.LmOf(r1));
+    case Re_quant(nul, qid, q, r1) => FXRQuant(nul, qid, q, r1); LmOfFXR(r1);
+    case Re_capture(cid, r1) => FXRCapture(cid, r1); LmOfFXR(r1);
+    case Re_lookaround(lid, la, r1) =>
+      FXRLook(lid, la, r1); LmOfFXR(r1);
+      FR.FlipLkRELaws(la);
+      FST.TranslateFlipXRev(r1);
+      FlipLooksMapUpdate(OE.LmOf(r1), lid, (T.TrLookaround(la), T.Translate(r1)));
+    case _ =>
+  }
+
+  // ---------------------------------------------------------------------------
+  // The mirrored look tables
+  // ---------------------------------------------------------------------------
+
+  /** The tables of the FLIPPED WORLD: row `l` of `crv` (`la`, `body`) becomes
+      (`FlipLkRE(la)`, `FXR(body)`) with the matching cdns / build / capture
+      bytecodes (the main-regex and plus fields are irrelevant and kept). */
+  ghost function MirrorTables(crv: CP.FCompiled): CP.FCompiled
+    requires |crv.f_look_types| == |crv.f_look_ast|
+  {
+    var n := |crv.f_look_types|;
+    crv.(f_look_types := seq(n, i requires 0 <= i < n => FR.FlipLkRE(crv.f_look_types[i])),
+         f_look_ast := seq(n, i requires 0 <= i < n => FST.FXR(crv.f_look_ast[i])),
+         f_look_cdns := seq(n, i requires 0 <= i < n => LCdn.compile_cdns(FST.FXR(crv.f_look_ast[i]))),
+         f_look_build_bc := seq(n, i requires 0 <= i < n =>
+            CP.compile_to_write(CP.oracle_regex(FR.FlipLkRE(crv.f_look_types[i]), FST.FXR(crv.f_look_ast[i])), i)),
+         f_look_capture_bc := seq(n, i requires 0 <= i < n =>
+            CP.compile_to_bytecode(CP.capture_regex(FR.FlipLkRE(crv.f_look_types[i]), FST.FXR(crv.f_look_ast[i])))))
+  }
+
+  lemma MirrorTablesEntry(crv: CP.FCompiled, lid: int, la: R.lookaround, body: R.regex)
+    requires |crv.f_look_types| == |crv.f_look_ast|
+    requires LTB.LookEntryOk(crv, lid, la, body)
+    ensures LTB.LookEntryOk(MirrorTables(crv), lid, FR.FlipLkRE(la), FST.FXR(body))
+  {}
+
+  /** `LookTablesOk` transfers to the flipped world. */
+  lemma LookTablesOkFXR(body: R.regex, crv: CP.FCompiled)
+    requires |crv.f_look_types| == |crv.f_look_ast|
+    requires LTB.LookTablesOk(body, crv)
+    ensures LTB.LookTablesOk(FST.FXR(body), MirrorTables(crv))
+    decreases body
+  {
+    match body
+    case Re_alt(r1, r2) => FXRAlt(r1, r2); LookTablesOkFXR(r1, crv); LookTablesOkFXR(r2, crv);
+    case Re_con(r1, r2) => FXRCon(r1, r2); LookTablesOkFXR(r1, crv); LookTablesOkFXR(r2, crv);
+    case Re_quant(nul, qid, q, r1) => FXRQuant(nul, qid, q, r1); LookTablesOkFXR(r1, crv);
+    case Re_capture(cid, r1) => FXRCapture(cid, r1); LookTablesOkFXR(r1, crv);
+    case Re_lookaround(lid, la, r1) =>
+      FXRLook(lid, la, r1);
+      MirrorTablesEntry(crv, lid, la, r1);
+      LookTablesOkFXR(r1, crv);
     case _ =>
   }
 }
