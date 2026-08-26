@@ -1511,3 +1511,25 @@ both `FLookLoop*CoversFromTables`, `ProduceOwnerForall`) is lifted to `NR.L5Scop
 bridges with `NoPosImpliesL5Scope`. `FrameEntryOkFromTables` 1/0, `LookRowsStaticNested` 1/0, `LookRowsFromTablesNested` 2/0, the five `Endpoint*` 2/0 each, both `FLookLoop*CoversFromTables` 2/0, `ProduceOwnerForall` 433/0, **`MainTheoremL4` 4811/0 (single-shot, 41 min)**. What remains of F7c is exactly the hard rung: the
 layer-6 body-replay carriers (flip-transport of the forward lift at `FXR(body)`), then the descent
 dispatch, then the `GateStaticAtNested` hub flip.
+
+### L5 F7c-3 (2026-08-26, session 4): the layer-6 LB body-replay carrier — a FLIP-TRANSPORT, not a port
+
+The forward carrier `LookNestBackTFromBodyReplay` IS the forward lift simulation of the body
+(`L3aCompositeCloseRec` from cp), so its lookbehind twin cannot re-run the lift backward. Instead,
+`LookNestBackTFromBodyReplayLB` applies the forward carrier to `FXR(body)` over `Reverse(str)` with
+`MirrorView(ov)`, the F3/F4 flipped oracle table, and the MIRRORED look tables (`FG.MirrorTables`:
+kinds through `FlipLkRE`, asts through `FXR`, rows recompiled — `LookTablesOkFXR`). Since
+`FXR(body)` has no positive lookbehinds (`NoPosLookbehindFXR`), the UNLIFTED L4 hub
+(`GateStaticsFromTablesNested`) supplies the flipped world's gate statics. Then everything mirrors
+back: T2a (`FG.BackFreshCoreNested`) ties the two fresh runs (`rfF == MirrorThread(raB)`), F2
+(`FD.BackBodyGmTieFlip`) ties the two leaves (`leafF == MirrorGm(rb)`), and per top lid the three
+carriers transport — presence by `FXR`-congruence of `TopLookIds`/`LookPathPresent`/`MxAtLidLk`
+(clocks untouched by `MirrorRegs`); the key carrier through F6 core AT THE LID BODY + `GmOfLiveMirror`
+(same keys); the deep carrier through F2 at the lid body (`SubFirstLeafAt` of the mirrored world =
+`MirrorGm` of `FG.BackLeafAt`) + `MirrorRangeInj` for the values. Bank invariants from the Backward
+ClockMono twins (+ `FFindMatchLookClkSetB`). One timeout on the way (`assert 0 <= cp0 <= n` needed
+the `LookCpsLE` instance and the `get_cp` `None`-contrapositives spelled out). Green: FlipGate 24 syms
+(structural brick + per-lid helpers), ClockMono 1/0, LiftSim `LookNestOkTTopFlip` 2/0,
+`LookNestBackTTopLidFlip` 276/0, `LookNestBackTTopDeepLidFlip` 694/0, `FreshMatchLidFlip` 588/0,
+**`LookNestBackTFromBodyReplayLB` 1886/0**. Remaining F7c: the descent dispatch (layers 7–9) and the
+`GateStaticAtNested` hub flip.
