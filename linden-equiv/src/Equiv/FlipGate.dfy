@@ -62,6 +62,7 @@ module LindenElkFlipGate {
   import RL = LindenElkRegsLaws
   import NI = LindenElkNestInv
   import OBu = LindenElkOracleBuild
+  import TRM = LindenTreeResMirror
 
   // ===========================================================================
   // F6-core: the fresh backward run and its T2a mirror, in consumer form
@@ -980,4 +981,103 @@ module LindenElkFlipGate {
       LookTablesOkFXR(r1, crv);
     case _ =>
   }
+  // ===========================================================================
+  // (L5 F7c-3) Per-lid helpers for the LB body-replay carrier transport
+  // ===========================================================================
+
+  /** Sub-body facts a look body inherits from its host — the keystone-package
+      conjuncts `NI.LookBodyOfFragmentNested` / `M.TransWfLookBodyOfRE` /
+      `M.CapUniqueLookBodyOfRE` do not cover. */
+  lemma LookBodySubFactsLB(r: R.regex, lid: nat)
+    requires lid in LTB.LookIds(r)
+    ensures PIV.QuantUnique(r) ==> PIV.QuantUnique(NI.LookBodyOfRE(r, lid))
+    ensures LTB.LookUnique(r) ==> LTB.LookUnique(NI.LookBodyOfRE(r, lid))
+    ensures FST.LBOnlyLooksRE(r) ==> FST.LBOnlyLooksRE(NI.LookBodyOfRE(r, lid))
+    ensures R.max_group(NI.LookBodyOfRE(r, lid)) <= R.max_group(r)
+    ensures R.max_quant(NI.LookBodyOfRE(r, lid)) <= R.max_quant(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodySubFactsLB(r1, lid); } else { LookBodySubFactsLB(r2, lid); }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodySubFactsLB(r1, lid); } else { LookBodySubFactsLB(r2, lid); }
+    case Re_quant(_, _, _, r1) => LookBodySubFactsLB(r1, lid);
+    case Re_capture(_, r1) => LookBodySubFactsLB(r1, lid);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {} else { LookBodySubFactsLB(r1, lid); }
+    case _ =>
+  }
+
+  /** `LmapOk` descends to a look body. */
+  lemma LmapOkLookBody(r: R.regex, qm: AR.QMap, lid: nat)
+    requires T.TransWf(r) && AR.LmapOk(r, qm)
+    requires lid in LTB.LookIds(r)
+    ensures T.TransWf(NI.LookBodyOfRE(r, lid)) && AR.LmapOk(NI.LookBodyOfRE(r, lid), qm)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LmapOkLookBody(r1, qm, lid); } else { LmapOkLookBody(r2, qm, lid); }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LmapOkLookBody(r1, qm, lid); } else { LmapOkLookBody(r2, qm, lid); }
+    case Re_quant(_, _, _, r1) => LmapOkLookBody(r1, qm, lid);
+    case Re_capture(_, r1) => LmapOkLookBody(r1, qm, lid);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {} else { LmapOkLookBody(r1, qm, lid); }
+    case _ =>
+  }
+
+  /** Under `LookTablesOk` + `LBOnlyLooksRE`, every lid's row is lookbehind-
+      flavoured, its ast is the lid's body and its cdns are that body's. */
+  lemma LookRowLBOnly(r: R.regex, crv: CP.FCompiled, lid: nat)
+    requires LTB.LookTablesOk(r, crv) && FST.LBOnlyLooksRE(r)
+    requires lid in LTB.LookIds(r)
+    ensures 0 <= (lid as int) < |crv.f_look_types| && 0 <= (lid as int) < |crv.f_look_ast|
+         && 0 <= (lid as int) < |crv.f_look_cdns|
+    ensures crv.f_look_types[lid].Lookbehind? || crv.f_look_types[lid].NegLookbehind?
+    ensures crv.f_look_ast[lid] == NI.LookBodyOfRE(r, lid)
+    ensures crv.f_look_cdns[lid] == LCdn.compile_cdns(NI.LookBodyOfRE(r, lid))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookRowLBOnly(r1, crv, lid); } else { LookRowLBOnly(r2, crv, lid); }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookRowLBOnly(r1, crv, lid); } else { LookRowLBOnly(r2, crv, lid); }
+    case Re_quant(_, _, _, r1) => LookRowLBOnly(r1, crv, lid);
+    case Re_capture(_, r1) => LookRowLBOnly(r1, crv, lid);
+    case Re_lookaround(lid0, la, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+        assert LTB.LookEntryOk(crv, lid0, la, r1);
+      } else {
+        LookRowLBOnly(r1, crv, lid);
+      }
+    case _ =>
+  }
+
+  /** `get_cp` through `MirrorRegs`: a recorded position `<= n` reflects to
+      `n - cp` (still recorded); an unset slot stays unset. */
+  lemma GetCpMirror(lk: AReg.Regs, n: int, l: int)
+    requires CM.LookCpsLE(lk, n)
+    ensures AReg.get_cp(MIR.MirrorRegs(lk, n), l).Some? <==> AReg.get_cp(lk, l).Some?
+    ensures AReg.get_cp(lk, l).Some? ==>
+              AReg.get_cp(MIR.MirrorRegs(lk, n), l).value == n - AReg.get_cp(lk, l).value
+  {
+    var m := MIR.MirrorRegs(lk, n);
+    assert |m.a_cp| == |lk.a_cp|;
+    if 0 <= l < |lk.a_cp| {
+      assert AI.get_idx(lk.a_cp, l) == lk.a_cp[l] <= n;
+      assert m.a_cp[l] == MIR.MirrorCpVal(lk.a_cp[l], n);
+    }
+  }
+
+  /** `MirrorRange` is injective on in-bounds ranges (the deep carrier's value
+      equality transports back through the mirror). */
+  lemma MirrorRangeInj(a: LG.Range, b: LG.Range, n: nat)
+    requires a.startIdx <= n && (a.endIdx.Some? ==> a.endIdx.value <= n)
+    requires b.startIdx <= n && (b.endIdx.Some? ==> b.endIdx.value <= n)
+    requires TRM.MirrorRange(a, n) == TRM.MirrorRange(b, n)
+    ensures a == b
+  {}
 }

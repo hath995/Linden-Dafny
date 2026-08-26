@@ -1973,6 +1973,43 @@ module LindenElkClockMono {
     }
   }
 
+  /** (L5 F7c-3) Backward twin of `FFindMatchLookClkSet` (the fresh backward body
+      run of a lookbehind lid keeps `LookClkSetWithCp` on its winner). */
+  lemma FFindMatchLookClkSetB(c: RB.code, str: string, s: AI.VmState, ov: LOr.OracleView,
+                              dir: LAnc.direction, cdn: LCdn.cdns)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires dir == LAnc.Backward
+    requires s.context.nextchar == AI.get_char(str, s.cp - 1)
+    requires 0 <= s.cp <= |str|
+    requires s.clock >= 0
+    requires VmLookClkSet(s)
+    ensures var r := AI.FFindMatch(c, str, s, ov, dir, cdn).0;
+      r.Some? ==> LookClkSetWithCp(r.value.look_regs)
+    decreases s.cp
+  {
+    var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, dir));
+    assert VmLookClkSet(s0) && s0.clock >= 0;
+    var (s1, ov1) := AI.FAdvanceEpsilon(c, s0, ov, dir);
+    FAdvanceEpsilonLookClkSet(c, s0, ov, dir);
+    FAdvanceEpsilonClockGrows(c, s0, ov, dir);
+    assert VmLookClkSet(s1) && s1.clock >= 0;
+    if |s1.blocked| == 0 { return; }
+    match s1.context.nextchar {
+      case None =>
+      case Some(_) =>
+        assert s.cp > 0;                          // nextchar Some (backward) => cp - 1 in range
+        var s2 := AI.FConsume(s1);
+        FConsumeLookClkSet(s1);
+        FConsumeClockSame(s1);
+        var s3 := s2.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
+                      cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
+        var newchar := AI.get_char(str, s3.cp - AI.cp_offset(dir));
+        var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
+        assert s4.cp == s.cp - 1 >= 0;
+        assert VmLookClkSet(s4) && s4.clock >= 0;
+        FFindMatchLookClkSetB(c, str, s4, ov1, dir, cdn);
+    }
+  }
   // ==========================================================================
   // The REVERSE look-bank invariant: clock-set ==> cp-set. Exact mirror of the
   // `LookClkSetWithCp` tower (cp-set ==> clock-set): a look's cp and clock land
