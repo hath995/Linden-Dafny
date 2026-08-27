@@ -9624,6 +9624,17 @@ module LindenElkLiftSim {
   // (values through the endpoint swap, exactly `GmtTieInside`'s Lookbehind arm).
   // ==========================================================================
 
+  /** (L5 F7c-4) `NormRange` absorbs the endpoint swap: `SwapRange` re-orders a
+      closed range's endpoints; `NormRange` re-orders any reversed closed range.
+      Either way a closed range ends ordered — so the descent value tie can be
+      phrased `NormRange(x) == NormRange(y)` uniformly across forward/backward
+      hops (the backward fresh match's reversed read vs the spec leaf's ordered
+      value). */
+  lemma NormSwapCong(rg: LG.Range)
+    ensures PIV.NormRange(LBV.SwapRange(rg)) == PIV.NormRange(rg)
+  {
+  }
+
   /** For a LOOKBEHIND lid, `SubFirstLeafAt` unfolds (`LidDir == Backward`) to
       the explicit backward leaf `FG.BackLeafAt(body, cp)` at the recorded cp. */
   lemma SubFirstLeafAtIsBackLeaf(rer: LW.RegExpRecord, crv: CP.FCompiled, str: string, l: int,
@@ -17410,12 +17421,12 @@ module LindenElkLiftSim {
          AI.get_idx(AReg.as_arrays(res.2).1, q as int) == AI.get_idx(AReg.as_arrays(thread.quant_regs).1, q as int))
       && CM.ThreadRegsWf(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed), ncap, nlook, nquant)
       && M.QuantRegsFinal(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed))
-    // ---- (F) FORWARD membership + VALUE (per leaf-present g) ----
+    // ---- (F) FORWARD membership + VALUE (per leaf-present g, Norm-form) ----
     requires var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
                                      thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
       forall g: LG.GroupId :: g in S && g in leaf.1 ==>
         g in PIV.GmOfLive(re, res.0, res.1, res.2)
-        && leaf.1[g] == PIV.GmOfLive(re, res.0, res.1, res.2)[g]
+        && PIV.NormRange(leaf.1[g]) == PIV.NormRange(PIV.GmOfLive(re, res.0, res.1, res.2)[g])
     // ---- (R) REVERSE membership ----
     requires var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
                                      thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
@@ -17443,7 +17454,7 @@ module LindenElkLiftSim {
              && leafgm[g] == PIV.NormRange(PIV.GmOfLive(re, res.0, res.1, res.2)[g])
       {
         assert g in PIV.GmOfLive(re, res.0, res.1, res.2)
-            && leafgm[g] == PIV.GmOfLive(re, res.0, res.1, res.2)[g];
+            && PIV.NormRange(leafgm[g]) == PIV.NormRange(PIV.GmOfLive(re, res.0, res.1, res.2)[g]);
         // OrderedGm: NormRange is the identity on leafgm[g]
         assert leafgm[g].endIdx.Some? ==> leafgm[g].startIdx <= leafgm[g].endIdx.value;
         assert PIV.NormRange(leafgm[g]) == leafgm[g];
@@ -26340,9 +26351,10 @@ module LindenElkLiftSim {
       ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
       host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed through the recursion) ----
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && M.NoPosLookbehindRE(re)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
+    requires |crv.f_look_types| == |crv.f_look_ast|
     requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
     requires forall x: nat :: x in LTB.LookIds(re) ==> (x as int) in qm.looks
     requires nlook == R.max_lookaround(ast) + 1
@@ -26394,7 +26406,7 @@ module LindenElkLiftSim {
     var laA: R.lookaround, bA: R.regex :|
       LTB.LookEntryOk(crv, A as int, laA, bA)
       && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && NR.NegLooksLookFreeRE(bA) && M.NoPosLookbehindRE(bA)
+      && NR.NegLooksLookFreeRE(bA)
       && qm.looks[A as int].0 == T.TrLookaround(laA)
       && qm.looks[A as int].1 == T.Translate(bA)
       && (set g: LG.GroupId | g in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
@@ -26410,13 +26422,205 @@ module LindenElkLiftSim {
     var endlH: nat := |bodycode| - 1;
     assert PSM.StaticOkNestedRE(qm, host, bodycode, endlH);
     assert crv.f_look_types[A as int] == laA;
-    assert laA.Lookahead? by {
-      // MatchedPosLA pins capture_type + not-negative; NoPosLookbehind kills Lookbehind.
+    assert (laA.Lookahead? || laA.Lookbehind?) by {
       assert AI.capture_type(crv.f_look_types[A as int]);        // MatchedPosLA
-      M.LookBodyFactsNested(re, crv, A);
-      var laN: R.lookaround :| LTB.LookEntryOk(crv, A as int, laN, host) && !laN.Lookbehind?;
-      assert laN == laA;
     }
+    if laA.Lookbehind? {
+      // ==== (L5 F7c-4) LOOKBEHIND lid: lift via the FLIP twins ====
+      M.LookBodyFactsL5(re, crv, A);
+      var laN: R.lookaround :| LTB.LookEntryOk(crv, A as int, laN, host) && (laN.Lookbehind? ==> NR.LBOnlyLooksRE(host));
+      assert laN == laA;
+      assert NR.LBOnlyLooksRE(host);
+      FG.LBOnlyEquiv(host);
+      assert FST.LBOnlyLooksRE(host);
+      if g2 !in PIV.CapIdsInLooks(host) {
+        // ---- BASE: g2 DIRECT in host ====
+        assert M.FrameEntryOk(crv, laA, host,
+                              PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re));
+        M.InnermostOwnerUnique(re, g2, owner, A);
+        assert owner == A;
+        var rfO := M.FreshBodyMatch(crv, str, A as int, res1, ov, ncap, nlook, nquant);
+        assert rfO.Some?
+            && g2 in PIV.GmOfLive(host, rfO.value.capture_regs, rfO.value.look_regs, rfO.value.quant_regs);
+        // the body-restricted qmap (LmapOk on `host`, all-columns oracle)
+        var qmB0 := AR.QMap(qm.quants,
+                            map l: int | l in qm.looks && l >= 0 && (l as nat) in LTB.LookIds(host) :: qm.looks[l],
+                            qm.ov);
+        assert AR.QmapOk(host, qmB0) by { QmapOkLooksIrrel(host, qm, qmB0); }
+        assert AR.LmapOk(host, qmB0) by { LmapOkRestrict(host, qm, qmB0); }
+        assert OE.OracleColsOk(rer, qmB0, str) by {
+          SufAllToColsOk(rer, qm, str);
+          OracleColsOkRestrict(rer, qm, qmB0, str);
+        }
+        FreshBodyDirectInSubFirstLeafLB(rer, qmB0, crv, str, ov, A, res1, host, g2,
+                                        ncap, nlook, nquant);
+      } else {
+        // ---- DEEP: descend through g2's top-in-host ancestor A1 (per-hop kind dispatch) ----
+        assert M.FrameEntryOk(crv, laA, host,
+                              PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re));
+        var ownH := NI.InnermostOwnerDirect(host, g2);
+        var A1 := ReconLiveTopAncestor(host, g2, ownH);
+        assert A1 in NI.TopLookIds(host) && A1 in LTB.LookIds(host)
+            && g2 in PIV.CapIds(NI.LookBodyOfRE(host, A1));
+        NI.LookBodyLookIdsIn(re, A);                                // LookIds(host) <= LookIds(re)
+        assert A1 in LTB.LookIds(re);
+        NI.LookBodyCompose(re, A, A1);                              // bodies compose
+        var bodyA1 := NI.LookBodyOfRE(re, A1);
+        assert bodyA1 == NI.LookBodyOfRE(host, A1);
+
+        // (α) presence descends + A1's res1 clock is set
+        NI.LookPathDecomposeNested(host, bodyA1, res0.a_clk, res1.a_clk, res2.a_clk, -1, A1, g2);
+        assert AI.get_idx(res1.a_clk, A1 as int) >= 0;
+        assert PIV.PathPresentLk(bodyA1, res0.a_clk, res1.a_clk, res2.a_clk, -1, g2);
+
+        // (β) A1 matched in res1 (reverse invariant + LB-only kind pin)
+        assert AI.get_idx(res1.a_cp, A1 as int) >= 0;               // LookCpSetWithClk
+        assert AReg.get_cp(res1, A1 as int).Some?;
+        assert M.MatchedPosLA(crv, res1, A1 as int) by {
+          assert GateStaticAtNested(qm, re, crv, A1 as int, ncap, nlook, nquant);
+          var la1: R.lookaround, b1: R.regex :| LTB.LookEntryOk(crv, A1 as int, la1, b1);
+          assert crv.f_look_types[A1 as int] == la1;
+          assert la1.Lookbehind? || la1.NegLookbehind? by {
+            assert LTB.LookTablesOk(host, crv);                     // FrameEntryOk
+            FG.LookRowLBOnly(host, crv, A1);
+          }
+          if la1.NegLookbehind? {
+            assert M.FrameEntryOk(crv, la1, b1,
+                                  PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re));
+            assert b1 == bodyA1 by { assert crv.f_look_ast[A1 as int] == b1 == bodyA1; }
+            assert GateStaticAtNested(qm, re, crv, A1 as int, ncap, nlook, nquant);
+            var la1G: R.lookaround, b1G: R.regex :|
+              LTB.LookEntryOk(crv, A1 as int, la1G, b1G)
+              && ((la1G.NegLookbehind? || la1G.NegLookahead?) ==> NR.CaptureFreeRE(b1G));
+            assert la1G == la1 && b1G == bodyA1;
+            assert NR.CaptureFreeRE(bodyA1);
+            PIV.CaptureFreeNoCapIds(bodyA1);
+            assert g2 in PIV.CapIds(bodyA1);
+            assert false;
+          }
+          assert AI.capture_type(crv.f_look_types[A1 as int]);
+        }
+
+        // (δ) the body-restricted qmap + statics (site supplies statics for the
+        //     flipped world inside the LB carrier — it only needs LmapOk +
+        //     whole-string oracle on `host`).
+        var qmB := AR.QMap(qm.quants,
+                           map l: int | l in qm.looks && l >= 0 && (l as nat) in LTB.LookIds(host) :: qm.looks[l],
+                           qm.ov);
+        assert AR.QmapOk(host, qmB) by { QmapOkLooksIrrel(host, qm, qmB); }
+        assert AR.LmapOk(host, qmB) by { LmapOkRestrict(host, qm, qmB); }
+        assert OE.OracleColsOk(rer, qmB, str) by {
+          SufAllToColsOk(rer, qm, str);
+          OracleColsOkRestrict(rer, qm, qmB, str);
+        }
+
+        // (γ) A1's BACKWARD spec leaf EXISTS (oracle at the recorded cp) — the
+        //     per-hop kind dispatch is by `LidDir`, so the backward arm builds
+        //     the WP.Backward tree and the forward arm the WP.Forward one.
+        // (ε) the BACKWARD body replay: the LB carrier at `compile(reverse_regex(host))`.
+        var cpA := AReg.get_cp(res1, A as int).value;
+        var inpA := PIV.InpOfCp(str, cpA);
+        var bodycodeB := CP.compile_to_bytecode(R.reverse_regex(host));
+        var cdnA := crv.f_look_cdns[A as int];
+        LookNestBackTFromBodyReplayLB(rer, qmB, laA, host, bodycodeB, crv, str, cpA, ov,
+                                      cdnA, crv.f_plus_bc, ncap, nlook, nquant);
+        var rbT := LFU.ComputeTr(rer, [LS.Areg(T.Translate(host))], inpA, LG.Empty, WP.Backward);
+        var rb := LT.TreeRes(rbT, LG.Empty, inpA, WP.Backward);
+        var rfP := AI.FFindMatchPlus(bodycodeB, host, crv.f_plus_bc, str, ov, LAnc.Backward, cpA,
+                                     AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant),
+                                     0, cdnA).0;
+        assert rfP.Some?;                                            // None-iff + rb.Some?
+        var rfA := rfP.value;
+        var Sh := PIV.CapIdsInLooks(host);
+        var gmtH := rb.value.1;
+        assert LookNestBackTTopDeep(rer, host, crv, str, ov, Sh, gmtH, rfA, ncap, nlook, nquant);
+        assert CM.LookClkSetWithCp(rfA.look_regs) && CM.LookCpSetWithClk(rfA.look_regs);
+
+        // (ζ) rf_A IS FreshBodyMatch(A, res1) — the backward fresh run
+        var rfFresh := M.FreshBodyMatch(crv, str, A as int, res1, ov, ncap, nlook, nquant);
+        assert rfFresh == AI.FFindMatch(bodycodeB, str,
+                            AI.FInitState(bodycodeB, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                          AReg.init_regs(nquant), 0, AI.cp_context(cpA, str, LAnc.Backward)),
+                            ov, LAnc.Backward, cdnA).0 by {
+          FG.FreshBodyMatchLBUnfold(crv, str, A as int, res1, ov, host, ncap, nlook, nquant);
+        }
+        assert rfA == rfFresh.value by {
+          // FReconstructPlus is the identity on the QuantRegsFinal fresh run.
+          var ctxB := AI.cp_context(cpA, str, LAnc.Backward);
+          var initsB := AI.FInitState(bodycodeB, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                      AReg.init_regs(nquant), 0, ctxB);
+          M.NoTrueQuantStampNested(host);
+          assert M.VmQuantFinal(initsB) by {
+            var th0 := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
+            assert M.QuantRegsFinal(th0) by {
+              RL.AInitLaws(nquant);
+              forall k ensures AI.get_idx(AReg.init_regs(nquant).a_cp, k) < 0
+                            && AI.get_idx(AReg.init_regs(nquant).a_clk, k) >= -1 {
+                if 0 <= k < nquant { }
+              }
+            }
+            forall t2 | t2 in initsB.active ensures M.QuantRegsFinal(t2) { assert t2 == th0; }
+          }
+          M.FFindMatchQuantFinalAny(bodycodeB, str, initsB, ov, LAnc.Backward, cdnA);
+          var (fm, ovx) := AI.FFindMatch(bodycodeB, str, initsB, ov, LAnc.Backward, cdnA);
+          assert fm == rfFresh by { assert rfFresh == AI.FFindMatch(bodycodeB, str, initsB, ov, LAnc.Backward, cdnA).0; }
+          assert fm.Some?;
+          assert M.QuantRegsFinal(fm.value);
+          M.FNulledPlusIdentity(host, fm.value.capture_regs, fm.value.look_regs, fm.value.quant_regs,
+                                crv.f_plus_bc, str, ovx, LAnc.Backward);
+          assert AI.FReconstructPlus(fm.value, host, crv.f_plus_bc, str, ovx, LAnc.Backward).0 == fm.value;
+        }
+        // (η) the LEVEL-LINK at (A, A1): res1's record at A1 IS rf_A's
+        assert A1 as int in M.DirectLidSet(host) by {
+          TopEqDirectLookIds(host);
+          assert A1 in M.DirectLookIds(host);
+        }
+        assert AReg.get_cp(res1, A1 as int) == AReg.get_cp(rfFresh.value.look_regs, A1 as int) by {
+          assert M.FLookLoopChildLinkOk(crv, str, res1, 1, maxlook, ov, ncap, nlook, nquant);
+          assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
+          assert rfFresh.Some?;
+        }
+        assert AReg.get_cp(res1, A1 as int) == AReg.get_cp(rfA.look_regs, A1 as int);
+
+        // (θ) A1 matched + dominant ON rf_A's banks
+        assert M.MatchedPosLA(crv, rfA.look_regs, A1 as int) by {
+          assert AReg.get_cp(rfA.look_regs, A1 as int).Some?;
+        }
+        var L1 := AI.get_idx(rfA.look_regs.a_clk, A1 as int);
+        assert L1 >= 0 by {
+          assert 0 <= A1 as int < |rfA.look_regs.a_cp| && rfA.look_regs.a_cp[A1 as int] >= 0;
+          assert AI.get_idx(rfA.look_regs.a_cp, A1 as int) >= 0;
+          assert CM.LookClkSetWithCp(rfA.look_regs);
+        }
+        assert NI.LookPathDom(host, L1, rfA.quant_regs.a_clk, A1) by {
+          GNotUnderQuantLLookBody(re, A, g2);
+          assert M.GNotUnderQuantL(T.Translate(host), g2);
+          M.GNotUnderQuantLNoAncQuants(host, g2);
+          assert PIV.AncQuants(host, g2) == {};
+          NI.LookPathDomNoAncQuants(host, L1, rfA.quant_regs.a_clk, A1, g2);
+        }
+
+        // (ι) the RECURSIVE landing at A1, transported onto rf_A's bank
+        assert |LTB.LookIds(bodyA1)| < |LTB.LookIds(host)| by {
+          NI.LookBodyLookIdsIn(host, A1);
+          LookIdNotInOwnBody(host, A1);
+          SubsetCardLt(LTB.LookIds(bodyA1), LTB.LookIds(host), A1);
+        }
+        DeepFindRec(rer, qm, crv, str, ast, re, ov, res0, res1, res2,
+                    bodyA1, A1, owner, g2, ncap, nlook, nquant);
+        var lsub1 := SubFirstLeafAt(rer, crv, str, A1 as int, res1);
+        assert lsub1.Some? && g2 in lsub1.value;
+        assert SubFirstLeafAt(rer, crv, str, A1 as int, rfA.look_regs) == lsub1;   // reads only get_cp at A1
+
+        // (κ) LAND via the DEEP carrier, then identify the leaf with the
+        //     backward `BackLeafAt(host, cpA)` (== SubFirstLeafAt(A, res1))
+        DescentLandTopDeep(rer, host, crv, str, ov, Sh, gmtH, rfA, A1, g2, ncap, nlook, nquant);
+        assert g2 in gmtH;
+        SubFirstLeafAtIsBackLeaf(rer, crv, str, A as int, res1, host);
+        assert SubFirstLeafAt(rer, crv, str, A as int, res1).value == gmtH;
+      }
+    } else {
+      assert laA.Lookahead?;
     assert M.FrameEntryOk(crv, laA, host,
                           PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re));
     assert PIV.CapUnique(host) && PIV.QuantUnique(host) && LTB.LookUnique(host)
@@ -26456,25 +26660,6 @@ module LindenElkLiftSim {
         assert GateStaticAtNested(qm, re, crv, A1 as int, ncap, nlook, nquant);
         var la1: R.lookaround, b1: R.regex :| LTB.LookEntryOk(crv, A1 as int, la1, b1);
         assert crv.f_look_types[A1 as int] == la1;
-        M.LookBodyFactsNested(re, crv, A1);
-        var la1N: R.lookaround :| LTB.LookEntryOk(crv, A1 as int, la1N, bodyA1) && !la1N.Lookbehind?;
-        assert la1N == la1;
-        assert la1.Lookahead? by {
-          if la1.NegLookahead? || la1.NegLookbehind? {
-            assert M.FrameEntryOk(crv, la1, b1,
-                                  PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re));
-            assert b1 == bodyA1 by { assert crv.f_look_ast[A1 as int] == b1 == bodyA1; }
-            assert GateStaticAtNested(qm, re, crv, A1 as int, ncap, nlook, nquant);
-            var la1G: R.lookaround, b1G: R.regex :|
-              LTB.LookEntryOk(crv, A1 as int, la1G, b1G)
-              && ((la1G.NegLookbehind? || la1G.NegLookahead?) ==> NR.CaptureFreeRE(b1G));
-            assert la1G == la1 && b1G == bodyA1;
-            assert NR.CaptureFreeRE(bodyA1);
-            PIV.CaptureFreeNoCapIds(bodyA1);
-            assert g2 in PIV.CapIds(bodyA1);
-            assert false;
-          }
-        }
         assert AI.capture_type(crv.f_look_types[A1 as int]);
       }
 
@@ -26611,12 +26796,10 @@ module LindenElkLiftSim {
       // (κ) LAND via the DEEP carrier, then identify the leaf with SubFirstLeafAt(A, res1)
       DescentLandTopDeep(rer, host, crv, str, ov, Sh, gmtH, rfA, A1, g2, ncap, nlook, nquant);
       assert g2 in gmtH;
-      assert LidDir(crv, A as int) == WP.Forward by {                                   // (L5 F7a)
-        M.LookBodyFactsNested(re, crv, A);
-        var laN: R.lookaround :| LTB.LookEntryOk(crv, A as int, laN, NI.LookBodyOfRE(re, A)) && !laN.Lookbehind?;
-      }
+      assert LidDir(crv, A as int) == WP.Forward;               // laA.Lookahead? (dispatch)
       BodyReplayGmtIsSubFirstLeaf(rer, crv, str, A as int, res1, host);
       assert SubFirstLeafAt(rer, crv, str, A as int, res1) == Some(gmtH);
+      }
     }
   }
 
@@ -26624,8 +26807,8 @@ module LindenElkLiftSim {
       capture `g` PRESENT in ancestor `A`'s sub-first-leaf at `res1`'s recorded
       position, the ENGINE reconstruction carries `g`: presence path within
       `host` on the reconstructed banks, `res0` set at `g`, dominance, and the
-      VALUE tie (the leaf value IS the raw `LiveRange` of `res0`). Recursion on
-      `|LookIds(host)|`:
+      VALUE tie (the leaf value IS the raw `LiveRange` of `res0`, as a
+      `NormRange` equality). Recursion on `|LookIds(host)|`.
 
       BASE (`g` DIRECT): `SubFirstLeafDirectInFresh` moves `g` (with value) into
       the FRESH body match; the presence extractor + the no-look/no-quant path
@@ -26639,15 +26822,23 @@ module LindenElkLiftSim {
       pushes `g` (with value) into `A1`'s sub-first-leaf; the LEVEL-LINK re-keys
       it onto `res1`; the RECURSIVE call delivers the body-level engine facts;
       `LookPathComposeNested` + the top-lid transports (`LookPathPresentAgreeTop`
-      / `LookPathPresentLkFromPresentTop`) compose the presence up to `host`. */
+      / `LookPathPresentLkFromPresentTop`) compose the presence up to `host`.
+
+      (L5 F7c-4) The owner lid `A` dispatches on its kind: a LOOKAHEAD lid uses
+      the forward fresh match + `SubFirstLeafDirectInFresh` (unchanged); a
+      LOOKBEHIND lid uses the backward fresh match through `FG.FreshBodyMatch
+      LBUnfold` + the FLIP carrier `LookNestBackTFromBodyReplayLB` and the F7b
+      wrappers (`SubFirstLeafDirectInFreshLB`), exactly `GmtTieInside`'s
+      `SwapRange` in the LB arm. */
   lemma {:isolate_assertions} ForwardFindRec(
       rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
       ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
       host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed) ----
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && M.NoPosLookbehindRE(re)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
+    requires |crv.f_look_types| == |crv.f_look_ast|
     requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
     requires forall x: nat :: x in LTB.LookIds(re) ==> (x as int) in qm.looks
     requires nlook == R.max_lookaround(ast) + 1
@@ -26677,8 +26868,11 @@ module LindenElkLiftSim {
     ensures AI.get_idx(res0.a_cp, CP.start_reg(g)) >= 0
     ensures AI.get_idx(res0.a_clk, CP.start_reg(g))
               >= PIV.MxAtGidLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, g)
-    ensures SubFirstLeafAt(rer, crv, str, A as int, res1).value[g]
-              == PIV.LiveRange(res0.a_cp, res0.a_clk, g)
+    // (L5 F7c-4) the value tie is stated as a `NormRange` equality so that the
+    // backward fresh match's reversed read (LB arm) and the forward read (LA
+    // arm) chain uniformly; `NormSwapCong` absorbs the LB swap.
+    ensures PIV.NormRange(SubFirstLeafAt(rer, crv, str, A as int, res1).value[g])
+              == PIV.NormRange(PIV.LiveRange(res0.a_cp, res0.a_clk, g))
     decreases |LTB.LookIds(host)|
   {
     var maxlook := R.max_lookaround(ast);
@@ -26695,7 +26889,7 @@ module LindenElkLiftSim {
     var laA: R.lookaround, bA: R.regex :|
       LTB.LookEntryOk(crv, A as int, laA, bA)
       && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && NR.NegLooksLookFreeRE(bA) && M.NoPosLookbehindRE(bA)
+      && NR.NegLooksLookFreeRE(bA)
       && qm.looks[A as int].0 == T.TrLookaround(laA)
       && qm.looks[A as int].1 == T.Translate(bA)
       && (set g0: LG.GroupId | g0 in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
@@ -26711,12 +26905,340 @@ module LindenElkLiftSim {
     var endlH: nat := |bodycode| - 1;
     assert PSM.StaticOkNestedRE(qm, host, bodycode, endlH);
     assert crv.f_look_types[A as int] == laA;
-    assert laA.Lookahead? by {
+    assert (laA.Lookahead? || laA.Lookbehind?) by {
       assert AI.capture_type(crv.f_look_types[A as int]);        // MatchedPosLA
-      M.LookBodyFactsNested(re, crv, A);
-      var laN: R.lookaround :| LTB.LookEntryOk(crv, A as int, laN, host) && !laN.Lookbehind?;
-      assert laN == laA;
     }
+    if laA.Lookbehind? {
+      // ==== (L5 F7c-4) LOOKBEHIND lid: lift via the FLIP twins ====
+      M.LookBodyFactsL5(re, crv, A);
+      var laN: R.lookaround :| LTB.LookEntryOk(crv, A as int, laN, host) && (laN.Lookbehind? ==> NR.LBOnlyLooksRE(host));
+      assert laN == laA;
+      assert NR.LBOnlyLooksRE(host);
+      FG.LBOnlyEquiv(host);
+      assert FST.LBOnlyLooksRE(host);
+      // ---- rf_A: the fresh BACKWARD body match (Some via the LB carrier's None-iff — the
+      //      backward leaf EXISTS by hypothesis) ----
+      assert M.FrameEntryOk(crv, laA, host,
+                            PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re));
+      assert PIV.CapUnique(host) && PIV.QuantUnique(host) && LTB.LookUnique(host)
+          && LTB.LookTablesOk(host, crv);                          // FrameEntryOk
+      var qmB := AR.QMap(qm.quants,
+                         map l: int | l in qm.looks && l >= 0 && (l as nat) in LTB.LookIds(host) :: qm.looks[l],
+                         qm.ov);
+      assert AR.QmapOk(host, qmB) by { QmapOkLooksIrrel(host, qm, qmB); }
+      assert AR.LmapOk(host, qmB) by { LmapOkRestrict(host, qm, qmB); }
+      assert OE.OracleColsOk(rer, qmB, str) by {
+        SufForallToColsOk(rer, qm, str);
+        OracleColsOkRestrict(rer, qm, qmB, str);
+      }
+      var bodycodeB := CP.compile_to_bytecode(R.reverse_regex(host));
+      var cdnA := crv.f_look_cdns[A as int];
+      LookNestBackTFromBodyReplayLB(rer, qmB, laA, host, bodycodeB, crv, str, cpA, ov,
+                                    cdnA, crv.f_plus_bc, ncap, nlook, nquant);
+      var rbT := LFU.ComputeTr(rer, [LS.Areg(T.Translate(host))], inpA, LG.Empty, WP.Backward);
+      var rb := LT.TreeRes(rbT, LG.Empty, inpA, WP.Backward);
+      var rfP := AI.FFindMatchPlus(bodycodeB, host, crv.f_plus_bc, str, ov, LAnc.Backward, cpA,
+                                   AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant),
+                                   0, cdnA).0;
+      // the backward leaf exists (hypothesis) — unfold SubFirstLeafAt to rb
+      assert LidDir(crv, A as int) == WP.Backward;             // dispatch: laA.Lookbehind?
+      var lsubA := SubFirstLeafAt(rer, crv, str, A as int, res1);
+      SubFirstLeafAtIsBackLeaf(rer, crv, str, A as int, res1, host);
+      assert lsubA == FG.BackLeafAt(rer, host, str, cpA);
+      assert lsubA.Some? && rb.Some? && lsubA.value == rb.value.1;
+      assert rfP.Some?;                                            // None-iff
+      var rfA := rfP.value;
+      var Sh := PIV.CapIdsInLooks(host);
+      var gmtH := rb.value.1;
+      assert gmtH == lsubA.value;
+
+      // rf_A IS FreshBodyMatch(A, res1) — the backward fresh run
+      var rfFresh := M.FreshBodyMatch(crv, str, A as int, res1, ov, ncap, nlook, nquant);
+      assert rfFresh == AI.FFindMatch(bodycodeB, str,
+                          AI.FInitState(bodycodeB, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                        AReg.init_regs(nquant), 0, AI.cp_context(cpA, str, LAnc.Backward)),
+                          ov, LAnc.Backward, cdnA).0 by {
+        FG.FreshBodyMatchLBUnfold(crv, str, A as int, res1, ov, host, ncap, nlook, nquant);
+      }
+      assert rfA == rfFresh.value by {
+        var ctxB := AI.cp_context(cpA, str, LAnc.Backward);
+        var initsB := AI.FInitState(bodycodeB, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                    AReg.init_regs(nquant), 0, ctxB);
+        M.NoTrueQuantStampNested(host);
+        assert M.VmQuantFinal(initsB) by {
+          var th0 := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
+          assert M.QuantRegsFinal(th0) by {
+            RL.AInitLaws(nquant);
+            forall k ensures AI.get_idx(AReg.init_regs(nquant).a_cp, k) < 0
+                          && AI.get_idx(AReg.init_regs(nquant).a_clk, k) >= -1 {
+              if 0 <= k < nquant { }
+            }
+          }
+          forall t2 | t2 in initsB.active ensures M.QuantRegsFinal(t2) { assert t2 == th0; }
+        }
+        M.FFindMatchQuantFinalAny(bodycodeB, str, initsB, ov, LAnc.Backward, cdnA);
+        var (fm, ovx) := AI.FFindMatch(bodycodeB, str, initsB, ov, LAnc.Backward, cdnA);
+        assert fm == rfFresh by { assert rfFresh == AI.FFindMatch(bodycodeB, str, initsB, ov, LAnc.Backward, cdnA).0; }
+        assert fm.Some?;
+        assert M.QuantRegsFinal(fm.value);
+        M.FNulledPlusIdentity(host, fm.value.capture_regs, fm.value.look_regs, fm.value.quant_regs,
+                              crv.f_plus_bc, str, ovx, LAnc.Backward);
+        assert AI.FReconstructPlus(fm.value, host, crv.f_plus_bc, str, ovx, LAnc.Backward).0 == fm.value;
+      }
+      assert rfFresh.Some?;
+
+      // the FLookLoop value/quant lifts at owner == A
+      assert CM.RegsAgreeInside(res0, rfFresh.value.capture_regs,
+                                PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host))) by {
+        assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
+        assert M.VBody(crv, A as int) == host;
+      }
+      assert CM.RegsAgreeInside(res2, rfFresh.value.quant_regs, M.QIdsOuter(host)) by {
+        assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
+      }
+      // the fragment scope at host
+      GNotUnderQuantLLookBody(re, A, g);
+      assert M.GNotUnderQuantL(T.Translate(host), g);
+
+      if g !in PIV.CapIdsInLooks(host) {
+        // ==== BASE: g DIRECT in host ====
+        SubFirstLeafDirectInFreshLB(rer, qmB, crv, str, ov, A, res1, host, g, ncap, nlook, nquant);
+        var rfc := rfFresh.value.capture_regs;
+        var rfl := rfFresh.value.look_regs;
+        var rfq := rfFresh.value.quant_regs;
+        assert g in PIV.GmOfLive(host, rfc, rfl, rfq)
+            && lsubA.value[g] == LBV.SwapRange(PIV.GmOfLive(host, rfc, rfl, rfq)[g]);
+        // presence + dominance on the FRESH banks
+        M.LookBodyFactsL5(re, crv, A);          // NestedFragmentRE/CapUnique/QuantUnique(host)
+        FreshBodyMatchCapWfNested(crv, str, A as int, res1, ov, ncap, nlook, nquant, host);
+        assert PIV.CapRegWf(rfc);
+        assert forall c: nat :: c in PIV.CapIds(host) && AI.get_idx(rfc.a_clk, CP.start_reg(c)) < 0
+                               ==> AI.get_idx(rfc.a_cp, CP.start_reg(c)) < 0;
+        NI.GmOfLivePresenceExtractLkNested(host, rfFresh.value.capture_regs, rfl, rfq, g);
+        assert AReg.as_arrays(rfl).1 == rfl.a_clk && AReg.as_arrays(rfq).1 == rfq.a_clk;
+        assert PIV.PathPresentLk(host, rfc.a_clk, rfl.a_clk, rfq.a_clk, -1, g);
+        assert AI.get_idx(rfc.a_clk, CP.start_reg(g)) >= 0
+            && AI.get_idx(rfc.a_cp, CP.start_reg(g)) >= 0
+            && AI.get_idx(rfc.a_clk, CP.start_reg(g))
+                 >= PIV.MxAtGidLk(host, rfc.a_clk, rfl.a_clk, rfq.a_clk, -1, g);
+        // transport onto the reconstructed banks (no-look/no-quant path)
+        M.GNotUnderQuantLNoAncQuants(host, g);
+        assert PIV.AncQuants(host, g) == {};
+        assert forall c: nat :: c in PIV.CapIdsOutsideLooks(host) ==>
+          AI.get_idx(res0.a_clk, CP.start_reg(c)) == AI.get_idx(rfc.a_clk, CP.start_reg(c))
+        by {
+          forall c: nat | c in PIV.CapIdsOutsideLooks(host)
+            ensures AI.get_idx(res0.a_clk, CP.start_reg(c)) == AI.get_idx(rfc.a_clk, CP.start_reg(c))
+          {
+            assert CP.start_reg(c) in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host));
+          }
+        }
+        NI.PathPresentLkDirectAgree(host, res0.a_clk, res1.a_clk, res2.a_clk,
+                                    rfc.a_clk, rfl.a_clk, rfq.a_clk, g);
+        assert PIV.PathPresentLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, g);
+        // res0 == rf at g's registers (start + end): the value lift at A
+        PIV.CapIdsSplit(host);
+        assert g in PIV.CapIdsOutsideLooks(host);
+        assert CP.start_reg(g) in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host))
+            && CP.end_reg(g) in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host));
+        assert AI.get_idx(res0.a_clk, CP.start_reg(g)) == AI.get_idx(rfc.a_clk, CP.start_reg(g));
+        assert AI.get_idx(res0.a_cp, CP.start_reg(g)) == AI.get_idx(rfc.a_clk, CP.start_reg(g));
+        assert AI.get_idx(res0.a_clk, CP.end_reg(g)) == AI.get_idx(rfc.a_clk, CP.end_reg(g));
+        assert AI.get_idx(res0.a_cp, CP.end_reg(g)) == AI.get_idx(rfc.a_clk, CP.end_reg(g));
+        // dominance transported (Mx equality from the same transport)
+        assert PIV.MxAtGidLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, g)
+            == PIV.MxAtGidLk(host, rfc.a_clk, rfl.a_clk, rfq.a_clk, -1, g);
+        // the value chain with the endpoint swap absorbed by NormRange: leaf[g] ==
+        // SwapRange(GmOfLive[g]) (the LB wrapper), GmOfLive[g] == LiveRange(rf,g),
+        // LiveRange(rf,g) == LiveRange(res0,g)
+        NI.GmOfLiveKeepsPresentLkNested(host, rfFresh.value.capture_regs, rfl, rfq, g);
+        assert PIV.GmOfLive(host, rfc, rfl, rfq)[g] == PIV.LiveRange(rfc.a_cp, rfc.a_clk, g);
+        assert PIV.LiveRange(rfc.a_cp, rfc.a_clk, g) == PIV.LiveRange(res0.a_cp, res0.a_clk, g);
+        NormSwapCong(PIV.LiveRange(res0.a_cp, res0.a_clk, g));
+        assert PIV.NormRange(lsubA.value[g]) == PIV.NormRange(PIV.LiveRange(res0.a_cp, res0.a_clk, g));
+      } else {
+        // ==== DEEP: descend through g's top-in-host ancestor A1 ====
+        var ownH := NI.InnermostOwnerDirect(host, g);
+        var A1 := ReconLiveTopAncestor(host, g, ownH);
+        assert A1 in NI.TopLookIds(host) && A1 in LTB.LookIds(host)
+            && g in PIV.CapIds(NI.LookBodyOfRE(host, A1));
+        NI.LookBodyLookIdsIn(re, A);
+        assert A1 in LTB.LookIds(re);
+        NI.LookBodyCompose(re, A, A1);
+        var bodyA1 := NI.LookBodyOfRE(re, A1);
+        assert bodyA1 == NI.LookBodyOfRE(host, A1);
+
+        // (a) the FORWARD carrier at A1 (leaf-witness g): crossed + dominant on rf_A
+        assert LookNestOkTTop(host, Sh, gmtH, rfA);
+        assert g in Sh && g in gmtH && g in PIV.CapIds(NI.LookBodyOfRE(host, A1));
+        assert NI.LookPathPresent(host, rfA.capture_regs.a_clk, rfA.quant_regs.a_clk, -1, A1)
+            && AI.get_idx(rfA.look_regs.a_clk, A1 as int) >= 0
+            && AI.get_idx(rfA.look_regs.a_clk, A1 as int)
+                 >= NI.MxAtLidLk(host, rfA.quant_regs.a_clk, -1, A1);
+        var L1 := AI.get_idx(rfA.look_regs.a_clk, A1 as int);
+        NI.LookPathDomIntroTop(host, rfA.capture_regs.a_clk, rfA.quant_regs.a_clk, -1, A1, L1);
+        assert NI.LookPathDom(host, L1, rfA.quant_regs.a_clk, A1);
+        // A1 matched on rf_A (forward invariant: clk set => cp set on the fresh run)
+        assert CM.LookCpSetWithClk(rfA.look_regs);
+        assert AI.get_idx(rfA.look_regs.a_cp, A1 as int) >= 0;
+        assert AReg.get_cp(rfA.look_regs, A1 as int).Some?;        // get_idx >= 0 ==> in-range, Some
+        assert M.MatchedPosLA(crv, rfA.look_regs, A1 as int) by {
+          assert GateStaticAtNested(qm, re, crv, A1 as int, ncap, nlook, nquant);
+          var la1: R.lookaround, b1: R.regex :|
+            LTB.LookEntryOk(crv, A1 as int, la1, b1);
+          assert crv.f_look_types[A1 as int] == la1;
+          assert la1.Lookbehind? || la1.NegLookbehind? by {
+            FG.LookRowLBOnly(host, crv, A1);
+          }
+          assert AI.capture_type(crv.f_look_types[A1 as int]);
+        }
+
+        // (b) the ⊆ direction of the REGION-EQUALITY deep carrier at A1 needs
+        //     A1's sub-leaf to EXIST — from the fresh run's oracle-true records
+        //     (backward tree Some? via the LB carrier's None-iff at the A1-restricted qm).
+        var ctxB := AI.cp_context(cpA, str, LAnc.Backward);
+        var initsB := AI.FInitState(bodycodeB, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                    AReg.init_regs(nquant), 0, ctxB);
+        assert CM.VmLookOracleTrue(initsB, ov) by {
+          RL.AInitLaws(nlook);
+          forall l: int | AI.get_idx(AReg.init_regs(nlook).a_cp, l) >= 0
+            ensures LOr.view_get_oracle(ov, AI.get_idx(AReg.init_regs(nlook).a_cp, l), l)
+          {
+            if 0 <= l < nlook { assert AReg.init_regs(nlook).a_cp[l] == -1; }
+          }
+        }
+        M.NoWriteOracleBodyCodeNested(R.reverse_regex(host));
+        assert ctxB.nextchar == AI.get_char(str, cpA);
+        CM.FFindMatchLookOracleTrueB(bodycodeB, str, initsB, ov, LAnc.Backward, cdnA);
+        assert CM.LookCpsOracleTrue(rfA.look_regs, ov) by {
+          assert rfA == rfFresh.value;
+        }
+        var cp1 := AReg.get_cp(rfA.look_regs, A1 as int).value;
+        assert cp1 == AI.get_idx(rfA.look_regs.a_cp, A1 as int);
+        assert LOr.view_get_oracle(ov, cp1, A1 as int);
+        assert 0 <= cp1 <= |str| by {
+          M.ReplayLookCpOkNestedLB(bodycodeB, str, ov, cdnA, crv.f_plus_bc, cpA,
+                                   AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), host);
+          assert CM.LookCpsLE(rfA.look_regs, |str|);
+        }
+        var inp1 := PIV.InpOfCp(str, cp1);
+        assert T.TransWf(bodyA1) by { M.TransWfLookBodyOfRE(re, A1); }
+        var dir1 := LidDir(crv, A1 as int);
+        var t1 := LFU.ComputeTr(rer, [LS.Areg(T.Translate(bodyA1))], inp1, LG.Empty, dir1);
+        assert LT.FirstLeaf(t1, inp1).Some? by {
+          assert LL.OracleOkSuffix(rer, qm, inp1);
+          assert LL.OracleOkAt(rer, qm, inp1);
+          assert (A1 as int) in qm.looks;
+          assert GateStaticAtNested(qm, re, crv, A1 as int, ncap, nlook, nquant);
+          var la1G: R.lookaround, b1G: R.regex :| LTB.LookEntryOk(crv, A1 as int, la1G, b1G)
+            && qm.looks[A1 as int].0 == T.TrLookaround(la1G)
+            && qm.looks[A1 as int].1 == T.Translate(b1G);
+          assert b1G == bodyA1 by {
+            NI.LookBodyOfTablesTie(re, crv, A1);
+            var la1T: R.lookaround :| LTB.LookEntryOk(crv, A1 as int, la1T, bodyA1);
+            assert crv.f_look_ast[A1 as int] == b1G == bodyA1;
+          }
+          assert crv.f_look_types[A1 as int] == la1G && dir1 == L.LkDir(T.TrLookaround(la1G)) by {
+            assert M.MatchedPosLA(crv, rfA.look_regs, A1 as int);
+            assert AI.capture_type(crv.f_look_types[A1 as int]);
+          }
+          assert TREP.CpOf(inp1) == cp1 by { LS.ReverseLength(str[..cp1]); }
+          assert LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(T.Translate(bodyA1))], inp1, LG.Empty, dir1),
+                            LG.Empty, inp1, dir1).Some?;
+          assert LT.FirstLeaf(t1, inp1) == LT.TreeRes(t1, LG.Empty, inp1, dir1);
+        }
+        var lsub1rf := SubFirstLeafAt(rer, crv, str, A1 as int, rfA.look_regs);
+        assert bodyA1 == M.VBody(crv, A1 as int) by {
+          NI.LookBodyOfTablesTie(re, crv, A1);
+          var la1T: R.lookaround :| LTB.LookEntryOk(crv, A1 as int, la1T, bodyA1);
+        }
+        assert lsub1rf.Some? && lsub1rf.value == LT.FirstLeaf(t1, inp1).value.1 by {
+          assert AReg.get_cp(rfA.look_regs, A1 as int) == Some(cp1 as int);
+          assert LT.FirstLeaf(t1, inp1) == LT.TreeRes(t1, LG.Empty, inp1, dir1);
+        }
+        // the carrier: region equality at A1 — the ⊆ direction pushes g in, the
+        // ⊇ direction's value clause gives the value tie.
+        assert LookNestBackTTopDeep(rer, host, crv, str, ov, Sh, gmtH, rfA, ncap, nlook, nquant);
+        assert g in lsub1rf.value && gmtH[g] == lsub1rf.value[g] by {
+          assert g in gmtH;
+        }
+
+        // (c) LEVEL-LINK: re-key A1's sub-leaf onto res1
+        TopEqDirectLookIds(host);
+        assert A1 as int in M.DirectLidSet(host) by { assert A1 in M.DirectLookIds(host); }
+        assert AReg.get_cp(res1, A1 as int) == AReg.get_cp(rfFresh.value.look_regs, A1 as int)
+            && AI.get_idx(res1.a_clk, A1 as int) == AI.get_idx(rfFresh.value.look_regs.a_clk, A1 as int) by {
+          assert M.FLookLoopChildLinkOk(crv, str, res1, 1, maxlook, ov, ncap, nlook, nquant);
+          assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
+          assert rfFresh.Some?;
+        }
+        var lsub1 := SubFirstLeafAt(rer, crv, str, A1 as int, res1);
+        assert lsub1 == lsub1rf;                                   // reads only get_cp at A1
+        assert M.MatchedPosLA(crv, res1, A1 as int) by {
+          assert AReg.get_cp(res1, A1 as int).Some?;
+        }
+
+        // (d) RECURSE at (bodyA1, A1)
+        assert |LTB.LookIds(bodyA1)| < |LTB.LookIds(host)| by {
+          NI.LookBodyLookIdsIn(host, A1);
+          LookIdNotInOwnBody(host, A1);
+          SubsetCardLt(LTB.LookIds(bodyA1), LTB.LookIds(host), A1);
+        }
+        assert g in PIV.CapIds(bodyA1) && g in lsub1.value;
+        ForwardFindRec(rer, qm, crv, str, ast, re, ov, res0, res1, res2,
+                       bodyA1, A1, g, ncap, nlook, nquant);
+        assert PIV.PathPresentLk(bodyA1, res0.a_clk, res1.a_clk, res2.a_clk, -1, g);
+        assert AI.get_idx(res0.a_clk, CP.start_reg(g)) >= 0
+            && AI.get_idx(res0.a_cp, CP.start_reg(g)) >= 0;
+        assert AI.get_idx(res0.a_clk, CP.start_reg(g))
+                 >= PIV.MxAtGidLk(bodyA1, res0.a_clk, res1.a_clk, res2.a_clk, -1, g);
+        assert PIV.NormRange(lsub1.value[g]) == PIV.NormRange(PIV.LiveRange(res0.a_cp, res0.a_clk, g));
+
+        // (e) compose the presence up to host level
+        //     rf-side path presence to A1, transported onto the reconstructed banks
+        assert forall c: nat :: c in PIV.CapIdsOutsideLooks(host) ==>
+          AI.get_idx(rfA.capture_regs.a_clk, CP.start_reg(c)) == AI.get_idx(res0.a_clk, CP.start_reg(c))
+        by {
+          forall c: nat | c in PIV.CapIdsOutsideLooks(host)
+            ensures AI.get_idx(rfA.capture_regs.a_clk, CP.start_reg(c)) == AI.get_idx(res0.a_clk, CP.start_reg(c))
+          {
+            assert CP.start_reg(c) in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host));
+            assert rfA.capture_regs == rfFresh.value.capture_regs;
+          }
+        }
+        assert forall q0: nat :: q0 in PIV.QuantIdsOutsideLooks(host) ==>
+          AI.get_idx(rfA.quant_regs.a_clk, q0 as int) == AI.get_idx(res2.a_clk, q0 as int)
+        by {
+          forall q0: nat | q0 in PIV.QuantIdsOutsideLooks(host)
+            ensures AI.get_idx(rfA.quant_regs.a_clk, q0 as int) == AI.get_idx(res2.a_clk, q0 as int)
+          {
+            assert (q0 as int) in M.QIdsOuter(host);
+            assert rfA.quant_regs == rfFresh.value.quant_regs;
+          }
+        }
+        NI.LookPathPresentAgreeTop(host, rfA.capture_regs.a_clk, rfA.quant_regs.a_clk,
+                                   res0.a_clk, res2.a_clk, -1, A1);
+        assert NI.LookPathPresent(host, res0.a_clk, res2.a_clk, -1, A1);
+        assert NI.MxAtLidLk(host, res2.a_clk, -1, A1) == NI.MxAtLidLk(host, rfA.quant_regs.a_clk, -1, A1);
+        NI.LookPathPresentLkFromPresentTop(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, A1);
+        assert NI.LookPathPresentLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, A1);
+        assert AI.get_idx(res1.a_clk, A1 as int) >= 0 by {
+          assert AI.get_idx(res1.a_clk, A1 as int) == AI.get_idx(rfFresh.value.look_regs.a_clk, A1 as int);
+          assert AI.get_idx(rfA.look_regs.a_clk, A1 as int) >= 0;
+        }
+        assert AI.get_idx(res1.a_clk, A1 as int) >= NI.MxAtLidLk(host, res2.a_clk, -1, A1) by {
+          assert AI.get_idx(res1.a_clk, A1 as int) == L1;
+          assert L1 >= NI.MxAtLidLk(host, rfA.quant_regs.a_clk, -1, A1);
+        }
+        NI.LookPathComposeNested(host, bodyA1, res0.a_clk, res1.a_clk, res2.a_clk, -1, A1, g);
+        assert PIV.PathPresentLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, g);
+        assert PIV.MxAtGidLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, g)
+            == PIV.MxAtGidLk(bodyA1, res0.a_clk, res1.a_clk, res2.a_clk, -1, g);
+
+        // (f) the value chain (NormRange-form): lsubA[g] == gmtH[g] == lsub1[g] == LiveRange(res0, g)
+        assert PIV.NormRange(lsubA.value[g]) == PIV.NormRange(PIV.LiveRange(res0.a_cp, res0.a_clk, g));
+      }
+    } else {
     assert M.FrameEntryOk(crv, laA, host,
                           PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re));
     assert PIV.CapUnique(host) && PIV.QuantUnique(host) && LTB.LookUnique(host)
@@ -27032,8 +27554,8 @@ module LindenElkLiftSim {
       assert AI.get_idx(res0.a_clk, CP.start_reg(g)) >= 0
           && AI.get_idx(res0.a_cp, CP.start_reg(g)) >= 0;
       assert AI.get_idx(res0.a_clk, CP.start_reg(g))
-               >= PIV.MxAtGidLk(bodyA1, res0.a_clk, res1.a_clk, res2.a_clk, -1, g);
-      assert lsub1.value[g] == PIV.LiveRange(res0.a_cp, res0.a_clk, g);
+            >= PIV.MxAtGidLk(bodyA1, res0.a_clk, res1.a_clk, res2.a_clk, -1, g);
+      assert PIV.NormRange(lsub1.value[g]) == PIV.NormRange(PIV.LiveRange(res0.a_cp, res0.a_clk, g));
 
       // (e) compose the presence up to host level
       //     rf-side path presence to A1, transported onto the reconstructed banks
@@ -27076,10 +27598,10 @@ module LindenElkLiftSim {
       assert PIV.MxAtGidLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, g)
           == PIV.MxAtGidLk(bodyA1, res0.a_clk, res1.a_clk, res2.a_clk, -1, g);
 
-      // (f) the value chain: lsubA[g] == gmtH[g] == lsub1[g] == LiveRange(res0, g)
-      assert lsubA.value[g] == gmtH[g];
-      assert lsubA.value[g] == PIV.LiveRange(res0.a_cp, res0.a_clk, g);
+      // (f) the value chain (NormRange-form): lsubA[g] == gmtH[g] == lsub1[g] == LiveRange(res0, g)
+      assert PIV.NormRange(lsubA.value[g]) == PIV.NormRange(PIV.LiveRange(res0.a_cp, res0.a_clk, g));
     }
+  }
   }
 
   /** (FORWARD membership + VALUE, whole-regex, per leaf-present g) A leaf-present
@@ -27096,9 +27618,10 @@ module LindenElkLiftSim {
       ov: LOr.OracleView, thread: AI.Thread, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
       S: set<LG.GroupId>, leafgm: LG.GroupMap, g: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (verbatim ForwardFindRec block) ----
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && M.NoPosLookbehindRE(re)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
+    requires |crv.f_look_types| == |crv.f_look_ast|
     requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
     requires forall x: nat :: x in LTB.LookIds(re) ==> (x as int) in qm.looks
     requires nlook == R.max_lookaround(ast) + 1
@@ -27139,7 +27662,9 @@ module LindenElkLiftSim {
     ensures AI.get_idx(res0.a_cp, CP.start_reg(g)) >= 0
     ensures g in PIV.GmOfLive(re, res0, res1, res2)
     ensures PIV.GmOfLive(re, res0, res1, res2)[g] == PIV.LiveRange(res0.a_cp, res0.a_clk, g)
-    ensures leafgm[g] == PIV.LiveRange(res0.a_cp, res0.a_clk, g)
+    // (L5 F7c-4) value tie as a `NormRange` equality: the backward fresh match's
+    // reversed read (LB owner) and the forward read (LA owner) chain uniformly.
+    ensures PIV.NormRange(leafgm[g]) == PIV.NormRange(PIV.LiveRange(res0.a_cp, res0.a_clk, g))
   {
     var maxlook := R.max_lookaround(ast);
     PIV.CapIdsSplit(re);
@@ -27178,10 +27703,7 @@ module LindenElkLiftSim {
       assert crv.f_look_ast[A0 as int] == bT == bA0;
     }
     assert crv.f_look_types[A0 as int] == laA0;
-    assert laA0.Lookahead? by {
-      M.LookBodyFactsNested(re, crv, A0);
-      var laN: R.lookaround :| LTB.LookEntryOk(crv, A0 as int, laN, bA0) && !laN.Lookbehind?;
-      assert laN == laA0;
+    assert (laA0.Lookahead? || laA0.Lookbehind?) by {                       // (L5 F7c-4) kind dispatch
       if laA0.NegLookahead? || laA0.NegLookbehind? {
         assert NR.CaptureFreeRE(bA0);
         PIV.CaptureFreeNoCapIds(bA0);
@@ -27199,32 +27721,31 @@ module LindenElkLiftSim {
     assert cpA0 == AI.get_idx(thread.look_regs.a_cp, A0 as int);
     assert 0 <= cpA0 <= |str|;                                   // LookCpsLE(thread)
     var inpA0 := PIV.InpOfCp(str, cpA0);
-    var t0 := LFU.ComputeTr(rer, [LS.Areg(T.Translate(bA0))], inpA0, LG.Empty, WP.Forward);
+    var dir0 := LidDir(crv, A0 as int);
+    var t0 := LFU.ComputeTr(rer, [LS.Areg(T.Translate(bA0))], inpA0, LG.Empty, dir0);
     assert T.TransWf(bA0) by { M.TransWfLookBodyOfRE(re, A0); }
-    assert LT.FirstLeaf(t0, inpA0).Some? by {
+    // (L5 F7c-4) the spec result in the lid's OWN direction — `FirstLeaf` is
+    // Forward-only, so the leaf is identified with the direction-general
+    // `TreeRes(t0, Empty, inpA0, dir0)`, not with `FirstLeaf`.
+    var res0t := LT.TreeRes(t0, LG.Empty, inpA0, dir0);
+    assert res0t.Some? by {
       assert LOr.view_get_oracle(ov, cpA0, A0 as int);           // LookCpsOracleTrue(thread)
       assert LL.OracleOkSuffix(rer, qm, inpA0);
       assert LL.OracleOkAt(rer, qm, inpA0);
       assert (A0 as int) in qm.looks
           && qm.looks[A0 as int] == (T.TrLookaround(laA0), T.Translate(bA0));
       assert TREP.CpOf(inpA0) == cpA0 by { LS.ReverseLength(str[..cpA0]); }
-      assert L.LkDir(T.TrLookaround(laA0)) == WP.Forward;
-      assert LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(T.Translate(bA0))], inpA0, LG.Empty, WP.Forward),
-                        LG.Empty, inpA0, WP.Forward).Some?;
-      assert LT.FirstLeaf(t0, inpA0) == LT.TreeRes(t0, LG.Empty, inpA0, WP.Forward);
-    }
-    assert LidDir(crv, A0 as int) == WP.Forward by {                                    // (L5 F7a)
-      M.LookBodyFactsNested(re, crv, A0);
-      var laN: R.lookaround :| LTB.LookEntryOk(crv, A0 as int, laN, NI.LookBodyOfRE(re, A0)) && !laN.Lookbehind?;
+      assert L.LkDir(T.TrLookaround(laA0)) == dir0;              // (L5 F7c-4) kind-matched direction
+      assert LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(T.Translate(bA0))], inpA0, LG.Empty, dir0),
+                        LG.Empty, inpA0, dir0).Some?;
     }
     var lsubTh := SubFirstLeafAt(rer, crv, str, A0 as int, thread.look_regs);
     assert bA0 == M.VBody(crv, A0 as int) by {
       NI.LookBodyOfTablesTie(re, crv, A0);
       var laT: R.lookaround :| LTB.LookEntryOk(crv, A0 as int, laT, bA0);
     }
-    assert lsubTh.Some? && lsubTh.value == LT.FirstLeaf(t0, inpA0).value.1 by {
+    assert lsubTh.Some? && lsubTh.value == res0t.value.1 by {
       assert AReg.get_cp(thread.look_regs, A0 as int) == Some(cpA0 as int);
-      assert LT.FirstLeaf(t0, inpA0) == LT.TreeRes(t0, LG.Empty, inpA0, WP.Forward);
     }
     // the carrier's region equality at A0 (matched + dominant on thread)
     assert g in lsubTh.value && leafgm[g] == lsubTh.value[g] by {
@@ -27247,7 +27768,7 @@ module LindenElkLiftSim {
         && AI.get_idx(res0.a_cp, CP.start_reg(g)) >= 0;
     assert AI.get_idx(res0.a_clk, CP.start_reg(g))
              >= PIV.MxAtGidLk(bA0, res0.a_clk, res1.a_clk, res2.a_clk, -1, g);
-    assert lsubA0.value[g] == PIV.LiveRange(res0.a_cp, res0.a_clk, g);
+    assert PIV.NormRange(lsubA0.value[g]) == PIV.NormRange(PIV.LiveRange(res0.a_cp, res0.a_clk, g));
 
     // (5) compose to re level: presence path to A0 on the reconstructed banks
     assert forall c: nat :: c in PIV.CapIdsOutsideLooks(re) ==>
@@ -27291,7 +27812,10 @@ module LindenElkLiftSim {
     NI.GmOfLiveKeepsPresentLkNested(re, res0, res1, res2, g);
     assert g in PIV.GmOfLive(re, res0, res1, res2);
     assert PIV.GmOfLive(re, res0, res1, res2)[g] == PIV.LiveRange(res0.a_cp, res0.a_clk, g);
-    assert leafgm[g] == lsubA0.value[g] == PIV.LiveRange(res0.a_cp, res0.a_clk, g);
+    assert PIV.NormRange(leafgm[g]) == PIV.NormRange(PIV.LiveRange(res0.a_cp, res0.a_clk, g)) by {
+      assert leafgm[g] == lsubA0.value[g];                       // region equality (raw)
+      assert PIV.NormRange(lsubA0.value[g]) == PIV.NormRange(PIV.LiveRange(res0.a_cp, res0.a_clk, g));
+    }
   }
 
 
@@ -27336,9 +27860,10 @@ module LindenElkLiftSim {
       ov: LOr.OracleView, thread: AI.Thread, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
       S: set<LG.GroupId>, gmt: LG.GroupMap, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (verbatim DeepFindRec block) ----
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && M.NoPosLookbehindRE(re)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
+    requires |crv.f_look_types| == |crv.f_look_ast|
     requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
     requires forall x: nat :: x in LTB.LookIds(re) ==> (x as int) in qm.looks
     requires nlook == R.max_lookaround(ast) + 1
@@ -27420,10 +27945,7 @@ module LindenElkLiftSim {
         var laT: R.lookaround :| LTB.LookEntryOk(crv, A0 as int, laT, bA0);
         assert crv.f_look_ast[A0 as int] == bT == bA0;
       }
-      assert laA0.Lookahead? by {
-        M.LookBodyFactsNested(re, crv, A0);
-        var laN: R.lookaround :| LTB.LookEntryOk(crv, A0 as int, laN, bA0) && !laN.Lookbehind?;
-        assert laN == laA0 by { assert crv.f_look_types[A0 as int] == laN == laA0; }
+      assert (laA0.Lookahead? || laA0.Lookbehind?) by {                       // (L5 F7c-4) kind dispatch
         if laA0.NegLookahead? || laA0.NegLookbehind? {
           assert NR.CaptureFreeRE(bA0);
           PIV.CaptureFreeNoCapIds(bA0);
@@ -27732,9 +28254,10 @@ module LindenElkLiftSim {
       rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
       code: RB.code, endl: nat, ov: LOr.OracleView, thread: AI.Thread, leaf: LT.Leaf,
       t: LT.Tree, inp: LC.Input, S: set<LG.GroupId>, ncap: int, nlook: int, nquant: int)
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && M.NoPosLookbehindRE(re) && NR.NegLooksLookFreeRE(re)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && NR.NegLooksLookFreeRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
+    requires |crv.f_look_types| == |crv.f_look_ast|
     requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
     requires forall x: nat :: x in LTB.LookIds(re) ==> (x as int) in qm.looks
     requires nlook == R.max_lookaround(ast) + 1
@@ -27783,14 +28306,14 @@ module LindenElkLiftSim {
                      S, leaf.1, ncap, nlook, nquant);
     assert forall g: LG.GroupId :: g in S && g in PIV.GmOfLive(re, res.0, res.1, res.2) ==> g in leaf.1;
 
-    // (F): forward membership + value
+    // (F): forward membership + value (Norm-range form)
     assert forall g: LG.GroupId :: g in S && g in leaf.1 ==>
       g in PIV.GmOfLive(re, res.0, res.1, res.2)
-      && leaf.1[g] == PIV.GmOfLive(re, res.0, res.1, res.2)[g]
+      && PIV.NormRange(leaf.1[g]) == PIV.NormRange(PIV.GmOfLive(re, res.0, res.1, res.2)[g])
     by {
       forall g: LG.GroupId | g in S && g in leaf.1
         ensures g in PIV.GmOfLive(re, res.0, res.1, res.2)
-             && leaf.1[g] == PIV.GmOfLive(re, res.0, res.1, res.2)[g]
+             && PIV.NormRange(leaf.1[g]) == PIV.NormRange(PIV.GmOfLive(re, res.0, res.1, res.2)[g])
       {
         ForwardMemberOne(rer, qm, crv, str, ast, re, ov, thread, res.0, res.1, res.2,
                          S, leaf.1, g, ncap, nlook, nquant);
@@ -27941,6 +28464,17 @@ module LindenElkLiftSim {
     var crv := CP.FFullCompilation(ast);
     M.FFullCompilationFactsNested(ast);   // L4: nested ast is NOT LookBehindFragmentRE
     assert crv.f_main_ast == ast && crv.f_main_bc == code && crv.f_main_cdns == LCdn.compile_cdns(ast);
+    assert |crv.f_look_types| == |crv.f_look_ast| by {                    // (L5 F7c-4) table shape
+      var maxlook0 := R.max_lookaround(ast);
+      var seed := CP.FCompiled(ast, CP.compile_to_bytecode(R.lazy_prefix(ast)), LCdn.compile_cdns(ast),
+                               seq(maxlook0 + 1, i => R.Lookahead), seq(maxlook0 + 1, i => R.Re_empty),
+                               seq(maxlook0 + 1, i => []), seq(maxlook0 + 1, i => []),
+                               seq(maxlook0 + 1, i => []), seq(R.max_quant(ast) + 1, i => []));
+      assert CP.FFullCompilation(ast) == CP.FCompileExtra(ast, seed);
+      LTB.FCompileExtraLookFrame(ast, seed);
+      assert LTB.SameLookSizes(seed, crv);
+      assert |seed.f_look_types| == |seed.f_look_ast|;
+    }
     var ov := AI.FBuildOracle(crv, str);
     OB.FBuildOracleViewLen(crv, str);                     // |ov| == |str| + 1
     assert qm.ov == ov;
