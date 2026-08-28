@@ -461,6 +461,13 @@ module LindenBackGmMirror {
       if start < 0 { ZeroSetAllRevRE(r1); }
       else if start < mc { ZeroSetAllRevRE(r1); }
       else { ZeroSetCapRevRE(r1, cc, lc, qc, mc); }
+    case Re_lookaround(lid, l, r1) =>
+      // (2026-08-28) `SD.RevRE` now recurses into look bodies (L5 (A)-side), so this
+      // arm is no longer covered by `case _`.
+      var look_val := AI.get_idx(lc, lid);
+      if look_val < 0 { ZeroSetAllRevRE(r1); }
+      else if look_val < mc { ZeroSetAllRevRE(r1); }
+      else { ZeroSetCapRevRE(r1, cc, lc, qc, -1); }
     case _ =>
   }
 

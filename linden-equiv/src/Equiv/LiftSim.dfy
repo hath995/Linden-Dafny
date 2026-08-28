@@ -28410,7 +28410,7 @@ module LindenElkLiftSim {
       lookbehinds — the shape the gate hub `GateStaticAtNested` asserts per lid
       (a lookahead lid keeps the L4 pruning fact `M.NoPosLookbehindRE(body)`).
       `M.NoPosLookbehindRE(re) ==> L5ScopeV1RE(re) ==> NR.L5ScopeRE(re)`. */
-  ghost predicate L5ScopeV1RE(re: R.regex)
+  predicate L5ScopeV1RE(re: R.regex)
     decreases re
   {
     match re

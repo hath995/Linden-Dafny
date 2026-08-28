@@ -16815,7 +16815,7 @@ module LindenElkMain {
       `FrameEntryOk`'s `AI.capture_type(la) ==> la.Lookahead?` clause hold
       (`capture_type` is `Lookahead? || Lookbehind?`), i.e. the Lookahead-only
       scope of the nested capture-reconstruction bricks. */
-  ghost predicate NoPosLookbehindRE(re: R.regex)
+  predicate NoPosLookbehindRE(re: R.regex)
     decreases re
   {
     match re

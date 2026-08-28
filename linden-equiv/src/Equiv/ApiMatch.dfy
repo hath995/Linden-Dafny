@@ -75,7 +75,8 @@ module LindenRegexApi {
   }
 
   /** (L5) The nested fragment with POSITIVE LOOKBEHINDS whose bodies are
-      lookbehind-only (`L5ScopeRaw`), the other three scope conditions as in
+      lookbehind-only — the EXECUTABLE `LSIM.L5ScopeV1RE` on the annotated regex —
+      the other three scope conditions as in
       `SupportedL4`. Exactly `MainTheoremL5`'s precondition (via `LSIM.L5ScopeFromRawFull`). */
   predicate SupportedL5(pattern: R.raw_regex) {
     NR.NestedFragmentRaw(pattern) && T.Latin1Wf(pattern)

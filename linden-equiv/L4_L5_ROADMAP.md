@@ -1538,7 +1538,7 @@ the `LookCpsLE` instance and the `get_cp` `None`-contrapositives spelled out). G
 
 Ledger in L5_HANDOFF §5.7.2. The other model's F7c-4 draft was reviewed (one real defect: `LookBodyFactsNested`
 under the lifted scope in `ForwardFindRec`'s forward arm; the inner hop made direction-generic) and completed:
-hub `GateStaticAtNested` → `NR.L5ScopeRE(body)`, the three D5 LB arms filled from F6/F7b/F7a atoms, the L5
+hub `GateStaticAtNested` KIND-SPLIT (`Lookbehind? ==> LBOnlyLooksRE(body)`, else `NoPosLookbehindRE(body)` — the plain `L5ScopeRE(body)` form timed out), the three D5 LB arms filled from F6/F7b/F7a atoms, the L5
 closedness ladder as a programmatic copy in `FlipClosed.dfy` (first try), `MainExtractionNested` split into a
 scope-free core, `MainTheoremL4 → MainTheoremL5` + wrapper, `SupportedL5`. Verification counts: `DeepFindRec`
 3565/0, `ForwardFindRec` 4748/0, `LiftPreserveGatePassLkRec` 2243/0, carriers 1900/0. Process: all

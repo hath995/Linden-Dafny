@@ -502,12 +502,14 @@ Recommended order: (i) descent dispatch arms in `ReverseCDeepFull` → `ForwardM
    inner lid of a lookAHEAD body may be a lookbehind under L5); (b) suspected gaps that were NOT gaps: the missing
    (γ) `rb.Some?` block in `DeepFindRec`'s LB DEEP arm (Z3 closes it from the revealed oracle bundle) and the
    carrier's `l < nlook` precondition (`LookBodyFactsL5` supplies `LookIds(body) <= LookIds(re)`).
-2. **The hub flip — the hub carries NO look-kind scope any more**: `GateStaticAtNested`'s conjunct
-   `M.NoPosLookbehindRE(body)` was first replaced by `NR.L5ScopeRE(body)` — with that recursive predicate (and its
-   `LBOnlyLooksRE`) inside the `exists`, five VCs of `DeepFindRec` (both arms) timed out at 600 s although the same
-   lemma had been green 2 h earlier; so the conjunct was DROPPED (the `GateStaticsSweepRENested`/
-   `GateStaticsFromTablesNested` requires and every `:|` restatement lose it too). The scope is the WHOLE-REGEX
-   `requires NR.L5ScopeRE(re)` of each consumer, read per lid by `M.LookBodyFactsL5` (which also supplies
+2. **The hub flip — the hub is KIND-SPLIT** (final state, commit `029e04e`; LiftSim `GateStaticAtNested`):
+   `(la.Lookbehind? ==> NR.LBOnlyLooksRE(body)) && (!la.Lookbehind? ==> M.NoPosLookbehindRE(body))`, mirrored
+   by the v1 scope predicate `L5ScopeV1RE` (and `L5Scope(raw)`, `SupportedL5`). History: the conjunct
+   `M.NoPosLookbehindRE(body)` was first replaced by the recursive `NR.L5ScopeRE(body)` — with that predicate (and
+   its `LBOnlyLooksRE`) inside the `exists`, five VCs of `DeepFindRec` (both arms) timed out at 600 s although the
+   same lemma had been green 2 h earlier; dropping the conjunct outright re-opened the same cliff. The lookahead
+   lids' `NoPosLookbehindRE(body)` is the pruning fact that keeps the descent giants tractable — NEVER just drop it
+   (`SUPPORTED_FRAGMENT.md` §2.1). Per lid the facts are read by `M.LookBodyFactsL5` (which also supplies
    `LookIds(body) <= LookIds(re)` and `L5ScopeRE(body)`). Bridges `M.NoPosImpliesL5Scope` where the unlifted L4 world
    feeds an L5-scoped lemma (the two forward carriers' `L3aCompositeCloseRec` calls, `L4ScopeImpliesL5`).
 3. **F7f**: `LiftPreserveGatePassLkRec` → `requires NR.L5ScopeRE(re)`; the per-lid dispatch
