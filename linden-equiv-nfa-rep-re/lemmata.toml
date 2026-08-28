@@ -1,0 +1,26 @@
+[package]
+name = "linden-equiv-nfa-rep-re"
+version = "1.0.0"
+description = "linden-equiv layer: NfaRepRE (machine-checked RegElk/Linden equivalence)"
+license = "MIT"
+
+[toolchain]
+dafny = ">= 4.11.0"
+
+[source]
+to_export = ["src/**/*.dfy"]
+
+[options]
+standard-libraries = true
+verification-time-limit = "900"
+cores = "4"
+
+[verification]
+expected-errors = [
+]
+
+[dependencies]
+linden-reasoning = "^1.0.0"
+regex-engine = "^1.0.0"
+linden-equiv-look-tables = "^1.0.0"
+linden-equiv-oracle-sweep = "^1.0.0"

@@ -22,9 +22,10 @@ expected-errors = [
 ]
 
 [dependencies]
-regex-engine = "^1.0.0"
-linden-warblre = "^1.0.0"
-linden-semantics-core = "^1.0.0"
-linden-engine-model = "^1.0.0"
-linden-engine = "^1.0.0"
+linden-equiv-lift-sim = "^1.0.0"
+linden-equiv-main-theorem = "^1.0.0"
+linden-equiv-nfa-rep-re = "^1.0.0"
 linden-reasoning = "^1.0.0"
+linden-semantics-core = "^1.0.0"
+linden-warblre = "^1.0.0"
+regex-engine = "^1.0.0"

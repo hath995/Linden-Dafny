@@ -1,0 +1,32 @@
+[package]
+name = "linden-equiv-oracle-spec"
+version = "1.0.0"
+description = "linden-equiv layer: OracleSpec (machine-checked RegElk/Linden equivalence)"
+license = "MIT"
+
+[toolchain]
+dafny = ">= 4.11.0"
+
+[source]
+to_export = ["src/**/*.dfy"]
+
+[options]
+standard-libraries = true
+verification-time-limit = "900"
+
+[verification]
+expected-errors = [
+]
+
+[dependencies]
+linden-reasoning = "^1.0.0"
+linden-semantics-core = "^1.0.0"
+linden-warblre = "^1.0.0"
+regex-engine = "^1.0.0"
+linden-equiv-look-tables = "^1.0.0"
+linden-equiv-mirror = "^1.0.0"
+linden-equiv-nfa-rep-re = "^1.0.0"
+linden-equiv-oracle-bridge = "^1.0.0"
+linden-equiv-oracle-build = "^1.0.0"
+linden-equiv-oracle-decomp = "^1.0.0"
+linden-equiv-oracle-reach = "^1.0.0"
