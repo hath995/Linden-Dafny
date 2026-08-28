@@ -586,7 +586,7 @@ per-symbol too (4265/1): its `min == 1` quantifier seam called the DEPTH-1 `CE.B
 `PikeLkActions(pre)`) where only the recursive `PikeLkActionsRec(pre)` holds — the Rec twin `CE.BoolCheckInsertK`
 (identical contract, `LkConfinedTreeK`) was never wired in at that one site. The lemma sits UNDER `MainTheoremL5`
 (`ActionsTreeRepLkRERec` → `LiftInitCRec` → the composite chain), so every "MainTheoremL4/L5 green" record since
-08-17 relied on an unverified link. One-token fix applied; re-verification is queue stage q5 — PENDING_ATRL.
+08-17 relied on an unverified link. One-token fix applied; re-verified 4266/0 (22.6 min, CORES=4) on the widened, warning-free text.
 
 **The forward-arm split** (`split_fwd.py`, the LB-split pattern): `ForwardFindRec` = setup + kind dispatch
 (`ForwardFindRecLB` | `ForwardFindRecFwdBase` | `ForwardFindRecFwdDeep`), likewise `DeepFindRec`; the sub-lemmas
@@ -598,7 +598,13 @@ fit the 80G cap at CORES=2). Parents (dispatch + the `:|` setup): `ForwardFindRe
 `ForwardFindRecLB` (the LB arm from s5) turned out to OOM-kill the 80G slice ALONE at CORES=4 (it had only ever been
 verified inside the 4.3-h CORES=2 `ForwardFindRec` prefix run), so it got the same treatment: `ForwardFindRecLBBase` /
 `ForwardFindRecLBDeep` (`split_lb.py`; measure ladder `ForwardFindRec` 2 > `ForwardFindRecLB` 1 > sub-arms 0, the
-forward arms stay at 0). Their verification is stage q4 of the queue — PENDING_LB_SPLIT.
+forward arms stay at 0). q4 result: `ForwardFindRecLBDeep` (190-line arm) OOM-KILLS the 80G cap ALONE at CORES=4 (1019 s in, no proof
+errors) — the LB DEEP arm has a z3-memory monster (the flip-carrier hop: `LookNestBackTFromBodyReplayLB` +
+`FreshBodyMatchLBUnfold` at the inner lid); it only ever verified inside the CORES=2 `ForwardFindRec` run (s5).
+Verified at the widened text at CORES=2 (worktree of `l4-nesting`, 22:28–23:42): `ForwardFindRecLBDeep` 1808/0
+(2 h 03 min — the memory monster is somewhere in the LB DEEP hop; a `.vclog` at CORES=1 would name it),
+`ForwardFindRecLBBase` 1399/0 (44 min), the `ForwardFindRecLB` parent 459/0 (7.6 min, CORES=4). Carriers on the
+widened text: `LookNestOkTFromBodyReplay` 2/0, `LookNestBackTFromBodyReplay` + `…LB` 1879/0 (17 min).
 
 **The `(?=x(?<=y))` widening (s6, applied after the split):** `L5ScopeV1RE` is now `opaque` and its lookahead arm
 recurses (`(Lookbehind? ==> LBOnlyLooksRE(r1)) && L5ScopeV1RE(r1)` — i.e. it coincides with `NR.L5ScopeRE`; opacity
@@ -616,8 +622,8 @@ whole-file LiftSim process does not fit the 80G cap), replaced by q7 = the same 
 `/proc:A*`…, `Lif*`, other `L*`, `T*`+`W*`, the rest) at CORES=2; q4 = the `ForwardFindRecLB` sub-arms; q5 = `ActionsTreeRepLkFRec`; q6 = the three
 `*TFromBodyReplay` carriers (a bare `TFromBodyReplay` in `runm600.sh` matches NOTHING — the launcher prefixes `MOD.`,
 which makes the substring a prefix of the local name; group carriers as `LookNestBackTFromBodyReplay` + `LookNestOkTFromBodyReplay`). `DeepFindRecLB` ran in
-the giants2 chain on the widened text. If PENDING_WIDEN_CONSUMERS is still here, those are unverified at the widened
-text — the widening is UNCOMMITTED until they are green (`git diff` shows it; `git stash` restores `011ed62`'s green state).
+the giants2 chain on the widened text. ALL of q1/q2 green (see the `1df90be` commit message for the counts); q4/q5/q6 green as listed above except
+`ActionsTreeRepLkFRec` 4266/0. The widening is committed (`1df90be`).
 
 **Next (user decision 2026-08-28): the GENERIC GATE — `lem pack` at the workspace root.** Split `src/Equiv` into
 one lem package per file (49; generator `gen_pkgs.py` in the session scratchpad: import graph → `[dependencies]`,
