@@ -611,14 +611,21 @@ is unchanged in text and now covers `(?=x(?<=y))`. Green so far: hub `GateStatic
 serialized queue (session scratchpad `q1`/`q2`/`q3`): q1 = `ForwardFindRecLB`, `ActionsTreeRepLkFRec`, the four
 forward arms, both parents, `LiftPreserveGatePassLkRec` (one at a time); q2 = `ReverseCDeepFull`, `ForwardMemberOne`,
 `MainTheoremL4DeepConclude`, `FreshWfGIndep`, the composite chain (4),
-`L3aEndpointAssemblyNestedFull2`, `OracleOkRowsL5`; q3 = LiftSim full-file minus the giants; q4 = the `ForwardFindRecLB` sub-arms; q5 = `ActionsTreeRepLkFRec`; q6 = the three
+`L3aEndpointAssemblyNestedFull2`, `OracleOkRowsL5`; q3 = LiftSim full-file minus the giants — OOM-killed ALONE at CORES=4 after 81 min (no proof errors before the kill; a
+whole-file LiftSim process does not fit the 80G cap), replaced by q7 = the same run in FIVE name chunks (Boogie
+`/proc:A*`…, `Lif*`, other `L*`, `T*`+`W*`, the rest) at CORES=2; q4 = the `ForwardFindRecLB` sub-arms; q5 = `ActionsTreeRepLkFRec`; q6 = the three
 `*TFromBodyReplay` carriers (a bare `TFromBodyReplay` in `runm600.sh` matches NOTHING — the launcher prefixes `MOD.`,
 which makes the substring a prefix of the local name; group carriers as `LookNestBackTFromBodyReplay` + `LookNestOkTFromBodyReplay`). `DeepFindRecLB` ran in
 the giants2 chain on the widened text. If PENDING_WIDEN_CONSUMERS is still here, those are unverified at the widened
 text — the widening is UNCOMMITTED until they are green (`git diff` shows it; `git stash` restores `011ed62`'s green state).
 
-**Next:** the `(?=x(?<=y))` scope widening (`SUPPORTED_FRAGMENT.md` §2.1) — now that every arm is its own
-lemma, giving lookahead lids the LB-only fact is a per-arm re-verification, not a 4-hour cliff.
+**Next (user decision 2026-08-28): the GENERIC GATE — `lem pack` at the workspace root.** Split `src/Equiv` into
+one lem package per file (49; generator `gen_pkgs.py` in the session scratchpad: import graph → `[dependencies]`,
+external modules → the six deps, `cores = "4"` on the 7 heavy files, `verification-time-limit = "900"` — >900 is
+unpublishable), widen `lem-workspace.toml` members, `lem lock`, then `LEM_BUILD_TIMEOUT=0 lem pack` (the Lemmata
+session added that env override; the declared limit + 10 min is the default local wall clock). Not `lem verify`.
+`LindenElkLiftSim` stays ONE package (a package cannot split a module) — hours in one dafny process; the follow-up
+E2 is to refactor it into layer modules so the gate becomes incremental. Memory note `linden-lem-pack-gate`.
 
 ### 5.5 The shelved fallback (do not start unless F1 fails on a witnessed obstacle)
 
