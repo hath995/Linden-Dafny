@@ -12138,8 +12138,8 @@ module LindenElkMain {
                && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
                  PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (f) look-stability
-               lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
-               && lid <= l2 <= maxlook && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+               (lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
+               && lid <= l2 <= maxlook && l2 != l1 && AReg.get_cp(lk, l2).Some?) ==> l2 !in LookIdSet(b1)
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
                lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 < l2
                && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
@@ -12276,8 +12276,8 @@ module LindenElkMain {
         }
         // (f) look-stability for nlk
         assert forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-            next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
-            && next <= l2 <= maxlook && l2 != l1 && AReg.get_cp(nlk, l2).Some? ==> l2 !in LookIdSet(b1)
+            (next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
+            && next <= l2 <= maxlook && l2 != l1 && AReg.get_cp(nlk, l2).Some?) ==> l2 !in LookIdSet(b1)
         by {
           forall l1: int, la1: R.lookaround, b1: R.regex, l2: int |
             next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
@@ -12811,8 +12811,8 @@ module LindenElkMain {
                && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
                  PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (f) look-stability
-               lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
-               && lid <= l2 <= maxlook && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+               (lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
+               && lid <= l2 <= maxlook && l2 != l1 && AReg.get_cp(lk, l2).Some?) ==> l2 !in LookIdSet(b1)
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
                lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 < l2
                && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
@@ -12960,8 +12960,8 @@ module LindenElkMain {
         }
         // (f) look-stability for nlk
         assert forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-            next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
-            && next <= l2 <= maxlook && l2 != l1 && AReg.get_cp(nlk, l2).Some? ==> l2 !in LookIdSet(b1)
+            (next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
+            && next <= l2 <= maxlook && l2 != l1 && AReg.get_cp(nlk, l2).Some?) ==> l2 !in LookIdSet(b1)
         by {
           forall l1: int, la1: R.lookaround, b1: R.regex, l2: int |
             next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
@@ -13144,8 +13144,8 @@ module LindenElkMain {
                && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
                  PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (f) look-stability
-               lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
-               && lid <= l2 <= maxlook && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+               (lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
+               && lid <= l2 <= maxlook && l2 != l1 && AReg.get_cp(lk, l2).Some?) ==> l2 !in LookIdSet(b1)
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
                lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 < l2
                && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
@@ -13317,8 +13317,8 @@ module LindenElkMain {
         }
         // (f) look-stability for nlk
         assert forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-            next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
-            && next <= l2 <= maxlook && l2 != l1 && AReg.get_cp(nlk, l2).Some? ==> l2 !in LookIdSet(b1)
+            (next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
+            && next <= l2 <= maxlook && l2 != l1 && AReg.get_cp(nlk, l2).Some?) ==> l2 !in LookIdSet(b1)
         by {
           forall l1: int, la1: R.lookaround, b1: R.regex, l2: int |
             next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
@@ -13726,8 +13726,8 @@ module LindenElkMain {
                && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
                  PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (f)
-               1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
-               && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+               (1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+               && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some?) ==> l2 !in LookIdSet(b1)
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
                1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
                && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
@@ -13981,8 +13981,8 @@ module LindenElkMain {
                && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
                  PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (f)
-               1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
-               && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+               (1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+               && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some?) ==> l2 !in LookIdSet(b1)
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
                1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
                && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
@@ -14126,8 +14126,8 @@ module LindenElkMain {
                && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
                  QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (f) look-stability
-               lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
-               && lid <= l2 <= maxlook && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+               (lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
+               && lid <= l2 <= maxlook && l2 != l1 && AReg.get_cp(lk, l2).Some?) ==> l2 !in LookIdSet(b1)
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
                lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 < l2
                && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
@@ -14279,8 +14279,8 @@ module LindenElkMain {
         }
         // (f) look-stability for nlk
         assert forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-            next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
-            && next <= l2 <= maxlook && l2 != l1 && AReg.get_cp(nlk, l2).Some? ==> l2 !in LookIdSet(b1)
+            (next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
+            && next <= l2 <= maxlook && l2 != l1 && AReg.get_cp(nlk, l2).Some?) ==> l2 !in LookIdSet(b1)
         by {
           forall l1: int, la1: R.lookaround, b1: R.regex, l2: int |
             next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
@@ -14443,8 +14443,8 @@ module LindenElkMain {
                && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
                  QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (f)
-               1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
-               && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+               (1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+               && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some?) ==> l2 !in LookIdSet(b1)
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
                1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
                && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
@@ -14543,8 +14543,8 @@ module LindenElkMain {
                && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
                  PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (f)
-               1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
-               && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+               (1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+               && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some?) ==> l2 !in LookIdSet(b1)
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
                1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
                && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
@@ -14710,8 +14710,8 @@ module LindenElkMain {
                && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
                  PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-               1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
-               && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+               (1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+               && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some?) ==> l2 !in LookIdSet(b1)
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::
                1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
                && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
@@ -14826,8 +14826,8 @@ module LindenElkMain {
                && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
                  PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-               1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
-               && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+               (1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+               && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some?) ==> l2 !in LookIdSet(b1)
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::
                1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
                && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
@@ -14939,8 +14939,8 @@ module LindenElkMain {
                && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
                  PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-               1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
-               && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+               (1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+               && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some?) ==> l2 !in LookIdSet(b1)
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::
                1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
                && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
@@ -17857,9 +17857,9 @@ module LindenElkMain {
     requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
     ensures result.Some? ==>
               forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-                1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+                (1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
                 && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1
-                && AReg.get_cp(result.value.look_regs, l2).Some? ==> l2 !in LookIdSet(b1)
+                && AReg.get_cp(result.value.look_regs, l2).Some?) ==> l2 !in LookIdSet(b1)
   {
     var Sd := DirectLidSet(re);
     DirectLidClassified(re);                            // LookChecksInside(code, Sd)
@@ -17969,9 +17969,9 @@ module LindenElkMain {
     // ---- (f) ----
     ensures result.Some? ==>
               forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-                1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+                (1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
                 && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1
-                && AReg.get_cp(result.value.look_regs, l2).Some? ==> l2 !in LookIdSet(b1)
+                && AReg.get_cp(result.value.look_regs, l2).Some?) ==> l2 !in LookIdSet(b1)
   {
     LookRowsStaticNested(ast, re, crv);
     LookRowsDynamicNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
@@ -18467,8 +18467,8 @@ module LindenElkMain {
           && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
             PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {})
     && (forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-          1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
-          && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1))
+          (1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+          && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some?) ==> l2 !in LookIdSet(b1))
     && (forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::
           1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
           && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
