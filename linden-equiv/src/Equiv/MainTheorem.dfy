@@ -10785,7 +10785,7 @@ module LindenElkMain {
     case _ =>
   }
 
-  /** (L5 F7e-2 refactor) `MainExtractionNested` with the leaf's CLOSEDNESS as the
+  /** (L5 F7e-2) THE EXTRACTION with the leaf's CLOSEDNESS as the
       hypothesis instead of the L4 scope — the scope fed only `FirstLeafClosedRec`.
       Shared by the L4 wrapper below and the L5 twin (LiftSim `MainExtractionL5`,
       closedness from the L5 ladder `LindenElkFlipClosed.FirstLeafClosedRecL5`). */
@@ -10887,69 +10887,6 @@ module LindenElkMain {
 
     assert LES.Normalize(AI.FFullMatch(raw, str)) == Some(LES.NormalizeArr(f));
     assert LES.MatcherSpec(raw, str, Some(LES.CapArrayOfLeaf(leaf, ngroups)));
-  }
-
-  /** The L4 extraction: closedness from the forward ladder under `NoPosLookbehindRE`. */
-  lemma MainExtractionNested(raw: R.raw_regex, str: string,
-                                                    t: LT.Tree, thread: AI.Thread, leaf: LT.Leaf)
-    requires NR.NestedFragmentRaw(raw)
-    requires NoPosLookbehindRE(R.lazy_prefix(R.annotate(raw)))
-    requires NR.NegLooksLookFreeRE(R.lazy_prefix(R.annotate(raw)))
-    requires T.Latin1Wf(raw)
-    requires EL.BoolTreeLk(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), BS.CannotExit, t)
-    requires LS.IsTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), LG.Empty, WP.Forward, t)
-    requires CM.ThreadRegsWf(thread, 2 * R.max_group(R.annotate(raw)) + 2,
-                             R.max_lookaround(R.annotate(raw)) + 1,
-                             R.max_quant(R.annotate(raw)) + 1)
-    requires QuantRegsFinal(thread)
-    // L3b: for a CAPTURING lookbehind the engine registers hold the REVERSED span,
-    // so the ordered spec leaf is the POSITIONAL normalization (`NormGm`) of the
-    // reconstructed `GmOfLive`. NO-OP for forward matches (`NormGm` is identity on
-    // ordered ranges), so this subsumes the old `leaf.1 == GmOfLive`.
-    requires var re := R.lazy_prefix(R.annotate(raw));
-      leaf.1 == PIV.NormGm(PIV.GmOfLive(re, thread.capture_regs, thread.look_regs, thread.quant_regs))
-    requires LT.FirstLeaf(t, LC.InitInput(str)) == Some(leaf)
-    requires AI.FFullMatch(raw, str)
-          == Some(AI.filter_reset(R.annotate(raw), thread.capture_regs, thread.look_regs,
-                                  thread.quant_regs, -1))
-    ensures LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)))
-  {
-    hide T.TransWf, NR.PlusFragmentRE, NR.LookBehindFragmentRE, NR.CaptureFreeRE, NR.LookFreeRE, NR.LookBehindFragmentRaw, NR.CaptureFreeRaw, NR.LookFreeRaw, EL.PikeLkRegex, EL.LkGateOk, SD.GroupFreeL;
-    var ast := R.annotate(raw);
-    var re := R.lazy_prefix(ast);
-    var rer := LES.TheRer(raw);
-    var inp := LC.InitInput(str);
-    var ngroups := LES.NGroups(raw);
-    var ncap := 2 * R.max_group(ast) + 2;
-    T.AnnotateWf(raw);
-    NR.SpecRegexNestedFragment(raw);
-    var caps := thread.capture_regs;
-    var lk := thread.look_regs;
-    var qt := thread.quant_regs;
-    assert LES.SpecRegex(raw) == T.Translate(re);
-
-    // closedness of the leaf gm
-    assert LT.TreeRes(t, LG.Empty, inp, WP.Forward) == Some(leaf);
-    assert OpenOf(LG.Empty) <= PendingCloses([LS.Areg(T.Translate(re))]);
-    EL.TranslateFragmentPikeLkRec(re);
-    assert EL.PikeLkActionsRec([LS.Areg(T.Translate(re))]) by {
-      assert [LS.Areg(T.Translate(re))] == [LS.Areg(T.Translate(re))] + [];
-      assert EL.PikeLkActionsRec([]);
-      EL.PikeLkActionsRecConsIff(LS.Areg(T.Translate(re)), []);
-    }
-    assert LkClosedInGm(LG.Empty, [LS.Areg(T.Translate(re))]);   // Empty has no groups
-    SpecRegexOuterLkDisjoint(raw);   // also ensures NoDupSeq(L.DefGroups(SpecRegex(raw)))
-    assert T.Translate(re) == LES.SpecRegex(raw);
-    assert OuterLkDisjoint([LS.Areg(T.Translate(re))]);
-    assert NoDupRegsActs([LS.Areg(T.Translate(re))]) by { assert NoDupSeq(L.DefGroups(T.Translate(re))); }
-    assert TRM.GmInBounds(LG.Empty, |inp.pref| + |inp.next|);   // Empty has no ranges
-    NoPosLookbehindFwdPosL(re);
-    assert FwdPosActsL([LS.Areg(T.Translate(re))]);
-    assert NestDepthActsLe([LS.Areg(T.Translate(re))], NestDepthL(T.Translate(re)));
-    FirstLeafClosedRec(rer, [LS.Areg(T.Translate(re))], inp, BS.CannotExit, t, LG.Empty, leaf,
-                       NestDepthL(T.Translate(re)));
-    assert ClosedGm(leaf.1);
-    MainExtractionFromClosed(raw, str, t, thread, leaf);
   }
 
   /** `FConsume` (moving matched blocked threads to active for the next

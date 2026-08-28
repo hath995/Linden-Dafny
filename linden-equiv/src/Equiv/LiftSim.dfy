@@ -28404,21 +28404,6 @@ module LindenElkLiftSim {
   /** (L5 F7c) The L5 scope at the annotated, lazy-prefixed regex from the raw
       syntactic predicate `NR.L5ScopeRaw` — the L5 leg of `L4ScopeFromRaw`
       (annotation preserves look constructors; the dot-star prefix is look-free). */
-  lemma L5ScopeFromRaw(raw: R.raw_regex)
-    requires NR.L5ScopeRaw(raw)
-    ensures NR.L5ScopeRE(R.lazy_prefix(R.annotate(raw)))
-  {
-    var ast := R.annotate(raw);
-    var re := R.lazy_prefix(ast);
-    assert ast == R.annotate_regex(R.Raw_capture(raw), 0, 1, 1).0;
-    assert NR.L5ScopeRaw(R.Raw_capture(raw));
-    NR.AnnotateL5Scope(R.Raw_capture(raw), 0, 1, 1);
-    assert NR.L5ScopeRE(ast);
-    var pfx := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
-    assert re == R.Re_con(pfx, ast);
-    assert NR.L5ScopeRE(pfx);
-    assert NR.L5ScopeRE(re);
-  }
 
   /** (L5 F7f, v1 scope, RE level) positive lookbehinds are allowed with
       lookbehind-only bodies, but a lookAHEAD body must stay free of positive
@@ -28821,7 +28806,7 @@ module LindenElkLiftSim {
   // child link, reverse/oracle-true invariants) key the two descent wrappers
   // (`ReverseCDeepFull` membership-in, `ForwardMemberOne` membership+value-out);
   // the final endpoint (`L3aEndpointAssemblyNestedFull2`) converts them into the
-  // reconstructed-register denotation; `MainExtractionNested` finishes.
+  // reconstructed-register denotation; `MainExtractionL5` finishes.
   //
   // The SINGLE remaining hypothesis is the NESTED ORACLE ENTRY `OracleOkSuffix`
   // (the depth-1 `OE.OracleOkFromColumns` chain composed with the gated build
@@ -28849,7 +28834,7 @@ module LindenElkLiftSim {
     case _ =>
   }
 
-  /** (L5 F7e-2) THE L5 EXTRACTION: `M.MainExtractionNested` under the L5 scope — the
+  /** (L5 F7e-2) THE L5 EXTRACTION under the L5 scope — the
       leaf's closedness from the L5 ladder (`FC.FirstLeafClosedRecL5`), the rest is
       the scope-free `M.MainExtractionFromClosed`. */
   lemma MainExtractionL5(raw: R.raw_regex, str: string,
@@ -29669,7 +29654,7 @@ module LindenElkLiftSim {
       exactly `MainTheoremL4`'s former hypothesis. */
   /** (L5 F7g) THE NESTED ORACLE ENTRY under the L5 scope (positive lookbehinds
       with lookbehind-only bodies admitted — their column is `OracleColumnNested`'s
-      new arm). `OracleOkRowsNested` below is the L4-scope wrapper. */
+      new arm). (the L4-scope wrapper has been retired). */
   lemma {:isolate_assertions} OracleOkRowsL5(rer: LW.RegExpRecord, top: R.regex, crv: CP.FCompiled,
                                                  str: string, sub: R.regex)
     requires !rer.ignoreCase && !rer.multiline
@@ -29722,23 +29707,6 @@ module LindenElkLiftSim {
         OracleColumnNested(rer, top, crv, str, sub, lid, lk, r1, cp);
       }
     }
-  }
-  lemma OracleOkRowsNested(rer: LW.RegExpRecord, top: R.regex, crv: CP.FCompiled,
-                                                 str: string, sub: R.regex)
-    requires !rer.ignoreCase && !rer.multiline
-    requires crv == CP.FFullCompilation(top)
-    requires NR.NestedFragmentRE(top) && LTB.LidsWellNested(top) && LTB.LookUnique(top)
-    requires forall x: nat :: x in LTB.LookIds(top) ==> 1 <= x
-    requires NR.NestedFragmentRE(sub) && M.NoPosLookbehindRE(sub) && NR.NegLooksLookFreeRE(sub)
-    requires T.TransWf(sub) && LTB.LookUnique(sub) && PIV.CapUnique(sub) && PIV.QuantUnique(sub)
-    requires LTB.LookTablesOk(sub, crv)
-    requires LTB.LookIds(sub) <= LTB.LookIds(top)
-    ensures LL.OracleOkSuffix(rer, AR.QMap(M.QmOfRE(sub), OE.LmOf(sub), AI.FBuildOracle(crv, str)),
-                              LC.InitInput(str))
-    decreases |LTB.LookIds(sub)|
-  {
-    M.NoPosImpliesL5Scope(sub);      // (L5 F7g) the L4 scope is a special case
-    OracleOkRowsL5(rer, top, crv, str, sub);
   }
 
 
