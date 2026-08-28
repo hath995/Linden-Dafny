@@ -52,6 +52,7 @@ not an engine limitation.
 | **F7a — `SubFirstLeafAt` direction-generic (`LidDir`) + totality guards; F7b — per-lid LB engine↔spec ties (`FlipGate` value half + LiftSim wrappers)** | ✅ **green (all 24 `SubFirstLeafAt` consumers by prefix sweeps, ≤8 in parallel: `SubFirstLeaf` 3/0, `LookNestBackT` 23/0, `Descent` 16/0, `BodyReplayGmtIsSubFirstLeaf` 2/0, `FreshBodyDirectInSubFirstLeaf` 2/0, `DeepGateReqFromCrossing` 2/0, `GatePassDeepRepStep` 2/0, `LiftInvRec` 1/0, `LookNestBackRepBTopDeep` 1/0, `FreshBodyMatchGmOuter` 2/0, `GNotUnderQuantLLookBody` 2/0, `ForwardMemberOne` 1046/0, `LiftPreserveGatePassLkRec` 1623/0, `ReverseCDeepFull` 626/0, `DeepFindRec` 1751/0, `ForwardFindRec` 2663/0, 0 timeouts)** |
 | F7c-1/2/3 — scope lift (`L5ScopeRE`), ten LB `FLookLoop*` frames, `FreshBodyDirectMember` dispatch, statics tower, **the layer-6 LB body-replay carrier `LookNestBackTFromBodyReplayLB` (flip-transport)**; F7d oracle plumbing; F7e-1 closedness; F7g-oracle | ✅ **green (s3/s4; `LookNestBackTFromBodyReplayLB` 1886/0)** |
 | **F7c-4 descent dispatch (layers 7–9) → `GateStaticAtNested` hub flip → F7f (the three D5 LB arms) → F7e-2 (L5 closedness ladder, `FlipClosed.dfy`) → API (`MainTheoremL5`, `SupportedL5`)** | ✅ **ALL GREEN (s5, 2026-08-27; §5.7.2): `DeepFindRec` 3565/0, `ForwardFindRec` 4748/0, `LiftPreserveGatePassLkRec` 2243/0, carriers 1900/0, `MainTheoremL5` 4502/0, F7e-2 ladder 10 syms, API `MatchCorrect` 2/0** |
+| **Whole-file sweep (s6, 2026-08-28; §5.7.3)** — wf-only on all 51 files, FULL-file on every non-LiftSim file, LiftSim full minus giants + giants by chain; forward-arm split of the two descent giants | ✅ **wf 51/51 green; full-file 49/49 non-LiftSim green (`MainTheorem` 8734/0); split arms 4/4 green first try; LiftSim full-minus-giants + giants chain: see §5.7.3** |
 | Tree-mirror attempt (TreeMirrorLk.dfy bricks 1-3) | ⚠️ **VACUOUS — dead-end (see §4)** |
 | Integration — lift `NoPosLookbehindRE`, drop `assert false`, API | ✅ done (s5): the hub, the composite chain and the descent are `NR.L5ScopeRE`-scoped; the D5 arm has no `assert false`; `MainTheoremL4` is a wrapper of `MainTheoremL5`; `Supported = L3 ∨ L4 ∨ L5`. Left: the NoPos-versions retirement (`LookBodyRowNested`/`OracleOkRowsNested`/`OracleColumnNested` L4 wrappers) — cosmetic |
 
@@ -552,6 +553,72 @@ wrappers) — cosmetic; the remaining `M.NoPosLookbehindRE` sites are the two fo
 `DeepFindRec`/`ForwardFindRec` into per-arm lemmas (an edit re-verifies one arm; arms verify as separate dafny
 processes) and shrink the per-VC context with `hide`/opaque — the per-batch profiles (`*.vclog`) say whether a few
 slow VCs or the sheer count dominate.
+
+#### 5.7.3 s6 (2026-08-28) — THE WHOLE-FILE SWEEP + the forward-arm split
+
+**Sweep harness.** `dafny verify --boogie '/proc:*well-formedness*' FILE` (Boogie filters match the VERBOSE
+name `Foo (well-formedness)`) verifies only the well-formedness procedures of a whole file; Dafny 4.11 only
+loads `.doo` libraries whose manifest records the same `boogie = [...]`, so the sweep runs against
+manifest-patched scratch copies of the six deps + the two embedded `DafnyStandardLibraries*.doo` (memory note
+`linden-wf-sweep-harness`; scripts `patchdeps.py`/`wfrun.sh`/`fullrun.sh`/`giantchain.sh`, re-creatable). The
+same trick with `/noProc:<giant>*` gives a FULL-file LiftSim run that skips the per-symbol-verified giants.
+
+**What it found at HEAD `8d7c8c2` (all fixed, `7478f10` + the split commit):**
+1. `ApiMatch.dfy` did not RESOLVE — `SupportedL5` (compiled) called the ghost `LSIM.L5ScopeV1RE`; the v1
+   re-wiring post-dated the recorded "MatchCorrect 2/0". `L5ScopeV1RE` and `M.NoPosLookbehindRE` (purely
+   structural) are now compiled predicates. `ApiMatch` 6/0, `ApiReasoning` 16/0, full-file.
+2. `LookNestOkTTop` (LiftSim) called `LookBodyOfRE`/`LookPathPresent` outside `lid in LookIds(re)` — the same
+   hole class as the 08-25 `LookNestBackTTop` fix; guarded the same way (antecedent conjunct).
+3. `BackGmMirror.ZeroSetCapRevRE`: `SD.RevRE` now recurses into look bodies (the L5 (A)-side change), so
+   `case _` no longer covered `Re_lookaround`. Arm added; 36/0 full-file.
+
+**Coverage after the sweep.** wf-only: all 51 files green (LiftSim 1366/0 in 12.5 min, MainTheorem 295/0).
+FULL-file (every symbol): all 47 non-LiftSim/non-Api files green — `MainTheorem` 8734/0 (26 min),
+`ActionsTreeRepRE` 9810/0, `FlipGate` 2425/0, `NfaRepRE` 2177/0, `LookBehindKeystone` 1356/0,
+`FlipKeystone` 1201/0, `FlipClosed` 513/0, the rest ≤ 304 — plus the two Api files. LiftSim: full-file
+minus the four giants (`DeepFindRec*`, `ForwardFindRec*`, `LiftPreserveGatePassLkRec`, `MainTheoremL5`) —
+first attempt OOM-killed at 89 min (my stacking; see the memory-cap note), re-queued as the LAST stage of the serialized
+queue below — if this line still says so, read `scratchpad/q3/summary.txt` of session 4b2a334e (or just re-run it:
+`fullrun.sh` with `/noProc:{DeepFindRec,ForwardFindRec,LiftPreserveGatePassLkRec,MainTheoremL5}*`) — PENDING_LIFTSIM_FULL.
+The giants at the guard text `011ed62`: `LiftPreserveGatePassLkRec` 2243/0 (21.9 min), the split arms + parents below;
+`MainTheoremL5` 4447/0 (40.7 min) at the WIDENED text (§ below). **A REAL HOLE: `ActionsTreeRepLkFRec`** (LiftSim:20261, 850 lines, C3.6 part 1 `9f4f08a` 2026-08-17) failed
+per-symbol too (4265/1): its `min == 1` quantifier seam called the DEPTH-1 `CE.BoolCheckInsert` (requires
+`PikeLkActions(pre)`) where only the recursive `PikeLkActionsRec(pre)` holds — the Rec twin `CE.BoolCheckInsertK`
+(identical contract, `LkConfinedTreeK`) was never wired in at that one site. The lemma sits UNDER `MainTheoremL5`
+(`ActionsTreeRepLkRERec` → `LiftInitCRec` → the composite chain), so every "MainTheoremL4/L5 green" record since
+08-17 relied on an unverified link. One-token fix applied; re-verification is queue stage q5 — PENDING_ATRL.
+
+**The forward-arm split** (`split_fwd.py`, the LB-split pattern): `ForwardFindRec` = setup + kind dispatch
+(`ForwardFindRecLB` | `ForwardFindRecFwdBase` | `ForwardFindRecFwdDeep`), likewise `DeepFindRec`; the sub-lemmas
+re-derive the setup and the forward prefix, `decreases (|LookIds(host)|, 0)`, `requires !f_look_types[A].Lookbehind?`
++ the arm condition (`g !in`/`in CapIdsInLooks(host)`). All four arms green FIRST TRY at CORES=4:
+`ForwardFindRecFwdDeep` 1839/0 (17.8 min), `ForwardFindRecFwdBase` 1281/0 (13.6 min), `DeepFindRecFwdDeep`
+1458/0 (14 min), `DeepFindRecFwdBase` 332/0 (6.8 min). Before: `ForwardFindRec` 4748 VCs in 4.3 h (it only
+fit the 80G cap at CORES=2). Parents (dispatch + the `:|` setup): `ForwardFindRec` 644/0 (8.5 min), `DeepFindRec` 708/0 (8.3 min).
+`ForwardFindRecLB` (the LB arm from s5) turned out to OOM-kill the 80G slice ALONE at CORES=4 (it had only ever been
+verified inside the 4.3-h CORES=2 `ForwardFindRec` prefix run), so it got the same treatment: `ForwardFindRecLBBase` /
+`ForwardFindRecLBDeep` (`split_lb.py`; measure ladder `ForwardFindRec` 2 > `ForwardFindRecLB` 1 > sub-arms 0, the
+forward arms stay at 0). Their verification is stage q4 of the queue — PENDING_LB_SPLIT.
+
+**The `(?=x(?<=y))` widening (s6, applied after the split):** `L5ScopeV1RE` is now `opaque` and its lookahead arm
+recurses (`(Lookbehind? ==> LBOnlyLooksRE(r1)) && L5ScopeV1RE(r1)` — i.e. it coincides with `NR.L5ScopeRE`; opacity
+is what keeps the hub's `exists` from unfolding the recursion, the s5 timeout cliff); the hub `GateStaticAtNested`,
+the sweep, and all 13 `:|` restatements carry `(!la.Lookbehind? ==> L5ScopeV1RE(body))` in place of `NoPos(body)`;
+the two forward carriers `requires L5ScopeV1RE(body)` (bridge `L5ScopeV1ImpliesL5`); `reveal L5ScopeV1RE()` in the
+three V1 structural lemmas + the sweep; `GateStaticAtImpliesNested` adds `NoPosImpliesL5ScopeV1(body)`. `SupportedL5`
+is unchanged in text and now covers `(?=x(?<=y))`. Green so far: hub `GateStatic*` 12/0, `L5Scope*` 9/0,
+`L4ScopeImpliesL5` 2/0, **`MainTheoremL5` 4447/0** (all first try). Consumer re-verification on the widened text is the
+serialized queue (session scratchpad `q1`/`q2`/`q3`): q1 = `ForwardFindRecLB`, `ActionsTreeRepLkFRec`, the four
+forward arms, both parents, `LiftPreserveGatePassLkRec` (one at a time); q2 = `ReverseCDeepFull`, `ForwardMemberOne`,
+`MainTheoremL4DeepConclude`, `FreshWfGIndep`, the composite chain (4),
+`L3aEndpointAssemblyNestedFull2`, `OracleOkRowsL5`; q3 = LiftSim full-file minus the giants; q4 = the `ForwardFindRecLB` sub-arms; q5 = `ActionsTreeRepLkFRec`; q6 = the three
+`*TFromBodyReplay` carriers (a bare `TFromBodyReplay` in `runm600.sh` matches NOTHING — the launcher prefixes `MOD.`,
+which makes the substring a prefix of the local name; group carriers as `LookNestBackTFromBodyReplay` + `LookNestOkTFromBodyReplay`). `DeepFindRecLB` ran in
+the giants2 chain on the widened text. If PENDING_WIDEN_CONSUMERS is still here, those are unverified at the widened
+text — the widening is UNCOMMITTED until they are green (`git diff` shows it; `git stash` restores `011ed62`'s green state).
+
+**Next:** the `(?=x(?<=y))` scope widening (`SUPPORTED_FRAGMENT.md` §2.1) — now that every arm is its own
+lemma, giving lookahead lids the LB-only fact is a per-arm re-verification, not a 4-hour cliff.
 
 ### 5.5 The shelved fallback (do not start unless F1 fails on a witnessed obstacle)
 

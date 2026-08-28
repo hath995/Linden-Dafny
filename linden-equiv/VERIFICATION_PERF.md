@@ -58,10 +58,14 @@ dependent that reaches into internals — not worth it at that ratio.
 |---|---|
 | **parallelism** — small symbols are ~1.1 GB each, so PAR=10-12 CORES=2 | 11 symbols: **51 min -> 10 min (5x)** |
 | **splitting a giant lemma's arm into its own lemma** (`DeepFindRecLB`, `ForwardFindRecLB`) + extracting shared blocks (`BackFreshPlusIsPlain`) | `DeepFindRec` **38 min -> 20 min** |
+| **splitting the FORWARD arm too** (`{Deep,Forward}FindRec{FwdBase,FwdDeep}`, 2026-08-28; the parents are dispatch-only) | `ForwardFindRec` **4.3 h (CORES=2, the only config that fit the cap) -> FwdDeep 17.8 min + FwdBase 13.6 min at CORES=4** (1839 + 1281 VCs, each ~15 GB so they can run as two processes); `DeepFindRec` forward arms 14 min + 6.8 min (1458 + 332 VCs) |
+| **whole-file well-formedness-only sweep** (Boogie `/proc:*well-formedness*` through manifest-patched `.doo` copies — see `linden-wf-sweep-harness` memory note) | all 51 files in ~15 min at PAR=4 (LiftSim 11 min, MainTheorem 2 min); it found 2 wf holes + 1 resolution error + 1 broken lemma that per-symbol runs had hidden |
 | avoiding `--log-format text` | Dafny 4.11 `TextVerificationLogger` sums resource counts in Int32 and CRASHES (rc=134) on large lemmas |
 
 Per-job memory scales with the LEMMA: trivial ~1.1 GB (PAR 10-12), medium ~8-13 GB (PAR <= 5),
-giants 15-19 GB (PAR 1; `ForwardFindRec` needs CORES=2).
+giants 15-19 GB (PAR 1; `ForwardFindRec` needs CORES=2). A z3 worker on the worst descent VCs can reach
+15+ GB: `ForwardFindRecLB` (410 lines) OOM-killed the 80G slice ALONE at CORES=4 (2026-08-28) and had to be
+split like the forward arms; a whole-file LiftSim run needs ~35 GB and must run alone or beside ONE giant.
 
 ## 5. Opacity (`hide` / `opaque`): a wash
 

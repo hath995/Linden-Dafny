@@ -74,10 +74,12 @@ module LindenRegexApi {
     && NR.QuantsLookCapFreeRaw(pattern)
   }
 
-  /** (L5) The nested fragment with POSITIVE LOOKBEHINDS whose bodies are
-      lookbehind-only — the EXECUTABLE `LSIM.L5ScopeV1RE` on the annotated regex —
-      the other three scope conditions as in
-      `SupportedL4`. Exactly `MainTheoremL5`'s precondition (via `LSIM.L5ScopeFromRawFull`). */
+  /** (L5) The nested fragment with POSITIVE LOOKBEHINDS: a positive lookbehind's
+      body is lookbehind-only, a lookahead's body is scoped recursively (it may itself
+      contain positive lookbehinds, e.g. `(?=x(?<=y))`) — the EXECUTABLE
+      `LSIM.L5ScopeV1RE` on the annotated regex — plus the other three scope
+      conditions as in `SupportedL4`. Exactly `MainTheoremL5`'s precondition (via
+      `LSIM.L5ScopeFromRawFull`). */
   predicate SupportedL5(pattern: R.raw_regex) {
     NR.NestedFragmentRaw(pattern) && T.Latin1Wf(pattern)
     && LSIM.L5ScopeV1RE(R.lazy_prefix(R.annotate(pattern)))

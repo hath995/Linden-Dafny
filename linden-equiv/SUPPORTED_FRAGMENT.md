@@ -1,6 +1,6 @@
 # The verified fragment — what `Match` is guaranteed to get right
 
-Status 2026-08-28, branch `l4-nesting`. Entry point: `ApiMatch.MatchCorrect(pattern, str)`:
+Status 2026-08-28 (post whole-file sweep), branch `l4-nesting`. Entry point: `ApiMatch.MatchCorrect(pattern, str)`:
 
 ```dafny
 lemma MatchCorrect(pattern: R.raw_regex, str: string)
@@ -31,7 +31,7 @@ Everything below is verified for **case-sensitive, single-line, Latin-1** patter
 | `*`, `?`, `{m,n}`, lazy variants | ✅ |
 | `+`, `{n,}` (n>0, unbounded) | ✅ **only with a non-nullable body** |
 | positive lookahead `(?=…)`, capturing, nested to any depth | ✅ (L4) |
-| **positive lookbehind `(?<=…)`, capturing, nested to any depth** | ✅ (L5, 2026-08-28) — body may contain **only lookbehinds** |
+| **positive lookbehind `(?<=…)`, capturing, nested to any depth** | ✅ (L5, 2026-08-28) — a lookbehind's body may contain **only lookbehinds**; a lookahead's body may contain positive lookbehinds (`(?=x(?<=y))`, the s6 widening — see §2.1) |
 | negative `(?!…)` / `(?<!…)` | ✅ **only with a look-free, capture-free body** |
 | backreferences | ❌ not in the AST at all |
 
@@ -53,9 +53,13 @@ wrapper over `MainTheoremL5`. L3 is a separate proof (`MainTheoremL3`) kept for 
 
 ## 2. What is still OUT of scope, and why
 
-### 2.1 A positive lookbehind inside a **lookahead** body — `(?=x(?<=y))`
+### 2.1 A positive lookbehind inside a **lookahead** body — `(?=x(?<=y))` — WIDENED 2026-08-28 (s6)
 
-The v1 L5 scope is `LSIM.L5ScopeV1RE`:
+Status: the scope predicate, the gate hub, the carriers and `MainTheoremL5` (4447/0) are widened and green; the
+descent giants' re-verification on the widened text is the queued batch recorded in `L5_HANDOFF.md` §5.7.3 —
+if that section still carries a PENDING marker, treat this row as *provisional*.
+
+The ORIGINAL v1 L5 scope was:
 
 ```
 Re_lookaround(_, la, body) =>
@@ -181,6 +185,8 @@ proof engineering of known shape.
 | §2.7 backreferences | **by design** | absent from the engine AST; incompatible with a Pike/NFA engine |
 
 Hygiene item, independent of the above: **per-symbol verification never well-formedness-checks helper
-functions/predicates** — a whole-file prefix sweep of `LiftSim.dfy` / `MainTheorem.dfy` /
-`FlipClosed.dfy` is what would make "green" airtight (this gap hid three real holes earlier in the
-campaign).
+functions/predicates**. DONE 2026-08-28: a whole-file well-formedness sweep of all 51 files plus
+FULL-file verification of every file except `LiftSim.dfy` (whose four giants keep their per-symbol
+records; the rest of the file runs whole with the giants excluded) — see `L5_HANDOFF.md` §5.7.3. The
+sweep found a resolution error in `ApiMatch.dfy` (`SupportedL5` called a ghost predicate), a wf hole
+in `LookNestOkTTop`, and a lemma broken by the `RevRE` change (`ZeroSetCapRevRE`); all fixed.

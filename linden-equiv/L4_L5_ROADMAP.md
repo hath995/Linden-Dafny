@@ -1563,3 +1563,13 @@ arms — fillings: `ThreadRepLkStepCheckOracleRecLB`, `FG.GateCrossCoverageLBNes
 `:|` re-sweep → F7f → `L4Scope`→`L5Scope`/`SupportedL5`/API → F7e-2. Process: launch LiftSim batches
 DETACHED (`setsid nohup … & disown` + a Monitor on `summary.txt`); a plain Bash launch dies at the
 tool's 10-min timeout and takes the batch with it.
+
+### s6 (2026-08-28): the WHOLE-FILE SWEEP + the forward-arm split — L5_HANDOFF §5.7.3
+
+A well-formedness-only sweep of all 51 files (Boogie `/proc:*well-formedness*` via manifest-patched deps) and
+FULL-file verification of every non-LiftSim file found three defects hidden by per-symbol verification:
+`ApiMatch.dfy` did not resolve (`SupportedL5` called the ghost `L5ScopeV1RE`), `LookNestOkTTop` lacked its
+`lid in LookIds` guard, `ZeroSetCapRevRE` lacked the lookaround arm after `RevRE` started recursing into looks.
+All fixed (`7478f10`). `ForwardFindRec`/`DeepFindRec` forward arms split into `FwdBase`/`FwdDeep` lemmas —
+first try, `ForwardFindRec` 4.3 h -> 18 + 14 min. Full-file `MainTheorem` 8734/0. PENDING_ROADMAP.
+
