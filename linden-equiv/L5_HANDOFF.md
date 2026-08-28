@@ -51,9 +51,9 @@ not an engine limitation.
 | **F6 — the keystone in `raB`'s OWN registers + the D5 arm's consumer atoms (`FlipGate.dfy`; `ThreadRepLkStepCheckOracleRecLB` in LiftSim)** | ✅ **green (1294/0 + 407/0; F6c LiftSim 2/0)** |
 | **F7a — `SubFirstLeafAt` direction-generic (`LidDir`) + totality guards; F7b — per-lid LB engine↔spec ties (`FlipGate` value half + LiftSim wrappers)** | ✅ **green (all 24 `SubFirstLeafAt` consumers by prefix sweeps, ≤8 in parallel: `SubFirstLeaf` 3/0, `LookNestBackT` 23/0, `Descent` 16/0, `BodyReplayGmtIsSubFirstLeaf` 2/0, `FreshBodyDirectInSubFirstLeaf` 2/0, `DeepGateReqFromCrossing` 2/0, `GatePassDeepRepStep` 2/0, `LiftInvRec` 1/0, `LookNestBackRepBTopDeep` 1/0, `FreshBodyMatchGmOuter` 2/0, `GNotUnderQuantLLookBody` 2/0, `ForwardMemberOne` 1046/0, `LiftPreserveGatePassLkRec` 1623/0, `ReverseCDeepFull` 626/0, `DeepFindRec` 1751/0, `ForwardFindRec` 2663/0, 0 timeouts)** |
 | F7c-1/2/3 — scope lift (`L5ScopeRE`), ten LB `FLookLoop*` frames, `FreshBodyDirectMember` dispatch, statics tower, **the layer-6 LB body-replay carrier `LookNestBackTFromBodyReplayLB` (flip-transport)**; F7d oracle plumbing; F7e-1 closedness; F7g-oracle | ✅ **green (s3/s4; `LookNestBackTFromBodyReplayLB` 1886/0)** |
-| F7c-4 descent dispatch (layers 7–9) → hub flip → F7e-2 / F7f (D5 arm) / API | ❌ **next — scouted site table + LB-arm recipe in §5.7.1** |
+| **F7c-4 descent dispatch (layers 7–9) → `GateStaticAtNested` hub flip → F7f (the three D5 LB arms) → F7e-2 (L5 closedness ladder, `FlipClosed.dfy`) → API (`MainTheoremL5`, `SupportedL5`)** | ✅ **ALL GREEN (s5, 2026-08-27; §5.7.2): `DeepFindRec` 3565/0, `ForwardFindRec` 4748/0, `LiftPreserveGatePassLkRec` 2243/0, carriers 1900/0, `MainTheoremL5` 4502/0, F7e-2 ladder 10 syms, API `MatchCorrect` 2/0** |
 | Tree-mirror attempt (TreeMirrorLk.dfy bricks 1-3) | ⚠️ **VACUOUS — dead-end (see §4)** |
-| Integration — lift `NoPosLookbehindRE`, drop `assert false`, API | ❌ not started (= F7, §5.7) |
+| Integration — lift `NoPosLookbehindRE`, drop `assert false`, API | ✅ done (s5): the hub, the composite chain and the descent are `NR.L5ScopeRE`-scoped; the D5 arm has no `assert false`; `MainTheoremL4` is a wrapper of `MainTheoremL5`; `Supported = L3 ∨ L4 ∨ L5`. Left: the NoPos-versions retirement (`LookBodyRowNested`/`OracleOkRowsNested`/`OracleColumnNested` L4 wrappers) — cosmetic |
 
 ---
 
@@ -486,6 +486,71 @@ Recommended order: (i) descent dispatch arms in `ReverseCDeepFull` → `ForwardM
   `RawMirrorMirrorSwap` + `ComputeTrGmIndepLk(Rec)` + `TreeResGmFrameRec` (gmMain framing) —
   conclusion None-iff + surface `GmAgreeOn` (S = DefGroups \ LkBodyGroups) in the LB direction.
 
+
+#### 5.7.2 s5 EXECUTION (2026-08-27) — F7c-4 + hub flip + F7f + F7e-2 + API: ALL GREEN
+
+**What landed (this order, all per-symbol green):**
+1. **F7c-4 the descent dispatch** — drafted by another model (session OOM-froze the machine; no logs), reviewed and
+   fixed here. Its draft: `L5ScopeRE(re)` + `|f_look_types| == |f_look_ast|` on the five descent lemmas; full LB arms
+   (BASE+DEEP) in `DeepFindRec`/`ForwardFindRec` via `LookNestBackTFromBodyReplayLB` + the F7b wrappers; kind dispatch
+   in `ForwardMemberOne`/`ReverseCDeepFull` with `LidDir`/`TreeRes` in place of `FirstLeaf`; the value tie of
+   `ForwardFindRec`/`ForwardMemberOne`/`L3aEndpointAssemblyNestedFull2`'s (F) clause restated as a **`NormRange`
+   equality** (`NormSwapCong` absorbs the LB `SwapRange` — the "genuinely new step" §5.7.1 item 5 predicted; the
+   only consumer needed just the Norm-form). **Review findings:** (a) five `M.LookBodyFactsNested(re, …)` calls
+   left in `ForwardFindRec`'s forward arm — its `requires NoPosLookbehindRE(re)` is NOT derivable from
+   `L5ScopeRE(re)` (fixed: `LookBodyFactsL5` + the lid's own direction `LidDir(crv, A1)` at the inner hop — an
+   inner lid of a lookAHEAD body may be a lookbehind under L5); (b) suspected gaps that were NOT gaps: the missing
+   (γ) `rb.Some?` block in `DeepFindRec`'s LB DEEP arm (Z3 closes it from the revealed oracle bundle) and the
+   carrier's `l < nlook` precondition (`LookBodyFactsL5` supplies `LookIds(body) <= LookIds(re)`).
+2. **The hub flip — the hub carries NO look-kind scope any more**: `GateStaticAtNested`'s conjunct
+   `M.NoPosLookbehindRE(body)` was first replaced by `NR.L5ScopeRE(body)` — with that recursive predicate (and its
+   `LBOnlyLooksRE`) inside the `exists`, five VCs of `DeepFindRec` (both arms) timed out at 600 s although the same
+   lemma had been green 2 h earlier; so the conjunct was DROPPED (the `GateStaticsSweepRENested`/
+   `GateStaticsFromTablesNested` requires and every `:|` restatement lose it too). The scope is the WHOLE-REGEX
+   `requires NR.L5ScopeRE(re)` of each consumer, read per lid by `M.LookBodyFactsL5` (which also supplies
+   `LookIds(body) <= LookIds(re)` and `L5ScopeRE(body)`). Bridges `M.NoPosImpliesL5Scope` where the unlifted L4 world
+   feeds an L5-scoped lemma (the two forward carriers' `L3aCompositeCloseRec` calls, `L4ScopeImpliesL5`).
+3. **F7f**: `LiftPreserveGatePassLkRec` → `requires NR.L5ScopeRE(re)`; the per-lid dispatch
+   `la.Lookbehind? ==> FST.LBOnlyLooksRE(body)` (`M.LookBodyFactsL5` + `FG.LBOnlyEquiv`); gate step =
+   `ThreadRepLkStepCheckOracleRecLB` (F6c); (E4) KEY coverage = `FG.FreshBodyMatchLBUnfold` +
+   `FG.GateCrossCoverageLBNested` (F6) at `gmMain = gm`; (E4 DEEP) = the direction-generic `GatePassDeepRepStep`
+   pinned by `L.LkDir(lk) == LidDir(crv, l)` (no arm split). The composite chain
+   `LiftAdvanceEpsilonRec → LiftStepCRec → LiftFindMatchCRec → L3aCompositeCloseRec` lifted to `NR.L5ScopeRE`.
+4. **F7e-2** (`FlipClosed.dfy`): `L5PosLooksL`/`L5PosActsL`/`ClosedBelowL5` (+ `FwdPosImpliesL5Pos`,
+   `ClosedBelowL5Mono`: the L5 ladder hypothesis restricts to the forward `M.ClosedBelow` that
+   `BackBodyLeafClosedFromBelow` consumes), `BodyLeafClosedFromBelowL5`, the 370-line
+   `least lemma FirstLeafClosedRecAuxL5` (a programmatic copy of `M.FirstLeafClosedRecAux`; the only edit is the
+   direction split at the positive-lookaround case), `ClosedBelowAllL5`, `FirstLeafClosedRecL5` — 10 syms, all
+   first try (52 s for the ladder).
+5. **API**: `M.MainExtractionNested` split into the scope-free `M.MainExtractionFromClosed` (closedness as the
+   hypothesis) + the L4 wrapper; LiftSim `L5ScopeL5PosL` (`NR.L5ScopeRE ⇒ FC.L5PosLooksL`, via
+   `FST.TranslateGroupOkLB`), `MainExtractionL5`, `L5Scope(raw)` + `L4ScopeImpliesL5` + `L5ScopeFromRawFull`;
+   **`MainTheoremL4` renamed `MainTheoremL5` under `L5Scope` (3 site changes: the scope assert, `OracleOkRowsL5`,
+   `MainExtractionL5`) with a thin `MainTheoremL4` wrapper**; ApiMatch `SupportedL5` (= `SupportedL4` with
+   `NR.L5ScopeRaw`), `Supported = L3 ∨ L4 ∨ L5`, `MatchCorrect` dispatches to `MainTheoremL5`.
+
+**Verification (s5):** hub-flip group `GateStatic*` 12/0; chain 2/0 ×4; `FreshWfGIndep` 79/0; `ReverseCDeepFull`
+540/0; `ForwardMemberOne` 868/0; `MainTheoremL4DeepConclude` 440/0; `L3aEndpointAssemblyNestedFull2` 180/0;
+`DeepFindRec` 3565/0; `ForwardFindRec` 4748/0; `LiftPreserveGatePassLkRec` 2243/0; `*TFromBodyReplay` (both
+forward carriers + the LB carrier) 1900/0; `MainTheoremL5` 4502/0; FlipClosed L5 ladder 10 syms; MainTheorem
+`MainExtraction*` 6/0; LiftSim `L5Scope*` 6/0, `L4ScopeImpliesL5` 2/0, `MainExtractionL5` 2/0; ApiMatch
+`MatchCorrect` 2/0.
+
+**Process facts learned (see the memory note `linden-dafny-memory-cap`):** all dafny/z3 now run in the user slice
+`dafny.slice` (MemoryMax=80G, no swap) through in-place launcher wrappers; a giant LiftSim lemma is ~18 GB of
+dafny + **~4.6 GB per z3 worker** (16 workers alone OOM'd at 80G; `CORES=10` fits), so giants run ONE at a time;
+small lemmas' cost is the ~4.5-min resolution + Boogie per-split overhead, not z3 (`ReverseCDeepFull`: 540 batches,
+4.1 min of z3 total, max 5 s) — group them by name fragment (`--filter-symbol` is a substring match; the `MOD.`
+prefix makes it a prefix match on the local name) and use `--error-limit 0`; `--log-format text` + `vcprof.py`
+give the per-batch profile. Launcher: `~/.local/bin/runm600.sh`.
+
+**Next:** (v) retire the NoPos-versions (`LookBodyRowNested`/`OracleOkRowsNested`/`OracleColumnNested` L4
+wrappers) — cosmetic; the remaining `M.NoPosLookbehindRE` sites are the two forward carriers' own `requires`
+(by design), `LookFreeNoPosLookbehindRE`, `L4Scope`/`L4ScopeFromRaw` and the NoPos wrappers. Then PERF: split
+`DeepFindRec`/`ForwardFindRec` into per-arm lemmas (an edit re-verifies one arm; arms verify as separate dafny
+processes) and shrink the per-VC context with `hide`/opaque — the per-batch profiles (`*.vclog`) say whether a few
+slow VCs or the sheer count dominate.
+
 ### 5.5 The shelved fallback (do not start unless F1 fails on a witnessed obstacle)
 
 The old plan — a `WP.Backward` twin of the forward sim stack (`BoolTreeLk`(~378 consumers)/
@@ -549,3 +614,7 @@ lift replacing `NoPosLookbehindRE`, ~37 requires sites, real consumers listed in
 Audit this session fixed three pre-existing LiftSim holes (§5.6 ⚠️). No backward `BoolTreeLk` twin
 stack; that plan is shelved (§5.5).
 **F7c-3 is GREEN (s4, 2026-08-26): the layer-6 LB body-replay carrier `LookNestBackTFromBodyReplayLB` (1886/0) — the flip-transport of the forward carrier at `FXR(body)` over `Reverse(str)` with `FG.MirrorTables(crv)`; per-lid transports `LookNestOkTTopFlip`/`LookNestBackTTopLidFlip`/`LookNestBackTTopDeepLidFlip` over `FreshMatchLidFlip`. NEXT: the descent dispatch (§5.7 layers 7–9), then the `GateStaticAtNested` hub flip.**
+**s5 (2026-08-27): F7c-4 + the hub flip + F7f + F7e-2 + the API are ALL GREEN — L5 is END-TO-END:
+`MainTheoremL5` (4502/0) under `L5Scope` (positive lookbehinds with lookbehind-only bodies), `ApiMatch.SupportedL5`
++ `MatchCorrect` 2/0; `MainTheoremL4` is now a wrapper. Ledger §5.7.2. Left: NoPos-wrapper retirement (cosmetic)
+and the perf pass (split the giant descent lemmas, `hide`).**

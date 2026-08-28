@@ -74,10 +74,21 @@ module LindenRegexApi {
     && NR.QuantsLookCapFreeRaw(pattern)
   }
 
-  /** The supported fragment: the depth-1 fragment (`SupportedL3`) or the
-      nested fragment (`SupportedL4`). */
+  /** (L5) The nested fragment with POSITIVE LOOKBEHINDS whose bodies are
+      lookbehind-only (`L5ScopeRaw`), the other three scope conditions as in
+      `SupportedL4`. Exactly `MainTheoremL5`'s precondition (via `LSIM.L5ScopeFromRawFull`). */
+  predicate SupportedL5(pattern: R.raw_regex) {
+    NR.NestedFragmentRaw(pattern) && T.Latin1Wf(pattern)
+    && LSIM.L5ScopeV1RE(R.lazy_prefix(R.annotate(pattern)))
+    && NR.NegLooksLookFreeRaw(pattern)
+    && NR.LookBodiesNoCapUnderQuantRaw(pattern)
+    && NR.QuantsLookCapFreeRaw(pattern)
+  }
+
+  /** The supported fragment: the depth-1 fragment (`SupportedL3`), the nested
+      forward fragment (`SupportedL4`) or the nested lookbehind fragment (`SupportedL5`). */
   predicate Supported(pattern: R.raw_regex) {
-    SupportedL3(pattern) || SupportedL4(pattern)
+    SupportedL3(pattern) || SupportedL4(pattern) || SupportedL5(pattern)
   }
 
   // ==========================================================================
@@ -104,9 +115,12 @@ module LindenRegexApi {
   {
     if SupportedL3(pattern) {
       LSIM.MainTheoremL3(pattern, str);
-    } else {
+    } else if SupportedL4(pattern) {
       LSIM.L4ScopeFromRaw(pattern);
       LSIM.MainTheoremL4(pattern, str);
+    } else {
+      LSIM.L5ScopeFromRawFull(pattern);
+      LSIM.MainTheoremL5(pattern, str);
     }
   }
 
