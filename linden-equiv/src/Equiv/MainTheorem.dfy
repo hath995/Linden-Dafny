@@ -166,10 +166,10 @@ module LindenElkMain {
       every `SetQuantToClock` has its `bq` flag `false`. Structural induction
       over the epsilon-closure fuel, one case per bytecode instruction. */
   lemma FAdvanceEpsilonQuantFinal(
-      c: RB.code, s: AI.VmState, ov: LOr.OracleView, dir: LAnc.direction)
+    c: RB.code, s: AI.VmState, ov: LOr.OracleView, dir: LAnc.direction)
     requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
     requires forall pc: nat, q: int, b: bool ::
-      NR.GetPcRE(c, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
+               NR.GetPcRE(c, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
     requires s.clock >= -1
     requires VmQuantFinal(s)
     ensures VmQuantFinal(AI.FAdvanceEpsilon(c, s, ov, dir).0)
@@ -187,8 +187,8 @@ module LindenElkMain {
     var b0 := s.processed;
     var s1 := s.(clock := s.clock + 1, processed := AI.bpc_add(b0, t.pc, t.exit_allowed));
     assert AI.unprocessed(s1.processed) <= AI.unprocessed(b0)
-        && (0 <= t.pc < RB.size(c) ==> AI.unprocessed(s1.processed) < AI.unprocessed(b0))
-      by { AI.UnprocessedAdd(b0, t.pc, t.exit_allowed); }
+           && (0 <= t.pc < RB.size(c) ==> AI.unprocessed(s1.processed) < AI.unprocessed(b0))
+    by { AI.UnprocessedAdd(b0, t.pc, t.exit_allowed); }
     match RB.get_instr(c, t.pc) {
       case Consume(ce) =>
         var (nb, ni) := AI.add_thread(t, ce, s1.blocked, s1.isblocked);
@@ -400,7 +400,7 @@ module LindenElkMain {
           BoolTreeLbIrrel(rer, [LS.Areg(r2)] + cont, inp, b1, b2, t.t2);
         case Sequence(r1, r2) =>
           assert forall i :: (0 <= i < |[LS.Areg(r1), LS.Areg(r2)] + cont|
-            ==> !([LS.Areg(r1), LS.Areg(r2)] + cont)[i].Acheck?);
+                              ==> !([LS.Areg(r1), LS.Areg(r2)] + cont)[i].Acheck?);
           BoolTreeLbIrrel(rer, [LS.Areg(r1), LS.Areg(r2)] + cont, inp, b1, b2, t);
         case Quantified(greedy, min, delta, r1) =>
           var gidl := L.DefGroups(r1);
@@ -418,7 +418,7 @@ module LindenElkMain {
             assert itert.GroupActionT?;
             // the iteration branch is at an explicit CannotExit: shared fact.
             assert EL.BoolTreeLk(rer, [LS.Areg(r1), LS.Acheck(inp), LS.Areg(L.Quantified(greedy, 0, LFS.NoiPred(delta), r1))] + cont,
-                               inp, BS.CannotExit, itert.t);
+                                 inp, BS.CannotExit, itert.t);
             // the skip branch threads the flag: induct.
             BoolTreeLbIrrel(rer, cont, inp, b1, b2, skipt);
           }
@@ -818,7 +818,7 @@ module LindenElkMain {
     case Quantified(_, _, _, r1) => DefGroupsInLkOrOutside(r1);
     case Group(id, r1) => DefGroupsInLkOrOutside(r1);
     case LookaroundR(lk, r1) =>
-      // DefGroups(LookaroundR) == DefGroups(r1) <= set(DefGroups(r1)) <= LkBodyGroups(LookaroundR)
+    // DefGroups(LookaroundR) == DefGroups(r1) <= set(DefGroups(r1)) <= LkBodyGroups(LookaroundR)
     case _ =>
   }
 
@@ -1223,7 +1223,7 @@ module LindenElkMain {
     var rf := LT.TreeRes(tm, gm2, sinp, WP.Forward);
     assert rb == Some(leaf);
     assert rf.Some? && rf.value.1 == TRM.MirrorGm(rb.value.1, n)
-        && TRM.GmInBounds(rb.value.1, n);
+           && TRM.GmInBounds(rb.value.1, n);
     // forward closedness on the mirror tree tm (existing forward machinery)
     MirrorGmOpenEmpty(gm, n);                            // OpenOf(gm2) == {}
     var fuel := LFS.ActionsFuel([LS.Areg(rr)], sinp, WP.Forward) + 1;
@@ -1298,7 +1298,7 @@ module LindenElkMain {
     requires |inp.pref| + |inp.next| == n
     requires TRM.GmInBounds(gm, n)
     ensures forall i :: 0 <= i < |LT.TreeLeaves(t, gm, inp, dir)| ==>
-              TRM.GmInBounds(LT.TreeLeaves(t, gm, inp, dir)[i].1, n)
+                          TRM.GmInBounds(LT.TreeLeaves(t, gm, inp, dir)[i].1, n)
     decreases t
   {
     match t
@@ -1435,12 +1435,12 @@ module LindenElkMain {
       TranslateDefGroupsEqCapIds(r1); TranslateDefGroupsEqCapIds(r2);
       assert L.DefGroups(T.Translate(r)) == L.DefGroups(T.Translate(r1)) + L.DefGroups(T.Translate(r2));
       assert forall g :: g in L.DefGroups(T.Translate(r)) <==>
-             g in L.DefGroups(T.Translate(r1)) || g in L.DefGroups(T.Translate(r2));
+                         g in L.DefGroups(T.Translate(r1)) || g in L.DefGroups(T.Translate(r2));
     case Re_con(r1, r2) =>
       TranslateDefGroupsEqCapIds(r1); TranslateDefGroupsEqCapIds(r2);
       assert L.DefGroups(T.Translate(r)) == L.DefGroups(T.Translate(r1)) + L.DefGroups(T.Translate(r2));
       assert forall g :: g in L.DefGroups(T.Translate(r)) <==>
-             g in L.DefGroups(T.Translate(r1)) || g in L.DefGroups(T.Translate(r2));
+                         g in L.DefGroups(T.Translate(r1)) || g in L.DefGroups(T.Translate(r2));
     case Re_quant(_, _, q, r1) => TranslateDefGroupsEqCapIds(r1);
     case Re_capture(cid, r1) =>
       TranslateDefGroupsEqCapIds(r1);
@@ -1596,7 +1596,7 @@ module LindenElkMain {
     requires T.TransWf(body) && LTB.LookUnique(body)
     requires SubLkBody(T.Translate(body), w)
     ensures exists lid: nat :: lid in LTB.LookIds(body)
-              && T.TransWf(NI.LookBodyOfRE(body, lid)) && w == T.Translate(NI.LookBodyOfRE(body, lid))
+                               && T.TransWf(NI.LookBodyOfRE(body, lid)) && w == T.Translate(NI.LookBodyOfRE(body, lid))
     decreases body
   {
     match body
@@ -1681,7 +1681,7 @@ module LindenElkMain {
     // 1. rr is Translate of SOME R-look-body `lb == LookBodyOfRE(body, lid)`.
     TranslateSubLkBodyIsLookBody(body, rr);
     var lid: nat :| lid in LTB.LookIds(body)
-      && T.TransWf(NI.LookBodyOfRE(body, lid)) && rr == T.Translate(NI.LookBodyOfRE(body, lid));
+                    && T.TransWf(NI.LookBodyOfRE(body, lid)) && rr == T.Translate(NI.LookBodyOfRE(body, lid));
     var lb := NI.LookBodyOfRE(body, lid);
     CapUniqueLookBodyOfRE(body, lid);                         // CapUnique(lb)
     // 2. g is directly captured in lb (outside its own looks).
@@ -1715,21 +1715,21 @@ module LindenElkMain {
     requires T.TransWf(re) && NR.LookBehindFragmentRE(re) && PIV.CapUnique(re)
     requires gmBest == PIV.GmOfLive(re, capT, look, quantT)
     requires forall g: nat :: g !in LL.LkBodyGroups(T.Translate(re)) ==>
-      (g in ft <==> g in gmBest) && (g in ft ==> ft[g] == gmBest[g])
+                                (g in ft <==> g in gmBest) && (g in ft ==> ft[g] == gmBest[g])
     requires forall k: int :: k !in PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)) ==>
-      AI.get_idx(AReg.as_arrays(capR).0, k) == AI.get_idx(AReg.as_arrays(capT).0, k)
-      && AI.get_idx(AReg.as_arrays(capR).1, k) == AI.get_idx(AReg.as_arrays(capT).1, k)
+                                AI.get_idx(AReg.as_arrays(capR).0, k) == AI.get_idx(AReg.as_arrays(capT).0, k)
+                                && AI.get_idx(AReg.as_arrays(capR).1, k) == AI.get_idx(AReg.as_arrays(capT).1, k)
     requires forall q: nat :: q in PIV.QuantIdsOutsideLooks(re) ==>
-      AI.get_idx(AReg.as_arrays(quantR).1, q) == AI.get_idx(AReg.as_arrays(quantT).1, q)
+                                AI.get_idx(AReg.as_arrays(quantR).1, q) == AI.get_idx(AReg.as_arrays(quantT).1, q)
     ensures forall g: nat :: g !in PIV.CapIdsInLooks(re) ==>
-      (g in ft <==> g in PIV.GmOfLive(re, capR, look, quantR))
-      && (g in ft ==> ft[g] == PIV.GmOfLive(re, capR, look, quantR)[g])
+                               (g in ft <==> g in PIV.GmOfLive(re, capR, look, quantR))
+                               && (g in ft ==> ft[g] == PIV.GmOfLive(re, capR, look, quantR)[g])
   {
     LkBodyGroupsEqCapIdsInLooks(re);                 // LkBodyGroups(Translate(re)) == CapIdsInLooks(re)
     PIV.GmOfLiveFrameOutside(re, capR, capT, look, quantR, quantT);   // GmOfLive(capR) ~ GmOfLive(capT) outside CapIdsInLooks
     forall g: nat | g !in PIV.CapIdsInLooks(re)
       ensures (g in ft <==> g in PIV.GmOfLive(re, capR, look, quantR))
-           && (g in ft ==> ft[g] == PIV.GmOfLive(re, capR, look, quantR)[g])
+              && (g in ft ==> ft[g] == PIV.GmOfLive(re, capR, look, quantR)[g])
     {
       assert g !in LL.LkBodyGroups(T.Translate(re));       // set identity
       // ft ~ gmBest (spec/main outside S), gmBest = GmOfLive(capT) ~ GmOfLive(capR) (frame)
@@ -1797,10 +1797,10 @@ module LindenElkMain {
     requires AI.get_idx(AReg.as_arrays(cap1).0, CP.start_reg(g)) >= 0        // fresh value set
     requires PIV.PathPresentLk(re, AReg.as_arrays(cap0).1, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, g)
     requires AI.get_idx(AReg.as_arrays(cap0).1, CP.start_reg(g))
-               >= PIV.MxAtGidLk(re, AReg.as_arrays(cap0).1, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, g)
+          >= PIV.MxAtGidLk(re, AReg.as_arrays(cap0).1, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, g)
     requires PIV.PathPresentLk(body, AReg.as_arrays(cap1).1, AReg.as_arrays(look1).1, AReg.as_arrays(quant1).1, -1, g)
     requires AI.get_idx(AReg.as_arrays(cap1).1, CP.start_reg(g))
-               >= PIV.MxAtGidLk(body, AReg.as_arrays(cap1).1, AReg.as_arrays(look1).1, AReg.as_arrays(quant1).1, -1, g)
+          >= PIV.MxAtGidLk(body, AReg.as_arrays(cap1).1, AReg.as_arrays(look1).1, AReg.as_arrays(quant1).1, -1, g)
     ensures g in PIV.GmOfLive(re, cap0, look, quant) && g in PIV.GmOfLive(body, cap1, look1, quant1)
     ensures PIV.GmOfLive(re, cap0, look, quant)[g] == PIV.GmOfLive(body, cap1, look1, quant1)[g]
   {
@@ -1838,7 +1838,7 @@ module LindenElkMain {
     LL.TreeLeavesFrameInside(tlk, gm, LG.Empty, inp, dir, S);
     forall i | 0 <= i < |LT.TreeLeaves(tlk, gm, inp, dir)|
       ensures LT.TreeLeaves(tlk, gm, inp, dir)[i].0 == LT.TreeLeaves(tlk, LG.Empty, inp, dir)[i].0
-           && GmAgreeOn(LT.TreeLeaves(tlk, gm, inp, dir)[i].1, LT.TreeLeaves(tlk, LG.Empty, inp, dir)[i].1, S)
+              && GmAgreeOn(LT.TreeLeaves(tlk, gm, inp, dir)[i].1, LT.TreeLeaves(tlk, LG.Empty, inp, dir)[i].1, S)
     {
       assert LL.GmAgreeInside(LT.TreeLeaves(tlk, gm, inp, dir)[i].1, LT.TreeLeaves(tlk, LG.Empty, inp, dir)[i].1, S);
     }
@@ -2264,7 +2264,7 @@ module LindenElkMain {
     requires NoDupRegsActs(acts)
     requires TRM.GmInBounds(gm, |inp.pref| + |inp.next|)
     ensures ClosedGm(leaf.1)
-{
+  {
     var n := |inp.pref| + |inp.next|;
     if |acts| == 0 {
       assert t == LT.Match;
@@ -2647,7 +2647,7 @@ module LindenElkMain {
       `acts`) has its `gm` value preserved into the final leaf. */
   ghost predicate ValConf(gm: LG.GroupMap, acts: LS.Actions, leaf: LT.Leaf, S: set<LG.GroupId>) {
     forall g :: g in gm && g in S && g !in LkBodyGroupsActs(acts) ==>
-      g in leaf.1 && leaf.1[g] == gm[g]
+                  g in leaf.1 && leaf.1[g] == gm[g]
   }
 
   /** One induction step of `ValConf`: given the child holds `ValConf` and each
@@ -2657,7 +2657,7 @@ module LindenElkMain {
                     leaf: LT.Leaf, S: set<LG.GroupId>)
     requires ValConf(gm2, sub, leaf, S)
     requires forall g :: g in gm && g in S && g !in LkBodyGroupsActs(acts) ==>
-               g in gm2 && gm2[g] == gm[g] && g !in LkBodyGroupsActs(sub)
+                           g in gm2 && gm2[g] == gm[g] && g !in LkBodyGroupsActs(sub)
     ensures ValConf(gm, acts, leaf, S)
   {}
 
@@ -2734,7 +2734,7 @@ module LindenElkMain {
         assert TRM.GmInBounds(gm2, n) by { assert LC.Idx(inp) <= n; }
         FirstLeafValueConfined(rer, cont, inp, b, t.t, gm2, leaf, S);
         assert forall g :: g in gm && g in S && g !in LkBodyGroupsActs(acts) ==>
-                 g in gm2 && gm2[g] == gm[g] && g !in LkBodyGroupsActs(cont)
+                             g in gm2 && gm2[g] == gm[g] && g !in LkBodyGroupsActs(cont)
         by { forall g | g in gm && g in S && g !in LkBodyGroupsActs(acts) ensures g != gid { } }
         ConfineStep(gm, gm2, acts, cont, leaf, S);
       case Areg(r) =>
@@ -2823,7 +2823,7 @@ module LindenElkMain {
             QuantConfBridge(r, r1, q', gm, cont, acts, acts1, S);
             FirstLeafValueConfined(rer, acts1, inp, b, t.t, gm2, leaf, S);
             assert forall g :: g in gm && g in S && g !in LkBodyGroupsActs(acts) ==>
-                     g in gm2 && gm2[g] == gm[g] && g !in LkBodyGroupsActs(acts1)
+                                 g in gm2 && gm2[g] == gm[g] && g !in LkBodyGroupsActs(acts1)
             by {
               forall g | g in gm && g in S && g !in LkBodyGroupsActs(acts) ensures g !in gidl {
                 QuantSettledNotReset(r, r1, cont, acts, S, g);
@@ -2860,7 +2860,7 @@ module LindenElkMain {
                 QuantCheckConfBridge(r, r1, q'', inp, gm, cont, acts, acts1, S);
                 FirstLeafValueConfined(rer, acts1, inp, BS.CannotExit, itert.t, gm2, leaf, S);
                 assert forall g :: g in gm && g in S && g !in LkBodyGroupsActs(acts) ==>
-                         g in gm2 && gm2[g] == gm[g] && g !in LkBodyGroupsActs(acts1)
+                                     g in gm2 && gm2[g] == gm[g] && g !in LkBodyGroupsActs(acts1)
                 by {
                   forall g | g in gm && g in S && g !in LkBodyGroupsActs(acts) ensures g !in gidl {
                     QuantSettledNotReset(r, r1, cont, acts, S, g);
@@ -2896,7 +2896,7 @@ module LindenElkMain {
                 QuantCheckConfBridge(r, r1, q'', inp, gm, cont, acts, acts1, S);
                 FirstLeafValueConfined(rer, acts1, inp, BS.CannotExit, itert.t, gm2, leaf, S);
                 assert forall g :: g in gm && g in S && g !in LkBodyGroupsActs(acts) ==>
-                         g in gm2 && gm2[g] == gm[g] && g !in LkBodyGroupsActs(acts1)
+                                     g in gm2 && gm2[g] == gm[g] && g !in LkBodyGroupsActs(acts1)
                 by {
                   forall g | g in gm && g in S && g !in LkBodyGroupsActs(acts) ensures g !in gidl {
                     QuantSettledNotReset(r, r1, cont, acts, S, g);
@@ -2942,7 +2942,7 @@ module LindenElkMain {
           assert TRM.GmInBounds(gm2, n) by { assert LC.Idx(inp) <= n; }
           FirstLeafValueConfined(rer, acts1, inp, b, t.t, gm2, leaf, S);
           assert forall g :: g in gm && g in S && g !in LkBodyGroupsActs(acts) ==>
-                   g in gm2 && gm2[g] == gm[g] && g !in LkBodyGroupsActs(acts1)
+                               g in gm2 && gm2[g] == gm[g] && g !in LkBodyGroupsActs(acts1)
           by { forall g | g in gm && g in S && g !in LkBodyGroupsActs(acts) ensures g != gid { } }
           ConfineStep(gm, gm2, acts, acts1, leaf, S);
         case AnchorR(a) =>
@@ -3005,7 +3005,7 @@ module LindenElkMain {
                 LL.GmConfinedLeaves(tlk, gm, inp, dir, Slook);
                 FirstLeafValueConfined(rer, cont, inp, b, tc, sub[0].1, leaf, S);
                 assert forall g :: g in gm && g in S && g !in LkBodyGroupsActs(acts) ==>
-                         g in sub[0].1 && sub[0].1[g] == gm[g] && g !in LkBodyGroupsActs(cont)
+                                     g in sub[0].1 && sub[0].1[g] == gm[g] && g !in LkBodyGroupsActs(cont)
                 by {
                   forall g | g in gm && g in S && g !in LkBodyGroupsActs(acts)
                     ensures g in sub[0].1 && sub[0].1[g] == gm[g]
@@ -3095,13 +3095,13 @@ module LindenElkMain {
     requires dir == LAnc.Forward
     requires s.context.nextchar == AI.get_char(str, s.cp)
     requires forall pc: nat, q: int, b: bool ::
-      NR.GetPcRE(c, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
+               NR.GetPcRE(c, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
     requires s.clock >= 0 && s.cp >= 0
     requires CM.VmClocksLE(s)
     requires CM.VmRegsWf(s, ncap, nlook, nquant)
     requires VmQuantFinal(s)
     ensures var r := AI.FFindMatch(c, str, s, ov, dir, cdn).0;
-      r.Some? ==> CM.ThreadRegsWf(r.value, ncap, nlook, nquant) && QuantRegsFinal(r.value)
+            r.Some? ==> CM.ThreadRegsWf(r.value, ncap, nlook, nquant) && QuantRegsFinal(r.value)
     decreases |str| - s.cp
   {
     var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, dir));
@@ -3125,14 +3125,14 @@ module LindenElkMain {
       FConsumeQuantFinal(s1);
       var s2 := AI.FConsume(s1);
       var s3 := s2.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
-                    cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
+      cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
       var newchar := AI.get_char(str, s3.cp - AI.cp_offset(dir));
       var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
       assert s4.cp == s.cp + 1;
       assert s4.context.nextchar == AI.get_char(str, s4.cp);
       assert CM.VmClocksLE(s4) by {
         assert s4.active == s2.active && s4.blocked == s2.blocked
-            && s4.bestmatch == s2.bestmatch && s4.clock == s2.clock;
+               && s4.bestmatch == s2.bestmatch && s4.clock == s2.clock;
       }
       assert CM.VmRegsWf(s4, ncap, nlook, nquant) by {
         assert s4.active == s2.active && s4.blocked == s2.blocked && s4.bestmatch == s2.bestmatch;
@@ -3159,7 +3159,7 @@ module LindenElkMain {
     requires s.clock >= 0 && s.cp >= 0
     requires CM.VmRegsWf(s, ncap, nlook, nquant)
     ensures var r := AI.FFindMatch(c, str, s, ov, dir, cdn).0;
-      r.Some? ==> CM.ThreadRegsWf(r.value, ncap, nlook, nquant)
+            r.Some? ==> CM.ThreadRegsWf(r.value, ncap, nlook, nquant)
     decreases if dir.Forward? then |str| - s.cp else s.cp
   {
     var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, dir));
@@ -3177,7 +3177,7 @@ module LindenElkMain {
       CM.FConsumeRegsWf(s1, ncap, nlook, nquant);
       var s2 := AI.FConsume(s1);
       var s3 := s2.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
-                    cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
+      cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
       var newchar := AI.get_char(str, s3.cp - AI.cp_offset(dir));
       var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
       assert CM.VmRegsWf(s4, ncap, nlook, nquant) by {
@@ -3271,8 +3271,8 @@ module LindenElkMain {
   lemma QmOfREEntries(re: R.regex)
     requires T.TransWf(re) && PIV.QuantUnique(re)
     ensures forall qid: nat :: qid in PIV.QuantIds(re) && T.TransWf(PIV.QidBody(re, qid)) ==>
-      (qid as int) in QmOfRE(re)
-      && QmOfRE(re)[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(re, qid)))
+                                 (qid as int) in QmOfRE(re)
+                                 && QmOfRE(re)[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(re, qid)))
     decreases re
   {
     match re
@@ -3282,7 +3282,7 @@ module LindenElkMain {
       QmOfREDom(r1); QmOfREDom(r2);
       forall qid: nat | qid in PIV.QuantIds(re) && T.TransWf(PIV.QidBody(re, qid))
         ensures (qid as int) in QmOfRE(re)
-             && QmOfRE(re)[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(re, qid)))
+                && QmOfRE(re)[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(re, qid)))
       {
         if qid in PIV.QuantIds(r1) {
           assert qid !in PIV.QuantIds(r2) by {
@@ -3298,7 +3298,7 @@ module LindenElkMain {
       QmOfREDom(r1); QmOfREDom(r2);
       forall qid: nat | qid in PIV.QuantIds(re) && T.TransWf(PIV.QidBody(re, qid))
         ensures (qid as int) in QmOfRE(re)
-             && QmOfRE(re)[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(re, qid)))
+                && QmOfRE(re)[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(re, qid)))
       {
         if qid in PIV.QuantIds(r1) {
           assert qid !in PIV.QuantIds(r2) by {
@@ -3315,7 +3315,7 @@ module LindenElkMain {
       assert qid0 >= 0;                                 // QuantUnique
       forall qid: nat | qid in PIV.QuantIds(re) && T.TransWf(PIV.QidBody(re, qid))
         ensures (qid as int) in QmOfRE(re)
-             && QmOfRE(re)[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(re, qid)))
+                && QmOfRE(re)[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(re, qid)))
       {
         if (qid0 as nat) == qid {
           assert PIV.QidBody(re, qid) == r1;
@@ -3334,7 +3334,7 @@ module LindenElkMain {
   lemma QmapOkFromEntries(re: R.regex, qm: AR.QMap)
     requires T.TransWf(re) && PIV.QuantUnique(re)
     requires forall qid: nat :: qid in PIV.QuantIds(re) && T.TransWf(PIV.QidBody(re, qid)) ==>
-      (qid as int) in qm.quants && qm.quants[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(re, qid)))
+                                  (qid as int) in qm.quants && qm.quants[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(re, qid)))
     ensures AR.QmapOk(re, qm)
     decreases re
   {
@@ -3434,8 +3434,8 @@ module LindenElkMain {
     case Re_con(r1, r2) => FCompileExtraFrame(r1, c); FCompileExtraFrame(r2, CP.FCompileExtra(r1, c));
     case Re_quant(nul, qid, quant, r1) =>
       var c1 := if quant.min > 0 && quant.max == None && nul != R.NonNullable && quant.greedy
-                then c.(f_plus_bc := CP.upd(c.f_plus_bc, qid, CP.compile_reconstruct_nulled(r1)))
-                else c;
+      then c.(f_plus_bc := CP.upd(c.f_plus_bc, qid, CP.compile_reconstruct_nulled(r1)))
+      else c;
       FCompileExtraFrame(r1, c1);
     case Re_lookaround(lid, la, body) =>
       // reachable under the widened gate: the five updates write only the LOOK
@@ -3444,11 +3444,11 @@ module LindenElkMain {
       var c2 := c1.(f_look_cdns := CP.upd(c1.f_look_cdns, lid, LCdn.compile_cdns(body)));
       var c3 := c2.(f_look_ast := CP.upd(c2.f_look_ast, lid, body));
       var c4 := c3.(f_look_build_bc :=
-                      CP.upd(c3.f_look_build_bc, lid,
-                             CP.compile_to_write(CP.oracle_regex(la, body), lid)));
+      CP.upd(c3.f_look_build_bc, lid,
+             CP.compile_to_write(CP.oracle_regex(la, body), lid)));
       var c5 := c4.(f_look_capture_bc :=
-                      CP.upd(c4.f_look_capture_bc, lid,
-                             CP.compile_to_bytecode(CP.capture_regex(la, body))));
+      CP.upd(c4.f_look_capture_bc, lid,
+             CP.compile_to_bytecode(CP.capture_regex(la, body))));
       NR.PlusIsLookBehindFragmentRE(body);
       FCompileExtraFrame(body, c5);
   }
@@ -3522,10 +3522,10 @@ module LindenElkMain {
                            OE.LmOf(R.lazy_prefix(R.annotate(raw))),
                            AI.FBuildOracle(CP.FFullCompilation(R.annotate(raw)), str))
     ensures var re := R.lazy_prefix(R.annotate(raw));
-      AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
-      && LL.OracleOkSuffix(LES.TheRer(raw), qm, LC.InitInput(str))
-      && AR.ActionsRepL(LES.TheRer(raw), qm, [LS.Areg(T.Translate(re))],
-                        CP.compile_to_bytecode(re), 0)
+            AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
+            && LL.OracleOkSuffix(LES.TheRer(raw), qm, LC.InitInput(str))
+            && AR.ActionsRepL(LES.TheRer(raw), qm, [LS.Areg(T.Translate(re))],
+                              CP.compile_to_bytecode(re), 0)
   {
     var ast := R.annotate(raw);
     var re := R.lazy_prefix(ast);
@@ -3565,9 +3565,9 @@ module LindenElkMain {
       case is the core of `MainTheorem`'s extraction; this is the reusable form
       the captured-lookahead body match needs. */
   lemma FindMatchBodyAtCp(
-      rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat,
-      ngroups: nat, str: string, cp: nat, tstar: LT.Tree, ov: LOr.OracleView,
-      cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
+    rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat,
+    ngroups: nat, str: string, cp: nat, tstar: LT.Tree, ov: LOr.OracleView,
+    cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
     returns (bestT: Option<LT.Leaf>)
     requires PSM.StaticOkRE(qm, body, bodycode, endl)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
@@ -3618,9 +3618,9 @@ module LindenElkMain {
       callees (`TrcREToLinden`/`TreeRepPikeSubtree`/`InitPiketreeInv`/
       `PikeTreeTrcCorrect`) are depth-blind. */
   lemma FindMatchBodyAtCpNested(
-      rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat,
-      ngroups: nat, str: string, cp: nat, tstar: LT.Tree, ov: LOr.OracleView,
-      cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
+    rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat,
+    ngroups: nat, str: string, cp: nat, tstar: LT.Tree, ov: LOr.OracleView,
+    cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
     returns (bestT: Option<LT.Leaf>)
     requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
@@ -3649,7 +3649,7 @@ module LindenElkMain {
     var pts0 := PT.PikeTreeInitialState(tstar, inp);
     assert ctx.nextchar == AI.get_char(str, cp);
     bestT := PSM.FindMatchSimRENested(rer, qm, body, bodycode, endl, ngroups, str, pts0, inits,
-                                ov, LAnc.Forward, cdns, ncap, nlook, nquant);
+                                      ov, LAnc.Forward, cdns, ncap, nlook, nquant);
     assert PSM.TrcRE(pts0, PT.PTS_final(bestT));
     assert PIV.BestMatchRE(body, bestT, AI.FFindMatch(bodycode, str, inits, ov, LAnc.Forward, cdns).0);
 
@@ -3672,9 +3672,9 @@ module LindenElkMain {
       correctness at `cp`. `TreeThreadRE` is definitionally `TreeRepRE`
       (TreeThreadRE.dfy:56), so the one tree built serves both hypotheses. */
   lemma BodyTreeAtCp(
-      rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat,
-      ngroups: nat, str: string, cp: nat, ov: LOr.OracleView,
-      cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
+    rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat,
+    ngroups: nat, str: string, cp: nat, ov: LOr.OracleView,
+    cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
     returns (bestT: Option<LT.Leaf>)
     requires PSM.StaticOkRE(qm, body, bodycode, endl)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
@@ -3757,9 +3757,9 @@ module LindenElkMain {
       `ComputeTrLkConfined`, `ActionsTreeRepRE` — generalized off the depth-1
       fragment, which is the ENGINE half, disjoint from this SPEC brick. */
   lemma BodyTreeAtCpLk(
-      rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat,
-      ngroups: nat, str: string, cp: nat, ov: LOr.OracleView,
-      cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
+    rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat,
+    ngroups: nat, str: string, cp: nat, ov: LOr.OracleView,
+    cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
     returns (bestT: Option<LT.Leaf>)
     requires PSM.StaticOkRE(qm, body, bodycode, endl)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
@@ -3834,9 +3834,9 @@ module LindenElkMain {
       `FindMatchBodyAtCpNested`. This is the SPEC/ENGINE-bridge half of the
       depth-k keystone STEP. */
   lemma BodyTreeAtCpNested(
-      rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat,
-      ngroups: nat, str: string, cp: nat, ov: LOr.OracleView,
-      cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
+    rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat,
+    ngroups: nat, str: string, cp: nat, ov: LOr.OracleView,
+    cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
     returns (bestT: Option<LT.Leaf>)
     requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
     requires NR.NegLooksLookFreeRE(body)
@@ -3896,7 +3896,7 @@ module LindenElkMain {
 
     // ---- run the simulation at cp ----------------------------------------
     bestT := FindMatchBodyAtCpNested(rer, qm, body, bodycode, endl, ngroups, str, cp, tstar,
-                               ov, cdns, ncap, nlook, nquant);
+                                     ov, cdns, ncap, nlook, nquant);
     assert bestT == LT.FirstLeaf(tstar, inp);
     // FirstLeafAgreeOutside(tstar, t, S): same success/position, gms agree outside S.
   }
@@ -3949,19 +3949,19 @@ module LindenElkMain {
     case Re_con(r1, r2) => FCompileExtraFrameAny(r1, c); FCompileExtraFrameAny(r2, CP.FCompileExtra(r1, c));
     case Re_quant(nul, qid, quant, r1) =>
       var c1 := if quant.min > 0 && quant.max == None && nul != R.NonNullable && quant.greedy
-                then c.(f_plus_bc := CP.upd(c.f_plus_bc, qid, CP.compile_reconstruct_nulled(r1)))
-                else c;
+      then c.(f_plus_bc := CP.upd(c.f_plus_bc, qid, CP.compile_reconstruct_nulled(r1)))
+      else c;
       FCompileExtraFrameAny(r1, c1);
     case Re_lookaround(lid, la, body) =>
       var c1 := c.(f_look_types := CP.upd(c.f_look_types, lid, la));
       var c2 := c1.(f_look_cdns := CP.upd(c1.f_look_cdns, lid, LCdn.compile_cdns(body)));
       var c3 := c2.(f_look_ast := CP.upd(c2.f_look_ast, lid, body));
       var c4 := c3.(f_look_build_bc :=
-                      CP.upd(c3.f_look_build_bc, lid,
-                             CP.compile_to_write(CP.oracle_regex(la, body), lid)));
+      CP.upd(c3.f_look_build_bc, lid,
+             CP.compile_to_write(CP.oracle_regex(la, body), lid)));
       var c5 := c4.(f_look_capture_bc :=
-                      CP.upd(c4.f_look_capture_bc, lid,
-                             CP.compile_to_bytecode(CP.capture_regex(la, body))));
+      CP.upd(c4.f_look_capture_bc, lid,
+             CP.compile_to_bytecode(CP.capture_regex(la, body))));
       FCompileExtraFrameAny(body, c5);
   }
 
@@ -4002,11 +4002,11 @@ module LindenElkMain {
     requires dir.Forward? ==> s.context.nextchar == AI.get_char(str, s.cp)
     requires dir.Backward? ==> s.context.nextchar == AI.get_char(str, s.cp - 1)
     requires forall pc: nat, q: int, b: bool ::
-      NR.GetPcRE(c, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
+               NR.GetPcRE(c, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
     requires s.clock >= -1
     requires VmQuantFinal(s)
     ensures var r := AI.FFindMatch(c, str, s, ov, dir, cdn).0;
-      r.Some? ==> QuantRegsFinal(r.value)
+            r.Some? ==> QuantRegsFinal(r.value)
     decreases if dir.Forward? then |str| - s.cp else s.cp
   {
     var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, dir));
@@ -4022,7 +4022,7 @@ module LindenElkMain {
         var s2 := AI.FConsume(s1);
         FConsumeQuantFinal(s1);
         var s3 := s2.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
-                      cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
+        cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
         var newchar := AI.get_char(str, s3.cp - AI.cp_offset(dir));
         var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
         assert VmQuantFinal(s4);
@@ -4038,17 +4038,17 @@ module LindenElkMain {
                               mainast: R.regex, S: set<int>)
     requires NR.LookBehindFragmentRE(mainast) && PIV.QuantUnique(mainast)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
-      exists la: R.lookaround, body: R.regex ::
-        LTB.LookEntryOk(crv, l, la, body)
-        && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
-        && PIV.CapUnique(body) && PIV.QuantUnique(body)
-        && PIV.CaptureRegs(body) <= S
-        && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(mainast))
-        && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
+                                exists la: R.lookaround, body: R.regex ::
+                                  LTB.LookEntryOk(crv, l, la, body)
+                                  && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+                                  && PIV.CapUnique(body) && PIV.QuantUnique(body)
+                                  && PIV.CaptureRegs(body) <= S
+                                  && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(mainast))
+                                  && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
     ensures var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
-      CM.RegsAgreeOutside(res.0, cap, S) && res.1 == lk
+            CM.RegsAgreeOutside(res.0, cap, S) && res.1 == lk
     decreases maxlook - lid
   {
     if lid > maxlook { return; }
@@ -4101,8 +4101,8 @@ module LindenElkMain {
           }
         }
         assert CM.RegsAgreeOutside(ncap, cap, S) && nlk == lk
-            && (forall k :: AI.get_idx(nqt.a_cp, k) < 0)
-            && (forall k :: AI.get_idx(nqt.a_clk, k) >= -1);
+               && (forall k :: AI.get_idx(nqt.a_cp, k) < 0)
+               && (forall k :: AI.get_idx(nqt.a_clk, k) >= -1);
         FLookLoopCaptureFrame(crv, str, next, maxlook, ncap, nlk, nqt, ov1, mainast, S);
         CM.RegsAgreeOutsideTrans(AI.FLookLoop(crv, str, next, maxlook, ncap, nlk, nqt, ov1).0, ncap, cap, S);
       }
@@ -4121,16 +4121,16 @@ module LindenElkMain {
                             mainast: R.regex, Sq: set<int>)
     requires NR.LookBehindFragmentRE(mainast) && PIV.QuantUnique(mainast)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
-      exists la: R.lookaround, body: R.regex ::
-        LTB.LookEntryOk(crv, l, la, body)
-        && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
-        && PIV.CapUnique(body) && PIV.QuantUnique(body)
-        && LKC.QIdsInt(body) <= Sq
-        && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
+                                exists la: R.lookaround, body: R.regex ::
+                                  LTB.LookEntryOk(crv, l, la, body)
+                                  && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+                                  && PIV.CapUnique(body) && PIV.QuantUnique(body)
+                                  && LKC.QIdsInt(body) <= Sq
+                                  && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
     ensures var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
-      CM.RegsAgreeOutside(res.2, qt, Sq) && res.1 == lk
+            CM.RegsAgreeOutside(res.2, qt, Sq) && res.1 == lk
     decreases maxlook - lid
   {
     if lid > maxlook { return; }
@@ -4201,8 +4201,8 @@ module LindenElkMain {
           assert (forall k :: AI.get_idx(nqt.a_cp, k) < 0) && (forall k :: AI.get_idx(nqt.a_clk, k) >= -1);
         }
         assert CM.RegsAgreeOutside(nqt, qt, Sq) && nlk == lk
-            && (forall k :: AI.get_idx(nqt.a_cp, k) < 0)
-            && (forall k :: AI.get_idx(nqt.a_clk, k) >= -1);
+               && (forall k :: AI.get_idx(nqt.a_cp, k) < 0)
+               && (forall k :: AI.get_idx(nqt.a_clk, k) >= -1);
         FLookLoopQuantFrame(crv, str, next, maxlook, ncap, nlk, nqt, ov1, mainast, Sq);
         CM.RegsAgreeOutsideTrans(AI.FLookLoop(crv, str, next, maxlook, ncap, nlk, nqt, ov1).2, nqt, qt, Sq);
       }
@@ -4221,18 +4221,18 @@ module LindenElkMain {
     requires inits.active == [AI.init_thread(cap, lk, qt)]
     requires inits.blocked == [] && inits.bestmatch.None?
     requires |inits.processed.true_set| == RB.size(bytecode)
-          && |inits.processed.false_set| == RB.size(bytecode)
+             && |inits.processed.false_set| == RB.size(bytecode)
     requires dir.Forward? ==> inits.context.nextchar == AI.get_char(str, inits.cp)
     requires dir.Backward? ==> inits.context.nextchar == AI.get_char(str, inits.cp - 1)
     requires inits.clock >= -1
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     ensures var r := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn).0;
-      r.Some? ==>
-        r.value.capture_regs == cap
-        && r.value.look_regs == lk
-        && CM.RegsAgreeOutside(r.value.quant_regs, qt, LKC.QIdsInt(body))
-        && QuantRegsFinal(r.value)
+            r.Some? ==>
+              r.value.capture_regs == cap
+              && r.value.look_regs == lk
+              && CM.RegsAgreeOutside(r.value.quant_regs, qt, LKC.QIdsInt(body))
+              && QuantRegsFinal(r.value)
   {
     LKC.CaptureCodeClassified(la, body);
     assert CM.VmCapsAre(inits, cap);
@@ -4263,10 +4263,10 @@ module LindenElkMain {
     requires inits.active == [AI.init_thread(cap, lk, qt)]
     requires inits.blocked == [] && inits.bestmatch.None?
     requires |inits.processed.true_set| == RB.size(bytecode)
-          && |inits.processed.false_set| == RB.size(bytecode)
+             && |inits.processed.false_set| == RB.size(bytecode)
     requires inits.context.nextchar == AI.get_char(str, inits.cp)
     ensures var r := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn).0;
-      r.Some? ==> CM.RegsAgreeOutside(r.value.capture_regs, cap, PIV.CaptureRegs(body))
+            r.Some? ==> CM.RegsAgreeOutside(r.value.capture_regs, cap, PIV.CaptureRegs(body))
   {
     CM.CaptureBytecodeClassified(body);
     assert CM.VmCapturesAgree(inits, cap, PIV.CaptureRegs(body)) by {
@@ -4290,10 +4290,10 @@ module LindenElkMain {
     requires inits.active == [AI.init_thread(cap, lk, qt)]
     requires inits.blocked == [] && inits.bestmatch.None?
     requires |inits.processed.true_set| == RB.size(bytecode)
-          && |inits.processed.false_set| == RB.size(bytecode)
+             && |inits.processed.false_set| == RB.size(bytecode)
     requires inits.context.nextchar == AI.get_char(str, inits.cp - 1)      // BACKWARD
     ensures var r := AI.FFindMatch(bytecode, str, inits, ov, LAnc.Backward, lookcdn).0;
-      r.Some? ==> CM.RegsAgreeOutside(r.value.capture_regs, cap, PIV.CaptureRegs(body))
+            r.Some? ==> CM.RegsAgreeOutside(r.value.capture_regs, cap, PIV.CaptureRegs(body))
   {
     var rev := R.reverse_regex(body);
     PIV.ReversePlusFragment(body);                 // PlusFragmentRE(rev)
@@ -4315,8 +4315,8 @@ module LindenElkMain {
   lemma NoTrueQuantStamp(body: R.regex)
     requires NR.LookBehindFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
     ensures var code := CP.compile_to_bytecode(body);
-      forall pc: nat, q: int, b: bool ::
-        NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
+            forall pc: nat, q: int, b: bool ::
+              NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
   {
     var code := CP.compile_to_bytecode(body);
     var next := CP.compile(body, 0, CP.Progress).1;
@@ -4346,8 +4346,8 @@ module LindenElkMain {
   lemma NoTrueQuantStampNested(body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
     ensures var code := CP.compile_to_bytecode(body);
-      forall pc: nat, q: int, b: bool ::
-        NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
+            forall pc: nat, q: int, b: bool ::
+              NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
   {
     var code := CP.compile_to_bytecode(body);
     var next := CP.compile(body, 0, CP.Progress).1;
@@ -4400,9 +4400,9 @@ module LindenElkMain {
     requires bytecode == CP.compile_to_bytecode(body)
     requires AI.cp_context(cp, str, dir).nextchar == AI.get_char(str, cp)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp, cap, lk, qt, 0, lookcdn).0;
-      r.Some? ==> CM.RegsAgreeOutside(r.value.capture_regs, cap, PIV.CaptureRegs(body))
+            r.Some? ==> CM.RegsAgreeOutside(r.value.capture_regs, cap, PIV.CaptureRegs(body))
   {
     var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
     ReplayCaptureFrame(bytecode, str, inits, ov, dir, lookcdn, cap, lk, qt, la, body);
@@ -4434,12 +4434,12 @@ module LindenElkMain {
     requires bytecode == CP.compile_to_bytecode(body)
     requires AI.cp_context(cp, str, dir).nextchar == AI.get_char(str, cp)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp, cap, lk, qt, 0, lookcdn).0;
-      r.Some? ==>
-        CM.RegsAgreeOutside(r.value.capture_regs, cap, PIV.CaptureRegs(body))
-        && r.value.look_regs == lk
-        && QuantRegsFinal(r.value)
+            r.Some? ==>
+              CM.RegsAgreeOutside(r.value.capture_regs, cap, PIV.CaptureRegs(body))
+              && r.value.look_regs == lk
+              && QuantRegsFinal(r.value)
   {
     var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
     ReplayCaptureFrame(bytecode, str, inits, ov, dir, lookcdn, cap, lk, qt, la, body);
@@ -4477,12 +4477,12 @@ module LindenElkMain {
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
-      r.Some? ==>
-        CM.RegsAgreeOutside(r.value.capture_regs, cap, PIV.CaptureRegs(body))
-        && r.value.look_regs == lk
-        && QuantRegsFinal(r.value)
+            r.Some? ==>
+              CM.RegsAgreeOutside(r.value.capture_regs, cap, PIV.CaptureRegs(body))
+              && r.value.look_regs == lk
+              && QuantRegsFinal(r.value)
   {
     var rev := R.reverse_regex(body);
     PIV.ReversePlusFragment(body);                 // PlusFragmentRE(rev)
@@ -4544,7 +4544,7 @@ module LindenElkMain {
     requires bytecode == CP.compile_to_bytecode(body)
     requires AI.cp_context(cp, str, dir).nextchar == AI.get_char(str, cp)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     ensures AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp, cap, lk, qt, 0, lookcdn).1 == ov
   {
     var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
@@ -4578,7 +4578,7 @@ module LindenElkMain {
     requires la.Lookbehind? && dir == LAnc.Backward
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     ensures AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp, cap, lk, qt, 0, lookcdn).1 == ov
   {
     var rbody := R.reverse_regex(body);
@@ -4637,7 +4637,7 @@ module LindenElkMain {
     var bc := CP.compile_to_bytecode(CP.capture_regex(looktype, body));
     var cdn := if 0 <= l < |crv.f_look_cdns| then crv.f_look_cdns[l] else [];
     AI.FFindMatch(bc, str, AI.FInitState(bc, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                  AReg.init_regs(nquant), 0, AI.cp_context(cp, str, dir)), ov, dir, cdn).0
+                                         AReg.init_regs(nquant), 0, AI.cp_context(cp, str, dir)), ov, dir, cdn).0
   }
 
   /** The value-lift conclusion: on each matched positive lookahead's own capture
@@ -4646,9 +4646,9 @@ module LindenElkMain {
   ghost predicate FLookLoopValueOk(crv: CP.FCompiled, str: string, res0: AReg.Regs, lid: int, maxlook: int,
                                    lk: AReg.Regs, ov: LOr.OracleView, ncap: int, nlook: int, nquant: int) {
     forall l: int :: lid <= l <= maxlook && MatchedPosLA(crv, lk, l) ==>
-      var rf := FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
-      (rf.Some? ==> CM.RegsAgreeInside(res0, rf.value.capture_regs, PIV.CaptureRegs(VBody(crv, l))))
-      && (rf.None? ==> CM.RegsAgreeInside(res0, AReg.init_regs(ncap), PIV.CaptureRegs(VBody(crv, l))))
+                       var rf := FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
+                       (rf.Some? ==> CM.RegsAgreeInside(res0, rf.value.capture_regs, PIV.CaptureRegs(VBody(crv, l))))
+                       && (rf.None? ==> CM.RegsAgreeInside(res0, AReg.init_regs(ncap), PIV.CaptureRegs(VBody(crv, l))))
   }
 
   /** `l == lid` is not a matched positive lookahead, so the value map for
@@ -4683,15 +4683,15 @@ module LindenElkMain {
     requires 0 <= cp <= |str|
     requires AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
     ensures
       var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Forward, cp, cap, lk, qt, 0, lookcdn).0;
       var rf := AI.FFindMatch(bytecode, str,
-                  AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
-                  ov, LAnc.Forward, lookcdn).0;
+                              AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                            AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                              ov, LAnc.Forward, lookcdn).0;
       (result.None? <==> rf.None?)
       && (result.Some? ==> CM.RegsAgreeInside(result.value.capture_regs, rf.value.capture_regs, PIV.CaptureRegs(body)))
   {
@@ -4727,8 +4727,8 @@ module LindenElkMain {
       are reconstructed by the SEPARATE top-level `FLookLoop` iterations over the
       inner lids (higher-numbered, so processed after `body`'s enclosing look). */
   lemma ReplayLidCapAgreeFreshNested(bytecode: RB.code, str: string, cp: int, cap: AReg.Regs, lk: AReg.Regs,
-                               qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
-                               body: R.regex, la: R.lookaround, ncap: int, nlook: int, nquant: int)
+                                     qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
+                                     body: R.regex, la: R.lookaround, ncap: int, nlook: int, nquant: int)
     requires NR.NestedFragmentRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires la.Lookahead?
@@ -4736,15 +4736,15 @@ module LindenElkMain {
     requires 0 <= cp <= |str|
     requires AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
     ensures
       var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Forward, cp, cap, lk, qt, 0, lookcdn).0;
       var rf := AI.FFindMatch(bytecode, str,
-                  AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
-                  ov, LAnc.Forward, lookcdn).0;
+                              AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                            AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                              ov, LAnc.Forward, lookcdn).0;
       (result.None? <==> rf.None?)
       && (result.Some? ==> CM.RegsAgreeInside(result.value.capture_regs, rf.value.capture_regs, PIV.CaptureRegs(body)))
   {
@@ -4784,16 +4784,16 @@ module LindenElkMain {
     requires 0 <= cp <= |str|
     requires AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires |cap.a_cp| == ncap && |cap.a_clk| == ncap
     requires CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body))
     ensures
       var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Forward, cp, cap, lk, qt, 0, lookcdn).0;
       var rf := AI.FFindMatch(bytecode, str,
-                  AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
-                  ov, LAnc.Forward, lookcdn).0;
+                              AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                            AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                              ov, LAnc.Forward, lookcdn).0;
       (result.None? <==> rf.None?)
       && (result.Some? ==>
             CM.RegsAgreeInside(result.value.quant_regs, rf.value.quant_regs, LKC.QIdsInt(body)))
@@ -4814,7 +4814,7 @@ module LindenElkMain {
     assert CM.VmRel(inits, sf, {}, LKC.QIdsInt(body)) by {
       assert CM.ThreadRel(AI.init_thread(cap, lk, qt),
                           AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant)),
-                          {}, LKC.QIdsInt(body)) by {
+    {}, LKC.QIdsInt(body)) by {
         assert CM.RegsAgreeInside(cap, AReg.init_regs(ncap), {});
         assert CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body));
       }
@@ -4900,17 +4900,17 @@ module LindenElkMain {
 
   /** LB twin of `ReplayCaptureFrameNestedOuter`. */
   lemma ReplayCaptureFrameNestedOuterLB(bytecode: RB.code, str: string, inits: AI.VmState, ov: LOr.OracleView,
-                           lookcdn: LCdn.cdns, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
+                                        lookcdn: LCdn.cdns, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body)
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires inits.active == [AI.init_thread(cap, lk, qt)]
     requires inits.blocked == [] && inits.bestmatch.None?
     requires |inits.processed.true_set| == RB.size(bytecode)
-          && |inits.processed.false_set| == RB.size(bytecode)
+             && |inits.processed.false_set| == RB.size(bytecode)
     requires inits.context.nextchar == AI.get_char(str, inits.cp - 1)
     ensures var r := AI.FFindMatch(bytecode, str, inits, ov, LAnc.Backward, lookcdn).0;
-      r.Some? ==> CM.RegsAgreeOutside(r.value.capture_regs, cap,
-                                      PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)))
+            r.Some? ==> CM.RegsAgreeOutside(r.value.capture_regs, cap,
+                                            PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)))
   {
     var rev := R.reverse_regex(body);
     NR.ReverseNestedFragmentRE(body);
@@ -4927,16 +4927,16 @@ module LindenElkMain {
 
   /** LB twin of `ReplayPlusCaptureFrameNestedOuter`. */
   lemma ReplayPlusCaptureFrameNestedOuterLB(bytecode: RB.code, str: string, ov: LOr.OracleView,
-                               lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
-                               cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
+                                            lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                                            cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
-      r.Some? ==> CM.RegsAgreeOutside(r.value.capture_regs, cap,
-                                      PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)))
+            r.Some? ==> CM.RegsAgreeOutside(r.value.capture_regs, cap,
+                                            PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)))
   {
     var dir := LAnc.Backward;
     var rev := R.reverse_regex(body);
@@ -4958,15 +4958,15 @@ module LindenElkMain {
 
   /** LB twin of `ReplayPlusLookFrameNested`. */
   lemma ReplayPlusLookFrameNestedLB(bytecode: RB.code, str: string, ov: LOr.OracleView,
-                               lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
-                               cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
+                                    lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                                    cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
-      r.Some? ==> CM.RegsAgreeOutside(r.value.look_regs, lk, LookIdSet(body))
+            r.Some? ==> CM.RegsAgreeOutside(r.value.look_regs, lk, LookIdSet(body))
   {
     var dir := LAnc.Backward;
     var rev := R.reverse_regex(body);
@@ -4994,15 +4994,15 @@ module LindenElkMain {
 
   /** LB twin of `ReplayPlusLookFrameDirectNested`. */
   lemma ReplayPlusLookFrameDirectNestedLB(bytecode: RB.code, str: string, ov: LOr.OracleView,
-                               lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
-                               cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
+                                          lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                                          cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
-      r.Some? ==> CM.RegsAgreeOutside(r.value.look_regs, lk, DirectLidSet(body))
+            r.Some? ==> CM.RegsAgreeOutside(r.value.look_regs, lk, DirectLidSet(body))
   {
     var dir := LAnc.Backward;
     var rev := R.reverse_regex(body);
@@ -5030,18 +5030,18 @@ module LindenElkMain {
 
   /** LB twin of `ReplayPlusFrameNested`. */
   lemma ReplayPlusFrameNestedLB(bytecode: RB.code, str: string, ov: LOr.OracleView,
-                        lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
-                        cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
+                                lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                                cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
-      r.Some? ==>
-        CM.RegsAgreeOutside(r.value.capture_regs, cap, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)))
-        && CM.RegsAgreeOutside(r.value.look_regs, lk, LookIdSet(body))
-        && QuantRegsFinal(r.value)
+            r.Some? ==>
+              CM.RegsAgreeOutside(r.value.capture_regs, cap, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)))
+              && CM.RegsAgreeOutside(r.value.look_regs, lk, LookIdSet(body))
+              && QuantRegsFinal(r.value)
   {
     var dir := LAnc.Backward;
     var rev := R.reverse_regex(body);
@@ -5063,13 +5063,13 @@ module LindenElkMain {
 
   /** LB twin of `FFindMatchPlusOvStableNested`. */
   lemma FFindMatchPlusOvStableNestedLB(bytecode: RB.code, str: string, ov: LOr.OracleView,
-                               lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
-                               cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
+                                       lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                                       cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     ensures AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).1 == ov
   {
     var dir := LAnc.Backward;
@@ -5092,8 +5092,8 @@ module LindenElkMain {
 
   /** LB twin of `ReplayThreadWfLANested`. */
   lemma ReplayThreadWfLBNested(bytecode: RB.code, str: string, cp: int, cap: AReg.Regs, lk: AReg.Regs,
-                         qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
-                         body: R.regex, ncap: int, nlook: int, nquant: int)
+                               qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
+                               body: R.regex, ncap: int, nlook: int, nquant: int)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires 0 <= cp <= |str|
@@ -5103,7 +5103,7 @@ module LindenElkMain {
     requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     ensures
       var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
       result.Some? ==> CM.ThreadRegsWf(result.value, ncap, nlook, nquant)
@@ -5131,16 +5131,16 @@ module LindenElkMain {
 
   /** LB twin of `ReplayLookCpOkNested`. */
   lemma ReplayLookCpOkNestedLB(bytecode: RB.code, str: string, ov: LOr.OracleView,
-                             lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
-                             cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
+                               lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                               cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires 0 <= cp <= |str|
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires CM.LookCpsLE(lk, |str|)
     ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
-      r.Some? ==> CM.LookCpsLE(r.value.look_regs, |str|)
+            r.Some? ==> CM.LookCpsLE(r.value.look_regs, |str|)
   {
     var dir := LAnc.Backward;
     var rev := R.reverse_regex(body);
@@ -5165,18 +5165,18 @@ module LindenElkMain {
 
   /** LB twin of `ReplayCapAgreeFresh` (the register-value-blind bisimulation, Backward). */
   lemma ReplayCapAgreeFreshLBNested(bodycode: RB.code, str: string, cp: int, cap: AReg.Regs, lk: AReg.Regs,
-                              qt: AReg.Regs, ov: LOr.OracleView, cdns: LCdn.cdns, body: R.regex,
-                              ncap: int, nlook: int, nquant: int)
+                                    qt: AReg.Regs, ov: LOr.OracleView, cdns: LCdn.cdns, body: R.regex,
+                                    ncap: int, nlook: int, nquant: int)
     requires 0 <= cp <= |str|
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
     requires CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     ensures var ctxc := AI.cp_context(cp, str, LAnc.Backward);
             var ra := AI.FFindMatch(bodycode, str,
-                        AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Backward, cdns).0;
+                                    AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Backward, cdns).0;
             var rf := AI.FFindMatch(bodycode, str,
-                        AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                      AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Backward, cdns).0;
+                                    AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                  AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Backward, cdns).0;
             (ra.None? <==> rf.None?)
             && (ra.Some? ==> CM.RegsAgreeInside(ra.value.capture_regs, rf.value.capture_regs, PIV.CaptureRegs(body)))
   {
@@ -5197,23 +5197,23 @@ module LindenElkMain {
 
   /** LB twin of `ReplayLidCapAgreeFreshNested`. */
   lemma ReplayLidCapAgreeFreshNestedLB(bytecode: RB.code, str: string, cp: int, cap: AReg.Regs, lk: AReg.Regs,
-                               qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
-                               body: R.regex, ncap: int, nlook: int, nquant: int)
+                                       qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
+                                       body: R.regex, ncap: int, nlook: int, nquant: int)
     requires NR.NestedFragmentRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires 0 <= cp <= |str|
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
     ensures
       var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
       var rf := AI.FFindMatch(bytecode, str,
-                  AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
-                  ov, LAnc.Backward, lookcdn).0;
+                              AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                            AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
+                              ov, LAnc.Backward, lookcdn).0;
       (result.None? <==> rf.None?)
       && (result.Some? ==> CM.RegsAgreeInside(result.value.capture_regs, rf.value.capture_regs, PIV.CaptureRegs(body)))
   {
@@ -5234,24 +5234,24 @@ module LindenElkMain {
 
   /** LB twin of `ReplayLidLookAgreeFreshNested`. */
   lemma ReplayLidLookAgreeFreshNestedLB(bytecode: RB.code, str: string, cp: int, cap: AReg.Regs, lk: AReg.Regs,
-                                      qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
-                                      body: R.regex, SL: set<int>, ncap: int, nlook: int, nquant: int)
+                                        qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
+                                        body: R.regex, SL: set<int>, ncap: int, nlook: int, nquant: int)
     requires NR.NestedFragmentRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires 0 <= cp <= |str|
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires |cap.a_cp| == ncap && |cap.a_clk| == ncap
     requires CM.RegsAgreeInside(lk, AReg.init_regs(nlook), SL)
     ensures
       var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
       var rf := AI.FFindMatch(bytecode, str,
-                  AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
-                  ov, LAnc.Backward, lookcdn).0;
+                              AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                            AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
+                              ov, LAnc.Backward, lookcdn).0;
       (result.None? <==> rf.None?)
       && (result.Some? ==>
             CM.RegsAgreeInside(result.value.look_regs, rf.value.look_regs, SL))
@@ -5274,7 +5274,7 @@ module LindenElkMain {
     assert CM.VmRelLk(inits, sf, {}, {}, SL) by {
       assert CM.ThreadRelLk(AI.init_thread(cap, lk, qt),
                             AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant)),
-                            {}, {}, SL) by {
+    {}, {}, SL) by {
         assert CM.RegsAgreeInside(cap, AReg.init_regs(ncap), {});
         assert CM.RegsAgreeInside(qt, AReg.init_regs(nquant), {});
         assert CM.RegsAgreeInside(lk, AReg.init_regs(nlook), SL);
@@ -5285,24 +5285,24 @@ module LindenElkMain {
 
   /** LB twin of `ReplayLidQuantAgreeFreshNested`. */
   lemma ReplayLidQuantAgreeFreshNestedLB(bytecode: RB.code, str: string, cp: int, cap: AReg.Regs, lk: AReg.Regs,
-                                       qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
-                                       body: R.regex, ncap: int, nlook: int, nquant: int)
+                                         qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
+                                         body: R.regex, ncap: int, nlook: int, nquant: int)
     requires NR.NestedFragmentRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires 0 <= cp <= |str|
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires |cap.a_cp| == ncap && |cap.a_clk| == ncap
     requires CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body))
     ensures
       var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
       var rf := AI.FFindMatch(bytecode, str,
-                  AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
-                  ov, LAnc.Backward, lookcdn).0;
+                              AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                            AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
+                              ov, LAnc.Backward, lookcdn).0;
       (result.None? <==> rf.None?)
       && (result.Some? ==>
             CM.RegsAgreeInside(result.value.quant_regs, rf.value.quant_regs, LKC.QIdsInt(body)))
@@ -5325,7 +5325,7 @@ module LindenElkMain {
     assert CM.VmRel(inits, sf, {}, LKC.QIdsInt(body)) by {
       assert CM.ThreadRel(AI.init_thread(cap, lk, qt),
                           AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant)),
-                          {}, LKC.QIdsInt(body)) by {
+    {}, LKC.QIdsInt(body)) by {
         assert CM.RegsAgreeInside(cap, AReg.init_regs(ncap), {});
         assert CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body));
       }
@@ -5346,15 +5346,15 @@ module LindenElkMain {
 
   /** LB twin of `ReplayPlusQuantFrameNestedOuter`. */
   lemma ReplayPlusQuantFrameNestedOuterLB(bytecode: RB.code, str: string, ov: LOr.OracleView,
-                               lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
-                               cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
+                                          lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                                          cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
-      r.Some? ==> CM.RegsAgreeOutside(r.value.quant_regs, qt, QIdsOuter(body))
+            r.Some? ==> CM.RegsAgreeOutside(r.value.quant_regs, qt, QIdsOuter(body))
   {
     var dir := LAnc.Backward;
     var rev := R.reverse_regex(body);
@@ -5406,16 +5406,16 @@ module LindenElkMain {
     requires 0 <= cp <= |str|
     requires AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires |cap.a_cp| == ncap && |cap.a_clk| == ncap
     requires CM.RegsAgreeInside(lk, AReg.init_regs(nlook), SL)
     ensures
       var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Forward, cp, cap, lk, qt, 0, lookcdn).0;
       var rf := AI.FFindMatch(bytecode, str,
-                  AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
-                  ov, LAnc.Forward, lookcdn).0;
+                              AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                            AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                              ov, LAnc.Forward, lookcdn).0;
       (result.None? <==> rf.None?)
       && (result.Some? ==>
             CM.RegsAgreeInside(result.value.look_regs, rf.value.look_regs, SL))
@@ -5436,7 +5436,7 @@ module LindenElkMain {
     assert CM.VmRelLk(inits, sf, {}, {}, SL) by {
       assert CM.ThreadRelLk(AI.init_thread(cap, lk, qt),
                             AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant)),
-                            {}, {}, SL) by {
+    {}, {}, SL) by {
         assert CM.RegsAgreeInside(cap, AReg.init_regs(ncap), {});
         assert CM.RegsAgreeInside(qt, AReg.init_regs(nquant), {});
         assert CM.RegsAgreeInside(lk, AReg.init_regs(nlook), SL);
@@ -5461,15 +5461,15 @@ module LindenElkMain {
     requires 0 <= cp <= |str|
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
     ensures
       var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
       var rf := AI.FFindMatch(bytecode, str,
-                  AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
-                  ov, LAnc.Backward, lookcdn).0;
+                              AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                            AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
+                              ov, LAnc.Backward, lookcdn).0;
       (result.None? <==> rf.None?)
       && (result.Some? ==> CM.RegsAgreeInside(result.value.capture_regs, rf.value.capture_regs, PIV.CaptureRegs(body)))
   {
@@ -5503,10 +5503,10 @@ module LindenElkMain {
     requires 0 <= cp <= |str|
     requires AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp)
     ensures var rf := AI.FFindMatch(bytecode, str,
-                        AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                      AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
-                        ov, LAnc.Forward, cdn).0;
-      rf.Some? ==> CM.ThreadRegsWf(rf.value, ncap, nlook, nquant)
+                                    AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                  AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                                    ov, LAnc.Forward, cdn).0;
+            rf.Some? ==> CM.ThreadRegsWf(rf.value, ncap, nlook, nquant)
   {
     var dir := LAnc.Forward;
     var ctx := AI.cp_context(cp, str, dir);
@@ -5537,10 +5537,10 @@ module LindenElkMain {
     requires 0 <= cp <= |str|
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
     ensures var rf := AI.FFindMatch(bytecode, str,
-                        AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                      AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
-                        ov, LAnc.Backward, cdn).0;
-      rf.Some? ==> CM.ThreadRegsWf(rf.value, ncap, nlook, nquant)
+                                    AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                  AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
+                                    ov, LAnc.Backward, cdn).0;
+            rf.Some? ==> CM.ThreadRegsWf(rf.value, ncap, nlook, nquant)
   {
     var dir := LAnc.Backward;
     var ctx := AI.cp_context(cp, str, dir);
@@ -5568,7 +5568,7 @@ module LindenElkMain {
     requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     ensures
       var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Forward, cp, cap, lk, qt, 0, lookcdn).0;
       result.Some? ==> CM.ThreadRegsWf(result.value, ncap, nlook, nquant)
@@ -5608,7 +5608,7 @@ module LindenElkMain {
     requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     ensures
       var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
       result.Some? ==> CM.ThreadRegsWf(result.value, ncap, nlook, nquant)
@@ -5661,8 +5661,8 @@ module LindenElkMain {
     requires inits.blocked == [] && inits.bestmatch.None?
     requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
     ensures result.Some? ==>
-      forall l: int :: AReg.get_cp(result.value.look_regs, l).Some? ==>
-        cp_ctx_ok(crv, str, result.value.look_regs, l)
+              forall l: int :: AReg.get_cp(result.value.look_regs, l).Some? ==>
+                                 cp_ctx_ok(crv, str, result.value.look_regs, l)
   {
     // fresh init threads have all look cps == -1 <= |str|
     assert CM.VmLookCpOk(inits, |str|) by {
@@ -5704,8 +5704,8 @@ module LindenElkMain {
     requires inits.blocked == [] && inits.bestmatch.None?
     requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
     ensures result.Some? ==>
-      forall l: int :: AReg.get_cp(result.value.look_regs, l).Some? ==>
-        AI.get_idx(result.value.look_regs.a_clk, l) >= 0
+              forall l: int :: AReg.get_cp(result.value.look_regs, l).Some? ==>
+                                 AI.get_idx(result.value.look_regs.a_clk, l) >= 0
   {
     // fresh init threads have every look cp == -1, so the implication is vacuous
     assert CM.VmLookClkSet(inits) by {
@@ -5745,7 +5745,7 @@ module LindenElkMain {
     requires inits.blocked == [] && inits.bestmatch.None?
     requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
     ensures var S := set q: nat | q in PIV.QuantIdsOutsideLooks(re) :: q as int;
-      result.Some? ==> CM.RegsAgreeOutside(result.value.quant_regs, quant, S)
+            result.Some? ==> CM.RegsAgreeOutside(result.value.quant_regs, quant, S)
   {
     var S := set q: nat | q in PIV.QuantIdsOutsideLooks(re) :: q as int;
     assert CM.QuantWritesInside(code, S) by {
@@ -5787,7 +5787,7 @@ module LindenElkMain {
     requires inits.blocked == [] && inits.bestmatch.None?
     requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
     ensures var Sc := PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(re));
-      result.Some? ==> CM.RegsAgreeOutside(result.value.capture_regs, cap, Sc)
+            result.Some? ==> CM.RegsAgreeOutside(result.value.capture_regs, cap, Sc)
   {
     var Sc := PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(re));
     assert CM.CaptureWritesInside(code, Sc) by {
@@ -5817,8 +5817,8 @@ module LindenElkMain {
       `GmOfLive(body, rf)` is confined to the body's OUTER groups
       (`GmOfLiveInsideLookAbsent`), which `LkReplayMatchesSpecNested` covers. */
   lemma MainMatchInsideCapsInitNested(re: R.regex, code: RB.code, endl: nat, str: string,
-                                inits: AI.VmState, cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
-                                ov: LOr.OracleView, cdn: LCdn.cdns, result: Option<AI.Thread>)
+                                      inits: AI.VmState, cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+                                      ov: LOr.OracleView, cdn: LCdn.cdns, result: Option<AI.Thread>)
     requires NR.NestedFragmentRE(re) && PIV.CapUnique(re)
     requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
     requires NR.GetPcRE(code, endl) == Some(RB.Accept)
@@ -5828,7 +5828,7 @@ module LindenElkMain {
     requires inits.blocked == [] && inits.bestmatch.None?
     requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
     ensures var Sc := PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(re));
-      result.Some? ==> CM.RegsAgreeOutside(result.value.capture_regs, cap, Sc)
+            result.Some? ==> CM.RegsAgreeOutside(result.value.capture_regs, cap, Sc)
   {
     var Sc := PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(re));
     assert CM.CaptureWritesInside(code, Sc) by {
@@ -5896,8 +5896,8 @@ module LindenElkMain {
     requires l in qm.looks && qm.looks[l] == (lkr, r1)
     requires LL.OracleOkAt(rer, qm, PIV.InpOfCp(str, AI.get_idx(lk.a_cp, l) as nat))
     ensures var inpl := PIV.InpOfCp(str, AI.get_idx(lk.a_cp, l) as nat);
-      LT.TreeRes(FU.ComputeTr(rer, [LS.Areg(r1)], inpl, LG.Empty, L.LkDir(lkr)),
-                 LG.Empty, inpl, L.LkDir(lkr)).Some?
+            LT.TreeRes(FU.ComputeTr(rer, [LS.Areg(r1)], inpl, LG.Empty, L.LkDir(lkr)),
+                       LG.Empty, inpl, L.LkDir(lkr)).Some?
   {
     var cp := AI.get_idx(lk.a_cp, l) as nat;          // 0 <= cp <= |str| (LookCpsLE)
     var inpl := PIV.InpOfCp(str, cp);
@@ -5930,7 +5930,7 @@ module LindenElkMain {
     ensures (t.LK? && t.lk == lk
              && EL.LkGateOk(rer, lk, r1, inp, t.tlk, true)
              && EL.BoolTreeLk(rer, acts[1..], inp, b, t.t))
-         || (t.LKFail? && t.lk == lk && EL.LkGateOk(rer, lk, r1, inp, t.tlk, false))
+            || (t.LKFail? && t.lk == lk && EL.LkGateOk(rer, lk, r1, inp, t.tlk, false))
   {
     // unfold the gate case: the match on `t` admits only LK / LKFail
   }
@@ -6003,39 +6003,39 @@ module LindenElkMain {
       a lookahead (`requires`, discharged by the caller for lookahead-capturing
       regexes; capture-free lookbehinds are L1 and can be admitted later). */
   lemma {:isolate_assertions} FLookLoopValueLift(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
-                           cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
-                           mainast: R.regex, S: set<int>, ncap: int, nlook: int, nquant: int)
+                                                 cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                                                 mainast: R.regex, S: set<int>, ncap: int, nlook: int, nquant: int)
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires NR.LookBehindFragmentRE(mainast) && PIV.QuantUnique(mainast)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
     requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
-      exists la: R.lookaround, body: R.regex ::
-        LTB.LookEntryOk(crv, l, la, body)
-        && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
-        && PIV.CapUnique(body) && PIV.QuantUnique(body)
-        && PIV.CaptureRegs(body) <= S
-        && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(mainast))
-        && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
+                                exists la: R.lookaround, body: R.regex ::
+                                  LTB.LookEntryOk(crv, l, la, body)
+                                  && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+                                  && PIV.CapUnique(body) && PIV.QuantUnique(body)
+                                  && PIV.CaptureRegs(body) <= S
+                                  && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(mainast))
+                                  && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
     // NOTE (L3a full fragment): NO lookahead-only requires. A capturing body is
     // necessarily a positive forward lookahead (fragment), and capture-free
     // positive lookbehinds are stepped through as the identity below -- so the
     // value lift holds for the whole fragment (lookbehinds included).
     // each matched body's own registers are UNSET in the incoming `cap`
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
-      CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(VBody(crv, l)))
+                                CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(VBody(crv, l)))
     // distinct matched lids write DISJOINT capture registers
     requires forall l1: int, l2: int ::
-      lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 != l2
-      && AReg.get_cp(lk, l1).Some? && AReg.get_cp(lk, l2).Some? ==>
-      PIV.CaptureRegs(VBody(crv, l1)) * PIV.CaptureRegs(VBody(crv, l2)) == {}
+               lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 != l2
+               && AReg.get_cp(lk, l1).Some? && AReg.get_cp(lk, l2).Some? ==>
+                 PIV.CaptureRegs(VBody(crv, l1)) * PIV.CaptureRegs(VBody(crv, l2)) == {}
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==> cp_ctx_ok(crv, str, lk, l)
     ensures var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
-      |res.0.a_cp| == ncap && |res.0.a_clk| == ncap && PIV.CapRegWf(res.0)
-      && FLookLoopValueOk(crv, str, res.0, lid, maxlook, lk, ov, ncap, nlook, nquant)
+            |res.0.a_cp| == ncap && |res.0.a_clk| == ncap && PIV.CapRegWf(res.0)
+            && FLookLoopValueOk(crv, str, res.0, lid, maxlook, lk, ov, ncap, nlook, nquant)
     decreases maxlook - lid
   {
     var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
@@ -6081,171 +6081,50 @@ module LindenElkMain {
         // capture_type(la) holds => la is Lookahead (positive forward, may
         // capture) or Lookbehind (capture-free -> the identity on captures).
         if la.Lookahead? {
-        assert dir == LAnc.Forward && CP.capture_regex(la, body) == body;
-        assert bytecode == CP.compile_to_bytecode(body);
-        FFindMatchPlusOvStable(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
-        assert ov1 == ov;
-        ReplayPlusFrame(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
-        assert CM.RegsAgreeOutside(capN, cap, PIV.CaptureRegs(body)) && lkN == lk;
-        assert (forall k :: AI.get_idx(qtN.a_cp, k) < 0) && (forall k :: AI.get_idx(qtN.a_clk, k) >= -1);
-        ReplayThreadWfLA(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant);
-        assert |capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN)
-            && |qtN.a_cp| == nquant && |qtN.a_clk| == nquant by {
-          if result.Some? { assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant); }
-        }
-
-        // ---- value at lid: result ~ rfLid on CaptureRegs(body) ----
-        assert cp_ctx_ok(crv, str, lk, lid);
-        assert 0 <= cp <= |str| && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp);
-        ReplayLidCapAgreeFresh(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant);
-        FreshMatchWf(bytecode, str, cp, ov, lookcdn, body, ncap, nlook, nquant);
-        var rfLid := FreshBodyMatch(crv, str, lid, lk, ov, ncap, nlook, nquant);
-        var rf := AI.FFindMatch(bytecode, str,
-                    AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                  AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
-                    ov, LAnc.Forward, lookcdn).0;
-        assert rfLid == rf;                      // VBody(lid)==body, cdn==lookcdn, cp matches
-
-        // ---- suffix bundle at S' = S - CaptureRegs(body); frame ----
-        var Sp := S - PIV.CaptureRegs(body);
-        assert forall l: int :: next <= l <= maxlook && AReg.get_cp(lkN, l).Some? ==>
-          exists la2: R.lookaround, body2: R.regex ::
-            LTB.LookEntryOk(crv, l, la2, body2)
-            && NR.LookFreeRE(body2) && NR.PlusFragmentRE(body2)
-            && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
-            && PIV.CaptureRegs(body2) <= Sp
-            && (forall q: nat :: q in PIV.QuantIds(body2) ==> q in PIV.QuantIdsInLooks(mainast))
-            && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
-        by {
-          forall l: int | next <= l <= maxlook && AReg.get_cp(lkN, l).Some?
-            ensures exists la2: R.lookaround, body2: R.regex ::
-              LTB.LookEntryOk(crv, l, la2, body2)
-              && NR.LookFreeRE(body2) && NR.PlusFragmentRE(body2)
-              && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
-              && PIV.CaptureRegs(body2) <= Sp
-              && (forall q: nat :: q in PIV.QuantIds(body2) ==> q in PIV.QuantIdsInLooks(mainast))
-              && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
-          {
-            assert AReg.get_cp(lk, l).Some?;
-            var la2: R.lookaround, body2: R.regex :|
-              LTB.LookEntryOk(crv, l, la2, body2)
-              && NR.LookFreeRE(body2) && NR.PlusFragmentRE(body2)
-              && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
-              && PIV.CaptureRegs(body2) <= S
-              && (forall q: nat :: q in PIV.QuantIds(body2) ==> q in PIV.QuantIdsInLooks(mainast))
-              && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2));
-            assert body2 == VBody(crv, l) && body == VBody(crv, lid);
-            assert PIV.CaptureRegs(VBody(crv, l)) * PIV.CaptureRegs(VBody(crv, lid)) == {};   // pairwise
-            assert PIV.CaptureRegs(body2) * PIV.CaptureRegs(body) == {};
-            assert PIV.CaptureRegs(body2) <= Sp by {
-              forall k: int | k in PIV.CaptureRegs(body2) ensures k in Sp {
-                assert k in S;
-                assert k !in PIV.CaptureRegs(body) by {
-                  if k in PIV.CaptureRegs(body) { assert k in PIV.CaptureRegs(body2) * PIV.CaptureRegs(body); }
-                }
-              }
-            }
-          }
-        }
-        // ---- IH at [next] with capN (per-body-unset preserved by disjointness) ----
-        assert forall l: int :: next <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
-          CM.RegsAgreeInside(capN, AReg.init_regs(ncap), PIV.CaptureRegs(VBody(crv, l)))
-        by {
-          forall l: int | next <= l <= maxlook && AReg.get_cp(lk, l).Some?
-            ensures CM.RegsAgreeInside(capN, AReg.init_regs(ncap), PIV.CaptureRegs(VBody(crv, l)))
-          {
-            assert body == VBody(crv, lid);
-            assert PIV.CaptureRegs(VBody(crv, l)) * PIV.CaptureRegs(VBody(crv, lid)) == {};   // pairwise
-            assert PIV.CaptureRegs(VBody(crv, l)) * PIV.CaptureRegs(body) == {};
-            assert CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(VBody(crv, l)));   // per-body-unset
-            forall k: int | k in PIV.CaptureRegs(VBody(crv, l))
-              ensures AI.get_idx(capN.a_cp, k) == AI.get_idx(AReg.init_regs(ncap).a_cp, k)
-                   && AI.get_idx(capN.a_clk, k) == AI.get_idx(AReg.init_regs(ncap).a_clk, k)
-            {
-              assert k !in PIV.CaptureRegs(body) by {
-                if k in PIV.CaptureRegs(body) { assert k in PIV.CaptureRegs(VBody(crv, l)) * PIV.CaptureRegs(body); }
-              }
-              assert AI.get_idx(capN.a_cp, k) == AI.get_idx(cap.a_cp, k);   // capN ~ cap off body
-            }
-          }
-        }
-        FLookLoopValueLift(crv, str, next, maxlook, capN, lkN, qtN, ov1, mainast, S, ncap, nlook, nquant);
-        assert FLookLoopValueOk(crv, str, res.0, next, maxlook, lk, ov, ncap, nlook, nquant);
-        assert |res.0.a_cp| == ncap && |res.0.a_clk| == ncap;   // from the IH ensures
-
-        // ---- frame: res.0 == capN on CaptureRegs(body) (suffix writes disjoint regs) ----
-        FLookLoopCaptureFrame(crv, str, next, maxlook, capN, lkN, qtN, ov1, mainast, Sp);
-        assert CM.RegsAgreeOutside(res.0, capN, Sp);
-        assert forall k: int :: k in PIV.CaptureRegs(body) ==> k !in Sp;
-        RegsAgreeOutsideToInside(res.0, capN, PIV.CaptureRegs(body), Sp);
-        assert CM.RegsAgreeInside(res.0, capN, PIV.CaptureRegs(body));
-
-        // ---- assemble FLookLoopValueOk for [lid] ----
-        forall l: int | lid <= l <= maxlook && MatchedPosLA(crv, lk, l)
-          ensures var rf2 := FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
-                  (rf2.Some? ==> CM.RegsAgreeInside(res.0, rf2.value.capture_regs, PIV.CaptureRegs(VBody(crv, l))))
-                  && (rf2.None? ==> CM.RegsAgreeInside(res.0, AReg.init_regs(ncap), PIV.CaptureRegs(VBody(crv, l))))
-        {
-          if l == lid {
-            if rfLid.Some? {
-              assert result.Some? && CM.RegsAgreeInside(result.value.capture_regs, rf.value.capture_regs, PIV.CaptureRegs(body));
-              assert CM.RegsAgreeInside(res.0, rfLid.value.capture_regs, PIV.CaptureRegs(body));
-            } else {
-              assert result.None? && capN == cap;
-              assert CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body));   // per-body-unset(lid)
-              assert CM.RegsAgreeInside(res.0, AReg.init_regs(ncap), PIV.CaptureRegs(body));
-            }
-          }
-        }
-        } else {
-          // ---- CAPTURING positive LOOKBEHIND (L3b): the backward capture replay,
-          //      value-lifted exactly like the lookahead branch but with the
-          //      lookbehind frames/bisimulation over compile_to_bytecode(reverse_regex(body)). ----
-          assert la.Lookbehind?;
-          assert dir == LAnc.Backward && CP.capture_regex(la, body) == R.reverse_regex(body);
-          assert bytecode == CP.compile_to_bytecode(R.reverse_regex(body));
-          assert cp_ctx_ok(crv, str, lk, lid);
-          assert 0 <= cp <= |str|;
-          assert AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1);
-          FFindMatchPlusOvStableLB(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+          assert dir == LAnc.Forward && CP.capture_regex(la, body) == body;
+          assert bytecode == CP.compile_to_bytecode(body);
+          FFindMatchPlusOvStable(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
           assert ov1 == ov;
-          ReplayPlusFrameLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
+          ReplayPlusFrame(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
           assert CM.RegsAgreeOutside(capN, cap, PIV.CaptureRegs(body)) && lkN == lk;
           assert (forall k :: AI.get_idx(qtN.a_cp, k) < 0) && (forall k :: AI.get_idx(qtN.a_clk, k) >= -1);
-          ReplayThreadWfLB(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant);
+          ReplayThreadWfLA(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant);
           assert |capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN)
-              && |qtN.a_cp| == nquant && |qtN.a_clk| == nquant by {
+                 && |qtN.a_cp| == nquant && |qtN.a_clk| == nquant by {
             if result.Some? { assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant); }
           }
 
-          // ---- value at lid: result ~ rf on CaptureRegs(body) (backward bisimulation) ----
-          ReplayLidCapAgreeFreshLB(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant);
+          // ---- value at lid: result ~ rfLid on CaptureRegs(body) ----
+          assert cp_ctx_ok(crv, str, lk, lid);
+          assert 0 <= cp <= |str| && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp);
+          ReplayLidCapAgreeFresh(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant);
+          FreshMatchWf(bytecode, str, cp, ov, lookcdn, body, ncap, nlook, nquant);
           var rfLid := FreshBodyMatch(crv, str, lid, lk, ov, ncap, nlook, nquant);
           var rf := AI.FFindMatch(bytecode, str,
-                      AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                    AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
-                      ov, LAnc.Backward, lookcdn).0;
-          assert rfLid == rf;                      // FreshBodyMatch(lid) dispatches to this backward run
+                                  AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                                  ov, LAnc.Forward, lookcdn).0;
+          assert rfLid == rf;                      // VBody(lid)==body, cdn==lookcdn, cp matches
 
-          // ---- suffix bundle at S' = S - CaptureRegs(body); frame (direction-independent) ----
+          // ---- suffix bundle at S' = S - CaptureRegs(body); frame ----
           var Sp := S - PIV.CaptureRegs(body);
           assert forall l: int :: next <= l <= maxlook && AReg.get_cp(lkN, l).Some? ==>
-            exists la2: R.lookaround, body2: R.regex ::
-              LTB.LookEntryOk(crv, l, la2, body2)
-              && NR.LookFreeRE(body2) && NR.PlusFragmentRE(body2)
-              && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
-              && PIV.CaptureRegs(body2) <= Sp
-              && (forall q: nat :: q in PIV.QuantIds(body2) ==> q in PIV.QuantIdsInLooks(mainast))
-              && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
+                                    exists la2: R.lookaround, body2: R.regex ::
+                                      LTB.LookEntryOk(crv, l, la2, body2)
+                                      && NR.LookFreeRE(body2) && NR.PlusFragmentRE(body2)
+                                      && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
+                                      && PIV.CaptureRegs(body2) <= Sp
+                                      && (forall q: nat :: q in PIV.QuantIds(body2) ==> q in PIV.QuantIdsInLooks(mainast))
+                                      && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
           by {
             forall l: int | next <= l <= maxlook && AReg.get_cp(lkN, l).Some?
               ensures exists la2: R.lookaround, body2: R.regex ::
-                LTB.LookEntryOk(crv, l, la2, body2)
-                && NR.LookFreeRE(body2) && NR.PlusFragmentRE(body2)
-                && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
-                && PIV.CaptureRegs(body2) <= Sp
-                && (forall q: nat :: q in PIV.QuantIds(body2) ==> q in PIV.QuantIdsInLooks(mainast))
-                && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
+                        LTB.LookEntryOk(crv, l, la2, body2)
+                        && NR.LookFreeRE(body2) && NR.PlusFragmentRE(body2)
+                        && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
+                        && PIV.CaptureRegs(body2) <= Sp
+                        && (forall q: nat :: q in PIV.QuantIds(body2) ==> q in PIV.QuantIdsInLooks(mainast))
+                        && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
             {
               assert AReg.get_cp(lk, l).Some?;
               var la2: R.lookaround, body2: R.regex :|
@@ -6270,7 +6149,7 @@ module LindenElkMain {
           }
           // ---- IH at [next] with capN (per-body-unset preserved by disjointness) ----
           assert forall l: int :: next <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
-            CM.RegsAgreeInside(capN, AReg.init_regs(ncap), PIV.CaptureRegs(VBody(crv, l)))
+                                    CM.RegsAgreeInside(capN, AReg.init_regs(ncap), PIV.CaptureRegs(VBody(crv, l)))
           by {
             forall l: int | next <= l <= maxlook && AReg.get_cp(lk, l).Some?
               ensures CM.RegsAgreeInside(capN, AReg.init_regs(ncap), PIV.CaptureRegs(VBody(crv, l)))
@@ -6281,7 +6160,128 @@ module LindenElkMain {
               assert CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(VBody(crv, l)));   // per-body-unset
               forall k: int | k in PIV.CaptureRegs(VBody(crv, l))
                 ensures AI.get_idx(capN.a_cp, k) == AI.get_idx(AReg.init_regs(ncap).a_cp, k)
-                     && AI.get_idx(capN.a_clk, k) == AI.get_idx(AReg.init_regs(ncap).a_clk, k)
+                        && AI.get_idx(capN.a_clk, k) == AI.get_idx(AReg.init_regs(ncap).a_clk, k)
+              {
+                assert k !in PIV.CaptureRegs(body) by {
+                  if k in PIV.CaptureRegs(body) { assert k in PIV.CaptureRegs(VBody(crv, l)) * PIV.CaptureRegs(body); }
+                }
+                assert AI.get_idx(capN.a_cp, k) == AI.get_idx(cap.a_cp, k);   // capN ~ cap off body
+              }
+            }
+          }
+          FLookLoopValueLift(crv, str, next, maxlook, capN, lkN, qtN, ov1, mainast, S, ncap, nlook, nquant);
+          assert FLookLoopValueOk(crv, str, res.0, next, maxlook, lk, ov, ncap, nlook, nquant);
+          assert |res.0.a_cp| == ncap && |res.0.a_clk| == ncap;   // from the IH ensures
+
+          // ---- frame: res.0 == capN on CaptureRegs(body) (suffix writes disjoint regs) ----
+          FLookLoopCaptureFrame(crv, str, next, maxlook, capN, lkN, qtN, ov1, mainast, Sp);
+          assert CM.RegsAgreeOutside(res.0, capN, Sp);
+          assert forall k: int :: k in PIV.CaptureRegs(body) ==> k !in Sp;
+          RegsAgreeOutsideToInside(res.0, capN, PIV.CaptureRegs(body), Sp);
+          assert CM.RegsAgreeInside(res.0, capN, PIV.CaptureRegs(body));
+
+          // ---- assemble FLookLoopValueOk for [lid] ----
+          forall l: int | lid <= l <= maxlook && MatchedPosLA(crv, lk, l)
+            ensures var rf2 := FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
+                    (rf2.Some? ==> CM.RegsAgreeInside(res.0, rf2.value.capture_regs, PIV.CaptureRegs(VBody(crv, l))))
+                    && (rf2.None? ==> CM.RegsAgreeInside(res.0, AReg.init_regs(ncap), PIV.CaptureRegs(VBody(crv, l))))
+          {
+            if l == lid {
+              if rfLid.Some? {
+                assert result.Some? && CM.RegsAgreeInside(result.value.capture_regs, rf.value.capture_regs, PIV.CaptureRegs(body));
+                assert CM.RegsAgreeInside(res.0, rfLid.value.capture_regs, PIV.CaptureRegs(body));
+              } else {
+                assert result.None? && capN == cap;
+                assert CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body));   // per-body-unset(lid)
+                assert CM.RegsAgreeInside(res.0, AReg.init_regs(ncap), PIV.CaptureRegs(body));
+              }
+            }
+          }
+        } else {
+          // ---- CAPTURING positive LOOKBEHIND (L3b): the backward capture replay,
+          //      value-lifted exactly like the lookahead branch but with the
+          //      lookbehind frames/bisimulation over compile_to_bytecode(reverse_regex(body)). ----
+          assert la.Lookbehind?;
+          assert dir == LAnc.Backward && CP.capture_regex(la, body) == R.reverse_regex(body);
+          assert bytecode == CP.compile_to_bytecode(R.reverse_regex(body));
+          assert cp_ctx_ok(crv, str, lk, lid);
+          assert 0 <= cp <= |str|;
+          assert AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1);
+          FFindMatchPlusOvStableLB(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body);
+          assert ov1 == ov;
+          ReplayPlusFrameLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
+          assert CM.RegsAgreeOutside(capN, cap, PIV.CaptureRegs(body)) && lkN == lk;
+          assert (forall k :: AI.get_idx(qtN.a_cp, k) < 0) && (forall k :: AI.get_idx(qtN.a_clk, k) >= -1);
+          ReplayThreadWfLB(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant);
+          assert |capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN)
+                 && |qtN.a_cp| == nquant && |qtN.a_clk| == nquant by {
+            if result.Some? { assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant); }
+          }
+
+          // ---- value at lid: result ~ rf on CaptureRegs(body) (backward bisimulation) ----
+          ReplayLidCapAgreeFreshLB(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant);
+          var rfLid := FreshBodyMatch(crv, str, lid, lk, ov, ncap, nlook, nquant);
+          var rf := AI.FFindMatch(bytecode, str,
+                                  AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
+                                  ov, LAnc.Backward, lookcdn).0;
+          assert rfLid == rf;                      // FreshBodyMatch(lid) dispatches to this backward run
+
+          // ---- suffix bundle at S' = S - CaptureRegs(body); frame (direction-independent) ----
+          var Sp := S - PIV.CaptureRegs(body);
+          assert forall l: int :: next <= l <= maxlook && AReg.get_cp(lkN, l).Some? ==>
+                                    exists la2: R.lookaround, body2: R.regex ::
+                                      LTB.LookEntryOk(crv, l, la2, body2)
+                                      && NR.LookFreeRE(body2) && NR.PlusFragmentRE(body2)
+                                      && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
+                                      && PIV.CaptureRegs(body2) <= Sp
+                                      && (forall q: nat :: q in PIV.QuantIds(body2) ==> q in PIV.QuantIdsInLooks(mainast))
+                                      && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
+          by {
+            forall l: int | next <= l <= maxlook && AReg.get_cp(lkN, l).Some?
+              ensures exists la2: R.lookaround, body2: R.regex ::
+                        LTB.LookEntryOk(crv, l, la2, body2)
+                        && NR.LookFreeRE(body2) && NR.PlusFragmentRE(body2)
+                        && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
+                        && PIV.CaptureRegs(body2) <= Sp
+                        && (forall q: nat :: q in PIV.QuantIds(body2) ==> q in PIV.QuantIdsInLooks(mainast))
+                        && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
+            {
+              assert AReg.get_cp(lk, l).Some?;
+              var la2: R.lookaround, body2: R.regex :|
+                LTB.LookEntryOk(crv, l, la2, body2)
+                && NR.LookFreeRE(body2) && NR.PlusFragmentRE(body2)
+                && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
+                && PIV.CaptureRegs(body2) <= S
+                && (forall q: nat :: q in PIV.QuantIds(body2) ==> q in PIV.QuantIdsInLooks(mainast))
+                && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2));
+              assert body2 == VBody(crv, l) && body == VBody(crv, lid);
+              assert PIV.CaptureRegs(VBody(crv, l)) * PIV.CaptureRegs(VBody(crv, lid)) == {};   // pairwise
+              assert PIV.CaptureRegs(body2) * PIV.CaptureRegs(body) == {};
+              assert PIV.CaptureRegs(body2) <= Sp by {
+                forall k: int | k in PIV.CaptureRegs(body2) ensures k in Sp {
+                  assert k in S;
+                  assert k !in PIV.CaptureRegs(body) by {
+                    if k in PIV.CaptureRegs(body) { assert k in PIV.CaptureRegs(body2) * PIV.CaptureRegs(body); }
+                  }
+                }
+              }
+            }
+          }
+          // ---- IH at [next] with capN (per-body-unset preserved by disjointness) ----
+          assert forall l: int :: next <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
+                                    CM.RegsAgreeInside(capN, AReg.init_regs(ncap), PIV.CaptureRegs(VBody(crv, l)))
+          by {
+            forall l: int | next <= l <= maxlook && AReg.get_cp(lk, l).Some?
+              ensures CM.RegsAgreeInside(capN, AReg.init_regs(ncap), PIV.CaptureRegs(VBody(crv, l)))
+            {
+              assert body == VBody(crv, lid);
+              assert PIV.CaptureRegs(VBody(crv, l)) * PIV.CaptureRegs(VBody(crv, lid)) == {};   // pairwise
+              assert PIV.CaptureRegs(VBody(crv, l)) * PIV.CaptureRegs(body) == {};
+              assert CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(VBody(crv, l)));   // per-body-unset
+              forall k: int | k in PIV.CaptureRegs(VBody(crv, l))
+                ensures AI.get_idx(capN.a_cp, k) == AI.get_idx(AReg.init_regs(ncap).a_cp, k)
+                        && AI.get_idx(capN.a_clk, k) == AI.get_idx(AReg.init_regs(ncap).a_clk, k)
               {
                 assert k !in PIV.CaptureRegs(body) by {
                   if k in PIV.CaptureRegs(body) { assert k in PIV.CaptureRegs(VBody(crv, l)) * PIV.CaptureRegs(body); }
@@ -6329,8 +6329,8 @@ module LindenElkMain {
   ghost predicate FLookLoopQuantValueOk(crv: CP.FCompiled, str: string, res2: AReg.Regs, lid: int, maxlook: int,
                                         lk: AReg.Regs, ov: LOr.OracleView, ncap: int, nlook: int, nquant: int) {
     forall l: int :: lid <= l <= maxlook && MatchedPosLA(crv, lk, l) ==>
-      var rf := FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
-      rf.Some? ==> CM.RegsAgreeInside(res2, rf.value.quant_regs, LKC.QIdsInt(VBody(crv, l)))
+                       var rf := FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
+                       rf.Some? ==> CM.RegsAgreeInside(res2, rf.value.quant_regs, LKC.QIdsInt(VBody(crv, l)))
   }
 
   /** `l == lid` is not a matched positive lookahead, so the quant value map
@@ -6363,16 +6363,16 @@ module LindenElkMain {
     requires 0 <= cp <= |str|
     requires AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires |cap.a_cp| == ncap && |cap.a_clk| == ncap
     requires CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body))
     ensures
       var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Forward, cp, cap, lk, qt, 0, lookcdn).0;
       var rf := AI.FFindMatch(bytecode, str,
-                  AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
-                  ov, LAnc.Forward, lookcdn).0;
+                              AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                            AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                              ov, LAnc.Forward, lookcdn).0;
       (result.None? <==> rf.None?)
       && (result.Some? ==>
             CM.RegsAgreeInside(result.value.quant_regs, rf.value.quant_regs, LKC.QIdsInt(body)))
@@ -6393,7 +6393,7 @@ module LindenElkMain {
     assert CM.VmRel(inits, sf, {}, LKC.QIdsInt(body)) by {
       assert CM.ThreadRel(AI.init_thread(cap, lk, qt),
                           AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant)),
-                          {}, LKC.QIdsInt(body)) by {
+    {}, LKC.QIdsInt(body)) by {
         assert CM.RegsAgreeInside(cap, AReg.init_regs(ncap), {});
         assert CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body));
       }
@@ -6415,16 +6415,16 @@ module LindenElkMain {
     requires 0 <= cp <= |str|
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires |cap.a_cp| == ncap && |cap.a_clk| == ncap
     requires CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body))
     ensures
       var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
       var rf := AI.FFindMatch(bytecode, str,
-                  AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
-                  ov, LAnc.Backward, lookcdn).0;
+                              AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                            AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
+                              ov, LAnc.Backward, lookcdn).0;
       (result.None? <==> rf.None?)
       && (result.Some? ==>
             CM.RegsAgreeInside(result.value.quant_regs, rf.value.quant_regs, LKC.QIdsInt(body)))
@@ -6450,7 +6450,7 @@ module LindenElkMain {
     assert CM.VmRel(inits, sf, {}, LKC.QIdsInt(body)) by {
       assert CM.ThreadRel(AI.init_thread(cap, lk, qt),
                           AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant)),
-                          {}, LKC.QIdsInt(body)) by {
+    {}, LKC.QIdsInt(body)) by {
         assert CM.RegsAgreeInside(cap, AReg.init_regs(ncap), {});
         assert CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body));
       }
@@ -6470,9 +6470,9 @@ module LindenElkMain {
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
-      r.Some? ==> CM.RegsAgreeOutside(r.value.quant_regs, qt, LKC.QIdsInt(body))
+            r.Some? ==> CM.RegsAgreeOutside(r.value.quant_regs, qt, LKC.QIdsInt(body))
   {
     var rev := R.reverse_regex(body);
     PIV.ReversePlusFragment(body);
@@ -6506,37 +6506,37 @@ module LindenElkMain {
       bank enters through its LENGTH alone (the `Sc == {}` bridge), so none of
       the capture-side bookkeeping is re-threaded. */
   lemma {:isolate_assertions} FLookLoopQuantValueLift(
-                           crv: CP.FCompiled, str: string, lid: int, maxlook: int,
-                           cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
-                           mainast: R.regex, Sq: set<int>, ncap: int, nlook: int, nquant: int)
+    crv: CP.FCompiled, str: string, lid: int, maxlook: int,
+    cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+    mainast: R.regex, Sq: set<int>, ncap: int, nlook: int, nquant: int)
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires NR.LookBehindFragmentRE(mainast) && PIV.QuantUnique(mainast)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
     requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
-      exists la: R.lookaround, body: R.regex ::
-        LTB.LookEntryOk(crv, l, la, body)
-        && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
-        && PIV.CapUnique(body) && PIV.QuantUnique(body)
-        && LKC.QIdsInt(body) <= Sq
-        && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
+                                exists la: R.lookaround, body: R.regex ::
+                                  LTB.LookEntryOk(crv, l, la, body)
+                                  && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+                                  && PIV.CapUnique(body) && PIV.QuantUnique(body)
+                                  && LKC.QIdsInt(body) <= Sq
+                                  && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
     // each matched body's own quant slots are INITIAL in the incoming bank
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
-      CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(VBody(crv, l)))
+                                CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(VBody(crv, l)))
     // distinct matched lids own DISJOINT quant ids
     requires forall l1: int, l2: int ::
-      lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 != l2
-      && AReg.get_cp(lk, l1).Some? && AReg.get_cp(lk, l2).Some? ==>
-      LKC.QIdsInt(VBody(crv, l1)) * LKC.QIdsInt(VBody(crv, l2)) == {}
+               lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 != l2
+               && AReg.get_cp(lk, l1).Some? && AReg.get_cp(lk, l2).Some? ==>
+                 LKC.QIdsInt(VBody(crv, l1)) * LKC.QIdsInt(VBody(crv, l2)) == {}
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==> cp_ctx_ok(crv, str, lk, l)
     ensures var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
-      |res.2.a_cp| == nquant && |res.2.a_clk| == nquant
-      && (forall k :: AI.get_idx(res.2.a_cp, k) < 0)
-      && (forall k :: AI.get_idx(res.2.a_clk, k) >= -1)
-      && FLookLoopQuantValueOk(crv, str, res.2, lid, maxlook, lk, ov, ncap, nlook, nquant)
+            |res.2.a_cp| == nquant && |res.2.a_clk| == nquant
+            && (forall k :: AI.get_idx(res.2.a_cp, k) < 0)
+            && (forall k :: AI.get_idx(res.2.a_clk, k) >= -1)
+            && FLookLoopQuantValueOk(crv, str, res.2, lid, maxlook, lk, ov, ncap, nlook, nquant)
     decreases maxlook - lid
   {
     var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
@@ -6593,7 +6593,7 @@ module LindenElkMain {
           assert (forall k :: AI.get_idx(qtN.a_cp, k) < 0) && (forall k :: AI.get_idx(qtN.a_clk, k) >= -1);
           ReplayThreadWfLA(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant);
           assert |capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN)
-              && |qtN.a_cp| == nquant && |qtN.a_clk| == nquant by {
+                 && |qtN.a_cp| == nquant && |qtN.a_clk| == nquant by {
             if result.Some? { assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant); }
           }
 
@@ -6625,28 +6625,28 @@ module LindenElkMain {
           FreshMatchWf(bytecode, str, cp, ov, lookcdn, body, ncap, nlook, nquant);
           var rfLid := FreshBodyMatch(crv, str, lid, lk, ov, ncap, nlook, nquant);
           var rf := AI.FFindMatch(bytecode, str,
-                      AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                    AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
-                      ov, LAnc.Forward, lookcdn).0;
+                                  AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                                  ov, LAnc.Forward, lookcdn).0;
           assert rfLid == rf;                    // VBody(lid)==body, cdn==lookcdn, cp matches
 
           // ---- suffix bundle at Sq' = Sq - QIdsInt(body) ----
           var Sqp := Sq - LKC.QIdsInt(body);
           assert forall l: int :: next <= l <= maxlook && AReg.get_cp(lkN, l).Some? ==>
-            exists la2: R.lookaround, body2: R.regex ::
-              LTB.LookEntryOk(crv, l, la2, body2)
-              && NR.LookFreeRE(body2) && NR.PlusFragmentRE(body2)
-              && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
-              && LKC.QIdsInt(body2) <= Sqp
-              && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
+                                    exists la2: R.lookaround, body2: R.regex ::
+                                      LTB.LookEntryOk(crv, l, la2, body2)
+                                      && NR.LookFreeRE(body2) && NR.PlusFragmentRE(body2)
+                                      && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
+                                      && LKC.QIdsInt(body2) <= Sqp
+                                      && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
           by {
             forall l: int | next <= l <= maxlook && AReg.get_cp(lkN, l).Some?
               ensures exists la2: R.lookaround, body2: R.regex ::
-                LTB.LookEntryOk(crv, l, la2, body2)
-                && NR.LookFreeRE(body2) && NR.PlusFragmentRE(body2)
-                && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
-                && LKC.QIdsInt(body2) <= Sqp
-                && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
+                        LTB.LookEntryOk(crv, l, la2, body2)
+                        && NR.LookFreeRE(body2) && NR.PlusFragmentRE(body2)
+                        && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
+                        && LKC.QIdsInt(body2) <= Sqp
+                        && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
             {
               assert AReg.get_cp(lk, l).Some?;
               var la2: R.lookaround, body2: R.regex :|
@@ -6670,7 +6670,7 @@ module LindenElkMain {
           }
           // ---- IH entry: per-body quant slots still INITIAL in qtN ----
           assert forall l: int :: next <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
-            CM.RegsAgreeInside(qtN, AReg.init_regs(nquant), LKC.QIdsInt(VBody(crv, l)))
+                                    CM.RegsAgreeInside(qtN, AReg.init_regs(nquant), LKC.QIdsInt(VBody(crv, l)))
           by {
             forall l: int | next <= l <= maxlook && AReg.get_cp(lk, l).Some?
               ensures CM.RegsAgreeInside(qtN, AReg.init_regs(nquant), LKC.QIdsInt(VBody(crv, l)))
@@ -6679,13 +6679,13 @@ module LindenElkMain {
               assert CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(VBody(crv, l)));
               forall k: int | k in LKC.QIdsInt(VBody(crv, l))
                 ensures AI.get_idx(qtN.a_cp, k) == AI.get_idx(AReg.init_regs(nquant).a_cp, k)
-                     && AI.get_idx(qtN.a_clk, k) == AI.get_idx(AReg.init_regs(nquant).a_clk, k)
+                        && AI.get_idx(qtN.a_clk, k) == AI.get_idx(AReg.init_regs(nquant).a_clk, k)
               {
                 assert k !in LKC.QIdsInt(body) by {
                   if k in LKC.QIdsInt(body) { assert k in LKC.QIdsInt(VBody(crv, l)) * LKC.QIdsInt(body); }
                 }
                 assert AI.get_idx(qtN.a_cp, k) == AI.get_idx(qt.a_cp, k)
-                    && AI.get_idx(qtN.a_clk, k) == AI.get_idx(qt.a_clk, k);   // qtN ~ qt off body
+                       && AI.get_idx(qtN.a_clk, k) == AI.get_idx(qt.a_clk, k);   // qtN ~ qt off body
               }
             }
           }
@@ -6713,10 +6713,10 @@ module LindenElkMain {
                 assert CM.RegsAgreeInside(res.2, rfLid.value.quant_regs, LKC.QIdsInt(VBody(crv, l))) by {
                   forall k: int | k in LKC.QIdsInt(body)
                     ensures AI.get_idx(res.2.a_cp, k) == AI.get_idx(rfLid.value.quant_regs.a_cp, k)
-                         && AI.get_idx(res.2.a_clk, k) == AI.get_idx(rfLid.value.quant_regs.a_clk, k)
+                            && AI.get_idx(res.2.a_clk, k) == AI.get_idx(rfLid.value.quant_regs.a_clk, k)
                   {
                     assert AI.get_idx(res.2.a_cp, k) == AI.get_idx(qtN.a_cp, k)
-                        && AI.get_idx(res.2.a_clk, k) == AI.get_idx(qtN.a_clk, k);
+                           && AI.get_idx(res.2.a_clk, k) == AI.get_idx(qtN.a_clk, k);
                   }
                 }
               }
@@ -6737,7 +6737,7 @@ module LindenElkMain {
           assert (forall k :: AI.get_idx(qtN.a_cp, k) < 0) && (forall k :: AI.get_idx(qtN.a_clk, k) >= -1);
           ReplayThreadWfLB(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant);
           assert |capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN)
-              && |qtN.a_cp| == nquant && |qtN.a_clk| == nquant by {
+                 && |qtN.a_cp| == nquant && |qtN.a_clk| == nquant by {
             if result.Some? { assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant); }
           }
 
@@ -6752,28 +6752,28 @@ module LindenElkMain {
           FreshMatchWfLB(bytecode, str, cp, ov, lookcdn, body, ncap, nlook, nquant);
           var rfLid := FreshBodyMatch(crv, str, lid, lk, ov, ncap, nlook, nquant);
           var rf := AI.FFindMatch(bytecode, str,
-                      AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                    AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
-                      ov, LAnc.Backward, lookcdn).0;
+                                  AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
+                                  ov, LAnc.Backward, lookcdn).0;
           assert rfLid == rf;
 
           // ---- suffix bundle at Sq' + IH entry, as in the lookahead branch ----
           var Sqp := Sq - LKC.QIdsInt(body);
           assert forall l: int :: next <= l <= maxlook && AReg.get_cp(lkN, l).Some? ==>
-            exists la2: R.lookaround, body2: R.regex ::
-              LTB.LookEntryOk(crv, l, la2, body2)
-              && NR.LookFreeRE(body2) && NR.PlusFragmentRE(body2)
-              && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
-              && LKC.QIdsInt(body2) <= Sqp
-              && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
+                                    exists la2: R.lookaround, body2: R.regex ::
+                                      LTB.LookEntryOk(crv, l, la2, body2)
+                                      && NR.LookFreeRE(body2) && NR.PlusFragmentRE(body2)
+                                      && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
+                                      && LKC.QIdsInt(body2) <= Sqp
+                                      && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
           by {
             forall l: int | next <= l <= maxlook && AReg.get_cp(lkN, l).Some?
               ensures exists la2: R.lookaround, body2: R.regex ::
-                LTB.LookEntryOk(crv, l, la2, body2)
-                && NR.LookFreeRE(body2) && NR.PlusFragmentRE(body2)
-                && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
-                && LKC.QIdsInt(body2) <= Sqp
-                && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
+                        LTB.LookEntryOk(crv, l, la2, body2)
+                        && NR.LookFreeRE(body2) && NR.PlusFragmentRE(body2)
+                        && PIV.CapUnique(body2) && PIV.QuantUnique(body2)
+                        && LKC.QIdsInt(body2) <= Sqp
+                        && ((la2.NegLookbehind? || la2.NegLookahead?) ==> NR.CaptureFreeRE(body2))
             {
               assert AReg.get_cp(lk, l).Some?;
               var la2: R.lookaround, body2: R.regex :|
@@ -6796,7 +6796,7 @@ module LindenElkMain {
             }
           }
           assert forall l: int :: next <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
-            CM.RegsAgreeInside(qtN, AReg.init_regs(nquant), LKC.QIdsInt(VBody(crv, l)))
+                                    CM.RegsAgreeInside(qtN, AReg.init_regs(nquant), LKC.QIdsInt(VBody(crv, l)))
           by {
             forall l: int | next <= l <= maxlook && AReg.get_cp(lk, l).Some?
               ensures CM.RegsAgreeInside(qtN, AReg.init_regs(nquant), LKC.QIdsInt(VBody(crv, l)))
@@ -6805,13 +6805,13 @@ module LindenElkMain {
               assert CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(VBody(crv, l)));
               forall k: int | k in LKC.QIdsInt(VBody(crv, l))
                 ensures AI.get_idx(qtN.a_cp, k) == AI.get_idx(AReg.init_regs(nquant).a_cp, k)
-                     && AI.get_idx(qtN.a_clk, k) == AI.get_idx(AReg.init_regs(nquant).a_clk, k)
+                        && AI.get_idx(qtN.a_clk, k) == AI.get_idx(AReg.init_regs(nquant).a_clk, k)
               {
                 assert k !in LKC.QIdsInt(body) by {
                   if k in LKC.QIdsInt(body) { assert k in LKC.QIdsInt(VBody(crv, l)) * LKC.QIdsInt(body); }
                 }
                 assert AI.get_idx(qtN.a_cp, k) == AI.get_idx(qt.a_cp, k)
-                    && AI.get_idx(qtN.a_clk, k) == AI.get_idx(qt.a_clk, k);   // qtN ~ qt off body
+                       && AI.get_idx(qtN.a_clk, k) == AI.get_idx(qt.a_clk, k);   // qtN ~ qt off body
               }
             }
           }
@@ -6839,10 +6839,10 @@ module LindenElkMain {
                 assert CM.RegsAgreeInside(res.2, rfLid.value.quant_regs, LKC.QIdsInt(VBody(crv, l))) by {
                   forall k: int | k in LKC.QIdsInt(body)
                     ensures AI.get_idx(res.2.a_cp, k) == AI.get_idx(rfLid.value.quant_regs.a_cp, k)
-                         && AI.get_idx(res.2.a_clk, k) == AI.get_idx(rfLid.value.quant_regs.a_clk, k)
+                            && AI.get_idx(res.2.a_clk, k) == AI.get_idx(rfLid.value.quant_regs.a_clk, k)
                   {
                     assert AI.get_idx(res.2.a_cp, k) == AI.get_idx(qtN.a_cp, k)
-                        && AI.get_idx(res.2.a_clk, k) == AI.get_idx(qtN.a_clk, k);
+                           && AI.get_idx(res.2.a_clk, k) == AI.get_idx(qtN.a_clk, k);
                   }
                 }
               }
@@ -6870,10 +6870,10 @@ module LindenElkMain {
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     ensures var ctxc := AI.cp_context(cp, str, LAnc.Forward);
             var ra := AI.FFindMatch(bodycode, str,
-                        AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
+                                    AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
             var rf := AI.FFindMatch(bodycode, str,
-                        AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                      AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
+                                    AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                  AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
             (ra.None? <==> rf.None?)
             && (ra.Some? ==>
                   CM.RegsAgreeInside(ra.value.capture_regs, rf.value.capture_regs, PIV.CaptureRegs(body))
@@ -6911,16 +6911,16 @@ module LindenElkMain {
     requires 0 <= cp <= |str|
     requires AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
     requires CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body))
     ensures
       var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Forward, cp, cap, lk, qt, 0, lookcdn).0;
       var rf := AI.FFindMatch(bytecode, str,
-                  AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
-                  ov, LAnc.Forward, lookcdn).0;
+                              AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                            AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                              ov, LAnc.Forward, lookcdn).0;
       (result.None? <==> rf.None?)
       && (result.Some? ==>
             CM.RegsAgreeInside(result.value.capture_regs, rf.value.capture_regs, PIV.CaptureRegs(body))
@@ -6956,10 +6956,10 @@ module LindenElkMain {
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     ensures var ctxc := AI.cp_context(cp, str, LAnc.Forward);
             var ra := AI.FFindMatch(bodycode, str,
-                        AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
+                                    AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
             var rf := AI.FFindMatch(bodycode, str,
-                        AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                      AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
+                                    AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                  AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
             (ra.None? <==> rf.None?)
             && (ra.Some? ==> CM.RegsAgreeInside(ra.value.capture_regs, rf.value.capture_regs, PIV.CaptureRegs(body)))
   {
@@ -6993,10 +6993,10 @@ module LindenElkMain {
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     ensures var ctxc := AI.cp_context(cp, str, LAnc.Backward);
             var ra := AI.FFindMatch(bodycode, str,
-                        AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Backward, cdns).0;
+                                    AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Backward, cdns).0;
             var rf := AI.FFindMatch(bodycode, str,
-                        AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                      AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Backward, cdns).0;
+                                    AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                  AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Backward, cdns).0;
             (ra.None? <==> rf.None?)
             && (ra.Some? ==> CM.RegsAgreeInside(ra.value.capture_regs, rf.value.capture_regs, PIV.CaptureRegs(body)))
   {
@@ -7041,10 +7041,10 @@ module LindenElkMain {
             var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Forward);
             var ctxc := AI.cp_context(cp, str, LAnc.Forward);
             var ra := AI.FFindMatch(bodycode, str,
-                        AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
+                                    AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
             var rf := AI.FFindMatch(bodycode, str,
-                        AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                      AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
+                                    AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                  AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
             bestT == LT.FirstLeaf(t, inp)
             && (ra.None? <==> bestT.None?)
             && (ra.Some? ==>
@@ -7089,10 +7089,10 @@ module LindenElkMain {
             var S := LL.LkBodyGroups(T.Translate(body));
             var ctxc := AI.cp_context(cp, str, LAnc.Forward);
             var ra := AI.FFindMatch(bodycode, str,
-                        AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
+                                    AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
             var rf := AI.FFindMatch(bodycode, str,
-                        AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                      AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
+                                    AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                  AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
             // checked-tree first leaf, confined (replaces raw `bestT == FirstLeaf(t)`):
             (bestT.None? <==> LT.FirstLeaf(t, inp).None?)
             && (bestT.Some? ==>
@@ -7119,8 +7119,8 @@ module LindenElkMain {
       to the spec first leaf holds OUTSIDE `S := LkBodyGroups(Translate(body))`.
       A clean composition of the two called lemmas. */
   lemma ReplayCapIsBodyLeafNested(rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code,
-                              endl: nat, ngroups: nat, str: string, cp: nat, cap: AReg.Regs, lk: AReg.Regs,
-                              qt: AReg.Regs, ov: LOr.OracleView, cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
+                                  endl: nat, ngroups: nat, str: string, cp: nat, cap: AReg.Regs, lk: AReg.Regs,
+                                  qt: AReg.Regs, ov: LOr.OracleView, cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
     returns (bestT: Option<LT.Leaf>)
     requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
     requires NR.NegLooksLookFreeRE(body)
@@ -7137,10 +7137,10 @@ module LindenElkMain {
             var S := LL.LkBodyGroups(T.Translate(body));
             var ctxc := AI.cp_context(cp, str, LAnc.Forward);
             var ra := AI.FFindMatch(bodycode, str,
-                        AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
+                                    AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
             var rf := AI.FFindMatch(bodycode, str,
-                        AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                      AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
+                                    AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                  AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
             // checked-tree first leaf, confined (replaces raw `bestT == FirstLeaf(t)`):
             (bestT.None? <==> LT.FirstLeaf(t, inp).None?)
             && (bestT.Some? ==>
@@ -7192,7 +7192,7 @@ module LindenElkMain {
       // unchanged in both) or g' == g in S (so Find(g, .) agrees -> same close).
       forall g' | g' in S
         ensures (g' in LG.GMClose(idx, g, gm1) <==> g' in LG.GMClose(idx, g, gm2))
-             && (g' in LG.GMClose(idx, g, gm1) ==> LG.GMClose(idx, g, gm1)[g'] == LG.GMClose(idx, g, gm2)[g'])
+                && (g' in LG.GMClose(idx, g, gm1) ==> LG.GMClose(idx, g, gm1)[g'] == LG.GMClose(idx, g, gm2)[g'])
       {
         if g' == g {
           assert LG.Find(g, gm1) == LG.Find(g, gm2);   // g in S: maps agree at g
@@ -7618,7 +7618,7 @@ module LindenElkMain {
     assert LL.ConfinedActsRec(acts, S) by {
       forall i | 0 <= i < |acts|
         ensures (acts[i].Areg? ==> LL.DefGroupsIn(acts[i].r, S))
-             && (acts[i].Aclose? ==> acts[i].gid in S)
+                && (acts[i].Aclose? ==> acts[i].gid in S)
       {
         if acts[i].Areg? {
           forall x | x in L.DefGroups(acts[i].r) ensures x in S { DefInAllDefsActs(acts, i, x); }
@@ -7641,14 +7641,14 @@ module LindenElkMain {
     requires g !in (set x | x in AllDefsActs(acts))
     requires g !in PendingCloses(acts)
     ensures LFS.ComputeTree(rer, acts, inp, gm, dir, fuel).Some?
-         ==> GNotWritten(LFS.ComputeTree(rer, acts, inp, gm, dir, fuel).value, g)
+            ==> GNotWritten(LFS.ComputeTree(rer, acts, inp, gm, dir, fuel).value, g)
   {
     var S := (set x | x in AllDefsActs(acts)) + PendingCloses(acts);
     assert g !in S;
     assert LL.ConfinedActsRec(acts, S) by {
       forall i | 0 <= i < |acts|
         ensures (acts[i].Areg? ==> LL.DefGroupsIn(acts[i].r, S))
-             && (acts[i].Aclose? ==> acts[i].gid in S)
+                && (acts[i].Aclose? ==> acts[i].gid in S)
       {
         if acts[i].Areg? {
           forall x | x in L.DefGroups(acts[i].r) ensures x in S { DefInAllDefsActs(acts, i, x); }
@@ -7674,7 +7674,7 @@ module LindenElkMain {
     requires GNotWritten(t1, g)
     requires LT.TreeRes(LT.LK(lk, tlk, t1), gm, inp, dir).Some?
     ensures LG.Find(g, LT.TreeRes(LT.LK(lk, tlk, t1), gm, inp, dir).value.1)
-            == LG.Find(g, LT.TreeRes(tlk, gm, inp, L.LkDir(lk)).value.1)
+         == LG.Find(g, LT.TreeRes(tlk, gm, inp, L.LkDir(lk)).value.1)
   {
     // node Some ==> sub Some (else the node is None); the node value is
     // TreeRes(t1, sub.value.1, inp, dir), and t1 never rewrites g.
@@ -7730,7 +7730,7 @@ module LindenElkMain {
       TreeResGmFrameRec(t, gm1, gm2, inp, dir, {});   // None-iff: gm2 side Some too
       forall h | h != g
         ensures LG.Find(h, LT.TreeRes(t, gm1, inp, dir).value.1)
-                == LG.Find(h, LT.TreeRes(t, gm2, inp, dir).value.1)
+             == LG.Find(h, LT.TreeRes(t, gm2, inp, dir).value.1)
       {
         TreeResGValueFramed(t, gm1, gm2, inp, dir, h);
       }
@@ -7780,9 +7780,9 @@ module LindenElkMain {
     ensures (LT.TreeRes(t, gm1, inp, dir).None? <==> LT.TreeRes(t, gm2, inp, dir).None?)
     ensures LT.TreeRes(t, gm1, inp, dir).Some? ==>
               LG.Find(g, LT.TreeRes(t, gm1, inp, dir).value.1)
-                == LG.Find(g, LT.TreeRes(t, gm2, inp, dir).value.1)
-           || (LG.Find(g, LT.TreeRes(t, gm1, inp, dir).value.1) == LG.Find(g, gm1)
-               && LG.Find(g, LT.TreeRes(t, gm2, inp, dir).value.1) == LG.Find(g, gm2))
+              == LG.Find(g, LT.TreeRes(t, gm2, inp, dir).value.1)
+              || (LG.Find(g, LT.TreeRes(t, gm1, inp, dir).value.1) == LG.Find(g, gm1)
+                  && LG.Find(g, LT.TreeRes(t, gm2, inp, dir).value.1) == LG.Find(g, gm2))
     decreases t
   {
     TreeResGmFrameRec(t, gm1, gm2, inp, dir, {});   // None-iff + end position
@@ -7874,7 +7874,7 @@ module LindenElkMain {
     requires LT.TreeRes(LT.LK(lk, tlk, t1), gm, inp, dir).Some?
     ensures LT.TreeRes(tlk, LG.Empty, inp, L.LkDir(lk)).Some?
     ensures LG.Find(g, LT.TreeRes(LT.LK(lk, tlk, t1), gm, inp, dir).value.1)
-            == LG.Find(g, LT.TreeRes(tlk, LG.Empty, inp, L.LkDir(lk)).value.1)
+         == LG.Find(g, LT.TreeRes(tlk, LG.Empty, inp, L.LkDir(lk)).value.1)
   {
     // node Some (positive lk) ==> sub Some at `gm`; framing carries Some to Empty.
     assert LT.TreeRes(tlk, gm, inp, L.LkDir(lk)).Some?;
@@ -7921,16 +7921,16 @@ module LindenElkMain {
       the R3b `TreeResLkNodeGValue` reasoning inlined and recurses into the
       CONTINUATION only. */
   lemma TreeResGSpineValue(t: LT.Tree, gm: LG.GroupMap, inp: LC.Input, dir: WP.Direction, g: LG.GroupId)
-      returns (found: bool, lk: L.Lookaround, tsub: LT.Tree, gmo: LG.GroupMap, inpo: LC.Input)
+    returns (found: bool, lk: L.Lookaround, tsub: LT.Tree, gmo: LG.GroupMap, inpo: LC.Input)
     requires GWriteOnlyInLooks(t, g)
     requires LT.TreeRes(t, gm, inp, dir).Some?
     ensures found ==> tsub < t
     ensures !found ==> LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1) == LG.Find(g, gm)
     ensures found ==>
-        L.Positivity(lk)
-        && LT.TreeRes(tsub, gmo, inpo, L.LkDir(lk)).Some?
-        && LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1)
-           == LG.Find(g, LT.TreeRes(tsub, gmo, inpo, L.LkDir(lk)).value.1)
+              L.Positivity(lk)
+              && LT.TreeRes(tsub, gmo, inpo, L.LkDir(lk)).Some?
+              && LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1)
+                 == LG.Find(g, LT.TreeRes(tsub, gmo, inpo, L.LkDir(lk)).value.1)
     decreases t
   {
     match t
@@ -8103,18 +8103,18 @@ module LindenElkMain {
       pass-through invariant `Find(g, threaded gm) == Find(g, gm)` is maintained
       because we only thread through subtrees proven `GNotWritten(_, g)`. */
   lemma TreeResGOwnerDescent(t: LT.Tree, gm: LG.GroupMap, inp: LC.Input, dir: WP.Direction, g: LG.GroupId)
-      returns (found: bool, lk: L.Lookaround, tsub: LT.Tree, gmo: LG.GroupMap, inpo: LC.Input)
+    returns (found: bool, lk: L.Lookaround, tsub: LT.Tree, gmo: LG.GroupMap, inpo: LC.Input)
     requires GOwnerWF(t, g)
     requires LT.TreeRes(t, gm, inp, dir).Some?
     ensures found ==> tsub < t
     ensures found ==> LG.Find(g, gmo) == LG.Find(g, gm)   // g unwritten before the owner
     ensures !found ==> LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1) == LG.Find(g, gm)
     ensures found ==>
-        L.Positivity(lk)
-        && !GWriteOnlyInLooks(tsub, g)
-        && LT.TreeRes(tsub, gmo, inpo, L.LkDir(lk)).Some?
-        && LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1)
-           == LG.Find(g, LT.TreeRes(tsub, gmo, inpo, L.LkDir(lk)).value.1)
+              L.Positivity(lk)
+              && !GWriteOnlyInLooks(tsub, g)
+              && LT.TreeRes(tsub, gmo, inpo, L.LkDir(lk)).Some?
+              && LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1)
+                 == LG.Find(g, LT.TreeRes(tsub, gmo, inpo, L.LkDir(lk)).value.1)
     decreases t
   {
     match t
@@ -8192,18 +8192,18 @@ module LindenElkMain {
       spec half of `recon_inner`'s per-`g` obligation; (2b) must identify `tsub` with
       `ComputeTr(Translate(LookBodyOfRE(body, owner)))` at the engine cp of `inpo`. */
   lemma TreeResGOwnerFresh(t: LT.Tree, gm: LG.GroupMap, inp: LC.Input, dir: WP.Direction, g: LG.GroupId)
-      returns (found: bool, lk: L.Lookaround, tsub: LT.Tree, gmo: LG.GroupMap, inpo: LC.Input)
+    returns (found: bool, lk: L.Lookaround, tsub: LT.Tree, gmo: LG.GroupMap, inpo: LC.Input)
     requires GOwnerWF(t, g)
     requires LT.TreeRes(t, gm, inp, dir).Some?
     requires LG.Find(g, gm) == None
     ensures found ==> tsub < t
     ensures !found ==> LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1) == None
     ensures found ==>
-        L.Positivity(lk)
-        && !GWriteOnlyInLooks(tsub, g)
-        && LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk)).Some?
-        && LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1)
-           == LG.Find(g, LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk)).value.1)
+              L.Positivity(lk)
+              && !GWriteOnlyInLooks(tsub, g)
+              && LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk)).Some?
+              && LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1)
+                 == LG.Find(g, LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk)).value.1)
   {
     found, lk, tsub, gmo, inpo := TreeResGOwnerDescent(t, gm, inp, dir, g);
     if found {
@@ -8351,18 +8351,18 @@ module LindenElkMain {
       deeper-recurse branch re-enters the outer context via the
       `GBodyOKSpineImpliesOwnerWF2` bridge. */
   lemma TreeResGOwnerDescentV(t: LT.Tree, gm: LG.GroupMap, inp: LC.Input, dir: WP.Direction, g: LG.GroupId)
-      returns (found: bool, lk: L.Lookaround, tsub: LT.Tree, gmo: LG.GroupMap, inpo: LC.Input)
+    returns (found: bool, lk: L.Lookaround, tsub: LT.Tree, gmo: LG.GroupMap, inpo: LC.Input)
     requires GOwnerWF2(t, g)
     requires LT.TreeRes(t, gm, inp, dir).Some?
     ensures found ==> tsub < t
     ensures found ==> LG.Find(g, gmo) == LG.Find(g, gm)
     ensures !found ==> LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1) == LG.Find(g, gm)
     ensures found ==>
-        L.Positivity(lk)
-        && !GWriteOnlyInLooks(tsub, g)
-        && LT.TreeRes(tsub, gmo, inpo, L.LkDir(lk)).Some?
-        && LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1)
-           == LG.Find(g, LT.TreeRes(tsub, gmo, inpo, L.LkDir(lk)).value.1)
+              L.Positivity(lk)
+              && !GWriteOnlyInLooks(tsub, g)
+              && LT.TreeRes(tsub, gmo, inpo, L.LkDir(lk)).Some?
+              && LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1)
+                 == LG.Find(g, LT.TreeRes(tsub, gmo, inpo, L.LkDir(lk)).value.1)
     decreases t
   {
     match t
@@ -8434,18 +8434,18 @@ module LindenElkMain {
       `Empty`-map `TreeRes` value at `g`, at the descent-recorded position `inpo` —
       the SPEC half of `recon_inner` at GENERAL branching body structure. */
   lemma TreeResGOwnerFreshV(t: LT.Tree, gm: LG.GroupMap, inp: LC.Input, dir: WP.Direction, g: LG.GroupId)
-      returns (found: bool, lk: L.Lookaround, tsub: LT.Tree, gmo: LG.GroupMap, inpo: LC.Input)
+    returns (found: bool, lk: L.Lookaround, tsub: LT.Tree, gmo: LG.GroupMap, inpo: LC.Input)
     requires GOwnerWF2(t, g)
     requires LT.TreeRes(t, gm, inp, dir).Some?
     requires LG.Find(g, gm) == None
     ensures found ==> tsub < t
     ensures !found ==> LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1) == None
     ensures found ==>
-        L.Positivity(lk)
-        && !GWriteOnlyInLooks(tsub, g)
-        && LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk)).Some?
-        && LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1)
-           == LG.Find(g, LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk)).value.1)
+              L.Positivity(lk)
+              && !GWriteOnlyInLooks(tsub, g)
+              && LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk)).Some?
+              && LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1)
+                 == LG.Find(g, LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk)).value.1)
   {
     found, lk, tsub, gmo, inpo := TreeResGOwnerDescentV(t, gm, inp, dir, g);
     if found {
@@ -8692,7 +8692,7 @@ module LindenElkMain {
     requires g !in OuterDefsActs(act)
     requires GNQActs(act, g)
     ensures LFS.ComputeTree(rer, act, inp, gm, dir, fuel).Some?
-         ==> GWriteOnlyInLooks(LFS.ComputeTree(rer, act, inp, gm, dir, fuel).value, g)
+            ==> GWriteOnlyInLooks(LFS.ComputeTree(rer, act, inp, gm, dir, fuel).value, g)
     decreases fuel
   {
     if fuel == 0 || |act| == 0 { return; }
@@ -8847,7 +8847,7 @@ module LindenElkMain {
     assert acts[0] == x && forall i :: 1 <= i < |acts| ==> acts[i] == cont[i - 1];
     forall y
       ensures (y in PendingCloses(acts))
-          <==> (y in (if x.Aclose? then {x.gid} + PendingCloses(cont) else PendingCloses(cont)))
+         <==> (y in (if x.Aclose? then {x.gid} + PendingCloses(cont) else PendingCloses(cont)))
     {
       if y in PendingCloses(acts) {
         var i :| 0 <= i < |acts| && acts[i].Aclose? && acts[i].gid == y;
@@ -8884,7 +8884,7 @@ module LindenElkMain {
     requires GNQActs(act, g)
     requires GOnceInv(act, g)
     ensures LFS.ComputeTree(rer, act, inp, gm, dir, fuel).Some?
-         ==> GBodyOK(LFS.ComputeTree(rer, act, inp, gm, dir, fuel).value, g)
+            ==> GBodyOK(LFS.ComputeTree(rer, act, inp, gm, dir, fuel).value, g)
     decreases fuel
   {
     if fuel == 0 || |act| == 0 { return; }
@@ -9096,7 +9096,7 @@ module LindenElkMain {
       pinning threaded through the regex-tracking descent. */
   lemma OuterLeafGOwnerSubtree(rer: LW.RegExpRecord, r: L.Regex, inp: LC.Input, gm: LG.GroupMap,
                                dir: WP.Direction, g: LG.GroupId)
-      returns (found: bool, lk: L.Lookaround, tsub: LT.Tree, gmo: LG.GroupMap, inpo: LC.Input)
+    returns (found: bool, lk: L.Lookaround, tsub: LT.Tree, gmo: LG.GroupMap, inpo: LC.Input)
     requires EL.PikeLkRegexRec(r)
     requires GNotUnderQuantL(r, g)
     requires g !in DefGroupsOutsideLooksL(r)
@@ -9327,7 +9327,7 @@ module LindenElkMain {
       because the owner look is at the action head). */
   lemma ComputeTrOwnerNamedActs(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input,
                                 gm: LG.GroupMap, dir: WP.Direction, g: LG.GroupId)
-      returns (found: bool, lk0: L.Lookaround, rr: L.Regex, inpo: LC.Input, gmo: LG.GroupMap)
+    returns (found: bool, lk0: L.Lookaround, rr: L.Regex, inpo: LC.Input, gmo: LG.GroupMap)
     requires EL.PikeLkActionsRec(acts)
     requires GNQActs(acts, g)
     requires GOnceInv(acts, g)
@@ -9335,17 +9335,17 @@ module LindenElkMain {
     requires LG.Find(g, gm) == None
     requires LT.TreeRes(LFU.ComputeTr(rer, acts, inp, gm, dir), gm, inp, dir).Some?
     ensures var t := LFU.ComputeTr(rer, acts, inp, gm, dir);
-      (!found ==> LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1) == None)
-      && (found ==> SubLkBodyActs(acts, rr))       // rr is a look body of a pending Areg
-      && (found ==>
-            L.Positivity(lk0)
-            && EL.PikeLkRegexRec(rr)
-            && g in DefGroupsOutsideLooksL(rr)          // g DIRECTLY captured in the owner body
-            && gmo == LG.Empty
-            && var tsub := LFU.ComputeTr(rer, [LS.Areg(rr)], inpo, gmo, L.LkDir(lk0));
-               LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk0)).Some?
-               && LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1)
-                  == LG.Find(g, LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk0)).value.1))
+            (!found ==> LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1) == None)
+            && (found ==> SubLkBodyActs(acts, rr))       // rr is a look body of a pending Areg
+            && (found ==>
+                  L.Positivity(lk0)
+                  && EL.PikeLkRegexRec(rr)
+                  && g in DefGroupsOutsideLooksL(rr)          // g DIRECTLY captured in the owner body
+                  && gmo == LG.Empty
+                  && var tsub := LFU.ComputeTr(rer, [LS.Areg(rr)], inpo, gmo, L.LkDir(lk0));
+                  LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk0)).Some?
+                  && LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1)
+                     == LG.Find(g, LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk0)).value.1))
     decreases LFS.ActionsFuel(acts, inp, dir)
   {
     found, lk0, rr, inpo, gmo := false, L.LookAhead, L.Epsilon, inp, gm;   // !found default
@@ -9680,7 +9680,7 @@ module LindenElkMain {
       (innermost owner) look body, or nowhere. */
   lemma ComputeTrOwnerNamed(rer: LW.RegExpRecord, r: L.Regex, inp: LC.Input, gm: LG.GroupMap,
                             dir: WP.Direction, g: LG.GroupId)
-      returns (found: bool, lk0: L.Lookaround, rr: L.Regex, inpo: LC.Input, gmo: LG.GroupMap)
+    returns (found: bool, lk0: L.Lookaround, rr: L.Regex, inpo: LC.Input, gmo: LG.GroupMap)
     requires EL.PikeLkRegexRec(r)
     requires GNotUnderQuantL(r, g)
     requires g !in DefGroupsOutsideLooksL(r)
@@ -9688,17 +9688,17 @@ module LindenElkMain {
     requires LG.Find(g, gm) == None
     requires LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(r)], inp, gm, dir), gm, inp, dir).Some?
     ensures var t := LFU.ComputeTr(rer, [LS.Areg(r)], inp, gm, dir);
-      (!found ==> LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1) == None)
-      && (found ==> SubLkBody(r, rr))              // rr is a look body of r
-      && (found ==>
-            L.Positivity(lk0)
-            && EL.PikeLkRegexRec(rr)
-            && g in DefGroupsOutsideLooksL(rr)          // g DIRECTLY captured in the owner body
-            && gmo == LG.Empty
-            && var tsub := LFU.ComputeTr(rer, [LS.Areg(rr)], inpo, gmo, L.LkDir(lk0));
-               LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk0)).Some?
-               && LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1)
-                  == LG.Find(g, LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk0)).value.1))
+            (!found ==> LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1) == None)
+            && (found ==> SubLkBody(r, rr))              // rr is a look body of r
+            && (found ==>
+                  L.Positivity(lk0)
+                  && EL.PikeLkRegexRec(rr)
+                  && g in DefGroupsOutsideLooksL(rr)          // g DIRECTLY captured in the owner body
+                  && gmo == LG.Empty
+                  && var tsub := LFU.ComputeTr(rer, [LS.Areg(rr)], inpo, gmo, L.LkDir(lk0));
+                  LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk0)).Some?
+                  && LG.Find(g, LT.TreeRes(t, gm, inp, dir).value.1)
+                     == LG.Find(g, LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk0)).value.1))
   {
     var acts := [LS.Areg(r)];
     assert EL.PikeLkActionsRec(acts) by { EL.PikeLkActionsRecConsIff(LS.Areg(r), []); }
@@ -9721,7 +9721,7 @@ module LindenElkMain {
       remaining side conditions are `ComputeTrOwnerNamed`'s. */
   lemma OuterLeafInnerGEqOwnerBody(rer: LW.RegExpRecord, body: R.regex, g: nat,
                                    inp: LC.Input, gm: LG.GroupMap)
-      returns (found: bool, owner: nat, lk0: L.Lookaround, inpo: LC.Input)
+    returns (found: bool, owner: nat, lk0: L.Lookaround, inpo: LC.Input)
     requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
     requires PIV.CapUnique(body) && LTB.LookUnique(body)
     requires GNotUnderQuantL(T.Translate(body), g)
@@ -9734,14 +9734,14 @@ module LindenElkMain {
     ensures g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(body, owner))
     ensures T.TransWf(NI.LookBodyOfRE(body, owner))
     ensures var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, gm, WP.Forward);
-      (!found ==> LG.Find(g, LT.TreeRes(t, gm, inp, WP.Forward).value.1) == None)
-      && (found ==>
-            L.Positivity(lk0)
-            && var owb := T.Translate(NI.LookBodyOfRE(body, owner));
-               var tsub := LFU.ComputeTr(rer, [LS.Areg(owb)], inpo, LG.Empty, L.LkDir(lk0));
-               LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk0)).Some?
-               && LG.Find(g, LT.TreeRes(t, gm, inp, WP.Forward).value.1)
-                  == LG.Find(g, LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk0)).value.1))
+            (!found ==> LG.Find(g, LT.TreeRes(t, gm, inp, WP.Forward).value.1) == None)
+            && (found ==>
+                  L.Positivity(lk0)
+                  && var owb := T.Translate(NI.LookBodyOfRE(body, owner));
+                  var tsub := LFU.ComputeTr(rer, [LS.Areg(owb)], inpo, LG.Empty, L.LkDir(lk0));
+                  LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk0)).Some?
+                  && LG.Find(g, LT.TreeRes(t, gm, inp, WP.Forward).value.1)
+                     == LG.Find(g, LT.TreeRes(tsub, LG.Empty, inpo, L.LkDir(lk0)).value.1))
   {
     var tr := T.Translate(body);
     // g sits inside a look of body; get the innermost DIRECT owner.
@@ -9794,7 +9794,7 @@ module LindenElkMain {
     match t
     case LK(lk2, tlk, tc) =>
       assert lk2 == lk && EL.LkGateOk(rer, lk, r1, inp, tlk, true)
-          && EL.BoolTreeLk(rer, [], inp, BS.CanExit, tc);
+             && EL.BoolTreeLk(rer, [], inp, BS.CanExit, tc);
       assert tlk == tbody;                                   // LkGateOk: tlk == ComputeTr([Areg(r1)],..)
       assert tc == LT.Match;                                 // BoolTreeLk on empty cont
       assert LS.LkResult(lk, tbody, LG.Empty, inp).Some?;    // LkGateOk ok == true
@@ -9895,7 +9895,7 @@ module LindenElkMain {
     assert LT.TreeRes(tInner, LG.Empty, inp, WP.Forward).Some?;
     assert LT.TreeRes(tbody, LG.Empty, inp, L.LkDir(lk_i)).Some?;
     assert LG.Find(g, LT.TreeRes(tInner, LG.Empty, inp, WP.Forward).value.1)
-           == LG.Find(g, LT.TreeRes(tbody, LG.Empty, inp, L.LkDir(lk_i)).value.1);
+        == LG.Find(g, LT.TreeRes(tbody, LG.Empty, inp, L.LkDir(lk_i)).value.1);
 
     // ---- OUTER layer: unfold the outer look, then peel it --------------------
     // LkDir(lk_o) == Forward, so ComputeTrSingleLookUnfold's `tbody` is exactly tInner.
@@ -9906,7 +9906,7 @@ module LindenElkMain {
     TreeResLkNodeGValueFresh(lk_o, tInner, LT.Match, LG.Empty, inp, WP.Forward, g);
     // TreeResLkNodeGValueFresh: outer leaf at g == tInner leaf at LkDir(lk_o) == Forward.
     assert LG.Find(g, LT.TreeRes(t, LG.Empty, inp, WP.Forward).value.1)
-           == LG.Find(g, LT.TreeRes(tInner, LG.Empty, inp, WP.Forward).value.1);
+        == LG.Find(g, LT.TreeRes(tInner, LG.Empty, inp, WP.Forward).value.1);
   }
 
   /** R30b (2b) chain shape: `r` is a LINEAR nest of POSITIVE forward lookaheads
@@ -10001,7 +10001,7 @@ module LindenElkMain {
       ChainOuterLeafIsOwnerBody(rer, r1, inp, g);              // on ComputeTr([Areg(r1)],..) == tbody
       assert LT.TreeRes(tcore, LG.Empty, inp, WP.Forward).Some?;
       assert LG.Find(g, LT.TreeRes(tbody, LG.Empty, inp, WP.Forward).value.1)
-             == LG.Find(g, LT.TreeRes(tcore, LG.Empty, inp, WP.Forward).value.1);
+          == LG.Find(g, LT.TreeRes(tcore, LG.Empty, inp, WP.Forward).value.1);
       // peel THIS layer: outer leaf at g == tbody leaf at g (LkDir(lk) == Forward).
       TreeResLkNodeGValueFresh(lk, tbody, LT.Match, LG.Empty, inp, WP.Forward, g);
     }
@@ -10125,10 +10125,10 @@ module LindenElkMain {
       `TreeResGmFrame` (spec: `LkResult` at the running gm agrees with the leaf
       at `Empty` on the body's `DefGroups`). */
   lemma LkReplayMatchesSpec(
-      rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat, ngroups: nat,
-      str: string, cp: nat, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
-      cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
-      ncap: int, nlook: int, nquant: int)
+    rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat, ngroups: nat,
+    str: string, cp: nat, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+    cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
+    ncap: int, nlook: int, nquant: int)
     requires PSM.StaticOkRE(qm, body, bodycode, endl)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires qm.ov == ov
@@ -10145,10 +10145,10 @@ module LindenElkMain {
     ensures var inp := PIV.InpOfCp(str, cp);
             var ctxc := AI.cp_context(cp, str, LAnc.Forward);
             var ra := AI.FFindMatch(bodycode, str,
-                        AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
+                                    AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
             var rf := AI.FFindMatch(bodycode, str,
-                        AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                      AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
+                                    AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                  AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
             var S := set g | g in L.DefGroups(T.Translate(body));
             (ra.None? <==> LS.LkResult(T.TrLookaround(la), tlk, gmMain, inp).None?)
             && (ra.Some? ==>
@@ -10204,10 +10204,10 @@ module LindenElkMain {
       this pure composition, exactly as the depth-1 `ReplayCapIsBodyLeafLk`
       boundary noted. */
   lemma LkReplayMatchesSpecNested(
-      rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat, ngroups: nat,
-      str: string, cp: nat, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
-      cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
-      ncap: int, nlook: int, nquant: int)
+    rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat, ngroups: nat,
+    str: string, cp: nat, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+    cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
+    ncap: int, nlook: int, nquant: int)
     requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
     requires NR.NegLooksLookFreeRE(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
@@ -10224,10 +10224,10 @@ module LindenElkMain {
     ensures var inp := PIV.InpOfCp(str, cp);
             var ctxc := AI.cp_context(cp, str, LAnc.Forward);
             var ra := AI.FFindMatch(bodycode, str,
-                        AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
+                                    AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
             var rf := AI.FFindMatch(bodycode, str,
-                        AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                      AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
+                                    AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                  AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
             var S := set g | g in L.DefGroups(T.Translate(body)) && g !in LL.LkBodyGroups(T.Translate(body));
             (ra.None? <==> LS.LkResult(T.TrLookaround(la), tlk, gmMain, inp).None?)
             && (ra.Some? ==>
@@ -10299,11 +10299,11 @@ module LindenElkMain {
       are vacuous (`LkBodyGroups(tr) == {}`), so the full keystone holds
       unconditionally — see `LkReplayMatchesSpecNestedFullBase`. */
   lemma LkReplayMatchesSpecNestedFull(
-      rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat, ngroups: nat,
-      str: string, cp: nat, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
-      cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
-      ncap: int, nlook: int, nquant: int,
-      reccap: AReg.Regs, reclk: AReg.Regs, recqt: AReg.Regs)
+    rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat, ngroups: nat,
+    str: string, cp: nat, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+    cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
+    ncap: int, nlook: int, nquant: int,
+    reccap: AReg.Regs, reclk: AReg.Regs, recqt: AReg.Regs)
     requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
     requires NR.NegLooksLookFreeRE(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
@@ -10321,8 +10321,8 @@ module LindenElkMain {
     // body match (FLookLoop writes registers only inside look bodies).
     requires var ctxc := AI.cp_context(cp, str, LAnc.Forward);
              var rf := AI.FFindMatch(bodycode, str,
-                         AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                       AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
+                                     AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                   AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
              var Sout := set g | g in L.DefGroups(T.Translate(body)) && g !in LL.LkBodyGroups(T.Translate(body));
              rf.Some? ==>
                GmAgreeOn(PIV.GmOfLive(body, reccap, reclk, recqt),
@@ -10332,7 +10332,7 @@ module LindenElkMain {
     requires var inp := PIV.InpOfCp(str, cp);
              var ctxc := AI.cp_context(cp, str, LAnc.Forward);
              var ra := AI.FFindMatch(bodycode, str,
-                         AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
+                                     AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
              ra.Some? ==>
                LS.LkResult(T.TrLookaround(la), tlk, gmMain, inp).Some?
                && GmAgreeOn(LS.LkResult(T.TrLookaround(la), tlk, gmMain, inp).value,
@@ -10340,7 +10340,7 @@ module LindenElkMain {
     ensures var inp := PIV.InpOfCp(str, cp);
             var ctxc := AI.cp_context(cp, str, LAnc.Forward);
             var ra := AI.FFindMatch(bodycode, str,
-                        AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
+                                    AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
             var Sfull := set g | g in L.DefGroups(T.Translate(body));
             (ra.None? <==> LS.LkResult(T.TrLookaround(la), tlk, gmMain, inp).None?)
             && (ra.Some? ==>
@@ -10355,10 +10355,10 @@ module LindenElkMain {
     var Slk := LL.LkBodyGroups(tr);
     var Sfull := set g | g in L.DefGroups(tr);
     var ra := AI.FFindMatch(bodycode, str,
-                AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
+                            AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
     var rf := AI.FFindMatch(bodycode, str,
-                AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                              AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
+                            AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                          AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
     var lkr := LS.LkResult(T.TrLookaround(la), tlk, gmMain, inp);
     var gmRec := PIV.GmOfLive(body, reccap, reclk, recqt);
 
@@ -10398,10 +10398,10 @@ module LindenElkMain {
       UNCONDITIONALLY, coinciding with the depth-1 capturing keystone. This anchors
       the depth induction. */
   lemma LkReplayMatchesSpecNestedFullBase(
-      rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat, ngroups: nat,
-      str: string, cp: nat, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
-      cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
-      ncap: int, nlook: int, nquant: int)
+    rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat, ngroups: nat,
+    str: string, cp: nat, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+    cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
+    ncap: int, nlook: int, nquant: int)
     requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
     requires NR.LookFreeRE(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
@@ -10418,10 +10418,10 @@ module LindenElkMain {
     ensures var inp := PIV.InpOfCp(str, cp);
             var ctxc := AI.cp_context(cp, str, LAnc.Forward);
             var ra := AI.FFindMatch(bodycode, str,
-                        AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
+                                    AI.FInitState(bodycode, cp, cap, lk, qt, 0, ctxc), ov, LAnc.Forward, cdns).0;
             var rf := AI.FFindMatch(bodycode, str,
-                        AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                      AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
+                                    AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                  AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
             var Sfull := set g | g in L.DefGroups(T.Translate(body));
             (ra.None? <==> LS.LkResult(T.TrLookaround(la), tlk, gmMain, inp).None?)
             && (ra.Some? ==>
@@ -10630,39 +10630,39 @@ module LindenElkMain {
     requires NR.GetPcRE(code, endl) == Some(RB.Accept)
     requires nlook == R.max_lookaround(ast) + 1 && look == AReg.init_regs(nlook)
     requires |inits.processed.true_set| == RB.size(code)
-          && |inits.processed.false_set| == RB.size(code)
+             && |inits.processed.false_set| == RB.size(code)
     requires inits.context.nextchar == AI.get_char(str, inits.cp)
     requires inits.active == [AI.init_thread(cap, look, quant)]
     requires inits.blocked == [] && inits.bestmatch.None?
     requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
     ensures result.Some? ==>
-      forall l: int :: 1 <= l <= R.max_lookaround(ast)
-                       && AReg.get_cp(result.value.look_regs, l).Some? ==>
-        (l as nat) in LTB.LookIds(re)
-        && exists la: R.lookaround, body: R.regex ::
-          LTB.LookEntryOk(crv, l, la, body)
-          && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
-          && PIV.CapUnique(body) && PIV.QuantUnique(body)
-          && PIV.CaptureRegs(body) <= PIV.CaptureRegsSet(PIV.CapIdsInLooks(ast))
-          && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
-          && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
+              forall l: int :: 1 <= l <= R.max_lookaround(ast)
+                               && AReg.get_cp(result.value.look_regs, l).Some? ==>
+                                 (l as nat) in LTB.LookIds(re)
+                                 && exists la: R.lookaround, body: R.regex ::
+                                   LTB.LookEntryOk(crv, l, la, body)
+                                   && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+                                   && PIV.CapUnique(body) && PIV.QuantUnique(body)
+                                   && PIV.CaptureRegs(body) <= PIV.CaptureRegsSet(PIV.CapIdsInLooks(ast))
+                                   && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
+                                   && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
     // (E4): every RECORDED look cp names one of re's lids (write confinement)
     ensures result.Some? ==>
-      forall l: int :: AReg.get_cp(result.value.look_regs, l).Some? ==>
-        l >= 0 && (l as nat) in LTB.LookIds(re)
+              forall l: int :: AReg.get_cp(result.value.look_regs, l).Some? ==>
+                                 l >= 0 && (l as nat) in LTB.LookIds(re)
     // distinct matched lids own DISJOINT capture registers
     ensures result.Some? ==>
-      forall l1: int, l2: int ::
-        1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 != l2
-        && AReg.get_cp(result.value.look_regs, l1).Some?
-        && AReg.get_cp(result.value.look_regs, l2).Some? ==>
-        PIV.CaptureRegs(VBody(crv, l1)) * PIV.CaptureRegs(VBody(crv, l2)) == {}
+              forall l1: int, l2: int ::
+                1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 != l2
+                && AReg.get_cp(result.value.look_regs, l1).Some?
+                && AReg.get_cp(result.value.look_regs, l2).Some? ==>
+                  PIV.CaptureRegs(VBody(crv, l1)) * PIV.CaptureRegs(VBody(crv, l2)) == {}
   {
     var S: set<int> := set x: nat | x in LTB.LookIds(re) :: x as int;
     // the code only gates on ids `re` actually owns
     forall pc: nat | pc < |code|
       ensures (code[pc].CheckOracle? ==> code[pc].col in S)
-           && (code[pc].NegCheckOracle? ==> code[pc].ncl in S)
+              && (code[pc].NegCheckOracle? ==> code[pc].ncl in S)
     {
       assert NR.GetPcRE(code, pc) == Some(code[pc]);
       if pc != endl { PIV.LookCheckIdsRE(re, code, 0, endl, pc); }
@@ -10691,12 +10691,12 @@ module LindenElkMain {
                       && AReg.get_cp(result.value.look_regs, l).Some?
         ensures (l as nat) in LTB.LookIds(re)
         ensures exists la: R.lookaround, body: R.regex ::
-          LTB.LookEntryOk(crv, l, la, body)
-          && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
-          && PIV.CapUnique(body) && PIV.QuantUnique(body)
-          && PIV.CaptureRegs(body) <= PIV.CaptureRegsSet(PIV.CapIdsInLooks(ast))
-          && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
-          && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
+                  LTB.LookEntryOk(crv, l, la, body)
+                  && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+                  && PIV.CapUnique(body) && PIV.QuantUnique(body)
+                  && PIV.CaptureRegs(body) <= PIV.CaptureRegsSet(PIV.CapIdsInLooks(ast))
+                  && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
+                  && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
       {
         assert l in S;
         assert (l as nat) in LTB.LookIds(ast);
@@ -10748,11 +10748,11 @@ module LindenElkMain {
                                       LAnc.Forward, 0, capture, look, quant, 0, crv.f_main_cdns)
     ensures fmp.0.None? ==> AI.FBuildCapture(crv, str, ov).0 == None
     ensures fmp.0.Some? ==>
-      var thread := fmp.0.value;
-      var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(crv.f_main_ast),
-                              thread.capture_regs, thread.look_regs, thread.quant_regs, fmp.1);
-      AI.FBuildCapture(crv, str, ov).0
-        == Some(AI.filter_reset(crv.f_main_ast, res.0, res.1, res.2, -1))
+              var thread := fmp.0.value;
+              var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(crv.f_main_ast),
+                                      thread.capture_regs, thread.look_regs, thread.quant_regs, fmp.1);
+              AI.FBuildCapture(crv, str, ov).0
+              == Some(AI.filter_reset(crv.f_main_ast, res.0, res.1, res.2, -1))
   {
   }
 
@@ -10790,7 +10790,7 @@ module LindenElkMain {
       Shared by the L4 wrapper below and the L5 twin (LiftSim `MainExtractionL5`,
       closedness from the L5 ladder `LindenElkFlipClosed.FirstLeafClosedRecL5`). */
   lemma MainExtractionFromClosed(raw: R.raw_regex, str: string,
-                                                    t: LT.Tree, thread: AI.Thread, leaf: LT.Leaf)
+                                 t: LT.Tree, thread: AI.Thread, leaf: LT.Leaf)
     requires NR.NestedFragmentRaw(raw)
     requires ClosedGm(leaf.1)                                   // (L5 F7e-2) closedness IS the scope's only use
     requires NR.NegLooksLookFreeRE(R.lazy_prefix(R.annotate(raw)))
@@ -10806,7 +10806,7 @@ module LindenElkMain {
     // reconstructed `GmOfLive`. NO-OP for forward matches (`NormGm` is identity on
     // ordered ranges), so this subsumes the old `leaf.1 == GmOfLive`.
     requires var re := R.lazy_prefix(R.annotate(raw));
-      leaf.1 == PIV.NormGm(PIV.GmOfLive(re, thread.capture_regs, thread.look_regs, thread.quant_regs))
+             leaf.1 == PIV.NormGm(PIV.GmOfLive(re, thread.capture_regs, thread.look_regs, thread.quant_regs))
     requires LT.FirstLeaf(t, LC.InitInput(str)) == Some(leaf)
     requires AI.FFullMatch(raw, str)
           == Some(AI.filter_reset(R.annotate(raw), thread.capture_regs, thread.look_regs,
@@ -10839,7 +10839,7 @@ module LindenElkMain {
     // here — that needs the clock order the forall below produces.)
     assert leaf.1 == PIV.NormGm(PIV.GmOfLive(re, caps, lk, qt));            // requires
     assert forall g: LG.GroupId :: g in PIV.GmOfLive(re, caps, lk, qt)
-        ==> PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some? by {
+                                   ==> PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some? by {
       forall g: LG.GroupId | g in PIV.GmOfLive(re, caps, lk, qt)
         ensures PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some?
       {
@@ -10893,7 +10893,7 @@ module LindenElkMain {
       position) preserves `VmQuantFinal`. */
 
   lemma MainExtraction(raw: R.raw_regex, str: string,
-                                                    t: LT.Tree, thread: AI.Thread, leaf: LT.Leaf)
+                       t: LT.Tree, thread: AI.Thread, leaf: LT.Leaf)
     requires NR.LookBehindFragmentRaw(raw)
     requires T.Latin1Wf(raw)
     requires EL.BoolTreeLk(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), BS.CannotExit, t)
@@ -10907,7 +10907,7 @@ module LindenElkMain {
     // reconstructed `GmOfLive`. NO-OP for forward matches (`NormGm` is identity on
     // ordered ranges), so this subsumes the old `leaf.1 == GmOfLive`.
     requires var re := R.lazy_prefix(R.annotate(raw));
-      leaf.1 == PIV.NormGm(PIV.GmOfLive(re, thread.capture_regs, thread.look_regs, thread.quant_regs))
+             leaf.1 == PIV.NormGm(PIV.GmOfLive(re, thread.capture_regs, thread.look_regs, thread.quant_regs))
     requires LT.FirstLeaf(t, LC.InitInput(str)) == Some(leaf)
     requires AI.FFullMatch(raw, str)
           == Some(AI.filter_reset(R.annotate(raw), thread.capture_regs, thread.look_regs,
@@ -10957,7 +10957,7 @@ module LindenElkMain {
     // here — that needs the clock order the forall below produces.)
     assert leaf.1 == PIV.NormGm(PIV.GmOfLive(re, caps, lk, qt));            // requires
     assert forall g: LG.GroupId :: g in PIV.GmOfLive(re, caps, lk, qt)
-        ==> PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some? by {
+                                   ==> PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some? by {
       forall g: LG.GroupId | g in PIV.GmOfLive(re, caps, lk, qt)
         ensures PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some?
       {
@@ -11021,8 +11021,8 @@ module LindenElkMain {
     assert s.blocked[0] in s.blocked;
     assert forall x | x in s1.blocked :: x in s.blocked;
     var s2 := if RC.is_accepted(s1.context.nextchar, ce)
-              then s1.(active := [t.(exit_allowed := true, pc := t.pc + 1)] + s1.active)
-              else s1;
+    then s1.(active := [t.(exit_allowed := true, pc := t.pc + 1)] + s1.active)
+    else s1;
     assert VmQuantFinal(s2) by {
       forall t2 | t2 in s2.active ensures QuantRegsFinal(t2) {
         if t2 != t.(exit_allowed := true, pc := t.pc + 1) { assert t2 in s.active; }
@@ -11073,7 +11073,7 @@ module LindenElkMain {
     requires NR.NfaRepRE(re, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetRegisterToCP? ==>
-      NR.GetPcRE(code, pc).value.reg in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(re))
+              NR.GetPcRE(code, pc).value.reg in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(re))
     decreases CP.rsize(re), 1
   {
     match re
@@ -11083,9 +11083,9 @@ module LindenElkMain {
     case Re_lookaround(_, _, _) =>
     case Re_alt(r1, r2) =>
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
-        && NR.NfaRepRE(r1, code, start + 1, e1)
-        && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
-        && NR.NfaRepRE(r2, code, e1 + 1, endl);
+                     && NR.NfaRepRE(r1, code, start + 1, e1)
+                     && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
+                     && NR.NfaRepRE(r2, code, e1 + 1, endl);
       NR.NfaRepIncrRE(r1, code, start + 1, e1);
       NR.NfaRepIncrRE(r2, code, e1 + 1, endl);
       if pc == start {
@@ -11110,9 +11110,9 @@ module LindenElkMain {
       }
     case Re_capture(cid, r1) =>
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
-        && NR.NfaRepRE(r1, code, start + 1, e1)
-        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
-        && endl == e1 + 1;
+                     && NR.NfaRepRE(r1, code, start + 1, e1)
+                     && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+                     && endl == e1 + 1;
       NR.NfaRepIncrRE(r1, code, start + 1, e1);
       assert cid >= 0 && (cid as nat) in PIV.CapIdsOutsideLooks(re);   // CapUnique; Re_capture adds it outside
       if pc == start {
@@ -11126,12 +11126,12 @@ module LindenElkMain {
     case Re_quant(nul, qid, q, r1) =>
       if q.min == 0 && q.max == None {
         var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
-          && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
-          && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
-          && NR.NfaRepRE(r1, code, start + 3, e1)
-          && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-          && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
-          && endl == e1 + 2;
+                       && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+                       && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+                       && NR.NfaRepRE(r1, code, start + 3, e1)
+                       && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                       && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
+                       && endl == e1 + 2;
         NR.NfaRepIncrRE(r1, code, start + 3, e1);
         if pc <= start + 2 {
         } else if pc < e1 {
@@ -11166,13 +11166,13 @@ module LindenElkMain {
     requires NR.NfaRepMinRE(k, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetRegisterToCP? ==>
-      NR.GetPcRE(code, pc).value.reg in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(r1))
+              NR.GetPcRE(code, pc).value.reg in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(r1))
     decreases CP.rsize(r1), k + 2
   {
     if k == 0 { return; }
     var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetQuantToClock(qid, false))
-      && NR.NfaRepRE(r1, code, start + 1, e1)
-      && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
+                   && NR.NfaRepRE(r1, code, start + 1, e1)
+                   && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
     NR.NfaRepIncrRE(r1, code, start + 1, e1);
     NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
     if pc == start {
@@ -11188,16 +11188,16 @@ module LindenElkMain {
     requires NR.NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetRegisterToCP? ==>
-      NR.GetPcRE(code, pc).value.reg in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(r1))
+              NR.GetPcRE(code, pc).value.reg in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(r1))
     decreases CP.rsize(r1), k + 2
   {
     if k == 0 { return; }
     var e1: nat :| NR.GetPcRE(code, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
-      && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
-      && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
-      && NR.NfaRepRE(r1, code, start + 3, e1)
-      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-      && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+                   && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+                   && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+                   && NR.NfaRepRE(r1, code, start + 3, e1)
+                   && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                   && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
     NR.NfaRepIncrRE(r1, code, start + 3, e1);
     NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
     if pc <= start + 2 {
@@ -11244,20 +11244,20 @@ module LindenElkMain {
       writes), so no inner-look register is touched here. Built from the
       outer-caps capture-write classification + `CM.FFindMatchCapWriteFrame`. */
   lemma ReplayCaptureFrameNestedOuter(bytecode: RB.code, str: string, inits: AI.VmState, ov: LOr.OracleView,
-                           dir: LAnc.direction, lookcdn: LCdn.cdns,
-                           cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs,
-                           la: R.lookaround, body: R.regex)
+                                      dir: LAnc.direction, lookcdn: LCdn.cdns,
+                                      cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs,
+                                      la: R.lookaround, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body)
     requires la.Lookahead? && dir == LAnc.Forward
     requires bytecode == CP.compile_to_bytecode(body)
     requires inits.active == [AI.init_thread(cap, lk, qt)]
     requires inits.blocked == [] && inits.bestmatch.None?
     requires |inits.processed.true_set| == RB.size(bytecode)
-          && |inits.processed.false_set| == RB.size(bytecode)
+             && |inits.processed.false_set| == RB.size(bytecode)
     requires inits.context.nextchar == AI.get_char(str, inits.cp)
     ensures var r := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn).0;
-      r.Some? ==> CM.RegsAgreeOutside(r.value.capture_regs, cap,
-                                      PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)))
+            r.Some? ==> CM.RegsAgreeOutside(r.value.capture_regs, cap,
+                                            PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)))
   {
     var Sc := PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body));
     CaptureBytecodeClassifiedNestedOuter(body);
@@ -11275,17 +11275,17 @@ module LindenElkMain {
       FinalAny` give a quant-final result), so the `FFindMatchPlus` capture bank
       IS the `FFindMatch` one, which `ReplayCaptureFrameNestedOuter` frames. */
   lemma ReplayPlusCaptureFrameNestedOuter(bytecode: RB.code, str: string, ov: LOr.OracleView, dir: LAnc.direction,
-                               lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
-                               cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
+                                          lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                                          cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires la.Lookahead? && dir == LAnc.Forward
     requires bytecode == CP.compile_to_bytecode(body)
     requires AI.cp_context(cp, str, dir).nextchar == AI.get_char(str, cp)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp, cap, lk, qt, 0, lookcdn).0;
-      r.Some? ==> CM.RegsAgreeOutside(r.value.capture_regs, cap,
-                                      PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)))
+            r.Some? ==> CM.RegsAgreeOutside(r.value.capture_regs, cap,
+                                            PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)))
   {
     var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
     ReplayCaptureFrameNestedOuter(bytecode, str, inits, ov, dir, lookcdn, cap, lk, qt, la, body);
@@ -11329,11 +11329,11 @@ module LindenElkMain {
     requires NR.NfaRepRE(re, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
-      var l := NR.GetPcRE(code, pc).value.col;
-      l >= 0 && (l as nat) in LTB.LookIds(re)
+              var l := NR.GetPcRE(code, pc).value.col;
+              l >= 0 && (l as nat) in LTB.LookIds(re)
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.NegCheckOracle? ==>
-      var l := NR.GetPcRE(code, pc).value.ncl;
-      l >= 0 && (l as nat) in LTB.LookIds(re)
+              var l := NR.GetPcRE(code, pc).value.ncl;
+              l >= 0 && (l as nat) in LTB.LookIds(re)
     decreases CP.rsize(re), 1
   {
     match re
@@ -11345,9 +11345,9 @@ module LindenElkMain {
       assert lid >= 0;
     case Re_alt(r1, r2) =>
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
-        && NR.NfaRepRE(r1, code, start + 1, e1)
-        && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
-        && NR.NfaRepRE(r2, code, e1 + 1, endl);
+                     && NR.NfaRepRE(r1, code, start + 1, e1)
+                     && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
+                     && NR.NfaRepRE(r2, code, e1 + 1, endl);
       NR.NfaRepIncrRE(r1, code, start + 1, e1);
       NR.NfaRepIncrRE(r2, code, e1 + 1, endl);
       if pc == start {
@@ -11368,9 +11368,9 @@ module LindenElkMain {
       }
     case Re_capture(cid, r1) =>
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
-        && NR.NfaRepRE(r1, code, start + 1, e1)
-        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
-        && endl == e1 + 1;
+                     && NR.NfaRepRE(r1, code, start + 1, e1)
+                     && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+                     && endl == e1 + 1;
       NR.NfaRepIncrRE(r1, code, start + 1, e1);
       if pc == start {
       } else if pc < e1 {
@@ -11380,12 +11380,12 @@ module LindenElkMain {
     case Re_quant(nul, qid, q, r1) =>
       if q.min == 0 && q.max == None {
         var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
-          && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
-          && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
-          && NR.NfaRepRE(r1, code, start + 3, e1)
-          && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-          && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
-          && endl == e1 + 2;
+                       && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+                       && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+                       && NR.NfaRepRE(r1, code, start + 3, e1)
+                       && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                       && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
+                       && endl == e1 + 2;
         NR.NfaRepIncrRE(r1, code, start + 3, e1);
         if pc <= start + 2 {
         } else if pc < e1 {
@@ -11420,17 +11420,17 @@ module LindenElkMain {
     requires NR.NfaRepMinRE(k, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
-      var l := NR.GetPcRE(code, pc).value.col;
-      l >= 0 && (l as nat) in LTB.LookIds(r1)
+              var l := NR.GetPcRE(code, pc).value.col;
+              l >= 0 && (l as nat) in LTB.LookIds(r1)
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.NegCheckOracle? ==>
-      var l := NR.GetPcRE(code, pc).value.ncl;
-      l >= 0 && (l as nat) in LTB.LookIds(r1)
+              var l := NR.GetPcRE(code, pc).value.ncl;
+              l >= 0 && (l as nat) in LTB.LookIds(r1)
     decreases CP.rsize(r1), k + 2
   {
     if k == 0 { return; }
     var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetQuantToClock(qid, false))
-      && NR.NfaRepRE(r1, code, start + 1, e1)
-      && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
+                   && NR.NfaRepRE(r1, code, start + 1, e1)
+                   && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
     NR.NfaRepIncrRE(r1, code, start + 1, e1);
     NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
     if pc == start {
@@ -11446,20 +11446,20 @@ module LindenElkMain {
     requires NR.NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
-      var l := NR.GetPcRE(code, pc).value.col;
-      l >= 0 && (l as nat) in LTB.LookIds(r1)
+              var l := NR.GetPcRE(code, pc).value.col;
+              l >= 0 && (l as nat) in LTB.LookIds(r1)
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.NegCheckOracle? ==>
-      var l := NR.GetPcRE(code, pc).value.ncl;
-      l >= 0 && (l as nat) in LTB.LookIds(r1)
+              var l := NR.GetPcRE(code, pc).value.ncl;
+              l >= 0 && (l as nat) in LTB.LookIds(r1)
     decreases CP.rsize(r1), k + 2
   {
     if k == 0 { return; }
     var e1: nat :| NR.GetPcRE(code, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
-      && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
-      && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
-      && NR.NfaRepRE(r1, code, start + 3, e1)
-      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-      && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+                   && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+                   && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+                   && NR.NfaRepRE(r1, code, start + 3, e1)
+                   && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                   && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
     NR.NfaRepIncrRE(r1, code, start + 3, e1);
     NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
     if pc <= start + 2 {
@@ -11486,7 +11486,7 @@ module LindenElkMain {
     var S := LookIdSet(body);
     forall pc: nat | pc < |code|
       ensures (code[pc].CheckOracle? ==> code[pc].col in S)
-           && (code[pc].NegCheckOracle? ==> code[pc].ncl in S)
+              && (code[pc].NegCheckOracle? ==> code[pc].ncl in S)
     {
       assert NR.GetPcRE(code, pc) == Some(code[pc]);
       if pc < endl {
@@ -11507,16 +11507,16 @@ module LindenElkMain {
       (`LookBytecodeClassifiedNested` + `CM.FFindMatchLookFrame`) plus the plus
       reconstruction identity (`FNulledPlusIdentity` leaves the look bank fixed). */
   lemma ReplayPlusLookFrameNested(bytecode: RB.code, str: string, ov: LOr.OracleView, dir: LAnc.direction,
-                               lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
-                               cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
+                                  lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                                  cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires la.Lookahead? && dir == LAnc.Forward
     requires bytecode == CP.compile_to_bytecode(body)
     requires AI.cp_context(cp, str, dir).nextchar == AI.get_char(str, cp)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp, cap, lk, qt, 0, lookcdn).0;
-      r.Some? ==> CM.RegsAgreeOutside(r.value.look_regs, lk, LookIdSet(body))
+            r.Some? ==> CM.RegsAgreeOutside(r.value.look_regs, lk, LookIdSet(body))
   {
     var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
     LookBytecodeClassifiedNested(body);
@@ -11547,16 +11547,16 @@ module LindenElkMain {
       `ReplayPlusLookFrameNested` with `LookBytecodeClassifiedNested`/`LookIdSet`
       replaced by `DirectLidClassified`/`DirectLidSet`. */
   lemma ReplayPlusLookFrameDirectNested(bytecode: RB.code, str: string, ov: LOr.OracleView, dir: LAnc.direction,
-                               lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
-                               cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
+                                        lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                                        cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires la.Lookahead? && dir == LAnc.Forward
     requires bytecode == CP.compile_to_bytecode(body)
     requires AI.cp_context(cp, str, dir).nextchar == AI.get_char(str, cp)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp, cap, lk, qt, 0, lookcdn).0;
-      r.Some? ==> CM.RegsAgreeOutside(r.value.look_regs, lk, DirectLidSet(body))
+            r.Some? ==> CM.RegsAgreeOutside(r.value.look_regs, lk, DirectLidSet(body))
   {
     var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
     DirectLidClassified(body);
@@ -11584,7 +11584,8 @@ module LindenElkMain {
   lemma LookIdEntryExists(re: R.regex, fc: CP.FCompiled, l: nat)
     requires LTB.LookTablesOk(re, fc)
     requires l in LTB.LookIds(re)
-    ensures exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(fc, l as int, la, body)
+    ensures var li: int := l as int;   // (2026-08-28) cast-free trigger term for the exists
+            exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(fc, li, la, body)
     decreases re
   {
     match re
@@ -11610,19 +11611,19 @@ module LindenElkMain {
       of `ReplayPlusFrame` (which for a look-free body got `look_regs == lk`; a
       nested body instead only ADDS its own inner-look entries). */
   lemma ReplayPlusFrameNested(bytecode: RB.code, str: string, ov: LOr.OracleView, dir: LAnc.direction,
-                        lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
-                        cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
+                              lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                              cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires la.Lookahead? && dir == LAnc.Forward
     requires bytecode == CP.compile_to_bytecode(body)
     requires AI.cp_context(cp, str, dir).nextchar == AI.get_char(str, cp)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp, cap, lk, qt, 0, lookcdn).0;
-      r.Some? ==>
-        CM.RegsAgreeOutside(r.value.capture_regs, cap, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)))
-        && CM.RegsAgreeOutside(r.value.look_regs, lk, LookIdSet(body))
-        && QuantRegsFinal(r.value)
+            r.Some? ==>
+              CM.RegsAgreeOutside(r.value.capture_regs, cap, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)))
+              && CM.RegsAgreeOutside(r.value.look_regs, lk, LookIdSet(body))
+              && QuantRegsFinal(r.value)
   {
     ReplayPlusCaptureFrameNestedOuter(bytecode, str, ov, dir, lookcdn, plus_bcv, cp, cap, lk, qt, la, body);
     ReplayPlusLookFrameNested(bytecode, str, ov, dir, lookcdn, plus_bcv, cp, cap, lk, qt, la, body);
@@ -11687,16 +11688,16 @@ module LindenElkMain {
       `FFindMatchPlus` quant bank IS the `FFindMatch` one, which the outer-quant
       write classification + `CM.FFindMatchQuantFrame` frames. */
   lemma ReplayPlusQuantFrameNestedOuter(bytecode: RB.code, str: string, ov: LOr.OracleView, dir: LAnc.direction,
-                               lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
-                               cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
+                                        lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                                        cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires la.Lookahead? && dir == LAnc.Forward
     requires bytecode == CP.compile_to_bytecode(body)
     requires AI.cp_context(cp, str, dir).nextchar == AI.get_char(str, cp)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp, cap, lk, qt, 0, lookcdn).0;
-      r.Some? ==> CM.RegsAgreeOutside(r.value.quant_regs, qt, QIdsOuter(body))
+            r.Some? ==> CM.RegsAgreeOutside(r.value.quant_regs, qt, QIdsOuter(body))
   {
     var Sq := QIdsOuter(body);
     var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
@@ -11750,16 +11751,16 @@ module LindenElkMain {
       + `LookIdEntryExists`. `decreases maxlook - lid`; mirrors
       `FLookLoopCaptureFrame`'s structure. */
   lemma {:isolate_assertions} FLookLoopCaptureFrameNested(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
-                              cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
-                              S: set<int>, Slook: set<int>)
+                                                          cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                                                          S: set<int>, Slook: set<int>)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires forall l: int, la: R.lookaround, body: R.regex ::
-      lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+               lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
-      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+                                exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
     ensures var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
-      CM.RegsAgreeOutside(res.0, cap, S) && CM.RegsAgreeOutside(res.1, lk, Slook)
+            CM.RegsAgreeOutside(res.0, cap, S) && CM.RegsAgreeOutside(res.1, lk, Slook)
     decreases maxlook - lid
   {
     if lid > maxlook { return; }
@@ -11826,7 +11827,7 @@ module LindenElkMain {
 
         // ---- preserve the "matched look has a table row" invariant for nlk ----
         assert forall l: int :: next <= l <= maxlook && AReg.get_cp(nlk, l).Some? ==>
-          exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
+                                  exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
         by {
           forall l: int | next <= l <= maxlook && AReg.get_cp(nlk, l).Some?
             ensures exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
@@ -11866,17 +11867,17 @@ module LindenElkMain {
       look frame (`ReplayPlusLookFrameNested`) + `LookIdEntryExists`, exactly as
       on the capture side. `decreases maxlook - lid`. */
   lemma {:isolate_assertions} FLookLoopQuantFrameNested(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
-                              cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
-                              S: set<int>, Slook: set<int>, Sq: set<int>)
+                                                        cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                                                        S: set<int>, Slook: set<int>, Sq: set<int>)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires forall l: int, la: R.lookaround, body: R.regex ::
-      lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==>
-      FrameEntryOk(crv, la, body, S, Slook) && QIdsOuter(body) <= Sq
+               lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==>
+                 FrameEntryOk(crv, la, body, S, Slook) && QIdsOuter(body) <= Sq
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
-      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+                                exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
     ensures var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
-      CM.RegsAgreeOutside(res.2, qt, Sq)
+            CM.RegsAgreeOutside(res.2, qt, Sq)
     decreases maxlook - lid
   {
     if lid > maxlook { return; }
@@ -11940,7 +11941,7 @@ module LindenElkMain {
 
         // ---- preserve the "matched look has a table row" invariant for nlk ----
         assert forall l: int :: next <= l <= maxlook && AReg.get_cp(nlk, l).Some? ==>
-          exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
+                                  exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
         by {
           forall l: int | next <= l <= maxlook && AReg.get_cp(nlk, l).Some?
             ensures exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
@@ -11966,17 +11967,17 @@ module LindenElkMain {
       body's FRESH forward match. Only the no-true-quant-stamp step is fragment
       specific (`NoTrueQuantStampNested`); the rest is structural. */
   lemma FreshMatchWfNested(bytecode: RB.code, str: string, cp: int, ov: LOr.OracleView, cdn: LCdn.cdns,
-                     body: R.regex, ncap: int, nlook: int, nquant: int)
+                           body: R.regex, ncap: int, nlook: int, nquant: int)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires bytecode == CP.compile_to_bytecode(body)
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires 0 <= cp <= |str|
     requires AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp)
     ensures var rf := AI.FFindMatch(bytecode, str,
-                        AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                      AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
-                        ov, LAnc.Forward, cdn).0;
-      rf.Some? ==> CM.ThreadRegsWf(rf.value, ncap, nlook, nquant)
+                                    AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                  AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                                    ov, LAnc.Forward, cdn).0;
+            rf.Some? ==> CM.ThreadRegsWf(rf.value, ncap, nlook, nquant)
   {
     var dir := LAnc.Forward;
     var ctx := AI.cp_context(cp, str, dir);
@@ -11999,8 +12000,8 @@ module LindenElkMain {
       preserves register well-formedness (lengths + `CapRegWf`). Only
       `NoTrueQuantStampNested` is fragment specific. */
   lemma ReplayThreadWfLANested(bytecode: RB.code, str: string, cp: int, cap: AReg.Regs, lk: AReg.Regs,
-                         qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
-                         body: R.regex, la: R.lookaround, ncap: int, nlook: int, nquant: int)
+                               qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
+                               body: R.regex, la: R.lookaround, ncap: int, nlook: int, nquant: int)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires la.Lookahead?
     requires bytecode == CP.compile_to_bytecode(body)
@@ -12011,7 +12012,7 @@ module LindenElkMain {
     requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     ensures
       var result := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Forward, cp, cap, lk, qt, 0, lookcdn).0;
       result.Some? ==> CM.ThreadRegsWf(result.value, ncap, nlook, nquant)
@@ -12048,10 +12049,10 @@ module LindenElkMain {
     requires bytecode == CP.compile_to_bytecode(body)
     requires 0 <= cp <= |str|
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires CM.LookCpsLE(lk, |str|)
     ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp, cap, lk, qt, 0, lookcdn).0;
-      r.Some? ==> CM.LookCpsLE(r.value.look_regs, |str|)
+            r.Some? ==> CM.LookCpsLE(r.value.look_regs, |str|)
   {
     var ctx := AI.cp_context(cp, str, dir);
     var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, ctx);
@@ -12082,11 +12083,11 @@ module LindenElkMain {
   ghost predicate FLookLoopValueOkOuter(crv: CP.FCompiled, str: string, res0: AReg.Regs, lid: int, maxlook: int,
                                         lk: AReg.Regs, ov: LOr.OracleView, ncap: int, nlook: int, nquant: int) {
     forall l: int :: lid <= l <= maxlook && MatchedPosLA(crv, lk, l) ==>
-      var rf := FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
-      (rf.Some? ==> CM.RegsAgreeInside(res0, rf.value.capture_regs,
-                     PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, l)))))
-      && (rf.None? ==> CM.RegsAgreeInside(res0, AReg.init_regs(ncap),
-                     PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, l)))))
+                       var rf := FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
+                       (rf.Some? ==> CM.RegsAgreeInside(res0, rf.value.capture_regs,
+                                                        PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, l)))))
+                       && (rf.None? ==> CM.RegsAgreeInside(res0, AReg.init_regs(ncap),
+                                                           PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, l)))))
   }
 
   /** `l == lid` is not a matched positive lookahead, so the outer value map for
@@ -12101,9 +12102,9 @@ module LindenElkMain {
     forall l: int | lid <= l <= maxlook && MatchedPosLA(crv, lk, l)
       ensures var rf := FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
               (rf.Some? ==> CM.RegsAgreeInside(res0, rf.value.capture_regs,
-                             PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, l)))))
+                                               PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, l)))))
               && (rf.None? ==> CM.RegsAgreeInside(res0, AReg.init_regs(ncap),
-                             PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, l)))))
+                                                  PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, l)))))
     { assert l != lid; }
   }
 
@@ -12120,36 +12121,36 @@ module LindenElkMain {
       hypotheses are all STATIC / caller-dischargeable from the compilation's
       uniqueness + outer-before-inner lid ordering. `decreases maxlook - lid`. */
   lemma {:isolate_assertions} FLookLoopValueLiftOuter(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
-                           cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
-                           S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int)
+                                                      cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                                                      S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int)
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
     requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
     requires CM.LookCpsLE(lk, |str|)                                                            // (e)
     requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (a)
-      lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+               lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>                // (b)
-      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+                                exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
     requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (c') full per-body-unset
-      lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==>
-      CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+               lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==>
+                 CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (D-ord)
-      lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
+               lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 < l2
+               && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                 PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (f) look-stability
-      lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
-      && lid <= l2 <= maxlook && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+               lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
+               && lid <= l2 <= maxlook && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
-      lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      DirectLookIds(b1) * LTB.LookIds(b2) == {}
+               lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 < l2
+               && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                 DirectLookIds(b1) * LTB.LookIds(b2) == {}
     ensures var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
-      |res.0.a_cp| == ncap && |res.0.a_clk| == ncap && PIV.CapRegWf(res.0)
-      && FLookLoopValueOkOuter(crv, str, res.0, lid, maxlook, lk, ov, ncap, nlook, nquant)
+            |res.0.a_cp| == ncap && |res.0.a_clk| == ncap && PIV.CapRegWf(res.0)
+            && FLookLoopValueOkOuter(crv, str, res.0, lid, maxlook, lk, ov, ncap, nlook, nquant)
     decreases maxlook - lid
   {
     var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
@@ -12189,11 +12190,11 @@ module LindenElkMain {
         var nqt := if result.None? then qt else result.value.quant_regs;
         // (L5 F7c-2) per-kind replay facts (the `...LB` twins take the BACKWARD ones)
         assert la.Lookahead? ==> (dir == LAnc.Forward && CP.capture_regex(la, body) == body
-          && bytecode == CP.compile_to_bytecode(body)
-          && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp));
+                                  && bytecode == CP.compile_to_bytecode(body)
+                                  && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp));
         assert la.Lookbehind? ==> (dir == LAnc.Backward && CP.capture_regex(la, body) == R.reverse_regex(body)
-          && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
-          && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1));
+                                   && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+                                   && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1));
         assert res == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1);
         assert 0 <= cp <= |str| by {
           assert cp == AI.get_idx(lk.a_cp, lid) && cp >= 0;   // get_cp(lk,lid)==Some(cp)
@@ -12224,7 +12225,7 @@ module LindenElkMain {
         if la.Lookahead? { ReplayThreadWfLANested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant); }
         else { ReplayThreadWfLBNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant); }
         assert |capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN)
-            && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook by {
+               && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook by {
           if result.Some? { assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant); }
         }
         if la.Lookahead? { ReplayLookCpOkNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
@@ -12238,9 +12239,9 @@ module LindenElkMain {
         else { ReplayLidCapAgreeFreshNestedLB(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant); }
         var rfLid := FreshBodyMatch(crv, str, lid, lk, ov, ncap, nlook, nquant);
         var rf := AI.FFindMatch(bytecode, str,
-                    AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                  AReg.init_regs(nquant), 0, AI.cp_context(cp, str, dir)),
-                    ov, dir, lookcdn).0;   // (L5 F7c-2) in the lid's own direction
+                                AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                              AReg.init_regs(nquant), 0, AI.cp_context(cp, str, dir)),
+                                ov, dir, lookcdn).0;   // (L5 F7c-2) in the lid's own direction
         assert rfLid == rf;
 
         var Sp := S - PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body));
@@ -12248,7 +12249,7 @@ module LindenElkMain {
         // ---- recursion hypothesis transfer at [next] with (capN, nlk, nqt) ----
         // (b) matched-look-has-entry for nlk
         assert forall l: int :: next <= l <= maxlook && AReg.get_cp(nlk, l).Some? ==>
-          exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
+                                  exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
         by {
           forall l: int | next <= l <= maxlook && AReg.get_cp(nlk, l).Some?
             ensures exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
@@ -12265,8 +12266,8 @@ module LindenElkMain {
         }
         // (c') full per-body-unset for capN
         assert forall l: int, la2: R.lookaround, body2: R.regex ::
-          next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==>
-          CM.RegsAgreeInside(capN, AReg.init_regs(ncap), PIV.CaptureRegs(body2))
+            next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==>
+              CM.RegsAgreeInside(capN, AReg.init_regs(ncap), PIV.CaptureRegs(body2))
         by {
           forall l: int, la2: R.lookaround, body2: R.regex | next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2)
             ensures CM.RegsAgreeInside(capN, AReg.init_regs(ncap), PIV.CaptureRegs(body2))
@@ -12279,8 +12280,8 @@ module LindenElkMain {
         }
         // (f) look-stability for nlk
         assert forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-          next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
-          && next <= l2 <= maxlook && l2 != l1 && AReg.get_cp(nlk, l2).Some? ==> l2 !in LookIdSet(b1)
+            next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
+            && next <= l2 <= maxlook && l2 != l1 && AReg.get_cp(nlk, l2).Some? ==> l2 !in LookIdSet(b1)
         by {
           forall l1: int, la1: R.lookaround, b1: R.regex, l2: int |
             next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
@@ -12313,7 +12314,7 @@ module LindenElkMain {
 
         // ---- suffix frame: res.0 == capN on OuterCaps(body) ----
         assert forall l: int, la2: R.lookaround, body2: R.regex ::
-          next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==> FrameEntryOk(crv, la2, body2, Sp, Slook)
+            next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==> FrameEntryOk(crv, la2, body2, Sp, Slook)
         by {
           forall l: int, la2: R.lookaround, body2: R.regex | next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2)
             ensures FrameEntryOk(crv, la2, body2, Sp, Slook)
@@ -12344,9 +12345,9 @@ module LindenElkMain {
         forall l: int | lid <= l <= maxlook && MatchedPosLA(crv, lk, l)
           ensures var rf2 := FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
                   (rf2.Some? ==> CM.RegsAgreeInside(res.0, rf2.value.capture_regs,
-                                  PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, l)))))
+                                                    PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, l)))))
                   && (rf2.None? ==> CM.RegsAgreeInside(res.0, AReg.init_regs(ncap),
-                                  PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, l)))))
+                                                       PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, l)))))
         {
           if l == lid {
             assert VBody(crv, l) == body;
@@ -12381,9 +12382,9 @@ module LindenElkMain {
             assert rfNlk == FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
             // instantiate the IH (over nlk) at l
             assert (rfNlk.Some? ==> CM.RegsAgreeInside(res.0, rfNlk.value.capture_regs,
-                       PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, l)))))
-                && (rfNlk.None? ==> CM.RegsAgreeInside(res.0, AReg.init_regs(ncap),
-                       PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, l)))));
+                                                       PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, l)))))
+                   && (rfNlk.None? ==> CM.RegsAgreeInside(res.0, AReg.init_regs(ncap),
+                                                          PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, l)))));
           }
         }
       }
@@ -12424,13 +12425,13 @@ module LindenElkMain {
                              cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
                              S: set<int>, Slook: set<int>)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires forall l: int, la: R.lookaround, body: R.regex ::
-      lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+               lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
-      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+                                exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
     requires forall l1: int, la1: R.lookaround, b1: R.regex ::                                  // (h)@lid
-      lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> lid !in LookIdSet(b1)
+               lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> lid !in LookIdSet(b1)
     ensures AReg.get_cp(AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov).1, lid)
          == AReg.get_cp(lk, lid)
   {
@@ -12463,13 +12464,13 @@ module LindenElkMain {
                                   cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
                                   S: set<int>, Slook: set<int>)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires forall l: int, la: R.lookaround, body: R.regex ::
-      lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+               lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
-      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+                                exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
     requires forall l1: int, la1: R.lookaround, b1: R.regex ::                                  // (h)@lid
-      lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> lid !in LookIdSet(b1)
+               lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> lid !in LookIdSet(b1)
     ensures AI.get_idx(AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov).1.a_clk, lid)
          == AI.get_idx(lk.a_clk, lid)
   {
@@ -12504,13 +12505,13 @@ module LindenElkMain {
                                       cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
                                       S: set<int>, Slook: set<int>)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires forall l0: int, la: R.lookaround, body: R.regex ::
-      lid <= l0 <= maxlook && LTB.LookEntryOk(crv, l0, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+               lid <= l0 <= maxlook && LTB.LookEntryOk(crv, l0, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
     requires forall l0: int :: lid <= l0 <= maxlook && AReg.get_cp(lk, l0).Some? ==>
-      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l0, la, body)
+                                 exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l0, la, body)
     requires forall l1: int, la1: R.lookaround, b1: R.regex ::                                  // (h')@l
-      lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> l !in LookIdSet(b1)
+               lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> l !in LookIdSet(b1)
     ensures AI.get_idx(AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov).1.a_clk, l)
          == AI.get_idx(lk.a_clk, l)
   {
@@ -12542,13 +12543,13 @@ module LindenElkMain {
                                      cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
                                      S: set<int>, Slook: set<int>)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires forall l0: int, la: R.lookaround, body: R.regex ::
-      lid <= l0 <= maxlook && LTB.LookEntryOk(crv, l0, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+               lid <= l0 <= maxlook && LTB.LookEntryOk(crv, l0, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
     requires forall l0: int :: lid <= l0 <= maxlook && AReg.get_cp(lk, l0).Some? ==>
-      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l0, la, body)
+                                 exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l0, la, body)
     requires forall l1: int, la1: R.lookaround, b1: R.regex ::                                  // (h')@l
-      lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> l !in LookIdSet(b1)
+               lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> l !in LookIdSet(b1)
     ensures AReg.get_cp(AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov).1, l)
          == AReg.get_cp(lk, l)
   {
@@ -12645,18 +12646,18 @@ module LindenElkMain {
     requires g in PIV.CapIds(body)
     requires g !in PIV.CapIdsInLooks(body)
     requires forall c: nat :: c in PIV.CapIds(body) && AI.get_idx(rfcap.a_clk, CP.start_reg(c)) < 0
-                             ==> AI.get_idx(rfcap.a_cp, CP.start_reg(c)) < 0
+                              ==> AI.get_idx(rfcap.a_cp, CP.start_reg(c)) < 0
     requires g in PIV.GmOfLive(body, rfcap, rflk, rfqt)
     // value-lift capture agreement: res0 ~ rfcap on body's capture-start clocks.
     requires forall c: nat :: c in PIV.CapIds(body) ==>
-      AI.get_idx(res0.a_clk, CP.start_reg(c)) == AI.get_idx(rfcap.a_clk, CP.start_reg(c))
+                                AI.get_idx(res0.a_clk, CP.start_reg(c)) == AI.get_idx(rfcap.a_clk, CP.start_reg(c))
     // quant-clock reconcile: res2 ~ rfqt on body's quant clocks (deliverable 3 feed).
     requires forall qd: nat :: qd in PIV.QuantIds(body) ==>
-      AI.get_idx(res2.a_clk, qd as int) == AI.get_idx(rfqt.a_clk, qd as int)
+                                 AI.get_idx(res2.a_clk, qd as int) == AI.get_idx(rfqt.a_clk, qd as int)
     ensures PIV.PathPresentLk(body, res0.a_clk, AReg.as_arrays(res1).1, res2.a_clk, -1, g)
     ensures AI.get_idx(res0.a_clk, CP.start_reg(g)) >= 0
     ensures AI.get_idx(res0.a_clk, CP.start_reg(g))
-              >= PIV.MxAtGidLk(body, res0.a_clk, AReg.as_arrays(res1).1, res2.a_clk, -1, g)
+         >= PIV.MxAtGidLk(body, res0.a_clk, AReg.as_arrays(res1).1, res2.a_clk, -1, g)
   {
     var rfcc := rfcap.a_clk;  var rflc := AReg.as_arrays(rflk).1;  var rfqc := AReg.as_arrays(rfqt).1;
     var rc0 := res0.a_clk;    var rc1 := AReg.as_arrays(res1).1;   var rc2 := res2.a_clk;
@@ -12709,21 +12710,21 @@ module LindenElkMain {
     // (ii) owner's own look clock (set & dominating)
     requires AI.get_idx(AReg.as_arrays(res1).1, owner as int) >= 0
     requires AI.get_idx(AReg.as_arrays(res1).1, owner as int)
-               >= NI.MxAtLidLk(re, res2.a_clk, -1, owner)
+          >= NI.MxAtLidLk(re, res2.a_clk, -1, owner)
     // ---- BODY-SIDE FEED (value lift + quant reconcile + fresh liveness) ----
     requires forall c: nat :: c in PIV.CapIds(body) && AI.get_idx(rfcap.a_clk, CP.start_reg(c)) < 0
-                             ==> AI.get_idx(rfcap.a_cp, CP.start_reg(c)) < 0
+                              ==> AI.get_idx(rfcap.a_cp, CP.start_reg(c)) < 0
     requires g in PIV.GmOfLive(body, rfcap, rflk, rfqt)
     requires forall c: nat :: c in PIV.CapIds(body) ==>
-      AI.get_idx(res0.a_clk, CP.start_reg(c)) == AI.get_idx(rfcap.a_clk, CP.start_reg(c))
+                                AI.get_idx(res0.a_clk, CP.start_reg(c)) == AI.get_idx(rfcap.a_clk, CP.start_reg(c))
     requires forall qd: nat :: qd in PIV.QuantIds(body) ==>
-      AI.get_idx(res2.a_clk, qd as int) == AI.get_idx(rfqt.a_clk, qd as int)
+                                 AI.get_idx(res2.a_clk, qd as int) == AI.get_idx(rfqt.a_clk, qd as int)
     // value set at g in res0 (from the value lift's cp coverage)
     requires AI.get_idx(res0.a_cp, CP.start_reg(g)) >= 0
     ensures g in PIV.CapIds(re)
     ensures g in PIV.GmOfLive(re, res0, res1, res2)
     ensures PIV.GmOfLive(re, res0, res1, res2)[g]
-              == PIV.LiveRange(res0.a_cp, res0.a_clk, g)
+         == PIV.LiveRange(res0.a_cp, res0.a_clk, g)
   {
     var cc := res0.a_clk;  var lc := AReg.as_arrays(res1).1;  var qc := res2.a_clk;
     // (1) body-side presence on the reconstructed banks
@@ -12751,11 +12752,11 @@ module LindenElkMain {
   ghost predicate FLookLoopValueOkFull(crv: CP.FCompiled, str: string, res0: AReg.Regs, res1: AReg.Regs,
                                        lid: int, maxlook: int, ov: LOr.OracleView, ncap: int, nlook: int, nquant: int) {
     forall owner: int :: lid <= owner <= maxlook && MatchedPosLA(crv, res1, owner) ==>
-      var rf := FreshBodyMatch(crv, str, owner, res1, ov, ncap, nlook, nquant);
-      (rf.Some? ==> CM.RegsAgreeInside(res0, rf.value.capture_regs,
-                     PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, owner)))))
-      && (rf.None? ==> CM.RegsAgreeInside(res0, AReg.init_regs(ncap),
-                     PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, owner)))))
+                           var rf := FreshBodyMatch(crv, str, owner, res1, ov, ncap, nlook, nquant);
+                           (rf.Some? ==> CM.RegsAgreeInside(res0, rf.value.capture_regs,
+                                                            PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, owner)))))
+                           && (rf.None? ==> CM.RegsAgreeInside(res0, AReg.init_regs(ncap),
+                                                               PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, owner)))))
   }
 
   /** R3: `owner == lid` is not a matched positive lookahead in `res1`, so the
@@ -12770,9 +12771,9 @@ module LindenElkMain {
     forall owner: int | lid <= owner <= maxlook && MatchedPosLA(crv, res1, owner)
       ensures var rf := FreshBodyMatch(crv, str, owner, res1, ov, ncap, nlook, nquant);
               (rf.Some? ==> CM.RegsAgreeInside(res0, rf.value.capture_regs,
-                             PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, owner)))))
+                                               PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, owner)))))
               && (rf.None? ==> CM.RegsAgreeInside(res0, AReg.init_regs(ncap),
-                             PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, owner)))))
+                                                  PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, owner)))))
     { assert owner != lid; }
   }
 
@@ -12793,40 +12794,40 @@ module LindenElkMain {
       (already keyed on `res.1`), simpler than R2's `nlk`↔`lk` reconciliation.
       `decreases maxlook - lid`. */
   lemma {:isolate_assertions} FLookLoopValueLiftFull(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
-                           cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
-                           S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int)
+                                                     cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                                                     S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int)
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
     requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
     requires CM.LookCpsLE(lk, |str|)                                                            // (e)
     requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (a)
-      lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+               lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>                // (b)
-      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+                                exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
     requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (c') full per-body-unset
-      lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==>
-      CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+               lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==>
+                 CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (D-ord)
-      lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
+               lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 < l2
+               && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                 PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (f) look-stability
-      lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
-      && lid <= l2 <= maxlook && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+               lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
+               && lid <= l2 <= maxlook && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
-      lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      DirectLookIds(b1) * LTB.LookIds(b2) == {}
+               lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 < l2
+               && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                 DirectLookIds(b1) * LTB.LookIds(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (h) well-nested lids
-      lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) && lid <= l2 <= l1 ==> l2 !in LookIdSet(b1)
+               lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) && lid <= l2 <= l1 ==> l2 !in LookIdSet(b1)
     ensures var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
-      |res.0.a_cp| == ncap && |res.0.a_clk| == ncap && PIV.CapRegWf(res.0)
-      && |res.1.a_cp| == nlook && |res.1.a_clk| == nlook          // L4 PERF: expose the look-bank length
-      && |res.2.a_cp| == nquant && |res.2.a_clk| == nquant        // L4 PERF: expose the quant-bank length
-      && FLookLoopValueOkFull(crv, str, res.0, res.1, lid, maxlook, ov, ncap, nlook, nquant)
+            |res.0.a_cp| == ncap && |res.0.a_clk| == ncap && PIV.CapRegWf(res.0)
+            && |res.1.a_cp| == nlook && |res.1.a_clk| == nlook          // L4 PERF: expose the look-bank length
+            && |res.2.a_cp| == nquant && |res.2.a_clk| == nquant        // L4 PERF: expose the quant-bank length
+            && FLookLoopValueOkFull(crv, str, res.0, res.1, lid, maxlook, ov, ncap, nlook, nquant)
     decreases maxlook - lid
   {
     var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
@@ -12841,7 +12842,7 @@ module LindenElkMain {
       FLookLoopValueLiftFull(crv, str, next, maxlook, cap, lk, qt, ov, S, Slook, ncap, nlook, nquant);
       // stability: res.1 agrees with lk at lid; lk is None there => res.1 None => not matched
       assert forall l1: int, la1: R.lookaround, b1: R.regex ::
-        lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> lid !in LookIdSet(b1);   // (h)@lid, l2:=lid
+          lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> lid !in LookIdSet(b1);   // (h)@lid, l2:=lid
       FLookLoopLidCpStable(crv, str, lid, maxlook, cap, lk, qt, ov, S, Slook);
       assert AReg.get_cp(res.1, lid) == AReg.get_cp(lk, lid);
       assert !MatchedPosLA(crv, res.1, lid);
@@ -12873,11 +12874,11 @@ module LindenElkMain {
         var nqt := if result.None? then qt else result.value.quant_regs;
         // (L5 F7c-2) per-kind replay facts (the `...LB` twins take the BACKWARD ones)
         assert la.Lookahead? ==> (dir == LAnc.Forward && CP.capture_regex(la, body) == body
-          && bytecode == CP.compile_to_bytecode(body)
-          && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp));
+                                  && bytecode == CP.compile_to_bytecode(body)
+                                  && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp));
         assert la.Lookbehind? ==> (dir == LAnc.Backward && CP.capture_regex(la, body) == R.reverse_regex(body)
-          && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
-          && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1));
+                                   && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+                                   && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1));
         assert res == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1);
         assert 0 <= cp <= |str| by {
           assert cp == AI.get_idx(lk.a_cp, lid) && cp >= 0;   // get_cp(lk,lid)==Some(cp)
@@ -12908,7 +12909,7 @@ module LindenElkMain {
         if la.Lookahead? { ReplayThreadWfLANested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant); }
         else { ReplayThreadWfLBNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant); }
         assert |capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN)
-            && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook by {
+               && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook by {
           if result.Some? { assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant); }
         }
         if la.Lookahead? { ReplayLookCpOkNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
@@ -12922,9 +12923,9 @@ module LindenElkMain {
         else { ReplayLidCapAgreeFreshNestedLB(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant); }
         var rfLid := FreshBodyMatch(crv, str, lid, lk, ov, ncap, nlook, nquant);
         var rf := AI.FFindMatch(bytecode, str,
-                    AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                  AReg.init_regs(nquant), 0, AI.cp_context(cp, str, dir)),
-                    ov, dir, lookcdn).0;   // (L5 F7c-2) in the lid's own direction
+                                AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                              AReg.init_regs(nquant), 0, AI.cp_context(cp, str, dir)),
+                                ov, dir, lookcdn).0;   // (L5 F7c-2) in the lid's own direction
         assert rfLid == rf;
 
         var Sp := S - PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body));
@@ -12932,7 +12933,7 @@ module LindenElkMain {
         // ---- recursion hypothesis transfer at [next] with (capN, nlk, nqt) ----
         // (b) matched-look-has-entry for nlk
         assert forall l: int :: next <= l <= maxlook && AReg.get_cp(nlk, l).Some? ==>
-          exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
+                                  exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
         by {
           forall l: int | next <= l <= maxlook && AReg.get_cp(nlk, l).Some?
             ensures exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
@@ -12949,8 +12950,8 @@ module LindenElkMain {
         }
         // (c') full per-body-unset for capN
         assert forall l: int, la2: R.lookaround, body2: R.regex ::
-          next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==>
-          CM.RegsAgreeInside(capN, AReg.init_regs(ncap), PIV.CaptureRegs(body2))
+            next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==>
+              CM.RegsAgreeInside(capN, AReg.init_regs(ncap), PIV.CaptureRegs(body2))
         by {
           forall l: int, la2: R.lookaround, body2: R.regex | next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2)
             ensures CM.RegsAgreeInside(capN, AReg.init_regs(ncap), PIV.CaptureRegs(body2))
@@ -12963,8 +12964,8 @@ module LindenElkMain {
         }
         // (f) look-stability for nlk
         assert forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-          next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
-          && next <= l2 <= maxlook && l2 != l1 && AReg.get_cp(nlk, l2).Some? ==> l2 !in LookIdSet(b1)
+            next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
+            && next <= l2 <= maxlook && l2 != l1 && AReg.get_cp(nlk, l2).Some? ==> l2 !in LookIdSet(b1)
         by {
           forall l1: int, la1: R.lookaround, b1: R.regex, l2: int |
             next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
@@ -12991,7 +12992,7 @@ module LindenElkMain {
         }
         // (h) well-nested lids for [next] — sub-instance of (h)@lid
         assert forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-          next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) && next <= l2 <= l1 ==> l2 !in LookIdSet(b1);
+            next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) && next <= l2 <= l1 ==> l2 !in LookIdSet(b1);
 
         FLookLoopValueLiftFull(crv, str, next, maxlook, capN, nlk, nqt, ov1, S, Slook, ncap, nlook, nquant);
         assert res.0 == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1).0;
@@ -13001,13 +13002,13 @@ module LindenElkMain {
 
         // ---- R3 stability: res.1 agrees with lk at lid ----
         assert forall l1: int, la1: R.lookaround, b1: R.regex ::
-          lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> lid !in LookIdSet(b1);   // (h)@lid, l2:=lid
+            lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> lid !in LookIdSet(b1);   // (h)@lid, l2:=lid
         FLookLoopLidCpStable(crv, str, lid, maxlook, cap, lk, qt, ov, S, Slook);
         assert AReg.get_cp(res.1, lid) == AReg.get_cp(lk, lid);
 
         // ---- suffix frame: res.0 == capN on OuterCaps(body) ----
         assert forall l: int, la2: R.lookaround, body2: R.regex ::
-          next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==> FrameEntryOk(crv, la2, body2, Sp, Slook)
+            next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==> FrameEntryOk(crv, la2, body2, Sp, Slook)
         by {
           forall l: int, la2: R.lookaround, body2: R.regex | next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2)
             ensures FrameEntryOk(crv, la2, body2, Sp, Slook)
@@ -13038,9 +13039,9 @@ module LindenElkMain {
         forall owner: int | lid <= owner <= maxlook && MatchedPosLA(crv, res.1, owner)
           ensures var rf2 := FreshBodyMatch(crv, str, owner, res.1, ov, ncap, nlook, nquant);
                   (rf2.Some? ==> CM.RegsAgreeInside(res.0, rf2.value.capture_regs,
-                                  PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, owner)))))
+                                                    PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, owner)))))
                   && (rf2.None? ==> CM.RegsAgreeInside(res.0, AReg.init_regs(ncap),
-                                  PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, owner)))))
+                                                       PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, owner)))))
         {
           if owner == lid {
             // re-key lid's coverage from lk onto res.1 via stability
@@ -13086,11 +13087,11 @@ module LindenElkMain {
                                        lid: int, maxlook: int, ov: LOr.OracleView,
                                        ncap: int, nlook: int, nquant: int) {
     forall l1: int :: lid <= l1 <= maxlook && MatchedPosLA(crv, res1, l1) ==>
-      var rf := FreshBodyMatch(crv, str, l1, res1, ov, ncap, nlook, nquant);
-      rf.Some? ==>
-        forall l2: int :: l2 in DirectLidSet(VBody(crv, l1)) ==>
-          AReg.get_cp(res1, l2) == AReg.get_cp(rf.value.look_regs, l2)
-          && AI.get_idx(res1.a_clk, l2) == AI.get_idx(rf.value.look_regs.a_clk, l2)
+                        var rf := FreshBodyMatch(crv, str, l1, res1, ov, ncap, nlook, nquant);
+                        rf.Some? ==>
+                          forall l2: int :: l2 in DirectLidSet(VBody(crv, l1)) ==>
+                                              AReg.get_cp(res1, l2) == AReg.get_cp(rf.value.look_regs, l2)
+                                              && AI.get_idx(res1.a_clk, l2) == AI.get_idx(rf.value.look_regs.a_clk, l2)
   }
 
   /** `l1 == lid` is not matched in `res1`, so the child-link map for
@@ -13105,8 +13106,8 @@ module LindenElkMain {
       ensures var rf := FreshBodyMatch(crv, str, l1, res1, ov, ncap, nlook, nquant);
               rf.Some? ==>
                 forall l2: int :: l2 in DirectLidSet(VBody(crv, l1)) ==>
-                  AReg.get_cp(res1, l2) == AReg.get_cp(rf.value.look_regs, l2)
-                  && AI.get_idx(res1.a_clk, l2) == AI.get_idx(rf.value.look_regs.a_clk, l2)
+                                    AReg.get_cp(res1, l2) == AReg.get_cp(rf.value.look_regs, l2)
+                                    && AI.get_idx(res1.a_clk, l2) == AI.get_idx(rf.value.look_regs.a_clk, l2)
     { assert l1 != lid; }
   }
 
@@ -13123,40 +13124,40 @@ module LindenElkMain {
       `SL := DirectLidSet(body)`) — so the FINAL bank's child records are the
       fresh match's. Rows above `lid` come from the IH keyed on `res.1`. */
   lemma {:isolate_assertions} FLookLoopChildLinkLift(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
-                           cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
-                           S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int)
+                                                     cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                                                     S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int)
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
     requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
     requires CM.LookCpsLE(lk, |str|)                                                            // (e)
     requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (a)
-      lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+               lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>                // (b)
-      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+                                exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
     requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (c') full per-body-unset
-      lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==>
-      CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+               lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==>
+                 CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
     requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (c'-look) child-unset
-      lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==>
-      CM.RegsAgreeInside(lk, AReg.init_regs(nlook), DirectLidSet(body))
+               lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==>
+                 CM.RegsAgreeInside(lk, AReg.init_regs(nlook), DirectLidSet(body))
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (D-ord)
-      lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
+               lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 < l2
+               && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                 PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (f) look-stability
-      lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
-      && lid <= l2 <= maxlook && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+               lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
+               && lid <= l2 <= maxlook && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
-      lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      DirectLookIds(b1) * LTB.LookIds(b2) == {}
+               lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 < l2
+               && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                 DirectLookIds(b1) * LTB.LookIds(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (h) well-nested lids
-      lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) && lid <= l2 <= l1 ==> l2 !in LookIdSet(b1)
+               lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) && lid <= l2 <= l1 ==> l2 !in LookIdSet(b1)
     ensures var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
-      FLookLoopChildLinkOk(crv, str, res.1, lid, maxlook, ov, ncap, nlook, nquant)
+            FLookLoopChildLinkOk(crv, str, res.1, lid, maxlook, ov, ncap, nlook, nquant)
     decreases maxlook - lid
   {
     var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
@@ -13169,7 +13170,7 @@ module LindenElkMain {
       assert res == AI.FLookLoop(crv, str, next, maxlook, cap, lk, qt, ov);
       FLookLoopChildLinkLift(crv, str, next, maxlook, cap, lk, qt, ov, S, Slook, ncap, nlook, nquant);
       assert forall l1: int, la1: R.lookaround, b1: R.regex ::
-        lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> lid !in LookIdSet(b1);   // (h)@lid, l2:=lid
+          lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> lid !in LookIdSet(b1);   // (h)@lid, l2:=lid
       FLookLoopLidCpStable(crv, str, lid, maxlook, cap, lk, qt, ov, S, Slook);
       assert AReg.get_cp(res.1, lid) == AReg.get_cp(lk, lid);
       assert !MatchedPosLA(crv, res.1, lid);
@@ -13201,11 +13202,11 @@ module LindenElkMain {
         var nqt := if result.None? then qt else result.value.quant_regs;
         // (L5 F7c-2) per-kind replay facts (the `...LB` twins take the BACKWARD ones)
         assert la.Lookahead? ==> (dir == LAnc.Forward && CP.capture_regex(la, body) == body
-          && bytecode == CP.compile_to_bytecode(body)
-          && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp));
+                                  && bytecode == CP.compile_to_bytecode(body)
+                                  && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp));
         assert la.Lookbehind? ==> (dir == LAnc.Backward && CP.capture_regex(la, body) == R.reverse_regex(body)
-          && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
-          && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1));
+                                   && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+                                   && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1));
         assert res == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1);
         assert 0 <= cp <= |str| by {
           assert cp == AI.get_idx(lk.a_cp, lid) && cp >= 0;   // get_cp(lk,lid)==Some(cp)
@@ -13235,7 +13236,7 @@ module LindenElkMain {
         if la.Lookahead? { ReplayThreadWfLANested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant); }
         else { ReplayThreadWfLBNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant); }
         assert |capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN)
-            && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook by {
+               && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook by {
           if result.Some? { assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant); }
         }
         if la.Lookahead? { ReplayLookCpOkNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
@@ -13249,15 +13250,15 @@ module LindenElkMain {
         else { ReplayLidLookAgreeFreshNestedLB(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, DirectLidSet(body), ncap, nlook, nquant); }
         var rfLid := FreshBodyMatch(crv, str, lid, lk, ov, ncap, nlook, nquant);
         var rf := AI.FFindMatch(bytecode, str,
-                    AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                  AReg.init_regs(nquant), 0, AI.cp_context(cp, str, dir)),
-                    ov, dir, lookcdn).0;   // (L5 F7c-2) in the lid's own direction
+                                AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                              AReg.init_regs(nquant), 0, AI.cp_context(cp, str, dir)),
+                                ov, dir, lookcdn).0;   // (L5 F7c-2) in the lid's own direction
         assert rfLid == rf;
 
         // ---- recursion hypothesis transfer at [next] (verbatim + (c'-look)) ----
         // (b) matched-look-has-entry for nlk
         assert forall l: int :: next <= l <= maxlook && AReg.get_cp(nlk, l).Some? ==>
-          exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
+                                  exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
         by {
           forall l: int | next <= l <= maxlook && AReg.get_cp(nlk, l).Some?
             ensures exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
@@ -13274,8 +13275,8 @@ module LindenElkMain {
         }
         // (c') full per-body-unset for capN
         assert forall l: int, la2: R.lookaround, body2: R.regex ::
-          next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==>
-          CM.RegsAgreeInside(capN, AReg.init_regs(ncap), PIV.CaptureRegs(body2))
+            next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==>
+              CM.RegsAgreeInside(capN, AReg.init_regs(ncap), PIV.CaptureRegs(body2))
         by {
           forall l: int, la2: R.lookaround, body2: R.regex | next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2)
             ensures CM.RegsAgreeInside(capN, AReg.init_regs(ncap), PIV.CaptureRegs(body2))
@@ -13289,8 +13290,8 @@ module LindenElkMain {
         // (c'-look) child-unset for nlk: the replay writes only lid's direct
         // children, disjoint from every later row's ((g_new) at (lid, l)).
         assert forall l: int, la2: R.lookaround, body2: R.regex ::
-          next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==>
-          CM.RegsAgreeInside(nlk, AReg.init_regs(nlook), DirectLidSet(body2))
+            next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==>
+              CM.RegsAgreeInside(nlk, AReg.init_regs(nlook), DirectLidSet(body2))
         by {
           forall l: int, la2: R.lookaround, body2: R.regex | next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2)
             ensures CM.RegsAgreeInside(nlk, AReg.init_regs(nlook), DirectLidSet(body2))
@@ -13299,7 +13300,7 @@ module LindenElkMain {
             assert DirectLookIds(body) * LTB.LookIds(body2) == {};                       // (g_new)@(lid, l)
             forall k: int | k in DirectLidSet(body2)
               ensures AI.get_idx(nlk.a_cp, k) == AI.get_idx(AReg.init_regs(nlook).a_cp, k)
-                   && AI.get_idx(nlk.a_clk, k) == AI.get_idx(AReg.init_regs(nlook).a_clk, k)
+                      && AI.get_idx(nlk.a_clk, k) == AI.get_idx(AReg.init_regs(nlook).a_clk, k)
             {
               var kn: nat :| kn in DirectLookIds(body2) && (kn as int) == k;
               DirectLidsSubLookIds(body2);
@@ -13314,14 +13315,14 @@ module LindenElkMain {
                 }
               }
               assert AI.get_idx(nlk.a_cp, k) == AI.get_idx(lk.a_cp, k)
-                  && AI.get_idx(nlk.a_clk, k) == AI.get_idx(lk.a_clk, k);   // frame off DirectLidSet(body)
+                     && AI.get_idx(nlk.a_clk, k) == AI.get_idx(lk.a_clk, k);   // frame off DirectLidSet(body)
             }
           }
         }
         // (f) look-stability for nlk
         assert forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-          next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
-          && next <= l2 <= maxlook && l2 != l1 && AReg.get_cp(nlk, l2).Some? ==> l2 !in LookIdSet(b1)
+            next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
+            && next <= l2 <= maxlook && l2 != l1 && AReg.get_cp(nlk, l2).Some? ==> l2 !in LookIdSet(b1)
         by {
           forall l1: int, la1: R.lookaround, b1: R.regex, l2: int |
             next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
@@ -13347,7 +13348,7 @@ module LindenElkMain {
         }
         // (h) well-nested lids for [next] — sub-instance of (h)@lid
         assert forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-          next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) && next <= l2 <= l1 ==> l2 !in LookIdSet(b1);
+            next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) && next <= l2 <= l1 ==> l2 !in LookIdSet(b1);
 
         FLookLoopChildLinkLift(crv, str, next, maxlook, capN, nlk, nqt, ov1, S, Slook, ncap, nlook, nquant);
         assert res.1 == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1).1;
@@ -13355,7 +13356,7 @@ module LindenElkMain {
 
         // ---- stability: res.1 agrees with lk at lid ----
         assert forall l1: int, la1: R.lookaround, b1: R.regex ::
-          lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> lid !in LookIdSet(b1);   // (h)@lid, l2:=lid
+            lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> lid !in LookIdSet(b1);   // (h)@lid, l2:=lid
         FLookLoopLidCpStable(crv, str, lid, maxlook, cap, lk, qt, ov, S, Slook);
         assert AReg.get_cp(res.1, lid) == AReg.get_cp(lk, lid);
 
@@ -13364,8 +13365,8 @@ module LindenElkMain {
           ensures var rf2 := FreshBodyMatch(crv, str, l1, res.1, ov, ncap, nlook, nquant);
                   rf2.Some? ==>
                     forall l2: int :: l2 in DirectLidSet(VBody(crv, l1)) ==>
-                      AReg.get_cp(res.1, l2) == AReg.get_cp(rf2.value.look_regs, l2)
-                      && AI.get_idx(res.1.a_clk, l2) == AI.get_idx(rf2.value.look_regs.a_clk, l2)
+                                        AReg.get_cp(res.1, l2) == AReg.get_cp(rf2.value.look_regs, l2)
+                                        && AI.get_idx(res.1.a_clk, l2) == AI.get_idx(rf2.value.look_regs.a_clk, l2)
         {
           if l1 == lid {
             var rf2 := FreshBodyMatch(crv, str, lid, res.1, ov, ncap, nlook, nquant);
@@ -13382,11 +13383,11 @@ module LindenElkMain {
               assert CM.RegsAgreeInside(result.value.look_regs, rf.value.look_regs, DirectLidSet(body));
               forall l2: int | l2 in DirectLidSet(body)
                 ensures AReg.get_cp(res.1, l2) == AReg.get_cp(rf2.value.look_regs, l2)
-                     && AI.get_idx(res.1.a_clk, l2) == AI.get_idx(rf2.value.look_regs.a_clk, l2)
+                        && AI.get_idx(res.1.a_clk, l2) == AI.get_idx(rf2.value.look_regs.a_clk, l2)
               {
                 // tail fold leaves l2 untouched: (h')@l2 on [next..] from (g_new)@(lid, ·)
                 assert forall l1': int, la1': R.lookaround, b1': R.regex ::
-                  next <= l1' <= maxlook && LTB.LookEntryOk(crv, l1', la1', b1') ==> l2 !in LookIdSet(b1')
+                    next <= l1' <= maxlook && LTB.LookEntryOk(crv, l1', la1', b1') ==> l2 !in LookIdSet(b1')
                 by {
                   forall l1': int, la1': R.lookaround, b1': R.regex |
                     next <= l1' <= maxlook && LTB.LookEntryOk(crv, l1', la1', b1')
@@ -13435,16 +13436,16 @@ module LindenElkMain {
                            S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int)
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
     requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
     requires CM.LookCpsLE(lk, |str|)                                                            // (e)
     requires CM.LookCpSetWithClk(lk)
     requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (a)
-      lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+               lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>                // (b)
-      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+                                exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
     ensures CM.LookCpSetWithClk(AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov).1)
     ensures CM.LookCpsLE(AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov).1, |str|)
     decreases maxlook - lid
@@ -13480,11 +13481,11 @@ module LindenElkMain {
         var nqt := if result.None? then qt else result.value.quant_regs;
         // (L5 F7c-2) per-kind replay facts (the `...LB` twins take the BACKWARD ones)
         assert la.Lookahead? ==> (dir == LAnc.Forward && CP.capture_regex(la, body) == body
-          && bytecode == CP.compile_to_bytecode(body)
-          && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp));
+                                  && bytecode == CP.compile_to_bytecode(body)
+                                  && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp));
         assert la.Lookbehind? ==> (dir == LAnc.Backward && CP.capture_regex(la, body) == R.reverse_regex(body)
-          && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
-          && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1));
+                                   && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+                                   && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1));
         assert res == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1);
         assert 0 <= cp <= |str| by {
           assert cp == AI.get_idx(lk.a_cp, lid) && cp >= 0;
@@ -13520,7 +13521,7 @@ module LindenElkMain {
         if la.Lookahead? { ReplayThreadWfLANested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant); }
         else { ReplayThreadWfLBNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant); }
         assert |capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN)
-            && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook by {
+               && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook by {
           if result.Some? { assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant); }
         }
         if la.Lookahead? { ReplayLookCpOkNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
@@ -13532,7 +13533,7 @@ module LindenElkMain {
         if la.Lookahead? { ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
         else { ReplayPlusFrameNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
         assert forall l: int :: next <= l <= maxlook && AReg.get_cp(nlk, l).Some? ==>
-          exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
+                                  exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
         by {
           forall l: int | next <= l <= maxlook && AReg.get_cp(nlk, l).Some?
             ensures exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
@@ -13565,16 +13566,16 @@ module LindenElkMain {
                                 S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int)
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
     requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
     requires CM.LookCpsLE(lk, |str|)                                                            // (e)
     requires CM.LookCpsOracleTrue(lk, ov)
     requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (a)
-      lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+               lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>                // (b)
-      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+                                exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
     ensures CM.LookCpsOracleTrue(AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov).1, ov)
     decreases maxlook - lid
   {
@@ -13609,11 +13610,11 @@ module LindenElkMain {
         var nqt := if result.None? then qt else result.value.quant_regs;
         // (L5 F7c-2) per-kind replay facts (the `...LB` twins take the BACKWARD ones)
         assert la.Lookahead? ==> (dir == LAnc.Forward && CP.capture_regex(la, body) == body
-          && bytecode == CP.compile_to_bytecode(body)
-          && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp));
+                                  && bytecode == CP.compile_to_bytecode(body)
+                                  && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp));
         assert la.Lookbehind? ==> (dir == LAnc.Backward && CP.capture_regex(la, body) == R.reverse_regex(body)
-          && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
-          && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1));
+                                   && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+                                   && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1));
         assert res == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1);
         assert 0 <= cp <= |str| by {
           assert cp == AI.get_idx(lk.a_cp, lid) && cp >= 0;
@@ -13654,7 +13655,7 @@ module LindenElkMain {
         if la.Lookahead? { ReplayThreadWfLANested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant); }
         else { ReplayThreadWfLBNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant); }
         assert |capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN)
-            && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook by {
+               && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook by {
           if result.Some? { assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant); }
         }
         if la.Lookahead? { ReplayLookCpOkNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
@@ -13666,7 +13667,7 @@ module LindenElkMain {
         if la.Lookahead? { ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
         else { ReplayPlusFrameNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
         assert forall l: int :: next <= l <= maxlook && AReg.get_cp(nlk, l).Some? ==>
-          exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
+                                  exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
         by {
           forall l: int | next <= l <= maxlook && AReg.get_cp(nlk, l).Some?
             ensures exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
@@ -13712,39 +13713,39 @@ module LindenElkMain {
     // ---- deliverable-1 hypotheses (a)-(h) at lid=1, maxlook=max_lookaround(ast) ----
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
     requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
     requires CM.LookCpsLE(lk, |str|)                                                            // (e)
     requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (a)
-      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+               1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
     requires forall l: int :: 1 <= l <= R.max_lookaround(ast) && AReg.get_cp(lk, l).Some? ==>    // (b)
-      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+                                exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
     requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (c')
-      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
-      CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+               1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
+                 CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (D-ord)
-      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
+               1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+               && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                 PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (f)
-      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
-      && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+               1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+               && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
-      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      DirectLookIds(b1) * LTB.LookIds(b2) == {}
+               1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+               && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                 DirectLookIds(b1) * LTB.LookIds(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (h)
-      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==> l2 !in LookIdSet(b1)
+               1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==> l2 !in LookIdSet(b1)
     ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov);
-      forall owner: nat :: owner in LTB.LookIds(re)
-          && g in PIV.CapIds(NI.LookBodyOfRE(re, owner))
-          && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
-          && MatchedPosLA(crv, res.1, owner) ==>
-        var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
-        (rf.Some? ==> CM.RegsAgreeInside(res.0, rf.value.capture_regs, PIV.CaptureRegsSet({g})))
-        && (rf.None? ==> CM.RegsAgreeInside(res.0, AReg.init_regs(ncap), PIV.CaptureRegsSet({g})))
+            forall owner: nat :: owner in LTB.LookIds(re)
+                                 && g in PIV.CapIds(NI.LookBodyOfRE(re, owner))
+                                 && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
+                                 && MatchedPosLA(crv, res.1, owner) ==>
+                                   var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
+                                   (rf.Some? ==> CM.RegsAgreeInside(res.0, rf.value.capture_regs, PIV.CaptureRegsSet({g})))
+                                   && (rf.None? ==> CM.RegsAgreeInside(res.0, AReg.init_regs(ncap), PIV.CaptureRegsSet({g})))
   {
     var maxlook := R.max_lookaround(ast);
     FLookLoopValueLiftFull(crv, str, 1, maxlook, cap, lk, qt, ov, S, Slook, ncap, nlook, nquant);
@@ -13752,9 +13753,9 @@ module LindenElkMain {
     assert FLookLoopValueOkFull(crv, str, res.0, res.1, 1, maxlook, ov, ncap, nlook, nquant);
 
     forall owner: nat | owner in LTB.LookIds(re)
-        && g in PIV.CapIds(NI.LookBodyOfRE(re, owner))
-        && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
-        && MatchedPosLA(crv, res.1, owner)
+                        && g in PIV.CapIds(NI.LookBodyOfRE(re, owner))
+                        && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
+                        && MatchedPosLA(crv, res.1, owner)
       ensures var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
               (rf.Some? ==> CM.RegsAgreeInside(res.0, rf.value.capture_regs, PIV.CaptureRegsSet({g})))
               && (rf.None? ==> CM.RegsAgreeInside(res.0, AReg.init_regs(ncap), PIV.CaptureRegsSet({g})))
@@ -13775,14 +13776,14 @@ module LindenElkMain {
       var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
       if rf.Some? {
         assert CM.RegsAgreeInside(res.0, rf.value.capture_regs,
-                 PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)));
+                                  PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)));
         RegsAgreeInsideWeakenSub(res.0, rf.value.capture_regs,
-          PIV.CaptureRegsSet({g}), PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)));
+                                 PIV.CaptureRegsSet({g}), PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)));
       } else {
         assert CM.RegsAgreeInside(res.0, AReg.init_regs(ncap),
-                 PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)));
+                                  PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)));
         RegsAgreeInsideWeakenSub(res.0, AReg.init_regs(ncap),
-          PIV.CaptureRegsSet({g}), PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)));
+                                 PIV.CaptureRegsSet({g}), PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)));
       }
     }
   }
@@ -13805,9 +13806,9 @@ module LindenElkMain {
     requires PIV.CapUnique(re) && LTB.LookUnique(re)
     requires g in PIV.CapIdsInLooks(re)
     requires owner0 in LTB.LookIds(re) && g in PIV.CapIds(NI.LookBodyOfRE(re, owner0))
-          && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner0))
+             && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner0))
     requires l in LTB.LookIds(re) && g in PIV.CapIds(NI.LookBodyOfRE(re, l))
-          && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, l))
+             && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, l))
     ensures l == owner0
   {
     if l != owner0 {
@@ -13829,23 +13830,23 @@ module LindenElkMain {
       per-step frame/`(b)`-transfer machinery), tracking a single register plus
       the owner exception. `decreases maxlook - lid`. */
   lemma {:isolate_assertions} FLookLoopGRegUnsetFrame(
-      crv: CP.FCompiled, str: string, lid: int, maxlook: int,
-      cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
-      S: set<int>, Slook: set<int>, g: nat, owner0: nat)
+    crv: CP.FCompiled, str: string, lid: int, maxlook: int,
+    cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+    S: set<int>, Slook: set<int>, g: nat, owner0: nat)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires forall l: int, la: R.lookaround, body: R.regex ::
-      lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+               lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
-      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+                                exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                       // (h)
-      lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) && lid <= l2 <= l1 ==> l2 !in LookIdSet(b1)
+               lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) && lid <= l2 <= l1 ==> l2 !in LookIdSet(b1)
     requires forall l: int, la: R.lookaround, body: R.regex ::                                // uniqueness of owner0
-      lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) && g in PIV.CapIdsOutsideLooks(body) ==> l == owner0
+               lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) && g in PIV.CapIdsOutsideLooks(body) ==> l == owner0
     requires !MatchedPosLA(crv, AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov).1, owner0)
     ensures var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
-      AI.get_idx(res.0.a_cp, CP.start_reg(g)) == AI.get_idx(cap.a_cp, CP.start_reg(g))
-      && AI.get_idx(res.0.a_clk, CP.start_reg(g)) == AI.get_idx(cap.a_clk, CP.start_reg(g))
+            AI.get_idx(res.0.a_cp, CP.start_reg(g)) == AI.get_idx(cap.a_cp, CP.start_reg(g))
+            && AI.get_idx(res.0.a_clk, CP.start_reg(g)) == AI.get_idx(cap.a_clk, CP.start_reg(g))
     decreases maxlook - lid
   {
     var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
@@ -13882,11 +13883,11 @@ module LindenElkMain {
         var nqt := if result.None? then qt else result.value.quant_regs;
         // (L5 F7c-2) per-kind replay facts (the `...LB` twins take the BACKWARD ones)
         assert la.Lookahead? ==> (dir == LAnc.Forward && CP.capture_regex(la, body) == body
-          && bytecode == CP.compile_to_bytecode(body)
-          && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp));
+                                  && bytecode == CP.compile_to_bytecode(body)
+                                  && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp));
         assert la.Lookbehind? ==> (dir == LAnc.Backward && CP.capture_regex(la, body) == R.reverse_regex(body)
-          && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
-          && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1));
+                                   && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+                                   && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1));
         assert res == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1);
         if la.Lookahead? { ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
         else { ReplayPlusFrameNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
@@ -13895,7 +13896,7 @@ module LindenElkMain {
           // this step OWNS g -> it is owner0 (uniqueness); it RAN -> owner0 matched -> contradiction
           assert lid == owner0;
           assert forall l1: int, la1: R.lookaround, b1: R.regex ::
-            lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> lid !in LookIdSet(b1);   // (h)@lid
+              lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> lid !in LookIdSet(b1);   // (h)@lid
           FLookLoopLidCpStable(crv, str, lid, maxlook, cap, lk, qt, ov, S, Slook);
           assert AReg.get_cp(res.1, lid) == AReg.get_cp(lk, lid);
           assert MatchedPosLA(crv, res.1, lid);
@@ -13919,7 +13920,7 @@ module LindenElkMain {
             if result.Some? {} else { assert nlk == lk; }
           }
           assert forall l: int :: next <= l <= maxlook && AReg.get_cp(nlk, l).Some? ==>
-            exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
+                                    exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
           by {
             forall l: int | next <= l <= maxlook && AReg.get_cp(nlk, l).Some?
               ensures exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
@@ -13942,7 +13943,7 @@ module LindenElkMain {
           assert AI.get_idx(res.0.a_cp, CP.start_reg(g)) == AI.get_idx(capN.a_cp, CP.start_reg(g));
           assert AI.get_idx(res.0.a_clk, CP.start_reg(g)) == AI.get_idx(capN.a_clk, CP.start_reg(g));
         }
-    }
+      }
   }
 
   /** REVERSE LIVENESS CONVERSE (companion to `FLookLoopFullCoversInLooks`):
@@ -13955,8 +13956,8 @@ module LindenElkMain {
       `res.0` would be UNSET, contradicting the LIVE premise. Same whole-regex
       setup as `FLookLoopFullCoversInLooks`; the existential witness is `owner0`. */
   lemma FLookLoopInLookLiveOwnerMatched(crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
-                                   cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
-                                   S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int, g: nat)
+                                        cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                                        S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int, g: nat)
     // ---- whole-regex setup ----
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
@@ -13967,37 +13968,37 @@ module LindenElkMain {
     // ---- deliverable-1 hypotheses (a)-(h) at lid=1, maxlook=max_lookaround(ast) ----
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
     requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
     requires CM.LookCpsLE(lk, |str|)                                                            // (e)
     requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (a)
-      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+               1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
     requires forall l: int :: 1 <= l <= R.max_lookaround(ast) && AReg.get_cp(lk, l).Some? ==>    // (b)
-      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+                                exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
     requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (c')
-      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
-      CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+               1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
+                 CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (D-ord)
-      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
+               1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+               && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                 PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (f)
-      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
-      && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+               1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+               && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
-      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      DirectLookIds(b1) * LTB.LookIds(b2) == {}
+               1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+               && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                 DirectLookIds(b1) * LTB.LookIds(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (h)
-      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==> l2 !in LookIdSet(b1)
+               1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==> l2 !in LookIdSet(b1)
     ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov);
-      AI.get_idx(res.0.a_clk, CP.start_reg(g)) >= 0 ==>
-        exists owner: nat :: owner in LTB.LookIds(re)
-          && g in PIV.CapIds(NI.LookBodyOfRE(re, owner))
-          && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
-          && MatchedPosLA(crv, res.1, owner)
+            AI.get_idx(res.0.a_clk, CP.start_reg(g)) >= 0 ==>
+              exists owner: nat :: owner in LTB.LookIds(re)
+                                   && g in PIV.CapIds(NI.LookBodyOfRE(re, owner))
+                                   && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
+                                   && MatchedPosLA(crv, res.1, owner)
   {
     var maxlook := R.max_lookaround(ast);
     var res := AI.FLookLoop(crv, str, 1, maxlook, cap, lk, qt, ov);
@@ -14012,7 +14013,7 @@ module LindenElkMain {
           assert LTB.LookIds(pre) == {};
         }
         forall l: int, la: R.lookaround, body: R.regex |
-            1 <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) && g in PIV.CapIdsOutsideLooks(body)
+          1 <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) && g in PIV.CapIdsOutsideLooks(body)
           ensures l == owner0
         {
           LookEntryOnlyReal(ast, crv, l, la, body);         // (l as nat) in LookIds(ast) == LookIds(re)
@@ -14046,9 +14047,9 @@ module LindenElkMain {
       }
       // MatchedPosLA(res.1, owner0) holds — owner0 witnesses the existential
       assert owner0 in LTB.LookIds(re)
-          && g in PIV.CapIds(NI.LookBodyOfRE(re, owner0))
-          && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner0))
-          && MatchedPosLA(crv, res.1, owner0);
+             && g in PIV.CapIds(NI.LookBodyOfRE(re, owner0))
+             && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner0))
+             && MatchedPosLA(crv, res.1, owner0);
     }
   }
 
@@ -14075,9 +14076,9 @@ module LindenElkMain {
   ghost predicate FLookLoopQuantValueOkFull(crv: CP.FCompiled, str: string, res2: AReg.Regs, res1: AReg.Regs,
                                             lid: int, maxlook: int, ov: LOr.OracleView, ncap: int, nlook: int, nquant: int) {
     forall owner: int :: lid <= owner <= maxlook && MatchedPosLA(crv, res1, owner) ==>
-      var rf := FreshBodyMatch(crv, str, owner, res1, ov, ncap, nlook, nquant);
-      (rf.Some? ==> CM.RegsAgreeInside(res2, rf.value.quant_regs, QIdsOuter(VBody(crv, owner))))
-      && (rf.None? ==> CM.RegsAgreeInside(res2, AReg.init_regs(nquant), QIdsOuter(VBody(crv, owner))))
+                           var rf := FreshBodyMatch(crv, str, owner, res1, ov, ncap, nlook, nquant);
+                           (rf.Some? ==> CM.RegsAgreeInside(res2, rf.value.quant_regs, QIdsOuter(VBody(crv, owner))))
+                           && (rf.None? ==> CM.RegsAgreeInside(res2, AReg.init_regs(nquant), QIdsOuter(VBody(crv, owner))))
   }
 
   /** C4e: `owner == lid` is not a matched positive lookahead in `res1`, so the
@@ -14108,42 +14109,42 @@ module LindenElkMain {
       quants of earlier ⟂ all quants of later, (Sq-bound) each body's outer quant
       ids land in `Sq`. `decreases maxlook - lid`. */
   lemma {:isolate_assertions} FLookLoopQuantValueLiftFull(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
-                           cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
-                           S: set<int>, Slook: set<int>, Sq: set<int>, ncap: int, nlook: int, nquant: int)
+                                                          cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                                                          S: set<int>, Slook: set<int>, Sq: set<int>, ncap: int, nlook: int, nquant: int)
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
     requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
     requires CM.LookCpsLE(lk, |str|)                                                            // (e)
     requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (a)
-      lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+               lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>                // (b)
-      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+                                exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
     requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (c'q) per-body quant-unset
-      lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==>
-      CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body))
+               lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==>
+                 CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body))
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (D-ord-q)
-      lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
+               lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 < l2
+               && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                 QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (f) look-stability
-      lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
-      && lid <= l2 <= maxlook && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+               lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
+               && lid <= l2 <= maxlook && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
-      lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      DirectLookIds(b1) * LTB.LookIds(b2) == {}
+               lid <= l1 <= maxlook && lid <= l2 <= maxlook && l1 < l2
+               && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                 DirectLookIds(b1) * LTB.LookIds(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (h) well-nested lids
-      lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) && lid <= l2 <= l1 ==> l2 !in LookIdSet(b1)
+               lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) && lid <= l2 <= l1 ==> l2 !in LookIdSet(b1)
     requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (Sq-bound)
-      lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> QIdsOuter(body) <= Sq
+               lid <= l <= maxlook && LTB.LookEntryOk(crv, l, la, body) ==> QIdsOuter(body) <= Sq
     ensures var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
-      |res.2.a_cp| == nquant && |res.2.a_clk| == nquant
-      && (forall k :: AI.get_idx(res.2.a_cp, k) < 0)
-      && (forall k :: AI.get_idx(res.2.a_clk, k) >= -1)
-      && FLookLoopQuantValueOkFull(crv, str, res.2, res.1, lid, maxlook, ov, ncap, nlook, nquant)
+            |res.2.a_cp| == nquant && |res.2.a_clk| == nquant
+            && (forall k :: AI.get_idx(res.2.a_cp, k) < 0)
+            && (forall k :: AI.get_idx(res.2.a_clk, k) >= -1)
+            && FLookLoopQuantValueOkFull(crv, str, res.2, res.1, lid, maxlook, ov, ncap, nlook, nquant)
     decreases maxlook - lid
   {
     var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
@@ -14157,7 +14158,7 @@ module LindenElkMain {
       assert res == AI.FLookLoop(crv, str, next, maxlook, cap, lk, qt, ov);
       FLookLoopQuantValueLiftFull(crv, str, next, maxlook, cap, lk, qt, ov, S, Slook, Sq, ncap, nlook, nquant);
       assert forall l1: int, la1: R.lookaround, b1: R.regex ::
-        lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> lid !in LookIdSet(b1);   // (h)@lid, l2:=lid
+          lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> lid !in LookIdSet(b1);   // (h)@lid, l2:=lid
       FLookLoopLidCpStable(crv, str, lid, maxlook, cap, lk, qt, ov, S, Slook);
       assert AReg.get_cp(res.1, lid) == AReg.get_cp(lk, lid);
       assert !MatchedPosLA(crv, res.1, lid);
@@ -14189,11 +14190,11 @@ module LindenElkMain {
         var nqt := if result.None? then qt else result.value.quant_regs;
         // (L5 F7c-2) per-kind replay facts (the `...LB` twins take the BACKWARD ones)
         assert la.Lookahead? ==> (dir == LAnc.Forward && CP.capture_regex(la, body) == body
-          && bytecode == CP.compile_to_bytecode(body)
-          && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp));
+                                  && bytecode == CP.compile_to_bytecode(body)
+                                  && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp));
         assert la.Lookbehind? ==> (dir == LAnc.Backward && CP.capture_regex(la, body) == R.reverse_regex(body)
-          && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
-          && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1));
+                                   && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+                                   && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1));
         assert res == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1);
         assert 0 <= cp <= |str| by {
           assert cp == AI.get_idx(lk.a_cp, lid) && cp >= 0;   // get_cp(lk,lid)==Some(cp)
@@ -14226,7 +14227,7 @@ module LindenElkMain {
         if la.Lookahead? { ReplayThreadWfLANested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant); }
         else { ReplayThreadWfLBNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant); }
         assert |capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN)
-            && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook by {
+               && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook by {
           if result.Some? { assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant); }
         }
         if la.Lookahead? { ReplayLookCpOkNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
@@ -14241,9 +14242,9 @@ module LindenElkMain {
         else { ReplayLidQuantAgreeFreshNestedLB(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant); }
         var rfLid := FreshBodyMatch(crv, str, lid, lk, ov, ncap, nlook, nquant);
         var rf := AI.FFindMatch(bytecode, str,
-                    AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                  AReg.init_regs(nquant), 0, AI.cp_context(cp, str, dir)),
-                    ov, dir, lookcdn).0;   // (L5 F7c-2) in the lid's own direction
+                                AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                              AReg.init_regs(nquant), 0, AI.cp_context(cp, str, dir)),
+                                ov, dir, lookcdn).0;   // (L5 F7c-2) in the lid's own direction
         assert rfLid == rf;
 
         var Sqp := Sq - QIdsOuter(body);
@@ -14251,7 +14252,7 @@ module LindenElkMain {
         // ---- recursion hypothesis transfer at [next] with (capN, nlk, nqt) ----
         // (b) matched-look-has-entry for nlk
         assert forall l: int :: next <= l <= maxlook && AReg.get_cp(nlk, l).Some? ==>
-          exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
+                                  exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
         by {
           forall l: int | next <= l <= maxlook && AReg.get_cp(nlk, l).Some?
             ensures exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
@@ -14268,8 +14269,8 @@ module LindenElkMain {
         }
         // (c'q) per-body quant-unset for nqt
         assert forall l: int, la2: R.lookaround, body2: R.regex ::
-          next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==>
-          CM.RegsAgreeInside(nqt, AReg.init_regs(nquant), LKC.QIdsInt(body2))
+            next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==>
+              CM.RegsAgreeInside(nqt, AReg.init_regs(nquant), LKC.QIdsInt(body2))
         by {
           forall l: int, la2: R.lookaround, body2: R.regex | next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2)
             ensures CM.RegsAgreeInside(nqt, AReg.init_regs(nquant), LKC.QIdsInt(body2))
@@ -14282,8 +14283,8 @@ module LindenElkMain {
         }
         // (f) look-stability for nlk
         assert forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-          next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
-          && next <= l2 <= maxlook && l2 != l1 && AReg.get_cp(nlk, l2).Some? ==> l2 !in LookIdSet(b1)
+            next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
+            && next <= l2 <= maxlook && l2 != l1 && AReg.get_cp(nlk, l2).Some? ==> l2 !in LookIdSet(b1)
         by {
           forall l1: int, la1: R.lookaround, b1: R.regex, l2: int |
             next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
@@ -14309,25 +14310,25 @@ module LindenElkMain {
         }
         // (h) well-nested lids for [next] — sub-instance of (h)@lid
         assert forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-          next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) && next <= l2 <= l1 ==> l2 !in LookIdSet(b1);
+            next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) && next <= l2 <= l1 ==> l2 !in LookIdSet(b1);
 
         FLookLoopQuantValueLiftFull(crv, str, next, maxlook, capN, nlk, nqt, ov1, S, Slook, Sq, ncap, nlook, nquant);
         assert res.0 == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1).0;
         assert res.1 == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1).1;
         assert FLookLoopQuantValueOkFull(crv, str, res.2, res.1, next, maxlook, ov, ncap, nlook, nquant);
         assert |res.2.a_cp| == nquant && |res.2.a_clk| == nquant
-            && (forall k :: AI.get_idx(res.2.a_cp, k) < 0) && (forall k :: AI.get_idx(res.2.a_clk, k) >= -1);
+               && (forall k :: AI.get_idx(res.2.a_cp, k) < 0) && (forall k :: AI.get_idx(res.2.a_clk, k) >= -1);
 
         // ---- R3 stability: res.1 agrees with lk at lid ----
         assert forall l1: int, la1: R.lookaround, b1: R.regex ::
-          lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> lid !in LookIdSet(b1);   // (h)@lid, l2:=lid
+            lid <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> lid !in LookIdSet(b1);   // (h)@lid, l2:=lid
         FLookLoopLidCpStable(crv, str, lid, maxlook, cap, lk, qt, ov, S, Slook);
         assert AReg.get_cp(res.1, lid) == AReg.get_cp(lk, lid);
 
         // ---- suffix frame: res.2 == nqt on QIdsOuter(body) ----
         assert forall l: int, la2: R.lookaround, body2: R.regex ::
-          next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==>
-          FrameEntryOk(crv, la2, body2, S, Slook) && QIdsOuter(body2) <= Sqp
+            next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==>
+              FrameEntryOk(crv, la2, body2, S, Slook) && QIdsOuter(body2) <= Sqp
         by {
           forall l: int, la2: R.lookaround, body2: R.regex | next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2)
             ensures FrameEntryOk(crv, la2, body2, S, Slook) && QIdsOuter(body2) <= Sqp
@@ -14372,11 +14373,11 @@ module LindenElkMain {
               assert CM.RegsAgreeInside(res.2, rfLid.value.quant_regs, QIdsOuter(VBody(crv, owner))) by {
                 forall k: int | k in QIdsOuter(body)
                   ensures AI.get_idx(res.2.a_cp, k) == AI.get_idx(rfLid.value.quant_regs.a_cp, k)
-                       && AI.get_idx(res.2.a_clk, k) == AI.get_idx(rfLid.value.quant_regs.a_clk, k)
+                          && AI.get_idx(res.2.a_clk, k) == AI.get_idx(rfLid.value.quant_regs.a_clk, k)
                 {
                   assert k in LKC.QIdsInt(body);
                   assert AI.get_idx(res.2.a_cp, k) == AI.get_idx(nqt.a_cp, k)
-                      && AI.get_idx(res.2.a_clk, k) == AI.get_idx(nqt.a_clk, k);   // suffix frame
+                         && AI.get_idx(res.2.a_clk, k) == AI.get_idx(nqt.a_clk, k);   // suffix frame
                 }
               }
             } else {
@@ -14385,11 +14386,11 @@ module LindenElkMain {
               assert CM.RegsAgreeInside(res.2, AReg.init_regs(nquant), QIdsOuter(VBody(crv, owner))) by {
                 forall k: int | k in QIdsOuter(body)
                   ensures AI.get_idx(res.2.a_cp, k) == AI.get_idx(AReg.init_regs(nquant).a_cp, k)
-                       && AI.get_idx(res.2.a_clk, k) == AI.get_idx(AReg.init_regs(nquant).a_clk, k)
+                          && AI.get_idx(res.2.a_clk, k) == AI.get_idx(AReg.init_regs(nquant).a_clk, k)
                 {
                   assert k in LKC.QIdsInt(body);
                   assert AI.get_idx(res.2.a_cp, k) == AI.get_idx(nqt.a_cp, k)
-                      && AI.get_idx(res.2.a_clk, k) == AI.get_idx(nqt.a_clk, k);   // suffix frame
+                         && AI.get_idx(res.2.a_clk, k) == AI.get_idx(nqt.a_clk, k);   // suffix frame
                 }
               }
             }
@@ -14429,41 +14430,41 @@ module LindenElkMain {
     // ---- lift hypotheses (a),(b),(e),(f),(g_new),(h) + quant (c'q),(D-ord-q),(Sq-bound) at lid=1 ----
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
     requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
     requires CM.LookCpsLE(lk, |str|)                                                            // (e)
     requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (a)
-      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+               1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
     requires forall l: int :: 1 <= l <= R.max_lookaround(ast) && AReg.get_cp(lk, l).Some? ==>    // (b)
-      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+                                exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
     requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (c'q)
-      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
-      CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body))
+               1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
+                 CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body))
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (D-ord-q)
-      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
+               1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+               && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                 QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (f)
-      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
-      && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+               1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+               && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
-      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      DirectLookIds(b1) * LTB.LookIds(b2) == {}
+               1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+               && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                 DirectLookIds(b1) * LTB.LookIds(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (h)
-      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==> l2 !in LookIdSet(b1)
+               1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==> l2 !in LookIdSet(b1)
     requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (Sq-bound)
-      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==> QIdsOuter(body) <= Sq
+               1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==> QIdsOuter(body) <= Sq
     ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov);
-      forall owner: nat :: owner in LTB.LookIds(re)
-          && qd in PIV.QuantIds(NI.LookBodyOfRE(re, owner))
-          && qd !in PIV.QuantIdsInLooks(NI.LookBodyOfRE(re, owner))
-          && MatchedPosLA(crv, res.1, owner) ==>
-        var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
-        (rf.Some? ==> CM.RegsAgreeInside(res.2, rf.value.quant_regs, {qd as int}))
-        && (rf.None? ==> CM.RegsAgreeInside(res.2, AReg.init_regs(nquant), {qd as int}))
+            forall owner: nat :: owner in LTB.LookIds(re)
+                                 && qd in PIV.QuantIds(NI.LookBodyOfRE(re, owner))
+                                 && qd !in PIV.QuantIdsInLooks(NI.LookBodyOfRE(re, owner))
+                                 && MatchedPosLA(crv, res.1, owner) ==>
+                                   var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
+                                   (rf.Some? ==> CM.RegsAgreeInside(res.2, rf.value.quant_regs, {qd as int}))
+                                   && (rf.None? ==> CM.RegsAgreeInside(res.2, AReg.init_regs(nquant), {qd as int}))
   {
     var maxlook := R.max_lookaround(ast);
     FLookLoopQuantValueLiftFull(crv, str, 1, maxlook, cap, lk, qt, ov, S, Slook, Sq, ncap, nlook, nquant);
@@ -14471,9 +14472,9 @@ module LindenElkMain {
     assert FLookLoopQuantValueOkFull(crv, str, res.2, res.1, 1, maxlook, ov, ncap, nlook, nquant);
 
     forall owner: nat | owner in LTB.LookIds(re)
-        && qd in PIV.QuantIds(NI.LookBodyOfRE(re, owner))
-        && qd !in PIV.QuantIdsInLooks(NI.LookBodyOfRE(re, owner))
-        && MatchedPosLA(crv, res.1, owner)
+                        && qd in PIV.QuantIds(NI.LookBodyOfRE(re, owner))
+                        && qd !in PIV.QuantIdsInLooks(NI.LookBodyOfRE(re, owner))
+                        && MatchedPosLA(crv, res.1, owner)
       ensures var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
               (rf.Some? ==> CM.RegsAgreeInside(res.2, rf.value.quant_regs, {qd as int}))
               && (rf.None? ==> CM.RegsAgreeInside(res.2, AReg.init_regs(nquant), {qd as int}))
@@ -14518,7 +14519,7 @@ module LindenElkMain {
   lemma FreshBodyDirectLive(crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
                             cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
                             S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int, g: nat)
-      returns (owner: nat)
+    returns (owner: nat)
     // ---- whole-regex setup ----
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
@@ -14529,31 +14530,31 @@ module LindenElkMain {
     // ---- deliverable-1 hypotheses (a)-(h) at lid=1, maxlook=max_lookaround(ast) ----
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
     requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
     requires CM.LookCpsLE(lk, |str|)                                                            // (e)
     requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (a)
-      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+               1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
     requires forall l: int :: 1 <= l <= R.max_lookaround(ast) && AReg.get_cp(lk, l).Some? ==>    // (b)
-      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+                                exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
     requires forall l: int, la: R.lookaround, body: R.regex ::                                   // (c')
-      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
-      CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+               1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
+                 CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (D-ord)
-      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
+               1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+               && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                 PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (f)
-      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
-      && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+               1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+               && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
-      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      DirectLookIds(b1) * LTB.LookIds(b2) == {}
+               1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+               && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                 DirectLookIds(b1) * LTB.LookIds(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (h)
-      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==> l2 !in LookIdSet(b1)
+               1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==> l2 !in LookIdSet(b1)
     // ---- res0-liveness at g (the fold set g's start clock) ----
     requires AI.get_idx(AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov).0.a_clk, CP.start_reg(g)) >= 0
     ensures owner in LTB.LookIds(re)
@@ -14561,9 +14562,9 @@ module LindenElkMain {
     ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov);
             MatchedPosLA(crv, res.1, owner)
             && var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
-               rf.Some?
-               && CM.RegsAgreeInside(res.0, rf.value.capture_regs, PIV.CaptureRegsSet({g}))
-               && AI.get_idx(rf.value.capture_regs.a_clk, CP.start_reg(g)) >= 0
+            rf.Some?
+            && CM.RegsAgreeInside(res.0, rf.value.capture_regs, PIV.CaptureRegsSet({g}))
+            && AI.get_idx(rf.value.capture_regs.a_clk, CP.start_reg(g)) >= 0
   {
     var maxlook := R.max_lookaround(ast);
     var res := AI.FLookLoop(crv, str, 1, maxlook, cap, lk, qt, ov);
@@ -14572,9 +14573,9 @@ module LindenElkMain {
     FLookLoopInLookLiveOwnerMatched(crv, str, ast, re, cap, lk, qt, ov, S, Slook, ncap, nlook, nquant, g);
     owner := NI.InnermostOwnerDirect(re, g);   // owner in LookIds(re); g in CapIds(body); g !in CapIdsInLooks(body)
     var owner_ex: nat :| owner_ex in LTB.LookIds(re)
-          && g in PIV.CapIds(NI.LookBodyOfRE(re, owner_ex))
-          && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner_ex))
-          && MatchedPosLA(crv, res.1, owner_ex);
+                         && g in PIV.CapIds(NI.LookBodyOfRE(re, owner_ex))
+                         && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner_ex))
+                         && MatchedPosLA(crv, res.1, owner_ex);
     // (a') pin the existential owner to InnermostOwnerDirect via uniqueness
     InnermostOwnerUnique(re, g, owner, owner_ex);
     assert owner_ex == owner;
@@ -14619,10 +14620,10 @@ module LindenElkMain {
     // ... and reached g in look-free capture mode with a dominating clock.
     requires PIV.PathPresent(body, AReg.as_arrays(caps).1, AReg.as_arrays(quant).1, -1, g)
     requires AI.get_idx(AReg.as_arrays(caps).1, CP.start_reg(g))
-               >= PIV.MxAtGid(body, AReg.as_arrays(caps).1, AReg.as_arrays(quant).1, -1, g)
+          >= PIV.MxAtGid(body, AReg.as_arrays(caps).1, AReg.as_arrays(quant).1, -1, g)
     ensures g in PIV.GmOfLive(body, caps, look, quant)
     ensures PIV.GmOfLive(body, caps, look, quant)[g]
-              == PIV.LiveRange(AReg.as_arrays(caps).0, AReg.as_arrays(caps).1, g)
+         == PIV.LiveRange(AReg.as_arrays(caps).0, AReg.as_arrays(caps).1, g)
   {
     var cc := AReg.as_arrays(caps).1;
     var lc := AReg.as_arrays(look).1;
@@ -14652,7 +14653,7 @@ module LindenElkMain {
     requires g in PIV.GmOfLive(body, caps, look, quant)
     requires AI.get_idx(AReg.as_arrays(caps).0, CP.start_reg(g)) >= 0   // value set at g (free from membership)
     ensures PIV.GmOfLive(body, caps, look, quant)[g]
-              == PIV.LiveRange(AReg.as_arrays(caps).0, AReg.as_arrays(caps).1, g)
+         == PIV.LiveRange(AReg.as_arrays(caps).0, AReg.as_arrays(caps).1, g)
   {
     // set-together consistency for every body capture, from CapRegWf(caps).
     forall c: nat | c in PIV.CapIds(body) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
@@ -14681,9 +14682,9 @@ module LindenElkMain {
       real-match fact that the winning fresh thread's set-clock direct group is
       look-free path-present with a dominating clock. */
   lemma FreshBodyDirectMemberFromPresent(crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
-                            cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
-                            S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int, g: nat)
-      returns (owner: nat)
+                                         cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                                         S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int, g: nat)
+    returns (owner: nat)
     // ---- whole-regex setup (verbatim from FreshBodyDirectLive) ----
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
@@ -14696,31 +14697,31 @@ module LindenElkMain {
     // ---- deliverable-1 hypotheses (a)-(h) (verbatim from FreshBodyDirectLive) ----
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
     requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
     requires CM.LookCpsLE(lk, |str|)
     requires forall l: int, la: R.lookaround, body: R.regex ::
-      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+               1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
     requires forall l: int :: 1 <= l <= R.max_lookaround(ast) && AReg.get_cp(lk, l).Some? ==>
-      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+                                exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
     requires forall l: int, la: R.lookaround, body: R.regex ::
-      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
-      CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+               1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
+                 CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::
-      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
+               1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+               && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                 PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
-      && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+               1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+               && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::
-      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      DirectLookIds(b1) * LTB.LookIds(b2) == {}
+               1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+               && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                 DirectLookIds(b1) * LTB.LookIds(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==> l2 !in LookIdSet(b1)
+               1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==> l2 !in LookIdSet(b1)
     // ---- res0-liveness at g (verbatim from FreshBodyDirectLive) ----
     requires AI.get_idx(AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov).0.a_clk, CP.start_reg(g)) >= 0
     // ==== THE ISOLATED (A2) PRODUCER RESIDUAL (owed match-soundness) ====
@@ -14743,19 +14744,19 @@ module LindenElkMain {
                    && PIV.PathPresent(body, AReg.as_arrays(rf.value.capture_regs).1,
                                       AReg.as_arrays(rf.value.quant_regs).1, -1, g)
                    && AI.get_idx(AReg.as_arrays(rf.value.capture_regs).1, CP.start_reg(g))
-                        >= PIV.MxAtGid(body, AReg.as_arrays(rf.value.capture_regs).1,
-                                       AReg.as_arrays(rf.value.quant_regs).1, -1, g)
+                      >= PIV.MxAtGid(body, AReg.as_arrays(rf.value.capture_regs).1,
+                                     AReg.as_arrays(rf.value.quant_regs).1, -1, g)
     ensures owner in LTB.LookIds(re)
     ensures g in PIV.CapIds(NI.LookBodyOfRE(re, owner)) && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
     ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov);
             MatchedPosLA(crv, res.1, owner)
             && var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
-               rf.Some?
-               && var body := NI.LookBodyOfRE(re, owner);
-                  g in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)
-               && PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)[g]
-                    == PIV.LiveRange(AReg.as_arrays(rf.value.capture_regs).0,
-                                     AReg.as_arrays(rf.value.capture_regs).1, g)
+            rf.Some?
+            && var body := NI.LookBodyOfRE(re, owner);
+            g in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)
+            && PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)[g]
+               == PIV.LiveRange(AReg.as_arrays(rf.value.capture_regs).0,
+                                AReg.as_arrays(rf.value.capture_regs).1, g)
   {
     // (1) the register-side half: owner, rf.Some?, g captured (start clock >= 0).
     owner := FreshBodyDirectLive(crv, str, ast, re, cap, lk, qt, ov, S, Slook, ncap, nlook, nquant, g);
@@ -14797,9 +14798,9 @@ module LindenElkMain {
       ancestor chain — the entire clock/path algebra of the producer is absorbed
       into the one membership premise. */
   lemma FreshBodyDirectMemberFromMembership(crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
-                            cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
-                            S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int, g: nat)
-      returns (owner: nat)
+                                            cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                                            S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int, g: nat)
+    returns (owner: nat)
     // ---- whole-regex setup (verbatim from FreshBodyDirectLive) ----
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
@@ -14812,31 +14813,31 @@ module LindenElkMain {
     // ---- deliverable-1 hypotheses (a)-(h) (verbatim from FreshBodyDirectLive) ----
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
     requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
     requires CM.LookCpsLE(lk, |str|)
     requires forall l: int, la: R.lookaround, body: R.regex ::
-      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+               1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
     requires forall l: int :: 1 <= l <= R.max_lookaround(ast) && AReg.get_cp(lk, l).Some? ==>
-      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+                                exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
     requires forall l: int, la: R.lookaround, body: R.regex ::
-      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
-      CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+               1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
+                 CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::
-      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
+               1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+               && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                 PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
-      && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+               1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+               && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::
-      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      DirectLookIds(b1) * LTB.LookIds(b2) == {}
+               1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+               && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                 DirectLookIds(b1) * LTB.LookIds(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==> l2 !in LookIdSet(b1)
+               1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==> l2 !in LookIdSet(b1)
     // ---- res0-liveness at g (verbatim from FreshBodyDirectLive) ----
     requires AI.get_idx(AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov).0.a_clk, CP.start_reg(g)) >= 0
     // ==== THE ISOLATED (A2) MEMBERSHIP RESIDUAL (owed match-soundness) ====
@@ -14863,12 +14864,12 @@ module LindenElkMain {
     ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov);
             MatchedPosLA(crv, res.1, owner)
             && var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
-               rf.Some?
-               && var body := NI.LookBodyOfRE(re, owner);
-                  g in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)
-               && PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)[g]
-                    == PIV.LiveRange(AReg.as_arrays(rf.value.capture_regs).0,
-                                     AReg.as_arrays(rf.value.capture_regs).1, g)
+            rf.Some?
+            && var body := NI.LookBodyOfRE(re, owner);
+            g in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)
+            && PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)[g]
+               == PIV.LiveRange(AReg.as_arrays(rf.value.capture_regs).0,
+                                AReg.as_arrays(rf.value.capture_regs).1, g)
   {
     // (1) the register-side half: owner, rf.Some?, g captured (start clock >= 0).
     owner := FreshBodyDirectLive(crv, str, ast, re, cap, lk, qt, ov, S, Slook, ncap, nlook, nquant, g);
@@ -14884,7 +14885,7 @@ module LindenElkMain {
     assert NR.NestedFragmentRE(body) && PIV.CapUnique(body);
     // (3) the membership residual, instantiated at this owner.
     assert PIV.CapRegWf(rf.value.capture_regs)
-        && g in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs);
+           && g in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs);
     // (4) value-set at g: CapRegWf turns the set start clock into a set start value.
     assert AReg.as_arrays(rf.value.capture_regs).0 == rf.value.capture_regs.a_cp;
     assert AReg.as_arrays(rf.value.capture_regs).1 == rf.value.capture_regs.a_clk;
@@ -14910,9 +14911,9 @@ module LindenElkMain {
       (A2) obligation to the single step-preserved register invariant, owed only its
       threading through the fresh-body sim driver (the `FFindMatchAncSet` rider). */
   lemma FreshBodyDirectMemberFromAncSet(crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
-                            cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
-                            S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int, g: nat)
-      returns (owner: nat)
+                                        cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                                        S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int, g: nat)
+    returns (owner: nat)
     // ---- whole-regex setup (verbatim from FreshBodyDirectMemberFromMembership) ----
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
@@ -14925,31 +14926,31 @@ module LindenElkMain {
     // ---- deliverable-1 hypotheses (a)-(h) (verbatim) ----
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
     requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
     requires CM.LookCpsLE(lk, |str|)
     requires forall l: int, la: R.lookaround, body: R.regex ::
-      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
+               1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook)
     requires forall l: int :: 1 <= l <= R.max_lookaround(ast) && AReg.get_cp(lk, l).Some? ==>
-      exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+                                exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
     requires forall l: int, la: R.lookaround, body: R.regex ::
-      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
-      CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+               1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
+                 CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body))
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::
-      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
+               1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+               && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                 PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
-      && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
+               1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+               && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1)
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::
-      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      DirectLookIds(b1) * LTB.LookIds(b2) == {}
+               1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+               && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                 DirectLookIds(b1) * LTB.LookIds(b2) == {}
     requires forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==> l2 !in LookIdSet(b1)
+               1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==> l2 !in LookIdSet(b1)
     // ---- res0-liveness at g (verbatim) ----
     requires AI.get_idx(AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov).0.a_clk, CP.start_reg(g)) >= 0
     // ==== THE ISOLATED (A2) ANCESTOR-SET RESIDUAL (owed match-soundness) ====
@@ -14967,21 +14968,21 @@ module LindenElkMain {
                  var body := NI.LookBodyOfRE(re, owner0);
                  PIV.AncQuants(body, g) == {}
                  && var rf := FreshBodyMatch(crv, str, owner0 as int, res.1, ov, ncap, nlook, nquant);
-                    (rf.Some? ==>
-                      PIV.CapRegWf(rf.value.capture_regs)
-                      && AI.get_idx(AReg.as_arrays(rf.value.capture_regs).0, CP.start_reg(g)) >= 0   // value set (free from CapRegWf)
-                      && AncSetInvRE(body, rf.value.capture_regs.a_clk))
+                 (rf.Some? ==>
+                    PIV.CapRegWf(rf.value.capture_regs)
+                    && AI.get_idx(AReg.as_arrays(rf.value.capture_regs).0, CP.start_reg(g)) >= 0   // value set (free from CapRegWf)
+                    && AncSetInvRE(body, rf.value.capture_regs.a_clk))
     ensures owner in LTB.LookIds(re)
     ensures g in PIV.CapIds(NI.LookBodyOfRE(re, owner)) && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
     ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov);
             MatchedPosLA(crv, res.1, owner)
             && var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
-               rf.Some?
-               && var body := NI.LookBodyOfRE(re, owner);
-                  g in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)
-               && PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)[g]
-                    == PIV.LiveRange(AReg.as_arrays(rf.value.capture_regs).0,
-                                     AReg.as_arrays(rf.value.capture_regs).1, g)
+            rf.Some?
+            && var body := NI.LookBodyOfRE(re, owner);
+            g in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)
+            && PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)[g]
+               == PIV.LiveRange(AReg.as_arrays(rf.value.capture_regs).0,
+                                AReg.as_arrays(rf.value.capture_regs).1, g)
   {
     // (1) the register-side half: owner, rf.Some?, g captured (start clock >= 0).
     owner := FreshBodyDirectLive(crv, str, ast, re, cap, lk, qt, ov, S, Slook, ncap, nlook, nquant, g);
@@ -14997,8 +14998,8 @@ module LindenElkMain {
     assert NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body);
     // (3) the ancestor-set residual, instantiated at this owner.
     assert PIV.AncQuants(body, g) == {}
-        && PIV.CapRegWf(rf.value.capture_regs)
-        && AncSetInvRE(body, rf.value.capture_regs.a_clk);
+           && PIV.CapRegWf(rf.value.capture_regs)
+           && AncSetInvRE(body, rf.value.capture_regs.a_clk);
     // (4) as_arrays projections coincide with the record's clock array.
     assert AReg.as_arrays(rf.value.capture_regs).1 == rf.value.capture_regs.a_clk;
     assert AncSetInvRE(body, AReg.as_arrays(rf.value.capture_regs).1);
@@ -15024,9 +15025,9 @@ module LindenElkMain {
       Then `FreshBodyDirectMemberFromAncSet` closes to `g in GmOfLive` + `LiveRange`.
       The deep (A2) register wall is thus dissolved — the owed producer is gone. */
   lemma FreshBodyDirectMember(crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
-                            cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
-                            S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int, g: nat)
-      returns (owner: nat)
+                              cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
+                              S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int, g: nat)
+    returns (owner: nat)
     // ---- whole-regex setup (verbatim from FreshBodyDirectMemberFromAncSet) ----
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
@@ -15039,7 +15040,7 @@ module LindenElkMain {
     // ---- deliverable-1 hypotheses (a)-(h) (verbatim) ----
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
     requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
     requires |lk.a_cp| == nlook && |lk.a_clk| == nlook
@@ -15060,13 +15061,13 @@ module LindenElkMain {
     ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov);
             MatchedPosLA(crv, res.1, owner)
             && var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
-               rf.Some?
-               && AI.get_idx(AReg.as_arrays(rf.value.capture_regs).0, CP.start_reg(g)) >= 0
-               && var body := NI.LookBodyOfRE(re, owner);
-                  g in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)
-               && PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)[g]
-                    == PIV.LiveRange(AReg.as_arrays(rf.value.capture_regs).0,
-                                     AReg.as_arrays(rf.value.capture_regs).1, g)
+            rf.Some?
+            && AI.get_idx(AReg.as_arrays(rf.value.capture_regs).0, CP.start_reg(g)) >= 0
+            && var body := NI.LookBodyOfRE(re, owner);
+            g in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)
+            && PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)[g]
+               == PIV.LiveRange(AReg.as_arrays(rf.value.capture_regs).0,
+                                AReg.as_arrays(rf.value.capture_regs).1, g)
   {
     reveal AhO();
     reveal FreshWfO();
@@ -15081,24 +15082,24 @@ module LindenElkMain {
 
     // (2) discharge the (A2) ancestor-set residual for the consumer.
     forall owner0: nat |
-        owner0 in LTB.LookIds(re)
-        && g in PIV.CapIds(NI.LookBodyOfRE(re, owner0))
-        && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner0))
-        && MatchedPosLA(crv, res.1, owner0)
+      owner0 in LTB.LookIds(re)
+      && g in PIV.CapIds(NI.LookBodyOfRE(re, owner0))
+      && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner0))
+      && MatchedPosLA(crv, res.1, owner0)
       ensures var body := NI.LookBodyOfRE(re, owner0);
               PIV.AncQuants(body, g) == {}
               && var rf := FreshBodyMatch(crv, str, owner0 as int, res.1, ov, ncap, nlook, nquant);
-                 (rf.Some? ==>
-                   PIV.CapRegWf(rf.value.capture_regs)
-                   && AI.get_idx(AReg.as_arrays(rf.value.capture_regs).0, CP.start_reg(g)) >= 0
-                   && AncSetInvRE(body, rf.value.capture_regs.a_clk))
+              (rf.Some? ==>
+                 PIV.CapRegWf(rf.value.capture_regs)
+                 && AI.get_idx(AReg.as_arrays(rf.value.capture_regs).0, CP.start_reg(g)) >= 0
+                 && AncSetInvRE(body, rf.value.capture_regs.a_clk))
     {
       var body := NI.LookBodyOfRE(re, owner0);
       // body shape + a lookahead table row (VBody == body, cdn == compile_cdns(body)).
       LookBodyFactsL5(re, crv, owner0);
       assert NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body);
       var la0: R.lookaround :| LTB.LookEntryOk(crv, owner0 as int, la0, body)
-        && (la0.Lookbehind? ==> NR.LBOnlyLooksRE(body));
+                               && (la0.Lookbehind? ==> NR.LBOnlyLooksRE(body));
       var b0 := body;
       VBodyEqLookBody(crv, re, owner0);
       assert b0 == VBody(crv, owner0 as int) == body;                         // LookEntryOk: f_look_ast
@@ -15122,9 +15123,9 @@ module LindenElkMain {
           assert NR.NfaRepRE(body, bc, 0, endl) && NR.GetPcRE(bc, endl) == Some(RB.Accept) && |bc| == endl + 1;
           assert AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp);
           assert rf == AI.FFindMatch(bc, str,
-                         AI.FInitState(bc, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                       AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
-                         ov, LAnc.Forward, cdn).0;
+                                     AI.FInitState(bc, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                   AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                                     ov, LAnc.Forward, cdn).0;
           // (a) the (A2) PRODUCER: AncSetInvRE, threaded through the fresh body match.
           FreshBodyMatchAncSet(bc, str, cp, ov, cdn, body, endl, ncap, nlook, nquant);
           assert AncSetInvRE(body, rf.value.capture_regs.a_clk);
@@ -15170,12 +15171,12 @@ module LindenElkMain {
     // owner matches the characterization (FromAncSet's ensures), so the residual applies.
     var rfo := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
     assert MatchedPosLA(crv, res.1, owner)
-        && owner in LTB.LookIds(re)
-        && g in PIV.CapIds(NI.LookBodyOfRE(re, owner))
-        && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
-        && rfo.Some?;
+           && owner in LTB.LookIds(re)
+           && g in PIV.CapIds(NI.LookBodyOfRE(re, owner))
+           && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
+           && rfo.Some?;
     assert PIV.CapRegWf(rfo.value.capture_regs)
-        && AI.get_idx(AReg.as_arrays(rfo.value.capture_regs).0, CP.start_reg(g)) >= 0;   // residual at owner
+           && AI.get_idx(AReg.as_arrays(rfo.value.capture_regs).0, CP.start_reg(g)) >= 0;   // residual at owner
     assert AI.get_idx(rfo.value.capture_regs.a_cp, CP.start_reg(g)) >= 0;
   }
 
@@ -15284,7 +15285,7 @@ module LindenElkMain {
   {
     forall c: nat | c in PIV.AncCaps(body, g)
       ensures AI.get_idx(cc, CP.start_reg(c)) >= 0
-           && AI.get_idx(cc, CP.start_reg(c)) >= PIV.MxAtGid(body, cc, qc, -1, c)
+              && AI.get_idx(cc, CP.start_reg(c)) >= PIV.MxAtGid(body, cc, qc, -1, c)
     {
       AncQuantsEmptyAncCap(body, g, c);       // c in CapIds(body), AncQuants(body,c) == {}
       MxAtGidNoQuant(body, cc, qc, c);        // MxAtGid(body,cc,qc,-1,c) == -1
@@ -15345,7 +15346,7 @@ module LindenElkMain {
   {
     forall g: nat :: g in PIV.CapIds(re) && g !in PIV.CapIdsInLooks(re)
                      && AI.get_idx(cc, CP.start_reg(g)) >= 0
-      ==> (forall c: nat :: c in PIV.AncCaps(re, g) ==> AI.get_idx(cc, CP.start_reg(c)) >= 0)
+                     ==> (forall c: nat :: c in PIV.AncCaps(re, g) ==> AI.get_idx(cc, CP.start_reg(c)) >= 0)
   }
 
   /** (A2 in-fragment) ENTRY (base case) of the `AncSetInvRE` rider: the FRESH
@@ -15461,7 +15462,7 @@ module LindenElkMain {
     requires AI.get_idx(AReg.as_arrays(caps).1, CP.start_reg(g)) >= 0   // g's start clock set
     ensures g in PIV.GmOfLive(body, caps, look, quant)
     ensures PIV.GmOfLive(body, caps, look, quant)[g]
-              == PIV.LiveRange(AReg.as_arrays(caps).0, AReg.as_arrays(caps).1, g)
+         == PIV.LiveRange(AReg.as_arrays(caps).0, AReg.as_arrays(caps).1, g)
   {
     var cc := AReg.as_arrays(caps).1;
     var qc := AReg.as_arrays(quant).1;
@@ -15545,13 +15546,13 @@ module LindenElkMain {
     requires PIV.CapUnique(re) && PIV.QuantUnique(re)
     requires PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires forall pc: nat, q: int, b: bool ::
-      NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
+               NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
     requires |s.processed.true_set| == RB.size(code) && |s.processed.false_set| == RB.size(code)
     requires CM.VmClocksLE(s) && CM.VmRegsWf(s, ncap, nlook, nquant)
     requires s.clock >= 0 && s.cp >= 0
     requires VmAncNestRE(re, code, endl, s)
     ensures var r := AI.FAdvanceEpsilon(code, s, ov, dir).0;
-      CM.VmClocksLE(r) && CM.VmRegsWf(r, ncap, nlook, nquant) && VmAncNestRE(re, code, endl, r)
+            CM.VmClocksLE(r) && CM.VmRegsWf(r, ncap, nlook, nquant) && VmAncNestRE(re, code, endl, r)
     decreases AI.unprocessed(s.processed), |s.active|
   {
     if |s.active| == 0 {
@@ -15573,8 +15574,8 @@ module LindenElkMain {
     var b0 := s.processed;
     var s1 := s.(clock := s.clock + 1, processed := AI.bpc_add(b0, t.pc, t.exit_allowed));
     assert AI.unprocessed(s1.processed) <= AI.unprocessed(b0)
-        && (0 <= t.pc < RB.size(code) ==> AI.unprocessed(s1.processed) < AI.unprocessed(b0))
-      by { AI.UnprocessedAdd(b0, t.pc, t.exit_allowed); }
+           && (0 <= t.pc < RB.size(code) ==> AI.unprocessed(s1.processed) < AI.unprocessed(b0))
+    by { AI.UnprocessedAdd(b0, t.pc, t.exit_allowed); }
     assert s.clock <= s1.clock;
     // Clock/positional facts for the head thread.
     assert CM.ThreadClocksLE(t, s.clock);                       // VmClocksLE(s), t in active
@@ -15729,8 +15730,8 @@ module LindenElkMain {
         assert 0 <= reg < |cc|;                                // reg in {2gid, 2gid+1}, both < 2*maxg+2 <= ncap == |cc|
         assert cc' == cc[reg := clk];
         assert forall k :: k != reg ==> AI.get_idx(cc', k) == AI.get_idx(cc, k)
-          by { forall k | k != reg ensures AI.get_idx(cc', k) == AI.get_idx(cc, k) {
-                 CM.SetRegOtherIdx(t.capture_regs, reg, Some(s1.cp), s1.clock, k); } }
+        by { forall k | k != reg ensures AI.get_idx(cc', k) == AI.get_idx(cc, k) {
+               CM.SetRegOtherIdx(t.capture_regs, reg, Some(s1.cp), s1.clock, k); } }
         if reg % 2 == 0 {
           // OPEN write: reg == start_reg(gid).
           assert reg == CP.start_reg(gid);                     // end_reg is odd
@@ -15742,16 +15743,16 @@ module LindenElkMain {
         } else {
           // CLOSE write: reg is odd, no start clock changes.
           assert forall g: nat :: g in PIV.CapIds(re) ==>
-            AI.get_idx(cc', CP.start_reg(g)) == AI.get_idx(cc, CP.start_reg(g))
-            by { forall g: nat | g in PIV.CapIds(re)
-                   ensures AI.get_idx(cc', CP.start_reg(g)) == AI.get_idx(cc, CP.start_reg(g)) {
-                   assert CP.start_reg(g) == 2 * g && CP.start_reg(g) != reg;   // reg odd
-                   CM.SetRegOtherIdx(t.capture_regs, reg, Some(s1.cp), s1.clock, CP.start_reg(g)); } }
+                                    AI.get_idx(cc', CP.start_reg(g)) == AI.get_idx(cc, CP.start_reg(g))
+          by { forall g: nat | g in PIV.CapIds(re)
+                 ensures AI.get_idx(cc', CP.start_reg(g)) == AI.get_idx(cc, CP.start_reg(g)) {
+                 assert CP.start_reg(g) == 2 * g && CP.start_reg(g) != reg;   // reg odd
+                 CM.SetRegOtherIdx(t.capture_regs, reg, Some(s1.cp), s1.clock, CP.start_reg(g)); } }
           AncSetFrameStart(re, cc, cc');
           assert AncSetInvRE(re, cc');
           assert forall j :: j % 2 == 0 ==> AI.get_idx(cc', j) == AI.get_idx(cc, j)
-            by { forall j | j % 2 == 0 ensures AI.get_idx(cc', j) == AI.get_idx(cc, j) {
-                   assert j != reg; CM.SetRegOtherIdx(t.capture_regs, reg, Some(s1.cp), s1.clock, j); } }
+          by { forall j | j % 2 == 0 ensures AI.get_idx(cc', j) == AI.get_idx(cc, j) {
+                 assert j != reg; CM.SetRegOtherIdx(t.capture_regs, reg, Some(s1.cp), s1.clock, j); } }
           NI.NestInvFrameOdd(re, code, 0, endl, pc, cc, cc', qc, -1);
           assert NI.NestInvRE(re, code, 0, endl, pc, cc', qc, -1);
           assert NI.StepEdgeRE(code, pc, pc + 1);
@@ -16093,7 +16094,7 @@ module LindenElkMain {
     requires CM.VmClocksLE(s) && CM.VmRegsWf(s, ncap, nlook, nquant)
     requires VmAncNestRE(re, code, endl, s)
     ensures var r := AI.FConsume(s);
-      CM.VmClocksLE(r) && CM.VmRegsWf(r, ncap, nlook, nquant) && VmAncNestRE(re, code, endl, r)
+            CM.VmClocksLE(r) && CM.VmRegsWf(r, ncap, nlook, nquant) && VmAncNestRE(re, code, endl, r)
     decreases |s.blocked|
   {
     if |s.blocked| == 0 { return; }
@@ -16104,8 +16105,8 @@ module LindenElkMain {
     assert forall x | x in s1.blocked :: x in s.blocked;
     var th' := t.(exit_allowed := true, pc := t.pc + 1);
     var s2 := if RC.is_accepted(s1.context.nextchar, ce)
-              then s1.(active := [th'] + s1.active)
-              else s1;
+    then s1.(active := [th'] + s1.active)
+    else s1;
     assert BlkAncNestRE(re, code, endl, t);                 // t == s.blocked[0].0
     assert CM.VmClocksLE(s2) by {
       assert s2.clock == s.clock;
@@ -16150,7 +16151,7 @@ module LindenElkMain {
     requires PIV.CapUnique(re) && PIV.QuantUnique(re)
     requires PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires forall pc: nat, q: int, b: bool ::
-      NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
+               NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
     requires |s.processed.true_set| == RB.size(code) && |s.processed.false_set| == RB.size(code)
     requires dir == LAnc.Forward
     requires s.context.nextchar == AI.get_char(str, s.cp)
@@ -16158,7 +16159,7 @@ module LindenElkMain {
     requires CM.VmClocksLE(s) && CM.VmRegsWf(s, ncap, nlook, nquant)
     requires VmAncNestRE(re, code, endl, s)
     ensures var r := AI.FFindMatch(code, str, s, ov, dir, cdn).0;
-      r.Some? ==> AncSetInvRE(re, r.value.capture_regs.a_clk)
+            r.Some? ==> AncSetInvRE(re, r.value.capture_regs.a_clk)
     decreases |str| - s.cp
   {
     var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, dir));
@@ -16181,13 +16182,13 @@ module LindenElkMain {
       CM.FConsumeClocksLE(s1);                             // r.clock == s1.clock
       var s2 := AI.FConsume(s1);
       var s3 := s2.(processed := AI.init_bpcset(RB.size(code)), isblocked := AI.init_pcset(RB.size(code)),
-                    cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
+      cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
       var newchar := AI.get_char(str, s3.cp - AI.cp_offset(dir));
       var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
       assert s4.cp == s.cp + 1;
       assert s4.context.nextchar == AI.get_char(str, s4.cp);
       assert s4.active == s2.active && s4.blocked == s2.blocked
-          && s4.bestmatch == s2.bestmatch && s4.clock == s2.clock;
+             && s4.bestmatch == s2.bestmatch && s4.clock == s2.clock;
       assert CM.VmClocksLE(s4);
       assert CM.VmRegsWf(s4, ncap, nlook, nquant);
       assert VmAncNestRE(re, code, endl, s4);
@@ -16216,10 +16217,10 @@ module LindenElkMain {
     requires 0 <= cp <= |str|
     requires AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp)
     ensures var rf := AI.FFindMatch(bytecode, str,
-                        AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                      AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
-                        ov, LAnc.Forward, cdn).0;
-      rf.Some? ==> AncSetInvRE(body, rf.value.capture_regs.a_clk)
+                                    AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                  AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                                    ov, LAnc.Forward, cdn).0;
+            rf.Some? ==> AncSetInvRE(body, rf.value.capture_regs.a_clk)
   {
     var dir := LAnc.Forward;
     var ctx := AI.cp_context(cp, str, dir);
@@ -16349,7 +16350,7 @@ module LindenElkMain {
     requires PIV.CapUnique(re) && PIV.QuantUnique(re)
     requires PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires forall pc: nat, q: int, b: bool ::
-      NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
+               NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
     requires |s.processed.true_set| == RB.size(code) && |s.processed.false_set| == RB.size(code)
     requires dir == LAnc.Backward
     requires s.context.nextchar == AI.get_char(str, s.cp - 1)
@@ -16357,7 +16358,7 @@ module LindenElkMain {
     requires CM.VmClocksLE(s) && CM.VmRegsWf(s, ncap, nlook, nquant)
     requires VmAncNestRE(re, code, endl, s)
     ensures var r := AI.FFindMatch(code, str, s, ov, dir, cdn).0;
-      r.Some? ==> AncSetInvRE(re, r.value.capture_regs.a_clk)
+            r.Some? ==> AncSetInvRE(re, r.value.capture_regs.a_clk)
     decreases s.cp
   {
     var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, dir));
@@ -16380,13 +16381,13 @@ module LindenElkMain {
       CM.FConsumeClocksLE(s1);
       var s2 := AI.FConsume(s1);
       var s3 := s2.(processed := AI.init_bpcset(RB.size(code)), isblocked := AI.init_pcset(RB.size(code)),
-                    cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
+      cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, dir));
       var newchar := AI.get_char(str, s3.cp - AI.cp_offset(dir));
       var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
       assert s4.cp == s.cp - 1;
       assert s4.context.nextchar == AI.get_char(str, s4.cp - 1);
       assert s4.active == s2.active && s4.blocked == s2.blocked
-          && s4.bestmatch == s2.bestmatch && s4.clock == s2.clock;
+             && s4.bestmatch == s2.bestmatch && s4.clock == s2.clock;
       assert CM.VmClocksLE(s4);
       assert CM.VmRegsWf(s4, ncap, nlook, nquant);
       assert VmAncNestRE(re, code, endl, s4);
@@ -16409,10 +16410,10 @@ module LindenElkMain {
     requires 0 <= cp <= |str|
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
     ensures var rf := AI.FFindMatch(bytecode, str,
-                        AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                      AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
-                        ov, LAnc.Backward, cdn).0;
-      rf.Some? ==> AncSetInvRE(body, rf.value.capture_regs.a_clk)
+                                    AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                  AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
+                                    ov, LAnc.Backward, cdn).0;
+            rf.Some? ==> AncSetInvRE(body, rf.value.capture_regs.a_clk)
   {
     var dir := LAnc.Backward;
     var rev := R.reverse_regex(body);
@@ -16471,8 +16472,8 @@ module LindenElkMain {
   {
     forall lid: nat :: lid in LTB.LookIds(re) && lid in NI.TopLookIds(re)
                        && AI.get_idx(lc, lid as int) >= 0
-      ==> NI.LookPathPresent(re, cc, qc, -1, lid)
-          && AI.get_idx(lc, lid as int) >= NI.MxAtLidLk(re, qc, -1, lid)
+                       ==> NI.LookPathPresent(re, cc, qc, -1, lid)
+                           && AI.get_idx(lc, lid as int) >= NI.MxAtLidLk(re, qc, -1, lid)
   }
 
   /** (REVERSE GATE) LAST MILE: `LookDomInvRE` -> `NI.LookPathDom` at a matched
@@ -16491,7 +16492,7 @@ module LindenElkMain {
     NI.TopLookIdsIn(re);
     assert A0 in LTB.LookIds(re);
     assert NI.LookPathPresent(re, cc, qc, -1, A0)
-        && AI.get_idx(lc, A0 as int) >= NI.MxAtLidLk(re, qc, -1, A0);
+           && AI.get_idx(lc, A0 as int) >= NI.MxAtLidLk(re, qc, -1, A0);
     NI.LookPathDomIntroTop(re, cc, qc, -1, A0, AI.get_idx(lc, A0 as int));
   }
 
@@ -16551,7 +16552,7 @@ module LindenElkMain {
     requires -1 <= B
     requires forall k :: AI.get_idx(qc, k) <= B
     requires forall j: int :: AI.get_idx(cc', j) == AI.get_idx(cc, j)
-                           || (AI.get_idx(cc', j) >= 0 && AI.get_idx(cc', j) >= B)
+                              || (AI.get_idx(cc', j) >= 0 && AI.get_idx(cc', j) >= B)
     requires LookDomInvRE(re, cc, lc, qc)
     ensures LookDomInvRE(re, cc', lc, qc)
   {
@@ -16692,14 +16693,14 @@ module LindenElkMain {
       `ov` unchanged. Only the fragment inputs differ (`NoWriteOracleBodyCode
       Nested`, `NoTrueQuantStampNested`). */
   lemma FFindMatchPlusOvStableNested(bytecode: RB.code, str: string, ov: LOr.OracleView, dir: LAnc.direction,
-                               lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
-                               cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
+                                     lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
+                                     cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires la.Lookahead? && dir == LAnc.Forward
     requires bytecode == CP.compile_to_bytecode(body)
     requires AI.cp_context(cp, str, dir).nextchar == AI.get_char(str, cp)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
-          && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+             && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     ensures AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp, cap, lk, qt, 0, lookcdn).1 == ov
   {
     var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
@@ -16865,11 +16866,11 @@ module LindenElkMain {
     requires LTB.LookTablesOk(re, crv)
     requires lid in LTB.LookIds(re)
     ensures var body := NI.LookBodyOfRE(re, lid);
-      NR.NestedFragmentRE(body)
-      && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
-      && LTB.LookTablesOk(body, crv)
-      && LTB.LookIds(body) <= LTB.LookIds(re)
-      && (exists la: R.lookaround :: LTB.LookEntryOk(crv, lid as int, la, body) && !la.Lookbehind?)
+            NR.NestedFragmentRE(body)
+            && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+            && LTB.LookTablesOk(body, crv)
+            && LTB.LookIds(body) <= LTB.LookIds(re)
+            && (exists la: R.lookaround :: LTB.LookEntryOk(crv, lid as int, la, body) && !la.Lookbehind?)
     decreases re
   {
     match re
@@ -16921,13 +16922,13 @@ module LindenElkMain {
     requires LTB.LookTablesOk(re, crv)
     requires lid in LTB.LookIds(re)
     ensures var body := NI.LookBodyOfRE(re, lid);
-      NR.NestedFragmentRE(body)
-      && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
-      && LTB.LookTablesOk(body, crv)
-      && LTB.LookIds(body) <= LTB.LookIds(re)
-      && NR.L5ScopeRE(body)
-      && (exists la: R.lookaround :: LTB.LookEntryOk(crv, lid as int, la, body)
-                                     && (la.Lookbehind? ==> NR.LBOnlyLooksRE(body)))
+            NR.NestedFragmentRE(body)
+            && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+            && LTB.LookTablesOk(body, crv)
+            && LTB.LookIds(body) <= LTB.LookIds(re)
+            && NR.L5ScopeRE(body)
+            && (exists la: R.lookaround :: LTB.LookEntryOk(crv, lid as int, la, body)
+                                           && (la.Lookbehind? ==> NR.LBOnlyLooksRE(body)))
     decreases re
   {
     match re
@@ -16965,7 +16966,7 @@ module LindenElkMain {
   {
     forall k: int | k in Bset
       ensures AI.get_idx(capN.a_cp, k) == AI.get_idx(AReg.init_regs(ncap).a_cp, k)
-           && AI.get_idx(capN.a_clk, k) == AI.get_idx(AReg.init_regs(ncap).a_clk, k)
+              && AI.get_idx(capN.a_clk, k) == AI.get_idx(AReg.init_regs(ncap).a_clk, k)
     {
       assert k !in Dset by { if k in Dset { assert k in Dset * Bset; } }
       assert AI.get_idx(capN.a_cp, k) == AI.get_idx(cap.a_cp, k);
@@ -17074,7 +17075,7 @@ module LindenElkMain {
     requires 1 <= l <= R.max_lookaround(ast)
     requires LTB.LookEntryOk(crv, l, la, body)
     ensures FrameEntryOk(crv, la, body,
-              PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), LookIdSet(re))
+                         PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), LookIdSet(re))
   {
     var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false),
                           R.Re_character(R.Dot));
@@ -17357,19 +17358,19 @@ module LindenElkMain {
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
     ensures forall l: int, la: R.lookaround, body: R.regex ::                                  // (a)
-      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
-      FrameEntryOk(crv, la, body, PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), LookIdSet(re))
+              1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
+                FrameEntryOk(crv, la, body, PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), LookIdSet(re))
     ensures forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (D-ord)
-      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
+              1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+              && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
     ensures forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
-      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      DirectLookIds(b1) * LTB.LookIds(b2) == {}
+              1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+              && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                DirectLookIds(b1) * LTB.LookIds(b2) == {}
     ensures forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (h)
-      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==>
-      l2 !in LookIdSet(b1)
+              1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==>
+                l2 !in LookIdSet(b1)
   {
     forall l: int, la: R.lookaround, body: R.regex |
       1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body)
@@ -17403,10 +17404,10 @@ module LindenElkMain {
       writes only OUTSIDE-look caps, `CaptureBytecodeClassifiedNestedOuter`,
       transported to `RegsAgreeInside` off each body's caps). */
   lemma {:isolate_assertions} LookRowsDynamicNested(
-      ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
-      ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
-      cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
-      ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>)
+    ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
+    ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
+    cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+    ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires code == CP.compile_to_bytecode(re)
@@ -17425,12 +17426,12 @@ module LindenElkMain {
     ensures result.Some? ==> CM.ThreadRegsWf(result.value, ncap, nlook, nquant)                   // reg wf
     ensures result.Some? ==> CM.LookCpsLE(result.value.look_regs, |str|)                           // (e)
     ensures result.Some? ==>
-      forall l: int :: 1 <= l <= R.max_lookaround(ast) && AReg.get_cp(result.value.look_regs, l).Some? ==>  // (b)
-        exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+              forall l: int :: 1 <= l <= R.max_lookaround(ast) && AReg.get_cp(result.value.look_regs, l).Some? ==>  // (b)
+                                 exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
     ensures result.Some? ==>
-      forall l: int, la: R.lookaround, body: R.regex ::                                            // (c')
-        1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
-        CM.RegsAgreeInside(result.value.capture_regs, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+              forall l: int, la: R.lookaround, body: R.regex ::                                            // (c')
+                1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
+                  CM.RegsAgreeInside(result.value.capture_regs, AReg.init_regs(ncap), PIV.CaptureRegs(body))
   {
     var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false),
                           R.Re_character(R.Dot));
@@ -17547,11 +17548,11 @@ module LindenElkMain {
     requires NR.NfaRepRE(re, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
-      var l := NR.GetPcRE(code, pc).value.col;
-      l >= 0 && (l as nat) in DirectLookIds(re)
+              var l := NR.GetPcRE(code, pc).value.col;
+              l >= 0 && (l as nat) in DirectLookIds(re)
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.NegCheckOracle? ==>
-      var l := NR.GetPcRE(code, pc).value.ncl;
-      l >= 0 && (l as nat) in DirectLookIds(re)
+              var l := NR.GetPcRE(code, pc).value.ncl;
+              l >= 0 && (l as nat) in DirectLookIds(re)
     decreases CP.rsize(re), 1
   {
     match re
@@ -17564,9 +17565,9 @@ module LindenElkMain {
       assert (lid as nat) in DirectLookIds(re);
     case Re_alt(r1, r2) =>
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
-        && NR.NfaRepRE(r1, code, start + 1, e1)
-        && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
-        && NR.NfaRepRE(r2, code, e1 + 1, endl);
+                     && NR.NfaRepRE(r1, code, start + 1, e1)
+                     && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
+                     && NR.NfaRepRE(r2, code, e1 + 1, endl);
       NR.NfaRepIncrRE(r1, code, start + 1, e1);
       NR.NfaRepIncrRE(r2, code, e1 + 1, endl);
       if pc == start {
@@ -17587,9 +17588,9 @@ module LindenElkMain {
       }
     case Re_capture(cid, r1) =>
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
-        && NR.NfaRepRE(r1, code, start + 1, e1)
-        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
-        && endl == e1 + 1;
+                     && NR.NfaRepRE(r1, code, start + 1, e1)
+                     && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+                     && endl == e1 + 1;
       NR.NfaRepIncrRE(r1, code, start + 1, e1);
       if pc == start {
       } else if pc < e1 {
@@ -17599,12 +17600,12 @@ module LindenElkMain {
     case Re_quant(nul, qid, q, r1) =>
       if q.min == 0 && q.max == None {
         var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
-          && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
-          && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
-          && NR.NfaRepRE(r1, code, start + 3, e1)
-          && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-          && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
-          && endl == e1 + 2;
+                       && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+                       && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+                       && NR.NfaRepRE(r1, code, start + 3, e1)
+                       && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                       && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
+                       && endl == e1 + 2;
         NR.NfaRepIncrRE(r1, code, start + 3, e1);
         if pc <= start + 2 {
         } else if pc < e1 {
@@ -17639,17 +17640,17 @@ module LindenElkMain {
     requires NR.NfaRepMinRE(k, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
-      var l := NR.GetPcRE(code, pc).value.col;
-      l >= 0 && (l as nat) in DirectLookIds(r1)
+              var l := NR.GetPcRE(code, pc).value.col;
+              l >= 0 && (l as nat) in DirectLookIds(r1)
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.NegCheckOracle? ==>
-      var l := NR.GetPcRE(code, pc).value.ncl;
-      l >= 0 && (l as nat) in DirectLookIds(r1)
+              var l := NR.GetPcRE(code, pc).value.ncl;
+              l >= 0 && (l as nat) in DirectLookIds(r1)
     decreases CP.rsize(r1), k + 2
   {
     if k == 0 { return; }
     var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetQuantToClock(qid, false))
-      && NR.NfaRepRE(r1, code, start + 1, e1)
-      && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
+                   && NR.NfaRepRE(r1, code, start + 1, e1)
+                   && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
     NR.NfaRepIncrRE(r1, code, start + 1, e1);
     NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
     if pc == start {
@@ -17665,20 +17666,20 @@ module LindenElkMain {
     requires NR.NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
-      var l := NR.GetPcRE(code, pc).value.col;
-      l >= 0 && (l as nat) in DirectLookIds(r1)
+              var l := NR.GetPcRE(code, pc).value.col;
+              l >= 0 && (l as nat) in DirectLookIds(r1)
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.NegCheckOracle? ==>
-      var l := NR.GetPcRE(code, pc).value.ncl;
-      l >= 0 && (l as nat) in DirectLookIds(r1)
+              var l := NR.GetPcRE(code, pc).value.ncl;
+              l >= 0 && (l as nat) in DirectLookIds(r1)
     decreases CP.rsize(r1), k + 2
   {
     if k == 0 { return; }
     var e1: nat :| NR.GetPcRE(code, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
-      && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
-      && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
-      && NR.NfaRepRE(r1, code, start + 3, e1)
-      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-      && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+                   && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+                   && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+                   && NR.NfaRepRE(r1, code, start + 3, e1)
+                   && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                   && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
     NR.NfaRepIncrRE(r1, code, start + 3, e1);
     NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
     if pc <= start + 2 {
@@ -17704,7 +17705,7 @@ module LindenElkMain {
     var S := DirectLidSet(re);
     forall pc: nat | pc < |code|
       ensures (code[pc].CheckOracle? ==> code[pc].col in S)
-           && (code[pc].NegCheckOracle? ==> code[pc].ncl in S)
+              && (code[pc].NegCheckOracle? ==> code[pc].ncl in S)
     {
       assert NR.GetPcRE(code, pc) == Some(code[pc]);
       if pc < endl {
@@ -17845,9 +17846,9 @@ module LindenElkMain {
       look-frame), and no direct lid lands inside another look's body
       (`DirectLidsNotInBody`), so `l2 !in LookIdSet(b1)`. */
   lemma {:isolate_assertions} FStabilityNested(
-      ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
-      ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
-      cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, nlook: int, result: Option<AI.Thread>)
+    ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
+    ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
+    cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, nlook: int, result: Option<AI.Thread>)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires code == CP.compile_to_bytecode(re)
@@ -17859,10 +17860,10 @@ module LindenElkMain {
     requires inits.blocked == [] && inits.bestmatch.None?
     requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
     ensures result.Some? ==>
-      forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-        1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
-        && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1
-        && AReg.get_cp(result.value.look_regs, l2).Some? ==> l2 !in LookIdSet(b1)
+              forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
+                1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+                && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1
+                && AReg.get_cp(result.value.look_regs, l2).Some? ==> l2 !in LookIdSet(b1)
   {
     var Sd := DirectLidSet(re);
     DirectLidClassified(re);                            // LookChecksInside(code, Sd)
@@ -17915,10 +17916,10 @@ module LindenElkMain {
       `result.Some?`. Assembles `LookRowsStaticNested` + `LookRowsDynamicNested`
       + `FStabilityNested` + `FFindMatchQuantFinalAny`. */
   lemma LookRowsFromTablesNested(
-      ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
-      ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
-      cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
-      ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>)
+    ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
+    ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
+    cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+    ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires code == CP.compile_to_bytecode(re)
@@ -17937,44 +17938,44 @@ module LindenElkMain {
     requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
     // ---- (a) FrameEntryOk per row (table+nesting only) ----
     ensures forall l: int, la: R.lookaround, body: R.regex ::
-      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
-      FrameEntryOk(crv, la, body, PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), LookIdSet(re))
+              1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
+                FrameEntryOk(crv, la, body, PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), LookIdSet(re))
     // ---- (D-ord) ----
     ensures forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::
-      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
+              1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+              && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
     // ---- (g_new) [depth-general] ----
     ensures forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::
-      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-      DirectLookIds(b1) * LTB.LookIds(b2) == {}
+              1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+              && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                DirectLookIds(b1) * LTB.LookIds(b2) == {}
     // ---- (h) ----
     ensures forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==>
-      l2 !in LookIdSet(b1)
+              1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==>
+                l2 !in LookIdSet(b1)
     // ---- register wf + quant finality of the winning thread ----
     ensures result.Some? ==> CM.ThreadRegsWf(result.value, ncap, nlook, nquant)
     ensures result.Some? ==>
-      (forall k :: AI.get_idx(result.value.quant_regs.a_cp, k) < 0)
-      && (forall k :: AI.get_idx(result.value.quant_regs.a_clk, k) >= -1)
+              (forall k :: AI.get_idx(result.value.quant_regs.a_cp, k) < 0)
+              && (forall k :: AI.get_idx(result.value.quant_regs.a_clk, k) >= -1)
     // ---- (e) ----
     ensures result.Some? ==> CM.LookCpsLE(result.value.look_regs, |str|)
     // ---- (b) ----
     ensures result.Some? ==>
-      forall l: int :: 1 <= l <= R.max_lookaround(ast) && AReg.get_cp(result.value.look_regs, l).Some? ==>
-        exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+              forall l: int :: 1 <= l <= R.max_lookaround(ast) && AReg.get_cp(result.value.look_regs, l).Some? ==>
+                                 exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
     // ---- (c') ----
     ensures result.Some? ==>
-      forall l: int, la: R.lookaround, body: R.regex ::
-        1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
-        CM.RegsAgreeInside(result.value.capture_regs, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+              forall l: int, la: R.lookaround, body: R.regex ::
+                1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
+                  CM.RegsAgreeInside(result.value.capture_regs, AReg.init_regs(ncap), PIV.CaptureRegs(body))
     // ---- (f) ----
     ensures result.Some? ==>
-      forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-        1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
-        && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1
-        && AReg.get_cp(result.value.look_regs, l2).Some? ==> l2 !in LookIdSet(b1)
+              forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
+                1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+                && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1
+                && AReg.get_cp(result.value.look_regs, l2).Some? ==> l2 !in LookIdSet(b1)
   {
     LookRowsStaticNested(ast, re, crv);
     LookRowsDynamicNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
@@ -18026,10 +18027,10 @@ module LindenElkMain {
     requires PIV.QuantUnique(r) && LTB.LookUnique(r)
     requires l1 in LTB.LookIds(r) && l2 in LTB.LookIds(r) && l1 != l2
     ensures (PIV.QuantIds(NI.LookBodyOfRE(r, l1)) * PIV.QuantIds(NI.LookBodyOfRE(r, l2)) == {})
-         || (l2 in LTB.LookIds(NI.LookBodyOfRE(r, l1))
-             && PIV.QuantIds(NI.LookBodyOfRE(r, l2)) <= PIV.QuantIds(NI.LookBodyOfRE(r, l1)))
-         || (l1 in LTB.LookIds(NI.LookBodyOfRE(r, l2))
-             && PIV.QuantIds(NI.LookBodyOfRE(r, l1)) <= PIV.QuantIds(NI.LookBodyOfRE(r, l2)))
+            || (l2 in LTB.LookIds(NI.LookBodyOfRE(r, l1))
+                && PIV.QuantIds(NI.LookBodyOfRE(r, l2)) <= PIV.QuantIds(NI.LookBodyOfRE(r, l1)))
+            || (l1 in LTB.LookIds(NI.LookBodyOfRE(r, l2))
+                && PIV.QuantIds(NI.LookBodyOfRE(r, l1)) <= PIV.QuantIds(NI.LookBodyOfRE(r, l2)))
     decreases r
   {
     match r
@@ -18089,10 +18090,10 @@ module LindenElkMain {
         owner is a matched positive lookahead, at the owner's fresh-body value
         (`FLookLoopFullCoversInLooks`). */
   lemma FLookLoopFullCoversFromTables(
-      ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
-      ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
-      cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
-      ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>, g: nat)
+    ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
+    ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
+    cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+    ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>, g: nat)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires code == CP.compile_to_bytecode(re)
@@ -18112,19 +18113,19 @@ module LindenElkMain {
     requires inits.blocked == [] && inits.bestmatch.None?
     requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
     ensures result.Some? ==>
-      var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
-                              result.value.capture_regs, result.value.look_regs, result.value.quant_regs, ov);
-      // recon_outer: FLookLoop writes captures/looks only inside look bodies
-      CM.RegsAgreeOutside(res.0, result.value.capture_regs, PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)))
-      && CM.RegsAgreeOutside(res.1, result.value.look_regs, LookIdSet(re))
-      // recon_inner: res.0 carries every matched g at its innermost owner's fresh value
-      && (forall owner: nat :: owner in LTB.LookIds(re)
-            && g in PIV.CapIds(NI.LookBodyOfRE(re, owner))
-            && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
-            && MatchedPosLA(crv, res.1, owner) ==>
-          var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
-          (rf.Some? ==> CM.RegsAgreeInside(res.0, rf.value.capture_regs, PIV.CaptureRegsSet({g})))
-          && (rf.None? ==> CM.RegsAgreeInside(res.0, AReg.init_regs(ncap), PIV.CaptureRegsSet({g}))))
+              var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                      result.value.capture_regs, result.value.look_regs, result.value.quant_regs, ov);
+              // recon_outer: FLookLoop writes captures/looks only inside look bodies
+              CM.RegsAgreeOutside(res.0, result.value.capture_regs, PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)))
+              && CM.RegsAgreeOutside(res.1, result.value.look_regs, LookIdSet(re))
+              // recon_inner: res.0 carries every matched g at its innermost owner's fresh value
+              && (forall owner: nat :: owner in LTB.LookIds(re)
+                                       && g in PIV.CapIds(NI.LookBodyOfRE(re, owner))
+                                       && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
+                                       && MatchedPosLA(crv, res.1, owner) ==>
+                                         var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
+                                         (rf.Some? ==> CM.RegsAgreeInside(res.0, rf.value.capture_regs, PIV.CaptureRegsSet({g})))
+                                         && (rf.None? ==> CM.RegsAgreeInside(res.0, AReg.init_regs(ncap), PIV.CaptureRegsSet({g}))))
   {
     LookRowsFromTablesNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
                              ncap, nlook, nquant, endl, result);
@@ -18306,10 +18307,10 @@ module LindenElkMain {
       are discharged here from `MainMatchBodyQuantsInitNested`/`DOrdQuantFrom
       Tables`/`SqBoundQuantFromTables`. */
   lemma FLookLoopQuantCoversFromTables(
-      ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
-      ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
-      cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
-      ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>, qd: nat)
+    ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
+    ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
+    cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+    ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>, qd: nat)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires code == CP.compile_to_bytecode(re)
@@ -18329,19 +18330,19 @@ module LindenElkMain {
     requires inits.blocked == [] && inits.bestmatch.None?
     requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
     ensures result.Some? ==>
-      var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
-                              result.value.capture_regs, result.value.look_regs, result.value.quant_regs, ov);
-      // recon_outer: FLookLoop writes quants only inside look bodies
-      CM.RegsAgreeOutside(res.2, result.value.quant_regs,
-                          (set q: nat | q in PIV.QuantIdsInLooks(re) :: q as int))
-      // recon_inner: res.2 carries every matched qd at its innermost owner's fresh value
-      && (forall owner: nat :: owner in LTB.LookIds(re)
-            && qd in PIV.QuantIds(NI.LookBodyOfRE(re, owner))
-            && qd !in PIV.QuantIdsInLooks(NI.LookBodyOfRE(re, owner))
-            && MatchedPosLA(crv, res.1, owner) ==>
-          var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
-          (rf.Some? ==> CM.RegsAgreeInside(res.2, rf.value.quant_regs, {qd as int}))
-          && (rf.None? ==> CM.RegsAgreeInside(res.2, AReg.init_regs(nquant), {qd as int})))
+              var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                      result.value.capture_regs, result.value.look_regs, result.value.quant_regs, ov);
+              // recon_outer: FLookLoop writes quants only inside look bodies
+              CM.RegsAgreeOutside(res.2, result.value.quant_regs,
+                                  (set q: nat | q in PIV.QuantIdsInLooks(re) :: q as int))
+              // recon_inner: res.2 carries every matched qd at its innermost owner's fresh value
+              && (forall owner: nat :: owner in LTB.LookIds(re)
+                                       && qd in PIV.QuantIds(NI.LookBodyOfRE(re, owner))
+                                       && qd !in PIV.QuantIdsInLooks(NI.LookBodyOfRE(re, owner))
+                                       && MatchedPosLA(crv, res.1, owner) ==>
+                                         var rf := FreshBodyMatch(crv, str, owner as int, res.1, ov, ncap, nlook, nquant);
+                                         (rf.Some? ==> CM.RegsAgreeInside(res.2, rf.value.quant_regs, {qd as int}))
+                                         && (rf.None? ==> CM.RegsAgreeInside(res.2, AReg.init_regs(nquant), {qd as int})))
   {
     LookRowsFromTablesNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
                              ncap, nlook, nquant, endl, result);
@@ -18360,8 +18361,8 @@ module LindenElkMain {
       PIV.QuantIdsLooksDisjoint(re);
       // (c'q): each body's quant slots are INITIAL in the winning quant bank
       assert forall lx: int, lax: R.lookaround, body: R.regex ::
-        1 <= lx <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, lx, lax, body) ==>
-        CM.RegsAgreeInside(q, AReg.init_regs(nquant), LKC.QIdsInt(body))
+          1 <= lx <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, lx, lax, body) ==>
+            CM.RegsAgreeInside(q, AReg.init_regs(nquant), LKC.QIdsInt(body))
       by {
         forall lx: int, lax: R.lookaround, body: R.regex |
           1 <= lx <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, lx, lax, body)
@@ -18373,9 +18374,9 @@ module LindenElkMain {
         }
       }
       assert forall lx1: int, lax1: R.lookaround, b1: R.regex, lx2: int, lax2: R.lookaround, b2: R.regex ::  // (D-ord-q)
-        1 <= lx1 <= R.max_lookaround(ast) && 1 <= lx2 <= R.max_lookaround(ast) && lx1 < lx2
-        && LTB.LookEntryOk(crv, lx1, lax1, b1) && LTB.LookEntryOk(crv, lx2, lax2, b2) ==>
-        QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
+          1 <= lx1 <= R.max_lookaround(ast) && 1 <= lx2 <= R.max_lookaround(ast) && lx1 < lx2
+          && LTB.LookEntryOk(crv, lx1, lax1, b1) && LTB.LookEntryOk(crv, lx2, lax2, b2) ==>
+            QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
       by {
         forall lx1: int, lax1: R.lookaround, b1: R.regex, lx2: int, lax2: R.lookaround, b2: R.regex |
           1 <= lx1 <= R.max_lookaround(ast) && 1 <= lx2 <= R.max_lookaround(ast) && lx1 < lx2
@@ -18384,7 +18385,7 @@ module LindenElkMain {
         { DOrdQuantFromTables(ast, re, crv, lx1, lax1, b1, lx2, lax2, b2); }
       }
       assert forall lx: int, lax: R.lookaround, body: R.regex ::                                   // (Sq-bound)
-        1 <= lx <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, lx, lax, body) ==> QIdsOuter(body) <= Sq
+          1 <= lx <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, lx, lax, body) ==> QIdsOuter(body) <= Sq
       by {
         forall lx: int, lax: R.lookaround, body: R.regex |
           1 <= lx <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, lx, lax, body)
@@ -18407,15 +18408,15 @@ module LindenElkMain {
   // fact for their (already-green) bodies.
   // ==========================================================================
   ghost opaque predicate ValueOkO(crv: CP.FCompiled, str: string, res0: AReg.Regs, res1: AReg.Regs,
-      lid: int, maxlook: int, ov: LOr.OracleView, ncap: int, nlook: int, nquant: int) {
+                                  lid: int, maxlook: int, ov: LOr.OracleView, ncap: int, nlook: int, nquant: int) {
     FLookLoopValueOkFull(crv, str, res0, res1, lid, maxlook, ov, ncap, nlook, nquant)
   }
   ghost opaque predicate QuantValueOkO(crv: CP.FCompiled, str: string, res2: AReg.Regs, res1: AReg.Regs,
-      lid: int, maxlook: int, ov: LOr.OracleView, ncap: int, nlook: int, nquant: int) {
+                                       lid: int, maxlook: int, ov: LOr.OracleView, ncap: int, nlook: int, nquant: int) {
     FLookLoopQuantValueOkFull(crv, str, res2, res1, lid, maxlook, ov, ncap, nlook, nquant)
   }
   ghost opaque predicate ChildLinkO(crv: CP.FCompiled, str: string, res1: AReg.Regs,
-      lid: int, maxlook: int, ov: LOr.OracleView, ncap: int, nlook: int, nquant: int) {
+                                    lid: int, maxlook: int, ov: LOr.OracleView, ncap: int, nlook: int, nquant: int) {
     FLookLoopChildLinkOk(crv, str, res1, lid, maxlook, ov, ncap, nlook, nquant)
   }
   ghost opaque predicate LookInvO(res1: AReg.Regs, ov: LOr.OracleView, str: string) {
@@ -18423,17 +18424,17 @@ module LindenElkMain {
   }
   ghost opaque predicate TopLookFrameO(re: R.regex, res1: AReg.Regs, look0: AReg.Regs) {
     forall lz: nat :: lz in NI.TopLookIds(re) ==>
-      AI.get_idx(res1.a_clk, lz as int) == AI.get_idx(look0.a_clk, lz as int)
-      && AReg.get_cp(res1, lz as int) == AReg.get_cp(look0, lz as int)
+                        AI.get_idx(res1.a_clk, lz as int) == AI.get_idx(look0.a_clk, lz as int)
+                        && AReg.get_cp(res1, lz as int) == AReg.get_cp(look0, lz as int)
   }
   ghost opaque predicate QuantFrameO(re: R.regex, res2: AReg.Regs, quant0: AReg.Regs) {
     forall q: nat :: q in PIV.QuantIdsOutsideLooks(re) ==>
-      AI.get_idx(res2.a_clk, q as int) == AI.get_idx(quant0.a_clk, q as int)
+                       AI.get_idx(res2.a_clk, q as int) == AI.get_idx(quant0.a_clk, q as int)
   }
   ghost opaque predicate CaptureFrameO(re: R.regex, res0: AReg.Regs, cap0: AReg.Regs) {
     forall k: int :: k !in PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)) ==>
-      AI.get_idx(res0.a_cp, k) == AI.get_idx(cap0.a_cp, k)
-      && AI.get_idx(res0.a_clk, k) == AI.get_idx(cap0.a_clk, k)
+                       AI.get_idx(res0.a_cp, k) == AI.get_idx(cap0.a_cp, k)
+                       && AI.get_idx(res0.a_clk, k) == AI.get_idx(cap0.a_clk, k)
   }
   ghost opaque predicate Res0LiveO(re: R.regex, res0: AReg.Regs) {
     forall c: nat :: c in PIV.CapIds(re) && AI.get_idx(res0.a_clk, CP.start_reg(c)) < 0
@@ -18446,7 +18447,7 @@ module LindenElkMain {
   ghost opaque predicate FrameEntryAllO(crv: CP.FCompiled, re: R.regex, ast: R.regex) {
     forall l: int, la: R.lookaround, b: R.regex ::
       1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, b) ==>
-      FrameEntryOk(crv, la, b, PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), LookIdSet(re))
+        FrameEntryOk(crv, la, b, PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), LookIdSet(re))
   }
   ghost opaque predicate OracleSufAllO(rer: LW.RegExpRecord, qm: AR.QMap, str: string) {
     forall cp: nat :: cp <= |str| ==> LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
@@ -18457,25 +18458,25 @@ module LindenElkMain {
       hold the tables atomically (no triggers on its other assertions) and
       `FreshBodyDirectMember` reveal them only in its own body. */
   ghost opaque predicate AhO(crv: CP.FCompiled, ast: R.regex, cap: AReg.Regs, lk: AReg.Regs,
-      S: set<int>, Slook: set<int>, ncap: int, str: string) {
+                             S: set<int>, Slook: set<int>, ncap: int, str: string) {
     (forall l: int, la: R.lookaround, body: R.regex ::
        1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==> FrameEntryOk(crv, la, body, S, Slook))
     && (forall l: int :: 1 <= l <= R.max_lookaround(ast) && AReg.get_cp(lk, l).Some? ==>
-          exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body))
+                           exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body))
     && (forall l: int, la: R.lookaround, body: R.regex ::
           1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
-          CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body)))
+            CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body)))
     && (forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::
           1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
           && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-          PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {})
+            PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {})
     && (forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
           1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
           && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(lk, l2).Some? ==> l2 !in LookIdSet(b1))
     && (forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::
           1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
           && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
-          DirectLookIds(b1) * LTB.LookIds(b2) == {})
+            DirectLookIds(b1) * LTB.LookIds(b2) == {})
     && (forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
           1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==> l2 !in LookIdSet(b1))
   }
@@ -18506,10 +18507,10 @@ module LindenElkMain {
       variant setup verbatim (a minimal context) and then calls the lift, so the
       expensive quantifier matching happens once, here, not in the whole lemma. */
   lemma EndpointQuantValueOk(
-      ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
-      ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
-      cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
-      ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>)
+    ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
+    ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
+    cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+    ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires code == CP.compile_to_bytecode(re)
@@ -18528,12 +18529,12 @@ module LindenElkMain {
     requires inits.blocked == [] && inits.bestmatch.None?
     requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
     ensures result.Some? ==>
-      var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
-                              result.value.capture_regs, result.value.look_regs, result.value.quant_regs, ov);
-      |res.2.a_cp| == nquant && |res.2.a_clk| == nquant
-      && (forall k :: AI.get_idx(res.2.a_cp, k) < 0) && (forall k :: AI.get_idx(res.2.a_clk, k) >= -1)
-      && QuantValueOkO(crv, str, res.2, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
-      && QuantFrameO(re, res.2, result.value.quant_regs)
+              var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                      result.value.capture_regs, result.value.look_regs, result.value.quant_regs, ov);
+              |res.2.a_cp| == nquant && |res.2.a_clk| == nquant
+              && (forall k :: AI.get_idx(res.2.a_cp, k) < 0) && (forall k :: AI.get_idx(res.2.a_clk, k) >= -1)
+              && QuantValueOkO(crv, str, res.2, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+              && QuantFrameO(re, res.2, result.value.quant_regs)
   {
     reveal QuantValueOkO();
     LookRowsFromTablesNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
@@ -18553,8 +18554,8 @@ module LindenElkMain {
       assert CM.RegsAgreeOutside(q, quant, QIdsOuter(re));
       PIV.QuantIdsLooksDisjoint(re);
       assert forall lx: int, lax: R.lookaround, body: R.regex ::
-        1 <= lx <= maxlook && LTB.LookEntryOk(crv, lx, lax, body) ==>
-        CM.RegsAgreeInside(q, AReg.init_regs(nquant), LKC.QIdsInt(body))
+          1 <= lx <= maxlook && LTB.LookEntryOk(crv, lx, lax, body) ==>
+            CM.RegsAgreeInside(q, AReg.init_regs(nquant), LKC.QIdsInt(body))
       by {
         forall lx: int, lax: R.lookaround, body: R.regex |
           1 <= lx <= maxlook && LTB.LookEntryOk(crv, lx, lax, body)
@@ -18565,9 +18566,9 @@ module LindenElkMain {
         }
       }
       assert forall lx1: int, lax1: R.lookaround, b1: R.regex, lx2: int, lax2: R.lookaround, b2: R.regex ::
-        1 <= lx1 <= maxlook && 1 <= lx2 <= maxlook && lx1 < lx2
-        && LTB.LookEntryOk(crv, lx1, lax1, b1) && LTB.LookEntryOk(crv, lx2, lax2, b2) ==>
-        QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
+          1 <= lx1 <= maxlook && 1 <= lx2 <= maxlook && lx1 < lx2
+          && LTB.LookEntryOk(crv, lx1, lax1, b1) && LTB.LookEntryOk(crv, lx2, lax2, b2) ==>
+            QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
       by {
         forall lx1: int, lax1: R.lookaround, b1: R.regex, lx2: int, lax2: R.lookaround, b2: R.regex |
           1 <= lx1 <= maxlook && 1 <= lx2 <= maxlook && lx1 < lx2
@@ -18576,7 +18577,7 @@ module LindenElkMain {
         { DOrdQuantFromTables(ast, re, crv, lx1, lax1, b1, lx2, lax2, b2); }
       }
       assert forall lx: int, lax: R.lookaround, body: R.regex ::
-        1 <= lx <= maxlook && LTB.LookEntryOk(crv, lx, lax, body) ==> QIdsOuter(body) <= Sq
+          1 <= lx <= maxlook && LTB.LookEntryOk(crv, lx, lax, body) ==> QIdsOuter(body) <= Sq
       by {
         forall lx: int, lax: R.lookaround, body: R.regex |
           1 <= lx <= maxlook && LTB.LookEntryOk(crv, lx, lax, body)
@@ -18587,8 +18588,8 @@ module LindenElkMain {
       FLookLoopQuantValueLiftFull(crv, str, 1, maxlook, c, l, q, ov, S, Slook, Sq, ncap, nlook, nquant);
       // the quant frame (RegsAgreeOutside(res.2, q, Sq)) — same (a)/(Sq-bound) setup
       assert forall lx: int, lax: R.lookaround, body: R.regex ::
-        1 <= lx <= maxlook && LTB.LookEntryOk(crv, lx, lax, body) ==>
-        FrameEntryOk(crv, lax, body, S, Slook) && QIdsOuter(body) <= Sq;
+          1 <= lx <= maxlook && LTB.LookEntryOk(crv, lx, lax, body) ==>
+            FrameEntryOk(crv, lax, body, S, Slook) && QIdsOuter(body) <= Sq;
       FLookLoopQuantFrameNested(crv, str, 1, maxlook, c, l, q, ov, S, Slook, Sq);
       // QuantFrameO: QuantIdsOutsideLooks is disjoint from Sq, so the RegsAgreeOutside
       // just established pins res.2's clock to quant's on those ids.
@@ -18617,10 +18618,10 @@ module LindenElkMain {
       thin two-call wrapper — but isolating it keeps the value-lift out of
       MainTheoremL4's ambient context. */
   lemma EndpointValueOk(
-      ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
-      ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
-      cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
-      ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>)
+    ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
+    ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
+    cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+    ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires code == CP.compile_to_bytecode(re)
@@ -18639,13 +18640,13 @@ module LindenElkMain {
     requires inits.blocked == [] && inits.bestmatch.None?
     requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
     ensures result.Some? ==>
-      var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
-                              result.value.capture_regs, result.value.look_regs, result.value.quant_regs, ov);
-      |res.0.a_cp| == ncap && |res.0.a_clk| == ncap && PIV.CapRegWf(res.0)
-      && |res.1.a_cp| == nlook && |res.1.a_clk| == nlook
-      && |res.2.a_cp| == nquant && |res.2.a_clk| == nquant
-      && ValueOkO(crv, str, res.0, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
-      && Res0LiveO(re, res.0) && CaptureFrameO(re, res.0, result.value.capture_regs)
+              var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                      result.value.capture_regs, result.value.look_regs, result.value.quant_regs, ov);
+              |res.0.a_cp| == ncap && |res.0.a_clk| == ncap && PIV.CapRegWf(res.0)
+              && |res.1.a_cp| == nlook && |res.1.a_clk| == nlook
+              && |res.2.a_cp| == nquant && |res.2.a_clk| == nquant
+              && ValueOkO(crv, str, res.0, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+              && Res0LiveO(re, res.0) && CaptureFrameO(re, res.0, result.value.capture_regs)
     ensures FrameEntryAllO(crv, re, ast)
   {
     reveal ValueOkO(), Res0LiveO();
@@ -18687,10 +18688,10 @@ module LindenElkMain {
       direct children are disjoint from `re`'s direct lids (`DirectLidsNotInBody`),
       so the bank is initial on each `DirectLidSet(body)`. */
   lemma EndpointChildLinkOk(
-      ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
-      ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
-      cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
-      ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>)
+    ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
+    ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
+    cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+    ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires code == CP.compile_to_bytecode(re)
@@ -18709,9 +18710,9 @@ module LindenElkMain {
     requires inits.blocked == [] && inits.bestmatch.None?
     requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
     ensures result.Some? ==>
-      var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
-                              result.value.capture_regs, result.value.look_regs, result.value.quant_regs, ov);
-      ChildLinkO(crv, str, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+              var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                      result.value.capture_regs, result.value.look_regs, result.value.quant_regs, ov);
+              ChildLinkO(crv, str, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
   {
     reveal ChildLinkO();
     LookRowsFromTablesNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
@@ -18740,8 +18741,8 @@ module LindenElkMain {
 
       // (c'-look): the winning look bank is INITIAL on each body's direct children
       assert forall lx: int, lax: R.lookaround, body: R.regex ::
-        1 <= lx <= maxlook && LTB.LookEntryOk(crv, lx, lax, body) ==>
-        CM.RegsAgreeInside(l, initlk, DirectLidSet(body))
+          1 <= lx <= maxlook && LTB.LookEntryOk(crv, lx, lax, body) ==>
+            CM.RegsAgreeInside(l, initlk, DirectLidSet(body))
       by {
         forall lx: int, lax: R.lookaround, body: R.regex |
           1 <= lx <= maxlook && LTB.LookEntryOk(crv, lx, lax, body)
@@ -18778,10 +18779,10 @@ module LindenElkMain {
       look bank carries the clk/cp/oracle-true shape (`CM.FFindMatchLook*`), and
       `FLookLoopLookOracleTrue`/`FLookLoopLookCpSet` lift it through the fold. */
   lemma EndpointLookInv(
-      ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
-      ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
-      cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
-      ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>)
+    ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
+    ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
+    cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+    ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires code == CP.compile_to_bytecode(re)
@@ -18800,10 +18801,10 @@ module LindenElkMain {
     requires inits.blocked == [] && inits.bestmatch.None?
     requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
     ensures result.Some? ==>
-      var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
-                              result.value.capture_regs, result.value.look_regs, result.value.quant_regs, ov);
-      LookInvO(res.1, ov, str)
-      && ThreadLookInvO(result.value.look_regs, ov, str)
+              var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                      result.value.capture_regs, result.value.look_regs, result.value.quant_regs, ov);
+              LookInvO(res.1, ov, str)
+              && ThreadLookInvO(result.value.look_regs, ov, str)
   {
     reveal LookInvO(), ThreadLookInvO();
     LookRowsFromTablesNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
@@ -18855,10 +18856,10 @@ module LindenElkMain {
       (`l !in LookIdSet` of every row's body, via `TopLookNotNested`) feeds
       `FLookLoopTopLook{Clk,Cp}StableFull`. */
   lemma EndpointTopLookFrame(
-      ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
-      ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
-      cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
-      ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>)
+    ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
+    ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
+    cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+    ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires code == CP.compile_to_bytecode(re)
@@ -18877,9 +18878,9 @@ module LindenElkMain {
     requires inits.blocked == [] && inits.bestmatch.None?
     requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
     ensures result.Some? ==>
-      var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
-                              result.value.capture_regs, result.value.look_regs, result.value.quant_regs, ov);
-      TopLookFrameO(re, res.1, result.value.look_regs)
+              var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                      result.value.capture_regs, result.value.look_regs, result.value.quant_regs, ov);
+              TopLookFrameO(re, res.1, result.value.look_regs)
   {
     reveal TopLookFrameO();
     LookRowsFromTablesNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
@@ -18895,12 +18896,12 @@ module LindenElkMain {
       NI.TopLookIdsIn(re);
       forall lz: nat | lz in NI.TopLookIds(re)
         ensures AI.get_idx(AI.FLookLoop(crv, str, 1, maxlook, c, l, q, ov).1.a_clk, lz as int)
-                == AI.get_idx(l.a_clk, lz as int)
-             && AReg.get_cp(AI.FLookLoop(crv, str, 1, maxlook, c, l, q, ov).1, lz as int)
-                == AReg.get_cp(l, lz as int)
+             == AI.get_idx(l.a_clk, lz as int)
+                && AReg.get_cp(AI.FLookLoop(crv, str, 1, maxlook, c, l, q, ov).1, lz as int)
+                   == AReg.get_cp(l, lz as int)
       {
         assert forall l1: int, la1: R.lookaround, b1: R.regex ::
-          1 <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> (lz as int) !in LookIdSet(b1)
+            1 <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) ==> (lz as int) !in LookIdSet(b1)
         by {
           forall l1: int, la1: R.lookaround, b1: R.regex |
             1 <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)

@@ -5060,7 +5060,8 @@ module LindenElkNestInv {
   lemma LookBodyOfTablesTie(re: R.regex, fc: CP.FCompiled, lid: nat)
     requires LTB.LookTablesOk(re, fc)
     requires lid in LTB.LookIds(re)
-    ensures exists la: R.lookaround :: LTB.LookEntryOk(fc, lid as int, la, LookBodyOfRE(re, lid))
+    ensures var li: int := lid as int;   // (2026-08-28) cast-free trigger term for the exists
+            exists la: R.lookaround :: LTB.LookEntryOk(fc, li, la, LookBodyOfRE(re, lid))
     decreases re
   {
     match re

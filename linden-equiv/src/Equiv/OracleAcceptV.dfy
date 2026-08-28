@@ -92,10 +92,10 @@ module LindenElkOracleAcceptV {
     requires ORc.ActiveOkV(c, str, ov, cp0, s.active, s.cp)
     requires ORc.BlockedOkV(c, str, ov, cp0, s.blocked, s.cp)
     ensures var (s', ov') := AI.FAdvanceEpsilon(c, s, ov, LAnc.Forward);
-      ov' == ov
-      && s'.active == []
-      && ORc.BlockedOkV(c, str, ov, cp0, s'.blocked, s.cp)
-      && (s'.bestmatch.Some? ==> s.bestmatch.Some? || AcceptReachableAtV(c, str, ov, cp0, s.cp))
+            ov' == ov
+            && s'.active == []
+            && ORc.BlockedOkV(c, str, ov, cp0, s'.blocked, s.cp)
+            && (s'.bestmatch.Some? ==> s.bestmatch.Some? || AcceptReachableAtV(c, str, ov, cp0, s.cp))
     decreases AI.unprocessed(s.processed), |s.active|
   {
     if |s.active| == 0 { return; }
@@ -197,8 +197,8 @@ module LindenElkOracleAcceptV {
     requires ORc.ActiveOkV(c, str, ov, cp0, s.active, s.cp)
     requires ORc.BlockedOkV(c, str, ov, cp0, s.blocked, s.cp)
     ensures var (m, ov') := AI.FFindMatch(c, str, s, ov, LAnc.Forward, cdn);
-      m.Some? ==> s.bestmatch.Some?
-                  || exists cp2: int :: s.cp <= cp2 && AcceptReachableAtV(c, str, ov, cp0, cp2)
+            m.Some? ==> s.bestmatch.Some?
+                        || exists cp2: int :: s.cp <= cp2 && AcceptReachableAtV(c, str, ov, cp0, cp2)
     decreases |str| - s.cp
   {
     var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, LAnc.Forward));
@@ -213,7 +213,7 @@ module LindenElkOracleAcceptV {
       var s2 := AI.FConsume(s1);
       ORc.FConsumeReachV(c, str, ov, cp0, s1);
       var s3 := s2.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
-                    cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, LAnc.Forward));
+      cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, LAnc.Forward));
       var newchar := AI.get_char(str, s3.cp - AI.cp_offset(LAnc.Forward));
       var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
       assert s4.cp == s.cp + 1;
@@ -249,18 +249,18 @@ module LindenElkOracleAcceptV {
     requires s.context == ORc.CtxAt(str, s.cp)
     requires ORc.ClosureInvV(c, 0, str, s, ov, ov)
     requires forall pc: nat, eb: bool ::
-        ORc.InProc(s, pc, eb) && pc < RB.size(c) ==> !RB.get_instr(c, pc).Accept?
+               ORc.InProc(s, pc, eb) && pc < RB.size(c) ==> !RB.get_instr(c, pc).Accept?
     ensures var (s', ov') := AI.FAdvanceEpsilon(c, s, ov, LAnc.Forward);
-      ov' == ov
-      && s'.cp == s.cp
-      && (s'.bestmatch.None? ==>
-            s'.bestmatch == s.bestmatch
-            && s'.active == []
-            && (forall pc: nat, eb: bool ::
-                  ORc.InProc(s, pc, eb) || (ORc.InActive(s, pc, eb) && pc < RB.size(c)) ==> ORc.InProc(s', pc, eb))
-            && ORc.ClosureInvV(c, 0, str, s', ov, ov)
-            && (forall pc: nat, eb: bool ::
-                  ORc.InProc(s', pc, eb) && pc < RB.size(c) ==> !RB.get_instr(c, pc).Accept?))
+            ov' == ov
+            && s'.cp == s.cp
+            && (s'.bestmatch.None? ==>
+                  s'.bestmatch == s.bestmatch
+                  && s'.active == []
+                  && (forall pc: nat, eb: bool ::
+                        ORc.InProc(s, pc, eb) || (ORc.InActive(s, pc, eb) && pc < RB.size(c)) ==> ORc.InProc(s', pc, eb))
+                  && ORc.ClosureInvV(c, 0, str, s', ov, ov)
+                  && (forall pc: nat, eb: bool ::
+                        ORc.InProc(s', pc, eb) && pc < RB.size(c) ==> !RB.get_instr(c, pc).Accept?))
     decreases AI.unprocessed(s.processed), |s.active|
   {
     if |s.active| == 0 { return; }
@@ -284,7 +284,7 @@ module LindenElkOracleAcceptV {
     // so the no-processed-Accept forall extends by BpcAddMem
     match i
     case Accept =>
-      // the closure returns bestmatch Some — the None-guarded ensures is vacuous
+    // the closure returns bestmatch Some — the None-guarded ensures is vacuous
     case Consume(ce) =>
       var (nb, ni) := AI.add_thread(t, ce, s1.blocked, s1.isblocked);
       ORc.ClosureInvConsumeV(c, 0, str, s, ov, ov, ce);
@@ -419,11 +419,11 @@ module LindenElkOracleAcceptV {
       no-processed-Accept forall (helper for `AdvanceAcceptCompleteV`). */
   lemma NoAcceptProcExtend(c: RB.code, s: AI.VmState, sr: AI.VmState, hpc: int, heb: bool)
     requires forall pc: nat, eb: bool ::
-        ORc.InProc(s, pc, eb) && pc < RB.size(c) ==> !RB.get_instr(c, pc).Accept?
+               ORc.InProc(s, pc, eb) && pc < RB.size(c) ==> !RB.get_instr(c, pc).Accept?
     requires sr.processed == AI.bpc_add(s.processed, hpc, heb)
     requires !RB.get_instr(c, hpc).Accept?
     ensures forall pc: nat, eb: bool ::
-        ORc.InProc(sr, pc, eb) && pc < RB.size(c) ==> !RB.get_instr(c, pc).Accept?
+              ORc.InProc(sr, pc, eb) && pc < RB.size(c) ==> !RB.get_instr(c, pc).Accept?
   {
     forall pc: nat, eb: bool | ORc.InProc(sr, pc, eb) && pc < RB.size(c)
       ensures !RB.get_instr(c, pc).Accept?
@@ -452,7 +452,7 @@ module LindenElkOracleAcceptV {
     case Some(_) =>
       var s2 := AI.FConsume(s1);
       var s3 := s2.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
-                    cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, LAnc.Forward));
+      cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, LAnc.Forward));
       var newchar := AI.get_char(str, s3.cp - AI.cp_offset(LAnc.Forward));
       var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
       FFindMatchBestmatchSome(c, str, s4, ov1, cdn);
@@ -462,7 +462,7 @@ module LindenElkOracleAcceptV {
   lemma FAdvanceBestmatchMono(c: RB.code, s: AI.VmState, ov: LOr.OracleView)
     requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
     ensures var (s', _) := AI.FAdvanceEpsilon(c, s, ov, LAnc.Forward);
-      s.bestmatch.Some? ==> s'.bestmatch.Some?
+            s.bestmatch.Some? ==> s'.bestmatch.Some?
     decreases AI.unprocessed(s.processed), |s.active|
   {
     if |s.active| == 0 { return; }
@@ -545,11 +545,11 @@ module LindenElkOracleAcceptV {
     requires s.bestmatch.None?
     requires 0 <= cp0 <= s.cp <= |str|
     requires forall pc: nat, eb: bool ::
-        ORc.EntryConfigV(c, str, ov, cp0, pc, eb, s.cp) && pc < RB.size(c) ==> ORc.InActive(s, pc, eb)
+               ORc.EntryConfigV(c, str, ov, cp0, pc, eb, s.cp) && pc < RB.size(c) ==> ORc.InActive(s, pc, eb)
     ensures var (m, ov') := AI.FFindMatch(c, str, s, ov, LAnc.Forward, cdn);
-      m.None? ==> forall cp2: int, pc: nat, eb: bool ::
-        ORc.ReachFV(c, str, ov, cp0, pc, eb, cp2) && pc < RB.size(c) && s.cp <= cp2
-          ==> !RB.get_instr(c, pc).Accept?
+            m.None? ==> forall cp2: int, pc: nat, eb: bool ::
+                ORc.ReachFV(c, str, ov, cp0, pc, eb, cp2) && pc < RB.size(c) && s.cp <= cp2
+                ==> !RB.get_instr(c, pc).Accept?
     decreases |str| - s.cp
   {
     var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, LAnc.Forward));
@@ -568,11 +568,11 @@ module LindenElkOracleAcceptV {
         } else {
           match s1.context.nextchar
           case None =>
-            assert m == s1.bestmatch;
+    assert m == s1.bestmatch;
           case Some(_) =>
             var s2 := AI.FConsume(s1);
             var s3 := s2.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
-                          cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, LAnc.Forward));
+            cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, LAnc.Forward));
             var newchar := AI.get_char(str, s3.cp - AI.cp_offset(LAnc.Forward));
             var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
             FFindMatchBestmatchSome(c, str, s4, ov1, cdn);
@@ -629,7 +629,7 @@ module LindenElkOracleAcceptV {
     case Some(_) =>
       var s2 := AI.FConsume(s1);
       var s3 := s2.(processed := AI.init_bpcset(RB.size(c)), isblocked := AI.init_pcset(RB.size(c)),
-                    cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, LAnc.Forward));
+      cdn := LCdn.init_cdn(), cp := AI.incr_cp(s2.cp, LAnc.Forward));
       var newchar := AI.get_char(str, s3.cp - AI.cp_offset(LAnc.Forward));
       var s4 := s3.(context := LAnc.update_context(s3.context, newchar));
       ORc.FConsumeReachComplete(s1);
@@ -657,10 +657,10 @@ module LindenElkOracleAcceptV {
                  && RB.get_instr(c, q) == RB.Consume(s1.blocked[j].1);
         assert RC.is_accepted(s1.context.nextchar, s1.blocked[j].1);   // ConsumeEdge(s.cp, q)
         assert exists kk :: (0 <= kk < |AI.FConsume(s1).active|
-                            && AI.FConsume(s1).active[kk].pc == s1.blocked[j].0.pc + 1
-                            && AI.FConsume(s1).active[kk].exit_allowed);
+                             && AI.FConsume(s1).active[kk].pc == s1.blocked[j].0.pc + 1
+                             && AI.FConsume(s1).active[kk].exit_allowed);
         var kk :| 0 <= kk < |AI.FConsume(s1).active|
-                 && AI.FConsume(s1).active[kk].pc == q + 1 && AI.FConsume(s1).active[kk].exit_allowed;
+                  && AI.FConsume(s1).active[kk].pc == q + 1 && AI.FConsume(s1).active[kk].exit_allowed;
         assert s4.active == AI.FConsume(s1).active;
         assert s4.active[kk].pc == pc && s4.active[kk].exit_allowed == eb;
       }
@@ -682,7 +682,7 @@ module LindenElkOracleAcceptV {
     requires NR.GetPcRE(code, next) == Some(RB.Accept)
     requires ORc.ReachFV(code, str, ov, cp0, pc, eb, cp)
     ensures ODV.InBlockV(body, code, 0, next, str, ov, cp0, pc, cp)
-         || (pc == next && OBV.MatchesV(body, str, ov, cp0, cp))
+            || (pc == next && OBV.MatchesV(body, str, ov, cp0, cp))
   {
     if pc == 0 && eb == false && cp == cp0 {
       ODV.BlockEntryV(body, code, 0, next, str, ov, cp0);
@@ -705,7 +705,7 @@ module LindenElkOracleAcceptV {
     } else {
       assert eb == true && pc > 0 && ORc.ConsumeEdge(code, str, cp - 1, pc - 1);
       var eb1: bool :| (eb1 == false || eb1 == true)
-        && ORc.ReachFV(code, str, ov, cp0, pc - 1, eb1, cp - 1);
+                       && ORc.ReachFV(code, str, ov, cp0, pc - 1, eb1, cp - 1);
       BodyProgInvV(body, code, next, str, ov, cp0, pc - 1, eb1, cp - 1);
       assert ODV.AnyEdgeV(code, str, ov, pc - 1, eb1, cp - 1, pc, eb, cp);
       if ODV.InBlockV(body, code, 0, next, str, ov, cp0, pc - 1, cp - 1) {
@@ -728,11 +728,11 @@ module LindenElkOracleAcceptV {
     requires LTB.LookUnique(body)
     requires forall x: nat :: x in LTB.LookIds(body) ==> 1 <= x
     ensures var code := CP.compile_to_bytecode(body);
-      var next := CP.compile(body, 0, CP.Progress).1;
-      next >= 0 && NR.NfaRepRE(body, code, 0, next as nat)
-      && NR.GetPcRE(code, next as nat) == Some(RB.Accept)
-      && |code| == next + 1
-      && OS.NoCheckNullable(code) && NoOracleWrites(code) && OS.AllGatesAbove(code, 0)
+            var next := CP.compile(body, 0, CP.Progress).1;
+            next >= 0 && NR.NfaRepRE(body, code, 0, next as nat)
+            && NR.GetPcRE(code, next as nat) == Some(RB.Accept)
+            && |code| == next + 1
+            && OS.NoCheckNullable(code) && NoOracleWrites(code) && OS.AllGatesAbove(code, 0)
   {
     NR.CompileToBytecodeRepNested(body);
     var code := CP.compile_to_bytecode(body);
@@ -768,10 +768,10 @@ module LindenElkOracleAcceptV {
     requires forall x: nat :: x in LTB.LookIds(body) ==> 1 <= x
     requires 0 <= cp <= |str|
     ensures var code := CP.compile_to_bytecode(body);
-      var s := AI.FInitState(code, cp, initcap, initlook, initquant, initclk,
-                             AI.cp_context(cp, str, LAnc.Forward));
-      AI.FFindMatch(code, str, s, ov, LAnc.Forward, cdn).0.Some?
-      <==> exists j: int :: OBV.MatchesV(body, str, ov, cp, j)
+            var s := AI.FInitState(code, cp, initcap, initlook, initquant, initclk,
+                                   AI.cp_context(cp, str, LAnc.Forward));
+            AI.FFindMatch(code, str, s, ov, LAnc.Forward, cdn).0.Some?
+            <==> exists j: int :: OBV.MatchesV(body, str, ov, cp, j)
   {
     BodyCodeClassified(body);
     var code := CP.compile_to_bytecode(body);

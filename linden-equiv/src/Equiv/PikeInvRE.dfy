@@ -65,13 +65,13 @@ module LindenElkPikeInv {
     requires pc1 <= pc < pc2
     requires NR.GetPcRE(code, pc) == Some(RB.Jmp(next))
     ensures pc < next
-         || (next >= 0 && NR.GetPcRE(code, next as nat).Some? && NR.GetPcRE(code, next as nat).value.Fork?)
+            || (next >= 0 && NR.GetPcRE(code, next as nat).Some? && NR.GetPcRE(code, next as nat).value.Fork?)
     decreases CP.rsize(r1), k + 2
   {
     assert k > 0 by { if k == 0 { assert pc1 == pc2; } }
     var e1: nat :| NR.GetPcRE(code, pc1) == Some(RB.SetQuantToClock(qid, false))
-      && NR.NfaRepRE(r1, code, pc1 + 1, e1)
-      && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, pc2);
+                   && NR.NfaRepRE(r1, code, pc1 + 1, e1)
+                   && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, pc2);
     NR.NfaRepIncrRE(r1, code, pc1 + 1, e1);
     NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, pc2);
     if pc1 + 1 <= pc < e1 {
@@ -89,16 +89,16 @@ module LindenElkPikeInv {
     requires pc1 <= pc < pc2
     requires NR.GetPcRE(code, pc) == Some(RB.Jmp(next))
     ensures pc < next
-         || (next >= 0 && NR.GetPcRE(code, next as nat).Some? && NR.GetPcRE(code, next as nat).value.Fork?)
+            || (next >= 0 && NR.GetPcRE(code, next as nat).Some? && NR.GetPcRE(code, next as nat).value.Fork?)
     decreases CP.rsize(r1), k + 2
   {
     assert k > 0 by { if k == 0 { assert pc1 == pc2; } }
     var e1: nat :| NR.GetPcRE(code, pc1) == Some(if greedy then RB.Fork(pc1 + 1, pc2) else RB.Fork(pc2, pc1 + 1))
-      && NR.GetPcRE(code, pc1 + 1) == Some(RB.SetQuantToClock(qid, false))
-      && NR.GetPcRE(code, pc1 + 2) == Some(RB.BeginLoop)
-      && NR.NfaRepRE(r1, code, pc1 + 3, e1)
-      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-      && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, pc2);
+                   && NR.GetPcRE(code, pc1 + 1) == Some(RB.SetQuantToClock(qid, false))
+                   && NR.GetPcRE(code, pc1 + 2) == Some(RB.BeginLoop)
+                   && NR.NfaRepRE(r1, code, pc1 + 3, e1)
+                   && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                   && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, pc2);
     NR.NfaRepIncrRE(r1, code, pc1 + 3, e1);
     NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, pc2);
     if pc1 + 3 <= pc < e1 {
@@ -114,7 +114,7 @@ module LindenElkPikeInv {
     requires pc1 <= pc < pc2
     requires NR.GetPcRE(code, pc) == Some(RB.Jmp(next))
     ensures pc < next
-         || (next >= 0 && NR.GetPcRE(code, next as nat).Some? && NR.GetPcRE(code, next as nat).value.Fork?)
+            || (next >= 0 && NR.GetPcRE(code, next as nat).Some? && NR.GetPcRE(code, next as nat).value.Fork?)
     decreases CP.rsize(re), 1
   {
     match re
@@ -124,8 +124,8 @@ module LindenElkPikeInv {
     case Re_anchor(_) =>        // NfaRepRE false
     case Re_alt(r1, r2) =>
       var e1: nat :| NR.GetPcRE(code, pc1) == Some(RB.Fork(pc1 + 1, e1 + 1))
-        && NR.NfaRepRE(r1, code, pc1 + 1, e1) && NR.GetPcRE(code, e1) == Some(RB.Jmp(pc2))
-        && NR.NfaRepRE(r2, code, e1 + 1, pc2);
+                     && NR.NfaRepRE(r1, code, pc1 + 1, e1) && NR.GetPcRE(code, e1) == Some(RB.Jmp(pc2))
+                     && NR.NfaRepRE(r2, code, e1 + 1, pc2);
       NR.NfaRepIncrRE(r1, code, pc1 + 1, e1);
       NR.NfaRepIncrRE(r2, code, e1 + 1, pc2);
       if pc == pc1 {              // Fork, not Jmp: contradiction
@@ -174,12 +174,12 @@ module LindenElkPikeInv {
         return;
       }
       var e1: nat :| NR.GetPcRE(code, pc1) == Some(if q.greedy then RB.Fork(pc1 + 1, e1 + 2) else RB.Fork(e1 + 2, pc1 + 1))
-        && NR.GetPcRE(code, pc1 + 1) == Some(RB.SetQuantToClock(qid, false))
-        && NR.GetPcRE(code, pc1 + 2) == Some(RB.BeginLoop)
-        && NR.NfaRepRE(r1, code, pc1 + 3, e1)
-        && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-        && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(pc1))
-        && pc2 == e1 + 2;
+                     && NR.GetPcRE(code, pc1 + 1) == Some(RB.SetQuantToClock(qid, false))
+                     && NR.GetPcRE(code, pc1 + 2) == Some(RB.BeginLoop)
+                     && NR.NfaRepRE(r1, code, pc1 + 3, e1)
+                     && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                     && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(pc1))
+                     && pc2 == e1 + 2;
       NR.NfaRepIncrRE(r1, code, pc1 + 3, e1);
       if pc1 + 3 <= pc < e1 {
         CompileJumpsRE(r1, code, pc1 + 3, e1, pc, next);
@@ -188,18 +188,18 @@ module LindenElkPikeInv {
         // GetPc(code, pc1) == Some(Fork(...)) discharges the Fork disjunct.
         assert next == pc1;
       }
-      // pc ∈ {pc1, pc1+1, pc1+2, e1}: Fork/SetQuantToClock/BeginLoop/EndLoop
-      // (all ≠ Jmp) contradict GetPc(pc) == Jmp.
+    // pc ∈ {pc1, pc1+1, pc1+2, e1}: Fork/SetQuantToClock/BeginLoop/EndLoop
+    // (all ≠ Jmp) contradict GetPc(pc) == Jmp.
     case Re_capture(cid, r1) =>
       var e1: nat :| NR.GetPcRE(code, pc1) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
-        && NR.NfaRepRE(r1, code, pc1 + 1, e1)
-        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
-        && pc2 == e1 + 1;
+                     && NR.NfaRepRE(r1, code, pc1 + 1, e1)
+                     && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+                     && pc2 == e1 + 1;
       NR.NfaRepIncrRE(r1, code, pc1 + 1, e1);
       if pc1 + 1 <= pc < e1 {
         CompileJumpsRE(r1, code, pc1 + 1, e1, pc, next);
       }
-      // pc ∈ {pc1, e1}: SetRegisterToCP ≠ Jmp contradicts.
+    // pc ∈ {pc1, e1}: SetRegisterToCP ≠ Jmp contradicts.
   }
 
   // Code-level stutter-tameness: the property preservation needs in place of
@@ -212,11 +212,11 @@ module LindenElkPikeInv {
       `pc+1`, so `Jmp` targets are the only ones that can misbehave. */
   ghost predicate StutterTameRE(code: RB.code) {
     forall pc: nat :: pc < |code| ==>
-      match NR.GetPcRE(code, pc)
-      case Some(Jmp(next)) =>
-        pc < next
-        || (next >= 0 && NR.GetPcRE(code, next as nat).Some? && NR.GetPcRE(code, next as nat).value.Fork?)
-      case _ => true
+                        match NR.GetPcRE(code, pc)
+                        case Some(Jmp(next)) =>
+                          pc < next
+                          || (next >= 0 && NR.GetPcRE(code, next as nat).Some? && NR.GetPcRE(code, next as nat).value.Fork?)
+                        case _ => true
   }
 
   // Compiled fragment bytecode is stutter-tame.
@@ -284,8 +284,8 @@ module LindenElkPikeInv {
   lemma StutterChainSource(code: RB.code, pc: nat, target: nat)
     requires StutterChainTo(code, pc, target)
     ensures NR.GetPcRE(code, pc).Some?
-         && (NR.GetPcRE(code, pc).value.Jmp? || NR.GetPcRE(code, pc).value.BeginLoop?
-             || NR.GetPcRE(code, pc).value.CheckOracle? || NR.GetPcRE(code, pc).value.NegCheckOracle?)
+            && (NR.GetPcRE(code, pc).value.Jmp? || NR.GetPcRE(code, pc).value.BeginLoop?
+                || NR.GetPcRE(code, pc).value.CheckOracle? || NR.GetPcRE(code, pc).value.NegCheckOracle?)
   {}
 
   // A stutter chain in tame code either strictly increases the pc or ends on a
@@ -405,15 +405,15 @@ module LindenElkPikeInv {
       `pc < currentpc`, false for the star back-`Jmp`), and this layer drops the
       GroupMap side. The VM `seen` set is the Phase-3 model's `processed`. */
   ghost predicate SeenInclusionRE(
-      rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
-      treeseen: SS.SeenTrees, processed: AI.Bpcset, current: Option<LT.Tree>, currentpc: nat)
+    rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+    treeseen: SS.SeenTrees, processed: AI.Bpcset, current: Option<LT.Tree>, currentpc: nat)
   {
     forall pc: nat, b: bool :: AI.bpc_mem(processed, pc, b) ==>
-      (exists t: LT.Tree :: SS.Inseen(treeseen, t) && TT.TreeThreadRE(rer, qm, code, inp, t, pc, b))
-      || (TT.StuttersRE(pc, code)
-          && exists t: LT.Tree ::
-               StutterChainTo(code, pc, currentpc) && current == Some(t)
-               && TT.TreeThreadRE(rer, qm, code, inp, t, pc, b))
+                                 (exists t: LT.Tree :: SS.Inseen(treeseen, t) && TT.TreeThreadRE(rer, qm, code, inp, t, pc, b))
+                                 || (TT.StuttersRE(pc, code)
+                                     && exists t: LT.Tree ::
+                                       StutterChainTo(code, pc, currentpc) && current == Some(t)
+                                       && TT.TreeThreadRE(rer, qm, code, inp, t, pc, b))
   }
 
   // ----- Bpcset membership algebra (bpc_add adds exactly one (pc, ex) slot) -----
@@ -455,8 +455,8 @@ module LindenElkPikeInv {
   /** `initial_inclusion`: the empty (all-false) `processed` set satisfies
       `SeenInclusionRE` vacuously. */
   lemma InitialInclusionRE(
-      rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
-      current: Option<LT.Tree>, currentpc: nat, n: int)
+    rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+    current: Option<LT.Tree>, currentpc: nat, n: int)
     ensures SeenInclusionRE(rer, qm, code, inp, SS.InitialSeenTrees, AI.init_bpcset(n), current, currentpc)
   {
     forall pc: nat, b: bool | AI.bpc_mem(AI.init_bpcset(n), pc, b)
@@ -472,9 +472,9 @@ module LindenElkPikeInv {
       `SeenInclusionRE` still holds — every entry resolves to the LEFT
       (seen-tree) disjunct. */
   lemma AddInclusionRE(
-      rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
-      treeseen: SS.SeenTrees, processed: AI.Bpcset, t: LT.Tree, pc: nat, b: bool,
-      nextcurrent: Option<LT.Tree>, nextpc: nat)
+    rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+    treeseen: SS.SeenTrees, processed: AI.Bpcset, t: LT.Tree, pc: nat, b: bool,
+    nextcurrent: Option<LT.Tree>, nextpc: nat)
     requires SeenInclusionRE(rer, qm, code, inp, treeseen, processed, Some(t), pc)
     requires TT.TreeThreadRE(rer, qm, code, inp, t, pc, b)
     ensures SeenInclusionRE(rer, qm, code, inp, SS.AddSeenTrees(treeseen, t),
@@ -482,10 +482,10 @@ module LindenElkPikeInv {
   {
     forall pc0: nat, b0: bool | AI.bpc_mem(AI.bpc_add(processed, pc, b), pc0, b0)
       ensures (exists t': LT.Tree :: SS.Inseen(SS.AddSeenTrees(treeseen, t), t')
-                 && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0))
-           || (TT.StuttersRE(pc0, code) && exists t': LT.Tree ::
-                 StutterChainTo(code, pc0, nextpc) && nextcurrent == Some(t')
-                 && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0))
+                                     && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0))
+              || (TT.StuttersRE(pc0, code) && exists t': LT.Tree ::
+                    StutterChainTo(code, pc0, nextpc) && nextcurrent == Some(t')
+                    && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0))
     {
       BpcAddMemFwd(processed, pc, b, pc0, b0);
       if pc0 == pc && b0 == b {
@@ -499,7 +499,7 @@ module LindenElkPikeInv {
           // old right disjunct: current == Some(t) forces the witness tree to be t,
           // now memoized ⟹ new LEFT disjunct.
           var t': LT.Tree :| TT.StuttersRE(pc0, code) && StutterChainTo(code, pc0, pc)
-            && Some(t) == Some(t') && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0);
+                             && Some(t) == Some(t') && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0);
           SS.InAdd(treeseen, t', t);
         }
       }
@@ -512,19 +512,19 @@ module LindenElkPikeInv {
   // memoization (the guard and its Choice) uses this for the second tree.
   /** Growing only the seen set preserves `SeenInclusionRE`. */
   lemma SeenGrowInclusionRE(
-      rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
-      treeseen: SS.SeenTrees, processed: AI.Bpcset, extra: LT.Tree,
-      current: Option<LT.Tree>, currentpc: nat)
+    rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+    treeseen: SS.SeenTrees, processed: AI.Bpcset, extra: LT.Tree,
+    current: Option<LT.Tree>, currentpc: nat)
     requires SeenInclusionRE(rer, qm, code, inp, treeseen, processed, current, currentpc)
     ensures SeenInclusionRE(rer, qm, code, inp, SS.AddSeenTrees(treeseen, extra),
                             processed, current, currentpc)
   {
     forall pc0: nat, b0: bool | AI.bpc_mem(processed, pc0, b0)
       ensures (exists t': LT.Tree :: SS.Inseen(SS.AddSeenTrees(treeseen, extra), t')
-                 && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0))
-           || (TT.StuttersRE(pc0, code) && exists t': LT.Tree ::
-                 StutterChainTo(code, pc0, currentpc) && current == Some(t')
-                 && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0))
+                                     && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0))
+              || (TT.StuttersRE(pc0, code) && exists t': LT.Tree ::
+                    StutterChainTo(code, pc0, currentpc) && current == Some(t')
+                    && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0))
     {
       if exists t': LT.Tree :: SS.Inseen(treeseen, t') && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0) {
         var t': LT.Tree :| SS.Inseen(treeseen, t') && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0);
@@ -539,25 +539,25 @@ module LindenElkPikeInv {
       intact (the stuttering disjunct promotes to LEFT since the tree is already
       memoized). */
   lemma SkipInclusionRE(
-      rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
-      treeseen: SS.SeenTrees, processed: AI.Bpcset, tree: LT.Tree, currentpc: nat,
-      current: Option<LT.Tree>, nextpc: nat)
+    rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+    treeseen: SS.SeenTrees, processed: AI.Bpcset, tree: LT.Tree, currentpc: nat,
+    current: Option<LT.Tree>, nextpc: nat)
     requires SeenInclusionRE(rer, qm, code, inp, treeseen, processed, Some(tree), currentpc)
     requires SS.Inseen(treeseen, tree)
     ensures SeenInclusionRE(rer, qm, code, inp, treeseen, processed, current, nextpc)
   {
     forall pc0: nat, b0: bool | AI.bpc_mem(processed, pc0, b0)
       ensures (exists t': LT.Tree :: SS.Inseen(treeseen, t')
-                 && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0))
-           || (TT.StuttersRE(pc0, code) && exists t': LT.Tree ::
-                 StutterChainTo(code, pc0, nextpc) && current == Some(t')
-                 && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0))
+                                     && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0))
+              || (TT.StuttersRE(pc0, code) && exists t': LT.Tree ::
+                    StutterChainTo(code, pc0, nextpc) && current == Some(t')
+                    && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0))
     {
       if exists t': LT.Tree :: SS.Inseen(treeseen, t') && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0) {
       } else {
         // old right disjunct gives the tree == `tree`, which is already seen ⟹ LEFT
         var t': LT.Tree :| TT.StuttersRE(pc0, code) && StutterChainTo(code, pc0, currentpc)
-          && Some(tree) == Some(t') && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0);
+                           && Some(tree) == Some(t') && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0);
         assert SS.Inseen(treeseen, t');   // t' == tree
       }
     }
@@ -573,8 +573,8 @@ module LindenElkPikeInv {
       backward star `Jmp`), so we extend the chain rather than rely on
       `pc < nextpc`. */
   lemma StutterInclusionRE(
-      rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
-      treeseen: SS.SeenTrees, processed: AI.Bpcset, t: LT.Tree, pc: nat, b: bool, nextpc: nat)
+    rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+    treeseen: SS.SeenTrees, processed: AI.Bpcset, t: LT.Tree, pc: nat, b: bool, nextpc: nat)
     requires StutterSuccIs(code, pc, nextpc)
     requires SeenInclusionRE(rer, qm, code, inp, treeseen, processed, Some(t), pc)
     requires TT.StuttersRE(pc, code)
@@ -583,10 +583,10 @@ module LindenElkPikeInv {
   {
     forall pc0: nat, b0: bool | AI.bpc_mem(AI.bpc_add(processed, pc, b), pc0, b0)
       ensures (exists t': LT.Tree :: SS.Inseen(treeseen, t')
-                 && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0))
-           || (TT.StuttersRE(pc0, code) && exists t': LT.Tree ::
-                 StutterChainTo(code, pc0, nextpc) && Some(t) == Some(t')
-                 && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0))
+                                     && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0))
+              || (TT.StuttersRE(pc0, code) && exists t': LT.Tree ::
+                    StutterChainTo(code, pc0, nextpc) && Some(t) == Some(t')
+                    && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0))
     {
       BpcAddMemFwd(processed, pc, b, pc0, b0);
       if pc0 == pc && b0 == b {
@@ -597,7 +597,7 @@ module LindenElkPikeInv {
         if exists t': LT.Tree :: SS.Inseen(treeseen, t') && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0) {
         } else {
           var t': LT.Tree :| TT.StuttersRE(pc0, code) && StutterChainTo(code, pc0, pc)
-            && Some(t) == Some(t') && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0);
+                             && Some(t) == Some(t') && TT.TreeThreadRE(rer, qm, code, inp, t', pc0, b0);
           StutterChainExtend(code, pc0, pc, nextpc);   // StutterChainTo(code, pc0, nextpc)
         }
       }
@@ -923,7 +923,7 @@ module LindenElkPikeInv {
     requires forall j: int :: j !in W ==> AI.get_idx(cc, j) == AI.get_idx(cc', j)
     requires forall q: nat :: q in QuantIdsOutsideLooks(re) ==> AI.get_idx(qc, q) == AI.get_idx(qc', q)
     ensures forall k: int :: k >= 0 && k !in W ==>
-      AI.get_idx(AI.filter_capture(re, cr, cc, lc, qc, mx), k) == AI.get_idx(AI.filter_capture(re, cr', cc', lc, qc', mx), k)
+                               AI.get_idx(AI.filter_capture(re, cr, cc, lc, qc, mx), k) == AI.get_idx(AI.filter_capture(re, cr', cc', lc, qc', mx), k)
     decreases re
   {
     match re
@@ -1037,7 +1037,7 @@ module LindenElkPikeInv {
     requires |cr| == |cr'|
     requires forall i :: 0 <= i < |cr| && i % 2 == 0 ==> cr[i] == cr'[i]
     ensures forall j :: j % 2 == 0 ==>
-      AI.get_idx(AI.filter_all(r, cr), j) == AI.get_idx(AI.filter_all(r, cr'), j)
+                          AI.get_idx(AI.filter_all(r, cr), j) == AI.get_idx(AI.filter_all(r, cr'), j)
     decreases r
   {
     FilterAllLen(r, cr); FilterAllLen(r, cr');
@@ -1075,8 +1075,8 @@ module LindenElkPikeInv {
     requires forall i :: 0 <= i < |cr| && i % 2 == 0 ==> cr[i] == cr'[i]
     requires forall i :: i % 2 == 0 ==> AI.get_idx(cc, i) == AI.get_idx(cc', i)
     ensures forall j :: j % 2 == 0 ==>
-      AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), j)
-        == AI.get_idx(AI.filter_capture(r, cr', cc', lc, qc, mx), j)
+                          AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), j)
+                          == AI.get_idx(AI.filter_capture(r, cr', cc', lc, qc, mx), j)
     decreases r
   {
     FilterCaptureLen(r, cr, cc, lc, qc, mx); FilterCaptureLen(r, cr', cc', lc, qc, mx);
@@ -1195,11 +1195,11 @@ module LindenElkPikeInv {
     // captures, which filter to the same -1 as filter_all's reset.
     requires LooksCapUnset(r, cc)
     requires forall cid: nat :: cid in CapIds(r)
-                               ==> AI.get_idx(cc, CP.start_reg(cid)) < M
-                                   || AI.get_idx(cc, CP.start_reg(cid)) < 0
+                                ==> AI.get_idx(cc, CP.start_reg(cid)) < M
+                                    || AI.get_idx(cc, CP.start_reg(cid)) < 0
     requires forall k :: AI.get_idx(cr, k) >= -1
     requires forall cid: nat :: cid in CapIds(r) && AI.get_idx(cc, CP.start_reg(cid)) < 0
-                               ==> AI.get_idx(cr, CP.start_reg(cid)) < 0
+                                ==> AI.get_idx(cr, CP.start_reg(cid)) < 0
     ensures AI.filter_capture(r, cr, cc, lc, qc, M) == AI.filter_all(r, cr)
     decreases r
   {
@@ -1251,8 +1251,8 @@ module LindenElkPikeInv {
         assert AI.get_idx(cr, CP.start_reg(cid)) == -1;
         assert AI.set_idx(cr, CP.start_reg(cid), -1) == cr;
       }
-      // else 0 ≤ start < M: filter_capture and filter_all both take
-      // filter_all(r1, set_idx(cr, start_reg(cid), -1)) — identical.
+    // else 0 ≤ start < M: filter_capture and filter_all both take
+    // filter_all(r1, set_idx(cr, start_reg(cid), -1)) — identical.
   }
 
   // ----- Capture-id structure. Capture ids are assigned freshly by `annotate`,
@@ -1542,7 +1542,7 @@ module LindenElkPikeInv {
     requires forall j :: j != CP.start_reg(gid) ==> AI.get_idx(cc, j) == AI.get_idx(cc', j)
     ensures forall j :: j != CP.start_reg(gid)
                         ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc, mx), j)
-                            == AI.get_idx(AI.filter_capture(r, B, cc', lc, qc, mx), j)
+                         == AI.get_idx(AI.filter_capture(r, B, cc', lc, qc, mx), j)
     decreases r
   {
     FilterCaptureLen(r, A, cc, lc, qc, mx); FilterCaptureLen(r, B, cc', lc, qc, mx);
@@ -1764,10 +1764,10 @@ module LindenElkPikeInv {
     requires gid in CapIds(r)
     requires CapUnique(r) && QuantUnique(r)
     requires forall c: nat :: c in AncCaps(r, gid)
-               ==> AI.get_idx(cc, CP.start_reg(c)) >= 0
-                   && AI.get_idx(cc, CP.start_reg(c)) >= MxAtGid(r, cc, qc, mx, c)
+                              ==> AI.get_idx(cc, CP.start_reg(c)) >= 0
+                                  && AI.get_idx(cc, CP.start_reg(c)) >= MxAtGid(r, cc, qc, mx, c)
     requires forall q: nat :: q in AncQuants(r, gid)
-               ==> AI.get_idx(qc, q) >= MxAtQid(r, cc, qc, mx, q)
+                              ==> AI.get_idx(qc, q) >= MxAtQid(r, cc, qc, mx, q)
     ensures PathPresent(r, cc, qc, mx, gid)
     decreases r
   {
@@ -1873,10 +1873,10 @@ module LindenElkPikeInv {
     requires qid in QuantIds(r)
     requires CapUnique(r) && QuantUnique(r)
     requires forall c: nat :: c in AncCapsQ(r, qid)
-               ==> AI.get_idx(cc, CP.start_reg(c)) >= 0
-                   && AI.get_idx(cc, CP.start_reg(c)) >= MxAtGid(r, cc, qc, mx, c)
+                              ==> AI.get_idx(cc, CP.start_reg(c)) >= 0
+                                  && AI.get_idx(cc, CP.start_reg(c)) >= MxAtGid(r, cc, qc, mx, c)
     requires forall q: nat :: q in AncQuantsQ(r, qid)
-               ==> AI.get_idx(qc, q) >= MxAtQid(r, cc, qc, mx, q)
+                              ==> AI.get_idx(qc, q) >= MxAtQid(r, cc, qc, mx, q)
     ensures PathPresentQ(r, cc, qc, mx, qid)
     decreases r
   {
@@ -1989,7 +1989,7 @@ module LindenElkPikeInv {
     requires gid in CapIds(r)
     requires gid !in CapIdsInLooks(r)   // L3a: presence extraction is for outside-look gids
     requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0
-                             ==> AI.get_idx(cr, CP.start_reg(c)) < 0
+                              ==> AI.get_idx(cr, CP.start_reg(c)) < 0
     requires AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), CP.start_reg(gid)) >= 0
     ensures PathPresent(r, cc, qc, mx, gid)
     ensures AI.get_idx(cc, CP.start_reg(gid)) >= 0
@@ -2098,12 +2098,12 @@ module LindenElkPikeInv {
     requires gid in CapIds(ast)
     requires gid !in CapIdsInLooks(ast)   // L3a: presence extraction is for outside-look gids
     requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
-                             ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
+                              ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
     requires gid in GmOfLive(ast, caps, look, quant)
     ensures PathPresent(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
     ensures AI.get_idx(caps.a_clk, CP.start_reg(gid)) >= 0
     ensures AI.get_idx(caps.a_clk, CP.start_reg(gid))
-              >= MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
+         >= MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
   {
     var (cr, cc) := AReg.as_arrays(caps);
     var (_, lc) := AReg.as_arrays(look);
@@ -2126,7 +2126,7 @@ module LindenElkPikeInv {
     requires CapUnique(r)
     requires gid in CapIds(r)
     requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0
-                             ==> AI.get_idx(cr, CP.start_reg(c)) < 0
+                              ==> AI.get_idx(cr, CP.start_reg(c)) < 0
     requires AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), CP.start_reg(gid)) >= 0
     ensures PathPresentLk(r, cc, lc, qc, mx, gid)
     ensures AI.get_idx(cc, CP.start_reg(gid)) >= 0
@@ -2230,12 +2230,12 @@ module LindenElkPikeInv {
     requires CapUnique(ast)
     requires gid in CapIds(ast)
     requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
-                             ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
+                              ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
     requires gid in GmOfLive(ast, caps, look, quant)
     ensures PathPresentLk(ast, caps.a_clk, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, gid)
     ensures AI.get_idx(caps.a_clk, CP.start_reg(gid)) >= 0
     ensures AI.get_idx(caps.a_clk, CP.start_reg(gid))
-              >= MxAtGidLk(ast, caps.a_clk, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, gid)
+         >= MxAtGidLk(ast, caps.a_clk, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, gid)
     ensures AI.get_idx(caps.a_cp, CP.start_reg(gid)) >= 0
   {
     var (cr, cc) := AReg.as_arrays(caps);
@@ -2288,12 +2288,12 @@ module LindenElkPikeInv {
     requires NR.LookBehindFragmentRE(body) && NR.LookFreeRE(body) && CapUnique(body)
     requires g in CapIds(body)
     requires forall c: nat :: c in CapIds(body) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
-                             ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
+                              ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
     requires g in GmOfLive(body, caps, look, quant)
     ensures PathPresentLk(body, AReg.as_arrays(caps).1, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, g)
     ensures AI.get_idx(AReg.as_arrays(caps).1, CP.start_reg(g)) >= 0
     ensures AI.get_idx(AReg.as_arrays(caps).1, CP.start_reg(g))
-              >= MxAtGidLk(body, AReg.as_arrays(caps).1, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, g)
+         >= MxAtGidLk(body, AReg.as_arrays(caps).1, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, g)
   {
     LookFreeCapIdsInLooksEmpty(body);            // g !in CapIdsInLooks(body)
     GmOfLivePresenceExtract(body, caps, look, quant, g);
@@ -2376,12 +2376,12 @@ module LindenElkPikeInv {
     requires g in CapIds(body)
     requires g !in CapIdsInLooks(body)
     requires forall c: nat :: c in CapIds(body) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
-                             ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
+                              ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
     requires g in GmOfLive(body, caps, look, quant)
     ensures PathPresentLk(body, AReg.as_arrays(caps).1, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, g)
     ensures AI.get_idx(AReg.as_arrays(caps).1, CP.start_reg(g)) >= 0
     ensures AI.get_idx(AReg.as_arrays(caps).1, CP.start_reg(g))
-              >= MxAtGidLk(body, AReg.as_arrays(caps).1, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, g)
+         >= MxAtGidLk(body, AReg.as_arrays(caps).1, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, g)
   {
     GmOfLivePresenceExtract(body, caps, look, quant, g);
     var cc := AReg.as_arrays(caps).1;
@@ -2411,10 +2411,10 @@ module LindenElkPikeInv {
     // ... and reached g in look-free capture mode with a dominating clock (real-match invariant).
     requires PathPresent(body, AReg.as_arrays(caps).1, AReg.as_arrays(quant).1, -1, g)
     requires AI.get_idx(AReg.as_arrays(caps).1, CP.start_reg(g))
-               >= MxAtGid(body, AReg.as_arrays(caps).1, AReg.as_arrays(quant).1, -1, g)
+          >= MxAtGid(body, AReg.as_arrays(caps).1, AReg.as_arrays(quant).1, -1, g)
     ensures g in GmOfLive(body, caps, look, quant)
     ensures GmOfLive(body, caps, look, quant)[g]
-              == LiveRange(AReg.as_arrays(caps).0, AReg.as_arrays(caps).1, g)
+         == LiveRange(AReg.as_arrays(caps).0, AReg.as_arrays(caps).1, g)
   {
     var cc := AReg.as_arrays(caps).1;
     var lc := AReg.as_arrays(look).1;
@@ -2444,10 +2444,10 @@ module LindenElkPikeInv {
     requires gid !in CapIdsInLooks(r)   // L3a: absence extraction is for outside-look gids
     requires PathPresent(r, cc, qc, mx, gid)
     requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) >= 0
-                             ==> AI.get_idx(cr, CP.start_reg(c)) >= 0
+                              ==> AI.get_idx(cr, CP.start_reg(c)) >= 0
     requires AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), CP.start_reg(gid)) < 0
     ensures AI.get_idx(cc, CP.start_reg(gid)) < MxAtGid(r, cc, qc, mx, gid)
-         || AI.get_idx(cc, CP.start_reg(gid)) < 0
+            || AI.get_idx(cc, CP.start_reg(gid)) < 0
     decreases r
   {
     match r
@@ -2522,8 +2522,8 @@ module LindenElkPikeInv {
     requires PathPresent(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
     requires gid !in GmOfLive(ast, caps, look, quant)
     ensures AI.get_idx(caps.a_clk, CP.start_reg(gid))
-              < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
-         || AI.get_idx(caps.a_clk, CP.start_reg(gid)) < 0
+          < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
+            || AI.get_idx(caps.a_clk, CP.start_reg(gid)) < 0
   {
     var (cr, cc) := AReg.as_arrays(caps);
     var (_, lc) := AReg.as_arrays(look);
@@ -2550,8 +2550,8 @@ module LindenElkPikeInv {
   lemma AnnotateCapUnique(ra: R.raw_regex, c: int, l: int, q: int)
     requires c >= 0
     ensures var res := R.annotate_regex(ra, c, l, q);
-      c <= res.1 && CapUnique(res.0)
-      && (forall x: nat :: x in CapIds(res.0) ==> c <= x < res.1)
+            c <= res.1 && CapUnique(res.0)
+            && (forall x: nat :: x in CapIds(res.0) ==> c <= x < res.1)
     decreases ra
   {
     match ra
@@ -2575,8 +2575,8 @@ module LindenElkPikeInv {
   lemma AnnotateQuantUnique(ra: R.raw_regex, c: int, l: int, q: int)
     requires q >= 0
     ensures var res := R.annotate_regex(ra, c, l, q);
-      q <= res.3 && QuantUnique(res.0)
-      && (forall x: nat :: x in QuantIds(res.0) ==> q <= x < res.3)
+            q <= res.3 && QuantUnique(res.0)
+            && (forall x: nat :: x in QuantIds(res.0) ==> q <= x < res.3)
     decreases ra
   {
     match ra
@@ -2956,7 +2956,7 @@ module LindenElkPikeInv {
     // previous iteration's value. Either way the filter output at the start is
     // negative before the write.
     requires AI.get_idx(cc, CP.start_reg(gid)) < MxAtGid(r, cc, qc, mx, gid)
-          || AI.get_idx(cc, CP.start_reg(gid)) < 0
+             || AI.get_idx(cc, CP.start_reg(gid)) < 0
     requires AI.get_idx(cr', CP.start_reg(gid)) == cp
     requires AI.get_idx(cc', CP.start_reg(gid)) == clk
     requires forall j :: j != CP.start_reg(gid) ==> AI.get_idx(cr', j) == AI.get_idx(cr, j)
@@ -2966,8 +2966,8 @@ module LindenElkPikeInv {
     requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0 ==> AI.get_idx(cr, CP.start_reg(c)) < 0
     requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc', CP.start_reg(c)) < 0 ==> AI.get_idx(cr', CP.start_reg(c)) < 0
     requires forall sg: nat :: sg in CapIds(BodyOf(r, gid))
-                              ==> AI.get_idx(cc, CP.start_reg(sg)) < MxAtGid(r, cc, qc, mx, gid)
-                                  || AI.get_idx(cc, CP.start_reg(sg)) < 0
+                               ==> AI.get_idx(cc, CP.start_reg(sg)) < MxAtGid(r, cc, qc, mx, gid)
+                                   || AI.get_idx(cc, CP.start_reg(sg)) < 0
     // L3a: every lookaround inside gid's body is stale at gid's birth stamp — the
     // body's looks haven't fired in this iteration, so a fresh open cannot keep
     // any inside-look captures (mirrors the sg capture-staleness above).
@@ -2976,7 +2976,7 @@ module LindenElkPikeInv {
     ensures AI.get_idx(AI.filter_capture(r, cr', cc', lc, qc, mx), CP.start_reg(gid)) == cp
     ensures forall j :: j != CP.start_reg(gid)
                         ==> AI.get_idx(AI.filter_capture(r, cr', cc', lc, qc, mx), j)
-                            == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), j)
+                         == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), j)
     decreases r
   {
     match r
@@ -3405,9 +3405,9 @@ module LindenElkPikeInv {
   lemma CaptureRegexFragment(la: R.lookaround, body: R.regex)
     requires NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
     ensures var cr := CP.capture_regex(la, body);
-      NR.CaptureFreeRE(cr) && NR.LookFreeRE(cr) && NR.PlusFragmentRE(cr)
-      && NR.LookBehindFragmentRE(cr)
-      && QuantIds(cr) <= QuantIds(body)
+            NR.CaptureFreeRE(cr) && NR.LookFreeRE(cr) && NR.PlusFragmentRE(cr)
+            && NR.LookBehindFragmentRE(cr)
+            && QuantIds(cr) <= QuantIds(body)
   {
     if la.Lookahead? {
       // a lookAHEAD's capture regex is the body itself -- no reversal
@@ -3438,13 +3438,13 @@ module LindenElkPikeInv {
     requires NR.NfaRepRE(re, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetQuantToClock? ==>
-      var q := NR.GetPcRE(code, pc).value.sq;
-      q >= 0 && (q as nat) in QuantIds(re)
-      // L3a sharpening: stamp sites live OUTSIDE lookaround bodies (a look
-      // compiles to a bare CheckOracle — its body's quants are never stamped
-      // by this code). Feeds the main-pass quant frame: body quant slots stay
-      // exactly INITIAL in the winning thread.
-      && (q as nat) in QuantIdsOutsideLooks(re)
+              var q := NR.GetPcRE(code, pc).value.sq;
+              q >= 0 && (q as nat) in QuantIds(re)
+              // L3a sharpening: stamp sites live OUTSIDE lookaround bodies (a look
+              // compiles to a bare CheckOracle — its body's quants are never stamped
+              // by this code). Feeds the main-pass quant frame: body quant slots stay
+              // exactly INITIAL in the winning thread.
+              && (q as nat) in QuantIdsOutsideLooks(re)
     decreases CP.rsize(re), 1
   {
     match re
@@ -3454,9 +3454,9 @@ module LindenElkPikeInv {
     case Re_lookaround(_, _, _) =>
     case Re_alt(r1, r2) =>
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
-        && NR.NfaRepRE(r1, code, start + 1, e1)
-        && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
-        && NR.NfaRepRE(r2, code, e1 + 1, endl);
+                     && NR.NfaRepRE(r1, code, start + 1, e1)
+                     && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
+                     && NR.NfaRepRE(r2, code, e1 + 1, endl);
       NR.NfaRepIncrRE(r1, code, start + 1, e1);
       NR.NfaRepIncrRE(r2, code, e1 + 1, endl);
       if pc == start {
@@ -3477,9 +3477,9 @@ module LindenElkPikeInv {
       }
     case Re_capture(cid, r1) =>
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
-        && NR.NfaRepRE(r1, code, start + 1, e1)
-        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
-        && endl == e1 + 1;
+                     && NR.NfaRepRE(r1, code, start + 1, e1)
+                     && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+                     && endl == e1 + 1;
       NR.NfaRepIncrRE(r1, code, start + 1, e1);
       if pc == start {
       } else if pc < e1 {
@@ -3489,12 +3489,12 @@ module LindenElkPikeInv {
     case Re_quant(nul, qid, q, r1) =>
       if q.min == 0 && q.max == None {
         var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
-          && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
-          && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
-          && NR.NfaRepRE(r1, code, start + 3, e1)
-          && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-          && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
-          && endl == e1 + 2;
+                       && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+                       && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+                       && NR.NfaRepRE(r1, code, start + 3, e1)
+                       && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                       && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
+                       && endl == e1 + 2;
         NR.NfaRepIncrRE(r1, code, start + 3, e1);
         if pc <= start + 2 {
         } else if pc < e1 {
@@ -3530,14 +3530,14 @@ module LindenElkPikeInv {
     requires NR.NfaRepMinRE(k, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetQuantToClock? ==>
-      var q := NR.GetPcRE(code, pc).value.sq;
-      q == qid || (q >= 0 && (q as nat) in QuantIds(r1) && (q as nat) in QuantIdsOutsideLooks(r1))
+              var q := NR.GetPcRE(code, pc).value.sq;
+              q == qid || (q >= 0 && (q as nat) in QuantIds(r1) && (q as nat) in QuantIdsOutsideLooks(r1))
     decreases CP.rsize(r1), k + 2
   {
     if k == 0 { return; }
     var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetQuantToClock(qid, false))
-      && NR.NfaRepRE(r1, code, start + 1, e1)
-      && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
+                   && NR.NfaRepRE(r1, code, start + 1, e1)
+                   && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
     NR.NfaRepIncrRE(r1, code, start + 1, e1);
     NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
     if pc == start {
@@ -3554,17 +3554,17 @@ module LindenElkPikeInv {
     requires NR.NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetQuantToClock? ==>
-      var q := NR.GetPcRE(code, pc).value.sq;
-      q == qid || (q >= 0 && (q as nat) in QuantIds(r1) && (q as nat) in QuantIdsOutsideLooks(r1))
+              var q := NR.GetPcRE(code, pc).value.sq;
+              q == qid || (q >= 0 && (q as nat) in QuantIds(r1) && (q as nat) in QuantIdsOutsideLooks(r1))
     decreases CP.rsize(r1), k + 2
   {
     if k == 0 { return; }
     var e1: nat :| NR.GetPcRE(code, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
-      && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
-      && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
-      && NR.NfaRepRE(r1, code, start + 3, e1)
-      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-      && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+                   && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+                   && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+                   && NR.NfaRepRE(r1, code, start + 3, e1)
+                   && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                   && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
     NR.NfaRepIncrRE(r1, code, start + 3, e1);
     NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
     if pc <= start + 2 {
@@ -3590,9 +3590,9 @@ module LindenElkPikeInv {
     requires NR.NfaRepRE(re, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetQuantToClock? ==>
-      var q := NR.GetPcRE(code, pc).value.sq;
-      q >= 0 && (q as nat) in QuantIds(re)
-      && (q as nat) in QuantIdsOutsideLooks(re)
+              var q := NR.GetPcRE(code, pc).value.sq;
+              q >= 0 && (q as nat) in QuantIds(re)
+              && (q as nat) in QuantIdsOutsideLooks(re)
     decreases CP.rsize(re), 1
   {
     match re
@@ -3602,9 +3602,9 @@ module LindenElkPikeInv {
     case Re_lookaround(_, _, _) =>
     case Re_alt(r1, r2) =>
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
-        && NR.NfaRepRE(r1, code, start + 1, e1)
-        && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
-        && NR.NfaRepRE(r2, code, e1 + 1, endl);
+                     && NR.NfaRepRE(r1, code, start + 1, e1)
+                     && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
+                     && NR.NfaRepRE(r2, code, e1 + 1, endl);
       NR.NfaRepIncrRE(r1, code, start + 1, e1);
       NR.NfaRepIncrRE(r2, code, e1 + 1, endl);
       if pc == start {
@@ -3625,9 +3625,9 @@ module LindenElkPikeInv {
       }
     case Re_capture(cid, r1) =>
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
-        && NR.NfaRepRE(r1, code, start + 1, e1)
-        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
-        && endl == e1 + 1;
+                     && NR.NfaRepRE(r1, code, start + 1, e1)
+                     && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+                     && endl == e1 + 1;
       NR.NfaRepIncrRE(r1, code, start + 1, e1);
       if pc == start {
       } else if pc < e1 {
@@ -3637,12 +3637,12 @@ module LindenElkPikeInv {
     case Re_quant(nul, qid, q, r1) =>
       if q.min == 0 && q.max == None {
         var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
-          && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
-          && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
-          && NR.NfaRepRE(r1, code, start + 3, e1)
-          && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-          && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
-          && endl == e1 + 2;
+                       && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+                       && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+                       && NR.NfaRepRE(r1, code, start + 3, e1)
+                       && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                       && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
+                       && endl == e1 + 2;
         NR.NfaRepIncrRE(r1, code, start + 3, e1);
         if pc <= start + 2 {
         } else if pc < e1 {
@@ -3678,14 +3678,14 @@ module LindenElkPikeInv {
     requires NR.NfaRepMinRE(k, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetQuantToClock? ==>
-      var q := NR.GetPcRE(code, pc).value.sq;
-      q == qid || (q >= 0 && (q as nat) in QuantIds(r1) && (q as nat) in QuantIdsOutsideLooks(r1))
+              var q := NR.GetPcRE(code, pc).value.sq;
+              q == qid || (q >= 0 && (q as nat) in QuantIds(r1) && (q as nat) in QuantIdsOutsideLooks(r1))
     decreases CP.rsize(r1), k + 2
   {
     if k == 0 { return; }
     var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetQuantToClock(qid, false))
-      && NR.NfaRepRE(r1, code, start + 1, e1)
-      && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
+                   && NR.NfaRepRE(r1, code, start + 1, e1)
+                   && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
     NR.NfaRepIncrRE(r1, code, start + 1, e1);
     NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
     if pc == start {
@@ -3702,17 +3702,17 @@ module LindenElkPikeInv {
     requires NR.NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetQuantToClock? ==>
-      var q := NR.GetPcRE(code, pc).value.sq;
-      q == qid || (q >= 0 && (q as nat) in QuantIds(r1) && (q as nat) in QuantIdsOutsideLooks(r1))
+              var q := NR.GetPcRE(code, pc).value.sq;
+              q == qid || (q >= 0 && (q as nat) in QuantIds(r1) && (q as nat) in QuantIdsOutsideLooks(r1))
     decreases CP.rsize(r1), k + 2
   {
     if k == 0 { return; }
     var e1: nat :| NR.GetPcRE(code, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
-      && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
-      && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
-      && NR.NfaRepRE(r1, code, start + 3, e1)
-      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-      && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+                   && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+                   && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+                   && NR.NfaRepRE(r1, code, start + 3, e1)
+                   && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                   && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
     NR.NfaRepIncrRE(r1, code, start + 3, e1);
     NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
     if pc <= start + 2 {
@@ -3799,7 +3799,7 @@ module LindenElkPikeInv {
     requires NR.NfaRepRE(re, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetRegisterToCP? ==>
-      NR.GetPcRE(code, pc).value.reg in CaptureRegs(re)
+              NR.GetPcRE(code, pc).value.reg in CaptureRegs(re)
     decreases CP.rsize(re), 1
   {
     match re
@@ -3809,9 +3809,9 @@ module LindenElkPikeInv {
     case Re_lookaround(_, _, _) =>
     case Re_alt(r1, r2) =>
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
-        && NR.NfaRepRE(r1, code, start + 1, e1)
-        && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
-        && NR.NfaRepRE(r2, code, e1 + 1, endl);
+                     && NR.NfaRepRE(r1, code, start + 1, e1)
+                     && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
+                     && NR.NfaRepRE(r2, code, e1 + 1, endl);
       NR.NfaRepIncrRE(r1, code, start + 1, e1);
       NR.NfaRepIncrRE(r2, code, e1 + 1, endl);
       if pc == start {
@@ -3836,9 +3836,9 @@ module LindenElkPikeInv {
       }
     case Re_capture(cid, r1) =>
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
-        && NR.NfaRepRE(r1, code, start + 1, e1)
-        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
-        && endl == e1 + 1;
+                     && NR.NfaRepRE(r1, code, start + 1, e1)
+                     && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+                     && endl == e1 + 1;
       NR.NfaRepIncrRE(r1, code, start + 1, e1);
       assert cid >= 0 && (cid as nat) in CapIds(re);   // CapUnique
       if pc == start {
@@ -3852,12 +3852,12 @@ module LindenElkPikeInv {
     case Re_quant(nul, qid, q, r1) =>
       if q.min == 0 && q.max == None {
         var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
-          && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
-          && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
-          && NR.NfaRepRE(r1, code, start + 3, e1)
-          && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-          && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
-          && endl == e1 + 2;
+                       && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+                       && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+                       && NR.NfaRepRE(r1, code, start + 3, e1)
+                       && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                       && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
+                       && endl == e1 + 2;
         NR.NfaRepIncrRE(r1, code, start + 3, e1);
         if pc <= start + 2 {
         } else if pc < e1 {
@@ -3894,13 +3894,13 @@ module LindenElkPikeInv {
     requires NR.NfaRepMinRE(k, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetRegisterToCP? ==>
-      NR.GetPcRE(code, pc).value.reg in CaptureRegs(r1)
+              NR.GetPcRE(code, pc).value.reg in CaptureRegs(r1)
     decreases CP.rsize(r1), k + 2
   {
     if k == 0 { return; }
     var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetQuantToClock(qid, false))
-      && NR.NfaRepRE(r1, code, start + 1, e1)
-      && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
+                   && NR.NfaRepRE(r1, code, start + 1, e1)
+                   && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
     NR.NfaRepIncrRE(r1, code, start + 1, e1);
     NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
     if pc == start {
@@ -3917,16 +3917,16 @@ module LindenElkPikeInv {
     requires NR.NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetRegisterToCP? ==>
-      NR.GetPcRE(code, pc).value.reg in CaptureRegs(r1)
+              NR.GetPcRE(code, pc).value.reg in CaptureRegs(r1)
     decreases CP.rsize(r1), k + 2
   {
     if k == 0 { return; }
     var e1: nat :| NR.GetPcRE(code, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
-      && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
-      && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
-      && NR.NfaRepRE(r1, code, start + 3, e1)
-      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-      && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+                   && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+                   && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+                   && NR.NfaRepRE(r1, code, start + 3, e1)
+                   && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                   && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
     NR.NfaRepIncrRE(r1, code, start + 3, e1);
     NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
     if pc <= start + 2 {
@@ -3951,7 +3951,7 @@ module LindenElkPikeInv {
     requires NR.NfaRepRE(re, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetRegisterToCP? ==>
-      NR.GetPcRE(code, pc).value.reg in CaptureRegsSet(CapIdsOutsideLooks(re))
+              NR.GetPcRE(code, pc).value.reg in CaptureRegsSet(CapIdsOutsideLooks(re))
     decreases CP.rsize(re), 1
   {
     match re
@@ -3961,9 +3961,9 @@ module LindenElkPikeInv {
     case Re_lookaround(_, _, _) =>
     case Re_alt(r1, r2) =>
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
-        && NR.NfaRepRE(r1, code, start + 1, e1)
-        && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
-        && NR.NfaRepRE(r2, code, e1 + 1, endl);
+                     && NR.NfaRepRE(r1, code, start + 1, e1)
+                     && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
+                     && NR.NfaRepRE(r2, code, e1 + 1, endl);
       NR.NfaRepIncrRE(r1, code, start + 1, e1);
       NR.NfaRepIncrRE(r2, code, e1 + 1, endl);
       if pc == start {
@@ -3988,9 +3988,9 @@ module LindenElkPikeInv {
       }
     case Re_capture(cid, r1) =>
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
-        && NR.NfaRepRE(r1, code, start + 1, e1)
-        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
-        && endl == e1 + 1;
+                     && NR.NfaRepRE(r1, code, start + 1, e1)
+                     && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+                     && endl == e1 + 1;
       NR.NfaRepIncrRE(r1, code, start + 1, e1);
       assert cid >= 0 && (cid as nat) in CapIdsOutsideLooks(re);   // CapUnique; Re_capture adds it outside
       if pc == start {
@@ -4005,12 +4005,12 @@ module LindenElkPikeInv {
       // CapIdsOutsideLooks(Re_quant) == CapIdsOutsideLooks(r1)
       if q.min == 0 && q.max == None {
         var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
-          && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
-          && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
-          && NR.NfaRepRE(r1, code, start + 3, e1)
-          && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-          && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
-          && endl == e1 + 2;
+                       && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+                       && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+                       && NR.NfaRepRE(r1, code, start + 3, e1)
+                       && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                       && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
+                       && endl == e1 + 2;
         NR.NfaRepIncrRE(r1, code, start + 3, e1);
         if pc <= start + 2 {
         } else if pc < e1 {
@@ -4045,13 +4045,13 @@ module LindenElkPikeInv {
     requires NR.NfaRepMinRE(k, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetRegisterToCP? ==>
-      NR.GetPcRE(code, pc).value.reg in CaptureRegsSet(CapIdsOutsideLooks(r1))
+              NR.GetPcRE(code, pc).value.reg in CaptureRegsSet(CapIdsOutsideLooks(r1))
     decreases CP.rsize(r1), k + 2
   {
     if k == 0 { return; }
     var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetQuantToClock(qid, false))
-      && NR.NfaRepRE(r1, code, start + 1, e1)
-      && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
+                   && NR.NfaRepRE(r1, code, start + 1, e1)
+                   && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
     NR.NfaRepIncrRE(r1, code, start + 1, e1);
     NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
     if pc == start {
@@ -4067,16 +4067,16 @@ module LindenElkPikeInv {
     requires NR.NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetRegisterToCP? ==>
-      NR.GetPcRE(code, pc).value.reg in CaptureRegsSet(CapIdsOutsideLooks(r1))
+              NR.GetPcRE(code, pc).value.reg in CaptureRegsSet(CapIdsOutsideLooks(r1))
     decreases CP.rsize(r1), k + 2
   {
     if k == 0 { return; }
     var e1: nat :| NR.GetPcRE(code, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
-      && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
-      && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
-      && NR.NfaRepRE(r1, code, start + 3, e1)
-      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-      && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+                   && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+                   && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+                   && NR.NfaRepRE(r1, code, start + 3, e1)
+                   && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                   && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
     NR.NfaRepIncrRE(r1, code, start + 3, e1);
     NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
     if pc <= start + 2 {
@@ -4106,7 +4106,7 @@ module LindenElkPikeInv {
     requires NR.NfaRepRE(re, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetRegisterToCP? ==>
-      NR.GetPcRE(code, pc).value.reg in CaptureRegsSet(CapIdsOutsideLooks(re))
+              NR.GetPcRE(code, pc).value.reg in CaptureRegsSet(CapIdsOutsideLooks(re))
     decreases CP.rsize(re), 1
   {
     match re
@@ -4116,9 +4116,9 @@ module LindenElkPikeInv {
     case Re_lookaround(_, _, _) =>
     case Re_alt(r1, r2) =>
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
-        && NR.NfaRepRE(r1, code, start + 1, e1)
-        && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
-        && NR.NfaRepRE(r2, code, e1 + 1, endl);
+                     && NR.NfaRepRE(r1, code, start + 1, e1)
+                     && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
+                     && NR.NfaRepRE(r2, code, e1 + 1, endl);
       NR.NfaRepIncrRE(r1, code, start + 1, e1);
       NR.NfaRepIncrRE(r2, code, e1 + 1, endl);
       if pc == start {
@@ -4143,9 +4143,9 @@ module LindenElkPikeInv {
       }
     case Re_capture(cid, r1) =>
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
-        && NR.NfaRepRE(r1, code, start + 1, e1)
-        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
-        && endl == e1 + 1;
+                     && NR.NfaRepRE(r1, code, start + 1, e1)
+                     && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+                     && endl == e1 + 1;
       NR.NfaRepIncrRE(r1, code, start + 1, e1);
       assert cid >= 0 && (cid as nat) in CapIdsOutsideLooks(re);   // CapUnique; Re_capture adds it outside
       if pc == start {
@@ -4160,12 +4160,12 @@ module LindenElkPikeInv {
       // CapIdsOutsideLooks(Re_quant) == CapIdsOutsideLooks(r1)
       if q.min == 0 && q.max == None {
         var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
-          && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
-          && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
-          && NR.NfaRepRE(r1, code, start + 3, e1)
-          && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-          && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
-          && endl == e1 + 2;
+                       && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+                       && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+                       && NR.NfaRepRE(r1, code, start + 3, e1)
+                       && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                       && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
+                       && endl == e1 + 2;
         NR.NfaRepIncrRE(r1, code, start + 3, e1);
         if pc <= start + 2 {
         } else if pc < e1 {
@@ -4200,13 +4200,13 @@ module LindenElkPikeInv {
     requires NR.NfaRepMinRE(k, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetRegisterToCP? ==>
-      NR.GetPcRE(code, pc).value.reg in CaptureRegsSet(CapIdsOutsideLooks(r1))
+              NR.GetPcRE(code, pc).value.reg in CaptureRegsSet(CapIdsOutsideLooks(r1))
     decreases CP.rsize(r1), k + 2
   {
     if k == 0 { return; }
     var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetQuantToClock(qid, false))
-      && NR.NfaRepRE(r1, code, start + 1, e1)
-      && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
+                   && NR.NfaRepRE(r1, code, start + 1, e1)
+                   && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
     NR.NfaRepIncrRE(r1, code, start + 1, e1);
     NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
     if pc == start {
@@ -4222,16 +4222,16 @@ module LindenElkPikeInv {
     requires NR.NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetRegisterToCP? ==>
-      NR.GetPcRE(code, pc).value.reg in CaptureRegsSet(CapIdsOutsideLooks(r1))
+              NR.GetPcRE(code, pc).value.reg in CaptureRegsSet(CapIdsOutsideLooks(r1))
     decreases CP.rsize(r1), k + 2
   {
     if k == 0 { return; }
     var e1: nat :| NR.GetPcRE(code, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
-      && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
-      && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
-      && NR.NfaRepRE(r1, code, start + 3, e1)
-      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-      && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+                   && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+                   && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+                   && NR.NfaRepRE(r1, code, start + 3, e1)
+                   && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                   && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
     NR.NfaRepIncrRE(r1, code, start + 3, e1);
     NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
     if pc <= start + 2 {
@@ -4250,11 +4250,11 @@ module LindenElkPikeInv {
     requires NR.NfaRepRE(re, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
-      var l := NR.GetPcRE(code, pc).value.col;
-      l >= 0 && (l as nat) in LTB.LookIds(re)
+              var l := NR.GetPcRE(code, pc).value.col;
+              l >= 0 && (l as nat) in LTB.LookIds(re)
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.NegCheckOracle? ==>
-      var l := NR.GetPcRE(code, pc).value.ncl;
-      l >= 0 && (l as nat) in LTB.LookIds(re)
+              var l := NR.GetPcRE(code, pc).value.ncl;
+              l >= 0 && (l as nat) in LTB.LookIds(re)
     decreases CP.rsize(re), 1
   {
     match re
@@ -4268,9 +4268,9 @@ module LindenElkPikeInv {
       assert lid >= 0;                                  // LookUnique
     case Re_alt(r1, r2) =>
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
-        && NR.NfaRepRE(r1, code, start + 1, e1)
-        && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
-        && NR.NfaRepRE(r2, code, e1 + 1, endl);
+                     && NR.NfaRepRE(r1, code, start + 1, e1)
+                     && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
+                     && NR.NfaRepRE(r2, code, e1 + 1, endl);
       NR.NfaRepIncrRE(r1, code, start + 1, e1);
       NR.NfaRepIncrRE(r2, code, e1 + 1, endl);
       if pc == start {
@@ -4291,9 +4291,9 @@ module LindenElkPikeInv {
       }
     case Re_capture(cid, r1) =>
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
-        && NR.NfaRepRE(r1, code, start + 1, e1)
-        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
-        && endl == e1 + 1;
+                     && NR.NfaRepRE(r1, code, start + 1, e1)
+                     && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+                     && endl == e1 + 1;
       NR.NfaRepIncrRE(r1, code, start + 1, e1);
       if pc == start {
       } else if pc < e1 {
@@ -4303,12 +4303,12 @@ module LindenElkPikeInv {
     case Re_quant(nul, qid, q, r1) =>
       if q.min == 0 && q.max == None {
         var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
-          && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
-          && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
-          && NR.NfaRepRE(r1, code, start + 3, e1)
-          && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-          && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
-          && endl == e1 + 2;
+                       && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+                       && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+                       && NR.NfaRepRE(r1, code, start + 3, e1)
+                       && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                       && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
+                       && endl == e1 + 2;
         NR.NfaRepIncrRE(r1, code, start + 3, e1);
         if pc <= start + 2 {
         } else if pc < e1 {
@@ -4344,17 +4344,17 @@ module LindenElkPikeInv {
     requires NR.NfaRepMinRE(k, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
-      var l := NR.GetPcRE(code, pc).value.col;
-      l >= 0 && (l as nat) in LTB.LookIds(r1)
+              var l := NR.GetPcRE(code, pc).value.col;
+              l >= 0 && (l as nat) in LTB.LookIds(r1)
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.NegCheckOracle? ==>
-      var l := NR.GetPcRE(code, pc).value.ncl;
-      l >= 0 && (l as nat) in LTB.LookIds(r1)
+              var l := NR.GetPcRE(code, pc).value.ncl;
+              l >= 0 && (l as nat) in LTB.LookIds(r1)
     decreases CP.rsize(r1), k + 2
   {
     if k == 0 { return; }
     var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetQuantToClock(qid, false))
-      && NR.NfaRepRE(r1, code, start + 1, e1)
-      && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
+                   && NR.NfaRepRE(r1, code, start + 1, e1)
+                   && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
     NR.NfaRepIncrRE(r1, code, start + 1, e1);
     NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
     if pc == start {
@@ -4371,20 +4371,20 @@ module LindenElkPikeInv {
     requires NR.NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
-      var l := NR.GetPcRE(code, pc).value.col;
-      l >= 0 && (l as nat) in LTB.LookIds(r1)
+              var l := NR.GetPcRE(code, pc).value.col;
+              l >= 0 && (l as nat) in LTB.LookIds(r1)
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.NegCheckOracle? ==>
-      var l := NR.GetPcRE(code, pc).value.ncl;
-      l >= 0 && (l as nat) in LTB.LookIds(r1)
+              var l := NR.GetPcRE(code, pc).value.ncl;
+              l >= 0 && (l as nat) in LTB.LookIds(r1)
     decreases CP.rsize(r1), k + 2
   {
     if k == 0 { return; }
     var e1: nat :| NR.GetPcRE(code, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
-      && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
-      && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
-      && NR.NfaRepRE(r1, code, start + 3, e1)
-      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-      && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+                   && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+                   && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+                   && NR.NfaRepRE(r1, code, start + 3, e1)
+                   && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                   && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
     NR.NfaRepIncrRE(r1, code, start + 3, e1);
     NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
     if pc <= start + 2 {
@@ -4411,11 +4411,11 @@ module LindenElkPikeInv {
     requires NR.NfaRepRE(re, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
-      var l := NR.GetPcRE(code, pc).value.col;
-      l >= 0 && (l as nat) in LTB.LookIds(re)
+              var l := NR.GetPcRE(code, pc).value.col;
+              l >= 0 && (l as nat) in LTB.LookIds(re)
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.NegCheckOracle? ==>
-      var l := NR.GetPcRE(code, pc).value.ncl;
-      l >= 0 && (l as nat) in LTB.LookIds(re)
+              var l := NR.GetPcRE(code, pc).value.ncl;
+              l >= 0 && (l as nat) in LTB.LookIds(re)
     decreases CP.rsize(re), 1
   {
     match re
@@ -4427,9 +4427,9 @@ module LindenElkPikeInv {
       assert lid >= 0;                                  // LookUnique
     case Re_alt(r1, r2) =>
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
-        && NR.NfaRepRE(r1, code, start + 1, e1)
-        && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
-        && NR.NfaRepRE(r2, code, e1 + 1, endl);
+                     && NR.NfaRepRE(r1, code, start + 1, e1)
+                     && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
+                     && NR.NfaRepRE(r2, code, e1 + 1, endl);
       NR.NfaRepIncrRE(r1, code, start + 1, e1);
       NR.NfaRepIncrRE(r2, code, e1 + 1, endl);
       if pc == start {
@@ -4450,9 +4450,9 @@ module LindenElkPikeInv {
       }
     case Re_capture(cid, r1) =>
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
-        && NR.NfaRepRE(r1, code, start + 1, e1)
-        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
-        && endl == e1 + 1;
+                     && NR.NfaRepRE(r1, code, start + 1, e1)
+                     && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+                     && endl == e1 + 1;
       NR.NfaRepIncrRE(r1, code, start + 1, e1);
       if pc == start {
       } else if pc < e1 {
@@ -4462,12 +4462,12 @@ module LindenElkPikeInv {
     case Re_quant(nul, qid, q, r1) =>
       if q.min == 0 && q.max == None {
         var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
-          && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
-          && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
-          && NR.NfaRepRE(r1, code, start + 3, e1)
-          && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-          && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
-          && endl == e1 + 2;
+                       && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+                       && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+                       && NR.NfaRepRE(r1, code, start + 3, e1)
+                       && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                       && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
+                       && endl == e1 + 2;
         NR.NfaRepIncrRE(r1, code, start + 3, e1);
         if pc <= start + 2 {
         } else if pc < e1 {
@@ -4503,17 +4503,17 @@ module LindenElkPikeInv {
     requires NR.NfaRepMinRE(k, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
-      var l := NR.GetPcRE(code, pc).value.col;
-      l >= 0 && (l as nat) in LTB.LookIds(r1)
+              var l := NR.GetPcRE(code, pc).value.col;
+              l >= 0 && (l as nat) in LTB.LookIds(r1)
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.NegCheckOracle? ==>
-      var l := NR.GetPcRE(code, pc).value.ncl;
-      l >= 0 && (l as nat) in LTB.LookIds(r1)
+              var l := NR.GetPcRE(code, pc).value.ncl;
+              l >= 0 && (l as nat) in LTB.LookIds(r1)
     decreases CP.rsize(r1), k + 2
   {
     if k == 0 { return; }
     var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetQuantToClock(qid, false))
-      && NR.NfaRepRE(r1, code, start + 1, e1)
-      && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
+                   && NR.NfaRepRE(r1, code, start + 1, e1)
+                   && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
     NR.NfaRepIncrRE(r1, code, start + 1, e1);
     NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
     if pc == start {
@@ -4530,20 +4530,20 @@ module LindenElkPikeInv {
     requires NR.NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
-      var l := NR.GetPcRE(code, pc).value.col;
-      l >= 0 && (l as nat) in LTB.LookIds(r1)
+              var l := NR.GetPcRE(code, pc).value.col;
+              l >= 0 && (l as nat) in LTB.LookIds(r1)
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.NegCheckOracle? ==>
-      var l := NR.GetPcRE(code, pc).value.ncl;
-      l >= 0 && (l as nat) in LTB.LookIds(r1)
+              var l := NR.GetPcRE(code, pc).value.ncl;
+              l >= 0 && (l as nat) in LTB.LookIds(r1)
     decreases CP.rsize(r1), k + 2
   {
     if k == 0 { return; }
     var e1: nat :| NR.GetPcRE(code, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
-      && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
-      && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
-      && NR.NfaRepRE(r1, code, start + 3, e1)
-      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-      && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+                   && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+                   && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+                   && NR.NfaRepRE(r1, code, start + 3, e1)
+                   && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                   && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
     NR.NfaRepIncrRE(r1, code, start + 3, e1);
     NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
     if pc <= start + 2 {
@@ -4857,8 +4857,8 @@ module LindenElkPikeInv {
     requires forall q0: nat :: q0 in QuantIdsOutsideLooks(r)
                                ==> AI.get_idx(qc, q0) == AI.get_idx(qc2, q0)
     ensures j !in CaptureRegsSet(CapIdsInLooks(r)) ==>
-            AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, M), j)
-         == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc2, M), j)
+              AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, M), j)
+              == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc2, M), j)
     decreases r, 1
   {
     if j !in CaptureRegsSet(CapIdsInLooks(r)) {
@@ -4917,8 +4917,8 @@ module LindenElkPikeInv {
     requires forall q0: nat :: q0 in QuantIdsOutsideLooks(r)
                                ==> AI.get_idx(qc, q0) == AI.get_idx(qc2, q0)
     ensures forall i :: i !in CaptureRegsSet(CapIdsInLooks(r)) ==>
-            AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, M), i)
-         == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc2, M), i)
+                          AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, M), i)
+                          == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc2, M), i)
     decreases r, 2
   {
     forall i: int | i !in CaptureRegsSet(CapIdsInLooks(r))
@@ -5002,14 +5002,14 @@ module LindenElkPikeInv {
                              quant: AReg.Regs, quant': AReg.Regs)
     requires NR.LookBehindFragmentRE(re) && CapUnique(re)
     requires forall k: int :: k !in CaptureRegsSet(CapIdsInLooks(re)) ==>
-      AI.get_idx(AReg.as_arrays(cap).0, k) == AI.get_idx(AReg.as_arrays(cap').0, k)
-      && AI.get_idx(AReg.as_arrays(cap).1, k) == AI.get_idx(AReg.as_arrays(cap').1, k)
+                                AI.get_idx(AReg.as_arrays(cap).0, k) == AI.get_idx(AReg.as_arrays(cap').0, k)
+                                && AI.get_idx(AReg.as_arrays(cap).1, k) == AI.get_idx(AReg.as_arrays(cap').1, k)
     requires forall q: nat :: q in QuantIdsOutsideLooks(re) ==>
-      AI.get_idx(AReg.as_arrays(quant).1, q) == AI.get_idx(AReg.as_arrays(quant').1, q)
+                                AI.get_idx(AReg.as_arrays(quant).1, q) == AI.get_idx(AReg.as_arrays(quant').1, q)
     ensures forall g: nat :: g !in CapIdsInLooks(re) ==>
-      ((g in GmOfLive(re, cap, look, quant)) <==> (g in GmOfLive(re, cap', look, quant')))
-      && (g in GmOfLive(re, cap, look, quant) ==>
-          GmOfLive(re, cap, look, quant)[g] == GmOfLive(re, cap', look, quant')[g])
+                               ((g in GmOfLive(re, cap, look, quant)) <==> (g in GmOfLive(re, cap', look, quant')))
+                               && (g in GmOfLive(re, cap, look, quant) ==>
+                                     GmOfLive(re, cap, look, quant)[g] == GmOfLive(re, cap', look, quant')[g])
   {
     var W := CaptureRegsSet(CapIdsInLooks(re));
     var crA := AReg.as_arrays(cap).0;  var ccA := AReg.as_arrays(cap).1;
@@ -5042,8 +5042,8 @@ module LindenElkPikeInv {
 
     forall g: nat | g !in CapIdsInLooks(re)
       ensures ((g in GmOfLive(re, cap, look, quant)) <==> (g in GmOfLive(re, cap', look, quant')))
-           && (g in GmOfLive(re, cap, look, quant) ==>
-               GmOfLive(re, cap, look, quant)[g] == GmOfLive(re, cap', look, quant')[g])
+              && (g in GmOfLive(re, cap, look, quant) ==>
+                    GmOfLive(re, cap, look, quant)[g] == GmOfLive(re, cap', look, quant')[g])
     {
       StartRegInCaptureRegsSet(CapIdsInLooks(re), g);
       EndRegInCaptureRegsSet(CapIdsInLooks(re), g);
@@ -5067,10 +5067,10 @@ module LindenElkPikeInv {
     requires AI.get_idx(AReg.as_arrays(cap).1, CP.start_reg(gid)) >= 0
     requires AI.get_idx(AReg.as_arrays(cap).0, CP.start_reg(gid)) >= 0   // value set (clock-set => value-set)
     requires AI.get_idx(AReg.as_arrays(cap).1, CP.start_reg(gid))
-               >= MxAtGidLk(re, AReg.as_arrays(cap).1, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, gid)
+          >= MxAtGidLk(re, AReg.as_arrays(cap).1, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, gid)
     ensures gid in GmOfLive(re, cap, look, quant)
     ensures GmOfLive(re, cap, look, quant)[gid]
-              == LiveRange(AReg.as_arrays(cap).0, AReg.as_arrays(cap).1, gid)
+         == LiveRange(AReg.as_arrays(cap).0, AReg.as_arrays(cap).1, gid)
   {
     var cr := AReg.as_arrays(cap).0;  var cc := AReg.as_arrays(cap).1;
     var lc := AReg.as_arrays(look).1; var qc := AReg.as_arrays(quant).1;
@@ -5184,8 +5184,8 @@ module LindenElkPikeInv {
                                lc1: seq<int>, lc2: seq<int>, quant_clocks: seq<int>, maxclock: int)
     requires NR.LookBehindFragmentRE(r)
     ensures forall j :: j !in CaptureRegsSet(CapIdsInLooks(r)) ==>
-      AI.get_idx(AI.filter_capture(r, cap_regs, cap_clocks, lc1, quant_clocks, maxclock), j)
-      == AI.get_idx(AI.filter_capture(r, cap_regs, cap_clocks, lc2, quant_clocks, maxclock), j)
+                          AI.get_idx(AI.filter_capture(r, cap_regs, cap_clocks, lc1, quant_clocks, maxclock), j)
+                          == AI.get_idx(AI.filter_capture(r, cap_regs, cap_clocks, lc2, quant_clocks, maxclock), j)
     decreases r
   {
     match r
@@ -5252,9 +5252,9 @@ module LindenElkPikeInv {
                           quant: AReg.Regs)
     requires NR.LookBehindFragmentRE(ast)
     ensures forall g: nat :: g !in CapIdsInLooks(ast) ==>
-      ((g in GmOfLive(ast, caps, look1, quant)) <==> (g in GmOfLive(ast, caps, look2, quant)))
-      && (g in GmOfLive(ast, caps, look1, quant) ==>
-          GmOfLive(ast, caps, look1, quant)[g] == GmOfLive(ast, caps, look2, quant)[g])
+                               ((g in GmOfLive(ast, caps, look1, quant)) <==> (g in GmOfLive(ast, caps, look2, quant)))
+                               && (g in GmOfLive(ast, caps, look1, quant) ==>
+                                     GmOfLive(ast, caps, look1, quant)[g] == GmOfLive(ast, caps, look2, quant)[g])
   {
     var (cap_regs, cap_clocks) := AReg.as_arrays(caps);
     var lc1 := AReg.as_arrays(look1).1;
@@ -5268,8 +5268,8 @@ module LindenElkPikeInv {
     assert f2 == AI.filter_capture(ast, cap_regs, cap_clocks, lc2, qc, -1);
     forall g: nat | g !in CapIdsInLooks(ast)
       ensures ((g in GmOfLive(ast, caps, look1, quant)) <==> (g in GmOfLive(ast, caps, look2, quant)))
-           && (g in GmOfLive(ast, caps, look1, quant) ==>
-               GmOfLive(ast, caps, look1, quant)[g] == GmOfLive(ast, caps, look2, quant)[g])
+              && (g in GmOfLive(ast, caps, look1, quant) ==>
+                    GmOfLive(ast, caps, look1, quant)[g] == GmOfLive(ast, caps, look2, quant)[g])
     {
       StartRegInCaptureRegsSet(CapIdsInLooks(ast), g);
       EndRegInCaptureRegsSet(CapIdsInLooks(ast), g);
@@ -5391,8 +5391,8 @@ module LindenElkPikeInv {
                                      lc1: seq<int>, lc2: seq<int>, quant_clocks: seq<int>, maxclock: int)
     requires NR.NestedFragmentRE(r)
     ensures forall j :: j !in CaptureRegsSet(CapIdsInLooks(r)) ==>
-      AI.get_idx(AI.filter_capture(r, cap_regs, cap_clocks, lc1, quant_clocks, maxclock), j)
-      == AI.get_idx(AI.filter_capture(r, cap_regs, cap_clocks, lc2, quant_clocks, maxclock), j)
+                          AI.get_idx(AI.filter_capture(r, cap_regs, cap_clocks, lc1, quant_clocks, maxclock), j)
+                          == AI.get_idx(AI.filter_capture(r, cap_regs, cap_clocks, lc2, quant_clocks, maxclock), j)
     decreases r
   {
     match r
@@ -5451,9 +5451,9 @@ module LindenElkPikeInv {
                                 quant: AReg.Regs)
     requires NR.NestedFragmentRE(ast)
     ensures forall g: nat :: g !in CapIdsInLooks(ast) ==>
-      ((g in GmOfLive(ast, caps, look1, quant)) <==> (g in GmOfLive(ast, caps, look2, quant)))
-      && (g in GmOfLive(ast, caps, look1, quant) ==>
-          GmOfLive(ast, caps, look1, quant)[g] == GmOfLive(ast, caps, look2, quant)[g])
+                               ((g in GmOfLive(ast, caps, look1, quant)) <==> (g in GmOfLive(ast, caps, look2, quant)))
+                               && (g in GmOfLive(ast, caps, look1, quant) ==>
+                                     GmOfLive(ast, caps, look1, quant)[g] == GmOfLive(ast, caps, look2, quant)[g])
   {
     var (cap_regs, cap_clocks) := AReg.as_arrays(caps);
     var lc1 := AReg.as_arrays(look1).1;
@@ -5467,8 +5467,8 @@ module LindenElkPikeInv {
     assert f2 == AI.filter_capture(ast, cap_regs, cap_clocks, lc2, qc, -1);
     forall g: nat | g !in CapIdsInLooks(ast)
       ensures ((g in GmOfLive(ast, caps, look1, quant)) <==> (g in GmOfLive(ast, caps, look2, quant)))
-           && (g in GmOfLive(ast, caps, look1, quant) ==>
-               GmOfLive(ast, caps, look1, quant)[g] == GmOfLive(ast, caps, look2, quant)[g])
+              && (g in GmOfLive(ast, caps, look1, quant) ==>
+                    GmOfLive(ast, caps, look1, quant)[g] == GmOfLive(ast, caps, look2, quant)[g])
     {
       StartRegInCaptureRegsSet(CapIdsInLooks(ast), g);
       EndRegInCaptureRegsSet(CapIdsInLooks(ast), g);
@@ -5487,9 +5487,9 @@ module LindenElkPikeInv {
   lemma GmOfLiveEqGmOf(ast: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs)
     requires var f := AI.filter_reset(ast, caps, look, quant, -1);
              var cc := AReg.as_arrays(caps).1;
-      forall g: nat :: 0 <= g < |f| && AI.get_idx(f, CP.start_reg(g)) >= 0
-                       && AI.get_idx(f, CP.end_reg(g)) >= 0
-        ==> AI.get_idx(cc, CP.end_reg(g)) >= AI.get_idx(cc, CP.start_reg(g))
+             forall g: nat :: 0 <= g < |f| && AI.get_idx(f, CP.start_reg(g)) >= 0
+                              && AI.get_idx(f, CP.end_reg(g)) >= 0
+                              ==> AI.get_idx(cc, CP.end_reg(g)) >= AI.get_idx(cc, CP.start_reg(g))
     ensures GmOfLive(ast, caps, look, quant) == GmOf(ast, caps, look, quant)
   {
     var f := AI.filter_reset(ast, caps, look, quant, -1);
@@ -5657,7 +5657,7 @@ module LindenElkPikeInv {
     requires B >= -1
     requires forall k :: AI.get_idx(caps.a_cp, k) <= B
     ensures forall g: nat :: g in GmOfLive(ast, caps, look, quant)
-              ==> GmOfLive(ast, caps, look, quant)[g].startIdx as int <= B
+                             ==> GmOfLive(ast, caps, look, quant)[g].startIdx as int <= B
   {
     var f := AI.filter_reset(ast, caps, look, quant, -1);
     var (cr, cc) := AReg.as_arrays(caps);
@@ -5938,7 +5938,7 @@ module LindenElkPikeInv {
 
   /** `FilterCaptureFrameAt` under the nested fragment. */
   lemma FilterCaptureFrameAtNested(r: R.regex, A: seq<int>, B: seq<int>, cc: seq<int>, cc': seq<int>,
-                             lc: seq<int>, qc: seq<int>, mx: int, gid: nat)
+                                   lc: seq<int>, qc: seq<int>, mx: int, gid: nat)
     requires NR.NestedFragmentRE(r)
     requires gid !in CapIds(r)
     requires |A| == |B|
@@ -5946,7 +5946,7 @@ module LindenElkPikeInv {
     requires forall j :: j != CP.start_reg(gid) ==> AI.get_idx(cc, j) == AI.get_idx(cc', j)
     ensures forall j :: j != CP.start_reg(gid)
                         ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc, mx), j)
-                            == AI.get_idx(AI.filter_capture(r, B, cc', lc, qc, mx), j)
+                         == AI.get_idx(AI.filter_capture(r, B, cc', lc, qc, mx), j)
     decreases r
   {
     FilterCaptureLen(r, A, cc, lc, qc, mx); FilterCaptureLen(r, B, cc', lc, qc, mx);
@@ -5993,11 +5993,11 @@ module LindenElkPikeInv {
     requires NR.NestedFragmentRE(r)
     requires LooksCapUnset(r, cc)
     requires forall cid: nat :: cid in CapIds(r)
-                               ==> AI.get_idx(cc, CP.start_reg(cid)) < M
-                                   || AI.get_idx(cc, CP.start_reg(cid)) < 0
+                                ==> AI.get_idx(cc, CP.start_reg(cid)) < M
+                                    || AI.get_idx(cc, CP.start_reg(cid)) < 0
     requires forall k :: AI.get_idx(cr, k) >= -1
     requires forall cid: nat :: cid in CapIds(r) && AI.get_idx(cc, CP.start_reg(cid)) < 0
-                               ==> AI.get_idx(cr, CP.start_reg(cid)) < 0
+                                ==> AI.get_idx(cr, CP.start_reg(cid)) < 0
     ensures AI.filter_capture(r, cr, cc, lc, qc, M) == AI.filter_all(r, cr)
     decreases r
   {
@@ -6044,7 +6044,7 @@ module LindenElkPikeInv {
       (an outside-look gid never lives in a look body); the sibling frames use the
       `*Nested` filter frames. */
   lemma FilterOpenFrameNested(r: R.regex, cr: seq<int>, cr': seq<int>, cc: seq<int>, cc': seq<int>,
-                        lc: seq<int>, qc: seq<int>, mx: int, gid: nat, cp: int, clk: int)
+                              lc: seq<int>, qc: seq<int>, mx: int, gid: nat, cp: int, clk: int)
     requires NR.NestedFragmentRE(r)
     requires CapUnique(r)
     requires gid in CapIds(r)
@@ -6054,7 +6054,7 @@ module LindenElkPikeInv {
     requires PathPresent(r, cc, qc, mx, gid)
     requires |cr| == |cr'|
     requires AI.get_idx(cc, CP.start_reg(gid)) < MxAtGid(r, cc, qc, mx, gid)
-          || AI.get_idx(cc, CP.start_reg(gid)) < 0
+             || AI.get_idx(cc, CP.start_reg(gid)) < 0
     requires AI.get_idx(cr', CP.start_reg(gid)) == cp
     requires AI.get_idx(cc', CP.start_reg(gid)) == clk
     requires forall j :: j != CP.start_reg(gid) ==> AI.get_idx(cr', j) == AI.get_idx(cr, j)
@@ -6064,14 +6064,14 @@ module LindenElkPikeInv {
     requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0 ==> AI.get_idx(cr, CP.start_reg(c)) < 0
     requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc', CP.start_reg(c)) < 0 ==> AI.get_idx(cr', CP.start_reg(c)) < 0
     requires forall sg: nat :: sg in CapIds(BodyOf(r, gid))
-                              ==> AI.get_idx(cc, CP.start_reg(sg)) < MxAtGid(r, cc, qc, mx, gid)
-                                  || AI.get_idx(cc, CP.start_reg(sg)) < 0
+                               ==> AI.get_idx(cc, CP.start_reg(sg)) < MxAtGid(r, cc, qc, mx, gid)
+                                   || AI.get_idx(cc, CP.start_reg(sg)) < 0
     requires LooksCapUnset(BodyOf(r, gid), cc)
     ensures AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), CP.start_reg(gid)) < 0
     ensures AI.get_idx(AI.filter_capture(r, cr', cc', lc, qc, mx), CP.start_reg(gid)) == cp
     ensures forall j :: j != CP.start_reg(gid)
                         ==> AI.get_idx(AI.filter_capture(r, cr', cc', lc, qc, mx), j)
-                            == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), j)
+                         == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), j)
     decreases r
   {
     match r
@@ -6209,7 +6209,7 @@ module LindenElkPikeInv {
   /** `GmOfLiveOpenFull` under the nested fragment (uses `FilterOpenFrameNested`
       + the blind `GmOfLiveOpen`). */
   lemma GmOfLiveOpenFullNested(ast: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
-                         gid: nat, cp: int, clk: int)
+                               gid: nat, cp: int, clk: int)
     requires |caps.a_cp| == |caps.a_clk|
     requires CP.start_reg(gid) < |caps.a_cp|
     requires cp >= 0 && clk >= 0
@@ -6217,16 +6217,16 @@ module LindenElkPikeInv {
     requires NR.NestedFragmentRE(ast) && CapUnique(ast) && gid in CapIds(ast)
     requires gid !in CapIdsInLooks(ast)
     requires AI.get_idx(caps.a_clk, CP.start_reg(gid))
-               < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
-          || AI.get_idx(caps.a_clk, CP.start_reg(gid)) < 0
+           < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
+             || AI.get_idx(caps.a_clk, CP.start_reg(gid)) < 0
     requires clk >= MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
     requires PathPresent(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
     requires forall k :: AI.get_idx(caps.a_cp, k) >= -1
     requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
-                             ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
+                              ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
     requires forall sg: nat :: sg in CapIds(BodyOf(ast, gid))
-                              ==> AI.get_idx(caps.a_clk, CP.start_reg(sg)) < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
-                                  || AI.get_idx(caps.a_clk, CP.start_reg(sg)) < 0
+                               ==> AI.get_idx(caps.a_clk, CP.start_reg(sg)) < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
+                                   || AI.get_idx(caps.a_clk, CP.start_reg(sg)) < 0
     requires LooksCapUnset(BodyOf(ast, gid), caps.a_clk)
     ensures gid !in GmOfLive(ast, caps, look, quant)
     ensures GmOfLive(ast, AReg.set_reg(caps, CP.start_reg(gid), Some(cp), clk), look, quant)
@@ -6252,7 +6252,7 @@ module LindenElkPikeInv {
 
   /** `GmOfLiveOpenGMOpen` under the nested fragment. */
   lemma GmOfLiveOpenGMOpenNested(ast: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
-                           gid: nat, cp: int, clk: int)
+                                 gid: nat, cp: int, clk: int)
     requires |caps.a_cp| == |caps.a_clk|
     requires CP.start_reg(gid) < |caps.a_cp|
     requires cp >= 0 && clk >= 0
@@ -6260,16 +6260,16 @@ module LindenElkPikeInv {
     requires NR.NestedFragmentRE(ast) && CapUnique(ast) && gid in CapIds(ast)
     requires gid !in CapIdsInLooks(ast)
     requires AI.get_idx(caps.a_clk, CP.start_reg(gid))
-               < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
-          || AI.get_idx(caps.a_clk, CP.start_reg(gid)) < 0
+           < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
+             || AI.get_idx(caps.a_clk, CP.start_reg(gid)) < 0
     requires clk >= MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
     requires PathPresent(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
     requires forall k :: AI.get_idx(caps.a_cp, k) >= -1
     requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
-                             ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
+                              ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
     requires forall sg: nat :: sg in CapIds(BodyOf(ast, gid))
-                              ==> AI.get_idx(caps.a_clk, CP.start_reg(sg)) < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
-                                  || AI.get_idx(caps.a_clk, CP.start_reg(sg)) < 0
+                               ==> AI.get_idx(caps.a_clk, CP.start_reg(sg)) < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
+                                   || AI.get_idx(caps.a_clk, CP.start_reg(sg)) < 0
     requires LooksCapUnset(BodyOf(ast, gid), caps.a_clk)
     ensures GmOfLive(ast, AReg.set_reg(caps, CP.start_reg(gid), Some(cp), clk), look, quant)
          == LG.GMOpen(cp as nat, gid, GmOfLive(ast, caps, look, quant))
@@ -6297,16 +6297,16 @@ module LindenElkPikeInv {
     // stamp — covers both the first open and a star re-entry (RegElk never
     // clears registers; staleness lives in the filter).
     requires AI.get_idx(caps.a_clk, CP.start_reg(gid))
-               < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
-          || AI.get_idx(caps.a_clk, CP.start_reg(gid)) < 0
+           < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
+             || AI.get_idx(caps.a_clk, CP.start_reg(gid)) < 0
     requires clk >= MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
     requires PathPresent(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
     requires forall k :: AI.get_idx(caps.a_cp, k) >= -1
     requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
-                             ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
+                              ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
     requires forall sg: nat :: sg in CapIds(BodyOf(ast, gid))
-                              ==> AI.get_idx(caps.a_clk, CP.start_reg(sg)) < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
-                                  || AI.get_idx(caps.a_clk, CP.start_reg(sg)) < 0
+                               ==> AI.get_idx(caps.a_clk, CP.start_reg(sg)) < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
+                                   || AI.get_idx(caps.a_clk, CP.start_reg(sg)) < 0
     requires LooksCapUnset(BodyOf(ast, gid), caps.a_clk)
     ensures gid !in GmOfLive(ast, caps, look, quant)
     ensures GmOfLive(ast, AReg.set_reg(caps, CP.start_reg(gid), Some(cp), clk), look, quant)
@@ -6345,16 +6345,16 @@ module LindenElkPikeInv {
     requires NR.LookBehindFragmentRE(ast) && CapUnique(ast) && gid in CapIds(ast)
     requires gid !in CapIdsInLooks(ast)   // L3a: Open fires for outside-look gids
     requires AI.get_idx(caps.a_clk, CP.start_reg(gid))
-               < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
-          || AI.get_idx(caps.a_clk, CP.start_reg(gid)) < 0
+           < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
+             || AI.get_idx(caps.a_clk, CP.start_reg(gid)) < 0
     requires clk >= MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
     requires PathPresent(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
     requires forall k :: AI.get_idx(caps.a_cp, k) >= -1
     requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
-                             ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
+                              ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
     requires forall sg: nat :: sg in CapIds(BodyOf(ast, gid))
-                              ==> AI.get_idx(caps.a_clk, CP.start_reg(sg)) < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
-                                  || AI.get_idx(caps.a_clk, CP.start_reg(sg)) < 0
+                               ==> AI.get_idx(caps.a_clk, CP.start_reg(sg)) < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
+                                   || AI.get_idx(caps.a_clk, CP.start_reg(sg)) < 0
     requires LooksCapUnset(BodyOf(ast, gid), caps.a_clk)
     ensures GmOfLive(ast, AReg.set_reg(caps, CP.start_reg(gid), Some(cp), clk), look, quant)
          == LG.GMOpen(cp as nat, gid, GmOfLive(ast, caps, look, quant))
@@ -6433,7 +6433,7 @@ module LindenElkPikeInv {
   /** `FilterResetFrame` under the nested fragment (look case `assert false`;
       sibling frames use the `*Nested` filter frames). */
   lemma FilterResetFrameNested(r: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, qc': seq<int>,
-                         M: int, qid: nat, clk: int, j: int)
+                               M: int, qid: nat, clk: int, j: int)
     requires NR.NestedFragmentRE(r) && CapUnique(r) && QuantUnique(r)
     requires qid in QuantIds(r)
     requires qid in QuantIdsOutsideLooks(r)
@@ -6494,7 +6494,7 @@ module LindenElkPikeInv {
 
   /** Sequential (`alt`/`con`) handling for `FilterResetFrameNested`. */
   lemma FilterResetFrameSeqNested(r: R.regex, r1: R.regex, r2: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>,
-                            qc: seq<int>, qc': seq<int>, M: int, qid: nat, clk: int, j: int)
+                                  qc: seq<int>, qc': seq<int>, M: int, qid: nat, clk: int, j: int)
     requires r == R.Re_alt(r1, r2) || r == R.Re_con(r1, r2)
     requires NR.NestedFragmentRE(r) && CapUnique(r) && QuantUnique(r)
     requires qid in QuantIds(r)
@@ -6510,7 +6510,7 @@ module LindenElkPikeInv {
     requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0 ==> AI.get_idx(A, CP.start_reg(c)) < 0
     ensures (forall g: nat :: g in CapIds(QidBody(r, qid)) ==> CP.start_reg(g) != j)
             ==> AI.get_idx(AI.filter_capture(r2, AI.filter_capture(r1, A, cc, lc, qc', M), cc, lc, qc', M), j)
-                == AI.get_idx(AI.filter_capture(r2, AI.filter_capture(r1, A, cc, lc, qc, M), cc, lc, qc, M), j)
+             == AI.get_idx(AI.filter_capture(r2, AI.filter_capture(r1, A, cc, lc, qc, M), cc, lc, qc, M), j)
     ensures (exists g: nat :: g in CapIds(QidBody(r, qid)) && CP.start_reg(g) == j)
             ==> AI.get_idx(AI.filter_capture(r2, AI.filter_capture(r1, A, cc, lc, qc', M), cc, lc, qc', M), j) < 0
     decreases r, 0
@@ -6524,7 +6524,7 @@ module LindenElkPikeInv {
       assert QidBody(r, qid) == QidBody(r1, qid);
       assert qid in QuantIdsOutsideLooks(r1) by {
         assert QuantIdsOutsideLooks(r) == QuantIdsOutsideLooks(r1) + QuantIdsOutsideLooks(r2)
-          by { if r == R.Re_alt(r1, r2) {} else {} }
+        by { if r == R.Re_alt(r1, r2) {} else {} }
         QuantIdsSplit(r2);
       }
       assert LooksCapUnset(QidBody(r1, qid), cc);
@@ -6556,7 +6556,7 @@ module LindenElkPikeInv {
       assert QidBody(r, qid) == QidBody(r2, qid);
       assert qid in QuantIdsOutsideLooks(r2) by {
         assert QuantIdsOutsideLooks(r) == QuantIdsOutsideLooks(r1) + QuantIdsOutsideLooks(r2)
-          by { if r == R.Re_alt(r1, r2) {} else {} }
+        by { if r == R.Re_alt(r1, r2) {} else {} }
         QuantIdsSplit(r1);
       }
       assert LooksCapUnset(QidBody(r2, qid), cc);
@@ -6568,7 +6568,7 @@ module LindenElkPikeInv {
   /** `GmOfLiveResetFull` under the nested fragment (uses `FilterResetFrameNested`
       + the blind `GmOfLiveReset`). */
   lemma GmOfLiveResetFullNested(ast: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
-                          qid: nat, clk: int)
+                                qid: nat, clk: int)
     requires NR.NestedFragmentRE(ast) && CapUnique(ast) && QuantUnique(ast)
     requires qid in QuantIds(ast)
     requires qid in QuantIdsOutsideLooks(ast)
@@ -6581,7 +6581,7 @@ module LindenElkPikeInv {
     requires LooksCapUnset(QidBody(ast, qid), caps.a_clk)
     requires forall k :: AI.get_idx(caps.a_cp, k) >= -1
     requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
-                             ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
+                              ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
     ensures GmOfLive(ast, caps, look, AReg.set_reg(quant, qid, None, clk))
          == GmOfLive(ast, caps, look, quant) - CapIds(QidBody(ast, qid))
   {
@@ -6600,7 +6600,7 @@ module LindenElkPikeInv {
     }
     forall j | (forall g: nat :: g in gl ==> CP.start_reg(g) != j)
       ensures AI.get_idx(AI.filter_capture(ast, cr, cc, lc, qc', -1), j)
-              == AI.get_idx(AI.filter_capture(ast, cr, cc, lc, qc, -1), j)
+           == AI.get_idx(AI.filter_capture(ast, cr, cc, lc, qc, -1), j)
     {
       FilterResetFrameNested(ast, cr, cc, lc, qc, qc', -1, qid, clk, j);
     }
@@ -6609,7 +6609,7 @@ module LindenElkPikeInv {
 
   /** `GmOfLiveResetGMReset` under the nested fragment. */
   lemma GmOfLiveResetGMResetNested(ast: R.regex, qm: AR.QMap, caps: AReg.Regs, look: AReg.Regs,
-                             quant: AReg.Regs, qid: nat, clk: int)
+                                   quant: AReg.Regs, qid: nat, clk: int)
     requires NR.NestedFragmentRE(ast) && CapUnique(ast) && QuantUnique(ast)
     requires T.TransWf(ast) && AR.QmapOk(ast, qm)
     requires qid in QuantIds(ast)
@@ -6623,7 +6623,7 @@ module LindenElkPikeInv {
     requires LooksCapUnset(QidBody(ast, qid), caps.a_clk)
     requires forall k :: AI.get_idx(caps.a_cp, k) >= -1
     requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
-                             ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
+                              ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
     ensures (qid as int) in qm.quants
     ensures GmOfLive(ast, caps, look, AReg.set_reg(quant, qid, None, clk))
          == LG.GMReset(qm.quants[qid as int], GmOfLive(ast, caps, look, quant))
@@ -6722,7 +6722,7 @@ module LindenElkPikeInv {
     requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0 ==> AI.get_idx(A, CP.start_reg(c)) < 0
     ensures (forall g: nat :: g in CapIds(QidBody(r, qid)) ==> CP.start_reg(g) != j)
             ==> AI.get_idx(AI.filter_capture(r2, AI.filter_capture(r1, A, cc, lc, qc', M), cc, lc, qc', M), j)
-                == AI.get_idx(AI.filter_capture(r2, AI.filter_capture(r1, A, cc, lc, qc, M), cc, lc, qc, M), j)
+             == AI.get_idx(AI.filter_capture(r2, AI.filter_capture(r1, A, cc, lc, qc, M), cc, lc, qc, M), j)
     ensures (exists g: nat :: g in CapIds(QidBody(r, qid)) && CP.start_reg(g) == j)
             ==> AI.get_idx(AI.filter_capture(r2, AI.filter_capture(r1, A, cc, lc, qc', M), cc, lc, qc', M), j) < 0
     decreases r, 0
@@ -6737,7 +6737,7 @@ module LindenElkPikeInv {
       assert QidBody(r, qid) == QidBody(r1, qid);
       assert qid in QuantIdsOutsideLooks(r1) by {
         assert QuantIdsOutsideLooks(r) == QuantIdsOutsideLooks(r1) + QuantIdsOutsideLooks(r2)
-          by { if r == R.Re_alt(r1, r2) {} else {} }
+        by { if r == R.Re_alt(r1, r2) {} else {} }
         QuantIdsSplit(r2);   // QuantIdsOutsideLooks(r2) ⊆ QuantIds(r2), and qid ∉ QuantIds(r2)
       }
       assert LooksCapUnset(QidBody(r1, qid), cc);      // == LooksCapUnset(QidBody(r,qid),..)
@@ -6771,7 +6771,7 @@ module LindenElkPikeInv {
       assert QidBody(r, qid) == QidBody(r2, qid);
       assert qid in QuantIdsOutsideLooks(r2) by {
         assert QuantIdsOutsideLooks(r) == QuantIdsOutsideLooks(r1) + QuantIdsOutsideLooks(r2)
-          by { if r == R.Re_alt(r1, r2) {} else {} }
+        by { if r == R.Re_alt(r1, r2) {} else {} }
         QuantIdsSplit(r1);   // QuantIdsOutsideLooks(r1) ⊆ QuantIds(r1), and qid ∉ QuantIds(r1)
       }
       assert LooksCapUnset(QidBody(r2, qid), cc);
@@ -6869,7 +6869,7 @@ module LindenElkPikeInv {
     requires LooksCapUnset(QidBody(ast, qid), caps.a_clk)
     requires forall k :: AI.get_idx(caps.a_cp, k) >= -1
     requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
-                             ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
+                              ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
     ensures GmOfLive(ast, caps, look, AReg.set_reg(quant, qid, None, clk))
          == GmOfLive(ast, caps, look, quant) - CapIds(QidBody(ast, qid))
   {
@@ -6891,7 +6891,7 @@ module LindenElkPikeInv {
     // frame part: off gl starts, filter is unchanged.
     forall j | (forall g: nat :: g in gl ==> CP.start_reg(g) != j)
       ensures AI.get_idx(AI.filter_capture(ast, cr, cc, lc, qc', -1), j)
-              == AI.get_idx(AI.filter_capture(ast, cr, cc, lc, qc, -1), j)
+           == AI.get_idx(AI.filter_capture(ast, cr, cc, lc, qc, -1), j)
     {
       FilterResetFrame(ast, cr, cc, lc, qc, qc', -1, qid, clk, j);
     }
@@ -6978,7 +6978,7 @@ module LindenElkPikeInv {
     requires LooksCapUnset(QidBody(ast, qid), caps.a_clk)
     requires forall k :: AI.get_idx(caps.a_cp, k) >= -1
     requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
-                             ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
+                              ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
     ensures (qid as int) in qm.quants
     ensures GmOfLive(ast, caps, look, AReg.set_reg(quant, qid, None, clk))
          == LG.GMReset(qm.quants[qid as int], GmOfLive(ast, caps, look, quant))
@@ -7004,8 +7004,8 @@ module LindenElkPikeInv {
       threaded at the NEXT input, one pc past the `Consume`, loop flag re-armed
       (`ea = true`). gm-free; grounded in `GenStepRE`'s `Consume` `StepSpec`. */
   ghost predicate BlockedTreeThreadRE(
-      rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input, nextinp: LC.Input,
-      tl: seq<LT.Tree>, bl: seq<(AI.Thread, RC.char_expectation)>)
+    rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input, nextinp: LC.Input,
+    tl: seq<LT.Tree>, bl: seq<(AI.Thread, RC.char_expectation)>)
     decreases tl
   {
     (|tl| == 0 && |bl| == 0)
@@ -7018,8 +7018,8 @@ module LindenElkPikeInv {
   /** A `BlockedTreeThreadRE` pairing forces the two lists to have equal
       length. */
   lemma BlockedLenEqRE(
-      rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input, nextinp: LC.Input,
-      tl: seq<LT.Tree>, bl: seq<(AI.Thread, RC.char_expectation)>)
+    rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input, nextinp: LC.Input,
+    tl: seq<LT.Tree>, bl: seq<(AI.Thread, RC.char_expectation)>)
     requires BlockedTreeThreadRE(rer, qm, code, inp, nextinp, tl, bl)
     ensures |tl| == |bl|
     decreases tl
@@ -7073,9 +7073,9 @@ module LindenElkPikeInv {
   /** Membership/value characterization of the `GmOf` map comprehension. */
   lemma GmOfMem(ast: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, g: nat)
     ensures var f := AI.filter_reset(ast, caps, look, quant, -1);
-      (g in GmOf(ast, caps, look, quant)) <==> (g < |f| && AI.get_idx(f, CP.start_reg(g)) >= 0)
+            (g in GmOf(ast, caps, look, quant)) <==> (g < |f| && AI.get_idx(f, CP.start_reg(g)) >= 0)
     ensures var f := AI.filter_reset(ast, caps, look, quant, -1);
-      g in GmOf(ast, caps, look, quant) ==> GmOf(ast, caps, look, quant)[g] == RangeFromArr(f, g)
+            g in GmOf(ast, caps, look, quant) ==> GmOf(ast, caps, look, quant)[g] == RangeFromArr(f, g)
   {}
 
   /** The GmOf ↔ final capture-array bridge: for a completed (closed) match,
@@ -7085,14 +7085,14 @@ module LindenElkPikeInv {
   lemma GmOfCapArrayBridge(ast: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
                            inp: LC.Input, ngroups: nat)
     requires var f := AI.filter_reset(ast, caps, look, quant, -1);
-      |f| == 2 * ngroups
-      && (forall i :: 0 <= i < |f| ==> f[i] >= -1)                                  // -1 encodes None
-      && (forall g: nat :: 0 <= g < ngroups ==> (f[2 * g] >= 0 ==> f[2 * g + 1] >= 0))  // closed match
-      // FORWARD groups only: no reversed lookbehind span. The widened `NormalizeArr`
-      // (item 0) swaps reversed pairs; here we assert there are none, so it is the
-      // identity on `f` and the positional `GmOf` read still matches slot-for-slot.
-      && (forall g: nat :: 0 <= g < ngroups ==>
-            (f[2 * g] >= 0 && f[2 * g + 1] >= 0 ==> f[2 * g] <= f[2 * g + 1]))
+             |f| == 2 * ngroups
+             && (forall i :: 0 <= i < |f| ==> f[i] >= -1)                                  // -1 encodes None
+             && (forall g: nat :: 0 <= g < ngroups ==> (f[2 * g] >= 0 ==> f[2 * g + 1] >= 0))  // closed match
+             // FORWARD groups only: no reversed lookbehind span. The widened `NormalizeArr`
+             // (item 0) swaps reversed pairs; here we assert there are none, so it is the
+             // identity on `f` and the positional `GmOf` read still matches slot-for-slot.
+             && (forall g: nat :: 0 <= g < ngroups ==>
+                                    (f[2 * g] >= 0 && f[2 * g + 1] >= 0 ==> f[2 * g] <= f[2 * g + 1]))
     ensures LES.NormalizeArr(AI.filter_reset(ast, caps, look, quant, -1))
          == LES.CapArrayOfLeaf((inp, GmOf(ast, caps, look, quant)), ngroups)
   {
@@ -7154,9 +7154,9 @@ module LindenElkPikeInv {
   lemma GmOfCapArrayBridgeNorm(ast: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
                                inp: LC.Input, ngroups: nat)
     requires var f := AI.filter_reset(ast, caps, look, quant, -1);
-      |f| == 2 * ngroups
-      && (forall i :: 0 <= i < |f| ==> f[i] >= -1)                                  // -1 encodes None
-      && (forall g: nat :: 0 <= g < ngroups ==> (f[2 * g] >= 0 ==> f[2 * g + 1] >= 0))  // closed match
+             |f| == 2 * ngroups
+             && (forall i :: 0 <= i < |f| ==> f[i] >= -1)                                  // -1 encodes None
+             && (forall g: nat :: 0 <= g < ngroups ==> (f[2 * g] >= 0 ==> f[2 * g + 1] >= 0))  // closed match
     ensures LES.NormalizeArr(AI.filter_reset(ast, caps, look, quant, -1))
          == LES.CapArrayOfLeaf((inp, NormGm(GmOf(ast, caps, look, quant))), ngroups)
   {
@@ -7347,8 +7347,8 @@ module LindenElkPikeInv {
       && BestMatchRE(re, best, vms.bestmatch)
       && ActiveRepRE(rer, qm, re, code, inp, treeactive, vms.active)
       && (forall nextinp :: LC.AdvanceInput(inp, WP.Forward) == Some(nextinp) ==>
-            BlockedRepRE(rer, qm, re, code, inp, nextinp, treeblocked,
-                         MatchingBlocked(LC.Reverse(vms.blocked), inp)))
+                              BlockedRepRE(rer, qm, re, code, inp, nextinp, treeblocked,
+                                           MatchingBlocked(LC.Reverse(vms.blocked), inp)))
       && (LC.AdvanceInput(inp, WP.Forward) == None ==> treeblocked == [])
       && SeenInclusionRE(rer, qm, code, inp, treeseen, vms.processed, HdTreeOf(treeactive), HeadPcOf(vms.active))
   }
@@ -7433,7 +7433,7 @@ module LindenElkPikeInv {
       the depth-blind `GmOfLiveInit`/`ActiveRepRE`/`InitialInclusionRE`. Verbatim
       with `LookBehindFragmentRE -> NestedFragmentRE`. */
   lemma InitialPikeInvREAtCpNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, ngroups: nat,
-                             str: string, cp: nat, tree: LT.Tree, vms: AI.VmState, ncap: int, nlook: int, nquant: int)
+                                   str: string, cp: nat, tree: LT.Tree, vms: AI.VmState, ncap: int, nlook: int, nquant: int)
     requires NR.NestedFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase && AR.QmapOk(re, qm)
     requires code == CP.compile_to_bytecode(re)
     requires cp <= |str|
