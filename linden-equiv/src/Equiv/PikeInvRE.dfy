@@ -1541,8 +1541,8 @@ module LindenElkPikeInv {
     requires forall j :: j != CP.start_reg(gid) ==> AI.get_idx(A, j) == AI.get_idx(B, j)
     requires forall j :: j != CP.start_reg(gid) ==> AI.get_idx(cc, j) == AI.get_idx(cc', j)
     ensures forall j :: j != CP.start_reg(gid)
-                        ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc, mx), j)
-                         == AI.get_idx(AI.filter_capture(r, B, cc', lc, qc, mx), j)
+                        ==> (AI.get_idx(AI.filter_capture(r, A, cc, lc, qc, mx), j)
+                         == AI.get_idx(AI.filter_capture(r, B, cc', lc, qc, mx), j))
     decreases r
   {
     FilterCaptureLen(r, A, cc, lc, qc, mx); FilterCaptureLen(r, B, cc', lc, qc, mx);
@@ -2975,8 +2975,8 @@ module LindenElkPikeInv {
     ensures AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), CP.start_reg(gid)) < 0
     ensures AI.get_idx(AI.filter_capture(r, cr', cc', lc, qc, mx), CP.start_reg(gid)) == cp
     ensures forall j :: j != CP.start_reg(gid)
-                        ==> AI.get_idx(AI.filter_capture(r, cr', cc', lc, qc, mx), j)
-                         == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), j)
+                        ==> (AI.get_idx(AI.filter_capture(r, cr', cc', lc, qc, mx), j)
+                         == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), j))
     decreases r
   {
     match r
@@ -5945,8 +5945,8 @@ module LindenElkPikeInv {
     requires forall j :: j != CP.start_reg(gid) ==> AI.get_idx(A, j) == AI.get_idx(B, j)
     requires forall j :: j != CP.start_reg(gid) ==> AI.get_idx(cc, j) == AI.get_idx(cc', j)
     ensures forall j :: j != CP.start_reg(gid)
-                        ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc, mx), j)
-                         == AI.get_idx(AI.filter_capture(r, B, cc', lc, qc, mx), j)
+                        ==> (AI.get_idx(AI.filter_capture(r, A, cc, lc, qc, mx), j)
+                         == AI.get_idx(AI.filter_capture(r, B, cc', lc, qc, mx), j))
     decreases r
   {
     FilterCaptureLen(r, A, cc, lc, qc, mx); FilterCaptureLen(r, B, cc', lc, qc, mx);
@@ -6070,8 +6070,8 @@ module LindenElkPikeInv {
     ensures AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), CP.start_reg(gid)) < 0
     ensures AI.get_idx(AI.filter_capture(r, cr', cc', lc, qc, mx), CP.start_reg(gid)) == cp
     ensures forall j :: j != CP.start_reg(gid)
-                        ==> AI.get_idx(AI.filter_capture(r, cr', cc', lc, qc, mx), j)
-                         == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), j)
+                        ==> (AI.get_idx(AI.filter_capture(r, cr', cc', lc, qc, mx), j)
+                         == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), j))
     decreases r
   {
     match r
@@ -6509,8 +6509,8 @@ module LindenElkPikeInv {
     requires forall k :: AI.get_idx(A, k) >= -1
     requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0 ==> AI.get_idx(A, CP.start_reg(c)) < 0
     ensures (forall g: nat :: g in CapIds(QidBody(r, qid)) ==> CP.start_reg(g) != j)
-            ==> AI.get_idx(AI.filter_capture(r2, AI.filter_capture(r1, A, cc, lc, qc', M), cc, lc, qc', M), j)
-             == AI.get_idx(AI.filter_capture(r2, AI.filter_capture(r1, A, cc, lc, qc, M), cc, lc, qc, M), j)
+            ==> (AI.get_idx(AI.filter_capture(r2, AI.filter_capture(r1, A, cc, lc, qc', M), cc, lc, qc', M), j)
+             == AI.get_idx(AI.filter_capture(r2, AI.filter_capture(r1, A, cc, lc, qc, M), cc, lc, qc, M), j))
     ensures (exists g: nat :: g in CapIds(QidBody(r, qid)) && CP.start_reg(g) == j)
             ==> AI.get_idx(AI.filter_capture(r2, AI.filter_capture(r1, A, cc, lc, qc', M), cc, lc, qc', M), j) < 0
     decreases r, 0
@@ -6721,8 +6721,8 @@ module LindenElkPikeInv {
     requires forall k :: AI.get_idx(A, k) >= -1
     requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0 ==> AI.get_idx(A, CP.start_reg(c)) < 0
     ensures (forall g: nat :: g in CapIds(QidBody(r, qid)) ==> CP.start_reg(g) != j)
-            ==> AI.get_idx(AI.filter_capture(r2, AI.filter_capture(r1, A, cc, lc, qc', M), cc, lc, qc', M), j)
-             == AI.get_idx(AI.filter_capture(r2, AI.filter_capture(r1, A, cc, lc, qc, M), cc, lc, qc, M), j)
+            ==> (AI.get_idx(AI.filter_capture(r2, AI.filter_capture(r1, A, cc, lc, qc', M), cc, lc, qc', M), j)
+             == AI.get_idx(AI.filter_capture(r2, AI.filter_capture(r1, A, cc, lc, qc, M), cc, lc, qc, M), j))
     ensures (exists g: nat :: g in CapIds(QidBody(r, qid)) && CP.start_reg(g) == j)
             ==> AI.get_idx(AI.filter_capture(r2, AI.filter_capture(r1, A, cc, lc, qc', M), cc, lc, qc', M), j) < 0
     decreases r, 0
