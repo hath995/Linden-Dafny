@@ -5066,19 +5066,36 @@ module LindenElkNestInv {
   {
     match re
     case Re_alt(r1, r2) =>
-      if lid in LTB.LookIds(r1) { LookBodyOfTablesTie(r1, fc, lid); }
-      else { LookBodyOfTablesTie(r2, fc, lid); }
+      if lid in LTB.LookIds(r1) { LookBodyOfTablesTie(r1, fc, lid); LookBodyOfTablesTieLift(re, r1, fc, lid); }
+      else { LookBodyOfTablesTie(r2, fc, lid); LookBodyOfTablesTieLift(re, r2, fc, lid); }
     case Re_con(r1, r2) =>
-      if lid in LTB.LookIds(r1) { LookBodyOfTablesTie(r1, fc, lid); }
-      else { LookBodyOfTablesTie(r2, fc, lid); }
-    case Re_quant(_, _, _, r1) => LookBodyOfTablesTie(r1, fc, lid);
-    case Re_capture(_, r1) => LookBodyOfTablesTie(r1, fc, lid);
+      if lid in LTB.LookIds(r1) { LookBodyOfTablesTie(r1, fc, lid); LookBodyOfTablesTieLift(re, r1, fc, lid); }
+      else { LookBodyOfTablesTie(r2, fc, lid); LookBodyOfTablesTieLift(re, r2, fc, lid); }
+    case Re_quant(_, _, _, r1) => LookBodyOfTablesTie(r1, fc, lid); LookBodyOfTablesTieLift(re, r1, fc, lid);
+    case Re_capture(_, r1) => LookBodyOfTablesTie(r1, fc, lid); LookBodyOfTablesTieLift(re, r1, fc, lid);
     case Re_lookaround(lid0, la0, r1) =>
       if lid0 >= 0 && (lid0 as nat) == lid {
         assert LTB.LookEntryOk(fc, lid as int, la0, r1);
+        assert LookBodyOfRE(re, lid) == r1;
+        assert LTB.LookEntryOk(fc, lid as int, la0, LookBodyOfRE(re, lid));   // the witness at the parent body
       } else {
-        LookBodyOfTablesTie(r1, fc, lid);
+        LookBodyOfTablesTie(r1, fc, lid); LookBodyOfTablesTieLift(re, r1, fc, lid);
       }
+  }
+
+  /** The witness of a sub-regex's row lifts to the parent (the bodies coincide by
+      `LookBodyOfRE`'s definition) — spelled out because the `exists` now carries an
+      explicit trigger term, so Z3 no longer bridges the two bodies on its own. */
+  lemma LookBodyOfTablesTieLift(re: R.regex, sub: R.regex, fc: CP.FCompiled, lid: nat)
+    requires lid in LTB.LookIds(re) && lid in LTB.LookIds(sub)
+    requires LookBodyOfRE(re, lid) == LookBodyOfRE(sub, lid)
+    requires var li: int := lid as int;
+             exists la: R.lookaround :: LTB.LookEntryOk(fc, li, la, LookBodyOfRE(sub, lid))
+    ensures var li: int := lid as int;
+            exists la: R.lookaround :: LTB.LookEntryOk(fc, li, la, LookBodyOfRE(re, lid))
+  {
+    var laW: R.lookaround :| LTB.LookEntryOk(fc, lid as int, laW, LookBodyOfRE(sub, lid));
+    assert LTB.LookEntryOk(fc, lid as int, laW, LookBodyOfRE(re, lid));
   }
 
   // ==========================================================================
