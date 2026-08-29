@@ -221,7 +221,7 @@ module LindenElkFlipClosed {
       of a positive LOOKBEHIND gate (lookbehind-only body) is CLOSED, by the
       FORWARD depth-stratification hypothesis `M.ClosedBelow` at the FLIPPED body
       instance, transported through the flip mirror. */
-  lemma {:isolate_assertions} BackBodyLeafClosedFromBelow(
+  lemma BackBodyLeafClosedFromBelow(
       rer: LW.RegExpRecord, lk: L.Lookaround, r1: L.Regex,
       tlk: LT.Tree, inp: LC.Input, gmR: LG.GroupMap, subR0: LT.Leaf, D: nat)
     requires L.Positivity(lk) && L.LkDir(lk) == WP.Backward

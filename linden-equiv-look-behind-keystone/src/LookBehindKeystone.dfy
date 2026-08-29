@@ -284,7 +284,7 @@ module LindenLookBehindKeystone {
   // FFindMatchCapsLE. NO tree-mirror facts here (kept out of the SMT context).
   // ===========================================================================
 
-  lemma {:isolate_assertions} LBEngineLeaf(rer: LW.RegExpRecord, body: R.regex, str: string, cp: nat,
+  lemma LBEngineLeaf(rer: LW.RegExpRecord, body: R.regex, str: string, cp: nat,
                      cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
                      cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int, n: nat)
     requires T.TransWf(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
@@ -388,7 +388,7 @@ module LindenLookBehindKeystone {
       matches the spec `LkResult` on the body's own groups — the value tie stated
       through the reversed-span mirror (`SwapGm`), which the item-0 `NormalizeArr`
       widening reconciles at `MainExtraction`. Sibling of `LkReplayMatchesSpec`. */
-  lemma {:isolate_assertions} LkReplayMatchesSpecLB(
+  lemma LkReplayMatchesSpecLB(
       rer: LW.RegExpRecord, body: R.regex, str: string, cp: nat,
       cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
       cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
@@ -505,7 +505,7 @@ module LindenLookBehindKeystone {
       backward run, using `BackwardReplayMirror` (`rfF==MirrorThread(raB)`),
       `BackCapsInRange`+`MirrorRegsInvol` (caps involution — the only bank `GmOfLive`
       reads positionally), and `GmOfLiveClkCong` (look/quant banks agree on clocks). */
-  lemma {:isolate_assertions} BackFreshBodyGmTie(
+  lemma BackFreshBodyGmTie(
       rer: LW.RegExpRecord, body: R.regex, str: string, cp: nat,
       ov: LOr.OracleView, cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
       ncap: int, nlook: int, nquant: int, n: nat)

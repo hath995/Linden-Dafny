@@ -2012,7 +2012,7 @@ module LindenElkNfaRep {
 
   /** `CompileNfaRepRE` for `repeat_min`: the forced-copy chain the compiler
       emits satisfies `NfaRepMinRE`. */
-  lemma {:isolate_assertions} CompileNfaRepMinRE(k: nat, qid: R.quantid, r1: R.regex, start: nat, tl: CP.treelist, next: int, prev: RB.code)
+  lemma CompileNfaRepMinRE(k: nat, qid: R.quantid, r1: R.regex, start: nat, tl: CP.treelist, next: int, prev: RB.code)
     requires LookBehindFragmentRE(r1)
     requires CP.repeat_min(k, qid, r1, start, CP.Progress) == (tl, next)
     requires start == |prev|
@@ -2050,7 +2050,7 @@ module LindenElkNfaRep {
 
   /** `CompileNfaRepRE` for `repeat_optional`: the optional-layer chain the
       compiler emits satisfies `NfaRepOptRE`. */
-  lemma {:isolate_assertions} CompileNfaRepOptRE(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, start: nat, tl: CP.treelist, next: int, prev: RB.code)
+  lemma CompileNfaRepOptRE(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, start: nat, tl: CP.treelist, next: int, prev: RB.code)
     requires LookBehindFragmentRE(r1)
     requires CP.repeat_optional(k, qid, r1, start, CP.Progress, greedy) == (tl, next)
     requires start == |prev|
@@ -2164,7 +2164,7 @@ module LindenElkNfaRep {
   /** The main compiler-correctness theorem: for any fragment regex, `CP.compile` emits
       code satisfying `NfaRepRE` against it — the RegElk analogue of Linden's
       `compile_nfa_rep`. */
-  lemma {:isolate_assertions} CompileNfaRepRE(re: R.regex, start: nat, tl: CP.treelist, next: int, prev: RB.code)
+  lemma CompileNfaRepRE(re: R.regex, start: nat, tl: CP.treelist, next: int, prev: RB.code)
     requires LookBehindFragmentRE(re)
     requires CP.compile(re, start, CP.Progress) == (tl, next)
     requires start == |prev|
@@ -2524,7 +2524,7 @@ module LindenElkNfaRep {
   }
 
   /** Nested-fragment variant of `CompileNfaRepMinRE`. */
-  lemma {:isolate_assertions} CompileNfaRepMinNestedRE(k: nat, qid: R.quantid, r1: R.regex, start: nat, tl: CP.treelist, next: int, prev: RB.code)
+  lemma CompileNfaRepMinNestedRE(k: nat, qid: R.quantid, r1: R.regex, start: nat, tl: CP.treelist, next: int, prev: RB.code)
     requires NestedFragmentRE(r1)
     requires CP.repeat_min(k, qid, r1, start, CP.Progress) == (tl, next)
     requires start == |prev|
@@ -2561,7 +2561,7 @@ module LindenElkNfaRep {
   }
 
   /** Nested-fragment variant of `CompileNfaRepOptRE`. */
-  lemma {:isolate_assertions} CompileNfaRepOptNestedRE(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, start: nat, tl: CP.treelist, next: int, prev: RB.code)
+  lemma CompileNfaRepOptNestedRE(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, start: nat, tl: CP.treelist, next: int, prev: RB.code)
     requires NestedFragmentRE(r1)
     requires CP.repeat_optional(k, qid, r1, start, CP.Progress, greedy) == (tl, next)
     requires start == |prev|
@@ -2612,7 +2612,7 @@ module LindenElkNfaRep {
       `CP.compile` emits code satisfying `NfaRepRE`. The `Re_lookaround` case is
       unchanged from the depth-1 original — it emits the single gate leaf and
       never inspects the (possibly nested) body. */
-  lemma {:isolate_assertions} CompileNfaRepNestedRE(re: R.regex, start: nat, tl: CP.treelist, next: int, prev: RB.code)
+  lemma CompileNfaRepNestedRE(re: R.regex, start: nat, tl: CP.treelist, next: int, prev: RB.code)
     requires NestedFragmentRE(re)
     requires CP.compile(re, start, CP.Progress) == (tl, next)
     requires start == |prev|

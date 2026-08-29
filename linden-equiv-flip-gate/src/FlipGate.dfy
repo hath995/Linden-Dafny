@@ -73,7 +73,7 @@ module LindenElkFlipGate {
       `GmOfLive` readout of the MIRRORED `rfF` banks (F5's form) IS the readout of
       `raB`'s own banks (look/quant banks are read by clock only). The nested twin
       of the engine half of `LBK.BackFreshBodyGmTie`. */
-  lemma {:isolate_assertions} BackFreshCoreNested(
+  lemma BackFreshCoreNested(
       rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, str: string, cp: nat,
       ov: LOr.OracleView, cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int, n: nat)
     requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
@@ -188,7 +188,7 @@ module LindenElkFlipGate {
       `LBK.BackFreshBodyGmTie` (which is the `LkBodyGroups == {}` special case).
       The inner gids are NOT in `raB` at all (`FreshBodyMatchGmOuterLBNested`) —
       they are reconstructed by the direction-generic `FLookLoop` seam. */
-  lemma {:isolate_assertions} BackFreshBodyGmTieNested(
+  lemma BackFreshBodyGmTieNested(
       rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, str: string, cp: nat,
       ov: LOr.OracleView, cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
       ncap: int, nlook: int, nquant: int, n: nat)
@@ -292,7 +292,7 @@ module LindenElkFlipGate {
       clock bank (`PIV.GmOfLiveInsideLookAbsent`). Consumer: the (E4) crossing
       coverage arm of the gate step — inside-`S` groups live in `raB` are the
       body's OWN surface groups, covered by `BackFreshBodyGmTieNested`. */
-  lemma {:isolate_assertions} FreshBodyMatchGmOuterLBNested(
+  lemma FreshBodyMatchGmOuterLBNested(
       rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, str: string, cp: nat,
       ov: LOr.OracleView, cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int, n: nat)
     requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
@@ -395,7 +395,7 @@ module LindenElkFlipGate {
   /** Every group of the body that is LIVE in the fresh backward match `raB`
       lands in the passing gate's `LkResult`. Inner-look gids are never live in
       `raB` (F6b); the surface ones are covered by F6a (`SwapGm` preserves keys). */
-  lemma {:isolate_assertions} GateCrossCoverageLBNested(
+  lemma GateCrossCoverageLBNested(
       rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, str: string, cp: nat,
       ov: LOr.OracleView, cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
       ncap: int, nlook: int, nquant: int, n: nat)
@@ -523,7 +523,7 @@ module LindenElkFlipGate {
       body (not inside an inner look) that is LIVE in the fresh BACKWARD body match
       lands in the lid's own backward spec leaf. Via `GateCrossCoverageLBNested`
       at `gmMain = Empty`. */
-  lemma {:isolate_assertions} FreshBodyDirectInBackLeaf(
+  lemma FreshBodyDirectInBackLeaf(
       rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
       A0: nat, lk: AReg.Regs, body: R.regex, g2: nat, ncap: int, nlook: int, nquant: int)
     requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
@@ -573,7 +573,7 @@ module LindenElkFlipGate {
       the lid's own backward spec leaf is live in the fresh BACKWARD body match,
       and the leaf's (ordered) range is the ENDPOINT SWAP of the backward match's
       (reversed) read — the `looktype.Lookbehind?` arm of `GmtTieInside`. Via F6a. */
-  lemma {:isolate_assertions} BackLeafDirectInFresh(
+  lemma BackLeafDirectInFresh(
       rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
       A0: nat, lk: AReg.Regs, body: R.regex, g2: nat, ncap: int, nlook: int, nquant: int)
     requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)

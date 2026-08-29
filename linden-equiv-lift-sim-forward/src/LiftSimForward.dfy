@@ -225,13 +225,20 @@ module LindenElkLiftSimForward {
     }
     var bodycodeB := CP.compile_to_bytecode(R.reverse_regex(host));
     var cdnA := crv.f_look_cdns[A as int];
-    LookNestBackTFromBodyReplayLB(rer, qmB, laA, host, bodycodeB, crv, str, cpA, ov,
-                                  cdnA, crv.f_plus_bc, ncap, nlook, nquant);
     var rbT := LFU.ComputeTr(rer, [LS.Areg(T.Translate(host))], inpA, LG.Empty, WP.Backward);
     var rb := LT.TreeRes(rbT, LG.Empty, inpA, WP.Backward);
     var rfP := AI.FFindMatchPlus(bodycodeB, host, crv.f_plus_bc, str, ov, LAnc.Backward, cpA,
                                  AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant),
                                  0, cdnA).0;
+    // (2026-08-29 proof-engineering) the LB carrier's three quantified predicates are kept OUT of the
+    // context: each use below re-invokes the carrier inside an `assert … by {}` exposing only the
+    // instance it needs. Here: the None-iff + the clock invariants of the fresh run.
+    assert (rfP.Some? <==> rb.Some?)
+        && (rfP.Some? ==> CM.LookClkSetWithCp(rfP.value.look_regs) && CM.LookCpSetWithClk(rfP.value.look_regs)
+                          && CM.LookCpsLE(rfP.value.look_regs, |str|)) by {
+      LookNestBackTFromBodyReplayLB(rer, qmB, laA, host, bodycodeB, crv, str, cpA, ov,
+                                    cdnA, crv.f_plus_bc, ncap, nlook, nquant);
+    }
     // the backward leaf exists (hypothesis) — unfold SubFirstLeafAt to rb
     assert LidDir(crv, A as int) == WP.Backward;             // dispatch: laA.Lookbehind?
     var lsubA := SubFirstLeafAt(rer, crv, str, A as int, res1);
@@ -291,13 +298,17 @@ module LindenElkLiftSimForward {
     var bodyA1 := NI.LookBodyOfRE(re, A1);
     assert bodyA1 == NI.LookBodyOfRE(host, A1);
 
-    // (a) the FORWARD carrier at A1 (leaf-witness g): crossed + dominant on rf_A
-    assert LookNestOkTTop(host, Sh, gmtH, rfA);
+    // (a) the FORWARD carrier at A1 (leaf-witness g): crossed + dominant on rf_A — the
+    //     `LookNestOkTTop` instance at A1, with the quantified carrier scoped to this block
     assert g in Sh && g in gmtH && g in PIV.CapIds(NI.LookBodyOfRE(host, A1));
     assert NI.LookPathPresent(host, rfA.capture_regs.a_clk, rfA.quant_regs.a_clk, -1, A1)
            && AI.get_idx(rfA.look_regs.a_clk, A1 as int) >= 0
            && AI.get_idx(rfA.look_regs.a_clk, A1 as int)
-              >= NI.MxAtLidLk(host, rfA.quant_regs.a_clk, -1, A1);
+              >= NI.MxAtLidLk(host, rfA.quant_regs.a_clk, -1, A1) by {
+      LookNestBackTFromBodyReplayLB(rer, qmB, laA, host, bodycodeB, crv, str, cpA, ov,
+                                    cdnA, crv.f_plus_bc, ncap, nlook, nquant);
+      assert LookNestOkTTop(host, Sh, gmtH, rfA);
+    }
     var L1 := AI.get_idx(rfA.look_regs.a_clk, A1 as int);
     NI.LookPathDomIntroTop(host, rfA.capture_regs.a_clk, rfA.quant_regs.a_clk, -1, A1, L1);
     assert NI.LookPathDom(host, L1, rfA.quant_regs.a_clk, A1);
@@ -391,8 +402,10 @@ module LindenElkLiftSimForward {
     }
     // the carrier: region equality at A1 — the ⊆ direction pushes g in, the
     // ⊇ direction's value clause gives the value tie.
-    assert LookNestBackTTopDeep(rer, host, crv, str, ov, Sh, gmtH, rfA, ncap, nlook, nquant);
-    assert g in lsub1rf.value && gmtH[g] == lsub1rf.value[g] by {
+    assert g in lsub1rf.value && gmtH[g] == lsub1rf.value[g] by {   // the deep carrier's instance at A1, scoped
+      LookNestBackTFromBodyReplayLB(rer, qmB, laA, host, bodycodeB, crv, str, cpA, ov,
+                                    cdnA, crv.f_plus_bc, ncap, nlook, nquant);
+      assert LookNestBackTTopDeep(rer, host, crv, str, ov, Sh, gmtH, rfA, ncap, nlook, nquant);
       assert g in gmtH;
     }
 
@@ -679,12 +692,19 @@ module LindenElkLiftSimForward {
       OracleColsOkRestrict(rer, qm, qmB, str);
     }
     var cdnA := crv.f_look_cdns[A as int];
-    LookNestBackTFromBodyReplay(rer, qmB, laA, host, bodycode, endlH, 0, crv, str, cpA, ov,
-                                cdnA, crv.f_plus_bc, ncap, nlook, nquant);
     var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(host))], inpA, LG.Empty, WP.Forward);
     var rfP := AI.FFindMatchPlus(bodycode, host, crv.f_plus_bc, str, ov, LAnc.Forward, cpA,
                                  AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant),
                                  0, cdnA).0;
+    // (2026-08-29 proof-engineering) the forward carrier's three quantified predicates are kept OUT of
+    // the context: each use below re-invokes the carrier inside an `assert … by {}` exposing only the
+    // instance it needs. Here: the None-iff + the clock invariants of the fresh run.
+    assert (rfP.Some? <==> LT.FirstLeaf(t, inpA).Some?)
+        && (rfP.Some? ==> CM.LookClkSetWithCp(rfP.value.look_regs) && CM.LookCpSetWithClk(rfP.value.look_regs)
+                          && CM.LookCpsLE(rfP.value.look_regs, |str|)) by {
+      LookNestBackTFromBodyReplay(rer, qmB, laA, host, bodycode, endlH, 0, crv, str, cpA, ov,
+                                  cdnA, crv.f_plus_bc, ncap, nlook, nquant);
+    }
     // the leaf exists (hypothesis) — unfold SubFirstLeafAt to FirstLeaf(t)
     assert LT.FirstLeaf(t, inpA) == LT.TreeRes(t, LG.Empty, inpA, WP.Forward);
     assert LidDir(crv, A as int) == WP.Forward by { assert crv.f_look_types[A as int] == laA; }   // laA.Lookahead? (dispatch)
@@ -756,13 +776,17 @@ module LindenElkLiftSimForward {
     var bodyA1 := NI.LookBodyOfRE(re, A1);
     assert bodyA1 == NI.LookBodyOfRE(host, A1);
 
-    // (a) the FORWARD carrier at A1 (leaf-witness g): crossed + dominant on rf_A
-    assert LookNestOkTTop(host, Sh, gmtH, rfA);
+    // (a) the FORWARD carrier at A1 (leaf-witness g): crossed + dominant on rf_A — the
+    //     `LookNestOkTTop` instance at A1, with the quantified carrier scoped to this block
     assert g in Sh && g in gmtH && g in PIV.CapIds(NI.LookBodyOfRE(host, A1));
     assert NI.LookPathPresent(host, rfA.capture_regs.a_clk, rfA.quant_regs.a_clk, -1, A1)
            && AI.get_idx(rfA.look_regs.a_clk, A1 as int) >= 0
            && AI.get_idx(rfA.look_regs.a_clk, A1 as int)
-              >= NI.MxAtLidLk(host, rfA.quant_regs.a_clk, -1, A1);
+              >= NI.MxAtLidLk(host, rfA.quant_regs.a_clk, -1, A1) by {
+      LookNestBackTFromBodyReplay(rer, qmB, laA, host, bodycode, endlH, 0, crv, str, cpA, ov,
+                                  cdnA, crv.f_plus_bc, ncap, nlook, nquant);
+      assert LookNestOkTTop(host, Sh, gmtH, rfA);
+    }
     var L1 := AI.get_idx(rfA.look_regs.a_clk, A1 as int);
     NI.LookPathDomIntroTop(host, rfA.capture_regs.a_clk, rfA.quant_regs.a_clk, -1, A1, L1);
     assert NI.LookPathDom(host, L1, rfA.quant_regs.a_clk, A1);
@@ -877,8 +901,10 @@ module LindenElkLiftSimForward {
     }
     // the carrier: region equality at A1 — the ⊆ direction pushes g in, the
     // ⊇ direction's value clause gives the value tie.
-    assert LookNestBackTTopDeep(rer, host, crv, str, ov, Sh, gmtH, rfA, ncap, nlook, nquant);
-    assert g in lsub1rf.value && gmtH[g] == lsub1rf.value[g] by {
+    assert g in lsub1rf.value && gmtH[g] == lsub1rf.value[g] by {   // the deep carrier's instance at A1, scoped
+      LookNestBackTFromBodyReplay(rer, qmB, laA, host, bodycode, endlH, 0, crv, str, cpA, ov,
+                                  cdnA, crv.f_plus_bc, ncap, nlook, nquant);
+      assert LookNestBackTTopDeep(rer, host, crv, str, ov, Sh, gmtH, rfA, ncap, nlook, nquant);
       assert g in gmtH;
     }
 

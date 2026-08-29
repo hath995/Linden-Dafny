@@ -218,7 +218,7 @@ module LindenElkFlipKeystone {
       forward run's readout agrees with that leaf OUTSIDE the inner-look gids.
       Oracle correctness for the flipped table comes from F3 (the site's
       whole-string column correctness, restricted to the body's lids). */
-  lemma {:isolate_assertions} LBEngineLeafFlip(
+  lemma LBEngineLeafFlip(
       rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, str: string, cp: nat,
       cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
       cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int, n: nat)
@@ -374,7 +374,7 @@ module LindenElkFlipKeystone {
       backward replay `raB` matches (None-iff) the spec `LkResult`, and on a
       match the endpoint-swapped spec value agrees with the FRESH mirrored
       run's readout on the SURFACE gids `DefGroups \ LkBodyGroups`. */
-  lemma {:isolate_assertions} LkReplayMatchesSpecLBNested(
+  lemma LkReplayMatchesSpecLBNested(
       rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, str: string, cp: nat,
       cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
       cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
