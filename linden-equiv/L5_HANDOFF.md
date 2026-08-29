@@ -577,9 +577,12 @@ FULL-file (every symbol): all 47 non-LiftSim/non-Api files green — `MainTheore
 `ActionsTreeRepRE` 9810/0, `FlipGate` 2425/0, `NfaRepRE` 2177/0, `LookBehindKeystone` 1356/0,
 `FlipKeystone` 1201/0, `FlipClosed` 513/0, the rest ≤ 304 — plus the two Api files. LiftSim: full-file
 minus the four giants (`DeepFindRec*`, `ForwardFindRec*`, `LiftPreserveGatePassLkRec`, `MainTheoremL5`) —
-first attempt OOM-killed at 89 min (my stacking; see the memory-cap note), re-queued as the LAST stage of the serialized
-queue below — if this line still says so, read `scratchpad/q3/summary.txt` of session 4b2a334e (or just re-run it:
-`fullrun.sh` with `/noProc:{DeepFindRec,ForwardFindRec,LiftPreserveGatePassLkRec,MainTheoremL5}*`) — PENDING_LIFTSIM_FULL.
+every attempt to verify LiftSim in ONE process was OOM-killed — scripted full-file at CORES=4 (twice, 81–89 min in)
+and the `lem pack` member `linden-equiv-lift-sim` at `cores = "2"` (1 h 54 min in, 2026-08-29 02:05, no proof errors).
+The worst LB DEEP-arm VCs need ~30 GB of z3 each. LiftSim's whole-file certification therefore stands on the
+per-symbol chain (every lemma in the dependency graph of `MainTheoremL5` was re-verified this session — the split
+arms, the LB pieces at CORES=2, the carriers, `ActionsTreeRepLkFRec`, the mediums, `MainTheoremL5` 4447/0) plus the
+wf sweep 1366/0; a single-process run needs E2 (split `LindenElkLiftSim` into layer modules → lem packages).
 The giants at the guard text `011ed62`: `LiftPreserveGatePassLkRec` 2243/0 (21.9 min), the split arms + parents below;
 `MainTheoremL5` 4447/0 (40.7 min) at the WIDENED text (§ below). **A REAL HOLE: `ActionsTreeRepLkFRec`** (LiftSim:20261, 850 lines, C3.6 part 1 `9f4f08a` 2026-08-17) failed
 per-symbol too (4265/1): its `min == 1` quantifier seam called the DEPTH-1 `CE.BoolCheckInsert` (requires
