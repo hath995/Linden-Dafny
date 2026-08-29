@@ -30308,6 +30308,7 @@ module LindenElkLiftSim {
     M.QmapOkFromEntries(re, qm);
     OE.LmapOkOfLmOf(re, qm);
     assert AR.QmapOk(re, qm) && AR.LmapOk(re, qm);
+    assert {:split_here} true;   // (E3) section boundary: its own assertion batch
     // ---- THE NESTED ORACLE ENTRY (formerly the sole hypothesis) ------------
     assert LL.OracleOkSuffix(rer, qm, inp) by {
       var crv0 := CP.FFullCompilation(ast);
@@ -30358,6 +30359,7 @@ module LindenElkLiftSim {
       }
     }
 
+    assert {:split_here} true;   // (E3) section boundary: its own assertion batch
     // ---- the spec tree (Rec tier) ----------------------------------------
     LFU.ComputeTrIsTree(rer, [LS.Areg(T.Translate(re))], inp, LG.Empty, WP.Forward);
     var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(re))], inp, LG.Empty, WP.Forward);
@@ -30376,6 +30378,7 @@ module LindenElkLiftSim {
     ComputePikeSubtreeLk(rer, [LS.Areg(T.Translate(re))], inp, LG.Empty, WP.Forward, fuel0, t);
     assert PTL.PikeSubtreeLk(t);
 
+    assert {:split_here} true;   // (E3) section boundary: its own assertion batch
     // ---- the CHECKED tree (Rec walk carrier) ------------------------------
     WkE.WalkOkEntryNested(re);
     assert EL.PikeLkActionsRec([LS.Areg(T.Translate(re))]) by {
@@ -30398,6 +30401,7 @@ module LindenElkLiftSim {
     assert TREP.TreeRepRE(qm, tstar, code, 0, inp, false);
     assert TT.TreeThreadRE(rer, qm, code, inp, tstar, 0, false);
 
+    assert {:split_here} true;   // (E3) section boundary: its own assertion batch
     // ---- the engine pipeline ---------------------------------------------
     var crv := CP.FFullCompilation(ast);
     M.FFullCompilationFactsNested(ast);   // L4: nested ast is NOT LookBehindFragmentRE
@@ -30424,6 +30428,7 @@ module LindenElkLiftSim {
     var fmres := AI.FFindMatch(code, str, inits, ov, LAnc.Forward, crv.f_main_cdns);
     var result := fmres.0;
 
+    assert {:split_here} true;   // (E3) section boundary: its own assertion batch
     // ---- gate statics + look tables ---------------------------------------
     LTB.FFullCompilationLookOk(ast);
     assert LTB.LookTablesOk(re, crv) by {
@@ -30442,6 +30447,7 @@ module LindenElkLiftSim {
     GateStaticsFromTablesNested(qm, re, crv, ncap, nlook, nquant);
     assert GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant);
 
+    assert {:split_here} true;   // (E3) section boundary: its own assertion batch
     // ---- the Rec composite lockstep ---------------------------------------
     PSM.InitialPikeInvFullREAtCpNested(rer, qm, re, code, endl, ngroups, str, 0, tstar,
                                        inits, ncap, nlook, nquant);
@@ -30458,6 +30464,7 @@ module LindenElkLiftSim {
                          inits, crv.f_main_cdns, result, ncap, nlook, nquant);
     assert BestTieLkNestedTop(rer, re, crv, str, ov, S, LT.FirstLeaf(t, inp), result, ncap, nlook, nquant);
 
+    assert {:split_here} true;   // (E3) section boundary: its own assertion batch
     // ---- stage the engine answer ------------------------------------------
     var bc := AI.FBuildCapture(crv, str, ov);
     assert AI.FMatcher(crv, str) == bc.0;
@@ -30521,6 +30528,7 @@ module LindenElkLiftSim {
       assert BestTieLkNestedTop(rer, re, crv, str, ov, S, Some(leaf), Some(thread), ncap, nlook, nquant);
       M.FirstLeafOrdered(t, inp, leaf);
 
+      assert {:split_here} true;   // (E3) section boundary: its own assertion batch
       // ==== ENDPOINT: OPAQUE endpoint facts (adapters + scoped by-blocks) ====
       // Heavy quantified endpoint facts are produced by the per-fact adapters as
       // OPAQUE wrappers (M.*O) so MainTheoremL4's ~5000-fact context carries no
@@ -30572,6 +30580,7 @@ module LindenElkLiftSim {
           == Some(AI.filter_reset(ast, synthetic.capture_regs, synthetic.look_regs,
                                   synthetic.quant_regs, -1));
 
+      assert {:split_here} true;   // (E3) section boundary: its own assertion batch
       // ---- extraction ------------------------------------------------------
       assert EL.BoolTreeLk(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), BS.CannotExit, t);
       assert LS.IsTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), LG.Empty, WP.Forward, t);
