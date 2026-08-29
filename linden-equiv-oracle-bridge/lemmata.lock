@@ -1,0 +1,72 @@
+lock-version = 1
+solver = "lem-mvs/1"
+dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
+manifest-hash = "sha256:a4510381fe288e54f474d2c4b92711926c738fa5dd69310f1815fd1c19a9e659"
+
+[[package]]
+name = "linden-reasoning"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:b07203061f45d0aedc2e85589a423ca77ae1fb6891f008d0c862986f856ca5e0"
+doo-hash = "e93b2c32d0f517125db22a55e78b37fd1f50c05c635dff1d95bcea6aba46793f"
+
+[[package]]
+name = "regex-engine"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:c0496b5df48398a7182cd2e960939a0437cf0af35544d3dffcae5001fb89c467"
+doo-hash = "3e54d11353d2af098e3929033c0e9e70122664e47d76be708a3451b503062f7f"
+
+[[package]]
+name = "linden-warblre"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:6685a9357275b3a18105c86604be03fa3b9566c9f0fa090d5f7067d24d6edee4"
+doo-hash = "542b6d241bed45b89dd836789dae6040b04ac8cf8d5e7a980169232b79d05923"
+
+[[package]]
+name = "linden-semantics-core"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:489389b91e40a50ae0ab58a23d2565df73cc389ba06d6cc8804d3e810a870feb"
+doo-hash = "b155df3deb400a83252dd10ac5774620b704f5ee395a4ae6f1067322ee8494aa"
+
+[[package]]
+name = "linden-equiv-look-tables"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-look-tables"
+
+[[package]]
+name = "linden-equiv-oracle-sweep"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-sweep"
+
+[[package]]
+name = "linden-equiv-nfa-rep-re"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-nfa-rep-re"
+
+[[package]]
+name = "linden-equiv-oracle-reach"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-reach"

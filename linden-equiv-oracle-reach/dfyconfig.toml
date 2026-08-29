@@ -3,4 +3,4 @@
 includes = ["../linden-equiv-look-tables/src/**/*.dfy"]
 
 [options]
-library = ["deps/regex-engine.doo"]
+library = ["deps/linden-equiv-oracle-sweep.doo", "deps/regex-engine.doo"]
