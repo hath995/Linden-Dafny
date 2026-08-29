@@ -258,6 +258,8 @@ module LindenElkLiftSimForward {
                                     AI.FInitState(bodycodeB, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
                                                   AReg.init_regs(nquant), 0, AI.cp_context(cpA, str, LAnc.Backward)),
                                     ov, LAnc.Backward, cdnA).0 by {
+      hide M.FreshBodyMatch; hide AI.FFindMatch;   // (2026-08-29) a congruence step over the lemma's ensures —
+                // left unfoldable, Z3 explores the engine loop here and the batch runs past 2700 s in the split module
       FG.FreshBodyMatchLBUnfold(crv, str, A as int, res1, ov, host, ncap, nlook, nquant);
     }
     assert rfA == rfFresh.value by {                        // (L5 F7f perf) via the helper
