@@ -1281,11 +1281,13 @@ module LindenElkLiftSimCore {
         assert EL.PikeLkRegex(r);
         match r
         case Epsilon =>
+          assert {:split_here} true;   // (E3) one assertion batch per arm
           assert pcmid == pc;
           WO.WalkOkEpsilon(acts, code, pc, ATR.EaOf(b));
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
           tcan := ActionsTreeRepLkF(rer, qm, cont, code, pc, inp, b, t, n - 1);
         case Character(cd) => {
+          assert {:split_here} true;   // (E3) one assertion batch per arm
           var ce :| NR.GetPcRE(code, pc) == Some(RB.Consume(ce)) && AR.ExpectationMatches(rer, ce, cd);
           AR.ReadAgree(rer, ce, cd, inp);
           match LC.ReadChar(rer, cd, inp, WP.Forward) {
@@ -1309,6 +1311,7 @@ module LindenElkLiftSimCore {
           }
         }
         case Disjunction(r1, r2) => {
+          assert {:split_here} true;   // (E3) one assertion batch per arm
           EL.PikeLkActionsConsIff(LS.Areg(r1), cont);
           EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
           var e1: nat :| NR.GetPcRE(code, pc) == Some(RB.Fork(pc + 1, e1 + 1))
@@ -1349,6 +1352,7 @@ module LindenElkLiftSimCore {
           }
         }
         case Sequence(r1, r2) => {
+          assert {:split_here} true;   // (E3) one assertion batch per arm
           EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
           EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
           assert AR.NfaRepL(rer, qm, L.Sequence(r1, r2), code, pc, pcmid);
@@ -1370,6 +1374,7 @@ module LindenElkLiftSimCore {
           tcan := ActionsTreeRepLkF(rer, qm, na, code, pc, inp, b, t, nn);
         }
         case Quantified(greedy, min, delta, r1) => {
+          assert {:split_here} true;   // (E3) one assertion batch per arm
           var gidl := L.DefGroups(r1);
           if min > 0 {
             match delta {
@@ -1697,6 +1702,7 @@ module LindenElkLiftSimCore {
           }
         }
         case Group(gid, r1) => {
+          assert {:split_here} true;   // (E3) one assertion batch per arm
           EL.PikeLkActionsConsIff(LS.Aclose(gid), cont);
           EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Aclose(gid)] + cont);
           var e1: nat :| NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(CP.start_reg(gid as int)))
@@ -1728,6 +1734,7 @@ module LindenElkLiftSimCore {
           }
         }
         case AnchorR(la) => {
+          assert {:split_here} true;   // (E3) one assertion batch per arm
           var ra: R.anchor :| NR.GetPcRE(code, pc) == Some(RB.AnchorAssertion(ra))
                               && T.TrAnchor(ra) == la;
           if LS.AnchorSatisfied(rer, la, inp) {
@@ -1749,6 +1756,7 @@ module LindenElkLiftSimCore {
           }
         }
         case LookaroundR(lk, r1) => {
+          assert {:split_here} true;   // (E3) one assertion batch per arm
           // THE GATE. NfaRepL pins the oracle instruction + the looks-table
           // row; TreeRepLkRE's gate rule is decided by the same FUNCTIONAL
           // verdict BoolTreeLk's LkGateOk used — no oracle bit involved. The
@@ -1777,6 +1785,7 @@ module LindenElkLiftSimCore {
           }
         }
         case Backreference(gid) =>   // not pike
+          assert {:split_here} true;   // (E3) one assertion batch per arm
     }
   }
 
@@ -5524,11 +5533,13 @@ module LindenElkLiftSimCore {
         assert EL.PikeLkRegexRec(r);
         match r
         case Epsilon =>
+          assert {:split_here} true;   // (E3) one assertion batch per arm
           assert pcmid == pc;
           WO.WalkOkEpsilon(acts, code, pc, ATR.EaOf(b));
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
           tcan := ActionsTreeRepLkFRec(rer, qm, cont, code, pc, inp, b, t, n - 1);
         case Character(cd) => {
+          assert {:split_here} true;   // (E3) one assertion batch per arm
           var ce :| NR.GetPcRE(code, pc) == Some(RB.Consume(ce)) && AR.ExpectationMatches(rer, ce, cd);
           AR.ReadAgree(rer, ce, cd, inp);
           match LC.ReadChar(rer, cd, inp, WP.Forward) {
@@ -5552,6 +5563,7 @@ module LindenElkLiftSimCore {
           }
         }
         case Disjunction(r1, r2) => {
+          assert {:split_here} true;   // (E3) one assertion batch per arm
           EL.PikeLkActionsRecConsIff(LS.Areg(r1), cont);
           EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont);
           var e1: nat :| NR.GetPcRE(code, pc) == Some(RB.Fork(pc + 1, e1 + 1))
@@ -5592,6 +5604,7 @@ module LindenElkLiftSimCore {
           }
         }
         case Sequence(r1, r2) => {
+          assert {:split_here} true;   // (E3) one assertion batch per arm
           EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont);
           EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
           assert AR.NfaRepL(rer, qm, L.Sequence(r1, r2), code, pc, pcmid);
@@ -5613,6 +5626,7 @@ module LindenElkLiftSimCore {
           tcan := ActionsTreeRepLkFRec(rer, qm, na, code, pc, inp, b, t, nn);
         }
         case Quantified(greedy, min, delta, r1) => {
+          assert {:split_here} true;   // (E3) one assertion batch per arm
           var gidl := L.DefGroups(r1);
           if min > 0 {
             match delta {
@@ -5940,6 +5954,7 @@ module LindenElkLiftSimCore {
           }
         }
         case Group(gid, r1) => {
+          assert {:split_here} true;   // (E3) one assertion batch per arm
           EL.PikeLkActionsRecConsIff(LS.Aclose(gid), cont);
           EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Aclose(gid)] + cont);
           var e1: nat :| NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(CP.start_reg(gid as int)))
@@ -5971,6 +5986,7 @@ module LindenElkLiftSimCore {
           }
         }
         case AnchorR(la) => {
+          assert {:split_here} true;   // (E3) one assertion batch per arm
           var ra: R.anchor :| NR.GetPcRE(code, pc) == Some(RB.AnchorAssertion(ra))
                               && T.TrAnchor(ra) == la;
           if LS.AnchorSatisfied(rer, la, inp) {
@@ -5992,6 +6008,7 @@ module LindenElkLiftSimCore {
           }
         }
         case LookaroundR(lk, r1) => {
+          assert {:split_here} true;   // (E3) one assertion batch per arm
           // THE GATE. NfaRepL pins the oracle instruction + the looks-table
           // row; TreeRepLkRE's gate rule is decided by the same FUNCTIONAL
           // verdict BoolTreeLk's LkGateOk used — no oracle bit involved. The
@@ -6020,6 +6037,7 @@ module LindenElkLiftSimCore {
           }
         }
         case Backreference(gid) =>   // not pike
+          assert {:split_here} true;   // (E3) one assertion batch per arm
     }
   }
 
