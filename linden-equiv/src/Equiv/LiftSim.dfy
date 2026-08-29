@@ -27288,7 +27288,8 @@ module LindenElkLiftSim {
   /** (perf) The BASE arm of `ForwardFindRecLB` (a LOOKBEHIND owner), extracted: the whole LB arm
       OOM-kills the 80G slice alone at CORES=4. Mutually recursive with `ForwardFindRec` on
       `(|LookIds(host)|, arm)`: ForwardFindRec 2 > ForwardFindRecLB 1 > this 0. */
-  lemma ForwardFindRecLBBase(
+  lemma {:isolate_assertions} ForwardFindRecLBBase(   // TODO(E3): opaque blocks; as one VC it exceeds 900 s
+
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
