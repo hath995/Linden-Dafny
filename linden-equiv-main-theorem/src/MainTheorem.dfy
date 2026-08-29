@@ -17546,6 +17546,7 @@ module LindenElkMain {
     }
     CM.FFindMatchCapWriteFrame(code, str, inits, ov, LAnc.Forward, cdn, cap, Sc);
 
+    assert {:split_here} true;   // (E3) section boundary: its own assertion batch
     if result.Some? {
       var lk := result.value.look_regs;
       var cp' := result.value.capture_regs;
@@ -17554,6 +17555,7 @@ module LindenElkMain {
       assert CM.RegsAgreeOutside(cp', cap, Sc);
 
       // (b)
+      assert {:split_here} true;   // (E3) section boundary: its own assertion batch
       forall l: int | 1 <= l <= R.max_lookaround(ast) && AReg.get_cp(lk, l).Some?
         ensures exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
       {
@@ -17569,6 +17571,7 @@ module LindenElkMain {
       }
 
       // (c')
+      assert {:split_here} true;   // (E3) section boundary: its own assertion batch
       forall l: int, la: R.lookaround, body: R.regex |
         1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body)
         ensures CM.RegsAgreeInside(cp', AReg.init_regs(ncap), PIV.CaptureRegs(body))
