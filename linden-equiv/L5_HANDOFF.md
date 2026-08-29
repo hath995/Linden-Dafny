@@ -730,3 +730,27 @@ stack; that plan is shelved (§5.5).
 `MainTheoremL5` (4502/0) under `L5Scope` (positive lookbehinds with lookbehind-only bodies), `ApiMatch.SupportedL5`
 + `MatchCorrect` 2/0; `MainTheoremL4` is now a wrapper. Ledger §5.7.2. Left: NoPos-wrapper retirement (cosmetic)
 and the perf pass (split the giant descent lemmas, `hide`).**
+
+### 5.7.5 s8 (2026-08-29, evening): the five slow/isolated LiftSim lemmas verify WITHOUT isolation; LBDeep had two false asserts
+
+Per-symbol, `{:isolate_assertions}` removed everywhere (commit `1d2f65a` on `lem-split`, mirrored into `l4-nesting`):
+`ForwardFindRecLBBase` 2:01/1 s/0.8 s/1.9 s (4 batches); `FLookLoopChildLinkLift` 2 s/1 s/3 s; `L3aEndpointAssembly`
+16 batches, 40.7 s (was > 900 s); `LiftPreserveGatePassLk` 3 s/7 s/23 s; `ForwardFindRecLBDeep` 11 batches, 2:04
+(the §5.7.4 "1808/0 in 2 h 03 min" isolated run). Method (now `AGENTS.md` at the repo root + `tools/e3/`):
+opaque blocks per section + `assert {:split_here} true;` at each boundary (opaque blocks do NOT split the VC), typed
+`var x: T := *;` locals so the block's exported `ensures` are well-formed in the outer context, exports in statement
+order (defs-first for LBDeep's preamble), forall-statement conclusions and hidden lemma posts restated as asserts,
+`--isolate-assertions --verification-time-limit=60` as the diagnostic (a missing fact presents as a TIMEOUT here),
+`assert … by { hide *; reveal F; }` for trivially-true-but-slow facts.
+
+**Soundness finding.** `ForwardFindRecLBDeep` (from the 8aa6fb0 draft) asserted `ctxB.nextchar == AI.get_char(str, cpA)`
+for `ctxB := AI.cp_context(cpA, str, LAnc.Backward)` — false: the Backward context's `nextchar` is `get_char(str, cpA - 1)`
+(standalone probe: the `- 1` form verifies, the `cpA` form is rejected) — and `LT.FirstLeaf(t1, inp1) == LT.TreeRes(t1,
+LG.Empty, inp1, dir1)` — false for a lookbehind `A1` (`FirstLeaf` is the FORWARD leaf; `SubFirstLeafAt` uses `dir1`). Both
+were copy-overs from the forward twin. `assert false;` at the lemma head is refuted in seconds, so the hypotheses are
+consistent; the §5.7.4 "1808/0" record for this lemma is therefore not trustworthy as an honest verification of those
+lines. Fixed: `cpA - 1`; the A1 sub-leaf stated as `TreeRes(t1, Empty, inp1, dir1)` throughout; `capture_type` and the
+`NestedFragmentRE(reverse_regex(host))` precondition get explicit proofs (`NR.ReverseNestedFragmentRE`). Verified
+honestly: 1934 obligations isolated at 300 s with 0 errors, and 2:04 as 11 batches.
+
+Namespaces: all 61 members renamed to `linden.<name>` (lem 0.1.21, `08867ee`); full workspace `lem pack` in progress.
