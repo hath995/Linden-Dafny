@@ -540,8 +540,11 @@ module LindenElkLiftSimMain {
     assert {:split_here} true;   // (E3) section boundary: its own assertion batch
     // ---- the engine pipeline ---------------------------------------------
     var crv := CP.FFullCompilation(ast);
+    assert {:split_here} true;   // (E3) engine-pipeline sub-batch
     M.FFullCompilationFactsNested(ast);   // L4: nested ast is NOT LookBehindFragmentRE
+    assert {:split_here} true;   // (E3) engine-pipeline sub-batch
     assert crv.f_main_ast == ast && crv.f_main_bc == code && crv.f_main_cdns == LCdn.compile_cdns(ast);
+    assert {:split_here} true;   // (E3) engine-pipeline sub-batch
     assert |crv.f_look_types| == |crv.f_look_ast| by {                    // (L5 F7c-4) table shape
       var maxlook0 := R.max_lookaround(ast);
       var seed := CP.FCompiled(ast, CP.compile_to_bytecode(R.lazy_prefix(ast)), LCdn.compile_cdns(ast),
@@ -553,15 +556,25 @@ module LindenElkLiftSimMain {
       assert LTB.SameLookSizes(seed, crv);
       assert |seed.f_look_types| == |seed.f_look_ast|;
     }
+    assert {:split_here} true;   // (E3) engine-pipeline sub-batch
     var ov := AI.FBuildOracle(crv, str);
+    assert {:split_here} true;   // (E3) engine-pipeline sub-batch
     OB.FBuildOracleViewLen(crv, str);                     // |ov| == |str| + 1
+    assert {:split_here} true;   // (E3) engine-pipeline sub-batch
     assert qm.ov == ov;
+    assert {:split_here} true;   // (E3) engine-pipeline sub-batch
     var capture := AReg.init_regs(ncap);
+    assert {:split_here} true;   // (E3) engine-pipeline sub-batch
     var look := AReg.init_regs(nlook);
+    assert {:split_here} true;   // (E3) engine-pipeline sub-batch
     var quant := AReg.init_regs(nquant);
+    assert {:split_here} true;   // (E3) engine-pipeline sub-batch
     var ctx := AI.cp_context(0, str, LAnc.Forward);
+    assert {:split_here} true;   // (E3) engine-pipeline sub-batch
     var inits := AI.FInitState(code, 0, capture, look, quant, 0, ctx);
+    assert {:split_here} true;   // (E3) engine-pipeline sub-batch
     var fmres := AI.FFindMatch(code, str, inits, ov, LAnc.Forward, crv.f_main_cdns);
+    assert {:split_here} true;   // (E3) engine-pipeline sub-batch
     var result := fmres.0;
 
     assert {:split_here} true;   // (E3) section boundary: its own assertion batch
