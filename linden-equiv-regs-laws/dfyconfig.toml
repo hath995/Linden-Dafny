@@ -2,4 +2,4 @@
 # Dafny defaults to **/*.dfy, covering src, tests, and materialized deps.
 
 [options]
-library = ["deps/regex-engine.doo"]
+library = ["deps/linden.regex-engine.doo"]

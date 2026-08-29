@@ -1,5 +1,5 @@
-includes = ["src/**/*.dfy"]
+# Created by lem: the restored dependency closure. No `includes` key —
+# Dafny defaults to **/*.dfy, covering src, tests, and materialized deps.
 
 [options]
-library = ["deps/dafnycheck.doo"]
-standard-libraries = true
+library = []

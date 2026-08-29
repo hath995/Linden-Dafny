@@ -1,3 +1,5 @@
+# Created by lem: the restored dependency closure. No `includes` key —
+# Dafny defaults to **/*.dfy, covering src, tests, and materialized deps.
+
 [options]
-standard-libraries = true
-library = ["deps/linden-warblre.doo"]
+library = ["deps/linden.warblre.doo"]

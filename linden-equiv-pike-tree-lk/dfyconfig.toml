@@ -2,4 +2,4 @@
 # Dafny defaults to **/*.dfy, covering src, tests, and materialized deps.
 
 [options]
-library = ["deps/linden-engine-model.doo", "deps/linden-engine.doo", "deps/linden-semantics-core.doo", "deps/linden-warblre.doo"]
+library = ["deps/linden.engine-model.doo", "deps/linden.engine.doo", "deps/linden.semantics-core.doo", "deps/linden.warblre.doo"]
