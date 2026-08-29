@@ -1,0 +1,94 @@
+lock-version = 1
+solver = "lem-mvs/1"
+dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
+manifest-hash = "sha256:1ebca37c1c2a28c3e24a3c271cbdaf4bffc03fffc934757a0465555f9d8b9b35"
+
+[[package]]
+name = "linden.equiv-look-tables"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-look-tables"
+
+[[package]]
+name = "linden.equiv-oracle-reach"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-reach"
+
+[[package]]
+name = "linden.equiv-oracle-sweep"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-sweep"
+
+[[package]]
+name = "linden.warblre"
+class = 1
+version = "1.0.3"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-warblre"
+
+[[package]]
+name = "linden.reasoning"
+class = 1
+version = "1.0.1"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-reasoning"
+
+[[package]]
+name = "linden.semantics-core"
+class = 1
+version = "1.0.2"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-semantics-core"
+
+[[package]]
+name = "linden.regex-engine"
+class = 1
+version = "1.0.1"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/regex-engine"
+
+[[package]]
+name = "linden.equiv-mirror"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-mirror"
+
+[[package]]
+name = "linden.equiv-nfa-rep-re"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-nfa-rep-re"
+
+[[package]]
+name = "linden.equiv-oracle-build"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-build"

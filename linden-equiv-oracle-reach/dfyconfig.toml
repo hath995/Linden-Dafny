@@ -1,0 +1,6 @@
+# Created by lem: the restored dependency closure. No `includes` key —
+# Dafny defaults to **/*.dfy, covering src, tests, and materialized deps.
+includes = ["../linden-equiv-look-tables/src/**/*.dfy"]
+
+[options]
+library = ["deps/linden-equiv-oracle-sweep.doo", "deps/regex-engine.doo"]

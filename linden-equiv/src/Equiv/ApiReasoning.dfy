@@ -7,7 +7,6 @@
 //       (SimpleRaw / RawGidContainer / POnlyRaw) that unfold on concrete ASTs
 //   L3  the transfer principle (MatchIsFirstLeaf) + Reduce.dfy's TA ladder,
 //       for bespoke proofs beyond what L1/L2 state
-include "ApiMatch.dfy"
 
 /** Pattern-level theorems about `Match`'s answer: capture-array shape, per-
     group ranges, capture bounds, and the typed-capture content theorem — all

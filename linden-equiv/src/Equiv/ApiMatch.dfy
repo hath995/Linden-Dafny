@@ -4,7 +4,6 @@
 //
 // VMC-guideline style: Match is a plain function with NO postcondition; its
 // correctness is the separate lemma MatchCorrect.
-include "LiftSim.dfy"
 
 /** The user-facing matcher API (prototype for the future
     `src/API/Match.dfy`): wraps `MainTheorem` behind a plain, postcondition-
@@ -24,8 +23,10 @@ module LindenRegexApi {
   import T = LindenElkTranslate
   import LES = LindenElkSpec
   import MAIN = LindenElkMain
-  import LSIM = LindenElkLiftSim
-
+  import LSIMCAR = LindenElkLiftSimCarriers
+  import LSIMCOR = LindenElkLiftSimCore
+  import LSIM = LindenElkLiftSimMain
+  import LSIMORA = LindenElkLiftSimOracle
   // ==========================================================================
   // The supported fragment — total and executable, so callers can check
   // membership at runtime or by assertion in their own proofs.
@@ -65,7 +66,7 @@ module LindenRegexApi {
           (`LookBodiesNoCapUnderQuantRaw`);
         - a quantifier body's look bodies are capture-free
           (`QuantsLookCapFreeRaw`).
-      Exactly `MainTheoremL4`'s precondition (via `LSIM.L4ScopeFromRaw`). */
+      Exactly `MainTheoremL4`'s precondition (via `LSIMCOR.L4ScopeFromRaw`). */
   predicate SupportedL4(pattern: R.raw_regex) {
     NR.NestedFragmentRaw(pattern) && T.Latin1Wf(pattern)
     && NR.NoPosLookbehindRaw(pattern)
@@ -77,12 +78,12 @@ module LindenRegexApi {
   /** (L5) The nested fragment with POSITIVE LOOKBEHINDS: a positive lookbehind's
       body is lookbehind-only, a lookahead's body is scoped recursively (it may itself
       contain positive lookbehinds, e.g. `(?=x(?<=y))`) — the EXECUTABLE
-      `LSIM.L5ScopeV1RE` on the annotated regex — plus the other three scope
+      `LSIMCOR.L5ScopeV1RE` on the annotated regex — plus the other three scope
       conditions as in `SupportedL4`. Exactly `MainTheoremL5`'s precondition (via
-      `LSIM.L5ScopeFromRawFull`). */
+      `LSIMORA.L5ScopeFromRawFull`). */
   predicate SupportedL5(pattern: R.raw_regex) {
     NR.NestedFragmentRaw(pattern) && T.Latin1Wf(pattern)
-    && LSIM.L5ScopeV1RE(R.lazy_prefix(R.annotate(pattern)))
+    && LSIMCOR.L5ScopeV1RE(R.lazy_prefix(R.annotate(pattern)))
     && NR.NegLooksLookFreeRaw(pattern)
     && NR.LookBodiesNoCapUnderQuantRaw(pattern)
     && NR.QuantsLookCapFreeRaw(pattern)
@@ -110,19 +111,19 @@ module LindenRegexApi {
   // ECMAScript tree semantics demands.
   /** THE contract: on any `Supported` pattern, `Match` computes exactly the
       answer the ECMAScript tree semantics (`LES.MatcherSpec`) demands. A thin
-      dispatch over `LSIM.MainTheoremL3` (depth-1) / `LSIM.MainTheoremL4`
+      dispatch over `LSIMCAR.MainTheoremL3` (depth-1) / `LSIM.MainTheoremL4`
       (nested). */
   lemma MatchCorrect(pattern: R.raw_regex, str: string)
     requires Supported(pattern)
     ensures LES.MatcherSpec(pattern, str, Match(pattern, str))
   {
     if SupportedL3(pattern) {
-      LSIM.MainTheoremL3(pattern, str);
+      LSIMCAR.MainTheoremL3(pattern, str);
     } else if SupportedL4(pattern) {
-      LSIM.L4ScopeFromRaw(pattern);
+      LSIMCOR.L4ScopeFromRaw(pattern);
       LSIM.MainTheoremL4(pattern, str);
     } else {
-      LSIM.L5ScopeFromRawFull(pattern);
+      LSIMORA.L5ScopeFromRawFull(pattern);
       LSIM.MainTheoremL5(pattern, str);
     }
   }

@@ -1,5 +1,6 @@
 [package]
-name = "linden-engine"
+namespace = "linden"
+name = "engine"
 version = "1.0.2"
 description = "Linden regex engine: Pike VM / backtracking-tree equivalence (TreeRep, PikeEquiv) — the compiled-engine correctness proof against the Linden reference semantics"
 repository = "https://github.com/hath995/Linden-Dafny/tree/main/linden-engine"
@@ -21,6 +22,6 @@ expected-errors = [
 ]
 
 [dependencies]
-linden-warblre = "^1.0.0"
-linden-semantics-core = "^1.0.0"
-linden-engine-model = "^1.0.0"
+linden.warblre = "^1.0.0"
+linden.semantics-core = "^1.0.0"
+linden.engine-model = "^1.0.0"

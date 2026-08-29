@@ -1,0 +1,35 @@
+[package]
+namespace = "linden"
+name = "equiv-actions-tree-rep-re"
+version = "1.0.0"
+description = "linden-equiv layer: ActionsTreeRepRE (machine-checked RegElk/Linden equivalence)"
+license = "MIT"
+
+[toolchain]
+dafny = ">= 4.11.0"
+
+[source]
+to_export = ["src/**/*.dfy"]
+
+[options]
+standard-libraries = true
+verification-time-limit = "900"
+cores = "4"
+
+[verification]
+expected-errors = [
+]
+
+[dependencies]
+linden.engine-model = "^1.0.0"
+linden.reasoning = "^1.0.0"
+linden.semantics-core = "^1.0.0"
+linden.warblre = "^1.0.0"
+linden.regex-engine = "^1.0.0"
+linden.equiv-actions-rep-re = "^1.0.0"
+linden.equiv-check-erase = "^1.0.0"
+linden.equiv-entry-lk = "^1.0.0"
+linden.equiv-look-leaves = "^1.0.0"
+linden.equiv-nfa-rep-re = "^1.0.0"
+linden.equiv-tree-rep-re = "^1.0.0"
+linden.equiv-walk-ok = "^1.0.0"

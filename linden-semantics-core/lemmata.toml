@@ -1,5 +1,6 @@
 [package]
-name = "linden-semantics-core"
+namespace = "linden"
+name = "semantics-core"
 version = "1.0.2"
 description = "ECMAScript-faithful backtracking-tree semantics for regular expressions in Dafny (Linden reference spec: core semantics, rewriting, and properties)"
 repository = "https://github.com/hath995/Linden-Dafny/tree/main/linden-semantics-core"
@@ -21,4 +22,4 @@ expected-errors = [
 ]
 
 [dependencies]
-linden-warblre = "^1.0.0"
+linden.warblre = "^1.0.0"

@@ -1,0 +1,48 @@
+[package]
+namespace = "linden"
+name = "equiv-flip-gate"
+version = "1.0.0"
+description = "linden-equiv layer: FlipGate (machine-checked RegElk/Linden equivalence)"
+license = "MIT"
+
+[toolchain]
+dafny = ">= 4.11.0"
+
+[source]
+to_export = ["src/**/*.dfy"]
+
+[options]
+standard-libraries = true
+verification-time-limit = "900"
+cores = "4"
+
+[verification]
+expected-errors = [
+]
+
+[dependencies]
+linden.reasoning = "^1.0.0"
+linden.semantics-core = "^1.0.0"
+linden.warblre = "^1.0.0"
+linden.regex-engine = "^1.0.0"
+linden.equiv-actions-rep-re = "^1.0.0"
+linden.equiv-back-value = "^1.0.0"
+linden.equiv-clock-mono = "^1.0.0"
+linden.equiv-flip-keystone = "^1.0.0"
+linden.equiv-flip-mirror = "^1.0.0"
+linden.equiv-flip-rev = "^1.0.0"
+linden.equiv-flip-statics = "^1.0.0"
+linden.equiv-look-behind-keystone = "^1.0.0"
+linden.equiv-look-behind-value = "^1.0.0"
+linden.equiv-look-leaves = "^1.0.0"
+linden.equiv-look-tables = "^1.0.0"
+linden.equiv-main-theorem = "^1.0.0"
+linden.equiv-mirror = "^1.0.0"
+linden.equiv-nest-inv = "^1.0.0"
+linden.equiv-nfa-rep-re = "^1.0.0"
+linden.equiv-oracle-build = "^1.0.0"
+linden.equiv-oracle-entry = "^1.0.0"
+linden.equiv-pike-inv-re = "^1.0.0"
+linden.equiv-pike-sim-re = "^1.0.0"
+linden.equiv-regs-laws = "^1.0.0"
+linden.equiv-tree-mirror-lk = "^1.0.0"

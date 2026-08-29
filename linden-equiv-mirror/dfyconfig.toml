@@ -1,0 +1,5 @@
+# Created by lem: the restored dependency closure. No `includes` key —
+# Dafny defaults to **/*.dfy, covering src, tests, and materialized deps.
+
+[options]
+library = ["deps/linden-equiv-oracle-reach.doo", "deps/linden-equiv-oracle-sweep.doo", "deps/linden-semantics-core.doo", "deps/linden-warblre.doo", "deps/regex-engine.doo"]

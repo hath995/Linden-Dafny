@@ -1,0 +1,71 @@
+[package]
+namespace = "linden"
+name = "equiv-lift-sim-oracle"
+version = "1.0.0"
+description = "linden-equiv LiftSim layer 1: Oracle (machine-checked RegElk/Linden equivalence)"
+license = "MIT"
+
+[toolchain]
+dafny = ">= 4.11.0"
+
+[source]
+to_export = ["src/**/*.dfy"]
+
+[options]
+standard-libraries = true
+verification-time-limit = "900"
+cores = "4"
+
+[verification]
+expected-errors = [
+]
+
+[dependencies]
+linden.engine = "^1.0.0"
+linden.engine-model = "^1.0.0"
+linden.reasoning = "^1.0.0"
+linden.semantics-core = "^1.0.0"
+linden.warblre = "^1.0.0"
+linden.regex-engine = "^1.0.0"
+linden.equiv-actions-rep-re = "^1.0.0"
+linden.equiv-actions-tree-rep-re = "^1.0.0"
+linden.equiv-back-gm-mirror = "^1.0.0"
+linden.equiv-back-value = "^1.0.0"
+linden.equiv-check-erase = "^1.0.0"
+linden.equiv-clock-mono = "^1.0.0"
+linden.equiv-entry-lk = "^1.0.0"
+linden.equiv-flip-closed = "^1.0.0"
+linden.equiv-flip-disc = "^1.0.0"
+linden.equiv-flip-gate = "^1.0.0"
+linden.equiv-flip-keystone = "^1.0.0"
+linden.equiv-flip-mirror = "^1.0.0"
+linden.equiv-flip-oracle = "^1.0.0"
+linden.equiv-flip-rev = "^1.0.0"
+linden.equiv-flip-statics = "^1.0.0"
+linden.equiv-look-behind-keystone = "^1.0.0"
+linden.equiv-look-behind-value = "^1.0.0"
+linden.equiv-look-capture = "^1.0.0"
+linden.equiv-look-leaves = "^1.0.0"
+linden.equiv-look-tables = "^1.0.0"
+linden.equiv-main-theorem = "^1.0.0"
+linden.equiv-mirror = "^1.0.0"
+linden.equiv-nest-inv = "^1.0.0"
+linden.equiv-nfa-rep-re = "^1.0.0"
+linden.equiv-oracle-accept-v = "^1.0.0"
+linden.equiv-oracle-bridge = "^1.0.0"
+linden.equiv-oracle-bridge-v = "^1.0.0"
+linden.equiv-oracle-build = "^1.0.0"
+linden.equiv-oracle-decomp-v = "^1.0.0"
+linden.equiv-oracle-entry = "^1.0.0"
+linden.equiv-oracle-mirror-v = "^1.0.0"
+linden.equiv-oracle-reach = "^1.0.0"
+linden.equiv-oracle-spec = "^1.0.0"
+linden.equiv-pike-inv-re = "^1.0.0"
+linden.equiv-pike-sim-re = "^1.0.0"
+linden.equiv-pike-tree-lk = "^1.0.0"
+linden.equiv-regs-laws = "^1.0.0"
+linden.equiv-tree-rep-re = "^1.0.0"
+linden.equiv-tree-thread-re = "^1.0.0"
+linden.equiv-walk-ok = "^1.0.0"
+linden.equiv-walk-ok-entry = "^1.0.0"
+linden.equiv-lift-sim-core = "^1.0.0"

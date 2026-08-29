@@ -1,0 +1,34 @@
+[package]
+namespace = "linden"
+name = "equiv-flip-oracle"
+version = "1.0.0"
+description = "linden-equiv layer: FlipOracle (machine-checked RegElk/Linden equivalence)"
+license = "MIT"
+
+[toolchain]
+dafny = ">= 4.11.0"
+
+[source]
+to_export = ["src/**/*.dfy"]
+
+[options]
+standard-libraries = true
+verification-time-limit = "900"
+
+[verification]
+expected-errors = [
+]
+
+[dependencies]
+linden.reasoning = "^1.0.0"
+linden.semantics-core = "^1.0.0"
+linden.warblre = "^1.0.0"
+linden.regex-engine = "^1.0.0"
+linden.equiv-actions-rep-re = "^1.0.0"
+linden.equiv-flip-disc = "^1.0.0"
+linden.equiv-flip-mirror = "^1.0.0"
+linden.equiv-flip-rev = "^1.0.0"
+linden.equiv-look-leaves = "^1.0.0"
+linden.equiv-mirror = "^1.0.0"
+linden.equiv-oracle-entry = "^1.0.0"
+linden.equiv-tree-rep-re = "^1.0.0"

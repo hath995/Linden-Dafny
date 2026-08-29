@@ -1,0 +1,49 @@
+lock-version = 1
+solver = "lem-mvs/1"
+dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
+manifest-hash = "sha256:90027ccecc0e899519b765ef836af6acd9fe13ef55d509fee14fef80d95796eb"
+
+[[package]]
+name = "linden.warblre"
+class = 1
+version = "1.0.3"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-warblre"
+
+[[package]]
+name = "linden.semantics-core"
+class = 1
+version = "1.0.2"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-semantics-core"
+
+[[package]]
+name = "linden.regex-engine"
+class = 1
+version = "1.0.1"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/regex-engine"
+
+[[package]]
+name = "linden.equiv-oracle-reach"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-reach"
+
+[[package]]
+name = "linden.equiv-oracle-sweep"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-sweep"

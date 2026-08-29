@@ -1,0 +1,23 @@
+[package]
+namespace = "linden"
+name = "equiv-look-tables"
+version = "1.0.0"
+description = "linden-equiv layer: LookTables (machine-checked RegElk/Linden equivalence)"
+license = "MIT"
+
+[toolchain]
+dafny = ">= 4.11.0"
+
+[source]
+to_export = ["src/**/*.dfy"]
+
+[options]
+standard-libraries = true
+verification-time-limit = "900"
+
+[verification]
+expected-errors = [
+]
+
+[dependencies]
+linden.regex-engine = "^1.0.0"
