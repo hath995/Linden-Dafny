@@ -16,6 +16,6 @@ for m in members:
     s=open(m).read(); n=re.search(r'^name = "([a-z0-9-]+)"', s, re.M).group(1)
     s2=re.sub(r'^name = "%s"'%re.escape(n), 'namespace = "linden"\nname = "%s"'%old2new[n][len('linden.'):], s, count=1, flags=re.M)
     for o,nn in old2new.items():
-        s2=re.sub(r'^%s = "'%re.escape(o), '"%s" = "'%nn, s2, flags=re.M)
+        s2=re.sub(r'^%s = "'%re.escape(o), '%s = "'%nn, s2, flags=re.M)   # unquoted dotted keys (lem build 55de90d+)
     if '--apply' in sys.argv: open(m,'w').write(s2)
 print('applied' if '--apply' in sys.argv else 'dry run only')
