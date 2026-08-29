@@ -1,7 +1,7 @@
 [package]
-name = "linden-equiv-lift-sim"
+name = "linden-equiv-lift-sim-main"
 version = "1.0.0"
-description = "linden-equiv layer: LiftSim (machine-checked RegElk/Linden equivalence)"
+description = "linden-equiv LiftSim layer 7: Main (machine-checked RegElk/Linden equivalence)"
 license = "MIT"
 
 [toolchain]
@@ -13,7 +13,7 @@ to_export = ["src/**/*.dfy"]
 [options]
 standard-libraries = true
 verification-time-limit = "900"
-cores = "1"
+cores = "4"
 
 [verification]
 expected-errors = [
@@ -67,3 +67,10 @@ linden-equiv-tree-rep-re = "^1.0.0"
 linden-equiv-tree-thread-re = "^1.0.0"
 linden-equiv-walk-ok = "^1.0.0"
 linden-equiv-walk-ok-entry = "^1.0.0"
+linden-equiv-lift-sim-core = "^1.0.0"
+linden-equiv-lift-sim-oracle = "^1.0.0"
+linden-equiv-lift-sim-chain = "^1.0.0"
+linden-equiv-lift-sim-gate = "^1.0.0"
+linden-equiv-lift-sim-carriers = "^1.0.0"
+linden-equiv-lift-sim-deep = "^1.0.0"
+linden-equiv-lift-sim-forward = "^1.0.0"
