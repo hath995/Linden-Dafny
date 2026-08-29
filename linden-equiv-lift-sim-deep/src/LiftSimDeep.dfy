@@ -174,6 +174,7 @@ module LindenElkLiftSimDeep {
     var inpA := PIV.InpOfCp(str, cpA);
     var bodycode := CP.compile_to_bytecode(host);
 
+    assert {:split_here} true;   // (E3) section boundary: its own assertion batch
     // ---- the row at A: la_A + host tie + statics ----
     assert 1 <= A <= maxlook && (A as int) in qm.looks;
     assert GateStaticAtNested(qm, re, crv, A as int, ncap, nlook, nquant);   // GateStaticsOkNested
@@ -202,6 +203,7 @@ module LindenElkLiftSimDeep {
       assert AI.capture_type(crv.f_look_types[A as int]);        // MatchedPosLA
     }
     assert laA.Lookbehind? by { assert crv.f_look_types[A as int] == laA; }
+    assert {:split_here} true;   // (E3) section boundary: its own assertion batch
     // ==== (L5 F7c-4) LOOKBEHIND lid: lift via the FLIP twins ====
     M.LookBodyFactsL5(re, crv, A);
     var laN: R.lookaround :| LTB.LookEntryOk(crv, A as int, laN, host) && (laN.Lookbehind? ==> NR.LBOnlyLooksRE(host));
@@ -210,6 +212,7 @@ module LindenElkLiftSimDeep {
     FG.LBOnlyEquiv(host);
     assert FST.LBOnlyLooksRE(host);
     if g2 !in PIV.CapIdsInLooks(host) {
+      assert {:split_here} true;   // (E3) section boundary: its own assertion batch
       // ---- BASE: g2 DIRECT in host ====
       assert M.FrameEntryOk(crv, laA, host,
                             PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re));
@@ -231,6 +234,7 @@ module LindenElkLiftSimDeep {
       FreshBodyDirectInSubFirstLeafLB(rer, qmB0, crv, str, ov, A, res1, host, g2,
                                       ncap, nlook, nquant);
     } else {
+      assert {:split_here} true;   // (E3) section boundary: its own assertion batch
       // ---- DEEP: descend through g2's top-in-host ancestor A1 (per-hop kind dispatch) ----
       assert M.FrameEntryOk(crv, laA, host,
                             PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re));
