@@ -27395,13 +27395,17 @@ module LindenElkLiftSim {
     }
     var bodycodeB := CP.compile_to_bytecode(R.reverse_regex(host));
     var cdnA := crv.f_look_cdns[A as int];
-    LookNestBackTFromBodyReplayLB(rer, qmB, laA, host, bodycodeB, crv, str, cpA, ov,
-                                  cdnA, crv.f_plus_bc, ncap, nlook, nquant);
     var rbT := LFU.ComputeTr(rer, [LS.Areg(T.Translate(host))], inpA, LG.Empty, WP.Backward);
     var rb := LT.TreeRes(rbT, LG.Empty, inpA, WP.Backward);
     var rfP := AI.FFindMatchPlus(bodycodeB, host, crv.f_plus_bc, str, ov, LAnc.Backward, cpA,
                                  AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant),
                                  0, cdnA).0;
+    // (2026-08-29 proof-engineering) the BASE arm needs only the None-iff from the LB carrier; its
+    // three quantified carrier predicates stay out of every later batch's context.
+    assert (rfP.Some? <==> rb.Some?) by {
+      LookNestBackTFromBodyReplayLB(rer, qmB, laA, host, bodycodeB, crv, str, cpA, ov,
+                                    cdnA, crv.f_plus_bc, ncap, nlook, nquant);
+    }
     // the backward leaf exists (hypothesis) — unfold SubFirstLeafAt to rb
     assert LidDir(crv, A as int) == WP.Backward;             // dispatch: laA.Lookbehind?
     var lsubA := SubFirstLeafAt(rer, crv, str, A as int, res1);
@@ -27428,6 +27432,8 @@ module LindenElkLiftSim {
                                     AI.FInitState(bodycodeB, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
                                                   AReg.init_regs(nquant), 0, AI.cp_context(cpA, str, LAnc.Backward)),
                                     ov, LAnc.Backward, cdnA).0 by {
+      hide M.FreshBodyMatch; hide AI.FFindMatch;   // (2026-08-29) a congruence step over the lemma's ensures —
+                // left unfoldable, Z3 explores the engine loop here and the batch runs past 2700 s in the split module
       FG.FreshBodyMatchLBUnfold(crv, str, A as int, res1, ov, host, ncap, nlook, nquant);
     }
     assert rfA == rfFresh.value by {                        // (L5 F7f perf) via the helper
@@ -27489,9 +27495,9 @@ module LindenElkLiftSim {
     assert CP.start_reg(g) in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host))
            && CP.end_reg(g) in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host));
     assert AI.get_idx(res0.a_clk, CP.start_reg(g)) == AI.get_idx(rfc.a_clk, CP.start_reg(g));
-    assert AI.get_idx(res0.a_cp, CP.start_reg(g)) == AI.get_idx(rfc.a_clk, CP.start_reg(g));
+    assert AI.get_idx(res0.a_cp, CP.start_reg(g)) == AI.get_idx(rfc.a_cp, CP.start_reg(g));   // (2026-08-29) was rfc.a_clk — a slip that verified only the slow way
     assert AI.get_idx(res0.a_clk, CP.end_reg(g)) == AI.get_idx(rfc.a_clk, CP.end_reg(g));
-    assert AI.get_idx(res0.a_cp, CP.end_reg(g)) == AI.get_idx(rfc.a_clk, CP.end_reg(g));
+    assert AI.get_idx(res0.a_cp, CP.end_reg(g)) == AI.get_idx(rfc.a_cp, CP.end_reg(g));
     // dominance transported (Mx equality from the same transport)
     assert PIV.MxAtGidLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, g)
         == PIV.MxAtGidLk(host, rfc.a_clk, rfl.a_clk, rfq.a_clk, -1, g);
@@ -27648,6 +27654,8 @@ module LindenElkLiftSim {
                                     AI.FInitState(bodycodeB, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
                                                   AReg.init_regs(nquant), 0, AI.cp_context(cpA, str, LAnc.Backward)),
                                     ov, LAnc.Backward, cdnA).0 by {
+      hide M.FreshBodyMatch; hide AI.FFindMatch;   // (2026-08-29) a congruence step over the lemma's ensures —
+                // left unfoldable, Z3 explores the engine loop here and the batch runs past 2700 s in the split module
       FG.FreshBodyMatchLBUnfold(crv, str, A as int, res1, ov, host, ncap, nlook, nquant);
     }
     assert rfA == rfFresh.value by {                        // (L5 F7f perf) via the helper
