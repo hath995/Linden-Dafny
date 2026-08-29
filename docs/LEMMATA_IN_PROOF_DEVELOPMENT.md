@@ -127,6 +127,12 @@ a genuinely expensive proof step.
 | `LiftPreserveGatePassLk` | `{:isolate_assertions}` | 3 s / 7 s / 23 s |
 | `ForwardFindRecLBDeep` | "1808/0 in 2 h 03 min" isolated; two false asserts | 11 batches, 2:04 |
 | `MainTheoremL5` (the hub) | > 900 s as one VC; the main band never packed | 10 batches, max 4:33 |
+| `ActionsTreeRepLkFRec` (core) | 539 s, one batch | 10 batches, 2:30 |
+| `ActionsTreeRepLkF` (core) | 384 s | 10 batches, 2:41 |
+| `DeepFindRecLB` (deep) | 257 s | 5 batches, 39 s |
+| `MainTheoremL5` (round 2) | 279 s solver, one 4:33 batch | 24 batches, 44 s |
+| `LookRowsDynamicNested` (main-theorem) | 900 s timeout in the profile (flaky at the pack limit) | 4 batches, 5.7 s |
+| `CompileNfaRepNestedRE` (nfa-rep-re) | 251 s | 8 arms, 7 s |
 
 ## 3.3 The strategy this enabled
 1. **Package = unit of proof cost.** Split a monolith along its lemma-call DAG (tree-sitter gives

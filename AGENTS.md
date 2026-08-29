@@ -43,6 +43,14 @@ Measured with `--isolate-assertions` + `--log-format text` (per-obligation resou
 | `L3aEndpointAssembly` | > 900 s (one batch) | 16 batches, 40.7 s total |
 | `LiftPreserveGatePassLk` | `{:isolate_assertions}` | 3 batches: 3 s / 7 s / 23 s |
 | `ForwardFindRecLBDeep` | > 900 s (2 h 03 min isolated, with two false asserts) | 11 batches, 2:04 total |
+| `ActionsTreeRepLkFRec` (core) | 539 s, one batch | 10 batches, 2:30 |
+| `ActionsTreeRepLkF` (core) | 384 s | 10 batches, 2:41 |
+| `DeepFindRecLB` (deep) | 257 s | 5 batches, 39 s |
+| `MainTheoremL5` (round 2) | 279 s solver, one 4:33 batch | 24 batches, 44 s |
+| `LookRowsDynamicNested` (main-theorem) | 900 s timeout in the profile (flaky at the pack limit) | 4 batches, 5.7 s |
+| `CompileNfaRepNestedRE` (nfa-rep-re) | 251 s | 8 arms, 7 s |
+
+Round 2 (per-band profiles with `tools/e3/e3profile.py`, then `split_here` per section or per match arm — no opaque blocks needed): every lemma in the twelve profiled packages is now under 3 min; chain/gate/carriers/pike-inv-re/actions-tree-rep-re needed nothing.
 
 ## 2. The tools, in the order to reach for them
 
