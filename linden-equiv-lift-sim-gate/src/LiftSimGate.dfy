@@ -2243,7 +2243,7 @@ module LindenElkLiftSimGate {
       everywhere (`LkResultAgreeOutside` over an empty group set) and the
       inside-`S` witnesses carry across the `a_cp[l]`-only write (Case B
       pattern). Negative flavours are refuted by the polarity pin. */
-  lemma LiftPreserveGatePassLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+  lemma {:isolate_assertions} LiftPreserveGatePassLk(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                                crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                                bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
                                l: int, th': AI.Thread, vms2: AI.VmState,
