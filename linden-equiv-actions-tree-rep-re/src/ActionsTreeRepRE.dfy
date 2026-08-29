@@ -23,6 +23,7 @@
 // Acheck/Progress-consuming steps tie PSize and drop it), then fuel, then a
 // tag ordering the mutual pair (the bare loop-view delegation is a tie on
 // everything else).
+
 /** Phase 4b layer 4 â€” the checked-tree construction: a `BoolTree` of a
     `PikeActions`/`PikeRegex`-restricted action list yields a leaves-agreeing
     CHECKED tree that is `TreeRepRE`-represented at the corresponding pc. */
@@ -169,7 +170,426 @@ module LindenElkActionsTreeRep {
   // not to split the file: this single lemma owns ~98% of the file's time and
   // is mutually recursive with AtBackForkTreeRep, so no file split can
   // separate them.
-  lemma {:isolate_assertions} ActionsTreeRepFRE(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code, pc: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree, n: nat, S: set<LG.GroupId>)
+  /** (2026-08-29 E3) the `Quantified` arm of `ActionsTreeRepFRE`, min > 0 — extracted from a 350-line
+      case so each branch is its own VC (the parent no longer needs `{:isolate_assertions}`). */
+  lemma ATR_QuantMin(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, cont: LS.Actions, code: RB.code, pc: nat, pcmid: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree, n: nat, greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex, S: set<LG.GroupId>)
+    returns (tstar: LT.Tree)
+    requires EL.PikeLkActions(acts)
+    requires !rer.multiline
+    requires ActionsRepFuelL(rer, qm, acts, code, pc, n)
+    requires WO.WalkOk(acts, code, pc, EaOf(b))
+    requires LL.OracleOkSuffix(rer, qm, inp)
+    requires EL.BoolTreeLk(rer, acts, inp, b, t)
+    requires CE.LkConfinedTree(t, S)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1))
+    requires cont == acts[1..]
+    requires AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && ActionsRepFuelL(rer, qm, cont, code, pcmid, n - 1)
+    requires EL.PikeLkActions(cont)
+    requires EL.PikeLkRegex(L.Quantified(greedy, min, delta, r1))
+    requires min > 0
+    ensures TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b))
+    ensures LL.LeavesAgreeAtOutside(tstar, t, inp, S)
+    decreases CE.PSize(t), MsizeA(acts), n, 1
+  {
+    assert acts == [acts[0]] + cont;
+    EL.PikeLkActionsConsIff(acts[0], cont);
+    var gidl := L.DefGroups(r1);
+    match delta {
+      case Inf =>
+        // the do-while: min-1 forced copies, the stamp, the body, the
+        // backward fork
+        var em, e1x := AR.NfaRepLPlusInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+        assert NUL.NonNullableL(r1);
+        var qid: int :| NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
+          && qid in qm.quants && qm.quants[qid] == gidl;
+        AR.NfaRepIncrL(rer, qm, r1, code, em + 1, e1x);
+        if min > 1 {
+          // a forced copy: stamp at pc, body at pc+1, the smaller
+          // do-while continues at eb
+          var quant1 := L.Quantified(greedy, min - 1, LN.Inf, r1);
+          var eb: nat :| (exists qid2: int ::
+                NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid2, false))
+                && qid2 in qm.quants && qm.quants[qid2] == gidl)
+            && AR.NfaRepL(rer, qm, r1, code, pc + 1, eb)
+            && AR.NfaRepMinL(rer, qm, min - 2, r1, code, eb, em);
+          AR.NfaRepLPlusIntro(rer, qm, greedy, min - 1, r1, code, eb, em, e1x, pcmid, qid);
+          assert AR.NfaRepL(rer, qm, quant1, code, eb, pcmid);
+          match t {
+            case GroupActionT(g, tc) =>
+              assert g == LG.Reset(gidl);
+              EL.PikeLkActionsConsIff(LS.Areg(quant1), cont);
+              EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(quant1)] + cont);
+              FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
+              assert AR.ActionRepL(rer, qm, LS.Areg(quant1), code, eb, pcmid);
+              var lq1 := [LS.Areg(quant1)] + cont;
+              assert lq1[0] == LS.Areg(quant1) && lq1[1..] == cont;
+              assert AR.ActionsRepL(rer, qm, lq1, code, eb);
+              var ia := [LS.Areg(r1)] + lq1;
+              assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, pc + 1, eb);
+              assert ia[0] == LS.Areg(r1) && ia[1..] == lq1;
+              assert AR.ActionsRepL(rer, qm, ia, code, pc + 1);
+              assert ia == [LS.Areg(r1), LS.Areg(quant1)] + cont;
+              ActionsRepLToFuel(rer, qm, ia, code, pc + 1);
+              var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 1, ni);
+              WO.WalkOkQuantForced(acts, code, pc, EaOf(b), greedy, min, delta, r1);
+              assert CE.PSize(tc) < CE.PSize(t);
+              var sub := ActionsTreeRepFRE(rer, qm, ia, code, pc + 1, inp, b, tc, ni, S);
+              tstar := LT.GroupActionT(g, sub);
+              // tr_reset at pc (the copy's clock-mark carries the Reset)
+              LL.LAAtCongGroupOutside(g, sub, tc, inp, S);
+            case _ =>
+          }
+        } else {
+          // min == 1: THE SEAM. The stamp is at pc (== em); the spec
+          // walk has no check after this last forced body â€” insert it.
+          assert em == pc;
+          var q0 := L.Quantified(greedy, 0, LN.Inf, r1);
+          match t {
+            case GroupActionT(g, tc) =>
+              assert g == LG.Reset(gidl);
+              assert EL.BoolTreeLk(rer, [LS.Areg(r1), LS.Areg(q0)] + cont, inp, b, tc);
+              var pre := [LS.Areg(r1)];
+              var rest := [LS.Areg(q0)] + cont;
+              EL.PikeLkActionsConsIff(LS.Areg(q0), cont);
+              EL.PikeLkActionsConsIff(LS.Areg(r1), rest);
+              assert EL.PikeLkActions(pre) by {
+                assert pre == [LS.Areg(r1)] + [];
+                EL.PikeLkActionsConsIff(LS.Areg(r1), []);
+              }
+              assert pre + rest == [LS.Areg(r1), LS.Areg(q0)] + cont;
+              assert CE.ConsumesBeforeAreg(pre) by {
+                assert pre[0].Areg? && NUL.NonNullableL(pre[0].r);
+              }
+              var t1ck := CE.BoolCheckInsert(rer, pre, inp, rest, inp, b, tc);
+              assert CE.LkConfinedTree(t1ck, S);   // BoolCheckInsert preserves it from LkConfinedTree(tc, S)
+              var ia := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont;
+              assert ia == pre + [LS.Acheck(inp)] + rest;
+              assert EL.BoolTreeLk(rer, ia, inp, b, t1ck);
+              // representation of the checked list at pc+1: the body,
+              // the zero-width check at the fork, the loop view
+              assert AR.BackForkAt(code, e1x) by {
+                assert NR.GetPcRE(code, e1x)
+                    == Some(if greedy then RB.Fork(em, e1x + 1) else RB.Fork(e1x + 1, em));
+                assert em <= e1x;
+              }
+              assert AR.NfaRepL(rer, qm, q0, code, e1x, e1x + 1) by {
+                assert NUL.NonNullableL(r1)
+                  && NR.GetPcRE(code, e1x)
+                     == Some(if greedy then RB.Fork(em, e1x + 1) else RB.Fork(e1x + 1, em))
+                  && em <= e1x
+                  && (exists qid2: int ::
+                        NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid2, false))
+                        && qid2 in qm.quants && qm.quants[qid2] == L.DefGroups(r1))
+                  && AR.NfaRepL(rer, qm, r1, code, em + 1, e1x);
+              }
+              FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
+              var lq := [LS.Areg(q0)] + cont;
+              assert AR.ActionRepL(rer, qm, LS.Areg(q0), code, e1x, e1x + 1);
+              assert lq[0] == LS.Areg(q0) && lq[1..] == cont;
+              assert AR.ActionsRepL(rer, qm, lq, code, e1x);
+              var lc := [LS.Acheck(inp)] + lq;
+              EL.PikeLkActionsConsIff(LS.Acheck(inp), lq);
+              assert AR.ActionRepL(rer, qm, LS.Acheck(inp), code, e1x, e1x);
+              assert lc[0] == LS.Acheck(inp) && lc[1..] == lq;
+              assert AR.ActionsRepL(rer, qm, lc, code, e1x);
+              assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, pc + 1, e1x);
+              assert ia == [LS.Areg(r1)] + lc;
+              assert ia[0] == LS.Areg(r1) && ia[1..] == lc;
+              assert AR.ActionsRepL(rer, qm, ia, code, pc + 1);
+              EL.PikeLkActionsConsIff(LS.Areg(r1), lc);
+              assert EL.PikeLkActions(ia);
+              ActionsRepLToFuel(rer, qm, ia, code, pc + 1);
+              var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 1, ni);
+              WO.WalkOkQuantSeam(acts, code, pc, EaOf(b), greedy, r1, inp);
+              assert CE.PSize(t1ck) == CE.PSize(tc);
+              assert CE.PSize(t1ck) < CE.PSize(t);
+              var sub := ActionsTreeRepFRE(rer, qm, ia, code, pc + 1, inp, b, t1ck, ni, S);
+              tstar := LT.GroupActionT(g, sub);
+              // tr_reset at pc (the do-while stamp; the VM's
+              // SetQuantToClock preserves exit_allowed, so b carries)
+              assert LL.LeavesAgreeAtOutside(sub, tc, inp, S);
+              LL.LAAtCongGroupOutside(g, sub, tc, inp, S);
+            case _ =>
+          }
+        }
+      case NN(kx) =>
+        var em := AR.NfaRepLQuantInv(rer, qm, greedy, min, kx, r1, code, pc, pcmid);
+        var quant1 := L.Quantified(greedy, min - 1, delta, r1);
+        var eb: nat :| (exists qid: int ::
+              NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
+              && qid in qm.quants && qm.quants[qid] == gidl)
+          && AR.NfaRepL(rer, qm, r1, code, pc + 1, eb)
+          && AR.NfaRepMinL(rer, qm, min - 1, r1, code, eb, em);
+        AR.NfaRepLQuantIntro(rer, qm, greedy, min - 1, kx, r1, code, eb, em, pcmid);
+        assert AR.NfaRepL(rer, qm, quant1, code, eb, pcmid);
+        match t {
+          case GroupActionT(g, tc) =>
+            assert g == LG.Reset(gidl);
+            EL.PikeLkActionsConsIff(LS.Areg(quant1), cont);
+            EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(quant1)] + cont);
+            FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
+            assert AR.ActionRepL(rer, qm, LS.Areg(quant1), code, eb, pcmid);
+            var lq1 := [LS.Areg(quant1)] + cont;
+            assert lq1[0] == LS.Areg(quant1) && lq1[1..] == cont;
+            assert AR.ActionsRepL(rer, qm, lq1, code, eb);
+            var ia := [LS.Areg(r1)] + lq1;
+            assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, pc + 1, eb);
+            assert ia[0] == LS.Areg(r1) && ia[1..] == lq1;
+            assert AR.ActionsRepL(rer, qm, ia, code, pc + 1);
+            assert ia == [LS.Areg(r1), LS.Areg(quant1)] + cont;
+            ActionsRepLToFuel(rer, qm, ia, code, pc + 1);
+            var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 1, ni);
+            WO.WalkOkQuantForced(acts, code, pc, EaOf(b), greedy, min, delta, r1);
+            assert CE.PSize(tc) < CE.PSize(t);
+            var sub := ActionsTreeRepFRE(rer, qm, ia, code, pc + 1, inp, b, tc, ni, S);
+            tstar := LT.GroupActionT(g, sub);
+            // tr_reset at pc (the clock-mark carries the Reset node)
+            LL.LAAtCongGroupOutside(g, sub, tc, inp, S);
+          case _ =>
+        }
+    }
+  }
+
+  /** (2026-08-29 E3) the `Quantified` arm of `ActionsTreeRepFRE`, min == 0 && delta.NN? — extracted from a 350-line
+      case so each branch is its own VC (the parent no longer needs `{:isolate_assertions}`). */
+  lemma ATR_QuantNN(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, cont: LS.Actions, code: RB.code, pc: nat, pcmid: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree, n: nat, greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex, S: set<LG.GroupId>)
+    returns (tstar: LT.Tree)
+    requires EL.PikeLkActions(acts)
+    requires !rer.multiline
+    requires ActionsRepFuelL(rer, qm, acts, code, pc, n)
+    requires WO.WalkOk(acts, code, pc, EaOf(b))
+    requires LL.OracleOkSuffix(rer, qm, inp)
+    requires EL.BoolTreeLk(rer, acts, inp, b, t)
+    requires CE.LkConfinedTree(t, S)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1))
+    requires cont == acts[1..]
+    requires AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && ActionsRepFuelL(rer, qm, cont, code, pcmid, n - 1)
+    requires EL.PikeLkActions(cont)
+    requires EL.PikeLkRegex(L.Quantified(greedy, min, delta, r1))
+    requires min == 0 && delta.NN?
+    ensures TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b))
+    ensures LL.LeavesAgreeAtOutside(tstar, t, inp, S)
+    decreases CE.PSize(t), MsizeA(acts), n, 1
+  {
+    assert acts == [acts[0]] + cont;
+    EL.PikeLkActionsConsIff(acts[0], cont);
+    var gidl := L.DefGroups(r1);
+    // min == 0, bounded delta: spent (k == 0) or one optional layer
+    var k := delta.n;
+    var em := AR.NfaRepLQuantInv(rer, qm, greedy, 0, k, r1, code, pc, pcmid);
+    assert em == pc;   // the forced chain is empty
+    if k == 0 {
+      // spent quantifier: no code, epsilon-continue with cont
+      assert pc == pcmid;
+      WO.WalkOkQuantSpent(acts, code, pc, EaOf(b), greedy, r1);
+      assert LS.ActionsRegexSize(cont) < LS.ActionsRegexSize(acts);
+      assert MsizeA(cont) < MsizeA(acts);
+      tstar := ActionsTreeRepFRE(rer, qm, cont, code, pcmid, inp, b, t, n - 1, S);
+    } else {
+      // one bounded layer: the fork skips to the common end pcmid
+      var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+      assert quant == L.Quantified(greedy, 0, LN.NN(k - 1), r1);
+      var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, pcmid) else RB.Fork(pcmid, pc + 1))
+        && (exists qid: int ::
+              NR.GetPcRE(code, pc + 1) == Some(RB.SetQuantToClock(qid, false))
+              && qid in qm.quants && qm.quants[qid] == gidl)
+        && NR.GetPcRE(code, pc + 2) == Some(RB.BeginLoop)
+        && AR.NfaRepL(rer, qm, r1, code, pc + 3, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+        && AR.NfaRepOptL(rer, qm, k - 1, greedy, r1, code, e1 + 1, pcmid);
+      AR.NfaRepIncrL(rer, qm, r1, code, pc + 3, e1);
+      AR.NfaRepIncrOptL(rer, qm, k - 1, greedy, r1, code, e1 + 1, pcmid);
+      match t {
+        case Choice(ta, tb) =>
+          var itert := if greedy then ta else tb;
+          var skipt := if greedy then tb else ta;
+          match itert {
+            case GroupActionT(g, ti) =>
+              assert g == LG.Reset(gidl);
+              WO.WalkOkQuantLayer(acts, code, pc, EaOf(b), greedy, delta, r1,
+                                  if greedy then pc + 1 else pcmid,
+                                  if greedy then pcmid else pc + 1, inp);
+              // skip branch: cont at the common end pcmid
+              assert CE.PSize(skipt) < CE.PSize(t);
+              var subs := ActionsTreeRepFRE(rer, qm, cont, code, pcmid, inp, b, skipt, n - 1, S);
+              // iteration branch at pc+3 with the NN(k-1) continuation at e1+1
+              EL.PikeLkActionsConsIff(LS.Areg(quant), cont);
+              EL.PikeLkActionsConsIff(LS.Acheck(inp), [LS.Areg(quant)] + cont);
+              EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+              FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
+              var lq := [LS.Areg(quant)] + cont;
+              assert AR.NfaRepMinL(rer, qm, 0, r1, code, e1 + 1, e1 + 1);
+              AR.NfaRepLQuantIntro(rer, qm, greedy, 0, k - 1, r1, code, e1 + 1, e1 + 1, pcmid);
+              assert AR.ActionRepL(rer, qm, LS.Areg(quant), code, e1 + 1, pcmid);
+              assert lq[0] == LS.Areg(quant) && lq[1..] == cont;
+              assert AR.ActionsRepL(rer, qm, lq, code, e1 + 1);
+              // Acheck as the fall-through EndLoop onto the next layer
+              var lc := [LS.Acheck(inp)] + lq;
+              assert AR.ActionRepL(rer, qm, LS.Acheck(inp), code, e1, e1 + 1);
+              assert lc[0] == LS.Acheck(inp) && lc[1..] == lq;
+              assert AR.ActionsRepL(rer, qm, lc, code, e1);
+              var ia := [LS.Areg(r1)] + lc;
+              assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, pc + 3, e1);
+              assert ia[0] == LS.Areg(r1) && ia[1..] == lc;
+              assert AR.ActionsRepL(rer, qm, ia, code, pc + 3);
+              assert ia == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
+              ActionsRepLToFuel(rer, qm, ia, code, pc + 3);
+              var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 3, ni);
+              assert CE.PSize(ti) < CE.PSize(t);
+              var subi := ActionsTreeRepFRE(rer, qm, ia, code, pc + 3, inp, BS.CannotExit, ti, ni, S);
+              // assemble: subi at pc+3 (false) -> tr_begin at pc+2 ->
+              // tr_reset at pc+1 -> tr_choice with the skip at pcmid
+              assert TR.TreeRepRE(qm, subi, code, pc + 3, inp, false);
+              assert TR.TreeRepRE(qm, subi, code, pc + 2, inp, EaOf(b));
+              var iterstar := LT.GroupActionT(g, subi);
+              assert TR.TreeRepRE(qm, iterstar, code, pc + 1, inp, EaOf(b));
+              tstar := if greedy then LT.Choice(iterstar, subs) else LT.Choice(subs, iterstar);
+              LL.LAAtCongGroupOutside(g, subi, ti, inp, S);
+              if greedy {
+                LL.LAAtCongChoiceOutside(iterstar, itert, subs, skipt, inp, S);
+              } else {
+                LL.LAAtCongChoiceOutside(subs, skipt, iterstar, itert, inp, S);
+              }
+              assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));
+            case _ =>
+          }
+        case _ =>
+      }
+    }
+  }
+
+  /** (2026-08-29 E3) the `Quantified` arm of `ActionsTreeRepFRE`, min == 0 && delta == LN.Inf — extracted from a 350-line
+      case so each branch is its own VC (the parent no longer needs `{:isolate_assertions}`). */
+  lemma ATR_QuantStar(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, cont: LS.Actions, code: RB.code, pc: nat, pcmid: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree, n: nat, greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex, S: set<LG.GroupId>)
+    returns (tstar: LT.Tree)
+    requires EL.PikeLkActions(acts)
+    requires !rer.multiline
+    requires ActionsRepFuelL(rer, qm, acts, code, pc, n)
+    requires WO.WalkOk(acts, code, pc, EaOf(b))
+    requires LL.OracleOkSuffix(rer, qm, inp)
+    requires EL.BoolTreeLk(rer, acts, inp, b, t)
+    requires CE.LkConfinedTree(t, S)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1))
+    requires cont == acts[1..]
+    requires AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && ActionsRepFuelL(rer, qm, cont, code, pcmid, n - 1)
+    requires EL.PikeLkActions(cont)
+    requires EL.PikeLkRegex(L.Quantified(greedy, min, delta, r1))
+    requires min == 0 && delta == LN.Inf
+    ensures TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b))
+    ensures LL.LeavesAgreeAtOutside(tstar, t, inp, S)
+    decreases CE.PSize(t), MsizeA(acts), n, 1
+  {
+    assert acts == [acts[0]] + cont;
+    EL.PikeLkActionsConsIff(acts[0], cont);
+    var gidl := L.DefGroups(r1);
+    assert min == 0 && delta == LN.Inf;
+    var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+    assert quant == L.Quantified(greedy, 0, LN.Inf, r1) == L.Quantified(greedy, min, delta, r1);
+    if exists e1: nat :: NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1))
+                 && (exists qid: int ::
+                       NR.GetPcRE(code, pc + 1) == Some(RB.SetQuantToClock(qid, false))
+                       && qid in qm.quants && qm.quants[qid] == gidl)
+                 && NR.GetPcRE(code, pc + 2) == Some(RB.BeginLoop)
+                 && AR.NfaRepL(rer, qm, r1, code, pc + 3, e1)
+                 && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                 && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(pc))
+                 && pcmid == e1 + 2 {
+      // the star FAST PATH (forward decision point)
+      var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1))
+                   && (exists qid: int ::
+                         NR.GetPcRE(code, pc + 1) == Some(RB.SetQuantToClock(qid, false))
+                         && qid in qm.quants && qm.quants[qid] == gidl)
+                   && NR.GetPcRE(code, pc + 2) == Some(RB.BeginLoop)
+                   && AR.NfaRepL(rer, qm, r1, code, pc + 3, e1)
+                   && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                   && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(pc))
+                   && pcmid == e1 + 2;
+      AR.NfaRepIncrL(rer, qm, r1, code, pc + 3, e1);
+      match t {
+        case Choice(ta, tb) =>
+          var itert := if greedy then ta else tb;
+          var skipt := if greedy then tb else ta;
+          match itert {
+            case GroupActionT(g, ti) =>
+              assert g == LG.Reset(gidl);
+              WO.WalkOkQuantLayer(acts, code, pc, EaOf(b), greedy, delta, r1,
+                                  if greedy then pc + 1 else pcmid,
+                                  if greedy then pcmid else pc + 1, inp);
+              // skip branch at pcmid == e1+2
+              assert CE.PSize(skipt) < CE.PSize(t);
+              var subs := ActionsTreeRepFRE(rer, qm, cont, code, pcmid, inp, b, skipt, n - 1, S);
+              // iteration branch: [Areg r1, Acheck inp, Areg quant] + cont at pc+3
+              EL.PikeLkActionsConsIff(LS.Areg(quant), cont);
+              EL.PikeLkActionsConsIff(LS.Acheck(inp), [LS.Areg(quant)] + cont);
+              EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+              FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
+              // [Areg quant]+cont at pc (the star block itself, ending at pcmid)
+              var lq := [LS.Areg(quant)] + cont;
+              assert AR.ActionRepL(rer, qm, LS.Areg(quant), code, pc, pcmid);
+              assert lq[0] == LS.Areg(quant) && lq[1..] == cont;
+              assert AR.ActionsRepL(rer, qm, lq, code, pc);
+              // absorbed back-jump: lq at e1+1 via jump_bc
+              AR.ActionsRepLJmp(rer, qm, lq, code, e1 + 1, pc);
+              // [Acheck inp]+lq at e1 (fall-through EndLoop)
+              var lc := [LS.Acheck(inp)] + lq;
+              assert AR.ActionRepL(rer, qm, LS.Acheck(inp), code, e1, e1 + 1);
+              assert lc[0] == LS.Acheck(inp) && lc[1..] == lq;
+              assert AR.ActionsRepL(rer, qm, lc, code, e1);
+              // [Areg r1]+lc at pc+3
+              var ia := [LS.Areg(r1)] + lc;
+              assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, pc + 3, e1);
+              assert ia[0] == LS.Areg(r1) && ia[1..] == lc;
+              assert AR.ActionsRepL(rer, qm, ia, code, pc + 3);
+              assert ia == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
+              ActionsRepLToFuel(rer, qm, ia, code, pc + 3);
+              var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 3, ni);
+              assert CE.PSize(ti) < CE.PSize(t);
+              var subi := ActionsTreeRepFRE(rer, qm, ia, code, pc + 3, inp, BS.CannotExit, ti, ni, S);
+              // assemble: subi at pc+3 (false) â†’ tr_begin at pc+2 (any b) â†’
+              // tr_reset at pc+1 (consumes the Reset node at b) â†’ tr_choice
+              assert TR.TreeRepRE(qm, subi, code, pc + 3, inp, false);
+              assert TR.TreeRepRE(qm, subi, code, pc + 2, inp, EaOf(b));
+              var iterstar := LT.GroupActionT(g, subi);
+              assert TR.TreeRepRE(qm, iterstar, code, pc + 1, inp, EaOf(b));
+              tstar := if greedy then LT.Choice(iterstar, subs) else LT.Choice(subs, iterstar);
+              LL.LAAtCongGroupOutside(g, subi, ti, inp, S);
+              if greedy {
+                LL.LAAtCongChoiceOutside(iterstar, itert, subs, skipt, inp, S);
+              } else {
+                LL.LAAtCongChoiceOutside(subs, skipt, iterstar, itert, inp, S);
+              }
+              assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));
+            case _ =>
+          }
+        case _ =>
+      }
+    } else {
+      // the LOOP VIEW: a bare star at the do-while's backward fork.
+      // WalkOk pins the flag to CanExit; the whole configuration is
+      // delegated to the fused fork lemma, and the extra Progress it
+      // returns is invisible to the leaves.
+      assert NUL.NonNullableL(r1);
+      var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em))
+        && em <= pc
+        && (exists qid: int ::
+              NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
+              && qid in qm.quants && qm.quants[qid] == gidl)
+        && AR.NfaRepL(rer, qm, r1, code, em + 1, pc)
+        && pcmid == pc + 1;
+      WO.WalkOkLoopView(acts, code, pc, EaOf(b), greedy, LN.Inf, r1,
+                        if greedy then em else pc + 1,
+                        if greedy then pc + 1 else em, inp);
+      assert EaOf(b) == true;
+      assert b == BS.CanExit;
+      assert AR.BackForkAt(code, pc);
+      var sub := AtBackForkTreeRep(rer, qm, acts, code, pc, inp, t, n, S);
+      tstar := LT.Progress(sub);
+      LL.LAAtProgressPassOutside(sub, inp, S);
+      assert LL.LeavesAgreeAtOutside(tstar, t, inp, S);
+  }
+  }
+
+  lemma ActionsTreeRepFRE(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code, pc: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree, n: nat, S: set<LG.GroupId>)
     returns (tstar: LT.Tree)
     requires EL.PikeLkActions(acts)
     requires !rer.multiline
@@ -180,7 +600,7 @@ module LindenElkActionsTreeRep {
     requires CE.LkConfinedTree(t, S)
     ensures TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b))
     ensures LL.LeavesAgreeAtOutside(tstar, t, inp, S)
-    decreases CE.PSize(t), MsizeA(acts), n, 1
+    decreases CE.PSize(t), MsizeA(acts), n, 2
   {
     if |acts| == 0 && NR.GetPcRE(code, pc) == Some(RB.Accept) {
       assert t == LT.Match;
@@ -214,354 +634,9 @@ module LindenElkActionsTreeRep {
         case Sequence(r1, r2) =>
           tstar := ATR_Sequence(rer, qm, acts, cont, code, pc, pcmid, inp, b, t, n, r1, r2, S);
         case Quantified(greedy, min, delta, r1) => {
-          var gidl := L.DefGroups(r1);
-          if min > 0 {
-            match delta {
-              case Inf =>
-                // the do-while: min-1 forced copies, the stamp, the body, the
-                // backward fork
-                var em, e1x := AR.NfaRepLPlusInv(rer, qm, greedy, min, r1, code, pc, pcmid);
-                assert NUL.NonNullableL(r1);
-                var qid: int :| NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
-                  && qid in qm.quants && qm.quants[qid] == gidl;
-                AR.NfaRepIncrL(rer, qm, r1, code, em + 1, e1x);
-                if min > 1 {
-                  // a forced copy: stamp at pc, body at pc+1, the smaller
-                  // do-while continues at eb
-                  var quant1 := L.Quantified(greedy, min - 1, LN.Inf, r1);
-                  var eb: nat :| (exists qid2: int ::
-                        NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid2, false))
-                        && qid2 in qm.quants && qm.quants[qid2] == gidl)
-                    && AR.NfaRepL(rer, qm, r1, code, pc + 1, eb)
-                    && AR.NfaRepMinL(rer, qm, min - 2, r1, code, eb, em);
-                  AR.NfaRepLPlusIntro(rer, qm, greedy, min - 1, r1, code, eb, em, e1x, pcmid, qid);
-                  assert AR.NfaRepL(rer, qm, quant1, code, eb, pcmid);
-                  match t {
-                    case GroupActionT(g, tc) =>
-                      assert g == LG.Reset(gidl);
-                      EL.PikeLkActionsConsIff(LS.Areg(quant1), cont);
-                      EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(quant1)] + cont);
-                      FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
-                      assert AR.ActionRepL(rer, qm, LS.Areg(quant1), code, eb, pcmid);
-                      var lq1 := [LS.Areg(quant1)] + cont;
-                      assert lq1[0] == LS.Areg(quant1) && lq1[1..] == cont;
-                      assert AR.ActionsRepL(rer, qm, lq1, code, eb);
-                      var ia := [LS.Areg(r1)] + lq1;
-                      assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, pc + 1, eb);
-                      assert ia[0] == LS.Areg(r1) && ia[1..] == lq1;
-                      assert AR.ActionsRepL(rer, qm, ia, code, pc + 1);
-                      assert ia == [LS.Areg(r1), LS.Areg(quant1)] + cont;
-                      ActionsRepLToFuel(rer, qm, ia, code, pc + 1);
-                      var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 1, ni);
-                      WO.WalkOkQuantForced(acts, code, pc, EaOf(b), greedy, min, delta, r1);
-                      assert CE.PSize(tc) < CE.PSize(t);
-                      var sub := ActionsTreeRepFRE(rer, qm, ia, code, pc + 1, inp, b, tc, ni, S);
-                      tstar := LT.GroupActionT(g, sub);
-                      // tr_reset at pc (the copy's clock-mark carries the Reset)
-                      LL.LAAtCongGroupOutside(g, sub, tc, inp, S);
-                    case _ =>
-                  }
-                } else {
-                  // min == 1: THE SEAM. The stamp is at pc (== em); the spec
-                  // walk has no check after this last forced body â€” insert it.
-                  assert em == pc;
-                  var q0 := L.Quantified(greedy, 0, LN.Inf, r1);
-                  match t {
-                    case GroupActionT(g, tc) =>
-                      assert g == LG.Reset(gidl);
-                      assert EL.BoolTreeLk(rer, [LS.Areg(r1), LS.Areg(q0)] + cont, inp, b, tc);
-                      var pre := [LS.Areg(r1)];
-                      var rest := [LS.Areg(q0)] + cont;
-                      EL.PikeLkActionsConsIff(LS.Areg(q0), cont);
-                      EL.PikeLkActionsConsIff(LS.Areg(r1), rest);
-                      assert EL.PikeLkActions(pre) by {
-                        assert pre == [LS.Areg(r1)] + [];
-                        EL.PikeLkActionsConsIff(LS.Areg(r1), []);
-                      }
-                      assert pre + rest == [LS.Areg(r1), LS.Areg(q0)] + cont;
-                      assert CE.ConsumesBeforeAreg(pre) by {
-                        assert pre[0].Areg? && NUL.NonNullableL(pre[0].r);
-                      }
-                      var t1ck := CE.BoolCheckInsert(rer, pre, inp, rest, inp, b, tc);
-                      assert CE.LkConfinedTree(t1ck, S);   // BoolCheckInsert preserves it from LkConfinedTree(tc, S)
-                      var ia := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont;
-                      assert ia == pre + [LS.Acheck(inp)] + rest;
-                      assert EL.BoolTreeLk(rer, ia, inp, b, t1ck);
-                      // representation of the checked list at pc+1: the body,
-                      // the zero-width check at the fork, the loop view
-                      assert AR.BackForkAt(code, e1x) by {
-                        assert NR.GetPcRE(code, e1x)
-                            == Some(if greedy then RB.Fork(em, e1x + 1) else RB.Fork(e1x + 1, em));
-                        assert em <= e1x;
-                      }
-                      assert AR.NfaRepL(rer, qm, q0, code, e1x, e1x + 1) by {
-                        assert NUL.NonNullableL(r1)
-                          && NR.GetPcRE(code, e1x)
-                             == Some(if greedy then RB.Fork(em, e1x + 1) else RB.Fork(e1x + 1, em))
-                          && em <= e1x
-                          && (exists qid2: int ::
-                                NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid2, false))
-                                && qid2 in qm.quants && qm.quants[qid2] == L.DefGroups(r1))
-                          && AR.NfaRepL(rer, qm, r1, code, em + 1, e1x);
-                      }
-                      FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
-                      var lq := [LS.Areg(q0)] + cont;
-                      assert AR.ActionRepL(rer, qm, LS.Areg(q0), code, e1x, e1x + 1);
-                      assert lq[0] == LS.Areg(q0) && lq[1..] == cont;
-                      assert AR.ActionsRepL(rer, qm, lq, code, e1x);
-                      var lc := [LS.Acheck(inp)] + lq;
-                      EL.PikeLkActionsConsIff(LS.Acheck(inp), lq);
-                      assert AR.ActionRepL(rer, qm, LS.Acheck(inp), code, e1x, e1x);
-                      assert lc[0] == LS.Acheck(inp) && lc[1..] == lq;
-                      assert AR.ActionsRepL(rer, qm, lc, code, e1x);
-                      assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, pc + 1, e1x);
-                      assert ia == [LS.Areg(r1)] + lc;
-                      assert ia[0] == LS.Areg(r1) && ia[1..] == lc;
-                      assert AR.ActionsRepL(rer, qm, ia, code, pc + 1);
-                      EL.PikeLkActionsConsIff(LS.Areg(r1), lc);
-                      assert EL.PikeLkActions(ia);
-                      ActionsRepLToFuel(rer, qm, ia, code, pc + 1);
-                      var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 1, ni);
-                      WO.WalkOkQuantSeam(acts, code, pc, EaOf(b), greedy, r1, inp);
-                      assert CE.PSize(t1ck) == CE.PSize(tc);
-                      assert CE.PSize(t1ck) < CE.PSize(t);
-                      var sub := ActionsTreeRepFRE(rer, qm, ia, code, pc + 1, inp, b, t1ck, ni, S);
-                      tstar := LT.GroupActionT(g, sub);
-                      // tr_reset at pc (the do-while stamp; the VM's
-                      // SetQuantToClock preserves exit_allowed, so b carries)
-                      assert LL.LeavesAgreeAtOutside(sub, tc, inp, S);
-                      LL.LAAtCongGroupOutside(g, sub, tc, inp, S);
-                    case _ =>
-                  }
-                }
-              case NN(kx) =>
-                var em := AR.NfaRepLQuantInv(rer, qm, greedy, min, kx, r1, code, pc, pcmid);
-                var quant1 := L.Quantified(greedy, min - 1, delta, r1);
-                var eb: nat :| (exists qid: int ::
-                      NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
-                      && qid in qm.quants && qm.quants[qid] == gidl)
-                  && AR.NfaRepL(rer, qm, r1, code, pc + 1, eb)
-                  && AR.NfaRepMinL(rer, qm, min - 1, r1, code, eb, em);
-                AR.NfaRepLQuantIntro(rer, qm, greedy, min - 1, kx, r1, code, eb, em, pcmid);
-                assert AR.NfaRepL(rer, qm, quant1, code, eb, pcmid);
-                match t {
-                  case GroupActionT(g, tc) =>
-                    assert g == LG.Reset(gidl);
-                    EL.PikeLkActionsConsIff(LS.Areg(quant1), cont);
-                    EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(quant1)] + cont);
-                    FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
-                    assert AR.ActionRepL(rer, qm, LS.Areg(quant1), code, eb, pcmid);
-                    var lq1 := [LS.Areg(quant1)] + cont;
-                    assert lq1[0] == LS.Areg(quant1) && lq1[1..] == cont;
-                    assert AR.ActionsRepL(rer, qm, lq1, code, eb);
-                    var ia := [LS.Areg(r1)] + lq1;
-                    assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, pc + 1, eb);
-                    assert ia[0] == LS.Areg(r1) && ia[1..] == lq1;
-                    assert AR.ActionsRepL(rer, qm, ia, code, pc + 1);
-                    assert ia == [LS.Areg(r1), LS.Areg(quant1)] + cont;
-                    ActionsRepLToFuel(rer, qm, ia, code, pc + 1);
-                    var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 1, ni);
-                    WO.WalkOkQuantForced(acts, code, pc, EaOf(b), greedy, min, delta, r1);
-                    assert CE.PSize(tc) < CE.PSize(t);
-                    var sub := ActionsTreeRepFRE(rer, qm, ia, code, pc + 1, inp, b, tc, ni, S);
-                    tstar := LT.GroupActionT(g, sub);
-                    // tr_reset at pc (the clock-mark carries the Reset node)
-                    LL.LAAtCongGroupOutside(g, sub, tc, inp, S);
-                  case _ =>
-                }
-            }
-            return;
-          }
-          if delta.NN? {
-            // min == 0, bounded delta: spent (k == 0) or one optional layer
-            var k := delta.n;
-            var em := AR.NfaRepLQuantInv(rer, qm, greedy, 0, k, r1, code, pc, pcmid);
-            assert em == pc;   // the forced chain is empty
-            if k == 0 {
-              // spent quantifier: no code, epsilon-continue with cont
-              assert pc == pcmid;
-              WO.WalkOkQuantSpent(acts, code, pc, EaOf(b), greedy, r1);
-              assert LS.ActionsRegexSize(cont) < LS.ActionsRegexSize(acts);
-              assert MsizeA(cont) < MsizeA(acts);
-              tstar := ActionsTreeRepFRE(rer, qm, cont, code, pcmid, inp, b, t, n - 1, S);
-            } else {
-              // one bounded layer: the fork skips to the common end pcmid
-              var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
-              assert quant == L.Quantified(greedy, 0, LN.NN(k - 1), r1);
-              var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, pcmid) else RB.Fork(pcmid, pc + 1))
-                && (exists qid: int ::
-                      NR.GetPcRE(code, pc + 1) == Some(RB.SetQuantToClock(qid, false))
-                      && qid in qm.quants && qm.quants[qid] == gidl)
-                && NR.GetPcRE(code, pc + 2) == Some(RB.BeginLoop)
-                && AR.NfaRepL(rer, qm, r1, code, pc + 3, e1)
-                && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-                && AR.NfaRepOptL(rer, qm, k - 1, greedy, r1, code, e1 + 1, pcmid);
-              AR.NfaRepIncrL(rer, qm, r1, code, pc + 3, e1);
-              AR.NfaRepIncrOptL(rer, qm, k - 1, greedy, r1, code, e1 + 1, pcmid);
-              match t {
-                case Choice(ta, tb) =>
-                  var itert := if greedy then ta else tb;
-                  var skipt := if greedy then tb else ta;
-                  match itert {
-                    case GroupActionT(g, ti) =>
-                      assert g == LG.Reset(gidl);
-                      WO.WalkOkQuantLayer(acts, code, pc, EaOf(b), greedy, delta, r1,
-                                          if greedy then pc + 1 else pcmid,
-                                          if greedy then pcmid else pc + 1, inp);
-                      // skip branch: cont at the common end pcmid
-                      assert CE.PSize(skipt) < CE.PSize(t);
-                      var subs := ActionsTreeRepFRE(rer, qm, cont, code, pcmid, inp, b, skipt, n - 1, S);
-                      // iteration branch at pc+3 with the NN(k-1) continuation at e1+1
-                      EL.PikeLkActionsConsIff(LS.Areg(quant), cont);
-                      EL.PikeLkActionsConsIff(LS.Acheck(inp), [LS.Areg(quant)] + cont);
-                      EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
-                      FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
-                      var lq := [LS.Areg(quant)] + cont;
-                      assert AR.NfaRepMinL(rer, qm, 0, r1, code, e1 + 1, e1 + 1);
-                      AR.NfaRepLQuantIntro(rer, qm, greedy, 0, k - 1, r1, code, e1 + 1, e1 + 1, pcmid);
-                      assert AR.ActionRepL(rer, qm, LS.Areg(quant), code, e1 + 1, pcmid);
-                      assert lq[0] == LS.Areg(quant) && lq[1..] == cont;
-                      assert AR.ActionsRepL(rer, qm, lq, code, e1 + 1);
-                      // Acheck as the fall-through EndLoop onto the next layer
-                      var lc := [LS.Acheck(inp)] + lq;
-                      assert AR.ActionRepL(rer, qm, LS.Acheck(inp), code, e1, e1 + 1);
-                      assert lc[0] == LS.Acheck(inp) && lc[1..] == lq;
-                      assert AR.ActionsRepL(rer, qm, lc, code, e1);
-                      var ia := [LS.Areg(r1)] + lc;
-                      assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, pc + 3, e1);
-                      assert ia[0] == LS.Areg(r1) && ia[1..] == lc;
-                      assert AR.ActionsRepL(rer, qm, ia, code, pc + 3);
-                      assert ia == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
-                      ActionsRepLToFuel(rer, qm, ia, code, pc + 3);
-                      var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 3, ni);
-                      assert CE.PSize(ti) < CE.PSize(t);
-                      var subi := ActionsTreeRepFRE(rer, qm, ia, code, pc + 3, inp, BS.CannotExit, ti, ni, S);
-                      // assemble: subi at pc+3 (false) -> tr_begin at pc+2 ->
-                      // tr_reset at pc+1 -> tr_choice with the skip at pcmid
-                      assert TR.TreeRepRE(qm, subi, code, pc + 3, inp, false);
-                      assert TR.TreeRepRE(qm, subi, code, pc + 2, inp, EaOf(b));
-                      var iterstar := LT.GroupActionT(g, subi);
-                      assert TR.TreeRepRE(qm, iterstar, code, pc + 1, inp, EaOf(b));
-                      tstar := if greedy then LT.Choice(iterstar, subs) else LT.Choice(subs, iterstar);
-                      LL.LAAtCongGroupOutside(g, subi, ti, inp, S);
-                      if greedy {
-                        LL.LAAtCongChoiceOutside(iterstar, itert, subs, skipt, inp, S);
-                      } else {
-                        LL.LAAtCongChoiceOutside(subs, skipt, iterstar, itert, inp, S);
-                      }
-                      assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));
-                    case _ =>
-                  }
-                case _ =>
-              }
-            }
-            return;
-          }
-          assert min == 0 && delta == LN.Inf;
-          var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
-          assert quant == L.Quantified(greedy, 0, LN.Inf, r1) == L.Quantified(greedy, min, delta, r1);
-          if exists e1: nat :: NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1))
-                       && (exists qid: int ::
-                             NR.GetPcRE(code, pc + 1) == Some(RB.SetQuantToClock(qid, false))
-                             && qid in qm.quants && qm.quants[qid] == gidl)
-                       && NR.GetPcRE(code, pc + 2) == Some(RB.BeginLoop)
-                       && AR.NfaRepL(rer, qm, r1, code, pc + 3, e1)
-                       && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-                       && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(pc))
-                       && pcmid == e1 + 2 {
-            // the star FAST PATH (forward decision point)
-            var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1))
-                         && (exists qid: int ::
-                               NR.GetPcRE(code, pc + 1) == Some(RB.SetQuantToClock(qid, false))
-                               && qid in qm.quants && qm.quants[qid] == gidl)
-                         && NR.GetPcRE(code, pc + 2) == Some(RB.BeginLoop)
-                         && AR.NfaRepL(rer, qm, r1, code, pc + 3, e1)
-                         && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-                         && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(pc))
-                         && pcmid == e1 + 2;
-            AR.NfaRepIncrL(rer, qm, r1, code, pc + 3, e1);
-            match t {
-              case Choice(ta, tb) =>
-                var itert := if greedy then ta else tb;
-                var skipt := if greedy then tb else ta;
-                match itert {
-                  case GroupActionT(g, ti) =>
-                    assert g == LG.Reset(gidl);
-                    WO.WalkOkQuantLayer(acts, code, pc, EaOf(b), greedy, delta, r1,
-                                        if greedy then pc + 1 else pcmid,
-                                        if greedy then pcmid else pc + 1, inp);
-                    // skip branch at pcmid == e1+2
-                    assert CE.PSize(skipt) < CE.PSize(t);
-                    var subs := ActionsTreeRepFRE(rer, qm, cont, code, pcmid, inp, b, skipt, n - 1, S);
-                    // iteration branch: [Areg r1, Acheck inp, Areg quant] + cont at pc+3
-                    EL.PikeLkActionsConsIff(LS.Areg(quant), cont);
-                    EL.PikeLkActionsConsIff(LS.Acheck(inp), [LS.Areg(quant)] + cont);
-                    EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
-                    FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
-                    // [Areg quant]+cont at pc (the star block itself, ending at pcmid)
-                    var lq := [LS.Areg(quant)] + cont;
-                    assert AR.ActionRepL(rer, qm, LS.Areg(quant), code, pc, pcmid);
-                    assert lq[0] == LS.Areg(quant) && lq[1..] == cont;
-                    assert AR.ActionsRepL(rer, qm, lq, code, pc);
-                    // absorbed back-jump: lq at e1+1 via jump_bc
-                    AR.ActionsRepLJmp(rer, qm, lq, code, e1 + 1, pc);
-                    // [Acheck inp]+lq at e1 (fall-through EndLoop)
-                    var lc := [LS.Acheck(inp)] + lq;
-                    assert AR.ActionRepL(rer, qm, LS.Acheck(inp), code, e1, e1 + 1);
-                    assert lc[0] == LS.Acheck(inp) && lc[1..] == lq;
-                    assert AR.ActionsRepL(rer, qm, lc, code, e1);
-                    // [Areg r1]+lc at pc+3
-                    var ia := [LS.Areg(r1)] + lc;
-                    assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, pc + 3, e1);
-                    assert ia[0] == LS.Areg(r1) && ia[1..] == lc;
-                    assert AR.ActionsRepL(rer, qm, ia, code, pc + 3);
-                    assert ia == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
-                    ActionsRepLToFuel(rer, qm, ia, code, pc + 3);
-                    var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 3, ni);
-                    assert CE.PSize(ti) < CE.PSize(t);
-                    var subi := ActionsTreeRepFRE(rer, qm, ia, code, pc + 3, inp, BS.CannotExit, ti, ni, S);
-                    // assemble: subi at pc+3 (false) â†’ tr_begin at pc+2 (any b) â†’
-                    // tr_reset at pc+1 (consumes the Reset node at b) â†’ tr_choice
-                    assert TR.TreeRepRE(qm, subi, code, pc + 3, inp, false);
-                    assert TR.TreeRepRE(qm, subi, code, pc + 2, inp, EaOf(b));
-                    var iterstar := LT.GroupActionT(g, subi);
-                    assert TR.TreeRepRE(qm, iterstar, code, pc + 1, inp, EaOf(b));
-                    tstar := if greedy then LT.Choice(iterstar, subs) else LT.Choice(subs, iterstar);
-                    LL.LAAtCongGroupOutside(g, subi, ti, inp, S);
-                    if greedy {
-                      LL.LAAtCongChoiceOutside(iterstar, itert, subs, skipt, inp, S);
-                    } else {
-                      LL.LAAtCongChoiceOutside(subs, skipt, iterstar, itert, inp, S);
-                    }
-                    assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));
-                  case _ =>
-                }
-              case _ =>
-            }
-          } else {
-            // the LOOP VIEW: a bare star at the do-while's backward fork.
-            // WalkOk pins the flag to CanExit; the whole configuration is
-            // delegated to the fused fork lemma, and the extra Progress it
-            // returns is invisible to the leaves.
-            assert NUL.NonNullableL(r1);
-            var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em))
-              && em <= pc
-              && (exists qid: int ::
-                    NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
-                    && qid in qm.quants && qm.quants[qid] == gidl)
-              && AR.NfaRepL(rer, qm, r1, code, em + 1, pc)
-              && pcmid == pc + 1;
-            WO.WalkOkLoopView(acts, code, pc, EaOf(b), greedy, LN.Inf, r1,
-                              if greedy then em else pc + 1,
-                              if greedy then pc + 1 else em, inp);
-            assert EaOf(b) == true;
-            assert b == BS.CanExit;
-            assert AR.BackForkAt(code, pc);
-            var sub := AtBackForkTreeRep(rer, qm, acts, code, pc, inp, t, n, S);
-            tstar := LT.Progress(sub);
-            LL.LAAtProgressPassOutside(sub, inp, S);
-            assert LL.LeavesAgreeAtOutside(tstar, t, inp, S);
-          }
+          if min > 0 { tstar := ATR_QuantMin(rer, qm, acts, cont, code, pc, pcmid, inp, b, t, n, greedy, min, delta, r1, S); }
+          else if delta.NN? { tstar := ATR_QuantNN(rer, qm, acts, cont, code, pc, pcmid, inp, b, t, n, greedy, min, delta, r1, S); }
+          else { tstar := ATR_QuantStar(rer, qm, acts, cont, code, pc, pcmid, inp, b, t, n, greedy, min, delta, r1, S); }
         }
         case Group(gid, r1) =>
           tstar := ATR_Group(rer, qm, acts, cont, code, pc, pcmid, inp, b, t, n, gid, r1, S);
@@ -1304,7 +1379,426 @@ module LindenElkActionsTreeRep {
   // not to split the file: this single lemma owns ~98% of the file's time and
   // is mutually recursive with AtBackForkTreeRepNested, so no file split can
   // separate them.
-  lemma {:isolate_assertions} ActionsTreeRepFRENested(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code, pc: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree, n: nat, S: set<LG.GroupId>)
+  /** (2026-08-29 E3) the `Quantified` arm of `ActionsTreeRepFRENested`, min > 0 — extracted from a 350-line
+      case so each branch is its own VC (the parent no longer needs `{:isolate_assertions}`). */
+  lemma ATR_QuantMinNested(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, cont: LS.Actions, code: RB.code, pc: nat, pcmid: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree, n: nat, greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex, S: set<LG.GroupId>)
+    returns (tstar: LT.Tree)
+    requires EL.PikeLkActionsRec(acts)
+    requires !rer.multiline
+    requires ActionsRepFuelL(rer, qm, acts, code, pc, n)
+    requires WO.WalkOk(acts, code, pc, EaOf(b))
+    requires LL.OracleOkSuffix(rer, qm, inp)
+    requires EL.BoolTreeLk(rer, acts, inp, b, t)
+    requires CE.LkConfinedTreeK(t, S)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1))
+    requires cont == acts[1..]
+    requires AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && ActionsRepFuelL(rer, qm, cont, code, pcmid, n - 1)
+    requires EL.PikeLkActionsRec(cont)
+    requires EL.PikeLkRegexRec(L.Quantified(greedy, min, delta, r1))
+    requires min > 0
+    ensures TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b))
+    ensures LL.LeavesAgreeAtOutside(tstar, t, inp, S)
+    decreases CE.PSize(t), MsizeA(acts), n, 1
+  {
+    assert acts == [acts[0]] + cont;
+    EL.PikeLkActionsRecConsIff(acts[0], cont);
+    var gidl := L.DefGroups(r1);
+    match delta {
+      case Inf =>
+        // the do-while: min-1 forced copies, the stamp, the body, the
+        // backward fork
+        var em, e1x := AR.NfaRepLPlusInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+        assert NUL.NonNullableL(r1);
+        var qid: int :| NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
+          && qid in qm.quants && qm.quants[qid] == gidl;
+        AR.NfaRepIncrL(rer, qm, r1, code, em + 1, e1x);
+        if min > 1 {
+          // a forced copy: stamp at pc, body at pc+1, the smaller
+          // do-while continues at eb
+          var quant1 := L.Quantified(greedy, min - 1, LN.Inf, r1);
+          var eb: nat :| (exists qid2: int ::
+                NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid2, false))
+                && qid2 in qm.quants && qm.quants[qid2] == gidl)
+            && AR.NfaRepL(rer, qm, r1, code, pc + 1, eb)
+            && AR.NfaRepMinL(rer, qm, min - 2, r1, code, eb, em);
+          AR.NfaRepLPlusIntro(rer, qm, greedy, min - 1, r1, code, eb, em, e1x, pcmid, qid);
+          assert AR.NfaRepL(rer, qm, quant1, code, eb, pcmid);
+          match t {
+            case GroupActionT(g, tc) =>
+              assert g == LG.Reset(gidl);
+              EL.PikeLkActionsRecConsIff(LS.Areg(quant1), cont);
+              EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(quant1)] + cont);
+              FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
+              assert AR.ActionRepL(rer, qm, LS.Areg(quant1), code, eb, pcmid);
+              var lq1 := [LS.Areg(quant1)] + cont;
+              assert lq1[0] == LS.Areg(quant1) && lq1[1..] == cont;
+              assert AR.ActionsRepL(rer, qm, lq1, code, eb);
+              var ia := [LS.Areg(r1)] + lq1;
+              assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, pc + 1, eb);
+              assert ia[0] == LS.Areg(r1) && ia[1..] == lq1;
+              assert AR.ActionsRepL(rer, qm, ia, code, pc + 1);
+              assert ia == [LS.Areg(r1), LS.Areg(quant1)] + cont;
+              ActionsRepLToFuel(rer, qm, ia, code, pc + 1);
+              var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 1, ni);
+              WO.WalkOkQuantForced(acts, code, pc, EaOf(b), greedy, min, delta, r1);
+              assert CE.PSize(tc) < CE.PSize(t);
+              var sub := ActionsTreeRepFRENested(rer, qm, ia, code, pc + 1, inp, b, tc, ni, S);
+              tstar := LT.GroupActionT(g, sub);
+              // tr_reset at pc (the copy's clock-mark carries the Reset)
+              LL.LAAtCongGroupOutside(g, sub, tc, inp, S);
+            case _ =>
+          }
+        } else {
+          // min == 1: THE SEAM. The stamp is at pc (== em); the spec
+          // walk has no check after this last forced body â€” insert it.
+          assert em == pc;
+          var q0 := L.Quantified(greedy, 0, LN.Inf, r1);
+          match t {
+            case GroupActionT(g, tc) =>
+              assert g == LG.Reset(gidl);
+              assert EL.BoolTreeLk(rer, [LS.Areg(r1), LS.Areg(q0)] + cont, inp, b, tc);
+              var pre := [LS.Areg(r1)];
+              var rest := [LS.Areg(q0)] + cont;
+              EL.PikeLkActionsRecConsIff(LS.Areg(q0), cont);
+              EL.PikeLkActionsRecConsIff(LS.Areg(r1), rest);
+              assert EL.PikeLkActionsRec(pre) by {
+                assert pre == [LS.Areg(r1)] + [];
+                EL.PikeLkActionsRecConsIff(LS.Areg(r1), []);
+              }
+              assert pre + rest == [LS.Areg(r1), LS.Areg(q0)] + cont;
+              assert CE.ConsumesBeforeAreg(pre) by {
+                assert pre[0].Areg? && NUL.NonNullableL(pre[0].r);
+              }
+              var t1ck := CE.BoolCheckInsertK(rer, pre, inp, rest, inp, b, tc);
+              assert CE.LkConfinedTreeK(t1ck, S);   // BoolCheckInsert preserves it from LkConfinedTree(tc, S)
+              var ia := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont;
+              assert ia == pre + [LS.Acheck(inp)] + rest;
+              assert EL.BoolTreeLk(rer, ia, inp, b, t1ck);
+              // representation of the checked list at pc+1: the body,
+              // the zero-width check at the fork, the loop view
+              assert AR.BackForkAt(code, e1x) by {
+                assert NR.GetPcRE(code, e1x)
+                    == Some(if greedy then RB.Fork(em, e1x + 1) else RB.Fork(e1x + 1, em));
+                assert em <= e1x;
+              }
+              assert AR.NfaRepL(rer, qm, q0, code, e1x, e1x + 1) by {
+                assert NUL.NonNullableL(r1)
+                  && NR.GetPcRE(code, e1x)
+                     == Some(if greedy then RB.Fork(em, e1x + 1) else RB.Fork(e1x + 1, em))
+                  && em <= e1x
+                  && (exists qid2: int ::
+                        NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid2, false))
+                        && qid2 in qm.quants && qm.quants[qid2] == L.DefGroups(r1))
+                  && AR.NfaRepL(rer, qm, r1, code, em + 1, e1x);
+              }
+              FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
+              var lq := [LS.Areg(q0)] + cont;
+              assert AR.ActionRepL(rer, qm, LS.Areg(q0), code, e1x, e1x + 1);
+              assert lq[0] == LS.Areg(q0) && lq[1..] == cont;
+              assert AR.ActionsRepL(rer, qm, lq, code, e1x);
+              var lc := [LS.Acheck(inp)] + lq;
+              EL.PikeLkActionsRecConsIff(LS.Acheck(inp), lq);
+              assert AR.ActionRepL(rer, qm, LS.Acheck(inp), code, e1x, e1x);
+              assert lc[0] == LS.Acheck(inp) && lc[1..] == lq;
+              assert AR.ActionsRepL(rer, qm, lc, code, e1x);
+              assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, pc + 1, e1x);
+              assert ia == [LS.Areg(r1)] + lc;
+              assert ia[0] == LS.Areg(r1) && ia[1..] == lc;
+              assert AR.ActionsRepL(rer, qm, ia, code, pc + 1);
+              EL.PikeLkActionsRecConsIff(LS.Areg(r1), lc);
+              assert EL.PikeLkActionsRec(ia);
+              ActionsRepLToFuel(rer, qm, ia, code, pc + 1);
+              var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 1, ni);
+              WO.WalkOkQuantSeam(acts, code, pc, EaOf(b), greedy, r1, inp);
+              assert CE.PSize(t1ck) == CE.PSize(tc);
+              assert CE.PSize(t1ck) < CE.PSize(t);
+              var sub := ActionsTreeRepFRENested(rer, qm, ia, code, pc + 1, inp, b, t1ck, ni, S);
+              tstar := LT.GroupActionT(g, sub);
+              // tr_reset at pc (the do-while stamp; the VM's
+              // SetQuantToClock preserves exit_allowed, so b carries)
+              assert LL.LeavesAgreeAtOutside(sub, tc, inp, S);
+              LL.LAAtCongGroupOutside(g, sub, tc, inp, S);
+            case _ =>
+          }
+        }
+      case NN(kx) =>
+        var em := AR.NfaRepLQuantInv(rer, qm, greedy, min, kx, r1, code, pc, pcmid);
+        var quant1 := L.Quantified(greedy, min - 1, delta, r1);
+        var eb: nat :| (exists qid: int ::
+              NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
+              && qid in qm.quants && qm.quants[qid] == gidl)
+          && AR.NfaRepL(rer, qm, r1, code, pc + 1, eb)
+          && AR.NfaRepMinL(rer, qm, min - 1, r1, code, eb, em);
+        AR.NfaRepLQuantIntro(rer, qm, greedy, min - 1, kx, r1, code, eb, em, pcmid);
+        assert AR.NfaRepL(rer, qm, quant1, code, eb, pcmid);
+        match t {
+          case GroupActionT(g, tc) =>
+            assert g == LG.Reset(gidl);
+            EL.PikeLkActionsRecConsIff(LS.Areg(quant1), cont);
+            EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(quant1)] + cont);
+            FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
+            assert AR.ActionRepL(rer, qm, LS.Areg(quant1), code, eb, pcmid);
+            var lq1 := [LS.Areg(quant1)] + cont;
+            assert lq1[0] == LS.Areg(quant1) && lq1[1..] == cont;
+            assert AR.ActionsRepL(rer, qm, lq1, code, eb);
+            var ia := [LS.Areg(r1)] + lq1;
+            assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, pc + 1, eb);
+            assert ia[0] == LS.Areg(r1) && ia[1..] == lq1;
+            assert AR.ActionsRepL(rer, qm, ia, code, pc + 1);
+            assert ia == [LS.Areg(r1), LS.Areg(quant1)] + cont;
+            ActionsRepLToFuel(rer, qm, ia, code, pc + 1);
+            var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 1, ni);
+            WO.WalkOkQuantForced(acts, code, pc, EaOf(b), greedy, min, delta, r1);
+            assert CE.PSize(tc) < CE.PSize(t);
+            var sub := ActionsTreeRepFRENested(rer, qm, ia, code, pc + 1, inp, b, tc, ni, S);
+            tstar := LT.GroupActionT(g, sub);
+            // tr_reset at pc (the clock-mark carries the Reset node)
+            LL.LAAtCongGroupOutside(g, sub, tc, inp, S);
+          case _ =>
+        }
+    }
+  }
+
+  /** (2026-08-29 E3) the `Quantified` arm of `ActionsTreeRepFRENested`, min == 0 && delta.NN? — extracted from a 350-line
+      case so each branch is its own VC (the parent no longer needs `{:isolate_assertions}`). */
+  lemma ATR_QuantNNNested(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, cont: LS.Actions, code: RB.code, pc: nat, pcmid: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree, n: nat, greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex, S: set<LG.GroupId>)
+    returns (tstar: LT.Tree)
+    requires EL.PikeLkActionsRec(acts)
+    requires !rer.multiline
+    requires ActionsRepFuelL(rer, qm, acts, code, pc, n)
+    requires WO.WalkOk(acts, code, pc, EaOf(b))
+    requires LL.OracleOkSuffix(rer, qm, inp)
+    requires EL.BoolTreeLk(rer, acts, inp, b, t)
+    requires CE.LkConfinedTreeK(t, S)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1))
+    requires cont == acts[1..]
+    requires AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && ActionsRepFuelL(rer, qm, cont, code, pcmid, n - 1)
+    requires EL.PikeLkActionsRec(cont)
+    requires EL.PikeLkRegexRec(L.Quantified(greedy, min, delta, r1))
+    requires min == 0 && delta.NN?
+    ensures TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b))
+    ensures LL.LeavesAgreeAtOutside(tstar, t, inp, S)
+    decreases CE.PSize(t), MsizeA(acts), n, 1
+  {
+    assert acts == [acts[0]] + cont;
+    EL.PikeLkActionsRecConsIff(acts[0], cont);
+    var gidl := L.DefGroups(r1);
+    // min == 0, bounded delta: spent (k == 0) or one optional layer
+    var k := delta.n;
+    var em := AR.NfaRepLQuantInv(rer, qm, greedy, 0, k, r1, code, pc, pcmid);
+    assert em == pc;   // the forced chain is empty
+    if k == 0 {
+      // spent quantifier: no code, epsilon-continue with cont
+      assert pc == pcmid;
+      WO.WalkOkQuantSpent(acts, code, pc, EaOf(b), greedy, r1);
+      assert LS.ActionsRegexSize(cont) < LS.ActionsRegexSize(acts);
+      assert MsizeA(cont) < MsizeA(acts);
+      tstar := ActionsTreeRepFRENested(rer, qm, cont, code, pcmid, inp, b, t, n - 1, S);
+    } else {
+      // one bounded layer: the fork skips to the common end pcmid
+      var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+      assert quant == L.Quantified(greedy, 0, LN.NN(k - 1), r1);
+      var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, pcmid) else RB.Fork(pcmid, pc + 1))
+        && (exists qid: int ::
+              NR.GetPcRE(code, pc + 1) == Some(RB.SetQuantToClock(qid, false))
+              && qid in qm.quants && qm.quants[qid] == gidl)
+        && NR.GetPcRE(code, pc + 2) == Some(RB.BeginLoop)
+        && AR.NfaRepL(rer, qm, r1, code, pc + 3, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+        && AR.NfaRepOptL(rer, qm, k - 1, greedy, r1, code, e1 + 1, pcmid);
+      AR.NfaRepIncrL(rer, qm, r1, code, pc + 3, e1);
+      AR.NfaRepIncrOptL(rer, qm, k - 1, greedy, r1, code, e1 + 1, pcmid);
+      match t {
+        case Choice(ta, tb) =>
+          var itert := if greedy then ta else tb;
+          var skipt := if greedy then tb else ta;
+          match itert {
+            case GroupActionT(g, ti) =>
+              assert g == LG.Reset(gidl);
+              WO.WalkOkQuantLayer(acts, code, pc, EaOf(b), greedy, delta, r1,
+                                  if greedy then pc + 1 else pcmid,
+                                  if greedy then pcmid else pc + 1, inp);
+              // skip branch: cont at the common end pcmid
+              assert CE.PSize(skipt) < CE.PSize(t);
+              var subs := ActionsTreeRepFRENested(rer, qm, cont, code, pcmid, inp, b, skipt, n - 1, S);
+              // iteration branch at pc+3 with the NN(k-1) continuation at e1+1
+              EL.PikeLkActionsRecConsIff(LS.Areg(quant), cont);
+              EL.PikeLkActionsRecConsIff(LS.Acheck(inp), [LS.Areg(quant)] + cont);
+              EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+              FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
+              var lq := [LS.Areg(quant)] + cont;
+              assert AR.NfaRepMinL(rer, qm, 0, r1, code, e1 + 1, e1 + 1);
+              AR.NfaRepLQuantIntro(rer, qm, greedy, 0, k - 1, r1, code, e1 + 1, e1 + 1, pcmid);
+              assert AR.ActionRepL(rer, qm, LS.Areg(quant), code, e1 + 1, pcmid);
+              assert lq[0] == LS.Areg(quant) && lq[1..] == cont;
+              assert AR.ActionsRepL(rer, qm, lq, code, e1 + 1);
+              // Acheck as the fall-through EndLoop onto the next layer
+              var lc := [LS.Acheck(inp)] + lq;
+              assert AR.ActionRepL(rer, qm, LS.Acheck(inp), code, e1, e1 + 1);
+              assert lc[0] == LS.Acheck(inp) && lc[1..] == lq;
+              assert AR.ActionsRepL(rer, qm, lc, code, e1);
+              var ia := [LS.Areg(r1)] + lc;
+              assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, pc + 3, e1);
+              assert ia[0] == LS.Areg(r1) && ia[1..] == lc;
+              assert AR.ActionsRepL(rer, qm, ia, code, pc + 3);
+              assert ia == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
+              ActionsRepLToFuel(rer, qm, ia, code, pc + 3);
+              var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 3, ni);
+              assert CE.PSize(ti) < CE.PSize(t);
+              var subi := ActionsTreeRepFRENested(rer, qm, ia, code, pc + 3, inp, BS.CannotExit, ti, ni, S);
+              // assemble: subi at pc+3 (false) -> tr_begin at pc+2 ->
+              // tr_reset at pc+1 -> tr_choice with the skip at pcmid
+              assert TR.TreeRepRE(qm, subi, code, pc + 3, inp, false);
+              assert TR.TreeRepRE(qm, subi, code, pc + 2, inp, EaOf(b));
+              var iterstar := LT.GroupActionT(g, subi);
+              assert TR.TreeRepRE(qm, iterstar, code, pc + 1, inp, EaOf(b));
+              tstar := if greedy then LT.Choice(iterstar, subs) else LT.Choice(subs, iterstar);
+              LL.LAAtCongGroupOutside(g, subi, ti, inp, S);
+              if greedy {
+                LL.LAAtCongChoiceOutside(iterstar, itert, subs, skipt, inp, S);
+              } else {
+                LL.LAAtCongChoiceOutside(subs, skipt, iterstar, itert, inp, S);
+              }
+              assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));
+            case _ =>
+          }
+        case _ =>
+      }
+    }
+  }
+
+  /** (2026-08-29 E3) the `Quantified` arm of `ActionsTreeRepFRENested`, min == 0 && delta == LN.Inf — extracted from a 350-line
+      case so each branch is its own VC (the parent no longer needs `{:isolate_assertions}`). */
+  lemma ATR_QuantStarNested(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, cont: LS.Actions, code: RB.code, pc: nat, pcmid: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree, n: nat, greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex, S: set<LG.GroupId>)
+    returns (tstar: LT.Tree)
+    requires EL.PikeLkActionsRec(acts)
+    requires !rer.multiline
+    requires ActionsRepFuelL(rer, qm, acts, code, pc, n)
+    requires WO.WalkOk(acts, code, pc, EaOf(b))
+    requires LL.OracleOkSuffix(rer, qm, inp)
+    requires EL.BoolTreeLk(rer, acts, inp, b, t)
+    requires CE.LkConfinedTreeK(t, S)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1))
+    requires cont == acts[1..]
+    requires AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && ActionsRepFuelL(rer, qm, cont, code, pcmid, n - 1)
+    requires EL.PikeLkActionsRec(cont)
+    requires EL.PikeLkRegexRec(L.Quantified(greedy, min, delta, r1))
+    requires min == 0 && delta == LN.Inf
+    ensures TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b))
+    ensures LL.LeavesAgreeAtOutside(tstar, t, inp, S)
+    decreases CE.PSize(t), MsizeA(acts), n, 1
+  {
+    assert acts == [acts[0]] + cont;
+    EL.PikeLkActionsRecConsIff(acts[0], cont);
+    var gidl := L.DefGroups(r1);
+    assert min == 0 && delta == LN.Inf;
+    var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+    assert quant == L.Quantified(greedy, 0, LN.Inf, r1) == L.Quantified(greedy, min, delta, r1);
+    if exists e1: nat :: NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1))
+                 && (exists qid: int ::
+                       NR.GetPcRE(code, pc + 1) == Some(RB.SetQuantToClock(qid, false))
+                       && qid in qm.quants && qm.quants[qid] == gidl)
+                 && NR.GetPcRE(code, pc + 2) == Some(RB.BeginLoop)
+                 && AR.NfaRepL(rer, qm, r1, code, pc + 3, e1)
+                 && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                 && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(pc))
+                 && pcmid == e1 + 2 {
+      // the star FAST PATH (forward decision point)
+      var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1))
+                   && (exists qid: int ::
+                         NR.GetPcRE(code, pc + 1) == Some(RB.SetQuantToClock(qid, false))
+                         && qid in qm.quants && qm.quants[qid] == gidl)
+                   && NR.GetPcRE(code, pc + 2) == Some(RB.BeginLoop)
+                   && AR.NfaRepL(rer, qm, r1, code, pc + 3, e1)
+                   && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                   && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(pc))
+                   && pcmid == e1 + 2;
+      AR.NfaRepIncrL(rer, qm, r1, code, pc + 3, e1);
+      match t {
+        case Choice(ta, tb) =>
+          var itert := if greedy then ta else tb;
+          var skipt := if greedy then tb else ta;
+          match itert {
+            case GroupActionT(g, ti) =>
+              assert g == LG.Reset(gidl);
+              WO.WalkOkQuantLayer(acts, code, pc, EaOf(b), greedy, delta, r1,
+                                  if greedy then pc + 1 else pcmid,
+                                  if greedy then pcmid else pc + 1, inp);
+              // skip branch at pcmid == e1+2
+              assert CE.PSize(skipt) < CE.PSize(t);
+              var subs := ActionsTreeRepFRENested(rer, qm, cont, code, pcmid, inp, b, skipt, n - 1, S);
+              // iteration branch: [Areg r1, Acheck inp, Areg quant] + cont at pc+3
+              EL.PikeLkActionsRecConsIff(LS.Areg(quant), cont);
+              EL.PikeLkActionsRecConsIff(LS.Acheck(inp), [LS.Areg(quant)] + cont);
+              EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
+              FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
+              // [Areg quant]+cont at pc (the star block itself, ending at pcmid)
+              var lq := [LS.Areg(quant)] + cont;
+              assert AR.ActionRepL(rer, qm, LS.Areg(quant), code, pc, pcmid);
+              assert lq[0] == LS.Areg(quant) && lq[1..] == cont;
+              assert AR.ActionsRepL(rer, qm, lq, code, pc);
+              // absorbed back-jump: lq at e1+1 via jump_bc
+              AR.ActionsRepLJmp(rer, qm, lq, code, e1 + 1, pc);
+              // [Acheck inp]+lq at e1 (fall-through EndLoop)
+              var lc := [LS.Acheck(inp)] + lq;
+              assert AR.ActionRepL(rer, qm, LS.Acheck(inp), code, e1, e1 + 1);
+              assert lc[0] == LS.Acheck(inp) && lc[1..] == lq;
+              assert AR.ActionsRepL(rer, qm, lc, code, e1);
+              // [Areg r1]+lc at pc+3
+              var ia := [LS.Areg(r1)] + lc;
+              assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, pc + 3, e1);
+              assert ia[0] == LS.Areg(r1) && ia[1..] == lc;
+              assert AR.ActionsRepL(rer, qm, ia, code, pc + 3);
+              assert ia == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
+              ActionsRepLToFuel(rer, qm, ia, code, pc + 3);
+              var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 3, ni);
+              assert CE.PSize(ti) < CE.PSize(t);
+              var subi := ActionsTreeRepFRENested(rer, qm, ia, code, pc + 3, inp, BS.CannotExit, ti, ni, S);
+              // assemble: subi at pc+3 (false) â†’ tr_begin at pc+2 (any b) â†’
+              // tr_reset at pc+1 (consumes the Reset node at b) â†’ tr_choice
+              assert TR.TreeRepRE(qm, subi, code, pc + 3, inp, false);
+              assert TR.TreeRepRE(qm, subi, code, pc + 2, inp, EaOf(b));
+              var iterstar := LT.GroupActionT(g, subi);
+              assert TR.TreeRepRE(qm, iterstar, code, pc + 1, inp, EaOf(b));
+              tstar := if greedy then LT.Choice(iterstar, subs) else LT.Choice(subs, iterstar);
+              LL.LAAtCongGroupOutside(g, subi, ti, inp, S);
+              if greedy {
+                LL.LAAtCongChoiceOutside(iterstar, itert, subs, skipt, inp, S);
+              } else {
+                LL.LAAtCongChoiceOutside(subs, skipt, iterstar, itert, inp, S);
+              }
+              assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));
+            case _ =>
+          }
+        case _ =>
+      }
+    } else {
+      // the LOOP VIEW: a bare star at the do-while's backward fork.
+      // WalkOk pins the flag to CanExit; the whole configuration is
+      // delegated to the fused fork lemma, and the extra Progress it
+      // returns is invisible to the leaves.
+      assert NUL.NonNullableL(r1);
+      var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em))
+        && em <= pc
+        && (exists qid: int ::
+              NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
+              && qid in qm.quants && qm.quants[qid] == gidl)
+        && AR.NfaRepL(rer, qm, r1, code, em + 1, pc)
+        && pcmid == pc + 1;
+      WO.WalkOkLoopView(acts, code, pc, EaOf(b), greedy, LN.Inf, r1,
+                        if greedy then em else pc + 1,
+                        if greedy then pc + 1 else em, inp);
+      assert EaOf(b) == true;
+      assert b == BS.CanExit;
+      assert AR.BackForkAt(code, pc);
+      var sub := AtBackForkTreeRepNested(rer, qm, acts, code, pc, inp, t, n, S);
+      tstar := LT.Progress(sub);
+      LL.LAAtProgressPassOutside(sub, inp, S);
+      assert LL.LeavesAgreeAtOutside(tstar, t, inp, S);
+  }
+  }
+
+  lemma ActionsTreeRepFRENested(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code, pc: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree, n: nat, S: set<LG.GroupId>)
     returns (tstar: LT.Tree)
     requires EL.PikeLkActionsRec(acts)
     requires !rer.multiline
@@ -1315,7 +1809,7 @@ module LindenElkActionsTreeRep {
     requires CE.LkConfinedTreeK(t, S)
     ensures TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b))
     ensures LL.LeavesAgreeAtOutside(tstar, t, inp, S)
-    decreases CE.PSize(t), MsizeA(acts), n, 1
+    decreases CE.PSize(t), MsizeA(acts), n, 2
   {
     if |acts| == 0 && NR.GetPcRE(code, pc) == Some(RB.Accept) {
       assert t == LT.Match;
@@ -1349,354 +1843,9 @@ module LindenElkActionsTreeRep {
         case Sequence(r1, r2) =>
           tstar := ATR_SequenceNested(rer, qm, acts, cont, code, pc, pcmid, inp, b, t, n, r1, r2, S);
         case Quantified(greedy, min, delta, r1) => {
-          var gidl := L.DefGroups(r1);
-          if min > 0 {
-            match delta {
-              case Inf =>
-                // the do-while: min-1 forced copies, the stamp, the body, the
-                // backward fork
-                var em, e1x := AR.NfaRepLPlusInv(rer, qm, greedy, min, r1, code, pc, pcmid);
-                assert NUL.NonNullableL(r1);
-                var qid: int :| NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
-                  && qid in qm.quants && qm.quants[qid] == gidl;
-                AR.NfaRepIncrL(rer, qm, r1, code, em + 1, e1x);
-                if min > 1 {
-                  // a forced copy: stamp at pc, body at pc+1, the smaller
-                  // do-while continues at eb
-                  var quant1 := L.Quantified(greedy, min - 1, LN.Inf, r1);
-                  var eb: nat :| (exists qid2: int ::
-                        NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid2, false))
-                        && qid2 in qm.quants && qm.quants[qid2] == gidl)
-                    && AR.NfaRepL(rer, qm, r1, code, pc + 1, eb)
-                    && AR.NfaRepMinL(rer, qm, min - 2, r1, code, eb, em);
-                  AR.NfaRepLPlusIntro(rer, qm, greedy, min - 1, r1, code, eb, em, e1x, pcmid, qid);
-                  assert AR.NfaRepL(rer, qm, quant1, code, eb, pcmid);
-                  match t {
-                    case GroupActionT(g, tc) =>
-                      assert g == LG.Reset(gidl);
-                      EL.PikeLkActionsRecConsIff(LS.Areg(quant1), cont);
-                      EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(quant1)] + cont);
-                      FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
-                      assert AR.ActionRepL(rer, qm, LS.Areg(quant1), code, eb, pcmid);
-                      var lq1 := [LS.Areg(quant1)] + cont;
-                      assert lq1[0] == LS.Areg(quant1) && lq1[1..] == cont;
-                      assert AR.ActionsRepL(rer, qm, lq1, code, eb);
-                      var ia := [LS.Areg(r1)] + lq1;
-                      assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, pc + 1, eb);
-                      assert ia[0] == LS.Areg(r1) && ia[1..] == lq1;
-                      assert AR.ActionsRepL(rer, qm, ia, code, pc + 1);
-                      assert ia == [LS.Areg(r1), LS.Areg(quant1)] + cont;
-                      ActionsRepLToFuel(rer, qm, ia, code, pc + 1);
-                      var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 1, ni);
-                      WO.WalkOkQuantForced(acts, code, pc, EaOf(b), greedy, min, delta, r1);
-                      assert CE.PSize(tc) < CE.PSize(t);
-                      var sub := ActionsTreeRepFRENested(rer, qm, ia, code, pc + 1, inp, b, tc, ni, S);
-                      tstar := LT.GroupActionT(g, sub);
-                      // tr_reset at pc (the copy's clock-mark carries the Reset)
-                      LL.LAAtCongGroupOutside(g, sub, tc, inp, S);
-                    case _ =>
-                  }
-                } else {
-                  // min == 1: THE SEAM. The stamp is at pc (== em); the spec
-                  // walk has no check after this last forced body â€” insert it.
-                  assert em == pc;
-                  var q0 := L.Quantified(greedy, 0, LN.Inf, r1);
-                  match t {
-                    case GroupActionT(g, tc) =>
-                      assert g == LG.Reset(gidl);
-                      assert EL.BoolTreeLk(rer, [LS.Areg(r1), LS.Areg(q0)] + cont, inp, b, tc);
-                      var pre := [LS.Areg(r1)];
-                      var rest := [LS.Areg(q0)] + cont;
-                      EL.PikeLkActionsRecConsIff(LS.Areg(q0), cont);
-                      EL.PikeLkActionsRecConsIff(LS.Areg(r1), rest);
-                      assert EL.PikeLkActionsRec(pre) by {
-                        assert pre == [LS.Areg(r1)] + [];
-                        EL.PikeLkActionsRecConsIff(LS.Areg(r1), []);
-                      }
-                      assert pre + rest == [LS.Areg(r1), LS.Areg(q0)] + cont;
-                      assert CE.ConsumesBeforeAreg(pre) by {
-                        assert pre[0].Areg? && NUL.NonNullableL(pre[0].r);
-                      }
-                      var t1ck := CE.BoolCheckInsertK(rer, pre, inp, rest, inp, b, tc);
-                      assert CE.LkConfinedTreeK(t1ck, S);   // BoolCheckInsert preserves it from LkConfinedTree(tc, S)
-                      var ia := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont;
-                      assert ia == pre + [LS.Acheck(inp)] + rest;
-                      assert EL.BoolTreeLk(rer, ia, inp, b, t1ck);
-                      // representation of the checked list at pc+1: the body,
-                      // the zero-width check at the fork, the loop view
-                      assert AR.BackForkAt(code, e1x) by {
-                        assert NR.GetPcRE(code, e1x)
-                            == Some(if greedy then RB.Fork(em, e1x + 1) else RB.Fork(e1x + 1, em));
-                        assert em <= e1x;
-                      }
-                      assert AR.NfaRepL(rer, qm, q0, code, e1x, e1x + 1) by {
-                        assert NUL.NonNullableL(r1)
-                          && NR.GetPcRE(code, e1x)
-                             == Some(if greedy then RB.Fork(em, e1x + 1) else RB.Fork(e1x + 1, em))
-                          && em <= e1x
-                          && (exists qid2: int ::
-                                NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid2, false))
-                                && qid2 in qm.quants && qm.quants[qid2] == L.DefGroups(r1))
-                          && AR.NfaRepL(rer, qm, r1, code, em + 1, e1x);
-                      }
-                      FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
-                      var lq := [LS.Areg(q0)] + cont;
-                      assert AR.ActionRepL(rer, qm, LS.Areg(q0), code, e1x, e1x + 1);
-                      assert lq[0] == LS.Areg(q0) && lq[1..] == cont;
-                      assert AR.ActionsRepL(rer, qm, lq, code, e1x);
-                      var lc := [LS.Acheck(inp)] + lq;
-                      EL.PikeLkActionsRecConsIff(LS.Acheck(inp), lq);
-                      assert AR.ActionRepL(rer, qm, LS.Acheck(inp), code, e1x, e1x);
-                      assert lc[0] == LS.Acheck(inp) && lc[1..] == lq;
-                      assert AR.ActionsRepL(rer, qm, lc, code, e1x);
-                      assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, pc + 1, e1x);
-                      assert ia == [LS.Areg(r1)] + lc;
-                      assert ia[0] == LS.Areg(r1) && ia[1..] == lc;
-                      assert AR.ActionsRepL(rer, qm, ia, code, pc + 1);
-                      EL.PikeLkActionsRecConsIff(LS.Areg(r1), lc);
-                      assert EL.PikeLkActionsRec(ia);
-                      ActionsRepLToFuel(rer, qm, ia, code, pc + 1);
-                      var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 1, ni);
-                      WO.WalkOkQuantSeam(acts, code, pc, EaOf(b), greedy, r1, inp);
-                      assert CE.PSize(t1ck) == CE.PSize(tc);
-                      assert CE.PSize(t1ck) < CE.PSize(t);
-                      var sub := ActionsTreeRepFRENested(rer, qm, ia, code, pc + 1, inp, b, t1ck, ni, S);
-                      tstar := LT.GroupActionT(g, sub);
-                      // tr_reset at pc (the do-while stamp; the VM's
-                      // SetQuantToClock preserves exit_allowed, so b carries)
-                      assert LL.LeavesAgreeAtOutside(sub, tc, inp, S);
-                      LL.LAAtCongGroupOutside(g, sub, tc, inp, S);
-                    case _ =>
-                  }
-                }
-              case NN(kx) =>
-                var em := AR.NfaRepLQuantInv(rer, qm, greedy, min, kx, r1, code, pc, pcmid);
-                var quant1 := L.Quantified(greedy, min - 1, delta, r1);
-                var eb: nat :| (exists qid: int ::
-                      NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
-                      && qid in qm.quants && qm.quants[qid] == gidl)
-                  && AR.NfaRepL(rer, qm, r1, code, pc + 1, eb)
-                  && AR.NfaRepMinL(rer, qm, min - 1, r1, code, eb, em);
-                AR.NfaRepLQuantIntro(rer, qm, greedy, min - 1, kx, r1, code, eb, em, pcmid);
-                assert AR.NfaRepL(rer, qm, quant1, code, eb, pcmid);
-                match t {
-                  case GroupActionT(g, tc) =>
-                    assert g == LG.Reset(gidl);
-                    EL.PikeLkActionsRecConsIff(LS.Areg(quant1), cont);
-                    EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(quant1)] + cont);
-                    FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
-                    assert AR.ActionRepL(rer, qm, LS.Areg(quant1), code, eb, pcmid);
-                    var lq1 := [LS.Areg(quant1)] + cont;
-                    assert lq1[0] == LS.Areg(quant1) && lq1[1..] == cont;
-                    assert AR.ActionsRepL(rer, qm, lq1, code, eb);
-                    var ia := [LS.Areg(r1)] + lq1;
-                    assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, pc + 1, eb);
-                    assert ia[0] == LS.Areg(r1) && ia[1..] == lq1;
-                    assert AR.ActionsRepL(rer, qm, ia, code, pc + 1);
-                    assert ia == [LS.Areg(r1), LS.Areg(quant1)] + cont;
-                    ActionsRepLToFuel(rer, qm, ia, code, pc + 1);
-                    var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 1, ni);
-                    WO.WalkOkQuantForced(acts, code, pc, EaOf(b), greedy, min, delta, r1);
-                    assert CE.PSize(tc) < CE.PSize(t);
-                    var sub := ActionsTreeRepFRENested(rer, qm, ia, code, pc + 1, inp, b, tc, ni, S);
-                    tstar := LT.GroupActionT(g, sub);
-                    // tr_reset at pc (the clock-mark carries the Reset node)
-                    LL.LAAtCongGroupOutside(g, sub, tc, inp, S);
-                  case _ =>
-                }
-            }
-            return;
-          }
-          if delta.NN? {
-            // min == 0, bounded delta: spent (k == 0) or one optional layer
-            var k := delta.n;
-            var em := AR.NfaRepLQuantInv(rer, qm, greedy, 0, k, r1, code, pc, pcmid);
-            assert em == pc;   // the forced chain is empty
-            if k == 0 {
-              // spent quantifier: no code, epsilon-continue with cont
-              assert pc == pcmid;
-              WO.WalkOkQuantSpent(acts, code, pc, EaOf(b), greedy, r1);
-              assert LS.ActionsRegexSize(cont) < LS.ActionsRegexSize(acts);
-              assert MsizeA(cont) < MsizeA(acts);
-              tstar := ActionsTreeRepFRENested(rer, qm, cont, code, pcmid, inp, b, t, n - 1, S);
-            } else {
-              // one bounded layer: the fork skips to the common end pcmid
-              var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
-              assert quant == L.Quantified(greedy, 0, LN.NN(k - 1), r1);
-              var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, pcmid) else RB.Fork(pcmid, pc + 1))
-                && (exists qid: int ::
-                      NR.GetPcRE(code, pc + 1) == Some(RB.SetQuantToClock(qid, false))
-                      && qid in qm.quants && qm.quants[qid] == gidl)
-                && NR.GetPcRE(code, pc + 2) == Some(RB.BeginLoop)
-                && AR.NfaRepL(rer, qm, r1, code, pc + 3, e1)
-                && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-                && AR.NfaRepOptL(rer, qm, k - 1, greedy, r1, code, e1 + 1, pcmid);
-              AR.NfaRepIncrL(rer, qm, r1, code, pc + 3, e1);
-              AR.NfaRepIncrOptL(rer, qm, k - 1, greedy, r1, code, e1 + 1, pcmid);
-              match t {
-                case Choice(ta, tb) =>
-                  var itert := if greedy then ta else tb;
-                  var skipt := if greedy then tb else ta;
-                  match itert {
-                    case GroupActionT(g, ti) =>
-                      assert g == LG.Reset(gidl);
-                      WO.WalkOkQuantLayer(acts, code, pc, EaOf(b), greedy, delta, r1,
-                                          if greedy then pc + 1 else pcmid,
-                                          if greedy then pcmid else pc + 1, inp);
-                      // skip branch: cont at the common end pcmid
-                      assert CE.PSize(skipt) < CE.PSize(t);
-                      var subs := ActionsTreeRepFRENested(rer, qm, cont, code, pcmid, inp, b, skipt, n - 1, S);
-                      // iteration branch at pc+3 with the NN(k-1) continuation at e1+1
-                      EL.PikeLkActionsRecConsIff(LS.Areg(quant), cont);
-                      EL.PikeLkActionsRecConsIff(LS.Acheck(inp), [LS.Areg(quant)] + cont);
-                      EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
-                      FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
-                      var lq := [LS.Areg(quant)] + cont;
-                      assert AR.NfaRepMinL(rer, qm, 0, r1, code, e1 + 1, e1 + 1);
-                      AR.NfaRepLQuantIntro(rer, qm, greedy, 0, k - 1, r1, code, e1 + 1, e1 + 1, pcmid);
-                      assert AR.ActionRepL(rer, qm, LS.Areg(quant), code, e1 + 1, pcmid);
-                      assert lq[0] == LS.Areg(quant) && lq[1..] == cont;
-                      assert AR.ActionsRepL(rer, qm, lq, code, e1 + 1);
-                      // Acheck as the fall-through EndLoop onto the next layer
-                      var lc := [LS.Acheck(inp)] + lq;
-                      assert AR.ActionRepL(rer, qm, LS.Acheck(inp), code, e1, e1 + 1);
-                      assert lc[0] == LS.Acheck(inp) && lc[1..] == lq;
-                      assert AR.ActionsRepL(rer, qm, lc, code, e1);
-                      var ia := [LS.Areg(r1)] + lc;
-                      assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, pc + 3, e1);
-                      assert ia[0] == LS.Areg(r1) && ia[1..] == lc;
-                      assert AR.ActionsRepL(rer, qm, ia, code, pc + 3);
-                      assert ia == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
-                      ActionsRepLToFuel(rer, qm, ia, code, pc + 3);
-                      var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 3, ni);
-                      assert CE.PSize(ti) < CE.PSize(t);
-                      var subi := ActionsTreeRepFRENested(rer, qm, ia, code, pc + 3, inp, BS.CannotExit, ti, ni, S);
-                      // assemble: subi at pc+3 (false) -> tr_begin at pc+2 ->
-                      // tr_reset at pc+1 -> tr_choice with the skip at pcmid
-                      assert TR.TreeRepRE(qm, subi, code, pc + 3, inp, false);
-                      assert TR.TreeRepRE(qm, subi, code, pc + 2, inp, EaOf(b));
-                      var iterstar := LT.GroupActionT(g, subi);
-                      assert TR.TreeRepRE(qm, iterstar, code, pc + 1, inp, EaOf(b));
-                      tstar := if greedy then LT.Choice(iterstar, subs) else LT.Choice(subs, iterstar);
-                      LL.LAAtCongGroupOutside(g, subi, ti, inp, S);
-                      if greedy {
-                        LL.LAAtCongChoiceOutside(iterstar, itert, subs, skipt, inp, S);
-                      } else {
-                        LL.LAAtCongChoiceOutside(subs, skipt, iterstar, itert, inp, S);
-                      }
-                      assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));
-                    case _ =>
-                  }
-                case _ =>
-              }
-            }
-            return;
-          }
-          assert min == 0 && delta == LN.Inf;
-          var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
-          assert quant == L.Quantified(greedy, 0, LN.Inf, r1) == L.Quantified(greedy, min, delta, r1);
-          if exists e1: nat :: NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1))
-                       && (exists qid: int ::
-                             NR.GetPcRE(code, pc + 1) == Some(RB.SetQuantToClock(qid, false))
-                             && qid in qm.quants && qm.quants[qid] == gidl)
-                       && NR.GetPcRE(code, pc + 2) == Some(RB.BeginLoop)
-                       && AR.NfaRepL(rer, qm, r1, code, pc + 3, e1)
-                       && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-                       && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(pc))
-                       && pcmid == e1 + 2 {
-            // the star FAST PATH (forward decision point)
-            var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1))
-                         && (exists qid: int ::
-                               NR.GetPcRE(code, pc + 1) == Some(RB.SetQuantToClock(qid, false))
-                               && qid in qm.quants && qm.quants[qid] == gidl)
-                         && NR.GetPcRE(code, pc + 2) == Some(RB.BeginLoop)
-                         && AR.NfaRepL(rer, qm, r1, code, pc + 3, e1)
-                         && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
-                         && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(pc))
-                         && pcmid == e1 + 2;
-            AR.NfaRepIncrL(rer, qm, r1, code, pc + 3, e1);
-            match t {
-              case Choice(ta, tb) =>
-                var itert := if greedy then ta else tb;
-                var skipt := if greedy then tb else ta;
-                match itert {
-                  case GroupActionT(g, ti) =>
-                    assert g == LG.Reset(gidl);
-                    WO.WalkOkQuantLayer(acts, code, pc, EaOf(b), greedy, delta, r1,
-                                        if greedy then pc + 1 else pcmid,
-                                        if greedy then pcmid else pc + 1, inp);
-                    // skip branch at pcmid == e1+2
-                    assert CE.PSize(skipt) < CE.PSize(t);
-                    var subs := ActionsTreeRepFRENested(rer, qm, cont, code, pcmid, inp, b, skipt, n - 1, S);
-                    // iteration branch: [Areg r1, Acheck inp, Areg quant] + cont at pc+3
-                    EL.PikeLkActionsRecConsIff(LS.Areg(quant), cont);
-                    EL.PikeLkActionsRecConsIff(LS.Acheck(inp), [LS.Areg(quant)] + cont);
-                    EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
-                    FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
-                    // [Areg quant]+cont at pc (the star block itself, ending at pcmid)
-                    var lq := [LS.Areg(quant)] + cont;
-                    assert AR.ActionRepL(rer, qm, LS.Areg(quant), code, pc, pcmid);
-                    assert lq[0] == LS.Areg(quant) && lq[1..] == cont;
-                    assert AR.ActionsRepL(rer, qm, lq, code, pc);
-                    // absorbed back-jump: lq at e1+1 via jump_bc
-                    AR.ActionsRepLJmp(rer, qm, lq, code, e1 + 1, pc);
-                    // [Acheck inp]+lq at e1 (fall-through EndLoop)
-                    var lc := [LS.Acheck(inp)] + lq;
-                    assert AR.ActionRepL(rer, qm, LS.Acheck(inp), code, e1, e1 + 1);
-                    assert lc[0] == LS.Acheck(inp) && lc[1..] == lq;
-                    assert AR.ActionsRepL(rer, qm, lc, code, e1);
-                    // [Areg r1]+lc at pc+3
-                    var ia := [LS.Areg(r1)] + lc;
-                    assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, pc + 3, e1);
-                    assert ia[0] == LS.Areg(r1) && ia[1..] == lc;
-                    assert AR.ActionsRepL(rer, qm, ia, code, pc + 3);
-                    assert ia == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
-                    ActionsRepLToFuel(rer, qm, ia, code, pc + 3);
-                    var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, pc + 3, ni);
-                    assert CE.PSize(ti) < CE.PSize(t);
-                    var subi := ActionsTreeRepFRENested(rer, qm, ia, code, pc + 3, inp, BS.CannotExit, ti, ni, S);
-                    // assemble: subi at pc+3 (false) â†’ tr_begin at pc+2 (any b) â†’
-                    // tr_reset at pc+1 (consumes the Reset node at b) â†’ tr_choice
-                    assert TR.TreeRepRE(qm, subi, code, pc + 3, inp, false);
-                    assert TR.TreeRepRE(qm, subi, code, pc + 2, inp, EaOf(b));
-                    var iterstar := LT.GroupActionT(g, subi);
-                    assert TR.TreeRepRE(qm, iterstar, code, pc + 1, inp, EaOf(b));
-                    tstar := if greedy then LT.Choice(iterstar, subs) else LT.Choice(subs, iterstar);
-                    LL.LAAtCongGroupOutside(g, subi, ti, inp, S);
-                    if greedy {
-                      LL.LAAtCongChoiceOutside(iterstar, itert, subs, skipt, inp, S);
-                    } else {
-                      LL.LAAtCongChoiceOutside(subs, skipt, iterstar, itert, inp, S);
-                    }
-                    assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));
-                  case _ =>
-                }
-              case _ =>
-            }
-          } else {
-            // the LOOP VIEW: a bare star at the do-while's backward fork.
-            // WalkOk pins the flag to CanExit; the whole configuration is
-            // delegated to the fused fork lemma, and the extra Progress it
-            // returns is invisible to the leaves.
-            assert NUL.NonNullableL(r1);
-            var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em))
-              && em <= pc
-              && (exists qid: int ::
-                    NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
-                    && qid in qm.quants && qm.quants[qid] == gidl)
-              && AR.NfaRepL(rer, qm, r1, code, em + 1, pc)
-              && pcmid == pc + 1;
-            WO.WalkOkLoopView(acts, code, pc, EaOf(b), greedy, LN.Inf, r1,
-                              if greedy then em else pc + 1,
-                              if greedy then pc + 1 else em, inp);
-            assert EaOf(b) == true;
-            assert b == BS.CanExit;
-            assert AR.BackForkAt(code, pc);
-            var sub := AtBackForkTreeRepNested(rer, qm, acts, code, pc, inp, t, n, S);
-            tstar := LT.Progress(sub);
-            LL.LAAtProgressPassOutside(sub, inp, S);
-            assert LL.LeavesAgreeAtOutside(tstar, t, inp, S);
-          }
+          if min > 0 { tstar := ATR_QuantMinNested(rer, qm, acts, cont, code, pc, pcmid, inp, b, t, n, greedy, min, delta, r1, S); }
+          else if delta.NN? { tstar := ATR_QuantNNNested(rer, qm, acts, cont, code, pc, pcmid, inp, b, t, n, greedy, min, delta, r1, S); }
+          else { tstar := ATR_QuantStarNested(rer, qm, acts, cont, code, pc, pcmid, inp, b, t, n, greedy, min, delta, r1, S); }
         }
         case Group(gid, r1) =>
           tstar := ATR_GroupNested(rer, qm, acts, cont, code, pc, pcmid, inp, b, t, n, gid, r1, S);
