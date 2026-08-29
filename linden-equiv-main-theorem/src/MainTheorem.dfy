@@ -13119,7 +13119,7 @@ module LindenElkMain {
       FRESH match on the direct children (`ReplayLidLookAgreeFreshNested` at
       `SL := DirectLidSet(body)`) — so the FINAL bank's child records are the
       fresh match's. Rows above `lid` come from the IH keyed on `res.1`. */
-  lemma {:isolate_assertions} FLookLoopChildLinkLift(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
+  lemma FLookLoopChildLinkLift(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
                                                      cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
                                                      S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int)
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
@@ -13179,176 +13179,253 @@ module LindenElkMain {
         assert !MatchedPosLA(crv, res.1, lid);   // !capture_type(looktype), looktype == f_look_types[lid]
         ChildLinkSkipLid(crv, str, res.1, lid, maxlook, ov, ncap, nlook, nquant);
       } else {
-        var la: R.lookaround, body: R.regex :| LTB.LookEntryOk(crv, lid, la, body);
-        assert 0 <= lid < |crv.f_look_types| && crv.f_look_types[lid] == la;
-        assert looktype == la;
-        assert body == VBody(crv, lid);
-        assert FrameEntryOk(crv, la, body, S, Slook);
-        assert la.Lookahead? || la.Lookbehind?;            // (L5 F7c-2) capture_type
-        var bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
-        var dir := AI.capture_direction(looktype);
-        var lookcdn := if 0 <= lid < |crv.f_look_cdns| then crv.f_look_cdns[lid] else [];
-        var lookast := if 0 <= lid < |crv.f_look_ast| then crv.f_look_ast[lid] else R.Re_empty;
-        assert lookast == body;
-        assert bytecode == CP.compile_to_bytecode(CP.capture_regex(la, body));
-        var (result, ov1) := AI.FFindMatchPlus(bytecode, lookast, crv.f_plus_bc, str, ov, dir,
-                                               cp, cap, lk, qt, 0, lookcdn);
-        var capN := if result.None? then cap else result.value.capture_regs;
-        var nlk := if result.None? then lk else result.value.look_regs;
-        var nqt := if result.None? then qt else result.value.quant_regs;
-        // (L5 F7c-2) per-kind replay facts (the `...LB` twins take the BACKWARD ones)
-        assert la.Lookahead? ==> (dir == LAnc.Forward && CP.capture_regex(la, body) == body
-                                  && bytecode == CP.compile_to_bytecode(body)
-                                  && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp));
-        assert la.Lookbehind? ==> (dir == LAnc.Backward && CP.capture_regex(la, body) == R.reverse_regex(body)
-                                   && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
-                                   && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1));
-        assert res == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1);
-        assert 0 <= cp <= |str| by {
-          assert cp == AI.get_idx(lk.a_cp, lid) && cp >= 0;   // get_cp(lk,lid)==Some(cp)
-          assert AI.get_idx(lk.a_cp, lid) <= |str|;            // LookCpsLE
+        // (2026-08-29 E3) the preamble is an OPAQUE block: only the facts below reach the arm's VC.
+        var la: R.lookaround := *;
+        var body: R.regex := *;
+        var bytecode := *;
+        var dir := *;
+        var lookcdn := *;
+        var lookast := *;
+        var result := *;
+        var ov1 := *;
+        var capN := *;
+        var nlk := *;
+        var nqt := *;
+        var rfLid := *;
+        var rf := *;
+        opaque
+          ensures (LTB.LookEntryOk(crv, lid, la, body))
+          ensures (bytecode == AI.get_code_v(crv.f_look_capture_bc, lid))
+          ensures (dir == AI.capture_direction(looktype))
+          ensures (lookcdn == if 0 <= lid < |crv.f_look_cdns| then crv.f_look_cdns[lid] else [])
+          ensures (lookast == if 0 <= lid < |crv.f_look_ast| then crv.f_look_ast[lid] else R.Re_empty)
+          ensures (AI.FFindMatchPlus(bytecode, lookast, crv.f_plus_bc, str, ov, dir,
+                                                           cp, cap, lk, qt, 0, lookcdn) == (result, ov1))
+          ensures (capN == if result.None? then cap else result.value.capture_regs)
+          ensures (nlk == if result.None? then lk else result.value.look_regs)
+          ensures (nqt == if result.None? then qt else result.value.quant_regs)
+          ensures (rfLid == FreshBodyMatch(crv, str, lid, lk, ov, ncap, nlook, nquant))
+          ensures (rf == AI.FFindMatch(bytecode, str,
+                                            AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                          AReg.init_regs(nquant), 0, AI.cp_context(cp, str, dir)),
+                                            ov, dir, lookcdn).0)
+          ensures (0 <= lid < |crv.f_look_types| && crv.f_look_types[lid] == la)
+          ensures (body == VBody(crv, lid))
+          ensures (FrameEntryOk(crv, la, body, S, Slook))
+          ensures (lookast == body)
+          ensures (bytecode == CP.compile_to_bytecode(CP.capture_regex(la, body)))
+          ensures (la.Lookahead? ==> (dir == LAnc.Forward && CP.capture_regex(la, body) == body
+                                              && bytecode == CP.compile_to_bytecode(body)
+                                              && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp)))
+          ensures (la.Lookbehind? ==> (dir == LAnc.Backward && CP.capture_regex(la, body) == R.reverse_regex(body)
+                                               && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+                                               && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)))
+          ensures (res == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1))
+          ensures (0 <= cp <= |str|)
+          ensures (ov1 == ov)
+          ensures (CM.RegsAgreeOutside(capN, cap, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body))))
+          ensures (CM.RegsAgreeOutside(nlk, lk, LookIdSet(body)))
+          ensures (CM.RegsAgreeOutside(nlk, lk, DirectLidSet(body)))
+          ensures ((forall k :: AI.get_idx(nqt.a_cp, k) < 0) && (forall k :: AI.get_idx(nqt.a_clk, k) >= -1))
+          ensures (|capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN)
+                           && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook)
+          ensures (CM.LookCpsLE(nlk, |str|))
+          ensures (rfLid == rf)
+          ensures ((result.None? <==> rf.None?) && (result.Some? ==> CM.RegsAgreeInside(result.value.look_regs, rf.value.look_regs, DirectLidSet(body))))
+        {
+          la, body :| LTB.LookEntryOk(crv, lid, la, body);
+          assert 0 <= lid < |crv.f_look_types| && crv.f_look_types[lid] == la;
+          assert looktype == la;
+          assert body == VBody(crv, lid);
+          assert FrameEntryOk(crv, la, body, S, Slook);
+          assert la.Lookahead? || la.Lookbehind?;            // (L5 F7c-2) capture_type
+          bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
+          dir := AI.capture_direction(looktype);
+          lookcdn := if 0 <= lid < |crv.f_look_cdns| then crv.f_look_cdns[lid] else [];
+          lookast := if 0 <= lid < |crv.f_look_ast| then crv.f_look_ast[lid] else R.Re_empty;
+          assert lookast == body;
+          assert bytecode == CP.compile_to_bytecode(CP.capture_regex(la, body));
+          var (result', ov1') := AI.FFindMatchPlus(bytecode, lookast, crv.f_plus_bc, str, ov, dir,
+                                                 cp, cap, lk, qt, 0, lookcdn); result, ov1 := result', ov1';
+          capN := if result.None? then cap else result.value.capture_regs;
+          nlk := if result.None? then lk else result.value.look_regs;
+          nqt := if result.None? then qt else result.value.quant_regs;
+          // (L5 F7c-2) per-kind replay facts (the `...LB` twins take the BACKWARD ones)
+          assert la.Lookahead? ==> (dir == LAnc.Forward && CP.capture_regex(la, body) == body
+                                    && bytecode == CP.compile_to_bytecode(body)
+                                    && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp));
+          assert la.Lookbehind? ==> (dir == LAnc.Backward && CP.capture_regex(la, body) == R.reverse_regex(body)
+                                     && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+                                     && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1));
+          assert res == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1);
+          assert 0 <= cp <= |str| by {
+            assert cp == AI.get_idx(lk.a_cp, lid) && cp >= 0;   // get_cp(lk,lid)==Some(cp)
+            assert AI.get_idx(lk.a_cp, lid) <= |str|;            // LookCpsLE
+          }
+  
+          // per-lid replay frames / wf / cp (verbatim from FLookLoopValueLiftFull)
+          if la.Lookahead? { FFindMatchPlusOvStableNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
+          else { FFindMatchPlusOvStableNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
+          assert ov1 == ov;
+          if la.Lookahead? { ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
+          else { ReplayPlusFrameNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
+          assert CM.RegsAgreeOutside(capN, cap, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body))) by {
+            if result.Some? {} else { assert capN == cap; }
+          }
+          assert CM.RegsAgreeOutside(nlk, lk, LookIdSet(body)) by {
+            if result.Some? {} else { assert nlk == lk; }
+          }
+          if la.Lookahead? { ReplayPlusLookFrameDirectNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
+          else { ReplayPlusLookFrameDirectNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
+          assert CM.RegsAgreeOutside(nlk, lk, DirectLidSet(body)) by {
+            if result.Some? {} else { assert nlk == lk; }
+          }
+          assert (forall k :: AI.get_idx(nqt.a_cp, k) < 0) && (forall k :: AI.get_idx(nqt.a_clk, k) >= -1) by {
+            if result.Some? { assert QuantRegsFinal(result.value); }
+          }
+          if la.Lookahead? { ReplayThreadWfLANested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant); }
+          else { ReplayThreadWfLBNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant); }
+          assert |capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN)
+                 && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook by {
+            if result.Some? { assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant); }
+          }
+          if la.Lookahead? { ReplayLookCpOkNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
+          else { ReplayLookCpOkNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
+          assert CM.LookCpsLE(nlk, |str|) by {
+            if result.Some? {} else { assert nlk == lk; }
+          }
+  
+          // THE level-link engine step: replay ~ fresh on lid's DIRECT children
+          if la.Lookahead? { ReplayLidLookAgreeFreshNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, DirectLidSet(body), ncap, nlook, nquant); }
+          else { ReplayLidLookAgreeFreshNestedLB(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, DirectLidSet(body), ncap, nlook, nquant); }
+          rfLid := FreshBodyMatch(crv, str, lid, lk, ov, ncap, nlook, nquant);
+          rf := AI.FFindMatch(bytecode, str,
+                                  AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                AReg.init_regs(nquant), 0, AI.cp_context(cp, str, dir)),
+                                  ov, dir, lookcdn).0;   // (L5 F7c-2) in the lid's own direction
+          assert rfLid == rf;
+          assert (result.None? <==> rf.None?) && (result.Some? ==> CM.RegsAgreeInside(result.value.look_regs, rf.value.look_regs, DirectLidSet(body)));   // (E3) exported: the look-agreement None-iff + inside-agreement
         }
-
-        // per-lid replay frames / wf / cp (verbatim from FLookLoopValueLiftFull)
-        if la.Lookahead? { FFindMatchPlusOvStableNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
-        else { FFindMatchPlusOvStableNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
-        assert ov1 == ov;
-        if la.Lookahead? { ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
-        else { ReplayPlusFrameNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
-        assert CM.RegsAgreeOutside(capN, cap, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body))) by {
-          if result.Some? {} else { assert capN == cap; }
-        }
-        assert CM.RegsAgreeOutside(nlk, lk, LookIdSet(body)) by {
-          if result.Some? {} else { assert nlk == lk; }
-        }
-        if la.Lookahead? { ReplayPlusLookFrameDirectNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
-        else { ReplayPlusLookFrameDirectNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
-        assert CM.RegsAgreeOutside(nlk, lk, DirectLidSet(body)) by {
-          if result.Some? {} else { assert nlk == lk; }
-        }
-        assert (forall k :: AI.get_idx(nqt.a_cp, k) < 0) && (forall k :: AI.get_idx(nqt.a_clk, k) >= -1) by {
-          if result.Some? { assert QuantRegsFinal(result.value); }
-        }
-        if la.Lookahead? { ReplayThreadWfLANested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant); }
-        else { ReplayThreadWfLBNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant); }
-        assert |capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN)
-               && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook by {
-          if result.Some? { assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant); }
-        }
-        if la.Lookahead? { ReplayLookCpOkNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
-        else { ReplayLookCpOkNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
-        assert CM.LookCpsLE(nlk, |str|) by {
-          if result.Some? {} else { assert nlk == lk; }
-        }
-
-        // THE level-link engine step: replay ~ fresh on lid's DIRECT children
-        if la.Lookahead? { ReplayLidLookAgreeFreshNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, DirectLidSet(body), ncap, nlook, nquant); }
-        else { ReplayLidLookAgreeFreshNestedLB(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, DirectLidSet(body), ncap, nlook, nquant); }
-        var rfLid := FreshBodyMatch(crv, str, lid, lk, ov, ncap, nlook, nquant);
-        var rf := AI.FFindMatch(bytecode, str,
-                                AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                              AReg.init_regs(nquant), 0, AI.cp_context(cp, str, dir)),
-                                ov, dir, lookcdn).0;   // (L5 F7c-2) in the lid's own direction
-        assert rfLid == rf;
+        assert {:split_here} true;   // (E3) section boundary: its own assertion batch
 
         // ---- recursion hypothesis transfer at [next] (verbatim + (c'-look)) ----
         // (b) matched-look-has-entry for nlk
-        assert forall l: int :: next <= l <= maxlook && AReg.get_cp(nlk, l).Some? ==>
-                                  exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
-        by {
-          forall l: int | next <= l <= maxlook && AReg.get_cp(nlk, l).Some?
-            ensures exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
-          {
-            if AReg.get_cp(lk, l).Some? {
-            } else {
-              assert result.Some?;
-              assert CM.RegsAgreeOutside(nlk, lk, LookIdSet(body));
-              NewLookInBody(nlk, lk, body, l);
-              assert LTB.LookTablesOk(body, crv);
-              LookIdEntryExists(body, crv, l as nat);
+        // (2026-08-29 E3) the preamble is an OPAQUE block: only the facts below reach the arm's VC.
+        opaque
+          ensures (forall l: int :: next <= l <= maxlook && AReg.get_cp(nlk, l).Some? ==>
+                                              exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2))
+          ensures (forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
+                        (next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
+                        && next <= l2 <= maxlook && l2 != l1 && AReg.get_cp(nlk, l2).Some?) ==> l2 !in LookIdSet(b1))
+          ensures (forall l: int, la2: R.lookaround, body2: R.regex ::
+                        next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==>
+                          CM.RegsAgreeInside(capN, AReg.init_regs(ncap), PIV.CaptureRegs(body2)))
+          ensures (forall l: int, la2: R.lookaround, body2: R.regex ::
+                        next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==>
+                          CM.RegsAgreeInside(nlk, AReg.init_regs(nlook), DirectLidSet(body2)))
+          ensures (forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
+                        next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) && next <= l2 <= l1 ==> l2 !in LookIdSet(b1))
+          ensures (res.1 == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1).1)
+          ensures (FLookLoopChildLinkOk(crv, str, res.1, next, maxlook, ov, ncap, nlook, nquant))
+        {
+          assert forall l: int :: next <= l <= maxlook && AReg.get_cp(nlk, l).Some? ==>
+                                    exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
+          by {
+            forall l: int | next <= l <= maxlook && AReg.get_cp(nlk, l).Some?
+              ensures exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
+            {
+              if AReg.get_cp(lk, l).Some? {
+              } else {
+                assert result.Some?;
+                assert CM.RegsAgreeOutside(nlk, lk, LookIdSet(body));
+                NewLookInBody(nlk, lk, body, l);
+                assert LTB.LookTablesOk(body, crv);
+                LookIdEntryExists(body, crv, l as nat);
+              }
             }
           }
-        }
-        // (c') full per-body-unset for capN
-        assert forall l: int, la2: R.lookaround, body2: R.regex ::
-            next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==>
-              CM.RegsAgreeInside(capN, AReg.init_regs(ncap), PIV.CaptureRegs(body2))
-        by {
-          forall l: int, la2: R.lookaround, body2: R.regex | next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2)
-            ensures CM.RegsAgreeInside(capN, AReg.init_regs(ncap), PIV.CaptureRegs(body2))
-          {
-            assert CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body2));   // (c')@cap
-            assert PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)) * PIV.CaptureRegs(body2) == {};   // (D-ord) lid<l
-            assert CM.RegsAgreeOutside(capN, cap, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)));
-            UnsetOffTransfer(capN, cap, ncap, PIV.CaptureRegs(body2), PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)));
-          }
-        }
-        // (c'-look) child-unset for nlk: the replay writes only lid's direct
-        // children, disjoint from every later row's ((g_new) at (lid, l)).
-        assert forall l: int, la2: R.lookaround, body2: R.regex ::
-            next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==>
-              CM.RegsAgreeInside(nlk, AReg.init_regs(nlook), DirectLidSet(body2))
-        by {
-          forall l: int, la2: R.lookaround, body2: R.regex | next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2)
-            ensures CM.RegsAgreeInside(nlk, AReg.init_regs(nlook), DirectLidSet(body2))
-          {
-            assert CM.RegsAgreeInside(lk, AReg.init_regs(nlook), DirectLidSet(body2));   // (c'-look)@lk
-            assert DirectLookIds(body) * LTB.LookIds(body2) == {};                       // (g_new)@(lid, l)
-            forall k: int | k in DirectLidSet(body2)
-              ensures AI.get_idx(nlk.a_cp, k) == AI.get_idx(AReg.init_regs(nlook).a_cp, k)
-                      && AI.get_idx(nlk.a_clk, k) == AI.get_idx(AReg.init_regs(nlook).a_clk, k)
+          // (c') full per-body-unset for capN
+          assert forall l: int, la2: R.lookaround, body2: R.regex ::
+              next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==>
+                CM.RegsAgreeInside(capN, AReg.init_regs(ncap), PIV.CaptureRegs(body2))
+          by {
+            forall l: int, la2: R.lookaround, body2: R.regex | next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2)
+              ensures CM.RegsAgreeInside(capN, AReg.init_regs(ncap), PIV.CaptureRegs(body2))
             {
-              var kn: nat :| kn in DirectLookIds(body2) && (kn as int) == k;
-              DirectLidsSubLookIds(body2);
-              assert kn in LTB.LookIds(body2);
-              assert kn !in DirectLookIds(body) by {
-                if kn in DirectLookIds(body) { assert kn in DirectLookIds(body) * LTB.LookIds(body2); }
+              assert CM.RegsAgreeInside(cap, AReg.init_regs(ncap), PIV.CaptureRegs(body2));   // (c')@cap
+              assert PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)) * PIV.CaptureRegs(body2) == {};   // (D-ord) lid<l
+              assert CM.RegsAgreeOutside(capN, cap, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)));
+              UnsetOffTransfer(capN, cap, ncap, PIV.CaptureRegs(body2), PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)));
+            }
+          }
+          // (c'-look) child-unset for nlk: the replay writes only lid's direct
+          // children, disjoint from every later row's ((g_new) at (lid, l)).
+          assert forall l: int, la2: R.lookaround, body2: R.regex ::
+              next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==>
+                CM.RegsAgreeInside(nlk, AReg.init_regs(nlook), DirectLidSet(body2))
+          by {
+            forall l: int, la2: R.lookaround, body2: R.regex | next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2)
+              ensures CM.RegsAgreeInside(nlk, AReg.init_regs(nlook), DirectLidSet(body2))
+            {
+              assert CM.RegsAgreeInside(lk, AReg.init_regs(nlook), DirectLidSet(body2));   // (c'-look)@lk
+              assert DirectLookIds(body) * LTB.LookIds(body2) == {};                       // (g_new)@(lid, l)
+              forall k: int | k in DirectLidSet(body2)
+                ensures AI.get_idx(nlk.a_cp, k) == AI.get_idx(AReg.init_regs(nlook).a_cp, k)
+                        && AI.get_idx(nlk.a_clk, k) == AI.get_idx(AReg.init_regs(nlook).a_clk, k)
+              {
+                var kn: nat :| kn in DirectLookIds(body2) && (kn as int) == k;
+                DirectLidsSubLookIds(body2);
+                assert kn in LTB.LookIds(body2);
+                assert kn !in DirectLookIds(body) by {
+                  if kn in DirectLookIds(body) { assert kn in DirectLookIds(body) * LTB.LookIds(body2); }
+                }
+                assert k !in DirectLidSet(body) by {
+                  if k in DirectLidSet(body) {
+                    var kn2: nat :| kn2 in DirectLookIds(body) && (kn2 as int) == k;
+                    assert kn2 == kn;
+                  }
+                }
+                assert AI.get_idx(nlk.a_cp, k) == AI.get_idx(lk.a_cp, k)
+                       && AI.get_idx(nlk.a_clk, k) == AI.get_idx(lk.a_clk, k);   // frame off DirectLidSet(body)
               }
-              assert k !in DirectLidSet(body) by {
-                if k in DirectLidSet(body) {
-                  var kn2: nat :| kn2 in DirectLookIds(body) && (kn2 as int) == k;
-                  assert kn2 == kn;
+            }
+          }
+          // (f) look-stability for nlk
+          assert forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
+              (next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
+              && next <= l2 <= maxlook && l2 != l1 && AReg.get_cp(nlk, l2).Some?) ==> l2 !in LookIdSet(b1)
+          by {
+            forall l1: int, la1: R.lookaround, b1: R.regex, l2: int |
+              next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
+              && next <= l2 <= maxlook && l2 != l1 && AReg.get_cp(nlk, l2).Some?
+              ensures l2 !in LookIdSet(b1)
+            {
+              if AReg.get_cp(lk, l2).Some? {
+                // (f)@lk
+              } else {
+                assert result.Some?;
+                assert CM.RegsAgreeOutside(nlk, lk, DirectLidSet(body));
+                NewLookInBodyDirect(nlk, lk, body, l2);
+                assert (l2 as nat) in DirectLookIds(body);
+                assert lid < l1;                                          // l1 >= next
+                assert DirectLookIds(body) * LTB.LookIds(b1) == {};       // (g_new) with (lid, l1)
+                assert (l2 as nat) !in LTB.LookIds(b1);
+                if l2 in LookIdSet(b1) {
+                  var q: nat :| q in LTB.LookIds(b1) && (q as int) == l2;
+                  assert q == l2 as nat;
                 }
               }
-              assert AI.get_idx(nlk.a_cp, k) == AI.get_idx(lk.a_cp, k)
-                     && AI.get_idx(nlk.a_clk, k) == AI.get_idx(lk.a_clk, k);   // frame off DirectLidSet(body)
             }
           }
+          // (h) well-nested lids for [next] — sub-instance of (h)@lid
+          assert forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
+              next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) && next <= l2 <= l1 ==> l2 !in LookIdSet(b1);
+  
+          FLookLoopChildLinkLift(crv, str, next, maxlook, capN, nlk, nqt, ov1, S, Slook, ncap, nlook, nquant);
+          assert res.1 == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1).1;
+          assert FLookLoopChildLinkOk(crv, str, res.1, next, maxlook, ov, ncap, nlook, nquant);
         }
-        // (f) look-stability for nlk
-        assert forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-            (next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
-            && next <= l2 <= maxlook && l2 != l1 && AReg.get_cp(nlk, l2).Some?) ==> l2 !in LookIdSet(b1)
-        by {
-          forall l1: int, la1: R.lookaround, b1: R.regex, l2: int |
-            next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
-            && next <= l2 <= maxlook && l2 != l1 && AReg.get_cp(nlk, l2).Some?
-            ensures l2 !in LookIdSet(b1)
-          {
-            if AReg.get_cp(lk, l2).Some? {
-              // (f)@lk
-            } else {
-              assert result.Some?;
-              assert CM.RegsAgreeOutside(nlk, lk, DirectLidSet(body));
-              NewLookInBodyDirect(nlk, lk, body, l2);
-              assert (l2 as nat) in DirectLookIds(body);
-              assert lid < l1;                                          // l1 >= next
-              assert DirectLookIds(body) * LTB.LookIds(b1) == {};       // (g_new) with (lid, l1)
-              assert (l2 as nat) !in LTB.LookIds(b1);
-              if l2 in LookIdSet(b1) {
-                var q: nat :| q in LTB.LookIds(b1) && (q as int) == l2;
-                assert q == l2 as nat;
-              }
-            }
-          }
-        }
-        // (h) well-nested lids for [next] — sub-instance of (h)@lid
-        assert forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
-            next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1) && next <= l2 <= l1 ==> l2 !in LookIdSet(b1);
-
-        FLookLoopChildLinkLift(crv, str, next, maxlook, capN, nlk, nqt, ov1, S, Slook, ncap, nlook, nquant);
-        assert res.1 == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1).1;
-        assert FLookLoopChildLinkOk(crv, str, res.1, next, maxlook, ov, ncap, nlook, nquant);
+        assert {:split_here} true;   // (E3) section boundary: its own assertion batch
 
         // ---- stability: res.1 agrees with lk at lid ----
         assert forall l1: int, la1: R.lookaround, b1: R.regex ::
