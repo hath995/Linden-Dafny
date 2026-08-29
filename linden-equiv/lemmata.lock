@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:857d213ff9e84cdb2696a7fc330a4ea72a41de7700784d17acc7eae0b9f96be8"
+manifest-hash = "sha256:2baf6f47d6e67dc3c890dd18bf5440c44ffcb7b183455cccf255ecb12daae525"
 
 [[package]]
 name = "linden-reasoning"
@@ -194,6 +194,42 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-gen-step-re"
+
+[[package]]
+name = "linden-equiv-lift-sim-chain"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-lift-sim-chain"
+
+[[package]]
+name = "linden-equiv-lift-sim-deep"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-lift-sim-deep"
+
+[[package]]
+name = "linden-equiv-lift-sim-forward"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-lift-sim-forward"
+
+[[package]]
+name = "linden-equiv-lift-sim-gate"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-lift-sim-gate"
 
 [[package]]
 name = "linden-equiv-look-behind-keystone"
@@ -439,13 +475,40 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-walk-ok-entry"
 
 [[package]]
-name = "linden-equiv-lift-sim"
+name = "linden-equiv-lift-sim-carriers"
 class = 1
 version = "1.0.0"
 ordinal = 0
 fileset-hash = ""
 doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-lift-sim"
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-lift-sim-carriers"
+
+[[package]]
+name = "linden-equiv-lift-sim-core"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-lift-sim-core"
+
+[[package]]
+name = "linden-equiv-lift-sim-main"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-lift-sim-main"
+
+[[package]]
+name = "linden-equiv-lift-sim-oracle"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-lift-sim-oracle"
 
 [[package]]
 name = "linden-equiv-main-theorem"

@@ -31,12 +31,6 @@
 // per-instruction cases mirror those recursions; the CheckOracle case is the
 // only one that STEPS B through a gate, and its value content is
 // GateStepValue = the proven keystone LkReplayMatchesSpec at cp = s1.cp.
-include "MainTheorem.dfy"
-include "PikeTreeLk.dfy"
-include "LookBehindKeystone.dfy"
-include "OracleMirrorV.dfy"
-include "FlipGate.dfy"
-include "FlipClosed.dfy"
 
 /** The lift: a per-thread pairing between the RegElk VM and the LK-aware
     PikeTree machine on the SPEC tree, whose group-map tie carries the
