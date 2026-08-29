@@ -636,6 +636,33 @@ session added that env override; the declared limit + 10 min is the default loca
 `LindenElkLiftSim` stays ONE package (a package cannot split a module) — hours in one dafny process; the follow-up
 E2 is to refactor it into layer modules so the gate becomes incremental. Memory note `linden-lem-pack-gate`.
 
+#### 5.7.4 s7 (2026-08-29) — E2 (LiftSim split into 8 band packages) and E3 (proof engineering)
+
+**E2 (branch `lem-split`, `tools/e2`):** `LindenElkLiftSim` → 8 level-band modules/packages `linden-equiv-lift-sim-
+{core,oracle,chain,gate,carriers,deep,forward,main}` from the tree-sitter dependency graph (bands = contiguous
+longest-path levels over the SCC condensation; `import opened` of lower bands; ApiMatch imports Core/Oracle/Carriers/
+Main). Pack times (cores=4): core 15m47, oracle 11m31, chain 4m06, gate 18m02, carriers 4m58, deep 8m23; forward and
+main pending the LBDeep fix below.
+
+**E3 findings (user-driven, all measured):**
+1. `{:isolate_assertions}` is a DEBUGGING tool, not a perf setting — each batch re-encodes the whole context:
+   `MainTheoremL5` 41 min → 5 min, `main-theorem` package 24m30 → 4m51, the LB DEEP arm >80 GB → 34 GB, the six
+   FlipGate lemmas from hundreds of batches to ~10 s each. Dropped everywhere except: `L3aEndpointAssembly`,
+   `LiftPreserveGatePassLk`, `FLookLoopChildLinkLift`, `ForwardFindRecLBBase` (single VC > 900 s — opaque-block TODOs).
+2. Matching loops from bare carrier calls: a call to `LookNestBackTFromBodyReplay[LB]` leaves three quantified carrier
+   predicates in every later batch; with the recursive regex predicates unfolded by later steps they loop. Fix:
+   `assert <the instance this arm uses> by { call; assert <predicate>; }` — `ForwardFindRecLBBase` 44 min/timeout →
+   8 min; `ForwardFindRecFwdDeep` timeout → 2/0 (~11 min). `hide` and `{:timeLimitMultiplier}` did NOT help.
+3. Case extraction (the file's own `ATR_*` convention): `ActionsTreeRepFRE`/`…Nested` were 403-line single VCs
+   (26 min isolated); the outline (`tools/e3/e3outline.py`) showed ONE case (`Quantified`, 350 lines, 8 recursive
+   calls) carrying everything → `ATR_Quant{Min,NN,Star}{,Nested}`, measure ladder parent 2 > helper 1 > partner 0:
+   helpers 30–90 s, parents 25 s.
+4. Two copy slips found by the profiles: `ForwardFindRecLBBase` compared `res0.a_cp` with `rfc.a_clk` (twice);
+   corrected to `rfc.a_cp`.
+Open: `ForwardFindRecLBDeep` still > 900 s as one VC even with the carrier scoped (per-batch profile in progress →
+opaque block over the dominant segment); the four isolated lemmas above; then the `linden` namespace rename
+(`tools/e2/ns_rename.py`, lem build 55de90d) and one full `LEM_BUILD_TIMEOUT=0 lem pack --jobs 3`.
+
 ### 5.5 The shelved fallback (do not start unless F1 fails on a witnessed obstacle)
 
 The old plan — a `WP.Backward` twin of the forward sim stack (`BoolTreeLk`(~378 consumers)/
