@@ -2641,7 +2641,7 @@ module LindenElkLiftSimOracle {
   // denotation of the FLookLoop-reconstructed registers, and the synthetic
   // thread carrying them is well-formed. The last lemma before the theorem.
   // ==========================================================================
-  lemma L3aEndpointAssembly(
+  lemma {:isolate_assertions} L3aEndpointAssembly(
     ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, endl: nat,
     str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
     thread: AI.Thread, leaf: LT.Leaf,
