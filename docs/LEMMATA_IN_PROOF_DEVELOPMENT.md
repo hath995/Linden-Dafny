@@ -79,6 +79,67 @@ to the Lemmata session), the failure was precise and reproducible, not "it worke
 | `MainTheoremL5` | > 900 s (never packed) | 10 batches, max 4:33 |
 | workspace `lem pack` | forward + main never green | **61/61**, levels 5–13 min at `--jobs 2` |
 
+## 3.1 Anecdote: the two-hour green that wasn't
+
+`ForwardFindRecLBDeep` is the LB-DEEP arm of the descent (a capturing lookbehind nested inside a
+lookbehind). Its record said "1808/0, verified isolated in 2 h 03 min at CORES=2" — the kind of
+line that ends an argument. The forward *band* package, however, would not pack: as one VC the
+lemma ran past 900 s; with opaque sections and `split_here` its preamble dropped from 900 s to
+15 s and its tail to 2 s, but block 2 kept timing out no matter what was exported. An isolate pass
+at 60 s listed the same handful of obligations every time (`ctxB.nextchar == get_char(str, cpA)`,
+`FirstLeaf(t1, inp1) == TreeRes(t1, Empty, inp1, dir1)`, …); exporting everything, making the
+preamble a plain section, giving the batch 900 s — nothing moved them. The package boundary made
+the next experiment cheap: `lem restore` gives the exact `.doo` closure, so a ten-line standalone
+lemma against the same dependencies took a minute — and refuted the first claim (a backward
+context's `nextchar` is the character at `cp − 1`). `assert false;` at the lemma head was refuted in
+seconds (the hypotheses are consistent), so these were false *claims*, copy-overs from the forward
+twin, not a vacuous proof — and the recorded "green" could not have been an honest verification of
+those lines. Fixed (`cpA − 1`; the sub-leaf stated as `SubFirstLeafAt` defines it, via `dir1`),
+plus explicit proofs for two obligations that were merely slow (`capture_type`, the reversed-
+fragment precondition) and `hide */reveal` for the trivially-true ones, the lemma verifies as 11
+batches in **2:04** with 1 934 obligations closing individually at 300 s — and the band packs.
+
+The lesson is not about this lemma. It is that *per-symbol, isolated, unlimited-time* verification
+lets a false assertion sit in a "green" proof, and that a **package with a time budget** is the
+instrument that exposes it: the failure to pack was the only signal we ever got.
+
+## 3.2 Metrics
+
+**Workspace.** 61 members (`linden.*`), 4 815 verified scopes; full rebuild after the namespace
+rename: 22:37 → 00:17 (59 members, `--jobs 2`, `cores = 4` each) plus 00:33 → 00:45 for the last two
+after one fix — **1 h 52 min wall for the whole L5 equivalence**, no isolation anywhere. Level
+times 15 s – 15 min 43 s (level 19, the LiftSim bands). Largest members by scopes: main-theorem 641,
+reasoning 389, pike-inv-re 304, lift-sim-core 272, nest-inv 226. `lem pack` reuse means a change
+in one band re-verifies that band and its dependents only.
+
+**The six lemmas.** 66 verification runs (batch + isolate) over ~6 hours to close them: LBDeep 26,
+L3a 14, gate 11, LBBase 11, ChildLinkLift 4, MainTheoremL5 2. Isolate passes (60–300 s per
+obligation): LBBase 1 238 obligations → 3 non-closing (all ensures-wf artefacts); LBDeep 1 820 →
+19 non-closing, then 17, 8, 5, 2, 0 across the iterations; L3a 2 572 → 10. Every non-closing
+obligation was a hidden fact, a well-formedness artefact of the export, or a false claim; none was
+a genuinely expensive proof step.
+
+| lemma | before | after |
+|---|---|---|
+| `ForwardFindRecLBBase` | `{:isolate_assertions}` | 2:01 / 1 s / 0.8 s / 1.9 s |
+| `FLookLoopChildLinkLift` | `{:isolate_assertions}` | 2 s / 1 s / 3 s |
+| `L3aEndpointAssembly` | > 900 s | 16 batches, 41 s |
+| `LiftPreserveGatePassLk` | `{:isolate_assertions}` | 3 s / 7 s / 23 s |
+| `ForwardFindRecLBDeep` | "1808/0 in 2 h 03 min" isolated; two false asserts | 11 batches, 2:04 |
+| `MainTheoremL5` (the hub) | > 900 s as one VC; the main band never packed | 10 batches, max 4:33 |
+
+## 3.3 The strategy this enabled
+1. **Package = unit of proof cost.** Split a monolith along its lemma-call DAG (tree-sitter gives
+   the graph); each band gets a `cores`/time budget and its own line in `lem pack`.
+2. **Pack = the gate.** Whole-file, dependency-ordered, warning-free, time-limited; no per-symbol
+   green counts. A member that will not pack names the lemma to work on.
+3. **Restore = the probe bench.** A member's `deps/` is the exact closure a suspicious claim can be
+   tested against in isolation, in a minute.
+4. **Profile per band, not per project.** `--log-format text` on one member (< 30 min) ranks its
+   scopes; the whole monolith cannot be profiled inside a sane time budget.
+5. **Then the proof-engineering loop** (sections + `split_here`, isolate-at-60 s, restate hidden
+   facts, `hide */reveal`, probe the claim) — `AGENTS.md` §2–3 — and re-pack.
+
 ## 4. What would make it better
 - A per-scope profile in `lem pack` output (the text log's resource counts) would remove step 2.
 - A `lem verify --isolate <member> --time-limit 60` shorthand for step 3.
