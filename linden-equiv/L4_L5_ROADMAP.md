@@ -1571,5 +1571,14 @@ FULL-file verification of every non-LiftSim file found three defects hidden by p
 `ApiMatch.dfy` did not resolve (`SupportedL5` called the ghost `L5ScopeV1RE`), `LookNestOkTTop` lacked its
 `lid in LookIds` guard, `ZeroSetCapRevRE` lacked the lookaround arm after `RevRE` started recursing into looks.
 All fixed (`7478f10`). `ForwardFindRec`/`DeepFindRec` forward arms split into `FwdBase`/`FwdDeep` lemmas —
-first try, `ForwardFindRec` 4.3 h -> 18 + 14 min. Full-file `MainTheorem` 8734/0. PENDING_ROADMAP.
+first try, `ForwardFindRec` 4.3 h -> 18 + 14 min. Full-file `MainTheorem` 8734/0.
+
+### s6b (2026-08-28/29): the GENERIC GATE — `lem pack` on a 54-member workspace (branch `lem-split`)
+
+`src/Equiv` split into 47 per-file lem packages + the parent (`gen_pkgs.py`); six Lemmata fixes landed against it
+(sibling floating at any depth, transitive .doo staging, restore path pins, the wall-clock cap → `LEM_BUILD_TIMEOUT`,
+content-addressed reuse keyed on build identity, `--jobs`). Sources made warning-free (`dafny format` + parenthesized
+`==>` operands + cast-free trigger terms; `NestInv.LookBodyOfTablesTieLift`). `LEM_BUILD_TIMEOUT=0 lem pack`: 52/53
+members green (main-theorem 24m30, actions-tree-rep-re 26m38); `lift-sim` OOM-killed at cores=2 after 1h54 — the
+30k-line module does not fit the 80G cap as one process. NEXT: E2 — split `LindenElkLiftSim` into layer modules.
 
