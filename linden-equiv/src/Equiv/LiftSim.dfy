@@ -1694,7 +1694,7 @@ module LindenElkLiftSim {
       tree — `TreeRepLkRE`-represented at `(pc, EaOf(b))` and erasure-equal to
       the spec walk tree `t`. One case per action/regex shape, mirroring
       `ATR.ActionsTreeRepFRE` case-for-case. */
-  lemma {:isolate_assertions} ActionsTreeRepLkF(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions,
+  lemma ActionsTreeRepLkF(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions,
                                                 code: RB.code, pc: nat, inp: LC.Input,
                                                 b: BS.LoopBool, t: LT.Tree, n: nat)
     returns (tcan: LT.Tree)
@@ -2816,7 +2816,7 @@ module LindenElkLiftSim {
       (`LBK.BackFreshBodyGmTie`) — `gmt2[g] == SwapRange(gmbK[g])`, exactly the
       `looktype.Lookbehind?` arm of `GmtTieInside`. Case B (off `Sbody`) is the same
       frame carry as the lookahead twin. */
-  lemma {:isolate_assertions} GateStepValueLB(
+  lemma GateStepValueLB(
     rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
     crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
     lk: L.Lookaround, r1: L.Regex, tlk: LT.Tree, tb: LT.Tree,
@@ -9919,7 +9919,7 @@ module LindenElkLiftSim {
       lookahead twin). The value chain: `FreshBodyMatch(LB)` runs the backward
       capture (= `raB`), the mirror gives `rfF == MirrorThread(raB)`, and the
       keystone yields `SwapRange(gm2[g]) == GmOfLive(body, raB.caps)[g]` for `g in S`. */
-  lemma {:isolate_assertions} ThreadRepLkStepCheckOracleLB(
+  lemma ThreadRepLkStepCheckOracleLB(
     rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, crv: CP.FCompiled,
     str: string, ov: LOr.OracleView, S: set<LG.GroupId>, lk: L.Lookaround, r1: L.Regex,
     tlk: LT.Tree, tc: LT.Tree, gm: LG.GroupMap, t: AI.Thread, l: int, cp: nat, clk: int,
@@ -9976,7 +9976,7 @@ module LindenElkLiftSim {
   }
 
   /** (L4 NESTED) clone of `ThreadRepLkStepCheckOracleLB` — GmtTieInside dropped. */
-  lemma {:isolate_assertions} ThreadRepLkStepCheckOracleLBNested(
+  lemma ThreadRepLkStepCheckOracleLBNested(
     rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, crv: CP.FCompiled,
     str: string, ov: LOr.OracleView, S: set<LG.GroupId>, lk: L.Lookaround, r1: L.Regex,
     tlk: LT.Tree, tc: LT.Tree, gm: LG.GroupMap, t: AI.Thread, l: int, cp: nat, clk: int,
@@ -16564,7 +16564,7 @@ module LindenElkLiftSim {
   // denotation of the FLookLoop-reconstructed registers, and the synthetic
   // thread carrying them is well-formed. The last lemma before the theorem.
   // ==========================================================================
-  lemma {:isolate_assertions} L3aEndpointAssembly(
+  lemma L3aEndpointAssembly(
     ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, endl: nat,
     str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
     thread: AI.Thread, leaf: LT.Leaf,
@@ -17176,7 +17176,7 @@ module LindenElkLiftSim {
   //      reverse block routes through `LookPathDecompose`/`LookPathDomIntro`/
   //      `LookFreeNoLookIdsN`, all `LookBehindFragmentRE`-gated; nested twins pending.
   // ==========================================================================
-  lemma {:isolate_assertions} L3aEndpointAssemblyNested(
+  lemma L3aEndpointAssemblyNested(
     ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, endl: nat,
     str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
     thread: AI.Thread, leaf: LT.Leaf, ncap: int, nlook: int, nquant: int)
@@ -17276,7 +17276,7 @@ module LindenElkLiftSim {
         - the recon_outer capture/quant frames + synthetic wf + `QuantRegsFinal`
           (mechanical, from the `*CoversFromTables` capstones).
       Everything from the canonical feeds to the endpoint conclusion is GREEN. */
-  lemma {:isolate_assertions} L3aEndpointAssemblyNestedFull(
+  lemma L3aEndpointAssemblyNestedFull(
     ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, endl: nat,
     str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
     thread: AI.Thread, leaf: LT.Leaf, ncap: int, nlook: int, nquant: int,
@@ -17408,7 +17408,7 @@ module LindenElkLiftSim {
       machinery produces: (F) forward membership+VALUE (`ForwardMemberOne`,
       quantified) and (R) reverse membership (`ReverseCDeepFull`). Everything
       else — outside-`S`, frames, the NormGm assembly — is verbatim. */
-  lemma {:isolate_assertions} L3aEndpointAssemblyNestedFull2(
+  lemma L3aEndpointAssemblyNestedFull2(
     ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, endl: nat,
     str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
     thread: AI.Thread, leaf: LT.Leaf, ncap: int, nlook: int, nquant: int,
@@ -17506,7 +17506,7 @@ module LindenElkLiftSim {
   // ties, the endpoint assembly converts them into the reconstructed-register
   // denotation, and the existing extraction finishes.
   // ==========================================================================
-  lemma {:isolate_assertions} MainTheoremL3(raw: R.raw_regex, str: string)
+  lemma MainTheoremL3(raw: R.raw_regex, str: string)
     requires NR.LookBehindFragmentRaw(raw)
     requires T.Latin1Wf(raw)
     ensures LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)))
@@ -20255,7 +20255,7 @@ module LindenElkLiftSim {
     CE.BoolFlagLiftRec(rer, acts, inp, ti);
   }
 
-  lemma {:isolate_assertions} ActionsTreeRepLkFRec(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions,
+  lemma ActionsTreeRepLkFRec(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions,
                                                    code: RB.code, pc: nat, inp: LC.Input,
                                                    b: BS.LoopBool, t: LT.Tree, n: nat)
     returns (tcan: LT.Tree)
@@ -21199,7 +21199,7 @@ module LindenElkLiftSim {
   }
 
 
-  lemma {:isolate_assertions} ThreadRepLkStepCheckOracleLBRec(
+  lemma ThreadRepLkStepCheckOracleLBRec(
     rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, crv: CP.FCompiled,
     str: string, ov: LOr.OracleView, S: set<LG.GroupId>, lk: L.Lookaround, r1: L.Regex,
     tlk: LT.Tree, tc: LT.Tree, gm: LG.GroupMap, t: AI.Thread, l: int, cp: nat, clk: int,
@@ -22516,7 +22516,7 @@ module LindenElkLiftSim {
     }
   }
 
-  lemma {:isolate_assertions} LiftPreserveGatePassLkRec(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+  lemma LiftPreserveGatePassLkRec(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                                                         crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                                                         bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
                                                         l: int, th': AI.Thread, vms2: AI.VmState,
@@ -24659,7 +24659,7 @@ module LindenElkLiftSim {
       BACKWARD body match on `crv` over `str` and the fresh FORWARD body match on
       `MirrorTables(crv)` over `Reverse(str)` (at the mirrored bank) are T2a
       mirrors of each other, and their `GmOfLive` readouts are raw mirrors. */
-  lemma {:isolate_assertions} FreshMatchLidFlip(
+  lemma FreshMatchLidFlip(
     rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, crv: CP.FCompiled, str: string,
     ov: LOr.OracleView, lk: AReg.Regs, lid: nat, ncap: int, nlook: int, nquant: int)
     requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
@@ -24820,7 +24820,7 @@ module LindenElkLiftSim {
       lid transports back through the flip: the backward fresh match's live
       inner gids are the flipped forward fresh match's (raw mirror, same keys),
       which the flipped carrier puts in the mirrored leaf — same keys as `gmt`. */
-  lemma {:isolate_assertions} LookNestBackTTopLidFlip(
+  lemma LookNestBackTTopLidFlip(
     rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, crv: CP.FCompiled, str: string,
     ov: LOr.OracleView, gmt: LG.GroupMap, th: AI.Thread, lid: nat,
     ncap: int, nlook: int, nquant: int)
@@ -24907,7 +24907,7 @@ module LindenElkLiftSim {
       mirrored world is the `MirrorGm` of the backward sub-leaf (F2 at the lid
       body), so key membership is preserved and value equality comes back
       through `MirrorRange` injectivity. */
-  lemma {:isolate_assertions} LookNestBackTTopDeepLidFlip(
+  lemma LookNestBackTTopDeepLidFlip(
     rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, crv: CP.FCompiled, str: string,
     ov: LOr.OracleView, gmt: LG.GroupMap, th: AI.Thread, lid: nat,
     ncap: int, nlook: int, nquant: int)
@@ -25041,7 +25041,7 @@ module LindenElkLiftSim {
       body run (what `FLookLoop` runs for the lid) matches iff the body's
       backward spec tree has a result, and its winner carries all three nested
       carriers + the look-bank invariants against that backward leaf. */
-  lemma {:isolate_assertions} LookNestBackTFromBodyReplayLB(
+  lemma LookNestBackTFromBodyReplayLB(
     rer: LW.RegExpRecord, qm: AR.QMap, la: R.lookaround, body: R.regex, bodycodeB: RB.code,
     crv: CP.FCompiled, str: string, cp: nat, ov: LOr.OracleView,
     lookcdn: LCdn.cdns, plus_bc: seq<RB.code>, ncap: int, nlook: int, nquant: int)
@@ -25983,7 +25983,7 @@ module LindenElkLiftSim {
       base evidence: `TopAncestorClockReconStep` reconciles each body's
       `LookNestOkTTop` (main thread at `re`, replay tower at each look body) onto the
       reconstructed banks. */
-  lemma {:isolate_assertions} FLookLoopAncestorClockChain(re: R.regex, rcc: seq<int>, rlc: seq<int>, rqc: seq<int>,
+  lemma FLookLoopAncestorClockChain(re: R.regex, rcc: seq<int>, rlc: seq<int>, rqc: seq<int>,
                                                           owner: nat, g: nat)
     requires NR.NestedFragmentRE(re) && NR.NegLooksLookFreeRE(re) && LTB.LookUnique(re)
     requires owner in LTB.LookIds(re)
@@ -26471,7 +26471,7 @@ module LindenElkLiftSim {
       3000-assertion parent (with the hub's `NoPosLookbehindRE` conjunct gone, several
       of the arm's VCs timed out at 900 s inside the parent). Mutually recursive with
       `DeepFindRec` on the lexicographic metric `(|LookIds(host)|, arm)`. */
-  lemma {:isolate_assertions} DeepFindRecLB(
+  lemma DeepFindRecLB(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
@@ -26771,7 +26771,7 @@ module LindenElkLiftSim {
   /** (perf) The FORWARD BASE arm of `DeepFindRec`, extracted so its assertions are
       checked in a small context (same treatment as `DeepFindRecLB`).
       Mutually recursive with `DeepFindRec` on `(|LookIds(host)|, arm)`. */
-  lemma {:isolate_assertions} DeepFindRecFwdBase(
+  lemma DeepFindRecFwdBase(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
@@ -26875,7 +26875,7 @@ module LindenElkLiftSim {
   /** (perf) The FORWARD DEEP arm of `DeepFindRec`, extracted so its assertions are
       checked in a small context (same treatment as `DeepFindRecLB`).
       Mutually recursive with `DeepFindRec` on `(|LookIds(host)|, arm)`. */
-  lemma {:isolate_assertions} DeepFindRecFwdDeep(
+  lemma DeepFindRecFwdDeep(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
@@ -27156,7 +27156,7 @@ module LindenElkLiftSim {
     assert SubFirstLeafAt(rer, crv, str, A as int, res1) == Some(gmtH);
   }
 
-  lemma {:isolate_assertions} DeepFindRec(
+  lemma DeepFindRec(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
@@ -27288,7 +27288,7 @@ module LindenElkLiftSim {
   /** (perf) The BASE arm of `ForwardFindRecLB` (a LOOKBEHIND owner), extracted: the whole LB arm
       OOM-kills the 80G slice alone at CORES=4. Mutually recursive with `ForwardFindRec` on
       `(|LookIds(host)|, arm)`: ForwardFindRec 2 > ForwardFindRecLB 1 > this 0. */
-  lemma {:isolate_assertions} ForwardFindRecLBBase(
+  lemma ForwardFindRecLBBase(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
@@ -27508,7 +27508,7 @@ module LindenElkLiftSim {
   /** (perf) The DEEP arm of `ForwardFindRecLB` (a LOOKBEHIND owner), extracted: the whole LB arm
       OOM-kills the 80G slice alone at CORES=4. Mutually recursive with `ForwardFindRec` on
       `(|LookIds(host)|, arm)`: ForwardFindRec 2 > ForwardFindRecLB 1 > this 0. */
-  lemma {:isolate_assertions} ForwardFindRecLBDeep(
+  lemma ForwardFindRecLBDeep(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
@@ -27860,7 +27860,7 @@ module LindenElkLiftSim {
     assert PIV.NormRange(lsubA.value[g]) == PIV.NormRange(PIV.LiveRange(res0.a_cp, res0.a_clk, g));
   }
 
-  lemma {:isolate_assertions} ForwardFindRecLB(
+  lemma ForwardFindRecLB(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
@@ -27956,7 +27956,7 @@ module LindenElkLiftSim {
   /** (perf) The FORWARD BASE arm of `ForwardFindRec`, extracted so its assertions are
       checked in a small context (same treatment as `ForwardFindRecLB`).
       Mutually recursive with `ForwardFindRec` on `(|LookIds(host)|, arm)`. */
-  lemma {:isolate_assertions} ForwardFindRecFwdBase(
+  lemma ForwardFindRecFwdBase(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
@@ -28191,7 +28191,7 @@ module LindenElkLiftSim {
   /** (perf) The FORWARD DEEP arm of `ForwardFindRec`, extracted so its assertions are
       checked in a small context (same treatment as `ForwardFindRecLB`).
       Mutually recursive with `ForwardFindRec` on `(|LookIds(host)|, arm)`. */
-  lemma {:isolate_assertions} ForwardFindRecFwdDeep(
+  lemma ForwardFindRecFwdDeep(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
@@ -28581,7 +28581,7 @@ module LindenElkLiftSim {
     assert PIV.NormRange(lsubA.value[g]) == PIV.NormRange(PIV.LiveRange(res0.a_cp, res0.a_clk, g));
   }
 
-  lemma {:isolate_assertions} ForwardFindRec(
+  lemma ForwardFindRec(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
@@ -28688,7 +28688,7 @@ module LindenElkLiftSim {
       `A0`'s sub-first-leaf; the top-look frames re-key it onto `res1`;
       `ForwardFindRec` descends to the engine facts; the top-lid transports
       compose the presence up to `re` and `GmOfLiveKeepsPresentLkNested` closes. */
-  lemma {:isolate_assertions} ForwardMemberOne(
+  lemma ForwardMemberOne(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     ov: LOr.OracleView, thread: AI.Thread, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     S: set<LG.GroupId>, leafgm: LG.GroupMap, g: nat, ncap: int, nlook: int, nquant: int)
@@ -28930,7 +28930,7 @@ module LindenElkLiftSim {
       `A0`'s sub-first-leaf at `res1`'s position == the THREAD's recorded
       position (top-look cp frame); the whole-regex DEEP carrier
       (`DescentLandTopDeep`) lands `g` in the leaf. */
-  lemma {:isolate_assertions} ReverseCDeepFull(
+  lemma ReverseCDeepFull(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     ov: LOr.OracleView, thread: AI.Thread, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     S: set<LG.GroupId>, gmt: LG.GroupMap, ncap: int, nlook: int, nquant: int)
@@ -29272,7 +29272,7 @@ module LindenElkLiftSim {
       per-g inside a ~5000-fact context -- and the `cp_ctx_ok` VC alone timed
       out there. Proven ONCE here (no a-h, no OwnerForallO in scope), it is
       cited per-(owner0,g) in the g-loop, which then only owes GNotUnderQuantL. */
-  lemma {:isolate_assertions} FreshWfGIndep(
+  lemma FreshWfGIndep(
     qm: AR.QMap, crv: CP.FCompiled, str: string, re: R.regex, ov: LOr.OracleView,
     res1: AReg.Regs, ncap: int, nlook: int, nquant: int)
     requires LTB.LookTablesOk(re, crv)
@@ -29325,7 +29325,7 @@ module LindenElkLiftSim {
       under isolate_assertions; the inner ENSURES-check ran in a ~5000-fact
       context and timed out (10x) even after the g-independent facts were hoisted
       to FreshWfGIndep. Extracted here, the g-loop obtains it as one cheap call. */
-  lemma {:isolate_assertions} FreshWfAtG(
+  lemma FreshWfAtG(
     qm: AR.QMap, crv: CP.FCompiled, str: string, re: R.regex, ov: LOr.OracleView,
     res1: AReg.Regs, g: LG.GroupId, ncap: int, nlook: int, nquant: int)
     requires LTB.LookTablesOk(re, crv)
@@ -29360,7 +29360,7 @@ module LindenElkLiftSim {
       `FreshBodyDirectMember`), whose triggers make it slow in MainTheoremL4's
       ~5000-fact context. Here the a-h stay local, and MainTheoremL4 obtains
       `OwnerForallO(...)` atomically. */
-  lemma {:isolate_assertions} ProduceOwnerForall(
+  lemma ProduceOwnerForall(
     qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex, code: RB.code,
     endl: nat, ov: LOr.OracleView, thread: AI.Thread, S: set<LG.GroupId>, inits: AI.VmState,
     capture: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, result: Option<AI.Thread>,
@@ -29449,7 +29449,7 @@ module LindenElkLiftSim {
   // MATCHING ~25 quantified requires against MainTheoremL4's thousands of
   // ambient facts. Here they match against only this lemma's own requires.
   // ==========================================================================
-  lemma {:isolate_assertions} MainTheoremL4DeepConclude(
+  lemma MainTheoremL4DeepConclude(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     code: RB.code, endl: nat, ov: LOr.OracleView, thread: AI.Thread, leaf: LT.Leaf,
     t: LT.Tree, inp: LC.Input, S: set<LG.GroupId>, ncap: int, nlook: int, nquant: int)
@@ -29628,7 +29628,7 @@ module LindenElkLiftSim {
     M.MainExtractionFromClosed(raw, str, t, thread, leaf);
   }
 
-  lemma {:isolate_assertions} MainTheoremL5(raw: R.raw_regex, str: string)
+  lemma MainTheoremL5(raw: R.raw_regex, str: string)
     requires NR.NestedFragmentRaw(raw)
     requires T.Latin1Wf(raw)
     requires L5Scope(raw)
@@ -30201,7 +30201,7 @@ module LindenElkLiftSim {
       the row's INNER rows (the body's own rows, from the initial input), the
       final view's bit at `(cp, lid)` is exactly the spec walk of the row's
       body at `cp` in the row's direction. */
-  lemma {:isolate_assertions} OracleColumnNested(rer: LW.RegExpRecord, top: R.regex, crv: CP.FCompiled,
+  lemma OracleColumnNested(rer: LW.RegExpRecord, top: R.regex, crv: CP.FCompiled,
                                                  str: string, sub: R.regex, lid: int,
                                                  lk: L.Lookaround, r1: L.Regex, cp: nat)
     requires !rer.ignoreCase && !rer.multiline
@@ -30384,7 +30384,7 @@ module LindenElkLiftSim {
   /** (L5 F7g) THE NESTED ORACLE ENTRY under the L5 scope (positive lookbehinds
       with lookbehind-only bodies admitted — their column is `OracleColumnNested`'s
       new arm). (the L4-scope wrapper has been retired). */
-  lemma {:isolate_assertions} OracleOkRowsL5(rer: LW.RegExpRecord, top: R.regex, crv: CP.FCompiled,
+  lemma OracleOkRowsL5(rer: LW.RegExpRecord, top: R.regex, crv: CP.FCompiled,
                                              str: string, sub: R.regex)
     requires !rer.ignoreCase && !rer.multiline
     requires crv == CP.FFullCompilation(top)
