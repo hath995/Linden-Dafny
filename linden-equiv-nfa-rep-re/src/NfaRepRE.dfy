@@ -2622,18 +2622,23 @@ module LindenElkNfaRep {
     FreshCorrectNestedRE(re, start, tl, next);
     match re
     case Re_empty =>
+      assert {:split_here} true;   // (E3) one assertion batch per arm
       assert prev + Flat(tl) == prev;
     case Re_character(ch) =>
+      assert {:split_here} true;   // (E3) one assertion batch per arm
       assert Flat(tl) == [RB.Consume(T.ExpectationOf(ch))];
       GetFirstRE(Flat(tl), prev);
     case Re_anchor(a) =>
+      assert {:split_here} true;   // (E3) one assertion batch per arm
       assert Flat(tl) == [RB.AnchorAssertion(a)];
       GetFirstRE(Flat(tl), prev);
     case Re_lookaround(lid, la, _) =>
+      assert {:split_here} true;   // (E3) one assertion batch per arm
       assert Flat(tl) == [if la.Lookahead? || la.Lookbehind?
                           then RB.CheckOracle(lid) else RB.NegCheckOracle(lid)];
       GetFirstRE(Flat(tl), prev);
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (E3) one assertion batch per arm
       var (l1, f1) := CP.compile(r1, start + 1, CP.Progress);
       var (l2, f2) := CP.compile(r2, f1 + 1, CP.Progress);
       FreshCorrectNestedRE(r1, start + 1, l1, f1);
@@ -2672,6 +2677,7 @@ module LindenElkNfaRep {
         assert next == f2;
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (E3) one assertion batch per arm
       var (l1, f1) := CP.compile(r1, start, CP.Progress);
       var (l2, f2) := CP.compile(r2, f1, CP.Progress);
       FreshCorrectNestedRE(r1, start, l1, f1);
@@ -2686,6 +2692,7 @@ module LindenElkNfaRep {
       assert (prev + Flat(l1)) + Flat(l2) == prev + Flat(tl);
       assert NfaRepRE(r1, prev + Flat(tl), start, f1 as nat) && NfaRepRE(r2, prev + Flat(tl), f1 as nat, f2 as nat);
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (E3) one assertion batch per arm
       if q.min == 0 && q.max == None {
         var (iter_code, iter_f) := CP.compile(r1, start + 3, CP.Progress);
         FreshCorrectNestedRE(r1, start + 3, iter_code, iter_f);
@@ -2767,6 +2774,7 @@ module LindenElkNfaRep {
         NfaRepREPlusIntro(nul, qid, q, r1, prev + Flat(tl), start, min_f as nat, body_f as nat, (body_f + 1) as nat);
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (E3) one assertion batch per arm
       var (l1, f1) := CP.compile(r1, start + 1, CP.Progress);
       FreshCorrectNestedRE(r1, start + 1, l1, f1);
       ChainThree(CP.Leaf([RB.SetRegisterToCP(CP.start_reg(cid))]), l1, CP.Leaf([RB.SetRegisterToCP(CP.end_reg(cid))]));
