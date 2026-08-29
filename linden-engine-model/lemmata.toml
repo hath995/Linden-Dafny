@@ -1,5 +1,6 @@
 [package]
-name = "linden-engine-model"
+namespace = "linden"
+name = "engine-model"
 version = "1.0.2"
 description = "Linden regex engine model: NFA bytecode compilation and its structural correctness (CompileNfa*), the base layer of the Pike VM equivalence proof"
 repository = "https://github.com/hath995/Linden-Dafny/tree/main/linden-engine-model"
@@ -21,5 +22,5 @@ expected-errors = [
 ]
 
 [dependencies]
-linden-warblre = "^1.0.0"
-linden-semantics-core = "^1.0.0"
+linden.warblre = "^1.0.0"
+linden.semantics-core = "^1.0.0"

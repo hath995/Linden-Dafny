@@ -1,58 +1,28 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:1485ee4acd820eb2a3b7e9ac8ec4529733c75d0a51085c46c4c25f70517ec00d"
+manifest-hash = "sha256:dc9c6ce21e8eb0fbd41f4579ceba4a122b696822c81300d6506ac79576008844"
 
 [[package]]
-name = "linden-reasoning"
+name = "linden.engine"
 class = 1
-version = "1.0.0"
+version = "1.0.2"
 ordinal = 0
-fileset-hash = "sha256:b07203061f45d0aedc2e85589a423ca77ae1fb6891f008d0c862986f856ca5e0"
-doo-hash = "e93b2c32d0f517125db22a55e78b37fd1f50c05c635dff1d95bcea6aba46793f"
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-engine"
 
 [[package]]
-name = "linden-semantics-core"
+name = "linden.engine-model"
 class = 1
-version = "1.0.0"
+version = "1.0.2"
 ordinal = 0
-fileset-hash = "sha256:489389b91e40a50ae0ab58a23d2565df73cc389ba06d6cc8804d3e810a870feb"
-doo-hash = "b155df3deb400a83252dd10ac5774620b704f5ee395a4ae6f1067322ee8494aa"
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-engine-model"
 
 [[package]]
-name = "linden-warblre"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = "sha256:6685a9357275b3a18105c86604be03fa3b9566c9f0fa090d5f7067d24d6edee4"
-doo-hash = "542b6d241bed45b89dd836789dae6040b04ac8cf8d5e7a980169232b79d05923"
-
-[[package]]
-name = "regex-engine"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = "sha256:c0496b5df48398a7182cd2e960939a0437cf0af35544d3dffcae5001fb89c467"
-doo-hash = "3e54d11353d2af098e3929033c0e9e70122664e47d76be708a3451b503062f7f"
-
-[[package]]
-name = "linden-engine"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = "sha256:890d0ea686e4fe3b8959dd6f033563930cab30d5775ccdb8ed9e3f9528127b9f"
-doo-hash = "78e66ee9f38731618af1821164c3153611a9fd734b2a6a68012001b42b978dea"
-
-[[package]]
-name = "linden-engine-model"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = "sha256:b555780d6efddb17a1bd0b3ecf1104ef621b4966bd48b70ac3fa4219d90dafdb"
-doo-hash = "4c08f4afb603cffcf80db6c1b71aec655f558facec95cc6c34cd5f1778db4cfc"
-
-[[package]]
-name = "linden-equiv-actions-rep-re"
+name = "linden.equiv-actions-rep-re"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -61,7 +31,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-actions-rep-re"
 
 [[package]]
-name = "linden-equiv-actions-tree-rep-re"
+name = "linden.equiv-actions-tree-rep-re"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -70,7 +40,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-actions-tree-rep-re"
 
 [[package]]
-name = "linden-equiv-back-value"
+name = "linden.equiv-back-value"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -79,7 +49,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-back-value"
 
 [[package]]
-name = "linden-equiv-check-erase"
+name = "linden.equiv-check-erase"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -88,7 +58,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-check-erase"
 
 [[package]]
-name = "linden-equiv-entry-lk"
+name = "linden.equiv-entry-lk"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -97,7 +67,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-entry-lk"
 
 [[package]]
-name = "linden-equiv-look-leaves"
+name = "linden.equiv-look-leaves"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -106,7 +76,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-look-leaves"
 
 [[package]]
-name = "linden-equiv-look-tables"
+name = "linden.equiv-look-tables"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -115,7 +85,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-look-tables"
 
 [[package]]
-name = "linden-equiv-nfa-rep-re"
+name = "linden.equiv-nfa-rep-re"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -124,7 +94,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-nfa-rep-re"
 
 [[package]]
-name = "linden-equiv-oracle-bridge"
+name = "linden.equiv-oracle-bridge"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -133,7 +103,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-bridge"
 
 [[package]]
-name = "linden-equiv-oracle-build"
+name = "linden.equiv-oracle-build"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -142,7 +112,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-build"
 
 [[package]]
-name = "linden-equiv-oracle-decomp"
+name = "linden.equiv-oracle-decomp"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -151,7 +121,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-decomp"
 
 [[package]]
-name = "linden-equiv-oracle-reach"
+name = "linden.equiv-oracle-reach"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -160,7 +130,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-reach"
 
 [[package]]
-name = "linden-equiv-oracle-spec"
+name = "linden.equiv-oracle-spec"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -169,7 +139,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-spec"
 
 [[package]]
-name = "linden-equiv-oracle-sweep"
+name = "linden.equiv-oracle-sweep"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -178,7 +148,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-sweep"
 
 [[package]]
-name = "linden-equiv-regs-laws"
+name = "linden.equiv-regs-laws"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -187,7 +157,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-regs-laws"
 
 [[package]]
-name = "linden-equiv-tree-rep-re"
+name = "linden.equiv-tree-rep-re"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -196,7 +166,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-tree-rep-re"
 
 [[package]]
-name = "linden-equiv-tree-thread-re"
+name = "linden.equiv-tree-thread-re"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -205,7 +175,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-tree-thread-re"
 
 [[package]]
-name = "linden-equiv-walk-ok"
+name = "linden.equiv-walk-ok"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -214,7 +184,43 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-walk-ok"
 
 [[package]]
-name = "linden-equiv-back-gm-mirror"
+name = "linden.reasoning"
+class = 1
+version = "1.0.1"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-reasoning"
+
+[[package]]
+name = "linden.semantics-core"
+class = 1
+version = "1.0.2"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-semantics-core"
+
+[[package]]
+name = "linden.warblre"
+class = 1
+version = "1.0.3"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-warblre"
+
+[[package]]
+name = "linden.regex-engine"
+class = 1
+version = "1.0.1"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/regex-engine"
+
+[[package]]
+name = "linden.equiv-back-gm-mirror"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -223,7 +229,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-back-gm-mirror"
 
 [[package]]
-name = "linden-equiv-mirror"
+name = "linden.equiv-mirror"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -232,7 +238,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-mirror"
 
 [[package]]
-name = "linden-equiv-pike-inv-re"
+name = "linden.equiv-pike-inv-re"
 class = 1
 version = "1.0.0"
 ordinal = 0

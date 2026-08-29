@@ -1,36 +1,40 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:40127ef7b25a55f8d0a73ff2fb3d5aeeeea00f72dc71e7049e73e03db3dfbd34"
+manifest-hash = "sha256:faae8184739bb5536976c5e937f44ba8d3a1454393b0ec19a98d318e577a5eec"
 
 [[package]]
-name = "linden-engine"
+name = "linden.engine"
 class = 1
-version = "1.0.0"
+version = "1.0.2"
 ordinal = 0
-fileset-hash = "sha256:890d0ea686e4fe3b8959dd6f033563930cab30d5775ccdb8ed9e3f9528127b9f"
-doo-hash = "78e66ee9f38731618af1821164c3153611a9fd734b2a6a68012001b42b978dea"
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-engine"
 
 [[package]]
-name = "linden-engine-model"
+name = "linden.engine-model"
 class = 1
-version = "1.0.0"
+version = "1.0.2"
 ordinal = 0
-fileset-hash = "sha256:b555780d6efddb17a1bd0b3ecf1104ef621b4966bd48b70ac3fa4219d90dafdb"
-doo-hash = "4c08f4afb603cffcf80db6c1b71aec655f558facec95cc6c34cd5f1778db4cfc"
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-engine-model"
 
 [[package]]
-name = "linden-semantics-core"
+name = "linden.semantics-core"
 class = 1
-version = "1.0.0"
+version = "1.0.2"
 ordinal = 0
-fileset-hash = "sha256:489389b91e40a50ae0ab58a23d2565df73cc389ba06d6cc8804d3e810a870feb"
-doo-hash = "b155df3deb400a83252dd10ac5774620b704f5ee395a4ae6f1067322ee8494aa"
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-semantics-core"
 
 [[package]]
-name = "linden-warblre"
+name = "linden.warblre"
 class = 1
-version = "1.0.0"
+version = "1.0.3"
 ordinal = 0
-fileset-hash = "sha256:6685a9357275b3a18105c86604be03fa3b9566c9f0fa090d5f7067d24d6edee4"
-doo-hash = "542b6d241bed45b89dd836789dae6040b04ac8cf8d5e7a980169232b79d05923"
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-warblre"

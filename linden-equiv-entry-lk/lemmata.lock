@@ -1,50 +1,10 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:fb9e84e63c3da622d90f48100f2091f9ff3f9cc360d32f869321345951e11763"
+manifest-hash = "sha256:8b235a196d478f20a3aa3d47423b10ff87e0a4a07a70d46c4cbe1df17dbb81eb"
 
 [[package]]
-name = "linden-engine-model"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = "sha256:b555780d6efddb17a1bd0b3ecf1104ef621b4966bd48b70ac3fa4219d90dafdb"
-doo-hash = "4c08f4afb603cffcf80db6c1b71aec655f558facec95cc6c34cd5f1778db4cfc"
-
-[[package]]
-name = "linden-reasoning"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = "sha256:b07203061f45d0aedc2e85589a423ca77ae1fb6891f008d0c862986f856ca5e0"
-doo-hash = "e93b2c32d0f517125db22a55e78b37fd1f50c05c635dff1d95bcea6aba46793f"
-
-[[package]]
-name = "linden-semantics-core"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = "sha256:489389b91e40a50ae0ab58a23d2565df73cc389ba06d6cc8804d3e810a870feb"
-doo-hash = "b155df3deb400a83252dd10ac5774620b704f5ee395a4ae6f1067322ee8494aa"
-
-[[package]]
-name = "linden-warblre"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = "sha256:6685a9357275b3a18105c86604be03fa3b9566c9f0fa090d5f7067d24d6edee4"
-doo-hash = "542b6d241bed45b89dd836789dae6040b04ac8cf8d5e7a980169232b79d05923"
-
-[[package]]
-name = "regex-engine"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = "sha256:c0496b5df48398a7182cd2e960939a0437cf0af35544d3dffcae5001fb89c467"
-doo-hash = "3e54d11353d2af098e3929033c0e9e70122664e47d76be708a3451b503062f7f"
-
-[[package]]
-name = "linden-equiv-look-tables"
+name = "linden.equiv-look-tables"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -53,7 +13,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-look-tables"
 
 [[package]]
-name = "linden-equiv-mirror"
+name = "linden.equiv-mirror"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -62,7 +22,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-mirror"
 
 [[package]]
-name = "linden-equiv-oracle-bridge"
+name = "linden.equiv-oracle-bridge"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -71,7 +31,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-bridge"
 
 [[package]]
-name = "linden-equiv-oracle-build"
+name = "linden.equiv-oracle-build"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -80,7 +40,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-build"
 
 [[package]]
-name = "linden-equiv-oracle-decomp"
+name = "linden.equiv-oracle-decomp"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -89,7 +49,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-decomp"
 
 [[package]]
-name = "linden-equiv-oracle-reach"
+name = "linden.equiv-oracle-reach"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -98,7 +58,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-reach"
 
 [[package]]
-name = "linden-equiv-oracle-sweep"
+name = "linden.equiv-oracle-sweep"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -107,7 +67,52 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-sweep"
 
 [[package]]
-name = "linden-equiv-nfa-rep-re"
+name = "linden.engine-model"
+class = 1
+version = "1.0.2"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-engine-model"
+
+[[package]]
+name = "linden.reasoning"
+class = 1
+version = "1.0.1"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-reasoning"
+
+[[package]]
+name = "linden.semantics-core"
+class = 1
+version = "1.0.2"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-semantics-core"
+
+[[package]]
+name = "linden.warblre"
+class = 1
+version = "1.0.3"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-warblre"
+
+[[package]]
+name = "linden.regex-engine"
+class = 1
+version = "1.0.1"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/regex-engine"
+
+[[package]]
+name = "linden.equiv-nfa-rep-re"
 class = 1
 version = "1.0.0"
 ordinal = 0
@@ -116,7 +121,7 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-nfa-rep-re"
 
 [[package]]
-name = "linden-equiv-oracle-spec"
+name = "linden.equiv-oracle-spec"
 class = 1
 version = "1.0.0"
 ordinal = 0

@@ -1,12 +1,13 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:a78b94abe6b9d38147fe0a144f48bf60e7d005790d0102341d3ae9d12a57c3c2"
+manifest-hash = "sha256:02f6a18fd34ed76a36279c5b2d470c12cabe869a78fb4e937f6b3227d523a926"
 
 [[package]]
-name = "regex-engine"
+name = "linden.regex-engine"
 class = 1
-version = "1.0.0"
+version = "1.0.1"
 ordinal = 0
-fileset-hash = "sha256:c0496b5df48398a7182cd2e960939a0437cf0af35544d3dffcae5001fb89c467"
-doo-hash = "3e54d11353d2af098e3929033c0e9e70122664e47d76be708a3451b503062f7f"
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/regex-engine"

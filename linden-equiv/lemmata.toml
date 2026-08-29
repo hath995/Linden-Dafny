@@ -1,5 +1,6 @@
 [package]
-name = "linden-equiv"
+namespace = "linden"
+name = "equiv"
 version = "1.0.1"
 description = "Machine-checked equivalence of the RegElk regex engine with the Linden reference semantics (the Pike VM / backtracking-tree pinnacle theorem) plus the engine-facing match API"
 repository = "https://github.com/hath995/Linden-Dafny/tree/main/linden-equiv"
@@ -22,13 +23,13 @@ expected-errors = [
 ]
 
 [dependencies]
-linden-equiv-lift-sim-carriers = "^1.0.0"
-linden-equiv-lift-sim-core = "^1.0.0"
-linden-equiv-lift-sim-main = "^1.0.0"
-linden-equiv-lift-sim-oracle = "^1.0.0"
-linden-equiv-main-theorem = "^1.0.0"
-linden-equiv-nfa-rep-re = "^1.0.0"
-linden-reasoning = "^1.0.0"
-linden-semantics-core = "^1.0.0"
-linden-warblre = "^1.0.0"
-regex-engine = "^1.0.0"
+linden.equiv-lift-sim-carriers = "^1.0.0"
+linden.equiv-lift-sim-core = "^1.0.0"
+linden.equiv-lift-sim-main = "^1.0.0"
+linden.equiv-lift-sim-oracle = "^1.0.0"
+linden.equiv-main-theorem = "^1.0.0"
+linden.equiv-nfa-rep-re = "^1.0.0"
+linden.reasoning = "^1.0.0"
+linden.semantics-core = "^1.0.0"
+linden.warblre = "^1.0.0"
+linden.regex-engine = "^1.0.0"

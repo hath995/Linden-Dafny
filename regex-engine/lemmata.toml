@@ -1,4 +1,5 @@
 [package]
+namespace = "linden"
 name = "regex-engine"
 version = "1.0.1"
 description = "A verified, linear-time JavaScript regular-expression matcher (RegElk) in Dafny"

@@ -1,5 +1,6 @@
 [package]
-name = "linden-equiv-clock-mono"
+namespace = "linden"
+name = "equiv-clock-mono"
 version = "1.0.0"
 description = "linden-equiv layer: ClockMono (machine-checked RegElk/Linden equivalence)"
 license = "MIT"
@@ -19,6 +20,6 @@ expected-errors = [
 ]
 
 [dependencies]
-regex-engine = "^1.0.0"
-linden-equiv-nfa-rep-re = "^1.0.0"
-linden-equiv-pike-inv-re = "^1.0.0"
+linden.regex-engine = "^1.0.0"
+linden.equiv-nfa-rep-re = "^1.0.0"
+linden.equiv-pike-inv-re = "^1.0.0"

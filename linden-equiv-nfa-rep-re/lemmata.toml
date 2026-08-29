@@ -1,5 +1,6 @@
 [package]
-name = "linden-equiv-nfa-rep-re"
+namespace = "linden"
+name = "equiv-nfa-rep-re"
 version = "1.0.0"
 description = "linden-equiv layer: NfaRepRE (machine-checked RegElk/Linden equivalence)"
 license = "MIT"
@@ -20,7 +21,7 @@ expected-errors = [
 ]
 
 [dependencies]
-linden-reasoning = "^1.0.0"
-regex-engine = "^1.0.0"
-linden-equiv-look-tables = "^1.0.0"
-linden-equiv-oracle-sweep = "^1.0.0"
+linden.reasoning = "^1.0.0"
+linden.regex-engine = "^1.0.0"
+linden.equiv-look-tables = "^1.0.0"
+linden.equiv-oracle-sweep = "^1.0.0"

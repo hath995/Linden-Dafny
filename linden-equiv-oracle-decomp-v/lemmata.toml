@@ -1,5 +1,6 @@
 [package]
-name = "linden-equiv-oracle-decomp-v"
+namespace = "linden"
+name = "equiv-oracle-decomp-v"
 version = "1.0.0"
 description = "linden-equiv layer: OracleDecompV (machine-checked RegElk/Linden equivalence)"
 license = "MIT"
@@ -19,10 +20,10 @@ expected-errors = [
 ]
 
 [dependencies]
-linden-reasoning = "^1.0.0"
-regex-engine = "^1.0.0"
-linden-equiv-nfa-rep-re = "^1.0.0"
-linden-equiv-oracle-bridge = "^1.0.0"
-linden-equiv-oracle-bridge-v = "^1.0.0"
-linden-equiv-oracle-decomp = "^1.0.0"
-linden-equiv-oracle-reach = "^1.0.0"
+linden.reasoning = "^1.0.0"
+linden.regex-engine = "^1.0.0"
+linden.equiv-nfa-rep-re = "^1.0.0"
+linden.equiv-oracle-bridge = "^1.0.0"
+linden.equiv-oracle-bridge-v = "^1.0.0"
+linden.equiv-oracle-decomp = "^1.0.0"
+linden.equiv-oracle-reach = "^1.0.0"
