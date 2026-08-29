@@ -13,7 +13,7 @@ to_export = ["src/**/*.dfy"]
 [options]
 standard-libraries = true
 verification-time-limit = "900"
-cores = "2"
+cores = "1"
 
 [verification]
 expected-errors = [

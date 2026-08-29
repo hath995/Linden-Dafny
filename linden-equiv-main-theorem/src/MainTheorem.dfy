@@ -5998,7 +5998,7 @@ module LindenElkMain {
       FRESH match; and the fold preserves register lengths. Every capturing lid is
       a lookahead (`requires`, discharged by the caller for lookahead-capturing
       regexes; capture-free lookbehinds are L1 and can be admitted later). */
-  lemma {:isolate_assertions} FLookLoopValueLift(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
+  lemma FLookLoopValueLift(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
                                                  cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
                                                  mainast: R.regex, S: set<int>, ncap: int, nlook: int, nquant: int)
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
@@ -6501,7 +6501,7 @@ module LindenElkMain {
       match clocks. Quant-only mirror of `FLookLoopValueLift` — the capture
       bank enters through its LENGTH alone (the `Sc == {}` bridge), so none of
       the capture-side bookkeeping is re-threaded. */
-  lemma {:isolate_assertions} FLookLoopQuantValueLift(
+  lemma FLookLoopQuantValueLift(
     crv: CP.FCompiled, str: string, lid: int, maxlook: int,
     cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
     mainast: R.regex, Sq: set<int>, ncap: int, nlook: int, nquant: int)
@@ -11746,7 +11746,7 @@ module LindenElkMain {
       invariant is preserved across each replay via the own-look-ids look frame
       + `LookIdEntryExists`. `decreases maxlook - lid`; mirrors
       `FLookLoopCaptureFrame`'s structure. */
-  lemma {:isolate_assertions} FLookLoopCaptureFrameNested(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
+  lemma FLookLoopCaptureFrameNested(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
                                                           cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
                                                           S: set<int>, Slook: set<int>)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
@@ -11862,7 +11862,7 @@ module LindenElkMain {
       table row" invariant is preserved across each replay via the own-look-ids
       look frame (`ReplayPlusLookFrameNested`) + `LookIdEntryExists`, exactly as
       on the capture side. `decreases maxlook - lid`. */
-  lemma {:isolate_assertions} FLookLoopQuantFrameNested(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
+  lemma FLookLoopQuantFrameNested(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
                                                         cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
                                                         S: set<int>, Slook: set<int>, Sq: set<int>)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
@@ -12116,7 +12116,7 @@ module LindenElkMain {
       nested body's replay causes (its inner gates set fresh look entries). Those
       hypotheses are all STATIC / caller-dischargeable from the compilation's
       uniqueness + outer-before-inner lid ordering. `decreases maxlook - lid`. */
-  lemma {:isolate_assertions} FLookLoopValueLiftOuter(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
+  lemma FLookLoopValueLiftOuter(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
                                                       cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
                                                       S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int)
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
@@ -12789,7 +12789,7 @@ module LindenElkMain {
       and settles the unmatched cases; owners `> lid` come DIRECTLY from the IH
       (already keyed on `res.1`), simpler than R2's `nlk`↔`lk` reconciliation.
       `decreases maxlook - lid`. */
-  lemma {:isolate_assertions} FLookLoopValueLiftFull(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
+  lemma FLookLoopValueLiftFull(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
                                                      cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
                                                      S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int)
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
@@ -13825,7 +13825,7 @@ module LindenElkMain {
       the hypothesis. Mirrors `FLookLoopCaptureFrameNested`'s induction (same
       per-step frame/`(b)`-transfer machinery), tracking a single register plus
       the owner exception. `decreases maxlook - lid`. */
-  lemma {:isolate_assertions} FLookLoopGRegUnsetFrame(
+  lemma FLookLoopGRegUnsetFrame(
     crv: CP.FCompiled, str: string, lid: int, maxlook: int,
     cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
     S: set<int>, Slook: set<int>, g: nat, owner0: nat)
@@ -14104,7 +14104,7 @@ module LindenElkMain {
       plus quant twins: (c'q) each body's quant slots INITIAL, (D-ord-q) outer
       quants of earlier ⟂ all quants of later, (Sq-bound) each body's outer quant
       ids land in `Sq`. `decreases maxlook - lid`. */
-  lemma {:isolate_assertions} FLookLoopQuantValueLiftFull(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
+  lemma FLookLoopQuantValueLiftFull(crv: CP.FCompiled, str: string, lid: int, maxlook: int,
                                                           cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
                                                           S: set<int>, Slook: set<int>, Sq: set<int>, ncap: int, nlook: int, nquant: int)
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
@@ -17399,7 +17399,7 @@ module LindenElkMain {
       the capture bank is INIT on every look body's capture regs (the main pass
       writes only OUTSIDE-look caps, `CaptureBytecodeClassifiedNestedOuter`,
       transported to `RegsAgreeInside` off each body's caps). */
-  lemma {:isolate_assertions} LookRowsDynamicNested(
+  lemma LookRowsDynamicNested(
     ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
     ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
     cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
@@ -17841,7 +17841,7 @@ module LindenElkMain {
       (the main bytecode gates only on direct lids, `DirectLidClassified` +
       look-frame), and no direct lid lands inside another look's body
       (`DirectLidsNotInBody`), so `l2 !in LookIdSet(b1)`. */
-  lemma {:isolate_assertions} FStabilityNested(
+  lemma FStabilityNested(
     ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
     ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
     cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, nlook: int, result: Option<AI.Thread>)
