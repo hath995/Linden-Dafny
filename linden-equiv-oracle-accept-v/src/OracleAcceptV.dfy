@@ -677,6 +677,7 @@ module LindenElkOracleAcceptV {
       or the Accept with a completed span. */
   least lemma BodyProgInvV(body: R.regex, code: RB.code, next: nat, str: string, ov: LOr.OracleView,
                            cp0: int, pc: nat, eb: bool, cp: int)
+    requires NR.NestedFragmentRE(body)   // §2.5b: BlockStepV's nulled exit reads the fragment
     requires NR.NfaRepRE(body, code, 0, next)
     requires NR.GetPcRE(code, next) == Some(RB.Accept)
     requires ORc.ReachFV(code, str, ov, cp0, pc, eb, cp)
