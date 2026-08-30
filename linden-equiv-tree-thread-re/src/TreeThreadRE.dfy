@@ -159,10 +159,25 @@ module LindenElkTreeThread {
       // so its head fact has to be unfolded by hand rather than by the
       // match's own case analysis.
       if min > 0 && delta == LN.Inf && !NUL.NonNullableL(r1) {
-        var em, e1 := AR.NfaRepLGenInv(rer, qm, greedy, min, r1, code, pc1, pc2);
-        assert AR.NfaRepMinL(rer, qm, min, r1, code, pc1, em);
-        assert exists qid: int :: NR.GetPcRE(code, pc1) == Some(RB.SetQuantToClock(qid, false));
-        assert false;   // SetQuantToClock != BeginLoop
+        if !greedy {
+          var em, e1 := AR.NfaRepLGenInv(rer, qm, greedy, min, r1, code, pc1, pc2);
+          assert AR.NfaRepMinL(rer, qm, min, r1, code, pc1, em);
+          assert exists qid: int :: NR.GetPcRE(code, pc1) == Some(RB.SetQuantToClock(qid, false));
+          assert false;   // SetQuantToClock != BeginLoop
+        } else {
+          // §2.5b CIN-GREEDY: the head is the first chain stamp (min > 1) or
+          // the head fork (min == 1) — either way not a BeginLoop.
+          var em, e1 := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc1, pc2);
+          assert AR.NfaRepMinL(rer, qm, min - 1, r1, code, pc1, em);
+          if min > 1 {
+            assert exists qid: int :: NR.GetPcRE(code, pc1) == Some(RB.SetQuantToClock(qid, false));
+            assert false;   // SetQuantToClock != BeginLoop
+          } else {
+            assert em == pc1;
+            assert NR.GetPcRE(code, pc1) == Some(RB.Fork((pc1 + 1) as int, (e1 + 2) as int));
+            assert false;   // Fork != BeginLoop
+          }
+        }
       }
     case Group(_, _) =>             // pins SetRegisterToCP
     case LookaroundR(_, _) =>

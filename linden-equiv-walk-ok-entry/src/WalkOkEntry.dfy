@@ -391,7 +391,7 @@ module LindenElkWalkOkEntry {
         assert trre == L.Quantified(q.greedy, mn, LN.NN(kx), T.Translate(r1));
         assert CP.rsize(r1) < CP.rsize(re);
         WalkOkMinChainF(n, mn, kx, q.greedy, qid, r1, c, pc1, em, pc2, cont, g);
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         // §2.5a GENERIC: `min` forced copies, then the ORDINARY STAR loop at
         // `em`. The body is nullable, so there is no do-while and no seam.
         var mn := q.min as nat;
@@ -400,6 +400,14 @@ module LindenElkWalkOkEntry {
         assert trre == L.Quantified(q.greedy, mn, LN.Inf, T.Translate(r1));
         assert CP.rsize(r1) < CP.rsize(re);
         WalkOkGenChainF(n, mn, nul, q.greedy, qid, r1, c, pc1, em, e1, pc2, cont, g);
+      } else if nul != R.NonNullable {
+        // §2.5b CIN-GREEDY: min-1 forced copies, then the stamped end-fork loop
+        var mn := q.min as nat;
+        var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, c, pc1, pc2);
+        assert T.TrDelta(q) == LN.Inf;
+        assert trre == L.Quantified(q.greedy, mn, LN.Inf, T.Translate(r1));
+        assert CP.rsize(r1) < CP.rsize(re);
+        WalkOkCinChainF(n, mn, q.greedy, qid, r1, c, pc1, em, e1, pc2, cont, g);
       } else {
         var mn := q.min as nat;
         var em: nat :| NR.NfaRepMinRE(mn - 1, qid, r1, c, pc1, em)
@@ -650,6 +658,60 @@ module LindenElkWalkOkEntry {
       // the skip
       assert WO.WalkOkF(cont, c, pc2, g, n - 1);
       assert WO.WalkOkRegF(qk, cont, c, em, g, n);
+      assert WO.WalkOkF(tgt, c, pc1, g, n);
+    }
+  }
+
+
+  /** (§2.5b) The CIN-GREEDY chain: min-1 forced copies, then the stamped
+      end-fork loop. Every copy head takes `WalkOkRegF`'s plain forced-copy
+      branch; the `k == 1` bottom sits ON THE HEAD FORK, where the walk guard
+      demands NOTHING (`WalkOkRegF`'s `min > 0` arm keys on a
+      `SetQuantToClock` at the pc, and the instruction there is a `Fork`) —
+      the construction side is held out by the §2.5b interim gate. */
+  lemma WalkOkCinChainF(n: nat, k: nat, greedy: bool, qid: R.quantid, r1: R.regex,
+                         c: RB.code, pc1: nat, em: nat, e1: nat, pc2: nat, cont: LS.Actions, g: bool)
+    requires k >= 1 && greedy
+    requires NR.LookBehindFragmentRE(r1) && T.TransWf(r1)
+    requires NR.NfaRepMinRE(k - 1, qid, r1, c, pc1, em)
+    requires NR.GetPcRE(c, em) == Some(RB.Fork(em + 1, e1 + 2))
+    requires NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    requires NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+    requires NR.NfaRepRE(r1, c, em + 3, e1)
+    requires NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+    requires NR.GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 3))
+    requires NR.GetPcRE(c, e1 + 2) == Some(RB.SetQuantToClock(qid, true))
+    requires pc2 == e1 + 3
+    requires forall gp: bool, mm: nat {:trigger WO.WalkOkF(cont, c, pc2, gp, mm)} :: mm < n ==> WO.WalkOkF(cont, c, pc2, gp, mm)
+    ensures WO.WalkOkF([LS.Areg(L.Quantified(greedy, k, LN.Inf, T.Translate(r1)))] + cont, c, pc1, g, n)
+    decreases n, CP.rsize(r1), 1
+  {
+    if n == 0 { return; }
+    var tr1 := T.Translate(r1);
+    var qk := L.Quantified(greedy, k, LN.Inf, tr1);
+    var tgt := [LS.Areg(qk)] + cont;
+    assert tgt[0] == LS.Areg(qk) && tgt[1..] == cont;
+    if k > 1 {
+      var e1b: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetQuantToClock(qid, false))
+        && NR.NfaRepRE(r1, c, pc1 + 1, e1b)
+        && NR.NfaRepMinRE(k - 2, qid, r1, c, e1b, em);
+      var qk1 := L.Quantified(greedy, k - 1, LN.Inf, tr1);
+      forall gp: bool, mm: nat {:trigger WO.WalkOkF([LS.Areg(qk1)] + cont, c, e1b, gp, mm)} | mm < n - 1
+        ensures WO.WalkOkF([LS.Areg(qk1)] + cont, c, e1b, gp, mm)
+      {
+        WalkOkCinChainF(mm, k - 1, greedy, qid, r1, c, e1b, em, e1, pc2, cont, gp);
+      }
+      WalkOkCompF(n - 1, r1, c, pc1 + 1, e1b, [LS.Areg(qk1)] + cont, g);
+      assert [LS.Areg(tr1)] + ([LS.Areg(qk1)] + cont) == [LS.Areg(tr1), LS.Areg(qk1)] + cont;
+      assert WO.WalkOkF([LS.Areg(tr1), LS.Areg(qk1)] + cont, c, pc1 + 1, g, n - 1);
+      assert WO.WalkOkRegF(qk, cont, c, pc1, g, n);
+      assert WO.WalkOkF(tgt, c, pc1, g, n);
+    } else {
+      // k == 1: the head IS the fork; the guard demands nothing there.
+      NR.NfaRepIncrMinRE(0, qid, r1, c, pc1, em);
+      assert pc1 == em;
+      assert NR.GetPcRE(c, pc1) == Some(RB.Fork(em + 1, e1 + 2));
+      assert WO.WalkOkRegF(qk, cont, c, pc1, g, n);
       assert WO.WalkOkF(tgt, c, pc1, g, n);
     }
   }
@@ -1022,7 +1084,7 @@ module LindenElkWalkOkEntry {
         assert trre == L.Quantified(q.greedy, mn, LN.NN(kx), T.Translate(r1));
         assert CP.rsize(r1) < CP.rsize(re);
         WalkOkMinChainFNested(n, mn, kx, q.greedy, qid, r1, c, pc1, em, pc2, cont, g);
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         // §2.5a GENERIC: `min` forced copies, then the ORDINARY STAR loop at
         // `em`. The body is nullable, so there is no do-while and no seam.
         var mn := q.min as nat;
@@ -1031,6 +1093,14 @@ module LindenElkWalkOkEntry {
         assert trre == L.Quantified(q.greedy, mn, LN.Inf, T.Translate(r1));
         assert CP.rsize(r1) < CP.rsize(re);
         WalkOkGenChainFNested(n, mn, nul, q.greedy, qid, r1, c, pc1, em, e1, pc2, cont, g);
+      } else if nul != R.NonNullable {
+        // §2.5b CIN-GREEDY: min-1 forced copies, then the stamped end-fork loop
+        var mn := q.min as nat;
+        var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, c, pc1, pc2);
+        assert T.TrDelta(q) == LN.Inf;
+        assert trre == L.Quantified(q.greedy, mn, LN.Inf, T.Translate(r1));
+        assert CP.rsize(r1) < CP.rsize(re);
+        WalkOkCinChainFNested(n, mn, q.greedy, qid, r1, c, pc1, em, e1, pc2, cont, g);
       } else {
         var mn := q.min as nat;
         var em: nat :| NR.NfaRepMinRE(mn - 1, qid, r1, c, pc1, em)
@@ -1267,6 +1337,60 @@ module LindenElkWalkOkEntry {
       // the skip
       assert WO.WalkOkF(cont, c, pc2, g, n - 1);
       assert WO.WalkOkRegF(qk, cont, c, em, g, n);
+      assert WO.WalkOkF(tgt, c, pc1, g, n);
+    }
+  }
+
+
+  /** (§2.5b) The CIN-GREEDY chain: min-1 forced copies, then the stamped
+      end-fork loop. Every copy head takes `WalkOkRegF`'s plain forced-copy
+      branch; the `k == 1` bottom sits ON THE HEAD FORK, where the walk guard
+      demands NOTHING (`WalkOkRegF`'s `min > 0` arm keys on a
+      `SetQuantToClock` at the pc, and the instruction there is a `Fork`) —
+      the construction side is held out by the §2.5b interim gate. */
+  lemma WalkOkCinChainFNested(n: nat, k: nat, greedy: bool, qid: R.quantid, r1: R.regex,
+                         c: RB.code, pc1: nat, em: nat, e1: nat, pc2: nat, cont: LS.Actions, g: bool)
+    requires k >= 1 && greedy
+    requires NR.NestedFragmentRE(r1) && T.TransWf(r1)
+    requires NR.NfaRepMinRE(k - 1, qid, r1, c, pc1, em)
+    requires NR.GetPcRE(c, em) == Some(RB.Fork(em + 1, e1 + 2))
+    requires NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    requires NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+    requires NR.NfaRepRE(r1, c, em + 3, e1)
+    requires NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+    requires NR.GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 3))
+    requires NR.GetPcRE(c, e1 + 2) == Some(RB.SetQuantToClock(qid, true))
+    requires pc2 == e1 + 3
+    requires forall gp: bool, mm: nat {:trigger WO.WalkOkF(cont, c, pc2, gp, mm)} :: mm < n ==> WO.WalkOkF(cont, c, pc2, gp, mm)
+    ensures WO.WalkOkF([LS.Areg(L.Quantified(greedy, k, LN.Inf, T.Translate(r1)))] + cont, c, pc1, g, n)
+    decreases n, CP.rsize(r1), 1
+  {
+    if n == 0 { return; }
+    var tr1 := T.Translate(r1);
+    var qk := L.Quantified(greedy, k, LN.Inf, tr1);
+    var tgt := [LS.Areg(qk)] + cont;
+    assert tgt[0] == LS.Areg(qk) && tgt[1..] == cont;
+    if k > 1 {
+      var e1b: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetQuantToClock(qid, false))
+        && NR.NfaRepRE(r1, c, pc1 + 1, e1b)
+        && NR.NfaRepMinRE(k - 2, qid, r1, c, e1b, em);
+      var qk1 := L.Quantified(greedy, k - 1, LN.Inf, tr1);
+      forall gp: bool, mm: nat {:trigger WO.WalkOkF([LS.Areg(qk1)] + cont, c, e1b, gp, mm)} | mm < n - 1
+        ensures WO.WalkOkF([LS.Areg(qk1)] + cont, c, e1b, gp, mm)
+      {
+        WalkOkCinChainFNested(mm, k - 1, greedy, qid, r1, c, e1b, em, e1, pc2, cont, gp);
+      }
+      WalkOkCompFNested(n - 1, r1, c, pc1 + 1, e1b, [LS.Areg(qk1)] + cont, g);
+      assert [LS.Areg(tr1)] + ([LS.Areg(qk1)] + cont) == [LS.Areg(tr1), LS.Areg(qk1)] + cont;
+      assert WO.WalkOkF([LS.Areg(tr1), LS.Areg(qk1)] + cont, c, pc1 + 1, g, n - 1);
+      assert WO.WalkOkRegF(qk, cont, c, pc1, g, n);
+      assert WO.WalkOkF(tgt, c, pc1, g, n);
+    } else {
+      // k == 1: the head IS the fork; the guard demands nothing there.
+      NR.NfaRepIncrMinRE(0, qid, r1, c, pc1, em);
+      assert pc1 == em;
+      assert NR.GetPcRE(c, pc1) == Some(RB.Fork(em + 1, e1 + 2));
+      assert WO.WalkOkRegF(qk, cont, c, pc1, g, n);
       assert WO.WalkOkF(tgt, c, pc1, g, n);
     }
   }
