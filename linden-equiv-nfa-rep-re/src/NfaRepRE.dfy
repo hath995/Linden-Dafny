@@ -1273,52 +1273,6 @@ module LindenElkNfaRep {
       `LookBehindFragmentRaw` except the lookaround case admits a body that is
       itself in the nested fragment (so looks may nest to any depth). The
       predicate the widened `Supported` will eventually use. */
-  /** ANNOTATION CONSISTENCY: every `Re_quant`'s stored nullability annotation
-      `nul` is exactly what `R.nullable` computes for its body — which is what
-      `R.annotate_regex` writes there (`Re_quant(nullable(ar1), ...)`).
-
-      Deliberately NOT folded into the fragment predicates: `LookBehindFragmentRE`
-      / `NestedFragmentRE` are unfolded by every lemma in this file, and adding a
-      fourth disjunct carrying an `R.nullable` call to their `Re_quant` case sent
-      `CompileNfaRepRE` into a matching loop (628M resources, timeout at 900 s,
-      though `--isolate-assertions` closed all 1009 obligations individually).
-      The §2.5a bridge in `ActionsRepRE` is the only consumer, so it rides along
-      as its own precondition there instead. */
-  predicate NullAnnotOkRE(re: R.regex)
-    decreases re
-  {
-    match re
-    case Re_empty => true
-    case Re_character(_) => true
-    case Re_anchor(_) => true
-    case Re_alt(r1, r2) => NullAnnotOkRE(r1) && NullAnnotOkRE(r2)
-    case Re_con(r1, r2) => NullAnnotOkRE(r1) && NullAnnotOkRE(r2)
-    case Re_quant(nul, _, _, r1) => nul == R.nullable(r1) && NullAnnotOkRE(r1)
-    case Re_capture(_, r1) => NullAnnotOkRE(r1)
-    case Re_lookaround(_, _, r1) => NullAnnotOkRE(r1)
-  }
-
-  /** `annotate_regex` produces annotation-consistent output. */
-  lemma AnnotateNullAnnotOk(ra: R.raw_regex, c: int, l: int, q: int)
-    ensures NullAnnotOkRE(R.annotate_regex(ra, c, l, q).0)
-    decreases ra
-  {
-    match ra
-    case Raw_alt(r1, r2) =>
-      AnnotateNullAnnotOk(r1, c, l, q);
-      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
-      AnnotateNullAnnotOk(r2, c1, l1, q1);
-    case Raw_con(r1, r2) =>
-      AnnotateNullAnnotOk(r1, c, l, q);
-      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
-      AnnotateNullAnnotOk(r2, c1, l1, q1);
-    case Raw_quant(quant, r1) => AnnotateNullAnnotOk(r1, c, l, q + 1);
-    case Raw_count(quant, r1) => AnnotateNullAnnotOk(r1, c, l, q + 1);
-    case Raw_capture(r1) => AnnotateNullAnnotOk(r1, c + 1, l, q);
-    case Raw_lookaround(look, r1) => AnnotateNullAnnotOk(r1, c, l + 1, q);
-    case _ =>
-  }
-
   predicate NestedFragmentRaw(raw: R.raw_regex)
     decreases raw
   {
