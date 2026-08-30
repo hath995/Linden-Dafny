@@ -248,11 +248,13 @@ module LindenElkLiftSimDeep {
       var bodyA1 := NI.LookBodyOfRE(re, A1);
       assert bodyA1 == NI.LookBodyOfRE(host, A1);
 
+      assert {:split_here} true;   // (E3) step boundary: its own assertion batch
       // (α) presence descends + A1's res1 clock is set
       NI.LookPathDecomposeNested(host, bodyA1, res0.a_clk, res1.a_clk, res2.a_clk, -1, A1, g2);
       assert AI.get_idx(res1.a_clk, A1 as int) >= 0;
       assert PIV.PathPresentLk(bodyA1, res0.a_clk, res1.a_clk, res2.a_clk, -1, g2);
 
+      assert {:split_here} true;   // (E3) step boundary: its own assertion batch
       // (β) A1 matched in res1 (reverse invariant + LB-only kind pin)
       assert AI.get_idx(res1.a_cp, A1 as int) >= 0;               // LookCpSetWithClk
       assert AReg.get_cp(res1, A1 as int).Some?;
@@ -295,6 +297,7 @@ module LindenElkLiftSimDeep {
         }
       }
 
+      assert {:split_here} true;   // (E3) step boundary: its own assertion batch
       // (δ) the body-restricted qmap + statics (site supplies statics for the
       //     flipped world inside the LB carrier — it only needs LmapOk +
       //     whole-string oracle on `host`).
@@ -308,9 +311,11 @@ module LindenElkLiftSimDeep {
         OracleColsOkRestrict(rer, qm, qmB, str);
       }
 
+      assert {:split_here} true;   // (E3) step boundary: its own assertion batch
       // (γ) A1's BACKWARD spec leaf EXISTS (oracle at the recorded cp) — the
       //     per-hop kind dispatch is by `LidDir`, so the backward arm builds
       //     the WP.Backward tree and the forward arm the WP.Forward one.
+      assert {:split_here} true;   // (E3) step boundary: its own assertion batch
       // (ε) the BACKWARD body replay: the LB carrier at `compile(reverse_regex(host))`.
       var cpA := AReg.get_cp(res1, A as int).value;
       var inpA := PIV.InpOfCp(str, cpA);
@@ -342,6 +347,7 @@ module LindenElkLiftSimDeep {
       assert LookNestBackTTopDeep(rer, host, crv, str, ov, Sh, gmtH, rfA, ncap, nlook, nquant);
       assert CM.LookClkSetWithCp(rfA.look_regs) && CM.LookCpSetWithClk(rfA.look_regs);
 
+      assert {:split_here} true;   // (E3) step boundary: its own assertion batch
       // (ζ) rf_A IS FreshBodyMatch(A, res1) — the backward fresh run.
       // The unfold's row witnesses, hoisted (they are what the by-block needs):
       assert host == M.VBody(crv, A as int) by {
@@ -361,6 +367,7 @@ module LindenElkLiftSimDeep {
       assert rfA == rfFresh.value by {                      // (L5 F7f perf) via the helper
         BackFreshPlusIsPlain(host, bodycodeB, crv.f_plus_bc, str, ov, cpA, cdnA, ncap, nlook, nquant);
       }
+      assert {:split_here} true;   // (E3) step boundary: its own assertion batch
       // (η) the LEVEL-LINK at (A, A1): res1's record at A1 IS rf_A's
       assert A1 as int in M.DirectLidSet(host) by {
         TopEqDirectLookIds(host);
@@ -377,6 +384,7 @@ module LindenElkLiftSimDeep {
         assert rfA == rfFresh.value;
       }
 
+      assert {:split_here} true;   // (E3) step boundary: its own assertion batch
       // (θ) A1 matched + dominant ON rf_A's banks
       assert M.MatchedPosLA(crv, rfA.look_regs, A1 as int) by {
         assert AReg.get_cp(rfA.look_regs, A1 as int).Some?;
@@ -396,6 +404,7 @@ module LindenElkLiftSimDeep {
         NI.LookPathDomNoAncQuants(host, L1, rfA.quant_regs.a_clk, A1, g2);
       }
 
+      assert {:split_here} true;   // (E3) step boundary: its own assertion batch
       // (ι) the RECURSIVE landing at A1, transported onto rf_A's bank
       assert |LTB.LookIds(bodyA1)| < |LTB.LookIds(host)| by {
         NI.LookBodyLookIdsIn(host, A1);
@@ -408,6 +417,7 @@ module LindenElkLiftSimDeep {
       assert lsub1.Some? && g2 in lsub1.value;
       assert SubFirstLeafAt(rer, crv, str, A1 as int, rfA.look_regs) == lsub1;   // reads only get_cp at A1
 
+      assert {:split_here} true;   // (E3) step boundary: its own assertion batch
       // (κ) LAND via the DEEP carrier, then identify the leaf with the
       //     backward `BackLeafAt(host, cpA)` (== SubFirstLeafAt(A, res1))
       DescentLandTopDeep(rer, host, crv, str, ov, Sh, gmtH, rfA, A1, g2, ncap, nlook, nquant);
@@ -524,11 +534,13 @@ module LindenElkLiftSimDeep {
     var bodyA1 := NI.LookBodyOfRE(re, A1);
     assert bodyA1 == NI.LookBodyOfRE(host, A1);
 
+    assert {:split_here} true;   // (E3) step boundary: its own assertion batch
     // (α) presence descends + A1's res1 clock is set
     NI.LookPathDecomposeNested(host, bodyA1, res0.a_clk, res1.a_clk, res2.a_clk, -1, A1, g2);
     assert AI.get_idx(res1.a_clk, A1 as int) >= 0;
     assert PIV.PathPresentLk(bodyA1, res0.a_clk, res1.a_clk, res2.a_clk, -1, g2);
 
+    assert {:split_here} true;   // (E3) step boundary: its own assertion batch
     // (β) A1 matched in res1 (reverse invariant + type pin)
     assert AI.get_idx(res1.a_cp, A1 as int) >= 0;               // LookCpSetWithClk
     assert AReg.get_cp(res1, A1 as int).Some?;
@@ -565,6 +577,7 @@ module LindenElkLiftSimDeep {
       assert AI.capture_type(crv.f_look_types[A1 as int]);
     }
 
+    assert {:split_here} true;   // (E3) step boundary: its own assertion batch
     // (γ) rf_A.Some? via the oracle: res1's record at A is oracle-true, so
     //     host's spec tree matches at cpA.
     var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(host))], inpA, LG.Empty, WP.Forward);
@@ -581,6 +594,7 @@ module LindenElkLiftSimDeep {
       assert LT.FirstLeaf(t, inpA) == LT.TreeRes(t, LG.Empty, inpA, WP.Forward);
     }
 
+    assert {:split_here} true;   // (E3) step boundary: its own assertion batch
     // (δ) the body-restricted qmap + statics
     var qmB := AR.QMap(qm.quants,
                        map l: int | l in qm.looks && l >= 0 && (l as nat) in LTB.LookIds(host) :: qm.looks[l],
@@ -603,6 +617,7 @@ module LindenElkLiftSimDeep {
       OracleColsOkRestrict(rer, qm, qmB, str);
     }
 
+    assert {:split_here} true;   // (E3) step boundary: its own assertion batch
     // (ε) the per-body replay: both carriers + None-iff + bank invariants at rf_A
     var cdnA := crv.f_look_cdns[A as int];
     LookNestBackTFromBodyReplay(rer, qmB, laA, host, bodycode, endlH, 0, crv, str, cpA, ov,
@@ -617,6 +632,7 @@ module LindenElkLiftSimDeep {
     assert LookNestBackTTopDeep(rer, host, crv, str, ov, Sh, gmtH, rfA, ncap, nlook, nquant);
     assert CM.LookClkSetWithCp(rfA.look_regs) && CM.LookCpSetWithClk(rfA.look_regs);
 
+    assert {:split_here} true;   // (E3) step boundary: its own assertion batch
     // (ζ) rf_A IS FreshBodyMatch(A, res1) (same fresh run at the same position)
     var rfFresh := M.FreshBodyMatch(crv, str, A as int, res1, ov, ncap, nlook, nquant);
     assert rfFresh == AI.FFindMatch(bodycode, str,
@@ -626,6 +642,7 @@ module LindenElkLiftSimDeep {
       assert AI.capture_direction(crv.f_look_types[A as int]) == LAnc.Forward;
       assert CP.capture_regex(crv.f_look_types[A as int], M.VBody(crv, A as int)) == host;
     }
+    assert {:split_here} true;   // (E3) step boundary: its own assertion batch
     // (η) the LEVEL-LINK at (A, A1): res1's record at A1 IS rf_A's
     assert A1 as int in M.DirectLidSet(host) by {
       TopEqDirectLookIds(host);
@@ -664,6 +681,7 @@ module LindenElkLiftSimDeep {
     }
     assert AReg.get_cp(res1, A1 as int) == AReg.get_cp(rfA.look_regs, A1 as int);
 
+    assert {:split_here} true;   // (E3) step boundary: its own assertion batch
     // (θ) A1 matched + dominant ON rf_A's banks
     assert M.MatchedPosLA(crv, rfA.look_regs, A1 as int) by {
       assert AReg.get_cp(rfA.look_regs, A1 as int).Some?;
@@ -684,6 +702,7 @@ module LindenElkLiftSimDeep {
       NI.LookPathDomNoAncQuants(host, L1, rfA.quant_regs.a_clk, A1, g2);
     }
 
+    assert {:split_here} true;   // (E3) step boundary: its own assertion batch
     // (ι) the RECURSIVE landing at A1, transported onto rf_A's bank
     assert |LTB.LookIds(bodyA1)| < |LTB.LookIds(host)| by {
       NI.LookBodyLookIdsIn(host, A1);
@@ -696,6 +715,7 @@ module LindenElkLiftSimDeep {
     assert lsub1.Some? && g2 in lsub1.value;
     assert SubFirstLeafAt(rer, crv, str, A1 as int, rfA.look_regs) == lsub1;   // reads only get_cp at A1
 
+    assert {:split_here} true;   // (E3) step boundary: its own assertion batch
     // (κ) LAND via the DEEP carrier, then identify the leaf with SubFirstLeafAt(A, res1)
     DescentLandTopDeep(rer, host, crv, str, ov, Sh, gmtH, rfA, A1, g2, ncap, nlook, nquant);
     assert g2 in gmtH;
