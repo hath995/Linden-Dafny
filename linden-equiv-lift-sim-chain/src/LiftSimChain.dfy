@@ -1663,7 +1663,9 @@ module LindenElkLiftSimChain {
           WalkDefsOkTail(acts);
           WalkPairLkAtForkCore(rer, qm, code, inp, tb, gm, pc, b, cont, x, y);
         } else if min > 0 {
-          QuantHeadPinsForkOrSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
+          // §2.5a: needs the STRONG head fact to refute the `Fork` we sit at;
+          // `QuantHeadPinsForkOrSQC`'s `Fork? || SetQuantToClock?` is too weak.
+          QuantHeadMinPosPinsSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
           assert false;   // min>0 head pins SetQuantToClock, not Fork
         } else {
           // min == 0 with Inf or NN(kx>0): the star fork — tb is the Choice.
@@ -4244,7 +4246,9 @@ module LindenElkLiftSimChain {
           WalkDefsOkTail(acts);
           WalkPairLkAtForkCoreRec(rer, qm, code, inp, tb, gm, pc, b, cont, x, y);
         } else if min > 0 {
-          QuantHeadPinsForkOrSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
+          // §2.5a: needs the STRONG head fact to refute the `Fork` we sit at;
+          // `QuantHeadPinsForkOrSQC`'s `Fork? || SetQuantToClock?` is too weak.
+          QuantHeadMinPosPinsSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
           assert false;   // min>0 head pins SetQuantToClock, not Fork
         } else {
           // min == 0 with Inf or NN(kx>0): the star fork — tb is the Choice.

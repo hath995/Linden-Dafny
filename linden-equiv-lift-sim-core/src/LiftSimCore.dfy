@@ -3790,6 +3790,46 @@ module LindenElkLiftSimCore {
     }
   }
 
+  /** (§2.5a) The STRONG head fact for `min > 0`: the head at `pc` is always a
+      clock-mark, never a `Fork` -- every scheme with `min > 0` (bounded,
+      do-while, and the generic nullable-lazy one) starts with a forced-copy
+      chain whose head pins `SetQuantToClock`. `QuantHeadPinsForkOrSQC`'s weaker
+      `Fork? || SetQuantToClock?` cannot refute a `Fork`; callers sitting AT a
+      `Fork` need this. Stated separately because factoring the generic arm
+      behind `NfaRepGenL`'s trigger stopped Dafny deriving it by unfolding. */
+  lemma QuantHeadMinPosPinsSQC(rer: LW.RegExpRecord, qm: AR.QMap, greedy: bool, min: nat, delta: LN.NoI,
+                               r1: L.Regex, code: RB.code, pc: nat, pcmid: nat)
+    requires AR.NfaRepL(rer, qm, L.Quantified(greedy, min, delta, r1), code, pc, pcmid)
+    requires min > 0
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetQuantToClock?
+  {
+    match delta
+    case Inf =>
+      if NUL.NonNullableL(r1) {
+        var em: nat, e1: nat :|
+          AR.NfaRepMinL(rer, qm, min - 1, r1, code, pc, em)
+          && (exists qid: int :: NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
+                                 && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
+          && AR.NfaRepL(rer, qm, r1, code, em + 1, e1)
+          && NR.GetPcRE(code, e1) == Some(if greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
+          && pcmid == e1 + 1;
+        NfaRepMinLHeadPin(rer, qm, min - 1, r1, code, pc, em);
+        if min - 1 == 0 {
+          assert em == pc;
+          var qid: int :| NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false));
+        }
+      } else {
+        // GENERIC: `min` (not `min - 1`) forced copies precede the star loop,
+        // so the chain is non-empty and its head pins the clock-mark directly.
+        var em, e1 := AR.NfaRepLGenInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+        NfaRepMinLHeadPin(rer, qm, min, r1, code, pc, em);
+      }
+    case NN(kx) =>
+      var em: nat :| AR.NfaRepMinL(rer, qm, min, r1, code, pc, em)
+                     && AR.NfaRepOptL(rer, qm, kx, greedy, r1, code, em, pcmid);
+      NfaRepMinLHeadPin(rer, qm, min, r1, code, pc, em);
+  }
+
   /** THE forced-copy continuation builder: a `min>0` quantifier head crossing
       its first `SetQuantToClock` at `pc` unfolds to `r1` then
       `Quantified(min-1, delta)` — so the walk continuation

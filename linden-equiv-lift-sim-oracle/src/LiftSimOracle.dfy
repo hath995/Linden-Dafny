@@ -2029,7 +2029,10 @@ module LindenElkLiftSimOracle {
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
           TtLkAtForkCore(rer, qm, code, inp, tb, pc, b, cont, x, y);
         } else if min > 0 {
-          QuantHeadPinsForkOrSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);   // pins SQC ≠ Fork
+          // §2.5a: the STRONG head fact -- `min > 0` pins a clock-mark, which
+          // refutes the `Fork` we are sitting at. `QuantHeadPinsForkOrSQC`'s
+          // `Fork? || SetQuantToClock?` is too weak here.
+          QuantHeadMinPosPinsSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
         } else {
           // min==0, Inf or NN(kx>0): the star/bounded fork ⇒ tb.Choice?; targets are nats.
           match delta
@@ -4343,7 +4346,10 @@ module LindenElkLiftSimOracle {
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
           TtLkAtForkCoreRec(rer, qm, code, inp, tb, pc, b, cont, x, y);
         } else if min > 0 {
-          QuantHeadPinsForkOrSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);   // pins SQC ≠ Fork
+          // §2.5a: the STRONG head fact -- `min > 0` pins a clock-mark, which
+          // refutes the `Fork` we are sitting at. `QuantHeadPinsForkOrSQC`'s
+          // `Fork? || SetQuantToClock?` is too weak here.
+          QuantHeadMinPosPinsSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
         } else {
           // min==0, Inf or NN(kx>0): the star/bounded fork ⇒ tb.Choice?; targets are nats.
           match delta
