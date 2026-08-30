@@ -317,6 +317,11 @@ future rung has to ask, and the answer for `ColdF` is a genuinely useful *no*.
 
 ### THE ONE PACKAGE THAT IS *NOT* THE PATTERN
 
+**Eleven packages** were touched in total: `nfa-rep-re`, `actions-rep-re`, `walk-ok`,
+`actions-tree-rep-re`, `lift-sim-core`, `oracle-decomp{,-v}`, `oracle-bridge{,-v}`, `pike-inv-re`,
+`main-theorem`, `linden-reasoning`, plus the four that only `lem pack` found — `nest-inv`,
+`walk-ok-entry`, `tree-thread-re`, `lift-sim-oracle`, `lift-sim-chain`.
+
 `linden-equiv-walk-ok-entry` was found by `lem pack`, not by grep, and it is the one place where the
 generic scheme needs a genuinely new argument rather than a shifted copy. `WalkOkPlusChainF` bottoms
 out at `k == 1` in the **SEAM** — the guaranteed last forced iteration, with the walk guard's
@@ -358,6 +363,30 @@ proof obligation splits into "the chain's" (delegate to the existing `…Min` he
    splits on `BeginLoop` sites needs a new case. This is what broke both `BeginLoopColdSafeAt`
    twins; the symptom was `assert em + 3 <= p < e1` failing, and the fix was the star arm's own
    Cold-sink argument (`ColdPropagatesF` into the body, then `!BackForkAt(c, e1)`, `assert false`).
+
+### THE FACTORING TRADE — IT CUTS BOTH WAYS
+
+Factoring a fat arm into a named predicate with an explicit `{:trigger}` is the fix for the timeouts
+below, but it has a second, opposite effect that cost three packages this rung:
+
+* **The win:** consumers that were TIMING OUT get fast, because they no longer inline the arm.
+* **The cost:** consumers whose proofs were **EMPTY** — relying on Dafny to unfold the arm itself to
+  reach a contradiction — start FAILING, because the trigger stops that unfolding.
+
+The second kind is invisible to grep: those proofs never mention the predicate you changed. Only a
+full `lem pack` finds them. Three instances:
+
+| package | site | the fact that had to be named |
+|---|---|---|
+| `tree-thread-re` | `NfaRepLTransparentAtBeginLoop`, `Quantified` case (an empty arm) | `NfaRepLGenInv` then `NfaRepMinL(min>0)` pins `SetQuantToClock` ≠ `BeginLoop` |
+| `lift-sim-oracle` | `TtLkAtForkCore{,Rec}`, ×2 | `min > 0` pins a clock-mark, refuting the `Fork` |
+| `lift-sim-chain` | `WalkPairLkAtForkCore…`, ×2 | same |
+
+The last two share one new lemma, `QuantHeadMinPosPinsSQC` in `LiftSimCore`: **for `min > 0` the
+head at `pc` is ALWAYS a clock-mark, never a `Fork`** — true of all three schemes, since every
+`min > 0` layout begins with a forced-copy chain. Its older sibling `QuantHeadPinsForkOrSQC` only
+gives `Fork? || SetQuantToClock?`, which cannot refute a `Fork` the caller is sitting at. That
+weaker form is fine for callers proving "not a `SetRegisterToCP`" and wrong for callers at a fork.
 
 ### PERFORMANCE: inline size, not logical content
 

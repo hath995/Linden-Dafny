@@ -178,6 +178,7 @@ module LindenElkLiftSimCarriers {
       }
     }
 
+    assert {:split_here} true;
     // ---- the spec tree ---------------------------------------------------
     LFU.ComputeTrIsTree(rer, [LS.Areg(T.Translate(re))], inp, LG.Empty, WP.Forward);
     var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(re))], inp, LG.Empty, WP.Forward);
@@ -195,6 +196,7 @@ module LindenElkLiftSimCarriers {
     ComputePikeSubtreeLk(rer, [LS.Areg(T.Translate(re))], inp, LG.Empty, WP.Forward, fuel0, t);
     assert PTL.PikeSubtreeLk(t);
 
+    assert {:split_here} true;
     // ---- the CHECKED tree (machine A's carrier) ---------------------------
     WOE.WalkOkEntry(re);
     assert EL.PikeLkActions([LS.Areg(T.Translate(re))]) by {
@@ -214,6 +216,7 @@ module LindenElkLiftSimCarriers {
     var tstar := ATR.ActionsTreeRepRE(rer, qm, [LS.Areg(T.Translate(re))], code, 0, inp, BS.CannotExit, t, S);
     assert TREP.TreeRepRE(qm, tstar, code, 0, inp, false);
 
+    assert {:split_here} true;
     // ---- the engine pipeline ---------------------------------------------
     var crv := CP.FFullCompilation(ast);
     M.FFullCompilationFacts(ast);
@@ -233,6 +236,7 @@ module LindenElkLiftSimCarriers {
             case None => None
             case Some(thread) => Some(AI.FReconstructPlus(thread, ast, crv.f_plus_bc, str, fmres.1, LAnc.Forward).0));
 
+    assert {:split_here} true;
     // ---- gate statics + look tables ---------------------------------------
     LTB.FFullCompilationLookOk(ast);
     assert LTB.LookTablesOk(re, crv) by {
@@ -248,6 +252,7 @@ module LindenElkLiftSimCarriers {
     GateStaticsFromTables(qm, re, crv, ncap, nlook, nquant);
     assert GateStaticsOk(qm, re, crv, ncap, nlook, nquant);
 
+    assert {:split_here} true;
     // ---- the composite lockstep (both machines) ---------------------------
     PSM.InitialPikeInvFullRE(rer, qm, re, code, endl, ngroups, str, tstar, inits, ncap, nlook, nquant);
     assert ctx.nextchar == AI.get_char(str, 0);
@@ -257,6 +262,7 @@ module LindenElkLiftSimCarriers {
                       inits, crv.f_main_cdns, result, ncap, nlook, nquant);
     assert BestTieLk(re, crv, str, ov, S, LT.FirstLeaf(t, inp), result, ncap, nlook, nquant);
 
+    assert {:split_here} true;
     // ---- stage the engine answer ------------------------------------------
     var bc := AI.FBuildCapture(crv, str, ov);
     assert AI.FMatcher(crv, str) == bc.0;
