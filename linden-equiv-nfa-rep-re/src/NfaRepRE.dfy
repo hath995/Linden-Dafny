@@ -318,7 +318,9 @@ module LindenElkNfaRep {
        || (q.min > 0 && q.max == None && nul == R.NonNullable
            && R.nullable(r1) == R.NonNullable)
        || (q.min > 0 && q.max == None && !q.greedy
-           && nul != R.NonNullable))
+           && nul != R.NonNullable)
+       || (q.min > 0 && q.max == None && q.greedy
+           && nul == R.CINullable))
       && PlusFragmentRE(r1)
     case Re_capture(cid, r1) => PlusFragmentRE(r1)
     case Re_lookaround(_, _, _) => false
@@ -337,14 +339,16 @@ module LindenElkNfaRep {
     case Raw_alt(r1, r2) => PlusFragmentRaw(r1) && PlusFragmentRaw(r2)
     case Raw_con(r1, r2) => PlusFragmentRaw(r1) && PlusFragmentRaw(r2)
     case Raw_quant(q, r1) =>
-      (q.Plus? ==> R.raw_nullable(r1) == R.NonNullable)
+      (q.Plus? ==> R.raw_nullable(r1) != R.CDNullable)
       && PlusFragmentRaw(r1)
     case Raw_count(q, r1) =>
       ((q.min == 0 && q.max == None)
        || (0 <= q.min && q.max.Some? && q.min <= q.max.value)
        || (q.min > 0 && q.max == None && R.raw_nullable(r1) == R.NonNullable)
        || (q.min > 0 && q.max == None && !q.greedy
-           && R.raw_nullable(r1) != R.NonNullable))
+           && R.raw_nullable(r1) != R.NonNullable)
+       || (q.min > 0 && q.max == None && q.greedy
+           && R.raw_nullable(r1) == R.CINullable))
       && PlusFragmentRaw(r1)
     case Raw_capture(r1) => PlusFragmentRaw(r1)
     case Raw_lookaround(_, _) => false
@@ -708,7 +712,9 @@ module LindenElkNfaRep {
        || (q.min > 0 && q.max == None && nul == R.NonNullable
            && R.nullable(r1) == R.NonNullable)
        || (q.min > 0 && q.max == None && !q.greedy
-           && nul != R.NonNullable))
+           && nul != R.NonNullable)
+       || (q.min > 0 && q.max == None && q.greedy
+           && nul == R.CINullable))
       && LookBehindFragmentRE(r1)
     case Re_capture(cid, r1) => LookBehindFragmentRE(r1)
     case Re_lookaround(lid, la, r1) =>
@@ -736,14 +742,16 @@ module LindenElkNfaRep {
     case Raw_alt(r1, r2) => LookBehindFragmentRaw(r1) && LookBehindFragmentRaw(r2)
     case Raw_con(r1, r2) => LookBehindFragmentRaw(r1) && LookBehindFragmentRaw(r2)
     case Raw_quant(q, r1) =>
-      (q.Plus? ==> R.raw_nullable(r1) == R.NonNullable)
+      (q.Plus? ==> R.raw_nullable(r1) != R.CDNullable)
       && LookBehindFragmentRaw(r1)
     case Raw_count(q, r1) =>
       ((q.min == 0 && q.max == None)
        || (0 <= q.min && q.max.Some? && q.min <= q.max.value)
        || (q.min > 0 && q.max == None && R.raw_nullable(r1) == R.NonNullable)
        || (q.min > 0 && q.max == None && !q.greedy
-           && R.raw_nullable(r1) != R.NonNullable))
+           && R.raw_nullable(r1) != R.NonNullable)
+       || (q.min > 0 && q.max == None && q.greedy
+           && R.raw_nullable(r1) == R.CINullable))
       && LookBehindFragmentRaw(r1)
     case Raw_capture(r1) => LookBehindFragmentRaw(r1)
     case Raw_lookaround(look, r1) =>
@@ -817,7 +825,9 @@ module LindenElkNfaRep {
        || (q.min > 0 && q.max == None && nul == R.NonNullable
            && R.nullable(r1) == R.NonNullable)
        || (q.min > 0 && q.max == None && !q.greedy
-           && nul != R.NonNullable))
+           && nul != R.NonNullable)
+       || (q.min > 0 && q.max == None && q.greedy
+           && nul == R.CINullable))
       && NestedFragmentRE(r1)
     case Re_capture(cid, r1) => NestedFragmentRE(r1)
     case Re_lookaround(lid, la, r1) =>
@@ -1288,14 +1298,16 @@ module LindenElkNfaRep {
     case Raw_alt(r1, r2) => NestedFragmentRaw(r1) && NestedFragmentRaw(r2)
     case Raw_con(r1, r2) => NestedFragmentRaw(r1) && NestedFragmentRaw(r2)
     case Raw_quant(q, r1) =>
-      (q.Plus? ==> R.raw_nullable(r1) == R.NonNullable)
+      (q.Plus? ==> R.raw_nullable(r1) != R.CDNullable)
       && NestedFragmentRaw(r1)
     case Raw_count(q, r1) =>
       ((q.min == 0 && q.max == None)
        || (0 <= q.min && q.max.Some? && q.min <= q.max.value)
        || (q.min > 0 && q.max == None && R.raw_nullable(r1) == R.NonNullable)
        || (q.min > 0 && q.max == None && !q.greedy
-           && R.raw_nullable(r1) != R.NonNullable))
+           && R.raw_nullable(r1) != R.NonNullable)
+       || (q.min > 0 && q.max == None && q.greedy
+           && R.raw_nullable(r1) == R.CINullable))
       && NestedFragmentRaw(r1)
     case Raw_capture(r1) => NestedFragmentRaw(r1)
     case Raw_lookaround(look, r1) =>
@@ -1666,10 +1678,11 @@ module LindenElkNfaRep {
              NfaRepMinRE(mn, qid, r1, c, pc1, em)
              && NfaRepOptRE(kx, q.greedy, qid, r1, c, em, pc2)
       else
-        // unbounded min > 0 (+, {n,}): TWO schemes, selected by the annotated
-        // nullability exactly as `CP.compile` selects them (an `if`, not a
-        // disjunction, so the arms are disjoint by construction and a consumer
-        // holding `nul == R.NonNullable` sees only the do-while).
+        // unbounded min > 0 (+, {n,}): THREE schemes, selected by the annotated
+        // nullability and greediness exactly as `CP.compile` selects them (an
+        // `if`-chain, not a disjunction, so the arms are disjoint by
+        // construction and a consumer holding `nul == R.NonNullable` sees only
+        // the do-while).
         q.min > 0
         && (if nul == R.NonNullable then
               // the do-while: min-1 forced copies, then the guaranteed last
@@ -1682,25 +1695,44 @@ module LindenElkNfaRep {
                        NfaRepRE(r1, c, em + 1, e1)
                        && GetPcRE(c, e1) == Some(if q.greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
                        && pc2 == e1 + 1))
-            else
+            else if !q.greedy then
               // the GENERIC scheme (§2.5a): min forced copies, then the very
               // star loop the `q.min == 0` arm above describes, at `em`. The
               // compiler takes this branch for a nullable body only when the
-              // quantifier is LAZY -- the two greedy-nullable schemes
-              // (SetQuantToClock(qid, true) / CheckNullable) are out of every
-              // fragment (SUPPORTED_FRAGMENT.md 2.5b).
-              !q.greedy
-              && (var mn := q.min as nat;
+              // quantifier is LAZY.
+              (var mn := q.min as nat;
+               exists em: nat ::
+                 NfaRepMinRE(mn, qid, r1, c, pc1, em)
+                 && (exists e1: nat ::
+                       GetPcRE(c, em) == Some(RB.Fork(e1 + 2, em + 1))
+                       && GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+                       && GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+                       && NfaRepRE(r1, c, em + 3, e1)
+                       && GetPcRE(c, e1) == Some(RB.EndLoop)
+                       && GetPcRE(c, e1 + 1) == Some(RB.Jmp(em))
+                       && pc2 == e1 + 2))
+            else
+              // the CIN-GREEDY end-fork scheme (§2.5b): min-1 forced copies,
+              // then a guarded loop whose EXIT stamps `SetQuantToClock(qid,
+              // true)` -- the head fork's skip path records "the mandatory
+              // iteration matched empty here" for the nulled-plus capture
+              // reconstruction; the end fork after a real iteration exits
+              // WITHOUT the stamp. Both re-entry targets are the stamp at
+              // `em + 1`, not the fork. The CDN-greedy scheme (CheckNullable)
+              // remains unrepresented (SUPPORTED_FRAGMENT.md 2.5b).
+              nul == R.CINullable
+              && (var mn1 := (q.min - 1) as nat;
                   exists em: nat ::
-                    NfaRepMinRE(mn, qid, r1, c, pc1, em)
+                    NfaRepMinRE(mn1, qid, r1, c, pc1, em)
                     && (exists e1: nat ::
-                          GetPcRE(c, em) == Some(RB.Fork(e1 + 2, em + 1))
+                          GetPcRE(c, em) == Some(RB.Fork(em + 1, e1 + 2))
                           && GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
                           && GetPcRE(c, em + 2) == Some(RB.BeginLoop)
                           && NfaRepRE(r1, c, em + 3, e1)
                           && GetPcRE(c, e1) == Some(RB.EndLoop)
-                          && GetPcRE(c, e1 + 1) == Some(RB.Jmp(em))
-                          && pc2 == e1 + 2)))
+                          && GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 3))
+                          && GetPcRE(c, e1 + 2) == Some(RB.SetQuantToClock(qid, true))
+                          && pc2 == e1 + 3)))
     case Re_capture(cid, r1) =>
       exists e1: nat ::
         GetPcRE(c, pc1) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
@@ -1825,14 +1857,14 @@ module LindenElkNfaRep {
         FreshCorrectOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, min_f as nat, opt_code, opt_f);
         FlattenApp(min_code, Flat(opt_code));
         assert Flat(tl) == Flat(min_code) + Flat(opt_code);
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         // the GENERIC scheme (SUPPORTED_FRAGMENT 2.5a, lazy nullable + / {n,}):
         // min forced copies, then the ordinary star loop at min_f
         var (min_code, min_f) := CP.repeat_min(q.min, qid, r1, start, CP.Progress);
         FreshCorrectMinRE(q.min as nat, qid, r1, start, min_code, min_f);
         var (iter_code, iter_f) := CP.compile(r1, min_f + 3, CP.Progress);
         FreshCorrectRE(r1, (min_f + 3) as nat, iter_code, iter_f);
-        var fork := if q.greedy then RB.Fork(min_f + 1, iter_f + 2) else RB.Fork(iter_f + 2, min_f + 1);
+        var fork := RB.Fork(iter_f + 2, min_f + 1);
         var ch := CP.chain([min_code,
                             CP.Leaf([fork, RB.SetQuantToClock(qid, false), RB.BeginLoop]),
                             iter_code,
@@ -1841,6 +1873,20 @@ module LindenElkNfaRep {
                            + Flat(iter_code) + [RB.EndLoop, RB.Jmp(min_f)] by {
           ChainFour(min_code, CP.Leaf([fork, RB.SetQuantToClock(qid, false), RB.BeginLoop]),
                     iter_code, CP.Leaf([RB.EndLoop, RB.Jmp(min_f)]));
+        }
+      } else if nul != R.NonNullable {
+        // the CIN-GREEDY end-fork scheme (§2.5b): min-1 forced copies, the
+        // guarded loop, then [EndLoop, Fork, SetQuantToClock(qid, true)];
+        // the fragment excludes CDN-greedy, so nul == CINullable here
+        var (min_code, min_f) := CP.repeat_min(q.min - 1, qid, r1, start, CP.Progress);
+        FreshCorrectMinRE((q.min - 1) as nat, qid, r1, start, min_code, min_f);
+        var (body_code, body_f) := CP.compile(r1, min_f + 3, CP.Progress);
+        FreshCorrectRE(r1, (min_f + 3) as nat, body_code, body_f);
+        var hdr := [RB.Fork(min_f + 1, body_f + 2), RB.SetQuantToClock(qid, false), RB.BeginLoop];
+        var ftr := [RB.EndLoop, RB.Fork(min_f + 1, body_f + 3), RB.SetQuantToClock(qid, true)];
+        var ch := CP.chain([min_code, CP.Leaf(hdr), body_code, CP.Leaf(ftr)]);
+        assert Flat(ch) == Flat(min_code) + hdr + Flat(body_code) + ftr by {
+          ChainFour(min_code, CP.Leaf(hdr), body_code, CP.Leaf(ftr));
         }
       } else {
         // the do-while: min-1 forced copies; SetQuantToClock; body; the fork
@@ -2021,7 +2067,7 @@ module LindenElkNfaRep {
         NfaRepExtendOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, c, em, endl, suffix);
         assert NfaRepMinRE(q.min as nat, qid, r1, c + suffix, start, em)
             && NfaRepOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, c + suffix, em, endl);
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         // the GENERIC scheme: min forced copies, then the star loop at em
         var mn := q.min as nat;
         var em: nat :| NfaRepMinRE(mn, qid, r1, c, start, em)
@@ -2055,6 +2101,45 @@ module LindenElkNfaRep {
             && GetPcRE(c + suffix, e1) == Some(RB.EndLoop)
             && GetPcRE(c + suffix, e1 + 1) == Some(RB.Jmp(em))
             && endl == e1 + 2;
+      } else if nul != R.NonNullable {
+        // the CIN-GREEDY end-fork scheme (§2.5b): min-1 forced copies, the
+        // guarded loop, the stamped exit
+        var mn1 := (q.min - 1) as nat;
+        var em: nat :| NfaRepMinRE(mn1, qid, r1, c, start, em)
+          && (exists e1: nat ::
+                GetPcRE(c, em) == Some(RB.Fork(em + 1, e1 + 2))
+                && GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+                && GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+                && NfaRepRE(r1, c, em + 3, e1)
+                && GetPcRE(c, e1) == Some(RB.EndLoop)
+                && GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 3))
+                && GetPcRE(c, e1 + 2) == Some(RB.SetQuantToClock(qid, true))
+                && endl == e1 + 3);
+        var e1: nat :| GetPcRE(c, em) == Some(RB.Fork(em + 1, e1 + 2))
+          && GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+          && GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+          && NfaRepRE(r1, c, em + 3, e1)
+          && GetPcRE(c, e1) == Some(RB.EndLoop)
+          && GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 3))
+          && GetPcRE(c, e1 + 2) == Some(RB.SetQuantToClock(qid, true))
+          && endl == e1 + 3;
+        NfaRepExtendMinRE(mn1, qid, r1, c, start, em, suffix);
+        GetSuffixRE(c, suffix, em, RB.Fork(em + 1, e1 + 2));
+        GetSuffixRE(c, suffix, em + 1, RB.SetQuantToClock(qid, false));
+        GetSuffixRE(c, suffix, em + 2, RB.BeginLoop);
+        NfaRepExtendRE(r1, c, em + 3, e1, suffix);
+        GetSuffixRE(c, suffix, e1, RB.EndLoop);
+        GetSuffixRE(c, suffix, e1 + 1, RB.Fork(em + 1, e1 + 3));
+        GetSuffixRE(c, suffix, e1 + 2, RB.SetQuantToClock(qid, true));
+        assert NfaRepMinRE(mn1, qid, r1, c + suffix, start, em)
+            && GetPcRE(c + suffix, em) == Some(RB.Fork(em + 1, e1 + 2))
+            && GetPcRE(c + suffix, em + 1) == Some(RB.SetQuantToClock(qid, false))
+            && GetPcRE(c + suffix, em + 2) == Some(RB.BeginLoop)
+            && NfaRepRE(r1, c + suffix, em + 3, e1)
+            && GetPcRE(c + suffix, e1) == Some(RB.EndLoop)
+            && GetPcRE(c + suffix, e1 + 1) == Some(RB.Fork(em + 1, e1 + 3))
+            && GetPcRE(c + suffix, e1 + 2) == Some(RB.SetQuantToClock(qid, true))
+            && endl == e1 + 3;
       } else {
         var mn1 := (q.min - 1) as nat;
         var em: nat :| NfaRepMinRE(mn1, qid, r1, c, start, em)
@@ -2254,6 +2339,7 @@ module LindenElkNfaRep {
       forced copies ending at `em`, then the ordinary star loop. */
   lemma NfaRepREGenIntro(nul: R.nullability, qid: R.quantid, q: R.counted_quantifier, r1: R.regex, c: RB.code, pc1: nat, em: nat, e1: nat, pc2: nat)
     requires q.min > 0 && q.max == None && nul != R.NonNullable && !q.greedy
+    // (the CIN-greedy arm, §2.5b, is disjoint: it requires q.greedy)
     requires NfaRepMinRE(q.min as nat, qid, r1, c, pc1, em)
     requires GetPcRE(c, em) == Some(RB.Fork(e1 + 2, em + 1))
     requires GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
@@ -2270,9 +2356,11 @@ module LindenElkNfaRep {
       end of the forced copies and the end of the loop body. */
   lemma NfaRepREGenInv(nul: R.nullability, qid: R.quantid, q: R.counted_quantifier, r1: R.regex, c: RB.code, pc1: nat, pc2: nat) returns (em: nat, e1: nat)
     requires q.min > 0 && q.max == None
-    requires nul != R.NonNullable
+    // §2.5b split the nullable side of the unbounded arm on greediness; the
+    // GENERIC side must now be selected by the caller (LAZY -- every caller
+    // holds `!q.greedy` from its fragment hypothesis or a case split).
+    requires nul != R.NonNullable && !q.greedy
     requires NfaRepRE(R.Re_quant(nul, qid, q, r1), c, pc1, pc2)
-    ensures !q.greedy
     ensures NfaRepMinRE(q.min as nat, qid, r1, c, pc1, em)
     ensures GetPcRE(c, em) == Some(RB.Fork(e1 + 2, em + 1))
     ensures GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
@@ -2299,6 +2387,63 @@ module LindenElkNfaRep {
       && GetPcRE(c, e1) == Some(RB.EndLoop)
       && GetPcRE(c, e1 + 1) == Some(RB.Jmp(em))
       && pc2 == e1 + 2;
+  }
+
+  /** Introduction lemma for the CIN-GREEDY end-fork arm of `NfaRepRE` (§2.5b):
+      min-1 forced copies ending at `em`, then the stamped loop whose exit path
+      records `SetQuantToClock(qid, true)`. */
+  lemma NfaRepRECinIntro(nul: R.nullability, qid: R.quantid, q: R.counted_quantifier, r1: R.regex, c: RB.code, pc1: nat, em: nat, e1: nat, pc2: nat)
+    requires q.min > 0 && q.max == None && nul == R.CINullable && q.greedy
+    requires NfaRepMinRE((q.min - 1) as nat, qid, r1, c, pc1, em)
+    requires GetPcRE(c, em) == Some(RB.Fork(em + 1, e1 + 2))
+    requires GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    requires GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+    requires NfaRepRE(r1, c, em + 3, e1)
+    requires GetPcRE(c, e1) == Some(RB.EndLoop)
+    requires GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 3))
+    requires GetPcRE(c, e1 + 2) == Some(RB.SetQuantToClock(qid, true))
+    requires pc2 == e1 + 3
+    ensures NfaRepRE(R.Re_quant(nul, qid, q, r1), c, pc1, pc2)
+  {
+  }
+
+  /** Inversion lemma for the CIN-GREEDY end-fork arm of `NfaRepRE` (§2.5b):
+      recover the end of the forced copies (the head fork) and the end of the
+      loop body (the `EndLoop`). */
+  lemma NfaRepRECinInv(nul: R.nullability, qid: R.quantid, q: R.counted_quantifier, r1: R.regex, c: RB.code, pc1: nat, pc2: nat) returns (em: nat, e1: nat)
+    requires q.min > 0 && q.max == None
+    requires nul != R.NonNullable && q.greedy
+    requires NfaRepRE(R.Re_quant(nul, qid, q, r1), c, pc1, pc2)
+    ensures nul == R.CINullable
+    ensures NfaRepMinRE((q.min - 1) as nat, qid, r1, c, pc1, em)
+    ensures GetPcRE(c, em) == Some(RB.Fork(em + 1, e1 + 2))
+    ensures GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    ensures GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+    ensures NfaRepRE(r1, c, em + 3, e1)
+    ensures GetPcRE(c, e1) == Some(RB.EndLoop)
+    ensures GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 3))
+    ensures GetPcRE(c, e1 + 2) == Some(RB.SetQuantToClock(qid, true))
+    ensures pc2 == e1 + 3
+  {
+    var mn1 := (q.min - 1) as nat;
+    em :| NfaRepMinRE(mn1, qid, r1, c, pc1, em)
+      && (exists ex: nat ::
+            GetPcRE(c, em) == Some(RB.Fork(em + 1, ex + 2))
+            && GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+            && GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+            && NfaRepRE(r1, c, em + 3, ex)
+            && GetPcRE(c, ex) == Some(RB.EndLoop)
+            && GetPcRE(c, ex + 1) == Some(RB.Fork(em + 1, ex + 3))
+            && GetPcRE(c, ex + 2) == Some(RB.SetQuantToClock(qid, true))
+            && pc2 == ex + 3);
+    e1 :| GetPcRE(c, em) == Some(RB.Fork(em + 1, e1 + 2))
+      && GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+      && GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+      && NfaRepRE(r1, c, em + 3, e1)
+      && GetPcRE(c, e1) == Some(RB.EndLoop)
+      && GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 3))
+      && GetPcRE(c, e1 + 2) == Some(RB.SetQuantToClock(qid, true))
+      && pc2 == e1 + 3;
   }
 
   // The compiler adheres to the representation predicate (Thm: compile_nfa_rep).
@@ -2427,11 +2572,10 @@ module LindenElkNfaRep {
         assert NfaRepMinRE(q.min as nat, qid, r1, prev + Flat(tl), start, min_f as nat)
             && NfaRepOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, prev + Flat(tl), min_f as nat, opt_f as nat);
         NfaRepREQuantIntro(nul, qid, q, r1, prev + Flat(tl), start, min_f as nat, opt_f as nat);
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         assert {:split_here} true;   // (E3) one assertion batch per branch
         // the GENERIC scheme (§2.5a, Compiler.dfy's `else` branch): `min`
         // forced copies, then the ordinary star loop at min_f
-        assert !q.greedy;
         var (min_code, min_f) := CP.repeat_min(q.min, qid, r1, start, CP.Progress);
         FreshCorrectMinRE(q.min as nat, qid, r1, start, min_code, min_f);
         var (iter_code, iter_f) := CP.compile(r1, min_f + 3, CP.Progress);
@@ -2468,6 +2612,48 @@ module LindenElkNfaRep {
         assert next == iter_f + 2;
         NfaRepREGenIntro(nul, qid, q, r1, prev + Flat(tl), start, min_f as nat, iter_f as nat,
                          (iter_f + 2) as nat);
+      } else if nul != R.NonNullable {
+        assert {:split_here} true;   // (E3) one assertion batch per branch
+        // the CIN-GREEDY end-fork scheme (§2.5b, Compiler.dfy's second branch):
+        // min-1 forced copies, the guarded loop, the stamped exit; the widened
+        // fragment admits only nul == CINullable here (CDN-greedy is out)
+        assert nul == R.CINullable;
+        var (min_code, min_f) := CP.repeat_min(q.min - 1, qid, r1, start, CP.Progress);
+        FreshCorrectMinRE((q.min - 1) as nat, qid, r1, start, min_code, min_f);
+        var (body_code, body_f) := CP.compile(r1, min_f + 3, CP.Progress);
+        FreshCorrectRE(r1, (min_f + 3) as nat, body_code, body_f);
+        var hdr := [RB.Fork(min_f + 1, body_f + 2), RB.SetQuantToClock(qid, false), RB.BeginLoop];
+        var tail := [RB.EndLoop, RB.Fork(min_f + 1, body_f + 3), RB.SetQuantToClock(qid, true)];
+        ChainFour(min_code, CP.Leaf(hdr), body_code, CP.Leaf(tail));
+        assert Flat(tl) == Flat(min_code) + hdr + Flat(body_code) + tail;
+        // forced copies
+        CompileNfaRepMinRE((q.min - 1) as nat, qid, r1, start, min_code, min_f, prev);
+        NfaRepExtendMinRE((q.min - 1) as nat, qid, r1, prev + Flat(min_code), start, min_f as nat,
+                          hdr + Flat(body_code) + tail);
+        assert (prev + Flat(min_code)) + (hdr + Flat(body_code) + tail) == prev + Flat(tl);
+        // the loop header
+        assert |prev + Flat(min_code)| == min_f;
+        GetFirstRE(hdr + Flat(body_code) + tail, prev + Flat(min_code));
+        GetPrefixRE(hdr + Flat(body_code) + tail, 1, prev + Flat(min_code));
+        GetPrefixRE(hdr + Flat(body_code) + tail, 2, prev + Flat(min_code));
+        // the loop body
+        var pre1 := prev + Flat(min_code) + hdr;
+        assert |pre1| == min_f + 3;
+        CompileNfaRepRE(r1, (min_f + 3) as nat, body_code, body_f, pre1);
+        NfaRepExtendRE(r1, pre1 + Flat(body_code), (min_f + 3) as nat, body_f as nat, tail);
+        assert (pre1 + Flat(body_code)) + tail == prev + Flat(tl) by {
+          hide *;
+          assert Flat(tl) == Flat(min_code) + hdr + Flat(body_code) + tail;
+          assert pre1 == prev + Flat(min_code) + hdr;
+        }
+        // the EndLoop / end-fork / stamp triple
+        assert |pre1 + Flat(body_code)| == body_f;
+        GetFirstRE(tail, pre1 + Flat(body_code));
+        GetPrefixRE(tail, 1, pre1 + Flat(body_code));
+        GetPrefixRE(tail, 2, pre1 + Flat(body_code));
+        assert next == body_f + 3;
+        NfaRepRECinIntro(nul, qid, q, r1, prev + Flat(tl), start, min_f as nat, body_f as nat,
+                         (body_f + 3) as nat);
       } else {
         assert {:split_here} true;   // (E3) one assertion batch per branch
         // the do-while scheme (Compiler.dfy:107-112)
@@ -2690,13 +2876,13 @@ module LindenElkNfaRep {
         FreshCorrectOptNestedRE((q.max.value - q.min) as nat, q.greedy, qid, r1, min_f as nat, opt_code, opt_f);
         FlattenApp(min_code, Flat(opt_code));
         assert Flat(tl) == Flat(min_code) + Flat(opt_code);
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         // the GENERIC scheme (§2.5a): min forced copies, then the star loop
         var (min_code, min_f) := CP.repeat_min(q.min, qid, r1, start, CP.Progress);
         FreshCorrectMinNestedRE(q.min as nat, qid, r1, start, min_code, min_f);
         var (iter_code, iter_f) := CP.compile(r1, min_f + 3, CP.Progress);
         FreshCorrectNestedRE(r1, (min_f + 3) as nat, iter_code, iter_f);
-        var fork := if q.greedy then RB.Fork(min_f + 1, iter_f + 2) else RB.Fork(iter_f + 2, min_f + 1);
+        var fork := RB.Fork(iter_f + 2, min_f + 1);
         var ch := CP.chain([min_code,
                             CP.Leaf([fork, RB.SetQuantToClock(qid, false), RB.BeginLoop]),
                             iter_code,
@@ -2705,6 +2891,19 @@ module LindenElkNfaRep {
                            + Flat(iter_code) + [RB.EndLoop, RB.Jmp(min_f)] by {
           ChainFour(min_code, CP.Leaf([fork, RB.SetQuantToClock(qid, false), RB.BeginLoop]),
                     iter_code, CP.Leaf([RB.EndLoop, RB.Jmp(min_f)]));
+        }
+      } else if nul != R.NonNullable {
+        // the CIN-GREEDY end-fork scheme (§2.5b): min-1 forced copies, the
+        // guarded loop, the stamped exit
+        var (min_code, min_f) := CP.repeat_min(q.min - 1, qid, r1, start, CP.Progress);
+        FreshCorrectMinNestedRE((q.min - 1) as nat, qid, r1, start, min_code, min_f);
+        var (body_code, body_f) := CP.compile(r1, min_f + 3, CP.Progress);
+        FreshCorrectNestedRE(r1, (min_f + 3) as nat, body_code, body_f);
+        var hdr := [RB.Fork(min_f + 1, body_f + 2), RB.SetQuantToClock(qid, false), RB.BeginLoop];
+        var ftr := [RB.EndLoop, RB.Fork(min_f + 1, body_f + 3), RB.SetQuantToClock(qid, true)];
+        var ch := CP.chain([min_code, CP.Leaf(hdr), body_code, CP.Leaf(ftr)]);
+        assert Flat(ch) == Flat(min_code) + hdr + Flat(body_code) + ftr by {
+          ChainFour(min_code, CP.Leaf(hdr), body_code, CP.Leaf(ftr));
         }
       } else {
         var (min_code, min_f) := CP.repeat_min(q.min - 1, qid, r1, start, CP.Progress);
@@ -2939,10 +3138,9 @@ module LindenElkNfaRep {
         assert NfaRepMinRE(q.min as nat, qid, r1, prev + Flat(tl), start, min_f as nat)
             && NfaRepOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, prev + Flat(tl), min_f as nat, opt_f as nat);
         NfaRepREQuantIntro(nul, qid, q, r1, prev + Flat(tl), start, min_f as nat, opt_f as nat);
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         assert {:split_here} true;   // (E3) one assertion batch per arm
         // the GENERIC scheme (§2.5a): min forced copies, then the star loop
-        assert !q.greedy;
         var (min_code, min_f) := CP.repeat_min(q.min, qid, r1, start, CP.Progress);
         FreshCorrectMinNestedRE(q.min as nat, qid, r1, start, min_code, min_f);
         var (iter_code, iter_f) := CP.compile(r1, min_f + 3, CP.Progress);
@@ -2979,6 +3177,47 @@ module LindenElkNfaRep {
         assert next == iter_f + 2;
         NfaRepREGenIntro(nul, qid, q, r1, prev + Flat(tl), start, min_f as nat, iter_f as nat,
                          (iter_f + 2) as nat);
+      } else if nul != R.NonNullable {
+        assert {:split_here} true;   // (E3) one assertion batch per arm
+        // the CIN-GREEDY end-fork scheme (§2.5b): min-1 forced copies, the
+        // guarded loop, the stamped exit; the fragment excludes CDN-greedy
+        assert nul == R.CINullable;
+        var (min_code, min_f) := CP.repeat_min(q.min - 1, qid, r1, start, CP.Progress);
+        FreshCorrectMinNestedRE((q.min - 1) as nat, qid, r1, start, min_code, min_f);
+        var (body_code, body_f) := CP.compile(r1, min_f + 3, CP.Progress);
+        FreshCorrectNestedRE(r1, (min_f + 3) as nat, body_code, body_f);
+        var hdr := [RB.Fork(min_f + 1, body_f + 2), RB.SetQuantToClock(qid, false), RB.BeginLoop];
+        var tail := [RB.EndLoop, RB.Fork(min_f + 1, body_f + 3), RB.SetQuantToClock(qid, true)];
+        ChainFour(min_code, CP.Leaf(hdr), body_code, CP.Leaf(tail));
+        assert Flat(tl) == Flat(min_code) + hdr + Flat(body_code) + tail;
+        // forced copies
+        CompileNfaRepMinNestedRE((q.min - 1) as nat, qid, r1, start, min_code, min_f, prev);
+        NfaRepExtendMinRE((q.min - 1) as nat, qid, r1, prev + Flat(min_code), start, min_f as nat,
+                          hdr + Flat(body_code) + tail);
+        assert (prev + Flat(min_code)) + (hdr + Flat(body_code) + tail) == prev + Flat(tl);
+        // the loop header
+        assert |prev + Flat(min_code)| == min_f;
+        GetFirstRE(hdr + Flat(body_code) + tail, prev + Flat(min_code));
+        GetPrefixRE(hdr + Flat(body_code) + tail, 1, prev + Flat(min_code));
+        GetPrefixRE(hdr + Flat(body_code) + tail, 2, prev + Flat(min_code));
+        // the loop body
+        var pre1 := prev + Flat(min_code) + hdr;
+        assert |pre1| == min_f + 3;
+        CompileNfaRepNestedRE(r1, (min_f + 3) as nat, body_code, body_f, pre1);
+        NfaRepExtendRE(r1, pre1 + Flat(body_code), (min_f + 3) as nat, body_f as nat, tail);
+        assert (pre1 + Flat(body_code)) + tail == prev + Flat(tl) by {
+          hide *;
+          assert Flat(tl) == Flat(min_code) + hdr + Flat(body_code) + tail;
+          assert pre1 == prev + Flat(min_code) + hdr;
+        }
+        // the EndLoop / end-fork / stamp triple
+        assert |pre1 + Flat(body_code)| == body_f;
+        GetFirstRE(tail, pre1 + Flat(body_code));
+        GetPrefixRE(tail, 1, pre1 + Flat(body_code));
+        GetPrefixRE(tail, 2, pre1 + Flat(body_code));
+        assert next == body_f + 3;
+        NfaRepRECinIntro(nul, qid, q, r1, prev + Flat(tl), start, min_f as nat, body_f as nat,
+                         (body_f + 3) as nat);
       } else {
         assert {:split_here} true;   // (E3) one assertion batch per arm
         // the do-while scheme (Compiler.dfy:107-112)
@@ -3338,7 +3577,7 @@ module LindenElkNfaRep {
         } else {
           NoOracleInstrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
         }
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         // the GENERIC scheme (§2.5a): min forced copies, then the star loop;
         // the loop's own five instructions (Fork/SetQuantToClock/BeginLoop at
         // em..em+2, EndLoop/Jmp at e1..e1+1) are all of the harmless kind
@@ -3347,6 +3586,21 @@ module LindenElkNfaRep {
         NfaRepIncrRE(r1, code, em + 3, e1);
         if pc < em {
           NoOracleInstrMinRE(q.min as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          NoOracleInstrRE(r1, code, em + 3, e1, pc);
+        } else {
+        }
+      } else if nul != R.NonNullable {
+        // the CIN-GREEDY end-fork scheme (§2.5b): min-1 forced copies, then
+        // the guarded loop; the loop's own six instructions (Fork/
+        // SetQuantToClock/BeginLoop at em..em+2, EndLoop/Fork/
+        // SetQuantToClock(true) at e1..e1+2) are all of the harmless kind
+        var em, e1 := NfaRepRECinInv(nul, qid, q, r1, code, start, endl);
+        NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NoOracleInstrMinRE((q.min - 1) as nat, qid, r1, code, start, em, pc);
         } else if pc <= em + 2 {
         } else if pc < e1 {
           NoOracleInstrRE(r1, code, em + 3, e1, pc);
@@ -3521,7 +3775,7 @@ module LindenElkNfaRep {
         } else {
           GatesAboveInstrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, k, pc);
         }
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         // the GENERIC scheme (§2.5a): min forced copies, then the star loop;
         // the loop's own five instructions (Fork/SetQuantToClock/BeginLoop at
         // em..em+2, EndLoop/Jmp at e1..e1+1) are all of the harmless kind
@@ -3530,6 +3784,21 @@ module LindenElkNfaRep {
         NfaRepIncrRE(r1, code, em + 3, e1);
         if pc < em {
           GatesAboveInstrMinRE(q.min as nat, qid, r1, code, start, em, k, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          GatesAboveInstrRE(r1, code, em + 3, e1, k, pc);
+        } else {
+        }
+      } else if nul != R.NonNullable {
+        // the CIN-GREEDY end-fork scheme (§2.5b): min-1 forced copies, then
+        // the guarded loop; the loop's own six instructions (Fork/
+        // SetQuantToClock/BeginLoop at em..em+2, EndLoop/Fork/
+        // SetQuantToClock(true) at e1..e1+2) are all of the harmless kind
+        var em, e1 := NfaRepRECinInv(nul, qid, q, r1, code, start, endl);
+        NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          GatesAboveInstrMinRE((q.min - 1) as nat, qid, r1, code, start, em, k, pc);
         } else if pc <= em + 2 {
         } else if pc < e1 {
           GatesAboveInstrRE(r1, code, em + 3, e1, k, pc);
@@ -3712,7 +3981,7 @@ module LindenElkNfaRep {
         } else {
           NoWriteInstrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
         }
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         // the GENERIC scheme (§2.5a): min forced copies, then the star loop;
         // the loop's own five instructions (Fork/SetQuantToClock/BeginLoop at
         // em..em+2, EndLoop/Jmp at e1..e1+1) are all of the harmless kind
@@ -3721,6 +3990,21 @@ module LindenElkNfaRep {
         NfaRepIncrRE(r1, code, em + 3, e1);
         if pc < em {
           NoWriteInstrMinRE(q.min as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          NoWriteInstrRE(r1, code, em + 3, e1, pc);
+        } else {
+        }
+      } else if nul != R.NonNullable {
+        // the CIN-GREEDY end-fork scheme (§2.5b): min-1 forced copies, then
+        // the guarded loop; the loop's own six instructions (Fork/
+        // SetQuantToClock/BeginLoop at em..em+2, EndLoop/Fork/
+        // SetQuantToClock(true) at e1..e1+2) are all of the harmless kind
+        var em, e1 := NfaRepRECinInv(nul, qid, q, r1, code, start, endl);
+        NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NoWriteInstrMinRE((q.min - 1) as nat, qid, r1, code, start, em, pc);
         } else if pc <= em + 2 {
         } else if pc < e1 {
           NoWriteInstrRE(r1, code, em + 3, e1, pc);
@@ -3875,7 +4159,7 @@ module LindenElkNfaRep {
         } else {
           NoCaptureInstrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
         }
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         // the GENERIC scheme (§2.5a): min forced copies, then the star loop;
         // the loop's own five instructions (Fork/SetQuantToClock/BeginLoop at
         // em..em+2, EndLoop/Jmp at e1..e1+1) are all of the harmless kind
@@ -3884,6 +4168,21 @@ module LindenElkNfaRep {
         NfaRepIncrRE(r1, code, em + 3, e1);
         if pc < em {
           NoCaptureInstrMinRE(q.min as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          NoCaptureInstrRE(r1, code, em + 3, e1, pc);
+        } else {
+        }
+      } else if nul != R.NonNullable {
+        // the CIN-GREEDY end-fork scheme (§2.5b): min-1 forced copies, then
+        // the guarded loop; the loop's own six instructions (Fork/
+        // SetQuantToClock/BeginLoop at em..em+2, EndLoop/Fork/
+        // SetQuantToClock(true) at e1..e1+2) are all of the harmless kind
+        var em, e1 := NfaRepRECinInv(nul, qid, q, r1, code, start, endl);
+        NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NoCaptureInstrMinRE((q.min - 1) as nat, qid, r1, code, start, em, pc);
         } else if pc <= em + 2 {
         } else if pc < e1 {
           NoCaptureInstrRE(r1, code, em + 3, e1, pc);
@@ -4034,10 +4333,15 @@ module LindenElkNfaRep {
           && NfaRepOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl);
         NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
         NfaRepIncrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl);
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         // the GENERIC scheme (§2.5a): min forced copies, then the star loop
         var em, e1 := NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
         NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NfaRepIncrRE(r1, code, em + 3, e1);
+      } else if nul != R.NonNullable {
+        // the CIN-GREEDY end-fork scheme (§2.5b)
+        var em, e1 := NfaRepRECinInv(nul, qid, q, r1, code, start, endl);
+        NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
         NfaRepIncrRE(r1, code, em + 3, e1);
       } else {
         var mn1 := (q.min - 1) as nat;
@@ -4409,7 +4713,7 @@ module LindenElkNfaRep {
         } else {
           NoWriteInstrOptNestedRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
         }
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         // the GENERIC scheme (§2.5a): min forced copies, then the star loop;
         // the loop's own five instructions (Fork/SetQuantToClock/BeginLoop at
         // em..em+2, EndLoop/Jmp at e1..e1+1) are all of the harmless kind
@@ -4418,6 +4722,21 @@ module LindenElkNfaRep {
         NfaRepIncrRE(r1, code, em + 3, e1);
         if pc < em {
           NoWriteInstrMinNestedRE(q.min as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          NoWriteInstrNestedRE(r1, code, em + 3, e1, pc);
+        } else {
+        }
+      } else if nul != R.NonNullable {
+        // the CIN-GREEDY end-fork scheme (§2.5b): min-1 forced copies, then
+        // the guarded loop; the loop's own six instructions (Fork/
+        // SetQuantToClock/BeginLoop at em..em+2, EndLoop/Fork/
+        // SetQuantToClock(true) at e1..e1+2) are all of the harmless kind
+        var em, e1 := NfaRepRECinInv(nul, qid, q, r1, code, start, endl);
+        NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NoWriteInstrMinNestedRE((q.min - 1) as nat, qid, r1, code, start, em, pc);
         } else if pc <= em + 2 {
         } else if pc < e1 {
           NoWriteInstrNestedRE(r1, code, em + 3, e1, pc);
