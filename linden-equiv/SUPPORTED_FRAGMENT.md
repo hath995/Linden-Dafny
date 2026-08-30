@@ -32,7 +32,7 @@ Everything below is verified for **case-sensitive, single-line, Latin-1** patter
 | alternation, concatenation | ✅ |
 | capture groups, arbitrarily nested | ✅ |
 | `*`, `?`, `{m,n}`, lazy variants | ✅ |
-| `+`, `{n,}` (n>0, unbounded) | ✅ **only with a non-nullable body** |
+| `+`, `{n,}` (n>0, unbounded) | ✅ non-nullable body (any greediness); ✅ **nullable body when LAZY** (`(a?)+?`, §2.5a, 2026-08-30). Greedy + nullable is still out — §2.5 |
 | positive lookahead `(?=…)`, capturing, nested to any depth | ✅ (L4) |
 | **positive lookbehind `(?<=…)`, capturing, nested to any depth** | ✅ (L5, 2026-08-28) — a lookbehind's body may contain **only lookbehinds**; a lookahead's body may contain positive lookbehinds (`(?=x(?<=y))`, the s6 widening — see §2.1) |
 | negative `(?!…)` / `(?<!…)` | ✅ **only with a look-free, capture-free body** |
@@ -135,11 +135,38 @@ value inside a look body assumes the capture is not re-entered by a loop
 `NR.QuantsLookCapFreeRaw`. Same clock argument from the other side: a quantifier may not re-run a gate
 that writes captures.
 
-### 2.5 Nullable unbounded quantifiers — `(a?)+`
+### 2.5 Nullable unbounded quantifiers — SPLIT; §2.5a DONE 2026-08-30, §2.5b open
 
-`NR.NestedFragmentRaw` requires a non-nullable body for `+`/`{n,}`. (`a*` with a nullable body is
-fine — `min == 0`.) The engine has "nulled plus" reconstruction machinery (`f_plus_bc`,
-`FNulledPlus`); extending the fragment here means proving its spec correspondence.
+`R.nullable`/`raw_nullable` and `quant.greedy` select one of FOUR compiler schemes for an
+unbounded `min > 0` quantifier (`Compiler.dfy:104-156`), not one:
+
+| body | greedy | scheme | status |
+|---|---|---|---|
+| `NonNullable` | either | do-while (min-1 copies, stamp, body, backward fork) | ✅ always was |
+| nullable | **lazy** | the GENERIC scheme — `repeat_min(min)` then the ordinary star loop | ✅ **§2.5a, DONE** |
+| `CINullable` | greedy | end-fork + `SetQuantToClock(qid, true)` | ❌ §2.5b |
+| `CDNullable` | greedy | end-fork + **`CheckNullable(qid)`** | ❌ §2.5b |
+
+**§2.5a (done).** `(a?)+?`, `(a?){2,}?` and friends verify. Nothing nullability-specific was
+needed: the generic scheme's output IS `NfaRepMinRE(min, …)` followed by the STAR arm's shape, and
+the spec unfolds `Quantified(g, min>0, Inf, r1)` into `min` forced copies (no `Acheck`) then the
+star (`ComputeIsTree.dfy:64-75`) — so the engine's `BeginLoop`/`EndLoop` sits exactly where the
+spec's check is. The do-while needs `NonNullableL` ONLY to manufacture a check at its `min == 1`
+seam via `CE.BoolCheckInsert` (whose `ConsumesBeforeAreg` hypothesis *is* non-nullability); the
+generic scheme has the real one in the code, so it needs no such hypothesis.
+Non-vacuity is pinned by `src/Equiv/NullablePlusWitness.dfy`.
+
+**§2.5b (open) — the expensive half.** Three things break at once for the GREEDY nullable schemes:
+1. **`CheckNullable` has no representation.** `TreeRepRE.dfy:289` / `GenStepRE.dfy:103` map it to
+   `false`, and ~10 `NoCheckNullable` conjuncts exclude it from the sweeps. It needs a tree-rep arm
+   tied to the `cdns` table (`build_cdn_v`/`compile_cdns`) — an engine↔spec correspondence for
+   *context-dependent nullability at a position*, which exists in no form today.
+2. **`QuantRegsFinal` dies.** `MainTheorem.dfy:117-131` rests on "fragment code only ever emits
+   `SetQuantToClock(q, false)`", which makes `M.FNulledPlusIdentity` collapse `AI.FNulledPlus`. The
+   greedy-nullable schemes emit `SetQuantToClock(qid, true)`. (§2.5a does NOT disturb this:
+   `FCompileExtra` writes `f_plus_bc` only under `nul != NonNullable && quant.greedy`, so the table
+   stays empty across the whole §2.5a fragment — proved in `FCompileExtraPlusFrame`.)
+3. **`FNulledPlus`'s spec correspondence is the actual new theorem** (`Interpreter.dfy:418-491`).
 
 ### 2.6 Flags and alphabet
 
@@ -183,7 +210,8 @@ proof engineering of known shape.
 |---|---|---|
 | ~~§2.1 lookbehind inside lookahead~~ | — | **DONE 2026-08-30** (s8: packaged, no isolation) |
 | §2.3 / §2.4 capture-under-quant conditions | medium–large | needs a real clock/dominance argument, not a dispatch |
-| §2.5 nullable plus | medium | machinery exists (`FNulledPlus`), correspondence unproven |
+| ~~§2.5a lazy nullable plus~~ | — | **DONE 2026-08-30** (branch `nullable-plus`) |
+| §2.5b greedy nullable plus | large | needs a `CheckNullable`/`cdns` correspondence, breaks `QuantRegsFinal`, and `FNulledPlus`'s spec tie is unproven |
 | §2.2 nested looks in negative bodies | large | touches linden-reasoning's `GroupFreeL` and `BoolTreeLk` |
 | §2.6 flags (`i`, `m`) / Unicode | very large | new campaign |
 | §2.7 backreferences | **by design** | absent from the engine AST; incompatible with a Pike/NFA engine |
