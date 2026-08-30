@@ -124,16 +124,66 @@ confinement arguments (`LkResultAgreeOutsideNested`, `GmtTieOutside`).
 Note this is **orthogonal** to §2.1: it is a spec-side fragment restriction inherited from L3/L4, not
 a consequence of the L5 work.
 
-### 2.3 A capture under a quantifier **inside a look body** — `(?=(a)*)`
+### 2.3 / 2.4 — CAPTURE-UNDER-QUANTIFIER conditions. **Narrower than previously documented (corrected 2026-08-30)**
 
-`NR.LookBodiesNoCapUnderQuantRaw`. The engine's clock/dominance argument for reconstructing a capture
-value inside a look body assumes the capture is not re-entered by a loop
-(`M.GNotUnderQuantL`, `PIV.AncQuants(body, g) == {}`). Every descent lemma carries it as a hypothesis.
+Both conditions are conjuncts of `SupportedL4` / `SupportedL5` **only**; neither appears in
+`SupportedL3`, which is just `NR.LookBehindFragmentRaw(p) && T.Latin1Wf(p)`. Since
+`Supported == SupportedL3 || SupportedL4 || SupportedL5`, a DEPTH-1 pattern takes the L3 disjunct and
+never meets them. The previous text named two patterns as out of scope that in fact verify today:
 
-### 2.4 A capturing look inside a **quantifier** body — `((?=(a)))*`
+| pattern | | status |
+|---|---|---|
+| `(?=(a)*)` — capture under a quantifier inside a look body | §2.3's own example | ✅ **`SupportedL3`, verified** |
+| `((?=(a)))*` — capturing look inside a quantifier body | §2.4's own example | ✅ **`SupportedL3`, verified** |
+| `(?=(?=(a)*))` / `((?=(?=(a))))*` | the nested forms | ❌ out — nesting forces L4/L5 |
 
-`NR.QuantsLookCapFreeRaw`. Same clock argument from the other side: a quantifier may not re-run a gate
-that writes captures.
+Pinned by `src/Equiv/NullablePlusWitness.dfy` (4 lemmas each way), so the prose cannot drift from the
+predicates again.
+
+**So the honest statement of each gap is a CONJUNCTION**, not a single condition:
+
+* **§2.3** (`NR.LookBodiesNoCapUnderQuantRaw`) — a capture under a quantifier inside a look body,
+  **in a pattern that requires L4/L5** (the look body itself contains looks, or a positive
+  lookbehind is present).
+* **§2.4** (`NR.QuantsLookCapFreeRaw`) — a capturing look inside a quantifier body, same proviso.
+
+**Why the split falls exactly there.** Both conditions exist to feed the DEPTH-K DESCENT in
+`lift-sim-*`: `M.GNotUnderQuantL` gives `PIV.AncQuants(body, g) == {}`, which makes
+`M.MxAtGidNoQuant` collapse the clock-dominance threshold `PIV.MxAtGidLk` to `-1`, so
+`FilterKeepsPresentLk`'s obligation `cc[start(g)] >= MxAtGidLk(...)` is FREE from a merely set
+(`>= 0`) clock. `M.PathPresentNoQuantFromAncCapsSet` says so in as many words — *"the whole
+clock/path algebra collapses to 'ancestor captures are set'"*. The depth-1 path never enters that
+descent, so it never incurs the hypothesis.
+
+The underlying engine rule is `AI.filter_capture` (`Interpreter.dfy:992`), which threads a
+`maxclock`: at `Re_quant` a stamp below it clears the whole body, and at `Re_capture` a start clock
+below it clears the group. A capture under a quantifier survives iff its write-clock is at least the
+quantifier's last-iteration stamp — that is how `(a)*` on `"ab"` ends with group 1 = `"b"`.
+
+### Widening §2.3/§2.4 to L4/L5 — FEASIBLE, and the argument already exists
+
+The general dominance fact is NOT the collapse, and the main pass already proves it:
+`PS.MxAtGidLE` — *"every stored register clock is `<= S`, so a fresh stamp `S+1` beats
+`PIV.MxAtGid`'s threshold for any group id"* — discharges `clk >= MxAtGid` at the Open/Close write
+sites (`PikeSimRE.dfy:503,606`) for ANY capture, quantifier ancestors included, with no `AncQuants`
+hypothesis. And a look body's captures are reconstructed by a full `AI.FFindMatchPlus` replay of
+`capture_regex(la, body)`, whose final thread satisfies that same PikeSim invariant.
+
+So the fact needed is provable by machinery that exists; the descent simply took a shortcut. Scope:
+
+1. **The crux / main unknown — the replay invariant is VALUE-ONLY.** `M.FLookLoopValueOkFull` carries
+   `CM.RegsAgreeInside(res0, rf.capture_regs, …)` — register agreement, not the path/clock facts. The
+   dominance must be re-derived at each carrier from the replay's PikeSim invariant, or that
+   invariant strengthened and re-threaded through `FLookLoop`. Settle this first: it decides the size.
+2. Replace `M.PathPresentNoQuantFromAncCapsSet` with a general producer (its `PIV.PathPresentIntro`
+   obligations are then real per-ancestor clock facts, not vacuous/free).
+3. Sweep the **32** `requires GNotUnderQuantL / AncQuants == {}` sites across 10 files, including the
+   `lift-sim-{core,carriers,deep,forward,chain,oracle}` giants (tens of minutes per run).
+
+**Estimate: larger than §2.5a, smaller than §2.5b.** §2.5a was cheap because the engine's
+`BeginLoop`/`EndLoop` already sat exactly where the spec's `Acheck` was — no new argument at all.
+§2.5b needs a `CheckNullable`/`cdns` correspondence that exists in NO form. This one sits between:
+the argument exists and needs porting into the look-body replay.
 
 ### 2.5 Nullable unbounded quantifiers — SPLIT; §2.5a DONE 2026-08-30, §2.5b open
 
@@ -209,7 +259,7 @@ proof engineering of known shape.
 | Gap | Effort | Notes |
 |---|---|---|
 | ~~§2.1 lookbehind inside lookahead~~ | — | **DONE 2026-08-30** (s8: packaged, no isolation) |
-| §2.3 / §2.4 capture-under-quant conditions | medium–large | needs a real clock/dominance argument, not a dispatch |
+| §2.3 / §2.4 capture-under-quant **for L4/L5 patterns** | medium–large | depth-1 already covered; port `MxAtGidLE`-style dominance into the look-body replay, then sweep 32 hypothesis sites |
 | ~~§2.5a lazy nullable plus~~ | — | **DONE 2026-08-30** (branch `nullable-plus`) |
 | §2.5b greedy nullable plus | large | needs a `CheckNullable`/`cdns` correspondence, breaks `QuantRegsFinal`, and `FNulledPlus`'s spec tie is unproven |
 | §2.2 nested looks in negative bodies | large | touches linden-reasoning's `GroupFreeL` and `BoolTreeLk` |
