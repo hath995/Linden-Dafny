@@ -156,6 +156,25 @@ module LindenElkPikeInv {
         }
         return;
       }
+      if !(q.min == 0 && q.max == None) && nul != R.NonNullable {
+        // §2.5a GENERIC: min forced copies, then the ordinary star loop at em.
+        // Unlike the do-while this DOES contain a Jmp -- the loop's back-edge
+        // Jmp(em) at e1+1 -- handled exactly as the star arm handles Jmp(pc1).
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, pc1, pc2);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, pc1, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          CompileJumpsMinRE(q.min as nat, qid, r1, code, pc1, em, pc, next);
+        } else if em + 3 <= pc < e1 {
+          CompileJumpsRE(r1, code, em + 3, e1, pc, next);
+        } else if pc == e1 + 1 {
+          // the back-Jmp: Jmp(em) == Jmp(next) ==> next == em, and
+          // GetPc(code, em) == Some(Fork(...)) discharges the Fork disjunct
+          assert next == em;
+        }
+        // pc in {em, em+1, em+2, e1}: Fork/SetQuantToClock/BeginLoop/EndLoop, not a Jmp
+        return;
+      }
       if !(q.min == 0 && q.max == None) {
         // the do-while: no Jmp anywhere - heads are the clock-mark and the
         // backward fork, everything else is Min-chain or body content
@@ -3508,6 +3527,18 @@ module LindenElkPikeInv {
         } else {
           QuantWriteIdsOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
         }
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: min forced copies, then the star loop
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          QuantWriteIdsMinRE(q.min as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          QuantWriteIdsRE(r1, code, em + 3, e1, pc);
+        } else {
+        }
       } else {
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
         NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
@@ -3655,6 +3686,18 @@ module LindenElkPikeInv {
           QuantWriteIdsMinRENested(q.min as nat, qid, r1, code, start, em, pc);
         } else {
           QuantWriteIdsOptRENested((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
+        }
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: min forced copies, then the star loop
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          QuantWriteIdsMinRENested(q.min as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          QuantWriteIdsRENested(r1, code, em + 3, e1, pc);
+        } else {
         }
       } else {
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
@@ -3871,6 +3914,18 @@ module LindenElkPikeInv {
         } else {
           CaptureWriteIdsOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
         }
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: min forced copies, then the star loop
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          CaptureWriteIdsMinRE(q.min as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          CaptureWriteIdsRE(r1, code, em + 3, e1, pc);
+        } else {
+        }
       } else {
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
         NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
@@ -4023,6 +4078,18 @@ module LindenElkPikeInv {
           CaptureWriteIdsOutsideMinRE(q.min as nat, qid, r1, code, start, em, pc);
         } else {
           CaptureWriteIdsOutsideOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
+        }
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: min forced copies, then the star loop
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          CaptureWriteIdsOutsideMinRE(q.min as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          CaptureWriteIdsOutsideRE(r1, code, em + 3, e1, pc);
+        } else {
         }
       } else {
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
@@ -4179,6 +4246,18 @@ module LindenElkPikeInv {
         } else {
           CaptureWriteIdsOutsideOptRENested((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
         }
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: min forced copies, then the star loop
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          CaptureWriteIdsOutsideMinRENested(q.min as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          CaptureWriteIdsOutsideRENested(r1, code, em + 3, e1, pc);
+        } else {
+        }
       } else {
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
         NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
@@ -4321,6 +4400,18 @@ module LindenElkPikeInv {
           LookCheckIdsMinRE(q.min as nat, qid, r1, code, start, em, pc);
         } else {
           LookCheckIdsOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
+        }
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: min forced copies, then the star loop
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          LookCheckIdsMinRE(q.min as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          LookCheckIdsRE(r1, code, em + 3, e1, pc);
+        } else {
         }
       } else {
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
@@ -4480,6 +4571,18 @@ module LindenElkPikeInv {
           LookCheckIdsMinRENested(q.min as nat, qid, r1, code, start, em, pc);
         } else {
           LookCheckIdsOptRENested((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
+        }
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: min forced copies, then the star loop
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          LookCheckIdsMinRENested(q.min as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          LookCheckIdsRENested(r1, code, em + 3, e1, pc);
+        } else {
         }
       } else {
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
