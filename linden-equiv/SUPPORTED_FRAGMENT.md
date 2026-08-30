@@ -32,7 +32,7 @@ Everything below is verified for **case-sensitive, single-line, Latin-1** patter
 | alternation, concatenation | ✅ |
 | capture groups, arbitrarily nested | ✅ |
 | `*`, `?`, `{m,n}`, lazy variants | ✅ |
-| `+`, `{n,}` (n>0, unbounded) | ✅ non-nullable body (any greediness); ✅ **nullable body when LAZY** (`(a?)+?`, §2.5a, 2026-08-30). Greedy + nullable is still out — §2.5 |
+| `+`, `{n,}` (n>0, unbounded) | ✅ non-nullable body (any greediness); ✅ **nullable body when LAZY** (`(a?)+?`, §2.5a, 2026-08-30). ❌ **nullable + GREEDY** (`(a?)+`) — §2.5b, the more common form; §2.5 is HALF done |
 | positive lookahead `(?=…)`, capturing, nested to any depth | ✅ (L4) |
 | **positive lookbehind `(?<=…)`, capturing, nested to any depth** | ✅ (L5, 2026-08-28) — a lookbehind's body may contain **only lookbehinds**; a lookahead's body may contain positive lookbehinds (`(?=x(?<=y))`, the s6 widening — see §2.1) |
 | negative `(?!…)` / `(?<!…)` | ✅ **only with a look-free, capture-free body** |
@@ -261,7 +261,7 @@ proof engineering of known shape.
 | ~~§2.1 lookbehind inside lookahead~~ | — | **DONE 2026-08-30** (s8: packaged, no isolation) |
 | §2.3 / §2.4 capture-under-quant **for L4/L5 patterns** | medium–large | depth-1 already covered; port `MxAtGidLE`-style dominance into the look-body replay, then sweep 32 hypothesis sites |
 | ~~§2.5a lazy nullable plus~~ | — | **DONE 2026-08-30** (branch `nullable-plus`) |
-| §2.5b greedy nullable plus | large | needs a `CheckNullable`/`cdns` correspondence, breaks `QuantRegsFinal`, and `FNulledPlus`'s spec tie is unproven |
+| §2.5b greedy nullable plus | large — **bigger than §2.5a was** | TWO end-fork layouts (CIN/CDN), the new `CheckNullable` instruction, the first `SetQuantToClock(qid, **true**)` (breaks the all-stamps-false invariant `NI.CodeShapeAt` proves and `MainTheoremL3` consumes), a second path in `ReconstructNulled`, plus `QuantRegsFinal` and `FNulledPlus`'s unproven spec tie. The §2.5a shift-to-`em` rewrite does NOT carry over — see `NULLABLE_PLUS_HANDOFF.md` § WHAT §2.5b ACTUALLY COSTS |
 | §2.2 nested looks in negative bodies | large | touches linden-reasoning's `GroupFreeL` and `BoolTreeLk` |
 | §2.6 flags (`i`, `m`) / Unicode | very large | new campaign |
 | §2.7 backreferences | **by design** | absent from the engine AST; incompatible with a Pike/NFA engine |

@@ -1591,8 +1591,20 @@ L5 (nested capturing lookbehind) + the `(?=x(?<=y))` widening are done and on `m
 anywhere, every lemma under the 900 s batch limit (E3: `AGENTS.md`, `docs/LEMMATA_IN_PROOF_DEVELOPMENT.md`,
 `L5_HANDOFF.md` §5.7.5). Two false assertions found and fixed in `ForwardFindRecLBDeep` along the way.
 
-**Next rung — `SUPPORTED_FRAGMENT.md` §2.5, nullable unbounded quantifiers (`(a?)+`, `{n,}` with a nullable body):**
-medium; the engine side (`FNulledPlus`) exists, the spec correspondence is unproven; self-contained (touches the
+**Next rung — `SUPPORTED_FRAGMENT.md` §2.5b, GREEDY nullable unbounded quantifiers.** (Superseded: the
+line below sized "§2.5" as medium and self-contained. That estimate held for the LAZY half only.)
+
+§2.5a — nullable **lazy** plus (`(a?)+?`, `{n,}?`) — was closed 2026-08-30 on branch `nullable-plus`
+(25 commits, `ac148e1`, `lem pack` 61/61 in 18m). It was NOT self-contained: **13 packages** needed
+changes, in three failure modes, and only one mode was findable by grep. §2.5b (`(a?)+`, the greedy
+and far more common form) is sized LARGER than §2.5a — two distinct end-fork layouts, the new
+`CheckNullable` instruction, the first-ever `SetQuantToClock(qid, true)` (which breaks the
+"all stamps are false" invariant `CodeShapeAt` proves and `MainTheoremL3` consumes), and a second
+compilation path in `ReconstructNulled`. Read `NULLABLE_PLUS_HANDOFF.md` § WHAT §2.5b ACTUALLY COSTS
+before scheduling it.
+
+*Historical estimate (accurate for §2.5a only):* medium; the engine side (`FNulledPlus`) exists, the
+spec correspondence is unproven; self-contained (touches the
 quantifier arms of `ActionsTreeRep*` / `ATR_Quant*` and the `+`/`{n,}` gate in `ApiMatch.SupportedL5`). Then
 §2.3/§2.4 (captures under quantifiers inside look bodies — needs a clock/dominance argument), then §2.2 (nested
 looks in negative bodies — touches linden-reasoning), then §2.6 (flags/Unicode — a new campaign). Start any of

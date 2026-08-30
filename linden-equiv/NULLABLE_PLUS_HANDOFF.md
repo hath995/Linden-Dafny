@@ -1,8 +1,19 @@
 # §2.5 HANDOFF — nullable unbounded quantifiers (`(a?)+`, `{n,}` with a nullable body)
 
-**Status (2026-08-30): SCOUTED, not started.** Predecessor rung: L5 + the `(?=x(?<=y)` widening,
-COMPLETE and packaged on `main` (`da03fe0`) — `L5_HANDOFF.md`. Branch: work on `lem-split`.
-Gate: `LEM_BUILD_TIMEOUT=0 lem pack --jobs 3` from the repo root.
+**Status (2026-08-30): §2.5a DONE AND GATED. §2.5 AS A WHOLE IS HALF DONE — and the done half is
+the cheaper, rarer one.** Of the three schemes a NULLABLE unbounded quantifier can compile to, this
+rung closed exactly one (the lazy/GENERIC one). The two GREEDY schemes are §2.5b and are still out.
+`(a?)+?` verifies; **`(a?)+` does not** — and the greedy form is far more common in real regexes.
+
+* Branch `nullable-plus` off `da03fe0`, 25 commits ending `ac148e1`. Never pushed, never merged.
+* Gate: `LEM_BUILD_TIMEOUT=0 lem pack --jobs 3` from the repo root — **61/61 green, rc=0, 18m 11s**
+  incremental. No timing regression: `main-theorem` 641 obligations in a 2m 33s level,
+  `lift-sim-core` 274 in 2m 59s, and `nest-inv` is FASTER than before the rung (the `NestInvGenRE`
+  factoring removed three pre-existing 900 s timeouts in that file).
+* Fragment gate is `q.min > 0 && q.max == None && !q.greedy && nul != R.NonNullable` — the
+  `!q.greedy` is what holds §2.5b out. Non-vacuity pinned by `NullablePlusWitness.dfy`.
+* Predecessor rung: L5 + the `(?=x(?<=y))` widening — `L5_HANDOFF.md`.
+* **Next rung: §2.5b**, sized LARGER than §2.5a — see § WHAT §2.5b ACTUALLY COSTS at the end.
 
 ---
 
@@ -16,7 +27,7 @@ by the annotator's nullability `nul` and `quant.greedy`:
 | `NonNullable` | either | **do-while** — `repeat_min(min-1)`, stamp, body, BACKWARD fork | ✅ in the fragment today |
 | `CINullable` | greedy | end-fork + `SetQuantToClock(qid, true)` | ❌ §2.5b |
 | `CDNullable` | greedy | end-fork + **`CheckNullable(qid)`** + `SetQuantToClock(qid, true)` | ❌ §2.5b |
-| `CINullable`/`CDNullable` | **lazy** | the **GENERIC** scheme — `repeat_min(min)` then the ordinary star loop | ❌ **§2.5a — cheap** |
+| `CINullable`/`CDNullable` | **lazy** | the **GENERIC** scheme — `repeat_min(min)` then the ordinary star loop | ✅ **§2.5a — DONE 2026-08-30** |
 
 The fragment predicates (`PlusFragmentRE`/`Raw`, `NestedFragmentRE`/`Raw`, `NfaRepRE`'s `Re_quant`
 arm, `AR.NfaRepL`'s `Inf` arm) all currently write the unbounded-`min>0` case as
@@ -419,3 +430,46 @@ baseline — **no regression from §2.5a**.
 
 `linden-equiv-nest-inv/lemmata.toml` now pins `cores = "2"`: `NestInv.dfy` is 7 k lines and a
 whole-file run at `--cores=4` OOMs against the 80 G `dafny.slice` cap.
+
+---
+
+## § WHAT §2.5b ACTUALLY COSTS — read this before sizing it
+
+**Do not size §2.5b as "another §2.5a".** §2.5a was cheap for one specific reason: the GENERIC
+scheme's tail **is the ordinary star loop**, so every obligation was the star arm with `pcb ↦ em`
+and a forced-copy chain in front. None of that carries over. The greedy schemes are a different
+shape, and three things break at once:
+
+**(1) Two layouts, not one — and a NEW INSTRUCTION.**
+
+```
+  CIN greedy:  min_code, [Fork(min_f+1, body_f+2), SetQuantToClock(qid,false), BeginLoop],
+               body_code, [EndLoop, Fork(min_f+1, body_f+3), SetQuantToClock(qid, true)]
+  CDN greedy:  min_code, [Fork(min_f+1, body_f+2), SetQuantToClock(qid,false), BeginLoop],
+               body_code, [EndLoop, Fork(min_f+1, body_f+4), CheckNullable(qid),
+                           SetQuantToClock(qid, true)]
+```
+
+The tail is an **end-fork**, not a back-`Jmp`: the loop re-entry target is `min_f + 1` (the stamp),
+and the fall-through runs off the end of the block. `CheckNullable(qid)` appears in the CDN case and
+**no layout predicate in the campaign models it** — §2.5a added no new instruction at all, it reused
+the star's.
+
+**(2) `SetQuantToClock(qid, true)` — the `true` flag, used here for the first time.**
+
+Both greedy schemes end by stamping with `b == true`. This is load-bearing elsewhere:
+`NI.CodeShapeAt` currently *proves* `forall pc, q, b :: GetPcRE(code,pc) == Some(SetQuantToClock(q,b)) ==> !b`,
+and `MainTheoremL3` consumes exactly that fact in its `forall` block over the whole code. Weakening
+it means re-proving every consumer of the "all stamps are false" invariant. §2.5a deliberately did
+NOT disturb this — `FCompileExtraPlusFrame` proves the extra-instruction set stays empty across the
+whole §2.5a fragment, which is why the flag survived untouched.
+
+**(3) A SECOND compilation path.** `Compiler.dfy`'s `else // ReconstructNulled` branch has its own
+dedicated arms for CIN-greedy (`[SetQuantToClock(qid,true)]`) and CDN-greedy
+(`[CheckNullable(qid), SetQuantToClock(qid,true)]`). §2.5a's generic case falls through to the
+shared default there, so the rung never touched `ReconstructNulled`. §2.5b must.
+
+**Where to start.** The seven layout-baked predicates are the same list as always (see
+§ FINAL STATE); extend them, then `lem pack` and let it enumerate the consumers — do NOT estimate
+by grep, that failed four times in §2.5a. Expect all three failure modes again, and expect the
+`SetQuantToClock(_, true)` weakening to be the hard part rather than the layout arms.

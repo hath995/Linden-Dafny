@@ -1,8 +1,11 @@
 # L5 HANDOFF — nested capturing lookBEHIND
 
 **Status (2026-08-30): L5 + the `(?=x(?<=y))` widening are COMPLETE and PACKAGED — `main` (`a1044d1`) carries
-the 61-package lem workspace, `lem pack` 61/61 green without isolation. Read §5.7.5 to resume; the next rung is
-`SUPPORTED_FRAGMENT.md` §2.5 (nullable unbounded quantifiers), then §2.3/§2.4.**
+the 61-package lem workspace, `lem pack` 61/61 green without isolation. Read §5.7.5 to resume.
+**Next rung: `SUPPORTED_FRAGMENT.md` §2.5b — NOT §2.5. §2.5a (nullable LAZY plus) was closed
+2026-08-30 on branch `nullable-plus` (`ac148e1`, `lem pack` 61/61); §2.5 is HALF done. `(a?)+?`
+verifies, `(a?)+` does not. See `NULLABLE_PLUS_HANDOFF.md` — its § WHAT §2.5b ACTUALLY COSTS sizes
+the greedy half LARGER than the lazy half, not equal. Then §2.3/§2.4.**
 **Branch:** work happens on `lem-split`, merged to `main` on request; never push to origin. `l4-nesting` (the
 monolith) is history only — the band packages `linden-equiv-lift-sim-*` are the source of truth.
 **Predecessors:** L4 (nested capturing lookAHEAD, COMPLETE — `FULL_DEPTH_K_HANDOFF.md`); L3b (depth-1
