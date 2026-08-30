@@ -320,7 +320,8 @@ module LindenElkNfaRep {
        || (q.min > 0 && q.max == None && !q.greedy
            && nul != R.NonNullable)
        || (q.min > 0 && q.max == None && q.greedy
-           && nul == R.CINullable))
+           && nul == R.CINullable
+           && R.nullable(r1) == R.CINullable))
       && PlusFragmentRE(r1)
     case Re_capture(cid, r1) => PlusFragmentRE(r1)
     case Re_lookaround(_, _, _) => false
@@ -433,6 +434,39 @@ module LindenElkNfaRep {
     ensures NoNulledPlusRE(R.lazy_prefix(R.annotate(raw)))
   {
     AnnotateNoNulledPlus(R.Raw_capture(raw), 0, 1, 1);
+  }
+
+  /** `reverse_regex` keeps every quant node's `(nul, qid, quant)` verbatim,
+      so `NoNulledPlus` transfers (both directions come free of nullability
+      reasoning). */
+  lemma NoNulledPlusReverse(re: R.regex)
+    requires NoNulledPlusRE(re)
+    ensures NoNulledPlusRE(R.reverse_regex(re))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => NoNulledPlusReverse(r1); NoNulledPlusReverse(r2);
+    case Re_con(r1, r2) => NoNulledPlusReverse(r1); NoNulledPlusReverse(r2);
+    case Re_quant(_, _, _, r1) => NoNulledPlusReverse(r1);
+    case Re_capture(_, r1) => NoNulledPlusReverse(r1);
+    case Re_lookaround(_, _, r1) => NoNulledPlusReverse(r1);
+    case _ =>
+  }
+
+  /** `remove_capture` keeps every quant node verbatim, so `NoNulledPlus`
+      transfers. */
+  lemma NoNulledPlusRemoveCapture(re: R.regex)
+    requires NoNulledPlusRE(re)
+    ensures NoNulledPlusRE(R.remove_capture(re))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => NoNulledPlusRemoveCapture(r1); NoNulledPlusRemoveCapture(r2);
+    case Re_con(r1, r2) => NoNulledPlusRemoveCapture(r1); NoNulledPlusRemoveCapture(r2);
+    case Re_quant(_, _, _, r1) => NoNulledPlusRemoveCapture(r1);
+    case Re_capture(_, r1) => NoNulledPlusRemoveCapture(r1);
+    case Re_lookaround(_, _, r1) => NoNulledPlusRemoveCapture(r1);
+    case _ =>
   }
 
   /** The quantifier fragment embeds in the plus fragment. */
@@ -795,7 +829,8 @@ module LindenElkNfaRep {
        || (q.min > 0 && q.max == None && !q.greedy
            && nul != R.NonNullable)
        || (q.min > 0 && q.max == None && q.greedy
-           && nul == R.CINullable))
+           && nul == R.CINullable
+           && R.nullable(r1) == R.CINullable))
       && LookBehindFragmentRE(r1)
     case Re_capture(cid, r1) => LookBehindFragmentRE(r1)
     case Re_lookaround(lid, la, r1) =>
@@ -908,7 +943,8 @@ module LindenElkNfaRep {
        || (q.min > 0 && q.max == None && !q.greedy
            && nul != R.NonNullable)
        || (q.min > 0 && q.max == None && q.greedy
-           && nul == R.CINullable))
+           && nul == R.CINullable
+           && R.nullable(r1) == R.CINullable))
       && NestedFragmentRE(r1)
     case Re_capture(cid, r1) => NestedFragmentRE(r1)
     case Re_lookaround(lid, la, r1) =>

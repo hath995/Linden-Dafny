@@ -392,6 +392,78 @@ module LindenElkOracleBridgeV {
     }
   }
 
+  /** §2.5b: the CIN-GREEDY loop iterations in the V graph, entered AT THE
+      STAMP `em + 1` (mirror of `OB.CinLoopIter`). */
+  lemma CinLoopIterV(qid: R.quantid, r1: R.regex, code: RB.code, em: nat, e1: nat, endl: nat,
+                     str: string, ov: LOr.OracleView, cp0: int, k: nat, i: int, j: int, eb: bool)
+    requires NR.NestedFragmentRE(r1)
+    requires NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    requires NR.GetPcRE(code, em + 2) == Some(RB.BeginLoop)
+    requires NR.NfaRepRE(r1, code, em + 3, e1)
+    requires NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+    requires NR.GetPcRE(code, e1 + 1) == Some(RB.Fork((em + 1) as int, (e1 + 3) as int))
+    requires endl == e1 + 3
+    requires k >= 1
+    requires MatchesIterVNE(r1, k, str, ov, i, j)
+    requires ORc.ReachFV(code, str, ov, cp0, em + 1, eb, i)
+    ensures ORc.ReachFV(code, str, ov, cp0, endl, true, j)
+    ensures i < j
+    decreases CP.rsize(r1), 1, k
+  {
+    var m := MatchesIterVNEHead(r1, k, str, ov, i, j);
+    MatchesIterVNEBounds(r1, k - 1, str, ov, m, j);
+    OB.GetPcInstr(code, em + 1, RB.SetQuantToClock(qid, false));
+    ReachFVEpsIntro(code, str, ov, cp0, em + 1, eb, em + 2, eb, i);
+    OB.GetPcInstr(code, em + 2, RB.BeginLoop);
+    ReachFVEpsIntro(code, str, ov, cp0, em + 2, eb, em + 3, false, i);
+    MatchesVToPath(r1, code, em + 3, e1, str, ov, cp0, i, m, false);
+    assert ORc.ReachFV(code, str, ov, cp0, e1, true, m);
+    OB.GetPcInstr(code, e1, RB.EndLoop);
+    ReachFVEpsIntro(code, str, ov, cp0, e1, true, e1 + 1, true, m);
+    assert OB.ForkAt(code, e1 + 1, em + 1, endl);
+    ForkEdgesV(code, str, ov, m, e1 + 1, true, em + 1, endl);
+    if k == 1 {
+      ReachFVEpsIntro(code, str, ov, cp0, e1 + 1, true, endl, true, m);
+      assert m == j;
+    } else {
+      ReachFVEpsIntro(code, str, ov, cp0, e1 + 1, true, em + 1, true, m);
+      CinLoopIterV(qid, r1, code, em, e1, endl, str, ov, cp0, k - 1, m, j, true);
+    }
+  }
+
+  /** §2.5b: the CIN-GREEDY loop from its head fork, in the V graph (mirror
+      of `OB.CinLoopPath`). */
+  lemma CinLoopPathV(qid: R.quantid, r1: R.regex, code: RB.code, em: nat, e1: nat, endl: nat,
+                     str: string, ov: LOr.OracleView, cp0: int, k: nat, i: int, j: int, eb: bool)
+    requires NR.NestedFragmentRE(r1)
+    requires NR.GetPcRE(code, em) == Some(RB.Fork((em + 1) as int, (e1 + 2) as int))
+    requires NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    requires NR.GetPcRE(code, em + 2) == Some(RB.BeginLoop)
+    requires NR.NfaRepRE(r1, code, em + 3, e1)
+    requires NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+    requires NR.GetPcRE(code, e1 + 1) == Some(RB.Fork((em + 1) as int, (e1 + 3) as int))
+    requires NR.GetPcRE(code, e1 + 2) == Some(RB.SetQuantToClock(qid, true))
+    requires endl == e1 + 3
+    requires MatchesIterVNE(r1, k, str, ov, i, j)
+    requires ORc.ReachFV(code, str, ov, cp0, em, eb, i)
+    ensures ORc.ReachFV(code, str, ov, cp0, endl, if j > i then true else eb, j)
+    decreases CP.rsize(r1), 2
+  {
+    if k == 0 {
+      // the skip arm: over the stamp-true and out
+      assert OB.ForkAt(code, em, em + 1, e1 + 2);
+      ForkEdgesV(code, str, ov, i, em, eb, em + 1, e1 + 2);
+      ReachFVEpsIntro(code, str, ov, cp0, em, eb, e1 + 2, eb, i);
+      OB.GetPcInstr(code, e1 + 2, RB.SetQuantToClock(qid, true));
+      ReachFVEpsIntro(code, str, ov, cp0, e1 + 2, eb, endl, eb, i);
+      return;
+    }
+    assert OB.ForkAt(code, em, em + 1, e1 + 2);
+    ForkEdgesV(code, str, ov, i, em, eb, em + 1, e1 + 2);
+    ReachFVEpsIntro(code, str, ov, cp0, em, eb, em + 1, eb, i);
+    CinLoopIterV(qid, r1, code, em, e1, endl, str, ov, cp0, k, i, j, eb);
+  }
+
   /** THE forward bridge direction, gated: a `MatchesV` span of a NESTED-
       fragment regex yields a V path through its compiled block. The NEW case
       is `Re_lookaround`: its block is the single gate instruction, and the
@@ -491,7 +563,7 @@ module LindenElkOracleBridgeV {
         MatchesIterVBounds(r1, k - mn, str, ov, mid, j);
         OptChainPathV(kx, k2, q.greedy, qid, r1, code, em, endl, str, ov, cp0, mid, j,
                       if mid > i then true else eb);
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         // §2.5a GENERIC: `min` forced copies, then the very star loop the
         // `q.min == 0` arm walks -- at `em` instead of `start`.
         var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
@@ -504,6 +576,19 @@ module LindenElkOracleBridgeV {
         var k2 := IterVDropEmpty(r1, k - mn, str, ov, mid, j);
         StarLoopPathV(qid, r1, code, em, e1, endl, str, ov, cp0, k2, mid, j,
                       if mid > i then true else eb);
+      } else if nul != R.NonNullable {
+        // §2.5b CIN-GREEDY: min-1 forced copies, then the stamped end-fork
+        // loop; a fully empty remainder leaves through the head fork's skip
+        // arm, over the stamp-true.
+        var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, code, start, endl);
+        var mn1 := (q.min - 1) as nat;
+        var mid := IterVSplit(r1, k, mn1, str, ov, i, j);
+        MinChainPathV(mn1, qid, r1, code, start, em, str, ov, cp0, i, mid, eb);
+        MatchesIterVBounds(r1, mn1, str, ov, i, mid);
+        MatchesIterVBounds(r1, k - mn1, str, ov, mid, j);
+        var k2 := IterVDropEmpty(r1, k - mn1, str, ov, mid, j);
+        CinLoopPathV(qid, r1, code, em, e1, endl, str, ov, cp0, k2, mid, j,
+                     if mid > i then true else eb);
       } else {
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
         var mn1 := (q.min - 1) as nat;

@@ -168,6 +168,20 @@ module LindenElkOracleDecomp {
     && endl == e1 + 1
   }
 
+  /** (§2.5b) The CIN-GREEDY end-fork loop's layout: head fork, stamp,
+      guarded body, end fork, and the trailing `SetQuantToClock(qid, true)`
+      the skip path crosses. */
+  ghost predicate CinShape(qid: R.quantid, r1: R.regex, code: RB.code, em: nat, e1: nat, endl: nat) {
+    NR.GetPcRE(code, em) == Some(RB.Fork((em + 1) as int, (e1 + 2) as int))
+    && NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    && NR.GetPcRE(code, em + 2) == Some(RB.BeginLoop)
+    && NR.NfaRepRE(r1, code, em + 3, e1)
+    && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+    && NR.GetPcRE(code, e1 + 1) == Some(RB.Fork((em + 1) as int, (e1 + 3) as int))
+    && NR.GetPcRE(code, e1 + 2) == Some(RB.SetQuantToClock(qid, true))
+    && endl == e1 + 3
+  }
+
   // ===========================================================================
   // The mid-parse invariant
   // ===========================================================================
@@ -227,6 +241,24 @@ module LindenElkOracleDecomp {
           || (pc == e1 && OB.Matches(r1, str, m, cp)))
   }
 
+  /** (§2.5b) The CIN-GREEDY arm's looped interior: at least `mn1` spans are
+      done (entry `i`, currently at `m`), and the configuration sits on the
+      head fork/stamp/`BeginLoop` triple, inside the guarded body, on the
+      `EndLoop`/end-fork pair (this span complete), or on the trailing
+      stamp-true site — reached only by the head fork's skip arm, with NO
+      additional span. */
+  ghost predicate CinTail(mn1: nat, qid: R.quantid, r1: R.regex, code: RB.code, em: nat, e1: nat,
+                          str: string, i: int, pc: nat, cp: int)
+    decreases CP.rsize(r1), 3, 0
+  {
+    exists m: int {:trigger IterFrom(r1, mn1, str, i, m)} ::
+      IterFrom(r1, mn1, str, i, m)
+      && (((pc == em || pc == em + 1 || pc == em + 2) && cp == m)
+          || InBlock(r1, code, em + 3, e1, str, m, pc, cp)
+          || ((pc == e1 || pc == e1 + 1) && OB.Matches(r1, str, m, cp))
+          || (pc == e1 + 2 && cp == m))
+  }
+
   /** Configuration `(pc, cp)` is a legitimate mid-parse state of `re`'s
       block, entered at string position `i`. Every arm carries its own
       instruction pins; the exit flag is deliberately absent (soundness only
@@ -284,7 +316,7 @@ module LindenElkOracleDecomp {
                  && DoWhileShape(qid, r1, code, em, e1, endl)
                  && (InMin((q.min - 1) as nat, qid, r1, code, start, em, str, i, pc, cp)
                      || DwTail((q.min - 1) as nat, qid, r1, code, em, e1, str, i, pc, cp)))
-            else
+            else if !q.greedy then
               // §2.5a GENERIC: `min` forced copies, then the ORDINARY STAR loop at
               // `em` -- so this reuses `StarShape`/`StTail` verbatim, exactly as the
               // `q.min == 0` arm above does at `start`. The trigger is explicit,
@@ -294,7 +326,15 @@ module LindenElkOracleDecomp {
                  NR.NfaRepMinRE(q.min as nat, qid, r1, code, start, em)
                  && StarShape(qid, r1, code, em, es1, endl)
                  && (InMin(q.min as nat, qid, r1, code, start, em, str, i, pc, cp)
-                     || StTailK(q.min as nat, qid, r1, code, em, es1, str, i, pc, cp))))
+                     || StTailK(q.min as nat, qid, r1, code, em, es1, str, i, pc, cp)))
+            else
+              // §2.5b CIN-GREEDY: min-1 forced copies, then the stamped
+              // end-fork loop.
+              (exists em: nat, e1: nat {:trigger CinShape(qid, r1, code, em, e1, endl)} ::
+                 NR.NfaRepMinRE((q.min - 1) as nat, qid, r1, code, start, em)
+                 && CinShape(qid, r1, code, em, e1, endl)
+                 && (InMin((q.min - 1) as nat, qid, r1, code, start, em, str, i, pc, cp)
+                     || CinTail((q.min - 1) as nat, qid, r1, code, em, e1, str, i, pc, cp))))
   }
 
   // --- inversion / intro helpers for the tails (top-level, fuel-safe) ---
@@ -377,6 +417,33 @@ module LindenElkOracleDecomp {
       && ((pc == em && cp == m)
           || InBlock(r1, code, em + 1, e1, str, m, pc, cp)
           || (pc == e1 && OB.Matches(r1, str, m, cp)));
+  }
+
+  lemma CinTailInv(mn1: nat, qid: R.quantid, r1: R.regex, code: RB.code, em: nat, e1: nat,
+                   str: string, i: int, pc: nat, cp: int) returns (m: int)
+    requires CinTail(mn1, qid, r1, code, em, e1, str, i, pc, cp)
+    ensures IterFrom(r1, mn1, str, i, m)
+    ensures ((pc == em || pc == em + 1 || pc == em + 2) && cp == m)
+         || InBlock(r1, code, em + 3, e1, str, m, pc, cp)
+         || ((pc == e1 || pc == e1 + 1) && OB.Matches(r1, str, m, cp))
+         || (pc == e1 + 2 && cp == m)
+  {
+    m :| IterFrom(r1, mn1, str, i, m)
+      && (((pc == em || pc == em + 1 || pc == em + 2) && cp == m)
+          || InBlock(r1, code, em + 3, e1, str, m, pc, cp)
+          || ((pc == e1 || pc == e1 + 1) && OB.Matches(r1, str, m, cp))
+          || (pc == e1 + 2 && cp == m));
+  }
+
+  lemma CinTailIntro(mn1: nat, qid: R.quantid, r1: R.regex, code: RB.code, em: nat, e1: nat,
+                     str: string, i: int, pc: nat, cp: int, m: int)
+    requires IterFrom(r1, mn1, str, i, m)
+    requires ((pc == em || pc == em + 1 || pc == em + 2) && cp == m)
+          || InBlock(r1, code, em + 3, e1, str, m, pc, cp)
+          || ((pc == e1 || pc == e1 + 1) && OB.Matches(r1, str, m, cp))
+          || (pc == e1 + 2 && cp == m)
+    ensures CinTail(mn1, qid, r1, code, em, e1, str, i, pc, cp)
+  {
   }
 
   lemma DwTailIntro(mn1: nat, qid: R.quantid, r1: R.regex, code: RB.code, em: nat, e1: nat,
@@ -523,12 +590,19 @@ module LindenElkOracleDecomp {
         OptEmptyCount((q.max.value - q.min) as nat, q.greedy, qid, r1, code, start);
         assert q.min == 0;
         assert OB.MatchesIter(r1, 0, str, p, p);
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         // §2.5a GENERIC: the block cannot be empty either -- `min >= 1` forced
         // copies land at `em >= start`, and the loop tail puts the end at
         // `e1 + 2 > em`, so `start == start` is refuted.
         var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, start);
         NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        assert false;
+      } else if nul != R.NonNullable {
+        // §2.5b CIN-GREEDY: the block cannot be empty (the loop tail alone
+        // spans six instructions), so `start == start` is refuted.
+        var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, code, start, start);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
         NR.NfaRepIncrRE(r1, code, em + 3, e1);
         assert false;
       } else {
@@ -609,7 +683,7 @@ module LindenElkOracleDecomp {
           var m := BdTailInv(q.min as nat, (q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, str, i, pc, cp);
           InOptRange((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, str, m, pc, cp);
         }
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         // §2.5a GENERIC: min forced copies, then the ordinary star loop at em
         var em: nat, es1: nat :|
           NR.NfaRepMinRE(q.min as nat, qid, r1, code, start, em)
@@ -624,6 +698,23 @@ module LindenElkOracleDecomp {
           var m := StTailKInv(q.min as nat, qid, r1, code, em, es1, str, i, pc, cp);
           if InBlock(r1, code, em + 3, es1, str, m, pc, cp) {
             InBlockRange(r1, code, em + 3, es1, str, m, pc, cp);
+          }
+        }
+      } else if nul != R.NonNullable {
+        // §2.5b CIN-GREEDY: min-1 forced copies, then the stamped end-fork loop
+        var em: nat, e1: nat :|
+          NR.NfaRepMinRE((q.min - 1) as nat, qid, r1, code, start, em)
+          && CinShape(qid, r1, code, em, e1, endl)
+          && (InMin((q.min - 1) as nat, qid, r1, code, start, em, str, i, pc, cp)
+              || CinTail((q.min - 1) as nat, qid, r1, code, em, e1, str, i, pc, cp));
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if InMin((q.min - 1) as nat, qid, r1, code, start, em, str, i, pc, cp) {
+          InMinRange((q.min - 1) as nat, qid, r1, code, start, em, str, i, pc, cp);
+        } else {
+          var m := CinTailInv((q.min - 1) as nat, qid, r1, code, em, e1, str, i, pc, cp);
+          if InBlock(r1, code, em + 3, e1, str, m, pc, cp) {
+            InBlockRange(r1, code, em + 3, e1, str, m, pc, cp);
           }
         }
       } else {
@@ -916,13 +1007,27 @@ module LindenElkOracleDecomp {
             OptZeroSame(q.greedy, qid, r1, code, em, endl);
           }
         }
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         // §2.5a GENERIC: `min >= 1`, so there IS a forced copy at `start` and
         // `MinEntry` gives the entry state directly -- no min == 1 special case.
         var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
         assert StarShape(qid, r1, code, em, e1, endl);
         MinEntry(q.min as nat, qid, r1, code, start, em, str, cp);
         assert InBlock(re, code, start, endl, str, cp, start, cp);
+      } else if nul != R.NonNullable {
+        // §2.5b CIN-GREEDY: min-1 copies before the loop; at min == 1 the
+        // entry IS the head fork (the tail at `em` with zero spans done).
+        var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, code, start, endl);
+        assert CinShape(qid, r1, code, em, e1, endl);
+        if (q.min - 1) as nat > 0 {
+          MinEntry((q.min - 1) as nat, qid, r1, code, start, em, str, cp);
+          assert InBlock(re, code, start, endl, str, cp, start, cp);
+        } else {
+          MinZeroSame(qid, r1, code, start, em);
+          IterFromZero(r1, str, cp);
+          CinTailIntro((q.min - 1) as nat, qid, r1, code, em, e1, str, cp, start, cp, cp);
+          assert InBlock(re, code, start, endl, str, cp, start, cp);
+        }
       } else {
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
         assert DoWhileShape(qid, r1, code, em, e1, endl);
@@ -956,11 +1061,63 @@ module LindenElkOracleDecomp {
     IterCons(r, a + b - 1, str, i, m1, j);
   }
 
+  /** §2.5b: `k` empty spans from a single empty span. */
+  lemma IterEmptyAll(r: R.regex, k: nat, str: string, i: int)
+    requires OB.Matches(r, str, i, i)
+    ensures OB.MatchesIter(r, k, str, i, i)
+    decreases k
+  {
+    if k > 0 { IterEmptyAll(r, k - 1, str, i); }
+  }
+
+  /** §2.5b: a CI-NULLABLE plus-fragment regex matches the empty span at EVERY
+      position — the semantic content of `CINullable` (context-independent
+      nullability), and what justifies the CIN-GREEDY scheme's skipped
+      ("nulled") last iteration on the soundness side. The fragment hypothesis
+      supplies the bounded quantifiers' `min <= max` sanity. */
+  lemma CINullableMatchesEmpty(re: R.regex, str: string, i: int)
+    requires NR.PlusFragmentRE(re)
+    requires R.nullable(re) == R.CINullable
+    ensures OB.Matches(re, str, i, i)
+    decreases CP.rsize(re), 0, 0
+  {
+    match re
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_lookaround(_, _, _) =>
+    case Re_alt(r1, r2) =>
+      if R.nullable(r1) == R.CINullable {
+        CINullableMatchesEmpty(r1, str, i);
+      } else {
+        assert R.nullable(r2) == R.CINullable;   // null_or is CIN only from a CIN side
+        CINullableMatchesEmpty(r2, str, i);
+      }
+    case Re_con(r1, r2) =>
+      CINullableMatchesEmpty(r1, str, i);        // null_and is CIN only when both are
+      CINullableMatchesEmpty(r2, str, i);
+    case Re_capture(cid, r1) =>
+      CINullableMatchesEmpty(r1, str, i);
+    case Re_quant(nul, qid, q, r1) =>
+      if q.min == 0 {
+        assert OB.MatchesIter(r1, 0, str, i, i);
+        assert 0 <= q.min && (q.max.Some? ==> q.min <= q.max.value);   // fragment sanity
+        assert q.min <= 0 && (q.max.Some? ==> 0 <= q.max.value)
+            && OB.MatchesIter(r1, 0, str, i, i);
+      } else {
+        assert R.nullable(r1) == R.CINullable;   // min > 0: nullable(re) == nullable(r1)
+        CINullableMatchesEmpty(r1, str, i);
+        IterEmptyAll(r1, q.min as nat, str, i);
+        assert q.min <= q.min && (q.max.Some? ==> q.min <= q.max.value)
+            && OB.MatchesIter(r1, q.min as nat, str, i, i);
+      }
+  }
+
   /** `BlockStep` for the forced-copy chain: exits carry exactly `k` spans. */
   lemma BlockStepMin(k: nat, qid: R.quantid, r1: R.regex, code: RB.code,
                      start: nat, endl: nat, str: string, j: int,
                      pc: nat, eb: bool, cp: int, pc2: nat, eb2: bool, cp2: int)
-    requires NR.LookFreeRE(r1)
+    requires NR.LookFreeRE(r1) && NR.PlusFragmentRE(r1)
     requires InMin(k, qid, r1, code, start, endl, str, j, pc, cp)
     requires AnyEdge(code, str, pc, eb, cp, pc2, eb2, cp2)
     ensures InMin(k, qid, r1, code, start, endl, str, j, pc2, cp2)
@@ -1021,7 +1178,7 @@ module LindenElkOracleDecomp {
   lemma BlockStepOpt(layers: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code,
                      start: nat, endl: nat, str: string, j: int,
                      pc: nat, eb: bool, cp: int, pc2: nat, eb2: bool, cp2: int)
-    requires NR.LookFreeRE(r1)
+    requires NR.LookFreeRE(r1) && NR.PlusFragmentRE(r1)
     requires InOpt(layers, greedy, qid, r1, code, start, endl, str, j, pc, cp)
     requires AnyEdge(code, str, pc, eb, cp, pc2, eb2, cp2)
     ensures InOpt(layers, greedy, qid, r1, code, start, endl, str, j, pc2, cp2)
@@ -1099,7 +1256,7 @@ module LindenElkOracleDecomp {
       completed span match. */
   lemma BlockStep(re: R.regex, code: RB.code, start: nat, endl: nat, str: string, i: int,
                   pc: nat, eb: bool, cp: int, pc2: nat, eb2: bool, cp2: int)
-    requires NR.LookFreeRE(re)
+    requires NR.LookFreeRE(re) && NR.PlusFragmentRE(re)
     requires InBlock(re, code, start, endl, str, i, pc, cp)
     requires AnyEdge(code, str, pc, eb, cp, pc2, eb2, cp2)
     ensures InBlock(re, code, start, endl, str, i, pc2, cp2)
@@ -1288,7 +1445,7 @@ module LindenElkOracleDecomp {
             assert pc2 == endl && OB.Matches(re, str, i, cp2);
           }
         }
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         // §2.5a GENERIC: `min` forced copies, then the ordinary star loop at
         // `em` -- the forced-copy half mirrors the do-while's `InMin` branch
         // (with `q.min`, not `q.min - 1`), and the loop half is the `q.min == 0`
@@ -1349,6 +1506,90 @@ module LindenElkOracleDecomp {
             IterFromSnoc(r1, q.min as nat, str, i, m, cp);
             StTailKIntro(q.min as nat, qid, r1, code, em, es1, str, i, pc2, cp2, cp);
             assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+          }
+        }
+      } else if nul != R.NonNullable {
+        // §2.5b CIN-GREEDY: min-1 forced copies, then the stamped end-fork
+        // loop. Two exits: the end fork after a completed span (>= min spans
+        // total), and the head fork's SKIP arm over the stamp-true — the
+        // NULLED iteration, whose span is the empty match the CI-nullable
+        // body always has (`CINullableMatchesEmpty`).
+        var mn1 := (q.min - 1) as nat;
+        var em: nat, e1: nat :|
+          NR.NfaRepMinRE(mn1, qid, r1, code, start, em)
+          && CinShape(qid, r1, code, em, e1, endl)
+          && (InMin(mn1, qid, r1, code, start, em, str, i, pc, cp)
+              || CinTail(mn1, qid, r1, code, em, e1, str, i, pc, cp));
+        assert R.nullable(r1) == R.CINullable;   // the fragment's CIN disjunct
+        if InMin(mn1, qid, r1, code, start, em, str, i, pc, cp) {
+          BlockStepMin(mn1, qid, r1, code, start, em, str, i, pc, eb, cp, pc2, eb2, cp2);
+          if InMin(mn1, qid, r1, code, start, em, str, i, pc2, cp2) {
+            assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+          } else {
+            // the forced copies are done: enter the loop at the head fork `em`
+            IterFromIntro(r1, mn1, mn1, str, i, cp2);
+            CinTailIntro(mn1, qid, r1, code, em, e1, str, i, pc2, cp2, cp2);
+            assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+          }
+        } else {
+          var m := CinTailInv(mn1, qid, r1, code, em, e1, str, i, pc, cp);
+          if (pc == em || pc == em + 1 || pc == em + 2) && cp == m {
+            if pc == em {
+              assert OB.ForkAt(code, em, em + 1, e1 + 2);
+              EdgeFromForkAt(code, str, em + 1, e1 + 2, pc, eb, cp, pc2, eb2, cp2);
+              // both arms stay in the block: the loop entry or the stamp-true
+              CinTailIntro(mn1, qid, r1, code, em, e1, str, i, pc2, cp2, m);
+              assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+            } else if pc == em + 1 {
+              EdgeFromSetQuant(code, str, qid, false, pc, eb, cp, pc2, eb2, cp2);
+              CinTailIntro(mn1, qid, r1, code, em, e1, str, i, pc2, cp2, m);
+              assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+            } else {
+              EdgeFromBeginLoop(code, str, pc, eb, cp, pc2, eb2, cp2);
+              BlockEntry(r1, code, em + 3, e1, str, m);
+              if em + 3 == e1 {
+                BlockEmpty(r1, code, em + 3, str, m);
+                assert pc2 == e1 && OB.Matches(r1, str, m, cp2);
+              }
+              CinTailIntro(mn1, qid, r1, code, em, e1, str, i, pc2, cp2, m);
+              assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+            }
+          } else if InBlock(r1, code, em + 3, e1, str, m, pc, cp) {
+            BlockStep(r1, code, em + 3, e1, str, m, pc, eb, cp, pc2, eb2, cp2);
+            CinTailIntro(mn1, qid, r1, code, em, e1, str, i, pc2, cp2, m);
+            assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+          } else if (pc == e1 || pc == e1 + 1) && OB.Matches(r1, str, m, cp) {
+            if pc == e1 {
+              EdgeFromEndLoop(code, str, pc, eb, cp, pc2, eb2, cp2);
+              CinTailIntro(mn1, qid, r1, code, em, e1, str, i, pc2, cp2, m);
+              assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+            } else {
+              // the end fork: re-enter at the stamp, or exit with this span
+              assert OB.ForkAt(code, e1 + 1, em + 1, endl);
+              EdgeFromForkAt(code, str, em + 1, endl, pc, eb, cp, pc2, eb2, cp2);
+              if pc2 == em + 1 {
+                IterFromSnoc(r1, mn1, str, i, m, cp);
+                CinTailIntro(mn1, qid, r1, code, em, e1, str, i, pc2, cp2, cp);
+                assert InBlock(re, code, start, endl, str, i, pc2, cp2);
+              } else {
+                var k := IterFromInv(r1, mn1, str, i, m);
+                IterSnoc(r1, k, str, i, m, cp);
+                assert OB.MatchesIter(r1, k + 1, str, i, cp2);
+                assert pc2 == endl && OB.Matches(re, str, i, cp2);
+              }
+            }
+          } else {
+            // the stamp-true site: the NULLED exit. The engine skips the last
+            // mandatory iteration; the spec runs it as the empty span the
+            // CI-nullable body always has at `m`.
+            assert pc == e1 + 2 && cp == m;
+            EdgeFromSetQuant(code, str, qid, true, pc, eb, cp, pc2, eb2, cp2);
+            assert pc2 == endl && cp2 == m;
+            var k := IterFromInv(r1, mn1, str, i, m);
+            CINullableMatchesEmpty(r1, str, m);
+            IterSnoc(r1, k, str, i, m, m);
+            assert OB.MatchesIter(r1, k + 1, str, i, cp2);
+            assert pc2 == endl && OB.Matches(re, str, i, cp2);
           }
         }
       } else {
@@ -1460,7 +1701,7 @@ module LindenElkOracleDecomp {
       invariant — the least-lemma sweep over `ReachF`. */
   least lemma ProgReachInv(body: R.regex, code: RB.code, next: nat, lid: R.lookid, str: string,
                            pc: nat, eb: bool, cp: int)
-    requires NR.LookFreeRE(body)
+    requires NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
     requires StarShape(0, R.Re_character(R.Dot), code, 0, 4, 6)
     requires NR.NfaRepRE(body, code, 6, next)
     requires 6 <= next
