@@ -317,7 +317,8 @@ module LindenElkNfaRep {
        || (0 <= q.min && q.max.Some? && q.min <= q.max.value)
        || (q.min > 0 && q.max == None && nul == R.NonNullable
            && R.nullable(r1) == R.NonNullable)
-       || (q.min > 0 && q.max == None && !q.greedy))
+       || (q.min > 0 && q.max == None && !q.greedy
+           && nul != R.NonNullable))
       && PlusFragmentRE(r1)
     case Re_capture(cid, r1) => PlusFragmentRE(r1)
     case Re_lookaround(_, _, _) => false
@@ -342,7 +343,8 @@ module LindenElkNfaRep {
       ((q.min == 0 && q.max == None)
        || (0 <= q.min && q.max.Some? && q.min <= q.max.value)
        || (q.min > 0 && q.max == None && R.raw_nullable(r1) == R.NonNullable)
-       || (q.min > 0 && q.max == None && !q.greedy))
+       || (q.min > 0 && q.max == None && !q.greedy
+           && R.raw_nullable(r1) != R.NonNullable))
       && PlusFragmentRaw(r1)
     case Raw_capture(r1) => PlusFragmentRaw(r1)
     case Raw_lookaround(_, _) => false
@@ -705,7 +707,8 @@ module LindenElkNfaRep {
        || (0 <= q.min && q.max.Some? && q.min <= q.max.value)
        || (q.min > 0 && q.max == None && nul == R.NonNullable
            && R.nullable(r1) == R.NonNullable)
-       || (q.min > 0 && q.max == None && !q.greedy))
+       || (q.min > 0 && q.max == None && !q.greedy
+           && nul != R.NonNullable))
       && LookBehindFragmentRE(r1)
     case Re_capture(cid, r1) => LookBehindFragmentRE(r1)
     case Re_lookaround(lid, la, r1) =>
@@ -739,7 +742,8 @@ module LindenElkNfaRep {
       ((q.min == 0 && q.max == None)
        || (0 <= q.min && q.max.Some? && q.min <= q.max.value)
        || (q.min > 0 && q.max == None && R.raw_nullable(r1) == R.NonNullable)
-       || (q.min > 0 && q.max == None && !q.greedy))
+       || (q.min > 0 && q.max == None && !q.greedy
+           && R.raw_nullable(r1) != R.NonNullable))
       && LookBehindFragmentRaw(r1)
     case Raw_capture(r1) => LookBehindFragmentRaw(r1)
     case Raw_lookaround(look, r1) =>
@@ -812,7 +816,8 @@ module LindenElkNfaRep {
        || (0 <= q.min && q.max.Some? && q.min <= q.max.value)
        || (q.min > 0 && q.max == None && nul == R.NonNullable
            && R.nullable(r1) == R.NonNullable)
-       || (q.min > 0 && q.max == None && !q.greedy))
+       || (q.min > 0 && q.max == None && !q.greedy
+           && nul != R.NonNullable))
       && NestedFragmentRE(r1)
     case Re_capture(cid, r1) => NestedFragmentRE(r1)
     case Re_lookaround(lid, la, r1) =>
@@ -1289,7 +1294,8 @@ module LindenElkNfaRep {
       ((q.min == 0 && q.max == None)
        || (0 <= q.min && q.max.Some? && q.min <= q.max.value)
        || (q.min > 0 && q.max == None && R.raw_nullable(r1) == R.NonNullable)
-       || (q.min > 0 && q.max == None && !q.greedy))
+       || (q.min > 0 && q.max == None && !q.greedy
+           && R.raw_nullable(r1) != R.NonNullable))
       && NestedFragmentRaw(r1)
     case Raw_capture(r1) => NestedFragmentRaw(r1)
     case Raw_lookaround(look, r1) =>

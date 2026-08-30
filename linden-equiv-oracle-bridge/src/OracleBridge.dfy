@@ -518,6 +518,19 @@ module LindenElkOracleBridge {
         MatchesIterBounds(r1, k - mn, str, mid, j);
         OptChainPath(kx, k2, q.greedy, qid, r1, code, em, endl, str, mid, j,
                      if mid > i then true else eb);
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: `min` forced copies, then the very star loop the
+        // `q.min == 0` arm above walks -- at `em` instead of `start`.
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
+        var mn := q.min as nat;
+        var mid := IterSplit(r1, k, mn, str, i, j);
+        MinChainPath(mn, qid, r1, code, start, em, str, i, mid, eb);
+        MatchesIterBounds(r1, mn, str, i, mid);
+        MatchesIterBounds(r1, k - mn, str, mid, j);
+        assert ForkAt(code, em, em + 1, endl);
+        var k2 := IterDropEmpty(r1, k - mn, str, mid, j);
+        StarLoopPath(qid, r1, code, em, e1, endl, str, k2, mid, j,
+                     if mid > i then true else eb);
       } else {
         // the do-while scheme: min-1 forced copies, then >= 1 looped spans
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);

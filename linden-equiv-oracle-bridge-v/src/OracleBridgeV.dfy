@@ -491,6 +491,19 @@ module LindenElkOracleBridgeV {
         MatchesIterVBounds(r1, k - mn, str, ov, mid, j);
         OptChainPathV(kx, k2, q.greedy, qid, r1, code, em, endl, str, ov, cp0, mid, j,
                       if mid > i then true else eb);
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: `min` forced copies, then the very star loop the
+        // `q.min == 0` arm walks -- at `em` instead of `start`.
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
+        var mn := q.min as nat;
+        var mid := IterVSplit(r1, k, mn, str, ov, i, j);
+        MinChainPathV(mn, qid, r1, code, start, em, str, ov, cp0, i, mid, eb);
+        MatchesIterVBounds(r1, mn, str, ov, i, mid);
+        MatchesIterVBounds(r1, k - mn, str, ov, mid, j);
+        assert OB.ForkAt(code, em, em + 1, endl);
+        var k2 := IterVDropEmpty(r1, k - mn, str, ov, mid, j);
+        StarLoopPathV(qid, r1, code, em, e1, endl, str, ov, cp0, k2, mid, j,
+                      if mid > i then true else eb);
       } else {
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
         var mn1 := (q.min - 1) as nat;
