@@ -33,6 +33,7 @@ module LindenElkWalkOk {
   import RB = Bytecode
   import NR = LindenElkNfaRep
   import AR = LindenElkActionsRep
+  import NUL = LindenElkNullable
 
   /** A bare star: the only regex whose representation can sit on a backward
       fork (the do-while's loop view). */
@@ -100,9 +101,15 @@ module LindenElkWalkOk {
       if min > 0 then
         (match NR.GetPcRE(c, pc)
          case Some(SetQuantToClock(_, _)) =>
-           if delta.Inf? && min == 1 then
+           if delta.Inf? && min == 1 && NUL.NonNullableL(r1) then
              // the do-while seam: the walk enters the guaranteed last forced
-             // iteration with the progress check inserted (any recorded input)
+             // iteration with the progress check inserted (any recorded input).
+             // §2.5a: gated on NonNullableL because ONLY a non-nullable body
+             // compiles to the do-while. A nullable one takes the GENERIC scheme
+             // (`min` forced copies then the ordinary star loop), whose code
+             // carries a real BeginLoop/EndLoop where the spec's Acheck is — so
+             // there is no seam and nothing to insert; it falls to the plain
+             // forced-copy branch below like every other `min > 0`.
              forall chk: LC.Input ::
                WalkOkF([LS.Areg(r1), LS.Acheck(chk), LS.Areg(L.Quantified(greedy, 0, LN.Inf, r1))] + cont,
                        c, pc + 1, g, n - 1)
@@ -320,7 +327,7 @@ module LindenElkWalkOk {
                           greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex)
     requires WalkOk(acts, c, pc, g)
     requires |acts| > 0 && acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1))
-    requires min > 0 && !(delta.Inf? && min == 1)
+    requires min > 0 && !(delta.Inf? && min == 1 && NUL.NonNullableL(r1))
     requires NR.GetPcRE(c, pc).Some? && NR.GetPcRE(c, pc).value.SetQuantToClock?
     ensures WalkOk([LS.Areg(r1), LS.Areg(L.Quantified(greedy, min - 1, delta, r1))] + acts[1..], c, pc + 1, g)
   {
@@ -337,6 +344,7 @@ module LindenElkWalkOk {
                         greedy: bool, r1: L.Regex, chk: LC.Input)
     requires WalkOk(acts, c, pc, g)
     requires |acts| > 0 && acts[0] == LS.Areg(L.Quantified(greedy, 1, LN.Inf, r1))
+    requires NUL.NonNullableL(r1)
     requires NR.GetPcRE(c, pc).Some? && NR.GetPcRE(c, pc).value.SetQuantToClock?
     ensures WalkOk([LS.Areg(r1), LS.Acheck(chk), LS.Areg(L.Quantified(greedy, 0, LN.Inf, r1))] + acts[1..],
                    c, pc + 1, g)
