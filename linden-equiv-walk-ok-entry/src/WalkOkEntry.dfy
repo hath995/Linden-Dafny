@@ -32,6 +32,7 @@ module LindenElkWalkOkEntry {
   import NR = LindenElkNfaRep
   import AR = LindenElkActionsRep
   import WO = LindenElkWalkOk
+  import NUL = LindenElkNullable
 
   // ===========================================================================
   // Transparent shapes and the head-pin trichotomy
@@ -390,6 +391,15 @@ module LindenElkWalkOkEntry {
         assert trre == L.Quantified(q.greedy, mn, LN.NN(kx), T.Translate(r1));
         assert CP.rsize(r1) < CP.rsize(re);
         WalkOkMinChainF(n, mn, kx, q.greedy, qid, r1, c, pc1, em, pc2, cont, g);
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: `min` forced copies, then the ORDINARY STAR loop at
+        // `em`. The body is nullable, so there is no do-while and no seam.
+        var mn := q.min as nat;
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, c, pc1, pc2);
+        assert T.TrDelta(q) == LN.Inf;
+        assert trre == L.Quantified(q.greedy, mn, LN.Inf, T.Translate(r1));
+        assert CP.rsize(r1) < CP.rsize(re);
+        WalkOkGenChainF(n, mn, nul, q.greedy, qid, r1, c, pc1, em, e1, pc2, cont, g);
       } else {
         var mn := q.min as nat;
         var em: nat :| NR.NfaRepMinRE(mn - 1, qid, r1, c, pc1, em)
@@ -566,9 +576,90 @@ module LindenElkWalkOkEntry {
   /** The do-while chain: `[Areg r1{k,}] + cont` is guarded at each copy head;
       the `k == 1` bottom is the SEAM (the checked continuation demanded by
       the walk guard's seam case), whose rest sits at the backward fork. */
+  /** (§2.5a) The GENERIC unbounded chain: `min` forced copies, then the
+      ORDINARY STAR loop at `em`. Used when the body is NULLABLE and the
+      quantifier is lazy, where the compiler emits no do-while and so there is
+      no seam -- every copy head takes `WalkOkRegF`'s plain forced-copy branch,
+      and the `k == 0` bottom is the star arm verbatim, shifted to `em`. */
+  lemma WalkOkGenChainF(n: nat, k: nat, nul: R.nullability, greedy: bool, qid: R.quantid, r1: R.regex,
+                        c: RB.code, pc1: nat, em: nat, e1: nat, pc2: nat, cont: LS.Actions, g: bool)
+    requires NR.LookBehindFragmentRE(r1) && T.TransWf(r1)
+    requires nul == R.nullable(r1) && nul != R.NonNullable
+    requires NR.NfaRepMinRE(k, qid, r1, c, pc1, em)
+    requires NR.GetPcRE(c, em) == Some(RB.Fork(e1 + 2, em + 1))
+    requires NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    requires NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+    requires NR.NfaRepRE(r1, c, em + 3, e1)
+    requires NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+    requires NR.GetPcRE(c, e1 + 1) == Some(RB.Jmp(em))
+    requires pc2 == e1 + 2
+    requires !greedy
+    requires forall gp: bool, mm: nat {:trigger WO.WalkOkF(cont, c, pc2, gp, mm)} :: mm < n ==> WO.WalkOkF(cont, c, pc2, gp, mm)
+    ensures WO.WalkOkF([LS.Areg(L.Quantified(greedy, k, LN.Inf, T.Translate(r1)))] + cont, c, pc1, g, n)
+    decreases n, CP.rsize(r1), 1
+  {
+    if n == 0 { return; }
+    var tr1 := T.Translate(r1);
+    var qk := L.Quantified(greedy, k, LN.Inf, tr1);
+    var tgt := [LS.Areg(qk)] + cont;
+    assert tgt[0] == LS.Areg(qk) && tgt[1..] == cont;
+    // the body is NULLABLE, so `WalkOkRegF`'s seam case is closed: at every
+    // copy head the guard is the plain forced-copy demand.
+    AR.TransNullableAgree(r1);
+    assert !NUL.NonNullableL(tr1);
+    if k > 0 {
+      var e1b: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetQuantToClock(qid, false))
+        && NR.NfaRepRE(r1, c, pc1 + 1, e1b)
+        && NR.NfaRepMinRE(k - 1, qid, r1, c, e1b, em);
+      var qk1 := L.Quantified(greedy, k - 1, LN.Inf, tr1);
+      forall gp: bool, mm: nat {:trigger WO.WalkOkF([LS.Areg(qk1)] + cont, c, e1b, gp, mm)} | mm < n - 1
+        ensures WO.WalkOkF([LS.Areg(qk1)] + cont, c, e1b, gp, mm)
+      {
+        WalkOkGenChainF(mm, k - 1, nul, greedy, qid, r1, c, e1b, em, e1, pc2, cont, gp);
+      }
+      WalkOkCompF(n - 1, r1, c, pc1 + 1, e1b, [LS.Areg(qk1)] + cont, g);
+      assert [LS.Areg(tr1)] + ([LS.Areg(qk1)] + cont) == [LS.Areg(tr1), LS.Areg(qk1)] + cont;
+      assert WO.WalkOkF([LS.Areg(tr1), LS.Areg(qk1)] + cont, c, pc1 + 1, g, n - 1);
+      assert WO.WalkOkRegF(qk, cont, c, pc1, g, n);
+      assert WO.WalkOkF(tgt, c, pc1, g, n);
+    } else {
+      // k == 0: `pc1 == em` and this IS the ordinary star, so reuse the star
+      // arm's own reasoning against the star regex the block at `em` compiles.
+      NR.NfaRepIncrMinRE(0, qid, r1, c, pc1, em);
+      assert pc1 == em;
+      var re0 := R.Re_quant(nul, qid, R.CountedQuant(0, None, greedy), r1);
+      assert NR.LookBehindFragmentRE(re0);
+      assert T.TransWf(re0);
+      assert NR.NfaRepRE(re0, c, em, pc2);
+      assert T.TrDelta(R.CountedQuant(0, None, greedy)) == LN.Inf;
+      assert T.Translate(re0) == qk;
+      assert FS.NoiPred(LN.Inf) == LN.Inf;
+      // the iteration lists, for every recorded input
+      forall chk: LC.Input
+        ensures WO.WalkOkF([LS.Areg(tr1), LS.Acheck(chk), LS.Areg(qk)] + cont, c, em + 3, false, n - 1)
+      {
+        var rest := [LS.Acheck(chk), LS.Areg(qk)] + cont;
+        forall gp: bool, mm: nat {:trigger WO.WalkOkF(rest, c, e1, gp, mm)} | mm < n - 1
+          ensures WO.WalkOkF(rest, c, e1, gp, mm)
+        {
+          WalkOkStarRestF(mm, re0, c, em, pc2, e1, cont, gp, chk);
+        }
+        WalkOkCompF(n - 1, r1, c, em + 3, e1, rest, false);
+        assert [LS.Areg(tr1)] + rest == [LS.Areg(tr1), LS.Acheck(chk), LS.Areg(qk)] + cont;
+      }
+      // the skip
+      assert WO.WalkOkF(cont, c, pc2, g, n - 1);
+      assert WO.WalkOkRegF(qk, cont, c, em, g, n);
+      assert WO.WalkOkF(tgt, c, pc1, g, n);
+    }
+  }
+
   lemma WalkOkPlusChainF(n: nat, k: nat, greedy: bool, qid: R.quantid, r1: R.regex,
                          c: RB.code, pc1: nat, em: nat, e1: nat, pc2: nat, cont: LS.Actions, g: bool)
     requires k >= 1
+    // §2.5a: ONLY a non-nullable body compiles to the do-while, and the seam at
+    // `k == 1` is exactly `WalkOkRegF`'s NonNullableL-gated case.
+    requires R.nullable(r1) == R.NonNullable
     requires NR.LookBehindFragmentRE(r1) && T.TransWf(r1)
     requires NR.NfaRepMinRE(k - 1, qid, r1, c, pc1, em)
     requires NR.GetPcRE(c, em) == Some(RB.SetQuantToClock(qid, false))
@@ -601,6 +692,8 @@ module LindenElkWalkOkEntry {
       assert WO.WalkOkF(tgt, c, pc1, g, n);
     } else {
       // k == 1: the SEAM — the stamp is at pc1
+      AR.TransNullableAgree(r1);
+      assert NUL.NonNullableL(tr1);
       assert pc1 == em;
       var q0L := L.Quantified(greedy, 0, LN.Inf, tr1);
       forall chk: LC.Input
@@ -929,6 +1022,15 @@ module LindenElkWalkOkEntry {
         assert trre == L.Quantified(q.greedy, mn, LN.NN(kx), T.Translate(r1));
         assert CP.rsize(r1) < CP.rsize(re);
         WalkOkMinChainFNested(n, mn, kx, q.greedy, qid, r1, c, pc1, em, pc2, cont, g);
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: `min` forced copies, then the ORDINARY STAR loop at
+        // `em`. The body is nullable, so there is no do-while and no seam.
+        var mn := q.min as nat;
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, c, pc1, pc2);
+        assert T.TrDelta(q) == LN.Inf;
+        assert trre == L.Quantified(q.greedy, mn, LN.Inf, T.Translate(r1));
+        assert CP.rsize(r1) < CP.rsize(re);
+        WalkOkGenChainFNested(n, mn, nul, q.greedy, qid, r1, c, pc1, em, e1, pc2, cont, g);
       } else {
         var mn := q.min as nat;
         var em: nat :| NR.NfaRepMinRE(mn - 1, qid, r1, c, pc1, em)
@@ -1091,9 +1193,90 @@ module LindenElkWalkOkEntry {
     assert WO.WalkOkF(tgt, c, e1, gp, m);
   }
 
+  /** (§2.5a) The GENERIC unbounded chain: `min` forced copies, then the
+      ORDINARY STAR loop at `em`. Used when the body is NULLABLE and the
+      quantifier is lazy, where the compiler emits no do-while and so there is
+      no seam -- every copy head takes `WalkOkRegF`'s plain forced-copy branch,
+      and the `k == 0` bottom is the star arm verbatim, shifted to `em`. (nested fragment). */
+  lemma WalkOkGenChainFNested(n: nat, k: nat, nul: R.nullability, greedy: bool, qid: R.quantid, r1: R.regex,
+                        c: RB.code, pc1: nat, em: nat, e1: nat, pc2: nat, cont: LS.Actions, g: bool)
+    requires NR.NestedFragmentRE(r1) && T.TransWf(r1)
+    requires nul == R.nullable(r1) && nul != R.NonNullable
+    requires NR.NfaRepMinRE(k, qid, r1, c, pc1, em)
+    requires NR.GetPcRE(c, em) == Some(RB.Fork(e1 + 2, em + 1))
+    requires NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    requires NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+    requires NR.NfaRepRE(r1, c, em + 3, e1)
+    requires NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+    requires NR.GetPcRE(c, e1 + 1) == Some(RB.Jmp(em))
+    requires pc2 == e1 + 2
+    requires !greedy
+    requires forall gp: bool, mm: nat {:trigger WO.WalkOkF(cont, c, pc2, gp, mm)} :: mm < n ==> WO.WalkOkF(cont, c, pc2, gp, mm)
+    ensures WO.WalkOkF([LS.Areg(L.Quantified(greedy, k, LN.Inf, T.Translate(r1)))] + cont, c, pc1, g, n)
+    decreases n, CP.rsize(r1), 1
+  {
+    if n == 0 { return; }
+    var tr1 := T.Translate(r1);
+    var qk := L.Quantified(greedy, k, LN.Inf, tr1);
+    var tgt := [LS.Areg(qk)] + cont;
+    assert tgt[0] == LS.Areg(qk) && tgt[1..] == cont;
+    // the body is NULLABLE, so `WalkOkRegF`'s seam case is closed: at every
+    // copy head the guard is the plain forced-copy demand.
+    AR.TransNullableAgree(r1);
+    assert !NUL.NonNullableL(tr1);
+    if k > 0 {
+      var e1b: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetQuantToClock(qid, false))
+        && NR.NfaRepRE(r1, c, pc1 + 1, e1b)
+        && NR.NfaRepMinRE(k - 1, qid, r1, c, e1b, em);
+      var qk1 := L.Quantified(greedy, k - 1, LN.Inf, tr1);
+      forall gp: bool, mm: nat {:trigger WO.WalkOkF([LS.Areg(qk1)] + cont, c, e1b, gp, mm)} | mm < n - 1
+        ensures WO.WalkOkF([LS.Areg(qk1)] + cont, c, e1b, gp, mm)
+      {
+        WalkOkGenChainFNested(mm, k - 1, nul, greedy, qid, r1, c, e1b, em, e1, pc2, cont, gp);
+      }
+      WalkOkCompFNested(n - 1, r1, c, pc1 + 1, e1b, [LS.Areg(qk1)] + cont, g);
+      assert [LS.Areg(tr1)] + ([LS.Areg(qk1)] + cont) == [LS.Areg(tr1), LS.Areg(qk1)] + cont;
+      assert WO.WalkOkF([LS.Areg(tr1), LS.Areg(qk1)] + cont, c, pc1 + 1, g, n - 1);
+      assert WO.WalkOkRegF(qk, cont, c, pc1, g, n);
+      assert WO.WalkOkF(tgt, c, pc1, g, n);
+    } else {
+      // k == 0: `pc1 == em` and this IS the ordinary star, so reuse the star
+      // arm's own reasoning against the star regex the block at `em` compiles.
+      NR.NfaRepIncrMinRE(0, qid, r1, c, pc1, em);
+      assert pc1 == em;
+      var re0 := R.Re_quant(nul, qid, R.CountedQuant(0, None, greedy), r1);
+      assert NR.NestedFragmentRE(re0);
+      assert T.TransWf(re0);
+      assert NR.NfaRepRE(re0, c, em, pc2);
+      assert T.TrDelta(R.CountedQuant(0, None, greedy)) == LN.Inf;
+      assert T.Translate(re0) == qk;
+      assert FS.NoiPred(LN.Inf) == LN.Inf;
+      // the iteration lists, for every recorded input
+      forall chk: LC.Input
+        ensures WO.WalkOkF([LS.Areg(tr1), LS.Acheck(chk), LS.Areg(qk)] + cont, c, em + 3, false, n - 1)
+      {
+        var rest := [LS.Acheck(chk), LS.Areg(qk)] + cont;
+        forall gp: bool, mm: nat {:trigger WO.WalkOkF(rest, c, e1, gp, mm)} | mm < n - 1
+          ensures WO.WalkOkF(rest, c, e1, gp, mm)
+        {
+          WalkOkStarRestFNested(mm, re0, c, em, pc2, e1, cont, gp, chk);
+        }
+        WalkOkCompFNested(n - 1, r1, c, em + 3, e1, rest, false);
+        assert [LS.Areg(tr1)] + rest == [LS.Areg(tr1), LS.Acheck(chk), LS.Areg(qk)] + cont;
+      }
+      // the skip
+      assert WO.WalkOkF(cont, c, pc2, g, n - 1);
+      assert WO.WalkOkRegF(qk, cont, c, em, g, n);
+      assert WO.WalkOkF(tgt, c, pc1, g, n);
+    }
+  }
+
   lemma WalkOkPlusChainFNested(n: nat, k: nat, greedy: bool, qid: R.quantid, r1: R.regex,
                          c: RB.code, pc1: nat, em: nat, e1: nat, pc2: nat, cont: LS.Actions, g: bool)
     requires k >= 1
+    // §2.5a: ONLY a non-nullable body compiles to the do-while, and the seam at
+    // `k == 1` is exactly `WalkOkRegF`'s NonNullableL-gated case.
+    requires R.nullable(r1) == R.NonNullable
     requires NR.NestedFragmentRE(r1) && T.TransWf(r1)
     requires NR.NfaRepMinRE(k - 1, qid, r1, c, pc1, em)
     requires NR.GetPcRE(c, em) == Some(RB.SetQuantToClock(qid, false))
@@ -1126,6 +1309,8 @@ module LindenElkWalkOkEntry {
       assert WO.WalkOkF(tgt, c, pc1, g, n);
     } else {
       // k == 1: the SEAM — the stamp is at pc1
+      AR.TransNullableAgree(r1);
+      assert NUL.NonNullableL(tr1);
       assert pc1 == em;
       var q0L := L.Quantified(greedy, 0, LN.Inf, tr1);
       forall chk: LC.Input
