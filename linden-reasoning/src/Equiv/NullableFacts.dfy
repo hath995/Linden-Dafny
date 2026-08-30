@@ -115,6 +115,69 @@ module LindenElkNullable {
     case Re_anchor(_) =>
   }
 
+  /** §2.5b INTERIM: no greedy-NULLABLE unbounded quantifier anywhere in `r`
+      (look bodies included) — the L-side mirror of the engine-side
+      `NR.NoNulledPlusRE` gate conjunct. The spec fragment (`EL.PikeLkRegex`)
+      carries it until the nulled-plus reconstruction theorem lands. */
+  predicate NoNulledPlusL(r: L.Regex)
+    decreases r
+  {
+    match r
+    case Epsilon => true
+    case Character(_) => true
+    case Disjunction(r1, r2) => NoNulledPlusL(r1) && NoNulledPlusL(r2)
+    case Sequence(r1, r2) => NoNulledPlusL(r1) && NoNulledPlusL(r2)
+    case Quantified(greedy, min, delta, r1) =>
+      (min > 0 && delta.Inf? && greedy ==> NonNullableL(r1))
+      && NoNulledPlusL(r1)
+    case Group(_, r1) => NoNulledPlusL(r1)
+    case AnchorR(_) => true
+    case LookaroundR(_, r1) => NoNulledPlusL(r1)
+    case Backreference(_) => true
+  }
+
+  /** The transfer: an engine-side `NoNulledPlus` regex translates to an
+      L-side one (per quant node, the gate's `nul == NonNullable` plus the
+      annotation consistency in `TransWf` gives `NonNullableL` of the body). */
+  lemma TransNoNulledPlus(re: R.regex)
+    requires T.TransWf(re)
+    requires NoNulledPlusRE_(re)
+    ensures NoNulledPlusL(T.Translate(re))
+    decreases re
+  {
+    match re
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_alt(r1, r2) => TransNoNulledPlus(r1); TransNoNulledPlus(r2);
+    case Re_con(r1, r2) => TransNoNulledPlus(r1); TransNoNulledPlus(r2);
+    case Re_quant(nul, qid, q, r1) =>
+      TransNoNulledPlus(r1);
+      if q.min > 0 && q.max == None && q.greedy {
+        TransNonNullable(r1);
+      }
+    case Re_capture(_, r1) => TransNoNulledPlus(r1);
+    case Re_lookaround(_, _, r1) => TransNoNulledPlus(r1);
+  }
+
+  /** Local copy of the engine-side gate conjunct (`NR.NoNulledPlusRE` lives
+      downstream in `linden-equiv-nfa-rep-re`; the definitions coincide). */
+  predicate NoNulledPlusRE_(re: R.regex)
+    decreases re
+  {
+    match re
+    case Re_empty => true
+    case Re_character(_) => true
+    case Re_anchor(_) => true
+    case Re_alt(r1, r2) => NoNulledPlusRE_(r1) && NoNulledPlusRE_(r2)
+    case Re_con(r1, r2) => NoNulledPlusRE_(r1) && NoNulledPlusRE_(r2)
+    case Re_quant(nul, qid, q, r1) =>
+      (q.min > 0 && q.max == None && q.greedy ==> nul == R.NonNullable)
+      && NoNulledPlusRE_(r1)
+    case Re_capture(cid, r1) => NoNulledPlusRE_(r1)
+    case Re_lookaround(lid, la, r1) => NoNulledPlusRE_(r1)
+  }
+
   /** The annotation agreement: whenever the engine computed `NonNullable`
       for an annotated regex, its translation satisfies `NonNullableL`. */
   lemma TransNonNullable(re: R.regex)

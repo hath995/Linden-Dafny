@@ -17,6 +17,7 @@ module LindenElkNfaRep {
   import RB = Bytecode
   import CP = Compiler
   import T = LindenElkTranslate
+  import NUL = LindenElkNullable
   import LTB = LindenElkLookTables
   import OS = LindenElkOracleSweep
 
@@ -362,20 +363,8 @@ module LindenElkNfaRep {
       (`M.QuantRegsFinal` / `FNulledPlusIdentity`) rests on. `SupportedL3/4/5`
       carry this conjunct until the nulled-plus reconstruction theorem lands;
       the CIN-GREEDY layout arms (this file) are already in place beneath it. */
-  predicate NoNulledPlusRE(re: R.regex)
-    decreases re
-  {
-    match re
-    case Re_empty => true
-    case Re_character(_) => true
-    case Re_anchor(_) => true
-    case Re_alt(r1, r2) => NoNulledPlusRE(r1) && NoNulledPlusRE(r2)
-    case Re_con(r1, r2) => NoNulledPlusRE(r1) && NoNulledPlusRE(r2)
-    case Re_quant(nul, qid, q, r1) =>
-      (q.min > 0 && q.max == None && q.greedy ==> nul == R.NonNullable)
-      && NoNulledPlusRE(r1)
-    case Re_capture(cid, r1) => NoNulledPlusRE(r1)
-    case Re_lookaround(lid, la, r1) => NoNulledPlusRE(r1)
+  predicate NoNulledPlusRE(re: R.regex) {
+    NUL.NoNulledPlusRE_(re)   // canonical definition upstream (linden-reasoning)
   }
 
   /** The `raw_regex` counterpart of `NoNulledPlusRE` (an executable check). */

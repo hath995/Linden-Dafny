@@ -50,6 +50,7 @@ module LindenElkEntryLk {
   import R = RegElkRegex
   import T = LindenElkTranslate
   import NR = LindenElkNfaRep
+  import NUL = LindenElkNullable
   import OS = LindenElkOracleSpec
 
   // ===========================================================================
@@ -696,14 +697,22 @@ module LindenElkEntryLk {
     case Character(_) => true
     case Disjunction(r1, r2) => PikeLkRegex(r1) && PikeLkRegex(r2)
     case Sequence(r1, r2) => PikeLkRegex(r1) && PikeLkRegex(r2)
-    case Quantified(_, _, _, r1) => PikeLkRegex(r1)
+    case Quantified(greedy, min, delta, r1) =>
+      // §2.5b INTERIM: a greedy-NULLABLE unbounded quantifier stays out of
+      // the SPEC fragment until the nulled-plus reconstruction theorem lands
+      // (the CIN-GREEDY layout arms beneath are already in place). Dropping
+      // this conjunct is the §2.5b flip.
+      (min > 0 && delta.Inf? && greedy ==> NUL.NonNullableL(r1))
+      && PikeLkRegex(r1)
     case Group(_, r1) => PikeLkRegex(r1)
     case LookaroundR(lk, r1) =>
       // L3a/L3b: a POSITIVE lookaround -- forward (lookAHEAD) OR backward
       // (lookBEHIND) -- admits a look-free (but possibly capturing) body; the
       // NEGATIVE flavours still require a group-free body (they record nothing).
-      if L.Positivity(lk) then NoLkBrL(r1)
-      else SD.GroupFreeL(r1)
+      // §2.5b interim: positive bodies also carry the no-nulled-plus conjunct
+      // (they run through the same replay machinery).
+      if L.Positivity(lk) then NoLkBrL(r1) && NUL.NoNulledPlusL(r1)
+      else SD.GroupFreeL(r1) && NUL.NoNulledPlusL(r1)
     case AnchorR(_) => true
     case Backreference(_) => false
   }
@@ -763,13 +772,19 @@ module LindenElkEntryLk {
     case Character(_) => true
     case Disjunction(r1, r2) => PikeLkRegexRec(r1) && PikeLkRegexRec(r2)
     case Sequence(r1, r2) => PikeLkRegexRec(r1) && PikeLkRegexRec(r2)
-    case Quantified(_, _, _, r1) => PikeLkRegexRec(r1)
+    case Quantified(greedy, min, delta, r1) =>
+      // §2.5b INTERIM: a greedy-NULLABLE unbounded quantifier stays out of
+      // the SPEC fragment until the nulled-plus reconstruction theorem lands
+      // (the CIN-GREEDY layout arms beneath are already in place). Dropping
+      // this conjunct is the §2.5b flip.
+      (min > 0 && delta.Inf? && greedy ==> NUL.NonNullableL(r1))
+      && PikeLkRegexRec(r1)
     case Group(_, r1) => PikeLkRegexRec(r1)
     case LookaroundR(lk, r1) =>
       // POSITIVE look (fwd/bwd): body recurses into the fragment (depth-k).
       // NEGATIVE look: body stays group-free, exactly as in `PikeLkRegex`.
       if L.Positivity(lk) then PikeLkRegexRec(r1)
-      else SD.GroupFreeL(r1)
+      else SD.GroupFreeL(r1) && NUL.NoNulledPlusL(r1)   // §2.5b interim
     case AnchorR(_) => true
     case Backreference(_) => false
   }
@@ -813,6 +828,7 @@ module LindenElkEntryLk {
       positive-look arm of the embedding below. */
   lemma NoLkBrLIsPikeLkRegexRec(r: L.Regex)
     requires NoLkBrL(r)
+    requires NUL.NoNulledPlusL(r)   // §2.5b interim
     ensures PikeLkRegexRec(r)
     decreases r
   {
@@ -856,6 +872,7 @@ module LindenElkEntryLk {
   /** The pike fragment embeds. */
   lemma PikeIsPikeLkRegex(r: L.Regex)
     requires PS.PikeRegex(r)
+    requires NUL.NoNulledPlusL(r)   // §2.5b interim
     ensures PikeLkRegex(r)
     decreases r
   {
@@ -870,13 +887,20 @@ module LindenElkEntryLk {
   /** A lookbehind-fragment RegElk regex translates into `PikeLkRegex`. */
   lemma TranslateFragmentPikeLk(re: R.regex)
     requires T.TransWf(re) && NR.LookBehindFragmentRE(re)
+    requires NR.NoNulledPlusRE(re)   // §2.5b interim
     ensures PikeLkRegex(T.Translate(re))
     decreases re
   {
     match re
     case Re_alt(r1, r2) => TranslateFragmentPikeLk(r1); TranslateFragmentPikeLk(r2);
     case Re_con(r1, r2) => TranslateFragmentPikeLk(r1); TranslateFragmentPikeLk(r2);
-    case Re_quant(_, _, _, r1) => TranslateFragmentPikeLk(r1);
+    case Re_quant(nul, qid, q, r1) =>
+      TranslateFragmentPikeLk(r1);
+      if q.min > 0 && q.max == None && q.greedy {
+        // the gate conjunct pins nul == NonNullable; TransWf ties it to
+        // nullable(r1); TransNonNullable carries it to the L side
+        NUL.TransNonNullable(r1);
+      }
     case Re_capture(_, r1) => TranslateFragmentPikeLk(r1);
     case Re_lookaround(lid, la, r1) =>
       // L3a/L3b: a POSITIVE look (fwd/bwd) may CAPTURE -- its look-free body
@@ -886,8 +910,10 @@ module LindenElkEntryLk {
       assert L.Positivity(T.TrLookaround(la)) == (la.Lookahead? || la.Lookbehind?);
       if la.Lookahead? || la.Lookbehind? {
         TranslateNoLkBr(r1);        // LookFreeRE(r1) -> NoLkBrL(Translate(r1))
+        NUL.TransNoNulledPlus(r1);  // §2.5b interim: the body's conjunct
       } else {
         OS.TranslateGroupFree(r1);  // negative: CaptureFreeRE(r1) (fragment) -> GroupFreeL
+        NUL.TransNoNulledPlus(r1);  // §2.5b interim
       }
     case _ =>
   }
@@ -902,13 +928,18 @@ module LindenElkEntryLk {
       the RE->spec-fragment bridge the recursive keystone's confinement rests on. */
   lemma TranslateFragmentPikeLkRec(re: R.regex)
     requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.NegLooksLookFreeRE(re)
+    requires NR.NoNulledPlusRE(re)   // §2.5b interim
     ensures PikeLkRegexRec(T.Translate(re))
     decreases re
   {
     match re
     case Re_alt(r1, r2) => TranslateFragmentPikeLkRec(r1); TranslateFragmentPikeLkRec(r2);
     case Re_con(r1, r2) => TranslateFragmentPikeLkRec(r1); TranslateFragmentPikeLkRec(r2);
-    case Re_quant(_, _, _, r1) => TranslateFragmentPikeLkRec(r1);
+    case Re_quant(nul, qid, q, r1) =>
+      TranslateFragmentPikeLkRec(r1);
+      if q.min > 0 && q.max == None && q.greedy {
+        NUL.TransNonNullable(r1);
+      }
     case Re_capture(_, r1) => TranslateFragmentPikeLkRec(r1);
     case Re_lookaround(lid, la, r1) =>
       assert L.Positivity(T.TrLookaround(la)) == (la.Lookahead? || la.Lookbehind?);
@@ -919,6 +950,7 @@ module LindenElkEntryLk {
         // NEGATIVE look: capture-free (NestedFragmentRE) + look-free
         // (NegLooksLookFreeRE) body translates to group-free.
         OS.TranslateGroupFree(r1);        // SD.GroupFreeL(Translate(r1))
+        NUL.TransNoNulledPlus(r1);        // §2.5b interim
       }
     case _ =>
   }
