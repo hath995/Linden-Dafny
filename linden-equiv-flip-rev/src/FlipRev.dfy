@@ -197,6 +197,23 @@ module LindenElkFlipRev {
   // Translate commutation
   // ---------------------------------------------------------------------------
 
+  /** The flip does not change nullability: it only rewrites look KINDS, and
+      `R.nullable` of a lookaround is `CDNullable` whichever kind it is. Needed
+      since `T.TransWf` pins each `Re_quant`'s annotation to `R.nullable` of its
+      body (§2.5a) while `FlipRE` keeps the annotation and rewrites the body. */
+  lemma FlipRENullable(r: R.regex)
+    ensures R.nullable(FlipRE(r)) == R.nullable(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => FlipRENullable(r1); FlipRENullable(r2);
+    case Re_con(r1, r2) => FlipRENullable(r1); FlipRENullable(r2);
+    case Re_quant(_, _, _, r1) => FlipRENullable(r1);
+    case Re_capture(_, r1) => FlipRENullable(r1);
+    case Re_lookaround(_, _, r1) => FlipRENullable(r1);
+    case _ =>
+  }
+
   /** `TransWf` never looks at a look kind. */
   lemma FlipTransWf(r: R.regex)
     ensures T.TransWf(FlipRE(r)) == T.TransWf(r)
@@ -205,7 +222,7 @@ module LindenElkFlipRev {
     match r
     case Re_alt(r1, r2) => FlipTransWf(r1); FlipTransWf(r2);
     case Re_con(r1, r2) => FlipTransWf(r1); FlipTransWf(r2);
-    case Re_quant(_, _, _, r1) => FlipTransWf(r1);
+    case Re_quant(_, _, _, r1) => FlipTransWf(r1); FlipRENullable(r1);
     case Re_capture(_, r1) => FlipTransWf(r1);
     case Re_lookaround(_, _, r1) => FlipTransWf(r1);
     case _ =>
