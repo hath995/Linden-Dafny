@@ -211,19 +211,74 @@ fixing the `decreases` metric. **`dafny resolve` issues NO trigger warning** —
 symptom. If a representation predicate starts crashing Boogie translation after an edit, do not
 chase the logic: bisect to the new conjunct and pin its trigger.
 
-### NEXT
+### 2026-08-30 (cont.) — layer 3 COMPLETE; the remaining work is MAPPED
 
-1. **Layer 3 — `ActionsTreeRepRE.dfy`**: a new extracted arm lemma beside the existing four
-   (`QuantArmMinPos` / `QuantArmZeroNN` / `QuantArmZeroInf`, and the `Nested` triple) for the min>0
-   GENERIC case. Its forced-copy recursion is identical to the existing `min > 1` branch but
-   terminates at `min == 0` into the **star** arm instead of the do-while seam — which is exactly
-   why it needs no `CE.BoolCheckInsert` and no nullability hypothesis.
-2. **Layer 4** — widen the `+`/`{n,}` gate in `ApiMatch.SupportedL3/L4/L5`.
-3. `lem pack` as the gate, then update `SUPPORTED_FRAGMENT.md` §2.5 / §3.
+| commit | package | whole-file |
+|---|---|---|
+| `136ce79` | `walk-ok` — the do-while seam gated on `NonNullableL` | 35/0 |
+| `4ee087a` | `actions-tree-rep-re` — the GENERIC min>0 arm | 60/0 |
+| (next) | `flip-rev` — `FlipRENullable` | 19/0 |
 
-**Build note:** the working tree's `lemmata.toml`/`.lock` edits make `lem build` fail with
-`lemmata.lock is stale`, so deps were rebuilt directly:
-`dafny build --standard-libraries $(libs) --allow-warnings --no-verify -t:lib --output <out> <srcs>`
-(~10 s per package), copied over `deps/linden.<pkg>.doo` in each dependent. Fine for iteration; the
-`lem pack` gate needs `lem lock` or those files reverted first. Packages whose deps were hand-refreshed
-this session: `linden-equiv-nfa-rep-re`, `linden-equiv-actions-rep-re`.
+**Layer 3a — `WalkOk` had to change too.** `WalkOkRegF`'s `Quantified` case special-cased
+`delta.Inf? && min == 1` into the do-while SEAM form (the walk with an `Acheck` spliced in),
+UNCONDITIONALLY. That bakes the do-while shape into `WalkOk`, so it could not describe a GENERIC
+`min == 1`, whose walk is the plain `[Areg(r1), Areg(star)] + cont`. The two layouts are
+indistinguishable from the code at `pc` (both show `SetQuantToClock`), so the gate must be the same
+discriminator as everywhere else: `NUL.NonNullableL(r1)`. `WalkOkQuantForced` weakened accordingly;
+`WalkOkQuantSeam` gained `requires NonNullableL(r1)`.
+
+**Layer 3 — `ActionsTreeRepRE`**, four sites in two kinds. `ATR_QuantMin{,Nested}` got the real arm,
+modelled on the BOUNDED `NN(kx)` case (same shape: one forced copy, then `quant1` via an intro
+lemma) rather than the do-while; at `min == 1`, `NfaRepMinL(0, …)` forces `eb == em` and the loop at
+`em` IS `NfaRepL`'s star arm verbatim, so the branch just stops.
+`AtBackForkTreeRep{,Nested}` are refutations — a `min > 0` head pins a clock-mark against the pinned
+`Fork`, and the generic layout refutes identically.
+
+### THE REMAINING WORK — precisely bounded
+
+Only two kinds of site can break. Everything that merely CONSUMES `TransWf`/`WalkOk` is unaffected
+(the hypotheses only got stronger).
+
+**(a) Constructions that must re-establish `TransWf`** — i.e. prove their rewrite preserves the
+nullability annotation, the way `RevRENullable` / `FlipRENullable` do:
+
+| site | expected cost |
+|---|---|
+| `flip-statics` — `T.TransWf(XRV(r))`, `T.TransWf(FXR(r))` (×3) | FREE-ish: `XRevIsRevRENested` already proves `XRV == RevRE`, and `FXR = FlipRE ∘ XRV`, so it composes from `RevRENullable` + `FlipRENullable` |
+| `flip-gate` — `T.TransWf(FST.FXR(body))` | same composition |
+| `oracle-spec` — `T.TransWf(R.remove_capture(re))`, `T.TransWf(SD.RevRE(re))` | `RevRE` done; `remove_capture` needs its own preservation lemma (`nullable(Re_capture(c,r1)) == nullable(r1)`, so it should be structural) |
+| `lift-sim-{core,forward,gate}`, `main-theorem`, `oracle-entry` — `LookBodyOfRE`, `QidBody`, `body`, `core`, `sub` | expected FREE: these EXTRACT sub-regexes, so `TransWf` is inherited structurally and the new conjunct rides along |
+
+**(b) Lemmas that INVERT the unbounded arm** and so need the generic branch. After
+`nfa-rep-re` / `actions-rep-re` / `actions-tree-rep-re` / `walk-ok`, exactly ONE package is left —
+and it is a giant:
+
+```
+linden-equiv-lift-sim-core/src/LiftSimCore.dfy
+  1382  AR.NfaRepLPlusInv      1480  WO.WalkOkQuantSeam
+  1881  AR.NfaRepLPlusInv      5732  WO.WalkOkQuantSeam
+  2602  NR.NfaRepREPlusInv
+  3719  AR.NfaRepLPlusInv      3779  AR.NfaRepLPlusInv
+  5634  AR.NfaRepLPlusInv
+```
+
+`LiftSimCore` duplicates the `ActionsTreeRep` quantifier logic, so each site takes the SAME generic
+branch already written in `ATR_QuantMin` — mechanical, but on a file that needs `PAR=1 CORES=4` and
+tens of minutes per run (`[[linden-dafny-memory-cap]]`). Budget this as the bulk of the rung.
+
+Then **layer 4**: widen the `+`/`{n,}` gate in `ApiMatch.SupportedL3/L4/L5`, and update
+`SUPPORTED_FRAGMENT.md` §2.5/§3 (§2.5 splits into 2.5a DONE / 2.5b open).
+
+### ⚠️ THE GATE IS BROKEN INDEPENDENTLY OF THIS RUNG
+
+`lem pack` / a multi-package `lem build` currently fails at `verifying linden.equiv-mirror` with
+`module WarblreRegExpRecord does not exist`: lem stages `linden-semantics-core`'s SOURCES as
+`--library` without `linden-warblre`'s, so semantics-core's own imports cannot resolve. This is a
+transitive-dependency staging bug on the Lemmata side, NOT a proof failure and NOT caused by §2.5a
+(`linden-equiv-mirror` is untouched). A single-package `lem build` works (`nfa-rep-re`: 215/0,
+"build OK against 6 dependencies"). Until it is fixed, whole-workspace verification has to be done
+by hand, package by package, in dependency order.
+
+Working-tree hygiene: the `lemmata.toml`/`.lock` drift (four version DOWNGRADES plus one bump,
+inconsistent with the 47 equiv locks) was reverted to the committed state, which is what fixed the
+earlier `lemmata.lock is stale` failure.
