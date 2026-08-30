@@ -124,6 +124,20 @@ module LindenElkOracleDecompV {
           || ((pc == es1 || pc == es1 + 1) && OBV.MatchesV(r1, str, ov, m, cp)))
   }
 
+  /** (§2.5a) The GENERIC arm's looped interior, gated: `k` spans already done,
+      then the ordinary star loop that follows the forced copies. `StTailV` is
+      this at `k == 0`. */
+  ghost predicate StTailKV(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, em: nat, es1: nat,
+                           str: string, ov: LOr.OracleView, i: int, pc: nat, cp: int)
+    decreases CP.rsize(r1), 3, 0
+  {
+    exists m: int {:trigger IterFromV(r1, k, str, ov, i, m)} ::
+      IterFromV(r1, k, str, ov, i, m)
+      && (((pc == em || pc == em + 1 || pc == em + 2) && cp == m)
+          || InBlockV(r1, code, em + 3, es1, str, ov, m, pc, cp)
+          || ((pc == es1 || pc == es1 + 1) && OBV.MatchesV(r1, str, ov, m, cp)))
+  }
+
   /** The bounded arm's post-copies interior, gated. */
   ghost predicate BdTailV(mn: nat, kx: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code,
                           em: nat, endl: nat, str: string, ov: LOr.OracleView, i: int, pc: nat, cp: int)
@@ -200,11 +214,23 @@ module LindenElkOracleDecompV {
                  || BdTailV(q.min as nat, (q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, str, ov, i, pc, cp))
       else
         q.min > 0
-        && exists em: nat, e1: nat {:trigger OD.DoWhileShape(qid, r1, code, em, e1, endl)} ::
-             NR.NfaRepMinRE((q.min - 1) as nat, qid, r1, code, start, em)
-             && OD.DoWhileShape(qid, r1, code, em, e1, endl)
-             && (InMinV((q.min - 1) as nat, qid, r1, code, start, em, str, ov, i, pc, cp)
-                 || DwTailV((q.min - 1) as nat, qid, r1, code, em, e1, str, ov, i, pc, cp))
+        && (if nul == R.NonNullable then
+              // the do-while
+              (exists em: nat, e1: nat {:trigger OD.DoWhileShape(qid, r1, code, em, e1, endl)} ::
+                 NR.NfaRepMinRE((q.min - 1) as nat, qid, r1, code, start, em)
+                 && OD.DoWhileShape(qid, r1, code, em, e1, endl)
+                 && (InMinV((q.min - 1) as nat, qid, r1, code, start, em, str, ov, i, pc, cp)
+                     || DwTailV((q.min - 1) as nat, qid, r1, code, em, e1, str, ov, i, pc, cp)))
+            else
+              // §2.5a GENERIC: `min` forced copies, then the ORDINARY STAR loop at
+              // `em` -- reuses OD.StarShape/StTailV verbatim, as the `q.min == 0`
+              // arm above does at `start`. Explicit trigger (bounded-arm style, and
+              // it dodges the Dafny 4.11 auto-trigger crash on a bound-var `Jmp`).
+              (exists em: nat, es1: nat {:trigger OD.StarShape(qid, r1, code, em, es1, endl)} ::
+                 NR.NfaRepMinRE(q.min as nat, qid, r1, code, start, em)
+                 && OD.StarShape(qid, r1, code, em, es1, endl)
+                 && (InMinV(q.min as nat, qid, r1, code, start, em, str, ov, i, pc, cp)
+                     || StTailKV(q.min as nat, qid, r1, code, em, es1, str, ov, i, pc, cp))))
   }
 
   // --- inversion / intro helpers for the tails ---
@@ -230,6 +256,30 @@ module LindenElkOracleDecompV {
           || InBlockV(r1, code, start + 3, es1, str, ov, m, pc, cp)
           || ((pc == es1 || pc == es1 + 1) && OBV.MatchesV(r1, str, ov, m, cp))
     ensures StTailV(qid, r1, code, start, es1, str, ov, i, pc, cp)
+  {
+  }
+
+  lemma StTailKVInv(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, em: nat, es1: nat,
+                    str: string, ov: LOr.OracleView, i: int, pc: nat, cp: int) returns (m: int)
+    requires StTailKV(k, qid, r1, code, em, es1, str, ov, i, pc, cp)
+    ensures IterFromV(r1, k, str, ov, i, m)
+    ensures ((pc == em || pc == em + 1 || pc == em + 2) && cp == m)
+         || InBlockV(r1, code, em + 3, es1, str, ov, m, pc, cp)
+         || ((pc == es1 || pc == es1 + 1) && OBV.MatchesV(r1, str, ov, m, cp))
+  {
+    m :| IterFromV(r1, k, str, ov, i, m)
+      && (((pc == em || pc == em + 1 || pc == em + 2) && cp == m)
+          || InBlockV(r1, code, em + 3, es1, str, ov, m, pc, cp)
+          || ((pc == es1 || pc == es1 + 1) && OBV.MatchesV(r1, str, ov, m, cp)));
+  }
+
+  lemma StTailKVIntro(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, em: nat, es1: nat,
+                      str: string, ov: LOr.OracleView, i: int, pc: nat, cp: int, m: int)
+    requires IterFromV(r1, k, str, ov, i, m)
+    requires ((pc == em || pc == em + 1 || pc == em + 2) && cp == m)
+          || InBlockV(r1, code, em + 3, es1, str, ov, m, pc, cp)
+          || ((pc == es1 || pc == es1 + 1) && OBV.MatchesV(r1, str, ov, m, cp))
+    ensures StTailKV(k, qid, r1, code, em, es1, str, ov, i, pc, cp)
   {
   }
 
@@ -362,6 +412,14 @@ module LindenElkOracleDecompV {
         OD.OptEmptyCount((q.max.value - q.min) as nat, q.greedy, qid, r1, code, start);
         assert q.min == 0;
         assert OBV.MatchesIterV(r1, 0, str, ov, p, p);
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: an empty block is impossible here too -- `min >= 1`
+        // forced copies land at `em >= start` and the loop tail puts the end at
+        // `e1 + 2 > em`, so `start == start` is refuted.
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, start);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        assert false;
       } else {
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, start);
         NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
@@ -439,6 +497,23 @@ module LindenElkOracleDecompV {
         } else {
           var m := BdTailVInv(q.min as nat, (q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, str, ov, i, pc, cp);
           InOptVRange((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, str, ov, m, pc, cp);
+        }
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: min forced copies, then the ordinary star loop at em
+        var em: nat, es1: nat :|
+          NR.NfaRepMinRE(q.min as nat, qid, r1, code, start, em)
+          && OD.StarShape(qid, r1, code, em, es1, endl)
+          && (InMinV(q.min as nat, qid, r1, code, start, em, str, ov, i, pc, cp)
+              || StTailKV(q.min as nat, qid, r1, code, em, es1, str, ov, i, pc, cp));
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, es1);
+        if InMinV(q.min as nat, qid, r1, code, start, em, str, ov, i, pc, cp) {
+          InMinVRange(q.min as nat, qid, r1, code, start, em, str, ov, i, pc, cp);
+        } else {
+          var m := StTailKVInv(q.min as nat, qid, r1, code, em, es1, str, ov, i, pc, cp);
+          if InBlockV(r1, code, em + 3, es1, str, ov, m, pc, cp) {
+            InBlockVRange(r1, code, em + 3, es1, str, ov, m, pc, cp);
+          }
         }
       } else {
         var em: nat, e1: nat :|
@@ -611,6 +686,13 @@ module LindenElkOracleDecompV {
             OD.OptZeroSame(q.greedy, qid, r1, code, em, endl);
           }
         }
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: `min >= 1`, so a forced copy sits at `start` and
+        // MinEntryV gives the entry state directly -- no min == 1 special case
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
+        assert OD.StarShape(qid, r1, code, em, e1, endl);
+        MinEntryV(q.min as nat, qid, r1, code, start, em, str, ov, cp);
+        assert InBlockV(re, code, start, endl, str, ov, cp, start, cp);
       } else {
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
         assert OD.DoWhileShape(qid, r1, code, em, e1, endl);
@@ -1096,6 +1178,64 @@ module LindenElkOracleDecompV {
             IterConcatV(r1, q.min as nat, k, str, ov, i, m, cp2);
             assert OBV.MatchesIterV(r1, q.min as nat + k, str, ov, i, cp2);
             assert pc2 == endl && OBV.MatchesV(re, str, ov, i, cp2);
+          }
+        }
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: min forced copies, then the ordinary star loop at em
+        var em: nat, es1: nat :|
+          NR.NfaRepMinRE(q.min as nat, qid, r1, code, start, em)
+          && OD.StarShape(qid, r1, code, em, es1, endl)
+          && (InMinV(q.min as nat, qid, r1, code, start, em, str, ov, i, pc, cp)
+              || StTailKV(q.min as nat, qid, r1, code, em, es1, str, ov, i, pc, cp));
+        if InMinV(q.min as nat, qid, r1, code, start, em, str, ov, i, pc, cp) {
+          BlockStepMinV(q.min as nat, qid, r1, code, start, em, str, ov, i, pc, eb, cp, pc2, eb2, cp2);
+          if InMinV(q.min as nat, qid, r1, code, start, em, str, ov, i, pc2, cp2) {
+            assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
+          } else {
+            IterFromIntroV(r1, q.min as nat, q.min as nat, str, ov, i, cp2);
+            StTailKVIntro(q.min as nat, qid, r1, code, em, es1, str, ov, i, pc2, cp2, cp2);
+            assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
+          }
+        } else {
+          var m := StTailKVInv(q.min as nat, qid, r1, code, em, es1, str, ov, i, pc, cp);
+          if (pc == em || pc == em + 1 || pc == em + 2) && cp == m {
+            if pc == em {
+              assert OB.ForkAt(code, em, em + 1, endl);
+              EdgeFromForkAtV(code, str, ov, em + 1, endl, pc, eb, cp, pc2, eb2, cp2);
+              if pc2 == em + 1 {
+                StTailKVIntro(q.min as nat, qid, r1, code, em, es1, str, ov, i, pc2, cp2, m);
+                assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
+              } else {
+                var k := IterFromInvV(r1, q.min as nat, str, ov, i, m);
+                assert OBV.MatchesV(re, str, ov, i, cp2);
+              }
+            } else if pc == em + 1 {
+              EdgeFromSetQuantV(code, str, ov, qid, false, pc, eb, cp, pc2, eb2, cp2);
+              StTailKVIntro(q.min as nat, qid, r1, code, em, es1, str, ov, i, pc2, cp2, m);
+              assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
+            } else {
+              EdgeFromBeginLoopV(code, str, ov, pc, eb, cp, pc2, eb2, cp2);
+              BlockEntryV(r1, code, em + 3, es1, str, ov, m);
+              if em + 3 == es1 {
+                BlockEmptyV(r1, code, em + 3, str, ov, m);
+                assert pc2 == es1 && OBV.MatchesV(r1, str, ov, m, cp2);
+              }
+              StTailKVIntro(q.min as nat, qid, r1, code, em, es1, str, ov, i, pc2, cp2, m);
+              assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
+            }
+          } else if InBlockV(r1, code, em + 3, es1, str, ov, m, pc, cp) {
+            BlockStepV(r1, code, em + 3, es1, str, ov, m, pc, eb, cp, pc2, eb2, cp2);
+            StTailKVIntro(q.min as nat, qid, r1, code, em, es1, str, ov, i, pc2, cp2, m);
+            assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
+          } else if pc == es1 {
+            EdgeFromEndLoopV(code, str, ov, pc, eb, cp, pc2, eb2, cp2);
+            StTailKVIntro(q.min as nat, qid, r1, code, em, es1, str, ov, i, pc2, cp2, m);
+            assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
+          } else {
+            EdgeFromJmpV(code, str, ov, em as int, pc, eb, cp, pc2, eb2, cp2);
+            IterFromSnocV(r1, q.min as nat, str, ov, i, m, cp);
+            StTailKVIntro(q.min as nat, qid, r1, code, em, es1, str, ov, i, pc2, cp2, cp);
+            assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
           }
         }
       } else {
