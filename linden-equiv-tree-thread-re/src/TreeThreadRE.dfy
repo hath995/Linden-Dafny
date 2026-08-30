@@ -31,6 +31,8 @@ module LindenElkTreeThread {
   import ATR = LindenElkActionsTreeRep
   import L = Regex
   import CP = Compiler
+  import LN = WarblreNumeric
+  import NUL = LindenElkNullable
 
   /** Inverse of `ActionsTreeRepRE.EaOf`: builds the `LoopBool` a given
       `exit_allowed` bit corresponds to. */
@@ -151,7 +153,17 @@ module LindenElkTreeThread {
       var e1: nat :| AR.NfaRepL(rer, qm, r1, code, pc1, e1) && AR.NfaRepL(rer, qm, r2, code, e1, pc2);
       NfaRepLTransparentAtBeginLoop(rer, qm, r1, code, pc1, e1);
       NfaRepLTransparentAtBeginLoop(rer, qm, r2, code, e1, pc2);
-    case Quantified(_, _, _, _) =>  // pins Fork or SetQuantToClock
+    case Quantified(greedy, min, delta, r1) =>
+      // pins Fork (star / bounded head) or SetQuantToClock (forced-copy head).
+      // §2.5a: the GENERIC unbounded arm lives behind `NfaRepGenL`'s trigger,
+      // so its head fact has to be unfolded by hand rather than by the
+      // match's own case analysis.
+      if min > 0 && delta == LN.Inf && !NUL.NonNullableL(r1) {
+        var em, e1 := AR.NfaRepLGenInv(rer, qm, greedy, min, r1, code, pc1, pc2);
+        assert AR.NfaRepMinL(rer, qm, min, r1, code, pc1, em);
+        assert exists qid: int :: NR.GetPcRE(code, pc1) == Some(RB.SetQuantToClock(qid, false));
+        assert false;   // SetQuantToClock != BeginLoop
+      }
     case Group(_, _) =>             // pins SetRegisterToCP
     case LookaroundR(_, _) =>
     case AnchorR(_) =>

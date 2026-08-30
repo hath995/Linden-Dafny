@@ -252,9 +252,11 @@ nullability annotation, the way `RevRENullable` / `FlipRENullable` do:
 **(b) Lemmas that INVERT the unbounded arm** and so need the generic branch.
 
 > **SUPERSEDED — the count below was wrong.** It came from a `grep ... | head`, which truncated at
-> ten lines that all happened to be `LiftSimCore`. The real fallout was **31 sites across 7
-> packages**; see *§ FINAL STATE* at the end of this document for the true list. The `LiftSimCore`
-> table is still accurate as far as it goes.
+> ten lines that all happened to be `LiftSimCore`. The real fallout was **8 packages**; see
+> *§ FINAL STATE* at the end of this document for the true list. The `LiftSimCore` table is still
+> accurate as far as it goes. Note that even the corrected grep missed one package
+> (`walk-ok-entry`) — only `lem pack` found it. **Do not trust a source grep for this question; run
+> the pack.**
 
 ```
 linden-equiv-lift-sim-core/src/LiftSimCore.dfy
@@ -312,6 +314,24 @@ two propagation lemmas (`ColdPropagatesF{,Nested}`) and the two `BeginLoopColdSa
 lemmas that consume it DO, because the generic scheme puts a `BeginLoop` at `em + 2` where the
 do-while has none. Listing it here because "is this predicate layout-baked?" is the question a
 future rung has to ask, and the answer for `ColdF` is a genuinely useful *no*.
+
+### THE ONE PACKAGE THAT IS *NOT* THE PATTERN
+
+`linden-equiv-walk-ok-entry` was found by `lem pack`, not by grep, and it is the one place where the
+generic scheme needs a genuinely new argument rather than a shifted copy. `WalkOkPlusChainF` bottoms
+out at `k == 1` in the **SEAM** — the guaranteed last forced iteration, with the walk guard's
+progress check (`Acheck`) inserted at the stamp. The generic scheme has **no seam**: its code puts a
+real `BeginLoop`/`EndLoop` exactly where the spec's `Acheck` would sit. So there is nothing to
+insert, and the whole chain takes `WalkOkRegF`'s plain forced-copy branch instead.
+
+The new `WalkOkGenChainF{,Nested}` closes the seam case with `AR.TransNullableAgree` (from
+`nul != NonNullable`, derive `!NonNullableL(tr1)`), and its `k == 0` bottom re-uses the star arm
+against `Re_quant(nul, qid, CountedQuant(0, None, greedy), r1)` — **the star regex the block at `em`
+actually compiles**. That trick is worth remembering: the generic tail is not merely *shaped like* a
+star, it IS one, so any lemma stated over `NfaRepRE(re, …)` can be applied to it directly by naming
+that regex.
+
+`WalkOkPlusChainF{,Nested}` correspondingly gained `requires R.nullable(r1) == R.NonNullable`.
 
 ### THE ONE PATTERN
 
