@@ -1273,6 +1273,52 @@ module LindenElkNfaRep {
       `LookBehindFragmentRaw` except the lookaround case admits a body that is
       itself in the nested fragment (so looks may nest to any depth). The
       predicate the widened `Supported` will eventually use. */
+  /** ANNOTATION CONSISTENCY: every `Re_quant`'s stored nullability annotation
+      `nul` is exactly what `R.nullable` computes for its body — which is what
+      `R.annotate_regex` writes there (`Re_quant(nullable(ar1), ...)`).
+
+      Deliberately NOT folded into the fragment predicates: `LookBehindFragmentRE`
+      / `NestedFragmentRE` are unfolded by every lemma in this file, and adding a
+      fourth disjunct carrying an `R.nullable` call to their `Re_quant` case sent
+      `CompileNfaRepRE` into a matching loop (628M resources, timeout at 900 s,
+      though `--isolate-assertions` closed all 1009 obligations individually).
+      The §2.5a bridge in `ActionsRepRE` is the only consumer, so it rides along
+      as its own precondition there instead. */
+  predicate NullAnnotOkRE(re: R.regex)
+    decreases re
+  {
+    match re
+    case Re_empty => true
+    case Re_character(_) => true
+    case Re_anchor(_) => true
+    case Re_alt(r1, r2) => NullAnnotOkRE(r1) && NullAnnotOkRE(r2)
+    case Re_con(r1, r2) => NullAnnotOkRE(r1) && NullAnnotOkRE(r2)
+    case Re_quant(nul, _, _, r1) => nul == R.nullable(r1) && NullAnnotOkRE(r1)
+    case Re_capture(_, r1) => NullAnnotOkRE(r1)
+    case Re_lookaround(_, _, r1) => NullAnnotOkRE(r1)
+  }
+
+  /** `annotate_regex` produces annotation-consistent output. */
+  lemma AnnotateNullAnnotOk(ra: R.raw_regex, c: int, l: int, q: int)
+    ensures NullAnnotOkRE(R.annotate_regex(ra, c, l, q).0)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) =>
+      AnnotateNullAnnotOk(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateNullAnnotOk(r2, c1, l1, q1);
+    case Raw_con(r1, r2) =>
+      AnnotateNullAnnotOk(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateNullAnnotOk(r2, c1, l1, q1);
+    case Raw_quant(quant, r1) => AnnotateNullAnnotOk(r1, c, l, q + 1);
+    case Raw_count(quant, r1) => AnnotateNullAnnotOk(r1, c, l, q + 1);
+    case Raw_capture(r1) => AnnotateNullAnnotOk(r1, c + 1, l, q);
+    case Raw_lookaround(look, r1) => AnnotateNullAnnotOk(r1, c, l + 1, q);
+    case _ =>
+  }
+
   predicate NestedFragmentRaw(raw: R.raw_regex)
     decreases raw
   {
@@ -2321,6 +2367,7 @@ module LindenElkNfaRep {
                           then RB.CheckOracle(lid) else RB.NegCheckOracle(lid)];
       GetFirstRE(Flat(tl), prev);
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (E3) one assertion batch per arm
       var (l1, f1) := CP.compile(r1, start + 1, CP.Progress);
       var (l2, f2) := CP.compile(r2, f1 + 1, CP.Progress);
       FreshCorrectRE(r1, start + 1, l1, f1);
@@ -2360,6 +2407,7 @@ module LindenElkNfaRep {
         assert next == f2;
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (E3) one assertion batch per arm
       var (l1, f1) := CP.compile(r1, start, CP.Progress);
       var (l2, f2) := CP.compile(r2, f1, CP.Progress);
       FreshCorrectRE(r1, start, l1, f1);
@@ -2374,6 +2422,7 @@ module LindenElkNfaRep {
       assert (prev + Flat(l1)) + Flat(l2) == prev + Flat(tl);
       assert NfaRepRE(r1, prev + Flat(tl), start, f1 as nat) && NfaRepRE(r2, prev + Flat(tl), f1 as nat, f2 as nat);
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (E3) one assertion batch per arm
       if q.min == 0 && q.max == None {
         var (iter_code, iter_f) := CP.compile(r1, start + 3, CP.Progress);
         FreshCorrectRE(r1, start + 3, iter_code, iter_f);
@@ -2401,6 +2450,7 @@ module LindenElkNfaRep {
             && GetPcRE(prev + Flat(tl), (iter_f + 1) as nat) == Some(RB.Jmp(start))
             && next == iter_f + 2;
       } else if q.max.Some? {
+        assert {:split_here} true;   // (E3) one assertion batch per branch
         var (min_code, min_f) := CP.repeat_min(q.min, qid, r1, start, CP.Progress);
         var (opt_code, opt_f) := CP.repeat_optional(q.max.value - q.min, qid, r1, min_f, CP.Progress, q.greedy);
         FreshCorrectMinRE(q.min as nat, qid, r1, start, min_code, min_f);
@@ -2418,6 +2468,7 @@ module LindenElkNfaRep {
             && NfaRepOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, prev + Flat(tl), min_f as nat, opt_f as nat);
         NfaRepREQuantIntro(nul, qid, q, r1, prev + Flat(tl), start, min_f as nat, opt_f as nat);
       } else if nul != R.NonNullable {
+        assert {:split_here} true;   // (E3) one assertion batch per branch
         // the GENERIC scheme (§2.5a, Compiler.dfy's `else` branch): `min`
         // forced copies, then the ordinary star loop at min_f
         assert !q.greedy;
@@ -2458,6 +2509,7 @@ module LindenElkNfaRep {
         NfaRepREGenIntro(nul, qid, q, r1, prev + Flat(tl), start, min_f as nat, iter_f as nat,
                          (iter_f + 2) as nat);
       } else {
+        assert {:split_here} true;   // (E3) one assertion batch per branch
         // the do-while scheme (Compiler.dfy:107-112)
         var (min_code, min_f) := CP.repeat_min(q.min - 1, qid, r1, start, CP.Progress);
         var (body_code, body_f) := CP.compile(r1, min_f + 1, CP.Progress);

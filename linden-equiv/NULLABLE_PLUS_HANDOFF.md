@@ -118,3 +118,80 @@ Order: do §2.5a first — it is independent and it exercises the fragment-widen
 * The `cdns` table is consulted ONLY by `CheckNullable`, which §2.5a never emits.
 * Bounded `{m,n}` with a nullable body is ALREADY in the fragment (nullability is unconstrained
   there) — `a{0,3}` with `a` nullable verifies today. §2.5 is strictly about `max == None`.
+
+---
+
+## 3. PROGRESS LOG
+
+### 2026-08-30 — §2.5a layers 1–2 (branch `nullable-plus`, off `da03fe0`)
+
+**Layer 1 — `NfaRepRE.dfy`: GREEN whole-file (209 verified, 0 errors), commit `7d12d13`.**
+
+* `NfaRepRE`'s unbounded `min > 0` arm is now a two-way **`if` on `nul`**, not a disjunction —
+  the arms are disjoint by construction, so every existing consumer holding `nul == NonNullable`
+  still sees only the do-while and needed no change.
+* The GENERIC arm is `NfaRepMinRE(min, …, em)` followed by the STAR arm's shape verbatim at `em`
+  (its `Jmp` back-edge lands on its own fork, so `pc1 == em` lines up exactly).
+* Fragment predicates (`Plus`/`LookBehind`/`Nested` × `{RE,Raw}`, 6 sites) admit
+  `min > 0 && max == None && !greedy`, **and pin the annotation**:
+  `nul != NonNullable && R.nullable(r1) != NonNullable` (raw: `raw_nullable(r1) != NonNullable`).
+  The pinning is NOT optional — without it the ActionsRepRE bridge cannot tell which layout arm
+  applies (see `TransNullableAgree` below). `Raw_quant`'s guard weakened from
+  `(q.Plus? || q.LazyPlus?) ==>` to `q.Plus? ==>`.
+* New `NfaRepREGenIntro` / `NfaRepREGenInv`; `NfaRepREPlusInv` gained `requires nul == R.NonNullable`.
+* Generic arms added to: `FreshCorrect{,Nested}RE`, `CompileNfaRep{,Nested}RE`, `NfaRepExtendRE`,
+  `NfaRepIncrRE`, and the five instruction sweeps (`NoOracleInstrRE`, `GatesAboveInstrRE`,
+  `NoWriteInstrRE`, `NoCaptureInstrRE`, `NoWriteInstrNestedRE`). In every sweep the loop's own five
+  instructions (Fork/SetQuantToClock/BeginLoop at `em..em+2`, EndLoop/Jmp at `e1..e1+1`) are of the
+  harmless kind, so those `pc` cases discharge trivially — `pc <= em + 2` replaces `pc == em`.
+* Perf: pinning the fragment pushed `CompileNfaRepRE` over 300 s. Fixed by the E3 recipe — per-arm
+  and per-quant-branch `assert {:split_here} true;`, mirroring what `CompileNfaRepNestedRE` already had.
+
+**Layer 2 — `ActionsRepRE.dfy`: in progress.**
+
+* `NfaRepL`'s `Inf` arm: two GUARD-DISJOINT disjuncts (`NonNullableL(r1)` → do-while,
+  `!NonNullableL(r1) && !greedy` → generic). The generic body is factored into a new predicate
+  **`NfaRepGenL`** (`decreases r1, min + 3` — above `NfaRepMinL`'s `r1, min + 2` and `NfaRepL`'s `r1, 1`).
+* **`TransNullableAgree`** (new, verified first try). `NUL.TransNonNullable` proves only
+  `nullable(re) == NonNullable ==> NonNullableL(Translate(re))`; the bridge needs the CONVERSE, so
+  this states the biconditional. It holds because the two definitions are constructor-for-constructor
+  mirrors: `null_or(n1,n2) == NonNullable` iff both, `null_and(n1,n2) == NonNullable` iff either,
+  `Re_quant` is `CINullable` at `min == 0` and the body's nullability otherwise, and
+  `Re_empty`/`Re_anchor`/`Re_lookaround` are never `NonNullable`. Plain structural induction.
+  **It belongs in `linden-reasoning`'s `NullableFacts.dfy` next to `TransNonNullable`; it lives in
+  `ActionsRepRE` for now only to avoid rebuilding all 60 dependents mid-rung.**
+* New `NfaRepLGenIntro` / `NfaRepLGenInv`; `NfaRepLPlusInv` gained `requires NUL.NonNullableL(r1)`.
+* Both `TransNfaRep` / `TransNfaRepNested` bridge arms have their generic branch.
+
+### ⚠️ A DAFNY 4.11 TRANSLATOR BUG ON THE WAY (will recur in layers 3+)
+
+Writing the generic arm's `exists` inline in `NfaRepL` crashed Dafny outright:
+`Encountered internal compilation exception: Boogie program had 44 resolution errors:
+undeclared identifier: _t#0#1`, then a core dump. Bisected (add conjuncts one at a time to the
+working do-while arm) to a SINGLE conjunct: the loop back-edge
+`NR.GetPcRE(c, e1 + 1) == Some(RB.Jmp(em))` — a jump whose target is an existentially-bound
+variable. The star arm has the identical shape and is fine only because its target is the
+PARAMETER `pc1`.
+
+What does NOT help: `if-then-else` vs guard-disjoint disjuncts; hoisting the existential into its
+own predicate; the projection form (`.Some? && .value.Jmp? && .value.jl == em`); swapping binder
+order; fixing the `decreases` metric. **What fixes it: an explicit `{:trigger}`** on the
+quantifier. `dafny resolve` issues NO trigger warning — the crash is the only symptom. So: if a
+representation predicate starts crashing Boogie translation after an edit, do not chase the logic;
+bisect to the new conjunct and pin its trigger.
+
+### NEXT
+
+1. Rebuild the `linden.equiv-nfa-rep-re` dep and take `ActionsRepRE.dfy` whole-file green.
+2. Layer 3 — `ActionsTreeRepRE.dfy`: a new extracted arm lemma beside the existing four
+   (`QuantArmMinPos` / `QuantArmZeroNN` / `QuantArmZeroInf`, and the `Nested` triple) for the
+   min>0 GENERIC case: the forced-copy recursion is identical to the existing `min > 1` branch,
+   but it terminates at `min == 0` into the **star** arm instead of the do-while seam — which is
+   exactly why it needs no `CE.BoolCheckInsert` and no nullability hypothesis.
+3. Layer 4 — widen the `+`/`{n,}` gate in `ApiMatch.SupportedL3/L4/L5`; then `lem pack`.
+
+**Build note:** the working tree's `lemmata.toml`/`.lock` edits make `lem build` fail with
+`lemmata.lock is stale`. Deps were rebuilt directly instead:
+`dafny build --standard-libraries $(libs) --allow-warnings --no-verify -t:lib --output <out> src/X.dfy`
+(~10 s), then copied over `deps/linden.equiv-<pkg>.doo` in each dependent. Fine for iteration; the
+`lem pack` gate will need `lem lock` or those files reverted first.
