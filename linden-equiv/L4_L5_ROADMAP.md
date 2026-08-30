@@ -1582,3 +1582,18 @@ content-addressed reuse keyed on build identity, `--jobs`). Sources made warning
 members green (main-theorem 24m30, actions-tree-rep-re 26m38); `lift-sim` OOM-killed at cores=2 after 1h54 — the
 30k-line module does not fit the 80G cap as one process. NEXT: E2 — split `LindenElkLiftSim` into layer modules.
 
+
+
+## 2026-08-30 — L5 COMPLETE AND PACKAGED; next rung
+
+L5 (nested capturing lookbehind) + the `(?=x(?<=y))` widening are done and on `main` (`a1044d1`): the proof is a
+61-package lem workspace (`linden.*`), `lem pack` 61/61 green in 59 min at `--jobs 3`, no `{:isolate_assertions}`
+anywhere, every lemma under the 900 s batch limit (E3: `AGENTS.md`, `docs/LEMMATA_IN_PROOF_DEVELOPMENT.md`,
+`L5_HANDOFF.md` §5.7.5). Two false assertions found and fixed in `ForwardFindRecLBDeep` along the way.
+
+**Next rung — `SUPPORTED_FRAGMENT.md` §2.5, nullable unbounded quantifiers (`(a?)+`, `{n,}` with a nullable body):**
+medium; the engine side (`FNulledPlus`) exists, the spec correspondence is unproven; self-contained (touches the
+quantifier arms of `ActionsTreeRep*` / `ATR_Quant*` and the `+`/`{n,}` gate in `ApiMatch.SupportedL5`). Then
+§2.3/§2.4 (captures under quantifiers inside look bodies — needs a clock/dominance argument), then §2.2 (nested
+looks in negative bodies — touches linden-reasoning), then §2.6 (flags/Unicode — a new campaign). Start any of
+them from the package layout: add the arm, `lem pack` the band, profile, section (`split_here`), re-pack.

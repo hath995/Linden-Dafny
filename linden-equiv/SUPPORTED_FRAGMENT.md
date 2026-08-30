@@ -1,5 +1,8 @@
 # The verified fragment — what `Match` is guaranteed to get right
 
+> Verification status (2026-08-30): the entire equivalence — `linden.equiv` and its 60 dependency packages —
+> verifies under `lem pack` (61/61, 59 min at `--jobs 3`, no `{:isolate_assertions}`), on `main` (`a1044d1`).
+
 Status 2026-08-28 (post whole-file sweep), branch `l4-nesting`. Entry point: `ApiMatch.MatchCorrect(pattern, str)`:
 
 ```dafny
@@ -53,11 +56,12 @@ wrapper over `MainTheoremL5`. L3 is a separate proof (`MainTheoremL3`) kept for 
 
 ## 2. What is still OUT of scope, and why
 
-### 2.1 A positive lookbehind inside a **lookahead** body — `(?=x(?<=y))` — WIDENED 2026-08-28 (s6)
+### 2.1 A positive lookbehind inside a **lookahead** body — `(?=x(?<=y))` — WIDENED 2026-08-28 (s6), CLOSED 2026-08-30
 
-Status: the scope predicate, the gate hub, the carriers and `MainTheoremL5` (4447/0) are widened and green; the
-descent giants' re-verification on the widened text is the queued batch recorded in `L5_HANDOFF.md` §5.7.3 —
-if that section still carries a PENDING marker, treat this row as *provisional*.
+Status: **in scope and shipped.** The scope predicate, the gate hub, the carriers, the descent arms and
+`MainTheoremL5` are green on the widened text, and — the stronger statement — the whole workspace packs
+(`lem pack`, 61/61 members, no `{:isolate_assertions}` anywhere, every lemma under the 900 s limit; s8,
+`L5_HANDOFF.md` §5.7.5). No PENDING marker remains. Kept here as the record of what the widening changed.
 
 The ORIGINAL v1 L5 scope was:
 
@@ -177,7 +181,7 @@ proof engineering of known shape.
 
 | Gap | Effort | Notes |
 |---|---|---|
-| §2.1 lookbehind inside lookahead | medium | pure perf engineering; the fix pattern is known (§5.7.2) |
+| ~~§2.1 lookbehind inside lookahead~~ | — | **DONE 2026-08-30** (s8: packaged, no isolation) |
 | §2.3 / §2.4 capture-under-quant conditions | medium–large | needs a real clock/dominance argument, not a dispatch |
 | §2.5 nullable plus | medium | machinery exists (`FNulledPlus`), correspondence unproven |
 | §2.2 nested looks in negative bodies | large | touches linden-reasoning's `GroupFreeL` and `BoolTreeLk` |
@@ -185,7 +189,10 @@ proof engineering of known shape.
 | §2.7 backreferences | **by design** | absent from the engine AST; incompatible with a Pike/NFA engine |
 
 Hygiene item, independent of the above: **per-symbol verification never well-formedness-checks helper
-functions/predicates**. DONE 2026-08-28: a whole-file well-formedness sweep of all 51 files plus
+functions/predicates**. CLOSED BY CONSTRUCTION 2026-08-30: the gate is now the whole-workspace `lem pack`
+(61 packages, whole-file, dependency-ordered, warning-free, 900 s per batch) — see
+`docs/LEMMATA_IN_PROOF_DEVELOPMENT.md`; the E3 loop in `AGENTS.md` is how a lemma that will not pack gets
+sectioned. Earlier step, DONE 2026-08-28: a whole-file well-formedness sweep of all 51 files plus
 FULL-file verification of every file except `LiftSim.dfy` (whose four giants keep their per-symbol
 records; the rest of the file runs whole with the giants excluded) — see `L5_HANDOFF.md` §5.7.3. The
 sweep found a resolution error in `ApiMatch.dfy` (`SupportedL5` called a ghost predicate), a wf hole

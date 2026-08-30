@@ -67,7 +67,7 @@ giants 15-19 GB (PAR 1; `ForwardFindRec` needs CORES=2). A z3 worker on the wors
 15+ GB: `ForwardFindRecLB` (410 lines) OOM-killed the 80G slice ALONE at CORES=4 (2026-08-28) and had to be
 split like the forward arms; a whole-file LiftSim run needs ~35 GB and must run alone or beside ONE giant.
 
-## 5. Opacity (`hide` / `opaque`): a wash
+## 5. Opacity (`hide` / `opaque`) as a blanket setting: a wash (but see §6 — scoped, it is the lever)
 
 `ReverseCDeepFull`, identical conditions: baseline 477 s / 552 VCs; hiding the 7 tree-recursive scope
 predicates 436 s / 458 VCs (-9%); hiding all 15 (incl. `LookIds`/`CapIds`/`LookBodyOfRE`/`Translate`/
@@ -78,3 +78,24 @@ Useful by-product — what the descent lemmas actually need unfolded: only `PSM.
 `PSM.SizesOkRE`/`GateStaticAtNested`/`GateStaticsOkNested` (2 errors when hidden) and the clock
 invariants `CM.LookCpSetWithClk`/`LookCpsLE`/`LookCpsOracleTrue`/`M.FLookLoopChildLinkOk` (1 error).
 Everything else is a pass-through atom.
+
+
+## 6. E3 (2026-08-29/30): what actually made the slow lemmas fast
+
+Measured on the six lemmas that had needed `{:isolate_assertions}` or ran past 900 s, and on the twelve
+profiled packages (details: `AGENTS.md`, `docs/LEMMATA_IN_PROOF_DEVELOPMENT.md`):
+
+- **`assert {:split_here} true;` at section / match-arm boundaries** is the single biggest lever: one batch per
+  section, earlier assertions assumed. `LookRowsDynamicNested` 900 s timeout → 5.7 s; `CompileNfaRepNestedRE`
+  251 s → 7 s; `DeepFindRecLB` 257 s → 39 s; `MainTheoremL5` > 900 s → 44 s (24 batches). Dafny 4.11 opaque blocks
+  do NOT split the VC; they only hide facts.
+- **Missing facts present as timeouts, not errors** (Z3 rarely finds a counter-model here). An opaque block's
+  exported `ensures` are wf-checked in the outer context, so a `.value` without its `.Some?`, a local that lost its
+  `nat` type, or an unfold with preconditions each burns the whole limit. `--isolate-assertions
+  --verification-time-limit=60` lists exactly the obligations to restate.
+- **Scoped `hide *` + `reveal F` inside a `by` block** turns a trivially-true-but-slow fact (a one-step unfolding
+  of `cp_context`) from 300 s into instant.
+- **Every non-closing obligation was a hidden fact, an export artefact, or a false claim; none was a genuinely
+  expensive proof step.** Two false assertions in `ForwardFindRecLBDeep` had been sitting behind a 2 h isolated
+  "1808/0".
+- Whole-workspace re-pack after the second round: 61/61 in 59 min at `--jobs 3` (level 19: 15:43 → 3:36).

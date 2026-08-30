@@ -1,12 +1,23 @@
 # L5 HANDOFF — nested capturing lookBEHIND
 
-**Branch:** `l4-nesting` (NEVER merge to main / push to origin — not authorized).
+**Status (2026-08-30): L5 + the `(?=x(?<=y))` widening are COMPLETE and PACKAGED — `main` (`a1044d1`) carries
+the 61-package lem workspace, `lem pack` 61/61 green without isolation. Read §5.7.5 to resume; the next rung is
+`SUPPORTED_FRAGMENT.md` §2.5 (nullable unbounded quantifiers), then §2.3/§2.4.**
+**Branch:** work happens on `lem-split`, merged to `main` on request; never push to origin. `l4-nesting` (the
+monolith) is history only — the band packages `linden-equiv-lift-sim-*` are the source of truth.
 **Predecessors:** L4 (nested capturing lookAHEAD, COMPLETE — `FULL_DEPTH_K_HANDOFF.md`); L3b (depth-1
 capturing lookbehind, COMPLETE — `L3B_HANDOFF.md`). Running log: `L4_L5_ROADMAP.md` (read its
 END sections). This file is the L5-specific resume artifact; on conflict, the roadmap's latest dated
 section wins.
 
-**Verify** (from `linden-equiv/`):
+**Verify** — the gate is the workspace pack (from the repo root): `LEM_BUILD_TIMEOUT=0 lem pack --jobs 3`
+(reuses unchanged members). One lemma, from its package dir (deps/ is materialized by the pack):
+```
+dafny verify --standard-libraries $(for d in deps/*.doo; do printf -- '--library=%s ' $d; done) \
+  --allow-warnings --cores=4 --verification-time-limit=900 --error-limit 0 \
+  '--log-format=text;LogFileName=/tmp/x.txt' --filter-symbol=<Mod.Sym> src/<Band>.dfy
+```
+(text log → per-batch times; `tools/e3/e3profile.py` ranks a whole-file run.) LEGACY monolith recipe:
 ```
 dafny verify --standard-libraries \
   --library=deps/{linden-engine,linden-engine-model,linden-reasoning,linden-semantics-core,linden-warblre,regex-engine}.doo \
@@ -25,7 +36,7 @@ verified" usually means a wrong module name (`LindenElk*`). Commit at each green
 L5 = a **positive lookBEHIND whose body may contain nested capturing lookarounds**, e.g.
 `(?<=a(?<=b)(c))`. Two independent obligations for such a look at column `cp`:
 - **GATE** — does the lookbehind PASS? (oracle correctness) — **DONE, green.**
-- **CAPTURES** — what does its body capture? (the value tie) — **NOT DONE. The real remaining work.**
+- **CAPTURES** — what does its body capture? (the value tie) — **DONE (s5–s8; end-to-end in `MainTheoremL5`, packaged).**
 
 The current forward-only gate is `NoPosLookbehindRaw` (NfaRepRE.dfy:615) / `FwdPosLooksL`
 (MainTheorem.dfy:2178) = "positive looks are forward-only". L5 lifts it to admit positive
