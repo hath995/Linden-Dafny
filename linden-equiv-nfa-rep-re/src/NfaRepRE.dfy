@@ -354,6 +354,87 @@ module LindenElkNfaRep {
     case Raw_lookaround(_, _) => false
   }
 
+  /** §2.5b INTERIM GATE CONJUNCT: no greedy-NULLABLE unbounded `min > 0`
+      quantifier anywhere in `re` (lookaround bodies included). The compiler
+      then emits `SetQuantToClock(_, false)` ONLY — the all-stamps-false fact
+      (`NI.StampFalseAt`) that the quant-register finality layer
+      (`M.QuantRegsFinal` / `FNulledPlusIdentity`) rests on. `SupportedL3/4/5`
+      carry this conjunct until the nulled-plus reconstruction theorem lands;
+      the CIN-GREEDY layout arms (this file) are already in place beneath it. */
+  predicate NoNulledPlusRE(re: R.regex)
+    decreases re
+  {
+    match re
+    case Re_empty => true
+    case Re_character(_) => true
+    case Re_anchor(_) => true
+    case Re_alt(r1, r2) => NoNulledPlusRE(r1) && NoNulledPlusRE(r2)
+    case Re_con(r1, r2) => NoNulledPlusRE(r1) && NoNulledPlusRE(r2)
+    case Re_quant(nul, qid, q, r1) =>
+      (q.min > 0 && q.max == None && q.greedy ==> nul == R.NonNullable)
+      && NoNulledPlusRE(r1)
+    case Re_capture(cid, r1) => NoNulledPlusRE(r1)
+    case Re_lookaround(lid, la, r1) => NoNulledPlusRE(r1)
+  }
+
+  /** The `raw_regex` counterpart of `NoNulledPlusRE` (an executable check). */
+  predicate NoNulledPlusRaw(raw: R.raw_regex)
+    decreases raw
+  {
+    match raw
+    case Raw_empty => true
+    case Raw_character(_) => true
+    case Raw_anchor(_) => true
+    case Raw_alt(r1, r2) => NoNulledPlusRaw(r1) && NoNulledPlusRaw(r2)
+    case Raw_con(r1, r2) => NoNulledPlusRaw(r1) && NoNulledPlusRaw(r2)
+    case Raw_quant(q, r1) =>
+      (q.Plus? ==> R.raw_nullable(r1) == R.NonNullable)
+      && NoNulledPlusRaw(r1)
+    case Raw_count(q, r1) =>
+      (q.min > 0 && q.max == None && q.greedy ==> R.raw_nullable(r1) == R.NonNullable)
+      && NoNulledPlusRaw(r1)
+    case Raw_capture(r1) => NoNulledPlusRaw(r1)
+    case Raw_lookaround(_, r1) => NoNulledPlusRaw(r1)
+  }
+
+  /** Annotation preserves `NoNulledPlus` (the cached `nul` IS `nullable(ar1)`,
+      tied to the raw check by `AnnotateNullable`). */
+  lemma AnnotateNoNulledPlus(ra: R.raw_regex, c: int, l: int, q: int)
+    requires NoNulledPlusRaw(ra)
+    ensures NoNulledPlusRE(R.annotate_regex(ra, c, l, q).0)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) =>
+      AnnotateNoNulledPlus(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateNoNulledPlus(r2, c1, l1, q1);
+    case Raw_con(r1, r2) =>
+      AnnotateNoNulledPlus(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateNoNulledPlus(r2, c1, l1, q1);
+    case Raw_quant(quant, r1) =>
+      AnnotateNoNulledPlus(r1, c, l, q + 1);
+      AnnotateNullable(r1, c, l, q + 1);
+    case Raw_count(quant, r1) =>
+      AnnotateNoNulledPlus(r1, c, l, q + 1);
+      AnnotateNullable(r1, c, l, q + 1);
+    case Raw_capture(r1) =>
+      AnnotateNoNulledPlus(r1, c + 1, l, q);
+    case Raw_lookaround(_, r1) =>
+      AnnotateNoNulledPlus(r1, c, l + 1, q);
+    case _ =>
+  }
+
+  /** `lazy_prefix(annotate(raw))` keeps `NoNulledPlusRE` (the prefix's own
+      quantifier is a LAZY star). */
+  lemma SpecRegexNoNulledPlus(raw: R.raw_regex)
+    requires NoNulledPlusRaw(raw)
+    ensures NoNulledPlusRE(R.lazy_prefix(R.annotate(raw)))
+  {
+    AnnotateNoNulledPlus(R.Raw_capture(raw), 0, 1, 1);
+  }
+
   /** The quantifier fragment embeds in the plus fragment. */
   lemma QuantIsPlusFragmentRE(re: R.regex)
     requires QuantFragmentRE(re)

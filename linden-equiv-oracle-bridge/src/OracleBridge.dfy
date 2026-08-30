@@ -429,6 +429,83 @@ module LindenElkOracleBridge {
     }
   }
 
+  /** §2.5b: the CIN-GREEDY loop iterations, entered AT THE STAMP `em + 1`
+      (both the head fork's loop arm and the end fork's re-entry arm land
+      there): `k >= 1` nonempty spans walk the guarded loop `k` times, the
+      last one leaving through the end fork's exit arm. */
+  lemma CinLoopIter(qid: R.quantid, r1: R.regex, code: RB.code, em: nat, e1: nat, endl: nat,
+                    str: string, k: nat, i: int, j: int, eb: bool)
+    requires NR.PlusFragmentRE(r1) && NR.LookFreeRE(r1)
+    requires NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    requires NR.GetPcRE(code, em + 2) == Some(RB.BeginLoop)
+    requires NR.NfaRepRE(r1, code, em + 3, e1)
+    requires NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+    requires NR.GetPcRE(code, e1 + 1) == Some(RB.Fork((em + 1) as int, (e1 + 3) as int))
+    requires endl == e1 + 3
+    requires k >= 1
+    requires MatchesIterNE(r1, k, str, i, j)
+    requires ORc.ReachF(code, str, 0, em + 1, eb, i)
+    ensures ORc.ReachF(code, str, 0, endl, true, j)
+    ensures i < j
+    decreases CP.rsize(r1), 1, k
+  {
+    var m := MatchesIterNEHead(r1, k, str, i, j);
+    MatchesIterNEBounds(r1, k - 1, str, m, j);
+    GetPcInstr(code, em + 1, RB.SetQuantToClock(qid, false));
+    ReachFEpsIntro(code, str, 0, em + 1, eb, em + 2, eb, i);
+    GetPcInstr(code, em + 2, RB.BeginLoop);
+    ReachFEpsIntro(code, str, 0, em + 2, eb, em + 3, false, i);
+    MatchesToPath(r1, code, em + 3, e1, str, i, m, false);
+    assert ORc.ReachF(code, str, 0, e1, true, m);
+    GetPcInstr(code, e1, RB.EndLoop);
+    ReachFEpsIntro(code, str, 0, e1, true, e1 + 1, true, m);
+    assert ForkAt(code, e1 + 1, em + 1, endl);
+    ForkEdges(code, str, m, e1 + 1, true, em + 1, endl);
+    if k == 1 {
+      ReachFEpsIntro(code, str, 0, e1 + 1, true, endl, true, m);
+      assert m == j;
+    } else {
+      ReachFEpsIntro(code, str, 0, e1 + 1, true, em + 1, true, m);
+      CinLoopIter(qid, r1, code, em, e1, endl, str, k - 1, m, j, true);
+    }
+  }
+
+  /** §2.5b: the CIN-GREEDY loop from its head fork: `k` NONEMPTY spans walk
+      the guarded loop `k` times; `k == 0` leaves through the head fork's skip
+      arm, over the trailing `SetQuantToClock(qid, true)` stamp. */
+  lemma CinLoopPath(qid: R.quantid, r1: R.regex, code: RB.code, em: nat, e1: nat, endl: nat,
+                    str: string, k: nat, i: int, j: int, eb: bool)
+    requires NR.PlusFragmentRE(r1) && NR.LookFreeRE(r1)
+    requires NR.GetPcRE(code, em) == Some(RB.Fork((em + 1) as int, (e1 + 2) as int))
+    requires NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    requires NR.GetPcRE(code, em + 2) == Some(RB.BeginLoop)
+    requires NR.NfaRepRE(r1, code, em + 3, e1)
+    requires NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+    requires NR.GetPcRE(code, e1 + 1) == Some(RB.Fork((em + 1) as int, (e1 + 3) as int))
+    requires NR.GetPcRE(code, e1 + 2) == Some(RB.SetQuantToClock(qid, true))
+    requires endl == e1 + 3
+    requires MatchesIterNE(r1, k, str, i, j)
+    requires ORc.ReachF(code, str, 0, em, eb, i)
+    ensures ORc.ReachF(code, str, 0, endl, if j > i then true else eb, j)
+    decreases CP.rsize(r1), 2
+  {
+    if k == 0 {
+      // the skip arm: over the stamp-true and out
+      assert ForkAt(code, em, em + 1, e1 + 2);
+      ForkEdges(code, str, i, em, eb, em + 1, e1 + 2);
+      ReachFEpsIntro(code, str, 0, em, eb, e1 + 2, eb, i);
+      GetPcInstr(code, e1 + 2, RB.SetQuantToClock(qid, true));
+      ReachFEpsIntro(code, str, 0, e1 + 2, eb, endl, eb, i);
+      return;
+    }
+    MatchesIterNEBounds(r1, k, str, i, j);
+    assert ForkAt(code, em, em + 1, e1 + 2);
+    ForkEdges(code, str, i, em, eb, em + 1, e1 + 2);
+    ReachFEpsIntro(code, str, 0, em, eb, em + 1, eb, i);
+    CinLoopIter(qid, r1, code, em, e1, endl, str, k, i, j, eb);
+    assert j > i;
+  }
+
   /** THE forward bridge direction: a span match of a look-free plus-fragment
       regex yields a path through its compiled block — from any reachable
       entry configuration to the block's end, with the exit flag re-armed iff
@@ -518,7 +595,7 @@ module LindenElkOracleBridge {
         MatchesIterBounds(r1, k - mn, str, mid, j);
         OptChainPath(kx, k2, q.greedy, qid, r1, code, em, endl, str, mid, j,
                      if mid > i then true else eb);
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         // §2.5a GENERIC: `min` forced copies, then the very star loop the
         // `q.min == 0` arm above walks -- at `em` instead of `start`.
         var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
@@ -531,6 +608,19 @@ module LindenElkOracleBridge {
         var k2 := IterDropEmpty(r1, k - mn, str, mid, j);
         StarLoopPath(qid, r1, code, em, e1, endl, str, k2, mid, j,
                      if mid > i then true else eb);
+      } else if nul != R.NonNullable {
+        // §2.5b CIN-GREEDY: min-1 forced copies, then the stamped end-fork
+        // loop; empty spans drop (the loop guard kills them) and a fully
+        // empty remainder leaves through the head fork's skip arm.
+        var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, code, start, endl);
+        var mn1 := (q.min - 1) as nat;
+        var mid := IterSplit(r1, k, mn1, str, i, j);
+        MinChainPath(mn1, qid, r1, code, start, em, str, i, mid, eb);
+        MatchesIterBounds(r1, mn1, str, i, mid);
+        MatchesIterBounds(r1, k - mn1, str, mid, j);
+        var k2 := IterDropEmpty(r1, k - mn1, str, mid, j);
+        CinLoopPath(qid, r1, code, em, e1, endl, str, k2, mid, j,
+                    if mid > i then true else eb);
       } else {
         // the do-while scheme: min-1 forced copies, then >= 1 looped spans
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
