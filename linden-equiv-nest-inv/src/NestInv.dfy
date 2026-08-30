@@ -133,6 +133,12 @@ module LindenElkNestInv {
         var em' := NR.NfaRepREQuantInv(nul, qid, q, r1, code, start, e');
         NfaRepDetermMinRE(q.min as nat, qid, r1, code, start, em, em');
         NfaRepDetermOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, e, e');
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: min forced copies, then the star loop
+        var em, be := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, e);
+        var em', be' := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, e');
+        NfaRepDetermMinRE(q.min as nat, qid, r1, code, start, em, em');
+        NfaRepDetermRE(r1, code, em + 3, be, be');
       } else {
         var em, be := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, e);
         var em', be' := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, e');
@@ -214,6 +220,123 @@ module LindenElkNestInv {
          else NestInvOptRE(k - 1, greedy, qid, r1, code, e1 + 1, pce, pc, cc, qc, mx)
   }
 
+  /** (§2.5a) The GENERIC unbounded-`min` arm of `NestInvRE`: `min` forced copies
+      then the ordinary star loop at `em`, so the tail claims are the star arm's
+      shifted from `pcb` to `em`, with the Min chain's claims before it. Named
+      (not inline) to keep `NestInvRE`'s axiom small for its consumers. */
+  ghost predicate NestInvGenRE(nul: R.nullability, qid: R.quantid, q: R.counted_quantifier,
+                               r1: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
+                               cc: seq<int>, qc: seq<int>, mx: int)
+    requires q.min > 0
+    decreases CP.rsize(r1), q.min as nat + 3
+  {
+    var mn := q.min as nat;
+    exists em: nat, e1: nat
+      {:trigger NR.NfaRepMinRE(mn, qid, r1, code, pcb, em), NR.NfaRepRE(r1, code, em + 3, e1)} ::
+      NR.NfaRepMinRE(mn, qid, r1, code, pcb, em)
+      && NR.GetPcRE(code, em) == Some(RB.Fork(e1 + 2, em + 1))
+      && NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(code, em + 2) == Some(RB.BeginLoop)
+      && NR.NfaRepRE(r1, code, em + 3, e1)
+      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+      && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(em))
+      && pce == e1 + 2
+      && if pc < em then NestInvMinRE(mn, qid, r1, code, pcb, em, pc, cc, qc, mx)
+         else if pc == em || pc == em + 1 then true
+         else if pc == em + 2 then
+           AI.get_idx(qc, qid) >= mx && AllStaleRE(r1, cc, AI.get_idx(qc, qid))
+         else if em + 3 <= pc < e1 then
+           AI.get_idx(qc, qid) >= mx
+           && NestInvRE(r1, code, em + 3, e1, pc, cc, qc, AI.get_idx(qc, qid))
+         else AI.get_idx(qc, qid) >= mx
+  }
+
+  /** Inversion for `NestInvGenRE`: hands a consumer the two layout witnesses
+      and the site claims, so no consumer has to unfold the (triggered)
+      existential itself. */
+  lemma NestInvGenREInv(nul: R.nullability, qid: R.quantid, q: R.counted_quantifier,
+                        r1: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
+                        cc: seq<int>, qc: seq<int>, mx: int) returns (em: nat, e1: nat)
+    requires q.min > 0
+    requires NestInvGenRE(nul, qid, q, r1, code, pcb, pce, pc, cc, qc, mx)
+    ensures NR.NfaRepMinRE(q.min as nat, qid, r1, code, pcb, em)
+    ensures NR.GetPcRE(code, em) == Some(RB.Fork(e1 + 2, em + 1))
+    ensures NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    ensures NR.GetPcRE(code, em + 2) == Some(RB.BeginLoop)
+    ensures NR.NfaRepRE(r1, code, em + 3, e1)
+    ensures NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+    ensures NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(em))
+    ensures pce == e1 + 2
+    ensures pc < em ==> NestInvMinRE(q.min as nat, qid, r1, code, pcb, em, pc, cc, qc, mx)
+    ensures pc == em + 2 ==>
+              AI.get_idx(qc, qid) >= mx && AllStaleRE(r1, cc, AI.get_idx(qc, qid))
+    ensures em + 3 <= pc < e1 ==>
+              AI.get_idx(qc, qid) >= mx
+              && NestInvRE(r1, code, em + 3, e1, pc, cc, qc, AI.get_idx(qc, qid))
+    ensures pc >= e1 ==> AI.get_idx(qc, qid) >= mx
+  {
+    var mn := q.min as nat;
+    em, e1 :|
+      NR.NfaRepMinRE(mn, qid, r1, code, pcb, em)
+      && NR.GetPcRE(code, em) == Some(RB.Fork(e1 + 2, em + 1))
+      && NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(code, em + 2) == Some(RB.BeginLoop)
+      && NR.NfaRepRE(r1, code, em + 3, e1)
+      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+      && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(em))
+      && pce == e1 + 2
+      && if pc < em then NestInvMinRE(mn, qid, r1, code, pcb, em, pc, cc, qc, mx)
+         else if pc == em || pc == em + 1 then true
+         else if pc == em + 2 then
+           AI.get_idx(qc, qid) >= mx && AllStaleRE(r1, cc, AI.get_idx(qc, qid))
+         else if em + 3 <= pc < e1 then
+           AI.get_idx(qc, qid) >= mx
+           && NestInvRE(r1, code, em + 3, e1, pc, cc, qc, AI.get_idx(qc, qid))
+         else AI.get_idx(qc, qid) >= mx;
+    NR.NfaRepIncrRE(r1, code, em + 3, e1);   // em + 3 <= e1: the site cases are exhaustive
+  }
+
+  /** Introduction for `NestInvGenRE`: the dual of `NestInvGenREInv`. */
+  lemma NestInvGenREIntro(nul: R.nullability, qid: R.quantid, q: R.counted_quantifier,
+                          r1: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
+                          cc: seq<int>, qc: seq<int>, mx: int, em: nat, e1: nat)
+    requires q.min > 0
+    requires NR.NfaRepMinRE(q.min as nat, qid, r1, code, pcb, em)
+    requires NR.GetPcRE(code, em) == Some(RB.Fork(e1 + 2, em + 1))
+    requires NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    requires NR.GetPcRE(code, em + 2) == Some(RB.BeginLoop)
+    requires NR.NfaRepRE(r1, code, em + 3, e1)
+    requires NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+    requires NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(em))
+    requires pce == e1 + 2
+    requires pc < em ==> NestInvMinRE(q.min as nat, qid, r1, code, pcb, em, pc, cc, qc, mx)
+    requires pc == em + 2 ==>
+               AI.get_idx(qc, qid) >= mx && AllStaleRE(r1, cc, AI.get_idx(qc, qid))
+    requires em + 3 <= pc < e1 ==>
+               AI.get_idx(qc, qid) >= mx
+               && NestInvRE(r1, code, em + 3, e1, pc, cc, qc, AI.get_idx(qc, qid))
+    requires pc >= e1 ==> AI.get_idx(qc, qid) >= mx
+    ensures NestInvGenRE(nul, qid, q, r1, code, pcb, pce, pc, cc, qc, mx)
+  {
+    var mn := q.min as nat;
+    assert NR.NfaRepMinRE(mn, qid, r1, code, pcb, em)
+      && NR.GetPcRE(code, em) == Some(RB.Fork(e1 + 2, em + 1))
+      && NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(code, em + 2) == Some(RB.BeginLoop)
+      && NR.NfaRepRE(r1, code, em + 3, e1)
+      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+      && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(em))
+      && pce == e1 + 2
+      && if pc < em then NestInvMinRE(mn, qid, r1, code, pcb, em, pc, cc, qc, mx)
+         else if pc == em || pc == em + 1 then true
+         else if pc == em + 2 then
+           AI.get_idx(qc, qid) >= mx && AllStaleRE(r1, cc, AI.get_idx(qc, qid))
+         else if em + 3 <= pc < e1 then
+           AI.get_idx(qc, qid) >= mx
+           && NestInvRE(r1, code, em + 3, e1, pc, cc, qc, AI.get_idx(qc, qid))
+         else AI.get_idx(qc, qid) >= mx;
+  }
+
   ghost predicate NestInvRE(re: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
                             cc: seq<int>, qc: seq<int>, mx: int)
     requires NR.NfaRepRE(re, code, pcb, pce)
@@ -265,7 +388,7 @@ module LindenElkNestInv {
           && NR.NfaRepOptRE(kx, q.greedy, qid, r1, code, em, pce)
           && if pc < em then NestInvMinRE(mn, qid, r1, code, pcb, em, pc, cc, qc, mx)
              else NestInvOptRE(kx, q.greedy, qid, r1, code, em, pce, pc, cc, qc, mx)
-      else
+      else if nul == R.NonNullable then
         // the do-while (+/{n,}): a Min copy's claims at the last stamp, then
         // the star body's claims, then the backward fork
         var mn1 := (q.min - 1) as nat;
@@ -281,6 +404,13 @@ module LindenElkNestInv {
                AI.get_idx(qc, qid) >= mx
                && NestInvRE(r1, code, em + 1, e1, pc, cc, qc, AI.get_idx(qc, qid))
              else AI.get_idx(qc, qid) >= mx                   // the backward fork: body done
+      else
+        // §2.5a GENERIC: `min` forced copies, then the ORDINARY STAR loop at
+        // `em`. Factored into `NestInvGenRE` rather than inlined: consumers
+        // (NestInvOpenSite / NestInvAdvance / NestInvFrameOddOpt) unfold this
+        // predicate constantly, and a twelve-conjunct inline arm timed them out
+        // at 900 s -- the same way an inline `R.nullable` looped CompileNfaRepRE.
+        NestInvGenRE(nul, qid, q, r1, code, pcb, pce, pc, cc, qc, mx)
     case Re_capture(cid, r1) =>
       exists e1: nat ::
         NR.GetPcRE(code, pcb) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
@@ -380,6 +510,18 @@ module LindenElkNestInv {
           NR.NfaRepIncrMinRE(mn, qid, r1, code, pcb, em);
           assert em == pcb;
           NestOptEntryRE(kx, q.greedy, qid, r1, code, em, pce, cc, qc, mx);
+        }
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: min forced copies, then the star loop
+        // the do-while: entry is a Min copy head or the last stamp - no claims
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, pcb, pce);
+        var mn1 := q.min as nat;
+        if pcb < em {
+          NestMinEntryRE(mn1, qid, r1, code, pcb, em, cc, qc, mx);
+        } else {
+          NR.NfaRepIncrMinRE(mn1, qid, r1, code, pcb, em);
+          assert em == pcb;
+          // the stamp site: no claims
         }
       } else {
         // the do-while: entry is a Min copy head or the last stamp - no claims
@@ -694,6 +836,25 @@ module LindenElkNestInv {
           NestInvOpenSiteMin(mn, qid, r1, code, pcb, em, pc, cc, qc, mx, gid);
         } else {
           NestInvOpenSiteOpt(kx, q.greedy, qid, r1, code, em, pce, pc, cc, qc, mx, gid);
+        }
+        assert PIV.MxAtGid(re, cc, qc, mx, gid) == PIV.MxAtGid(r1, cc, qc, qv, gid);
+        assert PIV.BodyOf(re, gid) == PIV.BodyOf(r1, gid);
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: `min` forced copies, then the ORDINARY STAR loop at
+        // `em`. An open site is inside the chain or inside the loop body; every
+        // structural instruction of the loop itself is not a SetRegisterToCP.
+        var mn := q.min as nat;
+        var em, e1 := NestInvGenREInv(nul, qid, q, r1, code, pcb, pce, pc, cc, qc, mx);
+        NR.NfaRepIncrMinRE(mn, qid, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        var qv := AI.get_idx(qc, qid);
+        if pc < em {
+          NestInvOpenSiteMin(mn, qid, r1, code, pcb, em, pc, cc, qc, mx, gid);
+        } else if em + 3 <= pc < e1 {
+          NestInvOpenSite(r1, code, em + 3, e1, pc, cc, qc, qv, gid);
+          assert qv >= mx;                          // the stamp-chain claim
+        } else {
+          assert false;   // Fork/SetQuantToClock/BeginLoop/EndLoop/Jmp
         }
         assert PIV.MxAtGid(re, cc, qc, mx, gid) == PIV.MxAtGid(r1, cc, qc, qv, gid);
         assert PIV.BodyOf(re, gid) == PIV.BodyOf(r1, gid);
@@ -1043,6 +1204,55 @@ module LindenElkNestInv {
         }
         return;
       }
+      if !(q.min == 0 && q.max == None) && nul != R.NonNullable {
+        // §2.5a GENERIC: `min` forced copies, then the ORDINARY STAR loop at
+        // `em`. Edges: the chain's (`NestInvAdvanceMin`), then the star arm's
+        // shifted from `pcb` to `em` -- with the back-`Jmp(em)` returning to
+        // the loop's fork rather than the block head.
+        var mn := q.min as nat;
+        var em, e1 := NestInvGenREInv(nul, qid, q, r1, code, pcb, pce, pc, cc, qc, mx);
+        NR.NfaRepIncrMinRE(mn, qid, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NestInvAdvanceMin(mn, qid, r1, code, pcb, em, pc, pc', cc, qc, mx);
+          NestInvGenREIntro(nul, qid, q, r1, code, pcb, pce, pc', cc, qc, mx, em, e1);
+          assert NestInvRE(re, code, pcb, pce, pc', cc, qc, mx);
+        } else if pc == em {
+          // the loop fork: into the stamp (claims `true`) or out of the block
+          assert pc' == em + 1 || pc' == pce;
+          if pc' == em + 1 {
+            NestInvGenREIntro(nul, qid, q, r1, code, pcb, pce, pc', cc, qc, mx, em, e1);
+            assert NestInvRE(re, code, pcb, pce, pc', cc, qc, mx);
+          }
+        } else if pc == em + 1 {
+          assert false;      // SetQuantToClock is a write, not a StepEdge
+        } else if pc == em + 2 {
+          // BeginLoop falls into the body entry (or, empty body, onto EndLoop).
+          assert pc' == em + 3;
+          var qv := AI.get_idx(qc, qid);
+          if pc' != e1 {
+            NestEntryRE(r1, code, em + 3, e1, cc, qc, qv);
+          }
+          NestInvGenREIntro(nul, qid, q, r1, code, pcb, pce, pc', cc, qc, mx, em, e1);
+          assert NestInvRE(re, code, pcb, pce, pc', cc, qc, mx);
+        } else if em + 3 <= pc < e1 {
+          var qv := AI.get_idx(qc, qid);
+          NestInvAdvance(r1, code, em + 3, e1, pc, pc', cc, qc, qv);
+          NestInvGenREIntro(nul, qid, q, r1, code, pcb, pce, pc', cc, qc, mx, em, e1);
+          assert NestInvRE(re, code, pcb, pce, pc', cc, qc, mx);
+        } else if pc == e1 {
+          // EndLoop falls through to the back-Jmp; the stamp-chain claim carries.
+          assert pc' == e1 + 1;
+          NestInvGenREIntro(nul, qid, q, r1, code, pcb, pce, pc', cc, qc, mx, em, e1);
+          assert NestInvRE(re, code, pcb, pce, pc', cc, qc, mx);
+        } else {
+          // the back-Jmp returns to the loop fork; claims there are `true`.
+          assert pc == e1 + 1 && pc' == em;
+          NestInvGenREIntro(nul, qid, q, r1, code, pcb, pce, pc', cc, qc, mx, em, e1);
+          assert NestInvRE(re, code, pcb, pce, pc', cc, qc, mx);
+        }
+        return;
+      }
       if !(q.min == 0 && q.max == None) {
         var mn1 := (q.min - 1) as nat;
         var em: nat, e1: nat :|
@@ -1302,6 +1512,23 @@ module LindenElkNestInv {
         } else {
           NestInvFrameOddOpt(kx, q.greedy, qid, r1, code, em, pce, pc, cc, cc', qc, mx);
         }
+        assert NestInvRE(re, code, pcb, pce, pc, cc', qc, mx);
+        return;
+      }
+      if !(q.min == 0 && q.max == None) && nul != R.NonNullable {
+        // §2.5a GENERIC: `min` forced copies, then the ORDINARY STAR loop at
+        // `em`. Only `AllStaleRE` and the body invariant mention `cc`, and both
+        // read even (start) registers only, which the frame preserves.
+        var mn := q.min as nat;
+        var em, e1 := NestInvGenREInv(nul, qid, q, r1, code, pcb, pce, pc, cc, qc, mx);
+        NR.NfaRepIncrMinRE(mn, qid, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NestInvFrameOddMin(mn, qid, r1, code, pcb, em, pc, cc, cc', qc, mx);
+        } else if em + 3 <= pc < e1 {
+          NestInvFrameOdd(r1, code, em + 3, e1, pc, cc, cc', qc, AI.get_idx(qc, qid));
+        }
+        NestInvGenREIntro(nul, qid, q, r1, code, pcb, pce, pc, cc', qc, mx, em, e1);
         assert NestInvRE(re, code, pcb, pce, pc, cc', qc, mx);
         return;
       }
@@ -1621,6 +1848,46 @@ module LindenElkNestInv {
           NestInvStampOpt(kx, q.greedy, qid, r1, code, em, pce, pc, cc, qc, qc', mx, qid0, clk);
           assert (qid0 as nat) in PIV.QuantIds(re);
           assert NestInvRE(re, code, pcb, pce, pc + 1, cc, qc', mx);
+        }
+        return;
+      }
+      if !(q.min == 0 && q.max == None) && nul != R.NonNullable {
+        // §2.5a GENERIC: `min` forced copies, then the ORDINARY STAR loop at
+        // `em`. A stamp lands either inside the chain (`NestInvStampMin`), at
+        // the loop's own stamp `em + 1`, or inside its body (recursive call);
+        // every other site in the loop is not a `SetQuantToClock`.
+        var mn := q.min as nat;
+        var em, e1 := NestInvGenREInv(nul, qid, q, r1, code, pcb, pce, pc, cc, qc, mx);
+        NR.NfaRepIncrMinRE(mn, qid, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        assert qid >= 0;                                // QuantUnique
+        assert (qid as nat) !in PIV.QuantIds(r1);       // QuantUnique
+        if pc < em {
+          NestInvStampMin(mn, qid, r1, code, pcb, em, pc, cc, qc, qc', mx, qid0, clk);
+          assert (qid0 as nat) in PIV.QuantIds(re);
+          NestInvGenREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, cc, qc', mx, em, e1);
+          assert NestInvRE(re, code, pcb, pce, pc + 1, cc, qc', mx);
+        } else if pc == em + 1 {
+          // THE loop stamp: the instruction pins qid0 == qid.
+          assert qid0 == qid;
+          assert (qid0 as nat) in PIV.QuantIds(re);
+          assert AI.get_idx(qc', qid) == clk;
+          assert clk >= mx;
+          assert AllStaleRE(r1, cc, clk);
+          NestInvGenREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, cc, qc', mx, em, e1);
+          assert NestInvRE(re, code, pcb, pce, pc + 1, cc, qc', mx);
+        } else if em + 3 <= pc < e1 {
+          var qv := AI.get_idx(qc, qid);
+          NestInvStamp(r1, code, em + 3, e1, pc, cc, qc, qc', qv, qid0, clk);
+          assert (qid0 as nat) in PIV.QuantIds(r1);
+          assert qid != qid0;
+          assert AI.get_idx(qc', qid) == AI.get_idx(qc, qid);
+          NestInvGenREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, cc, qc', mx, em, e1);
+          assert NestInvRE(re, code, pcb, pce, pc + 1, cc, qc', mx);
+        } else {
+          // pc == em (Fork), em + 2 (BeginLoop), e1 (EndLoop), e1 + 1 (Jmp):
+          // none of these is a SetQuantToClock.
+          assert false;
         }
         return;
       }
@@ -1947,6 +2214,26 @@ module LindenElkNestInv {
         }
         return;
       }
+      if !(q.min == 0 && q.max == None) && nul != R.NonNullable {
+        // §2.5a GENERIC: `min` forced copies, then the ORDINARY STAR loop at
+        // `em`. The write is in the chain or in the loop body; the loop's own
+        // instructions are never a SetRegisterToCP.
+        var mn := q.min as nat;
+        var em, e1 := NestInvGenREInv(nul, qid, q, r1, code, pcb, pce, pc, cc, qc, mx);
+        NR.NfaRepIncrMinRE(mn, qid, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NestInvOpenWriteMin(mn, qid, r1, code, pcb, em, pc, cc, cc', qc, mx, sreg, clk);
+        } else if em + 3 <= pc < e1 {
+          var qv := AI.get_idx(qc, qid);
+          NestInvOpenWrite(r1, code, em + 3, e1, pc, cc, cc', qc, qv, sreg, clk);
+        } else {
+          assert false;      // Fork/SetQuantToClock/BeginLoop/EndLoop/Jmp
+        }
+        NestInvGenREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, cc', qc, mx, em, e1);
+        assert NestInvRE(re, code, pcb, pce, pc + 1, cc', qc, mx);
+        return;
+      }
       if !(q.min == 0 && q.max == None) {
         var mn1 := (q.min - 1) as nat;
         var em: nat, e1: nat :|
@@ -2174,6 +2461,25 @@ module LindenElkNestInv {
           CodeShapeAtMin(mn, qid, r1, code, pcb, em, pc);
         } else {
           CodeShapeAtOpt(kx, q.greedy, qid, r1, code, em, pce, pc);
+        }
+        assert (qid as nat) in PIV.QuantIds(re);
+        return;
+      }
+      if !(q.min == 0 && q.max == None) && nul != R.NonNullable {
+        // §2.5a GENERIC: `min` forced copies, then the ORDINARY STAR loop at
+        // `em`; the shape claims are the chain's, then the star arm's shifted.
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, pcb, pce);
+        var mn := q.min as nat;
+        NR.NfaRepIncrMinRE(mn, qid, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          CodeShapeAtMin(mn, qid, r1, code, pcb, em, pc);
+        } else if em + 3 <= pc < e1 {
+          CodeShapeAt(r1, code, em + 3, e1, pc);
+        } else {
+          // pc == em: the fork; em + 1: SetQuantToClock; em + 2: BeginLoop;
+          // e1: EndLoop; e1 + 1: the back Jmp -- none needs a subtree witness
+          // except the stamp, which is this quant's own qid.
         }
         assert (qid as nat) in PIV.QuantIds(re);
         return;
@@ -2493,6 +2799,29 @@ module LindenElkNestInv {
         var kx := (q.max.value - q.min) as nat;
         ColdPropagatesMinF(mn, qid, r1, c, pc1, em, n);
         ColdPropagatesOptF(kx, q.greedy, qid, r1, c, em, pc2, n);
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: `min` forced copies, then the ORDINARY STAR loop at
+        // `em`. The chain carries Cold to `em`; from there this is the star
+        // arm verbatim, shifted by `em - pc1`: the loop body is a Cold sink
+        // (its fall-through is `EndLoop`, which has no Cold edge), so only the
+        // fork's skip arm reaches `pc2`.
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, c, pc1, pc2);
+        var mn := q.min as nat;
+        ColdPropagatesMinF(mn, qid, r1, c, pc1, em, n);
+        NR.NfaRepIncrRE(r1, c, em + 3, e1);
+        assert !AR.BackForkAt(c, em);
+        if ColdF(c, em + 1, n - 1) {
+          assert !AR.BackForkAt(c, em + 1);
+          assert ColdF(c, em + 2, n - 2);
+          assert !AR.BackForkAt(c, em + 2);
+          assert ColdF(c, em + 3, n - 3);
+          ColdPropagatesF(r1, c, em + 3, e1, n - 3);
+          assert !AR.BackForkAt(c, e1);
+          assert false;   // EndLoop has no Cold edge
+        } else {
+          assert ColdF(c, pc2, n - 1);
+          ColdFMono(c, pc2, n - 1, n);
+        }
       } else {
         // the do-while: the NonNullable body walls off its own fork
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, c, pc1, pc2);
@@ -2614,6 +2943,21 @@ module LindenElkNestInv {
           && NR.NfaRepMinRE(mn - 1, qid, r1, c, eb, em);
         assert !AR.BackForkAt(c, pc1);
         ColdNNF(r1, c, pc1 + 1, eb, n - 1);
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: min forced copies, then the star loop
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, c, pc1, pc2);
+        var mn1 := q.min as nat;
+        if mn1 > 0 {
+          var eb: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetQuantToClock(qid, false))
+            && NR.NfaRepRE(r1, c, pc1 + 1, eb)
+            && NR.NfaRepMinRE(mn1 - 1, qid, r1, c, eb, em);
+          assert !AR.BackForkAt(c, pc1);
+          ColdNNF(r1, c, pc1 + 1, eb, n - 1);
+        } else {
+          assert em == pc1;
+          assert !AR.BackForkAt(c, pc1);
+          ColdNNF(r1, c, pc1 + 1, e1, n - 1);
+        }
       } else {
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, c, pc1, pc2);
         var mn1 := (q.min - 1) as nat;
@@ -2799,6 +3143,28 @@ module LindenElkNestInv {
         } else {
           BeginLoopColdSafeAtOpt(kx, q.greedy, qid, r1, c, em, pce, p);
         }
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: `min` forced copies, then the ORDINARY STAR loop at
+        // `em`. `em + 2` is this loop's own BeginLoop -- the star arm's Cold
+        // sink argument verbatim, shifted from `pcb` to `em`.
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, c, pcb, pce);
+        var mn := q.min as nat;
+        NR.NfaRepIncrMinRE(mn, qid, r1, c, pcb, em);
+        NR.NfaRepIncrRE(r1, c, em + 3, e1);
+        if p < em {
+          BeginLoopColdSafeAtMin(mn, qid, r1, c, pcb, em, p);
+        } else if p == em + 2 {
+          if ColdRE(c, p + 1) {
+            var n: nat :| ColdF(c, em + 3, n);
+            ColdPropagatesF(r1, c, em + 3, e1, n);
+            assert !AR.BackForkAt(c, e1);
+            assert false;
+          }
+        } else {
+          assert p != em && p != em + 1 && p != e1 && p != e1 + 1;
+          assert em + 3 <= p < e1;
+          BeginLoopColdSafeAt(r1, c, em + 3, e1, p);
+        }
       } else {
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, c, pcb, pce);
         var mn1 := (q.min - 1) as nat;
@@ -2878,6 +3244,21 @@ module LindenElkNestInv {
           && NR.NfaRepMinRE(mn - 1, qid, r1, c, eb, em);
         assert !AR.BackForkAt(c, pc1);
         ColdNNFNested(r1, c, pc1 + 1, eb, n - 1);
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: min forced copies, then the star loop
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, c, pc1, pc2);
+        var mn1 := q.min as nat;
+        if mn1 > 0 {
+          var eb: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetQuantToClock(qid, false))
+            && NR.NfaRepRE(r1, c, pc1 + 1, eb)
+            && NR.NfaRepMinRE(mn1 - 1, qid, r1, c, eb, em);
+          assert !AR.BackForkAt(c, pc1);
+          ColdNNFNested(r1, c, pc1 + 1, eb, n - 1);
+        } else {
+          assert em == pc1;
+          assert !AR.BackForkAt(c, pc1);
+          ColdNNFNested(r1, c, pc1 + 1, e1, n - 1);
+        }
       } else {
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, c, pc1, pc2);
         var mn1 := (q.min - 1) as nat;
@@ -3027,6 +3408,26 @@ module LindenElkNestInv {
         var kx := (q.max.value - q.min) as nat;
         ColdPropagatesMinFNested(mn, qid, r1, c, pc1, em, n);
         ColdPropagatesOptFNested(kx, q.greedy, qid, r1, c, em, pc2, n);
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: `min` forced copies, then the ORDINARY STAR loop at
+        // `em` -- the star arm verbatim, shifted by `em - pc1`.
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, c, pc1, pc2);
+        var mn := q.min as nat;
+        ColdPropagatesMinFNested(mn, qid, r1, c, pc1, em, n);
+        NR.NfaRepIncrRE(r1, c, em + 3, e1);
+        assert !AR.BackForkAt(c, em);
+        if ColdF(c, em + 1, n - 1) {
+          assert !AR.BackForkAt(c, em + 1);
+          assert ColdF(c, em + 2, n - 2);
+          assert !AR.BackForkAt(c, em + 2);
+          assert ColdF(c, em + 3, n - 3);
+          ColdPropagatesFNested(r1, c, em + 3, e1, n - 3);
+          assert !AR.BackForkAt(c, e1);
+          assert false;   // EndLoop has no Cold edge
+        } else {
+          assert ColdF(c, pc2, n - 1);
+          ColdFMono(c, pc2, n - 1, n);
+        }
       } else {
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, c, pc1, pc2);
         var mn1 := (q.min - 1) as nat;
@@ -3167,6 +3568,26 @@ module LindenElkNestInv {
           BeginLoopColdSafeAtMinNested(mn, qid, r1, c, pcb, em, p);
         } else {
           BeginLoopColdSafeAtOptNested(kx, q.greedy, qid, r1, c, em, pce, p);
+        }
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: the star arm's Cold sink argument, shifted to `em`.
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, c, pcb, pce);
+        var mn := q.min as nat;
+        NR.NfaRepIncrMinRE(mn, qid, r1, c, pcb, em);
+        NR.NfaRepIncrRE(r1, c, em + 3, e1);
+        if p < em {
+          BeginLoopColdSafeAtMinNested(mn, qid, r1, c, pcb, em, p);
+        } else if p == em + 2 {
+          if ColdRE(c, p + 1) {
+            var n: nat :| ColdF(c, em + 3, n);
+            ColdPropagatesFNested(r1, c, em + 3, e1, n);
+            assert !AR.BackForkAt(c, e1);
+            assert false;
+          }
+        } else {
+          assert p != em && p != em + 1 && p != e1 && p != e1 + 1;
+          assert em + 3 <= p < e1;
+          BeginLoopColdSafeAtNested(r1, c, em + 3, e1, p);
         }
       } else {
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, c, pcb, pce);
@@ -3369,6 +3790,33 @@ module LindenElkNestInv {
           NestInvResetSiteMin(mn, qid0, r1, code, pcb, em, pc, cc, qc, mx, qid);
         } else {
           NestInvResetSiteOpt(kx, q.greedy, qid0, r1, code, em, pce, pc, cc, qc, mx, qid);
+        }
+        if (qid as int) == qid0 {
+          assert qid in PIV.QuantIds(re);           // PathPresentQ base case
+        } else {
+          assert (qid0 as nat) != qid;
+          assert qid in PIV.QuantIds(r1);
+          assert AI.get_idx(qc, qid0) >= mx;        // ancestor clause
+        }
+        return;
+      }
+      if !(q.min == 0 && q.max == None) && nul != R.NonNullable {
+        // §2.5a GENERIC: `min` forced copies, then the ORDINARY STAR loop at
+        // `em`; `em + 1` is this quant's own reset site.
+        var mn := q.min as nat;
+        var em, e1 := NestInvGenREInv(nul, qid0, q, r1, code, pcb, pce, pc, cc, qc, mx);
+        NR.NfaRepIncrMinRE(mn, qid0, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NestInvResetSiteMin(mn, qid0, r1, code, pcb, em, pc, cc, qc, mx, qid);
+        } else if pc == em + 1 {
+          // THE loop reset site: the instruction pins qid == qid0
+          assert (qid as int) == qid0;
+        } else if em + 3 <= pc < e1 {
+          var qv := AI.get_idx(qc, qid0);
+          NestInvResetSite(r1, code, em + 3, e1, pc, cc, qc, qv, qid);
+        } else {
+          assert false;                             // Fork/BeginLoop/EndLoop/Jmp
         }
         if (qid as int) == qid0 {
           assert qid in PIV.QuantIds(re);           // PathPresentQ base case
@@ -4283,6 +4731,23 @@ module LindenElkNestInv {
         }
         return;
       }
+      if !(q.min == 0 && q.max == None) && nul != R.NonNullable {
+        // §2.5a GENERIC: `min` forced copies, then the ORDINARY STAR loop at
+        // `em`; an oracle check sits in the chain or in the loop body.
+        var mn := q.min as nat;
+        var em, e1 := NestInvGenREInv(nul, qid0, q, r1, code, pcb, pce, pc, cc, qc, mx);
+        NR.NfaRepIncrMinRE(mn, qid0, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NestInvLookSiteMinNested(mn, qid0, r1, code, pcb, em, pc, cc, qc, mx, lid);
+        } else if em + 3 <= pc < e1 {
+          var qv := AI.get_idx(qc, qid0);
+          NestInvLookSiteNested(r1, code, em + 3, e1, pc, cc, qc, qv, lid);
+        } else {
+          assert false;   // Fork/SetQuantToClock/BeginLoop/EndLoop/Jmp
+        }
+        return;
+      }
       if !(q.min == 0 && q.max == None) {
         var mn1 := (q.min - 1) as nat;
         var em: nat, e1: nat :|
@@ -4439,6 +4904,23 @@ module LindenElkNestInv {
           NestInvLookSiteMin(mn, qid0, r1, code, pcb, em, pc, cc, qc, mx, lid);
         } else {
           NestInvLookSiteOpt(kx, q.greedy, qid0, r1, code, em, pce, pc, cc, qc, mx, lid);
+        }
+        return;
+      }
+      if !(q.min == 0 && q.max == None) && nul != R.NonNullable {
+        // §2.5a GENERIC: `min` forced copies, then the ORDINARY STAR loop at
+        // `em`; an oracle check sits in the chain or in the loop body.
+        var mn := q.min as nat;
+        var em, e1 := NestInvGenREInv(nul, qid0, q, r1, code, pcb, pce, pc, cc, qc, mx);
+        NR.NfaRepIncrMinRE(mn, qid0, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NestInvLookSiteMin(mn, qid0, r1, code, pcb, em, pc, cc, qc, mx, lid);
+        } else if em + 3 <= pc < e1 {
+          var qv := AI.get_idx(qc, qid0);
+          NestInvLookSite(r1, code, em + 3, e1, pc, cc, qc, qv, lid);
+        } else {
+          assert false;   // Fork/SetQuantToClock/BeginLoop/EndLoop/Jmp
         }
         return;
       }
@@ -6835,6 +7317,18 @@ module LindenElkNestInv {
           LookSiteTopMinNested(q.min as nat, qid, r1, code, start, em, pc);
         } else {
           LookSiteTopOptNested((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
+        }
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: min forced copies, then the star loop
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          LookSiteTopMinNested(q.min as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          LookSiteTopNested(r1, code, em + 3, e1, pc);
+        } else {
         }
       } else {
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);

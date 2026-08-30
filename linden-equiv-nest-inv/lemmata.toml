@@ -14,6 +14,9 @@ to_export = ["src/**/*.dfy"]
 [options]
 standard-libraries = true
 verification-time-limit = "900"
+# NestInv.dfy is 7k lines; at --cores=4 a whole-file run OOMs against the
+# 80G dafny.slice cap. Two z3 workers keep it under the cap.
+cores = "2"
 
 [verification]
 expected-errors = [

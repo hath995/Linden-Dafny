@@ -249,9 +249,12 @@ nullability annotation, the way `RevRENullable` / `FlipRENullable` do:
 | `oracle-spec` — `T.TransWf(R.remove_capture(re))`, `T.TransWf(SD.RevRE(re))` | `RevRE` done; `remove_capture` needs its own preservation lemma (`nullable(Re_capture(c,r1)) == nullable(r1)`, so it should be structural) |
 | `lift-sim-{core,forward,gate}`, `main-theorem`, `oracle-entry` — `LookBodyOfRE`, `QidBody`, `body`, `core`, `sub` | expected FREE: these EXTRACT sub-regexes, so `TransWf` is inherited structurally and the new conjunct rides along |
 
-**(b) Lemmas that INVERT the unbounded arm** and so need the generic branch. After
-`nfa-rep-re` / `actions-rep-re` / `actions-tree-rep-re` / `walk-ok`, exactly ONE package is left —
-and it is a giant:
+**(b) Lemmas that INVERT the unbounded arm** and so need the generic branch.
+
+> **SUPERSEDED — the count below was wrong.** It came from a `grep ... | head`, which truncated at
+> ten lines that all happened to be `LiftSimCore`. The real fallout was **31 sites across 7
+> packages**; see *§ FINAL STATE* at the end of this document for the true list. The `LiftSimCore`
+> table is still accurate as far as it goes.
 
 ```
 linden-equiv-lift-sim-core/src/LiftSimCore.dfy
@@ -269,7 +272,7 @@ tens of minutes per run (`[[linden-dafny-memory-cap]]`). Budget this as the bulk
 Then **layer 4**: widen the `+`/`{n,}` gate in `ApiMatch.SupportedL3/L4/L5`, and update
 `SUPPORTED_FRAGMENT.md` §2.5/§3 (§2.5 splits into 2.5a DONE / 2.5b open).
 
-### ⚠️ THE GATE IS BROKEN INDEPENDENTLY OF THIS RUNG
+### ⚠️ THE GATE WAS BROKEN INDEPENDENTLY OF THIS RUNG (since RESOLVED — see § FINAL STATE)
 
 `lem pack` / a multi-package `lem build` currently fails at `verifying linden.equiv-mirror` with
 `module WarblreRegExpRecord does not exist`: lem stages `linden-semantics-core`'s SOURCES as
@@ -282,3 +285,88 @@ by hand, package by package, in dependency order.
 Working-tree hygiene: the `lemmata.toml`/`.lock` drift (four version DOWNGRADES plus one bump,
 inconsistent with the 47 equiv locks) was reverted to the committed state, which is what fixed the
 earlier `lemmata.lock is stale` failure.
+
+---
+
+## § FINAL STATE (2026-08-30)
+
+### The reusable artifact: SEVEN layout-baked predicates
+
+The campaign's central finding is that exactly seven predicates hard-code ONE compiler scheme for
+the unbounded `min > 0` case. Every one of them had to grow a second arm, and every consumer that
+INVERTS one of them had to grow a matching branch. Widening any future scheme means touching this
+same list and nothing else:
+
+| predicate | package |
+|---|---|
+| `NfaRepRE`  | `linden-equiv-nfa-rep-re` |
+| `NfaRepL`   | `linden-equiv-actions-rep-re` |
+| `WalkOkRegF`| `linden-equiv-walk-ok` |
+| `InBlock`   | `linden-equiv-oracle-decomp` |
+| `InBlockV`  | `linden-equiv-oracle-decomp-v` |
+| `NestInvRE` | `linden-equiv-nest-inv` |
+| `ColdF`†    | `linden-equiv-nest-inv` |
+
+† `ColdF` turned out NOT to need extension — it is stated over bytecode, not regex shape — but its
+two propagation lemmas (`ColdPropagatesF{,Nested}`) and the two `BeginLoopColdSafeAt{,Nested}`
+lemmas that consume it DO, because the generic scheme puts a `BeginLoop` at `em + 2` where the
+do-while has none. Listing it here because "is this predicate layout-baked?" is the question a
+future rung has to ask, and the answer for `ColdF` is a genuinely useful *no*.
+
+### THE ONE PATTERN
+
+Every generic arm in the campaign is the same rewrite. The generic scheme is
+
+```
+  NfaRepMinRE(min, …, pcb, em)          -- `min` forced copies
+  em     : Fork(e1 + 2, em + 1)         -- LAZY fork (skip first)
+  em + 1 : SetQuantToClock(qid, false)
+  em + 2 : BeginLoop
+  em + 3 .. e1 : the body
+  e1     : EndLoop
+  e1 + 1 : Jmp(em)                      -- back to the FORK, not the block head
+  pce == e1 + 2
+```
+
+which is **the ordinary star arm shifted from `pcb` to `em`, with a Min chain in front**. So every
+proof obligation splits into "the chain's" (delegate to the existing `…Min` helper) and "the star's"
+(copy the star arm verbatim, `pcb ↦ em`). The two places this bites:
+
+1. **The back edge is `Jmp(em)`, not `Jmp(pcb)`** — advance lemmas must land on the fork, not the
+   block head. `NestInvAdvance` is the one that cares.
+2. **`em + 2` is a `BeginLoop`** — the do-while has no `BeginLoop` at all, so any lemma that case-
+   splits on `BeginLoop` sites needs a new case. This is what broke both `BeginLoopColdSafeAt`
+   twins; the symptom was `assert em + 3 <= p < e1` failing, and the fix was the star arm's own
+   Cold-sink argument (`ColdPropagatesF` into the body, then `!BackForkAt(c, e1)`, `assert false`).
+
+### PERFORMANCE: inline size, not logical content
+
+Three separate 900 s timeouts this rung, all the same cause and all the same fix — **a fat arm
+inlined into a hot predicate**, never the arm's logic:
+
+| symptom | fix | after |
+|---|---|---|
+| `CompileNfaRepRE` 628 M resources / 900 s | move annotation consistency out of the fragment axiom into `TransWf`; use a datatype FIELD comparison (`nul != R.NonNullable`), never a recursive call (`R.nullable(r1)`), in a hot predicate | 215/0 |
+| `NfaRepL` consumers timing out | factor the generic body into `NfaRepGenL` + explicit `{:trigger}` | 54/0 |
+| `NestInvOpenSite` / `NestInvAdvance` / `NestInvFrameOddOpt` each 900 s | factor the 12-conjunct generic arm into `NestInvGenRE` | 21.7 s / 31.4 s / 69.5 s |
+
+The `NestInvGenRE` factoring is worth copying wholesale: predicate + `NestInvGenREInv` (inversion,
+returns `em, e1` and the site claims) + `NestInvGenREIntro` (the dual). With those two helpers, each
+of the nine consumer arms is ~15 lines and no consumer ever unfolds the existential itself.
+
+Two Dafny findings, both recorded in memory:
+* A **recursive function call** in a hot predicate creates a matching loop; a **datatype field
+  comparison** costs nothing.
+* Dafny 4.11 **crashes** (Boogie `undeclared identifier: _t#0#1`, core dump, no trigger warning) on
+  `GetPcRE(c, e1 + 1) == Some(RB.Jmp(em))` with `em` existentially bound. An explicit `{:trigger}`
+  is the only fix. → `[[dafny-auto-trigger-crash]]`
+
+### The pack gate
+
+The "module `WarblreRegExpRecord` does not exist" failure above was working-tree drift in the
+`lemmata.toml`/`.lock` files, not a Lemmata bug; with those reverted, `LEM_BUILD_TIMEOUT=0 lem pack
+--jobs 3` runs clean. Levels 0–4 (17 members) pack in ~9 min against a 59-min full-workspace
+baseline — **no regression from §2.5a**.
+
+`linden-equiv-nest-inv/lemmata.toml` now pins `cores = "2"`: `NestInv.dfy` is 7 k lines and a
+whole-file run at `--cores=4` OOMs against the 80 G `dafny.slice` cap.
