@@ -333,7 +333,7 @@ module LindenElkOracleSpec {
     match re
     case Re_alt(r1, r2) => RemoveCaptureTransWf(r1); RemoveCaptureTransWf(r2);
     case Re_con(r1, r2) => RemoveCaptureTransWf(r1); RemoveCaptureTransWf(r2);
-    case Re_quant(_, _, _, r1) => RemoveCaptureTransWf(r1);
+    case Re_quant(_, _, _, r1) => RemoveCaptureTransWf(r1); RemoveCaptureNullable(r1);
     case Re_capture(_, r1) => RemoveCaptureTransWf(r1);
     case _ =>
   }
