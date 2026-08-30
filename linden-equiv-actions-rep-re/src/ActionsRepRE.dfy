@@ -232,6 +232,35 @@ module LindenElkActionsRep {
       && pc2 == e1 + 2
   }
 
+  /** The CIN-GREEDY end-fork layout (SUPPORTED_FRAGMENT 2.5b): min-1 forced
+      copies of `r1`'s block ending at the head fork `em`, then a guarded loop
+      whose EXIT path stamps `SetQuantToClock(qid, true)` — recording "the
+      mandatory iteration matched empty here" for the nulled-plus capture
+      reconstruction. Both the head fork's re-entry and the end fork's re-entry
+      target the stamp at `em + 1`; the two stamps share ONE `qid` (the inner
+      existential binds both). Factored out of `NfaRepL`'s `Inf` arm as its own
+      predicate with an explicit trigger, exactly like `NfaRepGenL` (an inline
+      `exists` there makes the Dafny 4.11 Boogie translation ill-formed). */
+  ghost predicate NfaRepCinL(rer: LW.RegExpRecord, qm: QMap, min: nat, r1: L.Regex, c: RB.code, pc1: nat, pc2: nat)
+    requires min > 0
+    // above `NfaRepMinL`'s `r1, (min-1) + 2` (which it calls) and `NfaRepL`'s `r1, 1`
+    decreases r1, min + 3
+  {
+    exists em: nat, e1: nat
+      {:trigger NfaRepMinL(rer, qm, min - 1, r1, c, pc1, em), NfaRepL(rer, qm, r1, c, em + 3, e1)} ::
+      NfaRepMinL(rer, qm, min - 1, r1, c, pc1, em)
+      && NR.GetPcRE(c, em) == Some(RB.Fork(em + 1, e1 + 2))
+      && (exists qid: int ::
+            NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+            && NR.GetPcRE(c, e1 + 2) == Some(RB.SetQuantToClock(qid, true))
+            && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
+      && NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+      && NfaRepL(rer, qm, r1, c, em + 3, e1)
+      && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+      && NR.GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 3))
+      && pc2 == e1 + 3
+  }
+
   ghost predicate NfaRepL(rer: LW.RegExpRecord, qm: QMap, r: L.Regex, c: RB.code, pc1: nat, pc2: nat)
     decreases r, 1
   {
@@ -296,15 +325,21 @@ module LindenElkActionsRep {
                      && pc2 == e1 + 1)
                // the GENERIC scheme: a nullable body under an unbounded min > 0
                // compiles to `min` forced copies followed by the ordinary star
-               // loop at `em` -- and only for a LAZY quantifier (the
-               // greedy-nullable CheckNullable schemes are out of the fragment).
+               // loop at `em` -- and only for a LAZY quantifier.
                // No `Acheck` has to be manufactured here, which is why this arm
                // carries no nullability hypothesis. Its body lives in
                // `NfaRepGenL` because an `exists` written inline in this nested
                // `match delta` arm makes Dafny 4.11 emit an ill-formed Boogie
                // axiom ("undeclared identifier: _t#0#1").
                || (!NUL.NonNullableL(r1) && !greedy
-                   && NfaRepGenL(rer, qm, min, r1, c, pc1, pc2)))
+                   && NfaRepGenL(rer, qm, min, r1, c, pc1, pc2))
+               // the CIN-GREEDY end-fork scheme (§2.5b): a CI-nullable body
+               // under a GREEDY unbounded min > 0. The `!NonNullableL` conjunct
+               // is redundant (CINotNonNullableL) but keeps the three disjuncts
+               // SYNTACTICALLY guard-disjoint. The CDN-greedy scheme
+               // (CheckNullable) stays out of the fragment.
+               || (!NUL.NonNullableL(r1) && greedy && NUL.CINullableL(r1)
+                   && NfaRepCinL(rer, qm, min, r1, c, pc1, pc2)))
          case NN(kx) =>
            exists em: nat ::
              NfaRepMinL(rer, qm, min, r1, c, pc1, em)
@@ -413,9 +448,10 @@ module LindenElkActionsRep {
       of the forced copies and the end of the loop body. */
   lemma NfaRepLGenInv(rer: LW.RegExpRecord, qm: QMap, greedy: bool, min: nat, r1: L.Regex, c: RB.code, pc1: nat, pc2: nat) returns (em: nat, e1: nat)
     requires min > 0
-    requires !NUL.NonNullableL(r1)
+    // §2.5b split the nullable side on greediness; the GENERIC side must now
+    // be selected by the caller (LAZY).
+    requires !NUL.NonNullableL(r1) && !greedy
     requires NfaRepL(rer, qm, L.Quantified(greedy, min, LN.Inf, r1), c, pc1, pc2)
-    ensures !greedy
     ensures NfaRepMinL(rer, qm, min, r1, c, pc1, em)
     ensures NR.GetPcRE(c, em) == Some(RB.Fork(e1 + 2, em + 1))
     ensures exists qid: int ::
@@ -438,6 +474,59 @@ module LindenElkActionsRep {
       && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
       && NR.GetPcRE(c, e1 + 1) == Some(RB.Jmp(em))
       && pc2 == e1 + 2;
+  }
+
+  /** Introduction lemma for the CIN-GREEDY end-fork arm of `NfaRepL` (§2.5b). */
+  lemma NfaRepLCinIntro(rer: LW.RegExpRecord, qm: QMap, greedy: bool, min: nat, r1: L.Regex, c: RB.code, pc1: nat, em: nat, e1: nat, pc2: nat, qid: int)
+    requires min > 0 && !NUL.NonNullableL(r1) && greedy && NUL.CINullableL(r1)
+    requires NfaRepMinL(rer, qm, min - 1, r1, c, pc1, em)
+    requires NR.GetPcRE(c, em) == Some(RB.Fork(em + 1, e1 + 2))
+    requires NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    requires NR.GetPcRE(c, e1 + 2) == Some(RB.SetQuantToClock(qid, true))
+    requires qid in qm.quants && qm.quants[qid] == L.DefGroups(r1)
+    requires NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+    requires NfaRepL(rer, qm, r1, c, em + 3, e1)
+    requires NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+    requires NR.GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 3))
+    requires pc2 == e1 + 3
+    ensures NfaRepL(rer, qm, L.Quantified(greedy, min, LN.Inf, r1), c, pc1, pc2)
+  {
+    assert NfaRepCinL(rer, qm, min, r1, c, pc1, pc2);
+  }
+
+  /** Inversion lemma for the CIN-GREEDY end-fork arm of `NfaRepL` (§2.5b):
+      recover the head fork and the loop-body end; the two stamps share one
+      `qid`. */
+  lemma NfaRepLCinInv(rer: LW.RegExpRecord, qm: QMap, greedy: bool, min: nat, r1: L.Regex, c: RB.code, pc1: nat, pc2: nat) returns (em: nat, e1: nat)
+    requires min > 0
+    requires !NUL.NonNullableL(r1) && greedy
+    requires NfaRepL(rer, qm, L.Quantified(greedy, min, LN.Inf, r1), c, pc1, pc2)
+    ensures NUL.CINullableL(r1)
+    ensures NfaRepMinL(rer, qm, min - 1, r1, c, pc1, em)
+    ensures NR.GetPcRE(c, em) == Some(RB.Fork(em + 1, e1 + 2))
+    ensures exists qid: int ::
+      NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(c, e1 + 2) == Some(RB.SetQuantToClock(qid, true))
+      && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1)
+    ensures NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+    ensures NfaRepL(rer, qm, r1, c, em + 3, e1)
+    ensures NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+    ensures NR.GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 3))
+    ensures pc2 == e1 + 3
+  {
+    assert NfaRepCinL(rer, qm, min, r1, c, pc1, pc2);
+    em, e1 :|
+      NfaRepMinL(rer, qm, min - 1, r1, c, pc1, em)
+      && NR.GetPcRE(c, em) == Some(RB.Fork(em + 1, e1 + 2))
+      && (exists qid: int ::
+            NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+            && NR.GetPcRE(c, e1 + 2) == Some(RB.SetQuantToClock(qid, true))
+            && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
+      && NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+      && NfaRepL(rer, qm, r1, c, em + 3, e1)
+      && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+      && NR.GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 3))
+      && pc2 == e1 + 3;
   }
 
   // ===========================================================================
@@ -603,7 +692,7 @@ module LindenElkActionsRep {
         assert T.TrDelta(q) == LN.NN(kx);
         assert T.Translate(re) == L.Quantified(q.greedy, mn, LN.NN(kx), T.Translate(r1));
         NfaRepLQuantIntro(rer, qm, q.greedy, mn, kx, T.Translate(r1), c, pc1, em, pc2);
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         // the GENERIC scheme (§2.5a): transport the forced chain and the star
         // loop. `TransNullableAgree` is what turns the engine's "not annotated
         // NonNullable" into the `!NonNullableL` the GENERIC arm asks for.
@@ -617,6 +706,22 @@ module LindenElkActionsRep {
         assert T.Translate(re) == L.Quantified(q.greedy, mn, LN.Inf, T.Translate(r1));
         assert qid in qm.quants && qm.quants[qid] == L.DefGroups(T.Translate(r1));
         NfaRepLGenIntro(rer, qm, q.greedy, mn, T.Translate(r1), c, pc1, em, e1, pc2, qid);
+      } else if nul != R.NonNullable {
+        // the CIN-GREEDY end-fork scheme (§2.5b): transport the forced chain
+        // and the loop body; `NfaRepRECinInv` pins `nul == CINullable`, and
+        // `TransCINullable` (through `TransWf`'s `nul == R.nullable(r1)`)
+        // turns it into the `CINullableL` the CIN arm asks for.
+        var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, c, pc1, pc2);
+        var mn := q.min as nat;
+        TransNfaRepMin(rer, qm, mn - 1, qid, r1, c, pc1, em);
+        TransNfaRep(rer, qm, r1, c, em + 3, e1);
+        TransNullableAgree(r1);
+        NUL.TransCINullable(r1);
+        assert !NUL.NonNullableL(T.Translate(r1)) && NUL.CINullableL(T.Translate(r1));
+        assert T.TrDelta(q) == LN.Inf;
+        assert T.Translate(re) == L.Quantified(q.greedy, mn, LN.Inf, T.Translate(r1));
+        assert qid in qm.quants && qm.quants[qid] == L.DefGroups(T.Translate(r1));
+        NfaRepLCinIntro(rer, qm, q.greedy, mn, T.Translate(r1), c, pc1, em, e1, pc2, qid);
       } else {
         // the do-while: transport the forced chain and the guaranteed body,
         // and carry NonNullableL through the annotation agreement
@@ -793,10 +898,15 @@ module LindenElkActionsRep {
                 && endl == e1 + 1;
               NfaRepIncrMinL(rer, qm, min - 1, r1, c, start, em);
               NfaRepIncrL(rer, qm, r1, c, em + 1, e1);
-            } else {
+            } else if !greedy {
               // the GENERIC scheme (§2.5a): min forced copies, then the star loop
               var em, e1 := NfaRepLGenInv(rer, qm, greedy, min, r1, c, start, endl);
               NfaRepIncrMinL(rer, qm, min, r1, c, start, em);
+              NfaRepIncrL(rer, qm, r1, c, em + 3, e1);
+            } else {
+              // the CIN-GREEDY end-fork scheme (§2.5b)
+              var em, e1 := NfaRepLCinInv(rer, qm, greedy, min, r1, c, start, endl);
+              NfaRepIncrMinL(rer, qm, min - 1, r1, c, start, em);
               NfaRepIncrL(rer, qm, r1, c, em + 3, e1);
             }
           case NN(kx) =>
@@ -1025,7 +1135,7 @@ module LindenElkActionsRep {
         assert T.TrDelta(q) == LN.NN(kx);
         assert T.Translate(re) == L.Quantified(q.greedy, mn, LN.NN(kx), T.Translate(r1));
         NfaRepLQuantIntro(rer, qm, q.greedy, mn, kx, T.Translate(r1), c, pc1, em, pc2);
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         // the GENERIC scheme (§2.5a): transport the forced chain and the star
         // loop. `TransNullableAgree` is what turns the engine's "not annotated
         // NonNullable" into the `!NonNullableL` the GENERIC arm asks for.
@@ -1039,6 +1149,20 @@ module LindenElkActionsRep {
         assert T.Translate(re) == L.Quantified(q.greedy, mn, LN.Inf, T.Translate(r1));
         assert qid in qm.quants && qm.quants[qid] == L.DefGroups(T.Translate(r1));
         NfaRepLGenIntro(rer, qm, q.greedy, mn, T.Translate(r1), c, pc1, em, e1, pc2, qid);
+      } else if nul != R.NonNullable {
+        // the CIN-GREEDY end-fork scheme (§2.5b): transport the forced chain
+        // and the loop body (mirror of the depth-1 bridge's CIN branch).
+        var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, c, pc1, pc2);
+        var mn := q.min as nat;
+        TransNfaRepMinNested(rer, qm, mn - 1, qid, r1, c, pc1, em);
+        TransNfaRepNested(rer, qm, r1, c, em + 3, e1);
+        TransNullableAgree(r1);
+        NUL.TransCINullable(r1);
+        assert !NUL.NonNullableL(T.Translate(r1)) && NUL.CINullableL(T.Translate(r1));
+        assert T.TrDelta(q) == LN.Inf;
+        assert T.Translate(re) == L.Quantified(q.greedy, mn, LN.Inf, T.Translate(r1));
+        assert qid in qm.quants && qm.quants[qid] == L.DefGroups(T.Translate(r1));
+        NfaRepLCinIntro(rer, qm, q.greedy, mn, T.Translate(r1), c, pc1, em, e1, pc2, qid);
       } else {
         // the do-while: transport the forced chain and the guaranteed body,
         // and carry NonNullableL through the annotation agreement
