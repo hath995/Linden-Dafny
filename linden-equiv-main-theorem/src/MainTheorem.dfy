@@ -3462,9 +3462,11 @@ module LindenElkMain {
     case Re_alt(r1, r2) => FCompileExtraPlusFrame(r1, c); FCompileExtraPlusFrame(r2, CP.FCompileExtra(r1, c));
     case Re_con(r1, r2) => FCompileExtraPlusFrame(r1, c); FCompileExtraPlusFrame(r2, CP.FCompileExtra(r1, c));
     case Re_quant(nul, qid, quant, r1) =>
-      // plus fragment: an unbounded min > 0 quant carries the NonNullable
-      // annotation, so the greedy-nullable-+ table update never fires
-      assert quant.min > 0 && quant.max == None ==> nul == R.NonNullable;
+      // plus fragment: an unbounded min > 0 quant is either NonNullable (the
+      // do-while) or LAZY (§2.5a's generic scheme). `FCompileExtra` writes
+      // f_plus_bc only when `nul != NonNullable && quant.greedy`, so neither
+      // shape fires the greedy-nullable-+ table update.
+      assert quant.min > 0 && quant.max == None ==> (nul == R.NonNullable || !quant.greedy);
       FCompileExtraPlusFrame(r1, c);
     case Re_lookaround(_, _, _) =>
   }
@@ -11143,6 +11145,20 @@ module LindenElkMain {
         } else {
           CaptureWriteIdsOutsideOptREGen((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
         }
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: min forced copies then the star loop; the loop's own
+        // five instructions (Fork/SetQuantToClock/BeginLoop at em..em+2,
+        // EndLoop/Jmp at e1..e1+1) are all of the harmless kind
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          CaptureWriteIdsOutsideMinREGen(q.min as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          CaptureWriteIdsOutsideREGen(r1, code, em + 3, e1, pc);
+        } else {
+        }
       } else {
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
         NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
@@ -11396,6 +11412,20 @@ module LindenElkMain {
           LookCheckIdsMinREGen(q.min as nat, qid, r1, code, start, em, pc);
         } else {
           LookCheckIdsOptREGen((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
+        }
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: min forced copies then the star loop; the loop's own
+        // five instructions (Fork/SetQuantToClock/BeginLoop at em..em+2,
+        // EndLoop/Jmp at e1..e1+1) are all of the harmless kind
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          LookCheckIdsMinREGen(q.min as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          LookCheckIdsREGen(r1, code, em + 3, e1, pc);
+        } else {
         }
       } else {
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
@@ -17696,6 +17726,20 @@ module LindenElkMain {
           LookCheckDirectMinREGen(q.min as nat, qid, r1, code, start, em, pc);
         } else {
           LookCheckDirectOptREGen((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
+        }
+      } else if nul != R.NonNullable {
+        // §2.5a GENERIC: min forced copies then the star loop; the loop's own
+        // five instructions (Fork/SetQuantToClock/BeginLoop at em..em+2,
+        // EndLoop/Jmp at e1..e1+1) are all of the harmless kind
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          LookCheckDirectMinREGen(q.min as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          LookCheckDirectREGen(r1, code, em + 3, e1, pc);
+        } else {
         }
       } else {
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
