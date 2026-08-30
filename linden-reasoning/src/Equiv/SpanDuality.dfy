@@ -2258,6 +2258,29 @@ module LindenSpanDuality {
     case Re_lookaround(l, lk, r1) => RE.Re_lookaround(l, lk, RevRE(r1))
   }
 
+  /** Reversal does not change nullability. Needed since `T.TransWf` pins each
+      `Re_quant`'s annotation to `RE.nullable` of its body (§2.5a) while `RevRE`
+      keeps the annotation and reverses the body. The only non-structural step is
+      `Re_con`, where reversal swaps the operands -- and `null_and` is
+      commutative: `NonNullable` absorbs from either side, and the remaining
+      CD/CI combinations are symmetric. */
+  lemma RevRENullable(r: RE.regex)
+    ensures RE.nullable(RevRE(r)) == RE.nullable(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => RevRENullable(r1); RevRENullable(r2);
+    case Re_con(r1, r2) =>
+      RevRENullable(r1);
+      RevRENullable(r2);
+      assert RE.null_and(RE.nullable(r2), RE.nullable(r1))
+          == RE.null_and(RE.nullable(r1), RE.nullable(r2));
+    case Re_quant(_, _, _, r1) => RevRENullable(r1);
+    case Re_capture(_, r1) => RevRENullable(r1);
+    case Re_lookaround(_, _, r1) => RevRENullable(r1);
+    case _ =>
+  }
+
   lemma RevRETransWf(r: RE.regex)
     requires T.TransWf(r)
     ensures T.TransWf(RevRE(r))
@@ -2266,7 +2289,7 @@ module LindenSpanDuality {
     match r
     case Re_alt(r1, r2) => RevRETransWf(r1); RevRETransWf(r2);
     case Re_con(r1, r2) => RevRETransWf(r1); RevRETransWf(r2);
-    case Re_quant(_, _, _, r1) => RevRETransWf(r1);
+    case Re_quant(_, _, _, r1) => RevRETransWf(r1); RevRENullable(r1);
     case Re_capture(_, r1) => RevRETransWf(r1);
     case Re_lookaround(_, _, r1) => RevRETransWf(r1);
     case _ =>

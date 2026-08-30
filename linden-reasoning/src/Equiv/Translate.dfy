@@ -685,7 +685,12 @@ module LindenElkTranslate {
     case Re_character(c) => CharacterWfL1(c)
     case Re_alt(r1, r2) => TransWf(r1) && TransWf(r2)
     case Re_con(r1, r2) => TransWf(r1) && TransWf(r2)
-    case Re_quant(_, _, q, r1) => QuantWf(q) && TransWf(r1)
+    // §2.5a: the stored nullability annotation is what `R.nullable` computes for
+    // the body -- exactly what `annotate_regex` writes (`Re_quant(nullable(ar1), …)`).
+    // The RegElk->Linden bridge needs it to decide which of `NfaRepL`'s two
+    // unbounded-`min` arms a quantifier takes; it cannot live in the NfaRepRE
+    // fragment predicates, which loop when an `R.nullable` call is added to them.
+    case Re_quant(nul, _, q, r1) => QuantWf(q) && nul == R.nullable(r1) && TransWf(r1)
     case Re_capture(cid, r1) => cid >= 0 && TransWf(r1)
     case Re_lookaround(_, _, r1) => TransWf(r1)
     case Re_anchor(_) => true
