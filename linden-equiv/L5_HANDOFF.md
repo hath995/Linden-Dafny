@@ -754,3 +754,11 @@ lines. Fixed: `cpA - 1`; the A1 sub-leaf stated as `TreeRes(t1, Empty, inp1, dir
 honestly: 1934 obligations isolated at 300 s with 0 errors, and 2:04 as 11 batches.
 
 Namespaces: all 61 members renamed to `linden.<name>` (lem 0.1.21, `08867ee`); full workspace `lem pack` in progress.
+
+**s8 close (2026-08-30 02:40).** Round 2 of E3 from per-band profiles (`tools/e3/e3profile.py`): `ActionsTreeRepLkF{,Rec}`
+384/539 s → 2:41/2:30, `DeepFindRecLB` 257 s → 39 s, `MainTheoremL5` 279 s → 44 s, `LookRowsDynamicNested` (a 900 s
+timeout in the profile) → 5.7 s, `CompileNfaRepNestedRE` 251 s → 7 s — all `split_here` per section/arm, no opaque blocks
+needed. Full workspace re-pack **61/61 in 59 min at `--jobs 3`** (level 19: 15:43 → 3:36). Merged to `main` (`cc6667a`
+… `a1044d1`; the monolith `LiftSim.dfy` is superseded by the bands). Publishing: first leaf uploaded, rejected by the
+registry worker (its `/toolchains` volume is not writable → cannot install Dafny 4.11.0); retry pending the Lemmata
+side's fix. `docs/LEMMATA_IN_PROOF_DEVELOPMENT.md` records the anecdote, metrics and strategy.
