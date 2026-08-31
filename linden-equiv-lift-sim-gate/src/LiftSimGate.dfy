@@ -2738,6 +2738,7 @@ module LindenElkLiftSimGate {
           // rfx == the backward run raB
           assert CP.capture_regex(crv.f_look_types[l], body) == R.reverse_regex(body);
           assert AI.capture_direction(crv.f_look_types[l]) == LAnc.Backward;
+          NI.NoNulledPlusLookBody(re, l as nat);                  // §2.5b interim: NoNulledPlusRE(body)
           LBK.BackFreshBodyGmTie(rer, body, str, cp, ov, crv.f_look_cdns[l], la, tlk, gm,
                                  ncap, nlook, nquant, |str|);
           var bcB := CP.compile_to_bytecode(R.reverse_regex(body));
@@ -3155,6 +3156,7 @@ module LindenElkLiftSimGate {
           // rfx == the backward run raB
           assert CP.capture_regex(crv.f_look_types[l], body) == R.reverse_regex(body);
           assert AI.capture_direction(crv.f_look_types[l]) == LAnc.Backward;
+          NI.NoNulledPlusLookBody(re, l as nat);                  // §2.5b interim: NoNulledPlusRE(body)
           LBK.BackFreshBodyGmTie(rer, body, str, cp, ov, crv.f_look_cdns[l], la, tlk, gm,
                                  ncap, nlook, nquant, |str|);
           var bcB := CP.compile_to_bytecode(R.reverse_regex(body));

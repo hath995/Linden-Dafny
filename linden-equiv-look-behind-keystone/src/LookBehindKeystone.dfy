@@ -243,6 +243,23 @@ module LindenLookBehindKeystone {
   // The RevRE(body) static package (for ReplayCapIsBodyLeaf), qm' with EMPTY looks
   // ===========================================================================
 
+  /** (§2.5b interim) `SD.RevRE` keeps every quant annotation and recurses, so
+      `NoNulledPlusRE` transfers verbatim (twin of `NR.NoNulledPlusReverse`,
+      which covers `R.reverse_regex` instead). */
+  lemma NoNulledPlusRevRE(r: R.regex)
+    requires NR.NoNulledPlusRE(r)
+    ensures NR.NoNulledPlusRE(SD.RevRE(r))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => NoNulledPlusRevRE(r1); NoNulledPlusRevRE(r2);
+    case Re_con(r1, r2) => NoNulledPlusRevRE(r1); NoNulledPlusRevRE(r2);
+    case Re_quant(_, _, _, r1) => NoNulledPlusRevRE(r1);
+    case Re_capture(_, r1) => NoNulledPlusRevRE(r1);
+    case Re_lookaround(_, _, r1) => NoNulledPlusRevRE(r1);
+    case _ =>
+  }
+
   /** All of `StaticOkRE(qm', RevRE(body), compile(RevRE(body)), endl')` +
       `SizesOkRE(RevRE(body), ...)`, from the structural body facts. `qm'` uses
       the canonical quant map and an EMPTY look map (RevRE(body) is look-free, so
@@ -250,6 +267,7 @@ module LindenLookBehindKeystone {
   lemma RevREStaticOk(body: R.regex, someView: LOr.OracleView, ncap: int, nlook: int, nquant: int)
       returns (qm': AR.QMap, endl': nat)
     requires T.TransWf(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     ensures PSM.StaticOkRE(qm', SD.RevRE(body), CP.compile_to_bytecode(SD.RevRE(body)), endl')
@@ -257,6 +275,7 @@ module LindenLookBehindKeystone {
     ensures qm'.ov == someView && qm'.looks == map[]
   {
     var re' := SD.RevRE(body);
+    NoNulledPlusRevRE(body);                    // §2.5b interim: NoNulledPlusRE(re')
     OS.RevREPlusFragment(body);                 // PlusFragmentRE(re')
     NR.PlusIsLookBehindFragmentRE(re');         // LookBehindFragmentRE(re')
     LBV.CapUniqueRevRE(body);
@@ -288,6 +307,7 @@ module LindenLookBehindKeystone {
                      cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
                      cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int, n: nat)
     requires T.TransWf(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires !rer.ignoreCase && !rer.multiline
@@ -394,6 +414,7 @@ module LindenLookBehindKeystone {
       cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
       ncap: int, nlook: int, nquant: int, n: nat)
     requires T.TransWf(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires SD.GroupOkL(T.Translate(body))
     requires CD.NoDupG(L.DefGroups(T.Translate(body)))
@@ -510,6 +531,7 @@ module LindenLookBehindKeystone {
       ov: LOr.OracleView, cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
       ncap: int, nlook: int, nquant: int, n: nat)
     requires T.TransWf(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires SD.GroupOkL(T.Translate(body))
     requires CD.NoDupG(L.DefGroups(T.Translate(body)))
@@ -576,6 +598,7 @@ module LindenLookBehindKeystone {
       M.FreshMatchWfLB(bcB, str, cp, ov, cdns, body, ncap, nlook, nquant);
       assert PIV.CapRegWf(raB.value.capture_regs);
       // CapRegWf(rfF.caps): forward fresh-match wf over RevRE(body).
+      NoNulledPlusRevRE(body);                  // §2.5b interim
       OS.RevREPlusFragment(body);
       NR.PlusIsLookBehindFragmentRE(SD.RevRE(body));
       LBV.CapUniqueRevRE(body);
