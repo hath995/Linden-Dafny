@@ -3147,6 +3147,7 @@ module LindenElkLiftSimOracle {
         NR.PlusIsLookBehindFragmentRE(body);
         assert g in PIV.CapIds(re);
         assert M.cp_ctx_ok(crv, str, lk, l);
+        NI.NoNulledPlusLookBody(re, l as nat);   // §2.5b interim: NoNulledPlusRE(body)
         FreshBodyMatchCapWf(crv, str, l, lk, ov, ncap, nlook, nquant, body);
         // carrier forward at l
         assert NI.LookPathPresent(re, thread.capture_regs.a_clk, qtF.a_clk, -1, l as nat)

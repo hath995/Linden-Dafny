@@ -1193,7 +1193,7 @@ module LindenElkLiftSimCore {
       tree — `TreeRepLkRE`-represented at `(pc, EaOf(b))` and erasure-equal to
       the spec walk tree `t`. One case per action/regex shape, mirroring
       `ATR.ActionsTreeRepFRE` case-for-case. */
-  lemma ActionsTreeRepLkF(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions,
+  lemma {:isolate_assertions} ActionsTreeRepLkF(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions,
                                                 code: RB.code, pc: nat, inp: LC.Input,
                                                 b: BS.LoopBool, t: LT.Tree, n: nat)
     returns (tcan: LT.Tree)
@@ -1205,6 +1205,10 @@ module LindenElkLiftSimCore {
     ensures CE.ProgErase(tcan) == CE.ProgErase(t)
     decreases CE.PSize(t), ATR.MsizeA(acts), n, 1
   {
+    // (§2.5b) the new recursive nullability predicates' definitional axioms send
+    // z3 4.14 into a matching loop on otherwise-trivial goals in the quant arms;
+    // every use here is opaque (guards + lemma calls), so hide them.
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     if |acts| == 0 && NR.GetPcRE(code, pc) == Some(RB.Accept) {
       assert t == LT.Match;
       tcan := LT.Match;
@@ -1501,6 +1505,15 @@ module LindenElkLiftSimCore {
                         assert em <= e1x;
                       }
                       assert AR.NfaRepL(rer, qm, q0, code, e1x, e1x + 1) by {
+                        // (§2.5b/z3 4.14) granular witnesses first — the packed
+                        // conjunction alone sends the solver hunting for the skolem
+                        assert NUL.NonNullableL(r1);
+                        assert NR.GetPcRE(code, e1x)
+                            == Some(if greedy then RB.Fork(em, e1x + 1) else RB.Fork(e1x + 1, em));
+                        assert em <= e1x;
+                        assert NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
+                               && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1);
+                        assert AR.NfaRepL(rer, qm, r1, code, em + 1, e1x);
                         assert NUL.NonNullableL(r1)
                                && NR.GetPcRE(code, e1x)
                                   == Some(if greedy then RB.Fork(em, e1x + 1) else RB.Fork(e1x + 1, em))
@@ -1848,7 +1861,7 @@ module LindenElkLiftSimCore {
       every other head shape contradicts the pinned Fork; at the loop-view
       star the iteration is lifted to `CanExit` (`CE.BoolFlagLift`) and both
       branches delegate to the general construction. */
-  lemma AtBackForkTreeLkF(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code,
+  lemma {:isolate_assertions} AtBackForkTreeLkF(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code,
                           pc: nat, inp: LC.Input, tc: LT.Tree, n: nat)
     returns (tcstar: LT.Tree)
     requires EL.PikeLkActions(acts)
@@ -1860,6 +1873,10 @@ module LindenElkLiftSimCore {
     ensures CE.ProgErase(tcstar) == CE.ProgErase(tc)
     decreases CE.PSize(tc), ATR.MsizeA(acts), n, 0
   {
+    // (§2.5b) the new recursive nullability predicates' definitional axioms send
+    // z3 4.14 into a matching loop on otherwise-trivial goals in the quant arms;
+    // every use here is opaque (guards + lemma calls), so hide them.
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     var fx: int, fy: int :| NR.GetPcRE(code, pc) == Some(RB.Fork(fx, fy))
                             && fx >= 0 && fy >= 0 && (fx as nat <= pc || fy as nat <= pc);
     assert |acts| > 0;
@@ -2037,7 +2054,9 @@ module LindenElkLiftSimCore {
                     EL.PikeLkActionsConsIff(LS.Areg(q0), cont);
                     EL.PikeLkActionsConsIff(LS.Acheck(inp), [LS.Areg(q0)] + cont);
                     EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
-                    assert il == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
+                    assert il == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(q0)] + cont)) by {
+                      hide *;   // (§2.5b) pure seq-concat; the ambient axioms drown z3 4.14
+                    }
                     assert EL.PikeLkActions(il);
                     assert CE.ShieldedActs(il) by {
                       forall i | 0 <= i < |il| && il[i].Acheck?
@@ -3927,6 +3946,7 @@ module LindenElkLiftSimCore {
     case Inf =>
       var quant1 := L.Quantified(greedy, min - 1, LN.Inf, r1);
       if !NUL.NonNullableL(r1) {
+        assert {:split_here} true;   // (§2.5b) section: the generic (non-greedy) arm
         // §2.5a GENERIC: structurally the BOUNDED NN case -- min forced copies
         // then the star loop -- with no min == 1 loop-view special case, since
         // the residual at min == 1 is the plain star arm at `emg`.
@@ -3949,10 +3969,12 @@ module LindenElkLiftSimCore {
         AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Areg(quant1)] + cont, code, pc + 1, e_bodyg);
         return;
       }
+      assert {:split_here} true;   // (§2.5b) section: the NonNullable plus arm
       var em, e1 := AR.NfaRepLPlusInv(rer, qm, greedy, min, r1, code, pc, pcmid);
       var qid_em: int :| NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid_em, false))
                          && qid_em in qm.quants && qm.quants[qid_em] == L.DefGroups(r1);
       if min == 1 {
+        assert {:split_here} true;   // (§2.5b) section: min == 1 loop view
         NfaRepMinLHeadPin(rer, qm, 0, r1, code, pc, em);   // em == pc
         assert em == pc;
         // quant1 == Quantified(greedy, 0, Inf, r1) == the star; build its loop-view NfaRepL at e1.
@@ -5292,6 +5314,7 @@ module LindenElkLiftSimCore {
     requires body == M.VBody(crv, l)
     requires NR.LookBehindFragmentRE(body) && NR.PlusFragmentRE(body)
              && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires M.MatchedPosLA(crv, lk, l)   // POSITIVE look: rules out the capture-free negatives
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires var cp := if AReg.get_cp(lk, l).Some? then AReg.get_cp(lk, l).value else 0;
@@ -5328,6 +5351,7 @@ module LindenElkLiftSimCore {
                                   ov: LOr.OracleView, ncap: int, nlook: int, nquant: int, body: R.regex)
     requires body == M.VBody(crv, l)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires M.MatchedPosLA(crv, lk, l)
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires var cp := if AReg.get_cp(lk, l).Some? then AReg.get_cp(lk, l).value else 0;
@@ -5700,6 +5724,10 @@ module LindenElkLiftSimCore {
     ensures CE.ProgErase(tcan) == CE.ProgErase(t)
     decreases CE.PSize(t), ATR.MsizeA(acts), n, 1
   {
+    // (§2.5b) the new recursive nullability predicates' definitional axioms send
+    // z3 4.14 into a matching loop on otherwise-trivial goals in the quant arms;
+    // every use here is opaque (guards + lemma calls), so hide them.
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     if |acts| == 0 && NR.GetPcRE(code, pc) == Some(RB.Accept) {
       assert t == LT.Match;
       tcan := LT.Match;
@@ -5996,6 +6024,15 @@ module LindenElkLiftSimCore {
                         assert em <= e1x;
                       }
                       assert AR.NfaRepL(rer, qm, q0, code, e1x, e1x + 1) by {
+                        // (§2.5b/z3 4.14) granular witnesses first — the packed
+                        // conjunction alone sends the solver hunting for the skolem
+                        assert NUL.NonNullableL(r1);
+                        assert NR.GetPcRE(code, e1x)
+                            == Some(if greedy then RB.Fork(em, e1x + 1) else RB.Fork(e1x + 1, em));
+                        assert em <= e1x;
+                        assert NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
+                               && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1);
+                        assert AR.NfaRepL(rer, qm, r1, code, em + 1, e1x);
                         assert NUL.NonNullableL(r1)
                                && NR.GetPcRE(code, e1x)
                                   == Some(if greedy then RB.Fork(em, e1x + 1) else RB.Fork(e1x + 1, em))
@@ -6336,7 +6373,7 @@ module LindenElkLiftSimCore {
     }
   }
 
-  lemma AtBackForkTreeLkFRec(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code,
+  lemma {:isolate_assertions} AtBackForkTreeLkFRec(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code,
                              pc: nat, inp: LC.Input, tc: LT.Tree, n: nat)
     returns (tcstar: LT.Tree)
     requires EL.PikeLkActionsRec(acts)
@@ -6348,6 +6385,10 @@ module LindenElkLiftSimCore {
     ensures CE.ProgErase(tcstar) == CE.ProgErase(tc)
     decreases CE.PSize(tc), ATR.MsizeA(acts), n, 0
   {
+    // (§2.5b) the new recursive nullability predicates' definitional axioms send
+    // z3 4.14 into a matching loop on otherwise-trivial goals in the quant arms;
+    // every use here is opaque (guards + lemma calls), so hide them.
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     var fx: int, fy: int :| NR.GetPcRE(code, pc) == Some(RB.Fork(fx, fy))
                             && fx >= 0 && fy >= 0 && (fx as nat <= pc || fy as nat <= pc);
     assert |acts| > 0;
@@ -6520,12 +6561,20 @@ module LindenElkLiftSimCore {
                     assert EL.BoolTreeLk(rer, il, inp, BS.CannotExit, ti);
                     // skip branch: the general construction at the exit arm
                     assert CE.PSize(skipt) < CE.PSize(tc);
+                    // (§2.5b/z3 4.14) spell the call's preconditions out one by one —
+                    // the packed precondition VC grinds past the limit otherwise
+                    assert EL.PikeLkActionsRec(cont);
+                    assert ATR.ActionsRepFuelL(rer, qm, cont, code, pc + 1, n - 1);
+                    assert WO.WalkOk(cont, code, pc + 1, ATR.EaOf(BS.CanExit));
+                    assert EL.BoolTreeLk(rer, cont, inp, BS.CanExit, skipt);
                     var subs := ActionsTreeRepLkFRec(rer, qm, cont, code, pc + 1, inp, BS.CanExit, skipt, n - 1);
                     // iteration branch: lift to CanExit, then bridge
                     EL.PikeLkActionsRecConsIff(LS.Areg(q0), cont);
                     EL.PikeLkActionsRecConsIff(LS.Acheck(inp), [LS.Areg(q0)] + cont);
                     EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
-                    assert il == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
+                    assert il == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(q0)] + cont)) by {
+                      hide *;   // (§2.5b) pure seq-concat; the ambient axioms drown z3 4.14
+                    }
                     assert EL.PikeLkActionsRec(il);
                     assert CE.ShieldedActs(il) by {
                       forall i | 0 <= i < |il| && il[i].Acheck?
@@ -6636,12 +6685,14 @@ module LindenElkLiftSimCore {
     var vms := AI.FInitState(bodycode, cp, capture, look, quant, 0, ctx);
     assert ctx.nextchar == AI.get_char(str, cp);
 
-    // code shape: every SetQuantToClock has b == false (mirror LookNestOkTFromBodyReplay)
+    // code shape: every SetQuantToClock has b == false (mirror LookNestOkTFromBodyReplay).
+    // (§2.5b) CodeShapeAt lost the !b claim; the gated StampFalseAt carries it,
+    // fed by the bundle's NoNulledPlusRE(body).
     forall pc: nat, q: int, b: bool | NR.GetPcRE(bodycode, pc) == Some(RB.SetQuantToClock(q, b))
       ensures !b
     {
       if pc < endl {
-        NI.CodeShapeAt(body, bodycode, 0, endl, pc);
+        NI.StampFalseAt(body, bodycode, 0, endl, pc);
       } else if pc == endl {
       } else {
         assert pc >= |bodycode|;
@@ -7158,6 +7209,11 @@ module LindenElkLiftSimCore {
              && PIV.QuantIdsOutsideLooks(r2) <= PIV.QuantIdsOutsideLooks(r);
       if lid in LTB.LookIds(r1) {
         NI.TopLookIdsIn(r2);
+        assert lid !in LTB.LookIds(r2) by {   // LookUnique(r): the halves' lid sets are disjoint
+          assert LTB.LookIds(r1) * LTB.LookIds(r2) == {};
+          assert lid !in LTB.LookIds(r1) * LTB.LookIds(r2);
+          assert lid in LTB.LookIds(r1);
+        }
         assert lid !in NI.TopLookIds(r2);
         assert lid in NI.TopLookIds(r1);
         LookPathPresentAgreeTopNested(r1, cc1, qc1, cc2, qc2, mx, lid);
@@ -7985,6 +8041,7 @@ module LindenElkLiftSimCore {
   lemma MainExtractionL5(raw: R.raw_regex, str: string,
                          t: LT.Tree, thread: AI.Thread, leaf: LT.Leaf)
     requires NR.NestedFragmentRaw(raw)
+    requires NR.NoNulledPlusRaw(raw)   // §2.5b interim gate conjunct
     requires NR.L5ScopeRE(R.lazy_prefix(R.annotate(raw)))
     requires NR.NegLooksLookFreeRE(R.lazy_prefix(R.annotate(raw)))
     requires T.Latin1Wf(raw)
@@ -8015,6 +8072,7 @@ module LindenElkLiftSimCore {
     var ncap := 2 * R.max_group(ast) + 2;
     T.AnnotateWf(raw);
     NR.SpecRegexNestedFragment(raw);
+    NR.SpecRegexNoNulledPlus(raw);   // §2.5b interim: NoNulledPlusRE(re)
     var caps := thread.capture_regs;
     var lk := thread.look_regs;
     var qt := thread.quant_regs;

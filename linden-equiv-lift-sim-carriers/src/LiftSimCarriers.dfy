@@ -1212,6 +1212,7 @@ module LindenElkLiftSimCarriers {
     // presence + dominance on the FRESH banks
     // (2026-08-25) nested host: the depth-1 `FreshBodyMatchCapWf` was unprovable here.
     M.LookBodyFactsL5(re, crv, A);              // NestedFragmentRE/CapUnique/QuantUnique(host)
+    NI.NoNulledPlusLookBody(re, A);             // §2.5b interim: NoNulledPlusRE(host)
     FreshBodyMatchCapWfNested(crv, str, A as int, res1, ov, ncap, nlook, nquant, host);
     assert PIV.CapRegWf(rfc);
     assert forall c: nat :: c in PIV.CapIds(host) && AI.get_idx(rfc.a_clk, CP.start_reg(c)) < 0
