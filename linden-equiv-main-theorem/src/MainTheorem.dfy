@@ -14,6 +14,7 @@ module LindenElkMain {
   import RB = Bytecode
   import CP = Compiler
   import NR = LindenElkNfaRep
+  import NUL = LindenElkNullable
   import AI = ArrayInterp
   import AReg = Array_Regs
   import LG = Groups
@@ -4044,7 +4045,6 @@ module LindenElkMain {
                                 exists la: R.lookaround, body: R.regex ::
                                   LTB.LookEntryOk(crv, l, la, body)
                                   && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
-          && NR.NoNulledPlusRE(body)
                                   && NR.NoNulledPlusRE(body)
                                   && PIV.CapUnique(body) && PIV.QuantUnique(body)
                                   && PIV.CaptureRegs(body) <= S
@@ -4124,14 +4124,12 @@ module LindenElkMain {
                             cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
                             mainast: R.regex, Sq: set<int>)
     requires NR.LookBehindFragmentRE(mainast) && PIV.QuantUnique(mainast)
-    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
              && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
                                 exists la: R.lookaround, body: R.regex ::
                                   LTB.LookEntryOk(crv, l, la, body)
                                   && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
-          && NR.NoNulledPlusRE(body)
                                   && NR.NoNulledPlusRE(body)
                                   && PIV.CapUnique(body) && PIV.QuantUnique(body)
                                   && LKC.QIdsInt(body) <= Sq
@@ -6069,7 +6067,6 @@ module LindenElkMain {
                                 exists la: R.lookaround, body: R.regex ::
                                   LTB.LookEntryOk(crv, l, la, body)
                                   && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
-          && NR.NoNulledPlusRE(body)
                                   && NR.NoNulledPlusRE(body)
                                   && PIV.CapUnique(body) && PIV.QuantUnique(body)
                                   && PIV.CaptureRegs(body) <= S
@@ -6571,7 +6568,6 @@ module LindenElkMain {
     cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
     mainast: R.regex, Sq: set<int>, ncap: int, nlook: int, nquant: int)
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
-    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires NR.LookBehindFragmentRE(mainast) && PIV.QuantUnique(mainast)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
              && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
@@ -6582,7 +6578,6 @@ module LindenElkMain {
                                 exists la: R.lookaround, body: R.regex ::
                                   LTB.LookEntryOk(crv, l, la, body)
                                   && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
-          && NR.NoNulledPlusRE(body)
                                   && NR.NoNulledPlusRE(body)
                                   && PIV.CapUnique(body) && PIV.QuantUnique(body)
                                   && LKC.QIdsInt(body) <= Sq
@@ -10708,8 +10703,7 @@ module LindenElkMain {
                                  && exists la: R.lookaround, body: R.regex ::
                                    LTB.LookEntryOk(crv, l, la, body)
                                    && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
-          && NR.NoNulledPlusRE(body)
-                                  && NR.NoNulledPlusRE(body)
+                                   && NR.NoNulledPlusRE(body)
                                    && PIV.CapUnique(body) && PIV.QuantUnique(body)
                                    && PIV.CaptureRegs(body) <= PIV.CaptureRegsSet(PIV.CapIdsInLooks(ast))
                                    && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
@@ -10761,7 +10755,7 @@ module LindenElkMain {
         ensures exists la: R.lookaround, body: R.regex ::
                   LTB.LookEntryOk(crv, l, la, body)
                   && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
-          && NR.NoNulledPlusRE(body)
+                  && NR.NoNulledPlusRE(body)
                   && PIV.CapUnique(body) && PIV.QuantUnique(body)
                   && PIV.CaptureRegs(body) <= PIV.CaptureRegsSet(PIV.CapIdsInLooks(ast))
                   && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
@@ -13643,7 +13637,6 @@ module LindenElkMain {
                            cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
                            S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int)
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
-    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
              && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
@@ -13774,7 +13767,6 @@ module LindenElkMain {
                                 cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
                                 S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int)
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
-    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
              && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
