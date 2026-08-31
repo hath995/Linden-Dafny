@@ -2032,6 +2032,9 @@ module LindenElkLiftSimOracle {
           // §2.5a: the STRONG head fact -- `min > 0` pins a clock-mark, which
           // refutes the `Fork` we are sitting at. `QuantHeadPinsForkOrSQC`'s
           // `Fork? || SetQuantToClock?` is too weak here.
+          assert min > 0 && delta.Inf? && greedy ==> NUL.NonNullableL(r1) by {
+            assert EL.PikeLkRegex(L.Quantified(greedy, min, delta, r1));   // §2.5b interim conjunct
+          }
           QuantHeadMinPosPinsSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
         } else {
           // min==0, Inf or NN(kx>0): the star/bounded fork ⇒ tb.Choice?; targets are nats.
@@ -4349,6 +4352,9 @@ module LindenElkLiftSimOracle {
           // §2.5a: the STRONG head fact -- `min > 0` pins a clock-mark, which
           // refutes the `Fork` we are sitting at. `QuantHeadPinsForkOrSQC`'s
           // `Fork? || SetQuantToClock?` is too weak here.
+          assert min > 0 && delta.Inf? && greedy ==> NUL.NonNullableL(r1) by {
+            assert EL.PikeLkRegexRec(L.Quantified(greedy, min, delta, r1));   // §2.5b interim conjunct
+          }
           QuantHeadMinPosPinsSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
         } else {
           // min==0, Inf or NN(kx>0): the star/bounded fork ⇒ tb.Choice?; targets are nats.

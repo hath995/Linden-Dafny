@@ -1665,6 +1665,9 @@ module LindenElkLiftSimChain {
         } else if min > 0 {
           // §2.5a: needs the STRONG head fact to refute the `Fork` we sit at;
           // `QuantHeadPinsForkOrSQC`'s `Fork? || SetQuantToClock?` is too weak.
+          assert min > 0 && delta.Inf? && greedy ==> NUL.NonNullableL(r1) by {
+            assert EL.PikeLkRegex(L.Quantified(greedy, min, delta, r1));   // §2.5b interim conjunct
+          }
           QuantHeadMinPosPinsSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
           assert false;   // min>0 head pins SetQuantToClock, not Fork
         } else {
@@ -4248,6 +4251,9 @@ module LindenElkLiftSimChain {
         } else if min > 0 {
           // §2.5a: needs the STRONG head fact to refute the `Fork` we sit at;
           // `QuantHeadPinsForkOrSQC`'s `Fork? || SetQuantToClock?` is too weak.
+          assert min > 0 && delta.Inf? && greedy ==> NUL.NonNullableL(r1) by {
+            assert EL.PikeLkRegexRec(L.Quantified(greedy, min, delta, r1));   // §2.5b interim conjunct
+          }
           QuantHeadMinPosPinsSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
           assert false;   // min>0 head pins SetQuantToClock, not Fork
         } else {
