@@ -84,6 +84,7 @@ module LindenElkLookCapture {
   lemma CaptureCodeClassified(la: R.lookaround, body: R.regex)
     requires NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
     requires PIV.QuantUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: the `!sb` clause
     ensures var code := CP.compile_to_bytecode(CP.capture_regex(la, body));
       CM.NoCaptureWriteCode(code)
       && CM.LookChecksInside(code, {})
@@ -122,7 +123,9 @@ module LindenElkLookCapture {
       if pc != endl {
         assert pc < endl;
         NR.NoCaptureInstrRE(cr, code, 0, endl, pc);
-        NI.CodeShapeAt(cr, code, 0, endl, pc);       // pins `!bb` on every stamp
+        NI.CodeShapeAt(cr, code, 0, endl, pc);
+        if la.Lookbehind? { NR.NoNulledPlusReverse(body); }
+        NI.StampFalseAt(cr, code, 0, endl, pc);      // pins `!bb` on every stamp (§2.5b)
         PIV.LookCheckIdsRE(cr, code, 0, endl, pc);
         PIV.QuantWriteIdsRE(cr, code, 0, endl, pc);
         OBu.LookFreeNoIds(cr);                       // look-free: LookIds(cr) == {}

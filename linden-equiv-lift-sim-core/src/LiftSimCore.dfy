@@ -1381,6 +1381,9 @@ module LindenElkLiftSimCore {
               case Inf =>
                 if !NUL.NonNullableL(r1) {
                   assert {:split_here} true;   // (E3) generic arm in its own batch
+                  assert !greedy by {          // §2.5b interim (PikeLk conjunct)
+                    assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
+                  }
                   // §2.5a GENERIC: `min` forced copies then the ordinary star
                   // loop at `emg`. No seam -- the code's BeginLoop/EndLoop sits
                   // exactly where the spec's Acheck is, so nothing is inserted
@@ -1942,6 +1945,9 @@ module LindenElkLiftSimCore {
               } else {
                 // §2.5a GENERIC: min >= 1 forced copies, so `pc` still carries a
                 // clock-mark -- refuted against the pinned Fork just the same
+                assert !greedy by {            // §2.5b interim (PikeLk conjunct)
+                  assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
+                }
                 var em, e1x := AR.NfaRepLGenInv(rer, qm, greedy, min, r1, code, pc, pcmid);
                 var eb: nat :| (exists qid: int ::
                                   NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
@@ -2659,7 +2665,7 @@ module LindenElkLiftSimCore {
         } else {
           GatePolarityOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, qm, code, em, endl, pc);
         }
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         // §2.5a GENERIC: min forced copies then the star loop; the loop's own
         // five instructions carry no oracle gate
         var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
@@ -2667,6 +2673,18 @@ module LindenElkLiftSimCore {
         NR.NfaRepIncrRE(r1, code, em + 3, e1);
         if pc < em {
           GatePolarityMinRE(q.min as nat, qid, r1, qm, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          GatePolarityRE(r1, qm, code, em + 3, e1, pc);
+        } else {
+        }
+      } else if nul != R.NonNullable {
+        // §2.5b CIN-GREEDY: the loop's six own instructions carry no gate
+        var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          GatePolarityMinRE((q.min - 1) as nat, qid, r1, qm, code, start, em, pc);
         } else if pc <= em + 2 {
         } else if pc < e1 {
           GatePolarityRE(r1, qm, code, em + 3, e1, pc);
@@ -3384,10 +3402,19 @@ module LindenElkLiftSimCore {
               && NR.GetPcRE(code, e1) == Some(if greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
               && pcmid == e1 + 1;
             NfaRepMinLHeadPin(rer, qm, min - 1, r1, code, pc, em);   // min-1==0 ⇒ em==pc; else Fork/SQC at pc
-          } else {
+          } else if !greedy {
             // §2.5a GENERIC: min >= 1 copies, so pc carries a clock-mark ≠ Jmp
             var em, e1 := AR.NfaRepLGenInv(rer, qm, greedy, min, r1, code, pc, pcmid);
             NfaRepMinLHeadPin(rer, qm, min, r1, code, pc, em);
+          } else {
+            // §2.5b CIN-GREEDY: clock-mark (min > 1) or the head Fork (min == 1),
+            // either ≠ Jmp
+            var em, e1 := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+            NfaRepMinLHeadPin(rer, qm, min - 1, r1, code, pc, em);
+            if min == 1 {
+              assert em == pc;
+              assert NR.GetPcRE(code, pc) == Some(RB.Fork(em + 1, e1 + 2));
+            }
           }
         // either way GetPcRE(pc) is SetQuantToClock ≠ Jmp
         case NN(kx) =>
@@ -3661,12 +3688,21 @@ module LindenElkLiftSimCore {
             && NR.GetPcRE(code, e1) == Some(if greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
             && pcmid == e1 + 1;
           NfaRepMinLHeadPin(rer, qm, min - 1, r1, code, pc, em);
-        } else {
+        } else if !greedy {
           // §2.5a GENERIC: `min` forced copies then the ordinary star loop.
           // With min > 0 the head at `pc` is still a clock-mark, which is all
           // these head pins need.
           var em, e1 := AR.NfaRepLGenInv(rer, qm, greedy, min, r1, code, pc, pcmid);
           NfaRepMinLHeadPin(rer, qm, min, r1, code, pc, em);
+        } else {
+          // §2.5b CIN-GREEDY: the head is a chain clock-mark (min > 1) or the
+          // head FORK (min == 1) -- either satisfies these pins.
+          var em, e1 := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+          NfaRepMinLHeadPin(rer, qm, min - 1, r1, code, pc, em);
+          if min == 1 {
+            assert em == pc;
+            assert NR.GetPcRE(code, pc) == Some(RB.Fork(em + 1, e1 + 2));
+          }
         }
       case NN(kx) =>
         var em: nat :| AR.NfaRepMinL(rer, qm, min, r1, code, pc, em)
@@ -3713,12 +3749,21 @@ module LindenElkLiftSimCore {
             && NR.GetPcRE(code, e1) == Some(if greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
             && pcmid == e1 + 1;
           NfaRepMinLHeadPin(rer, qm, min - 1, r1, code, pc, em);
-        } else {
+        } else if !greedy {
           // §2.5a GENERIC: `min` forced copies then the ordinary star loop.
           // With min > 0 the head at `pc` is still a clock-mark, which is all
           // these head pins need.
           var em, e1 := AR.NfaRepLGenInv(rer, qm, greedy, min, r1, code, pc, pcmid);
           NfaRepMinLHeadPin(rer, qm, min, r1, code, pc, em);
+        } else {
+          // §2.5b CIN-GREEDY: the head is a chain clock-mark (min > 1) or the
+          // head FORK (min == 1) -- either satisfies these pins.
+          var em, e1 := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+          NfaRepMinLHeadPin(rer, qm, min - 1, r1, code, pc, em);
+          if min == 1 {
+            assert em == pc;
+            assert NR.GetPcRE(code, pc) == Some(RB.Fork(em + 1, e1 + 2));
+          }
         }
       case NN(kx) =>
         var em: nat :| AR.NfaRepMinL(rer, qm, min, r1, code, pc, em)
@@ -3771,13 +3816,22 @@ module LindenElkLiftSimCore {
             assert em == pc;
             var qid: int :| NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false));
           }
-        } else {
+        } else if !greedy {
           // §2.5a GENERIC: `min` forced copies then the ordinary star loop; the
           // head at `pc` is a clock-mark either way, and there is no min == 1
           // special case since `min` (not `min - 1`) copies precede the loop.
           var em, e1 := AR.NfaRepLGenInv(rer, qm, greedy, min, r1, code, pc, pcmid);
           NfaRepMinLHeadPin(rer, qm, min, r1, code, pc, em);
           var qidg: int :| NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qidg, false));
+        } else {
+          // §2.5b CIN-GREEDY: a chain clock-mark (min > 1) or the head FORK
+          // (min == 1) -- both satisfy Fork-or-SQC.
+          var em, e1 := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+          NfaRepMinLHeadPin(rer, qm, min - 1, r1, code, pc, em);
+          if min == 1 {
+            assert em == pc;
+            assert NR.GetPcRE(code, pc) == Some(RB.Fork(em + 1, e1 + 2));
+          }
         }
       case NN(kx) =>
         var em: nat :| AR.NfaRepMinL(rer, qm, min, r1, code, pc, em)
@@ -3801,6 +3855,9 @@ module LindenElkLiftSimCore {
                                r1: L.Regex, code: RB.code, pc: nat, pcmid: nat)
     requires AR.NfaRepL(rer, qm, L.Quantified(greedy, min, delta, r1), code, pc, pcmid)
     requires min > 0
+    // §2.5b interim: the CIN-GREEDY head at min == 1 is a FORK, so this
+    // lemma's claim needs the gate conjunct (dropped at the §2.5b flip)
+    requires delta.Inf? && greedy ==> NUL.NonNullableL(r1)
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetQuantToClock?
   {
     match delta
@@ -3821,6 +3878,7 @@ module LindenElkLiftSimCore {
       } else {
         // GENERIC: `min` (not `min - 1`) forced copies precede the star loop,
         // so the chain is non-empty and its head pins the clock-mark directly.
+        assert !greedy;   // §2.5b interim conjunct
         var em, e1 := AR.NfaRepLGenInv(rer, qm, greedy, min, r1, code, pc, pcmid);
         NfaRepMinLHeadPin(rer, qm, min, r1, code, pc, em);
       }
@@ -3841,6 +3899,9 @@ module LindenElkLiftSimCore {
   lemma QuantForcedContRep(rer: LW.RegExpRecord, qm: AR.QMap, greedy: bool, min: nat, delta: LN.NoI,
                            r1: L.Regex, code: RB.code, pc: nat, pcmid: nat, cont: LS.Actions)
     requires min > 0
+    // §2.5b interim: the CIN-GREEDY head at min == 1 is a FORK, so this
+    // lemma's claim needs the gate conjunct (dropped at the §2.5b flip)
+    requires delta.Inf? && greedy ==> NUL.NonNullableL(r1)
     requires AR.NfaRepL(rer, qm, L.Quantified(greedy, min, delta, r1), code, pc, pcmid)
     requires AR.ActionsRepL(rer, qm, cont, code, pcmid)
     ensures AR.ActionsRepL(rer, qm,
@@ -3865,6 +3926,7 @@ module LindenElkLiftSimCore {
         // §2.5a GENERIC: structurally the BOUNDED NN case -- min forced copies
         // then the star loop -- with no min == 1 loop-view special case, since
         // the residual at min == 1 is the plain star arm at `emg`.
+        assert !greedy;   // §2.5b interim conjunct
         var emg, e1g := AR.NfaRepLGenInv(rer, qm, greedy, min, r1, code, pc, pcmid);
         var qidg: int :| NR.GetPcRE(code, emg + 1) == Some(RB.SetQuantToClock(qidg, false))
                          && qidg in qm.quants && qm.quants[qidg] == L.DefGroups(r1);
@@ -3929,6 +3991,9 @@ module LindenElkLiftSimCore {
   lemma QuantHeadSQCPin(rer: LW.RegExpRecord, qm: AR.QMap, greedy: bool, min: nat, delta: LN.NoI,
                         r1: L.Regex, code: RB.code, pc: nat, pcmid: nat)
     requires min > 0
+    // §2.5b interim: the CIN-GREEDY head at min == 1 is a FORK, so this
+    // lemma's claim needs the gate conjunct (dropped at the §2.5b flip)
+    requires delta.Inf? && greedy ==> NUL.NonNullableL(r1)
     requires AR.NfaRepL(rer, qm, L.Quantified(greedy, min, delta, r1), code, pc, pcmid)
     ensures exists qid: int ::
               NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
@@ -3945,6 +4010,7 @@ module LindenElkLiftSimCore {
     case Inf =>
       if !NUL.NonNullableL(r1) {
         // §2.5a GENERIC: min >= 1 forced copies, so `pc` carries the clock-mark
+        assert !greedy;   // §2.5b interim conjunct
         var emg, e1g := AR.NfaRepLGenInv(rer, qm, greedy, min, r1, code, pc, pcmid);
         NfaRepMinLHeadPin(rer, qm, min, r1, code, pc, emg);
         return;
@@ -5806,6 +5872,9 @@ module LindenElkLiftSimCore {
               case Inf =>
                 if !NUL.NonNullableL(r1) {
                   assert {:split_here} true;   // (E3) generic arm in its own batch
+                  assert !greedy by {          // §2.5b interim (PikeLk conjunct)
+                    assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
+                  }
                   // §2.5a GENERIC: `min` forced copies then the ordinary star
                   // loop at `emg`. No seam -- the code's BeginLoop/EndLoop sits
                   // exactly where the spec's Acheck is, so nothing is inserted
@@ -6360,6 +6429,9 @@ module LindenElkLiftSimCore {
               } else {
                 // §2.5a GENERIC: min >= 1 forced copies, so `pc` still carries a
                 // clock-mark -- refuted against the pinned Fork just the same
+                assert !greedy by {            // §2.5b interim (PikeLk conjunct)
+                  assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
+                }
                 var em, e1x := AR.NfaRepLGenInv(rer, qm, greedy, min, r1, code, pc, pcmid);
                 var eb: nat :| (exists qid: int ::
                                   NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
@@ -7641,6 +7713,7 @@ module LindenElkLiftSimCore {
   lemma BackFreshPlusIsPlain(host: R.regex, bodycodeB: RB.code, plus_bc: seq<RB.code>,
                              str: string, ov: LOr.OracleView, cp: nat, cdn: LCdn.cdns,
                              ncap: int, nlook: int, nquant: int)
+    requires NR.NoNulledPlusRE(host)   // §2.5b interim
     requires NR.NestedFragmentRE(host) && PIV.CapUnique(host) && PIV.QuantUnique(host)
     requires bodycodeB == CP.compile_to_bytecode(R.reverse_regex(host))
     requires cp <= |str|
@@ -7671,6 +7744,7 @@ module LindenElkLiftSimCore {
     }
     // the stamp fact is about the code actually run — the REVERSED body
     M.ReverseNestedPackage(host);
+    NR.NoNulledPlusReverse(host);
     M.NoTrueQuantStampNested(R.reverse_regex(host));
     M.FFindMatchQuantFinalAny(bodycodeB, str, inits, ov, LAnc.Backward, cdn);
     var (fm, ovx) := AI.FFindMatch(bodycodeB, str, inits, ov, LAnc.Backward, cdn);

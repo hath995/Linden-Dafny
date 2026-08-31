@@ -4118,6 +4118,7 @@ module LindenElkMain {
                             cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
                             mainast: R.regex, Sq: set<int>)
     requires NR.LookBehindFragmentRE(mainast) && PIV.QuantUnique(mainast)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
              && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires forall l: int :: lid <= l <= maxlook && AReg.get_cp(lk, l).Some? ==>
@@ -4215,6 +4216,7 @@ module LindenElkMain {
                      la: R.lookaround, body: R.regex)
     requires NR.CaptureFreeRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
     requires PIV.QuantUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires bytecode == CP.compile_to_bytecode(CP.capture_regex(la, body))
     requires inits.active == [AI.init_thread(cap, lk, qt)]
     requires inits.blocked == [] && inits.bestmatch.None?
@@ -4312,6 +4314,10 @@ module LindenElkMain {
       is the same whether or not the body captures). Feeds `FFindMatchQuantFinalAny`. */
   lemma NoTrueQuantStamp(body: R.regex)
     requires NR.LookBehindFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    // §2.5b: the widened fragment admits the CIN-GREEDY scheme, whose exit
+    // stamps TRUE — the all-stamps-false fact now needs the interim
+    // no-nulled-plus gate conjunct.
+    requires NR.NoNulledPlusRE(body)
     ensures var code := CP.compile_to_bytecode(body);
             forall pc: nat, q: int, b: bool ::
               NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
@@ -4325,7 +4331,7 @@ module LindenElkMain {
     {
       assert pc < |code|;
       if pc < endl {
-        NI.CodeShapeAt(body, code, 0, endl, pc);
+        NI.StampFalseAt(body, code, 0, endl, pc);
       } else {
         assert pc == endl;
         assert NR.GetPcRE(code, endl) == Some(RB.Accept);
@@ -4343,6 +4349,7 @@ module LindenElkMain {
       `LookBehindFragmentRE`. */
   lemma NoTrueQuantStampNested(body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim (see NoTrueQuantStamp)
     ensures var code := CP.compile_to_bytecode(body);
             forall pc: nat, q: int, b: bool ::
               NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
@@ -4356,7 +4363,7 @@ module LindenElkMain {
     {
       assert pc < |code|;
       if pc < endl {
-        NI.CodeShapeAt(body, code, 0, endl, pc);
+        NI.StampFalseAt(body, code, 0, endl, pc);
       } else {
         assert pc == endl;
         assert NR.GetPcRE(code, endl) == Some(RB.Accept);
@@ -4394,6 +4401,7 @@ module LindenElkMain {
                                lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
                                cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
     requires NR.LookBehindFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires la.Lookahead? && dir == LAnc.Forward
     requires bytecode == CP.compile_to_bytecode(body)
     requires AI.cp_context(cp, str, dir).nextchar == AI.get_char(str, cp)
@@ -4427,6 +4435,7 @@ module LindenElkMain {
                         lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
                         cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
     requires NR.LookBehindFragmentRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires la.Lookahead? && dir == LAnc.Forward
     requires bytecode == CP.compile_to_bytecode(body)
@@ -4471,6 +4480,7 @@ module LindenElkMain {
                           lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
                           cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
     requires NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
@@ -4493,6 +4503,7 @@ module LindenElkMain {
     LKC.NoLookWriteBody(rev);
     assert CM.VmLooksAre(inits, lk);
     CM.FFindMatchLookEq(bytecode, str, inits, ov, LAnc.Backward, lookcdn, lk);
+    NR.NoNulledPlusReverse(body);
     NoTrueQuantStamp(rev);
     assert VmQuantFinal(inits) by {
       assert QuantRegsFinal(AI.init_thread(cap, lk, qt));
@@ -4538,6 +4549,7 @@ module LindenElkMain {
                                lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
                                cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
     requires NR.LookBehindFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires la.Lookahead? && dir == LAnc.Forward
     requires bytecode == CP.compile_to_bytecode(body)
     requires AI.cp_context(cp, str, dir).nextchar == AI.get_char(str, cp)
@@ -4573,6 +4585,7 @@ module LindenElkMain {
     // reach `CapUnique(reverse_regex(body))`, now supplied directly by
     // `ReverseCapUnique`. Oracle stability is capture-INDEPENDENT.
     requires NR.LookFreeRE(body) && NR.PlusFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires la.Lookbehind? && dir == LAnc.Backward
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
@@ -4588,6 +4601,7 @@ module LindenElkMain {
     assert inits.context.nextchar == AI.get_char(str, cp - 1);   // cp_context Backward definitional
     NoWriteOracleBodyCode(rbody);
     CM.FFindMatchOvStable(bytecode, str, inits, ov, dir, lookcdn);   // FFindMatch(...).1 == ov
+    NR.NoNulledPlusReverse(body);
     NoTrueQuantStamp(rbody);
     assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
     FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
@@ -4675,6 +4689,7 @@ module LindenElkMain {
                                qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
                                body: R.regex, la: R.lookaround, ncap: int, nlook: int, nquant: int)
     requires NR.LookBehindFragmentRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires la.Lookahead?
     requires bytecode == CP.compile_to_bytecode(body)
@@ -4728,6 +4743,7 @@ module LindenElkMain {
                                      qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
                                      body: R.regex, la: R.lookaround, ncap: int, nlook: int, nquant: int)
     requires NR.NestedFragmentRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires la.Lookahead?
     requires bytecode == CP.compile_to_bytecode(body)
@@ -4776,6 +4792,7 @@ module LindenElkMain {
                                        qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
                                        body: R.regex, la: R.lookaround, ncap: int, nlook: int, nquant: int)
     requires NR.NestedFragmentRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires la.Lookahead?
     requires bytecode == CP.compile_to_bytecode(body)
@@ -4928,6 +4945,7 @@ module LindenElkMain {
                                             lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
                                             cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
@@ -4941,6 +4959,7 @@ module LindenElkMain {
     ReverseNestedPackage(body);
     var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
     ReplayCaptureFrameNestedOuterLB(bytecode, str, inits, ov, lookcdn, cap, lk, qt, body);
+    NR.NoNulledPlusReverse(body);
     NoTrueQuantStampNested(rev);
     assert VmQuantFinal(inits) by {
       assert QuantRegsFinal(AI.init_thread(cap, lk, qt));
@@ -4959,6 +4978,7 @@ module LindenElkMain {
                                     lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
                                     cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
@@ -4977,6 +4997,7 @@ module LindenElkMain {
       assert CM.RegsAgreeOutside(lk, lk, LookIdSet(body));
     }
     CM.FFindMatchLookFrame(bytecode, str, inits, ov, dir, lookcdn, lk, LookIdSet(body));
+    NR.NoNulledPlusReverse(body);
     NoTrueQuantStampNested(rev);
     assert VmQuantFinal(inits) by {
       assert QuantRegsFinal(AI.init_thread(cap, lk, qt));
@@ -4995,6 +5016,7 @@ module LindenElkMain {
                                           lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
                                           cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
@@ -5013,6 +5035,7 @@ module LindenElkMain {
       assert CM.RegsAgreeOutside(lk, lk, DirectLidSet(body));
     }
     CM.FFindMatchLookFrame(bytecode, str, inits, ov, dir, lookcdn, lk, DirectLidSet(body));
+    NR.NoNulledPlusReverse(body);
     NoTrueQuantStampNested(rev);
     assert VmQuantFinal(inits) by {
       assert QuantRegsFinal(AI.init_thread(cap, lk, qt));
@@ -5031,6 +5054,7 @@ module LindenElkMain {
                                 lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
                                 cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
@@ -5047,6 +5071,7 @@ module LindenElkMain {
     ReplayPlusCaptureFrameNestedOuterLB(bytecode, str, ov, lookcdn, plus_bcv, cp, cap, lk, qt, body);
     ReplayPlusLookFrameNestedLB(bytecode, str, ov, lookcdn, plus_bcv, cp, cap, lk, qt, body);
     var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
+    NR.NoNulledPlusReverse(body);
     NoTrueQuantStampNested(rev);
     assert VmQuantFinal(inits) by {
       assert QuantRegsFinal(AI.init_thread(cap, lk, qt));
@@ -5064,6 +5089,7 @@ module LindenElkMain {
                                        lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
                                        cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
@@ -5076,6 +5102,7 @@ module LindenElkMain {
     var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
     NoWriteOracleBodyCodeNested(rev);
     CM.FFindMatchOvStable(bytecode, str, inits, ov, dir, lookcdn);
+    NR.NoNulledPlusReverse(body);
     NoTrueQuantStampNested(rev);
     assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
     FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
@@ -5093,6 +5120,7 @@ module LindenElkMain {
                                qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
                                body: R.regex, ncap: int, nlook: int, nquant: int)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires 0 <= cp <= |str|
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
@@ -5117,6 +5145,7 @@ module LindenElkMain {
       forall t | t in inits.active ensures CM.ThreadRegsWf(t, ncap, nlook, nquant) {}
     }
     FFindMatchRegsWf(bytecode, str, inits, ov, dir, lookcdn, ncap, nlook, nquant);
+    NR.NoNulledPlusReverse(body);
     NoTrueQuantStampNested(rev);
     assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
     FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
@@ -5132,6 +5161,7 @@ module LindenElkMain {
                                lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
                                cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires 0 <= cp <= |str|
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
@@ -5151,6 +5181,7 @@ module LindenElkMain {
     }
     assert ctx.nextchar == AI.get_char(str, cp - 1);
     CM.FFindMatchLookCpOkB(bytecode, str, inits, ov, dir, lookcdn);
+    NR.NoNulledPlusReverse(body);
     NoTrueQuantStampNested(rev);
     assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
     FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
@@ -5198,6 +5229,7 @@ module LindenElkMain {
                                        qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
                                        body: R.regex, ncap: int, nlook: int, nquant: int)
     requires NR.NestedFragmentRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires 0 <= cp <= |str|
@@ -5219,6 +5251,7 @@ module LindenElkMain {
     var rev := R.reverse_regex(body);
     ReverseNestedPackage(body);
     var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
+    NR.NoNulledPlusReverse(body);
     NoTrueQuantStampNested(rev);
     assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
     FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
@@ -5235,6 +5268,7 @@ module LindenElkMain {
                                         qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
                                         body: R.regex, SL: set<int>, ncap: int, nlook: int, nquant: int)
     requires NR.NestedFragmentRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires 0 <= cp <= |str|
@@ -5259,6 +5293,7 @@ module LindenElkMain {
     ReverseNestedPackage(body);
     var ctxc := AI.cp_context(cp, str, dir);
     var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, ctxc);
+    NR.NoNulledPlusReverse(body);
     NoTrueQuantStampNested(rev);
     assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
     FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
@@ -5286,6 +5321,7 @@ module LindenElkMain {
                                          qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
                                          body: R.regex, ncap: int, nlook: int, nquant: int)
     requires NR.NestedFragmentRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires 0 <= cp <= |str|
@@ -5310,6 +5346,7 @@ module LindenElkMain {
     ReverseNestedPackage(body);
     var ctxc := AI.cp_context(cp, str, dir);
     var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, ctxc);
+    NR.NoNulledPlusReverse(body);
     NoTrueQuantStampNested(rev);
     assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
     FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
@@ -5347,6 +5384,7 @@ module LindenElkMain {
                                           lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
                                           cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
@@ -5369,6 +5407,7 @@ module LindenElkMain {
       assert CM.RegsAgreeOutside(qt, qt, Sq);
     }
     CM.FFindMatchQuantFrame(bytecode, str, inits, ov, dir, lookcdn, qt, Sq);
+    NR.NoNulledPlusReverse(body);
     NoTrueQuantStampNested(rev);
     assert VmQuantFinal(inits) by {
       assert QuantRegsFinal(AI.init_thread(cap, lk, qt));
@@ -5398,6 +5437,7 @@ module LindenElkMain {
                                       qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
                                       body: R.regex, la: R.lookaround, SL: set<int>, ncap: int, nlook: int, nquant: int)
     requires NR.NestedFragmentRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires la.Lookahead?
     requires bytecode == CP.compile_to_bytecode(body)
@@ -5454,6 +5494,7 @@ module LindenElkMain {
                                  qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
                                  body: R.regex, ncap: int, nlook: int, nquant: int)
     requires NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires 0 <= cp <= |str|
@@ -5478,6 +5519,7 @@ module LindenElkMain {
     PIV.ReverseQuantUnique(body);
     var dir := LAnc.Backward;
     var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, dir));
+    NR.NoNulledPlusReverse(body);
     NoTrueQuantStamp(rev);
     assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
     FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
@@ -5496,6 +5538,7 @@ module LindenElkMain {
   lemma FreshMatchWf(bytecode: RB.code, str: string, cp: int, ov: LOr.OracleView, cdn: LCdn.cdns,
                      body: R.regex, ncap: int, nlook: int, nquant: int)
     requires NR.LookBehindFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires bytecode == CP.compile_to_bytecode(body)
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires 0 <= cp <= |str|
@@ -5557,6 +5600,7 @@ module LindenElkMain {
                          qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
                          body: R.regex, la: R.lookaround, ncap: int, nlook: int, nquant: int)
     requires NR.LookBehindFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires la.Lookahead?
     requires bytecode == CP.compile_to_bytecode(body)
     requires 0 <= cp <= |str|
@@ -5597,6 +5641,7 @@ module LindenElkMain {
                          qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
                          body: R.regex, ncap: int, nlook: int, nquant: int)
     requires NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires 0 <= cp <= |str|
@@ -5624,6 +5669,7 @@ module LindenElkMain {
       forall t | t in inits.active ensures CM.ThreadRegsWf(t, ncap, nlook, nquant) {}
     }
     FFindMatchRegsWf(bytecode, str, inits, ov, dir, lookcdn, ncap, nlook, nquant);
+    NR.NoNulledPlusReverse(body);
     NoTrueQuantStamp(rev);
     assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
     FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
@@ -6355,6 +6401,7 @@ module LindenElkMain {
                                  qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
                                  body: R.regex, la: R.lookaround, ncap: int, nlook: int, nquant: int)
     requires NR.LookBehindFragmentRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires la.Lookahead?
     requires bytecode == CP.compile_to_bytecode(body)
@@ -6408,6 +6455,7 @@ module LindenElkMain {
                                    qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
                                    body: R.regex, ncap: int, nlook: int, nquant: int)
     requires NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires 0 <= cp <= |str|
@@ -6435,6 +6483,7 @@ module LindenElkMain {
     var dir := LAnc.Backward;
     var ctxc := AI.cp_context(cp, str, dir);
     var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, ctxc);
+    NR.NoNulledPlusReverse(body);
     NoTrueQuantStamp(rev);
     assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
     FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
@@ -6464,6 +6513,7 @@ module LindenElkMain {
                            qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
                            body: R.regex)
     requires NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
@@ -6488,6 +6538,7 @@ module LindenElkMain {
     }
     QuantWritesInsideBody(rev);                    // QuantWritesInside(compile(rev), QIdsInt(rev)==QIdsInt(body))
     CM.FFindMatchQuantFrame(bytecode, str, inits, ov, dir, lookcdn, qt, LKC.QIdsInt(body));
+    NR.NoNulledPlusReverse(body);
     NoTrueQuantStamp(rev);
     assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
     FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
@@ -6508,6 +6559,7 @@ module LindenElkMain {
     cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
     mainast: R.regex, Sq: set<int>, ncap: int, nlook: int, nquant: int)
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires NR.LookBehindFragmentRE(mainast) && PIV.QuantUnique(mainast)
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
              && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
@@ -6903,6 +6955,7 @@ module LindenElkMain {
                                     qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
                                     body: R.regex, la: R.lookaround, ncap: int, nlook: int, nquant: int)
     requires NR.LookBehindFragmentRE(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires la.Lookahead?
     requires bytecode == CP.compile_to_bytecode(body)
@@ -11145,7 +11198,7 @@ module LindenElkMain {
         } else {
           CaptureWriteIdsOutsideOptREGen((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
         }
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         // §2.5a GENERIC: min forced copies then the star loop; the loop's own
         // five instructions (Fork/SetQuantToClock/BeginLoop at em..em+2,
         // EndLoop/Jmp at e1..e1+1) are all of the harmless kind
@@ -11154,6 +11207,19 @@ module LindenElkMain {
         NR.NfaRepIncrRE(r1, code, em + 3, e1);
         if pc < em {
           CaptureWriteIdsOutsideMinREGen(q.min as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          CaptureWriteIdsOutsideREGen(r1, code, em + 3, e1, pc);
+        } else {
+        }
+      } else if nul != R.NonNullable {
+        // §2.5b CIN-GREEDY: min-1 forced copies, then the stamped end-fork
+        // loop; its six own instructions are all of the harmless kind
+        var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          CaptureWriteIdsOutsideMinREGen((q.min - 1) as nat, qid, r1, code, start, em, pc);
         } else if pc <= em + 2 {
         } else if pc < e1 {
           CaptureWriteIdsOutsideREGen(r1, code, em + 3, e1, pc);
@@ -11290,6 +11356,7 @@ module LindenElkMain {
                                           lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
                                           cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires la.Lookahead? && dir == LAnc.Forward
     requires bytecode == CP.compile_to_bytecode(body)
     requires AI.cp_context(cp, str, dir).nextchar == AI.get_char(str, cp)
@@ -11413,7 +11480,7 @@ module LindenElkMain {
         } else {
           LookCheckIdsOptREGen((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
         }
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         // §2.5a GENERIC: min forced copies then the star loop; the loop's own
         // five instructions (Fork/SetQuantToClock/BeginLoop at em..em+2,
         // EndLoop/Jmp at e1..e1+1) are all of the harmless kind
@@ -11422,6 +11489,19 @@ module LindenElkMain {
         NR.NfaRepIncrRE(r1, code, em + 3, e1);
         if pc < em {
           LookCheckIdsMinREGen(q.min as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          LookCheckIdsREGen(r1, code, em + 3, e1, pc);
+        } else {
+        }
+      } else if nul != R.NonNullable {
+        // §2.5b CIN-GREEDY: min-1 forced copies, then the stamped end-fork
+        // loop; its six own instructions are all of the harmless kind
+        var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          LookCheckIdsMinREGen((q.min - 1) as nat, qid, r1, code, start, em, pc);
         } else if pc <= em + 2 {
         } else if pc < e1 {
           LookCheckIdsREGen(r1, code, em + 3, e1, pc);
@@ -11536,6 +11616,7 @@ module LindenElkMain {
                                   lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
                                   cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires la.Lookahead? && dir == LAnc.Forward
     requires bytecode == CP.compile_to_bytecode(body)
     requires AI.cp_context(cp, str, dir).nextchar == AI.get_char(str, cp)
@@ -11576,6 +11657,7 @@ module LindenElkMain {
                                         lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
                                         cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires la.Lookahead? && dir == LAnc.Forward
     requires bytecode == CP.compile_to_bytecode(body)
     requires AI.cp_context(cp, str, dir).nextchar == AI.get_char(str, cp)
@@ -11640,6 +11722,7 @@ module LindenElkMain {
                               lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
                               cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires la.Lookahead? && dir == LAnc.Forward
     requires bytecode == CP.compile_to_bytecode(body)
     requires AI.cp_context(cp, str, dir).nextchar == AI.get_char(str, cp)
@@ -11717,6 +11800,7 @@ module LindenElkMain {
                                         lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
                                         cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires la.Lookahead? && dir == LAnc.Forward
     requires bytecode == CP.compile_to_bytecode(body)
     requires AI.cp_context(cp, str, dir).nextchar == AI.get_char(str, cp)
@@ -11995,6 +12079,7 @@ module LindenElkMain {
   lemma FreshMatchWfNested(bytecode: RB.code, str: string, cp: int, ov: LOr.OracleView, cdn: LCdn.cdns,
                            body: R.regex, ncap: int, nlook: int, nquant: int)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires bytecode == CP.compile_to_bytecode(body)
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
     requires 0 <= cp <= |str|
@@ -12029,6 +12114,7 @@ module LindenElkMain {
                                qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
                                body: R.regex, la: R.lookaround, ncap: int, nlook: int, nquant: int)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires la.Lookahead?
     requires bytecode == CP.compile_to_bytecode(body)
     requires 0 <= cp <= |str|
@@ -12071,6 +12157,7 @@ module LindenElkMain {
                              lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
                              cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires dir == LAnc.Forward
     requires bytecode == CP.compile_to_bytecode(body)
     requires 0 <= cp <= |str|
@@ -13538,6 +13625,7 @@ module LindenElkMain {
                            cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
                            S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int)
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
              && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
@@ -13668,6 +13756,7 @@ module LindenElkMain {
                                 cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
                                 S: set<int>, Slook: set<int>, ncap: int, nlook: int, nquant: int)
     requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires (forall k :: AI.get_idx(qt.a_cp, k) < 0)
              && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
     requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
@@ -16312,6 +16401,7 @@ module LindenElkMain {
   lemma FreshBodyMatchAncSet(bytecode: RB.code, str: string, cp: int, ov: LOr.OracleView, cdn: LCdn.cdns,
                              body: R.regex, endl: nat, ncap: int, nlook: int, nquant: int)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires bytecode == CP.compile_to_bytecode(body)
     requires NR.NfaRepRE(body, bytecode, 0, endl)
     requires NR.GetPcRE(bytecode, endl) == Some(RB.Accept)
@@ -16505,6 +16595,7 @@ module LindenElkMain {
   lemma FreshBodyMatchAncSetLB(bytecode: RB.code, str: string, cp: int, ov: LOr.OracleView, cdn: LCdn.cdns,
                                body: R.regex, endl: nat, ncap: int, nlook: int, nquant: int)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
     requires NR.NfaRepRE(R.reverse_regex(body), bytecode, 0, endl)
     requires NR.GetPcRE(bytecode, endl) == Some(RB.Accept)
@@ -16529,6 +16620,7 @@ module LindenElkMain {
     CM.FInitStateClocksLE(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
                           AReg.init_regs(nquant), 0, ctx);
     CM.FInitStateRegsWf(bytecode, cp, ncap, nlook, nquant, 0, ctx);
+    NR.NoNulledPlusReverse(body);
     NoTrueQuantStampNested(rev);
     CM.RegsClocksLEInit(ncap, -1);
     CM.RegsClocksLEInit(nquant, -1);
@@ -16799,6 +16891,7 @@ module LindenElkMain {
                                      lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>, cp: int,
                                      cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, la: R.lookaround, body: R.regex)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires la.Lookahead? && dir == LAnc.Forward
     requires bytecode == CP.compile_to_bytecode(body)
     requires AI.cp_context(cp, str, dir).nextchar == AI.get_char(str, cp)
@@ -17727,7 +17820,7 @@ module LindenElkMain {
         } else {
           LookCheckDirectOptREGen((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
         }
-      } else if nul != R.NonNullable {
+      } else if nul != R.NonNullable && !q.greedy {
         // §2.5a GENERIC: min forced copies then the star loop; the loop's own
         // five instructions (Fork/SetQuantToClock/BeginLoop at em..em+2,
         // EndLoop/Jmp at e1..e1+1) are all of the harmless kind
@@ -17736,6 +17829,19 @@ module LindenElkMain {
         NR.NfaRepIncrRE(r1, code, em + 3, e1);
         if pc < em {
           LookCheckDirectMinREGen(q.min as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          LookCheckDirectREGen(r1, code, em + 3, e1, pc);
+        } else {
+        }
+      } else if nul != R.NonNullable {
+        // §2.5b CIN-GREEDY: min-1 forced copies, then the stamped end-fork
+        // loop; its six own instructions are all of the harmless kind
+        var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          LookCheckDirectMinREGen((q.min - 1) as nat, qid, r1, code, start, em, pc);
         } else if pc <= em + 2 {
         } else if pc < e1 {
           LookCheckDirectREGen(r1, code, em + 3, e1, pc);
@@ -18041,6 +18147,7 @@ module LindenElkMain {
     cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
     ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>)
     requires crv == CP.FFullCompilation(ast)
+    requires NR.NoNulledPlusRE(re)   // §2.5b interim: all stamps false
     requires re == R.lazy_prefix(ast)
     requires code == CP.compile_to_bytecode(re)
     requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)

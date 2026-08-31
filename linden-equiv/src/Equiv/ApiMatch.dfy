@@ -54,6 +54,11 @@ module LindenRegexApi {
       historical reasons; it admits both flavours. Renaming is pending. */
   predicate SupportedL3(pattern: R.raw_regex) {
     NR.LookBehindFragmentRaw(pattern) && T.Latin1Wf(pattern)
+    // §2.5b INTERIM: the layout arms for the greedy-nullable `+` (the
+    // CIN-GREEDY end-fork scheme) are in place beneath this gate, but the
+    // nulled-plus capture RECONSTRUCTION theorem is not — so the gate holds
+    // greedy-nullable `+` out until it lands. Drop this conjunct to flip.
+    && NR.NoNulledPlusRaw(pattern)
   }
 
   /** L4: arbitrarily NESTED capturing positive lookaheads. The nested fragment
@@ -73,6 +78,7 @@ module LindenRegexApi {
     && NR.NegLooksLookFreeRaw(pattern)
     && NR.LookBodiesNoCapUnderQuantRaw(pattern)
     && NR.QuantsLookCapFreeRaw(pattern)
+    && NR.NoNulledPlusRaw(pattern)   // §2.5b interim (see SupportedL3)
   }
 
   /** (L5) The nested fragment with POSITIVE LOOKBEHINDS: a positive lookbehind's
@@ -87,6 +93,7 @@ module LindenRegexApi {
     && NR.NegLooksLookFreeRaw(pattern)
     && NR.LookBodiesNoCapUnderQuantRaw(pattern)
     && NR.QuantsLookCapFreeRaw(pattern)
+    && NR.NoNulledPlusRaw(pattern)   // §2.5b interim (see SupportedL3)
   }
 
   /** The supported fragment: the depth-1 fragment (`SupportedL3`), the nested

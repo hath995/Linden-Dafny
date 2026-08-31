@@ -64,6 +64,46 @@ module LindenElkFlipStatics {
   /** The engine reversal + anchor swap is exactly SpanDuality's recursive
       `RevRE`, at ANY depth: both keep lids and kinds, both reverse `Re_con`,
       and the two anchor swaps are the same map. */
+  /** §2.5b interim: `SwapAnchorsRegex`, `reverse_regex` and `FlipRE` all keep
+      every quant node's `(nul, qid, quant)` verbatim, so the no-nulled-plus
+      gate conjunct transfers through `XRV` and `FXR`. */
+  lemma NoNulledPlusXRV(r: R.regex)
+    requires NR.NoNulledPlusRE(r)
+    ensures NR.NoNulledPlusRE(XRV(r))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => NoNulledPlusXRV(r1); NoNulledPlusXRV(r2);
+    case Re_con(r1, r2) => NoNulledPlusXRV(r1); NoNulledPlusXRV(r2);
+    case Re_quant(_, _, _, r1) => NoNulledPlusXRV(r1);
+    case Re_capture(_, r1) => NoNulledPlusXRV(r1);
+    case Re_lookaround(_, _, r1) => NoNulledPlusXRV(r1);
+    case _ =>
+  }
+
+  lemma NoNulledPlusFXR(r: R.regex)
+    requires NR.NoNulledPlusRE(r)
+    ensures NR.NoNulledPlusRE(FXR(r))
+    decreases r
+  {
+    NoNulledPlusXRV(r);
+    NoNulledPlusFlipRE(XRV(r));
+  }
+
+  lemma NoNulledPlusFlipRE(r: R.regex)
+    requires NR.NoNulledPlusRE(r)
+    ensures NR.NoNulledPlusRE(FR.FlipRE(r))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => NoNulledPlusFlipRE(r1); NoNulledPlusFlipRE(r2);
+    case Re_con(r1, r2) => NoNulledPlusFlipRE(r1); NoNulledPlusFlipRE(r2);
+    case Re_quant(_, _, _, r1) => NoNulledPlusFlipRE(r1);
+    case Re_capture(_, r1) => NoNulledPlusFlipRE(r1);
+    case Re_lookaround(_, _, r1) => NoNulledPlusFlipRE(r1);
+    case _ =>
+  }
+
   lemma XRevIsRevRENested(r: R.regex)
     ensures XRV(r) == SD.RevRE(r)
     decreases r
