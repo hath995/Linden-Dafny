@@ -3012,6 +3012,7 @@ module LindenElkLiftSimCore {
         // the node's own bundle
         assert LTB.LookEntryOk(crv, lid, la, body);
         assert T.TransWf(body) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body);
+        assert NR.NoNulledPlusRE(body);   // §2.5b: descends definitionally
         assert lid in qm.looks && qm.looks[lid] == (T.TrLookaround(la), T.Translate(body));
         // confinement: the body's groups are inside-look groups of re0
         M.TranslateDefGroupsEqCapIds(body);

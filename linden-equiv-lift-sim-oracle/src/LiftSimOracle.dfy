@@ -433,6 +433,7 @@ module LindenElkLiftSimOracle {
         assert LTB.LookEntryOk(crv, lid, la, body);
         assert T.TransWf(body) && NR.NestedFragmentRE(body)
                && NR.NegLooksLookFreeRE(body);
+        assert NR.NoNulledPlusRE(body);   // §2.5b: descends definitionally
         assert (la.Lookbehind? ==> NR.LBOnlyLooksRE(body))                  // (L5 F7f) kind-split
                && (!la.Lookbehind? ==> L5ScopeV1RE(body));
         assert lid in qm.looks && qm.looks[lid] == (T.TrLookaround(la), T.Translate(body));
