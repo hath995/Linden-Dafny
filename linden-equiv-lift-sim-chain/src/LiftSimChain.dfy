@@ -1057,6 +1057,7 @@ module LindenElkLiftSimChain {
     // (L4 NESTED) body-fragment weakened to the positive-nesting sub-fragment;
     // the GateStepValueLB backward-replay body package is DROPPED with the call.
     requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body) && la.Lookbehind?
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires r1 == T.Translate(body) && lk == T.TrLookaround(la)
     requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
     requires 0 <= l < nlook && l < RL.ASize(t.look_regs)
@@ -1177,6 +1178,7 @@ module LindenElkLiftSimChain {
     // for the recursive outside-tie); the GateStepValue body-package requires
     // (StaticOkRE(body)/bodycode/qt/f_look_* rows) are DROPPED with the call.
     requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body) && la.Lookahead?
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires r1 == T.Translate(body) && lk == T.TrLookaround(la)
     requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
     requires 0 <= l < nlook && l < RL.ASize(t.look_regs)
@@ -1541,7 +1543,7 @@ module LindenElkLiftSimChain {
       see-through disjunct — the Reset applies when B steps that node); an
       `Acheck` head (backward fork) peels to `Progress` and recurses, arms at
       `true`; `CannotExit` at the guard dies. */
-  lemma WalkPairLkAtForkCore(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+  lemma {:isolate_assertions} WalkPairLkAtForkCore(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                              tb: LT.Tree, gm: LG.GroupMap, pc: nat, b: BS.LoopBool,
                              acts: LS.Actions, x: int, y: int)
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
@@ -1561,6 +1563,9 @@ module LindenElkLiftSimChain {
               && WalkPairLk(rer, qm, code, inp, ta2, gm, y as nat, ATR.EaOf(b))
     decreases ATR.MsizeA(acts)
   {
+    // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
+    // triggered existential storm the solver; all uses here are opaque.
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     var g := ATR.EaOf(b);
     var pcmid: nat :| AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && AR.ActionsRepL(rer, qm, acts[1..], code, pcmid);
     EL.PikeLkActionsTail(acts);
@@ -4127,7 +4132,7 @@ module LindenElkLiftSimChain {
     }
   }
 
-  lemma WalkPairLkAtForkCoreRec(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+  lemma {:isolate_assertions} WalkPairLkAtForkCoreRec(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                                 tb: LT.Tree, gm: LG.GroupMap, pc: nat, b: BS.LoopBool,
                                 acts: LS.Actions, x: int, y: int)
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
@@ -4147,6 +4152,9 @@ module LindenElkLiftSimChain {
               && WalkPairLkRec(rer, qm, code, inp, ta2, gm, y as nat, ATR.EaOf(b))
     decreases ATR.MsizeA(acts)
   {
+    // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
+    // triggered existential storm the solver; all uses here are opaque.
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     var g := ATR.EaOf(b);
     var pcmid: nat :| AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && AR.ActionsRepL(rer, qm, acts[1..], code, pcmid);
     EL.PikeLkActionsRecTail(acts);
@@ -5146,6 +5154,7 @@ module LindenElkLiftSimChain {
     // (L4 NESTED) body-fragment weakened to the positive-nesting sub-fragment;
     // the GateStepValueLB backward-replay body package is DROPPED with the call.
     requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body) && la.Lookbehind?
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires r1 == T.Translate(body) && lk == T.TrLookaround(la)
     requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
     requires 0 <= l < nlook && l < RL.ASize(t.look_regs)
@@ -5197,6 +5206,7 @@ module LindenElkLiftSimChain {
     // for the recursive outside-tie); the GateStepValue body-package requires
     // (StaticOkRE(body)/bodycode/qt/f_look_* rows) are DROPPED with the call.
     requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body) && la.Lookahead?
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires r1 == T.Translate(body) && lk == T.TrLookaround(la)
     requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
     requires 0 <= l < nlook && l < RL.ASize(t.look_regs)
@@ -5257,6 +5267,7 @@ module LindenElkLiftSimChain {
     // for the recursive outside-tie); the GateStepValue body-package requires
     // (StaticOkRE(body)/bodycode/qt/f_look_* rows) are DROPPED with the call.
     requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body) && la.Lookbehind?
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires r1 == T.Translate(body) && lk == T.TrLookaround(la)
     requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
     requires 0 <= l < nlook && l < RL.ASize(t.look_regs)
@@ -5555,7 +5566,7 @@ module LindenElkLiftSimChain {
       `FreshBodyDirectMember`), whose triggers make it slow in MainTheoremL4's
       ~5000-fact context. Here the a-h stay local, and MainTheoremL4 obtains
       `OwnerForallO(...)` atomically. */
-  lemma ProduceOwnerForall(
+  lemma {:isolate_assertions} ProduceOwnerForall(
     qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex, code: RB.code,
     endl: nat, ov: LOr.OracleView, thread: AI.Thread, S: set<LG.GroupId>, inits: AI.VmState,
     capture: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, result: Option<AI.Thread>,
@@ -5563,6 +5574,7 @@ module LindenElkLiftSimChain {
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires code == CP.compile_to_bytecode(re)
+    requires NR.NoNulledPlusRE(re)   // §2.5b interim: all stamps false
     requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && T.TransWf(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
@@ -5589,6 +5601,9 @@ module LindenElkLiftSimChain {
     ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
             OwnerForallO(crv, str, re, ov, res.0, res.1, res.2, S, ncap, nlook, nquant)
   {
+    // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
+    // triggered existential storm the solver; all uses here are opaque.
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     var maxlook := R.max_lookaround(ast);
     var res := AI.FLookLoop(crv, str, 1, maxlook, thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
     var lkT := thread.look_regs;

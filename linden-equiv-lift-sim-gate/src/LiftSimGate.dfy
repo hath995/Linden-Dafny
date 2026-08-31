@@ -2928,6 +2928,7 @@ module LindenElkLiftSimGate {
       // NestedFragmentRE + NegLooksLookFreeRE follow from LookFreeRE+PlusFragmentRE.
       PIV.LookCheckIdsRENested(re, code, 0, endl, pc);
       NI.LookBodyOfTablesTie(re, crv, l as nat);
+      NI.NoNulledPlusLookBody(re, l as nat);   // §2.5b interim: NoNulledPlusRE(body)
       assert PSM.StaticOkRE(qm, body, bodycode, |bodycode| - 1);   // (⟹ LookBehindFragmentRE(body))
       NR.LookFreeIsPlusFragmentRE(body);                          // PlusFragmentRE(body)
       NR.LookFreePlusIsNestedRE(body);                            // NestedFragmentRE(body)
@@ -2975,6 +2976,7 @@ module LindenElkLiftSimGate {
         PIV.LookCheckIdsRENested(re, code, 0, endl, pc);                   // (l as nat) in LookIds(re)
         assert (l as nat) in LTB.LookIds(re);
         NI.LookBodyOfTablesTie(re, crv, l as nat);                   // VBody(crv,l) == LookBodyOfRE(re,l)
+        NI.NoNulledPlusLookBody(re, l as nat);                     // §2.5b interim: NoNulledPlusRE(body)
         NR.LookFreeIsPlusFragmentRE(body);                         // PlusFragmentRE(body) from StaticOkRE(body)+LookFreeRE(body)
         assert NR.PlusFragmentRE(body);
         NR.LookFreePlusIsNestedRE(body);                           // NestedFragmentRE(body)
@@ -6860,6 +6862,7 @@ module LindenElkLiftSimGate {
     assert l >= 0 && (l as nat) in LTB.LookIds(re);
     NI.LookBodyOfTablesTie(re, crv, l as nat);
     assert body == NI.LookBodyOfRE(re, l as nat);
+    NI.NoNulledPlusLookBody(re, l as nat);   // §2.5b interim: NoNulledPlusRE(body)
     // (L5 F7f) the L5 per-lid dispatch: a positive LOOKBEHIND is in scope iff its
     // body is lookbehind-only (`LBOnlyLooksRE`) — the LB arms below consume it.
     assert la.Lookahead? || la.Lookbehind?;
