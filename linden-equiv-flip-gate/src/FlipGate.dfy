@@ -158,6 +158,7 @@ module LindenElkFlipGate {
       // ---- CapRegWf(rfF.caps): forward fresh-match wf over the nested FXR(body) ----
       FST.FXRStructural(body);
       assert ctxcF.nextchar == AI.get_char(rstr, mcp);
+      FST.NoNulledPlusFXR(body);   // §2.5b interim: NoNulledPlusRE(FXR(body))
       M.FreshMatchWfNested(bcF, rstr, mcp, ov', cdns', FST.FXR(body), ncap, nlook, nquant);
       assert PIV.CapRegWf(rfF.value.capture_regs);
 
@@ -335,6 +336,7 @@ module LindenElkFlipGate {
     var ctxcF := AI.cp_context(mcp, rstr, LAnc.Forward);
     var initsF := AI.FInitState(bcF, mcp, cap, lk, qt, 0, ctxcF);
     var rfF := AI.FFindMatch(bcF, rstr, initsF, ov', LAnc.Forward, cdns').0;
+    assert {:split_here} true;   // (§2.5b) section: preamble | the raB.Some? arm
 
     if raB.Some? {
       assert rfF.Some? && rfF.value == MIR.MirrorThread(raB.value, n);
@@ -348,7 +350,9 @@ module LindenElkFlipGate {
       FST.FXRStructural(body);
       var endl' := FST.FXRCompileFacts(body);
       assert ctxcF.nextchar == AI.get_char(rstr, mcp);
+      FST.NoNulledPlusFXR(body);   // §2.5b interim: NoNulledPlusRE(re')
       M.MainMatchInsideCapsInitNested(re', bcF, endl', rstr, initsF, cap, lk, qt, ov', cdns', rfF);
+      assert {:split_here} true;   // (§2.5b) section: statics | the per-group readout
       var Sc := PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(re'));
       assert CM.RegsAgreeOutside(fc, cap, Sc);
 
