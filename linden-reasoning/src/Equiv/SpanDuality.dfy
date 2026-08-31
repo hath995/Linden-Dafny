@@ -26,6 +26,7 @@
 //   succeeds iff the body matches some span ending at cp — the exact
 //   counterpart of linden-equiv's RecorderHit.
 include "Translate.dfy"
+include "NullableFacts.dfy"
 
 /** §6.4 groundwork: the Linden-side span predicate `MatchesL`, its chain
     algebra, the walk-success predicate `SuccActs`, and the group-free
@@ -44,6 +45,7 @@ module LindenSpanDuality {
   import FS = FunctionalSemantics
   import SSx = StrictSuffix
   import T = LindenElkTranslate
+  import NUL = LindenElkNullable
   import RE = RegElkRegex
 
   // ===========================================================================
@@ -348,6 +350,37 @@ module LindenSpanDuality {
     case Group(gid, r1) => L.Group(gid, RevL(r1))
     case LookaroundR(lk, r1) => L.LookaroundR(lk, RevL(r1))
     case Backreference(_) => r
+  }
+
+  /** §2.5b: `RevL` preserves L-side non-nullability (quant fields are kept;
+      `NonNullableL(Sequence)` is a commutative disjunction). */
+  lemma RevLNonNullable(r: L.Regex)
+    ensures NUL.NonNullableL(RevL(r)) <==> NUL.NonNullableL(r)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => RevLNonNullable(r1); RevLNonNullable(r2);
+    case Sequence(r1, r2) => RevLNonNullable(r1); RevLNonNullable(r2);
+    case Quantified(_, _, _, r1) => RevLNonNullable(r1);
+    case Group(_, r1) => RevLNonNullable(r1);
+    case _ =>
+  }
+
+  /** §2.5b: `RevL` preserves the interim no-nulled-plus conjunct. */
+  lemma RevLNoNulledPlus(r: L.Regex)
+    requires NUL.NoNulledPlusL(r)
+    ensures NUL.NoNulledPlusL(RevL(r))
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => RevLNoNulledPlus(r1); RevLNoNulledPlus(r2);
+    case Sequence(r1, r2) => RevLNoNulledPlus(r1); RevLNoNulledPlus(r2);
+    case Quantified(g, min, delta, r1) =>
+      RevLNoNulledPlus(r1);
+      RevLNonNullable(r1);
+    case Group(_, r1) => RevLNoNulledPlus(r1);
+    case LookaroundR(_, r1) => RevLNoNulledPlus(r1);
+    case _ =>
   }
 
   lemma RevLGroupOk(r: L.Regex)

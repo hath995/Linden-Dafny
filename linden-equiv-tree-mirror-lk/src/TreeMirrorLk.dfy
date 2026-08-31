@@ -36,6 +36,7 @@ module LindenElkTreeMirrorLk {
   import LT = Tree
   import FU = FunctionalUtils
   import SD = LindenSpanDuality
+  import NUL = LindenElkNullable
   import TM = LindenTreeMirror
   import TRM = LindenTreeResMirror
   import CE = LindenElkCheckErase
@@ -658,11 +659,13 @@ module LindenElkTreeMirrorLk {
     match r
     case Disjunction(a, b) => RevLPreservesPikeLkRec(a); RevLPreservesPikeLkRec(b);
     case Sequence(a, b) => RevLPreservesPikeLkRec(a); RevLPreservesPikeLkRec(b);
-    case Quantified(_, _, _, r1) => RevLPreservesPikeLkRec(r1);
+    case Quantified(_, _, _, r1) =>
+      RevLPreservesPikeLkRec(r1);
+      SD.RevLNonNullable(r1);        // §2.5b interim conjunct transfers
     case Group(_, r1) => RevLPreservesPikeLkRec(r1);
     case LookaroundR(lk, r1) =>
       if L.Positivity(lk) { RevLPreservesPikeLkRec(r1); }
-      else { SD.RevLGroupFree(r1); }
+      else { SD.RevLGroupFree(r1); SD.RevLNoNulledPlus(r1); }
     case _ =>
   }
 
@@ -709,6 +712,7 @@ module LindenElkTreeMirrorLk {
       lookarounds/backrefs ⇒ `PikeLkRegexRec`). */
   lemma GroupFreeLIsPikeLkRec(r: L.Regex)
     requires SD.GroupFreeL(r)
+    requires NUL.NoNulledPlusL(r)   // §2.5b interim
     ensures EL.PikeLkRegexRec(r)
   {
     EL.GroupFreeLNoLkBr(r);
@@ -939,6 +943,7 @@ module LindenElkTreeMirrorLk {
   lemma QuantMinHelper(r1: L.Regex, q1: L.Regex, cont: LS.Actions, rer: LW.RegExpRecord, str: string,
                        greedy: bool, min: nat, delta: LN.NoI)
     requires min > 0 && q1 == L.Quantified(greedy, min - 1, delta, r1)
+    requires min > 1 && delta.Inf? && greedy ==> NUL.NonNullableL(r1)   // §2.5b interim
     requires EL.PikeLkRegexRec(r1) && RegLookGatesMirror(r1, rer, str)
     requires EL.PikeLkActionsRec(cont) && ActsLookGatesMirror(cont, rer, str)
     ensures EL.PikeLkActionsRec([LS.Areg(r1), LS.Areg(q1)] + cont)
@@ -1577,6 +1582,7 @@ module LindenElkTreeMirrorLk {
 
   lemma QuantStackInvLk(greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex, cont: LS.Actions)
     requires min > 0 && StackInvLk(cont)
+    requires min > 1 && delta.Inf? && greedy ==> NUL.NonNullableL(r1)   // §2.5b interim
     requires EL.PikeLkRegexRec(r1) && CD.NoDupG(L.DefGroups(r1))
     requires forall g :: g in L.DefGroups(r1) ==> g !in CD.ClosesActs(cont)
     ensures StackInvLk([LS.Areg(r1), LS.Areg(L.Quantified(greedy, min - 1, delta, r1))] + cont)

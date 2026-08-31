@@ -8015,6 +8015,33 @@ module LindenElkNestInv {
     owner := InnermostLookOwnerExists(r, g);
   }
 
+  /** §2.5b interim: `NoNulledPlus` descends into look bodies (the gate
+      conjunct covers the whole regex, lookaround bodies included). */
+  lemma NoNulledPlusLookBody(r: R.regex, l: nat)
+    requires NR.NoNulledPlusRE(r)
+    requires l in LTB.LookIds(r)
+    ensures NR.NoNulledPlusRE(LookBodyOfRE(r, l))
+    decreases r
+  {
+    match r
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      if l in LTB.LookIds(r1) { NoNulledPlusLookBody(r1, l); }
+      else { NoNulledPlusLookBody(r2, l); }
+    case Re_con(r1, r2) =>
+      if l in LTB.LookIds(r1) { NoNulledPlusLookBody(r1, l); }
+      else { NoNulledPlusLookBody(r2, l); }
+    case Re_quant(_, _, _, r1) => NoNulledPlusLookBody(r1, l);
+    case Re_capture(_, r1) => NoNulledPlusLookBody(r1, l);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == l {
+      } else {
+        NoNulledPlusLookBody(r1, l);
+      }
+  }
+
   /** R1 #2: descending into a look body strictly DROPS the nesting depth --
       the well-founded measure the depth-k capture recursion decreases on.
       Structural induction following `LookBodyOfRE` / `LookIds`. */
