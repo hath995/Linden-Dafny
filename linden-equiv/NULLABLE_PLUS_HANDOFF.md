@@ -473,3 +473,84 @@ shared default there, so the rung never touched `ReconstructNulled`. §2.5b must
 § FINAL STATE); extend them, then `lem pack` and let it enumerate the consumers — do NOT estimate
 by grep, that failed four times in §2.5a. Expect all three failure modes again, and expect the
 `SetQuantToClock(_, true)` weakening to be the hard part rather than the layout arms.
+
+---
+
+## § 2.5b PROGRESS LOG (campaign started 2026-08-30, branch `nullable-plus-greedy` off `nullable-plus`)
+
+**SCOPE DECISION: §2.5b is being landed as §2.5b-CIN — the greedy CI-nullable schemes only.**
+CDN-greedy (`CheckNullable`) stays fully out (no representation, no fragment admission); it is a
+third pass through the same predicates plus the whole cdns correspondence, deferred.
+
+**ARCHITECTURE OF THE RUNG — two stages:**
+
+1. **The LAYOUT + INTERIM stage (this log):** every layout-baked predicate gets the CIN-GREEDY
+   end-fork arm for real; the mid-parse SOUNDNESS invariant (`InBlock`/`InBlockV`) gets the real
+   CIN arm including the NULLED-EXIT theorem; but the all-stamps-false layer survives via an
+   INTERIM GATE CONJUNCT: `SupportedL3/4/5` now carry `NR.NoNulledPlusRaw(pattern)`, and the
+   stamps-false consumers take `NR.NoNulledPlusRE(...)` hypotheses discharged by the new
+   `NI.StampFalseAt` sweep (split out of `CodeShapeAt`, which LOST its `!bb` claim). The
+   TREE-correspondence tower (ActionsTreeRep/TreeThread/PikeSim/LiftSim) refutes its CIN branches
+   from the interim hypothesis where a real arm would need the reconstruction theorem.
+2. **The RECONSTRUCTION stage (NOT STARTED):** the FNulledPlus/FReconstructPlus correspondence —
+   the engine's stamp-true + replay equals the spec's empty mandatory iteration. Its landing
+   deletes the interim conjunct and replaces the refutation branches with real arms. THE PRIORITY
+   SUBTLETY to prove: the engine explores [body's consuming paths, then the stamp path] while the
+   spec explores body paths in priority order WITH empty ones live (no Acheck on the mandatory
+   iteration); the results agree because all empty body-paths yield identical continuation
+   configurations (no backrefs) and GMReset erases a superseded empty iteration's writes.
+
+**KEY NEW FACTS (this stage):**
+* The CIN end-fork layout (`em: Fork(em+1, e1+2); em+1: SQC(qid,false); em+2: BeginLoop; body;
+  e1: EndLoop; e1+1: Fork(em+1, e1+3); e1+2: SQC(qid,true); pce == e1+3`) — both re-entry arms
+  land ON THE STAMP `em+1`, and the head fork's skip arm crosses the stamp-true INSIDE the block
+  (a genuinely new in-block forward edge; the end fork is a new `BackForkAt`).
+* The fragment predicates' CIN disjunct pins ANNOTATION CONSISTENCY:
+  `q.greedy && nul == R.CINullable && R.nullable(r1) == R.CINullable`. The equality (unlike
+  §2.5a's measured-fatal inequality) verifies fine — 207/0 whole-file. It is LOAD-BEARING twice:
+  `ColdNNF` (else a zero-width path could CROSS a "NonNullable" quant via the skip arm) and the
+  nulled exits in `BlockStep`/`BlockStepV`.
+* `CINullableMatchesEmpty{,V}`: a CI-nullable fragment regex matches the empty span at EVERY
+  position (the semantic content of CI); discharges the stamp-true exit in the soundness sweep.
+* `NUL.CINullableL` + `TransCINullable` (biconditional) mirror the NonNullable story; `NfaRepCinL`
+  ties BOTH stamps to ONE existential qid.
+* Cold analysis: the CIN loop body is a Cold sink exactly like the star's (EndLoop wall), so the
+  new back fork at `e1+1` is unreachable zero-width from inside; only the skip arm carries Cold
+  across the block.
+
+**COMMITS (all whole-file green at commit time):**
+| commit | package(s) | result |
+|---|---|---|
+| `d1fb40d` | nfa-rep-re layer 1 + CINullableL (linden-reasoning) | 221/0, 7/0 |
+| (next) | actions-rep-re layer 2 | 59/0 |
+| (next) | NoNulledPlusRE/Raw + OracleBridge CinLoopPath | 4/0, 36/0 |
+| (next) | OracleDecomp CIN + nulled exit; OracleBridgeV | 86/0, 35/0 |
+
+**DONE AND COMMITTED (whole-file green each):** nfa-rep-re (layer 1 + `NoNulledPlusRE` alias to
+the canonical `NUL.NoNulledPlusRE_`, 226/0), actions-rep-re (59/0, `NfaRepCinL`), linden-reasoning
+(`CINullableL`/`TransCINullable`/`NoNulledPlusL`/`TransNoNulledPlus` + SpanDuality
+`RevLNonNullable`/`RevLNoNulledPlus`), oracle-bridge (36/0 `CinLoopPath`), oracle-bridge-v (35/0),
+oracle-decomp (86/0 — `CinShape`/`CinTail` + **the NULLED-EXIT theorem** via
+`CINullableMatchesEmpty`), oracle-decomp-v (73/0), oracle-accept-v (22/0), nest-inv (239/0 —
+`NestInvCinRE` family, `StampFalseAt` split out of `CodeShapeAt` which LOST `!bb`,
+`NoNulledPlusLookBody`), pike-inv-re (304/0), entry-lk (50/0 — **`PikeLkRegex{,Rec}` carry the
+interim conjunct**: Quantified case + BOTH look arms), tree-thread-re (9/0), walk-ok-entry (47/0 —
+`WalkOkCinChainF{,Nested}`, trivial k==1 bottom), tree-mirror-lk (100/0), flip-statics
+(`NoNulledPlusXRV/FXR/FlipRE`, 3/0).
+
+**THREADED, PACK-PENDING:** MainTheorem (`NoTrueQuantStamp{,Nested}` via `NI.StampFalseAt` + 44
+caller lemmas + 3 sweeps CIN-branched), LookCapture, ApiMatch gates (`NoNulledPlusRaw` on
+SupportedL3/4/5), LiftSimCore (three head lemmas that are FALSE for CIN@min==1 —
+`QuantHeadMinPosPinsSQC`/`QuantForcedContRep`/`QuantHeadSQCPin` — carry the per-node conjunct;
+five layout pins got real CIN branches; four construction arms refute via `assert !greedy` from
+PikeLk), actions-tree-rep-re (four `assert !greedy` refutations), the 13 shared-statics
+FindRec/tower lemmas + six `NoTrueQuantStampNested` call-site derivations.
+
+**EXPECTED NEXT FALLOUT (pack waves):** the per-lid forall hypotheses in the FLookLoop family
+(main-theorem/lift-sims) need `NoNulledPlusRE(body)` in their conjunct lists, discharged at the
+top from the gate via `NI.NoNulledPlusLookBody`/`NR.NoNulledPlusReverse`/`FST.NoNulledPlusFXR`;
+plus whatever check-erase / tree-rep-re / gen-step-re / pike-sim-re dispatchers hit the CIN arm
+(judge each: layout classification → real branch; tree correspondence → interim refutation).
+Driver: `LEM_BUILD_TIMEOUT=0 lem pack --jobs 3` at root, fix the first red member, repeat.
+Dev loop: verify against SIBLING SOURCES (`--library=../pkg/src/File.dfy`, exclude the stale
+.doo — works, resolution is package-blind).
