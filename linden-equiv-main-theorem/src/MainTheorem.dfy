@@ -4041,6 +4041,8 @@ module LindenElkMain {
                                 exists la: R.lookaround, body: R.regex ::
                                   LTB.LookEntryOk(crv, l, la, body)
                                   && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+          && NR.NoNulledPlusRE(body)
+                                  && NR.NoNulledPlusRE(body)
                                   && PIV.CapUnique(body) && PIV.QuantUnique(body)
                                   && PIV.CaptureRegs(body) <= S
                                   && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(mainast))
@@ -4062,6 +4064,7 @@ module LindenElkMain {
         var la: R.lookaround, body: R.regex :|
           LTB.LookEntryOk(crv, lid, la, body)
           && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+          && NR.NoNulledPlusRE(body)
           && PIV.CapUnique(body) && PIV.QuantUnique(body)
           && PIV.CaptureRegs(body) <= S
           && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(mainast))
@@ -4125,6 +4128,8 @@ module LindenElkMain {
                                 exists la: R.lookaround, body: R.regex ::
                                   LTB.LookEntryOk(crv, l, la, body)
                                   && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+          && NR.NoNulledPlusRE(body)
+                                  && NR.NoNulledPlusRE(body)
                                   && PIV.CapUnique(body) && PIV.QuantUnique(body)
                                   && LKC.QIdsInt(body) <= Sq
                                   && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
@@ -4145,6 +4150,7 @@ module LindenElkMain {
         var la: R.lookaround, body: R.regex :|
           LTB.LookEntryOk(crv, lid, la, body)
           && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+          && NR.NoNulledPlusRE(body)
           && PIV.CapUnique(body) && PIV.QuantUnique(body)
           && LKC.QIdsInt(body) <= Sq
           && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
@@ -6060,6 +6066,8 @@ module LindenElkMain {
                                 exists la: R.lookaround, body: R.regex ::
                                   LTB.LookEntryOk(crv, l, la, body)
                                   && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+          && NR.NoNulledPlusRE(body)
+                                  && NR.NoNulledPlusRE(body)
                                   && PIV.CapUnique(body) && PIV.QuantUnique(body)
                                   && PIV.CaptureRegs(body) <= S
                                   && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(mainast))
@@ -6103,6 +6111,7 @@ module LindenElkMain {
         var la: R.lookaround, body: R.regex :|
           LTB.LookEntryOk(crv, lid, la, body)
           && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+          && NR.NoNulledPlusRE(body)
           && PIV.CapUnique(body) && PIV.QuantUnique(body)
           && PIV.CaptureRegs(body) <= S
           && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(mainast))
@@ -6570,6 +6579,8 @@ module LindenElkMain {
                                 exists la: R.lookaround, body: R.regex ::
                                   LTB.LookEntryOk(crv, l, la, body)
                                   && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+          && NR.NoNulledPlusRE(body)
+                                  && NR.NoNulledPlusRE(body)
                                   && PIV.CapUnique(body) && PIV.QuantUnique(body)
                                   && LKC.QIdsInt(body) <= Sq
                                   && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
@@ -6612,6 +6623,7 @@ module LindenElkMain {
         var la: R.lookaround, body: R.regex :|
           LTB.LookEntryOk(crv, lid, la, body)
           && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+          && NR.NoNulledPlusRE(body)
           && PIV.CapUnique(body) && PIV.QuantUnique(body)
           && LKC.QIdsInt(body) <= Sq
           && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
@@ -10693,6 +10705,8 @@ module LindenElkMain {
                                  && exists la: R.lookaround, body: R.regex ::
                                    LTB.LookEntryOk(crv, l, la, body)
                                    && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+          && NR.NoNulledPlusRE(body)
+                                  && NR.NoNulledPlusRE(body)
                                    && PIV.CapUnique(body) && PIV.QuantUnique(body)
                                    && PIV.CaptureRegs(body) <= PIV.CaptureRegsSet(PIV.CapIdsInLooks(ast))
                                    && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
@@ -10744,6 +10758,7 @@ module LindenElkMain {
         ensures exists la: R.lookaround, body: R.regex ::
                   LTB.LookEntryOk(crv, l, la, body)
                   && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+          && NR.NoNulledPlusRE(body)
                   && PIV.CapUnique(body) && PIV.QuantUnique(body)
                   && PIV.CaptureRegs(body) <= PIV.CaptureRegsSet(PIV.CapIdsInLooks(ast))
                   && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
