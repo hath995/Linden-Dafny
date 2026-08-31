@@ -232,6 +232,7 @@ module LindenElkLiftSimDeep {
         SufAllToColsOk(rer, qm, str);
         OracleColsOkRestrict(rer, qm, qmB0, str);
       }
+      NI.NoNulledPlusLookBody(re, A);   // §2.5b interim: NoNulledPlusRE(host)
       FreshBodyDirectInSubFirstLeafLB(rer, qmB0, crv, str, ov, A, res1, host, g2,
                                       ncap, nlook, nquant);
     } else {
@@ -1126,6 +1127,7 @@ module LindenElkLiftSimDeep {
     assert {:split_here} true;   // (E3) section boundary: its own assertion batch
 
     // ==== BASE: g DIRECT in host ====
+    NI.NoNulledPlusLookBody(re, A);   // §2.5b interim: NoNulledPlusRE(host)
     SubFirstLeafDirectInFreshLB(rer, qmB, crv, str, ov, A, res1, host, g, ncap, nlook, nquant);
     var rfc := rfFresh.value.capture_regs;
     var rfl := rfFresh.value.look_regs;

@@ -140,10 +140,12 @@ module LindenElkFlipKeystone {
   lemma LmOfBodiesLBOk(body: R.regex)
     requires T.TransWf(body) && FST.LBOnlyLooksRE(body)
     requires NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body) && PIV.CapUnique(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim
     ensures forall lid: int :: lid in OE.LmOf(body) ==>
       && (OE.LmOf(body)[lid].0.LookBehind? || OE.LmOf(body)[lid].0.NegLookBehind?)
       && SD.GroupOkLB(OE.LmOf(body)[lid].1)
       && FD.NegBodiesGroupFree(OE.LmOf(body)[lid].1)
+      && NUL.NoNulledPlusL(OE.LmOf(body)[lid].1)   // §2.5b interim
       && CD.NoDupG(L.DefGroups(OE.LmOf(body)[lid].1))
     decreases body
   {
@@ -156,6 +158,7 @@ module LindenElkFlipKeystone {
       LmOfBodiesLBOk(r1);
       FST.TranslateGroupOkLB(r1);
       FST.TranslateNegBodiesGroupFree(r1);
+      NUL.TransNoNulledPlus(r1);   // §2.5b interim
       TranslateDefGroupsNoDupK(r1);
       assert OE.LmOf(body) == OE.LmOf(r1)[lid0 := (T.TrLookaround(la), T.Translate(r1))];
     case _ =>
@@ -224,6 +227,7 @@ module LindenElkFlipKeystone {
       cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
       cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int, n: nat)
     requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
@@ -381,7 +385,7 @@ module LindenElkFlipKeystone {
       cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
       ncap: int, nlook: int, nquant: int, n: nat)
     requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
-    requires NUL.NoNulledPlusL(tr)   // §2.5b interim
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)

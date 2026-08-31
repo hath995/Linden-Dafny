@@ -10605,6 +10605,7 @@ module LindenElkMain {
   lemma LmOfBodiesDisjoint(re: R.regex, fc: CP.FCompiled, l1: int, l2: int)
     returns (la1: R.lookaround, b1: R.regex, la2: R.lookaround, b2: R.regex)
     requires T.TransWf(re) && NR.LookBehindFragmentRE(re)
+    requires NR.NoNulledPlusRE(re)   // §2.5b interim
     requires LTB.LookUnique(re) && LTB.LookTablesOk(re, fc)
     requires PIV.QuantUnique(re) && PIV.CapUnique(re)
     requires l1 in OE.LmOf(re) && l2 in OE.LmOf(re) && l1 != l2
@@ -10691,6 +10692,7 @@ module LindenElkMain {
     requires T.TransWf(ast) && T.TransWf(re) && re == R.lazy_prefix(ast)
     requires NR.LookBehindFragmentRE(re) && LTB.LookUnique(re) && PIV.QuantUnique(re)
     requires PIV.CapUnique(re)
+    requires NR.NoNulledPlusRE(re)   // §2.5b interim: all stamps false
     requires crv == CP.FFullCompilation(ast)
     requires code == CP.compile_to_bytecode(re)
     requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
@@ -10749,6 +10751,7 @@ module LindenElkMain {
     assert LTB.LookIds(re) == LTB.LookIds(ast);
     assert PIV.QuantUnique(ast) && LTB.LookUnique(ast);
     assert NR.LookBehindFragmentRE(ast);
+    assert NR.NoNulledPlusRE(ast);   // §2.5b: descends from re == Re_con(pre, ast)
     assert PIV.CapUnique(ast);              // CapUnique(Re_con(pre, ast)) => CapUnique(ast)
     LTB.FFullCompilationLookOk(ast);
     OE.LmOfDom(ast);
@@ -11001,6 +11004,7 @@ module LindenElkMain {
     // closedness of the leaf gm
     assert LT.TreeRes(t, LG.Empty, inp, WP.Forward) == Some(leaf);
     assert OpenOf(LG.Empty) <= PendingCloses([LS.Areg(T.Translate(re))]);
+    NR.SpecRegexNoNulledPlus(raw);   // §2.5b interim conjunct
     EL.TranslateFragmentPikeLk(re);
     assert EL.PikeLkActions([LS.Areg(T.Translate(re))]) by {
       assert [LS.Areg(T.Translate(re))] == [LS.Areg(T.Translate(re))] + [];
@@ -17321,6 +17325,7 @@ module LindenElkMain {
     // LookIdSet(body) <= LookIdSet(re)
     assert LTB.LookIds(body') <= LTB.LookIds(re);
     assert LookIdSet(body') <= LookIdSet(re);
+    NI.NoNulledPlusLookBody(re, lid);                    // §2.5b interim conjunct
   }
 
   /** (h) per-row: `l2 !in LookIdSet(b1)` for `l2 <= l1`. The row `b1` is

@@ -914,6 +914,7 @@ module LindenElkLiftSimOracle {
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
     A0: nat, lk: AReg.Regs, body: R.regex, g2: nat, ncap: int, nlook: int, nquant: int)
     requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
@@ -943,6 +944,7 @@ module LindenElkLiftSimOracle {
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
     A0: nat, lk: AReg.Regs, body: R.regex, g2: nat, ncap: int, nlook: int, nquant: int)
     requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
@@ -2660,6 +2662,7 @@ module LindenElkLiftSimOracle {
     requires T.TransWf(ast) && T.TransWf(re) && re == R.lazy_prefix(ast)
     requires NR.LookBehindFragmentRE(re) && LTB.LookUnique(re)
     requires PIV.QuantUnique(re) && PIV.CapUnique(re)
+    requires NR.NoNulledPlusRE(re)   // §2.5b interim: all stamps false
     requires crv == CP.FFullCompilation(ast)
     requires LTB.LookTablesOk(re, crv)
     requires code == CP.compile_to_bytecode(re)
@@ -4441,6 +4444,7 @@ module LindenElkLiftSimOracle {
     ov: LOr.OracleView, gmt: LG.GroupMap, th: AI.Thread, lid: nat,
     ncap: int, nlook: int, nquant: int)
     requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)

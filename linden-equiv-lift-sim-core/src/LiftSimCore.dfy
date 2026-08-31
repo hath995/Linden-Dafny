@@ -6732,6 +6732,7 @@ module LindenElkLiftSimCore {
     rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, crv: CP.FCompiled, str: string,
     ov: LOr.OracleView, lk: AReg.Regs, lid: nat, ncap: int, nlook: int, nquant: int)
     requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
@@ -6828,6 +6829,7 @@ module LindenElkLiftSimCore {
     assert M.FreshBodyMatch(crvF, rstr, l, lkF, ov', ncap, nlook, nquant) == rfF;
 
     // ---- F6 core at r1: rfF == MirrorThread(raB) ----
+    NI.NoNulledPlusLookBody(body, lid);   // §2.5b interim: NoNulledPlusRE(r1)
     FG.BackFreshCoreNested(rer, qm, r1, str, cp, ov, [], ncap, nlook, nquant, n);
     assert (raB.None? <==> rfF.None?);
     if raB.Some? {
@@ -6894,6 +6896,7 @@ module LindenElkLiftSimCore {
     ov: LOr.OracleView, gmt: LG.GroupMap, th: AI.Thread, lid: nat,
     ncap: int, nlook: int, nquant: int)
     requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)

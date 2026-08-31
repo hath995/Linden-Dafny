@@ -32,6 +32,7 @@ module LindenElkFlipOracle {
   import FU = FunctionalUtils
   import SSx = StrictSuffix
   import SD = LindenSpanDuality
+  import NUL = LindenElkNullable
   import CD = LindenCloseDisc
   import LOr = Oracle
   import AR = LindenElkActionsRep
@@ -63,6 +64,7 @@ module LindenElkFlipOracle {
       && (qm.looks[lid].0.LookBehind? || qm.looks[lid].0.NegLookBehind?)
       && SD.GroupOkLB(qm.looks[lid].1)
       && FD.NegBodiesGroupFree(qm.looks[lid].1)
+      && NUL.NoNulledPlusL(qm.looks[lid].1)   // §2.5b interim
       && CD.NoDupG(L.DefGroups(qm.looks[lid].1))
   }
 
@@ -82,6 +84,12 @@ module LindenElkFlipOracle {
     ensures |LC.Reverse(str)| == |str|
     ensures LL.OracleOkAt(rer, qm2, T.InputAt(LC.Reverse(str), k))
   {
+    // (§2.5b) the widened context (NoNulledPlusL in QmBodiesLBOk + the flip-side
+    // rewrite axioms) sends z3 into a matching loop even on trivial goals; the
+    // proof only ever uses FlipRevL/the row predicates as OPAQUE terms, so hide
+    // everything and reveal just the definitions the steps actually unfold.
+    hide *;
+    reveal LL.OracleOkAt, FlipQmTie, QmBodiesLBOk, TR.CpOf, T.InputAt, SD.SwapInput, L.LkDir, FR.FlipLk, MIR.Mirror;
     var n := |str|;
     var cp := n - k;
     LS.ReverseLength(str);
@@ -95,6 +103,7 @@ module LindenElkFlipOracle {
     T.ReverseProps(rstr[..k]);
     assert TR.CpOf(inp2) == k;
     assert n == |inp.pref| + |inp.next|;
+    assert {:split_here} true;   // (§2.5b) the widened axioms made the single VC inconclusive
     forall lid: int, lk2: L.Lookaround, r12: L.Regex
       | lid in qm2.looks && qm2.looks[lid] == (lk2, r12)
       ensures LOr.view_get_oracle(qm2.ov, TR.CpOf(inp2), lid)
@@ -111,6 +120,7 @@ module LindenElkFlipOracle {
       assert LOr.view_get_oracle(qm2.ov, k, lid) == LOr.view_get_oracle(qm.ov, cp, lid);
       // the original bit is the backward walk
       LL.OracleOkAtGet(rer, qm, inp, lid, lk, r1);
+      assert {:split_here} true;
       // the backward walk is the flipped forward walk (F2, oracle-free)
       FD.BackBodyGmTieFlip(rer, r1, inp, n);
     }

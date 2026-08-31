@@ -6940,6 +6940,7 @@ module LindenElkLiftSimGate {
     // (`LkResultAgreeOutsideNested` on the recursive `PikeLkRegexRec(r1)`) replaces
     // the depth-1 look-free `NoLkBrL(r1)` frame. The fold still writes only
     // `DefGroups(r1)`, so any newly-set S-group of gm2 lies in the gate body.
+    NI.NoNulledPlusLookBody(re, l as nat);   // §2.5b interim: NoNulledPlusRE(body)
     EL.TranslateFragmentPikeLkRec(body);
     assert EL.PikeLkRegexRec(r1);
     LkResultAgreeOutsideNested(rer, lk, r1, inp, tlk, gm);

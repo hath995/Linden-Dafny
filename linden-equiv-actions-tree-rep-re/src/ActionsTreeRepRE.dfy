@@ -204,6 +204,7 @@ module LindenElkActionsTreeRep {
           // BeginLoop/EndLoop sits exactly where the spec's `Acheck` is -- so
           // nothing has to be inserted with `CE.BoolCheckInsert` and this arm
           // needs no nullability hypothesis at all.
+          assert !greedy;   // §2.5b interim: PikeLkRegex holds greedy-nullable out
           var em, e1x := AR.NfaRepLGenInv(rer, qm, greedy, min, r1, code, pc, pcmid);
           var qidL: int :| NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qidL, false))
             && qidL in qm.quants && qm.quants[qidL] == gidl;
@@ -1236,6 +1237,7 @@ module LindenElkActionsTreeRep {
               } else {
                 // the GENERIC scheme (§2.5a): `min >= 1` forced copies, so `pc`
                 // still carries a clock-mark -- refuted the same way
+                assert !greedy;   // §2.5b interim: PikeLkRegex holds greedy-nullable out
                 var em, e1x := AR.NfaRepLGenInv(rer, qm, greedy, min, r1, code, pc, pcmid);
                 var eb: nat :| (exists qid: int ::
                       NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
@@ -1476,6 +1478,7 @@ module LindenElkActionsTreeRep {
           // BeginLoop/EndLoop sits exactly where the spec's `Acheck` is -- so
           // nothing has to be inserted with `CE.BoolCheckInsert` and this arm
           // needs no nullability hypothesis at all.
+          assert !greedy;   // §2.5b interim: PikeLkRegex holds greedy-nullable out
           var em, e1x := AR.NfaRepLGenInv(rer, qm, greedy, min, r1, code, pc, pcmid);
           var qidL: int :| NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qidL, false))
             && qidL in qm.quants && qm.quants[qidL] == gidl;
@@ -2508,6 +2511,7 @@ module LindenElkActionsTreeRep {
               } else {
                 // the GENERIC scheme (§2.5a): `min >= 1` forced copies, so `pc`
                 // still carries a clock-mark -- refuted the same way
+                assert !greedy;   // §2.5b interim: PikeLkRegex holds greedy-nullable out
                 var em, e1x := AR.NfaRepLGenInv(rer, qm, greedy, min, r1, code, pc, pcmid);
                 var eb: nat :| (exists qid: int ::
                       NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
