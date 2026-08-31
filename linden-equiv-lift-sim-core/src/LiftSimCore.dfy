@@ -2815,6 +2815,7 @@ module LindenElkLiftSimCore {
     && exists la: R.lookaround, body: R.regex ::
       LTB.LookEntryOk(crv, l, la, body)
       && T.TransWf(body) && NR.NestedFragmentRE(body)
+      && NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false, per lid
       && NR.NegLooksLookFreeRE(body)
       && (la.Lookbehind? ==> NR.LBOnlyLooksRE(body))
       && (!la.Lookbehind? ==> L5ScopeV1RE(body))
