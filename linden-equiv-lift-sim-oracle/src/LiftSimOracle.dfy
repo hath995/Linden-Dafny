@@ -1117,6 +1117,9 @@ module LindenElkLiftSimOracle {
     ensures tb == LT.Match
     decreases ATR.MsizeA(acts)
   {
+    // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
+    // triggered existential storm the solver; all uses here are opaque.
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     if |acts| == 0 {
       // BoolTreeLk([], inp, b, tb) ⟹ tb == Match
     } else if exists pcmid: nat :: AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && AR.ActionsRepL(rer, qm, acts[1..], code, pcmid) {
@@ -1976,6 +1979,9 @@ module LindenElkLiftSimOracle {
     ensures tb.Choice? || tb.Progress? || tb == LT.Mismatch
     decreases ATR.MsizeA(acts)
   {
+    // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
+    // triggered existential storm the solver; all uses here are opaque.
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     var pcmid: nat :| AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && AR.ActionsRepL(rer, qm, acts[1..], code, pcmid);
     EL.PikeLkActionsTail(acts);
     assert acts == [acts[0]] + acts[1..];
@@ -2653,7 +2659,7 @@ module LindenElkLiftSimOracle {
   // denotation of the FLookLoop-reconstructed registers, and the synthetic
   // thread carrying them is well-formed. The last lemma before the theorem.
   // ==========================================================================
-  lemma L3aEndpointAssembly(
+  lemma {:isolate_assertions} L3aEndpointAssembly(
     ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, endl: nat,
     str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
     thread: AI.Thread, leaf: LT.Leaf,
@@ -2690,6 +2696,9 @@ module LindenElkLiftSimOracle {
                                ncap, nlook, nquant)
             && M.QuantRegsFinal(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed))
   {
+    // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
+    // triggered existential storm the solver; all uses here are opaque.
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     // (2026-08-29 E3) the preamble is an OPAQUE block: only the facts below reach the arm's VC.
     var maxlook := *;
     var lk := *;
@@ -2716,6 +2725,7 @@ module LindenElkLiftSimOracle {
                      exists la: R.lookaround, body: R.regex ::
                        LTB.LookEntryOk(crv, l, la, body)
                        && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+                       && NR.NoNulledPlusRE(body)
                        && PIV.CapUnique(body) && PIV.QuantUnique(body)
                        && PIV.CaptureRegs(body) <= Sreg
                        && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
@@ -2963,6 +2973,7 @@ module LindenElkLiftSimOracle {
                exists la: R.lookaround, body: R.regex ::
                  LTB.LookEntryOk(crv, l, la, body)
                  && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+                 && NR.NoNulledPlusRE(body)
                  && PIV.CapUnique(body) && PIV.QuantUnique(body)
                  && PIV.CaptureRegs(body) <= Sreg
                  && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
@@ -2993,6 +3004,7 @@ module LindenElkLiftSimOracle {
                      exists la: R.lookaround, body: R.regex ::
                        LTB.LookEntryOk(crv, l, la, body)
                        && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+                       && NR.NoNulledPlusRE(body)
                        && PIV.CapUnique(body) && PIV.QuantUnique(body)
                        && PIV.CaptureRegs(body) <= Sreg
                        && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
@@ -3038,6 +3050,7 @@ module LindenElkLiftSimOracle {
                exists la: R.lookaround, body: R.regex ::
                  LTB.LookEntryOk(crv, l, la, body)
                  && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+                 && NR.NoNulledPlusRE(body)
                  && PIV.CapUnique(body) && PIV.QuantUnique(body)
                  && PIV.CaptureRegs(body) <= Sreg
                  && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
@@ -4440,7 +4453,7 @@ module LindenElkLiftSimOracle {
       mirrored world is the `MirrorGm` of the backward sub-leaf (F2 at the lid
       body), so key membership is preserved and value equality comes back
       through `MirrorRange` injectivity. */
-  lemma LookNestBackTTopDeepLidFlip(
+  lemma {:isolate_assertions} LookNestBackTTopDeepLidFlip(
     rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, crv: CP.FCompiled, str: string,
     ov: LOr.OracleView, gmt: LG.GroupMap, th: AI.Thread, lid: nat,
     ncap: int, nlook: int, nquant: int)
@@ -4468,6 +4481,9 @@ module LindenElkLiftSimOracle {
                   (g in lsub.value ==> g in gmt && gmt[g] == lsub.value[g])
                   && (g in gmt ==> g in lsub.value)
   {
+    // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
+    // triggered existential storm the solver; all uses here are opaque.
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     var n := |str|;
     MIR.ReverseLen(str);
     var rstr := LC.Reverse(str);
@@ -4521,6 +4537,8 @@ module LindenElkLiftSimOracle {
     assert inpF == SD.SwapInput(inp);
     MIR.ReverseLen(str[..cp]);
     assert |inp.pref| + |inp.next| == n;
+    NI.NoNulledPlusLookBody(body, lid);   // §2.5b interim: NoNulledPlusRE(r1)
+    NUL.TransNoNulledPlus(r1);            // §2.5b interim: NoNulledPlusL(Translate(r1))
     FD.BackBodyGmTieFlip(rer, T.Translate(r1), inp, n);
     assert tF == LFU.ComputeTr(rer, [LS.Areg(FM.FlipRevL(T.Translate(r1)))], SD.SwapInput(inp),
                                LG.Empty, WP.Forward);
@@ -5039,7 +5057,7 @@ module LindenElkLiftSimOracle {
       the row's INNER rows (the body's own rows, from the initial input), the
       final view's bit at `(cp, lid)` is exactly the spec walk of the row's
       body at `cp` in the row's direction. */
-  lemma OracleColumnNested(rer: LW.RegExpRecord, top: R.regex, crv: CP.FCompiled,
+  lemma {:isolate_assertions} OracleColumnNested(rer: LW.RegExpRecord, top: R.regex, crv: CP.FCompiled,
                                                  str: string, sub: R.regex, lid: int,
                                                  lk: L.Lookaround, r1: L.Regex, cp: nat)
     requires !rer.ignoreCase && !rer.multiline
@@ -5047,6 +5065,7 @@ module LindenElkLiftSimOracle {
     requires NR.NestedFragmentRE(top) && LTB.LidsWellNested(top) && LTB.LookUnique(top)
     requires forall x: nat :: x in LTB.LookIds(top) ==> 1 <= x
     requires NR.NestedFragmentRE(sub) && NR.L5ScopeRE(sub) && NR.NegLooksLookFreeRE(sub)   // (L5 F7g) lifted
+    requires NR.NoNulledPlusRE(sub)   // §2.5b interim: all stamps false
     requires T.TransWf(sub) && LTB.LookUnique(sub) && PIV.CapUnique(sub) && PIV.QuantUnique(sub)
     requires LTB.LookTablesOk(sub, crv)
     requires LTB.LookIds(sub) <= LTB.LookIds(top)
@@ -5061,6 +5080,9 @@ module LindenElkLiftSimOracle {
        <==> LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(r1)], T.InputAt(str, cp), LG.Empty, L.LkDir(lk)),
                        LG.Empty, T.InputAt(str, cp), L.LkDir(lk)).Some?
   {
+    // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
+    // triggered existential storm the solver; all uses here are opaque.
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     var n := |str|;
     var ovf := AI.FBuildOracle(crv, str);
     var lidn: nat := lid as nat;
@@ -5133,6 +5155,7 @@ module LindenElkLiftSimOracle {
       M.QmOfREEntries(body);
       M.QmapOkFromEntries(body, qmb);
       OE.LmapOkOfLmOf(body, qmb);
+      NI.NoNulledPlusLookBody(sub, lid as nat);   // §2.5b interim: NoNulledPlusRE(body)
       assert PSM.StaticOkNestedRE(qmb, body, codeb, endlb);
       assert PSM.SizesOkRE(body, ncapb, nlookb, nquantb);
       var bestT := M.BodyTreeAtCpNested(rer, qmb, body, codeb, endlb, 0, str, cp, ovf, cdnsb,
@@ -5144,7 +5167,10 @@ module LindenElkLiftSimOracle {
       if bit {
         var i := ODV.ReachesWriteVToMatchesV(x, lid, rstr, mv, mcp);
         OMV.MatchesVMirror(rcb, str, ovf, cp, n - i);
-        assert OBV.MatchesV(rcb, str, ovf, cp, n - i);
+        assert OBV.MatchesV(rcb, str, ovf, cp, n - i) by {
+          hide *;   // (§2.5b/z3 4.14) transport is the mirror iff on opaque instances
+          assert n - (n - i) == i;
+        }
         OMV.MatchesVRemoveCapture(body, str, ovf, cp, n - i);
         assert r.Some?;
         assert LT.TreeRes(t, LG.Empty, inp, WP.Forward).Some?;
@@ -5157,6 +5183,10 @@ module LindenElkLiftSimOracle {
         OMV.MatchesVRemoveCapture(body, str, ovf, cp, j);
         OMV.MatchesVMirror(rcb, str, ovf, cp, j);
         assert OBV.MatchesV(x, rstr, mv, n - j, n - cp);
+        // (§2.5b/z3 4.14) spell the call's preconditions out; the packed VC grinds
+        assert NR.NestedFragmentRE(x);
+        assert 0 <= n - j <= |rstr|;
+        assert n - cp <= |rstr|;
         OBV.MatchesVToReachesWriteV(x, lid, rstr, mv, n - j, n - cp);
         assert bit;
       }
@@ -5229,6 +5259,7 @@ module LindenElkLiftSimOracle {
     requires NR.NestedFragmentRE(top) && LTB.LidsWellNested(top) && LTB.LookUnique(top)
     requires forall x: nat :: x in LTB.LookIds(top) ==> 1 <= x
     requires NR.NestedFragmentRE(sub) && NR.L5ScopeRE(sub) && NR.NegLooksLookFreeRE(sub)   // (L5 F7g) lifted
+    requires NR.NoNulledPlusRE(sub)   // §2.5b interim: all stamps false
     requires T.TransWf(sub) && LTB.LookUnique(sub) && PIV.CapUnique(sub) && PIV.QuantUnique(sub)
     requires LTB.LookTablesOk(sub, crv)
     requires LTB.LookIds(sub) <= LTB.LookIds(top)
@@ -5269,6 +5300,7 @@ module LindenElkLiftSimOracle {
         // the inner rows first (strictly fewer look ids: the owner's own id is gone)
         LookIdNotInOwnBody(sub, lidn);
         SubsetCardLt(LTB.LookIds(body), LTB.LookIds(sub), lidn);
+        NI.NoNulledPlusLookBody(sub, lidn);   // §2.5b interim: NoNulledPlusRE(body)
         OracleOkRowsL5(rer, top, crv, str, body);
         // then this row's column
         OracleColumnNested(rer, top, crv, str, sub, lid, lk, r1, cp);
