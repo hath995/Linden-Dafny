@@ -63,6 +63,7 @@ module LindenElkFlipKeystone {
   import FR = LindenElkFlipRev
   import FM = LindenElkFlipMirror
   import FD = LindenElkFlipDisc
+  import NUL = LindenElkNullable
   import FO = LindenElkFlipOracle
   import FST = LindenElkFlipStatics
 
@@ -380,6 +381,7 @@ module LindenElkFlipKeystone {
       cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
       ncap: int, nlook: int, nquant: int, n: nat)
     requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires NUL.NoNulledPlusL(tr)   // §2.5b interim
     requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)

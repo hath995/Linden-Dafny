@@ -37,6 +37,7 @@ module LindenElkFlipDisc {
   import CI = ComputeIsTree
   import SSx = StrictSuffix
   import SD = LindenSpanDuality
+  import NUL = LindenElkNullable
   import TRM = LindenTreeResMirror
   import CD = LindenCloseDisc
   import EL = LindenElkEntryLk
@@ -382,6 +383,7 @@ module LindenElkFlipDisc {
   lemma GroupOkLBNegFreePikeLk(tr: L.Regex)
     requires SD.GroupOkLB(tr)
     requires NegBodiesGroupFree(tr)
+    requires NUL.NoNulledPlusL(tr)   // §2.5b interim
     ensures EL.PikeLkRegexRec(tr)
     decreases tr
   {
@@ -417,6 +419,7 @@ module LindenElkFlipDisc {
       maps are EXACT `MirrorGm` images, inner-look captures included. */
   lemma BackBodyGmTieFlip(rer: LW.RegExpRecord, tr: L.Regex, inp: LC.Input, n: nat)
     requires SD.GroupOkLB(tr)
+    requires NUL.NoNulledPlusL(tr)   // §2.5b interim
     requires NegBodiesGroupFree(tr)
     requires CD.NoDupG(L.DefGroups(tr))
     requires n == |inp.pref| + |inp.next|
