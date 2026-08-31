@@ -764,6 +764,7 @@ module LindenElkMain {
   /** `NoLkBrL` (look-/backref-free) ⇒ `PikeLkRegex` (the fragment is trivially met). */
   lemma NoLkBrImpliesPikeLk(r: L.Regex)
     requires EL.NoLkBrL(r)
+    requires NUL.NoNulledPlusL(r)   // §2.5b interim
     ensures EL.PikeLkRegex(r)
     decreases r
   {
@@ -1189,6 +1190,7 @@ module LindenElkMain {
   lemma BackBodyLeafClosed(rer: LW.RegExpRecord, r1: L.Regex, inp: LC.Input,
                            gm: LG.GroupMap, leaf: LT.Leaf)
     requires EL.NoLkBrL(r1)
+    requires NUL.NoNulledPlusL(r1)   // §2.5b interim
     requires CDE.NoDupG(L.DefGroups(r1))
     requires TRM.GmInBounds(gm, |inp.pref| + |inp.next|)
     requires ClosedGm(gm)
@@ -1206,6 +1208,7 @@ module LindenElkMain {
     assert SD.GroupOkActs([LS.Areg(r1)]);                // == GroupOkL(r1)
     SD.RevLGroupOk(r1);                                  // SD.GroupOkL(rr)
     GroupOkLNoLkBr(rr);                                  // EL.NoLkBrL(rr)
+    SD.RevLNoNulledPlus(r1);                             // §2.5b interim conjunct
     NoLkBrImpliesPikeLk(rr);                             // EL.PikeLkRegex(rr)
     assert SD.RevActs([LS.Areg(r1)]) == [LS.Areg(rr)];
     var tm := FU.ComputeTr(rer, [LS.Areg(rr)], sinp, gm2, WP.Forward);

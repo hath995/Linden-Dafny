@@ -24,6 +24,7 @@ module LindenElkFlipClosed {
   import TRM = LindenTreeResMirror
   import SD = LindenSpanDuality
   import EL = LindenElkEntryLk
+  import NUL = LindenElkNullable
   import LFS = FunctionalSemantics
   import BS = BooleanSemantics
   import CD = LindenCloseDisc
@@ -184,6 +185,34 @@ module LindenElkFlipClosed {
     case LookaroundR(_, r1) => FlipLGroupFree(r1);
     case _ =>
   }
+  /** §2.5b: `FlipL` only changes look KINDS, so L-side nullability and the
+      interim no-nulled-plus conjunct are invariant. */
+  lemma FlipLNonNullable(r: L.Regex)
+    ensures NUL.NonNullableL(FR.FlipL(r)) <==> NUL.NonNullableL(r)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => FlipLNonNullable(r1); FlipLNonNullable(r2);
+    case Sequence(r1, r2) => FlipLNonNullable(r1); FlipLNonNullable(r2);
+    case Quantified(_, _, _, r1) => FlipLNonNullable(r1);
+    case Group(_, r1) => FlipLNonNullable(r1);
+    case _ =>
+  }
+
+  lemma FlipLNoNulledPlus(r: L.Regex)
+    requires NUL.NoNulledPlusL(r)
+    ensures NUL.NoNulledPlusL(FR.FlipL(r))
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => FlipLNoNulledPlus(r1); FlipLNoNulledPlus(r2);
+    case Sequence(r1, r2) => FlipLNoNulledPlus(r1); FlipLNoNulledPlus(r2);
+    case Quantified(_, _, _, r1) => FlipLNoNulledPlus(r1); FlipLNonNullable(r1);
+    case Group(_, r1) => FlipLNoNulledPlus(r1);
+    case LookaroundR(_, r1) => FlipLNoNulledPlus(r1);
+    case _ =>
+  }
+
   lemma FlipLPikeLkRec(r: L.Regex)
     requires EL.PikeLkRegexRec(r)
     ensures EL.PikeLkRegexRec(FR.FlipL(r))
@@ -192,11 +221,14 @@ module LindenElkFlipClosed {
     match r
     case Disjunction(r1, r2) => FlipLPikeLkRec(r1); FlipLPikeLkRec(r2);
     case Sequence(r1, r2) => FlipLPikeLkRec(r1); FlipLPikeLkRec(r2);
-    case Quantified(_, _, _, r1) => FlipLPikeLkRec(r1);
+    case Quantified(_, _, _, r1) =>
+      FlipLPikeLkRec(r1);
+      FlipLNonNullable(r1);   // §2.5b: the conjunct transfers
     case Group(_, r1) => FlipLPikeLkRec(r1);
     case LookaroundR(lk, r1) =>
       FR.FlipLkLaws(lk);
-      if L.Positivity(lk) { FlipLPikeLkRec(r1); } else { FlipLGroupFree(r1); }
+      if L.Positivity(lk) { FlipLPikeLkRec(r1); }
+      else { FlipLGroupFree(r1); FlipLNoNulledPlus(r1); }
     case _ =>
   }
   lemma FlipRevLPikeLkRec(r: L.Regex)
