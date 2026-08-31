@@ -124,6 +124,7 @@ module LindenElkLiftSimCarriers {
   lemma MainTheoremL3(raw: R.raw_regex, str: string)
     requires NR.LookBehindFragmentRaw(raw)
     requires T.Latin1Wf(raw)
+    requires NR.NoNulledPlusRaw(raw)   // §2.5b interim gate conjunct
     ensures LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)))
   {
     var ast := R.annotate(raw);
@@ -140,6 +141,7 @@ module LindenElkLiftSimCarriers {
     assert NR.LookBehindFragmentRE(ast);
     PIV.SpecRegexCapUnique(raw);           // CapUnique(re)
     PIV.SpecRegexQuantUnique(raw);         // QuantUnique(re)
+    NR.SpecRegexNoNulledPlus(raw);         // §2.5b interim: NoNulledPlusRE(re)
     var qm := AR.QMap(M.QmOfRE(re), OE.LmOf(re), AI.FBuildOracle(CP.FFullCompilation(ast), str));
     M.LookStaticPackage(raw, str, qm);
 
@@ -166,12 +168,13 @@ module LindenElkLiftSimCarriers {
       assert re == R.Re_con(pre, ast);
     }
 
-    // fragment code shape: every SetQuantToClock has b == false.
+    // fragment code shape: every SetQuantToClock has b == false (§2.5b: via
+    // the gated StampFalseAt inventory — CodeShapeAt no longer claims it).
     forall pc: nat, q: int, b: bool | NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, b))
       ensures !b
     {
       if pc < endl {
-        NI.CodeShapeAt(re, code, 0, endl, pc);
+        NI.StampFalseAt(re, code, 0, endl, pc);
       } else if pc == endl {
       } else {
         assert pc >= |code|;

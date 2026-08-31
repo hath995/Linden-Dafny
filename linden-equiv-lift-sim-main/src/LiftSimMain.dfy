@@ -421,6 +421,7 @@ module LindenElkLiftSimMain {
     requires NR.NestedFragmentRaw(raw)
     requires T.Latin1Wf(raw)
     requires L5Scope(raw)
+    requires NR.NoNulledPlusRaw(raw)   // §2.5b interim gate conjunct
     ensures LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)))
   {
     var ast := R.annotate(raw);
@@ -432,6 +433,7 @@ module LindenElkLiftSimMain {
 
     // ---- static packages -------------------------------------------------
     T.AnnotateWf(raw);                     // TransWf(ast) && TransWf(re)
+    NR.SpecRegexNoNulledPlus(raw);         // §2.5b interim: NoNulledPlusRE(re)
     NR.SpecRegexNestedFragment(raw);       // NestedFragmentRE(re)
     LTB.SpecRegexLookUnique(raw);          // unique lids, all >= 1
     LTB.SpecRegexLidsWellNested(raw);      // LidsWellNested(re)
@@ -490,7 +492,7 @@ module LindenElkLiftSimMain {
       ensures !b
     {
       if pc < endl {
-        NI.CodeShapeAt(re, code, 0, endl, pc);
+        NI.StampFalseAt(re, code, 0, endl, pc);
       } else if pc == endl {
       } else {
         assert pc >= |code|;
@@ -752,6 +754,7 @@ module LindenElkLiftSimMain {
     requires NR.NestedFragmentRaw(raw)
     requires T.Latin1Wf(raw)
     requires L4Scope(raw)
+    requires NR.NoNulledPlusRaw(raw)   // §2.5b interim gate conjunct
     ensures LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)))
   {
     L4ScopeImpliesL5(raw);
