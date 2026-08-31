@@ -512,7 +512,7 @@ module LindenElkLiftSimCarriers {
       ensures !b
     {
       if pc < endl {
-        NI.CodeShapeAt(body, bodycode, 0, endl, pc);
+        NI.StampFalseAt(body, bodycode, 0, endl, pc);
       } else if pc == endl {
       } else {
         assert pc >= |bodycode|;
@@ -672,7 +672,7 @@ module LindenElkLiftSimCarriers {
       ensures !b
     {
       if pc < endl {
-        NI.CodeShapeAt(body, bodycode, 0, endl, pc);
+        NI.StampFalseAt(body, bodycode, 0, endl, pc);
       } else if pc == endl {
       } else {
         assert pc >= |bodycode|;
