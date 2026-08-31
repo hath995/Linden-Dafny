@@ -94,6 +94,7 @@ module LindenElkPikeSim {
       `code` is a well-formed compilation of `re` ending in `Accept`. */
   ghost predicate StaticOkRE(qm: AR.QMap, re: R.regex, code: RB.code, endl: nat) {
     NR.LookBehindFragmentRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re)
+    && NR.NoNulledPlusRE(re)   // §2.5b interim: all stamps false
     && T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
     && NR.NfaRepRE(re, code, 0, endl)
     && NR.GetPcRE(code, endl) == Some(RB.Accept)
@@ -112,6 +113,7 @@ module LindenElkPikeSim {
       instead of `NR.LookBehindFragmentRE(re)` (depth-1). */
   ghost predicate StaticOkNestedRE(qm: AR.QMap, re: R.regex, code: RB.code, endl: nat) {
     NR.NestedFragmentRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re)
+    && NR.NoNulledPlusRE(re)   // §2.5b interim: all stamps false
     && T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
     && NR.NfaRepRE(re, code, 0, endl)
     && NR.GetPcRE(code, endl) == Some(RB.Accept)
@@ -2186,9 +2188,10 @@ module LindenElkPikeSim {
     assert ThreadNestRE(re, code, endl, th.pc, th);
     assert CM.ThreadClocksLE(th, vms.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant);
 
-    // The compiled fragment only emits bq == false.
+    // The compiled fragment only emits bq == false (§2.5b: via the gated
+    // StampFalseAt inventory — CodeShapeAt no longer claims it).
     assert pc < endl;
-    NI.CodeShapeAt(re, code, 0, endl, pc);
+    NI.StampFalseAt(re, code, 0, endl, pc);
     assert !bq;
 
     // The bundled Reset step.
@@ -2292,9 +2295,10 @@ module LindenElkPikeSim {
     assert ThreadNestRE(re, code, endl, th.pc, th);
     assert CM.ThreadClocksLE(th, vms.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant);
 
-    // The compiled fragment only emits bq == false.
+    // The compiled fragment only emits bq == false (§2.5b: via the gated
+    // StampFalseAt inventory — CodeShapeAt no longer claims it).
     assert pc < endl;
-    NI.CodeShapeAt(re, code, 0, endl, pc);
+    NI.StampFalseAt(re, code, 0, endl, pc);
     assert !bq;
 
     // The bundled Reset step.
