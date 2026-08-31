@@ -377,6 +377,7 @@ module LindenElkFlipStatics {
             && |code| == endl + 1
             && PIV.StutterTameRE(code)
   {
+    hide FXR;   // (§2.5b) `re` is opaque here; unfolding FXR grinds z3 4.14 past 900 s
     var re := FXR(body);
     var code := CP.compile_to_bytecode(re);
     NR.CompileToBytecodeRepNested(re);
