@@ -195,6 +195,7 @@ module LindenElkFlipKeystone {
                                ncap: int, nlook: int, nquant: int)
       returns (qm'': AR.QMap, endl': nat)
     requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     ensures PSM.StaticOkNestedRE(qm'', FST.FXR(body), CP.compile_to_bytecode(FST.FXR(body)), endl')
@@ -203,6 +204,7 @@ module LindenElkFlipKeystone {
     ensures qm''.ov == someView && qm''.looks == FST.FlipLooksMap(OE.LmOf(body))
   {
     var re' := FST.FXR(body);
+    FST.NoNulledPlusFXR(body);   // §2.5b interim: NoNulledPlusRE(re')
     FST.FXRStructural(body);
     qm'' := AR.QMap(M.QmOfRE(re'), FST.FlipLooksMap(OE.LmOf(body)), someView);
     M.QmOfREEntries(re');
@@ -454,6 +456,7 @@ module LindenElkFlipKeystone {
     assert n == |inp.pref| + |inp.next|;
     FST.TranslateGroupOkLB(body);
     FST.TranslateNegBodiesGroupFree(body);
+    NUL.TransNoNulledPlus(body);   // §2.5b interim: NoNulledPlusL(tr)
     TranslateDefGroupsNoDupK(body);
     FD.BackBodyGmTieFlip(rer, tr, inp, n);
     var tB := FU.ComputeTr(rer, [LS.Areg(tr)], inp, LG.Empty, WP.Backward);
