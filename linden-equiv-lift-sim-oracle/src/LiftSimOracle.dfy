@@ -374,6 +374,7 @@ module LindenElkLiftSimOracle {
   lemma GateStaticsFromTables(qm: AR.QMap, re: R.regex, crv: CP.FCompiled,
                               ncap: int, nlook: int, nquant: int)
     requires T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
+    requires NR.NoNulledPlusRE(re)   // §2.5b interim
     requires NR.LookBehindFragmentRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires PSM.SizesOkRE(re, ncap, nlook, nquant)
@@ -398,6 +399,7 @@ module LindenElkLiftSimOracle {
   lemma GateStaticsSweepRENested(qm: AR.QMap, re0: R.regex, re: R.regex, crv: CP.FCompiled,
                                  ncap: int, nlook: int, nquant: int)
     requires T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
+    requires NR.NoNulledPlusRE(re)   // §2.5b interim
     requires NR.NestedFragmentRE(re) && NR.NegLooksLookFreeRE(re) && L5ScopeV1RE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re)
     requires LTB.LookTablesOk(re, crv)
@@ -462,6 +464,7 @@ module LindenElkLiftSimOracle {
   lemma GateStaticsFromTablesNested(qm: AR.QMap, re: R.regex, crv: CP.FCompiled,
                                     ncap: int, nlook: int, nquant: int)
     requires T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
+    requires NR.NoNulledPlusRE(re)   // §2.5b interim
     requires NR.NestedFragmentRE(re) && NR.NegLooksLookFreeRE(re) && L5ScopeV1RE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re)
     requires LTB.LookTablesOk(re, crv)

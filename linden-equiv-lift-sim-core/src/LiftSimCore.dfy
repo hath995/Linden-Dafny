@@ -2778,6 +2778,7 @@ module LindenElkLiftSimCore {
     && exists la: R.lookaround, body: R.regex ::
       LTB.LookEntryOk(crv, l, la, body)
       && T.TransWf(body) && NR.LookFreeRE(body)
+      && NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false, per lid
       && qm.looks[l].0 == T.TrLookaround(la)
       && qm.looks[l].1 == T.Translate(body)
       && (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
@@ -2985,6 +2986,7 @@ module LindenElkLiftSimCore {
   lemma GateStaticsSweepRE(qm: AR.QMap, re0: R.regex, re: R.regex, crv: CP.FCompiled,
                            ncap: int, nlook: int, nquant: int)
     requires T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
+    requires NR.NoNulledPlusRE(re)   // §2.5b interim
     requires NR.LookBehindFragmentRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires PSM.SizesOkRE(re, ncap, nlook, nquant)
