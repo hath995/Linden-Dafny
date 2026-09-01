@@ -121,12 +121,15 @@ module LindenElkLiftSimCarriers {
   // ties, the endpoint assembly converts them into the reconstructed-register
   // denotation, and the existing extraction finishes.
   // ==========================================================================
-  lemma MainTheoremL3(raw: R.raw_regex, str: string)
+  lemma {:isolate_assertions} MainTheoremL3(raw: R.raw_regex, str: string)
     requires NR.LookBehindFragmentRaw(raw)
     requires T.Latin1Wf(raw)
     requires NR.NoNulledPlusRaw(raw)   // §2.5b interim gate conjunct
     ensures LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)))
   {
+    // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
+    // triggered existential storm the solver; all uses here are opaque.
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     var ast := R.annotate(raw);
     var re := R.lazy_prefix(ast);
     var rer := LES.TheRer(raw);
@@ -796,6 +799,9 @@ module LindenElkLiftSimCarriers {
             && CM.LookCpSetWithClk(rf.value.look_regs)
             && CM.LookCpsLE(rf.value.look_regs, |str|))
   {
+    // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
+    // triggered existential storm the solver; all uses here are opaque.
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     var n := |str|;
     MIR.ReverseLen(str);
     var rstr := LC.Reverse(str);
@@ -932,6 +938,7 @@ module LindenElkLiftSimCarriers {
     assert |inp.pref| + |inp.next| == n;
     FST.TranslateFlipXRev(body);
     assert T.Translate(reF) == FM.FlipRevL(T.Translate(body));
+    NUL.TransNoNulledPlus(body);   // §2.5b interim: NoNulledPlusL(Translate(body))
     FD.BackBodyGmTieFlip(rer, T.Translate(body), inp, n);
     assert tF == LFU.ComputeTr(rer, [LS.Areg(FM.FlipRevL(T.Translate(body)))], SD.SwapInput(inp),
                                LG.Empty, WP.Forward);
