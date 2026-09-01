@@ -125,7 +125,7 @@ module LindenElkLiftSimMain {
       `A0`'s sub-first-leaf; the top-look frames re-key it onto `res1`;
       `ForwardFindRec` descends to the engine facts; the top-lid transports
       compose the presence up to `re` and `GmOfLiveKeepsPresentLkNested` closes. */
-  lemma ForwardMemberOne(
+  lemma {:isolate_assertions} ForwardMemberOne(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     ov: LOr.OracleView, thread: AI.Thread, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     S: set<LG.GroupId>, leafgm: LG.GroupMap, g: nat, ncap: int, nlook: int, nquant: int)
@@ -179,6 +179,9 @@ module LindenElkLiftSimMain {
     // reversed read (LB owner) and the forward read (LA owner) chain uniformly.
     ensures PIV.NormRange(leafgm[g]) == PIV.NormRange(PIV.LiveRange(res0.a_cp, res0.a_clk, g))
   {
+    // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
+    // triggered existential storm the solver; all uses here are opaque.
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     var maxlook := R.max_lookaround(ast);
     PIV.CapIdsSplit(re);
     assert g in PIV.CapIds(re);
@@ -301,7 +304,9 @@ module LindenElkLiftSimMain {
               var cid: nat :| cid in PIV.CapIdsInLooks(re) && CP.end_reg(cid as int) == CP.start_reg(c);
               assert 2 * (cid as int) + 1 == 2 * (c as int);
             }
-            assert false;
+            assert false by {
+              hide *;   // (§2.5b/z3 4.14) both branches' facts are opaque; the close is pure arithmetic/sets
+            }
           }
         }
       }
@@ -417,13 +422,16 @@ module LindenElkLiftSimMain {
                                    ncap, nlook, nquant, rer, qm, t, inp);
   }
 
-  lemma MainTheoremL5(raw: R.raw_regex, str: string)
+  lemma {:isolate_assertions} MainTheoremL5(raw: R.raw_regex, str: string)
     requires NR.NestedFragmentRaw(raw)
     requires T.Latin1Wf(raw)
     requires L5Scope(raw)
     requires NR.NoNulledPlusRaw(raw)   // §2.5b interim gate conjunct
     ensures LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)))
   {
+    // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
+    // triggered existential storm the solver; all uses here are opaque.
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     var ast := R.annotate(raw);
     var re := R.lazy_prefix(ast);
     var rer := LES.TheRer(raw);
@@ -739,13 +747,20 @@ module LindenElkLiftSimMain {
       assert LS.IsTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), LG.Empty, WP.Forward, t);
       assert CM.ThreadRegsWf(synthetic, 2 * R.max_group(R.annotate(raw)) + 2,
                              R.max_lookaround(R.annotate(raw)) + 1,
-                             R.max_quant(R.annotate(raw)) + 1);
+                             R.max_quant(R.annotate(raw)) + 1) by {
+        hide *;   // (§2.5b/z3 4.14) same fact asserted at construction; only the n-expression ties differ
+        assert ncap == 2 * R.max_group(R.annotate(raw)) + 2
+               && nlook == R.max_lookaround(R.annotate(raw)) + 1
+               && nquant == R.max_quant(R.annotate(raw)) + 1;
+      }
       assert M.QuantRegsFinal(synthetic);
       assert leaf.1 == PIV.NormGm(PIV.GmOfLive(re, synthetic.capture_regs, synthetic.look_regs,
                                                synthetic.quant_regs));
       assert LT.FirstLeaf(t, LC.InitInput(str)) == Some(leaf);
-      MainExtractionL5(raw, str, t, synthetic, leaf);           // (L5 F7e-2)
-      assert LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)));
+      assert LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str))) by {
+        hide *;   // (§2.5b/z3 4.14) every precondition is an ambient opaque fact
+        MainExtractionL5(raw, str, t, synthetic, leaf);         // (L5 F7e-2)
+      }
     }
   }
 
