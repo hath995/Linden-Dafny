@@ -163,6 +163,9 @@ module LindenElkLiftSimDeep {
     requires crv.f_look_types[A as int].Lookbehind?
     decreases |LTB.LookIds(host)|, 0
   {
+    // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
+    // triggered existential storm the solver; all uses here are opaque.
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     // (2026-08-25) this lemma takes the L4-perf OPAQUE bundles (`117b6aa`) but its
     // body reads their foralls (`FrameEntryOk` at A, `OracleOkSuffix` at cps) —
     // reveal them. (Never re-verified after the perf pass; failed 3 asserts.)
@@ -435,7 +438,7 @@ module LindenElkLiftSimDeep {
   /** (perf) The FORWARD DEEP arm of `DeepFindRec`, extracted so its assertions are
       checked in a small context (same treatment as `DeepFindRecLB`).
       Mutually recursive with `DeepFindRec` on `(|LookIds(host)|, arm)`. */
-  lemma DeepFindRecFwdDeep(
+  lemma {:isolate_assertions} DeepFindRecFwdDeep(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
@@ -480,6 +483,9 @@ module LindenElkLiftSimDeep {
     requires g2 in PIV.CapIdsInLooks(host)
     decreases |LTB.LookIds(host)|, 0
   {
+    // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
+    // triggered existential storm the solver; all uses here are opaque.
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     // (2026-08-25) this lemma takes the L4-perf OPAQUE bundles (`117b6aa`) but its
     // body reads their foralls (`FrameEntryOk` at A, `OracleOkSuffix` at cps) —
     // reveal them. (Never re-verified after the perf pass; failed 3 asserts.)
@@ -666,6 +672,8 @@ module LindenElkLiftSimDeep {
       assert M.VmQuantFinal(initsF) by {
         var th0 := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
         assert M.QuantRegsFinal(th0) by {
+          hide *;   // (§2.5b/z3 4.14) pure init-regs facts; the ambient axioms drown the solver
+          reveal M.QuantRegsFinal, AI.init_thread, AI.get_idx, AReg.init_regs;
           RL.AInitLaws(nquant);
           forall k ensures AI.get_idx(AReg.init_regs(nquant).a_cp, k) < 0
                            && AI.get_idx(AReg.init_regs(nquant).a_clk, k) >= -1 {
