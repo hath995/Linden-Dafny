@@ -136,6 +136,7 @@ module LindenElkLiftSimGate {
     returns (tcan: LT.Tree)
     requires !rer.multiline
     requires T.TransWf(re) && NR.LookBehindFragmentRE(re) && PIV.CapUnique(re)
+    requires NR.NoNulledPlusRE(re)   // §2.5b interim: all stamps false
     requires code == CP.compile_to_bytecode(re)
     requires AR.ActionsRepL(rer, qm, [LS.Areg(T.Translate(re))], code, 0)
     requires LL.OracleOkSuffix(rer, qm, LC.InitInput(str))
@@ -2792,7 +2793,7 @@ module LindenElkLiftSimGate {
   }
 
   /** (L4 NESTED) clone of `LiftPreserveGatePassLk` — GmtTieInside dropped. */
-  lemma LiftPreserveGatePassLkNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+  lemma {:isolate_assertions} LiftPreserveGatePassLkNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                                      crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                                      bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
                                      l: int, th': AI.Thread, vms2: AI.VmState,
@@ -2826,6 +2827,9 @@ module LindenElkLiftSimGate {
     ensures bst1.PTS?
     ensures LiftInvNested(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
   {
+    // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
+    // triggered existential storm the solver; all uses here are opaque.
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     // (L4 NESTED) NestedFragmentRE(re) is now DIRECT from StaticOkNestedRE
     var PTS(inp, ta, best, tbl, seen) := bst;
     var th := s.active[0];
@@ -2959,6 +2963,10 @@ module LindenElkLiftSimGate {
 
         // outside tie: the gate-crossing frame (works for backward gates too);
         // NoLkBrL(r1) (look-free body) ⟹ the recursive PikeLkRegexRec(r1).
+        PIV.LookCheckIdsRENested(re, code, 0, endl, pc);
+        NI.LookBodyOfTablesTie(re, crv, l as nat);
+        NI.NoNulledPlusLookBody(re, l as nat);   // §2.5b interim: NoNulledPlusRE(body)
+        NUL.TransNoNulledPlus(body);             // §2.5b interim: NoNulledPlusL(r1)
         EL.NoLkBrLIsPikeLkRegexRec(r1);
         GmtTieOutsideAfterGateNested(rer, re, str, lk, r1, tlk, gm, th, l, cp, clk, S);
         assert GmtTieOutside(re, th', gm2, S);
@@ -4420,7 +4428,7 @@ module LindenElkLiftSimGate {
   }
 
   /** (L4 NESTED) clone of `LiftAdvanceEpsilon` — GmtTieInside dropped. */
-  lemma LiftAdvanceEpsilonNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+  lemma {:isolate_assertions} LiftAdvanceEpsilonNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                                  ngroups: nat, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
                                  S: set<LG.GroupId>, ptsA: PT.PikeTreeState, s: AI.VmState,
                                  bst: PT.PikeTreeState, dir: LAnc.direction,
@@ -4448,6 +4456,9 @@ module LindenElkLiftSimGate {
                           AI.FAdvanceEpsilon(code, s, ov, dir).0, ncap, nlook, nquant)
     decreases AI.unprocessed(s.processed), |s.active|
   {
+    // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
+    // triggered existential storm the solver; all uses here are opaque.
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     if |s.active| == 0 {
       ptsA' := ptsA;
       bst1 := bst;
@@ -4803,6 +4814,7 @@ module LindenElkLiftSimGate {
     requires PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str,
                                PT.PikeTreeInitialState(tstar, inp), vms, ncap, nlook, nquant)
     requires T.TransWf(re) && NR.LookBehindFragmentRE(re) && PIV.CapUnique(re)
+    requires NR.NoNulledPlusRE(re)   // §2.5b interim: all stamps false
     requires AR.ActionsRepL(rer, qm, [LS.Areg(T.Translate(re))], code, 0)
     requires EL.BoolTreeLk(rer, [LS.Areg(T.Translate(re))], inp, BS.CannotExit, t)
     requires LL.OracleOkSuffix(rer, qm, inp)
@@ -4882,7 +4894,7 @@ module LindenElkLiftSimGate {
   }
 
   /** (L4 NESTED) clone of `LiftInitC` — GmtTieInside dropped. */
-  lemma LiftInitCNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
+  lemma {:isolate_assertions} LiftInitCNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
                         endl: nat, ngroups: nat, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
                         S: set<LG.GroupId>, tstar: LT.Tree, t: LT.Tree, inp: LC.Input, vms: AI.VmState,
                         ncap: int, nlook: int, nquant: int)
@@ -4892,6 +4904,7 @@ module LindenElkLiftSimGate {
     requires PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str,
                                PT.PikeTreeInitialState(tstar, inp), vms, ncap, nlook, nquant)
     requires T.TransWf(re) && NR.LookBehindFragmentRE(re) && PIV.CapUnique(re)
+    requires NR.NoNulledPlusRE(re)   // §2.5b interim: all stamps false
     requires AR.ActionsRepL(rer, qm, [LS.Areg(T.Translate(re))], code, 0)
     requires EL.BoolTreeLk(rer, [LS.Areg(T.Translate(re))], inp, BS.CannotExit, t)
     requires LL.OracleOkSuffix(rer, qm, inp)
@@ -4908,6 +4921,9 @@ module LindenElkLiftSimGate {
                            PT.PikeTreeInitialState(tstar, inp), PT.PikeTreeInitialState(tcan, inp), vms,
                            ncap, nlook, nquant)
   {
+    // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
+    // triggered existential storm the solver; all uses here are opaque.
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     // The single active pair (t, init_thread) ties via ThreadRepLk (THREAD-
     // anchored — no tstar↔t tree link); the payload is vacuous because a fresh
     // thread denotes Empty. PikeInvFullRE(ptsA, vms) is the hypothesis.
@@ -8263,7 +8279,7 @@ module LindenElkLiftSimGate {
     }
   }
 
-  lemma LiftInitCRec(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
+  lemma {:isolate_assertions} LiftInitCRec(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
                      endl: nat, ngroups: nat, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
                      S: set<LG.GroupId>, tstar: LT.Tree, t: LT.Tree, inp: LC.Input, vms: AI.VmState,
                      ncap: int, nlook: int, nquant: int)
@@ -8294,6 +8310,9 @@ module LindenElkLiftSimGate {
                         PT.PikeTreeInitialState(tstar, inp), PT.PikeTreeInitialState(tcan, inp), vms,
                         ncap, nlook, nquant)
   {
+    // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
+    // triggered existential storm the solver; all uses here are opaque.
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     // The single active pair (t, init_thread) ties via ThreadRepLk (THREAD-
     // anchored — no tstar↔t tree link); the payload is vacuous because a fresh
     // thread denotes Empty. PikeInvFullRE(ptsA, vms) is the hypothesis.
@@ -8353,6 +8372,23 @@ module LindenElkLiftSimGate {
     // `SeenRepLk` holds vacuously (mirror of `PIV.InitialInclusionRE`).
     InitialSeenRepLk(rer, qm, code, inp,
                      PIV.HdTreeOf([(tcan, LG.Empty)]), PIV.HeadPcOf([it]), RB.size(code));
+    // (§2.5b/z3 4.14) assemble the Rec invariant's conjuncts explicitly — the
+    // packed LiftInvCRec ensures VC grinds past 900 s otherwise.
+    assert LookNestRepCTop(re, S, [(tcan, LG.Empty)], [it]);
+    assert LookNestBackRepCTop(re, crv, str, ov, S, [(tcan, LG.Empty)], [it], ncap, nlook, nquant);
+    assert LookNestBackRepCTopDeep(rer, re, crv, str, ov, S, [(tcan, LG.Empty)], [it], ncap, nlook, nquant);
+    forall nextinp | LC.AdvanceInput(inp, WP.Forward) == Some(nextinp)
+      ensures LookNestRepBTop(re, S, [], PIV.MatchingBlocked(LC.Reverse(vms.blocked), inp))
+           && LookNestBackRepBTop(re, crv, str, ov, S, [],
+                                  PIV.MatchingBlocked(LC.Reverse(vms.blocked), inp), ncap, nlook, nquant)
+           && LookNestBackRepBTopDeep(rer, re, crv, str, ov, S, [],
+                                      PIV.MatchingBlocked(LC.Reverse(vms.blocked), inp), ncap, nlook, nquant)
+    {
+      assert PIV.MatchingBlocked(LC.Reverse(vms.blocked), inp) == [];
+    }
+    assert IsblockedRepLk(rer, qm, code, inp, SS.InitialSeenTrees, vms.isblocked);
+    assert LiftInvRec(rer, qm, re, code, crv, str, ov, S,
+                      PT.PikeTreeInitialState(tcan, inp), vms, ncap, nlook, nquant);
   }
 
   lemma L3aCompositeCloseRec(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
