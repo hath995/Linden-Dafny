@@ -783,3 +783,82 @@ Rung C (in progress, all per-file/per-symbol green so far except where noted):
 Next: finish rung C verification (ATR file, LiftSimCore/Chain/Oracle/Gate per-symbol on the touched
 lemmas), commit, then `LEM_BUILD_TIMEOUT=0 lem pack --jobs 3` in a WORKTREE (root `lem lock` first for
 the new deps), then rung D.
+
+### RUNGS D + E — DESIGN NOTES (written 2026-09-02 night, after rung C; nothing of this is coded)
+
+**Where the stamp shows up in the simulation.** `PikeInvFullRE` pairs every VM thread with a tree
+`t` (`TT.TreeThreadRE` at the thread's `(pc, exit_allowed)`) and a map `gm` with
+`PIV.ThreadTracksGm(re, th, gm) := gm == GmOfLive(re, caps, look, quant)` (clock-filtered readout).
+After rung B the tree at a `SetQuantToClock(qid, true)` pc is `GroupActionT(Reset(gidl), ChainT(p, tc))`
+and the tree machine takes `|p| + 1` steps for the VM's one; the tree-side `gm` gains the chain's
+writes, the VM's registers do not. So the readout must become
+`GmOfLiveR(re, qm, str, caps, look, quant) := GmOfLive(...) ⊕ (the chains of the LIVE stamps)` where
+"live" follows `filter_capture`'s clock traversal (a stamp whose quant clock is below an enclosing
+quant's clock is stale and hidden, exactly like its captures — see the `((a?)+x|c)+` on "xc" trace in
+the design section: a stale inner stamp reconstructs at old clocks and is filtered out). Define it by
+the same AST recursion as `filter_capture` with the `maxclock` threshold: at `Re_quant(qid)`: if
+`quant_clock < maxclock` skip; else if `a_cp[qid] == Some(cp)` apply
+`ApplyPath(TR.FirstEmptyPathR(qm, body, T.InputAt(str, cp)), cp, ·)` then recurse into the body with
+`maxclock := quant_clock`. Rung E ties this to the engine (`FNulledPlus`).
+
+**Rung D obligations (PikeSimRE step lemmas, one per instruction, + `ThreadTracksGm`):**
+* `SetQuantToClock(qid, true)` — NEW step lemma (`StampStepThreadRE`): VM writes
+  `quant[qid] := (Some(cp), clock)`; tree side takes the Reset + chain steps (state it with `TrcRE`,
+  the transitive closure, not `PikeTreeStep`); `GmOfLiveR(th') == ApplyPath(p, idx, GMReset(gidl,
+  GmOfLiveR(th)))` because the new stamp is live (its clock is the max) and nested stale stamps
+  inside `gidl` are hidden by the reset. Uses `TR.PeelChainT` + the tree machine's GroupActionT steps.
+* `SetQuantToClock(qid, false)`: clears the stamp (`a_cp := None`) and resets `gidl` by clock —
+  `GmOfLiveR(th') == GMReset(gidl, GmOfLiveR(th))`: outside `gidl` nothing changes (the stamp's
+  chain only wrote `gidl` groups — `NP.PathActionsIn`/`ApplyPathOutside` from rung A), inside
+  everything is hidden either way.
+* `SetRegisterToCP(reg)` / `CheckOracle(lid)`: the write is OUTSIDE every live stamp's `gidl`
+  (`ApplyPath` commutes), which needs the NESTING FACT below.
+* Everything else (Consume/EndLoop/Anchor/Fork/Jmp/NegCheckOracle): no register change.
+* THE NESTING FACT: `a_cp[qid] == Some(_)` (live) ⟹ `pc` is not inside `qid`'s block
+  `[em+1, e1+2]` — every entry into the block passes the clock-mark at `em+1` (`SetQuantToClock(qid,
+  false)`, clearing the stamp) or IS the stamp (which exits to `e1+3`); no jump lands inside a block
+  from outside (`NfaRepRE` structure, as `NI.NestTopRE`/`EaColdOkRE` already exploit). Add it to
+  `NI.ThreadNestRE` (`StampsOutsideRE(re, code, pc, quant_regs)`) with per-instruction preservation.
+* The Lk tower (look bodies, `NoTrueStamps`) must keep working unchanged: `GmOfLiveR == GmOfLive`
+  when no `a_cp` is set (`VmQuantFinal`, MainTheorem:130, is exactly that for the current gate) —
+  prefer DEFINING `GmOfLiveR` so that it is syntactically `GmOfLive` under `forall k :: a_cp[k] < 0`
+  (an `if NoStamps(quant) then GmOfLive(...) else ...`), so the ~300 `GmOfLive` sites in the LiftSim
+  band need at most a `NoStamps` fact in scope rather than edits. Measure before committing to this:
+  `GmOfLive` is mentioned in 18 files.
+* The final readout (`FFindMatchPlus` = `FFindMatch` then `FReconstructPlus`): the best thread's
+  `GmOfLiveR` is the spec's first leaf (from the invariant); rung E turns `FReconstructPlus`'s
+  registers into `GmOfLiveR`'s value; the ~55 `M.FNulledPlusIdentity` sites become
+  `GmOf(FReconstructPlus(th).regs) == GmOfLiveR(th)` (rung F). `VmQuantFinal`/`StampFalseAt` retire
+  from the main-pass chain (they stay for look bodies).
+
+**Rung E obligations (new member `linden-equiv-nulled-recon`):**
+* `FNulledPlus(re, cap, lk, qt, plus_bcv, str, ov, dir)` walks the AST: for each quant with
+  `a_cp[qid] == Some(cp)` it runs ONE `FAdvanceEpsilon` (`FNullInterp`) over
+  `plus_bcv[qid] == compile_reconstruct_nulled(body)` from `FInitState(rc, cp, cap, lk, qt,
+  start_clock = quant clock, ctx)` and then `FNulledChildren(body, …)` at the same `cp` for the
+  nested stamps the run re-set. ReconstructNulled code is LOOP-FREE (chars → `Fail`, quantifiers →
+  a clock-mark or the stamp or `Fail`, captures → the two `SetRegisterToCP`, looks → the gates), so
+  the epsilon closure is a DFS over a DAG in priority order (Fork pushes the left arm first), with
+  the `processed` dedup only dropping threads whose future is already known to fail (control flow
+  depends on `pc`/`ea`/`cp`/`ov` only — no backrefs).
+* Layout predicate `NfaRepNulledRE(r, c, pc1, pc2)` (ReconstructNulled mirror of `NfaRepRE`) +
+  compiler adherence for `compile(r, l, ReconstructNulled)`; `tr_fail` (`Fail ↦ Mismatch`) is the
+  only new `TreeRepRE` rule the code needs if the PikeSim machinery is reused; otherwise a
+  standalone DFS semantics `RunNulled(c, pc, regs, cp, clock): Option<Regs>` with (i)
+  `FAdvanceEpsilon` from one thread == `RunNulled` (the dedup argument), (ii) `RunNulled` over
+  `NfaRepNulledRE` code == the fold of `TR.FirstEmptyPathR(qm, r, inp)` (structural induction with a
+  continuation, like the ATR but tree-free). (ii) also needs: the accepted thread's writes carry
+  clocks `> start_clock` (the closure increments the clock per processed thread), so
+  `filter_capture` keeps them; nested CIN-greedy quants get `SetQuantToClock(qid', true)` at the
+  same `cp` and their chains are added by `FNulledChildren` — matching `FirstEmptyPathR`'s
+  `RepeatPath(min, Reset :: p1)` up to `ApplyPath` (repeated resets at one index are idempotent —
+  a small lemma, `RepeatPathApply`).
+* `ov` is unchanged by the null interpreter (no `WriteOracle` in reconstruct code); `cdn` is unused
+  (no `CheckNullable`: CDN-greedy stays out of the fragment — add the fragment conjunct
+  `NoCdnPlusRE` at rung G when `NoNulledPlusRaw` is weakened).
+* Statement to land: `GmOfLive(re, FNulledPlus(re, cap, lk, qt, …).regs) == GmOfLiveR(re, qm, str,
+  cap, lk, qt)` for threads satisfying the nesting fact and `StaticOk` (so `plus_bcv` is the
+  canonical table `FFullCompilation(ast).f_plus_bc`, `M.FFullCompilationFacts`).
+
+Order for the next session: E(ii)+(i) first as a standalone member (it is the riskiest piece and
+independent of D), then D's nesting fact in NestInv, then D's step lemmas, then F, then G.
