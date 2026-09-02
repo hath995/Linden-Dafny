@@ -184,6 +184,7 @@ module LindenRegexReasoning {
     var caps := LES.CapArrayOfLeaf(leaf, ng);
     assert m.value == caps;
 
+    assert {:split_here} true;   // z3 4.14: the MatcherSpec witness and the container transfer storm as one batch
     RD.NGroupsEq(pattern);
     TR.RawGidContainerAltBounds(pattern, 1, gid, body);
     assert gid < ng;
@@ -191,10 +192,12 @@ module LindenRegexReasoning {
     TR.SpecGidContainerAlt(pattern, gid, body);
     TR.TrOfPOnly(rer, body, P);
 
+    assert {:split_here} true;
     assert LT.TreeRes(t, LG.Empty, inp0, WP.Forward) == Some((leaf.0, leaf.1));
     assert [] + [LS.Areg(spec)] + [] == [LS.Areg(spec)];
     CC.RunToGroupAlt(rer, P, str, [], spec, [], gid, TR.TrOf(body),
                      inp0, LG.Empty, t, leaf.0, leaf.1);
+    assert {:split_here} true;
     assert (2*gid) / 2 == gid && (2*gid + 1) / 2 == gid;
     if LG.Find(gid, leaf.1).None? {
       assert caps[2*gid] == -1;

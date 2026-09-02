@@ -554,3 +554,102 @@ plus whatever check-erase / tree-rep-re / gen-step-re / pike-sim-re dispatchers 
 Driver: `LEM_BUILD_TIMEOUT=0 lem pack --jobs 3` at root, fix the first red member, repeat.
 Dev loop: verify against SIBLING SOURCES (`--library=../pkg/src/File.dfy`, exclude the stale
 .doo — works, resolution is package-blind).
+
+**INTERIM STAGE COMPLETE — WHOLE WORKSPACE PACKED 61/61 (2026-09-02, `LEM_BUILD_TIMEOUT=0 lem pack
+--jobs 3`, `/usr/bin/lem` 0.1.21).** Last two members after the lift-sim rounds: `lift-sim-main` packed in
+26m 11s (the two `{:isolate_assertions}` keystones `ForwardMemberOne`/`MainTheoremL5`; lem reports 8
+obligations) and the top `linden-equiv` in 4m 17s (28 obligations) after ONE fix: `TypedCaptureAlt`
+(`ApiReasoning.dfy`, untouched since E2) timed out at 900 s under z3 4.14 as a single batch although every
+obligation isolates (366/0); three `assert {:split_here} true;` → 5 batches, 4 s solver time. Nothing
+in the interim stage is gated by anything but `NoNulledPlusRaw` on `SupportedL3/4/5`.
+
+---
+
+## § 2.5b STAGE 2 — RECONSTRUCTION DESIGN (written 2026-09-02, before any stage-2 code)
+
+**The theorem to land:** for a CIN-greedy `r1+` (`min > 0`, `max == None`, `greedy`,
+`nullable(r1) == CINullable`), the engine's *skip arm + `SetQuantToClock(qid, true)` +
+`FReconstructPlus`* computes what the spec's *empty mandatory iteration* computes. Landing it
+deletes the interim conjuncts (`NoNulledPlusRaw` on `SupportedL3/4/5`, ~60 `// §2.5b interim`
+sites, four `assert !greedy` refutations in actions-tree-rep-re) and the ~55
+`M.FNulledPlusIdentity` call sites become a real reconstruction lemma.
+
+### The facts the design rests on (all read from the sources, none proven yet)
+
+* Engine layout (`Compiler.dfy:114-121`), `min_f` = head fork, `e1` = EndLoop:
+  `Fork(min_f+1, e1+2)`; `min_f+1: SQC(qid,false)`; `BeginLoop`; body; `e1: EndLoop`;
+  `e1+1: Fork(min_f+1, e1+3)`; `e1+2: SQC(qid,true)`; `e1+3` = exit. The head fork is reached
+  ONCE; the end fork re-enters at the stamp. So `SQC(qid,true)` runs exactly when the loop was
+  skipped at entry = the mandatory iteration was NULLED at `cp`. Empty body paths die at
+  `EndLoop` (`exit_allowed == false`), i.e. the engine explores [consuming body paths, then the
+  stamp-true skip]. The spec (`Semantics.dfy:246-252`, `tree_quant_forced`) explores
+  `Reset(gidl); [Areg(r1), Areg(Q(greedy,0,delta,r1))] + cont` — body paths in priority order
+  WITH empty ones live (no `Acheck` on the mandatory iteration).
+* `FReconstructPlus` (`Interpreter.dfy:418-505`): walks the AST; for each quant with
+  `get_cp(qt, qid) == Some(start_cp)` (last stamp was `true`) runs the NULL INTERPRETER
+  (`FNullInterp` = one `FAdvanceEpsilon`, no consumption) over `compile_reconstruct_nulled(r1)`
+  from `start_cp` with the thread's CURRENT registers and clock `get_clock(qt, qid)`, then
+  `FNulledChildren` on the body at the SAME cp. ReconstructNulled code: characters → `Fail`;
+  captures → `SetRegisterToCP`; lookarounds → `CheckOracle`; nested quant: `min == 0` → `[]`,
+  NonNullable → `Fail`, CIN-greedy → `[SQC(qid',true)]`, else `SQC(qid',false)` + body. So the
+  null interpreter finds THE TOP-PRIORITY EMPTY PATH of `r1` at `start_cp` and applies its
+  group writes (all at `start_cp`) + nested stamps. Pipeline order (`FBuildCapture`):
+  `FFindMatchPlus` (match + reconstruct) → `FLookLoop` (look-capture replays, each itself an
+  `FFindMatchPlus`) → `filter_reset`.
+* `filter_capture` reads ONLY CLOCKS (`quant_clocks`), never quant cp values — so the
+  `bb == true` stamp is invisible to `GmOf`/`GmOfLive`/every PikeSim invariant; only
+  `FNulledPlus` reads `a_cp`. `PikeSimRE.ResetStepThreadRE` requires `SQC(qid0, false)` only
+  because it was written that way (its conclusion is clock-based).
+* The tower's tree relation: `TreeRepRE(qm, t, code, pc, inp, b)` (code → Linden tree; `qm.ov`
+  carries the oracle; `tr_reset` currently only for `bb == false`), `ActionsTreeRep*` conclude
+  `LL.LeavesAgreeAtOutside(tstar, t, inp, S)` (LEAF-LIST agreement outside the look-confined
+  groups `S`), consumed at 7 sites (LiftSimCarriers 222/496/656, LiftSimMain 548, MainTheorem
+  3725/3815/3893) which immediately lift to `FirstLeafAgreeOutside` (Hd-level).
+
+### The priority argument (spec-level, checked by hand — this is rung A's theorem)
+
+Let `t1` = tree of `[Areg(r1)]` at `(inp, GMReset(gidl, gm))`, leaves `ℓ` in priority order;
+`I` = leaves of the star's iteration arm `Reset(gidl); [Areg(r1), Acheck(inp), Areg(star)] + cont`
+= concat over CONSUMING `ℓ` of `Block(ℓ)` (Acheck kills the empty ones);
+`C(ℓ)` = leaves of `cont` at `(inp, gm_ℓ)` for an EMPTY `ℓ`.
+* `Leaves(T_plus)` = for `ℓ` in order: consuming → `Block(ℓ)`; empty → `I ++ C(ℓ)`
+  (an empty mandatory iteration continues into the star at the same `inp`; its
+  `GMReset(gidl, gm_ℓ) == GMReset(gidl, gm)` since `ℓ` only wrote `gidl`).
+* `Leaves(T_cin)` = `I ++ C(ℓ_e1)` where `T_cin := Choice(Reset(gidl); T_iter, Reset(gidl);
+  Chain(ℓ_e1); T_cont)` is the engine's shape and `ℓ_e1` = the FIRST empty leaf.
+* `Hd` agrees: if `I ≠ []` both heads are `Hd(I)` (every empty `ℓ` re-emits `I` first, and the
+  first consuming block with a leaf is `I`'s head); if `I == []`, both are `Hd(C(ℓ_e1))`, because
+  `|C(ℓ)|` is gm-independent (no backrefs: the tree of `cont` does not depend on the incoming
+  gm, `IsTree` threads gm only into `Backreference`), so `C(ℓ_e1) == []` ⟹ every `C(ℓ) == []`.
+* The LISTS differ (duplicated blocks), so the relation MUST weaken to Hd-level:
+  `ResAgreeAtOutside(t1, t2, inp, S)` := ∀gm: `TreeRes` both None or both Some with equal
+  position and `GmAgreeOutside(·, ·, S)`. It composes under Choice/Read/Progress/GroupActionT/
+  AnchorPass/LK exactly like `LeavesAgreeAtOutside` (`LookLeaves.dfy:889-944` is the family to
+  mirror) and the 7 consumers already only use the Hd-level consequence.
+* `Chain(ℓ_e1)`: the virtual chain is the GROUP-ACTION SEQUENCE of the first empty path,
+  `FirstEmptyPathL(rer, r1, inp): Option<seq<GroupAction>>`, defined by recursion on `r1` in
+  priority order (Epsilon `[]`; Character `None`; Disjunction first-Some; Sequence concat;
+  `Group(g, r)` → `Open(g) :: path(r) ++ [Close(g)]`; `Quantified` with `min > 0` →
+  `Reset(DefGroups(r)) :: path(r) ++ path(min-1)`, `min == 0` → `[]` (an empty iteration dies at
+  the star's `Acheck`, so the skip is the first empty path for greedy AND lazy); anchors/lookarounds
+  → `[]` or `None` by the spec's verdict at `inp`). Every action is at `Idx(inp)`. This is exactly
+  the recursion `compile(r1, ·, ReconstructNulled)` + the null interpreter follow (rung E), and it
+  sidesteps the "characterize the leaf's gm" lemma a set-based `Open/Close` chain would need.
+* CI-nullability is exactly the soundness condition: the skip arm needs SOME empty leaf to exist
+  at every `inp` (`CINullableMatchesEmpty`, already proven for the interim stage).
+
+### The rungs
+
+| rung | package(s) | content |
+|---|---|---|
+| **A** | look-leaves (+ linden-reasoning) | `ResAgreeAtOutside` + congruence family + `LeavesAgree ⟹ ResAgree`; `FirstEmptyPathL` + `CINullableL ⟹ Some` + `FirstEmptyLeafIsPath` (the first leaf of `[Areg(r1)]`'s tree at position `inp` exists and its gm is the path's fold, outside the look-confined `S`); **the priority theorem** `ResAgree(T_plus, T_cin)` for CI-nullable `r1`, incl. the gm-independence of `cont`'s tree shape. Pure spec, no engine, no giants — proves the idea before the tower is touched. |
+| **B** | tree-rep-re, actions-rep-re | `tr_reset` for `SQC(qid, true)` producing `Reset(gidl); Chain(FirstEmptyPath(qm.body[qid], inp, qm.ov)); tc` (oracle-bit version of `FirstEmptyPathL`, tied by `OracleOk`) — the QMap must carry the CIN BODY regex per qid (and `rer`/oracle for `NulledLeaf`); determinism lemma; `NfaRepL` already has the CIN layout arm. |
+| **C** | actions-tree-rep-re (+ the 4 LiftSimCore tree giants `ActionsTreeRepLkF{,Rec}`, `AtBackForkTreeLkF{,Rec}`) | conclusions switched to `ResAgreeAtOutside`; the real CIN arm: head fork = `tr_choice`, loop arm = star iteration (`tr_plus` at the backward end fork), skip arm = rung B's virtual chain + rung A's theorem; drop the 4 `assert !greedy`. |
+| **D** | pike-sim-re, tree-thread-re, pike-inv-re | `ResetStepThreadRE{,Nested}` generalised to `bb ∈ {false,true}`; the simulation readout becomes reconstruction-aware: `GmOfR(ast, regs) := GmOf(ast, Recon(ast, regs))` with `Recon` = the register effect of `FNulledPlus`; commutation of `Recon` with every non-nulled write (it only writes `gidl`/nested stamps of true-stamped quants and reads only `a_cp`, the oracle and the clock); the `SQC(true)` step yields `GMReset ⊕ NulledLeaf` = rung B's virtual node. If `ThreadTracksGm` is the only place `GmOfLive` is unfolded, the change is contained there. |
+| **E** | new: `linden-equiv-nulled-recon` | THE ENGINE-SIDE CORRESPONDENCE: `FNullInterp(compile_reconstruct_nulled(r1))` from `cp` = `NulledLeaf`'s writes. Needs a layout predicate for ReconstructNulled-mode code (no loops; `Consume → Fail`), a `TreeRepRE` instance for it (the epsilon closure of one phase = the existing PikeSim theory with no consumption), and its `ActionsTreeRep` vs `[Areg(r1)]` restricted to position-`inp` leaves. Also: `FNullInterp` leaves `ov` unchanged (no `WriteOracle`), ignores `cdn` (no `CheckNullable` in CIN-only code), nested CIN quants re-stamped at the same `cp` then `FNulledChildren` — matches the spec's nested `Reset` + nested empty path. |
+| **F** | main-theorem, lift-sim-*, look-capture, flip-*, look-behind-keystone | replace `FNulledPlusIdentity` sites by `FReconstructPlus(thread) == Recon`-readout facts; the Backward direction (lookbehind capture replays run `FFindMatchPlus` with `dir == Backward` — `RevRE`/`XRV`/`FlipRE` keep the annotation; reconstruction commutes with the mirror since all its writes are at one position); nulled plus INSIDE a look body (the `FLookLoop` replay reconstructs — `CheckOracle` in reconstruct code stamps look regs so the later look replays fire); the QuantRegsFinal family retires. |
+| **G** | ApiMatch, nest-inv, entry-lk, … | drop `NoNulledPlusRaw`/`NoNulledPlusRE`/`NoNulledPlusL` conjuncts (~60 sites), `StampFalseAt` sweep retires; `NullablePlusWitness` gets a CIN-greedy witness; repack 61/61; `SUPPORTED_FRAGMENT.md` §2.5 row flips. |
+
+Order: A → B → C → E (independent of D, can go in parallel via a worktree) → D → F → G. Rung A
+is the go/no-go: if `ResAgree(T_plus, T_cin)` does not verify as stated, the tower is untouched.
+CDN-greedy (`CheckNullable`) stays out of scope for all of this.
