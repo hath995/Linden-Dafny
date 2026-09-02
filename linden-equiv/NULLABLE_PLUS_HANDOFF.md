@@ -693,5 +693,13 @@ are 60 s+ for z3 4.14 — state them; the two `TreeLeavesFrameOutside` quantifie
 context made the head-comparison batch storm although every assertion isolates — scope them into
 `assert <instance> by { … }` blocks and `split_here` the case analysis.
 
-**Next: rung B** (`TreeRepRE`'s `SQC(qid, true)` rule with the virtual chain; the `QMap` must carry the
-CIN body per qid — `AR.QMap` currently has `quants: map<int, seq<GroupId>>`, `looks`, `ov`).
+**Next: rung B** — `TreeRepRE`'s `SQC(qid, true)` rule: `t == GroupActionT(Reset(gidl), Chain(p, tc))`
+with `p == FirstEmptyPath(qm.bodies[qid], inp, qm.ov)` (an oracle-bit twin of `FirstEmptyPathL`, tied by
+`OracleOk`) and `TreeRepRE(qm, tc, code, pc + 1, inp, b)`; `TreeRepDetermRE` extends trivially (the chain
+is a function of `(qm, inp)`). The `QMap` needs a `bodies: map<int, L.Regex>` field (`QmapOk` pins
+`qm.bodies[qid] == T.Translate(r1)`), built by a `M.BodiesOfRE(re)` twin of `M.QmOfRE`. Constructor sites
+to touch (12): LiftSimCarriers 148/829/1123, LiftSimMain 453, LiftSimForward 214/319/905, LiftSimDeep 229,
+FlipKeystone 209/212/285, LookBehindKeystone 287 — i.e. a field addition re-packs the whole lift-sim
+band (~2.5 h of pack time): start it at the beginning of a session. Do rung E's spec-side half
+(`FirstEmptyPath` over oracle bits + `OracleOk ⟹ == FirstEmptyPathL`) in the same rung, since the
+`TreeRepRE` rule needs the oracle-bit version.
