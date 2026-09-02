@@ -413,6 +413,8 @@ module LindenElkActionsTreeRep {
     ensures NP.ResAgreeAtOutside(tstar, t, inp, S)
     decreases CE.PSize(t), MsizeA(acts), n, 1
   {
+    // (§2.5b) hide the recursive nullability predicates (z3 4.14 matching loop; every use is opaque)
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, AR.NfaRepStarCinL;
     assert acts == [acts[0]] + cont;
     EL.PikeLkActionsConsIff(acts[0], cont);
     var gidl := L.DefGroups(r1);
@@ -474,7 +476,7 @@ module LindenElkActionsTreeRep {
               assert NB.EncOk(ia, inp, b) by {
                 var parts := [LS.Areg(r1), LS.Areg(quant1)];
                 assert parts + cont == ia;
-                if NUL.NonNullableL(acts[0].r) { assert parts[0].Areg? && NUL.NonNullableL(parts[0].r); }
+                if NUL.NonNullableL(acts[0].r) { reveal NUL.NonNullableL; assert parts[0].Areg? && NUL.NonNullableL(parts[0].r); }
                 NB.EncOkExpand(acts, parts, inp, b);
               }
               var sub := ActionsTreeRepFRE(rer, qm, ia, code, pc + 1, inp, b, tc, ni, S);
@@ -486,6 +488,7 @@ module LindenElkActionsTreeRep {
             tstar := ATR_QuantCin(rer, qm, acts, cont, code, pc, pcmid, inp, b, t, n, greedy, min, delta, r1, S);
           }
         } else {
+          assert {:split_here} true;   // (E3) section: the do-while arm
           var em, e1x := AR.NfaRepLPlusInv(rer, qm, greedy, min, r1, code, pc, pcmid);
           assert NUL.NonNullableL(r1);
           var qid: int :| NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
@@ -530,7 +533,7 @@ module LindenElkActionsTreeRep {
               assert NB.EncOk(ia, inp, b) by {
                 var parts := [LS.Areg(r1), LS.Areg(quant1)];
                 assert parts + cont == ia;
-                if NUL.NonNullableL(acts[0].r) { assert parts[0].Areg? && NUL.NonNullableL(parts[0].r); }
+                if NUL.NonNullableL(acts[0].r) { reveal NUL.NonNullableL; assert parts[0].Areg? && NUL.NonNullableL(parts[0].r); }
                 NB.EncOkExpand(acts, parts, inp, b);
               }
               var sub := ActionsTreeRepFRE(rer, qm, ia, code, pc + 1, inp, b, tc, ni, S);
@@ -629,6 +632,7 @@ module LindenElkActionsTreeRep {
         }
         }
       case NN(kx) =>
+        assert {:split_here} true;   // (E3) section: the bounded arm
         var em := AR.NfaRepLQuantInv(rer, qm, greedy, min, kx, r1, code, pc, pcmid);
         var quant1 := L.Quantified(greedy, min - 1, delta, r1);
         var eb: nat :| (exists qid: int ::
@@ -666,7 +670,7 @@ module LindenElkActionsTreeRep {
             assert NB.EncOk(ia, inp, b) by {
               var parts := [LS.Areg(r1), LS.Areg(quant1)];
               assert parts + cont == ia;
-              if NUL.NonNullableL(acts[0].r) { assert parts[0].Areg? && NUL.NonNullableL(parts[0].r); }
+              if NUL.NonNullableL(acts[0].r) { reveal NUL.NonNullableL; assert parts[0].Areg? && NUL.NonNullableL(parts[0].r); }
               NB.EncOkExpand(acts, parts, inp, b);
             }
             var sub := ActionsTreeRepFRE(rer, qm, ia, code, pc + 1, inp, b, tc, ni, S);
@@ -2208,6 +2212,8 @@ module LindenElkActionsTreeRep {
     ensures NP.ResAgreeAtOutside(tstar, t, inp, S)
     decreases CE.PSize(t), MsizeA(acts), n, 1
   {
+    // (§2.5b) hide the recursive nullability predicates (z3 4.14 matching loop; every use is opaque)
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, AR.NfaRepStarCinL;
     assert acts == [acts[0]] + cont;
     EL.PikeLkActionsRecConsIff(acts[0], cont);
     var gidl := L.DefGroups(r1);
@@ -2269,7 +2275,7 @@ module LindenElkActionsTreeRep {
               assert NB.EncOk(ia, inp, b) by {
                 var parts := [LS.Areg(r1), LS.Areg(quant1)];
                 assert parts + cont == ia;
-                if NUL.NonNullableL(acts[0].r) { assert parts[0].Areg? && NUL.NonNullableL(parts[0].r); }
+                if NUL.NonNullableL(acts[0].r) { reveal NUL.NonNullableL; assert parts[0].Areg? && NUL.NonNullableL(parts[0].r); }
                 NB.EncOkExpand(acts, parts, inp, b);
               }
               var sub := ActionsTreeRepFRENested(rer, qm, ia, code, pc + 1, inp, b, tc, ni, S);
@@ -2281,6 +2287,7 @@ module LindenElkActionsTreeRep {
             tstar := ATR_QuantCinNested(rer, qm, acts, cont, code, pc, pcmid, inp, b, t, n, greedy, min, delta, r1, S);
           }
         } else {
+          assert {:split_here} true;   // (E3) section: the do-while arm
           var em, e1x := AR.NfaRepLPlusInv(rer, qm, greedy, min, r1, code, pc, pcmid);
           assert NUL.NonNullableL(r1);
           var qid: int :| NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
@@ -2325,7 +2332,7 @@ module LindenElkActionsTreeRep {
               assert NB.EncOk(ia, inp, b) by {
                 var parts := [LS.Areg(r1), LS.Areg(quant1)];
                 assert parts + cont == ia;
-                if NUL.NonNullableL(acts[0].r) { assert parts[0].Areg? && NUL.NonNullableL(parts[0].r); }
+                if NUL.NonNullableL(acts[0].r) { reveal NUL.NonNullableL; assert parts[0].Areg? && NUL.NonNullableL(parts[0].r); }
                 NB.EncOkExpand(acts, parts, inp, b);
               }
               var sub := ActionsTreeRepFRENested(rer, qm, ia, code, pc + 1, inp, b, tc, ni, S);
@@ -2424,6 +2431,7 @@ module LindenElkActionsTreeRep {
         }
         }
       case NN(kx) =>
+        assert {:split_here} true;   // (E3) section: the bounded arm
         var em := AR.NfaRepLQuantInv(rer, qm, greedy, min, kx, r1, code, pc, pcmid);
         var quant1 := L.Quantified(greedy, min - 1, delta, r1);
         var eb: nat :| (exists qid: int ::
@@ -2461,7 +2469,7 @@ module LindenElkActionsTreeRep {
             assert NB.EncOk(ia, inp, b) by {
               var parts := [LS.Areg(r1), LS.Areg(quant1)];
               assert parts + cont == ia;
-              if NUL.NonNullableL(acts[0].r) { assert parts[0].Areg? && NUL.NonNullableL(parts[0].r); }
+              if NUL.NonNullableL(acts[0].r) { reveal NUL.NonNullableL; assert parts[0].Areg? && NUL.NonNullableL(parts[0].r); }
               NB.EncOkExpand(acts, parts, inp, b);
             }
             var sub := ActionsTreeRepFRENested(rer, qm, ia, code, pc + 1, inp, b, tc, ni, S);
