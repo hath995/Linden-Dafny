@@ -703,3 +703,83 @@ FlipKeystone 209/212/285, LookBehindKeystone 287 — i.e. a field addition re-pa
 band (~2.5 h of pack time): start it at the beginning of a session. Do rung E's spec-side half
 (`FirstEmptyPath` over oracle bits + `OracleOk ⟹ == FirstEmptyPathL`) in the same rung, since the
 `TreeRepRE` rule needs the oracle-bit version.
+
+**2026-09-02 (evening) — RUNG B LANDED (commit `2ca414a` + tie fix `d0b0ac8`), RUNG C IN PROGRESS.**
+Scope decision: stage 2 is being landed as **stage 2a = CIN-greedy `+` in the MAIN regex, outside
+lookaround bodies, forward direction**; nulled plus inside look bodies and the lookbehind replay
+direction are stage 2b (same rungs on the Lk tower + a mirror argument). The user confirmed the
+engine is NOT to be changed (RegElk-faithful); §2.6 flags/Unicode is a won't-do for them.
+
+Rung B (done): `AR.QMap.bodies: map<int, R.regex>` (`QmapOk` pins `qm.bodies[qid] == r1`;
+`AR.StampBodyOk(qm, qid, r1)` = body in the table, `TransWf`, translates to `r1`, `LmapOk` — carried
+by the CIN layout arm `NfaRepCinL` and discharged by `TransNfaRep` from `QmapOk`+`LmapOk`);
+`TR.FirstEmptyPathR(qm, re, inp)` (oracle-bit twin of `FirstEmptyPathL`: anchors via `is_satisfied`
+at `CtxOf(inp)`, lookarounds via the bit at `CpOf(inp)`, forced quantifiers = `RepeatPath(min,
+Reset(gidl) :: p1)`); `TR.ChainT`/`PeelT` and the rule **tr_stamp** in `TreeRepRE`:
+`SetQuantToClock(qid, true)` ↦ `GroupActionT(Reset(gidl), ChainT(p, tc))` with `p =
+FirstEmptyPathR(qm, qm.bodies[qid], inp).value` and `tc` at `pc + 1` (determinism + PikeSubtree
+extended; `GenStepRE`'s StepSpec has the `bb` case); `M.BodiesOfRE` + `BodiesOfREEntries` +
+`QmapOkFromEntries`'s bodies hypothesis; ~25 constructor sites; `QmapOkLooksIrrel` also pins bodies.
+Spec tie in the NEW file `linden-equiv-nulled-plus/src/NulledPlusTie.dfy` (module
+`LindenElkNulledPlusTie` — kept out of `NulledPlus.dfy` because importing AR/TR there bloated
+`CinPlusPriority`'s context into a timeout): `FirstEmptyPathAComp` (compositional in the
+continuation, measure `RSizeL(r), MinOfL(r)`), `FirstEmptyPathLQuant`, `LkVerdictLBit`,
+`FirstEmptyPathRL` (`!rer.multiline && TransWf(re) && LmapOk(re, qm) && OracleOkAt(rer, qm, inp)
+==> FirstEmptyPathR(qm, re, inp) == FirstEmptyPathL(rer, Translate(re), inp)`).
+
+Rung C (in progress, all per-file/per-symbol green so far except where noted):
+* `AR.NfaRepStarCinL` — the star's CIN LOOP VIEW (residual `r1*` seen from the CIN loop's backward
+  end fork `Fork(em+1, e1+3)` at `pc1 == e1+1`: clock-mark, BeginLoop, body, EndLoop, stamp at
+  `e1+2`, exit `e1+3`), third disjunct of `NfaRepL`'s star arm guarded by `CINullableL(r1) &&
+  greedy`; `NfaRepLStarCinIntro/Inv`, `NfaRepLStarLoopViews` (the case split every loop-view
+  inversion now takes), `AR.NoTrueStamps(c)` + `NoTrueStampsRefutesStarCin/Cin` (look-body code).
+* `WO.WalkOkRegF`: CIN head arm (a `min > 0` quantifier at a `Fork`: iteration at `x+2` with the flag
+  dropped, continuation at `y+1` past the stamp) and the CIN loop-view conjunct (`skiparm == pc + 2
+  ==> iteration at iterarm + 2, false`); `WalkOkFAtBeginLoop` (the old loop-view conjunct lands on
+  the BeginLoop, vacuous there); destructors `WalkOkQuantCinHead`, `WalkOkLoopViewCin`;
+  `WalkOkEntry`: `WalkOkCinRestF{,Nested}` (the CIN loop's rest at its EndLoop, KNOT at smaller fuel)
+  and the CIN chain's `k == 1` bottom now establishes the head arm.
+* `EL.PikeLkRegex{,Rec}` FLIPPED: the quantifier conjunct is gone; POSITIVE look bodies carry
+  `NUL.NoNulledPlusL(r1)` (negative already did). `TranslateFragmentPikeLkRec` still takes
+  `NoNulledPlusRE(re)` (weaken at rung G). Transport lemmas `FlipLPikeLkRec`, `RevLPreservesPikeLkRec`
+  push the new look-arm conjunct through.
+* NEW `NulledPlusBool.dfy` (module `LindenElkNulledPlusBool`): the ENCODING INVARIANT the construction
+  threads — `EncOk(acts, inp, b) := exists b2 :: BoolEncoding(b2, inp, acts) && (b2 != b ==> b2 ==
+  CannotExit && b == CanExit && ShieldedActs(acts))` (the only flag mismatch the construction creates
+  is the do-while lift on a shielded stack, where both flags' trees coincide by `BoolFlagLiftRec`);
+  step lemmas `EncOkTailReg/TailCheck/Expand/Read/Iter/IterLift/ConsPlus`, `Encodable`;
+  `BoolTreeLkDetermNP` (copy of LiftSimCore's); THE BRIDGE `EncTreeIsTree` (`PikeLkActionsRec &&
+  EncOk && BoolTreeLk(b, t) ==> IsTree at EVERY gm`); `BoolTreeLkEmptyPathSub` (the location lemma:
+  when `r` has an empty path, a `BoolTreeLk` tree of `cont` sits inside `[Areg(r)] + cont`'s —
+  PSize-smaller, confinement inherited); `RACongChainOutside`, `ChainTEqChain`;
+  `CinPlusPriorityBool` (rung A on `BoolTreeLk` trees, ∀gm via the bridge); readouts
+  `RAFirstLeafOutside`, `RAFirstLeafEmpty`, `EncOkNoChecks`.
+* `ActionsTreeRepRE.dfy` (both towers): every family lemma now `requires LL.LkActsInS(acts, S)` and
+  `requires NB.EncOk(acts, inp, b)` (AtBackFork: `BS.CanExit`) and concludes
+  `NP.ResAgreeAtOutside(tstar, t, inp, S)` (the `LL.LAAt*` congruences → `NP.RA*`; the LK gate and
+  seam steps go through `NP.ResFromLeavesOutside`); the four `assert !greedy` are gone: NEW
+  `ATR_QuantCin{,Nested}` (extracted, E3-sectioned) = forced copies (as the do-while) + at `min == 1`
+  the head-fork core: `tstar = Choice(Reset; subi, Reset; ChainT(p, subc))`, `subi` from the
+  iteration list at `em+3`/CannotExit (its spec tree `ti` and the continuation's `tcont` located
+  inside `tc` by `BoolTreeLkEmptyPathSub`), `subc` at `pcmid`, tr_stamp with `p` tied by
+  `FirstEmptyPathRL`, relation by `CinPlusPriorityBool` + congruences; `ATR_QuantStar` and
+  `AtBackForkTreeRep{,Nested}` take the CIN loop view (iteration at CannotExit from `em+3`, exit at
+  `pc+2`, tr_plus at the backward fork); the min>0 refutation at a backward fork uses `NfaRepIncrL`
+  to see the CIN head fork is forward. STATUS: per-file 56/0 apart from `ATR_QuantMin{,Nested}`
+  timeouts (fixed by the extraction) and the fork refutation (fixed) — re-verification running.
+* Lk tower (look bodies, stage 2a keeps them stamp-free): `AR.NoTrueStamps(code)` threaded as a
+  `requires` through 30 lemmas (LiftSimCore giants ×4, `QuantHeadMinPosPinsSQC`/`QuantForcedContRep`/
+  `QuantHeadSQCPin`, LiftSimOracle `ActionsTreeRepLkRE{,Rec}`/`TtLkAt*`, LiftSimChain
+  `WalkPairLkAt*`, LiftSimGate `LiftInit{,C,CNested}`) and DERIVED in 9 LiftSimGate lemmas from
+  `PSM.StaticOk{,Nested}RE` via LiftSimCore's `NoTrueStampsFromStatic{,Nested}RE` (`NI.StampFalseAt`);
+  the `assert !greedy by {conjunct}` sites refute via `NfaRepLCinInv` + the stamp; every star
+  loop-view inversion (14 sites) takes `NfaRepLStarLoopViews` and refutes/handles the CIN view.
+* Consumers (LiftSimCarriers 222/496/656, LiftSimMain 548, MainTheorem ×3): `NB.EncOkNoChecks` for
+  the entry stack, `NB.RAFirstLeafOutside`/`RAFirstLeafEmpty` for the readout.
+* Dev loop: `scratchpad/devverify.sh PKG [dafny args]` with `DIRTY="<short names>"` passes SOURCE
+  files for the dirty packages in the target's transitive deps and `deps/*.doo` for the rest
+  (`deps.txt` = the workspace dependency lists; any package whose source constructs `AR.QMap` must be
+  dirty once rung B is in, else its stale `.doo` fails to re-resolve).
+Next: finish rung C verification (ATR file, LiftSimCore/Chain/Oracle/Gate per-symbol on the touched
+lemmas), commit, then `LEM_BUILD_TIMEOUT=0 lem pack --jobs 3` in a WORKTREE (root `lem lock` first for
+the new deps), then rung D.

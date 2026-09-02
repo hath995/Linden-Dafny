@@ -1222,6 +1222,7 @@ module LindenElkLiftSimChain {
   lemma WalkPairLkAtSetQuantCore(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                                  tb: LT.Tree, gm: LG.GroupMap, pc: nat, b: BS.LoopBool,
                                  acts: LS.Actions, q: int)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
     requires EL.PikeLkActions(acts)
     requires EL.BoolTreeLk(rer, acts, inp, b, tb)
@@ -1371,7 +1372,12 @@ module LindenElkLiftSimChain {
                 && pcmid == e1 + 2 {
               var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1));
             } else {
-              var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
+              AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+              if NUL.NonNullableL(r1) {
+                var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
+              } else {
+                var emC, e1C := AR.NfaRepLStarCinInv(rer, qm, r1, code, pc, pcmid);
+              }
             }
           case NN(kx) =>
             var em: nat :| AR.NfaRepMinL(rer, qm, 0, r1, code, pc, em)
@@ -1393,6 +1399,7 @@ module LindenElkLiftSimChain {
       `Reset` head and the child walking at the RESET-updated map. */
   lemma WalkPairLkAtSetQuant(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                              tb: LT.Tree, gm: LG.GroupMap, pc: nat, ea: bool, q: int)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires WalkPairLk(rer, qm, code, inp, tb, gm, pc, ea)
     requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, false))
     ensures q in qm.quants
@@ -1546,6 +1553,7 @@ module LindenElkLiftSimChain {
   lemma {:isolate_assertions} WalkPairLkAtForkCore(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                              tb: LT.Tree, gm: LG.GroupMap, pc: nat, b: BS.LoopBool,
                              acts: LS.Actions, x: int, y: int)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
     requires EL.PikeLkActions(acts)
     requires EL.BoolTreeLk(rer, acts, inp, b, tb)
@@ -1670,8 +1678,12 @@ module LindenElkLiftSimChain {
         } else if min > 0 {
           // §2.5a: needs the STRONG head fact to refute the `Fork` we sit at;
           // `QuantHeadPinsForkOrSQC`'s `Fork? || SetQuantToClock?` is too weak.
-          assert min > 0 && delta.Inf? && greedy ==> NUL.NonNullableL(r1) by {
-            assert EL.PikeLkRegex(L.Quantified(greedy, min, delta, r1));   // §2.5b interim conjunct
+          assert min > 0 && delta.Inf? && greedy ==> NUL.NonNullableL(r1) by {   // §2.5b: stamp-free code
+            if min > 0 && delta.Inf? && greedy && !NUL.NonNullableL(r1) {
+              var emC, e1C := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+              var qidC: int :| NR.GetPcRE(code, e1C + 2) == Some(RB.SetQuantToClock(qidC, true));
+              assert NR.GetPcRE(code, e1C + 2) != Some(RB.SetQuantToClock(qidC, true));
+            }
           }
           QuantHeadMinPosPinsSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
           assert false;   // min>0 head pins SetQuantToClock, not Fork
@@ -1755,6 +1767,8 @@ module LindenElkLiftSimChain {
 
             } else {
               // ---- the LOOP VIEW: SQC at em (backward), body directly after
+              AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+              if !NUL.NonNullableL(r1) { AR.NoTrueStampsRefutesStarCin(rer, qm, r1, code, pc, pcmid); }
               assert NUL.NonNullableL(r1);
               var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em))
                              && em <= pc
@@ -1855,6 +1869,7 @@ module LindenElkLiftSimChain {
       dead at a Fork pc). */
   lemma WalkPairLkAtForkArms(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                              tb: LT.Tree, gm: LG.GroupMap, pc: nat, ea: bool, x: int, y: int)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires WalkPairLk(rer, qm, code, inp, tb, gm, pc, ea)
     requires NR.GetPcRE(code, pc) == Some(RB.Fork(x, y))
     ensures x >= 0 && y >= 0
@@ -2522,6 +2537,7 @@ module LindenElkLiftSimChain {
       satisfiable at a `SetQuantToClock` pc. */
   lemma WalkPairLkAtFork(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                          tb: LT.Tree, gm: LG.GroupMap, pc: nat, ea: bool, x: int, y: int)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires WalkPairLk(rer, qm, code, inp, tb, gm, pc, ea)
     requires NR.GetPcRE(code, pc) == Some(RB.Fork(x, y))
     ensures x >= 0 && y >= 0
@@ -3933,6 +3949,7 @@ module LindenElkLiftSimChain {
   lemma WalkPairLkAtSetQuantCoreRec(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                                     tb: LT.Tree, gm: LG.GroupMap, pc: nat, b: BS.LoopBool,
                                     acts: LS.Actions, q: int)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
     requires EL.PikeLkActionsRec(acts)
     requires EL.BoolTreeLk(rer, acts, inp, b, tb)
@@ -4082,7 +4099,12 @@ module LindenElkLiftSimChain {
                 && pcmid == e1 + 2 {
               var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1));
             } else {
-              var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
+              AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+              if NUL.NonNullableL(r1) {
+                var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
+              } else {
+                var emC, e1C := AR.NfaRepLStarCinInv(rer, qm, r1, code, pc, pcmid);
+              }
             }
           case NN(kx) =>
             var em: nat :| AR.NfaRepMinL(rer, qm, 0, r1, code, pc, em)
@@ -4100,6 +4122,7 @@ module LindenElkLiftSimChain {
 
   lemma WalkPairLkAtSetQuantRec(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                                 tb: LT.Tree, gm: LG.GroupMap, pc: nat, ea: bool, q: int)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires WalkPairLkRec(rer, qm, code, inp, tb, gm, pc, ea)
     requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, false))
     ensures q in qm.quants
@@ -4135,6 +4158,7 @@ module LindenElkLiftSimChain {
   lemma {:isolate_assertions} WalkPairLkAtForkCoreRec(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                                 tb: LT.Tree, gm: LG.GroupMap, pc: nat, b: BS.LoopBool,
                                 acts: LS.Actions, x: int, y: int)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
     requires EL.PikeLkActionsRec(acts)
     requires EL.BoolTreeLk(rer, acts, inp, b, tb)
@@ -4259,8 +4283,12 @@ module LindenElkLiftSimChain {
         } else if min > 0 {
           // §2.5a: needs the STRONG head fact to refute the `Fork` we sit at;
           // `QuantHeadPinsForkOrSQC`'s `Fork? || SetQuantToClock?` is too weak.
-          assert min > 0 && delta.Inf? && greedy ==> NUL.NonNullableL(r1) by {
-            assert EL.PikeLkRegexRec(L.Quantified(greedy, min, delta, r1));   // §2.5b interim conjunct
+          assert min > 0 && delta.Inf? && greedy ==> NUL.NonNullableL(r1) by {   // §2.5b: stamp-free code
+            if min > 0 && delta.Inf? && greedy && !NUL.NonNullableL(r1) {
+              var emC, e1C := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+              var qidC: int :| NR.GetPcRE(code, e1C + 2) == Some(RB.SetQuantToClock(qidC, true));
+              assert NR.GetPcRE(code, e1C + 2) != Some(RB.SetQuantToClock(qidC, true));
+            }
           }
           QuantHeadMinPosPinsSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
           assert false;   // min>0 head pins SetQuantToClock, not Fork
@@ -4344,6 +4372,8 @@ module LindenElkLiftSimChain {
 
             } else {
               // ---- the LOOP VIEW: SQC at em (backward), body directly after
+              AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+              if !NUL.NonNullableL(r1) { AR.NoTrueStampsRefutesStarCin(rer, qm, r1, code, pc, pcmid); }
               assert NUL.NonNullableL(r1);
               var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em))
                              && em <= pc
@@ -4442,6 +4472,7 @@ module LindenElkLiftSimChain {
 
   lemma WalkPairLkAtForkArmsRec(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                                 tb: LT.Tree, gm: LG.GroupMap, pc: nat, ea: bool, x: int, y: int)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires WalkPairLkRec(rer, qm, code, inp, tb, gm, pc, ea)
     requires NR.GetPcRE(code, pc) == Some(RB.Fork(x, y))
     ensures x >= 0 && y >= 0
@@ -4463,6 +4494,7 @@ module LindenElkLiftSimChain {
 
   lemma WalkPairLkAtForkRec(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                             tb: LT.Tree, gm: LG.GroupMap, pc: nat, ea: bool, x: int, y: int)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires WalkPairLkRec(rer, qm, code, inp, tb, gm, pc, ea)
     requires NR.GetPcRE(code, pc) == Some(RB.Fork(x, y))
     ensures x >= 0 && y >= 0

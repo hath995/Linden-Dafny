@@ -48,6 +48,8 @@ module LindenElkMain {
   import LFU = FunctionalUtils
   import PS = PikeSubset
   import ATR = LindenElkActionsTreeRep
+  import NP = LindenElkNulledPlus
+  import NB = LindenElkNulledPlusBool
   import LW = WarblreRegExpRecord
   import LS = Semantics
   import BS = BooleanSemantics
@@ -3826,10 +3828,10 @@ module LindenElkMain {
     EL.TranslateNoLkBr(body);                                   // NoLkBrL(Translate(body))
     assert LL.LkActsInS(acts, {}) by { LL.NoLkBrLkBodiesInS(T.Translate(body), {}); }
     LL.ComputeTrLkConfined(rer, acts, inp, LG.Empty, WP.Forward, {});   // LkConfinedTree(t, {})
+    assert NB.EncOk(acts, inp, BS.CannotExit) by { NB.EncOkNoChecks(acts, inp, BS.CannotExit); }
     var tstar := ATR.ActionsTreeRepRE(rer, qm, acts, bodycode, 0, inp, BS.CannotExit, t, {});
     assert TR.TreeRepRE(qm, tstar, bodycode, 0, inp, false);
-    LL.LeavesAgreeAtOutsideEmpty(tstar, t, inp);               // Outside({}) -> full LeavesAgreeAt
-    LL.LAAtFirstLeaf(tstar, t, inp);
+    NB.RAFirstLeafEmpty(tstar, t, inp);                       // Outside({}) -> equal first leaves
     assert LT.FirstLeaf(tstar, inp) == LT.FirstLeaf(t, inp);
 
     // TreeThreadRE is definitionally TreeRepRE, so the checked tree discharges
@@ -3916,10 +3918,11 @@ module LindenElkMain {
     LL.LkBodyGroupsConfines(T.Translate(body), S);             // LkBodiesInS(Translate(body), S)
     assert LL.LkActsInS(acts, S) by { LL.LkActsInSCons(LS.Areg(T.Translate(body)), [], S); }
     LL.ComputeTrLkConfined(rer, acts, inp, LG.Empty, WP.Forward, S);   // LkConfinedTree(t, S)
+    assert NB.EncOk(acts, inp, BS.CannotExit) by { NB.EncOkNoChecks(acts, inp, BS.CannotExit); }
     var tstar := ATR.ActionsTreeRepRE(rer, qm, acts, bodycode, 0, inp, BS.CannotExit, t, S);
     assert TR.TreeRepRE(qm, tstar, bodycode, 0, inp, false);
     // ActionsTreeRepRE ensures LeavesAgreeAtOutside(tstar, t, inp, S); lift to FirstLeaf.
-    LL.FirstLeafAgreeOutside(tstar, t, inp, S);
+    NB.RAFirstLeafOutside(tstar, t, inp, S);
 
     // TreeThreadRE is definitionally TreeRepRE, so the checked tree discharges
     // both of FindMatchBodyAtCp's tree hypotheses.
@@ -3994,10 +3997,11 @@ module LindenElkMain {
     LL.LkBodyGroupsConfines(T.Translate(body), S);             // LkBodiesInS(Translate(body), S)
     assert LL.LkActsInS(acts, S) by { LL.LkActsInSCons(LS.Areg(T.Translate(body)), [], S); }
     LL.ComputeTrLkConfinedK(rer, acts, inp, LG.Empty, WP.Forward, S);   // LkConfinedTree(t, S)
+    assert NB.EncOk(acts, inp, BS.CannotExit) by { NB.EncOkNoChecks(acts, inp, BS.CannotExit); }
     var tstar := ATR.ActionsTreeRepRENested(rer, qm, acts, bodycode, 0, inp, BS.CannotExit, t, S);
     assert TR.TreeRepRE(qm, tstar, bodycode, 0, inp, false);
     // ActionsTreeRepRE ensures LeavesAgreeAtOutside(tstar, t, inp, S); lift to FirstLeaf.
-    LL.FirstLeafAgreeOutside(tstar, t, inp, S);
+    NB.RAFirstLeafOutside(tstar, t, inp, S);
 
     // TreeThreadRE is definitionally TreeRepRE, so the checked tree discharges
     // both of FindMatchBodyAtCpNested's tree hypotheses.

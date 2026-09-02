@@ -664,7 +664,7 @@ module LindenElkTreeMirrorLk {
       SD.RevLNonNullable(r1);        // §2.5b interim conjunct transfers
     case Group(_, r1) => RevLPreservesPikeLkRec(r1);
     case LookaroundR(lk, r1) =>
-      if L.Positivity(lk) { RevLPreservesPikeLkRec(r1); }
+      if L.Positivity(lk) { RevLPreservesPikeLkRec(r1); SD.RevLNoNulledPlus(r1); }   // §2.5b stage 2a
       else { SD.RevLGroupFree(r1); SD.RevLNoNulledPlus(r1); }
     case _ =>
   }

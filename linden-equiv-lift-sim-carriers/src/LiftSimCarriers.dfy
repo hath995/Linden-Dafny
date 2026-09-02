@@ -60,6 +60,8 @@ module LindenElkLiftSimCarriers {
   import EL = LindenElkEntryLk
   import WO = LindenElkWalkOk
   import ATR = LindenElkActionsTreeRep
+  import NP = LindenElkNulledPlus
+  import NB = LindenElkNulledPlusBool
   import PIV = LindenElkPikeInv
   import CM = LindenElkClockMono
   import PTL = LindenElkPikeTreeLk
@@ -219,6 +221,7 @@ module LindenElkLiftSimCarriers {
       assert LL.LkBodiesInS(T.Translate(re), S);
     }
     LL.ComputeTrLkConfined(rer, [LS.Areg(T.Translate(re))], inp, LG.Empty, WP.Forward, S);
+    assert NB.EncOk([LS.Areg(T.Translate(re))], inp, BS.CannotExit) by { NB.EncOkNoChecks([LS.Areg(T.Translate(re))], inp, BS.CannotExit); }
     var tstar := ATR.ActionsTreeRepRE(rer, qm, [LS.Areg(T.Translate(re))], code, 0, inp, BS.CannotExit, t, S);
     assert TREP.TreeRepRE(qm, tstar, code, 0, inp, false);
 
@@ -493,6 +496,7 @@ module LindenElkLiftSimCarriers {
     LL.LkBodyGroupsConfines(T.Translate(body), S);
     assert LL.LkActsInS(acts, S) by { LL.LkActsInSCons(LS.Areg(T.Translate(body)), [], S); }
     LL.ComputeTrLkConfinedK(rer, acts, inp, LG.Empty, WP.Forward, S);
+    assert NB.EncOk(acts, inp, BS.CannotExit) by { NB.EncOkNoChecks(acts, inp, BS.CannotExit); }
     var tstar := ATR.ActionsTreeRepRENested(rer, qm, acts, bodycode, 0, inp, BS.CannotExit, t, S);
     assert TREP.TreeRepRE(qm, tstar, bodycode, 0, inp, false);
     assert TT.TreeThreadRE(rer, qm, bodycode, inp, tstar, 0, false);
@@ -653,6 +657,7 @@ module LindenElkLiftSimCarriers {
     LL.LkBodyGroupsConfines(T.Translate(body), S);
     assert LL.LkActsInS(acts, S) by { LL.LkActsInSCons(LS.Areg(T.Translate(body)), [], S); }
     LL.ComputeTrLkConfinedK(rer, acts, inp, LG.Empty, WP.Forward, S);
+    assert NB.EncOk(acts, inp, BS.CannotExit) by { NB.EncOkNoChecks(acts, inp, BS.CannotExit); }
     var tstar := ATR.ActionsTreeRepRENested(rer, qm, acts, bodycode, 0, inp, BS.CannotExit, t, S);
     assert TREP.TreeRepRE(qm, tstar, bodycode, 0, inp, false);
     assert TT.TreeThreadRE(rer, qm, bodycode, inp, tstar, 0, false);

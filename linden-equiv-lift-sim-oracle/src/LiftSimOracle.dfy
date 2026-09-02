@@ -320,6 +320,7 @@ module LindenElkLiftSimOracle {
   lemma ActionsTreeRepLkRE(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code,
                            pc: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree)
     returns (tcan: LT.Tree)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires EL.PikeLkActions(acts)
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
     requires WO.WalkOk(acts, code, pc, ATR.EaOf(b))
@@ -1438,6 +1439,7 @@ module LindenElkLiftSimOracle {
       satisfiable — `WalkOk` was dropped from `TtLk`). */
   lemma TtLkAtSetQuantCore(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                            tb: LT.Tree, pc: nat, b: BS.LoopBool, acts: LS.Actions, q: int)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
     requires EL.PikeLkActions(acts)
     requires EL.BoolTreeLk(rer, acts, inp, b, tb)
@@ -1522,7 +1524,12 @@ module LindenElkLiftSimOracle {
                 && pcmid == e1 + 2 {
               var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1));
             } else {
-              var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
+              AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+              if NUL.NonNullableL(r1) {
+                var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
+              } else {
+                var emC, e1C := AR.NfaRepLStarCinInv(rer, qm, r1, code, pc, pcmid);
+              }
             }
           case NN(kx) =>
             var em: nat :| AR.NfaRepMinL(rer, qm, 0, r1, code, pc, em)
@@ -1543,6 +1550,7 @@ module LindenElkLiftSimOracle {
       reformulation (WalkOk dropped from TtLk) + `QuantForcedContRep`. */
   lemma TtLkAtSetQuant(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                        tb: LT.Tree, pc: nat, ea: bool, q: int)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires TtLk(rer, qm, code, inp, tb, pc, ea)
     requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, false))
     ensures tb.GroupActionT? && tb.g.Reset?
@@ -1971,6 +1979,7 @@ module LindenElkLiftSimOracle {
       `Mismatch`). `BoolTreeLk` FORCES the shape in every case. */
   lemma TtLkAtForkCore(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                        tb: LT.Tree, pc: nat, b: BS.LoopBool, acts: LS.Actions, x: int, y: int)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
     requires EL.PikeLkActions(acts)
     requires EL.BoolTreeLk(rer, acts, inp, b, tb)
@@ -2044,8 +2053,12 @@ module LindenElkLiftSimOracle {
           // §2.5a: the STRONG head fact -- `min > 0` pins a clock-mark, which
           // refutes the `Fork` we are sitting at. `QuantHeadPinsForkOrSQC`'s
           // `Fork? || SetQuantToClock?` is too weak here.
-          assert min > 0 && delta.Inf? && greedy ==> NUL.NonNullableL(r1) by {
-            assert EL.PikeLkRegex(L.Quantified(greedy, min, delta, r1));   // §2.5b interim conjunct
+          assert min > 0 && delta.Inf? && greedy ==> NUL.NonNullableL(r1) by {   // §2.5b: stamp-free code
+            if min > 0 && delta.Inf? && greedy && !NUL.NonNullableL(r1) {
+              var emC, e1C := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+              var qidC: int :| NR.GetPcRE(code, e1C + 2) == Some(RB.SetQuantToClock(qidC, true));
+              assert NR.GetPcRE(code, e1C + 2) != Some(RB.SetQuantToClock(qidC, true));
+            }
           }
           QuantHeadMinPosPinsSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
         } else {
@@ -2063,7 +2076,12 @@ module LindenElkLiftSimOracle {
               var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1));
               assert x >= 0 && y >= 0;
             } else {
-              var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
+              AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+              if NUL.NonNullableL(r1) {
+                var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
+              } else {
+                var emC, e1C := AR.NfaRepLStarCinInv(rer, qm, r1, code, pc, pcmid);
+              }
               assert x >= 0 && y >= 0;
             }
             assert tb.Choice?;
@@ -2099,6 +2117,7 @@ module LindenElkLiftSimOracle {
       fork DOES pair `TtLk(t1,x)`/`TtLk(t2,y)` and can be recovered separately. */
   lemma TtLkAtFork(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                    tb: LT.Tree, pc: nat, ea: bool, x: int, y: int)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires TtLk(rer, qm, code, inp, tb, pc, ea)
     requires NR.GetPcRE(code, pc) == Some(RB.Fork(x, y))
     ensures x >= 0 && y >= 0
@@ -3858,6 +3877,7 @@ module LindenElkLiftSimOracle {
 
   lemma TtLkAtSetQuantCoreRec(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                               tb: LT.Tree, pc: nat, b: BS.LoopBool, acts: LS.Actions, q: int)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
     requires EL.PikeLkActionsRec(acts)
     requires EL.BoolTreeLk(rer, acts, inp, b, tb)
@@ -3942,7 +3962,12 @@ module LindenElkLiftSimOracle {
                 && pcmid == e1 + 2 {
               var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1));
             } else {
-              var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
+              AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+              if NUL.NonNullableL(r1) {
+                var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
+              } else {
+                var emC, e1C := AR.NfaRepLStarCinInv(rer, qm, r1, code, pc, pcmid);
+              }
             }
           case NN(kx) =>
             var em: nat :| AR.NfaRepMinL(rer, qm, 0, r1, code, pc, em)
@@ -3960,6 +3985,7 @@ module LindenElkLiftSimOracle {
 
   lemma TtLkAtSetQuantRec(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                           tb: LT.Tree, pc: nat, ea: bool, q: int)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires TtLkRec(rer, qm, code, inp, tb, pc, ea)
     requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, false))
     ensures tb.GroupActionT? && tb.g.Reset?
@@ -4303,6 +4329,7 @@ module LindenElkLiftSimOracle {
 
   lemma TtLkAtForkCoreRec(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                           tb: LT.Tree, pc: nat, b: BS.LoopBool, acts: LS.Actions, x: int, y: int)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
     requires EL.PikeLkActionsRec(acts)
     requires EL.BoolTreeLk(rer, acts, inp, b, tb)
@@ -4373,8 +4400,12 @@ module LindenElkLiftSimOracle {
           // §2.5a: the STRONG head fact -- `min > 0` pins a clock-mark, which
           // refutes the `Fork` we are sitting at. `QuantHeadPinsForkOrSQC`'s
           // `Fork? || SetQuantToClock?` is too weak here.
-          assert min > 0 && delta.Inf? && greedy ==> NUL.NonNullableL(r1) by {
-            assert EL.PikeLkRegexRec(L.Quantified(greedy, min, delta, r1));   // §2.5b interim conjunct
+          assert min > 0 && delta.Inf? && greedy ==> NUL.NonNullableL(r1) by {   // §2.5b: stamp-free code
+            if min > 0 && delta.Inf? && greedy && !NUL.NonNullableL(r1) {
+              var emC, e1C := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+              var qidC: int :| NR.GetPcRE(code, e1C + 2) == Some(RB.SetQuantToClock(qidC, true));
+              assert NR.GetPcRE(code, e1C + 2) != Some(RB.SetQuantToClock(qidC, true));
+            }
           }
           QuantHeadMinPosPinsSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
         } else {
@@ -4392,7 +4423,12 @@ module LindenElkLiftSimOracle {
               var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1));
               assert x >= 0 && y >= 0;
             } else {
-              var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
+              AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+              if NUL.NonNullableL(r1) {
+                var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
+              } else {
+                var emC, e1C := AR.NfaRepLStarCinInv(rer, qm, r1, code, pc, pcmid);
+              }
               assert x >= 0 && y >= 0;
             }
             assert tb.Choice?;
@@ -4420,6 +4456,7 @@ module LindenElkLiftSimOracle {
 
   lemma TtLkAtForkRec(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                       tb: LT.Tree, pc: nat, ea: bool, x: int, y: int)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires TtLkRec(rer, qm, code, inp, tb, pc, ea)
     requires NR.GetPcRE(code, pc) == Some(RB.Fork(x, y))
     ensures x >= 0 && y >= 0
@@ -4436,6 +4473,7 @@ module LindenElkLiftSimOracle {
   lemma ActionsTreeRepLkRERec(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code,
                               pc: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree)
     returns (tcan: LT.Tree)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires EL.PikeLkActionsRec(acts)
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
     requires WO.WalkOk(acts, code, pc, ATR.EaOf(b))

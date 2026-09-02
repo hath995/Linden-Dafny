@@ -60,6 +60,8 @@ module LindenElkLiftSimMain {
   import EL = LindenElkEntryLk
   import WO = LindenElkWalkOk
   import ATR = LindenElkActionsTreeRep
+  import NP = LindenElkNulledPlus
+  import NB = LindenElkNulledPlusBool
   import PIV = LindenElkPikeInv
   import CM = LindenElkClockMono
   import PTL = LindenElkPikeTreeLk
@@ -546,6 +548,7 @@ module LindenElkLiftSimMain {
       LL.LkActsInSCons(LS.Areg(T.Translate(re)), [], S);
     }
     LL.ComputeTrLkConfinedK(rer, [LS.Areg(T.Translate(re))], inp, LG.Empty, WP.Forward, S);
+    assert NB.EncOk([LS.Areg(T.Translate(re))], inp, BS.CannotExit) by { NB.EncOkNoChecks([LS.Areg(T.Translate(re))], inp, BS.CannotExit); }
     var tstar := ATR.ActionsTreeRepRENested(rer, qm, [LS.Areg(T.Translate(re))], code, 0, inp, BS.CannotExit, t, S);
     assert TREP.TreeRepRE(qm, tstar, code, 0, inp, false);
     assert TT.TreeThreadRE(rer, qm, code, inp, tstar, 0, false);

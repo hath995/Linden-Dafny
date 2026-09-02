@@ -1197,6 +1197,7 @@ module LindenElkLiftSimCore {
                                                 code: RB.code, pc: nat, inp: LC.Input,
                                                 b: BS.LoopBool, t: LT.Tree, n: nat)
     returns (tcan: LT.Tree)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires EL.PikeLkActions(acts)
     requires ATR.ActionsRepFuelL(rer, qm, acts, code, pc, n)
     requires WO.WalkOk(acts, code, pc, ATR.EaOf(b))
@@ -1385,8 +1386,13 @@ module LindenElkLiftSimCore {
               case Inf =>
                 if !NUL.NonNullableL(r1) {
                   assert {:split_here} true;   // (E3) generic arm in its own batch
-                  assert !greedy by {          // §2.5b interim (PikeLk conjunct)
+                  assert !greedy by {          // §2.5b: no nulled-exit stamp in this code
                     assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
+                    if greedy {
+                      var emC, e1C := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+                      var qidC: int :| NR.GetPcRE(code, e1C + 2) == Some(RB.SetQuantToClock(qidC, true));
+                      assert NR.GetPcRE(code, e1C + 2) != Some(RB.SetQuantToClock(qidC, true));
+                    }
                   }
                   // §2.5a GENERIC: `min` forced copies then the ordinary star
                   // loop at `emg`. No seam -- the code's BeginLoop/EndLoop sits
@@ -1747,6 +1753,8 @@ module LindenElkLiftSimCore {
             // the LOOP VIEW: a bare star at the do-while's backward fork.
             // WalkOk pins the flag to CanExit; the fused fork lemma builds the
             // Choice and tr_plus consumes the PLANTED Progress with the fork.
+            AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+            if !NUL.NonNullableL(r1) { AR.NoTrueStampsRefutesStarCin(rer, qm, r1, code, pc, pcmid); }
             assert NUL.NonNullableL(r1);
             var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em))
                            && em <= pc
@@ -1864,6 +1872,7 @@ module LindenElkLiftSimCore {
   lemma {:isolate_assertions} AtBackForkTreeLkF(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code,
                           pc: nat, inp: LC.Input, tc: LT.Tree, n: nat)
     returns (tcstar: LT.Tree)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires EL.PikeLkActions(acts)
     requires ATR.ActionsRepFuelL(rer, qm, acts, code, pc, n)
     requires WO.WalkOk(acts, code, pc, true)
@@ -1962,8 +1971,13 @@ module LindenElkLiftSimCore {
               } else {
                 // §2.5a GENERIC: min >= 1 forced copies, so `pc` still carries a
                 // clock-mark -- refuted against the pinned Fork just the same
-                assert !greedy by {            // §2.5b interim (PikeLk conjunct)
+                assert !greedy by {          // §2.5b: no nulled-exit stamp in this code
                   assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
+                  if greedy {
+                    var emC, e1C := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+                    var qidC: int :| NR.GetPcRE(code, e1C + 2) == Some(RB.SetQuantToClock(qidC, true));
+                    assert NR.GetPcRE(code, e1C + 2) != Some(RB.SetQuantToClock(qidC, true));
+                  }
                 }
                 var em, e1x := AR.NfaRepLGenInv(rer, qm, greedy, min, r1, code, pc, pcmid);
                 var eb: nat :| (exists qid: int ::
@@ -2023,6 +2037,8 @@ module LindenElkLiftSimCore {
             assert false;   // the fast path pins a forward fork
           } else {
             // THE LOOP VIEW: the star seen from the fork itself
+            AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+            if !NUL.NonNullableL(r1) { AR.NoTrueStampsRefutesStarCin(rer, qm, r1, code, pc, pcmid); }
             assert NUL.NonNullableL(r1);
             var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em))
                            && em <= pc
@@ -2859,6 +2875,28 @@ module LindenElkLiftSimCore {
   // ==========================================================================
 
   /** `QmapOk` reads only `qm.quants`: any looks-map change is irrelevant. */
+  /** §2.5b stage 2a: the static package's `NoNulledPlusRE(re)` makes the whole
+      compiled code stamp-free (`StampFalseAt` inside the block, `Accept` at
+      `endl`, nothing past it) — the hypothesis under which the look-body tree
+      machinery refutes every CIN-greedy layout. */
+  lemma NoTrueStampsFromStaticRE(qm: AR.QMap, re: R.regex, code: RB.code, endl: nat)
+    requires PSM.StaticOkRE(qm, re, code, endl)
+    ensures AR.NoTrueStamps(code)
+  {
+    forall pc: nat, q: int ensures NR.GetPcRE(code, pc) != Some(RB.SetQuantToClock(q, true)) {
+      if pc < endl { NI.StampFalseAt(re, code, 0, endl, pc); }
+    }
+  }
+
+  lemma NoTrueStampsFromStaticNestedRE(qm: AR.QMap, re: R.regex, code: RB.code, endl: nat)
+    requires PSM.StaticOkNestedRE(qm, re, code, endl)
+    ensures AR.NoTrueStamps(code)
+  {
+    forall pc: nat, q: int ensures NR.GetPcRE(code, pc) != Some(RB.SetQuantToClock(q, true)) {
+      if pc < endl { NI.StampFalseAt(re, code, 0, endl, pc); }
+    }
+  }
+
   lemma QmapOkLooksIrrel(r: R.regex, qm: AR.QMap, qm2: AR.QMap)
     requires T.TransWf(r)
     requires AR.QmapOk(r, qm)
@@ -3411,7 +3449,12 @@ module LindenElkLiftSimCore {
             && pcmid == e1 + 2 {
           var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1));
         } else {
-          var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
+          AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+          if NUL.NonNullableL(r1) {
+            var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
+          } else {
+            var emC, e1C := AR.NfaRepLStarCinInv(rer, qm, r1, code, pc, pcmid);
+          }
         }
       } else {
         match delta
@@ -3697,7 +3740,12 @@ module LindenElkLiftSimCore {
           && pcmid == e1 + 2 {
         var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1));
       } else {
-        var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
+        AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+        if NUL.NonNullableL(r1) {
+          var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
+        } else {
+          var emC, e1C := AR.NfaRepLStarCinInv(rer, qm, r1, code, pc, pcmid);
+        }
       }
     } else {
       match delta
@@ -3758,7 +3806,12 @@ module LindenElkLiftSimCore {
           && pcmid == e1 + 2 {
         var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1));
       } else {
-        var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
+        AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+        if NUL.NonNullableL(r1) {
+          var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
+        } else {
+          var emC, e1C := AR.NfaRepLStarCinInv(rer, qm, r1, code, pc, pcmid);
+        }
       }
     } else {
       match delta
@@ -3821,7 +3874,12 @@ module LindenElkLiftSimCore {
           && pcmid == e1 + 2 {
         var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1));
       } else {
-        var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
+        AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+        if NUL.NonNullableL(r1) {
+          var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
+        } else {
+          var emC, e1C := AR.NfaRepLStarCinInv(rer, qm, r1, code, pc, pcmid);
+        }
       }
     } else {
       match delta
@@ -3876,6 +3934,7 @@ module LindenElkLiftSimCore {
       behind `NfaRepGenL`'s trigger stopped Dafny deriving it by unfolding. */
   lemma QuantHeadMinPosPinsSQC(rer: LW.RegExpRecord, qm: AR.QMap, greedy: bool, min: nat, delta: LN.NoI,
                                r1: L.Regex, code: RB.code, pc: nat, pcmid: nat)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires AR.NfaRepL(rer, qm, L.Quantified(greedy, min, delta, r1), code, pc, pcmid)
     requires min > 0
     // §2.5b interim: the CIN-GREEDY head at min == 1 is a FORK, so this
@@ -3921,6 +3980,7 @@ module LindenElkLiftSimCore {
       `WalkOk` was in `TtLk`; with `WalkOk` gone (no Acheck-mismatch), it closes. */
   lemma QuantForcedContRep(rer: LW.RegExpRecord, qm: AR.QMap, greedy: bool, min: nat, delta: LN.NoI,
                            r1: L.Regex, code: RB.code, pc: nat, pcmid: nat, cont: LS.Actions)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires min > 0
     // §2.5b interim: the CIN-GREEDY head at min == 1 is a FORK, so this
     // lemma's claim needs the gate conjunct (dropped at the §2.5b flip)
@@ -4016,6 +4076,7 @@ module LindenElkLiftSimCore {
       `QuantForcedContRep` uses, without building the continuation. */
   lemma QuantHeadSQCPin(rer: LW.RegExpRecord, qm: AR.QMap, greedy: bool, min: nat, delta: LN.NoI,
                         r1: L.Regex, code: RB.code, pc: nat, pcmid: nat)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires min > 0
     // §2.5b interim: the CIN-GREEDY head at min == 1 is a FORK, so this
     // lemma's claim needs the gate conjunct (dropped at the §2.5b flip)
@@ -5716,6 +5777,7 @@ module LindenElkLiftSimCore {
                                                    code: RB.code, pc: nat, inp: LC.Input,
                                                    b: BS.LoopBool, t: LT.Tree, n: nat)
     returns (tcan: LT.Tree)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires EL.PikeLkActionsRec(acts)
     requires ATR.ActionsRepFuelL(rer, qm, acts, code, pc, n)
     requires WO.WalkOk(acts, code, pc, ATR.EaOf(b))
@@ -5904,8 +5966,13 @@ module LindenElkLiftSimCore {
               case Inf =>
                 if !NUL.NonNullableL(r1) {
                   assert {:split_here} true;   // (E3) generic arm in its own batch
-                  assert !greedy by {          // §2.5b interim (PikeLk conjunct)
+                  assert !greedy by {          // §2.5b: no nulled-exit stamp in this code
                     assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
+                    if greedy {
+                      var emC, e1C := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+                      var qidC: int :| NR.GetPcRE(code, e1C + 2) == Some(RB.SetQuantToClock(qidC, true));
+                      assert NR.GetPcRE(code, e1C + 2) != Some(RB.SetQuantToClock(qidC, true));
+                    }
                   }
                   // §2.5a GENERIC: `min` forced copies then the ordinary star
                   // loop at `emg`. No seam -- the code's BeginLoop/EndLoop sits
@@ -6266,6 +6333,8 @@ module LindenElkLiftSimCore {
             // the LOOP VIEW: a bare star at the do-while's backward fork.
             // WalkOk pins the flag to CanExit; the fused fork lemma builds the
             // Choice and tr_plus consumes the PLANTED Progress with the fork.
+            AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+            if !NUL.NonNullableL(r1) { AR.NoTrueStampsRefutesStarCin(rer, qm, r1, code, pc, pcmid); }
             assert NUL.NonNullableL(r1);
             var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em))
                            && em <= pc
@@ -6376,6 +6445,7 @@ module LindenElkLiftSimCore {
   lemma {:isolate_assertions} AtBackForkTreeLkFRec(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code,
                              pc: nat, inp: LC.Input, tc: LT.Tree, n: nat)
     returns (tcstar: LT.Tree)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires EL.PikeLkActionsRec(acts)
     requires ATR.ActionsRepFuelL(rer, qm, acts, code, pc, n)
     requires WO.WalkOk(acts, code, pc, true)
@@ -6474,8 +6544,13 @@ module LindenElkLiftSimCore {
               } else {
                 // §2.5a GENERIC: min >= 1 forced copies, so `pc` still carries a
                 // clock-mark -- refuted against the pinned Fork just the same
-                assert !greedy by {            // §2.5b interim (PikeLk conjunct)
+                assert !greedy by {          // §2.5b: no nulled-exit stamp in this code
                   assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
+                  if greedy {
+                    var emC, e1C := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+                    var qidC: int :| NR.GetPcRE(code, e1C + 2) == Some(RB.SetQuantToClock(qidC, true));
+                    assert NR.GetPcRE(code, e1C + 2) != Some(RB.SetQuantToClock(qidC, true));
+                  }
                 }
                 var em, e1x := AR.NfaRepLGenInv(rer, qm, greedy, min, r1, code, pc, pcmid);
                 var eb: nat :| (exists qid: int ::
@@ -6535,6 +6610,8 @@ module LindenElkLiftSimCore {
             assert false;   // the fast path pins a forward fork
           } else {
             // THE LOOP VIEW: the star seen from the fork itself
+            AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+            if !NUL.NonNullableL(r1) { AR.NoTrueStampsRefutesStarCin(rer, qm, r1, code, pc, pcmid); }
             assert NUL.NonNullableL(r1);
             var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em))
                            && em <= pc

@@ -227,7 +227,7 @@ module LindenElkFlipClosed {
     case Group(_, r1) => FlipLPikeLkRec(r1);
     case LookaroundR(lk, r1) =>
       FR.FlipLkLaws(lk);
-      if L.Positivity(lk) { FlipLPikeLkRec(r1); }
+      if L.Positivity(lk) { FlipLPikeLkRec(r1); FlipLNoNulledPlus(r1); }   // §2.5b stage 2a: look bodies stay nulled-plus-free
       else { FlipLGroupFree(r1); FlipLNoNulledPlus(r1); }
     case _ =>
   }

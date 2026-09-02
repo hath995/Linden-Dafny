@@ -134,6 +134,7 @@ module LindenElkLiftSimGate {
                  crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                  t: LT.Tree, vms: AI.VmState, ncap: int, nlook: int, nquant: int)
     returns (tcan: LT.Tree)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires !rer.multiline
     requires T.TransWf(re) && NR.LookBehindFragmentRE(re) && PIV.CapUnique(re)
     requires NR.NoNulledPlusRE(re)   // §2.5b interim: all stamps false
@@ -1587,6 +1588,7 @@ module LindenElkLiftSimGate {
     ensures bst1.PTS?
     ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
   {
+    NoTrueStampsFromStaticRE(qm, re, code, endl);   // §2.5b stage 2a
     var PTS(inp, ta, best, tb, seen) := bst;
     var th := s.active[0];
     assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
@@ -1796,6 +1798,7 @@ module LindenElkLiftSimGate {
     ensures bst1.PTS?
     ensures LiftInvNested(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
   {
+    NoTrueStampsFromStaticNestedRE(qm, re, code, endl);   // §2.5b stage 2a
     var PTS(inp, ta, best, tb, seen) := bst;
     var th := s.active[0];
     assert ActiveRepLkCNested(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
@@ -1973,6 +1976,7 @@ module LindenElkLiftSimGate {
     ensures bst1.PTS?
     ensures LiftInv(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
   {
+    NoTrueStampsFromStaticRE(qm, re, code, endl);   // §2.5b stage 2a
     var PTS(inp, ta, best, tbl, seen) := bst;
     var th := s.active[0];
     assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
@@ -2117,6 +2121,7 @@ module LindenElkLiftSimGate {
     ensures bst1.PTS?
     ensures LiftInvNested(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
   {
+    NoTrueStampsFromStaticNestedRE(qm, re, code, endl);   // §2.5b stage 2a
     var PTS(inp, ta, best, tbl, seen) := bst;
     var th := s.active[0];
     assert ActiveRepLkCNested(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
@@ -4809,6 +4814,7 @@ module LindenElkLiftSimGate {
                   S: set<LG.GroupId>, tstar: LT.Tree, t: LT.Tree, inp: LC.Input, vms: AI.VmState,
                   ncap: int, nlook: int, nquant: int)
     returns (tcan: LT.Tree)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires NR.NfaRepRE(re, code, 0, endl)
     requires code == CP.compile_to_bytecode(re)               // WalkOkEntry's carrier
     requires PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str,
@@ -4899,6 +4905,7 @@ module LindenElkLiftSimGate {
                         S: set<LG.GroupId>, tstar: LT.Tree, t: LT.Tree, inp: LC.Input, vms: AI.VmState,
                         ncap: int, nlook: int, nquant: int)
     returns (tcan: LT.Tree)
+    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires NR.NfaRepRE(re, code, 0, endl)
     requires code == CP.compile_to_bytecode(re)               // WalkOkEntry's carrier
     requires PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str,
@@ -5626,6 +5633,7 @@ module LindenElkLiftSimGate {
     requires result == AI.FFindMatch(code, str, vms, ov, LAnc.Forward, cdn).0
     ensures BestTieLk(re, crv, str, ov, S, LT.FirstLeaf(t, inp), result, ncap, nlook, nquant)
   {
+    NoTrueStampsFromStaticRE(qm, re, code, endl);   // §2.5b stage 2a
     var tcan := LiftInitC(rer, qm, re, code, endl, ngroups, crv, str, ov, S, tstar, t, inp, vms,
                           ncap, nlook, nquant);
     assert LiftInv(rer, qm, re, code, crv, str, ov, S,
@@ -5690,6 +5698,7 @@ module LindenElkLiftSimGate {
     requires result == AI.FFindMatch(code, str, vms, ov, LAnc.Forward, cdn).0
     ensures BestTieLkNested(re, crv, str, ov, S, LT.FirstLeaf(t, inp), result, ncap, nlook, nquant)
   {
+    NoTrueStampsFromStaticRE(qm, re, code, endl);   // §2.5b stage 2a
     var tcan := LiftInitCNested(rer, qm, re, code, endl, ngroups, crv, str, ov, S, tstar, t, inp, vms,
                                 ncap, nlook, nquant);
     assert LiftInvNested(rer, qm, re, code, crv, str, ov, S,
@@ -6421,6 +6430,7 @@ module LindenElkLiftSimGate {
     ensures bst1.PTS?
     ensures LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
   {
+    NoTrueStampsFromStaticNestedRE(qm, re, code, endl);   // §2.5b stage 2a
     var PTS(inp, ta, best, tb, seen) := bst;
     var th := s.active[0];
     assert ActiveRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
@@ -6620,6 +6630,7 @@ module LindenElkLiftSimGate {
     ensures bst1.PTS?
     ensures LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
   {
+    NoTrueStampsFromStaticNestedRE(qm, re, code, endl);   // §2.5b stage 2a
     var PTS(inp, ta, best, tbl, seen) := bst;
     var th := s.active[0];
     assert ActiveRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
@@ -8310,6 +8321,7 @@ module LindenElkLiftSimGate {
                         PT.PikeTreeInitialState(tstar, inp), PT.PikeTreeInitialState(tcan, inp), vms,
                         ncap, nlook, nquant)
   {
+    NoTrueStampsFromStaticNestedRE(qm, re, code, endl);   // §2.5b stage 2a
     // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
     // triggered existential storm the solver; all uses here are opaque.
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
