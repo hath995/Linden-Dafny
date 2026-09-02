@@ -653,3 +653,45 @@ Let `t1` = tree of `[Areg(r1)]` at `(inp, GMReset(gidl, gm))`, leaves `ℓ` in p
 Order: A → B → C → E (independent of D, can go in parallel via a worktree) → D → F → G. Rung A
 is the go/no-go: if `ResAgree(T_plus, T_cin)` does not verify as stated, the tower is untouched.
 CDN-greedy (`CheckNullable`) stays out of scope for all of this.
+
+### STAGE 2 PROGRESS LOG
+
+**2026-09-02 — RUNG A LANDED (spec-level priority theorem), new member `linden-equiv-nulled-plus`
+(module `LindenElkNulledPlus`, depends on look-leaves/entry-lk/check-erase + the spec).** Contents, all
+verified (per-symbol `CinPlusPriority` 13 batches / 0 errors, ~30 s solver; the member packs whole-file):
+* `ResAgreeAtOutside(t1, t2, inp, S)` — the Hd-level relation — `ResFromLeavesOutside` + the
+  `RA*Outside` congruence family (Refl/Sym/Trans/Progress/Read/Group/Anchor/Choice), mirroring
+  `LL.LAAt*Outside`.
+* `FirstEmptyPathA(rer, acts, inp): Option<seq<GroupAction>>` (mirrors `FS.ComputeTree`'s cases,
+  `decreases ActionsFuel`, the spec verdict `LkVerdictL` for gates) + `FirstEmptyPathL`; `ApplyPath`,
+  `Chain` (the virtual `GroupActionT` chain), `CINullableEmptyPathA` (CI-nullable ⟹ Some),
+  `EmptyPathNeedsCont`, `PathActionsIn`/`ApplyPathOutside` (the path only touches the stack's groups).
+* `EmptyLeavesA` — THE leaf characterization: every leaf of an `IsTree` tree at `inp` is `inp` or a
+  strict suffix of it; a leaf AT `inp` exists iff the stack has an empty path; the FIRST one's map is
+  `ApplyPath(path, Idx(inp), gm)` outside the look-confined `S` (`FirstAt` = first index at `inp`).
+* `CinPlusPriority(rer, r1, cont, inp, gm, S, tplus, titer, tcont)`: for `PikeLkRegexRec(r1)`,
+  `PikeLkActionsRec(cont)`, `CINullableL(r1)`, look bodies in `S`, and IsTree trees `tplus` of
+  `[Areg(Q(true,1,Inf,r1))] + cont` at `gm`, `titer` of the star iteration `[Areg(r1), Acheck(inp),
+  Areg(Q(true,0,Inf,r1))] + cont` at `GMReset(gidl, gm)`, `tcont` of `cont` at `gm`:
+  `TreeRes(Choice(Reset(gidl); titer, Reset(gidl); Chain(FirstEmptyPathL(r1), tcont)), gm, inp)` and
+  `TreeRes(tplus, gm, inp)` are both None or both Some with equal position and maps agreeing outside `S`.
+  Proof = `EQ.LeavesConcat` (Linden's flat-map theorem) on `[Areg(r1)] + rest` and `[Areg(r1)] +
+  [Acheck(inp)] + rest`, split at the first empty leaf; the check-chunk lemma `ChkChunk` (past `inp`
+  the `Acheck` is a pass-through, at `inp` it kills), `EmptyLeafChunk` (the star at an empty leaf =
+  the gm-independent iteration tree from the reset map + the gm-independent continuation),
+  `LL.TreeLeavesFrameOutside` for the "up to S" transfers, and the P/Q head argument.
+* Stated PER `gm` on `IsTree` trees. The `∀gm` form for the ATR site follows from
+  `EL.ComputeTreeGmIndepLkRec` once `PikeLkRegex{,Rec}` admits the plus (its interim conjunct is
+  exactly what excludes `Q(true,1,Inf,r1)` today) — that flip is rung C's first step.
+
+**Verification lessons (this rung):** `EL.NoLkBrL` means look-AND-backref-free — use
+`PikeLkActionsRec` + `ComputeTreeGmIndepLkRec`/`ComputeTrConfinedRec` for gm-independence and
+confinement of look bodies; `IsTree` writes the star as `NoISub(delta,1)` while `ComputeTree`/`BoolTreeLk`
+use `NoiPred(delta)` (assert equality); `:|`-bound `seq<Leaf>` locals need explicit types or Dafny reports
+"type of the receiver is not fully determined"; sequence associativity (`I1 + (I3 + C)`) and `[] + I3`
+are 60 s+ for z3 4.14 — state them; the two `TreeLeavesFrameOutside` quantified conclusions in the
+context made the head-comparison batch storm although every assertion isolates — scope them into
+`assert <instance> by { … }` blocks and `split_here` the case analysis.
+
+**Next: rung B** (`TreeRepRE`'s `SQC(qid, true)` rule with the virtual chain; the `QMap` must carry the
+CIN body per qid — `AR.QMap` currently has `quants: map<int, seq<GroupId>>`, `looks`, `ov`).

@@ -194,8 +194,8 @@ unbounded `min > 0` quantifier (`Compiler.dfy:104-156`), not one:
 |---|---|---|---|
 | `NonNullable` | either | do-while (min-1 copies, stamp, body, backward fork) | ✅ always was |
 | nullable | **lazy** | the GENERIC scheme — `repeat_min(min)` then the ordinary star loop | ✅ **§2.5a, DONE** |
-| `CINullable` | greedy | end-fork + `SetQuantToClock(qid, true)` | ❌ §2.5b |
-| `CDNullable` | greedy | end-fork + **`CheckNullable(qid)`** | ❌ §2.5b |
+| `CINullable` | greedy | end-fork + `SetQuantToClock(qid, true)` | ❌ §2.5b — **layout + interim stage packed 2026-09-02** (branch `nullable-plus-greedy`, 61/61; still gated out by `NoNulledPlusRaw`); the reconstruction stage is designed and started (`NULLABLE_PLUS_HANDOFF.md` § STAGE 2) |
+| `CDNullable` | greedy | end-fork + **`CheckNullable(qid)`** | ❌ out of scope for §2.5b-CIN (no representation) |
 
 **§2.5a (done).** `(a?)+?`, `(a?){2,}?` and friends verify. Nothing nullability-specific was
 needed: the generic scheme's output IS `NfaRepMinRE(min, …)` followed by the STAR arm's shape, and
