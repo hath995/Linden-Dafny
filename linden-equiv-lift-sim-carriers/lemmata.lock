@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:bacaae896871ea4beac1629ef60fe82d17ba23b03e83877e8cdab7f1ae4b1188"
+manifest-hash = "sha256:5e10b50e09ef35b85be5cec11281749d3d6b5f9aa6ff87f03ca68efb7907ee97"
 
 [[package]]
 name = "linden.equiv-gen-step-re"
@@ -110,6 +110,15 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-actions-tree-rep-re"
+
+[[package]]
+name = "linden.equiv-nulled-plus"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-nulled-plus"
 
 [[package]]
 name = "linden.equiv-back-gm-mirror"
