@@ -228,7 +228,7 @@ module LindenElkLiftSimDeep {
       // the body-restricted qmap (LmapOk on `host`, all-columns oracle)
       var qmB0 := AR.QMap(qm.quants,
                           map l: int | l in qm.looks && l >= 0 && (l as nat) in LTB.LookIds(host) :: qm.looks[l],
-                          qm.ov);
+                          qm.ov, qm.bodies);
       assert AR.QmapOk(host, qmB0) by { QmapOkLooksIrrel(host, qm, qmB0); }
       assert AR.LmapOk(host, qmB0) by { LmapOkRestrict(host, qm, qmB0); }
       assert OE.OracleColsOk(rer, qmB0, str) by {
@@ -308,7 +308,7 @@ module LindenElkLiftSimDeep {
       //     whole-string oracle on `host`).
       var qmB := AR.QMap(qm.quants,
                          map l: int | l in qm.looks && l >= 0 && (l as nat) in LTB.LookIds(host) :: qm.looks[l],
-                         qm.ov);
+                         qm.ov, qm.bodies);
       assert AR.QmapOk(host, qmB) by { QmapOkLooksIrrel(host, qm, qmB); }
       assert AR.LmapOk(host, qmB) by { LmapOkRestrict(host, qm, qmB); }
       assert OE.OracleColsOk(rer, qmB, str) by {
@@ -607,7 +607,7 @@ module LindenElkLiftSimDeep {
     // (δ) the body-restricted qmap + statics
     var qmB := AR.QMap(qm.quants,
                        map l: int | l in qm.looks && l >= 0 && (l as nat) in LTB.LookIds(host) :: qm.looks[l],
-                       qm.ov);
+                       qm.ov, qm.bodies);
     assert AR.QmapOk(host, qmB) by { QmapOkLooksIrrel(host, qm, qmB); }
     assert AR.LmapOk(host, qmB) by { LmapOkRestrict(host, qm, qmB); }
     assert PSM.StaticOkNestedRE(qmB, host, bodycode, endlH) by {
@@ -965,7 +965,7 @@ module LindenElkLiftSimDeep {
       ensures (LTB.LookEntryOk(crv, A as int, laN, host) && (laN.Lookbehind? ==> NR.LBOnlyLooksRE(host)))
       ensures (qmB == AR.QMap(qm.quants,
                                map l: int | l in qm.looks && l >= 0 && (l as nat) in LTB.LookIds(host) :: qm.looks[l],
-                               qm.ov))
+                               qm.ov, qm.bodies))
       ensures (bodycodeB == CP.compile_to_bytecode(R.reverse_regex(host)))
       ensures (cdnA == crv.f_look_cdns[A as int])
       ensures (rbT == LFU.ComputeTr(rer, [LS.Areg(T.Translate(host))], inpA, LG.Empty, WP.Backward))
@@ -1064,7 +1064,7 @@ module LindenElkLiftSimDeep {
              && LTB.LookTablesOk(host, crv);                          // FrameEntryOk
       qmB := AR.QMap(qm.quants,
                          map l: int | l in qm.looks && l >= 0 && (l as nat) in LTB.LookIds(host) :: qm.looks[l],
-                         qm.ov);
+                         qm.ov, qm.bodies);
       assert AR.QmapOk(host, qmB) by { QmapOkLooksIrrel(host, qm, qmB); }
       assert AR.LmapOk(host, qmB) by { LmapOkRestrict(host, qm, qmB); }
       assert OE.OracleColsOk(rer, qmB, str) by {

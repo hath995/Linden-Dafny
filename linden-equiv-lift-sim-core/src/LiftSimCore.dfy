@@ -2862,7 +2862,7 @@ module LindenElkLiftSimCore {
   lemma QmapOkLooksIrrel(r: R.regex, qm: AR.QMap, qm2: AR.QMap)
     requires T.TransWf(r)
     requires AR.QmapOk(r, qm)
-    requires qm2.quants == qm.quants
+    requires qm2.quants == qm.quants && qm2.bodies == qm.bodies
     ensures AR.QmapOk(r, qm2)
     decreases r
   {

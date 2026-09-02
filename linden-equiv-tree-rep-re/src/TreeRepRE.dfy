@@ -18,6 +18,7 @@ module LindenElkTreeRep {
   import opened Std.Wrappers
   import LC = Chars
   import LG = Groups
+  import L = Regex
   import LT = Tree
   import LS = Semantics
   import LW = WarblreRegExpRecord
@@ -59,6 +60,115 @@ module LindenElkTreeRep {
     if |inp.next| > 0 { T.WordCharIff(rer, inp.next[0]); }
   }
 
+  // ===========================================================================
+  // §2.5b: the nulled-exit stamp's VIRTUAL CHAIN.
+  //
+  // The CIN-greedy plus's head fork skips the loop straight into
+  // `SetQuantToClock(qid, true)` when the mandatory iteration matched EMPTY at
+  // this position. The spec, by contrast, runs that empty iteration for real:
+  // its top-priority zero-width path through the body writes its groups (all at
+  // this position). The engine fills those captures in AFTERWARDS
+  // (`FReconstructPlus`, the null interpreter over the body's ReconstructNulled
+  // code — rung E ties the two); at the TREE level the stamp therefore denotes
+  // `Reset(gidl)` followed by the chain of that path's group actions — read off
+  // the body regex `qm.bodies[qid]` and the ORACLE BITS `qm.ov` for its
+  // lookarounds, so that the rule stays a FUNCTION of `(qm, pc, inp)`
+  // (`TreeRepDetermRE`). `NulledPlus.FirstEmptyPathRL` ties `FirstEmptyPathR`
+  // to the spec-side `FirstEmptyPathL` under `OracleOkAt` + `LmapOk`.
+  // ===========================================================================
+
+  /** `n` copies of `p` back to back. */
+  ghost function RepeatPath(n: nat, p: seq<LG.GroupAction>): seq<LG.GroupAction>
+    decreases n
+  {
+    if n == 0 then [] else p + RepeatPath(n - 1, p)
+  }
+
+  /** The top-priority zero-width path of an annotated RegElk regex at `inp`
+      (`None` when there is none), as the sequence of group actions it
+      performs — the oracle-bit twin of `NulledPlus.FirstEmptyPathL`: a
+      lookaround's verdict is its bit in `qm.ov` at `CpOf(inp)`, an anchor's
+      the VM's `is_satisfied` at `CtxOf(inp)`. A forced quantifier repeats
+      `Reset(gidl)` + the body's path `min` times (the spec unrolls
+      `[Areg(r1), Areg(Q(min-1))]`); a free one's first empty path is the
+      skip (the iteration's `Acheck` kills every empty iteration). */
+  ghost function FirstEmptyPathR(qm: AR.QMap, re: R.regex, inp: LC.Input): Option<seq<LG.GroupAction>>
+    requires T.TransWf(re)
+    decreases re
+  {
+    match re
+    case Re_empty => Some([])
+    case Re_character(_) => None
+    case Re_anchor(a) => if RA.is_satisfied(a, CtxOf(inp), RA.Forward) then Some([]) else None
+    case Re_alt(r1, r2) =>
+      (match FirstEmptyPathR(qm, r1, inp)
+       case Some(p) => Some(p)
+       case None => FirstEmptyPathR(qm, r2, inp))
+    case Re_con(r1, r2) =>
+      (match FirstEmptyPathR(qm, r1, inp)
+       case None => None
+       case Some(p1) =>
+         (match FirstEmptyPathR(qm, r2, inp)
+          case None => None
+          case Some(p2) => Some(p1 + p2)))
+    case Re_quant(nul, qid, q, r1) =>
+      if q.min == 0 then Some([])
+      else
+        (match FirstEmptyPathR(qm, r1, inp)
+         case None => None
+         case Some(p1) => Some(RepeatPath(q.min as nat, [LG.Reset(L.DefGroups(T.Translate(r1)))] + p1)))
+    case Re_capture(cid, r1) =>
+      (match FirstEmptyPathR(qm, r1, inp)
+       case None => None
+       case Some(p) => Some([LG.Open(cid as nat)] + p + [LG.Close(cid as nat)]))
+    case Re_lookaround(lid, lk, r1) =>
+      var bit := LOr.view_get_oracle(qm.ov, CpOf(inp), lid);
+      if (if AR.PositiveL(T.TrLookaround(lk)) then bit else !bit) then Some([]) else None
+  }
+
+  /** The chain of `GroupActionT` nodes performing `p`, above `t`. */
+  ghost function ChainT(p: seq<LG.GroupAction>, t: LT.Tree): LT.Tree
+    decreases |p|
+  {
+    if |p| == 0 then t else LT.GroupActionT(p[0], ChainT(p[1..], t))
+  }
+
+  /** Peels the chain `p` off the top of `t`, if `t` has it. The rule below is
+      stated with `PeelT` rather than an existential over the continuation
+      tree, so that the represented tree stays syntactically pinned. */
+  ghost function PeelT(p: seq<LG.GroupAction>, t: LT.Tree): Option<LT.Tree>
+    decreases |p|
+  {
+    if |p| == 0 then Some(t)
+    else if t.GroupActionT? && t.g == p[0] then PeelT(p[1..], t.t)
+    else None
+  }
+
+  lemma PeelChainT(p: seq<LG.GroupAction>, t: LT.Tree)
+    ensures PeelT(p, ChainT(p, t)) == Some(t)
+    decreases |p|
+  {
+    if |p| > 0 { PeelChainT(p[1..], t); }
+  }
+
+  lemma ChainPeelT(p: seq<LG.GroupAction>, t: LT.Tree)
+    requires PeelT(p, t).Some?
+    ensures t == ChainT(p, PeelT(p, t).value)
+    decreases |p|
+  {
+    if |p| > 0 { ChainPeelT(p[1..], t.t); }
+  }
+
+  /** The stamp rule's payload, as one predicate: the tables know the body, it
+      has an empty path here, and the represented tree is `Reset(gidl)` over
+      that path's chain over the continuation `tc` at `pc + 1`. */
+  ghost predicate StampShape(qm: AR.QMap, qid: int, t: LT.Tree)
+  {
+    t.GroupActionT? && t.g.Reset?
+    && qid in qm.quants && qm.quants[qid] == t.g.gl
+    && qid in qm.bodies && T.TransWf(qm.bodies[qid])
+  }
+
   /** `t` is the backtracking tree corresponding to bytecode `code` running from `pc`
       at input `inp` with loop-exit flag `b` (`b` mirrors Linden's `CanExit`). One
       disjunct per bytecode shape — `tr_match`, `tr_jmp`, `tr_begin`, `tr_reset`,
@@ -78,6 +188,15 @@ module LindenElkTreeRep {
           NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
           && qid in qm.quants && qm.quants[qid] == t.g.gl
           && TreeRepRE(qm, t.t, code, pc + 1, inp, b))
+    // tr_stamp (§2.5b): the CIN-greedy plus's nulled-exit stamp carries the
+    // Reset node AND the virtual chain of the body's top-priority empty path
+    // (see the section comment above `FirstEmptyPathR`)
+    || (exists qid: int ::
+          NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, true))
+          && StampShape(qm, qid, t)
+          && var p := FirstEmptyPathR(qm, qm.bodies[qid], inp);
+             p.Some? && PeelT(p.value, t.t).Some?
+             && TreeRepRE(qm, PeelT(p.value, t.t).value, code, pc + 1, inp, b))
     // tr_choice (forward forks only: every compiled fork except the
     // do-while's is forward, and the direction split keeps determinism)
     || (t.Choice? && exists pcl: int, pcr: int ::
@@ -175,13 +294,22 @@ module LindenElkTreeRep {
       TreeRepDetermRE(qm, code, np as nat, inp, b, t1, t2);
     case Some(BeginLoop) =>         // both tr_begin
       TreeRepDetermRE(qm, code, pc + 1, inp, false, t1, t2);
-    case Some(SetQuantToClock(qid, bb)) =>  // both tr_reset (only bb == false has a rule)
+    case Some(SetQuantToClock(qid, bb)) =>  // both tr_reset (bb == false) or both tr_stamp (bb == true)
       match t1 {
         case GroupActionT(g1, tc1) =>
           match t2 {
             case GroupActionT(g2, tc2) =>
               assert g1 == LG.Reset(qm.quants[qid]) && g2 == LG.Reset(qm.quants[qid]);
-              TreeRepDetermRE(qm, code, pc + 1, inp, b, tc1, tc2);
+              if bb {
+                var p := FirstEmptyPathR(qm, qm.bodies[qid], inp).value;
+                var c1 := PeelT(p, tc1).value;
+                var c2 := PeelT(p, tc2).value;
+                TreeRepDetermRE(qm, code, pc + 1, inp, b, c1, c2);
+                ChainPeelT(p, tc1);
+                ChainPeelT(p, tc2);
+              } else {
+                TreeRepDetermRE(qm, code, pc + 1, inp, b, tc1, tc2);
+              }
             case _ =>
           }
         case _ =>
@@ -330,6 +458,18 @@ module LindenElkTreeRep {
   // Represented trees are pike-shaped: no rule produces a lookaround or
   // backreference node — what the PikeTree machine's invariant needs of the
   // checked tree it is initialized with.
+  /** A chain of group-action nodes over a `PikeSubtree` is one. */
+  lemma ChainTPikeSubtree(p: seq<LG.GroupAction>, t: LT.Tree)
+    requires PS.PikeSubtree(t)
+    ensures PS.PikeSubtree(ChainT(p, t))
+    decreases |p|
+  {
+    if |p| > 0 {
+      ChainTPikeSubtree(p[1..], t);
+      PikeSubtreeStep(ChainT(p, t));
+    }
+  }
+
   /** Represented trees are `PikeSubtree`s: no `TreeRepRE` rule produces
       `LK`/`LKFail`/`ReadBackRef` nodes. */
   least lemma TreeRepPikeSubtree(qm: AR.QMap, t: LT.Tree, code: RB.code, pc: nat, inp: LC.Input, b: bool)
@@ -346,7 +486,15 @@ module LindenElkTreeRep {
     case Some(SetQuantToClock(qid, bb)) =>
       match t {
         case GroupActionT(g, tc) =>
-          TreeRepPikeSubtree(qm, tc, code, pc + 1, inp, b);
+          if bb {
+            var p := FirstEmptyPathR(qm, qm.bodies[qid], inp).value;
+            var c := PeelT(p, tc).value;
+            TreeRepPikeSubtree(qm, c, code, pc + 1, inp, b);
+            ChainPeelT(p, tc);
+            ChainTPikeSubtree(p, c);
+          } else {
+            TreeRepPikeSubtree(qm, tc, code, pc + 1, inp, b);
+          }
           PikeSubtreeStep(t);
         case _ =>
       }

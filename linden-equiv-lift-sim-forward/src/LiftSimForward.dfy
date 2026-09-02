@@ -213,7 +213,7 @@ module LindenElkLiftSimForward {
       ensures (LTB.LookEntryOk(crv, A as int, laN, host) && (laN.Lookbehind? ==> NR.LBOnlyLooksRE(host)))
       ensures (qmB == AR.QMap(qm.quants,
                                map l: int | l in qm.looks && l >= 0 && (l as nat) in LTB.LookIds(host) :: qm.looks[l],
-                               qm.ov))
+                               qm.ov, qm.bodies))
       ensures (bodycodeB == CP.compile_to_bytecode(R.reverse_regex(host)))
       ensures (cdnA == crv.f_look_cdns[A as int])
       ensures (rbT == LFU.ComputeTr(rer, [LS.Areg(T.Translate(host))], inpA, LG.Empty, WP.Backward))
@@ -318,7 +318,7 @@ module LindenElkLiftSimForward {
              && LTB.LookTablesOk(host, crv);                          // FrameEntryOk
       qmB := AR.QMap(qm.quants,
                          map l: int | l in qm.looks && l >= 0 && (l as nat) in LTB.LookIds(host) :: qm.looks[l],
-                         qm.ov);
+                         qm.ov, qm.bodies);
       assert AR.QmapOk(host, qmB) by { QmapOkLooksIrrel(host, qm, qmB); }
       assert AR.LmapOk(host, qmB) by { LmapOkRestrict(host, qm, qmB); }
       assert OE.OracleColsOk(rer, qmB, str) by {
@@ -904,7 +904,7 @@ module LindenElkLiftSimForward {
     //      None-iff — the leaf EXISTS by hypothesis) ----
     var qmB := AR.QMap(qm.quants,
                        map l: int | l in qm.looks && l >= 0 && (l as nat) in LTB.LookIds(host) :: qm.looks[l],
-                       qm.ov);
+                       qm.ov, qm.bodies);
     assert AR.QmapOk(host, qmB) by { QmapOkLooksIrrel(host, qm, qmB); }
     assert AR.LmapOk(host, qmB) by { LmapOkRestrict(host, qm, qmB); }
     assert PSM.StaticOkNestedRE(qmB, host, bodycode, endlH) by {

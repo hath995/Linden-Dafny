@@ -3212,6 +3212,98 @@ module LindenElkMain {
     case Re_lookaround(_, _, r1) => QmOfRE(r1)
   }
 
+  /** §2.5b: the BODY table of the `AR.QMap` for `re`: maps each quant id to
+      that quantifier's (annotated) body — what `TreeRepRE`'s nulled-exit stamp
+      rule reads the virtual empty-path chain off. Same walk as `QmOfRE`. */
+  ghost function BodiesOfRE(re: R.regex): map<int, R.regex>
+    requires T.TransWf(re)
+    decreases re
+  {
+    match re
+    case Re_empty => map[]
+    case Re_character(_) => map[]
+    case Re_anchor(_) => map[]
+    case Re_alt(r1, r2) => BodiesOfRE(r1) + BodiesOfRE(r2)
+    case Re_con(r1, r2) => BodiesOfRE(r1) + BodiesOfRE(r2)
+    case Re_quant(nul, qid, q, r1) => BodiesOfRE(r1)[qid := r1]
+    case Re_capture(_, r1) => BodiesOfRE(r1)
+    case Re_lookaround(_, _, r1) => BodiesOfRE(r1)
+  }
+
+  /** `BodiesOfRE(re)`'s domain is exactly `re`'s quant ids (`PIV.QuantIds`). */
+  lemma BodiesOfREDom(re: R.regex)
+    requires T.TransWf(re) && PIV.QuantUnique(re)
+    ensures forall k: int :: k in BodiesOfRE(re) <==> (k >= 0 && (k as nat) in PIV.QuantIds(re))
+    decreases re
+  {
+    match re
+    case Re_empty => case Re_character(_) => case Re_anchor(_) =>
+    case Re_alt(r1, r2) => BodiesOfREDom(r1); BodiesOfREDom(r2);
+    case Re_con(r1, r2) => BodiesOfREDom(r1); BodiesOfREDom(r2);
+    case Re_quant(nul, qid, q, r1) => BodiesOfREDom(r1);
+    case Re_capture(_, r1) => BodiesOfREDom(r1);
+    case Re_lookaround(_, _, r1) => BodiesOfREDom(r1);
+  }
+
+  /** Each entry of `BodiesOfRE(re)` really is that quant id's body, provided
+      quant ids are unique (`PIV.QuantUnique`) — the `QmOfREEntries` twin. */
+  lemma BodiesOfREEntries(re: R.regex)
+    requires T.TransWf(re) && PIV.QuantUnique(re)
+    ensures forall qid: nat :: qid in PIV.QuantIds(re) ==>
+                                 (qid as int) in BodiesOfRE(re)
+                                 && BodiesOfRE(re)[qid as int] == PIV.QidBody(re, qid)
+    decreases re
+  {
+    match re
+    case Re_empty => case Re_character(_) => case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      BodiesOfREEntries(r1); BodiesOfREEntries(r2);
+      BodiesOfREDom(r1); BodiesOfREDom(r2);
+      forall qid: nat | qid in PIV.QuantIds(re)
+        ensures (qid as int) in BodiesOfRE(re) && BodiesOfRE(re)[qid as int] == PIV.QidBody(re, qid)
+      {
+        if qid in PIV.QuantIds(r1) {
+          assert qid !in PIV.QuantIds(r2) by {
+            if qid in PIV.QuantIds(r2) { assert qid in PIV.QuantIds(r1) * PIV.QuantIds(r2); }
+          }
+          assert (qid as int) !in BodiesOfRE(r2);
+        } else {
+          assert qid in PIV.QuantIds(r2);
+        }
+      }
+    case Re_con(r1, r2) =>
+      BodiesOfREEntries(r1); BodiesOfREEntries(r2);
+      BodiesOfREDom(r1); BodiesOfREDom(r2);
+      forall qid: nat | qid in PIV.QuantIds(re)
+        ensures (qid as int) in BodiesOfRE(re) && BodiesOfRE(re)[qid as int] == PIV.QidBody(re, qid)
+      {
+        if qid in PIV.QuantIds(r1) {
+          assert qid !in PIV.QuantIds(r2) by {
+            if qid in PIV.QuantIds(r2) { assert qid in PIV.QuantIds(r1) * PIV.QuantIds(r2); }
+          }
+          assert (qid as int) !in BodiesOfRE(r2);
+        } else {
+          assert qid in PIV.QuantIds(r2);
+        }
+      }
+    case Re_quant(nul, qid0, q, r1) =>
+      BodiesOfREEntries(r1);
+      BodiesOfREDom(r1);
+      assert qid0 >= 0;                                 // QuantUnique
+      forall qid: nat | qid in PIV.QuantIds(re)
+        ensures (qid as int) in BodiesOfRE(re) && BodiesOfRE(re)[qid as int] == PIV.QidBody(re, qid)
+      {
+        if (qid0 as nat) == qid {
+          assert PIV.QidBody(re, qid) == r1;
+        } else {
+          assert qid in PIV.QuantIds(r1);
+          assert (qid as int) != qid0;
+        }
+      }
+    case Re_capture(_, r1) => BodiesOfREEntries(r1);
+    case Re_lookaround(_, _, r1) => BodiesOfREEntries(r1);
+  }
+
   /** Builds the lookaround half of the `AR.QMap` for `re`: maps each
       lookaround id to its translated flavour and body — the link
       `CheckOracle(lid)` erases. (`LmapOk` for it needs lid uniqueness, the
@@ -3336,6 +3428,8 @@ module LindenElkMain {
     requires T.TransWf(re) && PIV.QuantUnique(re)
     requires forall qid: nat :: qid in PIV.QuantIds(re) && T.TransWf(PIV.QidBody(re, qid)) ==>
                                   (qid as int) in qm.quants && qm.quants[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(re, qid)))
+    requires forall qid: nat :: qid in PIV.QuantIds(re) && T.TransWf(PIV.QidBody(re, qid)) ==>
+                                  (qid as int) in qm.bodies && qm.bodies[qid as int] == PIV.QidBody(re, qid)   // §2.5b
     ensures AR.QmapOk(re, qm)
     decreases re
   {
@@ -3344,6 +3438,7 @@ module LindenElkMain {
     case Re_alt(r1, r2) =>
       forall qid: nat | qid in PIV.QuantIds(r1) && T.TransWf(PIV.QidBody(r1, qid))
         ensures (qid as int) in qm.quants && qm.quants[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(r1, qid)))
+                && (qid as int) in qm.bodies && qm.bodies[qid as int] == PIV.QidBody(r1, qid)
       {
         assert qid in PIV.QuantIds(re);
         TransWfQidBody(re, qid);
@@ -3352,6 +3447,7 @@ module LindenElkMain {
       QmapOkFromEntries(r1, qm);
       forall qid: nat | qid in PIV.QuantIds(r2) && T.TransWf(PIV.QidBody(r2, qid))
         ensures (qid as int) in qm.quants && qm.quants[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(r2, qid)))
+                && (qid as int) in qm.bodies && qm.bodies[qid as int] == PIV.QidBody(r2, qid)
       {
         assert qid in PIV.QuantIds(re);
         TransWfQidBody(re, qid);
@@ -3364,6 +3460,7 @@ module LindenElkMain {
     case Re_con(r1, r2) =>
       forall qid: nat | qid in PIV.QuantIds(r1) && T.TransWf(PIV.QidBody(r1, qid))
         ensures (qid as int) in qm.quants && qm.quants[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(r1, qid)))
+                && (qid as int) in qm.bodies && qm.bodies[qid as int] == PIV.QidBody(r1, qid)
       {
         assert qid in PIV.QuantIds(re);
         TransWfQidBody(re, qid);
@@ -3372,6 +3469,7 @@ module LindenElkMain {
       QmapOkFromEntries(r1, qm);
       forall qid: nat | qid in PIV.QuantIds(r2) && T.TransWf(PIV.QidBody(r2, qid))
         ensures (qid as int) in qm.quants && qm.quants[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(r2, qid)))
+                && (qid as int) in qm.bodies && qm.bodies[qid as int] == PIV.QidBody(r2, qid)
       {
         assert qid in PIV.QuantIds(re);
         TransWfQidBody(re, qid);
@@ -3386,8 +3484,10 @@ module LindenElkMain {
       assert (qid0 as nat) in PIV.QuantIds(re);
       assert PIV.QidBody(re, qid0 as nat) == r1;
       assert qid0 in qm.quants && qm.quants[qid0] == L.DefGroups(T.Translate(r1));
+      assert qid0 in qm.bodies && qm.bodies[qid0] == r1;
       forall qid: nat | qid in PIV.QuantIds(r1) && T.TransWf(PIV.QidBody(r1, qid))
         ensures (qid as int) in qm.quants && qm.quants[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(r1, qid)))
+                && (qid as int) in qm.bodies && qm.bodies[qid as int] == PIV.QidBody(r1, qid)
       {
         assert qid in PIV.QuantIds(re);
         TransWfQidBody(re, qid);
@@ -3398,6 +3498,7 @@ module LindenElkMain {
     case Re_capture(_, r1) =>
       forall qid: nat | qid in PIV.QuantIds(r1) && T.TransWf(PIV.QidBody(r1, qid))
         ensures (qid as int) in qm.quants && qm.quants[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(r1, qid)))
+                && (qid as int) in qm.bodies && qm.bodies[qid as int] == PIV.QidBody(r1, qid)
       {
         assert qid in PIV.QuantIds(re);
         TransWfQidBody(re, qid);
@@ -3407,6 +3508,7 @@ module LindenElkMain {
     case Re_lookaround(_, _, r1) =>
       forall qid: nat | qid in PIV.QuantIds(r1) && T.TransWf(PIV.QidBody(r1, qid))
         ensures (qid as int) in qm.quants && qm.quants[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(r1, qid)))
+                && (qid as int) in qm.bodies && qm.bodies[qid as int] == PIV.QidBody(r1, qid)
       {
         assert qid in PIV.QuantIds(re);
         TransWfQidBody(re, qid);
@@ -3525,7 +3627,8 @@ module LindenElkMain {
     requires T.TransWf(R.annotate(raw)) && T.TransWf(R.lazy_prefix(R.annotate(raw)))
     requires qm == AR.QMap(QmOfRE(R.lazy_prefix(R.annotate(raw))),
                            OE.LmOf(R.lazy_prefix(R.annotate(raw))),
-                           AI.FBuildOracle(CP.FFullCompilation(R.annotate(raw)), str))
+                           AI.FBuildOracle(CP.FFullCompilation(R.annotate(raw)), str),
+                           BodiesOfRE(R.lazy_prefix(R.annotate(raw))))
     ensures var re := R.lazy_prefix(R.annotate(raw));
             AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
             && LL.OracleOkSuffix(LES.TheRer(raw), qm, LC.InitInput(str))
@@ -3541,6 +3644,7 @@ module LindenElkMain {
     assert NR.LookBehindFragmentRE(ast);
     PIV.SpecRegexQuantUnique(raw);
     QmOfREEntries(re);
+    BodiesOfREEntries(re);
     QmapOkFromEntries(re, qm);
     OE.LmapOkOfLmOf(re, qm);
     LmOfLazyPrefix(ast);

@@ -284,8 +284,9 @@ module LindenLookBehindKeystone {
     LBV.MaxGroupRevRE(body);
     LBV.MaxQuantRevRE(body);                     // SizesOkRE(re')
 
-    qm' := AR.QMap(M.QmOfRE(re'), map[], someView);
+    qm' := AR.QMap(M.QmOfRE(re'), map[], someView, M.BodiesOfRE(re'));
     M.QmOfREEntries(re');
+    M.BodiesOfREEntries(re');
     M.QmapOkFromEntries(re', qm');               // QmapOk(re', qm')
     AR.PlusFragmentLmapOk(re', qm');             // LmapOk(re', qm')
 

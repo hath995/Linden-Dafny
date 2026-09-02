@@ -5074,7 +5074,7 @@ module LindenElkLiftSimOracle {
     requires lid in OE.LmOf(sub) && OE.LmOf(sub)[lid] == (lk, r1)
     requires T.TransWf(NI.LookBodyOfRE(sub, lid as nat))     // well-formedness of the QmOfRE/LmOf below
     requires var body := NI.LookBodyOfRE(sub, lid as nat);
-             LL.OracleOkSuffix(rer, AR.QMap(M.QmOfRE(body), OE.LmOf(body), AI.FBuildOracle(crv, str)),
+             LL.OracleOkSuffix(rer, AR.QMap(M.QmOfRE(body), OE.LmOf(body), AI.FBuildOracle(crv, str), M.BodiesOfRE(body)),
                                LC.InitInput(str))
     ensures LOr.view_get_oracle(AI.FBuildOracle(crv, str), cp, lid)
        <==> LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(r1)], T.InputAt(str, cp), LG.Empty, L.LkDir(lk)),
@@ -5147,12 +5147,13 @@ module LindenElkLiftSimOracle {
       //  stays available as an assumption; a standalone assert of it timed out — dropped.)
 
       // spec side: the engine run at cp IS the body's first leaf (inner rows)
-      var qmb := AR.QMap(M.QmOfRE(body), OE.LmOf(body), ovf);
+      var qmb := AR.QMap(M.QmOfRE(body), OE.LmOf(body), ovf, M.BodiesOfRE(body));
       OracleOkSuffixAtCp(rer, qmb, str, cp);
       NR.CompileToBytecodeRepNested(body);
       var endlb: nat := CP.compile(body, 0, CP.Progress).1 as nat;
       CompileStutterTameRENested(body);
       M.QmOfREEntries(body);
+      M.BodiesOfREEntries(body);   // §2.5b: the bodies table entries
       M.QmapOkFromEntries(body, qmb);
       OE.LmapOkOfLmOf(body, qmb);
       NI.NoNulledPlusLookBody(sub, lid as nat);   // §2.5b interim: NoNulledPlusRE(body)
@@ -5226,7 +5227,7 @@ module LindenElkLiftSimOracle {
       assert la.Lookbehind?;
       assert NR.LBOnlyLooksRE(body);
       assert L.LkDir(lk) == WP.Backward;
-      var qmb := AR.QMap(M.QmOfRE(body), OE.LmOf(body), ovf);
+      var qmb := AR.QMap(M.QmOfRE(body), OE.LmOf(body), ovf, M.BodiesOfRE(body));
       OE.LmapOkOfLmOf(body, qmb);
       assert OE.OracleColsOk(rer, qmb, str) by {
         forall c: nat | c <= |str| ensures LL.OracleOkSuffix(rer, qmb, PIV.InpOfCp(str, c)) {
@@ -5263,13 +5264,13 @@ module LindenElkLiftSimOracle {
     requires T.TransWf(sub) && LTB.LookUnique(sub) && PIV.CapUnique(sub) && PIV.QuantUnique(sub)
     requires LTB.LookTablesOk(sub, crv)
     requires LTB.LookIds(sub) <= LTB.LookIds(top)
-    ensures LL.OracleOkSuffix(rer, AR.QMap(M.QmOfRE(sub), OE.LmOf(sub), AI.FBuildOracle(crv, str)),
+    ensures LL.OracleOkSuffix(rer, AR.QMap(M.QmOfRE(sub), OE.LmOf(sub), AI.FBuildOracle(crv, str), M.BodiesOfRE(sub)),
                               LC.InitInput(str))
     decreases |LTB.LookIds(sub)|
   {
     var n := |str|;
     var ovf := AI.FBuildOracle(crv, str);
-    var qm := AR.QMap(M.QmOfRE(sub), OE.LmOf(sub), ovf);
+    var qm := AR.QMap(M.QmOfRE(sub), OE.LmOf(sub), ovf, M.BodiesOfRE(sub));
     OE.LmOfDom(sub);
     OE.InitInputAt(str);
     forall inp: LC.Input | inp == LC.InitInput(str) || SSx.IsStrictSuffix(inp, LC.InitInput(str), WP.Forward)

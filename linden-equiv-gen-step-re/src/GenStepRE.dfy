@@ -76,9 +76,16 @@ module LindenElkGenStep {
       && (t.g.Close? ==> reg == CP.end_reg(t.g.g as int))
       && TT.TreeThreadRE(rer, qm, code, inp, t.t, pc + 1, ea)
     case Some(SetQuantToClock(qid, bb)) =>
-      bb == false && t.GroupActionT? && t.g.Reset?
+      t.GroupActionT? && t.g.Reset?
       && qid in qm.quants && qm.quants[qid] == t.g.gl
-      && TT.TreeThreadRE(rer, qm, code, inp, t.t, pc + 1, ea)
+      // bb == false: tr_reset — the continuation is threaded at pc + 1
+      && (!bb ==> TT.TreeThreadRE(rer, qm, code, inp, t.t, pc + 1, ea))
+      // bb == true (§2.5b): tr_stamp — the body's virtual empty-path chain
+      // sits between the Reset and the continuation threaded at pc + 1
+      && (bb ==> TREP.StampShape(qm, qid, t)
+                 && var p := TREP.FirstEmptyPathR(qm, qm.bodies[qid], inp);
+                    p.Some? && TREP.PeelT(p.value, t.t).Some?
+                    && TT.TreeThreadRE(rer, qm, code, inp, TREP.PeelT(p.value, t.t).value, pc + 1, ea))
     case Some(EndLoop) =>
       (ea ==> t.Progress? && TT.TreeThreadRE(rer, qm, code, inp, t.t, pc + 1, true))
       && (!ea ==> t == LT.Mismatch)
@@ -153,11 +160,20 @@ module LindenElkGenStep {
       } else {
         assert t.g.Close? && reg == CP.end_reg(t.g.g as int);
       }
-    case Some(SetQuantToClock(qid, bb)) =>   // tr_reset (only bb == false has a rule)
-      var qid2: int :| NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid2, false))
-        && qid2 in qm.quants && qm.quants[qid2] == t.g.gl
-        && TREP.TreeRepRE(qm, t.t, code, pc + 1, inp, ea);
-      assert qid2 == qid;
+    case Some(SetQuantToClock(qid, bb)) =>   // tr_reset (bb == false) or tr_stamp (bb == true)
+      if bb {
+        var qid2: int :| NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid2, true))
+          && TREP.StampShape(qm, qid2, t)
+          && var p := TREP.FirstEmptyPathR(qm, qm.bodies[qid2], inp);
+             p.Some? && TREP.PeelT(p.value, t.t).Some?
+             && TREP.TreeRepRE(qm, TREP.PeelT(p.value, t.t).value, code, pc + 1, inp, ea);
+        assert qid2 == qid;
+      } else {
+        var qid2: int :| NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid2, false))
+          && qid2 in qm.quants && qm.quants[qid2] == t.g.gl
+          && TREP.TreeRepRE(qm, t.t, code, pc + 1, inp, ea);
+        assert qid2 == qid;
+      }
     case Some(EndLoop) =>            // tr_progress (ea) or tr_progressfail (!ea)
     case Some(AnchorAssertion(a)) => // tr_anchorpass or tr_anchorfail
       if RA.is_satisfied(a, TREP.CtxOf(inp), RA.Forward) {

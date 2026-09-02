@@ -145,7 +145,7 @@ module LindenElkLiftSimCarriers {
     PIV.SpecRegexCapUnique(raw);           // CapUnique(re)
     PIV.SpecRegexQuantUnique(raw);         // QuantUnique(re)
     NR.SpecRegexNoNulledPlus(raw);         // §2.5b interim: NoNulledPlusRE(re)
-    var qm := AR.QMap(M.QmOfRE(re), OE.LmOf(re), AI.FBuildOracle(CP.FFullCompilation(ast), str));
+    var qm := AR.QMap(M.QmOfRE(re), OE.LmOf(re), AI.FBuildOracle(CP.FFullCompilation(ast), str), M.BodiesOfRE(re));
     M.LookStaticPackage(raw, str, qm);
 
     NR.CompileToBytecodeRepLookBehind(re);
@@ -826,7 +826,7 @@ module LindenElkLiftSimCarriers {
     FG.LookTablesOkFXR(body, crv);
     FG.LookIdsFXR(body);
     OE.LmOfDom(body);
-    var qmB := AR.QMap(map[], OE.LmOf(body), ov);
+    var qmB := AR.QMap(map[], OE.LmOf(body), ov, map[]);
     FST.FlipLooksMapTie(qmB, qmF);
     assert FO.FlipQmTie(qmB, qmF);
     assert forall l: int :: l in qmF.looks ==> l >= 0 && (l as nat) in LTB.LookIds(reF) && l < nlook by {
@@ -1122,7 +1122,7 @@ module LindenElkLiftSimCarriers {
     //      None-iff — the leaf EXISTS by hypothesis) ----
     var qmB := AR.QMap(qm.quants,
                        map l: int | l in qm.looks && l >= 0 && (l as nat) in LTB.LookIds(host) :: qm.looks[l],
-                       qm.ov);
+                       qm.ov, qm.bodies);
     assert AR.QmapOk(host, qmB) by { QmapOkLooksIrrel(host, qm, qmB); }
     assert AR.LmapOk(host, qmB) by { LmapOkRestrict(host, qm, qmB); }
     assert PSM.StaticOkNestedRE(qmB, host, bodycode, endlH) by {

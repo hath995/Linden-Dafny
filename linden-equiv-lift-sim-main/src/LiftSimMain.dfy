@@ -450,9 +450,10 @@ module LindenElkLiftSimMain {
     assert L5ScopeV1RE(re);                // L5Scope (v1: kind-split hub)
     L5ScopeV1ImpliesL5(re);                // NR.L5ScopeRE(re) for the descent/carriers
     assert NR.NegLooksLookFreeRE(re);      // L4Scope
-    var qm := AR.QMap(M.QmOfRE(re), OE.LmOf(re), AI.FBuildOracle(CP.FFullCompilation(ast), str));
+    var qm := AR.QMap(M.QmOfRE(re), OE.LmOf(re), AI.FBuildOracle(CP.FFullCompilation(ast), str), M.BodiesOfRE(re));
     // the nested static package (qm correctness minus the oracle entry)
     M.QmOfREEntries(re);
+    M.BodiesOfREEntries(re);   // §2.5b: the bodies table entries
     M.QmapOkFromEntries(re, qm);
     OE.LmapOkOfLmOf(re, qm);
     assert AR.QmapOk(re, qm) && AR.LmapOk(re, qm);

@@ -206,10 +206,11 @@ module LindenElkFlipKeystone {
     var re' := FST.FXR(body);
     FST.NoNulledPlusFXR(body);   // §2.5b interim: NoNulledPlusRE(re')
     FST.FXRStructural(body);
-    qm'' := AR.QMap(M.QmOfRE(re'), FST.FlipLooksMap(OE.LmOf(body)), someView);
+    qm'' := AR.QMap(M.QmOfRE(re'), FST.FlipLooksMap(OE.LmOf(body)), someView, M.BodiesOfRE(re'));
     M.QmOfREEntries(re');
+    M.BodiesOfREEntries(re');
     M.QmapOkFromEntries(re', qm'');
-    var qmB := AR.QMap(map[], OE.LmOf(body), someView);
+    var qmB := AR.QMap(map[], OE.LmOf(body), someView, map[]);
     OE.LmapOkOfLmOf(body, qmB);
     FST.LmapOkFlipXRev(body, qmB, qm'');
     endl' := FST.FXRCompileFacts(body);
@@ -282,7 +283,7 @@ module LindenElkFlipKeystone {
     var qm'', endl' := FlipXRevStaticOkNested(body, ov', ncap, nlook, nquant);
 
     // ---- oracle for the flipped table: F3 on the body-restricted site table ----
-    var qmB := AR.QMap(map[], OE.LmOf(body), ov);
+    var qmB := AR.QMap(map[], OE.LmOf(body), ov, map[]);
     OE.LmapOkOfLmOf(body, qmB);
     LmapOkEntriesMatchLmOf(body, qm);
     assert OE.OracleColsOk(rer, qmB, str) by {

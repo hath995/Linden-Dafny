@@ -58,6 +58,12 @@ module LindenElkActionsRep {
   //           writes it (the build passes ran first), so it is as static as
   //           `quants`/`looks` are, and bundling keeps the whole
   //           NfaRepL/TreeRepRE/simulation stack at one table parameter.
+  //   bodies: qid -> that quantifier's (annotated) RegElk BODY. §2.5b: the
+  //           nulled-exit stamp `SetQuantToClock(qid, true)` of a CIN-greedy
+  //           plus denotes, beyond the Reset, the VIRTUAL CHAIN of the body's
+  //           top-priority empty path (the captures the engine's
+  //           `FReconstructPlus` fills in afterwards) — `TreeRepRE`'s stamp
+  //           rule recomputes that path from the body and the oracle bits.
   /** The static tables the Linden-side representation predicates consult:
       quantifier reset groups by `qid`, lookaround (flavour, body) pairs by
       `lid`, and the oracle bits the lookaround instructions test. Bundled in
@@ -65,7 +71,8 @@ module LindenElkActionsRep {
       single table parameter. */
   datatype QMap = QMap(quants: map<int, LG.GroupSet>,
                        looks: map<int, (L.Lookaround, L.Regex)>,
-                       ov: LOr.OracleView)
+                       ov: LOr.OracleView,
+                       bodies: map<int, R.regex>)
 
   // qm agrees with every quantifier of the (annotated) RegElk regex.
   /** `qm` correctly records, for every quantifier in the (annotated) RegElk regex
@@ -82,7 +89,9 @@ module LindenElkActionsRep {
     case Re_alt(r1, r2) => QmapOk(r1, qm) && QmapOk(r2, qm)
     case Re_con(r1, r2) => QmapOk(r1, qm) && QmapOk(r2, qm)
     case Re_quant(nul, qid, q, r1) =>
-      qid in qm.quants && qm.quants[qid] == L.DefGroups(T.Translate(r1)) && QmapOk(r1, qm)
+      qid in qm.quants && qm.quants[qid] == L.DefGroups(T.Translate(r1))
+      && qid in qm.bodies && qm.bodies[qid] == r1   // §2.5b: the stamp rule's body
+      && QmapOk(r1, qm)
     case Re_capture(_, r1) => QmapOk(r1, qm)
     case Re_lookaround(_, _, r1) => QmapOk(r1, qm)
   }
@@ -253,12 +262,24 @@ module LindenElkActionsRep {
       && (exists qid: int ::
             NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
             && NR.GetPcRE(c, e1 + 2) == Some(RB.SetQuantToClock(qid, true))
-            && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
+            && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1)
+            && StampBodyOk(qm, qid, r1))
       && NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
       && NfaRepL(rer, qm, r1, c, em + 3, e1)
       && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
       && NR.GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 3))
       && pc2 == e1 + 3
+  }
+
+  /** §2.5b: what the nulled-exit stamp `SetQuantToClock(qid, true)` needs of
+      the tables — `qm.bodies[qid]` is a well-formed annotated RegElk regex
+      translating to the Linden body `r1`, and its lookaround ids are in the
+      `looks` table (so `TreeRepRE`'s stamp rule, which reads the body's empty
+      path off the oracle bits, speaks about the same lookarounds the spec
+      does). Discharged by `TransNfaRep` from `QmapOk` + `LmapOk`. */
+  ghost predicate StampBodyOk(qm: QMap, qid: int, r1: L.Regex) {
+    qid in qm.bodies && T.TransWf(qm.bodies[qid]) && T.Translate(qm.bodies[qid]) == r1
+    && LmapOk(qm.bodies[qid], qm)
   }
 
   ghost predicate NfaRepL(rer: LW.RegExpRecord, qm: QMap, r: L.Regex, c: RB.code, pc1: nat, pc2: nat)
@@ -484,6 +505,7 @@ module LindenElkActionsRep {
     requires NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
     requires NR.GetPcRE(c, e1 + 2) == Some(RB.SetQuantToClock(qid, true))
     requires qid in qm.quants && qm.quants[qid] == L.DefGroups(r1)
+    requires StampBodyOk(qm, qid, r1)
     requires NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
     requires NfaRepL(rer, qm, r1, c, em + 3, e1)
     requires NR.GetPcRE(c, e1) == Some(RB.EndLoop)
@@ -508,6 +530,7 @@ module LindenElkActionsRep {
       NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
       && NR.GetPcRE(c, e1 + 2) == Some(RB.SetQuantToClock(qid, true))
       && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1)
+      && StampBodyOk(qm, qid, r1)
     ensures NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
     ensures NfaRepL(rer, qm, r1, c, em + 3, e1)
     ensures NR.GetPcRE(c, e1) == Some(RB.EndLoop)
@@ -521,7 +544,8 @@ module LindenElkActionsRep {
       && (exists qid: int ::
             NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
             && NR.GetPcRE(c, e1 + 2) == Some(RB.SetQuantToClock(qid, true))
-            && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
+            && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1)
+            && StampBodyOk(qm, qid, r1))
       && NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
       && NfaRepL(rer, qm, r1, c, em + 3, e1)
       && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
@@ -721,6 +745,7 @@ module LindenElkActionsRep {
         assert T.TrDelta(q) == LN.Inf;
         assert T.Translate(re) == L.Quantified(q.greedy, mn, LN.Inf, T.Translate(r1));
         assert qid in qm.quants && qm.quants[qid] == L.DefGroups(T.Translate(r1));
+        assert StampBodyOk(qm, qid, T.Translate(r1));   // QmapOk pins the body; LmapOk descends
         NfaRepLCinIntro(rer, qm, q.greedy, mn, T.Translate(r1), c, pc1, em, e1, pc2, qid);
       } else {
         // the do-while: transport the forced chain and the guaranteed body,
@@ -1162,6 +1187,7 @@ module LindenElkActionsRep {
         assert T.TrDelta(q) == LN.Inf;
         assert T.Translate(re) == L.Quantified(q.greedy, mn, LN.Inf, T.Translate(r1));
         assert qid in qm.quants && qm.quants[qid] == L.DefGroups(T.Translate(r1));
+        assert StampBodyOk(qm, qid, T.Translate(r1));   // QmapOk pins the body; LmapOk descends
         NfaRepLCinIntro(rer, qm, q.greedy, mn, T.Translate(r1), c, pc1, em, e1, pc2, qid);
       } else {
         // the do-while: transport the forced chain and the guaranteed body,
