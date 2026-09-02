@@ -503,6 +503,9 @@ module LindenElkWalkOk {
       assert WalkOkF(acts, c, pc, g, n + 1);
       assert WalkOkRegF(acts[0].r, acts[1..], c, pc, g, n + 1);
     }
+    assert WalkOk(il, c, iterarm + 2, false);
+    assert WalkOk([LS.Areg(r1), LS.Acheck(chk), LS.Areg(qnext)] + acts[1..], c, iterarm + 2, false);
+    assert WalkOk(acts[1..], c, pc + 2, true);
   }
 
   /** §2.5b: at a `BeginLoop` pc the walk guard demands nothing of ANY stack —
