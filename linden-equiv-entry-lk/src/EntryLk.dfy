@@ -698,19 +698,18 @@ module LindenElkEntryLk {
     case Disjunction(r1, r2) => PikeLkRegex(r1) && PikeLkRegex(r2)
     case Sequence(r1, r2) => PikeLkRegex(r1) && PikeLkRegex(r2)
     case Quantified(greedy, min, delta, r1) =>
-      // §2.5b INTERIM: a greedy-NULLABLE unbounded quantifier stays out of
-      // the SPEC fragment until the nulled-plus reconstruction theorem lands
-      // (the CIN-GREEDY layout arms beneath are already in place). Dropping
-      // this conjunct is the §2.5b flip.
-      (min > 0 && delta.Inf? && greedy ==> NUL.NonNullableL(r1))
-      && PikeLkRegex(r1)
+      // §2.5b stage 2a: the greedy CI-nullable unbounded quantifier (the
+      // engine's nulled-plus reconstruction scheme) is IN the spec fragment
+      // outside lookaround bodies; the look arms below keep it out of the
+      // bodies (the replay machinery is still stamp-free there).
+      PikeLkRegex(r1)
     case Group(_, r1) => PikeLkRegex(r1)
     case LookaroundR(lk, r1) =>
       // L3a/L3b: a POSITIVE lookaround -- forward (lookAHEAD) OR backward
       // (lookBEHIND) -- admits a look-free (but possibly capturing) body; the
       // NEGATIVE flavours still require a group-free body (they record nothing).
-      // §2.5b interim: positive bodies also carry the no-nulled-plus conjunct
-      // (they run through the same replay machinery).
+      // §2.5b stage 2a: look bodies carry the no-nulled-plus conjunct (they
+      // run through the stamp-free replay machinery).
       if L.Positivity(lk) then NoLkBrL(r1) && NUL.NoNulledPlusL(r1)
       else SD.GroupFreeL(r1) && NUL.NoNulledPlusL(r1)
     case AnchorR(_) => true
@@ -773,18 +772,17 @@ module LindenElkEntryLk {
     case Disjunction(r1, r2) => PikeLkRegexRec(r1) && PikeLkRegexRec(r2)
     case Sequence(r1, r2) => PikeLkRegexRec(r1) && PikeLkRegexRec(r2)
     case Quantified(greedy, min, delta, r1) =>
-      // §2.5b INTERIM: a greedy-NULLABLE unbounded quantifier stays out of
-      // the SPEC fragment until the nulled-plus reconstruction theorem lands
-      // (the CIN-GREEDY layout arms beneath are already in place). Dropping
-      // this conjunct is the §2.5b flip.
-      (min > 0 && delta.Inf? && greedy ==> NUL.NonNullableL(r1))
-      && PikeLkRegexRec(r1)
+      // §2.5b stage 2a: the greedy CI-nullable unbounded quantifier is IN the
+      // fragment outside lookaround bodies (see `PikeLkRegex`).
+      PikeLkRegexRec(r1)
     case Group(_, r1) => PikeLkRegexRec(r1)
     case LookaroundR(lk, r1) =>
-      // POSITIVE look (fwd/bwd): body recurses into the fragment (depth-k).
+      // POSITIVE look (fwd/bwd): body recurses into the fragment (depth-k),
+      // and (§2.5b stage 2a) is nulled-plus-free: the replay machinery that
+      // runs look bodies is stamp-free.
       // NEGATIVE look: body stays group-free, exactly as in `PikeLkRegex`.
-      if L.Positivity(lk) then PikeLkRegexRec(r1)
-      else SD.GroupFreeL(r1) && NUL.NoNulledPlusL(r1)   // §2.5b interim
+      if L.Positivity(lk) then PikeLkRegexRec(r1) && NUL.NoNulledPlusL(r1)
+      else SD.GroupFreeL(r1) && NUL.NoNulledPlusL(r1)
     case AnchorR(_) => true
     case Backreference(_) => false
   }
@@ -937,15 +935,14 @@ module LindenElkEntryLk {
     case Re_con(r1, r2) => TranslateFragmentPikeLkRec(r1); TranslateFragmentPikeLkRec(r2);
     case Re_quant(nul, qid, q, r1) =>
       TranslateFragmentPikeLkRec(r1);
-      if q.min > 0 && q.max == None && q.greedy {
-        NUL.TransNonNullable(r1);
-      }
     case Re_capture(_, r1) => TranslateFragmentPikeLkRec(r1);
     case Re_lookaround(lid, la, r1) =>
       assert L.Positivity(T.TrLookaround(la)) == (la.Lookahead? || la.Lookbehind?);
       if la.Lookahead? || la.Lookbehind? {
-        // POSITIVE look (fwd/bwd): body recurses into the recursive fragment.
+        // POSITIVE look (fwd/bwd): body recurses into the recursive fragment,
+        // and is nulled-plus-free (§2.5b stage 2a).
         TranslateFragmentPikeLkRec(r1);   // PikeLkRegexRec(Translate(r1))
+        NUL.TransNoNulledPlus(r1);        // NoNulledPlusL(Translate(r1))
       } else {
         // NEGATIVE look: capture-free (NestedFragmentRE) + look-free
         // (NegLooksLookFreeRE) body translates to group-free.

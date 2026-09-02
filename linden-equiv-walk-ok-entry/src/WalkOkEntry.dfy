@@ -669,6 +669,66 @@ module LindenElkWalkOkEntry {
       demands NOTHING (`WalkOkRegF`'s `min > 0` arm keys on a
       `SetQuantToClock` at the pc, and the instruction there is a `Fork`) —
       the construction side is held out by the §2.5b interim gate. */
+  /** §2.5b: the CIN loop's rest — the checked continuation at the loop's
+      `EndLoop` (`e1`), whose fall-through lands on the BACKWARD end fork:
+      the star is seen in its CIN loop view there (re-entry through the
+      clock-mark and the BeginLoop, exit two past the fork). Mirrors
+      `WalkOkDoWhileRestF`; the KNOT recurses at strictly smaller fuel. */
+  lemma WalkOkCinRestF(m: nat, qid: R.quantid, r1: R.regex,
+                       c: RB.code, em: nat, e1: nat, pc2: nat, cont: LS.Actions, gp: bool, chk: LC.Input)
+    requires NR.LookBehindFragmentRE(r1) && T.TransWf(r1)
+    requires NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    requires NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+    requires NR.NfaRepRE(r1, c, em + 3, e1)
+    requires NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+    requires NR.GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 3))
+    requires NR.GetPcRE(c, e1 + 2) == Some(RB.SetQuantToClock(qid, true))
+    requires pc2 == e1 + 3
+    requires forall gp2: bool, mm: nat {:trigger WO.WalkOkF(cont, c, pc2, gp2, mm)} :: mm < m ==> WO.WalkOkF(cont, c, pc2, gp2, mm)
+    ensures WO.WalkOkF([LS.Acheck(chk), LS.Areg(L.Quantified(true, 0, LN.Inf, T.Translate(r1)))] + cont, c, e1, gp, m)
+    decreases m, CP.rsize(r1), 0
+  {
+    if m == 0 { return; }
+    var tr1 := T.Translate(r1);
+    var q0L := L.Quantified(true, 0, LN.Inf, tr1);
+    var tgt := [LS.Acheck(chk), LS.Areg(q0L)] + cont;
+    assert tgt[0] == LS.Acheck(chk) && tgt[1..] == [LS.Areg(q0L)] + cont;
+    NR.NfaRepIncrRE(r1, c, em + 3, e1);
+    assert em + 3 <= e1;
+    assert !AR.BackForkAt(c, e1);
+    assert FS.NoiPred(LN.Inf) == LN.Inf;
+    var lv := [LS.Areg(q0L)] + cont;
+    assert lv[0] == LS.Areg(q0L) && lv[1..] == cont;
+    if m >= 2 {
+      // the old loop-view conjunct lands on the BeginLoop: vacuous there
+      forall chk2: LC.Input
+        ensures WO.WalkOkF([LS.Areg(tr1), LS.Acheck(chk2), LS.Areg(q0L)] + cont, c, em + 2, true, m - 2)
+      {
+        WO.WalkOkFAtBeginLoop([LS.Areg(tr1), LS.Acheck(chk2), LS.Areg(q0L)] + cont, c, em + 2, true, m - 2);
+      }
+      // the CIN loop-view conjunct: the iteration from the body start, flag dropped (the KNOT)
+      forall chk2: LC.Input
+        ensures WO.WalkOkF([LS.Areg(tr1), LS.Acheck(chk2), LS.Areg(q0L)] + cont, c, em + 3, false, m - 2)
+      {
+        var rest := [LS.Acheck(chk2), LS.Areg(q0L)] + cont;
+        forall gp2: bool, mm: nat {:trigger WO.WalkOkF(rest, c, e1, gp2, mm)} | mm < m - 2
+          ensures WO.WalkOkF(rest, c, e1, gp2, mm)
+        {
+          WalkOkCinRestF(mm, qid, r1, c, em, e1, pc2, cont, gp2, chk2);
+        }
+        WalkOkCompF(m - 2, r1, c, em + 3, e1, rest, false);
+        assert [LS.Areg(tr1)] + rest == [LS.Areg(tr1), LS.Acheck(chk2), LS.Areg(q0L)] + cont;
+      }
+      // the skip onto the exit arm
+      assert WO.WalkOkF(cont, c, pc2, true, m - 2);
+      assert WO.WalkOkRegF(q0L, cont, c, e1 + 1, true, m - 1);
+      assert WO.WalkOkF(lv, c, e1 + 1, true, m - 1);
+    } else {
+      assert WO.WalkOkF(lv, c, e1 + 1, true, m - 1);
+    }
+    assert WO.WalkOkF(tgt, c, e1, gp, m);
+  }
+
   lemma WalkOkCinChainF(n: nat, k: nat, greedy: bool, qid: R.quantid, r1: R.regex,
                          c: RB.code, pc1: nat, em: nat, e1: nat, pc2: nat, cont: LS.Actions, g: bool)
     requires k >= 1 && greedy
@@ -707,10 +767,26 @@ module LindenElkWalkOkEntry {
       assert WO.WalkOkRegF(qk, cont, c, pc1, g, n);
       assert WO.WalkOkF(tgt, c, pc1, g, n);
     } else {
-      // k == 1: the head IS the fork; the guard demands nothing there.
+      // k == 1: the head IS the fork (§2.5b): the iteration list walks from
+      // the body start with the flag dropped, its checked rest sitting at the
+      // loop's EndLoop; the skip resumes past the stamp.
       NR.NfaRepIncrMinRE(0, qid, r1, c, pc1, em);
       assert pc1 == em;
       assert NR.GetPcRE(c, pc1) == Some(RB.Fork(em + 1, e1 + 2));
+      var q0L := L.Quantified(greedy, 0, LN.Inf, tr1);
+      forall chk: LC.Input
+        ensures WO.WalkOkF([LS.Areg(tr1), LS.Acheck(chk), LS.Areg(q0L)] + cont, c, em + 3, false, n - 1)
+      {
+        var rest := [LS.Acheck(chk), LS.Areg(q0L)] + cont;
+        forall gp2: bool, mm: nat {:trigger WO.WalkOkF(rest, c, e1, gp2, mm)} | mm < n - 1
+          ensures WO.WalkOkF(rest, c, e1, gp2, mm)
+        {
+          WalkOkCinRestF(mm, qid, r1, c, em, e1, pc2, cont, gp2, chk);
+        }
+        WalkOkCompF(n - 1, r1, c, em + 3, e1, rest, false);
+        assert [LS.Areg(tr1)] + rest == [LS.Areg(tr1), LS.Acheck(chk), LS.Areg(q0L)] + cont;
+      }
+      assert WO.WalkOkF(cont, c, e1 + 3, g, n - 1);
       assert WO.WalkOkRegF(qk, cont, c, pc1, g, n);
       assert WO.WalkOkF(tgt, c, pc1, g, n);
     }
@@ -1348,6 +1424,66 @@ module LindenElkWalkOkEntry {
       demands NOTHING (`WalkOkRegF`'s `min > 0` arm keys on a
       `SetQuantToClock` at the pc, and the instruction there is a `Fork`) —
       the construction side is held out by the §2.5b interim gate. */
+  /** §2.5b: the CIN loop's rest — the checked continuation at the loop's
+      `EndLoop` (`e1`), whose fall-through lands on the BACKWARD end fork:
+      the star is seen in its CIN loop view there (re-entry through the
+      clock-mark and the BeginLoop, exit two past the fork). Mirrors
+      `WalkOkDoWhileRestF`; the KNOT recurses at strictly smaller fuel. */
+  lemma WalkOkCinRestFNested(m: nat, qid: R.quantid, r1: R.regex,
+                       c: RB.code, em: nat, e1: nat, pc2: nat, cont: LS.Actions, gp: bool, chk: LC.Input)
+    requires NR.NestedFragmentRE(r1) && T.TransWf(r1)
+    requires NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    requires NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+    requires NR.NfaRepRE(r1, c, em + 3, e1)
+    requires NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+    requires NR.GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 3))
+    requires NR.GetPcRE(c, e1 + 2) == Some(RB.SetQuantToClock(qid, true))
+    requires pc2 == e1 + 3
+    requires forall gp2: bool, mm: nat {:trigger WO.WalkOkF(cont, c, pc2, gp2, mm)} :: mm < m ==> WO.WalkOkF(cont, c, pc2, gp2, mm)
+    ensures WO.WalkOkF([LS.Acheck(chk), LS.Areg(L.Quantified(true, 0, LN.Inf, T.Translate(r1)))] + cont, c, e1, gp, m)
+    decreases m, CP.rsize(r1), 0
+  {
+    if m == 0 { return; }
+    var tr1 := T.Translate(r1);
+    var q0L := L.Quantified(true, 0, LN.Inf, tr1);
+    var tgt := [LS.Acheck(chk), LS.Areg(q0L)] + cont;
+    assert tgt[0] == LS.Acheck(chk) && tgt[1..] == [LS.Areg(q0L)] + cont;
+    NR.NfaRepIncrRE(r1, c, em + 3, e1);
+    assert em + 3 <= e1;
+    assert !AR.BackForkAt(c, e1);
+    assert FS.NoiPred(LN.Inf) == LN.Inf;
+    var lv := [LS.Areg(q0L)] + cont;
+    assert lv[0] == LS.Areg(q0L) && lv[1..] == cont;
+    if m >= 2 {
+      // the old loop-view conjunct lands on the BeginLoop: vacuous there
+      forall chk2: LC.Input
+        ensures WO.WalkOkF([LS.Areg(tr1), LS.Acheck(chk2), LS.Areg(q0L)] + cont, c, em + 2, true, m - 2)
+      {
+        WO.WalkOkFAtBeginLoop([LS.Areg(tr1), LS.Acheck(chk2), LS.Areg(q0L)] + cont, c, em + 2, true, m - 2);
+      }
+      // the CIN loop-view conjunct: the iteration from the body start, flag dropped (the KNOT)
+      forall chk2: LC.Input
+        ensures WO.WalkOkF([LS.Areg(tr1), LS.Acheck(chk2), LS.Areg(q0L)] + cont, c, em + 3, false, m - 2)
+      {
+        var rest := [LS.Acheck(chk2), LS.Areg(q0L)] + cont;
+        forall gp2: bool, mm: nat {:trigger WO.WalkOkF(rest, c, e1, gp2, mm)} | mm < m - 2
+          ensures WO.WalkOkF(rest, c, e1, gp2, mm)
+        {
+          WalkOkCinRestFNested(mm, qid, r1, c, em, e1, pc2, cont, gp2, chk2);
+        }
+        WalkOkCompFNested(m - 2, r1, c, em + 3, e1, rest, false);
+        assert [LS.Areg(tr1)] + rest == [LS.Areg(tr1), LS.Acheck(chk2), LS.Areg(q0L)] + cont;
+      }
+      // the skip onto the exit arm
+      assert WO.WalkOkF(cont, c, pc2, true, m - 2);
+      assert WO.WalkOkRegF(q0L, cont, c, e1 + 1, true, m - 1);
+      assert WO.WalkOkF(lv, c, e1 + 1, true, m - 1);
+    } else {
+      assert WO.WalkOkF(lv, c, e1 + 1, true, m - 1);
+    }
+    assert WO.WalkOkF(tgt, c, e1, gp, m);
+  }
+
   lemma WalkOkCinChainFNested(n: nat, k: nat, greedy: bool, qid: R.quantid, r1: R.regex,
                          c: RB.code, pc1: nat, em: nat, e1: nat, pc2: nat, cont: LS.Actions, g: bool)
     requires k >= 1 && greedy
@@ -1386,10 +1522,26 @@ module LindenElkWalkOkEntry {
       assert WO.WalkOkRegF(qk, cont, c, pc1, g, n);
       assert WO.WalkOkF(tgt, c, pc1, g, n);
     } else {
-      // k == 1: the head IS the fork; the guard demands nothing there.
+      // k == 1: the head IS the fork (§2.5b): the iteration list walks from
+      // the body start with the flag dropped, its checked rest sitting at the
+      // loop's EndLoop; the skip resumes past the stamp.
       NR.NfaRepIncrMinRE(0, qid, r1, c, pc1, em);
       assert pc1 == em;
       assert NR.GetPcRE(c, pc1) == Some(RB.Fork(em + 1, e1 + 2));
+      var q0L := L.Quantified(greedy, 0, LN.Inf, tr1);
+      forall chk: LC.Input
+        ensures WO.WalkOkF([LS.Areg(tr1), LS.Acheck(chk), LS.Areg(q0L)] + cont, c, em + 3, false, n - 1)
+      {
+        var rest := [LS.Acheck(chk), LS.Areg(q0L)] + cont;
+        forall gp2: bool, mm: nat {:trigger WO.WalkOkF(rest, c, e1, gp2, mm)} | mm < n - 1
+          ensures WO.WalkOkF(rest, c, e1, gp2, mm)
+        {
+          WalkOkCinRestFNested(mm, qid, r1, c, em, e1, pc2, cont, gp2, chk);
+        }
+        WalkOkCompFNested(n - 1, r1, c, em + 3, e1, rest, false);
+        assert [LS.Areg(tr1)] + rest == [LS.Areg(tr1), LS.Acheck(chk), LS.Areg(q0L)] + cont;
+      }
+      assert WO.WalkOkF(cont, c, e1 + 3, g, n - 1);
       assert WO.WalkOkRegF(qk, cont, c, pc1, g, n);
       assert WO.WalkOkF(tgt, c, pc1, g, n);
     }

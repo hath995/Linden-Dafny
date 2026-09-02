@@ -115,6 +115,16 @@ module LindenElkWalkOk {
                        c, pc + 1, g, n - 1)
            else
              WalkOkF([LS.Areg(r1), LS.Areg(L.Quantified(greedy, min - 1, delta, r1))] + cont, c, pc + 1, g, n - 1)
+         case Some(Fork(x, y)) =>
+           // §2.5b: the CIN-GREEDY head fork (min == 1): the iteration arm `x`
+           // is the clock-mark, its body starts at `x + 2` (past the mark and
+           // the BeginLoop) with the flag dropped; the skip arm `y` is the
+           // nulled-exit stamp, the continuation resumes at `y + 1`.
+           x >= 0 && y >= 0 ==>
+             (forall chk: LC.Input ::
+                WalkOkF([LS.Areg(r1), LS.Acheck(chk), LS.Areg(L.Quantified(greedy, 0, LN.Inf, r1))] + cont,
+                        c, x as nat + 2, false, n - 1))
+             && WalkOkF(cont, c, y as nat + 1, g, n - 1)
          case _ => true)
       else if delta == LN.NN(0) then
         WalkOkF(cont, c, pc, g, n - 1)
@@ -135,6 +145,13 @@ module LindenElkWalkOk {
                && (forall chk: LC.Input ::
                      WalkOkF([LS.Areg(r1), LS.Acheck(chk), LS.Areg(qnext)] + cont, c, iterarm + 1, true, n - 1))
                && WalkOkF(cont, c, skiparm, g, n - 1)
+               // §2.5b: the CIN loop view (exit arm two past the fork: the
+               // stamp sits between): re-entry through the clock-mark and
+               // the BeginLoop, so the iteration walks from `iterarm + 2`
+               // with the flag dropped
+               && (skiparm == pc + 2 ==>
+                     forall chk: LC.Input ::
+                       WalkOkF([LS.Areg(r1), LS.Acheck(chk), LS.Areg(qnext)] + cont, c, iterarm + 2, false, n - 1))
              else
                // a forward decision point: star fast path / bounded layer
                (forall chk: LC.Input ::
@@ -434,5 +451,94 @@ module LindenElkWalkOk {
     }
     assert WalkOk([LS.Areg(r1), LS.Acheck(chk), LS.Areg(qnext)] + acts[1..], c, iterarm + 1, true);
     assert WalkOk(acts[1..], c, skiparm, true);
+  }
+
+  /** §2.5b: the CIN-greedy head fork of a forced quantifier (`min > 0` at a
+      `Fork`): iteration list at `x + 2` (flag dropped), continuation at
+      `y + 1` (past the stamp). */
+  lemma WalkOkQuantCinHead(acts: LS.Actions, c: RB.code, pc: nat, g: bool,
+                           greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex, x: int, y: int, chk: LC.Input)
+    requires WalkOk(acts, c, pc, g)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1))
+    requires min > 0
+    requires NR.GetPcRE(c, pc) == Some(RB.Fork(x, y)) && x >= 0 && y >= 0
+    ensures WalkOk([LS.Areg(r1), LS.Acheck(chk), LS.Areg(L.Quantified(greedy, 0, LN.Inf, r1))] + acts[1..], c, x as nat + 2, false)
+    ensures WalkOk(acts[1..], c, y as nat + 1, g)
+  {
+    var il := [LS.Areg(r1), LS.Acheck(chk), LS.Areg(L.Quantified(greedy, 0, LN.Inf, r1))] + acts[1..];
+    forall n: nat {:trigger WalkOkF(il, c, x as nat + 2, false, n)}
+      ensures WalkOkF(il, c, x as nat + 2, false, n) {
+      assert WalkOkF(acts, c, pc, g, n + 1);
+      assert WalkOkRegF(acts[0].r, acts[1..], c, pc, g, n + 1);
+    }
+    forall n: nat {:trigger WalkOkF(acts[1..], c, y as nat + 1, g, n)}
+      ensures WalkOkF(acts[1..], c, y as nat + 1, g, n) {
+      assert WalkOkF(acts, c, pc, g, n + 1);
+      assert WalkOkRegF(acts[0].r, acts[1..], c, pc, g, n + 1);
+    }
+  }
+
+  /** §2.5b: the CIN loop view of a bare star (exit arm at `pc + 2`): the
+      iteration list at `iterarm + 2` with the flag dropped. */
+  lemma WalkOkLoopViewCin(acts: LS.Actions, c: RB.code, pc: nat, g: bool,
+                          greedy: bool, delta: LN.NoI, r1: L.Regex, x: int, y: int, chk: LC.Input)
+    requires WalkOk(acts, c, pc, g)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Quantified(greedy, 0, delta, r1))
+    requires delta != LN.NN(0)
+    requires NR.GetPcRE(c, pc) == Some(RB.Fork(x, y)) && x >= 0 && y >= 0
+    requires (if greedy then x else y) as nat <= pc
+    requires (if greedy then y else x) as nat == pc + 2
+    ensures g == true
+    ensures var iterarm := (if greedy then x else y) as nat;
+            var qnext := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+            WalkOk([LS.Areg(r1), LS.Acheck(chk), LS.Areg(qnext)] + acts[1..], c, iterarm + 2, false)
+            && WalkOk(acts[1..], c, pc + 2, true)
+  {
+    WalkOkLoopView(acts, c, pc, g, greedy, delta, r1, x, y, chk);
+    var iterarm := (if greedy then x else y) as nat;
+    var qnext := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+    var il := [LS.Areg(r1), LS.Acheck(chk), LS.Areg(qnext)] + acts[1..];
+    forall n: nat {:trigger WalkOkF(il, c, iterarm + 2, false, n)}
+      ensures WalkOkF(il, c, iterarm + 2, false, n) {
+      assert WalkOkF(acts, c, pc, g, n + 1);
+      assert WalkOkRegF(acts[0].r, acts[1..], c, pc, g, n + 1);
+    }
+  }
+
+  /** §2.5b: at a `BeginLoop` pc the walk guard demands nothing of ANY stack —
+      every instruction-keyed arm misses, and the transparent shapes only
+      re-enter at the same pc. (The CIN loop view re-enters through the
+      clock-mark and the BeginLoop, so the old loop-view conjunct lands here.) */
+  lemma WalkOkFAtBeginLoop(acts: LS.Actions, c: RB.code, pc: nat, g: bool, n: nat)
+    requires NR.GetPcRE(c, pc) == Some(RB.BeginLoop)
+    ensures WalkOkF(acts, c, pc, g, n)
+    decreases n
+  {
+    if n == 0 { return; }
+    if |acts| == 0 { return; }
+    var cont := acts[1..];
+    match acts[0]
+    case Acheck(_) =>
+      assert !AR.BackForkAt(c, pc);
+    case Aclose(_) =>
+    case Areg(r) =>
+      match r
+      case Epsilon =>
+        WalkOkFAtBeginLoop(cont, c, pc, g, n - 1);
+        assert WalkOkRegF(r, cont, c, pc, g, n);
+      case Sequence(r1, r2) =>
+        WalkOkFAtBeginLoop([LS.Areg(r1), LS.Areg(r2)] + cont, c, pc, g, n - 1);
+        assert WalkOkRegF(r, cont, c, pc, g, n);
+      case Quantified(greedy, min, delta, r1) =>
+        if min == 0 && delta == LN.NN(0) {
+          WalkOkFAtBeginLoop(cont, c, pc, g, n - 1);
+        }
+        assert WalkOkRegF(r, cont, c, pc, g, n);
+      case Character(_) => assert WalkOkRegF(r, cont, c, pc, g, n);
+      case AnchorR(_) => assert WalkOkRegF(r, cont, c, pc, g, n);
+      case Group(_, _) => assert WalkOkRegF(r, cont, c, pc, g, n);
+      case Disjunction(_, _) => assert WalkOkRegF(r, cont, c, pc, g, n);
+      case LookaroundR(_, _) => assert WalkOkRegF(r, cont, c, pc, g, n);
+      case Backreference(_) => assert WalkOkRegF(r, cont, c, pc, g, n);
   }
 }
