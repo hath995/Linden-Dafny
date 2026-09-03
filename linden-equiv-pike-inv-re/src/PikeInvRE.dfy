@@ -4236,12 +4236,14 @@ module LindenElkPikeInv {
               NR.GetPcRE(code, pc).value.reg in CaptureRegsSet(CapIdsOutsideLooks(re))
     decreases CP.rsize(re), 1
   {
+    hide R.nullable;   // (2026-09-03) the annotation's nullability is never needed here; unfolded, z3 4.14 loops (30+ GB)
     match re
     case Re_empty =>
     case Re_character(_) =>
     case Re_anchor(_) =>
     case Re_lookaround(_, _, _) =>
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-03) one batch per arm: un-split, this lemma\'s z3 reaches 70 GB under 4.14
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
                      && NR.NfaRepRE(r1, code, start + 1, e1)
                      && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
@@ -4258,6 +4260,7 @@ module LindenElkPikeInv {
         CaptureRegsSetMono(CapIdsOutsideLooks(r2), CapIdsOutsideLooks(re));
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-03) one batch per arm: un-split, this lemma\'s z3 reaches 70 GB under 4.14
       var e1: nat :| NR.NfaRepRE(r1, code, start, e1) && NR.NfaRepRE(r2, code, e1, endl);
       NR.NfaRepIncrRE(r1, code, start, e1);
       NR.NfaRepIncrRE(r2, code, e1, endl);
@@ -4269,6 +4272,7 @@ module LindenElkPikeInv {
         CaptureRegsSetMono(CapIdsOutsideLooks(r2), CapIdsOutsideLooks(re));
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-03) one batch per arm: un-split, this lemma\'s z3 reaches 70 GB under 4.14
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
                      && NR.NfaRepRE(r1, code, start + 1, e1)
                      && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
@@ -4284,6 +4288,7 @@ module LindenElkPikeInv {
         assert CP.end_reg(cid) in CaptureRegsSet(CapIdsOutsideLooks(re));
       }
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-03) one batch per arm: un-split, this lemma\'s z3 reaches 70 GB under 4.14
       // CapIdsOutsideLooks(Re_quant) == CapIdsOutsideLooks(r1)
       if q.min == 0 && q.max == None {
         var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
@@ -6651,17 +6656,28 @@ module LindenElkPikeInv {
             ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc', M), j) < 0
     decreases r
   {
+    hide R.nullable;
+    hide NR.NestedFragmentRE;   // (2026-09-03) revealed per arm for the recursive calls only   // (2026-09-03) the annotation's nullability is never needed here; unfolded, z3 4.14 loops (30+ GB)
     match r
     case Re_lookaround(lid, la, r1) =>
+      assert NR.NestedFragmentRE(r1) by { reveal NR.NestedFragmentRE; }
+      assert {:split_here} true;   // (2026-09-03) per-arm batch: z3 4.14 memory blow-up un-split
       assert qid in QuantIdsOutsideLooks(r);
-      assert false;
+      assert false by { hide *; reveal QuantIdsOutsideLooks; }   // (2026-09-03) a bare `assert false` saturates z3 4.14 (16+ GB)
     case Re_capture(cid, r1) =>
+      assert NR.NestedFragmentRE(r1) by { reveal NR.NestedFragmentRE; }
+      assert {:split_here} true;   // (2026-09-03) per-arm batch: z3 4.14 memory blow-up un-split
       assert qid in QuantIds(r1);
       assert AI.get_idx(cc, CP.start_reg(cid)) >= M && AI.get_idx(cc, CP.start_reg(cid)) >= 0;
       assert MxAtQid(r, cc, qc, M, qid) == MxAtQid(r1, cc, qc, M, qid);
       assert QidBody(r, qid) == QidBody(r1, qid);
       FilterResetFrameNested(r1, A, cc, lc, qc, qc', M, qid, clk, j);
+      // (2026-09-03) the present-capture unfolding, explicit for z3 4.14
+      assert AI.filter_capture(r, A, cc, lc, qc', M) == AI.filter_capture(r1, A, cc, lc, qc', M);
+      assert AI.filter_capture(r, A, cc, lc, qc, M) == AI.filter_capture(r1, A, cc, lc, qc, M);
     case Re_quant(nul, qid0, q, r1) =>
+      assert NR.NestedFragmentRE(r1) by { reveal NR.NestedFragmentRE; }
+      assert {:split_here} true;   // (2026-09-03) per-arm batch: z3 4.14 memory blow-up un-split
       if qid0 >= 0 && (qid0 as nat) == qid {
         assert QidBody(r, qid) == r1;
         assert MxAtQid(r, cc, qc, M, qid) == M;
@@ -6671,12 +6687,26 @@ module LindenElkPikeInv {
           ensures AI.get_idx(cc, CP.start_reg(cidx)) < clk || AI.get_idx(cc, CP.start_reg(cidx)) < 0 {}
         assert LooksCapUnset(r1, cc);
         FilterCaptureAllStaleNested(r1, A, cc, lc, qc', clk);
+        // (2026-09-03) the two unfoldings z3 4.14 would not find on its own
+        var fnew := AI.filter_capture(r, A, cc, lc, qc', M);
+        var fold := AI.filter_capture(r, A, cc, lc, qc, M);
+        assert fnew == AI.filter_capture(r1, A, cc, lc, qc', clk) by { assert clk >= M; }
+        assert fnew == AI.filter_all(r1, A);
+        assert fold == (if oldv < M then AI.filter_all(r1, A) else AI.filter_capture(r1, A, cc, lc, qc, oldv));
+        assert {:split_here} true;
         if exists g: nat :: g in CapIds(r1) && CP.start_reg(g) == j {
           var g: nat :| g in CapIds(r1) && CP.start_reg(g) == j;
           FilterAllClearsStart(r1, A, g);
+          assert AI.get_idx(fnew, j) < 0;
         }
         if forall g: nat :: g in CapIds(r1) ==> CP.start_reg(g) != j {
-          if oldv < M {} else { FilterCaptureVsAllNested(r1, A, cc, lc, qc, oldv, j); }
+          if oldv < M {
+            assert AI.get_idx(fnew, j) == AI.get_idx(fold, j);
+          } else {
+            FilterCaptureVsAllNested(r1, A, cc, lc, qc, oldv, j);
+            assert AI.get_idx(fold, j) == AI.get_idx(AI.filter_all(r1, A), j);
+            assert AI.get_idx(fnew, j) == AI.get_idx(fold, j);
+          }
         }
       } else {
         assert qid in QuantIds(r1);
@@ -6686,6 +6716,8 @@ module LindenElkPikeInv {
         assert MxAtQid(r, cc, qc, M, qid) == MxAtQid(r1, cc, qc, qv0, qid);
         assert QidBody(r, qid) == QidBody(r1, qid);
         FilterResetFrameNested(r1, A, cc, lc, qc, qc', qv0, qid, clk, j);
+        assert AI.filter_capture(r, A, cc, lc, qc', M) == AI.filter_capture(r1, A, cc, lc, qc', qv0);
+        assert AI.filter_capture(r, A, cc, lc, qc, M) == AI.filter_capture(r1, A, cc, lc, qc, qv0);
       }
     case Re_alt(r1, r2) => FilterResetFrameSeqNested(r, r1, r2, A, cc, lc, qc, qc', M, qid, clk, j);
     case Re_con(r1, r2) => FilterResetFrameSeqNested(r, r1, r2, A, cc, lc, qc, qc', M, qid, clk, j);
@@ -6714,6 +6746,8 @@ module LindenElkPikeInv {
             ==> AI.get_idx(AI.filter_capture(r2, AI.filter_capture(r1, A, cc, lc, qc', M), cc, lc, qc', M), j) < 0
     decreases r, 0
   {
+    hide R.nullable;
+    hide NR.NestedFragmentRE;   // (2026-09-03) revealed per arm for the recursive calls only   // (2026-09-03) the annotation's nullability is never needed here; unfolded, z3 4.14 loops (30+ GB)
     var X := AI.filter_capture(r1, A, cc, lc, qc, M);
     var X' := AI.filter_capture(r1, A, cc, lc, qc', M);
     FilterCaptureLen(r1, A, cc, lc, qc, M); FilterCaptureLen(r1, A, cc, lc, qc', M);
@@ -6855,18 +6889,22 @@ module LindenElkPikeInv {
             ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc', M), j) < 0
     decreases r
   {
+    hide R.nullable;   // (2026-09-03) the annotation's nullability is never needed here; unfolded, z3 4.14 loops (30+ GB)
     match r
     case Re_lookaround(lid, la, r1) =>
+      assert {:split_here} true;   // (2026-09-03) per-arm batch: z3 4.14 memory blow-up un-split
       // qid is inside the look body, but the requires restricts to outside-look qids.
       assert qid in QuantIdsOutsideLooks(r);   // == {} for a lookaround node — contradiction
-      assert false;
+      assert false by { hide *; reveal QuantIdsOutsideLooks; }   // (2026-09-03) a bare `assert false` saturates z3 4.14 (16+ GB)
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-03) per-arm batch: z3 4.14 memory blow-up un-split
       assert qid in QuantIds(r1);
       assert AI.get_idx(cc, CP.start_reg(cid)) >= M && AI.get_idx(cc, CP.start_reg(cid)) >= 0;  // PathPresentQ
       assert MxAtQid(r, cc, qc, M, qid) == MxAtQid(r1, cc, qc, M, qid);
       assert QidBody(r, qid) == QidBody(r1, qid);
       FilterResetFrame(r1, A, cc, lc, qc, qc', M, qid, clk, j);
     case Re_quant(nul, qid0, q, r1) =>
+      assert {:split_here} true;   // (2026-09-03) per-arm batch: z3 4.14 memory blow-up un-split
       if qid0 >= 0 && (qid0 as nat) == qid {
         // THE qid node. QidBody(r,qid) == r1 == body.
         assert QidBody(r, qid) == r1;
@@ -6926,6 +6964,7 @@ module LindenElkPikeInv {
             ==> AI.get_idx(AI.filter_capture(r2, AI.filter_capture(r1, A, cc, lc, qc', M), cc, lc, qc', M), j) < 0
     decreases r, 0
   {
+    hide R.nullable;   // (2026-09-03) the annotation's nullability is never needed here; unfolded, z3 4.14 loops (30+ GB)
     var X := AI.filter_capture(r1, A, cc, lc, qc, M);
     var X' := AI.filter_capture(r1, A, cc, lc, qc', M);
     FilterCaptureLen(r1, A, cc, lc, qc, M); FilterCaptureLen(r1, A, cc, lc, qc', M);
