@@ -1051,3 +1051,22 @@ killed by `QChainFresh`, but a stamp set on THIS pass is not).
   definitions `QChainFresh`/`QLive`/`StampApply`/`LiveStampsGm`/`GmOfLiveR` currently live in
   `linden-equiv-nulled-recon` (which is ABOVE pike-inv-re) and have to be moved down first — that is
   the next step (D0), after which `ThreadTracksGm` becomes `gm == GmOfLiveR(re, qm, str, ...)`.
+
+**Later (2026-09-05, commit `070841c`): the same treatment for the `LookBehindFragmentRE` twin.**
+With the `*Nested* twin fixed the pack went `exited 143` (OOM) -> 312 verified / 2 time outs ->
+309 verified / 1 time out, the survivor being the UN-extracted `FilterResetFrame`: 900 s+ in the
+whole-file run although it verified per-symbol in seconds, and all 100 of its assertions isolate in
+25 s TOTAL — batching, not a missing fact. It is now `FRFLook`/`FRFCap`/`FRFQuant` per arm, with
+`FRFQuant` dispatching to `FRFQuantSame`/`FRFQuantOther` (both branches in ONE VC was still 900 s+),
+`FRFBodyReset` for the body reasoning, `hide NR.LookBehindFragmentRE` + ONE reveal for the child, and
+the two explicit `filter_capture` unfoldings the twin has had since 09-03. Termination is
+three-level: parent `decreases r, 2`, arms `r, 1`, branch lemmas `r, 0`. Green: FRF* 18/0,
+`FilterResetFrame` family 8/0, both in seconds — and **`linden.equiv-pike-inv-re` PACKS: 320
+obligations, 5m 27s** (it had not packed since the z3 4.14 switch).
+
+**Recipe, for the next hog** (also in memory `dafny-batch-memory-hogs`): profile with `--cores=1
+--progress Batch` + an RSS sampler to name the lemma and batch; then (1) one lemma per match arm,
+(2) if an arm still times out, one lemma per BRANCH, (3) if it still times out, state the content on
+the CHILD alone. `--isolate-assertions` is the diagnostic that tells you which of these you need (all
+assertions fast => batching), never the fix. Do NOT run dev verification while `lem pack` runs: they
+share the 80 G slice and the loser is SIGTERM'd (RC=143).
