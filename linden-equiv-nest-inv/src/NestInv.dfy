@@ -890,11 +890,14 @@ module LindenElkNestInv {
   {
     match re
     case Re_empty =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch: the un-split body is a 35 GB z3 hog under 4.14
       // pcb == pce contradicts pcb <= pc < pce.
     case Re_character(ch) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch: the un-split body is a 35 GB z3 hog under 4.14
       assert pc == pcb;
       assert false;                                 // Consume ≠ SetRegisterToCP
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch: the un-split body is a 35 GB z3 hog under 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.Fork(pcb + 1, e1 + 1))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.Jmp(pce))
@@ -926,6 +929,7 @@ module LindenElkNestInv {
         assert PIV.BodyOf(re, gid) == PIV.BodyOf(r2, gid);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch: the un-split body is a 35 GB z3 hog under 4.14
       var e1: nat :| NR.NfaRepRE(r1, code, pcb, e1) && NR.NfaRepRE(r2, code, e1, pce)
         && if pc < e1 then NestInvRE(r1, code, pcb, e1, pc, cc, qc, mx) && AllStaleRE(r2, cc, mx)
            else NestInvRE(r2, code, e1, pce, pc, cc, qc, mx);
@@ -947,6 +951,7 @@ module LindenElkNestInv {
         assert PIV.BodyOf(re, gid) == PIV.BodyOf(r2, gid);
       }
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch: the un-split body is a 35 GB z3 hog under 4.14
       if q.min == 0 && q.max == None {
         var e1: nat :| NR.GetPcRE(code, pcb) == Some(if q.greedy then RB.Fork(pcb + 1, e1 + 2) else RB.Fork(e1 + 2, pcb + 1))
           && NR.GetPcRE(code, pcb + 1) == Some(RB.SetQuantToClock(qid, false))
@@ -1055,6 +1060,7 @@ module LindenElkNestInv {
         assert PIV.BodyOf(re, gid) == PIV.BodyOf(r1, gid);
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch: the un-split body is a 35 GB z3 hog under 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
@@ -1092,7 +1098,9 @@ module LindenElkNestInv {
         // ancestor clause of PathPresent: own start fresh (>= 0, >= mx).
       }
     case Re_lookaround(_, _, _) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch: the un-split body is a 35 GB z3 hog under 4.14
     case Re_anchor(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch: the un-split body is a 35 GB z3 hog under 4.14
   }
 
   // =========================================================================
