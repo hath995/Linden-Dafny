@@ -6634,6 +6634,40 @@ module LindenElkPikeInv {
       else { FilterCaptureQcFrameNested(r1, cr, cc, lc, qc, qc', M, qid, j); }
   }
 
+
+  /** The `qid`-node branch of `FilterResetFrameNested`'s quantifier arm, stated on the
+      BODY ALONE: at the fresh reset stamp `clk` every capture inside the body is
+      stale, so the body's filter is `filter_all` — which clears exactly the body's
+      start slots and agrees with the pre-stamp filter off them. Extracted (2026-09-04)
+      because the same reasoning inside the arm's own VC, with the arm's whole
+      hypothesis list and `r` in scope, times out at 900 s. */
+  lemma FRFBodyResetNested(r1: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, qc': seq<int>,
+                       M: int, clk: int, j: int, oldv: int)
+    requires NR.NestedFragmentRE(r1) && CapUnique(r1)
+    requires clk >= M
+    requires LooksCapUnset(r1, cc)
+    requires forall cid: nat :: cid in CapIds(r1) ==> AI.get_idx(cc, CP.start_reg(cid)) < clk
+    requires forall k :: AI.get_idx(A, k) >= -1
+    requires forall cid: nat :: cid in CapIds(r1) && AI.get_idx(cc, CP.start_reg(cid)) < 0
+                                ==> AI.get_idx(A, CP.start_reg(cid)) < 0
+    ensures AI.filter_capture(r1, A, cc, lc, qc', clk) == AI.filter_all(r1, A)
+    ensures (forall g: nat :: g in CapIds(r1) ==> CP.start_reg(g) != j)
+            ==> AI.get_idx(AI.filter_all(r1, A), j)
+                == AI.get_idx(if oldv < M then AI.filter_all(r1, A)
+                              else AI.filter_capture(r1, A, cc, lc, qc, oldv), j)
+    ensures (exists g: nat :: g in CapIds(r1) && CP.start_reg(g) == j)
+            ==> AI.get_idx(AI.filter_all(r1, A), j) < 0
+  {
+    FilterCaptureAllStaleNested(r1, A, cc, lc, qc', clk);
+    if exists g: nat :: g in CapIds(r1) && CP.start_reg(g) == j {
+      var g: nat :| g in CapIds(r1) && CP.start_reg(g) == j;
+      FilterAllClearsStart(r1, A, g);
+    }
+    if forall g: nat :: g in CapIds(r1) ==> CP.start_reg(g) != j {
+      if oldv >= M { FilterCaptureVsAllNested(r1, A, cc, lc, qc, oldv, j); }
+    }
+  }
+
   /** `FilterResetFrame` under the nested fragment (look case `assert false`;
       sibling frames use the `*Nested` filter frames). */
   lemma FilterResetFrameNested(r: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, qc': seq<int>,
@@ -6654,73 +6688,126 @@ module LindenElkPikeInv {
             ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc', M), j) == AI.get_idx(AI.filter_capture(r, A, cc, lc, qc, M), j)
     ensures (exists g: nat :: g in CapIds(QidBody(r, qid)) && CP.start_reg(g) == j)
             ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc', M), j) < 0
-    decreases r
+    decreases r, 1
   {
     hide R.nullable;
     hide NR.NestedFragmentRE;   // (2026-09-03) revealed per arm for the recursive calls only   // (2026-09-03) the annotation's nullability is never needed here; unfolded, z3 4.14 loops (30+ GB)
+    // (2026-09-04) EVERY arm is its OWN lemma: at z3 4.14 the un-extracted body
+    // batched to 30-47 GB in one solver (the pack's OOM), although every single
+    // assertion isolates in under a second. Splitting the VCs is the fix, not
+    // `{:isolate_assertions}`.
     match r
     case Re_lookaround(lid, la, r1) =>
-      assert NR.NestedFragmentRE(r1) by { reveal NR.NestedFragmentRE; }
-      assert {:split_here} true;   // (2026-09-03) per-arm batch: z3 4.14 memory blow-up un-split
-      assert qid in QuantIdsOutsideLooks(r);
-      assert false by { hide *; reveal QuantIdsOutsideLooks; }   // (2026-09-03) a bare `assert false` saturates z3 4.14 (16+ GB)
+      FRFNestedLook(r, lid, la, r1, cc, qc, M, qid);
     case Re_capture(cid, r1) =>
-      assert NR.NestedFragmentRE(r1) by { reveal NR.NestedFragmentRE; }
-      assert {:split_here} true;   // (2026-09-03) per-arm batch: z3 4.14 memory blow-up un-split
-      assert qid in QuantIds(r1);
-      assert AI.get_idx(cc, CP.start_reg(cid)) >= M && AI.get_idx(cc, CP.start_reg(cid)) >= 0;
-      assert MxAtQid(r, cc, qc, M, qid) == MxAtQid(r1, cc, qc, M, qid);
-      assert QidBody(r, qid) == QidBody(r1, qid);
-      FilterResetFrameNested(r1, A, cc, lc, qc, qc', M, qid, clk, j);
-      // (2026-09-03) the present-capture unfolding, explicit for z3 4.14
-      assert AI.filter_capture(r, A, cc, lc, qc', M) == AI.filter_capture(r1, A, cc, lc, qc', M);
-      assert AI.filter_capture(r, A, cc, lc, qc, M) == AI.filter_capture(r1, A, cc, lc, qc, M);
+      FRFNestedCap(r, cid, r1, A, cc, lc, qc, qc', M, qid, clk, j);
     case Re_quant(nul, qid0, q, r1) =>
-      assert NR.NestedFragmentRE(r1) by { reveal NR.NestedFragmentRE; }
-      assert {:split_here} true;   // (2026-09-03) per-arm batch: z3 4.14 memory blow-up un-split
-      if qid0 >= 0 && (qid0 as nat) == qid {
-        assert QidBody(r, qid) == r1;
-        assert MxAtQid(r, cc, qc, M, qid) == M;
-        assert AI.get_idx(qc', qid0) == clk;
-        var oldv := AI.get_idx(qc, qid0);
-        forall cidx: nat | cidx in CapIds(r1)
-          ensures AI.get_idx(cc, CP.start_reg(cidx)) < clk || AI.get_idx(cc, CP.start_reg(cidx)) < 0 {}
-        assert LooksCapUnset(r1, cc);
-        FilterCaptureAllStaleNested(r1, A, cc, lc, qc', clk);
-        // (2026-09-03) the two unfoldings z3 4.14 would not find on its own
-        var fnew := AI.filter_capture(r, A, cc, lc, qc', M);
-        var fold := AI.filter_capture(r, A, cc, lc, qc, M);
-        assert fnew == AI.filter_capture(r1, A, cc, lc, qc', clk) by { assert clk >= M; }
-        assert fnew == AI.filter_all(r1, A);
-        assert fold == (if oldv < M then AI.filter_all(r1, A) else AI.filter_capture(r1, A, cc, lc, qc, oldv));
-        assert {:split_here} true;
-        if exists g: nat :: g in CapIds(r1) && CP.start_reg(g) == j {
-          var g: nat :| g in CapIds(r1) && CP.start_reg(g) == j;
-          FilterAllClearsStart(r1, A, g);
-          assert AI.get_idx(fnew, j) < 0;
-        }
-        if forall g: nat :: g in CapIds(r1) ==> CP.start_reg(g) != j {
-          if oldv < M {
-            assert AI.get_idx(fnew, j) == AI.get_idx(fold, j);
-          } else {
-            FilterCaptureVsAllNested(r1, A, cc, lc, qc, oldv, j);
-            assert AI.get_idx(fold, j) == AI.get_idx(AI.filter_all(r1, A), j);
-            assert AI.get_idx(fnew, j) == AI.get_idx(fold, j);
-          }
-        }
-      } else {
-        assert qid in QuantIds(r1);
-        var qv0 := AI.get_idx(qc, qid0);
-        assert AI.get_idx(qc', qid0) == qv0;
-        assert qv0 >= M;
-        assert MxAtQid(r, cc, qc, M, qid) == MxAtQid(r1, cc, qc, qv0, qid);
-        assert QidBody(r, qid) == QidBody(r1, qid);
-        FilterResetFrameNested(r1, A, cc, lc, qc, qc', qv0, qid, clk, j);
-        assert AI.filter_capture(r, A, cc, lc, qc', M) == AI.filter_capture(r1, A, cc, lc, qc', qv0);
-        assert AI.filter_capture(r, A, cc, lc, qc, M) == AI.filter_capture(r1, A, cc, lc, qc, qv0);
-      }
+      FRFNestedQuant(r, nul, qid0, q, r1, A, cc, lc, qc, qc', M, qid, clk, j);
     case Re_alt(r1, r2) => FilterResetFrameSeqNested(r, r1, r2, A, cc, lc, qc, qc', M, qid, clk, j);
     case Re_con(r1, r2) => FilterResetFrameSeqNested(r, r1, r2, A, cc, lc, qc, qc', M, qid, clk, j);
+  }
+
+  /** `FilterResetFrameNested`'s LOOKAROUND arm: `qid` is outside every look
+      body, so a lookaround node has no such `qid` — the arm is vacuous. */
+  lemma FRFNestedLook(r: R.regex, lid: int, la: R.lookaround, r1: R.regex,
+                      cc: seq<int>, qc: seq<int>, M: int, qid: nat)
+    requires r == R.Re_lookaround(lid, la, r1)
+    requires qid in QuantIdsOutsideLooks(r)
+    ensures false
+  {
+    assert false by { hide *; reveal QuantIdsOutsideLooks; }
+  }
+
+  /** `FilterResetFrameNested`'s CAPTURE arm: the node is present (its start
+      clock is fresh), so the filter descends into the body unchanged. */
+  lemma FRFNestedCap(r: R.regex, cid: int, r1: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>,
+                     qc: seq<int>, qc': seq<int>, M: int, qid: nat, clk: int, j: int)
+    requires r == R.Re_capture(cid, r1)
+    requires NR.NestedFragmentRE(r) && CapUnique(r) && QuantUnique(r)
+    requires qid in QuantIds(r)
+    requires qid in QuantIdsOutsideLooks(r)
+    requires clk >= 0
+    requires clk >= MxAtQid(r, cc, qc, M, qid)
+    requires PathPresentQ(r, cc, qc, M, qid)
+    requires forall q0: int :: q0 != qid ==> AI.get_idx(qc', q0) == AI.get_idx(qc, q0)
+    requires AI.get_idx(qc', qid) == clk
+    requires forall sg: nat :: sg in CapIds(QidBody(r, qid)) ==> AI.get_idx(cc, CP.start_reg(sg)) < clk
+    requires LooksCapUnset(QidBody(r, qid), cc)
+    requires forall k :: AI.get_idx(A, k) >= -1
+    requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0 ==> AI.get_idx(A, CP.start_reg(c)) < 0
+    ensures (forall g: nat :: g in CapIds(QidBody(r, qid)) ==> CP.start_reg(g) != j)
+            ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc', M), j) == AI.get_idx(AI.filter_capture(r, A, cc, lc, qc, M), j)
+    ensures (exists g: nat :: g in CapIds(QidBody(r, qid)) && CP.start_reg(g) == j)
+            ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc', M), j) < 0
+    decreases r, 0
+  {
+    hide R.nullable;
+    hide NR.NestedFragmentRE;
+    assert NR.NestedFragmentRE(r1) by { reveal NR.NestedFragmentRE; }
+    assert qid in QuantIds(r1);
+    assert AI.get_idx(cc, CP.start_reg(cid)) >= M && AI.get_idx(cc, CP.start_reg(cid)) >= 0;
+    assert MxAtQid(r, cc, qc, M, qid) == MxAtQid(r1, cc, qc, M, qid);
+    assert QidBody(r, qid) == QidBody(r1, qid);
+    FilterResetFrameNested(r1, A, cc, lc, qc, qc', M, qid, clk, j);
+    // (2026-09-03) the present-capture unfolding, explicit for z3 4.14
+    assert AI.filter_capture(r, A, cc, lc, qc', M) == AI.filter_capture(r1, A, cc, lc, qc', M);
+    assert AI.filter_capture(r, A, cc, lc, qc, M) == AI.filter_capture(r1, A, cc, lc, qc, M);
+  }
+
+  /** `FilterResetFrameNested`'s QUANTIFIER arm. */
+  lemma FRFNestedQuant(r: R.regex, nul: R.nullability, qid0: R.quantid, q: R.counted_quantifier, r1: R.regex,
+                       A: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, qc': seq<int>,
+                       M: int, qid: nat, clk: int, j: int)
+    requires r == R.Re_quant(nul, qid0, q, r1)
+    requires NR.NestedFragmentRE(r) && CapUnique(r) && QuantUnique(r)
+    requires qid in QuantIds(r)
+    requires qid in QuantIdsOutsideLooks(r)
+    requires clk >= 0
+    requires clk >= MxAtQid(r, cc, qc, M, qid)
+    requires PathPresentQ(r, cc, qc, M, qid)
+    requires forall q0: int :: q0 != qid ==> AI.get_idx(qc', q0) == AI.get_idx(qc, q0)
+    requires AI.get_idx(qc', qid) == clk
+    requires forall sg: nat :: sg in CapIds(QidBody(r, qid)) ==> AI.get_idx(cc, CP.start_reg(sg)) < clk
+    requires LooksCapUnset(QidBody(r, qid), cc)
+    requires forall k :: AI.get_idx(A, k) >= -1
+    requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0 ==> AI.get_idx(A, CP.start_reg(c)) < 0
+    ensures (forall g: nat :: g in CapIds(QidBody(r, qid)) ==> CP.start_reg(g) != j)
+            ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc', M), j) == AI.get_idx(AI.filter_capture(r, A, cc, lc, qc, M), j)
+    ensures (exists g: nat :: g in CapIds(QidBody(r, qid)) && CP.start_reg(g) == j)
+            ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc', M), j) < 0
+    decreases r, 0
+  {
+    hide R.nullable;
+    hide NR.NestedFragmentRE;
+    assert NR.NestedFragmentRE(r1) by { reveal NR.NestedFragmentRE; }
+    if qid0 >= 0 && (qid0 as nat) == qid {
+      assert QidBody(r, qid) == r1;
+      assert MxAtQid(r, cc, qc, M, qid) == M;
+      assert AI.get_idx(qc', qid0) == clk;
+      var oldv := AI.get_idx(qc, qid0);
+      forall cidx: nat | cidx in CapIds(r1)
+        ensures AI.get_idx(cc, CP.start_reg(cidx)) < clk {}
+      assert LooksCapUnset(r1, cc);
+      // (2026-09-03) the two unfoldings z3 4.14 would not find on its own
+      var fnew := AI.filter_capture(r, A, cc, lc, qc', M);
+      var fold := AI.filter_capture(r, A, cc, lc, qc, M);
+      assert fnew == AI.filter_capture(r1, A, cc, lc, qc', clk) by { assert clk >= M; }
+      assert fold == (if oldv < M then AI.filter_all(r1, A) else AI.filter_capture(r1, A, cc, lc, qc, oldv));
+      assert {:split_here} true;
+      // (2026-09-04) the body-level content is its own lemma: with `r` and the
+      // arm's hypothesis list in scope this batch timed out at 900 s.
+      FRFBodyResetNested(r1, A, cc, lc, qc, qc', M, clk, j, oldv);
+    } else {
+      assert qid in QuantIds(r1);
+      var qv0 := AI.get_idx(qc, qid0);
+      assert AI.get_idx(qc', qid0) == qv0;
+      assert qv0 >= M;
+      assert MxAtQid(r, cc, qc, M, qid) == MxAtQid(r1, cc, qc, qv0, qid);
+      assert QidBody(r, qid) == QidBody(r1, qid);
+      FilterResetFrameNested(r1, A, cc, lc, qc, qc', qv0, qid, clk, j);
+      assert AI.filter_capture(r, A, cc, lc, qc', M) == AI.filter_capture(r1, A, cc, lc, qc', qv0);
+      assert AI.filter_capture(r, A, cc, lc, qc, M) == AI.filter_capture(r1, A, cc, lc, qc, qv0);
+    }
   }
 
   /** Sequential (`alt`/`con`) handling for `FilterResetFrameNested`. */
@@ -6748,6 +6835,9 @@ module LindenElkPikeInv {
   {
     hide R.nullable;
     hide NR.NestedFragmentRE;   // (2026-09-03) revealed per arm for the recursive calls only   // (2026-09-03) the annotation's nullability is never needed here; unfolded, z3 4.14 loops (30+ GB)
+    // (2026-09-04) both halves' fragment facts, revealed ONCE (the hide above
+    // otherwise starves every `*Nested` callee's precondition).
+    assert NR.NestedFragmentRE(r1) && NR.NestedFragmentRE(r2) by { reveal NR.NestedFragmentRE; }
     var X := AI.filter_capture(r1, A, cc, lc, qc, M);
     var X' := AI.filter_capture(r1, A, cc, lc, qc', M);
     FilterCaptureLen(r1, A, cc, lc, qc, M); FilterCaptureLen(r1, A, cc, lc, qc', M);

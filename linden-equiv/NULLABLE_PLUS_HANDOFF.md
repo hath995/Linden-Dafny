@@ -862,3 +862,192 @@ the same AST recursion as `filter_capture` with the `maxclock` threshold: at `Re
 
 Order for the next session: E(ii)+(i) first as a standalone member (it is the riskiest piece and
 independent of D), then D's nesting fact in NestInv, then D's step lemmas, then F, then G.
+
+### 2026-09-03 — RUNG E CODED (new member `linden-equiv-nulled-recon`, in the scratchpad `wip/` until green); the D/E design REFINED; the pack gate fought through two infrastructure walls
+
+**State of the tree.** `nullable-plus-greedy` = `723a253` (rung C complete + the walk-ok fix the pack
+caught: `WalkOkLoopViewCin` lacked the explicit `WalkOk` asserts — per-symbol runs had verified ONE
+symbol, the full file 40/0 after the fix). The rung-E member is NOT in the tree yet (it lives in
+`<scratchpad>/wip/linden-equiv-nulled-recon`, stashed out of the main checkout so the gate pack can
+run there); its `lemmata.toml` deps: reasoning, semantics-core, warblre, regex-engine,
+equiv-actions-rep-re, equiv-nfa-rep-re, equiv-tree-rep-re, equiv-nulled-plus, equiv-pike-inv-re.
+Restore into the tree with `git stash pop` (stash "wip nulled-recon + 63-member lock") once the pack
+is green, then `lem lock` at the root (63 members) + `lem restore` in the member.
+
+**Pack-gate walls (both solved, see memory `linden-dafny-memory-cap`):**
+1. The toolchain dafny wrapper has forced z3 4.14.1 since 08-31; base members last verified under
+   4.12.1 (`semantics-core`: `FlatMap.FlatMapApp` timeout + `StrictSuffix.dfy:262` "might not
+   hold"; `oracle-sweep`: `AdvanceOvIndep` timeout) fail when REBUILT under 4.14. They only pass as
+   "cached, unchanged" in the main checkout → run the gate in `~/code/Linden-Dafny` itself (a fresh
+   worktree rebuilds them and fails). Open item: make those three proofs 4.14-robust.
+2. `lem pack --jobs 1` passes no `--cores` (dafny defaults to 16 workers) and `--jobs 3` passes
+   `--cores:16`; PikeInvRE's z3 workers reach 18 GB each → OOM at the 80G slice cap, reported as
+   `dafny build exited 143 with no diagnostics`. The wrapper now pins `--cores:$DAFNY_MAX_CORES`
+   (the gate uses 2); `pack/run_pack_main.sh` in the scratchpad is the launcher.
+
+**Rung E, file 1 — `NulledRecon.dfy` (module `LindenElkNulledRecon`), 77/78 green (the last
+obligation = the alt arm of `CompileNfaRepNulledRE`, being isolated with `hide *`):**
+* `NfaRepNulledRE(re, c, pc1, pc2)` — the ReconstructNulled layout (mirror of `compile(_, _,
+  ReconstructNulled)`: chars/NonNullable-forced quants → `Fail`; CIN-greedy `+` → `SQC(qid,true)`;
+  CDN → `CheckNullable`+stamp (excluded by `NoCdnPlusRE`); generic forced quant → ONE
+  `SQC(qid,false)` + body; captures/alt/con/lookarounds as in Progress mode) + `NfaRepNulledExtend`,
+  `FreshNulledRE`, `CompileNfaRepNulledRE`, `CompileReconstructNulledLayout` (= region `[0,n)` +
+  `Accept`), `RegionShapeRE`/`ReconstructCodeShape` (forward-only, no Consume/loop/oracle-write).
+* `NulledWrites(qm, re, inp): Option<seq<Write>>` (`Write = WCap(reg) | WLook(lid) | WQuant(qid,b)`)
+  — the register writes of the first accepting path, twin of `TR.FirstEmptyPathR` (nested CIN `+`
+  contributes its stamp only; `FNulledChildren` chains its path later).
+* `RegsFrom(rg, ws, cp, rg0, clk0, C)` = ∃ strictly increasing clocks in `(clk0, C]` with
+  `rg == ApplyWrites(ws, cp, clks, rg0)`.
+* THE DEDUP ARGUMENT, structural not global: `NulledRunRE` — from the region's head thread the
+  closure reaches the region's exit with `ws + NulledWrites` applied (or no thread at all when
+  `NulledWrites` is `None`), every pending alternative left inside the region being JUNK:
+  `Dead(c, pc, B)` (every enabled path dies before `B`) or `Junk(c, pc, q)` (dies before `q` or
+  lands exactly on `q`) for an already-processed `q <= exit`. `RestOk` bounds the pending list by
+  the region HEAD (`th.pc >= pc2 || JunkOk(.., pc1) || Junk(.., pc1)`), which is what makes the
+  con/capture/quant cases inherit without a "push-in" lemma; `JunkSkip` runs junk to exhaustion
+  (marks only `[lo, hi)`, never accepts); `RestOkShift` transfers the bound to a later head. The
+  alt-None case is the only place junk sits in FRONT of the next real thread (JunkSkip there).
+* `NullInterpNulled`: one `FNullInterp` over `compile_reconstruct_nulled(re)` from a single
+  thread accepts iff `NulledWrites.Some?`, keeps `ov`, and the accepting thread's registers are
+  `RegsFrom(NulledWrites)`.
+  Engine facts used: `init_thread` has `exit_allowed == false`; `get_instr` out of range is `Fail`;
+  the end fork of the CIN scheme is `Fork(em+1, e1+3)` (the stamp is reached ONLY from the head
+  fork's skip arm — the design section's "end fork re-enters at the stamp" was wrong).
+
+**Rung E, file 2 — `NulledReconRegs.dfy` (module `LindenElkNulledReconRegs`, written, unverified):**
+register sets (`CapRegsOf/QuantRegsOf/LookRegsOf`, `Inner*Regs` = what `FNulledChildren` may touch),
+`ApplyWrites` pointwise algebra (`ApplyWritesFrame/OnTargets/Merge`, `NulledWritesTargets`),
+`filter_capture` algebra WITHOUT fragment hypotheses (`FilterKeepsNonStart`, `FilterAtStartDep`: the
+start slot of an outside-look capture depends only on that slot + the subterm's start/quant clocks),
+`QidCinPlus`/`PlusTableOk` (the canonical table: CIN-greedy bodies' reconstruct code, `[]`
+otherwise — `FCompileExtra` fills exactly those), `FNulledChildrenFrame`/`ReconAtFrame` (only
+inner registers move, `ov` kept), `PathGroupsR`/`ResetGroupsR` (the groups the first empty path
+captures / resets), `NulledWritesIffPath` (+ `NonNullableNoPath`, `CINullablePath`),
+`FilterHiddenAfterChildren` (an off-path subtree whose clocks are `< K` stays all-absent at `K` even
+after stale same-position stamps are re-run: their writes sit under their own stale quant node),
+and THE ENGINE READOUT `EngineReadout` (+ per-arm lemmas `EngineReadoutCapture/Quant/Alt/Con`):
+after `NulledWrites` at clocks `> K` and `FNulledChildren`, `filter_capture` at `K` reads a capture
+as present iff it is in `PathGroupsR`, with range `[cp, cp)` and end clock ≥ start clock. The
+induction never commutes a write past `FNulledChildren`: outside writes are pushed into the
+subterm's INITIAL bank (`ApplyWritesOutsideCommute`, `MergeOn` + `MergeOnApply`).
+
+**Rung E, file 3 — `NulledReconReadout.dfy` (module `LindenElkNulledReconReadout`, partial):**
+`QChainFresh` (quant-clock-only chain freshness), `QLive` (stamp set + chain fresh, outside looks),
+`StampApply` (= `ApplyPath(FirstEmptyPathR(body), cp, GMReset(gidl, gm))`), `LiveStampsGm` (the
+`filter_capture` quant-threshold traversal with the stamp rule; captures always recursed, look
+bodies never), `GmOfLiveR(re, qm, str, caps, look, quant) := LiveStampsGm(re, .., -1,
+GmOfLive(..))`, `LiveStampsGmNoStamps`/`GmOfLiveRNoStamps` (= `GmOfLive` under no stamps: the
+look-body tower is untouched), the SPEC READOUT `PathFoldR` (R1): `ApplyPath(FirstEmptyPathR.value,
+cp, gm) == (gm - ResetGroupsR) + PathMap(PathGroupsR, cp)` with `RepeatPathEffect` (repeated
+`Reset :: p` at one index = one copy). TODO: the top-level `ReconReadout` theorem
+`GmOfLive(re, FNulledPlus(re, regs).regs) == GmOfLiveR(re, qm, str, regs)` — induction over `re`
+mirroring `FNulledPlus`/`filter_capture`/`LiveStampsGm` in present mode; at a stamped quant reached
+present: `EngineReadout` (via `StampReadout` = the `FNulledPlus` Some-branch) + `PathFoldR`; stale
+stamped quant: hidden both sides; hidden capture: `LiveStampsGmStaleIdentity` (no chain-fresh stamp
+inside, from invariant I1'' below); alt/con: frames.
+
+**Rung D design, REFINED (supersedes the D notes above where they differ):**
+* Liveness is CAPTURE-BLIND (`QChainFresh` reads quant clocks only), so the tree's `Open`/`Close`
+  steps commute with `LiveStampsGm` trivially; the mark `SQC(Q,false)` and the stamp `SQC(A,true)`
+  steps are GroupMap-algebra (`GMReset`/`ApplyPath` commute outside `gidl`, `PathIn`); `CheckOracle`
+  is look-independent as before.
+* Three per-thread invariant conjuncts (to add next to `ThreadTracksGm`):
+  (I1'') `QLive(A) ==> PathPresentQ(re, cc, qc, -1, A)` (the capture ancestors of a live stamp are
+  present — makes the capture-blind readout agree with `filter_capture`; established at the stamp
+  from NestInv's ancestor claims via a `NestInvStampTrueSite` lemma mirroring `NestInvResetSite`;
+  preserved: an Open at C makes no stamp inside C live (they were not `PathPresentQ` before);
+  (I2) `QLive(A) ==> every capture/look/quant clock inside body(A) < qc[A]` (needed by
+  `EngineReadout`'s `RegsStale`; true at the stamp by `ThreadClocksLE`);
+  (I3) POSITIONAL: `qcp[A] >= 0 ==> pc is not in A's post-mark interior` — must be threaded through
+  `NI.NestInvRE` as a `qcp` parameter with the claim `get_idx(qcp, qid) < 0` at BeginLoop / body /
+  EndLoop / end-fork sites of every quant arm (NestInvStamp establishes it at the mark; NestInvAdvance
+  carries it; the true-stamp step exits the block). This is the big mechanical job of rung D.
+* `ThreadTracksGm(re, qm, str, th, gm) := gm == GmOfLiveR(re, qm, str, caps, look, quant)` (+ the
+  three conjuncts); `ActiveRepRE/BlockedRepRE/BestMatchRE` gain `str`; PikeSimRE step lemmas get a
+  NEW `StampStepThreadRE` (`SQC(qid,true)`: VM writes `(Some(cp), clk)`, tree takes `|p|+1` steps via
+  `TR.PeelChainT`, readout = `ApplyPath(p, idx, GMReset(gidl, GmOfLiveR(th)))`).
+* Rung F then is `GmOfLive(FReconstructPlus(th).regs) == GmOfLiveR(th)` = `ReconReadout` at the
+  best thread (+ `GmOfLiveEqGmOf`); the ~55 `FNulledPlusIdentity` sites keep working for look
+  bodies (`NoTrueStamps` → `GmOfLiveRNoStamps`). Watch: reconstruction also SETS look registers
+  for lookarounds on the nulled path (`CheckOracle` in reconstruct code) — the L4/L5 look-capture
+  replay must accept that, or stage 2a adds "no lookaround inside a CIN-greedy plus body".
+
+**Dev loop for the member (until it is in the tree):** `wip/verify.sh` (file 1 against the
+nulled-plus `.doo` snapshot + actions-rep-re/tree-rep-re SOURCES), `wip/verify2.sh FILE` (files 2/3
+against `wip/doo2` = the pike-inv-re closure restaged AFTER the pack rebuilt pike-inv-re — the old
+`.doo` embeds the pre-rung-B `AR.QMap` and will not resolve against the new sources). Keep dev jobs
+at 2 cores while the pack runs.
+
+**Later the same day (07:30):** file 1 is FULLY green (`CompileNfaRepNulledRE`'s alt arm needed the
+`compile` unfolding moved into `CompileAltShape`, the assembly into `AltAssemble` under `hide *`, and
+three more `split_here` between the recursive calls — each assertion was fast in isolation; the batch
+was the problem). Files 2/3 are in the fix loop (register/readout checks ~10 min each at 2 cores).
+PikeInvRE under the enlarged library: `CaptureWriteIdsOutsideRENested` reached 70 GB in ONE z3
+un-split (1.9 GB with `assert {:split_here} true;` per arm — patched in the main tree, uncommitted);
+a second hog exists (pack died again at 2 workers) — being located with `scratchpad/piv/profile.sh`
+(one worker, `--progress Batch`, RSS sampler that kills dafny AND its z3 children above 55 GB; kill the
+children — an orphaned z3 kept 55 GB of the slice after its dafny died).
+**Hypotheses rung F must discharge for `ReconReadout`** (all on the annotated main regex `re` and
+the best thread's registers): `T.TransWf`, `PIV.CapUnique`, `PIV.QuantUnique`, `NRR.LookUnique`
+(NEW predicate: lookaround ids pairwise distinct — needed because writes to the same look register
+would not commute in the con/alt readout; derive it from the annotation like `QuantUnique`),
+`NRC.NoCdnPlusRE`, `NRR.PlusTableOk(re, plus_bcv)` (from `FFullCompilation`'s `f_plus_bc`), `ov ==
+qm.ov`, `NRR.WfRegs`/`NRR.CapValWf` (value set <==> clock set) / `NRR.Covers` / `NRR.LookCapsAbsent` /
+`OnlyCapIdsSet`, and `StampsLocal(qm, re, str, rg, -1)` (= the rung-D invariants I1''/I2 plus
+"stamped ⟹ CIN plus, in range, body in `qm.bodies`").
+
+
+### 2026-09-04 — the PACK OOM ROOT-CAUSED AND FIXED (`FilterResetFrame` family); RUNG D STARTED (`NestStampRE`, the positional stamp invariant)
+
+**The pack gate was NOT failing on a proof — it was failing on solver MEMORY.** `lem pack` reported
+`dafny build exited 143 with no diagnostics` on `linden.equiv-pike-inv-re` (SIGKILL: the 80 G
+`dafny.slice` cap). Profiling one worker with an RSS sampler (`scratchpad/piv/`) pinned it on ONE
+batch of `LindenElkPikeInv.FilterResetFrameNested` (batch 2 of 6) growing past 47 GB, with the
+twin `FilterResetFrame` right behind it — while EVERY assertion of the same lemma verifies in under
+a second under `--isolate-assertions` (166/166 at a 60 s limit). Pure batch/context blow-up under
+z3 4.14, exactly the shape [[dafny-hot-predicate-inline-cost]] describes.
+
+**The fix (commit below): every match arm is its own lemma.** `FilterResetFrameNested` and
+`FilterResetFrame` are now three-line dispatchers over `FRFNestedLook/FRFNestedCap/FRFNestedQuant`
+and `FRFLook/FRFCap/FRFQuant` (`decreases r, 1` on the parent, `decreases r, 0` on the arms, so the
+mutual recursion parent -> arm -> parent(child) is accepted). Result: the whole
+`FilterResetFrame*` family verifies **8/0 in ~10 s at a 1.3 GB peak** (was 47.8 GB and rising).
+`FilterResetFrame` was ALSO given the `hide NR.LookBehindFragmentRE` its `*Nested` twin has — and
+that made `FRFQuant` a 25 GB hog on its own (the un-hidden lemma verifies whole in 7 s), so the hide
+was reverted: hiding a fragment predicate is a fix for `NestedFragmentRE`, not a general rule.
+A REAL hole surfaced once the memory noise was gone: `FilterResetFrameSeqNested` had inherited
+yesterday's `hide NR.NestedFragmentRE` with no matching reveal, so five `*Nested` callee
+preconditions were unprovable — fixed with one
+`assert NR.NestedFragmentRE(r1) && NR.NestedFragmentRE(r2) by { reveal NR.NestedFragmentRE; }`.
+
+**Rung D, piece 1: `NestStampRE` — the positional stamp invariant (new file
+`linden-equiv-nest-inv/src/NestStamp.dfy`, module `LindenElkNestStamp`).**
+The readout `GmOfLiveR` replaces a LIVE stamp's body groups wholesale by the reconstruction chain,
+so a capture write must never land inside a live stamp's body — and that is a POSITIONAL fact, not
+a clock fact (checked: no clock argument can give it; a stale-set stamp inside an enclosing loop is
+killed by `QChainFresh`, but a stamp set on THIS pass is not).
+
+* Design decision: a stamp-only MIRROR of `NI.NestInvRE` rather than a `qcp` parameter threaded
+  through it. `NestInvRE` is the hot predicate whose inline size already forced `NestInvGenRE`/
+  `NestInvCinRE` out of line and whose 440 call sites span five packages; the mirror reads NO
+  register bank, so every capture/look write is the SAME edge for it (one `NestStampAdvanceRE`
+  covers all of them) and the existing 140 lemmas stay untouched and cached.
+* Contents: `NestStampRE` + `NestStampMinRE`/`NestStampOptRE`/`NestStampGenRE`/`NestStampCinRE`
+  (claims placed exactly where `NestInvRE` claims `qc[qid] >= mx`, plus the whole forced-copy chain
+  past its first mark) and `NestStampTopRE`; Inv/Intro for the two named arms; entry lemmas
+  (UNCONDITIONAL — every block-head site is a fork/mark/capture-open, which claim nothing);
+  `StampsWeaken` monotonicity (clearing stamps only strengthens the invariant, which is what makes
+  the clock-mark step nearly free); `StampEdgeRE` (= `NI.StepEdgeRE` widened to the capture OPEN
+  write) + `NestStampAdvanceRE`; `NestStampQuantWriteRE` for BOTH `SetQuantToClock` steps (the mark
+  clears `qid0`, which is what the post-mark sites claim; the true stamp sets it and EXITS the block
+  at `e1 + 3`, and every enclosing claim is about a different quantifier by `QuantUnique`); and the
+  payoff `NestStampOpenSiteRE`: a capture open site is in `CapIds(re)` and outside
+  `CapIds(QidBody(re, A))` for every STAMPED `A`.
+* Layering note (this is why the mirror lives in nest-inv, not pike-inv-re): `nest-inv` DEPENDS on
+  `pike-inv-re`, so `GmOfLiveR` and the `LiveStampsGm`-commutation lemmas must move DOWN into
+  `pike-inv-re` (they use only `AR`/`TR`/`NP`/`filter_capture`, all already in its closure), stated
+  with the abstract hypothesis "the written group is outside every stamped quantifier's body";
+  `pike-sim-re` (above both) discharges that hypothesis with `NestStampOpenSiteRE`. The rung-E
+  definitions `QChainFresh`/`QLive`/`StampApply`/`LiveStampsGm`/`GmOfLiveR` currently live in
+  `linden-equiv-nulled-recon` (which is ABOVE pike-inv-re) and have to be moved down first — that is
+  the next step (D0), after which `ThreadTracksGm` becomes `gm == GmOfLiveR(re, qm, str, ...)`.
