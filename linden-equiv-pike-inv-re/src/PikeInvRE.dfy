@@ -6977,55 +6977,206 @@ module LindenElkPikeInv {
             ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc', M), j) == AI.get_idx(AI.filter_capture(r, A, cc, lc, qc, M), j)
     ensures (exists g: nat :: g in CapIds(QidBody(r, qid)) && CP.start_reg(g) == j)
             ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc', M), j) < 0
-    decreases r
+    decreases r, 2
   {
     hide R.nullable;   // (2026-09-03) the annotation's nullability is never needed here; unfolded, z3 4.14 loops (30+ GB)
+    // (2026-09-04) EVERY arm is its OWN lemma — see `FilterResetFrameNested`.
     match r
-    case Re_lookaround(lid, la, r1) =>
-      assert {:split_here} true;   // (2026-09-03) per-arm batch: z3 4.14 memory blow-up un-split
-      // qid is inside the look body, but the requires restricts to outside-look qids.
-      assert qid in QuantIdsOutsideLooks(r);   // == {} for a lookaround node — contradiction
-      assert false by { hide *; reveal QuantIdsOutsideLooks; }   // (2026-09-03) a bare `assert false` saturates z3 4.14 (16+ GB)
-    case Re_capture(cid, r1) =>
-      assert {:split_here} true;   // (2026-09-03) per-arm batch: z3 4.14 memory blow-up un-split
-      assert qid in QuantIds(r1);
-      assert AI.get_idx(cc, CP.start_reg(cid)) >= M && AI.get_idx(cc, CP.start_reg(cid)) >= 0;  // PathPresentQ
-      assert MxAtQid(r, cc, qc, M, qid) == MxAtQid(r1, cc, qc, M, qid);
-      assert QidBody(r, qid) == QidBody(r1, qid);
-      FilterResetFrame(r1, A, cc, lc, qc, qc', M, qid, clk, j);
-    case Re_quant(nul, qid0, q, r1) =>
-      assert {:split_here} true;   // (2026-09-03) per-arm batch: z3 4.14 memory blow-up un-split
-      if qid0 >= 0 && (qid0 as nat) == qid {
-        // THE qid node. QidBody(r,qid) == r1 == body.
-        assert QidBody(r, qid) == r1;
-        assert MxAtQid(r, cc, qc, M, qid) == M;
-        assert AI.get_idx(qc', qid0) == clk;
-        var oldv := AI.get_idx(qc, qid0);
-        // f' present branch (clk >= M) → filter_capture(r1, A, cc, qc', clk) == filter_all(r1, A).
-        forall cidx: nat | cidx in CapIds(r1)
-          ensures AI.get_idx(cc, CP.start_reg(cidx)) < clk || AI.get_idx(cc, CP.start_reg(cidx)) < 0 {}
-        assert LooksCapUnset(r1, cc);   // == LooksCapUnset(QidBody(r,qid), cc) since QidBody(r,qid)==r1
-        FilterCaptureAllStale(r1, A, cc, lc, qc', clk);
-        // reset: any gl start is cleared by filter_all(r1, A).
-        if exists g: nat :: g in CapIds(r1) && CP.start_reg(g) == j {
-          var g: nat :| g in CapIds(r1) && CP.start_reg(g) == j;
-          FilterAllClearsStart(r1, A, g);
-        }
-        // frame: off gl starts, the old filter agrees with filter_all(r1,A).
-        if forall g: nat :: g in CapIds(r1) ==> CP.start_reg(g) != j {
-          if oldv < M {} else { FilterCaptureVsAll(r1, A, cc, lc, qc, oldv, j); }
-        }
-      } else {
-        assert qid in QuantIds(r1);
-        var qv0 := AI.get_idx(qc, qid0);
-        assert AI.get_idx(qc', qid0) == qv0;             // qid0 ≠ qid
-        assert qv0 >= M;                                  // PathPresentQ
-        assert MxAtQid(r, cc, qc, M, qid) == MxAtQid(r1, cc, qc, qv0, qid);
-        assert QidBody(r, qid) == QidBody(r1, qid);
-        FilterResetFrame(r1, A, cc, lc, qc, qc', qv0, qid, clk, j);
-      }
+    case Re_lookaround(lid, la, r1) => FRFLook(r, lid, la, r1, qid);
+    case Re_capture(cid, r1) => FRFCap(r, cid, r1, A, cc, lc, qc, qc', M, qid, clk, j);
+    case Re_quant(nul, qid0, q, r1) => FRFQuant(r, nul, qid0, q, r1, A, cc, lc, qc, qc', M, qid, clk, j);
     case Re_alt(r1, r2) => FilterResetFrameSeq(r, r1, r2, A, cc, lc, qc, qc', M, qid, clk, j);
     case Re_con(r1, r2) => FilterResetFrameSeq(r, r1, r2, A, cc, lc, qc, qc', M, qid, clk, j);
+  }
+
+  /** `FilterResetFrame`'s `qid`-node reasoning, stated on the BODY ALONE — the
+      `LookBehindFragmentRE` twin of `FRFBodyResetNested`. */
+  lemma FRFBodyReset(r1: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, qc': seq<int>,
+                     M: int, clk: int, j: int, oldv: int)
+    requires NR.LookBehindFragmentRE(r1) && CapUnique(r1)
+    requires clk >= M
+    requires LooksCapUnset(r1, cc)
+    requires forall cid: nat :: cid in CapIds(r1) ==> AI.get_idx(cc, CP.start_reg(cid)) < clk
+    requires forall k :: AI.get_idx(A, k) >= -1
+    requires forall cid: nat :: cid in CapIds(r1) && AI.get_idx(cc, CP.start_reg(cid)) < 0
+                                ==> AI.get_idx(A, CP.start_reg(cid)) < 0
+    ensures AI.filter_capture(r1, A, cc, lc, qc', clk) == AI.filter_all(r1, A)
+    ensures (forall g: nat :: g in CapIds(r1) ==> CP.start_reg(g) != j)
+            ==> AI.get_idx(AI.filter_all(r1, A), j)
+                == AI.get_idx(if oldv < M then AI.filter_all(r1, A)
+                              else AI.filter_capture(r1, A, cc, lc, qc, oldv), j)
+    ensures (exists g: nat :: g in CapIds(r1) && CP.start_reg(g) == j)
+            ==> AI.get_idx(AI.filter_all(r1, A), j) < 0
+  {
+    FilterCaptureAllStale(r1, A, cc, lc, qc', clk);
+    if exists g: nat :: g in CapIds(r1) && CP.start_reg(g) == j {
+      var g: nat :| g in CapIds(r1) && CP.start_reg(g) == j;
+      FilterAllClearsStart(r1, A, g);
+    }
+    if forall g: nat :: g in CapIds(r1) ==> CP.start_reg(g) != j {
+      if oldv >= M { FilterCaptureVsAll(r1, A, cc, lc, qc, oldv, j); }
+    }
+  }
+
+  /** `FilterResetFrame`'s LOOKAROUND arm: vacuous (`qid` is outside looks). */
+  lemma FRFLook(r: R.regex, lid: int, la: R.lookaround, r1: R.regex, qid: nat)
+    requires r == R.Re_lookaround(lid, la, r1)
+    requires qid in QuantIdsOutsideLooks(r)
+    ensures false
+  {
+    assert false by { hide *; reveal QuantIdsOutsideLooks; }
+  }
+
+  /** `FilterResetFrame`'s CAPTURE arm. */
+  lemma FRFCap(r: R.regex, cid: int, r1: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>,
+               qc: seq<int>, qc': seq<int>, M: int, qid: nat, clk: int, j: int)
+    requires r == R.Re_capture(cid, r1)
+    requires NR.LookBehindFragmentRE(r) && CapUnique(r) && QuantUnique(r)
+    requires qid in QuantIds(r)
+    requires qid in QuantIdsOutsideLooks(r)
+    requires clk >= 0
+    requires clk >= MxAtQid(r, cc, qc, M, qid)
+    requires PathPresentQ(r, cc, qc, M, qid)
+    requires forall q0: int :: q0 != qid ==> AI.get_idx(qc', q0) == AI.get_idx(qc, q0)
+    requires AI.get_idx(qc', qid) == clk
+    requires forall sg: nat :: sg in CapIds(QidBody(r, qid)) ==> AI.get_idx(cc, CP.start_reg(sg)) < clk
+    requires LooksCapUnset(QidBody(r, qid), cc)
+    requires forall k :: AI.get_idx(A, k) >= -1
+    requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0 ==> AI.get_idx(A, CP.start_reg(c)) < 0
+    ensures (forall g: nat :: g in CapIds(QidBody(r, qid)) ==> CP.start_reg(g) != j)
+            ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc', M), j) == AI.get_idx(AI.filter_capture(r, A, cc, lc, qc, M), j)
+    ensures (exists g: nat :: g in CapIds(QidBody(r, qid)) && CP.start_reg(g) == j)
+            ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc', M), j) < 0
+    decreases r, 1
+  {
+    hide R.nullable;
+    hide NR.LookBehindFragmentRE;   // (2026-09-05) revealed ONCE for the child: unfolded, the arm needs 900 s+
+    assert NR.LookBehindFragmentRE(r1) by { reveal NR.LookBehindFragmentRE; }
+    assert qid in QuantIds(r1);
+    assert AI.get_idx(cc, CP.start_reg(cid)) >= M && AI.get_idx(cc, CP.start_reg(cid)) >= 0;  // PathPresentQ
+    assert MxAtQid(r, cc, qc, M, qid) == MxAtQid(r1, cc, qc, M, qid);
+    assert QidBody(r, qid) == QidBody(r1, qid);
+    FilterResetFrame(r1, A, cc, lc, qc, qc', M, qid, clk, j);
+    assert AI.filter_capture(r, A, cc, lc, qc', M) == AI.filter_capture(r1, A, cc, lc, qc', M);
+    assert AI.filter_capture(r, A, cc, lc, qc, M) == AI.filter_capture(r1, A, cc, lc, qc, M);
+  }
+
+  /** `FilterResetFrame`'s QUANTIFIER arm. */
+  lemma FRFQuant(r: R.regex, nul: R.nullability, qid0: R.quantid, q: R.counted_quantifier, r1: R.regex,
+                 A: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, qc': seq<int>,
+                 M: int, qid: nat, clk: int, j: int)
+    requires r == R.Re_quant(nul, qid0, q, r1)
+    requires NR.LookBehindFragmentRE(r) && CapUnique(r) && QuantUnique(r)
+    requires qid in QuantIds(r)
+    requires qid in QuantIdsOutsideLooks(r)
+    requires clk >= 0
+    requires clk >= MxAtQid(r, cc, qc, M, qid)
+    requires PathPresentQ(r, cc, qc, M, qid)
+    requires forall q0: int :: q0 != qid ==> AI.get_idx(qc', q0) == AI.get_idx(qc, q0)
+    requires AI.get_idx(qc', qid) == clk
+    requires forall sg: nat :: sg in CapIds(QidBody(r, qid)) ==> AI.get_idx(cc, CP.start_reg(sg)) < clk
+    requires LooksCapUnset(QidBody(r, qid), cc)
+    requires forall k :: AI.get_idx(A, k) >= -1
+    requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0 ==> AI.get_idx(A, CP.start_reg(c)) < 0
+    ensures (forall g: nat :: g in CapIds(QidBody(r, qid)) ==> CP.start_reg(g) != j)
+            ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc', M), j) == AI.get_idx(AI.filter_capture(r, A, cc, lc, qc, M), j)
+    ensures (exists g: nat :: g in CapIds(QidBody(r, qid)) && CP.start_reg(g) == j)
+            ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc', M), j) < 0
+    decreases r, 1
+  {
+    hide R.nullable;
+    hide NR.LookBehindFragmentRE;
+    assert NR.LookBehindFragmentRE(r1) by { reveal NR.LookBehindFragmentRE; }
+    // (2026-09-05) one lemma PER BRANCH: with both branches in one VC this arm
+    // needs 900 s+, although all 100 of its assertions isolate in 25 s total.
+    if qid0 >= 0 && (qid0 as nat) == qid {
+      FRFQuantSame(r, nul, qid0, q, r1, A, cc, lc, qc, qc', M, qid, clk, j);
+    } else {
+      FRFQuantOther(r, nul, qid0, q, r1, A, cc, lc, qc, qc', M, qid, clk, j);
+    }
+  }
+
+  /** `FilterResetFrame`'s quantifier arm, THE `qid` NODE: the reset stamp is
+      fresh, so the body filters to `filter_all`. */
+  lemma FRFQuantSame(r: R.regex, nul: R.nullability, qid0: R.quantid, q: R.counted_quantifier, r1: R.regex,
+                     A: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, qc': seq<int>,
+                     M: int, qid: nat, clk: int, j: int)
+    requires r == R.Re_quant(nul, qid0, q, r1)
+    requires NR.LookBehindFragmentRE(r) && CapUnique(r) && QuantUnique(r)
+    requires qid in QuantIds(r)
+    requires qid in QuantIdsOutsideLooks(r)
+    requires clk >= 0
+    requires clk >= MxAtQid(r, cc, qc, M, qid)
+    requires PathPresentQ(r, cc, qc, M, qid)
+    requires forall q0: int :: q0 != qid ==> AI.get_idx(qc', q0) == AI.get_idx(qc, q0)
+    requires AI.get_idx(qc', qid) == clk
+    requires forall sg: nat :: sg in CapIds(QidBody(r, qid)) ==> AI.get_idx(cc, CP.start_reg(sg)) < clk
+    requires LooksCapUnset(QidBody(r, qid), cc)
+    requires forall k :: AI.get_idx(A, k) >= -1
+    requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0 ==> AI.get_idx(A, CP.start_reg(c)) < 0
+    ensures (forall g: nat :: g in CapIds(QidBody(r, qid)) ==> CP.start_reg(g) != j)
+            ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc', M), j) == AI.get_idx(AI.filter_capture(r, A, cc, lc, qc, M), j)
+    ensures (exists g: nat :: g in CapIds(QidBody(r, qid)) && CP.start_reg(g) == j)
+            ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc', M), j) < 0
+    requires qid0 >= 0 && (qid0 as nat) == qid
+    decreases r, 0
+  {
+    hide R.nullable;
+    hide NR.LookBehindFragmentRE;
+    assert NR.LookBehindFragmentRE(r1) by { reveal NR.LookBehindFragmentRE; }
+    assert QidBody(r, qid) == r1;
+    assert MxAtQid(r, cc, qc, M, qid) == M;
+    assert AI.get_idx(qc', qid0) == clk;
+    var oldv := AI.get_idx(qc, qid0);
+    forall cidx: nat | cidx in CapIds(r1)
+      ensures AI.get_idx(cc, CP.start_reg(cidx)) < clk {}
+    assert LooksCapUnset(r1, cc);
+    // the two unfoldings z3 4.14 will not find on its own
+    var fnew := AI.filter_capture(r, A, cc, lc, qc', M);
+    var fold := AI.filter_capture(r, A, cc, lc, qc, M);
+    assert fnew == AI.filter_capture(r1, A, cc, lc, qc', clk) by { assert clk >= M; }
+    assert fold == (if oldv < M then AI.filter_all(r1, A) else AI.filter_capture(r1, A, cc, lc, qc, oldv));
+    assert {:split_here} true;
+    FRFBodyReset(r1, A, cc, lc, qc, qc', M, clk, j, oldv);
+  }
+
+  /** `FilterResetFrame`'s quantifier arm, an UNRELATED quantifier node: the
+      frame descends into the body with the node's own clock as threshold. */
+  lemma FRFQuantOther(r: R.regex, nul: R.nullability, qid0: R.quantid, q: R.counted_quantifier, r1: R.regex,
+                      A: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, qc': seq<int>,
+                      M: int, qid: nat, clk: int, j: int)
+    requires r == R.Re_quant(nul, qid0, q, r1)
+    requires NR.LookBehindFragmentRE(r) && CapUnique(r) && QuantUnique(r)
+    requires qid in QuantIds(r)
+    requires qid in QuantIdsOutsideLooks(r)
+    requires clk >= 0
+    requires clk >= MxAtQid(r, cc, qc, M, qid)
+    requires PathPresentQ(r, cc, qc, M, qid)
+    requires forall q0: int :: q0 != qid ==> AI.get_idx(qc', q0) == AI.get_idx(qc, q0)
+    requires AI.get_idx(qc', qid) == clk
+    requires forall sg: nat :: sg in CapIds(QidBody(r, qid)) ==> AI.get_idx(cc, CP.start_reg(sg)) < clk
+    requires LooksCapUnset(QidBody(r, qid), cc)
+    requires forall k :: AI.get_idx(A, k) >= -1
+    requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0 ==> AI.get_idx(A, CP.start_reg(c)) < 0
+    ensures (forall g: nat :: g in CapIds(QidBody(r, qid)) ==> CP.start_reg(g) != j)
+            ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc', M), j) == AI.get_idx(AI.filter_capture(r, A, cc, lc, qc, M), j)
+    ensures (exists g: nat :: g in CapIds(QidBody(r, qid)) && CP.start_reg(g) == j)
+            ==> AI.get_idx(AI.filter_capture(r, A, cc, lc, qc', M), j) < 0
+    requires !(qid0 >= 0 && (qid0 as nat) == qid)
+    decreases r, 0
+  {
+    hide R.nullable;
+    hide NR.LookBehindFragmentRE;
+    assert NR.LookBehindFragmentRE(r1) by { reveal NR.LookBehindFragmentRE; }
+    assert qid in QuantIds(r1);
+    var qv0 := AI.get_idx(qc, qid0);
+    assert AI.get_idx(qc', qid0) == qv0;             // qid0 != qid
+    assert qv0 >= M;                                  // PathPresentQ
+    assert MxAtQid(r, cc, qc, M, qid) == MxAtQid(r1, cc, qc, qv0, qid);
+    assert QidBody(r, qid) == QidBody(r1, qid);
+    FilterResetFrame(r1, A, cc, lc, qc, qc', qv0, qid, clk, j);
+    assert AI.filter_capture(r, A, cc, lc, qc', M) == AI.filter_capture(r1, A, cc, lc, qc', qv0);
+    assert AI.filter_capture(r, A, cc, lc, qc, M) == AI.filter_capture(r1, A, cc, lc, qc, qv0);
   }
 
   // Sequential (alt/con) handling for FilterResetFrame. Same filter structure:
