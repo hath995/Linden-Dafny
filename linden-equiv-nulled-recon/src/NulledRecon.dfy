@@ -430,10 +430,18 @@ module LindenElkNulledRecon {
     CompileReconstructNulledLayout(re);
     var n := (|c| - 1) as nat;
     RegionShapeRE(re, c, 0, n);
+    // (2026-09-05) `c`'s DEFINITION is not needed past this point — only the
+    // region shape. Kept in scope, the compiler unfolding plus the `forall`
+    // below is a 900 s batch under z3 4.14.
+    var shape := RegionShape(c, 0, n);
+    assert shape;
+    assert {:split_here} true;
     forall p: nat | p < |c|
       ensures (c[p].Jmp? ==> c[p].jl > p) && (c[p].Fork? ==> c[p].fl1 > p && c[p].fl2 > p)
     {
-      if p < n { assert RegionShape(c, 0, n); }
+      if p < n {
+        assert RegionShape(c, 0, n) by { hide *; assert shape; }
+      }
     }
   }
 
