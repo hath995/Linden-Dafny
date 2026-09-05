@@ -873,8 +873,8 @@ module LindenElkNulledRecon {
               AI.bpc_mem(Bump(s, t).processed, pc, eb) == AI.bpc_mem(s.processed, pc, eb)
     ensures 0 <= t.pc < |c| ==> AI.bpc_mem(Bump(s, t).processed, t.pc, t.exit_allowed)
     ensures AI.unprocessed(Bump(s, t).processed) <= AI.unprocessed(s.processed)
-    ensures 0 <= t.pc < |c| && !AI.bpc_mem(s.processed, t.pc, t.exit_allowed)
-              ==> AI.unprocessed(Bump(s, t).processed) < AI.unprocessed(s.processed)
+    ensures (0 <= t.pc < |c| && !AI.bpc_mem(s.processed, t.pc, t.exit_allowed))
+            ==> AI.unprocessed(Bump(s, t).processed) < AI.unprocessed(s.processed)
   {
     AI.UnprocessedAdd(s.processed, t.pc, t.exit_allowed);
   }
