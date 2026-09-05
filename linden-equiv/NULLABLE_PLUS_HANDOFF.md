@@ -1106,3 +1106,19 @@ the sweep found both perf and CORRECTNESS problems:
   dropping both requires gives 100/0. The member had been "green" on a stale artifact since 09-02 —
   the same class of gap as [[linden-per-symbol-wf-gap]], one level up: a CACHED MEMBER proves nothing
   about the sources it was built from once a dependency's definitions change.
+
+**2026-09-06 — main-theorem's six gate time outs, all fixed** (commits `4fb9c84`, `1677a5d`,
+`900f1e2`, `3ebbebe`). 645 verified / 0 errors / 6 time outs -> all green; peak z3 8.3 GB, so these
+were SLOW QUERIES, not memory hogs. Three causes:
+* **duplication**: `FFullCompilationFacts` and `MainExtraction` were verbatim copies of siblings with
+  strictly weaker hypotheses (`*Nested` twin; `MainExtractionFromClosed`, 82 of 84 statements) —
+  delegate, 900 s -> 0.29 s, ~80 lines deleted. Dropping the register half also made
+  `NegLooksLookFreeRE` unnecessary in `FromClosed`, which is what allowed the delegation.
+* **assumed context**: NEW `CapArrayFromRegs` holds the 76-line register/filter half with NO
+  tree/spec machinery in its contract — the same statements were >900 s inside
+  `MainExtractionFromClosed` and are under 100 s there. `hide` cannot fix this; only a narrower
+  contract can.
+* **matching loop**: `R.annotate`/`R.max_group`/`R.max_lookaround`/`R.max_quant` in the hypotheses —
+  hiding them took `assert CM.ThreadRegsWf(thread, ncap, ...)`, a VERBATIM restatement of the
+  lemma's own `requires`, from >900 s to instant.
+* the three `FLookLoop*` giants needed none of that — 188 per-step `{:split_here}`, 225/0.
