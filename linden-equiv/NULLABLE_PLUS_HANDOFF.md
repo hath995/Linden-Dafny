@@ -1087,3 +1087,22 @@ main-theorem, ...): they have all been passing as "cached, unchanged" under 4.14
 rebuilt for the first time now. The tool is the profile script `scratchpad/ni/full.sh` (one worker,
 `--progress Batch`, an RSS sampler that names any symbol crossing 30 GB and kills only that worker so
 the run continues) — one pass enumerates the whole file's hogs.
+
+**2026-09-05, what the cache was hiding (commits `24e81b1`, `e4c1c40`, `ef798dd`).** Every member
+above pike-inv-re is being rebuilt for the first time since the z3 4.14 switch AND since rung C, and
+the sweep found both perf and CORRECTNESS problems:
+* `oracle-entry` — a "hang" (4 h elapsed, 35 s CPU, z3 child idle) that was really a 56.8 GB z3
+  worker OOM-killed by the slice, leaving dafny blocked on a dead solver. `OracleOkFromColumns`'s
+  doubly-nested `forall` is now `OracleOkAtLid` (one position, one lookaround) + `OracleOkAtCp`
+  (one position): 47/0 in under 100 s. **An OOM inside the cgroup presents as a HANG, not a kill** —
+  check CPU TIME of dafny AND its z3 children, not just that the process exists
+  (`scratchpad/pack/watchdog.sh`).
+* `pike-sim-re` — `PreserveForkCase{,Nested}` timed out at 900 s in the gate while passing standalone
+  in under 100 s (the second worker tips it); split prefix / forward arm / backward arm. 155/0.
+* `tree-mirror-lk` — **TEN REAL ERRORS, not timeouts.** Rung C removed the §2.5b interim quantifier
+  conjunct from `EL.PikeLkRegexRec`, but `QuantMinHelper` and `QuantStackInvLk` still REQUIRED
+  `min > 1 && delta.Inf? && greedy ==> NonNullableL(r1)`, which no caller can supply any more. The
+  bodies never needed it (`PikeLkRegexRec(q1)` follows from `r1`'s under the flipped definition);
+  dropping both requires gives 100/0. The member had been "green" on a stale artifact since 09-02 —
+  the same class of gap as [[linden-per-symbol-wf-gap]], one level up: a CACHED MEMBER proves nothing
+  about the sources it was built from once a dependency's definitions change.
