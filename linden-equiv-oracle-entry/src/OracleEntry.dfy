@@ -338,6 +338,68 @@ module LindenElkOracleEntry {
   /** THE discharge: with the campaign's oracle theorem instantiated at every
       row and every column, the entry construction's oracle hypothesis holds
       from the initial input. */
+  /** One position, one lookaround: the oracle bit at `cp` for `lid` is the
+      body's own directional walk. Extracted (2026-09-05) — as the inner body of
+      `OracleOkFromColumns`'s doubly-nested `forall` it made ONE VC whose z3
+      worker reached 56 GB, which the 80 G slice then OOM-killed, leaving dafny
+      waiting on a dead solver (the "wedge"). */
+  lemma OracleOkAtLid(rer: LW.RegExpRecord, re: R.regex, str: string, qm: AR.QMap, cp: nat,
+                      lid: int, lk: L.Lookaround, r1: L.Regex)
+    requires !rer.ignoreCase && !rer.multiline
+    requires T.TransWf(re) && NR.LookBehindFragmentRE(re)
+    requires LTB.LookUnique(re) && PIV.QuantUnique(re)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x
+    requires qm.looks == LmOf(re)
+    requires qm.ov == AI.FBuildOracle(CP.FFullCompilation(re), str)
+    requires 0 <= cp <= |str|
+    requires lid in qm.looks && qm.looks[lid] == (lk, r1)
+    ensures LOr.view_get_oracle(qm.ov, cp, lid)
+        <==> LT.TreeRes(FU.ComputeTr(rer, [LS.Areg(r1)], T.InputAt(str, cp), LG.Empty, L.LkDir(lk)),
+                        LG.Empty, T.InputAt(str, cp), L.LkDir(lk)).Some?
+  {
+    LTB.FFullCompilationLookOk(re);
+    var fc := CP.FFullCompilation(re);
+    var la, body := LmOfInv(re, fc, lid);
+    assert lk == T.TrLookaround(la) && r1 == T.Translate(body);
+    assert 1 <= lid;                                // ids start at 1 after annotate
+    LTB.LookIdsLeMax(re);
+    // each flavour has its own column spec, and `LkDir` picks the matching
+    // walk direction -- which is exactly why `OracleOkAt` is stated in
+    // terms of LkDir rather than a fixed direction
+    if la.Lookbehind? || la.NegLookbehind? {
+      assert L.LkDir(lk) == WP.Backward;
+      OS.OracleColumnSpec(rer, re, str, lid, la, body, cp, LG.Empty);
+    } else {
+      assert L.LkDir(lk) == WP.Forward;
+      OS.OracleColumnSpecLookahead(rer, re, str, lid, la, body, cp, LG.Empty);
+    }
+  }
+
+  /** One position: `OracleOkAt` at `InputAt(str, cp)`. */
+  lemma OracleOkAtCp(rer: LW.RegExpRecord, re: R.regex, str: string, qm: AR.QMap, cp: nat)
+    requires !rer.ignoreCase && !rer.multiline
+    requires T.TransWf(re) && NR.LookBehindFragmentRE(re)
+    requires LTB.LookUnique(re) && PIV.QuantUnique(re)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x
+    requires qm.looks == LmOf(re)
+    requires qm.ov == AI.FBuildOracle(CP.FFullCompilation(re), str)
+    requires 0 <= cp <= |str|
+    ensures LL.OracleOkAt(rer, qm, T.InputAt(str, cp))
+  {
+    var inp := T.InputAt(str, cp);
+    T.ReverseProps(str[..cp]);
+    InputAtFacts(str, cp);
+    assert TR.CpOf(inp) == cp;
+    forall lid: int, lk: L.Lookaround, r1: L.Regex
+      | lid in qm.looks && qm.looks[lid] == (lk, r1)
+      ensures LOr.view_get_oracle(qm.ov, TR.CpOf(inp), lid)
+          <==> LT.TreeRes(FU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk)),
+                          LG.Empty, inp, L.LkDir(lk)).Some?
+    {
+      OracleOkAtLid(rer, re, str, qm, cp, lid, lk, r1);
+    }
+  }
+
   lemma OracleOkFromColumns(rer: LW.RegExpRecord, re: R.regex, str: string, qm: AR.QMap)
     requires !rer.ignoreCase && !rer.multiline
     requires T.TransWf(re) && NR.LookBehindFragmentRE(re)
@@ -347,8 +409,6 @@ module LindenElkOracleEntry {
     requires qm.ov == AI.FBuildOracle(CP.FFullCompilation(re), str)
     ensures LL.OracleOkSuffix(rer, qm, LC.InitInput(str))
   {
-    LTB.FFullCompilationLookOk(re);
-    var fc := CP.FFullCompilation(re);
     InitInputAt(str);
     forall inp: LC.Input | inp == LC.InitInput(str) || SSx.IsStrictSuffix(inp, LC.InitInput(str), WP.Forward)
       ensures LL.OracleOkAt(rer, qm, inp)
@@ -363,29 +423,7 @@ module LindenElkOracleEntry {
         cp := m;
       }
       assert inp == T.InputAt(str, cp) && cp <= |str|;
-      T.ReverseProps(str[..cp]);
-      assert TR.CpOf(inp) == cp;
-      forall lid: int, lk: L.Lookaround, r1: L.Regex
-        | lid in qm.looks && qm.looks[lid] == (lk, r1)
-        ensures LOr.view_get_oracle(qm.ov, TR.CpOf(inp), lid)
-            <==> LT.TreeRes(FU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk)),
-                            LG.Empty, inp, L.LkDir(lk)).Some?
-      {
-        var la, body := LmOfInv(re, fc, lid);
-        assert lk == T.TrLookaround(la) && r1 == T.Translate(body);
-        assert 1 <= lid;                              // ids start at 1 after annotate
-        LTB.LookIdsLeMax(re);
-        // each flavour has its own column spec, and `LkDir` picks the matching
-        // walk direction -- which is exactly why `OracleOkAt` is stated in
-        // terms of LkDir rather than a fixed direction
-        if la.Lookbehind? || la.NegLookbehind? {
-          assert L.LkDir(lk) == WP.Backward;
-          OS.OracleColumnSpec(rer, re, str, lid, la, body, cp, LG.Empty);
-        } else {
-          assert L.LkDir(lk) == WP.Forward;
-          OS.OracleColumnSpecLookahead(rer, re, str, lid, la, body, cp, LG.Empty);
-        }
-      }
+      OracleOkAtCp(rer, re, str, qm, cp);
     }
   }
 
