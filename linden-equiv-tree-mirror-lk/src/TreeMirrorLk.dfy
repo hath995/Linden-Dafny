@@ -943,7 +943,9 @@ module LindenElkTreeMirrorLk {
   lemma QuantMinHelper(r1: L.Regex, q1: L.Regex, cont: LS.Actions, rer: LW.RegExpRecord, str: string,
                        greedy: bool, min: nat, delta: LN.NoI)
     requires min > 0 && q1 == L.Quantified(greedy, min - 1, delta, r1)
-    requires min > 1 && delta.Inf? && greedy ==> NUL.NonNullableL(r1)   // §2.5b interim
+    // (2026-09-05) the §2.5b interim conjunct is GONE from `PikeLkRegexRec`
+    // (rung C flipped it), so callers can no longer supply it — and the body
+    // does not need it: `PikeLkRegexRec(q1)` now follows from `r1`'s alone.
     requires EL.PikeLkRegexRec(r1) && RegLookGatesMirror(r1, rer, str)
     requires EL.PikeLkActionsRec(cont) && ActsLookGatesMirror(cont, rer, str)
     ensures EL.PikeLkActionsRec([LS.Areg(r1), LS.Areg(q1)] + cont)
@@ -1582,7 +1584,9 @@ module LindenElkTreeMirrorLk {
 
   lemma QuantStackInvLk(greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex, cont: LS.Actions)
     requires min > 0 && StackInvLk(cont)
-    requires min > 1 && delta.Inf? && greedy ==> NUL.NonNullableL(r1)   // §2.5b interim
+    // (2026-09-05) the §2.5b interim conjunct is GONE from `PikeLkRegexRec`
+    // (rung C flipped it), so callers can no longer supply it — and the body
+    // does not need it: `PikeLkRegexRec(q1)` now follows from `r1`'s alone.
     requires EL.PikeLkRegexRec(r1) && CD.NoDupG(L.DefGroups(r1))
     requires forall g :: g in L.DefGroups(r1) ==> g !in CD.ClosesActs(cont)
     ensures StackInvLk([LS.Areg(r1), LS.Areg(L.Quantified(greedy, min - 1, delta, r1))] + cont)
