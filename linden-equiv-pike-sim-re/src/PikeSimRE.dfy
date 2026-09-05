@@ -1597,8 +1597,11 @@ module LindenElkPikeSim {
     CM.ThreadClocksLEMono(th, vms.clock, s1.clock);
     BBTwoHead(s1, th1, th2, ncap, nlook, nquant);
 
+    assert {:split_here} true;   // (2026-09-05) prefix / arm / arm: one VC for the
+    // whole lemma timed out at 900 s in the gate (it passes standalone — borderline)
     if x as nat > pc && y as nat > pc {
       // ---- a FORWARD fork: an alternation / optional-layer decision -------
+      assert {:split_here} true;
       assert t.Choice?;
       assert TT.TreeThreadRE(rer, qm, code, inp, t.t1, x as nat, ea);
       assert TT.TreeThreadRE(rer, qm, code, inp, t.t2, y as nat, ea);
@@ -1643,6 +1646,7 @@ module LindenElkPikeSim {
       assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
     } else {
       // ---- the do-while's BACKWARD fork -----------------------------------
+      assert {:split_here} true;
       assert AR.BackForkAt(code, pc);
       // the invariant pins the flag: a false-thread never sits at a Cold pc
       assert ea by {
@@ -4978,8 +4982,11 @@ module LindenElkPikeSim {
     CM.ThreadClocksLEMono(th, vms.clock, s1.clock);
     BBTwoHead(s1, th1, th2, ncap, nlook, nquant);
 
+    assert {:split_here} true;   // (2026-09-05) prefix / arm / arm: one VC for the
+    // whole lemma timed out at 900 s in the gate (it passes standalone — borderline)
     if x as nat > pc && y as nat > pc {
       // ---- a FORWARD fork: an alternation / optional-layer decision -------
+      assert {:split_here} true;
       assert t.Choice?;
       assert TT.TreeThreadRE(rer, qm, code, inp, t.t1, x as nat, ea);
       assert TT.TreeThreadRE(rer, qm, code, inp, t.t2, y as nat, ea);
@@ -5024,6 +5031,7 @@ module LindenElkPikeSim {
       assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
     } else {
       // ---- the do-while's BACKWARD fork -----------------------------------
+      assert {:split_here} true;
       assert AR.BackForkAt(code, pc);
       // the invariant pins the flag: a false-thread never sits at a Cold pc
       assert ea by {
