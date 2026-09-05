@@ -1070,3 +1070,20 @@ obligations, 5m 27s** (it had not packed since the z3 4.14 switch).
 the CHILD alone. `--isolate-assertions` is the diagnostic that tells you which of these you need (all
 assertions fast => batching), never the fix. Do NOT run dev verification while `lem pack` runs: they
 share the 80 G slice and the loser is SIGTERM'd (RC=143).
+
+**2026-09-05, the layer above: `nest-inv` had to be made 4.14-robust too (commits `bf7944b`,
+`ccdc65e`).** Changing `pike-inv-re` invalidates the cached artifact of EVERY member above it, so
+`nest-inv` was rebuilt for the first time since the z3 4.14 switch — and OOMed the slice twice, on
+two different symbols (`NestInvOpenSite`, then `NestInvStamp` at 31.8 GB). Rather than chase them one
+11-minute pack run at a time, `{:split_here}` is now on ALL 352 match arms of the file's LEMMAS
+(predicates untouched — it is a statement, not an expression). Whole file at one worker: **611
+verified, 0 errors, 37 min, peak z3 18.5 GB**, nothing above 30 GB; the member packs in 20m 22s
+(241 obligations). `NestStamp.dfy` moved to its own member `linden-equiv-nest-stamp` (per-file
+layout, 64 members) — note this does NOT keep `nest-inv` cached, since the invalidation comes from
+pike-inv-re, but it keeps the new work isolated.
+
+**Expect the same for every member above pike-inv-re** (pike-sim-re, the lift-sim band,
+main-theorem, ...): they have all been passing as "cached, unchanged" under 4.14 and are being
+rebuilt for the first time now. The tool is the profile script `scratchpad/ni/full.sh` (one worker,
+`--progress Batch`, an RSS sampler that names any symbol crossing 30 GB and kills only that worker so
+the run continues) — one pass enumerates the whole file's hogs.
