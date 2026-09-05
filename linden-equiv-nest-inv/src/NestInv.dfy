@@ -104,8 +104,11 @@ module LindenElkNestInv {
   {
     match re
     case Re_empty =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_character(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
         && NR.NfaRepRE(r1, code, start + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.Jmp(e))
@@ -117,11 +120,13 @@ module LindenElkNestInv {
       assert e1 == e1';               // pinned by the Fork instruction value
       assert e == e';                 // pinned by the Jmp instruction value
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.NfaRepRE(r1, code, start, e1) && NR.NfaRepRE(r2, code, e1, e);
       var e1': nat :| NR.NfaRepRE(r1, code, start, e1') && NR.NfaRepRE(r2, code, e1', e');
       NfaRepDetermRE(r1, code, start, e1, e1');
       NfaRepDetermRE(r2, code, e1, e, e');
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if q.min == 0 && q.max == None {
         var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
           && NR.NfaRepRE(r1, code, start + 3, e1) && e == e1 + 2;
@@ -152,11 +157,14 @@ module LindenElkNestInv {
         NfaRepDetermRE(r1, code, em + 1, be, be');
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.NfaRepRE(r1, code, start + 1, e1) && e == e1 + 1;
       var e1': nat :| NR.NfaRepRE(r1, code, start + 1, e1') && e' == e1' + 1;
       NfaRepDetermRE(r1, code, start + 1, e1, e1');
     case Re_lookaround(_, _, _) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_anchor(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
   }
 
   // =========================================================================
@@ -615,14 +623,18 @@ module LindenElkNestInv {
   {
     match re
     case Re_empty =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_character(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.Fork(pcb + 1, e1 + 1))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.Jmp(pce))
         && NR.NfaRepRE(r2, code, e1 + 1, pce);
       assert AllStaleRE(r1, cc, mx) && AllStaleRE(r2, cc, mx);
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.NfaRepRE(r1, code, pcb, e1) && NR.NfaRepRE(r2, code, e1, pce);
       if pcb < e1 {
         NestEntryRE(r1, code, pcb, e1, cc, qc, mx);
@@ -634,6 +646,7 @@ module LindenElkNestInv {
         NestEntryRE(r2, code, e1, pce, cc, qc, mx);
       }
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if q.min == 0 && q.max == None {
         // entry pc == pcb is the fork: no claims.
       } else if q.max.Some? {
@@ -684,6 +697,7 @@ module LindenElkNestInv {
         }
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
@@ -697,7 +711,9 @@ module LindenElkNestInv {
       }
       assert AllStaleRE(r1, cc, mx);
     case Re_lookaround(_, _, _) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_anchor(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
   }
 
   // =========================================================================
@@ -890,13 +906,16 @@ module LindenElkNestInv {
   {
     match re
     case Re_empty =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert {:split_here} true;   // (2026-09-05) per-arm batch: the un-split body is a 35 GB z3 hog under 4.14
       // pcb == pce contradicts pcb <= pc < pce.
     case Re_character(ch) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert {:split_here} true;   // (2026-09-05) per-arm batch: the un-split body is a 35 GB z3 hog under 4.14
       assert pc == pcb;
       assert false;                                 // Consume ≠ SetRegisterToCP
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert {:split_here} true;   // (2026-09-05) per-arm batch: the un-split body is a 35 GB z3 hog under 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.Fork(pcb + 1, e1 + 1))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
@@ -929,6 +948,7 @@ module LindenElkNestInv {
         assert PIV.BodyOf(re, gid) == PIV.BodyOf(r2, gid);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert {:split_here} true;   // (2026-09-05) per-arm batch: the un-split body is a 35 GB z3 hog under 4.14
       var e1: nat :| NR.NfaRepRE(r1, code, pcb, e1) && NR.NfaRepRE(r2, code, e1, pce)
         && if pc < e1 then NestInvRE(r1, code, pcb, e1, pc, cc, qc, mx) && AllStaleRE(r2, cc, mx)
@@ -951,6 +971,7 @@ module LindenElkNestInv {
         assert PIV.BodyOf(re, gid) == PIV.BodyOf(r2, gid);
       }
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert {:split_here} true;   // (2026-09-05) per-arm batch: the un-split body is a 35 GB z3 hog under 4.14
       if q.min == 0 && q.max == None {
         var e1: nat :| NR.GetPcRE(code, pcb) == Some(if q.greedy then RB.Fork(pcb + 1, e1 + 2) else RB.Fork(e1 + 2, pcb + 1))
@@ -1060,6 +1081,7 @@ module LindenElkNestInv {
         assert PIV.BodyOf(re, gid) == PIV.BodyOf(r1, gid);
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert {:split_here} true;   // (2026-09-05) per-arm batch: the un-split body is a 35 GB z3 hog under 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
@@ -1098,8 +1120,10 @@ module LindenElkNestInv {
         // ancestor clause of PathPresent: own start fresh (>= 0, >= mx).
       }
     case Re_lookaround(_, _, _) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert {:split_here} true;   // (2026-09-05) per-arm batch: the un-split body is a 35 GB z3 hog under 4.14
     case Re_anchor(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert {:split_here} true;   // (2026-09-05) per-arm batch: the un-split body is a 35 GB z3 hog under 4.14
   }
 
@@ -1272,10 +1296,13 @@ module LindenElkNestInv {
   {
     match re
     case Re_empty =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_character(ch) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert pc == pcb && pce == pcb + 1;
       assert pc' == pc + 1;                          // Consume
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.Fork(pcb + 1, e1 + 1))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.Jmp(pce))
@@ -1324,6 +1351,7 @@ module LindenElkNestInv {
         }
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.NfaRepRE(r1, code, pcb, e1) && NR.NfaRepRE(r2, code, e1, pce)
         && if pc < e1 then NestInvRE(r1, code, pcb, e1, pc, cc, qc, mx) && AllStaleRE(r2, cc, mx)
            else NestInvRE(r2, code, e1, pce, pc, cc, qc, mx);
@@ -1349,6 +1377,7 @@ module LindenElkNestInv {
         }
       }
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if q.max.Some? {
         var mn := q.min as nat;
         var kx := (q.max.value - q.min) as nat;
@@ -1580,6 +1609,7 @@ module LindenElkNestInv {
         assert NestInvRE(re, code, pcb, pce, pc', cc, qc, mx);
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
@@ -1609,7 +1639,9 @@ module LindenElkNestInv {
         }
       }
     case Re_lookaround(_, _, _) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_anchor(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
   }
 
   // =========================================================================
@@ -1704,6 +1736,7 @@ module LindenElkNestInv {
     match re
     case Re_empty => case Re_character(_) =>
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.Fork(pcb + 1, e1 + 1))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.Jmp(pce))
@@ -1721,6 +1754,7 @@ module LindenElkNestInv {
         NestInvFrameOdd(r2, code, e1 + 1, pce, pc, cc, cc', qc, mx);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.NfaRepRE(r1, code, pcb, e1) && NR.NfaRepRE(r2, code, e1, pce)
         && if pc < e1 then NestInvRE(r1, code, pcb, e1, pc, cc, qc, mx) && AllStaleRE(r2, cc, mx)
            else NestInvRE(r2, code, e1, pce, pc, cc, qc, mx);
@@ -1730,6 +1764,7 @@ module LindenElkNestInv {
         NestInvFrameOdd(r2, code, e1, pce, pc, cc, cc', qc, mx);
       }
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if q.max.Some? {
         var mn := q.min as nat;
         var kx := (q.max.value - q.min) as nat;
@@ -1817,6 +1852,7 @@ module LindenElkNestInv {
         NestInvFrameOdd(r1, code, pcb + 3, e1, pc, cc, cc', qc, AI.get_idx(qc, qid));
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
@@ -1833,7 +1869,9 @@ module LindenElkNestInv {
         NestInvFrameOdd(r1, code, pcb + 1, e1, pc, cc, cc', qc, mx);
       }
     case Re_lookaround(_, _, _) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_anchor(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
   }
 
   // The STAMP write: at a quant's SetQuantToClock site, writing a strictly
@@ -2012,10 +2050,13 @@ module LindenElkNestInv {
   {
     match re
     case Re_empty =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_character(ch) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert pc == pcb;
       assert false;
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.Fork(pcb + 1, e1 + 1))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.Jmp(pce))
@@ -2044,6 +2085,7 @@ module LindenElkNestInv {
         }
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.NfaRepRE(r1, code, pcb, e1) && NR.NfaRepRE(r2, code, e1, pce)
         && if pc < e1 then NestInvRE(r1, code, pcb, e1, pc, cc, qc, mx) && AllStaleRE(r2, cc, mx)
            else NestInvRE(r2, code, e1, pce, pc, cc, qc, mx);
@@ -2069,6 +2111,7 @@ module LindenElkNestInv {
         }
       }
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if q.max.Some? {
         var mn := q.min as nat;
         var kx := (q.max.value - q.min) as nat;
@@ -2281,6 +2324,7 @@ module LindenElkNestInv {
         }
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
@@ -2305,7 +2349,9 @@ module LindenElkNestInv {
         }
       }
     case Re_lookaround(_, _, _) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_anchor(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
   }
 
   // The OPEN write: at a capture's open site, writing a strictly dominating
@@ -2429,10 +2475,13 @@ module LindenElkNestInv {
     assert CP.start_reg(gid) == sreg;
     match re
     case Re_empty =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_character(ch) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert pc == pcb;
       assert false;
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.Fork(pcb + 1, e1 + 1))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.Jmp(pce))
@@ -2464,6 +2513,7 @@ module LindenElkNestInv {
         assert NestInvRE(re, code, pcb, pce, pc + 1, cc', qc, mx);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.NfaRepRE(r1, code, pcb, e1) && NR.NfaRepRE(r2, code, e1, pce)
         && if pc < e1 then NestInvRE(r1, code, pcb, e1, pc, cc, qc, mx) && AllStaleRE(r2, cc, mx)
            else NestInvRE(r2, code, e1, pce, pc, cc, qc, mx);
@@ -2487,6 +2537,7 @@ module LindenElkNestInv {
         assert NestInvRE(re, code, pcb, pce, pc + 1, cc', qc, mx);
       }
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if q.max.Some? {
         var mn := q.min as nat;
         var kx := (q.max.value - q.min) as nat;
@@ -2597,6 +2648,7 @@ module LindenElkNestInv {
         assert NestInvRE(re, code, pcb, pce, pc + 1, cc', qc, mx);
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
@@ -2651,7 +2703,9 @@ module LindenElkNestInv {
         assert NestInvRE(re, code, pcb, pce, pc + 1, cc', qc, mx);
       }
     case Re_lookaround(_, _, _) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_anchor(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
   }
 
   // =========================================================================
@@ -2740,8 +2794,11 @@ module LindenElkNestInv {
   {
     match re
     case Re_empty =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_character(ch) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.Fork(pcb + 1, e1 + 1))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.Jmp(pce))
@@ -2755,6 +2812,7 @@ module LindenElkNestInv {
         CodeShapeAt(r2, code, e1 + 1, pce, pc);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.NfaRepRE(r1, code, pcb, e1) && NR.NfaRepRE(r2, code, e1, pce);
       NR.NfaRepIncrRE(r1, code, pcb, e1);
       NR.NfaRepIncrRE(r2, code, e1, pce);
@@ -2764,6 +2822,7 @@ module LindenElkNestInv {
         CodeShapeAt(r2, code, e1, pce, pc);
       }
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert qid >= 0;                                  // QuantUnique
       if q.max.Some? {
         var em := NR.NfaRepREQuantInv(nul, qid, q, r1, code, pcb, pce);
@@ -2848,6 +2907,7 @@ module LindenElkNestInv {
         CodeShapeAt(r1, code, pcb + 3, e1, pc);
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
@@ -2863,7 +2923,9 @@ module LindenElkNestInv {
         CodeShapeAt(r1, code, pcb + 1, e1, pc);
       }
     case Re_lookaround(_, _, _) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_anchor(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
   }
 
   // =========================================================================
@@ -2940,8 +3002,11 @@ module LindenElkNestInv {
   {
     match re
     case Re_empty =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_character(ch) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.Fork(pcb + 1, e1 + 1))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.Jmp(pce))
@@ -2955,6 +3020,7 @@ module LindenElkNestInv {
         StampFalseAt(r2, code, e1 + 1, pce, pc);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.NfaRepRE(r1, code, pcb, e1) && NR.NfaRepRE(r2, code, e1, pce);
       NR.NfaRepIncrRE(r1, code, pcb, e1);
       NR.NfaRepIncrRE(r2, code, e1, pce);
@@ -2964,6 +3030,7 @@ module LindenElkNestInv {
         StampFalseAt(r2, code, e1, pce, pc);
       }
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if q.max.Some? {
         var em := NR.NfaRepREQuantInv(nul, qid, q, r1, code, pcb, pce);
         var mn := q.min as nat;
@@ -3015,6 +3082,7 @@ module LindenElkNestInv {
         StampFalseAt(r1, code, em + 1, e1, pc);
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
@@ -3024,7 +3092,9 @@ module LindenElkNestInv {
         StampFalseAt(r1, code, pcb + 1, e1, pc);
       }
     case Re_lookaround(_, _, _) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_anchor(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
   }
 
   lemma ForksForwardAtMin(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat)
@@ -3088,8 +3158,11 @@ module LindenElkNestInv {
   {
     match re
     case Re_empty =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_character(ch) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.Fork(pcb + 1, e1 + 1))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.Jmp(pce))
@@ -3103,6 +3176,7 @@ module LindenElkNestInv {
         ForksForwardAt(r2, code, e1 + 1, pce, pc);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.NfaRepRE(r1, code, pcb, e1) && NR.NfaRepRE(r2, code, e1, pce);
       NR.NfaRepIncrRE(r1, code, pcb, e1);
       NR.NfaRepIncrRE(r2, code, e1, pce);
@@ -3112,6 +3186,7 @@ module LindenElkNestInv {
         ForksForwardAt(r2, code, e1, pce, pc);
       }
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if q.max.Some? {
         var em := NR.NfaRepREQuantInv(nul, qid, q, r1, code, pcb, pce);
         var mn := q.min as nat;
@@ -3140,6 +3215,7 @@ module LindenElkNestInv {
         ForksForwardAt(r1, code, pcb + 3, e1, pc);
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
@@ -3151,7 +3227,9 @@ module LindenElkNestInv {
         ForksForwardAt(r1, code, pcb + 1, e1, pc);
       }
     case Re_lookaround(_, _, _) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_anchor(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
   }
 
   // =========================================================================
@@ -3209,15 +3287,19 @@ module LindenElkNestInv {
   {
     match re
     case Re_empty =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert pc1 == pc2;
     case Re_character(ch) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert !AR.BackForkAt(c, pc1);
       assert false;
     case Re_anchor(a) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert !AR.BackForkAt(c, pc1);
       assert ColdF(c, pc1 + 1, n - 1);
       ColdFMono(c, pc2, n - 1, n);
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(c, pc1) == Some(RB.Fork(pc1 + 1, e1 + 1))
         && NR.NfaRepRE(r1, c, pc1 + 1, e1)
         && NR.GetPcRE(c, e1) == Some(RB.Jmp(pc2))
@@ -3237,10 +3319,12 @@ module LindenElkNestInv {
         ColdFMono(c, pc2, n - 1, n);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.NfaRepRE(r1, c, pc1, e1) && NR.NfaRepRE(r2, c, e1, pc2);
       ColdPropagatesF(r1, c, pc1, e1, n);
       ColdPropagatesF(r2, c, e1, pc2, n);
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
         && NR.NfaRepRE(r1, c, pc1 + 1, e1)
         && NR.GetPcRE(c, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
@@ -3252,12 +3336,14 @@ module LindenElkNestInv {
       assert ColdF(c, pc2, n - 2);
       ColdFMono(c, pc2, n - 2, n);
     case Re_lookaround(lid, la, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       // one zero-width gate instruction: ColdF crosses it exactly as it
       // crosses an anchor (the body lives in the per-lid tables, not here)
       assert !AR.BackForkAt(c, pc1);
       assert ColdF(c, pc1 + 1, n - 1);
       ColdFMono(c, pc2, n - 1, n);
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if q.min == 0 && q.max == None {
         // the star: the body is a Cold sink (EndLoop has no edge)
         var e1: nat :| NR.GetPcRE(c, pc1) == Some(if q.greedy then RB.Fork(pc1 + 1, e1 + 2) else RB.Fork(e1 + 2, pc1 + 1))
@@ -3409,10 +3495,13 @@ module LindenElkNestInv {
     match re
     case Re_empty =>            // nullable: vacuous
     case Re_character(ch) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert !AR.BackForkAt(c, pc1);
     case Re_anchor(a) =>        // CDN: vacuous
     case Re_lookaround(_, _, _) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       // null_or: NonNullable needs both branches NonNullable
       var e1: nat :| NR.GetPcRE(c, pc1) == Some(RB.Fork(pc1 + 1, e1 + 1))
         && NR.NfaRepRE(r1, c, pc1 + 1, e1)
@@ -3427,6 +3516,7 @@ module LindenElkNestInv {
         ColdNNF(r2, c, e1 + 1, pc2, n - 1);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       // null_and: NonNullable when either side is
       var e1: nat :| NR.NfaRepRE(r1, c, pc1, e1) && NR.NfaRepRE(r2, c, e1, pc2);
       if R.nullable(r1) == R.NonNullable {
@@ -3437,6 +3527,7 @@ module LindenElkNestInv {
         ColdNNF(r2, c, e1, pc2, n);
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
         && NR.NfaRepRE(r1, c, pc1 + 1, e1)
         && NR.GetPcRE(c, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
@@ -3444,6 +3535,7 @@ module LindenElkNestInv {
       assert !AR.BackForkAt(c, pc1);
       ColdNNF(r1, c, pc1 + 1, e1, n - 1);
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       // min == 0 yields CINullable, so min > 0 and the body is NonNullable
       assert q.min > 0 && R.nullable(r1) == R.NonNullable;
       if q.max.Some? {
@@ -3594,10 +3686,15 @@ module LindenElkNestInv {
   {
     match re
     case Re_empty =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_character(ch) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_anchor(a) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_lookaround(_, _, _) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(c, pcb) == Some(RB.Fork(pcb + 1, e1 + 1))
         && NR.NfaRepRE(r1, c, pcb + 1, e1)
         && NR.GetPcRE(c, e1) == Some(RB.Jmp(pce))
@@ -3611,6 +3708,7 @@ module LindenElkNestInv {
         BeginLoopColdSafeAt(r2, c, e1 + 1, pce, p);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.NfaRepRE(r1, c, pcb, e1) && NR.NfaRepRE(r2, c, e1, pce);
       NR.NfaRepIncrRE(r1, c, pcb, e1);
       NR.NfaRepIncrRE(r2, c, e1, pce);
@@ -3620,6 +3718,7 @@ module LindenElkNestInv {
         BeginLoopColdSafeAt(r2, c, e1, pce, p);
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(c, pcb) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
         && NR.NfaRepRE(r1, c, pcb + 1, e1)
         && NR.GetPcRE(c, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
@@ -3628,6 +3727,7 @@ module LindenElkNestInv {
       assert p != pcb && p != e1;
       BeginLoopColdSafeAt(r1, c, pcb + 1, e1, p);
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if q.min == 0 && q.max == None {
         var e1: nat :| NR.GetPcRE(c, pcb) == Some(if q.greedy then RB.Fork(pcb + 1, e1 + 2) else RB.Fork(e1 + 2, pcb + 1))
           && NR.GetPcRE(c, pcb + 1) == Some(RB.SetQuantToClock(qid, false))
@@ -3739,11 +3839,16 @@ module LindenElkNestInv {
   {
     match re
     case Re_empty =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_character(ch) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert !AR.BackForkAt(c, pc1);
     case Re_anchor(a) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_lookaround(_, _, _) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(c, pc1) == Some(RB.Fork(pc1 + 1, e1 + 1))
         && NR.NfaRepRE(r1, c, pc1 + 1, e1)
         && NR.GetPcRE(c, e1) == Some(RB.Jmp(pc2))
@@ -3757,6 +3862,7 @@ module LindenElkNestInv {
         ColdNNFNested(r2, c, e1 + 1, pc2, n - 1);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.NfaRepRE(r1, c, pc1, e1) && NR.NfaRepRE(r2, c, e1, pc2);
       if R.nullable(r1) == R.NonNullable {
         ColdNNFNested(r1, c, pc1, e1, n);
@@ -3766,6 +3872,7 @@ module LindenElkNestInv {
         ColdNNFNested(r2, c, e1, pc2, n);
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
         && NR.NfaRepRE(r1, c, pc1 + 1, e1)
         && NR.GetPcRE(c, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
@@ -3773,6 +3880,7 @@ module LindenElkNestInv {
       assert !AR.BackForkAt(c, pc1);
       ColdNNFNested(r1, c, pc1 + 1, e1, n - 1);
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert q.min > 0 && R.nullable(r1) == R.NonNullable;
       if q.max.Some? {
         var em := NR.NfaRepREQuantInv(nul, qid, q, r1, c, pc1, pc2);
@@ -3877,15 +3985,19 @@ module LindenElkNestInv {
   {
     match re
     case Re_empty =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert pc1 == pc2;
     case Re_character(ch) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert !AR.BackForkAt(c, pc1);
       assert false;
     case Re_anchor(a) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert !AR.BackForkAt(c, pc1);
       assert ColdF(c, pc1 + 1, n - 1);
       ColdFMono(c, pc2, n - 1, n);
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(c, pc1) == Some(RB.Fork(pc1 + 1, e1 + 1))
         && NR.NfaRepRE(r1, c, pc1 + 1, e1)
         && NR.GetPcRE(c, e1) == Some(RB.Jmp(pc2))
@@ -3904,10 +4016,12 @@ module LindenElkNestInv {
         ColdFMono(c, pc2, n - 1, n);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.NfaRepRE(r1, c, pc1, e1) && NR.NfaRepRE(r2, c, e1, pc2);
       ColdPropagatesFNested(r1, c, pc1, e1, n);
       ColdPropagatesFNested(r2, c, e1, pc2, n);
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
         && NR.NfaRepRE(r1, c, pc1 + 1, e1)
         && NR.GetPcRE(c, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
@@ -3919,10 +4033,12 @@ module LindenElkNestInv {
       assert ColdF(c, pc2, n - 2);
       ColdFMono(c, pc2, n - 2, n);
     case Re_lookaround(lid, la, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert !AR.BackForkAt(c, pc1);
       assert ColdF(c, pc1 + 1, n - 1);
       ColdFMono(c, pc2, n - 1, n);
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if q.min == 0 && q.max == None {
         var e1: nat :| NR.GetPcRE(c, pc1) == Some(if q.greedy then RB.Fork(pc1 + 1, e1 + 2) else RB.Fork(e1 + 2, pc1 + 1))
           && NR.GetPcRE(c, pc1 + 1) == Some(RB.SetQuantToClock(qid, false))
@@ -4068,10 +4184,15 @@ module LindenElkNestInv {
   {
     match re
     case Re_empty =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_character(ch) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_anchor(a) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_lookaround(_, _, _) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(c, pcb) == Some(RB.Fork(pcb + 1, e1 + 1))
         && NR.NfaRepRE(r1, c, pcb + 1, e1)
         && NR.GetPcRE(c, e1) == Some(RB.Jmp(pce))
@@ -4085,6 +4206,7 @@ module LindenElkNestInv {
         BeginLoopColdSafeAtNested(r2, c, e1 + 1, pce, p);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.NfaRepRE(r1, c, pcb, e1) && NR.NfaRepRE(r2, c, e1, pce);
       NR.NfaRepIncrRE(r1, c, pcb, e1);
       NR.NfaRepIncrRE(r2, c, e1, pce);
@@ -4094,6 +4216,7 @@ module LindenElkNestInv {
         BeginLoopColdSafeAtNested(r2, c, e1, pce, p);
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(c, pcb) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
         && NR.NfaRepRE(r1, c, pcb + 1, e1)
         && NR.GetPcRE(c, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
@@ -4102,6 +4225,7 @@ module LindenElkNestInv {
       assert p != pcb && p != e1;
       BeginLoopColdSafeAtNested(r1, c, pcb + 1, e1, p);
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if q.min == 0 && q.max == None {
         var e1: nat :| NR.GetPcRE(c, pcb) == Some(if q.greedy then RB.Fork(pcb + 1, e1 + 2) else RB.Fork(e1 + 2, pcb + 1))
           && NR.GetPcRE(c, pcb + 1) == Some(RB.SetQuantToClock(qid, false))
@@ -4323,10 +4447,13 @@ module LindenElkNestInv {
   {
     match re
     case Re_empty =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_character(ch) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert pc == pcb;
       assert false;
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.Fork(pcb + 1, e1 + 1))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.Jmp(pce))
@@ -4349,6 +4476,7 @@ module LindenElkNestInv {
         }
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.NfaRepRE(r1, code, pcb, e1) && NR.NfaRepRE(r2, code, e1, pce)
         && if pc < e1 then NestInvRE(r1, code, pcb, e1, pc, cc, qc, mx) && AllStaleRE(r2, cc, mx)
            else NestInvRE(r2, code, e1, pce, pc, cc, qc, mx);
@@ -4361,6 +4489,7 @@ module LindenElkNestInv {
         }
       }
     case Re_quant(nul, qid0, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert qid0 >= 0;                             // QuantUnique
       if q.max.Some? {
         var mn := q.min as nat;
@@ -4506,6 +4635,7 @@ module LindenElkNestInv {
         assert qv >= mx;
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
@@ -4526,7 +4656,9 @@ module LindenElkNestInv {
         // ancestor clause of PathPresentQ: own start fresh.
       }
     case Re_lookaround(_, _, _) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_anchor(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
   }
 
   // ==========================================================================
@@ -4557,6 +4689,7 @@ module LindenElkNestInv {
     case Re_quant(_, _, _, r1) => LookFreeNoLookIdsN(r1);
     case Re_capture(_, r1) => LookFreeNoLookIdsN(r1);
     case _ =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
   }
 
   /** The body of the `lid`-labelled lookaround node in `r`. */
@@ -4585,12 +4718,15 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) { LookBodyOfFragment(r1, lid); } else { LookBodyOfFragment(r2, lid); }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) { LookBodyOfFragment(r1, lid); } else { LookBodyOfFragment(r2, lid); }
     case Re_quant(_, _, _, r1) => LookBodyOfFragment(r1, lid);
     case Re_capture(_, r1) => LookBodyOfFragment(r1, lid);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
       } else {
         // fragment: the body is look-free, so no foreign lid lives below it
@@ -4614,12 +4750,15 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) { LookBodyOfFragmentNested(r1, lid); } else { LookBodyOfFragmentNested(r2, lid); }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) { LookBodyOfFragmentNested(r1, lid); } else { LookBodyOfFragmentNested(r2, lid); }
     case Re_quant(_, _, _, r1) => LookBodyOfFragmentNested(r1, lid);
     case Re_capture(_, r1) => LookBodyOfFragmentNested(r1, lid);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
         // body is r1; NestedFragmentRE(r1) & NegLooksLookFreeRE(r1) hold at the node
       } else {
@@ -4638,12 +4777,15 @@ module LindenElkNestInv {
     PIV.CapIdsSplit(r);
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) { LookBodyCapsIn(r1, lid); } else { LookBodyCapsIn(r2, lid); }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) { LookBodyCapsIn(r1, lid); } else { LookBodyCapsIn(r2, lid); }
     case Re_quant(_, _, _, r1) => LookBodyCapsIn(r1, lid);
     case Re_capture(_, r1) => LookBodyCapsIn(r1, lid);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
       } else {
         LookBodyCapsIn(r1, lid);
@@ -4659,12 +4801,15 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) { LookBodyLookIdsIn(r1, lid); } else { LookBodyLookIdsIn(r2, lid); }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) { LookBodyLookIdsIn(r1, lid); } else { LookBodyLookIdsIn(r2, lid); }
     case Re_quant(_, _, _, r1) => LookBodyLookIdsIn(r1, lid);
     case Re_capture(_, r1) => LookBodyLookIdsIn(r1, lid);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
       } else {
         LookBodyLookIdsIn(r1, lid);
@@ -4708,6 +4853,7 @@ module LindenElkNestInv {
     case Re_quant(_, _, _, r1) => TopLookIdsIn(r1);
     case Re_capture(_, r1) => TopLookIdsIn(r1);
     case _ =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
   }
 
   /** THE TOP-LEVEL FRAME: a top-level look `lid0` sits inside NO look body.
@@ -4722,6 +4868,7 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         assert LookBodyOfRE(r, lid) == LookBodyOfRE(r1, lid);
         if lid0 in TopLookIds(r1) {
@@ -4745,6 +4892,7 @@ module LindenElkNestInv {
         }
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         assert LookBodyOfRE(r, lid) == LookBodyOfRE(r1, lid);
         if lid0 in TopLookIds(r1) {
@@ -4766,12 +4914,15 @@ module LindenElkNestInv {
         }
       }
     case Re_quant(_, _, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert LookBodyOfRE(r, lid) == LookBodyOfRE(r1, lid);
       TopLookNotNested(r1, lid0, lid);
     case Re_capture(_, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert LookBodyOfRE(r, lid) == LookBodyOfRE(r1, lid);
       TopLookNotNested(r1, lid0, lid);
     case Re_lookaround(lidn, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       // lid0 == lidn (the only top-level id here). LookUnique ⟹ lidn !in
       // LookIds(r1), so lidn sits in no body under this node.
       assert lidn >= 0 && (lidn as nat) == lid0;
@@ -4838,12 +4989,15 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) { MxAtLidLE(r1, qc, mx, lid, S); } else { MxAtLidLE(r2, qc, mx, lid, S); }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) { MxAtLidLE(r1, qc, mx, lid, S); } else { MxAtLidLE(r2, qc, mx, lid, S); }
     case Re_quant(_, qid, _, r1) => MxAtLidLE(r1, qc, AI.get_idx(qc, qid), lid, S);
     case Re_capture(_, r1) => MxAtLidLE(r1, qc, mx, lid, S);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {} else { MxAtLidLE(r1, qc, -1, lid, S); }
   }
 
@@ -4870,6 +5024,7 @@ module LindenElkNestInv {
     LookBodyCapsIn(r, lid);
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         LookBodyCapsIn(r1, lid);
         assert g in PIV.CapIds(r1);
@@ -4883,6 +5038,7 @@ module LindenElkNestInv {
         LookPathCompose(r2, body, cc, lc, qc, mx, lid, g);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         LookBodyCapsIn(r1, lid);
         assert g in PIV.CapIds(r1);
@@ -4896,10 +5052,12 @@ module LindenElkNestInv {
         LookPathCompose(r2, body, cc, lc, qc, mx, lid, g);
       }
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var qv := AI.get_idx(qc, qid);
       assert qv >= mx;                               // LookPathPresent
       LookPathCompose(r1, body, cc, lc, qc, qv, lid, g);
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       LookBodyCapsIn(r1, lid);
       assert g in PIV.CapIds(r1);
       assert cid >= 0 && (cid as nat) !in PIV.CapIds(r1);   // CapUnique
@@ -4908,6 +5066,7 @@ module LindenElkNestInv {
           && AI.get_idx(cc, CP.start_reg(cid)) >= mx;       // LookPathPresent
       LookPathCompose(r1, body, cc, lc, qc, mx, lid, g);
     case Re_lookaround(lid0, la, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
         assert body == r1;
         assert MxAtLidLk(r, qc, mx, lid) == mx;
@@ -4943,6 +5102,7 @@ module LindenElkNestInv {
     LookBodyCapsIn(r, lid);
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         LookBodyCapsIn(r1, lid);
         assert g in PIV.CapIds(r1);
@@ -4956,6 +5116,7 @@ module LindenElkNestInv {
         LookPathDecompose(r2, body, cc, lc, qc, mx, lid, g);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         LookBodyCapsIn(r1, lid);
         assert g in PIV.CapIds(r1);
@@ -4969,16 +5130,19 @@ module LindenElkNestInv {
         LookPathDecompose(r2, body, cc, lc, qc, mx, lid, g);
       }
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var qv := AI.get_idx(qc, qid);
       assert qv >= mx;                               // PathPresentLk
       LookPathDecompose(r1, body, cc, lc, qc, qv, lid, g);
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       LookBodyCapsIn(r1, lid);
       assert g in PIV.CapIds(r1);
       assert cid >= 0 && (cid as nat) !in PIV.CapIds(r1);   // CapUnique
       assert (cid as nat) != g;
       LookPathDecompose(r1, body, cc, lc, qc, mx, lid, g);
     case Re_lookaround(lid0, la, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
         assert body == r1;
         assert MxAtLidLk(r, qc, mx, lid) == mx;
@@ -5010,18 +5174,21 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.CapIds(r1) <= PIV.CapIds(r) && PIV.CapIds(r2) <= PIV.CapIds(r);
       assert PIV.QuantIds(r1) <= PIV.QuantIds(r) && PIV.QuantIds(r2) <= PIV.QuantIds(r);
       assert LTB.LookIds(r1) <= LTB.LookIds(r) && LTB.LookIds(r2) <= LTB.LookIds(r);
       if g in PIV.CapIds(r1) { PathPresentLkAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, mx, g); }
       else { PathPresentLkAgree(r2, cc1, lc1, qc1, cc2, lc2, qc2, mx, g); }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.CapIds(r1) <= PIV.CapIds(r) && PIV.CapIds(r2) <= PIV.CapIds(r);
       assert PIV.QuantIds(r1) <= PIV.QuantIds(r) && PIV.QuantIds(r2) <= PIV.QuantIds(r);
       assert LTB.LookIds(r1) <= LTB.LookIds(r) && LTB.LookIds(r2) <= LTB.LookIds(r);
       if g in PIV.CapIds(r1) { PathPresentLkAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, mx, g); }
       else { PathPresentLkAgree(r2, cc1, lc1, qc1, cc2, lc2, qc2, mx, g); }
     case Re_quant(_, qid, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.CapIds(r1) <= PIV.CapIds(r);
       assert PIV.QuantIds(r1) <= PIV.QuantIds(r);
       assert LTB.LookIds(r1) <= LTB.LookIds(r);
@@ -5030,6 +5197,7 @@ module LindenElkNestInv {
       }
       PathPresentLkAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, AI.get_idx(qc1, qid), g);
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.CapIds(r1) <= PIV.CapIds(r);
       assert PIV.QuantIds(r1) <= PIV.QuantIds(r);
       assert LTB.LookIds(r1) <= LTB.LookIds(r);
@@ -5043,6 +5211,7 @@ module LindenElkNestInv {
         PathPresentLkAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, mx, g);
       }
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.CapIds(r1) <= PIV.CapIds(r);
       assert PIV.QuantIds(r1) <= PIV.QuantIds(r);
       assert LTB.LookIds(r1) <= LTB.LookIds(r);
@@ -5070,6 +5239,7 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.CapIdsOutsideLooks(r1) <= PIV.CapIdsOutsideLooks(r)
           && PIV.CapIdsOutsideLooks(r2) <= PIV.CapIdsOutsideLooks(r);
       assert PIV.QuantIdsOutsideLooks(r1) <= PIV.QuantIdsOutsideLooks(r)
@@ -5077,6 +5247,7 @@ module LindenElkNestInv {
       if lid in LTB.LookIds(r1) { LookPathPresentAgree(r1, cc1, qc1, cc2, qc2, mx, lid); }
       else { LookPathPresentAgree(r2, cc1, qc1, cc2, qc2, mx, lid); }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.CapIdsOutsideLooks(r1) <= PIV.CapIdsOutsideLooks(r)
           && PIV.CapIdsOutsideLooks(r2) <= PIV.CapIdsOutsideLooks(r);
       assert PIV.QuantIdsOutsideLooks(r1) <= PIV.QuantIdsOutsideLooks(r)
@@ -5084,6 +5255,7 @@ module LindenElkNestInv {
       if lid in LTB.LookIds(r1) { LookPathPresentAgree(r1, cc1, qc1, cc2, qc2, mx, lid); }
       else { LookPathPresentAgree(r2, cc1, qc1, cc2, qc2, mx, lid); }
     case Re_quant(_, qid, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.CapIdsOutsideLooks(r1) <= PIV.CapIdsOutsideLooks(r);
       assert PIV.QuantIdsOutsideLooks(r1) <= PIV.QuantIdsOutsideLooks(r);
       assert AI.get_idx(qc1, qid) == AI.get_idx(qc2, qid) by {
@@ -5091,6 +5263,7 @@ module LindenElkNestInv {
       }
       LookPathPresentAgree(r1, cc1, qc1, cc2, qc2, AI.get_idx(qc1, qid), lid);
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.CapIdsOutsideLooks(r1) <= PIV.CapIdsOutsideLooks(r);
       assert PIV.QuantIdsOutsideLooks(r1) <= PIV.QuantIdsOutsideLooks(r);
       assert AI.get_idx(cc1, CP.start_reg(cid)) == AI.get_idx(cc2, CP.start_reg(cid)) by {
@@ -5099,6 +5272,7 @@ module LindenElkNestInv {
       }
       LookPathPresentAgree(r1, cc1, qc1, cc2, qc2, mx, lid);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
       } else {
         assert NR.LookFreeRE(r1);
@@ -5286,10 +5460,13 @@ module LindenElkNestInv {
   {
     match re
     case Re_empty =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_character(ch) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert pc == pcb;
       assert false;
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.Fork(pcb + 1, e1 + 1))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.Jmp(pce))
@@ -5314,6 +5491,7 @@ module LindenElkNestInv {
         }
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.NfaRepRE(r1, code, pcb, e1) && NR.NfaRepRE(r2, code, e1, pce)
         && if pc < e1 then NestInvRE(r1, code, pcb, e1, pc, cc, qc, mx) && AllStaleRE(r2, cc, mx)
            else NestInvRE(r2, code, e1, pce, pc, cc, qc, mx);
@@ -5328,6 +5506,7 @@ module LindenElkNestInv {
         }
       }
     case Re_quant(nul, qid0, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if q.max.Some? {
         var mn := q.min as nat;
         var kx := (q.max.value - q.min) as nat;
@@ -5429,6 +5608,7 @@ module LindenElkNestInv {
         NestInvLookSiteNested(r1, code, pcb + 3, e1, pc, cc, qc, qv, lid);
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
@@ -5448,6 +5628,7 @@ module LindenElkNestInv {
         NestInvLookSiteNested(r1, code, pcb + 1, e1, pc, cc, qc, mx, lid);
       }
     case Re_lookaround(lid0, la, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       // the whole block is the single gate instruction; a positive flavour
       // compiles to CheckOracle(lid0), pinning lid == lid0.
       assert pc == pcb;
@@ -5456,6 +5637,7 @@ module LindenElkNestInv {
       assert lid0 >= 0;                             // LookUnique
       assert (lid as nat) in LTB.LookIds(re);
     case Re_anchor(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert pc == pcb;
       assert false;
   }
@@ -5479,10 +5661,13 @@ module LindenElkNestInv {
   {
     match re
     case Re_empty =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_character(ch) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert pc == pcb;
       assert false;
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.Fork(pcb + 1, e1 + 1))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.Jmp(pce))
@@ -5507,6 +5692,7 @@ module LindenElkNestInv {
         }
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.NfaRepRE(r1, code, pcb, e1) && NR.NfaRepRE(r2, code, e1, pce)
         && if pc < e1 then NestInvRE(r1, code, pcb, e1, pc, cc, qc, mx) && AllStaleRE(r2, cc, mx)
            else NestInvRE(r2, code, e1, pce, pc, cc, qc, mx);
@@ -5521,6 +5707,7 @@ module LindenElkNestInv {
         }
       }
     case Re_quant(nul, qid0, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if q.max.Some? {
         var mn := q.min as nat;
         var kx := (q.max.value - q.min) as nat;
@@ -5622,6 +5809,7 @@ module LindenElkNestInv {
         NestInvLookSite(r1, code, pcb + 3, e1, pc, cc, qc, qv, lid);
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
         && NR.NfaRepRE(r1, code, pcb + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
@@ -5642,6 +5830,7 @@ module LindenElkNestInv {
         // ancestor clause: own start fresh (from the NestInv claims above).
       }
     case Re_lookaround(lid0, la, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       // the whole block is the single gate instruction; a positive flavour
       // compiles to CheckOracle(lid0), pinning lid == lid0.
       assert pc == pcb;
@@ -5650,6 +5839,7 @@ module LindenElkNestInv {
       assert lid0 >= 0;                             // LookUnique
       assert (lid as nat) in LTB.LookIds(re);
     case Re_anchor(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert pc == pcb;
       assert false;
   }
@@ -5677,23 +5867,28 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.QuantIds(r1) <= PIV.QuantIds(r) && PIV.QuantIds(r2) <= PIV.QuantIds(r);
       if lid in LTB.LookIds(r1) { LookPathPresentQcAgree(r1, cc, qc, qc', mx, lid); }
       else { LookPathPresentQcAgree(r2, cc, qc, qc', mx, lid); }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.QuantIds(r1) <= PIV.QuantIds(r) && PIV.QuantIds(r2) <= PIV.QuantIds(r);
       if lid in LTB.LookIds(r1) { LookPathPresentQcAgree(r1, cc, qc, qc', mx, lid); }
       else { LookPathPresentQcAgree(r2, cc, qc, qc', mx, lid); }
     case Re_quant(_, qid, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.QuantIds(r1) <= PIV.QuantIds(r);
       assert AI.get_idx(qc, qid) == AI.get_idx(qc', qid) by {
         if qid >= 0 { assert (qid as nat) in PIV.QuantIds(r); }
       }
       LookPathPresentQcAgree(r1, cc, qc, qc', AI.get_idx(qc, qid), lid);
     case Re_capture(_, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.QuantIds(r1) <= PIV.QuantIds(r);
       LookPathPresentQcAgree(r1, cc, qc, qc', mx, lid);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
       } else {
         assert PIV.QuantIds(r1) <= PIV.QuantIds(r);
@@ -5718,20 +5913,25 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) { LookPathPresentFreshCap(r1, cc, cc', qc, mx, lid, B); }
       else { LookPathPresentFreshCap(r2, cc, cc', qc, mx, lid, B); }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) { LookPathPresentFreshCap(r1, cc, cc', qc, mx, lid, B); }
       else { LookPathPresentFreshCap(r2, cc, cc', qc, mx, lid, B); }
     case Re_quant(_, qid, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var qv := AI.get_idx(qc, qid);
       assert qv <= B;
       LookPathPresentFreshCap(r1, cc, cc', qc, qv, lid, B);
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert AI.get_idx(cc', CP.start_reg(cid)) >= 0
           && AI.get_idx(cc', CP.start_reg(cid)) >= mx;
       LookPathPresentFreshCap(r1, cc, cc', qc, mx, lid, B);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
       } else {
         LookPathPresentFreshCap(r1, cc, cc', qc, -1, lid, B);
@@ -5746,10 +5946,13 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if qid in PIV.QuantIds(r1) { QidBodyLookIdsSub(r1, qid); } else { QidBodyLookIdsSub(r2, qid); }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if qid in PIV.QuantIds(r1) { QidBodyLookIdsSub(r1, qid); } else { QidBodyLookIdsSub(r2, qid); }
     case Re_quant(_, qid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if qid0 >= 0 && (qid0 as nat) == qid {} else { QidBodyLookIdsSub(r1, qid); }
     case Re_capture(_, r1) => QidBodyLookIdsSub(r1, qid);
     case Re_lookaround(_, _, r1) => QidBodyLookIdsSub(r1, qid);
@@ -5770,6 +5973,7 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         if qid in PIV.QuantIds(r1) {
           LookPathPresentQuantOffPath(r1, cc, qc, qc', mx, lid, qid);
@@ -5812,6 +6016,7 @@ module LindenElkNestInv {
         }
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         if qid in PIV.QuantIds(r1) {
           LookPathPresentQuantOffPath(r1, cc, qc, qc', mx, lid, qid);
@@ -5854,6 +6059,7 @@ module LindenElkNestInv {
         }
       }
     case Re_quant(_, qid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if qid0 >= 0 && (qid0 as nat) == qid {
         // qid IS an ancestor of every look in this subtree — contradiction
         assert PIV.QidBody(r, qid) == r1;
@@ -5868,8 +6074,10 @@ module LindenElkNestInv {
         LookPathPresentQuantOffPath(r1, cc, qc, qc', AI.get_idx(qc, qid0), lid, qid);
       }
     case Re_capture(_, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       LookPathPresentQuantOffPath(r1, cc, qc, qc', mx, lid, qid);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
       } else {
         assert lid in LTB.LookIds(r1);
@@ -5890,6 +6098,7 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if qid in PIV.QuantIds(r1) {
         QidBodyLookIdsSub(r1, qid);
         assert lid in LTB.LookIds(r1);
@@ -5903,6 +6112,7 @@ module LindenElkNestInv {
         LookBodyCapsUnderQid(r2, qid, lid);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if qid in PIV.QuantIds(r1) {
         QidBodyLookIdsSub(r1, qid);
         assert lid in LTB.LookIds(r1);
@@ -5916,6 +6126,7 @@ module LindenElkNestInv {
         LookBodyCapsUnderQid(r2, qid, lid);
       }
     case Re_quant(_, qid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if qid0 >= 0 && (qid0 as nat) == qid {
         assert PIV.QidBody(r, qid) == r1;
         LookBodyCapsIn(r1, lid);
@@ -5924,8 +6135,10 @@ module LindenElkNestInv {
         LookBodyCapsUnderQid(r1, qid, lid);
       }
     case Re_capture(_, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       LookBodyCapsUnderQid(r1, qid, lid);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
         // QidBody descends into r1, but lid's own node is HERE: qid in
         // QuantIds(r1) with lid in LookIds(QidBody(r1, qid)) <= LookIds(r1)
@@ -5950,6 +6163,7 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if l1 in LTB.LookIds(r1) && l2 in LTB.LookIds(r1) {
         LookBodiesCapsDisjoint(r1, l1, l2);
       } else if l1 !in LTB.LookIds(r1) && l2 !in LTB.LookIds(r1) {
@@ -5968,6 +6182,7 @@ module LindenElkNestInv {
         }
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if l1 in LTB.LookIds(r1) && l2 in LTB.LookIds(r1) {
         LookBodiesCapsDisjoint(r1, l1, l2);
       } else if l1 !in LTB.LookIds(r1) && l2 !in LTB.LookIds(r1) {
@@ -5987,6 +6202,7 @@ module LindenElkNestInv {
     case Re_quant(_, _, _, r1) => LookBodiesCapsDisjoint(r1, l1, l2);
     case Re_capture(_, r1) => LookBodiesCapsDisjoint(r1, l1, l2);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       // both lids under one look node: at most one can BE the node (l1 != l2),
       // and the body is where the other lives — but a body inside r contains
       // both only if both are in LookIds(r1), where the node's own lid cannot
@@ -6027,6 +6243,7 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if l1 in LTB.LookIds(r1) && l2 in LTB.LookIds(r1) {
         LookBodiesCapsDisjointOrNested(r1, l1, l2);
       } else if l1 !in LTB.LookIds(r1) && l2 !in LTB.LookIds(r1) {
@@ -6040,6 +6257,7 @@ module LindenElkNestInv {
         { assert g in PIV.CapIds(r1) * PIV.CapIds(r2); }
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if l1 in LTB.LookIds(r1) && l2 in LTB.LookIds(r1) {
         LookBodiesCapsDisjointOrNested(r1, l1, l2);
       } else if l1 !in LTB.LookIds(r1) && l2 !in LTB.LookIds(r1) {
@@ -6054,6 +6272,7 @@ module LindenElkNestInv {
     case Re_quant(_, _, _, r1) => LookBodiesCapsDisjointOrNested(r1, l1, l2);
     case Re_capture(_, r1) => LookBodiesCapsDisjointOrNested(r1, l1, l2);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == l1 {
         // l1 IS this node (body r1); l2 != lid0, so l2 is NESTED in r1
         assert l2 in LTB.LookIds(r1);
@@ -6091,6 +6310,7 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if g in PIV.CapIdsInLooks(r1) {
         owner := InnermostLookOwnerExists(r1, g);
       } else {
@@ -6098,6 +6318,7 @@ module LindenElkNestInv {
         assert owner !in LTB.LookIds(r1);   // LookUnique: disjoint sibling lids
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if g in PIV.CapIdsInLooks(r1) {
         owner := InnermostLookOwnerExists(r1, g);
       } else {
@@ -6107,6 +6328,7 @@ module LindenElkNestInv {
     case Re_quant(_, _, _, r1) => owner := InnermostLookOwnerExists(r1, g);
     case Re_capture(_, r1) => owner := InnermostLookOwnerExists(r1, g);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       // CapIdsInLooks(r) == CapIds(r1): either g is buried in a nested look
       // (recurse for a deeper owner), or it sits directly in r1 (this is it).
       if g in PIV.CapIdsInLooks(r1) {
@@ -6132,14 +6354,17 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if outer in LTB.LookIds(r1) { LookBodyCompose(r1, outer, inner); assert inner in LTB.LookIds(r1); }
       else { LookBodyCompose(r2, outer, inner); assert inner !in LTB.LookIds(r1); }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if outer in LTB.LookIds(r1) { LookBodyCompose(r1, outer, inner); assert inner in LTB.LookIds(r1); }
       else { LookBodyCompose(r2, outer, inner); assert inner !in LTB.LookIds(r1); }
     case Re_quant(_, _, _, r1) => LookBodyCompose(r1, outer, inner);
     case Re_capture(_, r1) => LookBodyCompose(r1, outer, inner);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == outer {
         // outer IS this node: its body is r1, and inner lives in r1
         assert LookBodyOfRE(r, outer) == r1;
@@ -6194,14 +6419,17 @@ module LindenElkNestInv {
   {
     match re
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) { LookBodyOfTablesTie(r1, fc, lid); LookBodyOfTablesTieLift(re, r1, fc, lid); }
       else { LookBodyOfTablesTie(r2, fc, lid); LookBodyOfTablesTieLift(re, r2, fc, lid); }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) { LookBodyOfTablesTie(r1, fc, lid); LookBodyOfTablesTieLift(re, r1, fc, lid); }
       else { LookBodyOfTablesTie(r2, fc, lid); LookBodyOfTablesTieLift(re, r2, fc, lid); }
     case Re_quant(_, _, _, r1) => LookBodyOfTablesTie(r1, fc, lid); LookBodyOfTablesTieLift(re, r1, fc, lid);
     case Re_capture(_, r1) => LookBodyOfTablesTie(r1, fc, lid); LookBodyOfTablesTieLift(re, r1, fc, lid);
     case Re_lookaround(lid0, la0, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
         assert LTB.LookEntryOk(fc, lid as int, la0, r1);
         assert LookBodyOfRE(re, lid) == r1;
@@ -6262,17 +6490,21 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) { MxAtLidGeMx(r1, cc, qc, mx, lid); }
       else { MxAtLidGeMx(r2, cc, qc, mx, lid); }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) { MxAtLidGeMx(r1, cc, qc, mx, lid); }
       else { MxAtLidGeMx(r2, cc, qc, mx, lid); }
     case Re_quant(_, qid, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var qv := AI.get_idx(qc, qid);
       assert qv >= mx;                          // LookPathPresent
       MxAtLidGeMx(r1, cc, qc, qv, lid);
     case Re_capture(_, r1) => MxAtLidGeMx(r1, cc, qc, mx, lid);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
       } else {
         assert NR.LookFreeRE(r1);
@@ -6294,20 +6526,25 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) { LookPathDomIntro(r1, cc, qc, mx, lid, L); }
       else { LookPathDomIntro(r2, cc, qc, mx, lid, L); }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) { LookPathDomIntro(r1, cc, qc, mx, lid, L); }
       else { LookPathDomIntro(r2, cc, qc, mx, lid, L); }
     case Re_quant(_, qid, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var qv := AI.get_idx(qc, qid);
       MxAtLidGeMx(r1, cc, qc, qv, lid);
       assert MxAtLidLk(r1, qc, qv, lid) >= qv;
       assert L >= qv;
       LookPathDomIntro(r1, cc, qc, qv, lid, L);
     case Re_capture(_, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       LookPathDomIntro(r1, cc, qc, mx, lid, L);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
       } else {
         assert NR.LookFreeRE(r1);
@@ -6339,6 +6576,7 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         LookBodyCapsIn(r1, lid);                       // g2 in CapIds(r1)
         assert g2 in PIV.CapIds(r1);
@@ -6352,6 +6590,7 @@ module LindenElkNestInv {
         LookPathDomNoAncQuants(r2, L, qc, lid, g2);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         LookBodyCapsIn(r1, lid);
         assert g2 in PIV.CapIds(r1);
@@ -6365,6 +6604,7 @@ module LindenElkNestInv {
         LookPathDomNoAncQuants(r2, L, qc, lid, g2);
       }
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       // a real quant id on g2's path would land in AncQuants(r, g2) == {}.
       LookBodyCapsIn(r1, lid);
       assert g2 in PIV.CapIds(r1);
@@ -6374,11 +6614,13 @@ module LindenElkNestInv {
       assert AI.get_idx(qc, qid) == -1;                // out-of-range read
       LookPathDomNoAncQuants(r1, L, qc, lid, g2);
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       LookBodyCapsIn(r1, lid);
       assert g2 in PIV.CapIds(r1);
       assert !(cid >= 0 && (cid as nat) == g2);        // CapUnique: cid !in CapIds(r1)
       LookPathDomNoAncQuants(r1, L, qc, lid, g2);
     case Re_lookaround(lid0, la, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
         // LookPathDom returns true at the target node
       } else {
@@ -6408,6 +6650,7 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if g in PIV.CapIds(r1) {
         assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r1) ==> c in PIV.CapIdsOutsideLooks(r);
         PathPresentLkDirectAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, g);
@@ -6416,6 +6659,7 @@ module LindenElkNestInv {
         PathPresentLkDirectAgree(r2, cc1, lc1, qc1, cc2, lc2, qc2, g);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if g in PIV.CapIds(r1) {
         assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r1) ==> c in PIV.CapIdsOutsideLooks(r);
         PathPresentLkDirectAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, g);
@@ -6424,12 +6668,14 @@ module LindenElkNestInv {
         PathPresentLkDirectAgree(r2, cc1, lc1, qc1, cc2, lc2, qc2, g);
       }
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert qid < 0 by {
         if qid >= 0 { assert (qid as nat) in PIV.AncQuants(r, g); }
       }
       assert AI.get_idx(qc1, qid) == -1 == AI.get_idx(qc2, qid);
       PathPresentLkDirectAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, g);
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if cid >= 0 && (cid as nat) == g {
         assert (g as int) == cid;
         assert AI.get_idx(cc1, CP.start_reg(cid)) == AI.get_idx(cc2, CP.start_reg(cid)) by {
@@ -6449,6 +6695,7 @@ module LindenElkNestInv {
         PathPresentLkDirectAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, g);
       }
     case Re_lookaround(lid, la, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       // g inside a look's body would put g in CapIdsInLooks(r)
       assert g in PIV.CapIds(r1);
       assert g in PIV.CapIdsInLooks(r);
@@ -6476,6 +6723,7 @@ module LindenElkNestInv {
     TopLookIdsIn(r);
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         assert lid in TopLookIds(r1) by {
           if lid !in TopLookIds(r1) {
@@ -6493,6 +6741,7 @@ module LindenElkNestInv {
         LookPathPresentAgreeTop(r2, cc1, qc1, cc2, qc2, mx, lid);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         assert lid in TopLookIds(r1) by {
           if lid !in TopLookIds(r1) {
@@ -6510,6 +6759,7 @@ module LindenElkNestInv {
         LookPathPresentAgreeTop(r2, cc1, qc1, cc2, qc2, mx, lid);
       }
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert AI.get_idx(qc1, qid) == AI.get_idx(qc2, qid) by {
         if qid >= 0 {
           assert (qid as nat) in PIV.QuantIdsOutsideLooks(r);   // own node, definitional
@@ -6521,6 +6771,7 @@ module LindenElkNestInv {
       assert forall q0: nat :: q0 in PIV.QuantIdsOutsideLooks(r1) ==> q0 in PIV.QuantIdsOutsideLooks(r);
       LookPathPresentAgreeTop(r1, cc1, qc1, cc2, qc2, AI.get_idx(qc1, qid), lid);
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert cid >= 0 ==> (cid as nat) in PIV.CapIdsOutsideLooks(r);
       assert AI.get_idx(cc1, CP.start_reg(cid)) == AI.get_idx(cc2, CP.start_reg(cid)) by {
         if cid >= 0 {
@@ -6533,6 +6784,7 @@ module LindenElkNestInv {
       assert forall q0: nat :: q0 in PIV.QuantIdsOutsideLooks(r1) ==> q0 in PIV.QuantIdsOutsideLooks(r);
       LookPathPresentAgreeTop(r1, cc1, qc1, cc2, qc2, mx, lid);
     case Re_lookaround(lid0, la, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
       } else {
         assert lid !in TopLookIds(r);
@@ -6554,6 +6806,7 @@ module LindenElkNestInv {
     TopLookIdsIn(r);
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         assert lid in TopLookIds(r1) by {
           if lid !in TopLookIds(r1) {
@@ -6567,6 +6820,7 @@ module LindenElkNestInv {
         LookPathPresentLkFromPresentTop(r2, cc, lc, qc, mx, lid);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         assert lid in TopLookIds(r1) by {
           if lid !in TopLookIds(r1) {
@@ -6580,10 +6834,13 @@ module LindenElkNestInv {
         LookPathPresentLkFromPresentTop(r2, cc, lc, qc, mx, lid);
       }
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       LookPathPresentLkFromPresentTop(r1, cc, lc, qc, AI.get_idx(qc, qid), lid);
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       LookPathPresentLkFromPresentTop(r1, cc, lc, qc, mx, lid);
     case Re_lookaround(lid0, la, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
       } else {
         assert lid !in TopLookIds(r);
@@ -6610,6 +6867,7 @@ module LindenElkNestInv {
     TopLookIdsIn(r);                        // lid in LookIds(r)
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         assert lid in TopLookIds(r1) by {
           if lid !in TopLookIds(r1) {
@@ -6629,6 +6887,7 @@ module LindenElkNestInv {
         MxAtLidGeMxTop(r2, cc, qc, mx, lid);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         assert lid in TopLookIds(r1) by {
           if lid !in TopLookIds(r1) {
@@ -6648,11 +6907,13 @@ module LindenElkNestInv {
         MxAtLidGeMxTop(r2, cc, qc, mx, lid);
       }
     case Re_quant(_, qid, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var qv := AI.get_idx(qc, qid);
       assert qv >= mx;                       // LookPathPresent
       MxAtLidGeMxTop(r1, cc, qc, qv, lid);
     case Re_capture(_, r1) => MxAtLidGeMxTop(r1, cc, qc, mx, lid);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       // lid in TopLookIds(r) == {lid0 as nat} (lid0 >= 0 under LookUnique): lid == lid0.
       assert lid0 >= 0 && (lid0 as nat) == lid;
   }
@@ -6675,6 +6936,7 @@ module LindenElkNestInv {
     TopLookIdsIn(r);
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         assert lid in TopLookIds(r1) by {
           if lid !in TopLookIds(r1) {
@@ -6694,6 +6956,7 @@ module LindenElkNestInv {
         LookPathDomIntroTop(r2, cc, qc, mx, lid, L);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         assert lid in TopLookIds(r1) by {
           if lid !in TopLookIds(r1) {
@@ -6713,14 +6976,17 @@ module LindenElkNestInv {
         LookPathDomIntroTop(r2, cc, qc, mx, lid, L);
       }
     case Re_quant(_, qid, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var qv := AI.get_idx(qc, qid);
       MxAtLidGeMxTop(r1, cc, qc, qv, lid);
       assert MxAtLidLk(r1, qc, qv, lid) >= qv;
       assert L >= qv;
       LookPathDomIntroTop(r1, cc, qc, qv, lid, L);
     case Re_capture(_, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       LookPathDomIntroTop(r1, cc, qc, mx, lid, L);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert lid0 >= 0 && (lid0 as nat) == lid;
   }
 
@@ -6733,12 +6999,15 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) { LookPathDomAll(r1, L, qc, lid); } else { LookPathDomAll(r2, L, qc, lid); }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) { LookPathDomAll(r1, L, qc, lid); } else { LookPathDomAll(r2, L, qc, lid); }
     case Re_quant(_, qid, _, r1) => LookPathDomAll(r1, L, qc, lid);
     case Re_capture(_, r1) => LookPathDomAll(r1, L, qc, lid);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {} else { LookPathDomAll(r1, L, qc, lid); }
   }
 
@@ -6752,23 +7021,28 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.QuantIds(r1) <= PIV.QuantIds(r) && PIV.QuantIds(r2) <= PIV.QuantIds(r);
       if lid in LTB.LookIds(r1) { LookPathDomQcAgree(r1, L, qc, qc', lid); }
       else { LookPathDomQcAgree(r2, L, qc, qc', lid); }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.QuantIds(r1) <= PIV.QuantIds(r) && PIV.QuantIds(r2) <= PIV.QuantIds(r);
       if lid in LTB.LookIds(r1) { LookPathDomQcAgree(r1, L, qc, qc', lid); }
       else { LookPathDomQcAgree(r2, L, qc, qc', lid); }
     case Re_quant(_, qid, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.QuantIds(r1) <= PIV.QuantIds(r);
       assert AI.get_idx(qc, qid) == AI.get_idx(qc', qid) by {
         if qid >= 0 { assert (qid as nat) in PIV.QuantIds(r); }
       }
       LookPathDomQcAgree(r1, L, qc, qc', lid);
     case Re_capture(_, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.QuantIds(r1) <= PIV.QuantIds(r);
       LookPathDomQcAgree(r1, L, qc, qc', lid);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
       } else {
         assert PIV.QuantIds(r1) <= PIV.QuantIds(r);
@@ -6788,6 +7062,7 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         if qid in PIV.QuantIds(r1) {
           LookPathDomQuantOffPath(r1, L, qc, qc', lid, qid);
@@ -6829,6 +7104,7 @@ module LindenElkNestInv {
         }
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         if qid in PIV.QuantIds(r1) {
           LookPathDomQuantOffPath(r1, L, qc, qc', lid, qid);
@@ -6870,6 +7146,7 @@ module LindenElkNestInv {
         }
       }
     case Re_quant(_, qid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if qid0 >= 0 && (qid0 as nat) == qid {
         assert PIV.QidBody(r, qid) == r1;
         assert lid in LTB.LookIds(r1);
@@ -6883,8 +7160,10 @@ module LindenElkNestInv {
         LookPathDomQuantOffPath(r1, L, qc, qc', lid, qid);
       }
     case Re_capture(_, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       LookPathDomQuantOffPath(r1, L, qc, qc', lid, qid);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
       } else {
         assert lid in LTB.LookIds(r1);
@@ -6904,6 +7183,7 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if qid in PIV.QuantIds(r1) {
         QidBodyLookIdsSub(r1, qid);
         assert lid in LTB.LookIds(r1);
@@ -6917,6 +7197,7 @@ module LindenElkNestInv {
         LookPathDomOnPathBreaks(r2, L, qc', lid, qid);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if qid in PIV.QuantIds(r1) {
         QidBodyLookIdsSub(r1, qid);
         assert lid in LTB.LookIds(r1);
@@ -6930,14 +7211,17 @@ module LindenElkNestInv {
         LookPathDomOnPathBreaks(r2, L, qc', lid, qid);
       }
     case Re_quant(_, qid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if qid0 >= 0 && (qid0 as nat) == qid {
         assert AI.get_idx(qc', qid0) > L;     // the node's own clause fails
       } else {
         LookPathDomOnPathBreaks(r1, L, qc', lid, qid);
       }
     case Re_capture(_, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       LookPathDomOnPathBreaks(r1, L, qc', lid, qid);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       // fragment: the body is look-free, so no qid-body below can hold lid.
       assert NR.LookFreeRE(r1);
       LookFreeNoLookIdsN(r1);
@@ -6962,6 +7246,7 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if qid in PIV.QuantIds(r1) {
         QidBodyLookIdsSub(r1, qid);
         assert lid in LTB.LookIds(r1);
@@ -6975,6 +7260,7 @@ module LindenElkNestInv {
         LookPathDomOnPathBreaksNested(r2, L, qc', lid, qid);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if qid in PIV.QuantIds(r1) {
         QidBodyLookIdsSub(r1, qid);
         assert lid in LTB.LookIds(r1);
@@ -6988,14 +7274,17 @@ module LindenElkNestInv {
         LookPathDomOnPathBreaksNested(r2, L, qc', lid, qid);
       }
     case Re_quant(_, qid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if qid0 >= 0 && (qid0 as nat) == qid {
         assert AI.get_idx(qc', qid0) > L;     // the node's own clause fails
       } else {
         LookPathDomOnPathBreaksNested(r1, L, qc', lid, qid);
       }
     case Re_capture(_, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       LookPathDomOnPathBreaksNested(r1, L, qc', lid, qid);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       // (L4) the body may hold looks: QuantIds/QidBody descend, so qid lives in
       // r1 and lid in LookIds(QidBody(r1,qid)) <= LookIds(r1). The outer lid0 is
       // LookUnique-distinct from every body lid, so LookPathDom reduces to r1.
@@ -7068,6 +7357,7 @@ module LindenElkNestInv {
     LookBodyCapsIn(r, lid);
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         LookBodyCapsIn(r1, lid);
         assert g in PIV.CapIds(r1);
@@ -7081,6 +7371,7 @@ module LindenElkNestInv {
         LookPathComposeNested(r2, body, cc, lc, qc, mx, lid, g);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         LookBodyCapsIn(r1, lid);
         assert g in PIV.CapIds(r1);
@@ -7094,10 +7385,12 @@ module LindenElkNestInv {
         LookPathComposeNested(r2, body, cc, lc, qc, mx, lid, g);
       }
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var qv := AI.get_idx(qc, qid);
       assert qv >= mx;                               // LookPathPresentLk
       LookPathComposeNested(r1, body, cc, lc, qc, qv, lid, g);
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       LookBodyCapsIn(r1, lid);
       assert g in PIV.CapIds(r1);
       assert cid >= 0 && (cid as nat) !in PIV.CapIds(r1);   // CapUnique
@@ -7106,6 +7399,7 @@ module LindenElkNestInv {
           && AI.get_idx(cc, CP.start_reg(cid)) >= mx;       // LookPathPresentLk
       LookPathComposeNested(r1, body, cc, lc, qc, mx, lid, g);
     case Re_lookaround(lid0, la, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
         assert body == r1;
         assert MxAtLidLk(r, qc, mx, lid) == mx;
@@ -7148,6 +7442,7 @@ module LindenElkNestInv {
     LookBodyCapsIn(r, lid);
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         LookBodyCapsIn(r1, lid);
         assert g in PIV.CapIds(r1);
@@ -7161,6 +7456,7 @@ module LindenElkNestInv {
         LookPathDecomposeNested(r2, body, cc, lc, qc, mx, lid, g);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         LookBodyCapsIn(r1, lid);
         assert g in PIV.CapIds(r1);
@@ -7174,16 +7470,19 @@ module LindenElkNestInv {
         LookPathDecomposeNested(r2, body, cc, lc, qc, mx, lid, g);
       }
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var qv := AI.get_idx(qc, qid);
       assert qv >= mx;                               // PathPresentLk
       LookPathDecomposeNested(r1, body, cc, lc, qc, qv, lid, g);
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       LookBodyCapsIn(r1, lid);
       assert g in PIV.CapIds(r1);
       assert cid >= 0 && (cid as nat) !in PIV.CapIds(r1);   // CapUnique
       assert (cid as nat) != g;
       LookPathDecomposeNested(r1, body, cc, lc, qc, mx, lid, g);
     case Re_lookaround(lid0, la, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
         assert body == r1;
         assert MxAtLidLk(r, qc, mx, lid) == mx;
@@ -7222,18 +7521,21 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.CapIds(r1) <= PIV.CapIds(r) && PIV.CapIds(r2) <= PIV.CapIds(r);
       assert PIV.QuantIds(r1) <= PIV.QuantIds(r) && PIV.QuantIds(r2) <= PIV.QuantIds(r);
       assert LTB.LookIds(r1) <= LTB.LookIds(r) && LTB.LookIds(r2) <= LTB.LookIds(r);
       if lid in LTB.LookIds(r1) { LookPathPresentLkAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, mx, lid); }
       else { LookPathPresentLkAgree(r2, cc1, lc1, qc1, cc2, lc2, qc2, mx, lid); }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.CapIds(r1) <= PIV.CapIds(r) && PIV.CapIds(r2) <= PIV.CapIds(r);
       assert PIV.QuantIds(r1) <= PIV.QuantIds(r) && PIV.QuantIds(r2) <= PIV.QuantIds(r);
       assert LTB.LookIds(r1) <= LTB.LookIds(r) && LTB.LookIds(r2) <= LTB.LookIds(r);
       if lid in LTB.LookIds(r1) { LookPathPresentLkAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, mx, lid); }
       else { LookPathPresentLkAgree(r2, cc1, lc1, qc1, cc2, lc2, qc2, mx, lid); }
     case Re_quant(_, qid, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.CapIds(r1) <= PIV.CapIds(r);
       assert PIV.QuantIds(r1) <= PIV.QuantIds(r);
       assert LTB.LookIds(r1) <= LTB.LookIds(r);
@@ -7242,6 +7544,7 @@ module LindenElkNestInv {
       }
       LookPathPresentLkAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, AI.get_idx(qc1, qid), lid);
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.CapIds(r1) <= PIV.CapIds(r);
       assert PIV.QuantIds(r1) <= PIV.QuantIds(r);
       assert LTB.LookIds(r1) <= LTB.LookIds(r);
@@ -7251,6 +7554,7 @@ module LindenElkNestInv {
       }
       LookPathPresentLkAgree(r1, cc1, lc1, qc1, cc2, lc2, qc2, mx, lid);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.CapIds(r1) == PIV.CapIds(r);
       assert PIV.QuantIds(r1) == PIV.QuantIds(r);
       assert LTB.LookIds(r1) <= LTB.LookIds(r);
@@ -7280,16 +7584,21 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) { LookPathPresentLkImpliesPresent(r1, cc, lc, qc, mx, lid); }
       else { LookPathPresentLkImpliesPresent(r2, cc, lc, qc, mx, lid); }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) { LookPathPresentLkImpliesPresent(r1, cc, lc, qc, mx, lid); }
       else { LookPathPresentLkImpliesPresent(r2, cc, lc, qc, mx, lid); }
     case Re_quant(_, qid, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       LookPathPresentLkImpliesPresent(r1, cc, lc, qc, AI.get_idx(qc, qid), lid);
     case Re_capture(_, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       LookPathPresentLkImpliesPresent(r1, cc, lc, qc, mx, lid);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
       } else {
         LookPathPresentLkImpliesPresent(r1, cc, lc, qc, -1, lid);
@@ -7362,6 +7671,7 @@ module LindenElkNestInv {
     TopLookIdsIn(r);
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.QuantIdsOutsideLooks(r1) <= PIV.QuantIdsOutsideLooks(r)
           && PIV.QuantIdsOutsideLooks(r2) <= PIV.QuantIdsOutsideLooks(r);
       if lid in LTB.LookIds(r1) {
@@ -7383,6 +7693,7 @@ module LindenElkNestInv {
         LookPathDomQcAgreeTop(r2, L, qc, qc', lid);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.QuantIdsOutsideLooks(r1) <= PIV.QuantIdsOutsideLooks(r)
           && PIV.QuantIdsOutsideLooks(r2) <= PIV.QuantIdsOutsideLooks(r);
       if lid in LTB.LookIds(r1) {
@@ -7404,15 +7715,18 @@ module LindenElkNestInv {
         LookPathDomQcAgreeTop(r2, L, qc, qc', lid);
       }
     case Re_quant(_, qid, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.QuantIdsOutsideLooks(r1) <= PIV.QuantIdsOutsideLooks(r);
       assert AI.get_idx(qc, qid) == AI.get_idx(qc', qid) by {
         if qid >= 0 { assert (qid as nat) in PIV.QuantIdsOutsideLooks(r); }
       }
       LookPathDomQcAgreeTop(r1, L, qc, qc', lid);
     case Re_capture(_, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.QuantIdsOutsideLooks(r1) <= PIV.QuantIdsOutsideLooks(r);
       LookPathDomQcAgreeTop(r1, L, qc, qc', lid);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert lid0 >= 0 && (lid0 as nat) == lid;
   }
 
@@ -7474,6 +7788,7 @@ module LindenElkNestInv {
     match r
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_lookaround(lid, la, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var lv := AI.get_idx(lc, lid);
       if lv < 0 || lv < mx {
         PIV.FilterAllClearsStart(r1, cr, gid);
@@ -7482,6 +7797,7 @@ module LindenElkNestInv {
         FilterPresenceExtractLkNested(r1, cr, cc, lc, qc, -1, gid);
       }
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var c1 := AI.filter_capture(r1, cr, cc, lc, qc, mx);
       if gid in PIV.CapIds(r1) {
         assert gid !in PIV.CapIds(r2) by { if gid in PIV.CapIds(r2) { assert gid in PIV.CapIds(r1) * PIV.CapIds(r2); } }
@@ -7499,6 +7815,7 @@ module LindenElkNestInv {
         PIV.FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, gid);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var c1 := AI.filter_capture(r1, cr, cc, lc, qc, mx);
       if gid in PIV.CapIds(r1) {
         assert gid !in PIV.CapIds(r2) by { if gid in PIV.CapIds(r2) { assert gid in PIV.CapIds(r1) * PIV.CapIds(r2); } }
@@ -7516,6 +7833,7 @@ module LindenElkNestInv {
         PIV.FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, gid);
       }
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var qv := AI.get_idx(qc, qid);
       if qv < mx {
         PIV.FilterAllClearsStart(r1, cr, gid);
@@ -7524,6 +7842,7 @@ module LindenElkNestInv {
         FilterPresenceExtractLkNested(r1, cr, cc, lc, qc, qv, gid);
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var start := AI.get_idx(cc, CP.start_reg(cid));
       if cid >= 0 && (cid as nat) == gid {
         assert gid !in PIV.CapIds(r1);                        // CapUnique
@@ -7624,10 +7943,13 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if qid in PIV.QuantIds(r1) { QidBodyCapIdsSub(r1, qid); } else { QidBodyCapIdsSub(r2, qid); }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if qid in PIV.QuantIds(r1) { QidBodyCapIdsSub(r1, qid); } else { QidBodyCapIdsSub(r2, qid); }
     case Re_quant(_, qid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if qid0 >= 0 && (qid0 as nat) == qid {} else { QidBodyCapIdsSub(r1, qid); }
     case Re_capture(_, r1) => QidBodyCapIdsSub(r1, qid);
     case Re_lookaround(_, _, r1) => QidBodyCapIdsSub(r1, qid);
@@ -7646,6 +7968,7 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if qid in PIV.QuantIds(r1) && lid in LTB.LookIds(r1) {
         assert qid in PIV.QuantIdsOutsideLooks(r1) by {
           assert qid !in PIV.QuantIds(r2) by {
@@ -7679,6 +8002,7 @@ module LindenElkNestInv {
         }
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if qid in PIV.QuantIds(r1) && lid in LTB.LookIds(r1) {
         assert qid in PIV.QuantIdsOutsideLooks(r1) by {
           assert qid !in PIV.QuantIds(r2) by {
@@ -7711,6 +8035,7 @@ module LindenElkNestInv {
         }
       }
     case Re_quant(_, qid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if qid0 >= 0 && (qid0 as nat) == qid {
         // qid's body is r1 and every look of the node is in r1 — lid included:
         // contradicts the off-path hypothesis.
@@ -7721,8 +8046,10 @@ module LindenElkNestInv {
         LookBodyQidBodyDisjoint(r1, qid, lid);
       }
     case Re_capture(_, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       LookBodyQidBodyDisjoint(r1, qid, lid);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       // an outside-look quant cannot sit below a look node
       assert PIV.QuantIdsOutsideLooks(r) == {};
       assert false;
@@ -7737,6 +8064,7 @@ module LindenElkNestInv {
   {
     match r
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if g in PIV.CapIdsInLooks(r1) {
         CapIdsInLooksHasOwner(r1, g);
         var lid: nat :| lid in LTB.LookIds(r1) && g in PIV.CapIds(LookBodyOfRE(r1, lid));
@@ -7750,6 +8078,7 @@ module LindenElkNestInv {
         assert LookBodyOfRE(r, lid) == LookBodyOfRE(r2, lid);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if g in PIV.CapIdsInLooks(r1) {
         CapIdsInLooksHasOwner(r1, g);
         var lid: nat :| lid in LTB.LookIds(r1) && g in PIV.CapIds(LookBodyOfRE(r1, lid));
@@ -7763,14 +8092,17 @@ module LindenElkNestInv {
         assert LookBodyOfRE(r, lid) == LookBodyOfRE(r2, lid);
       }
     case Re_quant(_, _, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       CapIdsInLooksHasOwner(r1, g);
       var lid: nat :| lid in LTB.LookIds(r1) && g in PIV.CapIds(LookBodyOfRE(r1, lid));
       assert LookBodyOfRE(r, lid) == LookBodyOfRE(r1, lid);
     case Re_capture(_, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       CapIdsInLooksHasOwner(r1, g);
       var lid: nat :| lid in LTB.LookIds(r1) && g in PIV.CapIds(LookBodyOfRE(r1, lid));
       assert LookBodyOfRE(r, lid) == LookBodyOfRE(r1, lid);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 {
         assert (lid0 as nat) in LTB.LookIds(r);
         assert LookBodyOfRE(r, lid0 as nat) == r1;
@@ -7902,12 +8234,17 @@ module LindenElkNestInv {
   {
     match re
     case Re_empty =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_character(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_anchor(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_lookaround(lid, la, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert pc == start;
       assert lid >= 0;                                  // LookUnique
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
         && NR.NfaRepRE(r1, code, start + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
@@ -7922,6 +8259,7 @@ module LindenElkNestInv {
         LookSiteTopNested(r2, code, e1 + 1, endl, pc);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.NfaRepRE(r1, code, start, e1) && NR.NfaRepRE(r2, code, e1, endl);
       NR.NfaRepIncrRE(r1, code, start, e1);
       NR.NfaRepIncrRE(r2, code, e1, endl);
@@ -7931,6 +8269,7 @@ module LindenElkNestInv {
         LookSiteTopNested(r2, code, e1, endl, pc);
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
         && NR.NfaRepRE(r1, code, start + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
@@ -7942,6 +8281,7 @@ module LindenElkNestInv {
       } else {
       }
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if q.min == 0 && q.max == None {
         var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
           && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
@@ -8033,17 +8373,23 @@ module LindenElkNestInv {
   {
     match r
     case Re_empty =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_character(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_anchor(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if l in LTB.LookIds(r1) { NoNulledPlusLookBody(r1, l); }
       else { NoNulledPlusLookBody(r2, l); }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if l in LTB.LookIds(r1) { NoNulledPlusLookBody(r1, l); }
       else { NoNulledPlusLookBody(r2, l); }
     case Re_quant(_, _, _, r1) => NoNulledPlusLookBody(r1, l);
     case Re_capture(_, r1) => NoNulledPlusLookBody(r1, l);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == l {
       } else {
         NoNulledPlusLookBody(r1, l);
@@ -8060,17 +8406,23 @@ module LindenElkNestInv {
   {
     match r
     case Re_empty =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_character(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_anchor(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if l in LTB.LookIds(r1) { NestDepthLookBodyDrops(r1, l); }
       else { NestDepthLookBodyDrops(r2, l); }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if l in LTB.LookIds(r1) { NestDepthLookBodyDrops(r1, l); }
       else { NestDepthLookBodyDrops(r2, l); }
     case Re_quant(_, _, _, r1) => NestDepthLookBodyDrops(r1, l);
     case Re_capture(_, r1) => NestDepthLookBodyDrops(r1, l);
     case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == l {
       } else {
         NestDepthLookBodyDrops(r1, l);
