@@ -4032,14 +4032,11 @@ module LindenElkMain {
     ensures CP.FFullCompilation(ast).f_main_bc == CP.compile_to_bytecode(R.lazy_prefix(ast))
     ensures CP.FFullCompilation(ast).f_main_cdns == LCdn.compile_cdns(ast)
   {
-    var nlook0 := R.max_lookaround(ast) + 1;
-    var nquant0 := R.max_quant(ast) + 1;
-    var base := CP.FCompiled(ast, CP.compile_to_bytecode(R.lazy_prefix(ast)), LCdn.compile_cdns(ast),
-                             seq(nlook0, i => R.Lookahead), seq(nlook0, i => R.Re_empty),
-                             seq(nlook0, i => []), seq(nlook0, i => []),
-                             seq(nlook0, i => []), seq(nquant0, i => []));
-    assert CP.FFullCompilation(ast) == CP.FCompileExtra(ast, base);
-    FCompileExtraFrame(ast, base);
+    // (2026-09-05) delegate: the `*Nested` twin proves these three ensures with
+    // STRICTLY FEWER hypotheses (`FCompileExtraFrameAny` needs no fragment
+    // premise) and in 1m31s, where this body's `FCompileExtraFrame` route timed
+    // out at 900 s in the gate.
+    FFullCompilationFactsNested(ast);
   }
 
   /** (L4 NESTED) The main-field frame of `FCompileExtra`, with NO fragment
