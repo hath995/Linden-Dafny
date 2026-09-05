@@ -11102,7 +11102,7 @@ module LindenElkMain {
                                   thread.quant_regs, -1))
     ensures LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)))
   {
-    hide T.TransWf, NR.PlusFragmentRE, NR.LookBehindFragmentRE, NR.CaptureFreeRE, NR.LookFreeRE, NR.LookBehindFragmentRaw, NR.CaptureFreeRaw, NR.LookFreeRaw, EL.PikeLkRegex, EL.LkGateOk, SD.GroupFreeL;
+    hide T.TransWf, NR.PlusFragmentRE, NR.LookBehindFragmentRE, NR.CaptureFreeRE, NR.LookFreeRE, NR.LookBehindFragmentRaw, NR.CaptureFreeRaw, NR.LookFreeRaw, EL.PikeLkRegex, EL.LkGateOk, SD.GroupFreeL, R.annotate, R.max_group, R.max_lookaround, R.max_quant;   // (2026-09-05) recursive + mentioned everywhere: their unfolding is the matching loop
     var ast := R.annotate(raw);
     var re := R.lazy_prefix(ast);
     var rer := LES.TheRer(raw);
