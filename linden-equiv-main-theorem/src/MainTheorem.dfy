@@ -9540,6 +9540,7 @@ module LindenElkMain {
     assert g !in OuterDefsActs(cont);
     match acts[0]
     case Acheck(strcheck) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch: 341-line body, one VC, 900 s+
       if SS.IsStrictSuffix(inp, strcheck, dir) {
         LFS.CheckTermination(cont, inp, strcheck, dir);
         assert t == LT.Progress(LFU.ComputeTr(rer, cont, inp, gm, dir));
@@ -9551,6 +9552,7 @@ module LindenElkMain {
         assert false;   // TreeRes(Mismatch) == None contradicts .Some?
       }
     case Aclose(gid) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch: 341-line body, one VC, 900 s+
       assert gid != g;   // g !in OuterDefsActs (Aclose contributes {gid})
       LFS.CloseTermination(cont, inp, dir, gid);
       var gm2 := LG.GMClose(LC.Idx(inp), gid, gm);
@@ -9560,13 +9562,16 @@ module LindenElkMain {
       found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, cont, inp, gm2, dir, g);
       if found { SubLkBodyActsCons(acts[0], cont, rr); assert SubLkBodyActs(acts, rr); }   // SubLk tail-lift
     case Areg(r) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch: 341-line body, one VC, 900 s+
       match r
       case Epsilon =>
+        assert {:split_here} true;   // (2026-09-05) per-arm batch: 341-line body, one VC, 900 s+
         LFS.EpsilonTermination(cont, inp, dir);
         assert t == LFU.ComputeTr(rer, cont, inp, gm, dir);
         found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, cont, inp, gm, dir, g);
         if found { SubLkBodyActsCons(acts[0], cont, rr); assert SubLkBodyActs(acts, rr); }   // SubLk tail-lift
       case Character(cd) =>
+        assert {:split_here} true;   // (2026-09-05) per-arm batch: 341-line body, one VC, 900 s+
         match LC.ReadChar(rer, cd, inp, dir) {
           case None => assert t == LT.Mismatch; assert false;
           case Some(pair) =>
@@ -9579,6 +9584,7 @@ module LindenElkMain {
             if found { SubLkBodyActsCons(acts[0], cont, rr); assert SubLkBodyActs(acts, rr); }   // SubLk tail-lift
         }
       case Disjunction(r1, r2) =>
+        assert {:split_here} true;   // (2026-09-05) per-arm batch: 341-line body, one VC, 900 s+
         var a1 := [LS.Areg(r1)] + cont; var a2 := [LS.Areg(r2)] + cont;
         assert GNQActs(a1, g) && GNQActs(a2, g) by { GNQActsCons(LS.Areg(r1), cont, g); GNQActsCons(LS.Areg(r2), cont, g); }
         assert EL.PikeLkActionsRec(a1) && EL.PikeLkActionsRec(a2) by { EL.PikeLkActionsRecConsIff(LS.Areg(r1), cont); EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont); }
@@ -9606,6 +9612,7 @@ module LindenElkMain {
           if found { SubLkBodyActsCons(LS.Areg(r2), cont, rr); SubLkBodyActsCons(acts[0], cont, rr); assert SubLkBodyActs(acts, rr); }   // SubLk: r2 in Disjunction
         }
       case Sequence(r1, r2) =>
+        assert {:split_here} true;   // (2026-09-05) per-arm batch: 341-line body, one VC, 900 s+
         var na := LS.SeqList(r1, r2, dir) + cont;
         assert EL.PikeLkActionsRec(na) && GNQActs(na, g) && GOnceInv(na, g) && g !in OuterDefsActs(na) by {
           if dir.Forward? {
@@ -9640,6 +9647,7 @@ module LindenElkMain {
           SubLkBodyActsCons(acts[0], cont, rr); assert SubLkBodyActs(acts, rr);
         }
       case Quantified(greedy, min, delta, r1) =>
+        assert {:split_here} true;   // (2026-09-05) per-arm batch: 341-line body, one VC, 900 s+
         var gidl := L.DefGroups(r1);
         assert g !in (set x | x in L.DefGroups(r1));   // GNotUnderQuantL(Quantified)
         assert multiset(L.DefGroups(r1))[g] == 0;
@@ -9727,6 +9735,7 @@ module LindenElkMain {
           }
         }
       case Group(gid, r1) =>
+        assert {:split_here} true;   // (2026-09-05) per-arm batch: 341-line body, one VC, 900 s+
         var na := [LS.Areg(r1), LS.Aclose(gid)] + cont;
         assert gid != g;   // g !in OuterDefsActs (Group contributes {gid})
         assert L.DefGroups(r) == [gid] + L.DefGroups(r1);
@@ -9751,6 +9760,7 @@ module LindenElkMain {
           SubLkBodyActsCons(acts[0], cont, rr); assert SubLkBodyActs(acts, rr);
         }
       case LookaroundR(lk, r1) =>
+        assert {:split_here} true;   // (2026-09-05) per-arm batch: 341-line body, one VC, 900 s+
         assert EL.PikeLkRegexRec(r1) by {
           if L.Positivity(lk) { } else { assert SD.GroupFreeL(r1); GroupFreeImpliesNoLkBr(r1); EL.NoLkBrLIsPikeLkRegexRec(r1); }
         }
@@ -9823,6 +9833,7 @@ module LindenElkMain {
             }
         }
       case AnchorR(a) =>
+        assert {:split_here} true;   // (2026-09-05) per-arm batch: 341-line body, one VC, 900 s+
         if LS.AnchorSatisfied(rer, a, inp) {
           LFS.AnchorTermination(cont, inp, dir, a);
           assert t == LT.AnchorPass(a, LFU.ComputeTr(rer, cont, inp, gm, dir));
@@ -9834,6 +9845,7 @@ module LindenElkMain {
           assert false;
         }
       case Backreference(gid) =>
+        assert {:split_here} true;   // (2026-09-05) per-arm batch: 341-line body, one VC, 900 s+
         assert false;   // excluded by PikeLkActionsRec
   }
 
@@ -10966,11 +10978,111 @@ module LindenElkMain {
       hypothesis instead of the L4 scope — the scope fed only `FirstLeafClosedRec`.
       Shared by the L4 wrapper below and the L5 twin (LiftSim `MainExtractionL5`,
       closedness from the L5 ladder `LindenElkFlipClosed.FirstLeafClosedRecL5`). */
+  /** The capture-array bridge with NONE of the tree/spec machinery in scope:
+      from the register banks and the closed leaf map, the normalized filter
+      array IS the leaf's capture array. Extracted (2026-09-05): inside
+      `MainExtractionFromClosed`, whose hypotheses carry `BoolTreeLk`, `IsTree`,
+      `FirstLeaf` and `FFullMatch`, even `assert |caps.a_cp| == ncap` was a 900 s
+      batch — and `hide *` does not help, because the cost is the ASSUMED
+      context, not function unfolding. Here the context is just the registers. */
+  lemma CapArrayFromRegs(re: R.regex, thread: AI.Thread, leaf: LT.Leaf, inp: LC.Input,
+                         ngroups: nat, ncap: nat, nlook: nat, nquant: nat)
+    requires NR.NestedFragmentRE(re)
+    requires ClosedGm(leaf.1)
+    requires leaf.1 == PIV.NormGm(PIV.GmOfLive(re, thread.capture_regs, thread.look_regs, thread.quant_regs))
+    requires CM.ThreadRegsWf(thread, ncap, nlook, nquant)
+    requires ncap == 2 * ngroups
+    ensures LES.NormalizeArr(AI.filter_reset(re, thread.capture_regs, thread.look_regs, thread.quant_regs, -1))
+         == LES.CapArrayOfLeaf(leaf, ngroups)
+  {
+    var caps := thread.capture_regs;
+    var lk := thread.look_regs;
+    var qt := thread.quant_regs;
+    var f := AI.filter_reset(re, caps, lk, qt, -1);
+    var cc := caps.a_clk;
+    assert {:split_here} true;
+    PIV.FilterCaptureLen(re, caps.a_cp, cc, lk.a_clk, qt.a_clk, -1);
+    assert {:split_here} true;
+    // (2026-09-05) the size chain, one link per batch with the length lemma
+    // supplied explicitly: as a single four-way chain this assert was the
+    // 900 s batch of BOTH extraction lemmas.
+    PIV.FilterCaptureLen(re, caps.a_cp, caps.a_clk, lk.a_clk, qt.a_clk, -1);
+    assert {:split_here} true;
+    assert |f| == |caps.a_cp|;
+    assert {:split_here} true;
+    assert |caps.a_cp| == ncap by { hide *; }        // ThreadRegsWf
+    assert {:split_here} true;
+    assert ncap == 2 * ngroups;
+    // closedness (item 0): `leaf.1 == NormGm(GmOfLive)` and `NormRange` preserves
+    // endIdx.Some?, so every present group of GmOfLive is closed. Needed by BOTH
+    // the clock-order forall below AND the closed-match forall. (NO `GmOfLiveEqGmOf`
+    // here — that needs the clock order the forall below produces.)
+    assert {:split_here} true;
+    // (2026-09-05) a verbatim restatement of the `requires`; with the whole
+    // context unfolded this single assert was a 900 s batch.
+    assert leaf.1 == PIV.NormGm(PIV.GmOfLive(re, caps, lk, qt)) by { hide *; }   // requires
+    assert {:split_here} true;
+    assert forall g: LG.GroupId :: g in PIV.GmOfLive(re, caps, lk, qt)
+                                   ==> PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some? by {
+      forall g: LG.GroupId | g in PIV.GmOfLive(re, caps, lk, qt)
+        ensures PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some?
+      {
+        assert g in leaf.1;                               // NormGm preserves keys
+        assert leaf.1[g] == PIV.NormRange(PIV.GmOfLive(re, caps, lk, qt)[g]);  // NormGm def at g
+        assert leaf.1[g].endIdx.Some?;                    // ClosedGm(leaf.1)
+        PIV.NormRangeClosed(PIV.GmOfLive(re, caps, lk, qt)[g]);   // closedness transfers
+      }
+    }
+    assert {:split_here} true;   // (2026-09-05) per-step batch: linear 100-line body, one VC, 900 s+
+    forall g: nat | 0 <= g < |f| && AI.get_idx(f, CP.start_reg(g)) >= 0 && AI.get_idx(f, CP.end_reg(g)) >= 0
+      ensures AI.get_idx(cc, CP.end_reg(g)) >= AI.get_idx(cc, CP.start_reg(g))
+    {
+      assert g in PIV.GmOfLive(re, caps, lk, qt);
+      assert PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some?;
+    }
+    assert {:split_here} true;
+    PIV.GmOfLiveEqGmOf(re, caps, lk, qt);                 // GmOfLive == GmOf (needs the clock order above)
+    assert {:split_here} true;
+    assert PIV.NormGm(PIV.GmOf(re, caps, lk, qt)) == leaf.1;   // leaf.1 == NormGm(GmOfLive) == NormGm(GmOf)
+
+    // the capture-array bridge
+    assert {:split_here} true;   // (2026-09-05) per-step batch: linear 100-line body, one VC, 900 s+
+    // (2026-09-05) 900 s batch: the element-wise bound needs only the filter
+    // lemma, not the surrounding context.
+    forall i | 0 <= i < |f| ensures f[i] >= -1 {
+      hide *;                                        // the whole ambient context is dead weight here
+      PIV.FilterCaptureGeqNeg1Nested(re, caps.a_cp, cc, lk.a_clk, qt.a_clk, -1, i);
+      assert AI.get_idx(caps.a_cp, i) >= -1;         // CapRegWf
+      assert AI.get_idx(f, i) == f[i];
+    }
+    assert {:split_here} true;   // (2026-09-05) per-step batch: linear 100-line body, one VC, 900 s+
+    forall g: nat | 0 <= g < ngroups && f[2 * g] >= 0 ensures f[2 * g + 1] >= 0 {
+      assert AI.get_idx(f, CP.start_reg(g)) == f[2 * g];
+      assert g in PIV.GmOfLive(re, caps, lk, qt);
+      assert PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some?;
+      assert AI.get_idx(f, CP.end_reg(g)) == f[2 * g + 1];
+    }
+    // item 0 (capturing lookbehind): `f` MAY contain reversed pairs (backward
+    // spans). `NormalizeArr` swaps them POSITIONALLY, which is exactly `NormGm` on
+    // the `GmOf` read (`GmOfCapArrayBridgeNorm` — no no-reversed-pairs hypothesis),
+    // and `leaf.1 == NormGm(GmOfLive) == NormGm(GmOf)`.
+    assert {:split_here} true;
+    PIV.GmOfCapArrayBridgeNorm(re, caps, lk, qt, inp, ngroups);
+    assert {:split_here} true;
+    assert LES.NormalizeArr(f)
+        == LES.CapArrayOfLeaf((inp, PIV.NormGm(PIV.GmOf(re, caps, lk, qt))), ngroups);
+    assert {:split_here} true;
+    assert LES.CapArrayOfLeaf((inp, PIV.NormGm(PIV.GmOf(re, caps, lk, qt))), ngroups)
+        == LES.CapArrayOfLeaf(leaf, ngroups);
+  }
+
   lemma MainExtractionFromClosed(raw: R.raw_regex, str: string,
                                  t: LT.Tree, thread: AI.Thread, leaf: LT.Leaf)
     requires NR.NestedFragmentRaw(raw)
     requires ClosedGm(leaf.1)                                   // (L5 F7e-2) closedness IS the scope's only use
-    requires NR.NegLooksLookFreeRE(R.lazy_prefix(R.annotate(raw)))
+    // (2026-09-05) `NegLooksLookFreeRE` dropped: the register half moved to
+    // `CapArrayFromRegs` and the remaining body does not use it — which lets
+    // `MainExtraction` (LookBehind fragment) delegate here.
     requires T.Latin1Wf(raw)
     requires EL.BoolTreeLk(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), BS.CannotExit, t)
     requires LS.IsTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), LG.Empty, WP.Forward, t)
@@ -10997,72 +11109,51 @@ module LindenElkMain {
     var inp := LC.InitInput(str);
     var ngroups := LES.NGroups(raw);
     var ncap := 2 * R.max_group(ast) + 2;
+    assert {:split_here} true;
     T.AnnotateWf(raw);
+    assert {:split_here} true;
     NR.SpecRegexNestedFragment(raw);
     var caps := thread.capture_regs;
     var lk := thread.look_regs;
     var qt := thread.quant_regs;
+    assert {:split_here} true;
     assert LES.SpecRegex(raw) == T.Translate(re);
 
 
     // live == plain denotation on the closed leaf
+    assert {:split_here} true;
     var f := AI.filter_reset(re, caps, lk, qt, -1);
     var cc := caps.a_clk;
-    PIV.FilterCaptureLen(re, caps.a_cp, cc, lk.a_clk, qt.a_clk, -1);
-    assert |f| == |caps.a_cp| == ncap == 2 * ngroups;
-    // closedness (item 0): `leaf.1 == NormGm(GmOfLive)` and `NormRange` preserves
-    // endIdx.Some?, so every present group of GmOfLive is closed. Needed by BOTH
-    // the clock-order forall below AND the closed-match forall. (NO `GmOfLiveEqGmOf`
-    // here — that needs the clock order the forall below produces.)
-    assert leaf.1 == PIV.NormGm(PIV.GmOfLive(re, caps, lk, qt));            // requires
-    assert forall g: LG.GroupId :: g in PIV.GmOfLive(re, caps, lk, qt)
-                                   ==> PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some? by {
-      forall g: LG.GroupId | g in PIV.GmOfLive(re, caps, lk, qt)
-        ensures PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some?
-      {
-        assert g in leaf.1;                               // NormGm preserves keys
-        assert leaf.1[g] == PIV.NormRange(PIV.GmOfLive(re, caps, lk, qt)[g]);  // NormGm def at g
-        assert leaf.1[g].endIdx.Some?;                    // ClosedGm(leaf.1)
-        PIV.NormRangeClosed(PIV.GmOfLive(re, caps, lk, qt)[g]);   // closedness transfers
-      }
-    }
-    forall g: nat | 0 <= g < |f| && AI.get_idx(f, CP.start_reg(g)) >= 0 && AI.get_idx(f, CP.end_reg(g)) >= 0
-      ensures AI.get_idx(cc, CP.end_reg(g)) >= AI.get_idx(cc, CP.start_reg(g))
-    {
-      assert g in PIV.GmOfLive(re, caps, lk, qt);
-      assert PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some?;
-    }
-    PIV.GmOfLiveEqGmOf(re, caps, lk, qt);                 // GmOfLive == GmOf (needs the clock order above)
-    assert PIV.NormGm(PIV.GmOf(re, caps, lk, qt)) == leaf.1;   // leaf.1 == NormGm(GmOfLive) == NormGm(GmOf)
-
-    // the capture-array bridge
-    forall i | 0 <= i < |f| ensures f[i] >= -1 {
-      assert AI.get_idx(caps.a_cp, i) >= -1;      // CapRegWf
-      PIV.FilterCaptureGeqNeg1Nested(re, caps.a_cp, cc, lk.a_clk, qt.a_clk, -1, i);
-      assert AI.get_idx(f, i) == f[i];
-    }
-    forall g: nat | 0 <= g < ngroups && f[2 * g] >= 0 ensures f[2 * g + 1] >= 0 {
-      assert AI.get_idx(f, CP.start_reg(g)) == f[2 * g];
-      assert g in PIV.GmOfLive(re, caps, lk, qt);
-      assert PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some?;
-      assert AI.get_idx(f, CP.end_reg(g)) == f[2 * g + 1];
-    }
-    // item 0 (capturing lookbehind): `f` MAY contain reversed pairs (backward
-    // spans). `NormalizeArr` swaps them POSITIONALLY, which is exactly `NormGm` on
-    // the `GmOf` read (`GmOfCapArrayBridgeNorm` — no no-reversed-pairs hypothesis),
-    // and `leaf.1 == NormGm(GmOfLive) == NormGm(GmOf)`.
-    PIV.GmOfCapArrayBridgeNorm(re, caps, lk, qt, inp, ngroups);
-    assert LES.NormalizeArr(f)
-        == LES.CapArrayOfLeaf((inp, PIV.NormGm(PIV.GmOf(re, caps, lk, qt))), ngroups);
-    assert LES.CapArrayOfLeaf((inp, PIV.NormGm(PIV.GmOf(re, caps, lk, qt))), ngroups)
-        == LES.CapArrayOfLeaf(leaf, ngroups);
+    // the core's size precondition gets its OWN batch (inline it was 900 s)
+    assert ncap == 2 * ngroups;
+    assert {:split_here} true;
+    // (2026-09-05) the register/filter half is its own lemma — see CapArrayFromRegs.
+    // Its preconditions are asserted ONE PER BATCH first: matched against the
+    // ambient context all at once, the call site alone was a 900 s batch.
+    assert NR.NestedFragmentRE(re);
+    assert {:split_here} true;
+    assert ClosedGm(leaf.1);
+    assert {:split_here} true;
+    assert leaf.1 == PIV.NormGm(PIV.GmOfLive(re, thread.capture_regs, thread.look_regs, thread.quant_regs));
+    assert {:split_here} true;
+    assert CM.ThreadRegsWf(thread, ncap, R.max_lookaround(ast) + 1, R.max_quant(ast) + 1);
+    assert {:split_here} true;
+    CapArrayFromRegs(re, thread, leaf, inp, ngroups, ncap,
+                     R.max_lookaround(ast) + 1, R.max_quant(ast) + 1);
+    assert {:split_here} true;
+    assert LES.NormalizeArr(f) == LES.CapArrayOfLeaf(leaf, ngroups);
 
     // the lazy prefix is filter-transparent
+    assert {:split_here} true;
     assert AI.get_idx(qt.a_clk, 0) >= -1;         // QuantRegsFinal
+    assert {:split_here} true;
     FilterResetLazyPrefix(ast, caps, lk, qt);
+    assert {:split_here} true;
     assert AI.filter_reset(ast, caps, lk, qt, -1) == f;
 
+    assert {:split_here} true;
     assert LES.Normalize(AI.FFullMatch(raw, str)) == Some(LES.NormalizeArr(f));
+    assert {:split_here} true;
     assert LES.MatcherSpec(raw, str, Some(LES.CapArrayOfLeaf(leaf, ngroups)));
   }
 
@@ -11099,91 +11190,55 @@ module LindenElkMain {
     var inp := LC.InitInput(str);
     var ngroups := LES.NGroups(raw);
     var ncap := 2 * R.max_group(ast) + 2;
+    assert {:split_here} true;
     T.AnnotateWf(raw);
+    assert {:split_here} true;
     NR.SpecRegexLookBehindFragment(raw);
     var caps := thread.capture_regs;
     var lk := thread.look_regs;
     var qt := thread.quant_regs;
+    assert {:split_here} true;
     assert LES.SpecRegex(raw) == T.Translate(re);
 
     // closedness of the leaf gm
+    assert {:split_here} true;
     assert LT.TreeRes(t, LG.Empty, inp, WP.Forward) == Some(leaf);
+    assert {:split_here} true;
     assert OpenOf(LG.Empty) <= PendingCloses([LS.Areg(T.Translate(re))]);
+    assert {:split_here} true;
     NR.SpecRegexNoNulledPlus(raw);   // §2.5b interim conjunct
+    assert {:split_here} true;
     EL.TranslateFragmentPikeLk(re);
+    assert {:split_here} true;
     assert EL.PikeLkActions([LS.Areg(T.Translate(re))]) by {
       assert [LS.Areg(T.Translate(re))] == [LS.Areg(T.Translate(re))] + [];
       assert EL.PikeLkActions([]);
       EL.PikeLkActionsConsIff(LS.Areg(T.Translate(re)), []);
     }
+    assert {:split_here} true;
     assert LkClosedInGm(LG.Empty, [LS.Areg(T.Translate(re))]);   // Empty has no groups
+    assert {:split_here} true;
     SpecRegexOuterLkDisjoint(raw);   // also ensures NoDupSeq(L.DefGroups(SpecRegex(raw)))
+    assert {:split_here} true;
     assert T.Translate(re) == LES.SpecRegex(raw);
+    assert {:split_here} true;
     assert OuterLkDisjoint([LS.Areg(T.Translate(re))]);
+    assert {:split_here} true;
     assert NoDupRegsActs([LS.Areg(T.Translate(re))]) by { assert NoDupSeq(L.DefGroups(T.Translate(re))); }
+    assert {:split_here} true;
     assert TRM.GmInBounds(LG.Empty, |inp.pref| + |inp.next|);   // Empty has no ranges
+    assert {:split_here} true;
     FirstLeafClosed(rer, [LS.Areg(T.Translate(re))], inp, BS.CannotExit, t, LG.Empty, leaf);
+    assert {:split_here} true;
     assert ClosedGm(leaf.1);
 
-    // live == plain denotation on the closed leaf
-    var f := AI.filter_reset(re, caps, lk, qt, -1);
-    var cc := caps.a_clk;
-    PIV.FilterCaptureLen(re, caps.a_cp, cc, lk.a_clk, qt.a_clk, -1);
-    assert |f| == |caps.a_cp| == ncap == 2 * ngroups;
-    // closedness (item 0): `leaf.1 == NormGm(GmOfLive)` and `NormRange` preserves
-    // endIdx.Some?, so every present group of GmOfLive is closed. Needed by BOTH
-    // the clock-order forall below AND the closed-match forall. (NO `GmOfLiveEqGmOf`
-    // here — that needs the clock order the forall below produces.)
-    assert leaf.1 == PIV.NormGm(PIV.GmOfLive(re, caps, lk, qt));            // requires
-    assert forall g: LG.GroupId :: g in PIV.GmOfLive(re, caps, lk, qt)
-                                   ==> PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some? by {
-      forall g: LG.GroupId | g in PIV.GmOfLive(re, caps, lk, qt)
-        ensures PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some?
-      {
-        assert g in leaf.1;                               // NormGm preserves keys
-        assert leaf.1[g] == PIV.NormRange(PIV.GmOfLive(re, caps, lk, qt)[g]);  // NormGm def at g
-        assert leaf.1[g].endIdx.Some?;                    // ClosedGm(leaf.1)
-        PIV.NormRangeClosed(PIV.GmOfLive(re, caps, lk, qt)[g]);   // closedness transfers
-      }
-    }
-    forall g: nat | 0 <= g < |f| && AI.get_idx(f, CP.start_reg(g)) >= 0 && AI.get_idx(f, CP.end_reg(g)) >= 0
-      ensures AI.get_idx(cc, CP.end_reg(g)) >= AI.get_idx(cc, CP.start_reg(g))
-    {
-      assert g in PIV.GmOfLive(re, caps, lk, qt);
-      assert PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some?;
-    }
-    PIV.GmOfLiveEqGmOf(re, caps, lk, qt);                 // GmOfLive == GmOf (needs the clock order above)
-    assert PIV.NormGm(PIV.GmOf(re, caps, lk, qt)) == leaf.1;   // leaf.1 == NormGm(GmOfLive) == NormGm(GmOf)
-
-    // the capture-array bridge
-    forall i | 0 <= i < |f| ensures f[i] >= -1 {
-      assert AI.get_idx(caps.a_cp, i) >= -1;      // CapRegWf
-      PIV.FilterCaptureGeqNeg1(re, caps.a_cp, cc, lk.a_clk, qt.a_clk, -1, i);
-      assert AI.get_idx(f, i) == f[i];
-    }
-    forall g: nat | 0 <= g < ngroups && f[2 * g] >= 0 ensures f[2 * g + 1] >= 0 {
-      assert AI.get_idx(f, CP.start_reg(g)) == f[2 * g];
-      assert g in PIV.GmOfLive(re, caps, lk, qt);
-      assert PIV.GmOfLive(re, caps, lk, qt)[g].endIdx.Some?;
-      assert AI.get_idx(f, CP.end_reg(g)) == f[2 * g + 1];
-    }
-    // item 0 (capturing lookbehind): `f` MAY contain reversed pairs (backward
-    // spans). `NormalizeArr` swaps them POSITIONALLY, which is exactly `NormGm` on
-    // the `GmOf` read (`GmOfCapArrayBridgeNorm` — no no-reversed-pairs hypothesis),
-    // and `leaf.1 == NormGm(GmOfLive) == NormGm(GmOf)`.
-    PIV.GmOfCapArrayBridgeNorm(re, caps, lk, qt, inp, ngroups);
-    assert LES.NormalizeArr(f)
-        == LES.CapArrayOfLeaf((inp, PIV.NormGm(PIV.GmOf(re, caps, lk, qt))), ngroups);
-    assert LES.CapArrayOfLeaf((inp, PIV.NormGm(PIV.GmOf(re, caps, lk, qt))), ngroups)
-        == LES.CapArrayOfLeaf(leaf, ngroups);
-
-    // the lazy prefix is filter-transparent
-    assert AI.get_idx(qt.a_clk, 0) >= -1;         // QuantRegsFinal
-    FilterResetLazyPrefix(ast, caps, lk, qt);
-    assert AI.filter_reset(ast, caps, lk, qt, -1) == f;
-
-    assert LES.Normalize(AI.FFullMatch(raw, str)) == Some(LES.NormalizeArr(f));
-    assert LES.MatcherSpec(raw, str, Some(LES.CapArrayOfLeaf(leaf, ngroups)));
+    // (2026-09-05) DELEGATE: the remaining ~80 statements were a verbatim copy
+    // of `MainExtractionFromClosed` (82 of its 84 statements) — the only extra
+    // work here is the `ClosedGm(leaf.1)` derivation above, which is exactly the
+    // hypothesis that lemma is named for. Two of the copy's batches were 900 s
+    // time outs in the gate.
+    NR.LookBehindFragmentIsNestedRaw(raw);
+    MainExtractionFromClosed(raw, str, t, thread, leaf);
   }
 
   /** `FConsume` (moving matched blocked threads to active for the next
