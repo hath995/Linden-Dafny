@@ -4084,6 +4084,7 @@ module LindenElkMain {
     ensures CP.FFullCompilation(ast).f_main_bc == CP.compile_to_bytecode(R.lazy_prefix(ast))
     ensures CP.FFullCompilation(ast).f_main_cdns == LCdn.compile_cdns(ast)
   {
+    hide R.max_lookaround, R.max_quant, R.lazy_prefix;   // (2026-09-06) recursive + in every term here: their unfolding is the matching loop
     var nlook0 := R.max_lookaround(ast) + 1;
     var nquant0 := R.max_quant(ast) + 1;
     var base := CP.FCompiled(ast, CP.compile_to_bytecode(R.lazy_prefix(ast)), LCdn.compile_cdns(ast),
@@ -12451,34 +12452,51 @@ module LindenElkMain {
     decreases maxlook - lid
   {
     var res := AI.FLookLoop(crv, str, lid, maxlook, cap, lk, qt, ov);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     if lid > maxlook {
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert res.0 == cap;
       return;
     }
     var next := lid + 1;
     match AReg.get_cp(lk, lid)
     case None =>
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert res == AI.FLookLoop(crv, str, next, maxlook, cap, lk, qt, ov);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       FLookLoopValueLiftOuter(crv, str, next, maxlook, cap, lk, qt, ov, S, Slook, ncap, nlook, nquant);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       ValueOkOuterSkipLid(crv, str, res.0, lid, maxlook, lk, ov, ncap, nlook, nquant);
     case Some(cp) =>
       var looktype := if 0 <= lid < |crv.f_look_types| then crv.f_look_types[lid] else R.Lookahead;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       if !AI.capture_type(looktype) {
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert res == AI.FLookLoop(crv, str, next, maxlook, cap, lk, qt, ov);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         FLookLoopValueLiftOuter(crv, str, next, maxlook, cap, lk, qt, ov, S, Slook, ncap, nlook, nquant);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         ValueOkOuterSkipLid(crv, str, res.0, lid, maxlook, lk, ov, ncap, nlook, nquant);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       } else {
         var la: R.lookaround, body: R.regex :| LTB.LookEntryOk(crv, lid, la, body);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert 0 <= lid < |crv.f_look_types| && crv.f_look_types[lid] == la;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert looktype == la;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert body == VBody(crv, lid);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert FrameEntryOk(crv, la, body, S, Slook);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert la.Lookahead? || la.Lookbehind?;            // (L5 F7c-2) capture_type
         var bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
         var dir := AI.capture_direction(looktype);
         var lookcdn := if 0 <= lid < |crv.f_look_cdns| then crv.f_look_cdns[lid] else [];
         var lookast := if 0 <= lid < |crv.f_look_ast| then crv.f_look_ast[lid] else R.Re_empty;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert lookast == body;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert bytecode == CP.compile_to_bytecode(CP.capture_regex(la, body));
         var (result, ov1) := AI.FFindMatchPlus(bytecode, lookast, crv.f_plus_bc, str, ov, dir,
                                                cp, cap, lk, qt, 0, lookcdn);
@@ -12486,52 +12504,77 @@ module LindenElkMain {
         var nlk := if result.None? then lk else result.value.look_regs;
         var nqt := if result.None? then qt else result.value.quant_regs;
         // (L5 F7c-2) per-kind replay facts (the `...LB` twins take the BACKWARD ones)
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert la.Lookahead? ==> (dir == LAnc.Forward && CP.capture_regex(la, body) == body
                                   && bytecode == CP.compile_to_bytecode(body)
                                   && AI.cp_context(cp, str, LAnc.Forward).nextchar == AI.get_char(str, cp));
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert la.Lookbehind? ==> (dir == LAnc.Backward && CP.capture_regex(la, body) == R.reverse_regex(body)
                                    && bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
                                    && AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1));
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert res == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert 0 <= cp <= |str| by {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert cp == AI.get_idx(lk.a_cp, lid) && cp >= 0;   // get_cp(lk,lid)==Some(cp)
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert AI.get_idx(lk.a_cp, lid) <= |str|;            // LookCpsLE
         }
 
         // per-lid replay frames / wf / cp / value
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         if la.Lookahead? { FFindMatchPlusOvStableNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
         else { FFindMatchPlusOvStableNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert ov1 == ov;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         if la.Lookahead? { ReplayPlusFrameNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
         else { ReplayPlusFrameNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert CM.RegsAgreeOutside(capN, cap, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body))) by {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           if result.Some? {} else { assert capN == cap; }
         }
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert CM.RegsAgreeOutside(nlk, lk, LookIdSet(body)) by {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           if result.Some? {} else { assert nlk == lk; }
         }
         // recon A: TIGHT look frame -- the replay writes only body's DIRECT children
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         if la.Lookahead? { ReplayPlusLookFrameDirectNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, la, body); }
         else { ReplayPlusLookFrameDirectNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert CM.RegsAgreeOutside(nlk, lk, DirectLidSet(body)) by {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           if result.Some? {} else { assert nlk == lk; }
         }
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert (forall k :: AI.get_idx(nqt.a_cp, k) < 0) && (forall k :: AI.get_idx(nqt.a_clk, k) >= -1) by {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           if result.Some? { assert QuantRegsFinal(result.value); }
         }
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         if la.Lookahead? { ReplayThreadWfLANested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant); }
         else { ReplayThreadWfLBNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant); }
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert |capN.a_cp| == ncap && |capN.a_clk| == ncap && PIV.CapRegWf(capN)
                && |nqt.a_cp| == nquant && |nqt.a_clk| == nquant && |nlk.a_cp| == nlook && |nlk.a_clk| == nlook by {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           if result.Some? { assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant); }
         }
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         if la.Lookahead? { ReplayLookCpOkNested(bytecode, str, ov, dir, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
         else { ReplayLookCpOkNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert CM.LookCpsLE(nlk, |str|) by {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           if result.Some? {} else { assert nlk == lk; }
         }
 
         // value at lid: result ~ rfLid on CaptureRegs(body); iff-together
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         if la.Lookahead? { ReplayLidCapAgreeFreshNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, la, ncap, nlook, nquant); }
         else { ReplayLidCapAgreeFreshNestedLB(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant); }
         var rfLid := FreshBodyMatch(crv, str, lid, lk, ov, ncap, nlook, nquant);
@@ -12539,12 +12582,14 @@ module LindenElkMain {
                                 AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
                                               AReg.init_regs(nquant), 0, AI.cp_context(cp, str, dir)),
                                 ov, dir, lookcdn).0;   // (L5 F7c-2) in the lid's own direction
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert rfLid == rf;
 
         var Sp := S - PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body));
 
         // ---- recursion hypothesis transfer at [next] with (capN, nlk, nqt) ----
         // (b) matched-look-has-entry for nlk
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert forall l: int :: next <= l <= maxlook && AReg.get_cp(nlk, l).Some? ==>
                                   exists la2: R.lookaround, body2: R.regex :: LTB.LookEntryOk(crv, l, la2, body2)
         by {
@@ -12562,6 +12607,7 @@ module LindenElkMain {
           }
         }
         // (c') full per-body-unset for capN
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert forall l: int, la2: R.lookaround, body2: R.regex ::
             next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==>
               CM.RegsAgreeInside(capN, AReg.init_regs(ncap), PIV.CaptureRegs(body2))
@@ -12576,6 +12622,7 @@ module LindenElkMain {
           }
         }
         // (f) look-stability for nlk
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
             (next <= l1 <= maxlook && LTB.LookEntryOk(crv, l1, la1, b1)
             && next <= l2 <= maxlook && l2 != l1 && AReg.get_cp(nlk, l2).Some?) ==> l2 !in LookIdSet(b1)
@@ -12604,12 +12651,17 @@ module LindenElkMain {
           }
         }
 
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         FLookLoopValueLiftOuter(crv, str, next, maxlook, capN, nlk, nqt, ov1, S, Slook, ncap, nlook, nquant);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert res.0 == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1).0;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert FLookLoopValueOkOuter(crv, str, res.0, next, maxlook, nlk, ov, ncap, nlook, nquant);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert |res.0.a_cp| == ncap && |res.0.a_clk| == ncap && PIV.CapRegWf(res.0);
 
         // ---- suffix frame: res.0 == capN on OuterCaps(body) ----
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert forall l: int, la2: R.lookaround, body2: R.regex ::
             next <= l <= maxlook && LTB.LookEntryOk(crv, l, la2, body2) ==> FrameEntryOk(crv, la2, body2, Sp, Slook)
         by {
@@ -12632,10 +12684,15 @@ module LindenElkMain {
             }
           }
         }
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         FLookLoopCaptureFrameNested(crv, str, next, maxlook, capN, nlk, nqt, ov1, Sp, Slook);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert CM.RegsAgreeOutside(res.0, capN, Sp);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert forall k: int :: k in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)) ==> k !in Sp;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         RegsAgreeOutsideToInside(res.0, capN, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)), Sp);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert CM.RegsAgreeInside(res.0, capN, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)));
 
         // ---- assemble FLookLoopValueOkOuter for [lid] ----
@@ -12646,6 +12703,7 @@ module LindenElkMain {
                   && (rf2.None? ==> CM.RegsAgreeInside(res.0, AReg.init_regs(ncap),
                                                        PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, l)))))
         {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           if l == lid {
             assert VBody(crv, l) == body;
             var OC := PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body));
@@ -12664,6 +12722,7 @@ module LindenElkMain {
               assert CM.RegsAgreeInside(res.0, capN, OC);
               assert CM.RegsAgreeInside(res.0, AReg.init_regs(ncap), OC);
             }
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           } else {
             assert next <= l <= maxlook;
             var la1x: R.lookaround, b1x: R.regex :| LTB.LookEntryOk(crv, lid, la1x, b1x);
