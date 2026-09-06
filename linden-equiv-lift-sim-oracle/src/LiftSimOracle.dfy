@@ -1992,41 +1992,65 @@ module LindenElkLiftSimOracle {
     // triggered existential storm the solver; all uses here are opaque.
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     var pcmid: nat :| AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && AR.ActionsRepL(rer, qm, acts[1..], code, pcmid);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     EL.PikeLkActionsTail(acts);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert acts == [acts[0]] + acts[1..];
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     EL.PikeLkActionsConsIff(acts[0], acts[1..]);
     var cont := acts[1..];
     match acts[0]
     case Acheck(strcheck) =>
       // EndLoop != Fork, so the BackForkAt disjunct: pcmid == pc; BoolTreeLk ⇒ Progress / Mismatch
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert AR.BackForkAt(code, pc);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert x >= 0 && y >= 0;
     case Aclose(_) =>   // pins SetRegisterToCP — not Fork
     case Areg(r0) =>
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert EL.PikeLkRegex(r0);
       match r0
       case Epsilon =>
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert pcmid == pc;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         TtLkAtForkCore(rer, qm, code, inp, tb, pc, b, cont, x, y);
       case Sequence(r1, r2) =>
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert acts[0] == LS.Areg(L.Sequence(r1, r2));
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert AR.NfaRepL(rer, qm, L.Sequence(r1, r2), code, pc, pcmid);
         var e1: nat :| AR.NfaRepL(rer, qm, r1, code, pc, e1) && AR.NfaRepL(rer, qm, r2, code, e1, pcmid);
         var na := [LS.Areg(r1), LS.Areg(r2)] + cont;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         AR.ActionsRepLCons(rer, qm, LS.Areg(r2), cont, code, e1, pcmid);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Areg(r2)] + cont, code, pc, e1);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert AR.ActionsRepL(rer, qm, na, code, pc);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert EL.PikeLkActions(na) by {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
         }
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert EL.BoolTreeLk(rer, na, inp, b, tb);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert LS.ActionsRegexSize(acts) == RegSz(r1) + RegSz(r2) + 1 + LS.ActionsRegexSize(cont);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert LS.ActionsRegexSize(na) == RegSz(r1) + RegSz(r2) + LS.ActionsRegexSize(cont);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert ATR.MsizeA(na) < ATR.MsizeA(acts);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         TtLkAtForkCore(rer, qm, code, inp, tb, pc, b, na, x, y);
       case Disjunction(r1, r2) =>
         // Fork(pc+1, e1+1) ⇒ x,y >= 0; BoolTreeLk ⇒ tb.Choice?
@@ -2034,25 +2058,39 @@ module LindenElkLiftSimOracle {
                        && AR.NfaRepL(rer, qm, r1, code, pc + 1, e1)
                        && NR.GetPcRE(code, e1) == Some(RB.Jmp(pcmid))
                        && AR.NfaRepL(rer, qm, r2, code, e1 + 1, pcmid);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert x == pc + 1 && y == e1 + 1;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert tb.Choice?;
       case Quantified(greedy, min, delta, r1) =>
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert AR.NfaRepL(rer, qm, L.Quantified(greedy, min, delta, r1), code, pc, pcmid);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         if min == 0 && delta == LN.NN(0) {
           var em: nat :| AR.NfaRepMinL(rer, qm, 0, r1, code, pc, em)
                          && AR.NfaRepOptL(rer, qm, 0, greedy, r1, code, em, pcmid);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           NfaRepMinLHeadPin(rer, qm, 0, r1, code, pc, em);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert pcmid == pc;
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert AR.ActionsRepL(rer, qm, cont, code, pc);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           TtLkAtForkCore(rer, qm, code, inp, tb, pc, b, cont, x, y);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         } else if min > 0 {
           // §2.5a: the STRONG head fact -- `min > 0` pins a clock-mark, which
           // refutes the `Fork` we are sitting at. `QuantHeadPinsForkOrSQC`'s
           // `Fork? || SetQuantToClock?` is too weak here.
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert min > 0 && delta.Inf? && greedy ==> NUL.NonNullableL(r1) by {   // §2.5b: stamp-free code
             if min > 0 && delta.Inf? && greedy && !NUL.NonNullableL(r1) {
               var emC, e1C := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
@@ -2060,7 +2098,9 @@ module LindenElkLiftSimOracle {
               assert NR.GetPcRE(code, e1C + 2) != Some(RB.SetQuantToClock(qidC, true));
             }
           }
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           QuantHeadMinPosPinsSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         } else {
           // min==0, Inf or NN(kx>0): the star/bounded fork ⇒ tb.Choice?; targets are nats.
           match delta
@@ -5095,7 +5135,11 @@ module LindenElkLiftSimOracle {
       the row's INNER rows (the body's own rows, from the initial input), the
       final view's bit at `(cp, lid)` is exactly the spec walk of the row's
       body at `cp` in the row's direction. */
-  lemma {:isolate_assertions} OracleColumnNested(rer: LW.RegExpRecord, top: R.regex, crv: CP.FCompiled,
+  // (2026-09-06) `{:isolate_assertions}` REMOVED: it split this lemma into 1070
+  // assertion-sized queries whose AGGREGATE exceeded the gate's 900 s budget,
+  // which is how it presented as a "time out" — see the isolate_assertions
+  // policy. The hide below does the real work.
+  lemma OracleColumnNested(rer: LW.RegExpRecord, top: R.regex, crv: CP.FCompiled,
                                                  str: string, sub: R.regex, lid: int,
                                                  lk: L.Lookaround, r1: L.Regex, cp: nat)
     requires !rer.ignoreCase && !rer.multiline
@@ -5118,55 +5162,85 @@ module LindenElkLiftSimOracle {
        <==> LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(r1)], T.InputAt(str, cp), LG.Empty, L.LkDir(lk)),
                        LG.Empty, T.InputAt(str, cp), L.LkDir(lk)).Some?
   {
+    // (2026-09-06) the hypotheses mention these recursive predicates on `top`/`sub`
+    // throughout; their unfolding is a matching loop (cf. the annotate family in
+    // MainTheorem's extraction lemmas).
+    hide NR.NestedFragmentRE, NR.L5ScopeRE, NR.NegLooksLookFreeRE, NR.NoNulledPlusRE, LTB.LidsWellNested, LTB.LookUnique;
     // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
     // triggered existential storm the solver; all uses here are opaque.
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     var n := |str|;
     var ovf := AI.FBuildOracle(crv, str);
     var lidn: nat := lid as nat;
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     M.LookBodyFactsL5(sub, crv, lidn);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     LookBodyRowL5(sub, crv, lidn);
     var body := NI.LookBodyOfRE(sub, lidn);
     var la: R.lookaround :| LTB.LookEntryOk(crv, lid, la, body)
                             && OE.LmOf(sub)[lid] == (T.TrLookaround(la), T.Translate(body))
                             && (la.Lookbehind? ==> NR.LBOnlyLooksRE(body))
                             && ((la.NegLookahead? || la.NegLookbehind?) ==> NR.LookFreeRE(body));
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert lk == T.TrLookaround(la) && r1 == T.Translate(body);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert lidn in LTB.LookIds(top);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     LTB.LookIdsLeMax(top);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert 1 <= lid <= R.max_lookaround(top);
 
     // ---- the bit IS the corrected V-target against the final view ----------
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     OB.FBuildOracleViewLen(crv, str);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert |ovf| == n + 1;
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     OB.FBuildOracleCorrectAboveNested(top, str);
     var bit := LOr.view_get_oracle(ovf, cp, lid);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert bit == OB.LidReachesVFinal(crv, str, ovf, lid, cp);
     reveal OB.LidReachesVFinal();
     var bc := AI.get_code_v(crv.f_look_build_bc, lid);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert bc == CP.compile_to_write(CP.oracle_regex(la, body), lid);   // LookEntryOk row
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert crv.f_look_types[lid] == la;
     var rcb := R.remove_capture(body);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     OMV.RemoveCaptureNestedFragment(body);
     var inp := T.InputAt(str, cp);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert PIV.InpOfCp(str, cp) == inp by { LS.ReverseLength(str[..cp]); }
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     SD.ReverseLength(str);
     var rstr := LC.Reverse(str);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert |rstr| == n;
 
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     if la.Lookahead? || la.NegLookahead? {
       // ---- lookAHEAD row: backward build, mirrored; spec walk is FORWARD ----
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert L.LkDir(lk) == WP.Forward;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert OB.LidDir(crv, lid) == LAnc.Backward;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert CP.oracle_regex(la, body) == R.lazy_prefix(R.reverse_regex(rcb));
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       OB.CompileToWriteSwap(R.lazy_prefix(R.reverse_regex(rcb)), lid);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       OB.SwapAnchorsLazyPrefix(R.reverse_regex(rcb));
       var x := OMV.XRev(rcb);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert MIR.SwapAnchorsCode(bc) == CP.compile_to_write(R.lazy_prefix(x), lid);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       OMV.XRevNestedFragment(rcb);
       var mv := MIR.MirrorView(ovf, n);
       var mcp := MIR.Mirror(cp, n);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert mcp == n - cp;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert bit == ORc.ReachesWriteV(CP.compile_to_write(R.lazy_prefix(x), lid), rstr, mv, 0, lid, mcp);
 
       // engine run of the body at cp against the FINAL view <==> a gated span
@@ -5178,7 +5252,9 @@ module LindenElkLiftSimOracle {
       var inits := AI.FInitState(codeb, cp, AReg.init_regs(ncapb), AReg.init_regs(nlookb),
                                  AReg.init_regs(nquantb), 0, AI.cp_context(cp, str, LAnc.Forward));
       var r := AI.FFindMatch(codeb, str, inits, ovf, LAnc.Forward, cdnsb).0;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert forall y: nat :: y in LTB.LookIds(body) ==> 1 <= y;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       OAV.AcceptRunCharacterizationV(body, str, ovf, cp, cdnsb, AReg.init_regs(ncapb),
                                      AReg.init_regs(nlookb), AReg.init_regs(nquantb), 0);
       // (AcceptRunCharacterizationV's postcondition `r.Some? <==> exists j :: MatchesV(...)`
@@ -5186,97 +5262,173 @@ module LindenElkLiftSimOracle {
 
       // spec side: the engine run at cp IS the body's first leaf (inner rows)
       var qmb := AR.QMap(M.QmOfRE(body), OE.LmOf(body), ovf, M.BodiesOfRE(body));
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       OracleOkSuffixAtCp(rer, qmb, str, cp);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       NR.CompileToBytecodeRepNested(body);
       var endlb: nat := CP.compile(body, 0, CP.Progress).1 as nat;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       CompileStutterTameRENested(body);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       M.QmOfREEntries(body);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       M.BodiesOfREEntries(body);   // §2.5b: the bodies table entries
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       M.QmapOkFromEntries(body, qmb);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       OE.LmapOkOfLmOf(body, qmb);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       NI.NoNulledPlusLookBody(sub, lid as nat);   // §2.5b interim: NoNulledPlusRE(body)
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert PSM.StaticOkNestedRE(qmb, body, codeb, endlb);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert PSM.SizesOkRE(body, ncapb, nlookb, nquantb);
       var bestT := M.BodyTreeAtCpNested(rer, qmb, body, codeb, endlb, 0, str, cp, ovf, cdnsb,
                                         ncapb, nlookb, nquantb);
       var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Forward);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert (bestT.None? <==> r.None?) && (bestT.None? <==> LT.FirstLeaf(t, inp).None?);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert LT.FirstLeaf(t, inp) == LT.TreeRes(t, LG.Empty, inp, WP.Forward);
 
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       if bit {
         var i := ODV.ReachesWriteVToMatchesV(x, lid, rstr, mv, mcp);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         OMV.MatchesVMirror(rcb, str, ovf, cp, n - i);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert OBV.MatchesV(rcb, str, ovf, cp, n - i) by {
           hide *;   // (§2.5b/z3 4.14) transport is the mirror iff on opaque instances
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert n - (n - i) == i;
         }
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         OMV.MatchesVRemoveCapture(body, str, ovf, cp, n - i);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert r.Some?;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert LT.TreeRes(t, LG.Empty, inp, WP.Forward).Some?;
       }
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       if LT.TreeRes(t, LG.Empty, inp, WP.Forward).Some? {
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert r.Some?;
         var j: int :| OBV.MatchesV(body, str, ovf, cp, j);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         OBV.MatchesVBounds(body, str, ovf, cp, j);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         MatchesVUpper(body, str, ovf, cp, j);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         OMV.MatchesVRemoveCapture(body, str, ovf, cp, j);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         OMV.MatchesVMirror(rcb, str, ovf, cp, j);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert OBV.MatchesV(x, rstr, mv, n - j, n - cp);
         // (§2.5b/z3 4.14) spell the call's preconditions out; the packed VC grinds
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert NR.NestedFragmentRE(x);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert 0 <= n - j <= |rstr|;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert n - cp <= |rstr|;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+        // (2026-09-06) the call's preconditions, one per batch — matched all at
+        // once against this lemma's context the call site alone was 900 s.
+        assert NR.NestedFragmentRE(x);
+        assert {:split_here} true;
+        assert 0 <= n - j <= |rstr|;
+        assert {:split_here} true;
+        assert n - cp <= |rstr|;
+        assert {:split_here} true;
+        assert OBV.MatchesV(x, rstr, mv, n - j, n - cp);
+        assert {:split_here} true;
         OBV.MatchesVToReachesWriteV(x, lid, rstr, mv, n - j, n - cp);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert bit;
       }
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     } else if la.NegLookbehind? {
       // ---- negative lookBEHIND row: forward build, look-free body; spec walk BACKWARD ----
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert la.NegLookbehind?;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert NR.LookFreeRE(body);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert L.LkDir(lk) == WP.Backward;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert OB.LidDir(crv, lid) == LAnc.Forward;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert CP.oracle_regex(la, body) == R.lazy_prefix(rcb);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert bit == ORc.ReachesWriteV(CP.compile_to_write(R.lazy_prefix(rcb), lid), str, ovf, 0, lid, cp);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       OS.TranslateLookFreeGroupOk(body);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       if bit {
         var i := ODV.ReachesWriteVToMatchesV(rcb, lid, str, ovf, cp);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         OMV.MatchesVRemoveCapture(body, str, ovf, i, cp);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         MatchesVLookFree(body, str, ovf, i, cp);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         OS.MatchesTransfer(rer, body, str, i, cp);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         SD.SpanDualityComplete(rer, T.Translate(body), str, i, cp, LG.Empty);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert SD.SuccActs(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Backward);
       }
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       if SD.SuccActs(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Backward) {
         var i := SD.SpanDualitySound(rer, T.Translate(body), str, cp, LG.Empty);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         OS.MatchesTransfer(rer, body, str, i, cp);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         MatchesVLookFree(body, str, ovf, i, cp);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         OMV.MatchesVRemoveCapture(body, str, ovf, i, cp);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         OBV.MatchesVToReachesWriteV(rcb, lid, str, ovf, i, cp);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert bit;
       }
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert SD.SuccActs(rer, [LS.Areg(r1)], inp, LG.Empty, WP.Backward)
           == LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, WP.Backward),
                         LG.Empty, inp, WP.Backward).Some?;
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     } else {
       // ---- (L5 F7g) POSITIVE lookBEHIND row (lookbehind-only nested body): the
       //      gate-side CAPSTONE `OE.OracleColumnSpecNested` — the final view's bit
       //      IS the body's BACKWARD walk at cp. Its whole-string column premise
       //      for the body's own rows comes from the inner-rows induction hypothesis.
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert la.Lookbehind?;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert NR.LBOnlyLooksRE(body);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert L.LkDir(lk) == WP.Backward;
       var qmb := AR.QMap(M.QmOfRE(body), OE.LmOf(body), ovf, M.BodiesOfRE(body));
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       OE.LmapOkOfLmOf(body, qmb);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert OE.OracleColsOk(rer, qmb, str) by {
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         forall c: nat | c <= |str| ensures LL.OracleOkSuffix(rer, qmb, PIV.InpOfCp(str, c)) {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           OracleOkSuffixAtCp(rer, qmb, str, c);
         }
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         SufForallToColsOk(rer, qmb, str);
       }
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       FG.LBOnlyEquiv(body);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       FST.TranslateGroupOkLB(body);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       OE.OracleColumnSpecNested(rer, qmb, top, str, lid, la, body, cp);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert bit <==> SD.SuccActs(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Backward);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert SD.SuccActs(rer, [LS.Areg(r1)], inp, LG.Empty, WP.Backward)
           == LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, WP.Backward),
                         LG.Empty, inp, WP.Backward).Some?;
