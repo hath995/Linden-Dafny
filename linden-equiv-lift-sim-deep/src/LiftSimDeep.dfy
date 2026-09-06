@@ -172,17 +172,23 @@ module LindenElkLiftSimDeep {
     reveal M.OracleSufAllO(), M.FrameEntryAllO();
     var maxlook := R.max_lookaround(ast);
     var cpA := AReg.get_cp(res1, A as int).value;
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     RL.AAsArraysLaws(res1);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert AI.get_idx(res1.a_cp, A as int) >= 0 && cpA == AI.get_idx(res1.a_cp, A as int);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert 0 <= cpA <= |str|;                                    // LookCpsLE(res1)
     var inpA := PIV.InpOfCp(str, cpA);
     var bodycode := CP.compile_to_bytecode(host);
 
     assert {:split_here} true;   // (E3) section boundary: its own assertion batch
     // ---- the row at A: la_A + host tie + statics ----
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert 1 <= A <= maxlook && (A as int) in qm.looks;
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert GateStaticAtNested(qm, re, crv, A as int, ncap, nlook, nquant);   // GateStaticsOkNested
     var laA: R.lookaround, bA: R.regex :|
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       LTB.LookEntryOk(crv, A as int, laA, bA)
       && T.TransWf(bA) && NR.NestedFragmentRE(bA)
       && NR.NegLooksLookFreeRE(bA)
@@ -196,74 +202,113 @@ module LindenElkLiftSimDeep {
       && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
       && PSM.SizesOkRE(bA, ncap, nlook, nquant)
       && ((laA.NegLookbehind? || laA.NegLookahead?) ==> NR.CaptureFreeRE(bA));
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     NI.LookBodyOfTablesTie(re, crv, A);
     var laT: R.lookaround :| LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A));
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert host == M.VBody(crv, A as int);
     var endlH: nat := |bodycode| - 1;
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert PSM.StaticOkNestedRE(qm, host, bodycode, endlH);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert crv.f_look_types[A as int] == laA;
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert (laA.Lookahead? || laA.Lookbehind?) by {
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert AI.capture_type(crv.f_look_types[A as int]);        // MatchedPosLA
     }
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert laA.Lookbehind? by { assert crv.f_look_types[A as int] == laA; }
     assert {:split_here} true;   // (E3) section boundary: its own assertion batch
     // ==== (L5 F7c-4) LOOKBEHIND lid: lift via the FLIP twins ====
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     M.LookBodyFactsL5(re, crv, A);
     var laN: R.lookaround :| LTB.LookEntryOk(crv, A as int, laN, host) && (laN.Lookbehind? ==> NR.LBOnlyLooksRE(host));
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert laN == laA;
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert NR.LBOnlyLooksRE(host);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     FG.LBOnlyEquiv(host);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert FST.LBOnlyLooksRE(host);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     if g2 !in PIV.CapIdsInLooks(host) {
       assert {:split_here} true;   // (E3) section boundary: its own assertion batch
       // ---- BASE: g2 DIRECT in host ====
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert M.FrameEntryOk(crv, laA, host,
                             PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re));
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       M.InnermostOwnerUnique(re, g2, owner, A);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert owner == A;
       var rfO := M.FreshBodyMatch(crv, str, A as int, res1, ov, ncap, nlook, nquant);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert rfO.Some?
              && g2 in PIV.GmOfLive(host, rfO.value.capture_regs, rfO.value.look_regs, rfO.value.quant_regs);
       // the body-restricted qmap (LmapOk on `host`, all-columns oracle)
       var qmB0 := AR.QMap(qm.quants,
                           map l: int | l in qm.looks && l >= 0 && (l as nat) in LTB.LookIds(host) :: qm.looks[l],
                           qm.ov, qm.bodies);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert AR.QmapOk(host, qmB0) by { QmapOkLooksIrrel(host, qm, qmB0); }
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert AR.LmapOk(host, qmB0) by { LmapOkRestrict(host, qm, qmB0); }
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert OE.OracleColsOk(rer, qmB0, str) by {
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         SufAllToColsOk(rer, qm, str);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         OracleColsOkRestrict(rer, qm, qmB0, str);
       }
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       NI.NoNulledPlusLookBody(re, A);   // §2.5b interim: NoNulledPlusRE(host)
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       FreshBodyDirectInSubFirstLeafLB(rer, qmB0, crv, str, ov, A, res1, host, g2,
                                       ncap, nlook, nquant);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     } else {
       assert {:split_here} true;   // (E3) section boundary: its own assertion batch
       // ---- DEEP: descend through g2's top-in-host ancestor A1 (per-hop kind dispatch) ----
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert M.FrameEntryOk(crv, laA, host,
                             PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re));
       var ownH := NI.InnermostOwnerDirect(host, g2);
       var A1 := ReconLiveTopAncestor(host, g2, ownH);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert A1 in NI.TopLookIds(host) && A1 in LTB.LookIds(host)
              && g2 in PIV.CapIds(NI.LookBodyOfRE(host, A1));
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       NI.LookBodyLookIdsIn(re, A);                                // LookIds(host) <= LookIds(re)
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert A1 in LTB.LookIds(re);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       NI.LookBodyCompose(re, A, A1);                              // bodies compose
       var bodyA1 := NI.LookBodyOfRE(re, A1);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert bodyA1 == NI.LookBodyOfRE(host, A1);
 
       assert {:split_here} true;   // (E3) step boundary: its own assertion batch
       // (α) presence descends + A1's res1 clock is set
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       NI.LookPathDecomposeNested(host, bodyA1, res0.a_clk, res1.a_clk, res2.a_clk, -1, A1, g2);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert AI.get_idx(res1.a_clk, A1 as int) >= 0;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert PIV.PathPresentLk(bodyA1, res0.a_clk, res1.a_clk, res2.a_clk, -1, g2);
 
       assert {:split_here} true;   // (E3) step boundary: its own assertion batch
       // (β) A1 matched in res1 (reverse invariant + LB-only kind pin)
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert AI.get_idx(res1.a_cp, A1 as int) >= 0;               // LookCpSetWithClk
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert AReg.get_cp(res1, A1 as int).Some?;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert M.MatchedPosLA(crv, res1, A1 as int) by {
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert GateStaticAtNested(qm, re, crv, A1 as int, ncap, nlook, nquant);
         // (L5 F7f) ONE pick with the hub's FULL conjunct list — a SUBSET pick times
         // out under {:isolate_assertions} (the hub's list changed with the flip).
@@ -280,24 +325,39 @@ module LindenElkLiftSimDeep {
                                               && PSM.StaticOkNestedRE(qm, b1, bc1, |bc1| - 1)
                                               && PSM.SizesOkRE(b1, ncap, nlook, nquant)
                                               && ((la1.NegLookbehind? || la1.NegLookahead?) ==> NR.CaptureFreeRE(b1));
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert crv.f_look_types[A1 as int] == la1;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert b1 == bodyA1 by {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           NI.LookBodyOfTablesTie(re, crv, A1);
           var la1T: R.lookaround :| LTB.LookEntryOk(crv, A1 as int, la1T, bodyA1);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert crv.f_look_ast[A1 as int] == b1 == bodyA1;
         }
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert la1.Lookbehind? || la1.NegLookbehind? by {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert LTB.LookTablesOk(host, crv);                     // FrameEntryOk
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           FG.LookRowLBOnly(host, crv, A1);
         }
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         if la1.NegLookbehind? {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert NR.CaptureFreeRE(bodyA1);                       // the pick's negative clause
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           PIV.CaptureFreeNoCapIds(bodyA1);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert g2 in PIV.CapIds(bodyA1);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert false;
         }
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert la1.Lookbehind?;                                  // the only kind left
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert AI.capture_type(crv.f_look_types[A1 as int]) by {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert crv.f_look_types[A1 as int] == la1;
         }
       }
@@ -309,10 +369,15 @@ module LindenElkLiftSimDeep {
       var qmB := AR.QMap(qm.quants,
                          map l: int | l in qm.looks && l >= 0 && (l as nat) in LTB.LookIds(host) :: qm.looks[l],
                          qm.ov, qm.bodies);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert AR.QmapOk(host, qmB) by { QmapOkLooksIrrel(host, qm, qmB); }
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert AR.LmapOk(host, qmB) by { LmapOkRestrict(host, qm, qmB); }
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert OE.OracleColsOk(rer, qmB, str) by {
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         SufAllToColsOk(rer, qm, str);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         OracleColsOkRestrict(rer, qm, qmB, str);
       }
 
@@ -326,6 +391,7 @@ module LindenElkLiftSimDeep {
       var inpA := PIV.InpOfCp(str, cpA);
       var bodycodeB := CP.compile_to_bytecode(R.reverse_regex(host));
       var cdnA := crv.f_look_cdns[A as int];
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       LookNestBackTFromBodyReplayLB(rer, qmB, laA, host, bodycodeB, crv, str, cpA, ov,
                                     cdnA, crv.f_plus_bc, ncap, nlook, nquant);
       var rbT := LFU.ComputeTr(rer, [LS.Areg(T.Translate(host))], inpA, LG.Empty, WP.Backward);
@@ -333,104 +399,161 @@ module LindenElkLiftSimDeep {
       // (gamma) the BACKWARD spec leaf EXISTS: res1's record at A is oracle-true,
       // so host's spec tree matches BACKWARD at cpA (the LB twin of the forward
       // arm's FirstLeaf(t, inpA).Some? block).
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert rb.Some? by {
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert LOr.view_get_oracle(ov, AI.get_idx(res1.a_cp, A as int), A as int);   // LookCpsOracleTrue
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert LL.OracleOkSuffix(rer, qm, inpA);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert LL.OracleOkAt(rer, qm, inpA);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert (A as int) in qm.looks
                && qm.looks[A as int] == (T.TrLookaround(laA), T.Translate(host));
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert TREP.CpOf(inpA) == cpA by { LS.ReverseLength(str[..cpA]); }
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert L.LkDir(T.TrLookaround(laA)) == WP.Backward;      // laA.Lookbehind?
       }
       var rfP := AI.FFindMatchPlus(bodycodeB, host, crv.f_plus_bc, str, ov, LAnc.Backward, cpA,
                                    AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant),
                                    0, cdnA).0;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert rfP.Some?;                                            // the carrier's None-iff at rb.Some?
       var rfA := rfP.value;
       var Sh := PIV.CapIdsInLooks(host);
       var gmtH := rb.value.1;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert LookNestBackTTopDeep(rer, host, crv, str, ov, Sh, gmtH, rfA, ncap, nlook, nquant);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert CM.LookClkSetWithCp(rfA.look_regs) && CM.LookCpSetWithClk(rfA.look_regs);
 
       assert {:split_here} true;   // (E3) step boundary: its own assertion batch
       // (ζ) rf_A IS FreshBodyMatch(A, res1) — the backward fresh run.
       // The unfold's row witnesses, hoisted (they are what the by-block needs):
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert host == M.VBody(crv, A as int) by {
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         NI.LookBodyOfTablesTie(re, crv, A);
         var laT2: R.lookaround :| LTB.LookEntryOk(crv, A as int, laT2, host);
       }
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert 0 <= (A as int) < |crv.f_look_types| && crv.f_look_types[A as int].Lookbehind?;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert 0 <= (A as int) < |crv.f_look_cdns| && cdnA == crv.f_look_cdns[A as int];
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert AReg.get_cp(res1, A as int).Some? && AReg.get_cp(res1, A as int).value == cpA;
       var rfFresh := M.FreshBodyMatch(crv, str, A as int, res1, ov, ncap, nlook, nquant);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert rfFresh == AI.FFindMatch(bodycodeB, str,
                                       AI.FInitState(bodycodeB, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
                                                     AReg.init_regs(nquant), 0, AI.cp_context(cpA, str, LAnc.Backward)),
                                       ov, LAnc.Backward, cdnA).0 by {
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         FG.FreshBodyMatchLBUnfold(crv, str, A as int, res1, ov, host, ncap, nlook, nquant);
       }
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert rfA == rfFresh.value by {                      // (L5 F7f perf) via the helper
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         BackFreshPlusIsPlain(host, bodycodeB, crv.f_plus_bc, str, ov, cpA, cdnA, ncap, nlook, nquant);
       }
       assert {:split_here} true;   // (E3) step boundary: its own assertion batch
       // (η) the LEVEL-LINK at (A, A1): res1's record at A1 IS rf_A's
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert A1 as int in M.DirectLidSet(host) by {
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         TopEqDirectLookIds(host);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert A1 in M.DirectLookIds(host);
       }
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert rfFresh.Some? by { assert rfA == rfFresh.value; }
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert AReg.get_cp(res1, A1 as int) == AReg.get_cp(rfFresh.value.look_regs, A1 as int) by {
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert M.FLookLoopChildLinkOk(crv, str, res1, 1, maxlook, ov, ncap, nlook, nquant);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert host == M.VBody(crv, A as int);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert (A1 as int) in M.DirectLidSet(host);
       }
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert AReg.get_cp(res1, A1 as int) == AReg.get_cp(rfA.look_regs, A1 as int) by {
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert rfA == rfFresh.value;
       }
 
       assert {:split_here} true;   // (E3) step boundary: its own assertion batch
       // (θ) A1 matched + dominant ON rf_A's banks
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert M.MatchedPosLA(crv, rfA.look_regs, A1 as int) by {
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert AReg.get_cp(rfA.look_regs, A1 as int).Some?;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert AI.capture_type(crv.f_look_types[A1 as int]);      // established at (β)
       }
       var L1 := AI.get_idx(rfA.look_regs.a_clk, A1 as int);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert L1 >= 0 by {
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert 0 <= A1 as int < |rfA.look_regs.a_cp| && rfA.look_regs.a_cp[A1 as int] >= 0;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert AI.get_idx(rfA.look_regs.a_cp, A1 as int) >= 0;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert CM.LookClkSetWithCp(rfA.look_regs);
       }
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert NI.LookPathDom(host, L1, rfA.quant_regs.a_clk, A1) by {
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         GNotUnderQuantLLookBody(re, A, g2);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert M.GNotUnderQuantL(T.Translate(host), g2);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         M.GNotUnderQuantLNoAncQuants(host, g2);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert PIV.AncQuants(host, g2) == {};
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         NI.LookPathDomNoAncQuants(host, L1, rfA.quant_regs.a_clk, A1, g2);
       }
 
       assert {:split_here} true;   // (E3) step boundary: its own assertion batch
       // (ι) the RECURSIVE landing at A1, transported onto rf_A's bank
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert |LTB.LookIds(bodyA1)| < |LTB.LookIds(host)| by {
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         NI.LookBodyLookIdsIn(host, A1);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         LookIdNotInOwnBody(host, A1);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         SubsetCardLt(LTB.LookIds(bodyA1), LTB.LookIds(host), A1);
       }
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       DeepFindRec(rer, qm, crv, str, ast, re, ov, res0, res1, res2,
                   bodyA1, A1, owner, g2, ncap, nlook, nquant);
       var lsub1 := SubFirstLeafAt(rer, crv, str, A1 as int, res1);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert lsub1.Some? && g2 in lsub1.value;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert SubFirstLeafAt(rer, crv, str, A1 as int, rfA.look_regs) == lsub1;   // reads only get_cp at A1
 
       assert {:split_here} true;   // (E3) step boundary: its own assertion batch
       // (κ) LAND via the DEEP carrier, then identify the leaf with the
       //     backward `BackLeafAt(host, cpA)` (== SubFirstLeafAt(A, res1))
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       DescentLandTopDeep(rer, host, crv, str, ov, Sh, gmtH, rfA, A1, g2, ncap, nlook, nquant);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert g2 in gmtH;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert host == M.VBody(crv, A as int);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert crv.f_look_types[A as int].Lookbehind?;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       SubFirstLeafAtIsBackLeaf(rer, crv, str, A as int, res1, host);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert SubFirstLeafAt(rer, crv, str, A as int, res1) == FG.BackLeafAt(rer, host, str, cpA);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert SubFirstLeafAt(rer, crv, str, A as int, res1).value == gmtH;
     }
   }
@@ -1015,16 +1138,22 @@ module LindenElkLiftSimDeep {
     {
       maxlook := R.max_lookaround(ast);
       cpA := AReg.get_cp(res1, A as int).value;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       RL.AAsArraysLaws(res1);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert AI.get_idx(res1.a_cp, A as int) >= 0 && cpA == AI.get_idx(res1.a_cp, A as int);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert 0 <= cpA <= |str|;                                    // LookCpsLE(res1)
       inpA := PIV.InpOfCp(str, cpA);
       bodycode := CP.compile_to_bytecode(host);
   
       // ---- the row at A (VERBATIM DeepFindRec) ----
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert 1 <= A <= maxlook && (A as int) in qm.looks;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert GateStaticAtNested(qm, re, crv, A as int, ncap, nlook, nquant);
       laA, bA :|
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         LTB.LookEntryOk(crv, A as int, laA, bA)
         && T.TransWf(bA) && NR.NestedFragmentRE(bA)
         && NR.NegLooksLookFreeRE(bA)
@@ -1038,37 +1167,57 @@ module LindenElkLiftSimDeep {
         && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
         && PSM.SizesOkRE(bA, ncap, nlook, nquant)
         && ((laA.NegLookbehind? || laA.NegLookahead?) ==> NR.CaptureFreeRE(bA));
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       NI.LookBodyOfTablesTie(re, crv, A);
       laT :| LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A));
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert host == M.VBody(crv, A as int);
       endlH := |bodycode| - 1;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert PSM.StaticOkNestedRE(qm, host, bodycode, endlH);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert crv.f_look_types[A as int] == laA;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert (laA.Lookahead? || laA.Lookbehind?) by {
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert AI.capture_type(crv.f_look_types[A as int]);        // MatchedPosLA
       }
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert laA.Lookbehind? by { assert crv.f_look_types[A as int] == laA; }
       // ==== (L5 F7c-4) LOOKBEHIND lid: lift via the FLIP twins ====
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       M.LookBodyFactsL5(re, crv, A);
       laN :| LTB.LookEntryOk(crv, A as int, laN, host) && (laN.Lookbehind? ==> NR.LBOnlyLooksRE(host));
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert laN == laA;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert NR.LBOnlyLooksRE(host);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       FG.LBOnlyEquiv(host);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert FST.LBOnlyLooksRE(host);
       // ---- rf_A: the fresh BACKWARD body match (Some via the LB carrier's None-iff — the
       //      backward leaf EXISTS by hypothesis) ----
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert M.FrameEntryOk(crv, laA, host,
                             PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re));
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert PIV.CapUnique(host) && PIV.QuantUnique(host) && LTB.LookUnique(host)
              && LTB.LookTablesOk(host, crv);                          // FrameEntryOk
       qmB := AR.QMap(qm.quants,
                          map l: int | l in qm.looks && l >= 0 && (l as nat) in LTB.LookIds(host) :: qm.looks[l],
                          qm.ov, qm.bodies);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert AR.QmapOk(host, qmB) by { QmapOkLooksIrrel(host, qm, qmB); }
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert AR.LmapOk(host, qmB) by { LmapOkRestrict(host, qm, qmB); }
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert OE.OracleColsOk(rer, qmB, str) by {
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         SufForallToColsOk(rer, qm, str);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         OracleColsOkRestrict(rer, qm, qmB, str);
       }
       bodycodeB := CP.compile_to_bytecode(R.reverse_regex(host));
@@ -1080,117 +1229,173 @@ module LindenElkLiftSimDeep {
                                    0, cdnA).0;
       // (2026-08-29 proof-engineering) the BASE arm needs only the None-iff from the LB carrier; its
       // three quantified carrier predicates stay out of every later batch's context.
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert (rfP.Some? <==> rb.Some?) by {
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         LookNestBackTFromBodyReplayLB(rer, qmB, laA, host, bodycodeB, crv, str, cpA, ov,
                                       cdnA, crv.f_plus_bc, ncap, nlook, nquant);
       }
       // the backward leaf exists (hypothesis) — unfold SubFirstLeafAt to rb
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert LidDir(crv, A as int) == WP.Backward;             // dispatch: laA.Lookbehind?
       lsubA := SubFirstLeafAt(rer, crv, str, A as int, res1);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       SubFirstLeafAtIsBackLeaf(rer, crv, str, A as int, res1, host);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert lsubA == FG.BackLeafAt(rer, host, str, cpA);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert lsubA.Some? && rb.Some? && lsubA.value == rb.value.1;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert rfP.Some?;                                            // None-iff
       rfA := rfP.value;
       Sh := PIV.CapIdsInLooks(host);
       gmtH := rb.value.1;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert gmtH == lsubA.value;
   
       // rf_A IS FreshBodyMatch(A, res1) — the backward fresh run
       // (L5 F7f) the unfold's row witnesses, hoisted
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert host == M.VBody(crv, A as int) by {
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         NI.LookBodyOfTablesTie(re, crv, A);
         var laT2: R.lookaround :| LTB.LookEntryOk(crv, A as int, laT2, host);
       }
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert 0 <= (A as int) < |crv.f_look_types| && crv.f_look_types[A as int].Lookbehind?;
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert 0 <= (A as int) < |crv.f_look_cdns| && cdnA == crv.f_look_cdns[A as int];
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert AReg.get_cp(res1, A as int).Some? && AReg.get_cp(res1, A as int).value == cpA;
       rfFresh := M.FreshBodyMatch(crv, str, A as int, res1, ov, ncap, nlook, nquant);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert rfFresh == AI.FFindMatch(bodycodeB, str,
                                       AI.FInitState(bodycodeB, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
                                                     AReg.init_regs(nquant), 0, AI.cp_context(cpA, str, LAnc.Backward)),
                                       ov, LAnc.Backward, cdnA).0 by {
         hide M.FreshBodyMatch; hide AI.FFindMatch;   // (2026-08-29) a congruence step over the lemma's ensures —
                   // left unfoldable, Z3 explores the engine loop here and the batch runs past 2700 s in the split module
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         FG.FreshBodyMatchLBUnfold(crv, str, A as int, res1, ov, host, ncap, nlook, nquant);
       }
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert rfA == rfFresh.value by {                        // (L5 F7f perf) via the helper
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         BackFreshPlusIsPlain(host, bodycodeB, crv.f_plus_bc, str, ov, cpA, cdnA, ncap, nlook, nquant);
       }
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert rfFresh.Some?;
   
       // the FLookLoop value/quant lifts at owner == A
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert CM.RegsAgreeInside(res0, rfFresh.value.capture_regs,
                                 PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host))) by {
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert M.VBody(crv, A as int) == host;
       }
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert CM.RegsAgreeInside(res2, rfFresh.value.quant_regs, M.QIdsOuter(host)) by {
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
       }
       // the fragment scope at host
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       GNotUnderQuantLLookBody(re, A, g);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert M.GNotUnderQuantL(T.Translate(host), g);
     }
     assert {:split_here} true;   // (E3) section boundary: its own assertion batch
 
     // ==== BASE: g DIRECT in host ====
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     NI.NoNulledPlusLookBody(re, A);   // §2.5b interim: NoNulledPlusRE(host)
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     SubFirstLeafDirectInFreshLB(rer, qmB, crv, str, ov, A, res1, host, g, ncap, nlook, nquant);
     var rfc := rfFresh.value.capture_regs;
     var rfl := rfFresh.value.look_regs;
     var rfq := rfFresh.value.quant_regs;
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert g in PIV.GmOfLive(host, rfc, rfl, rfq)
            && lsubA.value[g] == LBV.SwapRange(PIV.GmOfLive(host, rfc, rfl, rfq)[g]);
     // presence + dominance on the FRESH banks
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     M.LookBodyFactsL5(re, crv, A);          // NestedFragmentRE/CapUnique/QuantUnique(host)
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     FreshBodyMatchCapWfNested(crv, str, A as int, res1, ov, ncap, nlook, nquant, host);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert PIV.CapRegWf(rfc);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert forall c: nat :: c in PIV.CapIds(host) && AI.get_idx(rfc.a_clk, CP.start_reg(c)) < 0
                             ==> AI.get_idx(rfc.a_cp, CP.start_reg(c)) < 0;
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     NI.GmOfLivePresenceExtractLkNested(host, rfFresh.value.capture_regs, rfl, rfq, g);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert AReg.as_arrays(rfl).1 == rfl.a_clk && AReg.as_arrays(rfq).1 == rfq.a_clk;
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert PIV.PathPresentLk(host, rfc.a_clk, rfl.a_clk, rfq.a_clk, -1, g);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert AI.get_idx(rfc.a_clk, CP.start_reg(g)) >= 0
            && AI.get_idx(rfc.a_cp, CP.start_reg(g)) >= 0
            && AI.get_idx(rfc.a_clk, CP.start_reg(g))
               >= PIV.MxAtGidLk(host, rfc.a_clk, rfl.a_clk, rfq.a_clk, -1, g);
     assert {:split_here} true;   // (E3) residual sub-section
     // transport onto the reconstructed banks (no-look/no-quant path)
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     M.GNotUnderQuantLNoAncQuants(host, g);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert PIV.AncQuants(host, g) == {};
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert forall c: nat :: c in PIV.CapIdsOutsideLooks(host) ==>
                               AI.get_idx(res0.a_clk, CP.start_reg(c)) == AI.get_idx(rfc.a_clk, CP.start_reg(c))
     by {
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       forall c: nat | c in PIV.CapIdsOutsideLooks(host)
         ensures AI.get_idx(res0.a_clk, CP.start_reg(c)) == AI.get_idx(rfc.a_clk, CP.start_reg(c))
       {
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert CP.start_reg(c) in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host));
       }
     }
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     NI.PathPresentLkDirectAgree(host, res0.a_clk, res1.a_clk, res2.a_clk,
                                 rfc.a_clk, rfl.a_clk, rfq.a_clk, g);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert PIV.PathPresentLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, g);
     assert {:split_here} true;   // (E3) residual sub-section
     // res0 == rf at g's registers (start + end): the value lift at A
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     PIV.CapIdsSplit(host);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert g in PIV.CapIdsOutsideLooks(host);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert CP.start_reg(g) in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host))
            && CP.end_reg(g) in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host));
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert AI.get_idx(res0.a_clk, CP.start_reg(g)) == AI.get_idx(rfc.a_clk, CP.start_reg(g));
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert AI.get_idx(res0.a_cp, CP.start_reg(g)) == AI.get_idx(rfc.a_cp, CP.start_reg(g));   // (2026-08-29) was rfc.a_clk — a slip that verified only the slow way
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert AI.get_idx(res0.a_clk, CP.end_reg(g)) == AI.get_idx(rfc.a_clk, CP.end_reg(g));
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert AI.get_idx(res0.a_cp, CP.end_reg(g)) == AI.get_idx(rfc.a_cp, CP.end_reg(g));
     // dominance transported (Mx equality from the same transport)
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert PIV.MxAtGidLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, g)
         == PIV.MxAtGidLk(host, rfc.a_clk, rfl.a_clk, rfq.a_clk, -1, g);
     // the value chain with the endpoint swap absorbed by NormRange: leaf[g] ==
     // SwapRange(GmOfLive[g]) (the LB wrapper), GmOfLive[g] == LiveRange(rf,g),
     // LiveRange(rf,g) == LiveRange(res0,g)
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     NI.GmOfLiveKeepsPresentLkNested(host, rfFresh.value.capture_regs, rfl, rfq, g);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert PIV.GmOfLive(host, rfc, rfl, rfq)[g] == PIV.LiveRange(rfc.a_cp, rfc.a_clk, g);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert PIV.LiveRange(rfc.a_cp, rfc.a_clk, g) == PIV.LiveRange(res0.a_cp, res0.a_clk, g);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     NormSwapCong(PIV.LiveRange(res0.a_cp, res0.a_clk, g));
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert PIV.NormRange(lsubA.value[g]) == PIV.NormRange(PIV.LiveRange(res0.a_cp, res0.a_clk, g));
   }
 
