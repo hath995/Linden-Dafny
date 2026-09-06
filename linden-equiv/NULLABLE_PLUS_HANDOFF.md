@@ -1122,3 +1122,37 @@ were SLOW QUERIES, not memory hogs. Three causes:
   hiding them took `assert CM.ThreadRegsWf(thread, ncap, ...)`, a VERBATIM restatement of the
   lemma's own `requires`, from >900 s to instant.
 * the three `FLookLoop*` giants needed none of that — 188 per-step `{:split_here}`, 225/0.
+
+### 2026-09-06 — **THE GATE IS GREEN: `workspace packed: 64 members`, `PACK rc=0`**
+
+First clean pack since 09-03, and the first in which EVERY member was actually rebuilt under z3 4.14
+(they had been passing as "cached, unchanged"). Rung D piece 1 (`linden-equiv-nest-stamp`) and rung E
+(`linden-equiv-nulled-recon`) are therefore gate-verified, not just per-symbol green.
+
+Getting there took 22 commits, almost all of them proof-ENGINEERING rather than proof content: one
+`pike-inv-re` change invalidated the whole tower above it, and every member above it then had to be
+made 4.14-robust. Two REAL defects fell out of that sweep — a `hide` with no matching reveal in
+`FilterResetFrameSeqNested`, and rung C's stale interim conjunct in `tree-mirror-lk` (ten
+unprovable preconditions, "green" on a cached artifact for three days).
+
+**The playbook, in the order to try it** (also in memory `dafny-batch-memory-hogs` and
+`dafny-isolate-assertions-policy`):
+1. `grep` the named lemma for `{:isolate_assertions}` and REMOVE it — four lemmas this sweep
+   (`OracleColumnNested`, `DeepFindRecLB`, `ForwardFindRecFwdDeep`, `ReverseCDeepFull`) timed out
+   BECAUSE of it: it splits the body into ~1000 assertion queries whose AGGREGATE blows the 900 s
+   budget while no single assertion is slow.
+2. Diff the lemma against its `*Nested`/`*FromX` twin — twice the body was a verbatim copy of a
+   sibling with strictly weaker hypotheses, and delegating fixed it (900 s -> 0.29 s).
+3. Per-step `{:split_here}`. Granularity is the knob: 1 batch times out, ~1000 times out in
+   aggregate, 100-200 works. NEVER insert one directly before a `case` arm (parse error).
+4. If a batch is a VERBATIM restatement of a `requires` and still slow, the cost is the assumed
+   context: `hide` the RECURSIVE FUNCTIONS THE HYPOTHESES MENTION (`R.annotate`, `R.max_group`,
+   `NR.NestedFragmentRE`, ...), not the ones the goal mentions.
+5. If that is not enough, EXTRACT the work into a lemma that never sees the heavy machinery
+   (`CapArrayFromRegs`, `OracleOkAtLid`, `FRFBodyResetNested`). `hide` cannot shrink an assumed
+   context; only a narrower contract can.
+
+**Next: rung D0** — move `QChainFresh`/`QLive`/`StampApply`/`LiveStampsGm`/`GmOfLiveR` down from
+`nulled-recon` into `LindenElkPikeInv`, then `ThreadTracksGm := GmOfLiveR`, the commutation algebra,
+and the PikeSimRE step lemmas. Note that touching `pike-inv-re` again re-triggers the whole
+tower rebuild — but every member above it is now 4.14-robust, so it should be a clean ~2 h pack.
