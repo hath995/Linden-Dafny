@@ -41,125 +41,6 @@ module LindenElkNulledReconReadout {
   // 1. Liveness of a stamp, and the readout.
   // ===========================================================================
 
-  /** The quantifier chain above `qid` (and `qid` itself) is fresh w.r.t. the
-      innermost enclosing thresholds — `PathPresentQ` restricted to quant nodes. */
-  ghost predicate QChainFresh(r: R.regex, qc: seq<int>, mx: int, qid: nat)
-    requires qid in PIV.QuantIds(r)
-    decreases r
-  {
-    match r
-    case Re_alt(r1, r2) => if qid in PIV.QuantIds(r1) then QChainFresh(r1, qc, mx, qid) else QChainFresh(r2, qc, mx, qid)
-    case Re_con(r1, r2) => if qid in PIV.QuantIds(r1) then QChainFresh(r1, qc, mx, qid) else QChainFresh(r2, qc, mx, qid)
-    case Re_quant(nul, qid0, q, r1) =>
-      var qv := AI.get_idx(qc, qid0);
-      qv >= mx && (if qid0 >= 0 && (qid0 as nat) == qid then true else QChainFresh(r1, qc, qv, qid))
-    case Re_capture(cid, r1) => QChainFresh(r1, qc, mx, qid)
-    case Re_lookaround(lid, l, r1) => QChainFresh(r1, qc, -1, qid)
-  }
-
-  /** A stamp is LIVE when it is set and its quant chain is fresh. */
-  ghost predicate QLive(re: R.regex, qc: seq<int>, qcp: seq<int>, qid: nat) {
-    qid in PIV.QuantIdsOutsideLooks(re) && qid in PIV.QuantIds(re)
-    && AI.get_idx(qcp, qid) >= 0 && QChainFresh(re, qc, -1, qid)
-  }
-
-  /** The stamp's body regex and position, when the QMap knows the body. */
-  ghost predicate StampReady(qm: AR.QMap, str: string, qid: nat, qcp: seq<int>) {
-    (qid as int) in qm.bodies && T.TransWf(qm.bodies[qid as int])
-    && 0 <= AI.get_idx(qcp, qid) <= |str|
-  }
-
-  ghost function StampCp(qcp: seq<int>, qid: nat): nat
-    requires AI.get_idx(qcp, qid) >= 0
-  {
-    AI.get_idx(qcp, qid) as nat
-  }
-
-  /** The virtual chain of a stamp applied to the map: reset the body's groups
-      and fold the body's first empty path at the stamp position. `gm` itself
-      when the QMap/path is missing (never the case under the invariant). */
-  ghost function StampApply(qm: AR.QMap, str: string, qid: nat, qcp: seq<int>, r1: R.regex, gm: LG.GroupMap): LG.GroupMap
-    requires T.TransWf(r1)
-  {
-    if StampReady(qm, str, qid, qcp) then
-      var cp := StampCp(qcp, qid);
-      var p := TR.FirstEmptyPathR(qm, qm.bodies[qid as int], T.InputAt(str, cp));
-      if p.Some? then NP.ApplyPath(p.value, cp, LG.GMReset(L.DefGroups(T.Translate(r1)), gm)) else gm
-    else gm
-  }
-
-  /** `filter_capture`'s quant-threshold traversal with the stamp rule: a live
-      stamp replaces its body's groups by the chain; a stale node is skipped;
-      lookaround bodies carry no stamps (they are never reconstructed). */
-  ghost function LiveStampsGm(r: R.regex, qm: AR.QMap, str: string, qc: seq<int>, qcp: seq<int>, mx: int, gm: LG.GroupMap): LG.GroupMap
-    requires T.TransWf(r)
-    decreases r
-  {
-    match r
-    case Re_empty => gm
-    case Re_character(_) => gm
-    case Re_anchor(_) => gm
-    case Re_alt(r1, r2) => LiveStampsGm(r2, qm, str, qc, qcp, mx, LiveStampsGm(r1, qm, str, qc, qcp, mx, gm))
-    case Re_con(r1, r2) => LiveStampsGm(r2, qm, str, qc, qcp, mx, LiveStampsGm(r1, qm, str, qc, qcp, mx, gm))
-    case Re_quant(nul, qid, q, r1) =>
-      var qv := AI.get_idx(qc, qid);
-      if qv < mx then gm
-      else if qid >= 0 && AI.get_idx(qcp, qid) >= 0 then StampApply(qm, str, qid as nat, qcp, r1, gm)
-      else LiveStampsGm(r1, qm, str, qc, qcp, qv, gm)
-    case Re_capture(cid, r1) => LiveStampsGm(r1, qm, str, qc, qcp, mx, gm)
-    case Re_lookaround(_, _, _) => gm
-  }
-
-  /** THE reconstruction-aware readout. */
-  ghost function GmOfLiveR(re: R.regex, qm: AR.QMap, str: string, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs): LG.GroupMap
-    requires T.TransWf(re)
-  {
-    LiveStampsGm(re, qm, str, quant.a_clk, quant.a_cp, -1, PIV.GmOfLive(re, caps, look, quant))
-  }
-
-  /** No stamp at all: the readout is `GmOfLive` — the look-body tower and the
-      pre-reconstruction main pass are unaffected. */
-  lemma LiveStampsGmNoStamps(r: R.regex, qm: AR.QMap, str: string, qc: seq<int>, qcp: seq<int>, mx: int, gm: LG.GroupMap)
-    requires T.TransWf(r)
-    requires forall q: int :: AI.get_idx(qcp, q) < 0
-    ensures LiveStampsGm(r, qm, str, qc, qcp, mx, gm) == gm
-    decreases r
-  {
-    match r
-    case Re_empty =>
-    case Re_character(_) =>
-    case Re_anchor(_) =>
-    case Re_alt(r1, r2) =>
-      LiveStampsGmNoStamps(r1, qm, str, qc, qcp, mx, gm);
-      LiveStampsGmNoStamps(r2, qm, str, qc, qcp, mx, gm);
-    case Re_con(r1, r2) =>
-      LiveStampsGmNoStamps(r1, qm, str, qc, qcp, mx, gm);
-      LiveStampsGmNoStamps(r2, qm, str, qc, qcp, mx, gm);
-    case Re_quant(nul, qid, q, r1) =>
-      var qv := AI.get_idx(qc, qid);
-      if qv >= mx { LiveStampsGmNoStamps(r1, qm, str, qc, qcp, qv, gm); }
-    case Re_capture(cid, r1) => LiveStampsGmNoStamps(r1, qm, str, qc, qcp, mx, gm);
-    case Re_lookaround(_, _, _) =>
-  }
-
-  lemma GmOfLiveRNoStamps(re: R.regex, qm: AR.QMap, str: string, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs)
-    requires T.TransWf(re)
-    requires forall q: int :: AI.get_idx(quant.a_cp, q) < 0
-    ensures GmOfLiveR(re, qm, str, caps, look, quant) == PIV.GmOfLive(re, caps, look, quant)
-  {
-    LiveStampsGmNoStamps(re, qm, str, quant.a_clk, quant.a_cp, -1, PIV.GmOfLive(re, caps, look, quant));
-  }
-
-  // ===========================================================================
-  // 2. The groups on the first empty path, and the spec-side readout (R1).
-  // ===========================================================================
-
-  // `PathGroupsR` / `ResetGroupsR` / `PathGroupsInCapIds` live in the register
-  // module (`NRR`), shared with the engine-side readout.
-
-  ghost function PathMap(G: set<nat>, cp: nat): LG.GroupMap {
-    map g: nat | g in G :: LG.Range(cp, Some(cp))
-  }
 
   ghost function Minus(gm: LG.GroupMap, G: set<nat>): LG.GroupMap {
     gm - G
@@ -175,6 +56,17 @@ module LindenElkNulledReconReadout {
       assert (p1 + p2)[0] == p1[0] && (p1 + p2)[1..] == p1[1..] + p2;
       ApplyPathApp(p1[1..], p2, idx, LG.GMUpdate(p1[0], idx, gm));
     }
+  }
+
+  // ===========================================================================
+  // 2. The groups on the first empty path, and the spec-side readout (R1).
+  // ===========================================================================
+
+  // `PathGroupsR` / `ResetGroupsR` / `PathGroupsInCapIds` live in the register
+  // module (`NRR`), shared with the engine-side readout.
+
+  ghost function PathMap(G: set<nat>, cp: nat): LG.GroupMap {
+    map g: nat | g in G :: LG.Range(cp, Some(cp))
   }
 
   /** `RepeatPath(n, Reset(G) :: p)` for `n >= 1` has the effect of one copy when
@@ -410,58 +302,6 @@ module LindenElkNulledReconReadout {
   // 4. THE READOUT THEOREM.
   // ===========================================================================
 
-  /** No stamp with a fresh quant chain inside `r` (relative to `mx`): the
-      readout leaves the map alone. */
-  ghost predicate NoFreshStamp(r: R.regex, qc: seq<int>, qcp: seq<int>, mx: int) {
-    forall q: nat :: q in PIV.QuantIds(r) && AI.get_idx(qcp, q) >= 0 ==> !QChainFresh(r, qc, mx, q)
-  }
-
-  lemma LiveStampsGmStaleIdentity(r: R.regex, qm: AR.QMap, str: string, qc: seq<int>, qcp: seq<int>, mx: int, gm: LG.GroupMap)
-    requires T.TransWf(r) && PIV.QuantUnique(r)
-    requires NoFreshStamp(r, qc, qcp, mx)
-    ensures LiveStampsGm(r, qm, str, qc, qcp, mx, gm) == gm
-    decreases r
-  {
-    match r
-    case Re_empty =>
-    case Re_character(_) =>
-    case Re_anchor(_) =>
-    case Re_lookaround(_, _, _) =>
-    case Re_alt(r1, r2) =>
-      assert NoFreshStamp(r1, qc, qcp, mx) && NoFreshStamp(r2, qc, qcp, mx) by {
-        forall q: nat | q in PIV.QuantIds(r1) && AI.get_idx(qcp, q) >= 0 ensures !QChainFresh(r1, qc, mx, q) { assert q in PIV.QuantIds(r); }
-        forall q: nat | q in PIV.QuantIds(r2) && AI.get_idx(qcp, q) >= 0 ensures !QChainFresh(r2, qc, mx, q) { QuantSideDisjoint(r, q); assert q in PIV.QuantIds(r); }
-      }
-      LiveStampsGmStaleIdentity(r1, qm, str, qc, qcp, mx, gm);
-      LiveStampsGmStaleIdentity(r2, qm, str, qc, qcp, mx, gm);
-    case Re_con(r1, r2) =>
-      assert NoFreshStamp(r1, qc, qcp, mx) && NoFreshStamp(r2, qc, qcp, mx) by {
-        forall q: nat | q in PIV.QuantIds(r1) && AI.get_idx(qcp, q) >= 0 ensures !QChainFresh(r1, qc, mx, q) { assert q in PIV.QuantIds(r); }
-        forall q: nat | q in PIV.QuantIds(r2) && AI.get_idx(qcp, q) >= 0 ensures !QChainFresh(r2, qc, mx, q) { QuantSideDisjoint(r, q); assert q in PIV.QuantIds(r); }
-      }
-      LiveStampsGmStaleIdentity(r1, qm, str, qc, qcp, mx, gm);
-      LiveStampsGmStaleIdentity(r2, qm, str, qc, qcp, mx, gm);
-    case Re_capture(_, r1) =>
-      assert NoFreshStamp(r1, qc, qcp, mx) by {
-        forall q: nat | q in PIV.QuantIds(r1) && AI.get_idx(qcp, q) >= 0 ensures !QChainFresh(r1, qc, mx, q) { assert q in PIV.QuantIds(r); }
-      }
-      LiveStampsGmStaleIdentity(r1, qm, str, qc, qcp, mx, gm);
-    case Re_quant(nul, qid, q, r1) =>
-      var qv := AI.get_idx(qc, qid);
-      if qv < mx {
-      } else if qid >= 0 && AI.get_idx(qcp, qid) >= 0 {
-        assert QChainFresh(r, qc, mx, qid as nat);
-        assert false;
-      } else {
-        assert NoFreshStamp(r1, qc, qcp, qv) by {
-          forall q': nat | q' in PIV.QuantIds(r1) && AI.get_idx(qcp, q') >= 0 ensures !QChainFresh(r1, qc, qv, q') {
-            assert q' in PIV.QuantIds(r) && q' != qid as nat;
-            assert QChainFresh(r, qc, mx, q') <==> QChainFresh(r1, qc, qv, q');
-          }
-        }
-        LiveStampsGmStaleIdentity(r1, qm, str, qc, qcp, qv, gm);
-      }
-  }
 
   /** THE hypotheses of the readout theorem on a thread's registers. */
   ghost predicate StampsCtx(re: R.regex, qm: AR.QMap, str: string, rg: Regs3) {
@@ -471,7 +311,7 @@ module LindenElkNulledReconReadout {
       NRR.QidCinPlus(re, q)
       && 0 <= AI.get_idx(rg.2.a_cp, q) <= |str|
       && (q as int) in qm.bodies && qm.bodies[q as int] == PIV.QidBody(re, q)
-      && (QChainFresh(re, rg.2.a_clk, -1, q) ==>
+      && (PIV.QChainFresh(re, rg.2.a_clk, -1, q) ==>
             PIV.PathPresentQ(re, rg.0.a_clk, rg.2.a_clk, -1, q)
             && NRR.RegsStale(PIV.QidBody(re, q), rg, AI.get_idx(rg.2.a_clk, q)))
   }
@@ -686,8 +526,8 @@ module LindenElkNulledReconReadout {
   lemma LiveStampsGmFrame(r: R.regex, qm: AR.QMap, str: string, qc: seq<int>, qcp: seq<int>, mx: int, gm: LG.GroupMap, gm': LG.GroupMap)
     requires T.TransWf(r) && PIV.CapUnique(r) && PIV.QuantUnique(r) && BodiesMatch(qm, r, qcp)
     requires forall g: nat :: g in PIV.CapIds(r) ==> ((g in gm <==> g in gm') && (g in gm ==> gm[g] == gm'[g]))
-    ensures var a := LiveStampsGm(r, qm, str, qc, qcp, mx, gm);
-            var b := LiveStampsGm(r, qm, str, qc, qcp, mx, gm');
+    ensures var a := PIV.LiveStampsGm(r, qm, str, qc, qcp, mx, gm);
+            var b := PIV.LiveStampsGm(r, qm, str, qc, qcp, mx, gm');
             (forall g: nat :: g in PIV.CapIds(r) ==> ((g in a <==> g in b) && (g in a ==> a[g] == b[g])))
             && (forall g: nat :: g !in PIV.CapIds(r) ==> ((g in a <==> g in gm) && (g in a ==> a[g] == gm[g])))
     decreases r
@@ -701,24 +541,24 @@ module LindenElkNulledReconReadout {
     case Re_alt(r1, r2) =>
       BodiesMatchChild(qm, r, qcp);
       LiveStampsGmFrame(r1, qm, str, qc, qcp, mx, gm, gm');
-      var a1 := LiveStampsGm(r1, qm, str, qc, qcp, mx, gm);
-      var b1 := LiveStampsGm(r1, qm, str, qc, qcp, mx, gm');
+      var a1 := PIV.LiveStampsGm(r1, qm, str, qc, qcp, mx, gm);
+      var b1 := PIV.LiveStampsGm(r1, qm, str, qc, qcp, mx, gm');
       LiveStampsGmFrame(r2, qm, str, qc, qcp, mx, a1, b1);
     case Re_con(r1, r2) =>
       BodiesMatchChild(qm, r, qcp);
       LiveStampsGmFrame(r1, qm, str, qc, qcp, mx, gm, gm');
-      var a1 := LiveStampsGm(r1, qm, str, qc, qcp, mx, gm);
-      var b1 := LiveStampsGm(r1, qm, str, qc, qcp, mx, gm');
+      var a1 := PIV.LiveStampsGm(r1, qm, str, qc, qcp, mx, gm);
+      var b1 := PIV.LiveStampsGm(r1, qm, str, qc, qcp, mx, gm');
       LiveStampsGmFrame(r2, qm, str, qc, qcp, mx, a1, b1);
     case Re_quant(nul, qid, q, r1) =>
       BodiesMatchChild(qm, r, qcp);
       var qv := AI.get_idx(qc, qid);
       if qv < mx {
       } else if qid >= 0 && AI.get_idx(qcp, qid) >= 0 {
-        if StampReady(qm, str, qid as nat, qcp) {
+        if PIV.StampReady(qm, str, qid as nat, qcp) {
           assert (qid as nat) in PIV.QuantIds(r) && PIV.QidBody(r, qid as nat) == r1;
           assert qm.bodies[qid as int] == r1;
-          var cp := StampCp(qcp, qid as nat);
+          var cp := PIV.StampCp(qcp, qid as nat);
           var p := TR.FirstEmptyPathR(qm, r1, T.InputAt(str, cp));
           if p.Some? {
             var gl := L.DefGroups(T.Translate(r1));
@@ -733,15 +573,15 @@ module LindenElkNulledReconReadout {
 
   /** `ApplyPath(p, cp, GMReset(gl, ·))` reads nothing inside `gl` and writes only inside `gl`. */
   lemma StampApplyPointwise(qm: AR.QMap, str: string, qid: nat, qcp: seq<int>, r1: R.regex, gm: LG.GroupMap, gm': LG.GroupMap)
-    requires T.TransWf(r1) && StampReady(qm, str, qid, qcp) && qm.bodies[qid as int] == r1
-    requires TR.FirstEmptyPathR(qm, r1, T.InputAt(str, StampCp(qcp, qid))).Some?
-    ensures var a := StampApply(qm, str, qid, qcp, r1, gm);
-            var b := StampApply(qm, str, qid, qcp, r1, gm');
+    requires T.TransWf(r1) && PIV.StampReady(qm, str, qid, qcp) && qm.bodies[qid as int] == r1
+    requires TR.FirstEmptyPathR(qm, r1, T.InputAt(str, PIV.StampCp(qcp, qid))).Some?
+    ensures var a := PIV.StampApply(qm, str, qid, qcp, r1, gm);
+            var b := PIV.StampApply(qm, str, qid, qcp, r1, gm');
             var gl := L.DefGroups(T.Translate(r1));
             (forall g: nat :: g in gl ==> ((g in a <==> g in b) && (g in a ==> a[g] == b[g])))
             && (forall g: nat :: g !in gl ==> ((g in a <==> g in gm) && (g in a ==> a[g] == gm[g])))
   {
-    var cp := StampCp(qcp, qid);
+    var cp := PIV.StampCp(qcp, qid);
     var inp := T.InputAt(str, cp);
     var body := qm.bodies[qid as int];
     var p := TR.FirstEmptyPathR(qm, body, inp).value;
@@ -936,7 +776,7 @@ module LindenElkNulledReconReadout {
       NRR.QidCinPlus(r, q)
       && 0 <= AI.get_idx(rg.2.a_cp, q) <= |str|
       && (q as int) in qm.bodies && qm.bodies[q as int] == PIV.QidBody(r, q)
-      && (QChainFresh(r, rg.2.a_clk, mx, q) ==>
+      && (PIV.QChainFresh(r, rg.2.a_clk, mx, q) ==>
             PIV.PathPresentQ(r, rg.0.a_clk, rg.2.a_clk, mx, q)
             && NRR.RegsStale(PIV.QidBody(r, q), rg, AI.get_idx(rg.2.a_clk, q)))
   }
@@ -951,32 +791,32 @@ module LindenElkNulledReconReadout {
     case Re_alt(r1, r2) =>
       forall q: nat | q in PIV.QuantIds(r1) && AI.get_idx(rg.2.a_cp, q) >= 0 ensures
         NRR.QidCinPlus(r1, q) && (q as int) in qm.bodies && qm.bodies[q as int] == PIV.QidBody(r1, q)
-        && (QChainFresh(r1, rg.2.a_clk, mx, q) ==> PIV.PathPresentQ(r1, rg.0.a_clk, rg.2.a_clk, mx, q) && NRR.RegsStale(PIV.QidBody(r1, q), rg, AI.get_idx(rg.2.a_clk, q)))
+        && (PIV.QChainFresh(r1, rg.2.a_clk, mx, q) ==> PIV.PathPresentQ(r1, rg.0.a_clk, rg.2.a_clk, mx, q) && NRR.RegsStale(PIV.QidBody(r1, q), rg, AI.get_idx(rg.2.a_clk, q)))
       { assert q in PIV.QuantIds(r); }
       forall q: nat | q in PIV.QuantIds(r2) && AI.get_idx(rg.2.a_cp, q) >= 0 ensures
         NRR.QidCinPlus(r2, q) && (q as int) in qm.bodies && qm.bodies[q as int] == PIV.QidBody(r2, q)
-        && (QChainFresh(r2, rg.2.a_clk, mx, q) ==> PIV.PathPresentQ(r2, rg.0.a_clk, rg.2.a_clk, mx, q) && NRR.RegsStale(PIV.QidBody(r2, q), rg, AI.get_idx(rg.2.a_clk, q)))
+        && (PIV.QChainFresh(r2, rg.2.a_clk, mx, q) ==> PIV.PathPresentQ(r2, rg.0.a_clk, rg.2.a_clk, mx, q) && NRR.RegsStale(PIV.QidBody(r2, q), rg, AI.get_idx(rg.2.a_clk, q)))
       { QuantSideDisjoint(r, q); assert q in PIV.QuantIds(r); }
     case Re_con(r1, r2) =>
       forall q: nat | q in PIV.QuantIds(r1) && AI.get_idx(rg.2.a_cp, q) >= 0 ensures
         NRR.QidCinPlus(r1, q) && (q as int) in qm.bodies && qm.bodies[q as int] == PIV.QidBody(r1, q)
-        && (QChainFresh(r1, rg.2.a_clk, mx, q) ==> PIV.PathPresentQ(r1, rg.0.a_clk, rg.2.a_clk, mx, q) && NRR.RegsStale(PIV.QidBody(r1, q), rg, AI.get_idx(rg.2.a_clk, q)))
+        && (PIV.QChainFresh(r1, rg.2.a_clk, mx, q) ==> PIV.PathPresentQ(r1, rg.0.a_clk, rg.2.a_clk, mx, q) && NRR.RegsStale(PIV.QidBody(r1, q), rg, AI.get_idx(rg.2.a_clk, q)))
       { assert q in PIV.QuantIds(r); }
       forall q: nat | q in PIV.QuantIds(r2) && AI.get_idx(rg.2.a_cp, q) >= 0 ensures
         NRR.QidCinPlus(r2, q) && (q as int) in qm.bodies && qm.bodies[q as int] == PIV.QidBody(r2, q)
-        && (QChainFresh(r2, rg.2.a_clk, mx, q) ==> PIV.PathPresentQ(r2, rg.0.a_clk, rg.2.a_clk, mx, q) && NRR.RegsStale(PIV.QidBody(r2, q), rg, AI.get_idx(rg.2.a_clk, q)))
+        && (PIV.QChainFresh(r2, rg.2.a_clk, mx, q) ==> PIV.PathPresentQ(r2, rg.0.a_clk, rg.2.a_clk, mx, q) && NRR.RegsStale(PIV.QidBody(r2, q), rg, AI.get_idx(rg.2.a_clk, q)))
       { QuantSideDisjoint(r, q); assert q in PIV.QuantIds(r); }
     case Re_capture(cid, r1) =>
       forall q: nat | q in PIV.QuantIds(r1) && AI.get_idx(rg.2.a_cp, q) >= 0 ensures
         NRR.QidCinPlus(r1, q) && (q as int) in qm.bodies && qm.bodies[q as int] == PIV.QidBody(r1, q)
-        && (QChainFresh(r1, rg.2.a_clk, mx, q) ==> PIV.PathPresentQ(r1, rg.0.a_clk, rg.2.a_clk, mx, q) && NRR.RegsStale(PIV.QidBody(r1, q), rg, AI.get_idx(rg.2.a_clk, q)))
+        && (PIV.QChainFresh(r1, rg.2.a_clk, mx, q) ==> PIV.PathPresentQ(r1, rg.0.a_clk, rg.2.a_clk, mx, q) && NRR.RegsStale(PIV.QidBody(r1, q), rg, AI.get_idx(rg.2.a_clk, q)))
       { assert q in PIV.QuantIds(r); }
     case Re_quant(nul, qid, qq, r1) =>
       var qv := AI.get_idx(rg.2.a_clk, qid);
       if qv >= mx {
         forall q: nat | q in PIV.QuantIds(r1) && AI.get_idx(rg.2.a_cp, q) >= 0 ensures
           NRR.QidCinPlus(r1, q) && (q as int) in qm.bodies && qm.bodies[q as int] == PIV.QidBody(r1, q)
-          && (QChainFresh(r1, rg.2.a_clk, qv, q) ==> PIV.PathPresentQ(r1, rg.0.a_clk, rg.2.a_clk, qv, q) && NRR.RegsStale(PIV.QidBody(r1, q), rg, AI.get_idx(rg.2.a_clk, q)))
+          && (PIV.QChainFresh(r1, rg.2.a_clk, qv, q) ==> PIV.PathPresentQ(r1, rg.0.a_clk, rg.2.a_clk, qv, q) && NRR.RegsStale(PIV.QidBody(r1, q), rg, AI.get_idx(rg.2.a_clk, q)))
         { assert q in PIV.QuantIds(r) && q != qid as nat; }
       }
     case _ =>
@@ -998,7 +838,7 @@ module LindenElkNulledReconReadout {
     requires StampsLocal(qm, r, str, rg, mx)
     ensures StampsInRange(r, rg, str)
     ensures var rg' := FP(r, rg, plus_bcv, str, ov);
-            GmSub(r, rg', mx) == LiveStampsGm(r, qm, str, rg.2.a_clk, rg.2.a_cp, mx, GmSub(r, rg, mx))
+            GmSub(r, rg', mx) == PIV.LiveStampsGm(r, qm, str, rg.2.a_clk, rg.2.a_cp, mx, GmSub(r, rg, mx))
     decreases r
   {
     assert StampsInRange(r, rg, str);
@@ -1039,7 +879,7 @@ module LindenElkNulledReconReadout {
     requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && NRR.Covers(r, rg) && NRR.LookCapsAbsent(r, rg)
     requires StampsLocal(qm, r, str, rg, mx)
     ensures var rg' := FP(r, rg, plus_bcv, str, ov);
-            GmSub(r, rg', mx) == LiveStampsGm(r, qm, str, rg.2.a_clk, rg.2.a_cp, mx, GmSub(r, rg, mx))
+            GmSub(r, rg', mx) == PIV.LiveStampsGm(r, qm, str, rg.2.a_clk, rg.2.a_cp, mx, GmSub(r, rg, mx))
     decreases r, 0
   {
     var r1 := NRR.L1(r); var r2 := NRR.L2(r);
@@ -1078,9 +918,9 @@ module LindenElkNulledReconReadout {
     assert GmSub(r2, rgA, mx) == GmSub(r2, rg, mx) by { GmSubDep(r2, rg, rgA, mx); }
     var g1 := GmSub(r1, rg, mx); var g2 := GmSub(r2, rg, mx);
     var g1' := GmSub(r1, rg', mx); var g2' := GmSub(r2, rg', mx);
-    assert g1' == LiveStampsGm(r1, qm, str, qc, qcp, mx, g1);
-    assert g2' == LiveStampsGm(r2, qm, str, rgA.2.a_clk, rgA.2.a_cp, mx, g2);
-    assert LiveStampsGm(r2, qm, str, rgA.2.a_clk, rgA.2.a_cp, mx, g2) == LiveStampsGm(r2, qm, str, qc, qcp, mx, g2) by {
+    assert g1' == PIV.LiveStampsGm(r1, qm, str, qc, qcp, mx, g1);
+    assert g2' == PIV.LiveStampsGm(r2, qm, str, rgA.2.a_clk, rgA.2.a_cp, mx, g2);
+    assert PIV.LiveStampsGm(r2, qm, str, rgA.2.a_clk, rgA.2.a_cp, mx, g2) == PIV.LiveStampsGm(r2, qm, str, qc, qcp, mx, g2) by {
       NRR.SubAgree2(r, rg, rgA);
       NRR.QuantRegsOfChar(r2);
       assert forall q: nat :: q in PIV.QuantIds(r2) ==> (q as int) in NRR.QuantRegsOf(r2);
@@ -1091,11 +931,11 @@ module LindenElkNulledReconReadout {
     var gmS := g1 + g2;
     assert BodiesMatch(qm, r, qcp) by { StampsLocalBodies(qm, r, str, rg, mx); }
     BodiesMatchChild(qm, r, qcp);
-    var a1 := LiveStampsGm(r1, qm, str, qc, qcp, mx, gmS);
+    var a1 := PIV.LiveStampsGm(r1, qm, str, qc, qcp, mx, gmS);
     LiveStampsGmFrame(r1, qm, str, qc, qcp, mx, gmS, g1);
-    var a2 := LiveStampsGm(r2, qm, str, qc, qcp, mx, a1);
+    var a2 := PIV.LiveStampsGm(r2, qm, str, qc, qcp, mx, a1);
     LiveStampsGmFrame(r2, qm, str, qc, qcp, mx, a1, g2);
-    assert LiveStampsGm(r, qm, str, qc, qcp, mx, gmS) == a2;
+    assert PIV.LiveStampsGm(r, qm, str, qc, qcp, mx, gmS) == a2;
     assert {:split_here} true;
     // keys: CapIds(r1) from g1', CapIds(r2) from g2', nothing else
     GmSubKeys(r1, rg, mx); GmSubKeys(r2, rg, mx); GmSubKeys(r1, rg', mx); GmSubKeys(r2, rg', mx);
@@ -1119,7 +959,7 @@ module LindenElkNulledReconReadout {
   lemma LiveStampsGmKeys(r: R.regex, qm: AR.QMap, str: string, qc: seq<int>, qcp: seq<int>, mx: int, gm: LG.GroupMap)
     requires T.TransWf(r) && PIV.CapUnique(r) && PIV.QuantUnique(r) && BodiesMatch(qm, r, qcp)
     requires forall g: nat :: g in gm ==> g in PIV.CapIds(r)
-    ensures forall g: nat :: g in LiveStampsGm(r, qm, str, qc, qcp, mx, gm) ==> g in PIV.CapIds(r)
+    ensures forall g: nat :: g in PIV.LiveStampsGm(r, qm, str, qc, qcp, mx, gm) ==> g in PIV.CapIds(r)
   {
     LiveStampsGmFrame(r, qm, str, qc, qcp, mx, gm, gm);
   }
@@ -1127,24 +967,24 @@ module LindenElkNulledReconReadout {
   lemma LiveStampsGmQcDep(r: R.regex, qm: AR.QMap, str: string, qcA: seq<int>, qcB: seq<int>, qcpA: seq<int>, qcpB: seq<int>, mx: int, gm: LG.GroupMap)
     requires T.TransWf(r)
     requires forall q: nat :: q in PIV.QuantIds(r) ==> AI.get_idx(qcA, q) == AI.get_idx(qcB, q) && AI.get_idx(qcpA, q) == AI.get_idx(qcpB, q)
-    ensures LiveStampsGm(r, qm, str, qcA, qcpA, mx, gm) == LiveStampsGm(r, qm, str, qcB, qcpB, mx, gm)
+    ensures PIV.LiveStampsGm(r, qm, str, qcA, qcpA, mx, gm) == PIV.LiveStampsGm(r, qm, str, qcB, qcpB, mx, gm)
     decreases r
   {
     match r
     case Re_alt(r1, r2) =>
       LiveStampsGmQcDep(r1, qm, str, qcA, qcB, qcpA, qcpB, mx, gm);
-      LiveStampsGmQcDep(r2, qm, str, qcA, qcB, qcpA, qcpB, mx, LiveStampsGm(r1, qm, str, qcA, qcpA, mx, gm));
+      LiveStampsGmQcDep(r2, qm, str, qcA, qcB, qcpA, qcpB, mx, PIV.LiveStampsGm(r1, qm, str, qcA, qcpA, mx, gm));
     case Re_con(r1, r2) =>
       LiveStampsGmQcDep(r1, qm, str, qcA, qcB, qcpA, qcpB, mx, gm);
-      LiveStampsGmQcDep(r2, qm, str, qcA, qcB, qcpA, qcpB, mx, LiveStampsGm(r1, qm, str, qcA, qcpA, mx, gm));
+      LiveStampsGmQcDep(r2, qm, str, qcA, qcB, qcpA, qcpB, mx, PIV.LiveStampsGm(r1, qm, str, qcA, qcpA, mx, gm));
     case Re_capture(_, r1) => LiveStampsGmQcDep(r1, qm, str, qcA, qcB, qcpA, qcpB, mx, gm);
     case Re_quant(nul, qid, q, r1) =>
       if qid >= 0 {
         assert AI.get_idx(qcA, qid) == AI.get_idx(qcB, qid) && AI.get_idx(qcpA, qid) == AI.get_idx(qcpB, qid);
         var qv := AI.get_idx(qcA, qid);
         if qv >= mx && AI.get_idx(qcpA, qid) >= 0 {
-          assert StampReady(qm, str, qid as nat, qcpA) == StampReady(qm, str, qid as nat, qcpB);
-          if StampReady(qm, str, qid as nat, qcpA) { assert StampCp(qcpA, qid as nat) == StampCp(qcpB, qid as nat); }
+          assert PIV.StampReady(qm, str, qid as nat, qcpA) == PIV.StampReady(qm, str, qid as nat, qcpB);
+          if PIV.StampReady(qm, str, qid as nat, qcpA) { assert PIV.StampCp(qcpA, qid as nat) == PIV.StampCp(qcpB, qid as nat); }
         } else if qv >= mx {
           LiveStampsGmQcDep(r1, qm, str, qcA, qcB, qcpA, qcpB, qv, gm);
         }
@@ -1167,11 +1007,11 @@ module LindenElkNulledReconReadout {
     forall q: nat | q in PIV.QuantIds(r) && AI.get_idx(rg'.2.a_cp, q) >= 0 ensures
       NRR.QidCinPlus(r, q) && 0 <= AI.get_idx(rg'.2.a_cp, q) <= |str|
       && (q as int) in qm.bodies && qm.bodies[q as int] == PIV.QidBody(r, q)
-      && (QChainFresh(r, rg'.2.a_clk, mx, q) ==> PIV.PathPresentQ(r, rg'.0.a_clk, rg'.2.a_clk, mx, q) && NRR.RegsStale(PIV.QidBody(r, q), rg', AI.get_idx(rg'.2.a_clk, q)))
+      && (PIV.QChainFresh(r, rg'.2.a_clk, mx, q) ==> PIV.PathPresentQ(r, rg'.0.a_clk, rg'.2.a_clk, mx, q) && NRR.RegsStale(PIV.QidBody(r, q), rg', AI.get_idx(rg'.2.a_clk, q)))
     {
       assert AI.get_idx(rg.2.a_cp, q) >= 0;
       QChainFreshDep(r, rg.2.a_clk, rg'.2.a_clk, mx, q);
-      if QChainFresh(r, rg'.2.a_clk, mx, q) {
+      if PIV.QChainFresh(r, rg'.2.a_clk, mx, q) {
         PathPresentQDep(r, rg.0.a_clk, rg'.0.a_clk, rg.2.a_clk, rg'.2.a_clk, mx, q);
         QidBodyRegs(r, q);
         assert NRR.LookCapsAbsent(PIV.QidBody(r, q), rg);
@@ -1183,7 +1023,7 @@ module LindenElkNulledReconReadout {
   lemma QChainFreshDep(r: R.regex, qcA: seq<int>, qcB: seq<int>, mx: int, qid: nat)
     requires qid in PIV.QuantIds(r)
     requires forall q: nat :: q in PIV.QuantIds(r) ==> AI.get_idx(qcA, q) == AI.get_idx(qcB, q)
-    ensures QChainFresh(r, qcA, mx, qid) == QChainFresh(r, qcB, mx, qid)
+    ensures PIV.QChainFresh(r, qcA, mx, qid) == PIV.QChainFresh(r, qcB, mx, qid)
     decreases r
   {
     match r
@@ -1247,7 +1087,7 @@ module LindenElkNulledReconReadout {
     requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && NRR.Covers(r, rg) && NRR.LookCapsAbsent(r, rg)
     requires StampsLocal(qm, r, str, rg, mx)
     ensures var rg' := FP(r, rg, plus_bcv, str, ov);
-            GmSub(r, rg', mx) == LiveStampsGm(r, qm, str, rg.2.a_clk, rg.2.a_cp, mx, GmSub(r, rg, mx))
+            GmSub(r, rg', mx) == PIV.LiveStampsGm(r, qm, str, rg.2.a_clk, rg.2.a_cp, mx, GmSub(r, rg, mx))
     decreases r, 0
   {
     var cid := r.cid; var r1 := NRR.L1(r);
@@ -1274,16 +1114,16 @@ module LindenElkNulledReconReadout {
         HiddenCaptureClears(r, rg', mx, c);
       }
       assert GmSub(r, rg, mx) == map[] && GmSub(r, rg', mx) == map[];
-      assert NoFreshStamp(r1, qc, qcp, mx) by {
-        forall q: nat | q in PIV.QuantIds(r1) && AI.get_idx(qcp, q) >= 0 ensures !QChainFresh(r1, qc, mx, q) {
-          if QChainFresh(r1, qc, mx, q) {
-            assert q in PIV.QuantIds(r) && QChainFresh(r, qc, mx, q);
+      assert PIV.NoFreshStamp(r1, qc, qcp, mx) by {
+        forall q: nat | q in PIV.QuantIds(r1) && AI.get_idx(qcp, q) >= 0 ensures !PIV.QChainFresh(r1, qc, mx, q) {
+          if PIV.QChainFresh(r1, qc, mx, q) {
+            assert q in PIV.QuantIds(r) && PIV.QChainFresh(r, qc, mx, q);
             assert PIV.PathPresentQ(r, rg.0.a_clk, qc, mx, q);
             assert start >= 0 && start >= mx;
           }
         }
       }
-      LiveStampsGmStaleIdentity(r1, qm, str, qc, qcp, mx, map[]);
+      PIV.LiveStampsGmStaleIdentity(r1, qm, str, qc, qcp, mx, map[]);
     } else {
       // present: cid's own entry is unchanged, the body's is the inductive readout
       assert NRR.Filt(r, rg, mx) == AI.filter_capture(r1, rg.0.a_cp, rg.0.a_clk, rg.1.a_clk, rg.2.a_clk, mx);
@@ -1307,7 +1147,7 @@ module LindenElkNulledReconReadout {
       BodiesMatchChild(qm, r, qcp);
       LiveStampsGmFrame(r1, qm, str, qc, qcp, mx, g1[g := own], g1);
       LiveStampsGmKeys(r1, qm, str, qc, qcp, mx, g1);
-      var a := LiveStampsGm(r1, qm, str, qc, qcp, mx, g1[g := own]);
+      var a := PIV.LiveStampsGm(r1, qm, str, qc, qcp, mx, g1[g := own]);
       assert a == g1'[g := own] by {
         forall x: nat ensures (x in a <==> x in g1'[g := own]) && (x in a ==> a[x] == g1'[g := own][x]) {
           if x in PIV.CapIds(r1) { } else if x == g { } else { }
@@ -1345,7 +1185,7 @@ module LindenElkNulledReconReadout {
     requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && NRR.Covers(r, rg) && NRR.LookCapsAbsent(r, rg)
     requires StampsLocal(qm, r, str, rg, mx)
     ensures var rg' := FP(r, rg, plus_bcv, str, ov);
-            GmSub(r, rg', mx) == LiveStampsGm(r, qm, str, rg.2.a_clk, rg.2.a_cp, mx, GmSub(r, rg, mx))
+            GmSub(r, rg', mx) == PIV.LiveStampsGm(r, qm, str, rg.2.a_clk, rg.2.a_cp, mx, GmSub(r, rg, mx))
     decreases r, 0
   {
     var qid := r.qid; var r1 := NRR.L1(r);
@@ -1371,7 +1211,7 @@ module LindenElkNulledReconReadout {
     } else if AI.get_idx(qcp, qid) >= 0 {
       assert {:split_here} true;
       // a live stamp: the engine reconstructs the body; the readout folds the path
-      assert QChainFresh(r, qc, mx, qid as nat);
+      assert PIV.QChainFresh(r, qc, mx, qid as nat);
       var K := qv;
       var cp: nat := AI.get_idx(qcp, qid) as nat;
       var inp := T.InputAt(str, cp);
@@ -1443,7 +1283,7 @@ module LindenElkNulledReconReadout {
     requires AI.get_idx(rg.2.a_clk, r.qid) >= mx
     requires var cp: nat := AI.get_idx(rg.2.a_cp, r.qid) as nat; TR.FirstEmptyPathR(qm, NRR.L1(r), T.InputAt(str, cp)).Some?
     ensures var cp: nat := AI.get_idx(rg.2.a_cp, r.qid) as nat;
-            LiveStampsGm(r, qm, str, rg.2.a_clk, rg.2.a_cp, mx, GmSub(r, rg, mx))
+            PIV.LiveStampsGm(r, qm, str, rg.2.a_clk, rg.2.a_cp, mx, GmSub(r, rg, mx))
               == PathMap(NRR.PathGroupsR(qm, NRR.L1(r), T.InputAt(str, cp)), cp)
   {
     var qid := r.qid; var r1 := NRR.L1(r);
@@ -1455,11 +1295,11 @@ module LindenElkNulledReconReadout {
     var p := TR.FirstEmptyPathR(qm, r1, inp);
     var P := NRR.PathGroupsR(qm, r1, inp);
     // (1) the stamp rule fires
-    assert LiveStampsGm(r, qm, str, qc, qcp, mx, gmS) == NP.ApplyPath(p.value, cp, LG.GMReset(gl, gmS)) by {
+    assert PIV.LiveStampsGm(r, qm, str, qc, qcp, mx, gmS) == NP.ApplyPath(p.value, cp, LG.GMReset(gl, gmS)) by {
       hide *;
       reveal LiveStampsGm, StampApply, StampReady, StampCp;
       assert AI.get_idx(qc, qid) >= mx && AI.get_idx(qcp, qid) >= 0;
-      assert StampReady(qm, str, qid as nat, qcp) && StampCp(qcp, qid as nat) == cp;
+      assert PIV.StampReady(qm, str, qid as nat, qcp) && PIV.StampCp(qcp, qid as nat) == cp;
       assert qm.bodies[qid as int] == r1;
     }
     assert {:split_here} true;
@@ -1514,7 +1354,7 @@ module LindenElkNulledReconReadout {
     requires StampsLocal(qm, re, str, rg, -1)
     ensures var rg' := FP(re, rg, plus_bcv, str, ov);
             FPov(re, rg, plus_bcv, str, ov) == ov
-            && PIV.GmOfLive(re, rg'.0, rg'.1, rg'.2) == GmOfLiveR(re, qm, str, rg.0, rg.1, rg.2)
+            && PIV.GmOfLive(re, rg'.0, rg'.1, rg'.2) == PIV.GmOfLiveR(re, qm, str, rg.0, rg.1, rg.2)
   {
     var rg' := FP(re, rg, plus_bcv, str, ov);
     ReconReadoutSub(qm, re, rg, plus_bcv, str, ov, -1);

@@ -49,6 +49,8 @@ module LindenElkPikeInv {
   import LAnc = Anchors
   import ATR = LindenElkActionsTreeRep
   import L = Regex
+  import TR = LindenElkTreeRep
+  import NP = LindenElkNulledPlus
 
   // Every Jmp inside a fragment representation either points strictly forward or
   // targets a Fork instruction. (Port of Linden's CompileJumps, which proves the
@@ -7933,4 +7935,192 @@ module LindenElkPikeInv {
     }
     InitialInclusionRE(rer, qm, code, inp, Some(tree), 0, |code|);
   }
+
+  // ===========================================================================
+  // §2.5b RUNG D — the RECONSTRUCTION-AWARE READOUT.
+  //
+  // `GmOfLiveR` is `GmOfLive` with, for every LIVE nulled-exit stamp, the
+  // stamped body's first-empty-path fold in place of its groups. Liveness is
+  // decided by QUANT clocks only (`QChainFresh`), so it is capture-blind and the
+  // tree's Open/Close steps commute with it.
+  //
+  // (2026-09-06, D0) These definitions were MOVED DOWN here from
+  // `LindenElkNulledReconReadout`: that module sits ABOVE pike-inv-re, so
+  // `ThreadTracksGm` could not name `GmOfLiveR` from there. They need only
+  // AR/TR/NP/`filter_capture`/`GmOfLive`, all of which live at this level.
+  // ===========================================================================
+  /** The quantifier chain above `qid` (and `qid` itself) is fresh w.r.t. the
+      innermost enclosing thresholds — `PathPresentQ` restricted to quant nodes. */
+  ghost predicate QChainFresh(r: R.regex, qc: seq<int>, mx: int, qid: nat)
+    requires qid in QuantIds(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => if qid in QuantIds(r1) then QChainFresh(r1, qc, mx, qid) else QChainFresh(r2, qc, mx, qid)
+    case Re_con(r1, r2) => if qid in QuantIds(r1) then QChainFresh(r1, qc, mx, qid) else QChainFresh(r2, qc, mx, qid)
+    case Re_quant(nul, qid0, q, r1) =>
+      var qv := AI.get_idx(qc, qid0);
+      qv >= mx && (if qid0 >= 0 && (qid0 as nat) == qid then true else QChainFresh(r1, qc, qv, qid))
+    case Re_capture(cid, r1) => QChainFresh(r1, qc, mx, qid)
+    case Re_lookaround(lid, l, r1) => QChainFresh(r1, qc, -1, qid)
+  }
+
+  /** A stamp is LIVE when it is set and its quant chain is fresh. */
+  ghost predicate QLive(re: R.regex, qc: seq<int>, qcp: seq<int>, qid: nat) {
+    qid in QuantIdsOutsideLooks(re) && qid in QuantIds(re)
+    && AI.get_idx(qcp, qid) >= 0 && QChainFresh(re, qc, -1, qid)
+  }
+
+  /** The stamp's body regex and position, when the QMap knows the body. */
+  ghost predicate StampReady(qm: AR.QMap, str: string, qid: nat, qcp: seq<int>) {
+    (qid as int) in qm.bodies && T.TransWf(qm.bodies[qid as int])
+    && 0 <= AI.get_idx(qcp, qid) <= |str|
+  }
+
+  ghost function StampCp(qcp: seq<int>, qid: nat): nat
+    requires AI.get_idx(qcp, qid) >= 0
+  {
+    AI.get_idx(qcp, qid) as nat
+  }
+
+  /** The virtual chain of a stamp applied to the map: reset the body's groups
+      and fold the body's first empty path at the stamp position. `gm` itself
+      when the QMap/path is missing (never the case under the invariant). */
+  ghost function StampApply(qm: AR.QMap, str: string, qid: nat, qcp: seq<int>, r1: R.regex, gm: LG.GroupMap): LG.GroupMap
+    requires T.TransWf(r1)
+  {
+    if StampReady(qm, str, qid, qcp) then
+      var cp := StampCp(qcp, qid);
+      var p := TR.FirstEmptyPathR(qm, qm.bodies[qid as int], T.InputAt(str, cp));
+      if p.Some? then NP.ApplyPath(p.value, cp, LG.GMReset(L.DefGroups(T.Translate(r1)), gm)) else gm
+    else gm
+  }
+
+  /** `filter_capture`'s quant-threshold traversal with the stamp rule: a live
+      stamp replaces its body's groups by the chain; a stale node is skipped;
+      lookaround bodies carry no stamps (they are never reconstructed). */
+  ghost function LiveStampsGm(r: R.regex, qm: AR.QMap, str: string, qc: seq<int>, qcp: seq<int>, mx: int, gm: LG.GroupMap): LG.GroupMap
+    requires T.TransWf(r)
+    decreases r
+  {
+    match r
+    case Re_empty => gm
+    case Re_character(_) => gm
+    case Re_anchor(_) => gm
+    case Re_alt(r1, r2) => LiveStampsGm(r2, qm, str, qc, qcp, mx, LiveStampsGm(r1, qm, str, qc, qcp, mx, gm))
+    case Re_con(r1, r2) => LiveStampsGm(r2, qm, str, qc, qcp, mx, LiveStampsGm(r1, qm, str, qc, qcp, mx, gm))
+    case Re_quant(nul, qid, q, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      if qv < mx then gm
+      else if qid >= 0 && AI.get_idx(qcp, qid) >= 0 then StampApply(qm, str, qid as nat, qcp, r1, gm)
+      else LiveStampsGm(r1, qm, str, qc, qcp, qv, gm)
+    case Re_capture(cid, r1) => LiveStampsGm(r1, qm, str, qc, qcp, mx, gm)
+    case Re_lookaround(_, _, _) => gm
+  }
+
+  /** THE reconstruction-aware readout. */
+  ghost function GmOfLiveR(re: R.regex, qm: AR.QMap, str: string, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs): LG.GroupMap
+    requires T.TransWf(re)
+  {
+    LiveStampsGm(re, qm, str, quant.a_clk, quant.a_cp, -1, GmOfLive(re, caps, look, quant))
+  }
+
+  /** No stamp at all: the readout is `GmOfLive` — the look-body tower and the
+      pre-reconstruction main pass are unaffected. */
+  lemma LiveStampsGmNoStamps(r: R.regex, qm: AR.QMap, str: string, qc: seq<int>, qcp: seq<int>, mx: int, gm: LG.GroupMap)
+    requires T.TransWf(r)
+    requires forall q: int :: AI.get_idx(qcp, q) < 0
+    ensures LiveStampsGm(r, qm, str, qc, qcp, mx, gm) == gm
+    decreases r
+  {
+    match r
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      LiveStampsGmNoStamps(r1, qm, str, qc, qcp, mx, gm);
+      LiveStampsGmNoStamps(r2, qm, str, qc, qcp, mx, gm);
+    case Re_con(r1, r2) =>
+      LiveStampsGmNoStamps(r1, qm, str, qc, qcp, mx, gm);
+      LiveStampsGmNoStamps(r2, qm, str, qc, qcp, mx, gm);
+    case Re_quant(nul, qid, q, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      if qv >= mx { LiveStampsGmNoStamps(r1, qm, str, qc, qcp, qv, gm); }
+    case Re_capture(cid, r1) => LiveStampsGmNoStamps(r1, qm, str, qc, qcp, mx, gm);
+    case Re_lookaround(_, _, _) =>
+  }
+
+  lemma GmOfLiveRNoStamps(re: R.regex, qm: AR.QMap, str: string, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs)
+    requires T.TransWf(re)
+    requires forall q: int :: AI.get_idx(quant.a_cp, q) < 0
+    ensures GmOfLiveR(re, qm, str, caps, look, quant) == GmOfLive(re, caps, look, quant)
+  {
+    LiveStampsGmNoStamps(re, qm, str, quant.a_clk, quant.a_cp, -1, GmOfLive(re, caps, look, quant));
+  }
+
+  /** No stamp with a fresh quant chain inside `r` (relative to `mx`): the
+      readout leaves the map alone. */
+  ghost predicate NoFreshStamp(r: R.regex, qc: seq<int>, qcp: seq<int>, mx: int) {
+    forall q: nat :: q in QuantIds(r) && AI.get_idx(qcp, q) >= 0 ==> !QChainFresh(r, qc, mx, q)
+  }
+
+  lemma LiveStampsGmStaleIdentity(r: R.regex, qm: AR.QMap, str: string, qc: seq<int>, qcp: seq<int>, mx: int, gm: LG.GroupMap)
+    requires T.TransWf(r) && QuantUnique(r)
+    requires NoFreshStamp(r, qc, qcp, mx)
+    ensures LiveStampsGm(r, qm, str, qc, qcp, mx, gm) == gm
+    decreases r
+  {
+    match r
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_lookaround(_, _, _) =>
+    case Re_alt(r1, r2) =>
+      assert NoFreshStamp(r1, qc, qcp, mx) && NoFreshStamp(r2, qc, qcp, mx) by {
+        forall q: nat | q in QuantIds(r1) && AI.get_idx(qcp, q) >= 0 ensures !QChainFresh(r1, qc, mx, q) { assert q in QuantIds(r); }
+        forall q: nat | q in QuantIds(r2) && AI.get_idx(qcp, q) >= 0 ensures !QChainFresh(r2, qc, mx, q) {
+          // (2026-09-06, D0) inlined: `QuantSideDisjoint` lived in the module
+          // above and cannot move down. QuantUnique gives the two sides
+          // disjoint quant ids, so `q` on the right is not on the left.
+          assert q !in QuantIds(r1) by { if q in QuantIds(r1) { assert q in QuantIds(r1) * QuantIds(r2); } }
+          assert q in QuantIds(r);
+        }
+      }
+      LiveStampsGmStaleIdentity(r1, qm, str, qc, qcp, mx, gm);
+      LiveStampsGmStaleIdentity(r2, qm, str, qc, qcp, mx, gm);
+    case Re_con(r1, r2) =>
+      assert NoFreshStamp(r1, qc, qcp, mx) && NoFreshStamp(r2, qc, qcp, mx) by {
+        forall q: nat | q in QuantIds(r1) && AI.get_idx(qcp, q) >= 0 ensures !QChainFresh(r1, qc, mx, q) { assert q in QuantIds(r); }
+        forall q: nat | q in QuantIds(r2) && AI.get_idx(qcp, q) >= 0 ensures !QChainFresh(r2, qc, mx, q) {
+          // (2026-09-06, D0) inlined: `QuantSideDisjoint` lived in the module
+          // above and cannot move down. QuantUnique gives the two sides
+          // disjoint quant ids, so `q` on the right is not on the left.
+          assert q !in QuantIds(r1) by { if q in QuantIds(r1) { assert q in QuantIds(r1) * QuantIds(r2); } }
+          assert q in QuantIds(r);
+        }
+      }
+      LiveStampsGmStaleIdentity(r1, qm, str, qc, qcp, mx, gm);
+      LiveStampsGmStaleIdentity(r2, qm, str, qc, qcp, mx, gm);
+    case Re_capture(_, r1) =>
+      assert NoFreshStamp(r1, qc, qcp, mx) by {
+        forall q: nat | q in QuantIds(r1) && AI.get_idx(qcp, q) >= 0 ensures !QChainFresh(r1, qc, mx, q) { assert q in QuantIds(r); }
+      }
+      LiveStampsGmStaleIdentity(r1, qm, str, qc, qcp, mx, gm);
+    case Re_quant(nul, qid, q, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      if qv < mx {
+      } else if qid >= 0 && AI.get_idx(qcp, qid) >= 0 {
+        assert QChainFresh(r, qc, mx, qid as nat);
+        assert false;
+      } else {
+        assert NoFreshStamp(r1, qc, qcp, qv) by {
+          forall q': nat | q' in QuantIds(r1) && AI.get_idx(qcp, q') >= 0 ensures !QChainFresh(r1, qc, qv, q') {
+            assert q' in QuantIds(r) && q' != qid as nat;
+            assert QChainFresh(r, qc, mx, q') <==> QChainFresh(r1, qc, qv, q');
+          }
+        }
+        LiveStampsGmStaleIdentity(r1, qm, str, qc, qcp, qv, gm);
+      }
+  }
+
 }
