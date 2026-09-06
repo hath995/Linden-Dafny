@@ -4533,8 +4533,11 @@ module LindenElkLiftSimChain {
   {
     var g := ATR.EaOf(b);
     var pcmid: nat :| AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && AR.ActionsRepL(rer, qm, acts[1..], code, pcmid);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     EL.PikeLkActionsRecTail(acts);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert acts == [acts[0]] + acts[1..];
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     EL.PikeLkActionsRecConsIff(acts[0], acts[1..]);
     var cont := acts[1..];
     match acts[0]
@@ -4545,98 +4548,163 @@ module LindenElkLiftSimChain {
       match r0
       case Epsilon =>
         assert pcmid == pc;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         GateAheadClearTail(acts, gm);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         WalkDefsOkTail(acts);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         WalkPairLkAtCheckOracleCoreRec(rer, qm, code, inp, tb, gm, pc, b, cont, lid);
       case Sequence(r1, r2) =>
         assert acts[0] == LS.Areg(L.Sequence(r1, r2));
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert AR.NfaRepL(rer, qm, L.Sequence(r1, r2), code, pc, pcmid);
         var e1: nat :| AR.NfaRepL(rer, qm, r1, code, pc, e1) && AR.NfaRepL(rer, qm, r2, code, e1, pcmid);
         var na := [LS.Areg(r1), LS.Areg(r2)] + cont;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         AR.ActionsRepLCons(rer, qm, LS.Areg(r2), cont, code, e1, pcmid);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Areg(r2)] + cont, code, pc, e1);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert AR.ActionsRepL(rer, qm, na, code, pc);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert EL.PikeLkActionsRec(na) by {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
         }
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert EL.BoolTreeLk(rer, na, inp, b, tb);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert LS.ActionsRegexSize(acts) == RegSz(r1) + RegSz(r2) + 1 + LS.ActionsRegexSize(cont);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert LS.ActionsRegexSize(na) == RegSz(r1) + RegSz(r2) + LS.ActionsRegexSize(cont);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert ATR.MsizeA(na) < ATR.MsizeA(acts);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         GateAheadClearSeqExpand(acts, r1, r2, gm);
         // NoDupSeq(AllDefsActs(na)) == NoDupSeq(AllDefsActs(acts)) (same sequence).
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         M.AllDefsActsCons(acts[0], cont);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         M.AllDefsActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         M.AllDefsActsCons(LS.Areg(r2), cont);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert L.DefGroups(L.Sequence(r1, r2)) == L.DefGroups(r1) + L.DefGroups(r2);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert L.DefGroups(r1) + (L.DefGroups(r2) + M.AllDefsActs(cont))
             == (L.DefGroups(r1) + L.DefGroups(r2)) + M.AllDefsActs(cont);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert M.AllDefsActs(na) == M.AllDefsActs(acts);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         WalkDefsOkSeqExpand(acts, r1, r2);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         WalkPairLkAtCheckOracleCoreRec(rer, qm, code, inp, tb, gm, pc, b, na, lid);
       case Quantified(greedy, min, delta, r1) =>
         if min == 0 && delta == LN.NN(0) {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert acts[0] == LS.Areg(L.Quantified(greedy, 0, LN.NN(0), r1));
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert AR.NfaRepL(rer, qm, L.Quantified(greedy, 0, LN.NN(0), r1), code, pc, pcmid);
           var em: nat :| AR.NfaRepMinL(rer, qm, 0, r1, code, pc, em)
                          && AR.NfaRepOptL(rer, qm, 0, greedy, r1, code, em, pcmid);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           NfaRepMinLHeadPin(rer, qm, 0, r1, code, pc, em);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert pcmid == pc;
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert AR.ActionsRepL(rer, qm, cont, code, pc);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           GateAheadClearTail(acts, gm);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           WalkDefsOkTail(acts);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           WalkPairLkAtCheckOracleCoreRec(rer, qm, code, inp, tb, gm, pc, b, cont, lid);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         } else {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert AR.NfaRepL(rer, qm, L.Quantified(greedy, min, delta, r1), code, pc, pcmid);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           QuantHeadPinsForkOrSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
         }
       case LookaroundR(lk0, r1) =>
         var lid0: int :| NR.GetPcRE(code, pc) == Some(if AR.PositiveL(lk0) then RB.CheckOracle(lid0)
                                                                            else RB.NegCheckOracle(lid0))
                          && lid0 in qm.looks && qm.looks[lid0] == (lk0, r1) && pcmid == pc + 1;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert AR.PositiveL(lk0) && lid0 == lid;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert L.Positivity(lk0);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert lid in qm.looks && qm.looks[lid] == (lk0, r1);
         // the gate is pending at index 0 ⟹ its body groups are clear NOW
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert RegexTopGate(L.LookaroundR(lk0, r1), lk0, r1);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert GatePending(acts, lk0, r1) by {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert acts[0].Areg? && RegexTopGate(acts[0].r, lk0, r1);
         }
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert forall gg :: gg in L.DefGroups(r1) ==> gg !in gm;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         M.GateNodeAtInp(rer, acts, inp, b, tb, lk0, r1);   // tb is LK/LKFail with LkGateOk
         var bit := LOr.view_get_oracle(qm.ov, TR_CpOf(inp), lid);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         if tb.LK? {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert EL.LkGateOk(rer, lk0, r1, inp, tb.tlk, true);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert EL.BoolTreeLk(rer, cont, inp, b, tb.t);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert AR.ActionsRepL(rer, qm, cont, code, pc + 1);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert bit;
           // ---- gate-frame facts for LkResultAgreeOutsideNested ----
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert r0 == L.LookaroundR(lk0, r1);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert EL.PikeLkRegexRec(r1);                                     // NoLkBrL(r1)
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert LS.LkResult(lk0, tb.tlk, LG.Empty, inp).Some?;       // LkGateOk true
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           EL.LkResultGmIndep(lk0, tb.tlk, gm, inp);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert LS.LkResult(lk0, tb.tlk, gm, inp).Some?;
           var gm2 := LS.LkResult(lk0, tb.tlk, gm, inp).value;
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert tb.tlk == LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk0));   // LkGateOk
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           LkResultAgreeOutsideNested(rer, lk0, r1, inp, tb.tlk, gm);        // GmAgreeOutside(gm2, gm, Sr1)
           var Sr1 := set gx | gx in L.DefGroups(r1);
           // AfterMerge req (2): gm2 keys ⊆ gm ∪ DefGroups(r1).
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert forall gg :: gg in gm2 ==> gg in gm || gg in L.DefGroups(r1) by {
+            assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
             forall gg | gg in gm2 ensures gg in gm || gg in L.DefGroups(r1) {
               if gg !in Sr1 { assert gg in gm2 <==> gg in gm; assert gg in gm; }
               else { assert gg in L.DefGroups(r1); }
             }
           }
           // AfterMerge req (3): pending-in-cont ⟹ pending-in-acts.
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert forall lk2: L.Lookaround, r2: L.Regex :: GatePending(cont, lk2, r2) ==> GatePending(acts, lk2, r2) by {
+            assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
             forall lk2: L.Lookaround, r2: L.Regex | GatePending(cont, lk2, r2)
               ensures GatePending(acts, lk2, r2)
             { GatePendingTail(acts, lk2, r2); }
@@ -4645,12 +4713,18 @@ module LindenElkLiftSimChain {
           // DefGroups(r1) — from C1 (TopLk NoDup): the head gate contributes
           // DefGroups(r1) as a block, pending bodies in cont sit inside
           // TopLkDefsListActs(cont) (RegexTopGateSubTopLk).
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           TopLkDefsListActsCons(acts[0], cont);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert TopLkDefsList(L.LookaroundR(lk0, r1)) == L.DefGroups(r1);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert TopLkDefsListActs(acts) == L.DefGroups(r1) + TopLkDefsListActs(cont);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           M.NoDupConcat(L.DefGroups(r1), TopLkDefsListActs(cont));
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert forall lk2: L.Lookaround, r2: L.Regex :: GatePending(cont, lk2, r2) ==>
                                                             (forall gg :: gg in L.DefGroups(r2) ==> gg !in L.DefGroups(r1)) by {
+            assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
             forall lk2: L.Lookaround, r2: L.Regex | GatePending(cont, lk2, r2)
               ensures forall gg :: gg in L.DefGroups(r2) ==> gg !in L.DefGroups(r1)
             {
@@ -4674,19 +4748,27 @@ module LindenElkLiftSimChain {
               }
             }
           }
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           GateAheadClearAfterMerge(acts, cont, gm, gm2, lk0, r1);   // GateAheadClear(cont, gm2)
           // Assemble WalkPairLkRec(tb.t, gm2, pc+1, g) via the existential disjunct.
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert EL.PikeLkActionsRec(cont);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           WalkDefsOkTail(acts);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert AR.ActionsRepL(rer, qm, cont, code, pc + 1)
                  && EL.PikeLkActionsRec(cont)
                  && ATR.EaOf(b) == g
                  && EL.BoolTreeLk(rer, cont, inp, b, tb.t)
                  && GateAheadClear(cont, gm2)
                  && WalkDefsOk(cont);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert WalkPairLkRec(rer, qm, code, inp, tb.t, gm2, pc + 1, g);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         } else {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert tb.LKFail?;   // GateNodeAtInp: only LK or LKFail
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert !bit;
         }
       case Character(_) =>   // pins Consume — not CheckOracle
@@ -4858,111 +4940,178 @@ module LindenElkLiftSimChain {
   {
     var g := ATR.EaOf(b);
     var pcmid: nat :| AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && AR.ActionsRepL(rer, qm, acts[1..], code, pcmid);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     EL.PikeLkActionsRecTail(acts);
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert acts == [acts[0]] + acts[1..];
+    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     EL.PikeLkActionsRecConsIff(acts[0], acts[1..]);
     var cont := acts[1..];
     match acts[0]
     case Acheck(_) =>   // pins EndLoop / backward Fork — not SetRegisterToCP
     case Aclose(gid) =>
       assert pcmid == pc + 1 && r == CP.end_reg(gid as int);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert tb.GroupActionT? && tb.g == LG.Close(gid) && EL.BoolTreeLk(rer, cont, inp, b, tb.t);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert AR.ActionsRepL(rer, qm, cont, code, pc + 1);
       var gm2 := LG.GMUpdate(LG.Close(gid), LC.Idx(inp), gm);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert gm2 == LG.GMClose(LC.Idx(inp), gid, gm);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       GateAheadClearTail(acts, gm);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       GateAheadClearMono(cont, gm, gm2);   // GMClose keeps the domain
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       WalkDefsOkTail(acts);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert EL.PikeLkActionsRec(cont);
+      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert WalkPairLkRec(rer, qm, code, inp, tb.t, gm2, pc + 1, g);
     case Areg(r0) =>
       assert EL.PikeLkRegexRec(r0);
       match r0
       case Epsilon =>
         assert pcmid == pc;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         GateAheadClearTail(acts, gm);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         WalkDefsOkTail(acts);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         WalkPairLkAtSetRegCoreRec(rer, qm, code, inp, tb, gm, pc, b, cont, r);
       case Sequence(r1, r2) =>
         assert acts[0] == LS.Areg(L.Sequence(r1, r2));
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert AR.NfaRepL(rer, qm, L.Sequence(r1, r2), code, pc, pcmid);
         var e1: nat :| AR.NfaRepL(rer, qm, r1, code, pc, e1) && AR.NfaRepL(rer, qm, r2, code, e1, pcmid);
         var na := [LS.Areg(r1), LS.Areg(r2)] + cont;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         AR.ActionsRepLCons(rer, qm, LS.Areg(r2), cont, code, e1, pcmid);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Areg(r2)] + cont, code, pc, e1);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert AR.ActionsRepL(rer, qm, na, code, pc);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert EL.PikeLkActionsRec(na) by {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
         }
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert EL.BoolTreeLk(rer, na, inp, b, tb);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert LS.ActionsRegexSize(acts) == RegSz(r1) + RegSz(r2) + 1 + LS.ActionsRegexSize(cont);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert LS.ActionsRegexSize(na) == RegSz(r1) + RegSz(r2) + LS.ActionsRegexSize(cont);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert ATR.MsizeA(na) < ATR.MsizeA(acts);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         GateAheadClearSeqExpand(acts, r1, r2, gm);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         M.AllDefsActsCons(acts[0], cont);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         M.AllDefsActsCons(LS.Areg(r1), [LS.Areg(r2)] + cont);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         M.AllDefsActsCons(LS.Areg(r2), cont);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert L.DefGroups(L.Sequence(r1, r2)) == L.DefGroups(r1) + L.DefGroups(r2);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert L.DefGroups(r1) + (L.DefGroups(r2) + M.AllDefsActs(cont))
             == (L.DefGroups(r1) + L.DefGroups(r2)) + M.AllDefsActs(cont);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert M.AllDefsActs(na) == M.AllDefsActs(acts);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         WalkDefsOkSeqExpand(acts, r1, r2);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         WalkPairLkAtSetRegCoreRec(rer, qm, code, inp, tb, gm, pc, b, na, r);
       case Group(gid, r1) =>
         var e1: nat :| NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(CP.start_reg(gid as int)))
                        && AR.NfaRepL(rer, qm, r1, code, pc + 1, e1)
                        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(gid as int)))
                        && pcmid == e1 + 1;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert r == CP.start_reg(gid as int);
         var ga := [LS.Areg(r1), LS.Aclose(gid)] + cont;
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert ga == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         AR.ActionsRepLCons(rer, qm, LS.Aclose(gid), cont, code, e1, pcmid);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Aclose(gid)] + cont, code, pc + 1, e1);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert AR.ActionsRepL(rer, qm, ga, code, pc + 1);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert tb.GroupActionT? && tb.g == LG.Open(gid) && EL.BoolTreeLk(rer, ga, inp, b, tb.t);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert EL.PikeLkActionsRec(ga) by {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           EL.PikeLkActionsRecConsIff(LS.Aclose(gid), cont);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Aclose(gid)] + cont);
         }
         var gm2 := LG.GMUpdate(LG.Open(gid), LC.Idx(inp), gm);
         // carrier across the Group expand; C1 pins gid ∉ TopLk of both parts
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         WalkDefsOkGroupExpand(acts, gid, r1);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         TopLkDefsListActsCons(acts[0], cont);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         TopLkDefsListActsCons(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         TopLkDefsListActsCons(LS.Aclose(gid), cont);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert TopLkDefsList(L.Group(gid, r1)) == [gid] + TopLkDefsList(r1);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert TopLkDefsListActs(acts)
             == ([gid] + TopLkDefsList(r1)) + TopLkDefsListActs(cont);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert ([gid] + TopLkDefsList(r1)) + TopLkDefsListActs(cont)
             == [gid] + (TopLkDefsList(r1) + TopLkDefsListActs(cont));
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         M.NoDupConcat([gid], TopLkDefsList(r1) + TopLkDefsListActs(cont));
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert TopLkDefsListActs(ga) == TopLkDefsList(r1) + TopLkDefsListActs(cont);
         // GateAheadClear(ga, gm): pending-in-ga ⟹ pending-in-acts.
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert forall lk2: L.Lookaround, rr: L.Regex :: GatePending(ga, lk2, rr) ==> GatePending(acts, lk2, rr) by {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           forall lk2: L.Lookaround, rr: L.Regex | GatePending(ga, lk2, rr) ensures GatePending(acts, lk2, rr) {
+            assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
             GatePendingGroupBack(acts, gid, r1, lk2, rr);
           }
         }
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert GateAheadClear(ga, gm) by {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           forall lk2: L.Lookaround, rr: L.Regex | GatePending(ga, lk2, rr)
             ensures forall gg :: gg in L.DefGroups(rr) ==> gg !in gm
           { GatePendingGroupBack(acts, gid, r1, lk2, rr); }
         }
         // gid ∉ every pending body of ga (via C1: gid ∉ TopLkDefsListActs(ga) ⊇ DefGroups(rr)).
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert forall lk2: L.Lookaround, rr: L.Regex :: GatePending(ga, lk2, rr) ==> gid !in L.DefGroups(rr) by {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           forall lk2: L.Lookaround, rr: L.Regex | GatePending(ga, lk2, rr) ensures gid !in L.DefGroups(rr) {
             var j :| 0 <= j < |ga| && ga[j].Areg? && RegexTopGate(ga[j].r, lk2, rr);
+            assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
             RegexTopGateSubTopLk(ga[j].r, lk2, rr);
+            assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
             TopLkDefsListMemberSub(ga, j);
             var SRR := set gx | gx in L.DefGroups(rr);
             var SGJ := set gx | gx in TopLkDefsList(ga[j].r);
             var SAG := set gx | gx in TopLkDefsListActs(ga);
+            assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
             assert SRR <= SGJ && SGJ <= SAG;   // the two lemma subsets (named-set form)
+            assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
             assert (set gx | gx in [gid]) * SAG == {};   // NoDupConcat disjointness
+            assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
             if gid in L.DefGroups(rr) {
               assert gid in SRR && gid in SAG;           // via SRR ⊆ SGJ ⊆ SAG
               assert gid in (set gx | gx in [gid]);
@@ -4970,26 +5119,43 @@ module LindenElkLiftSimChain {
             }
           }
         }
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         GateAheadClearAfterOpen(ga, gm, gid, LC.Idx(inp));   // GateAheadClear(ga, gm2)
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert WalkPairLkRec(rer, qm, code, inp, tb.t, gm2, pc + 1, g);
       case Quantified(greedy, min, delta, r1) =>
         if min == 0 && delta == LN.NN(0) {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert acts[0] == LS.Areg(L.Quantified(greedy, 0, LN.NN(0), r1));
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert AR.NfaRepL(rer, qm, L.Quantified(greedy, 0, LN.NN(0), r1), code, pc, pcmid);
           var em: nat :| AR.NfaRepMinL(rer, qm, 0, r1, code, pc, em)
                          && AR.NfaRepOptL(rer, qm, 0, greedy, r1, code, em, pcmid);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           NfaRepMinLHeadPin(rer, qm, 0, r1, code, pc, em);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert pcmid == pc;
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert AR.ActionsRepL(rer, qm, cont, code, pc);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           GateAheadClearTail(acts, gm);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           WalkDefsOkTail(acts);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           WalkPairLkAtSetRegCoreRec(rer, qm, code, inp, tb, gm, pc, b, cont, r);
+        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         } else {
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert AR.NfaRepL(rer, qm, L.Quantified(greedy, min, delta, r1), code, pc, pcmid);
+          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           QuantHeadPinsForkOrSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
         }
       case Character(_) =>   // pins Consume — not SetRegisterToCP
