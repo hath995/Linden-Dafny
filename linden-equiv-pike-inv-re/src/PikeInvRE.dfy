@@ -50,6 +50,7 @@ module LindenElkPikeInv {
   import ATR = LindenElkActionsTreeRep
   import L = Regex
   import TR = LindenElkTreeRep
+  import CE = LindenElkCheckErase
   import NP = LindenElkNulledPlus
 
   // Every Jmp inside a fragment representation either points strictly forward or
@@ -8122,5 +8123,303 @@ module LindenElkPikeInv {
         LiveStampsGmStaleIdentity(r1, qm, str, qc, qcp, qv, gm);
       }
   }
+
+
+  // ===========================================================================
+  // §2.5b RUNG D — COMMUTATION for the reconstruction-aware readout.
+  // (2026-09-06) Developed against the built artifact in a scratch module while
+  // the D0 gate held the tree; 18 verified, 0 errors there before moving in.
+  // ===========================================================================
+  /** `L.DefGroups` is a seq; `PathIn`/`GmActionIn` speak in sets. */
+  ghost function GSet(gs: seq<LG.GroupId>): set<LG.GroupId> { set g | g in gs }
+
+  // ===========================================================================
+  // §2.5b RUNG D — COMMUTATION: a register write OUTSIDE every stamped body
+  // commutes with the reconstruction-aware readout.
+  //
+  // `LiveStampsGm` only ever touches groups inside a stamped quantifier's body:
+  // it resets `DefGroups(Translate(body))` and applies that body's first-empty
+  // path, whose actions all lie in the same set (`NP.PathActionsIn`). So a
+  // capture write to a group outside every stamped body passes straight
+  // through. `NST.NestStampOpenSiteRE` (nest-stamp) is what discharges the
+  // hypothesis at the PikeSimRE call sites: an open site is never inside a
+  // stamped quantifier's body.
+  // ===========================================================================
+
+  /** One `GroupAction` whose groups lie in `G` commutes with an `Open` of a
+      group outside `G` — two map updates at distinct keys. */
+  lemma GMUpdateOpenCommute(a: LG.GroupAction, idx: nat, gm: LG.GroupMap,
+                            G: set<LG.GroupId>, cp: nat, gid: LG.GroupId)
+    requires CE.GmActionIn(a, G)
+    requires gid !in G
+    ensures LG.GMUpdate(a, idx, LG.GMOpen(cp, gid, gm))
+         == LG.GMOpen(cp, gid, LG.GMUpdate(a, idx, gm))
+  {
+    match a
+    case Open(g) =>
+      assert g != gid;
+      assert LG.GMOpen(idx, g, LG.GMOpen(cp, gid, gm))
+          == LG.GMOpen(cp, gid, LG.GMOpen(idx, g, gm));
+    case Close(g) =>
+      assert g != gid;
+      // GMClose reads only `g`'s entry, which the `gid` update leaves alone.
+      assert LG.Find(g, LG.GMOpen(cp, gid, gm)) == LG.Find(g, gm);
+    case Reset(gs) =>
+      assert gid !in gs;
+      assert LG.GMReset(gs, LG.GMOpen(cp, gid, gm))
+          == LG.GMOpen(cp, gid, LG.GMReset(gs, gm));
+  }
+
+  /** `ApplyPath` of a path confined to `G` commutes with an `Open` outside `G`. */
+  lemma ApplyPathOpenCommute(p: seq<LG.GroupAction>, idx: nat, gm: LG.GroupMap,
+                             G: set<LG.GroupId>, cp: nat, gid: LG.GroupId)
+    requires NP.PathIn(p, G)
+    requires gid !in G
+    ensures NP.ApplyPath(p, idx, LG.GMOpen(cp, gid, gm))
+         == LG.GMOpen(cp, gid, NP.ApplyPath(p, idx, gm))
+    decreases |p|
+  {
+    if |p| > 0 {
+      GMUpdateOpenCommute(p[0], idx, gm, G, cp, gid);
+      forall i | 0 <= i < |p[1..]| ensures CE.GmActionIn(p[1..][i], G) {
+        assert p[1..][i] == p[i + 1];
+      }
+      ApplyPathOpenCommute(p[1..], idx, LG.GMUpdate(p[0], idx, gm), G, cp, gid);
+    }
+  }
+
+
+
+  /** `PathIn` is monotone in the group set and distributes over `+`. */
+  lemma PathInMono(p: seq<LG.GroupAction>, G1: set<LG.GroupId>, G2: set<LG.GroupId>)
+    requires NP.PathIn(p, G1) && G1 <= G2
+    ensures NP.PathIn(p, G2)
+  {
+    forall i | 0 <= i < |p| ensures CE.GmActionIn(p[i], G2) {
+      match p[i] case Open(g) => case Close(g) => case Reset(gs) =>
+    }
+  }
+
+  lemma PathInConcat(p1: seq<LG.GroupAction>, p2: seq<LG.GroupAction>, G: set<LG.GroupId>)
+    requires NP.PathIn(p1, G) && NP.PathIn(p2, G)
+    ensures NP.PathIn(p1 + p2, G)
+  {
+    forall i | 0 <= i < |p1 + p2| ensures CE.GmActionIn((p1 + p2)[i], G) {
+      if i < |p1| { assert (p1 + p2)[i] == p1[i]; } else { assert (p1 + p2)[i] == p2[i - |p1|]; }
+    }
+  }
+
+  lemma RepeatPathIn(n: nat, p: seq<LG.GroupAction>, G: set<LG.GroupId>)
+    requires NP.PathIn(p, G)
+    ensures NP.PathIn(TR.RepeatPath(n, p), G)
+    decreases n
+  {
+    if n > 0 { RepeatPathIn(n - 1, p, G); PathInConcat(p, TR.RepeatPath(n - 1, p), G); }
+  }
+
+  /** `FirstEmptyPathR` only touches its own regex's groups — the oracle-bit
+      twin of `NP.PathActionsIn` (which is stated for the SPEC-side
+      `FirstEmptyPathA`). Hypothesis-free, unlike routing through
+      `NP.FirstEmptyPathRL`, which would drag in `rer`/`LmapOk`/`OracleOkAt`. */
+  lemma FirstEmptyPathRIn(qm: AR.QMap, re: R.regex, inp: LC.Input)
+    requires T.TransWf(re)
+    requires TR.FirstEmptyPathR(qm, re, inp).Some?
+    ensures NP.PathIn(TR.FirstEmptyPathR(qm, re, inp).value, GSet(L.DefGroups(T.Translate(re))))
+    decreases re
+  {
+    var G := GSet(L.DefGroups(T.Translate(re)));
+    match re
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_lookaround(_, _, _) =>            // Some([]) or None
+    case Re_alt(r1, r2) =>
+      if TR.FirstEmptyPathR(qm, r1, inp).Some? {
+        FirstEmptyPathRIn(qm, r1, inp);
+        PathInMono(TR.FirstEmptyPathR(qm, re, inp).value, GSet(L.DefGroups(T.Translate(r1))), G);
+      } else {
+        FirstEmptyPathRIn(qm, r2, inp);
+        PathInMono(TR.FirstEmptyPathR(qm, re, inp).value, GSet(L.DefGroups(T.Translate(r2))), G);
+      }
+    case Re_con(r1, r2) =>
+      FirstEmptyPathRIn(qm, r1, inp);
+      FirstEmptyPathRIn(qm, r2, inp);
+      var p1 := TR.FirstEmptyPathR(qm, r1, inp).value;
+      var p2 := TR.FirstEmptyPathR(qm, r2, inp).value;
+      PathInMono(p1, GSet(L.DefGroups(T.Translate(r1))), G);
+      PathInMono(p2, GSet(L.DefGroups(T.Translate(r2))), G);
+      PathInConcat(p1, p2, G);
+    case Re_quant(nul, qid, q, r1) =>
+      if q.min > 0 {
+        FirstEmptyPathRIn(qm, r1, inp);
+        var p1 := TR.FirstEmptyPathR(qm, r1, inp).value;
+        // DefGroups(Quantified(.., r1)) == DefGroups(r1), so G is r1's set
+        var one := [LG.Reset(L.DefGroups(T.Translate(r1)))] + p1;
+        assert NP.PathIn(one, G) by {
+          forall i | 0 <= i < |one| ensures CE.GmActionIn(one[i], G) {
+            if i == 0 { assert one[0] == LG.Reset(L.DefGroups(T.Translate(r1))); }
+            else { assert one[i] == p1[i - 1]; }
+          }
+        }
+        RepeatPathIn(q.min as nat, one, G);
+      }
+    case Re_capture(cid, r1) =>
+      FirstEmptyPathRIn(qm, r1, inp);
+      var p1 := TR.FirstEmptyPathR(qm, r1, inp).value;
+      var whole := [LG.Open(cid as nat)] + p1 + [LG.Close(cid as nat)];
+      PathInMono(p1, GSet(L.DefGroups(T.Translate(r1))), G);
+      assert NP.PathIn(whole, G) by {
+        forall i | 0 <= i < |whole| ensures CE.GmActionIn(whole[i], G) {
+          if i == 0 { assert cid as nat in G; }
+          else if i == |whole| - 1 { assert cid as nat in G; }
+          else { assert whole[i] == p1[i - 1]; }
+        }
+      }
+  }
+
+  /** One stamp's fold touches only its body's groups, so it commutes too. */
+  lemma StampApplyOpenCommute(qm: AR.QMap, str: string, qid: nat, qcp: seq<int>,
+                              r1: R.regex, gm: LG.GroupMap, cp: nat, gid: LG.GroupId)
+    requires T.TransWf(r1)
+    requires gid !in CapIds(r1)
+    requires StampReady(qm, str, qid, qcp) ==>
+               (var b := qm.bodies[qid as int];
+                T.TransWf(b) && L.DefGroups(T.Translate(b)) == L.DefGroups(T.Translate(r1)))
+    ensures StampApply(qm, str, qid, qcp, r1, LG.GMOpen(cp, gid, gm))
+         == LG.GMOpen(cp, gid, StampApply(qm, str, qid, qcp, r1, gm))
+  {
+    if StampReady(qm, str, qid, qcp) {
+      var scp := StampCp(qcp, qid);
+      var b := qm.bodies[qid as int];
+      var p := TR.FirstEmptyPathR(qm, b, T.InputAt(str, scp));
+      var gl := L.DefGroups(T.Translate(r1));
+      DefGroupsCapIds(r1);
+      assert gid !in gl;
+      if p.Some? {
+        // the path is confined to the body's groups
+        assert NP.PathIn(p.value, GSet(gl)) by { FirstEmptyPathRIn(qm, b, T.InputAt(str, scp)); }
+        assert LG.GMReset(gl, LG.GMOpen(cp, gid, gm)) == LG.GMOpen(cp, gid, LG.GMReset(gl, gm));
+        ApplyPathOpenCommute(p.value, scp, LG.GMReset(gl, gm), GSet(gl), cp, gid);
+      }
+    }
+  }
+
+
+
+
+  /** For every STAMPED quantifier of `r`, the QMap's body agrees with the AST's
+      on the groups it defines. This is `AR.QmapOk` information (the QMap pins
+      `qm.bodies[qid] == r1`), so it is a hypothesis here rather than a fact. */
+  ghost predicate StampBodiesOk(r: R.regex, qm: AR.QMap, str: string, qcp: seq<int>)
+    requires T.TransWf(r)
+  {
+    forall A: nat :: A in QuantIds(r) && AI.get_idx(qcp, A) >= 0
+                     && StampReady(qm, str, A, qcp)
+      ==> T.TransWf(QidBody(r, A))
+          && L.DefGroups(T.Translate(qm.bodies[A as int]))
+             == L.DefGroups(T.Translate(QidBody(r, A)))
+  }
+
+  /** For an alt/con node with unique quant ids, each half's quantifiers are the
+      whole's, with the same bodies (`QidBody` picks the half that owns the id). */
+  lemma SubQuantIds(r: R.regex, r1: R.regex, r2: R.regex)
+    requires r == R.Re_alt(r1, r2) || r == R.Re_con(r1, r2)
+    requires QuantUnique(r)
+    ensures forall A: nat :: A in QuantIds(r1) ==>
+              A in QuantIds(r) && QidBody(r, A) == QidBody(r1, A)
+    ensures forall A: nat :: A in QuantIds(r2) ==>
+              A in QuantIds(r) && QidBody(r, A) == QidBody(r2, A)
+  {
+    forall A: nat | A in QuantIds(r2)
+      ensures A in QuantIds(r) && QidBody(r, A) == QidBody(r2, A)
+    {
+      assert A !in QuantIds(r1)
+        by { if A in QuantIds(r1) { assert A in QuantIds(r1) * QuantIds(r2); } }
+    }
+  }
+
+  /** Transport the "outside every stamped body" hypothesis into a SUBTERM:
+      a quantifier of the part is a quantifier of the whole with the same body. */
+  lemma StampedOutsideSub(r: R.regex, sub: R.regex, qcp: seq<int>, gid: LG.GroupId)
+    requires forall A: nat :: A in QuantIds(sub) ==>
+               A in QuantIds(r) && QidBody(r, A) == QidBody(sub, A)
+    requires forall A: nat :: A in QuantIds(r) && AI.get_idx(qcp, A) >= 0
+               ==> gid !in CapIds(QidBody(r, A))
+    ensures forall A: nat :: A in QuantIds(sub) && AI.get_idx(qcp, A) >= 0
+               ==> gid !in CapIds(QidBody(sub, A))
+  {}
+
+  /** …and the body-table hypothesis travels the same way. */
+  lemma StampBodiesSub(r: R.regex, sub: R.regex, qm: AR.QMap, str: string, qcp: seq<int>)
+    requires T.TransWf(r) && T.TransWf(sub)
+    requires forall A: nat :: A in QuantIds(sub) ==>
+               A in QuantIds(r) && QidBody(r, A) == QidBody(sub, A)
+    requires StampBodiesOk(r, qm, str, qcp)
+    ensures StampBodiesOk(sub, qm, str, qcp)
+  {}
+
+  /** THE COMMUTATION the Open step needs: a capture write outside EVERY stamped
+      body passes through the whole stamp-aware readout. */
+  lemma LiveStampsGmOpenCommute(r: R.regex, qm: AR.QMap, str: string, qc: seq<int>,
+                                qcp: seq<int>, mx: int, gm: LG.GroupMap,
+                                cp: nat, gid: LG.GroupId)
+    requires T.TransWf(r)
+    requires QuantUnique(r)
+    requires StampBodiesOk(r, qm, str, qcp)
+    requires forall A: nat :: A in QuantIds(r) && AI.get_idx(qcp, A) >= 0
+               ==> gid !in CapIds(QidBody(r, A))
+    ensures LiveStampsGm(r, qm, str, qc, qcp, mx, LG.GMOpen(cp, gid, gm))
+         == LG.GMOpen(cp, gid, LiveStampsGm(r, qm, str, qc, qcp, mx, gm))
+    decreases r
+  {
+    match r
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_lookaround(_, _, _) =>
+    case Re_alt(r1, r2) =>
+      SubQuantIds(r, r1, r2);
+      StampedOutsideSub(r, r1, qcp, gid);
+      StampedOutsideSub(r, r2, qcp, gid);
+      StampBodiesSub(r, r1, qm, str, qcp);
+      StampBodiesSub(r, r2, qm, str, qcp);
+      LiveStampsGmOpenCommute(r1, qm, str, qc, qcp, mx, gm, cp, gid);
+      LiveStampsGmOpenCommute(r2, qm, str, qc, qcp, mx,
+                              LiveStampsGm(r1, qm, str, qc, qcp, mx, gm), cp, gid);
+    case Re_con(r1, r2) =>
+      SubQuantIds(r, r1, r2);
+      StampedOutsideSub(r, r1, qcp, gid);
+      StampedOutsideSub(r, r2, qcp, gid);
+      StampBodiesSub(r, r1, qm, str, qcp);
+      StampBodiesSub(r, r2, qm, str, qcp);
+      LiveStampsGmOpenCommute(r1, qm, str, qc, qcp, mx, gm, cp, gid);
+      LiveStampsGmOpenCommute(r2, qm, str, qc, qcp, mx,
+                              LiveStampsGm(r1, qm, str, qc, qcp, mx, gm), cp, gid);
+    case Re_quant(nul, qid, q, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      if qv < mx {
+      } else if qid >= 0 && AI.get_idx(qcp, qid) >= 0 {
+        assert (qid as nat) in QuantIds(r);
+        assert QidBody(r, qid as nat) == r1;
+        assert StampReady(qm, str, qid as nat, qcp) ==>
+                 L.DefGroups(T.Translate(qm.bodies[qid as int]))
+                 == L.DefGroups(T.Translate(r1));       // StampBodiesOk at A == qid
+        StampApplyOpenCommute(qm, str, qid as nat, qcp, r1, gm, cp, gid);
+      } else {
+        assert forall A: nat :: A in QuantIds(r1) ==>
+                 A in QuantIds(r) && QidBody(r, A) == QidBody(r1, A)
+          by { forall A: nat | A in QuantIds(r1) ensures QidBody(r, A) == QidBody(r1, A) {
+                 assert qid < 0 || (qid as nat) != A;   // QuantUnique: qid is not inside r1
+               } }
+        StampedOutsideSub(r, r1, qcp, gid);
+        StampBodiesSub(r, r1, qm, str, qcp);
+        LiveStampsGmOpenCommute(r1, qm, str, qc, qcp, qv, gm, cp, gid);
+      }
+    case Re_capture(cid, r1) =>
+      StampedOutsideSub(r, r1, qcp, gid);
+      StampBodiesSub(r, r1, qm, str, qcp);
+      LiveStampsGmOpenCommute(r1, qm, str, qc, qcp, mx, gm, cp, gid);
+  }
+
 
 }
