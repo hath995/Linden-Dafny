@@ -1297,7 +1297,7 @@ module LindenElkNulledReconReadout {
     // (1) the stamp rule fires
     assert PIV.LiveStampsGm(r, qm, str, qc, qcp, mx, gmS) == NP.ApplyPath(p.value, cp, LG.GMReset(gl, gmS)) by {
       hide *;
-      reveal LiveStampsGm, StampApply, StampReady, StampCp;
+      reveal PIV.LiveStampsGm, PIV.StampApply, PIV.StampReady, PIV.StampCp;
       assert AI.get_idx(qc, qid) >= mx && AI.get_idx(qcp, qid) >= 0;
       assert PIV.StampReady(qm, str, qid as nat, qcp) && PIV.StampCp(qcp, qid as nat) == cp;
       assert qm.bodies[qid as int] == r1;
