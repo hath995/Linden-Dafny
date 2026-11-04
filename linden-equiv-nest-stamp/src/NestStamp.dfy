@@ -1772,6 +1772,291 @@ module LindenElkNestStamp {
       NestStampQuantIds(re, nul, qid, q, r1, qcp, gid);
   }
 
+  // =========================================================================
+  // 7b. (2026-11-04) The same for ANY capture write — open or close. A copy
+  //     of the open-site family with the register left generic; the capture
+  //     arm accepts both of its own registers.
+  // =========================================================================
+
+  lemma NestStampCapSiteMin(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, pcb: nat, pce: nat,
+                             pc: nat, qcp: seq<int>, gid: nat, reg: int)
+    requires NR.NfaRepMinRE(k, qid, r1, code, pcb, pce)
+    requires PIV.CapUnique(r1) && PIV.QuantUnique(r1)
+    requires pcb <= pc < pce
+    requires NestStampMinRE(k, qid, r1, code, pcb, pce, pc, qcp)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(reg))
+    requires reg == CP.start_reg(gid) || reg == CP.end_reg(gid)
+    ensures gid in PIV.CapIds(r1)
+    ensures StampClearRE(qcp, qid)
+    ensures forall A: nat :: A in PIV.QuantIds(r1) && AI.get_idx(qcp, A) >= 0
+              ==> gid !in PIV.CapIds(PIV.QidBody(r1, A))
+    decreases CP.rsize(r1), k + 2
+  {
+    assert k > 0 by { if k == 0 { assert pcb == pce; } }
+    var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.SetQuantToClock(qid, false))
+      && NR.NfaRepRE(r1, code, pcb + 1, e1)
+      && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, pce)
+      && (if pc == pcb then true
+          else StampClearRE(qcp, qid)
+               && (if pc < e1 then NestStampRE(r1, code, pcb + 1, e1, pc, qcp)
+                   else NestStampMinRE(k - 1, qid, r1, code, e1, pce, pc, qcp)));
+    NR.NfaRepIncrRE(r1, code, pcb + 1, e1);
+    NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, pce);
+    if pc == pcb {
+      assert {:split_here} true;
+      assert false;                                  // SetQuantToClock
+    } else if pc < e1 {
+      assert {:split_here} true;
+      NestStampCapSiteRE(r1, code, pcb + 1, e1, pc, qcp, gid, reg);
+    } else {
+      assert {:split_here} true;
+      NestStampCapSiteMin(k - 1, qid, r1, code, e1, pce, pc, qcp, gid, reg);
+    }
+  }
+
+  lemma NestStampCapSiteOpt(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code,
+                             pcb: nat, pce: nat, pc: nat, qcp: seq<int>, gid: nat, reg: int)
+    requires NR.NfaRepOptRE(k, greedy, qid, r1, code, pcb, pce)
+    requires PIV.CapUnique(r1) && PIV.QuantUnique(r1)
+    requires pcb <= pc < pce
+    requires NestStampOptRE(k, greedy, qid, r1, code, pcb, pce, pc, qcp)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(reg))
+    requires reg == CP.start_reg(gid) || reg == CP.end_reg(gid)
+    ensures gid in PIV.CapIds(r1)
+    ensures StampClearRE(qcp, qid)
+    ensures forall A: nat :: A in PIV.QuantIds(r1) && AI.get_idx(qcp, A) >= 0
+              ==> gid !in PIV.CapIds(PIV.QidBody(r1, A))
+    decreases CP.rsize(r1), k + 2
+  {
+    assert k > 0 by { if k == 0 { assert pcb == pce; } }
+    var e1: nat :| NR.GetPcRE(code, pcb) == Some(if greedy then RB.Fork(pcb + 1, pce) else RB.Fork(pce, pcb + 1))
+      && NR.GetPcRE(code, pcb + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(code, pcb + 2) == Some(RB.BeginLoop)
+      && NR.NfaRepRE(r1, code, pcb + 3, e1)
+      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+      && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, pce)
+      && (if pc == pcb || pc == pcb + 1 then true
+          else if pc == pcb + 2 then StampClearRE(qcp, qid)
+          else if pcb + 3 <= pc < e1 then
+            StampClearRE(qcp, qid) && NestStampRE(r1, code, pcb + 3, e1, pc, qcp)
+          else if pc == e1 then StampClearRE(qcp, qid)
+          else NestStampOptRE(k - 1, greedy, qid, r1, code, e1 + 1, pce, pc, qcp));
+    NR.NfaRepIncrRE(r1, code, pcb + 3, e1);
+    NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, pce);
+    // (2026-09-04) refutation branch FIRST and one batch per branch: the
+    // three-way split in one VC took 15 min.
+    if pc == pcb || pc == pcb + 1 || pc == pcb + 2 || pc == e1 {
+      assert {:split_here} true;
+      assert false;                                  // Fork / stamp / BeginLoop / EndLoop
+    } else if pcb + 3 <= pc < e1 {
+      assert {:split_here} true;
+      NestStampCapSiteRE(r1, code, pcb + 3, e1, pc, qcp, gid, reg);
+    } else {
+      assert {:split_here} true;
+      NestStampCapSiteOpt(k - 1, greedy, qid, r1, code, e1 + 1, pce, pc, qcp, gid, reg);
+    }
+  }
+
+  /** (2026-11-04) Register-generic `NestStampOpenSiteRE`: a capture OPEN or
+      CLOSE site is inside `re` and outside the body of every STAMPED
+      quantifier of `re` — the hypothesis the readout's Open and Close
+      commutations need (`PIV.LiveStampsGm{Open,Close}Commute`). */
+  lemma NestStampCapSiteRE(re: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
+                            qcp: seq<int>, gid: nat, reg: int)
+    requires NR.NfaRepRE(re, code, pcb, pce)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires pcb <= pc < pce
+    requires NestStampRE(re, code, pcb, pce, pc, qcp)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(reg))
+    requires reg == CP.start_reg(gid) || reg == CP.end_reg(gid)
+    ensures gid in PIV.CapIds(re)
+    ensures forall A: nat :: A in PIV.QuantIds(re) && AI.get_idx(qcp, A) >= 0
+              ==> gid !in PIV.CapIds(PIV.QidBody(re, A))
+    decreases CP.rsize(re), 1
+  {
+    match re
+    case Re_empty =>
+      NR.NfaRepIncrRE(re, code, pcb, pce);
+      assert false;
+    case Re_character(ch) =>
+      assert {:split_here} true;   // (2026-09-04) per-arm batch: the un-split body times out at 600 s
+      assert pc == pcb;
+      assert false;                                  // Consume
+    case Re_anchor(_) =>
+      assert {:split_here} true;   // (2026-09-04) per-arm batch: the un-split body times out at 600 s
+      assert pc == pcb;
+      assert false;                                  // AnchorAssertion
+    case Re_lookaround(lid, la, r1) =>
+      assert {:split_here} true;   // (2026-09-04) per-arm batch: the un-split body times out at 600 s
+      assert pc == pcb;
+      assert false;                                  // CheckOracle / NegCheckOracle
+    case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-04) per-arm batch: the un-split body times out at 600 s
+      var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.Fork(pcb + 1, e1 + 1))
+        && NR.NfaRepRE(r1, code, pcb + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.Jmp(pce))
+        && NR.NfaRepRE(r2, code, e1 + 1, pce)
+        && (if pc == pcb then true
+            else if pcb + 1 <= pc < e1 then NestStampRE(r1, code, pcb + 1, e1, pc, qcp)
+            else if pc == e1 then true
+            else NestStampRE(r2, code, e1 + 1, pce, pc, qcp));
+      NR.NfaRepIncrRE(r1, code, pcb + 1, e1);
+      NR.NfaRepIncrRE(r2, code, e1 + 1, pce);
+      if pc == pcb || pc == e1 {
+        assert false;                                // Fork / Jmp
+      } else if pcb + 1 <= pc < e1 {
+        NestStampCapSiteRE(r1, code, pcb + 1, e1, pc, qcp, gid, reg);
+        NestStampSplitAlt(re, r1, r2, qcp, gid, true);
+      } else {
+        NestStampCapSiteRE(r2, code, e1 + 1, pce, pc, qcp, gid, reg);
+        NestStampSplitAlt(re, r1, r2, qcp, gid, false);
+      }
+    case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-04) per-arm batch: the un-split body times out at 600 s
+      var e1: nat :| NR.NfaRepRE(r1, code, pcb, e1) && NR.NfaRepRE(r2, code, e1, pce)
+        && (if pc < e1 then NestStampRE(r1, code, pcb, e1, pc, qcp)
+            else NestStampRE(r2, code, e1, pce, pc, qcp));
+      NR.NfaRepIncrRE(r1, code, pcb, e1);
+      NR.NfaRepIncrRE(r2, code, e1, pce);
+      if pc < e1 {
+        NestStampCapSiteRE(r1, code, pcb, e1, pc, qcp, gid, reg);
+        NestStampSplitAlt(re, r1, r2, qcp, gid, true);
+      } else {
+        NestStampCapSiteRE(r2, code, e1, pce, pc, qcp, gid, reg);
+        NestStampSplitAlt(re, r1, r2, qcp, gid, false);
+      }
+    case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-04) per-arm batch: the un-split body times out at 600 s
+      var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
+        && NR.NfaRepRE(r1, code, pcb + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+        && pce == e1 + 1
+        && (pcb + 1 <= pc < e1 ==> NestStampRE(r1, code, pcb + 1, e1, pc, qcp));
+      NR.NfaRepIncrRE(r1, code, pcb + 1, e1);
+      assert cid >= 0;                               // CapUnique
+      assert PIV.QuantIds(re) == PIV.QuantIds(r1);
+      if pc == pcb || pc == e1 {
+        // the capture's own open/close: the register pins the group (parity)
+        assert reg == CP.start_reg(cid) || reg == CP.end_reg(cid);
+        assert cid == gid;
+        assert gid in PIV.CapIds(re);
+        forall A: nat | A in PIV.QuantIds(re) && AI.get_idx(qcp, A) >= 0
+          ensures gid !in PIV.CapIds(PIV.QidBody(re, A)) {
+          assert PIV.QidBody(re, A) == PIV.QidBody(r1, A);
+          PIV.CapIdsQidBodySubset(r1, A);
+          assert gid !in PIV.CapIds(r1);             // CapUnique: cid is fresh for r1
+        }
+      } else {
+        NestStampCapSiteRE(r1, code, pcb + 1, e1, pc, qcp, gid, reg);
+        forall A: nat | A in PIV.QuantIds(re) && AI.get_idx(qcp, A) >= 0
+          ensures gid !in PIV.CapIds(PIV.QidBody(re, A)) {
+          assert PIV.QidBody(re, A) == PIV.QidBody(r1, A);
+        }
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-04) per-arm batch: the un-split body times out at 600 s
+      assert qid >= 0;                               // QuantUnique
+      assert (qid as nat) !in PIV.QuantIds(r1);      // QuantUnique
+      assert PIV.QidBody(re, qid as nat) == r1;
+      var stamped := StampClearRE(qcp, qid);
+      if q.max.Some? {
+        assert {:split_here} true;
+        var mn := q.min as nat;
+        var kx := (q.max.value - q.min) as nat;
+        var em: nat :| NR.NfaRepMinRE(mn, qid, r1, code, pcb, em)
+          && NR.NfaRepOptRE(kx, q.greedy, qid, r1, code, em, pce)
+          && (if pc < em then NestStampMinRE(mn, qid, r1, code, pcb, em, pc, qcp)
+              else NestStampOptRE(kx, q.greedy, qid, r1, code, em, pce, pc, qcp));
+        NR.NfaRepIncrMinRE(mn, qid, r1, code, pcb, em);
+        NR.NfaRepIncrOptRE(kx, q.greedy, qid, r1, code, em, pce);
+        if pc < em {
+          NestStampCapSiteMin(mn, qid, r1, code, pcb, em, pc, qcp, gid, reg);
+        } else {
+          NestStampCapSiteOpt(kx, q.greedy, qid, r1, code, em, pce, pc, qcp, gid, reg);
+        }
+        NestStampQuantIds(re, nul, qid, q, r1, qcp, gid);
+        return;
+      }
+      if !(q.min == 0 && q.max == None) && nul != R.NonNullable && !q.greedy {
+        assert {:split_here} true;
+        var mn := q.min as nat;
+        var em, e1 := NestStampGenREInv(nul, qid, q, r1, code, pcb, pce, pc, qcp);
+        NR.NfaRepIncrMinRE(mn, qid, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NestStampCapSiteMin(mn, qid, r1, code, pcb, em, pc, qcp, gid, reg);
+        } else if em + 3 <= pc < e1 {
+          NestStampCapSiteRE(r1, code, em + 3, e1, pc, qcp, gid, reg);
+        } else {
+          assert false;                              // Fork/stamp/BeginLoop/EndLoop/Jmp
+        }
+        NestStampQuantIds(re, nul, qid, q, r1, qcp, gid);
+        return;
+      }
+      if !(q.min == 0 && q.max == None) && nul != R.NonNullable {
+        assert {:split_here} true;
+        var mn1 := (q.min - 1) as nat;
+        var em, e1 := NestStampCinREInv(nul, qid, q, r1, code, pcb, pce, pc, qcp);
+        NR.NfaRepIncrMinRE(mn1, qid, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NestStampCapSiteMin(mn1, qid, r1, code, pcb, em, pc, qcp, gid, reg);
+        } else if em + 3 <= pc < e1 {
+          NestStampCapSiteRE(r1, code, em + 3, e1, pc, qcp, gid, reg);
+        } else {
+          assert false;                              // the loop's own instructions
+        }
+        NestStampQuantIds(re, nul, qid, q, r1, qcp, gid);
+        return;
+      }
+      if !(q.min == 0 && q.max == None) {
+        assert {:split_here} true;
+        var mn1 := (q.min - 1) as nat;
+        var em: nat, e1: nat :|
+          NR.NfaRepMinRE(mn1, qid, r1, code, pcb, em)
+          && NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
+          && NR.NfaRepRE(r1, code, em + 1, e1)
+          && NR.GetPcRE(code, e1) == Some(if q.greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
+          && pce == e1 + 1
+          && (if pc < em then NestStampMinRE(mn1, qid, r1, code, pcb, em, pc, qcp)
+              else if pc == em then true
+              else if em + 1 <= pc < e1 then
+                StampClearRE(qcp, qid) && NestStampRE(r1, code, em + 1, e1, pc, qcp)
+              else StampClearRE(qcp, qid));
+        NR.NfaRepIncrMinRE(mn1, qid, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 1, e1);
+        if pc < em {
+          NestStampCapSiteMin(mn1, qid, r1, code, pcb, em, pc, qcp, gid, reg);
+        } else if em + 1 <= pc < e1 {
+          NestStampCapSiteRE(r1, code, em + 1, e1, pc, qcp, gid, reg);
+        } else {
+          assert false;                              // the mark / the backward fork
+        }
+        NestStampQuantIds(re, nul, qid, q, r1, qcp, gid);
+        return;
+      }
+      // the star
+      var e1: nat :| NR.GetPcRE(code, pcb) == Some(if q.greedy then RB.Fork(pcb + 1, e1 + 2) else RB.Fork(e1 + 2, pcb + 1))
+        && NR.GetPcRE(code, pcb + 1) == Some(RB.SetQuantToClock(qid, false))
+        && NR.GetPcRE(code, pcb + 2) == Some(RB.BeginLoop)
+        && NR.NfaRepRE(r1, code, pcb + 3, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+        && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(pcb))
+        && pce == e1 + 2
+        && (if pc == pcb || pc == pcb + 1 then true
+            else if pc == pcb + 2 then StampClearRE(qcp, qid)
+            else if pcb + 3 <= pc < e1 then
+              StampClearRE(qcp, qid) && NestStampRE(r1, code, pcb + 3, e1, pc, qcp)
+            else StampClearRE(qcp, qid));
+      NR.NfaRepIncrRE(r1, code, pcb + 3, e1);
+      if pcb + 3 <= pc < e1 {
+        NestStampCapSiteRE(r1, code, pcb + 3, e1, pc, qcp, gid, reg);
+      } else {
+        assert false;                                // the loop's own instructions
+      }
+      NestStampQuantIds(re, nul, qid, q, r1, qcp, gid);
+  }
+
   /** Bookkeeping for `NestStampOpenSiteRE`'s binary arms: the write is in one
       half, so a stamped quantifier of the OTHER half cannot own it
       (`CapUnique`), and one in the same half is the recursive conclusion. */
@@ -1839,4 +2124,385 @@ module LindenElkNestStamp {
       }
     }
   }
+
+  // =========================================================================
+  // 8. (2026-11-04) THE QUANT-WRITE SITE: no STAMPED quantifier encloses a
+  //    `SetQuantToClock(q0, _)` instruction. Every such site is past each
+  //    enclosing quantifier's clock mark (which clears that stamp) and before
+  //    its true stamp (which exits the block). The readout's mark and stamp
+  //    steps (`PIV.LiveStampsGmMark` / `PIV.LiveStampsGmStamp`) need exactly
+  //    `PIV.NoStampedAbove`.
+  // =========================================================================
+
+  lemma QuantIdsQidBodySubset(r: R.regex, qid: nat)
+    requires qid in PIV.QuantIds(r)
+    ensures PIV.QuantIds(PIV.QidBody(r, qid)) <= PIV.QuantIds(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => if qid in PIV.QuantIds(r1) { QuantIdsQidBodySubset(r1, qid); } else { QuantIdsQidBodySubset(r2, qid); }
+    case Re_con(r1, r2) => if qid in PIV.QuantIds(r1) { QuantIdsQidBodySubset(r1, qid); } else { QuantIdsQidBodySubset(r2, qid); }
+    case Re_quant(nul, qid0, q, r1) => if qid0 >= 0 && (qid0 as nat) == qid {} else { QuantIdsQidBodySubset(r1, qid); }
+    case Re_capture(cid, r1) => QuantIdsQidBodySubset(r1, qid);
+    case Re_lookaround(_, _, r1) => QuantIdsQidBodySubset(r1, qid);
+  }
+
+  /** The conclusion inside a quantifier `qid` over body `r1`: the write is
+      `qid`'s own, or it sits in the body past `qid`'s mark. */
+  ghost predicate QuantSiteIn(qid: R.quantid, r1: R.regex, qcp: seq<int>, q0: int) {
+    q0 >= 0
+    && (q0 == qid
+        || ((q0 as nat) in PIV.QuantIds(r1) && StampClearRE(qcp, qid)
+            && PIV.NoStampedAbove(r1, qcp, q0 as nat)))
+  }
+
+  /** …lifted to the quantifier node itself. */
+  lemma QuantSiteLift(re: R.regex, nul: R.nullability, qid: R.quantid, q: R.counted_quantifier,
+                      r1: R.regex, qcp: seq<int>, q0: int)
+    requires re == R.Re_quant(nul, qid, q, r1)
+    requires PIV.QuantUnique(re)
+    requires QuantSiteIn(qid, r1, qcp, q0)
+    ensures q0 >= 0 && (q0 as nat) in PIV.QuantIds(re)
+    ensures PIV.NoStampedAbove(re, qcp, q0 as nat)
+  {
+    assert qid >= 0 && (qid as nat) !in PIV.QuantIds(r1);
+    forall A: nat | A in PIV.QuantIds(re) && A != q0 as nat && AI.get_idx(qcp, A) >= 0
+      ensures (q0 as nat) !in PIV.QuantIds(PIV.QidBody(re, A))
+    {
+      if A == qid as nat {
+        // only reachable when q0 is in the body — and then qid's stamp is clear
+        assert q0 != qid;
+        assert StampClearRE(qcp, qid);
+        assert false;
+      } else {
+        assert A in PIV.QuantIds(r1) && PIV.QidBody(re, A) == PIV.QidBody(r1, A);
+        if q0 == qid {
+          QuantIdsQidBodySubset(r1, A);
+        }
+      }
+    }
+  }
+
+  /** The binary arms: the write is in one half, and a stamped quantifier of
+      the OTHER half cannot enclose it (`QuantUnique`). */
+  lemma QuantSiteSplit(re: R.regex, r1: R.regex, r2: R.regex, qcp: seq<int>, q0: nat, inLeft: bool)
+    requires re == R.Re_alt(r1, r2) || re == R.Re_con(r1, r2)
+    requires PIV.QuantUnique(re)
+    requires inLeft ==> q0 in PIV.QuantIds(r1) && PIV.NoStampedAbove(r1, qcp, q0)
+    requires !inLeft ==> q0 in PIV.QuantIds(r2) && PIV.NoStampedAbove(r2, qcp, q0)
+    ensures q0 in PIV.QuantIds(re)
+    ensures PIV.NoStampedAbove(re, qcp, q0)
+  {
+    assert PIV.QuantIds(re) == PIV.QuantIds(r1) + PIV.QuantIds(r2);
+    forall A: nat | A in PIV.QuantIds(re) && A != q0 && AI.get_idx(qcp, A) >= 0
+      ensures q0 !in PIV.QuantIds(PIV.QidBody(re, A))
+    {
+      if A in PIV.QuantIds(r1) {
+        assert PIV.QidBody(re, A) == PIV.QidBody(r1, A);
+        QuantIdsQidBodySubset(r1, A);
+        if !inLeft {
+          assert q0 !in PIV.QuantIds(r1)
+            by { if q0 in PIV.QuantIds(r1) { assert q0 in PIV.QuantIds(r1) * PIV.QuantIds(r2); } }
+        }
+      } else {
+        assert A in PIV.QuantIds(r2) && A !in PIV.QuantIds(r1);
+        assert PIV.QidBody(re, A) == PIV.QidBody(r2, A);
+        QuantIdsQidBodySubset(r2, A);
+        if inLeft {
+          assert q0 !in PIV.QuantIds(r2)
+            by { if q0 in PIV.QuantIds(r2) { assert q0 in PIV.QuantIds(r1) * PIV.QuantIds(r2); } }
+        }
+      }
+    }
+  }
+
+  lemma NestStampQuantSiteMin(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, pcb: nat, pce: nat,
+                              pc: nat, qcp: seq<int>, q0: int, b: bool)
+    requires NR.NfaRepMinRE(k, qid, r1, code, pcb, pce)
+    requires PIV.QuantUnique(r1)
+    requires pcb <= pc < pce
+    requires NestStampMinRE(k, qid, r1, code, pcb, pce, pc, qcp)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q0, b))
+    requires qid >= 0
+    ensures QuantSiteIn(qid, r1, qcp, q0)
+    decreases CP.rsize(r1), k + 2
+  {
+    assert k > 0 by { if k == 0 { assert pcb == pce; } }
+    var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.SetQuantToClock(qid, false))
+      && NR.NfaRepRE(r1, code, pcb + 1, e1)
+      && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, pce)
+      && (if pc == pcb then true
+          else StampClearRE(qcp, qid)
+               && (if pc < e1 then NestStampRE(r1, code, pcb + 1, e1, pc, qcp)
+                   else NestStampMinRE(k - 1, qid, r1, code, e1, pce, pc, qcp)));
+    NR.NfaRepIncrRE(r1, code, pcb + 1, e1);
+    NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, pce);
+    if pc == pcb {
+      assert {:split_here} true;
+      assert q0 == qid;                              // the copy's own mark
+    } else if pc < e1 {
+      assert {:split_here} true;
+      NestStampQuantSiteRE(r1, code, pcb + 1, e1, pc, qcp, q0, b);
+    } else {
+      assert {:split_here} true;
+      NestStampQuantSiteMin(k - 1, qid, r1, code, e1, pce, pc, qcp, q0, b);
+    }
+  }
+
+  lemma NestStampQuantSiteOpt(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code,
+                              pcb: nat, pce: nat, pc: nat, qcp: seq<int>, q0: int, b: bool)
+    requires NR.NfaRepOptRE(k, greedy, qid, r1, code, pcb, pce)
+    requires PIV.QuantUnique(r1)
+    requires pcb <= pc < pce
+    requires NestStampOptRE(k, greedy, qid, r1, code, pcb, pce, pc, qcp)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q0, b))
+    requires qid >= 0
+    ensures QuantSiteIn(qid, r1, qcp, q0)
+    decreases CP.rsize(r1), k + 2
+  {
+    assert k > 0 by { if k == 0 { assert pcb == pce; } }
+    var e1: nat :| NR.GetPcRE(code, pcb) == Some(if greedy then RB.Fork(pcb + 1, pce) else RB.Fork(pce, pcb + 1))
+      && NR.GetPcRE(code, pcb + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(code, pcb + 2) == Some(RB.BeginLoop)
+      && NR.NfaRepRE(r1, code, pcb + 3, e1)
+      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+      && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, pce)
+      && (if pc == pcb || pc == pcb + 1 then true
+          else if pc == pcb + 2 then StampClearRE(qcp, qid)
+          else if pcb + 3 <= pc < e1 then
+            StampClearRE(qcp, qid) && NestStampRE(r1, code, pcb + 3, e1, pc, qcp)
+          else if pc == e1 then StampClearRE(qcp, qid)
+          else NestStampOptRE(k - 1, greedy, qid, r1, code, e1 + 1, pce, pc, qcp));
+    NR.NfaRepIncrRE(r1, code, pcb + 3, e1);
+    NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, pce);
+    if pc == pcb || pc == pcb + 2 || pc == e1 {
+      assert {:split_here} true;
+      assert false;                                  // Fork / BeginLoop / EndLoop
+    } else if pc == pcb + 1 {
+      assert {:split_here} true;
+      assert q0 == qid;                              // the copy's own mark
+    } else if pcb + 3 <= pc < e1 {
+      assert {:split_here} true;
+      NestStampQuantSiteRE(r1, code, pcb + 3, e1, pc, qcp, q0, b);
+    } else {
+      assert {:split_here} true;
+      NestStampQuantSiteOpt(k - 1, greedy, qid, r1, code, e1 + 1, pce, pc, qcp, q0, b);
+    }
+  }
+
+  /** A `SetQuantToClock(q0, _)` site is a quantifier of `re` that no STAMPED
+      quantifier of `re` encloses. */
+  lemma NestStampQuantSiteRE(re: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
+                             qcp: seq<int>, q0: int, b: bool)
+    requires NR.NfaRepRE(re, code, pcb, pce)
+    requires PIV.QuantUnique(re)
+    requires pcb <= pc < pce
+    requires NestStampRE(re, code, pcb, pce, pc, qcp)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q0, b))
+    ensures q0 >= 0 && (q0 as nat) in PIV.QuantIds(re)
+    ensures PIV.NoStampedAbove(re, qcp, q0 as nat)
+    decreases CP.rsize(re), 1
+  {
+    match re
+    case Re_empty =>
+      NR.NfaRepIncrRE(re, code, pcb, pce);
+      assert false;
+    case Re_character(ch) =>
+      assert {:split_here} true;
+      assert pc == pcb;
+      assert false;                                  // Consume
+    case Re_anchor(_) =>
+      assert {:split_here} true;
+      assert pc == pcb;
+      assert false;                                  // AnchorAssertion
+    case Re_lookaround(lid, la, r1) =>
+      assert {:split_here} true;
+      assert pc == pcb;
+      assert false;                                  // CheckOracle / NegCheckOracle
+    case Re_alt(r1, r2) =>
+      assert {:split_here} true;
+      var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.Fork(pcb + 1, e1 + 1))
+        && NR.NfaRepRE(r1, code, pcb + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.Jmp(pce))
+        && NR.NfaRepRE(r2, code, e1 + 1, pce)
+        && (if pc == pcb then true
+            else if pcb + 1 <= pc < e1 then NestStampRE(r1, code, pcb + 1, e1, pc, qcp)
+            else if pc == e1 then true
+            else NestStampRE(r2, code, e1 + 1, pce, pc, qcp));
+      NR.NfaRepIncrRE(r1, code, pcb + 1, e1);
+      NR.NfaRepIncrRE(r2, code, e1 + 1, pce);
+      if pc == pcb || pc == e1 {
+        assert false;                                // Fork / Jmp
+      } else if pcb + 1 <= pc < e1 {
+        NestStampQuantSiteRE(r1, code, pcb + 1, e1, pc, qcp, q0, b);
+        QuantSiteSplit(re, r1, r2, qcp, q0 as nat, true);
+      } else {
+        NestStampQuantSiteRE(r2, code, e1 + 1, pce, pc, qcp, q0, b);
+        QuantSiteSplit(re, r1, r2, qcp, q0 as nat, false);
+      }
+    case Re_con(r1, r2) =>
+      assert {:split_here} true;
+      var e1: nat :| NR.NfaRepRE(r1, code, pcb, e1) && NR.NfaRepRE(r2, code, e1, pce)
+        && (if pc < e1 then NestStampRE(r1, code, pcb, e1, pc, qcp)
+            else NestStampRE(r2, code, e1, pce, pc, qcp));
+      NR.NfaRepIncrRE(r1, code, pcb, e1);
+      NR.NfaRepIncrRE(r2, code, e1, pce);
+      if pc < e1 {
+        NestStampQuantSiteRE(r1, code, pcb, e1, pc, qcp, q0, b);
+        QuantSiteSplit(re, r1, r2, qcp, q0 as nat, true);
+      } else {
+        NestStampQuantSiteRE(r2, code, e1, pce, pc, qcp, q0, b);
+        QuantSiteSplit(re, r1, r2, qcp, q0 as nat, false);
+      }
+    case Re_capture(cid, r1) =>
+      assert {:split_here} true;
+      var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
+        && NR.NfaRepRE(r1, code, pcb + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+        && pce == e1 + 1
+        && (pcb + 1 <= pc < e1 ==> NestStampRE(r1, code, pcb + 1, e1, pc, qcp));
+      NR.NfaRepIncrRE(r1, code, pcb + 1, e1);
+      if pc == pcb || pc == e1 {
+        assert false;                                // SetRegisterToCP
+      } else {
+        NestStampQuantSiteRE(r1, code, pcb + 1, e1, pc, qcp, q0, b);
+        assert PIV.QuantIds(re) == PIV.QuantIds(r1);
+        forall A: nat | A in PIV.QuantIds(re) ensures PIV.QidBody(re, A) == PIV.QidBody(r1, A) {}
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;
+      assert qid >= 0;                               // QuantUnique
+      if q.max.Some? {
+        assert {:split_here} true;
+        var mn := q.min as nat;
+        var kx := (q.max.value - q.min) as nat;
+        var em: nat :| NR.NfaRepMinRE(mn, qid, r1, code, pcb, em)
+          && NR.NfaRepOptRE(kx, q.greedy, qid, r1, code, em, pce)
+          && (if pc < em then NestStampMinRE(mn, qid, r1, code, pcb, em, pc, qcp)
+              else NestStampOptRE(kx, q.greedy, qid, r1, code, em, pce, pc, qcp));
+        NR.NfaRepIncrMinRE(mn, qid, r1, code, pcb, em);
+        NR.NfaRepIncrOptRE(kx, q.greedy, qid, r1, code, em, pce);
+        if pc < em {
+          NestStampQuantSiteMin(mn, qid, r1, code, pcb, em, pc, qcp, q0, b);
+        } else {
+          NestStampQuantSiteOpt(kx, q.greedy, qid, r1, code, em, pce, pc, qcp, q0, b);
+        }
+        QuantSiteLift(re, nul, qid, q, r1, qcp, q0);
+        return;
+      }
+      if !(q.min == 0 && q.max == None) && nul != R.NonNullable && !q.greedy {
+        assert {:split_here} true;
+        var mn := q.min as nat;
+        var em, e1 := NestStampGenREInv(nul, qid, q, r1, code, pcb, pce, pc, qcp);
+        NR.NfaRepIncrMinRE(mn, qid, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NestStampQuantSiteMin(mn, qid, r1, code, pcb, em, pc, qcp, q0, b);
+        } else if pc == em + 1 {
+          assert q0 == qid;                          // the loop's mark
+        } else if em + 3 <= pc < e1 {
+          NestStampQuantSiteRE(r1, code, em + 3, e1, pc, qcp, q0, b);
+        } else {
+          assert false;                              // Fork/BeginLoop/EndLoop/Jmp
+        }
+        QuantSiteLift(re, nul, qid, q, r1, qcp, q0);
+        return;
+      }
+      if !(q.min == 0 && q.max == None) && nul != R.NonNullable {
+        assert {:split_here} true;
+        var mn1 := (q.min - 1) as nat;
+        var em, e1 := NestStampCinREInv(nul, qid, q, r1, code, pcb, pce, pc, qcp);
+        NR.NfaRepIncrMinRE(mn1, qid, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NestStampQuantSiteMin(mn1, qid, r1, code, pcb, em, pc, qcp, q0, b);
+        } else if pc == em + 1 || pc == e1 + 2 {
+          assert q0 == qid;                          // the loop's mark / the true stamp
+        } else if em + 3 <= pc < e1 {
+          NestStampQuantSiteRE(r1, code, em + 3, e1, pc, qcp, q0, b);
+        } else {
+          assert false;                              // Fork/BeginLoop/EndLoop/end fork
+        }
+        QuantSiteLift(re, nul, qid, q, r1, qcp, q0);
+        return;
+      }
+      if !(q.min == 0 && q.max == None) {
+        assert {:split_here} true;
+        var mn1 := (q.min - 1) as nat;
+        var em: nat, e1: nat :|
+          NR.NfaRepMinRE(mn1, qid, r1, code, pcb, em)
+          && NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
+          && NR.NfaRepRE(r1, code, em + 1, e1)
+          && NR.GetPcRE(code, e1) == Some(if q.greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
+          && pce == e1 + 1
+          && (if pc < em then NestStampMinRE(mn1, qid, r1, code, pcb, em, pc, qcp)
+              else if pc == em then true
+              else if em + 1 <= pc < e1 then
+                StampClearRE(qcp, qid) && NestStampRE(r1, code, em + 1, e1, pc, qcp)
+              else StampClearRE(qcp, qid));
+        NR.NfaRepIncrMinRE(mn1, qid, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 1, e1);
+        if pc < em {
+          NestStampQuantSiteMin(mn1, qid, r1, code, pcb, em, pc, qcp, q0, b);
+        } else if pc == em {
+          assert q0 == qid;                          // the mark
+        } else if em + 1 <= pc < e1 {
+          NestStampQuantSiteRE(r1, code, em + 1, e1, pc, qcp, q0, b);
+        } else {
+          assert false;                              // the backward fork
+        }
+        QuantSiteLift(re, nul, qid, q, r1, qcp, q0);
+        return;
+      }
+      // the star
+      var e1: nat :| NR.GetPcRE(code, pcb) == Some(if q.greedy then RB.Fork(pcb + 1, e1 + 2) else RB.Fork(e1 + 2, pcb + 1))
+        && NR.GetPcRE(code, pcb + 1) == Some(RB.SetQuantToClock(qid, false))
+        && NR.GetPcRE(code, pcb + 2) == Some(RB.BeginLoop)
+        && NR.NfaRepRE(r1, code, pcb + 3, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+        && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(pcb))
+        && pce == e1 + 2
+        && (if pc == pcb || pc == pcb + 1 then true
+            else if pc == pcb + 2 then StampClearRE(qcp, qid)
+            else if pcb + 3 <= pc < e1 then
+              StampClearRE(qcp, qid) && NestStampRE(r1, code, pcb + 3, e1, pc, qcp)
+            else StampClearRE(qcp, qid));
+      NR.NfaRepIncrRE(r1, code, pcb + 3, e1);
+      if pc == pcb + 1 {
+        assert q0 == qid;                            // the mark
+      } else if pcb + 3 <= pc < e1 {
+        NestStampQuantSiteRE(r1, code, pcb + 3, e1, pc, qcp, q0, b);
+      } else {
+        assert false;                                // Fork/BeginLoop/EndLoop/Jmp
+      }
+      QuantSiteLift(re, nul, qid, q, r1, qcp, q0);
+  }
+
+  /** Top-level wrappers (mirrors of `NestStampTopQuantWrite`). */
+  lemma NestStampTopQuantSite(re: R.regex, code: RB.code, endl: nat, pc: nat, qcp: seq<int>, q0: int, b: bool)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires PIV.QuantUnique(re)
+    requires pc < endl
+    requires NestStampTopRE(re, code, endl, pc, qcp)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q0, b))
+    ensures q0 >= 0 && (q0 as nat) in PIV.QuantIds(re)
+    ensures PIV.NoStampedAbove(re, qcp, q0 as nat)
+  {
+    NestStampQuantSiteRE(re, code, 0, endl, pc, qcp, q0, b);
+  }
+
+  lemma NestStampTopCapSite(re: R.regex, code: RB.code, endl: nat, pc: nat, qcp: seq<int>, gid: nat, reg: int)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires pc < endl
+    requires NestStampTopRE(re, code, endl, pc, qcp)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(reg))
+    requires reg == CP.start_reg(gid) || reg == CP.end_reg(gid)
+    ensures gid in PIV.CapIds(re)
+    ensures forall A: nat :: A in PIV.QuantIds(re) && AI.get_idx(qcp, A) >= 0
+              ==> gid !in PIV.CapIds(PIV.QidBody(re, A))
+  {
+    NestStampCapSiteRE(re, code, 0, endl, pc, qcp, gid, reg);
+  }
+
 }

@@ -7731,10 +7731,47 @@ module LindenElkPikeInv {
 
   // A VM thread bank denotes the tree's GroupMap (via the LIVE denotation, which
   // handles mid-search open groups; see GmOfLive).
-  /** A VM thread's register bank denotes the tree's `GroupMap`, via the LIVE
-      denotation `GmOfLive` (which handles mid-search open groups). */
-  ghost predicate ThreadTracksGm(re: R.regex, th: AI.Thread, gm: LG.GroupMap) {
-    gm == GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs)
+  /** A VM thread's register bank denotes the tree's `GroupMap`, via the
+      RECONSTRUCTION-AWARE live denotation `GmOfLiveR` (§2.5b rung D,
+      2026-11-04): `GmOfLive` (mid-search open groups) with every LIVE
+      nulled-exit stamp's virtual chain applied — the tree took those chain
+      steps at the stamp, the VM defers them to `FReconstructPlus`. With no
+      stamp set it is `GmOfLive` (`ThreadTracksGmNoStamps`). */
+  ghost predicate ThreadTracksGm(re: R.regex, qm: AR.QMap, str: string, th: AI.Thread, gm: LG.GroupMap) {
+    T.TransWf(re) && gm == TieGm(re, qm, str, th.capture_regs, th.look_regs, th.quant_regs)
+  }
+
+  /** The tie's readout, OPAQUE: `GmOfLiveR` unfolds `LiveStampsGm`, recursive over
+      the regex, and transparent inside the tie it blew `PreserveForkCaseNested`'s
+      forward arm past 23 GB (2026-11-04). Threads that copy registers get the tie
+      by function congruence; only the readout lemmas reveal it. */
+  opaque ghost function TieGm(re: R.regex, qm: AR.QMap, str: string,
+                              caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs): LG.GroupMap
+    requires T.TransWf(re)
+  {
+    GmOfLiveR(re, qm, str, caps, look, quant)
+  }
+
+  /** The tie only sees the look bank through `GmOfLive` (the readout reads the
+      quant bank alone). */
+  lemma TieGmLiveCong(re: R.regex, qm: AR.QMap, str: string, caps1: AReg.Regs, look1: AReg.Regs,
+                      caps2: AReg.Regs, look2: AReg.Regs, quant: AReg.Regs)
+    requires T.TransWf(re)
+    requires GmOfLive(re, caps1, look1, quant) == GmOfLive(re, caps2, look2, quant)
+    ensures TieGm(re, qm, str, caps1, look1, quant) == TieGm(re, qm, str, caps2, look2, quant)
+  {
+    reveal TieGm;
+  }
+
+  /** No stamp set: `ThreadTracksGm` is the plain `GmOfLive` tie. */
+  lemma ThreadTracksGmNoStamps(re: R.regex, qm: AR.QMap, str: string, th: AI.Thread, gm: LG.GroupMap)
+    requires T.TransWf(re)
+    requires forall q: int :: AI.get_idx(th.quant_regs.a_cp, q) < 0
+    ensures ThreadTracksGm(re, qm, str, th, gm)
+            <==> gm == GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs)
+  {
+    reveal TieGm;
+    GmOfLiveRNoStamps(re, qm, str, th.capture_regs, th.look_regs, th.quant_regs);
   }
 
   // Active list: (tree, gm) paired with a thread, tree-threaded at the thread's
@@ -7743,14 +7780,14 @@ module LindenElkPikeInv {
       the tree tree-threaded at the thread's `(pc, exit_allowed)` and `gm`
       denoted by the thread's registers (`ThreadTracksGm`). */
   ghost predicate ActiveRepRE(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
-                              inp: LC.Input, tl: seq<(LT.Tree, LG.GroupMap)>, vl: seq<AI.Thread>)
+                              str: string, inp: LC.Input, tl: seq<(LT.Tree, LG.GroupMap)>, vl: seq<AI.Thread>)
     decreases tl
   {
     (|tl| == 0 && |vl| == 0)
     || (|tl| > 0 && |vl| > 0 && vl[0].pc >= 0
         && TT.TreeThreadRE(rer, qm, code, inp, tl[0].0, vl[0].pc as nat, vl[0].exit_allowed)
-        && ThreadTracksGm(re, vl[0], tl[0].1)
-        && ActiveRepRE(rer, qm, re, code, inp, tl[1..], vl[1..]))
+        && ThreadTracksGm(re, qm, str, vl[0], tl[0].1)
+        && ActiveRepRE(rer, qm, re, code, str, inp, tl[1..], vl[1..]))
   }
 
   // Blocked list: parked at a Consume(ce) pc, post-Read tree threaded at pc+1 on
@@ -7760,7 +7797,7 @@ module LindenElkPikeInv {
       on `nextinp` with the loop flag re-armed, and `gm` denoted by its
       registers. */
   ghost predicate BlockedRepRE(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
-                               inp: LC.Input, nextinp: LC.Input,
+                               str: string, inp: LC.Input, nextinp: LC.Input,
                                tl: seq<(LT.Tree, LG.GroupMap)>, bl: seq<(AI.Thread, RC.char_expectation)>)
     decreases tl
   {
@@ -7768,8 +7805,8 @@ module LindenElkPikeInv {
     || (|tl| > 0 && |bl| > 0 && bl[0].0.pc + 1 >= 0
         && (exists c: char :: AR.ReadCharE(bl[0].1, inp) == Some((c, nextinp)))
         && TT.TreeThreadRE(rer, qm, code, nextinp, tl[0].0, (bl[0].0.pc + 1) as nat, true)
-        && ThreadTracksGm(re, bl[0].0, tl[0].1)
-        && BlockedRepRE(rer, qm, re, code, inp, nextinp, tl[1..], bl[1..]))
+        && ThreadTracksGm(re, qm, str, bl[0].0, tl[0].1)
+        && BlockedRepRE(rer, qm, re, code, str, inp, nextinp, tl[1..], bl[1..]))
   }
 
   // best (a Leaf's GroupMap) ↔ bestmatch thread's denoted GroupMap. The leaf
@@ -7777,10 +7814,27 @@ module LindenElkPikeInv {
   /** best (a leaf's `GroupMap`) ↔ `bestmatch` thread's denoted `GroupMap`; the
       two options agree on presence and, when present, on the group map (the
       leaf's Input is irrelevant — `CapArrayOfLeaf` drops it). */
-  ghost predicate BestMatchRE(re: R.regex, best: Option<LT.Leaf>, bestmatch: Option<AI.Thread>) {
+  ghost predicate BestMatchRE(re: R.regex, qm: AR.QMap, str: string,
+                              best: Option<LT.Leaf>, bestmatch: Option<AI.Thread>) {
     (best.None? <==> bestmatch.None?)
-    && (best.Some? ==> bestmatch.Some? && best.value.1 == GmOfLive(re, bestmatch.value.capture_regs,
-                                                                   bestmatch.value.look_regs, bestmatch.value.quant_regs))
+    && (best.Some? ==> bestmatch.Some? && ThreadTracksGm(re, qm, str, bestmatch.value, best.value.1))
+  }
+
+  /** No stamp set in the best thread: the plain `GmOfLive` readout. */
+  lemma BestMatchRENoStamps(re: R.regex, qm: AR.QMap, str: string,
+                            best: Option<LT.Leaf>, bestmatch: Option<AI.Thread>)
+    requires T.TransWf(re)
+    requires bestmatch.Some? ==> forall q: int :: AI.get_idx(bestmatch.value.quant_regs.a_cp, q) < 0
+    ensures BestMatchRE(re, qm, str, best, bestmatch)
+            <==> ((best.None? <==> bestmatch.None?)
+                  && (best.Some? ==>
+                        (bestmatch.Some?
+                         && best.value.1 == GmOfLive(re, bestmatch.value.capture_regs,
+                                                     bestmatch.value.look_regs, bestmatch.value.quant_regs))))
+  {
+    if bestmatch.Some? && best.Some? {
+      ThreadTracksGmNoStamps(re, qm, str, bestmatch.value, best.value.1);
+    }
   }
 
   // The blocked lists correspond through the MATCHING FILTER: RegElk blocks
@@ -7821,15 +7875,15 @@ module LindenElkPikeInv {
                             str: string, pts: PT.PikeTreeState, vms: AI.VmState)
   {
     match pts
-    case PTS_final(best) => BestMatchRE(re, best, vms.bestmatch)
+    case PTS_final(best) => BestMatchRE(re, qm, str, best, vms.bestmatch)
     case PTS(inp, treeactive, best, treeblocked, treeseen) =>
       0 <= vms.cp <= |str|
       && inp == InpOfCp(str, vms.cp)
       && ContextOkRE(str, vms.cp, vms.context)
-      && BestMatchRE(re, best, vms.bestmatch)
-      && ActiveRepRE(rer, qm, re, code, inp, treeactive, vms.active)
+      && BestMatchRE(re, qm, str, best, vms.bestmatch)
+      && ActiveRepRE(rer, qm, re, code, str, inp, treeactive, vms.active)
       && (forall nextinp :: LC.AdvanceInput(inp, WP.Forward) == Some(nextinp) ==>
-                              BlockedRepRE(rer, qm, re, code, inp, nextinp, treeblocked,
+                              BlockedRepRE(rer, qm, re, code, str, inp, nextinp, treeblocked,
                                            MatchingBlocked(LC.Reverse(vms.blocked), inp)))
       && (LC.AdvanceInput(inp, WP.Forward) == None ==> treeblocked == [])
       && SeenInclusionRE(rer, qm, code, inp, treeseen, vms.processed, HdTreeOf(treeactive), HeadPcOf(vms.active))
@@ -7845,6 +7899,17 @@ module LindenElkPikeInv {
       the initial tree is the boolean tree of `[Areg(Translate(re))]` at
       `CannotExit`, and seen/blocked are empty. The base case of the whole
       simulation. */
+  /** Fresh registers carry no stamp, so their readout is `GmOfLive`'s. */
+  lemma InitNoStamps(re: R.regex, qm: AR.QMap, str: string, ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(re)
+    ensures forall q: int :: AI.get_idx(AReg.init_regs(nquant).a_cp, q) < 0
+    ensures TieGm(re, qm, str, AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant))
+         == GmOfLive(re, AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant))
+  {
+    reveal TieGm;
+    GmOfLiveRNoStamps(re, qm, str, AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
+  }
+
   lemma InitialPikeInvRE(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, ngroups: nat,
                          str: string, tree: LT.Tree, vms: AI.VmState, ncap: int, nlook: int, nquant: int)
     requires NR.LookBehindFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase && AR.QmapOk(re, qm)
@@ -7866,10 +7931,11 @@ module LindenElkPikeInv {
     // Active correspondence for the singleton [(tree, Empty)] ~ [init_thread]:
     // TreeThreadRE(tree, 0, false) is the requires (the checked tree from the
     // entry construction).
-    GmOfLiveInit(re, ncap, nlook, nquant);              // GmOfLive(re, init_regs...) == Empty
+    GmOfLiveInit(re, ncap, nlook, nquant);
+    InitNoStamps(re, qm, str, ncap, nlook, nquant);              // GmOfLive(re, init_regs...) == Empty
     var th := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
-    assert ActiveRepRE(rer, qm, re, code, inp, [(tree, LG.Empty)], [th]) by {
-      assert ActiveRepRE(rer, qm, re, code, inp, [], []);
+    assert ActiveRepRE(rer, qm, re, code, str, inp, [(tree, LG.Empty)], [th]) by {
+      assert ActiveRepRE(rer, qm, re, code, str, inp, [], []);
     }
 
     // Seen inclusion is vacuous at the empty (init_bpcset) processed set.
@@ -7900,10 +7966,11 @@ module LindenElkPikeInv {
     var acts := [LS.Areg(T.Translate(re))];
 
     // Active correspondence for the singleton [(tree, Empty)] ~ [init_thread].
-    GmOfLiveInit(re, ncap, nlook, nquant);              // GmOfLive(re, init_regs...) == Empty
+    GmOfLiveInit(re, ncap, nlook, nquant);
+    InitNoStamps(re, qm, str, ncap, nlook, nquant);              // GmOfLive(re, init_regs...) == Empty
     var th := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
-    assert ActiveRepRE(rer, qm, re, code, inp, [(tree, LG.Empty)], [th]) by {
-      assert ActiveRepRE(rer, qm, re, code, inp, [], []);
+    assert ActiveRepRE(rer, qm, re, code, str, inp, [(tree, LG.Empty)], [th]) by {
+      assert ActiveRepRE(rer, qm, re, code, str, inp, [], []);
     }
 
     // Seen inclusion is vacuous at the empty (init_bpcset) processed set.
@@ -7930,9 +7997,10 @@ module LindenElkPikeInv {
   {
     var inp := InpOfCp(str, cp);
     GmOfLiveInit(re, ncap, nlook, nquant);
+    InitNoStamps(re, qm, str, ncap, nlook, nquant);
     var th := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
-    assert ActiveRepRE(rer, qm, re, code, inp, [(tree, LG.Empty)], [th]) by {
-      assert ActiveRepRE(rer, qm, re, code, inp, [], []);
+    assert ActiveRepRE(rer, qm, re, code, str, inp, [(tree, LG.Empty)], [th]) by {
+      assert ActiveRepRE(rer, qm, re, code, str, inp, [], []);
     }
     InitialInclusionRE(rer, qm, code, inp, Some(tree), 0, |code|);
   }
@@ -8421,5 +8489,814 @@ module LindenElkPikeInv {
       LiveStampsGmOpenCommute(r1, qm, str, qc, qcp, mx, gm, cp, gid);
   }
 
+
+
+  // ===========================================================================
+  // §2.5b RUNG D — the GENERAL commutation algebra (2026-11-04).
+  //
+  // The readout `LiveStampsGm` only ever overrides the groups of STAMPED
+  // quantifiers' bodies, and WHICH stamps it applies depends on the quant
+  // clocks/stamps alone, never on the map. So:
+  //  * any group action disjoint from every stamped body passes straight
+  //    through it (`LiveStampsGmActCommute`, `…PathCommute`) — the Open,
+  //    Close and sibling-reset steps;
+  //  * a reset covering a subterm's groups erases that subterm's readout
+  //    (`LiveStampsGmResetAbsorb`);
+  //  * the two quant writes: the clock mark `SetQuantToClock(q0, false)`
+  //    (`LiveStampsGmMark`: the readout of the reset map is the reset of the
+  //    readout) and the true stamp `SetQuantToClock(q0, true)`
+  //    (`LiveStampsGmStamp`: the readout gains q0's virtual chain).
+  // ===========================================================================
+
+  /** The groups one `GroupAction` touches. */
+  ghost function ActGroups(a: LG.GroupAction): set<LG.GroupId> {
+    match a
+    case Open(g) => {g}
+    case Close(g) => {g}
+    case Reset(gs) => GSet(gs)
+  }
+
+  lemma ActGroupsIn(a: LG.GroupAction, G: set<LG.GroupId>)
+    requires CE.GmActionIn(a, G)
+    ensures ActGroups(a) <= G
+  {
+    match a case Open(g) => case Close(g) => case Reset(gs) =>
+  }
+
+  /** Two actions on disjoint groups commute. */
+  lemma GMUpdateCommute(a: LG.GroupAction, i: nat, b: LG.GroupAction, j: nat, gm: LG.GroupMap)
+    requires ActGroups(a) !! ActGroups(b)
+    ensures LG.GMUpdate(a, i, LG.GMUpdate(b, j, gm)) == LG.GMUpdate(b, j, LG.GMUpdate(a, i, gm))
+  {
+    match a
+    case Open(g) =>
+      match b {
+      case Open(h) =>
+        assert g != h;
+        assert LG.GMOpen(i, g, LG.GMOpen(j, h, gm)) == LG.GMOpen(j, h, LG.GMOpen(i, g, gm));
+      case Close(h) =>
+        assert g != h;
+        assert LG.Find(h, LG.GMOpen(i, g, gm)) == LG.Find(h, gm);
+      case Reset(hs) =>
+        assert g !in hs;
+        assert LG.GMOpen(i, g, LG.GMReset(hs, gm)) == LG.GMReset(hs, LG.GMOpen(i, g, gm));
+      }
+    case Close(g) =>
+      match b {
+      case Open(h) =>
+        assert g != h;
+        assert LG.Find(g, LG.GMOpen(j, h, gm)) == LG.Find(g, gm);
+      case Close(h) =>
+        assert g != h;
+        assert LG.Find(g, LG.GMClose(j, h, gm)) == LG.Find(g, gm);
+        assert LG.Find(h, LG.GMClose(i, g, gm)) == LG.Find(h, gm);
+      case Reset(hs) =>
+        assert g !in hs;
+        assert LG.Find(g, LG.GMReset(hs, gm)) == LG.Find(g, gm);
+      }
+    case Reset(gs) =>
+      match b {
+      case Open(h) =>
+        assert h !in gs;
+        assert LG.GMOpen(j, h, LG.GMReset(gs, gm)) == LG.GMReset(gs, LG.GMOpen(j, h, gm));
+      case Close(h) =>
+        assert h !in gs;
+        assert LG.Find(h, LG.GMReset(gs, gm)) == LG.Find(h, gm);
+      case Reset(hs) =>
+        assert LG.GMReset(gs, LG.GMReset(hs, gm)) == LG.GMReset(hs, LG.GMReset(gs, gm));
+      }
+  }
+
+  /** A path confined to `G` commutes with one action outside `G`. */
+  lemma ApplyPathActCommute(p: seq<LG.GroupAction>, idx: nat, gm: LG.GroupMap,
+                            G: set<LG.GroupId>, a: LG.GroupAction, j: nat)
+    requires NP.PathIn(p, G)
+    requires ActGroups(a) !! G
+    ensures NP.ApplyPath(p, idx, LG.GMUpdate(a, j, gm))
+         == LG.GMUpdate(a, j, NP.ApplyPath(p, idx, gm))
+    decreases |p|
+  {
+    if |p| > 0 {
+      ActGroupsIn(p[0], G);
+      GMUpdateCommute(p[0], idx, a, j, gm);
+      forall i | 0 <= i < |p[1..]| ensures CE.GmActionIn(p[1..][i], G) {
+        assert p[1..][i] == p[i + 1];
+      }
+      ApplyPathActCommute(p[1..], idx, LG.GMUpdate(p[0], idx, gm), G, a, j);
+    }
+  }
+
+  /** One stamp's fold touches only its body's groups, so it commutes with
+      any action outside them. */
+  lemma StampApplyActCommute(qm: AR.QMap, str: string, qid: nat, qcp: seq<int>,
+                             r1: R.regex, gm: LG.GroupMap, a: LG.GroupAction, j: nat)
+    requires T.TransWf(r1)
+    requires ActGroups(a) !! CapIds(r1)
+    requires StampReady(qm, str, qid, qcp) ==>
+               (var b := qm.bodies[qid as int];
+                T.TransWf(b) && L.DefGroups(T.Translate(b)) == L.DefGroups(T.Translate(r1)))
+    ensures StampApply(qm, str, qid, qcp, r1, LG.GMUpdate(a, j, gm))
+         == LG.GMUpdate(a, j, StampApply(qm, str, qid, qcp, r1, gm))
+  {
+    if StampReady(qm, str, qid, qcp) {
+      var scp := StampCp(qcp, qid);
+      var b := qm.bodies[qid as int];
+      var p := TR.FirstEmptyPathR(qm, b, T.InputAt(str, scp));
+      var gl := L.DefGroups(T.Translate(r1));
+      DefGroupsCapIds(r1);
+      assert GSet(gl) == CapIds(r1);
+      GMUpdateCommute(LG.Reset(gl), scp, a, j, gm);
+      assert LG.GMReset(gl, LG.GMUpdate(a, j, gm)) == LG.GMUpdate(a, j, LG.GMReset(gl, gm));
+      if p.Some? {
+        assert NP.PathIn(p.value, GSet(gl)) by { FirstEmptyPathRIn(qm, b, T.InputAt(str, scp)); }
+        ApplyPathActCommute(p.value, scp, LG.GMReset(gl, gm), GSet(gl), a, j);
+      }
+    }
+  }
+
+  /** `G` is disjoint from every STAMPED quantifier body of `r`. */
+  ghost predicate StampedDisjoint(r: R.regex, qcp: seq<int>, G: set<LG.GroupId>) {
+    forall A: nat :: A in QuantIds(r) && AI.get_idx(qcp, A) >= 0 ==> CapIds(QidBody(r, A)) !! G
+  }
+
+  lemma StampedDisjointSub(r: R.regex, sub: R.regex, qcp: seq<int>, G: set<LG.GroupId>)
+    requires forall A: nat :: A in QuantIds(sub) ==>
+               A in QuantIds(r) && QidBody(r, A) == QidBody(sub, A)
+    requires StampedDisjoint(r, qcp, G)
+    ensures StampedDisjoint(sub, qcp, G)
+  {}
+
+  /** THE general commutation: an action disjoint from every stamped body
+      passes through the stamp-aware readout. */
+  lemma LiveStampsGmActCommute(r: R.regex, qm: AR.QMap, str: string, qc: seq<int>,
+                               qcp: seq<int>, mx: int, gm: LG.GroupMap,
+                               a: LG.GroupAction, j: nat)
+    requires T.TransWf(r)
+    requires QuantUnique(r)
+    requires StampBodiesOk(r, qm, str, qcp)
+    requires StampedDisjoint(r, qcp, ActGroups(a))
+    ensures LiveStampsGm(r, qm, str, qc, qcp, mx, LG.GMUpdate(a, j, gm))
+         == LG.GMUpdate(a, j, LiveStampsGm(r, qm, str, qc, qcp, mx, gm))
+    decreases r
+  {
+    match r
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_lookaround(_, _, _) =>
+    case Re_alt(r1, r2) =>
+      SubQuantIds(r, r1, r2);
+      StampedDisjointSub(r, r1, qcp, ActGroups(a));
+      StampedDisjointSub(r, r2, qcp, ActGroups(a));
+      StampBodiesSub(r, r1, qm, str, qcp);
+      StampBodiesSub(r, r2, qm, str, qcp);
+      LiveStampsGmActCommute(r1, qm, str, qc, qcp, mx, gm, a, j);
+      LiveStampsGmActCommute(r2, qm, str, qc, qcp, mx,
+                             LiveStampsGm(r1, qm, str, qc, qcp, mx, gm), a, j);
+    case Re_con(r1, r2) =>
+      SubQuantIds(r, r1, r2);
+      StampedDisjointSub(r, r1, qcp, ActGroups(a));
+      StampedDisjointSub(r, r2, qcp, ActGroups(a));
+      StampBodiesSub(r, r1, qm, str, qcp);
+      StampBodiesSub(r, r2, qm, str, qcp);
+      LiveStampsGmActCommute(r1, qm, str, qc, qcp, mx, gm, a, j);
+      LiveStampsGmActCommute(r2, qm, str, qc, qcp, mx,
+                             LiveStampsGm(r1, qm, str, qc, qcp, mx, gm), a, j);
+    case Re_quant(nul, qid, q, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      if qv < mx {
+      } else if qid >= 0 && AI.get_idx(qcp, qid) >= 0 {
+        assert (qid as nat) in QuantIds(r);
+        assert QidBody(r, qid as nat) == r1;
+        assert StampReady(qm, str, qid as nat, qcp) ==>
+                 L.DefGroups(T.Translate(qm.bodies[qid as int]))
+                 == L.DefGroups(T.Translate(r1));       // StampBodiesOk at A == qid
+        StampApplyActCommute(qm, str, qid as nat, qcp, r1, gm, a, j);
+      } else {
+        assert forall A: nat :: A in QuantIds(r1) ==>
+                 A in QuantIds(r) && QidBody(r, A) == QidBody(r1, A)
+          by { forall A: nat | A in QuantIds(r1) ensures QidBody(r, A) == QidBody(r1, A) {
+                 assert qid < 0 || (qid as nat) != A;   // QuantUnique: qid is not inside r1
+               } }
+        StampedDisjointSub(r, r1, qcp, ActGroups(a));
+        StampBodiesSub(r, r1, qm, str, qcp);
+        LiveStampsGmActCommute(r1, qm, str, qc, qcp, qv, gm, a, j);
+      }
+    case Re_capture(cid, r1) =>
+      StampedDisjointSub(r, r1, qcp, ActGroups(a));
+      StampBodiesSub(r, r1, qm, str, qcp);
+      LiveStampsGmActCommute(r1, qm, str, qc, qcp, mx, gm, a, j);
+  }
+
+  /** …and so does a whole path confined to a set disjoint from them. */
+  lemma LiveStampsGmPathCommute(r: R.regex, qm: AR.QMap, str: string, qc: seq<int>,
+                                qcp: seq<int>, mx: int, gm: LG.GroupMap,
+                                p: seq<LG.GroupAction>, j: nat, G: set<LG.GroupId>)
+    requires T.TransWf(r)
+    requires QuantUnique(r)
+    requires StampBodiesOk(r, qm, str, qcp)
+    requires NP.PathIn(p, G)
+    requires StampedDisjoint(r, qcp, G)
+    ensures LiveStampsGm(r, qm, str, qc, qcp, mx, NP.ApplyPath(p, j, gm))
+         == NP.ApplyPath(p, j, LiveStampsGm(r, qm, str, qc, qcp, mx, gm))
+    decreases |p|
+  {
+    if |p| > 0 {
+      ActGroupsIn(p[0], G);
+      assert StampedDisjoint(r, qcp, ActGroups(p[0]));
+      LiveStampsGmActCommute(r, qm, str, qc, qcp, mx, gm, p[0], j);
+      forall i | 0 <= i < |p[1..]| ensures CE.GmActionIn(p[1..][i], G) {
+        assert p[1..][i] == p[i + 1];
+      }
+      LiveStampsGmPathCommute(r, qm, str, qc, qcp, mx, LG.GMUpdate(p[0], j, gm), p[1..], j, G);
+    }
+  }
+
+  /** The Close step's instance (twin of `LiveStampsGmOpenCommute`). */
+  lemma LiveStampsGmCloseCommute(r: R.regex, qm: AR.QMap, str: string, qc: seq<int>,
+                                 qcp: seq<int>, mx: int, gm: LG.GroupMap,
+                                 cp: nat, gid: LG.GroupId)
+    requires T.TransWf(r)
+    requires QuantUnique(r)
+    requires StampBodiesOk(r, qm, str, qcp)
+    requires forall A: nat :: A in QuantIds(r) && AI.get_idx(qcp, A) >= 0
+               ==> gid !in CapIds(QidBody(r, A))
+    ensures LiveStampsGm(r, qm, str, qc, qcp, mx, LG.GMClose(cp, gid, gm))
+         == LG.GMClose(cp, gid, LiveStampsGm(r, qm, str, qc, qcp, mx, gm))
+  {
+    assert StampedDisjoint(r, qcp, ActGroups(LG.Close(gid)));
+    LiveStampsGmActCommute(r, qm, str, qc, qcp, mx, gm, LG.Close(gid), cp);
+  }
+
+  // ----- absorption: a reset covering the overridden groups erases them -----
+
+  lemma ResetAbsorbsAct(G: LG.GroupSet, a: LG.GroupAction, j: nat, gm: LG.GroupMap)
+    requires ActGroups(a) <= GSet(G)
+    ensures LG.GMReset(G, LG.GMUpdate(a, j, gm)) == LG.GMReset(G, gm)
+  {
+    match a
+    case Open(g) =>
+      assert g in G;
+      assert LG.GMReset(G, LG.GMOpen(j, g, gm)) == LG.GMReset(G, gm);
+    case Close(g) =>
+      assert g in G;
+      assert LG.GMReset(G, LG.GMClose(j, g, gm)) == LG.GMReset(G, gm);
+    case Reset(gs) =>
+      assert LG.GMReset(G, LG.GMReset(gs, gm)) == LG.GMReset(G, gm);
+  }
+
+  lemma ResetAbsorbsPath(G: LG.GroupSet, p: seq<LG.GroupAction>, j: nat, gm: LG.GroupMap)
+    requires NP.PathIn(p, GSet(G))
+    ensures LG.GMReset(G, NP.ApplyPath(p, j, gm)) == LG.GMReset(G, gm)
+    decreases |p|
+  {
+    if |p| > 0 {
+      ActGroupsIn(p[0], GSet(G));
+      forall i | 0 <= i < |p[1..]| ensures CE.GmActionIn(p[1..][i], GSet(G)) {
+        assert p[1..][i] == p[i + 1];
+      }
+      ResetAbsorbsPath(G, p[1..], j, LG.GMUpdate(p[0], j, gm));
+      ResetAbsorbsAct(G, p[0], j, gm);
+    }
+  }
+
+  /** Every stamp the readout can apply inside `r` writes only groups of `r`,
+      so a reset covering `r`'s groups erases the whole readout of `r`. */
+  lemma LiveStampsGmResetAbsorb(r: R.regex, qm: AR.QMap, str: string, qc: seq<int>,
+                                qcp: seq<int>, mx: int, gm: LG.GroupMap, G: LG.GroupSet)
+    requires T.TransWf(r)
+    requires QuantUnique(r)
+    requires StampBodiesOk(r, qm, str, qcp)
+    requires CapIds(r) <= GSet(G)
+    ensures LG.GMReset(G, LiveStampsGm(r, qm, str, qc, qcp, mx, gm)) == LG.GMReset(G, gm)
+    decreases r
+  {
+    match r
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_lookaround(_, _, _) =>
+    case Re_alt(r1, r2) =>
+      SubQuantIds(r, r1, r2);
+      StampBodiesSub(r, r1, qm, str, qcp);
+      StampBodiesSub(r, r2, qm, str, qcp);
+      LiveStampsGmResetAbsorb(r2, qm, str, qc, qcp, mx, LiveStampsGm(r1, qm, str, qc, qcp, mx, gm), G);
+      LiveStampsGmResetAbsorb(r1, qm, str, qc, qcp, mx, gm, G);
+    case Re_con(r1, r2) =>
+      SubQuantIds(r, r1, r2);
+      StampBodiesSub(r, r1, qm, str, qcp);
+      StampBodiesSub(r, r2, qm, str, qcp);
+      LiveStampsGmResetAbsorb(r2, qm, str, qc, qcp, mx, LiveStampsGm(r1, qm, str, qc, qcp, mx, gm), G);
+      LiveStampsGmResetAbsorb(r1, qm, str, qc, qcp, mx, gm, G);
+    case Re_quant(nul, qid, q, r1) =>
+      var qv := AI.get_idx(qc, qid);
+      if qv < mx {
+      } else if qid >= 0 && AI.get_idx(qcp, qid) >= 0 {
+        var A: nat := qid as nat;
+        if StampReady(qm, str, A, qcp) {
+          assert A in QuantIds(r) && QidBody(r, A) == r1;
+          var scp := StampCp(qcp, A);
+          var b := qm.bodies[A as int];
+          var p := TR.FirstEmptyPathR(qm, b, T.InputAt(str, scp));
+          var gl := L.DefGroups(T.Translate(r1));
+          DefGroupsCapIds(r1);
+          assert GSet(gl) <= GSet(G);
+          assert L.DefGroups(T.Translate(b)) == gl;             // StampBodiesOk at A
+          ResetAbsorbsAct(G, LG.Reset(gl), 0, gm);
+          if p.Some? {
+            FirstEmptyPathRIn(qm, b, T.InputAt(str, scp));
+            PathInMono(p.value, GSet(gl), GSet(G));
+            ResetAbsorbsPath(G, p.value, scp, LG.GMReset(gl, gm));
+          }
+        }
+      } else {
+        assert forall A: nat :: A in QuantIds(r1) ==>
+                 A in QuantIds(r) && QidBody(r, A) == QidBody(r1, A)
+          by { forall A: nat | A in QuantIds(r1) ensures QidBody(r, A) == QidBody(r1, A) {
+                 assert qid < 0 || (qid as nat) != A;
+               } }
+        StampBodiesSub(r, r1, qm, str, qcp);
+        LiveStampsGmResetAbsorb(r1, qm, str, qc, qcp, qv, gm, G);
+      }
+    case Re_capture(cid, r1) =>
+      StampBodiesSub(r, r1, qm, str, qcp);
+      LiveStampsGmResetAbsorb(r1, qm, str, qc, qcp, mx, gm, G);
+  }
+
+  // ----- clock/stamp congruence and staleness -----
+
+  /** The readout reads the quant banks only at `r`'s own quantifier ids. */
+  lemma LiveStampsGmCong(r: R.regex, qm: AR.QMap, str: string, qc1: seq<int>, qcp1: seq<int>,
+                         qc2: seq<int>, qcp2: seq<int>, mx: int, gm: LG.GroupMap)
+    requires T.TransWf(r)
+    requires forall q: nat :: q in QuantIds(r) ==>
+               AI.get_idx(qc1, q) == AI.get_idx(qc2, q) && AI.get_idx(qcp1, q) == AI.get_idx(qcp2, q)
+    ensures LiveStampsGm(r, qm, str, qc1, qcp1, mx, gm) == LiveStampsGm(r, qm, str, qc2, qcp2, mx, gm)
+    decreases r
+  {
+    match r
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_lookaround(_, _, _) =>
+    case Re_alt(r1, r2) =>
+      LiveStampsGmCong(r1, qm, str, qc1, qcp1, qc2, qcp2, mx, gm);
+      LiveStampsGmCong(r2, qm, str, qc1, qcp1, qc2, qcp2, mx, LiveStampsGm(r1, qm, str, qc1, qcp1, mx, gm));
+    case Re_con(r1, r2) =>
+      LiveStampsGmCong(r1, qm, str, qc1, qcp1, qc2, qcp2, mx, gm);
+      LiveStampsGmCong(r2, qm, str, qc1, qcp1, qc2, qcp2, mx, LiveStampsGm(r1, qm, str, qc1, qcp1, mx, gm));
+    case Re_quant(nul, qid, q, r1) =>
+      assert AI.get_idx(qc1, qid) == AI.get_idx(qc2, qid);
+      var qv := AI.get_idx(qc1, qid);
+      if qid >= 0 {
+        assert AI.get_idx(qcp1, qid) == AI.get_idx(qcp2, qid);
+        assert StampReady(qm, str, qid as nat, qcp1) == StampReady(qm, str, qid as nat, qcp2);
+        assert StampApply(qm, str, qid as nat, qcp1, r1, gm) == StampApply(qm, str, qid as nat, qcp2, r1, gm);
+      }
+      LiveStampsGmCong(r1, qm, str, qc1, qcp1, qc2, qcp2, qv, gm);
+    case Re_capture(cid, r1) =>
+      LiveStampsGmCong(r1, qm, str, qc1, qcp1, qc2, qcp2, mx, gm);
+  }
+
+  /** Every quantifier of `r` is older than the threshold: nothing is live. */
+  lemma LiveStampsGmAllStale(r: R.regex, qm: AR.QMap, str: string, qc: seq<int>, qcp: seq<int>,
+                             mx: int, gm: LG.GroupMap)
+    requires T.TransWf(r)
+    requires mx >= 0
+    requires forall q: nat :: q in QuantIds(r) ==> AI.get_idx(qc, q) < mx
+    ensures LiveStampsGm(r, qm, str, qc, qcp, mx, gm) == gm
+    decreases r
+  {
+    match r
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_lookaround(_, _, _) =>
+    case Re_alt(r1, r2) =>
+      LiveStampsGmAllStale(r1, qm, str, qc, qcp, mx, gm);
+      LiveStampsGmAllStale(r2, qm, str, qc, qcp, mx, gm);
+    case Re_con(r1, r2) =>
+      LiveStampsGmAllStale(r1, qm, str, qc, qcp, mx, gm);
+      LiveStampsGmAllStale(r2, qm, str, qc, qcp, mx, gm);
+    case Re_quant(nul, qid, q, r1) =>
+      if qid >= 0 { assert (qid as nat) in QuantIds(r); }
+      assert AI.get_idx(qc, qid) < mx;
+    case Re_capture(cid, r1) =>
+      LiveStampsGmAllStale(r1, qm, str, qc, qcp, mx, gm);
+  }
+
+  // ----- the two quant writes -----
+
+  /** The quant banks after writing `q0`: clock `clk`, stamp `s0`; every other
+      id unchanged. */
+  ghost predicate QuantWriteAt(qc: seq<int>, qcp: seq<int>, qc': seq<int>, qcp': seq<int>,
+                               q0: nat, clk: int, s0: int) {
+    (forall q: int :: q != q0 as int ==>
+       AI.get_idx(qc', q) == AI.get_idx(qc, q) && AI.get_idx(qcp', q) == AI.get_idx(qcp, q))
+    && AI.get_idx(qc', q0) == clk && AI.get_idx(qcp', q0) == s0
+  }
+
+  /** No STAMPED quantifier strictly encloses `q0`. (At a `SetQuantToClock(q0, _)`
+      site every enclosing quantifier's clock mark has run since its stamp
+      could last have been set — `NST.NestStampRE`.) */
+  ghost predicate NoStampedAbove(r: R.regex, qcp: seq<int>, q0: nat) {
+    forall A: nat :: A in QuantIds(r) && A != q0 && AI.get_idx(qcp, A) >= 0
+      ==> q0 !in QuantIds(QidBody(r, A))
+  }
+
+  lemma NoStampedAboveSub(r: R.regex, sub: R.regex, qcp: seq<int>, q0: nat)
+    requires forall A: nat :: A in QuantIds(sub) ==>
+               A in QuantIds(r) && QidBody(r, A) == QidBody(sub, A)
+    requires NoStampedAbove(r, qcp, q0)
+    ensures NoStampedAbove(sub, qcp, q0)
+  {}
+
+  /** THE CLOCK MARK `SetQuantToClock(q0, false)`: the readout of the reset map
+      is the reset of the readout. Inside `q0`'s body everything is stale under
+      the fresh clock on the left and erased by the reset on the right;
+      siblings commute (disjoint groups); enclosing quantifiers are unstamped. */
+  lemma LiveStampsGmMark(r: R.regex, qm: AR.QMap, str: string,
+                         qc: seq<int>, qcp: seq<int>, qc': seq<int>, qcp': seq<int>,
+                         mx: int, X: LG.GroupMap, q0: nat, clk: int)
+    requires T.TransWf(r) && QuantUnique(r) && CapUnique(r)
+    requires StampBodiesOk(r, qm, str, qcp)
+    requires q0 in QuantIds(r)
+    requires T.TransWf(QidBody(r, q0))
+    requires QuantWriteAt(qc, qcp, qc', qcp', q0, clk, -1)
+    requires forall q: nat :: q in QuantIds(r) ==> AI.get_idx(qc, q) < clk
+    requires mx < clk && clk >= 0
+    requires NoStampedAbove(r, qcp, q0)
+    ensures var G0 := L.DefGroups(T.Translate(QidBody(r, q0)));
+      LiveStampsGm(r, qm, str, qc', qcp', mx, LG.GMReset(G0, X))
+      == LG.GMReset(G0, LiveStampsGm(r, qm, str, qc, qcp, mx, X))
+    decreases r, 1
+  {
+    var G0 := L.DefGroups(T.Translate(QidBody(r, q0)));
+    TransWfQidBodyPIV(r, q0);
+    DefGroupsCapIds(QidBody(r, q0));
+    assert GSet(G0) == CapIds(QidBody(r, q0));
+    match r
+    case Re_alt(r1, r2) =>
+      assert {:split_here} true;
+      MarkSplit(r, r1, r2, qm, str, qc, qcp, qc', qcp', mx, X, q0, clk);
+    case Re_con(r1, r2) =>
+      assert {:split_here} true;
+      MarkSplit(r, r1, r2, qm, str, qc, qcp, qc', qcp', mx, X, q0, clk);
+    case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;
+      assert qid >= 0;
+      if qid as nat == q0 {
+        assert QidBody(r, q0) == r1;
+        // left: q0's clock is the freshest, its stamp is clear, and everything
+        // inside its body is older than `clk` — stale.
+        assert AI.get_idx(qc', qid) == clk;
+        assert forall A: nat :: A in QuantIds(r1) ==> A != q0 && AI.get_idx(qc', A) == AI.get_idx(qc, A);
+        LiveStampsGmAllStale(r1, qm, str, qc', qcp', clk, LG.GMReset(G0, X));
+        assert LiveStampsGm(r, qm, str, qc', qcp', mx, LG.GMReset(G0, X)) == LG.GMReset(G0, X);
+        // right: whatever the readout did inside `r`, the reset erases it.
+        LiveStampsGmResetAbsorb(r, qm, str, qc, qcp, mx, X, G0);
+      } else {
+        assert q0 in QuantIds(r1);
+        assert forall A: nat :: A in QuantIds(r1) ==>
+                 A in QuantIds(r) && QidBody(r, A) == QidBody(r1, A)
+          by { forall A: nat | A in QuantIds(r1) ensures QidBody(r, A) == QidBody(r1, A) {
+                 assert (qid as nat) != A;
+               } }
+        var qv := AI.get_idx(qc, qid);
+        assert AI.get_idx(qc', qid) == qv && AI.get_idx(qcp', qid) == AI.get_idx(qcp, qid);
+        if qv < mx {
+        } else {
+          assert AI.get_idx(qcp, qid) < 0 by {
+            assert QidBody(r, qid as nat) == r1;
+          }
+          StampBodiesSub(r, r1, qm, str, qcp);
+          NoStampedAboveSub(r, r1, qcp, q0);
+          assert qv < clk by { assert (qid as nat) in QuantIds(r); }
+          LiveStampsGmMark(r1, qm, str, qc, qcp, qc', qcp', qv, X, q0, clk);
+        }
+      }
+    case Re_capture(cid, r1) =>
+      assert {:split_here} true;
+      StampBodiesSub(r, r1, qm, str, qcp);
+      NoStampedAboveSub(r, r1, qcp, q0);
+      LiveStampsGmMark(r1, qm, str, qc, qcp, qc', qcp', mx, X, q0, clk);
+    case Re_lookaround(_, _, _) =>
+  }
+
+  /** The alt/con arm of `LiveStampsGmMark`: recurse into the side holding
+      `q0`; the other side commutes with the reset and ignores the write. */
+  lemma MarkSplit(r: R.regex, r1: R.regex, r2: R.regex, qm: AR.QMap, str: string,
+                  qc: seq<int>, qcp: seq<int>, qc': seq<int>, qcp': seq<int>,
+                  mx: int, X: LG.GroupMap, q0: nat, clk: int)
+    requires r == R.Re_alt(r1, r2) || r == R.Re_con(r1, r2)
+    requires T.TransWf(r) && QuantUnique(r) && CapUnique(r)
+    requires StampBodiesOk(r, qm, str, qcp)
+    requires q0 in QuantIds(r)
+    requires T.TransWf(QidBody(r, q0))
+    requires QuantWriteAt(qc, qcp, qc', qcp', q0, clk, -1)
+    requires forall q: nat :: q in QuantIds(r) ==> AI.get_idx(qc, q) < clk
+    requires mx < clk && clk >= 0
+    requires NoStampedAbove(r, qcp, q0)
+    ensures var G0 := L.DefGroups(T.Translate(QidBody(r, q0)));
+      LiveStampsGm(r, qm, str, qc', qcp', mx, LG.GMReset(G0, X))
+      == LG.GMReset(G0, LiveStampsGm(r, qm, str, qc, qcp, mx, X))
+    decreases r, 0
+  {
+    var G0 := L.DefGroups(T.Translate(QidBody(r, q0)));
+    TransWfQidBodyPIV(r, q0);
+    DefGroupsCapIds(QidBody(r, q0));
+    SubQuantIds(r, r1, r2);
+    StampBodiesSub(r, r1, qm, str, qcp);
+    StampBodiesSub(r, r2, qm, str, qcp);
+    NoStampedAboveSub(r, r1, qcp, q0);
+    NoStampedAboveSub(r, r2, qcp, q0);
+    var Rs := LG.Reset(G0);
+    assert LG.GMUpdate(Rs, 0, X) == LG.GMReset(G0, X);
+    if q0 in QuantIds(r1) {
+      assert q0 !in QuantIds(r2);
+      assert QidBody(r, q0) == QidBody(r1, q0);
+      CapIdsQidBodySubset(r1, q0);
+      // r2 is untouched by the write and disjoint from q0's body
+      assert StampedDisjoint(r2, qcp, ActGroups(Rs)) by {
+        forall A: nat | A in QuantIds(r2) && AI.get_idx(qcp, A) >= 0
+          ensures CapIds(QidBody(r2, A)) !! ActGroups(Rs)
+        { CapIdsQidBodySubset(r2, A); }
+      }
+      var Z := LiveStampsGm(r1, qm, str, qc, qcp, mx, X);
+      LiveStampsGmMark(r1, qm, str, qc, qcp, qc', qcp', mx, X, q0, clk);
+      LiveStampsGmCong(r2, qm, str, qc', qcp', qc, qcp, mx, LG.GMReset(G0, Z));
+      LiveStampsGmActCommute(r2, qm, str, qc, qcp, mx, Z, Rs, 0);
+    } else {
+      assert q0 in QuantIds(r2);
+      assert QidBody(r, q0) == QidBody(r2, q0);
+      CapIdsQidBodySubset(r2, q0);
+      assert StampedDisjoint(r1, qcp, ActGroups(Rs)) by {
+        forall A: nat | A in QuantIds(r1) && AI.get_idx(qcp, A) >= 0
+          ensures CapIds(QidBody(r1, A)) !! ActGroups(Rs)
+        { CapIdsQidBodySubset(r1, A); }
+      }
+      LiveStampsGmCong(r1, qm, str, qc', qcp', qc, qcp, mx, LG.GMReset(G0, X));
+      LiveStampsGmActCommute(r1, qm, str, qc, qcp, mx, X, Rs, 0);
+      var W := LiveStampsGm(r1, qm, str, qc, qcp, mx, X);
+      LiveStampsGmMark(r2, qm, str, qc, qcp, qc', qcp', mx, W, q0, clk);
+    }
+  }
+
+  lemma TransWfQidBodyPIV(r: R.regex, qid: nat)
+    requires T.TransWf(r) && qid in QuantIds(r)
+    ensures T.TransWf(QidBody(r, qid))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => if qid in QuantIds(r1) { TransWfQidBodyPIV(r1, qid); } else { TransWfQidBodyPIV(r2, qid); }
+    case Re_con(r1, r2) => if qid in QuantIds(r1) { TransWfQidBodyPIV(r1, qid); } else { TransWfQidBodyPIV(r2, qid); }
+    case Re_quant(nul, qid0, q, r1) => if qid0 >= 0 && (qid0 as nat) == qid {} else { TransWfQidBodyPIV(r1, qid); }
+    case Re_capture(cid, r1) => TransWfQidBodyPIV(r1, qid);
+    case Re_lookaround(_, _, r1) => TransWfQidBodyPIV(r1, qid);
+  }
+
+
+  /** A stamp's fold depends on the map only through the reset of its body's
+      groups. */
+  lemma StampApplyResetCong(qm: AR.QMap, str: string, qid: nat, qcp: seq<int>,
+                            r1: R.regex, Z1: LG.GroupMap, Z2: LG.GroupMap)
+    requires T.TransWf(r1)
+    requires StampReady(qm, str, qid, qcp)
+    requires TR.FirstEmptyPathR(qm, qm.bodies[qid as int], T.InputAt(str, StampCp(qcp, qid))).Some?
+    requires LG.GMReset(L.DefGroups(T.Translate(r1)), Z1) == LG.GMReset(L.DefGroups(T.Translate(r1)), Z2)
+    ensures StampApply(qm, str, qid, qcp, r1, Z1) == StampApply(qm, str, qid, qcp, r1, Z2)
+  {}
+
+  /** A stamp's fold commutes with the readout of a subterm whose stamped
+      bodies are disjoint from the stamp's body. */
+  lemma LiveStampsGmStampApplyCommute(r: R.regex, qm: AR.QMap, str: string, qc: seq<int>,
+                                      qcp: seq<int>, mx: int, Z: LG.GroupMap,
+                                      q0: nat, qcp0: seq<int>, b1: R.regex)
+    requires T.TransWf(r) && T.TransWf(b1)
+    requires QuantUnique(r)
+    requires StampBodiesOk(r, qm, str, qcp)
+    requires StampedDisjoint(r, qcp, CapIds(b1))
+    requires StampReady(qm, str, q0, qcp0) ==>
+               (var b := qm.bodies[q0 as int];
+                T.TransWf(b) && L.DefGroups(T.Translate(b)) == L.DefGroups(T.Translate(b1)))
+    ensures LiveStampsGm(r, qm, str, qc, qcp, mx, StampApply(qm, str, q0, qcp0, b1, Z))
+         == StampApply(qm, str, q0, qcp0, b1, LiveStampsGm(r, qm, str, qc, qcp, mx, Z))
+  {
+    if StampReady(qm, str, q0, qcp0) {
+      var scp := StampCp(qcp0, q0);
+      var b := qm.bodies[q0 as int];
+      var p := TR.FirstEmptyPathR(qm, b, T.InputAt(str, scp));
+      var gl := L.DefGroups(T.Translate(b1));
+      DefGroupsCapIds(b1);
+      assert GSet(gl) == CapIds(b1);
+      var Rs := LG.Reset(gl);
+      assert StampedDisjoint(r, qcp, ActGroups(Rs));
+      LiveStampsGmActCommute(r, qm, str, qc, qcp, mx, Z, Rs, scp);
+      assert LG.GMUpdate(Rs, scp, Z) == LG.GMReset(gl, Z);
+      if p.Some? {
+        assert NP.PathIn(p.value, GSet(gl)) by { FirstEmptyPathRIn(qm, b, T.InputAt(str, scp)); }
+        LiveStampsGmPathCommute(r, qm, str, qc, qcp, mx, LG.GMReset(gl, Z), p.value, scp, GSet(gl));
+      }
+    }
+  }
+
+  /** THE TRUE STAMP `SetQuantToClock(q0, true)` at position `scp`: the readout
+      gains exactly `q0`'s virtual chain — `StampApply` under the new stamp
+      bank, i.e. the reset of `q0`'s body followed by its first empty path at
+      `scp`. Needs `q0` outside looks, LIVE under the new clocks
+      (`QChainFresh`), its enclosing quantifiers unstamped, and the chain to
+      exist (the `tr_stamp` rule's `p.Some?`). */
+  lemma LiveStampsGmStamp(r: R.regex, qm: AR.QMap, str: string,
+                          qc: seq<int>, qcp: seq<int>, qc': seq<int>, qcp': seq<int>,
+                          mx: int, X: LG.GroupMap, q0: nat, clk: int, scp: nat)
+    requires T.TransWf(r) && QuantUnique(r) && CapUnique(r)
+    requires q0 in QuantIds(r) && q0 in QuantIdsOutsideLooks(r)
+    requires T.TransWf(QidBody(r, q0))
+    requires StampBodiesOk(r, qm, str, qcp) && StampBodiesOk(r, qm, str, qcp')
+    requires QuantWriteAt(qc, qcp, qc', qcp', q0, clk, scp as int)
+    requires forall q: nat :: q in QuantIds(r) ==> AI.get_idx(qc, q) < clk
+    requires mx < clk && clk >= 0
+    requires NoStampedAbove(r, qcp, q0)
+    requires QChainFresh(r, qc', mx, q0)
+    requires StampReady(qm, str, q0, qcp')
+    requires TR.FirstEmptyPathR(qm, qm.bodies[q0 as int], T.InputAt(str, scp)).Some?
+    ensures var G0 := L.DefGroups(T.Translate(QidBody(r, q0)));
+      LiveStampsGm(r, qm, str, qc', qcp', mx, LG.GMReset(G0, X))
+      == StampApply(qm, str, q0, qcp', QidBody(r, q0), LiveStampsGm(r, qm, str, qc, qcp, mx, X))
+    decreases r, 1
+  {
+    var G0 := L.DefGroups(T.Translate(QidBody(r, q0)));
+    DefGroupsCapIds(QidBody(r, q0));
+    match r
+    case Re_alt(r1, r2) =>
+      assert {:split_here} true;
+      StampSplit(r, r1, r2, qm, str, qc, qcp, qc', qcp', mx, X, q0, clk, scp);
+    case Re_con(r1, r2) =>
+      assert {:split_here} true;
+      StampSplit(r, r1, r2, qm, str, qc, qcp, qc', qcp', mx, X, q0, clk, scp);
+    case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;
+      assert qid >= 0;
+      if qid as nat == q0 {
+        assert QidBody(r, q0) == r1;
+        assert AI.get_idx(qc', qid) == clk && AI.get_idx(qcp', qid) == scp as int;
+        assert StampCp(qcp', q0) == scp;
+        // left: q0 is fresh and stamped, so the readout is its fold
+        assert LiveStampsGm(r, qm, str, qc', qcp', mx, LG.GMReset(G0, X))
+            == StampApply(qm, str, q0, qcp', r1, LG.GMReset(G0, X));
+        // right: the fold resets q0's body first, which erases the readout of r
+        var Y := LiveStampsGm(r, qm, str, qc, qcp, mx, X);
+        LiveStampsGmResetAbsorb(r, qm, str, qc, qcp, mx, X, G0);
+        ResetAbsorbsAct(G0, LG.Reset(G0), 0, X);
+        StampApplyResetCong(qm, str, q0, qcp', r1, LG.GMReset(G0, X), Y);
+      } else {
+        assert q0 in QuantIds(r1) && q0 in QuantIdsOutsideLooks(r1);
+        assert forall A: nat :: A in QuantIds(r1) ==>
+                 A in QuantIds(r) && QidBody(r, A) == QidBody(r1, A)
+          by { forall A: nat | A in QuantIds(r1) ensures QidBody(r, A) == QidBody(r1, A) {
+                 assert (qid as nat) != A;
+               } }
+        var qv := AI.get_idx(qc, qid);
+        assert AI.get_idx(qc', qid) == qv && AI.get_idx(qcp', qid) == AI.get_idx(qcp, qid);
+        assert qv >= mx && QChainFresh(r1, qc', qv, q0);         // the chain is fresh at qid
+        assert AI.get_idx(qcp, qid) < 0 by { assert QidBody(r, qid as nat) == r1; }
+        StampBodiesSub(r, r1, qm, str, qcp);
+        StampBodiesSub(r, r1, qm, str, qcp');
+        NoStampedAboveSub(r, r1, qcp, q0);
+        assert qv < clk by { assert (qid as nat) in QuantIds(r); }
+        LiveStampsGmStamp(r1, qm, str, qc, qcp, qc', qcp', qv, X, q0, clk, scp);
+      }
+    case Re_capture(cid, r1) =>
+      assert {:split_here} true;
+      StampBodiesSub(r, r1, qm, str, qcp);
+      StampBodiesSub(r, r1, qm, str, qcp');
+      NoStampedAboveSub(r, r1, qcp, q0);
+      LiveStampsGmStamp(r1, qm, str, qc, qcp, qc', qcp', mx, X, q0, clk, scp);
+    case Re_lookaround(_, _, _) =>
+      assert false;                       // q0 is outside looks
+  }
+
+  /** The alt/con arm of `LiveStampsGmStamp`. */
+  lemma StampSplit(r: R.regex, r1: R.regex, r2: R.regex, qm: AR.QMap, str: string,
+                   qc: seq<int>, qcp: seq<int>, qc': seq<int>, qcp': seq<int>,
+                   mx: int, X: LG.GroupMap, q0: nat, clk: int, scp: nat)
+    requires r == R.Re_alt(r1, r2) || r == R.Re_con(r1, r2)
+    requires T.TransWf(r) && QuantUnique(r) && CapUnique(r)
+    requires q0 in QuantIds(r) && q0 in QuantIdsOutsideLooks(r)
+    requires T.TransWf(QidBody(r, q0))
+    requires StampBodiesOk(r, qm, str, qcp) && StampBodiesOk(r, qm, str, qcp')
+    requires QuantWriteAt(qc, qcp, qc', qcp', q0, clk, scp as int)
+    requires forall q: nat :: q in QuantIds(r) ==> AI.get_idx(qc, q) < clk
+    requires mx < clk && clk >= 0
+    requires NoStampedAbove(r, qcp, q0)
+    requires QChainFresh(r, qc', mx, q0)
+    requires StampReady(qm, str, q0, qcp')
+    requires TR.FirstEmptyPathR(qm, qm.bodies[q0 as int], T.InputAt(str, scp)).Some?
+    ensures var G0 := L.DefGroups(T.Translate(QidBody(r, q0)));
+      LiveStampsGm(r, qm, str, qc', qcp', mx, LG.GMReset(G0, X))
+      == StampApply(qm, str, q0, qcp', QidBody(r, q0), LiveStampsGm(r, qm, str, qc, qcp, mx, X))
+    decreases r, 0
+  {
+    var b1 := QidBody(r, q0);
+    var G0 := L.DefGroups(T.Translate(b1));
+    DefGroupsCapIds(b1);
+    SubQuantIds(r, r1, r2);
+    StampBodiesSub(r, r1, qm, str, qcp);
+    StampBodiesSub(r, r2, qm, str, qcp);
+    StampBodiesSub(r, r1, qm, str, qcp');
+    StampBodiesSub(r, r2, qm, str, qcp');
+    NoStampedAboveSub(r, r1, qcp, q0);
+    NoStampedAboveSub(r, r2, qcp, q0);
+    // the stamp's body table entry agrees with the AST (StampBodiesOk at q0 under qcp')
+    assert L.DefGroups(T.Translate(qm.bodies[q0 as int])) == G0;
+    var Rs := LG.Reset(G0);
+    assert LG.GMUpdate(Rs, 0, X) == LG.GMReset(G0, X);
+    if q0 in QuantIds(r1) {
+      assert q0 !in QuantIds(r2);
+      assert QidBody(r, q0) == QidBody(r1, q0);
+      QuantIdsOutsideLooksSub(r2);
+      assert q0 in QuantIdsOutsideLooks(r1) && QChainFresh(r1, qc', mx, q0);
+      CapIdsQidBodySubset(r1, q0);
+      assert StampedDisjoint(r2, qcp, CapIds(b1)) by {
+        forall A: nat | A in QuantIds(r2) && AI.get_idx(qcp, A) >= 0
+          ensures CapIds(QidBody(r2, A)) !! CapIds(b1)
+        { CapIdsQidBodySubset(r2, A); }
+      }
+      var Z := LiveStampsGm(r1, qm, str, qc, qcp, mx, X);
+      LiveStampsGmStamp(r1, qm, str, qc, qcp, qc', qcp', mx, X, q0, clk, scp);
+      var SZ := StampApply(qm, str, q0, qcp', b1, Z);
+      LiveStampsGmCong(r2, qm, str, qc', qcp', qc, qcp, mx, SZ);
+      LiveStampsGmStampApplyCommute(r2, qm, str, qc, qcp, mx, Z, q0, qcp', b1);
+    } else {
+      assert q0 in QuantIds(r2);
+      assert QidBody(r, q0) == QidBody(r2, q0);
+      assert q0 !in QuantIdsOutsideLooks(r1) by { QuantIdsOutsideLooksSub(r1); }
+      assert q0 in QuantIdsOutsideLooks(r2) && QChainFresh(r2, qc', mx, q0);
+      CapIdsQidBodySubset(r2, q0);
+      assert StampedDisjoint(r1, qcp, ActGroups(Rs)) by {
+        forall A: nat | A in QuantIds(r1) && AI.get_idx(qcp, A) >= 0
+          ensures CapIds(QidBody(r1, A)) !! ActGroups(Rs)
+        { CapIdsQidBodySubset(r1, A); }
+      }
+      LiveStampsGmCong(r1, qm, str, qc', qcp', qc, qcp, mx, LG.GMReset(G0, X));
+      LiveStampsGmActCommute(r1, qm, str, qc, qcp, mx, X, Rs, 0);
+      var W := LiveStampsGm(r1, qm, str, qc, qcp, mx, X);
+      LiveStampsGmStamp(r2, qm, str, qc, qcp, qc', qcp', mx, W, q0, clk, scp);
+    }
+  }
+
+  lemma QuantIdsOutsideLooksSub(r: R.regex)
+    ensures QuantIdsOutsideLooks(r) <= QuantIds(r)
+    decreases r
+  {
+    match r
+    case Re_empty => case Re_character(_) => case Re_anchor(_) =>
+    case Re_alt(r1, r2) => QuantIdsOutsideLooksSub(r1); QuantIdsOutsideLooksSub(r2);
+    case Re_con(r1, r2) => QuantIdsOutsideLooksSub(r1); QuantIdsOutsideLooksSub(r2);
+    case Re_quant(_, _, _, r1) => QuantIdsOutsideLooksSub(r1);
+    case Re_capture(_, r1) => QuantIdsOutsideLooksSub(r1);
+    case Re_lookaround(_, _, _) =>
+  }
+
+
+  /** `QmapOk` pins `qm.bodies[qid]` to the body `QidBody` selects (twin of
+      `QmapOkAtQid` for the §2.5b body table). */
+  lemma QmapOkBodyAtQid(re: R.regex, qm: AR.QMap, qid: nat)
+    requires T.TransWf(re)
+    requires AR.QmapOk(re, qm)
+    requires qid in QuantIds(re)
+    ensures (qid as int) in qm.bodies && qm.bodies[qid as int] == QidBody(re, qid)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) =>
+      if qid in QuantIds(r1) { QmapOkBodyAtQid(r1, qm, qid); } else { QmapOkBodyAtQid(r2, qm, qid); }
+    case Re_con(r1, r2) =>
+      if qid in QuantIds(r1) { QmapOkBodyAtQid(r1, qm, qid); } else { QmapOkBodyAtQid(r2, qm, qid); }
+    case Re_quant(nul, qid0, q, r1) =>
+      if qid0 >= 0 && (qid0 as nat) == qid {
+        assert qid0 == qid as int;
+      } else {
+        QmapOkBodyAtQid(r1, qm, qid);
+      }
+    case Re_capture(cid, r1) => QmapOkBodyAtQid(r1, qm, qid);
+    case Re_lookaround(lid, l, r1) => QmapOkBodyAtQid(r1, qm, qid);
+  }
+
+  /** …so the stamp-body hypothesis of the commutation lemmas is STATIC: it
+      holds for every stamp bank. */
+  lemma QmapOkStampBodies(re: R.regex, qm: AR.QMap, str: string, qcp: seq<int>)
+    requires T.TransWf(re)
+    requires AR.QmapOk(re, qm)
+    ensures StampBodiesOk(re, qm, str, qcp)
+  {
+    forall A: nat | A in QuantIds(re) && AI.get_idx(qcp, A) >= 0 && StampReady(qm, str, A, qcp)
+      ensures T.TransWf(QidBody(re, A))
+           && L.DefGroups(T.Translate(qm.bodies[A as int])) == L.DefGroups(T.Translate(QidBody(re, A)))
+    {
+      QmapOkBodyAtQid(re, qm, A);
+      TransWfQidBodyPIV(re, A);
+    }
+  }
 
 }

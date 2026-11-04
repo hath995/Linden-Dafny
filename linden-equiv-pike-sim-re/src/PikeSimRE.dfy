@@ -37,6 +37,8 @@ module LindenElkPikeSim {
   import ATR = LindenElkActionsTreeRep
   import PIV = LindenElkPikeInv
   import NI = LindenElkNestInv
+  import NST = LindenElkNestStamp
+  import L = Regex
   import CM = LindenElkClockMono
   import SS = SeenSets
   import TR = LindenElkTreeRep
@@ -338,6 +340,141 @@ module LindenElkPikeSim {
   {
     0 <= pc <= endl
     && NI.NestTopRE(re, code, endl, pc as nat, th.capture_regs.a_clk, th.quant_regs.a_clk)
+    // §2.5b rung D (2026-11-04): the POSITIONAL stamp invariant — every
+    // quantifier whose clock mark the thread has passed has a clear stamp.
+    && StampTopRE(re, code, endl, pc as nat, th.quant_regs.a_cp)
+  }
+
+  // =========================================================================
+  // §2.5b RUNG D (2026-11-04): the reconstruction-aware readout across the
+  // register-writing steps. Narrow contracts — no tree, no list machinery —
+  // so each Preserve case spends one call on them.
+  // =========================================================================
+
+  /** The positional stamp invariant behind an OPAQUE wrapper (AGENTS.md §2.4).
+      `NST.NestStampTopRE` is a recursive existential predicate the size of
+      `NI.NestInvRE`; transparent in `ThreadNestRE` it turned
+      `OpenStepThreadRENested` into a 10 GB batch (2026-11-04). Only the narrow
+      helpers below reveal it. */
+  opaque ghost predicate StampTopRE(re: R.regex, code: RB.code, endl: nat, pc: nat, qcp: seq<int>)
+    requires NR.NfaRepRE(re, code, 0, endl)
+  {
+    NST.NestStampTopRE(re, code, endl, pc, qcp)
+  }
+
+  lemma StampTopInit(re: R.regex, code: RB.code, endl: nat, qcp: seq<int>)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    ensures StampTopRE(re, code, endl, 0, qcp)
+  {
+    reveal StampTopRE;
+    NST.NestStampTopInit(re, code, endl, qcp);
+  }
+
+  /** Both `SetQuantToClock` steps: the mark clears `qid0`, the true stamp sets
+      it and leaves the block (`NST.NestStampTopQuantWrite`). */
+  lemma StampQuantWriteTop(re: R.regex, code: RB.code, endl: nat, pc: nat,
+                           qcp: seq<int>, qcp': seq<int>, qid0: int, b: bool)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires PIV.QuantUnique(re)
+    requires pc < endl
+    requires StampTopRE(re, code, endl, pc, qcp)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid0, b))
+    requires qid0 >= 0
+    requires forall kk: int :: kk != qid0 ==> AI.get_idx(qcp', kk) == AI.get_idx(qcp, kk)
+    requires !b ==> AI.get_idx(qcp', qid0) < 0
+    ensures pc + 1 <= endl && StampTopRE(re, code, endl, pc + 1, qcp')
+  {
+    reveal StampTopRE;
+    NST.NestStampTopQuantWrite(re, code, endl, pc, qcp, qcp', qid0, b);
+  }
+
+  /** The stamp invariant crosses every non-quant-writing edge. */
+  lemma StampAdvanceTop(re: R.regex, code: RB.code, endl: nat, pc: nat, pc': nat, qcp: seq<int>)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires pc < endl
+    requires StampTopRE(re, code, endl, pc, qcp)
+    requires NI.StepEdgeRE(code, pc, pc') || NST.StampEdgeRE(code, pc, pc')
+    ensures pc' <= endl && StampTopRE(re, code, endl, pc', qcp)
+  {
+    reveal StampTopRE;
+    assert NST.StampEdgeRE(code, pc, pc');
+    NST.NestStampTopAdvance(re, code, endl, pc, pc', qcp);
+  }
+
+  /** A capture write (`Open`/`Close` of `gid`) passes through the readout:
+      its site is outside every stamped body (`NST.NestStampTopCapSite`). */
+  lemma ReadoutCapWriteRE(re: R.regex, qm: AR.QMap, str: string, code: RB.code, endl: nat, pc: nat,
+                          caps: AReg.Regs, caps': AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+                          a: LG.GroupAction, idx: nat, reg: int, gid: nat)
+    requires T.TransWf(re) && PIV.CapUnique(re) && PIV.QuantUnique(re) && AR.QmapOk(re, qm)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires pc < endl
+    requires NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(reg))
+    requires reg == CP.start_reg(gid) || reg == CP.end_reg(gid)
+    requires a == LG.Open(gid) || a == LG.Close(gid)
+    requires StampTopRE(re, code, endl, pc, quant.a_cp)
+    requires PIV.GmOfLive(re, caps', look, quant) == LG.GMUpdate(a, idx, PIV.GmOfLive(re, caps, look, quant))
+    ensures PIV.TieGm(re, qm, str, caps', look, quant)
+         == LG.GMUpdate(a, idx, PIV.TieGm(re, qm, str, caps, look, quant))
+  {
+    reveal StampTopRE;
+    reveal PIV.TieGm;
+    NST.NestStampTopCapSite(re, code, endl, pc, quant.a_cp, gid, reg);
+    PIV.QmapOkStampBodies(re, qm, str, quant.a_cp);
+    assert PIV.ActGroups(a) == {gid};
+    assert PIV.StampedDisjoint(re, quant.a_cp, PIV.ActGroups(a));
+    PIV.LiveStampsGmActCommute(re, qm, str, quant.a_clk, quant.a_cp, -1,
+                               PIV.GmOfLive(re, caps, look, quant), a, idx);
+  }
+
+  /** Two group lists with the same members reset alike. */
+  lemma GMResetSetCong(g1: LG.GroupSet, g2: LG.GroupSet, gm: LG.GroupMap)
+    requires PIV.GSet(g1) == PIV.GSet(g2)
+    ensures LG.GMReset(g1, gm) == LG.GMReset(g2, gm)
+  {
+    assert (set g | g in g1) == PIV.GSet(g1);
+    assert (set g | g in g2) == PIV.GSet(g2);
+  }
+
+  /** THE CLOCK MARK `SetQuantToClock(qid0, false)` through the readout: the
+      readout of the reset map is the reset of the readout. Its site is
+      enclosed by no stamped quantifier (`NST.NestStampTopQuantSite`). */
+  lemma ReadoutMarkRE(re: R.regex, qm: AR.QMap, str: string, code: RB.code, endl: nat, pc: nat,
+                      caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, qid0: int, clk: int, S: int)
+    requires T.TransWf(re) && PIV.CapUnique(re) && PIV.QuantUnique(re) && AR.QmapOk(re, qm)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires pc < endl
+    requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid0, false))
+    requires StampTopRE(re, code, endl, pc, quant.a_cp)
+    requires |quant.a_clk| >= R.max_quant(re) + 1 && |quant.a_cp| == |quant.a_clk|
+    requires forall k :: AI.get_idx(quant.a_clk, k) <= S
+    requires clk == S + 1 && S >= 0
+    requires qid0 in qm.quants
+    requires PIV.GmOfLive(re, caps, look, AReg.set_reg(quant, qid0, None, clk))
+          == LG.GMReset(qm.quants[qid0], PIV.GmOfLive(re, caps, look, quant))
+    ensures PIV.TieGm(re, qm, str, caps, look, AReg.set_reg(quant, qid0, None, clk))
+         == LG.GMReset(qm.quants[qid0], PIV.TieGm(re, qm, str, caps, look, quant))
+  {
+    reveal StampTopRE;
+    reveal PIV.TieGm;
+    NST.NestStampTopQuantSite(re, code, endl, pc, quant.a_cp, qid0, false);
+    var q0: nat := qid0 as nat;
+    NI.QuantIdsLEMaxQuant(re);
+    assert q0 < |quant.a_clk|;
+    var quant' := AReg.set_reg(quant, qid0, None, clk);
+    assert quant'.a_cp == quant.a_cp[q0 := -1] && quant'.a_clk == quant.a_clk[q0 := clk];
+    assert PIV.QuantWriteAt(quant.a_clk, quant.a_cp, quant'.a_clk, quant'.a_cp, q0, clk, -1);
+    PIV.QmapOkStampBodies(re, qm, str, quant.a_cp);
+    PIV.TransWfQidBodyPIV(re, q0);
+    var X := PIV.GmOfLive(re, caps, look, quant);
+    PIV.LiveStampsGmMark(re, qm, str, quant.a_clk, quant.a_cp, quant'.a_clk, quant'.a_cp, -1, X, q0, clk);
+    // qm's group list for q0 has exactly the body's members
+    PIV.QmapOkAtQid(re, qm, q0);
+    var G0 := L.DefGroups(T.Translate(PIV.QidBody(re, q0)));
+    PIV.DefGroupsCapIds(PIV.QidBody(re, q0));
+    assert PIV.GSet(qm.quants[qid0]) == PIV.GSet(G0);
+    GMResetSetCong(qm.quants[qid0], G0, X);
+    GMResetSetCong(qm.quants[qid0], G0, PIV.LiveStampsGm(re, qm, str, quant.a_clk, quant.a_cp, -1, X));
   }
 
   // MxAt thresholds are always either the mx parameter or a stored quant
@@ -439,7 +576,7 @@ module LindenElkPikeSim {
     requires sreg % 2 == 0
     // per-thread invariant conjuncts
     requires TT.TreeThreadRE(rer, qm, code, inp, t, pc, th.exit_allowed)
-    requires PIV.ThreadTracksGm(re, th, gm)
+    requires StampTopRE(re, code, endl, pc, th.quant_regs.a_cp)
     requires NI.NestTopRE(re, code, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk)
     requires CM.ThreadClocksLE(th, S)
     requires PIV.CapRegWf(th.capture_regs)
@@ -456,7 +593,7 @@ module LindenElkPikeSim {
     // the successor thread tracks GMOpen
     ensures var caps' := AReg.set_reg(th.capture_regs, sreg, Some(cp), S + 1);
       t.GroupActionT? && t.g.Open? ==>
-        PIV.GmOfLive(re, caps', th.look_regs, th.quant_regs) == LG.GMOpen(cp as nat, t.g.g, gm)
+        PIV.GmOfLive(re, caps', th.look_regs, th.quant_regs) == LG.GMOpen(cp as nat, t.g.g, PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs))
     // positional invariant at pc+1 with the written clocks
     ensures var caps' := AReg.set_reg(th.capture_regs, sreg, Some(cp), S + 1);
       pc + 1 <= endl && NI.NestTopRE(re, code, endl, pc + 1, caps'.a_clk, th.quant_regs.a_clk)
@@ -464,6 +601,7 @@ module LindenElkPikeSim {
     ensures var caps' := AReg.set_reg(th.capture_regs, sreg, Some(cp), S + 1);
       CM.RegsClocksLE(caps', S + 1) && PIV.CapRegWf(caps') && CM.RegsValsLE(caps', cp)
       && |caps'.a_cp| == |th.capture_regs.a_cp| && |caps'.a_clk| == |th.capture_regs.a_clk|
+    ensures pc + 1 <= endl && StampTopRE(re, code, endl, pc + 1, th.quant_regs.a_cp)
   {
     var caps := th.capture_regs;
     var cc := caps.a_clk;
@@ -533,6 +671,9 @@ module LindenElkPikeSim {
     CM.RegsClocksLESet(caps, sreg, Some(cp), clk, clk);
     PIV.CapRegWfSet(caps, sreg, cp, clk);
     CM.RegsValsLESet(caps, sreg, cp, clk, cp);
+
+    // The stamp invariant crosses the capture write.
+    StampAdvanceTop(re, code, endl, pc, pc + 1, th.quant_regs.a_cp);
   }
 
   /** L4 depth-k (ADDITIVE): `OpenStepThreadRE` under the nested fragment.
@@ -552,7 +693,7 @@ module LindenElkPikeSim {
     requires NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(sreg))
     requires sreg % 2 == 0
     requires TT.TreeThreadRE(rer, qm, code, inp, t, pc, th.exit_allowed)
-    requires PIV.ThreadTracksGm(re, th, gm)
+    requires StampTopRE(re, code, endl, pc, th.quant_regs.a_cp)
     requires NI.NestTopRE(re, code, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk)
     requires CM.ThreadClocksLE(th, S)
     requires PIV.CapRegWf(th.capture_regs)
@@ -566,12 +707,13 @@ module LindenElkPikeSim {
     ensures TT.TreeThreadRE(rer, qm, code, inp, t.t, pc + 1, th.exit_allowed)
     ensures var caps' := AReg.set_reg(th.capture_regs, sreg, Some(cp), S + 1);
       t.GroupActionT? && t.g.Open? ==>
-        PIV.GmOfLive(re, caps', th.look_regs, th.quant_regs) == LG.GMOpen(cp as nat, t.g.g, gm)
+        PIV.GmOfLive(re, caps', th.look_regs, th.quant_regs) == LG.GMOpen(cp as nat, t.g.g, PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs))
     ensures var caps' := AReg.set_reg(th.capture_regs, sreg, Some(cp), S + 1);
       pc + 1 <= endl && NI.NestTopRE(re, code, endl, pc + 1, caps'.a_clk, th.quant_regs.a_clk)
     ensures var caps' := AReg.set_reg(th.capture_regs, sreg, Some(cp), S + 1);
       CM.RegsClocksLE(caps', S + 1) && PIV.CapRegWf(caps') && CM.RegsValsLE(caps', cp)
       && |caps'.a_cp| == |th.capture_regs.a_cp| && |caps'.a_clk| == |th.capture_regs.a_clk|
+    ensures pc + 1 <= endl && StampTopRE(re, code, endl, pc + 1, th.quant_regs.a_cp)
   {
     var caps := th.capture_regs;
     var cc := caps.a_clk;
@@ -631,6 +773,9 @@ module LindenElkPikeSim {
     CM.RegsClocksLESet(caps, sreg, Some(cp), clk, clk);
     PIV.CapRegWfSet(caps, sreg, cp, clk);
     CM.RegsValsLESet(caps, sreg, cp, clk, cp);
+
+    // The stamp invariant crosses the capture write.
+    StampAdvanceTop(re, code, endl, pc, pc + 1, th.quant_regs.a_cp);
   }
 
   // =========================================================================
@@ -653,7 +798,7 @@ module LindenElkPikeSim {
     requires NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(ereg))
     requires ereg % 2 == 1
     requires TT.TreeThreadRE(rer, qm, code, inp, t, pc, th.exit_allowed)
-    requires PIV.ThreadTracksGm(re, th, gm)
+    requires StampTopRE(re, code, endl, pc, th.quant_regs.a_cp)
     requires NI.NestTopRE(re, code, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk)
     requires CM.ThreadClocksLE(th, S)
     requires PIV.CapRegWf(th.capture_regs)
@@ -664,12 +809,13 @@ module LindenElkPikeSim {
     ensures TT.TreeThreadRE(rer, qm, code, inp, t.t, pc + 1, th.exit_allowed)
     ensures var caps' := AReg.set_reg(th.capture_regs, ereg, Some(cp), S + 1);
       t.GroupActionT? && t.g.Close? ==>
-        PIV.GmOfLive(re, caps', th.look_regs, th.quant_regs) == LG.GMClose(cp as nat, t.g.g, gm)
+        PIV.GmOfLive(re, caps', th.look_regs, th.quant_regs) == LG.GMClose(cp as nat, t.g.g, PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs))
     ensures var caps' := AReg.set_reg(th.capture_regs, ereg, Some(cp), S + 1);
       pc + 1 <= endl && NI.NestTopRE(re, code, endl, pc + 1, caps'.a_clk, th.quant_regs.a_clk)
     ensures var caps' := AReg.set_reg(th.capture_regs, ereg, Some(cp), S + 1);
       CM.RegsClocksLE(caps', S + 1) && PIV.CapRegWf(caps') && CM.RegsValsLE(caps', cp)
       && |caps'.a_cp| == |th.capture_regs.a_cp| && |caps'.a_clk| == |th.capture_regs.a_clk|
+    ensures pc + 1 <= endl && StampTopRE(re, code, endl, pc + 1, th.quant_regs.a_cp)
   {
     var caps := th.capture_regs;
     var cc := caps.a_clk;
@@ -727,6 +873,9 @@ module LindenElkPikeSim {
     CM.RegsClocksLESet(caps, ereg, Some(cp), clk, clk);
     PIV.CapRegWfSet(caps, ereg, cp, clk);
     CM.RegsValsLESet(caps, ereg, cp, clk, cp);
+
+    // The stamp invariant crosses the capture write.
+    StampAdvanceTop(re, code, endl, pc, pc + 1, th.quant_regs.a_cp);
   }
 
   /** L4 depth-k (ADDITIVE): `CloseStepThreadRE` under the nested fragment.
@@ -746,7 +895,7 @@ module LindenElkPikeSim {
     requires NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(ereg))
     requires ereg % 2 == 1
     requires TT.TreeThreadRE(rer, qm, code, inp, t, pc, th.exit_allowed)
-    requires PIV.ThreadTracksGm(re, th, gm)
+    requires StampTopRE(re, code, endl, pc, th.quant_regs.a_cp)
     requires NI.NestTopRE(re, code, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk)
     requires CM.ThreadClocksLE(th, S)
     requires PIV.CapRegWf(th.capture_regs)
@@ -757,12 +906,13 @@ module LindenElkPikeSim {
     ensures TT.TreeThreadRE(rer, qm, code, inp, t.t, pc + 1, th.exit_allowed)
     ensures var caps' := AReg.set_reg(th.capture_regs, ereg, Some(cp), S + 1);
       t.GroupActionT? && t.g.Close? ==>
-        PIV.GmOfLive(re, caps', th.look_regs, th.quant_regs) == LG.GMClose(cp as nat, t.g.g, gm)
+        PIV.GmOfLive(re, caps', th.look_regs, th.quant_regs) == LG.GMClose(cp as nat, t.g.g, PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs))
     ensures var caps' := AReg.set_reg(th.capture_regs, ereg, Some(cp), S + 1);
       pc + 1 <= endl && NI.NestTopRE(re, code, endl, pc + 1, caps'.a_clk, th.quant_regs.a_clk)
     ensures var caps' := AReg.set_reg(th.capture_regs, ereg, Some(cp), S + 1);
       CM.RegsClocksLE(caps', S + 1) && PIV.CapRegWf(caps') && CM.RegsValsLE(caps', cp)
       && |caps'.a_cp| == |th.capture_regs.a_cp| && |caps'.a_clk| == |th.capture_regs.a_clk|
+    ensures pc + 1 <= endl && StampTopRE(re, code, endl, pc + 1, th.quant_regs.a_cp)
   {
     var caps := th.capture_regs;
     var cc := caps.a_clk;
@@ -815,6 +965,9 @@ module LindenElkPikeSim {
     CM.RegsClocksLESet(caps, ereg, Some(cp), clk, clk);
     PIV.CapRegWfSet(caps, ereg, cp, clk);
     CM.RegsValsLESet(caps, ereg, cp, clk, cp);
+
+    // The stamp invariant crosses the capture write.
+    StampAdvanceTop(re, code, endl, pc, pc + 1, th.quant_regs.a_cp);
   }
 
   // =========================================================================
@@ -836,7 +989,7 @@ module LindenElkPikeSim {
     requires th.pc >= 0 && pc == th.pc as nat && pc <= endl
     requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid0, false))
     requires TT.TreeThreadRE(rer, qm, code, inp, t, pc, th.exit_allowed)
-    requires PIV.ThreadTracksGm(re, th, gm)
+    requires StampTopRE(re, code, endl, pc, th.quant_regs.a_cp)
     requires NI.NestTopRE(re, code, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk)
     requires CM.ThreadClocksLE(th, S)
     requires PIV.CapRegWf(th.capture_regs)
@@ -848,12 +1001,14 @@ module LindenElkPikeSim {
     ensures TT.TreeThreadRE(rer, qm, code, inp, t.t, pc + 1, th.exit_allowed)
     ensures var quant' := AReg.set_reg(th.quant_regs, qid0, None, S + 1);
       t.GroupActionT? && t.g.Reset? ==>
-        PIV.GmOfLive(re, th.capture_regs, th.look_regs, quant') == LG.GMReset(t.g.gl, gm)
+        PIV.GmOfLive(re, th.capture_regs, th.look_regs, quant') == LG.GMReset(t.g.gl, PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs))
     ensures var quant' := AReg.set_reg(th.quant_regs, qid0, None, S + 1);
       pc + 1 <= endl && NI.NestTopRE(re, code, endl, pc + 1, th.capture_regs.a_clk, quant'.a_clk)
     ensures var quant' := AReg.set_reg(th.quant_regs, qid0, None, S + 1);
       CM.RegsClocksLE(quant', S + 1)
       && |quant'.a_cp| == |th.quant_regs.a_cp| && |quant'.a_clk| == |th.quant_regs.a_clk|
+    ensures var quant' := AReg.set_reg(th.quant_regs, qid0, None, S + 1);
+      pc + 1 <= endl && StampTopRE(re, code, endl, pc + 1, quant'.a_cp)
   {
     var caps := th.capture_regs;
     var quant := th.quant_regs;
@@ -909,6 +1064,10 @@ module LindenElkPikeSim {
     // Backbone facts for the successor registers.
     assert CM.RegsClocksLE(quant, clk);
     CM.RegsClocksLESet(quant, qid0, None, clk, clk);
+
+    // The stamp invariant crosses the mark (it clears qid0's stamp).
+    assert forall kk: int :: kk != qid0 ==> AI.get_idx(quant'.a_cp, kk) == AI.get_idx(quant.a_cp, kk);
+    StampQuantWriteTop(re, code, endl, pc, quant.a_cp, quant'.a_cp, qid0, false);
   }
 
   /** L4 depth-k (ADDITIVE): `ResetStepThreadRE` under the nested fragment.
@@ -928,7 +1087,7 @@ module LindenElkPikeSim {
     requires th.pc >= 0 && pc == th.pc as nat && pc <= endl
     requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid0, false))
     requires TT.TreeThreadRE(rer, qm, code, inp, t, pc, th.exit_allowed)
-    requires PIV.ThreadTracksGm(re, th, gm)
+    requires StampTopRE(re, code, endl, pc, th.quant_regs.a_cp)
     requires NI.NestTopRE(re, code, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk)
     requires CM.ThreadClocksLE(th, S)
     requires PIV.CapRegWf(th.capture_regs)
@@ -940,12 +1099,14 @@ module LindenElkPikeSim {
     ensures TT.TreeThreadRE(rer, qm, code, inp, t.t, pc + 1, th.exit_allowed)
     ensures var quant' := AReg.set_reg(th.quant_regs, qid0, None, S + 1);
       t.GroupActionT? && t.g.Reset? ==>
-        PIV.GmOfLive(re, th.capture_regs, th.look_regs, quant') == LG.GMReset(t.g.gl, gm)
+        PIV.GmOfLive(re, th.capture_regs, th.look_regs, quant') == LG.GMReset(t.g.gl, PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs))
     ensures var quant' := AReg.set_reg(th.quant_regs, qid0, None, S + 1);
       pc + 1 <= endl && NI.NestTopRE(re, code, endl, pc + 1, th.capture_regs.a_clk, quant'.a_clk)
     ensures var quant' := AReg.set_reg(th.quant_regs, qid0, None, S + 1);
       CM.RegsClocksLE(quant', S + 1)
       && |quant'.a_cp| == |th.quant_regs.a_cp| && |quant'.a_clk| == |th.quant_regs.a_clk|
+    ensures var quant' := AReg.set_reg(th.quant_regs, qid0, None, S + 1);
+      pc + 1 <= endl && StampTopRE(re, code, endl, pc + 1, quant'.a_cp)
   {
     var caps := th.capture_regs;
     var quant := th.quant_regs;
@@ -993,6 +1154,10 @@ module LindenElkPikeSim {
 
     assert CM.RegsClocksLE(quant, clk);
     CM.RegsClocksLESet(quant, qid0, None, clk, clk);
+
+    // The stamp invariant crosses the mark (it clears qid0's stamp).
+    assert forall kk: int :: kk != qid0 ==> AI.get_idx(quant'.a_cp, kk) == AI.get_idx(quant.a_cp, kk);
+    StampQuantWriteTop(re, code, endl, pc, quant.a_cp, quant'.a_cp, qid0, false);
   }
 
   // =========================================================================
@@ -1015,6 +1180,7 @@ module LindenElkPikeSim {
     requires NR.GetPcRE(code, pc) == Some(RB.Consume(ce))
     requires TT.TreeThreadRE(rer, qm, code, inp, t, pc, th.exit_allowed)
     requires NI.NestTopRE(re, code, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk)
+    requires StampTopRE(re, code, endl, pc, th.quant_regs.a_cp)
     ensures AR.ReadCharE(ce, inp).Some? ==>
       t.Read? && exists nextinp ::
         AR.ReadCharE(ce, inp) == Some((t.c, nextinp))
@@ -1022,6 +1188,7 @@ module LindenElkPikeSim {
     ensures AR.ReadCharE(ce, inp).None? ==> t == LT.Mismatch
     ensures pc + 1 <= endl
          && NI.NestTopRE(re, code, endl, pc + 1, th.capture_regs.a_clk, th.quant_regs.a_clk)
+      && StampTopRE(re, code, endl, pc + 1, th.quant_regs.a_cp)
   {
     var cc := th.capture_regs.a_clk;
     var qc := th.quant_regs.a_clk;
@@ -1031,6 +1198,7 @@ module LindenElkPikeSim {
     assert NI.NestInvRE(re, code, 0, endl, pc, cc, qc, -1);
     assert NI.StepEdgeRE(code, pc, pc + 1);
     NI.NestInvAdvance(re, code, 0, endl, pc, pc + 1, cc, qc, -1);
+    StampAdvanceTop(re, code, endl, pc, pc + 1, th.quant_regs.a_cp);
   }
 
   // =========================================================================
@@ -1050,10 +1218,12 @@ module LindenElkPikeSim {
     requires NR.GetPcRE(code, pc) == Some(RB.EndLoop)
     requires TT.TreeThreadRE(rer, qm, code, inp, t, pc, th.exit_allowed)
     requires NI.NestTopRE(re, code, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk)
+    requires StampTopRE(re, code, endl, pc, th.quant_regs.a_cp)
     ensures th.exit_allowed ==>
       t.Progress? && TT.TreeThreadRE(rer, qm, code, inp, t.t, pc + 1, true)
       && pc + 1 <= endl
       && NI.NestTopRE(re, code, endl, pc + 1, th.capture_regs.a_clk, th.quant_regs.a_clk)
+      && StampTopRE(re, code, endl, pc + 1, th.quant_regs.a_cp)
     ensures !th.exit_allowed ==> t == LT.Mismatch
   {
     var cc := th.capture_regs.a_clk;
@@ -1065,6 +1235,7 @@ module LindenElkPikeSim {
       assert NI.NestInvRE(re, code, 0, endl, pc, cc, qc, -1);
       assert NI.StepEdgeRE(code, pc, pc + 1);
       NI.NestInvAdvance(re, code, 0, endl, pc, pc + 1, cc, qc, -1);
+      StampAdvanceTop(re, code, endl, pc, pc + 1, th.quant_regs.a_cp);
     }
   }
 
@@ -1102,10 +1273,12 @@ module LindenElkPikeSim {
     requires NR.GetPcRE(code, pc) == Some(RB.AnchorAssertion(a))
     requires TT.TreeThreadRE(rer, qm, code, inp, t, pc, th.exit_allowed)
     requires NI.NestTopRE(re, code, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk)
+    requires StampTopRE(re, code, endl, pc, th.quant_regs.a_cp)
     ensures LAnc.is_satisfied(a, TREP.CtxOf(inp), LAnc.Forward) ==>
       t.AnchorPass? && TT.TreeThreadRE(rer, qm, code, inp, t.t, pc + 1, th.exit_allowed)
       && pc + 1 <= endl
       && NI.NestTopRE(re, code, endl, pc + 1, th.capture_regs.a_clk, th.quant_regs.a_clk)
+      && StampTopRE(re, code, endl, pc + 1, th.quant_regs.a_cp)
     ensures !LAnc.is_satisfied(a, TREP.CtxOf(inp), LAnc.Forward) ==> t == LT.Mismatch
   {
     var cc := th.capture_regs.a_clk;
@@ -1117,6 +1290,7 @@ module LindenElkPikeSim {
       assert NI.NestInvRE(re, code, 0, endl, pc, cc, qc, -1);
       assert NI.StepEdgeRE(code, pc, pc + 1);
       NI.NestInvAdvance(re, code, 0, endl, pc, pc + 1, cc, qc, -1);
+      StampAdvanceTop(re, code, endl, pc, pc + 1, th.quant_regs.a_cp);
     }
   }
 
@@ -1192,13 +1366,13 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
 
     // Head correspondence.
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0 && th.pc >= 0;
     var pc: nat := th.pc as nat;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
 
     // The seen entry at (pc, ea) resolves to the LEFT disjunct: the stutter
     // disjunct would need a >=1-step chain pc ->+ pc, killed by tameness.
@@ -1266,13 +1440,13 @@ module LindenElkPikeSim {
     var pc: nat := th.pc as nat;
 
     // Head correspondence.
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
-    assert PIV.ThreadTracksGm(re, th, gm);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gm);
     assert ThreadNestRE(re, code, endl, th.pc, th);
     assert pc < endl;                                   // Accept at endl is not a stutter
 
@@ -1296,6 +1470,7 @@ module LindenElkPikeSim {
     assert NI.StepEdgeRE(code, pc, pc');
     assert NI.NestInvRE(re, code, 0, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk, -1);
     NI.NestInvAdvance(re, code, 0, endl, pc, pc', th.capture_regs.a_clk, th.quant_regs.a_clk, -1);
+    StampAdvanceTop(re, code, endl, pc, pc', th.quant_regs.a_cp);
     assert ThreadNestRE(re, code, endl, th'.pc, th');
 
     // Backbones.
@@ -1305,10 +1480,10 @@ module LindenElkPikeSim {
     BBReplaceHead(s1, th', ncap, nlook, nquant);
 
     // Active correspondence: same (tree, gm) list against the moved head.
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms2.active) by {
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms2.active) by {
       assert vms2.active[0] == th' && vms2.active[1..] == vms.active[1..];
       assert ta == [ta[0]] + ta[1..];
-      assert PIV.ThreadTracksGm(re, th', gm);
+      assert PIV.ThreadTracksGm(re, qm, str, th', gm);
     }
 
     // Seen inclusion: the stutter chain extends by one step.
@@ -1371,13 +1546,13 @@ module LindenElkPikeSim {
     var pc: nat := th.pc as nat;
 
     // Head correspondence.
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
-    assert PIV.ThreadTracksGm(re, th, gm);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gm);
     assert ThreadNestRE(re, code, endl, th.pc, th);
     assert pc < endl;                                   // Accept at endl is not a stutter
 
@@ -1401,6 +1576,7 @@ module LindenElkPikeSim {
     assert NI.StepEdgeRE(code, pc, pc');
     assert NI.NestInvRE(re, code, 0, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk, -1);
     NI.NestInvAdvance(re, code, 0, endl, pc, pc', th.capture_regs.a_clk, th.quant_regs.a_clk, -1);
+    StampAdvanceTop(re, code, endl, pc, pc', th.quant_regs.a_cp);
     assert ThreadNestRE(re, code, endl, th'.pc, th');
 
     // Backbones.
@@ -1410,10 +1586,10 @@ module LindenElkPikeSim {
     BBReplaceHead(s1, th', ncap, nlook, nquant);
 
     // Active correspondence: same (tree, gm) list against the moved head.
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms2.active) by {
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms2.active) by {
       assert vms2.active[0] == th' && vms2.active[1..] == vms.active[1..];
       assert ta == [ta[0]] + ta[1..];
-      assert PIV.ThreadTracksGm(re, th', gm);
+      assert PIV.ThreadTracksGm(re, qm, str, th', gm);
     }
 
     // Seen inclusion: the stutter chain extends by one step.
@@ -1494,12 +1670,12 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
     var pc: nat := th.pc as nat;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ThreadTracksGm(re, th, gm);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gm);
 
     // StepSpec at Accept: the tree is Match.
     assert !TT.StuttersRE(pc, code);
@@ -1514,8 +1690,8 @@ module LindenElkPikeSim {
     // The full invariant at the successor.
     BBTick(vms, s1, ncap, nlook, nquant);
     BBAccept(s1, ncap, nlook, nquant);
-    assert PIV.BestMatchRE(re, Some((inp, gm)), Some(th));
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, [], []);
+    assert PIV.BestMatchRE(re, qm, str, Some((inp, gm)), Some(th));
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, [], []);
     PIV.AddInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea,
                        PIV.HdTreeOf([]), PIV.HeadPcOf([]));
     IsblockedGrow(rer, qm, code, inp, seen, vms.isblocked, t);
@@ -1564,13 +1740,13 @@ module LindenElkPikeSim {
     var cc := th.capture_regs.a_clk;
     var qc := th.quant_regs.a_clk;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
-    assert PIV.ThreadTracksGm(re, th, gm);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gm);
     assert ThreadNestRE(re, code, endl, th.pc, th);
     assert !TT.StuttersRE(pc, code);
     assert pc < endl;
@@ -1587,8 +1763,10 @@ module LindenElkPikeSim {
     assert NI.NestInvRE(re, code, 0, endl, pc, cc, qc, -1);
     assert NI.StepEdgeRE(code, pc, x as nat);
     NI.NestInvAdvance(re, code, 0, endl, pc, x as nat, cc, qc, -1);
+    StampAdvanceTop(re, code, endl, pc, x as nat, th.quant_regs.a_cp);
     assert NI.StepEdgeRE(code, pc, y as nat);
     NI.NestInvAdvance(re, code, 0, endl, pc, y as nat, cc, qc, -1);
+    StampAdvanceTop(re, code, endl, pc, y as nat, th.quant_regs.a_cp);
     assert ThreadNestRE(re, code, endl, th1.pc, th1) && ThreadNestRE(re, code, endl, th2.pc, th2);
 
     // Backbones.
@@ -1613,8 +1791,8 @@ module LindenElkPikeSim {
       TrcCons(pts, pts1, pts1);
 
       // Active correspondence: two new head pairs, unchanged registers.
-      assert PIV.ActiveRepRE(rer, qm, re, code, inp, na + ta[1..], vms2.active) by {
-        assert PIV.ThreadTracksGm(re, th1, gm) && PIV.ThreadTracksGm(re, th2, gm);
+      assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, na + ta[1..], vms2.active) by {
+        assert PIV.ThreadTracksGm(re, qm, str, th1, gm) && PIV.ThreadTracksGm(re, qm, str, th2, gm);
         assert (na + ta[1..])[0] == (t.t1, gm) && (na + ta[1..])[1] == (t.t2, gm);
         assert (na + ta[1..])[1..] == [(t.t2, gm)] + ta[1..];
         assert ((na + ta[1..])[1..])[1..] == ta[1..];
@@ -1678,9 +1856,9 @@ module LindenElkPikeSim {
       TrcCons(pts, mid, pts1);
 
       // Active correspondence: both arm threads run at exit_allowed == true.
-      assert PIV.ActiveRepRE(rer, qm, re, code, inp, na + ta[1..], vms2.active) by {
+      assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, na + ta[1..], vms2.active) by {
         assert th1.exit_allowed == true && th2.exit_allowed == true;
-        assert PIV.ThreadTracksGm(re, th1, gm) && PIV.ThreadTracksGm(re, th2, gm);
+        assert PIV.ThreadTracksGm(re, qm, str, th1, gm) && PIV.ThreadTracksGm(re, qm, str, th2, gm);
         assert (na + ta[1..])[0] == (t.t.t1, gm) && (na + ta[1..])[1] == (t.t.t2, gm);
         assert (na + ta[1..])[1..] == [(t.t.t2, gm)] + ta[1..];
         assert ((na + ta[1..])[1..])[1..] == ta[1..];
@@ -1748,13 +1926,13 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
     var pc: nat := th.pc as nat;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
-    assert PIV.ThreadTracksGm(re, th, gm);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gm);
     assert ThreadNestRE(re, code, endl, th.pc, th);
     assert CM.ThreadClocksLE(th, vms.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant)
         && CM.RegsValsLE(th.capture_regs, vms.cp);
@@ -1778,8 +1956,10 @@ module LindenElkPikeSim {
     PIV.IdxInpOfCp(str, vms.cp);
     assert LC.Idx(inp) == vms.cp;
     assert gm' == LG.GMOpen(vms.cp as nat, gid, gm);
-    assert PIV.ThreadTracksGm(re, th', gm') by {
-      assert PIV.GmOfLive(re, caps', th.look_regs, th.quant_regs) == LG.GMOpen(vms.cp as nat, gid, gm);
+    assert PIV.ThreadTracksGm(re, qm, str, th', gm') by {
+      // §2.5b rung D: the open write is outside every stamped body
+      ReadoutCapWriteRE(re, qm, str, code, endl, pc, th.capture_regs, caps', th.look_regs, th.quant_regs,
+                        LG.Open(gid), vms.cp as nat, sreg, gid);
     }
 
     // Backbones for the successor.
@@ -1792,7 +1972,7 @@ module LindenElkPikeSim {
     BBReplaceHead(s1, th', ncap, nlook, nquant);
 
     // Active correspondence.
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, na + ta[1..], vms2.active) by {
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, na + ta[1..], vms2.active) by {
       assert (na + ta[1..])[0] == (t.t, gm') && (na + ta[1..])[1..] == ta[1..];
       assert vms2.active[0] == th' && vms2.active[1..] == vms.active[1..];
     }
@@ -1858,13 +2038,13 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
     var pc: nat := th.pc as nat;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
-    assert PIV.ThreadTracksGm(re, th, gm);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gm);
     assert ThreadNestRE(re, code, endl, th.pc, th);
     assert CM.ThreadClocksLE(th, vms.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant)
         && CM.RegsValsLE(th.capture_regs, vms.cp);
@@ -1888,8 +2068,10 @@ module LindenElkPikeSim {
     PIV.IdxInpOfCp(str, vms.cp);
     assert LC.Idx(inp) == vms.cp;
     assert gm' == LG.GMOpen(vms.cp as nat, gid, gm);
-    assert PIV.ThreadTracksGm(re, th', gm') by {
-      assert PIV.GmOfLive(re, caps', th.look_regs, th.quant_regs) == LG.GMOpen(vms.cp as nat, gid, gm);
+    assert PIV.ThreadTracksGm(re, qm, str, th', gm') by {
+      // §2.5b rung D: the open write is outside every stamped body
+      ReadoutCapWriteRE(re, qm, str, code, endl, pc, th.capture_regs, caps', th.look_regs, th.quant_regs,
+                        LG.Open(gid), vms.cp as nat, sreg, gid);
     }
 
     // Backbones for the successor.
@@ -1902,7 +2084,7 @@ module LindenElkPikeSim {
     BBReplaceHead(s1, th', ncap, nlook, nquant);
 
     // Active correspondence.
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, na + ta[1..], vms2.active) by {
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, na + ta[1..], vms2.active) by {
       assert (na + ta[1..])[0] == (t.t, gm') && (na + ta[1..])[1..] == ta[1..];
       assert vms2.active[0] == th' && vms2.active[1..] == vms.active[1..];
     }
@@ -1970,13 +2152,13 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
     var pc: nat := th.pc as nat;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
-    assert PIV.ThreadTracksGm(re, th, gm);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gm);
     assert ThreadNestRE(re, code, endl, th.pc, th);
     assert CM.ThreadClocksLE(th, vms.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant)
         && CM.RegsValsLE(th.capture_regs, vms.cp);
@@ -2000,8 +2182,10 @@ module LindenElkPikeSim {
     PIV.IdxInpOfCp(str, vms.cp);
     assert LC.Idx(inp) == vms.cp;
     assert gm' == LG.GMClose(vms.cp as nat, gid, gm);
-    assert PIV.ThreadTracksGm(re, th', gm') by {
-      assert PIV.GmOfLive(re, caps', th.look_regs, th.quant_regs) == LG.GMClose(vms.cp as nat, gid, gm);
+    assert PIV.ThreadTracksGm(re, qm, str, th', gm') by {
+      // §2.5b rung D: the close write is outside every stamped body
+      ReadoutCapWriteRE(re, qm, str, code, endl, pc, th.capture_regs, caps', th.look_regs, th.quant_regs,
+                        LG.Close(gid), vms.cp as nat, ereg, gid);
     }
 
     // Backbones for the successor.
@@ -2014,7 +2198,7 @@ module LindenElkPikeSim {
     BBReplaceHead(s1, th', ncap, nlook, nquant);
 
     // Active correspondence.
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, na + ta[1..], vms2.active) by {
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, na + ta[1..], vms2.active) by {
       assert (na + ta[1..])[0] == (t.t, gm') && (na + ta[1..])[1..] == ta[1..];
       assert vms2.active[0] == th' && vms2.active[1..] == vms.active[1..];
     }
@@ -2075,13 +2259,13 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
     var pc: nat := th.pc as nat;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
-    assert PIV.ThreadTracksGm(re, th, gm);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gm);
     assert ThreadNestRE(re, code, endl, th.pc, th);
     assert CM.ThreadClocksLE(th, vms.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant)
         && CM.RegsValsLE(th.capture_regs, vms.cp);
@@ -2105,8 +2289,10 @@ module LindenElkPikeSim {
     PIV.IdxInpOfCp(str, vms.cp);
     assert LC.Idx(inp) == vms.cp;
     assert gm' == LG.GMClose(vms.cp as nat, gid, gm);
-    assert PIV.ThreadTracksGm(re, th', gm') by {
-      assert PIV.GmOfLive(re, caps', th.look_regs, th.quant_regs) == LG.GMClose(vms.cp as nat, gid, gm);
+    assert PIV.ThreadTracksGm(re, qm, str, th', gm') by {
+      // §2.5b rung D: the close write is outside every stamped body
+      ReadoutCapWriteRE(re, qm, str, code, endl, pc, th.capture_regs, caps', th.look_regs, th.quant_regs,
+                        LG.Close(gid), vms.cp as nat, ereg, gid);
     }
 
     // Backbones for the successor.
@@ -2119,7 +2305,7 @@ module LindenElkPikeSim {
     BBReplaceHead(s1, th', ncap, nlook, nquant);
 
     // Active correspondence.
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, na + ta[1..], vms2.active) by {
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, na + ta[1..], vms2.active) by {
       assert (na + ta[1..])[0] == (t.t, gm') && (na + ta[1..])[1..] == ta[1..];
       assert vms2.active[0] == th' && vms2.active[1..] == vms.active[1..];
     }
@@ -2182,13 +2368,13 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
     var pc: nat := th.pc as nat;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
-    assert PIV.ThreadTracksGm(re, th, gm);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gm);
     assert ThreadNestRE(re, code, endl, th.pc, th);
     assert CM.ThreadClocksLE(th, vms.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant);
 
@@ -2213,8 +2399,10 @@ module LindenElkPikeSim {
 
     // The successor thread tracks the updated gm.
     assert gm' == LG.GMReset(t.g.gl, gm);
-    assert PIV.ThreadTracksGm(re, th', gm') by {
-      assert PIV.GmOfLive(re, th.capture_regs, th.look_regs, quant') == LG.GMReset(t.g.gl, gm);
+    assert PIV.ThreadTracksGm(re, qm, str, th', gm') by {
+      // §2.5b rung D: the clock mark commutes with the readout
+      ReadoutMarkRE(re, qm, str, code, endl, pc, th.capture_regs, th.look_regs, th.quant_regs,
+                    qid0, vms.clock + 1, vms.clock);
     }
 
     // Backbones for the successor.
@@ -2228,7 +2416,7 @@ module LindenElkPikeSim {
     BBReplaceHead(s1, th', ncap, nlook, nquant);
 
     // Active correspondence.
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, na + ta[1..], vms2.active) by {
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, na + ta[1..], vms2.active) by {
       assert (na + ta[1..])[0] == (t.t, gm') && (na + ta[1..])[1..] == ta[1..];
       assert vms2.active[0] == th' && vms2.active[1..] == vms.active[1..];
     }
@@ -2289,13 +2477,13 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
     var pc: nat := th.pc as nat;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
-    assert PIV.ThreadTracksGm(re, th, gm);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gm);
     assert ThreadNestRE(re, code, endl, th.pc, th);
     assert CM.ThreadClocksLE(th, vms.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant);
 
@@ -2320,8 +2508,10 @@ module LindenElkPikeSim {
 
     // The successor thread tracks the updated gm.
     assert gm' == LG.GMReset(t.g.gl, gm);
-    assert PIV.ThreadTracksGm(re, th', gm') by {
-      assert PIV.GmOfLive(re, th.capture_regs, th.look_regs, quant') == LG.GMReset(t.g.gl, gm);
+    assert PIV.ThreadTracksGm(re, qm, str, th', gm') by {
+      // §2.5b rung D: the clock mark commutes with the readout
+      ReadoutMarkRE(re, qm, str, code, endl, pc, th.capture_regs, th.look_regs, th.quant_regs,
+                    qid0, vms.clock + 1, vms.clock);
     }
 
     // Backbones for the successor.
@@ -2335,7 +2525,7 @@ module LindenElkPikeSim {
     BBReplaceHead(s1, th', ncap, nlook, nquant);
 
     // Active correspondence.
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, na + ta[1..], vms2.active) by {
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, na + ta[1..], vms2.active) by {
       assert (na + ta[1..])[0] == (t.t, gm') && (na + ta[1..])[1..] == ta[1..];
       assert vms2.active[0] == th' && vms2.active[1..] == vms.active[1..];
     }
@@ -2398,24 +2588,24 @@ module LindenElkPikeSim {
       reads a character and correctly continues at `pc+1` to both the tree
       list and the blocked list preserves the correspondence. */
   lemma BlockedRepSnocRE(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
-                         inp: LC.Input, nextinp: LC.Input,
+                         str: string, inp: LC.Input, nextinp: LC.Input,
                          tl: seq<(LT.Tree, LG.GroupMap)>, bl: seq<(AI.Thread, RC.char_expectation)>,
                          tp: (LT.Tree, LG.GroupMap), p: (AI.Thread, RC.char_expectation))
-    requires PIV.BlockedRepRE(rer, qm, re, code, inp, nextinp, tl, bl)
+    requires PIV.BlockedRepRE(rer, qm, re, code, str, inp, nextinp, tl, bl)
     requires p.0.pc + 1 >= 0
     requires exists c: char :: AR.ReadCharE(p.1, inp) == Some((c, nextinp))
     requires TT.TreeThreadRE(rer, qm, code, nextinp, tp.0, (p.0.pc + 1) as nat, true)
-    requires PIV.ThreadTracksGm(re, p.0, tp.1)
-    ensures PIV.BlockedRepRE(rer, qm, re, code, inp, nextinp, tl + [tp], bl + [p])
+    requires PIV.ThreadTracksGm(re, qm, str, p.0, tp.1)
+    ensures PIV.BlockedRepRE(rer, qm, re, code, str, inp, nextinp, tl + [tp], bl + [p])
     decreases tl
   {
     if |tl| == 0 {
       assert |bl| == 0;
       assert tl + [tp] == [tp] && bl + [p] == [p];
-      assert PIV.BlockedRepRE(rer, qm, re, code, inp, nextinp, [], []);
+      assert PIV.BlockedRepRE(rer, qm, re, code, str, inp, nextinp, [], []);
     } else {
       assert |bl| > 0;
-      BlockedRepSnocRE(rer, qm, re, code, inp, nextinp, tl[1..], bl[1..], tp, p);
+      BlockedRepSnocRE(rer, qm, re, code, str, inp, nextinp, tl[1..], bl[1..], tp, p);
       assert (tl + [tp])[0] == tl[0] && (tl + [tp])[1..] == tl[1..] + [tp];
       assert (bl + [p])[0] == bl[0] && (bl + [p])[1..] == bl[1..] + [p];
     }
@@ -2453,13 +2643,13 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
     var pc: nat := th.pc as nat;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
-    assert PIV.ThreadTracksGm(re, th, gm);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gm);
     assert ThreadNestRE(re, code, endl, th.pc, th);
 
     // The bundled EndLoop step (armed branch).
@@ -2480,10 +2670,10 @@ module LindenElkPikeSim {
     BBReplaceHead(s1, th', ncap, nlook, nquant);
 
     // Active correspondence + seen + isblocked + remaining conjuncts.
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, na + ta[1..], vms2.active) by {
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, na + ta[1..], vms2.active) by {
       assert (na + ta[1..])[0] == (t.t, gm) && (na + ta[1..])[1..] == ta[1..];
       assert vms2.active[0] == th' && vms2.active[1..] == vms.active[1..];
-      assert PIV.ThreadTracksGm(re, th', gm);
+      assert PIV.ThreadTracksGm(re, qm, str, th', gm);
     }
     PIV.AddInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea,
                        PIV.HdTreeOf(na + ta[1..]), PIV.HeadPcOf(vms2.active));
@@ -2539,12 +2729,12 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
     var pc: nat := th.pc as nat;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
     assert ThreadNestRE(re, code, endl, th.pc, th);
 
     // The bundled EndLoop step (unarmed branch): the tree is Mismatch.
@@ -2605,13 +2795,13 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
     var pc: nat := th.pc as nat;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
-    assert PIV.ThreadTracksGm(re, th, gm);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gm);
     assert ThreadNestRE(re, code, endl, th.pc, th);
 
     // The VM-side check IS the tree-side check (the invariant's context window).
@@ -2638,10 +2828,10 @@ module LindenElkPikeSim {
     BBReplaceHead(s1, th', ncap, nlook, nquant);
 
     // Active correspondence + seen + isblocked + remaining conjuncts.
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, na + ta[1..], vms2.active) by {
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, na + ta[1..], vms2.active) by {
       assert (na + ta[1..])[0] == (t.t, gm) && (na + ta[1..])[1..] == ta[1..];
       assert vms2.active[0] == th' && vms2.active[1..] == vms.active[1..];
-      assert PIV.ThreadTracksGm(re, th', gm);
+      assert PIV.ThreadTracksGm(re, qm, str, th', gm);
     }
     PIV.AddInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea,
                        PIV.HdTreeOf(na + ta[1..]), PIV.HeadPcOf(vms2.active));
@@ -2696,12 +2886,12 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
     var pc: nat := th.pc as nat;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
     assert ThreadNestRE(re, code, endl, th.pc, th);
 
     // The VM-side check IS the tree-side check.
@@ -2758,10 +2948,12 @@ module LindenElkPikeSim {
     requires NR.GetPcRE(code, pc) == Some(if pos then RB.CheckOracle(l) else RB.NegCheckOracle(l))
     requires TT.TreeThreadRE(rer, qm, code, inp, t, pc, th.exit_allowed)
     requires NI.NestTopRE(re, code, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk)
+    requires StampTopRE(re, code, endl, pc, th.quant_regs.a_cp)
     ensures LOr.view_get_oracle(qm.ov, TREP.CpOf(inp), l) == pos ==>
       TT.TreeThreadRE(rer, qm, code, inp, t, pc + 1, th.exit_allowed)
       && pc + 1 <= endl
       && NI.NestTopRE(re, code, endl, pc + 1, th.capture_regs.a_clk, th.quant_regs.a_clk)
+      && StampTopRE(re, code, endl, pc + 1, th.quant_regs.a_cp)
     ensures LOr.view_get_oracle(qm.ov, TREP.CpOf(inp), l) != pos ==> t == LT.Mismatch
   {
     var cc := th.capture_regs.a_clk;
@@ -2772,6 +2964,7 @@ module LindenElkPikeSim {
       assert NI.NestInvRE(re, code, 0, endl, pc, cc, qc, -1);
       assert NI.StepEdgeRE(code, pc, pc + 1);
       NI.NestInvAdvance(re, code, 0, endl, pc, pc + 1, cc, qc, -1);
+      StampAdvanceTop(re, code, endl, pc, pc + 1, th.quant_regs.a_cp);
     }
   }
 
@@ -2807,13 +3000,13 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
     var pc: nat := th.pc as nat;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
-    assert PIV.ThreadTracksGm(re, th, gm);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gm);
     assert ThreadNestRE(re, code, endl, th.pc, th);
     assert CM.ThreadClocksLE(th, vms.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant);
 
@@ -2835,7 +3028,7 @@ module LindenElkPikeSim {
     assert th2.capture_regs == th.capture_regs && th2.quant_regs == th.quant_regs;
     assert PIV.LooksCapUnset(re, th.capture_regs.a_clk);   // invariant conjunct (th ∈ active)
     assert PIV.CapRegWf(th.capture_regs);
-    assert PIV.ThreadTracksGm(re, th2, gm) by {
+    assert PIV.ThreadTracksGm(re, qm, str, th2, gm) by {
       var g0 := PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs);   // == gm
       var g1 := PIV.GmOfLive(re, th.capture_regs, th2.look_regs, th.quant_regs);  // th2's denotation
       PIV.GmOfLiveLookIndep(re, th.capture_regs, th.look_regs, th2.look_regs, th.quant_regs);
@@ -2852,6 +3045,8 @@ module LindenElkPikeSim {
       }
       assert g0.Keys == g1.Keys;
       assert g0 == g1;
+      // §2.5b rung D: the readout reads the quant bank only, which is unchanged
+      PIV.TieGmLiveCong(re, qm, str, th.capture_regs, th2.look_regs, th.capture_regs, th.look_regs, th.quant_regs);
     }
 
     // Backbones.
@@ -2868,7 +3063,7 @@ module LindenElkPikeSim {
     BBReplaceHead(s1, th2, ncap, nlook, nquant);
 
     // Active correspondence: the SAME (tree, gm) list against the moved head.
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms2.active) by {
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms2.active) by {
       assert vms2.active[0] == th2 && vms2.active[1..] == vms.active[1..];
       assert ta == [ta[0]] + ta[1..];
     }
@@ -2886,6 +3081,7 @@ module LindenElkPikeSim {
       assert NI.NestInvRE(re, code, 0, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk, -1);
       assert NI.StepEdgeRE(code, pc, pc + 1);
       NI.NestInvAdvance(re, code, 0, endl, pc, pc + 1, th.capture_regs.a_clk, th.quant_regs.a_clk, -1);
+      StampAdvanceTop(re, code, endl, pc, pc + 1, th.quant_regs.a_cp);
     }
     forall t2 | t2 in vms2.active ensures ThreadNestRE(re, code, endl, t2.pc, t2) {
       if t2 != th2 { assert t2 in vms.active; }
@@ -2940,13 +3136,13 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
     var pc: nat := th.pc as nat;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
-    assert PIV.ThreadTracksGm(re, th, gm);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gm);
     assert ThreadNestRE(re, code, endl, th.pc, th);
     assert CM.ThreadClocksLE(th, vms.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant);
 
@@ -2968,7 +3164,7 @@ module LindenElkPikeSim {
     assert th2.capture_regs == th.capture_regs && th2.quant_regs == th.quant_regs;
     assert PIV.LooksCapUnset(re, th.capture_regs.a_clk);   // invariant conjunct (th ∈ active)
     assert PIV.CapRegWf(th.capture_regs);
-    assert PIV.ThreadTracksGm(re, th2, gm) by {
+    assert PIV.ThreadTracksGm(re, qm, str, th2, gm) by {
       var g0 := PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs);   // == gm
       var g1 := PIV.GmOfLive(re, th.capture_regs, th2.look_regs, th.quant_regs);  // th2's denotation
       PIV.GmOfLiveLookIndepNested(re, th.capture_regs, th.look_regs, th2.look_regs, th.quant_regs);
@@ -2985,6 +3181,8 @@ module LindenElkPikeSim {
       }
       assert g0.Keys == g1.Keys;
       assert g0 == g1;
+      // §2.5b rung D: the readout reads the quant bank only, which is unchanged
+      PIV.TieGmLiveCong(re, qm, str, th.capture_regs, th2.look_regs, th.capture_regs, th.look_regs, th.quant_regs);
     }
 
     // Backbones.
@@ -3001,7 +3199,7 @@ module LindenElkPikeSim {
     BBReplaceHead(s1, th2, ncap, nlook, nquant);
 
     // Active correspondence: the SAME (tree, gm) list against the moved head.
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms2.active) by {
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms2.active) by {
       assert vms2.active[0] == th2 && vms2.active[1..] == vms.active[1..];
       assert ta == [ta[0]] + ta[1..];
     }
@@ -3019,6 +3217,7 @@ module LindenElkPikeSim {
       assert NI.NestInvRE(re, code, 0, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk, -1);
       assert NI.StepEdgeRE(code, pc, pc + 1);
       NI.NestInvAdvance(re, code, 0, endl, pc, pc + 1, th.capture_regs.a_clk, th.quant_regs.a_clk, -1);
+      StampAdvanceTop(re, code, endl, pc, pc + 1, th.quant_regs.a_cp);
     }
     forall t2 | t2 in vms2.active ensures ThreadNestRE(re, code, endl, t2.pc, t2) {
       if t2 != th2 { assert t2 in vms.active; }
@@ -3068,12 +3267,12 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
     var pc: nat := th.pc as nat;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
     assert ThreadNestRE(re, code, endl, th.pc, th);
 
     PIV.IdxInpOfCp(str, vms.cp as nat);
@@ -3141,13 +3340,13 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
     var pc: nat := th.pc as nat;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
-    assert PIV.ThreadTracksGm(re, th, gm);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gm);
     assert ThreadNestRE(re, code, endl, th.pc, th);
 
     // The bundled Consume step: Read or Mismatch by the current character.
@@ -3188,13 +3387,13 @@ module LindenElkPikeSim {
 
       // Blocked correspondence: the filter gains exactly the new pair.
       forall nextinp | LC.AdvanceInput(inp, WP.Forward) == Some(nextinp)
-        ensures PIV.BlockedRepRE(rer, qm, re, code, inp, nextinp, tb + [(t.t, gm)],
+        ensures PIV.BlockedRepRE(rer, qm, re, code, str, inp, nextinp, tb + [(t.t, gm)],
                                  PIV.MatchingBlocked(LC.Reverse(vms2.blocked), inp))
       {
         assert nextinp == nextinp0;
         assert PIV.MatchingBlocked(LC.Reverse(vms2.blocked), inp)
             == PIV.MatchingBlocked(LC.Reverse(vms.blocked), inp) + [(th, ce)];
-        BlockedRepSnocRE(rer, qm, re, code, inp, nextinp, tb,
+        BlockedRepSnocRE(rer, qm, re, code, str, inp, nextinp, tb,
                          PIV.MatchingBlocked(LC.Reverse(vms.blocked), inp), (t.t, gm), (th, ce));
       }
       assert |inp.next| > 0;                          // ReadCharE Some
@@ -3268,12 +3467,12 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
     var pc: nat := th.pc as nat;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
 
     // The first blocker at pc supplied the seen tree; ea-independence at a
     // Consume pc makes it THIS tree.
@@ -3366,7 +3565,7 @@ module LindenElkPikeSim {
     // Head bounds: the correspondence pins pc >= 0, the positional fact pins
     // pc <= endl < |code| — so the instruction fetch is in range.
     var PTS(inp, ta, best, tb, seen) := pts;
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0 && th.pc >= 0;
     assert ThreadNestRE(re, code, endl, th.pc, th);
     var pc: nat := th.pc as nat;
@@ -3586,7 +3785,7 @@ module LindenElkPikeSim {
     var ac := vms.active[1..];
 
     var PTS(inp, ta, best, tb, seen) := pts;
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0 && th.pc >= 0;
     assert ThreadNestRE(re, code, endl, th.pc, th);
     var pc: nat := th.pc as nat;
@@ -4073,22 +4272,22 @@ module LindenElkPikeSim {
       position once resumed via `ResumeAll` — the bridge used when the VM
       consumes a character. */
   lemma BlockedToActiveRE(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
-                          inp: LC.Input, nextinp: LC.Input,
+                          str: string, inp: LC.Input, nextinp: LC.Input,
                           tl: seq<(LT.Tree, LG.GroupMap)>, bl: seq<(AI.Thread, RC.char_expectation)>)
-    requires PIV.BlockedRepRE(rer, qm, re, code, inp, nextinp, tl, bl)
-    ensures PIV.ActiveRepRE(rer, qm, re, code, nextinp, tl, ResumeAll(bl))
+    requires PIV.BlockedRepRE(rer, qm, re, code, str, inp, nextinp, tl, bl)
+    ensures PIV.ActiveRepRE(rer, qm, re, code, str, nextinp, tl, ResumeAll(bl))
     decreases tl
   {
     if |tl| == 0 {
       assert |bl| == 0;
     } else {
       assert |bl| > 0;
-      BlockedToActiveRE(rer, qm, re, code, inp, nextinp, tl[1..], bl[1..]);
+      BlockedToActiveRE(rer, qm, re, code, str, inp, nextinp, tl[1..], bl[1..]);
       var r := bl[0].0.(exit_allowed := true, pc := bl[0].0.pc + 1);
       assert ResumeAll(bl)[0] == r && ResumeAll(bl)[1..] == ResumeAll(bl[1..]);
       assert r.pc >= 0;
       assert TT.TreeThreadRE(rer, qm, code, nextinp, tl[0].0, r.pc as nat, r.exit_allowed);
-      assert PIV.ThreadTracksGm(re, r, tl[0].1);
+      assert PIV.ThreadTracksGm(re, qm, str, r, tl[0].1);
     }
   }
 
@@ -4150,7 +4349,7 @@ module LindenElkPikeSim {
     requires dir == LAnc.Forward
     requires vms.context.nextchar == AI.get_char(str, vms.cp)
     ensures TrcRE(pts, PT.PTS_final(bestT))
-    ensures PIV.BestMatchRE(re, bestT, AI.FFindMatch(code, str, vms, ov, dir, cdn).0)
+    ensures PIV.BestMatchRE(re, qm, str, bestT, AI.FFindMatch(code, str, vms, ov, dir, cdn).0)
     decreases |str| - vms.cp
   {
     var s0 := vms.(cdn := LCdn.build_cdn_v(cdn, vms.cp, ov, vms.context, dir));
@@ -4175,11 +4374,11 @@ module LindenElkPikeSim {
     var best1 := pts1.best;
     var tb1 := pts1.blocked;
     var seen1 := pts1.seen;
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp1, ta1, s1.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp1, ta1, s1.active);
     assert ta1 == [];
     assert inp1 == PIV.InpOfCp(str, s1.cp);
     assert 0 <= s1.cp <= |str|;
-    assert PIV.BestMatchRE(re, best1, s1.bestmatch);
+    assert PIV.BestMatchRE(re, qm, str, best1, s1.bestmatch);
 
     if |s1.blocked| == 0 {
       // Both sides are done: the blocked filter is trivially empty.
@@ -4187,7 +4386,7 @@ module LindenElkPikeSim {
       assert tb1 == [] by {
         if LC.AdvanceInput(inp1, WP.Forward).Some? {
           var nextinp :| LC.AdvanceInput(inp1, WP.Forward) == Some(nextinp);
-          assert PIV.BlockedRepRE(rer, qm, re, code, inp1, nextinp, tb1,
+          assert PIV.BlockedRepRE(rer, qm, re, code, str, inp1, nextinp, tb1,
                                   PIV.MatchingBlocked(LC.Reverse(s1.blocked), inp1));
           assert PIV.MatchingBlocked([], inp1) == [];
         }
@@ -4234,7 +4433,7 @@ module LindenElkPikeSim {
       var nextinp := PT.NextInp(inp1);
       assert nextinp == PIV.InpOfCp(str, vms.cp + 1);
       assert LC.AdvanceInput(inp1, WP.Forward) == Some(nextinp);
-      assert PIV.BlockedRepRE(rer, qm, re, code, inp1, nextinp, tb1, filter);
+      assert PIV.BlockedRepRE(rer, qm, re, code, str, inp1, nextinp, tb1, filter);
 
       if |tb1| == 0 {
         // Every blocked thread was doomed: the VM idles from here on with the
@@ -4252,8 +4451,8 @@ module LindenElkPikeSim {
         assert PT.PikeTreeStep(pts1, pts2);
 
         // Re-establish the full invariant at (pts2, s4).
-        BlockedToActiveRE(rer, qm, re, code, inp1, nextinp, tb1, filter);
-        assert PIV.ActiveRepRE(rer, qm, re, code, nextinp, tb1, s4.active);
+        BlockedToActiveRE(rer, qm, re, code, str, inp1, nextinp, tb1, filter);
+        assert PIV.ActiveRepRE(rer, qm, re, code, str, nextinp, tb1, s4.active);
         CM.FConsumeClocksLE(s1);
         CM.FConsumeRegsWf(s1, ncap, nlook, nquant);
         CM.FConsumeCapsLE(s1);
@@ -4308,7 +4507,7 @@ module LindenElkPikeSim {
                                 pts2, s4, ov1, dir, cdn, ncap, nlook, nquant);
         TrcSnoc(pts, pts1, pts2);
         TrcTrans(pts, pts2, PT.PTS_final(bestT));
-        assert PIV.BestMatchRE(re, bestT, AI.FFindMatch(code, str, s4, ov1, dir, cdn).0);
+        assert PIV.BestMatchRE(re, qm, str, bestT, AI.FFindMatch(code, str, s4, ov1, dir, cdn).0);
       }
     }
   }
@@ -4335,7 +4534,7 @@ module LindenElkPikeSim {
     requires dir == LAnc.Forward
     requires vms.context.nextchar == AI.get_char(str, vms.cp)
     ensures TrcRE(pts, PT.PTS_final(bestT))
-    ensures PIV.BestMatchRE(re, bestT, AI.FFindMatch(code, str, vms, ov, dir, cdn).0)
+    ensures PIV.BestMatchRE(re, qm, str, bestT, AI.FFindMatch(code, str, vms, ov, dir, cdn).0)
     decreases |str| - vms.cp
   {
     var s0 := vms.(cdn := LCdn.build_cdn_v(cdn, vms.cp, ov, vms.context, dir));
@@ -4357,18 +4556,18 @@ module LindenElkPikeSim {
     var best1 := pts1.best;
     var tb1 := pts1.blocked;
     var seen1 := pts1.seen;
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp1, ta1, s1.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp1, ta1, s1.active);
     assert ta1 == [];
     assert inp1 == PIV.InpOfCp(str, s1.cp);
     assert 0 <= s1.cp <= |str|;
-    assert PIV.BestMatchRE(re, best1, s1.bestmatch);
+    assert PIV.BestMatchRE(re, qm, str, best1, s1.bestmatch);
 
     if |s1.blocked| == 0 {
       assert LC.Reverse(s1.blocked) == [];
       assert tb1 == [] by {
         if LC.AdvanceInput(inp1, WP.Forward).Some? {
           var nextinp :| LC.AdvanceInput(inp1, WP.Forward) == Some(nextinp);
-          assert PIV.BlockedRepRE(rer, qm, re, code, inp1, nextinp, tb1,
+          assert PIV.BlockedRepRE(rer, qm, re, code, str, inp1, nextinp, tb1,
                                   PIV.MatchingBlocked(LC.Reverse(s1.blocked), inp1));
           assert PIV.MatchingBlocked([], inp1) == [];
         }
@@ -4412,7 +4611,7 @@ module LindenElkPikeSim {
       var nextinp := PT.NextInp(inp1);
       assert nextinp == PIV.InpOfCp(str, vms.cp + 1);
       assert LC.AdvanceInput(inp1, WP.Forward) == Some(nextinp);
-      assert PIV.BlockedRepRE(rer, qm, re, code, inp1, nextinp, tb1, filter);
+      assert PIV.BlockedRepRE(rer, qm, re, code, str, inp1, nextinp, tb1, filter);
 
       if |tb1| == 0 {
         assert |filter| == 0;
@@ -4426,8 +4625,8 @@ module LindenElkPikeSim {
         var pts2 := PT.PTS(nextinp, tb1, best1, [], SS.InitialSeenTrees);
         assert PT.PikeTreeStep(pts1, pts2);
 
-        BlockedToActiveRE(rer, qm, re, code, inp1, nextinp, tb1, filter);
-        assert PIV.ActiveRepRE(rer, qm, re, code, nextinp, tb1, s4.active);
+        BlockedToActiveRE(rer, qm, re, code, str, inp1, nextinp, tb1, filter);
+        assert PIV.ActiveRepRE(rer, qm, re, code, str, nextinp, tb1, s4.active);
         CM.FConsumeClocksLE(s1);
         CM.FConsumeRegsWf(s1, ncap, nlook, nquant);
         CM.FConsumeCapsLE(s1);
@@ -4479,7 +4678,7 @@ module LindenElkPikeSim {
                                 pts2, s4, ov1, dir, cdn, ncap, nlook, nquant);
         TrcSnoc(pts, pts1, pts2);
         TrcTrans(pts, pts2, PT.PTS_final(bestT));
-        assert PIV.BestMatchRE(re, bestT, AI.FFindMatch(code, str, s4, ov1, dir, cdn).0);
+        assert PIV.BestMatchRE(re, qm, str, bestT, AI.FFindMatch(code, str, s4, ov1, dir, cdn).0);
       }
     }
   }
@@ -4568,6 +4767,7 @@ module LindenElkPikeSim {
         }
       }
       NI.NestTopInit(re, code, endl, cc, qc);
+      StampTopInit(re, code, endl, th.quant_regs.a_cp);
       NR.NfaRepIncrRE(re, code, 0, endl);
     }
     forall t | t in vms.active ensures ThreadNestRE(re, code, endl, t.pc, t) {
@@ -4671,6 +4871,7 @@ module LindenElkPikeSim {
         }
       }
       NI.NestTopInit(re, code, endl, cc, qc);
+      StampTopInit(re, code, endl, th.quant_regs.a_cp);
       NR.NfaRepIncrRE(re, code, 0, endl);
     }
     forall t | t in vms.active ensures ThreadNestRE(re, code, endl, t.pc, t) {
@@ -4767,6 +4968,7 @@ module LindenElkPikeSim {
         }
       }
       NI.NestTopInit(re, code, endl, cc, qc);
+      StampTopInit(re, code, endl, th.quant_regs.a_cp);
       NR.NfaRepIncrRE(re, code, 0, endl);
     }
     forall t | t in vms.active ensures ThreadNestRE(re, code, endl, t.pc, t) {
@@ -4822,13 +5024,13 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
 
     // Head correspondence.
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0 && th.pc >= 0;
     var pc: nat := th.pc as nat;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
 
     // The seen entry at (pc, ea) resolves to the LEFT disjunct: the stutter
     // disjunct would need a >=1-step chain pc ->+ pc, killed by tameness.
@@ -4888,12 +5090,12 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
     var pc: nat := th.pc as nat;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ThreadTracksGm(re, th, gm);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gm);
 
     // StepSpec at Accept: the tree is Match.
     assert !TT.StuttersRE(pc, code);
@@ -4908,8 +5110,8 @@ module LindenElkPikeSim {
     // The full invariant at the successor.
     BBTick(vms, s1, ncap, nlook, nquant);
     BBAccept(s1, ncap, nlook, nquant);
-    assert PIV.BestMatchRE(re, Some((inp, gm)), Some(th));
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, [], []);
+    assert PIV.BestMatchRE(re, qm, str, Some((inp, gm)), Some(th));
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, [], []);
     PIV.AddInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea,
                        PIV.HdTreeOf([]), PIV.HeadPcOf([]));
     IsblockedGrow(rer, qm, code, inp, seen, vms.isblocked, t);
@@ -4949,13 +5151,13 @@ module LindenElkPikeSim {
     var cc := th.capture_regs.a_clk;
     var qc := th.quant_regs.a_clk;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
-    assert PIV.ThreadTracksGm(re, th, gm);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gm);
     assert ThreadNestRE(re, code, endl, th.pc, th);
     assert !TT.StuttersRE(pc, code);
     assert pc < endl;
@@ -4972,8 +5174,10 @@ module LindenElkPikeSim {
     assert NI.NestInvRE(re, code, 0, endl, pc, cc, qc, -1);
     assert NI.StepEdgeRE(code, pc, x as nat);
     NI.NestInvAdvance(re, code, 0, endl, pc, x as nat, cc, qc, -1);
+    StampAdvanceTop(re, code, endl, pc, x as nat, th.quant_regs.a_cp);
     assert NI.StepEdgeRE(code, pc, y as nat);
     NI.NestInvAdvance(re, code, 0, endl, pc, y as nat, cc, qc, -1);
+    StampAdvanceTop(re, code, endl, pc, y as nat, th.quant_regs.a_cp);
     assert ThreadNestRE(re, code, endl, th1.pc, th1) && ThreadNestRE(re, code, endl, th2.pc, th2);
 
     // Backbones.
@@ -4998,8 +5202,8 @@ module LindenElkPikeSim {
       TrcCons(pts, pts1, pts1);
 
       // Active correspondence: two new head pairs, unchanged registers.
-      assert PIV.ActiveRepRE(rer, qm, re, code, inp, na + ta[1..], vms2.active) by {
-        assert PIV.ThreadTracksGm(re, th1, gm) && PIV.ThreadTracksGm(re, th2, gm);
+      assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, na + ta[1..], vms2.active) by {
+        assert PIV.ThreadTracksGm(re, qm, str, th1, gm) && PIV.ThreadTracksGm(re, qm, str, th2, gm);
         assert (na + ta[1..])[0] == (t.t1, gm) && (na + ta[1..])[1] == (t.t2, gm);
         assert (na + ta[1..])[1..] == [(t.t2, gm)] + ta[1..];
         assert ((na + ta[1..])[1..])[1..] == ta[1..];
@@ -5063,9 +5267,9 @@ module LindenElkPikeSim {
       TrcCons(pts, mid, pts1);
 
       // Active correspondence: both arm threads run at exit_allowed == true.
-      assert PIV.ActiveRepRE(rer, qm, re, code, inp, na + ta[1..], vms2.active) by {
+      assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, na + ta[1..], vms2.active) by {
         assert th1.exit_allowed == true && th2.exit_allowed == true;
-        assert PIV.ThreadTracksGm(re, th1, gm) && PIV.ThreadTracksGm(re, th2, gm);
+        assert PIV.ThreadTracksGm(re, qm, str, th1, gm) && PIV.ThreadTracksGm(re, qm, str, th2, gm);
         assert (na + ta[1..])[0] == (t.t.t1, gm) && (na + ta[1..])[1] == (t.t.t2, gm);
         assert (na + ta[1..])[1..] == [(t.t.t2, gm)] + ta[1..];
         assert ((na + ta[1..])[1..])[1..] == ta[1..];
@@ -5125,13 +5329,13 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
     var pc: nat := th.pc as nat;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
-    assert PIV.ThreadTracksGm(re, th, gm);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gm);
     assert ThreadNestRE(re, code, endl, th.pc, th);
 
     // The bundled EndLoop step (armed branch).
@@ -5152,10 +5356,10 @@ module LindenElkPikeSim {
     BBReplaceHead(s1, th', ncap, nlook, nquant);
 
     // Active correspondence + seen + isblocked + remaining conjuncts.
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, na + ta[1..], vms2.active) by {
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, na + ta[1..], vms2.active) by {
       assert (na + ta[1..])[0] == (t.t, gm) && (na + ta[1..])[1..] == ta[1..];
       assert vms2.active[0] == th' && vms2.active[1..] == vms.active[1..];
-      assert PIV.ThreadTracksGm(re, th', gm);
+      assert PIV.ThreadTracksGm(re, qm, str, th', gm);
     }
     PIV.AddInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea,
                        PIV.HdTreeOf(na + ta[1..]), PIV.HeadPcOf(vms2.active));
@@ -5205,12 +5409,12 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
     var pc: nat := th.pc as nat;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
     assert ThreadNestRE(re, code, endl, th.pc, th);
 
     // The bundled EndLoop step (unarmed branch): the tree is Mismatch.
@@ -5265,13 +5469,13 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
     var pc: nat := th.pc as nat;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
-    assert PIV.ThreadTracksGm(re, th, gm);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gm);
     assert ThreadNestRE(re, code, endl, th.pc, th);
 
     // The VM-side check IS the tree-side check (the invariant's context window).
@@ -5298,10 +5502,10 @@ module LindenElkPikeSim {
     BBReplaceHead(s1, th', ncap, nlook, nquant);
 
     // Active correspondence + seen + isblocked + remaining conjuncts.
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, na + ta[1..], vms2.active) by {
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, na + ta[1..], vms2.active) by {
       assert (na + ta[1..])[0] == (t.t, gm) && (na + ta[1..])[1..] == ta[1..];
       assert vms2.active[0] == th' && vms2.active[1..] == vms.active[1..];
-      assert PIV.ThreadTracksGm(re, th', gm);
+      assert PIV.ThreadTracksGm(re, qm, str, th', gm);
     }
     PIV.AddInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea,
                        PIV.HdTreeOf(na + ta[1..]), PIV.HeadPcOf(vms2.active));
@@ -5351,12 +5555,12 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
     var pc: nat := th.pc as nat;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
     assert ThreadNestRE(re, code, endl, th.pc, th);
 
     // The VM-side check IS the tree-side check.
@@ -5417,12 +5621,12 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
     var pc: nat := th.pc as nat;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
     assert ThreadNestRE(re, code, endl, th.pc, th);
 
     PIV.IdxInpOfCp(str, vms.cp as nat);
@@ -5482,13 +5686,13 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
     var pc: nat := th.pc as nat;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
-    assert PIV.ThreadTracksGm(re, th, gm);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gm);
     assert ThreadNestRE(re, code, endl, th.pc, th);
 
     // The bundled Consume step: Read or Mismatch by the current character.
@@ -5529,13 +5733,13 @@ module LindenElkPikeSim {
 
       // Blocked correspondence: the filter gains exactly the new pair.
       forall nextinp | LC.AdvanceInput(inp, WP.Forward) == Some(nextinp)
-        ensures PIV.BlockedRepRE(rer, qm, re, code, inp, nextinp, tb + [(t.t, gm)],
+        ensures PIV.BlockedRepRE(rer, qm, re, code, str, inp, nextinp, tb + [(t.t, gm)],
                                  PIV.MatchingBlocked(LC.Reverse(vms2.blocked), inp))
       {
         assert nextinp == nextinp0;
         assert PIV.MatchingBlocked(LC.Reverse(vms2.blocked), inp)
             == PIV.MatchingBlocked(LC.Reverse(vms.blocked), inp) + [(th, ce)];
-        BlockedRepSnocRE(rer, qm, re, code, inp, nextinp, tb,
+        BlockedRepSnocRE(rer, qm, re, code, str, inp, nextinp, tb,
                          PIV.MatchingBlocked(LC.Reverse(vms.blocked), inp), (t.t, gm), (th, ce));
       }
       assert |inp.next| > 0;                          // ReadCharE Some
@@ -5601,12 +5805,12 @@ module LindenElkPikeSim {
     var ea := th.exit_allowed;
     var pc: nat := th.pc as nat;
 
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta, vms.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
     assert |ta| > 0;
     var t := ta[0].0;
     var gm := ta[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
-    assert PIV.ActiveRepRE(rer, qm, re, code, inp, ta[1..], vms.active[1..]);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
 
     // The first blocker at pc supplied the seen tree; ea-independence at a
     // Consume pc makes it THIS tree.
