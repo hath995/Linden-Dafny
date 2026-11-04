@@ -1222,3 +1222,34 @@ QChainFresh` after the write; (3) pike-sim-re: `StampStepThreadRE` (GenStep's `t
 `PikeTreeStep`'s `pts_active` is allowed on seen trees, and `SeenInclusionRE` is monotone in the
 seen set, so the extra chain trees are harmless), `PreserveStampCase{,Nested}`; `PreserveResetCase`
 dispatches on `bq` and ensures `TrcRE`, and its `NI.StampFalseAt` call retires. Then F, then G.
+
+### 2026-11-04 (night) — **RUNG D2: the true stamp in the simulation; PikeSim is GATE-FREE** (`dc67c94`)
+
+`SetQuantToClock(qid, true)`: the VM writes `(Some(cp), clk)` and falls through; the tree takes
+`|p| + 1` steps (`Reset(gidl)`, then the chain of the body's first empty path); the tie gains exactly
+that chain. Every piece verified first or second run, one z3 worker:
+
+* **nest-stamp** (clock side, nest-inv untouched): `TrueStampSite*` (twin of `NI.NestInvResetSite`,
+  generated from its source: every FALSE mark becomes a contradiction, the CIN arm's `e1 + 2` is the
+  base case) and `TrueStampBack*` — the thread is RE-POSITIONED to the CIN end fork `e1 + 1` under
+  `qc[q0 := clk]` (no claim outside q0's block reads q0's clock; the end fork's own claim holds for the
+  fresh clock), so `NestInvTopTrueStamp` finishes with the already-verified `NI.NestInvAdvance` along
+  the end fork's exit edge. This avoided a 450-line twin of `NI.NestInvStamp`. 3854/0, 11 GB peak
+  (`TrueStampBackRE`'s first batch — split the `Re_empty` arm if it ever grows).
+* **pike-inv-re**: `PathPresentQChainFresh` (the stamp is LIVE when set).
+* **pike-sim-re**: `StampStepThreadRE{,Nested}`, `ReadoutStampRE`, `ChainStepsRE` (`TrcRE` through
+  `ChainT`; `pts_active` is allowed on seen trees and both inclusions are monotone in the seen set),
+  `PreserveStampCase{,Nested}`, `PreserveMarkCase{,Nested}` (the gate-free mark) and the dispatcher
+  `PreserveQuantCase{,Nested}` (`TrcRE`). **`InvariantPreservationRE{,Nested}` dispatch through it and
+  every pike-sim-re lemma now requires `StaticCoreRE` = `StaticOkRE` without `NoNulledPlusRE`** —
+  except `PreserveResetCase{,Nested}`, kept as gated wrappers (lift-sim-gate chains them with
+  `TrcCons`). Whole file 27 432/0 in three ranges, peak 3.8 GB.
+* Hog: the `StaticCoreRE` context took `PreserveForkCase`'s forward-arm batch past 21 GB; per-step
+  `{:split_here}` in both arms of both Fork cases took it to 3.6 GB (the D1 watch item, 13.3 GB, is
+  gone with it).
+
+**What D does NOT yet give** (rung F): the FINAL readout. `BestMatchRE` now ties the best thread's
+registers to the tree's leaf through `TieGm`/`GmOfLiveR`; turning that into the engine's answer needs
+`GmOfLive(FReconstructPlus(th).regs) == GmOfLiveR(th)` (rung E's `ReconReadout` top-level theorem,
+still TODO in `NulledReconReadout.dfy`) at the best thread, then the `FNulledPlusIdentity` sites.
+The lift-sim band's own ties (`GmtTieOutside`, look bodies) are F as well. G drops the gate conjuncts.
