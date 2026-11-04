@@ -5188,12 +5188,12 @@ module LindenElkLiftSimGate {
         // FindMatchSimRE consume-phase block, verbatim.
         assert ptsA1.PTS?;
         var PTS(inpA1, taA1, bestA1, tbA1, seenA1) := ptsA1;
-        assert PIV.ActiveRepRE(rer, qm, re, code, inpA1, taA1, s1.active);
+        assert PIV.ActiveRepRE(rer, qm, re, code, str, inpA1, taA1, s1.active);
         assert taA1 == [] && inpA1 == PIV.InpOfCp(str, s1.cp);
-        assert PIV.BlockedRepRE(rer, qm, re, code, inpA1, nextinp, tbA1, filter);
+        assert PIV.BlockedRepRE(rer, qm, re, code, str, inpA1, nextinp, tbA1, filter);
         var ptsA2 := PT.PTS(nextinp, tbA1, bestA1, [], SS.InitialSeenTrees);
-        PSM.BlockedToActiveRE(rer, qm, re, code, inpA1, nextinp, tbA1, filter);
-        assert PIV.ActiveRepRE(rer, qm, re, code, nextinp, tbA1, s4.active);
+        PSM.BlockedToActiveRE(rer, qm, re, code, str, inpA1, nextinp, tbA1, filter);
+        assert PIV.ActiveRepRE(rer, qm, re, code, str, nextinp, tbA1, s4.active);
         CM.FConsumeClocksLE(s1);
         CM.FConsumeRegsWf(s1, ncap, nlook, nquant);
         CM.FConsumeCapsLE(s1);
@@ -5453,12 +5453,12 @@ module LindenElkLiftSimGate {
         // FindMatchSimRE consume-phase block, verbatim.
         assert ptsA1.PTS?;
         var PTS(inpA1, taA1, bestA1, tbA1, seenA1) := ptsA1;
-        assert PIV.ActiveRepRE(rer, qm, re, code, inpA1, taA1, s1.active);
+        assert PIV.ActiveRepRE(rer, qm, re, code, str, inpA1, taA1, s1.active);
         assert taA1 == [] && inpA1 == PIV.InpOfCp(str, s1.cp);
-        assert PIV.BlockedRepRE(rer, qm, re, code, inpA1, nextinp, tbA1, filter);
+        assert PIV.BlockedRepRE(rer, qm, re, code, str, inpA1, nextinp, tbA1, filter);
         var ptsA2 := PT.PTS(nextinp, tbA1, bestA1, [], SS.InitialSeenTrees);
-        PSM.BlockedToActiveRE(rer, qm, re, code, inpA1, nextinp, tbA1, filter);
-        assert PIV.ActiveRepRE(rer, qm, re, code, nextinp, tbA1, s4.active);
+        PSM.BlockedToActiveRE(rer, qm, re, code, str, inpA1, nextinp, tbA1, filter);
+        assert PIV.ActiveRepRE(rer, qm, re, code, str, nextinp, tbA1, s4.active);
         CM.FConsumeClocksLE(s1);
         CM.FConsumeRegsWf(s1, ncap, nlook, nquant);
         CM.FConsumeCapsLE(s1);
@@ -8118,12 +8118,12 @@ module LindenElkLiftSimGate {
         // FindMatchSimRE consume-phase block, verbatim.
         assert ptsA1.PTS?;
         var PTS(inpA1, taA1, bestA1, tbA1, seenA1) := ptsA1;
-        assert PIV.ActiveRepRE(rer, qm, re, code, inpA1, taA1, s1.active);
+        assert PIV.ActiveRepRE(rer, qm, re, code, str, inpA1, taA1, s1.active);
         assert taA1 == [] && inpA1 == PIV.InpOfCp(str, s1.cp);
-        assert PIV.BlockedRepRE(rer, qm, re, code, inpA1, nextinp, tbA1, filter);
+        assert PIV.BlockedRepRE(rer, qm, re, code, str, inpA1, nextinp, tbA1, filter);
         var ptsA2 := PT.PTS(nextinp, tbA1, bestA1, [], SS.InitialSeenTrees);
-        PSM.BlockedToActiveRE(rer, qm, re, code, inpA1, nextinp, tbA1, filter);
-        assert PIV.ActiveRepRE(rer, qm, re, code, nextinp, tbA1, s4.active);
+        PSM.BlockedToActiveRE(rer, qm, re, code, str, inpA1, nextinp, tbA1, filter);
+        assert PIV.ActiveRepRE(rer, qm, re, code, str, nextinp, tbA1, s4.active);
         CM.FConsumeClocksLE(s1);
         CM.FConsumeRegsWf(s1, ncap, nlook, nquant);
         CM.FConsumeCapsLE(s1);

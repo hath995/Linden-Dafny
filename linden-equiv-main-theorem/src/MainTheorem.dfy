@@ -3691,7 +3691,7 @@ module LindenElkMain {
     ensures var inp := PIV.InpOfCp(str, cp);
             var inits := AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
                                        AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward));
-            PIV.BestMatchRE(body, bestT, AI.FFindMatch(bodycode, str, inits, ov, LAnc.Forward, cdns).0)
+            PIV.BestMatchRE(body, qm, str, bestT, AI.FFindMatch(bodycode, str, inits, ov, LAnc.Forward, cdns).0)
             && bestT == LT.FirstLeaf(tstar, inp)
   {
     var inp := PIV.InpOfCp(str, cp);
@@ -3709,7 +3709,7 @@ module LindenElkMain {
     bestT := PSM.FindMatchSimRE(rer, qm, body, bodycode, endl, ngroups, str, pts0, inits,
                                 ov, LAnc.Forward, cdns, ncap, nlook, nquant);
     assert PSM.TrcRE(pts0, PT.PTS_final(bestT));
-    assert PIV.BestMatchRE(body, bestT, AI.FFindMatch(bodycode, str, inits, ov, LAnc.Forward, cdns).0);
+    assert PIV.BestMatchRE(body, qm, str, bestT, AI.FFindMatch(bodycode, str, inits, ov, LAnc.Forward, cdns).0);
 
     // Pin bestT to the checked tree's first leaf.
     TrcREToLinden(pts0, PT.PTS_final(bestT));
@@ -3744,7 +3744,7 @@ module LindenElkMain {
     ensures var inp := PIV.InpOfCp(str, cp);
             var inits := AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
                                        AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward));
-            PIV.BestMatchRE(body, bestT, AI.FFindMatch(bodycode, str, inits, ov, LAnc.Forward, cdns).0)
+            PIV.BestMatchRE(body, qm, str, bestT, AI.FFindMatch(bodycode, str, inits, ov, LAnc.Forward, cdns).0)
             && bestT == LT.FirstLeaf(tstar, inp)
   {
     var inp := PIV.InpOfCp(str, cp);
@@ -3762,7 +3762,7 @@ module LindenElkMain {
     bestT := PSM.FindMatchSimRENested(rer, qm, body, bodycode, endl, ngroups, str, pts0, inits,
                                       ov, LAnc.Forward, cdns, ncap, nlook, nquant);
     assert PSM.TrcRE(pts0, PT.PTS_final(bestT));
-    assert PIV.BestMatchRE(body, bestT, AI.FFindMatch(bodycode, str, inits, ov, LAnc.Forward, cdns).0);
+    assert PIV.BestMatchRE(body, qm, str, bestT, AI.FFindMatch(bodycode, str, inits, ov, LAnc.Forward, cdns).0);
 
     // Pin bestT to the checked tree's first leaf.
     TrcREToLinden(pts0, PT.PTS_final(bestT));
@@ -3799,7 +3799,7 @@ module LindenElkMain {
             var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Forward);
             var inits := AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
                                        AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward));
-            PIV.BestMatchRE(body, bestT, AI.FFindMatch(bodycode, str, inits, ov, LAnc.Forward, cdns).0)
+            PIV.BestMatchRE(body, qm, str, bestT, AI.FFindMatch(bodycode, str, inits, ov, LAnc.Forward, cdns).0)
             && bestT == LT.FirstLeaf(t, inp)
   {
     var inp := PIV.InpOfCp(str, cp);
@@ -3884,7 +3884,7 @@ module LindenElkMain {
             var S := LL.LkBodyGroups(T.Translate(body));
             var inits := AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
                                        AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward));
-            PIV.BestMatchRE(body, bestT, AI.FFindMatch(bodycode, str, inits, ov, LAnc.Forward, cdns).0)
+            PIV.BestMatchRE(body, qm, str, bestT, AI.FFindMatch(bodycode, str, inits, ov, LAnc.Forward, cdns).0)
             && (bestT.None? <==> LT.FirstLeaf(t, inp).None?)
             && (bestT.Some? ==>
                   LT.FirstLeaf(t, inp).Some?
@@ -3963,7 +3963,7 @@ module LindenElkMain {
             var S := LL.LkBodyGroups(T.Translate(body));
             var inits := AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
                                        AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward));
-            PIV.BestMatchRE(body, bestT, AI.FFindMatch(bodycode, str, inits, ov, LAnc.Forward, cdns).0)
+            PIV.BestMatchRE(body, qm, str, bestT, AI.FFindMatch(bodycode, str, inits, ov, LAnc.Forward, cdns).0)
             && (bestT.None? <==> LT.FirstLeaf(t, inp).None?)
             && (bestT.Some? ==>
                   LT.FirstLeaf(t, inp).Some?
@@ -7224,9 +7224,49 @@ module LindenElkMain {
   {
     bestT := BodyTreeAtCp(rer, qm, body, bodycode, endl, ngroups, str, cp, ov, cdns, ncap, nlook, nquant);
     ReplayCapAgreeFresh(bodycode, str, cp, cap, lk, qt, ov, cdns, body, ncap, nlook, nquant);
+    // §2.5b rung D: the fresh best thread carries no stamp (interim gate), so
+    // BestMatchRE's reconstruction-aware readout is the plain GmOfLive.
+    NoTrueQuantStamp(body);
+    FreshBestNoStamps(bodycode, str, cp, ov, cdns, ncap, nlook, nquant);
+    var rfB := AI.FFindMatch(bodycode, str,
+                             AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                           AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                             ov, LAnc.Forward, cdns).0;
+    PIV.BestMatchRENoStamps(body, qm, str, bestT, rfB);
     // BodyTreeAtCp:  BestMatchRE(body, bestT, rf) && bestT == FirstLeaf(t, inp)
     //   -> bestT.value.1 == GmOfLive(body, rf.regs), bestT.None? <==> rf.None?
     // ReplayCapAgreeFresh:  ra.None? <==> rf.None? && captures agree on CaptureRegs(body)
+  }
+
+  /** §2.5b rung D (2026-11-04): `BestMatchRE` now reads the best thread through
+      the reconstruction-aware `PIV.GmOfLiveR`. Under the interim gate the code
+      never stamps TRUE, so the fresh run's best thread carries no stamp and the
+      readout is the plain `GmOfLive` these consumers were written against. */
+  lemma FreshBestNoStamps(bodycode: RB.code, str: string, cp: nat,
+                          ov: LOr.OracleView, cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
+    requires cp <= |str|
+    requires forall pc: nat, q: int, b: bool ::
+               NR.GetPcRE(bodycode, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
+    ensures var ctxc := AI.cp_context(cp, str, LAnc.Forward);
+            var rf := AI.FFindMatch(bodycode, str,
+                                    AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                  AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
+            rf.Some? ==> forall q: int :: AI.get_idx(rf.value.quant_regs.a_cp, q) < 0
+  {
+    var ctxc := AI.cp_context(cp, str, LAnc.Forward);
+    var inits := AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                               AReg.init_regs(nquant), 0, ctxc);
+    assert ctxc.nextchar == AI.get_char(str, cp);        // cp_context definitional
+    var qt := AReg.init_regs(nquant);
+    assert forall k :: AI.get_idx(qt.a_cp, k) < 0 by {
+      forall k ensures AI.get_idx(qt.a_cp, k) < 0 { if 0 <= k < |qt.a_cp| { assert qt.a_cp[k] == -1; } }
+    }
+    assert forall k :: AI.get_idx(qt.a_clk, k) >= -1 by {
+      forall k ensures AI.get_idx(qt.a_clk, k) >= -1 { if 0 <= k < |qt.a_clk| { assert qt.a_clk[k] == -1; } }
+    }
+    assert QuantRegsFinal(inits.active[0]);
+    assert VmQuantFinal(inits);
+    FFindMatchQuantFinalAny(bodycode, str, inits, ov, LAnc.Forward, cdns);
   }
 
   /** §4b ENGINE VALUE BRIDGE generalized off `LookFreeRE(body)` to the CAPTURING
@@ -7278,6 +7318,15 @@ module LindenElkMain {
   {
     bestT := BodyTreeAtCpLk(rer, qm, body, bodycode, endl, ngroups, str, cp, ov, cdns, ncap, nlook, nquant);
     ReplayCapAgreeFresh(bodycode, str, cp, cap, lk, qt, ov, cdns, body, ncap, nlook, nquant);
+    // §2.5b rung D: the fresh best thread carries no stamp (interim gate), so
+    // BestMatchRE's reconstruction-aware readout is the plain GmOfLive.
+    NoTrueQuantStamp(body);
+    FreshBestNoStamps(bodycode, str, cp, ov, cdns, ncap, nlook, nquant);
+    var rfB := AI.FFindMatch(bodycode, str,
+                             AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                           AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                             ov, LAnc.Forward, cdns).0;
+    PIV.BestMatchRENoStamps(body, qm, str, bestT, rfB);
     // BodyTreeAtCpLk:  BestMatchRE(body, bestT, rf) (fresh) && confined FirstLeaf facts
     //   -> bestT.1 == GmOfLive(body, rf.regs), bestT.None? <==> rf.None?
     // ReplayCapAgreeFresh:  ra.None? <==> rf.None? && captures agree on CaptureRegs(body)
@@ -7326,6 +7375,15 @@ module LindenElkMain {
   {
     bestT := BodyTreeAtCpNested(rer, qm, body, bodycode, endl, ngroups, str, cp, ov, cdns, ncap, nlook, nquant);
     ReplayCapAgreeFresh(bodycode, str, cp, cap, lk, qt, ov, cdns, body, ncap, nlook, nquant);
+    // §2.5b rung D: the fresh best thread carries no stamp (interim gate), so
+    // BestMatchRE's reconstruction-aware readout is the plain GmOfLive.
+    NoTrueQuantStampNested(body);
+    FreshBestNoStamps(bodycode, str, cp, ov, cdns, ncap, nlook, nquant);
+    var rfB := AI.FFindMatch(bodycode, str,
+                             AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                           AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                             ov, LAnc.Forward, cdns).0;
+    PIV.BestMatchRENoStamps(body, qm, str, bestT, rfB);
     // BodyTreeAtCpNested:  BestMatchRE(body, bestT, rf) (fresh) && confined FirstLeaf facts
     //   -> bestT.1 == GmOfLive(body, rf.regs), bestT.None? <==> rf.None?
     // ReplayCapAgreeFresh:  ra.None? <==> rf.None? && captures agree on CaptureRegs(body)

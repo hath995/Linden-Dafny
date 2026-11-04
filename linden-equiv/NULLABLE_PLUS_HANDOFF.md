@@ -1156,3 +1156,69 @@ unprovable preconditions, "green" on a cached artifact for three days).
 `nulled-recon` into `LindenElkPikeInv`, then `ThreadTracksGm := GmOfLiveR`, the commutation algebra,
 and the PikeSimRE step lemmas. Note that touching `pike-inv-re` again re-triggers the whole
 tower rebuild — but every member above it is now 4.14-robust, so it should be a clean ~2 h pack.
+
+### 2026-11-04 — **RUNG D1: the simulation invariant is reconstruction-aware** (`ThreadTracksGm := GmOfLiveR`)
+
+**Environment change first: `dafny.slice` is now 24 GiB** (was 80; a vLLM server holds the rest of
+the box). Every dev run is ONE z3 worker under a sampler that kills the run at 21 GiB
+(`<scratchpad>/dv.sh`; multi-range driver `dvmulti.sh`). Peaks this session: pike-inv-re new
+section 2.4 GiB, nest-stamp new lemmas 6.6 GiB, pike-sim-re ranges ≤ 2.5 GiB once the stamp
+invariant went opaque (see the hog below). A gate pack must run with `DAFNY_MAX_CORES=1`.
+
+**Also recorded only in commit messages until now (2026-09-06):** D0 (`6472689`, `404b0de`: the
+readout defs moved into `LindenElkPikeInv`, gate 64/2224/rc=0) and the Open commutation
+(`3319066`, `LiveStampsGmOpenCommute`, forcing `QuantUnique` and `StampBodiesOk`).
+
+**What D1 is.** The per-thread tie is now the reconstruction-aware readout, and every register
+step carries it. The interim gate (`NoNulledPlusRE` in `StaticOkRE`, `StampFalseAt`) is UNCHANGED,
+so a TRUE stamp is still unreachable in the simulation — D2 adds that step. Layer by layer:
+
+* **pike-inv-re** — `ThreadTracksGm(re, qm, str, th, gm) := T.TransWf(re) && gm == TieGm(…)`, `TieGm`
+  the OPAQUE wrapper of `GmOfLiveR` (copied registers get the tie by congruence; `TieGmLiveCong`
+  for the look-bank write);
+  `ActiveRepRE`/`BlockedRepRE` gain `str`, `BestMatchRE` gains `qm, str` (it is `ThreadTracksGm` of
+  the best thread). Bridges: `ThreadTracksGmNoStamps`, `BestMatchRENoStamps`, `InitNoStamps`.
+  THE GENERAL COMMUTATION ALGEBRA (the readout only ever overrides groups of stamped bodies, and
+  WHICH stamps it applies depends on the quant banks only — never on the map):
+  `GMUpdateCommute` (disjoint actions commute) → `ApplyPathActCommute` → `StampApplyActCommute` →
+  `LiveStampsGmActCommute` (any action disjoint from every stamped body passes through;
+  `StampedDisjoint`) → `LiveStampsGmPathCommute`, `LiveStampsGmCloseCommute`; absorption
+  `ResetAbsorbsAct/Path`, `LiveStampsGmResetAbsorb` (a reset covering a subterm's groups erases its
+  readout); `LiveStampsGmCong`, `LiveStampsGmAllStale`; and the two QUANT WRITES —
+  **`LiveStampsGmMark`** (the clock mark: readout of the reset = reset of the readout) and
+  **`LiveStampsGmStamp`** (the true stamp: the readout gains exactly `StampApply` under the new
+  bank; needs `QChainFresh` under the new clocks, `q0` outside looks, `NoStampedAbove`, the chain's
+  `p.Some?`). `QmapOkBodyAtQid` + `QmapOkStampBodies` make `StampBodiesOk` STATIC (from `QmapOk`).
+* **nest-stamp** — `NestStampCapSite{Min,Opt,RE}` (register-generic copy of the open-site family:
+  Open AND Close sites are outside every stamped body) and `NestStampQuantSite{Min,Opt,RE}`
+  (`PIV.NoStampedAbove` at every `SetQuantToClock(q0, _)` site), with top wrappers.
+* **pike-sim-re** — `ThreadNestRE` carries the stamp invariant as the OPAQUE `StampTopRE`;
+  the six register step lemmas (`Open/Close/ResetStepThreadRE{,Nested}`) are now gm-FREE (they state
+  `GmOfLive(after) == GMUpdate(a, GmOfLive(before))`; `LiftSimCore`'s dispatchers want exactly
+  that) and advance `StampTopRE`; narrow readout lemmas `ReadoutCapWriteRE` (Open/Close) and
+  `ReadoutMarkRE` (the mark) are the one call each Preserve case spends on the readout.
+  `BlockedRepSnocRE`/`BlockedToActiveRE` gain `str`; new dep `linden.equiv-nest-stamp`.
+* **consumers** — call sites rewritten mechanically (`<scratchpad>/addargs.py`, paren-aware);
+  `MainTheorem`'s three `ReplayCapIsBodyLeaf*` bridge `BestMatchRE` back to `GmOfLive` with the new
+  `FreshBestNoStamps` (`FFindMatchQuantFinalAny` under the interim gate) + `PIV.BestMatchRENoStamps`.
+
+**Two hogs, one fix (AGENTS.md §2.4 in action).** (1) `NST.NestStampTopRE` TRANSPARENT inside
+`ThreadNestRE` took `OpenStepThreadRENested` past 10 GiB in one batch (its non-nested twin passed):
+the stamp invariant is a recursive existential predicate the size of `NI.NestInvRE`. (2) `GmOfLiveR`
+TRANSPARENT inside the tie took `PreserveForkCaseNested`'s forward arm from 13 GiB to 23.8 GiB in
+five seconds (`LiveStampsGm` is recursive over the regex; the nested-fragment context unfolds it
+eagerly). Both now sit behind opaque wrappers (`StampTopRE` in pike-sim-re, `TieGm` in pike-inv-re),
+revealed only in the narrow helpers. Result: pike-sim-re 23 694/0 in three ranges. **Any new
+per-thread conjunct of this size goes in opaque.** Watch item: the Fork cases' backward-arm batch
+(`PreserveForkCase{,Nested}`, batch 5) still peaks at 13.3 GiB, which fits one worker but not two;
+split it before raising `DAFNY_MAX_CORES`.
+
+**Next: D2 — the true-stamp step.** (1) nest-inv-level site lemmas for `SetQuantToClock(q, true)`
+(twins of `NI.NestInvResetSite` → `PathPresentQ` + outside-looks, and of `NI.NestInvStamp` → the
+block exit at `e1 + 3`; only the CIN arm's `e1 + 2` is a base case, so the copies are short — put
+them in nest-stamp to keep nest-inv's 37-minute file cached); (2) pike-inv-re: `PathPresentQ ⟹
+QChainFresh` after the write; (3) pike-sim-re: `StampStepThreadRE` (GenStep's `tr_stamp` clause),
+`ReadoutStampRE` (narrow, `LiveStampsGmStamp`), `ChainStepsRE` (`TrcRE` through `ChainT(p, tc)` —
+`PikeTreeStep`'s `pts_active` is allowed on seen trees, and `SeenInclusionRE` is monotone in the
+seen set, so the extra chain trees are harmless), `PreserveStampCase{,Nested}`; `PreserveResetCase`
+dispatches on `bq` and ensures `TrcRE`, and its `NI.StampFalseAt` call retires. Then F, then G.

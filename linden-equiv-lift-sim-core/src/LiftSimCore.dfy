@@ -3165,12 +3165,12 @@ module LindenElkLiftSimCore {
     var th := s.active[0];
     var pc: nat := th.pc as nat;
     var PTS(inpA, taA, bestA, tbA, seenA) := ptsA;
-    assert PIV.ActiveRepRE(rer, qm, re, code, inpA, taA, s.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inpA, taA, s.active);
     assert |taA| > 0;
     var tA := taA[0].0;
     var gmA := taA[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inpA, tA, pc, th.exit_allowed);
-    assert PIV.ThreadTracksGm(re, th, gmA);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gmA);
     assert th in s.active;
     assert PSM.ThreadNestRE(re, code, endl, th.pc, th);
     assert CM.ThreadClocksLE(th, s.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant)
@@ -3214,12 +3214,12 @@ module LindenElkLiftSimCore {
     var th := s.active[0];
     var pc: nat := th.pc as nat;
     var PTS(inpA, taA, bestA, tbA, seenA) := ptsA;
-    assert PIV.ActiveRepRE(rer, qm, re, code, inpA, taA, s.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inpA, taA, s.active);
     assert |taA| > 0;
     var tA := taA[0].0;
     var gmA := taA[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inpA, tA, pc, th.exit_allowed);
-    assert PIV.ThreadTracksGm(re, th, gmA);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gmA);
     assert th in s.active;
     assert PSM.ThreadNestRE(re, code, endl, th.pc, th);
     assert CM.ThreadClocksLE(th, s.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant);
@@ -3260,12 +3260,12 @@ module LindenElkLiftSimCore {
     var th := s.active[0];
     var pc: nat := th.pc as nat;
     var PTS(inpA, taA, bestA, tbA, seenA) := ptsA;
-    assert PIV.ActiveRepRE(rer, qm, re, code, inpA, taA, s.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inpA, taA, s.active);
     assert |taA| > 0;
     var tA := taA[0].0;
     var gmA := taA[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inpA, tA, pc, th.exit_allowed);
-    assert PIV.ThreadTracksGm(re, th, gmA);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gmA);
     assert th in s.active;
     assert PSM.ThreadNestRE(re, code, endl, th.pc, th);
     assert CM.ThreadClocksLE(th, s.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant)
@@ -3308,12 +3308,12 @@ module LindenElkLiftSimCore {
     var th := s.active[0];
     var pc: nat := th.pc as nat;
     var PTS(inpA, taA, bestA, tbA, seenA) := ptsA;
-    assert PIV.ActiveRepRE(rer, qm, re, code, inpA, taA, s.active);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inpA, taA, s.active);
     assert |taA| > 0;
     var tA := taA[0].0;
     var gmA := taA[0].1;
     assert TT.TreeThreadRE(rer, qm, code, inpA, tA, pc, th.exit_allowed);
-    assert PIV.ThreadTracksGm(re, th, gmA);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gmA);
     assert th in s.active;
     assert PSM.ThreadNestRE(re, code, endl, th.pc, th);
     assert CM.ThreadClocksLE(th, s.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant);

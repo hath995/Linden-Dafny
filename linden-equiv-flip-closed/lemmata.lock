@@ -94,6 +94,15 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-nest-inv"
 
 [[package]]
+name = "linden.equiv-nest-stamp"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-nest-stamp"
+
+[[package]]
 name = "linden.equiv-nfa-rep-re"
 class = 1
 version = "1.0.0"
