@@ -9299,4 +9299,59 @@ module LindenElkPikeInv {
     }
   }
 
+
+  // ===========================================================================
+  // §2.5b RUNG D2 — the true stamp is LIVE when set: the positional invariant
+  // gives `PathPresentQ` at the stamp site (every enclosing quantifier fresh
+  // w.r.t. its threshold); with `q0`'s own clock bumped to the freshest value
+  // that is exactly `QChainFresh` (capture nodes only pass the threshold
+  // through, and `q0` is outside looks).
+  // ===========================================================================
+  lemma PathPresentQChainFresh(r: R.regex, cc: seq<int>, qc: seq<int>, qc': seq<int>,
+                               mx: int, q0: nat, clk: int)
+    requires q0 in QuantIds(r) && q0 in QuantIdsOutsideLooks(r)
+    requires QuantUnique(r)
+    requires PathPresentQ(r, cc, qc, mx, q0)
+    requires forall q: int :: q != q0 as int ==> AI.get_idx(qc', q) == AI.get_idx(qc, q)
+    requires AI.get_idx(qc', q0) == clk
+    requires mx <= clk
+    requires forall q: nat :: q in QuantIds(r) ==> AI.get_idx(qc, q) <= clk
+    ensures QChainFresh(r, qc', mx, q0)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if q0 in QuantIds(r1) {
+        QuantIdsOutsideLooksSub(r2);
+        assert q0 in QuantIdsOutsideLooks(r1)
+          by { if q0 !in QuantIdsOutsideLooks(r1) { assert q0 in QuantIdsOutsideLooks(r2); assert q0 in QuantIds(r1) * QuantIds(r2); } }
+        PathPresentQChainFresh(r1, cc, qc, qc', mx, q0, clk);
+      } else {
+        QuantIdsOutsideLooksSub(r1);
+        PathPresentQChainFresh(r2, cc, qc, qc', mx, q0, clk);
+      }
+    case Re_con(r1, r2) =>
+      if q0 in QuantIds(r1) {
+        QuantIdsOutsideLooksSub(r2);
+        assert q0 in QuantIdsOutsideLooks(r1)
+          by { if q0 !in QuantIdsOutsideLooks(r1) { assert q0 in QuantIdsOutsideLooks(r2); assert q0 in QuantIds(r1) * QuantIds(r2); } }
+        PathPresentQChainFresh(r1, cc, qc, qc', mx, q0, clk);
+      } else {
+        QuantIdsOutsideLooksSub(r1);
+        PathPresentQChainFresh(r2, cc, qc, qc', mx, q0, clk);
+      }
+    case Re_quant(nul, qid0, q, r1) =>
+      if qid0 >= 0 && (qid0 as nat) == q0 {
+      } else {
+        var qv := AI.get_idx(qc, qid0);
+        assert AI.get_idx(qc', qid0) == qv;
+        assert qid0 >= 0 && (qid0 as nat) in QuantIds(r);
+        PathPresentQChainFresh(r1, cc, qc, qc', qv, q0, clk);
+      }
+    case Re_capture(cid, r1) =>
+      PathPresentQChainFresh(r1, cc, qc, qc', mx, q0, clk);
+    case Re_lookaround(_, _, _) =>
+      assert false;
+  }
+
 }
