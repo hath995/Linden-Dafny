@@ -1253,3 +1253,26 @@ registers to the tree's leaf through `TieGm`/`GmOfLiveR`; turning that into the 
 `GmOfLive(FReconstructPlus(th).regs) == GmOfLiveR(th)` (rung E's `ReconReadout` top-level theorem,
 still TODO in `NulledReconReadout.dfy`) at the best thread, then the `FNulledPlusIdentity` sites.
 The lift-sim band's own ties (`GmtTieOutside`, look bodies) are F as well. G drops the gate conjuncts.
+
+### 2026-11-05 — **THE GATE IS GREEN WITH D1 + D2: `workspace packed: 64 members`, `PACK rc=0`, at ONE z3 worker under the 24 GB slice**
+
+Four pack runs (`DAFNY_MAX_CORES=1 LEM_BUILD_TIMEOUT=0 lem pack --jobs 1` in the main checkout,
+under `<scratchpad>/pack1.sh`: watchdog kills the pack above 22 GiB or after 25 min without solver
+CPU — a cgroup OOM presents as a HANG). Every member above pike-inv-re was rebuilt; total ≈ 11 h of
+single-worker time. Each stop was a PERFORMANCE hog, never a wrong proof, and each fix is a commit:
+
+| stop | symbol | cause | fix | after |
+|---|---|---|---|---|
+| nest-stamp, 23.8 GB | `NestStampQuantWriteRE` (rung D piece 1, 09-04 — passed the 80 GB slice unmeasured) | arms heavy in one VC | one lemma per arm, the quant arm one per scheme (`QWQ*`), ladder 2/1/0 | 9.9 GB (`b0aa59f`) |
+| main-theorem, 23.9 GB | `FAdvanceEpsilonAncSet` (546 lines, no split) + `FConsumeAncSet`, `LookCheckDirectREGen` | one batch per lemma | split per arm / per `assert … by` | 5.3 GB (`60e3c71`) |
+| lift-sim-oracle, 900 s | `OracleColumnNested`'s lookahead row | the ASSUMED context (each fix moved the slow batch one line) | both directions out as narrow helpers; `hide *` in the engine-side one | 142 s, 5.7 GB (`commit after 60e3c71`) |
+
+Lessons (also in memory `dafny-batch-memory-hogs`): measure PEAK MEMORY per member at one worker
+whenever the slice shrinks — the 80 GB cap had hidden two 20 GB batches since September; the pack's
+`.doo` library inputs make z3 behave differently from a dev run against SOURCES (main-theorem: 12 GB
+in dev, 22+ GB in the pack), so verify fixes against the freshly packed `.doo` deps
+(`<scratchpad>/freshlibs.sh`); `--filter-symbol` is single-valued and a trailing dot means "ends
+with"; never wait on `pgrep -f` of a string your own shell contains.
+
+**State:** `nullable-plus-greedy`, rung D COMPLETE (D0, D1, D2) and gate-verified. The interim gate
+conjuncts are still in place outside pike-sim-re (rung G). **Next: rung F** — the final readout.
