@@ -1150,6 +1150,7 @@ module LindenElkLiftSimGate {
     assert TreeRepLkRE(rer, qm, code, inp, t.t, pc + 1, ea);
     var gid: LG.GroupId := t.g.g;
 
+    assert {:split_here} true;   // (2026-11-05) per-section batch: one VC was a 900 s timeout in the gate
     // position: the B-side update index IS the VM's cp
     assert 0 <= s.cp <= |str| && inp == PIV.InpOfCp(str, s.cp);
     PIV.IdxInpOfCp(str, s.cp);
@@ -1157,6 +1158,7 @@ module LindenElkLiftSimGate {
     assert LC.Idx(inp) == cpn;
     var gm2 := LG.GMUpdate(t.g, LC.Idx(inp), gm);
 
+    assert {:split_here} true;   // (2026-11-05) per-section batch: one VC was a 900 s timeout in the gate
     // the written gid is outside-look, hence outside S
     assert pc < endl by {
       TreeRepLkREInRange(rer, qm, code, inp, t, pc, ea);
@@ -1189,6 +1191,7 @@ module LindenElkLiftSimGate {
       if gid in PIV.CapIdsInLooks(re) { assert gid in OL * PIV.CapIdsInLooks(re); }
     }
 
+    assert {:split_here} true;   // (2026-11-05) per-section batch: one VC was a 900 s timeout in the gate
     // B step: pts_active queues the child with the GMUpdate-moved gm
     assert PTL.TreeBfsStepLk(t, gm, inp) == PT.StepActive([(t.t, gm2)]);
     bst1 := PT.PTS(inp, [(t.t, gm2)] + ta[1..], best, tb, SS.AddSeenTrees(seen, t));
@@ -1196,6 +1199,7 @@ module LindenElkLiftSimGate {
     TrcLkRefl(bst1);
     TrcLkCons(bst, bst1, bst1);
 
+    assert {:split_here} true;   // (2026-11-05) per-section batch: one VC was a 900 s timeout in the gate
     // raw witness: its walk peels the same GroupActionT (same reg pins the
     // same action via the erasure congruence), child walks at gm2
     var traw: LT.Tree :| CE.ProgErase(traw) == CE.ProgErase(t)
@@ -1208,6 +1212,7 @@ module LindenElkLiftSimGate {
     }
     assert WalkPairLk(rer, qm, code, inp, traw.t, gm2, pc + 1, ea);
 
+    assert {:split_here} true;   // (2026-11-05) per-section batch: one VC was a 900 s timeout in the gate
     // value ties for th': both sides move by the SAME GMUpdate at cpn
     var gml := PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs);
     var gml2 := PIV.GmOfLive(re, th'.capture_regs, th'.look_regs, th'.quant_regs);
@@ -1268,6 +1273,7 @@ module LindenElkLiftSimGate {
     assert ThreadRepLk(rer, qm, re, code, inp, crv, str, ov, S, traw.t, gm2, th', ncap, nlook, nquant);
     assert ThreadRepLkC(rer, qm, re, code, inp, crv, str, ov, S, t.t, gm2, th', ncap, nlook, nquant);
 
+    assert {:split_here} true;   // (2026-11-05) per-section batch: one VC was a 900 s timeout in the gate
     // list bookkeeping
     assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, ta[1..], s.active[1..],
                         ncap, nlook, nquant);
@@ -1276,6 +1282,7 @@ module LindenElkLiftSimGate {
     assert ActiveRepLkC(rer, qm, re, code, inp, crv, str, ov, S, [(t.t, gm2)] + ta[1..], vms2.active,
                         ncap, nlook, nquant);
 
+    assert {:split_here} true;   // (2026-11-05) per-section batch: one VC was a 900 s timeout in the gate
     // ---- (E3) the look-path carrier: fresh cap stamp, no new inside-S group ----
     assert LookNestRepC(re, S, ta, s.active);
     assert LookNestOkT(re, S, gm, th);
@@ -1307,6 +1314,7 @@ module LindenElkLiftSimGate {
       }
     }
 
+    assert {:split_here} true;   // (2026-11-05) per-section batch: one VC was a 900 s timeout in the gate
     // ---- (E4) the converse carrier: look/quant banks untouched, gm grows ----
     assert LookNestBackRepC(re, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
     assert forall g: LG.GroupId :: g in gm ==> g in gm2;   // GMOpen adds / GMClose keeps domain
@@ -1325,6 +1333,7 @@ module LindenElkLiftSimGate {
       }
     }
 
+    assert {:split_here} true;   // (2026-11-05) per-section batch: one VC was a 900 s timeout in the gate
     // seen + isblocked bookkeeping
     assert PIV.HdTreeOf(ta) == Some(t) && PIV.HeadPcOf(s.active) == pc;
     AddSeenRepLk(rer, qm, code, inp, seen, s.processed, t, pc, ea,
@@ -1387,6 +1396,7 @@ module LindenElkLiftSimGate {
     assert TreeRepLkRE(rer, qm, code, inp, t.t, pc + 1, ea);
     var gid: LG.GroupId := t.g.g;
 
+    assert {:split_here} true;   // (2026-11-05) per-section batch: one VC was a 900 s timeout in the gate
     // position: the B-side update index IS the VM's cp
     assert 0 <= s.cp <= |str| && inp == PIV.InpOfCp(str, s.cp);
     PIV.IdxInpOfCp(str, s.cp);
@@ -1394,6 +1404,7 @@ module LindenElkLiftSimGate {
     assert LC.Idx(inp) == cpn;
     var gm2 := LG.GMUpdate(t.g, LC.Idx(inp), gm);
 
+    assert {:split_here} true;   // (2026-11-05) per-section batch: one VC was a 900 s timeout in the gate
     // the written gid is outside-look, hence outside S
     assert pc < endl by {
       TreeRepLkREInRange(rer, qm, code, inp, t, pc, ea);
@@ -1426,6 +1437,7 @@ module LindenElkLiftSimGate {
       if gid in PIV.CapIdsInLooks(re) { assert gid in OL * PIV.CapIdsInLooks(re); }
     }
 
+    assert {:split_here} true;   // (2026-11-05) per-section batch: one VC was a 900 s timeout in the gate
     // B step: pts_active queues the child with the GMUpdate-moved gm
     assert PTL.TreeBfsStepLk(t, gm, inp) == PT.StepActive([(t.t, gm2)]);
     bst1 := PT.PTS(inp, [(t.t, gm2)] + ta[1..], best, tb, SS.AddSeenTrees(seen, t));
@@ -1433,6 +1445,7 @@ module LindenElkLiftSimGate {
     TrcLkRefl(bst1);
     TrcLkCons(bst, bst1, bst1);
 
+    assert {:split_here} true;   // (2026-11-05) per-section batch: one VC was a 900 s timeout in the gate
     // raw witness: its walk peels the same GroupActionT (same reg pins the
     // same action via the erasure congruence), child walks at gm2
     var traw: LT.Tree :| CE.ProgErase(traw) == CE.ProgErase(t)
@@ -1445,6 +1458,7 @@ module LindenElkLiftSimGate {
     }
     assert WalkPairLk(rer, qm, code, inp, traw.t, gm2, pc + 1, ea);
 
+    assert {:split_here} true;   // (2026-11-05) per-section batch: one VC was a 900 s timeout in the gate
     // value ties for th': both sides move by the SAME GMUpdate at cpn
     var gml := PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs);
     var gml2 := PIV.GmOfLive(re, th'.capture_regs, th'.look_regs, th'.quant_regs);
@@ -1479,6 +1493,7 @@ module LindenElkLiftSimGate {
     assert ThreadRepLkNested(rer, qm, re, code, inp, crv, str, ov, S, traw.t, gm2, th', ncap, nlook, nquant);
     assert ThreadRepLkCNested(rer, qm, re, code, inp, crv, str, ov, S, t.t, gm2, th', ncap, nlook, nquant);
 
+    assert {:split_here} true;   // (2026-11-05) per-section batch: one VC was a 900 s timeout in the gate
     // list bookkeeping
     assert ActiveRepLkCNested(rer, qm, re, code, inp, crv, str, ov, S, ta[1..], s.active[1..],
                               ncap, nlook, nquant);
@@ -1487,6 +1502,7 @@ module LindenElkLiftSimGate {
     assert ActiveRepLkCNested(rer, qm, re, code, inp, crv, str, ov, S, [(t.t, gm2)] + ta[1..], vms2.active,
                               ncap, nlook, nquant);
 
+    assert {:split_here} true;   // (2026-11-05) per-section batch: one VC was a 900 s timeout in the gate
     // ---- (E3) the look-path carrier: fresh cap stamp, no new inside-S group ----
     assert LookNestRepC(re, S, ta, s.active);
     assert LookNestOkT(re, S, gm, th);
@@ -1518,6 +1534,7 @@ module LindenElkLiftSimGate {
       }
     }
 
+    assert {:split_here} true;   // (2026-11-05) per-section batch: one VC was a 900 s timeout in the gate
     // ---- (E4) the converse carrier: look/quant banks untouched, gm grows ----
     assert LookNestBackRepC(re, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
     assert forall g: LG.GroupId :: g in gm ==> g in gm2;   // GMOpen adds / GMClose keeps domain
@@ -1536,6 +1553,7 @@ module LindenElkLiftSimGate {
       }
     }
 
+    assert {:split_here} true;   // (2026-11-05) per-section batch: one VC was a 900 s timeout in the gate
     // seen + isblocked bookkeeping
     assert PIV.HdTreeOf(ta) == Some(t) && PIV.HeadPcOf(s.active) == pc;
     AddSeenRepLk(rer, qm, code, inp, seen, s.processed, t, pc, ea,
@@ -2819,7 +2837,11 @@ module LindenElkLiftSimGate {
     requires LOr.view_get_oracle(ov, s.cp, l)
     // (E3) carrier feeds: freshness, positional invariant, look uniqueness
     requires s.clock >= 0 && CM.ThreadClocksLE(s.active[0], s.clock)
-    requires PSM.ThreadNestRE(re, code, endl, s.active[0].pc, s.active[0])
+    // (2026-11-05) only the nesting conjunct of `PSM.ThreadNestRE`: with rung F's
+    // per-thread stamp conjuncts in the requires, one isolated postcondition
+    // obligation of this lemma passed 17 GB under the packed inputs
+    requires NI.NestTopRE(re, code, endl, s.active[0].pc as nat,
+                          s.active[0].capture_regs.a_clk, s.active[0].quant_regs.a_clk)
     requires LTB.LookUnique(re)
     // (E4) the row↔structure tie for the converse coverage
     requires LTB.LookTablesOk(re, crv)
@@ -3016,7 +3038,7 @@ module LindenElkLiftSimGate {
     assert LookNestRepC(re, S, ta, s.active);
     assert LookNestOkT(re, S, gm, th);
     assert NI.NestInvRE(re, code, 0, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk, -1) by {
-      assert PSM.ThreadNestRE(re, code, endl, th.pc, th);
+      assert NI.NestTopRE(re, code, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk);
       assert pc < endl;
     }
     RL.ASetLaws(th.look_regs, l, Some(cp as int), clk);
