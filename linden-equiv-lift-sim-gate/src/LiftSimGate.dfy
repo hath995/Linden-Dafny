@@ -4669,6 +4669,8 @@ module LindenElkLiftSimGate {
           assert CM.ThreadRegsWf(th, ncap, nlook, nquant);   // PikeInvFullRE backbone
           assert CM.ThreadClocksLE(th, s.clock) && s.clock >= 0;
           assert PSM.ThreadNestRE(re, code, endl, th.pc, th);
+          // the callee's narrowed positional feed (the nesting conjunct alone)
+          assert NI.NestTopRE(re, code, endl, th.pc as nat, th.capture_regs.a_clk, th.quant_regs.a_clk);
           var bstS := LiftPreserveGatePassLkNested(rer, qm, re, code, endl, crv, str, ov, S,
                                                    bst, s, s1, l, th', vms2, ncap, nlook, nquant);
           PSM.PreserveOraclePassNested(rer, qm, re, code, endl, ngroups, str, ptsA, s,
