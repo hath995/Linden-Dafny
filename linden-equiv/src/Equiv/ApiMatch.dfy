@@ -27,6 +27,7 @@ module LindenRegexApi {
   import LSIMCOR = LindenElkLiftSimCore
   import LSIM = LindenElkLiftSimMain
   import LSIMORA = LindenElkLiftSimOracle
+  import MCIN = LindenElkMainCin
   // ==========================================================================
   // The supported fragment — total and executable, so callers can check
   // membership at runtime or by assertion in their own proofs.
@@ -99,7 +100,17 @@ module LindenRegexApi {
   /** The supported fragment: the depth-1 fragment (`SupportedL3`), the nested
       forward fragment (`SupportedL4`) or the nested lookbehind fragment (`SupportedL5`). */
   predicate Supported(pattern: R.raw_regex) {
-    SupportedL3(pattern) || SupportedL4(pattern) || SupportedL5(pattern)
+    SupportedL3(pattern) || SupportedL4(pattern) || SupportedL5(pattern) || SupportedCin(pattern)
+  }
+
+  /** (§2.5b) The LOOKAROUND-FREE nested fragment with NO nulled-plus gate: the
+      greedy CI-nullable `+`/`{n,}` (`(a?)+`, `(a|b?)+`, ...) is supported, its
+      captures reconstructed by the engine's `FReconstructPlus` and proved to be
+      the spec's (`MCIN.MainTheoremCin`). CDN-greedy pluses stay out (the
+      nested fragment's `Plus` arm excludes them). Lookarounds together with a
+      greedy nullable `+` are rung F-c (NULLABLE_PLUS_HANDOFF.md). */
+  predicate SupportedCin(pattern: R.raw_regex) {
+    NR.NestedFragmentRaw(pattern) && T.Latin1Wf(pattern) && NR.LookFreeRaw(pattern)
   }
 
   // ==========================================================================
@@ -129,9 +140,11 @@ module LindenRegexApi {
     } else if SupportedL4(pattern) {
       LSIMCOR.L4ScopeFromRaw(pattern);
       LSIM.MainTheoremL4(pattern, str);
-    } else {
+    } else if SupportedL5(pattern) {
       LSIMORA.L5ScopeFromRawFull(pattern);
       LSIM.MainTheoremL5(pattern, str);
+    } else {
+      MCIN.MainTheoremCin(pattern, str);
     }
   }
 

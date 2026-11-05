@@ -1,5 +1,6 @@
-// §2.5a non-vacuity witness: the LAZY nullable plus is now in the supported
-// fragment, and the GREEDY one is still out (that is §2.5b).
+// §2.5a non-vacuity witness: the LAZY nullable plus is in the supported
+// fragment; §2.5b (rung F-d0): the GREEDY CI-nullable one is in for
+// lookaround-free patterns, and still out next to a lookaround (rung F-c).
 module NullablePlusWitness {
   import opened Std.Wrappers
   import R = RegElkRegex
@@ -20,11 +21,23 @@ module NullablePlusWitness {
     assert NR.LookBehindFragmentRaw(R.Raw_count(R.CountedQuant(2, None, false), AOPT));
   }
 
-  lemma GreedyNullablePlusIsStillOut()
-    // `(a?)+` — GREEDY plus over a nullable body: still excluded (§2.5b)
-    ensures !API.Supported(R.Raw_quant(R.Plus, AOPT))
+  lemma GreedyNullablePlusIsSupported()
+    // `(a?)+` — GREEDY plus over a CI-nullable body: supported (§2.5b, F-d0)
+    ensures API.SupportedCin(R.Raw_quant(R.Plus, AOPT)) && API.Supported(R.Raw_quant(R.Plus, AOPT))
+  {
+    assert R.raw_nullable(AOPT) == R.CINullable;
+  }
+
+  // `(?=a)` — a lookahead next to the plus
+  const LOOK_A := R.Raw_lookaround(R.Lookahead, R.Raw_character(R.Dot))
+
+  lemma GreedyNullablePlusWithLookIsStillOut()
+    // `(?=a)(a?)+` — a lookaround and a greedy nullable plus: still excluded
+    // (machine B, the lift-sim band, is not stamp-aware yet: rung F-c)
+    ensures !API.Supported(R.Raw_con(LOOK_A, R.Raw_quant(R.Plus, AOPT)))
   {
     assert R.raw_nullable(AOPT) != R.NonNullable;
+    assert !NR.LookFreeRaw(R.Raw_con(LOOK_A, R.Raw_quant(R.Plus, AOPT)));
   }
 
   // ==========================================================================

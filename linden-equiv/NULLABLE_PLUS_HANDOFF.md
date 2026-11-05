@@ -1346,3 +1346,36 @@ keystone, look-behind-keystone, the lift-sim band, linden-equiv) must be re-veri
 re-packed (≈ 11 h at one worker). Spot check of the six lift-sim-gate lemmas that rebuild
 `PikeInvFullRE` by hand (`LiftAdvanceEpsilon{,Nested,Rec}`, `LiftFindMatchC{,Nested,Rec}`): see the
 next entry.
+
+### 2026-11-05 (late) — **F-d0 LANDED: `(a?)+` IS SUPPORTED** (lookaround-free patterns, no gate)
+
+* **`LindenElkMainCin.MainTheoremCin(raw, str)`** (new member `linden-equiv-main-cin`, `c1da4ff`):
+  `NestedFragmentRaw ∧ Latin1Wf ∧ LookFreeRaw ⟹ MatcherSpec(raw, str, Normalize(FFullMatch(raw, str)))`
+  — the first end-to-end theorem with the greedy CI-nullable plus IN and no `NoNulledPlusRaw`.
+  Machine A + rung C (`S = {}` ⟹ first-leaf equality) + rung D (`FindMatchSimRENested` now also
+  ensures `BestLiveRE` of the winner) + F-b (`FinalReadout`, now also giving `ThreadRegsWf` of the
+  reconstructed thread via `FinalRegs.dfy`'s `CapValGe` induction and the unchanged prefix clock).
+  Gate-free twins in the member: `TranslateFragmentPikeLkRecCin`, `MainExtractionFromClosedCin`/
+  `MainExtractionCin` (only the prefix quantifier's clock `>= -1` was ever needed),
+  `NestedNoCdn`, `NestedLookFreeLB`, `LookFreeFacts`. MainCin.dfy 43/0, 120 s, 3.9 GB.
+* **API** (`linden-equiv`): `SupportedCin` joins `Supported`; `MatchCorrect` dispatches to
+  `MainTheoremCin`. `NullablePlusWitness`: `GreedyNullablePlusIsSupported` (`(a?)+`) and
+  `GreedyNullablePlusWithLookIsStillOut` (`(?=a)(a?)+`). ApiMatch 6/0, witness 7/0, ApiReasoning
+  19/0. `SUPPORTED_FRAGMENT.md` rows updated.
+* Perf lessons: inside a ~500-line theorem, (1) a register-frame argument with set-comprehension
+  witnesses and (2) restating facts in `R.annotate(raw)` form (even under `hide *`) were 300 s
+  batches; narrow helper lemmas (`OnlyCapIdsFromFrame`, `CoversLookFree`) and an adapter that takes
+  the caller's names (`MainExtractionCinAt`, body `hide *; call`) made each 1–3 s.
+* Strengthening `NRR.CapValWf` with `a_cp >= -1` broke two rung-E batches (`EngineReadoutAlt`
+  failure, `EngineReadoutCon` timeout) — reverted; the bound lives in `FinalRegs.dfy` instead.
+
+**NOT yet pack-gated.** Changed: stamp-live (new), pike-sim-re, final-readout (new), main-cin (new),
+linden-equiv; everything above pike-sim-re rebuilds (main-theorem, flip-closed/gate/keystone,
+look-behind-keystone, the lift-sim band, linden-equiv) — ≈ 11 h at one worker. Spot checks done
+against the new pike-sim-re: lift-sim-gate `LiftAdvanceEpsilon{,Rec}`, `LiftFindMatchC{,Nested,Rec}`
+green; `LiftAdvanceEpsilonNested` (`{:isolate_assertions}`) 1579/2167 with 0 errors before a 30-min
+wall.
+
+**Next:** the gate pack; then F-c (machine B, for lookarounds next to a CIN plus) and G (drop the
+gate from `SupportedL3/4/5` once F-c lands; retire `FNulledPlusIdentity`/`QuantRegsFinal` from the
+main pass).

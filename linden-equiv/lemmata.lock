@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:44e85d7ff61c97cfdd48f0c37ef365ff925e53bf85ce91cc9866bd33b5cfb630"
+manifest-hash = "sha256:61a12213c0c9f2330e132e4987761206e76613cfe8b9991f61571618249eb273"
 
 [[package]]
 name = "linden.engine"
@@ -83,6 +83,15 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-entry-lk"
+
+[[package]]
+name = "linden.equiv-final-readout"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-final-readout"
 
 [[package]]
 name = "linden.equiv-flip-closed"
@@ -281,6 +290,15 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-nulled-plus"
+
+[[package]]
+name = "linden.equiv-nulled-recon"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-nulled-recon"
 
 [[package]]
 name = "linden.equiv-oracle-accept-v"
@@ -515,6 +533,15 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-main-theorem"
+
+[[package]]
+name = "linden.equiv-main-cin"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-main-cin"
 
 [[package]]
 name = "linden.equiv-nfa-rep-re"
