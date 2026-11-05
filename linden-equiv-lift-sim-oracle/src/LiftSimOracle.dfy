@@ -5131,6 +5131,69 @@ module LindenElkLiftSimOracle {
     }
   }
 
+  /** (2026-11-05) `OracleColumnNested`'s lookahead row, engine -> spec, with a
+      NARROW contract (memory `dafny-batch-memory-hogs`, cause 2: in the column
+      lemma's context even this direction's one-line steps took 900 s). */
+  lemma ColumnAheadBitToRun(body: R.regex, lid: int, str: string, ovf: LOr.OracleView, cp: nat,
+                            cdnsb: LCdn.cdns, initcap: AReg.Regs, initlook: AReg.Regs, initquant: AReg.Regs)
+    requires NR.NestedFragmentRE(body) && LTB.LookUnique(body)
+    requires forall y: nat :: y in LTB.LookIds(body) ==> 1 <= y
+    requires cp <= |str| && |ovf| == |str| + 1
+    requires ORc.ReachesWriteV(CP.compile_to_write(R.lazy_prefix(OMV.XRev(R.remove_capture(body))), lid),
+                               LC.Reverse(str), MIR.MirrorView(ovf, |str|), 0, lid, |str| - cp)
+    ensures var code := CP.compile_to_bytecode(body);
+            var s := AI.FInitState(code, cp, initcap, initlook, initquant, 0,
+                                   AI.cp_context(cp, str, LAnc.Forward));
+            AI.FFindMatch(code, str, s, ovf, LAnc.Forward, cdnsb).0.Some?
+  {
+    // only lemma postconditions are needed; unfolding FFindMatch/MatchesV blew
+    // this lemma to 21 GB at one worker (2026-11-05)
+    hide *;
+    var n := |str|;
+    var rcb := R.remove_capture(body);
+    var x := OMV.XRev(rcb);
+    var rstr := LC.Reverse(str);
+    var mv := MIR.MirrorView(ovf, n);
+    SD.ReverseLength(str);
+    OMV.RemoveCaptureNestedFragment(body);
+    OMV.XRevNestedFragment(rcb);
+    var i := ODV.ReachesWriteVToMatchesV(x, lid, rstr, mv, n - cp);
+    OMV.MatchesVMirror(rcb, str, ovf, cp, n - i);
+    assert n - (n - i) == i;
+    assert OBV.MatchesV(rcb, str, ovf, cp, n - i);
+    OMV.MatchesVRemoveCapture(body, str, ovf, cp, n - i);
+    assert OBV.MatchesV(body, str, ovf, cp, n - i);
+    OAV.AcceptRunCharacterizationV(body, str, ovf, cp, cdnsb, initcap, initlook, initquant, 0);
+  }
+
+  /** (2026-11-05) `OracleColumnNested`'s lookahead row, spec -> engine, with a
+      NARROW contract (memory `dafny-batch-memory-hogs`, cause 2: the assumed
+      context made the column lemma's last call a 900 s batch at one worker). */
+  lemma ColumnAheadSpecToBit(body: R.regex, lid: int, str: string, ovf: LOr.OracleView,
+                             cp: nat, j: int)
+    requires NR.NestedFragmentRE(body)
+    requires cp <= |str| && |ovf| == |str| + 1
+    requires OBV.MatchesV(body, str, ovf, cp, j)
+    ensures ORc.ReachesWriteV(CP.compile_to_write(R.lazy_prefix(OMV.XRev(R.remove_capture(body))), lid),
+                              LC.Reverse(str), MIR.MirrorView(ovf, |str|), 0, lid, |str| - cp)
+  {
+    var n := |str|;
+    var rcb := R.remove_capture(body);
+    var x := OMV.XRev(rcb);
+    var rstr := LC.Reverse(str);
+    var mv := MIR.MirrorView(ovf, n);
+    SD.ReverseLength(str);
+    OMV.RemoveCaptureNestedFragment(body);
+    OMV.XRevNestedFragment(rcb);
+    OBV.MatchesVBounds(body, str, ovf, cp, j);
+    MatchesVUpper(body, str, ovf, cp, j);
+    OMV.MatchesVRemoveCapture(body, str, ovf, cp, j);
+    OMV.MatchesVMirror(rcb, str, ovf, cp, j);
+    assert OBV.MatchesV(x, rstr, mv, n - j, n - cp);
+    OBV.MatchesVToReachesWriteV(x, lid, rstr, mv, n - j, n - cp);
+  }
+
+
   /** THE NESTED COLUMN SPEC, one row at one column. Given the oracle truth of
       the row's INNER rows (the body's own rows, from the initial input), the
       final view's bit at `(cp, lid)` is exactly the spec walk of the row's
@@ -5293,18 +5356,11 @@ module LindenElkLiftSimOracle {
 
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       if bit {
-        var i := ODV.ReachesWriteVToMatchesV(x, lid, rstr, mv, mcp);
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        OMV.MatchesVMirror(rcb, str, ovf, cp, n - i);
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        assert OBV.MatchesV(rcb, str, ovf, cp, n - i) by {
-          hide *;   // (§2.5b/z3 4.14) transport is the mirror iff on opaque instances
-          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-          assert n - (n - i) == i;
-        }
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        OMV.MatchesVRemoveCapture(body, str, ovf, cp, n - i);
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+        // (2026-11-05) engine -> spec as a narrow-contract lemma: in this context
+        // even the one-line steps of this direction took 900 s at one worker.
+        ColumnAheadBitToRun(body, lid, str, ovf, cp, cdnsb, AReg.init_regs(ncapb),
+                            AReg.init_regs(nlookb), AReg.init_regs(nquantb));
+        assert {:split_here} true;
         assert r.Some?;
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert LT.TreeRes(t, LG.Empty, inp, WP.Forward).Some?;
@@ -5315,34 +5371,11 @@ module LindenElkLiftSimOracle {
         assert r.Some?;
         var j: int :| OBV.MatchesV(body, str, ovf, cp, j);
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        OBV.MatchesVBounds(body, str, ovf, cp, j);
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        MatchesVUpper(body, str, ovf, cp, j);
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        OMV.MatchesVRemoveCapture(body, str, ovf, cp, j);
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        OMV.MatchesVMirror(rcb, str, ovf, cp, j);
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        assert OBV.MatchesV(x, rstr, mv, n - j, n - cp);
-        // (§2.5b/z3 4.14) spell the call's preconditions out; the packed VC grinds
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        assert NR.NestedFragmentRE(x);
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        assert 0 <= n - j <= |rstr|;
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        assert n - cp <= |rstr|;
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        // (2026-09-06) the call's preconditions, one per batch — matched all at
-        // once against this lemma's context the call site alone was 900 s.
-        assert NR.NestedFragmentRE(x);
-        assert {:split_here} true;
-        assert 0 <= n - j <= |rstr|;
-        assert {:split_here} true;
-        assert n - cp <= |rstr|;
-        assert {:split_here} true;
-        assert OBV.MatchesV(x, rstr, mv, n - j, n - cp);
-        assert {:split_here} true;
-        OBV.MatchesVToReachesWriteV(x, lid, rstr, mv, n - j, n - cp);
+        // (2026-11-05) the rest of this direction is a narrow-contract lemma: here
+        // the final call's batch alone hit the 900 s limit at one worker although
+        // every precondition was already asserted (the assumed context, not the call).
+        ColumnAheadSpecToBit(body, lid, str, ovf, cp, j);
+        assert x == OMV.XRev(R.remove_capture(body)) && mv == MIR.MirrorView(ovf, n);
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert bit;
       }
