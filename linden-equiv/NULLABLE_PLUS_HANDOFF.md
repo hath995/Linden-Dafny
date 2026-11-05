@@ -1276,3 +1276,73 @@ with"; never wait on `pgrep -f` of a string your own shell contains.
 
 **State:** `nullable-plus-greedy`, rung D COMPLETE (D0, D1, D2) and gate-verified. The interim gate
 conjuncts are still in place outside pike-sim-re (rung G). **Next: rung F** — the final readout.
+
+### 2026-11-05 (cont.) — **RUNG F BEGUN: F-a (live-stamp invariant) + F-b (THE FINAL READOUT) landed**
+
+**Correction to the plan above.** The main theorem does NOT read machine A's tie: `MainTheoremL5`
+goes `L3aCompositeCloseRec` → `BestTieLkNestedTop` → `GmtTieOutside`, all on machine **B** (the
+lift-sim band's LK-aware tree, `TreeRepLkRE`/`TtLk`, still `GmOfLive`, still gated: no `tr_stamp`,
+`AR.NoTrueStamps(main code)` required by the B constructions). Rung D made machine A
+reconstruction-aware; the final readout needs, in addition, the B machine (F-c below) — OR, for
+lookaround-free regexes, no B machine at all (F-d0 below). And rung E's `ReconReadout` was already
+PROVED (the "TODO" comment in `NulledReconReadout.dfy` §4 is stale).
+
+**F-a (`3c4b16e`) — new member `linden-equiv-stamp-live`** (deps regex-engine + pike-inv-re):
+`SL.StampLiveOk(re, cc, qc, qcp)` = every SET stamp is outside looks, has a STALE body (all
+capture/quant clocks inside `QidBody` below the stamp's clock — rung E's `RegsStale`) and, while its
+chain is fresh, PRESENT capture ancestors (`PathPresentQ`): exactly `NRO.StampsLocal`'s per-stamp
+facts. Pure register algebra; the positional input arrives at the write sites
+(`NST.NestStampTop{Cap,Quant}Site`, `NST.TrueStampSite`) and the clock discipline (every write's clock
+is above every stored one). Key lemma `QChainFreshAncGe`: a mark of an ENCLOSING quantifier makes a
+stamp's chain stale for good. pike-sim-re: `ThreadNestRE` carries `SL.StampLiveOk` (opaque atom),
+narrow helpers `StampLive{Cap,Mark,Stamp}RE` (one call per Preserve case), and `PikeInvFullRE`
+records `BestLiveRE` (StampLiveOk + LooksCapUnset) for the best thread at Accept. **`BestLiveRE`
+must be opaque**: transparent, its quantifier in every `PikeInvFullRE` unfolding took
+`PreserveForkCaseNested`'s backward-arm batch past 12 GB (2.7 GB opaque). Whole file 235/0, 206 s,
+6.0 GB, one worker, against packed `.doo` deps.
+
+**F-b (`be74322`) — new member `linden-equiv-final-readout`** (leaf):
+* `FinalVm.dfy` — VM-only `FFindMatch` induction (`CM.FFindMatchLookCpOk`'s shape):
+  `FV.RegsFinalOk(t, |str|, Q)` = every set quant cp is a true-stamp record on a qid of `Q`, inside
+  the string; capture values set exactly with their clocks (`NRR.CapValWf`). Under the gate `Q == {}`
+  and this is `M.QuantRegsFinal`'s value half.
+* `FinalReadout.dfy` — `TrueStampCin*`/`TrueStampsInCin` (the true-stamp inventory, twin of
+  `NI.StampFalseAt` without the gate: `Q = CinQids(re)`); `FCompileExtraPlus`/`PlusTableOkFull`
+  (`FFullCompilation(ast).f_plus_bc` is rung E's canonical table — needs `NoCdnPlusRE(ast)`:
+  `FCompileExtra` fills CDN-greedy slots too); `LookUniqueBridge` (`LTB.LookUnique ⟹ NRR.LookUnique`);
+  and **`FinalReadout`**: from `PSM.BestLiveRE`, `FV.RegsFinalOk`, `QmapOk`, `Covers`/`WfRegs`/
+  `OnlyCapIdsSet`: `GmOfLive(lazy_prefix(ast), FReconstructPlus(best, ast, ...).regs) ==
+  GmOfLiveR(lazy_prefix(ast), qm, str, best.regs)`, view untouched (the prefix quantifier, qid 0,
+  `min == 0`, is never stamped). 25/0, 37 s, first run.
+
+**Next — two routes, both rung F:**
+* **F-d0 (recommended next): a LOOKAROUND-FREE main theorem, machine A only.** For `S =
+  CapIdsInLooks(re) = {}` machine A suffices: `M.FindMatchBodyAtCp{,Nested}` already pins A's best to
+  `FirstLeaf(tstar)` (swap `StaticOkRE` for `StaticCoreRE` — `FindMatchSimRE` is gate-free since D2 —
+  and export `BestLiveRE` from `FindMatchSimRE`); rung C's `ResAgreeAtOutside(tstar, t, inp, S)` with
+  `S = {}` is FULL first-leaf agreement (`NB.RAFirstLeafOutside`); `BestMatchRE` + `TieGm` give
+  `GmOfLiveR(best) == leaf.1`; F-b gives `GmOfLive(rt) == GmOfLiveR(best)`; `FLookLoop` is the
+  identity without looks. Gated spec-side lemmas to replace by gate-free twins IN A NEW MEMBER (do not
+  edit entry-lk et al. — they sit low and would rebuild the whole band): `EL.TranslateFragmentPikeLkRec`
+  (takes `NoNulledPlusRE` only because rung C left it), `M.MainExtractionL5`'s `QuantRegsFinal` (only
+  the clock half `>= -1` is needed for `FilterResetLazyPrefix`), `M.FFindMatchThreadFacts` (gate →
+  `FV.FFindMatchRegsFinal`). Fragment: `NoLookRaw ∧ NoCdnPlusRaw` (+ the L5 statics). This is the
+  first end-to-end CIN-greedy theorem and exercises D+E+F-a+F-b together.
+* **F-c: machine B stamp-aware** (lookarounds elsewhere in the regex). The C+D template on the B
+  side: (c1) `tr_stamp` in `TreeRepLkRE`/`ETreeRepLk`/`TtLk` + determinism; (c2) the CIN arm in
+  `ActionsTreeRepLkRE{,Rec}` and the four LiftSimCore giants (`ActionsTreeRepLkF{,Rec}`,
+  `AtBackForkTreeLkF{,Rec}`), dropping `AR.NoTrueStamps(main code)`; (c3) the tcan↔t endpoint glue
+  weakens from `ProgErase(tcan) == ProgErase(t)` to a first-leaf agreement — rung A's
+  `CinPlusPriority` only gives agreement OUTSIDE `S` (it needs `LkBodiesInS(r1, S)` and `LkActsInS(cont,
+  S)`); inside-`S` values at the endpoint need either a rung-A strengthening for LOOK-FREE CIN bodies
+  (the chain then equals the empty leaf's actions exactly) or the stage-2a fragment conjunct "no
+  lookaround inside a CIN-greedy body"; (c4) the B stamp step (Reset + `ChainT` steps under
+  `PikeTreeStepLk`; `GmtTieOutside := TieGm`; the S-carriers are untouched when the stamped body is
+  look-free); (c5) `MainTheoremL5` consumes F-b. Size: comparable to rungs C + D together.
+* Then G (drop the gate conjuncts, CIN-greedy witness, `SUPPORTED_FRAGMENT.md`).
+
+**Gate status:** pike-sim-re changed, so every member above it (main-theorem, flip-closed/gate/
+keystone, look-behind-keystone, the lift-sim band, linden-equiv) must be re-verified; not yet
+re-packed (≈ 11 h at one worker). Spot check of the six lift-sim-gate lemmas that rebuild
+`PikeInvFullRE` by hand (`LiftAdvanceEpsilon{,Nested,Rec}`, `LiftFindMatchC{,Nested,Rec}`): see the
+next entry.

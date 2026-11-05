@@ -41,6 +41,8 @@ module LindenElkFinalReadout {
   import SL = LindenElkStampLive
   import PSM = LindenElkPikeSim
   import FV = LindenElkFinalVm
+  import FRG = LindenElkFinalRegs
+  import CM = LindenElkClockMono
 
   // =========================================================================
   // 1. The true-stamp inventory: `SetQuantToClock(q, true)` sits only at the
@@ -466,7 +468,7 @@ module LindenElkFinalReadout {
   /** THE FINAL READOUT: at the best thread of a main pass, `GmOfLive` of the
       reconstructed registers is the reconstruction-aware readout of the
       thread's own, and the oracle view is untouched. */
-  lemma FinalReadout(qm: AR.QMap, ast: R.regex, str: string, th: AI.Thread)
+  lemma FinalReadout(qm: AR.QMap, ast: R.regex, str: string, th: AI.Thread, ncap: int, nlook: int, nquant: int)
     requires T.TransWf(R.lazy_prefix(ast))
     requires PIV.CapUnique(R.lazy_prefix(ast)) && PIV.QuantUnique(R.lazy_prefix(ast))
     requires LTB.LookUnique(R.lazy_prefix(ast)) && NRC.NoCdnPlusRE(ast)
@@ -476,10 +478,15 @@ module LindenElkFinalReadout {
     requires NRR.WfRegs((th.capture_regs, th.look_regs, th.quant_regs))
     requires NRR.Covers(R.lazy_prefix(ast), (th.capture_regs, th.look_regs, th.quant_regs))
     requires NRO.OnlyCapIdsSet(R.lazy_prefix(ast), (th.capture_regs, th.look_regs, th.quant_regs))
+    requires CM.ThreadRegsWf(th, ncap, nlook, nquant)
     ensures var rp := AI.FReconstructPlus(th, ast, CP.FFullCompilation(ast).f_plus_bc, str, qm.ov, LAnc.Forward);
             rp.1 == qm.ov && rp.0.pc == th.pc && rp.0.exit_allowed == th.exit_allowed
             && PIV.GmOfLive(R.lazy_prefix(ast), rp.0.capture_regs, rp.0.look_regs, rp.0.quant_regs)
                == PIV.GmOfLiveR(R.lazy_prefix(ast), qm, str, th.capture_regs, th.look_regs, th.quant_regs)
+            // the reconstructed thread is a well-formed bank again, and the
+            // prefix quantifier's clock is untouched (`FilterResetLazyPrefix`)
+            && CM.ThreadRegsWf(rp.0, ncap, nlook, nquant)
+            && AI.get_idx(rp.0.quant_regs.a_clk, 0) == AI.get_idx(th.quant_regs.a_clk, 0)
   {
     var re := R.lazy_prefix(ast);
     var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
@@ -532,5 +539,35 @@ module LindenElkFinalReadout {
       }
     }
     PrefixIdentity(ast, rg, plus, str, qm.ov);
+
+    // the reconstructed bank: frame (rung E) + the value bound (FinalRegs)
+    assert {:split_here} true;
+    assert NRO.StampsInRange(re, rg, str);
+    assert FRG.CapValGe(rg) by {
+      forall k: int ensures AI.get_idx(rg.0.a_cp, k) >= -1 { assert PIV.CapRegWf(rg.0); }
+    }
+    NRO.FNulledPlusFrame(qm, re, rg, plus, str, qm.ov);
+    FRG.FPValGe(qm, re, rg, plus, str, qm.ov);
+    var rg2 := NRO.FP(re, rg, plus, str, qm.ov);
+    var rp := AI.FReconstructPlus(th, ast, plus, str, qm.ov, LAnc.Forward);
+    assert (rp.0.capture_regs, rp.0.look_regs, rp.0.quant_regs) == rg2;
+    assert PIV.CapRegWf(rp.0.capture_regs) by {
+      assert NRR.WfRegs(rg2) && NRR.CapValWf(rg2) && FRG.CapValGe(rg2);
+    }
+    assert NRR.Sized3(rg2, rg);
+    assert CM.ThreadRegsWf(rp.0, ncap, nlook, nquant);
+    // quant register 0 (the prefix's) is outside every stamped body
+    NRR.InnerSub(ast);
+    NRR.QuantRegsOfChar(ast);
+    assert PIV.QuantIds(pre) == {0};
+    assert PIV.QuantIds(pre) * PIV.QuantIds(ast) == {};
+    assert 0 !in NRR.InnerQuantRegs(re) by {
+      assert NRR.InnerQuantRegs(pre) == {};
+      if 0 in NRR.InnerQuantRegs(ast) {
+        assert 0 in NRR.QuantRegsOf(ast);
+        assert (0 as nat) in PIV.QuantIds(ast);
+        assert (0 as nat) in PIV.QuantIds(pre) * PIV.QuantIds(ast);
+      }
+    }
   }
 }

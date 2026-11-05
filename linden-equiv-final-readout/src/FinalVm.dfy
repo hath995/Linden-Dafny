@@ -33,6 +33,8 @@ module LindenElkFinalVm {
   ghost predicate RegsFinalOk(t: AI.Thread, ub: int, Q: set<int>) {
     (forall q: int :: AI.get_idx(t.quant_regs.a_cp, q) >= 0 ==> AI.get_idx(t.quant_regs.a_cp, q) <= ub && q in Q)
     && (forall k: int :: AI.get_idx(t.capture_regs.a_clk, k) < 0 <==> AI.get_idx(t.capture_regs.a_cp, k) < 0)
+    // quant clocks never drop below the initial `-1` (`M.QuantRegsFinal`'s clock half)
+    && (forall q: int :: AI.get_idx(t.quant_regs.a_clk, q) >= -1)
   }
 
   ghost predicate VmRegsFinalOk(s: AI.VmState, ub: int, Q: set<int>) {
@@ -46,8 +48,9 @@ module LindenElkFinalVm {
     ensures RegsFinalOk(AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant)), ub, Q)
   {
     var t := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
-    forall q: int ensures AI.get_idx(t.quant_regs.a_cp, q) < 0 {
+    forall q: int ensures AI.get_idx(t.quant_regs.a_cp, q) < 0 && AI.get_idx(t.quant_regs.a_clk, q) == -1 {
       if 0 <= q < |t.quant_regs.a_cp| { assert t.quant_regs.a_cp[q] == -1; }
+      if 0 <= q < |t.quant_regs.a_clk| { assert t.quant_regs.a_clk[q] == -1; }
     }
     forall k: int ensures AI.get_idx(t.capture_regs.a_clk, k) < 0 && AI.get_idx(t.capture_regs.a_cp, k) < 0 {
       if 0 <= k < |t.capture_regs.a_clk| { assert t.capture_regs.a_clk[k] == -1; }
@@ -78,6 +81,7 @@ module LindenElkFinalVm {
       a qid of `Q`. */
   lemma RegsFinalQuantWrite(t: AI.Thread, q: int, bq: bool, cp: int, clk: int, ub: int, Q: set<int>)
     requires RegsFinalOk(t, ub, Q)
+    requires clk >= -1
     requires bq ==> cp <= ub && q in Q
     ensures RegsFinalOk(t.(quant_regs := AReg.set_reg(t.quant_regs, q, if bq then Some(cp) else None, clk)), ub, Q)
   {
@@ -90,6 +94,15 @@ module LindenElkFinalVm {
       } else if 0 <= q < |r.a_cp| && 0 <= q < |r.a_clk| {
         assert r2.a_cp == r.a_cp[q := if bq then cp else -1];
         assert bq;
+      } else {
+        assert r2 == r;
+      }
+    }
+    forall k: int ensures AI.get_idx(r2.a_clk, k) >= -1 {
+      if k != q {
+        CM.SetRegOtherIdx(r, q, ocp, clk, k);
+      } else if 0 <= q < |r.a_cp| && 0 <= q < |r.a_clk| {
+        assert r2.a_clk == r.a_clk[q := clk];
       } else {
         assert r2 == r;
       }
