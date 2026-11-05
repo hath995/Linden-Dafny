@@ -16280,6 +16280,7 @@ module LindenElkMain {
 
     match i {
       case Consume(ce) =>
+        assert {:split_here} true;   // (2026-11-05) per-arm: one 546-line batch crossed the 24 GB slice in the pack
         var (nb, ni) := AI.add_thread(t, ce, s1.blocked, s1.isblocked);
         var s' := s1.(blocked := nb, isblocked := ni, active := ac);
         assert 0 <= t.pc < |code|;
@@ -16316,12 +16317,14 @@ module LindenElkMain {
         FAdvanceEpsilonAncSet(re, code, endl, s', ov, dir, ncap, nlook, nquant);
 
       case Accept =>
+        assert {:split_here} true;   // (2026-11-05) per-arm: one 546-line batch crossed the 24 GB slice in the pack
         // FAdvanceEpsilon returns (s1.(active := [], bestmatch := Some(t)), ov).
         assert CM.ThreadClocksLE(t, s1.clock);
         assert CM.ThreadRegsWf(t, ncap, nlook, nquant);
         assert AncSetInvRE(re, t.capture_regs.a_clk);          // ThreadAncNestRE(t)
 
       case Jmp(x) =>
+        assert {:split_here} true;   // (2026-11-05) per-arm: one 546-line batch crossed the 24 GB slice in the pack
         var s' := s1.(active := [t.(pc := x)] + ac);
         assert 0 <= t.pc < |code|;
         var pc: nat := t.pc as nat;
@@ -16353,6 +16356,7 @@ module LindenElkMain {
         FAdvanceEpsilonAncSet(re, code, endl, s', ov, dir, ncap, nlook, nquant);
 
       case Fork(x, y) =>
+        assert {:split_here} true;   // (2026-11-05) per-arm: one 546-line batch crossed the 24 GB slice in the pack
         var newt := AI.Thread(x, t.capture_regs, t.look_regs, t.quant_regs, t.exit_allowed);
         var s' := s1.(active := [newt, t.(pc := y)] + ac);
         assert 0 <= t.pc < |code|;
@@ -16391,6 +16395,7 @@ module LindenElkMain {
         FAdvanceEpsilonAncSet(re, code, endl, s', ov, dir, ncap, nlook, nquant);
 
       case SetRegisterToCP(reg) =>
+        assert {:split_here} true;   // (2026-11-05) per-arm: one 546-line batch crossed the 24 GB slice in the pack
         var t' := t.(capture_regs := AReg.set_reg(t.capture_regs, reg, Some(s1.cp), s1.clock), pc := t.pc + 1);
         var s' := s1.(active := [t'] + ac);
         assert 0 <= t.pc < |code|;
@@ -16468,6 +16473,7 @@ module LindenElkMain {
         FAdvanceEpsilonAncSet(re, code, endl, s', ov, dir, ncap, nlook, nquant);
 
       case SetQuantToClock(q, bq) =>
+        assert {:split_here} true;   // (2026-11-05) per-arm: one 546-line batch crossed the 24 GB slice in the pack
         assert 0 <= t.pc < |code|;
         assert NR.GetPcRE(code, t.pc) == Some(i);              // get_instr <-> GetPcRE bridge
         assert !bq;                                            // no-true-stamp requires
@@ -16518,6 +16524,7 @@ module LindenElkMain {
         FAdvanceEpsilonAncSet(re, code, endl, s', ov, dir, ncap, nlook, nquant);
 
       case CheckOracle(l) =>
+        assert {:split_here} true;   // (2026-11-05) per-arm: one 546-line batch crossed the 24 GB slice in the pack
         assert 0 <= t.pc < |code|;
         var pc: nat := t.pc as nat;
         assert pc < endl;
@@ -16571,6 +16578,7 @@ module LindenElkMain {
         }
 
       case NegCheckOracle(l) =>
+        assert {:split_here} true;   // (2026-11-05) per-arm: one 546-line batch crossed the 24 GB slice in the pack
         assert 0 <= t.pc < |code|;
         var pc: nat := t.pc as nat;
         assert pc < endl;
@@ -16616,6 +16624,7 @@ module LindenElkMain {
         }
 
       case WriteOracle(l) =>
+        assert {:split_here} true;   // (2026-11-05) per-arm: one 546-line batch crossed the 24 GB slice in the pack
         var s' := s1.(active := ac);
         assert 0 <= t.pc < |code|;
         assert CM.VmClocksLE(s') by {
@@ -16630,6 +16639,7 @@ module LindenElkMain {
         FAdvanceEpsilonAncSet(re, code, endl, s', LOr.view_set_oracle(ov, s1.cp, l), dir, ncap, nlook, nquant);
 
       case BeginLoop =>
+        assert {:split_here} true;   // (2026-11-05) per-arm: one 546-line batch crossed the 24 GB slice in the pack
         var th' := t.(exit_allowed := false, pc := t.pc + 1);
         var s' := s1.(active := [th'] + ac);
         assert 0 <= t.pc < |code|;
@@ -16661,6 +16671,7 @@ module LindenElkMain {
         FAdvanceEpsilonAncSet(re, code, endl, s', ov, dir, ncap, nlook, nquant);
 
       case EndLoop =>
+        assert {:split_here} true;   // (2026-11-05) per-arm: one 546-line batch crossed the 24 GB slice in the pack
         assert 0 <= t.pc < |code|;
         var pc: nat := t.pc as nat;
         assert pc < endl;
@@ -16706,6 +16717,7 @@ module LindenElkMain {
         }
 
       case CheckNullable(qid) =>
+        assert {:split_here} true;   // (2026-11-05) per-arm: one 546-line batch crossed the 24 GB slice in the pack
         // CheckNullable never occurs in nested main code (NoWriteInstrNestedRE).
         assert 0 <= t.pc < |code|;
         var pc: nat := t.pc as nat;
@@ -16715,6 +16727,7 @@ module LindenElkMain {
         assert false;
 
       case AnchorAssertion(a) =>
+        assert {:split_here} true;   // (2026-11-05) per-arm: one 546-line batch crossed the 24 GB slice in the pack
         assert 0 <= t.pc < |code|;
         var pc: nat := t.pc as nat;
         assert pc < endl;
@@ -16760,6 +16773,7 @@ module LindenElkMain {
         }
 
       case Fail =>
+        assert {:split_here} true;   // (2026-11-05) per-arm: one 546-line batch crossed the 24 GB slice in the pack
         var s' := s1.(active := ac);
         assert CM.VmClocksLE(s') by {
           forall t2 | t2 in s'.active ensures CM.ThreadClocksLE(t2, s'.clock) {
@@ -16798,6 +16812,7 @@ module LindenElkMain {
     then s1.(active := [th'] + s1.active)
     else s1;
     assert BlkAncNestRE(re, code, endl, t);                 // t == s.blocked[0].0
+    assert {:split_here} true;   // (2026-11-05) 11.5 GB as one batch
     assert CM.VmClocksLE(s2) by {
       assert s2.clock == s.clock;
       forall t2 | t2 in s2.active ensures CM.ThreadClocksLE(t2, s2.clock) {
@@ -16806,12 +16821,14 @@ module LindenElkMain {
       forall tb | tb in s2.blocked ensures CM.ThreadClocksLE(tb.0, s2.clock) { assert tb in s.blocked; }
       if s2.bestmatch.Some? { assert CM.ThreadClocksLE(s2.bestmatch.value, s2.clock); }
     }
+    assert {:split_here} true;   // (2026-11-05) 11.5 GB as one batch
     assert CM.VmRegsWf(s2, ncap, nlook, nquant) by {
       forall t2 | t2 in s2.active ensures CM.ThreadRegsWf(t2, ncap, nlook, nquant) {
         if t2 == th' { assert CM.ThreadRegsWf(t, ncap, nlook, nquant); } else { assert t2 in s.active; }
       }
       forall tb | tb in s2.blocked ensures CM.ThreadRegsWf(tb.0, ncap, nlook, nquant) { assert tb in s.blocked; }
     }
+    assert {:split_here} true;   // (2026-11-05) 11.5 GB as one batch
     assert VmAncNestRE(re, code, endl, s2) by {
       forall t2 | t2 in s2.active ensures ThreadAncNestRE(re, code, endl, t2) {
         if t2 == th' {
@@ -18262,13 +18279,18 @@ module LindenElkMain {
   {
     match re
     case Re_empty =>
+      assert {:split_here} true;   // (2026-11-05) per-arm: 9.4 GB as one batch
     case Re_character(_) =>
+      assert {:split_here} true;   // (2026-11-05) per-arm: 9.4 GB as one batch
     case Re_anchor(_) =>
+      assert {:split_here} true;   // (2026-11-05) per-arm: 9.4 GB as one batch
     case Re_lookaround(lid, la, r1) =>
+      assert {:split_here} true;   // (2026-11-05) per-arm: 9.4 GB as one batch
       assert pc == start;
       assert lid >= 0;
       assert (lid as nat) in DirectLookIds(re);
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-11-05) per-arm: 9.4 GB as one batch
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
                      && NR.NfaRepRE(r1, code, start + 1, e1)
                      && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
@@ -18283,6 +18305,7 @@ module LindenElkMain {
         LookCheckDirectREGen(r2, code, e1 + 1, endl, pc);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-11-05) per-arm: 9.4 GB as one batch
       var e1: nat :| NR.NfaRepRE(r1, code, start, e1) && NR.NfaRepRE(r2, code, e1, endl);
       NR.NfaRepIncrRE(r1, code, start, e1);
       NR.NfaRepIncrRE(r2, code, e1, endl);
@@ -18292,6 +18315,7 @@ module LindenElkMain {
         LookCheckDirectREGen(r2, code, e1, endl, pc);
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-11-05) per-arm: 9.4 GB as one batch
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
                      && NR.NfaRepRE(r1, code, start + 1, e1)
                      && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
@@ -18303,6 +18327,7 @@ module LindenElkMain {
       } else {
       }
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-11-05) per-arm: 9.4 GB as one batch
       if q.min == 0 && q.max == None {
         var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
                        && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
