@@ -376,6 +376,31 @@ module LindenElkPikeSim {
     NST.NestStampTopInit(re, code, endl, qcp);
   }
 
+  /** Two new head pairs in front of an existing active correspondence — the
+      Fork cases' list step as a NARROW lemma (AGENTS.md §2.6): inline, the
+      recursive `ActiveRepRE` unfolding against the Fork case's context was a
+      21 GB batch in D2, and with rung F's per-thread conjunct it crossed the
+      22 GB pack cap again under the packed `.doo` inputs (2026-11-05). */
+  lemma ActiveRepCons2(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, str: string,
+                       inp: LC.Input, a1: (LT.Tree, LG.GroupMap), a2: (LT.Tree, LG.GroupMap),
+                       th1: AI.Thread, th2: AI.Thread,
+                       rest: seq<(LT.Tree, LG.GroupMap)>, vrest: seq<AI.Thread>)
+    requires th1.pc >= 0 && th2.pc >= 0
+    requires TT.TreeThreadRE(rer, qm, code, inp, a1.0, th1.pc as nat, th1.exit_allowed)
+    requires TT.TreeThreadRE(rer, qm, code, inp, a2.0, th2.pc as nat, th2.exit_allowed)
+    requires PIV.ThreadTracksGm(re, qm, str, th1, a1.1) && PIV.ThreadTracksGm(re, qm, str, th2, a2.1)
+    requires PIV.ActiveRepRE(rer, qm, re, code, str, inp, rest, vrest)
+    ensures PIV.ActiveRepRE(rer, qm, re, code, str, inp, [a1, a2] + rest, [th1, th2] + vrest)
+  {
+    var tl := [a1, a2] + rest;
+    var vl := [th1, th2] + vrest;
+    assert tl[0] == a1 && vl[0] == th1;
+    assert tl[1..] == [a2] + rest && vl[1..] == [th2] + vrest;
+    assert tl[1..][0] == a2 && vl[1..][0] == th2;
+    assert tl[1..][1..] == rest && vl[1..][1..] == vrest;
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, tl[1..], vl[1..]);
+  }
+
   /** Both `SetQuantToClock` steps: the mark clears `qid0`, the true stamp sets
       it and leaves the block (`NST.NestStampTopQuantWrite`). */
   lemma StampQuantWriteTop(re: R.regex, code: RB.code, endl: nat, pc: nat,
@@ -1902,11 +1927,8 @@ module LindenElkPikeSim {
       // Active correspondence: two new head pairs, unchanged registers.
       assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, na + ta[1..], vms2.active) by {
         assert PIV.ThreadTracksGm(re, qm, str, th1, gm) && PIV.ThreadTracksGm(re, qm, str, th2, gm);
-        assert (na + ta[1..])[0] == (t.t1, gm) && (na + ta[1..])[1] == (t.t2, gm);
-        assert (na + ta[1..])[1..] == [(t.t2, gm)] + ta[1..];
-        assert ((na + ta[1..])[1..])[1..] == ta[1..];
-        assert vms2.active[1..] == [th2] + vms.active[1..];
-        assert (vms2.active[1..])[1..] == vms.active[1..];
+        ActiveRepCons2(rer, qm, re, code, str, inp, (t.t1, gm), (t.t2, gm), th1, th2, ta[1..], vms.active[1..]);
+        assert na + ta[1..] == [(t.t1, gm), (t.t2, gm)] + ta[1..];
       }
 
       assert {:split_here} true;   // (2026-11-04) per-step: the arm batch reached 21 GB
@@ -1971,11 +1993,8 @@ module LindenElkPikeSim {
       assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, na + ta[1..], vms2.active) by {
         assert th1.exit_allowed == true && th2.exit_allowed == true;
         assert PIV.ThreadTracksGm(re, qm, str, th1, gm) && PIV.ThreadTracksGm(re, qm, str, th2, gm);
-        assert (na + ta[1..])[0] == (t.t.t1, gm) && (na + ta[1..])[1] == (t.t.t2, gm);
-        assert (na + ta[1..])[1..] == [(t.t.t2, gm)] + ta[1..];
-        assert ((na + ta[1..])[1..])[1..] == ta[1..];
-        assert vms2.active[1..] == [th2] + vms.active[1..];
-        assert (vms2.active[1..])[1..] == vms.active[1..];
+        ActiveRepCons2(rer, qm, re, code, str, inp, (t.t.t1, gm), (t.t.t2, gm), th1, th2, ta[1..], vms.active[1..]);
+        assert na + ta[1..] == [(t.t.t1, gm), (t.t.t2, gm)] + ta[1..];
       }
 
       assert {:split_here} true;   // (2026-11-04) per-step: the arm batch reached 21 GB
@@ -5443,11 +5462,8 @@ module LindenElkPikeSim {
       // Active correspondence: two new head pairs, unchanged registers.
       assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, na + ta[1..], vms2.active) by {
         assert PIV.ThreadTracksGm(re, qm, str, th1, gm) && PIV.ThreadTracksGm(re, qm, str, th2, gm);
-        assert (na + ta[1..])[0] == (t.t1, gm) && (na + ta[1..])[1] == (t.t2, gm);
-        assert (na + ta[1..])[1..] == [(t.t2, gm)] + ta[1..];
-        assert ((na + ta[1..])[1..])[1..] == ta[1..];
-        assert vms2.active[1..] == [th2] + vms.active[1..];
-        assert (vms2.active[1..])[1..] == vms.active[1..];
+        ActiveRepCons2(rer, qm, re, code, str, inp, (t.t1, gm), (t.t2, gm), th1, th2, ta[1..], vms.active[1..]);
+        assert na + ta[1..] == [(t.t1, gm), (t.t2, gm)] + ta[1..];
       }
 
       assert {:split_here} true;   // (2026-11-04) per-step: the arm batch reached 21 GB
@@ -5512,11 +5528,8 @@ module LindenElkPikeSim {
       assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, na + ta[1..], vms2.active) by {
         assert th1.exit_allowed == true && th2.exit_allowed == true;
         assert PIV.ThreadTracksGm(re, qm, str, th1, gm) && PIV.ThreadTracksGm(re, qm, str, th2, gm);
-        assert (na + ta[1..])[0] == (t.t.t1, gm) && (na + ta[1..])[1] == (t.t.t2, gm);
-        assert (na + ta[1..])[1..] == [(t.t.t2, gm)] + ta[1..];
-        assert ((na + ta[1..])[1..])[1..] == ta[1..];
-        assert vms2.active[1..] == [th2] + vms.active[1..];
-        assert (vms2.active[1..])[1..] == vms.active[1..];
+        ActiveRepCons2(rer, qm, re, code, str, inp, (t.t.t1, gm), (t.t.t2, gm), th1, th2, ta[1..], vms.active[1..]);
+        assert na + ta[1..] == [(t.t.t1, gm), (t.t.t2, gm)] + ta[1..];
       }
 
       assert {:split_here} true;   // (2026-11-04) per-step: the arm batch reached 21 GB
