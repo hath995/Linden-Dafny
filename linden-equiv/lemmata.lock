@@ -418,6 +418,15 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-regs-laws"
 
 [[package]]
+name = "linden.equiv-stamp-live"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-stamp-live"
+
+[[package]]
 name = "linden.equiv-tree-mirror-lk"
 class = 1
 version = "1.0.0"

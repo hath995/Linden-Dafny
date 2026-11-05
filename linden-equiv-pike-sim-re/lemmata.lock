@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:ce5ef0a7efef5d834c0516300f8e16f7fa41303fec18c255220d983a55a5d7f8"
+manifest-hash = "sha256:460636322dd751c4a8b87128210d8a6e2ecd11c6bd26b3880d424cffc7e9e84a"
 
 [[package]]
 name = "linden.equiv-check-erase"
@@ -236,6 +236,15 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-nest-stamp"
+
+[[package]]
+name = "linden.equiv-stamp-live"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-stamp-live"
 
 [[package]]
 name = "linden.equiv-nfa-rep-re"

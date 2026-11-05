@@ -38,6 +38,7 @@ module LindenElkPikeSim {
   import PIV = LindenElkPikeInv
   import NI = LindenElkNestInv
   import NST = LindenElkNestStamp
+  import SL = LindenElkStampLive
   import L = Regex
   import CM = LindenElkClockMono
   import SS = SeenSets
@@ -344,6 +345,10 @@ module LindenElkPikeSim {
     // §2.5b rung D (2026-11-04): the POSITIONAL stamp invariant — every
     // quantifier whose clock mark the thread has passed has a clear stamp.
     && StampTopRE(re, code, endl, pc as nat, th.quant_regs.a_cp)
+    // §2.5b rung F (F-a): the LIVE-STAMP register facts the final readout
+    // (`NRO.ReconReadout`) needs — every set stamp has a stale body and, while
+    // its chain is fresh, present capture ancestors (opaque atom).
+    && SL.StampLiveOk(re, th.capture_regs.a_clk, th.quant_regs.a_clk, th.quant_regs.a_cp)
   }
 
   // =========================================================================
@@ -476,6 +481,94 @@ module LindenElkPikeSim {
     assert PIV.GSet(qm.quants[qid0]) == PIV.GSet(G0);
     GMResetSetCong(qm.quants[qid0], G0, X);
     GMResetSetCong(qm.quants[qid0], G0, PIV.LiveStampsGm(re, qm, str, quant.a_clk, quant.a_cp, -1, X));
+  }
+
+  // =========================================================================
+  // §2.5b RUNG F (F-a): the live-stamp register invariant across the three
+  // register-writing steps. Narrow contracts, one call per Preserve case.
+  // =========================================================================
+
+  /** A capture write (`Open`/`Close` of `gid`) at a site outside every stamped
+      body, with a clock at or above every quant clock. */
+  lemma StampLiveCapRE(re: R.regex, code: RB.code, endl: nat, pc: nat,
+                       caps: AReg.Regs, quant: AReg.Regs, reg: int, gid: nat, cp: int, clk: int)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires pc < endl
+    requires NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(reg))
+    requires reg == CP.start_reg(gid) || reg == CP.end_reg(gid)
+    requires StampTopRE(re, code, endl, pc, quant.a_cp)
+    requires SL.StampLiveOk(re, caps.a_clk, quant.a_clk, quant.a_cp)
+    requires clk >= 0 && forall x :: AI.get_idx(quant.a_clk, x) <= clk
+    ensures SL.StampLiveOk(re, AReg.set_reg(caps, reg, Some(cp), clk).a_clk, quant.a_clk, quant.a_cp)
+  {
+    var caps' := AReg.set_reg(caps, reg, Some(cp), clk);
+    if 0 <= reg < |caps.a_cp| && 0 <= reg < |caps.a_clk| {
+      reveal StampTopRE;
+      NST.NestStampTopCapSite(re, code, endl, pc, quant.a_cp, gid, reg);
+      assert caps'.a_clk == caps.a_clk[reg := clk];
+      SL.StampLiveCapWrite(re, caps.a_clk, caps'.a_clk, quant.a_clk, quant.a_cp, gid, reg, clk);
+    } else {
+      assert caps' == caps;
+    }
+  }
+
+  /** The clock mark `SetQuantToClock(qid0, false)`: its site is enclosed by no
+      stamped quantifier and its clock is above every stored one. */
+  lemma StampLiveMarkRE(re: R.regex, code: RB.code, endl: nat, pc: nat,
+                        caps: AReg.Regs, quant: AReg.Regs, qid0: int, clk: int, S: int)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires PIV.QuantUnique(re)
+    requires pc < endl
+    requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid0, false))
+    requires StampTopRE(re, code, endl, pc, quant.a_cp)
+    requires SL.StampLiveOk(re, caps.a_clk, quant.a_clk, quant.a_cp)
+    requires |quant.a_clk| >= R.max_quant(re) + 1 && |quant.a_cp| == |quant.a_clk|
+    requires forall k :: AI.get_idx(quant.a_clk, k) <= S
+    requires forall k :: AI.get_idx(caps.a_clk, k) <= S
+    requires clk == S + 1
+    ensures SL.StampLiveOk(re, caps.a_clk, AReg.set_reg(quant, qid0, None, clk).a_clk,
+                           AReg.set_reg(quant, qid0, None, clk).a_cp)
+  {
+    reveal StampTopRE;
+    NST.NestStampTopQuantSite(re, code, endl, pc, quant.a_cp, qid0, false);
+    var q0: nat := qid0 as nat;
+    NI.QuantIdsLEMaxQuant(re);
+    assert q0 < |quant.a_clk|;
+    var quant' := AReg.set_reg(quant, qid0, None, clk);
+    assert quant'.a_cp == quant.a_cp[q0 := -1] && quant'.a_clk == quant.a_clk[q0 := clk];
+    assert PIV.QuantWriteAt(quant.a_clk, quant.a_cp, quant'.a_clk, quant'.a_cp, q0, clk, -1);
+    SL.StampLiveQuantWrite(re, caps.a_clk, quant.a_clk, quant.a_cp, quant'.a_clk, quant'.a_cp, q0, clk, -1);
+  }
+
+  /** The true stamp `SetQuantToClock(qid0, true)` at `cp`: as the mark, plus
+      the site's own facts (outside looks, present ancestors). */
+  lemma StampLiveStampRE(re: R.regex, code: RB.code, endl: nat, pc: nat,
+                         caps: AReg.Regs, quant: AReg.Regs, qid0: int, cp: nat, clk: int, S: int)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires PIV.QuantUnique(re)
+    requires pc < endl
+    requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid0, true))
+    requires StampTopRE(re, code, endl, pc, quant.a_cp)
+    requires SL.StampLiveOk(re, caps.a_clk, quant.a_clk, quant.a_cp)
+    requires |quant.a_clk| >= R.max_quant(re) + 1 && |quant.a_cp| == |quant.a_clk|
+    requires forall k :: AI.get_idx(quant.a_clk, k) <= S
+    requires forall k :: AI.get_idx(caps.a_clk, k) <= S
+    requires clk == S + 1
+    requires qid0 >= 0 && (qid0 as nat) in PIV.QuantIdsOutsideLooks(re) && (qid0 as nat) in PIV.QuantIds(re)
+    requires PIV.PathPresentQ(re, caps.a_clk, quant.a_clk, -1, qid0 as nat)
+    ensures SL.StampLiveOk(re, caps.a_clk, AReg.set_reg(quant, qid0, Some(cp), clk).a_clk,
+                           AReg.set_reg(quant, qid0, Some(cp), clk).a_cp)
+  {
+    reveal StampTopRE;
+    NST.NestStampTopQuantSite(re, code, endl, pc, quant.a_cp, qid0, true);
+    var q0: nat := qid0 as nat;
+    NI.QuantIdsLEMaxQuant(re);
+    assert q0 < |quant.a_clk|;
+    var quant' := AReg.set_reg(quant, qid0, Some(cp), clk);
+    assert quant'.a_cp == quant.a_cp[q0 := cp] && quant'.a_clk == quant.a_clk[q0 := clk];
+    assert PIV.QuantWriteAt(quant.a_clk, quant.a_cp, quant'.a_clk, quant'.a_cp, q0, clk, cp as int);
+    SL.StampLiveQuantWrite(re, caps.a_clk, quant.a_clk, quant.a_cp, quant'.a_clk, quant'.a_cp, q0, clk, cp as int);
   }
 
   // MxAt thresholds are always either the mx parameter or a stored quant
@@ -1336,6 +1429,17 @@ module LindenElkPikeSim {
     // to CheckOracle, so no SetRegisterToCP fires for them) — they stay unset.
     && (forall t | t in vms.active :: PIV.LooksCapUnset(re, t.capture_regs.a_clk))
     && (forall tb | tb in vms.blocked :: PIV.LooksCapUnset(re, tb.0.capture_regs.a_clk))
+    // §2.5b rung F (F-a): the best thread keeps the register facts the final
+    // readout needs (recorded at Accept from the head's `ThreadNestRE`).
+    && (vms.bestmatch.Some? ==> BestLiveRE(re, vms.bestmatch.value))
+  }
+
+  /** The best thread's register facts for the final readout (rung F). OPAQUE:
+      transparent, its `LooksCapUnset` quantifier in every `PikeInvFullRE`
+      unfolding took `PreserveForkCaseNested`'s arm batches past 12 GB. */
+  opaque ghost predicate BestLiveRE(re: R.regex, th: AI.Thread) {
+    SL.StampLiveOk(re, th.capture_regs.a_clk, th.quant_regs.a_clk, th.quant_regs.a_cp)
+    && PIV.LooksCapUnset(re, th.capture_regs.a_clk)
   }
 
   // =========================================================================
@@ -1692,6 +1796,9 @@ module LindenElkPikeSim {
     BBTick(vms, s1, ncap, nlook, nquant);
     BBAccept(s1, ncap, nlook, nquant);
     assert PIV.BestMatchRE(re, qm, str, Some((inp, gm)), Some(th));
+    // §2.5b rung F (F-a): the recorded best keeps its register facts
+    assert th in vms.active && ThreadNestRE(re, code, endl, th.pc, th) && PIV.LooksCapUnset(re, th.capture_regs.a_clk);
+    assert BestLiveRE(re, th) by { reveal BestLiveRE; }
     assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, [], []);
     PIV.AddInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea,
                        PIV.HdTreeOf([]), PIV.HeadPcOf([]));
@@ -1968,6 +2075,11 @@ module LindenElkPikeSim {
       ReadoutCapWriteRE(re, qm, str, code, endl, pc, th.capture_regs, caps', th.look_regs, th.quant_regs,
                         LG.Open(gid), vms.cp as nat, sreg, gid);
     }
+    // §2.5b rung F (F-a): the live-stamp facts survive the capture write
+    assert SL.StampLiveOk(re, caps'.a_clk, th.quant_regs.a_clk, th.quant_regs.a_cp) by {
+      assert forall x :: AI.get_idx(th.quant_regs.a_clk, x) <= vms.clock + 1;
+      StampLiveCapRE(re, code, endl, pc, th.capture_regs, th.quant_regs, sreg, gid, vms.cp, vms.clock + 1);
+    }
 
     // Backbones for the successor.
     BBTick(vms, s1, ncap, nlook, nquant);
@@ -2079,6 +2191,11 @@ module LindenElkPikeSim {
       // §2.5b rung D: the open write is outside every stamped body
       ReadoutCapWriteRE(re, qm, str, code, endl, pc, th.capture_regs, caps', th.look_regs, th.quant_regs,
                         LG.Open(gid), vms.cp as nat, sreg, gid);
+    }
+    // §2.5b rung F (F-a): the live-stamp facts survive the capture write
+    assert SL.StampLiveOk(re, caps'.a_clk, th.quant_regs.a_clk, th.quant_regs.a_cp) by {
+      assert forall x :: AI.get_idx(th.quant_regs.a_clk, x) <= vms.clock + 1;
+      StampLiveCapRE(re, code, endl, pc, th.capture_regs, th.quant_regs, sreg, gid, vms.cp, vms.clock + 1);
     }
 
     // Backbones for the successor.
@@ -2194,6 +2311,11 @@ module LindenElkPikeSim {
       ReadoutCapWriteRE(re, qm, str, code, endl, pc, th.capture_regs, caps', th.look_regs, th.quant_regs,
                         LG.Close(gid), vms.cp as nat, ereg, gid);
     }
+    // §2.5b rung F (F-a): the live-stamp facts survive the capture write
+    assert SL.StampLiveOk(re, caps'.a_clk, th.quant_regs.a_clk, th.quant_regs.a_cp) by {
+      assert forall x :: AI.get_idx(th.quant_regs.a_clk, x) <= vms.clock + 1;
+      StampLiveCapRE(re, code, endl, pc, th.capture_regs, th.quant_regs, ereg, gid, vms.cp, vms.clock + 1);
+    }
 
     // Backbones for the successor.
     BBTick(vms, s1, ncap, nlook, nquant);
@@ -2300,6 +2422,11 @@ module LindenElkPikeSim {
       // §2.5b rung D: the close write is outside every stamped body
       ReadoutCapWriteRE(re, qm, str, code, endl, pc, th.capture_regs, caps', th.look_regs, th.quant_regs,
                         LG.Close(gid), vms.cp as nat, ereg, gid);
+    }
+    // §2.5b rung F (F-a): the live-stamp facts survive the capture write
+    assert SL.StampLiveOk(re, caps'.a_clk, th.quant_regs.a_clk, th.quant_regs.a_cp) by {
+      assert forall x :: AI.get_idx(th.quant_regs.a_clk, x) <= vms.clock + 1;
+      StampLiveCapRE(re, code, endl, pc, th.capture_regs, th.quant_regs, ereg, gid, vms.cp, vms.clock + 1);
     }
 
     // Backbones for the successor.
@@ -2444,6 +2571,8 @@ module LindenElkPikeSim {
       ReadoutMarkRE(re, qm, str, code, endl, pc, th.capture_regs, th.look_regs, th.quant_regs,
                     qid0, vms.clock + 1, vms.clock);
     }
+    // §2.5b rung F (F-a): the live-stamp facts survive the mark
+    StampLiveMarkRE(re, code, endl, pc, th.capture_regs, th.quant_regs, qid0, vms.clock + 1, vms.clock);
 
     // Backbones for the successor.
     BBTick(vms, s1, ncap, nlook, nquant);
@@ -2586,6 +2715,8 @@ module LindenElkPikeSim {
       ReadoutMarkRE(re, qm, str, code, endl, pc, th.capture_regs, th.look_regs, th.quant_regs,
                     qid0, vms.clock + 1, vms.clock);
     }
+    // §2.5b rung F (F-a): the live-stamp facts survive the mark
+    StampLiveMarkRE(re, code, endl, pc, th.capture_regs, th.quant_regs, qid0, vms.clock + 1, vms.clock);
 
     // Backbones for the successor.
     BBTick(vms, s1, ncap, nlook, nquant);
@@ -3219,17 +3350,20 @@ module LindenElkPikeSim {
     assert ThreadNestRE(re, code, endl, th.pc, th);
     assert CM.ThreadClocksLE(th, vms.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant);
 
+    assert {:split_here} true;   // (F-a) per-section batch
     // The VM reads the bit at vms.cp; the tree rule reads it at the input's
     // index — the same column.
     PIV.IdxInpOfCp(str, vms.cp as nat);
     assert TREP.CpOf(inp) == vms.cp as nat;
 
+    assert {:split_here} true;   // (F-a) per-section batch
     // The gate step: the tree survives INTACT at pc + 1.
     OracleStepThreadRE(rer, qm, re, code, endl, inp, t, th, pc, l, pos);
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc + 1, ea);
     assert vms2.active == [th2] + vms.active[1..];
     assert th2.pc == (pc + 1) as int && th2.exit_allowed == ea;
 
+    assert {:split_here} true;   // (F-a) per-section batch
     // The successor thread still denotes the same group map. L3a: the look_regs
     // write can only steer INSIDE-look groups, which are ABSENT on both sides
     // (their capture regs are unset — the run invariant); OUTSIDE-look groups
@@ -3258,6 +3392,7 @@ module LindenElkPikeSim {
       PIV.TieGmLiveCong(re, qm, str, th.capture_regs, th2.look_regs, th.capture_regs, th.look_regs, th.quant_regs);
     }
 
+    assert {:split_here} true;   // (F-a) per-section batch
     // Backbones.
     BBTick(vms, s1, ncap, nlook, nquant);
     assert th in vms.active;
@@ -3271,12 +3406,14 @@ module LindenElkPikeSim {
     assert CM.RegsValsLE(th2.capture_regs, s1.cp);
     BBReplaceHead(s1, th2, ncap, nlook, nquant);
 
+    assert {:split_here} true;   // (F-a) per-section batch
     // Active correspondence: the SAME (tree, gm) list against the moved head.
     assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms2.active) by {
       assert vms2.active[0] == th2 && vms2.active[1..] == vms.active[1..];
       assert ta == [ta[0]] + ta[1..];
     }
 
+    assert {:split_here} true;   // (F-a) per-section batch
     // Seen inclusion: the gate is a stutter step, so the head tree is carried
     // along the chain rather than consumed.
     assert TT.StuttersRE(pc, code);
@@ -3285,6 +3422,7 @@ module LindenElkPikeSim {
     PIV.StutterInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea, pc + 1);
     assert PIV.HeadPcOf(vms2.active) == pc + 1;
 
+    assert {:split_here} true;   // (F-a) per-section batch
     // Positional fact and the remaining conjuncts.
     assert ThreadNestRE(re, code, endl, th2.pc, th2) by {
       assert NI.NestInvRE(re, code, 0, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk, -1);
@@ -4841,6 +4979,12 @@ module LindenElkPikeSim {
       }
       NI.NestTopInit(re, code, endl, cc, qc);
       StampTopInit(re, code, endl, th.quant_regs.a_cp);
+      assert forall k :: AI.get_idx(th.quant_regs.a_cp, k) < 0 by {
+        forall k ensures AI.get_idx(th.quant_regs.a_cp, k) < 0 {
+          if 0 <= k < |th.quant_regs.a_cp| { assert th.quant_regs.a_cp[k] == -1; }
+        }
+      }
+      SL.StampLiveInit(re, cc, qc, th.quant_regs.a_cp);
       NR.NfaRepIncrRE(re, code, 0, endl);
     }
     forall t | t in vms.active ensures ThreadNestRE(re, code, endl, t.pc, t) {
@@ -4945,6 +5089,12 @@ module LindenElkPikeSim {
       }
       NI.NestTopInit(re, code, endl, cc, qc);
       StampTopInit(re, code, endl, th.quant_regs.a_cp);
+      assert forall k :: AI.get_idx(th.quant_regs.a_cp, k) < 0 by {
+        forall k ensures AI.get_idx(th.quant_regs.a_cp, k) < 0 {
+          if 0 <= k < |th.quant_regs.a_cp| { assert th.quant_regs.a_cp[k] == -1; }
+        }
+      }
+      SL.StampLiveInit(re, cc, qc, th.quant_regs.a_cp);
       NR.NfaRepIncrRE(re, code, 0, endl);
     }
     forall t | t in vms.active ensures ThreadNestRE(re, code, endl, t.pc, t) {
@@ -5042,6 +5192,12 @@ module LindenElkPikeSim {
       }
       NI.NestTopInit(re, code, endl, cc, qc);
       StampTopInit(re, code, endl, th.quant_regs.a_cp);
+      assert forall k :: AI.get_idx(th.quant_regs.a_cp, k) < 0 by {
+        forall k ensures AI.get_idx(th.quant_regs.a_cp, k) < 0 {
+          if 0 <= k < |th.quant_regs.a_cp| { assert th.quant_regs.a_cp[k] == -1; }
+        }
+      }
+      SL.StampLiveInit(re, cc, qc, th.quant_regs.a_cp);
       NR.NfaRepIncrRE(re, code, 0, endl);
     }
     forall t | t in vms.active ensures ThreadNestRE(re, code, endl, t.pc, t) {
@@ -5184,6 +5340,9 @@ module LindenElkPikeSim {
     BBTick(vms, s1, ncap, nlook, nquant);
     BBAccept(s1, ncap, nlook, nquant);
     assert PIV.BestMatchRE(re, qm, str, Some((inp, gm)), Some(th));
+    // §2.5b rung F (F-a): the recorded best keeps its register facts
+    assert th in vms.active && ThreadNestRE(re, code, endl, th.pc, th) && PIV.LooksCapUnset(re, th.capture_regs.a_clk);
+    assert BestLiveRE(re, th) by { reveal BestLiveRE; }
     assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, [], []);
     PIV.AddInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea,
                        PIV.HdTreeOf([]), PIV.HeadPcOf([]));
@@ -6376,6 +6535,8 @@ module LindenElkPikeSim {
       ReadoutStampRE(re, qm, str, code, endl, pc, th.capture_regs, th.look_regs, th.quant_regs,
                      qid0, cp, vms.clock + 1, vms.clock);
     }
+    // §2.5b rung F (F-a): the live-stamp facts survive the true stamp
+    StampLiveStampRE(re, code, endl, pc, th.capture_regs, th.quant_regs, qid0, cp, vms.clock + 1, vms.clock);
 
     // Backbones for the successor.
     assert {:split_here} true;
@@ -6503,6 +6664,8 @@ module LindenElkPikeSim {
       ReadoutStampRE(re, qm, str, code, endl, pc, th.capture_regs, th.look_regs, th.quant_regs,
                      qid0, cp, vms.clock + 1, vms.clock);
     }
+    // §2.5b rung F (F-a): the live-stamp facts survive the true stamp
+    StampLiveStampRE(re, code, endl, pc, th.capture_regs, th.quant_regs, qid0, cp, vms.clock + 1, vms.clock);
 
     // Backbones for the successor.
     assert {:split_here} true;
