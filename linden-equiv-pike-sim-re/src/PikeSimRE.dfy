@@ -4561,6 +4561,9 @@ module LindenElkPikeSim {
     requires vms.context.nextchar == AI.get_char(str, vms.cp)
     ensures TrcRE(pts, PT.PTS_final(bestT))
     ensures PIV.BestMatchRE(re, qm, str, bestT, AI.FFindMatch(code, str, vms, ov, dir, cdn).0)
+    // §2.5b rung F: the winning thread keeps its live-stamp register facts
+    ensures AI.FFindMatch(code, str, vms, ov, dir, cdn).0.Some? ==>
+              BestLiveRE(re, AI.FFindMatch(code, str, vms, ov, dir, cdn).0.value)
     decreases |str| - vms.cp
   {
     var s0 := vms.(cdn := LCdn.build_cdn_v(cdn, vms.cp, ov, vms.context, dir));
@@ -4746,6 +4749,9 @@ module LindenElkPikeSim {
     requires vms.context.nextchar == AI.get_char(str, vms.cp)
     ensures TrcRE(pts, PT.PTS_final(bestT))
     ensures PIV.BestMatchRE(re, qm, str, bestT, AI.FFindMatch(code, str, vms, ov, dir, cdn).0)
+    // §2.5b rung F: the winning thread keeps its live-stamp register facts
+    ensures AI.FFindMatch(code, str, vms, ov, dir, cdn).0.Some? ==>
+              BestLiveRE(re, AI.FFindMatch(code, str, vms, ov, dir, cdn).0.value)
     decreases |str| - vms.cp
   {
     var s0 := vms.(cdn := LCdn.build_cdn_v(cdn, vms.cp, ov, vms.context, dir));
