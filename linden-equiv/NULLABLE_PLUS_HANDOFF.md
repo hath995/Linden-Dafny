@@ -1265,7 +1265,7 @@ single-worker time. Each stop was a PERFORMANCE hog, never a wrong proof, and ea
 |---|---|---|---|---|
 | nest-stamp, 23.8 GB | `NestStampQuantWriteRE` (rung D piece 1, 09-04 — passed the 80 GB slice unmeasured) | arms heavy in one VC | one lemma per arm, the quant arm one per scheme (`QWQ*`), ladder 2/1/0 | 9.9 GB (`b0aa59f`) |
 | main-theorem, 23.9 GB | `FAdvanceEpsilonAncSet` (546 lines, no split) + `FConsumeAncSet`, `LookCheckDirectREGen` | one batch per lemma | split per arm / per `assert … by` | 5.3 GB (`60e3c71`) |
-| lift-sim-oracle, 900 s | `OracleColumnNested`'s lookahead row | the ASSUMED context (each fix moved the slow batch one line) | both directions out as narrow helpers; `hide *` in the engine-side one | 142 s, 5.7 GB (`commit after 60e3c71`) |
+| lift-sim-oracle, 900 s | `OracleColumnNested`'s lookahead row | the ASSUMED context (each fix moved the slow batch one line) | both directions out as narrow helpers; `hide *` in the engine-side one | 142 s, 5.7 GB (`eae20d8`) |
 
 Lessons (also in memory `dafny-batch-memory-hogs`): measure PEAK MEMORY per member at one worker
 whenever the slice shrinks — the 80 GB cap had hidden two 20 GB batches since September; the pack's
