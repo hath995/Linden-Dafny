@@ -1138,7 +1138,7 @@ module LindenElkNulledPlus {
   lemma CinPlusPriority(rer: LW.RegExpRecord, r1: L.Regex, cont: LS.Actions, inp: LC.Input, gm: LG.GroupMap,
                         S: set<LG.GroupId>, tplus: LT.Tree, titer: LT.Tree, tcont: LT.Tree)
     requires EL.PikeLkRegexRec(r1) && EL.PikeLkActionsRec(cont)
-    requires LL.LkBodiesInS(r1, S) && LL.LkActsInS(cont, S)
+    requires LL.LkBodiesInS(r1, S)   // (F-c) the continuation's looks are NOT constrained: the theorem runs at S = {}
     requires NUL.CINullableL(r1)
     requires LS.IsTree(rer, [LS.Areg(L.Quantified(true, 1, LN.Inf, r1))] + cont, inp, gm, WP.Forward, tplus)
     requires LS.IsTree(rer, [LS.Areg(r1), LS.Acheck(inp), LS.Areg(L.Quantified(true, 0, LN.Inf, r1))] + cont,

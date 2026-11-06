@@ -1407,3 +1407,44 @@ must be a threshold (>= 60 s per 25 min) and must re-base when the process set c
 `API.Supported` includes `SupportedCin` (lookaround-free, no nulled-plus gate); `SupportedL3/4/5`
 keep `NoNulledPlusRaw`. **Next:** F-c (machine B stamp-aware: lookarounds next to a CIN plus), then
 G (drop the gate from L3/4/5, retire `FNulledPlusIdentity`/`QuantRegsFinal` on the main pass).
+
+### 2026-11-06 (cont.) — **F-c DESIGN: machine B stays CHAIN-FREE; outside-S values come from machine A**
+
+The plan in the 2026-11-05 (cont.) entry (B stamp-aware with `tr_stamp` chains, `GmtTieOutside :=
+TieGm`) would re-prove every Rec-tier step lemma against `GmOfLiveR` — rung D again, on the B side.
+It is not needed. Scope: the **Rec tier only** (the `MainTheoremL5` path); L3/L4 keep the gate and
+`Supported` gains an L5-CIN disjunct.
+
+* **B's tree at the stamp is a plain `Reset`.** `TreeRepLkRE`'s `tr_reset` fires for
+  `SetQuantToClock(q, _)`, either flag. On the VM side `filter_capture` reads only quant CLOCKS,
+  so `GmOfLive` sees `SQC(q, true)` exactly like `SQC(q, false)`: the B step at the stamp is the
+  existing Reset step and `GmtTieOutside` (plain `GmOfLive`) is untouched. B's best leaf then lacks
+  the CIN chains — it is right INSIDE `S` (look groups), not outside.
+* **B's raw walk is engine-shaped:** `CW.BoolTreeLkX` = `EL.BoolTreeLk` except at a CIN-greedy
+  plus at `min == 1` (`CW.CinPlusL`, opaque), where the tree is
+  `Choice(Reset(gidl); ti, Reset(gidl); tc)` (`ti` = iteration stack at `CannotExit`, `tc` = the
+  continuation) — exactly the code tree's shape at the head fork, so the giants keep
+  `ProgErase(tcan) == ProgErase(tX)` (STRUCTURAL CIN arm, no rung A inside the giants).
+  `WalkPairLkRec`/`TtLkRec` switch to `BoolTreeLkX` and their SQC see-through takes both flags.
+* **Glue (spec only, new member `linden-equiv-cin-walk`):** `CinWalkX` builds `tX` from the spec
+  tree `t` with `ResAgreeAtOutside(tX, t, inp, G)`, `G` ⊇ every CIN body's groups (rung A with
+  `S = {}` — needs the CIN body's positive looks capture-free — then `Chain` dropped outside `G`).
+  `G ∩ S = {}` because CIN pluses never sit in look bodies (`PikeLkRegexRec`) and ids are unique,
+  so `FirstLeaf(tX)` and `FirstLeaf(t)` agree on position and INSIDE `S`.
+* **Final assembly:** outside `S` from machine A exactly as F-d0 (`FindMatchSimRENested`,
+  `TieGm`, rung C's `ResAgreeAtOutside(tstar, t, inp, S)`, F-b `FinalReadout`); inside `S` from B's
+  carriers (`LookNestOkTTop`/`LookNestBackTTop{,Deep}`), moved from the VM best to
+  `rp = FReconstructPlus(best)` — they read only `look_regs` and the capture/quant clocks of the
+  looks' ANCESTORS, none of which a look-free CIN body owns.
+* Fragment (new `SupportedL5Cin`): `SupportedL5` minus `NoNulledPlusRaw`, plus "no greedy
+  nullable plus inside a look body, and every greedy nullable plus body is look-free".
+* Rung A side fix: `NP.CinPlusPriority{,Bool}` drop `LkActsInS(cont, S)` (never used in the
+  body) so the theorem runs at `S = {}` next to capturing looks in the continuation.
+
+Work list: (1) cin-walk member (`BoolTreeLkX`, determinism, `CinWalkX`); (2) `TreeRepLkRE`
+stamp-as-Reset; (3) Rec giants (`ActionsTreeRepLkFRec`/`AtBackForkTreeLkFRec`) on `BoolTreeLkX`
+with the CIN head + CIN loop-view arms, `NoTrueStamps` dropped; (4) the 18 Rec-tier
+`NoTrueStamps` lemmas (`WalkPairLkAt{SetQuant,Fork}*Rec`, `TtLkAt{SetQuant,Fork}*Rec`,
+`QuantHead*`, `LiftPreserve{SetQuant,Fork}LkRec`, `LiftInitCRec`, `ActionsTreeRepLkRERec`) and
+the rest of the Rec tier on `BoolTreeLkX`; (5) `L3aCompositeCloseRec` with the glue; (6)
+`MainTheoremL5Cin` + `SupportedL5Cin` (downstream twins without `QuantRegsFinal`).

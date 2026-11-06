@@ -491,7 +491,7 @@ module LindenElkNulledPlusBool {
   lemma CinPlusPriorityBool(rer: LW.RegExpRecord, r1: L.Regex, cont: LS.Actions, inp: LC.Input, b: BS.LoopBool,
                             S: set<LG.GroupId>, t: LT.Tree, ti: LT.Tree, tcont: LT.Tree)
     requires EL.PikeLkRegexRec(r1) && EL.PikeLkActionsRec(cont)
-    requires LL.LkBodiesInS(r1, S) && LL.LkActsInS(cont, S)
+    requires LL.LkBodiesInS(r1, S)   // (F-c) the continuation's looks are NOT constrained: the theorem runs at S = {}
     requires NUL.CINullableL(r1)
     requires EncOk(cont, inp, b)
     requires EL.BoolTreeLk(rer, [LS.Areg(L.Quantified(true, 1, LN.Inf, r1))] + cont, inp, b, t)

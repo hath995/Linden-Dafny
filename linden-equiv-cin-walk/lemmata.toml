@@ -1,0 +1,32 @@
+[package]
+namespace = "linden"
+name = "equiv-cin-walk"
+version = "1.0.0"
+description = "linden-equiv layer: CinWalk — §2.5b rung F-c: the engine-shaped spec walk tree machine B pairs with, and its first-result glue to the spec tree"
+license = "MIT"
+
+[toolchain]
+dafny = ">= 4.11.0"
+
+[source]
+to_export = ["src/**/*.dfy"]
+
+[options]
+standard-libraries = true
+verification-time-limit = "900"
+
+[verification]
+expected-errors = [
+]
+
+[dependencies]
+linden.reasoning = "^1.0.0"
+linden.semantics-core = "^1.0.0"
+linden.warblre = "^1.0.0"
+linden.regex-engine = "^1.0.0"
+linden.equiv-actions-rep-re = "^1.0.0"
+linden.equiv-check-erase = "^1.0.0"
+linden.equiv-entry-lk = "^1.0.0"
+linden.equiv-tree-rep-re = "^1.0.0"
+linden.equiv-look-leaves = "^1.0.0"
+linden.equiv-nulled-plus = "^1.0.0"
