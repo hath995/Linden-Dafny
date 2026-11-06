@@ -1379,3 +1379,31 @@ wall.
 **Next:** the gate pack; then F-c (machine B, for lookarounds next to a CIN plus) and G (drop the
 gate from `SupportedL3/4/5` once F-c lands; retire `FNulledPlusIdentity`/`QuantRegsFinal` from the
 main pass).
+
+### 2026-11-06 — **THE GATE IS GREEN WITH RUNG F (F-a, F-b, F-d0): `workspace packed: 67 members`, `PACK rc=0`** — `(a?)+` is verified
+
+Five pack runs (`<scratchpad>/pack1.sh`, one z3 worker, 24 GB slice); every member above
+pike-sim-re rebuilt, plus the three new members (stamp-live, final-readout, main-cin). Each stop
+was performance or tooling, never a wrong proof:
+
+| run | stop | cause | fix |
+|---|---|---|---|
+| 1 | pike-sim-re, 22.7 GB at 5 min | `PreserveForkCaseNested`'s active-correspondence batch (the D2 watch item) — only with the PACKED `.doo` inputs | narrow lemma `ActiveRepCons2` at the 4 Fork sites (`6d61f38`): 2.7 GB |
+| 2 | lift-sim-gate, z3 OOM-KILLED by the cgroup at 17 GB → dafny HUNG 1.5 h | `LiftPreserveGatePassLkNested` (isolated) obligation #888; `LiftPreserveSetRegLk{,Nested}` one-VC 900 s timeout | GatePass requires only `NI.NestTopRE` instead of `PSM.ThreadNestRE`; SetReg per-section splits (`1f4e773`) |
+| 3 | lift-sim-gate, 1 timeout | `LiftAdvanceEpsilonNested`: the narrowed requires' call-site check | explicit `NestTopRE` assert at the call (`0fbcdaa`): 2171/0 |
+| 4 | lift-sim-carriers, killed by MY watchdog | false "hang": a new member's dafny restarts the session CPU sum near zero | watchdog re-bases on a drop |
+| 5 | — | `workspace packed: 67 members`, rc=0, peak 7.5 GB | |
+
+Per-member (rebuilt): pike-sim-re 202 (3 m), final-readout 34, main-theorem 649 (26 m), flip-*,
+look-behind-keystone, lift-sim-core 276 (26 m), oracle 177 (37 m), chain 175 (25 m), gate 131
+(1 h 21 m), carriers 10 (30 m), deep 8 (23 m), forward 10 (15 m), main 8 (58 m), **main-cin 17
+(2 m)**, linden-equiv 29 (4 m).
+
+Watchdog lessons (in `pack1.sh` now): a cgroup OOM kill of z3 leaves dafny waiting forever with
+stray GC ticks — watch `memory.events`' `oom_kill` and treat any increment as fatal; "CPU progress"
+must be a threshold (>= 60 s per 25 min) and must re-base when the process set changes.
+
+**State:** `nullable-plus-greedy` at the commit after `0fbcdaa` (this entry), nothing pushed.
+`API.Supported` includes `SupportedCin` (lookaround-free, no nulled-plus gate); `SupportedL3/4/5`
+keep `NoNulledPlusRaw`. **Next:** F-c (machine B stamp-aware: lookarounds next to a CIN plus), then
+G (drop the gate from L3/4/5, retire `FNulledPlusIdentity`/`QuantRegsFinal` on the main pass).
