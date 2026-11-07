@@ -6880,17 +6880,22 @@ module LindenElkLiftSimGate {
     // the gate body may nest positive looks to ANY depth (negative bodies stay
     // look-free, `NR.NegLooksLookFreeRE`; positive nesting is lookAHEAD-only,
     // `M.NoPosLookbehindRE`), with the body's compile statics as `StaticOkNestedRE`.
+    assert {:split_here} true;   // (§2.5b pack) section: the per-lid package
     assert GateStaticAtNested(qm, re, crv, l, ncap, nlook, nquant);
+    // (§2.5b pack) the package's own conjuncts (a direct instance: the
+    // StaticCoreNestedRE weakening made the solver rebuild StaticOkNestedRE(body)
+    // for LkReplayMatchesSpecNested — 900 s in the gate pack)
     var la: R.lookaround, body: R.regex :|
       LTB.LookEntryOk(crv, l, la, body)
       && T.TransWf(body) && NR.NestedFragmentRE(body)
+      && NR.NoNulledPlusRE(body)
       && NR.NegLooksLookFreeRE(body)
       && qm.looks[l].0 == T.TrLookaround(la)
       && qm.looks[l].1 == T.Translate(body)
       && (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
       && var bodycode := CP.compile_to_bytecode(body);
       |bodycode| >= 1
-      && PSM.StaticCoreNestedRE(qm, body, bodycode, |bodycode| - 1)
+      && PSM.StaticOkNestedRE(qm, body, bodycode, |bodycode| - 1)
       && PSM.SizesOkRE(body, ncap, nlook, nquant)
       && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
     assert lk == T.TrLookaround(la) && r1 == T.Translate(body);
@@ -6926,6 +6931,7 @@ module LindenElkLiftSimGate {
     M.LkBodyGroupsEqCapIdsInLooks(re);
     assert S == LL.LkBodyGroups(T.Translate(re));
 
+    assert {:split_here} true;   // (§2.5b pack) section: the gate step
     if la.Lookahead? {
       // ---- capturing-lookahead half: the proven crux core -------------------
       assert crv.f_look_types[l] == la && crv.f_look_types[l].Lookahead?;
@@ -6960,6 +6966,7 @@ module LindenElkLiftSimGate {
 
     assert ThreadRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, t.t, gm2, th', ncap, nlook, nquant);
 
+    assert {:split_here} true;   // (§2.5b pack) section: list bookkeeping
     // list bookkeeping
     assert ActiveRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, ta[1..], s.active[1..],
                            ncap, nlook, nquant);
@@ -6968,6 +6975,7 @@ module LindenElkLiftSimGate {
     assert ActiveRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, [(t.t, gm2)] + ta[1..], vms2.active,
                            ncap, nlook, nquant);
 
+    assert {:split_here} true;   // (§2.5b pack) section: the look-path carrier
     // ---- (E3) the look-path carrier: the crossing establishes lid l fresh ----
     // (D3) `*Top` carrier: only the TOP-LEVEL gate lid l fires an obligation.
     assert LookNestRepCTop(re, S, ta, s.active);   // (BRICK D5) Rec/Top carrier anchor
@@ -7029,6 +7037,7 @@ module LindenElkLiftSimGate {
       }
     }
 
+    assert {:split_here} true;   // (§2.5b pack) section: the converse
     // ---- (E4) converse: the crossing's coverage from the replay↔spec tie ----
     assert LookNestBackRepCTop(re, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
     // structural body == row body (both pin f_look_ast[l])
@@ -7194,6 +7203,7 @@ module LindenElkLiftSimGate {
       }
     }
 
+    assert {:split_here} true;   // (§2.5b pack) section: the deep carrier
     // ---- (E4 DEEP) the crossing's coverage for the DEEP carrier ----
     // Delegated to `GatePassDeepRepStep` (a standalone lemma) so the crossing
     // discharge + gate-pass congruence do NOT balloon this isolate-assertions
@@ -7226,6 +7236,7 @@ module LindenElkLiftSimGate {
       assert vms2.active == [th'] + s.active[1..];
     }
 
+    assert {:split_here} true;   // (§2.5b pack) section: seen + isblocked
     // seen + isblocked bookkeeping
     assert PIV.HdTreeOf(ta) == Some(t) && PIV.HeadPcOf(s.active) == pc;
     AddSeenRepLk(rer, qm, code, inp, seen, s.processed, t, pc, ea,
