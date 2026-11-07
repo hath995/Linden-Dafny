@@ -5317,13 +5317,19 @@ module LindenElkLiftSimChain {
                 assert EL.PikeLkActionsRec(ia);
                 assert {:split_here} true;   // (E3) section: the iteration list's representation
                 // the iteration list at em + 3 (EndLoop at e1x, the CIN loop view at e1x + 1)
-                AR.NfaRepLStarCinIntro(rer, qm, r1, code, em, e1x, qidC);
-                assert AR.ActionRepL(rer, qm, LS.Areg(q0), code, e1x + 1, pcmid);
-                AR.ActionsRepLCons(rer, qm, LS.Areg(q0), cont, code, e1x + 1, pcmid);
-                assert AR.ActionRepL(rer, qm, LS.Acheck(inp), code, e1x, e1x + 1);
-                AR.ActionsRepLCons(rer, qm, LS.Acheck(inp), [LS.Areg(q0)] + cont, code, e1x, e1x + 1);
-                AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(q0)] + cont), code, em + 3, e1x);
-                assert AR.ActionsRepL(rer, qm, ia, code, em + 3);
+                // (§2.5b pack) with packed deps this section grew past 19 GB (3:22 with
+                // source deps), even one ActionsRepLCons call per batch: the list's
+                // rep is built in a cut context, only the head reps unfold
+                assert AR.ActionsRepL(rer, qm, ia, code, em + 3) by {
+                  hide *; reveal AR.ActionRepL;
+                  AR.NfaRepLStarCinIntro(rer, qm, r1, code, em, e1x, qidC);
+                  assert AR.ActionRepL(rer, qm, LS.Areg(q0), code, e1x + 1, pcmid);
+                  AR.ActionsRepLCons(rer, qm, LS.Areg(q0), cont, code, e1x + 1, pcmid);
+                  assert AR.ActionRepL(rer, qm, LS.Acheck(inp), code, e1x, e1x + 1);
+                  AR.ActionsRepLCons(rer, qm, LS.Acheck(inp), [LS.Areg(q0)] + cont, code, e1x, e1x + 1);
+                  assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, em + 3, e1x);
+                  AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(q0)] + cont), code, em + 3, e1x);
+                }
                 assert {:split_here} true;   // (E3) section: walk invariants + the loop arm
                 assert {:split_here} true;   // (E3) section: walk invariants + the arms
             StarArmInvariants(acts, r1, q0, LS.Acheck(inp), gm, gidl);
