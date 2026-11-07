@@ -129,6 +129,7 @@ module LindenElkLiftSimCarriers {
     requires NR.NoNulledPlusRaw(raw)   // §2.5b interim gate conjunct
     ensures LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)))
   {
+    hide M.LooksNoNulledPlusRE;   // (§2.5b F-c) a fact here, never unfolded (recursive: batch memory)
     // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
     // triggered existential storm the solver; all uses here are opaque.
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
@@ -147,6 +148,7 @@ module LindenElkLiftSimCarriers {
     PIV.SpecRegexCapUnique(raw);           // CapUnique(re)
     PIV.SpecRegexQuantUnique(raw);         // QuantUnique(re)
     NR.SpecRegexNoNulledPlus(raw);         // §2.5b interim: NoNulledPlusRE(re)
+    M.LooksNoNulledPlusFromFull(re);   // (§2.5b F-c) the endpoint reads only the look bodies
     var qm := AR.QMap(M.QmOfRE(re), OE.LmOf(re), AI.FBuildOracle(CP.FFullCompilation(ast), str), M.BodiesOfRE(re));
     M.LookStaticPackage(raw, str, qm);
 
@@ -844,6 +846,8 @@ module LindenElkLiftSimCarriers {
       }
     }
     NoPosImpliesL5ScopeV1(reF);             // FXR(body) has no positive lookbehinds
+    FST.NoNulledPlusFXR(body);
+    M.LooksNoNulledPlusFromFull(reF);       // (§2.5b F-c) the gate statics read only look bodies
     GateStaticsFromTablesNested(qmF, reF, crvF, ncap, nlook, nquant);
 
     // ---- oracle for the flipped table: F3 on the body-restricted site table ----
@@ -1040,7 +1044,7 @@ module LindenElkLiftSimCarriers {
     host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed) ----
     requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && L5ScopeV1RE(re)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim: all stamps false
+    requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires |crv.f_look_types| == |crv.f_look_ast|
@@ -1082,6 +1086,7 @@ module LindenElkLiftSimCarriers {
     requires g !in PIV.CapIdsInLooks(host)
     decreases |LTB.LookIds(host)|, 0
   {
+    hide M.LooksNoNulledPlusRE;   // (§2.5b F-c) a fact here, never unfolded (recursive: batch memory)
     var maxlook := R.max_lookaround(ast);
     var cpA := AReg.get_cp(res1, A as int).value;
     RL.AAsArraysLaws(res1);
@@ -1139,6 +1144,7 @@ module LindenElkLiftSimCarriers {
     }
     assert GateStaticsOkNested(qmB, host, crv, ncap, nlook, nquant) by {
       L5ScopeV1LookBody(re, A);          // (L5 F7f) the v1 scope descends to the body
+      M.LooksNoNulledPlusFromFull(host);   // (§2.5b F-c) NoNulledPlusRE(host) from the row
       GateStaticsFromTablesNested(qmB, host, crv, ncap, nlook, nquant);
     }
     assert OE.OracleColsOk(rer, qmB, str) by {                         // (L5 F7d)
@@ -1176,7 +1182,7 @@ module LindenElkLiftSimCarriers {
       var ctxF := AI.cp_context(cpA, str, LAnc.Forward);
       var initsF := AI.FInitState(bodycode, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
                                   AReg.init_regs(nquant), 0, ctxF);
-      NI.NoNulledPlusLookBody(re, A);
+      M.LooksNoNulledPlusBody(re, A);
       M.NoTrueQuantStampNested(host);
       assert M.VmQuantFinal(initsF) by {
         var th0 := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
@@ -1224,7 +1230,7 @@ module LindenElkLiftSimCarriers {
     // presence + dominance on the FRESH banks
     // (2026-08-25) nested host: the depth-1 `FreshBodyMatchCapWf` was unprovable here.
     M.LookBodyFactsL5(re, crv, A);              // NestedFragmentRE/CapUnique/QuantUnique(host)
-    NI.NoNulledPlusLookBody(re, A);             // §2.5b interim: NoNulledPlusRE(host)
+    M.LooksNoNulledPlusBody(re, A);             // §2.5b interim: NoNulledPlusRE(host)
     FreshBodyMatchCapWfNested(crv, str, A as int, res1, ov, ncap, nlook, nquant, host);
     assert PIV.CapRegWf(rfc);
     assert forall c: nat :: c in PIV.CapIds(host) && AI.get_idx(rfc.a_clk, CP.start_reg(c)) < 0

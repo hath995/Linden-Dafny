@@ -10710,7 +10710,7 @@ module LindenElkMain {
     requires LTB.LookUnique(re) && LTB.LookTablesOk(re, fc)
     requires PIV.QuantUnique(re) && PIV.CapUnique(re)
     requires lid in OE.LmOf(re)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     ensures T.TransWf(body)
     ensures NR.NoNulledPlusRE(body)  // §2.5b interim: descends with the row
     ensures OE.LmOf(re)[lid] == (T.TrLookaround(la), T.Translate(body))
@@ -10781,7 +10781,7 @@ module LindenElkMain {
   lemma LmOfBodiesDisjoint(re: R.regex, fc: CP.FCompiled, l1: int, l2: int)
     returns (la1: R.lookaround, b1: R.regex, la2: R.lookaround, b2: R.regex)
     requires T.TransWf(re) && NR.LookBehindFragmentRE(re)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires LTB.LookUnique(re) && LTB.LookTablesOk(re, fc)
     requires PIV.QuantUnique(re) && PIV.CapUnique(re)
     requires l1 in OE.LmOf(re) && l2 in OE.LmOf(re) && l1 != l2
@@ -10904,6 +10904,7 @@ module LindenElkMain {
                 && AReg.get_cp(result.value.look_regs, l2).Some? ==>
                   PIV.CaptureRegs(VBody(crv, l1)) * PIV.CaptureRegs(VBody(crv, l2)) == {}
   {
+    LooksNoNulledPlusFromFull(re);   // (§2.5b F-c) the look-row callees read only the look bodies
     var S: set<int> := set x: nat | x in LTB.LookIds(re) :: x as int;
     // the code only gates on ids `re` actually owns
     forall pc: nat | pc < |code|
@@ -14318,7 +14319,7 @@ module LindenElkMain {
     // ---- whole-regex setup ----
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires LTB.LookTablesOk(re, crv)
     requires PIV.CapUnique(re) && LTB.LookUnique(re)
     requires g in PIV.CapIdsInLooks(re)
@@ -14574,7 +14575,7 @@ module LindenElkMain {
     // ---- whole-regex setup ----
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires LTB.LookTablesOk(re, crv)
     requires PIV.CapUnique(re) && LTB.LookUnique(re)
     requires g in PIV.CapIdsInLooks(re)
@@ -15107,7 +15108,7 @@ module LindenElkMain {
     // ---- whole-regex setup ----
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires LTB.LookTablesOk(re, crv)
     requires PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires qd in PIV.QuantIdsInLooks(re)
@@ -15208,7 +15209,7 @@ module LindenElkMain {
     // ---- whole-regex setup ----
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires LTB.LookTablesOk(re, crv)
     requires PIV.CapUnique(re) && LTB.LookUnique(re)
     requires g in PIV.CapIdsInLooks(re)
@@ -15374,7 +15375,7 @@ module LindenElkMain {
     // ---- whole-regex setup (verbatim from FreshBodyDirectLive) ----
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires LTB.LookTablesOk(re, crv)
     requires PIV.CapUnique(re) && LTB.LookUnique(re)
     requires g in PIV.CapIdsInLooks(re)
@@ -15491,7 +15492,7 @@ module LindenElkMain {
     // ---- whole-regex setup (verbatim from FreshBodyDirectLive) ----
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires LTB.LookTablesOk(re, crv)
     requires PIV.CapUnique(re) && LTB.LookUnique(re)
     requires g in PIV.CapIdsInLooks(re)
@@ -15605,7 +15606,7 @@ module LindenElkMain {
     // ---- whole-regex setup (verbatim from FreshBodyDirectMemberFromMembership) ----
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires LTB.LookTablesOk(re, crv)
     requires PIV.CapUnique(re) && LTB.LookUnique(re)
     requires g in PIV.CapIdsInLooks(re)
@@ -15720,7 +15721,7 @@ module LindenElkMain {
     // ---- whole-regex setup (verbatim from FreshBodyDirectMemberFromAncSet) ----
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires LTB.LookTablesOk(re, crv)
     requires PIV.CapUnique(re) && LTB.LookUnique(re)
     requires g in PIV.CapIdsInLooks(re)
@@ -15759,6 +15760,7 @@ module LindenElkMain {
                == PIV.LiveRange(AReg.as_arrays(rf.value.capture_regs).0,
                                 AReg.as_arrays(rf.value.capture_regs).1, g)
   {
+    hide LooksNoNulledPlusRE;   // (§2.5b F-c) a fact here, never unfolded (its recursion blew the batch to 20 GB)
     reveal AhO();
     reveal FreshWfO();
     var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), cap, lk, qt, ov);
@@ -17771,6 +17773,58 @@ module LindenElkMain {
       }
   }
 
+  /** (§2.5b F-c) The look bodies are nulled-plus-free — all the look-row and
+      look-loop machinery needs; the main regex may carry CIN-greedy pluses
+      OUTSIDE its lookarounds. Structural, so it descends with every sweep. */
+  ghost predicate LooksNoNulledPlusRE(re: R.regex)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => LooksNoNulledPlusRE(r1) && LooksNoNulledPlusRE(r2)
+    case Re_con(r1, r2) => LooksNoNulledPlusRE(r1) && LooksNoNulledPlusRE(r2)
+    case Re_quant(_, _, _, r1) => LooksNoNulledPlusRE(r1)
+    case Re_capture(_, r1) => LooksNoNulledPlusRE(r1)
+    case Re_lookaround(_, _, r1) => NR.NoNulledPlusRE(r1)
+    case _ => true
+  }
+
+  lemma LooksNoNulledPlusFromFull(re: R.regex)
+    requires NR.NoNulledPlusRE(re)
+    ensures LooksNoNulledPlusRE(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => LooksNoNulledPlusFromFull(r1); LooksNoNulledPlusFromFull(r2);
+    case Re_con(r1, r2) => LooksNoNulledPlusFromFull(r1); LooksNoNulledPlusFromFull(r2);
+    case Re_quant(_, _, _, r1) => LooksNoNulledPlusFromFull(r1);
+    case Re_capture(_, r1) => LooksNoNulledPlusFromFull(r1);
+    case _ =>
+  }
+
+  /** The look-bodies gate descends: a look body is fully nulled-plus-free, so
+      its own look bodies are too. */
+  lemma LooksNoNulledPlusBody(re: R.regex, l: nat)
+    requires LooksNoNulledPlusRE(re) && l in LTB.LookIds(re)
+    ensures NR.NoNulledPlusRE(NI.LookBodyOfRE(re, l)) && LooksNoNulledPlusRE(NI.LookBodyOfRE(re, l))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) =>
+      if l in LTB.LookIds(r1) { LooksNoNulledPlusBody(r1, l); } else { LooksNoNulledPlusBody(r2, l); }
+    case Re_con(r1, r2) =>
+      if l in LTB.LookIds(r1) { LooksNoNulledPlusBody(r1, l); } else { LooksNoNulledPlusBody(r2, l); }
+    case Re_quant(_, _, _, r1) => LooksNoNulledPlusBody(r1, l);
+    case Re_capture(_, r1) => LooksNoNulledPlusBody(r1, l);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == l {
+        LooksNoNulledPlusFromFull(r1);
+      } else {
+        NI.NoNulledPlusLookBody(r1, l);
+        LooksNoNulledPlusFromFull(NI.LookBodyOfRE(r1, l));
+      }
+    case _ =>
+  }
+
   /** (a) per-row: any `LookEntryOk` row of the whole-regex tables satisfies
       `FrameEntryOk` at S := CaptureRegsSet(CapIdsInLooks(re)), Slook :=
       LookIdSet(re). Body facts from `LookBodyFactsNested`; the capture-set
@@ -17780,7 +17834,7 @@ module LindenElkMain {
                                l: int, la: R.lookaround, body: R.regex)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
@@ -17810,7 +17864,7 @@ module LindenElkMain {
     // LookIdSet(body) <= LookIdSet(re)
     assert LTB.LookIds(body') <= LTB.LookIds(re);
     assert LookIdSet(body') <= LookIdSet(re);
-    NI.NoNulledPlusLookBody(re, lid);                    // §2.5b interim conjunct
+    LooksNoNulledPlusBody(re, lid);   // (§2.5b F-c) NoNulledPlusRE(body)
   }
 
   /** (h) per-row: `l2 !in LookIdSet(b1)` for `l2 <= l1`. The row `b1` is
@@ -17820,7 +17874,7 @@ module LindenElkMain {
                     l1: int, la1: R.lookaround, b1: R.regex, l2: int)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires LTB.LookUnique(re) && LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
     requires 1 <= l1 <= R.max_lookaround(ast)
     requires LTB.LookEntryOk(crv, l1, la1, b1)
@@ -17856,7 +17910,7 @@ module LindenElkMain {
                        l2: int, la2: R.lookaround, b2: R.regex)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)   // (L5 F7c) lifted from NoPosLookbehindRE
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
@@ -18004,7 +18058,7 @@ module LindenElkMain {
                                   l2: int, la2: R.lookaround, b2: R.regex)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires LTB.LookUnique(re) && LTB.LookTablesOk(re, crv)
     requires NR.NestDepth(re) <= 2
     requires 1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 != l2
@@ -18038,7 +18092,7 @@ module LindenElkMain {
                              l2: int, la2: R.lookaround, b2: R.regex)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires LTB.LookUnique(re) && LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
     requires 1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
     requires LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2)
@@ -18071,7 +18125,7 @@ module LindenElkMain {
   lemma LookRowsStaticNested(ast: R.regex, re: R.regex, crv: CP.FCompiled)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
@@ -18121,6 +18175,46 @@ module LindenElkMain {
       the capture bank is INIT on every look body's capture regs (the main pass
       writes only OUTSIDE-look caps, `CaptureBytecodeClassifiedNestedOuter`,
       transported to `RegsAgreeInside` off each body's caps). */
+  /** (§2.5b F-c) `LookRowsDynamicNested`'s (c') per row, in its own VC: the main
+      pass writes only outside-look capture registers, so a look body's capture
+      registers keep their init values. (Inline, the step timed out the lemma's last
+      batch once the precondition was swapped to `LooksNoNulledPlusRE`.) */
+  lemma LookRowCapsUntouched(ast: R.regex, re: R.regex, crv: CP.FCompiled, cp': AReg.Regs, cap: AReg.Regs,
+                             ncap: int, l: int, la: R.lookaround, body: R.regex)
+    requires crv == CP.FFullCompilation(ast)
+    requires LTB.LookIds(re) == LTB.LookIds(ast)
+    requires PIV.CapUnique(re) && LTB.LookTablesOk(re, crv)
+    requires 1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body)
+    requires ncap >= 0 && cap == AReg.init_regs(ncap)
+    requires |cp'.a_cp| == ncap && |cp'.a_clk| == ncap
+    requires CM.RegsAgreeOutside(cp', cap, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(re)))
+    ensures CM.RegsAgreeInside(cp', AReg.init_regs(ncap), PIV.CaptureRegs(body))
+  {
+    var Sc := PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(re));
+    LookEntryOnlyReal(ast, crv, l, la, body);
+    var lid := l as nat;
+    NI.LookBodyOfTablesTie(re, crv, lid);
+    var la0: R.lookaround :| LTB.LookEntryOk(crv, lid as int, la0, NI.LookBodyOfRE(re, lid));
+    assert body == NI.LookBodyOfRE(re, lid);
+    NI.LookBodyCapsIn(re, lid);                    // CapIds(body) <= CapIdsInLooks(re)
+    PIV.CapIdsLooksDisjoint(re);                   // outside(re) * inside(re) == {}
+    assert PIV.CapIds(body) * PIV.CapIdsOutsideLooks(re) == {};
+    PIV.CaptureRegsSetDisjoint(PIV.CapIds(body), PIV.CapIdsOutsideLooks(re));
+    PIV.CaptureRegsIsSet(body);                    // CaptureRegs(body) == CaptureRegsSet(CapIds(body))
+    // pure set algebra on the ground equalities: with the comprehensions visible the
+    // solver expands them and never closes (the one 60 s+ obligation in isolation)
+    assert forall k: int :: k in PIV.CaptureRegs(body) ==> k !in Sc by {
+      var Sb := PIV.CaptureRegsSet(PIV.CapIds(body));
+      assert PIV.CaptureRegs(body) == Sb && Sb * Sc == {};
+      hide *;
+      forall k: int | k in PIV.CaptureRegs(body) ensures k !in Sc {
+        assert k in Sb;
+        if k in Sc { assert k in Sb * Sc; }
+      }
+    }
+    RegsAgreeOutsideToInside(cp', cap, PIV.CaptureRegs(body), Sc);
+  }
+
   lemma LookRowsDynamicNested(
     ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
     ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
@@ -18128,7 +18222,7 @@ module LindenElkMain {
     ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires code == CP.compile_to_bytecode(re)
     requires NR.NestedFragmentRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
@@ -18152,6 +18246,7 @@ module LindenElkMain {
                 1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
                   CM.RegsAgreeInside(result.value.capture_regs, AReg.init_regs(ncap), PIV.CaptureRegs(body))
   {
+    hide LooksNoNulledPlusRE;   // (§2.5b F-c) unused here; in context it blew (c') to 560 M / 900 s
     var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false),
                           R.Re_character(R.Dot));
     assert re == R.Re_con(pre, ast);
@@ -18222,18 +18317,7 @@ module LindenElkMain {
         1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body)
         ensures CM.RegsAgreeInside(cp', AReg.init_regs(ncap), PIV.CaptureRegs(body))
       {
-        LookEntryOnlyReal(ast, crv, l, la, body);
-        var lid := l as nat;
-        NI.LookBodyOfTablesTie(re, crv, lid);
-        var la0: R.lookaround :| LTB.LookEntryOk(crv, lid as int, la0, NI.LookBodyOfRE(re, lid));
-        assert body == NI.LookBodyOfRE(re, lid);
-        NI.LookBodyCapsIn(re, lid);                    // CapIds(body) <= CapIdsInLooks(re)
-        PIV.CapIdsLooksDisjoint(re);                   // outside(re) * inside(re) == {}
-        assert PIV.CapIds(body) * PIV.CapIdsOutsideLooks(re) == {};
-        PIV.CaptureRegsSetDisjoint(PIV.CapIds(body), PIV.CapIdsOutsideLooks(re));
-        PIV.CaptureRegsIsSet(body);                    // CaptureRegs(body) == CaptureRegsSet(CapIds(body))
-        assert forall k: int :: k in PIV.CaptureRegs(body) ==> k !in Sc;
-        RegsAgreeOutsideToInside(cp', cap, PIV.CaptureRegs(body), Sc);
+        LookRowCapsUntouched(ast, re, crv, cp', cap, ncap, l, la, body);
       }
     }
   }
@@ -18608,7 +18692,7 @@ module LindenElkMain {
     cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, nlook: int, result: Option<AI.Thread>)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires code == CP.compile_to_bytecode(re)
     requires NR.NestedFragmentRE(re) && LTB.LookUnique(re) && LTB.LookTablesOk(re, crv)
     requires look == AReg.init_regs(nlook)
@@ -18736,6 +18820,7 @@ module LindenElkMain {
                 && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1
                 && AReg.get_cp(result.value.look_regs, l2).Some?) ==> l2 !in LookIdSet(b1)
   {
+    LooksNoNulledPlusFromFull(re);   // (§2.5b F-c) the look-row callees read only the look bodies
     LookRowsStaticNested(ast, re, crv);
     LookRowsDynamicNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
                           ncap, nlook, nquant, endl, result);
@@ -18887,6 +18972,7 @@ module LindenElkMain {
                                          (rf.Some? ==> CM.RegsAgreeInside(res.0, rf.value.capture_regs, PIV.CaptureRegsSet({g})))
                                          && (rf.None? ==> CM.RegsAgreeInside(res.0, AReg.init_regs(ncap), PIV.CaptureRegsSet({g}))))
   {
+    LooksNoNulledPlusFromFull(re);   // (§2.5b F-c) the look-row callees read only the look bodies
     LookRowsFromTablesNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
                              ncap, nlook, nquant, endl, result);
     if result.Some? {
@@ -18911,7 +18997,7 @@ module LindenElkMain {
                             l2: int, la2: R.lookaround, b2: R.regex)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)   // (L5 F7c) lifted from NoPosLookbehindRE
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
@@ -18966,7 +19052,7 @@ module LindenElkMain {
                                l: int, la: R.lookaround, body: R.regex)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires 1 <= l <= R.max_lookaround(ast)
@@ -19028,7 +19114,7 @@ module LindenElkMain {
                                    l: int, la: R.lookaround, body: R.regex)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires 1 <= l <= R.max_lookaround(ast)
@@ -19108,6 +19194,7 @@ module LindenElkMain {
                                          (rf.Some? ==> CM.RegsAgreeInside(res.2, rf.value.quant_regs, {qd as int}))
                                          && (rf.None? ==> CM.RegsAgreeInside(res.2, AReg.init_regs(nquant), {qd as int})))
   {
+    LooksNoNulledPlusFromFull(re);   // (§2.5b F-c) the look-row callees read only the look bodies
     LookRowsFromTablesNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
                              ncap, nlook, nquant, endl, result);
     if result.Some? {
@@ -19270,6 +19357,98 @@ module LindenElkMain {
       MainTheoremL4 timed out. This mirrors `FLookLoopQuantCoversFromTables`'s
       variant setup verbatim (a minimal context) and then calls the lift, so the
       expensive quantifier matching happens once, here, not in the whole lemma. */
+  /** (§2.5b F-c) The winning thread's register facts the five endpoint producers
+      read off the main run, stated on a THREAD — so the final readout can feed a
+      synthetic winner (the reconstructed thread with its quant values cleared). */
+  opaque ghost predicate WinRegsOk(ast: R.regex, re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                                   th: AI.Thread, ncap: int, nlook: int, nquant: int) {
+    CM.ThreadRegsWf(th, ncap, nlook, nquant)
+    && (forall k :: AI.get_idx(th.quant_regs.a_cp, k) < 0)
+    && (forall k :: AI.get_idx(th.quant_regs.a_clk, k) >= -1)
+    && CM.LookCpsLE(th.look_regs, |str|)
+    && (forall l: int :: 1 <= l <= R.max_lookaround(ast) && AReg.get_cp(th.look_regs, l).Some? ==>
+                           exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body))
+    && (forall l: int, la: R.lookaround, body: R.regex ::
+          1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
+            CM.RegsAgreeInside(th.capture_regs, AReg.init_regs(ncap), PIV.CaptureRegs(body)))
+    && (forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
+          (1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+          && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1
+          && AReg.get_cp(th.look_regs, l2).Some?) ==> l2 !in LookIdSet(b1))
+    && CM.RegsAgreeOutside(th.quant_regs, AReg.init_regs(nquant), QIdsOuter(re))
+    && CM.RegsAgreeOutside(th.look_regs, AReg.init_regs(nlook), DirectLidSet(re))
+    && CM.LookClkSetWithCp(th.look_regs) && CM.LookCpSetWithClk(th.look_regs)
+    && CM.LookCpsOracleTrue(th.look_regs, ov)
+  }
+
+  /** The main run delivers `WinRegsOk` of its winner (the gated pass). */
+  lemma WinRegsOkFromRun(
+    ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
+    ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
+    cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+    ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires NR.NoNulledPlusRE(re)   // §2.5b interim: the winner's quant finality
+    requires code == CP.compile_to_bytecode(re)
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
+    requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires cap == AReg.init_regs(ncap) && look == AReg.init_regs(nlook) && quant == AReg.init_regs(nquant)
+    requires |inits.processed.true_set| == RB.size(code) && |inits.processed.false_set| == RB.size(code)
+    requires inits.context.nextchar == AI.get_char(str, inits.cp)
+    requires 0 <= inits.cp <= |str| && inits.clock >= 0
+    requires inits.active == [AI.init_thread(cap, look, quant)]
+    requires inits.blocked == [] && inits.bestmatch.None?
+    requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
+    ensures result.Some? ==> WinRegsOk(ast, re, crv, str, ov, result.value, ncap, nlook, nquant)
+  {
+    LooksNoNulledPlusFromFull(re);
+    LookRowsFromTablesNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
+                             ncap, nlook, nquant, endl, result);
+    var initlk := AReg.init_regs(nlook);
+    var Sd := DirectLidSet(re);
+    DirectLidClassified(re);                                   // LookChecksInside(code, Sd)
+    assert CM.VmLooksAgree(inits, initlk, Sd) by {
+      forall t | t in inits.active ensures CM.RegsAgreeOutside(t.look_regs, initlk, Sd) {
+        assert t == AI.init_thread(cap, look, quant);
+      }
+    }
+    CM.FFindMatchLookFrame(code, str, inits, ov, LAnc.Forward, cdn, initlk, Sd);
+    NoWriteOracleBodyCodeNested(re);                           // NoWriteOracleCode(code)
+    if result.Some? {
+      MainMatchBodyQuantsInitNested(re, code, str, inits, cap, look, quant, ov, cdn, result);
+      assert CM.VmLookClkSet(inits) by {
+        RL.AInitLaws(nlook);
+        forall lz | AI.get_idx(look.a_cp, lz) >= 0 ensures AI.get_idx(look.a_clk, lz) >= 0 {
+          if 0 <= lz < nlook { assert look.a_cp[lz] == -1; }
+        }
+      }
+      CM.FFindMatchLookClkSet(code, str, inits, ov, LAnc.Forward, cdn);
+      assert CM.VmLookCpSet(inits) by {
+        RL.AInitLaws(nlook);
+        forall lz | AI.get_idx(look.a_clk, lz) >= 0 ensures AI.get_idx(look.a_cp, lz) >= 0 {
+          if 0 <= lz < nlook { assert look.a_clk[lz] == -1; }
+        }
+      }
+      CM.FFindMatchLookCpSet(code, str, inits, ov, LAnc.Forward, cdn);
+      assert CM.VmLookOracleTrue(inits, ov) by {
+        RL.AInitLaws(nlook);
+        forall lz | AI.get_idx(look.a_cp, lz) >= 0
+          ensures LOr.view_get_oracle(ov, AI.get_idx(look.a_cp, lz), lz)
+        {
+          if 0 <= lz < nlook { assert look.a_cp[lz] == -1; }
+        }
+      }
+      CM.FFindMatchLookOracleTrue(code, str, inits, ov, LAnc.Forward, cdn);
+      reveal WinRegsOk();
+    }
+  }
+
   lemma EndpointQuantValueOk(
     ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
     ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
@@ -19301,22 +19480,45 @@ module LindenElkMain {
               && QuantValueOkO(crv, str, res.2, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
               && QuantFrameO(re, res.2, result.value.quant_regs)
   {
+    LooksNoNulledPlusFromFull(re);   // (§2.5b F-c) the thread part reads only the look bodies
+    WinRegsOkFromRun(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant, ncap, nlook, nquant, endl, result);
+    if result.Some? { EndpointQuantValueOkRegs(ast, re, crv, str, ov, result.value, ncap, nlook, nquant); }
+  }
+
+  lemma EndpointQuantValueOkRegs(
+    ast: R.regex, re: R.regex, crv: CP.FCompiled, str: string,
+    ov: LOr.OracleView, th: AI.Thread, ncap: int, nlook: int, nquant: int)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires WinRegsOk(ast, re, crv, str, ov, th, ncap, nlook, nquant)
+    ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                    th.capture_regs, th.look_regs, th.quant_regs, ov);
+            |res.2.a_cp| == nquant && |res.2.a_clk| == nquant
+            && (forall k :: AI.get_idx(res.2.a_cp, k) < 0) && (forall k :: AI.get_idx(res.2.a_clk, k) >= -1)
+            && QuantValueOkO(crv, str, res.2, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+            && QuantFrameO(re, res.2, th.quant_regs)
+  {
     reveal QuantValueOkO();
-    LookRowsFromTablesNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
-                             ncap, nlook, nquant, endl, result);
-    if result.Some? {
+    LookRowsStaticNested(ast, re, crv);
+    reveal WinRegsOk();
+    {
       var S := PIV.CaptureRegsSet(PIV.CapIdsInLooks(re));
       var Slook := LookIdSet(re);
       var Sq := set qz: nat | qz in PIV.QuantIdsInLooks(re) :: qz as int;
-      var c := result.value.capture_regs;
-      var l := result.value.look_regs;
-      var q := result.value.quant_regs;
-      assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant);
+      var c := th.capture_regs;
+      var l := th.look_regs;
+      var q := th.quant_regs;
+      assert CM.ThreadRegsWf(th, ncap, nlook, nquant);
       var maxlook := R.max_lookaround(ast);
 
       // ---- quant twins of (c'q)/(D-ord-q)/(Sq-bound) — verbatim from FLookLoopQuantCoversFromTables ----
-      MainMatchBodyQuantsInitNested(re, code, str, inits, cap, look, quant, ov, cdn, result);
-      assert CM.RegsAgreeOutside(q, quant, QIdsOuter(re));
+      assert CM.RegsAgreeOutside(q, AReg.init_regs(nquant), QIdsOuter(re));
       PIV.QuantIdsLooksDisjoint(re);
       assert forall lx: int, lax: R.lookaround, body: R.regex ::
           1 <= lx <= maxlook && LTB.LookEntryOk(crv, lx, lax, body) ==>
@@ -19415,17 +19617,44 @@ module LindenElkMain {
               && Res0LiveO(re, res.0) && CaptureFrameO(re, res.0, result.value.capture_regs)
     ensures FrameEntryAllO(crv, re, ast)
   {
+    LooksNoNulledPlusFromFull(re);   // (§2.5b F-c) the thread part reads only the look bodies
+    WinRegsOkFromRun(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant, ncap, nlook, nquant, endl, result);
+    assert FrameEntryAllO(crv, re, ast) by { reveal FrameEntryAllO(); LookRowsStaticNested(ast, re, crv); }
+    if result.Some? { EndpointValueOkRegs(ast, re, crv, str, ov, result.value, ncap, nlook, nquant); }
+  }
+
+  lemma EndpointValueOkRegs(
+    ast: R.regex, re: R.regex, crv: CP.FCompiled, str: string,
+    ov: LOr.OracleView, th: AI.Thread, ncap: int, nlook: int, nquant: int)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires WinRegsOk(ast, re, crv, str, ov, th, ncap, nlook, nquant)
+    ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                    th.capture_regs, th.look_regs, th.quant_regs, ov);
+            |res.0.a_cp| == ncap && |res.0.a_clk| == ncap && PIV.CapRegWf(res.0)
+            && |res.1.a_cp| == nlook && |res.1.a_clk| == nlook
+            && |res.2.a_cp| == nquant && |res.2.a_clk| == nquant
+            && ValueOkO(crv, str, res.0, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+            && Res0LiveO(re, res.0) && CaptureFrameO(re, res.0, th.capture_regs)
+    ensures FrameEntryAllO(crv, re, ast)
+  {
     reveal ValueOkO(), Res0LiveO();
-    LookRowsFromTablesNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
-                             ncap, nlook, nquant, endl, result);
+    LookRowsStaticNested(ast, re, crv);
+    reveal WinRegsOk();
     assert FrameEntryAllO(crv, re, ast) by { reveal FrameEntryAllO(); }
-    if result.Some? {
+    {
       var S := PIV.CaptureRegsSet(PIV.CapIdsInLooks(re));
       var Slook := LookIdSet(re);
-      var c := result.value.capture_regs;
-      var l := result.value.look_regs;
-      var q := result.value.quant_regs;
-      assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant);
+      var c := th.capture_regs;
+      var l := th.look_regs;
+      var q := th.quant_regs;
+      assert CM.ThreadRegsWf(th, ncap, nlook, nquant);
       FLookLoopValueLiftFull(crv, str, 1, R.max_lookaround(ast), c, l, q, ov, S, Slook, ncap, nlook, nquant);
       // Res0LiveO: CapRegWf(res.0) makes cp<0 whenever clk<0 (register invariant)
       var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), c, l, q, ov);
@@ -19481,30 +19710,43 @@ module LindenElkMain {
                                       result.value.capture_regs, result.value.look_regs, result.value.quant_regs, ov);
               ChildLinkO(crv, str, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
   {
+    LooksNoNulledPlusFromFull(re);   // (§2.5b F-c) the thread part reads only the look bodies
+    WinRegsOkFromRun(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant, ncap, nlook, nquant, endl, result);
+    if result.Some? { EndpointChildLinkOkRegs(ast, re, crv, str, ov, result.value, ncap, nlook, nquant); }
+  }
+
+  lemma EndpointChildLinkOkRegs(
+    ast: R.regex, re: R.regex, crv: CP.FCompiled, str: string,
+    ov: LOr.OracleView, th: AI.Thread, ncap: int, nlook: int, nquant: int)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires WinRegsOk(ast, re, crv, str, ov, th, ncap, nlook, nquant)
+    ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                    th.capture_regs, th.look_regs, th.quant_regs, ov);
+            ChildLinkO(crv, str, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+  {
     reveal ChildLinkO();
-    LookRowsFromTablesNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
-                             ncap, nlook, nquant, endl, result);
+    LookRowsStaticNested(ast, re, crv);
+    reveal WinRegsOk();
     var maxlook := R.max_lookaround(ast);
     var initlk := AReg.init_regs(nlook);
     var Sd := DirectLidSet(re);
 
-    // main-run look-bank frame: writes look only at DIRECT lids of re
-    DirectLidClassified(re);                                   // LookChecksInside(code, Sd)
-    assert CM.VmLooksAgree(inits, initlk, Sd) by {
-      forall t | t in inits.active ensures CM.RegsAgreeOutside(t.look_regs, initlk, Sd) {
-        assert t == AI.init_thread(cap, look, quant);
-      }
-    }
-    CM.FFindMatchLookFrame(code, str, inits, ov, LAnc.Forward, cdn, initlk, Sd);
 
-    if result.Some? {
+    {
       var S := PIV.CaptureRegsSet(PIV.CapIdsInLooks(re));
       var Slook := LookIdSet(re);
-      var c := result.value.capture_regs;
-      var l := result.value.look_regs;
-      var q := result.value.quant_regs;
-      assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant);
-      assert CM.RegsAgreeOutside(l, initlk, Sd);              // FFindMatchLookFrame
+      var c := th.capture_regs;
+      var l := th.look_regs;
+      var q := th.quant_regs;
+      assert CM.ThreadRegsWf(th, ncap, nlook, nquant);
+      assert CM.RegsAgreeOutside(l, initlk, Sd);              // WinRegsOk (the run's look frame)
 
       // (c'-look): the winning look bank is INITIAL on each body's direct children
       assert forall lx: int, lax: R.lookaround, body: R.regex ::
@@ -19574,43 +19816,41 @@ module LindenElkMain {
               LookInvO(res.1, ov, str)
               && ThreadLookInvO(result.value.look_regs, ov, str)
   {
+    LooksNoNulledPlusFromFull(re);   // (§2.5b F-c) the thread part reads only the look bodies
+    WinRegsOkFromRun(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant, ncap, nlook, nquant, endl, result);
+    if result.Some? { EndpointLookInvRegs(ast, re, crv, str, ov, result.value, ncap, nlook, nquant); }
+  }
+
+  lemma EndpointLookInvRegs(
+    ast: R.regex, re: R.regex, crv: CP.FCompiled, str: string,
+    ov: LOr.OracleView, th: AI.Thread, ncap: int, nlook: int, nquant: int)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires WinRegsOk(ast, re, crv, str, ov, th, ncap, nlook, nquant)
+    ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                    th.capture_regs, th.look_regs, th.quant_regs, ov);
+            LookInvO(res.1, ov, str)
+            && ThreadLookInvO(th.look_regs, ov, str)
+  {
     reveal LookInvO(), ThreadLookInvO();
-    LookRowsFromTablesNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
-                             ncap, nlook, nquant, endl, result);
-    NoWriteOracleBodyCodeNested(re);                           // NoWriteOracleCode(code)
+    LookRowsStaticNested(ast, re, crv);
+    reveal WinRegsOk();
     var maxlook := R.max_lookaround(ast);
-    if result.Some? {
+    {
       var S := PIV.CaptureRegsSet(PIV.CapIdsInLooks(re));
       var Slook := LookIdSet(re);
-      var c := result.value.capture_regs;
-      var l := result.value.look_regs;
-      var q := result.value.quant_regs;
-      assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant);
-      assert CM.VmLookClkSet(inits) by {
-        RL.AInitLaws(nlook);
-        forall lz | AI.get_idx(look.a_cp, lz) >= 0 ensures AI.get_idx(look.a_clk, lz) >= 0 {
-          if 0 <= lz < nlook { assert look.a_cp[lz] == -1; }
-        }
-      }
-      CM.FFindMatchLookClkSet(code, str, inits, ov, LAnc.Forward, cdn);
+      var c := th.capture_regs;
+      var l := th.look_regs;
+      var q := th.quant_regs;
+      assert CM.ThreadRegsWf(th, ncap, nlook, nquant);
       assert CM.LookClkSetWithCp(l);
-      assert CM.VmLookCpSet(inits) by {
-        RL.AInitLaws(nlook);
-        forall lz | AI.get_idx(look.a_clk, lz) >= 0 ensures AI.get_idx(look.a_cp, lz) >= 0 {
-          if 0 <= lz < nlook { assert look.a_clk[lz] == -1; }
-        }
-      }
-      CM.FFindMatchLookCpSet(code, str, inits, ov, LAnc.Forward, cdn);
       assert CM.LookCpSetWithClk(l);
-      assert CM.VmLookOracleTrue(inits, ov) by {
-        RL.AInitLaws(nlook);
-        forall lz | AI.get_idx(look.a_cp, lz) >= 0
-          ensures LOr.view_get_oracle(ov, AI.get_idx(look.a_cp, lz), lz)
-        {
-          if 0 <= lz < nlook { assert look.a_cp[lz] == -1; }
-        }
-      }
-      CM.FFindMatchLookOracleTrue(code, str, inits, ov, LAnc.Forward, cdn);
       assert CM.LookCpsOracleTrue(l, ov);
       FLookLoopLookOracleTrue(crv, str, 1, maxlook, c, l, q, ov, S, Slook, ncap, nlook, nquant);
       FLookLoopLookCpSet(crv, str, 1, maxlook, c, l, q, ov, S, Slook, ncap, nlook, nquant);
@@ -19651,17 +19891,38 @@ module LindenElkMain {
                                       result.value.capture_regs, result.value.look_regs, result.value.quant_regs, ov);
               TopLookFrameO(re, res.1, result.value.look_regs)
   {
+    LooksNoNulledPlusFromFull(re);   // (§2.5b F-c) the thread part reads only the look bodies
+    WinRegsOkFromRun(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant, ncap, nlook, nquant, endl, result);
+    if result.Some? { EndpointTopLookFrameRegs(ast, re, crv, str, ov, result.value, ncap, nlook, nquant); }
+  }
+
+  lemma EndpointTopLookFrameRegs(
+    ast: R.regex, re: R.regex, crv: CP.FCompiled, str: string,
+    ov: LOr.OracleView, th: AI.Thread, ncap: int, nlook: int, nquant: int)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires WinRegsOk(ast, re, crv, str, ov, th, ncap, nlook, nquant)
+    ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                    th.capture_regs, th.look_regs, th.quant_regs, ov);
+            TopLookFrameO(re, res.1, th.look_regs)
+  {
     reveal TopLookFrameO();
-    LookRowsFromTablesNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
-                             ncap, nlook, nquant, endl, result);
+    LookRowsStaticNested(ast, re, crv);
+    reveal WinRegsOk();
     var maxlook := R.max_lookaround(ast);
-    if result.Some? {
+    {
       var S := PIV.CaptureRegsSet(PIV.CapIdsInLooks(re));
       var Slook := LookIdSet(re);
-      var c := result.value.capture_regs;
-      var l := result.value.look_regs;
-      var q := result.value.quant_regs;
-      assert CM.ThreadRegsWf(result.value, ncap, nlook, nquant);
+      var c := th.capture_regs;
+      var l := th.look_regs;
+      var q := th.quant_regs;
+      assert CM.ThreadRegsWf(th, ncap, nlook, nquant);
       NI.TopLookIdsIn(re);
       forall lz: nat | lz in NI.TopLookIds(re)
         ensures AI.get_idx(AI.FLookLoop(crv, str, 1, maxlook, c, l, q, ov).1.a_clk, lz as int)

@@ -487,6 +487,8 @@ module LindenElkFinalReadout {
             // prefix quantifier's clock is untouched (`FilterResetLazyPrefix`)
             && CM.ThreadRegsWf(rp.0, ncap, nlook, nquant)
             && AI.get_idx(rp.0.quant_regs.a_clk, 0) == AI.get_idx(th.quant_regs.a_clk, 0)
+            // (F-c) quant clocks stay >= -1 (the synthetic winner's `WinRegsOk`)
+            && (forall k: int :: AI.get_idx(rp.0.quant_regs.a_clk, k) >= -1)
   {
     var re := R.lazy_prefix(ast);
     var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
@@ -546,11 +548,13 @@ module LindenElkFinalReadout {
     assert FRG.CapValGe(rg) by {
       forall k: int ensures AI.get_idx(rg.0.a_cp, k) >= -1 { assert PIV.CapRegWf(rg.0); }
     }
+    assert FRG.QClkGe(rg);   // RegsFinalOk's clock half
     NRO.FNulledPlusFrame(qm, re, rg, plus, str, qm.ov);
     FRG.FPValGe(qm, re, rg, plus, str, qm.ov);
     var rg2 := NRO.FP(re, rg, plus, str, qm.ov);
     var rp := AI.FReconstructPlus(th, ast, plus, str, qm.ov, LAnc.Forward);
     assert (rp.0.capture_regs, rp.0.look_regs, rp.0.quant_regs) == rg2;
+    assert FRG.QClkGe(rg2);
     assert PIV.CapRegWf(rp.0.capture_regs) by {
       assert NRR.WfRegs(rg2) && NRR.CapValWf(rg2) && FRG.CapValGe(rg2);
     }

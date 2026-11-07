@@ -1448,3 +1448,189 @@ with the CIN head + CIN loop-view arms, `NoTrueStamps` dropped; (4) the 18 Rec-t
 `QuantHead*`, `LiftPreserve{SetQuant,Fork}LkRec`, `LiftInitCRec`, `ActionsTreeRepLkRERec`) and
 the rest of the Rec tier on `BoolTreeLkX`; (5) `L3aCompositeCloseRec` with the glue; (6)
 `MainTheoremL5Cin` + `SupportedL5Cin` (downstream twins without `QuantRegsFinal`).
+
+**F-c progress (2026-11-06, same day):**
+* (1) DONE `33a7d25`: member `linden-equiv-cin-walk` (`CW.BoolTreeLkX`, `BoolTreeLkXDeterm`, `CinWalkX`
+  glue, later also `BoolFlagLiftRecX`, `BoolCheckInsertKX` — the do-while seam's check insertion —
+  `CinGreedyL` shape lemmas, `NoNulledPlusCinOk`). Rung A's priority lemmas run at `S = {}`.
+* (2)-(5) CODED, per-symbol verification running (uncommitted):
+  - LiftSimCore: `TreeRepLkRE` `tr_reset` for both flags; `TtLkRec` on `BoolTreeLkX` + stamp
+    see-through; `QuantHead*` lemmas generalized (exclude only the CIN head at `min == 1`; CIN
+    forced copies proven); the Rec giants on `BoolTreeLkX` with `NoTrueStamps` dropped and the CIN
+    arms as their own lemmas `LkCinQuantRec` (forced copy + head fork) and `LkCinLoopViewRec` (end
+    fork); `BoolTreeLkXPikeSubtree`; `DispatchStampEffectNested` (B's stamp step = the Reset step;
+    `GmOfLive` effect from machine A's `StampStepThreadRENested`); the Dispatch helpers take
+    `StaticCoreNestedRE`.
+  - LiftSimOracle: `TtLkAt*Rec` on `BoolTreeLkX`; CIN head refuted at SQC, a Choice at the Fork;
+    `TtLkAtSetQuantRec` takes the flag; `ActionsRepNotAtTrueStamp` (no stack sits at the stamp).
+  - LiftSimChain: `WalkPairLkRec` on `BoolTreeLkX` + stamp see-through; `WalkPairLkAtSetQuantRec`
+    takes the flag; CIN arms `WalkPairLkCinHeadArmsRec` / `WalkPairLkCinLoopViewArmsRec`;
+    `GateAheadClearReset`.
+  - LiftSimGate: the whole Rec region on `PSM.StaticCoreNestedRE` (gate-free); the SQC dispatch
+    handles `bq` (stamp effect, machine A via `PSM.PreserveQuantCaseNested` + `TrcTrans`);
+    `LiftInitCRec` takes the engine-shaped root walk + `PikeLkRegexRec` as a hypothesis;
+    `L3aCompositeCloseRecG(…, G)` returns B's leaf with the `CinWalkX` agreement outside `G`;
+    `L3aCompositeCloseRec` is now its gated wrapper at `G = {}` (callers unchanged).
+* (6) OPEN — the endpoint is gated deeper than planned: main-theorem's `Endpoint*` producers
+  (`EndpointValueOk` & co., ~15 lemmas from MainTheorem.dfy:18007) require `NoNulledPlusRE(re)`
+  and conclude quant finality `∀k a_cp[k] < 0` of the VM winner; the look-body replay lemmas
+  (`ReplayPlus*Frame*`) consume it for ALL k although a body replay reads only the body's qids.
+  Route: weaken finality to `FV.RegsFinalOk(·, |str|, CinQids(re))` (+ CIN qids outside looks), or
+  run the endpoint on a synthetic winner with the CIN `a_cp`s cleared (`GmOfLive` reads clocks
+  only, so every B tie transfers) after a frame lemma "FLookLoop ignores outside-look registers".
+* (6) PLAN (synthetic winner; no main-theorem lift lemma changes): the engine answers
+  `filter_reset(FLookLoop(rp))`, `rp = FReconstructPlus(best)`. Let `rp0` = `rp` with every quant
+  `a_cp` cleared. (a) gate-free twins of the run-level fact producers (`LookRowsStaticNested`,
+  `LookRowsDynamicNested`, `FStabilityNested` — check what each uses the gate for; quant finality
+  becomes F-d0's `FV.FFindMatchRegsFinal`); (b) `FReconstructPlus` frame for look-free CIN bodies:
+  look regs unchanged, captures written only on CIN-body groups, quants only on CIN-body qids;
+  (c) the VM never reads quant `a_cp` (only `FNulledPlus` does, and only for its own body's qids;
+  `filter_reset` reads clocks) ⟹ `FLookLoop(rp)` and `FLookLoop(rp0)` agree on captures, looks
+  and quant clocks ⟹ same `filter_reset`; (d) the `FLookLoop*Lift` lemmas are already stated on
+  raw `(cap, lk, qt)` with full finality — apply them to `rp0` through thread-level copies of
+  `Endpoint*`; (e) `ProduceOwnerForall`/`MainTheoremL4DeepConclude` on `rp0` with the SPEC leaf:
+  outside `S` from machine A (+ rung C + F-b), inside `S` from B's carriers (they read look regs and
+  look-ancestor clocks only) and the `CinWalkX` glue; (f) `MainTheoremL5Cin`, `SupportedL5Cin`,
+  witness `(?=a)(a?)+`.
+* (6) PIECES LANDED IN SOURCE (uncommitted until the queue/pack confirms):
+  - final-readout `QuantCpIrrel.dfy` (23/0): `QAgree/TAgree/SAgree` (quant banks agree on clocks
+    and outside `D` on values) preserved by `FAdvanceEpsilon`/`FConsume`/`FFindMatch`,
+    `FNulledPlus`/`FNulledChildren` (if `QidsOf(reg) * D == {}`), `FFindMatchPlus`, `FLookLoop`
+    (`LookAstsAvoid(crv, D)`), and `filter_reset` reads clocks only.
+  - final-readout `ReconFrame.dfy` (8/0): `FNulledPlusFrameQ` — the reconstruction moves only the
+    bodies of STAMPED quantifiers (`CapsQ/LooksQ/QuantsQ(r, Q)`, `StampsIn(r, rg, Q)`).
+  - main-theorem: `LooksNoNulledPlusRE` (STRUCTURAL look-bodies-only gate) + `FromFull`/`Body`
+    descent lemmas, swept through 21 lemmas (9 keep the full gate and call `FromFull`);
+    `WinRegsOk` (opaque thread bundle) + `WinRegsOkFromRun` (gated) and THREAD-LEVEL producers
+    `Endpoint{Value,QuantValue,ChildLink,LookInv,TopLookFrame}OkRegs(…, th, …)`; the old
+    producers are now thin wrappers.
+  - deep/forward/carriers/main: `requires M.LooksNoNulledPlusRE(re)` + `M.LooksNoNulledPlusBody`;
+    MainTheoremL3/L5 call `M.LooksNoNulledPlusFromFull(re)`.
+  - PENDING (`<scratchpad>/deferred_gate_sweep.py`, apply once no queued dev run reads the
+    Oracle/Chain sources against main-theorem's old `.doo`): the same sweep in Oracle
+    (`GateStaticsSweepRENested`, `GateStaticsFromTablesNested`, `DeepFindRecFwdBase`,
+    `L3aEndpointAssembly`) and Chain (`ProduceOwnerForall`). Until then the workspace does NOT
+    resolve consistently (Forward/Deep call Oracle lemmas that still want the full gate).
+* (6) c6 CODED (2026-11-06 night, RESOLVES against the swept stack; verification queued):
+  - final-readout `CinLookPaths.dfy` (new): `AncCapRegs`/`AncQuants` (a look's ancestor
+    registers), `LookPathFrame`/`LookPathDomFrame`/`LookPathPresentLkFrame` (the look-path
+    predicates read only those), `AncAvoidQ` (ancestors avoid `CapsQ`/`QuantsQ` of look-free
+    CIN bodies), `QsOutside` (the reconstruction's write sets lie outside every look),
+    `QsAvoidLookBody`, `FinalReadoutFrame` (`FReconstructPlus(th)` agrees with `th` outside
+    `CapsQ/LooksQ/QuantsQ(re, CinQids(re))`).
+  - final-readout `FinalRegs`: `QClkGe` (quant clocks >= -1) threaded through
+    `ApplyWritesValGe`/`FCValGe`/`ReconAtValGe`/`FPValGe`; `FinalReadout` ensures it of `rp`.
+  - NEW member `linden-equiv-main-cin-lk` (`MainCinLk.dfy`, module `LindenElkMainCinLk`):
+    `TranslateCinOk` (glue side condition at `G = CapIdsOutsideLooks(re)`, `G * S == {}`);
+    `ClearQuantCps(th, D)` — the synthetic winner `rp0 = ClearQuantCps(rp, QIdsOuter(re))`;
+    `TieTransport` (B's carriers at `(bleaf, best)` -> `(FirstLeaf(t), rp0)` through
+    `ClkFrame` + `AncFrame`); `WinRegsOkG` + `WinRegsOkGFromRun` (gate-free run facts) +
+    `WinRegsOkRecon` (-> `M.WinRegsOk(rp0)`); `ProduceOwnerForallRegs` (thread twin);
+    `LookAstsAvoidOuter` + `AnswerSynthetic` (`QCI.FLookLoopAgree` at `D = QIdsOuter(re)`);
+    `TranslateFragmentPikeLkRecLk`, `MainExtractionL5Lk` (look-bodies gate twins);
+    `ReadoutAtWinner`, `EndpointAtRp0`, and **`MainTheoremL5Cin`** — hypotheses
+    `NestedFragmentRaw`, `Latin1Wf`, `L5Scope` + RE-level `M.LooksNoNulledPlusRE` and
+    `RF.CinBodiesLookFreeRE` on `lazy_prefix(annotate(raw))`.
+  - deferred sweep extended: `OracleColumnNested`/`OracleOkRowsL5` take the looks gate
+    (`<scratchpad>/deferred_gate_sweep.py`; scratch-applied copies in `<scratchpad>/sw/`).
+  - G then = `SupportedL5Cin` (executable twins of the two RE-level predicates) + witness.
+* (6) RECIPE for `MainTheoremL5Cin` (new member, e.g. `linden-equiv-main-cin-lk`): copy
+  `MainTheoremL5`; statics with `StaticCoreNestedRE` + `PikeLkRegexRec` (twin of
+  `EL.TranslateFragmentPikeLkRec` from "no nulled plus in look bodies") + `GateStaticsFromTablesNested`
+  (looks gate); B: `L3aCompositeCloseRecG(…, G := CIN bodies' groups)` → `bleaf`; A:
+  `PSM.FindMatchSimRENested` + rung C's ATR (`ResAgreeAtOutside(tstar, t, inp, S)`) + F-b
+  `FinalReadout` → outside-S values of `rp = FReconstructPlus(best)`; `rp0` = `rp` with quant
+  `a_cp` cleared; `WinRegsOk(rp0)` from gate-free run facts of `best` (`LookRowsStaticNested`,
+  `LookRowsDynamicNested`, `FStabilityNested`, `MainMatchBodyQuantsInitNested`,
+  `CM.FFindMatchLook{Frame,ClkSet,CpSet,OracleTrue}`, `FV.FFindMatchRegsFinal`) transported by
+  `FNulledPlusFrameQ` (look regs equal; captures/quants move only in CIN bodies, which are
+  look-free and outside looks); `Endpoint*Regs(rp0)`; a thread twin of `ProduceOwnerForall`;
+  `BestTieLkNestedTop(…, FirstLeaf(t), Some(rp0))` from A (outside S) + B's carriers (inside S,
+  through the glue); `MainTheoremL4DeepConclude(rp0, FirstLeaf(t))`; answer equality
+  `filter_reset(FLookLoop(rp)) == filter_reset(FLookLoop(rp0))` by `QuantCpIrrel` with
+  `D = CinQids`; a gate-free twin of `MainExtractionL5` (only quant clocks `>= -1` needed, as F-d0).
+
+### 2026-11-06 (night) — **F-c + G VERIFIED (per-symbol): `MainTheoremL5Cin` green; `(?=a)(a?)+` is SUPPORTED**
+
+Dev runs at one z3 worker under the 24 GB slice (`--verification-time-limit=300`):
+* `LindenElkMainCinLk` whole module **63/0** in 432 s, peak 5.1 GB. `MainTheoremL5Cin` takes 14
+  batches; all are ≤ 10 s except the extraction batch (2:37, 312 M resources).
+* `LindenElkCinLookPaths` 22/0, `LindenElkFinalRegs` 6/0, `FinalReadout` 5/0.
+* `LindenRegexApi.MatchCorrect` 2/0, `NullablePlusWitness` 7/0 (G:
+  `GreedyNullablePlusWithLookIsSupported`).
+* Chain Rec lemmas (22 runs) green; gate `LiftPreserveAnchorPassLkRec` 2/0 after its such-that
+  named `CW.BoolTreeLkX` (it still said `EL.BoolTreeLk`).
+* main-theorem `FreshBodyDirectMember*` 8/0 in 69 s, after `hide LooksNoNulledPlusRE;` in its body.
+  Without it the recursive gate in context blew the whole-module run to 20.6 GB.
+
+Fixes found by the runs:
+* **Recursive ghost gates in context are memory bombs.** Twice so far:
+  `FreshBodyDirectMember` (20.6 GB) and `MainTheoremL5Cin` batch 6 (> 19 GB). Fix both times:
+  `hide M.LooksNoNulledPlusRE, RF.CinBodiesLookFreeRE;` at the head of the body. The facts stay
+  as ground terms and callees take them verbatim. Do this in ANY new lemma carrying them.
+* `NoNulledPlusNoCin` / `CinQidsOuter` need `T.TransWf` (`counted_quantifier.min` is an `int`;
+  `QuantWf` gives `min >= 0`).
+* `CinWalk.NoNulledPlusCinOk`: `NotCinGreedy` only at `min > 0` (guarded).
+* **Deferred sweep APPLIED** to the real Oracle/Chain sources (identical to the `sw/` copies). The
+  weakened `GateStaticsFromTablesNested` needed `M.LooksNoNulledPlusFromFull(host)` at three
+  callers: Carriers `ForwardFindRecFwdBase`, Deep `DeepFindRecFwdDeep`, Forward
+  `ForwardFindRecFwdDeep`. Carriers `LookNestBackTFromBodyReplayLB` needed
+  `FST.NoNulledPlusFXR(body); M.LooksNoNulledPlusFromFull(reF)`.
+
+Pending: per-symbol checks of the swept Oracle/Chain lemmas and their callers (Carriers, Deep,
+Forward, Main); `CinWalk.NoNulledPlusCinOk` re-run; the whole main-theorem module at TL = 900;
+then THE GATE (`lem pack --jobs 1`, 69 members with cin-walk + main-cin-lk).
+
+#### 2026-11-07 — post-sweep per-symbol pass: what the swept callers needed
+
+Green so far: `CinWalk` 1/0. Oracle `GateStatics*` 7/0, `OracleColumnNested` 84/0,
+`OracleOkRowsL5` 2/0, `DeepFindRecFwdBase` 2/0. Carriers `ForwardFindRecFwdBase` and
+`LookNestBackTFromBodyReplayLB` 2/0 each. Deep `ForwardFindRecLBBase` 87/0. Forward
+`ReverseCDeepFull` 40/0. Main `ForwardMemberOne` 568/0 and `MainTheoremL4DeepConclude` 2/0.
+main-theorem whole module 989/0 apart from `LookRowsDynamicNested`.
+
+* **The gate swap goes in lemma contracts only where the callees allow it.**
+  * Oracle `L3aEndpointAssembly` and Chain `ProduceOwnerForall` call main-theorem lemmas that still
+    require the FULL `NR.NoNulledPlusRE(re)`:
+    * `LookRowsFromTablesL3a`
+    * `LookRowsFromTablesNested`
+  * A precondition error at Oracle 2861 showed this. Both lemmas keep the full gate. Their body head
+    derives the looks gate (`M.LooksNoNulledPlusFromFull(re)`) and then hides it.
+  * The depth-1/L3a feeders keep the full gate. That is the next rung (porting the F-c endpoint to
+    `SupportedL3`).
+* **`hide M.LooksNoNulledPlusRE;` at the body head of every swept lemma that only passes the gate
+  on.** There are 16 sites:
+  * Carriers ×2, Deep ×4, Forward ×5, Main ×3
+  * `L3aEndpointAssembly` and `ProduceOwnerForall`
+  * Without it, `ProduceOwnerForall` went over 19 GB.
+  * Do NOT hide it in the structurally recursive `GateStaticsSweepRENested`, which unfolds it.
+* **main-theorem `LookRowsDynamicNested`**: `hide LooksNoNulledPlusRE;` alone did not fix it. The
+  (c') batch still timed out at 300 s.
+  * Fix: move the per-row step out into `LookRowCapsUntouched`.
+  * Run in isolation, that lemma had ONE stuck obligation:
+    `forall k :: k in CaptureRegs(body) ==> k !in Sc` (pure set algebra; the solver expands the
+    comprehensions).
+  * Fix for that obligation: state the two ground equalities, then `hide *` (AGENTS §2.9).
+  * Results: the lemma takes 0.28 s, and `LookRowsDynamicNested` is 5/0 in 58 s.
+* **The hub instance `GateStaticAtNested(qm, re, crv, A1, …)` timed out at 900 s** in three
+  lemmas:
+  * Deep `DeepFindRecLB`, the A1 hop
+  * Forward `ForwardFindRecFwdDeep`, the A1 hop
+  * Forward `ForwardFindRecLBDeep`, the opaque preamble's row at A
+
+  It is a bare forall instance of `GateStaticsOkNested`, but Dafny inlines the goal, so Z3 has to
+  re-prove the hub's existential. Fix (AGENTS §2.9):
+  `assert GateStaticAtNested(…) by { hide *; reveal GateStaticsOkNested; }`. In `DeepFindRecLB`
+  the following pick also gets its own `split_here`.
+  * After the fix: 140/0, 11/0 and 170/0. Every batch is under 2 min.
+
+All green, per-symbol, at one z3 worker:
+* Chain `ProduceOwnerForall`: 314/0, peak 9.3 GB (was > 19 GB).
+* Oracle `L3aEndpointAssembly`: 2503/0 in 1934 s.
+  * PACK RISK: the `FLookLoopCaptureFrame(…, SpM)` precondition at Oracle 3318 is one isolated
+    obligation that took 2:04 and 3:45 in two runs, and timed out at 300 s in a third.
+  * The call is the same as at HEAD. It is under the 900 s limit.
+* `MainTheoremL3`: 1744/0 in 1806 s.
+* `MainTheoremL5`: 2824/0 in 2960 s.
+
+Next: commit, then THE GATE.

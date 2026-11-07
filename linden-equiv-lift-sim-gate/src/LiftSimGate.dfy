@@ -108,6 +108,8 @@ module LindenElkLiftSimGate {
   import TREP = LindenElkTreeRep
   import LTB = LindenElkLookTables
   import NI = LindenElkNestInv
+  import CW = LindenElkCinWalk
+  import NB = LindenElkNulledPlusBool
   import opened LindenElkLiftSimCore
   import opened LindenElkLiftSimOracle
   import opened LindenElkLiftSimChain
@@ -4312,7 +4314,7 @@ module LindenElkLiftSimGate {
         // the canonical tie pins bq == false (compiled SQC sites write false);
         // then the A-side helper yields the GMReset gm effect.
         TreeRepLkREAtSetQuant(rer, qm, code, inp, ta[0].0, pc, th.exit_allowed, q, bq);
-        assert !bq && q in qm.quants;
+        assert !bq && q in qm.quants by { NoTrueStampsFromStaticRE(qm, re, code, endl); }   // §2.5b: the gated tiers stay stamp-free
         assert th in s.active;
         assert CM.ThreadRegsWf(th, ncap, nlook, nquant);   // PikeInvFullRE backbone
         assert CM.ThreadClocksLE(th, s.clock) && s.clock >= 0;
@@ -4644,7 +4646,7 @@ module LindenElkLiftSimGate {
         // the canonical tie pins bq == false (compiled SQC sites write false);
         // then the A-side helper yields the GMReset gm effect.
         TreeRepLkREAtSetQuant(rer, qm, code, inp, ta[0].0, pc, th.exit_allowed, q, bq);
-        assert !bq && q in qm.quants;
+        assert !bq && q in qm.quants by { NoTrueStampsFromStaticNestedRE(qm, re, code, endl); }   // §2.5b: the gated tiers stay stamp-free
         assert th in s.active;
         assert CM.ThreadRegsWf(th, ncap, nlook, nquant);   // PikeInvFullRE backbone
         assert CM.ThreadClocksLE(th, s.clock) && s.clock >= 0;
@@ -5761,7 +5763,7 @@ module LindenElkLiftSimGate {
                               bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
                               vms2: AI.VmState, ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkNestedRE(qm, re, code, endl)
+    requires PSM.StaticCoreNestedRE(qm, re, code, endl)
     requires bst.PTS?
     requires LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
@@ -5805,7 +5807,7 @@ module LindenElkLiftSimGate {
                               crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                               bst: PT.PikeTreeState, s: AI.VmState, ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkNestedRE(qm, re, code, endl)
+    requires PSM.StaticCoreNestedRE(qm, re, code, endl)
     requires bst.PTS?
     requires LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
@@ -5858,7 +5860,7 @@ module LindenElkLiftSimGate {
                                  crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                                  bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState, th': AI.Thread,
                                  vms2: AI.VmState, ncap: int, nlook: int, nquant: int)
-    requires PSM.StaticOkNestedRE(qm, re, code, endl)
+    requires PSM.StaticCoreNestedRE(qm, re, code, endl)
     requires bst.PTS?
     requires LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
@@ -5929,7 +5931,7 @@ module LindenElkLiftSimGate {
                                 bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
                                 vms2: AI.VmState, ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkNestedRE(qm, re, code, endl)
+    requires PSM.StaticCoreNestedRE(qm, re, code, endl)
     requires bst.PTS?
     requires LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
@@ -5988,7 +5990,7 @@ module LindenElkLiftSimGate {
                                     ce: RC.char_expectation, vms2: AI.VmState,
                                     ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkNestedRE(qm, re, code, endl)
+    requires PSM.StaticCoreNestedRE(qm, re, code, endl)
     requires bst.PTS?
     requires LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
@@ -6121,7 +6123,7 @@ module LindenElkLiftSimGate {
                                      ce: RC.char_expectation, vms2: AI.VmState,
                                      ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkNestedRE(qm, re, code, endl)
+    requires PSM.StaticCoreNestedRE(qm, re, code, endl)
     requires bst.PTS?
     requires LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
@@ -6187,7 +6189,7 @@ module LindenElkLiftSimGate {
                                 reg: int, th': AI.Thread, vms2: AI.VmState,
                                 ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkNestedRE(qm, re, code, endl)
+    requires PSM.StaticCoreNestedRE(qm, re, code, endl)
     requires bst.PTS?
     requires LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
@@ -6424,7 +6426,7 @@ module LindenElkLiftSimGate {
                                   q: int, bq: bool, th': AI.Thread, vms2: AI.VmState,
                                   ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkNestedRE(qm, re, code, endl)
+    requires PSM.StaticCoreNestedRE(qm, re, code, endl)
     requires bst.PTS?
     requires LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
@@ -6454,7 +6456,6 @@ module LindenElkLiftSimGate {
     ensures bst1.PTS?
     ensures LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
   {
-    NoTrueStampsFromStaticNestedRE(qm, re, code, endl);   // §2.5b stage 2a
     var PTS(inp, ta, best, tb, seen) := bst;
     var th := s.active[0];
     assert ActiveRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
@@ -6466,10 +6467,9 @@ module LindenElkLiftSimGate {
     var ea := th.exit_allowed;
     assert TreeRepLkRE(rer, qm, code, inp, t, pc, ea);
 
-    // canonical head: Reset(qm.quants[q]) with canonical child at (pc+1, ea);
-    // pins !bq (compiled SQC sites always write false)
+    // canonical head: Reset(qm.quants[q]) with canonical child at (pc+1, ea) —
+    // the clock-mark AND (§2.5b F-c) the nulled-exit stamp, a plain Reset on the B side
     TreeRepLkREAtSetQuant(rer, qm, code, inp, t, pc, ea, q, bq);
-    assert !bq;
     var gidl := qm.quants[q];
     assert t.GroupActionT? && t.g == LG.Reset(gidl);
     assert TreeRepLkRE(rer, qm, code, inp, t.t, pc + 1, ea);
@@ -6487,7 +6487,7 @@ module LindenElkLiftSimGate {
     // raw witness: same Reset head via the SetQuant walk wrapper
     var traw: LT.Tree :| CE.ProgErase(traw) == CE.ProgErase(t)
                          && ThreadRepLkRec(rer, qm, re, code, inp, crv, str, ov, S, traw, gm, th, ncap, nlook, nquant);
-    WalkPairLkAtSetQuantRec(rer, qm, code, inp, traw, gm, pc, ea, q);
+    WalkPairLkAtSetQuantRec(rer, qm, code, inp, traw, gm, pc, ea, q, bq);
     assert traw.GroupActionT? && traw.g == LG.Reset(gidl) == t.g;
     assert CE.ProgErase(traw.t) == CE.ProgErase(t.t) by {
       assert CE.ProgErase(traw) == LT.GroupActionT(traw.g, CE.ProgErase(traw.t));
@@ -6636,7 +6636,7 @@ module LindenElkLiftSimGate {
                               x: int, y: int, vms2: AI.VmState,
                               ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkNestedRE(qm, re, code, endl)
+    requires PSM.StaticCoreNestedRE(qm, re, code, endl)
     requires bst.PTS?
     requires LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
@@ -6654,7 +6654,6 @@ module LindenElkLiftSimGate {
     ensures bst1.PTS?
     ensures LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
   {
-    NoTrueStampsFromStaticNestedRE(qm, re, code, endl);   // §2.5b stage 2a
     var PTS(inp, ta, best, tbl, seen) := bst;
     var th := s.active[0];
     assert ActiveRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
@@ -6780,7 +6779,7 @@ module LindenElkLiftSimGate {
                                                         l: int, th': AI.Thread, vms2: AI.VmState,
                                                         ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkNestedRE(qm, re, code, endl)
+    requires PSM.StaticCoreNestedRE(qm, re, code, endl)
     requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
     requires |ov| == |str| + 1                                    // L3b: the backward LB gate needs the mirror
     requires OE.OracleColsOk(rer, qm, str)                    // (L5 F7d) whole-string oracle correctness (backward keystone)
@@ -6891,7 +6890,7 @@ module LindenElkLiftSimGate {
       && (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
       && var bodycode := CP.compile_to_bytecode(body);
       |bodycode| >= 1
-      && PSM.StaticOkNestedRE(qm, body, bodycode, |bodycode| - 1)
+      && PSM.StaticCoreNestedRE(qm, body, bodycode, |bodycode| - 1)
       && PSM.SizesOkRE(body, ncap, nlook, nquant)
       && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
     assert lk == T.TrLookaround(la) && r1 == T.Translate(body);
@@ -6913,7 +6912,7 @@ module LindenElkLiftSimGate {
     assert l >= 0 && (l as nat) in LTB.LookIds(re);
     NI.LookBodyOfTablesTie(re, crv, l as nat);
     assert body == NI.LookBodyOfRE(re, l as nat);
-    NI.NoNulledPlusLookBody(re, l as nat);   // §2.5b interim: NoNulledPlusRE(body)
+    assert NR.NoNulledPlusRE(body);   // (§2.5b F-c) the per-lid package carries it (look bodies stay stamp-free)
     // (L5 F7f) the L5 per-lid dispatch: a positive LOOKBEHIND is in scope iff its
     // body is lookbehind-only (`LBOnlyLooksRE`) — the LB arms below consume it.
     assert la.Lookahead? || la.Lookbehind?;
@@ -6996,7 +6995,7 @@ module LindenElkLiftSimGate {
     // (`LkResultAgreeOutsideNested` on the recursive `PikeLkRegexRec(r1)`) replaces
     // the depth-1 look-free `NoLkBrL(r1)` frame. The fold still writes only
     // `DefGroups(r1)`, so any newly-set S-group of gm2 lies in the gate body.
-    NI.NoNulledPlusLookBody(re, l as nat);   // §2.5b interim: NoNulledPlusRE(body)
+    assert NR.NoNulledPlusRE(body);   // (§2.5b F-c) the per-lid package carries it (look bodies stay stamp-free)
     EL.TranslateFragmentPikeLkRec(body);
     assert EL.PikeLkRegexRec(r1);
     LkResultAgreeOutsideNested(rer, lk, r1, inp, tlk, gm);
@@ -7240,7 +7239,7 @@ module LindenElkLiftSimGate {
                                      l: int, vms2: AI.VmState,
                                      ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkNestedRE(qm, re, code, endl)
+    requires PSM.StaticCoreNestedRE(qm, re, code, endl)
     requires qm.ov == ov
     requires bst.PTS?
     requires LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
@@ -7338,7 +7337,7 @@ module LindenElkLiftSimGate {
                                   l: int, pos: bool, vms2: AI.VmState,
                                   ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkNestedRE(qm, re, code, endl)
+    requires PSM.StaticCoreNestedRE(qm, re, code, endl)
     requires qm.ov == ov
     requires bst.PTS?
     requires LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
@@ -7407,7 +7406,7 @@ module LindenElkLiftSimGate {
                                      bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
                                      vms2: AI.VmState, ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkNestedRE(qm, re, code, endl)
+    requires PSM.StaticCoreNestedRE(qm, re, code, endl)
     requires bst.PTS?
     requires LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
@@ -7481,7 +7480,7 @@ module LindenElkLiftSimGate {
                                      bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
                                      vms2: AI.VmState, ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkNestedRE(qm, re, code, endl)
+    requires PSM.StaticCoreNestedRE(qm, re, code, endl)
     requires bst.PTS?
     requires LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
@@ -7518,7 +7517,7 @@ module LindenElkLiftSimGate {
                                     bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
                                     a: R.anchor, vms2: AI.VmState, ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkNestedRE(qm, re, code, endl)
+    requires PSM.StaticCoreNestedRE(qm, re, code, endl)
     requires !rer.multiline
     requires bst.PTS?
     requires LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
@@ -7574,7 +7573,7 @@ module LindenElkLiftSimGate {
           AR.ActionsRepL(rer, qm, acts, code, pc)
           && EL.PikeLkActionsRec(acts)
           && ATR.EaOf(b) == ea
-          && EL.BoolTreeLk(rer, acts, inp, b, traw)
+          && CW.BoolTreeLkX(rer, acts, inp, b, traw)
           && GateAheadClear(acts, gm)
           && WalkDefsOk(acts);
         assert TtLkRec(rer, qm, code, inp, traw, pc, ea);
@@ -7615,7 +7614,7 @@ module LindenElkLiftSimGate {
                                     bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
                                     a: R.anchor, vms2: AI.VmState, ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
-    requires PSM.StaticOkNestedRE(qm, re, code, endl)
+    requires PSM.StaticCoreNestedRE(qm, re, code, endl)
     requires !rer.multiline
     requires bst.PTS?
     requires LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
@@ -7665,7 +7664,7 @@ module LindenElkLiftSimGate {
     requires !rer.multiline && !rer.ignoreCase && qm.ov == ov
     requires |ov| == |str| + 1                                    // L3b: propagate to the backward LB gate
     requires OE.OracleColsOk(rer, qm, str)                    // (L5 F7d) whole-string oracle correctness (backward keystone)
-    requires PSM.StaticOkNestedRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires PSM.StaticCoreNestedRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires S == PIV.CapIdsInLooks(re)   // the value-tie boundary (SetReg/gate cases)
     requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)   // (BRICK D5) NESTED per-lid package
     requires NR.L5ScopeRE(re) && L5ScopeV1RE(re)   // (L5 F7f) the v1 L5 scope
@@ -7841,22 +7840,27 @@ module LindenElkLiftSimGate {
         var ocp := if bq then Some(s1.cp) else None;
         var th' := th.(quant_regs := AReg.set_reg(th.quant_regs, q, ocp, s1.clock), pc := th.pc + 1);
         var vms2 := s1.(active := [th'] + ac);
-        // the canonical tie pins bq == false (compiled SQC sites write false);
-        // then the A-side helper yields the GMReset gm effect.
+        // the canonical tie: a Reset either way (§2.5b F-c: the stamp too); the
+        // A-side helpers yield the GMReset gm effect (GmOfLive reads clocks only)
         TreeRepLkREAtSetQuant(rer, qm, code, inp, ta[0].0, pc, th.exit_allowed, q, bq);
-        assert !bq && q in qm.quants;
+        assert q in qm.quants;
         assert th in s.active;
         assert CM.ThreadRegsWf(th, ncap, nlook, nquant);   // PikeInvFullRE backbone
         assert CM.ThreadClocksLE(th, s.clock) && s.clock >= 0;
-        DispatchResetEffectNested(rer, qm, re, code, endl, ngroups, str, ptsA, s, s1, q, th',
-                                  ncap, nlook, nquant);
+        if bq {
+          DispatchStampEffectNested(rer, qm, re, code, endl, ngroups, str, ptsA, s, s1, q, th',
+                                    ncap, nlook, nquant);
+        } else {
+          DispatchResetEffectNested(rer, qm, re, code, endl, ngroups, str, ptsA, s, s1, q, th',
+                                    ncap, nlook, nquant);
+        }
         var bstS := LiftPreserveSetQuantLkRec(rer, qm, re, code, endl, crv, str, ov, S,
                                               bst, s, s1, q, bq, th', vms2, ncap, nlook, nquant);
-        var ptsS := PSM.PreserveResetCaseNested(rer, qm, re, code, endl, ngroups, str, ptsA, s,
+        var ptsS := PSM.PreserveQuantCaseNested(rer, qm, re, code, endl, ngroups, str, ptsA, s,
                                                 s1, q, bq, vms2, ncap, nlook, nquant);
         var ptsA2, bst2 := LiftAdvanceEpsilonRec(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
                                                  ptsS, vms2, bstS, dir, ncap, nlook, nquant);
-        PSM.TrcCons(ptsA, ptsS, ptsA2);
+        PSM.TrcTrans(ptsA, ptsS, ptsA2);
         TrcLkTrans(bst, bstS, bst2);
         ptsA' := ptsA2;
         bst1 := bst2;
@@ -7994,7 +7998,7 @@ module LindenElkLiftSimGate {
     requires NR.NfaRepRE(re, code, 0, endl)
     requires |ov| == |str| + 1                                    // L3b: propagate to the backward LB gate
     requires OE.OracleColsOk(rer, qm, str)                    // (L5 F7d) whole-string oracle correctness (backward keystone)
-    requires PSM.StaticOkNestedRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires PSM.StaticCoreNestedRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
     requires S == PIV.CapIdsInLooks(re)   // the value-tie boundary (SetReg/gate cases)
     requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)   // (BRICK D5) NESTED per-lid package
@@ -8025,7 +8029,7 @@ module LindenElkLiftSimGate {
                           S: set<LG.GroupId>, ptsA: PT.PikeTreeState, bst: PT.PikeTreeState,
                           vms: AI.VmState, cdn: LCdn.cdns, ncap: int, nlook: int, nquant: int)
     returns (bestT: Option<LT.Leaf>)
-    requires PSM.StaticOkNestedRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires PSM.StaticCoreNestedRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires |ov| == |str| + 1                                    // L3b: propagate to the backward LB gate
     requires OE.OracleColsOk(rer, qm, str)                    // (L5 F7d) whole-string oracle correctness (backward keystone)
     requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
@@ -8327,10 +8331,11 @@ module LindenElkLiftSimGate {
     // LookBehindFragmentRE: NestedFragmentRE + TransWf + CapUnique come from
     // StaticOkNestedRE, and NegLooksLookFreeRE is the extra hypothesis that
     // lets `TranslateFragmentPikeLkRec` establish PikeLkRegexRec(Translate(re)).
-    requires PSM.StaticOkNestedRE(qm, re, code, endl)
+    requires PSM.StaticCoreNestedRE(qm, re, code, endl)
     requires NR.NegLooksLookFreeRE(re)
     requires AR.ActionsRepL(rer, qm, [LS.Areg(T.Translate(re))], code, 0)
-    requires EL.BoolTreeLk(rer, [LS.Areg(T.Translate(re))], inp, BS.CannotExit, t)
+    requires CW.BoolTreeLkX(rer, [LS.Areg(T.Translate(re))], inp, BS.CannotExit, t)   // (§2.5b F-c) the ENGINE-SHAPED root walk
+    requires EL.PikeLkRegexRec(T.Translate(re))   // (§2.5b F-c) supplied: the static package is gate-free
     requires LL.OracleOkSuffix(rer, qm, inp)
     requires inp == PIV.InpOfCp(str, vms.cp) && 0 <= vms.cp <= |str|
     requires vms.active == [AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant))]
@@ -8345,7 +8350,6 @@ module LindenElkLiftSimGate {
                         PT.PikeTreeInitialState(tstar, inp), PT.PikeTreeInitialState(tcan, inp), vms,
                         ncap, nlook, nquant)
   {
-    NoTrueStampsFromStaticNestedRE(qm, re, code, endl);   // §2.5b stage 2a
     // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
     // triggered existential storm the solver; all uses here are opaque.
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
@@ -8358,7 +8362,6 @@ module LindenElkLiftSimGate {
     assert it.pc == 0 && it.exit_allowed == false;
     assert it.capture_regs == AReg.init_regs(ncap)
            && it.look_regs == AReg.init_regs(nlook) && it.quant_regs == AReg.init_regs(nquant);
-    EL.TranslateFragmentPikeLkRec(re);                     // PikeLkRegex(Translate(re))
     EL.PikeLkActionsRecConsIff(LS.Areg(T.Translate(re)), []);
     assert EL.PikeLkActionsRec(acts);
     assert GateAheadClear(acts, LG.Empty);              // Empty has no keys
@@ -8370,12 +8373,12 @@ module LindenElkLiftSimGate {
       assert it.pc as nat == 0;
       assert AR.ActionsRepL(rer, qm, acts, code, 0);
       assert ATR.EaOf(BS.CannotExit) == it.exit_allowed;   // both false
-      assert EL.BoolTreeLk(rer, acts, inp, BS.CannotExit, t);
+      assert CW.BoolTreeLkX(rer, acts, inp, BS.CannotExit, t);
       assert exists actsw: LS.Actions, bw: BS.LoopBool ::
           AR.ActionsRepL(rer, qm, actsw, code, it.pc as nat)
           && EL.PikeLkActionsRec(actsw)
           && ATR.EaOf(bw) == it.exit_allowed
-          && EL.BoolTreeLk(rer, actsw, inp, bw, t)
+          && CW.BoolTreeLkX(rer, actsw, inp, bw, t)
           && GateAheadClear(actsw, LG.Empty)
           && WalkDefsOk(actsw);
     }
@@ -8427,15 +8430,16 @@ module LindenElkLiftSimGate {
                       PT.PikeTreeInitialState(tcan, inp), vms, ncap, nlook, nquant);
   }
 
-  lemma L3aCompositeCloseRec(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
+  lemma L3aCompositeCloseRecG(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
                              endl: nat, ngroups: nat, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
                              S: set<LG.GroupId>, tstar: LT.Tree, t: LT.Tree, inp: LC.Input,
                              vms: AI.VmState, cdn: LCdn.cdns, result: Option<AI.Thread>,
-                             ncap: int, nlook: int, nquant: int)
+                             ncap: int, nlook: int, nquant: int, G: set<LG.GroupId>)
+    returns (bleaf: Option<LT.Leaf>)
     requires NR.NfaRepRE(re, code, 0, endl)
     requires |ov| == |str| + 1                                    // L3b: propagate to the backward LB gate
     requires OE.OracleColsOk(rer, qm, str)                    // (L5 F7d) whole-string oracle correctness (backward keystone)
-    requires PSM.StaticOkNestedRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires PSM.StaticCoreNestedRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires qm.ov == ov && !rer.multiline
     requires !rer.ignoreCase
     requires S == PIV.CapIdsInLooks(re)
@@ -8457,6 +8461,92 @@ module LindenElkLiftSimGate {
     requires T.TransWf(re) && NR.NegLooksLookFreeRE(re)
     requires AR.ActionsRepL(rer, qm, [LS.Areg(T.Translate(re))], code, 0)
     requires EL.BoolTreeLk(rer, [LS.Areg(T.Translate(re))], inp, BS.CannotExit, t)
+    // (§2.5b F-c) the CIN bodies' groups lie in G (glue side condition)
+    requires EL.PikeLkRegexRec(T.Translate(re))
+    requires CW.CinOk(T.Translate(re), G)
+    requires PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str,
+                               PT.PikeTreeInitialState(tstar, inp), vms, ncap, nlook, nquant)
+    requires LL.OracleOkSuffix(rer, qm, inp)
+    requires inp == PIV.InpOfCp(str, vms.cp) && 0 <= vms.cp <= |str|
+    requires vms.active == [AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant))]
+    requires vms.bestmatch.None?
+    requires |vms.processed.true_set| == RB.size(code) && |vms.processed.false_set| == RB.size(code)
+    requires vms.context.nextchar == AI.get_char(str, vms.cp)
+    requires result == AI.FFindMatch(code, str, vms, ov, LAnc.Forward, cdn).0
+    // (§2.5b F-c) machine B's best leaf is the ENGINE-SHAPED tree's first leaf;
+    // it agrees with the spec tree's at the position and OUTSIDE G
+    ensures BestTieLkNestedTop(rer, re, crv, str, ov, S, bleaf, result, ncap, nlook, nquant)
+    ensures (bleaf.None? <==> LT.FirstLeaf(t, inp).None?)
+    ensures bleaf.Some? ==> bleaf.value.0 == LT.FirstLeaf(t, inp).value.0
+                            && LL.GmAgreeOutside(bleaf.value.1, LT.FirstLeaf(t, inp).value.1, G)
+  {
+    var acts := [LS.Areg(T.Translate(re))];
+    assert EL.PikeLkActionsRec(acts) by {
+      assert acts == [LS.Areg(T.Translate(re))] + [];
+      EL.PikeLkActionsRecConsIff(LS.Areg(T.Translate(re)), []);
+    }
+    NB.EncOkNoChecks(acts, inp, BS.CannotExit);
+    CW.CinActsInSingle(T.Translate(re), G);
+    var tX := CW.CinWalkX(rer, acts, inp, BS.CannotExit, t, G);
+    var tcan := LiftInitCRec(rer, qm, re, code, endl, ngroups, crv, str, ov, S, tstar, tX, inp, vms,
+                             ncap, nlook, nquant);
+    assert LiftInvRec(rer, qm, re, code, crv, str, ov, S,
+                      PT.PikeTreeInitialState(tcan, inp), vms, ncap, nlook, nquant);
+    // (L4 GENUINELY NESTED) the whole chain is nested-typed and driven by the
+    // RECURSIVE walk: the entry (LiftInitCRec) builds WalkPairLkRec directly, so
+    // no StaticOkRE bridge is needed -- StaticOkNestedRE feeds the tier as-is.
+    var bestT := LiftFindMatchCRec(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
+                                   PT.PikeTreeInitialState(tstar, inp),
+                                   PT.PikeTreeInitialState(tcan, inp),
+                                   vms, cdn, ncap, nlook, nquant);
+    // bestT IS the canonical tree's first leaf ...
+    BoolTreeLkXPikeSubtree(rer, acts, inp, BS.CannotExit, tX);
+    PikeSubtreeLkEraseIff(tX);
+    PikeSubtreeLkEraseIff(tcan);
+    assert PTL.PikeSubtreeLk(tcan);
+    PTL.PikeTreeLkComputesFirstLeaf(tcan, inp, bestT);
+    assert bestT == LT.FirstLeaf(tcan, inp);
+    // ... which is the ENGINE-SHAPED entry walk's first leaf (Progress is leaf-transparent)
+    assert CE.LeavesAgree(tcan, tX) by {
+      forall gm: LG.GroupMap, xinp: LC.Input, dr: WP.Direction
+        ensures LT.TreeLeaves(tcan, gm, xinp, dr) == LT.TreeLeaves(tX, gm, xinp, dr)
+      {
+        ProgEraseLeavesEq(tcan, gm, xinp, dr);
+        ProgEraseLeavesEq(tX, gm, xinp, dr);
+      }
+    }
+    CE.LAFirstLeaf(tcan, tX, inp);
+    assert LT.FirstLeaf(tX, inp) == bestT;
+    bleaf := bestT;
+    // ... and the glue relates it to the spec tree's
+    NB.RAFirstLeafOutside(tX, t, inp, G);
+  }
+  /** The gated entry (no nulled plus anywhere): the engine-shaped walk IS the
+      spec walk at the first leaf — `L3aCompositeCloseRecG` at `G = {}`. */
+  lemma L3aCompositeCloseRec(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
+                             endl: nat, ngroups: nat, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                             S: set<LG.GroupId>, tstar: LT.Tree, t: LT.Tree, inp: LC.Input,
+                             vms: AI.VmState, cdn: LCdn.cdns, result: Option<AI.Thread>,
+                             ncap: int, nlook: int, nquant: int)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires |ov| == |str| + 1
+    requires OE.OracleColsOk(rer, qm, str)
+    requires PSM.StaticOkNestedRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires qm.ov == ov && !rer.multiline
+    requires !rer.ignoreCase
+    requires S == PIV.CapIdsInLooks(re)
+    requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
+    requires NR.L5ScopeRE(re) && L5ScopeV1RE(re)
+    requires LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires code == CP.compile_to_bytecode(re)
+    requires vms.blocked == []
+    requires vms.processed == AI.init_bpcset(RB.size(code))
+    requires vms.isblocked == AI.init_pcset(RB.size(code))
+    requires PIV.ContextOkRE(str, vms.cp, vms.context)
+    requires T.TransWf(re) && NR.NegLooksLookFreeRE(re)
+    requires AR.ActionsRepL(rer, qm, [LS.Areg(T.Translate(re))], code, 0)
+    requires EL.BoolTreeLk(rer, [LS.Areg(T.Translate(re))], inp, BS.CannotExit, t)
     requires PTL.PikeSubtreeLk(t)
     requires PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str,
                                PT.PikeTreeInitialState(tstar, inp), vms, ncap, nlook, nquant)
@@ -8469,34 +8559,24 @@ module LindenElkLiftSimGate {
     requires result == AI.FFindMatch(code, str, vms, ov, LAnc.Forward, cdn).0
     ensures BestTieLkNestedTop(rer, re, crv, str, ov, S, LT.FirstLeaf(t, inp), result, ncap, nlook, nquant)
   {
-    var tcan := LiftInitCRec(rer, qm, re, code, endl, ngroups, crv, str, ov, S, tstar, t, inp, vms,
-                             ncap, nlook, nquant);
-    assert LiftInvRec(rer, qm, re, code, crv, str, ov, S,
-                      PT.PikeTreeInitialState(tcan, inp), vms, ncap, nlook, nquant);
-    // (L4 GENUINELY NESTED) the whole chain is nested-typed and driven by the
-    // RECURSIVE walk: the entry (LiftInitCRec) builds WalkPairLkRec directly, so
-    // no StaticOkRE bridge is needed -- StaticOkNestedRE feeds the tier as-is.
-    var bestT := LiftFindMatchCRec(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
-                                   PT.PikeTreeInitialState(tstar, inp),
-                                   PT.PikeTreeInitialState(tcan, inp),
-                                   vms, cdn, ncap, nlook, nquant);
-    // bestT IS the canonical tree's first leaf ...
-    PikeSubtreeLkEraseIff(t);
-    PikeSubtreeLkEraseIff(tcan);
-    assert PTL.PikeSubtreeLk(tcan);
-    PTL.PikeTreeLkComputesFirstLeaf(tcan, inp, bestT);
-    assert bestT == LT.FirstLeaf(tcan, inp);
-    // ... which is the RAW entry tree's first leaf (Progress is leaf-transparent)
-    assert CE.LeavesAgree(tcan, t) by {
-      forall gm: LG.GroupMap, xinp: LC.Input, dr: WP.Direction
-        ensures LT.TreeLeaves(tcan, gm, xinp, dr) == LT.TreeLeaves(t, gm, xinp, dr)
-      {
-        ProgEraseLeavesEq(tcan, gm, xinp, dr);
-        ProgEraseLeavesEq(t, gm, xinp, dr);
+    EL.TranslateFragmentPikeLkRec(re);
+    NUL.TransNoNulledPlus(re);
+    CW.NoNulledPlusCinOk(T.Translate(re), {});
+    var bleaf := L3aCompositeCloseRecG(rer, qm, re, code, endl, ngroups, crv, str, ov, S, tstar, t, inp,
+                                       vms, cdn, result, ncap, nlook, nquant, {});
+    var fl := LT.FirstLeaf(t, inp);
+    assert bleaf == fl by {
+      if bleaf.Some? {
+        assert LL.GmAgreeOutside(bleaf.value.1, fl.value.1, {});
+        assert bleaf.value.1 == fl.value.1 by {
+          forall g ensures (g in bleaf.value.1 <==> g in fl.value.1)
+                           && (g in bleaf.value.1 ==> bleaf.value.1[g] == fl.value.1[g]) {
+            assert g !in {};
+          }
+        }
       }
     }
-    CE.LAFirstLeaf(tcan, t, inp);
-    assert LT.FirstLeaf(t, inp) == bestT;
   }
+
 
 }

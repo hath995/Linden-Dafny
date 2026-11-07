@@ -30,15 +30,42 @@ module LindenElkFinalRegs {
     forall k: int :: AI.get_idx(rg.0.a_cp, k) >= -1
   }
 
+  /** (F-c) No quant clock below the unset marker (`M.QuantRegsFinal`'s clock half). */
+  ghost predicate QClkGe(rg: NRC.Regs3) {
+    forall k: int :: AI.get_idx(rg.2.a_clk, k) >= -1
+  }
+
   /** Writes at a nonnegative position keep the bound. */
   lemma ApplyWritesValGe(ws: seq<NRC.Write>, cp: int, clks: seq<int>, rg: NRC.Regs3)
     requires |clks| == |ws| && cp >= 0
-    requires CapValGe(rg)
-    ensures CapValGe(NRC.ApplyWrites(ws, cp, clks, rg))
+    requires forall i :: 0 <= i < |clks| ==> clks[i] >= -1
+    requires CapValGe(rg) && QClkGe(rg)
+    ensures CapValGe(NRC.ApplyWrites(ws, cp, clks, rg)) && QClkGe(NRC.ApplyWrites(ws, cp, clks, rg))
     decreases |ws|
   {
     if |ws| > 0 {
       var rg1 := NRC.ApplyWrite(ws[0], cp, clks[0], rg);
+      assert QClkGe(rg1) by {
+        forall k: int ensures AI.get_idx(rg1.2.a_clk, k) >= -1 {
+          assert AI.get_idx(rg.2.a_clk, k) >= -1;
+          match ws[0]
+          case WQuant(q, b) =>
+            var q0 := rg.2;
+            assert rg1.2 == AReg.set_reg(q0, q, if b then Some(cp) else None, clks[0]);
+            if 0 <= q < |q0.a_cp| && 0 <= q < |q0.a_clk| {
+              assert rg1.2.a_clk == q0.a_clk[q := clks[0]];
+              if 0 <= k < |q0.a_clk| && k != q {
+                assert rg1.2.a_clk[k] == q0.a_clk[k];
+              }
+            } else {
+              assert rg1.2 == q0;
+            }
+          case WCap(_) =>
+            assert rg1.2 == rg.2;
+          case WLook(_) =>
+            assert rg1.2 == rg.2;
+        }
+      }
       assert CapValGe(rg1) by {
         forall k: int ensures AI.get_idx(rg1.0.a_cp, k) >= -1 {
           assert AI.get_idx(rg.0.a_cp, k) >= -1;
@@ -73,8 +100,8 @@ module LindenElkFinalRegs {
   lemma FCValGe(qm: AR.QMap, r: R.regex, cdnt: LCdn.cdn_table, cp: nat, rg: NRC.Regs3,
                 plus_bcv: seq<RB.code>, str: string, ov: LOr.OracleView)
     requires PIV.QuantUnique(r) && NRC.NoCdnPlusRE(r) && NRR.PlusTableOk(r, plus_bcv)
-    requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && CapValGe(rg) && ov == qm.ov && cp <= |str|
-    ensures CapValGe(NRR.FC(r, cdnt, cp, rg, plus_bcv, str, ov))
+    requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && CapValGe(rg) && QClkGe(rg) && ov == qm.ov && cp <= |str|
+    ensures CapValGe(NRR.FC(r, cdnt, cp, rg, plus_bcv, str, ov)) && QClkGe(NRR.FC(r, cdnt, cp, rg, plus_bcv, str, ov))
     decreases r, 1
   {
     var rg2 := NRR.FC(r, cdnt, cp, rg, plus_bcv, str, ov);
@@ -124,8 +151,9 @@ module LindenElkFinalRegs {
     requires r.Re_quant? && NRR.L1(r) == body && r.qid == qid && qid >= 0
     requires PIV.QuantUnique(r) && NRC.NoCdnPlusRE(r) && NRR.PlusTableOk(r, plus_bcv)
     requires code == AI.get_code_v(plus_bcv, qid)
-    requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && CapValGe(rg) && ov == qm.ov && cp <= |str| && start_clock >= -1
+    requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && CapValGe(rg) && QClkGe(rg) && ov == qm.ov && cp <= |str| && start_clock >= -1
     ensures CapValGe(NRR.ReconAt(code, body, cdnt, cp, rg, start_clock, plus_bcv, str, ov).0)
+    ensures QClkGe(NRR.ReconAt(code, body, cdnt, cp, rg, start_clock, plus_bcv, str, ov).0)
     decreases r, 0
   {
     var ctx := AI.cp_context(cp, str, RA.Forward);
@@ -150,6 +178,7 @@ module LindenElkFinalRegs {
                                 && NRC.RegsOf(result.value) == NRC.ApplyWrites(ws, cp, clks, rg);
         NRR.ApplyWritesFrame(ws, cp, clks, rg);
         NRR.ApplyWritesCapValWf(ws, cp, clks, rg);
+        assert forall i :: 0 <= i < |clks| ==> clks[i] >= -1;
         ApplyWritesValGe(ws, cp, clks, rg);
       }
     } else {
@@ -157,15 +186,15 @@ module LindenElkFinalRegs {
       NRR.NullInterpEmptyCode(inits, ov);
       assert result.None? && ov1 == ov;
     }
-    assert NRR.WfRegs(rg1) && NRR.CapValWf(rg1) && CapValGe(rg1);
+    assert NRR.WfRegs(rg1) && NRR.CapValWf(rg1) && CapValGe(rg1) && QClkGe(rg1);
     FCValGe(qm, body, cdnt, cp, rg1, plus_bcv, str, ov1);
   }
 
   /** `FNulledPlus` keeps the bound (the `NRO.FNulledPlusFrame` induction). */
   lemma FPValGe(qm: AR.QMap, r: R.regex, rg: NRC.Regs3, plus_bcv: seq<RB.code>, str: string, ov: LOr.OracleView)
     requires PIV.CapUnique(r) && PIV.QuantUnique(r) && NRC.NoCdnPlusRE(r) && NRR.PlusTableOk(r, plus_bcv)
-    requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && CapValGe(rg) && ov == qm.ov && NRO.StampsInRange(r, rg, str)
-    ensures CapValGe(NRO.FP(r, rg, plus_bcv, str, ov))
+    requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && CapValGe(rg) && QClkGe(rg) && ov == qm.ov && NRO.StampsInRange(r, rg, str)
+    ensures CapValGe(NRO.FP(r, rg, plus_bcv, str, ov)) && QClkGe(NRO.FP(r, rg, plus_bcv, str, ov))
     decreases r
   {
     var rg2 := NRO.FP(r, rg, plus_bcv, str, ov);

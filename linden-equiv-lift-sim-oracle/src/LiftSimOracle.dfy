@@ -108,6 +108,7 @@ module LindenElkLiftSimOracle {
   import TREP = LindenElkTreeRep
   import LTB = LindenElkLookTables
   import NI = LindenElkNestInv
+  import CW = LindenElkCinWalk
   import opened LindenElkLiftSimCore
 
   /** The keystone's `Empty` hypothesis, as a walk-state invariant: any gate
@@ -400,7 +401,7 @@ module LindenElkLiftSimOracle {
   lemma GateStaticsSweepRENested(qm: AR.QMap, re0: R.regex, re: R.regex, crv: CP.FCompiled,
                                  ncap: int, nlook: int, nquant: int)
     requires T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim
+    requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires NR.NestedFragmentRE(re) && NR.NegLooksLookFreeRE(re) && L5ScopeV1RE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re)
     requires LTB.LookTablesOk(re, crv)
@@ -428,6 +429,7 @@ module LindenElkLiftSimOracle {
       assert PIV.CapIdsInLooks(re) == PIV.CapIds(body);
       assert PIV.CapIdsInLooks(body) <= PIV.CapIdsInLooks(re0);
       // recurse into the body for its OWN inner lids
+      M.LooksNoNulledPlusFromFull(body);   // (§2.5b F-c) the body is stamp-free
       GateStaticsSweepRENested(qm, re0, body, crv, ncap, nlook, nquant);
       if lid >= 0 {
         // the node's own bundle
@@ -466,7 +468,7 @@ module LindenElkLiftSimOracle {
   lemma GateStaticsFromTablesNested(qm: AR.QMap, re: R.regex, crv: CP.FCompiled,
                                     ncap: int, nlook: int, nquant: int)
     requires T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim
+    requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires NR.NestedFragmentRE(re) && NR.NegLooksLookFreeRE(re) && L5ScopeV1RE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re)
     requires LTB.LookTablesOk(re, crv)
@@ -2727,7 +2729,7 @@ module LindenElkLiftSimOracle {
     requires T.TransWf(ast) && T.TransWf(re) && re == R.lazy_prefix(ast)
     requires NR.LookBehindFragmentRE(re) && LTB.LookUnique(re)
     requires PIV.QuantUnique(re) && PIV.CapUnique(re)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim: all stamps false
+    requires NR.NoNulledPlusRE(re)   // §2.5b interim: all stamps false (the L3a/L5 callees keep the full gate)
     requires crv == CP.FFullCompilation(ast)
     requires LTB.LookTablesOk(re, crv)
     requires code == CP.compile_to_bytecode(re)
@@ -2755,6 +2757,8 @@ module LindenElkLiftSimOracle {
                                ncap, nlook, nquant)
             && M.QuantRegsFinal(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed))
   {
+    M.LooksNoNulledPlusFromFull(re);   // (§2.5b F-c) the swept callees take the looks gate
+    hide M.LooksNoNulledPlusRE;   // (§2.5b F-c) a fact here, never unfolded (recursive: batch memory)
     // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
     // triggered existential storm the solver; all uses here are opaque.
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
@@ -3219,7 +3223,7 @@ module LindenElkLiftSimOracle {
         NR.PlusIsLookBehindFragmentRE(body);
         assert g in PIV.CapIds(re);
         assert M.cp_ctx_ok(crv, str, lk, l);
-        NI.NoNulledPlusLookBody(re, l as nat);   // §2.5b interim: NoNulledPlusRE(body)
+        M.LooksNoNulledPlusBody(re, l as nat);   // §2.5b interim: NoNulledPlusRE(body)
         FreshBodyMatchCapWf(crv, str, l, lk, ov, ncap, nlook, nquant, body);
         // carrier forward at l
         assert NI.LookPathPresent(re, thread.capture_regs.a_clk, qtF.a_clk, -1, l as nat)
@@ -3603,7 +3607,7 @@ module LindenElkLiftSimOracle {
       AR.ActionsRepL(rer, qm, acts, code, pc)
       && EL.PikeLkActionsRec(acts)
       && ATR.EaOf(b) == ea
-      && EL.BoolTreeLk(rer, acts, inp, b, tb);
+      && CW.BoolTreeLkX(rer, acts, inp, b, tb);
     ActionsRepLThruJmp(rer, qm, acts, code, pc, x);   // x >= 0 && ActionsRepL(acts, code, x)
     // same (acts, b) witness TtLkRec at x — only the pc moved
   }
@@ -3612,7 +3616,7 @@ module LindenElkLiftSimOracle {
                             tb: LT.Tree, pc: nat, b: BS.LoopBool, acts: LS.Actions)
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
     requires EL.PikeLkActionsRec(acts)
-    requires EL.BoolTreeLk(rer, acts, inp, b, tb)
+    requires CW.BoolTreeLkX(rer, acts, inp, b, tb)
     requires NR.GetPcRE(code, pc) == Some(RB.Accept)
     ensures tb == LT.Match
     decreases ATR.MsizeA(acts)
@@ -3633,7 +3637,7 @@ module LindenElkLiftSimOracle {
         match r
         case Epsilon =>
           assert pcmid == pc;
-          assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+          assert CW.BoolTreeLkX(rer, cont, inp, b, tb);
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
           TtLkAtAcceptCoreRec(rer, qm, code, inp, tb, pc, b, cont);
         case Sequence(r1, r2) =>
@@ -3649,7 +3653,7 @@ module LindenElkLiftSimOracle {
             EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont);
             EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
           }
-          assert EL.BoolTreeLk(rer, na, inp, b, tb);
+          assert CW.BoolTreeLkX(rer, na, inp, b, tb);
           assert LS.ActionsRegexSize(acts) == RegSz(r1) + RegSz(r2) + 1 + LS.ActionsRegexSize(cont);
           assert LS.ActionsRegexSize(na) == RegSz(r1) + RegSz(r2) + LS.ActionsRegexSize(cont);
           assert ATR.MsizeA(na) < ATR.MsizeA(acts);
@@ -3666,7 +3670,7 @@ module LindenElkLiftSimOracle {
             NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);   // pcmid == em
             assert pcmid == pc;
             assert AR.ActionsRepL(rer, qm, cont, code, pc);
-            assert EL.BoolTreeLk(rer, cont, inp, b, tb);   // Quantified NN(0) skip case
+            assert CW.BoolTreeLkX(rer, cont, inp, b, tb);   // Quantified NN(0) skip case
             assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
             TtLkAtAcceptCoreRec(rer, qm, code, inp, tb, pc, b, cont);
           } else {
@@ -3694,7 +3698,7 @@ module LindenElkLiftSimOracle {
       AR.ActionsRepL(rer, qm, acts, code, pc)
       && EL.PikeLkActionsRec(acts)
       && ATR.EaOf(b) == ea
-      && EL.BoolTreeLk(rer, acts, inp, b, tb);
+      && CW.BoolTreeLkX(rer, acts, inp, b, tb);
     TtLkAtAcceptCoreRec(rer, qm, code, inp, tb, pc, b, acts);
   }
 
@@ -3702,7 +3706,7 @@ module LindenElkLiftSimOracle {
                              tb: LT.Tree, pc: nat, b: BS.LoopBool, acts: LS.Actions, ce: RC.char_expectation)
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
     requires EL.PikeLkActionsRec(acts)
-    requires EL.BoolTreeLk(rer, acts, inp, b, tb)
+    requires CW.BoolTreeLkX(rer, acts, inp, b, tb)
     requires NR.GetPcRE(code, pc) == Some(RB.Consume(ce))
     ensures tb.Read? || tb == LT.Mismatch
     ensures tb.Read? ==> exists nextinp ::
@@ -3726,7 +3730,7 @@ module LindenElkLiftSimOracle {
       match r
       case Epsilon =>
         assert pcmid == pc;
-        assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+        assert CW.BoolTreeLkX(rer, cont, inp, b, tb);
         assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
         TtLkAtConsumeCoreRec(rer, qm, code, inp, tb, pc, b, cont, ce);
       case Sequence(r1, r2) =>
@@ -3742,7 +3746,7 @@ module LindenElkLiftSimOracle {
           EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont);
           EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
         }
-        assert EL.BoolTreeLk(rer, na, inp, b, tb);
+        assert CW.BoolTreeLkX(rer, na, inp, b, tb);
         assert LS.ActionsRegexSize(acts) == RegSz(r1) + RegSz(r2) + 1 + LS.ActionsRegexSize(cont);
         assert LS.ActionsRegexSize(na) == RegSz(r1) + RegSz(r2) + LS.ActionsRegexSize(cont);
         assert ATR.MsizeA(na) < ATR.MsizeA(acts);
@@ -3757,7 +3761,7 @@ module LindenElkLiftSimOracle {
           NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);
           assert pcmid == pc;
           assert AR.ActionsRepL(rer, qm, cont, code, pc);
-          assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+          assert CW.BoolTreeLkX(rer, cont, inp, b, tb);
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
           TtLkAtConsumeCoreRec(rer, qm, code, inp, tb, pc, b, cont, ce);
         } else {
@@ -3772,7 +3776,7 @@ module LindenElkLiftSimOracle {
           case None =>
             assert tb == LT.Mismatch;
           case Some(pair) =>
-            assert tb.Read? && tb.c == pair.0 && EL.BoolTreeLk(rer, cont, pair.1, BS.CanExit, tb.t);
+            assert tb.Read? && tb.c == pair.0 && CW.BoolTreeLkX(rer, cont, pair.1, BS.CanExit, tb.t);
             assert AR.ActionsRepL(rer, qm, cont, code, pc + 1);
             assert TtLkRec(rer, qm, code, pair.1, tb.t, pc + 1, true) by {
               assert ATR.EaOf(BS.CanExit) == true;
@@ -3800,7 +3804,7 @@ module LindenElkLiftSimOracle {
       AR.ActionsRepL(rer, qm, acts, code, pc)
       && EL.PikeLkActionsRec(acts)
       && ATR.EaOf(b) == ea
-      && EL.BoolTreeLk(rer, acts, inp, b, tb);
+      && CW.BoolTreeLkX(rer, acts, inp, b, tb);
     TtLkAtConsumeCoreRec(rer, qm, code, inp, tb, pc, b, acts, ce);
   }
 
@@ -3808,7 +3812,7 @@ module LindenElkLiftSimOracle {
                             tb: LT.Tree, pc: nat, b: BS.LoopBool, acts: LS.Actions, r: int)
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
     requires EL.PikeLkActionsRec(acts)
-    requires EL.BoolTreeLk(rer, acts, inp, b, tb)
+    requires CW.BoolTreeLkX(rer, acts, inp, b, tb)
     requires NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(r))
     ensures tb.GroupActionT?
     ensures (tb.g.Open? && r == CP.start_reg(tb.g.g as int))
@@ -3827,14 +3831,14 @@ module LindenElkLiftSimOracle {
     case Aclose(gid) =>
       // ActionRepL(Aclose(gid)) pins SetRegisterToCP(end_reg(gid)), pcmid == pc+1
       assert pcmid == pc + 1 && r == CP.end_reg(gid as int);
-      assert tb.GroupActionT? && tb.g == LG.Close(gid) && EL.BoolTreeLk(rer, cont, inp, b, tb.t);
+      assert tb.GroupActionT? && tb.g == LG.Close(gid) && CW.BoolTreeLkX(rer, cont, inp, b, tb.t);
       assert TtLkRec(rer, qm, code, inp, tb.t, pc + 1, g);
     case Areg(r0) =>
       assert EL.PikeLkRegexRec(r0);
       match r0
       case Epsilon =>
         assert pcmid == pc;
-        assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+        assert CW.BoolTreeLkX(rer, cont, inp, b, tb);
         assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
         TtLkAtSetRegCoreRec(rer, qm, code, inp, tb, pc, b, cont, r);
       case Sequence(r1, r2) =>
@@ -3850,7 +3854,7 @@ module LindenElkLiftSimOracle {
           EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont);
           EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
         }
-        assert EL.BoolTreeLk(rer, na, inp, b, tb);
+        assert CW.BoolTreeLkX(rer, na, inp, b, tb);
         assert LS.ActionsRegexSize(acts) == RegSz(r1) + RegSz(r2) + 1 + LS.ActionsRegexSize(cont);
         assert LS.ActionsRegexSize(na) == RegSz(r1) + RegSz(r2) + LS.ActionsRegexSize(cont);
         assert ATR.MsizeA(na) < ATR.MsizeA(acts);
@@ -3867,7 +3871,7 @@ module LindenElkLiftSimOracle {
         AR.ActionsRepLCons(rer, qm, LS.Aclose(gid), cont, code, e1, pcmid);
         AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Aclose(gid)] + cont, code, pc + 1, e1);
         assert AR.ActionsRepL(rer, qm, ga, code, pc + 1);
-        assert tb.GroupActionT? && tb.g == LG.Open(gid) && EL.BoolTreeLk(rer, ga, inp, b, tb.t);
+        assert tb.GroupActionT? && tb.g == LG.Open(gid) && CW.BoolTreeLkX(rer, ga, inp, b, tb.t);
         assert EL.PikeLkActionsRec(ga) by {
           EL.PikeLkActionsRecConsIff(LS.Aclose(gid), cont);
           EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Aclose(gid)] + cont);
@@ -3883,7 +3887,7 @@ module LindenElkLiftSimOracle {
           NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);
           assert pcmid == pc;
           assert AR.ActionsRepL(rer, qm, cont, code, pc);
-          assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+          assert CW.BoolTreeLkX(rer, cont, inp, b, tb);
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
           TtLkAtSetRegCoreRec(rer, qm, code, inp, tb, pc, b, cont, r);
         } else {
@@ -3911,16 +3915,15 @@ module LindenElkLiftSimOracle {
       AR.ActionsRepL(rer, qm, acts, code, pc)
       && EL.PikeLkActionsRec(acts)
       && ATR.EaOf(b) == ea
-      && EL.BoolTreeLk(rer, acts, inp, b, tb);
+      && CW.BoolTreeLkX(rer, acts, inp, b, tb);
     TtLkAtSetRegCoreRec(rer, qm, code, inp, tb, pc, b, acts, r);
   }
 
   lemma TtLkAtSetQuantCoreRec(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                               tb: LT.Tree, pc: nat, b: BS.LoopBool, acts: LS.Actions, q: int)
-    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
     requires EL.PikeLkActionsRec(acts)
-    requires EL.BoolTreeLk(rer, acts, inp, b, tb)
+    requires CW.BoolTreeLkX(rer, acts, inp, b, tb)
     requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, false))
     ensures tb.GroupActionT? && tb.g.Reset?
     ensures TtLkRec(rer, qm, code, inp, tb.t, pc + 1, ATR.EaOf(b))
@@ -3940,7 +3943,7 @@ module LindenElkLiftSimOracle {
       match r0
       case Epsilon =>
         assert pcmid == pc;
-        assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+        assert CW.BoolTreeLkX(rer, cont, inp, b, tb);
         assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
         TtLkAtSetQuantCoreRec(rer, qm, code, inp, tb, pc, b, cont, q);
       case Sequence(r1, r2) =>
@@ -3956,7 +3959,7 @@ module LindenElkLiftSimOracle {
           EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont);
           EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
         }
-        assert EL.BoolTreeLk(rer, na, inp, b, tb);
+        assert CW.BoolTreeLkX(rer, na, inp, b, tb);
         assert LS.ActionsRegexSize(acts) == RegSz(r1) + RegSz(r2) + 1 + LS.ActionsRegexSize(cont);
         assert LS.ActionsRegexSize(na) == RegSz(r1) + RegSz(r2) + LS.ActionsRegexSize(cont);
         assert ATR.MsizeA(na) < ATR.MsizeA(acts);
@@ -3965,11 +3968,18 @@ module LindenElkLiftSimOracle {
         assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
         assert AR.NfaRepL(rer, qm, L.Quantified(greedy, min, delta, r1), code, pc, pcmid);
         if min > 0 {
+          if min == 1 && delta.Inf? && greedy && !NUL.NonNullableL(r1) {
+            // §2.5b F-c: the CIN head is the FORK `Fork(em + 1, e1 + 2)` at pc
+            var emC, e1C := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+            assert emC == pc;
+            assert false;
+          }
+          if min == 1 { CW.NotCinGreedy(greedy, delta, r1); }
           // THE forced-copy real head: reset stamp + continuation via QuantForcedContRep.
           var quant1 := L.Quantified(greedy, min - 1, delta, r1);
           var contActs := [LS.Areg(r1), LS.Areg(quant1)] + cont;
           assert tb.GroupActionT? && tb.g == LG.Reset(L.DefGroups(r1))
-                 && EL.BoolTreeLk(rer, contActs, inp, b, tb.t);
+                 && CW.BoolTreeLkX(rer, contActs, inp, b, tb.t);
           QuantForcedContRep(rer, qm, greedy, min, delta, r1, code, pc, pcmid, cont);   // ActionsRepL(contActs, pc+1)
           assert EL.PikeLkRegexRec(r1) && EL.PikeLkRegexRec(quant1);
           assert EL.PikeLkActionsRec(contActs) by {
@@ -3984,7 +3994,7 @@ module LindenElkLiftSimOracle {
           NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);
           assert pcmid == pc;
           assert AR.ActionsRepL(rer, qm, cont, code, pc);
-          assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+          assert CW.BoolTreeLkX(rer, cont, inp, b, tb);
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
           TtLkAtSetQuantCoreRec(rer, qm, code, inp, tb, pc, b, cont, q);
         } else {
@@ -4024,10 +4034,9 @@ module LindenElkLiftSimOracle {
   }
 
   lemma TtLkAtSetQuantRec(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
-                          tb: LT.Tree, pc: nat, ea: bool, q: int)
-    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
+                          tb: LT.Tree, pc: nat, ea: bool, q: int, bq: bool)
     requires TtLkRec(rer, qm, code, inp, tb, pc, ea)
-    requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, false))
+    requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, bq))
     ensures tb.GroupActionT? && tb.g.Reset?
     ensures TtLkRec(rer, qm, code, inp, tb.t, pc + 1, ea)
   {
@@ -4035,19 +4044,115 @@ module LindenElkLiftSimOracle {
           AR.ActionsRepL(rer, qm, acts, code, pc)
           && EL.PikeLkActionsRec(acts)
           && ATR.EaOf(b) == ea
-          && EL.BoolTreeLk(rer, acts, inp, b, tb)) {
+          && CW.BoolTreeLkX(rer, acts, inp, b, tb)) {
       var acts: LS.Actions, b: BS.LoopBool :|
         AR.ActionsRepL(rer, qm, acts, code, pc)
         && EL.PikeLkActionsRec(acts)
         && ATR.EaOf(b) == ea
-        && EL.BoolTreeLk(rer, acts, inp, b, tb);
+        && CW.BoolTreeLkX(rer, acts, inp, b, tb);
+      if bq { ActionsRepNotAtTrueStamp(rer, qm, acts, code, pc, q); }   // (§2.5b F-c) no stack sits at the stamp
       TtLkAtSetQuantCoreRec(rer, qm, code, inp, tb, pc, b, acts, q);
     } else {
       // the SQC see-through disjunct gives the shape + child directly
-      var q0: int :| NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q0, false))
+      var q0: int :| (NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q0, false))
+                      || NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q0, true)))
                      && q0 in qm.quants
                      && tb.GroupActionT? && tb.g == LG.Reset(qm.quants[q0])
                      && TtLkRec(rer, qm, code, inp, tb.t, pc + 1, ea);
+    }
+  }
+
+  /** (§2.5b F-c) No action stack is represented at the nulled-exit stamp: it is
+      reached only from the CIN head fork's skip arm, and every layout arm opens
+      with a different instruction (a forced copy's clock-mark writes `false`,
+      the CIN head is a Fork). */
+  lemma ActionsRepNotAtTrueStamp(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code,
+                                 pc: nat, q: int)
+    requires AR.ActionsRepL(rer, qm, acts, code, pc)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, true))
+    ensures false
+    decreases ATR.MsizeA(acts)
+  {
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, AR.NfaRepStarCinL;
+    if |acts| == 0 {
+      // ActionsRepL([]) pins Accept
+    } else if exists pcmid: nat :: AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && AR.ActionsRepL(rer, qm, acts[1..], code, pcmid) {
+      var pcmid: nat :| AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && AR.ActionsRepL(rer, qm, acts[1..], code, pcmid);
+      assert acts == [acts[0]] + acts[1..];
+      var cont := acts[1..];
+      match acts[0]
+      case Acheck(_) =>   // pins EndLoop / backward Fork
+      case Aclose(_) =>   // pins SetRegisterToCP
+      case Areg(r0) =>
+        match r0
+        case Epsilon =>
+          assert pcmid == pc;
+          assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
+          ActionsRepNotAtTrueStamp(rer, qm, cont, code, pc, q);
+        case Sequence(r1, r2) =>
+          assert AR.NfaRepL(rer, qm, L.Sequence(r1, r2), code, pc, pcmid);
+          var e1: nat :| AR.NfaRepL(rer, qm, r1, code, pc, e1) && AR.NfaRepL(rer, qm, r2, code, e1, pcmid);
+          var na := [LS.Areg(r1), LS.Areg(r2)] + cont;
+          assert na == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+          AR.ActionsRepLCons(rer, qm, LS.Areg(r2), cont, code, e1, pcmid);
+          AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Areg(r2)] + cont, code, pc, e1);
+          assert LS.ActionsRegexSize(acts) == RegSz(r1) + RegSz(r2) + 1 + LS.ActionsRegexSize(cont);
+          assert LS.ActionsRegexSize(na) == RegSz(r1) + RegSz(r2) + LS.ActionsRegexSize(cont);
+          assert ATR.MsizeA(na) < ATR.MsizeA(acts);
+          ActionsRepNotAtTrueStamp(rer, qm, na, code, pc, q);
+        case Quantified(greedy, min, delta, r1) =>
+          assert AR.NfaRepL(rer, qm, L.Quantified(greedy, min, delta, r1), code, pc, pcmid);
+          if min > 0 {
+            if min == 1 && delta.Inf? && greedy && !NUL.NonNullableL(r1) {
+              var emC, e1C := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+              assert emC == pc;   // the head is the Fork
+            } else {
+              QuantHeadSQCPin(rer, qm, greedy, min, delta, r1, code, pc, pcmid);   // a `false` clock-mark
+            }
+          } else if delta == LN.NN(0) {
+            var em: nat :| AR.NfaRepMinL(rer, qm, 0, r1, code, pc, em)
+                           && AR.NfaRepOptL(rer, qm, 0, greedy, r1, code, em, pcmid);
+            NfaRepMinLHeadPin(rer, qm, 0, r1, code, pc, em);
+            NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);
+            assert pcmid == pc;
+            assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
+            ActionsRepNotAtTrueStamp(rer, qm, cont, code, pc, q);
+          } else {
+            QuantHeadPinsForkOrSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
+            match delta
+            case Inf =>
+              if exists e1: nat ::
+                  NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1))
+                  && (exists qid: int :: NR.GetPcRE(code, pc + 1) == Some(RB.SetQuantToClock(qid, false))
+                                         && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
+                  && NR.GetPcRE(code, pc + 2) == Some(RB.BeginLoop)
+                  && AR.NfaRepL(rer, qm, r1, code, pc + 3, e1)
+                  && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+                  && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(pc))
+                  && pcmid == e1 + 2 {
+                var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1));
+              } else {
+                AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+                if NUL.NonNullableL(r1) {
+                  var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
+                } else {
+                  var emC, e1C := AR.NfaRepLStarCinInv(rer, qm, r1, code, pc, pcmid);
+                }
+              }
+            case NN(kx) =>
+              var em: nat :| AR.NfaRepMinL(rer, qm, 0, r1, code, pc, em)
+                             && AR.NfaRepOptL(rer, qm, kx, greedy, r1, code, em, pcmid);
+              NfaRepMinLHeadPin(rer, qm, 0, r1, code, pc, em);
+              NfaRepOptLHeadPin(rer, qm, kx, greedy, r1, code, em, pcmid);
+          }
+        case Character(_) =>
+        case Disjunction(_, _) =>
+        case Group(_, _) =>
+        case LookaroundR(_, _) =>
+        case AnchorR(_) =>
+        case Backreference(_) =>
+    } else {
+      var pcstart: nat :| NR.GetPcRE(code, pc) == Some(RB.Jmp(pcstart)) && AR.ActionsRepL(rer, qm, acts, code, pcstart);
     }
   }
 
@@ -4055,7 +4160,7 @@ module LindenElkLiftSimOracle {
                                  tb: LT.Tree, pc: nat, b: BS.LoopBool, acts: LS.Actions, lid: int)
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
     requires EL.PikeLkActionsRec(acts)
-    requires EL.BoolTreeLk(rer, acts, inp, b, tb)
+    requires CW.BoolTreeLkX(rer, acts, inp, b, tb)
     requires NR.GetPcRE(code, pc) == Some(RB.CheckOracle(lid))
     requires LL.OracleOkAt(rer, qm, inp)
     ensures lid in qm.looks
@@ -4083,7 +4188,7 @@ module LindenElkLiftSimOracle {
       match r0
       case Epsilon =>
         assert pcmid == pc;
-        assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+        assert CW.BoolTreeLkX(rer, cont, inp, b, tb);
         assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
         TtLkAtCheckOracleCoreRec(rer, qm, code, inp, tb, pc, b, cont, lid);
       case Sequence(r1, r2) =>
@@ -4099,7 +4204,7 @@ module LindenElkLiftSimOracle {
           EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont);
           EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
         }
-        assert EL.BoolTreeLk(rer, na, inp, b, tb);
+        assert CW.BoolTreeLkX(rer, na, inp, b, tb);
         assert LS.ActionsRegexSize(acts) == RegSz(r1) + RegSz(r2) + 1 + LS.ActionsRegexSize(cont);
         assert LS.ActionsRegexSize(na) == RegSz(r1) + RegSz(r2) + LS.ActionsRegexSize(cont);
         assert ATR.MsizeA(na) < ATR.MsizeA(acts);
@@ -4114,7 +4219,7 @@ module LindenElkLiftSimOracle {
           NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);
           assert pcmid == pc;
           assert AR.ActionsRepL(rer, qm, cont, code, pc);
-          assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+          assert CW.BoolTreeLkX(rer, cont, inp, b, tb);
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
           TtLkAtCheckOracleCoreRec(rer, qm, code, inp, tb, pc, b, cont, lid);
         } else {
@@ -4130,12 +4235,12 @@ module LindenElkLiftSimOracle {
         assert AR.PositiveL(lk0) && lid0 == lid;
         assert L.Positivity(lk0);
         assert lid in qm.looks && qm.looks[lid] == (lk0, r1);
-        M.GateNodeAtInp(rer, acts, inp, b, tb, lk0, r1);   // tb is LK/LKFail with LkGateOk
+        CW.GateNodeAtInpX(rer, acts, inp, b, tb, lk0, r1);   // tb is LK/LKFail with LkGateOk
         // OracleOkAt at lid: bit ⟺ TreeRes(ComputeTr([Areg(r1)],inp,Empty,LkDir(lk0)),..).Some?
         var bit := LOr.view_get_oracle(qm.ov, TR_CpOf(inp), lid);
         if tb.LK? {
           // LkGateOk(..,true) ⇒ LkResult.Some? ⇒ TreeRes.Some? ⇒ bit
-          assert EL.BoolTreeLk(rer, cont, inp, b, tb.t);
+          assert CW.BoolTreeLkX(rer, cont, inp, b, tb.t);
           assert AR.ActionsRepL(rer, qm, cont, code, pc + 1);
           assert TtLkRec(rer, qm, code, inp, tb.t, pc + 1, g);
           assert bit;
@@ -4170,7 +4275,7 @@ module LindenElkLiftSimOracle {
       AR.ActionsRepL(rer, qm, acts, code, pc)
       && EL.PikeLkActionsRec(acts)
       && ATR.EaOf(b) == ea
-      && EL.BoolTreeLk(rer, acts, inp, b, tb);
+      && CW.BoolTreeLkX(rer, acts, inp, b, tb);
     TtLkAtCheckOracleCoreRec(rer, qm, code, inp, tb, pc, b, acts, lid);
   }
 
@@ -4178,7 +4283,7 @@ module LindenElkLiftSimOracle {
                             tb: LT.Tree, pc: nat, b: BS.LoopBool, acts: LS.Actions, a: R.anchor)
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
     requires EL.PikeLkActionsRec(acts)
-    requires EL.BoolTreeLk(rer, acts, inp, b, tb)
+    requires CW.BoolTreeLkX(rer, acts, inp, b, tb)
     requires NR.GetPcRE(code, pc) == Some(RB.AnchorAssertion(a))
     ensures tb.AnchorPass? || tb == LT.Mismatch
     ensures tb.AnchorPass? ==> TtLkRec(rer, qm, code, inp, tb.t, pc + 1, ATR.EaOf(b))
@@ -4198,7 +4303,7 @@ module LindenElkLiftSimOracle {
       match r0
       case Epsilon =>
         assert pcmid == pc;
-        assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+        assert CW.BoolTreeLkX(rer, cont, inp, b, tb);
         assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
         TtLkAtAnchorCoreRec(rer, qm, code, inp, tb, pc, b, cont, a);
       case Sequence(r1, r2) =>
@@ -4214,7 +4319,7 @@ module LindenElkLiftSimOracle {
           EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont);
           EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
         }
-        assert EL.BoolTreeLk(rer, na, inp, b, tb);
+        assert CW.BoolTreeLkX(rer, na, inp, b, tb);
         assert LS.ActionsRegexSize(acts) == RegSz(r1) + RegSz(r2) + 1 + LS.ActionsRegexSize(cont);
         assert LS.ActionsRegexSize(na) == RegSz(r1) + RegSz(r2) + LS.ActionsRegexSize(cont);
         assert ATR.MsizeA(na) < ATR.MsizeA(acts);
@@ -4229,7 +4334,7 @@ module LindenElkLiftSimOracle {
           NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);
           assert pcmid == pc;
           assert AR.ActionsRepL(rer, qm, cont, code, pc);
-          assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+          assert CW.BoolTreeLkX(rer, cont, inp, b, tb);
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
           TtLkAtAnchorCoreRec(rer, qm, code, inp, tb, pc, b, cont, a);
         } else {
@@ -4241,7 +4346,7 @@ module LindenElkLiftSimOracle {
         var a2: R.anchor :| NR.GetPcRE(code, pc) == Some(RB.AnchorAssertion(a2)) && T.TrAnchor(a2) == la;
         assert pcmid == pc + 1;
         if LS.AnchorSatisfied(rer, la, inp) {
-          assert tb.AnchorPass? && EL.BoolTreeLk(rer, cont, inp, b, tb.t);
+          assert tb.AnchorPass? && CW.BoolTreeLkX(rer, cont, inp, b, tb.t);
           assert AR.ActionsRepL(rer, qm, cont, code, pc + 1);
           assert TtLkRec(rer, qm, code, inp, tb.t, pc + 1, g);
         } else {
@@ -4265,7 +4370,7 @@ module LindenElkLiftSimOracle {
       AR.ActionsRepL(rer, qm, acts, code, pc)
       && EL.PikeLkActionsRec(acts)
       && ATR.EaOf(b) == ea
-      && EL.BoolTreeLk(rer, acts, inp, b, tb);
+      && CW.BoolTreeLkX(rer, acts, inp, b, tb);
     TtLkAtAnchorCoreRec(rer, qm, code, inp, tb, pc, b, acts, a);
   }
 
@@ -4273,7 +4378,7 @@ module LindenElkLiftSimOracle {
                              tb: LT.Tree, pc: nat, b: BS.LoopBool, acts: LS.Actions)
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
     requires EL.PikeLkActionsRec(acts)
-    requires EL.BoolTreeLk(rer, acts, inp, b, tb)
+    requires CW.BoolTreeLkX(rer, acts, inp, b, tb)
     requires NR.GetPcRE(code, pc) == Some(RB.EndLoop)
     ensures ATR.EaOf(b) ==> tb.Progress? && TtLkRec(rer, qm, code, inp, tb.t, pc + 1, true)
     ensures !ATR.EaOf(b) ==> tb == LT.Mismatch
@@ -4292,7 +4397,7 @@ module LindenElkLiftSimOracle {
       assert pcmid == pc + 1;
       if b == BS.CanExit {
         assert g == true;
-        assert tb.Progress? && EL.BoolTreeLk(rer, cont, inp, BS.CanExit, tb.t);
+        assert tb.Progress? && CW.BoolTreeLkX(rer, cont, inp, BS.CanExit, tb.t);
         assert AR.ActionsRepL(rer, qm, cont, code, pc + 1);
         assert TtLkRec(rer, qm, code, inp, tb.t, pc + 1, true);
       } else {
@@ -4305,7 +4410,7 @@ module LindenElkLiftSimOracle {
       match r0
       case Epsilon =>
         assert pcmid == pc;
-        assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+        assert CW.BoolTreeLkX(rer, cont, inp, b, tb);
         assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
         TtLkAtEndLoopCoreRec(rer, qm, code, inp, tb, pc, b, cont);
       case Sequence(r1, r2) =>
@@ -4321,7 +4426,7 @@ module LindenElkLiftSimOracle {
           EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont);
           EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
         }
-        assert EL.BoolTreeLk(rer, na, inp, b, tb);
+        assert CW.BoolTreeLkX(rer, na, inp, b, tb);
         assert LS.ActionsRegexSize(acts) == RegSz(r1) + RegSz(r2) + 1 + LS.ActionsRegexSize(cont);
         assert LS.ActionsRegexSize(na) == RegSz(r1) + RegSz(r2) + LS.ActionsRegexSize(cont);
         assert ATR.MsizeA(na) < ATR.MsizeA(acts);
@@ -4336,7 +4441,7 @@ module LindenElkLiftSimOracle {
           NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);
           assert pcmid == pc;
           assert AR.ActionsRepL(rer, qm, cont, code, pc);
-          assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+          assert CW.BoolTreeLkX(rer, cont, inp, b, tb);
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
           TtLkAtEndLoopCoreRec(rer, qm, code, inp, tb, pc, b, cont);
         } else {
@@ -4363,16 +4468,15 @@ module LindenElkLiftSimOracle {
       AR.ActionsRepL(rer, qm, acts, code, pc)
       && EL.PikeLkActionsRec(acts)
       && ATR.EaOf(b) == ea
-      && EL.BoolTreeLk(rer, acts, inp, b, tb);
+      && CW.BoolTreeLkX(rer, acts, inp, b, tb);
     TtLkAtEndLoopCoreRec(rer, qm, code, inp, tb, pc, b, acts);
   }
 
   lemma TtLkAtForkCoreRec(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                           tb: LT.Tree, pc: nat, b: BS.LoopBool, acts: LS.Actions, x: int, y: int)
-    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
     requires EL.PikeLkActionsRec(acts)
-    requires EL.BoolTreeLk(rer, acts, inp, b, tb)
+    requires CW.BoolTreeLkX(rer, acts, inp, b, tb)
     requires NR.GetPcRE(code, pc) == Some(RB.Fork(x, y))
     ensures x >= 0 && y >= 0
     ensures tb.Choice? || tb.Progress? || tb == LT.Mismatch
@@ -4394,7 +4498,7 @@ module LindenElkLiftSimOracle {
       match r0
       case Epsilon =>
         assert pcmid == pc;
-        assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+        assert CW.BoolTreeLkX(rer, cont, inp, b, tb);
         assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
         TtLkAtForkCoreRec(rer, qm, code, inp, tb, pc, b, cont, x, y);
       case Sequence(r1, r2) =>
@@ -4410,7 +4514,7 @@ module LindenElkLiftSimOracle {
           EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont);
           EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
         }
-        assert EL.BoolTreeLk(rer, na, inp, b, tb);
+        assert CW.BoolTreeLkX(rer, na, inp, b, tb);
         assert LS.ActionsRegexSize(acts) == RegSz(r1) + RegSz(r2) + 1 + LS.ActionsRegexSize(cont);
         assert LS.ActionsRegexSize(na) == RegSz(r1) + RegSz(r2) + LS.ActionsRegexSize(cont);
         assert ATR.MsizeA(na) < ATR.MsizeA(acts);
@@ -4433,20 +4537,21 @@ module LindenElkLiftSimOracle {
           NfaRepOptLHeadPin(rer, qm, 0, greedy, r1, code, em, pcmid);
           assert pcmid == pc;
           assert AR.ActionsRepL(rer, qm, cont, code, pc);
-          assert EL.BoolTreeLk(rer, cont, inp, b, tb);
+          assert CW.BoolTreeLkX(rer, cont, inp, b, tb);
           assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
           TtLkAtForkCoreRec(rer, qm, code, inp, tb, pc, b, cont, x, y);
+        } else if min == 1 && delta.Inf? && greedy && !NUL.NonNullableL(r1) {
+          // §2.5b F-c: THE CIN HEAD FORK `Fork(em + 1, e1 + 2)` — the
+          // engine-shaped walk tree is its Choice
+          var emC, e1C := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+          assert emC == pc;
+          assert x >= 0 && y >= 0;
+          CW.CinGreedyIntro(r1);
+          assert tb.Choice?;
         } else if min > 0 {
           // §2.5a: the STRONG head fact -- `min > 0` pins a clock-mark, which
           // refutes the `Fork` we are sitting at. `QuantHeadPinsForkOrSQC`'s
           // `Fork? || SetQuantToClock?` is too weak here.
-          assert min > 0 && delta.Inf? && greedy ==> NUL.NonNullableL(r1) by {   // §2.5b: stamp-free code
-            if min > 0 && delta.Inf? && greedy && !NUL.NonNullableL(r1) {
-              var emC, e1C := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
-              var qidC: int :| NR.GetPcRE(code, e1C + 2) == Some(RB.SetQuantToClock(qidC, true));
-              assert NR.GetPcRE(code, e1C + 2) != Some(RB.SetQuantToClock(qidC, true));
-            }
-          }
           QuantHeadMinPosPinsSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
         } else {
           // min==0, Inf or NN(kx>0): the star/bounded fork ⇒ tb.Choice?; targets are nats.
@@ -4496,7 +4601,6 @@ module LindenElkLiftSimOracle {
 
   lemma TtLkAtForkRec(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                       tb: LT.Tree, pc: nat, ea: bool, x: int, y: int)
-    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires TtLkRec(rer, qm, code, inp, tb, pc, ea)
     requires NR.GetPcRE(code, pc) == Some(RB.Fork(x, y))
     ensures x >= 0 && y >= 0
@@ -4506,18 +4610,17 @@ module LindenElkLiftSimOracle {
       AR.ActionsRepL(rer, qm, acts, code, pc)
       && EL.PikeLkActionsRec(acts)
       && ATR.EaOf(b) == ea
-      && EL.BoolTreeLk(rer, acts, inp, b, tb);
+      && CW.BoolTreeLkX(rer, acts, inp, b, tb);
     TtLkAtForkCoreRec(rer, qm, code, inp, tb, pc, b, acts, x, y);
   }
 
   lemma ActionsTreeRepLkRERec(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code,
                               pc: nat, inp: LC.Input, b: BS.LoopBool, t: LT.Tree)
     returns (tcan: LT.Tree)
-    requires AR.NoTrueStamps(code)   // §2.5b stage 2a: look-body code is stamp-free
     requires EL.PikeLkActionsRec(acts)
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
     requires WO.WalkOk(acts, code, pc, ATR.EaOf(b))
-    requires EL.BoolTreeLk(rer, acts, inp, b, t)
+    requires CW.BoolTreeLkX(rer, acts, inp, b, t)
     ensures TreeRepLkRE(rer, qm, code, inp, tcan, pc, ATR.EaOf(b))
     ensures CE.ProgErase(tcan) == CE.ProgErase(t)
   {
@@ -4929,7 +5032,7 @@ module LindenElkLiftSimOracle {
     host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed through the recursion) ----
     requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && L5ScopeV1RE(re)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim: all stamps false
+    requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires |crv.f_look_types| == |crv.f_look_ast|
@@ -5210,7 +5313,7 @@ module LindenElkLiftSimOracle {
     requires NR.NestedFragmentRE(top) && LTB.LidsWellNested(top) && LTB.LookUnique(top)
     requires forall x: nat :: x in LTB.LookIds(top) ==> 1 <= x
     requires NR.NestedFragmentRE(sub) && NR.L5ScopeRE(sub) && NR.NegLooksLookFreeRE(sub)   // (L5 F7g) lifted
-    requires NR.NoNulledPlusRE(sub)   // §2.5b interim: all stamps false
+    requires M.LooksNoNulledPlusRE(sub)   // (§2.5b F-c) look bodies stay stamp-free
     requires T.TransWf(sub) && LTB.LookUnique(sub) && PIV.CapUnique(sub) && PIV.QuantUnique(sub)
     requires LTB.LookTablesOk(sub, crv)
     requires LTB.LookIds(sub) <= LTB.LookIds(top)
@@ -5341,7 +5444,7 @@ module LindenElkLiftSimOracle {
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       OE.LmapOkOfLmOf(body, qmb);
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      NI.NoNulledPlusLookBody(sub, lid as nat);   // §2.5b interim: NoNulledPlusRE(body)
+      M.LooksNoNulledPlusBody(sub, lid as nat);   // §2.5b interim: NoNulledPlusRE(body)
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert PSM.StaticOkNestedRE(qmb, body, codeb, endlb);
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -5483,7 +5586,7 @@ module LindenElkLiftSimOracle {
     requires NR.NestedFragmentRE(top) && LTB.LidsWellNested(top) && LTB.LookUnique(top)
     requires forall x: nat :: x in LTB.LookIds(top) ==> 1 <= x
     requires NR.NestedFragmentRE(sub) && NR.L5ScopeRE(sub) && NR.NegLooksLookFreeRE(sub)   // (L5 F7g) lifted
-    requires NR.NoNulledPlusRE(sub)   // §2.5b interim: all stamps false
+    requires M.LooksNoNulledPlusRE(sub)   // (§2.5b F-c) look bodies stay stamp-free
     requires T.TransWf(sub) && LTB.LookUnique(sub) && PIV.CapUnique(sub) && PIV.QuantUnique(sub)
     requires LTB.LookTablesOk(sub, crv)
     requires LTB.LookIds(sub) <= LTB.LookIds(top)
@@ -5524,7 +5627,7 @@ module LindenElkLiftSimOracle {
         // the inner rows first (strictly fewer look ids: the owner's own id is gone)
         LookIdNotInOwnBody(sub, lidn);
         SubsetCardLt(LTB.LookIds(body), LTB.LookIds(sub), lidn);
-        NI.NoNulledPlusLookBody(sub, lidn);   // §2.5b interim: NoNulledPlusRE(body)
+        M.LooksNoNulledPlusBody(sub, lidn);   // §2.5b interim: NoNulledPlusRE(body)
         OracleOkRowsL5(rer, top, crv, str, body);
         // then this row's column
         OracleColumnNested(rer, top, crv, str, sub, lid, lk, r1, cp);

@@ -50,6 +50,36 @@ module LindenElkCinWalk {
     greedy && delta == LN.Inf && NUL.CINullableL(r1)
   }
 
+  /** The guard's three shapes, for callers that keep `CinGreedyL` opaque. */
+  lemma CinGreedyIntro(r1: L.Regex)
+    requires NUL.CINullableL(r1)
+    ensures CinGreedyL(true, LN.Inf, r1)
+  { reveal CinGreedyL; }
+
+  lemma NotCinGreedy(greedy: bool, delta: LN.NoI, r1: L.Regex)
+    requires !greedy || delta != LN.Inf || NUL.NonNullableL(r1)
+    ensures !CinGreedyL(greedy, delta, r1)
+  {
+    reveal CinGreedyL;
+    if NUL.CINullableL(r1) && NUL.NonNullableL(r1) { NUL.CINotNonNullableL(r1); }
+  }
+
+  lemma NotCinGreedyNonNullable(greedy: bool, delta: LN.NoI, r1: L.Regex)
+    requires NUL.NonNullableL(r1)
+    ensures !CinGreedyL(greedy, delta, r1)
+  {
+    reveal CinGreedyL;
+    if NUL.CINullableL(r1) { NUL.CINotNonNullableL(r1); }
+  }
+
+  lemma NotCinGreedyLazy(delta: LN.NoI, r1: L.Regex)
+    ensures !CinGreedyL(false, delta, r1)
+  { reveal CinGreedyL; }
+
+  lemma NotCinGreedyNN(greedy: bool, k: nat, r1: L.Regex)
+    ensures !CinGreedyL(greedy, LN.NN(k), r1)
+  { reveal CinGreedyL; }
+
   /** `EL.BoolTreeLk` with the CIN-greedy plus at `min == 1` in the ENGINE'S
       shape: the head fork's loop arm (the star's iteration at `CannotExit`,
       under `Reset(gidl)`) and its skip arm (the stamp's `Reset(gidl)` over the
@@ -241,6 +271,465 @@ module LindenElkCinWalk {
     }
   }
 
+  /** `CE.BoolFlagLiftRec` for the engine-shaped tree: on a shielded stack the
+      `CannotExit` tree is also the `CanExit` one (the do-while's lift). */
+  lemma BoolFlagLiftRecX(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input, t: LT.Tree)
+    requires EL.PikeLkActionsRec(acts)
+    requires CE.ShieldedActs(acts)
+    requires BoolTreeLkX(rer, acts, inp, BS.CannotExit, t)
+    ensures BoolTreeLkX(rer, acts, inp, BS.CanExit, t)
+    decreases LS.TreeSize(t), LS.ActionsRegexSize(acts)
+  {
+    if |acts| == 0 { return; }
+    var cont := acts[1..];
+    EL.PikeLkActionsRecTail(acts);
+    assert acts == [acts[0]] + cont;
+    match acts[0]
+    case Acheck(strcheck) =>
+      // a shielded list cannot have an Acheck at its head
+      var j :| 0 <= j < 0 && acts[j].Areg? && NUL.NonNullableL(acts[j].r);
+    case Aclose(gid) =>
+      match t {
+        case GroupActionT(g, tc) =>
+          CE.ShieldedTail(acts);
+          BoolFlagLiftRecX(rer, cont, inp, tc);
+        case _ =>
+      }
+    case Areg(r) =>
+      assert EL.PikeLkRegexRec(r);
+      match r
+      case Epsilon =>
+        CE.ShieldedTail(acts);
+        assert LS.ActionsRegexSize(cont) < LS.ActionsRegexSize(acts);
+        BoolFlagLiftRecX(rer, cont, inp, t);
+      case Character(cd) =>
+        // the flags converge at the read: the sub-derivation is shared
+        match LC.ReadChar(rer, cd, inp, WP.Forward) {
+          case None =>
+          case Some(pair) =>
+        }
+      case Disjunction(r1, r2) =>
+        match t {
+          case Choice(ta, tb) =>
+            var la := [LS.Areg(r1)] + cont;
+            var lb := [LS.Areg(r2)] + cont;
+            EL.PikeLkActionsRecConsIff(LS.Areg(r1), cont);
+            EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont);
+            assert NUL.NonNullableL(r) ==> NUL.NonNullableL(r1) && NUL.NonNullableL(r2);
+            CE.ShieldedCons([LS.Areg(r1)], acts);
+            CE.ShieldedCons([LS.Areg(r2)], acts);
+            BoolFlagLiftRecX(rer, la, inp, ta);
+            BoolFlagLiftRecX(rer, lb, inp, tb);
+          case _ =>
+        }
+      case Sequence(r1, r2) =>
+        var ln := [LS.Areg(r1), LS.Areg(r2)] + cont;
+        EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont);
+        EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
+        assert ln == [LS.Areg(r1)] + ([LS.Areg(r2)] + cont);
+        var sparts := [LS.Areg(r1), LS.Areg(r2)];
+        if NUL.NonNullableL(r) {
+          if NUL.NonNullableL(r1) {
+            assert sparts[0].Areg? && NUL.NonNullableL(sparts[0].r);
+          } else {
+            assert NUL.NonNullableL(r2);
+            assert sparts[1].Areg? && NUL.NonNullableL(sparts[1].r);
+          }
+        }
+        CE.ShieldedCons(sparts, acts);
+        assert LS.ActionsRegexSize(ln) < LS.ActionsRegexSize(acts);
+        BoolFlagLiftRecX(rer, ln, inp, t);
+      case Quantified(greedy, min, delta, r1) =>
+        var gidl := L.DefGroups(r1);
+        if min == 1 && CinGreedyL(greedy, delta, r1) {
+          // the CIN head: the loop arm is pushed at CannotExit by both
+          // derivations (shared); the stamp arm lifts with the continuation
+          match t {
+            case Choice(ta, tb) =>
+              match tb {
+                case GroupActionT(h, tc) =>
+                  assert !NUL.NonNullableL(r) by {
+                    reveal CinGreedyL;
+                    NUL.CINotNonNullableL(r1);
+                  }
+                  CE.ShieldedTail(acts);
+                  assert LS.TreeSize(tc) < LS.TreeSize(t);
+                  BoolFlagLiftRecX(rer, cont, inp, tc);
+                case _ =>
+              }
+            case _ =>
+          }
+        } else if min > 0 {
+          match t {
+            case GroupActionT(g, tc) =>
+              var q1 := L.Quantified(greedy, min - 1, delta, r1);
+              var ln := [LS.Areg(r1), LS.Areg(q1)] + cont;
+              EL.PikeLkActionsRecConsIff(LS.Areg(q1), cont);
+              EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(q1)] + cont);
+              assert ln == [LS.Areg(r1)] + ([LS.Areg(q1)] + cont);
+              assert NUL.NonNullableL(r) ==> NUL.NonNullableL(r1);
+              CE.ShieldedCons([LS.Areg(r1), LS.Areg(q1)], acts);
+              assert LS.TreeSize(tc) < LS.TreeSize(t);
+              BoolFlagLiftRecX(rer, ln, inp, tc);
+            case _ =>
+          }
+        } else if delta == LN.NN(0) {
+          CE.ShieldedTail(acts);
+          assert LS.ActionsRegexSize(cont) < LS.ActionsRegexSize(acts);
+          BoolFlagLiftRecX(rer, cont, inp, t);
+        } else {
+          match t {
+            case Choice(ta, tb) =>
+              var itert := if greedy then ta else tb;
+              var skipt := if greedy then tb else ta;
+              match itert {
+                case GroupActionT(g, ti) =>
+                  // iteration subtree: pushed at CannotExit by both
+                  // derivations â€” shared verbatim, no recursion.
+                  CE.ShieldedTail(acts);
+                  assert LS.TreeSize(skipt) < LS.TreeSize(t);
+                  BoolFlagLiftRecX(rer, cont, inp, skipt);
+                case _ =>
+              }
+            case _ =>
+          }
+        }
+      case Group(gid, r1) =>
+        match t {
+          case GroupActionT(g, tc) =>
+            var ln := [LS.Areg(r1), LS.Aclose(gid)] + cont;
+            EL.PikeLkActionsRecConsIff(LS.Aclose(gid), cont);
+            EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Aclose(gid)] + cont);
+            assert ln == [LS.Areg(r1)] + ([LS.Aclose(gid)] + cont);
+            assert NUL.NonNullableL(r) ==> NUL.NonNullableL(r1);
+            CE.ShieldedCons([LS.Areg(r1), LS.Aclose(gid)], acts);
+            assert LS.TreeSize(tc) < LS.TreeSize(t);
+            BoolFlagLiftRecX(rer, ln, inp, tc);
+          case _ =>
+        }
+      case AnchorR(a) =>
+        if LS.AnchorSatisfied(rer, a, inp) {
+          match t {
+            case AnchorPass(a2, tc) =>
+              CE.ShieldedTail(acts);
+              BoolFlagLiftRecX(rer, cont, inp, tc);
+            case _ =>
+          }
+        }
+      case LookaroundR(lk, r1) =>
+        // the gate does not read the loop flag; lift under it
+        match t {
+          case LK(lk2, tlk, tc) =>
+            CE.ShieldedTail(acts);
+            BoolFlagLiftRecX(rer, cont, inp, tc);
+          case _ =>
+        }
+      case Backreference(_) =>
+  }
+
+  /** `CE.BoolCheckInsertK` for the engine-shaped tree (the do-while seam's
+      check insertion): the tree with the check inserted after `pre` exists,
+      has the same size, and erases to the same tree. */
+  lemma BoolCheckInsertKX(rer: LW.RegExpRecord, pre: LS.Actions, chk: LC.Input, rest: LS.Actions,
+                       inp: LC.Input, b: BS.LoopBool, t: LT.Tree) returns (tstar: LT.Tree)
+    requires EL.PikeLkActionsRec(pre)
+    requires CE.ConsumesBeforeAreg(pre) || CE.AcheckIn(pre) || b == BS.CanExit
+    requires BoolTreeLkX(rer, pre + rest, inp, b, t)
+    ensures BoolTreeLkX(rer, pre + [LS.Acheck(chk)] + rest, inp, b, tstar)
+    ensures CE.PSize(tstar) == CE.PSize(t)
+    ensures CE.ProgErase(tstar) == CE.ProgErase(t)
+    decreases LS.TreeSize(t), LS.ActionsRegexSize(pre)
+  {
+    if |pre| == 0 {
+      assert !CE.ConsumesBeforeAreg(pre) && !CE.AcheckIn(pre);
+      assert b == BS.CanExit;
+      assert pre + rest == rest;
+      assert pre + [LS.Acheck(chk)] + rest == [LS.Acheck(chk)] + rest;
+      assert ([LS.Acheck(chk)] + rest)[0] == LS.Acheck(chk)
+          && ([LS.Acheck(chk)] + rest)[1..] == rest;
+      tstar := LT.Progress(t);
+    } else {
+      assert (pre + rest)[0] == pre[0] && (pre + rest)[1..] == pre[1..] + rest;
+      assert (pre + [LS.Acheck(chk)] + rest)[0] == pre[0]
+          && (pre + [LS.Acheck(chk)] + rest)[1..] == pre[1..] + [LS.Acheck(chk)] + rest;
+      assert EL.PikeLkActionRec(pre[0]);
+      assert EL.PikeLkActionsRec(pre[1..]) by {
+        forall i | 0 <= i < |pre[1..]| ensures EL.PikeLkActionRec(pre[1..][i]) {
+          assert pre[1..][i] == pre[i + 1];
+        }
+      }
+      match pre[0]
+      case Acheck(c2) =>
+        if b == BS.CanExit {
+          match t {
+            case Progress(tc) =>
+              var sub := BoolCheckInsertKX(rer, pre[1..], chk, rest, inp, BS.CanExit, tc);
+              tstar := LT.Progress(sub);
+            case _ =>
+          }
+        } else {
+          // check fails on both sides identically
+          tstar := LT.Mismatch;
+        }
+      case Aclose(gid) =>
+        match t {
+          case GroupActionT(g, tc) =>
+            if CE.ConsumesBeforeAreg(pre) { CE.ConsumesTailC(pre); }
+            if CE.AcheckIn(pre) && !(CE.ConsumesBeforeAreg(pre[1..]) || b == BS.CanExit) { CE.AcheckInTail(pre); }
+            var sub := BoolCheckInsertKX(rer, pre[1..], chk, rest, inp, b, tc);
+            tstar := LT.GroupActionT(g, sub);
+          case _ =>
+        }
+      case Areg(r) =>
+        assert EL.PikeLkRegexRec(r);
+        match r
+        case Epsilon =>
+          if CE.ConsumesBeforeAreg(pre) { CE.ConsumesTailC(pre); }
+          if CE.AcheckIn(pre) && !(CE.ConsumesBeforeAreg(pre[1..]) || b == BS.CanExit) { CE.AcheckInTail(pre); }
+          tstar := BoolCheckInsertKX(rer, pre[1..], chk, rest, inp, b, t);
+        case Character(cd) =>
+          match LC.ReadChar(rer, cd, inp, WP.Forward) {
+            case Some(pair) =>
+              match t {
+                case Read(c, tc) =>
+                  var sub := BoolCheckInsertKX(rer, pre[1..], chk, rest, pair.1, BS.CanExit, tc);
+                  tstar := LT.Read(c, sub);
+                case _ =>
+              }
+            case None =>
+              tstar := LT.Mismatch;
+          }
+        case Disjunction(r1, r2) =>
+          match t {
+            case Choice(ta, tb) =>
+              var pa := [LS.Areg(r1)] + pre[1..];
+              var pb := [LS.Areg(r2)] + pre[1..];
+              assert pa + rest == [LS.Areg(r1)] + (pre[1..] + rest);
+              assert pb + rest == [LS.Areg(r2)] + (pre[1..] + rest);
+              assert pa + [LS.Acheck(chk)] + rest == [LS.Areg(r1)] + (pre[1..] + [LS.Acheck(chk)] + rest);
+              assert pb + [LS.Acheck(chk)] + rest == [LS.Areg(r2)] + (pre[1..] + [LS.Acheck(chk)] + rest);
+              assert EL.PikeLkActionsRec(pa) by {
+                forall i | 0 <= i < |pa| ensures EL.PikeLkActionRec(pa[i]) { if i > 0 { assert pa[i] == pre[i]; } }
+              }
+              assert EL.PikeLkActionsRec(pb) by {
+                forall i | 0 <= i < |pb| ensures EL.PikeLkActionRec(pb[i]) { if i > 0 { assert pb[i] == pre[i]; } }
+              }
+              if CE.ConsumesBeforeAreg(pre) && !(pre[0].Areg? && NUL.NonNullableL(pre[0].r)) {
+                CE.ConsumesTailC(pre);
+                CE.ConsumesPrepend([LS.Areg(r1)], pre[1..]);
+                CE.ConsumesPrepend([LS.Areg(r2)], pre[1..]);
+              }
+              if CE.ConsumesBeforeAreg(pre) && pre[0].Areg? && NUL.NonNullableL(pre[0].r) {
+                assert CE.ConsumesBeforeAreg(pa) by { assert pa[0] == LS.Areg(r1); }
+                assert CE.ConsumesBeforeAreg(pb) by { assert pb[0] == LS.Areg(r2); }
+              }
+              if CE.AcheckIn(pre) && !(CE.ConsumesBeforeAreg(pre) || b == BS.CanExit) {
+                CE.AcheckInTail(pre);
+                CE.AcheckInPrepend([LS.Areg(r1)], pre[1..]);
+                CE.AcheckInPrepend([LS.Areg(r2)], pre[1..]);
+              }
+              var sa := BoolCheckInsertKX(rer, pa, chk, rest, inp, b, ta);
+              var sb := BoolCheckInsertKX(rer, pb, chk, rest, inp, b, tb);
+              tstar := LT.Choice(sa, sb);
+            case _ =>
+          }
+        case Sequence(r1, r2) =>
+          var pn := [LS.Areg(r1), LS.Areg(r2)] + pre[1..];
+          assert pn + rest == [LS.Areg(r1), LS.Areg(r2)] + (pre[1..] + rest);
+          assert pn + [LS.Acheck(chk)] + rest == [LS.Areg(r1), LS.Areg(r2)] + (pre[1..] + [LS.Acheck(chk)] + rest);
+          assert EL.PikeLkActionsRec(pn) by {
+            forall i | 0 <= i < |pn| ensures EL.PikeLkActionRec(pn[i]) {
+              if i >= 2 { assert pn[i] == pre[i - 1]; }
+            }
+          }
+          if CE.ConsumesBeforeAreg(pre) && !(pre[0].Areg? && NUL.NonNullableL(pre[0].r)) {
+            CE.ConsumesTailC(pre);
+            CE.ConsumesPrepend([LS.Areg(r1), LS.Areg(r2)], pre[1..]);
+          }
+          if CE.ConsumesBeforeAreg(pre) && pre[0].Areg? && NUL.NonNullableL(pre[0].r) {
+            if NUL.NonNullableL(r1) {
+              assert CE.ConsumesBeforeAreg(pn) by { assert pn[0] == LS.Areg(r1); }
+            } else {
+              assert CE.ConsumesBeforeAreg(pn) by { assert pn[1] == LS.Areg(r2); }
+            }
+          }
+          if CE.AcheckIn(pre) && !(CE.ConsumesBeforeAreg(pre) || b == BS.CanExit) {
+            CE.AcheckInTail(pre);
+            CE.AcheckInPrepend([LS.Areg(r1), LS.Areg(r2)], pre[1..]);
+          }
+          assert pre == [pre[0]] + pre[1..];
+          assert LS.ActionsRegexSize(pn) < LS.ActionsRegexSize(pre);
+          tstar := BoolCheckInsertKX(rer, pn, chk, rest, inp, b, t);
+        case Quantified(greedy, min, delta, r1) =>
+          var gidl := L.DefGroups(r1);
+          if min == 1 && CinGreedyL(greedy, delta, r1) {
+            // the CIN head: the loop arm is the star's iteration (a check of its
+            // own), the stamp arm the plain continuation
+            match t {
+              case Choice(ta, tb) =>
+                match ta {
+                  case GroupActionT(g, ti) =>
+                    match tb {
+                      case GroupActionT(h, tc) =>
+                        var q0 := L.Quantified(true, 0, LN.Inf, r1);
+                        var pi := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + pre[1..];
+                        assert pi + rest == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + (pre[1..] + rest);
+                        assert pi + [LS.Acheck(chk)] + rest == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + (pre[1..] + [LS.Acheck(chk)] + rest);
+                        assert EL.PikeLkActionsRec(pi) by {
+                          forall i | 0 <= i < |pi| ensures EL.PikeLkActionRec(pi[i]) {
+                            if i >= 3 { assert pi[i] == pre[i - 2]; }
+                          }
+                        }
+                        assert CE.AcheckIn(pi) by { assert pi[1].Acheck?; }
+                        assert LS.TreeSize(ti) < LS.TreeSize(t);
+                        var si := BoolCheckInsertKX(rer, pi, chk, rest, inp, BS.CannotExit, ti);
+                        assert !NUL.NonNullableL(r) by { reveal CinGreedyL; NUL.CINotNonNullableL(r1); }
+                        if CE.ConsumesBeforeAreg(pre) { CE.ConsumesTailC(pre); }
+                        if CE.AcheckIn(pre) && !(CE.ConsumesBeforeAreg(pre[1..]) || b == BS.CanExit) { CE.AcheckInTail(pre); }
+                        assert LS.TreeSize(tc) < LS.TreeSize(t);
+                        var ss := BoolCheckInsertKX(rer, pre[1..], chk, rest, inp, b, tc);
+                        tstar := LT.Choice(LT.GroupActionT(g, si), LT.GroupActionT(h, ss));
+                      case _ =>
+                    }
+                  case _ =>
+                }
+              case _ =>
+            }
+          } else if min > 0 {
+            match t {
+              case GroupActionT(g, tc) =>
+                var q1 := L.Quantified(greedy, min - 1, delta, r1);
+                var pn := [LS.Areg(r1), LS.Areg(q1)] + pre[1..];
+                assert pn + rest == [LS.Areg(r1), LS.Areg(q1)] + (pre[1..] + rest);
+                assert pn + [LS.Acheck(chk)] + rest == [LS.Areg(r1), LS.Areg(q1)] + (pre[1..] + [LS.Acheck(chk)] + rest);
+                assert EL.PikeLkActionsRec(pn) by {
+                  forall i | 0 <= i < |pn| ensures EL.PikeLkActionRec(pn[i]) {
+                    if i >= 2 { assert pn[i] == pre[i - 1]; }
+                  }
+                }
+                if CE.ConsumesBeforeAreg(pre) && !(pre[0].Areg? && NUL.NonNullableL(pre[0].r)) {
+                  CE.ConsumesTailC(pre);
+                  CE.ConsumesPrepend([LS.Areg(r1), LS.Areg(q1)], pre[1..]);
+                }
+                if CE.ConsumesBeforeAreg(pre) && pre[0].Areg? && NUL.NonNullableL(pre[0].r) {
+                  assert CE.ConsumesBeforeAreg(pn) by { assert pn[0] == LS.Areg(r1); }
+                }
+                if CE.AcheckIn(pre) && !(CE.ConsumesBeforeAreg(pre) || b == BS.CanExit) {
+                  CE.AcheckInTail(pre);
+                  CE.AcheckInPrepend([LS.Areg(r1), LS.Areg(q1)], pre[1..]);
+                }
+                var sub := BoolCheckInsertKX(rer, pn, chk, rest, inp, b, tc);
+                tstar := LT.GroupActionT(g, sub);
+              case _ =>
+            }
+          } else if delta == LN.NN(0) {
+            if CE.ConsumesBeforeAreg(pre) { CE.ConsumesTailC(pre); }
+            if CE.AcheckIn(pre) && !(CE.ConsumesBeforeAreg(pre[1..]) || b == BS.CanExit) { CE.AcheckInTail(pre); }
+            tstar := BoolCheckInsertKX(rer, pre[1..], chk, rest, inp, b, t);
+          } else {
+            match t {
+              case Choice(ta, tb) =>
+                var itert := if greedy then ta else tb;
+                var skipt := if greedy then tb else ta;
+                match itert {
+                  case GroupActionT(g, ti) =>
+                    var q0 := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+                    var pi := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + pre[1..];
+                    assert pi + rest == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + (pre[1..] + rest);
+                    assert pi + [LS.Acheck(chk)] + rest == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + (pre[1..] + [LS.Acheck(chk)] + rest);
+                    assert EL.PikeLkActionsRec(pi) by {
+                      forall i | 0 <= i < |pi| ensures EL.PikeLkActionRec(pi[i]) {
+                        if i >= 3 { assert pi[i] == pre[i - 2]; }
+                      }
+                    }
+                    assert CE.AcheckIn(pi) by { assert pi[1].Acheck?; }
+                    assert LS.TreeSize(ti) < LS.TreeSize(t);
+                    var si := BoolCheckInsertKX(rer, pi, chk, rest, inp, BS.CannotExit, ti);
+                    // skip branch
+                    if CE.ConsumesBeforeAreg(pre) { CE.ConsumesTailC(pre); }
+                    if CE.AcheckIn(pre) && !(CE.ConsumesBeforeAreg(pre[1..]) || b == BS.CanExit) { CE.AcheckInTail(pre); }
+                    assert LS.TreeSize(skipt) < LS.TreeSize(t);
+                    var ss := BoolCheckInsertKX(rer, pre[1..], chk, rest, inp, b, skipt);
+                    var istar := LT.GroupActionT(g, si);
+                    if greedy {
+                      tstar := LT.Choice(istar, ss);
+                    } else {
+                      tstar := LT.Choice(ss, istar);
+                    }
+                  case _ =>
+                }
+              case _ =>
+            }
+          }
+        case Group(gid, r1) =>
+          match t {
+            case GroupActionT(g, tc) =>
+              var pn := [LS.Areg(r1), LS.Aclose(gid)] + pre[1..];
+              assert pn + rest == [LS.Areg(r1), LS.Aclose(gid)] + (pre[1..] + rest);
+              assert pn + [LS.Acheck(chk)] + rest == [LS.Areg(r1), LS.Aclose(gid)] + (pre[1..] + [LS.Acheck(chk)] + rest);
+              assert EL.PikeLkActionsRec(pn) by {
+                forall i | 0 <= i < |pn| ensures EL.PikeLkActionRec(pn[i]) {
+                  if i >= 2 { assert pn[i] == pre[i - 1]; }
+                }
+              }
+              if CE.ConsumesBeforeAreg(pre) && !(pre[0].Areg? && NUL.NonNullableL(pre[0].r)) {
+                CE.ConsumesTailC(pre);
+                CE.ConsumesPrepend([LS.Areg(r1), LS.Aclose(gid)], pre[1..]);
+              }
+              if CE.ConsumesBeforeAreg(pre) && pre[0].Areg? && NUL.NonNullableL(pre[0].r) {
+                assert CE.ConsumesBeforeAreg(pn) by { assert pn[0] == LS.Areg(r1); }
+              }
+              if CE.AcheckIn(pre) && !(CE.ConsumesBeforeAreg(pre) || b == BS.CanExit) {
+                CE.AcheckInTail(pre);
+                CE.AcheckInPrepend([LS.Areg(r1), LS.Aclose(gid)], pre[1..]);
+              }
+              var sub := BoolCheckInsertKX(rer, pn, chk, rest, inp, b, tc);
+              tstar := LT.GroupActionT(g, sub);
+            case _ =>
+          }
+        case AnchorR(a) =>
+          if LS.AnchorSatisfied(rer, a, inp) {
+            match t {
+              case AnchorPass(a2, tc) =>
+                if CE.ConsumesBeforeAreg(pre) { CE.ConsumesTailC(pre); }
+                if CE.AcheckIn(pre) && !(CE.ConsumesBeforeAreg(pre[1..]) || b == BS.CanExit) { CE.AcheckInTail(pre); }
+                var sub := BoolCheckInsertKX(rer, pre[1..], chk, rest, inp, b, tc);
+                tstar := LT.AnchorPass(a2, sub);
+              case _ =>
+            }
+          } else {
+            tstar := LT.Mismatch;
+          }
+        case LookaroundR(lk, r1) =>
+          // the gate is zero-width: rebuild it around the continuation's
+          // inserted-check tree. Both sides carry the SAME body subtree, so
+          // LACongLK gives the leaf agreement.
+          match t {
+            case LK(lk2, tlk, tc) =>
+              if CE.ConsumesBeforeAreg(pre) { CE.ConsumesTailC(pre); }
+              if CE.AcheckIn(pre) && !(CE.ConsumesBeforeAreg(pre[1..]) || b == BS.CanExit) { CE.AcheckInTail(pre); }
+              var sub := BoolCheckInsertKX(rer, pre[1..], chk, rest, inp, b, tc);
+              tstar := LT.LK(lk2, tlk, sub);
+            case LKFail(lk2, tlk) =>
+              tstar := t;
+            case _ =>
+          }
+        case Backreference(_) =>
+          assert false;   // not pike
+    }
+  }
+
+  /** The gate node of the engine-shaped walk (`M.GateNodeAtInp`'s twin). */
+  lemma GateNodeAtInpX(rer: LW.RegExpRecord, acts: LS.Actions, inp: LC.Input,
+                       b: BS.LoopBool, t: LT.Tree, lk: L.Lookaround, r1: L.Regex)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.LookaroundR(lk, r1))
+    requires BoolTreeLkX(rer, acts, inp, b, t)
+    ensures (t.LK? && t.lk == lk
+             && EL.LkGateOk(rer, lk, r1, inp, t.tlk, true)
+             && BoolTreeLkX(rer, acts[1..], inp, b, t.t))
+            || (t.LKFail? && t.lk == lk && EL.LkGateOk(rer, lk, r1, inp, t.tlk, false))
+  {}
+
   // ===========================================================================
   // The glue's side condition: every CIN body's groups lie in `G`, and its
   // positive looks capture nothing (rung A then runs at `S = {}`)
@@ -282,6 +771,29 @@ module LindenElkCinWalk {
       if i > 0 { assert ([x] + cont)[i] == cont[i - 1]; }
     }
   }
+
+  /** A regex without a nulled plus satisfies the side condition vacuously. */
+  lemma NoNulledPlusCinOk(r: L.Regex, G: set<LG.GroupId>)
+    requires NUL.NoNulledPlusL(r)
+    ensures CinOk(r, G)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => NoNulledPlusCinOk(r1, G); NoNulledPlusCinOk(r2, G);
+    case Sequence(r1, r2) => NoNulledPlusCinOk(r1, G); NoNulledPlusCinOk(r2, G);
+    case Quantified(greedy, min, delta, r1) =>
+      NoNulledPlusCinOk(r1, G);
+      if min > 0 && delta.Inf? && greedy { NotCinGreedyNonNullable(greedy, delta, r1); }
+      else if min > 0 { NotCinGreedy(greedy, delta, r1); }
+    case Group(_, r1) => NoNulledPlusCinOk(r1, G);
+    case LookaroundR(_, r1) => NoNulledPlusCinOk(r1, G);
+    case _ =>
+  }
+
+  lemma CinActsInSingle(r: L.Regex, G: set<LG.GroupId>)
+    requires CinOk(r, G)
+    ensures CinActsIn([LS.Areg(r)], G)
+  {}
 
   // ===========================================================================
   // First-result toolkit outside a set (beyond rung A's congruences)

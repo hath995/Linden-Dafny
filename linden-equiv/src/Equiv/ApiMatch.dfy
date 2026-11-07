@@ -28,6 +28,7 @@ module LindenRegexApi {
   import LSIM = LindenElkLiftSimMain
   import LSIMORA = LindenElkLiftSimOracle
   import MCIN = LindenElkMainCin
+  import MCL = LindenElkMainCinLk
   // ==========================================================================
   // The supported fragment — total and executable, so callers can check
   // membership at runtime or by assertion in their own proofs.
@@ -101,6 +102,23 @@ module LindenRegexApi {
       forward fragment (`SupportedL4`) or the nested lookbehind fragment (`SupportedL5`). */
   predicate Supported(pattern: R.raw_regex) {
     SupportedL3(pattern) || SupportedL4(pattern) || SupportedL5(pattern) || SupportedCin(pattern)
+    || SupportedL5Cin(pattern)
+  }
+
+  /** (§2.5b F-c) `SupportedL5` WITHOUT the interim gate conjunct: greedy
+      CI-nullable pluses (`(a?)+`) may sit next to lookarounds, provided no look
+      body holds a nulled plus (`MCL.LooksNoNulledPlusX`) and every greedy
+      CI-nullable plus has a look-free body (`MCL.CinBodiesLookFreeX`), both
+      checked executably on the annotated regex. Exactly
+      `MCL.MainTheoremL5Cin`'s precondition (via `LSIMORA.L5ScopeFromRawFull`). */
+  predicate SupportedL5Cin(pattern: R.raw_regex) {
+    NR.NestedFragmentRaw(pattern) && T.Latin1Wf(pattern)
+    && LSIMCOR.L5ScopeV1RE(R.lazy_prefix(R.annotate(pattern)))
+    && NR.NegLooksLookFreeRaw(pattern)
+    && NR.LookBodiesNoCapUnderQuantRaw(pattern)
+    && NR.QuantsLookCapFreeRaw(pattern)
+    && MCL.LooksNoNulledPlusX(R.lazy_prefix(R.annotate(pattern)))
+    && MCL.CinBodiesLookFreeX(R.lazy_prefix(R.annotate(pattern)))
   }
 
   /** (§2.5b) The LOOKAROUND-FREE nested fragment with NO nulled-plus gate: the
@@ -108,7 +126,7 @@ module LindenRegexApi {
       captures reconstructed by the engine's `FReconstructPlus` and proved to be
       the spec's (`MCIN.MainTheoremCin`). CDN-greedy pluses stay out (the
       nested fragment's `Plus` arm excludes them). Lookarounds together with a
-      greedy nullable `+` are rung F-c (NULLABLE_PLUS_HANDOFF.md). */
+      greedy nullable `+` are `SupportedL5Cin` (rung F-c). */
   predicate SupportedCin(pattern: R.raw_regex) {
     NR.NestedFragmentRaw(pattern) && T.Latin1Wf(pattern) && NR.LookFreeRaw(pattern)
   }
@@ -143,6 +161,11 @@ module LindenRegexApi {
     } else if SupportedL5(pattern) {
       LSIMORA.L5ScopeFromRawFull(pattern);
       LSIM.MainTheoremL5(pattern, str);
+    } else if SupportedL5Cin(pattern) {
+      LSIMORA.L5ScopeFromRawFull(pattern);
+      MCL.LooksNoNulledPlusXSound(R.lazy_prefix(R.annotate(pattern)));
+      MCL.CinBodiesLookFreeXSound(R.lazy_prefix(R.annotate(pattern)));
+      MCL.MainTheoremL5Cin(pattern, str);
     } else {
       MCIN.MainTheoremCin(pattern, str);
     }

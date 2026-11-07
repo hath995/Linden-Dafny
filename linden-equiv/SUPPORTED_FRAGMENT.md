@@ -32,7 +32,7 @@ Everything below is verified for **case-sensitive, single-line, Latin-1** patter
 | alternation, concatenation | ✅ |
 | capture groups, arbitrarily nested | ✅ |
 | `*`, `?`, `{m,n}`, lazy variants | ✅ |
-| `+`, `{n,}` (n>0, unbounded) | ✅ non-nullable body (any greediness); ✅ **nullable body when LAZY** (`(a?)+?`, §2.5a, 2026-08-30); ✅ **CI-nullable body when GREEDY** (`(a?)+`, `(a\|)+`) **in lookaround-free patterns** (§2.5b, `SupportedCin`, 2026-11-05). ❌ greedy nullable plus **together with a lookaround** (`(?=a)(a?)+`, rung F-c); ❌ context-dependent-nullable greedy body (CDN, `CheckNullable`) |
+| `+`, `{n,}` (n>0, unbounded) | ✅ non-nullable body (any greediness); ✅ **nullable body when LAZY** (`(a?)+?`, §2.5a, 2026-08-30); ✅ **CI-nullable body when GREEDY** (`(a?)+`, `(a\|)+`) **in lookaround-free patterns** (§2.5b, `SupportedCin`, 2026-11-05) **and next to lookarounds** (`(?=a)(a?)+`, §2.5b F-c, `SupportedL5Cin`, 2026-11-06) provided no look body holds a greedy nullable plus and every such plus has a lookaround-free body. ❌ greedy nullable plus **inside a look body** (`(?=(a?)+)`) or **with a lookaround in its body**; ❌ context-dependent-nullable greedy body (CDN, `CheckNullable`) |
 | positive lookahead `(?=…)`, capturing, nested to any depth | ✅ (L4) |
 | **positive lookbehind `(?<=…)`, capturing, nested to any depth** | ✅ (L5, 2026-08-28) — a lookbehind's body may contain **only lookbehinds**; a lookahead's body may contain positive lookbehinds (`(?=x(?<=y))`, the s6 widening — see §2.1) |
 | negative `(?!…)` / `(?<!…)` | ✅ **only with a look-free, capture-free body** |
@@ -185,7 +185,7 @@ So the fact needed is provable by machinery that exists; the descent simply took
 §2.5b needs a `CheckNullable`/`cdns` correspondence that exists in NO form. This one sits between:
 the argument exists and needs porting into the look-body replay.
 
-### 2.5 Nullable unbounded quantifiers — SPLIT; §2.5a DONE 2026-08-30, §2.5b-CIN DONE for lookaround-free patterns 2026-11-05
+### 2.5 Nullable unbounded quantifiers — SPLIT; §2.5a DONE 2026-08-30, §2.5b-CIN DONE for lookaround-free patterns 2026-11-05 and next to lookarounds 2026-11-06
 
 `R.nullable`/`raw_nullable` and `quant.greedy` select one of FOUR compiler schemes for an
 unbounded `min > 0` quantifier (`Compiler.dfy:104-156`), not one:
@@ -194,7 +194,7 @@ unbounded `min > 0` quantifier (`Compiler.dfy:104-156`), not one:
 |---|---|---|---|
 | `NonNullable` | either | do-while (min-1 copies, stamp, body, backward fork) | ✅ always was |
 | nullable | **lazy** | the GENERIC scheme — `repeat_min(min)` then the ordinary star loop | ✅ **§2.5a, DONE** |
-| `CINullable` | greedy | end-fork + `SetQuantToClock(qid, true)` | ✅ **lookaround-free patterns** (`SupportedCin` → `MCIN.MainTheoremCin`, 2026-11-05, branch `nullable-plus-greedy`); ❌ next to a lookaround (machine B of the lift-sim band is not stamp-aware: rung F-c, `NULLABLE_PLUS_HANDOFF.md`) — `SupportedL3/4/5` keep `NoNulledPlusRaw` |
+| `CINullable` | greedy | end-fork + `SetQuantToClock(qid, true)` | ✅ **lookaround-free patterns** (`SupportedCin` → `MCIN.MainTheoremCin`, 2026-11-05, branch `nullable-plus-greedy`); ✅ **next to lookarounds** (`SupportedL5Cin` → `MCL.MainTheoremL5Cin`, 2026-11-06) when the plus sits outside every look body and its own body is lookaround-free; ❌ inside a look body, or with a lookaround in its body — `SupportedL3/4/5` keep `NoNulledPlusRaw` |
 | `CDNullable` | greedy | end-fork + **`CheckNullable(qid)`** | ❌ out of scope for §2.5b-CIN (no representation) |
 
 **§2.5a (done).** `(a?)+?`, `(a?){2,}?` and friends verify. Nothing nullability-specific was
@@ -214,7 +214,24 @@ first leaf (rung C, `ResAgreeAtOutside` with `S = {}`), and the engine's `FRecon
 exactly that readout (rung E's `ReconReadout`, discharged at the best thread by rung F-b's
 `FinalReadout`). `(a?)+` is pinned as supported and `(?=a)(a?)+` as still out by
 `NullablePlusWitness.dfy`. The CDN-greedy scheme (`CheckNullable`) stays out (the nested fragment's
-`Plus` arm excludes `CDNullable` bodies). The history below is kept as the design record.
+`Plus` arm excludes `CDNullable` bodies).
+
+**§2.5b-CIN next to lookarounds (rung F-c, done 2026-11-06).** `API.SupportedL5Cin(p)` is
+`SupportedL5(p)` with `NoNulledPlusRaw` replaced by two executable checks on the annotated regex:
+`MCL.LooksNoNulledPlusX` (no look body holds a greedy nullable plus) and `MCL.CinBodiesLookFreeX`
+(every greedy CI-nullable plus has a lookaround-free body). It is proved by
+`LindenElkMainCinLk.MainTheoremL5Cin` (member `linden-equiv-main-cin-lk`). The captures split at
+`S = CapIdsInLooks(re)`:
+* **Outside the looks** the values come from machine A (`FindMatchSimRENested`, no gate) plus rung C
+  (`ResAgreeAtOutside`) and rung F-b (`FinalReadout`).
+* **Inside the looks** they come from machine B, which now runs chain-free on the engine-shaped walk
+  `CW.BoolTreeLkX` (member `linden-equiv-cin-walk`). There the stamp is a plain `Reset`.
+* **The two halves meet at a synthetic winner.** `rp0` is `FReconstructPlus(best)` with the
+  quantifier code points outside the looks cleared. Its readout and its answer are unchanged
+  (`ClearQuantCpsGm`, `AnswerSynthetic`).
+* **Rung G.** `(?=a)(a?)+` is pinned as supported (and not `SupportedL5`) by `NullablePlusWitness.dfy`.
+
+The history below is kept as the design record.
 
 **§2.5b (the design record) — the expensive half.** Three things break at once for the GREEDY nullable schemes:
 1. **`CheckNullable` has no representation.** `TreeRepRE.dfy:289` / `GenStepRE.dfy:103` map it to
@@ -271,7 +288,7 @@ proof engineering of known shape.
 | ~~§2.1 lookbehind inside lookahead~~ | — | **DONE 2026-08-30** (s8: packaged, no isolation) |
 | §2.3 / §2.4 capture-under-quant **for L4/L5 patterns** | medium–large | depth-1 already covered; port `MxAtGidLE`-style dominance into the look-body replay, then sweep 32 hypothesis sites |
 | ~~§2.5a lazy nullable plus~~ | — | **DONE 2026-08-30** (branch `nullable-plus`) |
-| §2.5b greedy nullable plus **next to a lookaround** (lookaround-free: **DONE 2026-11-05**) | large — rung F-c: machine B (lift-sim band) stamp-aware, the C+D template on the B side | TWO end-fork layouts (CIN/CDN), the new `CheckNullable` instruction, the first `SetQuantToClock(qid, **true**)` (breaks the all-stamps-false invariant `NI.CodeShapeAt` proves and `MainTheoremL3` consumes), a second path in `ReconstructNulled`, plus `QuantRegsFinal` and `FNulledPlus`'s unproven spec tie. The §2.5a shift-to-`em` rewrite does NOT carry over — see `NULLABLE_PLUS_HANDOFF.md` § WHAT §2.5b ACTUALLY COSTS |
+| §2.5b greedy nullable plus **inside a look body / with a lookaround in its body** (lookaround-free: **DONE 2026-11-05**; next to lookarounds: **DONE 2026-11-06**, `SupportedL5Cin`) | large — the look-body replay would need the reconstruction readout (rung E) at every look depth; machine B's look-path frame (`CinLookPaths`) assumes the CIN bodies own no look-path registers | TWO end-fork layouts (CIN/CDN), the new `CheckNullable` instruction, the first `SetQuantToClock(qid, **true**)` (breaks the all-stamps-false invariant `NI.CodeShapeAt` proves and `MainTheoremL3` consumes), a second path in `ReconstructNulled`, plus `QuantRegsFinal` and `FNulledPlus`'s unproven spec tie. The §2.5a shift-to-`em` rewrite does NOT carry over — see `NULLABLE_PLUS_HANDOFF.md` § WHAT §2.5b ACTUALLY COSTS |
 | §2.2 nested looks in negative bodies | large | touches linden-reasoning's `GroupFreeL` and `BoolTreeLk` |
 | §2.6 flags (`i`, `m`) / Unicode | very large | new campaign |
 | §2.7 backreferences | **by design** | absent from the engine AST; incompatible with a Pike/NFA engine |

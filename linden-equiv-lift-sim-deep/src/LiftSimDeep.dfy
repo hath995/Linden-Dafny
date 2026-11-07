@@ -125,7 +125,7 @@ module LindenElkLiftSimDeep {
     host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed through the recursion) ----
     requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && L5ScopeV1RE(re)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim: all stamps false
+    requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires |crv.f_look_types| == |crv.f_look_ast|
@@ -163,6 +163,7 @@ module LindenElkLiftSimDeep {
     requires crv.f_look_types[A as int].Lookbehind?
     decreases |LTB.LookIds(host)|, 0
   {
+    hide M.LooksNoNulledPlusRE;   // (§2.5b F-c) a fact here, never unfolded (recursive: batch memory)
     // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
     // triggered existential storm the solver; all uses here are opaque.
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
@@ -265,7 +266,7 @@ module LindenElkLiftSimDeep {
         OracleColsOkRestrict(rer, qm, qmB0, str);
       }
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      NI.NoNulledPlusLookBody(re, A);   // §2.5b interim: NoNulledPlusRE(host)
+      M.LooksNoNulledPlusBody(re, A);   // §2.5b interim: NoNulledPlusRE(host)
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       FreshBodyDirectInSubFirstLeafLB(rer, qmB0, crv, str, ov, A, res1, host, g2,
                                       ncap, nlook, nquant);
@@ -309,7 +310,13 @@ module LindenElkLiftSimDeep {
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert M.MatchedPosLA(crv, res1, A1 as int) by {
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        assert GateStaticAtNested(qm, re, crv, A1 as int, ncap, nlook, nquant);
+        // (§2.5b F-c) a bare forall instance: the inlined hub goal (its existential)
+        // timed out at 900 s in the swept context
+        assert GateStaticAtNested(qm, re, crv, A1 as int, ncap, nlook, nquant) by {
+          assert (A1 as int) in qm.looks;
+          hide *; reveal GateStaticsOkNested;
+        }
+        assert {:split_here} true;   // (§2.5b F-c) the pick: its own batch
         // (L5 F7f) ONE pick with the hub's FULL conjunct list — a SUBSET pick times
         // out under {:isolate_assertions} (the hub's list changed with the flip).
         var la1: R.lookaround, b1: R.regex :| LTB.LookEntryOk(crv, A1 as int, la1, b1)
@@ -567,7 +574,7 @@ module LindenElkLiftSimDeep {
     host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed through the recursion) ----
     requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && L5ScopeV1RE(re)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim: all stamps false
+    requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires |crv.f_look_types| == |crv.f_look_ast|
@@ -606,6 +613,7 @@ module LindenElkLiftSimDeep {
     requires g2 in PIV.CapIdsInLooks(host)
     decreases |LTB.LookIds(host)|, 0
   {
+    hide M.LooksNoNulledPlusRE;   // (§2.5b F-c) a fact here, never unfolded (recursive: batch memory)
     // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
     // triggered existential storm the solver; all uses here are opaque.
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
@@ -742,6 +750,7 @@ module LindenElkLiftSimDeep {
     }
     assert GateStaticsOkNested(qmB, host, crv, ncap, nlook, nquant) by {
       L5ScopeV1LookBody(re, A);          // (L5 F7f) the v1 scope descends to the body
+      M.LooksNoNulledPlusFromFull(host);   // (§2.5b F-c) NoNulledPlusRE(host) from the row
       GateStaticsFromTablesNested(qmB, host, crv, ncap, nlook, nquant);
     }
     assert OE.OracleColsOk(rer, qmB, str) by {                       // (L5 F7d)
@@ -790,7 +799,7 @@ module LindenElkLiftSimDeep {
       var ctxF := AI.cp_context(cpA, str, LAnc.Forward);
       var initsF := AI.FInitState(bodycode, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
                                   AReg.init_regs(nquant), 0, ctxF);
-      NI.NoNulledPlusLookBody(re, A);
+      M.LooksNoNulledPlusBody(re, A);
       M.NoTrueQuantStampNested(host);
       assert M.VmQuantFinal(initsF) by {
         var th0 := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
@@ -865,7 +874,7 @@ module LindenElkLiftSimDeep {
     host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed through the recursion) ----
     requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && L5ScopeV1RE(re)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim: all stamps false
+    requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires |crv.f_look_types| == |crv.f_look_ast|
@@ -902,6 +911,7 @@ module LindenElkLiftSimDeep {
             lsub.Some? && g2 in lsub.value
     decreases |LTB.LookIds(host)|, 1
   {
+    hide M.LooksNoNulledPlusRE;   // (§2.5b F-c) a fact here, never unfolded (recursive: batch memory)
     // (2026-08-25) this lemma takes the L4-perf OPAQUE bundles (`117b6aa`) but its
     // body reads their foralls (`FrameEntryOk` at A, `OracleOkSuffix` at cps) —
     // reveal them. (Never re-verified after the perf pass; failed 3 asserts.)
@@ -999,7 +1009,7 @@ module LindenElkLiftSimDeep {
     host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed) ----
     requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && L5ScopeV1RE(re)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim: all stamps false
+    requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires |crv.f_look_types| == |crv.f_look_ast|
@@ -1041,6 +1051,7 @@ module LindenElkLiftSimDeep {
     requires g !in PIV.CapIdsInLooks(host)
     decreases |LTB.LookIds(host)|, 0
   {
+    hide M.LooksNoNulledPlusRE;   // (§2.5b F-c) a fact here, never unfolded (recursive: batch memory)
     // (2026-08-29 E3) the preamble is an OPAQUE block: only the facts below reach the arm's VC.
     var maxlook := *;
     var cpA := *;
@@ -1310,7 +1321,7 @@ module LindenElkLiftSimDeep {
 
     // ==== BASE: g DIRECT in host ====
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    NI.NoNulledPlusLookBody(re, A);   // §2.5b interim: NoNulledPlusRE(host)
+    M.LooksNoNulledPlusBody(re, A);   // §2.5b interim: NoNulledPlusRE(host)
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     SubFirstLeafDirectInFreshLB(rer, qmB, crv, str, ov, A, res1, host, g, ncap, nlook, nquant);
     var rfc := rfFresh.value.capture_regs;
