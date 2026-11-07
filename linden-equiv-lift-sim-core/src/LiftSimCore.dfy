@@ -6675,18 +6675,31 @@ module LindenElkLiftSimCore {
                   AR.NfaRepLStarCinIntro(rer, qm, r1, code, em, e1x, qidC);
                   assert AR.ActionRepL(rer, qm, LS.Areg(q0), code, e1x + 1, pcmid);
                   var lq := [LS.Areg(q0)] + cont;
-                  assert lq[0] == LS.Areg(q0) && lq[1..] == cont;
-                  assert AR.ActionsRepL(rer, qm, lq, code, e1x + 1);
+                  // (§2.5b pack) the cons intro with its witness, never the least
+                  // predicate's existential (with packed deps this batch hit 19 GB)
+                  AR.ActionsRepLCons(rer, qm, LS.Areg(q0), cont, code, e1x + 1, pcmid);
+                  assert {:split_here} true;   // (§2.5b pack) section: the check + body reps
                   var lc := [LS.Acheck(inp)] + lq;
                   assert AR.ActionRepL(rer, qm, LS.Acheck(inp), code, e1x, e1x + 1);
-                  assert lc[0] == LS.Acheck(inp) && lc[1..] == lq;
-                  assert AR.ActionsRepL(rer, qm, lc, code, e1x);
+                  AR.ActionsRepLCons(rer, qm, LS.Acheck(inp), lq, code, e1x, e1x + 1);
                   assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, em + 3, e1x);
-                  assert ia[0] == LS.Areg(r1) && ia[1..] == lc;
+                  AR.ActionsRepLCons(rer, qm, LS.Areg(r1), lc, code, em + 3, e1x);
+                  assert ia == [LS.Areg(r1)] + lc;
                   assert AR.ActionsRepL(rer, qm, ia, code, em + 3);
+                  // (§2.5b pack) with packed deps this section, as ONE batch, grew past
+                  // 19 GB though each goal alone is cheap: one goal per batch, the walk
+                  // split in a cut context
+                  assert {:split_here} true;   // (§2.5b pack) section: fuel
                   ATR.ActionsRepLToFuel(rer, qm, ia, code, em + 3);
+                  assert {:split_here} true;   // (§2.5b pack) section: the fuel pick
                   var ni: nat :| ATR.ActionsRepFuelL(rer, qm, ia, code, em + 3, ni);
-                  WO.WalkOkQuantCinHead(acts, code, pc, ATR.EaOf(b), true, 1, LN.Inf, r1, em + 1, e1x + 2, inp);
+                  assert {:split_here} true;   // (§2.5b pack) section: the walk
+                  assert WO.WalkOk(ia, code, em + 3, false) && WO.WalkOk(cont, code, pcmid, ATR.EaOf(b)) by {
+                    hide *;
+                    assert acts[0] == LS.Areg(L.Quantified(true, 1, LN.Inf, r1));
+                    WO.WalkOkQuantCinHead(acts, code, pc, ATR.EaOf(b), true, 1, LN.Inf, r1, em + 1, e1x + 2, inp);
+                    assert [LS.Areg(r1), LS.Acheck(inp), LS.Areg(L.Quantified(true, 0, LN.Inf, r1))] + acts[1..] == ia;
+                  }
                   assert {:split_here} true;   // (E3) section: the loop arm
                   // (z3 4.14) the call's preconditions spelled out one by one
                   assert CE.PSize(ti) < CE.PSize(t);
