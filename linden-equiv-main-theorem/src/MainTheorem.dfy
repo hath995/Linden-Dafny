@@ -18972,6 +18972,7 @@ module LindenElkMain {
                                          (rf.Some? ==> CM.RegsAgreeInside(res.0, rf.value.capture_regs, PIV.CaptureRegsSet({g})))
                                          && (rf.None? ==> CM.RegsAgreeInside(res.0, AReg.init_regs(ncap), PIV.CaptureRegsSet({g}))))
   {
+    hide LooksNoNulledPlusRE, NR.NoNulledPlusRE;   // (§2.5b F-c) facts here, never unfolded (pack: 900 s timeout)
     LooksNoNulledPlusFromFull(re);   // (§2.5b F-c) the look-row callees read only the look bodies
     LookRowsFromTablesNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
                              ncap, nlook, nquant, endl, result);
@@ -19194,6 +19195,7 @@ module LindenElkMain {
                                          (rf.Some? ==> CM.RegsAgreeInside(res.2, rf.value.quant_regs, {qd as int}))
                                          && (rf.None? ==> CM.RegsAgreeInside(res.2, AReg.init_regs(nquant), {qd as int})))
   {
+    hide LooksNoNulledPlusRE, NR.NoNulledPlusRE;   // (§2.5b F-c) facts here, never unfolded (pack: 900 s timeout)
     LooksNoNulledPlusFromFull(re);   // (§2.5b F-c) the look-row callees read only the look bodies
     LookRowsFromTablesNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
                              ncap, nlook, nquant, endl, result);
