@@ -3315,6 +3315,34 @@ module LindenElkLiftSimOracle {
           // untouched owner: the slot is still INIT, so g cannot be present
           var SpM := set lm: int, k: int |
             1 <= lm <= maxlook && AReg.get_cp(lk, lm).Some? && k in PIV.CaptureRegs(M.VBody(crv, lm)) :: k;
+          // (§2.5b pack) the frame call's per-look existential, witnessed from the
+          // preamble's Sreg export: left to the solver against the comprehension
+          // SpM it took 2-4 min per symbol and passed 900 s in the pack
+          forall lw: int | 1 <= lw <= maxlook && AReg.get_cp(lk, lw).Some?
+            ensures exists la: R.lookaround, body: R.regex ::
+                      LTB.LookEntryOk(crv, lw, la, body)
+                      && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+                      && NR.NoNulledPlusRE(body)
+                      && PIV.CapUnique(body) && PIV.QuantUnique(body)
+                      && PIV.CaptureRegs(body) <= SpM
+                      && (forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(ast))
+                      && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
+          {
+            var laW: R.lookaround, bodyW: R.regex :|
+              LTB.LookEntryOk(crv, lw, laW, bodyW)
+              && NR.LookFreeRE(bodyW) && NR.PlusFragmentRE(bodyW)
+              && NR.NoNulledPlusRE(bodyW)
+              && PIV.CapUnique(bodyW) && PIV.QuantUnique(bodyW)
+              && PIV.CaptureRegs(bodyW) <= Sreg
+              && (forall q: nat :: q in PIV.QuantIds(bodyW) ==> q in PIV.QuantIdsInLooks(ast))
+              && ((laW.NegLookbehind? || laW.NegLookahead?) ==> NR.CaptureFreeRE(bodyW));
+            assert bodyW == M.VBody(crv, lw);
+            assert PIV.CaptureRegs(bodyW) <= SpM by {
+              forall k: int | k in PIV.CaptureRegs(bodyW) ensures k in SpM {
+                assert 1 <= lw <= maxlook && AReg.get_cp(lk, lw).Some? && k in PIV.CaptureRegs(M.VBody(crv, lw));
+              }
+            }
+          }
           M.FLookLoopCaptureFrame(crv, str, 1, maxlook, thread.capture_regs, lk, qtF, ov, ast, SpM);
           assert CM.RegsAgreeOutside(res0, thread.capture_regs, SpM);
           assert CP.start_reg(g as int) !in SpM by {
