@@ -123,6 +123,106 @@ module LindenRegexApi {
   }
 
   // ==========================================================================
+  // The depth-1 fragment is a sub-fragment of the L5 scope: a depth-1 look body
+  // is look-free, hence trivially lookbehind-only and negative-look-free.
+  // ==========================================================================
+  lemma LookFreeNegLooksRaw(ra: R.raw_regex)
+    requires NR.LookFreeRaw(ra)
+    ensures NR.NegLooksLookFreeRaw(ra)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) => LookFreeNegLooksRaw(r1); LookFreeNegLooksRaw(r2);
+    case Raw_con(r1, r2) => LookFreeNegLooksRaw(r1); LookFreeNegLooksRaw(r2);
+    case Raw_quant(_, r1) => LookFreeNegLooksRaw(r1);
+    case Raw_count(_, r1) => LookFreeNegLooksRaw(r1);
+    case Raw_capture(r1) => LookFreeNegLooksRaw(r1);
+    case _ =>
+  }
+
+  lemma DepthOneNegLooksRaw(ra: R.raw_regex)
+    requires NR.LookBehindFragmentRaw(ra)
+    ensures NR.NegLooksLookFreeRaw(ra)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) => DepthOneNegLooksRaw(r1); DepthOneNegLooksRaw(r2);
+    case Raw_con(r1, r2) => DepthOneNegLooksRaw(r1); DepthOneNegLooksRaw(r2);
+    case Raw_quant(_, r1) => DepthOneNegLooksRaw(r1);
+    case Raw_count(_, r1) => DepthOneNegLooksRaw(r1);
+    case Raw_capture(r1) => DepthOneNegLooksRaw(r1);
+    case Raw_lookaround(_, r1) => LookFreeNegLooksRaw(r1);
+    case _ =>
+  }
+
+  lemma LookFreeL5ScopeV1(re: R.regex)
+    requires NR.LookFreeRE(re)
+    ensures LSIMCOR.L5ScopeV1RE(re)
+    decreases re
+  {
+    reveal LSIMCOR.L5ScopeV1RE();
+    match re
+    case Re_alt(r1, r2) => LookFreeL5ScopeV1(r1); LookFreeL5ScopeV1(r2);
+    case Re_con(r1, r2) => LookFreeL5ScopeV1(r1); LookFreeL5ScopeV1(r2);
+    case Re_quant(_, _, _, r1) => LookFreeL5ScopeV1(r1);
+    case Re_capture(_, r1) => LookFreeL5ScopeV1(r1);
+    case _ =>
+  }
+
+  lemma DepthOneL5ScopeV1(re: R.regex)
+    requires NR.LookBehindFragmentRE(re)
+    ensures LSIMCOR.L5ScopeV1RE(re)
+    decreases re
+  {
+    reveal LSIMCOR.L5ScopeV1RE();
+    match re
+    case Re_alt(r1, r2) => DepthOneL5ScopeV1(r1); DepthOneL5ScopeV1(r2);
+    case Re_con(r1, r2) => DepthOneL5ScopeV1(r1); DepthOneL5ScopeV1(r2);
+    case Re_quant(_, _, _, r1) => DepthOneL5ScopeV1(r1);
+    case Re_capture(_, r1) => DepthOneL5ScopeV1(r1);
+    case Re_lookaround(_, _, r1) => NR.LookFreeLBOnly(r1); LookFreeL5ScopeV1(r1);
+    case _ =>
+  }
+
+  /** The three L5 conditions of a depth-1 pattern. */
+  lemma DepthOneL5Conditions(raw: R.raw_regex)
+    requires NR.LookBehindFragmentRaw(raw)
+    ensures NR.NestedFragmentRaw(raw) && NR.NegLooksLookFreeRaw(raw)
+    ensures LSIMCOR.L5ScopeV1RE(R.lazy_prefix(R.annotate(raw)))
+  {
+    NR.LookBehindFragmentIsNestedRaw(raw);
+    DepthOneNegLooksRaw(raw);
+    var ast := R.annotate(raw);
+    assert NR.LookBehindFragmentRaw(R.Raw_capture(raw));
+    NR.AnnotateLookBehindFragment(R.Raw_capture(raw), 0, 1, 1);
+    assert ast == R.annotate_regex(R.Raw_capture(raw), 0, 1, 1).0;
+    DepthOneL5ScopeV1(ast);
+    reveal LSIMCOR.L5ScopeV1RE();
+    var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
+    assert R.lazy_prefix(ast) == R.Re_con(pre, ast);
+  }
+
+  /** Every `SupportedL3` pattern is `SupportedL5`. */
+  lemma SupportedL3ImpliesL5(pattern: R.raw_regex)
+    requires SupportedL3(pattern)
+    ensures SupportedL5(pattern)
+  {
+    DepthOneL5Conditions(pattern);
+  }
+
+  /** A depth-1 pattern with greedy CI-nullable pluses is `SupportedL5Cin` under
+      the same two conditions as any other: no look body holds one, and each has
+      a look-free body. */
+  lemma DepthOneCinIsL5Cin(pattern: R.raw_regex)
+    requires NR.LookBehindFragmentRaw(pattern) && T.Latin1Wf(pattern)
+    requires MCL.LooksNoNulledPlusX(R.lazy_prefix(R.annotate(pattern)))
+    requires MCL.CinBodiesLookFreeX(R.lazy_prefix(R.annotate(pattern)))
+    ensures SupportedL5Cin(pattern)
+  {
+    DepthOneL5Conditions(pattern);
+  }
+
+  // ==========================================================================
   // The verified matcher. Returns the JS-style capture array: slots 2i/2i+1
   // hold group i's start/end (group 0 = the whole match), -1 for unset.
   // ==========================================================================
@@ -138,15 +238,16 @@ module LindenRegexApi {
   // ECMAScript tree semantics demands.
   /** THE contract: on any `Supported` pattern, `Match` computes exactly the
       answer the ECMAScript tree semantics (`LES.MatcherSpec`) demands. A thin
-      dispatch over `LSIMCAR.MainTheoremL3` (depth-1) / `LSIM.MainTheoremL4`
-      (nested). */
+      dispatch over `LSIM.MainTheoremL4` / `LSIM.MainTheoremL5` (the depth-1
+      fragment is a sub-fragment of L5, `SupportedL3ImpliesL5`). */
   lemma MatchCorrect(pattern: R.raw_regex, str: string)
     requires Supported(pattern)
     ensures LES.MatcherSpec(pattern, str, Match(pattern, str))
   {
     if SupportedL3(pattern) {
-      LSIMCAR.MainTheoremL3(pattern, str);
-    } else if SupportedL4(pattern) {
+      SupportedL3ImpliesL5(pattern);
+    }
+    if SupportedL4(pattern) {
       LSIMCOR.L4ScopeFromRaw(pattern);
       LSIM.MainTheoremL4(pattern, str);
     } else if SupportedL5(pattern) {
