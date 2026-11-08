@@ -49,10 +49,10 @@ module NullablePlusWitness {
   }
 
   // ==========================================================================
-  // §2.3 / §2.4 boundary (investigated 2026-08-30). Both conditions are
-  // conjuncts of SupportedL4/L5 ONLY, so a DEPTH-1 pattern takes the L3
-  // disjunct and is already covered. These pin that, so SUPPORTED_FRAGMENT.md
-  // cannot drift from the predicates again.
+  // §2.3 / §2.4: capture under a quantifier, inside or around a look body. No
+  // scope condition remains (2026-11-08): the depth-k descent reads its
+  // dominance off the presence path on the reconstructed banks. These pin it,
+  // so SUPPORTED_FRAGMENT.md cannot drift from the predicates.
   // ==========================================================================
   const CAP_A       := R.Raw_capture(R.Raw_character(R.Dot))          // (a)
   const CAP_STAR    := R.Raw_quant(R.Star, CAP_A)                     // (a)*
@@ -60,32 +60,38 @@ module NullablePlusWitness {
   const LOOK_CAPSTAR := R.Raw_lookaround(R.Lookahead, CAP_STAR)       // (?=(a)*)
   const QUANT_LOOK  := R.Raw_quant(R.Star, R.Raw_capture(LOOK_CAP))   // ((?=(a)))*
 
-  /** §2.3's own example verifies TODAY, via the depth-1 fragment. */
-  lemma Frag23_DepthOneIsSupported()
-    ensures API.SupportedL3(LOOK_CAPSTAR) && API.Supported(LOOK_CAPSTAR)
-    ensures !API.SupportedL4(LOOK_CAPSTAR) && !API.SupportedL5(LOOK_CAPSTAR)
-  { assert !NR.LookBodiesNoCapUnderQuantRaw(LOOK_CAPSTAR); }
+  /** §2.3's own example is in every look fragment. */
+  lemma Frag23_DepthOne()
+    ensures API.SupportedL3(LOOK_CAPSTAR) && API.SupportedL4(LOOK_CAPSTAR) && API.Supported(LOOK_CAPSTAR)
+  { }
 
-  /** ...and the NESTED form really is out — nesting forces L4/L5. */
-  lemma Frag23_NestedIsNotSupported()
-    ensures !API.Supported(R.Raw_lookaround(R.Lookahead, LOOK_CAPSTAR))
-  {
-    assert !NR.LookFreeRaw(LOOK_CAPSTAR);
-    assert !NR.LookBodiesNoCapUnderQuantRaw(R.Raw_lookaround(R.Lookahead, LOOK_CAPSTAR));
-  }
+  /** ...and its NESTED form `(?=(?=(a)*))` is supported. */
+  lemma Frag23_Nested()
+    ensures API.SupportedL4(R.Raw_lookaround(R.Lookahead, LOOK_CAPSTAR))
+    ensures API.Supported(R.Raw_lookaround(R.Lookahead, LOOK_CAPSTAR))
+  { }
 
   /** §2.4's own example, same story. */
-  lemma Frag24_DepthOneIsSupported()
-    ensures API.SupportedL3(QUANT_LOOK) && API.Supported(QUANT_LOOK)
-    ensures !API.SupportedL4(QUANT_LOOK) && !API.SupportedL5(QUANT_LOOK)
-  { assert !NR.QuantsLookCapFreeRaw(QUANT_LOOK); }
+  lemma Frag24_DepthOne()
+    ensures API.SupportedL3(QUANT_LOOK) && API.SupportedL4(QUANT_LOOK) && API.Supported(QUANT_LOOK)
+  { }
 
-  lemma Frag24_NestedIsNotSupported()
-    ensures !API.Supported(R.Raw_quant(R.Star,
-                             R.Raw_capture(R.Raw_lookaround(R.Lookahead, LOOK_CAP))))
+  /** `((?=(?=(a))))*` */
+  lemma Frag24_Nested()
+    ensures API.SupportedL4(R.Raw_quant(R.Star, R.Raw_capture(R.Raw_lookaround(R.Lookahead, LOOK_CAP))))
+    ensures API.Supported(R.Raw_quant(R.Star, R.Raw_capture(R.Raw_lookaround(R.Lookahead, LOOK_CAP))))
+  { }
+
+  /** The L3 gap F-c left open: `(?=(a)*)(a?)+`, a capture under a quantifier in a
+      look body next to a greedy CI-nullable plus. */
+  lemma CaptureUnderQuantNextToNullablePlus()
+    ensures API.SupportedL5Cin(R.Raw_con(LOOK_CAPSTAR, R.Raw_quant(R.Plus, AOPT)))
+    ensures API.Supported(R.Raw_con(LOOK_CAPSTAR, R.Raw_quant(R.Plus, AOPT)))
   {
-    assert !NR.LookFreeRaw(LOOK_CAP);
-    assert !NR.QuantsLookCapFreeRaw(R.Raw_quant(R.Star,
-                                      R.Raw_capture(R.Raw_lookaround(R.Lookahead, LOOK_CAP))));
+    var p := R.Raw_con(LOOK_CAPSTAR, R.Raw_quant(R.Plus, AOPT));
+    assert R.raw_nullable(AOPT) == R.CINullable;
+    var re := R.lazy_prefix(R.annotate(p));
+    assert M.NoPosLookbehindRE(re);
+    LSIMCOR.NoPosImpliesL5ScopeV1(re);
   }
 }

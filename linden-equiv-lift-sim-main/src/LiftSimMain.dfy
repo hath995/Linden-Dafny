@@ -147,7 +147,6 @@ module LindenElkLiftSimMain {
     requires forall l: int, la: R.lookaround, b: R.regex ::
                1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, b) ==>
                  M.FrameEntryOk(crv, la, b, PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re))
-    requires forall c: nat :: c in PIV.CapIdsInLooks(re) ==> M.GNotUnderQuantL(T.Translate(re), c)
     // ---- global res-side facts ----
     requires |res1.a_cp| == nlook && |res1.a_clk| == nlook
     requires CM.LookCpSetWithClk(res1) && CM.LookCpsLE(res1, |str|)
@@ -367,7 +366,6 @@ module LindenElkLiftSimMain {
     requires M.OracleSufAllO(rer, qm, str)
     requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
     requires M.FrameEntryAllO(crv, re, ast)
-    requires forall c: nat :: c in PIV.CapIdsInLooks(re) ==> M.GNotUnderQuantL(T.Translate(re), c)
     requires S == PIV.CapIdsInLooks(re)
     requires M.OrderedGm(leaf.1)
     requires LT.FirstLeaf(t, inp) == Some(leaf)
@@ -722,12 +720,10 @@ module LindenElkLiftSimMain {
           OracleOkSuffixAtCp(rer, qm, str, cp);
         }
       }
-      assert forall c: nat :: c in PIV.CapIdsInLooks(re) ==> M.GNotUnderQuantL(T.Translate(re), c);
 
-      // owner-forall -> OwnerForallO (a-h tables SCOPED to this by-block)
+      // owner-forall -> OwnerForallO, read off the reconstructed banks
       assert NR.L5ScopeRE(re);                     // (L5 F7c-2c)
-      ProduceOwnerForall(qm, crv, str, ast, re, code, endl, ov, thread, S, inits,
-                         capture, look, quant, result, ncap, nlook, nquant);
+      ProduceOwnerForallRes(qm, crv, str, ast, re, ov, res.0, res.1, res.2, S, ncap, nlook, nquant);
 
       var synthetic := AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed);
       assert CM.ThreadRegsWf(synthetic, ncap, nlook, nquant) && M.QuantRegsFinal(synthetic);

@@ -580,66 +580,6 @@ module LindenElkMainCinLk {
   }
 
   // =========================================================================
-  // 4. The owner-package forall at a THREAD (twin of `ProduceOwnerForall`,
-  //    which reads the same facts off the main run under the full gate).
-  // =========================================================================
-
-  lemma ProduceOwnerForallRegs(
-    qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex, ov: LOr.OracleView,
-    thread: AI.Thread, S: set<LG.GroupId>, ncap: int, nlook: int, nquant: int)
-    requires crv == CP.FFullCompilation(ast)
-    requires re == R.lazy_prefix(ast)
-    requires M.LooksNoNulledPlusRE(re)
-    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && T.TransWf(re)
-    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
-    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
-    requires ncap >= 0 && nlook >= 0 && nquant >= 0
-    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
-    requires forall x: nat :: x in LTB.LookIds(re) ==> (x as int) in qm.looks
-    requires M.WinRegsOk(ast, re, crv, str, ov, thread, ncap, nlook, nquant)
-    requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
-    requires forall c: nat :: c in PIV.CapIdsInLooks(re) ==> M.GNotUnderQuantL(T.Translate(re), c)
-    requires S == PIV.CapIdsInLooks(re)
-    requires var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
-             M.LookInvO(res.1, ov, str) && M.Res0LiveO(re, res.0)
-    requires M.ThreadLookInvO(thread.look_regs, ov, str)
-    ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
-            OwnerForallO(crv, str, re, ov, res.0, res.1, res.2, S, ncap, nlook, nquant)
-  {
-    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
-    var maxlook := R.max_lookaround(ast);
-    var res := AI.FLookLoop(crv, str, 1, maxlook, thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
-    var lkT := thread.look_regs;
-    var qtT := thread.quant_regs;
-    var Sreg := PIV.CaptureRegsSet(PIV.CapIdsInLooks(re));
-    var Slook := M.LookIdSet(re);
-    reveal M.ThreadLookInvO(), M.Res0LiveO();
-    assert M.AhO(crv, ast, thread.capture_regs, thread.look_regs, Sreg, Slook, ncap, str)
-           && CM.ThreadRegsWf(thread, ncap, nlook, nquant)
-           && (forall k :: AI.get_idx(thread.quant_regs.a_cp, k) < 0)
-           && (forall k :: AI.get_idx(thread.quant_regs.a_clk, k) >= -1)
-    by {
-      reveal M.AhO(), M.WinRegsOk();
-      M.LookRowsStaticNested(ast, re, crv);
-    }
-    FreshWfGIndep(qm, crv, str, re, ov, res.1, ncap, nlook, nquant);
-    forall g: LG.GroupId | g in S && g in PIV.GmOfLive(re, res.0, res.1, res.2)
-      ensures exists owner: nat :: OwnerPkg(crv, str, re, ov, res.1, g, owner, ncap, nlook, nquant)
-    {
-      PIV.CapIdsSplit(re);
-      NI.GmOfLivePresenceExtractLkNested(re, res.0, res.1, res.2, g);
-      assert AI.get_idx(res.0.a_clk, CP.start_reg(g)) >= 0;
-      FreshWfAtG(qm, crv, str, re, ov, res.1, g, ncap, nlook, nquant);
-      var owner := M.FreshBodyDirectMember(crv, str, ast, re, thread.capture_regs, lkT, qtT, ov,
-                                           Sreg, Slook, ncap, nlook, nquant, g);
-      assert OwnerPkg(crv, str, re, ov, res.1, g, owner, ncap, nlook, nquant);
-    }
-    assert OwnerForallO(crv, str, re, ov, res.0, res.1, res.2, S, ncap, nlook, nquant) by {
-      reveal OwnerForallO();
-    }
-  }
-
-  // =========================================================================
   // 5. The engine answer reads the synthetic winner (quant positions are
   //    never read by the look loop's bodies nor by `filter_reset`).
   // =========================================================================
@@ -954,7 +894,6 @@ module LindenElkMainCinLk {
     requires forall l: int :: l in qm.looks ==> l >= 0
     requires M.OracleSufAllO(rer, qm, str)
     requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
-    requires forall c: nat :: c in PIV.CapIdsInLooks(re) ==> M.GNotUnderQuantL(T.Translate(re), c)
     requires S == PIV.CapIdsInLooks(re)
     requires M.OrderedGm(leaf.1)
     requires LT.FirstLeaf(t, inp) == Some(leaf)
@@ -971,12 +910,30 @@ module LindenElkMainCinLk {
     M.EndpointChildLinkOkRegs(ast, re, crv, str, ov, th, ncap, nlook, nquant);
     M.EndpointLookInvRegs(ast, re, crv, str, ov, th, ncap, nlook, nquant);
     M.EndpointTopLookFrameRegs(ast, re, crv, str, ov, th, ncap, nlook, nquant);
-    ProduceOwnerForallRegs(qm, crv, str, ast, re, ov, th, S, ncap, nlook, nquant);
+    var resO := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), th.capture_regs, th.look_regs, th.quant_regs, ov);
+    ProduceOwnerForallRes(qm, crv, str, ast, re, ov, resO.0, resO.1, resO.2, S, ncap, nlook, nquant);
     var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), th.capture_regs, th.look_regs, th.quant_regs, ov);
     var synthetic := AI.Thread(th.pc, res.0, res.1, res.2, th.exit_allowed);
     assert CM.ThreadRegsWf(synthetic, ncap, nlook, nquant) && M.QuantRegsFinal(synthetic);
     MainTheoremL4DeepConclude(rer, qm, crv, str, ast, re, code, endl, ov, th, leaf,
                               t, inp, S, ncap, nlook, nquant);
+  }
+
+  /** The two look tables of a full compilation have the same size. */
+  lemma FFullCompilationLookLens(ast: R.regex)
+    ensures |CP.FFullCompilation(ast).f_look_types| == |CP.FFullCompilation(ast).f_look_ast|
+  {
+    hide R.max_quant, R.lazy_prefix;   // recursive + in every term here (same loop as `FFullCompilationFactsNested`)
+    var maxlook0 := R.max_lookaround(ast);
+    var crv := CP.FFullCompilation(ast);
+    var seed := CP.FCompiled(ast, CP.compile_to_bytecode(R.lazy_prefix(ast)), LCdn.compile_cdns(ast),
+                             seq(maxlook0 + 1, i => R.Lookahead), seq(maxlook0 + 1, i => R.Re_empty),
+                             seq(maxlook0 + 1, i => []), seq(maxlook0 + 1, i => []),
+                             seq(maxlook0 + 1, i => []), seq(R.max_quant(ast) + 1, i => []));
+    assert crv == CP.FCompileExtra(ast, seed);
+    LTB.FCompileExtraLookFrame(ast, seed);
+    assert LTB.SameLookSizes(seed, crv);
+    assert |seed.f_look_types| == |seed.f_look_ast|;
   }
 
   /** THE THEOREM: `MainTheoremL5` without the interim gate — greedy
@@ -1097,17 +1054,9 @@ module LindenElkMainCinLk {
     var crv := CP.FFullCompilation(ast);
     M.FFullCompilationFactsNested(ast);
     assert crv.f_main_ast == ast && crv.f_main_bc == code && crv.f_main_cdns == LCdn.compile_cdns(ast);
-    assert |crv.f_look_types| == |crv.f_look_ast| by {
-      var maxlook0 := R.max_lookaround(ast);
-      var seed := CP.FCompiled(ast, CP.compile_to_bytecode(R.lazy_prefix(ast)), LCdn.compile_cdns(ast),
-                               seq(maxlook0 + 1, i => R.Lookahead), seq(maxlook0 + 1, i => R.Re_empty),
-                               seq(maxlook0 + 1, i => []), seq(maxlook0 + 1, i => []),
-                               seq(maxlook0 + 1, i => []), seq(R.max_quant(ast) + 1, i => []));
-      assert CP.FFullCompilation(ast) == CP.FCompileExtra(ast, seed);
-      LTB.FCompileExtraLookFrame(ast, seed);
-      assert LTB.SameLookSizes(seed, crv);
-      assert |seed.f_look_types| == |seed.f_look_ast|;
-    }
+    FFullCompilationLookLens(ast);
+    assert |crv.f_look_types| == |crv.f_look_ast|;
+    assert {:split_here} true;
     var ov := AI.FBuildOracle(crv, str);
     OB.FBuildOracleViewLen(crv, str);
     assert qm.ov == ov;
@@ -1226,7 +1175,6 @@ module LindenElkMainCinLk {
 
       assert {:split_here} true;
       // ---- the endpoint at rp0 ------------------------------------------------
-      assert forall c: nat :: c in PIV.CapIdsInLooks(re) ==> M.GNotUnderQuantL(T.Translate(re), c);
       EndpointAtRp0(rer, qm, crv, str, ast, re, code, endl, ov, rp0, leaf, t, inp, S, ncap, nlook, nquant);
       var res := AI.FLookLoop(crv, str, 1, maxlook, rp0.capture_regs, rp0.look_regs, rp0.quant_regs, ov);
       var synthetic := AI.Thread(rp0.pc, res.0, res.1, res.2, rp0.exit_allowed);

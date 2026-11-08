@@ -7620,6 +7620,173 @@ module LindenElkLiftSimCore {
       }
   }
 
+  // ==========================================================================
+  // (§2.3/§2.4) CAPTURE UNDER A QUANTIFIER: the transports that replace the
+  // no-quant shortcuts of the depth-k descent. The presence path of a capture on
+  // the reconstructed banks already carries every quantifier clock it crosses;
+  // the FLookLoop value lifts move those clocks onto the fresh body match.
+  // ==========================================================================
+
+  /** `PathPresentLk` transport for a DIRECT capture, quantifiers on the path
+      allowed: the path crosses no look node, so it reads only outside-look
+      capture starts and outside-look quant clocks. Successor of
+      `NI.PathPresentLkDirectAgree`, which needed `AncQuants == {}`. */
+  lemma PathPresentLkDirectAgreeQ(r: R.regex, cc1: seq<int>, lc1: seq<int>, qc1: seq<int>,
+                                  cc2: seq<int>, lc2: seq<int>, qc2: seq<int>, mx: int, g: nat)
+    requires PIV.CapUnique(r)
+    requires g in PIV.CapIds(r) && g !in PIV.CapIdsInLooks(r)
+    requires forall c: nat :: c in PIV.CapIdsOutsideLooks(r) ==>
+      AI.get_idx(cc1, CP.start_reg(c)) == AI.get_idx(cc2, CP.start_reg(c))
+    requires forall q: nat :: q in PIV.QuantIdsOutsideLooks(r) ==>
+      AI.get_idx(qc1, q as int) == AI.get_idx(qc2, q as int)
+    requires PIV.PathPresentLk(r, cc2, lc2, qc2, mx, g)
+    ensures PIV.PathPresentLk(r, cc1, lc1, qc1, mx, g)
+    ensures PIV.MxAtGidLk(r, cc1, lc1, qc1, mx, g) == PIV.MxAtGidLk(r, cc2, lc2, qc2, mx, g)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      assert {:split_here} true;
+      if g in PIV.CapIds(r1) {
+        assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r1) ==> c in PIV.CapIdsOutsideLooks(r);
+        assert forall q: nat :: q in PIV.QuantIdsOutsideLooks(r1) ==> q in PIV.QuantIdsOutsideLooks(r);
+        PathPresentLkDirectAgreeQ(r1, cc1, lc1, qc1, cc2, lc2, qc2, mx, g);
+      } else {
+        assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r2) ==> c in PIV.CapIdsOutsideLooks(r);
+        assert forall q: nat :: q in PIV.QuantIdsOutsideLooks(r2) ==> q in PIV.QuantIdsOutsideLooks(r);
+        PathPresentLkDirectAgreeQ(r2, cc1, lc1, qc1, cc2, lc2, qc2, mx, g);
+      }
+    case Re_con(r1, r2) =>
+      assert {:split_here} true;
+      if g in PIV.CapIds(r1) {
+        assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r1) ==> c in PIV.CapIdsOutsideLooks(r);
+        assert forall q: nat :: q in PIV.QuantIdsOutsideLooks(r1) ==> q in PIV.QuantIdsOutsideLooks(r);
+        PathPresentLkDirectAgreeQ(r1, cc1, lc1, qc1, cc2, lc2, qc2, mx, g);
+      } else {
+        assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r2) ==> c in PIV.CapIdsOutsideLooks(r);
+        assert forall q: nat :: q in PIV.QuantIdsOutsideLooks(r2) ==> q in PIV.QuantIdsOutsideLooks(r);
+        PathPresentLkDirectAgreeQ(r2, cc1, lc1, qc1, cc2, lc2, qc2, mx, g);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;
+      assert AI.get_idx(qc1, qid) == AI.get_idx(qc2, qid) by {
+        if qid >= 0 { assert (qid as nat) in PIV.QuantIdsOutsideLooks(r); }
+      }
+      assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r1) ==> c in PIV.CapIdsOutsideLooks(r);
+      assert forall q0: nat :: q0 in PIV.QuantIdsOutsideLooks(r1) ==> q0 in PIV.QuantIdsOutsideLooks(r);
+      PathPresentLkDirectAgreeQ(r1, cc1, lc1, qc1, cc2, lc2, qc2, AI.get_idx(qc2, qid), g);
+    case Re_capture(cid, r1) =>
+      assert {:split_here} true;
+      if cid == g as int {
+      } else {
+        assert g in PIV.CapIds(r1);
+        assert AI.get_idx(cc1, CP.start_reg(cid)) == AI.get_idx(cc2, CP.start_reg(cid)) by {
+          if cid >= 0 {
+            assert (cid as nat) in PIV.CapIdsOutsideLooks(r);
+          } else {
+            assert CP.start_reg(cid) < 0;
+          }
+        }
+        assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r1) ==> c in PIV.CapIdsOutsideLooks(r);
+        assert forall q: nat :: q in PIV.QuantIdsOutsideLooks(r1) ==> q in PIV.QuantIdsOutsideLooks(r);
+        PathPresentLkDirectAgreeQ(r1, cc1, lc1, qc1, cc2, lc2, qc2, mx, g);
+      }
+    case Re_lookaround(lid, la, r1) =>
+      assert {:split_here} true;
+      assert g in PIV.CapIds(r1);
+      assert g in PIV.CapIdsInLooks(r);
+      assert false;
+  }
+
+  /** For a TOP lid the path to the look node crosses no other look, so the
+      look-clock-aware presence IS the plain presence (converse of
+      `NI.LookPathPresentLkFromPresentTop`). */
+  lemma LookPathPresentFromLkTop(r: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>,
+                                 mx: int, lid: nat)
+    requires NR.NestedFragmentRE(r) && LTB.LookUnique(r)
+    requires lid in LTB.LookIds(r) && lid in NI.TopLookIds(r)
+    requires NI.LookPathPresentLk(r, cc, lc, qc, mx, lid)
+    ensures NI.LookPathPresent(r, cc, qc, mx, lid)
+    decreases r
+  {
+    NI.TopLookIdsIn(r);
+    match r
+    case Re_alt(r1, r2) =>
+      assert {:split_here} true;
+      if lid in LTB.LookIds(r1) {
+        assert lid in NI.TopLookIds(r1) by {
+          if lid !in NI.TopLookIds(r1) {
+            assert lid in NI.TopLookIds(r2); NI.TopLookIdsIn(r2);
+            assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
+          }
+        }
+        LookPathPresentFromLkTop(r1, cc, lc, qc, mx, lid);
+      } else {
+        assert lid in NI.TopLookIds(r2) by { NI.TopLookIdsIn(r1); }
+        LookPathPresentFromLkTop(r2, cc, lc, qc, mx, lid);
+      }
+    case Re_con(r1, r2) =>
+      assert {:split_here} true;
+      if lid in LTB.LookIds(r1) {
+        assert lid in NI.TopLookIds(r1) by {
+          if lid !in NI.TopLookIds(r1) {
+            assert lid in NI.TopLookIds(r2); NI.TopLookIdsIn(r2);
+            assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
+          }
+        }
+        LookPathPresentFromLkTop(r1, cc, lc, qc, mx, lid);
+      } else {
+        assert lid in NI.TopLookIds(r2) by { NI.TopLookIdsIn(r1); }
+        LookPathPresentFromLkTop(r2, cc, lc, qc, mx, lid);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;
+      LookPathPresentFromLkTop(r1, cc, lc, qc, AI.get_idx(qc, qid), lid);
+    case Re_capture(cid, r1) =>
+      assert {:split_here} true;
+      LookPathPresentFromLkTop(r1, cc, lc, qc, mx, lid);
+    case Re_lookaround(lid0, la, r1) =>
+      assert {:split_here} true;
+      if lid0 >= 0 && (lid0 as nat) == lid {
+      } else {
+        assert lid !in NI.TopLookIds(r);
+        assert false;
+      }
+  }
+
+  /** (reverse descent) A top-in-`host` look's dominance on the fresh body match,
+      read off the presence path of `g2` on the reconstructed banks: the value
+      lifts carry the outside-look capture and quant clocks, the level-link the
+      look clock. Replaces the structural `NI.LookPathDomNoAncQuants`. */
+  lemma ReverseLookDomOnFresh(host: R.regex, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
+                              rfA: AI.Thread, A1: nat, g2: nat)
+    requires NR.NestedFragmentRE(host) && PIV.CapUnique(host) && LTB.LookUnique(host)
+    requires A1 in LTB.LookIds(host) && A1 in NI.TopLookIds(host)
+    requires g2 in PIV.CapIds(NI.LookBodyOfRE(host, A1)) && g2 in PIV.CapIds(host)
+    requires PIV.PathPresentLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, g2)
+    requires CM.RegsAgreeInside(res0, rfA.capture_regs, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host)))
+    requires CM.RegsAgreeInside(res2, rfA.quant_regs, M.QIdsOuter(host))
+    requires AI.get_idx(res1.a_clk, A1 as int) == AI.get_idx(rfA.look_regs.a_clk, A1 as int)
+    ensures NI.LookPathDom(host, AI.get_idx(rfA.look_regs.a_clk, A1 as int), rfA.quant_regs.a_clk, A1)
+  {
+    NI.LookPathDecomposeNested(host, NI.LookBodyOfRE(host, A1), res0.a_clk, res1.a_clk, res2.a_clk, -1, A1, g2);
+    LookPathPresentFromLkTop(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, A1);
+    forall c: nat | c in PIV.CapIdsOutsideLooks(host)
+      ensures AI.get_idx(rfA.capture_regs.a_clk, CP.start_reg(c as int)) == AI.get_idx(res0.a_clk, CP.start_reg(c as int))
+    {
+      assert CP.start_reg(c as int) in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host));
+    }
+    forall q: nat | q in PIV.QuantIdsOutsideLooks(host)
+      ensures AI.get_idx(rfA.quant_regs.a_clk, q as int) == AI.get_idx(res2.a_clk, q as int)
+    {
+      assert (q as int) in M.QIdsOuter(host);
+    }
+    NI.LookPathPresentAgreeTop(host, rfA.capture_regs.a_clk, rfA.quant_regs.a_clk,
+                               res0.a_clk, res2.a_clk, -1, A1);
+    NI.LookPathDomIntroTop(host, rfA.capture_regs.a_clk, rfA.quant_regs.a_clk, -1, A1,
+                           AI.get_idx(rfA.look_regs.a_clk, A1 as int));
+  }
+
   /** (BRICK D4 infra) `LookPathPresentAgree` for a NESTED `re` restricted to a
       TOP-LEVEL `lid`. The depth-1 form needs the whole fragment look-free to kill
       the outer `Re_lookaround(lid0 != lid)` branch; under nesting that branch is
@@ -8219,8 +8386,8 @@ module LindenElkLiftSimCore {
       (`LookPathDecomposeNested`) + the reverse invariant on `res1`
       (`FLookLoopLookCpSet`, hypothesis) + the LEVEL-LINK
       (`FLookLoopChildLinkOk`: `res1`'s record at `A1` IS `rf_A`'s);
-      `A1`-dominance on `rf_A`'s banks is STRUCTURAL (`LookPathDomNoAncQuants` —
-      no quants above capture-owning looks inside bodies, from `GNotUnderQuantL`);
+      `A1`-dominance on `rf_A`'s banks comes from the presence path on the
+      reconstructed banks (`ReverseLookDomOnFresh`, §2.3/§2.4);
       and the landing INTO `SubFirstLeafAt(A1, rf_A.look_regs)` is the RECURSIVE
       CALL at `A1` (its `res1`-keyed leaf equals the `rf_A`-keyed one by the
       level-link position tie). `DescentLandTopDeep` then lands `g2` in `host`'s
@@ -8312,7 +8479,6 @@ module LindenElkLiftSimCore {
     M.NoPosLookbehindRE(re)
     && NR.NegLooksLookFreeRE(re)
     && T.TransWf(re)
-    && forall c: nat :: c in PIV.CapIdsInLooks(re) ==> M.GNotUnderQuantL(T.Translate(re), c)
   }
 
   /** THE EXECUTABLE-SCOPE BRIDGE: `L4Scope` from four purely SYNTACTIC raw-level
@@ -8326,8 +8492,6 @@ module LindenElkLiftSimCore {
     requires T.Latin1Wf(raw)
     requires NR.NoPosLookbehindRaw(raw)
     requires NR.NegLooksLookFreeRaw(raw)
-    requires NR.LookBodiesNoCapUnderQuantRaw(raw)
-    requires NR.QuantsLookCapFreeRaw(raw)
     ensures L4Scope(raw)
   {
     var ast := R.annotate(raw);
@@ -8346,26 +8510,6 @@ module LindenElkLiftSimCore {
     NR.AnnotateNegLooksLookFree(R.Raw_capture(raw), 0, 1, 1);
     assert NR.NegLooksLookFreeRE(ast);
     assert NR.NegLooksLookFreeRE(re);
-    // The GNotUnderQuantL shadow, for every inside-look capture id.
-    assert NR.LookBodiesNoCapUnderQuantRaw(R.Raw_capture(raw));
-    NR.AnnotateLookBodiesNoCapUnderQuant(R.Raw_capture(raw), 0, 1, 1);
-    assert NR.LookBodiesNoCapUnderQuantRE(ast);
-    assert NR.QuantsLookCapFreeRaw(R.Raw_capture(raw));
-    NR.AnnotateQuantsLookCapFree(R.Raw_capture(raw), 0, 1, 1);
-    assert NR.QuantsLookCapFreeRE(ast);
-    // Push through the lazy_prefix wrapper (dot-star side is by computation).
-    var pfx := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
-    assert re == R.Re_con(pfx, ast);
-    assert NR.LookBodiesNoCapUnderQuantRE(pfx);
-    assert NR.QuantsLookCapFreeRE(pfx);
-    assert NR.LookBodiesNoCapUnderQuantRE(re);
-    assert NR.QuantsLookCapFreeRE(re);
-    PIV.SpecRegexCapUnique(raw);
-    forall c: nat | c in PIV.CapIdsInLooks(re)
-      ensures M.GNotUnderQuantL(T.Translate(re), c)
-    {
-      M.GNQLTop(re, c);
-    }
   }
 
   /** (L5 F7c) The L5 scope at the annotated, lazy-prefixed regex from the raw
@@ -8453,7 +8597,6 @@ module LindenElkLiftSimCore {
     L5ScopeV1RE(re)                       // (L5 F7f) the v1 fragment (kind-split hub)
     && NR.NegLooksLookFreeRE(re)
     && T.TransWf(re)
-    && forall c: nat :: c in PIV.CapIdsInLooks(re) ==> M.GNotUnderQuantL(T.Translate(re), c)
   }
 
   // ==========================================================================

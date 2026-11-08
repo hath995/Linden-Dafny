@@ -65,36 +65,29 @@ module LindenRegexApi {
 
   /** L4: arbitrarily NESTED capturing positive lookaheads. The nested fragment
       (`NR.NestedFragmentRaw`: look bodies may themselves contain looks) under
-      four purely syntactic, executable scope conditions:
+      two purely syntactic, executable scope conditions:
         - no POSITIVE lookbehind anywhere (`NoPosLookbehindRaw`; negative
           lookbehinds are fine);
-        - NEGATIVE look bodies are look-free (`NegLooksLookFreeRaw`);
-        - inside a look body no capture sits under a quantifier
-          (`LookBodiesNoCapUnderQuantRaw`);
-        - a quantifier body's look bodies are capture-free
-          (`QuantsLookCapFreeRaw`).
+        - NEGATIVE look bodies are look-free (`NegLooksLookFreeRaw`).
+      Captures may sit under quantifiers, inside and around look bodies (§2.3/§2.4).
       Exactly `MainTheoremL4`'s precondition (via `LSIMCOR.L4ScopeFromRaw`). */
   predicate SupportedL4(pattern: R.raw_regex) {
     NR.NestedFragmentRaw(pattern) && T.Latin1Wf(pattern)
     && NR.NoPosLookbehindRaw(pattern)
     && NR.NegLooksLookFreeRaw(pattern)
-    && NR.LookBodiesNoCapUnderQuantRaw(pattern)
-    && NR.QuantsLookCapFreeRaw(pattern)
     && NR.NoNulledPlusRaw(pattern)   // §2.5b interim (see SupportedL3)
   }
 
   /** (L5) The nested fragment with POSITIVE LOOKBEHINDS: a positive lookbehind's
       body is lookbehind-only, a lookahead's body is scoped recursively (it may itself
       contain positive lookbehinds, e.g. `(?=x(?<=y))`) — the EXECUTABLE
-      `LSIMCOR.L5ScopeV1RE` on the annotated regex — plus the other three scope
-      conditions as in `SupportedL4`. Exactly `MainTheoremL5`'s precondition (via
+      `LSIMCOR.L5ScopeV1RE` on the annotated regex — plus the negative-look
+      condition as in `SupportedL4`. Exactly `MainTheoremL5`'s precondition (via
       `LSIMORA.L5ScopeFromRawFull`). */
   predicate SupportedL5(pattern: R.raw_regex) {
     NR.NestedFragmentRaw(pattern) && T.Latin1Wf(pattern)
     && LSIMCOR.L5ScopeV1RE(R.lazy_prefix(R.annotate(pattern)))
     && NR.NegLooksLookFreeRaw(pattern)
-    && NR.LookBodiesNoCapUnderQuantRaw(pattern)
-    && NR.QuantsLookCapFreeRaw(pattern)
     && NR.NoNulledPlusRaw(pattern)   // §2.5b interim (see SupportedL3)
   }
 
@@ -115,8 +108,6 @@ module LindenRegexApi {
     NR.NestedFragmentRaw(pattern) && T.Latin1Wf(pattern)
     && LSIMCOR.L5ScopeV1RE(R.lazy_prefix(R.annotate(pattern)))
     && NR.NegLooksLookFreeRaw(pattern)
-    && NR.LookBodiesNoCapUnderQuantRaw(pattern)
-    && NR.QuantsLookCapFreeRaw(pattern)
     && MCL.LooksNoNulledPlusX(R.lazy_prefix(R.annotate(pattern)))
     && MCL.CinBodiesLookFreeX(R.lazy_prefix(R.annotate(pattern)))
   }

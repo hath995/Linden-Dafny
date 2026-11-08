@@ -5917,131 +5917,124 @@ module LindenElkLiftSimChain {
     }
   }
 
-  /** L4 PERF: the FULL per-g fresh-wf side condition (all four conjuncts,
-      including the g-dependent GNotUnderQuantL), proven in a MINIMAL context.
-      In ProduceOwnerForall this forall sat inside `forall g { forall owner0 }`
-      under isolate_assertions; the inner ENSURES-check ran in a ~5000-fact
-      context and timed out (10x) even after the g-independent facts were hoisted
-      to FreshWfGIndep. Extracted here, the g-loop obtains it as one cheap call. */
-  lemma FreshWfAtG(
-    qm: AR.QMap, crv: CP.FCompiled, str: string, re: R.regex, ov: LOr.OracleView,
-    res1: AReg.Regs, g: LG.GroupId, ncap: int, nlook: int, nquant: int)
-    requires LTB.LookTablesOk(re, crv)
-    requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
-    requires forall x: nat :: x in LTB.LookIds(re) ==> (x as int) in qm.looks
-    requires M.LookInvO(res1, ov, str)
-    requires T.TransWf(re)
-    requires M.GNotUnderQuantL(T.Translate(re), g)
-    ensures M.FreshWfO(crv, str, re, res1, g, ncap, nlook, nquant)
-  {
-    reveal M.FreshWfO();
-    FreshWfGIndep(qm, crv, str, re, ov, res1, ncap, nlook, nquant);
-    forall owner0: nat |
-      owner0 in LTB.LookIds(re)
-      && g in PIV.CapIds(NI.LookBodyOfRE(re, owner0))
-      && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner0))
-      && M.MatchedPosLA(crv, res1, owner0)
-      ensures var body := NI.LookBodyOfRE(re, owner0);
-              PSM.SizesOkRE(body, ncap, nlook, nquant)
-              && (AReg.get_cp(res1, owner0).Some? ==> M.cp_ctx_ok(crv, str, res1, owner0))
-              && T.TransWf(body)
-              && M.GNotUnderQuantL(T.Translate(body), g)
-    {
-      // SizesOkRE(body), cp_ctx_ok, TransWf(body): g-independent, from FreshWfGIndep.
-      // GNotUnderQuantL(Translate(body), g): descends the top-level fact to the body.
-      GNotUnderQuantLLookBody(re, owner0, g);
-    }
-  }
-
-  /** L4 PERF: the owner-package forall, produced OPAQUE in a MINIMAL context.
-      The `forall g :: exists owner :: OwnerPkg` needs the a-h tables (for
-      `FreshBodyDirectMember`), whose triggers make it slow in MainTheoremL4's
-      ~5000-fact context. Here the a-h stay local, and MainTheoremL4 obtains
-      `OwnerForallO(...)` atomically. */
-  lemma {:isolate_assertions} ProduceOwnerForall(
-    qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex, code: RB.code,
-    endl: nat, ov: LOr.OracleView, thread: AI.Thread, S: set<LG.GroupId>, inits: AI.VmState,
-    capture: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, result: Option<AI.Thread>,
-    ncap: int, nlook: int, nquant: int)
-    requires crv == CP.FFullCompilation(ast)
-    requires re == R.lazy_prefix(ast)
-    requires code == CP.compile_to_bytecode(re)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim: all stamps false (the L3a/L5 callees keep the full gate)
-    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && T.TransWf(re)
+  /** (§2.3/§2.4) An inside-look capture present in the top readout is present in
+      its innermost owner's FRESH body match. The presence path on the reconstructed
+      banks descends to the owner (`LookPathDecomposeNested`) and the FLookLoop value
+      lifts move it onto the fresh banks, quantifier clocks included: the path itself
+      is the dominance, so no capture-under-quantifier hypothesis is needed. */
+  lemma OwnerPkgFromPresence(
+    qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex, ov: LOr.OracleView,
+    res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs, g: LG.GroupId, ncap: int, nlook: int, nquant: int)
+    returns (owner: nat)
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
-    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
-    requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
-    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
-    requires ncap >= 0 && nlook >= 0 && nquant >= 0
-    requires ncap == 2 * R.max_group(ast) + 2 && nlook == R.max_lookaround(ast) + 1 && nquant == R.max_quant(ast) + 1
+    requires LTB.LookTablesOk(re, crv)
     requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
     requires forall x: nat :: x in LTB.LookIds(re) ==> (x as int) in qm.looks
-    requires capture == AReg.init_regs(ncap) && look == AReg.init_regs(nlook) && quant == AReg.init_regs(nquant)
-    requires |inits.processed.true_set| == RB.size(code) && |inits.processed.false_set| == RB.size(code)
-    requires inits.context.nextchar == AI.get_char(str, inits.cp)
-    requires 0 <= inits.cp <= |str| && inits.clock >= 0
-    requires inits.active == [AI.init_thread(capture, look, quant)]
-    requires inits.blocked == [] && inits.bestmatch.None?
-    requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, crv.f_main_cdns).0
-    requires result.Some? && thread == result.value
     requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
-    requires forall c: nat :: c in PIV.CapIdsInLooks(re) ==> M.GNotUnderQuantL(T.Translate(re), c)
-    requires S == PIV.CapIdsInLooks(re)
-    requires var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
-             M.LookInvO(res.1, ov, str) && M.Res0LiveO(re, res.0)
-    requires M.ThreadLookInvO(thread.look_regs, ov, str)
-    ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
-            OwnerForallO(crv, str, re, ov, res.0, res.1, res.2, S, ncap, nlook, nquant)
+    requires |res1.a_cp| == nlook && |res1.a_clk| == nlook
+    requires M.LookInvO(res1, ov, str) && M.Res0LiveO(re, res0)
+    requires M.ValueOkO(crv, str, res0, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    requires M.QuantValueOkO(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    requires g in PIV.CapIdsInLooks(re) && g in PIV.GmOfLive(re, res0, res1, res2)
+    ensures OwnerPkg(crv, str, re, ov, res1, g, owner, ncap, nlook, nquant)
   {
-    M.LooksNoNulledPlusFromFull(re);   // (§2.5b F-c) the swept callees take the looks gate
-    hide M.LooksNoNulledPlusRE;   // (§2.5b F-c) a fact here, never unfolded (recursive: batch memory)
-    // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
-    // triggered existential storm the solver; all uses here are opaque.
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
-    var maxlook := R.max_lookaround(ast);
-    var res := AI.FLookLoop(crv, str, 1, maxlook, thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
-    var lkT := thread.look_regs;
-    var qtT := thread.quant_regs;
-    var Sreg := PIV.CaptureRegsSet(PIV.CapIdsInLooks(re));
-    var Slook := M.LookIdSet(re);
-    // OwnerForallO stays opaque until the final assembly, and LookInvO(res.1) is
-    // handled inside FreshWfGIndep -- both kept out of the g-loop's trigger context.
-    reveal M.ThreadLookInvO(), M.Res0LiveO();
-    // Establish the a-h tables OPAQUELY (scoped): the 6-variable (D-ord)/(g_new)
-    // quantifiers never enter the forall's own trigger context.
-    // one LookRows call establishes AhO AND the winning thread's register
-    // well-formedness + quant-reg facts, so FreshBodyDirectMember's register-wf
-    // preconditions are DIRECT HITS in the g-loop (no per-VC FFindMatch unfold).
-    assert M.AhO(crv, ast, thread.capture_regs, thread.look_regs, Sreg, Slook, ncap, str)
-           && CM.ThreadRegsWf(thread, ncap, nlook, nquant)
-           && (forall k :: AI.get_idx(thread.quant_regs.a_cp, k) < 0)
-           && (forall k :: AI.get_idx(thread.quant_regs.a_clk, k) >= -1)
-    by {
-      reveal M.AhO();
-      M.LookRowsFromTablesNested(ast, re, crv, code, str, ov, crv.f_main_cdns, inits,
-                                 capture, look, quant, ncap, nlook, nquant, endl, result);
+    reveal M.LookInvO(), M.Res0LiveO();
+    PIV.CapIdsSplit(re);
+    NI.GmOfLivePresenceExtractLkNested(re, res0, res1, res2, g);
+    assert AReg.as_arrays(res1).1 == res1.a_clk && AReg.as_arrays(res2).1 == res2.a_clk;
+    assert PIV.PathPresentLk(re, res0.a_clk, res1.a_clk, res2.a_clk, -1, g);
+    owner := NI.InnermostOwnerDirect(re, g);
+    var body := NI.LookBodyOfRE(re, owner);
+    NI.LookPathDecomposeNested(re, body, res0.a_clk, res1.a_clk, res2.a_clk, -1, owner, g);
+    M.LookBodyFactsL5(re, crv, owner);
+    assert NR.NestedFragmentRE(body) && PIV.CapUnique(body);
+    assert {:split_here} true;
+    // the owner matched: the record is set and the look is positive
+    assert AI.get_idx(res1.a_cp, owner as int) >= 0;
+    assert AReg.get_cp(res1, owner as int).Some? by { RL.AAsArraysLaws(res1); }
+    assert 1 <= owner <= R.max_lookaround(ast) && (owner as int) in qm.looks;
+    MatchedPosFromHub(qm, re, crv, res1, owner, g, ncap, nlook, nquant);
+    assert M.MatchedPosLA(crv, res1, owner as int);
+    assert body == M.VBody(crv, owner as int) by {
+      NI.LookBodyOfTablesTie(re, crv, owner);
+      var laT: R.lookaround :| LTB.LookEntryOk(crv, owner as int, laT, body);
     }
-    // g-independent fresh-wf (SizesOkRE, cp_ctx_ok, TransWf), proven ONCE in a
-    // minimal context; the g-loop below only owes the g-dependent GNotUnderQuantL.
-    FreshWfGIndep(qm, crv, str, re, ov, res.1, ncap, nlook, nquant);
-    forall g: LG.GroupId | g in S && g in PIV.GmOfLive(re, res.0, res.1, res.2)
-      ensures exists owner: nat :: OwnerPkg(crv, str, re, ov, res.1, g, owner, ncap, nlook, nquant)
+    assert {:split_here} true;
+    // the value lifts at the owner
+    var rf := M.FreshBodyMatch(crv, str, owner as int, res1, ov, ncap, nlook, nquant);
+    PIV.CapIdsSplit(body);
+    assert g in PIV.CapIdsOutsideLooks(body);
+    assert CP.start_reg(g as int) in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body));
+    assert rf.Some? by {
+      if rf.None? {
+        assert CM.RegsAgreeInside(res0, AReg.init_regs(ncap), PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body))) by {
+          reveal M.ValueOkO();
+          assert 1 <= owner as int <= R.max_lookaround(ast);
+        }
+        RL.AInitLaws(ncap);
+        assert AI.get_idx(res0.a_clk, CP.start_reg(g as int)) == AI.get_idx(AReg.init_regs(ncap).a_clk, CP.start_reg(g as int));
+        if 0 <= CP.start_reg(g as int) < ncap { }
+        assert false;
+      }
+    }
+    assert CM.RegsAgreeInside(res0, rf.value.capture_regs, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body))) by {
+      reveal M.ValueOkO();
+      assert 1 <= owner as int <= R.max_lookaround(ast);
+    }
+    assert CM.RegsAgreeInside(res2, rf.value.quant_regs, M.QIdsOuter(body)) by {
+      reveal M.QuantValueOkO();
+      assert 1 <= owner as int <= R.max_lookaround(ast);
+    }
+    assert {:split_here} true;
+    var rfc := rf.value.capture_regs;
+    var rfl := rf.value.look_regs;
+    var rfq := rf.value.quant_regs;
+    forall c: nat | c in PIV.CapIdsOutsideLooks(body)
+      ensures AI.get_idx(rfc.a_clk, CP.start_reg(c)) == AI.get_idx(res0.a_clk, CP.start_reg(c))
     {
-      // res0-liveness at g
-      PIV.CapIdsSplit(re);
-      NI.GmOfLivePresenceExtractLkNested(re, res.0, res.1, res.2, g);
-      assert AI.get_idx(res.0.a_clk, CP.start_reg(g)) >= 0;
-      // fresh-wf side condition (all four conjuncts) for this g, in a
-      // minimal context -- the nested forall here timed out (10x) otherwise.
-      FreshWfAtG(qm, crv, str, re, ov, res.1, g, ncap, nlook, nquant);
-      var owner := M.FreshBodyDirectMember(crv, str, ast, re, thread.capture_regs, lkT, qtT, ov,
-                                           Sreg, Slook, ncap, nlook, nquant, g);
-      assert OwnerPkg(crv, str, re, ov, res.1, g, owner, ncap, nlook, nquant);
+      assert CP.start_reg(c) in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body));
     }
-    // assemble the opaque wrapper from the forall just proven.
-    assert OwnerForallO(crv, str, re, ov, res.0, res.1, res.2, S, ncap, nlook, nquant) by {
+    forall q: nat | q in PIV.QuantIdsOutsideLooks(body)
+      ensures AI.get_idx(rfq.a_clk, q as int) == AI.get_idx(res2.a_clk, q as int)
+    {
+      assert (q as int) in M.QIdsOuter(body);
+    }
+    PathPresentLkDirectAgreeQ(body, rfc.a_clk, rfl.a_clk, rfq.a_clk,
+                              res0.a_clk, res1.a_clk, res2.a_clk, -1, g);
+    assert AReg.as_arrays(rfc).1 == rfc.a_clk && AReg.as_arrays(rfc).0 == rfc.a_cp;
+    assert AReg.as_arrays(rfl).1 == rfl.a_clk && AReg.as_arrays(rfq).1 == rfq.a_clk;
+    NI.GmOfLiveKeepsPresentLkNested(body, rfc, rfl, rfq, g);
+  }
+
+  /** (§2.3/§2.4) The owner-package forall on the reconstructed banks: successor of
+      the gated, no-quant `ProduceOwnerForall`. */
+  lemma ProduceOwnerForallRes(
+    qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex, ov: LOr.OracleView,
+    res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs, S: set<LG.GroupId>, ncap: int, nlook: int, nquant: int)
+    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> (x as int) in qm.looks
+    requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
+    requires |res1.a_cp| == nlook && |res1.a_clk| == nlook
+    requires M.LookInvO(res1, ov, str) && M.Res0LiveO(re, res0)
+    requires M.ValueOkO(crv, str, res0, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    requires M.QuantValueOkO(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    requires S == PIV.CapIdsInLooks(re)
+    ensures OwnerForallO(crv, str, re, ov, res0, res1, res2, S, ncap, nlook, nquant)
+  {
+    forall g: LG.GroupId | g in S && g in PIV.GmOfLive(re, res0, res1, res2)
+      ensures exists owner: nat :: OwnerPkg(crv, str, re, ov, res1, g, owner, ncap, nlook, nquant)
+    {
+      var owner := OwnerPkgFromPresence(qm, crv, str, ast, re, ov, res0, res1, res2, g, ncap, nlook, nquant);
+    }
+    assert OwnerForallO(crv, str, re, ov, res0, res1, res2, S, ncap, nlook, nquant) by {
       reveal OwnerForallO();
     }
   }
+
 
 }

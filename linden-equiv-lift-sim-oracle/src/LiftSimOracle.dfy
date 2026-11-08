@@ -370,6 +370,48 @@ module LindenElkLiftSimOracle {
       0 <= l < nlook && GateStaticAtNested(qm, re, crv, l, ncap, nlook, nquant)
   }
 
+  /** (§2.3/§2.4 perf) A lid whose body holds a capture and whose record is set is a
+      matched POSITIVE look: the hub row's negative-look clause, picked in a minimal
+      context (in the giant reverse-descent lemmas this pick took 5+ minutes). */
+  lemma MatchedPosFromHub(qm: AR.QMap, re: R.regex, crv: CP.FCompiled, lk: AReg.Regs, lid: nat, g: nat,
+                          ncap: int, nlook: int, nquant: int)
+    requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
+    requires (lid as int) in qm.looks
+    requires LTB.LookTablesOk(re, crv) && lid in LTB.LookIds(re)
+    requires g in PIV.CapIds(NI.LookBodyOfRE(re, lid))
+    requires AReg.get_cp(lk, lid as int).Some?
+    ensures M.MatchedPosLA(crv, lk, lid as int)
+  {
+    assert GateStaticAtNested(qm, re, crv, lid as int, ncap, nlook, nquant) by {
+      hide *; reveal GateStaticsOkNested;
+    }
+    var la: R.lookaround, b: R.regex :|
+      LTB.LookEntryOk(crv, lid as int, la, b)
+      && T.TransWf(b) && NR.NestedFragmentRE(b)
+      && NR.NegLooksLookFreeRE(b)
+      && (la.Lookbehind? ==> NR.LBOnlyLooksRE(b))
+      && (!la.Lookbehind? ==> L5ScopeV1RE(b))
+      && qm.looks[lid as int].0 == T.TrLookaround(la)
+      && qm.looks[lid as int].1 == T.Translate(b)
+      && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(b))) <= PIV.CapIdsInLooks(re)
+      && var bc := CP.compile_to_bytecode(b);
+      |bc| >= 1
+      && PSM.StaticOkNestedRE(qm, b, bc, |bc| - 1)
+      && PSM.SizesOkRE(b, ncap, nlook, nquant)
+      && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(b));
+    assert crv.f_look_types[lid as int] == la;
+    assert b == NI.LookBodyOfRE(re, lid) by {
+      NI.LookBodyOfTablesTie(re, crv, lid);
+      var laT: R.lookaround :| LTB.LookEntryOk(crv, lid as int, laT, NI.LookBodyOfRE(re, lid));
+      assert crv.f_look_ast[lid as int] == b == NI.LookBodyOfRE(re, lid);
+    }
+    if la.NegLookahead? || la.NegLookbehind? {
+      PIV.CaptureFreeNoCapIds(b);
+      assert false;
+    }
+    assert AI.capture_type(crv.f_look_types[lid as int]);
+  }
+
   /** TOP-LEVEL establishment: `GateStaticsOk` from the compile tables + qm
       well-formedness (`qm.looks`' domain within `re`'s lids is the caller's
       obligation — true by qm's construction). */
@@ -5072,8 +5114,6 @@ module LindenElkLiftSimOracle {
     requires M.OracleSufAllO(rer, qm, str)
     requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
     requires M.FrameEntryAllO(crv, re, ast)
-    // ---- the fragment's no-quant scope for g2 ----
-    requires M.GNotUnderQuantL(T.Translate(re), g2)
     // ---- global res-side facts (fixed) ----
     requires |res1.a_cp| == nlook && |res1.a_clk| == nlook
     requires CM.LookCpSetWithClk(res1) && CM.LookCpsLE(res1, |str|)
@@ -5171,8 +5211,6 @@ module LindenElkLiftSimOracle {
     requires T.Latin1Wf(raw)
     requires L5ScopeV1RE(R.lazy_prefix(R.annotate(raw)))
     requires NR.NegLooksLookFreeRaw(raw)
-    requires NR.LookBodiesNoCapUnderQuantRaw(raw)
-    requires NR.QuantsLookCapFreeRaw(raw)
     ensures L5Scope(raw)
   {
     var ast := R.annotate(raw);
@@ -5187,26 +5225,6 @@ module LindenElkLiftSimOracle {
     NR.AnnotateNegLooksLookFree(R.Raw_capture(raw), 0, 1, 1);
     assert NR.NegLooksLookFreeRE(ast);
     assert NR.NegLooksLookFreeRE(re);
-    // The GNotUnderQuantL shadow, for every inside-look capture id.
-    assert NR.LookBodiesNoCapUnderQuantRaw(R.Raw_capture(raw));
-    NR.AnnotateLookBodiesNoCapUnderQuant(R.Raw_capture(raw), 0, 1, 1);
-    assert NR.LookBodiesNoCapUnderQuantRE(ast);
-    assert NR.QuantsLookCapFreeRaw(R.Raw_capture(raw));
-    NR.AnnotateQuantsLookCapFree(R.Raw_capture(raw), 0, 1, 1);
-    assert NR.QuantsLookCapFreeRE(ast);
-    // Push through the lazy_prefix wrapper (dot-star side is by computation).
-    var pfx := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
-    assert re == R.Re_con(pfx, ast);
-    assert NR.LookBodiesNoCapUnderQuantRE(pfx);
-    assert NR.QuantsLookCapFreeRE(pfx);
-    assert NR.LookBodiesNoCapUnderQuantRE(re);
-    assert NR.QuantsLookCapFreeRE(re);
-    PIV.SpecRegexCapUnique(raw);
-    forall c: nat | c in PIV.CapIdsInLooks(re)
-      ensures M.GNotUnderQuantL(T.Translate(re), c)
-    {
-      M.GNQLTop(re, c);
-    }
   }
 
   /** L4 PERF: the g-INDEPENDENT half of the fresh-wf side condition, hoisted

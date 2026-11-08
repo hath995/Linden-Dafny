@@ -137,8 +137,9 @@ module LindenElkLiftSimDeep {
     requires M.OracleSufAllO(rer, qm, str)
     requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
     requires M.FrameEntryAllO(crv, re, ast)
-    // ---- the fragment's no-quant scope for g2 ----
-    requires M.GNotUnderQuantL(T.Translate(re), g2)
+    // ---- (§2.3/§2.4) the FLookLoop value lifts: the reverse descent reads its dominance off them ----
+    requires M.ValueOkO(crv, str, res0, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    requires M.QuantValueOkO(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     // ---- global res-side facts (fixed) ----
     requires |res1.a_cp| == nlook && |res1.a_clk| == nlook
     requires CM.LookCpSetWithClk(res1) && CM.LookCpsLE(res1, |str|)
@@ -512,18 +513,27 @@ module LindenElkLiftSimDeep {
         assert CM.LookClkSetWithCp(rfA.look_regs);
       }
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert NI.LookPathDom(host, L1, rfA.quant_regs.a_clk, A1) by {
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        GNotUnderQuantLLookBody(re, A, g2);
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        assert M.GNotUnderQuantL(T.Translate(host), g2);
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        M.GNotUnderQuantLNoAncQuants(host, g2);
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        assert PIV.AncQuants(host, g2) == {};
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        NI.LookPathDomNoAncQuants(host, L1, rfA.quant_regs.a_clk, A1, g2);
+      // (§2.3/§2.4) dominance from the presence path on the reconstructed banks:
+      // the value lifts carry the quant clocks, the level-link A1's own clock
+      assert {:split_here} true;
+      assert AI.get_idx(res1.a_clk, A1 as int) == AI.get_idx(rfA.look_regs.a_clk, A1 as int) by {
+        assert rfA == rfFresh.value;
+        assert M.FLookLoopChildLinkOk(crv, str, res1, 1, maxlook, ov, ncap, nlook, nquant);
+        assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
+        assert host == M.VBody(crv, A as int);
+        assert (A1 as int) in M.DirectLidSet(host);
       }
+      assert {:split_here} true;
+      assert CM.RegsAgreeInside(res0, rfA.capture_regs, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host)))
+             && CM.RegsAgreeInside(res2, rfA.quant_regs, M.QIdsOuter(host)) by {
+        assert rfA == rfFresh.value && rfFresh.Some?;
+        reveal M.ValueOkO(), M.QuantValueOkO();
+        assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
+        assert host == M.VBody(crv, A as int);
+      }
+      assert {:split_here} true;
+      ReverseLookDomOnFresh(host, res0, res1, res2, rfA, A1, g2);
+      assert NI.LookPathDom(host, L1, rfA.quant_regs.a_clk, A1);
 
       assert {:split_here} true;   // (E3) step boundary: its own assertion batch
       // (ι) the RECURSIVE landing at A1, transported onto rf_A's bank
@@ -586,8 +596,9 @@ module LindenElkLiftSimDeep {
     requires M.OracleSufAllO(rer, qm, str)
     requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
     requires M.FrameEntryAllO(crv, re, ast)
-    // ---- the fragment's no-quant scope for g2 ----
-    requires M.GNotUnderQuantL(T.Translate(re), g2)
+    // ---- (§2.3/§2.4) the FLookLoop value lifts: the reverse descent reads its dominance off them ----
+    requires M.ValueOkO(crv, str, res0, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    requires M.QuantValueOkO(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     // ---- global res-side facts (fixed) ----
     requires |res1.a_cp| == nlook && |res1.a_clk| == nlook
     requires CM.LookCpSetWithClk(res1) && CM.LookCpsLE(res1, |str|)
@@ -684,38 +695,8 @@ module LindenElkLiftSimDeep {
     // (β) A1 matched in res1 (reverse invariant + type pin)
     assert AI.get_idx(res1.a_cp, A1 as int) >= 0;               // LookCpSetWithClk
     assert AReg.get_cp(res1, A1 as int).Some?;
-    assert M.MatchedPosLA(crv, res1, A1 as int) by {
-      assert GateStaticAtNested(qm, re, crv, A1 as int, ncap, nlook, nquant);
-      // (L5 F7f) FULL conjunct list: a subset pick times out under the kind-split hub
-      var la1: R.lookaround, b1: R.regex :|
-        LTB.LookEntryOk(crv, A1 as int, la1, b1)
-        && T.TransWf(b1) && NR.NestedFragmentRE(b1)
-        && NR.NegLooksLookFreeRE(b1)
-        && (la1.Lookbehind? ==> NR.LBOnlyLooksRE(b1))
-        && (!la1.Lookbehind? ==> L5ScopeV1RE(b1))
-        && qm.looks[A1 as int].0 == T.TrLookaround(la1)
-        && qm.looks[A1 as int].1 == T.Translate(b1)
-        && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(b1))) <= PIV.CapIdsInLooks(re)
-        && var bc1 := CP.compile_to_bytecode(b1);
-        |bc1| >= 1
-        && PSM.StaticOkNestedRE(qm, b1, bc1, |bc1| - 1)
-        && PSM.SizesOkRE(b1, ncap, nlook, nquant)
-        && ((la1.NegLookbehind? || la1.NegLookahead?) ==> NR.CaptureFreeRE(b1));
-      assert crv.f_look_types[A1 as int] == la1;
-      assert b1 == bodyA1 by {
-        NI.LookBodyOfTablesTie(re, crv, A1);
-        var la1T: R.lookaround :| LTB.LookEntryOk(crv, A1 as int, la1T, bodyA1);
-        assert crv.f_look_ast[A1 as int] == b1 == bodyA1;
-      }
-      // the negatives are capture-free, but g2 lives in bodyA1
-      if la1.NegLookahead? || la1.NegLookbehind? {
-        assert NR.CaptureFreeRE(bodyA1);
-        PIV.CaptureFreeNoCapIds(bodyA1);
-        assert g2 in PIV.CapIds(bodyA1);
-        assert false;
-      }
-      assert AI.capture_type(crv.f_look_types[A1 as int]);
-    }
+    MatchedPosFromHub(qm, re, crv, res1, A1, g2, ncap, nlook, nquant);
+    assert M.MatchedPosLA(crv, res1, A1 as int);
 
     assert {:split_here} true;   // (E3) step boundary: its own assertion batch
     // (γ) rf_A.Some? via the oracle: res1's record at A is oracle-true, so
@@ -838,13 +819,23 @@ module LindenElkLiftSimDeep {
       assert AI.get_idx(rfA.look_regs.a_cp, A1 as int) >= 0;
       assert CM.LookClkSetWithCp(rfA.look_regs);
     }
-    assert NI.LookPathDom(host, L1, rfA.quant_regs.a_clk, A1) by {
-      GNotUnderQuantLLookBody(re, A, g2);
-      assert M.GNotUnderQuantL(T.Translate(host), g2);
-      M.GNotUnderQuantLNoAncQuants(host, g2);
-      assert PIV.AncQuants(host, g2) == {};
-      NI.LookPathDomNoAncQuants(host, L1, rfA.quant_regs.a_clk, A1, g2);
+    // (§2.3/§2.4) dominance from the presence path on the reconstructed banks:
+    // the value lifts carry the quant clocks, the level-link A1's own clock
+    assert AI.get_idx(res1.a_clk, A1 as int) == AI.get_idx(rfA.look_regs.a_clk, A1 as int) by {
+      assert M.FLookLoopChildLinkOk(crv, str, res1, 1, maxlook, ov, ncap, nlook, nquant);
+      assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
+      assert host == M.VBody(crv, A as int);
+      assert rfFresh.Some? && (A1 as int) in M.DirectLidSet(host);
     }
+    assert CM.RegsAgreeInside(res0, rfA.capture_regs, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host)))
+           && CM.RegsAgreeInside(res2, rfA.quant_regs, M.QIdsOuter(host)) by {
+      assert rfFresh.Some?;
+      reveal M.ValueOkO(), M.QuantValueOkO();
+      assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
+      assert host == M.VBody(crv, A as int);
+    }
+    ReverseLookDomOnFresh(host, res0, res1, res2, rfA, A1, g2);
+    assert NI.LookPathDom(host, L1, rfA.quant_regs.a_clk, A1);
 
     assert {:split_here} true;   // (E3) step boundary: its own assertion batch
     // (ι) the RECURSIVE landing at A1, transported onto rf_A's bank
@@ -886,8 +877,9 @@ module LindenElkLiftSimDeep {
     requires M.OracleSufAllO(rer, qm, str)
     requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
     requires M.FrameEntryAllO(crv, re, ast)
-    // ---- the fragment's no-quant scope for g2 ----
-    requires M.GNotUnderQuantL(T.Translate(re), g2)
+    // ---- (§2.3/§2.4) the FLookLoop value lifts: the reverse descent reads its dominance off them ----
+    requires M.ValueOkO(crv, str, res0, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    requires M.QuantValueOkO(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     // ---- global res-side facts (fixed) ----
     requires |res1.a_cp| == nlook && |res1.a_clk| == nlook
     requires CM.LookCpSetWithClk(res1) && CM.LookCpsLE(res1, |str|)
@@ -1023,7 +1015,6 @@ module LindenElkLiftSimDeep {
     requires forall l: int, la: R.lookaround, b: R.regex ::
                1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, b) ==>
                  M.FrameEntryOk(crv, la, b, PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re))
-    requires forall c: nat :: c in PIV.CapIdsInLooks(re) ==> M.GNotUnderQuantL(T.Translate(re), c)
     // ---- global res-side facts ----
     requires |res1.a_cp| == nlook && |res1.a_clk| == nlook
     requires CM.LookCpSetWithClk(res1) && CM.LookCpsLE(res1, |str|)
@@ -1145,7 +1136,6 @@ module LindenElkLiftSimDeep {
       ensures (CM.RegsAgreeInside(res0, rfFresh.value.capture_regs,
                                       PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host))))
       ensures (CM.RegsAgreeInside(res2, rfFresh.value.quant_regs, M.QIdsOuter(host)))
-      ensures (M.GNotUnderQuantL(T.Translate(host), g))
     {
       maxlook := R.max_lookaround(ast);
       cpA := AReg.get_cp(res1, A as int).value;
@@ -1311,11 +1301,6 @@ module LindenElkLiftSimDeep {
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
       }
-      // the fragment scope at host
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      GNotUnderQuantLLookBody(re, A, g);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert M.GNotUnderQuantL(T.Translate(host), g);
     }
     assert {:split_here} true;   // (E3) section boundary: its own assertion batch
 
@@ -1352,11 +1337,7 @@ module LindenElkLiftSimDeep {
            && AI.get_idx(rfc.a_clk, CP.start_reg(g))
               >= PIV.MxAtGidLk(host, rfc.a_clk, rfl.a_clk, rfq.a_clk, -1, g);
     assert {:split_here} true;   // (E3) residual sub-section
-    // transport onto the reconstructed banks (no-look/no-quant path)
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    M.GNotUnderQuantLNoAncQuants(host, g);
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    assert PIV.AncQuants(host, g) == {};
+    // transport onto the reconstructed banks (no-look path; quant clocks from the value lift)
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert forall c: nat :: c in PIV.CapIdsOutsideLooks(host) ==>
                               AI.get_idx(res0.a_clk, CP.start_reg(c)) == AI.get_idx(rfc.a_clk, CP.start_reg(c))
@@ -1370,8 +1351,17 @@ module LindenElkLiftSimDeep {
       }
     }
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    NI.PathPresentLkDirectAgree(host, res0.a_clk, res1.a_clk, res2.a_clk,
-                                rfc.a_clk, rfl.a_clk, rfq.a_clk, g);
+    assert forall q: nat :: q in PIV.QuantIdsOutsideLooks(host) ==>
+                              AI.get_idx(res2.a_clk, q as int) == AI.get_idx(rfq.a_clk, q as int)
+    by {
+      forall q: nat | q in PIV.QuantIdsOutsideLooks(host)
+        ensures AI.get_idx(res2.a_clk, q as int) == AI.get_idx(rfq.a_clk, q as int)
+      {
+        assert (q as int) in M.QIdsOuter(host);
+      }
+    }
+    PathPresentLkDirectAgreeQ(host, res0.a_clk, res1.a_clk, res2.a_clk,
+                              rfc.a_clk, rfl.a_clk, rfq.a_clk, -1, g);
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert PIV.PathPresentLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, g);
     assert {:split_here} true;   // (E3) residual sub-section

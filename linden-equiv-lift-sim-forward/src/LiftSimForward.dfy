@@ -138,7 +138,6 @@ module LindenElkLiftSimForward {
     requires forall l: int, la: R.lookaround, b: R.regex ::
                1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, b) ==>
                  M.FrameEntryOk(crv, la, b, PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re))
-    requires forall c: nat :: c in PIV.CapIdsInLooks(re) ==> M.GNotUnderQuantL(T.Translate(re), c)
     // ---- global res-side facts ----
     requires |res1.a_cp| == nlook && |res1.a_clk| == nlook
     requires CM.LookCpSetWithClk(res1) && CM.LookCpsLE(res1, |str|)
@@ -266,7 +265,6 @@ module LindenElkLiftSimForward {
       ensures (CM.RegsAgreeInside(res0, rfFresh.value.capture_regs,
                                       PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host))))
       ensures (CM.RegsAgreeInside(res2, rfFresh.value.quant_regs, M.QIdsOuter(host)))
-      ensures (M.GNotUnderQuantL(T.Translate(host), g))
     {
       maxlook := R.max_lookaround(ast);
       cpA := AReg.get_cp(res1, A as int).value;
@@ -390,9 +388,6 @@ module LindenElkLiftSimForward {
       assert CM.RegsAgreeInside(res2, rfFresh.value.quant_regs, M.QIdsOuter(host)) by {
         assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
       }
-      // the fragment scope at host
-      GNotUnderQuantLLookBody(re, A, g);
-      assert M.GNotUnderQuantL(T.Translate(host), g);
     }
     assert {:split_here} true;   // (E3) section boundary: its own assertion batch
 
@@ -739,7 +734,6 @@ module LindenElkLiftSimForward {
     requires forall l: int, la: R.lookaround, b: R.regex ::
                1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, b) ==>
                  M.FrameEntryOk(crv, la, b, PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re))
-    requires forall c: nat :: c in PIV.CapIdsInLooks(re) ==> M.GNotUnderQuantL(T.Translate(re), c)
     // ---- global res-side facts ----
     requires |res1.a_cp| == nlook && |res1.a_clk| == nlook
     requires CM.LookCpSetWithClk(res1) && CM.LookCpsLE(res1, |str|)
@@ -837,7 +831,6 @@ module LindenElkLiftSimForward {
     requires forall l: int, la: R.lookaround, b: R.regex ::
                1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, b) ==>
                  M.FrameEntryOk(crv, la, b, PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re))
-    requires forall c: nat :: c in PIV.CapIdsInLooks(re) ==> M.GNotUnderQuantL(T.Translate(re), c)
     // ---- global res-side facts ----
     requires |res1.a_cp| == nlook && |res1.a_clk| == nlook
     requires CM.LookCpSetWithClk(res1) && CM.LookCpsLE(res1, |str|)
@@ -1061,11 +1054,6 @@ module LindenElkLiftSimForward {
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
     }
-    // the fragment scope at host
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    GNotUnderQuantLLookBody(re, A, g);
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    assert M.GNotUnderQuantL(T.Translate(host), g);
 
     // ==== DEEP: descend through g's top-in-host ancestor A1 ====
     var ownH := NI.InnermostOwnerDirect(host, g);
@@ -1417,7 +1405,6 @@ module LindenElkLiftSimForward {
     requires forall l: int, la: R.lookaround, b: R.regex ::
                1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, b) ==>
                  M.FrameEntryOk(crv, la, b, PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re))
-    requires forall c: nat :: c in PIV.CapIdsInLooks(re) ==> M.GNotUnderQuantL(T.Translate(re), c)
     // ---- global res-side facts ----
     requires |res1.a_cp| == nlook && |res1.a_clk| == nlook
     requires CM.LookCpSetWithClk(res1) && CM.LookCpsLE(res1, |str|)
@@ -1528,7 +1515,6 @@ module LindenElkLiftSimForward {
     requires forall l: int, la: R.lookaround, b: R.regex ::
                1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, b) ==>
                  M.FrameEntryOk(crv, la, b, PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re))
-    requires forall c: nat :: c in PIV.CapIdsInLooks(re) ==> M.GNotUnderQuantL(T.Translate(re), c)
     // ---- global res-side facts ----
     requires |res1.a_cp| == nlook && |res1.a_clk| == nlook
     requires CM.LookCpSetWithClk(res1) && CM.LookCpsLE(res1, |str|)
@@ -1536,6 +1522,9 @@ module LindenElkLiftSimForward {
     requires M.FLookLoopChildLinkOk(crv, str, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     requires forall c: nat :: c in PIV.CapIds(re) && AI.get_idx(res0.a_clk, CP.start_reg(c)) < 0
                               ==> AI.get_idx(res0.a_cp, CP.start_reg(c)) < 0
+    // ---- (§2.3/§2.4) the FLookLoop value lifts: the reverse descent reads its dominance off them ----
+    requires M.ValueOkO(crv, str, res0, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    requires M.QuantValueOkO(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     // ---- per-live-g OWNER package (A1/A2's outputs) ----
     requires S == PIV.CapIdsInLooks(re)
     requires forall g: LG.GroupId :: g in S && g in PIV.GmOfLive(re, res0, res1, res2) ==>

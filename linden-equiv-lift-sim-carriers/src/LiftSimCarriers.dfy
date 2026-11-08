@@ -1058,7 +1058,6 @@ module LindenElkLiftSimCarriers {
     requires forall l: int, la: R.lookaround, b: R.regex ::
                1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, b) ==>
                  M.FrameEntryOk(crv, la, b, PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re))
-    requires forall c: nat :: c in PIV.CapIdsInLooks(re) ==> M.GNotUnderQuantL(T.Translate(re), c)
     // ---- global res-side facts ----
     requires |res1.a_cp| == nlook && |res1.a_clk| == nlook
     requires CM.LookCpSetWithClk(res1) && CM.LookCpsLE(res1, |str|)
@@ -1215,9 +1214,6 @@ module LindenElkLiftSimCarriers {
     assert CM.RegsAgreeInside(res2, rfFresh.value.quant_regs, M.QIdsOuter(host)) by {
       assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
     }
-    // the fragment scope at host
-    GNotUnderQuantLLookBody(re, A, g);
-    assert M.GNotUnderQuantL(T.Translate(host), g);
 
     // ==== BASE: g DIRECT in host ====
     SubFirstLeafDirectInFresh(rer, qm, crv, str, ov, A, res1, host, bodycode,
@@ -1242,9 +1238,7 @@ module LindenElkLiftSimCarriers {
            && AI.get_idx(rfc.a_cp, CP.start_reg(g)) >= 0
            && AI.get_idx(rfc.a_clk, CP.start_reg(g))
               >= PIV.MxAtGidLk(host, rfc.a_clk, rfl.a_clk, rfq.a_clk, -1, g);
-    // transport onto the reconstructed banks (no-look/no-quant path)
-    M.GNotUnderQuantLNoAncQuants(host, g);
-    assert PIV.AncQuants(host, g) == {};
+    // transport onto the reconstructed banks (no-look path; quant clocks from the value lift)
     assert forall c: nat :: c in PIV.CapIdsOutsideLooks(host) ==>
                               AI.get_idx(res0.a_clk, CP.start_reg(c)) == AI.get_idx(rfc.a_clk, CP.start_reg(c))
     by {
@@ -1254,8 +1248,17 @@ module LindenElkLiftSimCarriers {
         assert CP.start_reg(c) in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host));
       }
     }
-    NI.PathPresentLkDirectAgree(host, res0.a_clk, res1.a_clk, res2.a_clk,
-                                rfc.a_clk, rfl.a_clk, rfq.a_clk, g);
+    assert forall q: nat :: q in PIV.QuantIdsOutsideLooks(host) ==>
+                              AI.get_idx(res2.a_clk, q as int) == AI.get_idx(rfq.a_clk, q as int)
+    by {
+      forall q: nat | q in PIV.QuantIdsOutsideLooks(host)
+        ensures AI.get_idx(res2.a_clk, q as int) == AI.get_idx(rfq.a_clk, q as int)
+      {
+        assert (q as int) in M.QIdsOuter(host);
+      }
+    }
+    PathPresentLkDirectAgreeQ(host, res0.a_clk, res1.a_clk, res2.a_clk,
+                              rfc.a_clk, rfl.a_clk, rfq.a_clk, -1, g);
     assert PIV.PathPresentLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, g);
     // res0 == rf at g's registers (start + end): the value lift at A
     PIV.CapIdsSplit(host);
