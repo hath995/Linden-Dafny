@@ -87,6 +87,79 @@ module LindenElkOracleEntry {
     case _ =>
   }
 
+  /** A lookaround-free regex contributes no row. */
+  lemma LookFreeLmOfEmpty(re: R.regex)
+    requires T.TransWf(re) && NR.LookFreeRE(re)
+    ensures LmOf(re) == map[]
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => LookFreeLmOfEmpty(r1); LookFreeLmOfEmpty(r2);
+    case Re_con(r1, r2) => LookFreeLmOfEmpty(r1); LookFreeLmOfEmpty(r2);
+    case Re_quant(_, _, _, r1) => LookFreeLmOfEmpty(r1);
+    case Re_capture(_, r1) => LookFreeLmOfEmpty(r1);
+    case _ =>
+  }
+
+  /** Every row of `LmOf(re)` really is some lookaround node of `re`, with all
+      the facts the oracle theorem asks of that node: its table row is correct,
+      it is a lookBEHIND, and its body is in the L1 body fragment. Uniqueness of
+      lids is what makes the row unambiguous. */
+  lemma LmOfInv(re: R.regex, fc: CP.FCompiled, lid: int)
+    returns (la: R.lookaround, body: R.regex)
+    requires T.TransWf(re) && NR.LookBehindFragmentRE(re)
+    requires LTB.LookUnique(re) && LTB.LookTablesOk(re, fc)
+    requires PIV.QuantUnique(re)
+    requires lid in LmOf(re)
+    ensures T.TransWf(body)
+    ensures LmOf(re)[lid] == (T.TrLookaround(la), T.Translate(body))
+    ensures LTB.LookEntryOk(fc, lid, la, body)
+    // the fragment admits BOTH flavours over the whole plus fragment (the
+    // lookAHEAD star-shape restriction is retired -- see OracleColumnSpecLookahead).
+    // L3a/L3b: a POSITIVE look body (lookAHEAD or lookBEHIND) may now CAPTURE, so
+    // capture-freeness is conditional on the flavour; look-freeness and
+    // plus-fragment still hold.
+    ensures (la.Lookahead? || la.Lookbehind? || NR.CaptureFreeRE(body)) && NR.LookFreeRE(body) && NR.PlusFragmentRE(body)
+    ensures lid >= 0 && (lid as nat) in LTB.LookIds(re)
+    // the quant half: `body` sits under a lookaround, so every id it owns is
+    // one of `re`'s in-look ids -- the disjointness the capture pass replays on
+    ensures PIV.QuantUnique(body)
+    ensures forall q: nat :: q in PIV.QuantIds(body) ==> q in PIV.QuantIdsInLooks(re)
+    decreases re
+  {
+    LmOfDom(re);
+    match re
+    case Re_alt(r1, r2) =>
+      LmOfDom(r1); LmOfDom(r2);
+      if lid in LmOf(r2) {
+        la, body := LmOfInv(r2, fc, lid);
+      } else {
+        assert lid in LmOf(r1);
+        la, body := LmOfInv(r1, fc, lid);
+        assert (lid as nat) !in LTB.LookIds(r2);
+      }
+    case Re_con(r1, r2) =>
+      LmOfDom(r1); LmOfDom(r2);
+      if lid in LmOf(r2) {
+        la, body := LmOfInv(r2, fc, lid);
+      } else {
+        assert lid in LmOf(r1);
+        la, body := LmOfInv(r1, fc, lid);
+        assert (lid as nat) !in LTB.LookIds(r2);
+      }
+    case Re_quant(_, _, _, r1) => la, body := LmOfInv(r1, fc, lid);
+    case Re_capture(_, r1) => la, body := LmOfInv(r1, fc, lid);
+    case Re_lookaround(lid0, la0, r1) =>
+      LmOfDom(r1);
+      // the body of an L1 lookaround is look-FREE, so it owns no row: the id
+      // can only be this node's own
+      LookFreeLmOfEmpty(r1);
+      assert lid == lid0;
+      la, body := la0, r1;
+      assert (lid0 as nat) !in LTB.LookIds(r1);         // LookUnique
+      assert LmOf(re)[lid] == (T.TrLookaround(la0), T.Translate(r1));
+  }
+
   /** THE table-correctness lemma: a table built by `LmOf` satisfies `LmapOk` —
       every lookaround node finds its own row. */
   lemma LmapOkOfLmOf(re: R.regex, qm: AR.QMap)
@@ -261,6 +334,98 @@ module LindenElkOracleEntry {
   // ===========================================================================
   // The oracle hypothesis
   // ===========================================================================
+
+  /** THE discharge: with the campaign's oracle theorem instantiated at every
+      row and every column, the entry construction's oracle hypothesis holds
+      from the initial input. */
+  /** One position, one lookaround: the oracle bit at `cp` for `lid` is the
+      body's own directional walk. Extracted (2026-09-05) — as the inner body of
+      `OracleOkFromColumns`'s doubly-nested `forall` it made ONE VC whose z3
+      worker reached 56 GB, which the 80 G slice then OOM-killed, leaving dafny
+      waiting on a dead solver (the "wedge"). */
+  lemma OracleOkAtLid(rer: LW.RegExpRecord, re: R.regex, str: string, qm: AR.QMap, cp: nat,
+                      lid: int, lk: L.Lookaround, r1: L.Regex)
+    requires !rer.ignoreCase && !rer.multiline
+    requires T.TransWf(re) && NR.LookBehindFragmentRE(re)
+    requires LTB.LookUnique(re) && PIV.QuantUnique(re)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x
+    requires qm.looks == LmOf(re)
+    requires qm.ov == AI.FBuildOracle(CP.FFullCompilation(re), str)
+    requires 0 <= cp <= |str|
+    requires lid in qm.looks && qm.looks[lid] == (lk, r1)
+    ensures LOr.view_get_oracle(qm.ov, cp, lid)
+        <==> LT.TreeRes(FU.ComputeTr(rer, [LS.Areg(r1)], T.InputAt(str, cp), LG.Empty, L.LkDir(lk)),
+                        LG.Empty, T.InputAt(str, cp), L.LkDir(lk)).Some?
+  {
+    LTB.FFullCompilationLookOk(re);
+    var fc := CP.FFullCompilation(re);
+    var la, body := LmOfInv(re, fc, lid);
+    assert lk == T.TrLookaround(la) && r1 == T.Translate(body);
+    assert 1 <= lid;                                // ids start at 1 after annotate
+    LTB.LookIdsLeMax(re);
+    // each flavour has its own column spec, and `LkDir` picks the matching
+    // walk direction -- which is exactly why `OracleOkAt` is stated in
+    // terms of LkDir rather than a fixed direction
+    if la.Lookbehind? || la.NegLookbehind? {
+      assert L.LkDir(lk) == WP.Backward;
+      OS.OracleColumnSpec(rer, re, str, lid, la, body, cp, LG.Empty);
+    } else {
+      assert L.LkDir(lk) == WP.Forward;
+      OS.OracleColumnSpecLookahead(rer, re, str, lid, la, body, cp, LG.Empty);
+    }
+  }
+
+  /** One position: `OracleOkAt` at `InputAt(str, cp)`. */
+  lemma OracleOkAtCp(rer: LW.RegExpRecord, re: R.regex, str: string, qm: AR.QMap, cp: nat)
+    requires !rer.ignoreCase && !rer.multiline
+    requires T.TransWf(re) && NR.LookBehindFragmentRE(re)
+    requires LTB.LookUnique(re) && PIV.QuantUnique(re)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x
+    requires qm.looks == LmOf(re)
+    requires qm.ov == AI.FBuildOracle(CP.FFullCompilation(re), str)
+    requires 0 <= cp <= |str|
+    ensures LL.OracleOkAt(rer, qm, T.InputAt(str, cp))
+  {
+    var inp := T.InputAt(str, cp);
+    T.ReverseProps(str[..cp]);
+    InputAtFacts(str, cp);
+    assert TR.CpOf(inp) == cp;
+    forall lid: int, lk: L.Lookaround, r1: L.Regex
+      | lid in qm.looks && qm.looks[lid] == (lk, r1)
+      ensures LOr.view_get_oracle(qm.ov, TR.CpOf(inp), lid)
+          <==> LT.TreeRes(FU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk)),
+                          LG.Empty, inp, L.LkDir(lk)).Some?
+    {
+      OracleOkAtLid(rer, re, str, qm, cp, lid, lk, r1);
+    }
+  }
+
+  lemma OracleOkFromColumns(rer: LW.RegExpRecord, re: R.regex, str: string, qm: AR.QMap)
+    requires !rer.ignoreCase && !rer.multiline
+    requires T.TransWf(re) && NR.LookBehindFragmentRE(re)
+    requires LTB.LookUnique(re) && PIV.QuantUnique(re)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x
+    requires qm.looks == LmOf(re)
+    requires qm.ov == AI.FBuildOracle(CP.FFullCompilation(re), str)
+    ensures LL.OracleOkSuffix(rer, qm, LC.InitInput(str))
+  {
+    InitInputAt(str);
+    forall inp: LC.Input | inp == LC.InitInput(str) || SSx.IsStrictSuffix(inp, LC.InitInput(str), WP.Forward)
+      ensures LL.OracleOkAt(rer, qm, inp)
+    {
+      var cp: nat;
+      if inp == LC.InitInput(str) {
+        cp := 0;
+      } else {
+        assert SSx.StrictSuffixForward(inp, T.InputAt(str, 0).next, T.InputAt(str, 0).pref);
+        SuffixIsInputAt(str, 0, inp);
+        var m: nat :| 0 < m <= |str| && inp == T.InputAt(str, m);
+        cp := m;
+      }
+      assert inp == T.InputAt(str, cp) && cp <= |str|;
+      OracleOkAtCp(rer, re, str, qm, cp);
+    }
+  }
 
   // ===========================================================================
   // L5: the NESTED-aware span transfer, `MatchesV` <==> `MatchesL`

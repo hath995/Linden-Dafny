@@ -99,6 +99,7 @@ module LindenElkNfaRep {
     AnnotateStarFragment(R.Raw_capture(raw), 0, 1, 1);
   }
 
+
   /** The anchor fragment: the star fragment plus anchors (`^ $ \b \B`) — the
       next fragment on LIBRARY_PLAN §7's growth path. The NfaRep layer below is
       proven against THIS fragment; the downstream simulation layers still gate
@@ -605,6 +606,7 @@ module LindenElkNfaRep {
     case Raw_capture(_) => false
     case Raw_lookaround(_, r1) => CaptureFreeRaw(r1)
   }
+
 
   // ==========================================================================
   // (C5 scope predicates) The L4 fragment's EXECUTABLE raw-level scope — the
@@ -1197,6 +1199,7 @@ module LindenElkNfaRep {
     case _ =>
   }
 
+
   /** A look-free regex has no lookarounds at all, so it vacuously satisfies
       `NegLooksLookFreeRE`. */
   lemma LookFreeNegLooksLookFree(re: R.regex)
@@ -1373,6 +1376,14 @@ module LindenElkNfaRep {
       AnnotateLookFree(r1, c, l + 1, q);
       AnnotatePlusFragment(r1, c, l + 1, q);
     case _ =>
+  }
+
+  /** `lazy_prefix(annotate(raw))` stays in the lookbehind fragment. */
+  lemma SpecRegexLookBehindFragment(raw: R.raw_regex)
+    requires LookBehindFragmentRaw(raw)
+    ensures LookBehindFragmentRE(R.lazy_prefix(R.annotate(raw)))
+  {
+    AnnotateLookBehindFragment(R.Raw_capture(raw), 0, 1, 1);
   }
 
   // ---------------------------------------------------------------------------
@@ -4133,6 +4144,7 @@ module LindenElkNfaRep {
       assert pc == start;
   }
 
+
   // The CAPTURE classification: a capture-free block emits no
   // SetRegisterToCP, so running it cannot disturb any thread's capture bank.
   // What it buys: the lookaround capture pass (FLookLoop's replay) leaves the
@@ -4300,6 +4312,8 @@ module LindenElkNfaRep {
       // the whole block is the single gate instruction at `start`
       assert pc == start;
   }
+
+
 
   /** The full oracle-build program of a look-free plus-fragment build regex,
       classified for the sweep lemmas: no oracle reads, no `CheckNullable`,
