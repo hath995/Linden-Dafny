@@ -2148,196 +2148,6 @@ module LindenElkPikeInv {
     FilterPresenceExtract(ast, cr, cc, lc, qc, -1, gid);
   }
 
-  /** L3a (E4) — the LOOK-AWARE presence extraction: a group whose start
-      SURVIVES `filter_capture` is `PathPresentLk` — every enclosing quantifier
-      and capture took its keep branch AND every enclosing lookaround MATCHED
-      in scope (`lc[lid] >= 0 && >= mx`, resetting `mx` for the body) — with
-      its own start clock fresh and in scope. The inside-look dual of
-      `FilterPresenceExtract`; the reverse value tie's register-side handle. */
-  lemma FilterPresenceExtractLk(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>,
-                                mx: int, gid: nat)
-    requires NR.LookBehindFragmentRE(r)
-    requires CapUnique(r)
-    requires gid in CapIds(r)
-    requires forall c: nat :: c in CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0
-                              ==> AI.get_idx(cr, CP.start_reg(c)) < 0
-    requires AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), CP.start_reg(gid)) >= 0
-    ensures PathPresentLk(r, cc, lc, qc, mx, gid)
-    ensures AI.get_idx(cc, CP.start_reg(gid)) >= 0
-    ensures AI.get_idx(cc, CP.start_reg(gid)) >= MxAtGidLk(r, cc, lc, qc, mx, gid)
-    ensures AI.get_idx(cr, CP.start_reg(gid)) >= 0
-    decreases r
-  {
-    match r
-    case Re_empty => case Re_character(_) => case Re_anchor(_) =>
-    case Re_lookaround(lid, la, r1) =>
-      var lv := AI.get_idx(lc, lid);
-      if lv < 0 || lv < mx {
-        // both clear branches run filter_all: contradiction with survival.
-        FilterAllClearsStart(r1, cr, gid);
-        assert false;
-      } else {
-        NR.PlusIsLookBehindFragmentRE(r1);    // the body is a plus fragment
-        FilterPresenceExtractLk(r1, cr, cc, lc, qc, -1, gid);
-      }
-    case Re_alt(r1, r2) =>
-      var c1 := AI.filter_capture(r1, cr, cc, lc, qc, mx);
-      if gid in CapIds(r1) {
-        assert gid !in CapIds(r2) by { if gid in CapIds(r2) { assert gid in CapIds(r1) * CapIds(r2); } }
-        FilterCaptureOutside(r2, c1, cc, lc, qc, mx, gid);
-        FilterPresenceExtractLk(r1, cr, cc, lc, qc, mx, gid);
-      } else {
-        assert gid in CapIds(r2) && gid !in CapIds(r1);
-        forall c: nat | c in CapIds(r2) && AI.get_idx(cc, CP.start_reg(c)) < 0
-          ensures AI.get_idx(c1, CP.start_reg(c)) < 0
-        {
-          assert c !in CapIds(r1) by { if c in CapIds(r1) { assert c in CapIds(r1) * CapIds(r2); } }
-          FilterCaptureOutside(r1, cr, cc, lc, qc, mx, c);
-        }
-        FilterPresenceExtractLk(r2, c1, cc, lc, qc, mx, gid);
-        FilterCaptureOutside(r1, cr, cc, lc, qc, mx, gid);
-      }
-    case Re_con(r1, r2) =>
-      var c1 := AI.filter_capture(r1, cr, cc, lc, qc, mx);
-      if gid in CapIds(r1) {
-        assert gid !in CapIds(r2) by { if gid in CapIds(r2) { assert gid in CapIds(r1) * CapIds(r2); } }
-        FilterCaptureOutside(r2, c1, cc, lc, qc, mx, gid);
-        FilterPresenceExtractLk(r1, cr, cc, lc, qc, mx, gid);
-      } else {
-        assert gid in CapIds(r2) && gid !in CapIds(r1);
-        forall c: nat | c in CapIds(r2) && AI.get_idx(cc, CP.start_reg(c)) < 0
-          ensures AI.get_idx(c1, CP.start_reg(c)) < 0
-        {
-          assert c !in CapIds(r1) by { if c in CapIds(r1) { assert c in CapIds(r1) * CapIds(r2); } }
-          FilterCaptureOutside(r1, cr, cc, lc, qc, mx, c);
-        }
-        FilterPresenceExtractLk(r2, c1, cc, lc, qc, mx, gid);
-        FilterCaptureOutside(r1, cr, cc, lc, qc, mx, gid);
-      }
-    case Re_quant(nul, qid, q, r1) =>
-      var qv := AI.get_idx(qc, qid);
-      if qv < mx {
-        FilterAllClearsStart(r1, cr, gid);
-        assert false;
-      } else {
-        FilterPresenceExtractLk(r1, cr, cc, lc, qc, qv, gid);
-      }
-    case Re_capture(cid, r1) =>
-      var start := AI.get_idx(cc, CP.start_reg(cid));
-      if cid >= 0 && (cid as nat) == gid {
-        assert gid !in CapIds(r1);                        // CapUnique
-        if start < 0 {
-          FilterAllOutside(r1, cr, gid);
-          assert AI.get_idx(cr, CP.start_reg(gid)) < 0;
-          assert false;
-        } else if start < mx {
-          var cr2 := AI.set_idx(cr, CP.start_reg(cid), -1);
-          FilterAllOutside(r1, cr2, gid);
-          assert AI.get_idx(cr2, CP.start_reg(gid)) <= -1;
-          assert false;
-        } else {
-          FilterCaptureOutside(r1, cr, cc, lc, qc, mx, gid);
-          assert MxAtGidLk(r, cc, lc, qc, mx, gid) == mx;
-        }
-      } else {
-        assert gid in CapIds(r1);
-        if start < 0 {
-          FilterAllClearsStart(r1, cr, gid);
-          assert false;
-        } else if start < mx {
-          var cr2 := AI.set_idx(cr, CP.start_reg(cid), -1);
-          FilterAllClearsStart(r1, cr2, gid);
-          assert false;
-        } else {
-          forall c: nat | c in CapIds(r1) && AI.get_idx(cc, CP.start_reg(c)) < 0
-            ensures AI.get_idx(cr, CP.start_reg(c)) < 0 {}
-          FilterPresenceExtractLk(r1, cr, cc, lc, qc, mx, gid);
-        }
-      }
-  }
-
-  /** gm-level wrapper for `FilterPresenceExtractLk`: any group present in the
-      live denotation — inside-look ones included — is look-aware path-present
-      with a fresh start clock and a SET start value. */
-  lemma GmOfLivePresenceExtractLk(ast: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, gid: nat)
-    requires NR.LookBehindFragmentRE(ast)
-    requires CapUnique(ast)
-    requires gid in CapIds(ast)
-    requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
-                              ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
-    requires gid in GmOfLive(ast, caps, look, quant)
-    ensures PathPresentLk(ast, caps.a_clk, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, gid)
-    ensures AI.get_idx(caps.a_clk, CP.start_reg(gid)) >= 0
-    ensures AI.get_idx(caps.a_clk, CP.start_reg(gid))
-         >= MxAtGidLk(ast, caps.a_clk, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, gid)
-    ensures AI.get_idx(caps.a_cp, CP.start_reg(gid)) >= 0
-  {
-    var (cr, cc) := AReg.as_arrays(caps);
-    var (_, lc) := AReg.as_arrays(look);
-    var (_, qc) := AReg.as_arrays(quant);
-    var f := AI.filter_reset(ast, caps, look, quant, -1);
-    assert f == AI.filter_capture(ast, cr, cc, lc, qc, -1);
-    assert AI.get_idx(f, CP.start_reg(gid)) >= 0;
-    FilterPresenceExtractLk(ast, cr, cc, lc, qc, -1, gid);
-  }
-
-  /** For a LOOK-FREE regex the look-aware `MxAtGidLk` and the look-free `MxAtGid`
-      coincide (no `Re_lookaround` node ever resets `mx`). */
-  lemma LookFreeMxAtGidLkEq(r: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>, mx: int, gid: nat)
-    requires NR.LookFreeRE(r) && gid in CapIds(r)
-    ensures MxAtGidLk(r, cc, lc, qc, mx, gid) == MxAtGid(r, cc, qc, mx, gid)
-    decreases r
-  {
-    match r
-    case Re_alt(r1, r2) => if gid in CapIds(r1) { LookFreeMxAtGidLkEq(r1, cc, lc, qc, mx, gid); } else { LookFreeMxAtGidLkEq(r2, cc, lc, qc, mx, gid); }
-    case Re_con(r1, r2) => if gid in CapIds(r1) { LookFreeMxAtGidLkEq(r1, cc, lc, qc, mx, gid); } else { LookFreeMxAtGidLkEq(r2, cc, lc, qc, mx, gid); }
-    case Re_quant(_, qid, _, r1) => LookFreeMxAtGidLkEq(r1, cc, lc, qc, AI.get_idx(qc, qid), gid);
-    case Re_capture(cid, r1) => if cid == gid {} else { LookFreeMxAtGidLkEq(r1, cc, lc, qc, mx, gid); }
-    case _ =>
-  }
-
-  /** For a LOOK-FREE regex the look-aware `PathPresentLk` follows from the
-      look-free `PathPresent` (the `Re_lookaround` gate never fires). */
-  lemma LookFreePathPresentLk(r: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>, mx: int, gid: nat)
-    requires NR.LookFreeRE(r) && gid in CapIds(r)
-    requires PathPresent(r, cc, qc, mx, gid)
-    ensures PathPresentLk(r, cc, lc, qc, mx, gid)
-    decreases r
-  {
-    match r
-    case Re_alt(r1, r2) => if gid in CapIds(r1) { LookFreePathPresentLk(r1, cc, lc, qc, mx, gid); } else { LookFreePathPresentLk(r2, cc, lc, qc, mx, gid); }
-    case Re_con(r1, r2) => if gid in CapIds(r1) { LookFreePathPresentLk(r1, cc, lc, qc, mx, gid); } else { LookFreePathPresentLk(r2, cc, lc, qc, mx, gid); }
-    case Re_quant(_, qid, _, r1) => LookFreePathPresentLk(r1, cc, lc, qc, AI.get_idx(qc, qid), gid);
-    case Re_capture(cid, r1) => if cid == gid {} else { LookFreePathPresentLk(r1, cc, lc, qc, mx, gid); }
-    case _ =>
-  }
-
-  /** (E) BODY-side path presence, self-contained: a group `g` present in a
-      LOOK-FREE body's live denotation is path-present there, with its start
-      clock in scope. Composes `GmOfLivePresenceExtract` (body is look-free so
-      `g !in CapIdsInLooks(body)`) with the look-free `PathPresent -> PathPresentLk`
-      / `MxAtGid -> MxAtGidLk` bridges. Discharges the body half of
-      `GmOfLiveInsideLookPresentEq`'s path hypotheses WITHOUT the exact position. */
-  lemma BodyPathPresentLk(body: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, g: nat)
-    requires NR.LookBehindFragmentRE(body) && NR.LookFreeRE(body) && CapUnique(body)
-    requires g in CapIds(body)
-    requires forall c: nat :: c in CapIds(body) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
-                              ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
-    requires g in GmOfLive(body, caps, look, quant)
-    ensures PathPresentLk(body, AReg.as_arrays(caps).1, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, g)
-    ensures AI.get_idx(AReg.as_arrays(caps).1, CP.start_reg(g)) >= 0
-    ensures AI.get_idx(AReg.as_arrays(caps).1, CP.start_reg(g))
-         >= MxAtGidLk(body, AReg.as_arrays(caps).1, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, g)
-  {
-    LookFreeCapIdsInLooksEmpty(body);            // g !in CapIdsInLooks(body)
-    GmOfLivePresenceExtract(body, caps, look, quant, g);
-    var cc := AReg.as_arrays(caps).1;
-    var lc := AReg.as_arrays(look).1;
-    var qc := AReg.as_arrays(quant).1;
-    LookFreePathPresentLk(body, cc, lc, qc, -1, g);
-    LookFreeMxAtGidLkEq(body, cc, lc, qc, -1, g);
-  }
-
   /** A look-free regex has no inside-look captures. */
   lemma LookFreeCapIdsInLooksEmpty(r: R.regex)
     requires NR.LookFreeRE(r)
@@ -4762,7 +4572,6 @@ module LindenElkPikeInv {
     }
   }
 
-
   /** `QuantIds` that does NOT descend into lookaround bodies — the ids the
       filter can actually consult. */
   // ==========================================================================
@@ -4909,24 +4718,6 @@ module LindenElkPikeInv {
     case _ =>
   }
 
-  /** Disjoint capture ids give disjoint capture REGISTERS (start_reg/end_reg
-      are injective and parity-separated). */
-  lemma CaptureRegsDisjoint(a: R.regex, b: R.regex)
-    requires CapIds(a) * CapIds(b) == {}
-    ensures CaptureRegs(a) * CaptureRegs(b) == {}
-  {
-    forall k | k in CaptureRegs(a) ensures k !in CaptureRegs(b) {
-      var ca :| ca in CapIds(a) && (k == CP.start_reg(ca) || k == CP.end_reg(ca));
-      if k in CaptureRegs(b) {
-        var cb :| cb in CapIds(b) && (k == CP.start_reg(cb) || k == CP.end_reg(cb));
-        assert CP.start_reg(ca) == 2 * ca && CP.end_reg(ca) == 2 * ca + 1;
-        assert CP.start_reg(cb) == 2 * cb && CP.end_reg(cb) == 2 * cb + 1;
-        assert ca == cb;
-        assert ca in CapIds(a) * CapIds(b);
-      }
-    }
-  }
-
   ghost function QuantIdsOutsideLooks(r: R.regex): set<nat>
     decreases r
   {
@@ -5053,89 +4844,6 @@ module LindenElkPikeInv {
     case _ =>
   }
 
-  /** THE frame: `filter_capture` reads quant clocks freely only OUTSIDE
-      lookaround bodies; a capturing keep-branch look body also reads the body's
-      (inside-look) quant clocks. So agreeing on `QuantIdsOutsideLooks` frames the
-      output at every position OUTSIDE `W = CaptureRegsSet(CapIdsInLooks(r))`.
-      (L2 had full equality — capture-free bodies read no clocks.) */
-  lemma FilterCaptureQcFrameOutside(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>,
-                                    qc: seq<int>, qc2: seq<int>, M: int, j: int)
-    requires NR.LookBehindFragmentRE(r)
-    requires forall q0: nat :: q0 in QuantIdsOutsideLooks(r)
-                               ==> AI.get_idx(qc, q0) == AI.get_idx(qc2, q0)
-    ensures j !in CaptureRegsSet(CapIdsInLooks(r)) ==>
-              AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, M), j)
-              == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc2, M), j)
-    decreases r, 1
-  {
-    if j !in CaptureRegsSet(CapIdsInLooks(r)) {
-      match r
-      case Re_alt(r1, r2) => QcFrameOutsideSeqStep(r, r1, r2, cr, cc, lc, qc, qc2, M, j);
-      case Re_con(r1, r2) => QcFrameOutsideSeqStep(r, r1, r2, cr, cc, lc, qc, qc2, M, j);
-      case Re_quant(nul, qid, q, r1) =>
-        assert AI.get_idx(qc, qid) == AI.get_idx(qc2, qid);
-        var qv := AI.get_idx(qc, qid);
-        if qv < M { /* both filter_all(r1, cr): no qc read */ }
-        else { FilterCaptureQcFrameOutside(r1, cr, cc, lc, qc, qc2, qv, j); }   // W(quant)==W(r1)
-      case Re_capture(cid, r1) =>
-        var start := AI.get_idx(cc, CP.start_reg(cid));
-        if start < 0 { } else if start < M { }
-        else { FilterCaptureQcFrameOutside(r1, cr, cc, lc, qc, qc2, M, j); }    // W(capture)==W(r1)
-      case Re_lookaround(lid, la, r1) =>
-        NR.PlusIsLookBehindFragmentRE(r1);
-        assert forall cid: nat :: cid in CapIds(r1) ==> CP.start_reg(cid) != j by {
-          forall cid: nat | cid in CapIds(r1) ensures CP.start_reg(cid) != j { StartRegInCaptureRegsSet(CapIds(r1), cid); }
-        }
-        LkValAtNonStart(lid, la, r1, cr, cc, lc, qc, M, j);
-        LkValAtNonStart(lid, la, r1, cr, cc, lc, qc2, M, j);
-      case _ =>
-    }
-  }
-
-  /** Shared `alt`/`con` step for `FilterCaptureQcFrameOutside`: frame the prefix
-      `r1` outside `W(r1)`, then compose with `FilterCaptureCrPointwise` +
-      the suffix `r2` frame. */
-  lemma QcFrameOutsideSeqStep(r: R.regex, r1: R.regex, r2: R.regex, cr: seq<int>, cc: seq<int>,
-                              lc: seq<int>, qc: seq<int>, qc2: seq<int>, M: int, j: int)
-    requires r == R.Re_alt(r1, r2) || r == R.Re_con(r1, r2)
-    requires NR.LookBehindFragmentRE(r)
-    requires forall q0: nat :: q0 in QuantIdsOutsideLooks(r)
-                               ==> AI.get_idx(qc, q0) == AI.get_idx(qc2, q0)
-    requires j !in CaptureRegsSet(CapIdsInLooks(r))
-    ensures AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, M), j)
-         == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc2, M), j)
-    decreases r, 0
-  {
-    var Y  := AI.filter_capture(r1, cr, cc, lc, qc, M);
-    var Y2 := AI.filter_capture(r1, cr, cc, lc, qc2, M);
-    CaptureRegsSetMono(CapIdsInLooks(r1), CapIdsInLooks(r));
-    CaptureRegsSetMono(CapIdsInLooks(r2), CapIdsInLooks(r));
-    FilterCaptureFullOutside(r1, cr, cc, lc, qc, qc2, M);          // Y ~ Y2 outside W(r1); j!in W(r1)
-    assert AI.get_idx(Y, j) == AI.get_idx(Y2, j);
-    FilterCaptureQcFrameOutside(r2, Y2, cc, lc, qc, qc2, M, j);    // j!in W(r2) ==> f(r2,Y2,qc)[j]==f(r2,Y2,qc2)[j]
-    FilterCaptureCrPointwise(r2, Y, Y2, cc, lc, qc, M, j);         // f(r2,Y,qc)[j]==f(r2,Y2,qc)[j]
-  }
-
-  /** The whole-sequence form of `FilterCaptureQcFrameOutside`: outputs agree at
-      every position OUTSIDE `W = CaptureRegsSet(CapIdsInLooks(r))`. */
-  lemma FilterCaptureFullOutside(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>,
-                                 qc: seq<int>, qc2: seq<int>, M: int)
-    requires NR.LookBehindFragmentRE(r)
-    requires forall q0: nat :: q0 in QuantIdsOutsideLooks(r)
-                               ==> AI.get_idx(qc, q0) == AI.get_idx(qc2, q0)
-    ensures forall i :: i !in CaptureRegsSet(CapIdsInLooks(r)) ==>
-                          AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, M), i)
-                          == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc2, M), i)
-    decreases r, 2
-  {
-    forall i: int | i !in CaptureRegsSet(CapIdsInLooks(r))
-      ensures AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, M), i)
-           == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc2, M), i)
-    {
-      FilterCaptureQcFrameOutside(r, cr, cc, lc, qc, qc2, M, i);
-    }
-  }
-
   /** A capture-free regex has no capture ids. */
   lemma CaptureFreeNoCapIds(r: R.regex)
     requires NR.CaptureFreeRE(r)
@@ -5194,71 +4902,6 @@ module LindenElkPikeInv {
         var c :| c in S && CP.end_reg(c) == CP.end_reg(g);
         assert 2 * c + 1 == 2 * g + 1;
       }
-    }
-  }
-
-  /** THE P1 GmOfLive frame: on OUTSIDE-look groups, `GmOfLive` is unchanged when
-      the capture bank (and its clocks) agree outside the inside-look registers,
-      the look bank is the same, and the quant clocks agree at outside-look quant
-      ids. Composes `FilterFrameOutside` (capture frame) with `FilterCaptureFull-
-      Outside` (quant frame). The agreements are `requires` -- the caller supplies
-      them from §4a (`RegsAgreeOutside(res.0, caps, S)`) and the FLookLoop quant
-      frame. This is P1: it moves `GmOfLive(re, res.0, lk, res.2)` to `GmOfLive(re,
-      caps, lk, qt)` on all outside-look groups. */
-  lemma GmOfLiveFrameOutside(re: R.regex, cap: AReg.Regs, cap': AReg.Regs, look: AReg.Regs,
-                             quant: AReg.Regs, quant': AReg.Regs)
-    requires NR.LookBehindFragmentRE(re) && CapUnique(re)
-    requires forall k: int :: k !in CaptureRegsSet(CapIdsInLooks(re)) ==>
-                                AI.get_idx(AReg.as_arrays(cap).0, k) == AI.get_idx(AReg.as_arrays(cap').0, k)
-                                && AI.get_idx(AReg.as_arrays(cap).1, k) == AI.get_idx(AReg.as_arrays(cap').1, k)
-    requires forall q: nat :: q in QuantIdsOutsideLooks(re) ==>
-                                AI.get_idx(AReg.as_arrays(quant).1, q) == AI.get_idx(AReg.as_arrays(quant').1, q)
-    ensures forall g: nat :: g !in CapIdsInLooks(re) ==>
-                               ((g in GmOfLive(re, cap, look, quant)) <==> (g in GmOfLive(re, cap', look, quant')))
-                               && (g in GmOfLive(re, cap, look, quant) ==>
-                                     GmOfLive(re, cap, look, quant)[g] == GmOfLive(re, cap', look, quant')[g])
-  {
-    var W := CaptureRegsSet(CapIdsInLooks(re));
-    var crA := AReg.as_arrays(cap).0;  var ccA := AReg.as_arrays(cap).1;
-    var crB := AReg.as_arrays(cap').0; var ccB := AReg.as_arrays(cap').1;
-    var lc := AReg.as_arrays(look).1;
-    var qcA := AReg.as_arrays(quant).1; var qcB := AReg.as_arrays(quant').1;
-
-    // structural requires of FilterFrameOutside
-    CapIdsLooksDisjoint(re);
-    assert forall g: nat :: g in CapIdsInLooks(re) ==> CP.start_reg(g) in W by {
-      forall g: nat | g in CapIdsInLooks(re) ensures CP.start_reg(g) in W { StartRegInCaptureRegsSet(CapIdsInLooks(re), g); }
-    }
-    assert forall g: nat :: g in CapIdsOutsideLooks(re) ==> CP.start_reg(g) !in W by {
-      forall g: nat | g in CapIdsOutsideLooks(re) ensures CP.start_reg(g) !in W {
-        assert g !in CapIdsInLooks(re) by { if g in CapIdsInLooks(re) { assert g in CapIdsOutsideLooks(re) * CapIdsInLooks(re); } }
-        StartRegInCaptureRegsSet(CapIdsInLooks(re), g);
-      }
-    }
-    assert forall x: int :: x in W ==> x >= 0 by {
-      forall x: int | x in W ensures x >= 0 {}
-    }
-    // swap quant' -> quant on the whole filter (quant frame), then cap frame.
-    FilterCaptureFullOutside(re, crB, ccB, lc, qcB, qcA, -1);   // filter(crB,ccB,qcB)==filter(crB,ccB,qcA)
-    FilterFrameOutside(re, crA, crB, ccA, ccB, lc, qcA, qcA, -1, W);   // filter(crA,ccA,qcA) ~ filter(crB,ccB,qcA) outside W
-
-    var f1 := AI.filter_reset(re, cap, look, quant, -1);
-    var f2 := AI.filter_reset(re, cap', look, quant', -1);
-    assert f1 == AI.filter_capture(re, crA, ccA, lc, qcA, -1);
-    assert f2 == AI.filter_capture(re, crB, ccB, lc, qcB, -1);
-
-    forall g: nat | g !in CapIdsInLooks(re)
-      ensures ((g in GmOfLive(re, cap, look, quant)) <==> (g in GmOfLive(re, cap', look, quant')))
-              && (g in GmOfLive(re, cap, look, quant) ==>
-                    GmOfLive(re, cap, look, quant)[g] == GmOfLive(re, cap', look, quant')[g])
-    {
-      StartRegInCaptureRegsSet(CapIdsInLooks(re), g);
-      EndRegInCaptureRegsSet(CapIdsInLooks(re), g);
-      assert CP.start_reg(g) !in W && CP.end_reg(g) !in W;
-      assert AI.get_idx(f1, CP.start_reg(g)) == AI.get_idx(f2, CP.start_reg(g));
-      assert AI.get_idx(f1, CP.end_reg(g)) == AI.get_idx(f2, CP.end_reg(g));
-      assert AI.get_idx(ccA, CP.start_reg(g)) == AI.get_idx(ccB, CP.start_reg(g));
-      assert AI.get_idx(ccA, CP.end_reg(g)) == AI.get_idx(ccB, CP.end_reg(g));
     }
   }
 
@@ -6637,7 +6280,6 @@ module LindenElkPikeInv {
       else { FilterCaptureQcFrameNested(r1, cr, cc, lc, qc, qc', M, qid, j); }
   }
 
-
   /** The `qid`-node branch of `FilterResetFrameNested`'s quantifier arm, stated on the
       BODY ALONE: at the fresh reset stamp `clk` every capture inside the body is
       stale, so the body's filter is `filter_all` — which clears exactly the body's
@@ -7910,38 +7552,6 @@ module LindenElkPikeInv {
     GmOfLiveRNoStamps(re, qm, str, AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
   }
 
-  lemma InitialPikeInvRE(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, ngroups: nat,
-                         str: string, tree: LT.Tree, vms: AI.VmState, ncap: int, nlook: int, nquant: int)
-    requires NR.LookBehindFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase && AR.QmapOk(re, qm)
-    requires code == CP.compile_to_bytecode(re)
-    requires TT.TreeThreadRE(rer, qm, code, LC.InitInput(str), tree, 0, false)
-    requires vms.cp == 0
-    requires vms.active == [AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant))]
-    requires vms.blocked == []
-    requires vms.bestmatch.None?
-    requires vms.processed == AI.init_bpcset(|code|)
-    requires vms.context == AI.cp_context(0, str, LAnc.Forward)
-    ensures PikeInvRE(rer, qm, re, code, ngroups, str, PT.PikeTreeInitialState(tree, LC.InitInput(str)), vms)
-  {
-    var inp := LC.InitInput(str);
-    var acts := [LS.Areg(T.Translate(re))];
-    assert LC.Reverse(str[..0]) == [];
-    assert inp == InpOfCp(str, 0);                     // Input(str, []) == Input(str[0..], Reverse(str[..0]))
-
-    // Active correspondence for the singleton [(tree, Empty)] ~ [init_thread]:
-    // TreeThreadRE(tree, 0, false) is the requires (the checked tree from the
-    // entry construction).
-    GmOfLiveInit(re, ncap, nlook, nquant);
-    InitNoStamps(re, qm, str, ncap, nlook, nquant);              // GmOfLive(re, init_regs...) == Empty
-    var th := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
-    assert ActiveRepRE(rer, qm, re, code, str, inp, [(tree, LG.Empty)], [th]) by {
-      assert ActiveRepRE(rer, qm, re, code, str, inp, [], []);
-    }
-
-    // Seen inclusion is vacuous at the empty (init_bpcset) processed set.
-    InitialInclusionRE(rer, qm, code, inp, Some(tree), 0, |code|);
-  }
-
   /** The cp-generalized base case: the initial state at an ARBITRARY start
       position `cp` (with fresh registers) satisfies `PikeInvRE`. `InitialPikeInvRE`
       is the `cp == 0` instance. The proof is the same and actually simpler — the
@@ -8192,7 +7802,6 @@ module LindenElkPikeInv {
       }
   }
 
-
   // ===========================================================================
   // §2.5b RUNG D — COMMUTATION for the reconstruction-aware readout.
   // (2026-09-06) Developed against the built artifact in a scratch module while
@@ -8255,8 +7864,6 @@ module LindenElkPikeInv {
       ApplyPathOpenCommute(p[1..], idx, LG.GMUpdate(p[0], idx, gm), G, cp, gid);
     }
   }
-
-
 
   /** `PathIn` is monotone in the group set and distributes over `+`. */
   lemma PathInMono(p: seq<LG.GroupAction>, G1: set<LG.GroupId>, G2: set<LG.GroupId>)
@@ -8372,9 +7979,6 @@ module LindenElkPikeInv {
     }
   }
 
-
-
-
   /** For every STAMPED quantifier of `r`, the QMap's body agrees with the AST's
       on the groups it defines. This is `AR.QmapOk` information (the QMap pins
       `qm.bodies[qid] == r1`), so it is a hypothesis here rather than a fact. */
@@ -8488,8 +8092,6 @@ module LindenElkPikeInv {
       StampBodiesSub(r, r1, qm, str, qcp);
       LiveStampsGmOpenCommute(r1, qm, str, qc, qcp, mx, gm, cp, gid);
   }
-
-
 
   // ===========================================================================
   // §2.5b RUNG D — the GENERAL commutation algebra (2026-11-04).
@@ -9055,7 +8657,6 @@ module LindenElkPikeInv {
     case Re_lookaround(_, _, r1) => TransWfQidBodyPIV(r1, qid);
   }
 
-
   /** A stamp's fold depends on the map only through the reset of its body's
       groups. */
   lemma StampApplyResetCong(qm: AR.QMap, str: string, qid: nat, qcp: seq<int>,
@@ -9258,7 +8859,6 @@ module LindenElkPikeInv {
     case Re_lookaround(_, _, _) =>
   }
 
-
   /** `QmapOk` pins `qm.bodies[qid]` to the body `QidBody` selects (twin of
       `QmapOkAtQid` for the §2.5b body table). */
   lemma QmapOkBodyAtQid(re: R.regex, qm: AR.QMap, qid: nat)
@@ -9298,7 +8898,6 @@ module LindenElkPikeInv {
       TransWfQidBodyPIV(re, A);
     }
   }
-
 
   // ===========================================================================
   // §2.5b RUNG D2 — the true stamp is LIVE when set: the positional invariant

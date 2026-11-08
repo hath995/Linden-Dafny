@@ -51,7 +51,8 @@ The three fragments in one line each:
 * **L5** — nested capturing **lookbehinds** too, under `LSIM.L5ScopeV1RE` (see §2.1).
 
 `SupportedL4 ⇒ SupportedL5` semantically (`LSIM.L4ScopeImpliesL5`); `MainTheoremL4` is now a thin
-wrapper over `MainTheoremL5`. L3 is a separate proof (`MainTheoremL3`) kept for the depth-1 path.
+wrapper over `MainTheoremL5`. `SupportedL3 ⇒ SupportedL5` too (`API.SupportedL3ImpliesL5`, 2026-11-08):
+depth-1 patterns go through `MainTheoremL5`, and the separate `MainTheoremL3` proof is retired.
 
 ---
 

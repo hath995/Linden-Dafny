@@ -4931,113 +4931,6 @@ module LindenElkPikeSim {
     PT.AdvanceNext(PIV.InpOfCp(str, cp), PIV.InpOfCp(str, cp + 1));
   }
 
-  // Initial establishment: the search-entry state satisfies the full package.
-  /** Establishes `PikeInvFullRE` at the search's entry state: the initial
-      single thread with all-fresh (`-1`) registers satisfies every backbone
-      and the positional invariant at `pc` 0, and `isblocked` is vacuously
-      covered. */
-  lemma InitialPikeInvFullRE(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
-                             endl: nat, ngroups: nat, str: string, tree: LT.Tree, vms: AI.VmState,
-                             ncap: int, nlook: int, nquant: int)
-    requires NR.LookBehindFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase && !rer.multiline && AR.QmapOk(re, qm)
-    requires code == CP.compile_to_bytecode(re)
-    requires NR.NfaRepRE(re, code, 0, endl)
-    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
-    requires TT.TreeThreadRE(rer, qm, code, LC.InitInput(str), tree, 0, false)
-    requires vms.cp == 0
-    requires vms.clock == 0
-    requires ncap >= 0 && nlook >= 0 && nquant >= 0
-    requires vms.active == [AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant))]
-    requires vms.blocked == []
-    requires vms.bestmatch.None?
-    requires vms.processed == AI.init_bpcset(|code|)
-    requires vms.isblocked == AI.init_pcset(|code|)
-    requires vms.context == AI.cp_context(0, str, LAnc.Forward)
-    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str,
-                          PT.PikeTreeInitialState(tree, LC.InitInput(str)), vms, ncap, nlook, nquant)
-  {
-    // Base correspondence (proven earlier).
-    PIV.InitialPikeInvRE(rer, qm, re, code, ngroups, str, tree, vms, ncap, nlook, nquant);
-
-    var th := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
-
-    // Clock backbone at the entry state.
-    assert CM.VmClocksLE(vms) by {
-      CM.RegsClocksLEInit(ncap, 0);
-      CM.RegsClocksLEInit(nlook, 0);
-      CM.RegsClocksLEInit(nquant, 0);
-      forall t | t in vms.active ensures CM.ThreadClocksLE(t, vms.clock) {
-        assert t == th;
-      }
-    }
-
-    // Register wf.
-    assert CM.VmRegsWf(vms, ncap, nlook, nquant) by {
-      PIV.CapRegWfInit(ncap);
-      assert CM.ThreadRegsWf(th, ncap, nlook, nquant);
-      forall t | t in vms.active ensures CM.ThreadRegsWf(t, ncap, nlook, nquant) {
-        assert t == th;
-      }
-    }
-
-    // Capture-value bound.
-    assert CM.VmCapsLE(vms) by {
-      var r := AReg.init_regs(ncap);
-      assert CM.RegsValsLE(r, 0) by {
-        forall k ensures AI.get_idx(r.a_cp, k) <= 0 {
-          if 0 <= k < |r.a_cp| { assert r.a_cp[k] == -1; }
-        }
-      }
-      forall t | t in vms.active ensures CM.RegsValsLE(t.capture_regs, vms.cp) {
-        assert t == th;
-      }
-    }
-
-    // Positional invariant at pc 0 with all-fresh clocks.
-    assert ThreadNestRE(re, code, endl, 0, th) by {
-      var cc := th.capture_regs.a_clk;
-      var qc := th.quant_regs.a_clk;
-      assert forall k :: AI.get_idx(cc, k) < 0 by {
-        forall k ensures AI.get_idx(cc, k) < 0 {
-          if 0 <= k < |cc| { assert cc[k] == -1; }
-        }
-      }
-      NI.NestTopInit(re, code, endl, cc, qc);
-      StampTopInit(re, code, endl, th.quant_regs.a_cp);
-      assert forall k :: AI.get_idx(th.quant_regs.a_cp, k) < 0 by {
-        forall k ensures AI.get_idx(th.quant_regs.a_cp, k) < 0 {
-          if 0 <= k < |th.quant_regs.a_cp| { assert th.quant_regs.a_cp[k] == -1; }
-        }
-      }
-      SL.StampLiveInit(re, cc, qc, th.quant_regs.a_cp);
-      NR.NfaRepIncrRE(re, code, 0, endl);
-    }
-    forall t | t in vms.active ensures ThreadNestRE(re, code, endl, t.pc, t) {
-      assert t == th;
-    }
-
-    // ea-at-backfork: the entry pc is never Cold, so the initial false-thread
-    // is admissible.
-    assert forall t | t in vms.active :: EaColdOkRE(code, t) by {
-      NI.NotColdEntryRE(re, code, endl);
-      forall t | t in vms.active ensures EaColdOkRE(code, t) {
-        assert t == th;
-      }
-    }
-
-    // isblocked inclusion: the initial pcset is all-false, vacuous.
-    var pts := PT.PikeTreeInitialState(tree, LC.InitInput(str));
-    assert IsblockedInclusionRE(rer, qm, code, pts.inp, pts.seen, vms.isblocked) by {
-      forall pc0: nat | AI.pc_mem(vms.isblocked, pc0)
-        ensures exists t: LT.Tree, b: bool ::
-          SS.Inseen(pts.seen, t) && TT.TreeThreadRE(rer, qm, code, pts.inp, t, pc0, b)
-      {
-        assert vms.isblocked[pc0] == false;   // init_pcset is all-false
-        assert false;
-      }
-    }
-  }
-
   /** The cp-generalized full base case: the entry state at an ARBITRARY start
       position `cp` (fresh registers, clock 0) satisfies `PikeInvFullRE`.
       `InitialPikeInvFullRE` is the `cp == 0` instance. The proof mirrors it — the
@@ -6476,7 +6369,6 @@ module LindenElkPikeSim {
     ensures PIV.InpOfCp(str, cp) == T.InputAt(str, cp)
   {}
 
-
   /** Per-case preservation for the TRUE stamp `SetQuantToClock(qid0, true)`:
       one VM step against `|p| + 1` tree steps (the `Reset`, then the virtual
       chain), the readout gaining exactly the chain (`ReadoutStampRE`). */
@@ -6734,7 +6626,6 @@ module LindenElkPikeSim {
     }
     assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts2, vms2, ncap, nlook, nquant);
   }
-
 
   /** (§2.5b rung D2) Per-case preservation for `SetQuantToClock(qid0, bq)`
       WITHOUT the interim gate: the clock mark is one tree step

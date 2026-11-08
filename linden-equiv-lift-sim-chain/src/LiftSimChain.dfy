@@ -3215,46 +3215,6 @@ module LindenElkLiftSimChain {
                                ncap, nlook, nquant))
   }
 
-  /** BLOCKED → ACTIVE at the consume: each stored pair reactivates into the
-      resumed thread (`pc+1`, flag re-armed, registers unchanged) — the
-      canonical tie and the strengthened `WalkPairLk` witness were stored at
-      exactly that shape, and the value ties read only the registers. */
-  lemma BlockedToActiveLkC(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
-                           inp: LC.Input, nextinp: LC.Input, crv: CP.FCompiled, str: string,
-                           ov: LOr.OracleView, S: set<LG.GroupId>,
-                           tl: seq<(LT.Tree, LG.GroupMap)>, bl: seq<(AI.Thread, RC.char_expectation)>,
-                           ncap: int, nlook: int, nquant: int)
-    requires BlockedRepLkC(rer, qm, re, code, inp, nextinp, crv, str, ov, S, tl, bl, ncap, nlook, nquant)
-    ensures ActiveRepLkC(rer, qm, re, code, nextinp, crv, str, ov, S, tl, PSM.ResumeAll(bl),
-                         ncap, nlook, nquant)
-    decreases tl
-  {
-    if |tl| == 0 {
-      assert |bl| == 0;
-    } else {
-      assert |bl| > 0;
-      var th := bl[0].0;
-      var rth := th.(exit_allowed := true, pc := th.pc + 1);
-      assert PSM.ResumeAll(bl) == [rth] + PSM.ResumeAll(bl[1..]);
-      assert rth.pc >= 0 && (rth.pc as nat) == (th.pc + 1) as nat;
-      assert TreeRepLkRE(rer, qm, code, nextinp, tl[0].0, rth.pc as nat, rth.exit_allowed);
-      var traw: LT.Tree :| CE.ProgErase(traw) == CE.ProgErase(tl[0].0)
-                           && WalkPairLk(rer, qm, code, nextinp, traw, tl[0].1, (th.pc + 1) as nat, true);
-      assert rth.capture_regs == th.capture_regs && rth.look_regs == th.look_regs
-             && rth.quant_regs == th.quant_regs;
-      assert GmtTieOutside(re, rth, tl[0].1, S)
-             && GmtTieInside(crv, str, ov, rth, tl[0].1, S, ncap, nlook, nquant);
-      assert ThreadRepLk(rer, qm, re, code, nextinp, crv, str, ov, S, traw, tl[0].1, rth,
-                         ncap, nlook, nquant);
-      assert ThreadRepLkC(rer, qm, re, code, nextinp, crv, str, ov, S, tl[0].0, tl[0].1, rth,
-                          ncap, nlook, nquant);
-      BlockedToActiveLkC(rer, qm, re, code, inp, nextinp, crv, str, ov, S, tl[1..], bl[1..],
-                         ncap, nlook, nquant);
-      assert ([rth] + PSM.ResumeAll(bl[1..]))[0] == rth
-             && ([rth] + PSM.ResumeAll(bl[1..]))[1..] == PSM.ResumeAll(bl[1..]);
-    }
-  }
-
   /** (L4 NESTED) clone of `BlockedToActiveLkC` — GmtTieInside dropped. */
   lemma BlockedToActiveLkCNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
                                  inp: LC.Input, nextinp: LC.Input, crv: CP.FCompiled, str: string,
@@ -6035,6 +5995,5 @@ module LindenElkLiftSimChain {
       reveal OwnerForallO();
     }
   }
-
 
 }

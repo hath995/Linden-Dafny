@@ -246,14 +246,6 @@ module LindenElkOracleBuild {
     ReachesWriteEmpty(LC.Reverse(str), 0, i, MIR.Mirror(cp, |str|));
   }
 
-  /** On the lookbehind fragment every build is Forward, so `LidReaches`
-      collapses to the plain forward reachability the L1 chain consumes. */
-  lemma LidReachesForward(crv: CP.FCompiled, str: string, i: int, cp: int)
-    requires LidDir(crv, i) == LAnc.Forward
-    ensures LidReaches(crv, str, i, cp)
-        <==> ORc.ReachesWrite(AI.get_code_v(crv.f_look_build_bc, i), str, 0, i, cp)
-  { reveal LidReaches(); }
-
   // ===========================================================================
   // L4 (brick 4c groundwork): the partial-oracle-VIEW per-lid reachability.
   //
@@ -359,35 +351,6 @@ module LindenElkOracleBuild {
       }
   }
 
-  /** Every lid whatsoever satisfies `LidBuildOk` against
-      `FFullCompilation(re)`: lids of `re` by the lemma above, all others
-      because their rows still hold the seed's empty bytecode
-      (`FCompileExtraLookFrame`). */
-  /** A row that is not a lookaround of `re` still holds the seed's empty
-      bytecode -- the `else` half of `AllLidsBuildOk`, split out so the
-      direction bridge can use it too. */
-  lemma NonLidRowEmpty(re: R.regex, i: int)
-    requires NR.LookBehindFragmentRE(re)
-    requires !(i >= 0 && (i as nat) in LT.LookIds(re))
-    ensures AI.get_code_v(CP.FFullCompilation(re).f_look_build_bc, i) == []
-  {
-    var crv := CP.FFullCompilation(re);
-    var maxlook := R.max_lookaround(re);
-    var maxquant := R.max_quant(re);
-    var nlook := if maxlook + 1 >= 0 then maxlook + 1 else 0;
-    var nquant := if maxquant + 1 >= 0 then maxquant + 1 else 0;
-    var seed := CP.FCompiled(re, CP.compile_to_bytecode(R.lazy_prefix(re)), LCdn.compile_cdns(re),
-                             seq(nlook, k => R.Lookahead), seq(nlook, k => R.Re_empty),
-                             seq(nlook, k => []), seq(nlook, k => []),
-                             seq(nlook, k => []), seq(nquant, k => []));
-    assert crv == CP.FCompileExtra(re, seed);
-    LT.FCompileExtraLookFrame(re, seed);
-    if 0 <= i < |crv.f_look_build_bc| {
-      assert LT.AgreeAt(seed, crv, i as nat);
-      assert seed.f_look_build_bc[i] == [];
-    }
-  }
-
   lemma AllLidsBuildOk(re: R.regex, i: int)
     requires NR.LookBehindFragmentRE(re)
     requires LT.LookUnique(re)
@@ -436,33 +399,6 @@ module LindenElkOracleBuild {
     LidBuildOkImpliesAbove(CP.FFullCompilation(re), i);
   }
 
-  /** A real row of a LOOKBEHIND-fragment regex builds Forward, since the
-      fragment forces every lookaround to a lookbehind flavour. */
-  lemma LookTablesLidDirForward(r: R.regex, fc: CP.FCompiled, i: nat)
-    requires NR.LookBehindFragmentRE(r)
-    requires LT.LookTablesOk(r, fc)
-    requires i in LT.LookIds(r)
-    // only a lookBEHIND row builds Forward; the fragment now admits lookaheads
-    ensures 0 <= i < |fc.f_look_types|
-    ensures (fc.f_look_types[i].Lookbehind? || fc.f_look_types[i].NegLookbehind?)
-            ==> LidDir(fc, i) == LAnc.Forward
-    decreases r
-  {
-    match r
-    case Re_alt(r1, r2) =>
-      if i in LT.LookIds(r1) { LookTablesLidDirForward(r1, fc, i); }
-      else { LookTablesLidDirForward(r2, fc, i); }
-    case Re_con(r1, r2) =>
-      if i in LT.LookIds(r1) { LookTablesLidDirForward(r1, fc, i); }
-      else { LookTablesLidDirForward(r2, fc, i); }
-    case Re_quant(_, _, _, r1) => LookTablesLidDirForward(r1, fc, i);
-    case Re_capture(_, r1) => LookTablesLidDirForward(r1, fc, i);
-    case Re_lookaround(lid, la, body) =>
-      LookFreeNoIds(body);
-      assert lid >= 0 && (lid as nat) == i;
-      assert fc.f_look_types[i] == la;
-  }
-
   /** `LookTablesLidDirForward` for the NESTED fragment: recurses into look
       bodies (which now carry their own lids) instead of stopping at a look-free
       body. A lookBEHIND row still builds Forward. */
@@ -490,31 +426,6 @@ module LindenElkOracleBuild {
       } else {
         LookTablesLidDirForwardNested(body, fc, i);   // i in LookIds(body)
       }
-  }
-
-  /** On the lookbehind fragment `LidReaches` IS the plain forward
-      reachability -- a real row builds Forward, and a row that is not a
-      lookaround of `re` holds empty bytecode, where both sides are false.
-      This is what keeps the whole L1 chain (which is stated in terms of
-      `ReachesWrite`) working unchanged after the generalization. */
-  lemma LidReachesIsReachesWrite(re: R.regex, str: string, i: int, cp: int)
-    requires NR.LookBehindFragmentRE(re)
-    requires LT.LookUnique(re)
-    ensures var crv := CP.FFullCompilation(re);
-      (LidDir(crv, i) == LAnc.Forward ==>
-        (LidReaches(crv, str, i, cp)
-         <==> ORc.ReachesWrite(AI.get_code_v(crv.f_look_build_bc, i), str, 0, i, cp)))
-  {
-    var crv := CP.FFullCompilation(re);
-    if i >= 0 && (i as nat) in LT.LookIds(re) {
-      LT.FFullCompilationLookOk(re);
-      LookTablesLidDirForward(re, crv, i as nat);
-      if LidDir(crv, i) == LAnc.Forward { LidReachesForward(crv, str, i, cp); }
-    } else {
-      NonLidRowEmpty(re, i);
-      LidReachesEmpty(crv, str, i, cp);
-      ReachesWriteEmpty(str, 0, i, cp);
-    }
   }
 
   // ===========================================================================
@@ -1222,44 +1133,6 @@ module LindenElkOracleBuild {
     FBuildOracleCorrectAbove(re, str);
   }
 
-  /** `FBuildOracleCorrect` restated per lookaround, with the bytecode in its
-      `lazy_prefix(body)` form — the interface the §6.3 bridge consumes. The
-      row facts come from `FFullCompilationLookOk` at the call site. */
-  lemma FBuildOracleCorrectAt(re: R.regex, str: string, lid: int, la: R.lookaround, body: R.regex, cp: int)
-    requires NR.LookBehindFragmentRE(re)
-    requires LT.LookUnique(re)
-    requires LT.LookEntryOk(CP.FFullCompilation(re), lid, la, body)
-    requires la.Lookbehind? || la.NegLookbehind?
-    requires 1 <= lid
-    // L3b: the oracle is built over the capture-STRIPPED body (a capturing
-    // lookbehind's `oracle_regex` is `lazy_prefix(remove_capture(body))`).
-    ensures LOr.view_get_oracle(AI.FBuildOracle(CP.FFullCompilation(re), str), cp, lid)
-         == ORc.ReachesWrite(CP.compile_to_write(R.lazy_prefix(R.remove_capture(body)), lid), str, 0, lid, cp)
-  {
-    var crv := CP.FFullCompilation(re);
-    FBuildOracleCorrect(re, str);
-    // this row is a lookBEHIND, so its build is Forward and LidReaches is the
-    // plain reachability the L1 chain consumes
-    LidReachesIsReachesWrite(re, str, lid, cp);
-    assert CP.oracle_regex(la, body) == R.lazy_prefix(R.remove_capture(body));
-    assert AI.get_code_v(crv.f_look_build_bc, lid)
-        == CP.compile_to_write(R.lazy_prefix(R.remove_capture(body)), lid);
-    // lid is within 1..maxlook: the tables have maxlook+1 rows (seed lengths
-    // survive the fold) and LookEntryOk puts lid inside them
-    var maxlook0 := R.max_lookaround(re);
-    var maxquant0 := R.max_quant(re);
-    var nlook := if maxlook0 + 1 >= 0 then maxlook0 + 1 else 0;
-    var nquant := if maxquant0 + 1 >= 0 then maxquant0 + 1 else 0;
-    var seed := CP.FCompiled(re, CP.compile_to_bytecode(R.lazy_prefix(re)), LCdn.compile_cdns(re),
-                             seq(nlook, k => R.Lookahead), seq(nlook, k => R.Re_empty),
-                             seq(nlook, k => []), seq(nlook, k => []),
-                             seq(nlook, k => []), seq(nquant, k => []));
-    assert crv == CP.FCompileExtra(re, seed);
-    LT.FCompileExtraLookFrame(re, seed);
-    assert |crv.f_look_build_bc| == nlook;
-    assert lid <= maxlook0;
-  }
-
   /** `FBuildOracleCorrectAt` for the NESTED fragment: the oracle bit is the
       V-MODEL reachability (`ReachesWriteV`, which crosses inner gates against
       the finished view) of the lid's build bytecode. Same shape as the look-free
@@ -1592,17 +1465,4 @@ module LindenElkOracleBuild {
     ensures SwapAnchorsRegex(R.lazy_prefix(r)) == R.lazy_prefix(SwapAnchorsRegex(r))
   {}
 
-  /** A BACKWARD build's oracle column is the FORWARD reachability of the
-      anchor-swapped build program over the reversed string -- the general
-      form of `LidReachesBackwardNoAnchor`, with no anchor-free requirement,
-      since `LidReaches`'s backward branch is already stated on the swapped
-      code. */
-  lemma LidReachesBackward(crv: CP.FCompiled, str: string, i: int, cp: int)
-    requires LidDir(crv, i) == LAnc.Backward
-    ensures LidReaches(crv, str, i, cp)
-        <==> ORc.ReachesWrite(MIR.SwapAnchorsCode(AI.get_code_v(crv.f_look_build_bc, i)),
-                              LC.Reverse(str), 0, i, MIR.Mirror(cp, |str|))
-  {
-    reveal LidReaches();
-  }
 }
