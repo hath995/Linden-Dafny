@@ -1657,8 +1657,7 @@ argument. New witnesses: `(?=(?=(a)*))`, `((?=(?=(a))))*`, `(?=(a)*)(a?)+`.
 * **Dead code left in place:** core `GNotUnderQuantLLookBody`, oracle `FreshWfGIndep`, M's
   `FreshBodyDirectMember` and `GNotUnderQuantL` family, NI `PathPresentLkDirectAgree` and
   `LookPathDomNoAncQuants`.
-* **`SupportedL3` looks subsumed by `SupportedL5` now**, which would retire `MainTheoremL3` and the
-  depth-1 tier. Not proved.
+* **`SupportedL3` is subsumed by `SupportedL5` now.** Proved in the 2026-11-08 retirement entry below.
 * **Perf fixes that were needed:**
   * `DeepFindRecFwdDeep`'s hub pick timed out at 300 s. `MatchedPosFromHub` picks with the FULL
     conjunct list under `hide *; reveal GateStaticsOkNested`. A partial conjunct list does not close.
@@ -1671,3 +1670,32 @@ Per-symbol, one z3 worker: `MainTheoremL5` 2887/0 in 2911 s, peak 6.9 GB. `DeepF
 in 708 s. `ForwardMemberOne` 566/0. `ForwardFindRec*` 183/0. `MainTheoremL5Cin` 15/0.
 
 **Gate:** `workspace packed: 69 members`, `PACK rc=0`, 906 obligations in the 11 rebuilt members, 4h 42m at one z3 worker, peak 13.4 GB (`01b869f`, 2026-11-08).
+
+### 2026-11-08 — **`MainTheoremL3` RETIRED: `SupportedL3 ⇒ SupportedL5`** (branch `cap-under-quant`, `77fb1f5`, `4868508`, `9af0d18`)
+
+`API.SupportedL3ImpliesL5` (`77fb1f5`) proves every depth-1 pattern is in `SupportedL5`.
+`MatchCorrect` calls it first, so depth-1 patterns go through `MainTheoremL5`. `Supported` is unchanged.
+`API.DepthOneCinIsL5Cin` shows a depth-1 pattern is in `SupportedL5Cin` when its looks hold no nulled
+plus and its CIN bodies are lookaround-free.
+
+* **The retirement is partial.** `MainTheoremL3`, `L3aEndpointAssembly` and the code only they reached
+  are gone from the lift-sim band (1,821 lines deleted over carriers, chain, core, gate, oracle).
+  `L3aEndpointAssemblyNestedFull2` stays: `LiftSimMain` still calls it.
+* **The base packages keep their unused code, because they do not rebuild in the 24 GB slice.** The
+  first deletion (`4868508`) also touched 11 base packages, which forced `nfa-rep-re`'s first rebuild
+  since 2026-08-31 (80 GB cap). It was OOM-killed at 21.8 GB (rc=143, 456 s into the gate). `9af0d18`
+  restored all 11 from `77fb1f5`, so they stay cached.
+* **Any rung that touches `nfa-rep-re`, including §2.2, must first split it to fit the slice.** Other
+  base members last built around 2026-08-30 (the `oracle-*` group) may have the same problem, and they
+  have not been rebuilt under z3 4.14.
+* **Deletion rule:** a name may be deleted only if nothing that STAYS refers to it. Reachability from
+  the theorems is not enough, because unreachable code that stays must still resolve. Applying only
+  reachability broke the resolve with 6 errors.
+* **Still unused in the lift-sim band (by name-level reachability, not deleted):** 212 declarations,
+  13,907 lines. Gate 5,191, core 3,276, chain 2,837, oracle 2,419, carriers 184. Six of them carry
+  `{:isolate_assertions}`: `ActionsTreeRepLkF`, `AtBackForkTreeLkF`, `LiftAdvanceEpsilonNested`,
+  `LiftInitCNested`, `LiftPreserveGatePassLkNested`, `WalkPairLkAtForkCore`.
+
+**Gate:** `workspace packed: 69 members`, `PACK rc=0`, 887 obligations in the 11 rebuilt members
+(58 cached), 3h 45m at one z3 worker, peak 12.8 GB (`9af0d18`, 2026-11-09). That is 57 minutes less
+than `01b869f`.
