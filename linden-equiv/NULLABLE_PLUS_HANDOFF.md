@@ -1634,3 +1634,40 @@ All green, per-symbol, at one z3 worker:
 * `MainTheoremL5`: 2824/0 in 2960 s.
 
 Next: commit, then THE GATE.
+
+### 2026-11-07 — **THE GATE IS GREEN WITH F-c + G: `workspace packed: 69 members`, `PACK rc=0`** (`71719ef`, one z3 worker)
+
+Five perf commits after `27fdfe0` got it there; no proof content changed:
+* `8e2c9ba` hide the recursive gates in the two FromTables covers lemmas.
+* `6622d96` `LkCinQuantRec` under the pack memory cap.
+* `6854ad0` `L3aEndpointAssembly`'s frame-call precondition, witnessed.
+* `866e94d` `WalkPairLkCinHeadArmsRec`'s iteration-list rep in a cut context.
+* `71719ef` `LiftPreserveGatePassLkRec` picks the per-lid package verbatim.
+
+### 2026-11-08 — **§2.3/§2.4 CLOSED: captures under quantifiers at any look depth** (branch `cap-under-quant`, `01b869f`)
+
+Chosen over the recorded next rung (F-c on depth-1 `SupportedL3`). `SupportedL4/L5/L5Cin` lost
+`LookBodiesNoCapUnderQuantRaw` and `QuantsLookCapFreeRaw`. See `SUPPORTED_FRAGMENT.md` §2.3/§2.4 for the
+argument. New witnesses: `(?=(?=(a)*))`, `((?=(?=(a))))*`, `(?=(a)*)(a?)+`.
+
+* **The owner package no longer goes through the spec.** `ProduceOwnerForallRes` reads it off the
+  result banks of the look loop (`M.LookInvO`, `M.Res0LiveO`, `M.ValueOkO`, `M.QuantValueOkO`). It
+  replaces `ProduceOwnerForall` and `ProduceOwnerForallRegs`.
+* **Machine B's Rec tier never needed the scope condition**, so `L3aCompositeCloseRecG` is unchanged.
+* **Dead code left in place:** core `GNotUnderQuantLLookBody`, oracle `FreshWfGIndep`, M's
+  `FreshBodyDirectMember` and `GNotUnderQuantL` family, NI `PathPresentLkDirectAgree` and
+  `LookPathDomNoAncQuants`.
+* **`SupportedL3` looks subsumed by `SupportedL5` now**, which would retire `MainTheoremL3` and the
+  depth-1 tier. Not proved.
+* **Perf fixes that were needed:**
+  * `DeepFindRecFwdDeep`'s hub pick timed out at 300 s. `MatchedPosFromHub` picks with the FULL
+    conjunct list under `hide *; reveal GateStaticsOkNested`. A partial conjunct list does not close.
+  * `MainTheoremL5Cin`'s engine-pipeline batch (`lazy_prefix` and `max_quant` unfolding around the
+    `seq(…)` seed) timed out at 900 s with 2 G resources after a change elsewhere in the lemma.
+    Moving the size fact to `FFullCompilationLookLens` with those two hidden made the whole theorem
+    15/0 with no batch over 9 s.
+
+Per-symbol, one z3 worker: `MainTheoremL5` 2887/0 in 2911 s, peak 6.9 GB. `DeepFindRecFwdDeep` 890/0
+in 708 s. `ForwardMemberOne` 566/0. `ForwardFindRec*` 183/0. `MainTheoremL5Cin` 15/0.
+
+**Gate:** `workspace packed: 69 members`, `PACK rc=0`, 906 obligations in the 11 rebuilt members, 4h 42m at one z3 worker, peak 13.4 GB (`01b869f`, 2026-11-08).
