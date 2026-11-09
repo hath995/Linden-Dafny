@@ -353,7 +353,7 @@ module LindenElkLiftSimMain {
     t: LT.Tree, inp: LC.Input, S: set<LG.GroupId>, ncap: int, nlook: int, nquant: int)
     requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && L5ScopeV1RE(re)
     requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
-             && NR.NegLooksLookFreeRE(re)
+             && EL.NegBehindLookFreeRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires |crv.f_look_types| == |crv.f_look_ast|
@@ -453,7 +453,7 @@ module LindenElkLiftSimMain {
     PIV.SpecRegexQuantUnique(raw);         // QuantUnique(re)
     assert L5ScopeV1RE(re);                // L5Scope (v1: kind-split hub)
     L5ScopeV1ImpliesL5(re);                // NR.L5ScopeRE(re) for the descent/carriers
-    assert NR.NegLooksLookFreeRE(re);      // L4Scope
+    assert EL.NegBehindLookFreeRE(re);      // L4Scope
     var qm := AR.QMap(M.QmOfRE(re), OE.LmOf(re), AI.FBuildOracle(CP.FFullCompilation(ast), str), M.BodiesOfRE(re));
     // the nested static package (qm correctness minus the oracle entry)
     M.QmOfREEntries(re);

@@ -717,12 +717,8 @@ module LindenElkNulledPlus {
           case LookaroundR(lk, r1) =>
             FS.LkAfterTermination(cont, inp, WP.Forward, lk, r1);
             var ldir := L.LkDir(lk);
-            // the body's tree is the same from any map (positive: fragment body;
-            // negative: group-free body), so the gate's verdict is `LkVerdictL`
-            if !L.Positivity(lk) {
-              EL.GroupFreeLNoLkBr(r1);
-              EL.NoLkBrLIsPikeLkRegexRec(r1);
-            }
+            // the body's tree is the same from any map (fragment body at either
+            // polarity), so the gate's verdict is `LkVerdictL`
             assert EL.PikeLkRegexRec(r1);
             EL.ComputeTrGmIndepLkRec(rer, r1, inp, gm, ldir);
             var tlkE := FU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, ldir);

@@ -201,7 +201,7 @@ module LindenElkActionsTreeRep {
   {
     // (§2.5b) the recursive nullability predicates' definitional axioms send z3 4.14 into
     // a matching loop (as in the LiftSimCore giants): every use here is opaque, so hide them.
-    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, AR.NfaRepStarCinL;
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, AR.NfaRepStarCinL, EL.PikeLkRegexRec, MsizeA;   // every recursive call below decreases on PSize alone
     assert acts == [acts[0]] + cont;
     EL.PikeLkActionsConsIff(acts[0], cont);
     var gidl := L.DefGroups(r1);
@@ -414,7 +414,7 @@ module LindenElkActionsTreeRep {
     decreases CE.PSize(t), MsizeA(acts), n, 1
   {
     // (§2.5b) hide the recursive nullability predicates (z3 4.14 matching loop; every use is opaque)
-    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, AR.NfaRepStarCinL;
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, AR.NfaRepStarCinL, EL.PikeLkRegexRec;
     assert acts == [acts[0]] + cont;
     EL.PikeLkActionsConsIff(acts[0], cont);
     var gidl := L.DefGroups(r1);
@@ -2001,7 +2001,7 @@ module LindenElkActionsTreeRep {
   {
     // (§2.5b) the recursive nullability predicates' definitional axioms send z3 4.14 into
     // a matching loop (as in the LiftSimCore giants): every use here is opaque, so hide them.
-    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, AR.NfaRepStarCinL;
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, AR.NfaRepStarCinL, MsizeA;   // every recursive call below decreases on PSize alone
     assert acts == [acts[0]] + cont;
     EL.PikeLkActionsRecConsIff(acts[0], cont);
     var gidl := L.DefGroups(r1);
@@ -3268,15 +3268,9 @@ module LindenElkActionsTreeRep {
           var bit := LOr.view_get_oracle(qm.ov, TR.CpOf(inp), lid);
           assert bit <==> LT.TreeRes(tlkc, LG.Empty, inp, L.LkDir(lk)).Some?;
           LT.FirstTreeLeaf(tlkc, LG.Empty, inp, L.LkDir(lk));
-          // L3a/L3b: a POSITIVE look (fwd/bwd) body may CAPTURE (`NoLkBrL`, not
-          // group-free); its confinement is supplied by `LkConfinedTree(t, S)`
-          // in the pass branch below. The NEGATIVE flavours keep a group-free
-          // body, so its body tree is `GmNeutral` -- exactly what the
-          // capture-free `LAAtGatePass` path requires.
-          if !L.Positivity(lk) {
-            assert EL.PikeLkRegexRec(r);   // == GroupFreeL(r1) in this (negative) branch
-            LL.ComputeTrGmNeutral(rer, r1, inp, LG.Empty, L.LkDir(lk));   // GmNeutralTree(tlkc)
-          }
+          // A POSITIVE look (fwd/bwd) body may CAPTURE; its confinement is supplied
+          // by `LkConfinedTree(t, S)` in the pass branch below. A passing NEGATIVE
+          // gate has no body leaf, which is all `LAAtGatePassNeg` needs.
           match t {
             case LK(lk2, tlk, tc) =>
               // the gate passed: `LkGateOk(.., true)` pins tlk == tlkc and the
@@ -3304,7 +3298,7 @@ module LindenElkActionsTreeRep {
                 NP.ResFromLeavesOutside(tc, LT.LK(lk, tlk, tc), inp, S);
                 NP.RATransOutside(sub, tc, LT.LK(lk, tlk, tc), inp, S);
               } else {
-                LL.LAAtGatePass(lk, tlk, tc, inp);
+                LL.LAAtGatePassNeg(lk, tlk, tc, inp);
                 LL.LeavesAgreeAtWeaken(LT.LK(lk, tlk, tc), tc, inp, S);
                 NP.ResFromLeavesOutside(LT.LK(lk, tlk, tc), tc, inp, S);
                 NP.RASymOutside(LT.LK(lk, tlk, tc), tc, inp, S);

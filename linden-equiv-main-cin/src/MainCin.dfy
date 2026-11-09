@@ -80,7 +80,7 @@ module LindenElkMainCin {
   lemma LookFreeFacts(re: R.regex)
     requires NR.LookFreeRE(re)
     ensures R.max_lookaround(re) == 0
-    ensures NR.L5ScopeRE(re) && NR.NegLooksLookFreeRE(re)
+    ensures NR.L5ScopeRE(re) && EL.NegBehindLookFreeRE(re)
     ensures LTB.LookIds(re) == {} && PIV.CapIdsInLooks(re) == {} && NRR.LookIds(re) == {}
     decreases re
   {

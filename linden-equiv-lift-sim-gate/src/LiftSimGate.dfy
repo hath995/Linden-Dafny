@@ -1052,6 +1052,7 @@ module LindenElkLiftSimGate {
     assert GmtTieOutside(re, th2, gm, S);
 
     if x as nat > pc && y as nat > pc {
+      assert {:split_here} true;
       // ---- FORWARD: canonical Choice; one B step -------------------------
       assert t.Choice?
              && TreeRepLkRE(rer, qm, code, inp, t.t1, x as nat, ea)
@@ -1090,6 +1091,7 @@ module LindenElkLiftSimGate {
                    PIV.HdTreeOf(na + ta[1..]), PIV.HeadPcOf(vms2.active));
       IsblockedGrowLk(rer, qm, code, inp, seen, s.isblocked, t);
     } else {
+      assert {:split_here} true;
       // ---- BACKWARD (do-while): ea pinned; TWO B steps -------------------
       assert ea;
       assert t.Progress? && t.t.Choice?
@@ -1247,7 +1249,7 @@ module LindenElkLiftSimGate {
 
     // (BRICK D5) the per-lid NESTED static package (off `GateStaticsOkNested`):
     // the gate body may nest positive looks to ANY depth (negative bodies stay
-    // look-free, `NR.NegLooksLookFreeRE`; positive nesting is lookAHEAD-only,
+    // look-free, `EL.NegBehindLookFreeRE`; positive nesting is lookAHEAD-only,
     // `M.NoPosLookbehindRE`), with the body's compile statics as `StaticOkNestedRE`.
     assert {:split_here} true;   // (§2.5b pack) section: the per-lid package
     assert GateStaticAtNested(qm, re, crv, l, ncap, nlook, nquant);
@@ -1258,7 +1260,7 @@ module LindenElkLiftSimGate {
       LTB.LookEntryOk(crv, l, la, body)
       && T.TransWf(body) && NR.NestedFragmentRE(body)
       && NR.NoNulledPlusRE(body)
-      && NR.NegLooksLookFreeRE(body)
+      && EL.NegBehindLookFreeRE(body)
       && qm.looks[l].0 == T.TrLookaround(la)
       && qm.looks[l].1 == T.Translate(body)
       && (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
@@ -1522,6 +1524,7 @@ module LindenElkLiftSimGate {
           // site statics of the F6 atom: LB-only body (the L5 dispatch), body-level
           // uniqueness, LmapOk on the body, the whole-string oracle (F7d)
           assert FST.LBOnlyLooksRE(body);
+          FG.LBOnlyEquiv(body); EL.NegLooksFromLBOnly(body);
           assert PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body) by {
             M.LookBodyFactsL5(re, crv, l as nat);
           }
@@ -2678,7 +2681,7 @@ module LindenElkLiftSimGate {
     // StaticOkNestedRE, and NegLooksLookFreeRE is the extra hypothesis that
     // lets `TranslateFragmentPikeLkRec` establish PikeLkRegexRec(Translate(re)).
     requires PSM.StaticCoreNestedRE(qm, re, code, endl)
-    requires NR.NegLooksLookFreeRE(re)
+    requires EL.NegBehindLookFreeRE(re)
     requires AR.ActionsRepL(rer, qm, [LS.Areg(T.Translate(re))], code, 0)
     requires CW.BoolTreeLkX(rer, [LS.Areg(T.Translate(re))], inp, BS.CannotExit, t)   // (§2.5b F-c) the ENGINE-SHAPED root walk
     requires EL.PikeLkRegexRec(T.Translate(re))   // (§2.5b F-c) supplied: the static package is gate-free
@@ -2804,7 +2807,7 @@ module LindenElkLiftSimGate {
     requires PIV.ContextOkRE(str, vms.cp, vms.context)
     // Thread-anchored entry facts (feed LiftInitC) — replace the dead
     // LeavesAgreeAtOutside(tstar, t) tree link.
-    requires T.TransWf(re) && NR.NegLooksLookFreeRE(re)
+    requires T.TransWf(re) && EL.NegBehindLookFreeRE(re)
     requires AR.ActionsRepL(rer, qm, [LS.Areg(T.Translate(re))], code, 0)
     requires EL.BoolTreeLk(rer, [LS.Areg(T.Translate(re))], inp, BS.CannotExit, t)
     // (§2.5b F-c) the CIN bodies' groups lie in G (glue side condition)
@@ -2890,7 +2893,7 @@ module LindenElkLiftSimGate {
     requires vms.processed == AI.init_bpcset(RB.size(code))
     requires vms.isblocked == AI.init_pcset(RB.size(code))
     requires PIV.ContextOkRE(str, vms.cp, vms.context)
-    requires T.TransWf(re) && NR.NegLooksLookFreeRE(re)
+    requires T.TransWf(re) && EL.NegBehindLookFreeRE(re)
     requires AR.ActionsRepL(rer, qm, [LS.Areg(T.Translate(re))], code, 0)
     requires EL.BoolTreeLk(rer, [LS.Areg(T.Translate(re))], inp, BS.CannotExit, t)
     requires PTL.PikeSubtreeLk(t)

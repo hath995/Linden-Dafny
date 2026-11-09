@@ -649,8 +649,18 @@ module LindenElkTreeMirrorLk {
   // ===========================================================================
 
   /** `RevL` preserves the recursive fragment (kinds unchanged; positive bodies
-      recurse, negative bodies stay group-free via `SD.RevLGroupFree`). Needed to
+      recurse at either polarity, and a negative body defines no groups). Needed to
       apply `ComputeTrGmIndepLkRec` on the RevL side. */
+  lemma RevLNoDefs(r: L.Regex)
+    requires L.DefGroups(r) == []
+    ensures L.DefGroups(SD.RevL(r)) == []
+  {
+    SD.RevLDefGroupsSet(r);
+    if L.DefGroups(SD.RevL(r)) != [] {
+      assert L.DefGroups(SD.RevL(r))[0] in L.DefGroups(SD.RevL(r));
+    }
+  }
+
   lemma RevLPreservesPikeLkRec(r: L.Regex)
     requires EL.PikeLkRegexRec(r)
     ensures EL.PikeLkRegexRec(SD.RevL(r))
@@ -664,8 +674,9 @@ module LindenElkTreeMirrorLk {
       SD.RevLNonNullable(r1);        // §2.5b interim conjunct transfers
     case Group(_, r1) => RevLPreservesPikeLkRec(r1);
     case LookaroundR(lk, r1) =>
-      if L.Positivity(lk) { RevLPreservesPikeLkRec(r1); SD.RevLNoNulledPlus(r1); }   // §2.5b stage 2a
-      else { SD.RevLGroupFree(r1); SD.RevLNoNulledPlus(r1); }
+      RevLPreservesPikeLkRec(r1); SD.RevLNoNulledPlus(r1);   // §2.5b stage 2a
+      reveal EL.NegBodyNoDefs();
+      if !L.Positivity(lk) { RevLNoDefs(r1); }
     case _ =>
   }
 
@@ -864,9 +875,7 @@ module LindenElkTreeMirrorLk {
                              LG.GMOpen(LC.Idx(inp), gid, gm1),
                              LG.GMOpen(LC.Idx(sinp), gid, gm2), f, str, cp0, Sin);
       case LookaroundR(lk, r1) =>
-        assert EL.PikeLkRegexRec(r1) by {
-          if L.Positivity(lk) {} else { GroupFreeLIsPikeLkRec(r1); }
-        }
+        assert EL.PikeLkRegexRec(r1);
         assert RegLookGatesMirror(r, rer, str);
         assert GateAgree(rer, lk, r1, inp) by {
           assert cp0 <= |str| && inp == PIV.InpOfCp(str, cp0);

@@ -979,7 +979,7 @@ module LindenElkLiftSimCore {
       table package with the body cap generalized off the DEPTH-1 look-free leaf.
       `NR.LookFreeRE(body)` becomes `NR.NestedFragmentRE(body)` (arbitrary look
       nesting) qualified by the positive-lookahead-nesting side conditions
-      (`NR.NegLooksLookFreeRE(body)` — negative bodies stay look-free; and
+      (`EL.NegBehindLookFreeRE(body)` — negative bodies stay look-free; and
       (L5 F7f) a KIND-SPLIT scope conjunct: a LOOKAHEAD (or negative) lid keeps the
       L4 fact `M.NoPosLookbehindRE(body)` — every forward path's pruning fact, without
       which the giant descent lemmas' VCs blow up — and a positive LOOKBEHIND lid gets
@@ -997,7 +997,7 @@ module LindenElkLiftSimCore {
       LTB.LookEntryOk(crv, l, la, body)
       && T.TransWf(body) && NR.NestedFragmentRE(body)
       && NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false, per lid
-      && NR.NegLooksLookFreeRE(body)
+      && EL.NegBehindLookFreeRE(body)
       && (la.Lookbehind? ==> NR.LBOnlyLooksRE(body))
       && (!la.Lookbehind? ==> L5ScopeV1RE(body))
       && qm.looks[l].0 == T.TrLookaround(la)
@@ -4259,7 +4259,7 @@ module LindenElkLiftSimCore {
   lemma FreshMatchLidFlip(
     rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, crv: CP.FCompiled, str: string,
     ov: LOr.OracleView, lk: AReg.Regs, lid: nat, ncap: int, nlook: int, nquant: int)
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body) && EL.NegBehindLookFreeRE(body)
     requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
@@ -4291,6 +4291,7 @@ module LindenElkLiftSimCore {
                == BGM.RawMirrorGm(PIV.GmOfLive(r1, rf.value.capture_regs, rf.value.look_regs,
                                                rf.value.quant_regs), n))
   {
+    FG.LBOnlyEquiv(body); EL.NegLooksFromLBOnly(body);   // §2.2: the flip route keeps NR.NegLooksLookFreeRE
     var n := |str|;
     MIR.ReverseLen(str);
     var rstr := LC.Reverse(str);
@@ -4423,7 +4424,7 @@ module LindenElkLiftSimCore {
     rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, crv: CP.FCompiled, str: string,
     ov: LOr.OracleView, gmt: LG.GroupMap, th: AI.Thread, lid: nat,
     ncap: int, nlook: int, nquant: int)
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body) && EL.NegBehindLookFreeRE(body)
     requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
@@ -4448,6 +4449,7 @@ module LindenElkLiftSimCore {
                                      rf.value.look_regs, rf.value.quant_regs)
                 ==> g in gmt
   {
+    FG.LBOnlyEquiv(body); EL.NegLooksFromLBOnly(body);   // §2.2: the flip route keeps NR.NegLooksLookFreeRE
     var n := |str|;
     MIR.ReverseLen(str);
     var rstr := LC.Reverse(str);
@@ -4924,7 +4926,7 @@ module LindenElkLiftSimCore {
   {
     var re := R.lazy_prefix(R.annotate(raw));
     M.NoPosLookbehindRE(re)
-    && NR.NegLooksLookFreeRE(re)
+    && EL.NegBehindLookFreeRE(re)
     && T.TransWf(re)
   }
 
@@ -4938,7 +4940,7 @@ module LindenElkLiftSimCore {
   lemma L4ScopeFromRaw(raw: R.raw_regex)
     requires T.Latin1Wf(raw)
     requires NR.NoPosLookbehindRaw(raw)
-    requires NR.NegLooksLookFreeRaw(raw)
+    requires EL.NegBehindLookFreeRaw(raw)
     ensures L4Scope(raw)
   {
     var ast := R.annotate(raw);
@@ -4953,10 +4955,10 @@ module LindenElkLiftSimCore {
     assert M.NoPosLookbehindRE(ast);
     assert M.NoPosLookbehindRE(re);
     // NegLooksLookFree
-    assert NR.NegLooksLookFreeRaw(R.Raw_capture(raw));
-    NR.AnnotateNegLooksLookFree(R.Raw_capture(raw), 0, 1, 1);
-    assert NR.NegLooksLookFreeRE(ast);
-    assert NR.NegLooksLookFreeRE(re);
+    assert EL.NegBehindLookFreeRaw(R.Raw_capture(raw));
+    EL.AnnotateNegBehindLookFree(R.Raw_capture(raw), 0, 1, 1);
+    assert EL.NegBehindLookFreeRE(ast);
+    assert EL.NegBehindLookFreeRE(re);
   }
 
   /** (L5 F7c) The L5 scope at the annotated, lazy-prefixed regex from the raw
@@ -5042,7 +5044,7 @@ module LindenElkLiftSimCore {
   {
     var re := R.lazy_prefix(R.annotate(raw));
     L5ScopeV1RE(re)                       // (L5 F7f) the v1 fragment (kind-split hub)
-    && NR.NegLooksLookFreeRE(re)
+    && EL.NegBehindLookFreeRE(re)
     && T.TransWf(re)
   }
 
@@ -5090,7 +5092,7 @@ module LindenElkLiftSimCore {
     requires NR.NestedFragmentRaw(raw)
     requires NR.NoNulledPlusRaw(raw)   // §2.5b interim gate conjunct
     requires NR.L5ScopeRE(R.lazy_prefix(R.annotate(raw)))
-    requires NR.NegLooksLookFreeRE(R.lazy_prefix(R.annotate(raw)))
+    requires EL.NegBehindLookFreeRE(R.lazy_prefix(R.annotate(raw)))
     requires T.Latin1Wf(raw)
     requires EL.BoolTreeLk(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), BS.CannotExit, t)
     requires LS.IsTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), LG.Empty, WP.Forward, t)
@@ -5285,16 +5287,16 @@ module LindenElkLiftSimCore {
       whose body is lookbehind-only; the body is itself in scope. */
   lemma LookBodyRowL5(sub: R.regex, crv: CP.FCompiled, lid: nat)
     requires T.TransWf(sub) && LTB.LookUnique(sub) && LTB.LookTablesOk(sub, crv)
-    requires NR.L5ScopeRE(sub) && NR.NegLooksLookFreeRE(sub)
+    requires NR.L5ScopeRE(sub) && EL.NegBehindLookFreeRE(sub)
     requires lid in LTB.LookIds(sub)
     ensures var body := NI.LookBodyOfRE(sub, lid);
-            T.TransWf(body) && NR.L5ScopeRE(body) && NR.NegLooksLookFreeRE(body)
+            T.TransWf(body) && NR.L5ScopeRE(body) && EL.NegBehindLookFreeRE(body)
             && (lid as int) in OE.LmOf(sub)
             && exists la: R.lookaround ::
               LTB.LookEntryOk(crv, lid as int, la, body)
               && OE.LmOf(sub)[lid as int] == (T.TrLookaround(la), T.Translate(body))
               && (la.Lookbehind? ==> NR.LBOnlyLooksRE(body))
-              && ((la.NegLookahead? || la.NegLookbehind?) ==> NR.LookFreeRE(body))
+              && (la.NegLookbehind? ==> NR.LookFreeRE(body))
     decreases sub
   {
     OE.LmOfDom(sub);
@@ -5330,7 +5332,7 @@ module LindenElkLiftSimCore {
         assert OE.LmOf(sub)[lid as int] == (T.TrLookaround(la0), T.Translate(r1));
         assert la0.Lookbehind? ==> NR.LBOnlyLooksRE(r1);     // L5ScopeRE
         assert NR.L5ScopeRE(r1);
-        assert (la0.NegLookahead? || la0.NegLookbehind?) ==> NR.LookFreeRE(r1);   // NegLooksLookFreeRE
+        assert la0.NegLookbehind? ==> NR.LookFreeRE(r1);   // NegBehindLookFreeRE
       } else {
         assert lid in LTB.LookIds(r1);
         OE.LmOfDom(r1);

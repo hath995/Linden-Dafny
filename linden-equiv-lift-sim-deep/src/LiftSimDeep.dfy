@@ -193,7 +193,7 @@ module LindenElkLiftSimDeep {
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       LTB.LookEntryOk(crv, A as int, laA, bA)
       && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && NR.NegLooksLookFreeRE(bA)
+      && EL.NegBehindLookFreeRE(bA)
       && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
       && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
       && qm.looks[A as int].0 == T.TrLookaround(laA)
@@ -322,7 +322,8 @@ module LindenElkLiftSimDeep {
         // out under {:isolate_assertions} (the hub's list changed with the flip).
         var la1: R.lookaround, b1: R.regex :| LTB.LookEntryOk(crv, A1 as int, la1, b1)
                                               && T.TransWf(b1) && NR.NestedFragmentRE(b1)
-                                              && NR.NegLooksLookFreeRE(b1)
+                                              && NR.NoNulledPlusRE(b1)
+                                              && EL.NegBehindLookFreeRE(b1)
                                               && (la1.Lookbehind? ==> NR.LBOnlyLooksRE(b1))
                                               && (!la1.Lookbehind? ==> L5ScopeV1RE(b1))
                                               && qm.looks[A1 as int].0 == T.TrLookaround(la1)
@@ -646,7 +647,7 @@ module LindenElkLiftSimDeep {
     var laA: R.lookaround, bA: R.regex :|
       LTB.LookEntryOk(crv, A as int, laA, bA)
       && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && NR.NegLooksLookFreeRE(bA)
+      && EL.NegBehindLookFreeRE(bA)
       && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
       && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
       && qm.looks[A as int].0 == T.TrLookaround(laA)
@@ -922,7 +923,7 @@ module LindenElkLiftSimDeep {
     var laA: R.lookaround, bA: R.regex :|
       LTB.LookEntryOk(crv, A as int, laA, bA)
       && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && NR.NegLooksLookFreeRE(bA)
+      && EL.NegBehindLookFreeRE(bA)
       && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
       && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
       && qm.looks[A as int].0 == T.TrLookaround(laA)
@@ -1074,7 +1075,7 @@ module LindenElkLiftSimDeep {
       ensures (bodycode == CP.compile_to_bytecode(host))
       ensures (LTB.LookEntryOk(crv, A as int, laA, bA)
               && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-              && NR.NegLooksLookFreeRE(bA)
+              && EL.NegBehindLookFreeRE(bA)
               && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
               && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
               && qm.looks[A as int].0 == T.TrLookaround(laA)
@@ -1157,7 +1158,7 @@ module LindenElkLiftSimDeep {
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         LTB.LookEntryOk(crv, A as int, laA, bA)
         && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-        && NR.NegLooksLookFreeRE(bA)
+        && EL.NegBehindLookFreeRE(bA)
         && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
         && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
         && qm.looks[A as int].0 == T.TrLookaround(laA)

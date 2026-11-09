@@ -303,9 +303,7 @@ module LindenElkFlipDisc {
       case LookaroundR(lk, r1) =>
         // THE EXTENDED CASE: the inner sub-tree's discipline is established too.
         assert L.DefGroups(r) == L.DefGroups(r1);
-        assert EL.PikeLkRegexRec(r1) by {
-          if L.Positivity(lk) {} else { TML.GroupFreeLIsPikeLkRec(r1); }
-        }
+        assert EL.PikeLkRegexRec(r1);
         // StackInvLk of the fresh sub-stack [Areg(r1)]
         EL.PikeLkActionsRecConsIff(LS.Areg(r1), []);
         CD.ClosesActsConsNonClose(LS.Areg(r1), []);
@@ -393,7 +391,13 @@ module LindenElkFlipDisc {
     case Quantified(_, _, _, r1) => GroupOkLBNegFreePikeLk(r1);
     case Group(_, r1) => GroupOkLBNegFreePikeLk(r1);
     case LookaroundR(lk, r1) =>
-      if L.Positivity(lk) { GroupOkLBNegFreePikeLk(r1); }
+      if L.Positivity(lk) {
+        GroupOkLBNegFreePikeLk(r1);
+      } else {
+        TML.GroupFreeLIsPikeLkRec(r1);
+        SD.GroupFreeDefGroups(r1);
+      }
+      reveal EL.NegBodyNoDefs();
     case _ =>
   }
 

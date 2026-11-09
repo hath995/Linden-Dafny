@@ -94,4 +94,20 @@ module NullablePlusWitness {
     assert M.NoPosLookbehindRE(re);
     LSIMCOR.NoPosImpliesL5ScopeV1(re);
   }
+
+  // ==========================================================================
+  // §2.2 step A: looks inside a capture-free NEGATIVE LOOKAHEAD body. Negative
+  // lookbehind bodies stay look-free until step B.
+  // ==========================================================================
+  const NEG_AHEAD_NESTED := R.Raw_lookaround(R.NegLookahead, R.Raw_con(R.Raw_character(R.Dot), LOOK_A))   // (?!a(?=a))
+  const NEG_BEHIND_NESTED := R.Raw_lookaround(R.NegLookbehind,
+    R.Raw_con(R.Raw_character(R.Dot), R.Raw_lookaround(R.Lookbehind, R.Raw_character(R.Dot))))            // (?<!a(?<=a))
+
+  lemma Frag22_NegAheadNested()
+    ensures API.SupportedL4(NEG_AHEAD_NESTED) && API.Supported(NEG_AHEAD_NESTED)
+  { }
+
+  lemma Frag22_NegBehindNestedStillOut()
+    ensures !API.SupportedL5(NEG_BEHIND_NESTED)
+  { }
 }

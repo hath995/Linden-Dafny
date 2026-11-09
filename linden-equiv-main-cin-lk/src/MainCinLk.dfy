@@ -664,7 +664,7 @@ module LindenElkMainCinLk {
   /** `EL.TranslateFragmentPikeLkRec` under the look-bodies gate (its full gate
       serves only look bodies). */
   lemma TranslateFragmentPikeLkRecLk(re: R.regex)
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.NegLooksLookFreeRE(re)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re)
     requires M.LooksNoNulledPlusRE(re)
     ensures EL.PikeLkRegexRec(T.Translate(re))
     decreases re
@@ -677,13 +677,12 @@ module LindenElkMainCinLk {
     case Re_lookaround(lid, la, r1) =>
       assert NR.NoNulledPlusRE(r1);
       assert L.Positivity(T.TrLookaround(la)) == (la.Lookahead? || la.Lookbehind?);
-      if la.Lookahead? || la.Lookbehind? {
-        EL.TranslateFragmentPikeLkRec(r1);
-        NUL.TransNoNulledPlus(r1);
-      } else {
-        OS.TranslateGroupFree(r1);
-        NUL.TransNoNulledPlus(r1);
+      EL.TranslateFragmentPikeLkRec(r1);
+      NUL.TransNoNulledPlus(r1);
+      if !(la.Lookahead? || la.Lookbehind?) {
+        EL.TranslateCaptureFreeNoDefs(r1);
       }
+      reveal EL.NegBodyNoDefs();
     case _ =>
   }
 
@@ -693,7 +692,7 @@ module LindenElkMainCinLk {
     requires NR.NestedFragmentRaw(raw)
     requires M.LooksNoNulledPlusRE(R.lazy_prefix(R.annotate(raw)))
     requires NR.L5ScopeRE(R.lazy_prefix(R.annotate(raw)))
-    requires NR.NegLooksLookFreeRE(R.lazy_prefix(R.annotate(raw)))
+    requires EL.NegBehindLookFreeRE(R.lazy_prefix(R.annotate(raw)))
     requires T.Latin1Wf(raw)
     requires EL.BoolTreeLk(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), BS.CannotExit, t)
     requires LS.IsTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), LG.Empty, WP.Forward, t)
@@ -881,7 +880,7 @@ module LindenElkMainCinLk {
                       t: LT.Tree, inp: LC.Input, S: set<LG.GroupId>, ncap: int, nlook: int, nquant: int)
     requires crv == CP.FFullCompilation(ast) && re == R.lazy_prefix(ast)
     requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && L5ScopeV1RE(re)
-    requires M.LooksNoNulledPlusRE(re) && NR.NegLooksLookFreeRE(re)
+    requires M.LooksNoNulledPlusRE(re) && EL.NegBehindLookFreeRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
     requires |crv.f_look_types| == |crv.f_look_ast|
@@ -966,7 +965,7 @@ module LindenElkMainCinLk {
     PIV.SpecRegexQuantUnique(raw);
     assert L5ScopeV1RE(re);
     L5ScopeV1ImpliesL5(re);
-    assert NR.NegLooksLookFreeRE(re);
+    assert EL.NegBehindLookFreeRE(re);
     var qm := AR.QMap(M.QmOfRE(re), OE.LmOf(re), AI.FBuildOracle(CP.FFullCompilation(ast), str), M.BodiesOfRE(re));
     M.QmOfREEntries(re);
     M.BodiesOfREEntries(re);

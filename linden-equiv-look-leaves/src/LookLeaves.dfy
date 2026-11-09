@@ -1382,28 +1382,16 @@ module LindenElkLookLeaves {
         match FS.ComputeTree(rer, bodyacts, inp, gm, L.LkDir(lk), f) {
           case None =>
           case Some(treelk) =>
-            if L.Positivity(lk) {
-              // POSITIVE: body recurses into the fragment; DefGroups(r1) <= S
-              // (DefGroups(LookaroundR)=DefGroups(r1)); body tree LkConfinedTreeRec.
-              assert EL.PikeLkRegexRec(r1);              // positive arm of PikeLkRegexRec
-              assert DefGroupsIn(r1, S);                 // DefGroupsIn(LookaroundR(lk,r1),S)
-              assert ConfinedActsRec(bodyacts, S) by {
-                assert EL.PikeLkActionsRec(bodyacts);
-                forall i | 0 <= i < |bodyacts|
-                  ensures (bodyacts[i].Areg? ==> DefGroupsIn(bodyacts[i].r, S)) && (bodyacts[i].Aclose? ==> bodyacts[i].gid in S) {}
-              }
-              ComputeTreeConfinedRec(rer, bodyacts, inp, gm, L.LkDir(lk), f, S);   // LkConfinedTreeRec(treelk, S)
-            } else {
-              // NEGATIVE: group-free body -> GmNeutral -> GmConfinedTree -> LkConfinedTreeRec.
-              assert SD.GroupFreeL(r1);                  // negative arm of PikeLkRegexRec
-              var bacts := bodyacts;
-              assert EL.GroupFreeActs(bacts) by {
-                forall i | 0 <= i < |bacts| ensures bacts[i].Acheck? || (bacts[i].Areg? && SD.GroupFreeL(bacts[i].r)) {}
-              }
-              ComputeTreeGmNeutral(rer, bacts, inp, gm, L.LkDir(lk), f, treelk);   // GmNeutralTree(treelk)
-              GmNeutralConfined(treelk, S);                                        // GmConfinedTree(treelk, S)
-              CE.GmConfinedTreeEmbedsRec(treelk, S);                               // LkConfinedTreeRec(treelk, S)
+            // Either polarity: body recurses into the fragment; DefGroups(r1) <= S
+            // (DefGroups(LookaroundR)=DefGroups(r1)); body tree LkConfinedTreeRec.
+            assert EL.PikeLkRegexRec(r1);                // PikeLkRegexRec(LookaroundR)
+            assert DefGroupsIn(r1, S);                   // DefGroupsIn(LookaroundR(lk,r1),S)
+            assert ConfinedActsRec(bodyacts, S) by {
+              assert EL.PikeLkActionsRec(bodyacts);
+              forall i | 0 <= i < |bodyacts|
+                ensures (bodyacts[i].Areg? ==> DefGroupsIn(bodyacts[i].r, S)) && (bodyacts[i].Aclose? ==> bodyacts[i].gid in S) {}
             }
+            ComputeTreeConfinedRec(rer, bodyacts, inp, gm, L.LkDir(lk), f, S);     // LkConfinedTreeRec(treelk, S)
             match LS.LkResult(lk, treelk, gm, inp) {
               case Some(gmlk) => ComputeTreeConfinedRec(rer, cont, inp, gmlk, dir, f, S);
               case None =>
@@ -1547,27 +1535,17 @@ module LindenElkLookLeaves {
         match FS.ComputeTree(rer, bodyacts, inp, gm, L.LkDir(lk), f) {
           case None =>
           case Some(treelk) =>
-            if L.Positivity(lk) {
-              // POSITIVE: body PikeLkRegexRec(r1), DefGroups(r1) <= S; recurse
-              // the body's confinement -> LkConfinedTreeRec(treelk, S).
-              assert EL.PikeLkRegexRec(r1);              // PikeLkRegexRec(LookaroundR) positive arm
-              assert DefGroupsIn(r1, S);                 // LkBodiesInS positive arm
-              assert ConfinedActsRec(bodyacts, S) by {
-                assert EL.PikeLkActionsRec(bodyacts);
-                forall i | 0 <= i < |bodyacts|
-                  ensures (bodyacts[i].Areg? ==> DefGroupsIn(bodyacts[i].r, S)) && (bodyacts[i].Aclose? ==> bodyacts[i].gid in S) {}
-              }
-              ComputeTreeConfinedRec(rer, bodyacts, inp, gm, L.LkDir(lk), f, S);   // LkConfinedTreeRec(treelk, S)
-            } else {
-              assert SD.GroupFreeL(r1);                  // PikeLkRegexRec(LookaroundR) negative arm
-              var bacts := bodyacts;
-              assert EL.GroupFreeActs(bacts) by {
-                forall i | 0 <= i < |bacts| ensures bacts[i].Acheck? || (bacts[i].Areg? && SD.GroupFreeL(bacts[i].r)) {}
-              }
-              ComputeTreeGmNeutral(rer, bacts, inp, gm, L.LkDir(lk), f, treelk);   // GmNeutralTree(treelk)
-              GmNeutralConfined(treelk, S);                                        // GmConfinedTree(treelk, S)
-              CE.GmConfinedTreeEmbedsRec(treelk, S);                               // LkConfinedTreeRec(treelk, S)
+            // Either polarity: body PikeLkRegexRec(r1), DefGroups(r1) <= S (LkBodiesInS
+            // when positive, no definitions when negative); recurse the body's
+            // confinement -> LkConfinedTreeRec(treelk, S).
+            assert EL.PikeLkRegexRec(r1);                // PikeLkRegexRec(LookaroundR)
+            assert DefGroupsIn(r1, S) by { reveal EL.NegBodyNoDefs(); }
+            assert ConfinedActsRec(bodyacts, S) by {
+              assert EL.PikeLkActionsRec(bodyacts);
+              forall i | 0 <= i < |bodyacts|
+                ensures (bodyacts[i].Areg? ==> DefGroupsIn(bodyacts[i].r, S)) && (bodyacts[i].Aclose? ==> bodyacts[i].gid in S) {}
             }
+            ComputeTreeConfinedRec(rer, bodyacts, inp, gm, L.LkDir(lk), f, S);     // LkConfinedTreeRec(treelk, S)
             match LS.LkResult(lk, treelk, gm, inp) {
               case Some(gmlk) => ComputeTreeLkConfinedK(rer, cont, inp, gmlk, dir, f, S);
               case None =>
@@ -1660,6 +1638,27 @@ module LindenElkLookLeaves {
         GmNeutralLeaves(tlk, gm, inp, L.LkDir(lk));
         assert sub[0].1 == gm;
       }
+    }
+  }
+
+  /** (§2.2) A PASSING negative gate: the body has no leaf, so the node denotes its
+      continuation whatever the body's tree does to the group map. Unlike
+      `LAAtGatePass` this needs no `GmNeutralTree`, which is false on `LK` nodes. */
+  lemma LAAtGatePassNeg(lk: L.Lookaround, tlk: LT.Tree, tc: LT.Tree, inp: LC.Input)
+    requires !L.Positivity(lk)
+    requires |LT.TreeLeaves(tlk, LG.Empty, inp, L.LkDir(lk))| == 0
+    ensures LeavesAgreeAt(LT.LK(lk, tlk, tc), tc, inp)
+  {
+    forall gm: LG.GroupMap
+      ensures LT.TreeLeaves(LT.LK(lk, tlk, tc), gm, inp, WP.Forward)
+           == LT.TreeLeaves(tc, gm, inp, WP.Forward)
+    {
+      LT.FirstTreeLeaf(tlk, LG.Empty, inp, L.LkDir(lk));
+      LT.FirstTreeLeaf(tlk, gm, inp, L.LkDir(lk));
+      LT.HdErrorNoneNil(LT.TreeLeaves(tlk, LG.Empty, inp, L.LkDir(lk)));
+      assert LT.TreeRes(tlk, LG.Empty, inp, L.LkDir(lk)) == None;
+      LT.ResGroupMapIndep(tlk, LG.Empty, gm, inp, inp, L.LkDir(lk), L.LkDir(lk));
+      LT.HdErrorNoneNil(LT.TreeLeaves(tlk, gm, inp, L.LkDir(lk)));
     }
   }
 

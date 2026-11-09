@@ -2583,7 +2583,7 @@ module LindenElkMain {
                 }
                 FirstLeafClosedRecAux(rer, cont, inp, b, tc, sub[0].1, leaf, D);
               } else {
-                assert SD.GroupFreeL(r1);                       // Rec: negative body group-free
+                assert L.DefGroups(r1) == [] by { reveal EL.NegBodyNoDefs(); }   // Rec: negative body
                 assert LT.TreeRes(tc, gm, inp, WP.Forward) == Some(leaf);        // LK negative unfold
                 assert LkClosedInGm(gm, cont) by {
                   forall g | g in gm && g in LkBodyGroupsActs(cont) ensures gm[g].endIdx.Some? { assert g in LkBodyGroupsActs(acts); }
@@ -3951,7 +3951,6 @@ module LindenElkMain {
     cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
     returns (bestT: Option<LT.Leaf>)
     requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
-    requires NR.NegLooksLookFreeRE(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires qm.ov == ov
     requires !rer.ignoreCase && !rer.multiline
@@ -7342,7 +7341,6 @@ module LindenElkMain {
                                   qt: AReg.Regs, ov: LOr.OracleView, cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
     returns (bestT: Option<LT.Leaf>)
     requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
-    requires NR.NegLooksLookFreeRE(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires qm.ov == ov
     requires !rer.ignoreCase && !rer.multiline
@@ -9227,9 +9225,7 @@ module LindenElkMain {
         ComputeTreeGBodyOK(rer, na, inp, LG.GMOpen(LC.Idx(inp), gid, gm), dir, f, g);
       case LookaroundR(lk, r1) =>
         var bodyacts := [LS.Areg(r1)];
-        assert EL.PikeLkRegexRec(r1) by {
-          if L.Positivity(lk) { } else { assert SD.GroupFreeL(r1); GroupFreeImpliesNoLkBr(r1); EL.NoLkBrLIsPikeLkRegexRec(r1); }
-        }
+        assert EL.PikeLkRegexRec(r1);
         assert EL.PikeLkActionsRec(bodyacts) by { EL.PikeLkActionsRecConsIff(LS.Areg(r1), []); }
         assert GNQActs(bodyacts, g) by { GNQActsCons(LS.Areg(r1), [], g); }   // GNotUnderQuantL(r1,g) from head
         assert L.DefGroups(r) == L.DefGroups(r1);
@@ -9499,9 +9495,7 @@ module LindenElkMain {
         ComputeTrAllLkBodiesNamed(rer, na, inp, LG.GMOpen(LC.Idx(inp), gid, gm), dir);
         assert t == LT.GroupActionT(LG.Open(gid), LFU.ComputeTr(rer, na, inp, LG.GMOpen(LC.Idx(inp), gid, gm), dir));
       case LookaroundR(lk, r1) =>
-        assert EL.PikeLkRegexRec(r1) by {
-          if L.Positivity(lk) { } else { assert SD.GroupFreeL(r1); GroupFreeImpliesNoLkBr(r1); EL.NoLkBrLIsPikeLkRegexRec(r1); }
-        }
+        assert EL.PikeLkRegexRec(r1);
         assert EL.PikeLkActionsRec([LS.Areg(r1)]) by { EL.PikeLkActionsRecConsIff(LS.Areg(r1), []); }
         LFS.LkLkTermination(cont, inp, dir, lk, r1);
         ComputeTrAllLkBodiesNamed(rer, [LS.Areg(r1)], inp, gm, L.LkDir(lk));
@@ -9713,6 +9707,7 @@ module LindenElkMain {
         assert L.DefGroups(r) == gidl;
         assert LG.Find(g, LG.GMReset(gidl, gm)) == None by { GMUpdateFindNotTouch(LG.Reset(gidl), LC.Idx(inp), gm, g); }
         if min > 0 {
+          assert {:split_here} true;   // forced iteration
           var quant := L.Quantified(greedy, min - 1, delta, r1);
           var na := [LS.Areg(r1), LS.Areg(quant)] + cont;
           assert EL.PikeLkActionsRec(na) && GNQActs(na, g) && GOnceInv(na, g) && g !in OuterDefsActs(na) by {
@@ -9738,11 +9733,13 @@ module LindenElkMain {
             SubLkBodyActsCons(acts[0], cont, rr); assert SubLkBodyActs(acts, rr);
           }
         } else if delta == LN.NN(0) {
+          assert {:split_here} true;   // exhausted
           LFS.QuantDoneTermination(cont, inp, dir, r1, greedy);
           assert t == LFU.ComputeTr(rer, cont, inp, gm, dir);
           found, lk0, rr, inpo, gmo := ComputeTrOwnerNamedActs(rer, cont, inp, gm, dir, g);
           if found { SubLkBodyActsCons(acts[0], cont, rr); assert SubLkBodyActs(acts, rr); }   // SubLk tail-lift
         } else {
+          assert {:split_here} true;   // free iteration
           var quant := L.Quantified(greedy, 0, LFS.NoiPred(delta), r1);
           var na := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
           assert EL.PikeLkActionsRec(na) && GNQActs(na, g) && GOnceInv(na, g) && g !in OuterDefsActs(na) by {
@@ -9820,9 +9817,7 @@ module LindenElkMain {
         }
       case LookaroundR(lk, r1) =>
         assert {:split_here} true;   // (2026-09-05) per-arm batch: 341-line body, one VC, 900 s+
-        assert EL.PikeLkRegexRec(r1) by {
-          if L.Positivity(lk) { } else { assert SD.GroupFreeL(r1); GroupFreeImpliesNoLkBr(r1); EL.NoLkBrLIsPikeLkRegexRec(r1); }
-        }
+        assert EL.PikeLkRegexRec(r1);
         var bodyacts := [LS.Areg(r1)];
         assert EL.PikeLkActionsRec(bodyacts) by { EL.PikeLkActionsRecConsIff(LS.Areg(r1), []); }
         var treelk := LFU.ComputeTr(rer, bodyacts, inp, gm, L.LkDir(lk));
@@ -9838,7 +9833,7 @@ module LindenElkMain {
             if g in (set x | x in L.DefGroups(r1)) {
               // g is written in this positive look's body (somewhere).
               assert L.Positivity(lk) by {
-                if !L.Positivity(lk) { assert SD.GroupFreeL(r1); SD.GroupFreeDefGroups(r1); }
+                if !L.Positivity(lk) { assert L.DefGroups(r1) == [] by { reveal EL.NegBodyNoDefs(); } }
               }
               assert L.DefGroups(r) == L.DefGroups(r1);
               assert multiset(L.DefGroups(r1))[g] >= 1;
@@ -9962,7 +9957,7 @@ module LindenElkMain {
   lemma OuterLeafInnerGEqOwnerBody(rer: LW.RegExpRecord, body: R.regex, g: nat,
                                    inp: LC.Input, gm: LG.GroupMap)
     returns (found: bool, owner: nat, lk0: L.Lookaround, inpo: LC.Input)
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)
     requires NR.NoNulledPlusRE(body)   // §2.5b interim
     requires PIV.CapUnique(body) && LTB.LookUnique(body)
     requires GNotUnderQuantL(T.Translate(body), g)
@@ -10450,7 +10445,6 @@ module LindenElkMain {
     cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
     ncap: int, nlook: int, nquant: int)
     requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
-    requires NR.NegLooksLookFreeRE(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires qm.ov == ov
     requires !rer.ignoreCase && !rer.multiline
@@ -10546,7 +10540,6 @@ module LindenElkMain {
     ncap: int, nlook: int, nquant: int,
     reccap: AReg.Regs, reclk: AReg.Regs, recqt: AReg.Regs)
     requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
-    requires NR.NegLooksLookFreeRE(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires qm.ov == ov
     requires !rer.ignoreCase && !rer.multiline
@@ -10675,7 +10668,6 @@ module LindenElkMain {
     var tr := T.Translate(body);
     assert T.TransWf(body);                        // from StaticOkNestedRE(qm, body, bodycode, endl)
     // look-free body => no LookaroundR node in Translate(body) => LkBodyGroups empty.
-    NR.LookFreeNegLooksLookFree(body);            // NegLooksLookFreeRE(body), for Nested
     LkBodyGroupsEqCapIdsInLooks(body);            // LkBodyGroups(tr) == CapIdsInLooks(body)
     LookFreeCapIdsInLooksEmpty(body);             // CapIdsInLooks(body) == {}
     assert LL.LkBodyGroups(tr) == {};

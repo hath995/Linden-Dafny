@@ -469,12 +469,7 @@ module LindenElkEntryLk {
                                 LG.GMOpen(LC.Idx(inp), gid, gm2), dir, f);
       case LookaroundR(lk, r1) =>
         var lkacts := [LS.Areg(r1)];
-        // PikeLkRegexRec(LookaroundR(lk,r1)): positive arm is PikeLkRegexRec(r1);
-        // negative arm is GroupFreeL(r1), which embeds into PikeLkRegexRec.
-        if !L.Positivity(lk) {
-          GroupFreeLNoLkBr(r1);          // GroupFreeL(r1) -> NoLkBrL(r1)
-          NoLkBrLIsPikeLkRegexRec(r1);   // NoLkBrL(r1) -> PikeLkRegexRec(r1)
-        }
+        // PikeLkRegexRec(LookaroundR(lk,r1)) carries PikeLkRegexRec(r1) at either polarity.
         assert PikeLkRegexRec(r1);
         assert PikeLkActionsRec(lkacts) by { PikeLkActionsRecConsIff(LS.Areg(r1), []); }
         ComputeTreeGmIndepLkRec(rer, lkacts, inp, gm1, gm2, L.LkDir(lk), f);   // body tree equal
@@ -755,9 +750,10 @@ module LindenElkEntryLk {
   // `PikeLkRegexRec` widens `PikeLkRegex` so that a POSITIVE lookaround admits a
   // body that is itself in the (recursive) fragment -- i.e. the body may contain
   // further POSITIVE lookarounds, to arbitrary nesting depth -- rather than the
-  // depth-1 `NoLkBrL` (look-free) body. NEGATIVE looks are unchanged: their body
-  // still must be group-free (`SD.GroupFreeL`, records nothing). This is the
-  // regex analogue of `LkConfinedTreeRec`, aligned with `NfaRepRE.NestedFragmentRE`.
+  // depth-1 `NoLkBrL` (look-free) body. (§2.2, 2026-11-09) a NEGATIVE look's body
+  // recurses the same way, and additionally defines no groups at any depth: its
+  // verdict is all it contributes. This is the regex analogue of
+  // `LkConfinedTreeRec`, aligned with `NfaRepRE.NestedFragmentRE`.
   // ===========================================================================
 
   /** `PikeLkRegex` with POSITIVE-look bodies recursed through the fragment
@@ -777,14 +773,20 @@ module LindenElkEntryLk {
       PikeLkRegexRec(r1)
     case Group(_, r1) => PikeLkRegexRec(r1)
     case LookaroundR(lk, r1) =>
-      // POSITIVE look (fwd/bwd): body recurses into the fragment (depth-k),
-      // and (§2.5b stage 2a) is nulled-plus-free: the replay machinery that
-      // runs look bodies is stamp-free.
-      // NEGATIVE look: body stays group-free, exactly as in `PikeLkRegex`.
-      if L.Positivity(lk) then PikeLkRegexRec(r1) && NUL.NoNulledPlusL(r1)
-      else SD.GroupFreeL(r1) && NUL.NoNulledPlusL(r1)
+      // Either polarity: the body recurses into the fragment (depth-k) and
+      // (§2.5b stage 2a) is nulled-plus-free: the replay machinery that runs
+      // look bodies is stamp-free.
+      // NEGATIVE look (§2.2): the body also defines no groups, nested looks included.
+      PikeLkRegexRec(r1) && NUL.NoNulledPlusL(r1) && NegBodyNoDefs(lk, r1)
     case AnchorR(_) => true
     case Backreference(_) => false
+  }
+
+  /** (§2.2) A negative look's body defines no groups. OPAQUE, because `L.DefGroups`
+      is recursive and `PikeLkRegexRec` is unfolded inside the largest proofs: inlined,
+      it took a 15 s batch of `ATR_QuantCin` past 300 s. */
+  opaque ghost predicate NegBodyNoDefs(lk: L.Lookaround, r1: L.Regex) {
+    !L.Positivity(lk) ==> L.DefGroups(r1) == []
   }
 
   /** `PikeLkAction` for the recursive fragment. */
@@ -840,7 +842,8 @@ module LindenElkEntryLk {
 
   /** The depth-1 fragment embeds: `PikeLkRegex(r) ==> PikeLkRegexRec(r)`. For a
       POSITIVE look, `PikeLkRegex` forces a `NoLkBrL` body, which embeds into the
-      recursive fragment; NEGATIVE looks share the same `SD.GroupFreeL` body. */
+      recursive fragment; a NEGATIVE look's `SD.GroupFreeL` body does too, and
+      defines no groups. */
   lemma PikeLkRegexEmbedsRec(r: L.Regex)
     requires PikeLkRegex(r)
     ensures PikeLkRegexRec(r)
@@ -852,8 +855,15 @@ module LindenElkEntryLk {
     case Quantified(_, _, _, r1) => PikeLkRegexEmbedsRec(r1);
     case Group(_, r1) => PikeLkRegexEmbedsRec(r1);
     case LookaroundR(lk, r1) =>
-      if L.Positivity(lk) { NoLkBrLIsPikeLkRegexRec(r1); }
-      // else: PikeLkRegex and PikeLkRegexRec both require SD.GroupFreeL(r1).
+      reveal NegBodyNoDefs();
+      if L.Positivity(lk) {
+        NoLkBrLIsPikeLkRegexRec(r1);
+      } else {
+        // PikeLkRegex's negative arm: SD.GroupFreeL(r1).
+        GroupFreeLNoLkBr(r1);
+        NoLkBrLIsPikeLkRegexRec(r1);
+        SD.GroupFreeDefGroups(r1);
+      }
     case _ =>
   }
 
@@ -916,16 +926,101 @@ module LindenElkEntryLk {
     case _ =>
   }
 
-  /** L4 depth-k (ADDITIVE): the RECURSIVE analogue of `TranslateFragmentPikeLk`.
-      A regex in the POSITIVE-nesting sub-fragment (`NestedFragmentRE` +
-      `NegLooksLookFreeRE`) translates into the recursive Pike fragment
-      `PikeLkRegexRec`. POSITIVE-look bodies recurse into the fragment (depth-k);
-      NEGATIVE-look bodies are capture-free (fragment) AND look-free
-      (`NegLooksLookFreeRE`), hence group-free — exactly the depth-1 negative
-      shape `PikeLkRegexRec` keeps. This is Phase A's `TranslateNoLkBr`-analogue:
-      the RE->spec-fragment bridge the recursive keystone's confinement rests on. */
+  // ===========================================================================
+  // (§2.2, 2026-11-09) Scope: a negative LOOKBEHIND's body is look-free. A negative
+  // LOOKAHEAD's body may nest further looks. Weaker than `NR.NegLooksLookFreeRE`.
+  // ===========================================================================
+
+  predicate NegBehindLookFreeRaw(ra: R.raw_regex)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) => NegBehindLookFreeRaw(r1) && NegBehindLookFreeRaw(r2)
+    case Raw_con(r1, r2) => NegBehindLookFreeRaw(r1) && NegBehindLookFreeRaw(r2)
+    case Raw_quant(_, r1) => NegBehindLookFreeRaw(r1)
+    case Raw_count(_, r1) => NegBehindLookFreeRaw(r1)
+    case Raw_capture(r1) => NegBehindLookFreeRaw(r1)
+    case Raw_lookaround(look, r1) =>
+      (look.NegLookbehind? ==> NR.LookFreeRaw(r1)) && NegBehindLookFreeRaw(r1)
+    case _ => true
+  }
+
+  predicate NegBehindLookFreeRE(re: R.regex)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => NegBehindLookFreeRE(r1) && NegBehindLookFreeRE(r2)
+    case Re_con(r1, r2) => NegBehindLookFreeRE(r1) && NegBehindLookFreeRE(r2)
+    case Re_quant(_, _, _, r1) => NegBehindLookFreeRE(r1)
+    case Re_capture(_, r1) => NegBehindLookFreeRE(r1)
+    case Re_lookaround(_, la, r1) =>
+      (la.NegLookbehind? ==> NR.LookFreeRE(r1)) && NegBehindLookFreeRE(r1)
+    case _ => true
+  }
+
+  /** Annotation transfers `NegBehindLookFreeRaw`. */
+  lemma AnnotateNegBehindLookFree(ra: R.raw_regex, c: int, l: int, q: int)
+    requires NegBehindLookFreeRaw(ra)
+    ensures NegBehindLookFreeRE(R.annotate_regex(ra, c, l, q).0)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) =>
+      AnnotateNegBehindLookFree(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateNegBehindLookFree(r2, c1, l1, q1);
+    case Raw_con(r1, r2) =>
+      AnnotateNegBehindLookFree(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateNegBehindLookFree(r2, c1, l1, q1);
+    case Raw_quant(_, r1) => AnnotateNegBehindLookFree(r1, c, l, q + 1);
+    case Raw_count(_, r1) => AnnotateNegBehindLookFree(r1, c, l, q + 1);
+    case Raw_capture(r1) => AnnotateNegBehindLookFree(r1, c + 1, l, q);
+    case Raw_lookaround(look, r1) =>
+      if look.NegLookbehind? { NR.AnnotateLookFree(r1, c, l + 1, q); }
+      AnnotateNegBehindLookFree(r1, c, l + 1, q);
+    case _ =>
+  }
+
+  /** In a lookbehind-only regex every negative look is a lookbehind, so the two
+      scopes coincide. The flip route, which only sees such bodies, keeps
+      `NR.NegLooksLookFreeRE`. */
+  lemma NegLooksFromLBOnly(re: R.regex)
+    requires NR.LBOnlyLooksRE(re) && NegBehindLookFreeRE(re)
+    ensures NR.NegLooksLookFreeRE(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => NegLooksFromLBOnly(r1); NegLooksFromLBOnly(r2);
+    case Re_con(r1, r2) => NegLooksFromLBOnly(r1); NegLooksFromLBOnly(r2);
+    case Re_quant(_, _, _, r1) => NegLooksFromLBOnly(r1);
+    case Re_capture(_, r1) => NegLooksFromLBOnly(r1);
+    case Re_lookaround(_, _, r1) => NegLooksFromLBOnly(r1);
+    case _ =>
+  }
+
+  /** (§2.2) A capture-free regex translates to one that defines no groups. */
+  lemma TranslateCaptureFreeNoDefs(re: R.regex)
+    requires T.TransWf(re) && NR.CaptureFreeRE(re)
+    ensures L.DefGroups(T.Translate(re)) == []
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => TranslateCaptureFreeNoDefs(r1); TranslateCaptureFreeNoDefs(r2);
+    case Re_con(r1, r2) => TranslateCaptureFreeNoDefs(r1); TranslateCaptureFreeNoDefs(r2);
+    case Re_quant(_, _, _, r1) => TranslateCaptureFreeNoDefs(r1);
+    case Re_lookaround(_, _, r1) => TranslateCaptureFreeNoDefs(r1);
+    case _ =>
+  }
+
+  /** L4 depth-k: the RECURSIVE analogue of `TranslateFragmentPikeLk`. A regex in
+      the nested fragment translates into the recursive Pike fragment
+      `PikeLkRegexRec`. Look bodies recurse into the fragment (depth-k); a
+      NEGATIVE look's body is capture-free (fragment), so it defines no groups.
+      This is Phase A's `TranslateNoLkBr`-analogue: the RE->spec-fragment bridge
+      the recursive keystone's confinement rests on. */
   lemma TranslateFragmentPikeLkRec(re: R.regex)
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.NegLooksLookFreeRE(re)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re)
     requires NR.NoNulledPlusRE(re)   // §2.5b interim
     ensures PikeLkRegexRec(T.Translate(re))
     decreases re
@@ -938,16 +1033,11 @@ module LindenElkEntryLk {
     case Re_capture(_, r1) => TranslateFragmentPikeLkRec(r1);
     case Re_lookaround(lid, la, r1) =>
       assert L.Positivity(T.TrLookaround(la)) == (la.Lookahead? || la.Lookbehind?);
-      if la.Lookahead? || la.Lookbehind? {
-        // POSITIVE look (fwd/bwd): body recurses into the recursive fragment,
-        // and is nulled-plus-free (§2.5b stage 2a).
-        TranslateFragmentPikeLkRec(r1);   // PikeLkRegexRec(Translate(r1))
-        NUL.TransNoNulledPlus(r1);        // NoNulledPlusL(Translate(r1))
-      } else {
-        // NEGATIVE look: capture-free (NestedFragmentRE) + look-free
-        // (NegLooksLookFreeRE) body translates to group-free.
-        OS.TranslateGroupFree(r1);        // SD.GroupFreeL(Translate(r1))
-        NUL.TransNoNulledPlus(r1);        // §2.5b interim
+      reveal NegBodyNoDefs();
+      TranslateFragmentPikeLkRec(r1);     // PikeLkRegexRec(Translate(r1))
+      NUL.TransNoNulledPlus(r1);          // NoNulledPlusL(Translate(r1)), §2.5b stage 2a
+      if !(la.Lookahead? || la.Lookbehind?) {
+        TranslateCaptureFreeNoDefs(r1);   // NEGATIVE: CaptureFreeRE(r1) from NestedFragmentRE
       }
     case _ =>
   }
@@ -1456,8 +1546,7 @@ module LindenElkEntryLk {
       case LookaroundR(lk, r1) =>
         // ComputeTree's gate case: body tree at the WALK's gm, then the
         // continuation under the gate-produced map. Both transported to `Empty`:
-        // the tree by gm-independence (POSITIVE body PikeLkRegexRec via
-        // ComputeTrGmIndepLkRec; NEGATIVE body group-free via ComputeTrGmIndep),
+        // the tree by gm-independence (`PikeLkRegexRec(r1)` at either polarity),
         // the verdict by LkResultGmIndep.
         BS.EncodeNext(b, inp, cont, r);
         var lkacts := [LS.Areg(r1)];
@@ -1469,11 +1558,7 @@ module LindenElkEntryLk {
         assert tlk == FU.ComputeTr(rer, lkacts, inp, LG.Empty, L.LkDir(lk)) by {
           FS.ComputeTreeFuelIrrelevance(rer, lkacts, inp, gm, L.LkDir(lk), f,
                                         FS.ActionsFuel(lkacts, inp, L.LkDir(lk)) + 1);
-          if L.Positivity(lk) {
-            ComputeTrGmIndepLkRec(rer, r1, inp, gm, L.LkDir(lk));   // PikeLkRegexRec(r1) positive arm
-          } else {
-            ComputeTrGmIndep(rer, r1, inp, gm, L.LkDir(lk));        // GroupFreeL(r1) negative arm
-          }
+          ComputeTrGmIndepLkRec(rer, r1, inp, gm, L.LkDir(lk));
         }
         FS.LkAfterTermination(cont, inp, WP.Forward, lk, r1);
         LkResultGmIndep(lk, tlk, gm, inp);
