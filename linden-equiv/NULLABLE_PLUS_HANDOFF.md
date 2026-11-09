@@ -1701,3 +1701,32 @@ than `01b869f`.
 **Gate after the band prune:** `workspace packed: 69 members`, `PACK rc=0`, 533 obligations in the 11
 rebuilt members (58 cached), 2h 03m at one z3 worker, peak 7.5 GB (`63ab620`, 2026-11-09). `lift-sim-gate`
 fell from 1h 22m to 8m 32s. `lift-sim-main` is now the slowest at 52m 49s.
+
+### 2026-11-09 — **§2.2 step A: looks inside negative lookahead bodies** (branch `neg-look-nest`, `21b2cc8`)
+
+`(?!a(?=b))` is supported; `(?<!a(?<=b))` is not yet. What changed and what step B needs are in
+`SUPPORTED_FRAGMENT.md` §2.2.
+
+**Not gated by `lem pack`.** `lem` went from 0.1.21 to 0.1.23 at 09:57 on 2026-11-09. Its build identity is part of the
+cache key, so every member would rebuild, and that rebuild stops at `semantics-core`: `FlatMapApp` times out and
+`StrictSuffix:262` fails under z3 4.14.1. `oracle-sweep` (`AdvanceOvIndep`) has the same problem and `nfa-rep-re` runs
+out of memory in the 24 GB slice. All of these predate the upgrade and were hidden by the cache. apt now offers only
+0.1.23, so the plan is to fix them and do one full rebuild.
+
+**What was checked instead.** Whole-package `dafny build -t:lib` with the pack's flags (`--verification-time-limit=900
+--cores 1`), against each dependency's fresh `.doo`. All 40 affected members pass with 0 errors and no warnings:
+* the five lower ones, built by `lem` at 09:39-09:51 (`entry-lk`, `check-erase`, `look-leaves`, `nulled-plus`, `cin-walk`);
+* the 35 above them, 3,127 obligations, 4h 28m at one z3 worker, peak 20.0 GB.
+
+Slowest: `lift-sim-main` 1h 03m, `nest-inv` 37m 33s (the 20.0 GB peak), `actions-tree-rep-re` 21m 51s (18.4 GB).
+
+**Lessons from this rung.**
+* A timeout hid a missing fact. `LookNestBackTFromBodyReplayLB` burned 900 s because the flip route proves only
+  `NR.NegLooksLookFreeRE` of the mirrored body, while the forward carrier now wants `EL.NegBehindLookFreeRE`. With
+  `NegBehindFromNegLooks` it takes 28 s.
+* A termination check can unfold the secondary measure. `hide MsizeA` at the lemma head, when every recursive call
+  decreases on the first component, took `ATR_QuantCin` from out of memory to 6.3 GB.
+* Keep every `:|` off the hub on the hub's full conjunct list. The pick in `DeepFindRecLB` had dropped
+  `NR.NoNulledPlusRE`, and restoring it took that batch from over 900 s to 24 s.
+* Near the limit, unrelated edits move batches. `ComputeTrOwnerNamedActs` and `LiftPreserveForkLkRec` needed only
+  `split_here` per branch, and their slowest batches are now 38 s and 5 s.

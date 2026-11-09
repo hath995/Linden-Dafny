@@ -36,7 +36,7 @@ Everything below is verified for **case-sensitive, single-line, Latin-1** patter
 | positive lookahead `(?=…)`, capturing, nested to any depth | ✅ (L4) |
 | **positive lookbehind `(?<=…)`, capturing, nested to any depth** | ✅ (L5, 2026-08-28) — a lookbehind's body may contain **only lookbehinds**; a lookahead's body may contain positive lookbehinds (`(?=x(?<=y))`, the s6 widening — see §2.1) |
 | **captures under a quantifier inside a look body, and capturing looks inside a quantifier, at any look depth** (`(?=(?=(a)*))`, `((?=(?=(a))))*`) | ✅ (§2.3/§2.4, 2026-11-08) |
-| negative `(?!…)` / `(?<!…)` | ✅ **only with a look-free, capture-free body** |
+| negative `(?!…)` / `(?<!…)` | ✅ capture-free body. A negative **lookahead**'s body may contain looks (`(?!a(?=b))`, §2.2 step A, 2026-11-09). ❌ a negative **lookbehind**'s body must still be look-free (`(?<!a(?<=b))`, step B) |
 | backreferences | ❌ not in the AST at all |
 
 Newly provable at L5 (was impossible before): `(?<=a(?<=b)(c))`, `(?<=(x)(?<=(y)))` — capturing
@@ -83,48 +83,31 @@ cliff.** It is now more tractable than it was, because the pattern that fixed it
 split the arm into its own lemma (`DeepFindRecLB`, `ForwardFindRecLB`), extract shared blocks
 (`BackFreshPlusIsPlain`), and make every `:|` off the hub list its FULL conjunct list.
 
-### 2.2 Nested looks inside a **negative** look body — `(?!a(?=b))`, `(?<!a(?<=b))`
+### 2.2 Nested looks inside a **negative** look body — `(?!a(?=b))` DONE 2026-11-09, `(?<!a(?<=b))` still out
 
-Required by `NR.NegLooksLookFreeRaw`: a negative look's body must be **look-free**. (It must also be
-capture-free — that part comes from `NR.NestedFragmentRaw` and is not the obstacle, since a negative
-look contributes nothing to the group map anyway.)
+| pattern | status |
+|---|---|
+| `(?!a(?=b))` — looks inside a negative **lookahead** body | ✅ step A, `SupportedL4`, `SupportedL5`, `SupportedL5Cin` |
+| `(?<!a(?<=b))` — looks inside a negative **lookbehind** body | ❌ step B |
 
-**Why look-free is currently required.** The spec-side fragment predicate `EL.PikeLkRegexRec` keeps
-negative looks in their depth-1 shape: a negative gate's body must translate to a **group-free** spec
-regex (`SD.GroupFreeL`). And `GroupFreeL` is defined to be **false on every `LookaroundR` node**,
-irrespective of what the body contains:
+The only look-related condition left is `EL.NegBehindLookFreeRaw`: a negative lookbehind's body must be
+look-free. Every negative body must also be capture-free, at any depth (`NR.NestedFragmentRaw`). Both rows are
+pinned by `Frag22_*` in `src/Equiv/NullablePlusWitness.dfy`.
 
-```dafny
-ghost predicate GroupFreeL(r: L.Regex) {          // linden-reasoning SpanDuality.dfy:56
-  ...
-  case Group(_, _)      => false
-  case LookaroundR(_, _) => false                 // <-- any gate at all disqualifies it
-  case Backreference(_) => false
-}
-```
+**How step A went.** The plan recorded here before the rung expected a change to `SD.GroupFreeL` in
+*linden-reasoning*. It was not needed, and neither `linden-reasoning` nor `nfa-rep-re` changed.
+* `EL.PikeLkRegexRec` now recurses into look bodies at either polarity. A negative body must define no groups
+  (`EL.NegBodyNoDefs`). That conjunct is opaque, because inlining `L.DefGroups` into this hot predicate
+  blew up `actions-tree-rep-re`.
+* The tower's polarity branches only ever needed deep capture-freeness, so they stand unchanged.
+* A negative gate that passes has no body leaves, so it needs no group-map neutrality (`LL.LAAtGatePassNeg`).
+* The flip route for lookbehind bodies keeps `NR.NegLooksLookFreeRE`. `EL.NegLooksFromLBOnly` supplies it for an
+  LB-only body, whose only negative looks are negative lookbehinds.
 
-so "capture-free body" is *not* enough to get `GroupFreeL`; the bridge lemma
-`OS.TranslateGroupFree` demands `CaptureFreeRE && LookFreeRE`. The consumer is
-`EL.TranslateFragmentPikeLkRec` (EntryLk.dfy:906), whose negative arm discharges exactly that.
-
-Downstream, this "no gates inside a negative body" property is what lets the whole depth-k machinery
-treat a negative look as an **opaque boolean leaf**: one `CheckOracle` instruction, no lid frames, no
-child links, no oracle columns for anything inside it, and no contribution to the group-map
-confinement arguments (`LkResultAgreeOutsideNested`, `GmtTieOutside`).
-
-**What lifting it would take.** Three layers, in order:
-1. `SD.GroupFreeL` (or a new `GateOkNegL`) must accept `LookaroundR` whose body is itself group-free —
-   a change in *linden-reasoning*, with its span-duality consumers re-proven.
-2. `EL.PikeLkRegexRec`'s negative arm must recurse instead of demanding group-freeness, and
-   `BoolTreeLk`'s negative gate must evaluate a body that itself contains gates (i.e. the oracle must
-   carry columns for lids inside negative bodies — the oracle builder already assigns them lids, so
-   this is mostly about the invariants, not the engine).
-3. The nested static package (`GateStaticAtNested`'s negative arm, currently
-   `(la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body)`) and the frame lemmas would
-   need the negative-body case of the depth-k tower.
-
-Note this is **orthogonal** to §2.1: it is a spec-side fragment restriction inherited from L3/L4, not
-a consequence of the L5 work.
+**What step B needs.** The scope becomes `la.NegLookbehind? ==> NR.LBOnlyLooksRE(body)`, the same restriction as a
+positive lookbehind. The oracle column has a separate look-free arm for negative lookbehinds (`LiftSimOracle`),
+which should give way to `OE.OracleColumnSpecNested`, already stated for `NegLookbehind`. The flip side
+(`FlipStatics`, `FlipKeystone`, `FlipGate`) must then take negative bodies that hold looks.
 
 ### 2.3 / 2.4 — CAPTURE-UNDER-QUANTIFIER conditions — CLOSED 2026-11-08
 
@@ -235,8 +218,8 @@ narrower than the engine. Concretely checkable evidence:
 
 * Lookarounds inside NEGATIVE bodies are already compiled and already get oracle lids —
   `CP.FCompileExtra` recurses into `body` at every `Re_lookaround` node regardless of the look's kind,
-  and `FBuildLids` builds their oracle columns. §2.2 is `SD.GroupFreeL`/`EL.PikeLkRegexRec` being
-  depth-1 for negative gates, nothing more.
+  and `FBuildLids` builds their oracle columns. What remains of §2.2 is the look-free condition on
+  negative lookbehind bodies, nothing more.
 * Nullable plus already has its engine machinery (`f_plus_bc`, `AI.FNulledPlus`,
   `AI.FReconstructPlus`) — §2.5 is the missing spec correspondence.
 * `ignoreCase` / `multiline` are fields of the `RegExpRecord` that both sides already thread; the
@@ -258,7 +241,7 @@ proof engineering of known shape.
 | ~~§2.3 / §2.4 capture-under-quant for L4/L5 patterns~~ | — | **DONE 2026-11-08** (branch `cap-under-quant`) |
 | ~~§2.5a lazy nullable plus~~ | — | **DONE 2026-08-30** (branch `nullable-plus`) |
 | §2.5b greedy nullable plus **inside a look body / with a lookaround in its body** (lookaround-free: **DONE 2026-11-05**; next to lookarounds: **DONE 2026-11-06**, `SupportedL5Cin`) | large — the look-body replay would need the reconstruction readout (rung E) at every look depth; machine B's look-path frame (`CinLookPaths`) assumes the CIN bodies own no look-path registers | TWO end-fork layouts (CIN/CDN), the new `CheckNullable` instruction, the first `SetQuantToClock(qid, **true**)` (breaks the all-stamps-false invariant `NI.CodeShapeAt` proves and `MainTheoremL3` consumes), a second path in `ReconstructNulled`, plus `QuantRegsFinal` and `FNulledPlus`'s unproven spec tie. The §2.5a shift-to-`em` rewrite does NOT carry over — see `NULLABLE_PLUS_HANDOFF.md` § WHAT §2.5b ACTUALLY COSTS |
-| §2.2 nested looks in negative bodies | large | touches linden-reasoning's `GroupFreeL` and `BoolTreeLk` |
+| §2.2 nested looks in negative bodies (negative lookahead: **DONE 2026-11-09**, branch `neg-look-nest`; negative lookbehind: step B) | not yet sized | the oracle column's look-free arm and the flip route's negative bodies, see §2.2 |
 | §2.6 flags (`i`, `m`) / Unicode | very large | new campaign |
 | §2.7 backreferences | **by design** | absent from the engine AST; incompatible with a Pike/NFA engine |
 
