@@ -1691,11 +1691,13 @@ plus and its CIN bodies are lookaround-free.
 * **Deletion rule:** a name may be deleted only if nothing that STAYS refers to it. Reachability from
   the theorems is not enough, because unreachable code that stays must still resolve. Applying only
   reachability broke the resolve with 6 errors.
-* **Still unused in the lift-sim band (by name-level reachability, not deleted):** 212 declarations,
-  13,907 lines. Gate 5,191, core 3,276, chain 2,837, oracle 2,419, carriers 184. Six of them carry
-  `{:isolate_assertions}`: `ActionsTreeRepLkF`, `AtBackForkTreeLkF`, `LiftAdvanceEpsilonNested`,
-  `LiftInitCNested`, `LiftPreserveGatePassLkNested`, `WalkPairLkAtForkCore`.
+* **The unused code in the lift-sim band went next** (`63ab620`): 212 declarations, 14,116 lines over
+  carriers, chain, core, gate and oracle, deletion only. Six of them carried `{:isolate_assertions}`.
 
 **Gate:** `workspace packed: 69 members`, `PACK rc=0`, 887 obligations in the 11 rebuilt members
 (58 cached), 3h 45m at one z3 worker, peak 12.8 GB (`9af0d18`, 2026-11-09). That is 57 minutes less
 than `01b869f`.
+
+**Gate after the band prune:** `workspace packed: 69 members`, `PACK rc=0`, 533 obligations in the 11
+rebuilt members (58 cached), 2h 03m at one z3 worker, peak 7.5 GB (`63ab620`, 2026-11-09). `lift-sim-gate`
+fell from 1h 22m to 8m 32s. `lift-sim-main` is now the slowest at 52m 49s.
