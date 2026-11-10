@@ -238,6 +238,104 @@ module LindenRegexApi {
   }
 
   // ==========================================================================
+  // Every other fragment is a sub-fragment of `SupportedL5Cin`, so `MatchCorrect`
+  // needs one theorem only.
+  // ==========================================================================
+
+  /** A nulled-plus-free regex passes both F-c gates: its look bodies are
+      nulled-plus-free a fortiori, and it has no greedy CI-nullable plus at all. */
+  lemma NoNulledPlusGatesX(re: R.regex)
+    requires NR.NoNulledPlusRE(re) && NR.NestedFragmentRE(re)
+    ensures MCL.LooksNoNulledPlusX(re) && MCL.CinBodiesLookFreeX(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => NoNulledPlusGatesX(r1); NoNulledPlusGatesX(r2);
+    case Re_con(r1, r2) => NoNulledPlusGatesX(r1); NoNulledPlusGatesX(r2);
+    case Re_quant(nul, _, q, r1) =>
+      // NestedFragmentRE: q.min >= 0. NoNulledPlusRE: min > 0 && unbounded && greedy ==> NonNullable.
+      assert q.min != 0 && q.max == None && q.greedy ==> nul == R.NonNullable;
+      NoNulledPlusGatesX(r1);
+    case Re_capture(_, r1) => NoNulledPlusGatesX(r1);
+    case Re_lookaround(_, _, r1) =>
+      // LooksNoNulledPlusX's look arm IS NR.NoNulledPlusRE(r1); CinBodiesLookFreeX recurses.
+      NoNulledPlusGatesX(r1);
+    case _ =>
+  }
+
+  lemma SupportedL5ImpliesL5Cin(pattern: R.raw_regex)
+    requires SupportedL5(pattern)
+    ensures SupportedL5Cin(pattern)
+  {
+    var ast := R.annotate(pattern);
+    var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
+    assert ast == R.annotate_regex(R.Raw_capture(pattern), 0, 1, 1).0;
+    assert NR.NoNulledPlusRaw(R.Raw_capture(pattern)) && NR.NestedFragmentRaw(R.Raw_capture(pattern));
+    NR.AnnotateNoNulledPlus(R.Raw_capture(pattern), 0, 1, 1);
+    NR.AnnotateNestedFragment(R.Raw_capture(pattern), 0, 1, 1);
+    NoNulledPlusGatesX(ast);
+    assert R.lazy_prefix(ast) == R.Re_con(pre, ast);
+    // `pre` is `.*?`: min == 0, look-free body, so both gates hold of it by unfolding.
+    assert MCL.LooksNoNulledPlusX(pre) && MCL.CinBodiesLookFreeX(pre);
+  }
+
+  /** A look-free regex passes both F-c gates: no look bodies, and every body is look-free. */
+  lemma LookFreeGatesX(re: R.regex)
+    requires NR.LookFreeRE(re)
+    ensures MCL.LooksNoNulledPlusX(re) && MCL.CinBodiesLookFreeX(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => LookFreeGatesX(r1); LookFreeGatesX(r2);
+    case Re_con(r1, r2) => LookFreeGatesX(r1); LookFreeGatesX(r2);
+    case Re_quant(_, _, _, r1) => LookFreeGatesX(r1);
+    case Re_capture(_, r1) => LookFreeGatesX(r1);
+    case _ =>
+  }
+
+  lemma SupportedCinImpliesL5Cin(pattern: R.raw_regex)
+    requires SupportedCin(pattern)
+    ensures SupportedL5Cin(pattern)
+  {
+    var ast := R.annotate(pattern);
+    var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
+    assert ast == R.annotate_regex(R.Raw_capture(pattern), 0, 1, 1).0;
+    assert NR.LookFreeRaw(R.Raw_capture(pattern));
+    NR.AnnotateLookFree(R.Raw_capture(pattern), 0, 1, 1);
+    assert R.lazy_prefix(ast) == R.Re_con(pre, ast);
+    assert NR.LookFreeRE(R.lazy_prefix(ast));
+    LookFreeL5ScopeV1(R.lazy_prefix(ast));
+    LookFreeGatesX(R.lazy_prefix(ast));
+    LookFreeNegLooksRaw(pattern);
+  }
+
+  /** `SupportedL4` and `SupportedL5` differ only in the scope conjunct. */
+  lemma SupportedL4ImpliesL5(pattern: R.raw_regex)
+    requires SupportedL4(pattern)
+    ensures SupportedL5(pattern)
+  {
+    var ast := R.annotate(pattern);
+    var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
+    assert ast == R.annotate_regex(R.Raw_capture(pattern), 0, 1, 1).0;
+    assert NR.NoPosLookbehindRaw(R.Raw_capture(pattern));
+    MAIN.AnnotateNoPosLookbehind(R.Raw_capture(pattern), 0, 1, 1);
+    assert R.lazy_prefix(ast) == R.Re_con(pre, ast);
+    assert MAIN.NoPosLookbehindRE(R.lazy_prefix(ast));
+    LSIMCOR.NoPosImpliesL5ScopeV1(R.lazy_prefix(ast));
+  }
+
+  /** Every `Supported` pattern is `SupportedL5Cin`. */
+  lemma SupportedIsL5Cin(pattern: R.raw_regex)
+    requires Supported(pattern)
+    ensures SupportedL5Cin(pattern)
+  {
+    if SupportedL3(pattern) { SupportedL3ImpliesL5(pattern); }
+    if SupportedL4(pattern) { SupportedL4ImpliesL5(pattern); }
+    if SupportedL5(pattern) { SupportedL5ImpliesL5Cin(pattern); }
+    else if SupportedCin(pattern) { SupportedCinImpliesL5Cin(pattern); }
+  }
+
+  // ==========================================================================
   // The verified matcher. Returns the JS-style capture array: slots 2i/2i+1
   // hold group i's start/end (group 0 = the whole match), -1 for unset.
   // ==========================================================================
@@ -252,30 +350,18 @@ module LindenRegexApi {
   // THE contract: on the supported fragment, Match IS the answer the
   // ECMAScript tree semantics demands.
   /** THE contract: on any `Supported` pattern, `Match` computes exactly the
-      answer the ECMAScript tree semantics (`LES.MatcherSpec`) demands. A thin
-      dispatch over `LSIM.MainTheoremL4` / `LSIM.MainTheoremL5` (the depth-1
-      fragment is a sub-fragment of L5, `SupportedL3ImpliesL5`). */
+      answer the ECMAScript tree semantics (`LES.MatcherSpec`) demands: every
+      supported pattern is `SupportedL5Cin` (`SupportedIsL5Cin`), which is
+      `MCL.MainTheoremL5Cin`'s precondition. */
   lemma MatchCorrect(pattern: R.raw_regex, str: string)
     requires Supported(pattern)
     ensures LES.MatcherSpec(pattern, str, Match(pattern, str))
   {
-    if SupportedL3(pattern) {
-      SupportedL3ImpliesL5(pattern);
-    }
-    if SupportedL4(pattern) {
-      LSIMCOR.L4ScopeFromRaw(pattern);
-      LSIM.MainTheoremL4(pattern, str);
-    } else if SupportedL5(pattern) {
-      LSIMORA.L5ScopeFromRawFull(pattern);
-      LSIM.MainTheoremL5(pattern, str);
-    } else if SupportedL5Cin(pattern) {
-      LSIMORA.L5ScopeFromRawFull(pattern);
-      MCL.LooksNoNulledPlusXSound(R.lazy_prefix(R.annotate(pattern)));
-      MCL.CinBodiesLookFreeXSound(R.lazy_prefix(R.annotate(pattern)));
-      MCL.MainTheoremL5Cin(pattern, str);
-    } else {
-      MCIN.MainTheoremCin(pattern, str);
-    }
+    SupportedIsL5Cin(pattern);
+    LSIMORA.L5ScopeFromRawFull(pattern);
+    MCL.LooksNoNulledPlusXSound(R.lazy_prefix(R.annotate(pattern)));
+    MCL.CinBodiesLookFreeXSound(R.lazy_prefix(R.annotate(pattern)));
+    MCL.MainTheoremL5Cin(pattern, str);
   }
 
   // ==========================================================================
