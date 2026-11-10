@@ -1223,6 +1223,12 @@ module LindenSpanDuality {
   // Backward-walk plumbing at InputAt positions
   // ===========================================================================
 
+  /** Associativity of `+`, proved outside the recursive `Reverse` context. */
+  lemma SeqAppendAssoc<T>(a: seq<T>, b: seq<T>, c: seq<T>)
+    ensures (a + b) + c == a + (b + c)
+  {
+  }
+
   /** `Reverse` seen from the other end: head of the reversal is the last
       element, tail of the reversal reverses the rest. */
   lemma ReverseSnocView<T>(s: seq<T>)
@@ -1233,11 +1239,17 @@ module LindenSpanDuality {
     if |s| == 1 {
       assert s[..0] == [];
     } else {
-      ReverseSnocView(s[1..]);
-      assert s[1..][..|s| - 2] == s[..|s| - 1][1..];
-      assert s[1..][|s[1..]| - 1] == s[|s| - 1];
-      assert LC.Reverse(s[..|s| - 1]) == LC.Reverse(s[..|s| - 1][1..]) + [s[..|s| - 1][0]];
-      assert s[..|s| - 1][0] == s[0];
+      var tail, init, last := s[1..], s[..|s| - 1], s[|s| - 1];
+      // the slice facts come first: with the recursive call's postcondition in context z3 4.14.1 does not finish them
+      assert tail[..|tail| - 1] == init[1..];
+      assert tail[|tail| - 1] == last;
+      assert init[0] == s[0];
+      ReverseSnocView(tail);
+      var mid := LC.Reverse(init[1..]);
+      assert LC.Reverse(tail) == [last] + mid;
+      assert LC.Reverse(init) == mid + [s[0]];
+      assert LC.Reverse(s) == LC.Reverse(tail) + [s[0]];
+      SeqAppendAssoc([last], mid, [s[0]]);
     }
   }
 

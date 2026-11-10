@@ -62,18 +62,27 @@ module FlatMap {
     } else {
       var ly, rest :| f(lbase1[0], ly) && FlatMapRel(lbase1[1..], f, rest) && lmapped1 == ly + rest;
       FlatMapApp(lbase1[1..], lbase2, f, rest, lmapped2);   // FlatMapRel(lbase1[1..]+lbase2, f, rest+lmapped2)
-      assert FlatMapRel(lbase1 + lbase2, f, lmapped1 + lmapped2) by {
-        var concat := lbase1 + lbase2;
-        var tail := rest + lmapped2;
-        assert |concat| > 0;
-        assert concat[0] == lbase1[0];
-        assert concat[1..] == lbase1[1..] + lbase2;
-        assert f(concat[0], ly);
-        assert FlatMapRel(concat[1..], f, tail);
-        assert lmapped1 + lmapped2 == ly + tail;
-        assert exists ly': seq<Y>, rest': seq<Y> :: f(concat[0], ly') && FlatMapRel(concat[1..], f, rest') && lmapped1 + lmapped2 == ly' + rest';
-      }
+      var concat := lbase1 + lbase2;
+      assert concat[0] == lbase1[0];
+      assert concat[1..] == lbase1[1..] + lbase2;
+      AppendAssoc(ly, rest, lmapped2);
+      assert lmapped1 + lmapped2 == ly + (rest + lmapped2);
+      FlatMapRelCons(concat, f, ly, rest + lmapped2, lmapped1 + lmapped2);
     }
+  }
+
+  /** Associativity of `+`, proved away from the `FlatMapRel` context: inside it z3 4.14.1 does not finish this. */
+  lemma AppendAssoc<T>(a: seq<T>, b: seq<T>, c: seq<T>)
+    ensures (a + b) + c == a + (b + c)
+  {
+  }
+
+  /** The FM_cons introduction rule, with its witnesses named by the caller. */
+  lemma FlatMapRelCons<X(!new), Y(!new)>(lbase: seq<X>, f: (X, seq<Y>) -> bool, ly: seq<Y>, rest: seq<Y>, lmapped: seq<Y>)
+    requires |lbase| > 0 && f(lbase[0], ly) && FlatMapRel(lbase[1..], f, rest) && lmapped == ly + rest
+    ensures FlatMapRel(lbase, f, lmapped)
+  {
+    assert exists ly': seq<Y>, rest': seq<Y> :: f(lbase[0], ly') && FlatMapRel(lbase[1..], f, rest') && lmapped == ly' + rest';
   }
 
   // The image of a member leaf is a subset (membership-wise) of the flat-mapped list.

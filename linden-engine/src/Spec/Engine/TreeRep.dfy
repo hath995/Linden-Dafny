@@ -202,6 +202,95 @@ module TreeRep {
     assert ia == [a0, a1] + cont;
   }
 
+  /** The `BoolTree` step at a forced quantifier iteration, proved away from the representation facts in the callers' context. */
+  lemma BoolTreeForcedStep(rer: RegExpRecord, acts: Actions, greedy: bool, min: nat, delta: NoI, r1: Regex, inp: Input, b: LoopBool, t: Tree)
+    requires min > 0 && |acts| > 0 && acts[0] == Areg(Quantified(greedy, min, delta, r1))
+    requires BoolTree(rer, acts, inp, b, t)
+    ensures t.GroupActionT? && t.g == Reset(DefGroups(r1))
+    ensures BoolTree(rer, [Areg(r1), Areg(Quantified(greedy, min - 1, delta, r1))] + acts[1..], inp, b, t.t)
+  {
+  }
+
+  /** Inversion of `NfaRep` at a quantifier with a forced copy left: the first copy sits at `pc`, and the quantifier with one
+      forced copy fewer is represented from that copy's end. Both Pike simulation lemmas start their forced arm here. */
+  lemma NfaRepForcedInv(greedy: bool, min: nat, delta: NoI, r1: Regex, code: Code, pc: Label, pcmid: Label) returns (eb: nat)
+    requires min > 0
+    requires NfaRep(Quantified(greedy, min, delta, r1), code, pc, pcmid)
+    ensures GetPc(code, pc) == Some(ResetRegs(DefGroups(r1)))
+    ensures NfaRep(r1, code, pc + 1, eb)
+    ensures NfaRep(Quantified(greedy, min - 1, delta, r1), code, eb, pcmid)
+  {
+    var gidl := DefGroups(r1);
+    var em: nat :| NfaRepMin(min, gidl, r1, code, pc, em)
+      && (match delta
+          case Inf =>
+            exists e1: nat ::
+              GetPc(code, em) == Some(GreedyFork(greedy, em + 1, e1 + 1))
+              && GetPc(code, em + 1) == Some(BeginLoop)
+              && GetPc(code, em + 2) == Some(ResetRegs(gidl))
+              && NfaRep(r1, code, em + 3, e1)
+              && GetPc(code, e1) == Some(EndLoop(em))
+              && pcmid == e1 + 1
+          case NN(k) => NfaRepOpt(k, greedy, gidl, r1, code, em, pcmid));
+    eb :| GetPc(code, pc) == Some(ResetRegs(gidl))
+      && NfaRep(r1, code, pc + 1, eb)
+      && NfaRepMin(min - 1, gidl, r1, code, eb, em);
+    match delta {
+      case Inf =>
+        var e1: nat :| GetPc(code, em) == Some(GreedyFork(greedy, em + 1, e1 + 1))
+          && GetPc(code, em + 1) == Some(BeginLoop)
+          && GetPc(code, em + 2) == Some(ResetRegs(gidl))
+          && NfaRep(r1, code, em + 3, e1)
+          && GetPc(code, e1) == Some(EndLoop(em))
+          && pcmid == e1 + 1;
+        NfaRepQuantIntroInf(greedy, min - 1, r1, code, eb, em, e1, pcmid);
+      case NN(k) =>
+        NfaRepQuantIntroNN(greedy, min - 1, k, r1, code, eb, em, pcmid);
+    }
+  }
+
+  /** The forced-iteration arm of `ActionsTreeRepF`, in its own context. Mutually recursive with it: the recursive call is on a
+      strictly smaller tree. */
+  lemma ActionsTreeRepForced(rer: RegExpRecord, acts: Actions, code: Code, pc: Label, inp: Input, b: LoopBool, t: Tree, n: nat,
+                             greedy: bool, min: nat, delta: NoI, r1: Regex, pcmid: nat)
+    requires min > 0 && |acts| > 0 && acts[0] == Areg(Quantified(greedy, min, delta, r1))
+    requires PikeActions(acts)
+    requires n > 0 && ActionRep(acts[0], code, pc, pcmid) && ActionsRepFuel(acts[1..], code, pcmid, n - 1)
+    requires BoolTree(rer, acts, inp, b, t)
+    ensures TreeRep(rer, t, code, pc, inp, b)
+    decreases TreeSize(t), ActionsRegexSize(acts), n, 0
+  {
+    var cont := acts[1..];
+    var gidl := DefGroups(r1);
+    PikeActionsTail(acts);
+    assert acts == [acts[0]] + cont;
+    PikeActionsConsIff(acts[0], cont);
+    FuelToActionsRep(cont, code, pcmid, n - 1);
+    var quant1 := Quantified(greedy, min - 1, delta, r1);
+    assert NfaRep(Quantified(greedy, min, delta, r1), code, pc, pcmid);
+    var eb := NfaRepForcedInv(greedy, min, delta, r1, code, pc, pcmid);
+    assert NfaRep(quant1, code, eb, pcmid);
+    match t {
+      case GroupActionT(g, tc) =>
+        assert {:split_here} true;
+        PikeActionsConsIff(Areg(quant1), cont);
+        PikeActionsConsIff(Areg(r1), [Areg(quant1)] + cont);
+        FuelToActionsRep(cont, code, pcmid, n - 1);   // ActionsRep(cont, pcmid)
+        assert ActionRep(Areg(quant1), code, eb, pcmid);
+        assert ActionRep(Areg(r1), code, pc + 1, eb);
+        ConsTwoRep(Areg(r1), Areg(quant1), cont, code, pc + 1, eb, pcmid);
+        var ia := [Areg(r1), Areg(quant1)] + cont;   // BoolTree's forced list
+        BoolTreeForcedStep(rer, acts, greedy, min, delta, r1, inp, b, t);
+        assert {:split_here} true;
+        ActionsRepToFuel(ia, code, pc + 1);
+        var ni: nat :| ActionsRepFuel(ia, code, pc + 1, ni);
+        assert TreeSize(tc) < TreeSize(t);
+        ActionsTreeRepF(rer, ia, code, pc + 1, inp, b, tc, ni);
+        // TreeRep(tc, pc+1) -> tr_reset at pc (ResetRegs carries the Reset node)
+      case _ =>
+    }
+  }
+
   lemma ActionsTreeRepF(rer: RegExpRecord, acts: Actions, code: Code, pc: Label, inp: Input, b: LoopBool, t: Tree, n: nat)
     requires PikeActions(acts)
     requires ActionsRepFuel(acts, code, pc, n)
@@ -210,12 +299,15 @@ module TreeRep {
     decreases TreeSize(t), ActionsRegexSize(acts), n
   {
     if |acts| == 0 && GetPc(code, pc) == Some(Accept) {
+      assert {:split_here} true;
       // empty_bc: BoolTree([]) ⇒ t == Match ⇒ tr_match
       assert t == Match;
     } else if exists pcstart: nat :: GetPc(code, pc) == Some(Jmp(pcstart)) && ActionsRepFuel(acts, code, pcstart, n - 1) {
+      assert {:split_here} true;
       var pcstart: nat :| GetPc(code, pc) == Some(Jmp(pcstart)) && ActionsRepFuel(acts, code, pcstart, n - 1);
       ActionsTreeRepF(rer, acts, code, pcstart, inp, b, t, n - 1);   // ⇒ TreeRep(t, code, pcstart, ..); tr_jmp
     } else {
+      assert {:split_here} true;
       // cons_bc
       var cont := acts[1..];
       var pcmid: nat :| ActionRep(acts[0], code, pc, pcmid) && ActionsRepFuel(cont, code, pcmid, n - 1);
@@ -225,8 +317,10 @@ module TreeRep {
       FuelToActionsRep(cont, code, pcmid, n - 1);   // ActionsRep(cont, code, pcmid)
       match acts[0]
       case Acheck(strcheck) =>
+        assert {:split_here} true;
         // ActionRep ⇒ GetPc(pc) == EndLoop(pcmid)
         if b == CanExit {
+          assert {:split_here} true;
           // t == Progress(tc); tr_progress with nextpc == pcmid
           match t {
             case Progress(tc) =>
@@ -236,18 +330,22 @@ module TreeRep {
         }
         // else t == Mismatch, b == CannotExit ⇒ tr_progressfail
       case Aclose(gid) =>
+        assert {:split_here} true;
         // GetPc(pc) == SetRegClose(gid), pcmid == pc+1; t == GroupActionT(Close(gid), tc); tr_close
         match t {
           case GroupActionT(g, tc) => ActionsTreeRepF(rer, cont, code, pc + 1, inp, b, tc, n - 1);
           case _ =>
         }
       case Areg(r) =>
+        assert {:split_here} true;
         assert PikeRegex(r);
         match r
         case Epsilon =>
+          assert {:split_here} true;
           // NfaRep(Epsilon) ⇒ pc == pcmid; BoolTree(Areg Eps :: cont) == BoolTree(cont) (same t)
           ActionsTreeRepF(rer, cont, code, pc, inp, b, t, n - 1);
         case Character(cd) => {
+          assert {:split_here} true;
           // NfaRep(Character) ⇒ GetPc(pc) == Consume(cd), pcmid == pc+1
           match ReadChar(rer, cd, inp, Forward) {
             case None =>   // t == Mismatch; tr_readfail
@@ -259,6 +357,7 @@ module TreeRep {
           }
         }
         case Disjunction(r1, r2) => {
+          assert {:split_here} true;
           PikeActionsConsIff(Areg(r1), cont);
           PikeActionsConsIff(Areg(r2), cont);
           var e1: nat :| GetPc(code, pc) == Some(Fork(pc + 1, e1 + 1)) && NfaRep(r1, code, pc + 1, e1)
@@ -287,6 +386,7 @@ module TreeRep {
           }
         }
         case Sequence(r1, r2) => {
+          assert {:split_here} true;
           PikeActionsConsIff(Areg(r2), cont);
           PikeActionsConsIff(Areg(r1), [Areg(r2)] + cont);
           assert NfaRep(Sequence(r1, r2), code, pc, pcmid);   // == ActionRep(acts[0], code, pc, pcmid)
@@ -305,57 +405,16 @@ module TreeRep {
           ActionsTreeRepF(rer, na, code, pc, inp, b, t, nn);
         }
         case Quantified(greedy, min, delta, r1) => {
+          assert {:split_here} true;
           var gidl := DefGroups(r1);
           if min > 0 {
+            assert {:split_here} true;
             // FORCED iteration: NfaRepMin(min) unfolds one ResetRegs+body copy
             // at pc; the tree is GroupActionT(Reset(gidl), tc) with the stack
             // [Areg r1, Areg Quantified(min-1, delta)] + cont at pc+1.
-            var quant1 := Quantified(greedy, min - 1, delta, r1);
-            var em: nat :| NfaRepMin(min, gidl, r1, code, pc, em)
-              && (match delta
-                  case Inf =>
-                    exists e1: nat ::
-                      GetPc(code, em) == Some(GreedyFork(greedy, em + 1, e1 + 1))
-                      && GetPc(code, em + 1) == Some(BeginLoop)
-                      && GetPc(code, em + 2) == Some(ResetRegs(gidl))
-                      && NfaRep(r1, code, em + 3, e1)
-                      && GetPc(code, e1) == Some(EndLoop(em))
-                      && pcmid == e1 + 1
-                  case NN(k) => NfaRepOpt(k, greedy, gidl, r1, code, em, pcmid));
-            // NfaRepMin at min > 0 unfolds one forced copy
-            var eb: nat :| GetPc(code, pc) == Some(ResetRegs(gidl))
-              && NfaRep(r1, code, pc + 1, eb)
-              && NfaRepMin(min - 1, gidl, r1, code, eb, em);
-            match delta {
-              case Inf =>
-                var e1: nat :| GetPc(code, em) == Some(GreedyFork(greedy, em + 1, e1 + 1))
-                  && GetPc(code, em + 1) == Some(BeginLoop)
-                  && GetPc(code, em + 2) == Some(ResetRegs(gidl))
-                  && NfaRep(r1, code, em + 3, e1)
-                  && GetPc(code, e1) == Some(EndLoop(em))
-                  && pcmid == e1 + 1;
-                NfaRepQuantIntroInf(greedy, min - 1, r1, code, eb, em, e1, pcmid);
-              case NN(k) =>
-                NfaRepQuantIntroNN(greedy, min - 1, k, r1, code, eb, em, pcmid);
-            }
-            assert NfaRep(quant1, code, eb, pcmid);
-            match t {
-              case GroupActionT(g, tc) =>
-                PikeActionsConsIff(Areg(quant1), cont);
-                PikeActionsConsIff(Areg(r1), [Areg(quant1)] + cont);
-                FuelToActionsRep(cont, code, pcmid, n - 1);   // ActionsRep(cont, pcmid)
-                assert ActionRep(Areg(quant1), code, eb, pcmid);
-                assert ActionRep(Areg(r1), code, pc + 1, eb);
-                ConsTwoRep(Areg(r1), Areg(quant1), cont, code, pc + 1, eb, pcmid);
-                var ia := [Areg(r1), Areg(quant1)] + cont;   // BoolTree's forced list
-                ActionsRepToFuel(ia, code, pc + 1);
-                var ni: nat :| ActionsRepFuel(ia, code, pc + 1, ni);
-                assert TreeSize(tc) < TreeSize(t);
-                ActionsTreeRepF(rer, ia, code, pc + 1, inp, b, tc, ni);
-                // TreeRep(tc, pc+1) -> tr_reset at pc (ResetRegs carries the Reset node)
-              case _ =>
-            }
+            ActionsTreeRepForced(rer, acts, code, pc, inp, b, t, n, greedy, min, delta, r1, pcmid);
           } else {
+            assert {:split_here} true;
             match delta {
             case Inf =>
               var quant := Quantified(greedy, 0, FS.NoiPred(delta), r1);
@@ -462,6 +521,7 @@ module TreeRep {
           }
         }
         case Group(gid, r1) => {
+          assert {:split_here} true;
           PikeActionsConsIff(Aclose(gid), cont);
           PikeActionsConsIff(Areg(r1), [Aclose(gid)] + cont);
           var e1: nat :| GetPc(code, pc) == Some(SetRegOpen(gid)) && NfaRep(r1, code, pc + 1, e1)
@@ -485,8 +545,10 @@ module TreeRep {
           }
         }
         case AnchorR(a) => {
+          assert {:split_here} true;
           // NfaRep(AnchorR) => GetPc(pc) == CheckAnchor(a), pcmid == pc + 1
           if AnchorSatisfied(rer, a, inp) {
+            assert {:split_here} true;
             match t {
               case AnchorPass(a2, tc) =>
                 ActionsTreeRepF(rer, cont, code, pc + 1, inp, b, tc, n - 1);  // tr_anchorpass

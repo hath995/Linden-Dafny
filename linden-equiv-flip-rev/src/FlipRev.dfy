@@ -274,6 +274,7 @@ module LindenElkFlipRev {
          == CP.repeat_optional(nb, qid, r, nextl, ctype, greedy)
     decreases CP.rsize(r) + 1, nb
   {
+    hide CP.compile;   // only the induction hypothesis about it is used
     if nb <= 0 {
     } else {
       FlipCompile(r, nextl + 3, ctype);
@@ -288,37 +289,55 @@ module LindenElkFlipRev {
     ensures CP.compile(FlipRE(r), nextl, ctype) == CP.compile(r, nextl, ctype)
     decreases CP.rsize(r), 0
   {
+    hide CP.repeat_min;        // only the induction hypotheses about these two are used
+    hide CP.repeat_optional;
     match r
     case Re_empty =>
+      assert {:split_here} true;
+      assert FlipRE(r) == r;
     case Re_character(_) =>
+      assert {:split_here} true;
+      assert FlipRE(r) == r;
     case Re_anchor(_) =>
+      assert {:split_here} true;
+      assert FlipRE(r) == r;
     case Re_lookaround(lid, la, r1) =>
+      assert {:split_here} true;
       // both positive kinds emit CheckOracle(lid); both negatives NegCheckOracle(lid)
     case Re_con(r1, r2) =>
+      assert {:split_here} true;
       FlipCompile(r1, nextl, ctype);
       var (_, f1) := CP.compile(r1, nextl, ctype);
       FlipCompile(r2, f1, ctype);
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;
       FlipCompile(r1, nextl + 1, ctype);
       var (_, f1) := CP.compile(r1, nextl + 1, ctype);
       FlipCompile(r2, f1 + 1, ctype);
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;
       FlipCompile(r1, nextl + 1, ctype);
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;
       if ctype == CP.Progress {
+        assert {:split_here} true;
         if q.min > 0 && q.max == None && nul == R.NonNullable {
+          assert {:split_here} true;
           FlipRepeatMin(q.min - 1, qid, r1, nextl, ctype);
           var (_, min_f) := CP.repeat_min(q.min - 1, qid, r1, nextl, ctype);
           FlipCompile(r1, min_f + 1, ctype);
         } else if q.min > 0 && q.max == None && nul == R.CINullable && q.greedy {
+          assert {:split_here} true;
           FlipRepeatMin(q.min - 1, qid, r1, nextl, ctype);
           var (_, min_f) := CP.repeat_min(q.min - 1, qid, r1, nextl, ctype);
           FlipCompile(r1, min_f + 3, ctype);
         } else if q.min > 0 && q.max == None && nul == R.CDNullable && q.greedy {
+          assert {:split_here} true;
           FlipRepeatMin(q.min - 1, qid, r1, nextl, ctype);
           var (_, min_f) := CP.repeat_min(q.min - 1, qid, r1, nextl, ctype);
           FlipCompile(r1, min_f + 3, ctype);
         } else {
+          assert {:split_here} true;
           FlipRepeatMin(q.min, qid, r1, nextl, ctype);
           var (_, min_f) := CP.repeat_min(q.min, qid, r1, nextl, ctype);
           match q.max {
@@ -327,11 +346,17 @@ module LindenElkFlipRev {
           }
         }
       } else {
+        assert {:split_here} true;
         if q.min == 0 {
+          assert {:split_here} true;
         } else if nul == R.NonNullable {
+          assert {:split_here} true;
         } else if q.max == None && nul == R.CINullable && q.greedy {
+          assert {:split_here} true;
         } else if q.max == None && nul == R.CDNullable && q.greedy {
+          assert {:split_here} true;
         } else {
+          assert {:split_here} true;
           FlipCompile(r1, nextl + 1, CP.ReconstructNulled);
         }
       }

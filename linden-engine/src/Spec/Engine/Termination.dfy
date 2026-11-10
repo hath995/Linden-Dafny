@@ -234,12 +234,14 @@ module Termination {
     ensures forall i, l {:autotriggers false} :: 0 <= i < |code| && l in NextPcs(frsh + i, code[i]) ==> l <= next
     decreases RegexSize(r), k + 2
   {
-    FreshCorrectMin(k, gidl, r, frsh, code, next);
     if k > 0 {
       var c1 := Compile(r, frsh + 1);
       var bc1, f1 := c1.0, c1.1;
       var (c2, f2) := RepeatMin(k - 1, gidl, r, f1);
+      RepeatMinStep(k, gidl, r, frsh, code, next);
       assert code == [ResetRegs(gidl)] + bc1 + c2 && next == f2;
+      assert {:split_here} true;
+      FreshCorrectMin(k, gidl, r, frsh, code, next);
       FreshCorrect(r, frsh + 1, bc1, f1);
       FreshCorrectMin(k - 1, gidl, r, f1, c2, f2);
       CompileWf(r, frsh + 1, bc1, f1);
@@ -254,6 +256,8 @@ module Termination {
           assert frsh + i == f1 + (i - 1 - |bc1|);
         }
       }
+    } else {
+      FreshCorrectMin(k, gidl, r, frsh, code, next);
     }
   }
 
@@ -264,13 +268,15 @@ module Termination {
     ensures forall i, l {:autotriggers false} :: 0 <= i < |code| && l in NextPcs(frsh + i, code[i]) ==> l <= next
     decreases RegexSize(r), k + 2
   {
-    FreshCorrectOpt(k, greedy, gidl, r, frsh, code, next);
     if k > 0 {
       var c1 := Compile(r, frsh + 3);
       var bc1, f1 := c1.0, c1.1;
       var (c2, f2) := RepeatOpt(k - 1, greedy, gidl, r, f1 + 1);
       var hdr := [GreedyFork(greedy, frsh + 1, f2), BeginLoop, ResetRegs(gidl)];
+      RepeatOptStep(k, greedy, gidl, r, frsh, code, next);
       assert code == hdr + bc1 + [EndLoop(f1 + 1)] + c2 && next == f2;
+      assert {:split_here} true;
+      FreshCorrectOpt(k, greedy, gidl, r, frsh, code, next);
       FreshCorrect(r, frsh + 3, bc1, f1);
       FreshCorrectOpt(k - 1, greedy, gidl, r, f1 + 1, c2, f2);
       CompileWf(r, frsh + 3, bc1, f1);
@@ -289,31 +295,94 @@ module Termination {
           assert frsh + i == (f1 + 1) + (i - 4 - |bc1|);
         }
       }
+    } else {
+      FreshCorrectOpt(k, greedy, gidl, r, frsh, code, next);
     }
   }
 
+  /** The postcondition of `CompileWf`, named so each branch can discharge it inside its own assertion batch. */
+  ghost predicate CompileWfPost(frsh: Label, code: Code, next: Label) {
+    next == frsh + |code|
+    && forall i, l {:autotriggers false} :: 0 <= i < |code| && l in NextPcs(frsh + i, code[i]) ==> l <= next
+  }
+
+  /** `Compile` at an unbounded quantifier, unfolded in a small context. */
+  lemma CompileInfStep(greedy: bool, min: nat, r1: Regex, frsh: Label, code: Code, next: Label)
+    requires Compile(Quantified(greedy, min, Inf, r1), frsh) == (code, next)
+    ensures var gidl := DefGroups(r1);
+            var m := RepeatMin(min, gidl, r1, frsh);
+            var c1 := Compile(r1, m.1 + 3);
+            code == m.0 + [GreedyFork(greedy, m.1 + 1, c1.1 + 1), BeginLoop, ResetRegs(gidl)] + c1.0 + [EndLoop(m.1)]
+            && next == c1.1 + 1
+  {
+    hide RepeatMin;
+    hide RepeatOpt;
+  }
+
+  /** Associativity of a four-part concatenation, proved outside any large context. */
+  lemma SeqAssoc4<T>(a: seq<T>, b: seq<T>, c: seq<T>, d: seq<T>)
+    ensures a + b + c + d == a + (b + c + d)
+  {
+  }
+
+  /** `Compile` at a bounded quantifier, unfolded in a small context. */
+  lemma CompileNNStep(greedy: bool, min: nat, k: nat, r1: Regex, frsh: Label, code: Code, next: Label)
+    requires Compile(Quantified(greedy, min, NN(k), r1), frsh) == (code, next)
+    ensures var gidl := DefGroups(r1);
+            var m := RepeatMin(min, gidl, r1, frsh);
+            var o := RepeatOpt(k, greedy, gidl, r1, m.1);
+            code == m.0 + o.0 && next == o.1
+  {
+  }
+
+  // Each arm settles the shape of `code` before `next == frsh + |code|` enters the context: with that fact present
+  // z3 4.14.1 does not finish the unfolding.
   lemma CompileWf(r: Regex, frsh: Label, code: Code, next: Label)
     requires Compile(r, frsh) == (code, next)
     ensures next == frsh + |code|
     ensures forall i, l {:autotriggers false} :: 0 <= i < |code| && l in NextPcs(frsh + i, code[i]) ==> l <= next
     decreases RegexSize(r), 1
   {
-    FreshCorrect(r, frsh, code, next);   // next == frsh + |code|
     match r
     case Epsilon =>
+      assert {:split_here} true;
+      FreshCorrect(r, frsh, code, next);
+      assert CompileWfPost(frsh, code, next);
     case Character(_) =>
+      assert {:split_here} true;
+      FreshCorrect(r, frsh, code, next);
+      assert CompileWfPost(frsh, code, next);
     case AnchorR(_) =>
+      assert {:split_here} true;
+      FreshCorrect(r, frsh, code, next);
+      assert CompileWfPost(frsh, code, next);
     case Backreference(_) =>
+      assert {:split_here} true;
+      FreshCorrect(r, frsh, code, next);
+      assert CompileWfPost(frsh, code, next);
     case LookaroundR(_, _) =>
+      assert {:split_here} true;
+      FreshCorrect(r, frsh, code, next);
+      assert CompileWfPost(frsh, code, next);
     case Disjunction(r1, r2) =>
+      assert {:split_here} true;
       var c1 := Compile(r1, frsh + 1);
       var c2 := Compile(r2, c1.1 + 1);
       var bc1, f1, bc2, f2 := c1.0, c1.1, c2.0, c2.1;
+      CompileDisjunctionStep(r1, r2, frsh, code, next);
+      assert code == [Fork(frsh + 1, f1 + 1)] + bc1 + [Jmp(f2)] + bc2 && next == f2;
+      hide Compile;
+      hide RepeatMin;
+      hide RepeatOpt;
+      assert {:split_here} true;
       FreshCorrect(r1, frsh + 1, bc1, f1);          // f1 == frsh + 1 + |bc1|
       FreshCorrect(r2, f1 + 1, bc2, f2);            // f2 == f1 + 1 + |bc2|
+      assert {:split_here} true;
       CompileWf(r1, frsh + 1, bc1, f1);
       CompileWf(r2, f1 + 1, bc2, f2);
-      assert code == [Fork(frsh + 1, f1 + 1)] + bc1 + [Jmp(f2)] + bc2 && next == f2;
+      assert {:split_here} true;
+      FreshCorrect(r, frsh, code, next);            // next == frsh + |code|
+      assert {:split_here} true;
       forall i, l {:autotriggers false} | 0 <= i < |code| && l in NextPcs(frsh + i, code[i]) ensures l <= next {
         if i == 0 {                                  // Fork(frsh+1, f1+1); both <= f2
         } else if i < 1 + |bc1| {                    // in bc1 region: code[i] == bc1[i-1]
@@ -326,15 +395,20 @@ module Termination {
           assert frsh + i == (f1 + 1) + (i - (2 + |bc1|));
         }
       }
+      assert CompileWfPost(frsh, code, next);
     case Sequence(r1, r2) =>
+      assert {:split_here} true;
       var c1 := Compile(r1, frsh);
       var c2 := Compile(r2, c1.1);
       var bc1, f1, bc2, f2 := c1.0, c1.1, c2.0, c2.1;
+      assert code == bc1 + bc2 && next == f2;
+      assert {:split_here} true;
+      FreshCorrect(r, frsh, code, next);            // next == frsh + |code|
       FreshCorrect(r1, frsh, bc1, f1);              // f1 == frsh + |bc1|
       FreshCorrect(r2, f1, bc2, f2);
       CompileWf(r1, frsh, bc1, f1);
       CompileWf(r2, f1, bc2, f2);
-      assert code == bc1 + bc2 && next == f2;
+      assert {:split_here} true;
       forall i, l {:autotriggers false} | 0 <= i < |code| && l in NextPcs(frsh + i, code[i]) ensures l <= next {
         if i < |bc1| {
           assert code[i] == bc1[i];
@@ -343,19 +417,36 @@ module Termination {
           assert frsh + i == f1 + (i - |bc1|);
         }
       }
+      assert CompileWfPost(frsh, code, next);
     case Quantified(greedy, min, delta, r1) =>
+      assert {:split_here} true;
       var gidl := DefGroups(r1);
       var (mc, mf) := RepeatMin(min, gidl, r1, frsh);
-      FreshCorrectMin(min, gidl, r1, frsh, mc, mf);   // mf == frsh + |mc|
-      CompileWfMin(min, gidl, r1, frsh, mc, mf);
       match delta {
         case Inf =>
+          assert {:split_here} true;
+          hide Compile;
+          hide RepeatMin;
+          hide RepeatOpt;
           var c1 := Compile(r1, mf + 3);
           var bc1, f1 := c1.0, c1.1;
-          FreshCorrect(r1, mf + 3, bc1, f1);          // f1 == mf + 3 + |bc1|
-          CompileWf(r1, mf + 3, bc1, f1);
           var hdr := [GreedyFork(greedy, mf + 1, f1 + 1), BeginLoop, ResetRegs(gidl)];
-          assert code == mc + (hdr + bc1 + [EndLoop(mf)]) && next == f1 + 1;
+          CompileInfStep(greedy, min, r1, frsh, code, next);
+          assert {:split_here} true;
+          SeqAssoc4(mc, hdr, bc1, [EndLoop(mf)]);
+          assert {:split_here} true;
+          assert code == mc + (hdr + bc1 + [EndLoop(mf)]);
+          assert {:split_here} true;
+          assert next == f1 + 1;
+          assert {:split_here} true;
+          FreshCorrectMin(min, gidl, r1, frsh, mc, mf);   // mf == frsh + |mc|
+          FreshCorrect(r1, mf + 3, bc1, f1);          // f1 == mf + 3 + |bc1|
+          assert {:split_here} true;
+          CompileWfMin(min, gidl, r1, frsh, mc, mf);
+          CompileWf(r1, mf + 3, bc1, f1);
+          assert {:split_here} true;
+          FreshCorrect(r, frsh, code, next);            // next == frsh + |code|
+          assert {:split_here} true;
           forall i, l {:autotriggers false} | 0 <= i < |code| && l in NextPcs(frsh + i, code[i]) ensures l <= next {
             if i < |mc| {                              // forced chain: targets <= mf <= next
               assert code[i] == mc[i];
@@ -369,11 +460,19 @@ module Termination {
               assert code[i] == EndLoop(mf);
             }
           }
+          assert CompileWfPost(frsh, code, next);
         case NN(k) =>
+          assert {:split_here} true;
           var (oc, of) := RepeatOpt(k, greedy, gidl, r1, mf);
+          CompileNNStep(greedy, min, k, r1, frsh, code, next);
+          assert code == mc + oc && next == of;
+          assert {:split_here} true;
+          FreshCorrect(r, frsh, code, next);            // next == frsh + |code|
+          FreshCorrectMin(min, gidl, r1, frsh, mc, mf);   // mf == frsh + |mc|
+          CompileWfMin(min, gidl, r1, frsh, mc, mf);
           FreshCorrectOpt(k, greedy, gidl, r1, mf, oc, of);   // of == mf + |oc|
           CompileWfOpt(k, greedy, gidl, r1, mf, oc, of);
-          assert code == mc + oc && next == of;
+          assert {:split_here} true;
           forall i, l {:autotriggers false} | 0 <= i < |code| && l in NextPcs(frsh + i, code[i]) ensures l <= next {
             if i < |mc| {
               assert code[i] == mc[i];
@@ -382,13 +481,18 @@ module Termination {
               assert frsh + i == mf + (i - |mc|);
             }
           }
+          assert CompileWfPost(frsh, code, next);
       }
     case Group(gid, r1) =>
+      assert {:split_here} true;
       var c1 := Compile(r1, frsh + 1);
       var bc1, f1 := c1.0, c1.1;
+      assert code == [SetRegOpen(gid)] + bc1 + [SetRegClose(gid)] && next == f1 + 1;
+      assert {:split_here} true;
+      FreshCorrect(r, frsh, code, next);            // next == frsh + |code|
       FreshCorrect(r1, frsh + 1, bc1, f1);          // f1 == frsh + 1 + |bc1|
       CompileWf(r1, frsh + 1, bc1, f1);
-      assert code == [SetRegOpen(gid)] + bc1 + [SetRegClose(gid)] && next == f1 + 1;
+      assert {:split_here} true;
       forall i, l {:autotriggers false} | 0 <= i < |code| && l in NextPcs(frsh + i, code[i]) ensures l <= next {
         if i == 0 {                                  // SetRegOpen -> frsh+1 <= f1+1
         } else if i < 1 + |bc1| {                    // bc1 region
@@ -398,6 +502,7 @@ module Termination {
           assert code[i] == SetRegClose(gid);
         }
       }
+      assert CompileWfPost(frsh, code, next);
   }
 
   // Every control target in a compiled PROGRAM is in range: CodeWf(Compilation(r)). Discharges the

@@ -259,6 +259,7 @@ module StrictSuffix {
           assert (diff + next1)[0] == h;
           assert diff[0] == h;
           var diffp := diff[1..];
+          assert diff == [diff[0]] + diff[1..];
           assert diff == [h] + diffp;
           if diffp == [] {
             assert rest == next1 && pref1 == [h] + pref2;   // diff == [h]

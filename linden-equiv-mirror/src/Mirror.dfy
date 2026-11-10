@@ -1217,6 +1217,7 @@ module LindenElkMirror {
     assert OS.NoOracleReads(cs) && OS.NoCheckNullable(cs);
     assert OS.WritesOnlyLid(cs, lid) && OS.NoAccept(cs);
     assert |rstr| < |mv|;
+    assert 0 <= lid < |mv[0]|;
     assert forall i: int :: 0 <= i < |mv| ==> 0 <= lid < |mv[i]|;
     // the forward statement, on the swapped program over the reversed string
     ORc.SweepCharacterization(cs, rstr, mv, lid, SwapAnchorsCdns(cdn),
@@ -1287,6 +1288,7 @@ module LindenElkMirror {
     assert OS.AllGatesAbove(cs, k) && OS.NoCheckNullable(cs);
     assert OS.WritesOnlyLid(cs, k) && OS.NoAccept(cs);
     assert |rstr| < |mv|;
+    assert 0 <= k < |mv[0]|;
     assert forall i: int {:trigger mv[i]} :: 0 <= i < |mv| ==> 0 <= k < |mv[i]|;
     // the forward gate-ful statement, on the swapped program over the reversed
     // string against the mirrored view

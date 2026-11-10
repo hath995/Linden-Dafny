@@ -554,6 +554,7 @@ module LindenElkOracleSpec {
     var rrb := SD.RevRE(rcb);
     SD.ReverseLength(str);
 
+    assert {:split_here} true;
     // --- the build program for this row ------------------------------------
     assert CP.oracle_regex(la, body) == R.lazy_prefix(rb);   // = lazy_prefix(reverse_regex(remove_capture(body)))
     NR.ReverseLookFreeRE(rcb);
@@ -561,16 +562,19 @@ module LindenElkOracleSpec {
     var bc := CP.compile_to_write(R.lazy_prefix(rb), lid);
     assert AI.get_code_v(crv.f_look_build_bc, lid) == bc;
 
+    assert {:split_here} true;
     // --- the anchor-swapped build program IS compile_to_write(lazy_prefix(RevRE(rcb))) ---
     OBu.CompileToWriteSwap(R.lazy_prefix(rb), lid);
     OBu.SwapAnchorsLazyPrefix(rb);
     SwapReverseIsRevRE(rcb);
     assert MIR.SwapAnchorsCode(bc) == CP.compile_to_write(R.lazy_prefix(rrb), lid);
 
+    assert {:split_here} true;
     // --- fragment facts for RevRE(rcb) (capture-/look-free + plus) ---
     RevRELookFree(rcb);
     RevREPlusFragment(rcb);
 
+    assert {:split_here} true;
     // --- oracle bit == a FORWARD reach of the swapped program over Reverse(str) ---
     OBu.FBuildOracleCorrect(re, str);
     assert OBu.LidDir(crv, lid) == LAnc.Backward;
@@ -579,23 +583,35 @@ module LindenElkOracleSpec {
         <==> ORc.ReachesWrite(CP.compile_to_write(R.lazy_prefix(rrb), lid), rstr, 0, lid,
                               MIR.Mirror(cp, n));
 
+    assert {:split_here} true;
     if LOr.view_get_oracle(AI.FBuildOracle(crv, str), cp, lid) {
       var m := OD.ReachesWriteToMatches(rrb, lid, rstr, MIR.Mirror(cp, n));
+      assert {:split_here} true;
       // m is the span's START in the reversal; mirror it back
       var j := n - m;
+      assert {:split_here} true;
       MatchesReverseRE(rer, rcb, str, cp, j);       // Matches(rcb, str, cp, j)
       MatchesRemoveCapture(body, str, cp, j);        // <==> Matches(body, str, cp, j)
       assert OB.Matches(body, str, cp, j);
+      assert {:split_here} true;
       MatchesTransfer(rer, body, str, cp, j);
+      assert {:split_here} true;
       SD.SpanDualityForwardComplete(rer, T.Translate(body), str, cp, j, gm);
+      assert {:split_here} true;
     }
+    assert {:split_here} true;
     if SD.SuccActs(rer, [LS.Areg(T.Translate(body))], T.InputAt(str, cp), gm, WP.Forward) {
       var j := SD.SpanDualityForwardSound(rer, T.Translate(body), str, cp, gm);
+      assert {:split_here} true;
       MatchesTransfer(rer, body, str, cp, j);
+      assert {:split_here} true;
       MatchesRemoveCapture(body, str, cp, j);        // Matches(body) <==> Matches(rcb)
       MatchesReverseRE(rer, rcb, str, cp, j);
+      assert {:split_here} true;
       assert OB.Matches(rrb, rstr, n - j, MIR.Mirror(cp, n));
+      assert {:split_here} true;
       OB.MatchesToReachesWrite(rrb, lid, rstr, n - j, MIR.Mirror(cp, n));
+      assert {:split_here} true;
     }
   }
 }

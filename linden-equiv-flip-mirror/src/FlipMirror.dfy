@@ -893,6 +893,8 @@ module LindenElkFlipMirror {
   {
     var r := L.Sequence(L.LookaroundR(L.LookBehind, L.Group(0, L.Character(cd))),
                         L.Character(cd));
+    assert SD.GroupOkLB(L.Group(0, L.Character(cd)));
+    assert SD.GroupOkLB(L.LookaroundR(L.LookBehind, L.Group(0, L.Character(cd))));
     assert SD.GroupOkLB(r);
     assert GroupOkLBActs([LS.Areg(r)]);
     ComputeTrReverseF(rer, [LS.Areg(r)], inp, gm1, gm2);

@@ -351,6 +351,61 @@ module PikeEquiv {
     TR.TreeRepDeterm(rer, code, pc, inp, b, t1, t2);
   }
 
+  /** The forced-iteration arm of `GenerateActiveF`, in its own context: the tree is `GroupActionT(Reset(gidl), tc)` and the
+      VM's `ResetRegs` at `pc` spawns one successor at `pc + 1` with the reset map. */
+  lemma GenerateActiveForced(rer: RegExpRecord, acts: Actions, code: Code, pc: Label, inp: Input, b: LoopBool, t: Tree, gm: GroupMap,
+                             na: seq<(Tree, GroupMap)>, n: nat, greedy: bool, min: nat, delta: NoI, r1: Regex, pcmid: nat)
+    requires min > 0 && |acts| > 0 && acts[0] == Areg(Quantified(greedy, min, delta, r1))
+    requires PikeActions(acts)
+    requires n > 0 && ActionRep(acts[0], code, pc, pcmid) && TR.ActionsRepFuel(acts[1..], code, pcmid, n - 1)
+    requires BoolTree(rer, acts, inp, b, t)
+    requires TreeBfsStep(t, gm, Idx(inp)) == StepActive(na)
+    ensures exists threadactive :: EpsilonStep(rer, Thr(pc, gm, b), code, inp) == EpsActive(threadactive)
+                               && ListTreeThread(rer, code, inp, na, threadactive)
+  {
+    var cont := acts[1..];
+    var gidl := DefGroups(r1);
+    PikeActionsTail(acts);
+    assert acts == [acts[0]] + cont;
+    PikeActionsConsIff(acts[0], cont);
+    var quant1 := Quantified(greedy, min - 1, delta, r1);
+    assert NfaRep(Quantified(greedy, min, delta, r1), code, pc, pcmid);
+    var eb := TR.NfaRepForcedInv(greedy, min, delta, r1, code, pc, pcmid);
+    TR.BoolTreeForcedStep(rer, acts, greedy, min, delta, r1, inp, b, t);
+    assert NfaRep(quant1, code, eb, pcmid);
+    match t {
+      case GroupActionT(g, tc) =>
+        assert {:split_here} true;
+        var gmr := GMReset(gidl, gm);
+        FuelToActionsRepWrap(cont, code, pcmid, n - 1);
+        var lq := [Areg(quant1)] + cont;
+        assert ActionRep(Areg(quant1), code, eb, pcmid) && lq[0] == Areg(quant1) && lq[1..] == cont;
+        assert ActionsRep(lq, code, eb);
+        var ia := [Areg(r1)] + lq;
+        assert ActionRep(Areg(r1), code, pc + 1, eb) && ia[0] == Areg(r1) && ia[1..] == lq;
+        assert ActionsRep(ia, code, pc + 1);
+        assert ia == [Areg(r1), Areg(quant1)] + cont;
+        assert {:split_here} true;
+        TR.ActionsRepToFuel(ia, code, pc + 1);
+        var ni: nat :| TR.ActionsRepFuel(ia, code, pc + 1, ni);
+        TR.FuelToActionsRep(ia, code, pc + 1, ni);
+        assert TreeThread(rer, code, inp, (tc, gmr), Thr(pc + 1, gmr, b));   // tt_eq ia
+        assert {:split_here} true;
+        assert GMUpdate(Reset(gidl), Idx(inp), gm) == gmr;
+        assert [(tc, gmr)][1..] == [] && [Thr(pc + 1, gmr, b)][1..] == [];
+        assert ListTreeThread(rer, code, inp, [(tc, gmr)], [Thr(pc + 1, gmr, b)]);
+        assert {:split_here} true;
+        var ta := [Thr(pc + 1, gmr, b)];
+        assert EpsilonStep(rer, Thr(pc, gm, b), code, inp) == EpsActive(ta);
+        assert {:split_here} true;
+        assert na == [(tc, gmr)];
+        assert ListTreeThread(rer, code, inp, na, ta);
+      case _ =>
+        assert {:split_here} true;
+        assert false;
+    }
+  }
+
   // Fuel core of generate_active (tt_eq case): peel Epsilon/Sequence prefixes, then at the leading
   // atom construct the EpsActive step and the child tree_thread(s). Choice (Disjunction / star) builds
   // two children; the star's iter child is built via tt_begin ∘ tt_reset ∘ tt_eq.
@@ -369,10 +424,13 @@ module PikeEquiv {
     decreases ActionsRegexSize(acts), n
   {
     if |acts| == 0 {
+      assert {:split_here} true;
       assert t == Match;   // StepMatch ≠ StepActive ⇒ contradiction
     } else if exists pcstart: nat :: GetPc(code, pc) == Some(Jmp(pcstart)) && TR.ActionsRepFuel(acts, code, pcstart, n - 1) {
+      assert {:split_here} true;
       assert Stutters(pc, code);
     } else {
+      assert {:split_here} true;
       var cont := acts[1..];
       var pcmid: nat :| ActionRep(acts[0], code, pc, pcmid) && TR.ActionsRepFuel(cont, code, pcmid, n - 1);
       PikeActionsTail(acts);
@@ -380,7 +438,9 @@ module PikeEquiv {
       PikeActionsConsIff(acts[0], cont);
       match acts[0]
       case Acheck(strcheck) =>
+        assert {:split_here} true;
         if b == CanExit {
+          assert {:split_here} true;
           match t {
             case Progress(tc) =>
               FuelToActionsRepWrap(cont, code, pcmid, n - 1);
@@ -390,6 +450,7 @@ module PikeEquiv {
             case _ =>
           }
         } else {
+          assert {:split_here} true;
           assert t == Mismatch;
           assert GetPc(code, pc) == Some(EndLoop(pcmid));   // from ActionRep(Acheck, ..)
           assert na == [];
@@ -397,8 +458,10 @@ module PikeEquiv {
           assert EpsilonStep(rer, Thr(pc, gm, b), code, inp) == EpsActive([]);   // EndLoop + CannotExit ⇒ EpsDead
         }
       case Aclose(gid) =>
+        assert {:split_here} true;
         match t {
           case GroupActionT(g, tc) =>
+            assert {:split_here} true;
             var gmc := GMClose(Idx(inp), gid, gm);
             FuelToActionsRepWrap(cont, code, pc + 1, n - 1);
             assert TreeThread(rer, code, inp, (tc, gmc), Thr(pc + 1, gmc, b));   // tt_eq cont
@@ -408,11 +471,14 @@ module PikeEquiv {
           case _ =>
         }
       case Areg(r) =>
+        assert {:split_here} true;
         assert PikeRegex(r);
         match r
         case Epsilon =>
+          assert {:split_here} true;
           GenerateActiveF(rer, cont, code, pc, inp, b, t, gm, na, n - 1);
         case Character(cd) => {
+          assert {:split_here} true;
           match ReadChar(rer, cd, inp, Forward) {
             case None =>
               assert t == Mismatch;
@@ -425,8 +491,10 @@ module PikeEquiv {
           }
         }
         case AnchorR(a) => {
+          assert {:split_here} true;
           // NfaRep(AnchorR) ⇒ GetPc(pc) == CheckAnchor(a), pcmid == pc + 1
           if Semantics.AnchorSatisfied(rer, a, inp) {
+            assert {:split_here} true;
             match t {
               case AnchorPass(a2, tc) =>
                 FuelToActionsRepWrap(cont, code, pc + 1, n - 1);
@@ -436,6 +504,7 @@ module PikeEquiv {
               case _ =>
             }
           } else {
+            assert {:split_here} true;
             assert t == Mismatch;
             assert GetPc(code, pc) == Some(CheckAnchor(a));
             assert na == [];
@@ -444,6 +513,7 @@ module PikeEquiv {
           }
         }
         case Disjunction(r1, r2) => {
+          assert {:split_here} true;
           PikeActionsConsIff(Areg(r1), cont);
           PikeActionsConsIff(Areg(r2), cont);
           var e1: nat :| GetPc(code, pc) == Some(Fork(pc + 1, e1 + 1)) && NfaRep(r1, code, pc + 1, e1)
@@ -468,6 +538,7 @@ module PikeEquiv {
           }
         }
         case Sequence(r1, r2) => {
+          assert {:split_here} true;
           PikeActionsConsIff(Areg(r2), cont);
           PikeActionsConsIff(Areg(r1), [Areg(r2)] + cont);
           assert NfaRep(Sequence(r1, r2), code, pc, pcmid);
@@ -486,59 +557,15 @@ module PikeEquiv {
           GenerateActiveF(rer, sa, code, pc, inp, b, t, gm, na, nn);
         }
         case Quantified(greedy, min, delta, r1) => {
+          assert {:split_here} true;
           var gidl := DefGroups(r1);
           if min > 0 {
+            assert {:split_here} true;
             // FORCED iteration: the tree is GroupActionT(Reset(gidl), tc); the
             // VM's ResetRegs at pc spawns one successor at pc+1 with reset gm.
-            var quant1 := Quantified(greedy, min - 1, delta, r1);
-            var em: nat :| NfaRepMin(min, gidl, r1, code, pc, em)
-              && (match delta
-                  case Inf =>
-                    exists e1: nat ::
-                      GetPc(code, em) == Some(GreedyFork(greedy, em + 1, e1 + 1))
-                      && GetPc(code, em + 1) == Some(BeginLoop)
-                      && GetPc(code, em + 2) == Some(ResetRegs(gidl))
-                      && NfaRep(r1, code, em + 3, e1)
-                      && GetPc(code, e1) == Some(EndLoop(em))
-                      && pcmid == e1 + 1
-                  case NN(k) => NfaRepOpt(k, greedy, gidl, r1, code, em, pcmid));
-            var eb: nat :| GetPc(code, pc) == Some(ResetRegs(gidl))
-              && NfaRep(r1, code, pc + 1, eb)
-              && NfaRepMin(min - 1, gidl, r1, code, eb, em);
-            match delta {
-              case Inf =>
-                var e1: nat :| GetPc(code, em) == Some(GreedyFork(greedy, em + 1, e1 + 1))
-                  && GetPc(code, em + 1) == Some(BeginLoop)
-                  && GetPc(code, em + 2) == Some(ResetRegs(gidl))
-                  && NfaRep(r1, code, em + 3, e1)
-                  && GetPc(code, e1) == Some(EndLoop(em))
-                  && pcmid == e1 + 1;
-                NfaRepQuantIntroInf(greedy, min - 1, r1, code, eb, em, e1, pcmid);
-              case NN(k) =>
-                NfaRepQuantIntroNN(greedy, min - 1, k, r1, code, eb, em, pcmid);
-            }
-            assert NfaRep(quant1, code, eb, pcmid);
-            match t {
-              case GroupActionT(g, tc) =>
-                var gmr := GMReset(gidl, gm);
-                FuelToActionsRepWrap(cont, code, pcmid, n - 1);
-                var lq := [Areg(quant1)] + cont;
-                assert ActionRep(Areg(quant1), code, eb, pcmid) && lq[0] == Areg(quant1) && lq[1..] == cont;
-                assert ActionsRep(lq, code, eb);
-                var ia := [Areg(r1)] + lq;
-                assert ActionRep(Areg(r1), code, pc + 1, eb) && ia[0] == Areg(r1) && ia[1..] == lq;
-                assert ActionsRep(ia, code, pc + 1);
-                assert ia == [Areg(r1), Areg(quant1)] + cont;
-                TR.ActionsRepToFuel(ia, code, pc + 1);
-                var ni: nat :| TR.ActionsRepFuel(ia, code, pc + 1, ni);
-                TR.FuelToActionsRep(ia, code, pc + 1, ni);
-                assert TreeThread(rer, code, inp, (tc, gmr), Thr(pc + 1, gmr, b));   // tt_eq ia
-                assert GMUpdate(Reset(gidl), Idx(inp), gm) == gmr;
-                assert [(tc, gmr)][1..] == [] && [Thr(pc + 1, gmr, b)][1..] == [];
-                assert ListTreeThread(rer, code, inp, [(tc, gmr)], [Thr(pc + 1, gmr, b)]);
-              case _ =>
-            }
+            GenerateActiveForced(rer, acts, code, pc, inp, b, t, gm, na, n, greedy, min, delta, r1, pcmid);
           } else if delta == NN(0) {
+            assert {:split_here} true;
             // spent quantifier: no code (pcmid == pc); the tree is cont's tree
             var em: nat := NfaRepQuantInvNN(greedy, min, 0, r1, code, pc, pcmid);
             assert em == pc;
@@ -546,6 +573,7 @@ module PikeEquiv {
             assert ActionsRegexSize(cont) < ActionsRegexSize(acts);
             GenerateActiveF(rer, cont, code, pc, inp, b, t, gm, na, n - 1);
           } else if delta.NN? {
+            assert {:split_here} true;
             // bounded layer: fork (pc+1, pcmid); the iterate continuation is
             // the NN(k-1) quantifier at e1+1; skip exits to the common pcmid
             var k := delta.n;
@@ -603,6 +631,7 @@ module PikeEquiv {
               case _ =>
             }
           } else {
+            assert {:split_here} true;
           // the plain star: fast-path shape, original proof
           var quant := Quantified(greedy, 0, FS.NoiPred(delta), r1);
           var e1: nat :| GetPc(code, pc) == Some(GreedyFork(greedy, pc + 1, e1 + 1)) && GetPc(code, pc + 1) == Some(BeginLoop)
@@ -653,6 +682,7 @@ module PikeEquiv {
           }
         }
         case Group(gid, r1) => {
+          assert {:split_here} true;
           PikeActionsConsIff(Aclose(gid), cont);
           PikeActionsConsIff(Areg(r1), [Aclose(gid)] + cont);
           var e1: nat :| GetPc(code, pc) == Some(SetRegOpen(gid)) && NfaRep(r1, code, pc + 1, e1)

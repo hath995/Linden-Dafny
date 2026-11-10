@@ -507,6 +507,39 @@ module NFA {
     }
   }
 
+  // One-step unfoldings of the compiler, proved away from the callers' `start == |prev|` fact: with that fact in context
+  // z3 4.14.1 does not finish them.
+
+  /** `Compile` at a disjunction. */
+  lemma CompileDisjunctionStep(r1: Regex, r2: Regex, start: Label, c: Code, endl: Label)
+    requires Compile(Disjunction(r1, r2), start) == (c, endl)
+    ensures var c1 := Compile(r1, start + 1);
+            var c2 := Compile(r2, c1.1 + 1);
+            c == [Fork(start + 1, c1.1 + 1)] + c1.0 + [Jmp(c2.1)] + c2.0 && endl == c2.1
+  {
+  }
+
+  /** `RepeatMin` at a positive count. */
+  lemma RepeatMinStep(k: nat, gidl: seq<GroupId>, r: Regex, start: Label, c: Code, endl: Label)
+    requires k > 0
+    requires RepeatMin(k, gidl, r, start) == (c, endl)
+    ensures var c1 := Compile(r, start + 1);
+            var rest := RepeatMin(k - 1, gidl, r, c1.1);
+            c == [ResetRegs(gidl)] + c1.0 + rest.0 && endl == rest.1
+  {
+  }
+
+  /** `RepeatOpt` at a positive count. */
+  lemma RepeatOptStep(k: nat, greedy: bool, gidl: seq<GroupId>, r: Regex, start: Label, c: Code, endl: Label)
+    requires k > 0
+    requires RepeatOpt(k, greedy, gidl, r, start) == (c, endl)
+    ensures var c1 := Compile(r, start + 3);
+            var rest := RepeatOpt(k - 1, greedy, gidl, r, c1.1 + 1);
+            var hdr := [GreedyFork(greedy, start + 1, rest.1), BeginLoop, ResetRegs(gidl)];
+            c == hdr + c1.0 + [EndLoop(c1.1 + 1)] + rest.0 && endl == rest.1
+  {
+  }
+
   // Coq: compile_nfa_rep — the compiler adheres to the representation predicate.
   /** Compiler soundness: the code `Compile(r, start)` emits, once placed after any `prev` prefix,
       satisfies `NfaRep(r, ...)`. This is what lets `PikeVM` trust that running compiled bytecode
@@ -532,6 +565,7 @@ module NFA {
       var c1 := Compile(r1, start + 1);
       var c2 := Compile(r2, c1.1 + 1);
       var bc1, f1, bc2, f2 := c1.0, c1.1, c2.0, c2.1;
+      CompileDisjunctionStep(r1, r2, start, c, endl);
       assert c == [Fork(start + 1, f1 + 1)] + bc1 + [Jmp(f2)] + bc2 && endl == f2;
       FreshCorrect(r1, start + 1, bc1, f1);   // start + 1 + |bc1| == f1
       FreshCorrect(r2, f1 + 1, bc2, f2);
@@ -643,7 +677,9 @@ module NFA {
       var c1 := Compile(r, start + 1);
       var bc1, f1 := c1.0, c1.1;
       var (c2, f2) := RepeatMin(k - 1, gidl, r, f1);
+      RepeatMinStep(k, gidl, r, start, c, endl);
       assert c == [ResetRegs(gidl)] + bc1 + c2 && endl == f2;
+      assert {:split_here} true;
       FreshCorrect(r, start + 1, bc1, f1);
       FreshCorrectMin(k - 1, gidl, r, f1, c2, f2);
       var pre1 := prev + [ResetRegs(gidl)];

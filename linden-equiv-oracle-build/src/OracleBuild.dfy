@@ -1437,6 +1437,34 @@ module LindenElkOracleBuild {
       SwapAnchorsFlatten(a, CP.tl_flatten(b, tail));
   }
 
+  /** `compile` at a non-nullable plus, unfolded once in a small context. */
+  lemma CompilePlusStep(nul: R.nullability, qid: R.quantid, q: R.counted_quantifier, r1: R.regex, nextl: RB.Label, ctype: CP.comp_type)
+    requires ctype == CP.Progress && q.min > 0 && q.max == None && nul == R.NonNullable
+    ensures var m := CP.repeat_min(q.min - 1, qid, r1, nextl, ctype);
+            var b := CP.compile(r1, m.1 + 1, ctype);
+            var fork := if q.greedy then RB.Fork(m.1, b.1 + 1) else RB.Fork(b.1 + 1, m.1);
+            CP.compile(R.Re_quant(nul, qid, q, r1), nextl, ctype)
+              == (CP.chain([m.0, CP.Leaf([RB.SetQuantToClock(qid, false)]), b.0, CP.Leaf([fork])]), b.1 + 1)
+  {
+  }
+
+  /** `compile` at a quantifier in nulled-reconstruction mode, in the general branch. */
+  lemma CompileReconStep(nul: R.nullability, qid: R.quantid, q: R.counted_quantifier, r1: R.regex, nextl: RB.Label)
+    requires q.min != 0 && nul != R.NonNullable
+    requires !(q.max == None && nul == R.CINullable && q.greedy)
+    requires !(q.max == None && nul == R.CDNullable && q.greedy)
+    ensures var c := CP.compile(r1, nextl + 1, CP.ReconstructNulled);
+            CP.compile(R.Re_quant(nul, qid, q, r1), nextl, CP.ReconstructNulled)
+              == (CP.Concat(CP.Leaf([RB.SetQuantToClock(qid, false)]), c.0), c.1)
+  {
+  }
+
+  /** The postcondition of `CompileSwap`, named so each branch can discharge it inside its own assertion batch. */
+  ghost predicate CompileSwapPost(r: R.regex, nextl: RB.Label, ctype: CP.comp_type) {
+    CP.compile(SwapAnchorsRegex(r), nextl, ctype).1 == CP.compile(r, nextl, ctype).1
+    && CP.compile(SwapAnchorsRegex(r), nextl, ctype).0 == SwapAnchorsTreelist(CP.compile(r, nextl, ctype).0)
+  }
+
   /** THE COMMUTATION, at the `compile` level: compiling the anchor-swapped
       regex yields the anchor-swapped treelist and the SAME next label. The
       companions `RepeatMinSwap`/`RepeatOptionalSwap` cover the mutually
@@ -1447,12 +1475,23 @@ module LindenElkOracleBuild {
          == SwapAnchorsTreelist(CP.compile(r, nextl, ctype).0)
     decreases CP.rsize(r), 0
   {
+    hide CP.repeat_min;        // only the induction hypotheses about these two are used
+    hide CP.repeat_optional;
     SwapAnchorsRsize(r);
     match r
     case Re_empty =>
+      assert {:split_here} true;
+      assert SwapAnchorsRegex(r) == r;
+      assert CompileSwapPost(r, nextl, ctype);
     case Re_character(_) =>
+      assert {:split_here} true;
+      assert SwapAnchorsRegex(r) == r;
+      assert CompileSwapPost(r, nextl, ctype);
     case Re_anchor(_) =>
+      assert {:split_here} true;
+      assert CompileSwapPost(r, nextl, ctype);
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;
       var (l1, f1) := CP.compile(r1, nextl + 1, ctype);
       var (l2, f2) := CP.compile(r2, f1 + 1, ctype);
       CompileSwap(r1, nextl + 1, ctype);
@@ -1460,21 +1499,31 @@ module LindenElkOracleBuild {
       SwapControlLeaf([RB.Fork(nextl + 1, f1 + 1)]);
       SwapControlLeaf([RB.Jmp(f2)]);
       SwapChain4(CP.Leaf([RB.Fork(nextl + 1, f1 + 1)]), l1, CP.Leaf([RB.Jmp(f2)]), l2);
+      assert CompileSwapPost(r, nextl, ctype);
     case Re_con(r1, r2) =>
+      assert {:split_here} true;
       CompileSwap(r1, nextl, ctype);
       var f1 := CP.compile(r1, nextl, ctype).1;
       CompileSwap(r2, f1, ctype);
+      assert CompileSwapPost(r, nextl, ctype);
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;
       var (l1, f1) := CP.compile(r1, nextl + 1, ctype);
       CompileSwap(r1, nextl + 1, ctype);
       SwapControlLeaf([RB.SetRegisterToCP(CP.start_reg(cid))]);
       SwapControlLeaf([RB.SetRegisterToCP(CP.end_reg(cid))]);
       SwapChain3(CP.Leaf([RB.SetRegisterToCP(CP.start_reg(cid))]), l1,
                  CP.Leaf([RB.SetRegisterToCP(CP.end_reg(cid))]));
+      assert CompileSwapPost(r, nextl, ctype);
     case Re_lookaround(lid, lk, r1) =>
+      assert {:split_here} true;
+      assert CompileSwapPost(r, nextl, ctype);
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;
       if ctype == CP.Progress {
+        assert {:split_here} true;
         if q.min > 0 && q.max == None && nul == R.NonNullable {
+          assert {:split_here} true;
           RepeatMinSwap(q.min - 1, qid, r1, nextl, ctype);
           var (min_code, min_f) := CP.repeat_min(q.min - 1, qid, r1, nextl, ctype);
           var (body_code, body_f) := CP.compile(r1, min_f + 1, ctype);
@@ -1484,7 +1533,14 @@ module LindenElkOracleBuild {
           SwapControlLeaf([fork]);
           SwapChain4(min_code, CP.Leaf([RB.SetQuantToClock(qid, false)]), body_code,
                      CP.Leaf([fork]));
+          CompilePlusStep(nul, qid, q, r1, nextl, ctype);
+          CompilePlusStep(nul, qid, q, SwapAnchorsRegex(r1), nextl, ctype);
+          assert SwapAnchorsRegex(r) == R.Re_quant(nul, qid, q, SwapAnchorsRegex(r1));
+          assert {:split_here} true;
+          hide CP.compile;
+          assert CompileSwapPost(r, nextl, ctype);
         } else if q.min > 0 && q.max == None && nul == R.CINullable && q.greedy {
+          assert {:split_here} true;
           RepeatMinSwap(q.min - 1, qid, r1, nextl, ctype);
           var (min_code, min_f) := CP.repeat_min(q.min - 1, qid, r1, nextl, ctype);
           var (body_code, body_f) := CP.compile(r1, min_f + 3, ctype);
@@ -1495,7 +1551,9 @@ module LindenElkOracleBuild {
                      CP.Leaf([RB.Fork(min_f + 1, body_f + 2), RB.SetQuantToClock(qid, false), RB.BeginLoop]),
                      body_code,
                      CP.Leaf([RB.EndLoop, RB.Fork(min_f + 1, body_f + 3), RB.SetQuantToClock(qid, true)]));
+          assert CompileSwapPost(r, nextl, ctype);
         } else if q.min > 0 && q.max == None && nul == R.CDNullable && q.greedy {
+          assert {:split_here} true;
           RepeatMinSwap(q.min - 1, qid, r1, nextl, ctype);
           var (min_code, min_f) := CP.repeat_min(q.min - 1, qid, r1, nextl, ctype);
           var (body_code, body_f) := CP.compile(r1, min_f + 3, ctype);
@@ -1506,7 +1564,9 @@ module LindenElkOracleBuild {
                      CP.Leaf([RB.Fork(min_f + 1, body_f + 2), RB.SetQuantToClock(qid, false), RB.BeginLoop]),
                      body_code,
                      CP.Leaf([RB.EndLoop, RB.Fork(min_f + 1, body_f + 4), RB.CheckNullable(qid), RB.SetQuantToClock(qid, true)]));
+          assert CompileSwapPost(r, nextl, ctype);
         } else {
+          assert {:split_here} true;
           RepeatMinSwap(q.min, qid, r1, nextl, ctype);
           var (min_code, min_f) := CP.repeat_min(q.min, qid, r1, nextl, ctype);
           match q.max
@@ -1518,16 +1578,43 @@ module LindenElkOracleBuild {
             SwapControlLeaf([RB.EndLoop, RB.Jmp(min_f)]);
             SwapChain4(min_code, CP.Leaf([fork, RB.SetQuantToClock(qid, false), RB.BeginLoop]),
                        iter_code, CP.Leaf([RB.EndLoop, RB.Jmp(min_f)]));
+            assert CompileSwapPost(r, nextl, ctype);
           case Some(mx) =>
             RepeatOptionalSwap(mx - q.min, qid, r1, min_f, ctype, q.greedy);
+            assert CompileSwapPost(r, nextl, ctype);
         }
       } else {
+        assert {:split_here} true;
         if q.min == 0 {
+          assert {:split_here} true;
+          assert CompileSwapPost(r, nextl, ctype);
         } else if nul == R.NonNullable {
+          assert {:split_here} true;
+          assert CompileSwapPost(r, nextl, ctype);
         } else if q.max == None && nul == R.CINullable && q.greedy {
+          assert {:split_here} true;
+          assert CompileSwapPost(r, nextl, ctype);
         } else if q.max == None && nul == R.CDNullable && q.greedy {
+          assert {:split_here} true;
+          assert CompileSwapPost(r, nextl, ctype);
         } else {
+          assert {:split_here} true;
           CompileSwap(r1, nextl + 1, CP.ReconstructNulled);
+          SwapControlLeaf([RB.SetQuantToClock(qid, false)]);
+          assert ctype == CP.ReconstructNulled;
+          CompileReconStep(nul, qid, q, r1, nextl);
+          CompileReconStep(nul, qid, q, SwapAnchorsRegex(r1), nextl);
+          assert SwapAnchorsRegex(r) == R.Re_quant(nul, qid, q, SwapAnchorsRegex(r1));
+          var c := CP.compile(r1, nextl + 1, CP.ReconstructNulled);
+          var cs := CP.compile(SwapAnchorsRegex(r1), nextl + 1, CP.ReconstructNulled);
+          var sq := CP.Leaf([RB.SetQuantToClock(qid, false)]);
+          assert {:split_here} true;
+          assert cs.1 == c.1 && cs.0 == SwapAnchorsTreelist(c.0);
+          assert SwapAnchorsTreelist(sq) == sq;
+          assert SwapAnchorsTreelist(CP.Concat(sq, c.0)) == CP.Concat(sq, cs.0);
+          assert CP.compile(r, nextl, ctype) == (CP.Concat(sq, c.0), c.1);
+          assert CP.compile(SwapAnchorsRegex(r), nextl, ctype) == (CP.Concat(sq, cs.0), cs.1);
+          assert CompileSwapPost(r, nextl, ctype);
         }
       }
   }

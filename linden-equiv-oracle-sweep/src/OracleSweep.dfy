@@ -281,6 +281,37 @@ module LindenElkOracleSweep {
     ensures AgreeAbove(a, b, k2)
   {}
 
+  /** One `FAdvanceEpsilon` step at an anchor assertion, unfolded in a small context. */
+  lemma AdvanceAnchorStep(c: RB.code, s: AI.VmState, ov: LOr.OracleView, dir: LAnc.direction)
+    requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
+    requires |s.active| > 0 && !AI.bpc_mem(s.processed, s.active[0].pc, s.active[0].exit_allowed)
+    requires RB.get_instr(c, s.active[0].pc).AnchorAssertion?
+    ensures var t := s.active[0];
+            var a := RB.get_instr(c, t.pc).aa;
+            var s1 := s.(clock := s.clock + 1, processed := AI.bpc_add(s.processed, t.pc, t.exit_allowed));
+            AI.FAdvanceEpsilon(c, s, ov, dir)
+              == if LAnc.is_satisfied(a, s1.context, dir)
+                 then AI.FAdvanceEpsilon(c, s1.(active := [t.(pc := t.pc + 1)] + s.active[1..]), ov, dir)
+                 else AI.FAdvanceEpsilon(c, s1.(active := s.active[1..]), ov, dir)
+  {
+    var t := s.active[0];
+    AI.UnprocessedAdd(s.processed, t.pc, t.exit_allowed);
+  }
+
+  /** The postcondition of `AdvanceOvIndep`, named so each branch can discharge it inside its own assertion batch. A check
+      left at the lemma's shared exit lands in the first batch with every branch at once, and that batch exhausts memory. */
+  ghost predicate AdvanceOvIndepPost(c: RB.code, s1: AI.VmState, s2: AI.VmState, ov1: LOr.OracleView, ov2: LOr.OracleView,
+                                     dir: LAnc.direction)
+    requires |s1.processed.true_set| == RB.size(c) && |s1.processed.false_set| == RB.size(c)
+    requires SameModCdn(s1, s2)
+  {
+    var (s1', ov1') := AI.FAdvanceEpsilon(c, s1, ov1, dir);
+    var (s2', ov2') := AI.FAdvanceEpsilon(c, s2, ov2, dir);
+    SameModCdn(s1', s2') && s1'.cdn == s1.cdn && s2'.cdn == s2.cdn
+    && SameShape(ov1, ov1') && SameShape(ov2, ov2')
+    && (forall cp2: int, l2: int :: CellAgree(ov1, ov2, cp2, l2) ==> CellAgree(ov1', ov2', cp2, l2))
+  }
+
   /** With no oracle reads and no `CheckNullable`, one epsilon closure evolves
       the threads identically against any two oracle views (of equal shape),
       making the same write calls — so cellwise agreement of the views is
@@ -298,12 +329,24 @@ module LindenElkOracleSweep {
       && (forall cp2: int, l2: int :: CellAgree(ov1, ov2, cp2, l2) ==> CellAgree(ov1', ov2', cp2, l2))
     decreases AI.unprocessed(s1.processed), |s1.active|
   {
-    if |s1.active| == 0 { return; }
+    if |s1.active| == 0 {
+      assert {:split_here} true;
+      assert AdvanceOvIndepPost(c, s1, s2, ov1, ov2, dir);
+      return;
+    }
     var t := s1.active[0];
     var ac := s1.active[1..];
     var i := RB.get_instr(c, t.pc);
     if AI.bpc_mem(s1.processed, t.pc, t.exit_allowed) {
+      assert {:split_here} true;
       AdvanceOvIndep(c, s1.(active := ac), s2.(active := ac), ov1, ov2, dir);
+      assert {:split_here} true;
+      assert AI.FAdvanceEpsilon(c, s1, ov1, dir) == AI.FAdvanceEpsilon(c, s1.(active := ac), ov1, dir);
+      assert {:split_here} true;
+      assert AI.FAdvanceEpsilon(c, s2, ov2, dir) == AI.FAdvanceEpsilon(c, s2.(active := ac), ov2, dir);
+      assert {:split_here} true;
+      hide AI.FAdvanceEpsilon;
+      assert AdvanceOvIndepPost(c, s1, s2, ov1, ov2, dir);
       return;
     }
     var b0 := s1.processed;
@@ -312,58 +355,164 @@ module LindenElkOracleSweep {
     AI.UnprocessedAdd(b0, t.pc, t.exit_allowed);
     match i
     case Consume(ce) =>
+      assert {:split_here} true;
       var (nb, ni) := AI.add_thread(t, ce, s1a.blocked, s1a.isblocked);
       AdvanceOvIndep(c, s1a.(blocked := nb, isblocked := ni, active := ac),
                      s2a.(blocked := nb, isblocked := ni, active := ac), ov1, ov2, dir);
+      assert {:split_here} true;
+      assert AI.FAdvanceEpsilon(c, s1, ov1, dir) == AI.FAdvanceEpsilon(c, s1a.(blocked := nb, isblocked := ni, active := ac), ov1, dir);
+      assert {:split_here} true;
+      assert AI.FAdvanceEpsilon(c, s2, ov2, dir) == AI.FAdvanceEpsilon(c, s2a.(blocked := nb, isblocked := ni, active := ac), ov2, dir);
+      assert {:split_here} true;
+      hide AI.FAdvanceEpsilon;
+      assert AdvanceOvIndepPost(c, s1, s2, ov1, ov2, dir);
     case Accept =>
+      assert {:split_here} true;
+      assert AdvanceOvIndepPost(c, s1, s2, ov1, ov2, dir);
     case Jmp(x) =>
+      assert {:split_here} true;
       AdvanceOvIndep(c, s1a.(active := [t.(pc := x)] + ac), s2a.(active := [t.(pc := x)] + ac), ov1, ov2, dir);
+      assert {:split_here} true;
+      assert AI.FAdvanceEpsilon(c, s1, ov1, dir) == AI.FAdvanceEpsilon(c, s1a.(active := [t.(pc := x)] + ac), ov1, dir);
+      assert {:split_here} true;
+      assert AI.FAdvanceEpsilon(c, s2, ov2, dir) == AI.FAdvanceEpsilon(c, s2a.(active := [t.(pc := x)] + ac), ov2, dir);
+      assert {:split_here} true;
+      hide AI.FAdvanceEpsilon;
+      assert AdvanceOvIndepPost(c, s1, s2, ov1, ov2, dir);
     case Fork(x, y) =>
+      assert {:split_here} true;
       var newt := AI.Thread(x, t.capture_regs, t.look_regs, t.quant_regs, t.exit_allowed);
       AdvanceOvIndep(c, s1a.(active := [newt, t.(pc := y)] + ac),
                      s2a.(active := [newt, t.(pc := y)] + ac), ov1, ov2, dir);
+      assert {:split_here} true;
+      assert AI.FAdvanceEpsilon(c, s1, ov1, dir) == AI.FAdvanceEpsilon(c, s1a.(active := [newt, t.(pc := y)] + ac), ov1, dir);
+      assert {:split_here} true;
+      assert AI.FAdvanceEpsilon(c, s2, ov2, dir) == AI.FAdvanceEpsilon(c, s2a.(active := [newt, t.(pc := y)] + ac), ov2, dir);
+      assert {:split_here} true;
+      hide AI.FAdvanceEpsilon;
+      assert AdvanceOvIndepPost(c, s1, s2, ov1, ov2, dir);
     case SetRegisterToCP(reg) =>
+      assert {:split_here} true;
       var t' := t.(capture_regs := AReg.set_reg(t.capture_regs, reg, Some(s1a.cp), s1a.clock), pc := t.pc + 1);
       AdvanceOvIndep(c, s1a.(active := [t'] + ac), s2a.(active := [t'] + ac), ov1, ov2, dir);
+      assert {:split_here} true;
+      assert AI.FAdvanceEpsilon(c, s1, ov1, dir) == AI.FAdvanceEpsilon(c, s1a.(active := [t'] + ac), ov1, dir);
+      assert {:split_here} true;
+      assert AI.FAdvanceEpsilon(c, s2, ov2, dir) == AI.FAdvanceEpsilon(c, s2a.(active := [t'] + ac), ov2, dir);
+      assert {:split_here} true;
+      hide AI.FAdvanceEpsilon;
+      assert AdvanceOvIndepPost(c, s1, s2, ov1, ov2, dir);
     case SetQuantToClock(q, b) =>
+      assert {:split_here} true;
       var ocp := if b then Some(s1a.cp) else None;
       var t' := t.(quant_regs := AReg.set_reg(t.quant_regs, q, ocp, s1a.clock), pc := t.pc + 1);
       AdvanceOvIndep(c, s1a.(active := [t'] + ac), s2a.(active := [t'] + ac), ov1, ov2, dir);
+      assert {:split_here} true;
+      assert AI.FAdvanceEpsilon(c, s1, ov1, dir) == AI.FAdvanceEpsilon(c, s1a.(active := [t'] + ac), ov1, dir);
+      assert {:split_here} true;
+      assert AI.FAdvanceEpsilon(c, s2, ov2, dir) == AI.FAdvanceEpsilon(c, s2a.(active := [t'] + ac), ov2, dir);
+      assert {:split_here} true;
+      hide AI.FAdvanceEpsilon;
+      assert AdvanceOvIndepPost(c, s1, s2, ov1, ov2, dir);
     case CheckOracle(l) =>
+      assert {:split_here} true;
       assert 0 <= t.pc < |c| && c[t.pc].CheckOracle?;
       assert false;
     case NegCheckOracle(l) =>
+      assert {:split_here} true;
       assert 0 <= t.pc < |c| && c[t.pc].NegCheckOracle?;
       assert false;
     case WriteOracle(l) =>
+      assert {:split_here} true;
       ViewSetFacts(ov1, s1a.cp, l);
       ViewSetFacts(ov2, s2a.cp, l);
       // in-range tests at the written cell agree by SameShape
       assert 0 <= s1a.cp < |ov1| ==> |ov1[s1a.cp]| == |ov2[s1a.cp]|;
       AdvanceOvIndep(c, s1a.(active := ac), s2a.(active := ac),
                      LOr.view_set_oracle(ov1, s1a.cp, l), LOr.view_set_oracle(ov2, s2a.cp, l), dir);
+      assert {:split_here} true;
+      assert AI.FAdvanceEpsilon(c, s1, ov1, dir) == AI.FAdvanceEpsilon(c, s1a.(active := ac), LOr.view_set_oracle(ov1, s1a.cp, l), dir);
+      assert {:split_here} true;
+      assert AI.FAdvanceEpsilon(c, s2, ov2, dir) == AI.FAdvanceEpsilon(c, s2a.(active := ac), LOr.view_set_oracle(ov2, s2a.cp, l), dir);
+      assert {:split_here} true;
+      hide AI.FAdvanceEpsilon;
+      assert AdvanceOvIndepPost(c, s1, s2, ov1, ov2, dir);
     case BeginLoop =>
+      assert {:split_here} true;
       AdvanceOvIndep(c, s1a.(active := [t.(exit_allowed := false, pc := t.pc + 1)] + ac),
                      s2a.(active := [t.(exit_allowed := false, pc := t.pc + 1)] + ac), ov1, ov2, dir);
+      assert {:split_here} true;
+      assert AI.FAdvanceEpsilon(c, s1, ov1, dir) == AI.FAdvanceEpsilon(c, s1a.(active := [t.(exit_allowed := false, pc := t.pc + 1)] + ac), ov1, dir);
+      assert {:split_here} true;
+      assert AI.FAdvanceEpsilon(c, s2, ov2, dir) == AI.FAdvanceEpsilon(c, s2a.(active := [t.(exit_allowed := false, pc := t.pc + 1)] + ac), ov2, dir);
+      assert {:split_here} true;
+      hide AI.FAdvanceEpsilon;
+      assert AdvanceOvIndepPost(c, s1, s2, ov1, ov2, dir);
     case EndLoop =>
+      assert {:split_here} true;
       if t.exit_allowed {
+        assert {:split_here} true;
         AdvanceOvIndep(c, s1a.(active := [t.(pc := t.pc + 1)] + ac),
                        s2a.(active := [t.(pc := t.pc + 1)] + ac), ov1, ov2, dir);
+        assert {:split_here} true;
+        assert AI.FAdvanceEpsilon(c, s1, ov1, dir) == AI.FAdvanceEpsilon(c, s1a.(active := [t.(pc := t.pc + 1)] + ac), ov1, dir);
+        assert {:split_here} true;
+        assert AI.FAdvanceEpsilon(c, s2, ov2, dir) == AI.FAdvanceEpsilon(c, s2a.(active := [t.(pc := t.pc + 1)] + ac), ov2, dir);
+        assert {:split_here} true;
+        hide AI.FAdvanceEpsilon;
+        assert AdvanceOvIndepPost(c, s1, s2, ov1, ov2, dir);
       } else {
+        assert {:split_here} true;
         AdvanceOvIndep(c, s1a.(active := ac), s2a.(active := ac), ov1, ov2, dir);
+        assert {:split_here} true;
+        assert AI.FAdvanceEpsilon(c, s1, ov1, dir) == AI.FAdvanceEpsilon(c, s1a.(active := ac), ov1, dir);
+        assert {:split_here} true;
+        assert AI.FAdvanceEpsilon(c, s2, ov2, dir) == AI.FAdvanceEpsilon(c, s2a.(active := ac), ov2, dir);
+        assert {:split_here} true;
+        hide AI.FAdvanceEpsilon;
+        assert AdvanceOvIndepPost(c, s1, s2, ov1, ov2, dir);
       }
     case CheckNullable(qid) =>
+      assert {:split_here} true;
       assert 0 <= t.pc < |c| && c[t.pc].CheckNullable?;
       assert false;
     case AnchorAssertion(a) =>
+      assert {:split_here} true;
+      hide LAnc.is_satisfied;   // only the condition's identity across the two runs matters
+      AdvanceAnchorStep(c, s1, ov1, dir);
+      AdvanceAnchorStep(c, s2, ov2, dir);
       if LAnc.is_satisfied(a, s1a.context, dir) {
+        assert {:split_here} true;
         AdvanceOvIndep(c, s1a.(active := [t.(pc := t.pc + 1)] + ac),
                        s2a.(active := [t.(pc := t.pc + 1)] + ac), ov1, ov2, dir);
+        assert {:split_here} true;
+        assert AI.FAdvanceEpsilon(c, s1, ov1, dir) == AI.FAdvanceEpsilon(c, s1a.(active := [t.(pc := t.pc + 1)] + ac), ov1, dir);
+        assert {:split_here} true;
+        assert AI.FAdvanceEpsilon(c, s2, ov2, dir) == AI.FAdvanceEpsilon(c, s2a.(active := [t.(pc := t.pc + 1)] + ac), ov2, dir);
+        assert {:split_here} true;
+        hide AI.FAdvanceEpsilon;
+        assert AdvanceOvIndepPost(c, s1, s2, ov1, ov2, dir);
       } else {
+        assert {:split_here} true;
         AdvanceOvIndep(c, s1a.(active := ac), s2a.(active := ac), ov1, ov2, dir);
+        assert {:split_here} true;
+        assert AI.FAdvanceEpsilon(c, s1, ov1, dir) == AI.FAdvanceEpsilon(c, s1a.(active := ac), ov1, dir);
+        assert {:split_here} true;
+        assert AI.FAdvanceEpsilon(c, s2, ov2, dir) == AI.FAdvanceEpsilon(c, s2a.(active := ac), ov2, dir);
+        assert {:split_here} true;
+        hide AI.FAdvanceEpsilon;
+        assert AdvanceOvIndepPost(c, s1, s2, ov1, ov2, dir);
       }
     case Fail =>
+      assert {:split_here} true;
       AdvanceOvIndep(c, s1a.(active := ac), s2a.(active := ac), ov1, ov2, dir);
+      assert {:split_here} true;
+      assert AI.FAdvanceEpsilon(c, s1, ov1, dir) == AI.FAdvanceEpsilon(c, s1a.(active := ac), ov1, dir);
+      assert {:split_here} true;
+      assert AI.FAdvanceEpsilon(c, s2, ov2, dir) == AI.FAdvanceEpsilon(c, s2a.(active := ac), ov2, dir);
+      assert {:split_here} true;
+      hide AI.FAdvanceEpsilon;
+      assert AdvanceOvIndepPost(c, s1, s2, ov1, ov2, dir);
   }
 
   /** With no oracle reads and no `CheckNullable`, a whole build run returns
@@ -439,11 +588,15 @@ module LindenElkOracleSweep {
       && AgreeAbove(ov1', ov2', k)
     decreases AI.unprocessed(s1.processed), |s1.active|
   {
-    if |s1.active| == 0 { return; }
+    if |s1.active| == 0 {
+      assert {:split_here} true;
+      return;
+    }
     var t := s1.active[0];
     var ac := s1.active[1..];
     var i := RB.get_instr(c, t.pc);
     if AI.bpc_mem(s1.processed, t.pc, t.exit_allowed) {
+      assert {:split_here} true;
       AdvanceOvIndepAbove(c, k, s1.(active := ac), s2.(active := ac), ov1, ov2, dir);
       return;
     }
@@ -453,44 +606,57 @@ module LindenElkOracleSweep {
     AI.UnprocessedAdd(b0, t.pc, t.exit_allowed);
     match i
     case Consume(ce) =>
+      assert {:split_here} true;
       var (nb, ni) := AI.add_thread(t, ce, s1a.blocked, s1a.isblocked);
       AdvanceOvIndepAbove(c, k, s1a.(blocked := nb, isblocked := ni, active := ac),
                           s2a.(blocked := nb, isblocked := ni, active := ac), ov1, ov2, dir);
     case Accept =>
+      assert {:split_here} true;
     case Jmp(x) =>
+      assert {:split_here} true;
       AdvanceOvIndepAbove(c, k, s1a.(active := [t.(pc := x)] + ac), s2a.(active := [t.(pc := x)] + ac), ov1, ov2, dir);
     case Fork(x, y) =>
+      assert {:split_here} true;
       var newt := AI.Thread(x, t.capture_regs, t.look_regs, t.quant_regs, t.exit_allowed);
       AdvanceOvIndepAbove(c, k, s1a.(active := [newt, t.(pc := y)] + ac),
                           s2a.(active := [newt, t.(pc := y)] + ac), ov1, ov2, dir);
     case SetRegisterToCP(reg) =>
+      assert {:split_here} true;
       var t' := t.(capture_regs := AReg.set_reg(t.capture_regs, reg, Some(s1a.cp), s1a.clock), pc := t.pc + 1);
       AdvanceOvIndepAbove(c, k, s1a.(active := [t'] + ac), s2a.(active := [t'] + ac), ov1, ov2, dir);
     case SetQuantToClock(q, b) =>
+      assert {:split_here} true;
       var ocp := if b then Some(s1a.cp) else None;
       var t' := t.(quant_regs := AReg.set_reg(t.quant_regs, q, ocp, s1a.clock), pc := t.pc + 1);
       AdvanceOvIndepAbove(c, k, s1a.(active := [t'] + ac), s2a.(active := [t'] + ac), ov1, ov2, dir);
     case CheckOracle(l) =>
+      assert {:split_here} true;
       // in-range gate (out-of-range reads Fail); column l > k, so both views agree here
       assert 0 <= t.pc < |c| && c[t.pc].CheckOracle? && c[t.pc].col == l;
       GateReadAgrees(c, k, ov1, ov2, s1a.cp, t.pc);
       // GateReadAgrees + SameModCdn (s1a.cp == s2a.cp) => both runs take the same branch
       if LOr.view_get_oracle(ov1, s1a.cp, l) {
+        assert {:split_here} true;
         var t' := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(s1a.cp), s1a.clock));
         AdvanceOvIndepAbove(c, k, s1a.(active := [t'] + ac), s2a.(active := [t'] + ac), ov1, ov2, dir);
       } else {
+        assert {:split_here} true;
         AdvanceOvIndepAbove(c, k, s1a.(active := ac), s2a.(active := ac), ov1, ov2, dir);
       }
     case NegCheckOracle(l) =>
+      assert {:split_here} true;
       assert 0 <= t.pc < |c| && c[t.pc].NegCheckOracle? && c[t.pc].ncl == l;
       GateReadAgrees(c, k, ov1, ov2, s1a.cp, t.pc);
       if LOr.view_get_oracle(ov1, s1a.cp, l) {
+        assert {:split_here} true;
         AdvanceOvIndepAbove(c, k, s1a.(active := ac), s2a.(active := ac), ov1, ov2, dir);
       } else {
+        assert {:split_here} true;
         AdvanceOvIndepAbove(c, k, s1a.(active := [t.(pc := t.pc + 1)] + ac),
                             s2a.(active := [t.(pc := t.pc + 1)] + ac), ov1, ov2, dir);
       }
     case WriteOracle(l) =>
+      assert {:split_here} true;
       // in-range write, so l == k by WritesOnlyLid — column k is not > k, so the
       // write leaves all columns > k unchanged, preserving AgreeAbove.
       assert 0 <= t.pc < |c| && c[t.pc].WriteOracle? && c[t.pc].wol == l;
@@ -508,26 +674,35 @@ module LindenElkOracleSweep {
       AdvanceOvIndepAbove(c, k, s1a.(active := ac), s2a.(active := ac),
                           LOr.view_set_oracle(ov1, s1a.cp, l), LOr.view_set_oracle(ov2, s2a.cp, l), dir);
     case BeginLoop =>
+      assert {:split_here} true;
       AdvanceOvIndepAbove(c, k, s1a.(active := [t.(exit_allowed := false, pc := t.pc + 1)] + ac),
                           s2a.(active := [t.(exit_allowed := false, pc := t.pc + 1)] + ac), ov1, ov2, dir);
     case EndLoop =>
+      assert {:split_here} true;
       if t.exit_allowed {
+        assert {:split_here} true;
         AdvanceOvIndepAbove(c, k, s1a.(active := [t.(pc := t.pc + 1)] + ac),
                             s2a.(active := [t.(pc := t.pc + 1)] + ac), ov1, ov2, dir);
       } else {
+        assert {:split_here} true;
         AdvanceOvIndepAbove(c, k, s1a.(active := ac), s2a.(active := ac), ov1, ov2, dir);
       }
     case CheckNullable(qid) =>
+      assert {:split_here} true;
       assert 0 <= t.pc < |c| && c[t.pc].CheckNullable?;
       assert false;
     case AnchorAssertion(a) =>
+      assert {:split_here} true;
       if LAnc.is_satisfied(a, s1a.context, dir) {
+        assert {:split_here} true;
         AdvanceOvIndepAbove(c, k, s1a.(active := [t.(pc := t.pc + 1)] + ac),
                             s2a.(active := [t.(pc := t.pc + 1)] + ac), ov1, ov2, dir);
       } else {
+        assert {:split_here} true;
         AdvanceOvIndepAbove(c, k, s1a.(active := ac), s2a.(active := ac), ov1, ov2, dir);
       }
     case Fail =>
+      assert {:split_here} true;
       AdvanceOvIndepAbove(c, k, s1a.(active := ac), s2a.(active := ac), ov1, ov2, dir);
   }
 
