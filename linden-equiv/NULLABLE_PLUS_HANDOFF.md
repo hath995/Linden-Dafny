@@ -1758,8 +1758,11 @@ unchanged. `nfa-rep-re` now takes 448 s and 5.8 GB, so it no longer needs splitt
 ### 2026-11-10 — **§2.2 step B: lookbehinds inside negative lookbehind bodies** (branch `neg-look-nest`)
 
 `(?<!a(?<=b))` is supported. `(?<!a(?=a))` stays out, the same restriction a positive lookbehind has. What changed is in
-`SUPPORTED_FRAGMENT.md` §2.2. All 19 changed packages verify in dependency order. The `lem pack` gate result is recorded
-separately.
+`SUPPORTED_FRAGMENT.md` §2.2. All 19 changed packages verify in dependency order.
+
+**Gate green on `f3746ba`:** `workspace packed: 69 members, 3443 obligations verified`, PACK rc=0, 4h 24m 51s at one z3
+worker. 40 members rebuilt and 29 came from cache. Peak 20,467 MiB in `nest-inv`, under the watchdog's 22 GiB kill limit
+and the 24 GiB slice. The slowest member is `lift-sim-main` (53m 30s), then `nest-inv` (37m 32s).
 
 **Lessons from this rung.**
 * Dropping a hypothesis can make a batch run away. `FreshBodyMatchGmOuterLBNested` hit the 900 s limit, and two batches

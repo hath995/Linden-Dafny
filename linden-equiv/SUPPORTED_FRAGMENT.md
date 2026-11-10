@@ -1,9 +1,10 @@
 # The verified fragment — what `Match` is guaranteed to get right
 
-> Verification status (2026-08-30): the entire equivalence — `linden.equiv` and its 60 dependency packages —
-> verifies under `lem pack` (61/61, 59 min at `--jobs 3`, no `{:isolate_assertions}`), on `main` (`a1044d1`).
+> Verification status (2026-11-10): the entire equivalence — `linden.equiv` and its 68 dependency packages —
+> verifies under `lem pack` with `lem` 0.1.23 and z3 4.14.1 (69/69, one z3 worker), through §2.2 step B, on branch
+> `neg-look-nest` (`f3746ba`). `main` is at `f746ba0` and does not have step A or step B yet.
 
-Status 2026-08-28 (post whole-file sweep), branch `l4-nesting`. Entry point: `ApiMatch.MatchCorrect(pattern, str)`:
+Entry point: `ApiMatch.MatchCorrect(pattern, str)`:
 
 ```dafny
 lemma MatchCorrect(pattern: R.raw_regex, str: string)
