@@ -134,12 +134,33 @@ module LindenElkFlipKeystone {
   // The body's lookaround table: entries, scope facts, restriction
   // ===========================================================================
 
+  /** The fragment's negative arm (capture-free negative bodies) translates into
+      negative bodies that define no groups. The bodies may hold looks. */
+  lemma TranslateNegBodiesGroupFree(r: R.regex)
+    requires T.TransWf(r) && NR.NestedFragmentRE(r)
+    ensures FD.NegBodiesGroupFree(T.Translate(r))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => TranslateNegBodiesGroupFree(r1); TranslateNegBodiesGroupFree(r2);
+    case Re_con(r1, r2) => TranslateNegBodiesGroupFree(r1); TranslateNegBodiesGroupFree(r2);
+    case Re_quant(_, _, _, r1) => TranslateNegBodiesGroupFree(r1);
+    case Re_capture(_, r1) => TranslateNegBodiesGroupFree(r1);
+    case Re_lookaround(_, la, r1) =>
+      TranslateNegBodiesGroupFree(r1);
+      assert L.Positivity(T.TrLookaround(la)) == (la.Lookahead? || la.Lookbehind?);
+      if !(la.Lookahead? || la.Lookbehind?) {
+        EL.TranslateCaptureFreeNoDefs(r1);
+      }
+    case _ =>
+  }
+
   /** Every entry of the body's own table is in the v1 scope: lookbehind-
       flavoured, `GroupOkLB` body, group-free negative sub-bodies, dup-free
       gids. */
   lemma LmOfBodiesLBOk(body: R.regex)
     requires T.TransWf(body) && FST.LBOnlyLooksRE(body)
-    requires NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body) && PIV.CapUnique(body)
+    requires NR.NestedFragmentRE(body) && PIV.CapUnique(body)
     requires NR.NoNulledPlusRE(body)   // §2.5b interim
     ensures forall lid: int :: lid in OE.LmOf(body) ==>
       && (OE.LmOf(body)[lid].0.LookBehind? || OE.LmOf(body)[lid].0.NegLookBehind?)
@@ -157,7 +178,7 @@ module LindenElkFlipKeystone {
     case Re_lookaround(lid0, la, r1) =>
       LmOfBodiesLBOk(r1);
       FST.TranslateGroupOkLB(r1);
-      FST.TranslateNegBodiesGroupFree(r1);
+      TranslateNegBodiesGroupFree(r1);
       NUL.TransNoNulledPlus(r1);   // §2.5b interim
       TranslateDefGroupsNoDupK(r1);
       assert OE.LmOf(body) == OE.LmOf(r1)[lid0 := (T.TrLookaround(la), T.Translate(r1))];
@@ -188,19 +209,18 @@ module LindenElkFlipKeystone {
   // ===========================================================================
 
   /** All of `StaticOkNestedRE(qm'', FXR(body), compile(FXR(body)), endl')` +
-      `SizesOkRE` + `NegLooksLookFreeRE`, from the body's structural facts.
+      `SizesOkRE`, from the body's structural facts.
       `qm''` carries the canonical quant map, the FLIPPED image of the body's
       own look table (so F3 applies by construction), and the caller's view. */
   lemma FlipXRevStaticOkNested(body: R.regex, someView: LOr.OracleView,
                                ncap: int, nlook: int, nquant: int)
       returns (qm'': AR.QMap, endl': nat)
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)
     requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     ensures PSM.StaticOkNestedRE(qm'', FST.FXR(body), CP.compile_to_bytecode(FST.FXR(body)), endl')
     ensures PSM.SizesOkRE(FST.FXR(body), ncap, nlook, nquant)
-    ensures NR.NegLooksLookFreeRE(FST.FXR(body))
     ensures qm''.ov == someView && qm''.looks == FST.FlipLooksMap(OE.LmOf(body))
   {
     var re' := FST.FXR(body);
@@ -229,7 +249,7 @@ module LindenElkFlipKeystone {
       rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, str: string, cp: nat,
       cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
       cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int, n: nat)
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)
     requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
@@ -387,7 +407,7 @@ module LindenElkFlipKeystone {
       cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, ov: LOr.OracleView,
       cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
       ncap: int, nlook: int, nquant: int, n: nat)
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)
     requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
@@ -456,7 +476,7 @@ module LindenElkFlipKeystone {
     MIR.ReverseLen(str[..cp]);
     assert n == |inp.pref| + |inp.next|;
     FST.TranslateGroupOkLB(body);
-    FST.TranslateNegBodiesGroupFree(body);
+    TranslateNegBodiesGroupFree(body);
     NUL.TransNoNulledPlus(body);   // §2.5b interim: NoNulledPlusL(tr)
     TranslateDefGroupsNoDupK(body);
     FD.BackBodyGmTieFlip(rer, tr, inp, n);

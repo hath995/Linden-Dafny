@@ -96,18 +96,29 @@ module NullablePlusWitness {
   }
 
   // ==========================================================================
-  // §2.2 step A: looks inside a capture-free NEGATIVE LOOKAHEAD body. Negative
-  // lookbehind bodies stay look-free until step B.
+  // §2.2: looks inside a capture-free NEGATIVE look body. A negative lookahead's
+  // body may hold any looks; a negative lookbehind's must be lookbehind-only.
   // ==========================================================================
   const NEG_AHEAD_NESTED := R.Raw_lookaround(R.NegLookahead, R.Raw_con(R.Raw_character(R.Dot), LOOK_A))   // (?!a(?=a))
   const NEG_BEHIND_NESTED := R.Raw_lookaround(R.NegLookbehind,
     R.Raw_con(R.Raw_character(R.Dot), R.Raw_lookaround(R.Lookbehind, R.Raw_character(R.Dot))))            // (?<!a(?<=a))
+  const NEG_BEHIND_AHEAD := R.Raw_lookaround(R.NegLookbehind, R.Raw_con(R.Raw_character(R.Dot), LOOK_A))  // (?<!a(?=a))
 
   lemma Frag22_NegAheadNested()
     ensures API.SupportedL4(NEG_AHEAD_NESTED) && API.Supported(NEG_AHEAD_NESTED)
   { }
 
-  lemma Frag22_NegBehindNestedStillOut()
-    ensures !API.SupportedL5(NEG_BEHIND_NESTED)
+  lemma Frag22_NegBehindNested()
+    ensures API.SupportedL5(NEG_BEHIND_NESTED) && API.Supported(NEG_BEHIND_NESTED)
+  {
+    var re := R.lazy_prefix(R.annotate(NEG_BEHIND_NESTED));
+    reveal LSIMCOR.L5ScopeV1RE();
+    assert LSIMCOR.L5ScopeV1RE(re);
+  }
+
+  /** A lookahead inside a negative lookbehind stays out: the backward span duality
+      has no `GroupOkLB` for a lookahead (same limit as a positive lookbehind's body). */
+  lemma Frag22_NegBehindAheadStillOut()
+    ensures !API.SupportedL5(NEG_BEHIND_AHEAD)
   { }
 }

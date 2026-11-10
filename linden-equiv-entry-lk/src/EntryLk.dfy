@@ -927,75 +927,59 @@ module LindenElkEntryLk {
   }
 
   // ===========================================================================
-  // (§2.2, 2026-11-09) Scope: a negative LOOKBEHIND's body is look-free. A negative
-  // LOOKAHEAD's body may nest further looks. Weaker than `NR.NegLooksLookFreeRE`.
+  // (§2.2) Scope: a negative LOOKBEHIND's body is lookbehind-only, the same
+  // restriction as a positive lookbehind's. A negative LOOKAHEAD's body may nest
+  // any looks. Every negative body stays capture-free (`NR.NestedFragmentRE`).
   // ===========================================================================
 
-  predicate NegBehindLookFreeRaw(ra: R.raw_regex)
+  predicate NegBehindLBOnlyRaw(ra: R.raw_regex)
     decreases ra
   {
     match ra
-    case Raw_alt(r1, r2) => NegBehindLookFreeRaw(r1) && NegBehindLookFreeRaw(r2)
-    case Raw_con(r1, r2) => NegBehindLookFreeRaw(r1) && NegBehindLookFreeRaw(r2)
-    case Raw_quant(_, r1) => NegBehindLookFreeRaw(r1)
-    case Raw_count(_, r1) => NegBehindLookFreeRaw(r1)
-    case Raw_capture(r1) => NegBehindLookFreeRaw(r1)
+    case Raw_alt(r1, r2) => NegBehindLBOnlyRaw(r1) && NegBehindLBOnlyRaw(r2)
+    case Raw_con(r1, r2) => NegBehindLBOnlyRaw(r1) && NegBehindLBOnlyRaw(r2)
+    case Raw_quant(_, r1) => NegBehindLBOnlyRaw(r1)
+    case Raw_count(_, r1) => NegBehindLBOnlyRaw(r1)
+    case Raw_capture(r1) => NegBehindLBOnlyRaw(r1)
     case Raw_lookaround(look, r1) =>
-      (look.NegLookbehind? ==> NR.LookFreeRaw(r1)) && NegBehindLookFreeRaw(r1)
+      (look.NegLookbehind? ==> NR.LBOnlyLooksRaw(r1)) && NegBehindLBOnlyRaw(r1)
     case _ => true
   }
 
-  predicate NegBehindLookFreeRE(re: R.regex)
+  predicate NegBehindLBOnlyRE(re: R.regex)
     decreases re
   {
     match re
-    case Re_alt(r1, r2) => NegBehindLookFreeRE(r1) && NegBehindLookFreeRE(r2)
-    case Re_con(r1, r2) => NegBehindLookFreeRE(r1) && NegBehindLookFreeRE(r2)
-    case Re_quant(_, _, _, r1) => NegBehindLookFreeRE(r1)
-    case Re_capture(_, r1) => NegBehindLookFreeRE(r1)
+    case Re_alt(r1, r2) => NegBehindLBOnlyRE(r1) && NegBehindLBOnlyRE(r2)
+    case Re_con(r1, r2) => NegBehindLBOnlyRE(r1) && NegBehindLBOnlyRE(r2)
+    case Re_quant(_, _, _, r1) => NegBehindLBOnlyRE(r1)
+    case Re_capture(_, r1) => NegBehindLBOnlyRE(r1)
     case Re_lookaround(_, la, r1) =>
-      (la.NegLookbehind? ==> NR.LookFreeRE(r1)) && NegBehindLookFreeRE(r1)
+      (la.NegLookbehind? ==> NR.LBOnlyLooksRE(r1)) && NegBehindLBOnlyRE(r1)
     case _ => true
   }
 
-  /** Annotation transfers `NegBehindLookFreeRaw`. */
-  lemma AnnotateNegBehindLookFree(ra: R.raw_regex, c: int, l: int, q: int)
-    requires NegBehindLookFreeRaw(ra)
-    ensures NegBehindLookFreeRE(R.annotate_regex(ra, c, l, q).0)
+  /** Annotation transfers `NegBehindLBOnlyRaw`. */
+  lemma AnnotateNegBehindLBOnly(ra: R.raw_regex, c: int, l: int, q: int)
+    requires NegBehindLBOnlyRaw(ra)
+    ensures NegBehindLBOnlyRE(R.annotate_regex(ra, c, l, q).0)
     decreases ra
   {
     match ra
     case Raw_alt(r1, r2) =>
-      AnnotateNegBehindLookFree(r1, c, l, q);
+      AnnotateNegBehindLBOnly(r1, c, l, q);
       var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
-      AnnotateNegBehindLookFree(r2, c1, l1, q1);
+      AnnotateNegBehindLBOnly(r2, c1, l1, q1);
     case Raw_con(r1, r2) =>
-      AnnotateNegBehindLookFree(r1, c, l, q);
+      AnnotateNegBehindLBOnly(r1, c, l, q);
       var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
-      AnnotateNegBehindLookFree(r2, c1, l1, q1);
-    case Raw_quant(_, r1) => AnnotateNegBehindLookFree(r1, c, l, q + 1);
-    case Raw_count(_, r1) => AnnotateNegBehindLookFree(r1, c, l, q + 1);
-    case Raw_capture(r1) => AnnotateNegBehindLookFree(r1, c + 1, l, q);
+      AnnotateNegBehindLBOnly(r2, c1, l1, q1);
+    case Raw_quant(_, r1) => AnnotateNegBehindLBOnly(r1, c, l, q + 1);
+    case Raw_count(_, r1) => AnnotateNegBehindLBOnly(r1, c, l, q + 1);
+    case Raw_capture(r1) => AnnotateNegBehindLBOnly(r1, c + 1, l, q);
     case Raw_lookaround(look, r1) =>
-      if look.NegLookbehind? { NR.AnnotateLookFree(r1, c, l + 1, q); }
-      AnnotateNegBehindLookFree(r1, c, l + 1, q);
-    case _ =>
-  }
-
-  /** In a lookbehind-only regex every negative look is a lookbehind, so the two
-      scopes coincide. The flip route, which only sees such bodies, keeps
-      `NR.NegLooksLookFreeRE`. */
-  lemma NegLooksFromLBOnly(re: R.regex)
-    requires NR.LBOnlyLooksRE(re) && NegBehindLookFreeRE(re)
-    ensures NR.NegLooksLookFreeRE(re)
-    decreases re
-  {
-    match re
-    case Re_alt(r1, r2) => NegLooksFromLBOnly(r1); NegLooksFromLBOnly(r2);
-    case Re_con(r1, r2) => NegLooksFromLBOnly(r1); NegLooksFromLBOnly(r2);
-    case Re_quant(_, _, _, r1) => NegLooksFromLBOnly(r1);
-    case Re_capture(_, r1) => NegLooksFromLBOnly(r1);
-    case Re_lookaround(_, _, r1) => NegLooksFromLBOnly(r1);
+      if look.NegLookbehind? { NR.AnnotateLBOnlyLooks(r1, c, l + 1, q); }
+      AnnotateNegBehindLBOnly(r1, c, l + 1, q);
     case _ =>
   }
 

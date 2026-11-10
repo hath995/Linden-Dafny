@@ -114,6 +114,43 @@ module LindenElkLiftSimDeep {
   import opened LindenElkLiftSimGate
   import opened LindenElkLiftSimCarriers
 
+  /** The row witnesses of `GateStaticAtNested`, picked in a small context: the same
+      `:|` inside `DeepFindRecLB` runs out of resources under z3 4.14.1 (§2.2 step B). */
+  lemma GateStaticPick(qm: AR.QMap, re: R.regex, crv: CP.FCompiled, l: int, ncap: int, nlook: int, nquant: int)
+    returns (la: R.lookaround, body: R.regex)
+    requires GateStaticAtNested(qm, re, crv, l, ncap, nlook, nquant)
+    ensures l in qm.looks
+    ensures LTB.LookEntryOk(crv, l, la, body)
+            && T.TransWf(body) && NR.NestedFragmentRE(body)
+            && NR.NoNulledPlusRE(body)
+            && EL.NegBehindLBOnlyRE(body)
+            && (la.Lookbehind? ==> NR.LBOnlyLooksRE(body))
+            && (!la.Lookbehind? ==> L5ScopeV1RE(body))
+            && qm.looks[l].0 == T.TrLookaround(la)
+            && qm.looks[l].1 == T.Translate(body)
+            && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
+            && var bc := CP.compile_to_bytecode(body);
+            |bc| >= 1
+            && PSM.StaticOkNestedRE(qm, body, bc, |bc| - 1)
+            && PSM.SizesOkRE(body, ncap, nlook, nquant)
+            && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
+  {
+    la, body :| LTB.LookEntryOk(crv, l, la, body)
+                && T.TransWf(body) && NR.NestedFragmentRE(body)
+                && NR.NoNulledPlusRE(body)
+                && EL.NegBehindLBOnlyRE(body)
+                && (la.Lookbehind? ==> NR.LBOnlyLooksRE(body))
+                && (!la.Lookbehind? ==> L5ScopeV1RE(body))
+                && qm.looks[l].0 == T.TrLookaround(la)
+                && qm.looks[l].1 == T.Translate(body)
+                && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
+                && var bc := CP.compile_to_bytecode(body);
+                |bc| >= 1
+                && PSM.StaticOkNestedRE(qm, body, bc, |bc| - 1)
+                && PSM.SizesOkRE(body, ncap, nlook, nquant)
+                && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
+  }
+
   /** (L5 F7f perf) The LOOKBEHIND arm of `DeepFindRec`, extracted so each of its
       assertions is checked in the small context of this lemma rather than in the
       3000-assertion parent (with the hub's `NoPosLookbehindRE` conjunct gone, several
@@ -193,7 +230,7 @@ module LindenElkLiftSimDeep {
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       LTB.LookEntryOk(crv, A as int, laA, bA)
       && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && EL.NegBehindLookFreeRE(bA)
+      && EL.NegBehindLBOnlyRE(bA)
       && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
       && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
       && qm.looks[A as int].0 == T.TrLookaround(laA)
@@ -320,20 +357,7 @@ module LindenElkLiftSimDeep {
         assert {:split_here} true;   // (§2.5b F-c) the pick: its own batch
         // (L5 F7f) ONE pick with the hub's FULL conjunct list — a SUBSET pick times
         // out under {:isolate_assertions} (the hub's list changed with the flip).
-        var la1: R.lookaround, b1: R.regex :| LTB.LookEntryOk(crv, A1 as int, la1, b1)
-                                              && T.TransWf(b1) && NR.NestedFragmentRE(b1)
-                                              && NR.NoNulledPlusRE(b1)
-                                              && EL.NegBehindLookFreeRE(b1)
-                                              && (la1.Lookbehind? ==> NR.LBOnlyLooksRE(b1))
-                                              && (!la1.Lookbehind? ==> L5ScopeV1RE(b1))
-                                              && qm.looks[A1 as int].0 == T.TrLookaround(la1)
-                                              && qm.looks[A1 as int].1 == T.Translate(b1)
-                                              && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(b1))) <= PIV.CapIdsInLooks(re)
-                                              && var bc1 := CP.compile_to_bytecode(b1);
-                                              |bc1| >= 1
-                                              && PSM.StaticOkNestedRE(qm, b1, bc1, |bc1| - 1)
-                                              && PSM.SizesOkRE(b1, ncap, nlook, nquant)
-                                              && ((la1.NegLookbehind? || la1.NegLookahead?) ==> NR.CaptureFreeRE(b1));
+        var la1: R.lookaround, b1: R.regex := GateStaticPick(qm, re, crv, A1 as int, ncap, nlook, nquant);
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert crv.f_look_types[A1 as int] == la1;
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -647,7 +671,7 @@ module LindenElkLiftSimDeep {
     var laA: R.lookaround, bA: R.regex :|
       LTB.LookEntryOk(crv, A as int, laA, bA)
       && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && EL.NegBehindLookFreeRE(bA)
+      && EL.NegBehindLBOnlyRE(bA)
       && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
       && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
       && qm.looks[A as int].0 == T.TrLookaround(laA)
@@ -923,7 +947,7 @@ module LindenElkLiftSimDeep {
     var laA: R.lookaround, bA: R.regex :|
       LTB.LookEntryOk(crv, A as int, laA, bA)
       && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && EL.NegBehindLookFreeRE(bA)
+      && EL.NegBehindLBOnlyRE(bA)
       && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
       && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
       && qm.looks[A as int].0 == T.TrLookaround(laA)
@@ -1075,7 +1099,7 @@ module LindenElkLiftSimDeep {
       ensures (bodycode == CP.compile_to_bytecode(host))
       ensures (LTB.LookEntryOk(crv, A as int, laA, bA)
               && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-              && EL.NegBehindLookFreeRE(bA)
+              && EL.NegBehindLBOnlyRE(bA)
               && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
               && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
               && qm.looks[A as int].0 == T.TrLookaround(laA)
@@ -1158,7 +1182,7 @@ module LindenElkLiftSimDeep {
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         LTB.LookEntryOk(crv, A as int, laA, bA)
         && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-        && EL.NegBehindLookFreeRE(bA)
+        && EL.NegBehindLBOnlyRE(bA)
         && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
         && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
         && qm.looks[A as int].0 == T.TrLookaround(laA)
@@ -1275,8 +1299,9 @@ module LindenElkLiftSimDeep {
                                       AI.FInitState(bodycodeB, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
                                                     AReg.init_regs(nquant), 0, AI.cp_context(cpA, str, LAnc.Backward)),
                                       ov, LAnc.Backward, cdnA).0 by {
-        hide M.FreshBodyMatch; hide AI.FFindMatch;   // (2026-08-29) a congruence step over the lemma's ensures —
-                  // left unfoldable, Z3 explores the engine loop here and the batch runs past 2700 s in the split module
+        hide *;   // (2026-08-29) a congruence step over the lemma's ensures — left unfoldable, Z3 explores
+                  // the engine loop here and the batch runs past 2700 s in the split module
+        reveal AI.FInitState, AI.init_bpcset, AI.init_pcset, RB.size, AI.cp_context;   // the goal's FFindMatch preconditions
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         FG.FreshBodyMatchLBUnfold(crv, str, A as int, res1, ov, host, ncap, nlook, nquant);
       }

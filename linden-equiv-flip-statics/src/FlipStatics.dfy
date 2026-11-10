@@ -2,7 +2,7 @@
 // FLIP-reversed body `re' := FlipRE(XRev(body))`.
 //
 // The forward keystone applied at `re'` needs `StaticOkNestedRE(qm'', re',
-// compile(re'), endl')` + `SizesOkRE` + `NegLooksLookFreeRE(re')`, a looks-map
+// compile(re'), endl')` + `SizesOkRE`, a looks-map
 // `qm''` that is the FLIP of the original's (so F3 applies), and the
 // `GmOfLive` readout to be flip-invariant. Everything here is structural:
 //  - `XRevIsRevRENested`: `SwapAnchorsRegex o reverse_regex == SD.RevRE`,
@@ -134,19 +134,6 @@ module LindenElkFlipStatics {
   // Flip-preservation family (kinds carry no ids, no captures, no chars)
   // ===========================================================================
 
-  lemma FlipLookFree(r: R.regex)
-    ensures NR.LookFreeRE(FR.FlipRE(r)) == NR.LookFreeRE(r)
-    decreases r
-  {
-    match r
-    case Re_alt(r1, r2) => FlipLookFree(r1); FlipLookFree(r2);
-    case Re_con(r1, r2) => FlipLookFree(r1); FlipLookFree(r2);
-    case Re_quant(_, _, _, r1) => FlipLookFree(r1);
-    case Re_capture(_, r1) => FlipLookFree(r1);
-    case Re_lookaround(_, _, r1) => FlipLookFree(r1);
-    case _ =>
-  }
-
   lemma FlipCaptureFree(r: R.regex)
     ensures NR.CaptureFreeRE(FR.FlipRE(r)) == NR.CaptureFreeRE(r)
     decreases r
@@ -188,22 +175,6 @@ module LindenElkFlipStatics {
       FlipCaptureFree(r1); FlipNestedFragment(r1);
       assert (FR.FlipLkRE(la).Lookahead? || FR.FlipLkRE(la).Lookbehind?)
           == (la.Lookahead? || la.Lookbehind?);
-    case _ =>
-  }
-
-  lemma FlipNegLooksLookFree(r: R.regex)
-    ensures NR.NegLooksLookFreeRE(FR.FlipRE(r)) == NR.NegLooksLookFreeRE(r)
-    decreases r
-  {
-    match r
-    case Re_alt(r1, r2) => FlipNegLooksLookFree(r1); FlipNegLooksLookFree(r2);
-    case Re_con(r1, r2) => FlipNegLooksLookFree(r1); FlipNegLooksLookFree(r2);
-    case Re_quant(_, _, _, r1) => FlipNegLooksLookFree(r1);
-    case Re_capture(_, r1) => FlipNegLooksLookFree(r1);
-    case Re_lookaround(_, la, r1) =>
-      FlipLookFree(r1); FlipNegLooksLookFree(r1);
-      assert (FR.FlipLkRE(la).NegLookahead? || FR.FlipLkRE(la).NegLookbehind?)
-          == (la.NegLookahead? || la.NegLookbehind?);
     case _ =>
   }
 
@@ -289,19 +260,6 @@ module LindenElkFlipStatics {
   // XRev-preservation family (structural over the composition)
   // ===========================================================================
 
-  lemma XRVLookFree(r: R.regex)
-    ensures NR.LookFreeRE(XRV(r)) == NR.LookFreeRE(r)
-    decreases r
-  {
-    match r
-    case Re_alt(r1, r2) => XRVLookFree(r1); XRVLookFree(r2);
-    case Re_con(r1, r2) => XRVLookFree(r1); XRVLookFree(r2);
-    case Re_quant(_, _, _, r1) => XRVLookFree(r1);
-    case Re_capture(_, r1) => XRVLookFree(r1);
-    case Re_lookaround(_, _, r1) => XRVLookFree(r1);
-    case _ =>
-  }
-
   lemma XRVCaptureFree(r: R.regex)
     ensures NR.CaptureFreeRE(XRV(r)) == NR.CaptureFreeRE(r)
     decreases r
@@ -328,25 +286,11 @@ module LindenElkFlipStatics {
     case _ =>
   }
 
-  lemma XRVNegLooksLookFree(r: R.regex)
-    ensures NR.NegLooksLookFreeRE(XRV(r)) == NR.NegLooksLookFreeRE(r)
-    decreases r
-  {
-    match r
-    case Re_alt(r1, r2) => XRVNegLooksLookFree(r1); XRVNegLooksLookFree(r2);
-    case Re_con(r1, r2) => XRVNegLooksLookFree(r1); XRVNegLooksLookFree(r2);
-    case Re_quant(_, _, _, r1) => XRVNegLooksLookFree(r1);
-    case Re_capture(_, r1) => XRVNegLooksLookFree(r1);
-    case Re_lookaround(_, _, r1) => XRVLookFree(r1); XRVNegLooksLookFree(r1);
-    case _ =>
-  }
-
   /** The structural statics of the flip-reversed body, from the body's. */
   lemma FXRStructural(body: R.regex)
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     ensures T.TransWf(FXR(body)) && NR.NestedFragmentRE(FXR(body))
-    ensures NR.NegLooksLookFreeRE(FXR(body))
     ensures PIV.CapUnique(FXR(body)) && PIV.QuantUnique(FXR(body))
     ensures R.max_group(FXR(body)) == R.max_group(body)
     ensures R.max_quant(FXR(body)) == R.max_quant(body)
@@ -355,7 +299,6 @@ module LindenElkFlipStatics {
     SD.RevRETransWf(body);
     FR.FlipTransWf(XRV(body));
     XRVNestedFragment(body); FlipNestedFragment(XRV(body));
-    XRVNegLooksLookFree(body); FlipNegLooksLookFree(XRV(body));
     LBV.CapUniqueRevRE(body); FlipCapUnique(XRV(body));
     LBV.QuantUniqueRevRE(body); FlipQuantUnique(XRV(body));
     LBV.MaxGroupRevRE(body); FlipMaxGroup(XRV(body));
@@ -556,28 +499,6 @@ module LindenElkFlipStatics {
     case Re_quant(_, _, _, r1) => TranslateGroupOkLB(r1);
     case Re_capture(_, r1) => TranslateGroupOkLB(r1);
     case Re_lookaround(_, la, r1) => TranslateGroupOkLB(r1);
-    case _ =>
-  }
-
-  /** The fragment's negative arm (capture-free + look-free negative bodies)
-      translates into group-free negative bodies. */
-  lemma TranslateNegBodiesGroupFree(r: R.regex)
-    requires T.TransWf(r) && NR.NestedFragmentRE(r) && NR.NegLooksLookFreeRE(r)
-    ensures FD.NegBodiesGroupFree(T.Translate(r))
-    decreases r
-  {
-    match r
-    case Re_alt(r1, r2) => TranslateNegBodiesGroupFree(r1); TranslateNegBodiesGroupFree(r2);
-    case Re_con(r1, r2) => TranslateNegBodiesGroupFree(r1); TranslateNegBodiesGroupFree(r2);
-    case Re_quant(_, _, _, r1) => TranslateNegBodiesGroupFree(r1);
-    case Re_capture(_, r1) => TranslateNegBodiesGroupFree(r1);
-    case Re_lookaround(_, la, r1) =>
-      if la.Lookahead? || la.Lookbehind? {
-        TranslateNegBodiesGroupFree(r1);
-      } else {
-        assert NR.CaptureFreeRE(r1) && NR.LookFreeRE(r1);
-        OS.TranslateGroupFree(r1);
-      }
     case _ =>
   }
 

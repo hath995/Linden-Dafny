@@ -2,4 +2,4 @@
 # Dafny defaults to **/*.dfy, covering src, tests, and materialized deps.
 
 [options]
-library = []
+standard-libraries = true

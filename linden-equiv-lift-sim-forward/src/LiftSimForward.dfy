@@ -197,7 +197,7 @@ module LindenElkLiftSimForward {
       ensures (bodycode == CP.compile_to_bytecode(host))
       ensures (LTB.LookEntryOk(crv, A as int, laA, bA)
               && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-              && EL.NegBehindLookFreeRE(bA)
+              && EL.NegBehindLBOnlyRE(bA)
               && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
               && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
               && qm.looks[A as int].0 == T.TrLookaround(laA)
@@ -284,7 +284,7 @@ module LindenElkLiftSimForward {
       laA, bA :|
         LTB.LookEntryOk(crv, A as int, laA, bA)
         && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-        && EL.NegBehindLookFreeRE(bA)
+        && EL.NegBehindLBOnlyRE(bA)
         && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
         && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
         && qm.looks[A as int].0 == T.TrLookaround(laA)
@@ -459,7 +459,7 @@ module LindenElkLiftSimForward {
   
       // (E3) pins: the LB carrier's preconditions, one assert each
       assert laA.Lookbehind?;
-      assert T.TransWf(host); assert NR.NestedFragmentRE(host); assert EL.NegBehindLookFreeRE(host);
+      assert T.TransWf(host); assert NR.NestedFragmentRE(host); assert EL.NegBehindLBOnlyRE(host);
       assert FST.LBOnlyLooksRE(host);
       assert PIV.CapUnique(host) && PIV.QuantUnique(host) && LTB.LookUnique(host);
       assert PSM.SizesOkRE(host, ncap, nlook, nquant);
@@ -564,7 +564,7 @@ module LindenElkLiftSimForward {
         assert GateStaticAtNested(qm, re, crv, A1 as int, ncap, nlook, nquant);
         var la1G: R.lookaround, b1G: R.regex :| LTB.LookEntryOk(crv, A1 as int, la1G, b1G)
                                                 && T.TransWf(b1G) && NR.NestedFragmentRE(b1G)
-                                                && EL.NegBehindLookFreeRE(b1G)
+                                                && EL.NegBehindLBOnlyRE(b1G)
                                                 && (la1G.Lookbehind? ==> NR.LBOnlyLooksRE(b1G))
                                                 && (!la1G.Lookbehind? ==> L5ScopeV1RE(b1G))
                                                 && qm.looks[A1 as int].0 == T.TrLookaround(la1G)
@@ -775,7 +775,7 @@ module LindenElkLiftSimForward {
     var laA: R.lookaround, bA: R.regex :|
       LTB.LookEntryOk(crv, A as int, laA, bA)
       && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && EL.NegBehindLookFreeRE(bA)
+      && EL.NegBehindLBOnlyRE(bA)
       && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
       && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
       && qm.looks[A as int].0 == T.TrLookaround(laA)
@@ -879,7 +879,7 @@ module LindenElkLiftSimForward {
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       LTB.LookEntryOk(crv, A as int, laA, bA)
       && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && EL.NegBehindLookFreeRE(bA)
+      && EL.NegBehindLBOnlyRE(bA)
       && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
       && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
       && qm.looks[A as int].0 == T.TrLookaround(laA)
@@ -1112,7 +1112,7 @@ module LindenElkLiftSimForward {
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         LTB.LookEntryOk(crv, A1 as int, la1, b1)
         && T.TransWf(b1) && NR.NestedFragmentRE(b1)
-        && EL.NegBehindLookFreeRE(b1)
+        && EL.NegBehindLBOnlyRE(b1)
         && (la1.Lookbehind? ==> NR.LBOnlyLooksRE(b1))
         && (!la1.Lookbehind? ==> L5ScopeV1RE(b1))
         && qm.looks[A1 as int].0 == T.TrLookaround(la1)
@@ -1210,7 +1210,7 @@ module LindenElkLiftSimForward {
       assert GateStaticAtNested(qm, re, crv, A1 as int, ncap, nlook, nquant);
       var la1G: R.lookaround, b1G: R.regex :| LTB.LookEntryOk(crv, A1 as int, la1G, b1G)
                                               && T.TransWf(b1G) && NR.NestedFragmentRE(b1G)
-                                              && EL.NegBehindLookFreeRE(b1G)
+                                              && EL.NegBehindLBOnlyRE(b1G)
                                               && (la1G.Lookbehind? ==> NR.LBOnlyLooksRE(b1G))
                                               && (!la1G.Lookbehind? ==> L5ScopeV1RE(b1G))
                                               && qm.looks[A1 as int].0 == T.TrLookaround(la1G)
@@ -1445,7 +1445,7 @@ module LindenElkLiftSimForward {
     var laA: R.lookaround, bA: R.regex :|
       LTB.LookEntryOk(crv, A as int, laA, bA)
       && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && EL.NegBehindLookFreeRE(bA)
+      && EL.NegBehindLBOnlyRE(bA)
       && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
       && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
       && qm.looks[A as int].0 == T.TrLookaround(laA)
@@ -1592,7 +1592,7 @@ module LindenElkLiftSimForward {
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         LTB.LookEntryOk(crv, A0 as int, laA0, bT)
         && T.TransWf(bT) && NR.NestedFragmentRE(bT)
-        && EL.NegBehindLookFreeRE(bT)
+        && EL.NegBehindLBOnlyRE(bT)
         && (laA0.Lookbehind? ==> NR.LBOnlyLooksRE(bT))
         && (!laA0.Lookbehind? ==> L5ScopeV1RE(bT))
         && qm.looks[A0 as int].0 == T.TrLookaround(laA0)

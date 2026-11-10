@@ -979,7 +979,7 @@ module LindenElkLiftSimCore {
       table package with the body cap generalized off the DEPTH-1 look-free leaf.
       `NR.LookFreeRE(body)` becomes `NR.NestedFragmentRE(body)` (arbitrary look
       nesting) qualified by the positive-lookahead-nesting side conditions
-      (`EL.NegBehindLookFreeRE(body)` — negative bodies stay look-free; and
+      (`EL.NegBehindLBOnlyRE(body)` — a negative lookbehind's body holds only lookbehinds; and
       (L5 F7f) a KIND-SPLIT scope conjunct: a LOOKAHEAD (or negative) lid keeps the
       L4 fact `M.NoPosLookbehindRE(body)` — every forward path's pruning fact, without
       which the giant descent lemmas' VCs blow up — and a positive LOOKBEHIND lid gets
@@ -997,7 +997,7 @@ module LindenElkLiftSimCore {
       LTB.LookEntryOk(crv, l, la, body)
       && T.TransWf(body) && NR.NestedFragmentRE(body)
       && NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false, per lid
-      && EL.NegBehindLookFreeRE(body)
+      && EL.NegBehindLBOnlyRE(body)
       && (la.Lookbehind? ==> NR.LBOnlyLooksRE(body))
       && (!la.Lookbehind? ==> L5ScopeV1RE(body))
       && qm.looks[l].0 == T.TrLookaround(la)
@@ -4259,7 +4259,7 @@ module LindenElkLiftSimCore {
   lemma FreshMatchLidFlip(
     rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, crv: CP.FCompiled, str: string,
     ov: LOr.OracleView, lk: AReg.Regs, lid: nat, ncap: int, nlook: int, nquant: int)
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && EL.NegBehindLookFreeRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body) && EL.NegBehindLBOnlyRE(body)
     requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
@@ -4291,7 +4291,6 @@ module LindenElkLiftSimCore {
                == BGM.RawMirrorGm(PIV.GmOfLive(r1, rf.value.capture_regs, rf.value.look_regs,
                                                rf.value.quant_regs), n))
   {
-    FG.LBOnlyEquiv(body); EL.NegLooksFromLBOnly(body);   // §2.2: the flip route keeps NR.NegLooksLookFreeRE
     var n := |str|;
     MIR.ReverseLen(str);
     var rstr := LC.Reverse(str);
@@ -4424,7 +4423,7 @@ module LindenElkLiftSimCore {
     rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, crv: CP.FCompiled, str: string,
     ov: LOr.OracleView, gmt: LG.GroupMap, th: AI.Thread, lid: nat,
     ncap: int, nlook: int, nquant: int)
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && EL.NegBehindLookFreeRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body) && EL.NegBehindLBOnlyRE(body)
     requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
@@ -4449,7 +4448,6 @@ module LindenElkLiftSimCore {
                                      rf.value.look_regs, rf.value.quant_regs)
                 ==> g in gmt
   {
-    FG.LBOnlyEquiv(body); EL.NegLooksFromLBOnly(body);   // §2.2: the flip route keeps NR.NegLooksLookFreeRE
     var n := |str|;
     MIR.ReverseLen(str);
     var rstr := LC.Reverse(str);
@@ -4926,12 +4924,12 @@ module LindenElkLiftSimCore {
   {
     var re := R.lazy_prefix(R.annotate(raw));
     M.NoPosLookbehindRE(re)
-    && EL.NegBehindLookFreeRE(re)
+    && EL.NegBehindLBOnlyRE(re)
     && T.TransWf(re)
   }
 
   /** THE EXECUTABLE-SCOPE BRIDGE: `L4Scope` from four purely SYNTACTIC raw-level
-      predicates — no positive lookbehind, look-free negative bodies, (1) no
+      predicates — no positive lookbehind, lookbehind-only negative-lookbehind bodies, (1) no
       capture under a quant inside look bodies, (2) capture-free look bodies
       under quants. `T.AnnotateWf` gives `TransWf`; the per-id `GNotUnderQuantL`
       obligation is `M.GNQLTop` fed by the annotate transfers +
@@ -4940,7 +4938,7 @@ module LindenElkLiftSimCore {
   lemma L4ScopeFromRaw(raw: R.raw_regex)
     requires T.Latin1Wf(raw)
     requires NR.NoPosLookbehindRaw(raw)
-    requires EL.NegBehindLookFreeRaw(raw)
+    requires EL.NegBehindLBOnlyRaw(raw)
     ensures L4Scope(raw)
   {
     var ast := R.annotate(raw);
@@ -4954,11 +4952,11 @@ module LindenElkLiftSimCore {
     M.AnnotateNoPosLookbehind(R.Raw_capture(raw), 0, 1, 1);
     assert M.NoPosLookbehindRE(ast);
     assert M.NoPosLookbehindRE(re);
-    // NegLooksLookFree
-    assert EL.NegBehindLookFreeRaw(R.Raw_capture(raw));
-    EL.AnnotateNegBehindLookFree(R.Raw_capture(raw), 0, 1, 1);
-    assert EL.NegBehindLookFreeRE(ast);
-    assert EL.NegBehindLookFreeRE(re);
+    // NegBehindLBOnly
+    assert EL.NegBehindLBOnlyRaw(R.Raw_capture(raw));
+    EL.AnnotateNegBehindLBOnly(R.Raw_capture(raw), 0, 1, 1);
+    assert EL.NegBehindLBOnlyRE(ast);
+    assert EL.NegBehindLBOnlyRE(re);
   }
 
   /** (L5 F7c) The L5 scope at the annotated, lazy-prefixed regex from the raw
@@ -5044,7 +5042,7 @@ module LindenElkLiftSimCore {
   {
     var re := R.lazy_prefix(R.annotate(raw));
     L5ScopeV1RE(re)                       // (L5 F7f) the v1 fragment (kind-split hub)
-    && EL.NegBehindLookFreeRE(re)
+    && EL.NegBehindLBOnlyRE(re)
     && T.TransWf(re)
   }
 
@@ -5092,7 +5090,7 @@ module LindenElkLiftSimCore {
     requires NR.NestedFragmentRaw(raw)
     requires NR.NoNulledPlusRaw(raw)   // §2.5b interim gate conjunct
     requires NR.L5ScopeRE(R.lazy_prefix(R.annotate(raw)))
-    requires EL.NegBehindLookFreeRE(R.lazy_prefix(R.annotate(raw)))
+    requires EL.NegBehindLBOnlyRE(R.lazy_prefix(R.annotate(raw)))
     requires T.Latin1Wf(raw)
     requires EL.BoolTreeLk(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), BS.CannotExit, t)
     requires LS.IsTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), LG.Empty, WP.Forward, t)
@@ -5202,45 +5200,9 @@ module LindenElkLiftSimCore {
   // run at `cp` ⟺ its spec first leaf — which needs the INNER rows' oracle
   // truth, supplied by the recursion on the body, `decreases |LookIds|`).
   // Flavours: positive/negative lookAHEAD rows (backward build, mirrored) go
-  // through the tree; negative lookBEHIND rows (forward build, look-free body
-  // by `NegLooksLookFreeRE`) go through the blind span duality.
+  // through the tree; lookBEHIND rows of either polarity (forward build,
+  // lookbehind-only body) go through `OE.OracleColumnSpecNested`.
   // ==========================================================================
-
-  /** Gated spans of a LOOK-FREE regex are blind spans: no gate is ever read. */
-  lemma MatchesVLookFree(re: R.regex, str: string, ov: LOr.OracleView, i: int, j: int)
-    requires NR.LookFreeRE(re)
-    ensures OBV.MatchesV(re, str, ov, i, j) <==> OBr.Matches(re, str, i, j)
-    decreases CP.rsize(re), 0, 0
-  {
-    match re
-    case Re_alt(r1, r2) =>
-      MatchesVLookFree(r1, str, ov, i, j); MatchesVLookFree(r2, str, ov, i, j);
-    case Re_con(r1, r2) =>
-      forall m: int
-        ensures (OBV.MatchesV(r1, str, ov, i, m) && OBV.MatchesV(r2, str, ov, m, j))
-           <==> (OBr.Matches(r1, str, i, m) && OBr.Matches(r2, str, m, j))
-      { MatchesVLookFree(r1, str, ov, i, m); MatchesVLookFree(r2, str, ov, m, j); }
-    case Re_quant(nul, qid, q, r1) =>
-      forall k: nat
-        ensures OBV.MatchesIterV(r1, k, str, ov, i, j) <==> OBr.MatchesIter(r1, k, str, i, j)
-      { MatchesIterVLookFree(r1, k, str, ov, i, j); }
-    case Re_capture(cid, r1) => MatchesVLookFree(r1, str, ov, i, j);
-    case _ =>
-  }
-
-  /** The iteration-chain analogue (mutually recursive). */
-  lemma MatchesIterVLookFree(r: R.regex, k: nat, str: string, ov: LOr.OracleView, i: int, j: int)
-    requires NR.LookFreeRE(r)
-    ensures OBV.MatchesIterV(r, k, str, ov, i, j) <==> OBr.MatchesIter(r, k, str, i, j)
-    decreases CP.rsize(r), 1, k
-  {
-    if k > 0 {
-      forall m: int
-        ensures (OBV.MatchesV(r, str, ov, i, m) && OBV.MatchesIterV(r, k - 1, str, ov, m, j))
-           <==> (OBr.Matches(r, str, i, m) && OBr.MatchesIter(r, k - 1, str, m, j))
-      { MatchesVLookFree(r, str, ov, i, m); MatchesIterVLookFree(r, k - 1, str, ov, m, j); }
-    }
-  }
 
   /** A gated span that starts inside the string ends inside it
       (`is_accepted(None, _)` is false, so a read never steps past `|str|`). */
@@ -5287,16 +5249,16 @@ module LindenElkLiftSimCore {
       whose body is lookbehind-only; the body is itself in scope. */
   lemma LookBodyRowL5(sub: R.regex, crv: CP.FCompiled, lid: nat)
     requires T.TransWf(sub) && LTB.LookUnique(sub) && LTB.LookTablesOk(sub, crv)
-    requires NR.L5ScopeRE(sub) && EL.NegBehindLookFreeRE(sub)
+    requires NR.L5ScopeRE(sub) && EL.NegBehindLBOnlyRE(sub)
     requires lid in LTB.LookIds(sub)
     ensures var body := NI.LookBodyOfRE(sub, lid);
-            T.TransWf(body) && NR.L5ScopeRE(body) && EL.NegBehindLookFreeRE(body)
+            T.TransWf(body) && NR.L5ScopeRE(body) && EL.NegBehindLBOnlyRE(body)
             && (lid as int) in OE.LmOf(sub)
             && exists la: R.lookaround ::
               LTB.LookEntryOk(crv, lid as int, la, body)
               && OE.LmOf(sub)[lid as int] == (T.TrLookaround(la), T.Translate(body))
               && (la.Lookbehind? ==> NR.LBOnlyLooksRE(body))
-              && (la.NegLookbehind? ==> NR.LookFreeRE(body))
+              && (la.NegLookbehind? ==> NR.LBOnlyLooksRE(body))
     decreases sub
   {
     OE.LmOfDom(sub);
@@ -5332,7 +5294,7 @@ module LindenElkLiftSimCore {
         assert OE.LmOf(sub)[lid as int] == (T.TrLookaround(la0), T.Translate(r1));
         assert la0.Lookbehind? ==> NR.LBOnlyLooksRE(r1);     // L5ScopeRE
         assert NR.L5ScopeRE(r1);
-        assert la0.NegLookbehind? ==> NR.LookFreeRE(r1);   // NegBehindLookFreeRE
+        assert la0.NegLookbehind? ==> NR.LBOnlyLooksRE(r1);   // NegBehindLBOnlyRE
       } else {
         assert lid in LTB.LookIds(r1);
         OE.LmOfDom(r1);

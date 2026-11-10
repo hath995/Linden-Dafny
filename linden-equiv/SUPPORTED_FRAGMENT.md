@@ -36,7 +36,7 @@ Everything below is verified for **case-sensitive, single-line, Latin-1** patter
 | positive lookahead `(?=…)`, capturing, nested to any depth | ✅ (L4) |
 | **positive lookbehind `(?<=…)`, capturing, nested to any depth** | ✅ (L5, 2026-08-28) — a lookbehind's body may contain **only lookbehinds**; a lookahead's body may contain positive lookbehinds (`(?=x(?<=y))`, the s6 widening — see §2.1) |
 | **captures under a quantifier inside a look body, and capturing looks inside a quantifier, at any look depth** (`(?=(?=(a)*))`, `((?=(?=(a))))*`) | ✅ (§2.3/§2.4, 2026-11-08) |
-| negative `(?!…)` / `(?<!…)` | ✅ capture-free body. A negative **lookahead**'s body may contain looks (`(?!a(?=b))`, §2.2 step A, 2026-11-09). ❌ a negative **lookbehind**'s body must still be look-free (`(?<!a(?<=b))`, step B) |
+| negative `(?!…)` / `(?<!…)` | ✅ capture-free body. A negative **lookahead**'s body may contain looks (`(?!a(?=b))`, §2.2 step A, 2026-11-09). A negative **lookbehind**'s body may contain lookbehinds (`(?<!a(?<=b))`, §2.2 step B, 2026-11-10). ❌ a lookahead inside a lookbehind body, either polarity (`(?<!a(?=a))`) |
 | backreferences | ❌ not in the AST at all |
 
 Newly provable at L5 (was impossible before): `(?<=a(?<=b)(c))`, `(?<=(x)(?<=(y)))` — capturing
@@ -83,15 +83,16 @@ cliff.** It is now more tractable than it was, because the pattern that fixed it
 split the arm into its own lemma (`DeepFindRecLB`, `ForwardFindRecLB`), extract shared blocks
 (`BackFreshPlusIsPlain`), and make every `:|` off the hub list its FULL conjunct list.
 
-### 2.2 Nested looks inside a **negative** look body — `(?!a(?=b))` DONE 2026-11-09, `(?<!a(?<=b))` still out
+### 2.2 Nested looks inside a **negative** look body — `(?!a(?=b))` DONE 2026-11-09, `(?<!a(?<=b))` DONE 2026-11-10
 
 | pattern | status |
 |---|---|
 | `(?!a(?=b))` — looks inside a negative **lookahead** body | ✅ step A, `SupportedL4`, `SupportedL5`, `SupportedL5Cin` |
-| `(?<!a(?<=b))` — looks inside a negative **lookbehind** body | ❌ step B |
+| `(?<!a(?<=b))` — lookbehinds inside a negative **lookbehind** body | ✅ step B, `SupportedL5`, `Supported` |
+| `(?<!a(?=a))` — a lookahead inside a negative **lookbehind** body | ❌ the same restriction as a positive lookbehind |
 
-The only look-related condition left is `EL.NegBehindLookFreeRaw`: a negative lookbehind's body must be
-look-free. Every negative body must also be capture-free, at any depth (`NR.NestedFragmentRaw`). Both rows are
+The only look-related condition left is `EL.NegBehindLBOnlyRaw`: a negative lookbehind's body may contain only
+lookbehinds. Every negative body must also be capture-free, at any depth (`NR.NestedFragmentRaw`). All three rows are
 pinned by `Frag22_*` in `src/Equiv/NullablePlusWitness.dfy`.
 
 **How step A went.** The plan recorded here before the rung expected a change to `SD.GroupFreeL` in
@@ -101,13 +102,17 @@ pinned by `Frag22_*` in `src/Equiv/NullablePlusWitness.dfy`.
   blew up `actions-tree-rep-re`.
 * The tower's polarity branches only ever needed deep capture-freeness, so they stand unchanged.
 * A negative gate that passes has no body leaves, so it needs no group-map neutrality (`LL.LAAtGatePassNeg`).
-* The flip route for lookbehind bodies keeps `NR.NegLooksLookFreeRE`. `EL.NegLooksFromLBOnly` supplies it for an
-  LB-only body, whose only negative looks are negative lookbehinds.
 
-**What step B needs.** The scope becomes `la.NegLookbehind? ==> NR.LBOnlyLooksRE(body)`, the same restriction as a
-positive lookbehind. The oracle column has a separate look-free arm for negative lookbehinds (`LiftSimOracle`),
-which should give way to `OE.OracleColumnSpecNested`, already stated for `NegLookbehind`. The flip side
-(`FlipStatics`, `FlipKeystone`, `FlipGate`) must then take negative bodies that hold looks.
+**How step B went.** The scope is now `la.NegLookbehind? ==> NR.LBOnlyLooksRE(body)`, the same restriction as a
+positive lookbehind. Again neither `linden-reasoning` nor `nfa-rep-re` changed.
+* The oracle column's separate look-free arm for negative lookbehinds is gone. Both lookbehind polarities go
+  through `OE.OracleColumnSpecNested`.
+* The flip route no longer needs `NR.NegLooksLookFreeRE`. The flip of a lookbehind-only body holds only lookaheads,
+  so the scope condition is vacuous there (`NegBehindLBOnlyFXR`), and a negative body needs only `DefGroups == []`
+  (`FD.NegBodiesGroupFree`).
+* Three proof batches ran away under z3 4.14.1 once the context changed, with no change to the claims:
+  `hide FST.FXR` in `FreshBodyMatchGmOuterLBNested`, the helper `GateStaticPick`, and a `hide *` in
+  `ForwardFindRecLBBase`.
 
 ### 2.3 / 2.4 — CAPTURE-UNDER-QUANTIFIER conditions — CLOSED 2026-11-08
 
@@ -218,8 +223,8 @@ narrower than the engine. Concretely checkable evidence:
 
 * Lookarounds inside NEGATIVE bodies are already compiled and already get oracle lids —
   `CP.FCompileExtra` recurses into `body` at every `Re_lookaround` node regardless of the look's kind,
-  and `FBuildLids` builds their oracle columns. What remains of §2.2 is the look-free condition on
-  negative lookbehind bodies, nothing more.
+  and `FBuildLids` builds their oracle columns. §2.2 is closed. What remains is a lookahead inside a
+  lookbehind body, the same restriction at either polarity.
 * Nullable plus already has its engine machinery (`f_plus_bc`, `AI.FNulledPlus`,
   `AI.FReconstructPlus`) — §2.5 is the missing spec correspondence.
 * `ignoreCase` / `multiline` are fields of the `RegExpRecord` that both sides already thread; the
@@ -241,7 +246,9 @@ proof engineering of known shape.
 | ~~§2.3 / §2.4 capture-under-quant for L4/L5 patterns~~ | — | **DONE 2026-11-08** (branch `cap-under-quant`) |
 | ~~§2.5a lazy nullable plus~~ | — | **DONE 2026-08-30** (branch `nullable-plus`) |
 | §2.5b greedy nullable plus **inside a look body / with a lookaround in its body** (lookaround-free: **DONE 2026-11-05**; next to lookarounds: **DONE 2026-11-06**, `SupportedL5Cin`) | large — the look-body replay would need the reconstruction readout (rung E) at every look depth; machine B's look-path frame (`CinLookPaths`) assumes the CIN bodies own no look-path registers | TWO end-fork layouts (CIN/CDN), the new `CheckNullable` instruction, the first `SetQuantToClock(qid, **true**)` (breaks the all-stamps-false invariant `NI.CodeShapeAt` proves and `MainTheoremL3` consumes), a second path in `ReconstructNulled`, plus `QuantRegsFinal` and `FNulledPlus`'s unproven spec tie. The §2.5a shift-to-`em` rewrite does NOT carry over — see `NULLABLE_PLUS_HANDOFF.md` § WHAT §2.5b ACTUALLY COSTS |
-| §2.2 nested looks in negative bodies (negative lookahead: **DONE 2026-11-09**, branch `neg-look-nest`; negative lookbehind: step B) | not yet sized | the oracle column's look-free arm and the flip route's negative bodies, see §2.2 |
+| ~~§2.2 nested looks in negative bodies~~ | — | negative lookahead: **DONE 2026-11-09**, negative lookbehind: **DONE 2026-11-10** (branch `neg-look-nest`) |
+| lookahead inside a lookbehind body, either polarity (`(?<=a(?=b))`, `(?<!a(?=a))`) | not yet sized | excluded by `L5ScopeV1RE` and `EL.NegBehindLBOnlyRaw` |
+| captures inside a negative look body (`(?!(a))`) | not yet sized | excluded by the `CaptureFree` arm of `NR.NestedFragmentRaw` |
 | §2.6 flags (`i`, `m`) / Unicode | very large | new campaign |
 | §2.7 backreferences | **by design** | absent from the engine AST; incompatible with a Pike/NFA engine |
 

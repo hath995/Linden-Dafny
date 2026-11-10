@@ -137,7 +137,7 @@ module LindenElkLiftSimCarriers {
     lookcdn: LCdn.cdns, plus_bc: seq<RB.code>, ncap: int, nlook: int, nquant: int)
     requires la.Lookahead?
     requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
-    requires EL.NegBehindLookFreeRE(body)
+    requires EL.NegBehindLBOnlyRE(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
     requires cp <= |str|
@@ -315,19 +315,22 @@ module LindenElkLiftSimCarriers {
     }
   }
 
-  /** (§2.2) The flip route's look-free-negatives predicate implies the
-      widened one: only negative lookbehind bodies still have to be look-free. */
-  lemma NegBehindFromNegLooks(re: R.regex)
-    requires NR.NegLooksLookFreeRE(re)
-    ensures EL.NegBehindLookFreeRE(re)
-    decreases re
+  /** (§2.2) The flip-reversal of a lookbehind-only body holds only lookaheads, so
+      the negative-lookbehind scope condition is vacuous on it. */
+  lemma NegBehindLBOnlyFXR(body: R.regex)
+    requires FST.LBOnlyLooksRE(body)
+    ensures EL.NegBehindLBOnlyRE(FST.FXR(body))
+    decreases body
   {
-    match re
-    case Re_alt(r1, r2) => NegBehindFromNegLooks(r1); NegBehindFromNegLooks(r2);
-    case Re_con(r1, r2) => NegBehindFromNegLooks(r1); NegBehindFromNegLooks(r2);
-    case Re_quant(_, _, _, r1) => NegBehindFromNegLooks(r1);
-    case Re_capture(_, r1) => NegBehindFromNegLooks(r1);
-    case Re_lookaround(_, _, r1) => NegBehindFromNegLooks(r1);
+    match body
+    case Re_alt(r1, r2) => FG.FXRAlt(r1, r2); NegBehindLBOnlyFXR(r1); NegBehindLBOnlyFXR(r2);
+    case Re_con(r1, r2) => FG.FXRCon(r1, r2); NegBehindLBOnlyFXR(r1); NegBehindLBOnlyFXR(r2);
+    case Re_quant(nul, qid, q, r1) => FG.FXRQuant(nul, qid, q, r1); NegBehindLBOnlyFXR(r1);
+    case Re_capture(cid, r1) => FG.FXRCapture(cid, r1); NegBehindLBOnlyFXR(r1);
+    case Re_lookaround(lid, la, r1) =>
+      FG.FXRLook(lid, la, r1); NegBehindLBOnlyFXR(r1);
+      assert la.Lookbehind? || la.NegLookbehind?;
+      assert !FR.FlipLkRE(la).NegLookbehind?;
     case _ =>
   }
 
@@ -341,7 +344,7 @@ module LindenElkLiftSimCarriers {
     crv: CP.FCompiled, str: string, cp: nat, ov: LOr.OracleView,
     lookcdn: LCdn.cdns, plus_bc: seq<RB.code>, ncap: int, nlook: int, nquant: int)
     requires la.Lookbehind?
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && EL.NegBehindLookFreeRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body) && EL.NegBehindLBOnlyRE(body)
     requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
@@ -371,7 +374,6 @@ module LindenElkLiftSimCarriers {
             && CM.LookCpSetWithClk(rf.value.look_regs)
             && CM.LookCpsLE(rf.value.look_regs, |str|))
   {
-    FG.LBOnlyEquiv(body); EL.NegLooksFromLBOnly(body);   // §2.2: the flip route keeps NR.NegLooksLookFreeRE
     // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
     // triggered existential storm the solver; all uses here are opaque.
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
@@ -393,7 +395,7 @@ module LindenElkLiftSimCarriers {
 
     // ---- statics of the flipped body + the flipped/mirrored tables ----
     FST.FXRStructural(body);
-    NegBehindFromNegLooks(reF);
+    NegBehindLBOnlyFXR(body);
     var qmF, endl' := FK.FlipXRevStaticOkNested(body, ov', ncap, nlook, nquant);
     FG.NoPosLookbehindFXR(body);
     FG.LookUniqueFXR(body);
@@ -506,7 +508,7 @@ module LindenElkLiftSimCarriers {
     var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Backward);
     var rb := LT.TreeRes(t, LG.Empty, inp, WP.Backward);
     FST.TranslateGroupOkLB(body);
-    FST.TranslateNegBodiesGroupFree(body);
+    FK.TranslateNegBodiesGroupFree(body);
     FK.TranslateDefGroupsNoDupK(body);
     LBV.InpOfCpSwap(str, cp, n);
     assert inpF == SD.SwapInput(inp);
@@ -667,7 +669,7 @@ module LindenElkLiftSimCarriers {
     var laA: R.lookaround, bA: R.regex :|
       LTB.LookEntryOk(crv, A as int, laA, bA)
       && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && EL.NegBehindLookFreeRE(bA)
+      && EL.NegBehindLBOnlyRE(bA)
       && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
       && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
       && qm.looks[A as int].0 == T.TrLookaround(laA)

@@ -76,7 +76,7 @@ module LindenElkFlipGate {
   lemma BackFreshCoreNested(
       rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, str: string, cp: nat,
       ov: LOr.OracleView, cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int, n: nat)
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)
     requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
@@ -194,7 +194,7 @@ module LindenElkFlipGate {
       rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, str: string, cp: nat,
       ov: LOr.OracleView, cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
       ncap: int, nlook: int, nquant: int, n: nat)
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)
     requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
@@ -298,7 +298,7 @@ module LindenElkFlipGate {
   lemma FreshBodyMatchGmOuterLBNested(
       rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, str: string, cp: nat,
       ov: LOr.OracleView, cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int, n: nat)
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)
     requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
@@ -353,6 +353,7 @@ module LindenElkFlipGate {
       FST.NoNulledPlusFXR(body);   // §2.5b interim: NoNulledPlusRE(re')
       M.MainMatchInsideCapsInitNested(re', bcF, endl', rstr, initsF, cap, lk, qt, ov', cdns', rfF);
       assert {:split_here} true;   // (§2.5b) section: statics | the per-group readout
+      hide FST.FXR;   // `re'` stays opaque here; unfolding FXR grinds z3 (cf. `FXRCompileFacts`)
       var Sc := PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(re'));
       assert CM.RegsAgreeOutside(fc, cap, Sc);
 
@@ -406,7 +407,7 @@ module LindenElkFlipGate {
       rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, str: string, cp: nat,
       ov: LOr.OracleView, cdns: LCdn.cdns, la: R.lookaround, tlk: LT.Tree, gmMain: LG.GroupMap,
       ncap: int, nlook: int, nquant: int, n: nat)
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)
     requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
@@ -534,7 +535,7 @@ module LindenElkFlipGate {
   lemma FreshBodyDirectInBackLeaf(
       rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
       A0: nat, lk: AReg.Regs, body: R.regex, g2: nat, ncap: int, nlook: int, nquant: int)
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)
     requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
@@ -585,7 +586,7 @@ module LindenElkFlipGate {
   lemma BackLeafDirectInFresh(
       rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
       A0: nat, lk: AReg.Regs, body: R.regex, g2: nat, ncap: int, nlook: int, nquant: int)
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NegLooksLookFreeRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)
     requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)

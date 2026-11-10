@@ -1754,3 +1754,20 @@ unchanged. `nfa-rep-re` now takes 448 s and 5.8 GB, so it no longer needs splitt
 * Diagnose with `dafny verify --resource-limit 300e6 --progress Batch` per symbol, which names the batch instead of
   filling the slice. `build -t:lib` prints no batch progress.
 * A labeled `requires` on `CompileNfaRep` crashes Boogie (null reference in `Program.Resolve`).
+
+### 2026-11-10 — **§2.2 step B: lookbehinds inside negative lookbehind bodies** (branch `neg-look-nest`)
+
+`(?<!a(?<=b))` is supported. `(?<!a(?=a))` stays out, the same restriction a positive lookbehind has. What changed is in
+`SUPPORTED_FRAGMENT.md` §2.2. All 19 changed packages verify in dependency order. The `lem pack` gate result is recorded
+separately.
+
+**Lessons from this rung.**
+* Dropping a hypothesis can make a batch run away. `FreshBodyMatchGmOuterLBNested` hit the 900 s limit, and two batches
+  in `lift-sim-deep` took the build past 21 GiB (17 minutes and 6 GB before). The fixes were `hide FST.FXR`, moving a
+  `:|` pick into `GateStaticPick`, and a `hide *` with five small reveals.
+* `hide *` inside `assert E by { ... }` also applies to the well-formedness check of `E`. Reveal what `E`'s function
+  preconditions need.
+* A `--no-verify` `.doo` is accepted by `dafny verify` and refused by a verifying `dafny build`. It is good for resolve
+  checks and per-symbol runs, and it cannot stand in for a dependency of a real build.
+* `--filter-symbol` is a `dafny verify` option and `dafny build` rejects it. It matches by substring, so `DeepFindRec`
+  also selects `DeepFindRecLB`.

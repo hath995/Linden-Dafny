@@ -69,13 +69,13 @@ module LindenRegexApi {
       two purely syntactic, executable scope conditions:
         - no POSITIVE lookbehind anywhere (`NoPosLookbehindRaw`; negative
           lookbehinds are fine);
-        - NEGATIVE look bodies are look-free (`NegLooksLookFreeRaw`).
+        - a NEGATIVE LOOKBEHIND's body is lookbehind-only (`EL.NegBehindLBOnlyRaw`).
       Captures may sit under quantifiers, inside and around look bodies (§2.3/§2.4).
       Exactly `MainTheoremL4`'s precondition (via `LSIMCOR.L4ScopeFromRaw`). */
   predicate SupportedL4(pattern: R.raw_regex) {
     NR.NestedFragmentRaw(pattern) && T.Latin1Wf(pattern)
     && NR.NoPosLookbehindRaw(pattern)
-    && EL.NegBehindLookFreeRaw(pattern)
+    && EL.NegBehindLBOnlyRaw(pattern)
     && NR.NoNulledPlusRaw(pattern)   // §2.5b interim (see SupportedL3)
   }
 
@@ -88,7 +88,7 @@ module LindenRegexApi {
   predicate SupportedL5(pattern: R.raw_regex) {
     NR.NestedFragmentRaw(pattern) && T.Latin1Wf(pattern)
     && LSIMCOR.L5ScopeV1RE(R.lazy_prefix(R.annotate(pattern)))
-    && EL.NegBehindLookFreeRaw(pattern)
+    && EL.NegBehindLBOnlyRaw(pattern)
     && NR.NoNulledPlusRaw(pattern)   // §2.5b interim (see SupportedL3)
   }
 
@@ -108,7 +108,7 @@ module LindenRegexApi {
   predicate SupportedL5Cin(pattern: R.raw_regex) {
     NR.NestedFragmentRaw(pattern) && T.Latin1Wf(pattern)
     && LSIMCOR.L5ScopeV1RE(R.lazy_prefix(R.annotate(pattern)))
-    && EL.NegBehindLookFreeRaw(pattern)
+    && EL.NegBehindLBOnlyRaw(pattern)
     && MCL.LooksNoNulledPlusX(R.lazy_prefix(R.annotate(pattern)))
     && MCL.CinBodiesLookFreeX(R.lazy_prefix(R.annotate(pattern)))
   }
@@ -129,7 +129,7 @@ module LindenRegexApi {
   // ==========================================================================
   lemma LookFreeNegLooksRaw(ra: R.raw_regex)
     requires NR.LookFreeRaw(ra)
-    ensures EL.NegBehindLookFreeRaw(ra)
+    ensures EL.NegBehindLBOnlyRaw(ra)
     decreases ra
   {
     match ra
@@ -141,9 +141,23 @@ module LindenRegexApi {
     case _ =>
   }
 
+  lemma LookFreeLBOnlyRaw(ra: R.raw_regex)
+    requires NR.LookFreeRaw(ra)
+    ensures NR.LBOnlyLooksRaw(ra)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) => LookFreeLBOnlyRaw(r1); LookFreeLBOnlyRaw(r2);
+    case Raw_con(r1, r2) => LookFreeLBOnlyRaw(r1); LookFreeLBOnlyRaw(r2);
+    case Raw_quant(_, r1) => LookFreeLBOnlyRaw(r1);
+    case Raw_count(_, r1) => LookFreeLBOnlyRaw(r1);
+    case Raw_capture(r1) => LookFreeLBOnlyRaw(r1);
+    case _ =>
+  }
+
   lemma DepthOneNegLooksRaw(ra: R.raw_regex)
     requires NR.LookBehindFragmentRaw(ra)
-    ensures EL.NegBehindLookFreeRaw(ra)
+    ensures EL.NegBehindLBOnlyRaw(ra)
     decreases ra
   {
     match ra
@@ -152,7 +166,7 @@ module LindenRegexApi {
     case Raw_quant(_, r1) => DepthOneNegLooksRaw(r1);
     case Raw_count(_, r1) => DepthOneNegLooksRaw(r1);
     case Raw_capture(r1) => DepthOneNegLooksRaw(r1);
-    case Raw_lookaround(_, r1) => LookFreeNegLooksRaw(r1);
+    case Raw_lookaround(_, r1) => LookFreeNegLooksRaw(r1); LookFreeLBOnlyRaw(r1);
     case _ =>
   }
 
@@ -188,7 +202,7 @@ module LindenRegexApi {
   /** The three L5 conditions of a depth-1 pattern. */
   lemma DepthOneL5Conditions(raw: R.raw_regex)
     requires NR.LookBehindFragmentRaw(raw)
-    ensures NR.NestedFragmentRaw(raw) && EL.NegBehindLookFreeRaw(raw)
+    ensures NR.NestedFragmentRaw(raw) && EL.NegBehindLBOnlyRaw(raw)
     ensures LSIMCOR.L5ScopeV1RE(R.lazy_prefix(R.annotate(raw)))
   {
     NR.LookBehindFragmentIsNestedRaw(raw);

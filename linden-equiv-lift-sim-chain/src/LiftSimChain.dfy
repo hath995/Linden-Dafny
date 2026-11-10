@@ -762,7 +762,7 @@ module LindenElkLiftSimChain {
     str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
     thread: AI.Thread, leaf: LT.Leaf, ncap: int, nlook: int, nquant: int,
     rer: LW.RegExpRecord, qm: AR.QMap, t: LT.Tree, inp: LC.Input)
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && EL.NegBehindLookFreeRE(re)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re) && EL.NegBehindLBOnlyRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires S == PIV.CapIdsInLooks(re)
     requires R.max_lookaround(re) == R.max_lookaround(ast)
@@ -2790,7 +2790,7 @@ module LindenElkLiftSimChain {
     // is replaced by the positive-nesting sub-fragment (feeds PikeLkRegexRec(r1)
     // for the recursive outside-tie); the GateStepValue body-package requires
     // (StaticOkRE(body)/bodycode/qt/f_look_* rows) are DROPPED with the call.
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && EL.NegBehindLookFreeRE(body) && la.Lookahead?
+    requires T.TransWf(body) && NR.NestedFragmentRE(body) && EL.NegBehindLBOnlyRE(body) && la.Lookahead?
     requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires r1 == T.Translate(body) && lk == T.TrLookaround(la)
     requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
@@ -2851,7 +2851,7 @@ module LindenElkLiftSimChain {
     // is replaced by the positive-nesting sub-fragment (feeds PikeLkRegexRec(r1)
     // for the recursive outside-tie); the GateStepValue body-package requires
     // (StaticOkRE(body)/bodycode/qt/f_look_* rows) are DROPPED with the call.
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && EL.NegBehindLookFreeRE(body) && la.Lookbehind?
+    requires T.TransWf(body) && NR.NestedFragmentRE(body) && EL.NegBehindLBOnlyRE(body) && la.Lookbehind?
     requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires r1 == T.Translate(body) && lk == T.TrLookaround(la)
     requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))

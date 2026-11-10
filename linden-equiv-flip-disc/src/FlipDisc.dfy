@@ -376,8 +376,8 @@ module LindenElkFlipDisc {
   // F2: THE SPEC-SIDE TIE — backward body leaf == MirrorGm of the flip leaf
   // ===========================================================================
 
-  /** `GroupOkLB` implies the `PikeLkRegexRec` fragment (positive looks
-      recurse; negative-lookbehind bodies must be group-free — supplied). */
+  /** `GroupOkLB` implies the `PikeLkRegexRec` fragment (looks recurse at either
+      polarity; negative bodies must define no groups — supplied). */
   lemma GroupOkLBNegFreePikeLk(tr: L.Regex)
     requires SD.GroupOkLB(tr)
     requires NegBodiesGroupFree(tr)
@@ -391,18 +391,13 @@ module LindenElkFlipDisc {
     case Quantified(_, _, _, r1) => GroupOkLBNegFreePikeLk(r1);
     case Group(_, r1) => GroupOkLBNegFreePikeLk(r1);
     case LookaroundR(lk, r1) =>
-      if L.Positivity(lk) {
-        GroupOkLBNegFreePikeLk(r1);
-      } else {
-        TML.GroupFreeLIsPikeLkRec(r1);
-        SD.GroupFreeDefGroups(r1);
-      }
+      GroupOkLBNegFreePikeLk(r1);
       reveal EL.NegBodyNoDefs();
     case _ =>
   }
 
-  /** Negative looks' bodies are group-free (the fragment's negative arm —
-      `NestedFragmentRE` forces negative bodies capture-free). */
+  /** Negative looks' bodies define no groups (the fragment's negative arm —
+      `NestedFragmentRE` forces negative bodies capture-free). They may hold looks. */
   ghost predicate NegBodiesGroupFree(r: L.Regex)
     decreases r
   {
@@ -412,7 +407,7 @@ module LindenElkFlipDisc {
     case Quantified(_, _, _, r1) => NegBodiesGroupFree(r1)
     case Group(_, r1) => NegBodiesGroupFree(r1)
     case LookaroundR(lk, r1) =>
-      if L.Positivity(lk) then NegBodiesGroupFree(r1) else SD.GroupFreeL(r1)
+      NegBodiesGroupFree(r1) && (!L.Positivity(lk) ==> L.DefGroups(r1) == [])
     case _ => true
   }
 
