@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:f6621c22119e0ecfbfe0a9e82205abb0a48eeee4a45529729c1c05a0d102fea7"
+manifest-hash = "sha256:808e530aefd48a5388fc7e01d570a714bea2717f192e229c808f340ca84bbf69"
 
 [[package]]
 name = "linden.engine"
@@ -76,15 +76,6 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-bridge"
 
 [[package]]
-name = "linden.equiv-oracle-bridge-v"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-bridge-v"
-
-[[package]]
 name = "linden.equiv-oracle-decomp"
 class = 1
 version = "1.0.0"
@@ -92,24 +83,6 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-decomp"
-
-[[package]]
-name = "linden.equiv-oracle-decomp-v"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-decomp-v"
-
-[[package]]
-name = "linden.equiv-oracle-mirror-v"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-mirror-v"
 
 [[package]]
 name = "linden.equiv-oracle-reach"
@@ -409,6 +382,24 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-nfa-rep-re"
 
 [[package]]
+name = "linden.equiv-oracle-accept-v"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-accept-v"
+
+[[package]]
+name = "linden.equiv-oracle-bridge-v"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-bridge-v"
+
+[[package]]
 name = "linden.equiv-oracle-build"
 class = 1
 version = "1.0.0"
@@ -418,6 +409,15 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-build"
 
 [[package]]
+name = "linden.equiv-oracle-decomp-v"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-decomp-v"
+
+[[package]]
 name = "linden.equiv-oracle-entry"
 class = 1
 version = "1.0.0"
@@ -425,6 +425,15 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-entry"
+
+[[package]]
+name = "linden.equiv-oracle-mirror-v"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-mirror-v"
 
 [[package]]
 name = "linden.equiv-pike-inv-re"
