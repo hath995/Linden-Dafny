@@ -1,6 +1,6 @@
 // §2.5b STAGE 2, RUNG F (F-c, c6) — CIN-GREEDY PLUSES NEXT TO LOOKAROUNDS.
 //
-// `MainTheoremL5` without the interim gate conjunct `NoNulledPlusRaw`: greedy
+// The main theorem, with no `NoNulledPlusRaw` gate: greedy
 // CI-nullable pluses (`(a?)+`) may sit OUTSIDE lookarounds, provided their
 // bodies are look-free and no look body holds a nulled plus. The two machines
 // split the group space at `S = CapIdsInLooks(re)`:
@@ -935,7 +935,7 @@ module LindenElkMainCinLk {
     assert |seed.f_look_types| == |seed.f_look_ast|;
   }
 
-  /** THE THEOREM: `MainTheoremL5` without the interim gate — greedy
+  /** THE THEOREM, with no interim gate: greedy
       CI-nullable pluses outside lookarounds, with look-free bodies, and no
       nulled plus inside a look body. */
   lemma MainTheoremL5Cin(raw: R.raw_regex, str: string)
@@ -1234,7 +1234,7 @@ module LindenElkMainCinLk {
   }
 
   // =========================================================================
-  // 8. Executable scope conditions (for `SupportedL5Cin`, rung G).
+  // 8. Executable scope conditions (for `API.Supported`, rung G).
   // =========================================================================
 
   /** No nulled plus inside any look body (executable). */

@@ -9,6 +9,14 @@ module NullablePlusWitness {
   import M = LindenElkMain
   import LSIMCOR = LindenElkLiftSimCore
 
+  /** The opaque scope conjunct of `API.Supported`, for a pattern with no positive lookbehind. */
+  lemma ScopeNoPos(p: R.raw_regex)
+    requires M.NoPosLookbehindRE(R.lazy_prefix(R.annotate(p)))
+    ensures LSIMCOR.L5ScopeV1RE(R.lazy_prefix(R.annotate(p)))
+  {
+    LSIMCOR.NoPosImpliesL5ScopeV1(R.lazy_prefix(R.annotate(p)));
+  }
+
   // `a?`  — a nullable body
   const AOPT := R.Raw_quant(R.QuestionMark, R.Raw_character(R.Dot))
 
@@ -19,15 +27,16 @@ module NullablePlusWitness {
     ensures API.Supported(R.Raw_count(R.CountedQuant(2, None, false), AOPT))
   {
     assert R.raw_nullable(AOPT) != R.NonNullable;
-    assert NR.LookBehindFragmentRaw(R.Raw_quant(R.LazyPlus, AOPT));
-    assert NR.LookBehindFragmentRaw(R.Raw_count(R.CountedQuant(2, None, false), AOPT));
+    ScopeNoPos(R.Raw_quant(R.LazyPlus, AOPT));
+    ScopeNoPos(R.Raw_count(R.CountedQuant(2, None, false), AOPT));
   }
 
   lemma GreedyNullablePlusIsSupported()
     // `(a?)+` — GREEDY plus over a CI-nullable body: supported (§2.5b, F-d0)
-    ensures API.SupportedCin(R.Raw_quant(R.Plus, AOPT)) && API.Supported(R.Raw_quant(R.Plus, AOPT))
+    ensures API.Supported(R.Raw_quant(R.Plus, AOPT))
   {
     assert R.raw_nullable(AOPT) == R.CINullable;
+    ScopeNoPos(R.Raw_quant(R.Plus, AOPT));
   }
 
   // `(?=a)` — a lookahead next to the plus
@@ -35,17 +44,11 @@ module NullablePlusWitness {
 
   lemma GreedyNullablePlusWithLookIsSupported()
     // `(?=a)(a?)+` — a lookaround next to a greedy CI-nullable plus: supported
-    // (§2.5b, F-c: `MainTheoremL5Cin`), though outside every gated disjunct
-    ensures API.SupportedL5Cin(R.Raw_con(LOOK_A, R.Raw_quant(R.Plus, AOPT)))
+    // (§2.5b, F-c: `MainTheoremL5Cin`)
     ensures API.Supported(R.Raw_con(LOOK_A, R.Raw_quant(R.Plus, AOPT)))
-    ensures !API.SupportedL5(R.Raw_con(LOOK_A, R.Raw_quant(R.Plus, AOPT)))
   {
-    var p := R.Raw_con(LOOK_A, R.Raw_quant(R.Plus, AOPT));
     assert R.raw_nullable(AOPT) == R.CINullable;
-    assert !NR.NoNulledPlusRaw(p);
-    var re := R.lazy_prefix(R.annotate(p));
-    assert M.NoPosLookbehindRE(re);
-    LSIMCOR.NoPosImpliesL5ScopeV1(re);
+    ScopeNoPos(R.Raw_con(LOOK_A, R.Raw_quant(R.Plus, AOPT)));
   }
 
   // ==========================================================================
@@ -60,39 +63,41 @@ module NullablePlusWitness {
   const LOOK_CAPSTAR := R.Raw_lookaround(R.Lookahead, CAP_STAR)       // (?=(a)*)
   const QUANT_LOOK  := R.Raw_quant(R.Star, R.Raw_capture(LOOK_CAP))   // ((?=(a)))*
 
-  /** §2.3's own example is in every look fragment. */
+  /** §2.3's own example. */
   lemma Frag23_DepthOne()
-    ensures API.SupportedL3(LOOK_CAPSTAR) && API.SupportedL4(LOOK_CAPSTAR) && API.Supported(LOOK_CAPSTAR)
-  { }
+    ensures API.Supported(LOOK_CAPSTAR)
+  {
+    ScopeNoPos(LOOK_CAPSTAR);
+  }
 
   /** ...and its NESTED form `(?=(?=(a)*))` is supported. */
   lemma Frag23_Nested()
-    ensures API.SupportedL4(R.Raw_lookaround(R.Lookahead, LOOK_CAPSTAR))
     ensures API.Supported(R.Raw_lookaround(R.Lookahead, LOOK_CAPSTAR))
-  { }
+  {
+    ScopeNoPos(R.Raw_lookaround(R.Lookahead, LOOK_CAPSTAR));
+  }
 
   /** §2.4's own example, same story. */
   lemma Frag24_DepthOne()
-    ensures API.SupportedL3(QUANT_LOOK) && API.SupportedL4(QUANT_LOOK) && API.Supported(QUANT_LOOK)
-  { }
+    ensures API.Supported(QUANT_LOOK)
+  {
+    ScopeNoPos(QUANT_LOOK);
+  }
 
   /** `((?=(?=(a))))*` */
   lemma Frag24_Nested()
-    ensures API.SupportedL4(R.Raw_quant(R.Star, R.Raw_capture(R.Raw_lookaround(R.Lookahead, LOOK_CAP))))
     ensures API.Supported(R.Raw_quant(R.Star, R.Raw_capture(R.Raw_lookaround(R.Lookahead, LOOK_CAP))))
-  { }
+  {
+    ScopeNoPos(R.Raw_quant(R.Star, R.Raw_capture(R.Raw_lookaround(R.Lookahead, LOOK_CAP))));
+  }
 
-  /** The L3 gap F-c left open: `(?=(a)*)(a?)+`, a capture under a quantifier in a
-      look body next to a greedy CI-nullable plus. */
+  /** `(?=(a)*)(a?)+`, a capture under a quantifier in a look body next to a greedy
+      CI-nullable plus. */
   lemma CaptureUnderQuantNextToNullablePlus()
-    ensures API.SupportedL5Cin(R.Raw_con(LOOK_CAPSTAR, R.Raw_quant(R.Plus, AOPT)))
     ensures API.Supported(R.Raw_con(LOOK_CAPSTAR, R.Raw_quant(R.Plus, AOPT)))
   {
-    var p := R.Raw_con(LOOK_CAPSTAR, R.Raw_quant(R.Plus, AOPT));
     assert R.raw_nullable(AOPT) == R.CINullable;
-    var re := R.lazy_prefix(R.annotate(p));
-    assert M.NoPosLookbehindRE(re);
-    LSIMCOR.NoPosImpliesL5ScopeV1(re);
+    ScopeNoPos(R.Raw_con(LOOK_CAPSTAR, R.Raw_quant(R.Plus, AOPT)));
   }
 
   // ==========================================================================
@@ -105,11 +110,13 @@ module NullablePlusWitness {
   const NEG_BEHIND_AHEAD := R.Raw_lookaround(R.NegLookbehind, R.Raw_con(R.Raw_character(R.Dot), LOOK_A))  // (?<!a(?=a))
 
   lemma Frag22_NegAheadNested()
-    ensures API.SupportedL4(NEG_AHEAD_NESTED) && API.Supported(NEG_AHEAD_NESTED)
-  { }
+    ensures API.Supported(NEG_AHEAD_NESTED)
+  {
+    ScopeNoPos(NEG_AHEAD_NESTED);
+  }
 
   lemma Frag22_NegBehindNested()
-    ensures API.SupportedL5(NEG_BEHIND_NESTED) && API.Supported(NEG_BEHIND_NESTED)
+    ensures API.Supported(NEG_BEHIND_NESTED)
   {
     var re := R.lazy_prefix(R.annotate(NEG_BEHIND_NESTED));
     reveal LSIMCOR.L5ScopeV1RE();
@@ -119,6 +126,6 @@ module NullablePlusWitness {
   /** A lookahead inside a negative lookbehind stays out: the backward span duality
       has no `GroupOkLB` for a lookahead (same limit as a positive lookbehind's body). */
   lemma Frag22_NegBehindAheadStillOut()
-    ensures !API.SupportedL5(NEG_BEHIND_AHEAD)
+    ensures !API.Supported(NEG_BEHIND_AHEAD)
   { }
 }
