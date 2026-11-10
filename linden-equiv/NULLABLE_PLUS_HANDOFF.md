@@ -1774,3 +1774,20 @@ and the 24 GiB slice. The slowest member is `lift-sim-main` (53m 30s), then `nes
   checks and per-symbol runs, and it cannot stand in for a dependency of a real build.
 * `--filter-symbol` is a `dafny verify` option and `dafny build` rejects it. It matches by substring, so `DeepFindRec`
   also selects `DeepFindRecLB`.
+
+### 2026-11-10 — **`Supported` collapsed to one predicate** (branch `supported-collapse`)
+
+`Supported` is now what `SupportedL5Cin` was, and `MatchCorrect` calls `MCL.MainTheoremL5Cin` alone, so a later rung
+widens one endpoint instead of three. `b90740b` proves `old Supported ==> SupportedL5Cin` with the old definition still
+in place, which is the record that the collapse lost no pattern. All the draft implication lemmas verified first try.
+
+`66f9651` then deleted `MainTheoremL5`, `MainTheoremL4`, the predicates `SupportedL3/L4/L5/Cin`, and the package
+`linden-equiv-main-cin` (nothing else imported it). `ForwardMemberOne` stays: `MainTheoremL4DeepConclude` uses it, and
+`MainTheoremL5Cin` uses that.
+
+**Gate green on `66f9651`:** `workspace packed: 68 members, 83 obligations verified`, PACK rc=0, 16m 21s, peak 6,403 MiB.
+Three members rebuilt, 65 came from cache. `lift-sim-main` fell from 53m 30s to 6m 37s.
+
+Left for the next base rebuild, because editing a package voids `lem`'s cache for it and everything above it, comments
+included: helpers that only the deleted theorems used, and comments naming `MainTheoremL4/L5` in `LiftSimCore`,
+`LiftSimOracle`, `LiftSimChain` and `MainTheorem`.
