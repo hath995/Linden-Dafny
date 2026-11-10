@@ -1730,3 +1730,27 @@ Slowest: `lift-sim-main` 1h 03m, `nest-inv` 37m 33s (the 20.0 GB peak), `actions
   `NR.NoNulledPlusRE`, and restoring it took that batch from over 900 s to 24 s.
 * Near the limit, unrelated edits move batches. `ComputeTrOwnerNamedActs` and `LiftPreserveForkLkRec` needed only
   `split_here` per branch, and their slowest batches are now 38 s and 5 s.
+
+### 2026-11-10 — **Full rebuild under `lem` 0.1.23 and z3 4.14.1: gate green** (branch `neg-look-nest`, `3aa83bc`)
+
+**Gate:** `workspace packed: 69 members`, `PACK rc=0`, 5,521 obligations, 68 members rebuilt from source and
+`linden.warblre` cached from an earlier 0.1.23 pack, 5h 01m at one z3 worker, peak 20.5 GB (`nest-inv`). This gates §2.2
+step A as well, and no member depends any more on a result from before the upgrade.
+Slowest: `lift-sim-main` 52m, `nest-inv` 37m 36s, `actions-tree-rep-re` 20m 37s, `main-theorem` 19m 55s.
+
+**What it took.** Eleven base packages did not verify from scratch under z3 4.14.1: `semantics-core`, `engine-model`,
+`engine`, `reasoning`, `mirror`, `flip-mirror`, `flip-rev`, `oracle-sweep`, `oracle-build`, `oracle-spec`, `nfa-rep-re`.
+Most were timeouts or memory kills. All are fixed in `3aa83bc` with no `{:isolate_assertions}`, and `regex-engine/` is
+unchanged. `nfa-rep-re` now takes 448 s and 5.8 GB, so it no longer needs splitting, and the base-package prune that
+`9af0d18` restored (see above) can be redone.
+
+**Lessons from this rung.**
+* `split_here` does not split the lemma's exit. A postcondition checked at a join lands in "assertions until first
+  split" with every branch at once. Name the postcondition as a predicate and assert it at the end of each leaf branch.
+* A one-step unfolding helper proved away from the caller's context is cheap. The same unfolding with `start == |prev|`
+  in context ran out of memory.
+* Sequence goals in big contexts hang z3 at low resource counts: use `assert X by { hide *; }` or a separate
+  associativity lemma.
+* Diagnose with `dafny verify --resource-limit 300e6 --progress Batch` per symbol, which names the batch instead of
+  filling the slice. `build -t:lib` prints no batch progress.
+* A labeled `requires` on `CompileNfaRep` crashes Boogie (null reference in `Program.Resolve`).

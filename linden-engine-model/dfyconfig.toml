@@ -2,4 +2,6 @@
 # Dafny defaults to **/*.dfy, covering src, tests, and materialized deps.
 
 [options]
+standard-libraries = true
+verification-time-limit = "600"
 library = ["deps/linden.semantics-core.doo", "deps/linden.warblre.doo"]

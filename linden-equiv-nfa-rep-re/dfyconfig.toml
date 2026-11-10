@@ -2,4 +2,7 @@
 # Dafny defaults to **/*.dfy, covering src, tests, and materialized deps.
 
 [options]
+standard-libraries = true
+verification-time-limit = "900"
+cores = "4"
 library = ["deps/linden.equiv-look-tables.doo", "deps/linden.equiv-oracle-sweep.doo", "deps/linden.reasoning.doo", "deps/linden.regex-engine.doo", "deps/linden.semantics-core.doo", "deps/linden.warblre.doo"]
