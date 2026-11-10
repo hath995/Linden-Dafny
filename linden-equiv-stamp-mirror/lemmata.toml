@@ -1,0 +1,35 @@
+[package]
+namespace = "linden"
+name = "equiv-stamp-mirror"
+version = "1.0.0"
+description = "linden-equiv layer: StampMirror (G3b: first empty path / stamp readout through the mirror; direction-blind reconstruction)"
+license = "MIT"
+
+[toolchain]
+dafny = ">= 4.11.0"
+
+[source]
+to_export = ["src/**/*.dfy"]
+
+[options]
+standard-libraries = true
+verification-time-limit = "900"
+
+[verification]
+expected-errors = [
+]
+
+[dependencies]
+linden.reasoning = "^1.0.0"
+linden.semantics-core = "^1.0.0"
+linden.regex-engine = "^1.0.0"
+linden.equiv-actions-rep-re = "^1.0.0"
+linden.equiv-back-gm-mirror = "^1.0.0"
+linden.equiv-flip-mirror = "^1.0.0"
+linden.equiv-flip-rev = "^1.0.0"
+linden.equiv-flip-statics = "^1.0.0"
+linden.equiv-look-behind-value = "^1.0.0"
+linden.equiv-mirror = "^1.0.0"
+linden.equiv-nulled-plus = "^1.0.0"
+linden.equiv-pike-inv-re = "^1.0.0"
+linden.equiv-tree-rep-re = "^1.0.0"
