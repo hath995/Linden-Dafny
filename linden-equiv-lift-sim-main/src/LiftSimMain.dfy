@@ -127,7 +127,7 @@ module LindenElkLiftSimMain {
       `A0`'s sub-first-leaf; the top-look frames re-key it onto `res1`;
       `ForwardFindRec` descends to the engine facts; the top-lid transports
       compose the presence up to `re` and `GmOfLiveKeepsPresentLkNested` closes. */
-  lemma {:isolate_assertions} ForwardMemberOne(
+  lemma ForwardMemberOne(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     ov: LOr.OracleView, thread: AI.Thread, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     S: set<LG.GroupId>, leafgm: LG.GroupMap, g: nat, ncap: int, nlook: int, nquant: int)
@@ -194,6 +194,7 @@ module LindenElkLiftSimMain {
            && g in PIV.CapIds(NI.LookBodyOfRE(re, A0));
     var bA0 := NI.LookBodyOfRE(re, A0);
 
+    assert {:split_here} true;   // (gate A) one batch per section; replaces {:isolate_assertions}
     // (1) the FORWARD carrier at A0 (leaf-witness g): crossed + dominant on thread
     assert NI.LookPathPresent(re, thread.capture_regs.a_clk, thread.quant_regs.a_clk, -1, A0)
            && AI.get_idx(thread.look_regs.a_clk, A0 as int) >= 0
@@ -233,6 +234,7 @@ module LindenElkLiftSimMain {
       assert AI.capture_type(crv.f_look_types[A0 as int]);
     }
 
+    assert {:split_here} true;   // (gate A) one batch per section; replaces {:isolate_assertions}
     // (2) A0's sub-leaf EXISTS (thread record is oracle-true), so the deep
     //     carrier's region equality pushes g (with value) into it.
     var cpA0 := AReg.get_cp(thread.look_regs, A0 as int).value;
@@ -270,6 +272,7 @@ module LindenElkLiftSimMain {
       assert g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, A0)) && g in leafgm;
     }
 
+    assert {:split_here} true;   // (gate A) one batch per section; replaces {:isolate_assertions}
     // (3) re-key onto res1
     assert AReg.get_cp(res1, A0 as int) == AReg.get_cp(thread.look_regs, A0 as int);
     var lsubA0 := SubFirstLeafAt(rer, crv, str, A0 as int, res1);
@@ -278,6 +281,7 @@ module LindenElkLiftSimMain {
       assert AReg.get_cp(res1, A0 as int).Some?;
     }
 
+    assert {:split_here} true;   // (gate A) one batch per section; replaces {:isolate_assertions}
     // (4) descend
     ForwardFindRec(rer, qm, crv, str, ast, re, ov, res0, res1, res2,
                    bA0, A0, g, ncap, nlook, nquant);
@@ -288,6 +292,7 @@ module LindenElkLiftSimMain {
         >= PIV.MxAtGidLk(bA0, res0.a_clk, res1.a_clk, res2.a_clk, -1, g);
     assert PIV.NormRange(lsubA0.value[g]) == PIV.NormRange(PIV.LiveRange(res0.a_cp, res0.a_clk, g));
 
+    assert {:split_here} true;   // (gate A) one batch per section; replaces {:isolate_assertions}
     // (5) compose to re level: presence path to A0 on the reconstructed banks
     assert forall c: nat :: c in PIV.CapIdsOutsideLooks(re) ==>
                               AI.get_idx(thread.capture_regs.a_clk, CP.start_reg(c)) == AI.get_idx(res0.a_clk, CP.start_reg(c))
@@ -328,6 +333,7 @@ module LindenElkLiftSimMain {
     assert PIV.MxAtGidLk(re, res0.a_clk, res1.a_clk, res2.a_clk, -1, g)
         == PIV.MxAtGidLk(bA0, res0.a_clk, res1.a_clk, res2.a_clk, -1, g);
 
+    assert {:split_here} true;   // (gate A) one batch per section; replaces {:isolate_assertions}
     // (6) close
     NI.GmOfLiveKeepsPresentLkNested(re, res0, res1, res2, g);
     assert g in PIV.GmOfLive(re, res0, res1, res2);

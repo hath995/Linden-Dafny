@@ -2037,6 +2037,22 @@ module LindenElkLiftSimGate {
     TrcLkCons(bst, bst1, bst1);
   }
 
+  /** (gate A) `LiftAdvanceEpsilonRec`'s postcondition, named so that every match arm asserts it at
+      its own end. Without this the exit check at the join after the 14 arms sits in one batch with
+      every arm (memory: z3 4.14 repair — `split_here` does not split a lemma's exit). `post` is
+      `FAdvanceEpsilon(code, s, ov, dir).0`, passed in because that function has a precondition. */
+  ghost predicate AdvEpsPostRec(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                                ngroups: nat, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                                S: set<LG.GroupId>, ptsA: PT.PikeTreeState, ptsA': PT.PikeTreeState,
+                                bst: PT.PikeTreeState, bst1: PT.PikeTreeState, post: AI.VmState,
+                                ncap: int, nlook: int, nquant: int)
+  {
+    PSM.TrcRE(ptsA, ptsA') && ptsA'.PTS?
+    && PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, ptsA', post, ncap, nlook, nquant)
+    && PTL.TrcPikeTreeLk(bst, bst1) && bst1.PTS?
+    && LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst1, post, ncap, nlook, nquant)
+  }
+
   lemma LiftAdvanceEpsilonRec(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                               ngroups: nat, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
                               S: set<LG.GroupId>, ptsA: PT.PikeTreeState, s: AI.VmState,
@@ -2110,6 +2126,7 @@ module LindenElkLiftSimGate {
 
     match i {
       case Accept =>
+        assert {:split_here} true;   // (gate A) one batch per arm; replaces the single 302.5 M batch
         var vms2 := s1.(active := [], bestmatch := Some(th));
         bst1 := LiftPreserveAcceptLkRec(rer, qm, re, code, endl, crv, str, ov, S,
                                         bst, s, s1, vms2, ncap, nlook, nquant);
@@ -2120,7 +2137,10 @@ module LindenElkLiftSimGate {
         TrcLkRefl(bst1);
         TrcLkCons(bst, bst1, bst1);
         assert AI.FAdvanceEpsilon(code, s, ov, dir).0 == vms2;
+        assert AdvEpsPostRec(rer, qm, re, code, endl, ngroups, crv, str, ov, S, ptsA, ptsA', bst, bst1,
+                             AI.FAdvanceEpsilon(code, s, ov, dir).0, ncap, nlook, nquant);   // (gate A) arm-local exit
       case Jmp(x) =>
+        assert {:split_here} true;   // (gate A) one batch per arm; replaces the single 302.5 M batch
         var th' := th.(pc := x);
         var vms2 := s1.(active := [th'] + ac);
         LiftPreserveStutterLkRec(rer, qm, re, code, endl, crv, str, ov, S,
@@ -2131,7 +2151,10 @@ module LindenElkLiftSimGate {
                                                  ptsA, vms2, bst, dir, ncap, nlook, nquant);
         ptsA' := ptsA2;
         bst1 := bst2;
+        assert AdvEpsPostRec(rer, qm, re, code, endl, ngroups, crv, str, ov, S, ptsA, ptsA', bst, bst1,
+                             AI.FAdvanceEpsilon(code, s, ov, dir).0, ncap, nlook, nquant);   // (gate A) arm-local exit
       case BeginLoop =>
+        assert {:split_here} true;   // (gate A) one batch per arm; replaces the single 302.5 M batch
         var th' := th.(exit_allowed := false, pc := th.pc + 1);
         var vms2 := s1.(active := [th'] + ac);
         LiftPreserveStutterLkRec(rer, qm, re, code, endl, crv, str, ov, S,
@@ -2142,7 +2165,10 @@ module LindenElkLiftSimGate {
                                                  ptsA, vms2, bst, dir, ncap, nlook, nquant);
         ptsA' := ptsA2;
         bst1 := bst2;
+        assert AdvEpsPostRec(rer, qm, re, code, endl, ngroups, crv, str, ov, S, ptsA, ptsA', bst, bst1,
+                             AI.FAdvanceEpsilon(code, s, ov, dir).0, ncap, nlook, nquant);   // (gate A) arm-local exit
       case Consume(ce) =>
+        assert {:split_here} true;   // (gate A) one batch per arm; replaces the single 302.5 M batch
         var (nb, ni) := AI.add_thread(th, ce, s1.blocked, s1.isblocked);
         if AI.pc_mem(s1.isblocked, th.pc) {
           assert nb == s1.blocked && ni == s1.isblocked;
@@ -2172,7 +2198,10 @@ module LindenElkLiftSimGate {
           ptsA' := ptsA2;
           bst1 := bst2;
         }
+        assert AdvEpsPostRec(rer, qm, re, code, endl, ngroups, crv, str, ov, S, ptsA, ptsA', bst, bst1,
+                             AI.FAdvanceEpsilon(code, s, ov, dir).0, ncap, nlook, nquant);   // (gate A) arm-local exit
       case Fork(x, y) =>
+        assert {:split_here} true;   // (gate A) one batch per arm; replaces the single 302.5 M batch
         var newt := AI.Thread(x, th.capture_regs, th.look_regs, th.quant_regs, th.exit_allowed);
         var vms2 := s1.(active := [newt, th.(pc := y)] + ac);
         // backward-fork flag pin: a false-thread never sits at a Cold pc
@@ -2193,7 +2222,10 @@ module LindenElkLiftSimGate {
         TrcLkTrans(bst, bstS, bst2);
         ptsA' := ptsA2;
         bst1 := bst2;
+        assert AdvEpsPostRec(rer, qm, re, code, endl, ngroups, crv, str, ov, S, ptsA, ptsA', bst, bst1,
+                             AI.FAdvanceEpsilon(code, s, ov, dir).0, ncap, nlook, nquant);   // (gate A) arm-local exit
       case SetRegisterToCP(reg) =>
+        assert {:split_here} true;   // (gate A) one batch per arm; replaces the single 302.5 M batch
         var th' := th.(capture_regs := AReg.set_reg(th.capture_regs, reg, Some(s1.cp), s1.clock),
         pc := th.pc + 1);
         var vms2 := s1.(active := [th'] + ac);
@@ -2218,7 +2250,10 @@ module LindenElkLiftSimGate {
         TrcLkTrans(bst, bstS, bst2);
         ptsA' := ptsA2;
         bst1 := bst2;
+        assert AdvEpsPostRec(rer, qm, re, code, endl, ngroups, crv, str, ov, S, ptsA, ptsA', bst, bst1,
+                             AI.FAdvanceEpsilon(code, s, ov, dir).0, ncap, nlook, nquant);   // (gate A) arm-local exit
       case SetQuantToClock(q, bq) =>
+        assert {:split_here} true;   // (gate A) one batch per arm; replaces the single 302.5 M batch
         var ocp := if bq then Some(s1.cp) else None;
         var th' := th.(quant_regs := AReg.set_reg(th.quant_regs, q, ocp, s1.clock), pc := th.pc + 1);
         var vms2 := s1.(active := [th'] + ac);
@@ -2246,7 +2281,10 @@ module LindenElkLiftSimGate {
         TrcLkTrans(bst, bstS, bst2);
         ptsA' := ptsA2;
         bst1 := bst2;
+        assert AdvEpsPostRec(rer, qm, re, code, endl, ngroups, crv, str, ov, S, ptsA, ptsA', bst, bst1,
+                             AI.FAdvanceEpsilon(code, s, ov, dir).0, ncap, nlook, nquant);   // (gate A) arm-local exit
       case CheckOracle(l) =>
+        assert {:split_here} true;   // (gate A) one batch per arm; replaces the single 302.5 M batch
         if LOr.view_get_oracle(ov, s1.cp, l) {
           var th' := th.(pc := th.pc + 1,
           look_regs := AReg.set_reg(th.look_regs, l, Some(s1.cp), s1.clock));
@@ -2277,7 +2315,10 @@ module LindenElkLiftSimGate {
           ptsA' := ptsA2;
           bst1 := bst2;
         }
+        assert AdvEpsPostRec(rer, qm, re, code, endl, ngroups, crv, str, ov, S, ptsA, ptsA', bst, bst1,
+                             AI.FAdvanceEpsilon(code, s, ov, dir).0, ncap, nlook, nquant);   // (gate A) arm-local exit
       case NegCheckOracle(l) =>
+        assert {:split_here} true;   // (gate A) one batch per arm; replaces the single 302.5 M batch
         if LOr.view_get_oracle(ov, s1.cp, l) {
           var vms2 := s1.(active := ac);
           var bstS := LiftPreserveGateKillLkRec(rer, qm, re, code, endl, crv, str, ov, S,
@@ -2302,12 +2343,18 @@ module LindenElkLiftSimGate {
           ptsA' := ptsA2;
           bst1 := bst2;
         }
+        assert AdvEpsPostRec(rer, qm, re, code, endl, ngroups, crv, str, ov, S, ptsA, ptsA', bst, bst1,
+                             AI.FAdvanceEpsilon(code, s, ov, dir).0, ncap, nlook, nquant);   // (gate A) arm-local exit
       case WriteOracle(l) =>
+        assert {:split_here} true;   // (gate A) one batch per arm; replaces the single 302.5 M batch
         // no TreeRepLkRE rule at WriteOracle — the canonical head tie is refuted
         assert false;
         ptsA' := ptsA;
         bst1 := bst;
+        assert AdvEpsPostRec(rer, qm, re, code, endl, ngroups, crv, str, ov, S, ptsA, ptsA', bst, bst1,
+                             AI.FAdvanceEpsilon(code, s, ov, dir).0, ncap, nlook, nquant);   // (gate A) arm-local exit
       case EndLoop =>
+        assert {:split_here} true;   // (gate A) one batch per arm; replaces the single 302.5 M batch
         if th.exit_allowed {
           var vms2 := s1.(active := [th.(pc := th.pc + 1)] + ac);
           var bstS := LiftPreserveEndLoopPassLkRec(rer, qm, re, code, endl, crv, str, ov, S,
@@ -2333,12 +2380,18 @@ module LindenElkLiftSimGate {
           ptsA' := ptsA2;
           bst1 := bst2;
         }
+        assert AdvEpsPostRec(rer, qm, re, code, endl, ngroups, crv, str, ov, S, ptsA, ptsA', bst, bst1,
+                             AI.FAdvanceEpsilon(code, s, ov, dir).0, ncap, nlook, nquant);   // (gate A) arm-local exit
       case CheckNullable(qid) =>
+        assert {:split_here} true;   // (gate A) one batch per arm; replaces the single 302.5 M batch
         // no TreeRepLkRE rule at CheckNullable — refuted
         assert false;
         ptsA' := ptsA;
         bst1 := bst;
+        assert AdvEpsPostRec(rer, qm, re, code, endl, ngroups, crv, str, ov, S, ptsA, ptsA', bst, bst1,
+                             AI.FAdvanceEpsilon(code, s, ov, dir).0, ncap, nlook, nquant);   // (gate A) arm-local exit
       case AnchorAssertion(a) =>
+        assert {:split_here} true;   // (gate A) one batch per arm; replaces the single 302.5 M batch
         if LAnc.is_satisfied(a, s1.context, dir) {
           var vms2 := s1.(active := [th.(pc := th.pc + 1)] + ac);
           var bstS := LiftPreserveAnchorPassLkRec(rer, qm, re, code, endl, crv, str, ov, S,
@@ -2364,11 +2417,16 @@ module LindenElkLiftSimGate {
           ptsA' := ptsA2;
           bst1 := bst2;
         }
+        assert AdvEpsPostRec(rer, qm, re, code, endl, ngroups, crv, str, ov, S, ptsA, ptsA', bst, bst1,
+                             AI.FAdvanceEpsilon(code, s, ov, dir).0, ncap, nlook, nquant);   // (gate A) arm-local exit
       case Fail =>
+        assert {:split_here} true;   // (gate A) one batch per arm; replaces the single 302.5 M batch
         // no TreeRepLkRE rule at Fail — refuted
         assert false;
         ptsA' := ptsA;
         bst1 := bst;
+        assert AdvEpsPostRec(rer, qm, re, code, endl, ngroups, crv, str, ov, S, ptsA, ptsA', bst, bst1,
+                             AI.FAdvanceEpsilon(code, s, ov, dir).0, ncap, nlook, nquant);   // (gate A) arm-local exit
     }
   }
 
@@ -2666,7 +2724,7 @@ module LindenElkLiftSimGate {
     }
   }
 
-  lemma {:isolate_assertions} LiftInitCRec(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
+  lemma LiftInitCRec(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
                      endl: nat, ngroups: nat, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
                      S: set<LG.GroupId>, tstar: LT.Tree, t: LT.Tree, inp: LC.Input, vms: AI.VmState,
                      ncap: int, nlook: int, nquant: int)
@@ -2717,6 +2775,7 @@ module LindenElkLiftSimGate {
     WalkDefsOkEntry(T.Translate(re));
     M.AllDefsActsCons(LS.Areg(T.Translate(re)), []);
     assert M.AllDefsActs(acts) == L.DefGroups(T.Translate(re));   // AllDefsActs([]) == []
+    assert {:split_here} true;   // (gate A) per-section batch; replaces {:isolate_assertions}
     assert WalkPairLkRec(rer, qm, code, inp, t, LG.Empty, it.pc as nat, it.exit_allowed) by {
       assert it.pc as nat == 0;
       assert AR.ActionsRepL(rer, qm, acts, code, 0);
@@ -2730,10 +2789,12 @@ module LindenElkLiftSimGate {
           && GateAheadClear(actsw, LG.Empty)
           && WalkDefsOk(actsw);
     }
+    assert {:split_here} true;   // (gate A) per-section batch; replaces {:isolate_assertions}
     assert GmtTieOutside(re, it, LG.Empty, S);          // gml == Empty, agrees with Empty
     assert ThreadRepLkRec(rer, qm, re, code, inp, crv, str, ov, S, t, LG.Empty, it, ncap, nlook, nquant);
     // Construct machine B's PLANTED CANONICAL entry tree; the raw walk tree
     // `t` is its value-layer erasure witness.
+    assert {:split_here} true;   // (gate A) per-section batch; replaces {:isolate_assertions}
     WkE.WalkOkEntryNested(re);
     assert WO.WalkOk(acts, code, 0, false);
     assert ATR.EaOf(BS.CannotExit) == false;
@@ -2744,11 +2805,13 @@ module LindenElkLiftSimGate {
       assert CE.ProgErase(t) == CE.ProgErase(tcan)
              && ThreadRepLkRec(rer, qm, re, code, inp, crv, str, ov, S, t, LG.Empty, it, ncap, nlook, nquant);
     }
+    assert {:split_here} true;   // (gate A) per-section batch; replaces {:isolate_assertions}
     assert ActiveRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, [(tcan, LG.Empty)], [it], ncap, nlook, nquant);
     // ptsB = PTS(inp, [(tcan, Empty)], None, [], InitialSeenTrees); best None both sides.
     assert PT.PikeTreeInitialState(tcan, inp) == PT.PTS(inp, [(tcan, LG.Empty)], None, [], SS.InitialSeenTrees);
     assert PT.PikeTreeInitialState(tstar, inp).PTS? && PT.PikeTreeInitialState(tstar, inp).inp == inp;
     assert BestTieLkNestedTop(rer, re, crv, str, ov, S, None, vms.bestmatch, ncap, nlook, nquant);
+    assert {:split_here} true;   // (gate A) per-section batch; replaces {:isolate_assertions}
     // Blocked: genuine start — both sides empty.
     assert PIV.MatchingBlocked(LC.Reverse(vms.blocked), inp) == [];
     forall nextinp | LC.AdvanceInput(inp, WP.Forward) == Some(nextinp)
@@ -2761,6 +2824,7 @@ module LindenElkLiftSimGate {
                      PIV.HdTreeOf([(tcan, LG.Empty)]), PIV.HeadPcOf([it]), RB.size(code));
     // (§2.5b/z3 4.14) assemble the Rec invariant's conjuncts explicitly — the
     // packed LiftInvCRec ensures VC grinds past 900 s otherwise.
+    assert {:split_here} true;   // (gate A) per-section batch; replaces {:isolate_assertions}
     assert LookNestRepCTop(re, S, [(tcan, LG.Empty)], [it]);
     assert LookNestBackRepCTop(re, crv, str, ov, S, [(tcan, LG.Empty)], [it], ncap, nlook, nquant);
     assert LookNestBackRepCTopDeep(rer, re, crv, str, ov, S, [(tcan, LG.Empty)], [it], ncap, nlook, nquant);
@@ -2773,6 +2837,7 @@ module LindenElkLiftSimGate {
     {
       assert PIV.MatchingBlocked(LC.Reverse(vms.blocked), inp) == [];
     }
+    assert {:split_here} true;   // (gate A) per-section batch; replaces {:isolate_assertions}
     assert IsblockedRepLk(rer, qm, code, inp, SS.InitialSeenTrees, vms.isblocked);
     assert LiftInvRec(rer, qm, re, code, crv, str, ov, S,
                       PT.PikeTreeInitialState(tcan, inp), vms, ncap, nlook, nquant);

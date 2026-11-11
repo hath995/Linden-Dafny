@@ -3838,7 +3838,16 @@ module LindenElkLiftSimCore {
     }
   }
 
-  lemma {:isolate_assertions} AtBackForkTreeLkFRec(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code,
+  /** (gate A) `AtBackForkTreeLkFRec`'s postcondition, named so that every match arm and quantifier
+      branch asserts it at its own end instead of the nested match meeting one exit check. */
+  ghost predicate CorePostBF(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, pc: nat, inp: LC.Input,
+                             tc: LT.Tree, tcstar: LT.Tree)
+  {
+    TreeRepLkRE(rer, qm, code, inp, LT.Progress(tcstar), pc, true)
+    && CE.ProgErase(tcstar) == CE.ProgErase(tc)
+  }
+
+  lemma AtBackForkTreeLkFRec(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code,
                              pc: nat, inp: LC.Input, tc: LT.Tree, n: nat)
     returns (tcstar: LT.Tree)
     requires EL.PikeLkActionsRec(acts)
@@ -3865,6 +3874,7 @@ module LindenElkLiftSimCore {
     EL.PikeLkActionsRecConsIff(acts[0], cont);
     match acts[0]
     case Acheck(strcheck) =>
+      assert {:split_here} true;   // (gate A) one batch per arm; replaces {:isolate_assertions}
       // a stacked check: zero-width at the fork; its Progress collapses into
       // the single planted guard
       assert pcmid == pc;
@@ -3876,30 +3886,42 @@ module LindenElkLiftSimCore {
           assert CE.ProgErase(tc) == CE.ProgErase(tc2);
         case _ =>
       }
+      assert CorePostBF(rer, qm, code, pc, inp, tc, tcstar);   // (gate A) arm-local exit
     case Aclose(gid) =>
+      assert {:split_here} true;   // (gate A) one batch per arm; replaces {:isolate_assertions}
       assert false;   // SetRegisterToCP != Fork
+      assert CorePostBF(rer, qm, code, pc, inp, tc, tcstar);   // (gate A) arm-local exit
     case Areg(r) =>
       assert EL.PikeLkRegexRec(r);
       match r
       case Epsilon =>
+        assert {:split_here} true;   // (gate A) one batch per arm; replaces {:isolate_assertions}
         assert pcmid == pc;
         WO.WalkOkEpsilon(acts, code, pc, true);
         assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
         tcstar := AtBackForkTreeLkFRec(rer, qm, cont, code, pc, inp, tc, n - 1);
+        assert CorePostBF(rer, qm, code, pc, inp, tc, tcstar);   // (gate A) arm-local exit
       case Character(cd) =>
+        assert {:split_here} true;   // (gate A) one batch per arm; replaces {:isolate_assertions}
         var ce :| NR.GetPcRE(code, pc) == Some(RB.Consume(ce)) && AR.ExpectationMatches(rer, ce, cd);
         assert false;   // Consume != Fork
+        assert CorePostBF(rer, qm, code, pc, inp, tc, tcstar);   // (gate A) arm-local exit
       case AnchorR(la) =>
+        assert {:split_here} true;   // (gate A) one batch per arm; replaces {:isolate_assertions}
         var ra: R.anchor :| NR.GetPcRE(code, pc) == Some(RB.AnchorAssertion(ra)) && T.TrAnchor(ra) == la;
         assert false;   // AnchorAssertion != Fork
+        assert CorePostBF(rer, qm, code, pc, inp, tc, tcstar);   // (gate A) arm-local exit
       case Disjunction(r1, r2) =>
+        assert {:split_here} true;   // (gate A) one batch per arm; replaces {:isolate_assertions}
         var e1: nat :| NR.GetPcRE(code, pc) == Some(RB.Fork(pc + 1, e1 + 1))
                        && AR.NfaRepL(rer, qm, r1, code, pc + 1, e1)
                        && NR.GetPcRE(code, e1) == Some(RB.Jmp(pcmid))
                        && AR.NfaRepL(rer, qm, r2, code, e1 + 1, pcmid);
         AR.NfaRepIncrL(rer, qm, r1, code, pc + 1, e1);
         assert false;   // both arms forward: contradicts the backward arm
+        assert CorePostBF(rer, qm, code, pc, inp, tc, tcstar);   // (gate A) arm-local exit
       case Sequence(r1, r2) =>
+        assert {:split_here} true;   // (gate A) one batch per arm; replaces {:isolate_assertions}
         EL.PikeLkActionsRecConsIff(LS.Areg(r2), cont);
         EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
         assert AR.NfaRepL(rer, qm, L.Sequence(r1, r2), code, pc, pcmid);
@@ -3919,9 +3941,12 @@ module LindenElkLiftSimCore {
         var nn: nat :| ATR.ActionsRepFuelL(rer, qm, na, code, pc, nn);
         WO.WalkOkSeq(acts, code, pc, true, r1, r2);
         tcstar := AtBackForkTreeLkFRec(rer, qm, na, code, pc, inp, tc, nn);
+        assert CorePostBF(rer, qm, code, pc, inp, tc, tcstar);   // (gate A) arm-local exit
       case Quantified(greedy, min, delta, r1) =>
+        assert {:split_here} true;   // (gate A) one batch per arm; replaces {:isolate_assertions}
         var gidl := L.DefGroups(r1);
         if min > 0 {
+          assert {:split_here} true;   // (gate A) one batch per branch
           match delta {
             case Inf =>
               if NUL.NonNullableL(r1) {
@@ -3964,7 +3989,9 @@ module LindenElkLiftSimCore {
                              && AR.NfaRepMinL(rer, qm, min - 1, r1, code, eb, em);
               assert false;      // SetQuantToClock != Fork
           }
+          assert CorePostBF(rer, qm, code, pc, inp, tc, tcstar);   // (gate A) branch-local exit
         } else if delta.NN? {
+          assert {:split_here} true;   // (gate A) one batch per branch
           var k := delta.n;
           var em := AR.NfaRepLQuantInv(rer, qm, greedy, 0, k, r1, code, pc, pcmid);
           assert em == pc;
@@ -3987,7 +4014,9 @@ module LindenElkLiftSimCore {
             AR.NfaRepIncrOptL(rer, qm, k - 1, greedy, r1, code, e1 + 1, pcmid);
             assert false;   // a bounded layer pins a FORWARD fork
           }
+          assert CorePostBF(rer, qm, code, pc, inp, tc, tcstar);   // (gate A) branch-local exit
         } else {
+          assert {:split_here} true;   // (gate A) one batch per branch
           assert min == 0 && delta == LN.Inf;
           if exists e1: nat :: NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1))
                                && (exists qid: int ::
@@ -4107,20 +4136,28 @@ module LindenElkLiftSimCore {
               case _ =>
             }
           }
+          assert CorePostBF(rer, qm, code, pc, inp, tc, tcstar);   // (gate A) branch-local exit
         }
+        assert CorePostBF(rer, qm, code, pc, inp, tc, tcstar);   // (gate A) arm-local exit
       case Group(gid, r1) =>
+        assert {:split_here} true;   // (gate A) one batch per arm; replaces {:isolate_assertions}
         var e1: nat :| NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(CP.start_reg(gid as int)))
                        && AR.NfaRepL(rer, qm, r1, code, pc + 1, e1)
                        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(gid as int)))
                        && pcmid == e1 + 1;
         assert false;   // SetRegisterToCP != Fork
+        assert CorePostBF(rer, qm, code, pc, inp, tc, tcstar);   // (gate A) arm-local exit
       case LookaroundR(lk, r1) =>
+        assert {:split_here} true;   // (gate A) one batch per arm; replaces {:isolate_assertions}
         var lid: int :| NR.GetPcRE(code, pc)
                         == Some(if AR.PositiveL(lk) then RB.CheckOracle(lid)
                                                     else RB.NegCheckOracle(lid))
                         && lid in qm.looks && qm.looks[lid] == (lk, r1);
         assert false;   // CheckOracle/NegCheckOracle != Fork
+        assert CorePostBF(rer, qm, code, pc, inp, tc, tcstar);   // (gate A) arm-local exit
       case Backreference(_) =>     // not pike
+        assert {:split_here} true;   // (gate A) one batch per arm; replaces {:isolate_assertions}
+        assert CorePostBF(rer, qm, code, pc, inp, tc, tcstar);   // (gate A) arm-local exit
   }
 
   /** (BRICK D5) The (E4) INSIDE-look coverage VACATOR for the gate-pass preserver.
