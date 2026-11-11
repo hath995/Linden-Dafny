@@ -765,7 +765,7 @@ module LindenElkLiftSimChain {
     str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
     thread: AI.Thread, leaf: LT.Leaf, ncap: int, nlook: int, nquant: int,
     rer: LW.RegExpRecord, qm: AR.QMap, t: LT.Tree, inp: LC.Input)
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && EL.NegBehindLBOnlyRE(re)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires S == PIV.CapIdsInLooks(re)
     requires R.max_lookaround(re) == R.max_lookaround(ast)
@@ -2875,7 +2875,7 @@ module LindenElkLiftSimChain {
     // is replaced by the positive-nesting sub-fragment (feeds PikeLkRegexRec(r1)
     // for the recursive outside-tie); the GateStepValue body-package requires
     // (StaticOkRE(body)/bodycode/qt/f_look_* rows) are DROPPED with the call.
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && EL.NegBehindLBOnlyRE(body) && la.Lookahead?
+    requires T.TransWf(body) && NR.NestedFragmentRE(body) && la.Lookahead?
     requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires r1 == T.Translate(body) && lk == T.TrLookaround(la)
     requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
@@ -2936,7 +2936,7 @@ module LindenElkLiftSimChain {
     // is replaced by the positive-nesting sub-fragment (feeds PikeLkRegexRec(r1)
     // for the recursive outside-tie); the GateStepValue body-package requires
     // (StaticOkRE(body)/bodycode/qt/f_look_* rows) are DROPPED with the call.
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && EL.NegBehindLBOnlyRE(body) && la.Lookbehind?
+    requires T.TransWf(body) && NR.NestedFragmentRE(body) && la.Lookbehind?
     requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires r1 == T.Translate(body) && lk == T.TrLookaround(la)
     requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
@@ -3076,7 +3076,7 @@ module LindenElkLiftSimChain {
     qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex, ov: LOr.OracleView,
     res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs, g: LG.GroupId, ncap: int, nlook: int, nquant: int)
     returns (owner: nat)
-    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
+    requires NR.NestedFragmentRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
@@ -3098,7 +3098,7 @@ module LindenElkLiftSimChain {
     owner := NI.InnermostOwnerDirect(re, g);
     var body := NI.LookBodyOfRE(re, owner);
     NI.LookPathDecomposeNested(re, body, res0.a_clk, res1.a_clk, res2.a_clk, -1, owner, g);
-    M.LookBodyFactsL5(re, crv, owner);
+    LookBodyFactsKB(re, crv, owner);   // (gate B) scope-free row facts
     assert NR.NestedFragmentRE(body) && PIV.CapUnique(body);
     assert {:split_here} true;
     // the owner matched: the record is set and the look is positive
@@ -3163,7 +3163,7 @@ module LindenElkLiftSimChain {
   lemma ProduceOwnerForallRes(
     qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex, ov: LOr.OracleView,
     res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs, S: set<LG.GroupId>, ncap: int, nlook: int, nquant: int)
-    requires NR.NestedFragmentRE(re) && NR.L5ScopeRE(re)
+    requires NR.NestedFragmentRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)

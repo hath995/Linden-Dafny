@@ -132,7 +132,7 @@ module LindenElkLiftSimMain {
     ov: LOr.OracleView, thread: AI.Thread, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     S: set<LG.GroupId>, leafgm: LG.GroupMap, g: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (verbatim ForwardFindRec block) ----
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && L5ScopeV1RE(re)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re)
     requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
@@ -357,9 +357,8 @@ module LindenElkLiftSimMain {
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     code: RB.code, endl: nat, ov: LOr.OracleView, thread: AI.Thread, leaf: LT.Leaf,
     t: LT.Tree, inp: LC.Input, S: set<LG.GroupId>, ncap: int, nlook: int, nquant: int)
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && L5ScopeV1RE(re)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re)
     requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
-             && EL.NegBehindLBOnlyRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires |crv.f_look_types| == |crv.f_look_ast|

@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:61a12213c0c9f2330e132e4987761206e76613cfe8b9991f61571618249eb273"
+manifest-hash = "sha256:1accb3ddb3a694980dab6ecdd530d5f5713769d7358d15a4cc294be4e30c0d04"
 
 [[package]]
 name = "linden.engine"
@@ -65,6 +65,15 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-check-erase"
+
+[[package]]
+name = "linden.equiv-cin-walk"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-cin-walk"
 
 [[package]]
 name = "linden.equiv-clock-mono"
@@ -445,15 +454,6 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-stamp-live"
 
 [[package]]
-name = "linden.equiv-tree-mirror-lk"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-tree-mirror-lk"
-
-[[package]]
 name = "linden.equiv-tree-rep-re"
 class = 1
 version = "1.0.0"
@@ -535,6 +535,15 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-main-theorem"
 
 [[package]]
+name = "linden.equiv-main-cin-lk"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-main-cin-lk"
+
+[[package]]
 name = "linden.equiv-nfa-rep-re"
 class = 1
 version = "1.0.0"
@@ -578,3 +587,21 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/regex-engine"
+
+[[package]]
+name = "linden.equiv-tree-mirror-lk"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-tree-mirror-lk"
+
+[[package]]
+name = "linden.equiv-mirror-world"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-mirror-world"

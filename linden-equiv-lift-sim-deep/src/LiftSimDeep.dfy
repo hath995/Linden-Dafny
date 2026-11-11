@@ -123,9 +123,6 @@ module LindenElkLiftSimDeep {
     ensures LTB.LookEntryOk(crv, l, la, body)
             && T.TransWf(body) && NR.NestedFragmentRE(body)
             && NR.NoNulledPlusRE(body)
-            && EL.NegBehindLBOnlyRE(body)
-            && (la.Lookbehind? ==> NR.LBOnlyLooksRE(body))
-            && (!la.Lookbehind? ==> L5ScopeV1RE(body))
             && qm.looks[l].0 == T.TrLookaround(la)
             && qm.looks[l].1 == T.Translate(body)
             && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
@@ -138,9 +135,6 @@ module LindenElkLiftSimDeep {
     la, body :| LTB.LookEntryOk(crv, l, la, body)
                 && T.TransWf(body) && NR.NestedFragmentRE(body)
                 && NR.NoNulledPlusRE(body)
-                && EL.NegBehindLBOnlyRE(body)
-                && (la.Lookbehind? ==> NR.LBOnlyLooksRE(body))
-                && (!la.Lookbehind? ==> L5ScopeV1RE(body))
                 && qm.looks[l].0 == T.TrLookaround(la)
                 && qm.looks[l].1 == T.Translate(body)
                 && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
@@ -161,7 +155,7 @@ module LindenElkLiftSimDeep {
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed through the recursion) ----
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && L5ScopeV1RE(re)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re)
     requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
@@ -230,9 +224,6 @@ module LindenElkLiftSimDeep {
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       LTB.LookEntryOk(crv, A as int, laA, bA)
       && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && EL.NegBehindLBOnlyRE(bA)
-      && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
-      && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
       && qm.looks[A as int].0 == T.TrLookaround(laA)
       && qm.looks[A as int].1 == T.Translate(bA)
       && (set g: LG.GroupId | g in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
@@ -263,16 +254,7 @@ module LindenElkLiftSimDeep {
     assert {:split_here} true;   // (E3) section boundary: its own assertion batch
     // ==== (L5 F7c-4) LOOKBEHIND lid: lift via the FLIP twins ====
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    M.LookBodyFactsL5(re, crv, A);
-    var laN: R.lookaround :| LTB.LookEntryOk(crv, A as int, laN, host) && (laN.Lookbehind? ==> NR.LBOnlyLooksRE(host));
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    assert laN == laA;
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    assert NR.LBOnlyLooksRE(host);
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    FG.LBOnlyEquiv(host);
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    assert FST.LBOnlyLooksRE(host);
+    LookBodyUniqAny(re, A);   // (W11) uniqueness only; no LBOnlyLooksRE(host)
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     if g2 !in PIV.CapIdsInLooks(host) {
       assert {:split_here} true;   // (E3) section boundary: its own assertion batch
@@ -369,14 +351,9 @@ module LindenElkLiftSimDeep {
           assert crv.f_look_ast[A1 as int] == b1 == bodyA1;
         }
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        assert la1.Lookbehind? || la1.NegLookbehind? by {
-          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-          assert LTB.LookTablesOk(host, crv);                     // FrameEntryOk
-          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-          FG.LookRowLBOnly(host, crv, A1);
-        }
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        if la1.NegLookbehind? {
+        // (W11) NO kind pin: in a mixed host A1 may be a lookAHEAD. Only the
+        // negative kinds are excluded (capture-free bodies hold no g2).
+        if la1.NegLookbehind? || la1.NegLookahead? {
           assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert NR.CaptureFreeRE(bodyA1);                       // the pick's negative clause
           assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -387,7 +364,7 @@ module LindenElkLiftSimDeep {
           assert false;
         }
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        assert la1.Lookbehind?;                                  // the only kind left
+        assert la1.Lookbehind? || la1.Lookahead?;                // (W11) the kinds left
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert AI.capture_type(crv.f_look_types[A1 as int]) by {
           assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -482,6 +459,8 @@ module LindenElkLiftSimDeep {
                                       AI.FInitState(bodycodeB, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
                                                     AReg.init_regs(nquant), 0, AI.cp_context(cpA, str, LAnc.Backward)),
                                       ov, LAnc.Backward, cdnA).0 by {
+        hide *;   // (W11) ForwardFindRecLBBase's recipe for this congruence (LiftSimDeep.dfy:1302)
+        reveal AI.FInitState, AI.init_bpcset, AI.init_pcset, RB.size, AI.cp_context;
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         FG.FreshBodyMatchLBUnfold(crv, str, A as int, res1, ov, host, ncap, nlook, nquant);
       }
@@ -603,12 +582,12 @@ module LindenElkLiftSimDeep {
   /** (perf) The FORWARD DEEP arm of `DeepFindRec`, extracted so its assertions are
       checked in a small context (same treatment as `DeepFindRecLB`).
       Mutually recursive with `DeepFindRec` on `(|LookIds(host)|, arm)`. */
-  lemma {:isolate_assertions} DeepFindRecFwdDeep(
+  lemma DeepFindRecFwdDeep(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed through the recursion) ----
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && L5ScopeV1RE(re)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re)
     requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
@@ -671,9 +650,6 @@ module LindenElkLiftSimDeep {
     var laA: R.lookaround, bA: R.regex :|
       LTB.LookEntryOk(crv, A as int, laA, bA)
       && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && EL.NegBehindLBOnlyRE(bA)
-      && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
-      && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
       && qm.looks[A as int].0 == T.TrLookaround(laA)
       && qm.looks[A as int].1 == T.Translate(bA)
       && (set g: LG.GroupId | g in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
@@ -755,7 +731,6 @@ module LindenElkLiftSimDeep {
       OracleOkSuffixRestrict(rer, qm, qmB, inpA);
     }
     assert GateStaticsOkNested(qmB, host, crv, ncap, nlook, nquant) by {
-      L5ScopeV1LookBody(re, A);          // (L5 F7f) the v1 scope descends to the body
       M.LooksNoNulledPlusFromFull(host);   // (§2.5b F-c) NoNulledPlusRE(host) from the row
       GateStaticsFromTablesNested(qmB, host, crv, ncap, nlook, nquant);
     }
@@ -795,11 +770,13 @@ module LindenElkLiftSimDeep {
       TopEqDirectLookIds(host);
       assert A1 in M.DirectLookIds(host);
     }
+    assert {:split_here} true;   // (gate B) sub-split of (η): the whole section timed out at 900 s once de-isolated
     assert AReg.get_cp(res1, A1 as int) == AReg.get_cp(rfFresh.value.look_regs, A1 as int) by {
       assert M.FLookLoopChildLinkOk(crv, str, res1, 1, maxlook, ov, ncap, nlook, nquant);
       assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
       assert rfFresh.Some?;
     }
+    assert {:split_here} true;   // (gate B) sub-split of (η): the whole section timed out at 900 s once de-isolated
     assert rfA == rfFresh.value by {
       // FReconstructPlus is the identity on the QuantRegsFinal fresh run.
       var ctxF := AI.cp_context(cpA, str, LAnc.Forward);
@@ -829,6 +806,7 @@ module LindenElkLiftSimDeep {
                             crv.f_plus_bc, str, ovx, LAnc.Forward);
       assert AI.FReconstructPlus(fm.value, host, crv.f_plus_bc, str, ovx, LAnc.Forward).0 == fm.value;
     }
+    assert {:split_here} true;   // (gate B) sub-split of (η): the whole section timed out at 900 s once de-isolated
     assert AReg.get_cp(res1, A1 as int) == AReg.get_cp(rfA.look_regs, A1 as int);
 
     assert {:split_here} true;   // (E3) step boundary: its own assertion batch
@@ -889,7 +867,7 @@ module LindenElkLiftSimDeep {
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed through the recursion) ----
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && L5ScopeV1RE(re)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re)
     requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
@@ -947,9 +925,6 @@ module LindenElkLiftSimDeep {
     var laA: R.lookaround, bA: R.regex :|
       LTB.LookEntryOk(crv, A as int, laA, bA)
       && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && EL.NegBehindLBOnlyRE(bA)
-      && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
-      && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
       && qm.looks[A as int].0 == T.TrLookaround(laA)
       && qm.looks[A as int].1 == T.Translate(bA)
       && (set g: LG.GroupId | g in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
@@ -1025,7 +1000,7 @@ module LindenElkLiftSimDeep {
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed) ----
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && L5ScopeV1RE(re)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re)
     requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
@@ -1077,7 +1052,6 @@ module LindenElkLiftSimDeep {
     var bA: R.regex := *;
     var laT: R.lookaround := *;
     var endlH: nat := *;
-    var laN: R.lookaround := *;
     var qmB := *;
     var bodycodeB := *;
     var cdnA := *;
@@ -1099,9 +1073,6 @@ module LindenElkLiftSimDeep {
       ensures (bodycode == CP.compile_to_bytecode(host))
       ensures (LTB.LookEntryOk(crv, A as int, laA, bA)
               && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-              && EL.NegBehindLBOnlyRE(bA)
-              && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
-              && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
               && qm.looks[A as int].0 == T.TrLookaround(laA)
               && qm.looks[A as int].1 == T.Translate(bA)
               && (set g0: LG.GroupId | g0 in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
@@ -1112,7 +1083,6 @@ module LindenElkLiftSimDeep {
               && ((laA.NegLookbehind? || laA.NegLookahead?) ==> NR.CaptureFreeRE(bA)))
       ensures (LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A)))
       ensures (endlH == |bodycode| - 1)
-      ensures (LTB.LookEntryOk(crv, A as int, laN, host) && (laN.Lookbehind? ==> NR.LBOnlyLooksRE(host)))
       ensures (qmB == AR.QMap(qm.quants,
                                map l: int | l in qm.looks && l >= 0 && (l as nat) in LTB.LookIds(host) :: qm.looks[l],
                                qm.ov, qm.bodies))
@@ -1136,8 +1106,6 @@ module LindenElkLiftSimDeep {
       ensures (host == M.VBody(crv, A as int))
       ensures (PSM.StaticOkNestedRE(qm, host, bodycode, endlH))
       ensures (crv.f_look_types[A as int] == laA)
-      ensures (NR.LBOnlyLooksRE(host))
-      ensures (FST.LBOnlyLooksRE(host))
       ensures (M.FrameEntryOk(crv, laA, host,
                                   PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re)))
       ensures (PIV.CapUnique(host) && PIV.QuantUnique(host) && LTB.LookUnique(host)
@@ -1182,9 +1150,6 @@ module LindenElkLiftSimDeep {
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         LTB.LookEntryOk(crv, A as int, laA, bA)
         && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-        && EL.NegBehindLBOnlyRE(bA)
-        && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
-        && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
         && qm.looks[A as int].0 == T.TrLookaround(laA)
         && qm.looks[A as int].1 == T.Translate(bA)
         && (set g0: LG.GroupId | g0 in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
@@ -1214,16 +1179,7 @@ module LindenElkLiftSimDeep {
       assert laA.Lookbehind? by { assert crv.f_look_types[A as int] == laA; }
       // ==== (L5 F7c-4) LOOKBEHIND lid: lift via the FLIP twins ====
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      M.LookBodyFactsL5(re, crv, A);
-      laN :| LTB.LookEntryOk(crv, A as int, laN, host) && (laN.Lookbehind? ==> NR.LBOnlyLooksRE(host));
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert laN == laA;
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert NR.LBOnlyLooksRE(host);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      FG.LBOnlyEquiv(host);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert FST.LBOnlyLooksRE(host);
+      LookBodyFactsKB(re, crv, A);   // (W16) uniqueness only; no LBOnlyLooksRE(host)
       // ---- rf_A: the fresh BACKWARD body match (Some via the LB carrier's None-iff — the
       //      backward leaf EXISTS by hypothesis) ----
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -1343,7 +1299,7 @@ module LindenElkLiftSimDeep {
            && lsubA.value[g] == LBV.SwapRange(PIV.GmOfLive(host, rfc, rfl, rfq)[g]);
     // presence + dominance on the FRESH banks
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    M.LookBodyFactsL5(re, crv, A);          // NestedFragmentRE/CapUnique/QuantUnique(host)
+    LookBodyFactsKB(re, crv, A);          // (W16) CapUnique/QuantUnique/LookUnique(host)
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     FreshBodyMatchCapWfNested(crv, str, A as int, res1, ov, ncap, nlook, nquant, host);
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14

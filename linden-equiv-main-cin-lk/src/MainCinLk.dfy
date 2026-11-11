@@ -83,6 +83,7 @@ module LindenElkMainCinLk {
   import LFU = FunctionalUtils
   import FS = FunctionalSemantics
   import PTL = LindenElkPikeTreeLk
+  import CG = LindenElkFlipClosedG       // (gate B) the scope-free closedness ladder
 
   // =========================================================================
   // 0. Statics: the glue's side condition on the translated regex.
@@ -691,8 +692,6 @@ module LindenElkMainCinLk {
                            t: LT.Tree, thread: AI.Thread, leaf: LT.Leaf)
     requires NR.NestedFragmentRaw(raw)
     requires M.LooksNoNulledPlusRE(R.lazy_prefix(R.annotate(raw)))
-    requires NR.L5ScopeRE(R.lazy_prefix(R.annotate(raw)))
-    requires EL.NegBehindLBOnlyRE(R.lazy_prefix(R.annotate(raw)))
     requires T.Latin1Wf(raw)
     requires EL.BoolTreeLk(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), BS.CannotExit, t)
     requires LS.IsTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), LG.Empty, WP.Forward, t)
@@ -732,10 +731,8 @@ module LindenElkMainCinLk {
     assert M.OuterLkDisjoint([LS.Areg(T.Translate(re))]);
     assert M.NoDupRegsActs([LS.Areg(T.Translate(re))]) by { assert M.NoDupSeq(L.DefGroups(T.Translate(re))); }
     assert TRM.GmInBounds(LG.Empty, |inp.pref| + |inp.next|);
-    L5ScopeL5PosL(re);
-    assert FC.L5PosActsL([LS.Areg(T.Translate(re))]);
     assert M.NestDepthActsLe([LS.Areg(T.Translate(re))], M.NestDepthL(T.Translate(re)));
-    FC.FirstLeafClosedRecL5(rer, [LS.Areg(T.Translate(re))], inp, BS.CannotExit, t, LG.Empty, leaf,
+    CG.FirstLeafClosedRecAny(rer, [LS.Areg(T.Translate(re))], inp, BS.CannotExit, t, LG.Empty, leaf,
                             M.NestDepthL(T.Translate(re)));
     assert M.ClosedGm(leaf.1);
     M.MainExtractionFromClosed(raw, str, t, thread, leaf);
@@ -879,8 +876,8 @@ module LindenElkMainCinLk {
                       code: RB.code, endl: nat, ov: LOr.OracleView, th: AI.Thread, leaf: LT.Leaf,
                       t: LT.Tree, inp: LC.Input, S: set<LG.GroupId>, ncap: int, nlook: int, nquant: int)
     requires crv == CP.FFullCompilation(ast) && re == R.lazy_prefix(ast)
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && L5ScopeV1RE(re)
-    requires M.LooksNoNulledPlusRE(re) && EL.NegBehindLBOnlyRE(re)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re)
+    requires M.LooksNoNulledPlusRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
     requires |crv.f_look_types| == |crv.f_look_ast|
@@ -941,7 +938,6 @@ module LindenElkMainCinLk {
   lemma MainTheoremL5Cin(raw: R.raw_regex, str: string)
     requires NR.NestedFragmentRaw(raw)
     requires T.Latin1Wf(raw)
-    requires L5Scope(raw)
     requires M.LooksNoNulledPlusRE(R.lazy_prefix(R.annotate(raw)))
     requires RF.CinBodiesLookFreeRE(R.lazy_prefix(R.annotate(raw)))
     ensures LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)))
@@ -963,9 +959,6 @@ module LindenElkMainCinLk {
     LTB.SpecRegexLidsWellNested(raw);
     PIV.SpecRegexCapUnique(raw);
     PIV.SpecRegexQuantUnique(raw);
-    assert L5ScopeV1RE(re);
-    L5ScopeV1ImpliesL5(re);
-    assert EL.NegBehindLBOnlyRE(re);
     var qm := AR.QMap(M.QmOfRE(re), OE.LmOf(re), AI.FBuildOracle(CP.FFullCompilation(ast), str), M.BodiesOfRE(re));
     M.QmOfREEntries(re);
     M.BodiesOfREEntries(re);

@@ -108,6 +108,9 @@ module LindenElkLiftSimCore {
   import TREP = LindenElkTreeRep
   import LTB = LindenElkLookTables
   import NI = LindenElkNestInv
+  import MW = LindenElkMirrorWorld       // (gate B) the G1 leaf: per-row ties, bank bounds
+  import GG = LindenElkFlipGateG         // (gate B) flip-gate F6 lemmas, scope-free
+  import CG = LindenElkFlipClosedG       // (gate B) the scope-free closedness ladder
   import CW = LindenElkCinWalk
 
   // ==========================================================================
@@ -997,9 +1000,8 @@ module LindenElkLiftSimCore {
       LTB.LookEntryOk(crv, l, la, body)
       && T.TransWf(body) && NR.NestedFragmentRE(body)
       && NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false, per lid
-      && EL.NegBehindLBOnlyRE(body)
-      && (la.Lookbehind? ==> NR.LBOnlyLooksRE(body))
-      && (!la.Lookbehind? ==> L5ScopeV1RE(body))
+      // (gate B, G1 full depth) the three lookbehind-only scope conjuncts are DELETED:
+      // the flip route is direction-generic (mirror-world leaf), so no row body is pinned.
       && qm.looks[l].0 == T.TrLookaround(la)
       && qm.looks[l].1 == T.Translate(body)
       && (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
@@ -4293,17 +4295,85 @@ module LindenElkLiftSimCore {
       BACKWARD body match on `crv` over `str` and the fresh FORWARD body match on
       `MirrorTables(crv)` over `Reverse(str)` (at the mirrored bank) are T2a
       mirrors of each other, and their `GmOfLive` readouts are raw mirrors. */
+  // ===========================================================================
+  // (gate B) Scope-free row helpers (W12, verified in scratch).
+  // ===========================================================================
+
+  /** `FG.LookRowLBOnly` minus its lookbehind-only premise and kind clause. */
+  lemma LookRowAny(r: R.regex, crv: CP.FCompiled, lid: nat)
+    requires LTB.LookTablesOk(r, crv)
+    requires lid in LTB.LookIds(r)
+    ensures 0 <= (lid as int) < |crv.f_look_types| && 0 <= (lid as int) < |crv.f_look_ast|
+         && 0 <= (lid as int) < |crv.f_look_cdns|
+    ensures LTB.LookEntryOk(crv, lid as int, crv.f_look_types[lid], NI.LookBodyOfRE(r, lid))
+    ensures crv.f_look_ast[lid] == NI.LookBodyOfRE(r, lid)
+    ensures crv.f_look_cdns[lid] == LCdn.compile_cdns(NI.LookBodyOfRE(r, lid))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookRowAny(r1, crv, lid); } else { LookRowAny(r2, crv, lid); }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookRowAny(r1, crv, lid); } else { LookRowAny(r2, crv, lid); }
+    case Re_quant(_, _, _, r1) => LookRowAny(r1, crv, lid);
+    case Re_capture(_, r1) => LookRowAny(r1, crv, lid);
+    case Re_lookaround(lid0, la, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+        assert LTB.LookEntryOk(crv, lid0, la, r1);
+      } else {
+        LookRowAny(r1, crv, lid);
+      }
+    case _ =>
+  }
+
+  /** `M.LookBodyFactsL5` minus `NR.L5ScopeRE` (premise and both scope conclusions);
+      the row-entry `exists` keeps a cast-free trigger (AGENTS §2.8). */
+  lemma LookBodyFactsKB(re: R.regex, crv: CP.FCompiled, lid: nat)
+    requires NR.NestedFragmentRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires lid in LTB.LookIds(re)
+    ensures var body := NI.LookBodyOfRE(re, lid);
+            var li: int := lid as int;   // cast-free trigger term
+            NR.NestedFragmentRE(body)
+            && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+            && LTB.LookTablesOk(body, crv)
+            && LTB.LookIds(body) <= LTB.LookIds(re)
+            && (exists la: R.lookaround :: LTB.LookEntryOk(crv, li, la, body))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodyFactsKB(r1, crv, lid); }
+      else { LookBodyFactsKB(r2, crv, lid); }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodyFactsKB(r1, crv, lid); }
+      else { LookBodyFactsKB(r2, crv, lid); }
+    case Re_quant(_, _, _, r1) => LookBodyFactsKB(r1, crv, lid);
+    case Re_capture(_, r1) => LookBodyFactsKB(r1, crv, lid);
+    case Re_lookaround(lid0, la0, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+        assert NI.LookBodyOfRE(re, lid) == r1;
+        assert LTB.LookEntryOk(crv, lid as int, la0, r1);   // LookTablesOk's lookaround case
+      } else {
+        assert lid in LTB.LookIds(r1);
+        LookBodyFactsKB(r1, crv, lid);
+        assert LTB.LookIds(r1) <= LTB.LookIds(re);
+      }
+  }
+
+  /** (gate B) `GG.BackLeafAt` (the leaf's copy) is `FG.BackLeafAt`. */
+  lemma BackLeafAtSame(rer: LW.RegExpRecord, body: R.regex, str: string, cp: nat)
+    requires T.TransWf(body) && cp <= |str|
+    ensures GG.BackLeafAt(rer, body, str, cp) == FG.BackLeafAt(rer, body, str, cp)
+  {}
+
   lemma FreshMatchLidFlip(
     rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, crv: CP.FCompiled, str: string,
     ov: LOr.OracleView, lk: AReg.Regs, lid: nat, ncap: int, nlook: int, nquant: int)
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && EL.NegBehindLBOnlyRE(body)
-    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
-    requires FST.LBOnlyLooksRE(body)
-    requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
-    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
-    requires !rer.ignoreCase && !rer.multiline
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body)
     requires |ov| == |str| + 1
-    requires qm.ov == ov && AR.LmapOk(body, qm) && OE.OracleColsOk(rer, qm, str)
     requires LTB.LookTablesOk(body, crv) && |crv.f_look_types| == |crv.f_look_ast|
     requires lid in LTB.LookIds(body)
     requires M.MatchedPosLA(crv, lk, lid as int)
@@ -4314,7 +4384,8 @@ module LindenElkLiftSimCore {
       var rf := M.FreshBodyMatch(crv, str, lid as int, lk, ov, ncap, nlook, nquant);
       var rfF := M.FreshBodyMatch(FG.MirrorTables(crv), LC.Reverse(str), lid as int,
                                   MIR.MirrorRegs(lk, n), MIR.MirrorView(ov, n), ncap, nlook, nquant);
-      && 0 <= (lid as int) < |crv.f_look_types| && crv.f_look_types[lid].Lookbehind?
+      && 0 <= (lid as int) < |crv.f_look_types|
+      && (crv.f_look_types[lid].Lookbehind? || crv.f_look_types[lid].Lookahead?)
       && 0 <= (lid as int) < |crv.f_look_cdns|
       && crv.f_look_ast[lid] == r1 && T.TransWf(r1)
       && M.MatchedPosLA(FG.MirrorTables(crv), MIR.MirrorRegs(lk, n), lid as int)
@@ -4337,13 +4408,12 @@ module LindenElkLiftSimCore {
     var r1 := NI.LookBodyOfRE(body, lid);
     var l := lid as int;
 
-    // ---- the row and its mirror ----
-    FG.LookRowLBOnly(body, crv, lid);
-    assert crv.f_look_types[l].Lookbehind?;      // MatchedPosLA: capture_type excludes NegLookbehind
+    // ---- the row (either kind) and its mirror ----
+    LookRowAny(body, crv, lid);
+    assert crv.f_look_types[l].Lookbehind? || crv.f_look_types[l].Lookahead?;   // MatchedPosLA
     assert crv.f_look_ast[l] == r1 && M.VBody(crv, l) == r1;
-    assert crvF.f_look_types[l] == FR.FlipLkRE(crv.f_look_types[l]) == R.Lookahead;
-    assert crvF.f_look_ast[l] == FST.FXR(r1) && M.VBody(crvF, l) == FST.FXR(r1);
-    assert crvF.f_look_cdns[l] == LCdn.compile_cdns(FST.FXR(r1));
+    assert crvF.f_look_types[l] == FR.FlipLkRE(crv.f_look_types[l]);
+    assert crvF.f_look_types[l].Lookbehind? || crvF.f_look_types[l].Lookahead?;
 
     // ---- the recorded cp and its mirror ----
     assert AReg.get_cp(lk, l).Some?;
@@ -4359,59 +4429,36 @@ module LindenElkLiftSimCore {
     FG.GetCpMirror(lk, n, l);
     assert AReg.get_cp(lkF, l).Some? && AReg.get_cp(lkF, l).value == n - cp0;
     assert M.MatchedPosLA(crvF, lkF, l);
-    var cp: nat := cp0;
 
-    // ---- sub-body facts ----
+    // ---- the row is RowOk (empty cdns on both sides) ----
     M.TransWfLookBodyOfRE(body, lid);
     M.CapUniqueLookBodyOfRE(body, lid);
     NI.LookBodyOfFragmentNested(body, lid);
     FG.LookBodySubFactsLB(body, lid);
-    assert PSM.SizesOkRE(r1, ncap, nlook, nquant);
-    FG.LmapOkLookBody(body, qm, lid);
     FST.FXRStructural(r1);
     FG.NestedCdnsEmpty(r1);
     FG.NestedCdnsEmpty(FST.FXR(r1));
-    assert crv.f_look_cdns[l] == [] && crvF.f_look_cdns[l] == [];
-    assert MIR.SwapAnchorsCdns([]) == [];
+    assert MW.RowOk(crv, l);
 
-    // ---- unfold both fresh matches ----
-    FG.FreshBodyMatchLBUnfold(crv, str, l, lk, ov, r1, ncap, nlook, nquant);
-    var bcB := CP.compile_to_bytecode(R.reverse_regex(r1));
-    var raB := AI.FFindMatch(bcB, str,
-                             AI.FInitState(bcB, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                           AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
-                             ov, LAnc.Backward, []).0;
-    assert M.FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant) == raB;
-    var bcF := CP.compile_to_bytecode(FST.FXR(r1));
-    var mcp := MIR.Mirror(cp, n);
-    assert mcp == n - cp0;
-    assert AI.capture_direction(R.Lookahead) == LAnc.Forward;
-    assert CP.capture_regex(R.Lookahead, FST.FXR(r1)) == FST.FXR(r1);
-    var rfF := AI.FFindMatch(bcF, rstr,
-                             AI.FInitState(bcF, mcp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                           AReg.init_regs(nquant), 0, AI.cp_context(mcp, rstr, LAnc.Forward)),
-                             ov', LAnc.Forward, []).0;
-    assert M.FreshBodyMatch(crvF, rstr, l, lkF, ov', ncap, nlook, nquant) == rfF;
-
-    // ---- F6 core at r1: rfF == MirrorThread(raB) ----
-    NI.NoNulledPlusLookBody(body, lid);   // §2.5b interim: NoNulledPlusRE(r1)
-    FG.BackFreshCoreNested(rer, qm, r1, str, cp, ov, [], ncap, nlook, nquant, n);
-    assert (raB.None? <==> rfF.None?);
-    if raB.Some? {
-      assert rfF.Some? && rfF.value == MIR.MirrorThread(raB.value, n);
-      var cB := raB.value.capture_regs;
-      var cF := rfF.value.capture_regs;
-      assert cF == MIR.MirrorRegs(cB, n);
-      LBK.BackCapsInRange(cB, cF, n);
-      assert forall k :: AI.get_idx(AReg.as_arrays(cB).0, k) <= n by {
-        forall k ensures AI.get_idx(cB.a_cp, k) <= n {
-          if 0 <= k < |cB.a_cp| { assert -1 <= cB.a_cp[k] <= n; }
+    // ---- the per-row tie, both kinds (W1) ----
+    MW.RowTiePos(crv, str, l, lk, ov, ncap, nlook, nquant);
+    MW.FreshBodyMatchCpsIn(crv, str, l, lk, ov, ncap, nlook, nquant);
+    var rf := M.FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
+    var rfF := M.FreshBodyMatch(crvF, rstr, l, lkF, ov', ncap, nlook, nquant);
+    assert rfF == MW.MirrorOpt(rf, n);
+    if rf.Some? {
+      assert rfF.Some? && rfF.value == MIR.MirrorThread(rf.value, n);
+      var c := rf.value.capture_regs;
+      assert MW.CpsIn(c, n);
+      assert forall k :: AI.get_idx(AReg.as_arrays(c).0, k) <= n by {
+        forall k ensures AI.get_idx(c.a_cp, k) <= n {
+          if 0 <= k < |c.a_cp| { assert -1 <= c.a_cp[k] <= n; }
         }
       }
-      BGM.GmOfLiveMirror(r1, cB, raB.value.look_regs, raB.value.quant_regs, n);
-      // the flipped thread's look/quant banks share their CLOCKS with raB's
-      PIV.GmOfLiveClkCong(r1, cF, rfF.value.look_regs, raB.value.look_regs,
-                          rfF.value.quant_regs, raB.value.quant_regs);
+      BGM.GmOfLiveMirror(r1, c, rf.value.look_regs, rf.value.quant_regs, n);
+      assert rfF.value.capture_regs == MIR.MirrorRegs(c, n);
+      PIV.GmOfLiveClkCong(r1, MIR.MirrorRegs(c, n), rfF.value.look_regs, rf.value.look_regs,
+                          rfF.value.quant_regs, rf.value.quant_regs);
     }
   }
 
@@ -4460,9 +4507,8 @@ module LindenElkLiftSimCore {
     rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, crv: CP.FCompiled, str: string,
     ov: LOr.OracleView, gmt: LG.GroupMap, th: AI.Thread, lid: nat,
     ncap: int, nlook: int, nquant: int)
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && EL.NegBehindLBOnlyRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)
     requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
-    requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires !rer.ignoreCase && !rer.multiline
@@ -5126,8 +5172,6 @@ module LindenElkLiftSimCore {
                          t: LT.Tree, thread: AI.Thread, leaf: LT.Leaf)
     requires NR.NestedFragmentRaw(raw)
     requires NR.NoNulledPlusRaw(raw)   // §2.5b interim gate conjunct
-    requires NR.L5ScopeRE(R.lazy_prefix(R.annotate(raw)))
-    requires EL.NegBehindLBOnlyRE(R.lazy_prefix(R.annotate(raw)))
     requires T.Latin1Wf(raw)
     requires EL.BoolTreeLk(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), BS.CannotExit, t)
     requires LS.IsTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), LG.Empty, WP.Forward, t)
@@ -5177,10 +5221,8 @@ module LindenElkLiftSimCore {
     assert M.OuterLkDisjoint([LS.Areg(T.Translate(re))]);
     assert M.NoDupRegsActs([LS.Areg(T.Translate(re))]) by { assert M.NoDupSeq(L.DefGroups(T.Translate(re))); }
     assert TRM.GmInBounds(LG.Empty, |inp.pref| + |inp.next|);   // Empty has no ranges
-    L5ScopeL5PosL(re);                                        // (L5 F7e-2)
-    assert FC.L5PosActsL([LS.Areg(T.Translate(re))]);
     assert M.NestDepthActsLe([LS.Areg(T.Translate(re))], M.NestDepthL(T.Translate(re)));
-    FC.FirstLeafClosedRecL5(rer, [LS.Areg(T.Translate(re))], inp, BS.CannotExit, t, LG.Empty, leaf,
+    CG.FirstLeafClosedRecAny(rer, [LS.Areg(T.Translate(re))], inp, BS.CannotExit, t, LG.Empty, leaf,
                             M.NestDepthL(T.Translate(re)));
     assert M.ClosedGm(leaf.1);
     M.MainExtractionFromClosed(raw, str, t, thread, leaf);
@@ -5286,16 +5328,13 @@ module LindenElkLiftSimCore {
       whose body is lookbehind-only; the body is itself in scope. */
   lemma LookBodyRowL5(sub: R.regex, crv: CP.FCompiled, lid: nat)
     requires T.TransWf(sub) && LTB.LookUnique(sub) && LTB.LookTablesOk(sub, crv)
-    requires NR.L5ScopeRE(sub) && EL.NegBehindLBOnlyRE(sub)
     requires lid in LTB.LookIds(sub)
     ensures var body := NI.LookBodyOfRE(sub, lid);
-            T.TransWf(body) && NR.L5ScopeRE(body) && EL.NegBehindLBOnlyRE(body)
+            T.TransWf(body)
             && (lid as int) in OE.LmOf(sub)
             && exists la: R.lookaround ::
               LTB.LookEntryOk(crv, lid as int, la, body)
               && OE.LmOf(sub)[lid as int] == (T.TrLookaround(la), T.Translate(body))
-              && (la.Lookbehind? ==> NR.LBOnlyLooksRE(body))
-              && (la.NegLookbehind? ==> NR.LBOnlyLooksRE(body))
     decreases sub
   {
     OE.LmOfDom(sub);
@@ -5329,9 +5368,6 @@ module LindenElkLiftSimCore {
         assert NI.LookBodyOfRE(sub, lid) == r1;
         assert LTB.LookEntryOk(crv, lid as int, la0, r1);   // LookTablesOk's lookaround case
         assert OE.LmOf(sub)[lid as int] == (T.TrLookaround(la0), T.Translate(r1));
-        assert la0.Lookbehind? ==> NR.LBOnlyLooksRE(r1);     // L5ScopeRE
-        assert NR.L5ScopeRE(r1);
-        assert la0.NegLookbehind? ==> NR.LBOnlyLooksRE(r1);   // NegBehindLBOnlyRE
       } else {
         assert lid in LTB.LookIds(r1);
         OE.LmOfDom(r1);

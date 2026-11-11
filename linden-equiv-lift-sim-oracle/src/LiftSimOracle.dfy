@@ -110,6 +110,12 @@ module LindenElkLiftSimOracle {
   import NI = LindenElkNestInv
   import CW = LindenElkCinWalk
   import opened LindenElkLiftSimCore
+  import MW = LindenElkMirrorWorld       // (gate B) the G1 leaf
+  import GG = LindenElkFlipGateG         // (gate B) flip-gate F6, scope-free
+  import KG = LindenElkFlipKeystoneG     // (gate B) keystone, scope-free
+  import OG = LindenElkFlipOracleG       // (gate B) generic F2/F3
+  import G = LindenElkFlipMirrorG        // (gate B) generic tree mirror
+  import MV = LindenElkMatchesVRoute     // (gate B) W9: lookbehind column via the mirrored MatchesV route
 
   /** The keystone's `Empty` hypothesis, as a walk-state invariant: any gate
       pending without an intervening reset has its body groups ABSENT from the
@@ -365,9 +371,6 @@ module LindenElkLiftSimOracle {
     var la: R.lookaround, b: R.regex :|
       LTB.LookEntryOk(crv, lid as int, la, b)
       && T.TransWf(b) && NR.NestedFragmentRE(b)
-      && EL.NegBehindLBOnlyRE(b)
-      && (la.Lookbehind? ==> NR.LBOnlyLooksRE(b))
-      && (!la.Lookbehind? ==> L5ScopeV1RE(b))
       && qm.looks[lid as int].0 == T.TrLookaround(la)
       && qm.looks[lid as int].1 == T.Translate(b)
       && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(b))) <= PIV.CapIdsInLooks(re)
@@ -404,7 +407,7 @@ module LindenElkLiftSimOracle {
                                  ncap: int, nlook: int, nquant: int)
     requires T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
     requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
-    requires NR.NestedFragmentRE(re) && EL.NegBehindLBOnlyRE(re) && L5ScopeV1RE(re)
+    requires NR.NestedFragmentRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires PSM.SizesOkRE(re, ncap, nlook, nquant)
@@ -413,7 +416,6 @@ module LindenElkLiftSimOracle {
                                GateStaticAtNested(qm, re0, crv, l, ncap, nlook, nquant)
     decreases re
   {
-    reveal L5ScopeV1RE();                   // (s6 widening) the per-node kind-split conjunct
     match re
     case Re_alt(r1, r2) =>
       GateStaticsSweepRENested(qm, re0, r1, crv, ncap, nlook, nquant);
@@ -436,11 +438,8 @@ module LindenElkLiftSimOracle {
       if lid >= 0 {
         // the node's own bundle
         assert LTB.LookEntryOk(crv, lid, la, body);
-        assert T.TransWf(body) && NR.NestedFragmentRE(body)
-               && EL.NegBehindLBOnlyRE(body);
+        assert T.TransWf(body) && NR.NestedFragmentRE(body);
         assert NR.NoNulledPlusRE(body);   // §2.5b: descends definitionally
-        assert (la.Lookbehind? ==> NR.LBOnlyLooksRE(body))                  // (L5 F7f) kind-split
-               && (!la.Lookbehind? ==> L5ScopeV1RE(body));
         assert lid in qm.looks && qm.looks[lid] == (T.TrLookaround(la), T.Translate(body));
         // confinement: the body's groups are inside-look groups of re0
         M.TranslateDefGroupsEqCapIds(body);
@@ -471,7 +470,7 @@ module LindenElkLiftSimOracle {
                                     ncap: int, nlook: int, nquant: int)
     requires T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
     requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
-    requires NR.NestedFragmentRE(re) && EL.NegBehindLBOnlyRE(re) && L5ScopeV1RE(re)
+    requires NR.NestedFragmentRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires PSM.SizesOkRE(re, ncap, nlook, nquant)
@@ -689,7 +688,6 @@ module LindenElkLiftSimOracle {
     A0: nat, lk: AReg.Regs, body: R.regex, bodycode: RB.code, endl: nat, ngroups: nat,
     g2: nat, ncap: int, nlook: int, nquant: int)
     requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
-    requires EL.NegBehindLBOnlyRE(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires qm.ov == ov && !rer.ignoreCase && !rer.multiline
     requires bodycode == CP.compile_to_bytecode(body)
@@ -769,7 +767,6 @@ module LindenElkLiftSimOracle {
     A0: nat, lk: AReg.Regs, body: R.regex, bodycode: RB.code, endl: nat, ngroups: nat,
     g2: nat, ncap: int, nlook: int, nquant: int)
     requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
-    requires EL.NegBehindLBOnlyRE(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires qm.ov == ov && !rer.ignoreCase && !rer.multiline
     requires bodycode == CP.compile_to_bytecode(body)
@@ -855,9 +852,8 @@ module LindenElkLiftSimOracle {
   lemma FreshBodyDirectInSubFirstLeafLB(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
     A0: nat, lk: AReg.Regs, body: R.regex, g2: nat, ncap: int, nlook: int, nquant: int)
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && EL.NegBehindLBOnlyRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)
     requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
-    requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires !rer.ignoreCase && !rer.multiline
@@ -875,7 +871,8 @@ module LindenElkLiftSimOracle {
     ensures var lsub := SubFirstLeafAt(rer, crv, str, A0 as int, lk);
             lsub.Some? && g2 in lsub.value
   {
-    FG.FreshBodyDirectInBackLeaf(rer, qm, crv, str, ov, A0, lk, body, g2, ncap, nlook, nquant);
+    GG.FreshBodyDirectInBackLeaf(rer, qm, crv, str, ov, A0, lk, body, g2, ncap, nlook, nquant);
+    BackLeafAtSame(rer, body, str, AReg.get_cp(lk, A0 as int).value);
     SubFirstLeafAtIsBackLeaf(rer, crv, str, A0 as int, lk, body);
   }
 
@@ -885,9 +882,8 @@ module LindenElkLiftSimOracle {
   lemma SubFirstLeafDirectInFreshLB(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
     A0: nat, lk: AReg.Regs, body: R.regex, g2: nat, ncap: int, nlook: int, nquant: int)
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && EL.NegBehindLBOnlyRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)
     requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
-    requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires !rer.ignoreCase && !rer.multiline
@@ -908,7 +904,8 @@ module LindenElkLiftSimOracle {
             && SubFirstLeafAt(rer, crv, str, A0 as int, lk).value[g2] == LBV.SwapRange(gmb[g2])
   {
     SubFirstLeafAtIsBackLeaf(rer, crv, str, A0 as int, lk, body);
-    FG.BackLeafDirectInFresh(rer, qm, crv, str, ov, A0, lk, body, g2, ncap, nlook, nquant);
+    BackLeafAtSame(rer, body, str, AReg.get_cp(lk, A0 as int).value);
+    GG.BackLeafDirectInFresh(rer, qm, crv, str, ov, A0, lk, body, g2, ncap, nlook, nquant);
   }
 
   /** (R2 — the crossing DISCHARGES the deep gate-pass requires) Ties rung 1 to the
@@ -1741,13 +1738,12 @@ module LindenElkLiftSimOracle {
       mirrored world is the `MirrorGm` of the backward sub-leaf (F2 at the lid
       body), so key membership is preserved and value equality comes back
       through `MirrorRange` injectivity. */
-  lemma {:isolate_assertions} LookNestBackTTopDeepLidFlip(
+  lemma LookNestBackTTopDeepLidFlip(
     rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, crv: CP.FCompiled, str: string,
     ov: LOr.OracleView, gmt: LG.GroupMap, th: AI.Thread, lid: nat,
     ncap: int, nlook: int, nquant: int)
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && EL.NegBehindLBOnlyRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)
     requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
-    requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires !rer.ignoreCase && !rer.multiline
@@ -1769,8 +1765,6 @@ module LindenElkLiftSimOracle {
                   (g in lsub.value ==> g in gmt && gmt[g] == lsub.value[g])
                   && (g in gmt ==> g in lsub.value)
   {
-    // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
-    // triggered existential storm the solver; all uses here are opaque.
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     var n := |str|;
     MIR.ReverseLen(str);
@@ -1801,24 +1795,32 @@ module LindenElkLiftSimOracle {
     FG.LookBodySubFactsLB(body, lid);
     FST.TranslateFlipXRev(r1);
 
-    // ---- lsub is the explicit backward leaf of r1 at cp ----
-    SubFirstLeafAtIsBackLeaf(rer, crv, str, l, th.look_regs, r1);
+    // ---- the lid's direction and the flipped row's ----
+    var dir := LidDir(crv, l);
+    assert crvF.f_look_types[l] == FR.FlipLkRE(crv.f_look_types[l]);
+    assert LidDir(crvF, l) == G.OppDir(dir) by {
+      if crv.f_look_types[l].Lookbehind? { assert crvF.f_look_types[l] == R.Lookahead; }
+      else { assert crv.f_look_types[l].Lookahead?; assert crvF.f_look_types[l] == R.Lookbehind; }
+    }
+    assert {:split_here} true;
+
+    // ---- lsub is the leaf of r1 at cp, walked in `dir` ----
     var lsub := SubFirstLeafAt(rer, crv, str, l, th.look_regs);
-    assert lsub == FG.BackLeafAt(rer, r1, str, cp);
-    var tB := LFU.ComputeTr(rer, [LS.Areg(T.Translate(r1))], inp, LG.Empty, WP.Backward);
-    var rb := LT.TreeRes(tB, LG.Empty, inp, WP.Backward);
+    assert M.VBody(crv, l) == r1;
+    var tB := LFU.ComputeTr(rer, [LS.Areg(T.Translate(r1))], inp, LG.Empty, dir);
+    var rb := LT.TreeRes(tB, LG.Empty, inp, dir);
     assert lsub == (if rb.Some? then Some(rb.value.1) else None);
 
-    // ---- lsubF is the forward leaf of FXR(r1) at n - cp ----
+    // ---- lsubF is the leaf of FXR(r1) at n - cp, walked in OppDir(dir) ----
     var lsubF := SubFirstLeafAt(rer, crvF, rstr, l, lkF);
     assert M.VBody(crvF, l) == FST.FXR(r1);
-    assert LidDir(crvF, l) == WP.Forward;
-    var tF := LFU.ComputeTr(rer, [LS.Areg(T.Translate(FST.FXR(r1)))], inpF, LG.Empty, WP.Forward);
-    var resF := LT.TreeRes(tF, LG.Empty, inpF, WP.Forward);
+    var tF := LFU.ComputeTr(rer, [LS.Areg(T.Translate(FST.FXR(r1)))], inpF, LG.Empty, G.OppDir(dir));
+    var resF := LT.TreeRes(tF, LG.Empty, inpF, G.OppDir(dir));
     assert lsubF == (if resF.Some? then Some(resF.value.1) else None);
+    assert {:split_here} true;
 
-    // ---- F2 at r1: the leaves mirror ----
-    FST.TranslateGroupOkLB(r1);
+    // ---- F2 at r1, generic direction: the leaves mirror ----
+    KG.TranslateNoBackref(r1);
     FK.TranslateNegBodiesGroupFree(r1);
     FK.TranslateDefGroupsNoDupK(r1);
     LBV.InpOfCpSwap(str, cp, n);
@@ -1827,10 +1829,11 @@ module LindenElkLiftSimOracle {
     assert |inp.pref| + |inp.next| == n;
     NI.NoNulledPlusLookBody(body, lid);   // §2.5b interim: NoNulledPlusRE(r1)
     NUL.TransNoNulledPlus(r1);            // §2.5b interim: NoNulledPlusL(Translate(r1))
-    FD.BackBodyGmTieFlip(rer, T.Translate(r1), inp, n);
+    OG.BodyGmTieFlipG(rer, T.Translate(r1), inp, n, dir);
     assert tF == LFU.ComputeTr(rer, [LS.Areg(FM.FlipRevL(T.Translate(r1)))], SD.SwapInput(inp),
-                               LG.Empty, WP.Forward);
+                               LG.Empty, G.OppDir(dir));
     assert (rb.None? <==> resF.None?);
+    assert {:split_here} true;
 
     // ---- instantiate the flipped deep clause at lid ----
     FG.TopLookIdsFXR(body);
@@ -1848,6 +1851,7 @@ module LindenElkLiftSimOracle {
           g in S && g in PIV.CapIds(NI.LookBodyOfRE(reF, lid)) ==>
             (g in lsubF.value ==> g in gmtF && gmtF[g] == lsubF.value[g])
             && (g in gmtF ==> g in lsubF.value);
+    assert {:split_here} true;
 
     if lsub.Some? {
       assert rb.Some? && resF.Some?;
@@ -1884,7 +1888,7 @@ module LindenElkLiftSimOracle {
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed through the recursion) ----
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && L5ScopeV1RE(re)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re)
     requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
@@ -1940,9 +1944,6 @@ module LindenElkLiftSimOracle {
     var laA: R.lookaround, bA: R.regex :|
       LTB.LookEntryOk(crv, A as int, laA, bA)
       && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && EL.NegBehindLBOnlyRE(bA)
-      && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
-      && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
       && qm.looks[A as int].0 == T.TrLookaround(laA)
       && qm.looks[A as int].1 == T.Translate(bA)
       && (set g: LG.GroupId | g in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
@@ -2080,22 +2081,84 @@ module LindenElkLiftSimOracle {
   // assertion-sized queries whose AGGREGATE exceeded the gate's 900 s budget,
   // which is how it presented as a "time out" — see the isolate_assertions
   // policy. The hide below does the real work.
+  /** (gate B, W9) The row facts for a lid of `sub`, either kind, no scope. */
+  lemma LookBodyRowAny(sub: R.regex, crv: CP.FCompiled, lid: nat)
+    requires T.TransWf(sub) && NR.NestedFragmentRE(sub)
+    requires PIV.CapUnique(sub) && PIV.QuantUnique(sub) && LTB.LookUnique(sub)
+    requires LTB.LookTablesOk(sub, crv)
+    requires lid in LTB.LookIds(sub)
+    ensures var body := NI.LookBodyOfRE(sub, lid);
+            T.TransWf(body) && NR.NestedFragmentRE(body)
+            && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+            && LTB.LookTablesOk(body, crv)
+            && LTB.LookIds(body) <= LTB.LookIds(sub)
+            && (lid as int) in OE.LmOf(sub)
+            && exists la: R.lookaround ::
+              LTB.LookEntryOk(crv, lid as int, la, body)
+              && OE.LmOf(sub)[lid as int] == (T.TrLookaround(la), T.Translate(body))
+    decreases sub
+  {
+    OE.LmOfDom(sub);
+    match sub
+    case Re_alt(r1, r2) =>
+      OE.LmOfDom(r1); OE.LmOfDom(r2);
+      if lid in LTB.LookIds(r1) {
+        LookBodyRowAny(r1, crv, lid);
+        assert lid !in LTB.LookIds(r2);
+        assert (lid as int) !in OE.LmOf(r2);
+        assert OE.LmOf(sub)[lid as int] == OE.LmOf(r1)[lid as int];
+        assert LTB.LookIds(r1) <= LTB.LookIds(sub);
+      } else {
+        LookBodyRowAny(r2, crv, lid);
+        assert OE.LmOf(sub)[lid as int] == OE.LmOf(r2)[lid as int];
+        assert LTB.LookIds(r2) <= LTB.LookIds(sub);
+      }
+    case Re_con(r1, r2) =>
+      OE.LmOfDom(r1); OE.LmOfDom(r2);
+      if lid in LTB.LookIds(r1) {
+        LookBodyRowAny(r1, crv, lid);
+        assert lid !in LTB.LookIds(r2);
+        assert (lid as int) !in OE.LmOf(r2);
+        assert OE.LmOf(sub)[lid as int] == OE.LmOf(r1)[lid as int];
+        assert LTB.LookIds(r1) <= LTB.LookIds(sub);
+      } else {
+        LookBodyRowAny(r2, crv, lid);
+        assert OE.LmOf(sub)[lid as int] == OE.LmOf(r2)[lid as int];
+        assert LTB.LookIds(r2) <= LTB.LookIds(sub);
+      }
+    case Re_quant(_, _, _, r1) => LookBodyRowAny(r1, crv, lid);
+    case Re_capture(_, r1) => LookBodyRowAny(r1, crv, lid);
+    case Re_lookaround(lid0, la0, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+        assert NI.LookBodyOfRE(sub, lid) == r1;
+        assert LTB.LookEntryOk(crv, lid as int, la0, r1);
+        assert OE.LmOf(sub)[lid as int] == (T.TrLookaround(la0), T.Translate(r1));
+      } else {
+        assert lid in LTB.LookIds(r1);
+        OE.LmOfDom(r1);
+        LookBodyRowAny(r1, crv, lid);
+        assert lid0 != lid as int;
+        assert OE.LmOf(sub)[lid as int] == OE.LmOf(r1)[lid as int];
+        assert LTB.LookIds(r1) <= LTB.LookIds(sub);
+      }
+  }
+
   lemma OracleColumnNested(rer: LW.RegExpRecord, top: R.regex, crv: CP.FCompiled,
-                                                 str: string, sub: R.regex, lid: int,
-                                                 lk: L.Lookaround, r1: L.Regex, cp: nat)
+                            str: string, sub: R.regex, lid: int,
+                            lk: L.Lookaround, r1: L.Regex, cp: nat)
     requires !rer.ignoreCase && !rer.multiline
     requires crv == CP.FFullCompilation(top)
     requires NR.NestedFragmentRE(top) && LTB.LidsWellNested(top) && LTB.LookUnique(top)
     requires forall x: nat :: x in LTB.LookIds(top) ==> 1 <= x
-    requires NR.NestedFragmentRE(sub) && NR.L5ScopeRE(sub) && EL.NegBehindLBOnlyRE(sub)   // (L5 F7g) lifted
-    requires M.LooksNoNulledPlusRE(sub)   // (§2.5b F-c) look bodies stay stamp-free
+    requires NR.NestedFragmentRE(sub)                    // W9: L5ScopeRE / NegBehindLBOnlyRE deleted
+    requires M.LooksNoNulledPlusRE(sub)
     requires T.TransWf(sub) && LTB.LookUnique(sub) && PIV.CapUnique(sub) && PIV.QuantUnique(sub)
     requires LTB.LookTablesOk(sub, crv)
     requires LTB.LookIds(sub) <= LTB.LookIds(top)
     requires cp <= |str|
     requires lid >= 0 && (lid as nat) in LTB.LookIds(sub)
     requires lid in OE.LmOf(sub) && OE.LmOf(sub)[lid] == (lk, r1)
-    requires T.TransWf(NI.LookBodyOfRE(sub, lid as nat))     // well-formedness of the QmOfRE/LmOf below
+    requires T.TransWf(NI.LookBodyOfRE(sub, lid as nat))
     requires var body := NI.LookBodyOfRE(sub, lid as nat);
              LL.OracleOkSuffix(rer, AR.QMap(M.QmOfRE(body), OE.LmOf(body), AI.FBuildOracle(crv, str), M.BodiesOfRE(body)),
                                LC.InitInput(str))
@@ -2103,88 +2166,77 @@ module LindenElkLiftSimOracle {
        <==> LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(r1)], T.InputAt(str, cp), LG.Empty, L.LkDir(lk)),
                        LG.Empty, T.InputAt(str, cp), L.LkDir(lk)).Some?
   {
-    // (2026-09-06) the hypotheses mention these recursive predicates on `top`/`sub`
-    // throughout; their unfolding is a matching loop (cf. the annotate family in
-    // MainTheorem's extraction lemmas).
-    hide NR.NestedFragmentRE, NR.L5ScopeRE, EL.NegBehindLBOnlyRE, NR.NoNulledPlusRE, LTB.LidsWellNested, LTB.LookUnique;
-    // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
-    // triggered existential storm the solver; all uses here are opaque.
+    hide NR.NestedFragmentRE, NR.NoNulledPlusRE, LTB.LidsWellNested, LTB.LookUnique;
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     var n := |str|;
     var ovf := AI.FBuildOracle(crv, str);
     var lidn: nat := lid as nat;
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    M.LookBodyFactsL5(sub, crv, lidn);
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    LookBodyRowL5(sub, crv, lidn);
+    assert {:split_here} true;
+    LookBodyRowAny(sub, crv, lidn);
     var body := NI.LookBodyOfRE(sub, lidn);
     var la: R.lookaround :| LTB.LookEntryOk(crv, lid, la, body)
-                            && OE.LmOf(sub)[lid] == (T.TrLookaround(la), T.Translate(body))
-                            && (la.Lookbehind? ==> NR.LBOnlyLooksRE(body))
-                            && (la.NegLookbehind? ==> NR.LBOnlyLooksRE(body));
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+                            && OE.LmOf(sub)[lid] == (T.TrLookaround(la), T.Translate(body));
+    assert {:split_here} true;
     assert lk == T.TrLookaround(la) && r1 == T.Translate(body);
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+    assert {:split_here} true;
     assert lidn in LTB.LookIds(top);
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+    assert {:split_here} true;
     LTB.LookIdsLeMax(top);
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+    assert {:split_here} true;
     assert 1 <= lid <= R.max_lookaround(top);
 
-    // ---- the bit IS the corrected V-target against the final view ----------
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+    assert {:split_here} true;
     OB.FBuildOracleViewLen(crv, str);
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+    assert {:split_here} true;
     assert |ovf| == n + 1;
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+    assert {:split_here} true;
     OB.FBuildOracleCorrectAboveNested(top, str);
     var bit := LOr.view_get_oracle(ovf, cp, lid);
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+    assert {:split_here} true;
     assert bit == OB.LidReachesVFinal(crv, str, ovf, lid, cp);
     reveal OB.LidReachesVFinal();
     var bc := AI.get_code_v(crv.f_look_build_bc, lid);
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    assert bc == CP.compile_to_write(CP.oracle_regex(la, body), lid);   // LookEntryOk row
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+    assert {:split_here} true;
+    assert bc == CP.compile_to_write(CP.oracle_regex(la, body), lid);
+    assert {:split_here} true;
     assert crv.f_look_types[lid] == la;
     var rcb := R.remove_capture(body);
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+    assert {:split_here} true;
     OMV.RemoveCaptureNestedFragment(body);
     var inp := T.InputAt(str, cp);
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+    assert {:split_here} true;
     assert PIV.InpOfCp(str, cp) == inp by { LS.ReverseLength(str[..cp]); }
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+    assert {:split_here} true;
     SD.ReverseLength(str);
     var rstr := LC.Reverse(str);
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+    assert {:split_here} true;
     assert |rstr| == n;
 
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+    assert {:split_here} true;
     if la.Lookahead? || la.NegLookahead? {
-      // ---- lookAHEAD row: backward build, mirrored; spec walk is FORWARD ----
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      // ---- lookAHEAD row: VERBATIM from OracleColumnNested :2163-2259 ----
+      assert {:split_here} true;
       assert L.LkDir(lk) == WP.Forward;
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      assert {:split_here} true;
       assert OB.LidDir(crv, lid) == LAnc.Backward;
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      assert {:split_here} true;
       assert CP.oracle_regex(la, body) == R.lazy_prefix(R.reverse_regex(rcb));
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      assert {:split_here} true;
       OB.CompileToWriteSwap(R.lazy_prefix(R.reverse_regex(rcb)), lid);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      assert {:split_here} true;
       OB.SwapAnchorsLazyPrefix(R.reverse_regex(rcb));
       var x := OMV.XRev(rcb);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      assert {:split_here} true;
       assert MIR.SwapAnchorsCode(bc) == CP.compile_to_write(R.lazy_prefix(x), lid);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      assert {:split_here} true;
       OMV.XRevNestedFragment(rcb);
       var mv := MIR.MirrorView(ovf, n);
       var mcp := MIR.Mirror(cp, n);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      assert {:split_here} true;
       assert mcp == n - cp;
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      assert {:split_here} true;
       assert bit == ORc.ReachesWriteV(CP.compile_to_write(R.lazy_prefix(x), lid), rstr, mv, 0, lid, mcp);
 
-      // engine run of the body at cp against the FINAL view <==> a gated span
       var codeb := CP.compile_to_bytecode(body);
       var cdnsb := LCdn.compile_cdns(body);
       var ncapb := R.imax(0, 2 * R.max_group(body) + 2);
@@ -2193,107 +2245,89 @@ module LindenElkLiftSimOracle {
       var inits := AI.FInitState(codeb, cp, AReg.init_regs(ncapb), AReg.init_regs(nlookb),
                                  AReg.init_regs(nquantb), 0, AI.cp_context(cp, str, LAnc.Forward));
       var r := AI.FFindMatch(codeb, str, inits, ovf, LAnc.Forward, cdnsb).0;
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      assert {:split_here} true;
       assert forall y: nat :: y in LTB.LookIds(body) ==> 1 <= y;
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      assert {:split_here} true;
       OAV.AcceptRunCharacterizationV(body, str, ovf, cp, cdnsb, AReg.init_regs(ncapb),
                                      AReg.init_regs(nlookb), AReg.init_regs(nquantb), 0);
-      // (AcceptRunCharacterizationV's postcondition `r.Some? <==> exists j :: MatchesV(...)`
-      //  stays available as an assumption; a standalone assert of it timed out — dropped.)
 
-      // spec side: the engine run at cp IS the body's first leaf (inner rows)
       var qmb := AR.QMap(M.QmOfRE(body), OE.LmOf(body), ovf, M.BodiesOfRE(body));
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      assert {:split_here} true;
       OracleOkSuffixAtCp(rer, qmb, str, cp);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      assert {:split_here} true;
       NR.CompileToBytecodeRepNested(body);
       var endlb: nat := CP.compile(body, 0, CP.Progress).1 as nat;
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      assert {:split_here} true;
       CompileStutterTameRENested(body);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      assert {:split_here} true;
       M.QmOfREEntries(body);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      M.BodiesOfREEntries(body);   // §2.5b: the bodies table entries
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      assert {:split_here} true;
+      M.BodiesOfREEntries(body);
+      assert {:split_here} true;
       M.QmapOkFromEntries(body, qmb);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      assert {:split_here} true;
       OE.LmapOkOfLmOf(body, qmb);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      M.LooksNoNulledPlusBody(sub, lid as nat);   // §2.5b interim: NoNulledPlusRE(body)
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      assert {:split_here} true;
+      M.LooksNoNulledPlusBody(sub, lid as nat);
+      assert {:split_here} true;
       assert PSM.StaticOkNestedRE(qmb, body, codeb, endlb);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      assert {:split_here} true;
       assert PSM.SizesOkRE(body, ncapb, nlookb, nquantb);
       var bestT := M.BodyTreeAtCpNested(rer, qmb, body, codeb, endlb, 0, str, cp, ovf, cdnsb,
                                         ncapb, nlookb, nquantb);
       var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Forward);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      assert {:split_here} true;
       assert (bestT.None? <==> r.None?) && (bestT.None? <==> LT.FirstLeaf(t, inp).None?);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      assert {:split_here} true;
       assert LT.FirstLeaf(t, inp) == LT.TreeRes(t, LG.Empty, inp, WP.Forward);
 
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      assert {:split_here} true;
       if bit {
-        // (2026-11-05) engine -> spec as a narrow-contract lemma: in this context
-        // even the one-line steps of this direction took 900 s at one worker.
         ColumnAheadBitToRun(body, lid, str, ovf, cp, cdnsb, AReg.init_regs(ncapb),
-                            AReg.init_regs(nlookb), AReg.init_regs(nquantb));
+                                AReg.init_regs(nlookb), AReg.init_regs(nquantb));
         assert {:split_here} true;
         assert r.Some?;
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+        assert {:split_here} true;
         assert LT.TreeRes(t, LG.Empty, inp, WP.Forward).Some?;
       }
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      assert {:split_here} true;
       if LT.TreeRes(t, LG.Empty, inp, WP.Forward).Some? {
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+        assert {:split_here} true;
         assert r.Some?;
         var j: int :| OBV.MatchesV(body, str, ovf, cp, j);
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        // (2026-11-05) the rest of this direction is a narrow-contract lemma: here
-        // the final call's batch alone hit the 900 s limit at one worker although
-        // every precondition was already asserted (the assumed context, not the call).
+        assert {:split_here} true;
         ColumnAheadSpecToBit(body, lid, str, ovf, cp, j);
         assert x == OMV.XRev(R.remove_capture(body)) && mv == MIR.MirrorView(ovf, n);
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+        assert {:split_here} true;
         assert bit;
       }
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+    assert {:split_here} true;
     } else {
-      // ---- (L5 F7g, §2.2) lookBEHIND row of either polarity (lookbehind-only
-      //      nested body): the gate-side CAPSTONE `OE.OracleColumnSpecNested` — the final view's bit
-      //      IS the body's BACKWARD walk at cp. Its whole-string column premise
-      //      for the body's own rows comes from the inner-rows induction hypothesis.
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      // ---- lookBEHIND row, body of ANY look kinds: the MatchesV route, mirrored ----
+      assert {:split_here} true;
       assert la.Lookbehind? || la.NegLookbehind?;
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert NR.LBOnlyLooksRE(body);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      assert {:split_here} true;
       assert L.LkDir(lk) == WP.Backward;
       var qmb := AR.QMap(M.QmOfRE(body), OE.LmOf(body), ovf, M.BodiesOfRE(body));
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      OE.LmapOkOfLmOf(body, qmb);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      assert {:split_here} true;
       assert OE.OracleColsOk(rer, qmb, str) by {
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+        assert {:split_here} true;
         forall c: nat | c <= |str| ensures LL.OracleOkSuffix(rer, qmb, PIV.InpOfCp(str, c)) {
-          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+          assert {:split_here} true;
           OracleOkSuffixAtCp(rer, qmb, str, c);
         }
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+        assert {:split_here} true;
         SufForallToColsOk(rer, qmb, str);
       }
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      FG.LBOnlyEquiv(body);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      FST.TranslateGroupOkLB(body);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      OE.OracleColumnSpecNested(rer, qmb, top, str, lid, la, body, cp);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert bit <==> SD.SuccActs(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Backward);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert SD.SuccActs(rer, [LS.Areg(r1)], inp, LG.Empty, WP.Backward)
-          == LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, WP.Backward),
-                        LG.Empty, inp, WP.Backward).Some?;
+      assert {:split_here} true;
+      M.LooksNoNulledPlusBody(sub, lid as nat);
+      assert {:split_here} true;
+      assert forall y: nat :: y in LTB.LookIds(body) ==> 1 <= y;
+      assert {:split_here} true;
+      MV.ColumnBehindViaMirror(rer, top, qmb, str, lid, la, body, cp);
+      assert {:split_here} true;
+      assert bit <==> LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, WP.Backward),
+                                 LG.Empty, inp, WP.Backward).Some?;
     }
   }
 
@@ -2306,13 +2340,13 @@ module LindenElkLiftSimOracle {
       with lookbehind-only bodies admitted — their column is `OracleColumnNested`'s
       new arm). (the L4-scope wrapper has been retired). */
   lemma OracleOkRowsL5(rer: LW.RegExpRecord, top: R.regex, crv: CP.FCompiled,
-                                             str: string, sub: R.regex)
+                        str: string, sub: R.regex)
     requires !rer.ignoreCase && !rer.multiline
     requires crv == CP.FFullCompilation(top)
     requires NR.NestedFragmentRE(top) && LTB.LidsWellNested(top) && LTB.LookUnique(top)
     requires forall x: nat :: x in LTB.LookIds(top) ==> 1 <= x
-    requires NR.NestedFragmentRE(sub) && NR.L5ScopeRE(sub) && EL.NegBehindLBOnlyRE(sub)   // (L5 F7g) lifted
-    requires M.LooksNoNulledPlusRE(sub)   // (§2.5b F-c) look bodies stay stamp-free
+    requires NR.NestedFragmentRE(sub)                    // W9: L5ScopeRE / NegBehindLBOnlyRE deleted
+    requires M.LooksNoNulledPlusRE(sub)
     requires T.TransWf(sub) && LTB.LookUnique(sub) && PIV.CapUnique(sub) && PIV.QuantUnique(sub)
     requires LTB.LookTablesOk(sub, crv)
     requires LTB.LookIds(sub) <= LTB.LookIds(top)
@@ -2347,15 +2381,12 @@ module LindenElkLiftSimOracle {
       {
         assert lid >= 0 && (lid as nat) in LTB.LookIds(sub);
         var lidn: nat := lid as nat;
-        M.LookBodyFactsL5(sub, crv, lidn);
-        LookBodyRowL5(sub, crv, lidn);
+        LookBodyRowAny(sub, crv, lidn);
         var body := NI.LookBodyOfRE(sub, lidn);
-        // the inner rows first (strictly fewer look ids: the owner's own id is gone)
         LookIdNotInOwnBody(sub, lidn);
         SubsetCardLt(LTB.LookIds(body), LTB.LookIds(sub), lidn);
-        M.LooksNoNulledPlusBody(sub, lidn);   // §2.5b interim: NoNulledPlusRE(body)
+        M.LooksNoNulledPlusBody(sub, lidn);
         OracleOkRowsL5(rer, top, crv, str, body);
-        // then this row's column
         OracleColumnNested(rer, top, crv, str, sub, lid, lk, r1, cp);
       }
     }

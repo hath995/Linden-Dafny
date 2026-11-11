@@ -114,6 +114,10 @@ module LindenElkLiftSimCarriers {
   import opened LindenElkLiftSimOracle
   import opened LindenElkLiftSimChain
   import opened LindenElkLiftSimGate
+  import GG = LindenElkFlipGateG         // (gate B) flip-gate F6, scope-free
+  import KG = LindenElkFlipKeystoneG     // (gate B) keystone, scope-free
+  import OG = LindenElkFlipOracleG       // (gate B) generic F2/F3
+  import G = LindenElkFlipMirrorG        // (gate B) generic tree mirror
 
   // ==========================================================================
   // THE MAIN THEOREM, L3a: capturing positive lookaheads included. The
@@ -137,7 +141,6 @@ module LindenElkLiftSimCarriers {
     lookcdn: LCdn.cdns, plus_bc: seq<RB.code>, ncap: int, nlook: int, nquant: int)
     requires la.Lookahead?
     requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
-    requires EL.NegBehindLBOnlyRE(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
     requires cp <= |str|
@@ -146,7 +149,6 @@ module LindenElkLiftSimCarriers {
     requires |ov| == |str| + 1
     requires OE.OracleColsOk(rer, qm, str)                    // (L5 F7d) whole-string oracle correctness (backward keystone)
     requires GateStaticsOkNested(qm, body, crv, ncap, nlook, nquant)
-    requires L5ScopeV1RE(body)               // (s6 widening; was M.NoPosLookbehindRE(body))
     requires LTB.LookUnique(body)
     requires LTB.LookTablesOk(body, crv)
     ensures
@@ -240,7 +242,6 @@ module LindenElkLiftSimCarriers {
 
     // ---- run the composite sim on the body match -------------------------
     var result := AI.FFindMatch(bodycode, str, vms, ov, LAnc.Forward, lookcdn).0;
-    L5ScopeV1ImpliesL5(body);               // (L5 F7f) the composite chain is L5-scoped
     L3aCompositeCloseRec(rer, qm, body, bodycode, endl, ngroups, crv, str, ov, S, tstar, t, inp,
                          vms, lookcdn, result, ncap, nlook, nquant);
     assert BestTieLkNestedTop(rer, body, crv, str, ov, S, LT.FirstLeaf(t, inp), result, ncap, nlook, nquant);
@@ -344,9 +345,8 @@ module LindenElkLiftSimCarriers {
     crv: CP.FCompiled, str: string, cp: nat, ov: LOr.OracleView,
     lookcdn: LCdn.cdns, plus_bc: seq<RB.code>, ncap: int, nlook: int, nquant: int)
     requires la.Lookbehind?
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && EL.NegBehindLBOnlyRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)
     requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
-    requires FST.LBOnlyLooksRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires !rer.ignoreCase && !rer.multiline
@@ -395,9 +395,7 @@ module LindenElkLiftSimCarriers {
 
     // ---- statics of the flipped body + the flipped/mirrored tables ----
     FST.FXRStructural(body);
-    NegBehindLBOnlyFXR(body);
     var qmF, endl' := FK.FlipXRevStaticOkNested(body, ov', ncap, nlook, nquant);
-    FG.NoPosLookbehindFXR(body);
     FG.LookUniqueFXR(body);
     FG.LookTablesOkFXR(body, crv);
     FG.LookIdsFXR(body);
@@ -414,11 +412,11 @@ module LindenElkLiftSimCarriers {
         assert l >= 0 && (l as nat) in LTB.LookIds(body);
       }
     }
-    NoPosImpliesL5ScopeV1(reF);             // FXR(body) has no positive lookbehinds
     FST.NoNulledPlusFXR(body);
     M.LooksNoNulledPlusFromFull(reF);       // (§2.5b F-c) the gate statics read only look bodies
     GateStaticsFromTablesNested(qmF, reF, crvF, ncap, nlook, nquant);
 
+    assert {:split_here} true;   // (gate B) W12 perf split (131 M unsplit -> 11 M worst)
     // ---- oracle for the flipped table: F3 on the body-restricted site table ----
     OE.LmapOkOfLmOf(body, qmB);
     FK.LmapOkEntriesMatchLmOf(body, qm);
@@ -427,15 +425,16 @@ module LindenElkLiftSimCarriers {
         FST.OracleOkAtSubmap(rer, qm, qmB, T.InputAt(str, k));
       }
     }
-    FK.LmOfBodiesLBOk(body);
-    assert FO.QmBodiesLBOk(qmB);
+    KG.LmOfBodiesNoBackref(body);
+    assert OG.QmBodiesNoBackref(qmB);
     assert |qmB.ov| == |str| + 1 && qmF.ov == MIR.MirrorView(qmB.ov, |str|);
-    FO.MirrorOracleColsOk(rer, qmB, qmF, str);
+    OG.MirrorOracleColsOkG(rer, qmB, qmF, str);
     FO.ColsOkToSuffix(rer, qmF, rstr, mcpN);
     var inpF := PIV.InpOfCp(rstr, mcpN);
     assert inpF == T.InputAt(rstr, mcpN);
     assert LL.OracleOkSuffix(rer, qmF, inpF);
 
+    assert {:split_here} true;   // (gate B) W12 perf split (131 M unsplit -> 11 M worst)
     // ---- the FORWARD carrier at the flipped body over the reversed string ----
     LookNestBackTFromBodyReplay(rer, qmF, R.Lookahead, reF, bcF, endl', 0, crvF, rstr, mcpN, ov',
                                 cdn', plus_bc, ncap, nlook, nquant);
@@ -445,6 +444,7 @@ module LindenElkLiftSimCarriers {
                                   capture, look, quant, 0, cdn').0;
     assert (rfFP.Some? <==> leafF.Some?);
 
+    assert {:split_here} true;   // (gate B) W12 perf split (131 M unsplit -> 11 M worst)
     // ---- reduce both Plus runs to plain runs (no nulled plus in the fragment) ----
     var ctxF := AI.cp_context(mcp, rstr, LAnc.Forward);
     var initsF := AI.FInitState(bcF, mcp, capture, look, quant, 0, ctxF);
@@ -499,15 +499,17 @@ module LindenElkLiftSimCarriers {
                                 capture, look, quant, 0, lookcdn).0;
     assert rf == raB;
 
+    assert {:split_here} true;   // (gate B) W12 perf split (131 M unsplit -> 11 M worst)
     // ---- F6 core: rfF == MirrorThread(raB) ----
-    FG.BackFreshCoreNested(rer, qm, body, str, cp, ov, lookcdn, ncap, nlook, nquant, n);
+    GG.BackFreshCoreNested(rer, qm, body, str, cp, ov, lookcdn, ncap, nlook, nquant, n);
     assert (raB.None? <==> rfF.None?);
 
+    assert {:split_here} true;   // (gate B) W12 perf split (131 M unsplit -> 11 M worst)
     // ---- F2: the spec leaves mirror ----
     var inp := PIV.InpOfCp(str, cp);
     var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Backward);
     var rb := LT.TreeRes(t, LG.Empty, inp, WP.Backward);
-    FST.TranslateGroupOkLB(body);
+    KG.TranslateNoBackref(body);
     FK.TranslateNegBodiesGroupFree(body);
     FK.TranslateDefGroupsNoDupK(body);
     LBV.InpOfCpSwap(str, cp, n);
@@ -517,13 +519,15 @@ module LindenElkLiftSimCarriers {
     FST.TranslateFlipXRev(body);
     assert T.Translate(reF) == FM.FlipRevL(T.Translate(body));
     NUL.TransNoNulledPlus(body);   // §2.5b interim: NoNulledPlusL(Translate(body))
-    FD.BackBodyGmTieFlip(rer, T.Translate(body), inp, n);
+    OG.BodyGmTieFlipG(rer, T.Translate(body), inp, n, WP.Backward);
+    assert G.OppDir(WP.Backward) == WP.Forward;
     assert tF == LFU.ComputeTr(rer, [LS.Areg(FM.FlipRevL(T.Translate(body)))], SD.SwapInput(inp),
                                LG.Empty, WP.Forward);
     assert leafF == LT.TreeRes(tF, LG.Empty, inpF, WP.Forward);
     assert (rb.None? <==> leafF.None?);
     assert rb.Some? ==> TRM.GmInBounds(rb.value.1, n) && leafF.value.1 == TRM.MirrorGm(rb.value.1, n);
 
+    assert {:split_here} true;   // (gate B) W12 perf split (131 M unsplit -> 11 M worst)
     // ---- None-iff ----
     assert (rf.Some? <==> rb.Some?);
 
@@ -541,6 +545,7 @@ module LindenElkLiftSimCarriers {
       assert LookNestBackTTopDeep(rer, reF, crvF, rstr, ov', S, gmtF, thF, ncap, nlook, nquant);
       assert LookNestOkTTop(reF, S, gmtF, thF);
 
+      assert {:split_here} true;   // (gate B) W12 perf split
       // ---- look-bank invariants on the BACKWARD winner (fresh init banks) ----
       RL.AInitLaws(nlook);
       assert CM.VmLookClkSet(initsB) by {
@@ -566,9 +571,11 @@ module LindenElkLiftSimCarriers {
       CM.FFindMatchLookCpOkB(bodycodeB, str, initsB, ov, LAnc.Backward, lookcdn);
       assert CM.LookCpsLE(th.look_regs, |str|);
 
+      assert {:split_here} true;   // (gate B) W12 perf split
       // ---- presence carrier: congruence ----
       LookNestOkTTopFlip(body, S, gmt, th, n);
 
+      assert {:split_here} true;   // (gate B) W12 perf split
       // ---- key + deep carriers: per top lid, through T2a / F2 at the lid body ----
       NI.TopLookIdsIn(body);
       forall lid: nat | lid in NI.TopLookIds(body)
@@ -612,7 +619,7 @@ module LindenElkLiftSimCarriers {
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed) ----
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && L5ScopeV1RE(re)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re)
     requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
@@ -669,9 +676,6 @@ module LindenElkLiftSimCarriers {
     var laA: R.lookaround, bA: R.regex :|
       LTB.LookEntryOk(crv, A as int, laA, bA)
       && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && EL.NegBehindLBOnlyRE(bA)
-      && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
-      && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
       && qm.looks[A as int].0 == T.TrLookaround(laA)
       && qm.looks[A as int].1 == T.Translate(bA)
       && (set g0: LG.GroupId | g0 in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
@@ -711,7 +715,6 @@ module LindenElkLiftSimCarriers {
       OracleOkSuffixRestrict(rer, qm, qmB, inpA);
     }
     assert GateStaticsOkNested(qmB, host, crv, ncap, nlook, nquant) by {
-      L5ScopeV1LookBody(re, A);          // (L5 F7f) the v1 scope descends to the body
       M.LooksNoNulledPlusFromFull(host);   // (§2.5b F-c) NoNulledPlusRE(host) from the row
       GateStaticsFromTablesNested(qmB, host, crv, ncap, nlook, nquant);
     }
@@ -794,7 +797,7 @@ module LindenElkLiftSimCarriers {
            && lsubA.value[g] == PIV.GmOfLive(host, rfc, rfl, rfq)[g];
     // presence + dominance on the FRESH banks
     // (2026-08-25) nested host: the depth-1 `FreshBodyMatchCapWf` was unprovable here.
-    M.LookBodyFactsL5(re, crv, A);              // NestedFragmentRE/CapUnique/QuantUnique(host)
+    LookBodyFactsKB(re, crv, A);              // (gate B) scope-free row facts
     M.LooksNoNulledPlusBody(re, A);             // §2.5b interim: NoNulledPlusRE(host)
     FreshBodyMatchCapWfNested(crv, str, A as int, res1, ov, ncap, nlook, nquant, host);
     assert PIV.CapRegWf(rfc);

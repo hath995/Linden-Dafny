@@ -123,9 +123,10 @@ module NullablePlusWitness {
     assert LSIMCOR.L5ScopeV1RE(re);
   }
 
-  /** A lookahead inside a negative lookbehind stays out: the backward span duality
-      has no `GroupOkLB` for a lookahead (same limit as a positive lookbehind's body). */
-  lemma Frag22_NegBehindAheadStillOut()
-    ensures !API.Supported(NEG_BEHIND_AHEAD)
+  /** A lookahead inside a negative lookbehind is IN since gate B (G1): the lookbehind
+      column is matched through the mirror world, so a lookbehind's body may hold
+      lookaheads (see also `LookNestWitness`). */
+  lemma Frag22_NegBehindAheadIn()
+    ensures API.Supported(NEG_BEHIND_AHEAD)
   { }
 }

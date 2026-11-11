@@ -36,20 +36,15 @@ module LindenRegexApi {
           looks, captures may sit under quantifiers, and negative look bodies are
           capture-free;
         - it is Latin-1 well-formed (`T.Latin1Wf`);
-        - a lookbehind's body is lookbehind-only, while a lookahead's body is
-          scoped recursively and may hold positive lookbehinds, as in `(?=x(?<=y))`
-          (`LSIMCOR.L5ScopeV1RE` on the annotated regex; `EL.NegBehindLBOnlyRaw`
-          for negative lookbehinds);
         - no look body holds a nulled plus (`MCL.LooksNoNulledPlusX`), and every
           greedy CI-nullable plus has a look-free body (`MCL.CinBodiesLookFreeX`).
       Greedy CDN pluses stay out (the nested fragment's plus arm excludes them).
-      Exactly `MCL.MainTheoremL5Cin`'s precondition, via
-      `LSIMORA.L5ScopeFromRawFull`. `SUPPORTED_FRAGMENT.md` lists what this admits
+      Looks nest to any depth in either direction: lookaheads inside lookbehinds and
+      lookbehinds inside lookaheads (gate B, G1 full depth). Exactly
+      `MCL.MainTheoremL5Cin`'s precondition. `SUPPORTED_FRAGMENT.md` lists what this admits
       and why each gap exists. */
   predicate Supported(pattern: R.raw_regex) {
     NR.NestedFragmentRaw(pattern) && T.Latin1Wf(pattern)
-    && LSIMCOR.L5ScopeV1RE(R.lazy_prefix(R.annotate(pattern)))
-    && EL.NegBehindLBOnlyRaw(pattern)
     && MCL.LooksNoNulledPlusX(R.lazy_prefix(R.annotate(pattern)))
     && MCL.CinBodiesLookFreeX(R.lazy_prefix(R.annotate(pattern)))
   }
@@ -74,7 +69,6 @@ module LindenRegexApi {
     requires Supported(pattern)
     ensures LES.MatcherSpec(pattern, str, Match(pattern, str))
   {
-    LSIMORA.L5ScopeFromRawFull(pattern);
     MCL.LooksNoNulledPlusXSound(R.lazy_prefix(R.annotate(pattern)));
     MCL.CinBodiesLookFreeXSound(R.lazy_prefix(R.annotate(pattern)));
     MCL.MainTheoremL5Cin(pattern, str);

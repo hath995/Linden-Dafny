@@ -1,7 +1,16 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:d4666ee8e095dc5105743553fdc7e0b72b609afe1cb54608e611dc032f086363"
+manifest-hash = "sha256:1f0bb759913934883961e684e0344a48b079f832c4f1a1755e530ae07b25da8e"
+
+[[package]]
+name = "linden.equiv-cin-walk"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-cin-walk"
 
 [[package]]
 name = "linden.equiv-gen-step-re"
@@ -56,15 +65,6 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-stamp-live"
-
-[[package]]
-name = "linden.equiv-tree-mirror-lk"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-tree-mirror-lk"
 
 [[package]]
 name = "linden.engine"
@@ -542,3 +542,21 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-lift-sim-deep"
+
+[[package]]
+name = "linden.equiv-tree-mirror-lk"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-tree-mirror-lk"
+
+[[package]]
+name = "linden.equiv-mirror-world"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-mirror-world"

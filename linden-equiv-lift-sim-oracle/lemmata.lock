@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:bc1ad2ec92b18f6b74aba3bebdccf405a967d7bac84c20a0f56c73c668a3f342"
+manifest-hash = "sha256:b7409dc44147ec43b59fc5c1053518d2dce51bcd8a16b8b9c06422e7fe7f4060"
 
 [[package]]
 name = "linden.equiv-gen-step-re"
@@ -56,15 +56,6 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-stamp-live"
-
-[[package]]
-name = "linden.equiv-tree-mirror-lk"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-tree-mirror-lk"
 
 [[package]]
 name = "linden.engine"
@@ -164,6 +155,15 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-check-erase"
+
+[[package]]
+name = "linden.equiv-cin-walk"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-cin-walk"
 
 [[package]]
 name = "linden.equiv-clock-mono"
@@ -497,3 +497,21 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-lift-sim-core"
+
+[[package]]
+name = "linden.equiv-tree-mirror-lk"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-tree-mirror-lk"
+
+[[package]]
+name = "linden.equiv-mirror-world"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-mirror-world"

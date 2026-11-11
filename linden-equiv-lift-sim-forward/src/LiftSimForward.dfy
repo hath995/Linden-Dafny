@@ -123,7 +123,7 @@ module LindenElkLiftSimForward {
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed) ----
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && L5ScopeV1RE(re)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re)
     requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
@@ -175,7 +175,6 @@ module LindenElkLiftSimForward {
     var bA: R.regex := *;
     var laT: R.lookaround := *;
     var endlH: nat := *;
-    var laN: R.lookaround := *;
     var qmB := *;
     var bodycodeB := *;
     var cdnA := *;
@@ -197,9 +196,6 @@ module LindenElkLiftSimForward {
       ensures (bodycode == CP.compile_to_bytecode(host))
       ensures (LTB.LookEntryOk(crv, A as int, laA, bA)
               && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-              && EL.NegBehindLBOnlyRE(bA)
-              && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
-              && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
               && qm.looks[A as int].0 == T.TrLookaround(laA)
               && qm.looks[A as int].1 == T.Translate(bA)
               && (set g0: LG.GroupId | g0 in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
@@ -210,7 +206,6 @@ module LindenElkLiftSimForward {
               && ((laA.NegLookbehind? || laA.NegLookahead?) ==> NR.CaptureFreeRE(bA)))
       ensures (LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A)))
       ensures (endlH == |bodycode| - 1)
-      ensures (LTB.LookEntryOk(crv, A as int, laN, host) && (laN.Lookbehind? ==> NR.LBOnlyLooksRE(host)))
       ensures (qmB == AR.QMap(qm.quants,
                                map l: int | l in qm.looks && l >= 0 && (l as nat) in LTB.LookIds(host) :: qm.looks[l],
                                qm.ov, qm.bodies))
@@ -236,9 +231,6 @@ module LindenElkLiftSimForward {
       ensures (crv.f_look_types[A as int] == laA)
       ensures ((laA.Lookahead? || laA.Lookbehind?))
       ensures (laA.Lookbehind?)
-      ensures (laN == laA)
-      ensures (NR.LBOnlyLooksRE(host))
-      ensures (FST.LBOnlyLooksRE(host))
       ensures (M.FrameEntryOk(crv, laA, host,
                                   PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re)))
       ensures (PIV.CapUnique(host) && PIV.QuantUnique(host) && LTB.LookUnique(host)
@@ -284,9 +276,6 @@ module LindenElkLiftSimForward {
       laA, bA :|
         LTB.LookEntryOk(crv, A as int, laA, bA)
         && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-        && EL.NegBehindLBOnlyRE(bA)
-        && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
-        && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
         && qm.looks[A as int].0 == T.TrLookaround(laA)
         && qm.looks[A as int].1 == T.Translate(bA)
         && (set g0: LG.GroupId | g0 in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
@@ -307,12 +296,7 @@ module LindenElkLiftSimForward {
       }
       assert laA.Lookbehind? by { assert crv.f_look_types[A as int] == laA; }
       // ==== (L5 F7c-4) LOOKBEHIND lid: lift via the FLIP twins ====
-      M.LookBodyFactsL5(re, crv, A);
-      laN :| LTB.LookEntryOk(crv, A as int, laN, host) && (laN.Lookbehind? ==> NR.LBOnlyLooksRE(host));
-      assert laN == laA;
-      assert NR.LBOnlyLooksRE(host);
-      FG.LBOnlyEquiv(host);
-      assert FST.LBOnlyLooksRE(host);
+      LookBodyFactsKB(re, crv, A);   // (W16) uniqueness only; no LBOnlyLooksRE(host)
       // ---- rf_A: the fresh BACKWARD body match (Some via the LB carrier's None-iff — the
       //      backward leaf EXISTS by hypothesis) ----
       assert M.FrameEntryOk(crv, laA, host,
@@ -459,8 +443,7 @@ module LindenElkLiftSimForward {
   
       // (E3) pins: the LB carrier's preconditions, one assert each
       assert laA.Lookbehind?;
-      assert T.TransWf(host); assert NR.NestedFragmentRE(host); assert EL.NegBehindLBOnlyRE(host);
-      assert FST.LBOnlyLooksRE(host);
+      assert T.TransWf(host); assert NR.NestedFragmentRE(host);   // (W16) scope pins deleted
       assert PIV.CapUnique(host) && PIV.QuantUnique(host) && LTB.LookUnique(host);
       assert PSM.SizesOkRE(host, ncap, nlook, nquant);
       assert !rer.ignoreCase && !rer.multiline;
@@ -493,15 +476,13 @@ module LindenElkLiftSimForward {
         var la1: R.lookaround, b1: R.regex :|
           LTB.LookEntryOk(crv, A1 as int, la1, b1);
         assert crv.f_look_types[A1 as int] == la1;
-        assert la1.Lookbehind? || la1.NegLookbehind? by {
-          FG.LookRowLBOnly(host, crv, A1);
-        }
+        // (W16) NO kind pin (FG.LookRowLBOnly): in a mixed host A1 may be a lookAHEAD.
         assert AI.capture_type(crv.f_look_types[A1 as int]) by {   // (2026-08-29) explicit: a NEGATIVE row is capture-free, but g in CapIds(bodyA1)
           NI.LookBodyOfTablesTie(re, crv, A1);
           var la1T: R.lookaround :| LTB.LookEntryOk(crv, A1 as int, la1T, bodyA1);
           assert b1 == bodyA1;                       // LookEntryOk pins f_look_ast[A1]
           assert g in PIV.CapIds(b1);
-          if la1.NegLookbehind? {
+          if la1.NegLookbehind? || la1.NegLookahead? {   // (W16) both negative kinds
             assert NR.CaptureFreeRE(b1);             // GateStaticAtNested(A1): negative rows are capture-free
             PIV.CaptureFreeNoCapIds(b1);
             assert false;
@@ -564,9 +545,6 @@ module LindenElkLiftSimForward {
         assert GateStaticAtNested(qm, re, crv, A1 as int, ncap, nlook, nquant);
         var la1G: R.lookaround, b1G: R.regex :| LTB.LookEntryOk(crv, A1 as int, la1G, b1G)
                                                 && T.TransWf(b1G) && NR.NestedFragmentRE(b1G)
-                                                && EL.NegBehindLBOnlyRE(b1G)
-                                                && (la1G.Lookbehind? ==> NR.LBOnlyLooksRE(b1G))
-                                                && (!la1G.Lookbehind? ==> L5ScopeV1RE(b1G))
                                                 && qm.looks[A1 as int].0 == T.TrLookaround(la1G)
                                                 && qm.looks[A1 as int].1 == T.Translate(b1G)
                                                 && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(b1G))) <= PIV.CapIdsInLooks(re)
@@ -719,7 +697,7 @@ module LindenElkLiftSimForward {
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed) ----
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && L5ScopeV1RE(re)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re)
     requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
@@ -775,9 +753,6 @@ module LindenElkLiftSimForward {
     var laA: R.lookaround, bA: R.regex :|
       LTB.LookEntryOk(crv, A as int, laA, bA)
       && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && EL.NegBehindLBOnlyRE(bA)
-      && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
-      && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
       && qm.looks[A as int].0 == T.TrLookaround(laA)
       && qm.looks[A as int].1 == T.Translate(bA)
       && (set g0: LG.GroupId | g0 in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
@@ -816,7 +791,7 @@ module LindenElkLiftSimForward {
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed) ----
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && L5ScopeV1RE(re)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re)
     requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
@@ -879,9 +854,6 @@ module LindenElkLiftSimForward {
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       LTB.LookEntryOk(crv, A as int, laA, bA)
       && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && EL.NegBehindLBOnlyRE(bA)
-      && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
-      && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
       && qm.looks[A as int].0 == T.TrLookaround(laA)
       && qm.looks[A as int].1 == T.Translate(bA)
       && (set g0: LG.GroupId | g0 in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
@@ -940,7 +912,6 @@ module LindenElkLiftSimForward {
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert GateStaticsOkNested(qmB, host, crv, ncap, nlook, nquant) by {
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      L5ScopeV1LookBody(re, A);          // (L5 F7f) the v1 scope descends to the body
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       M.LooksNoNulledPlusFromFull(host);   // (§2.5b F-c) NoNulledPlusRE(host) from the row
       GateStaticsFromTablesNested(qmB, host, crv, ncap, nlook, nquant);
@@ -1112,9 +1083,6 @@ module LindenElkLiftSimForward {
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         LTB.LookEntryOk(crv, A1 as int, la1, b1)
         && T.TransWf(b1) && NR.NestedFragmentRE(b1)
-        && EL.NegBehindLBOnlyRE(b1)
-        && (la1.Lookbehind? ==> NR.LBOnlyLooksRE(b1))
-        && (!la1.Lookbehind? ==> L5ScopeV1RE(b1))
         && qm.looks[A1 as int].0 == T.TrLookaround(la1)
         && qm.looks[A1 as int].1 == T.Translate(b1)
         && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(b1))) <= PIV.CapIdsInLooks(re)
@@ -1210,9 +1178,6 @@ module LindenElkLiftSimForward {
       assert GateStaticAtNested(qm, re, crv, A1 as int, ncap, nlook, nquant);
       var la1G: R.lookaround, b1G: R.regex :| LTB.LookEntryOk(crv, A1 as int, la1G, b1G)
                                               && T.TransWf(b1G) && NR.NestedFragmentRE(b1G)
-                                              && EL.NegBehindLBOnlyRE(b1G)
-                                              && (la1G.Lookbehind? ==> NR.LBOnlyLooksRE(b1G))
-                                              && (!la1G.Lookbehind? ==> L5ScopeV1RE(b1G))
                                               && qm.looks[A1 as int].0 == T.TrLookaround(la1G)
                                               && qm.looks[A1 as int].1 == T.Translate(b1G)
                                               && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(b1G))) <= PIV.CapIdsInLooks(re)
@@ -1390,7 +1355,7 @@ module LindenElkLiftSimForward {
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed) ----
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && L5ScopeV1RE(re)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re)
     requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
@@ -1445,9 +1410,6 @@ module LindenElkLiftSimForward {
     var laA: R.lookaround, bA: R.regex :|
       LTB.LookEntryOk(crv, A as int, laA, bA)
       && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && EL.NegBehindLBOnlyRE(bA)
-      && (laA.Lookbehind? ==> NR.LBOnlyLooksRE(bA))
-      && (!laA.Lookbehind? ==> L5ScopeV1RE(bA))
       && qm.looks[A as int].0 == T.TrLookaround(laA)
       && qm.looks[A as int].1 == T.Translate(bA)
       && (set g0: LG.GroupId | g0 in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
@@ -1500,7 +1462,7 @@ module LindenElkLiftSimForward {
     ov: LOr.OracleView, thread: AI.Thread, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     S: set<LG.GroupId>, gmt: LG.GroupMap, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (verbatim DeepFindRec block) ----
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.L5ScopeRE(re) && L5ScopeV1RE(re)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re)
     requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
@@ -1592,9 +1554,6 @@ module LindenElkLiftSimForward {
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         LTB.LookEntryOk(crv, A0 as int, laA0, bT)
         && T.TransWf(bT) && NR.NestedFragmentRE(bT)
-        && EL.NegBehindLBOnlyRE(bT)
-        && (laA0.Lookbehind? ==> NR.LBOnlyLooksRE(bT))
-        && (!laA0.Lookbehind? ==> L5ScopeV1RE(bT))
         && qm.looks[A0 as int].0 == T.TrLookaround(laA0)
         && qm.looks[A0 as int].1 == T.Translate(bT)
         && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(bT))) <= PIV.CapIdsInLooks(re)

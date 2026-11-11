@@ -113,6 +113,7 @@ module LindenElkLiftSimGate {
   import opened LindenElkLiftSimCore
   import opened LindenElkLiftSimOracle
   import opened LindenElkLiftSimChain
+  import GG = LindenElkFlipGateG         // (gate B) flip-gate F6, scope-free
 
   /** `LiftInvCNested` carrying the standalone `LiftInvRec`. */
   ghost predicate LiftInvCRec(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
@@ -1144,6 +1145,17 @@ module LindenElkLiftSimGate {
     }
   }
 
+  /** (gate B, W2) Scope-free uniqueness half of `M.LookBodyFactsL5`. */
+  lemma LookBodyUniqAny(re: R.regex, lid: nat)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires lid in LTB.LookIds(re)
+    ensures PIV.CapUnique(NI.LookBodyOfRE(re, lid)) && PIV.QuantUnique(NI.LookBodyOfRE(re, lid))
+         && LTB.LookUnique(NI.LookBodyOfRE(re, lid))
+  {
+    M.CapUniqueLookBodyOfRE(re, lid);
+    FG.LookBodySubFactsLB(re, lid);
+  }
+
   lemma LiftPreserveGatePassLkRec(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                                                         crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                                                         bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
@@ -1160,7 +1172,6 @@ module LindenElkLiftSimGate {
     // positive-lookahead-nesting scope `M.NoPosLookbehindRE(re)` — the composite
     // sim is now non-vacuous at nesting depth >= 2.
     requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
-    requires NR.L5ScopeRE(re) && L5ScopeV1RE(re)   // (L5 F7f) v1: kind-split hub
     requires bst.PTS?
     requires LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
     requires |s.active| > 0
@@ -1260,7 +1271,6 @@ module LindenElkLiftSimGate {
       LTB.LookEntryOk(crv, l, la, body)
       && T.TransWf(body) && NR.NestedFragmentRE(body)
       && NR.NoNulledPlusRE(body)
-      && EL.NegBehindLBOnlyRE(body)
       && qm.looks[l].0 == T.TrLookaround(la)
       && qm.looks[l].1 == T.Translate(body)
       && (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
@@ -1292,13 +1302,6 @@ module LindenElkLiftSimGate {
     // (L5 F7f) the L5 per-lid dispatch: a positive LOOKBEHIND is in scope iff its
     // body is lookbehind-only (`LBOnlyLooksRE`) — the LB arms below consume it.
     assert la.Lookahead? || la.Lookbehind?;
-    assert la.Lookbehind? ==> FST.LBOnlyLooksRE(body) by {
-      M.LookBodyFactsL5(re, crv, l as nat);
-      var la0: R.lookaround :| LTB.LookEntryOk(crv, l as int, la0, NI.LookBodyOfRE(re, l as nat))
-                               && (la0.Lookbehind? ==> NR.LBOnlyLooksRE(NI.LookBodyOfRE(re, l as nat)));
-      assert la0 == crv.f_look_types[l] == la;   // LookEntryOk pins f_look_types[l]
-      if la.Lookbehind? { FG.LBOnlyEquiv(body); }
-    }
     M.LkBodyGroupsEqCapIdsInLooks(re);
     assert S == LL.LkBodyGroups(T.Translate(re));
 
@@ -1523,9 +1526,8 @@ module LindenElkLiftSimGate {
           }
           // site statics of the F6 atom: LB-only body (the L5 dispatch), body-level
           // uniqueness, LmapOk on the body, the whole-string oracle (F7d)
-          assert FST.LBOnlyLooksRE(body);
           assert PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body) by {
-            M.LookBodyFactsL5(re, crv, l as nat);
+            LookBodyUniqAny(re, l as nat);
           }
           assert AR.LmapOk(body, qm) by { FG.LmapOkLookBody(re, qm, l as nat); }
           assert 0 <= l < |crv.f_look_types| && crv.f_look_types[l].Lookbehind?
@@ -1536,7 +1538,7 @@ module LindenElkLiftSimGate {
                                       AI.FInitState(bcB, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
                                                     AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
                                       ov, LAnc.Backward, crv.f_look_cdns[l]).0;
-          FG.GateCrossCoverageLBNested(rer, qm, body, str, cp, ov, crv.f_look_cdns[l], la, tlk, gm,
+          GG.GateCrossCoverageLBNested(rer, qm, body, str, cp, ov, crv.f_look_cdns[l], la, tlk, gm,
                                        ncap, nlook, nquant, |str|);
           assert LS.LkResult(T.TrLookaround(la), tlk, gm, inp).Some?
                  && LS.LkResult(T.TrLookaround(la), tlk, gm, inp).value == gm2 by {
@@ -2066,7 +2068,6 @@ module LindenElkLiftSimGate {
     requires PSM.StaticCoreNestedRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires S == PIV.CapIdsInLooks(re)   // the value-tie boundary (SetReg/gate cases)
     requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)   // (BRICK D5) NESTED per-lid package
-    requires NR.L5ScopeRE(re) && L5ScopeV1RE(re)   // (L5 F7f) the v1 L5 scope
     requires LTB.LookUnique(re)           // (E3) cross-lid ownership pinning
     requires LTB.LookTablesOk(re, crv)    // (E4) row↔structure tie (gate converse)
     requires dir == LAnc.Forward
@@ -2442,7 +2443,6 @@ module LindenElkLiftSimGate {
     requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
     requires S == PIV.CapIdsInLooks(re)
     requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)   // (BRICK D5) NESTED per-lid package
-    requires NR.L5ScopeRE(re) && L5ScopeV1RE(re)                     // (L5 F7f) the v1 L5 scope
     requires LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires ptsA.PTS? && bst.PTS?
@@ -2739,7 +2739,6 @@ module LindenElkLiftSimGate {
     // StaticOkNestedRE, and `TranslateFragmentPikeLkRec` establishes
     // PikeLkRegexRec(Translate(re)) from them.
     requires PSM.StaticCoreNestedRE(qm, re, code, endl)
-    requires EL.NegBehindLBOnlyRE(re)
     requires AR.ActionsRepL(rer, qm, [LS.Areg(T.Translate(re))], code, 0)
     requires CW.BoolTreeLkX(rer, [LS.Areg(T.Translate(re))], inp, BS.CannotExit, t)   // (§2.5b F-c) the ENGINE-SHAPED root walk
     requires EL.PikeLkRegexRec(T.Translate(re))   // (§2.5b F-c) supplied: the static package is gate-free
@@ -2862,7 +2861,6 @@ module LindenElkLiftSimGate {
     // lookahead-nesting scope `M.NoPosLookbehindRE(re)` — this driver is now
     // NON-VACUOUS at nesting depth >= 2.
     requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
-    requires NR.L5ScopeRE(re) && L5ScopeV1RE(re)   // (L5 F7f) the v1 L5 scope
     requires LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires code == CP.compile_to_bytecode(re)
@@ -2872,7 +2870,7 @@ module LindenElkLiftSimGate {
     requires PIV.ContextOkRE(str, vms.cp, vms.context)
     // Thread-anchored entry facts (feed LiftInitC) — replace the dead
     // LeavesAgreeAtOutside(tstar, t) tree link.
-    requires T.TransWf(re) && EL.NegBehindLBOnlyRE(re)
+    requires T.TransWf(re)
     requires AR.ActionsRepL(rer, qm, [LS.Areg(T.Translate(re))], code, 0)
     requires EL.BoolTreeLk(rer, [LS.Areg(T.Translate(re))], inp, BS.CannotExit, t)
     // (§2.5b F-c) the CIN bodies' groups lie in G (glue side condition)
@@ -2950,7 +2948,6 @@ module LindenElkLiftSimGate {
     requires !rer.ignoreCase
     requires S == PIV.CapIdsInLooks(re)
     requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
-    requires NR.L5ScopeRE(re) && L5ScopeV1RE(re)
     requires LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires code == CP.compile_to_bytecode(re)
@@ -2958,7 +2955,7 @@ module LindenElkLiftSimGate {
     requires vms.processed == AI.init_bpcset(RB.size(code))
     requires vms.isblocked == AI.init_pcset(RB.size(code))
     requires PIV.ContextOkRE(str, vms.cp, vms.context)
-    requires T.TransWf(re) && EL.NegBehindLBOnlyRE(re)
+    requires T.TransWf(re)
     requires AR.ActionsRepL(rer, qm, [LS.Areg(T.Translate(re))], code, 0)
     requires EL.BoolTreeLk(rer, [LS.Areg(T.Translate(re))], inp, BS.CannotExit, t)
     requires PTL.PikeSubtreeLk(t)
