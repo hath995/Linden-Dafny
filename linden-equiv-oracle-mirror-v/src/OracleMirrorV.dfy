@@ -180,8 +180,8 @@ module LindenElkOracleMirrorV {
   }
 
   /** `XRev` preserves the nested fragment (quant shapes ride the preserved
-      nullability; negative-look capture-freedom rides the preserved
-      capture-freedom). */
+      nullability; since gate C a negative body may capture, so no
+      capture-freedom step). */
   lemma XRevNestedFragment(re: R.regex)
     requires NR.NestedFragmentRE(re)
     ensures NR.NestedFragmentRE(XRev(re))
@@ -196,10 +196,6 @@ module LindenElkOracleMirrorV {
     case Re_capture(_, r1) => XRevNestedFragment(r1);
     case Re_lookaround(lid, la, r1) =>
       XRevNestedFragment(r1);
-      if !(la.Lookahead? || la.Lookbehind?) {
-        ReverseCapFree(r1);
-        SwapAnchorsCapFree(R.reverse_regex(r1));
-      }
     case _ =>
   }
 

@@ -58,12 +58,11 @@ module LindenElkFlipOracle {
   }
 
   /** The v1 scope, per table entry: lookbehind-flavoured, `GroupOkLB` body,
-      group-free negative sub-bodies, dup-free gids. */
+      dup-free gids. */
   ghost predicate QmBodiesLBOk(qm: AR.QMap) {
     forall lid: int :: lid in qm.looks ==>
       && (qm.looks[lid].0.LookBehind? || qm.looks[lid].0.NegLookBehind?)
       && SD.GroupOkLB(qm.looks[lid].1)
-      && FD.NegBodiesGroupFree(qm.looks[lid].1)
       && NUL.NoNulledPlusL(qm.looks[lid].1)   // §2.5b interim
       && CD.NoDupG(L.DefGroups(qm.looks[lid].1))
   }

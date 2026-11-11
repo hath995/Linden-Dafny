@@ -130,7 +130,6 @@ module LindenElkLiftSimDeep {
             |bc| >= 1
             && PSM.StaticOkNestedRE(qm, body, bc, |bc| - 1)
             && PSM.SizesOkRE(body, ncap, nlook, nquant)
-            && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
   {
     la, body :| LTB.LookEntryOk(crv, l, la, body)
                 && T.TransWf(body) && NR.NestedFragmentRE(body)
@@ -141,8 +140,7 @@ module LindenElkLiftSimDeep {
                 && var bc := CP.compile_to_bytecode(body);
                 |bc| >= 1
                 && PSM.StaticOkNestedRE(qm, body, bc, |bc| - 1)
-                && PSM.SizesOkRE(body, ncap, nlook, nquant)
-                && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
+                && PSM.SizesOkRE(body, ncap, nlook, nquant);
   }
 
   /** (L5 F7f perf) The LOOKBEHIND arm of `DeepFindRec`, extracted so each of its
@@ -170,6 +168,7 @@ module LindenElkLiftSimDeep {
     requires M.FrameEntryAllO(crv, re, ast)
     // ---- (§2.3/§2.4) the FLookLoop value lifts: the reverse descent reads its dominance off them ----
     requires M.ValueOkO(crv, str, res0, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    requires M.LookPosO(res1, crv)   // (gate C, G2) set look records sit at positive rows
     requires M.QuantValueOkO(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     // ---- global res-side facts (fixed) ----
     requires |res1.a_cp| == nlook && |res1.a_clk| == nlook
@@ -230,8 +229,7 @@ module LindenElkLiftSimDeep {
       && var bc := CP.compile_to_bytecode(bA);
       |bc| >= 1
       && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
-      && PSM.SizesOkRE(bA, ncap, nlook, nquant)
-      && ((laA.NegLookbehind? || laA.NegLookahead?) ==> NR.CaptureFreeRE(bA));
+      && PSM.SizesOkRE(bA, ncap, nlook, nquant);
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     NI.LookBodyOfTablesTie(re, crv, A);
     var laT: R.lookaround :| LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A));
@@ -354,13 +352,8 @@ module LindenElkLiftSimDeep {
         // (W11) NO kind pin: in a mixed host A1 may be a lookAHEAD. Only the
         // negative kinds are excluded (capture-free bodies hold no g2).
         if la1.NegLookbehind? || la1.NegLookahead? {
-          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-          assert NR.CaptureFreeRE(bodyA1);                       // the pick's negative clause
-          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-          PIV.CaptureFreeNoCapIds(bodyA1);
-          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-          assert g2 in PIV.CapIds(bodyA1);
-          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+          assert {:split_here} true;   // (gate C, G2) a set record sits at a POSITIVE row
+          M.MatchedPosFromBank(crv, res1, A1 as int);
           assert false;
         }
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -582,7 +575,9 @@ module LindenElkLiftSimDeep {
   /** (perf) The FORWARD DEEP arm of `DeepFindRec`, extracted so its assertions are
       checked in a small context (same treatment as `DeepFindRecLB`).
       Mutually recursive with `DeepFindRec` on `(|LookIds(host)|, arm)`. */
-  lemma DeepFindRecFwdDeep(
+  // (gate C) `{:induction false}`: the recursion is explicit (`DeepFindRec`); with the bare look
+  // arm of `NestedFragmentRE` the automatic induction hypothesis pushed two sections past 900 s.
+  lemma {:induction false} DeepFindRecFwdDeep(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
@@ -602,6 +597,7 @@ module LindenElkLiftSimDeep {
     requires M.FrameEntryAllO(crv, re, ast)
     // ---- (§2.3/§2.4) the FLookLoop value lifts: the reverse descent reads its dominance off them ----
     requires M.ValueOkO(crv, str, res0, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    requires M.LookPosO(res1, crv)   // (gate C, G2) set look records sit at positive rows
     requires M.QuantValueOkO(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     // ---- global res-side facts (fixed) ----
     requires |res1.a_cp| == nlook && |res1.a_clk| == nlook
@@ -656,8 +652,7 @@ module LindenElkLiftSimDeep {
       && var bc := CP.compile_to_bytecode(bA);
       |bc| >= 1
       && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
-      && PSM.SizesOkRE(bA, ncap, nlook, nquant)
-      && ((laA.NegLookbehind? || laA.NegLookahead?) ==> NR.CaptureFreeRE(bA));
+      && PSM.SizesOkRE(bA, ncap, nlook, nquant);
     NI.LookBodyOfTablesTie(re, crv, A);
     var laT: R.lookaround :| LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A));
     assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
@@ -696,7 +691,7 @@ module LindenElkLiftSimDeep {
     // (β) A1 matched in res1 (reverse invariant + type pin)
     assert AI.get_idx(res1.a_cp, A1 as int) >= 0;               // LookCpSetWithClk
     assert AReg.get_cp(res1, A1 as int).Some?;
-    MatchedPosFromHub(qm, re, crv, res1, A1, g2, ncap, nlook, nquant);
+    M.MatchedPosFromBank(crv, res1, A1 as int);   // (gate C, G2) a set record sits at a positive row
     assert M.MatchedPosLA(crv, res1, A1 as int);
 
     assert {:split_here} true;   // (E3) step boundary: its own assertion batch
@@ -882,6 +877,7 @@ module LindenElkLiftSimDeep {
     requires M.FrameEntryAllO(crv, re, ast)
     // ---- (§2.3/§2.4) the FLookLoop value lifts: the reverse descent reads its dominance off them ----
     requires M.ValueOkO(crv, str, res0, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    requires M.LookPosO(res1, crv)   // (gate C, G2) set look records sit at positive rows
     requires M.QuantValueOkO(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     // ---- global res-side facts (fixed) ----
     requires |res1.a_cp| == nlook && |res1.a_clk| == nlook
@@ -931,8 +927,7 @@ module LindenElkLiftSimDeep {
       && var bc := CP.compile_to_bytecode(bA);
       |bc| >= 1
       && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
-      && PSM.SizesOkRE(bA, ncap, nlook, nquant)
-      && ((laA.NegLookbehind? || laA.NegLookahead?) ==> NR.CaptureFreeRE(bA));
+      && PSM.SizesOkRE(bA, ncap, nlook, nquant);
     NI.LookBodyOfTablesTie(re, crv, A);
     var laT: R.lookaround :| LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A));
     assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
@@ -1020,6 +1015,7 @@ module LindenElkLiftSimDeep {
     requires CM.LookCpSetWithClk(res1) && CM.LookCpsLE(res1, |str|)
     requires M.FLookLoopChildLinkOk(crv, str, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     requires M.FLookLoopValueOkFull(crv, str, res0, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    requires M.LookPosO(res1, crv)   // (gate C, G2) set look records sit at positive rows
     requires M.FLookLoopQuantValueOkFull(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     // ---- per-level data ----
     requires A in LTB.LookIds(re)
@@ -1079,8 +1075,7 @@ module LindenElkLiftSimDeep {
               && var bc := CP.compile_to_bytecode(bA);
               |bc| >= 1
               && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
-              && PSM.SizesOkRE(bA, ncap, nlook, nquant)
-              && ((laA.NegLookbehind? || laA.NegLookahead?) ==> NR.CaptureFreeRE(bA)))
+              && PSM.SizesOkRE(bA, ncap, nlook, nquant))
       ensures (LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A)))
       ensures (endlH == |bodycode| - 1)
       ensures (qmB == AR.QMap(qm.quants,
@@ -1156,8 +1151,7 @@ module LindenElkLiftSimDeep {
         && var bc := CP.compile_to_bytecode(bA);
         |bc| >= 1
         && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
-        && PSM.SizesOkRE(bA, ncap, nlook, nquant)
-        && ((laA.NegLookbehind? || laA.NegLookahead?) ==> NR.CaptureFreeRE(bA));
+        && PSM.SizesOkRE(bA, ncap, nlook, nquant);
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       NI.LookBodyOfTablesTie(re, crv, A);
       laT :| LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A));

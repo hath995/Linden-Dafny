@@ -1263,7 +1263,17 @@ module LindenElkLiftSimChain {
     }
   }
 
-  lemma WalkPairLkAtSetQuantCoreRec(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+  /** (gate C) `WalkPairLkAtSetQuantCoreRec`'s postcondition, named so each match arm
+      asserts it in its own `split_here` batch (as one batch the lemma passed 900 s). */
+  ghost predicate WalkPairLkAtSetQuantCoreRecPost(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code,
+                                                  inp: LC.Input, tb: LT.Tree, gm: LG.GroupMap, pc: nat,
+                                                  b: BS.LoopBool, q: int) {
+    && q in qm.quants
+    && tb.GroupActionT? && tb.g == LG.Reset(qm.quants[q])
+    && WalkPairLkRec(rer, qm, code, inp, tb.t, LG.GMUpdate(tb.g, LC.Idx(inp), gm), pc + 1, ATR.EaOf(b))
+  }
+
+  lemma {:induction false} WalkPairLkAtSetQuantCoreRec(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                                     tb: LT.Tree, gm: LG.GroupMap, pc: nat, b: BS.LoopBool,
                                     acts: LS.Actions, q: int)
     requires AR.ActionsRepL(rer, qm, acts, code, pc)
@@ -1286,18 +1296,25 @@ module LindenElkLiftSimChain {
     var cont := acts[1..];
     match acts[0]
     case Acheck(_) =>   // pins EndLoop / backward Fork — not SetQuantToClock
+      assert {:split_here} true;   // (gate C) one batch per arm
+      assert WalkPairLkAtSetQuantCoreRecPost(rer, qm, code, inp, tb, gm, pc, b, q);   // (gate C) arm-local exit
     case Aclose(_) =>   // pins SetRegisterToCP — not SetQuantToClock
+      assert {:split_here} true;   // (gate C) one batch per arm
+      assert WalkPairLkAtSetQuantCoreRecPost(rer, qm, code, inp, tb, gm, pc, b, q);   // (gate C) arm-local exit
     case Areg(r0) =>
       assert EL.PikeLkRegexRec(r0);
       match r0
       case Epsilon =>
+        assert {:split_here} true;   // (gate C) one batch per arm
         assert pcmid == pc;
         assert CW.BoolTreeLkX(rer, cont, inp, b, tb);
         assert ATR.MsizeA(cont) < ATR.MsizeA(acts);
         GateAheadClearTail(acts, gm);
         WalkDefsOkTail(acts);
         WalkPairLkAtSetQuantCoreRec(rer, qm, code, inp, tb, gm, pc, b, cont, q);
+        assert WalkPairLkAtSetQuantCoreRecPost(rer, qm, code, inp, tb, gm, pc, b, q);   // (gate C) arm-local exit
       case Sequence(r1, r2) =>
+        assert {:split_here} true;   // (gate C) one batch per arm
         assert acts[0] == LS.Areg(L.Sequence(r1, r2));
         assert AR.NfaRepL(rer, qm, L.Sequence(r1, r2), code, pc, pcmid);
         var e1: nat :| AR.NfaRepL(rer, qm, r1, code, pc, e1) && AR.NfaRepL(rer, qm, r2, code, e1, pcmid);
@@ -1317,10 +1334,13 @@ module LindenElkLiftSimChain {
         GateAheadClearSeqExpand(acts, r1, r2, gm);
         WalkDefsOkSeqExpand(acts, r1, r2);
         WalkPairLkAtSetQuantCoreRec(rer, qm, code, inp, tb, gm, pc, b, na, q);
+        assert WalkPairLkAtSetQuantCoreRecPost(rer, qm, code, inp, tb, gm, pc, b, q);   // (gate C) arm-local exit
       case Quantified(greedy, min, delta, r1) =>
+        assert {:split_here} true;   // (gate C) one batch per arm
         assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
         assert AR.NfaRepL(rer, qm, L.Quantified(greedy, min, delta, r1), code, pc, pcmid);
         if min > 0 {
+          assert {:split_here} true;   // (gate C) one batch per arm
           if min == 1 && delta.Inf? && greedy && !NUL.NonNullableL(r1) {
             // §2.5b F-c: the CIN head is the FORK `Fork(em + 1, e1 + 2)` at pc
             var emC, e1C := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
@@ -1395,7 +1415,9 @@ module LindenElkLiftSimChain {
                  && GateAheadClear(contActs, gm2)
                  && WalkDefsOk(contActs);
           assert WalkPairLkRec(rer, qm, code, inp, tb.t, gm2, pc + 1, g);
+          assert WalkPairLkAtSetQuantCoreRecPost(rer, qm, code, inp, tb, gm, pc, b, q);   // (gate C) arm-local exit
         } else if delta == LN.NN(0) {
+          assert {:split_here} true;   // (gate C) one batch per arm
           var em: nat :| AR.NfaRepMinL(rer, qm, 0, r1, code, pc, em)
                          && AR.NfaRepOptL(rer, qm, 0, greedy, r1, code, em, pcmid);
           NfaRepMinLHeadPin(rer, qm, 0, r1, code, pc, em);
@@ -1407,7 +1429,9 @@ module LindenElkLiftSimChain {
           GateAheadClearTail(acts, gm);
           WalkDefsOkTail(acts);
           WalkPairLkAtSetQuantCoreRec(rer, qm, code, inp, tb, gm, pc, b, cont, q);
+          assert WalkPairLkAtSetQuantCoreRecPost(rer, qm, code, inp, tb, gm, pc, b, q);   // (gate C) arm-local exit
         } else {
+          assert {:split_here} true;   // (gate C) one batch per arm
           // min==0 with Inf or NN(kx>0): pins a Fork at pc, not SetQuantToClock.
           match delta
           case Inf =>
@@ -1434,13 +1458,26 @@ module LindenElkLiftSimChain {
                            && AR.NfaRepOptL(rer, qm, kx, greedy, r1, code, em, pcmid);
             NfaRepMinLHeadPin(rer, qm, 0, r1, code, pc, em);
             NfaRepOptLHeadPin(rer, qm, kx, greedy, r1, code, em, pcmid);   // kx>0 ⇒ Fork at pc
+          assert WalkPairLkAtSetQuantCoreRecPost(rer, qm, code, inp, tb, gm, pc, b, q);   // (gate C) arm-local exit
         }
       case Character(_) =>   // pins Consume — not SetQuantToClock
+        assert {:split_here} true;   // (gate C) one batch per arm
+        assert WalkPairLkAtSetQuantCoreRecPost(rer, qm, code, inp, tb, gm, pc, b, q);   // (gate C) arm-local exit
       case Disjunction(_, _) =>   // pins Fork — not SetQuantToClock
+        assert {:split_here} true;   // (gate C) one batch per arm
+        assert WalkPairLkAtSetQuantCoreRecPost(rer, qm, code, inp, tb, gm, pc, b, q);   // (gate C) arm-local exit
       case Group(_, _) =>   // pins SetRegisterToCP — not SetQuantToClock
+        assert {:split_here} true;   // (gate C) one batch per arm
+        assert WalkPairLkAtSetQuantCoreRecPost(rer, qm, code, inp, tb, gm, pc, b, q);   // (gate C) arm-local exit
       case LookaroundR(_, _) =>   // pins CheckOracle/NegCheckOracle — not SetQuantToClock
+        assert {:split_here} true;   // (gate C) one batch per arm
+        assert WalkPairLkAtSetQuantCoreRecPost(rer, qm, code, inp, tb, gm, pc, b, q);   // (gate C) arm-local exit
       case AnchorR(_) =>   // pins AnchorAssertion — not SetQuantToClock
+        assert {:split_here} true;   // (gate C) one batch per arm
+        assert WalkPairLkAtSetQuantCoreRecPost(rer, qm, code, inp, tb, gm, pc, b, q);   // (gate C) arm-local exit
       case Backreference(_) =>   // NfaRepL false
+        assert {:split_here} true;   // (gate C) one batch per arm
+        assert WalkPairLkAtSetQuantCoreRecPost(rer, qm, code, inp, tb, gm, pc, b, q);   // (gate C) arm-local exit
   }
 
   lemma WalkPairLkAtSetQuantRec(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
@@ -3084,6 +3121,7 @@ module LindenElkLiftSimChain {
     requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
     requires |res1.a_cp| == nlook && |res1.a_clk| == nlook
     requires M.LookInvO(res1, ov, str) && M.Res0LiveO(re, res0)
+    requires M.LookPosO(res1, crv)   // (gate C, G2) set look records sit at positive rows
     requires M.ValueOkO(crv, str, res0, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     requires M.QuantValueOkO(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     requires g in PIV.CapIdsInLooks(re) && g in PIV.GmOfLive(re, res0, res1, res2)
@@ -3105,7 +3143,7 @@ module LindenElkLiftSimChain {
     assert AI.get_idx(res1.a_cp, owner as int) >= 0;
     assert AReg.get_cp(res1, owner as int).Some? by { RL.AAsArraysLaws(res1); }
     assert 1 <= owner <= R.max_lookaround(ast) && (owner as int) in qm.looks;
-    MatchedPosFromHub(qm, re, crv, res1, owner, g, ncap, nlook, nquant);
+    M.MatchedPosFromBank(crv, res1, owner as int);   // (gate C, G2) a set record sits at a positive row
     assert M.MatchedPosLA(crv, res1, owner as int);
     assert body == M.VBody(crv, owner as int) by {
       NI.LookBodyOfTablesTie(re, crv, owner);
@@ -3171,6 +3209,7 @@ module LindenElkLiftSimChain {
     requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
     requires |res1.a_cp| == nlook && |res1.a_clk| == nlook
     requires M.LookInvO(res1, ov, str) && M.Res0LiveO(re, res0)
+    requires M.LookPosO(res1, crv)   // (gate C, G2) set look records sit at positive rows
     requires M.ValueOkO(crv, str, res0, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     requires M.QuantValueOkO(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     requires S == PIV.CapIdsInLooks(re)

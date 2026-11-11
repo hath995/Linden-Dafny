@@ -377,10 +377,9 @@ module LindenElkFlipDisc {
   // ===========================================================================
 
   /** `GroupOkLB` implies the `PikeLkRegexRec` fragment (looks recurse at either
-      polarity; negative bodies must define no groups — supplied). */
+      polarity; since gate C (G2) a negative body may define groups too). */
   lemma GroupOkLBNegFreePikeLk(tr: L.Regex)
     requires SD.GroupOkLB(tr)
-    requires NegBodiesGroupFree(tr)
     requires NUL.NoNulledPlusL(tr)   // §2.5b interim
     ensures EL.PikeLkRegexRec(tr)
     decreases tr
@@ -392,23 +391,7 @@ module LindenElkFlipDisc {
     case Group(_, r1) => GroupOkLBNegFreePikeLk(r1);
     case LookaroundR(lk, r1) =>
       GroupOkLBNegFreePikeLk(r1);
-      reveal EL.NegBodyNoDefs();
     case _ =>
-  }
-
-  /** Negative looks' bodies define no groups (the fragment's negative arm —
-      `NestedFragmentRE` forces negative bodies capture-free). They may hold looks. */
-  ghost predicate NegBodiesGroupFree(r: L.Regex)
-    decreases r
-  {
-    match r
-    case Disjunction(r1, r2) => NegBodiesGroupFree(r1) && NegBodiesGroupFree(r2)
-    case Sequence(r1, r2) => NegBodiesGroupFree(r1) && NegBodiesGroupFree(r2)
-    case Quantified(_, _, _, r1) => NegBodiesGroupFree(r1)
-    case Group(_, r1) => NegBodiesGroupFree(r1)
-    case LookaroundR(lk, r1) =>
-      NegBodiesGroupFree(r1) && (!L.Positivity(lk) ==> L.DefGroups(r1) == [])
-    case _ => true
   }
 
   /** F2 — the flip-route SPEC tie (the sound replacement for the vacuous
@@ -419,7 +402,6 @@ module LindenElkFlipDisc {
   lemma BackBodyGmTieFlip(rer: LW.RegExpRecord, tr: L.Regex, inp: LC.Input, n: nat)
     requires SD.GroupOkLB(tr)
     requires NUL.NoNulledPlusL(tr)   // §2.5b interim
-    requires NegBodiesGroupFree(tr)
     requires CD.NoDupG(L.DefGroups(tr))
     requires n == |inp.pref| + |inp.next|
     ensures var tB := FU.ComputeTr(rer, [LS.Areg(tr)], inp, LG.Empty, WP.Backward);

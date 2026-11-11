@@ -5445,8 +5445,10 @@ module LindenElkNestInv {
     }
   }
 
-  /** (L4 NESTED) `NestInvLookSite` under `NestedFragmentRE`. */
-  lemma NestInvLookSiteNested(re: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
+  /** (L4 NESTED) `NestInvLookSite` under `NestedFragmentRE`.
+      (gate C) `{:induction false}`: with the bare look arm of `NestedFragmentRE` the
+      automatic induction hypothesis ran z3 out of memory. */
+  lemma {:induction false} NestInvLookSiteNested(re: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
                               cc: seq<int>, qc: seq<int>, mx: int, lid: int)
     requires NR.NfaRepRE(re, code, pcb, pce)
     requires NR.NestedFragmentRE(re) && LTB.LookUnique(re)

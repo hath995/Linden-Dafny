@@ -6757,8 +6757,10 @@ module LindenElkPikeInv {
     assert AI.filter_capture(r, A, cc, lc, qc, M) == AI.filter_capture(r1, A, cc, lc, qc, M);
   }
 
-  /** `FilterResetFrameNested`'s QUANTIFIER arm. */
-  lemma FRFNestedQuant(r: R.regex, nul: R.nullability, qid0: R.quantid, q: R.counted_quantifier, r1: R.regex,
+  /** `FilterResetFrameNested`'s QUANTIFIER arm.
+      (gate C) `{:induction false}`: no induction is used here; with the bare look arm of
+      `NestedFragmentRE` the automatic induction hypothesis ran z3 out of memory (8 s -> OOM). */
+  lemma {:induction false} FRFNestedQuant(r: R.regex, nul: R.nullability, qid0: R.quantid, q: R.counted_quantifier, r1: R.regex,
                        A: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, qc': seq<int>,
                        M: int, qid: nat, clk: int, j: int)
     requires r == R.Re_quant(nul, qid0, q, r1)

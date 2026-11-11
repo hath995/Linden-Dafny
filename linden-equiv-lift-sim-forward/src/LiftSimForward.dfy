@@ -118,7 +118,9 @@ module LindenElkLiftSimForward {
   /** (perf) The DEEP arm of `ForwardFindRecLB` (a LOOKBEHIND owner), extracted: the whole LB arm
       OOM-kills the 80G slice alone at CORES=4. Mutually recursive with `ForwardFindRec` on
       `(|LookIds(host)|, arm)`: ForwardFindRec 2 > ForwardFindRecLB 1 > this 0. */
-  lemma ForwardFindRecLBDeep(
+  // (gate C) `{:induction false}`: the recursion is explicit; with the bare look arm of
+  // `NestedFragmentRE` the automatic induction hypothesis pushed three sections past 200 s.
+  lemma {:induction false} ForwardFindRecLBDeep(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
@@ -143,6 +145,7 @@ module LindenElkLiftSimForward {
     requires CM.LookCpSetWithClk(res1) && CM.LookCpsLE(res1, |str|)
     requires M.FLookLoopChildLinkOk(crv, str, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     requires M.FLookLoopValueOkFull(crv, str, res0, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    requires M.LookPosO(res1, crv)   // (gate C, G2) set look records sit at positive rows
     requires M.FLookLoopQuantValueOkFull(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     // ---- per-level data ----
     requires A in LTB.LookIds(re)
@@ -202,8 +205,7 @@ module LindenElkLiftSimForward {
               && var bc := CP.compile_to_bytecode(bA);
               |bc| >= 1
               && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
-              && PSM.SizesOkRE(bA, ncap, nlook, nquant)
-              && ((laA.NegLookbehind? || laA.NegLookahead?) ==> NR.CaptureFreeRE(bA)))
+              && PSM.SizesOkRE(bA, ncap, nlook, nquant))
       ensures (LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A)))
       ensures (endlH == |bodycode| - 1)
       ensures (qmB == AR.QMap(qm.quants,
@@ -282,8 +284,7 @@ module LindenElkLiftSimForward {
         && var bc := CP.compile_to_bytecode(bA);
         |bc| >= 1
         && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
-        && PSM.SizesOkRE(bA, ncap, nlook, nquant)
-        && ((laA.NegLookbehind? || laA.NegLookahead?) ==> NR.CaptureFreeRE(bA));
+        && PSM.SizesOkRE(bA, ncap, nlook, nquant);
       NI.LookBodyOfTablesTie(re, crv, A);
       laT :| LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A));
       assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
@@ -471,25 +472,14 @@ module LindenElkLiftSimForward {
       assert AI.get_idx(rfA.look_regs.a_cp, A1 as int) >= 0;
       assert AReg.get_cp(rfA.look_regs, A1 as int).Some?;        // get_idx >= 0 ==> in-range, Some
       assert {:split_here} true;   // (E3) block-2 sub-batch (heavy obligation)
-      assert M.MatchedPosLA(crv, rfA.look_regs, A1 as int) by {
-        assert GateStaticAtNested(qm, re, crv, A1 as int, ncap, nlook, nquant);
-        var la1: R.lookaround, b1: R.regex :|
-          LTB.LookEntryOk(crv, A1 as int, la1, b1);
-        assert crv.f_look_types[A1 as int] == la1;
-        // (W16) NO kind pin (FG.LookRowLBOnly): in a mixed host A1 may be a lookAHEAD.
-        assert AI.capture_type(crv.f_look_types[A1 as int]) by {   // (2026-08-29) explicit: a NEGATIVE row is capture-free, but g in CapIds(bodyA1)
-          NI.LookBodyOfTablesTie(re, crv, A1);
-          var la1T: R.lookaround :| LTB.LookEntryOk(crv, A1 as int, la1T, bodyA1);
-          assert b1 == bodyA1;                       // LookEntryOk pins f_look_ast[A1]
-          assert g in PIV.CapIds(b1);
-          if la1.NegLookbehind? || la1.NegLookahead? {   // (W16) both negative kinds
-            assert NR.CaptureFreeRE(b1);             // GateStaticAtNested(A1): negative rows are capture-free
-            PIV.CaptureFreeNoCapIds(b1);
-            assert false;
-          }
-        }
+      assert M.MatchedPosLA(crv, rfA.look_regs, A1 as int) by {   // (gate C, G2) the fresh run records only positive rows
+        assert bodycodeB == CP.compile_to_bytecode(R.reverse_regex(host));
+        assert LTB.LookTablesOk(host, crv);
+        hide *;
+        M.FreshReplayLookPos(host, crv, str, cpA, ov, LAnc.Backward, cdnA, ncap, nlook, nquant);
+        M.MatchedPosFromBank(crv, rfA.look_regs, A1 as int);
       }
-  
+
       assert {:split_here} true;   // (E3) block-2 sub-batch: (a) | (b)
       // (b) the ⊆ direction of the REGION-EQUALITY deep carrier at A1 needs
       //     A1's sub-leaf to EXIST — from the fresh run's oracle-true records
@@ -551,8 +541,7 @@ module LindenElkLiftSimForward {
                                                 && var bc1 := CP.compile_to_bytecode(b1G);
                                                 |bc1| >= 1
                                                 && PSM.StaticOkNestedRE(qm, b1G, bc1, |bc1| - 1)
-                                                && PSM.SizesOkRE(b1G, ncap, nlook, nquant)
-                                                && ((la1G.NegLookbehind? || la1G.NegLookahead?) ==> NR.CaptureFreeRE(b1G));
+                                                && PSM.SizesOkRE(b1G, ncap, nlook, nquant);
         assert b1G == bodyA1 by {
           NI.LookBodyOfTablesTie(re, crv, A1);
           var la1T: R.lookaround :| LTB.LookEntryOk(crv, A1 as int, la1T, bodyA1);
@@ -717,6 +706,7 @@ module LindenElkLiftSimForward {
     requires CM.LookCpSetWithClk(res1) && CM.LookCpsLE(res1, |str|)
     requires M.FLookLoopChildLinkOk(crv, str, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     requires M.FLookLoopValueOkFull(crv, str, res0, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    requires M.LookPosO(res1, crv)   // (gate C, G2) set look records sit at positive rows
     requires M.FLookLoopQuantValueOkFull(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     // ---- per-level data ----
     requires A in LTB.LookIds(re)
@@ -759,8 +749,7 @@ module LindenElkLiftSimForward {
       && var bc := CP.compile_to_bytecode(bA);
       |bc| >= 1
       && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
-      && PSM.SizesOkRE(bA, ncap, nlook, nquant)
-      && ((laA.NegLookbehind? || laA.NegLookahead?) ==> NR.CaptureFreeRE(bA));
+      && PSM.SizesOkRE(bA, ncap, nlook, nquant);
     NI.LookBodyOfTablesTie(re, crv, A);
     var laT: R.lookaround :| LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A));
     assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
@@ -811,6 +800,7 @@ module LindenElkLiftSimForward {
     requires CM.LookCpSetWithClk(res1) && CM.LookCpsLE(res1, |str|)
     requires M.FLookLoopChildLinkOk(crv, str, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     requires M.FLookLoopValueOkFull(crv, str, res0, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    requires M.LookPosO(res1, crv)   // (gate C, G2) set look records sit at positive rows
     requires M.FLookLoopQuantValueOkFull(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     // ---- per-level data ----
     requires A in LTB.LookIds(re)
@@ -860,8 +850,7 @@ module LindenElkLiftSimForward {
       && var bc := CP.compile_to_bytecode(bA);
       |bc| >= 1
       && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
-      && PSM.SizesOkRE(bA, ncap, nlook, nquant)
-      && ((laA.NegLookbehind? || laA.NegLookahead?) ==> NR.CaptureFreeRE(bA));
+      && PSM.SizesOkRE(bA, ncap, nlook, nquant);
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     NI.LookBodyOfTablesTie(re, crv, A);
     var laT: R.lookaround :| LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A));
@@ -1070,53 +1059,12 @@ module LindenElkLiftSimForward {
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert AReg.get_cp(rfA.look_regs, A1 as int).Some?;        // get_idx >= 0 ==> in-range, Some
       assert {:split_here} true;   // (E3) block-2 sub-batch (heavy obligation)
-    assert M.MatchedPosLA(crv, rfA.look_regs, A1 as int) by {
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      // (§2.5b F-c) a bare forall instance: the inlined hub goal (its existential)
-      // timed out at 900 s in the swept context
-      assert GateStaticAtNested(qm, re, crv, A1 as int, ncap, nlook, nquant) by {
-        assert (A1 as int) in qm.looks;
-        hide *; reveal GateStaticsOkNested;
-      }
-      // (2026-08-25) full conjunct list (a subset timed out under {:isolate_assertions})
-      var la1: R.lookaround, b1: R.regex :|
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        LTB.LookEntryOk(crv, A1 as int, la1, b1)
-        && T.TransWf(b1) && NR.NestedFragmentRE(b1)
-        && qm.looks[A1 as int].0 == T.TrLookaround(la1)
-        && qm.looks[A1 as int].1 == T.Translate(b1)
-        && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(b1))) <= PIV.CapIdsInLooks(re)
-        && var bodycode1 := CP.compile_to_bytecode(b1);
-        |bodycode1| >= 1
-        && PSM.StaticOkNestedRE(qm, b1, bodycode1, |bodycode1| - 1)
-        && PSM.SizesOkRE(b1, ncap, nlook, nquant)
-        && ((la1.NegLookbehind? || la1.NegLookahead?) ==> NR.CaptureFreeRE(b1));
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert crv.f_look_types[A1 as int] == la1;
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert b1 == bodyA1 by {
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        NI.LookBodyOfTablesTie(re, crv, A1);
-        var la1T: R.lookaround :| LTB.LookEntryOk(crv, A1 as int, la1T, bodyA1);
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        assert crv.f_look_ast[A1 as int] == b1 == bodyA1;
-      }
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert la1.Lookahead? || la1.Lookbehind? by {                        // (L5 F7c-4) kind dispatch:
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        if la1.NegLookahead? || la1.NegLookbehind? {                        // an inner lid of a lookAHEAD
-          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-          assert NR.CaptureFreeRE(bodyA1);                                   // host may be a LOOKBEHIND
-          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-          PIV.CaptureFreeNoCapIds(bodyA1);                                   // under the L5 scope
-          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-          assert g in PIV.CapIds(bodyA1);
-          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-          assert false;
-        }
-      }
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert AI.capture_type(crv.f_look_types[A1 as int]);
+    assert M.MatchedPosLA(crv, rfA.look_regs, A1 as int) by {   // (gate C, G2) the fresh run records only positive rows
+      assert bodycode == CP.compile_to_bytecode(host);
+      assert LTB.LookTablesOk(host, crv);
+      hide *;
+      M.FreshReplayLookPos(host, crv, str, cpA, ov, LAnc.Forward, cdnA, ncap, nlook, nquant);
+      M.MatchedPosFromBank(crv, rfA.look_regs, A1 as int);
     }
 
     // (b) the ⊆ direction of the REGION-EQUALITY deep carrier at A1 needs
@@ -1184,8 +1132,7 @@ module LindenElkLiftSimForward {
                                               && var bc1 := CP.compile_to_bytecode(b1G);
                                               |bc1| >= 1
                                               && PSM.StaticOkNestedRE(qm, b1G, bc1, |bc1| - 1)
-                                              && PSM.SizesOkRE(b1G, ncap, nlook, nquant)
-                                              && ((la1G.NegLookbehind? || la1G.NegLookahead?) ==> NR.CaptureFreeRE(b1G));
+                                              && PSM.SizesOkRE(b1G, ncap, nlook, nquant);
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert b1G == bodyA1 by {
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -1375,6 +1322,7 @@ module LindenElkLiftSimForward {
     requires CM.LookCpSetWithClk(res1) && CM.LookCpsLE(res1, |str|)
     requires M.FLookLoopChildLinkOk(crv, str, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     requires M.FLookLoopValueOkFull(crv, str, res0, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    requires M.LookPosO(res1, crv)   // (gate C, G2) set look records sit at positive rows
     requires M.FLookLoopQuantValueOkFull(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     // ---- per-level data ----
     requires A in LTB.LookIds(re)
@@ -1416,8 +1364,7 @@ module LindenElkLiftSimForward {
       && var bc := CP.compile_to_bytecode(bA);
       |bc| >= 1
       && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
-      && PSM.SizesOkRE(bA, ncap, nlook, nquant)
-      && ((laA.NegLookbehind? || laA.NegLookahead?) ==> NR.CaptureFreeRE(bA));
+      && PSM.SizesOkRE(bA, ncap, nlook, nquant);
     NI.LookBodyOfTablesTie(re, crv, A);
     var laT: R.lookaround :| LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A));
     assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
@@ -1486,6 +1433,7 @@ module LindenElkLiftSimForward {
                               ==> AI.get_idx(res0.a_cp, CP.start_reg(c)) < 0
     // ---- (§2.3/§2.4) the FLookLoop value lifts: the reverse descent reads its dominance off them ----
     requires M.ValueOkO(crv, str, res0, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    requires M.LookPosO(res1, crv)   // (gate C, G2) set look records sit at positive rows
     requires M.QuantValueOkO(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     // ---- per-live-g OWNER package (A1/A2's outputs) ----
     requires S == PIV.CapIdsInLooks(re)
@@ -1560,8 +1508,7 @@ module LindenElkLiftSimForward {
         && var bodycode := CP.compile_to_bytecode(bT);
         |bodycode| >= 1
         && PSM.StaticOkNestedRE(qm, bT, bodycode, |bodycode| - 1)
-        && PSM.SizesOkRE(bT, ncap, nlook, nquant)
-        && ((laA0.NegLookbehind? || laA0.NegLookahead?) ==> NR.CaptureFreeRE(bT));
+        && PSM.SizesOkRE(bT, ncap, nlook, nquant);
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert bT == bA0 by {
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -1574,13 +1521,8 @@ module LindenElkLiftSimForward {
       assert (laA0.Lookahead? || laA0.Lookbehind?) by {                       // (L5 F7c-4) kind dispatch
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         if laA0.NegLookahead? || laA0.NegLookbehind? {
-          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-          assert NR.CaptureFreeRE(bA0);
-          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-          PIV.CaptureFreeNoCapIds(bA0);
-          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-          assert g in PIV.CapIds(bA0);
-          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+          assert {:split_here} true;   // (gate C, G2) a set record sits at a POSITIVE row
+          M.MatchedPosFromBank(crv, res1, A0 as int);
           assert false;
         }
       }

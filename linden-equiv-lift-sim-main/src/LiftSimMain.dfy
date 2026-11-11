@@ -152,6 +152,7 @@ module LindenElkLiftSimMain {
     requires CM.LookCpSetWithClk(res1) && CM.LookCpsLE(res1, |str|)
     requires M.FLookLoopChildLinkOk(crv, str, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     requires M.FLookLoopValueOkFull(crv, str, res0, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    requires M.LookPosO(res1, crv)   // (gate C, G2) set look records sit at positive rows
     requires M.FLookLoopQuantValueOkFull(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     // ---- the whole-regex carriers at the winning thread ----
     requires S == PIV.CapIdsInLooks(re)
@@ -214,8 +215,7 @@ module LindenElkLiftSimMain {
     assert GateStaticAtNested(qm, re, crv, A0 as int, ncap, nlook, nquant);
     var laA0: R.lookaround, bT: R.regex :| LTB.LookEntryOk(crv, A0 as int, laA0, bT)
                                            && qm.looks[A0 as int].0 == T.TrLookaround(laA0)
-                                           && qm.looks[A0 as int].1 == T.Translate(bT)
-                                           && ((laA0.NegLookbehind? || laA0.NegLookahead?) ==> NR.CaptureFreeRE(bT));
+                                           && qm.looks[A0 as int].1 == T.Translate(bT);
     assert bT == bA0 by {
       NI.LookBodyOfTablesTie(re, crv, A0);
       var laT: R.lookaround :| LTB.LookEntryOk(crv, A0 as int, laT, bA0);
@@ -223,10 +223,9 @@ module LindenElkLiftSimMain {
     }
     assert crv.f_look_types[A0 as int] == laA0;
     assert (laA0.Lookahead? || laA0.Lookbehind?) by {                       // (L5 F7c-4) kind dispatch
-      if laA0.NegLookahead? || laA0.NegLookbehind? {
-        assert NR.CaptureFreeRE(bA0);
-        PIV.CaptureFreeNoCapIds(bA0);
-        assert g in PIV.CapIds(bA0);
+      if laA0.NegLookahead? || laA0.NegLookbehind? {   // (gate C, G2) a set record sits at a POSITIVE row
+        assert AReg.get_cp(res1, A0 as int).Some?;     // the top-lid frame: res1 == thread at A0
+        M.MatchedPosFromBank(crv, res1, A0 as int);
         assert false;
       }
     }
@@ -381,6 +380,7 @@ module LindenElkLiftSimMain {
              CM.ThreadRegsWf(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed), ncap, nlook, nquant)
              && M.QuantRegsFinal(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed))
              && M.LookInvO(res.1, ov, str)
+             && M.LookPosO(res.1, crv)   // (gate C, G2)
              && M.ChildLinkO(crv, str, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
              && M.ValueOkO(crv, str, res.0, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
              && M.QuantValueOkO(crv, str, res.2, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)

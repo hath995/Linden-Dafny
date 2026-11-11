@@ -296,7 +296,6 @@ module LindenElkFlipKeystoneG {
     MIR.ReverseLen(str[..cp]);
     assert n == |inp.pref| + |inp.next|;
     TranslateNoBackref(body);
-    FK.TranslateNegBodiesGroupFree(body);
     NUL.TransNoNulledPlus(body);   // §2.5b interim: NoNulledPlusL(tr)
     FK.TranslateDefGroupsNoDupK(body);
     assert MG.OppDir(WP.Backward) == WP.Forward;

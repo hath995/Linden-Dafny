@@ -773,20 +773,13 @@ module LindenElkEntryLk {
       PikeLkRegexRec(r1)
     case Group(_, r1) => PikeLkRegexRec(r1)
     case LookaroundR(lk, r1) =>
-      // Either polarity: the body recurses into the fragment (depth-k) and
-      // (§2.5b stage 2a) is nulled-plus-free: the replay machinery that runs
-      // look bodies is stamp-free.
-      // NEGATIVE look (§2.2): the body also defines no groups, nested looks included.
-      PikeLkRegexRec(r1) && NUL.NoNulledPlusL(r1) && NegBodyNoDefs(lk, r1)
+      // Either polarity: the body recurses into the fragment (depth-k).
+      // (gate C) No nulled-plus or no-defs side condition: nothing reads them
+      // off the spec side (the stamp-free replay takes its facts from the RE
+      // level), and a NEGATIVE body's groups stay unset (G2).
+      PikeLkRegexRec(r1)
     case AnchorR(_) => true
     case Backreference(_) => false
-  }
-
-  /** (§2.2) A negative look's body defines no groups. OPAQUE, because `L.DefGroups`
-      is recursive and `PikeLkRegexRec` is unfolded inside the largest proofs: inlined,
-      it took a 15 s batch of `ATR_QuantCin` past 300 s. */
-  opaque ghost predicate NegBodyNoDefs(lk: L.Lookaround, r1: L.Regex) {
-    !L.Positivity(lk) ==> L.DefGroups(r1) == []
   }
 
   /** `PikeLkAction` for the recursive fragment. */
@@ -855,14 +848,12 @@ module LindenElkEntryLk {
     case Quantified(_, _, _, r1) => PikeLkRegexEmbedsRec(r1);
     case Group(_, r1) => PikeLkRegexEmbedsRec(r1);
     case LookaroundR(lk, r1) =>
-      reveal NegBodyNoDefs();
       if L.Positivity(lk) {
         NoLkBrLIsPikeLkRegexRec(r1);
       } else {
         // PikeLkRegex's negative arm: SD.GroupFreeL(r1).
         GroupFreeLNoLkBr(r1);
         NoLkBrLIsPikeLkRegexRec(r1);
-        SD.GroupFreeDefGroups(r1);
       }
     case _ =>
   }
@@ -999,13 +990,12 @@ module LindenElkEntryLk {
 
   /** L4 depth-k: the RECURSIVE analogue of `TranslateFragmentPikeLk`. A regex in
       the nested fragment translates into the recursive Pike fragment
-      `PikeLkRegexRec`. Look bodies recurse into the fragment (depth-k); a
-      NEGATIVE look's body is capture-free (fragment), so it defines no groups.
+      `PikeLkRegexRec`. Look bodies recurse into the fragment (depth-k), either
+      polarity (gate C: no capture-free or nulled-plus side condition).
       This is Phase A's `TranslateNoLkBr`-analogue: the RE->spec-fragment bridge
       the recursive keystone's confinement rests on. */
   lemma TranslateFragmentPikeLkRec(re: R.regex)
     requires T.TransWf(re) && NR.NestedFragmentRE(re)
-    requires NR.NoNulledPlusRE(re)   // §2.5b interim
     ensures PikeLkRegexRec(T.Translate(re))
     decreases re
   {
@@ -1016,13 +1006,7 @@ module LindenElkEntryLk {
       TranslateFragmentPikeLkRec(r1);
     case Re_capture(_, r1) => TranslateFragmentPikeLkRec(r1);
     case Re_lookaround(lid, la, r1) =>
-      assert L.Positivity(T.TrLookaround(la)) == (la.Lookahead? || la.Lookbehind?);
-      reveal NegBodyNoDefs();
-      TranslateFragmentPikeLkRec(r1);     // PikeLkRegexRec(Translate(r1))
-      NUL.TransNoNulledPlus(r1);          // NoNulledPlusL(Translate(r1)), §2.5b stage 2a
-      if !(la.Lookahead? || la.Lookbehind?) {
-        TranslateCaptureFreeNoDefs(r1);   // NEGATIVE: CaptureFreeRE(r1) from NestedFragmentRE
-      }
+      TranslateFragmentPikeLkRec(r1);     // PikeLkRegexRec(Translate(r1)), either polarity
     case _ =>
   }
 

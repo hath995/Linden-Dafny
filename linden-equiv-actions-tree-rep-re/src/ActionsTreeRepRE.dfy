@@ -259,6 +259,7 @@ module LindenElkActionsTreeRep {
                   if NUL.NonNullableL(acts[0].r) { reveal NUL.NonNullableL; assert parts[0].Areg? && NUL.NonNullableL(parts[0].r); }
                   NB.EncOkExpand(acts, parts, inp, b);
                 }
+                assert {:split_here} true;   // (gate C) the recursive call's preconditions in their own batch
                 var sub := ActionsTreeRepFRE(rer, qm, ia, code, pc + 1, inp, b, tc, ni, S);
                 tstar := LT.GroupActionT(g, sub);
                 NP.RACongGroupOutside(g, sub, tc, inp, S);
@@ -350,7 +351,9 @@ module LindenElkActionsTreeRep {
                     var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, em + 3, ni);
                     // the walk guard's CIN head arm
                     WO.WalkOkQuantCinHead(acts, code, pc, EaOf(b), greedy, min, delta, r1, em + 1, e1x + 2, inp);
+                    assert {:split_here} true;   // (gate C) one batch per recursive call: as one, z3 ran past 700 M
                     var subi := ActionsTreeRepFRE(rer, qm, ia, code, em + 3, inp, BS.CannotExit, ti, ni, S);
+                    assert {:split_here} true;
                     var subc := ActionsTreeRepFRE(rer, qm, cont, code, pcmid, inp, b, tcont, n - 1, S);
                     assert {:split_here} true;   // (E3) section: assembly
                     // loop arm: tr_begin at em + 2, tr_reset at em + 1
@@ -2059,6 +2062,7 @@ module LindenElkActionsTreeRep {
                   if NUL.NonNullableL(acts[0].r) { reveal NUL.NonNullableL; assert parts[0].Areg? && NUL.NonNullableL(parts[0].r); }
                   NB.EncOkExpand(acts, parts, inp, b);
                 }
+                assert {:split_here} true;   // (gate C) the recursive call's preconditions in their own batch
                 var sub := ActionsTreeRepFRENested(rer, qm, ia, code, pc + 1, inp, b, tc, ni, S);
                 tstar := LT.GroupActionT(g, sub);
                 NP.RACongGroupOutside(g, sub, tc, inp, S);
@@ -2149,7 +2153,9 @@ module LindenElkActionsTreeRep {
                     var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, em + 3, ni);
                     // the walk guard's CIN head arm
                     WO.WalkOkQuantCinHead(acts, code, pc, EaOf(b), greedy, min, delta, r1, em + 1, e1x + 2, inp);
+                    assert {:split_here} true;   // (gate C) one batch per recursive call: as one, z3 ran past 700 M
                     var subi := ActionsTreeRepFRENested(rer, qm, ia, code, em + 3, inp, BS.CannotExit, ti, ni, S);
+                    assert {:split_here} true;
                     var subc := ActionsTreeRepFRENested(rer, qm, cont, code, pcmid, inp, b, tcont, n - 1, S);
                     assert {:split_here} true;   // (E3) section: assembly
                     // loop arm: tr_begin at em + 2, tr_reset at em + 1

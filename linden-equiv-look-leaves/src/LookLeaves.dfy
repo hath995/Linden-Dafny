@@ -1009,11 +1009,18 @@ module LindenElkLookLeaves {
     case Quantified(_, _, _, r1) => LkBodiesInS(r1, S)
     case Group(_, r1) => LkBodiesInS(r1, S)
     case LookaroundR(lk, r1) =>
-      // L3a/L3b: a POSITIVE look (fwd/bwd) may capture; its captured groups must
-      // stay within `S`. The negatives capture nothing, so no constraint.
-      L.Positivity(lk) ==> DefGroupsIn(r1, S)
+      // Either polarity (gate C, G2): a look body's captured groups must stay
+      // within `S` (a negative body may capture since G2; its groups stay unset).
+      LookBodyInS(r1, S)
     case AnchorR(_) => true
     case Backreference(_) => true
+  }
+
+  /** (gate C) `LkBodiesInS`'s look arm. OPAQUE, like the retired `EL.NegBodyNoDefs`:
+      `LkBodiesInS` is unfolded inside the largest proofs, and the unguarded quantifier
+      over the recursive `L.DefGroups` sent `ATR_QuantCin`/`ATR_QuantMin` past 900 s. */
+  opaque ghost predicate LookBodyInS(r1: L.Regex, S: set<LG.GroupId>) {
+    DefGroupsIn(r1, S)
   }
 
   /** The action-level lift of `LkBodiesInS`. */
@@ -1082,6 +1089,7 @@ module LindenElkLookLeaves {
     case LookaroundR(lk, r1) =>
       assert (set g | g in L.DefGroups(r1)) <= LkBodyGroups(r);   // <= S
       assert DefGroupsIn(r1, S);
+      reveal LookBodyInS();
     case _ =>
   }
 
@@ -1206,7 +1214,7 @@ module LindenElkLookLeaves {
               // L3a/L3b: a POSITIVE look (fwd/bwd) may capture: NoLkBrL body,
               // DefGroups(r1) <= S.
               assert EL.NoLkBrL(r1);                     // PikeLkRegex(LookaroundR) widened
-              assert DefGroupsIn(r1, S);                 // LkBodiesInS positive arm
+              assert DefGroupsIn(r1, S) by { reveal LookBodyInS(); }   // LkBodiesInS look arm
               assert ConfinedActs(bodyacts, S) by {
                 assert EL.NoLkBrActs(bodyacts);
                 forall i | 0 <= i < |bodyacts|
@@ -1535,11 +1543,11 @@ module LindenElkLookLeaves {
         match FS.ComputeTree(rer, bodyacts, inp, gm, L.LkDir(lk), f) {
           case None =>
           case Some(treelk) =>
-            // Either polarity: body PikeLkRegexRec(r1), DefGroups(r1) <= S (LkBodiesInS
-            // when positive, no definitions when negative); recurse the body's
-            // confinement -> LkConfinedTreeRec(treelk, S).
+            // Either polarity: body PikeLkRegexRec(r1), DefGroups(r1) <= S (LkBodiesInS,
+            // kind-blind since gate C); recurse the body's confinement
+            // -> LkConfinedTreeRec(treelk, S).
             assert EL.PikeLkRegexRec(r1);                // PikeLkRegexRec(LookaroundR)
-            assert DefGroupsIn(r1, S) by { reveal EL.NegBodyNoDefs(); }
+            assert DefGroupsIn(r1, S) by { reveal LookBodyInS(); }   // LkBodiesInS(LookaroundR(lk, r1), S)
             assert ConfinedActsRec(bodyacts, S) by {
               assert EL.PikeLkActionsRec(bodyacts);
               forall i | 0 <= i < |bodyacts|

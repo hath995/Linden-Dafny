@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:dbccb373dda41ad7ae0eb8b81cf78b4dc8509a687bd4a9d0e0099e3db40fe698"
+manifest-hash = "sha256:f667af6cce78a7024e0d15fc1f1e22411a475e3921973d5e49b808d57763161d"
 
 [[package]]
 name = "linden.equiv-gen-step-re"
@@ -155,6 +155,15 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-clock-mono"
+
+[[package]]
+name = "linden.equiv-look-bank"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-look-bank"
 
 [[package]]
 name = "linden.equiv-entry-lk"

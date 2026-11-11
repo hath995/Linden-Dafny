@@ -937,7 +937,8 @@ module LindenElkNfaRep {
       && NestedFragmentRE(r1)
     case Re_capture(cid, r1) => NestedFragmentRE(r1)
     case Re_lookaround(lid, la, r1) =>
-      (la.Lookahead? || la.Lookbehind? || CaptureFreeRE(r1)) && NestedFragmentRE(r1)
+      // (gate C, G2) either polarity: a NEGATIVE body may capture too (its groups stay unset).
+      NestedFragmentRE(r1)
   }
 
   // ===========================================================================
@@ -1417,7 +1418,8 @@ module LindenElkNfaRep {
       && NestedFragmentRaw(r1)
     case Raw_capture(r1) => NestedFragmentRaw(r1)
     case Raw_lookaround(look, r1) =>
-      (look.Lookahead? || look.Lookbehind? || CaptureFreeRaw(r1)) && NestedFragmentRaw(r1)
+      // (gate C, G2) either polarity: a NEGATIVE body may capture too.
+      NestedFragmentRaw(r1)
   }
 
   /** A look-free raw plus fragment is in the raw nested fragment. */
@@ -1477,11 +1479,7 @@ module LindenElkNfaRep {
       AnnotateNullable(r1, c, l, q + 1);
     case Raw_capture(r1) => AnnotateNestedFragment(r1, c + 1, l, q);
     case Raw_lookaround(look, r1) =>
-      // flavour copied verbatim; negative flavours keep the capture-free body;
-      // the body recurses into the nested fragment (any depth).
-      if look.NegLookahead? || look.NegLookbehind? {
-        AnnotateCaptureFree(r1, c, l + 1, q);
-      }
+      // the body recurses into the nested fragment (any depth), either polarity.
       AnnotateNestedFragment(r1, c, l + 1, q);
     case _ =>
   }
@@ -3025,8 +3023,11 @@ module LindenElkNfaRep {
 
   /** Nested-fragment variant of `FreshCorrectRE`: the label-arithmetic pass for
       a regex whose lookaround bodies may nest. The `Re_lookaround` case is
-      vacuous (the body is not touched — one gate leaf is emitted). */
-  lemma FreshCorrectNestedRE(re: R.regex, start: nat, tl: CP.treelist, next: int)
+      vacuous (the body is not touched — one gate leaf is emitted).
+      (gate C) `{:induction false}`: the proof recurses explicitly; once the
+      look arm of `NestedFragmentRE` became a bare recursive call, the automatic
+      induction hypothesis looped (1.5 s -> > 300 s). */
+  lemma {:induction false} FreshCorrectNestedRE(re: R.regex, start: nat, tl: CP.treelist, next: int)
     requires NestedFragmentRE(re)
     requires CP.compile(re, start, CP.Progress) == (tl, next)
     ensures next == start + |Flat(tl)|
@@ -3227,8 +3228,10 @@ module LindenElkNfaRep {
       `CompileNfaRepRE`: for any regex in the nested lookaround fragment,
       `CP.compile` emits code satisfying `NfaRepRE`. The `Re_lookaround` case is
       unchanged from the depth-1 original — it emits the single gate leaf and
-      never inspects the (possibly nested) body. */
-  lemma CompileNfaRepNestedRE(re: R.regex, start: nat, tl: CP.treelist, next: int, prev: RB.code)
+      never inspects the (possibly nested) body.
+      (gate C) `{:induction false}` as in `FreshCorrectNestedRE`; the bounded
+      arm also hides `NestedFragmentRE` (z3 ran out of memory there otherwise). */
+  lemma {:induction false} CompileNfaRepNestedRE(re: R.regex, start: nat, tl: CP.treelist, next: int, prev: RB.code)
     requires NestedFragmentRE(re)
     requires CP.compile(re, start, CP.Progress) == (tl, next)
     requires start == |prev|
@@ -3357,6 +3360,8 @@ module LindenElkNfaRep {
             && GetPcRE(prev + Flat(tl), (iter_f + 1) as nat) == Some(RB.Jmp(start))
             && next == iter_f + 2;
       } else if q.max.Some? {
+        assert NestedFragmentRE(r1);
+        hide NestedFragmentRE;   // (gate C) the callees need only the ground fact
         var (min_code, min_f) := CP.repeat_min(q.min, qid, r1, start, CP.Progress);
         var (opt_code, opt_f) := CP.repeat_optional(q.max.value - q.min, qid, r1, min_f, CP.Progress, q.greedy);
         FreshCorrectMinNestedRE(q.min as nat, qid, r1, start, min_code, min_f);
@@ -4780,7 +4785,6 @@ module LindenElkNfaRep {
     case Re_capture(_, r1) => RemoveCaptureNestedFragmentRE(r1);
     case Re_lookaround(lid, la, r1) =>
       RemoveCaptureNestedFragmentRE(r1);
-      CaptureFreeRemoveCaptureRE(r1);   // remove_capture(r1) is capture-free -> disjunct holds
     case _ =>
   }
 
@@ -4798,7 +4802,6 @@ module LindenElkNfaRep {
     case Re_capture(_, r1) => ReverseNestedFragmentRE(r1);
     case Re_lookaround(lid, la, r1) =>
       ReverseNestedFragmentRE(r1);
-      if !(la.Lookahead? || la.Lookbehind?) { CaptureFreeReverseRE(r1); }
     case _ =>
   }
 

@@ -1277,8 +1277,7 @@ module LindenElkLiftSimGate {
       && var bodycode := CP.compile_to_bytecode(body);
       |bodycode| >= 1
       && PSM.StaticOkNestedRE(qm, body, bodycode, |bodycode| - 1)
-      && PSM.SizesOkRE(body, ncap, nlook, nquant)
-      && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body));
+      && PSM.SizesOkRE(body, ncap, nlook, nquant);
     assert lk == T.TrLookaround(la) && r1 == T.Translate(body);
     assert body == M.VBody(crv, l);
     assert 0 <= l < nlook;

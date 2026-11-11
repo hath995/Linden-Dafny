@@ -540,11 +540,100 @@ module NFA {
   {
   }
 
+  /** `Compile` at a group. */
+  lemma CompileGroupStep(gid: GroupId, r1: Regex, start: Label, c: Code, endl: Label)
+    requires Compile(Group(gid, r1), start) == (c, endl)
+    ensures var c1 := Compile(r1, start + 1);
+            c == [SetRegOpen(gid)] + c1.0 + [SetRegClose(gid)] && endl == c1.1 + 1
+  {
+  }
+
+  /** `Compile` at an unbounded quantifier. */
+  lemma CompileQuantInfStep(greedy: bool, min: nat, r1: Regex, start: Label, c: Code, endl: Label)
+    requires Compile(Quantified(greedy, min, Inf, r1), start) == (c, endl)
+    ensures var gidl := DefGroups(r1);
+            var m := RepeatMin(min, gidl, r1, start);
+            var c1 := Compile(r1, m.1 + 3);
+            c == m.0 + [GreedyFork(greedy, m.1 + 1, c1.1 + 1), BeginLoop, ResetRegs(gidl)] + c1.0 + [EndLoop(m.1)]
+            && endl == c1.1 + 1
+  {
+    hide RepeatMin;
+    hide RepeatOpt;
+    hide DefGroups;
+    var gidl := DefGroups(r1);
+    var (mc, mf) := RepeatMin(min, gidl, r1, start);
+    var m := RepeatMin(min, gidl, r1, start);
+    assert m == (mc, mf);
+    var c1 := Compile(r1, mf + 3);
+    assert Compile(Quantified(greedy, min, Inf, r1), start)
+        == (mc + [GreedyFork(greedy, mf + 1, c1.1 + 1), BeginLoop, ResetRegs(gidl)] + c1.0 + [EndLoop(mf)], c1.1 + 1);
+  }
+
+  // Pure sequence layouts (no compiler, no representation predicate in context).
+
+  /** `prev + ([a] + mid + [b])`: where `a` and `b` sit, and the regroupings the callers use. */
+  lemma WrapLayout(prev: Code, a: Bytecode, mid: Code, b: Bytecode)
+    ensures var c := [a] + mid + [b];
+            (prev + [a] + mid) + [b] == prev + c
+            && |prev + [a]| == |prev| + 1
+            && |prev + [a] + mid| == |prev| + 1 + |mid|
+            && GetPc(prev + c, |prev|) == Some(a)
+            && GetPc(prev + c, |prev| + 1 + |mid|) == Some(b)
+  {
+    var c := [a] + mid + [b];
+    assert (prev + [a] + mid) + [b] == prev + c;
+    assert (prev + c)[|prev|] == a;
+    assert (prev + c)[|prev| + 1 + |mid|] == b;
+  }
+
+  /** `prev + ([fk] + bc1 + [jm] + bc2)`. */
+  lemma DisjLayout(prev: Code, fk: Bytecode, bc1: Code, jm: Bytecode, bc2: Code)
+    ensures var c := [fk] + bc1 + [jm] + bc2;
+            (prev + [fk] + bc1) + ([jm] + bc2) == prev + c
+            && (prev + [fk] + bc1 + [jm]) + bc2 == prev + c
+            && |prev + [fk]| == |prev| + 1
+            && |prev + [fk] + bc1 + [jm]| == |prev| + |bc1| + 2
+            && GetPc(prev + c, |prev|) == Some(fk)
+            && GetPc(prev + c, |prev| + 1 + |bc1|) == Some(jm)
+  {
+    var c := [fk] + bc1 + [jm] + bc2;
+    assert (prev + [fk] + bc1) + ([jm] + bc2) == prev + c;
+    assert (prev + [fk] + bc1 + [jm]) + bc2 == prev + c;
+    assert (prev + c)[|prev|] == fk;
+    assert (prev + c)[|prev| + 1 + |bc1|] == jm;
+  }
+
+  /** `prev + (mc + ([h0, h1, h2] + bc1 + [el]))`. */
+  lemma LoopLayout(prev: Code, mc: Code, h0: Bytecode, h1: Bytecode, h2: Bytecode, bc1: Code, el: Bytecode)
+    ensures var hdr := [h0, h1, h2];
+            var blk := hdr + bc1 + [el];
+            var c := mc + hdr + bc1 + [el];
+            c == mc + blk
+            && (prev + mc) + blk == prev + c
+            && (prev + mc + hdr + bc1) + [el] == prev + c
+            && |prev + mc| == |prev| + |mc|
+            && |prev + mc + hdr| == |prev| + |mc| + 3
+            && GetPc(prev + c, |prev| + |mc|) == Some(h0)
+            && GetPc(prev + c, |prev| + |mc| + 1) == Some(h1)
+            && GetPc(prev + c, |prev| + |mc| + 2) == Some(h2)
+            && GetPc(prev + c, |prev| + |mc| + 3 + |bc1|) == Some(el)
+  {
+    var hdr := [h0, h1, h2];
+    var blk := hdr + bc1 + [el];
+    var c := mc + hdr + bc1 + [el];
+    assert c == mc + blk;
+    assert (prev + mc) + blk == prev + c;
+    assert (prev + mc + hdr + bc1) + [el] == prev + c;
+    var n := |prev| + |mc|;
+    assert (prev + c)[n] == h0 && (prev + c)[n + 1] == h1 && (prev + c)[n + 2] == h2;
+    assert (prev + c)[n + 3 + |bc1|] == el;
+  }
+
   // Coq: compile_nfa_rep — the compiler adheres to the representation predicate.
   /** Compiler soundness: the code `Compile(r, start)` emits, once placed after any `prev` prefix,
       satisfies `NfaRep(r, ...)`. This is what lets `PikeVM` trust that running compiled bytecode
       matches running the regex. */
-  lemma {:isolate_assertions} CompileNfaRep(r: Regex, c: Code, start: Label, endl: Label, prev: Code)
+  lemma CompileNfaRep(r: Regex, c: Code, start: Label, endl: Label, prev: Code)
     requires Compile(r, start) == (c, endl)
     requires start == |prev|
     ensures NfaRep(r, prev + c, start, endl)
@@ -562,106 +651,196 @@ module NFA {
     case LookaroundR(_, _) =>
       GetFirst(c, prev);
     case Disjunction(r1, r2) =>
-      var c1 := Compile(r1, start + 1);
-      var c2 := Compile(r2, c1.1 + 1);
-      var bc1, f1, bc2, f2 := c1.0, c1.1, c2.0, c2.1;
-      CompileDisjunctionStep(r1, r2, start, c, endl);
-      assert c == [Fork(start + 1, f1 + 1)] + bc1 + [Jmp(f2)] + bc2 && endl == f2;
-      FreshCorrect(r1, start + 1, bc1, f1);   // start + 1 + |bc1| == f1
-      FreshCorrect(r2, f1 + 1, bc2, f2);
-      // r1: compile at prev+[Fork], then extend with the Jmp+bc2 suffix
-      var pre1 := prev + [Fork(start + 1, f1 + 1)];
-      CompileNfaRep(r1, bc1, start + 1, f1, pre1);
-      NfaRepExtend(r1, pre1 + bc1, start + 1, f1, [Jmp(f2)] + bc2);
-      assert (pre1 + bc1) + ([Jmp(f2)] + bc2) == prev + c;
-      // r2: compile at prev+[Fork]+bc1+[Jmp]
-      var pre2 := prev + [Fork(start + 1, f1 + 1)] + bc1 + [Jmp(f2)];
-      assert |pre2| == f1 + 1;
-      CompileNfaRep(r2, bc2, f1 + 1, f2, pre2);
-      assert pre2 + bc2 == prev + c;
-      // GetPc facts
-      GetFirst(c, prev);                                       // Fork at start
-      assert prev + c == (prev + [Fork(start + 1, f1 + 1)] + bc1) + ([Jmp(f2)] + bc2);
-      assert |prev + [Fork(start + 1, f1 + 1)] + bc1| == f1;
-      GetFirst([Jmp(f2)] + bc2, prev + [Fork(start + 1, f1 + 1)] + bc1);  // Jmp at f1
-      assert NfaRep(r1, prev + c, start + 1, f1) && NfaRep(r2, prev + c, f1 + 1, f2)
-          && GetPc(prev + c, start) == Some(Fork(start + 1, f1 + 1))
-          && GetPc(prev + c, f1) == Some(Jmp(f2));
+      CompileNfaRepDisj(r1, r2, c, start, endl, prev);
     case Sequence(r1, r2) =>
-      var c1 := Compile(r1, start);
-      var c2 := Compile(r2, c1.1);
-      var bc1, f1, bc2, f2 := c1.0, c1.1, c2.0, c2.1;
-      assert c == bc1 + bc2 && endl == f2;
-      FreshCorrect(r1, start, bc1, f1);   // start + |bc1| == f1
-      CompileNfaRep(r1, bc1, start, f1, prev);
-      NfaRepExtend(r1, prev + bc1, start, f1, bc2);
-      assert (prev + bc1) + bc2 == prev + c;
-      assert |prev + bc1| == f1;
-      CompileNfaRep(r2, bc2, f1, f2, prev + bc1);
-      assert (prev + bc1) + bc2 == prev + c;
-      assert NfaRep(r1, prev + c, start, f1) && NfaRep(r2, prev + c, f1, f2);
+      CompileNfaRepSeq(r1, r2, c, start, endl, prev);
     case Quantified(greedy, min, delta, r1) =>
-      var gidl := DefGroups(r1);
-      var (mc, mf) := RepeatMin(min, gidl, r1, start);
-      FreshCorrectMin(min, gidl, r1, start, mc, mf);   // start + |mc| == mf
-      CompileNfaRepMin(min, gidl, r1, mc, start, mf, prev);
       match delta {
-        case Inf =>
-          var c1 := Compile(r1, mf + 3);
-          var bc1, f1 := c1.0, c1.1;
-          var hdr := [GreedyFork(greedy, mf + 1, f1 + 1), BeginLoop, ResetRegs(gidl)];
-          var blk := hdr + bc1 + [EndLoop(mf)];
-          assert c == mc + blk && endl == f1 + 1;
-          FreshCorrect(r1, mf + 3, bc1, f1);   // mf + 3 + |bc1| == f1
-          NfaRepExtendMin(min, gidl, r1, prev + mc, start, mf, blk);
-          assert (prev + mc) + blk == prev + c;
-          var pre1 := prev + mc + hdr;
-          assert |pre1| == mf + 3;
-          CompileNfaRep(r1, bc1, mf + 3, f1, pre1);
-          NfaRepExtend(r1, pre1 + bc1, mf + 3, f1, [EndLoop(mf)]);
-          assert (pre1 + bc1) + [EndLoop(mf)] == prev + c;
-          assert |prev + mc| == mf;
-          GetFirst(blk, prev + mc);
-          GetPrefix(blk, 1, prev + mc);
-          GetPrefix(blk, 2, prev + mc);
-          assert prev + c == (prev + mc + hdr + bc1) + [EndLoop(mf)];
-          assert |prev + mc + hdr + bc1| == f1;
-          GetFirst([EndLoop(mf)], prev + mc + hdr + bc1);   // EndLoop at f1
-          assert NfaRepMin(min, gidl, r1, prev + c, start, mf)
-              && GetPc(prev + c, mf) == Some(GreedyFork(greedy, mf + 1, f1 + 1))
-              && GetPc(prev + c, mf + 1) == Some(BeginLoop)
-              && GetPc(prev + c, mf + 2) == Some(ResetRegs(gidl))
-              && NfaRep(r1, prev + c, mf + 3, f1)
-              && GetPc(prev + c, f1) == Some(EndLoop(mf))
-              && endl == f1 + 1;
-        case NN(k) =>
-          var (oc, of) := RepeatOpt(k, greedy, gidl, r1, mf);
-          assert c == mc + oc && endl == of;
-          NfaRepExtendMin(min, gidl, r1, prev + mc, start, mf, oc);
-          assert (prev + mc) + oc == prev + c;
-          assert |prev + mc| == mf;
-          CompileNfaRepOpt(k, greedy, gidl, r1, oc, mf, of, prev + mc);
-          assert NfaRepMin(min, gidl, r1, prev + c, start, mf)
-              && NfaRepOpt(k, greedy, gidl, r1, prev + c, mf, of);
+        case Inf => CompileNfaRepInf(greedy, min, r1, c, start, endl, prev);
+        case NN(k) => CompileNfaRepNN(greedy, min, k, r1, c, start, endl, prev);
       }
     case Group(gid, r1) =>
-      var c1 := Compile(r1, start + 1);
-      var bc1, f1 := c1.0, c1.1;
-      assert c == [SetRegOpen(gid)] + bc1 + [SetRegClose(gid)] && endl == f1 + 1;
-      FreshCorrect(r1, start + 1, bc1, f1);   // start + 1 + |bc1| == f1
-      var pre1 := prev + [SetRegOpen(gid)];
-      assert |pre1| == start + 1;
-      CompileNfaRep(r1, bc1, start + 1, f1, pre1);
-      NfaRepExtend(r1, pre1 + bc1, start + 1, f1, [SetRegClose(gid)]);
-      assert (pre1 + bc1) + [SetRegClose(gid)] == prev + c;
-      GetFirst(c, prev);   // SetRegOpen at start
-      assert prev + c == (prev + [SetRegOpen(gid)] + bc1) + [SetRegClose(gid)];
-      assert |prev + [SetRegOpen(gid)] + bc1| == f1;
-      GetFirst([SetRegClose(gid)], prev + [SetRegOpen(gid)] + bc1);   // SetRegClose at f1
-      assert GetPc(prev + c, start) == Some(SetRegOpen(gid))
-          && NfaRep(r1, prev + c, start + 1, f1)
-          && GetPc(prev + c, f1) == Some(SetRegClose(gid))
-          && endl == f1 + 1;
+      CompileNfaRepGroup(gid, r1, c, start, endl, prev);
+  }
+
+  /** `Compile` at a sequence. */
+  lemma CompileSequenceStep(r1: Regex, r2: Regex, start: Label, c: Code, endl: Label)
+    requires Compile(Sequence(r1, r2), start) == (c, endl)
+    ensures var c1 := Compile(r1, start);
+            var c2 := Compile(r2, c1.1);
+            c == c1.0 + c2.0 && endl == c2.1
+  {
+  }
+
+  /** `Compile` at a bounded quantifier. */
+  lemma CompileQuantNNStep(greedy: bool, min: nat, k: nat, r1: Regex, start: Label, c: Code, endl: Label)
+    requires Compile(Quantified(greedy, min, NN(k), r1), start) == (c, endl)
+    ensures var gidl := DefGroups(r1);
+            var m := RepeatMin(min, gidl, r1, start);
+            var o := RepeatOpt(k, greedy, gidl, r1, m.1);
+            c == m.0 + o.0 && endl == o.1
+  {
+    hide RepeatMin;
+    hide RepeatOpt;
+    hide DefGroups;
+    var gidl := DefGroups(r1);
+    var (mc, mf) := RepeatMin(min, gidl, r1, start);
+    var (oc, of) := RepeatOpt(k, greedy, gidl, r1, mf);
+    assert Compile(Quantified(greedy, min, NN(k), r1), start) == (mc + oc, of);
+  }
+
+  /** `prev + ([h0, h1, h2] + bc1 + [el] + c2)`. */
+  lemma OptLayout(prev: Code, h0: Bytecode, h1: Bytecode, h2: Bytecode, bc1: Code, el: Bytecode, c2: Code)
+    ensures var hdr := [h0, h1, h2];
+            var c := hdr + bc1 + [el] + c2;
+            (prev + hdr + bc1) + ([el] + c2) == prev + c
+            && (prev + hdr + bc1 + [el]) + c2 == prev + c
+            && |prev + hdr| == |prev| + 3
+            && |prev + hdr + bc1 + [el]| == |prev| + |bc1| + 4
+            && GetPc(prev + c, |prev|) == Some(h0)
+            && GetPc(prev + c, |prev| + 1) == Some(h1)
+            && GetPc(prev + c, |prev| + 2) == Some(h2)
+            && GetPc(prev + c, |prev| + 3 + |bc1|) == Some(el)
+  {
+    var hdr := [h0, h1, h2];
+    var c := hdr + bc1 + [el] + c2;
+    assert (prev + hdr + bc1) + ([el] + c2) == prev + c;
+    assert (prev + hdr + bc1 + [el]) + c2 == prev + c;
+    var n := |prev|;
+    assert (prev + c)[n] == h0 && (prev + c)[n + 1] == h1 && (prev + c)[n + 2] == h2;
+    assert (prev + c)[n + 3 + |bc1|] == el;
+  }
+
+  /** `CompileNfaRep`, sequence arm. */
+  lemma CompileNfaRepSeq(r1: Regex, r2: Regex, c: Code, start: Label, endl: Label, prev: Code)
+    requires Compile(Sequence(r1, r2), start) == (c, endl)
+    requires start == |prev|
+    ensures NfaRep(Sequence(r1, r2), prev + c, start, endl)
+    decreases RegexSize(Sequence(r1, r2)), 0
+  {
+    var c1 := Compile(r1, start);
+    var c2 := Compile(r2, c1.1);
+    var bc1, f1, bc2, f2 := c1.0, c1.1, c2.0, c2.1;
+    CompileSequenceStep(r1, r2, start, c, endl);
+    hide Compile; hide RepeatMin; hide RepeatOpt;
+    assert c == bc1 + bc2 && endl == f2;
+    assert Compile(r1, start) == (bc1, f1) && Compile(r2, f1) == (bc2, f2);
+    FreshCorrect(r1, start, bc1, f1);   // start + |bc1| == f1
+    CompileNfaRep(r1, bc1, start, f1, prev);
+    NfaRepExtend(r1, prev + bc1, start, f1, bc2);
+    assert (prev + bc1) + bc2 == prev + c;
+    assert |prev + bc1| == f1;
+    CompileNfaRep(r2, bc2, f1, f2, prev + bc1);
+    assert NfaRep(r1, prev + c, start, f1) && NfaRep(r2, prev + c, f1, f2);
+  }
+
+  /** `CompileNfaRep`, bounded-quantifier arm. */
+  lemma CompileNfaRepNN(greedy: bool, min: nat, k: nat, r1: Regex, c: Code, start: Label, endl: Label, prev: Code)
+    requires Compile(Quantified(greedy, min, NN(k), r1), start) == (c, endl)
+    requires start == |prev|
+    ensures NfaRep(Quantified(greedy, min, NN(k), r1), prev + c, start, endl)
+    decreases RegexSize(Quantified(greedy, min, NN(k), r1)), 0
+  {
+    var gidl := DefGroups(r1);
+    var (mc, mf) := RepeatMin(min, gidl, r1, start);
+    var (oc, of) := RepeatOpt(k, greedy, gidl, r1, mf);
+    CompileQuantNNStep(greedy, min, k, r1, start, c, endl);
+    hide Compile; hide RepeatMin; hide RepeatOpt;
+    assert c == mc + oc && endl == of;
+    assert RepeatMin(min, gidl, r1, start) == (mc, mf) && RepeatOpt(k, greedy, gidl, r1, mf) == (oc, of);
+    FreshCorrectMin(min, gidl, r1, start, mc, mf);   // start + |mc| == mf
+    CompileNfaRepMin(min, gidl, r1, mc, start, mf, prev);
+    NfaRepExtendMin(min, gidl, r1, prev + mc, start, mf, oc);
+    assert (prev + mc) + oc == prev + c;
+    assert |prev + mc| == mf;
+    CompileNfaRepOpt(k, greedy, gidl, r1, oc, mf, of, prev + mc);
+    assert NfaRepMin(min, gidl, r1, prev + c, start, mf)
+        && NfaRepOpt(k, greedy, gidl, r1, prev + c, mf, of);
+  }
+
+  /** `CompileNfaRep`, disjunction arm. */
+  lemma CompileNfaRepDisj(r1: Regex, r2: Regex, c: Code, start: Label, endl: Label, prev: Code)
+    requires Compile(Disjunction(r1, r2), start) == (c, endl)
+    requires start == |prev|
+    ensures NfaRep(Disjunction(r1, r2), prev + c, start, endl)
+    decreases RegexSize(Disjunction(r1, r2)), 0
+  {
+    var c1 := Compile(r1, start + 1);
+    var c2 := Compile(r2, c1.1 + 1);
+    var bc1, f1, bc2, f2 := c1.0, c1.1, c2.0, c2.1;
+    CompileDisjunctionStep(r1, r2, start, c, endl);
+    hide Compile; hide RepeatMin; hide RepeatOpt;
+    assert c == [Fork(start + 1, f1 + 1)] + bc1 + [Jmp(f2)] + bc2 && endl == f2;
+    assert Compile(r1, start + 1) == (bc1, f1) && Compile(r2, f1 + 1) == (bc2, f2);
+    FreshCorrect(r1, start + 1, bc1, f1);   // start + 1 + |bc1| == f1
+    FreshCorrect(r2, f1 + 1, bc2, f2);
+    var fk, jm := Fork(start + 1, f1 + 1), Jmp(f2);
+    DisjLayout(prev, fk, bc1, jm, bc2);
+    var pre1 := prev + [fk];
+    CompileNfaRep(r1, bc1, start + 1, f1, pre1);
+    NfaRepExtend(r1, pre1 + bc1, start + 1, f1, [jm] + bc2);
+    var pre2 := prev + [fk] + bc1 + [jm];
+    CompileNfaRep(r2, bc2, f1 + 1, f2, pre2);
+    assert NfaRep(r1, prev + c, start + 1, f1) && NfaRep(r2, prev + c, f1 + 1, f2)
+        && GetPc(prev + c, start) == Some(Fork(start + 1, f1 + 1))
+        && GetPc(prev + c, f1) == Some(Jmp(f2));
+  }
+
+  /** `CompileNfaRep`, unbounded-quantifier arm. */
+  lemma CompileNfaRepInf(greedy: bool, min: nat, r1: Regex, c: Code, start: Label, endl: Label, prev: Code)
+    requires Compile(Quantified(greedy, min, Inf, r1), start) == (c, endl)
+    requires start == |prev|
+    ensures NfaRep(Quantified(greedy, min, Inf, r1), prev + c, start, endl)
+    decreases RegexSize(Quantified(greedy, min, Inf, r1)), 0
+  {
+    var gidl := DefGroups(r1);
+    var (mc, mf) := RepeatMin(min, gidl, r1, start);
+    FreshCorrectMin(min, gidl, r1, start, mc, mf);   // start + |mc| == mf
+    CompileNfaRepMin(min, gidl, r1, mc, start, mf, prev);
+    var c1 := Compile(r1, mf + 3);
+    var bc1, f1 := c1.0, c1.1;
+    var h0, el := GreedyFork(greedy, mf + 1, f1 + 1), EndLoop(mf);
+    var hdr := [h0, BeginLoop, ResetRegs(gidl)];
+    var blk := hdr + bc1 + [el];
+    CompileQuantInfStep(greedy, min, r1, start, c, endl);
+    hide Compile; hide RepeatMin; hide RepeatOpt;
+    assert Compile(r1, mf + 3) == (bc1, f1);
+    assert c == mc + hdr + bc1 + [el] && endl == f1 + 1;
+    FreshCorrect(r1, mf + 3, bc1, f1);   // mf + 3 + |bc1| == f1
+    LoopLayout(prev, mc, h0, BeginLoop, ResetRegs(gidl), bc1, el);
+    assert c == mc + blk;
+    NfaRepExtendMin(min, gidl, r1, prev + mc, start, mf, blk);
+    var pre1 := prev + mc + hdr;
+    CompileNfaRep(r1, bc1, mf + 3, f1, pre1);
+    NfaRepExtend(r1, pre1 + bc1, mf + 3, f1, [el]);
+    assert NfaRepMin(min, gidl, r1, prev + c, start, mf)
+        && GetPc(prev + c, mf) == Some(GreedyFork(greedy, mf + 1, f1 + 1))
+        && GetPc(prev + c, mf + 1) == Some(BeginLoop)
+        && GetPc(prev + c, mf + 2) == Some(ResetRegs(gidl))
+        && NfaRep(r1, prev + c, mf + 3, f1)
+        && GetPc(prev + c, f1) == Some(EndLoop(mf))
+        && endl == f1 + 1;
+  }
+
+  /** `CompileNfaRep`, group arm. */
+  lemma CompileNfaRepGroup(gid: GroupId, r1: Regex, c: Code, start: Label, endl: Label, prev: Code)
+    requires Compile(Group(gid, r1), start) == (c, endl)
+    requires start == |prev|
+    ensures NfaRep(Group(gid, r1), prev + c, start, endl)
+    decreases RegexSize(Group(gid, r1)), 0
+  {
+    var c1 := Compile(r1, start + 1);
+    var bc1, f1 := c1.0, c1.1;
+    CompileGroupStep(gid, r1, start, c, endl);
+    FreshCorrect(r1, start + 1, bc1, f1);   // start + 1 + |bc1| == f1
+    WrapLayout(prev, SetRegOpen(gid), bc1, SetRegClose(gid));
+    var pre1 := prev + [SetRegOpen(gid)];
+    CompileNfaRep(r1, bc1, start + 1, f1, pre1);
+    NfaRepExtend(r1, pre1 + bc1, start + 1, f1, [SetRegClose(gid)]);
+    assert GetPc(prev + c, start) == Some(SetRegOpen(gid))
+        && NfaRep(r1, prev + c, start + 1, f1)
+        && GetPc(prev + c, f1) == Some(SetRegClose(gid))
+        && endl == f1 + 1;
   }
 
   /** `CompileNfaRep` for the forced-minimum chain. */
@@ -698,7 +877,7 @@ module NFA {
   }
 
   /** `CompileNfaRep` for the optional-layer chain. */
-  lemma {:isolate_assertions} CompileNfaRepOpt(k: nat, greedy: bool, gidl: seq<GroupId>, r: Regex, c: Code, start: Label, endl: Label, prev: Code)
+  lemma CompileNfaRepOpt(k: nat, greedy: bool, gidl: seq<GroupId>, r: Regex, c: Code, start: Label, endl: Label, prev: Code)
     requires RepeatOpt(k, greedy, gidl, r, start) == (c, endl)
     requires start == |prev|
     ensures NfaRepOpt(k, greedy, gidl, r, prev + c, start, endl)
@@ -710,24 +889,18 @@ module NFA {
       var c1 := Compile(r, start + 3);
       var bc1, f1 := c1.0, c1.1;
       var (c2, f2) := RepeatOpt(k - 1, greedy, gidl, r, f1 + 1);
-      var hdr := [GreedyFork(greedy, start + 1, f2), BeginLoop, ResetRegs(gidl)];
-      assert c == hdr + bc1 + [EndLoop(f1 + 1)] + c2 && endl == f2;
+      var h0, el := GreedyFork(greedy, start + 1, f2), EndLoop(f1 + 1);
+      var hdr := [h0, BeginLoop, ResetRegs(gidl)];
+      RepeatOptStep(k, greedy, gidl, r, start, c, endl);
+      hide Compile; hide RepeatMin; hide RepeatOpt;
+      assert c == hdr + bc1 + [el] + c2 && endl == f2;
+      assert Compile(r, start + 3) == (bc1, f1) && RepeatOpt(k - 1, greedy, gidl, r, f1 + 1) == (c2, f2);
       FreshCorrect(r, start + 3, bc1, f1);
-      FreshCorrectOpt(k - 1, greedy, gidl, r, f1 + 1, c2, f2);
+      OptLayout(prev, h0, BeginLoop, ResetRegs(gidl), bc1, el, c2);
       var pre1 := prev + hdr;
-      assert |pre1| == start + 3;
       CompileNfaRep(r, bc1, start + 3, f1, pre1);
-      NfaRepExtend(r, pre1 + bc1, start + 3, f1, [EndLoop(f1 + 1)] + c2);
-      assert (pre1 + bc1) + ([EndLoop(f1 + 1)] + c2) == prev + c;
-      assert |prev + hdr + bc1 + [EndLoop(f1 + 1)]| == f1 + 1;
-      CompileNfaRepOpt(k - 1, greedy, gidl, r, c2, f1 + 1, f2, prev + hdr + bc1 + [EndLoop(f1 + 1)]);
-      assert (prev + hdr + bc1 + [EndLoop(f1 + 1)]) + c2 == prev + c;
-      GetFirst(c, prev);
-      GetPrefix(c, 1, prev);
-      GetPrefix(c, 2, prev);
-      assert prev + c == (prev + hdr + bc1) + ([EndLoop(f1 + 1)] + c2);
-      assert |prev + hdr + bc1| == f1;
-      GetFirst([EndLoop(f1 + 1)] + c2, prev + hdr + bc1);
+      NfaRepExtend(r, pre1 + bc1, start + 3, f1, [el] + c2);
+      CompileNfaRepOpt(k - 1, greedy, gidl, r, c2, f1 + 1, f2, prev + hdr + bc1 + [el]);
       assert GetPc(prev + c, start) == Some(GreedyFork(greedy, start + 1, f2))
           && GetPc(prev + c, start + 1) == Some(BeginLoop)
           && GetPc(prev + c, start + 2) == Some(ResetRegs(gidl))

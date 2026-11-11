@@ -740,7 +740,7 @@ module LindenElkNulledPlus {
                   assert |sub| > 0 && gmlk == sub[0].1;
                   assert ls == LT.TreeLeaves(tc, gmlk, inp, WP.Forward);
                   // the body only writes `S` (its groups are in `S`)
-                  assert LL.DefGroupsIn(r1, S);
+                  assert LL.DefGroupsIn(r1, S) by { reveal LL.LookBodyInS(); }   // LkBodiesInS look arm
                   LL.ComputeTrConfinedRec(rer, r1, inp, gm, ldir, S);
                   assert CE.LkConfinedTreeRec(tlk, S);
                   LL.GmConfinedLeavesRec(tlk, gm, inp, ldir, S);

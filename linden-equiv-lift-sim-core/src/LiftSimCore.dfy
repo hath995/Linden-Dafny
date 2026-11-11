@@ -1009,7 +1009,6 @@ module LindenElkLiftSimCore {
       |bodycode| >= 1
       && PSM.StaticOkNestedRE(qm, body, bodycode, |bodycode| - 1)
       && PSM.SizesOkRE(body, ncap, nlook, nquant)
-      && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body))
   }
 
   // ==========================================================================

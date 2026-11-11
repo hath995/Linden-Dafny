@@ -134,30 +134,8 @@ module LindenElkFlipKeystone {
   // The body's lookaround table: entries, scope facts, restriction
   // ===========================================================================
 
-  /** The fragment's negative arm (capture-free negative bodies) translates into
-      negative bodies that define no groups. The bodies may hold looks. */
-  lemma TranslateNegBodiesGroupFree(r: R.regex)
-    requires T.TransWf(r) && NR.NestedFragmentRE(r)
-    ensures FD.NegBodiesGroupFree(T.Translate(r))
-    decreases r
-  {
-    match r
-    case Re_alt(r1, r2) => TranslateNegBodiesGroupFree(r1); TranslateNegBodiesGroupFree(r2);
-    case Re_con(r1, r2) => TranslateNegBodiesGroupFree(r1); TranslateNegBodiesGroupFree(r2);
-    case Re_quant(_, _, _, r1) => TranslateNegBodiesGroupFree(r1);
-    case Re_capture(_, r1) => TranslateNegBodiesGroupFree(r1);
-    case Re_lookaround(_, la, r1) =>
-      TranslateNegBodiesGroupFree(r1);
-      assert L.Positivity(T.TrLookaround(la)) == (la.Lookahead? || la.Lookbehind?);
-      if !(la.Lookahead? || la.Lookbehind?) {
-        EL.TranslateCaptureFreeNoDefs(r1);
-      }
-    case _ =>
-  }
-
   /** Every entry of the body's own table is in the v1 scope: lookbehind-
-      flavoured, `GroupOkLB` body, group-free negative sub-bodies, dup-free
-      gids. */
+      flavoured, `GroupOkLB` body, dup-free gids. */
   lemma LmOfBodiesLBOk(body: R.regex)
     requires T.TransWf(body) && FST.LBOnlyLooksRE(body)
     requires NR.NestedFragmentRE(body) && PIV.CapUnique(body)
@@ -165,7 +143,6 @@ module LindenElkFlipKeystone {
     ensures forall lid: int :: lid in OE.LmOf(body) ==>
       && (OE.LmOf(body)[lid].0.LookBehind? || OE.LmOf(body)[lid].0.NegLookBehind?)
       && SD.GroupOkLB(OE.LmOf(body)[lid].1)
-      && FD.NegBodiesGroupFree(OE.LmOf(body)[lid].1)
       && NUL.NoNulledPlusL(OE.LmOf(body)[lid].1)   // §2.5b interim
       && CD.NoDupG(L.DefGroups(OE.LmOf(body)[lid].1))
     decreases body
@@ -178,7 +155,6 @@ module LindenElkFlipKeystone {
     case Re_lookaround(lid0, la, r1) =>
       LmOfBodiesLBOk(r1);
       FST.TranslateGroupOkLB(r1);
-      TranslateNegBodiesGroupFree(r1);
       NUL.TransNoNulledPlus(r1);   // §2.5b interim
       TranslateDefGroupsNoDupK(r1);
       assert OE.LmOf(body) == OE.LmOf(r1)[lid0 := (T.TrLookaround(la), T.Translate(r1))];
@@ -476,7 +452,6 @@ module LindenElkFlipKeystone {
     MIR.ReverseLen(str[..cp]);
     assert n == |inp.pref| + |inp.next|;
     FST.TranslateGroupOkLB(body);
-    TranslateNegBodiesGroupFree(body);
     NUL.TransNoNulledPlus(body);   // §2.5b interim: NoNulledPlusL(tr)
     TranslateDefGroupsNoDupK(body);
     FD.BackBodyGmTieFlip(rer, tr, inp, n);

@@ -539,7 +539,6 @@ module LindenElkFlipClosedG {
                 }
                 FirstLeafClosedRecAuxAny(rer, cont, inp, b, tc, sub[0].1, leaf, D);
               } else {
-                assert L.DefGroups(r1) == [] by { reveal EL.NegBodyNoDefs(); }   // Rec: negative body
                 assert LT.TreeRes(tc, gm, inp, WP.Forward) == Some(leaf);        // LK negative unfold
                 assert M.LkClosedInGm(gm, cont) by {
                   forall g | g in gm && g in M.LkBodyGroupsActs(cont) ensures gm[g].endIdx.Some? { assert g in M.LkBodyGroupsActs(acts); }

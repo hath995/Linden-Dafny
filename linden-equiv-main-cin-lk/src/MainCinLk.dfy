@@ -84,6 +84,7 @@ module LindenElkMainCinLk {
   import FS = FunctionalSemantics
   import PTL = LindenElkPikeTreeLk
   import CG = LindenElkFlipClosedG       // (gate B) the scope-free closedness ladder
+  import LB = LindenElkLookBank          // (gate C, G2) the look-bank invariant
 
   // =========================================================================
   // 0. Statics: the glue's side condition on the translated regex.
@@ -360,6 +361,8 @@ module LindenElkMainCinLk {
     && CM.RegsAgreeOutside(th.look_regs, AReg.init_regs(nlook), M.DirectLidSet(re))
     && CM.LookClkSetWithCp(th.look_regs) && CM.LookCpSetWithClk(th.look_regs)
     && CM.LookCpsOracleTrue(th.look_regs, ov)
+    // (gate C, G2) only POSITIVE lids are ever recorded, as in `M.WinRegsOk`
+    && LB.LookSetIn(th.look_regs, LB.PosLookIds(re))
   }
 
   /** The gate-free twin of `M.WinRegsOkFromRun` (the look-row producers need
@@ -426,6 +429,16 @@ module LindenElkMainCinLk {
         }
       }
       CM.FFindMatchLookOracleTrue(code, str, inits, ov, LAnc.Forward, cdn);
+      // (gate C, G2) the main run records only positive lids (as in `M.WinRegsOkFromRun`)
+      assert LB.LookSetIn(result.value.look_regs, LB.PosLookIds(re)) by {
+        var P := LB.PosLookIds(re);
+        LB.CompileToBytecodeChecksIn(re, P);
+        assert LB.VmLookSetIn(inits, P) by {
+          LB.InitRegsLookSetIn(nlook, P);
+          forall t | t in inits.active ensures LB.LookSetIn(t.look_regs, P) { assert t == AI.init_thread(cap, look, quant); }
+        }
+        LB.FFindMatchLookSetIn(code, str, inits, ov, LAnc.Forward, cdn, P);
+      }
       reveal WinRegsOkG();
     }
   }
@@ -676,14 +689,7 @@ module LindenElkMainCinLk {
     case Re_quant(nul, qid, q, r1) => TranslateFragmentPikeLkRecLk(r1);
     case Re_capture(_, r1) => TranslateFragmentPikeLkRecLk(r1);
     case Re_lookaround(lid, la, r1) =>
-      assert NR.NoNulledPlusRE(r1);
-      assert L.Positivity(T.TrLookaround(la)) == (la.Lookahead? || la.Lookbehind?);
-      EL.TranslateFragmentPikeLkRec(r1);
-      NUL.TransNoNulledPlus(r1);
-      if !(la.Lookahead? || la.Lookbehind?) {
-        EL.TranslateCaptureFreeNoDefs(r1);
-      }
-      reveal EL.NegBodyNoDefs();
+      EL.TranslateFragmentPikeLkRec(r1);   // (gate C) the look arm is the body's own fragment
     case _ =>
   }
 

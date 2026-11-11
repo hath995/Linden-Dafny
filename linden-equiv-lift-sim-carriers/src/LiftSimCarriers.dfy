@@ -510,7 +510,6 @@ module LindenElkLiftSimCarriers {
     var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Backward);
     var rb := LT.TreeRes(t, LG.Empty, inp, WP.Backward);
     KG.TranslateNoBackref(body);
-    FK.TranslateNegBodiesGroupFree(body);
     FK.TranslateDefGroupsNoDupK(body);
     LBV.InpOfCpSwap(str, cp, n);
     assert inpF == SD.SwapInput(inp);
@@ -639,6 +638,7 @@ module LindenElkLiftSimCarriers {
     requires CM.LookCpSetWithClk(res1) && CM.LookCpsLE(res1, |str|)
     requires M.FLookLoopChildLinkOk(crv, str, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     requires M.FLookLoopValueOkFull(crv, str, res0, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    requires M.LookPosO(res1, crv)   // (gate C, G2) set look records sit at positive rows
     requires M.FLookLoopQuantValueOkFull(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     // ---- per-level data ----
     requires A in LTB.LookIds(re)
@@ -682,8 +682,7 @@ module LindenElkLiftSimCarriers {
       && var bc := CP.compile_to_bytecode(bA);
       |bc| >= 1
       && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
-      && PSM.SizesOkRE(bA, ncap, nlook, nquant)
-      && ((laA.NegLookbehind? || laA.NegLookahead?) ==> NR.CaptureFreeRE(bA));
+      && PSM.SizesOkRE(bA, ncap, nlook, nquant);
     NI.LookBodyOfTablesTie(re, crv, A);
     var laT: R.lookaround :| LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A));
     assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }

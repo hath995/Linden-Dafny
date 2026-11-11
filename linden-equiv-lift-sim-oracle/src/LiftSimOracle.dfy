@@ -353,44 +353,7 @@ module LindenElkLiftSimOracle {
       0 <= l < nlook && GateStaticAtNested(qm, re, crv, l, ncap, nlook, nquant)
   }
 
-  /** (§2.3/§2.4 perf) A lid whose body holds a capture and whose record is set is a
-      matched POSITIVE look: the hub row's negative-look clause, picked in a minimal
-      context (in the giant reverse-descent lemmas this pick took 5+ minutes). */
-  lemma MatchedPosFromHub(qm: AR.QMap, re: R.regex, crv: CP.FCompiled, lk: AReg.Regs, lid: nat, g: nat,
-                          ncap: int, nlook: int, nquant: int)
-    requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
-    requires (lid as int) in qm.looks
-    requires LTB.LookTablesOk(re, crv) && lid in LTB.LookIds(re)
-    requires g in PIV.CapIds(NI.LookBodyOfRE(re, lid))
-    requires AReg.get_cp(lk, lid as int).Some?
-    ensures M.MatchedPosLA(crv, lk, lid as int)
-  {
-    assert GateStaticAtNested(qm, re, crv, lid as int, ncap, nlook, nquant) by {
-      hide *; reveal GateStaticsOkNested;
-    }
-    var la: R.lookaround, b: R.regex :|
-      LTB.LookEntryOk(crv, lid as int, la, b)
-      && T.TransWf(b) && NR.NestedFragmentRE(b)
-      && qm.looks[lid as int].0 == T.TrLookaround(la)
-      && qm.looks[lid as int].1 == T.Translate(b)
-      && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(b))) <= PIV.CapIdsInLooks(re)
-      && var bc := CP.compile_to_bytecode(b);
-      |bc| >= 1
-      && PSM.StaticOkNestedRE(qm, b, bc, |bc| - 1)
-      && PSM.SizesOkRE(b, ncap, nlook, nquant)
-      && ((la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(b));
-    assert crv.f_look_types[lid as int] == la;
-    assert b == NI.LookBodyOfRE(re, lid) by {
-      NI.LookBodyOfTablesTie(re, crv, lid);
-      var laT: R.lookaround :| LTB.LookEntryOk(crv, lid as int, laT, NI.LookBodyOfRE(re, lid));
-      assert crv.f_look_ast[lid as int] == b == NI.LookBodyOfRE(re, lid);
-    }
-    if la.NegLookahead? || la.NegLookbehind? {
-      PIV.CaptureFreeNoCapIds(b);
-      assert false;
-    }
-    assert AI.capture_type(crv.f_look_types[lid as int]);
-  }
+  // (gate C, G2) `MatchedPosFromHub` removed: `M.MatchedPosFromBank` (the look-bank invariant) replaces it.
 
   /** (L4 NESTED) `GateStaticsSweepRENested` — the nested-fragment establishment
       sweep, off `GateStaticsSweepRE`. Two changes: the body-cap facts are the
@@ -455,7 +418,6 @@ module LindenElkLiftSimOracle {
         assert (next as nat) == |bodycode| - 1;
         assert PSM.StaticOkNestedRE(qm, body, bodycode, |bodycode| - 1);
         assert PSM.SizesOkRE(body, ncap, nlook, nquant);
-        assert (la.NegLookbehind? || la.NegLookahead?) ==> NR.CaptureFreeRE(body);
         assert GateStaticAtNested(qm, re0, crv, lid, ncap, nlook, nquant);
       }
     case _ =>
@@ -1821,7 +1783,6 @@ module LindenElkLiftSimOracle {
 
     // ---- F2 at r1, generic direction: the leaves mirror ----
     KG.TranslateNoBackref(r1);
-    FK.TranslateNegBodiesGroupFree(r1);
     FK.TranslateDefGroupsNoDupK(r1);
     LBV.InpOfCpSwap(str, cp, n);
     assert inpF == SD.SwapInput(inp);
@@ -1950,8 +1911,7 @@ module LindenElkLiftSimOracle {
       && var bc := CP.compile_to_bytecode(bA);
       |bc| >= 1
       && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
-      && PSM.SizesOkRE(bA, ncap, nlook, nquant)
-      && ((laA.NegLookbehind? || laA.NegLookahead?) ==> NR.CaptureFreeRE(bA));
+      && PSM.SizesOkRE(bA, ncap, nlook, nquant);
     NI.LookBodyOfTablesTie(re, crv, A);
     var laT: R.lookaround :| LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A));
     assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
