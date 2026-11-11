@@ -1,0 +1,25 @@
+[package]
+namespace = "linden"
+name = "equiv-plus-at"
+version = "1.0.0"
+description = "linden-equiv layer: PlusAt (G3a: the nulled-plus reconstruction at a look body: agreement congruences, the per-row look-loop frame)"
+license = "MIT"
+
+[toolchain]
+dafny = ">= 4.11.0"
+
+[source]
+to_export = ["src/**/*.dfy"]
+
+[options]
+standard-libraries = true
+verification-time-limit = "900"
+
+[verification]
+expected-errors = [
+]
+
+[dependencies]
+linden.regex-engine = "^1.0.0"
+linden.equiv-pike-inv-re = "^1.0.0"
+linden.equiv-final-readout = "^1.0.0"
