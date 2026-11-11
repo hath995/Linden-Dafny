@@ -447,6 +447,7 @@ module LindenElkLiftSimChain {
     assert L.DefGroups(acts[0].r) == L.DefGroups(r1);
     assert QuantsRightClear(acts[0].r, TopLkSetActs(cont));
     assert forall g :: g in L.DefGroups(r1) ==> g !in TopLkSetActs(cont);
+    assert {:split_here} true;   // (gate A) per-section batch: the whole-lemma batch looped (each assertion alone < 60 s)
     // the TopLk view of the unfolded list: TopLk(r1) ++ TopLk(cont)
     var tail1 := mid + [LS.Areg(q')] + cont;
     var tail2 := [LS.Areg(q')] + cont;
@@ -463,6 +464,7 @@ module LindenElkLiftSimChain {
       assert tail1 == tail2;
     }
     assert TopLkDefsListActs(na) == TopLkDefsList(r1) + TopLkDefsListActs(cont);
+    assert {:split_here} true;   // (gate A) per-section batch: the whole-lemma batch looped (each assertion alone < 60 s)
     // C1: NoDup(TopLk(r1)) structural + disjoint from TopLk(cont) via the C3 clause
     TopLkNoDupFromDefGroups(r1);
     TopLkDefsListSubDefGroups(r1);
@@ -478,6 +480,7 @@ module LindenElkLiftSimChain {
       }
     }
     M.NoDupFromDisjoint(TopLkDefsList(r1), TopLkDefsListActs(cont));
+    assert {:split_here} true;   // (gate A) per-section batch: the whole-lemma batch looped (each assertion alone < 60 s)
     // C2 + C3 per index
     var koff := |mid| + 2;   // na[koff + k] == cont[k]
     forall i | 0 <= i < |na| && na[i].Areg?
@@ -1857,6 +1860,27 @@ module LindenElkLiftSimChain {
     WalkPairLkAtForkCoreRec(rer, qm, code, inp, tb, gm, pc, b, acts, x, y);
   }
 
+  /** (gate A) `WalkPairLkAtCheckOracleCoreRec`'s postcondition, named so that each arm (and each
+      branch of the quantifier and lookaround arms) asserts it at its own end. Without it the exit
+      check at the join landed in the batch after the last split: 2 min 35 s, 1.98 G resources. */
+  ghost predicate WalkPairLkAtCheckOracleCorePost(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code,
+                                                  inp: LC.Input, tb: LT.Tree, gm: LG.GroupMap, pc: nat,
+                                                  b: BS.LoopBool, lid: int)
+  {
+    lid in qm.looks
+    && (var (lk, r1) := qm.looks[lid];
+        (LOr.view_get_oracle(qm.ov, TR_CpOf(inp), lid) ==>
+           tb.LK? && tb.lk == lk
+           && EL.LkGateOk(rer, lk, r1, inp, tb.tlk, true)
+           && LS.LkResult(lk, tb.tlk, gm, inp).Some?
+           && WalkPairLkRec(rer, qm, code, inp, tb.t, LS.LkResult(lk, tb.tlk, gm, inp).value,
+                            pc + 1, ATR.EaOf(b)))
+        && (!LOr.view_get_oracle(qm.ov, TR_CpOf(inp), lid) ==>
+              tb.LKFail? && tb.lk == lk
+              && EL.LkGateOk(rer, lk, r1, inp, tb.tlk, false)))
+    && (forall gg :: gg in L.DefGroups(qm.looks[lid].1) ==> gg !in gm)
+  }
+
   lemma WalkPairLkAtCheckOracleCoreRec(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                                        tb: LT.Tree, gm: LG.GroupMap, pc: nat, b: BS.LoopBool,
                                        acts: LS.Actions, lid: int)
@@ -1895,7 +1919,9 @@ module LindenElkLiftSimChain {
     var cont := acts[1..];
     match acts[0]
     case Acheck(_) =>   // pins EndLoop / backward Fork — not CheckOracle
+      assert WalkPairLkAtCheckOracleCorePost(rer, qm, code, inp, tb, gm, pc, b, lid);   // (gate A) arm-local exit
     case Aclose(_) =>   // pins SetRegisterToCP — not CheckOracle
+      assert WalkPairLkAtCheckOracleCorePost(rer, qm, code, inp, tb, gm, pc, b, lid);   // (gate A) arm-local exit
     case Areg(r0) =>
       assert EL.PikeLkRegexRec(r0);
       match r0
@@ -1911,6 +1937,7 @@ module LindenElkLiftSimChain {
         WalkDefsOkTail(acts);
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         WalkPairLkAtCheckOracleCoreRec(rer, qm, code, inp, tb, gm, pc, b, cont, lid);
+        assert WalkPairLkAtCheckOracleCorePost(rer, qm, code, inp, tb, gm, pc, b, lid);   // (gate A) arm-local exit
       case Sequence(r1, r2) =>
         assert acts[0] == LS.Areg(L.Sequence(r1, r2));
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -1960,6 +1987,7 @@ module LindenElkLiftSimChain {
         WalkDefsOkSeqExpand(acts, r1, r2);
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         WalkPairLkAtCheckOracleCoreRec(rer, qm, code, inp, tb, gm, pc, b, na, lid);
+        assert WalkPairLkAtCheckOracleCorePost(rer, qm, code, inp, tb, gm, pc, b, lid);   // (gate A) arm-local exit
       case Quantified(greedy, min, delta, r1) =>
         if min == 0 && delta == LN.NN(0) {
           assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -1987,6 +2015,7 @@ module LindenElkLiftSimChain {
           assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           WalkPairLkAtCheckOracleCoreRec(rer, qm, code, inp, tb, gm, pc, b, cont, lid);
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+          assert WalkPairLkAtCheckOracleCorePost(rer, qm, code, inp, tb, gm, pc, b, lid);   // (gate A) branch-local exit
         } else {
           assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1));
@@ -1994,7 +2023,9 @@ module LindenElkLiftSimChain {
           assert AR.NfaRepL(rer, qm, L.Quantified(greedy, min, delta, r1), code, pc, pcmid);
           assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           QuantHeadPinsForkOrSQC(rer, qm, greedy, min, delta, r1, code, pc, pcmid);
+          assert WalkPairLkAtCheckOracleCorePost(rer, qm, code, inp, tb, gm, pc, b, lid);   // (gate A) branch-local exit
         }
+        assert WalkPairLkAtCheckOracleCorePost(rer, qm, code, inp, tb, gm, pc, b, lid);   // (gate A) arm-local exit
       case LookaroundR(lk0, r1) =>
         var lid0: int :| NR.GetPcRE(code, pc) == Some(if AR.PositiveL(lk0) then RB.CheckOracle(lid0)
                                                                            else RB.NegCheckOracle(lid0))
@@ -2118,17 +2149,25 @@ module LindenElkLiftSimChain {
           assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert WalkPairLkRec(rer, qm, code, inp, tb.t, gm2, pc + 1, g);
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+          assert WalkPairLkAtCheckOracleCorePost(rer, qm, code, inp, tb, gm, pc, b, lid);   // (gate A) branch-local exit
         } else {
           assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert tb.LKFail?;   // GateNodeAtInp: only LK or LKFail
           assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           assert !bit;
+          assert WalkPairLkAtCheckOracleCorePost(rer, qm, code, inp, tb, gm, pc, b, lid);   // (gate A) branch-local exit
         }
+        assert WalkPairLkAtCheckOracleCorePost(rer, qm, code, inp, tb, gm, pc, b, lid);   // (gate A) arm-local exit
       case Character(_) =>   // pins Consume — not CheckOracle
+        assert WalkPairLkAtCheckOracleCorePost(rer, qm, code, inp, tb, gm, pc, b, lid);   // (gate A) arm-local exit
       case Disjunction(_, _) =>   // pins Fork — not CheckOracle
+        assert WalkPairLkAtCheckOracleCorePost(rer, qm, code, inp, tb, gm, pc, b, lid);   // (gate A) arm-local exit
       case Group(_, _) =>   // pins SetRegisterToCP — not CheckOracle
+        assert WalkPairLkAtCheckOracleCorePost(rer, qm, code, inp, tb, gm, pc, b, lid);   // (gate A) arm-local exit
       case AnchorR(_) =>   // pins AnchorAssertion — not CheckOracle
+        assert WalkPairLkAtCheckOracleCorePost(rer, qm, code, inp, tb, gm, pc, b, lid);   // (gate A) arm-local exit
       case Backreference(_) =>   // NfaRepL false
+        assert WalkPairLkAtCheckOracleCorePost(rer, qm, code, inp, tb, gm, pc, b, lid);   // (gate A) arm-local exit
   }
 
   lemma WalkPairLkAtCheckOracleRec(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,

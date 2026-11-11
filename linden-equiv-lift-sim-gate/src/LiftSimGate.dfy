@@ -2046,6 +2046,7 @@ module LindenElkLiftSimGate {
                                 S: set<LG.GroupId>, ptsA: PT.PikeTreeState, ptsA': PT.PikeTreeState,
                                 bst: PT.PikeTreeState, bst1: PT.PikeTreeState, post: AI.VmState,
                                 ncap: int, nlook: int, nquant: int)
+    requires NR.NfaRepRE(re, code, 0, endl)   // PikeInvFullRE's precondition (full-file wf check)
   {
     PSM.TrcRE(ptsA, ptsA') && ptsA'.PTS?
     && PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, ptsA', post, ncap, nlook, nquant)
