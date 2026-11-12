@@ -120,9 +120,7 @@ module LindenElkTwoMachines {
       lie in `G` (any `G` covering the outside-look captures). */
   lemma TranslateCinOk(r: R.regex, G: set<LG.GroupId>)
     requires T.TransWf(r) && NR.NestedFragmentRE(r)
-    requires M.LooksNoNulledPlusRE(r) && RF.CinBodiesLookFreeRE(r)   // (G3a) the first conjunct is no longer used
-                                                                      // (`CinOk`'s look arm is `true`); kept so the
-                                                                      // top level's call context is unchanged
+    requires RF.CinBodiesLookFreeRE(r)   // (G3a) `CinOk`'s look arm is `true`: no look-body gate
     requires forall g: nat :: g in PIV.CapIdsOutsideLooks(r) ==> g in G
     ensures CW.CinOk(T.Translate(r), G)
     decreases r
@@ -275,6 +273,16 @@ module LindenElkTwoMachines {
     TieBackTransport(re, crv, str, ov, Q, S, G, bleaf.1, leaf.1, best, th, ncap, nlook, nquant);
     TieDeepTransport(rer, re, crv, str, ov, Q, S, G, bleaf.1, leaf.1, best, th, ncap, nlook, nquant);
   }
+  /** (G3a) The fresh VM run of `bodycode` at `cp` has a winner, and `th` carries its look bank. Opaque: it
+      names `FFindMatch` on a fresh initial state, which the solver would otherwise unfold at every use. */
+  opaque ghost predicate WinnerLookKept(bodycode: RB.code, str: string, cp: nat, ov: LOr.OracleView,
+                                        lookcdn: LCdn.cdns, ncap: int, nlook: int, nquant: int, th: AI.Thread) {
+    var r := AI.FFindMatch(bodycode, str, AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                        AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
+                           ov, LAnc.Forward, lookcdn).0;
+    r.Some? && th.look_regs == r.value.look_regs
+  }
+
   // =========================================================================
   // 2. A6: the two machines at a lookahead body.
   // =========================================================================
@@ -322,7 +330,9 @@ module LindenElkTwoMachines {
             && CM.ThreadRegsWf(rf.value, ncap, nlook, nquant)
             && CM.LookClkSetWithCp(rf.value.look_regs)
             && CM.LookCpSetWithClk(rf.value.look_regs)
-            && CM.LookCpsLE(rf.value.look_regs, |str|))
+            && CM.LookCpsLE(rf.value.look_regs, |str|)
+            // (G3a) the reconstruction keeps the VM winner's look bank
+            && WinnerLookKept(bodycode, str, cp, ov, lookcdn, ncap, nlook, nquant, rf.value))
   {
     var inp := PIV.InpOfCp(str, cp);
     var acts := [LS.Areg(T.Translate(body))];
@@ -450,8 +460,15 @@ module LindenElkTwoMachines {
         }
       }
       CM.FFindMatchLookCpOk(bodycode, str, vms, ov, LAnc.Forward, lookcdn);
+      assert {:split_here} true;
+      assert rp.look_regs == result.value.look_regs;
+      assert WinnerLookKept(bodycode, str, cp, ov, lookcdn, ncap, nlook, nquant, rp) by {
+        hide *;
+        reveal WinnerLookKept();
+      }
     } else {
       assert rf.0.None?;
       assert bleaf.None? && LT.FirstLeaf(t, inp).None?;
     }
-  }}
+  }
+}

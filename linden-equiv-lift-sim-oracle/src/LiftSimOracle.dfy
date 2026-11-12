@@ -111,6 +111,8 @@ module LindenElkLiftSimOracle {
   import CW = LindenElkCinWalk
   import NRR = LindenElkNulledReconRegs   // (G3a) the plus table
   import MA = LindenElkMachineA           // (G3a) machine A on the plus match
+  import NRC = LindenElkNulledRecon        // (G3a) NoCdnPlusRE
+  import RF = LindenElkReconFrame          // (G3a) CinBodiesLookFreeRE
   import opened LindenElkLiftSimCore
   import MW = LindenElkMirrorWorld       // (gate B) the G1 leaf
   import GG = LindenElkFlipGateG         // (gate B) flip-gate F6, scope-free
@@ -371,7 +373,7 @@ module LindenElkLiftSimOracle {
   lemma GateStaticsSweepRENested(qm: AR.QMap, re0: R.regex, re: R.regex, crv: CP.FCompiled,
                                  ncap: int, nlook: int, nquant: int)
     requires T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
-    requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
+    requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
     requires NR.NestedFragmentRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re)
     requires LTB.LookTablesOk(re, crv)
@@ -407,7 +409,14 @@ module LindenElkLiftSimOracle {
       assert PIV.CapIdsInLooks(re) == PIV.CapIds(body);
       assert PIV.CapIdsInLooks(body) <= PIV.CapIdsInLooks(re0);
       // recurse into the body for its OWN inner lids
-      M.LooksNoNulledPlusFromFull(body);   // (§2.5b F-c) the body is stamp-free
+      // (G3a) the gate descends: a lookbehind body is nulled-plus-free, a lookahead body carries the gate
+      if M.BehindKind(la) {
+        assert NR.NoNulledPlusRE(body);
+        M.PlusGateFromFull(body);
+        M.NoNulledPlusCinFragment(body);
+      } else {
+        assert NRC.NoCdnPlusRE(body) && RF.CinBodiesLookFreeRE(body) && M.LookBodiesPlusGateRE(body);
+      }
       // (G3a) the plus-row premises descend to the body
       assert NRR.PlusTableOk(body, crv.f_plus_bc) by { assert NRR.L1(re) == body; }
       assert LTB.LookUnique(body);
@@ -421,10 +430,10 @@ module LindenElkLiftSimOracle {
         // the node's own bundle
         assert LTB.LookEntryOk(crv, lid, la, body);
         assert T.TransWf(body) && NR.NestedFragmentRE(body);
-        assert NR.NoNulledPlusRE(body);   // §2.5b: descends definitionally
+        assert M.BehindKind(la) ==> NR.NoNulledPlusRE(body);   // (G3a) lookbehind rows only
         assert PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body);
         M.NestedNoCdn(body);
-        M.NoNulledPlusCinFragment(body);
+        assert RF.CinBodiesLookFreeRE(body) && M.LookBodiesPlusGateRE(body);
         assert RowPlusOk(body, crv.f_plus_bc, nlook) by {   // (G3a) the plus row's statics
           reveal RowPlusOk(); reveal M.RowLAStatics();
         }
@@ -442,7 +451,7 @@ module LindenElkLiftSimOracle {
         assert NR.NfaRepRE(body, bodycode, 0, next as nat)
                && NR.GetPcRE(bodycode, next as nat) == Some(RB.Accept);
         assert (next as nat) == |bodycode| - 1;
-        assert PSM.StaticOkNestedRE(qm, body, bodycode, |bodycode| - 1);
+        assert PSM.StaticCoreNestedRE(qm, body, bodycode, |bodycode| - 1);   // (G3a) no NoNulledPlusRE needed
         assert PSM.SizesOkRE(body, ncap, nlook, nquant);
         assert GateStaticAtNested(qm, re0, crv, lid, ncap, nlook, nquant);
       }
@@ -457,7 +466,7 @@ module LindenElkLiftSimOracle {
   lemma GateStaticsFromTablesNested(qm: AR.QMap, re: R.regex, crv: CP.FCompiled,
                                     ncap: int, nlook: int, nquant: int)
     requires T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
-    requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
+    requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
     requires NR.NestedFragmentRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re)
     requires LTB.LookTablesOk(re, crv)
@@ -677,7 +686,7 @@ module LindenElkLiftSimOracle {
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
     A0: nat, lk: AReg.Regs, body: R.regex, bodycode: RB.code, endl: nat, ngroups: nat,
     g2: nat, ncap: int, nlook: int, nquant: int)
-    requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
+    requires PSM.StaticCoreNestedRE(qm, body, bodycode, endl)   // (G3a) no stamp-free premise
     requires RowPlusOk(body, crv.f_plus_bc, nlook)   // (G3a) machine A on the plus match
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires qm.ov == ov && !rer.ignoreCase && !rer.multiline
@@ -748,7 +757,7 @@ module LindenElkLiftSimOracle {
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
     A0: nat, lk: AReg.Regs, body: R.regex, bodycode: RB.code, endl: nat, ngroups: nat,
     g2: nat, ncap: int, nlook: int, nquant: int)
-    requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
+    requires PSM.StaticCoreNestedRE(qm, body, bodycode, endl)   // (G3a) no stamp-free premise
     requires RowPlusOk(body, crv.f_plus_bc, nlook)   // (G3a) machine A on the plus match
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires qm.ov == ov && !rer.ignoreCase && !rer.multiline
@@ -1864,7 +1873,7 @@ module LindenElkLiftSimOracle {
     host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed through the recursion) ----
     requires T.TransWf(re) && NR.NestedFragmentRE(re)
-    requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
+    requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires |crv.f_look_types| == |crv.f_look_ast|
@@ -1922,7 +1931,7 @@ module LindenElkLiftSimOracle {
     assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
     assert host == M.VBody(crv, A as int);
     var endlH: nat := |bodycode| - 1;
-    assert PSM.StaticOkNestedRE(qm, host, bodycode, endlH);
+    assert PSM.StaticCoreNestedRE(qm, host, bodycode, endlH);
     assert crv.f_look_types[A as int] == laA;
     assert (laA.Lookahead? || laA.Lookbehind?) by {
       assert AI.capture_type(crv.f_look_types[A as int]);        // MatchedPosLA
@@ -2116,7 +2125,7 @@ module LindenElkLiftSimOracle {
     requires NR.NestedFragmentRE(top) && LTB.LidsWellNested(top) && LTB.LookUnique(top)
     requires forall x: nat :: x in LTB.LookIds(top) ==> 1 <= x
     requires NR.NestedFragmentRE(sub)                    // W9: L5ScopeRE / NegBehindLBOnlyRE deleted
-    requires M.LooksNoNulledPlusRE(sub)
+    requires M.LookBodiesPlusGateRE(sub)   // (G3a) the weak gate
     requires T.TransWf(sub) && LTB.LookUnique(sub) && PIV.CapUnique(sub) && PIV.QuantUnique(sub)
     requires LTB.LookTablesOk(sub, crv)
     requires LTB.LookIds(sub) <= LTB.LookIds(top)
@@ -2233,9 +2242,8 @@ module LindenElkLiftSimOracle {
       assert {:split_here} true;
       OE.LmapOkOfLmOf(body, qmb);
       assert {:split_here} true;
-      M.LooksNoNulledPlusBody(sub, lid as nat);
       assert {:split_here} true;
-      assert PSM.StaticOkNestedRE(qmb, body, codeb, endlb);
+      assert PSM.StaticCoreNestedRE(qmb, body, codeb, endlb);   // (G3a) a lookahead body may hold a CIN plus
       assert {:split_here} true;
       assert PSM.SizesOkRE(body, ncapb, nlookb, nquantb);
       var bestT := M.BodyTreeAtCpNested(rer, qmb, body, codeb, endlb, 0, str, cp, ovf, cdnsb,
@@ -2285,7 +2293,7 @@ module LindenElkLiftSimOracle {
         SufForallToColsOk(rer, qmb, str);
       }
       assert {:split_here} true;
-      M.LooksNoNulledPlusBody(sub, lid as nat);
+      M.PlusGateBody(sub, crv, lid as nat, la, body);   // (G3a) a lookbehind body is nulled-plus-free
       assert {:split_here} true;
       assert forall y: nat :: y in LTB.LookIds(body) ==> 1 <= y;
       assert {:split_here} true;
@@ -2311,7 +2319,7 @@ module LindenElkLiftSimOracle {
     requires NR.NestedFragmentRE(top) && LTB.LidsWellNested(top) && LTB.LookUnique(top)
     requires forall x: nat :: x in LTB.LookIds(top) ==> 1 <= x
     requires NR.NestedFragmentRE(sub)                    // W9: L5ScopeRE / NegBehindLBOnlyRE deleted
-    requires M.LooksNoNulledPlusRE(sub)
+    requires M.LookBodiesPlusGateRE(sub)   // (G3a) the weak gate
     requires T.TransWf(sub) && LTB.LookUnique(sub) && PIV.CapUnique(sub) && PIV.QuantUnique(sub)
     requires LTB.LookTablesOk(sub, crv)
     requires LTB.LookIds(sub) <= LTB.LookIds(top)
@@ -2350,7 +2358,7 @@ module LindenElkLiftSimOracle {
         var body := NI.LookBodyOfRE(sub, lidn);
         LookIdNotInOwnBody(sub, lidn);
         SubsetCardLt(LTB.LookIds(body), LTB.LookIds(sub), lidn);
-        M.LooksNoNulledPlusBody(sub, lidn);
+        M.PlusGateBodyRE(sub, lidn);   // (G3a) the gate descends
         OracleOkRowsL5(rer, top, crv, str, body);
         OracleColumnNested(rer, top, crv, str, sub, lid, lk, r1, cp);
       }

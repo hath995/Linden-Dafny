@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:1f0bb759913934883961e684e0344a48b079f832c4f1a1755e530ae07b25da8e"
+manifest-hash = "sha256:a11a7fe79bd3b675e90989536fac0b7827bd18ab0f7a5c75b5f913da15eeed09"
 
 [[package]]
 name = "linden.equiv-cin-walk"
@@ -605,3 +605,12 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-mirror-world"
+
+[[package]]
+name = "linden.equiv-two-machines"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-two-machines"

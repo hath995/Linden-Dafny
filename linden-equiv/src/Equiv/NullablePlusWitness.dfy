@@ -129,4 +129,17 @@ module NullablePlusWitness {
   lemma Frag22_NegBehindAheadIn()
     ensures API.Supported(NEG_BEHIND_AHEAD)
   { }
+
+  // ==========================================================================
+  // G3a: a greedy CI-nullable plus INSIDE a lookahead body, either polarity
+  // (the look loop replays the body with the plus reconstruction).
+  // ==========================================================================
+  const PLUS_B := R.Raw_con(R.Raw_quant(R.Plus, AOPT), R.Raw_character(R.Dot))   // (a?)+b
+
+  lemma G3a_PlusInLookahead()
+    ensures API.Supported(R.Raw_lookaround(R.Lookahead, PLUS_B))      // (?=(a?)+b)
+    ensures API.Supported(R.Raw_lookaround(R.NegLookahead, PLUS_B))   // (?!(a?)+b)
+  {
+    assert R.raw_nullable(AOPT) == R.CINullable;
+  }
 }

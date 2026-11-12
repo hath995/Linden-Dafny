@@ -133,7 +133,7 @@ module LindenElkLiftSimMain {
     S: set<LG.GroupId>, leafgm: LG.GroupMap, g: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (verbatim ForwardFindRec block) ----
     requires T.TransWf(re) && NR.NestedFragmentRE(re)
-    requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
+    requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires |crv.f_look_types| == |crv.f_look_ast|
@@ -181,7 +181,7 @@ module LindenElkLiftSimMain {
     // reversed read (LB owner) and the forward read (LA owner) chain uniformly.
     ensures PIV.NormRange(leafgm[g]) == PIV.NormRange(PIV.LiveRange(res0.a_cp, res0.a_clk, g))
   {
-    hide M.LooksNoNulledPlusRE;   // (§2.5b F-c) a fact here, never unfolded (recursive: batch memory)
+    hide M.LookBodiesPlusGateRE;   // (G3a) a fact here, never unfolded (recursive: batch memory)
     // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
     // triggered existential storm the solver; all uses here are opaque.
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
@@ -357,7 +357,7 @@ module LindenElkLiftSimMain {
     code: RB.code, endl: nat, ov: LOr.OracleView, thread: AI.Thread, leaf: LT.Leaf,
     t: LT.Tree, inp: LC.Input, S: set<LG.GroupId>, ncap: int, nlook: int, nquant: int)
     requires T.TransWf(re) && NR.NestedFragmentRE(re)
-    requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
+    requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires |crv.f_look_types| == |crv.f_look_ast|
@@ -398,7 +398,7 @@ module LindenElkLiftSimMain {
                                     thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
             leaf.1 == PIV.NormGm(PIV.GmOfLive(re, res.0, res.1, res.2))
   {
-    hide M.LooksNoNulledPlusRE;   // (§2.5b F-c) a fact here, never unfolded (recursive: batch memory)
+    hide M.LookBodiesPlusGateRE;   // (G3a) a fact here, never unfolded (recursive: batch memory)
     reveal M.LookInvO(), M.ChildLinkO(), M.ValueOkO(), M.QuantValueOkO(), M.Res0LiveO(),
            M.TopLookFrameO(), M.QuantFrameO(), M.CaptureFrameO(), OwnerForallO(),
            M.ThreadLookInvO(), M.FrameEntryAllO(), M.OracleSufAllO();

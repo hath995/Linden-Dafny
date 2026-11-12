@@ -119,6 +119,9 @@ module LindenElkLiftSimCarriers {
   import OG = LindenElkFlipOracleG       // (gate B) generic F2/F3
   import G = LindenElkFlipMirrorG        // (gate B) generic tree mirror
   import NRR = LindenElkNulledReconRegs  // (G3a) the plus table
+  import NRC = LindenElkNulledRecon      // (G3a) NoCdnPlusRE
+  import RF = LindenElkReconFrame        // (G3a) CinBodiesLookFreeRE
+  import TM = LindenElkTwoMachines       // (G3a) A6, TranslateCinOk
 
   // ==========================================================================
   // THE MAIN THEOREM, L3a: capturing positive lookaheads included. The
@@ -135,6 +138,7 @@ module LindenElkLiftSimCarriers {
     requires RowPlusOk(body, plus, nlook)
     ensures LTB.LookUnique(body) && NRR.PlusTableOk(body, plus)
     ensures forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
+    ensures M.LookBodiesPlusGateRE(body)
   {
     reveal RowPlusOk(); reveal M.RowLAStatics();
   }
@@ -151,7 +155,8 @@ module LindenElkLiftSimCarriers {
     endl: nat, ngroups: nat, crv: CP.FCompiled, str: string, cp: nat, ov: LOr.OracleView,
     lookcdn: LCdn.cdns, plus_bc: seq<RB.code>, ncap: int, nlook: int, nquant: int)
     requires la.Lookahead?
-    requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
+    requires PSM.StaticCoreNestedRE(qm, body, bodycode, endl)
+    requires RowPlusOk(body, plus_bc, nlook)   // (G3a) the CIN fragment at this body (A6's premises)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
     requires cp <= |str|
@@ -179,153 +184,24 @@ module LindenElkLiftSimCarriers {
             && LookNestOkTTop(body, PIV.CapIdsInLooks(body), LT.FirstLeaf(t, inp).value.1, rf.value)
             // the carrier thread's own look-bank invariants (fresh run): the deep
             // per-g2 package reads them at the crossed inner lids.
+            && CM.ThreadRegsWf(rf.value, ncap, nlook, nquant)   // (G3a) from A6
             && CM.LookClkSetWithCp(rf.value.look_regs)
             && CM.LookCpSetWithClk(rf.value.look_regs)
-            && CM.LookCpsLE(rf.value.look_regs, |str|))
+            && CM.LookCpsLE(rf.value.look_regs, |str|)
+            // (G3a) the reconstruction keeps the VM winner's look bank (from A6)
+            && TM.WinnerLookKept(bodycode, str, cp, ov, lookcdn, ncap, nlook, nquant, rf.value))
   {
-    var inp := PIV.InpOfCp(str, cp);
-    var acts := [LS.Areg(T.Translate(body))];
-    var S := PIV.CapIdsInLooks(body);
-
-    // ---- the spec tree (mirror BodyTreeAtCpNested) -----------------------
-    LFU.ComputeTrIsTree(rer, acts, inp, LG.Empty, WP.Forward);
-    var t := LFU.ComputeTr(rer, acts, inp, LG.Empty, WP.Forward);
-    assert LS.IsTree(rer, acts, inp, LG.Empty, WP.Forward, t);
-    EL.TranslateFragmentPikeLkRec(body);
-    EL.BooleanCorrectLkRec(rer, T.Translate(body), inp, t);
-    assert forall i :: 0 <= i < |acts| ==> !acts[i].Acheck?;
-    M.BoolTreeLbIrrel(rer, acts, inp, BS.CanExit, BS.CannotExit, t);
-    assert EL.BoolTreeLk(rer, acts, inp, BS.CannotExit, t);
-
-    // PikeSubtreeLk(t) (mirror the whole-regex entry, :15798)
-    TranslateNoBackref(body);
-    assert NoBackrefActions(acts);
-    var fuel0 := FS.ActionsFuel(acts, inp, WP.Forward) + 1;
-    FS.FunctionalTerminates(rer, acts, inp, LG.Empty, WP.Forward, fuel0);
-    assert FS.ComputeTree(rer, acts, inp, LG.Empty, WP.Forward, fuel0) == Some(t);
-    ComputePikeSubtreeLk(rer, acts, inp, LG.Empty, WP.Forward, fuel0, t);
-    assert PTL.PikeSubtreeLk(t);
-
-    // ---- the CHECKED tree (mirror BodyTreeAtCpNested) --------------------
-    WkE.WalkOkEntryNested(body);
-    assert EL.PikeLkActionsRec(acts) by {
-      assert acts == acts + [];
-      assert EL.PikeLkActionsRec([]);
-      EL.PikeLkActionsRecConsIff(LS.Areg(T.Translate(body)), []);
+    // (G3a) A6: machine A (the fresh plus replay, reconstructed) tied to machine B's winner.
+    assert NR.NestedFragmentRE(body) && T.TransWf(body);
+    assert NRC.NoCdnPlusRE(body) && NRR.PlusTableOk(body, plus_bc) && RF.CinBodiesLookFreeRE(body)
+           && (forall l: nat :: l in LTB.LookIds(body) ==> l < nlook) by {
+      reveal RowPlusOk(); reveal M.RowLAStatics();
     }
-    assert WO.WalkOk(acts, bodycode, 0, ATR.EaOf(BS.CannotExit));
-    AR.CompileToBytecodeActionsRepNested(rer, qm, body);
-    assert AR.ActionsRepL(rer, qm, acts, bodycode, 0);
-    M.LkBodyGroupsEqCapIdsInLooks(body);
-    assert S == LL.LkBodyGroups(T.Translate(body));
-    LL.LkBodyGroupsConfines(T.Translate(body), S);
-    assert LL.LkActsInS(acts, S) by { LL.LkActsInSCons(LS.Areg(T.Translate(body)), [], S); }
-    LL.ComputeTrLkConfinedK(rer, acts, inp, LG.Empty, WP.Forward, S);
-    assert NB.EncOk(acts, inp, BS.CannotExit) by { NB.EncOkNoChecks(acts, inp, BS.CannotExit); }
-    var tstar := ATR.ActionsTreeRepRENested(rer, qm, acts, bodycode, 0, inp, BS.CannotExit, t, S);
-    assert TREP.TreeRepRE(qm, tstar, bodycode, 0, inp, false);
-    assert TT.TreeThreadRE(rer, qm, bodycode, inp, tstar, 0, false);
-
-    // ---- the fresh entry VM + PikeInvFullRE (mirror FindMatchBodyAtCpNested) --
-    var ctx := AI.cp_context(cp, str, LAnc.Forward);
-    var capture := AReg.init_regs(ncap);
-    var look := AReg.init_regs(nlook);
-    var quant := AReg.init_regs(nquant);
-    var vms := AI.FInitState(bodycode, cp, capture, look, quant, 0, ctx);
-    assert ctx.nextchar == AI.get_char(str, cp);
-    PSM.InitialPikeInvFullREAtCpNested(rer, qm, body, bodycode, endl, ngroups, str, cp, tstar,
-                                       vms, ncap, nlook, nquant);
-    assert PSM.PikeInvFullRE(rer, qm, body, bodycode, endl, ngroups, str,
-                             PT.PikeTreeInitialState(tstar, inp), vms, ncap, nlook, nquant);
-    assert PIV.ContextOkRE(str, vms.cp, vms.context);
-
-    // code shape: every SetQuantToClock has b == false (mirror :15777)
-    forall pc: nat, q: int, b: bool | NR.GetPcRE(bodycode, pc) == Some(RB.SetQuantToClock(q, b))
-      ensures !b
-    {
-      if pc < endl {
-        NI.StampFalseAt(body, bodycode, 0, endl, pc);
-      } else if pc == endl {
-      } else {
-        assert pc >= |bodycode|;
-      }
-    }
-
-    // ---- run the composite sim on the body match -------------------------
-    var result := AI.FFindMatch(bodycode, str, vms, ov, LAnc.Forward, lookcdn).0;
-    L3aCompositeCloseRec(rer, qm, body, bodycode, endl, ngroups, crv, str, ov, S, tstar, t, inp,
-                         vms, lookcdn, result, ncap, nlook, nquant);
-    assert BestTieLkNestedTop(rer, body, crv, str, ov, S, LT.FirstLeaf(t, inp), result, ncap, nlook, nquant);
-
-    // ---- reconcile FFindMatchPlus (fresh) with FFindMatch ----------------
-    var fmres := AI.FFindMatch(bodycode, str, vms, ov, LAnc.Forward, lookcdn);
-    assert result == fmres.0;
-    var rf := AI.FFindMatchPlus(bodycode, body, plus_bc, str, ov, LAnc.Forward, cp,
-                                capture, look, quant, 0, lookcdn);
-    assert rf.0 == (match result
-                    case None => None
-                    case Some(thread) =>
-                      Some(AI.FReconstructPlus(thread, body, plus_bc, str, fmres.1, LAnc.Forward).0));
-    if rf.0.Some? {
-      assert result.Some?;
-      var thread := result.value;
-      // winning-thread wf + quant-final -> reconstruct identity (mirror :15896)
-      CM.RegsClocksLEInit(ncap, 0);
-      CM.RegsClocksLEInit(nlook, 0);
-      CM.RegsClocksLEInit(nquant, 0);
-      CM.FInitStateClocksLE(bodycode, cp, capture, look, quant, 0, ctx);
-      CM.FInitStateRegsWf(bodycode, cp, ncap, nlook, nquant, 0, ctx);
-      assert M.VmQuantFinal(vms) by {
-        var th0 := AI.init_thread(capture, look, quant);
-        assert M.QuantRegsFinal(th0) by {
-          forall k ensures AI.get_idx(quant.a_cp, k) < 0 && AI.get_idx(quant.a_clk, k) >= -1 {
-            if 0 <= k < |quant.a_cp| { assert quant.a_cp[k] == -1; }
-            if 0 <= k < |quant.a_clk| { assert quant.a_clk[k] == -1; }
-          }
-        }
-        forall t2 | t2 in vms.active ensures M.QuantRegsFinal(t2) { assert t2 == th0; }
-      }
-      M.FFindMatchThreadFacts(bodycode, str, vms, ov, LAnc.Forward, lookcdn, ncap, nlook, nquant);
-      assert CM.ThreadRegsWf(thread, ncap, nlook, nquant) && M.QuantRegsFinal(thread);
-      M.FNulledPlusIdentity(body, thread.capture_regs, thread.look_regs, thread.quant_regs,
-                            plus_bc, str, fmres.1, LAnc.Forward);
-      assert AI.FReconstructPlus(thread, body, plus_bc, str, fmres.1, LAnc.Forward).0 == thread;
-      assert rf.0.value == thread;
-      // project the (E4) BACKWARD carrier out of BestTieLkNestedTop and transport it
-      assert LT.FirstLeaf(t, inp).Some?;
-      assert LookNestBackTTop(body, crv, str, ov, S, LT.FirstLeaf(t, inp).value.1, thread,
-                              ncap, nlook, nquant);
-      // project the DEEP carrier too (BestTieLkNestedTop now carries it after R2 wiring).
-      assert LookNestBackTTopDeep(rer, body, crv, str, ov, S, LT.FirstLeaf(t, inp).value.1, thread,
-                                  ncap, nlook, nquant);
-      // project the FORWARD presence carrier (E3-Top).
-      assert LookNestOkTTop(body, S, LT.FirstLeaf(t, inp).value.1, thread);
-      // fresh-run look-bank invariants on the winner (init banks are all-unset)
-      RL.AInitLaws(nlook);
-      assert CM.VmLookClkSet(vms) by {
-        assert AI.init_thread(capture, look, quant).look_regs == look;
-        forall l: int | AI.get_idx(look.a_cp, l) >= 0 ensures AI.get_idx(look.a_clk, l) >= 0 {
-          if 0 <= l < |look.a_cp| { assert look.a_cp[l] == -1; }
-        }
-      }
-      CM.FFindMatchLookClkSet(bodycode, str, vms, ov, LAnc.Forward, lookcdn);
-      assert CM.LookClkSetWithCp(thread.look_regs);
-      assert CM.VmLookCpSet(vms) by {
-        forall l: int | AI.get_idx(look.a_clk, l) >= 0 ensures AI.get_idx(look.a_cp, l) >= 0 {
-          if 0 <= l < |look.a_clk| { assert look.a_clk[l] == -1; }
-        }
-      }
-      CM.FFindMatchLookCpSet(bodycode, str, vms, ov, LAnc.Forward, lookcdn);
-      assert CM.LookCpSetWithClk(thread.look_regs);
-      assert CM.VmLookCpOk(vms, |str|) by {
-        forall l: int ensures AI.get_idx(look.a_cp, l) <= |str| {
-          if 0 <= l < |look.a_cp| { assert look.a_cp[l] == -1; }
-        }
-      }
-      CM.FFindMatchLookCpOk(bodycode, str, vms, ov, LAnc.Forward, lookcdn);
-      assert CM.LookCpsLE(thread.look_regs, |str|);
-    }
+    TM.TranslateCinOk(body, PIV.CapIdsOutsideLooks(body));
+    TM.TwoMachinesAt(rer, qm, body, bodycode, endl, ngroups, crv, str, cp, ov, lookcdn, plus_bc,
+                     ncap, nlook, nquant);
   }
+
 
   /** (§2.2) The flip-reversal of a lookbehind-only body holds only lookaheads, so
       the negative-lookbehind scope condition is vacuous on it. */
@@ -367,6 +243,7 @@ module LindenElkLiftSimCarriers {
     requires LTB.LookTablesOk(body, crv) && |crv.f_look_types| == |crv.f_look_ast|
     requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
     requires NRR.PlusTableOk(body, crv.f_plus_bc)   // (G3a) the flipped body's rows carry the plus table
+    requires plus_bc == crv.f_plus_bc
     ensures
       var inp := PIV.InpOfCp(str, cp);
       var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Backward);
@@ -425,12 +302,16 @@ module LindenElkLiftSimCarriers {
       }
     }
     FST.NoNulledPlusFXR(body);
-    M.LooksNoNulledPlusFromFull(reF);       // (§2.5b F-c) the gate statics read only look bodies
+    M.PlusGateFromFull(reF);                // (G3a) the flipped body is nulled-plus-free: the weak gate holds
     // (G3a) the plus-row premises at the flipped body (`MirrorTables` keeps `f_plus_bc`)
     assert crvF.f_plus_bc == crv.f_plus_bc;
     PlusTableOkFXR(body, crv.f_plus_bc);
     assert forall l: nat :: l in LTB.LookIds(reF) ==> l < nlook;
     GateStaticsFromTablesNested(qmF, reF, crvF, ncap, nlook, nquant);
+    assert RowPlusOk(reF, plus_bc, nlook) by {   // (G3a) the forward carrier's CIN premises, vacuous at reF
+      M.NoNulledPlusCinFragment(reF);
+      reveal RowPlusOk(); reveal M.RowLAStatics();
+    }
 
     assert {:split_here} true;   // (gate B) W12 perf split (131 M unsplit -> 11 M worst)
     // ---- oracle for the flipped table: F3 on the body-restricted site table ----
@@ -452,6 +333,7 @@ module LindenElkLiftSimCarriers {
 
     assert {:split_here} true;   // (gate B) W12 perf split (131 M unsplit -> 11 M worst)
     // ---- the FORWARD carrier at the flipped body over the reversed string ----
+    assert PSM.StaticCoreNestedRE(qmF, reF, bcF, endl');
     LookNestBackTFromBodyReplay(rer, qmF, R.Lookahead, reF, bcF, endl', 0, crvF, rstr, mcpN, ov',
                                 cdn', plus_bc, ncap, nlook, nquant);
     var tF := LFU.ComputeTr(rer, [LS.Areg(T.Translate(reF))], inpF, LG.Empty, WP.Forward);
@@ -635,7 +517,7 @@ module LindenElkLiftSimCarriers {
     host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed) ----
     requires T.TransWf(re) && NR.NestedFragmentRE(re)
-    requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
+    requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires |crv.f_look_types| == |crv.f_look_ast|
@@ -677,7 +559,7 @@ module LindenElkLiftSimCarriers {
     requires g !in PIV.CapIdsInLooks(host)
     decreases |LTB.LookIds(host)|, 0
   {
-    hide M.LooksNoNulledPlusRE;   // (§2.5b F-c) a fact here, never unfolded (recursive: batch memory)
+    hide M.LookBodiesPlusGateRE;   // (G3a) a fact here, never unfolded (recursive: batch memory)
     var maxlook := R.max_lookaround(ast);
     var cpA := AReg.get_cp(res1, A as int).value;
     RL.AAsArraysLaws(res1);
@@ -695,7 +577,7 @@ module LindenElkLiftSimCarriers {
     assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
     assert host == M.VBody(crv, A as int);
     var endlH: nat := |bodycode| - 1;
-    assert PSM.StaticOkNestedRE(qm, host, bodycode, endlH);
+    assert PSM.StaticCoreNestedRE(qm, host, bodycode, endlH);
     assert crv.f_look_types[A as int] == laA;
     assert (laA.Lookahead? || laA.Lookbehind?) by {
       assert AI.capture_type(crv.f_look_types[A as int]);        // MatchedPosLA
@@ -713,16 +595,15 @@ module LindenElkLiftSimCarriers {
                        qm.ov, qm.bodies);
     assert AR.QmapOk(host, qmB) by { QmapOkLooksIrrel(host, qm, qmB); }
     assert AR.LmapOk(host, qmB) by { LmapOkRestrict(host, qm, qmB); }
-    assert PSM.StaticOkNestedRE(qmB, host, bodycode, endlH) by {
-      assert PSM.StaticOkNestedRE(qm, host, bodycode, endlH);
+    assert PSM.StaticCoreNestedRE(qmB, host, bodycode, endlH) by {
+      assert PSM.StaticCoreNestedRE(qm, host, bodycode, endlH);
     }
     assert LL.OracleOkSuffix(rer, qmB, inpA) by {
       assert LL.OracleOkSuffix(rer, qm, inpA);
       OracleOkSuffixRestrict(rer, qm, qmB, inpA);
     }
     assert GateStaticsOkNested(qmB, host, crv, ncap, nlook, nquant) by {
-      M.LooksNoNulledPlusFromFull(host);   // (§2.5b F-c) NoNulledPlusRE(host) from the row
-      RowPlusFacts(host, crv.f_plus_bc, nlook);   // (G3a) the row's plus facts
+      RowPlusFacts(host, crv.f_plus_bc, nlook);   // (G3a) the row's plus facts and the gate at host
       GateStaticsFromTablesNested(qmB, host, crv, ncap, nlook, nquant);
     }
     assert OE.OracleColsOk(rer, qmB, str) by {                         // (L5 F7d)
@@ -747,44 +628,14 @@ module LindenElkLiftSimCarriers {
     var gmtH := LT.FirstLeaf(t, inpA).value.1;
     assert gmtH == lsubA.value;
 
-    // rf_A IS FreshBodyMatch(A, res1) (identity block, VERBATIM DeepFindRec (ζ))
-    var rfFresh := M.FreshBodyMatch(crv, str, A as int, res1, ov, ncap, nlook, nquant);
-    assert rfFresh == M.FreshBodyMatchPlus(crv, str, A as int, res1, ov, ncap, nlook, nquant) by {   // (G3a) stamp-free row
-      M.FreshBodyMatchPlusPlainRow(crv, str, A as int, res1, ov, ncap, nlook, nquant, laA, host);
-    }
-    assert rfFresh == AI.FFindMatch(bodycode, str,
-                                    AI.FInitState(bodycode, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                                  AReg.init_regs(nquant), 0, AI.cp_context(cpA, str, LAnc.Forward)),
-                                    ov, LAnc.Forward, cdnA).0 by {
+    // (G3a) rf_A IS the fresh plus replay at A (the row replays `FFindMatchPlus` from init banks)
+    var rfFresh := M.FreshBodyMatchPlus(crv, str, A as int, res1, ov, ncap, nlook, nquant);
+    assert rfFresh == rfP by {
       assert AI.capture_direction(crv.f_look_types[A as int]) == LAnc.Forward;
       assert CP.capture_regex(crv.f_look_types[A as int], M.VBody(crv, A as int)) == host;
+      reveal M.FreshBodyMatchPlus();
     }
-    assert rfA == rfFresh.value by {
-      var ctxF := AI.cp_context(cpA, str, LAnc.Forward);
-      var initsF := AI.FInitState(bodycode, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                  AReg.init_regs(nquant), 0, ctxF);
-      M.LooksNoNulledPlusBody(re, A);
-      M.NoTrueQuantStampNested(host);
-      assert M.VmQuantFinal(initsF) by {
-        var th0 := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
-        assert M.QuantRegsFinal(th0) by {
-          RL.AInitLaws(nquant);
-          forall k ensures AI.get_idx(AReg.init_regs(nquant).a_cp, k) < 0
-                           && AI.get_idx(AReg.init_regs(nquant).a_clk, k) >= -1 {
-            if 0 <= k < nquant { }
-          }
-        }
-        forall t2 | t2 in initsF.active ensures M.QuantRegsFinal(t2) { assert t2 == th0; }
-      }
-      M.FFindMatchQuantFinalAny(bodycode, str, initsF, ov, LAnc.Forward, cdnA);
-      var (fm, ovx) := AI.FFindMatch(bodycode, str, initsF, ov, LAnc.Forward, cdnA);
-      assert fm == rfFresh by { assert rfFresh == AI.FFindMatch(bodycode, str, initsF, ov, LAnc.Forward, cdnA).0; }
-      assert fm.Some?;
-      assert M.QuantRegsFinal(fm.value);
-      M.FNulledPlusIdentity(host, fm.value.capture_regs, fm.value.look_regs, fm.value.quant_regs,
-                            crv.f_plus_bc, str, ovx, LAnc.Forward);
-      assert AI.FReconstructPlus(fm.value, host, crv.f_plus_bc, str, ovx, LAnc.Forward).0 == fm.value;
-    }
+    assert rfA == rfFresh.value;
     assert rfFresh.Some?;
 
     // the FLookLoop value/quant lifts at owner == A
@@ -808,8 +659,7 @@ module LindenElkLiftSimCarriers {
     // presence + dominance on the FRESH banks
     // (2026-08-25) nested host: the depth-1 `FreshBodyMatchCapWf` was unprovable here.
     LookBodyFactsKB(re, crv, A);              // (gate B) scope-free row facts
-    M.LooksNoNulledPlusBody(re, A);             // §2.5b interim: NoNulledPlusRE(host)
-    FreshBodyMatchCapWfNested(crv, str, A as int, res1, ov, ncap, nlook, nquant, host);
+    assert CM.ThreadRegsWf(rfA, ncap, nlook, nquant);   // (G3a) the carrier (A6) gives the winner's wf
     assert PIV.CapRegWf(rfc);
     assert forall c: nat :: c in PIV.CapIds(host) && AI.get_idx(rfc.a_clk, CP.start_reg(c)) < 0
                             ==> AI.get_idx(rfc.a_cp, CP.start_reg(c)) < 0;

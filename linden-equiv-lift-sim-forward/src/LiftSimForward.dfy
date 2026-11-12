@@ -114,6 +114,7 @@ module LindenElkLiftSimForward {
   import opened LindenElkLiftSimGate
   import opened LindenElkLiftSimCarriers
   import opened LindenElkLiftSimDeep
+  import TM = LindenElkTwoMachines       // (G3a) WinnerLookKept
 
   /** (perf) The DEEP arm of `ForwardFindRecLB` (a LOOKBEHIND owner), extracted: the whole LB arm
       OOM-kills the 80G slice alone at CORES=4. Mutually recursive with `ForwardFindRec` on
@@ -126,7 +127,7 @@ module LindenElkLiftSimForward {
     host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed) ----
     requires T.TransWf(re) && NR.NestedFragmentRE(re)
-    requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
+    requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires |crv.f_look_types| == |crv.f_look_ast|
@@ -168,7 +169,7 @@ module LindenElkLiftSimForward {
     requires g in PIV.CapIdsInLooks(host)
     decreases |LTB.LookIds(host)|, 0
   {
-    hide M.LooksNoNulledPlusRE;   // (§2.5b F-c) a fact here, never unfolded (recursive: batch memory)
+    hide M.LookBodiesPlusGateRE;   // (G3a) a fact here, never unfolded (recursive: batch memory)
     // (2026-08-29 E3) the preamble is an OPAQUE block: only the facts below reach the arm's VC.
     var maxlook := *;
     var cpA := *;
@@ -204,7 +205,7 @@ module LindenElkLiftSimForward {
               && (set g0: LG.GroupId | g0 in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
               && var bc := CP.compile_to_bytecode(bA);
               |bc| >= 1
-              && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
+              && PSM.StaticCoreNestedRE(qm, bA, bc, |bc| - 1)
               && PSM.SizesOkRE(bA, ncap, nlook, nquant))
       ensures (LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A)))
       ensures (endlH == |bodycode| - 1)
@@ -283,7 +284,8 @@ module LindenElkLiftSimForward {
       assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
       assert host == M.VBody(crv, A as int);
       endlH := |bodycode| - 1;
-      assert PSM.StaticOkNestedRE(qm, host, bodycode, endlH);
+      M.PlusGateBody(re, crv, A, laA, host);   // (G3a) a lookbehind body is nulled-plus-free
+      assert PSM.StaticOkNestedRE(qm, host, bodycode, endlH);   // core + NoNulledPlusRE(host)
       assert crv.f_look_types[A as int] == laA;
       assert (laA.Lookahead? || laA.Lookbehind?) by {
         assert AI.capture_type(crv.f_look_types[A as int]);        // MatchedPosLA
@@ -682,7 +684,7 @@ module LindenElkLiftSimForward {
     host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed) ----
     requires T.TransWf(re) && NR.NestedFragmentRE(re)
-    requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
+    requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires |crv.f_look_types| == |crv.f_look_ast|
@@ -723,7 +725,7 @@ module LindenElkLiftSimForward {
     requires crv.f_look_types[A as int].Lookbehind?
     decreases |LTB.LookIds(host)|, 1
   {
-    hide M.LooksNoNulledPlusRE;   // (§2.5b F-c) a fact here, never unfolded (recursive: batch memory)
+    hide M.LookBodiesPlusGateRE;   // (G3a) a fact here, never unfolded (recursive: batch memory)
     var maxlook := R.max_lookaround(ast);
     var cpA := AReg.get_cp(res1, A as int).value;
     RL.AAsArraysLaws(res1);
@@ -741,7 +743,7 @@ module LindenElkLiftSimForward {
     assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
     assert host == M.VBody(crv, A as int);
     var endlH: nat := |bodycode| - 1;
-    assert PSM.StaticOkNestedRE(qm, host, bodycode, endlH);
+    assert PSM.StaticCoreNestedRE(qm, host, bodycode, endlH);
     assert crv.f_look_types[A as int] == laA;
     assert (laA.Lookahead? || laA.Lookbehind?) by {
       assert AI.capture_type(crv.f_look_types[A as int]);        // MatchedPosLA
@@ -767,7 +769,7 @@ module LindenElkLiftSimForward {
     host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed) ----
     requires T.TransWf(re) && NR.NestedFragmentRE(re)
-    requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
+    requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires |crv.f_look_types| == |crv.f_look_ast|
@@ -809,7 +811,7 @@ module LindenElkLiftSimForward {
     requires g in PIV.CapIdsInLooks(host)
     decreases |LTB.LookIds(host)|, 0
   {
-    hide M.LooksNoNulledPlusRE;   // (§2.5b F-c) a fact here, never unfolded (recursive: batch memory)
+    hide M.LookBodiesPlusGateRE;   // (G3a) a fact here, never unfolded (recursive: batch memory)
     var maxlook := R.max_lookaround(ast);
     var cpA := AReg.get_cp(res1, A as int).value;
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -836,7 +838,7 @@ module LindenElkLiftSimForward {
     assert host == M.VBody(crv, A as int);
     var endlH: nat := |bodycode| - 1;
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    assert PSM.StaticOkNestedRE(qm, host, bodycode, endlH);
+    assert PSM.StaticCoreNestedRE(qm, host, bodycode, endlH);
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert crv.f_look_types[A as int] == laA;
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -863,9 +865,9 @@ module LindenElkLiftSimForward {
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert AR.LmapOk(host, qmB) by { LmapOkRestrict(host, qm, qmB); }
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    assert PSM.StaticOkNestedRE(qmB, host, bodycode, endlH) by {
+    assert PSM.StaticCoreNestedRE(qmB, host, bodycode, endlH) by {
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert PSM.StaticOkNestedRE(qm, host, bodycode, endlH);
+      assert PSM.StaticCoreNestedRE(qm, host, bodycode, endlH);
     }
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert LL.OracleOkSuffix(rer, qmB, inpA) by {
@@ -878,7 +880,6 @@ module LindenElkLiftSimForward {
     assert GateStaticsOkNested(qmB, host, crv, ncap, nlook, nquant) by {
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      M.LooksNoNulledPlusFromFull(host);   // (§2.5b F-c) NoNulledPlusRE(host) from the row
       RowPlusFacts(host, crv.f_plus_bc, nlook);   // (G3a)
       GateStaticsFromTablesNested(qmB, host, crv, ncap, nlook, nquant);
     }
@@ -921,61 +922,27 @@ module LindenElkLiftSimForward {
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert gmtH == lsubA.value;
 
-    // rf_A IS FreshBodyMatch(A, res1) (identity block, VERBATIM DeepFindRec (ζ))
-    var rfFresh := M.FreshBodyMatch(crv, str, A as int, res1, ov, ncap, nlook, nquant);
-    assert rfFresh == M.FreshBodyMatchPlus(crv, str, A as int, res1, ov, ncap, nlook, nquant) by {   // (G3a) stamp-free row
-      M.FreshBodyMatchPlusPlainRow(crv, str, A as int, res1, ov, ncap, nlook, nquant, laA, host);
+    // (G3a) rf_A IS the fresh plus replay at A
+    var rfFresh := M.FreshBodyMatchPlus(crv, str, A as int, res1, ov, ncap, nlook, nquant);
+    assert AI.capture_direction(crv.f_look_types[A as int]) == LAnc.Forward;
+    assert CP.capture_regex(crv.f_look_types[A as int], M.VBody(crv, A as int)) == host;
+    assert AReg.get_cp(res1, A as int).Some? && 0 <= A as int < |crv.f_look_types| && 0 <= A as int < |crv.f_look_cdns|;
+    assert {:split_here} true;   // (G3a) the re-key in its own batch
+    assert rfFresh == rfP by {
+      hide *;
+      reveal M.FreshBodyMatchPlus();
     }
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    assert rfFresh == AI.FFindMatch(bodycode, str,
-                                    AI.FInitState(bodycode, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                                  AReg.init_regs(nquant), 0, AI.cp_context(cpA, str, LAnc.Forward)),
-                                    ov, LAnc.Forward, cdnA).0 by {
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert AI.capture_direction(crv.f_look_types[A as int]) == LAnc.Forward;
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert CP.capture_regex(crv.f_look_types[A as int], M.VBody(crv, A as int)) == host;
-    }
-    assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    assert rfA == rfFresh.value by {
-      var ctxF := AI.cp_context(cpA, str, LAnc.Forward);
-      var initsF := AI.FInitState(bodycode, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                  AReg.init_regs(nquant), 0, ctxF);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      M.LooksNoNulledPlusBody(re, A);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      M.NoTrueQuantStampNested(host);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert M.VmQuantFinal(initsF) by {
-        var th0 := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        assert M.QuantRegsFinal(th0) by {
-          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-          RL.AInitLaws(nquant);
-          assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-          forall k ensures AI.get_idx(AReg.init_regs(nquant).a_cp, k) < 0
-                           && AI.get_idx(AReg.init_regs(nquant).a_clk, k) >= -1 {
-            assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-            if 0 <= k < nquant { }
-          }
-        }
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        forall t2 | t2 in initsF.active ensures M.QuantRegsFinal(t2) { assert t2 == th0; }
-      }
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      M.FFindMatchQuantFinalAny(bodycode, str, initsF, ov, LAnc.Forward, cdnA);
-      var (fm, ovx) := AI.FFindMatch(bodycode, str, initsF, ov, LAnc.Forward, cdnA);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert fm == rfFresh by { assert rfFresh == AI.FFindMatch(bodycode, str, initsF, ov, LAnc.Forward, cdnA).0; }
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert fm.Some?;
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert M.QuantRegsFinal(fm.value);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      M.FNulledPlusIdentity(host, fm.value.capture_regs, fm.value.look_regs, fm.value.quant_regs,
-                            crv.f_plus_bc, str, ovx, LAnc.Forward);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert AI.FReconstructPlus(fm.value, host, crv.f_plus_bc, str, ovx, LAnc.Forward).0 == fm.value;
+    assert {:split_here} true;
+    assert rfA == rfFresh.value;
+    // (G3a) rf_A keeps the VM winner's look bank (A6, via the carrier): the look-bank facts below are the VM run's
+    var rfV := AI.FFindMatch(bodycode, str, AI.FInitState(bodycode, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                                          AReg.init_regs(nquant), 0, AI.cp_context(cpA, str, LAnc.Forward)),
+                             ov, LAnc.Forward, cdnA).0;
+    assert {:split_here} true;
+    assert rfV.Some? && rfA.look_regs == rfV.value.look_regs by {   // the carrier's instance, scoped
+      LookNestBackTFromBodyReplay(rer, qmB, laA, host, bodycode, endlH, 0, crv, str, cpA, ov,
+                                  cdnA, crv.f_plus_bc, ncap, nlook, nquant);
+      reveal TM.WinnerLookKept();
     }
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert rfFresh.Some?;
@@ -1074,7 +1041,7 @@ module LindenElkLiftSimForward {
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert CM.LookCpsOracleTrue(rfA.look_regs, ov) by {
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert rfA == rfFresh.value;
+      assert rfA.look_regs == rfV.value.look_regs;   // (G3a) the VM winner's bank
     }
     var cp1 := AReg.get_cp(rfA.look_regs, A1 as int).value;
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -1083,11 +1050,7 @@ module LindenElkLiftSimForward {
     assert LOr.view_get_oracle(ov, cp1, A1 as int);
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert 0 <= cp1 <= |str| by {
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      M.ReplayLookCpOkNested(bodycode, str, ov, LAnc.Forward, cdnA, crv.f_plus_bc, cpA,
-                             AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), host);
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert CM.LookCpsLE(rfA.look_regs, |str|);
+      assert CM.LookCpsLE(rfA.look_regs, |str|);   // (G3a) the carrier (A6)
     }
     var inp1 := PIV.InpOfCp(str, cp1);
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -1275,7 +1238,7 @@ module LindenElkLiftSimForward {
     host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed) ----
     requires T.TransWf(re) && NR.NestedFragmentRE(re)
-    requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
+    requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires |crv.f_look_types| == |crv.f_look_ast|
@@ -1315,7 +1278,7 @@ module LindenElkLiftSimForward {
          == PIV.NormRange(PIV.LiveRange(res0.a_cp, res0.a_clk, g))
     decreases |LTB.LookIds(host)|, 2
   {
-    hide M.LooksNoNulledPlusRE;   // (§2.5b F-c) a fact here, never unfolded (recursive: batch memory)
+    hide M.LookBodiesPlusGateRE;   // (G3a) a fact here, never unfolded (recursive: batch memory)
     var maxlook := R.max_lookaround(ast);
     var cpA := AReg.get_cp(res1, A as int).value;
     RL.AAsArraysLaws(res1);
@@ -1333,7 +1296,7 @@ module LindenElkLiftSimForward {
     assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
     assert host == M.VBody(crv, A as int);
     var endlH: nat := |bodycode| - 1;
-    assert PSM.StaticOkNestedRE(qm, host, bodycode, endlH);
+    assert PSM.StaticCoreNestedRE(qm, host, bodycode, endlH);
     assert crv.f_look_types[A as int] == laA;
     assert (laA.Lookahead? || laA.Lookbehind?) by {
       assert AI.capture_type(crv.f_look_types[A as int]);        // MatchedPosLA
@@ -1373,7 +1336,7 @@ module LindenElkLiftSimForward {
     S: set<LG.GroupId>, gmt: LG.GroupMap, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (verbatim DeepFindRec block) ----
     requires T.TransWf(re) && NR.NestedFragmentRE(re)
-    requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
+    requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires |crv.f_look_types| == |crv.f_look_ast|
@@ -1414,7 +1377,7 @@ module LindenElkLiftSimForward {
     requires LookNestBackTTopDeep(rer, re, crv, str, ov, S, gmt, thread, ncap, nlook, nquant)
     ensures forall g: LG.GroupId :: g in S && g in PIV.GmOfLive(re, res0, res1, res2) ==> g in gmt
   {
-    hide M.LooksNoNulledPlusRE;   // (§2.5b F-c) a fact here, never unfolded (recursive: batch memory)
+    hide M.LookBodiesPlusGateRE;   // (G3a) a fact here, never unfolded (recursive: batch memory)
     var maxlook := R.max_lookaround(ast);
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     forall g: LG.GroupId | g in S && g in PIV.GmOfLive(re, res0, res1, res2)

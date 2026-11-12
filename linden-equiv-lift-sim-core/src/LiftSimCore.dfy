@@ -998,6 +998,7 @@ module LindenElkLiftSimCore {
       `NoCdnPlusRE`, `CinBodiesLookFreeRE`, the plus table) and the look bound. Opaque: the hub row is hot. */
   opaque ghost predicate RowPlusOk(body: R.regex, plus: seq<RB.code>, nlook: int) {
     M.RowLAStatics(body, plus) && (forall l: nat :: l in LTB.LookIds(body) ==> l < nlook)
+    && M.LookBodiesPlusGateRE(body)   // (G3a) the gate descends: the sub-level row tables of a host
   }
 
   ghost predicate GateStaticAtNested(qm: AR.QMap, re: R.regex, crv: CP.FCompiled, l: int,
@@ -1006,7 +1007,7 @@ module LindenElkLiftSimCore {
     && exists la: R.lookaround, body: R.regex ::
       LTB.LookEntryOk(crv, l, la, body)
       && T.TransWf(body) && NR.NestedFragmentRE(body)
-      && NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false, per lid (G3a: every kind until commit 6)
+      && (M.BehindKind(la) ==> NR.NoNulledPlusRE(body))   // (G3a) lookbehind rows stay stamp-free (G3b)
       && RowPlusOk(body, crv.f_plus_bc, nlook)   // (G3a) what the plus-replay readers need (opaque)
       // (gate B, G1 full depth) the three lookbehind-only scope conjuncts are DELETED:
       // the flip route is direction-generic (mirror-world leaf), so no row body is pinned.
@@ -1015,9 +1016,10 @@ module LindenElkLiftSimCore {
       && (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
       && var bodycode := CP.compile_to_bytecode(body);
       |bodycode| >= 1
-      && PSM.StaticOkNestedRE(qm, body, bodycode, |bodycode| - 1)
+      && PSM.StaticCoreNestedRE(qm, body, bodycode, |bodycode| - 1)   // (G3a) StaticOk = core + NoNulledPlusRE
       && PSM.SizesOkRE(body, ncap, nlook, nquant)
   }
+
   /** The row witnesses of `GateStaticAtNested`, picked in a small context: the same `:|` inside a giant
       lemma runs out of resources under z3 4.14.1 (§2.2 step B, G3a slice 3). Moved here from lift-sim-deep. */
   lemma GateStaticPick(qm: AR.QMap, re: R.regex, crv: CP.FCompiled, l: int, ncap: int, nlook: int, nquant: int)
@@ -1026,26 +1028,26 @@ module LindenElkLiftSimCore {
     ensures l in qm.looks
     ensures LTB.LookEntryOk(crv, l, la, body)
             && T.TransWf(body) && NR.NestedFragmentRE(body)
-            && NR.NoNulledPlusRE(body)
+            && (M.BehindKind(la) ==> NR.NoNulledPlusRE(body))
             && RowPlusOk(body, crv.f_plus_bc, nlook)
             && qm.looks[l].0 == T.TrLookaround(la)
             && qm.looks[l].1 == T.Translate(body)
             && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
             && var bc := CP.compile_to_bytecode(body);
             |bc| >= 1
-            && PSM.StaticOkNestedRE(qm, body, bc, |bc| - 1)
+            && PSM.StaticCoreNestedRE(qm, body, bc, |bc| - 1)
             && PSM.SizesOkRE(body, ncap, nlook, nquant)
   {
     la, body :| LTB.LookEntryOk(crv, l, la, body)
                 && T.TransWf(body) && NR.NestedFragmentRE(body)
-                && NR.NoNulledPlusRE(body)
+                && (M.BehindKind(la) ==> NR.NoNulledPlusRE(body))
                 && RowPlusOk(body, crv.f_plus_bc, nlook)
                 && qm.looks[l].0 == T.TrLookaround(la)
                 && qm.looks[l].1 == T.Translate(body)
                 && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
                 && var bc := CP.compile_to_bytecode(body);
                 |bc| >= 1
-                && PSM.StaticOkNestedRE(qm, body, bc, |bc| - 1)
+                && PSM.StaticCoreNestedRE(qm, body, bc, |bc| - 1)
                 && PSM.SizesOkRE(body, ncap, nlook, nquant);
   }
 

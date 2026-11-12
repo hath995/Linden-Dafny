@@ -127,7 +127,7 @@ module LindenElkLiftSimDeep {
     host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed through the recursion) ----
     requires T.TransWf(re) && NR.NestedFragmentRE(re)
-    requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
+    requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires |crv.f_look_types| == |crv.f_look_ast|
@@ -167,7 +167,7 @@ module LindenElkLiftSimDeep {
     requires crv.f_look_types[A as int].Lookbehind?
     decreases |LTB.LookIds(host)|, 0
   {
-    hide M.LooksNoNulledPlusRE;   // (§2.5b F-c) a fact here, never unfolded (recursive: batch memory)
+    hide M.LookBodiesPlusGateRE;   // (G3a) a fact here, never unfolded (recursive: batch memory)
     // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
     // triggered existential storm the solver; all uses here are opaque.
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
@@ -202,7 +202,7 @@ module LindenElkLiftSimDeep {
     assert host == M.VBody(crv, A as int);
     var endlH: nat := |bodycode| - 1;
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    assert PSM.StaticOkNestedRE(qm, host, bodycode, endlH);
+    assert PSM.StaticCoreNestedRE(qm, host, bodycode, endlH);
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert crv.f_look_types[A as int] == laA;
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -247,7 +247,7 @@ module LindenElkLiftSimDeep {
         OracleColsOkRestrict(rer, qm, qmB0, str);
       }
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      M.LooksNoNulledPlusBody(re, A);   // §2.5b interim: NoNulledPlusRE(host)
+      M.PlusGateBody(re, crv, A, laA, host);   // (G3a) a lookbehind body is nulled-plus-free
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       // (G3a) a lookbehind body is nulled-plus-free: the owner's plus replay is the plain one
       M.FreshBodyMatchPlusPlainRow(crv, str, A as int, res1, ov, ncap, nlook, nquant, laA, host);
@@ -553,7 +553,7 @@ module LindenElkLiftSimDeep {
     host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed through the recursion) ----
     requires T.TransWf(re) && NR.NestedFragmentRE(re)
-    requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
+    requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires |crv.f_look_types| == |crv.f_look_ast|
@@ -594,7 +594,7 @@ module LindenElkLiftSimDeep {
     requires g2 in PIV.CapIdsInLooks(host)
     decreases |LTB.LookIds(host)|, 0
   {
-    hide M.LooksNoNulledPlusRE;   // (§2.5b F-c) a fact here, never unfolded (recursive: batch memory)
+    hide M.LookBodiesPlusGateRE;   // (G3a) a fact here, never unfolded (recursive: batch memory)
     // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
     // triggered existential storm the solver; all uses here are opaque.
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
@@ -619,7 +619,7 @@ module LindenElkLiftSimDeep {
     assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
     assert host == M.VBody(crv, A as int);
     var endlH: nat := |bodycode| - 1;
-    assert PSM.StaticOkNestedRE(qm, host, bodycode, endlH);
+    assert PSM.StaticCoreNestedRE(qm, host, bodycode, endlH);
     assert crv.f_look_types[A as int] == laA;
     assert (laA.Lookahead? || laA.Lookbehind?) by {
       assert AI.capture_type(crv.f_look_types[A as int]);        // MatchedPosLA
@@ -679,15 +679,14 @@ module LindenElkLiftSimDeep {
                        qm.ov, qm.bodies);
     assert AR.QmapOk(host, qmB) by { QmapOkLooksIrrel(host, qm, qmB); }
     assert AR.LmapOk(host, qmB) by { LmapOkRestrict(host, qm, qmB); }
-    assert PSM.StaticOkNestedRE(qmB, host, bodycode, endlH) by {
-      assert PSM.StaticOkNestedRE(qm, host, bodycode, endlH);
+    assert PSM.StaticCoreNestedRE(qmB, host, bodycode, endlH) by {
+      assert PSM.StaticCoreNestedRE(qm, host, bodycode, endlH);
     }
     assert LL.OracleOkSuffix(rer, qmB, inpA) by {
       assert LL.OracleOkSuffix(rer, qm, inpA);
       OracleOkSuffixRestrict(rer, qm, qmB, inpA);
     }
     assert GateStaticsOkNested(qmB, host, crv, ncap, nlook, nquant) by {
-      M.LooksNoNulledPlusFromFull(host);   // (§2.5b F-c) NoNulledPlusRE(host) from the row
       RowPlusFacts(host, crv.f_plus_bc, nlook);   // (G3a)
       GateStaticsFromTablesNested(qmB, host, crv, ncap, nlook, nquant);
     }
@@ -713,16 +712,11 @@ module LindenElkLiftSimDeep {
 
     assert {:split_here} true;   // (E3) step boundary: its own assertion batch
     // (ζ) rf_A IS FreshBodyMatch(A, res1) (same fresh run at the same position)
-    var rfFresh := M.FreshBodyMatch(crv, str, A as int, res1, ov, ncap, nlook, nquant);
-    assert rfFresh == M.FreshBodyMatchPlus(crv, str, A as int, res1, ov, ncap, nlook, nquant) by {   // (G3a) stamp-free row
-      M.FreshBodyMatchPlusPlainRow(crv, str, A as int, res1, ov, ncap, nlook, nquant, laA, host);
-    }
-    assert rfFresh == AI.FFindMatch(bodycode, str,
-                                    AI.FInitState(bodycode, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                                  AReg.init_regs(nquant), 0, AI.cp_context(cpA, str, LAnc.Forward)),
-                                    ov, LAnc.Forward, cdnA).0 by {
+    var rfFresh := M.FreshBodyMatchPlus(crv, str, A as int, res1, ov, ncap, nlook, nquant);   // (G3a)
+    assert rfFresh == rfP by {
       assert AI.capture_direction(crv.f_look_types[A as int]) == LAnc.Forward;
       assert CP.capture_regex(crv.f_look_types[A as int], M.VBody(crv, A as int)) == host;
+      reveal M.FreshBodyMatchPlus();
     }
     assert {:split_here} true;   // (E3) step boundary: its own assertion batch
     // (η) the LEVEL-LINK at (A, A1): res1's record at A1 IS rf_A's
@@ -737,35 +731,7 @@ module LindenElkLiftSimDeep {
       assert rfFresh.Some?;
     }
     assert {:split_here} true;   // (gate B) sub-split of (η): the whole section timed out at 900 s once de-isolated
-    assert rfA == rfFresh.value by {
-      // FReconstructPlus is the identity on the QuantRegsFinal fresh run.
-      var ctxF := AI.cp_context(cpA, str, LAnc.Forward);
-      var initsF := AI.FInitState(bodycode, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                  AReg.init_regs(nquant), 0, ctxF);
-      M.LooksNoNulledPlusBody(re, A);
-      M.NoTrueQuantStampNested(host);
-      assert M.VmQuantFinal(initsF) by {
-        var th0 := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
-        assert M.QuantRegsFinal(th0) by {
-          hide *;   // (§2.5b/z3 4.14) pure init-regs facts; the ambient axioms drown the solver
-          reveal M.QuantRegsFinal, AI.init_thread, AI.get_idx, AReg.init_regs;
-          RL.AInitLaws(nquant);
-          forall k ensures AI.get_idx(AReg.init_regs(nquant).a_cp, k) < 0
-                           && AI.get_idx(AReg.init_regs(nquant).a_clk, k) >= -1 {
-            if 0 <= k < nquant { }
-          }
-        }
-        forall t2 | t2 in initsF.active ensures M.QuantRegsFinal(t2) { assert t2 == th0; }
-      }
-      M.FFindMatchQuantFinalAny(bodycode, str, initsF, ov, LAnc.Forward, cdnA);
-      var (fm, ovx) := AI.FFindMatch(bodycode, str, initsF, ov, LAnc.Forward, cdnA);
-      assert fm == rfFresh by { assert rfFresh == AI.FFindMatch(bodycode, str, initsF, ov, LAnc.Forward, cdnA).0; }
-      assert fm.Some?;
-      assert M.QuantRegsFinal(fm.value);
-      M.FNulledPlusIdentity(host, fm.value.capture_regs, fm.value.look_regs, fm.value.quant_regs,
-                            crv.f_plus_bc, str, ovx, LAnc.Forward);
-      assert AI.FReconstructPlus(fm.value, host, crv.f_plus_bc, str, ovx, LAnc.Forward).0 == fm.value;
-    }
+    assert rfA == rfFresh.value;   // (G3a) both are the fresh plus replay
     assert {:split_here} true;   // (gate B) sub-split of (η): the whole section timed out at 900 s once de-isolated
     assert AReg.get_cp(res1, A1 as int) == AReg.get_cp(rfA.look_regs, A1 as int);
 
@@ -828,7 +794,7 @@ module LindenElkLiftSimDeep {
     host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed through the recursion) ----
     requires T.TransWf(re) && NR.NestedFragmentRE(re)
-    requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
+    requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires |crv.f_look_types| == |crv.f_look_ast|
@@ -867,7 +833,7 @@ module LindenElkLiftSimDeep {
             lsub.Some? && g2 in lsub.value
     decreases |LTB.LookIds(host)|, 1
   {
-    hide M.LooksNoNulledPlusRE;   // (§2.5b F-c) a fact here, never unfolded (recursive: batch memory)
+    hide M.LookBodiesPlusGateRE;   // (G3a) a fact here, never unfolded (recursive: batch memory)
     // (2026-08-25) this lemma takes the L4-perf OPAQUE bundles (`117b6aa`) but its
     // body reads their foralls (`FrameEntryOk` at A, `OracleOkSuffix` at cps) —
     // reveal them. (Never re-verified after the perf pass; failed 3 asserts.)
@@ -889,7 +855,7 @@ module LindenElkLiftSimDeep {
     assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
     assert host == M.VBody(crv, A as int);
     var endlH: nat := |bodycode| - 1;
-    assert PSM.StaticOkNestedRE(qm, host, bodycode, endlH);
+    assert PSM.StaticCoreNestedRE(qm, host, bodycode, endlH);
     assert crv.f_look_types[A as int] == laA;
     assert (laA.Lookahead? || laA.Lookbehind?) by {
       assert AI.capture_type(crv.f_look_types[A as int]);        // MatchedPosLA
@@ -952,7 +918,7 @@ module LindenElkLiftSimDeep {
     host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed) ----
     requires T.TransWf(re) && NR.NestedFragmentRE(re)
-    requires M.LooksNoNulledPlusRE(re)   // (§2.5b F-c) look bodies stay stamp-free
+    requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires |crv.f_look_types| == |crv.f_look_ast|
@@ -994,7 +960,7 @@ module LindenElkLiftSimDeep {
     requires g !in PIV.CapIdsInLooks(host)
     decreases |LTB.LookIds(host)|, 0
   {
-    hide M.LooksNoNulledPlusRE;   // (§2.5b F-c) a fact here, never unfolded (recursive: batch memory)
+    hide M.LookBodiesPlusGateRE;   // (G3a) a fact here, never unfolded (recursive: batch memory)
     // (2026-08-29 E3) the preamble is an OPAQUE block: only the facts below reach the arm's VC.
     var maxlook := *;
     var cpA := *;
@@ -1030,7 +996,7 @@ module LindenElkLiftSimDeep {
               && (set g0: LG.GroupId | g0 in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
               && var bc := CP.compile_to_bytecode(bA);
               |bc| >= 1
-              && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
+              && PSM.StaticCoreNestedRE(qm, bA, bc, |bc| - 1)
               && PSM.SizesOkRE(bA, ncap, nlook, nquant))
       ensures (LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A)))
       ensures (endlH == |bodycode| - 1)
@@ -1108,7 +1074,8 @@ module LindenElkLiftSimDeep {
       assert host == M.VBody(crv, A as int);
       endlH := |bodycode| - 1;
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert PSM.StaticOkNestedRE(qm, host, bodycode, endlH);
+      M.PlusGateBody(re, crv, A, laA, host);   // (G3a) a lookbehind body is nulled-plus-free
+      assert PSM.StaticOkNestedRE(qm, host, bodycode, endlH);   // core + NoNulledPlusRE(host)
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert crv.f_look_types[A as int] == laA;
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -1233,7 +1200,7 @@ module LindenElkLiftSimDeep {
 
     // ==== BASE: g DIRECT in host ====
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    M.LooksNoNulledPlusBody(re, A);   // §2.5b interim: NoNulledPlusRE(host)
+    M.PlusGateBody(re, crv, A, laA, host);   // (G3a) a lookbehind body is nulled-plus-free
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     SubFirstLeafDirectInFreshLB(rer, qmB, crv, str, ov, A, res1, host, g, ncap, nlook, nquant);
     var rfc := rfFresh.value.capture_regs;

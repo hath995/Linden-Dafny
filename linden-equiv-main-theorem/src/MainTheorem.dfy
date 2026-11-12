@@ -1652,7 +1652,7 @@ module LindenElkMain {
     ngroups: nat, str: string, cp: nat, tstar: LT.Tree, ov: LOr.OracleView,
     cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
     returns (bestT: Option<LT.Leaf>)
-    requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
+    requires PSM.StaticCoreNestedRE(qm, body, bodycode, endl)   // (G3a) no stamp-free premise: a boolean
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires qm.ov == ov
     requires !rer.ignoreCase && !rer.multiline
@@ -1791,7 +1791,7 @@ module LindenElkMain {
     ngroups: nat, str: string, cp: nat, ov: LOr.OracleView,
     cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
     returns (bestT: Option<LT.Leaf>)
-    requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
+    requires PSM.StaticCoreNestedRE(qm, body, bodycode, endl)   // (G3a) no stamp-free premise: a boolean
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires qm.ov == ov
     requires !rer.ignoreCase && !rer.multiline
