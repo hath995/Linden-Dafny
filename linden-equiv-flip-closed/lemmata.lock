@@ -49,6 +49,15 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-clock-mono"
 
 [[package]]
+name = "linden.equiv-final-readout"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-final-readout"
+
+[[package]]
 name = "linden.equiv-gen-step-re"
 class = 1
 version = "1.0.0"
@@ -128,6 +137,15 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-nulled-plus"
+
+[[package]]
+name = "linden.equiv-nulled-recon"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-nulled-recon"
 
 [[package]]
 name = "linden.equiv-oracle-bridge"
@@ -236,6 +254,15 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-pike-sim-re"
+
+[[package]]
+name = "linden.equiv-plus-at"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-plus-at"
 
 [[package]]
 name = "linden.equiv-regs-laws"

@@ -374,6 +374,7 @@ module LindenElkMainCinLk {
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires M.LooksNoNulledPlusRE(re)
+    requires T.TransWf(re)   // (G3a) main-theorem's re-gated row lemmas ask for it
     requires code == CP.compile_to_bytecode(re)
     requires NR.NestedFragmentRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
@@ -390,6 +391,7 @@ module LindenElkMainCinLk {
     requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
     ensures result.Some? ==> WinRegsOkG(ast, re, crv, str, ov, result.value, ncap, nlook, nquant)
   {
+    M.PlusGateFromStrong(re);   // (G3a) main-theorem takes the weak gate
     M.LookRowsDynamicNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
                             ncap, nlook, nquant, endl, result);
     M.FStabilityNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant, nlook, result);
@@ -906,6 +908,7 @@ module LindenElkMainCinLk {
             && CM.ThreadRegsWf(synthetic, ncap, nlook, nquant) && M.QuantClkFinal(synthetic)
   {
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
+    M.PlusGateFromStrong(re);   // (G3a) main-theorem takes the weak gate
     M.EndpointValueOkRegs(ast, re, crv, str, ov, th, ncap, nlook, nquant);
     M.EndpointQuantValueOkRegs(ast, re, crv, str, ov, th, ncap, nlook, nquant);
     M.EndpointChildLinkOkRegs(ast, re, crv, str, ov, th, ncap, nlook, nquant);

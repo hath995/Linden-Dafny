@@ -4,6 +4,15 @@ dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
 manifest-hash = "sha256:b7409dc44147ec43b59fc5c1053518d2dce51bcd8a16b8b9c06422e7fe7f4060"
 
 [[package]]
+name = "linden.equiv-final-readout"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-final-readout"
+
+[[package]]
 name = "linden.equiv-gen-step-re"
 class = 1
 version = "1.0.0"
@@ -40,6 +49,15 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-nulled-plus"
 
 [[package]]
+name = "linden.equiv-nulled-recon"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-nulled-recon"
+
+[[package]]
 name = "linden.equiv-oracle-decomp"
 class = 1
 version = "1.0.0"
@@ -56,6 +74,15 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-sweep"
+
+[[package]]
+name = "linden.equiv-plus-at"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-plus-at"
 
 [[package]]
 name = "linden.equiv-stamp-live"

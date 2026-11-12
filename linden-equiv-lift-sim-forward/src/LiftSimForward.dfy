@@ -539,15 +539,8 @@ module LindenElkLiftSimForward {
         assert LL.OracleOkAt(rer, qm, inp1);
         assert (A1 as int) in qm.looks;
         assert GateStaticAtNested(qm, re, crv, A1 as int, ncap, nlook, nquant);
-        var la1G: R.lookaround, b1G: R.regex :| LTB.LookEntryOk(crv, A1 as int, la1G, b1G)
-                                                && T.TransWf(b1G) && NR.NestedFragmentRE(b1G)
-                                                && qm.looks[A1 as int].0 == T.TrLookaround(la1G)
-                                                && qm.looks[A1 as int].1 == T.Translate(b1G)
-                                                && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(b1G))) <= PIV.CapIdsInLooks(re)
-                                                && var bc1 := CP.compile_to_bytecode(b1G);
-                                                |bc1| >= 1
-                                                && PSM.StaticOkNestedRE(qm, b1G, bc1, |bc1| - 1)
-                                                && PSM.SizesOkRE(b1G, ncap, nlook, nquant);
+        // (G3a slice 3) the row picked in a small context (`GateStaticPick`); the inline `:|` ran past 900 s
+        var la1G: R.lookaround, b1G: R.regex := GateStaticPick(qm, re, crv, A1 as int, ncap, nlook, nquant);
         assert b1G == bodyA1 by {
           NI.LookBodyOfTablesTie(re, crv, A1);
           var la1T: R.lookaround :| LTB.LookEntryOk(crv, A1 as int, la1T, bodyA1);
@@ -561,6 +554,7 @@ module LindenElkLiftSimForward {
         assert LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(T.Translate(bodyA1))], inp1, LG.Empty, dir1),
                           LG.Empty, inp1, dir1).Some?;
       }
+      assert {:split_here} true;   // (G3a slice 3) sub-split
       lsub1rf := SubFirstLeafAt(rer, crv, str, A1 as int, rfA.look_regs);
       assert bodyA1 == M.VBody(crv, A1 as int) by {
         NI.LookBodyOfTablesTie(re, crv, A1);
