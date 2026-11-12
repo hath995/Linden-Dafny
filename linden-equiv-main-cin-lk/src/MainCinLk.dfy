@@ -703,7 +703,7 @@ module LindenElkMainCinLk {
     requires CM.ThreadRegsWf(thread, 2 * R.max_group(R.annotate(raw)) + 2,
                              R.max_lookaround(R.annotate(raw)) + 1,
                              R.max_quant(R.annotate(raw)) + 1)
-    requires M.QuantRegsFinal(thread)
+    requires M.QuantClkFinal(thread)   // (G3a) clocks only
     requires var re := R.lazy_prefix(R.annotate(raw));
              leaf.1 == PIV.NormGm(PIV.GmOfLive(re, thread.capture_regs, thread.look_regs, thread.quant_regs))
     requires LT.FirstLeaf(t, LC.InitInput(str)) == Some(leaf)
@@ -903,7 +903,7 @@ module LindenElkMainCinLk {
     ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), th.capture_regs, th.look_regs, th.quant_regs, ov);
             var synthetic := AI.Thread(th.pc, res.0, res.1, res.2, th.exit_allowed);
             leaf.1 == PIV.NormGm(PIV.GmOfLive(re, res.0, res.1, res.2))
-            && CM.ThreadRegsWf(synthetic, ncap, nlook, nquant) && M.QuantRegsFinal(synthetic)
+            && CM.ThreadRegsWf(synthetic, ncap, nlook, nquant) && M.QuantClkFinal(synthetic)
   {
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     M.EndpointValueOkRegs(ast, re, crv, str, ov, th, ncap, nlook, nquant);
@@ -915,7 +915,7 @@ module LindenElkMainCinLk {
     ProduceOwnerForallRes(qm, crv, str, ast, re, ov, resO.0, resO.1, resO.2, S, ncap, nlook, nquant);
     var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), th.capture_regs, th.look_regs, th.quant_regs, ov);
     var synthetic := AI.Thread(th.pc, res.0, res.1, res.2, th.exit_allowed);
-    assert CM.ThreadRegsWf(synthetic, ncap, nlook, nquant) && M.QuantRegsFinal(synthetic);
+    assert CM.ThreadRegsWf(synthetic, ncap, nlook, nquant) && M.QuantClkFinal(synthetic);
     MainTheoremL4DeepConclude(rer, qm, crv, str, ast, re, code, endl, ov, th, leaf,
                               t, inp, S, ncap, nlook, nquant);
   }
@@ -1206,12 +1206,23 @@ module LindenElkMainCinLk {
                && nquant == R.max_quant(R.annotate(raw)) + 1;
       }
       assert {:split_here} true;   // (G3a) the extraction section, one batch per step
-      assert M.QuantRegsFinal(synthetic);
+      assert M.QuantClkFinal(synthetic);
       assert {:split_here} true;   // (G3a) the extraction section, one batch per step
       assert leaf.1 == PIV.NormGm(PIV.GmOfLive(re, synthetic.capture_regs, synthetic.look_regs,
                                                synthetic.quant_regs));
       assert {:split_here} true;   // (G3a) the extraction section, one batch per step
       assert LT.FirstLeaf(t, LC.InitInput(str)) == Some(leaf);
+      assert {:split_here} true;   // (G3a) the extraction section, one batch per step
+      // (G3a) MainExtractionL5Lk's premises in its own syntax, one batch each: the call below is then
+      // a match against ground facts (as one batch with the call it ran past 600 s twice).
+      assert AI.FFullMatch(raw, str)
+          == Some(AI.filter_reset(R.annotate(raw), synthetic.capture_regs, synthetic.look_regs,
+                                  synthetic.quant_regs, -1));
+      assert {:split_here} true;   // (G3a) the extraction section, one batch per step
+      assert var re' := R.lazy_prefix(R.annotate(raw));
+             leaf.1 == PIV.NormGm(PIV.GmOfLive(re', synthetic.capture_regs, synthetic.look_regs, synthetic.quant_regs));
+      assert {:split_here} true;   // (G3a) the extraction section, one batch per step
+      assert NR.NestedFragmentRaw(raw) && T.Latin1Wf(raw) && M.LooksNoNulledPlusRE(R.lazy_prefix(R.annotate(raw)));
       assert {:split_here} true;   // (G3a) the extraction section, one batch per step
       assert LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str))) by {
         hide *;

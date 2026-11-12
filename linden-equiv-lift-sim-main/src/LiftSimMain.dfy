@@ -378,7 +378,7 @@ module LindenElkLiftSimMain {
     requires var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
                                      thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
              CM.ThreadRegsWf(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed), ncap, nlook, nquant)
-             && M.QuantRegsFinal(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed))
+             && M.QuantClkFinal(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed))
              && M.LookInvO(res.1, ov, str)
              && M.LookPosO(res.1, crv)   // (gate C, G2)
              && M.ChildLinkO(crv, str, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)

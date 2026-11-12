@@ -781,7 +781,7 @@ module LindenElkLiftSimChain {
              && (forall q: nat :: q in PIV.QuantIdsOutsideLooks(re) ==>
                                     AI.get_idx(AReg.as_arrays(res.2).1, q as int) == AI.get_idx(AReg.as_arrays(thread.quant_regs).1, q as int))
              && CM.ThreadRegsWf(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed), ncap, nlook, nquant)
-             && M.QuantRegsFinal(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed))
+             && M.QuantClkFinal(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed))
     // ---- (F) FORWARD membership + VALUE (per leaf-present g, Norm-form) ----
     requires var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
                                      thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
@@ -796,7 +796,7 @@ module LindenElkLiftSimChain {
                                     thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
             leaf.1 == PIV.NormGm(PIV.GmOfLive(re, res.0, res.1, res.2))
             && CM.ThreadRegsWf(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed), ncap, nlook, nquant)
-            && M.QuantRegsFinal(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed))
+            && M.QuantClkFinal(AI.Thread(thread.pc, res.0, res.1, res.2, thread.exit_allowed))
   {
     var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
                             thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
@@ -3183,7 +3183,7 @@ module LindenElkLiftSimChain {
       reveal M.ValueOkO();
       assert 1 <= owner as int <= R.max_lookaround(ast);
     }
-    assert CM.RegsAgreeInside(res2, rf.value.quant_regs, M.QIdsOuter(body)) by {
+    assert M.QuantClkAgreeInside(res2, rf.value.quant_regs, M.QIdsOuter(body)) by {
       reveal M.QuantValueOkO();
       assert 1 <= owner as int <= R.max_lookaround(ast);
     }

@@ -4734,7 +4734,7 @@ module LindenElkLiftSimCore {
     requires g2 in PIV.CapIds(NI.LookBodyOfRE(host, A1)) && g2 in PIV.CapIds(host)
     requires PIV.PathPresentLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, g2)
     requires CM.RegsAgreeInside(res0, rfA.capture_regs, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host)))
-    requires CM.RegsAgreeInside(res2, rfA.quant_regs, M.QIdsOuter(host))
+    requires M.QuantClkAgreeInside(res2, rfA.quant_regs, M.QIdsOuter(host))
     requires AI.get_idx(res1.a_clk, A1 as int) == AI.get_idx(rfA.look_regs.a_clk, A1 as int)
     ensures NI.LookPathDom(host, AI.get_idx(rfA.look_regs.a_clk, A1 as int), rfA.quant_regs.a_clk, A1)
   {
@@ -5177,7 +5177,7 @@ module LindenElkLiftSimCore {
     requires CM.ThreadRegsWf(thread, 2 * R.max_group(R.annotate(raw)) + 2,
                              R.max_lookaround(R.annotate(raw)) + 1,
                              R.max_quant(R.annotate(raw)) + 1)
-    requires M.QuantRegsFinal(thread)
+    requires M.QuantClkFinal(thread)   // (G3a) clocks only
     // L3b: for a CAPTURING lookbehind the engine registers hold the REVERSED span,
     // so the ordered spec leaf is the POSITIONAL normalization (`NormGm`) of the
     // reconstructed `GmOfLive`. NO-OP for forward matches (`NormGm` is identity on

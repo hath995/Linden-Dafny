@@ -525,7 +525,7 @@ module LindenElkLiftSimDeep {
       }
       assert {:split_here} true;
       assert CM.RegsAgreeInside(res0, rfA.capture_regs, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host)))
-             && CM.RegsAgreeInside(res2, rfA.quant_regs, M.QIdsOuter(host)) by {
+             && M.QuantClkAgreeInside(res2, rfA.quant_regs, M.QIdsOuter(host)) by {
         assert rfA == rfFresh.value && rfFresh.Some?;
         reveal M.ValueOkO(), M.QuantValueOkO();
         assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
@@ -832,7 +832,7 @@ module LindenElkLiftSimDeep {
       assert rfFresh.Some? && (A1 as int) in M.DirectLidSet(host);
     }
     assert CM.RegsAgreeInside(res0, rfA.capture_regs, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host)))
-           && CM.RegsAgreeInside(res2, rfA.quant_regs, M.QIdsOuter(host)) by {
+           && M.QuantClkAgreeInside(res2, rfA.quant_regs, M.QIdsOuter(host)) by {
       assert rfFresh.Some?;
       reveal M.ValueOkO(), M.QuantValueOkO();
       assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
@@ -1129,7 +1129,7 @@ module LindenElkLiftSimDeep {
       ensures (rfA == rfFresh.value)
       ensures (CM.RegsAgreeInside(res0, rfFresh.value.capture_regs,
                                       PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host))))
-      ensures (CM.RegsAgreeInside(res2, rfFresh.value.quant_regs, M.QIdsOuter(host)))
+      ensures (M.QuantClkAgreeInside(res2, rfFresh.value.quant_regs, M.QIdsOuter(host)))
     {
       maxlook := R.max_lookaround(ast);
       cpA := AReg.get_cp(res1, A as int).value;
@@ -1282,7 +1282,7 @@ module LindenElkLiftSimDeep {
         assert M.VBody(crv, A as int) == host;
       }
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert CM.RegsAgreeInside(res2, rfFresh.value.quant_regs, M.QIdsOuter(host)) by {
+      assert M.QuantClkAgreeInside(res2, rfFresh.value.quant_regs, M.QIdsOuter(host)) by {
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
       }

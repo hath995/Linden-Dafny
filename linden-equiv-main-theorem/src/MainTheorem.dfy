@@ -128,6 +128,13 @@ module LindenElkMain {
 
   /** `QuantRegsFinal` lifted to a whole VM state: holds of every active
       thread, every blocked thread, and `bestmatch` if present. */
+  /** (G3a) The clock half of `QuantRegsFinal`: what the final extraction reads off the winner
+      (`MainExtractionFromClosed` uses only `get_idx(qt.a_clk, 0) >= -1`). A reconstructing look row
+      stamps quant POSITIONS, so the post-loop thread is clock-final only. */
+  ghost predicate QuantClkFinal(t: AI.Thread) {
+    forall k :: AI.get_idx(t.quant_regs.a_clk, k) >= -1
+  }
+
   ghost predicate VmQuantFinal(s: AI.VmState) {
     (forall t | t in s.active :: QuantRegsFinal(t))
     && (forall tb | tb in s.blocked :: QuantRegsFinal(tb.0))
@@ -3565,7 +3572,7 @@ module LindenElkMain {
     requires CM.ThreadRegsWf(thread, 2 * R.max_group(R.annotate(raw)) + 2,
                              R.max_lookaround(R.annotate(raw)) + 1,
                              R.max_quant(R.annotate(raw)) + 1)
-    requires QuantRegsFinal(thread)
+    requires QuantClkFinal(thread)   // (G3a) clocks only
     // L3b: for a CAPTURING lookbehind the engine registers hold the REVERSED span,
     // so the ordered spec leaf is the POSITIONAL normalization (`NormGm`) of the
     // reconstructed `GmOfLive`. NO-OP for forward matches (`NormGm` is identity on
@@ -6070,6 +6077,14 @@ module LindenElkMain {
     }
   }
 
+  /** (G3a) Agreement of two banks' CLOCKS on `S` (lengths equal). The quant value lift is stated
+      on clocks only: a reconstructing look row stamps quant POSITIONS in the running bank, and no
+      consumer reads them (`GmOfLive` reads clocks, `GmOfLiveClkCong`). */
+  ghost predicate QuantClkAgreeInside(a: AReg.Regs, b: AReg.Regs, S: set<int>) {
+    |a.a_cp| == |b.a_cp| && |a.a_clk| == |b.a_clk|
+    && (forall k: int :: k in S ==> AI.get_idx(a.a_clk, k) == AI.get_idx(b.a_clk, k))
+  }
+
   /** C4e DELIVERABLE 2 (predicate): whole-loop QUANT reconstruction keyed on the
       FINAL look bank `res1` — quant twin of `FLookLoopValueOkFull`. For EVERY
       (possibly inner) matched positive lookahead `owner`, the fold's quant bank
@@ -6082,8 +6097,8 @@ module LindenElkMain {
                                             lid: int, maxlook: int, ov: LOr.OracleView, ncap: int, nlook: int, nquant: int) {
     forall owner: int :: lid <= owner <= maxlook && MatchedPosLA(crv, res1, owner) ==>
                            var rf := FreshBodyMatchPlus(crv, str, owner, res1, ov, ncap, nlook, nquant);
-                           (rf.Some? ==> CM.RegsAgreeInside(res2, rf.value.quant_regs, QIdsOuter(VBody(crv, owner))))
-                           && (rf.None? ==> CM.RegsAgreeInside(res2, AReg.init_regs(nquant), QIdsOuter(VBody(crv, owner))))
+                           (rf.Some? ==> QuantClkAgreeInside(res2, rf.value.quant_regs, QIdsOuter(VBody(crv, owner))))
+                           && (rf.None? ==> QuantClkAgreeInside(res2, AReg.init_regs(nquant), QIdsOuter(VBody(crv, owner))))
   }
 
   /** C4e: `owner == lid` is not a matched positive lookahead in `res1`, so the
@@ -6097,8 +6112,8 @@ module LindenElkMain {
   {
     forall owner: int | lid <= owner <= maxlook && MatchedPosLA(crv, res1, owner)
       ensures var rf := FreshBodyMatchPlus(crv, str, owner, res1, ov, ncap, nlook, nquant);
-              (rf.Some? ==> CM.RegsAgreeInside(res2, rf.value.quant_regs, QIdsOuter(VBody(crv, owner))))
-              && (rf.None? ==> CM.RegsAgreeInside(res2, AReg.init_regs(nquant), QIdsOuter(VBody(crv, owner))))
+              (rf.Some? ==> QuantClkAgreeInside(res2, rf.value.quant_regs, QIdsOuter(VBody(crv, owner))))
+              && (rf.None? ==> QuantClkAgreeInside(res2, AReg.init_regs(nquant), QIdsOuter(VBody(crv, owner))))
     { assert owner != lid; }
   }
 
@@ -6428,8 +6443,8 @@ module LindenElkMain {
         // ---- assemble FLookLoopQuantValueOkFull for [lid] keyed on res.1 ----
         forall owner: int | lid <= owner <= maxlook && MatchedPosLA(crv, res.1, owner)
           ensures var rf2 := FreshBodyMatchPlus(crv, str, owner, res.1, ov, ncap, nlook, nquant);
-                  (rf2.Some? ==> CM.RegsAgreeInside(res.2, rf2.value.quant_regs, QIdsOuter(VBody(crv, owner))))
-                  && (rf2.None? ==> CM.RegsAgreeInside(res.2, AReg.init_regs(nquant), QIdsOuter(VBody(crv, owner))))
+                  (rf2.Some? ==> QuantClkAgreeInside(res.2, rf2.value.quant_regs, QIdsOuter(VBody(crv, owner))))
+                  && (rf2.None? ==> QuantClkAgreeInside(res.2, AReg.init_regs(nquant), QIdsOuter(VBody(crv, owner))))
         {
           assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           if owner == lid {

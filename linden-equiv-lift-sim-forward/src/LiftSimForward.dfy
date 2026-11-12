@@ -259,7 +259,7 @@ module LindenElkLiftSimForward {
       ensures (rfA == rfFresh.value)
       ensures (CM.RegsAgreeInside(res0, rfFresh.value.capture_regs,
                                       PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host))))
-      ensures (CM.RegsAgreeInside(res2, rfFresh.value.quant_regs, M.QIdsOuter(host)))
+      ensures (M.QuantClkAgreeInside(res2, rfFresh.value.quant_regs, M.QIdsOuter(host)))
     {
       maxlook := R.max_lookaround(ast);
       cpA := AReg.get_cp(res1, A as int).value;
@@ -374,7 +374,7 @@ module LindenElkLiftSimForward {
         assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
         assert M.VBody(crv, A as int) == host;
       }
-      assert CM.RegsAgreeInside(res2, rfFresh.value.quant_regs, M.QIdsOuter(host)) by {
+      assert M.QuantClkAgreeInside(res2, rfFresh.value.quant_regs, M.QIdsOuter(host)) by {
         assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
       }
     }
@@ -523,6 +523,7 @@ module LindenElkLiftSimForward {
       cp1 := AReg.get_cp(rfA.look_regs, A1 as int).value;
       assert cp1 == AI.get_idx(rfA.look_regs.a_cp, A1 as int);
       assert LOr.view_get_oracle(ov, cp1, A1 as int);
+      assert {:split_here} true;   // (G3a) sub-split of block 2: as one batch it ran past 900 s
       assert 0 <= cp1 <= |str| by {
         M.ReplayLookCpOkNestedLB(bodycodeB, str, ov, cdnA, crv.f_plus_bc, cpA,
                                  AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), host);
@@ -532,6 +533,7 @@ module LindenElkLiftSimForward {
       assert T.TransWf(bodyA1) by { M.TransWfLookBodyOfRE(re, A1); }
       dir1 := LidDir(crv, A1 as int);
       t1 := LFU.ComputeTr(rer, [LS.Areg(T.Translate(bodyA1))], inp1, LG.Empty, dir1);
+      assert {:split_here} true;   // (G3a) sub-split of block 2: as one batch it ran past 900 s
       assert LT.TreeRes(t1, LG.Empty, inp1, dir1).Some? by {   // (2026-08-29) FIXED: the A1 sub-leaf is the dir1 (backward) result, not the forward FirstLeaf
         assert LL.OracleOkSuffix(rer, qm, inp1);
         assert LL.OracleOkAt(rer, qm, inp1);
@@ -1017,7 +1019,7 @@ module LindenElkLiftSimForward {
       assert M.VBody(crv, A as int) == host;
     }
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    assert CM.RegsAgreeInside(res2, rfFresh.value.quant_regs, M.QIdsOuter(host)) by {
+    assert M.QuantClkAgreeInside(res2, rfFresh.value.quant_regs, M.QIdsOuter(host)) by {
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
     }

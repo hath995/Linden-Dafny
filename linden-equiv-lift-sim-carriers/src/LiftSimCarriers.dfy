@@ -785,7 +785,7 @@ module LindenElkLiftSimCarriers {
       assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
       assert M.VBody(crv, A as int) == host;
     }
-    assert CM.RegsAgreeInside(res2, rfFresh.value.quant_regs, M.QIdsOuter(host)) by {
+    assert M.QuantClkAgreeInside(res2, rfFresh.value.quant_regs, M.QIdsOuter(host)) by {
       assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
     }
 
