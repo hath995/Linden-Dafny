@@ -746,7 +746,10 @@ module LindenElkCinWalk {
       && (min > 0 && CinGreedyL(greedy, delta, r1) ==>
             LL.LkBodiesInS(r1, {}) && forall g :: g in L.DefGroups(r1) ==> g in G)
     case Group(_, r1) => CinOk(r1, G)
-    case LookaroundR(_, r1) => CinOk(r1, G)
+    // (G3a) no condition under a look: the walk never enters a look body (`CinWalkReg`'s look arm
+    // keeps the body tree and recurses on the continuation only), and a CIN plus inside a look body
+    // has its groups in `S`, not in `G`.
+    case LookaroundR(_, _) => true
     case _ => true
   }
 

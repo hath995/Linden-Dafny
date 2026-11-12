@@ -107,7 +107,9 @@ module LindenElkMainCinLk {
       lie in `G` (any `G` covering the outside-look captures). */
   lemma TranslateCinOk(r: R.regex, G: set<LG.GroupId>)
     requires T.TransWf(r) && NR.NestedFragmentRE(r)
-    requires M.LooksNoNulledPlusRE(r) && RF.CinBodiesLookFreeRE(r)
+    requires M.LooksNoNulledPlusRE(r) && RF.CinBodiesLookFreeRE(r)   // (G3a) the first conjunct is no longer used
+                                                                      // (`CinOk`'s look arm is `true`); kept so the
+                                                                      // top level's call context is unchanged
     requires forall g: nat :: g in PIV.CapIdsOutsideLooks(r) ==> g in G
     ensures CW.CinOk(T.Translate(r), G)
     decreases r
@@ -116,10 +118,7 @@ module LindenElkMainCinLk {
     case Re_alt(r1, r2) => TranslateCinOk(r1, G); TranslateCinOk(r2, G);
     case Re_con(r1, r2) => TranslateCinOk(r1, G); TranslateCinOk(r2, G);
     case Re_capture(_, r1) => TranslateCinOk(r1, G);
-    case Re_lookaround(_, _, r1) =>
-      assert NR.NoNulledPlusRE(r1);
-      NUL.TransNoNulledPlus(r1);
-      CW.NoNulledPlusCinOk(T.Translate(r1), G);
+    case Re_lookaround(_, _, _) =>
     case Re_quant(nul, qid, q, body) =>
       TranslateCinOk(body, G);
       var tb := T.Translate(body);
@@ -1195,7 +1194,9 @@ module LindenElkMainCinLk {
       assert {:split_here} true;
       // ---- extraction ------------------------------------------------------
       assert EL.BoolTreeLk(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), BS.CannotExit, t);
+      assert {:split_here} true;   // (G3a) the extraction section, one batch per step
       assert LS.IsTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), LG.Empty, WP.Forward, t);
+      assert {:split_here} true;   // (G3a) the extraction section, one batch per step
       assert CM.ThreadRegsWf(synthetic, 2 * R.max_group(R.annotate(raw)) + 2,
                              R.max_lookaround(R.annotate(raw)) + 1,
                              R.max_quant(R.annotate(raw)) + 1) by {
@@ -1204,10 +1205,14 @@ module LindenElkMainCinLk {
                && nlook == R.max_lookaround(R.annotate(raw)) + 1
                && nquant == R.max_quant(R.annotate(raw)) + 1;
       }
+      assert {:split_here} true;   // (G3a) the extraction section, one batch per step
       assert M.QuantRegsFinal(synthetic);
+      assert {:split_here} true;   // (G3a) the extraction section, one batch per step
       assert leaf.1 == PIV.NormGm(PIV.GmOfLive(re, synthetic.capture_regs, synthetic.look_regs,
                                                synthetic.quant_regs));
+      assert {:split_here} true;   // (G3a) the extraction section, one batch per step
       assert LT.FirstLeaf(t, LC.InitInput(str)) == Some(leaf);
+      assert {:split_here} true;   // (G3a) the extraction section, one batch per step
       assert LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str))) by {
         hide *;
         MainExtractionL5Lk(raw, str, t, synthetic, leaf);
