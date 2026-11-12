@@ -112,6 +112,7 @@ module LindenElkLiftSimCore {
   import GG = LindenElkFlipGateG         // (gate B) flip-gate F6 lemmas, scope-free
   import CG = LindenElkFlipClosedG       // (gate B) the scope-free closedness ladder
   import CW = LindenElkCinWalk
+  import NRR = LindenElkNulledReconRegs   // (G3a) the plus table
 
   // ==========================================================================
   // SOLID definitions — the pairing.
@@ -993,13 +994,20 @@ module LindenElkLiftSimCore {
       CapIdsInLooks(re)` confinement + the negative-capture-free clause are
       verbatim. On look-free bodies (`NestDepth(body) == 0`) it coincides with
       `GateStaticAt` (`GateStaticAtFromDepth1`). */
+  /** (G3a) The statics a plus replay of a row body needs (`M.RowLAStatics`: fragment, uniqueness,
+      `NoCdnPlusRE`, `CinBodiesLookFreeRE`, the plus table) and the look bound. Opaque: the hub row is hot. */
+  opaque ghost predicate RowPlusOk(body: R.regex, plus: seq<RB.code>, nlook: int) {
+    M.RowLAStatics(body, plus) && (forall l: nat :: l in LTB.LookIds(body) ==> l < nlook)
+  }
+
   ghost predicate GateStaticAtNested(qm: AR.QMap, re: R.regex, crv: CP.FCompiled, l: int,
                                      ncap: int, nlook: int, nquant: int) {
     l in qm.looks
     && exists la: R.lookaround, body: R.regex ::
       LTB.LookEntryOk(crv, l, la, body)
       && T.TransWf(body) && NR.NestedFragmentRE(body)
-      && NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false, per lid
+      && NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false, per lid (G3a: every kind until commit 6)
+      && RowPlusOk(body, crv.f_plus_bc, nlook)   // (G3a) what the plus-replay readers need (opaque)
       // (gate B, G1 full depth) the three lookbehind-only scope conjuncts are DELETED:
       // the flip route is direction-generic (mirror-world leaf), so no row body is pinned.
       && qm.looks[l].0 == T.TrLookaround(la)
@@ -1010,6 +1018,37 @@ module LindenElkLiftSimCore {
       && PSM.StaticOkNestedRE(qm, body, bodycode, |bodycode| - 1)
       && PSM.SizesOkRE(body, ncap, nlook, nquant)
   }
+  /** The row witnesses of `GateStaticAtNested`, picked in a small context: the same `:|` inside a giant
+      lemma runs out of resources under z3 4.14.1 (§2.2 step B, G3a slice 3). Moved here from lift-sim-deep. */
+  lemma GateStaticPick(qm: AR.QMap, re: R.regex, crv: CP.FCompiled, l: int, ncap: int, nlook: int, nquant: int)
+    returns (la: R.lookaround, body: R.regex)
+    requires GateStaticAtNested(qm, re, crv, l, ncap, nlook, nquant)
+    ensures l in qm.looks
+    ensures LTB.LookEntryOk(crv, l, la, body)
+            && T.TransWf(body) && NR.NestedFragmentRE(body)
+            && NR.NoNulledPlusRE(body)
+            && RowPlusOk(body, crv.f_plus_bc, nlook)
+            && qm.looks[l].0 == T.TrLookaround(la)
+            && qm.looks[l].1 == T.Translate(body)
+            && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
+            && var bc := CP.compile_to_bytecode(body);
+            |bc| >= 1
+            && PSM.StaticOkNestedRE(qm, body, bc, |bc| - 1)
+            && PSM.SizesOkRE(body, ncap, nlook, nquant)
+  {
+    la, body :| LTB.LookEntryOk(crv, l, la, body)
+                && T.TransWf(body) && NR.NestedFragmentRE(body)
+                && NR.NoNulledPlusRE(body)
+                && RowPlusOk(body, crv.f_plus_bc, nlook)
+                && qm.looks[l].0 == T.TrLookaround(la)
+                && qm.looks[l].1 == T.Translate(body)
+                && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
+                && var bc := CP.compile_to_bytecode(body);
+                |bc| >= 1
+                && PSM.StaticOkNestedRE(qm, body, bc, |bc| - 1)
+                && PSM.SizesOkRE(body, ncap, nlook, nquant);
+  }
+
 
   // ==========================================================================
   // (DEEP reverse-recon) The BODY-RESTRICTED qmap: `GateStaticsOkNested(·, host,
@@ -2356,6 +2395,24 @@ module LindenElkLiftSimCore {
        && lid in LTB.LookIds(re)   // (2026-08-25) wf guard for `LookPathDom` (TopLookIds ⊆ LookIds)
        && NI.LookPathDom(re, AI.get_idx(th.look_regs.a_clk, lid as int), th.quant_regs.a_clk, lid))
       ==>
+        var rf := M.FreshBodyMatchPlus(crv, str, lid as int, th.look_regs, ov, ncap, nlook, nquant);   // (G3a) the plus replay
+        rf.Some? ==>
+          forall g: LG.GroupId ::
+            g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, lid))
+            && g in PIV.GmOfLive(NI.LookBodyOfRE(re, lid), rf.value.capture_regs,
+                                 rf.value.look_regs, rf.value.quant_regs)
+            ==> g in gmt
+  }
+  /** (G3a) `LookNestBackTTop` on the VM-only fresh match: the form the lookbehind flip proof
+      (`LookNestBackTTopLidFlipPlain`) runs on. Equal to it on nulled-plus-free hosts (`BackTTopPlusToPlain`). */
+  ghost predicate LookNestBackTTopPlain(re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                                        S: set<LG.GroupId>, gmt: LG.GroupMap, th: AI.Thread,
+                                   ncap: int, nlook: int, nquant: int) {
+    forall lid: nat | lid in NI.TopLookIds(re) ::
+      (M.MatchedPosLA(crv, th.look_regs, lid as int)
+       && lid in LTB.LookIds(re)   // (2026-08-25) wf guard for `LookPathDom` (TopLookIds ⊆ LookIds)
+       && NI.LookPathDom(re, AI.get_idx(th.look_regs.a_clk, lid as int), th.quant_regs.a_clk, lid))
+      ==>
         var rf := M.FreshBodyMatch(crv, str, lid as int, th.look_regs, ov, ncap, nlook, nquant);
         rf.Some? ==>
           forall g: LG.GroupId ::
@@ -2404,6 +2461,14 @@ module LindenElkLiftSimCore {
   // killed by TOP-LEVEL disjointness (`NI.TopLookNotNested` rules out BOTH nesting
   // arms, since lid and lid0 are both top-level).
   // ==========================================================================
+
+  /** (G3a) The fresh plus replay at row `l` reads the look bank only at `l`. */
+  lemma FreshPlusCpOnly(crv: CP.FCompiled, str: string, l: int, lk: AReg.Regs, lk': AReg.Regs,
+                        ov: LOr.OracleView, ncap: int, nlook: int, nquant: int)
+    requires AReg.get_cp(lk, l) == AReg.get_cp(lk', l)
+    ensures M.FreshBodyMatchPlus(crv, str, l, lk, ov, ncap, nlook, nquant)
+         == M.FreshBodyMatchPlus(crv, str, l, lk', ov, ncap, nlook, nquant)
+  { reveal M.FreshBodyMatchPlus(); }
 
   lemma LookNestBackTRegSameTop(re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
                                 S: set<LG.GroupId>, gmt: LG.GroupMap, gmt': LG.GroupMap,
@@ -2496,7 +2561,7 @@ module LindenElkLiftSimCore {
     forall lid: nat | lid in NI.TopLookIds(re)
                       && M.MatchedPosLA(crv, th'.look_regs, lid as int)
                       && NI.LookPathDom(re, AI.get_idx(th'.look_regs.a_clk, lid as int), th'.quant_regs.a_clk, lid)
-      ensures var rf := M.FreshBodyMatch(crv, str, lid as int, th'.look_regs, ov, ncap, nlook, nquant);
+      ensures var rf := M.FreshBodyMatchPlus(crv, str, lid as int, th'.look_regs, ov, ncap, nlook, nquant);
               rf.Some? ==>
                 forall g: LG.GroupId ::
                   g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, lid))
@@ -2513,7 +2578,7 @@ module LindenElkLiftSimCore {
         NI.LookPathDomQuantOffPath(re, L, th.quant_regs.a_clk, th'.quant_regs.a_clk, lid, qn);
         assert NI.LookPathDom(re, L, th.quant_regs.a_clk, lid);
         NI.LookBodyQidBodyDisjoint(re, qn, lid);
-        var rf := M.FreshBodyMatch(crv, str, lid as int, th'.look_regs, ov, ncap, nlook, nquant);
+        var rf := M.FreshBodyMatchPlus(crv, str, lid as int, th'.look_regs, ov, ncap, nlook, nquant);
         forall g: LG.GroupId |
           rf.Some? && g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, lid))
           && g in PIV.GmOfLive(NI.LookBodyOfRE(re, lid), rf.value.capture_regs,
@@ -2542,7 +2607,7 @@ module LindenElkLiftSimCore {
                                 && AI.get_idx(th'.look_regs.a_cp, j) == AI.get_idx(th.look_regs.a_cp, j)
     requires forall g: LG.GroupId :: g in gmt ==> g in gmt'
     requires l0 >= 0 && (l0 as nat) in LTB.LookIds(re) ==>
-               var rf := M.FreshBodyMatch(crv, str, l0, th'.look_regs, ov, ncap, nlook, nquant);
+               var rf := M.FreshBodyMatchPlus(crv, str, l0, th'.look_regs, ov, ncap, nlook, nquant);
                rf.Some? ==>
                  forall g: LG.GroupId ::
                    g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, l0 as nat))
@@ -2555,7 +2620,7 @@ module LindenElkLiftSimCore {
     forall lid: nat | lid in NI.TopLookIds(re)
                       && M.MatchedPosLA(crv, th'.look_regs, lid as int)
                       && NI.LookPathDom(re, AI.get_idx(th'.look_regs.a_clk, lid as int), th'.quant_regs.a_clk, lid)
-      ensures var rf := M.FreshBodyMatch(crv, str, lid as int, th'.look_regs, ov, ncap, nlook, nquant);
+      ensures var rf := M.FreshBodyMatchPlus(crv, str, lid as int, th'.look_regs, ov, ncap, nlook, nquant);
               rf.Some? ==>
                 forall g: LG.GroupId ::
                   g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, lid))
@@ -2569,9 +2634,9 @@ module LindenElkLiftSimCore {
         assert M.MatchedPosLA(crv, th.look_regs, lid as int) by {
           assert AReg.get_cp(th'.look_regs, lid as int) == AReg.get_cp(th.look_regs, lid as int);
         }
-        assert M.FreshBodyMatch(crv, str, lid as int, th'.look_regs, ov, ncap, nlook, nquant)
-            == M.FreshBodyMatch(crv, str, lid as int, th.look_regs, ov, ncap, nlook, nquant) by {
-          assert AReg.get_cp(th'.look_regs, lid as int) == AReg.get_cp(th.look_regs, lid as int);
+        assert M.FreshBodyMatchPlus(crv, str, lid as int, th'.look_regs, ov, ncap, nlook, nquant)
+            == M.FreshBodyMatchPlus(crv, str, lid as int, th.look_regs, ov, ncap, nlook, nquant) by {
+          FreshPlusCpOnly(crv, str, lid as int, th'.look_regs, th.look_regs, ov, ncap, nlook, nquant);
         }
       }
     }
@@ -4502,7 +4567,7 @@ module LindenElkLiftSimCore {
       lid transports back through the flip: the backward fresh match's live
       inner gids are the flipped forward fresh match's (raw mirror, same keys),
       which the flipped carrier puts in the mirrored leaf — same keys as `gmt`. */
-  lemma LookNestBackTTopLidFlip(
+  lemma LookNestBackTTopLidFlipPlain(
     rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, crv: CP.FCompiled, str: string,
     ov: LOr.OracleView, gmt: LG.GroupMap, th: AI.Thread, lid: nat,
     ncap: int, nlook: int, nquant: int)
@@ -4519,9 +4584,9 @@ module LindenElkLiftSimCore {
     requires lid in NI.TopLookIds(body) && lid in LTB.LookIds(body)
     requires M.MatchedPosLA(crv, th.look_regs, lid as int)
     requires NI.LookPathDom(body, AI.get_idx(th.look_regs.a_clk, lid as int), th.quant_regs.a_clk, lid)
-    requires LookNestBackTTop(FST.FXR(body), FG.MirrorTables(crv), LC.Reverse(str),
-                              MIR.MirrorView(ov, |str|), PIV.CapIdsInLooks(body),
-                              TRM.MirrorGm(gmt, |str|), MIR.MirrorThread(th, |str|), ncap, nlook, nquant)
+    requires LookNestBackTTopPlain(FST.FXR(body), FG.MirrorTables(crv), LC.Reverse(str),
+                                   MIR.MirrorView(ov, |str|), PIV.CapIdsInLooks(body),
+                                   TRM.MirrorGm(gmt, |str|), MIR.MirrorThread(th, |str|), ncap, nlook, nquant)
     ensures var rf := M.FreshBodyMatch(crv, str, lid as int, th.look_regs, ov, ncap, nlook, nquant);
             rf.Some? ==>
               forall g: LG.GroupId ::
@@ -4581,6 +4646,122 @@ module LindenElkLiftSimCore {
         assert g in PIV.CapIds(NI.LookBodyOfRE(reF, lid));
         assert g in gmtF;
       }
+    }
+  }
+  /** Per row of a nulled-plus-free host: the plus replay is the plain one. */
+  lemma RowPlain(re: R.regex, crv: CP.FCompiled, str: string, lk: AReg.Regs, ov: LOr.OracleView,
+                 lid: nat, ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.NoNulledPlusRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires lid in LTB.LookIds(re)
+    requires M.MatchedPosLA(crv, lk, lid as int)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    ensures M.FreshBodyMatchPlus(crv, str, lid as int, lk, ov, ncap, nlook, nquant)
+         == M.FreshBodyMatch(crv, str, lid as int, lk, ov, ncap, nlook, nquant)
+  {
+    var r1 := NI.LookBodyOfRE(re, lid);
+    LookRowAny(re, crv, lid);
+    M.CapUniqueLookBodyOfRE(re, lid);
+    NI.LookBodyOfFragmentNested(re, lid);
+    FG.LookBodySubFactsLB(re, lid);
+    NI.NoNulledPlusLookBody(re, lid);
+    M.FreshBodyMatchPlusPlainRow(crv, str, lid as int, lk, ov, ncap, nlook, nquant,
+                                 crv.f_look_types[lid], r1);
+  }
+  lemma BackTTopPlusToPlain(re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                            S: set<LG.GroupId>, gmt: LG.GroupMap, th: AI.Thread,
+                            ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re) && NR.NoNulledPlusRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires LookNestBackTTop(re, crv, str, ov, S, gmt, th, ncap, nlook, nquant)
+    ensures LookNestBackTTopPlain(re, crv, str, ov, S, gmt, th, ncap, nlook, nquant)
+  {
+    forall lid: nat | lid in NI.TopLookIds(re) && lid in LTB.LookIds(re)
+                      && M.MatchedPosLA(crv, th.look_regs, lid as int)
+      ensures M.FreshBodyMatchPlus(crv, str, lid as int, th.look_regs, ov, ncap, nlook, nquant)
+           == M.FreshBodyMatch(crv, str, lid as int, th.look_regs, ov, ncap, nlook, nquant)
+    {
+      RowPlain(re, crv, str, th.look_regs, ov, lid, ncap, nlook, nquant);
+    }
+  }
+  /** (G3a) `LookNestBackTTopLidFlipPlain` on the plus carrier: a lookbehind host is nulled-plus-free, so
+      both carriers and both row replays are the plain ones (`BackTTopPlusToPlain`, `RowPlain`). */
+  lemma LookNestBackTTopLidFlip(
+    rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, crv: CP.FCompiled, str: string,
+    ov: LOr.OracleView, gmt: LG.GroupMap, th: AI.Thread, lid: nat,
+    ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)
+    requires NR.NoNulledPlusRE(body)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires !rer.ignoreCase && !rer.multiline
+    requires |ov| == |str| + 1
+    requires qm.ov == ov && AR.LmapOk(body, qm) && OE.OracleColsOk(rer, qm, str)
+    requires LTB.LookTablesOk(body, crv) && |crv.f_look_types| == |crv.f_look_ast|
+    requires TRM.GmInBounds(gmt, |str|)
+    requires CM.LookCpsLE(th.look_regs, |str|)
+    requires lid in NI.TopLookIds(body) && lid in LTB.LookIds(body)
+    requires M.MatchedPosLA(crv, th.look_regs, lid as int)
+    requires NI.LookPathDom(body, AI.get_idx(th.look_regs.a_clk, lid as int), th.quant_regs.a_clk, lid)
+    requires LookNestBackTTop(FST.FXR(body), FG.MirrorTables(crv), LC.Reverse(str),
+                          MIR.MirrorView(ov, |str|), PIV.CapIdsInLooks(body),
+                          TRM.MirrorGm(gmt, |str|), MIR.MirrorThread(th, |str|), ncap, nlook, nquant)
+    ensures var rf := M.FreshBodyMatchPlus(crv, str, lid as int, th.look_regs, ov, ncap, nlook, nquant);
+            rf.Some? ==>
+              forall g: LG.GroupId ::
+                g in PIV.CapIdsInLooks(body) && g in PIV.CapIds(NI.LookBodyOfRE(body, lid))
+                && g in PIV.GmOfLive(NI.LookBodyOfRE(body, lid), rf.value.capture_regs,
+                                     rf.value.look_regs, rf.value.quant_regs)
+                ==> g in gmt
+  {
+    var reF := FST.FXR(body);
+    var crvF := FG.MirrorTables(crv);
+    FST.FXRStructural(body);
+    FST.NoNulledPlusFXR(body);
+    FG.LookTablesOkFXR(body, crv);
+    BackTTopPlusToPlain(reF, crvF, LC.Reverse(str), MIR.MirrorView(ov, |str|), PIV.CapIdsInLooks(body),
+                        TRM.MirrorGm(gmt, |str|), MIR.MirrorThread(th, |str|), ncap, nlook, nquant);
+    LookNestBackTTopLidFlipPlain(rer, qm, body, crv, str, ov, gmt, th, lid, ncap, nlook, nquant);
+    RowPlain(body, crv, str, th.look_regs, ov, lid, ncap, nlook, nquant);
+  }
+  /** (moved from MainCinLk.dfy:244, verbatim) */
+  lemma NoNulledPlusNoCin(r: R.regex, q: nat)
+    requires T.TransWf(r)
+    requires NR.NoNulledPlusRE(r) && q in PIV.QuantIds(r)
+    ensures !NRR.QidCinPlus(r, q)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => if q in PIV.QuantIds(r1) { NoNulledPlusNoCin(r1, q); } else { NoNulledPlusNoCin(r2, q); }
+    case Re_con(r1, r2) => if q in PIV.QuantIds(r1) { NoNulledPlusNoCin(r1, q); } else { NoNulledPlusNoCin(r2, q); }
+    case Re_quant(nul, qid, qq, r1) => if !(qid >= 0 && (qid as nat) == q) { NoNulledPlusNoCin(r1, q); }
+    case Re_capture(_, r1) => NoNulledPlusNoCin(r1, q);
+    case Re_lookaround(_, _, r1) => NoNulledPlusNoCin(r1, q);
+  }
+  /** The table fact crosses the flip at a nulled-plus-free host (every entry is `[]` on both sides). */
+  lemma PlusTableOkFXR(host: R.regex, plus: seq<RB.code>)
+    requires T.TransWf(host) && NR.NestedFragmentRE(host)
+    requires PIV.CapUnique(host) && PIV.QuantUnique(host)
+    requires NR.NoNulledPlusRE(host)
+    requires NRR.PlusTableOk(host, plus)
+    ensures NRR.PlusTableOk(FST.FXR(host), plus)
+  {
+    var hF := FST.FXR(host);
+    FST.FXRStructural(host);
+    FST.NoNulledPlusFXR(host);
+    FST.XRevIsRevRENested(host);
+    LBV.QuantIdsRevRE(host);
+    FST.FlipQuantIds(FST.XRV(host));
+    assert PIV.QuantIds(hF) == PIV.QuantIds(host);
+    forall q: nat | q in PIV.QuantIds(hF)
+      ensures AI.get_code_v(plus, q as int)
+           == (if NRR.QidCinPlus(hF, q) then CP.compile_reconstruct_nulled(PIV.QidBody(hF, q)) else [])
+    {
+      NoNulledPlusNoCin(hF, q);
+      NoNulledPlusNoCin(host, q);
     }
   }
 
@@ -4981,11 +5162,11 @@ module LindenElkLiftSimCore {
     owner in LTB.LookIds(re)
     && g in PIV.CapIds(NI.LookBodyOfRE(re, owner))
     && g !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
-    && M.FreshBodyMatch(crv, str, owner as int, res1, ov, ncap, nlook, nquant).Some?
+    && M.FreshBodyMatchPlus(crv, str, owner as int, res1, ov, ncap, nlook, nquant).Some?
     && g in PIV.GmOfLive(NI.LookBodyOfRE(re, owner),
-                         M.FreshBodyMatch(crv, str, owner as int, res1, ov, ncap, nlook, nquant).value.capture_regs,
-                         M.FreshBodyMatch(crv, str, owner as int, res1, ov, ncap, nlook, nquant).value.look_regs,
-                         M.FreshBodyMatch(crv, str, owner as int, res1, ov, ncap, nlook, nquant).value.quant_regs)
+                         M.FreshBodyMatchPlus(crv, str, owner as int, res1, ov, ncap, nlook, nquant).value.capture_regs,
+                         M.FreshBodyMatchPlus(crv, str, owner as int, res1, ov, ncap, nlook, nquant).value.look_regs,
+                         M.FreshBodyMatchPlus(crv, str, owner as int, res1, ov, ncap, nlook, nquant).value.quant_regs)
   }
 
   /** L4 PERF: the owner-package forall, OPAQUE (the `forall g :: exists owner`

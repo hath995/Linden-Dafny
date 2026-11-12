@@ -2913,7 +2913,6 @@ module LindenElkLiftSimChain {
     // for the recursive outside-tie); the GateStepValue body-package requires
     // (StaticOkRE(body)/bodycode/qt/f_look_* rows) are DROPPED with the call.
     requires T.TransWf(body) && NR.NestedFragmentRE(body) && la.Lookahead?
-    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires r1 == T.Translate(body) && lk == T.TrLookaround(la)
     requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
     requires 0 <= l < nlook && l < RL.ASize(t.look_regs)
@@ -2974,7 +2973,6 @@ module LindenElkLiftSimChain {
     // for the recursive outside-tie); the GateStepValue body-package requires
     // (StaticOkRE(body)/bodycode/qt/f_look_* rows) are DROPPED with the call.
     requires T.TransWf(body) && NR.NestedFragmentRE(body) && la.Lookbehind?
-    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires r1 == T.Translate(body) && lk == T.TrLookaround(la)
     requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
     requires 0 <= l < nlook && l < RL.ASize(t.look_regs)
@@ -3151,18 +3149,7 @@ module LindenElkLiftSimChain {
     }
     assert {:split_here} true;
     // the value lifts at the owner
-    var rf := M.FreshBodyMatch(crv, str, owner as int, res1, ov, ncap, nlook, nquant);
-    assert {:split_here} true;   // (G3a) the bridge in its own batch
-    assert rf == M.FreshBodyMatchPlus(crv, str, owner as int, res1, ov, ncap, nlook, nquant) by {   // (G3a) stamp-free row
-      // the hub row at `owner` carries the nulled-plus-free body (GateStaticsOkNested)
-      assert GateStaticAtNested(qm, re, crv, owner as int, ncap, nlook, nquant);
-      var laT: R.lookaround, bT: R.regex :| LTB.LookEntryOk(crv, owner as int, laT, bT)
-                                          && NR.NestedFragmentRE(bT) && NR.NoNulledPlusRE(bT);
-      var laK: R.lookaround :| LTB.LookEntryOk(crv, owner as int, laK, body);   // LookBodyFactsKB
-      M.LookEntryBody(crv, owner as int, laT, bT, laK, body);
-      assert NR.NoNulledPlusRE(body) && PIV.QuantUnique(body) && PIV.CapUnique(body);
-      M.FreshBodyMatchPlusPlainRow(crv, str, owner as int, res1, ov, ncap, nlook, nquant, laT, body);
-    }
+    var rf := M.FreshBodyMatchPlus(crv, str, owner as int, res1, ov, ncap, nlook, nquant);   // (G3a) OwnerPkg names the plus replay
     assert {:split_here} true;
     PIV.CapIdsSplit(body);
     assert g in PIV.CapIdsOutsideLooks(body);

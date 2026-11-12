@@ -229,6 +229,7 @@ module LindenElkLiftSimForward {
       ensures (1 <= A <= maxlook && (A as int) in qm.looks)
       ensures (GateStaticAtNested(qm, re, crv, A as int, ncap, nlook, nquant))
       ensures (bA == host)
+      ensures (RowPlusOk(host, crv.f_plus_bc, nlook))   // (G3a) the row's plus facts
       ensures (host == M.VBody(crv, A as int))
       ensures (PSM.StaticOkNestedRE(qm, host, bodycode, endlH))
       ensures (crv.f_look_types[A as int] == laA)
@@ -276,16 +277,7 @@ module LindenElkLiftSimForward {
       assert GateStaticAtNested(qm, re, crv, A as int, ncap, nlook, nquant) by {
         hide *; reveal GateStaticsOkNested;
       }
-      laA, bA :|
-        LTB.LookEntryOk(crv, A as int, laA, bA)
-        && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-        && qm.looks[A as int].0 == T.TrLookaround(laA)
-        && qm.looks[A as int].1 == T.Translate(bA)
-        && (set g0: LG.GroupId | g0 in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
-        && var bc := CP.compile_to_bytecode(bA);
-        |bc| >= 1
-        && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
-        && PSM.SizesOkRE(bA, ncap, nlook, nquant);
+      laA, bA := GateStaticPick(qm, re, crv, A as int, ncap, nlook, nquant);   // (G3a) the picker
       NI.LookBodyOfTablesTie(re, crv, A);
       laT :| LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A));
       assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
@@ -327,6 +319,7 @@ module LindenElkLiftSimForward {
       assert (rfP.Some? <==> rb.Some?)
           && (rfP.Some? ==> CM.LookClkSetWithCp(rfP.value.look_regs) && CM.LookCpSetWithClk(rfP.value.look_regs)
                             && CM.LookCpsLE(rfP.value.look_regs, |str|)) by {
+        RowPlusFacts(host, crv.f_plus_bc, nlook);   // (G3a)
         LookNestBackTFromBodyReplayLB(rer, qmB, laA, host, bodycodeB, crv, str, cpA, ov,
                                       cdnA, crv.f_plus_bc, ncap, nlook, nquant);
       }
@@ -464,6 +457,7 @@ module LindenElkLiftSimForward {
              && AI.get_idx(rfA.look_regs.a_clk, A1 as int) >= 0
              && AI.get_idx(rfA.look_regs.a_clk, A1 as int)
                 >= NI.MxAtLidLk(host, rfA.quant_regs.a_clk, -1, A1) by {
+        RowPlusFacts(host, crv.f_plus_bc, nlook);   // (G3a)
         LookNestBackTFromBodyReplayLB(rer, qmB, laA, host, bodycodeB, crv, str, cpA, ov,
                                       cdnA, crv.f_plus_bc, ncap, nlook, nquant);
         assert LookNestOkTTop(host, Sh, gmtH, rfA);
@@ -567,6 +561,7 @@ module LindenElkLiftSimForward {
       // ⊇ direction's value clause gives the value tie.
       assert {:split_here} true;   // (E3) block-2 sub-batch (heavy obligation)
       assert g in lsub1rf.value && gmtH[g] == lsub1rf.value[g] by {   // the deep carrier's instance at A1, scoped
+        RowPlusFacts(host, crv.f_plus_bc, nlook);   // (G3a)
         LookNestBackTFromBodyReplayLB(rer, qmB, laA, host, bodycodeB, crv, str, cpA, ov,
                                       cdnA, crv.f_plus_bc, ncap, nlook, nquant);
         assert LookNestBackTTopDeep(rer, host, crv, str, ov, Sh, gmtH, rfA, ncap, nlook, nquant);
@@ -740,16 +735,7 @@ module LindenElkLiftSimForward {
     // ---- the row at A (VERBATIM DeepFindRec) ----
     assert 1 <= A <= maxlook && (A as int) in qm.looks;
     assert GateStaticAtNested(qm, re, crv, A as int, ncap, nlook, nquant);
-    var laA: R.lookaround, bA: R.regex :|
-      LTB.LookEntryOk(crv, A as int, laA, bA)
-      && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && qm.looks[A as int].0 == T.TrLookaround(laA)
-      && qm.looks[A as int].1 == T.Translate(bA)
-      && (set g0: LG.GroupId | g0 in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
-      && var bc := CP.compile_to_bytecode(bA);
-      |bc| >= 1
-      && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
-      && PSM.SizesOkRE(bA, ncap, nlook, nquant);
+    var laA: R.lookaround, bA: R.regex := GateStaticPick(qm, re, crv, A as int, ncap, nlook, nquant);   // (G3a) the picker
     NI.LookBodyOfTablesTie(re, crv, A);
     var laT: R.lookaround :| LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A));
     assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
@@ -840,17 +826,7 @@ module LindenElkLiftSimForward {
     assert 1 <= A <= maxlook && (A as int) in qm.looks;
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert GateStaticAtNested(qm, re, crv, A as int, ncap, nlook, nquant);
-    var laA: R.lookaround, bA: R.regex :|
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      LTB.LookEntryOk(crv, A as int, laA, bA)
-      && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && qm.looks[A as int].0 == T.TrLookaround(laA)
-      && qm.looks[A as int].1 == T.Translate(bA)
-      && (set g0: LG.GroupId | g0 in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
-      && var bc := CP.compile_to_bytecode(bA);
-      |bc| >= 1
-      && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
-      && PSM.SizesOkRE(bA, ncap, nlook, nquant);
+    var laA: R.lookaround, bA: R.regex := GateStaticPick(qm, re, crv, A as int, ncap, nlook, nquant);   // (G3a) the picker
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     NI.LookBodyOfTablesTie(re, crv, A);
     var laT: R.lookaround :| LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A));
@@ -903,6 +879,7 @@ module LindenElkLiftSimForward {
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       M.LooksNoNulledPlusFromFull(host);   // (§2.5b F-c) NoNulledPlusRE(host) from the row
+      RowPlusFacts(host, crv.f_plus_bc, nlook);   // (G3a)
       GateStaticsFromTablesNested(qmB, host, crv, ncap, nlook, nquant);
     }
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -1127,15 +1104,7 @@ module LindenElkLiftSimForward {
       assert (A1 as int) in qm.looks;
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert GateStaticAtNested(qm, re, crv, A1 as int, ncap, nlook, nquant);
-      var la1G: R.lookaround, b1G: R.regex :| LTB.LookEntryOk(crv, A1 as int, la1G, b1G)
-                                              && T.TransWf(b1G) && NR.NestedFragmentRE(b1G)
-                                              && qm.looks[A1 as int].0 == T.TrLookaround(la1G)
-                                              && qm.looks[A1 as int].1 == T.Translate(b1G)
-                                              && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(b1G))) <= PIV.CapIdsInLooks(re)
-                                              && var bc1 := CP.compile_to_bytecode(b1G);
-                                              |bc1| >= 1
-                                              && PSM.StaticOkNestedRE(qm, b1G, bc1, |bc1| - 1)
-                                              && PSM.SizesOkRE(b1G, ncap, nlook, nquant);
+      var la1G: R.lookaround, b1G: R.regex := GateStaticPick(qm, re, crv, A1 as int, ncap, nlook, nquant);   // (G3a) the picker
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert b1G == bodyA1 by {
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -1358,16 +1327,7 @@ module LindenElkLiftSimForward {
     // ---- the row at A (VERBATIM DeepFindRec) ----
     assert 1 <= A <= maxlook && (A as int) in qm.looks;
     assert GateStaticAtNested(qm, re, crv, A as int, ncap, nlook, nquant);
-    var laA: R.lookaround, bA: R.regex :|
-      LTB.LookEntryOk(crv, A as int, laA, bA)
-      && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && qm.looks[A as int].0 == T.TrLookaround(laA)
-      && qm.looks[A as int].1 == T.Translate(bA)
-      && (set g0: LG.GroupId | g0 in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
-      && var bc := CP.compile_to_bytecode(bA);
-      |bc| >= 1
-      && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
-      && PSM.SizesOkRE(bA, ncap, nlook, nquant);
+    var laA: R.lookaround, bA: R.regex := GateStaticPick(qm, re, crv, A as int, ncap, nlook, nquant);   // (G3a) the picker
     NI.LookBodyOfTablesTie(re, crv, A);
     var laT: R.lookaround :| LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A));
     assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
@@ -1501,17 +1461,7 @@ module LindenElkLiftSimForward {
       assert GateStaticAtNested(qm, re, crv, A0 as int, ncap, nlook, nquant);
       // (2026-08-25) full conjunct list of `GateStaticAtNested`'s exists (a subset
       // is not reliably instantiated under {:isolate_assertions}).
-      var laA0: R.lookaround, bT: R.regex :|
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        LTB.LookEntryOk(crv, A0 as int, laA0, bT)
-        && T.TransWf(bT) && NR.NestedFragmentRE(bT)
-        && qm.looks[A0 as int].0 == T.TrLookaround(laA0)
-        && qm.looks[A0 as int].1 == T.Translate(bT)
-        && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(bT))) <= PIV.CapIdsInLooks(re)
-        && var bodycode := CP.compile_to_bytecode(bT);
-        |bodycode| >= 1
-        && PSM.StaticOkNestedRE(qm, bT, bodycode, |bodycode| - 1)
-        && PSM.SizesOkRE(bT, ncap, nlook, nquant);
+      var laA0: R.lookaround, bT: R.regex := GateStaticPick(qm, re, crv, A0 as int, ncap, nlook, nquant);   // (G3a) the picker
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert bT == bA0 by {
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14

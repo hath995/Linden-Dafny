@@ -114,6 +114,7 @@ module LindenElkLiftSimGate {
   import opened LindenElkLiftSimOracle
   import opened LindenElkLiftSimChain
   import GG = LindenElkFlipGateG         // (gate B) flip-gate F6, scope-free
+  import MA = LindenElkMachineA          // (G3a) machine A on the plus match
 
   /** `LiftInvCNested` carrying the standalone `LiftInvRec`. */
   ghost predicate LiftInvCRec(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
@@ -1084,6 +1085,9 @@ module LindenElkLiftSimGate {
       assert ([(t.t2, gm)] + ta[1..])[0] == (t.t2, gm) && ([(t.t2, gm)] + ta[1..])[1..] == ta[1..];
       assert vms2.active[0] == th1 && vms2.active[1..] == [th2] + s.active[1..];
       assert ([th2] + s.active[1..])[0] == th2 && ([th2] + s.active[1..])[1..] == s.active[1..];
+      // (G3a) the two unfoldings, one at a time
+      assert ActiveRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, [(t.t2, gm)] + ta[1..], [th2] + s.active[1..],
+                             ncap, nlook, nquant);
       assert ActiveRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, na + ta[1..], vms2.active,
                              ncap, nlook, nquant);
 
@@ -1267,17 +1271,7 @@ module LindenElkLiftSimGate {
     // (§2.5b pack) the package's own conjuncts (a direct instance: the
     // StaticCoreNestedRE weakening made the solver rebuild StaticOkNestedRE(body)
     // for LkReplayMatchesSpecNested — 900 s in the gate pack)
-    var la: R.lookaround, body: R.regex :|
-      LTB.LookEntryOk(crv, l, la, body)
-      && T.TransWf(body) && NR.NestedFragmentRE(body)
-      && NR.NoNulledPlusRE(body)
-      && qm.looks[l].0 == T.TrLookaround(la)
-      && qm.looks[l].1 == T.Translate(body)
-      && (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
-      && var bodycode := CP.compile_to_bytecode(body);
-      |bodycode| >= 1
-      && PSM.StaticOkNestedRE(qm, body, bodycode, |bodycode| - 1)
-      && PSM.SizesOkRE(body, ncap, nlook, nquant);
+    var la: R.lookaround, body: R.regex := GateStaticPick(qm, re, crv, l, ncap, nlook, nquant);   // (G3a) the picker
     assert lk == T.TrLookaround(la) && r1 == T.Translate(body);
     assert body == M.VBody(crv, l);
     assert 0 <= l < nlook;
@@ -1297,7 +1291,6 @@ module LindenElkLiftSimGate {
     assert l >= 0 && (l as nat) in LTB.LookIds(re);
     NI.LookBodyOfTablesTie(re, crv, l as nat);
     assert body == NI.LookBodyOfRE(re, l as nat);
-    assert NR.NoNulledPlusRE(body);   // (§2.5b F-c) the per-lid package carries it (look bodies stay stamp-free)
     // (L5 F7f) the L5 per-lid dispatch: a positive LOOKBEHIND is in scope iff its
     // body is lookbehind-only (`LBOnlyLooksRE`) — the LB arms below consume it.
     assert la.Lookahead? || la.Lookbehind?;
@@ -1376,7 +1369,6 @@ module LindenElkLiftSimGate {
     // (`LkResultAgreeOutsideNested` on the recursive `PikeLkRegexRec(r1)`) replaces
     // the depth-1 look-free `NoLkBrL(r1)` frame. The fold still writes only
     // `DefGroups(r1)`, so any newly-set S-group of gm2 lies in the gate body.
-    assert NR.NoNulledPlusRE(body);   // (§2.5b F-c) the per-lid package carries it (look bodies stay stamp-free)
     EL.TranslateFragmentPikeLkRec(body);
     assert EL.PikeLkRegexRec(r1);
     LkResultAgreeOutsideNested(rer, lk, r1, inp, tlk, gm);
@@ -1426,7 +1418,7 @@ module LindenElkLiftSimGate {
       }
     }
     // the crossing coverage for l itself
-    assert var rfx := M.FreshBodyMatch(crv, str, l, th'.look_regs, ov, ncap, nlook, nquant);
+    assert var rfx := M.FreshBodyMatchPlus(crv, str, l, th'.look_regs, ov, ncap, nlook, nquant);   // (G3a) the plus replay
            rfx.Some? ==>
              forall g: LG.GroupId ::
                g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, l as nat))
@@ -1434,7 +1426,7 @@ module LindenElkLiftSimGate {
                                     rfx.value.look_regs, rfx.value.quant_regs)
                ==> g in gm2
     by {
-      var rfx := M.FreshBodyMatch(crv, str, l, th'.look_regs, ov, ncap, nlook, nquant);
+      var rfx := M.FreshBodyMatchPlus(crv, str, l, th'.look_regs, ov, ncap, nlook, nquant);
       if rfx.Some? {
         if la.Lookahead? {
           M.TranslateDefGroupsEqCapIds(body);
@@ -1455,17 +1447,24 @@ module LindenElkLiftSimGate {
           assert AReg.get_cp(th'.look_regs, l) == Some(s1.cp) by {
             RL.ASetLaws(th.look_regs, l, Some(cp as int), clk);
           }
-          // (BRICK D5) the NESTED value keystone: agreement on the OUTER groups
-          // `Sout = DefGroups(tr) \ LkBodyGroups(tr)` (fresh cap == cap here).
-          M.LkReplayMatchesSpecNested(rer, qm, body, bodycode3, |bodycode3| - 1, 0, str, cp,
-                                      AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant),
-                                      ov, LCdn.compile_cdns(body), la, tlk, gm, ncap, nlook, nquant);
-          assert crv.f_look_cdns[l] == LCdn.compile_cdns(body);      // LookEntryOk row
-          var rfSpec := AI.FFindMatch(bodycode3, str,
-                                      AI.FInitState(bodycode3, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                                    AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward)),
-                                      ov, LAnc.Forward, LCdn.compile_cdns(body)).0;
-          assert rfx == rfSpec;
+          // (G3a) machine A on the PLUS match: the gate's `LkResult` agrees with the fresh plus replay on
+          // the OUTER groups `Sout = DefGroups(tr) \ LkBodyGroups(tr)` (`MA.LkReplayMatchesSpecPlus`).
+          var cdnb := LCdn.compile_cdns(body);
+          assert crv.f_look_cdns[l] == cdnb;                          // LookEntryOk row
+          var rfPlus := AI.FFindMatchPlus(bodycode3, body, crv.f_plus_bc, str, ov, LAnc.Forward, cp,
+                                          AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant),
+                                          0, cdnb).0;
+          assert rfx == rfPlus by {
+            assert CP.capture_regex(la, body) == body && AI.capture_direction(la) == LAnc.Forward;
+            reveal M.FreshBodyMatchPlus();
+          }
+          assert {:split_here} true;
+          assert MA.MachineAPre(rer, qm, body, bodycode3, |bodycode3| - 1, str, cp, ov, crv.f_plus_bc,
+                                ncap, nlook, nquant) by {
+            reveal RowPlusOk(); reveal M.RowLAStatics();
+          }
+          MA.LkReplayMatchesSpecPlus(rer, qm, body, bodycode3, |bodycode3| - 1, 0, str, cp, ov, cdnb,
+                                     crv.f_plus_bc, tlk, gm, ncap, nlook, nquant);
           assert LS.LkResult(T.TrLookaround(la), tlk, gm, inp).Some?
                  && LS.LkResult(T.TrLookaround(la), tlk, gm, inp).value == gm2 by {
             assert lk == T.TrLookaround(la);
@@ -1473,16 +1472,14 @@ module LindenElkLiftSimGate {
           var Sout := set gx | gx in L.DefGroups(T.Translate(body))
                                && gx !in LL.LkBodyGroups(T.Translate(body));
           assert M.GmAgreeOn(gm2,
-                             PIV.GmOfLive(body, rfSpec.value.capture_regs,
-                                          rfSpec.value.look_regs, rfSpec.value.quant_regs),
+                             PIV.GmOfLive(body, rfPlus.value.capture_regs,
+                                          rfPlus.value.look_regs, rfPlus.value.quant_regs),
                              Sout);
-          // (BRICK D5) the INNER groups (`LkBodyGroups(tr) == CapIdsInLooks(body)`)
-          // are ABSENT from the fresh body match's live denotation — a lookaround
-          // compiles to a single CheckOracle leaf, so the fresh match records none
-          // of them (`FreshBodyMatchGmOuter`). So the (E4) coverage reduces to the
-          // OUTER groups, discharged by `LkReplayMatchesSpecNested`.
-          FreshBodyMatchGmOuter(qm, body, bodycode3, |bodycode3| - 1, str, cp, ov,
-                                LCdn.compile_cdns(body), ncap, nlook, nquant);
+          assert {:split_here} true;
+          // the INNER groups (`LkBodyGroups(tr) == CapIdsInLooks(body)`) are ABSENT from the fresh plus
+          // replay's live denotation (`MA.FreshPlusGmOuter`); the coverage reduces to the OUTER groups.
+          assert M.RowLAStatics(body, crv.f_plus_bc) by { reveal RowPlusOk(); }
+          MA.FreshPlusGmOuter(body, bodycode3, str, cp, ov, cdnb, crv.f_plus_bc, ncap, nlook, nquant);
           forall g: LG.GroupId |
             g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, l as nat))
             && g in PIV.GmOfLive(NI.LookBodyOfRE(re, l as nat), rfx.value.capture_regs,
@@ -1490,13 +1487,13 @@ module LindenElkLiftSimGate {
             ensures g in gm2
           {
             assert g in PIV.CapIds(body);                                  // body == LookBodyOfRE(re,l)
-            assert g in PIV.GmOfLive(body, rfSpec.value.capture_regs,
-                                     rfSpec.value.look_regs, rfSpec.value.quant_regs);  // rfx == rfSpec
+            assert g in PIV.GmOfLive(body, rfPlus.value.capture_regs,
+                                     rfPlus.value.look_regs, rfPlus.value.quant_regs);  // rfx == rfPlus
             assert g in (set gx | gx in L.DefGroups(T.Translate(body)));   // TranslateDefGroupsEqCapIds
             if g in PIV.CapIdsInLooks(body) {
-              // fresh match records no inner-look captures ⇒ contradicts g live
-              assert g !in PIV.GmOfLive(body, rfSpec.value.capture_regs,
-                                        rfSpec.value.look_regs, rfSpec.value.quant_regs);
+              // the fresh plus replay records no inner-look captures ⇒ contradicts g live
+              assert g !in PIV.GmOfLive(body, rfPlus.value.capture_regs,
+                                        rfPlus.value.look_regs, rfPlus.value.quant_regs);
               assert false;
             }
             assert g !in LL.LkBodyGroups(T.Translate(body));   // == CapIdsInLooks(body)
@@ -1531,6 +1528,8 @@ module LindenElkLiftSimGate {
           assert AR.LmapOk(body, qm) by { FG.LmapOkLookBody(re, qm, l as nat); }
           assert 0 <= l < |crv.f_look_types| && crv.f_look_types[l].Lookbehind?
                  && 0 <= l < |crv.f_look_cdns|;                                   // LookEntryOk row
+          // (G3a) a lookbehind body is nulled-plus-free: the plus replay is the plain one
+          M.FreshBodyMatchPlusPlainRow(crv, str, l, th'.look_regs, ov, ncap, nlook, nquant, la, body);
           FG.FreshBodyMatchLBUnfold(crv, str, l, th'.look_regs, ov, body, ncap, nlook, nquant);
           var bcB := CP.compile_to_bytecode(R.reverse_regex(body));
           assert rfx == AI.FFindMatch(bcB, str,

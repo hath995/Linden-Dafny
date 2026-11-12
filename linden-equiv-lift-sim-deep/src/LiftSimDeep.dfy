@@ -114,34 +114,7 @@ module LindenElkLiftSimDeep {
   import opened LindenElkLiftSimGate
   import opened LindenElkLiftSimCarriers
 
-  /** The row witnesses of `GateStaticAtNested`, picked in a small context: the same
-      `:|` inside `DeepFindRecLB` runs out of resources under z3 4.14.1 (§2.2 step B). */
-  lemma GateStaticPick(qm: AR.QMap, re: R.regex, crv: CP.FCompiled, l: int, ncap: int, nlook: int, nquant: int)
-    returns (la: R.lookaround, body: R.regex)
-    requires GateStaticAtNested(qm, re, crv, l, ncap, nlook, nquant)
-    ensures l in qm.looks
-    ensures LTB.LookEntryOk(crv, l, la, body)
-            && T.TransWf(body) && NR.NestedFragmentRE(body)
-            && NR.NoNulledPlusRE(body)
-            && qm.looks[l].0 == T.TrLookaround(la)
-            && qm.looks[l].1 == T.Translate(body)
-            && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
-            && var bc := CP.compile_to_bytecode(body);
-            |bc| >= 1
-            && PSM.StaticOkNestedRE(qm, body, bc, |bc| - 1)
-            && PSM.SizesOkRE(body, ncap, nlook, nquant)
-  {
-    la, body :| LTB.LookEntryOk(crv, l, la, body)
-                && T.TransWf(body) && NR.NestedFragmentRE(body)
-                && NR.NoNulledPlusRE(body)
-                && qm.looks[l].0 == T.TrLookaround(la)
-                && qm.looks[l].1 == T.Translate(body)
-                && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
-                && var bc := CP.compile_to_bytecode(body);
-                |bc| >= 1
-                && PSM.StaticOkNestedRE(qm, body, bc, |bc| - 1)
-                && PSM.SizesOkRE(body, ncap, nlook, nquant);
-  }
+  // (G3a) `GateStaticPick` moved to lift-sim-core.
 
   /** (L5 F7f perf) The LOOKBEHIND arm of `DeepFindRec`, extracted so each of its
       assertions is checked in the small context of this lemma rather than in the
@@ -180,7 +153,7 @@ module LindenElkLiftSimDeep {
     requires owner in LTB.LookIds(re)
     requires g2 in PIV.CapIds(NI.LookBodyOfRE(re, owner))
     requires g2 !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
-    requires var rfO := M.FreshBodyMatch(crv, str, owner as int, res1, ov, ncap, nlook, nquant);
+    requires var rfO := M.FreshBodyMatchPlus(crv, str, owner as int, res1, ov, ncap, nlook, nquant);   // (G3a) OwnerPkg
              rfO.Some? && g2 in PIV.GmOfLive(NI.LookBodyOfRE(re, owner),
                                              rfO.value.capture_regs, rfO.value.look_regs, rfO.value.quant_regs)
     // ---- per-level data ----
@@ -219,17 +192,7 @@ module LindenElkLiftSimDeep {
     assert 1 <= A <= maxlook && (A as int) in qm.looks;
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert GateStaticAtNested(qm, re, crv, A as int, ncap, nlook, nquant);   // GateStaticsOkNested
-    var laA: R.lookaround, bA: R.regex :|
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      LTB.LookEntryOk(crv, A as int, laA, bA)
-      && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && qm.looks[A as int].0 == T.TrLookaround(laA)
-      && qm.looks[A as int].1 == T.Translate(bA)
-      && (set g: LG.GroupId | g in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
-      && var bc := CP.compile_to_bytecode(bA);
-      |bc| >= 1
-      && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
-      && PSM.SizesOkRE(bA, ncap, nlook, nquant);
+    var laA: R.lookaround, bA: R.regex := GateStaticPick(qm, re, crv, A as int, ncap, nlook, nquant);   // (G3a) the picker
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     NI.LookBodyOfTablesTie(re, crv, A);
     var laT: R.lookaround :| LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A));
@@ -264,7 +227,7 @@ module LindenElkLiftSimDeep {
       M.InnermostOwnerUnique(re, g2, owner, A);
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert owner == A;
-      var rfO := M.FreshBodyMatch(crv, str, A as int, res1, ov, ncap, nlook, nquant);
+      var rfO := M.FreshBodyMatchPlus(crv, str, A as int, res1, ov, ncap, nlook, nquant);   // (G3a) OwnerPkg
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert rfO.Some?
              && g2 in PIV.GmOfLive(host, rfO.value.capture_regs, rfO.value.look_regs, rfO.value.quant_regs);
@@ -286,6 +249,9 @@ module LindenElkLiftSimDeep {
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       M.LooksNoNulledPlusBody(re, A);   // §2.5b interim: NoNulledPlusRE(host)
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      // (G3a) a lookbehind body is nulled-plus-free: the owner's plus replay is the plain one
+      M.FreshBodyMatchPlusPlainRow(crv, str, A as int, res1, ov, ncap, nlook, nquant, laA, host);
+      assert {:split_here} true;
       FreshBodyDirectInSubFirstLeafLB(rer, qmB0, crv, str, ov, A, res1, host, g2,
                                       ncap, nlook, nquant);
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -395,6 +361,7 @@ module LindenElkLiftSimDeep {
       var bodycodeB := CP.compile_to_bytecode(R.reverse_regex(host));
       var cdnA := crv.f_look_cdns[A as int];
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+      RowPlusFacts(host, crv.f_plus_bc, nlook);   // (G3a)
       LookNestBackTFromBodyReplayLB(rer, qmB, laA, host, bodycodeB, crv, str, cpA, ov,
                                     cdnA, crv.f_plus_bc, ncap, nlook, nquant);
       var rbT := LFU.ComputeTr(rer, [LS.Areg(T.Translate(host))], inpA, LG.Empty, WP.Backward);
@@ -612,7 +579,7 @@ module LindenElkLiftSimDeep {
     requires owner in LTB.LookIds(re)
     requires g2 in PIV.CapIds(NI.LookBodyOfRE(re, owner))
     requires g2 !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
-    requires var rfO := M.FreshBodyMatch(crv, str, owner as int, res1, ov, ncap, nlook, nquant);
+    requires var rfO := M.FreshBodyMatchPlus(crv, str, owner as int, res1, ov, ncap, nlook, nquant);   // (G3a) OwnerPkg
              rfO.Some? && g2 in PIV.GmOfLive(NI.LookBodyOfRE(re, owner),
                                              rfO.value.capture_regs, rfO.value.look_regs, rfO.value.quant_regs)
     // ---- per-level data ----
@@ -646,16 +613,7 @@ module LindenElkLiftSimDeep {
     // ---- the row at A: la_A + host tie + statics ----
     assert 1 <= A <= maxlook && (A as int) in qm.looks;
     assert GateStaticAtNested(qm, re, crv, A as int, ncap, nlook, nquant);   // GateStaticsOkNested
-    var laA: R.lookaround, bA: R.regex :|
-      LTB.LookEntryOk(crv, A as int, laA, bA)
-      && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && qm.looks[A as int].0 == T.TrLookaround(laA)
-      && qm.looks[A as int].1 == T.Translate(bA)
-      && (set g: LG.GroupId | g in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
-      && var bc := CP.compile_to_bytecode(bA);
-      |bc| >= 1
-      && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
-      && PSM.SizesOkRE(bA, ncap, nlook, nquant);
+    var laA: R.lookaround, bA: R.regex := GateStaticPick(qm, re, crv, A as int, ncap, nlook, nquant);   // (G3a) the picker
     NI.LookBodyOfTablesTie(re, crv, A);
     var laT: R.lookaround :| LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A));
     assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
@@ -730,6 +688,7 @@ module LindenElkLiftSimDeep {
     }
     assert GateStaticsOkNested(qmB, host, crv, ncap, nlook, nquant) by {
       M.LooksNoNulledPlusFromFull(host);   // (§2.5b F-c) NoNulledPlusRE(host) from the row
+      RowPlusFacts(host, crv.f_plus_bc, nlook);   // (G3a)
       GateStaticsFromTablesNested(qmB, host, crv, ncap, nlook, nquant);
     }
     assert OE.OracleColsOk(rer, qmB, str) by {                       // (L5 F7d)
@@ -895,7 +854,7 @@ module LindenElkLiftSimDeep {
     requires owner in LTB.LookIds(re)
     requires g2 in PIV.CapIds(NI.LookBodyOfRE(re, owner))
     requires g2 !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
-    requires var rfO := M.FreshBodyMatch(crv, str, owner as int, res1, ov, ncap, nlook, nquant);
+    requires var rfO := M.FreshBodyMatchPlus(crv, str, owner as int, res1, ov, ncap, nlook, nquant);   // (G3a) OwnerPkg
              rfO.Some? && g2 in PIV.GmOfLive(NI.LookBodyOfRE(re, owner),
                                              rfO.value.capture_regs, rfO.value.look_regs, rfO.value.quant_regs)
     // ---- per-level data ----
@@ -924,16 +883,7 @@ module LindenElkLiftSimDeep {
     // ---- the row at A: la_A + host tie + statics ----
     assert 1 <= A <= maxlook && (A as int) in qm.looks;
     assert GateStaticAtNested(qm, re, crv, A as int, ncap, nlook, nquant);   // GateStaticsOkNested
-    var laA: R.lookaround, bA: R.regex :|
-      LTB.LookEntryOk(crv, A as int, laA, bA)
-      && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && qm.looks[A as int].0 == T.TrLookaround(laA)
-      && qm.looks[A as int].1 == T.Translate(bA)
-      && (set g: LG.GroupId | g in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
-      && var bc := CP.compile_to_bytecode(bA);
-      |bc| >= 1
-      && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
-      && PSM.SizesOkRE(bA, ncap, nlook, nquant);
+    var laA: R.lookaround, bA: R.regex := GateStaticPick(qm, re, crv, A as int, ncap, nlook, nquant);   // (G3a) the picker
     NI.LookBodyOfTablesTie(re, crv, A);
     var laT: R.lookaround :| LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A));
     assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
@@ -1104,6 +1054,7 @@ module LindenElkLiftSimDeep {
       ensures (1 <= A <= maxlook && (A as int) in qm.looks)
       ensures (GateStaticAtNested(qm, re, crv, A as int, ncap, nlook, nquant))
       ensures (bA == host)
+      ensures (RowPlusOk(host, crv.f_plus_bc, nlook))   // (G3a) the row's plus facts
       ensures (host == M.VBody(crv, A as int))
       ensures (PSM.StaticOkNestedRE(qm, host, bodycode, endlH))
       ensures (crv.f_look_types[A as int] == laA)
@@ -1147,17 +1098,7 @@ module LindenElkLiftSimDeep {
       assert 1 <= A <= maxlook && (A as int) in qm.looks;
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert GateStaticAtNested(qm, re, crv, A as int, ncap, nlook, nquant);
-      laA, bA :|
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        LTB.LookEntryOk(crv, A as int, laA, bA)
-        && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-        && qm.looks[A as int].0 == T.TrLookaround(laA)
-        && qm.looks[A as int].1 == T.Translate(bA)
-        && (set g0: LG.GroupId | g0 in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
-        && var bc := CP.compile_to_bytecode(bA);
-        |bc| >= 1
-        && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
-        && PSM.SizesOkRE(bA, ncap, nlook, nquant);
+      laA, bA := GateStaticPick(qm, re, crv, A as int, ncap, nlook, nquant);   // (G3a) the picker
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       NI.LookBodyOfTablesTie(re, crv, A);
       laT :| LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A));
@@ -1214,6 +1155,7 @@ module LindenElkLiftSimDeep {
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert (rfP.Some? <==> rb.Some?) by {
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
+        RowPlusFacts(host, crv.f_plus_bc, nlook);   // (G3a)
         LookNestBackTFromBodyReplayLB(rer, qmB, laA, host, bodycodeB, crv, str, cpA, ov,
                                       cdnA, crv.f_plus_bc, ncap, nlook, nquant);
       }

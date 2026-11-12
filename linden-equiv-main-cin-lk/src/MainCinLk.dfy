@@ -240,20 +240,7 @@ module LindenElkMainCinLk {
     }
   }
 
-  /** No CIN-greedy plus under a nulled-plus-free regex. */
-  lemma NoNulledPlusNoCin(r: R.regex, q: nat)
-    requires T.TransWf(r)   // QuantWf: min >= 0, so `min != 0` is `min > 0`
-    requires NR.NoNulledPlusRE(r) && q in PIV.QuantIds(r)
-    ensures !NRR.QidCinPlus(r, q)
-    decreases r
-  {
-    match r
-    case Re_alt(r1, r2) => if q in PIV.QuantIds(r1) { NoNulledPlusNoCin(r1, q); } else { NoNulledPlusNoCin(r2, q); }
-    case Re_con(r1, r2) => if q in PIV.QuantIds(r1) { NoNulledPlusNoCin(r1, q); } else { NoNulledPlusNoCin(r2, q); }
-    case Re_quant(nul, qid, qq, r1) => if !(qid >= 0 && (qid as nat) == q) { NoNulledPlusNoCin(r1, q); }
-    case Re_capture(_, r1) => NoNulledPlusNoCin(r1, q);
-    case Re_lookaround(_, _, r1) => NoNulledPlusNoCin(r1, q);
-  }
+  // (G3a) `NoNulledPlusNoCin` moved to lift-sim-core.
 
   /** The CIN-greedy pluses sit outside every lookaround. */
   lemma CinQidsOuter(r: R.regex, q: nat)
@@ -532,6 +519,35 @@ module LindenElkMainCinLk {
     assert M.ClosedGm(leaf.1);
     M.MainExtractionFromClosed(raw, str, t, thread, leaf);
   }
+  /** (G3a) `MainExtractionL5Lk`'s premises as one opaque fact: at the end of `MainTheoremL5Cin` the call
+      then matches a single ground atom (the eight separate premises took minutes in that context). */
+  opaque ghost predicate ExtractionPre(raw: R.raw_regex, str: string, t: LT.Tree, thread: AI.Thread, leaf: LT.Leaf) {
+    NR.NestedFragmentRaw(raw)
+    && M.LooksNoNulledPlusRE(R.lazy_prefix(R.annotate(raw)))
+    && T.Latin1Wf(raw)
+    && EL.BoolTreeLk(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), BS.CannotExit, t)
+    && LS.IsTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), LG.Empty, WP.Forward, t)
+    && CM.ThreadRegsWf(thread, 2 * R.max_group(R.annotate(raw)) + 2,
+                       R.max_lookaround(R.annotate(raw)) + 1,
+                       R.max_quant(R.annotate(raw)) + 1)
+    && M.QuantClkFinal(thread)
+    && (var re := R.lazy_prefix(R.annotate(raw));
+        leaf.1 == PIV.NormGm(PIV.GmOfLive(re, thread.capture_regs, thread.look_regs, thread.quant_regs)))
+    && LT.FirstLeaf(t, LC.InitInput(str)) == Some(leaf)
+    && AI.FFullMatch(raw, str)
+       == Some(AI.filter_reset(R.annotate(raw), thread.capture_regs, thread.look_regs,
+                               thread.quant_regs, -1))
+  }
+
+  lemma MainExtractionL5LkPre(raw: R.raw_regex, str: string, t: LT.Tree, thread: AI.Thread, leaf: LT.Leaf)
+    requires T.Latin1Wf(raw)   // the `ensures` reads `MatcherSpec`, which needs it visible
+    requires ExtractionPre(raw, str, t, thread, leaf)
+    ensures LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)))
+  {
+    reveal ExtractionPre();
+    MainExtractionL5Lk(raw, str, t, thread, leaf);
+  }
+
 
 
   /** Register sizes cover every id (the look-aware `CoversLookFree`). */
@@ -835,8 +851,16 @@ module LindenElkMainCinLk {
     assert forall x: nat :: x in LTB.LookIds(re) ==> (x as int) in qm.looks by {
       forall x: nat | x in LTB.LookIds(re) ensures (x as int) in qm.looks { }
     }
-    GateStaticsFromTablesNested(qm, re, crv, ncap, nlook, nquant);
-    assert GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant);
+    assert GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant) by {
+      // (G3a) the plus-row premises at the top regex, scoped: as context facts they stalled the final call
+      assert NRR.PlusTableOk(re, crv.f_plus_bc) by {
+        assert NR.NestedFragmentRE(ast);
+        M.NestedNoCdn(ast);
+        FRD.PlusTableOkFull(ast);
+      }
+      assert forall l: nat :: l in LTB.LookIds(re) ==> l < nlook;
+      GateStaticsFromTablesNested(qm, re, crv, ncap, nlook, nquant);
+    }
 
     assert {:split_here} true;
     // ---- the two machines on the same checked tree --------------------------
@@ -978,9 +1002,13 @@ module LindenElkMainCinLk {
       assert {:split_here} true;   // (G3a) the extraction section, one batch per step
       assert NR.NestedFragmentRaw(raw) && T.Latin1Wf(raw) && M.LooksNoNulledPlusRE(R.lazy_prefix(R.annotate(raw)));
       assert {:split_here} true;   // (G3a) the extraction section, one batch per step
+      assert ExtractionPre(raw, str, t, synthetic, leaf) by {
+        hide *; reveal ExtractionPre();
+      }
+      assert {:split_here} true;   // (G3a) the extraction section, one batch per step
       assert LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str))) by {
         hide *;
-        MainExtractionL5Lk(raw, str, t, synthetic, leaf);
+        MainExtractionL5LkPre(raw, str, t, synthetic, leaf);
       }
     }
   }

@@ -118,6 +118,7 @@ module LindenElkLiftSimCarriers {
   import KG = LindenElkFlipKeystoneG     // (gate B) keystone, scope-free
   import OG = LindenElkFlipOracleG       // (gate B) generic F2/F3
   import G = LindenElkFlipMirrorG        // (gate B) generic tree mirror
+  import NRR = LindenElkNulledReconRegs  // (G3a) the plus table
 
   // ==========================================================================
   // THE MAIN THEOREM, L3a: capturing positive lookaheads included. The
@@ -127,6 +128,16 @@ module LindenElkLiftSimCarriers {
   // ties, the endpoint assembly converts them into the reconstructed-register
   // denotation, and the existing extraction finishes.
   // ==========================================================================
+
+  /** (G3a) The plain facts inside a row's `RowPlusOk`: what `GateStaticsFromTablesNested` and the
+      lookbehind carrier ask of a row body. */
+  lemma RowPlusFacts(body: R.regex, plus: seq<RB.code>, nlook: int)
+    requires RowPlusOk(body, plus, nlook)
+    ensures LTB.LookUnique(body) && NRR.PlusTableOk(body, plus)
+    ensures forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
+  {
+    reveal RowPlusOk(); reveal M.RowLAStatics();
+  }
 
   /** (BRICK D-8 FINDING 1) The BACKWARD per-body carrier: a verbatim twin of
       `LookNestOkTFromBodyReplay` whose only difference is the projected conjunct.
@@ -355,6 +366,7 @@ module LindenElkLiftSimCarriers {
     requires qm.ov == ov && AR.LmapOk(body, qm) && OE.OracleColsOk(rer, qm, str)
     requires LTB.LookTablesOk(body, crv) && |crv.f_look_types| == |crv.f_look_ast|
     requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
+    requires NRR.PlusTableOk(body, crv.f_plus_bc)   // (G3a) the flipped body's rows carry the plus table
     ensures
       var inp := PIV.InpOfCp(str, cp);
       var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Backward);
@@ -414,6 +426,10 @@ module LindenElkLiftSimCarriers {
     }
     FST.NoNulledPlusFXR(body);
     M.LooksNoNulledPlusFromFull(reF);       // (§2.5b F-c) the gate statics read only look bodies
+    // (G3a) the plus-row premises at the flipped body (`MirrorTables` keeps `f_plus_bc`)
+    assert crvF.f_plus_bc == crv.f_plus_bc;
+    PlusTableOkFXR(body, crv.f_plus_bc);
+    assert forall l: nat :: l in LTB.LookIds(reF) ==> l < nlook;
     GateStaticsFromTablesNested(qmF, reF, crvF, ncap, nlook, nquant);
 
     assert {:split_here} true;   // (gate B) W12 perf split (131 M unsplit -> 11 M worst)
@@ -581,7 +597,7 @@ module LindenElkLiftSimCarriers {
                         && (M.MatchedPosLA(crv, th.look_regs, lid as int)
                             && lid in LTB.LookIds(body)
                             && NI.LookPathDom(body, AI.get_idx(th.look_regs.a_clk, lid as int), th.quant_regs.a_clk, lid))
-        ensures var rfl := M.FreshBodyMatch(crv, str, lid as int, th.look_regs, ov, ncap, nlook, nquant);
+        ensures var rfl := M.FreshBodyMatchPlus(crv, str, lid as int, th.look_regs, ov, ncap, nlook, nquant);
                 rfl.Some? ==>
                   forall g: LG.GroupId ::
                     g in S && g in PIV.CapIds(NI.LookBodyOfRE(body, lid))
@@ -673,16 +689,7 @@ module LindenElkLiftSimCarriers {
     // ---- the row at A (VERBATIM DeepFindRec) ----
     assert 1 <= A <= maxlook && (A as int) in qm.looks;
     assert GateStaticAtNested(qm, re, crv, A as int, ncap, nlook, nquant);
-    var laA: R.lookaround, bA: R.regex :|
-      LTB.LookEntryOk(crv, A as int, laA, bA)
-      && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && qm.looks[A as int].0 == T.TrLookaround(laA)
-      && qm.looks[A as int].1 == T.Translate(bA)
-      && (set g0: LG.GroupId | g0 in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
-      && var bc := CP.compile_to_bytecode(bA);
-      |bc| >= 1
-      && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
-      && PSM.SizesOkRE(bA, ncap, nlook, nquant);
+    var laA: R.lookaround, bA: R.regex := GateStaticPick(qm, re, crv, A as int, ncap, nlook, nquant);   // (G3a)
     NI.LookBodyOfTablesTie(re, crv, A);
     var laT: R.lookaround :| LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A));
     assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
@@ -715,6 +722,7 @@ module LindenElkLiftSimCarriers {
     }
     assert GateStaticsOkNested(qmB, host, crv, ncap, nlook, nquant) by {
       M.LooksNoNulledPlusFromFull(host);   // (§2.5b F-c) NoNulledPlusRE(host) from the row
+      RowPlusFacts(host, crv.f_plus_bc, nlook);   // (G3a) the row's plus facts
       GateStaticsFromTablesNested(qmB, host, crv, ncap, nlook, nquant);
     }
     assert OE.OracleColsOk(rer, qmB, str) by {                         // (L5 F7d)

@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:b7409dc44147ec43b59fc5c1053518d2dce51bcd8a16b8b9c06422e7fe7f4060"
+manifest-hash = "sha256:f0ac4019cc9981c0f681ae43904d465ef081cb14f3014d47f8ac6dfc54d60dd4"
 
 [[package]]
 name = "linden.equiv-final-readout"
@@ -551,3 +551,12 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-mirror-world"
+
+[[package]]
+name = "linden.equiv-machine-a"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-machine-a"

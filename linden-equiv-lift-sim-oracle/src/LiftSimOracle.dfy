@@ -109,6 +109,8 @@ module LindenElkLiftSimOracle {
   import LTB = LindenElkLookTables
   import NI = LindenElkNestInv
   import CW = LindenElkCinWalk
+  import NRR = LindenElkNulledReconRegs   // (G3a) the plus table
+  import MA = LindenElkMachineA           // (G3a) machine A on the plus match
   import opened LindenElkLiftSimCore
   import MW = LindenElkMirrorWorld       // (gate B) the G1 leaf
   import GG = LindenElkFlipGateG         // (gate B) flip-gate F6, scope-free
@@ -375,20 +377,29 @@ module LindenElkLiftSimOracle {
     requires LTB.LookTablesOk(re, crv)
     requires PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires PIV.CapIdsInLooks(re) <= PIV.CapIdsInLooks(re0)
+    requires LTB.LookUnique(re) && NRR.PlusTableOk(re, crv.f_plus_bc)          // (G3a) the plus row
+    requires forall l: nat :: l in LTB.LookIds(re) ==> l < nlook
     ensures forall l: int :: l >= 0 && (l as nat) in LTB.LookIds(re) ==>
                                GateStaticAtNested(qm, re0, crv, l, ncap, nlook, nquant)
     decreases re
   {
+    NRR.PlusTableOkChildren(re, crv.f_plus_bc);
     match re
     case Re_alt(r1, r2) =>
+      assert NRR.L1(re) == r1 && NRR.L2(re) == r2;   // (G3a) the plus-row premises descend
+      assert LTB.LookIds(r1) <= LTB.LookIds(re) && LTB.LookIds(r2) <= LTB.LookIds(re);
       GateStaticsSweepRENested(qm, re0, r1, crv, ncap, nlook, nquant);
       GateStaticsSweepRENested(qm, re0, r2, crv, ncap, nlook, nquant);
     case Re_con(r1, r2) =>
+      assert NRR.L1(re) == r1 && NRR.L2(re) == r2;
+      assert LTB.LookIds(r1) <= LTB.LookIds(re) && LTB.LookIds(r2) <= LTB.LookIds(re);
       GateStaticsSweepRENested(qm, re0, r1, crv, ncap, nlook, nquant);
       GateStaticsSweepRENested(qm, re0, r2, crv, ncap, nlook, nquant);
     case Re_quant(_, _, _, r1) =>
+      assert NRR.L1(re) == r1 && LTB.LookIds(r1) <= LTB.LookIds(re);
       GateStaticsSweepRENested(qm, re0, r1, crv, ncap, nlook, nquant);
     case Re_capture(_, r1) =>
+      assert NRR.L1(re) == r1 && LTB.LookIds(r1) <= LTB.LookIds(re);
       GateStaticsSweepRENested(qm, re0, r1, crv, ncap, nlook, nquant);
     case Re_lookaround(lid, la, body) =>
       // confinement: CapIdsInLooks(body) ⊆ CapIds(body) == CapIdsInLooks(re) ⊆ CapIdsInLooks(re0)
@@ -397,12 +408,27 @@ module LindenElkLiftSimOracle {
       assert PIV.CapIdsInLooks(body) <= PIV.CapIdsInLooks(re0);
       // recurse into the body for its OWN inner lids
       M.LooksNoNulledPlusFromFull(body);   // (§2.5b F-c) the body is stamp-free
+      // (G3a) the plus-row premises descend to the body
+      assert NRR.PlusTableOk(body, crv.f_plus_bc) by { assert NRR.L1(re) == body; }
+      assert LTB.LookUnique(body);
+      assert forall l: nat :: l in LTB.LookIds(body) ==> l < nlook by {
+        assert LTB.LookIds(body) <= LTB.LookIds(re);
+      }
+      assert {:split_here} true;   // (G3a) the lookaround arm in its own batches
       GateStaticsSweepRENested(qm, re0, body, crv, ncap, nlook, nquant);
+      assert {:split_here} true;
       if lid >= 0 {
         // the node's own bundle
         assert LTB.LookEntryOk(crv, lid, la, body);
         assert T.TransWf(body) && NR.NestedFragmentRE(body);
         assert NR.NoNulledPlusRE(body);   // §2.5b: descends definitionally
+        assert PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body);
+        M.NestedNoCdn(body);
+        M.NoNulledPlusCinFragment(body);
+        assert RowPlusOk(body, crv.f_plus_bc, nlook) by {   // (G3a) the plus row's statics
+          reveal RowPlusOk(); reveal M.RowLAStatics();
+        }
+        assert {:split_here} true;
         assert lid in qm.looks && qm.looks[lid] == (T.TrLookaround(la), T.Translate(body));
         // confinement: the body's groups are inside-look groups of re0
         M.TranslateDefGroupsEqCapIds(body);
@@ -438,6 +464,8 @@ module LindenElkLiftSimOracle {
     requires PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires forall l: int :: l in qm.looks ==>
                                 l >= 0 && (l as nat) in LTB.LookIds(re) && l < nlook
+    requires LTB.LookUnique(re) && NRR.PlusTableOk(re, crv.f_plus_bc)          // (G3a) the plus row
+    requires forall l: nat :: l in LTB.LookIds(re) ==> l < nlook
     ensures GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
   {
     GateStaticsSweepRENested(qm, re, re, crv, ncap, nlook, nquant);
@@ -650,6 +678,7 @@ module LindenElkLiftSimOracle {
     A0: nat, lk: AReg.Regs, body: R.regex, bodycode: RB.code, endl: nat, ngroups: nat,
     g2: nat, ncap: int, nlook: int, nquant: int)
     requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
+    requires RowPlusOk(body, crv.f_plus_bc, nlook)   // (G3a) machine A on the plus match
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires qm.ov == ov && !rer.ignoreCase && !rer.multiline
     requires bodycode == CP.compile_to_bytecode(body)
@@ -662,7 +691,7 @@ module LindenElkLiftSimOracle {
     requires var cp := AReg.get_cp(lk, A0 as int).value;
              0 <= cp <= |str| && LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
     requires g2 in PIV.CapIds(body) && g2 !in PIV.CapIdsInLooks(body)
-    requires var rf := M.FreshBodyMatch(crv, str, A0 as int, lk, ov, ncap, nlook, nquant);
+    requires var rf := M.FreshBodyMatchPlus(crv, str, A0 as int, lk, ov, ncap, nlook, nquant);
              rf.Some?
              && g2 in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)
     ensures var lsub := SubFirstLeafAt(rer, crv, str, A0 as int, lk);
@@ -675,41 +704,31 @@ module LindenElkLiftSimOracle {
     var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Forward);
     var Sb := LL.LkBodyGroups(T.Translate(body));
 
-    // (1) FreshBodyMatch(A0, lk) unfolds to the from-FRESH FFindMatch over `bodycode`.
-    var rf := M.FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
+    // (1) (G3a) FreshBodyMatchPlus(A0, lk) is the fresh FFindMatchPlus over `bodycode`.
+    var rf := M.FreshBodyMatchPlus(crv, str, l, lk, ov, ncap, nlook, nquant);
     var looktype := crv.f_look_types[l];
     assert looktype.Lookahead?;
     assert LidDir(crv, l) == WP.Forward;                      // (L5 F7a)
     assert AI.capture_direction(looktype) == LAnc.Forward;
     assert CP.capture_regex(looktype, body) == body;
-    assert M.VBody(crv, l) == body;
-    var ctxc := AI.cp_context(cp, str, LAnc.Forward);
-    var rfExplicit := AI.FFindMatch(bodycode, str,
-                                    AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                                  AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
-    assert rf == rfExplicit;
+    var rr := AI.FFindMatchPlus(bodycode, body, crv.f_plus_bc, str, ov, LAnc.Forward, cp,
+                                AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0, cdns);
+    assert rf == rr.0 by { reveal M.FreshBodyMatchPlus(); }
+    assert {:split_here} true;
 
-    // (2) ReplayCapIsBodyLeafNested (from-fresh actual regs so `ra == rf`).
-    var cap0 := AReg.init_regs(ncap);
-    var lk0 := AReg.init_regs(nlook);
-    var qt0 := AReg.init_regs(nquant);
-    RL.AInitLaws(ncap); RL.AInitLaws(nquant);
-    assert CM.RegsAgreeInside(cap0, AReg.init_regs(ncap), PIV.CaptureRegs(body));
-    var bestT := M.ReplayCapIsBodyLeafNested(rer, qm, body, bodycode, endl, ngroups, str, cp,
-                                             cap0, lk0, qt0, ov, cdns, ncap, nlook, nquant);
-    var ra := AI.FFindMatch(bodycode, str,
-                            AI.FInitState(bodycode, cp, cap0, lk0, qt0, 0, ctxc), ov, LAnc.Forward, cdns).0;
-    assert ra == rfExplicit == rf;                            // same expression from fresh
-    assert ra.Some?;                                          // rf.Some?
+    // (2) machine A at (body, cp): the plus match against the spec first leaf, outside Sb.
+    assert MA.MachineAPre(rer, qm, body, bodycode, endl, str, cp, ov, crv.f_plus_bc, ncap, nlook, nquant) by {
+      reveal RowPlusOk(); reveal M.RowLAStatics();
+    }
+    MA.MachineAAt(rer, qm, body, bodycode, endl, ngroups, str, cp, ov, cdns, crv.f_plus_bc, ncap, nlook, nquant);
+    assert {:split_here} true;
 
-    // (3) bestT.value.1 == GmOfLive(body, fresh) carries g2; g2 is DIRECT so it
-    //     survives into the spec first leaf FirstLeaf(t).value.1.
-    assert bestT.Some? && LT.FirstLeaf(t, inp).Some?;
-    assert bestT.value.1 == PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs);
-    assert g2 in bestT.value.1;
+    // (3) g2 is DIRECT, so it survives into the spec first leaf FirstLeaf(t).value.1.
+    assert LT.FirstLeaf(t, inp).Some?;
     M.LkBodyGroupsEqCapIdsInLooks(body);                     // Sb == CapIdsInLooks(body)
     assert g2 !in Sb;
-    assert LL.GmAgreeOutside(bestT.value.1, LT.FirstLeaf(t, inp).value.1, Sb);
+    assert LL.GmAgreeOutside(PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs),
+                             LT.FirstLeaf(t, inp).value.1, Sb);
     assert g2 in LT.FirstLeaf(t, inp).value.1;
 
     // (4) FirstLeaf(t).value.1 IS SubFirstLeafAt(A0, lk).value (definitional).
@@ -717,6 +736,7 @@ module LindenElkLiftSimOracle {
     var lsub := SubFirstLeafAt(rer, crv, str, l, lk);
     assert lsub.Some? && lsub.value == LT.FirstLeaf(t, inp).value.1;
   }
+
 
   /** (FORWARD direct bridge — the REVERSE of `FreshBodyDirectInSubFirstLeaf`,
       with VALUES) A DIRECTLY-owned capture `g2` present in a top lookAHEAD `A0`'s
@@ -729,6 +749,7 @@ module LindenElkLiftSimOracle {
     A0: nat, lk: AReg.Regs, body: R.regex, bodycode: RB.code, endl: nat, ngroups: nat,
     g2: nat, ncap: int, nlook: int, nquant: int)
     requires PSM.StaticOkNestedRE(qm, body, bodycode, endl)
+    requires RowPlusOk(body, crv.f_plus_bc, nlook)   // (G3a) machine A on the plus match
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires qm.ov == ov && !rer.ignoreCase && !rer.multiline
     requires bodycode == CP.compile_to_bytecode(body)
@@ -740,10 +761,10 @@ module LindenElkLiftSimOracle {
     requires var cp := AReg.get_cp(lk, A0 as int).value;
              0 <= cp <= |str| && LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
     requires g2 in PIV.CapIds(body) && g2 !in PIV.CapIdsInLooks(body)
-    requires M.FreshBodyMatch(crv, str, A0 as int, lk, ov, ncap, nlook, nquant).Some?
+    requires M.FreshBodyMatchPlus(crv, str, A0 as int, lk, ov, ncap, nlook, nquant).Some?
     requires var lsub := SubFirstLeafAt(rer, crv, str, A0 as int, lk);
              lsub.Some? && g2 in lsub.value
-    ensures var rf := M.FreshBodyMatch(crv, str, A0 as int, lk, ov, ncap, nlook, nquant);
+    ensures var rf := M.FreshBodyMatchPlus(crv, str, A0 as int, lk, ov, ncap, nlook, nquant);
             g2 in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)
             && SubFirstLeafAt(rer, crv, str, A0 as int, lk).value[g2]
                == PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)[g2]
@@ -755,46 +776,39 @@ module LindenElkLiftSimOracle {
     var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Forward);
     var Sb := LL.LkBodyGroups(T.Translate(body));
 
-    // (1) FreshBodyMatch unfolds to the from-FRESH FFindMatch over `bodycode`.
-    var rf := M.FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant);
+    // (1) (G3a) FreshBodyMatchPlus is the fresh FFindMatchPlus over `bodycode`.
+    var rf := M.FreshBodyMatchPlus(crv, str, l, lk, ov, ncap, nlook, nquant);
     var looktype := crv.f_look_types[l];
     assert looktype.Lookahead?;
     assert LidDir(crv, l) == WP.Forward;                      // (L5 F7a)
     assert AI.capture_direction(looktype) == LAnc.Forward;
     assert CP.capture_regex(looktype, body) == body;
-    assert M.VBody(crv, l) == body;
-    var ctxc := AI.cp_context(cp, str, LAnc.Forward);
-    var rfExplicit := AI.FFindMatch(bodycode, str,
-                                    AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                                  AReg.init_regs(nquant), 0, ctxc), ov, LAnc.Forward, cdns).0;
-    assert rf == rfExplicit;
+    var rr := AI.FFindMatchPlus(bodycode, body, crv.f_plus_bc, str, ov, LAnc.Forward, cp,
+                                AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0, cdns);
+    assert rf == rr.0 by { reveal M.FreshBodyMatchPlus(); }
+    assert {:split_here} true;
 
-    // (2) ReplayCapIsBodyLeafNested at fresh actual regs (ra == rf).
-    var cap0 := AReg.init_regs(ncap);
-    var lk0 := AReg.init_regs(nlook);
-    var qt0 := AReg.init_regs(nquant);
-    RL.AInitLaws(ncap); RL.AInitLaws(nquant);
-    assert CM.RegsAgreeInside(cap0, AReg.init_regs(ncap), PIV.CaptureRegs(body));
-    var bestT := M.ReplayCapIsBodyLeafNested(rer, qm, body, bodycode, endl, ngroups, str, cp,
-                                             cap0, lk0, qt0, ov, cdns, ncap, nlook, nquant);
-    var ra := AI.FFindMatch(bodycode, str,
-                            AI.FInitState(bodycode, cp, cap0, lk0, qt0, 0, ctxc), ov, LAnc.Forward, cdns).0;
-    assert ra == rfExplicit == rf;
-    assert ra.Some?;
+    // (2) machine A at (body, cp).
+    assert MA.MachineAPre(rer, qm, body, bodycode, endl, str, cp, ov, crv.f_plus_bc, ncap, nlook, nquant) by {
+      reveal RowPlusOk(); reveal M.RowLAStatics();
+    }
+    MA.MachineAAt(rer, qm, body, bodycode, endl, ngroups, str, cp, ov, cdns, crv.f_plus_bc, ncap, nlook, nquant);
+    assert {:split_here} true;
 
     // (3) SubFirstLeafAt unfolds to FirstLeaf(t); g2 is DIRECT, so it transports
-    //     into bestT.1 == GmOfLive(body, rf) with the SAME value.
+    //     into GmOfLive(body, rf) with the SAME value.
     assert LT.FirstLeaf(t, inp) == LT.TreeRes(t, LG.Empty, inp, WP.Forward);
     var lsub := SubFirstLeafAt(rer, crv, str, l, lk);
-    assert bestT.Some? && LT.FirstLeaf(t, inp).Some?;
+    assert LT.FirstLeaf(t, inp).Some?;
     assert lsub.Some? && lsub.value == LT.FirstLeaf(t, inp).value.1;
-    assert bestT.value.1 == PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs);
+    var gmb := PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs);
     M.LkBodyGroupsEqCapIdsInLooks(body);
     assert g2 !in Sb;
-    assert LL.GmAgreeOutside(bestT.value.1, LT.FirstLeaf(t, inp).value.1, Sb);
+    assert LL.GmAgreeOutside(gmb, LT.FirstLeaf(t, inp).value.1, Sb);
     assert g2 in LT.FirstLeaf(t, inp).value.1;
-    assert g2 in bestT.value.1 && bestT.value.1[g2] == LT.FirstLeaf(t, inp).value.1[g2];
+    assert g2 in gmb && gmb[g2] == LT.FirstLeaf(t, inp).value.1[g2];
   }
+
 
   /** For a LOOKBEHIND lid, `SubFirstLeafAt` unfolds (`LidDir == Backward`) to
       the explicit backward leaf `FG.BackLeafAt(body, cp)` at the recorded cp. */
@@ -1872,7 +1886,7 @@ module LindenElkLiftSimOracle {
     requires owner in LTB.LookIds(re)
     requires g2 in PIV.CapIds(NI.LookBodyOfRE(re, owner))
     requires g2 !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
-    requires var rfO := M.FreshBodyMatch(crv, str, owner as int, res1, ov, ncap, nlook, nquant);
+    requires var rfO := M.FreshBodyMatchPlus(crv, str, owner as int, res1, ov, ncap, nlook, nquant);   // (G3a)
              rfO.Some? && g2 in PIV.GmOfLive(NI.LookBodyOfRE(re, owner),
                                              rfO.value.capture_regs, rfO.value.look_regs, rfO.value.quant_regs)
     // ---- per-level data ----
@@ -1902,16 +1916,7 @@ module LindenElkLiftSimOracle {
     // ---- the row at A: la_A + host tie + statics ----
     assert 1 <= A <= maxlook && (A as int) in qm.looks;
     assert GateStaticAtNested(qm, re, crv, A as int, ncap, nlook, nquant);   // GateStaticsOkNested
-    var laA: R.lookaround, bA: R.regex :|
-      LTB.LookEntryOk(crv, A as int, laA, bA)
-      && T.TransWf(bA) && NR.NestedFragmentRE(bA)
-      && qm.looks[A as int].0 == T.TrLookaround(laA)
-      && qm.looks[A as int].1 == T.Translate(bA)
-      && (set g: LG.GroupId | g in L.DefGroups(T.Translate(bA))) <= PIV.CapIdsInLooks(re)
-      && var bc := CP.compile_to_bytecode(bA);
-      |bc| >= 1
-      && PSM.StaticOkNestedRE(qm, bA, bc, |bc| - 1)
-      && PSM.SizesOkRE(bA, ncap, nlook, nquant);
+    var laA: R.lookaround, bA: R.regex := GateStaticPick(qm, re, crv, A as int, ncap, nlook, nquant);   // (G3a)
     NI.LookBodyOfTablesTie(re, crv, A);
     var laT: R.lookaround :| LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A));
     assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
@@ -1932,7 +1937,7 @@ module LindenElkLiftSimOracle {
     // ==== BASE: g2 DIRECT in host — A is THE innermost-direct owner ====
     M.InnermostOwnerUnique(re, g2, owner, A);
     assert owner == A;
-    var rfO := M.FreshBodyMatch(crv, str, A as int, res1, ov, ncap, nlook, nquant);
+    var rfO := M.FreshBodyMatchPlus(crv, str, A as int, res1, ov, ncap, nlook, nquant);
     assert rfO.Some?
            && g2 in PIV.GmOfLive(host, rfO.value.capture_regs, rfO.value.look_regs, rfO.value.quant_regs);
     assert LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cpA));

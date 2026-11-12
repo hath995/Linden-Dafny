@@ -187,6 +187,7 @@ module LindenElkTwoMachines {
       AncFrame(re, Q, th, best, lid);
     }
   }
+
   lemma TieBackTransport(re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
                          Q: set<int>, S: set<LG.GroupId>, G: set<LG.GroupId>,
                          gmB: LG.GroupMap, gm: LG.GroupMap, best: AI.Thread, th: AI.Thread,
@@ -201,7 +202,7 @@ module LindenElkTwoMachines {
                       && (M.MatchedPosLA(crv, th.look_regs, lid as int)
                           && lid in LTB.LookIds(re)
                           && NI.LookPathDom(re, AI.get_idx(th.look_regs.a_clk, lid as int), th.quant_regs.a_clk, lid))
-      ensures var rf := M.FreshBodyMatch(crv, str, lid as int, th.look_regs, ov, ncap, nlook, nquant);
+      ensures var rf := M.FreshBodyMatchPlus(crv, str, lid as int, th.look_regs, ov, ncap, nlook, nquant);
               rf.Some? ==>
                 forall g: LG.GroupId ::
                   g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, lid))
@@ -210,7 +211,7 @@ module LindenElkTwoMachines {
                   ==> g in gm
     {
       AncFrame(re, Q, th, best, lid);
-      var rf := M.FreshBodyMatch(crv, str, lid as int, th.look_regs, ov, ncap, nlook, nquant);
+      var rf := M.FreshBodyMatchPlus(crv, str, lid as int, th.look_regs, ov, ncap, nlook, nquant);
       if rf.Some? {
         forall g: LG.GroupId | g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, lid))
                                && g in PIV.GmOfLive(NI.LookBodyOfRE(re, lid), rf.value.capture_regs,
@@ -223,6 +224,7 @@ module LindenElkTwoMachines {
       }
     }
   }
+
   lemma TieDeepTransport(rer: LW.RegExpRecord, re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
                          Q: set<int>, S: set<LG.GroupId>, G: set<LG.GroupId>,
                          gmB: LG.GroupMap, gm: LG.GroupMap, best: AI.Thread, th: AI.Thread,
