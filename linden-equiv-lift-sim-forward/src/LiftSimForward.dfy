@@ -223,6 +223,7 @@ module LindenElkLiftSimForward {
       ensures (Sh == PIV.CapIdsInLooks(host))
       ensures (gmtH == rb.value.1)
       ensures (rfFresh == M.FreshBodyMatch(crv, str, A as int, res1, ov, ncap, nlook, nquant))
+      ensures (rfFresh == M.FreshBodyMatchPlus(crv, str, A as int, res1, ov, ncap, nlook, nquant))   // (G3a)
       ensures (AI.get_idx(res1.a_cp, A as int) >= 0 && cpA == AI.get_idx(res1.a_cp, A as int))
       ensures (0 <= cpA <= |str|)
       ensures (1 <= A <= maxlook && (A as int) in qm.looks)
@@ -351,6 +352,9 @@ module LindenElkLiftSimForward {
       assert 0 <= (A as int) < |crv.f_look_cdns| && cdnA == crv.f_look_cdns[A as int];
       assert AReg.get_cp(res1, A as int).Some? && AReg.get_cp(res1, A as int).value == cpA;
       rfFresh := M.FreshBodyMatch(crv, str, A as int, res1, ov, ncap, nlook, nquant);
+      assert rfFresh == M.FreshBodyMatchPlus(crv, str, A as int, res1, ov, ncap, nlook, nquant) by {   // (G3a) stamp-free row
+        M.FreshBodyMatchPlusPlainRow(crv, str, A as int, res1, ov, ncap, nlook, nquant, laA, host);
+      }
       assert rfFresh == AI.FFindMatch(bodycodeB, str,
                                       AI.FInitState(bodycodeB, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
                                                     AReg.init_regs(nquant), 0, AI.cp_context(cpA, str, LAnc.Backward)),
@@ -946,6 +950,9 @@ module LindenElkLiftSimForward {
 
     // rf_A IS FreshBodyMatch(A, res1) (identity block, VERBATIM DeepFindRec (ζ))
     var rfFresh := M.FreshBodyMatch(crv, str, A as int, res1, ov, ncap, nlook, nquant);
+    assert rfFresh == M.FreshBodyMatchPlus(crv, str, A as int, res1, ov, ncap, nlook, nquant) by {   // (G3a) stamp-free row
+      M.FreshBodyMatchPlusPlainRow(crv, str, A as int, res1, ov, ncap, nlook, nquant, laA, host);
+    }
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert rfFresh == AI.FFindMatch(bodycode, str,
                                     AI.FInitState(bodycode, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),

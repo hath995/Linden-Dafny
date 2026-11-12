@@ -2048,6 +2048,88 @@ module LindenElkMain {
                                          AReg.init_regs(nquant), 0, AI.cp_context(cp, str, dir)), ov, dir, cdn).0
   }
 
+  /** (G3a) The body-`l` match from FRESH registers FOLLOWED BY the nulled-plus reconstruction of
+      `VBody(crv, l)`: exactly the engine's look replay `AI.FFindMatchPlus` from init banks (`AI.FLookLoop`
+      reconstructs with `f_look_ast[l]` in both directions). The value predicates name it. OPAQUE: those
+      predicates are unfolded inside the largest proofs; `FreshBodyMatchPlusPlain` is the bridge to
+      `FreshBodyMatch` when the row's code stamps nothing. */
+  opaque ghost function FreshBodyMatchPlus(crv: CP.FCompiled, str: string, l: int, lk: AReg.Regs,
+                                           ov: LOr.OracleView, ncap: int, nlook: int, nquant: int): Option<AI.Thread> {
+    var cp := if AReg.get_cp(lk, l).Some? then AReg.get_cp(lk, l).value else 0;
+    var looktype := if 0 <= l < |crv.f_look_types| then crv.f_look_types[l] else R.Lookahead;
+    var dir := AI.capture_direction(looktype);
+    var bc := CP.compile_to_bytecode(CP.capture_regex(looktype, VBody(crv, l)));
+    var cdn := if 0 <= l < |crv.f_look_cdns| then crv.f_look_cdns[l] else [];
+    AI.FFindMatchPlus(bc, VBody(crv, l), crv.f_plus_bc, str, ov, dir, cp,
+                      AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0, cdn).0
+  }
+
+  /** (G3a) When row `l`'s code never stamps a quantifier `true` (every body that is nulled-plus-free,
+      `NoTrueQuantStampNested`), the reconstruction is the identity: the plus match IS the plain one. */
+  lemma FreshBodyMatchPlusPlain(crv: CP.FCompiled, str: string, l: int, lk: AReg.Regs,
+                                ov: LOr.OracleView, ncap: int, nlook: int, nquant: int)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires var looktype := if 0 <= l < |crv.f_look_types| then crv.f_look_types[l] else R.Lookahead;
+             var bc := CP.compile_to_bytecode(CP.capture_regex(looktype, VBody(crv, l)));
+             forall pc: nat, q: int, b: bool :: NR.GetPcRE(bc, pc) == Some(RB.SetQuantToClock(q, b)) ==> !b
+    ensures FreshBodyMatchPlus(crv, str, l, lk, ov, ncap, nlook, nquant)
+         == FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant)
+  {
+    reveal FreshBodyMatchPlus();
+    var cp := if AReg.get_cp(lk, l).Some? then AReg.get_cp(lk, l).value else 0;
+    var looktype := if 0 <= l < |crv.f_look_types| then crv.f_look_types[l] else R.Lookahead;
+    var dir := AI.capture_direction(looktype);
+    var bc := CP.compile_to_bytecode(CP.capture_regex(looktype, VBody(crv, l)));
+    var cdn := if 0 <= l < |crv.f_look_cdns| then crv.f_look_cdns[l] else [];
+    var ctx := AI.cp_context(cp, str, dir);
+    var inits := AI.FInitState(bc, cp, AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0, ctx);
+    assert VmQuantFinal(inits) by {
+      var th0 := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
+      assert QuantRegsFinal(th0) by {
+        hide *;
+        reveal QuantRegsFinal, AI.init_thread, AI.get_idx, AReg.init_regs;
+        RL.AInitLaws(nquant);
+        forall k ensures AI.get_idx(AReg.init_regs(nquant).a_cp, k) < 0
+                         && AI.get_idx(AReg.init_regs(nquant).a_clk, k) >= -1 {
+          if 0 <= k < nquant { }
+        }
+      }
+      forall t2 | t2 in inits.active ensures QuantRegsFinal(t2) { assert t2 == th0; }
+    }
+    FFindMatchQuantFinalAny(bc, str, inits, ov, dir, cdn);
+    var (fm, ov1) := AI.FFindMatch(bc, str, inits, ov, dir, cdn);
+    if fm.Some? {
+      assert QuantRegsFinal(fm.value);
+      FNulledPlusIdentity(VBody(crv, l), fm.value.capture_regs, fm.value.look_regs, fm.value.quant_regs,
+                          crv.f_plus_bc, str, ov1, dir);
+      assert AI.FReconstructPlus(fm.value, VBody(crv, l), crv.f_plus_bc, str, ov1, dir).0 == fm.value;
+    }
+  }
+
+  /** (G3a) `FreshBodyMatchPlusPlain` at a positive row whose body carries the frame facts
+      (`FrameEntryOk`'s first conjuncts): a lookahead replays `body`, a lookbehind `reverse_regex(body)`. */
+  lemma FreshBodyMatchPlusPlainRow(crv: CP.FCompiled, str: string, l: int, lk: AReg.Regs,
+                                   ov: LOr.OracleView, ncap: int, nlook: int, nquant: int,
+                                   la: R.lookaround, body: R.regex)
+    requires 0 <= l < |crv.f_look_types| && crv.f_look_types[l] == la && body == VBody(crv, l)
+    requires la.Lookahead? || la.Lookbehind?
+    requires NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body) && NR.NoNulledPlusRE(body)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    ensures FreshBodyMatchPlus(crv, str, l, lk, ov, ncap, nlook, nquant)
+         == FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant)
+  {
+    if la.Lookahead? {
+      assert CP.capture_regex(la, body) == body;
+      NoTrueQuantStampNested(body);
+    } else {
+      assert CP.capture_regex(la, body) == R.reverse_regex(body);
+      ReverseNestedPackage(body);
+      NR.NoNulledPlusReverse(body);
+      NoTrueQuantStampNested(R.reverse_regex(body));
+    }
+    FreshBodyMatchPlusPlain(crv, str, l, lk, ov, ncap, nlook, nquant);
+  }
+
   /** The value-lift conclusion: on each matched positive lookahead's own capture
       registers, `res0` carries the fresh body match (or stays unset if the fresh
       body did not match). */
@@ -4801,7 +4883,7 @@ module LindenElkMain {
   ghost predicate FLookLoopValueOkFull(crv: CP.FCompiled, str: string, res0: AReg.Regs, res1: AReg.Regs,
                                        lid: int, maxlook: int, ov: LOr.OracleView, ncap: int, nlook: int, nquant: int) {
     forall owner: int :: lid <= owner <= maxlook && MatchedPosLA(crv, res1, owner) ==>
-                           var rf := FreshBodyMatch(crv, str, owner, res1, ov, ncap, nlook, nquant);
+                           var rf := FreshBodyMatchPlus(crv, str, owner, res1, ov, ncap, nlook, nquant);
                            (rf.Some? ==> CM.RegsAgreeInside(res0, rf.value.capture_regs,
                                                             PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, owner)))))
                            && (rf.None? ==> CM.RegsAgreeInside(res0, AReg.init_regs(ncap),
@@ -4818,7 +4900,7 @@ module LindenElkMain {
     ensures FLookLoopValueOkFull(crv, str, res0, res1, lid, maxlook, ov, ncap, nlook, nquant)
   {
     forall owner: int | lid <= owner <= maxlook && MatchedPosLA(crv, res1, owner)
-      ensures var rf := FreshBodyMatch(crv, str, owner, res1, ov, ncap, nlook, nquant);
+      ensures var rf := FreshBodyMatchPlus(crv, str, owner, res1, ov, ncap, nlook, nquant);
               (rf.Some? ==> CM.RegsAgreeInside(res0, rf.value.capture_regs,
                                                PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, owner)))))
               && (rf.None? ==> CM.RegsAgreeInside(res0, AReg.init_regs(ncap),
@@ -5152,7 +5234,7 @@ module LindenElkMain {
 
         // ---- assemble FLookLoopValueOkFull for [lid] keyed on res.1 ----
         forall owner: int | lid <= owner <= maxlook && MatchedPosLA(crv, res.1, owner)
-          ensures var rf2 := FreshBodyMatch(crv, str, owner, res.1, ov, ncap, nlook, nquant);
+          ensures var rf2 := FreshBodyMatchPlus(crv, str, owner, res.1, ov, ncap, nlook, nquant);
                   (rf2.Some? ==> CM.RegsAgreeInside(res.0, rf2.value.capture_regs,
                                                     PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(VBody(crv, owner)))))
                   && (rf2.None? ==> CM.RegsAgreeInside(res.0, AReg.init_regs(ncap),
@@ -5160,6 +5242,8 @@ module LindenElkMain {
         {
           assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           if owner == lid {
+            FreshBodyMatchPlusPlainRow(crv, str, lid, res.1, ov, ncap, nlook, nquant, la, body);   // (G3a) stamp-free row
+            assert {:split_here} true;   // (G3a) the bridge's premises in their own batch
             // re-key lid's coverage from lk onto res.1 via stability
             var rf2 := FreshBodyMatch(crv, str, lid, res.1, ov, ncap, nlook, nquant);
             assert rf2 == rfLid by {
@@ -5204,7 +5288,7 @@ module LindenElkMain {
                                        lid: int, maxlook: int, ov: LOr.OracleView,
                                        ncap: int, nlook: int, nquant: int) {
     forall l1: int :: lid <= l1 <= maxlook && MatchedPosLA(crv, res1, l1) ==>
-                        var rf := FreshBodyMatch(crv, str, l1, res1, ov, ncap, nlook, nquant);
+                        var rf := FreshBodyMatchPlus(crv, str, l1, res1, ov, ncap, nlook, nquant);
                         rf.Some? ==>
                           forall l2: int :: l2 in DirectLidSet(VBody(crv, l1)) ==>
                                               AReg.get_cp(res1, l2) == AReg.get_cp(rf.value.look_regs, l2)
@@ -5220,7 +5304,7 @@ module LindenElkMain {
     ensures FLookLoopChildLinkOk(crv, str, res1, lid, maxlook, ov, ncap, nlook, nquant)
   {
     forall l1: int | lid <= l1 <= maxlook && MatchedPosLA(crv, res1, l1)
-      ensures var rf := FreshBodyMatch(crv, str, l1, res1, ov, ncap, nlook, nquant);
+      ensures var rf := FreshBodyMatchPlus(crv, str, l1, res1, ov, ncap, nlook, nquant);
               rf.Some? ==>
                 forall l2: int :: l2 in DirectLidSet(VBody(crv, l1)) ==>
                                     AReg.get_cp(res1, l2) == AReg.get_cp(rf.value.look_regs, l2)
@@ -5607,7 +5691,7 @@ module LindenElkMain {
 
         // ---- assemble the child-link for [lid] keyed on res.1 ----
         forall l1: int | lid <= l1 <= maxlook && MatchedPosLA(crv, res.1, l1)
-          ensures var rf2 := FreshBodyMatch(crv, str, l1, res.1, ov, ncap, nlook, nquant);
+          ensures var rf2 := FreshBodyMatchPlus(crv, str, l1, res.1, ov, ncap, nlook, nquant);
                   rf2.Some? ==>
                     forall l2: int :: l2 in DirectLidSet(VBody(crv, l1)) ==>
                                         AReg.get_cp(res.1, l2) == AReg.get_cp(rf2.value.look_regs, l2)
@@ -5615,6 +5699,8 @@ module LindenElkMain {
         {
           assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           if l1 == lid {
+            FreshBodyMatchPlusPlainRow(crv, str, lid, res.1, ov, ncap, nlook, nquant, la, body);   // (G3a) stamp-free row
+            assert {:split_here} true;   // (G3a) the bridge's premises in their own batch
             var rf2 := FreshBodyMatch(crv, str, lid, res.1, ov, ncap, nlook, nquant);
             assert rf2 == rfLid by {
               assert AReg.get_cp(res.1, lid) == AReg.get_cp(lk, lid);   // stability
@@ -5995,7 +6081,7 @@ module LindenElkMain {
   ghost predicate FLookLoopQuantValueOkFull(crv: CP.FCompiled, str: string, res2: AReg.Regs, res1: AReg.Regs,
                                             lid: int, maxlook: int, ov: LOr.OracleView, ncap: int, nlook: int, nquant: int) {
     forall owner: int :: lid <= owner <= maxlook && MatchedPosLA(crv, res1, owner) ==>
-                           var rf := FreshBodyMatch(crv, str, owner, res1, ov, ncap, nlook, nquant);
+                           var rf := FreshBodyMatchPlus(crv, str, owner, res1, ov, ncap, nlook, nquant);
                            (rf.Some? ==> CM.RegsAgreeInside(res2, rf.value.quant_regs, QIdsOuter(VBody(crv, owner))))
                            && (rf.None? ==> CM.RegsAgreeInside(res2, AReg.init_regs(nquant), QIdsOuter(VBody(crv, owner))))
   }
@@ -6010,7 +6096,7 @@ module LindenElkMain {
     ensures FLookLoopQuantValueOkFull(crv, str, res2, res1, lid, maxlook, ov, ncap, nlook, nquant)
   {
     forall owner: int | lid <= owner <= maxlook && MatchedPosLA(crv, res1, owner)
-      ensures var rf := FreshBodyMatch(crv, str, owner, res1, ov, ncap, nlook, nquant);
+      ensures var rf := FreshBodyMatchPlus(crv, str, owner, res1, ov, ncap, nlook, nquant);
               (rf.Some? ==> CM.RegsAgreeInside(res2, rf.value.quant_regs, QIdsOuter(VBody(crv, owner))))
               && (rf.None? ==> CM.RegsAgreeInside(res2, AReg.init_regs(nquant), QIdsOuter(VBody(crv, owner))))
     { assert owner != lid; }
@@ -6341,12 +6427,14 @@ module LindenElkMain {
 
         // ---- assemble FLookLoopQuantValueOkFull for [lid] keyed on res.1 ----
         forall owner: int | lid <= owner <= maxlook && MatchedPosLA(crv, res.1, owner)
-          ensures var rf2 := FreshBodyMatch(crv, str, owner, res.1, ov, ncap, nlook, nquant);
+          ensures var rf2 := FreshBodyMatchPlus(crv, str, owner, res.1, ov, ncap, nlook, nquant);
                   (rf2.Some? ==> CM.RegsAgreeInside(res.2, rf2.value.quant_regs, QIdsOuter(VBody(crv, owner))))
                   && (rf2.None? ==> CM.RegsAgreeInside(res.2, AReg.init_regs(nquant), QIdsOuter(VBody(crv, owner))))
         {
           assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
           if owner == lid {
+            FreshBodyMatchPlusPlainRow(crv, str, lid, res.1, ov, ncap, nlook, nquant, la, body);   // (G3a) stamp-free row
+            assert {:split_here} true;   // (G3a) the bridge's premises in their own batch
             // re-key lid's coverage from lk onto res.1 via stability
             var rf2 := FreshBodyMatch(crv, str, lid, res.1, ov, ncap, nlook, nquant);
             assert rf2 == rfLid by {

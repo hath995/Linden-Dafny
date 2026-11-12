@@ -741,6 +741,9 @@ module LindenElkLiftSimCarriers {
 
     // rf_A IS FreshBodyMatch(A, res1) (identity block, VERBATIM DeepFindRec (ζ))
     var rfFresh := M.FreshBodyMatch(crv, str, A as int, res1, ov, ncap, nlook, nquant);
+    assert rfFresh == M.FreshBodyMatchPlus(crv, str, A as int, res1, ov, ncap, nlook, nquant) by {   // (G3a) stamp-free row
+      M.FreshBodyMatchPlusPlainRow(crv, str, A as int, res1, ov, ncap, nlook, nquant, laA, host);
+    }
     assert rfFresh == AI.FFindMatch(bodycode, str,
                                     AI.FInitState(bodycode, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
                                                   AReg.init_regs(nquant), 0, AI.cp_context(cpA, str, LAnc.Forward)),

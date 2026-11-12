@@ -447,6 +447,9 @@ module LindenElkLiftSimDeep {
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert AReg.get_cp(res1, A as int).Some? && AReg.get_cp(res1, A as int).value == cpA;
       var rfFresh := M.FreshBodyMatch(crv, str, A as int, res1, ov, ncap, nlook, nquant);
+      assert rfFresh == M.FreshBodyMatchPlus(crv, str, A as int, res1, ov, ncap, nlook, nquant) by {   // (G3a) stamp-free row
+        M.FreshBodyMatchPlusPlainRow(crv, str, A as int, res1, ov, ncap, nlook, nquant, laA, host);
+      }
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert rfFresh == AI.FFindMatch(bodycodeB, str,
                                       AI.FInitState(bodycodeB, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
@@ -752,6 +755,9 @@ module LindenElkLiftSimDeep {
     assert {:split_here} true;   // (E3) step boundary: its own assertion batch
     // (ζ) rf_A IS FreshBodyMatch(A, res1) (same fresh run at the same position)
     var rfFresh := M.FreshBodyMatch(crv, str, A as int, res1, ov, ncap, nlook, nquant);
+    assert rfFresh == M.FreshBodyMatchPlus(crv, str, A as int, res1, ov, ncap, nlook, nquant) by {   // (G3a) stamp-free row
+      M.FreshBodyMatchPlusPlainRow(crv, str, A as int, res1, ov, ncap, nlook, nquant, laA, host);
+    }
     assert rfFresh == AI.FFindMatch(bodycode, str,
                                     AI.FInitState(bodycode, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
                                                   AReg.init_regs(nquant), 0, AI.cp_context(cpA, str, LAnc.Forward)),
@@ -1244,6 +1250,9 @@ module LindenElkLiftSimDeep {
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert AReg.get_cp(res1, A as int).Some? && AReg.get_cp(res1, A as int).value == cpA;
       rfFresh := M.FreshBodyMatch(crv, str, A as int, res1, ov, ncap, nlook, nquant);
+      assert rfFresh == M.FreshBodyMatchPlus(crv, str, A as int, res1, ov, ncap, nlook, nquant) by {   // (G3a) stamp-free row
+        M.FreshBodyMatchPlusPlainRow(crv, str, A as int, res1, ov, ncap, nlook, nquant, laA, host);
+      }
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert rfFresh == AI.FFindMatch(bodycodeB, str,
                                       AI.FInitState(bodycodeB, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),

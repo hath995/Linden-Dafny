@@ -3152,6 +3152,18 @@ module LindenElkLiftSimChain {
     assert {:split_here} true;
     // the value lifts at the owner
     var rf := M.FreshBodyMatch(crv, str, owner as int, res1, ov, ncap, nlook, nquant);
+    assert {:split_here} true;   // (G3a) the bridge in its own batch
+    assert rf == M.FreshBodyMatchPlus(crv, str, owner as int, res1, ov, ncap, nlook, nquant) by {   // (G3a) stamp-free row
+      // the hub row at `owner` carries the nulled-plus-free body (GateStaticsOkNested)
+      assert GateStaticAtNested(qm, re, crv, owner as int, ncap, nlook, nquant);
+      var laT: R.lookaround, bT: R.regex :| LTB.LookEntryOk(crv, owner as int, laT, bT)
+                                          && NR.NestedFragmentRE(bT) && NR.NoNulledPlusRE(bT);
+      var laK: R.lookaround :| LTB.LookEntryOk(crv, owner as int, laK, body);   // LookBodyFactsKB
+      M.LookEntryBody(crv, owner as int, laT, bT, laK, body);
+      assert NR.NoNulledPlusRE(body) && PIV.QuantUnique(body) && PIV.CapUnique(body);
+      M.FreshBodyMatchPlusPlainRow(crv, str, owner as int, res1, ov, ncap, nlook, nquant, laT, body);
+    }
+    assert {:split_here} true;
     PIV.CapIdsSplit(body);
     assert g in PIV.CapIdsOutsideLooks(body);
     assert CP.start_reg(g as int) in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body));
