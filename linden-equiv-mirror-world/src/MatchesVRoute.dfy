@@ -18,6 +18,7 @@
 
 module LindenElkMatchesVRoute {
   import opened Std.Wrappers
+  import BRS = LindenElkBackRowStatics   // (G3b) the flipped statics, no stamp-free premise
   import LW = WarblreRegExpRecord
   import WP = WarblrePrimitives
   import LC = Chars
@@ -217,7 +218,7 @@ module LindenElkMatchesVRoute {
   lemma FlippedRunIsBackLeaf(rer: LW.RegExpRecord, qmb: AR.QMap, body: R.regex, str: string, cp: nat,
                              cdnsF: LCdn.cdns, ncap: int, nlook: int, nquant: int)
     requires !rer.ignoreCase && !rer.multiline
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NoNulledPlusRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)   // (G3b) no stamp-free premise
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires cp <= |str| && |qmb.ov| == |str| + 1
@@ -243,7 +244,7 @@ module LindenElkMatchesVRoute {
     var mv := MIR.MirrorView(qmb.ov, n);
 
     // ---- statics of FXR(body) + the flipped table (F4; no kind premise) ----
-    var qm'', endl' := FK.FlipXRevStaticOkNested(body, mv, ncap, nlook, nquant);
+    var qm'', endl' := BRS.FlipXRevStaticCoreNested(body, mv, ncap, nlook, nquant);
 
     // ---- oracle for the flipped table: W3's generic transport (mixed kinds) ----
     KG.LmOfBodiesNoBackref(body);
@@ -283,7 +284,7 @@ module LindenElkMatchesVRoute {
     requires LTB.LookEntryOk(CP.FFullCompilation(top), lid, la, body)
     requires la.Lookbehind? || la.NegLookbehind?
     requires 1 <= lid && cp <= |str|
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && NR.NoNulledPlusRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)   // (G3b) no stamp-free premise
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires forall y: nat :: y in LTB.LookIds(body) ==> 1 <= y
     requires qmb.ov == AI.FBuildOracle(CP.FFullCompilation(top), str) && qmb.looks == OE.LmOf(body)

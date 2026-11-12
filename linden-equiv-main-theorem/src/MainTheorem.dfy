@@ -76,6 +76,8 @@ module LindenElkMain {
   import QCI = LindenElkQuantCpIrrel
   import LLAF = LindenElkLookLoopAgreeFrom
   import FRA = LindenElkFinalReadoutAt
+  import BR = LindenElkBackRowAt          // (G3b) backward row register lemmas
+  import DB = LindenElkDirBlind           // (G3b) FReconstructPlus is direction-blind
 
   // ==========================================================================
   // Bridge: our local closure IS Linden's (identical definitions over the
@@ -4422,6 +4424,110 @@ module LindenElkMain {
       assert AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp, cap, lk, qt, 0, lookcdn) == (None, ovx);
     }
   }
+  /** (G3b) `ReplayPlusRowLA`'s lookbehind twin: the row replays `compile(reverse_regex(body))` BACKWARD and
+      reconstructs with `body` (`FReconstructPlus` is direction-blind). Same conclusions. */
+  lemma ReplayPlusRowLB(bytecode: RB.code, str: string, ov: LOr.OracleView, lookcdn: LCdn.cdns,
+                        plus_bcv: seq<RB.code>, cp: int, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs,
+                        body: R.regex, ncap: int, nlook: int, nquant: int)
+    requires RowLAStatics(body, plus_bcv)
+    requires bytecode == CP.compile_to_bytecode(R.reverse_regex(body))
+    requires 0 <= cp <= |str|
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
+    requires |lk.a_cp| == nlook && |lk.a_clk| == nlook && CM.LookCpsLE(lk, |str|)
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0) && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    ensures var rr := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward,
+                                        cp, cap, lk, qt, 0, lookcdn);
+            var r := rr.0;
+            rr.1 == ov
+            && (r.Some? ==>
+                  CM.ThreadRegsWf(r.value, ncap, nlook, nquant)
+                  && CM.RegsAgreeOutside(r.value.capture_regs, cap,
+                                         PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)))
+                  && CM.RegsAgreeOutside(r.value.look_regs, lk, LookIdSet(body))
+                  && CM.RegsAgreeOutside(r.value.look_regs, lk, DirectLidSet(body))
+                  && CM.LookCpsLE(r.value.look_regs, |str|)
+                  && CM.RegsAgreeOutside(r.value.quant_regs, qt, QIdsOuter(body))
+                  && (forall k :: AI.get_idx(r.value.quant_regs.a_clk, k) >= -1)
+                  && (forall k :: k !in QIdsOuter(body) ==> AI.get_idx(r.value.quant_regs.a_cp, k) < 0))
+    ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
+            var fm := AI.FFindMatch(bytecode, str, AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, LAnc.Backward)), ov, LAnc.Backward, lookcdn).0;
+            r.Some? ==> fm.Some? && r.value.look_regs == fm.value.look_regs
+  {
+    reveal RowLAStatics();
+    var dir := LAnc.Backward;
+    var ctx := AI.cp_context(cp, str, dir);
+    assert ctx.nextchar == AI.get_char(str, cp - 1) by { hide *; reveal AI.cp_context; }
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, ctx);
+    var th0 := AI.init_thread(cap, lk, qt);
+    assert inits.active == [th0] && inits.blocked == [] && inits.bestmatch.None?;
+    var rev := R.reverse_regex(body);
+    ReverseNestedPackage(body);
+    ReverseIdSets(body);
+    assert {:split_here} true;
+    // well-formedness of the VM winner
+    assert CM.VmRegsWf(inits, ncap, nlook, nquant) by {
+      assert CM.ThreadRegsWf(th0, ncap, nlook, nquant);
+      forall t | t in inits.active ensures CM.ThreadRegsWf(t, ncap, nlook, nquant) {}
+    }
+    FFindMatchRegsWf(bytecode, str, inits, ov, dir, lookcdn, ncap, nlook, nquant);
+    assert {:split_here} true;
+    // the winner is RegsFinalOk on the body's CIN quantifiers (the reverse code stamps the same ids)
+    BR.RevTrueStampsCin(body);
+    var Q := FRD.CinQids(body);
+    assert FV.VmRegsFinalOk(inits, |str|, Q) by {
+      assert FV.RegsFinalOk(th0, |str|, Q);
+      forall t | t in inits.active ensures FV.RegsFinalOk(t, |str|, Q) { assert t == th0; }
+    }
+    BR.FFindMatchRegsFinalAny(bytecode, str, inits, ov, dir, lookcdn, Q);
+    assert {:split_here} true;
+    // the VM's write frames (reverse code: the same id sets), its look-cp bound, and the untouched view
+    ReplayCaptureFrameNestedOuterLB(bytecode, str, inits, ov, lookcdn, cap, lk, qt, body);
+    LookBytecodeClassifiedNested(rev);
+    assert CM.VmLooksAgree(inits, lk, LookIdSet(body)) by {
+      assert CM.RegsAgreeOutside(lk, lk, LookIdSet(body));
+    }
+    CM.FFindMatchLookFrame(bytecode, str, inits, ov, dir, lookcdn, lk, LookIdSet(body));
+    DirectLidClassified(rev);
+    assert CM.VmLooksAgree(inits, lk, DirectLidSet(body)) by {
+      assert CM.RegsAgreeOutside(lk, lk, DirectLidSet(body));
+    }
+    CM.FFindMatchLookFrame(bytecode, str, inits, ov, dir, lookcdn, lk, DirectLidSet(body));
+    ReverseQuantIdsOutsideLooks(body);
+    assert QIdsOuter(rev) == QIdsOuter(body);
+    QuantBytecodeClassifiedNestedOuter(rev);
+    assert CM.VmQuantsAgree(inits, qt, QIdsOuter(body)) by {
+      assert th0.quant_regs == qt;
+      assert CM.RegsAgreeOutside(qt, qt, QIdsOuter(body));
+    }
+    CM.FFindMatchQuantFrame(bytecode, str, inits, ov, dir, lookcdn, qt, QIdsOuter(body));
+    assert CM.VmLookCpOk(inits, |str|) by { assert th0.look_regs == lk; }
+    CM.FFindMatchLookCpOkB(bytecode, str, inits, ov, dir, lookcdn);
+    NoWriteOracleBodyCodeNested(rev);
+    CM.FFindMatchOvStable(bytecode, str, inits, ov, dir, lookcdn);
+    var (res0, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+    assert ovx == ov;
+    assert {:split_here} true;
+    // the reconstruction: `RowReconAt` states Forward; `FReconstructPlus` is direction-blind
+    if res0.Some? {
+      var th := res0.value;
+      var qm := AR.QMap(map[], map[], ov, map[]);
+      RRA.RowReconAt(qm, body, plus_bcv, str, th, ncap, nlook, nquant);
+      DB.ReconstructPlusDirBlind(th, body, plus_bcv, str, ov);
+      var rp := AI.FReconstructPlus(th, body, plus_bcv, str, ov, dir);
+      assert rp == AI.FReconstructPlus(th, body, plus_bcv, str, ov, LAnc.Forward);
+      assert RRA.QOuter(body) == QIdsOuter(body);
+      CM.RegsAgreeOutsideTrans(rp.0.capture_regs, th.capture_regs, cap,
+                               PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)));
+      RRA.RowQuantFinalOutside(th, rp.0.quant_regs, qt, QIdsOuter(body));
+      assert AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp, cap, lk, qt, 0, lookcdn)
+          == (Some(rp.0), rp.1);
+    } else {
+      assert AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp, cap, lk, qt, 0, lookcdn) == (None, ovx);
+    }
+  }
+
 
   /** (G3a) A4's quant set: `RAgree` ranges over valid indices only, so the negative members of
       `QidsOf(body)` are vacuous and the nonnegative ones lie in `QIdsInt(body)`. */
@@ -4464,6 +4570,43 @@ module LindenElkMain {
                            0, lookcdn, D);
     var a := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Forward, cp, cap, lk, qt, 0, lookcdn);
     var f := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Forward, cp,
+                               AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0, lookcdn);
+    if a.0.Some? {
+      RRA.InsideFromRAgree(a.0.value.capture_regs, f.0.value.capture_regs, C);
+      RRA.InsideFromRAgree(a.0.value.look_regs, f.0.value.look_regs, SL);
+      RRA.InsideFromRAgree(a.0.value.quant_regs, f.0.value.quant_regs, D.q);
+      RegsAgreeInsideWeakenSub(a.0.value.quant_regs, f.0.value.quant_regs, LKC.QIdsInt(body), D.q);
+    }
+  }
+  /** (G3b) `ReplayAgreePlusFresh` in either direction (A4 is direction-generic). */
+  lemma ReplayAgreePlusFreshDir(bytecode: RB.code, str: string, cp: int, cap: AReg.Regs, lk: AReg.Regs,
+                             qt: AReg.Regs, ov: LOr.OracleView, lookcdn: LCdn.cdns, plus_bcv: seq<RB.code>,
+                             body: R.regex, C: set<int>, SL: set<int>, ncap: int, nlook: int, nquant: int,
+                                dir: LAnc.direction)
+    requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && ncap >= 0
+    requires |lk.a_cp| == nlook && |lk.a_clk| == nlook && nlook >= 0
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant && nquant >= 0
+    requires CM.RegsAgreeInside(cap, AReg.init_regs(ncap), C)
+    requires CM.RegsAgreeInside(lk, AReg.init_regs(nlook), SL)
+    requires CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body))
+    ensures var a := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp, cap, lk, qt, 0, lookcdn);
+            var f := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp,
+                                       AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0, lookcdn);
+            a.1 == f.1 && (a.0.None? <==> f.0.None?)
+            && (a.0.Some? ==>
+                  CM.RegsAgreeInside(a.0.value.capture_regs, f.0.value.capture_regs, C)
+                  && CM.RegsAgreeInside(a.0.value.look_regs, f.0.value.look_regs, SL)
+                  && CM.RegsAgreeInside(a.0.value.quant_regs, f.0.value.quant_regs, LKC.QIdsInt(body)))
+  {
+    var D := RA.Ks(C, SL, LKC.QIdsInt(body) + QCI.QidsOf(body));
+    RRA.RAgreeFromInside(cap, AReg.init_regs(ncap), C);
+    RRA.RAgreeFromInside(lk, AReg.init_regs(nlook), SL);
+    RAgreeAddQidsOf(qt, AReg.init_regs(nquant), body);
+    RA.FFindMatchPlusAgree(bytecode, body, plus_bcv, str, ov, dir, cp,
+                           cap, AReg.init_regs(ncap), lk, AReg.init_regs(nlook), qt, AReg.init_regs(nquant),
+                           0, lookcdn, D);
+    var a := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp, cap, lk, qt, 0, lookcdn);
+    var f := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp,
                                AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0, lookcdn);
     if a.0.Some? {
       RRA.InsideFromRAgree(a.0.value.capture_regs, f.0.value.capture_regs, C);
@@ -4844,8 +4987,8 @@ module LindenElkMain {
       unchanged through the induction as the look bank grows. */
   ghost predicate FrameEntryOk(crv: CP.FCompiled, la: R.lookaround, body: R.regex, S: set<int>, Slook: set<int>) {
     NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
-    && ((la.Lookbehind? || la.NegLookbehind?) ==> NR.NoNulledPlusRE(body))   // lookbehind rows: stamp-free twins
-    && ((la.Lookahead? || la.NegLookahead?) ==> RowLAStatics(body, crv.f_plus_bc))   // (G3a) lookahead rows: CIN fragment
+    && ((la.Lookbehind? || la.NegLookbehind?) ==> NR.NoNulledPlusRE(body))   // (G3b interim) until every LB arm is on the plus row
+    && RowLAStatics(body, crv.f_plus_bc)   // (G3b) every row replays the plus machine
     && LTB.LookTablesOk(body, crv)
     && PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)) <= S
     && LookIdSet(body) <= Slook
@@ -4927,11 +5070,7 @@ module LindenElkMain {
           assert CP.capture_regex(la, body) == R.reverse_regex(body);
           assert bytecode == CP.compile_to_bytecode(R.reverse_regex(body));
           assert dir == LAnc.Backward;
-          assert AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1);
-          ReplayPlusFrameNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
-          ReplayThreadWfLBNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant);
-          ReplayLookCpOkNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
-          if result.Some? { assert QuantRegsFinal(result.value); }
+          ReplayPlusRowLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body, ncap, nlook, nquant);   // (G3b)
         }
         assert {:split_here} true;
         // ---- what both kinds deliver ----
@@ -5082,11 +5221,7 @@ module LindenElkMain {
           assert bytecode == CP.compile_to_bytecode(R.reverse_regex(body));
           assert dir == LAnc.Backward;
           assert ctxc.nextchar == AI.get_char(str, cp - 1);
-          ReplayPlusFrameNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
-          ReplayThreadWfLBNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant);
-          ReplayLookCpOkNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
-          ReplayPlusQuantFrameNestedOuterLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
-          if result.Some? { assert QuantRegsFinal(result.value); }
+          ReplayPlusRowLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body, ncap, nlook, nquant);   // (G3b)
         }
         assert {:split_here} true;
         // ---- what both kinds deliver ----
@@ -5614,15 +5749,16 @@ module LindenElkMain {
           assert dir == LAnc.Backward && CP.capture_regex(la, body) == R.reverse_regex(body);
           assert bytecode == CP.compile_to_bytecode(R.reverse_regex(body));
           assert AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1);
-          FFindMatchPlusOvStableNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
-          ReplayPlusFrameNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
-          ReplayPlusLookFrameDirectNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
-          ReplayThreadWfLBNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant);
-          ReplayLookCpOkNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
-          ReplayLidCapAgreeFreshNestedLB(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant);
-          if result.Some? { assert QuantRegsFinal(result.value); }
-          FreshBodyMatchPlusPlainRow(crv, str, lid, lk, ov, ncap, nlook, nquant, la, body);
-          assert rfLid == FreshBodyMatch(crv, str, lid, lk, ov, ncap, nlook, nquant);
+          // (G3b) a lookbehind row replays the plus machine too
+          ReplayPlusRowLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body, ncap, nlook, nquant);
+          ReplayAgreePlusFreshDir(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body,
+                                  PIV.CaptureRegs(body), {}, ncap, nlook, nquant, LAnc.Backward);
+          assert rfLid == AI.FFindMatchPlus(bytecode, body, crv.f_plus_bc, str, ov, LAnc.Backward, cp,
+                                            AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant),
+                                            0, lookcdn).0 by {
+            reveal FreshBodyMatchPlus();
+            assert AReg.get_cp(lk, lid).value == cp;
+          }
         }
         assert {:split_here} true;
         // ---- what both kinds deliver ----
@@ -5712,6 +5848,7 @@ module LindenElkMain {
               assert (l2 as nat) in DirectLookIds(body);
               assert lid < l1;                                          // l1 >= next
               assert DirectLookIds(body) * LTB.LookIds(b1) == {};       // (g_new) with (lid, l1)
+              assert (l2 as nat) !in DirectLookIds(body) * LTB.LookIds(b1);
               assert (l2 as nat) !in LTB.LookIds(b1);
               if l2 in LookIdSet(b1) {
                 var q: nat :| q in LTB.LookIds(b1) && (q as int) == l2;
@@ -6092,16 +6229,11 @@ module LindenElkMain {
             ReplayAgreePlusFresh(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body,
                                  {}, DirectLidSet(body), ncap, nlook, nquant);
           } else {
-            FFindMatchPlusOvStableNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
-            ReplayPlusFrameNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
-            ReplayPlusLookFrameDirectNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
-            ReplayThreadWfLBNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant);
-            ReplayLookCpOkNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
-            ReplayPlusQuantFrameNestedOuterLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
-            ReplayLidLookAgreeFreshNestedLB(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, DirectLidSet(body), ncap, nlook, nquant);
-            if result.Some? { assert QuantRegsFinal(result.value); }
-            FreshBodyMatchPlusPlainRow(crv, str, lid, lk, ov, ncap, nlook, nquant, la, body);
-            assert rf == FreshBodyMatch(crv, str, lid, lk, ov, ncap, nlook, nquant);
+            // (G3b) a lookbehind row replays the plus machine too
+            ReplayPlusRowLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body, ncap, nlook, nquant);
+            assert CM.RegsAgreeInside(cap, AReg.init_regs(ncap), {});
+            ReplayAgreePlusFreshDir(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body,
+                                    {}, DirectLidSet(body), ncap, nlook, nquant, LAnc.Backward);
           }
           assert {:split_here} true;
           assert ov1 == ov;
@@ -6437,10 +6569,7 @@ module LindenElkMain {
           assert bytecode == CP.compile_to_bytecode(R.reverse_regex(body));
           assert dir == LAnc.Backward;
           assert ctxc.nextchar == AI.get_char(str, cp - 1);
-          ReplayPlusFrameNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
-          ReplayThreadWfLBNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant);
-          ReplayLookCpOkNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
-          if result.Some? { assert QuantRegsFinal(result.value); }
+          ReplayPlusRowLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body, ncap, nlook, nquant);   // (G3b)
         }
         assert {:split_here} true;
         // ---- what both kinds deliver ----
@@ -6586,11 +6715,7 @@ module LindenElkMain {
           assert bytecode == CP.compile_to_bytecode(R.reverse_regex(body));
           assert dir == LAnc.Backward;
           assert ctxc.nextchar == AI.get_char(str, cp - 1);
-          ReplayPlusFrameNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
-          ReplayThreadWfLBNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant);
-          ReplayLookCpOkNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
-          FFindMatchPlusOvStableNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
-          if result.Some? { assert QuantRegsFinal(result.value); }
+          ReplayPlusRowLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body, ncap, nlook, nquant);   // (G3b)
         }
         assert {:split_here} true;
         // ---- what both kinds deliver ----
@@ -6900,23 +7025,17 @@ module LindenElkMain {
             hide *; reveal AI.cp_context;   // a one-step unfold the ambient context drowns (20 s isolated)
           }
           assert {:split_here} true;
-          FFindMatchPlusOvStableNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
-          ReplayPlusFrameNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
-          ReplayPlusQuantFrameNestedOuterLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
+          // (G3b) a lookbehind row replays the plus machine too
+          ReplayPlusRowLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body, ncap, nlook, nquant);
           assert {:split_here} true;
-          ReplayPlusLookFrameDirectNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
-          ReplayThreadWfLBNested(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, ncap, nlook, nquant);
-          ReplayLookCpOkNestedLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body);
+          ReplayAgreePlusFreshDir(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, {}, {},
+                                  ncap, nlook, nquant, LAnc.Backward);
           assert {:split_here} true;
-          if result.Some? { assert QuantRegsFinal(result.value); }
-          ReplayLidQuantAgreeFreshNestedLB(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body,
-                                           ncap, nlook, nquant);
-          assert {:split_here} true;
-          FreshBodyMatchPlusPlainRow(crv, str, lid, lk, ov, ncap, nlook, nquant, la, body);   // stamp-free row
-          assert rfLid == AI.FFindMatch(bytecode, str,
-                                        AI.FInitState(bytecode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                                      AReg.init_regs(nquant), 0, AI.cp_context(cp, str, dir)),
-                                        ov, dir, lookcdn).0;
+          assert rfLid == AI.FFindMatchPlus(bytecode, body, crv.f_plus_bc, str, ov, LAnc.Backward, cp,
+                                            AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant),
+                                            0, lookcdn).0 by {
+            reveal FreshBodyMatchPlus();
+          }
         }
         assert {:split_here} true;
         // ---- what both kinds deliver ----
@@ -7535,16 +7654,15 @@ module LindenElkMain {
     // LookIdSet(body) <= LookIdSet(re)
     assert LTB.LookIds(body') <= LTB.LookIds(re);
     assert LookIdSet(body') <= LookIdSet(re);
-    // (G3a) the row's statics, by kind
+    // (G3a/G3b) the row's statics, every kind
     PlusGateBody(re, crv, lid, la, body);
-    if !BehindKind(la) {
-      assert NR.NestedFragmentRE(ast);                     // re == Re_con(pre, ast)
-      NestedNoCdn(ast);
-      FRD.PlusTableOkFull(ast);
-      FRA.PlusTableOkLookBody(re, crv.f_plus_bc, lid);
-      reveal RowLAStatics();
-      assert RowLAStatics(body, crv.f_plus_bc);
-    }
+    if BehindKind(la) { NoNulledPlusCinFragment(body); }   // (G3b interim) the gate's lookbehind arm
+    assert NR.NestedFragmentRE(ast);                     // re == Re_con(pre, ast)
+    NestedNoCdn(ast);
+    FRD.PlusTableOkFull(ast);
+    FRA.PlusTableOkLookBody(re, crv.f_plus_bc, lid);
+    reveal RowLAStatics();
+    assert RowLAStatics(body, crv.f_plus_bc);
   }
 
   /** (G3a) The nested fragment admits no CDN-greedy plus (twin of `MCL.NestedNoCdnLk`, needed below

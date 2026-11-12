@@ -65,7 +65,6 @@ module LindenElkFlipOracleG {
       `PikeLkRegexRec` admits either look direction already. */
   lemma NoBackrefNegFreePikeLk(tr: L.Regex)
     requires SD.NoBackrefL(tr)
-    requires NUL.NoNulledPlusL(tr)
     ensures EL.PikeLkRegexRec(tr)
     decreases tr
   {
@@ -81,7 +80,6 @@ module LindenElkFlipOracleG {
 
   lemma BodyGmTieFlipG(rer: LW.RegExpRecord, tr: L.Regex, inp: LC.Input, n: nat, dir: WP.Direction)
     requires SD.NoBackrefL(tr)
-    requires NUL.NoNulledPlusL(tr)   // §2.5b interim (only to reach PikeLkRegexRec)
     requires CD.NoDupG(L.DefGroups(tr))
     requires n == |inp.pref| + |inp.next|
     ensures var tB := FU.ComputeTr(rer, [LS.Areg(tr)], inp, LG.Empty, dir);
@@ -114,7 +112,6 @@ module LindenElkFlipOracleG {
   /** INSTANCE: `FD.BackBodyGmTieFlip`'s exact statement, from the generic tie. */
   lemma BackBodyGmTieFlipViaG(rer: LW.RegExpRecord, tr: L.Regex, inp: LC.Input, n: nat)
     requires SD.GroupOkLB(tr)
-    requires NUL.NoNulledPlusL(tr)
     requires CD.NoDupG(L.DefGroups(tr))
     requires n == |inp.pref| + |inp.next|
     ensures var tB := FU.ComputeTr(rer, [LS.Areg(tr)], inp, LG.Empty, WP.Backward);
@@ -166,7 +163,6 @@ module LindenElkFlipOracleG {
       definition as `G.OppDir`.) */
   lemma HbValDischarged(rer: LW.RegExpRecord, tr: L.Regex, inp: LC.Input, n: nat)
     requires SD.NoBackrefL(tr)
-    requires NUL.NoNulledPlusL(tr)
     requires CD.NoDupG(L.DefGroups(tr))
     requires n == |inp.pref| + |inp.next|
     ensures var tB := FU.ComputeTr(rer, [LS.Areg(tr)], inp, LG.Empty, WP.Backward);
