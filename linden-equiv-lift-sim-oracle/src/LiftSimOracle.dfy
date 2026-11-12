@@ -111,6 +111,7 @@ module LindenElkLiftSimOracle {
   import CW = LindenElkCinWalk
   import NRR = LindenElkNulledReconRegs   // (G3a) the plus table
   import MA = LindenElkMachineA           // (G3a) machine A on the plus match
+  import BRG = LindenElkBackRowGate       // (G3b) the lookbehind plus twins
   import NRC = LindenElkNulledRecon        // (G3a) NoCdnPlusRE
   import RF = LindenElkReconFrame          // (G3a) CinBodiesLookFreeRE
   import opened LindenElkLiftSimCore
@@ -409,14 +410,8 @@ module LindenElkLiftSimOracle {
       assert PIV.CapIdsInLooks(re) == PIV.CapIds(body);
       assert PIV.CapIdsInLooks(body) <= PIV.CapIdsInLooks(re0);
       // recurse into the body for its OWN inner lids
-      // (G3a) the gate descends: a lookbehind body is nulled-plus-free, a lookahead body carries the gate
-      if M.BehindKind(la) {
-        assert NR.NoNulledPlusRE(body);
-        M.PlusGateFromFull(body);
-        M.NoNulledPlusCinFragment(body);
-      } else {
-        assert NRC.NoCdnPlusRE(body) && RF.CinBodiesLookFreeRE(body) && M.LookBodiesPlusGateRE(body);
-      }
+      // (G3b) the uniform gate descends: every look body is in the CIN fragment and carries the gate
+      assert NRC.NoCdnPlusRE(body) && RF.CinBodiesLookFreeRE(body) && M.LookBodiesPlusGateRE(body);
       // (G3a) the plus-row premises descend to the body
       assert NRR.PlusTableOk(body, crv.f_plus_bc) by { assert NRR.L1(re) == body; }
       assert LTB.LookUnique(body);
@@ -430,7 +425,6 @@ module LindenElkLiftSimOracle {
         // the node's own bundle
         assert LTB.LookEntryOk(crv, lid, la, body);
         assert T.TransWf(body) && NR.NestedFragmentRE(body);
-        assert M.BehindKind(la) ==> NR.NoNulledPlusRE(body);   // (G3a) lookbehind rows only
         assert PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body);
         M.NestedNoCdn(body);
         assert RF.CinBodiesLookFreeRE(body) && M.LookBodiesPlusGateRE(body);
@@ -838,7 +832,9 @@ module LindenElkLiftSimOracle {
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
     A0: nat, lk: AReg.Regs, body: R.regex, g2: nat, ncap: int, nlook: int, nquant: int)
     requires T.TransWf(body) && NR.NestedFragmentRE(body)
-    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
+    requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook          // (G3b) the plus row's premises
+    requires NRC.NoCdnPlusRE(body) && RF.CinBodiesLookFreeRE(body)
+    requires NRR.PlusTableOk(body, crv.f_plus_bc)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires !rer.ignoreCase && !rer.multiline
@@ -850,13 +846,13 @@ module LindenElkLiftSimOracle {
     requires M.MatchedPosLA(crv, lk, A0 as int)
     requires var cp := AReg.get_cp(lk, A0 as int).value; 0 <= cp <= |str|
     requires g2 in PIV.CapIds(body) && g2 !in PIV.CapIdsInLooks(body)
-    requires var rf := M.FreshBodyMatch(crv, str, A0 as int, lk, ov, ncap, nlook, nquant);
+    requires var rf := M.FreshBodyMatchPlus(crv, str, A0 as int, lk, ov, ncap, nlook, nquant);
              rf.Some?
              && g2 in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)
     ensures var lsub := SubFirstLeafAt(rer, crv, str, A0 as int, lk);
             lsub.Some? && g2 in lsub.value
   {
-    GG.FreshBodyDirectInBackLeaf(rer, qm, crv, str, ov, A0, lk, body, g2, ncap, nlook, nquant);
+    BRG.FreshPlusDirectInBackLeaf(rer, qm, crv, str, ov, A0, lk, body, g2, ncap, nlook, nquant);
     BackLeafAtSame(rer, body, str, AReg.get_cp(lk, A0 as int).value);
     SubFirstLeafAtIsBackLeaf(rer, crv, str, A0 as int, lk, body);
   }
@@ -868,7 +864,9 @@ module LindenElkLiftSimOracle {
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
     A0: nat, lk: AReg.Regs, body: R.regex, g2: nat, ncap: int, nlook: int, nquant: int)
     requires T.TransWf(body) && NR.NestedFragmentRE(body)
-    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
+    requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook          // (G3b) the plus row's premises
+    requires NRC.NoCdnPlusRE(body) && RF.CinBodiesLookFreeRE(body)
+    requires NRR.PlusTableOk(body, crv.f_plus_bc)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires !rer.ignoreCase && !rer.multiline
@@ -880,17 +878,17 @@ module LindenElkLiftSimOracle {
     requires M.MatchedPosLA(crv, lk, A0 as int)
     requires var cp := AReg.get_cp(lk, A0 as int).value; 0 <= cp <= |str|
     requires g2 in PIV.CapIds(body) && g2 !in PIV.CapIdsInLooks(body)
-    requires M.FreshBodyMatch(crv, str, A0 as int, lk, ov, ncap, nlook, nquant).Some?
+    requires M.FreshBodyMatchPlus(crv, str, A0 as int, lk, ov, ncap, nlook, nquant).Some?
     requires var lsub := SubFirstLeafAt(rer, crv, str, A0 as int, lk);
              lsub.Some? && g2 in lsub.value
-    ensures var rf := M.FreshBodyMatch(crv, str, A0 as int, lk, ov, ncap, nlook, nquant);
+    ensures var rf := M.FreshBodyMatchPlus(crv, str, A0 as int, lk, ov, ncap, nlook, nquant);
             var gmb := PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs);
             g2 in gmb
             && SubFirstLeafAt(rer, crv, str, A0 as int, lk).value[g2] == LBV.SwapRange(gmb[g2])
   {
     SubFirstLeafAtIsBackLeaf(rer, crv, str, A0 as int, lk, body);
     BackLeafAtSame(rer, body, str, AReg.get_cp(lk, A0 as int).value);
-    GG.BackLeafDirectInFresh(rer, qm, crv, str, ov, A0, lk, body, g2, ncap, nlook, nquant);
+    BRG.BackLeafDirectInFreshPlus(rer, qm, crv, str, ov, A0, lk, body, g2, ncap, nlook, nquant);
   }
 
   /** (R2 — the crossing DISCHARGES the deep gate-pass requires) Ties rung 1 to the
@@ -1728,7 +1726,6 @@ module LindenElkLiftSimOracle {
     ov: LOr.OracleView, gmt: LG.GroupMap, th: AI.Thread, lid: nat,
     ncap: int, nlook: int, nquant: int)
     requires T.TransWf(body) && NR.NestedFragmentRE(body)
-    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires !rer.ignoreCase && !rer.multiline
@@ -1811,8 +1808,7 @@ module LindenElkLiftSimOracle {
     assert inpF == SD.SwapInput(inp);
     MIR.ReverseLen(str[..cp]);
     assert |inp.pref| + |inp.next| == n;
-    NI.NoNulledPlusLookBody(body, lid);   // §2.5b interim: NoNulledPlusRE(r1)
-    NUL.TransNoNulledPlus(r1);            // §2.5b interim: NoNulledPlusL(Translate(r1))
+    // (G3b) the flip tie needs no nulled-plus premise (OG.BodyGmTieFlipG)
     OG.BodyGmTieFlipG(rer, T.Translate(r1), inp, n, dir);
     assert tF == LFU.ComputeTr(rer, [LS.Areg(FM.FlipRevL(T.Translate(r1)))], SD.SwapInput(inp),
                                LG.Empty, G.OppDir(dir));

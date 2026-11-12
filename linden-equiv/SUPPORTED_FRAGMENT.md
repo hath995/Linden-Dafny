@@ -18,9 +18,8 @@ lemma MatchCorrect(pattern: R.raw_regex, str: string)
 "same yes/no answer" but "same match AND the same capture array, group by group".
 
 `Supported(p)` is one executable predicate (`ApiMatch.dfy`), and it is exactly the precondition of the one theorem
-behind `MatchCorrect`, `MCL.MainTheoremL5Cin`. Its conjuncts are `NR.NestedFragmentRaw`, `T.Latin1Wf`,
-`MCL.BehindBodiesNoNulledPlusX` (no LOOKBEHIND body holds a greedy nullable plus; lookahead bodies may, §2.5c) and
-`MCL.CinBodiesLookFreeX`. The two look-nesting scope conjuncts (`LSIMCOR.L5ScopeV1RE`, `EL.NegBehindLBOnlyRaw`)
+behind `MatchCorrect`, `MCL.MainTheoremL5Cin`. Its conjuncts are `NR.NestedFragmentRaw`, `T.Latin1Wf` and
+`MCL.CinBodiesLookFreeX`. A look body of either kind may hold a greedy CI-nullable plus (§2.5c, §2.5d). The two look-nesting scope conjuncts (`LSIMCOR.L5ScopeV1RE`, `EL.NegBehindLBOnlyRaw`)
 were deleted on 2026-11-11 (§2.1a): no condition on which kind of look may sit inside which remains.
 `NR.NestedFragmentRaw` no longer asks a negative look's body to be capture-free (§2.2a).
 
@@ -39,7 +38,7 @@ Everything below is verified for **case-sensitive, single-line, Latin-1** patter
 | alternation, concatenation | ✅ |
 | capture groups, arbitrarily nested | ✅ |
 | `*`, `?`, `{m,n}`, lazy variants | ✅ |
-| `+`, `{n,}` (n>0, unbounded) | ✅ non-nullable body (any greediness); ✅ **nullable body when LAZY** (`(a?)+?`, §2.5a, 2026-08-30); ✅ **CI-nullable body when GREEDY** (`(a?)+`, `(a\|)+`) **in lookaround-free patterns** (§2.5b, `SupportedCin`, 2026-11-05) **and next to lookarounds** (`(?=a)(a?)+`, §2.5b F-c, `SupportedL5Cin`, 2026-11-06) provided every such plus has a lookaround-free body; ✅ **greedy CI-nullable plus inside a LOOKAHEAD body**, either polarity (`(?=(a?)+b)`, `(?!(a?)+b)`, §2.5c, 2026-11-12). ❌ greedy nullable plus **inside a LOOKBEHIND body** (`(?<=(a?)+)`, G3b) or **with a lookaround in its body** (G4); ❌ context-dependent-nullable greedy body (CDN, `CheckNullable`) |
+| `+`, `{n,}` (n>0, unbounded) | ✅ non-nullable body (any greediness); ✅ **nullable body when LAZY** (`(a?)+?`, §2.5a, 2026-08-30); ✅ **CI-nullable body when GREEDY** (`(a?)+`, `(a\|)+`) **in lookaround-free patterns** (§2.5b, `SupportedCin`, 2026-11-05) **and next to lookarounds** (`(?=a)(a?)+`, §2.5b F-c, `SupportedL5Cin`, 2026-11-06) provided every such plus has a lookaround-free body; ✅ **greedy CI-nullable plus inside a look body of either kind and polarity** (`(?=(a?)+b)`, `(?!(a?)+b)`, §2.5c; `(?<=(a?)+b)`, `(?<!(a?)+b)`, §2.5d, 2026-11-12). ❌ greedy nullable plus **with a lookaround in its body** (G4); ❌ context-dependent-nullable greedy body (CDN, `CheckNullable`) |
 | positive lookahead `(?=…)`, capturing, nested to any depth | ✅ (L4) |
 | **positive lookbehind `(?<=…)`, capturing, nested to any depth** | ✅ (L5, 2026-08-28) |
 | **any look inside any look, all four kinds, to any depth** (`(?<=a(?=a))`, `(?<=(?=(a))a)`, `(?<!a(?=a))`, `(?=(?<=a(?=a)))`) | ✅ (§2.1a, 2026-11-11). Before this a lookbehind's body, positive or negative, could hold only lookbehinds |
@@ -296,8 +295,22 @@ lookahead row, at any depth:
   fragment, recursively. The executable twin is `MCL.BehindBodiesNoNulledPlusX` plus `MCL.CinBodiesLookFreeX`
   (`BehindBodiesGateSound`).
 Witnesses: `NullablePlusWitness.G3a_PlusInLookahead` (`(?=(a?)+b)`, `(?!(a?)+b)`).
-Still out: a greedy nullable plus in a lookbehind body (G3b), a lookaround inside a greedy nullable plus's
-body (G4), CDN-greedy pluses (G5).
+Still out: a lookaround inside a greedy nullable plus's body (G4), CDN-greedy pluses (G5).
+
+### 2.5d A greedy CI-nullable plus inside a LOOKBEHIND body — `(?<=(a?)+b)` — CLOSED 2026-11-12 (G3b)
+
+A lookbehind row replays `reverse_regex(body)` BACKWARD with the same plus reconstruction
+(`FReconstructPlus` is direction-blind). The proof reads the row through the mirrored world:
+* **The row** (`M.ReplayPlusRowLB`): `ReplayPlusRowLA`'s twin on the reverse code.
+* **Machine A at a lookbehind body** (`linden-equiv-machine-a-back`, `BackRowReadout`): the readout is taken on
+  the real side with the real plus table; the spec tie goes through the flipped forward run.
+* **The mirrored world's own plus table** (`MirrorPlus`, `PlusTableOkMirror`): `QidBody(FXR(r), q) ==
+  FXR(QidBody(r, q))` compiles differently, so the flipped carrier at `FXR(body)` runs over
+  `MirrorTablesP(crv, body)`.
+* **The gate** is uniform: every look body, of either kind, is in the CIN fragment
+  (`M.LookBodiesPlusGateRE`), flip-invariant (`GateFlip.GateFXR`) and implied by the CIN fragment of the whole
+  regex (`GateFromCin`), so `Supported` needs no look-body condition at all.
+Witnesses: `NullablePlusWitness.G3b_PlusInLookbehind` (`(?<=(a?)+b)`, `(?<!(a?)+b)`).
 
 ### 2.6 Flags and alphabet
 
@@ -342,7 +355,7 @@ proof engineering of known shape.
 | ~~§2.1 lookbehind inside lookahead~~ | — | **DONE 2026-08-30** (s8: packaged, no isolation) |
 | ~~§2.3 / §2.4 capture-under-quant for L4/L5 patterns~~ | — | **DONE 2026-11-08** (branch `cap-under-quant`) |
 | ~~§2.5a lazy nullable plus~~ | — | **DONE 2026-08-30** (branch `nullable-plus`) |
-| §2.5b greedy nullable plus **inside a look body / with a lookaround in its body** (lookaround-free: **DONE 2026-11-05**; next to lookarounds: **DONE 2026-11-06**; inside a LOOKAHEAD body: **DONE 2026-11-12**, §2.5c; inside a lookbehind body: G3b; a look in its body: G4) | large — the look-body replay would need the reconstruction readout (rung E) at every look depth; machine B's look-path frame (`CinLookPaths`) assumes the CIN bodies own no look-path registers | TWO end-fork layouts (CIN/CDN), the new `CheckNullable` instruction, the first `SetQuantToClock(qid, **true**)` (breaks the all-stamps-false invariant `NI.CodeShapeAt` proves and `MainTheoremL3` consumes), a second path in `ReconstructNulled`, plus `QuantRegsFinal` and `FNulledPlus`'s unproven spec tie. The §2.5a shift-to-`em` rewrite does NOT carry over — see `NULLABLE_PLUS_HANDOFF.md` § WHAT §2.5b ACTUALLY COSTS |
+| §2.5b greedy nullable plus **inside a look body / with a lookaround in its body** (lookaround-free: **DONE 2026-11-05**; next to lookarounds: **DONE 2026-11-06**; inside a LOOKAHEAD body: **DONE 2026-11-12**, §2.5c; inside a lookbehind body: **DONE 2026-11-12**, §2.5d; a look in its body: G4) | large — the look-body replay would need the reconstruction readout (rung E) at every look depth; machine B's look-path frame (`CinLookPaths`) assumes the CIN bodies own no look-path registers | TWO end-fork layouts (CIN/CDN), the new `CheckNullable` instruction, the first `SetQuantToClock(qid, **true**)` (breaks the all-stamps-false invariant `NI.CodeShapeAt` proves and `MainTheoremL3` consumes), a second path in `ReconstructNulled`, plus `QuantRegsFinal` and `FNulledPlus`'s unproven spec tie. The §2.5a shift-to-`em` rewrite does NOT carry over — see `NULLABLE_PLUS_HANDOFF.md` § WHAT §2.5b ACTUALLY COSTS |
 | ~~§2.2 nested looks in negative bodies~~ | — | negative lookahead: **DONE 2026-11-09**, negative lookbehind: **DONE 2026-11-10** (branch `neg-look-nest`) |
 | ~~lookahead inside a lookbehind body, either polarity~~ | — | **DONE 2026-11-11** (§2.1a, branch `endgame`, `eacf6ec`) |
 | ~~captures inside a negative look body~~ | — | **DONE 2026-11-11** (§2.2a, `fd68916`) |

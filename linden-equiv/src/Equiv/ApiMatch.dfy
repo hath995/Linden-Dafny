@@ -27,6 +27,8 @@ module LindenRegexApi {
   import LSIMCOR = LindenElkLiftSimCore
   import LSIMORA = LindenElkLiftSimOracle
   import MCL = LindenElkMainCinLk
+  import M = LindenElkMain
+  import GF = LindenElkGateFlip   // (G3b) the uniform gate from the CIN fragment
   // ==========================================================================
   // The supported fragment — total and executable, so callers can check
   // membership at runtime or by assertion in their own proofs.
@@ -36,9 +38,9 @@ module LindenRegexApi {
           looks, captures may sit under quantifiers, and negative look bodies are
           capture-free;
         - it is Latin-1 well-formed (`T.Latin1Wf`);
-        - no LOOKBEHIND body holds a nulled plus (`MCL.BehindBodiesNoNulledPlusX`;
-          lookahead bodies may hold a greedy CI-nullable plus, G3a), and every greedy
-          CI-nullable plus has a look-free body (`MCL.CinBodiesLookFreeX`).
+        - every greedy CI-nullable plus has a look-free body (`MCL.CinBodiesLookFreeX`).
+          A look body of either kind may hold a greedy CI-nullable plus (G3a lookahead,
+          G3b lookbehind).
       Greedy CDN pluses stay out (the nested fragment's plus arm excludes them).
       Looks nest to any depth in either direction: lookaheads inside lookbehinds and
       lookbehinds inside lookaheads (gate B, G1 full depth). Exactly
@@ -46,7 +48,6 @@ module LindenRegexApi {
       and why each gap exists. */
   predicate Supported(pattern: R.raw_regex) {
     NR.NestedFragmentRaw(pattern) && T.Latin1Wf(pattern)
-    && MCL.BehindBodiesNoNulledPlusX(R.lazy_prefix(R.annotate(pattern)))
     && MCL.CinBodiesLookFreeX(R.lazy_prefix(R.annotate(pattern)))
   }
 
@@ -72,7 +73,8 @@ module LindenRegexApi {
   {
     MCL.CinBodiesLookFreeXSound(R.lazy_prefix(R.annotate(pattern)));
     NR.SpecRegexNestedFragment(pattern);
-    MCL.BehindBodiesGateSound(R.lazy_prefix(R.annotate(pattern)));
+    M.NestedNoCdn(R.lazy_prefix(R.annotate(pattern)));                 // (G3b) the gate from the CIN fragment
+    GF.GateFromCin(R.lazy_prefix(R.annotate(pattern)));
     MCL.MainTheoremL5Cin(pattern, str);
   }
 

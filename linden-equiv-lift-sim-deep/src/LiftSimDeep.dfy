@@ -108,6 +108,8 @@ module LindenElkLiftSimDeep {
   import TREP = LindenElkTreeRep
   import LTB = LindenElkLookTables
   import NI = LindenElkNestInv
+  import BRG = LindenElkBackRowGate   // (G3b) FreshPlusLBUnfold
+  import GF = LindenElkGateFlip        // (G3b) GateFXR
   import opened LindenElkLiftSimCore
   import opened LindenElkLiftSimOracle
   import opened LindenElkLiftSimChain
@@ -247,10 +249,9 @@ module LindenElkLiftSimDeep {
         OracleColsOkRestrict(rer, qm, qmB0, str);
       }
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      M.PlusGateBody(re, crv, A, laA, host);   // (G3a) a lookbehind body is nulled-plus-free
+      M.PlusGateBody(re, crv, A, laA, host);   // (G3b) the uniform gate at the row body
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      // (G3a) a lookbehind body is nulled-plus-free: the owner's plus replay is the plain one
-      M.FreshBodyMatchPlusPlainRow(crv, str, A as int, res1, ov, ncap, nlook, nquant, laA, host);
+      RowPlusFacts(host, crv.f_plus_bc, nlook);   // (G3b) the plus twin's premises
       assert {:split_here} true;
       FreshBodyDirectInSubFirstLeafLB(rer, qmB0, crv, str, ov, A, res1, host, g2,
                                       ncap, nlook, nquant);
@@ -362,6 +363,7 @@ module LindenElkLiftSimDeep {
       var cdnA := crv.f_look_cdns[A as int];
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       RowPlusFacts(host, crv.f_plus_bc, nlook);   // (G3a)
+      GF.GateFXR(host);   // (G3b) the flipped host's rows
       LookNestBackTFromBodyReplayLB(rer, qmB, laA, host, bodycodeB, crv, str, cpA, ov,
                                     cdnA, crv.f_plus_bc, ncap, nlook, nquant);
       var rbT := LFU.ComputeTr(rer, [LS.Areg(T.Translate(host))], inpA, LG.Empty, WP.Backward);
@@ -413,25 +415,12 @@ module LindenElkLiftSimDeep {
       assert 0 <= (A as int) < |crv.f_look_cdns| && cdnA == crv.f_look_cdns[A as int];
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert AReg.get_cp(res1, A as int).Some? && AReg.get_cp(res1, A as int).value == cpA;
-      var rfFresh := M.FreshBodyMatch(crv, str, A as int, res1, ov, ncap, nlook, nquant);
-      assert rfFresh == M.FreshBodyMatchPlus(crv, str, A as int, res1, ov, ncap, nlook, nquant) by {   // (G3a) stamp-free row
-        M.FreshBodyMatchPlusPlainRow(crv, str, A as int, res1, ov, ncap, nlook, nquant, laA, host);
+      var rfFresh := M.FreshBodyMatchPlus(crv, str, A as int, res1, ov, ncap, nlook, nquant);   // (G3b) the plus replay
+      assert rfFresh == AI.FFindMatchPlus(bodycodeB, host, crv.f_plus_bc, str, ov, LAnc.Backward, cpA,
+                         AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0, cdnA).0 by {
+        BRG.FreshPlusLBUnfold(crv, str, A as int, res1, ov, host, ncap, nlook, nquant);
       }
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert rfFresh == AI.FFindMatch(bodycodeB, str,
-                                      AI.FInitState(bodycodeB, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                                    AReg.init_regs(nquant), 0, AI.cp_context(cpA, str, LAnc.Backward)),
-                                      ov, LAnc.Backward, cdnA).0 by {
-        hide *;   // (W11) ForwardFindRecLBBase's recipe for this congruence (LiftSimDeep.dfy:1302)
-        reveal AI.FInitState, AI.init_bpcset, AI.init_pcset, RB.size, AI.cp_context;
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        FG.FreshBodyMatchLBUnfold(crv, str, A as int, res1, ov, host, ncap, nlook, nquant);
-      }
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert rfA == rfFresh.value by {                      // (L5 F7f perf) via the helper
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        BackFreshPlusIsPlain(host, bodycodeB, crv.f_plus_bc, str, ov, cpA, cdnA, ncap, nlook, nquant);
-      }
+      assert rfA == rfFresh.value;
       assert {:split_here} true;   // (E3) step boundary: its own assertion batch
       // (η) the LEVEL-LINK at (A, A1): res1's record at A1 IS rf_A's
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -1014,7 +1003,7 @@ module LindenElkLiftSimDeep {
       ensures (rfA == rfP.value)
       ensures (Sh == PIV.CapIdsInLooks(host))
       ensures (gmtH == rb.value.1)
-      ensures (rfFresh == M.FreshBodyMatch(crv, str, A as int, res1, ov, ncap, nlook, nquant))
+      ensures (rfFresh == M.FreshBodyMatchPlus(crv, str, A as int, res1, ov, ncap, nlook, nquant))   // (G3b)
       ensures (AI.get_idx(res1.a_cp, A as int) >= 0 && cpA == AI.get_idx(res1.a_cp, A as int))
       ensures (0 <= cpA <= |str|)
       ensures (1 <= A <= maxlook && (A as int) in qm.looks)
@@ -1022,7 +1011,7 @@ module LindenElkLiftSimDeep {
       ensures (bA == host)
       ensures (RowPlusOk(host, crv.f_plus_bc, nlook))   // (G3a) the row's plus facts
       ensures (host == M.VBody(crv, A as int))
-      ensures (PSM.StaticOkNestedRE(qm, host, bodycode, endlH))
+      ensures (PSM.StaticCoreNestedRE(qm, host, bodycode, endlH))
       ensures (crv.f_look_types[A as int] == laA)
       ensures (M.FrameEntryOk(crv, laA, host,
                                   PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re)))
@@ -1039,11 +1028,9 @@ module LindenElkLiftSimDeep {
       ensures (0 <= (A as int) < |crv.f_look_types| && crv.f_look_types[A as int].Lookbehind?)
       ensures (0 <= (A as int) < |crv.f_look_cdns| && cdnA == crv.f_look_cdns[A as int])
       ensures (AReg.get_cp(res1, A as int).Some? && AReg.get_cp(res1, A as int).value == cpA)
-      ensures (rfFresh == AI.FFindMatch(bodycodeB, str,
-                                            AI.FInitState(bodycodeB, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                                          AReg.init_regs(nquant), 0, AI.cp_context(cpA, str, LAnc.Backward)),
-                                            ov, LAnc.Backward, cdnA).0)
+      ensures (rfFresh == rfP)   // (G3b) the plus replay
       ensures (rfA == rfFresh.value)
+      ensures (CM.ThreadRegsWf(rfA, ncap, nlook, nquant))   // (G3b) from the carrier
       ensures (CM.RegsAgreeInside(res0, rfFresh.value.capture_regs,
                                       PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host))))
       ensures (M.QuantClkAgreeInside(res2, rfFresh.value.quant_regs, M.QIdsOuter(host)))
@@ -1074,8 +1061,8 @@ module LindenElkLiftSimDeep {
       assert host == M.VBody(crv, A as int);
       endlH := |bodycode| - 1;
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      M.PlusGateBody(re, crv, A, laA, host);   // (G3a) a lookbehind body is nulled-plus-free
-      assert PSM.StaticOkNestedRE(qm, host, bodycode, endlH);   // core + NoNulledPlusRE(host)
+      M.PlusGateBody(re, crv, A, laA, host);   // (G3b) the uniform gate at the row body
+      assert PSM.StaticCoreNestedRE(qm, host, bodycode, endlH);   // (G3b) the hub row, no stamp-free conjunct
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert crv.f_look_types[A as int] == laA;
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -1120,9 +1107,10 @@ module LindenElkLiftSimDeep {
       // (2026-08-29 proof-engineering) the BASE arm needs only the None-iff from the LB carrier; its
       // three quantified carrier predicates stay out of every later batch's context.
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert (rfP.Some? <==> rb.Some?) by {
+      assert (rfP.Some? <==> rb.Some?) && (rfP.Some? ==> CM.ThreadRegsWf(rfP.value, ncap, nlook, nquant)) by {
         assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
         RowPlusFacts(host, crv.f_plus_bc, nlook);   // (G3a)
+        GF.GateFXR(host);   // (G3b) the flipped host's rows
         LookNestBackTFromBodyReplayLB(rer, qmB, laA, host, bodycodeB, crv, str, cpA, ov,
                                       cdnA, crv.f_plus_bc, ncap, nlook, nquant);
       }
@@ -1158,26 +1146,12 @@ module LindenElkLiftSimDeep {
       assert 0 <= (A as int) < |crv.f_look_cdns| && cdnA == crv.f_look_cdns[A as int];
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert AReg.get_cp(res1, A as int).Some? && AReg.get_cp(res1, A as int).value == cpA;
-      rfFresh := M.FreshBodyMatch(crv, str, A as int, res1, ov, ncap, nlook, nquant);
-      assert rfFresh == M.FreshBodyMatchPlus(crv, str, A as int, res1, ov, ncap, nlook, nquant) by {   // (G3a) stamp-free row
-        M.FreshBodyMatchPlusPlainRow(crv, str, A as int, res1, ov, ncap, nlook, nquant, laA, host);
+      rfFresh := M.FreshBodyMatchPlus(crv, str, A as int, res1, ov, ncap, nlook, nquant);   // (G3b) the plus replay
+      assert rfFresh == AI.FFindMatchPlus(bodycodeB, host, crv.f_plus_bc, str, ov, LAnc.Backward, cpA,
+                         AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0, cdnA).0 by {
+        BRG.FreshPlusLBUnfold(crv, str, A as int, res1, ov, host, ncap, nlook, nquant);
       }
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert rfFresh == AI.FFindMatch(bodycodeB, str,
-                                      AI.FInitState(bodycodeB, cpA, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                                    AReg.init_regs(nquant), 0, AI.cp_context(cpA, str, LAnc.Backward)),
-                                      ov, LAnc.Backward, cdnA).0 by {
-        hide *;   // (2026-08-29) a congruence step over the lemma's ensures — left unfoldable, Z3 explores
-                  // the engine loop here and the batch runs past 2700 s in the split module
-        reveal AI.FInitState, AI.init_bpcset, AI.init_pcset, RB.size, AI.cp_context;   // the goal's FFindMatch preconditions
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        FG.FreshBodyMatchLBUnfold(crv, str, A as int, res1, ov, host, ncap, nlook, nquant);
-      }
-      assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert rfA == rfFresh.value by {                        // (L5 F7f perf) via the helper
-        assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-        BackFreshPlusIsPlain(host, bodycodeB, crv.f_plus_bc, str, ov, cpA, cdnA, ncap, nlook, nquant);
-      }
+      assert rfA == rfFresh.value;
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert rfFresh.Some?;
   
@@ -1200,7 +1174,8 @@ module LindenElkLiftSimDeep {
 
     // ==== BASE: g DIRECT in host ====
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    M.PlusGateBody(re, crv, A, laA, host);   // (G3a) a lookbehind body is nulled-plus-free
+    M.PlusGateBody(re, crv, A, laA, host);   // (G3b) the uniform gate at the row body
+    RowPlusFacts(host, crv.f_plus_bc, nlook);   // (G3b) the plus twin's premises
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     SubFirstLeafDirectInFreshLB(rer, qmB, crv, str, ov, A, res1, host, g, ncap, nlook, nquant);
     var rfc := rfFresh.value.capture_regs;
@@ -1213,7 +1188,7 @@ module LindenElkLiftSimDeep {
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     LookBodyFactsKB(re, crv, A);          // (W16) CapUnique/QuantUnique/LookUnique(host)
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    FreshBodyMatchCapWfNested(crv, str, A as int, res1, ov, ncap, nlook, nquant, host);
+    assert CM.ThreadRegsWf(rfFresh.value, ncap, nlook, nquant);   // (G3b) from the carrier
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert PIV.CapRegWf(rfc);
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14

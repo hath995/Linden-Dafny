@@ -4637,9 +4637,8 @@ module LindenElkMain {
     case Re_con(r1, r2) => LookBodiesPlusGateRE(r1) && LookBodiesPlusGateRE(r2)
     case Re_quant(_, _, _, r1) => LookBodiesPlusGateRE(r1)
     case Re_capture(_, r1) => LookBodiesPlusGateRE(r1)
-    case Re_lookaround(_, la, r1) =>
-      if BehindKind(la) then NR.NoNulledPlusRE(r1)
-      else NRC.NoCdnPlusRE(r1) && RF.CinBodiesLookFreeRE(r1) && LookBodiesPlusGateRE(r1)
+    case Re_lookaround(_, la, r1) =>   // (G3b) every look kind: the body is in the CIN fragment
+      NRC.NoCdnPlusRE(r1) && RF.CinBodiesLookFreeRE(r1) && LookBodiesPlusGateRE(r1)
     case _ => true
   }
 
@@ -4741,15 +4740,12 @@ module LindenElkMain {
       if lid0 >= 0 && (lid0 as nat) == lid { } else { LookKindOfTablesTie(r1, fc, lid); }
   }
 
-  /** The gate at a look node, by the node's kind. Structural; replaces `LooksNoNulledPlusBody`. */
+  /** The gate at a look node (G3b: the same for every kind). Structural; replaces `LooksNoNulledPlusBody`. */
   lemma PlusGateBodyRE(re: R.regex, l: nat)
     requires NR.NestedFragmentRE(re)
     requires LookBodiesPlusGateRE(re) && l in LTB.LookIds(re)
     ensures var b := NI.LookBodyOfRE(re, l);
-            var la := LookKindOfRE(re, l);
-            LookBodiesPlusGateRE(b)
-            && (BehindKind(la) ==> NR.NoNulledPlusRE(b))
-            && (!BehindKind(la) ==> NRC.NoCdnPlusRE(b) && RF.CinBodiesLookFreeRE(b))
+            LookBodiesPlusGateRE(b) && NRC.NoCdnPlusRE(b) && RF.CinBodiesLookFreeRE(b)
     decreases re
   {
     match re
@@ -4760,18 +4756,7 @@ module LindenElkMain {
     case Re_quant(_, _, _, r1) => PlusGateBodyRE(r1, l);
     case Re_capture(_, r1) => PlusGateBodyRE(r1, l);
     case Re_lookaround(lid0, la0, r1) =>
-      if lid0 >= 0 && (lid0 as nat) == l {
-        if BehindKind(la0) { PlusGateFromFull(r1); }
-      } else if BehindKind(la0) {
-        // everything under a lookbehind is nulled-plus-free
-        NI.NoNulledPlusLookBody(r1, l);
-        NestedFragmentLookBody(r1, l);
-        var b := NI.LookBodyOfRE(r1, l);
-        PlusGateFromFull(b);
-        NoNulledPlusCinFragment(b);
-      } else {
-        PlusGateBodyRE(r1, l);
-      }
+      if lid0 >= 0 && (lid0 as nat) == l { } else { PlusGateBodyRE(r1, l); }
   }
 
   /** The row form: any table row `(la, body)` at a look id of `re`. */
@@ -4782,8 +4767,7 @@ module LindenElkMain {
     requires LTB.LookEntryOk(crv, l as int, la, body)
     ensures body == NI.LookBodyOfRE(re, l) && la == LookKindOfRE(re, l)
     ensures LookBodiesPlusGateRE(body)
-    ensures BehindKind(la) ==> NR.NoNulledPlusRE(body)
-    ensures !BehindKind(la) ==> NRC.NoCdnPlusRE(body) && RF.CinBodiesLookFreeRE(body)
+    ensures NRC.NoCdnPlusRE(body) && RF.CinBodiesLookFreeRE(body)   // (G3b) every kind
   {
     LookKindOfTablesTie(re, crv, l);
     PlusGateBodyRE(re, l);
@@ -4987,7 +4971,6 @@ module LindenElkMain {
       unchanged through the induction as the look bank grows. */
   ghost predicate FrameEntryOk(crv: CP.FCompiled, la: R.lookaround, body: R.regex, S: set<int>, Slook: set<int>) {
     NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
-    && ((la.Lookbehind? || la.NegLookbehind?) ==> NR.NoNulledPlusRE(body))   // (G3b interim) until every LB arm is on the plus row
     && RowLAStatics(body, crv.f_plus_bc)   // (G3b) every row replays the plus machine
     && LTB.LookTablesOk(body, crv)
     && PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)) <= S
@@ -5784,8 +5767,7 @@ module LindenElkMain {
           if result.Some? {} else { assert nqt == qt; }
         }
         assert CM.RegsAgreeOutside(nqt, qt, D) by {
-          if result.None? { assert nqt == qt; }
-          else if la.Lookbehind? { ReplayPlusQuantFrameNestedOuterLB(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body); }
+          if result.None? { assert nqt == qt; }   // (G3b) both kinds: the plus row's quant frame
         }
         // the value at lid: the replay agrees with the fresh plus replay on CaptureRegs(body); None iff None
         assert (result.None? <==> rfLid.None?)
@@ -5882,6 +5864,7 @@ module LindenElkMain {
               ensures AI.get_idx(nqtC.a_cp, k) == AI.get_idx(AReg.init_regs(nquant).a_cp, k)
                       && AI.get_idx(nqtC.a_clk, k) == AI.get_idx(AReg.init_regs(nquant).a_clk, k)
             {
+              assert k !in D * LKC.QIdsInt(body2);
               assert k !in D;
             }
           }
@@ -6613,14 +6596,7 @@ module LindenElkMain {
           CM.FFindMatchLookCpSet(bytecode, str, inits, ov, dir, lookcdn);
         } else {
           CM.FFindMatchLookCpSetB(bytecode, str, inits, ov, dir, lookcdn);
-          // lookbehind rows keep the stamp-free identity: the winner IS the VM's
-          ReverseNestedPackage(body); NR.NoNulledPlusReverse(body); NoTrueQuantStampNested(R.reverse_regex(body));
-          assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
-          FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
-          if fmres.Some? {
-            FNulledPlusIdentity(body, fmres.value.capture_regs, fmres.value.look_regs, fmres.value.quant_regs,
-                                crv.f_plus_bc, str, ovx, dir);
-          }
+          // (G3b) the plus winner keeps the VM winner's look bank (`ReplayPlusRowLB`)
         }
         assert CM.LookCpSetWithClk(nlk) by {
           if result.Some? { assert fmres.Some? && nlk == fmres.value.look_regs; } else { assert nlk == lk; }
@@ -6764,14 +6740,7 @@ module LindenElkMain {
           ReverseNestedPackage(body);
           NoWriteOracleBodyCodeNested(R.reverse_regex(body));
           CM.FFindMatchLookOracleTrueB(bytecode, str, inits, ov, dir, lookcdn);
-          // lookbehind rows keep the stamp-free identity: the winner IS the VM's
-          ReverseNestedPackage(body); NR.NoNulledPlusReverse(body); NoTrueQuantStampNested(R.reverse_regex(body));
-          assert VmQuantFinal(inits) by { assert QuantRegsFinal(AI.init_thread(cap, lk, qt)); }
-          FFindMatchQuantFinalAny(bytecode, str, inits, ov, dir, lookcdn);
-          if fmres.Some? {
-            FNulledPlusIdentity(body, fmres.value.capture_regs, fmres.value.look_regs, fmres.value.quant_regs,
-                                crv.f_plus_bc, str, ovx, dir);
-          }
+          // (G3b) the plus winner keeps the VM winner's look bank (`ReplayPlusRowLB`)
         }
         assert CM.LookCpsOracleTrue(nlk, ov1) by {
           if result.Some? { assert fmres.Some? && nlk == fmres.value.look_regs; } else { assert nlk == lk; }
@@ -7656,7 +7625,6 @@ module LindenElkMain {
     assert LookIdSet(body') <= LookIdSet(re);
     // (G3a/G3b) the row's statics, every kind
     PlusGateBody(re, crv, lid, la, body);
-    if BehindKind(la) { NoNulledPlusCinFragment(body); }   // (G3b interim) the gate's lookbehind arm
     assert NR.NestedFragmentRE(ast);                     // re == Re_con(pre, ast)
     NestedNoCdn(ast);
     FRD.PlusTableOkFull(ast);

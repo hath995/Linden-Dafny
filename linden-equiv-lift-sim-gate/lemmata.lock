@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:24965d1c4fe5594c80ab883c1bfa44e1f729098314507a6fefa81d3ba0fcc980"
+manifest-hash = "sha256:938f7d962c7a0b60745f0d2596f9b854896468c0cb925830ae8e5ae57f6aa247"
 
 [[package]]
 name = "linden.equiv-final-readout"
@@ -83,6 +83,15 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-stamp-live"
+
+[[package]]
+name = "linden.equiv-stamp-mirror"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-stamp-mirror"
 
 [[package]]
 name = "linden.engine"
@@ -578,3 +587,12 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-machine-a"
+
+[[package]]
+name = "linden.equiv-machine-a-back"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-machine-a-back"

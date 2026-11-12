@@ -1005,22 +1005,6 @@ module LindenElkMainCinLk {
   // 8. Executable scope conditions (for `API.Supported`, rung G).
   // =========================================================================
 
-  /** (G3a) Every LOOKBEHIND body (either polarity) is nulled-plus-free (executable). Lookahead bodies may
-      hold a greedy CI-nullable plus; with `CinBodiesLookFreeX` and the nested fragment this gives the weak gate
-      (`BehindBodiesGateSound`). */
-  predicate BehindBodiesNoNulledPlusX(re: R.regex)
-    decreases re
-  {
-    match re
-    case Re_alt(r1, r2) => BehindBodiesNoNulledPlusX(r1) && BehindBodiesNoNulledPlusX(r2)
-    case Re_con(r1, r2) => BehindBodiesNoNulledPlusX(r1) && BehindBodiesNoNulledPlusX(r2)
-    case Re_quant(_, _, _, r1) => BehindBodiesNoNulledPlusX(r1)
-    case Re_capture(_, r1) => BehindBodiesNoNulledPlusX(r1)
-    case Re_lookaround(_, la, r1) =>
-      if la.Lookbehind? || la.NegLookbehind? then NR.NoNulledPlusRE(r1) else BehindBodiesNoNulledPlusX(r1)
-    case _ => true
-  }
-
   /** Every greedy CI-nullable plus has a look-free body (executable). */
   predicate CinBodiesLookFreeX(re: R.regex)
     decreases re
@@ -1034,24 +1018,6 @@ module LindenElkMainCinLk {
     case Re_capture(_, r1) => CinBodiesLookFreeX(r1)
     case Re_lookaround(_, _, r1) => CinBodiesLookFreeX(r1)
     case _ => true
-  }
-
-  lemma BehindBodiesGateSound(re: R.regex)
-    requires NR.NestedFragmentRE(re) && RF.CinBodiesLookFreeRE(re) && BehindBodiesNoNulledPlusX(re)
-    ensures M.LookBodiesPlusGateRE(re)
-    decreases re
-  {
-    match re
-    case Re_alt(r1, r2) => BehindBodiesGateSound(r1); BehindBodiesGateSound(r2);
-    case Re_con(r1, r2) => BehindBodiesGateSound(r1); BehindBodiesGateSound(r2);
-    case Re_quant(_, _, _, r1) => BehindBodiesGateSound(r1);
-    case Re_capture(_, r1) => BehindBodiesGateSound(r1);
-    case Re_lookaround(_, la, r1) =>
-      if !M.BehindKind(la) {
-        M.NestedNoCdn(r1);
-        BehindBodiesGateSound(r1);
-      }
-    case _ =>
   }
 
   lemma CinBodiesLookFreeXSound(re: R.regex)

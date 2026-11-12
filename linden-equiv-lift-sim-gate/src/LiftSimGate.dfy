@@ -115,6 +115,10 @@ module LindenElkLiftSimGate {
   import opened LindenElkLiftSimChain
   import GG = LindenElkFlipGateG         // (gate B) flip-gate F6, scope-free
   import MA = LindenElkMachineA          // (G3a) machine A on the plus match
+  import NRC = LindenElkNulledRecon      // (G3b)
+  import RF = LindenElkReconFrame        // (G3b)
+  import NRR = LindenElkNulledReconRegs  // (G3b)
+  import BRG = LindenElkBackRowGate      // (G3b) the lookbehind plus twins
 
   /** `LiftInvCNested` carrying the standalone `LiftInvRec`. */
   ghost predicate LiftInvCRec(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
@@ -1528,16 +1532,18 @@ module LindenElkLiftSimGate {
           assert AR.LmapOk(body, qm) by { FG.LmapOkLookBody(re, qm, l as nat); }
           assert 0 <= l < |crv.f_look_types| && crv.f_look_types[l].Lookbehind?
                  && 0 <= l < |crv.f_look_cdns|;                                   // LookEntryOk row
-          // (G3a) a lookbehind body is nulled-plus-free: the plus replay is the plain one
-          M.FreshBodyMatchPlusPlainRow(crv, str, l, th'.look_regs, ov, ncap, nlook, nquant, la, body);
-          FG.FreshBodyMatchLBUnfold(crv, str, l, th'.look_regs, ov, body, ncap, nlook, nquant);
+          // (G3b) the lookbehind crossing on the plus replay (the body may hold a nulled plus)
+          BRG.FreshPlusLBUnfold(crv, str, l, th'.look_regs, ov, body, ncap, nlook, nquant);
           var bcB := CP.compile_to_bytecode(R.reverse_regex(body));
-          assert rfx == AI.FFindMatch(bcB, str,
-                                      AI.FInitState(bcB, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                                    AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Backward)),
-                                      ov, LAnc.Backward, crv.f_look_cdns[l]).0;
-          GG.GateCrossCoverageLBNested(rer, qm, body, str, cp, ov, crv.f_look_cdns[l], la, tlk, gm,
-                                       ncap, nlook, nquant, |str|);
+          assert rfx == AI.FFindMatchPlus(bcB, body, crv.f_plus_bc, str, ov, LAnc.Backward, cp,
+                                          AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0,
+                                          crv.f_look_cdns[l]).0;
+          assert (forall l0: nat :: l0 in LTB.LookIds(body) ==> l0 < nlook)
+                 && NRC.NoCdnPlusRE(body) && RF.CinBodiesLookFreeRE(body) && NRR.PlusTableOk(body, crv.f_plus_bc) by {
+            reveal RowPlusOk(); reveal M.RowLAStatics();
+          }
+          BRG.GateCrossCoveragePlusLB(rer, qm, body, str, cp, ov, crv.f_look_cdns[l], crv.f_plus_bc, la, tlk, gm,
+                                      ncap, nlook, nquant, |str|);
           assert LS.LkResult(T.TrLookaround(la), tlk, gm, inp).Some?
                  && LS.LkResult(T.TrLookaround(la), tlk, gm, inp).value == gm2 by {
             assert lk == T.TrLookaround(la);

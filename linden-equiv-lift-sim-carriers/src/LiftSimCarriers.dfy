@@ -122,6 +122,14 @@ module LindenElkLiftSimCarriers {
   import NRC = LindenElkNulledRecon      // (G3a) NoCdnPlusRE
   import RF = LindenElkReconFrame        // (G3a) CinBodiesLookFreeRE
   import TM = LindenElkTwoMachines       // (G3a) A6, TranslateCinOk
+  import TB = LindenElkMirrorPlus        // (G3b)
+  import RP = LindenElkMachineABack      // (G3b)
+  import BRG = LindenElkBackRowGate      // (G3b)
+  import BRS = LindenElkBackRowStatics   // (G3b)
+  import FRD = LindenElkFinalReadout     // (G3b)
+  import FRA = LindenElkFinalReadoutAt   // (G3b)
+  import BF = LindenElkBankFrames        // (G3b)
+  import W = LindenElkBackRowResidue     // (G3b)
 
   // ==========================================================================
   // THE MAIN THEOREM, L3a: capturing positive lookaheads included. The
@@ -139,6 +147,7 @@ module LindenElkLiftSimCarriers {
     ensures LTB.LookUnique(body) && NRR.PlusTableOk(body, plus)
     ensures forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
     ensures M.LookBodiesPlusGateRE(body)
+    ensures NRC.NoCdnPlusRE(body) && RF.CinBodiesLookFreeRE(body)   // (G3b) the plus twins' premises
   {
     reveal RowPlusOk(); reveal M.RowLAStatics();
   }
@@ -222,18 +231,17 @@ module LindenElkLiftSimCarriers {
     case _ =>
   }
 
-  /** (L5 F7c-3) THE LOOKBEHIND TWIN of `LookNestBackTFromBodyReplay`: for a
-      positive lookbehind lid whose body is in the L5 scope, the FRESH BACKWARD
-      body run (what `FLookLoop` runs for the lid) matches iff the body's
-      backward spec tree has a result, and its winner carries all three nested
-      carriers + the look-bank invariants against that backward leaf. */
+  /** (G3b) THE LOOKBEHIND TWIN on the plus replay (by the peer session): the forward carrier (A6) at the
+      flipped body over the mirrored tables `MirrorTablesP`, moved back by `BackRowClkFrame` and the tie
+      transports. No stamp-free premise. */
+  /** THE LOOKBEHIND CARRIER ON THE PLUS MATCH: `LookNestBackTFromBodyReplayLB` without
+      `NoNulledPlusRE(body)`. The flipped world runs on `MirrorTablesP(crv, body)`; its gate is a premise. */
   lemma LookNestBackTFromBodyReplayLB(
     rer: LW.RegExpRecord, qm: AR.QMap, la: R.lookaround, body: R.regex, bodycodeB: RB.code,
     crv: CP.FCompiled, str: string, cp: nat, ov: LOr.OracleView,
     lookcdn: LCdn.cdns, plus_bc: seq<RB.code>, ncap: int, nlook: int, nquant: int)
     requires la.Lookbehind?
     requires T.TransWf(body) && NR.NestedFragmentRE(body)
-    requires NR.NoNulledPlusRE(body)   // §2.5b interim: all stamps false
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires !rer.ignoreCase && !rer.multiline
@@ -242,8 +250,10 @@ module LindenElkLiftSimCarriers {
     requires qm.ov == ov && AR.LmapOk(body, qm) && OE.OracleColsOk(rer, qm, str)
     requires LTB.LookTablesOk(body, crv) && |crv.f_look_types| == |crv.f_look_ast|
     requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
-    requires NRR.PlusTableOk(body, crv.f_plus_bc)   // (G3a) the flipped body's rows carry the plus table
+    requires NRR.PlusTableOk(body, crv.f_plus_bc)
     requires plus_bc == crv.f_plus_bc
+    requires NRC.NoCdnPlusRE(body) && RF.CinBodiesLookFreeRE(body)
+    requires M.LookBodiesPlusGateRE(FST.FXR(body))     // the flipped host's rows (uniform after G3b commit 3)
     ensures
       var inp := PIV.InpOfCp(str, cp);
       var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Backward);
@@ -259,12 +269,11 @@ module LindenElkLiftSimCarriers {
             && LookNestBackTTopDeep(rer, body, crv, str, ov, PIV.CapIdsInLooks(body),
                                     rb.value.1, rf.value, ncap, nlook, nquant)
             && LookNestOkTTop(body, PIV.CapIdsInLooks(body), rb.value.1, rf.value)
+            && CM.ThreadRegsWf(rf.value, ncap, nlook, nquant)   // (G3b) the plus winner's wf
             && CM.LookClkSetWithCp(rf.value.look_regs)
             && CM.LookCpSetWithClk(rf.value.look_regs)
             && CM.LookCpsLE(rf.value.look_regs, |str|))
   {
-    // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
-    // triggered existential storm the solver; all uses here are opaque.
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     var n := |str|;
     MIR.ReverseLen(str);
@@ -276,17 +285,21 @@ module LindenElkLiftSimCarriers {
     var cdn' := MIR.SwapAnchorsCdns(lookcdn);
     var reF := FST.FXR(body);
     var bcF := CP.compile_to_bytecode(reF);
-    var crvF := FG.MirrorTables(crv);
+    var plusF := TB.MirrorPlus(body, plus_bc);
+    var crvF := MirrorTablesP(crv, body);
     var S := PIV.CapIdsInLooks(body);
     var capture := AReg.init_regs(ncap);
     var look := AReg.init_regs(nlook);
     var quant := AReg.init_regs(nquant);
+    var Q := FRD.CinQids(reF);
 
     // ---- statics of the flipped body + the flipped/mirrored tables ----
     FST.FXRStructural(body);
-    var qmF, endl' := FK.FlipXRevStaticOkNested(body, ov', ncap, nlook, nquant);
+    var qmF, endl' := BRS.FlipXRevStaticCoreNested(body, ov', ncap, nlook, nquant);
     FG.LookUniqueFXR(body);
     FG.LookTablesOkFXR(body, crv);
+    LookTablesOkPlusCong(reF, FG.MirrorTables(crv), plusF);
+    assert LTB.LookTablesOk(reF, crvF);
     FG.LookIdsFXR(body);
     OE.LmOfDom(body);
     var qmB := AR.QMap(map[], OE.LmOf(body), ov, map[]);
@@ -301,20 +314,16 @@ module LindenElkLiftSimCarriers {
         assert l >= 0 && (l as nat) in LTB.LookIds(body);
       }
     }
-    FST.NoNulledPlusFXR(body);
-    M.PlusGateFromFull(reF);                // (G3a) the flipped body is nulled-plus-free: the weak gate holds
-    // (G3a) the plus-row premises at the flipped body (`MirrorTables` keeps `f_plus_bc`)
-    assert crvF.f_plus_bc == crv.f_plus_bc;
-    PlusTableOkFXR(body, crv.f_plus_bc);
+    TB.PlusTableOkMirror(body, plus_bc);
+    TB.NoCdnPlusFXR(body);
+    TB.CinBodiesLookFreeFXR(body);
+    assert crvF.f_plus_bc == plusF;
     assert forall l: nat :: l in LTB.LookIds(reF) ==> l < nlook;
     GateStaticsFromTablesNested(qmF, reF, crvF, ncap, nlook, nquant);
-    assert RowPlusOk(reF, plus_bc, nlook) by {   // (G3a) the forward carrier's CIN premises, vacuous at reF
-      M.NoNulledPlusCinFragment(reF);
-      reveal RowPlusOk(); reveal M.RowLAStatics();
-    }
+    assert RowPlusOk(reF, plusF, nlook) by { reveal RowPlusOk(); reveal M.RowLAStatics(); }
 
-    assert {:split_here} true;   // (gate B) W12 perf split (131 M unsplit -> 11 M worst)
-    // ---- oracle for the flipped table: F3 on the body-restricted site table ----
+    assert {:split_here} true;
+    // ---- oracle for the flipped table ----
     OE.LmapOkOfLmOf(body, qmB);
     FK.LmapOkEntriesMatchLmOf(body, qm);
     assert OE.OracleColsOk(rer, qmB, str) by {
@@ -331,78 +340,29 @@ module LindenElkLiftSimCarriers {
     assert inpF == T.InputAt(rstr, mcpN);
     assert LL.OracleOkSuffix(rer, qmF, inpF);
 
-    assert {:split_here} true;   // (gate B) W12 perf split (131 M unsplit -> 11 M worst)
-    // ---- the FORWARD carrier at the flipped body over the reversed string ----
-    assert PSM.StaticCoreNestedRE(qmF, reF, bcF, endl');
+    assert {:split_here} true;
+    // ---- the FORWARD carrier at the flipped body, its own plus table ----
     LookNestBackTFromBodyReplay(rer, qmF, R.Lookahead, reF, bcF, endl', 0, crvF, rstr, mcpN, ov',
-                                cdn', plus_bc, ncap, nlook, nquant);
+                                cdn', plusF, ncap, nlook, nquant);
     var tF := LFU.ComputeTr(rer, [LS.Areg(T.Translate(reF))], inpF, LG.Empty, WP.Forward);
     var leafF := LT.FirstLeaf(tF, inpF);
-    var rfFP := AI.FFindMatchPlus(bcF, reF, plus_bc, rstr, ov', LAnc.Forward, mcpN as int,
+    var rfFP := AI.FFindMatchPlus(bcF, reF, plusF, rstr, ov', LAnc.Forward, mcpN as int,
                                   capture, look, quant, 0, cdn').0;
     assert (rfFP.Some? <==> leafF.Some?);
 
-    assert {:split_here} true;   // (gate B) W12 perf split (131 M unsplit -> 11 M worst)
-    // ---- reduce both Plus runs to plain runs (no nulled plus in the fragment) ----
-    var ctxF := AI.cp_context(mcp, rstr, LAnc.Forward);
-    var initsF := AI.FInitState(bcF, mcp, capture, look, quant, 0, ctxF);
-    var rfF := AI.FFindMatch(bcF, rstr, initsF, ov', LAnc.Forward, cdn').0;
-    FST.NoNulledPlusFXR(body);
-    M.NoTrueQuantStampNested(reF);
-    assert M.VmQuantFinal(initsF) by {
-      var th0 := AI.init_thread(capture, look, quant);
-      assert M.QuantRegsFinal(th0) by {
-        forall k ensures AI.get_idx(quant.a_cp, k) < 0 && AI.get_idx(quant.a_clk, k) >= -1 {
-          if 0 <= k < |quant.a_cp| { assert quant.a_cp[k] == -1; }
-          if 0 <= k < |quant.a_clk| { assert quant.a_clk[k] == -1; }
-        }
-      }
-      forall t2 | t2 in initsF.active ensures M.QuantRegsFinal(t2) { assert t2 == th0; }
-    }
-    M.FFindMatchQuantFinalAny(bcF, rstr, initsF, ov', LAnc.Forward, cdn');
-    var (fmF, ovF) := AI.FFindMatch(bcF, rstr, initsF, ov', LAnc.Forward, cdn');
-    if fmF.Some? {
-      M.FNulledPlusIdentity(reF, fmF.value.capture_regs, fmF.value.look_regs, fmF.value.quant_regs,
-                            plus_bc, rstr, ovF, LAnc.Forward);
-      assert AI.FReconstructPlus(fmF.value, reF, plus_bc, rstr, ovF, LAnc.Forward).0 == fmF.value;
-    }
-    assert rfFP == rfF;
-
+    assert {:split_here} true;
+    // ---- the real backward plus match and its frame across the mirror ----
+    var qmR := BRG.RowQm(rer, qm, body, str, ov);
+    RP.BackRowClkFrame(rer, qmR, body, str, cp, ov, lookcdn, plus_bc, plusF, ncap, nlook, nquant, n);
+    var Gx, qmX, endlX := RP.BackRowReadout(rer, qmR, body, str, cp, ov, lookcdn, plus_bc, ncap, nlook, nquant, n);
+    var rf := AI.FFindMatchPlus(bodycodeB, body, plus_bc, str, ov, LAnc.Backward, cp,
+                                capture, look, quant, 0, lookcdn).0;
     var ctxB := AI.cp_context(cp, str, LAnc.Backward);
     var initsB := AI.FInitState(bodycodeB, cp, capture, look, quant, 0, ctxB);
     var raB := AI.FFindMatch(bodycodeB, str, initsB, ov, LAnc.Backward, lookcdn).0;
-    var rev := R.reverse_regex(body);
-    M.ReverseNestedPackage(body);
-    NR.NoNulledPlusReverse(body);
-    M.NoTrueQuantStampNested(rev);
-    assert M.VmQuantFinal(initsB) by {
-      var th0 := AI.init_thread(capture, look, quant);
-      assert M.QuantRegsFinal(th0) by {
-        forall k ensures AI.get_idx(quant.a_cp, k) < 0 && AI.get_idx(quant.a_clk, k) >= -1 {
-          if 0 <= k < |quant.a_cp| { assert quant.a_cp[k] == -1; }
-          if 0 <= k < |quant.a_clk| { assert quant.a_clk[k] == -1; }
-        }
-      }
-      forall t2 | t2 in initsB.active ensures M.QuantRegsFinal(t2) { assert t2 == th0; }
-    }
-    assert ctxB.nextchar == AI.get_char(str, cp - 1);
-    M.FFindMatchQuantFinalAny(bodycodeB, str, initsB, ov, LAnc.Backward, lookcdn);
-    var (fmB, ovB) := AI.FFindMatch(bodycodeB, str, initsB, ov, LAnc.Backward, lookcdn);
-    if fmB.Some? {
-      M.FNulledPlusIdentity(body, fmB.value.capture_regs, fmB.value.look_regs, fmB.value.quant_regs,
-                            plus_bc, str, ovB, LAnc.Backward);
-      assert AI.FReconstructPlus(fmB.value, body, plus_bc, str, ovB, LAnc.Backward).0 == fmB.value;
-    }
-    var rf := AI.FFindMatchPlus(bodycodeB, body, plus_bc, str, ov, LAnc.Backward, cp,
-                                capture, look, quant, 0, lookcdn).0;
-    assert rf == raB;
+    assert (rf.Some? <==> rfFP.Some?);
 
-    assert {:split_here} true;   // (gate B) W12 perf split (131 M unsplit -> 11 M worst)
-    // ---- F6 core: rfF == MirrorThread(raB) ----
-    GG.BackFreshCoreNested(rer, qm, body, str, cp, ov, lookcdn, ncap, nlook, nquant, n);
-    assert (raB.None? <==> rfF.None?);
-
-    assert {:split_here} true;   // (gate B) W12 perf split (131 M unsplit -> 11 M worst)
+    assert {:split_here} true;
     // ---- F2: the spec leaves mirror ----
     var inp := PIV.InpOfCp(str, cp);
     var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Backward);
@@ -415,7 +375,6 @@ module LindenElkLiftSimCarriers {
     assert |inp.pref| + |inp.next| == n;
     FST.TranslateFlipXRev(body);
     assert T.Translate(reF) == FM.FlipRevL(T.Translate(body));
-    NUL.TransNoNulledPlus(body);   // §2.5b interim: NoNulledPlusL(Translate(body))
     OG.BodyGmTieFlipG(rer, T.Translate(body), inp, n, WP.Backward);
     assert G.OppDir(WP.Backward) == WP.Forward;
     assert tF == LFU.ComputeTr(rer, [LS.Areg(FM.FlipRevL(T.Translate(body)))], SD.SwapInput(inp),
@@ -423,27 +382,33 @@ module LindenElkLiftSimCarriers {
     assert leafF == LT.TreeRes(tF, LG.Empty, inpF, WP.Forward);
     assert (rb.None? <==> leafF.None?);
     assert rb.Some? ==> TRM.GmInBounds(rb.value.1, n) && leafF.value.1 == TRM.MirrorGm(rb.value.1, n);
-
-    assert {:split_here} true;   // (gate B) W12 perf split (131 M unsplit -> 11 M worst)
-    // ---- None-iff ----
     assert (rf.Some? <==> rb.Some?);
 
     if rf.Some? {
       var th := rf.value;
       var gmt := rb.value.1;
-      assert rfF.Some? && rfF.value == MIR.MirrorThread(th, n);
-      assert leafF.Some? && leafF.value.1 == TRM.MirrorGm(gmt, n);
       var thF := MIR.MirrorThread(th, n);
       var gmtF := TRM.MirrorGm(gmt, n);
+      var best := rfFP.value;
+      assert leafF.Some? && leafF.value.1 == gmtF;
       FG.CapIdsInLooksFXR(body);
       assert PIV.CapIdsInLooks(reF) == S;
-      // the forward carrier's conclusions, in transport form
+      assert {:split_here} true;
+      // ---- move the forward carriers from the flipped plus winner onto MirrorThread(th) ----
+      assert BF.ClkFrame(reF, Q, thF, best);
+      BF.QInCinQ(reF);
+      var G0: set<LG.GroupId> := {};
+      assert G0 * S == {} && LL.GmAgreeOutside(gmtF, gmtF, G0);
+      TM.TieOkTTransport(reF, Q, S, G0, gmtF, gmtF, best, thF);
+      TM.TieBackTransport(reF, crvF, rstr, ov', Q, S, G0, gmtF, gmtF, best, thF, ncap, nlook, nquant);
+      TM.TieDeepTransport(rer, reF, crvF, rstr, ov', Q, S, G0, gmtF, gmtF, best, thF, ncap, nlook, nquant);
       assert LookNestBackTTop(reF, crvF, rstr, ov', S, gmtF, thF, ncap, nlook, nquant);
       assert LookNestBackTTopDeep(rer, reF, crvF, rstr, ov', S, gmtF, thF, ncap, nlook, nquant);
       assert LookNestOkTTop(reF, S, gmtF, thF);
 
-      assert {:split_here} true;   // (gate B) W12 perf split
-      // ---- look-bank invariants on the BACKWARD winner (fresh init banks) ----
+      assert {:split_here} true;
+      // ---- look-bank invariants: the reconstruction keeps the backward VM winner's look bank ----
+      assert raB.Some? && th.look_regs == raB.value.look_regs;
       RL.AInitLaws(nlook);
       assert CM.VmLookClkSet(initsB) by {
         assert AI.init_thread(capture, look, quant).look_regs == look;
@@ -451,29 +416,26 @@ module LindenElkLiftSimCarriers {
           if 0 <= l < |look.a_cp| { assert look.a_cp[l] == -1; }
         }
       }
+      assert ctxB.nextchar == AI.get_char(str, cp - 1);
       CM.FFindMatchLookClkSetB(bodycodeB, str, initsB, ov, LAnc.Backward, lookcdn);
-      assert CM.LookClkSetWithCp(th.look_regs);
       assert CM.VmLookCpSet(initsB) by {
         forall l: int | AI.get_idx(look.a_clk, l) >= 0 ensures AI.get_idx(look.a_cp, l) >= 0 {
           if 0 <= l < |look.a_clk| { assert look.a_clk[l] == -1; }
         }
       }
       CM.FFindMatchLookCpSetB(bodycodeB, str, initsB, ov, LAnc.Backward, lookcdn);
-      assert CM.LookCpSetWithClk(th.look_regs);
       assert CM.VmLookCpOk(initsB, |str|) by {
         forall l: int ensures AI.get_idx(look.a_cp, l) <= |str| {
           if 0 <= l < |look.a_cp| { assert look.a_cp[l] == -1; }
         }
       }
       CM.FFindMatchLookCpOkB(bodycodeB, str, initsB, ov, LAnc.Backward, lookcdn);
-      assert CM.LookCpsLE(th.look_regs, |str|);
+      assert CM.LookClkSetWithCp(th.look_regs) && CM.LookCpSetWithClk(th.look_regs) && CM.LookCpsLE(th.look_regs, |str|);
 
-      assert {:split_here} true;   // (gate B) W12 perf split
-      // ---- presence carrier: congruence ----
+      assert {:split_here} true;
       LookNestOkTTopFlip(body, S, gmt, th, n);
 
-      assert {:split_here} true;   // (gate B) W12 perf split
-      // ---- key + deep carriers: per top lid, through T2a / F2 at the lid body ----
+      assert {:split_here} true;
       NI.TopLookIdsIn(body);
       forall lid: nat | lid in NI.TopLookIds(body)
                         && (M.MatchedPosLA(crv, th.look_regs, lid as int)
@@ -487,7 +449,9 @@ module LindenElkLiftSimCarriers {
                                          rfl.value.look_regs, rfl.value.quant_regs)
                     ==> g in gmt
       {
-        LookNestBackTTopLidFlip(rer, qm, body, crv, str, ov, gmt, th, lid, ncap, nlook, nquant);
+        FRA.NoCdnPlusLookBody(body, lid);
+        CinBodiesLookFreeLookBody(body, lid);
+        LookNestBackTTopLidFlipP(rer, qm, body, crv, str, ov, gmt, th, lid, ncap, nlook, nquant);
       }
       assert LookNestBackTTop(body, crv, str, ov, S, gmt, th, ncap, nlook, nquant);
 
@@ -502,10 +466,89 @@ module LindenElkLiftSimCarriers {
                       (g in lsub.value ==> g in gmt && gmt[g] == lsub.value[g])
                       && (g in gmt ==> g in lsub.value)
       {
-        LookNestBackTTopDeepLidFlip(rer, qm, body, crv, str, ov, gmt, th, lid, ncap, nlook, nquant);
+        DeepLidFlipP(rer, qm, body, crv, str, ov, gmt, th, lid, ncap, nlook, nquant);
       }
       assert LookNestBackTTopDeep(rer, body, crv, str, ov, S, gmt, th, ncap, nlook, nquant);
     }
+  }
+  /** `LookTablesOk` reads the look tables only. */
+  lemma LookTablesOkPlusCong(r: R.regex, crv: CP.FCompiled, plus: seq<RB.code>)
+    requires LTB.LookTablesOk(r, crv)
+    ensures LTB.LookTablesOk(r, crv.(f_plus_bc := plus))
+    decreases r
+  {
+    match r
+    case Re_alt(a, b) => LookTablesOkPlusCong(a, crv, plus); LookTablesOkPlusCong(b, crv, plus);
+    case Re_con(a, b) => LookTablesOkPlusCong(a, crv, plus); LookTablesOkPlusCong(b, crv, plus);
+    case Re_quant(_, _, _, a) => LookTablesOkPlusCong(a, crv, plus);
+    case Re_capture(_, a) => LookTablesOkPlusCong(a, crv, plus);
+    case Re_lookaround(_, _, a) => LookTablesOkPlusCong(a, crv, plus);
+    case _ =>
+  }
+  /** `CinBodiesLookFreeRE` passes to look bodies. */
+  lemma CinBodiesLookFreeLookBody(r: R.regex, lid: nat)
+    requires RF.CinBodiesLookFreeRE(r) && lid in LTB.LookIds(r)
+    ensures RF.CinBodiesLookFreeRE(NI.LookBodyOfRE(r, lid))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) { CinBodiesLookFreeLookBody(r1, lid); } else { CinBodiesLookFreeLookBody(r2, lid); }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) { CinBodiesLookFreeLookBody(r1, lid); } else { CinBodiesLookFreeLookBody(r2, lid); }
+    case Re_quant(_, _, _, r1) => CinBodiesLookFreeLookBody(r1, lid);
+    case Re_capture(_, r1) => CinBodiesLookFreeLookBody(r1, lid);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid { } else { CinBodiesLookFreeLookBody(r1, lid); }
+  }
+  /** The deep carrier reads the look tables only. */
+  lemma DeepPlusCong(rer: LW.RegExpRecord, re: R.regex, crv: CP.FCompiled, plus: seq<RB.code>,
+                     str: string, ov: LOr.OracleView, S: set<LG.GroupId>, gmt: LG.GroupMap, th: AI.Thread,
+                     ncap: int, nlook: int, nquant: int)
+    requires LookNestBackTTopDeep(rer, re, crv.(f_plus_bc := plus), str, ov, S, gmt, th, ncap, nlook, nquant)
+    ensures LookNestBackTTopDeep(rer, re, crv, str, ov, S, gmt, th, ncap, nlook, nquant)
+  {
+    var crv2 := crv.(f_plus_bc := plus);
+    forall lid: nat | lid in NI.TopLookIds(re)
+      ensures M.MatchedPosLA(crv2, th.look_regs, lid as int) == M.MatchedPosLA(crv, th.look_regs, lid as int)
+      ensures SubFirstLeafAt(rer, crv2, str, lid as int, th.look_regs) == SubFirstLeafAt(rer, crv, str, lid as int, th.look_regs)
+    {
+      assert M.VBody(crv2, lid as int) == M.VBody(crv, lid as int);
+      assert LidDir(crv2, lid as int) == LidDir(crv, lid as int);
+    }
+  }
+  /** `LookNestBackTTopDeepLidFlip` (premise-free since G3b commit 2's oracle) with the flipped carrier over
+      `MirrorTablesP`. */
+  lemma DeepLidFlipP(
+    rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, crv: CP.FCompiled, str: string,
+    ov: LOr.OracleView, gmt: LG.GroupMap, th: AI.Thread, lid: nat,
+    ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires !rer.ignoreCase && !rer.multiline
+    requires |ov| == |str| + 1
+    requires qm.ov == ov && AR.LmapOk(body, qm) && OE.OracleColsOk(rer, qm, str)
+    requires LTB.LookTablesOk(body, crv) && |crv.f_look_types| == |crv.f_look_ast|
+    requires TRM.GmInBounds(gmt, |str|)
+    requires CM.LookCpsLE(th.look_regs, |str|)
+    requires lid in NI.TopLookIds(body) && lid in LTB.LookIds(body)
+    requires M.MatchedPosLA(crv, th.look_regs, lid as int)
+    requires NI.LookPathDom(body, AI.get_idx(th.look_regs.a_clk, lid as int), th.quant_regs.a_clk, lid)
+    requires LookNestBackTTopDeep(rer, FST.FXR(body), MirrorTablesP(crv, body), LC.Reverse(str),
+                                  MIR.MirrorView(ov, |str|), PIV.CapIdsInLooks(body),
+                                  TRM.MirrorGm(gmt, |str|), MIR.MirrorThread(th, |str|), ncap, nlook, nquant)
+    ensures var lsub := SubFirstLeafAt(rer, crv, str, lid as int, th.look_regs);
+            lsub.Some? ==>
+              forall g: LG.GroupId ::
+                g in PIV.CapIdsInLooks(body) && g in PIV.CapIds(NI.LookBodyOfRE(body, lid)) ==>
+                  (g in lsub.value ==> g in gmt && gmt[g] == lsub.value[g])
+                  && (g in gmt ==> g in lsub.value)
+  {
+    DeepPlusCong(rer, FST.FXR(body), FG.MirrorTables(crv), TB.MirrorPlus(body, crv.f_plus_bc), LC.Reverse(str),
+                 MIR.MirrorView(ov, |str|), PIV.CapIdsInLooks(body), TRM.MirrorGm(gmt, |str|),
+                 MIR.MirrorThread(th, |str|), ncap, nlook, nquant);
+    LookNestBackTTopDeepLidFlip(rer, qm, body, crv, str, ov, gmt, th, lid, ncap, nlook, nquant);
   }
 
   /** (perf) The FORWARD BASE arm of `ForwardFindRec`, extracted so its assertions are

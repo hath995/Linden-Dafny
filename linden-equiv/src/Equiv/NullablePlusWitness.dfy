@@ -142,4 +142,15 @@ module NullablePlusWitness {
   {
     assert R.raw_nullable(AOPT) == R.CINullable;
   }
+
+  // ==========================================================================
+  // G3b: a greedy CI-nullable plus INSIDE a lookbehind body, either polarity
+  // (the backward look replay reconstructs too; the proof reads it through the mirror).
+  // ==========================================================================
+  lemma G3b_PlusInLookbehind()
+    ensures API.Supported(R.Raw_lookaround(R.Lookbehind, PLUS_B))      // (?<=(a?)+b)
+    ensures API.Supported(R.Raw_lookaround(R.NegLookbehind, PLUS_B))   // (?<!(a?)+b)
+  {
+    assert R.raw_nullable(AOPT) == R.CINullable;
+  }
 }

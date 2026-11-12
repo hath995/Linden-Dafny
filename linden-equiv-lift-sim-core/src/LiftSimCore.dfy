@@ -113,6 +113,12 @@ module LindenElkLiftSimCore {
   import CG = LindenElkFlipClosedG       // (gate B) the scope-free closedness ladder
   import CW = LindenElkCinWalk
   import NRR = LindenElkNulledReconRegs   // (G3a) the plus table
+  import NRC = LindenElkNulledRecon      // (G3b)
+  import RF = LindenElkReconFrame        // (G3b)
+  import FRA = LindenElkFinalReadoutAt   // (G3b)
+  import TB = LindenElkMirrorPlus        // (G3b) the mirrored plus table
+  import RP = LindenElkMachineABack      // (G3b) the row keys
+  import BRG = LindenElkBackRowGate      // (G3b) LmapOkLooksCong
 
   // ==========================================================================
   // SOLID definitions — the pairing.
@@ -1007,7 +1013,6 @@ module LindenElkLiftSimCore {
     && exists la: R.lookaround, body: R.regex ::
       LTB.LookEntryOk(crv, l, la, body)
       && T.TransWf(body) && NR.NestedFragmentRE(body)
-      && (M.BehindKind(la) ==> NR.NoNulledPlusRE(body))   // (G3a) lookbehind rows stay stamp-free (G3b)
       && RowPlusOk(body, crv.f_plus_bc, nlook)   // (G3a) what the plus-replay readers need (opaque)
       // (gate B, G1 full depth) the three lookbehind-only scope conjuncts are DELETED:
       // the flip route is direction-generic (mirror-world leaf), so no row body is pinned.
@@ -1028,7 +1033,6 @@ module LindenElkLiftSimCore {
     ensures l in qm.looks
     ensures LTB.LookEntryOk(crv, l, la, body)
             && T.TransWf(body) && NR.NestedFragmentRE(body)
-            && (M.BehindKind(la) ==> NR.NoNulledPlusRE(body))
             && RowPlusOk(body, crv.f_plus_bc, nlook)
             && qm.looks[l].0 == T.TrLookaround(la)
             && qm.looks[l].1 == T.Translate(body)
@@ -1040,8 +1044,7 @@ module LindenElkLiftSimCore {
   {
     la, body :| LTB.LookEntryOk(crv, l, la, body)
                 && T.TransWf(body) && NR.NestedFragmentRE(body)
-                && (M.BehindKind(la) ==> NR.NoNulledPlusRE(body))
-                && RowPlusOk(body, crv.f_plus_bc, nlook)
+                    && RowPlusOk(body, crv.f_plus_bc, nlook)
                 && qm.looks[l].0 == T.TrLookaround(la)
                 && qm.looks[l].1 == T.Translate(body)
                 && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
@@ -5559,4 +5562,204 @@ module LindenElkLiftSimCore {
       }
   }
 
+  // ==========================================================================
+  // (G3b) The lookbehind lid flip on the PLUS replays (by the peer session): the mirrored world gets
+  // its own plus table (`MirrorTablesP`), and the row keys tie the two plus replays.
+  // ==========================================================================
+
+  /** The tables of the flipped world WITH a plus table that is correct for `FXR(host)`. */
+  ghost function MirrorTablesP(crv: CP.FCompiled, host: R.regex): CP.FCompiled
+    requires |crv.f_look_types| == |crv.f_look_ast|
+  {
+    FG.MirrorTables(crv).(f_plus_bc := TB.MirrorPlus(host, crv.f_plus_bc))
+  }
+
+  /** `FreshMatchLidFlip` on the PLUS replays: at a matched positive row of `body`, the real plus
+      match and the flipped world's plus match have the same live groups. */
+  lemma FreshPlusLidFlip(
+    rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, crv: CP.FCompiled, str: string,
+    ov: LOr.OracleView, lk: AReg.Regs, lid: nat, ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
+    requires !rer.ignoreCase && !rer.multiline
+    requires |ov| == |str| + 1
+    requires qm.ov == ov && AR.LmapOk(body, qm) && OE.OracleColsOk(rer, qm, str)
+    requires LTB.LookTablesOk(body, crv) && |crv.f_look_types| == |crv.f_look_ast|
+    requires lid in LTB.LookIds(body)
+    requires M.MatchedPosLA(crv, lk, lid as int)
+    requires CM.LookCpsLE(lk, |str|)
+    requires NRR.PlusTableOk(body, crv.f_plus_bc)
+    requires NRC.NoCdnPlusRE(NI.LookBodyOfRE(body, lid)) && RF.CinBodiesLookFreeRE(NI.LookBodyOfRE(body, lid))
+    ensures
+      var n := |str|;
+      var r1 := NI.LookBodyOfRE(body, lid);
+      var rp := M.FreshBodyMatchPlus(crv, str, lid as int, lk, ov, ncap, nlook, nquant);
+      var rpF := M.FreshBodyMatchPlus(MirrorTablesP(crv, body), LC.Reverse(str), lid as int,
+                                      MIR.MirrorRegs(lk, n), MIR.MirrorView(ov, n), ncap, nlook, nquant);
+      (rp.Some? <==> rpF.Some?)
+      && (rp.Some? ==>
+            forall g: LG.GroupId ::
+              g in PIV.GmOfLive(r1, rp.value.capture_regs, rp.value.look_regs, rp.value.quant_regs)
+              <==> g in PIV.GmOfLive(FST.FXR(r1), rpF.value.capture_regs, rpF.value.look_regs, rpF.value.quant_regs))
+  {
+    var n := |str|;
+    MIR.ReverseLen(str);
+    var rstr := LC.Reverse(str);
+    var ov' := MIR.MirrorView(ov, n);
+    var l := lid as int;
+    var r1 := NI.LookBodyOfRE(body, lid);
+    var plus := crv.f_plus_bc;
+    var plusF := TB.MirrorPlus(body, plus);
+    var crvF := MirrorTablesP(crv, body);
+    var lkF := MIR.MirrorRegs(lk, n);
+
+    // ---- the row, in both tables ----
+    LookRowAny(body, crv, lid);
+    FreshMatchLidFlip(rer, qm, body, crv, str, ov, lk, lid, ncap, nlook, nquant);
+    var la := crv.f_look_types[l];
+    assert la.Lookahead? || la.Lookbehind?;
+    var cpN: nat := AReg.get_cp(lk, l).value;
+    assert cpN <= n && AReg.get_cp(lkF, l).value == n - cpN;
+    assert 0 <= l < |crvF.f_look_types| && crvF.f_look_types[l] == FR.FlipLkRE(la);
+    assert 0 <= l < |crvF.f_look_ast| && crvF.f_look_ast[l] == FST.FXR(r1);
+    assert 0 <= l < |crvF.f_look_cdns| && crvF.f_look_cdns[l] == LCdn.compile_cdns(FST.FXR(r1));
+    assert crvF.f_plus_bc == plusF;
+
+    // ---- statics of the row body ----
+    M.CapUniqueLookBodyOfRE(body, lid);
+    NI.LookBodyOfFragmentNested(body, lid);
+    FG.LookBodySubFactsLB(body, lid);
+    NI.LookBodyLookIdsIn(body, lid);
+    assert PSM.SizesOkRE(r1, ncap, nlook, nquant);
+    assert forall l0: nat :: l0 in LTB.LookIds(r1) ==> l0 < nlook;
+    FST.FXRStructural(r1);
+    FG.NestedCdnsEmpty(r1);
+    FG.NestedCdnsEmpty(FST.FXR(r1));
+    assert crv.f_look_cdns[l] == [] && crvF.f_look_cdns[l] == [];
+
+    // ---- the row's site table: look entries of the host's, quant entries of `r1` ----
+    FG.LmapOkLookBody(body, qm, lid);
+    var qmR := AR.QMap(M.QmOfRE(r1), qm.looks, ov, M.BodiesOfRE(r1));
+    M.QmOfREEntries(r1);
+    M.BodiesOfREEntries(r1);
+    M.QmapOkFromEntries(r1, qmR);
+    assert AR.LmapOk(r1, qmR) by { BRG.LmapOkLooksCong(r1, qm, qmR); }
+    assert OE.OracleColsOk(rer, qmR, str) by {
+      forall k: int | 0 <= k <= |str| ensures LL.OracleOkAt(rer, qmR, T.InputAt(str, k)) {
+        FST.OracleOkAtSubmap(rer, qm, qmR, T.InputAt(str, k));
+      }
+    }
+
+    // ---- the two plus tables at the row body ----
+    FRA.PlusTableOkLookBody(body, plus, lid);
+    TB.PlusTableOkMirror(body, plus);
+    FST.FXRStructural(body);
+    FG.LookBodyOfREFXR(body, lid);
+    FRA.PlusTableOkLookBody(FST.FXR(body), plusF, lid);
+    assert NRR.PlusTableOk(r1, plus) && NRR.PlusTableOk(FST.FXR(r1), plusF);
+
+    assert {:split_here} true;
+    reveal M.FreshBodyMatchPlus();
+    assert MIR.SwapAnchorsCdns([]) == [];
+    var rp := M.FreshBodyMatchPlus(crv, str, l, lk, ov, ncap, nlook, nquant);
+    var rpF := M.FreshBodyMatchPlus(crvF, rstr, l, lkF, ov', ncap, nlook, nquant);
+    assert M.VBody(crv, l) == r1 && M.VBody(crvF, l) == FST.FXR(r1);
+    if la.Lookbehind? {
+      assert FR.FlipLkRE(la) == R.Lookahead;
+      assert CP.capture_regex(la, r1) == R.reverse_regex(r1) && CP.capture_regex(R.Lookahead, FST.FXR(r1)) == FST.FXR(r1);
+      RP.RowKeysLB(rer, qmR, r1, str, cpN, ov, [], plus, plusF, ncap, nlook, nquant, n);
+    } else {
+      assert FR.FlipLkRE(la) == R.Lookbehind;
+      assert CP.capture_regex(la, r1) == r1
+          && CP.capture_regex(R.Lookbehind, FST.FXR(r1)) == R.reverse_regex(FST.FXR(r1));
+      RP.RowKeysLA(rer, qmR, r1, str, cpN, ov, plus, plusF, ncap, nlook, nquant, n);
+    }
+  }
+
+
+  /** `LookNestBackTTopLidFlip` WITHOUT `NoNulledPlusRE(body)`: the flipped carrier is over
+      `MirrorTablesP(crv, body)`. */
+  lemma LookNestBackTTopLidFlipP(
+    rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, crv: CP.FCompiled, str: string,
+    ov: LOr.OracleView, gmt: LG.GroupMap, th: AI.Thread, lid: nat,
+    ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
+    requires !rer.ignoreCase && !rer.multiline
+    requires |ov| == |str| + 1
+    requires qm.ov == ov && AR.LmapOk(body, qm) && OE.OracleColsOk(rer, qm, str)
+    requires LTB.LookTablesOk(body, crv) && |crv.f_look_types| == |crv.f_look_ast|
+    requires TRM.GmInBounds(gmt, |str|)
+    requires CM.LookCpsLE(th.look_regs, |str|)
+    requires lid in NI.TopLookIds(body) && lid in LTB.LookIds(body)
+    requires M.MatchedPosLA(crv, th.look_regs, lid as int)
+    requires NI.LookPathDom(body, AI.get_idx(th.look_regs.a_clk, lid as int), th.quant_regs.a_clk, lid)
+    requires NRR.PlusTableOk(body, crv.f_plus_bc)
+    requires NRC.NoCdnPlusRE(NI.LookBodyOfRE(body, lid)) && RF.CinBodiesLookFreeRE(NI.LookBodyOfRE(body, lid))
+    requires LookNestBackTTop(FST.FXR(body), MirrorTablesP(crv, body), LC.Reverse(str),
+                                  MIR.MirrorView(ov, |str|), PIV.CapIdsInLooks(body),
+                                  TRM.MirrorGm(gmt, |str|), MIR.MirrorThread(th, |str|), ncap, nlook, nquant)
+    ensures var rf := M.FreshBodyMatchPlus(crv, str, lid as int, th.look_regs, ov, ncap, nlook, nquant);
+            rf.Some? ==>
+              forall g: LG.GroupId ::
+                g in PIV.CapIdsInLooks(body) && g in PIV.CapIds(NI.LookBodyOfRE(body, lid))
+                && g in PIV.GmOfLive(NI.LookBodyOfRE(body, lid), rf.value.capture_regs,
+                                     rf.value.look_regs, rf.value.quant_regs)
+                ==> g in gmt
+  {
+    var n := |str|;
+    MIR.ReverseLen(str);
+    var rstr := LC.Reverse(str);
+    var ov' := MIR.MirrorView(ov, n);
+    var reF := FST.FXR(body);
+    var crvF := MirrorTablesP(crv, body);
+    var thF := MIR.MirrorThread(th, n);
+    var S := PIV.CapIdsInLooks(body);
+    var gmtF := TRM.MirrorGm(gmt, n);
+    var r1 := NI.LookBodyOfRE(body, lid);
+    var l := lid as int;
+
+    FreshPlusLidFlip(rer, qm, body, crv, str, ov, th.look_regs, lid, ncap, nlook, nquant);
+    FreshMatchLidFlip(rer, qm, body, crv, str, ov, th.look_regs, lid, ncap, nlook, nquant);
+    var rf := M.FreshBodyMatchPlus(crv, str, l, th.look_regs, ov, ncap, nlook, nquant);
+    var rfF := M.FreshBodyMatchPlus(crvF, rstr, l, thF.look_regs, ov', ncap, nlook, nquant);
+    assert thF.look_regs == MIR.MirrorRegs(th.look_regs, n);
+
+    // ---- instantiate the flipped carrier at lid ----
+    FG.TopLookIdsFXR(body);
+    FG.LookIdsFXR(body);
+    assert lid in NI.TopLookIds(reF) && lid in LTB.LookIds(reF);
+    assert crvF.f_look_types == FG.MirrorTables(crv).f_look_types;
+    assert M.MatchedPosLA(crvF, thF.look_regs, l);
+    assert thF.look_regs.a_clk == th.look_regs.a_clk && thF.quant_regs.a_clk == th.quant_regs.a_clk;
+    FG.LookPathDomFXR(body, AI.get_idx(th.look_regs.a_clk, l), th.quant_regs.a_clk, lid);
+    assert NI.LookPathDom(reF, AI.get_idx(thF.look_regs.a_clk, l), thF.quant_regs.a_clk, lid);
+    FG.LookBodyOfREFXR(body, lid);
+    assert NI.LookBodyOfRE(reF, lid) == FST.FXR(r1);
+    FG.CapIdsFXR(r1);
+    assert rfF.Some? ==>
+        forall g: LG.GroupId ::
+          g in S && g in PIV.CapIds(NI.LookBodyOfRE(reF, lid))
+          && g in PIV.GmOfLive(NI.LookBodyOfRE(reF, lid), rfF.value.capture_regs,
+                               rfF.value.look_regs, rfF.value.quant_regs)
+          ==> g in gmtF;
+
+    if rf.Some? {
+      assert rfF.Some?;
+      TRM.MirrorGmAt(gmt, n);
+      var Gr := PIV.GmOfLive(r1, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs);
+      forall g: LG.GroupId | g in S && g in PIV.CapIds(r1) && g in Gr
+        ensures g in gmt
+      {
+        assert g in PIV.GmOfLive(NI.LookBodyOfRE(reF, lid), rfF.value.capture_regs,
+                                 rfF.value.look_regs, rfF.value.quant_regs);
+        assert g in PIV.CapIds(NI.LookBodyOfRE(reF, lid));
+        assert g in gmtF;
+      }
+    }
+  }
 }
