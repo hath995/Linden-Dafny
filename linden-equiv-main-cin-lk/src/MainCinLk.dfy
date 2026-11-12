@@ -85,65 +85,14 @@ module LindenElkMainCinLk {
   import PTL = LindenElkPikeTreeLk
   import CG = LindenElkFlipClosedG       // (gate B) the scope-free closedness ladder
   import LB = LindenElkLookBank          // (gate C, G2) the look-bank invariant
+  import opened LindenElkBankFrames      // (G3a, two-machines) ClkFrame, AncFrame, QInCinQ, NRRLookIdsEq, OnlyCapIdsFromFrameOuter
+  import opened LindenElkTwoMachines     // (G3a) TranslateCinOk, the four tie transports
 
   // =========================================================================
   // 0. Statics: the glue's side condition on the translated regex.
   // =========================================================================
 
-  lemma LookFreeLkBodies(r: R.regex, S: set<LG.GroupId>)
-    requires T.TransWf(r) && NR.LookFreeRE(r)
-    ensures LL.LkBodiesInS(T.Translate(r), S)
-    decreases r
-  {
-    match r
-    case Re_alt(r1, r2) => LookFreeLkBodies(r1, S); LookFreeLkBodies(r2, S);
-    case Re_con(r1, r2) => LookFreeLkBodies(r1, S); LookFreeLkBodies(r2, S);
-    case Re_quant(_, _, _, r1) => LookFreeLkBodies(r1, S);
-    case Re_capture(_, r1) => LookFreeLkBodies(r1, S);
-    case _ =>
-  }
-
-  /** Every CIN-greedy plus of the translation has a look-free body whose groups
-      lie in `G` (any `G` covering the outside-look captures). */
-  lemma TranslateCinOk(r: R.regex, G: set<LG.GroupId>)
-    requires T.TransWf(r) && NR.NestedFragmentRE(r)
-    requires M.LooksNoNulledPlusRE(r) && RF.CinBodiesLookFreeRE(r)   // (G3a) the first conjunct is no longer used
-                                                                      // (`CinOk`'s look arm is `true`); kept so the
-                                                                      // top level's call context is unchanged
-    requires forall g: nat :: g in PIV.CapIdsOutsideLooks(r) ==> g in G
-    ensures CW.CinOk(T.Translate(r), G)
-    decreases r
-  {
-    match r
-    case Re_alt(r1, r2) => TranslateCinOk(r1, G); TranslateCinOk(r2, G);
-    case Re_con(r1, r2) => TranslateCinOk(r1, G); TranslateCinOk(r2, G);
-    case Re_capture(_, r1) => TranslateCinOk(r1, G);
-    case Re_lookaround(_, _, _) =>
-    case Re_quant(nul, qid, q, body) =>
-      TranslateCinOk(body, G);
-      var tb := T.Translate(body);
-      assert T.Translate(r) == L.Quantified(q.greedy, q.min as nat, T.TrDelta(q), tb);
-      if q.min > 0 && CW.CinGreedyL(q.greedy, T.TrDelta(q), tb) {
-        assert q.greedy && T.TrDelta(q) == LN.Inf by { reveal CW.CinGreedyL(); }
-        assert q.max == None;
-        if nul == R.NonNullable {
-          NUL.TransNonNullable(body);
-          CW.NotCinGreedyNonNullable(q.greedy, T.TrDelta(q), tb);
-          assert false;
-        }
-        assert nul == R.CINullable;
-        assert NR.LookFreeRE(body);
-        LookFreeLkBodies(body, {});
-        PIV.DefGroupsCapIds(body);
-        PIV.LookFreeCapIdsInLooksEmpty(body);
-        PIV.CapIdsSplit(body);
-        forall g | g in L.DefGroups(tb) ensures g in G {
-          assert g in PIV.CapIds(body);
-          assert g in PIV.CapIdsOutsideLooks(r);
-        }
-      }
-    case _ =>
-  }
+  // (G3a) `LookFreeLkBodies` and `TranslateCinOk` moved to two-machines (`LindenElkTwoMachines`).
 
   // =========================================================================
   // 1. The synthetic winner.
@@ -181,161 +130,8 @@ module LindenElkMainCinLk {
   //    at (the spec leaf, rp0).
   // =========================================================================
 
-  /** The register frame the transport needs: look registers equal, capture and
-      quant CLOCKS equal outside the reconstruction's write sets. */
-  ghost predicate ClkFrame(re: R.regex, Q: set<int>, a: AI.Thread, b: AI.Thread) {
-    a.look_regs == b.look_regs
-    && (forall k :: k !in RF.CapsQ(re, Q) ==> AI.get_idx(a.capture_regs.a_clk, k) == AI.get_idx(b.capture_regs.a_clk, k))
-    && (forall k :: k !in RF.QuantsQ(re, Q) ==> AI.get_idx(a.quant_regs.a_clk, k) == AI.get_idx(b.quant_regs.a_clk, k))
-  }
-
-  lemma AncFrame(re: R.regex, Q: set<int>, a: AI.Thread, b: AI.Thread, lid: nat)
-    requires lid in LTB.LookIds(re)
-    requires RF.CinBodiesLookFreeRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re) && RF.QInCin(re, Q)
-    requires ClkFrame(re, Q, a, b)
-    ensures forall mx :: NI.LookPathPresent(re, a.capture_regs.a_clk, a.quant_regs.a_clk, mx, lid)
-                         == NI.LookPathPresent(re, b.capture_regs.a_clk, b.quant_regs.a_clk, mx, lid)
-    ensures forall mx :: NI.MxAtLidLk(re, a.quant_regs.a_clk, mx, lid) == NI.MxAtLidLk(re, b.quant_regs.a_clk, mx, lid)
-    ensures forall L :: NI.LookPathDom(re, L, a.quant_regs.a_clk, lid) == NI.LookPathDom(re, L, b.quant_regs.a_clk, lid)
-  {
-    CLP.AncAvoidQ(re, Q, lid);
-    var cc1 := a.capture_regs.a_clk;
-    var cc2 := b.capture_regs.a_clk;
-    var qc1 := a.quant_regs.a_clk;
-    var qc2 := b.quant_regs.a_clk;
-    assert forall k :: k in CLP.AncCapRegs(re, lid) ==> AI.get_idx(cc1, k) == AI.get_idx(cc2, k) by {
-      forall k | k in CLP.AncCapRegs(re, lid) ensures AI.get_idx(cc1, k) == AI.get_idx(cc2, k) {
-        if k in RF.CapsQ(re, Q) { assert k in CLP.AncCapRegs(re, lid) * RF.CapsQ(re, Q); }
-      }
-    }
-    assert forall k :: k in CLP.AncQuants(re, lid) ==> AI.get_idx(qc1, k) == AI.get_idx(qc2, k) by {
-      forall k | k in CLP.AncQuants(re, lid) ensures AI.get_idx(qc1, k) == AI.get_idx(qc2, k) {
-        if k in RF.QuantsQ(re, Q) { assert k in CLP.AncQuants(re, lid) * RF.QuantsQ(re, Q); }
-      }
-    }
-    forall mx ensures NI.LookPathPresent(re, cc1, qc1, mx, lid) == NI.LookPathPresent(re, cc2, qc2, mx, lid)
-                      && NI.MxAtLidLk(re, qc1, mx, lid) == NI.MxAtLidLk(re, qc2, mx, lid) {
-      CLP.LookPathFrame(re, cc1, qc1, cc2, qc2, mx, lid);
-    }
-    forall L ensures NI.LookPathDom(re, L, qc1, lid) == NI.LookPathDom(re, L, qc2, lid) {
-      CLP.LookPathDomFrame(re, L, qc1, qc2, lid);
-    }
-  }
-
-  lemma TieOkTTransport(re: R.regex, Q: set<int>, S: set<LG.GroupId>, G: set<LG.GroupId>,
-                        gmB: LG.GroupMap, gm: LG.GroupMap, best: AI.Thread, th: AI.Thread)
-    requires RF.CinBodiesLookFreeRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re) && RF.QInCin(re, Q)
-    requires G * S == {} && LL.GmAgreeOutside(gmB, gm, G)
-    requires ClkFrame(re, Q, th, best)
-    requires LookNestOkTTop(re, S, gmB, best)
-    ensures LookNestOkTTop(re, S, gm, th)
-  {
-    forall lid: nat | lid in NI.TopLookIds(re)
-                      && (lid in LTB.LookIds(re)
-                          && exists g: LG.GroupId :: g in S && g in gm && g in PIV.CapIds(NI.LookBodyOfRE(re, lid)))
-      ensures NI.LookPathPresent(re, th.capture_regs.a_clk, th.quant_regs.a_clk, -1, lid)
-              && AI.get_idx(th.look_regs.a_clk, lid as int) >= 0
-              && AI.get_idx(th.look_regs.a_clk, lid as int) >= NI.MxAtLidLk(re, th.quant_regs.a_clk, -1, lid)
-    {
-      var g: LG.GroupId :| g in S && g in gm && g in PIV.CapIds(NI.LookBodyOfRE(re, lid));
-      assert g !in G by { if g in G { assert g in G * S; } }
-      assert g in gmB;
-      assert exists g0: LG.GroupId :: g0 in S && g0 in gmB && g0 in PIV.CapIds(NI.LookBodyOfRE(re, lid));
-      assert NI.LookPathPresent(re, best.capture_regs.a_clk, best.quant_regs.a_clk, -1, lid)
-             && AI.get_idx(best.look_regs.a_clk, lid as int) >= 0
-             && AI.get_idx(best.look_regs.a_clk, lid as int) >= NI.MxAtLidLk(re, best.quant_regs.a_clk, -1, lid);
-      AncFrame(re, Q, th, best, lid);
-    }
-  }
-
-  lemma TieBackTransport(re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
-                         Q: set<int>, S: set<LG.GroupId>, G: set<LG.GroupId>,
-                         gmB: LG.GroupMap, gm: LG.GroupMap, best: AI.Thread, th: AI.Thread,
-                         ncap: int, nlook: int, nquant: int)
-    requires RF.CinBodiesLookFreeRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re) && RF.QInCin(re, Q)
-    requires G * S == {} && LL.GmAgreeOutside(gmB, gm, G)
-    requires ClkFrame(re, Q, th, best)
-    requires LookNestBackTTop(re, crv, str, ov, S, gmB, best, ncap, nlook, nquant)
-    ensures LookNestBackTTop(re, crv, str, ov, S, gm, th, ncap, nlook, nquant)
-  {
-    forall lid: nat | lid in NI.TopLookIds(re)
-                      && (M.MatchedPosLA(crv, th.look_regs, lid as int)
-                          && lid in LTB.LookIds(re)
-                          && NI.LookPathDom(re, AI.get_idx(th.look_regs.a_clk, lid as int), th.quant_regs.a_clk, lid))
-      ensures var rf := M.FreshBodyMatch(crv, str, lid as int, th.look_regs, ov, ncap, nlook, nquant);
-              rf.Some? ==>
-                forall g: LG.GroupId ::
-                  g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, lid))
-                  && g in PIV.GmOfLive(NI.LookBodyOfRE(re, lid), rf.value.capture_regs,
-                                       rf.value.look_regs, rf.value.quant_regs)
-                  ==> g in gm
-    {
-      AncFrame(re, Q, th, best, lid);
-      var rf := M.FreshBodyMatch(crv, str, lid as int, th.look_regs, ov, ncap, nlook, nquant);
-      if rf.Some? {
-        forall g: LG.GroupId | g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, lid))
-                               && g in PIV.GmOfLive(NI.LookBodyOfRE(re, lid), rf.value.capture_regs,
-                                                    rf.value.look_regs, rf.value.quant_regs)
-          ensures g in gm
-        {
-          assert g !in G by { if g in G { assert g in G * S; } }
-          assert g in gmB;
-        }
-      }
-    }
-  }
-
-  lemma TieDeepTransport(rer: LW.RegExpRecord, re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
-                         Q: set<int>, S: set<LG.GroupId>, G: set<LG.GroupId>,
-                         gmB: LG.GroupMap, gm: LG.GroupMap, best: AI.Thread, th: AI.Thread,
-                         ncap: int, nlook: int, nquant: int)
-    requires RF.CinBodiesLookFreeRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re) && RF.QInCin(re, Q)
-    requires G * S == {} && LL.GmAgreeOutside(gmB, gm, G)
-    requires ClkFrame(re, Q, th, best)
-    requires LookNestBackTTopDeep(rer, re, crv, str, ov, S, gmB, best, ncap, nlook, nquant)
-    ensures LookNestBackTTopDeep(rer, re, crv, str, ov, S, gm, th, ncap, nlook, nquant)
-  {
-    forall lid: nat | lid in NI.TopLookIds(re)
-                      && (M.MatchedPosLA(crv, th.look_regs, lid as int)
-                          && lid in LTB.LookIds(re)
-                          && NI.LookPathDom(re, AI.get_idx(th.look_regs.a_clk, lid as int), th.quant_regs.a_clk, lid))
-      ensures var lsub := SubFirstLeafAt(rer, crv, str, lid as int, th.look_regs);
-              lsub.Some? ==>
-                forall g: LG.GroupId ::
-                  g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, lid)) ==>
-                    (g in lsub.value ==> g in gm && gm[g] == lsub.value[g])
-                    && (g in gm ==> g in lsub.value)
-    {
-      AncFrame(re, Q, th, best, lid);
-      var lsub := SubFirstLeafAt(rer, crv, str, lid as int, th.look_regs);
-      if lsub.Some? {
-        forall g: LG.GroupId | g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, lid))
-          ensures (g in lsub.value ==> g in gm && gm[g] == lsub.value[g])
-                  && (g in gm ==> g in lsub.value)
-        {
-          assert g !in G by { if g in G { assert g in G * S; } }
-          assert (g in gmB <==> g in gm) && (g in gmB ==> gmB[g] == gm[g]);
-        }
-      }
-    }
-  }
-
-  /** THE TRANSPORT. */
-  lemma TieTransport(rer: LW.RegExpRecord, re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
-                     Q: set<int>, S: set<LG.GroupId>, G: set<LG.GroupId>,
-                     bleaf: LT.Leaf, leaf: LT.Leaf, best: AI.Thread, th: AI.Thread,
-                     ncap: int, nlook: int, nquant: int)
-    requires RF.CinBodiesLookFreeRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re) && RF.QInCin(re, Q)
-    requires G * S == {} && LL.GmAgreeOutside(bleaf.1, leaf.1, G)
-    requires ClkFrame(re, Q, th, best)
-    requires BestTieLkNestedTop(rer, re, crv, str, ov, S, Some(bleaf), Some(best), ncap, nlook, nquant)
-    requires GmtTieOutside(re, th, leaf.1, S)   // machine A
-    ensures BestTieLkNestedTop(rer, re, crv, str, ov, S, Some(leaf), Some(th), ncap, nlook, nquant)
-  {
-    TieOkTTransport(re, Q, S, G, bleaf.1, leaf.1, best, th);
-    TieBackTransport(re, crv, str, ov, Q, S, G, bleaf.1, leaf.1, best, th, ncap, nlook, nquant);
-    TieDeepTransport(rer, re, crv, str, ov, Q, S, G, bleaf.1, leaf.1, best, th, ncap, nlook, nquant);
-  }
+  // (G3a) `ClkFrame` and `AncFrame` moved to two-machines (`LindenElkBankFrames`), as were the four transports
+  // (`TieOkTTransport`, `TieBackTransport`, `TieDeepTransport`, `TieTransport`).
 
   // =========================================================================
   // 3. The endpoint's register facts at the synthetic winner.
@@ -477,14 +273,6 @@ module LindenElkMainCinLk {
       NoNulledPlusNoCin(r1, q);
   }
 
-  lemma QInCinQ(re: R.regex)
-    ensures RF.QInCin(re, FRD.CinQids(re))
-  {
-    forall q: nat | q in PIV.QuantIds(re) && (q as int) in FRD.CinQids(re) ensures NRR.QidCinPlus(re, q) {
-      var qn: nat :| qn in PIV.QuantIds(re) && NRR.QidCinPlus(re, qn) && qn as int == q as int;
-      assert qn == q;
-    }
-  }
 
   /** Two banks of equal sizes agreeing at every index are equal. */
   lemma RegsEq(a: AReg.Regs, b: AReg.Regs)
@@ -745,18 +533,6 @@ module LindenElkMainCinLk {
     M.MainExtractionFromClosed(raw, str, t, thread, leaf);
   }
 
-  lemma NRRLookIdsEq(r: R.regex)
-    ensures NRR.LookIds(r) == LTB.LookIds(r)
-    decreases r
-  {
-    match r
-    case Re_alt(r1, r2) => NRRLookIdsEq(r1); NRRLookIdsEq(r2);
-    case Re_con(r1, r2) => NRRLookIdsEq(r1); NRRLookIdsEq(r2);
-    case Re_quant(_, _, _, r1) => NRRLookIdsEq(r1);
-    case Re_capture(_, r1) => NRRLookIdsEq(r1);
-    case Re_lookaround(_, _, r1) => NRRLookIdsEq(r1);
-    case _ =>
-  }
 
   /** Register sizes cover every id (the look-aware `CoversLookFree`). */
   lemma CoversAll(re: R.regex, rg: NRC.Regs3, ncap: int, nlook: int, nquant: int)
@@ -770,31 +546,6 @@ module LindenElkMainCinLk {
     NRRLookIdsEq(re);
   }
 
-  /** The outside-look capture-write frame, read off at start registers. */
-  lemma OnlyCapIdsFromFrameOuter(re: R.regex, caps: AReg.Regs, ncap: int)
-    requires CM.RegsAgreeOutside(caps, AReg.init_regs(ncap), PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(re)))
-    ensures forall gid: nat :: gid !in PIV.CapIds(re) ==> AI.get_idx(caps.a_cp, CP.start_reg(gid)) < 0
-  {
-    var capture := AReg.init_regs(ncap);
-    var Sreg := PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(re));
-    PIV.CapIdsSplit(re);
-    forall gid: nat | gid !in PIV.CapIds(re) ensures AI.get_idx(caps.a_cp, CP.start_reg(gid)) < 0 {
-      var k := CP.start_reg(gid);
-      assert k !in Sreg by {
-        if k in Sreg {
-          if k in (set cid | cid in PIV.CapIdsOutsideLooks(re) :: CP.start_reg(cid)) {
-            var c :| c in PIV.CapIdsOutsideLooks(re) && CP.start_reg(c) == k;
-            assert c == gid;
-          } else {
-            var c :| c in PIV.CapIdsOutsideLooks(re) && CP.end_reg(c) == k;
-            assert 2 * c + 1 == 2 * gid;
-          }
-        }
-      }
-      assert AI.get_idx(caps.a_cp, k) == AI.get_idx(capture.a_cp, k);
-      if 0 <= k < |capture.a_cp| { assert capture.a_cp[k] == -1; }
-    }
-  }
 
   // =========================================================================
   // 7. THE ASSEMBLY.

@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:f667af6cce78a7024e0d15fc1f1e22411a475e3921973d5e49b808d57763161d"
+manifest-hash = "sha256:ba5f51a73e9e275bf174eeeb6b52d572409a5cf6aa359b83186fed7a123b4157"
 
 [[package]]
 name = "linden.equiv-gen-step-re"
@@ -38,15 +38,6 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-sweep"
-
-[[package]]
-name = "linden.equiv-plus-at"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-plus-at"
 
 [[package]]
 name = "linden.engine"
@@ -614,3 +605,30 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-mirror-world"
+
+[[package]]
+name = "linden.equiv-two-machines"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-two-machines"
+
+[[package]]
+name = "linden.equiv-machine-a"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-machine-a"
+
+[[package]]
+name = "linden.equiv-plus-at"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-plus-at"
