@@ -65,13 +65,14 @@ module LindenElkFlipOracleG {
       `PikeLkRegexRec` admits either look direction already. */
   lemma NoBackrefNegFreePikeLk(tr: L.Regex)
     requires SD.NoBackrefL(tr)
+    requires NUL.NoCdnPlusL(tr)   // (G5a-1 step 3-L0) the fragment's head condition
     ensures EL.PikeLkRegexRec(tr)
     decreases tr
   {
     match tr
     case Disjunction(r1, r2) => NoBackrefNegFreePikeLk(r1); NoBackrefNegFreePikeLk(r2);
     case Sequence(r1, r2) => NoBackrefNegFreePikeLk(r1); NoBackrefNegFreePikeLk(r2);
-    case Quantified(_, _, _, r1) => NoBackrefNegFreePikeLk(r1);
+    case Quantified(_, _, _, r1) => NoBackrefNegFreePikeLk(r1); reveal EL.CinHeadL();   // (G5a-1 3-L0)
     case Group(_, r1) => NoBackrefNegFreePikeLk(r1);
     case LookaroundR(lk, r1) =>
       NoBackrefNegFreePikeLk(r1);
@@ -80,6 +81,7 @@ module LindenElkFlipOracleG {
 
   lemma BodyGmTieFlipG(rer: LW.RegExpRecord, tr: L.Regex, inp: LC.Input, n: nat, dir: WP.Direction)
     requires SD.NoBackrefL(tr)
+    requires NUL.NoCdnPlusL(tr)   // (G5a-1 step 3-L0) for NoBackrefNegFreePikeLk
     requires CD.NoDupG(L.DefGroups(tr))
     requires n == |inp.pref| + |inp.next|
     ensures var tB := FU.ComputeTr(rer, [LS.Areg(tr)], inp, LG.Empty, dir);
@@ -112,6 +114,7 @@ module LindenElkFlipOracleG {
   /** INSTANCE: `FD.BackBodyGmTieFlip`'s exact statement, from the generic tie. */
   lemma BackBodyGmTieFlipViaG(rer: LW.RegExpRecord, tr: L.Regex, inp: LC.Input, n: nat)
     requires SD.GroupOkLB(tr)
+    requires NUL.NoCdnPlusL(tr)   // (G5a-1 step 3-L0) for BodyGmTieFlipG
     requires CD.NoDupG(L.DefGroups(tr))
     requires n == |inp.pref| + |inp.next|
     ensures var tB := FU.ComputeTr(rer, [LS.Areg(tr)], inp, LG.Empty, WP.Backward);
@@ -163,6 +166,7 @@ module LindenElkFlipOracleG {
       definition as `G.OppDir`.) */
   lemma HbValDischarged(rer: LW.RegExpRecord, tr: L.Regex, inp: LC.Input, n: nat)
     requires SD.NoBackrefL(tr)
+    requires NUL.NoCdnPlusL(tr)   // (G5a-1 step 3-L0) for BodyGmTieFlipG
     requires CD.NoDupG(L.DefGroups(tr))
     requires n == |inp.pref| + |inp.next|
     ensures var tB := FU.ComputeTr(rer, [LS.Areg(tr)], inp, LG.Empty, WP.Backward);

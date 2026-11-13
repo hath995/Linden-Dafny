@@ -198,6 +198,7 @@ module LindenElkPikeSim {
              case Some(AnchorAssertion(_)) => pc2 == pc + 1
              case Some(CheckOracle(_)) => pc2 == pc + 1
              case Some(NegCheckOracle(_)) => pc2 == pc + 1
+             case Some(CheckNullable(_)) => pc2 == pc + 1   // (G5a) the CDN guard
              case _ => false
     ensures !NI.ColdRE(code, pc2)
   {
@@ -3761,6 +3762,340 @@ module LindenElkPikeSim {
   // chains the closure. Instructions outside the fragment are vacuous
   // (GenStepRE proves StepSpec, which is `false` for them).
   // =========================================================================
+  // =========================================================================
+  // (G5a step 2) THE CDN GUARD. `CheckNullable(qid)` sits on the skip arm of a
+  // CDN-greedy plus. The engine reads one bit of the table it rebuilds at every
+  // position (`build_cdn_v`); the tree rule `tr_cdn` tests whether the plus body
+  // has a first empty path at this input. The simulation needs the two to agree,
+  // and takes that as a PREMISE on the table (`GuardsOkAt`): rows and every
+  // existing caller have no guard in their code (vacuous, `GuardsOkNoGuards`);
+  // the top level proves it from the CDN soundness theorem in step 4.
+  //
+  // Like the look gate, the guard is leaf-transparent: a pass is a tree-side
+  // stutter (the tree machine stands still), a failure kills against Mismatch.
+  // Unlike the gate it writes NO register, so the lemmas are fragment-blind.
+  // =========================================================================
+
+  /** One guard's table bit is the tree rule's test at `inp`. */
+  ghost predicate GuardOkBit(qm: AR.QMap, cdnt: LCdn.cdn_table, qid: R.quantid, inp: LC.Input) {
+    qid in qm.bodies && T.TransWf(qm.bodies[qid])
+    && (LCdn.cdn_get(cdnt, qid) <==> TREP.FirstEmptyPathR(qm, qm.bodies[qid], inp).Some?)
+  }
+
+  /** Every guard of `code` reads a sound bit of `cdnt` at position `cp` of `str`. */
+  opaque ghost predicate GuardsOkAt(qm: AR.QMap, code: RB.code, cdnt: LCdn.cdn_table, str: string, cp: int) {
+    (0 <= cp <= |str|) ==>
+      (forall pc: nat {:trigger NR.GetPcRE(code, pc)} ::
+         (NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckNullable?) ==>
+           GuardOkBit(qm, cdnt, NR.GetPcRE(code, pc).value.cnq, PIV.InpOfCp(str, cp as nat)))
+  }
+
+  lemma GuardsOkAtElim(qm: AR.QMap, code: RB.code, cdnt: LCdn.cdn_table, str: string, cp: int,
+                       pc: nat, qid: R.quantid)
+    requires GuardsOkAt(qm, code, cdnt, str, cp)
+    requires 0 <= cp <= |str|
+    requires NR.GetPcRE(code, pc) == Some(RB.CheckNullable(qid))
+    ensures GuardOkBit(qm, cdnt, qid, PIV.InpOfCp(str, cp as nat))
+  {
+    reveal GuardsOkAt;
+    assert NR.GetPcRE(code, pc).value.cnq == qid;
+  }
+
+  lemma GuardsOkAtIntro(qm: AR.QMap, code: RB.code, cdnt: LCdn.cdn_table, str: string, cp: int)
+    requires (0 <= cp <= |str|) ==>
+      (forall pc: nat {:trigger NR.GetPcRE(code, pc)} ::
+         (NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckNullable?) ==>
+           GuardOkBit(qm, cdnt, NR.GetPcRE(code, pc).value.cnq, PIV.InpOfCp(str, cp as nat)))
+    ensures GuardsOkAt(qm, code, cdnt, str, cp)
+  {
+    reveal GuardsOkAt;
+  }
+
+  /** `code` holds no `CheckNullable`. */
+  ghost predicate NoGuardCode(code: RB.code) {
+    forall pc: nat {:trigger code[pc]} :: pc < |code| ==> !code[pc].CheckNullable?
+  }
+
+  /** Code without a guard: every table is sound for it. */
+  lemma GuardsOkNoGuards(qm: AR.QMap, code: RB.code, cdnt: LCdn.cdn_table, str: string, cp: int)
+    requires NoGuardCode(code)
+    ensures GuardsOkAt(qm, code, cdnt, str, cp)
+  {
+    reveal GuardsOkAt;
+    forall pc: nat | NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckNullable?
+      ensures false
+    {
+      assert pc < |code| && NR.GetPcRE(code, pc) == Some(code[pc]);
+    }
+  }
+
+  /** The table the engine builds at `cp` on a forward run over `str`. */
+  ghost function CdnAt(cdn: LCdn.cdns, ov: LOr.OracleView, str: string, cp: int): LCdn.cdn_table {
+    LCdn.build_cdn_v(cdn, cp, ov, AI.cp_context(cp, str, LAnc.Forward), LAnc.Forward)
+  }
+
+  /** The premise of a whole forward run: the table built at every position is guard-sound. */
+  ghost predicate GuardsOkRun(qm: AR.QMap, code: RB.code, cdn: LCdn.cdns, ov: LOr.OracleView, str: string) {
+    forall cp: int {:trigger CdnAt(cdn, ov, str, cp)} :: GuardsOkAt(qm, code, CdnAt(cdn, ov, str, cp), str, cp)
+  }
+
+  /** The run premise at one position, in the shape `FFindMatch` builds the table. */
+  lemma GuardsOkRunAt(qm: AR.QMap, code: RB.code, cdn: LCdn.cdns, ov: LOr.OracleView, str: string,
+                      cp: int, ctx: LAnc.char_context)
+    requires GuardsOkRun(qm, code, cdn, ov, str)
+    requires PIV.ContextOkRE(str, cp, ctx)
+    ensures GuardsOkAt(qm, code, LCdn.build_cdn_v(cdn, cp, ov, ctx, LAnc.Forward), str, cp)
+  {
+    assert LCdn.build_cdn_v(cdn, cp, ov, ctx, LAnc.Forward) == CdnAt(cdn, ov, str, cp);
+  }
+
+  lemma GuardsOkRunNoGuards(qm: AR.QMap, code: RB.code, cdn: LCdn.cdns, ov: LOr.OracleView, str: string)
+    requires NoGuardCode(code)
+    ensures GuardsOkRun(qm, code, cdn, ov, str)
+  {
+    forall cp: int ensures GuardsOkAt(qm, code, CdnAt(cdn, ov, str, cp), str, cp) {
+      GuardsOkNoGuards(qm, code, CdnAt(cdn, ov, str, cp), str, cp);
+    }
+  }
+
+  /** Today's fragment compiles no guard (twin of `StaticOkNoWrite`). */
+  lemma StaticNoGuards(qm: AR.QMap, re: R.regex, code: RB.code, endl: nat)
+    requires StaticCoreRE(qm, re, code, endl)
+    ensures NoGuardCode(code)
+  {
+    forall pc: nat | pc < |code| ensures !code[pc].CheckNullable? {
+      assert NR.GetPcRE(code, pc) == Some(code[pc]);
+      if pc != endl {
+        NR.NoWriteInstrRE(re, code, 0, endl, pc);
+      }
+    }
+  }
+
+  lemma StaticNoGuardsNested(qm: AR.QMap, re: R.regex, code: RB.code, endl: nat)
+    requires StaticCoreNestedRE(qm, re, code, endl)
+    ensures NoGuardCode(code)
+  {
+    forall pc: nat | pc < |code| ensures !code[pc].CheckNullable? {
+      assert NR.GetPcRE(code, pc) == Some(code[pc]);
+      if pc != endl {
+        NR.NoWriteInstrNestedRE(re, code, 0, endl, pc);
+      }
+    }
+  }
+
+  /** What every caller of `FindMatchSimRE` supplies while the fragment has no CDN plus. */
+  lemma GuardsOkRunStatic(qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                          cdn: LCdn.cdns, ov: LOr.OracleView, str: string)
+    requires StaticCoreRE(qm, re, code, endl)
+    ensures GuardsOkRun(qm, code, cdn, ov, str)
+  {
+    StaticNoGuards(qm, re, code, endl);
+    GuardsOkRunNoGuards(qm, code, cdn, ov, str);
+  }
+
+  lemma GuardsOkRunStaticNested(qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                                cdn: LCdn.cdns, ov: LOr.OracleView, str: string)
+    requires StaticCoreNestedRE(qm, re, code, endl)
+    ensures GuardsOkRun(qm, code, cdn, ov, str)
+  {
+    StaticNoGuardsNested(qm, re, code, endl);
+    GuardsOkRunNoGuards(qm, code, cdn, ov, str);
+  }
+
+  /** Inversion at a CDN guard (twin of `OracleStepThreadRE`): the checked tree
+      survives INTACT at `pc + 1` when the plus body has a first empty path
+      here, and is `Mismatch` otherwise. */
+  lemma CdnStepThreadRE(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                        inp: LC.Input, t: LT.Tree, th: AI.Thread, pc: nat, qid: R.quantid)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires th.pc >= 0 && pc == th.pc as nat && pc <= endl
+    requires NR.GetPcRE(code, pc) == Some(RB.CheckNullable(qid))
+    requires TT.TreeThreadRE(rer, qm, code, inp, t, pc, th.exit_allowed)
+    requires NI.NestTopRE(re, code, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk)
+    requires StampTopRE(re, code, endl, pc, th.quant_regs.a_cp)
+    ensures qid in qm.bodies && T.TransWf(qm.bodies[qid])
+    ensures TREP.FirstEmptyPathR(qm, qm.bodies[qid], inp).Some? ==>
+      TT.TreeThreadRE(rer, qm, code, inp, t, pc + 1, th.exit_allowed)
+      && pc + 1 <= endl
+      && NI.NestTopRE(re, code, endl, pc + 1, th.capture_regs.a_clk, th.quant_regs.a_clk)
+      && StampTopRE(re, code, endl, pc + 1, th.quant_regs.a_cp)
+    ensures TREP.FirstEmptyPathR(qm, qm.bodies[qid], inp).None? ==> t == LT.Mismatch
+  {
+    var cc := th.capture_regs.a_clk;
+    var qc := th.quant_regs.a_clk;
+    assert pc < endl;                       // Accept sits at endl; a guard does not
+    assert TREP.TreeRepRE(qm, t, code, pc, inp, th.exit_allowed);
+    assert qid in qm.bodies && T.TransWf(qm.bodies[qid]);
+    if TREP.FirstEmptyPathR(qm, qm.bodies[qid], inp).Some? {
+      assert NI.NestInvRE(re, code, 0, endl, pc, cc, qc, -1);
+      assert NI.StepEdgeRE(code, pc, pc + 1);
+      NI.NestInvAdvance(re, code, 0, endl, pc, pc + 1, cc, qc, -1);
+      StampAdvanceTop(re, code, endl, pc, pc + 1, th.quant_regs.a_cp);
+    }
+  }
+
+  /** Per-case preservation for a PASSING CDN guard: a tree-side stutter. The
+      tree machine does not move; the VM advances the head to `pc + 1` and
+      writes nothing. */
+  lemma PreserveCdnPass(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                        ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                        s1: AI.VmState, vms2: AI.VmState, qid: R.quantid,
+                        ncap: int, nlook: int, nquant: int)
+    requires !rer.multiline
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires GuardsOkAt(qm, code, vms.cdn, str, vms.cp)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.CheckNullable(qid))
+    requires LCdn.cdn_get(s1.cdn, qid)
+    requires vms2 == s1.(active := [vms.active[0].(pc := vms.active[0].pc + 1)] + s1.active[1..])
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := pts;
+    var th := vms.active[0];
+    var ea := th.exit_allowed;
+    var pc: nat := th.pc as nat;
+
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
+    assert PIV.ThreadTracksGm(re, qm, str, th, gm);
+    assert ThreadNestRE(re, code, endl, th.pc, th);
+
+    // The table bit IS the tree rule's test (the premise, at the invariant's input).
+    assert 0 <= vms.cp <= |str| && inp == PIV.InpOfCp(str, vms.cp);
+    GuardsOkAtElim(qm, code, vms.cdn, str, vms.cp, pc, qid);
+    assert s1.cdn == vms.cdn;
+    assert TREP.FirstEmptyPathR(qm, qm.bodies[qid], inp).Some?;
+
+    // The guard step: the tree survives INTACT at pc + 1.
+    CdnStepThreadRE(rer, qm, re, code, endl, inp, t, th, pc, qid);
+    assert TT.TreeThreadRE(rer, qm, code, inp, t, pc + 1, ea);
+    var th2 := th.(pc := th.pc + 1);
+    assert vms2.active == [th2] + vms.active[1..];
+
+    // Backbones (no register changes).
+    BBTick(vms, s1, ncap, nlook, nquant);
+    assert th in vms.active;
+    CM.ThreadClocksLEMono(th, vms.clock, s1.clock);
+    BBReplaceHead(s1, th2, ncap, nlook, nquant);
+
+    // Active correspondence: the SAME (tree, gm) list against the moved head.
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms2.active) by {
+      assert vms2.active[0] == th2 && vms2.active[1..] == vms.active[1..];
+      assert ta == [ta[0]] + ta[1..];
+      assert PIV.ThreadTracksGm(re, qm, str, th2, gm);
+    }
+
+    // Seen inclusion: a stutter step, the head tree is carried along the chain.
+    assert TT.StuttersRE(pc, code);
+    assert PIV.StutterSuccIs(code, pc, pc + 1);
+    assert PIV.HdTreeOf(ta) == Some(t) && PIV.HeadPcOf(vms.active) == pc;
+    PIV.StutterInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea, pc + 1);
+    assert PIV.HeadPcOf(vms2.active) == pc + 1;
+
+    // Positional fact and the remaining conjuncts.
+    assert ThreadNestRE(re, code, endl, th2.pc, th2);
+    forall t2 | t2 in vms2.active ensures ThreadNestRE(re, code, endl, t2.pc, t2) {
+      if t2 != th2 { assert t2 in vms.active; }
+    }
+    forall tb2 | tb2 in vms2.blocked ensures ThreadNestRE(re, code, endl, tb2.0.pc + 1, tb2.0) {
+      assert tb2 in vms.blocked;
+    }
+    forall t2 | t2 in vms2.active ensures EaColdOkRE(code, t2) {
+      if t2 != th2 { assert t2 in vms.active; }
+      else if !t2.exit_allowed {
+        assert !ea;
+        assert th in vms.active && EaColdOkRE(code, th);
+        assert !NI.ColdRE(code, pc);
+        NotColdSucc(code, pc, pc + 1);
+      }
+    }
+    forall t2 | t2 in vms2.active ensures PIV.LooksCapUnset(re, t2.capture_regs.a_clk) {
+      if t2 != th2 { assert t2 in vms.active; }
+    }
+    assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms2, ncap, nlook, nquant);
+  }
+
+  /** Per-case preservation for a FAILING CDN guard: the checked tree is
+      `Mismatch` and the branch dies on both sides (twin of `PreserveAnchorKill`). */
+  lemma PreserveCdnKill(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                        ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                        s1: AI.VmState, vms2: AI.VmState, qid: R.quantid,
+                        ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires GuardsOkAt(qm, code, vms.cdn, str, vms.cp)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.CheckNullable(qid))
+    requires !LCdn.cdn_get(s1.cdn, qid)
+    requires vms2 == s1.(active := s1.active[1..])
+    ensures PT.PikeTreeStep(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := pts;
+    var th := vms.active[0];
+    var ea := th.exit_allowed;
+    var pc: nat := th.pc as nat;
+
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta, vms.active);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, ea);
+    assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, ta[1..], vms.active[1..]);
+    assert ThreadNestRE(re, code, endl, th.pc, th);
+
+    // The table bit IS the tree rule's test.
+    assert 0 <= vms.cp <= |str| && inp == PIV.InpOfCp(str, vms.cp);
+    GuardsOkAtElim(qm, code, vms.cdn, str, vms.cp, pc, qid);
+    assert s1.cdn == vms.cdn;
+    assert TREP.FirstEmptyPathR(qm, qm.bodies[qid], inp).None?;
+
+    // The guard step (failing branch): the checked tree is Mismatch.
+    CdnStepThreadRE(rer, qm, re, code, endl, inp, t, th, pc, qid);
+    assert t == LT.Mismatch;
+
+    // The tree step: an EMPTY pts_active — the branch dies on both sides.
+    assert PT.TreeBfsStep(t, gm, LC.Idx(inp)) == PT.StepActive([]);
+    pts1 := PT.PTS(inp, [] + ta[1..], best, tb, SS.AddSeenTrees(seen, t));
+    assert PT.PikeTreeStep(pts, pts1);
+    assert [] + ta[1..] == ta[1..];
+
+    // The full invariant at the successor.
+    BBTick(vms, s1, ncap, nlook, nquant);
+    BBDropHead(s1, ncap, nlook, nquant);
+    PIV.AddInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea,
+                       PIV.HdTreeOf(ta[1..]), PIV.HeadPcOf(vms2.active));
+    IsblockedGrow(rer, qm, code, inp, seen, vms.isblocked, t);
+    forall t2 | t2 in vms2.active ensures ThreadNestRE(re, code, endl, t2.pc, t2) {
+      assert t2 in vms.active;
+    }
+    forall tb2 | tb2 in vms2.blocked ensures ThreadNestRE(re, code, endl, tb2.0.pc + 1, tb2.0) {
+      assert tb2 in vms.blocked;
+    }
+    assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
+  }
+
   /** THE preservation induction: walks `FAdvanceEpsilon`'s own recursion
       over the active-thread list, dispatching to the matching
       `Preserve*Case` lemma per instruction and chaining the `TrcRE` closure.
@@ -3779,6 +4114,7 @@ module LindenElkPikeSim {
     requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
     requires |vms.processed.true_set| == RB.size(code) && |vms.processed.false_set| == RB.size(code)
     requires dir == LAnc.Forward
+    requires GuardsOkAt(qm, code, vms.cdn, str, vms.cp)   // (G5a step 2) the table is guard-sound here
     ensures TrcRE(pts, pts')
     ensures pts'.PTS?
     ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts',
@@ -3954,10 +4290,22 @@ module LindenElkPikeSim {
           TrcCons(pts, pts1, pts');
         }
       case CheckNullable(qid) =>
-        assert !TT.StuttersRE(pc, code);
-        GS.GenStepRE(rer, qm, code, inp, t, pc, th.exit_allowed);
-        assert false;
-        pts' := pts;
+        // (G5a step 2) the CDN guard: a pass is a tree-side stutter (pts unchanged), a failure kills
+        // the thread against a Mismatch. The table bit is the tree rule's test by `GuardsOkAt`.
+        if LCdn.cdn_get(s1.cdn, qid) {
+          var vms2 := s1.(active := [th.(pc := th.pc + 1)] + ac);
+          PreserveCdnPass(rer, qm, re, code, endl, ngroups, str, pts, vms,
+                          s1, vms2, qid, ncap, nlook, nquant);
+          pts' := InvariantPreservationRE(rer, qm, re, code, endl, ngroups, str,
+                                          pts, vms2, ov, dir, ncap, nlook, nquant);
+        } else {
+          var vms2 := s1.(active := ac);
+          var pts1 := PreserveCdnKill(rer, qm, re, code, endl, ngroups, str, pts, vms,
+                                      s1, vms2, qid, ncap, nlook, nquant);
+          pts' := InvariantPreservationRE(rer, qm, re, code, endl, ngroups, str,
+                                          pts1, vms2, ov, dir, ncap, nlook, nquant);
+          TrcCons(pts, pts1, pts');
+        }
       case AnchorAssertion(a) =>
         if LAnc.is_satisfied(a, s1.context, dir) {
           var vms2 := s1.(active := [th.(pc := th.pc + 1)] + ac);
@@ -4001,6 +4349,7 @@ module LindenElkPikeSim {
     requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
     requires |vms.processed.true_set| == RB.size(code) && |vms.processed.false_set| == RB.size(code)
     requires dir == LAnc.Forward
+    requires GuardsOkAt(qm, code, vms.cdn, str, vms.cp)   // (G5a step 2) the table is guard-sound here
     ensures TrcRE(pts, pts')
     ensures pts'.PTS?
     ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts',
@@ -4171,10 +4520,22 @@ module LindenElkPikeSim {
           TrcCons(pts, pts1, pts');
         }
       case CheckNullable(qid) =>
-        assert !TT.StuttersRE(pc, code);
-        GS.GenStepRE(rer, qm, code, inp, t, pc, th.exit_allowed);
-        assert false;
-        pts' := pts;
+        // (G5a step 2) the CDN guard: a pass is a tree-side stutter (pts unchanged), a failure kills
+        // the thread against a Mismatch. The table bit is the tree rule's test by `GuardsOkAt`.
+        if LCdn.cdn_get(s1.cdn, qid) {
+          var vms2 := s1.(active := [th.(pc := th.pc + 1)] + ac);
+          PreserveCdnPass(rer, qm, re, code, endl, ngroups, str, pts, vms,
+                          s1, vms2, qid, ncap, nlook, nquant);
+          pts' := InvariantPreservationRENested(rer, qm, re, code, endl, ngroups, str,
+                                                pts, vms2, ov, dir, ncap, nlook, nquant);
+        } else {
+          var vms2 := s1.(active := ac);
+          var pts1 := PreserveCdnKill(rer, qm, re, code, endl, ngroups, str, pts, vms,
+                                      s1, vms2, qid, ncap, nlook, nquant);
+          pts' := InvariantPreservationRENested(rer, qm, re, code, endl, ngroups, str,
+                                                pts1, vms2, ov, dir, ncap, nlook, nquant);
+          TrcCons(pts, pts1, pts');
+        }
       case AnchorAssertion(a) =>
         if LAnc.is_satisfied(a, s1.context, dir) {
           var vms2 := s1.(active := [th.(pc := th.pc + 1)] + ac);
@@ -4577,6 +4938,7 @@ module LindenElkPikeSim {
     requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
     requires |vms.processed.true_set| == RB.size(code) && |vms.processed.false_set| == RB.size(code)
     requires dir == LAnc.Forward
+    requires GuardsOkRun(qm, code, cdn, ov, str)   // (G5a step 2) every position's table is guard-sound
     requires vms.context.nextchar == AI.get_char(str, vms.cp)
     ensures TrcRE(pts, PT.PTS_final(bestT))
     ensures PIV.BestMatchRE(re, qm, str, bestT, AI.FFindMatch(code, str, vms, ov, dir, cdn).0)
@@ -4586,6 +4948,10 @@ module LindenElkPikeSim {
     decreases |str| - vms.cp
   {
     var s0 := vms.(cdn := LCdn.build_cdn_v(cdn, vms.cp, ov, vms.context, dir));
+    // (G5a step 2) the table built at this position is guard-sound (the run premise)
+    assert PIV.ContextOkRE(str, vms.cp, vms.context);
+    GuardsOkRunAt(qm, code, cdn, ov, str, vms.cp, vms.context);
+    assert GuardsOkAt(qm, code, s0.cdn, str, s0.cp);
     // The invariant never reads cdn.
     assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, s0, ncap, nlook, nquant);
     var pts1 := InvariantPreservationRE(rer, qm, re, code, endl, ngroups, str,
@@ -4765,6 +5131,7 @@ module LindenElkPikeSim {
     requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
     requires |vms.processed.true_set| == RB.size(code) && |vms.processed.false_set| == RB.size(code)
     requires dir == LAnc.Forward
+    requires GuardsOkRun(qm, code, cdn, ov, str)   // (G5a step 2) every position's table is guard-sound
     requires vms.context.nextchar == AI.get_char(str, vms.cp)
     ensures TrcRE(pts, PT.PTS_final(bestT))
     ensures PIV.BestMatchRE(re, qm, str, bestT, AI.FFindMatch(code, str, vms, ov, dir, cdn).0)
@@ -4774,6 +5141,10 @@ module LindenElkPikeSim {
     decreases |str| - vms.cp
   {
     var s0 := vms.(cdn := LCdn.build_cdn_v(cdn, vms.cp, ov, vms.context, dir));
+    // (G5a step 2) the table built at this position is guard-sound (the run premise)
+    assert PIV.ContextOkRE(str, vms.cp, vms.context);
+    GuardsOkRunAt(qm, code, cdn, ov, str, vms.cp, vms.context);
+    assert GuardsOkAt(qm, code, s0.cdn, str, s0.cp);
     assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, s0, ncap, nlook, nquant);
     var pts1 := InvariantPreservationRENested(rer, qm, re, code, endl, ngroups, str,
                                         pts, s0, ov, dir, ncap, nlook, nquant);

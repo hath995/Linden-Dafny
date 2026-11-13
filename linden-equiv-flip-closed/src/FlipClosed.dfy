@@ -199,6 +199,19 @@ module LindenElkFlipClosed {
     case _ =>
   }
 
+  /** (G5a-1 step 3-L0) `FlipL` preserves CI-nullability. */
+  lemma FlipLCINullable(r: L.Regex)
+    ensures NUL.CINullableL(FR.FlipL(r)) <==> NUL.CINullableL(r)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => FlipLCINullable(r1); FlipLCINullable(r2);
+    case Sequence(r1, r2) => FlipLCINullable(r1); FlipLCINullable(r2);
+    case Quantified(_, _, _, r1) => FlipLCINullable(r1);
+    case Group(_, r1) => FlipLCINullable(r1);
+    case _ =>
+  }
+
   lemma FlipLNoNulledPlus(r: L.Regex)
     requires NUL.NoNulledPlusL(r)
     ensures NUL.NoNulledPlusL(FR.FlipL(r))
@@ -224,6 +237,8 @@ module LindenElkFlipClosed {
     case Quantified(_, _, _, r1) =>
       FlipLPikeLkRec(r1);
       FlipLNonNullable(r1);   // §2.5b: the conjunct transfers
+      FlipLCINullable(r1);    // (G5a-1 step 3-L0) both sides of the head condition transfer
+      reveal EL.CinHeadL();
     case Group(_, r1) => FlipLPikeLkRec(r1);
     case LookaroundR(lk, r1) =>
       FR.FlipLkLaws(lk);
@@ -604,6 +619,7 @@ module LindenElkFlipClosed {
             assert M.OpenOf(gm2) <= M.OpenOf(gm);
             assert forall g :: g in gm2 ==> g in gm && gm2[g] == gm[g];
             var q' := L.Quantified(greedy, min - 1, delta, r1);
+            if EL.CinHeadL(greedy, min, delta, r1) { EL.CinHeadMono(greedy, min, delta, r1, min - 1, delta); }   // (G5a-1 3-L0c)
             var acts1 := [LS.Areg(r1), LS.Areg(q')] + cont;
             assert M.PendingCloses(acts1) == M.PendingCloses(cont) by {
               assert forall i :: 0 <= i < |cont| ==> acts1[i + 2] == cont[i];
@@ -632,6 +648,7 @@ module LindenElkFlipClosed {
                 assert M.OpenOf(gm2) <= M.OpenOf(gm);
                 assert forall g :: g in gm2 ==> g in gm && gm2[g] == gm[g];
                 var q'' := L.Quantified(greedy, 0, LFS.NoiPred(delta), r1);
+                EL.CinHeadIntro(greedy, 0, LFS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
                 var acts1 := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q'')] + cont;
                 assert M.PendingCloses(acts1) == M.PendingCloses(cont) by {
                   assert forall i :: 0 <= i < |cont| ==> acts1[i + 3] == cont[i];
@@ -655,6 +672,7 @@ module LindenElkFlipClosed {
                 assert M.OpenOf(gm2) <= M.OpenOf(gm);
                 assert forall g :: g in gm2 ==> g in gm && gm2[g] == gm[g];
                 var q'' := L.Quantified(greedy, 0, LFS.NoiPred(delta), r1);
+                EL.CinHeadIntro(greedy, 0, LFS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
                 var acts1 := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q'')] + cont;
                 assert M.PendingCloses(acts1) == M.PendingCloses(cont) by {
                   assert forall i :: 0 <= i < |cont| ==> acts1[i + 3] == cont[i];

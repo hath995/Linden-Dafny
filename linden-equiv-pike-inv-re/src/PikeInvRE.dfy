@@ -312,6 +312,7 @@ module LindenElkPikeInv {
     case Some(BeginLoop) => npc == pc + 1
     case Some(CheckOracle(_)) => npc == pc + 1
     case Some(NegCheckOracle(_)) => npc == pc + 1
+    case Some(CheckNullable(_)) => npc == pc + 1   // (G5a) the CDN guard: leaf-transparent like the look gate
     case _ => false
   }
 
@@ -333,7 +334,8 @@ module LindenElkPikeInv {
     requires StutterChainTo(code, pc, target)
     ensures NR.GetPcRE(code, pc).Some?
             && (NR.GetPcRE(code, pc).value.Jmp? || NR.GetPcRE(code, pc).value.BeginLoop?
-                || NR.GetPcRE(code, pc).value.CheckOracle? || NR.GetPcRE(code, pc).value.NegCheckOracle?)
+                || NR.GetPcRE(code, pc).value.CheckOracle? || NR.GetPcRE(code, pc).value.NegCheckOracle?
+                || NR.GetPcRE(code, pc).value.CheckNullable?)
   {}
 
   // A stutter chain in tame code either strictly increases the pc or ends on a
@@ -359,6 +361,8 @@ module LindenElkPikeInv {
         assert target == pc + 1;
       case Some(NegCheckOracle(_)) =>
         assert target == pc + 1;
+      case Some(CheckNullable(_)) =>
+        assert target == pc + 1;
     } else {
       var mid: nat :| StutterSuccIs(code, pc, mid) && StutterChainTo(code, mid, target);
       StutterChainForwardOrFork(code, mid, target);   // IH: mid < target || code[target] Fork
@@ -378,6 +382,8 @@ module LindenElkPikeInv {
         case Some(CheckOracle(_)) =>
           assert mid == pc + 1;
         case Some(NegCheckOracle(_)) =>
+          assert mid == pc + 1;
+        case Some(CheckNullable(_)) =>
           assert mid == pc + 1;
       }
     }

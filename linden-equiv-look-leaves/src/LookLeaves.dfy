@@ -1168,6 +1168,7 @@ module LindenElkLookLeaves {
         var gidl := L.DefGroups(r1);
         if min > 0 {
           var quant := L.Quantified(greedy, min - 1, delta, r1);
+          if EL.CinHeadL(greedy, min, delta, r1) { EL.CinHeadMono(greedy, min, delta, r1, min - 1, delta); }   // (G5a-1 3-L0c)
           var na := [LS.Areg(r1), LS.Areg(quant)] + cont;
           assert EL.PikeLkActions(na) && LkActsInS(na, S) by {
             assert na == [LS.Areg(r1)] + ([LS.Areg(quant)] + cont);
@@ -1181,6 +1182,7 @@ module LindenElkLookLeaves {
           ComputeTreeLkConfined(rer, cont, inp, gm, dir, f, S);
         } else {
           var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+          EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
           var na := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
           assert EL.PikeLkActions(na) && LkActsInS(na, S) by {
             assert na == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
@@ -1354,6 +1356,7 @@ module LindenElkLookLeaves {
         assert forall g :: g in gidl ==> g in S;
         if min > 0 {
           var quant := L.Quantified(greedy, min - 1, delta, r1);
+          if EL.CinHeadL(greedy, min, delta, r1) { EL.CinHeadMono(greedy, min, delta, r1, min - 1, delta); }   // (G5a-1 3-L0c)
           var na := [LS.Areg(r1), LS.Areg(quant)] + cont;
           assert ConfinedActsRec(na, S) by {
             assert na == [LS.Areg(r1)] + ([LS.Areg(quant)] + cont);
@@ -1365,6 +1368,7 @@ module LindenElkLookLeaves {
           ComputeTreeConfinedRec(rer, cont, inp, gm, dir, f, S);
         } else {
           var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+          EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
           var na := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
           assert ConfinedActsRec(na, S) by {
             assert na == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
@@ -1501,6 +1505,7 @@ module LindenElkLookLeaves {
         var gidl := L.DefGroups(r1);
         if min > 0 {
           var quant := L.Quantified(greedy, min - 1, delta, r1);
+          if EL.CinHeadL(greedy, min, delta, r1) { EL.CinHeadMono(greedy, min, delta, r1, min - 1, delta); }   // (G5a-1 3-L0c)
           var na := [LS.Areg(r1), LS.Areg(quant)] + cont;
           assert EL.PikeLkActionsRec(na) && LkActsInS(na, S) by {
             assert na == [LS.Areg(r1)] + ([LS.Areg(quant)] + cont);
@@ -1514,6 +1519,7 @@ module LindenElkLookLeaves {
           ComputeTreeLkConfinedK(rer, cont, inp, gm, dir, f, S);
         } else {
           var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+          EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
           var na := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
           assert EL.PikeLkActionsRec(na) && LkActsInS(na, S) by {
             assert na == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));

@@ -366,6 +366,35 @@ module LindenSpanDuality {
     case _ =>
   }
 
+  /** (G5a-1 step 3-L0) `RevL` preserves CI-nullability (a sequence is CI-nullable iff both parts are). */
+  lemma RevLCINullable(r: L.Regex)
+    ensures NUL.CINullableL(RevL(r)) <==> NUL.CINullableL(r)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => RevLCINullable(r1); RevLCINullable(r2);
+    case Sequence(r1, r2) => RevLCINullable(r1); RevLCINullable(r2);
+    case Quantified(_, _, _, r1) => RevLCINullable(r1);
+    case Group(_, r1) => RevLCINullable(r1);
+    case _ =>
+  }
+
+  /** (G5a-1 step 3-L0) `RevL` preserves `NoCdnPlusL`. NOTE: check `RevL`'s lookaround arm; if it does not
+      recurse into the body, drop that case. */
+  lemma RevLNoCdnPlus(r: L.Regex)
+    requires NUL.NoCdnPlusL(r)
+    ensures NUL.NoCdnPlusL(RevL(r))
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => RevLNoCdnPlus(r1); RevLNoCdnPlus(r2);
+    case Sequence(r1, r2) => RevLNoCdnPlus(r1); RevLNoCdnPlus(r2);
+    case Quantified(_, _, _, r1) => RevLNoCdnPlus(r1); RevLNonNullable(r1); RevLCINullable(r1);
+    case Group(_, r1) => RevLNoCdnPlus(r1);
+    case LookaroundR(_, r1) => RevLNoCdnPlus(r1);
+    case _ =>
+  }
+
   /** §2.5b: `RevL` preserves the interim no-nulled-plus conjunct. */
   lemma RevLNoNulledPlus(r: L.Regex)
     requires NUL.NoNulledPlusL(r)

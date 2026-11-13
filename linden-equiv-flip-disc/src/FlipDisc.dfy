@@ -268,6 +268,7 @@ module LindenElkFlipDisc {
         assert O - (set g | g in gidl) == O;
         if min > 0 {
           var q1 := L.Quantified(greedy, min - 1, delta, r1);
+          assert EL.PikeLkActionRec(acts[0]) && EL.CinHeadL(greedy, min, delta, r1);   // (G5a-1 3-L0) the head's atom
           TML.QuantStackInvLk(greedy, min, delta, r1, cont);
           ComputeTreeCloseDiscF(rer, [LS.Areg(r1), LS.Areg(q1)] + cont, inp, LG.GMReset(gidl, gm), dir, f);
           var titer := FS.ComputeTree(rer, [LS.Areg(r1), LS.Areg(q1)] + cont, inp, LG.GMReset(gidl, gm), dir, f);
@@ -279,6 +280,7 @@ module LindenElkFlipDisc {
           ComputeTreeCloseDiscF(rer, cont, inp, gm, dir, f);
         } else {
           var q0 := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+          EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
           TML.QuantFreeStackInvLk(greedy, delta, r1, inp, cont);
           ComputeTreeCloseDiscF(rer, [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont, inp, LG.GMReset(gidl, gm), dir, f);
           ComputeTreeCloseDiscF(rer, cont, inp, gm, dir, f);
@@ -387,7 +389,7 @@ module LindenElkFlipDisc {
     match tr
     case Disjunction(r1, r2) => GroupOkLBNegFreePikeLk(r1); GroupOkLBNegFreePikeLk(r2);
     case Sequence(r1, r2) => GroupOkLBNegFreePikeLk(r1); GroupOkLBNegFreePikeLk(r2);
-    case Quantified(_, _, _, r1) => GroupOkLBNegFreePikeLk(r1);
+    case Quantified(_, _, _, r1) => GroupOkLBNegFreePikeLk(r1); reveal EL.CinHeadL();   // (G5a-1 3-L0)
     case Group(_, r1) => GroupOkLBNegFreePikeLk(r1);
     case LookaroundR(lk, r1) =>
       GroupOkLBNegFreePikeLk(r1);

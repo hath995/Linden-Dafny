@@ -375,6 +375,7 @@ module LindenElkLiftSimCarriers {
     assert |inp.pref| + |inp.next| == n;
     FST.TranslateFlipXRev(body);
     assert T.Translate(reF) == FM.FlipRevL(T.Translate(body));
+    EL.TranslateFragmentNoCdn(body);   // (G5a-1 step 3-L0) NUL.NoCdnPlusL of the translation
     OG.BodyGmTieFlipG(rer, T.Translate(body), inp, n, WP.Backward);
     assert G.OppDir(WP.Backward) == WP.Forward;
     assert tF == LFU.ComputeTr(rer, [LS.Areg(FM.FlipRevL(T.Translate(body)))], SD.SwapInput(inp),

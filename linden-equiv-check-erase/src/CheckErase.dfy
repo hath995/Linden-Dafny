@@ -715,6 +715,7 @@ module LindenElkCheckErase {
             match t {
               case GroupActionT(g, tc) =>
                 var q1 := L.Quantified(greedy, min - 1, delta, r1);
+                if EL.CinHeadL(greedy, min, delta, r1) { EL.CinHeadMono(greedy, min, delta, r1, min - 1, delta); }   // (G5a-1 3-L0c)
                 var pn := [LS.Areg(r1), LS.Areg(q1)] + pre[1..];
                 assert pn + rest == [LS.Areg(r1), LS.Areg(q1)] + (pre[1..] + rest);
                 assert pn + [LS.Acheck(chk)] + rest == [LS.Areg(r1), LS.Areg(q1)] + (pre[1..] + [LS.Acheck(chk)] + rest);
@@ -753,6 +754,7 @@ module LindenElkCheckErase {
                 match itert {
                   case GroupActionT(g, ti) =>
                     var q0 := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+                    EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
                     var pi := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + pre[1..];
                     assert pi + rest == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + (pre[1..] + rest);
                     assert pi + [LS.Acheck(chk)] + rest == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + (pre[1..] + [LS.Acheck(chk)] + rest);
@@ -1023,6 +1025,7 @@ module LindenElkCheckErase {
             match t {
               case GroupActionT(g, tc) =>
                 var q1 := L.Quantified(greedy, min - 1, delta, r1);
+                if EL.CinHeadL(greedy, min, delta, r1) { EL.CinHeadMono(greedy, min, delta, r1, min - 1, delta); }   // (G5a-1 3-L0c)
                 var pn := [LS.Areg(r1), LS.Areg(q1)] + pre[1..];
                 assert pn + rest == [LS.Areg(r1), LS.Areg(q1)] + (pre[1..] + rest);
                 assert pn + [LS.Acheck(chk)] + rest == [LS.Areg(r1), LS.Areg(q1)] + (pre[1..] + [LS.Acheck(chk)] + rest);
@@ -1061,6 +1064,7 @@ module LindenElkCheckErase {
                 match itert {
                   case GroupActionT(g, ti) =>
                     var q0 := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+                    EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
                     var pi := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + pre[1..];
                     assert pi + rest == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + (pre[1..] + rest);
                     assert pi + [LS.Acheck(chk)] + rest == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + (pre[1..] + [LS.Acheck(chk)] + rest);
@@ -1308,6 +1312,7 @@ module LindenElkCheckErase {
           match t {
             case GroupActionT(g, tc) =>
               var q1 := L.Quantified(greedy, min - 1, delta, r1);
+              if EL.CinHeadL(greedy, min, delta, r1) { EL.CinHeadMono(greedy, min, delta, r1, min - 1, delta); }   // (G5a-1 3-L0c)
               var ln := [LS.Areg(r1), LS.Areg(q1)] + cont;
               EL.PikeLkActionsConsIff(LS.Areg(q1), cont);
               EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(q1)] + cont);
@@ -1459,6 +1464,7 @@ module LindenElkCheckErase {
           match t {
             case GroupActionT(g, tc) =>
               var q1 := L.Quantified(greedy, min - 1, delta, r1);
+              if EL.CinHeadL(greedy, min, delta, r1) { EL.CinHeadMono(greedy, min, delta, r1, min - 1, delta); }   // (G5a-1 3-L0c)
               var ln := [LS.Areg(r1), LS.Areg(q1)] + cont;
               EL.PikeLkActionsRecConsIff(LS.Areg(q1), cont);
               EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Areg(q1)] + cont);

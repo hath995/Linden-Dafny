@@ -1554,7 +1554,7 @@ module LindenElkLiftSimOracle {
           assert AR.NfaRepL(rer, qm, L.Quantified(greedy, min, delta, r1), code, pc, pcmid);
           if min > 0 {
             if min == 1 && delta.Inf? && greedy && !NUL.NonNullableL(r1) {
-              var emC, e1C := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+              var emC, e1C, gNul := AR.NfaRepLNulInv(rer, qm, greedy, min, r1, code, pc, pcmid);
               assert emC == pc;   // the head is the Fork
             } else {
               QuantHeadSQCPin(rer, qm, greedy, min, delta, r1, code, pc, pcmid);   // a `false` clock-mark
@@ -1809,6 +1809,7 @@ module LindenElkLiftSimOracle {
     MIR.ReverseLen(str[..cp]);
     assert |inp.pref| + |inp.next| == n;
     // (G3b) the flip tie needs no nulled-plus premise (OG.BodyGmTieFlipG)
+    EL.TranslateFragmentNoCdn(r1);   // (G5a-1 step 3-L0) NUL.NoCdnPlusL of the translation
     OG.BodyGmTieFlipG(rer, T.Translate(r1), inp, n, dir);
     assert tF == LFU.ComputeTr(rer, [LS.Areg(FM.FlipRevL(T.Translate(r1)))], SD.SwapInput(inp),
                                LG.Empty, G.OppDir(dir));

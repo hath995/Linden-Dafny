@@ -615,6 +615,7 @@ module LindenElkNulledPlus {
             if min > 0 {
               FS.QuantForcedTermination(cont, inp, WP.Forward, r1, min - 1, delta, greedy);
               var q := L.Quantified(greedy, min - 1, delta, r1);
+              if EL.CinHeadL(greedy, min, delta, r1) { EL.CinHeadMono(greedy, min, delta, r1, min - 1, delta); }   // (G5a-1 3-L0c)
               var tc := t.t;
               var gm2 := LG.GMReset(gidl, gm);
               assert gm2 == LG.GMUpdate(LG.Reset(gidl), idx, gm);
@@ -637,6 +638,7 @@ module LindenElkNulledPlus {
               var plus := LN.NoISub(delta, 1);
               assert plus == FS.NoiPred(delta);
               var q := L.Quantified(greedy, 0, plus, r1);
+              EL.CinHeadIntro(greedy, 0, plus, r1);   // (G5a-1 3-L0c)
               var iterActs := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q)] + cont;
               var itert := if greedy then t.t1 else t.t2;
               var skipt := if greedy then t.t2 else t.t1;
@@ -1100,6 +1102,7 @@ module LindenElkNulledPlus {
   {
     var gidl := L.DefGroups(r1);
     var Q0 := L.Quantified(true, 0, LN.Inf, r1);
+    EL.CinHeadIntro(true, 0, LN.Inf, r1);   // (G5a-1 3-L0c)
     var rest := [LS.Areg(Q0)] + cont;
     var iterActs := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(Q0)] + cont;
     assert rest[0] == LS.Areg(Q0) && rest[1..] == cont;
@@ -1156,6 +1159,7 @@ module LindenElkNulledPlus {
     var idx := LC.Idx(inp);
     var Q1 := L.Quantified(true, 1, LN.Inf, r1);
     var Q0 := L.Quantified(true, 0, LN.Inf, r1);
+    EL.CinHeadIntro(true, 0, LN.Inf, r1);   // (G5a-1 3-L0c)
     var A := [LS.Areg(r1)];
     var rest := [LS.Areg(Q0)] + cont;
     var chk := [LS.Acheck(inp)] + rest;

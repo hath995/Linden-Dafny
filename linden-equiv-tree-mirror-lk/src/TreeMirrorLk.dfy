@@ -672,6 +672,8 @@ module LindenElkTreeMirrorLk {
     case Quantified(_, _, _, r1) =>
       RevLPreservesPikeLkRec(r1);
       SD.RevLNonNullable(r1);        // §2.5b interim conjunct transfers
+      SD.RevLCINullable(r1);         // (G5a-1 step 3-L0) the head condition transfers
+      reveal EL.CinHeadL();
     case Group(_, r1) => RevLPreservesPikeLkRec(r1);
     case LookaroundR(lk, r1) =>
       RevLPreservesPikeLkRec(r1);   // (gate C) the look arm is the body's own fragment, nothing more
@@ -816,6 +818,7 @@ module LindenElkTreeMirrorLk {
         QuantFragHelper(acts, r, r1, cont, rer, str, greedy, min, delta);
         if min > 0 {
           var q1 := L.Quantified(greedy, min - 1, delta, r1);
+          if EL.CinHeadL(greedy, min, delta, r1) { EL.CinHeadMono(greedy, min, delta, r1, min - 1, delta); }   // (G5a-1 3-L0c)
           assert SD.RevL(q1) == L.Quantified(greedy, min - 1, delta, SD.RevL(r1));
           TM.RevActsAppend([LS.Areg(r1), LS.Areg(q1)], cont);
           assert SD.RevActs([LS.Areg(r1), LS.Areg(q1)]) == [LS.Areg(SD.RevL(r1)), LS.Areg(SD.RevL(q1))]
@@ -837,6 +840,7 @@ module LindenElkTreeMirrorLk {
           ComputeTreeReverseLk(rer, cont, inp, gm1, gm2, f, str, cp0, Sin);
         } else {
           var q0 := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+          EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
           assert SD.RevL(q0) == L.Quantified(greedy, 0, FS.NoiPred(delta), SD.RevL(r1));
           TM.RevActsAppend([LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)], cont);
           assert SD.RevActs([LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)])
@@ -941,6 +945,7 @@ module LindenElkTreeMirrorLk {
     requires r == L.Quantified(greedy, min, delta, r1)
     requires EL.PikeLkActionsRec(acts) && ActsLookGatesMirror(acts, rer, str)
     ensures EL.PikeLkRegexRec(r1) && RegLookGatesMirror(r1, rer, str)
+    ensures EL.PikeLkRegexRec(r)   // (G5a-1 step 3-L0) the head's own fragment, for QuantMinHelper
     ensures EL.PikeLkActionsRec(cont) && ActsLookGatesMirror(cont, rer, str)
   {
     EL.PikeLkActionsRecConsIff(acts[0], cont);
@@ -954,10 +959,13 @@ module LindenElkTreeMirrorLk {
     // (rung C flipped it), so callers can no longer supply it — and the body
     // does not need it: `PikeLkRegexRec(q1)` now follows from `r1`'s alone.
     requires EL.PikeLkRegexRec(r1) && RegLookGatesMirror(r1, rer, str)
+    // (G5a-1 step 3-L0) `q1`'s head condition is the original head's (same greedy, delta, r1)
+    requires EL.PikeLkRegexRec(L.Quantified(greedy, min, delta, r1))
     requires EL.PikeLkActionsRec(cont) && ActsLookGatesMirror(cont, rer, str)
     ensures EL.PikeLkActionsRec([LS.Areg(r1), LS.Areg(q1)] + cont)
     ensures ActsLookGatesMirror([LS.Areg(r1), LS.Areg(q1)] + cont, rer, str)
   {
+    EL.CinHeadMono(greedy, min, delta, r1, min - 1, delta);   // (G5a-1 3-L0c) the derived head's atom
     assert EL.PikeLkRegexRec(q1) && RegLookGatesMirror(q1, rer, str);
     assert [LS.Areg(r1), LS.Areg(q1)] + cont == [LS.Areg(r1)] + ([LS.Areg(q1)] + cont);
     EL.PikeLkActionsRecConsIff(LS.Areg(q1), cont);
@@ -974,6 +982,7 @@ module LindenElkTreeMirrorLk {
     ensures EL.PikeLkActionsRec([LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont)
     ensures ActsLookGatesMirror([LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont, rer, str)
   {
+    EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c) the derived head's atom
     assert EL.PikeLkRegexRec(q0) && RegLookGatesMirror(q0, rer, str);
     assert [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont
         == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
@@ -1179,6 +1188,7 @@ module LindenElkTreeMirrorLk {
         var gidl := L.DefGroups(r1);
         if min > 0 {
           var q1 := L.Quantified(greedy, min - 1, delta, r1);
+          if EL.CinHeadL(greedy, min, delta, r1) { EL.CinHeadMono(greedy, min, delta, r1, min - 1, delta); }   // (G5a-1 3-L0c)
           assert EL.PikeLkActionsRec([LS.Areg(r1), LS.Areg(q1)] + cont) by {
             assert [LS.Areg(r1), LS.Areg(q1)] + cont == [LS.Areg(r1)] + ([LS.Areg(q1)] + cont);
             EL.PikeLkActionsRecConsIff(LS.Areg(q1), cont);
@@ -1189,6 +1199,7 @@ module LindenElkTreeMirrorLk {
           ComputeTreeGateStable(rer, cont, inp, gm, dir, f);
         } else {
           var q0 := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+          EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
           assert EL.PikeLkActionsRec([LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont) by {
             assert [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont
                 == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
@@ -1334,6 +1345,7 @@ module LindenElkTreeMirrorLk {
         var gidl := L.DefGroups(r1);
         if min > 0 {
           var q1 := L.Quantified(greedy, min - 1, delta, r1);
+          if EL.CinHeadL(greedy, min, delta, r1) { EL.CinHeadMono(greedy, min, delta, r1, min - 1, delta); }   // (G5a-1 3-L0c)
           QuantOpensHelper(r1, q1, cont, Sin, greedy, min, delta);
           assert EL.PikeLkActionsRec([LS.Areg(r1), LS.Areg(q1)] + cont) by {
             assert [LS.Areg(r1), LS.Areg(q1)] + cont == [LS.Areg(r1)] + ([LS.Areg(q1)] + cont);
@@ -1345,6 +1357,7 @@ module LindenElkTreeMirrorLk {
           ComputeTreeGActsOutside(rer, cont, inp, gm, dir, f, Sin);
         } else {
           var q0 := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+          EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
           QuantFreeOpensHelper(r1, q0, cont, Sin, greedy, delta, inp);
           assert EL.PikeLkActionsRec([LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont) by {
             assert [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont
@@ -1595,10 +1608,12 @@ module LindenElkTreeMirrorLk {
     // (rung C flipped it), so callers can no longer supply it — and the body
     // does not need it: `PikeLkRegexRec(q1)` now follows from `r1`'s alone.
     requires EL.PikeLkRegexRec(r1) && CD.NoDupG(L.DefGroups(r1))
+    requires EL.CinHeadL(greedy, min, delta, r1)   // (G5a-1 3-L0) the original head's atom: q1 inherits it
     requires forall g :: g in L.DefGroups(r1) ==> g !in CD.ClosesActs(cont)
     ensures StackInvLk([LS.Areg(r1), LS.Areg(L.Quantified(greedy, min - 1, delta, r1))] + cont)
   {
     var q1 := L.Quantified(greedy, min - 1, delta, r1);
+    EL.CinHeadMono(greedy, min, delta, r1, min - 1, delta);   // (G5a-1 3-L0)
     assert L.DefGroups(q1) == L.DefGroups(r1);
     assert EL.PikeLkRegexRec(q1);
     StackInvLkConsRegAvoid(q1, cont);
@@ -1616,6 +1631,7 @@ module LindenElkTreeMirrorLk {
     ensures StackInvLk([LS.Areg(r1), LS.Acheck(inpc), LS.Areg(L.Quantified(greedy, 0, FS.NoiPred(delta), r1))] + cont)
   {
     var q0 := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+    EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
     assert L.DefGroups(q0) == L.DefGroups(r1);
     assert EL.PikeLkRegexRec(q0);
     StackInvLkConsRegAvoid(q0, cont);
@@ -1702,6 +1718,7 @@ module LindenElkTreeMirrorLk {
         assert O - (set g | g in gidl) == O;
         if min > 0 {
           var q1 := L.Quantified(greedy, min - 1, delta, r1);
+          assert EL.PikeLkActionRec(acts[0]) && EL.CinHeadL(greedy, min, delta, r1);   // (G5a-1 3-L0) the head's atom
           QuantStackInvLk(greedy, min, delta, r1, cont);
           ComputeTreeCloseDiscLk(rer, [LS.Areg(r1), LS.Areg(q1)] + cont, inp, LG.GMReset(gidl, gm), dir, f);
           var titer := FS.ComputeTree(rer, [LS.Areg(r1), LS.Areg(q1)] + cont, inp, LG.GMReset(gidl, gm), dir, f);
@@ -1713,6 +1730,7 @@ module LindenElkTreeMirrorLk {
           ComputeTreeCloseDiscLk(rer, cont, inp, gm, dir, f);
         } else {
           var q0 := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+          EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
           QuantFreeStackInvLk(greedy, delta, r1, inp, cont);
           ComputeTreeCloseDiscLk(rer, [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont, inp, LG.GMReset(gidl, gm), dir, f);
           ComputeTreeCloseDiscLk(rer, cont, inp, gm, dir, f);

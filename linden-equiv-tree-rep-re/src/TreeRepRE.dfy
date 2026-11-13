@@ -273,6 +273,15 @@ module LindenElkTreeRep {
           if LOr.view_get_oracle(qm.ov, CpOf(inp), lid)
           then t == LT.Mismatch
           else TreeRepRE(qm, t, code, pc + 1, inp, b)
+        // tr_cdn / tr_cdnfail (G5a): the CDN-greedy plus's nulled-exit guard.
+        // Zero-width and leaf-transparent like the look gate; it passes iff
+        // the plus body has a first empty path HERE (the engine's table bit,
+        // W5 `CdnGuardSpec`), else the skip arm dies.
+        case Some(CheckNullable(qid)) =>
+          qid in qm.bodies && T.TransWf(qm.bodies[qid])
+          && (if FirstEmptyPathR(qm, qm.bodies[qid], inp).Some?
+              then TreeRepRE(qm, t, code, pc + 1, inp, b)
+              else t == LT.Mismatch)
         case _ => false)
   }
 
@@ -414,7 +423,11 @@ module LindenElkTreeRep {
       if !LOr.view_get_oracle(qm.ov, CpOf(inp), lid) {
         TreeRepDetermRE(qm, code, pc + 1, inp, b, t1, t2);
       }
-    case Some(_) =>                 // WriteOracle/CheckNullable/Fail:
+    case Some(CheckNullable(qid)) =>  // tr_cdn (empty path here) or tr_cdnfail
+      if qid in qm.bodies && T.TransWf(qm.bodies[qid]) && FirstEmptyPathR(qm, qm.bodies[qid], inp).Some? {
+        TreeRepDetermRE(qm, code, pc + 1, inp, b, t1, t2);
+      }
+    case Some(_) =>                 // WriteOracle/Fail:
                                     // no TreeRepRE rule — vacuous
     case None =>                    // vacuous
   }
@@ -580,6 +593,13 @@ module LindenElkTreeRep {
         TreeRepPikeSubtree(qm, t, code, pc + 1, inp, b);
       } else {
         assert t == LT.Mismatch;   // only tr_neglkfail matches
+        PikeSubtreeLeaf(t);
+      }
+    case Some(CheckNullable(qid)) =>
+      if qid in qm.bodies && T.TransWf(qm.bodies[qid]) && FirstEmptyPathR(qm, qm.bodies[qid], inp).Some? {
+        TreeRepPikeSubtree(qm, t, code, pc + 1, inp, b);
+      } else {
+        assert t == LT.Mismatch;   // only tr_cdnfail matches
         PikeSubtreeLeaf(t);
       }
     case Some(_) =>                 // no rule — vacuous

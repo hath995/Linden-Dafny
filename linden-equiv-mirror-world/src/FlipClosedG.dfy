@@ -328,6 +328,7 @@ module LindenElkFlipClosedG {
             assert M.OpenOf(gm2) <= M.OpenOf(gm);
             assert forall g :: g in gm2 ==> g in gm && gm2[g] == gm[g];
             var q' := L.Quantified(greedy, min - 1, delta, r1);
+            if EL.CinHeadL(greedy, min, delta, r1) { EL.CinHeadMono(greedy, min, delta, r1, min - 1, delta); }   // (G5a-1 3-L0c)
             var acts1 := [LS.Areg(r1), LS.Areg(q')] + cont;
             assert M.PendingCloses(acts1) == M.PendingCloses(cont) by {
               assert forall i :: 0 <= i < |cont| ==> acts1[i + 2] == cont[i];
@@ -356,6 +357,7 @@ module LindenElkFlipClosedG {
                 assert M.OpenOf(gm2) <= M.OpenOf(gm);
                 assert forall g :: g in gm2 ==> g in gm && gm2[g] == gm[g];
                 var q'' := L.Quantified(greedy, 0, LFS.NoiPred(delta), r1);
+                EL.CinHeadIntro(greedy, 0, LFS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
                 var acts1 := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q'')] + cont;
                 assert M.PendingCloses(acts1) == M.PendingCloses(cont) by {
                   assert forall i :: 0 <= i < |cont| ==> acts1[i + 3] == cont[i];
@@ -379,6 +381,7 @@ module LindenElkFlipClosedG {
                 assert M.OpenOf(gm2) <= M.OpenOf(gm);
                 assert forall g :: g in gm2 ==> g in gm && gm2[g] == gm[g];
                 var q'' := L.Quantified(greedy, 0, LFS.NoiPred(delta), r1);
+                EL.CinHeadIntro(greedy, 0, LFS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
                 var acts1 := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q'')] + cont;
                 assert M.PendingCloses(acts1) == M.PendingCloses(cont) by {
                   assert forall i :: 0 <= i < |cont| ==> acts1[i + 3] == cont[i];

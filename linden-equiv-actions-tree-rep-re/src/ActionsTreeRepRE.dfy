@@ -201,7 +201,10 @@ module LindenElkActionsTreeRep {
   {
     // (§2.5b) the recursive nullability predicates' definitional axioms send z3 4.14 into
     // a matching loop (as in the LiftSimCore giants): every use here is opaque, so hide them.
-    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, AR.NfaRepStarCinL, EL.PikeLkRegexRec, MsizeA;   // every recursive call below decreases on PSize alone
+    // (G5a-1 3-L0) the head's fragment facts as ground facts, then the fragment stays folded
+    assert EL.PikeLkRegex(r1) && EL.CinHeadL(greedy, min, delta, r1);
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, AR.NfaRepStarCinL, EL.PikeLkRegexRec, EL.PikeLkRegex, MsizeA;
+    EL.CinHeadOf(greedy, min, delta, r1);   // CINullableL(r1), a ground fact under the hide   // every recursive call below decreases on PSize alone
     assert acts == [acts[0]] + cont;
     EL.PikeLkActionsConsIff(acts[0], cont);
     var gidl := L.DefGroups(r1);
@@ -221,6 +224,7 @@ module LindenElkActionsTreeRep {
           assert {:split_here} true;   // (E3) section: the forced copy
           if min > 1 {
             var quant1 := L.Quantified(greedy, min - 1, LN.Inf, r1);
+            EL.PikeLkQuantDec(greedy, min, LN.Inf, r1);   // (G5a-1 3-L0) the derived head, by name
             var eb: nat :| (exists qid2: int ::
                   NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid2, false))
                   && qid2 in qm.quants && qm.quants[qid2] == gidl)
@@ -271,6 +275,7 @@ module LindenElkActionsTreeRep {
             assert em == pc;
             assert greedy && delta == LN.Inf;
             var q0 := L.Quantified(greedy, 0, LN.Inf, r1);
+            EL.PikeLkQuantZero(greedy, LN.Inf, r1);   // (G5a-1 3-L0) the star, by name
             assert acts == [LS.Areg(L.Quantified(true, 1, LN.Inf, r1))] + cont;
             match t {
               case GroupActionT(g, tc) =>
@@ -437,6 +442,7 @@ module LindenElkActionsTreeRep {
             && qidL in qm.quants && qm.quants[qidL] == gidl;
           AR.NfaRepIncrL(rer, qm, r1, code, em + 3, e1x);
           var quant1 := L.Quantified(greedy, min - 1, LN.Inf, r1);
+          if EL.CinHeadL(greedy, min, LN.Inf, r1) { EL.CinHeadMono(greedy, min, LN.Inf, r1, min - 1, LN.Inf); }   // (G5a-1 3-L0c)
           var eb: nat :| (exists qid2: int ::
                 NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid2, false))
                 && qid2 in qm.quants && qm.quants[qid2] == gidl)
@@ -501,6 +507,7 @@ module LindenElkActionsTreeRep {
           // a forced copy: stamp at pc, body at pc+1, the smaller
           // do-while continues at eb
           var quant1 := L.Quantified(greedy, min - 1, LN.Inf, r1);
+          if EL.CinHeadL(greedy, min, LN.Inf, r1) { EL.CinHeadMono(greedy, min, LN.Inf, r1, min - 1, LN.Inf); }   // (G5a-1 3-L0c)
           var eb: nat :| (exists qid2: int ::
                 NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid2, false))
                 && qid2 in qm.quants && qm.quants[qid2] == gidl)
@@ -550,6 +557,7 @@ module LindenElkActionsTreeRep {
           // walk has no check after this last forced body â€” insert it.
           assert em == pc;
           var q0 := L.Quantified(greedy, 0, LN.Inf, r1);
+          EL.CinHeadIntro(greedy, 0, LN.Inf, r1);   // (G5a-1 3-L0c)
           match t {
             case GroupActionT(g, tc) =>
               assert g == LG.Reset(gidl);
@@ -638,6 +646,7 @@ module LindenElkActionsTreeRep {
         assert {:split_here} true;   // (E3) section: the bounded arm
         var em := AR.NfaRepLQuantInv(rer, qm, greedy, min, kx, r1, code, pc, pcmid);
         var quant1 := L.Quantified(greedy, min - 1, delta, r1);
+        if EL.CinHeadL(greedy, min, delta, r1) { EL.CinHeadMono(greedy, min, delta, r1, min - 1, delta); }   // (G5a-1 3-L0c)
         var eb: nat :| (exists qid: int ::
               NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
               && qid in qm.quants && qm.quants[qid] == gidl)
@@ -727,6 +736,7 @@ module LindenElkActionsTreeRep {
     } else {
       // one bounded layer: the fork skips to the common end pcmid
       var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+      EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
       assert quant == L.Quantified(greedy, 0, LN.NN(k - 1), r1);
       var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, pcmid) else RB.Fork(pcmid, pc + 1))
         && (exists qid: int ::
@@ -838,6 +848,7 @@ module LindenElkActionsTreeRep {
     var gidl := L.DefGroups(r1);
     assert min == 0 && delta == LN.Inf;
     var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+    EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
     assert quant == L.Quantified(greedy, 0, LN.Inf, r1) == L.Quantified(greedy, min, delta, r1);
     if exists e1: nat :: NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1))
                  && (exists qid: int ::
@@ -1660,7 +1671,7 @@ module LindenElkActionsTreeRep {
                 // §2.5b CIN-GREEDY: a forced copy (min > 1) pins a clock-mark at
                 // pc; at min == 1 the head fork is FORWARD (both arms past pc),
                 // contradicting the backward arm
-                var em, e1x := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+                var em, e1x, gNul := AR.NfaRepLNulInv(rer, qm, greedy, min, r1, code, pc, pcmid);   // (G5a-1 3b) no CIN fact needed
                 if min > 1 {
                   var eb: nat :| (exists qid: int ::
                         NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
@@ -1753,6 +1764,7 @@ module LindenElkActionsTreeRep {
             var qid: int :| NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
               && qid in qm.quants && qm.quants[qid] == gidl;
             var q0 := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+            EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
             assert q0 == L.Quantified(greedy, 0, LN.Inf, r1) == r;
             WO.WalkOkLoopView(acts, code, pc, true, greedy, LN.Inf, r1,
                               if greedy then em else pc + 1,
@@ -1855,6 +1867,7 @@ module LindenElkActionsTreeRep {
                 && AR.StampBodyOk(qm, qidC, r1);
               assert greedy;
               var q0 := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+              EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
               assert q0 == L.Quantified(greedy, 0, LN.Inf, r1) == r;
               WO.WalkOkLoopViewCin(acts, code, pc, true, greedy, LN.Inf, r1, em + 1, e1 + 3, inp);
               match tc {
@@ -2004,7 +2017,10 @@ module LindenElkActionsTreeRep {
   {
     // (§2.5b) the recursive nullability predicates' definitional axioms send z3 4.14 into
     // a matching loop (as in the LiftSimCore giants): every use here is opaque, so hide them.
-    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, AR.NfaRepStarCinL, MsizeA;   // every recursive call below decreases on PSize alone
+    // (G5a-1 3-L0) the head's fragment facts as ground facts, then the recursive fragment stays folded
+    assert EL.PikeLkRegexRec(r1) && EL.CinHeadL(greedy, min, delta, r1);
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, AR.NfaRepStarCinL, MsizeA, EL.PikeLkRegexRec;   // every recursive call below decreases on PSize alone
+    EL.CinHeadOf(greedy, min, delta, r1);   // CINullableL(r1), a ground fact under the hide
     assert acts == [acts[0]] + cont;
     EL.PikeLkActionsRecConsIff(acts[0], cont);
     var gidl := L.DefGroups(r1);
@@ -2024,6 +2040,7 @@ module LindenElkActionsTreeRep {
           assert {:split_here} true;   // (E3) section: the forced copy
           if min > 1 {
             var quant1 := L.Quantified(greedy, min - 1, LN.Inf, r1);
+            EL.PikeLkRecQuantDec(greedy, min, LN.Inf, r1);   // (G5a-1 3-L0) the derived head, by name
             var eb: nat :| (exists qid2: int ::
                   NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid2, false))
                   && qid2 in qm.quants && qm.quants[qid2] == gidl)
@@ -2074,6 +2091,7 @@ module LindenElkActionsTreeRep {
             assert em == pc;
             assert greedy && delta == LN.Inf;
             var q0 := L.Quantified(greedy, 0, LN.Inf, r1);
+            EL.PikeLkRecQuantZero(greedy, LN.Inf, r1);   // (G5a-1 3-L0) the star, by name
             assert acts == [LS.Areg(L.Quantified(true, 1, LN.Inf, r1))] + cont;
             match t {
               case GroupActionT(g, tc) =>
@@ -2142,6 +2160,7 @@ module LindenElkActionsTreeRep {
                     var lq := [LS.Areg(q0)] + cont;
                     assert lq[0] == LS.Areg(q0) && lq[1..] == cont;
                     assert AR.ActionsRepL(rer, qm, lq, code, e1x + 1);
+                    assert {:split_here} true;   // (G5a-1) sub-split of the representation batch
                     var lc := [LS.Acheck(inp)] + lq;
                     assert AR.ActionRepL(rer, qm, LS.Acheck(inp), code, e1x, e1x + 1);
                     assert lc[0] == LS.Acheck(inp) && lc[1..] == lq;
@@ -2149,8 +2168,10 @@ module LindenElkActionsTreeRep {
                     assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, em + 3, e1x);
                     assert ia[0] == LS.Areg(r1) && ia[1..] == lc;
                     assert AR.ActionsRepL(rer, qm, ia, code, em + 3);
+                    assert {:split_here} true;   // (G5a-1) sub-split of the representation batch
                     ActionsRepLToFuel(rer, qm, ia, code, em + 3);
                     var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, em + 3, ni);
+                    assert {:split_here} true;   // (G5a-1) sub-split of the representation batch
                     // the walk guard's CIN head arm
                     WO.WalkOkQuantCinHead(acts, code, pc, EaOf(b), greedy, min, delta, r1, em + 1, e1x + 2, inp);
                     assert {:split_here} true;   // (gate C) one batch per recursive call: as one, z3 ran past 700 M
@@ -2239,6 +2260,7 @@ module LindenElkActionsTreeRep {
             && qidL in qm.quants && qm.quants[qidL] == gidl;
           AR.NfaRepIncrL(rer, qm, r1, code, em + 3, e1x);
           var quant1 := L.Quantified(greedy, min - 1, LN.Inf, r1);
+          if EL.CinHeadL(greedy, min, LN.Inf, r1) { EL.CinHeadMono(greedy, min, LN.Inf, r1, min - 1, LN.Inf); }   // (G5a-1 3-L0c)
           var eb: nat :| (exists qid2: int ::
                 NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid2, false))
                 && qid2 in qm.quants && qm.quants[qid2] == gidl)
@@ -2303,6 +2325,7 @@ module LindenElkActionsTreeRep {
           // a forced copy: stamp at pc, body at pc+1, the smaller
           // do-while continues at eb
           var quant1 := L.Quantified(greedy, min - 1, LN.Inf, r1);
+          if EL.CinHeadL(greedy, min, LN.Inf, r1) { EL.CinHeadMono(greedy, min, LN.Inf, r1, min - 1, LN.Inf); }   // (G5a-1 3-L0c)
           var eb: nat :| (exists qid2: int ::
                 NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid2, false))
                 && qid2 in qm.quants && qm.quants[qid2] == gidl)
@@ -2352,6 +2375,7 @@ module LindenElkActionsTreeRep {
           // walk has no check after this last forced body â€” insert it.
           assert em == pc;
           var q0 := L.Quantified(greedy, 0, LN.Inf, r1);
+          EL.CinHeadIntro(greedy, 0, LN.Inf, r1);   // (G5a-1 3-L0c)
           match t {
             case GroupActionT(g, tc) =>
               assert g == LG.Reset(gidl);
@@ -2440,6 +2464,7 @@ module LindenElkActionsTreeRep {
         assert {:split_here} true;   // (E3) section: the bounded arm
         var em := AR.NfaRepLQuantInv(rer, qm, greedy, min, kx, r1, code, pc, pcmid);
         var quant1 := L.Quantified(greedy, min - 1, delta, r1);
+        if EL.CinHeadL(greedy, min, delta, r1) { EL.CinHeadMono(greedy, min, delta, r1, min - 1, delta); }   // (G5a-1 3-L0c)
         var eb: nat :| (exists qid: int ::
               NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
               && qid in qm.quants && qm.quants[qid] == gidl)
@@ -2529,6 +2554,7 @@ module LindenElkActionsTreeRep {
     } else {
       // one bounded layer: the fork skips to the common end pcmid
       var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+      EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
       assert quant == L.Quantified(greedy, 0, LN.NN(k - 1), r1);
       var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, pcmid) else RB.Fork(pcmid, pc + 1))
         && (exists qid: int ::
@@ -2640,6 +2666,7 @@ module LindenElkActionsTreeRep {
     var gidl := L.DefGroups(r1);
     assert min == 0 && delta == LN.Inf;
     var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+    EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
     assert quant == L.Quantified(greedy, 0, LN.Inf, r1) == L.Quantified(greedy, min, delta, r1);
     if exists e1: nat :: NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1))
                  && (exists qid: int ::
@@ -3456,7 +3483,7 @@ module LindenElkActionsTreeRep {
                 // §2.5b CIN-GREEDY: a forced copy (min > 1) pins a clock-mark at
                 // pc; at min == 1 the head fork is FORWARD (both arms past pc),
                 // contradicting the backward arm
-                var em, e1x := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+                var em, e1x, gNul := AR.NfaRepLNulInv(rer, qm, greedy, min, r1, code, pc, pcmid);   // (G5a-1 3b) no CIN fact needed
                 if min > 1 {
                   var eb: nat :| (exists qid: int ::
                         NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
@@ -3549,6 +3576,7 @@ module LindenElkActionsTreeRep {
             var qid: int :| NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
               && qid in qm.quants && qm.quants[qid] == gidl;
             var q0 := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+            EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
             assert q0 == L.Quantified(greedy, 0, LN.Inf, r1) == r;
             WO.WalkOkLoopView(acts, code, pc, true, greedy, LN.Inf, r1,
                               if greedy then em else pc + 1,
@@ -3651,6 +3679,7 @@ module LindenElkActionsTreeRep {
                 && AR.StampBodyOk(qm, qidC, r1);
               assert greedy;
               var q0 := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+              EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
               assert q0 == L.Quantified(greedy, 0, LN.Inf, r1) == r;
               WO.WalkOkLoopViewCin(acts, code, pc, true, greedy, LN.Inf, r1, em + 1, e1 + 3, inp);
               match tc {

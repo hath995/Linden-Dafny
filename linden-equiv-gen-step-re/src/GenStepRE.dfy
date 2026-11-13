@@ -105,9 +105,16 @@ module LindenElkGenStep {
       (!LOr.view_get_oracle(qm.ov, TREP.CpOf(inp), lid) ==>
          TT.TreeThreadRE(rer, qm, code, inp, t, pc + 1, ea))
       && (LOr.view_get_oracle(qm.ov, TREP.CpOf(inp), lid) ==> t == LT.Mismatch)
+    case Some(CheckNullable(qid)) =>
+      // G5a `tr_cdn`: leaf-transparent like the look gate; passes iff the
+      // plus body has a first empty path here
+      qid in qm.bodies && T.TransWf(qm.bodies[qid])
+      && (TREP.FirstEmptyPathR(qm, qm.bodies[qid], inp).Some? ==>
+            TT.TreeThreadRE(rer, qm, code, inp, t, pc + 1, ea))
+      && (TREP.FirstEmptyPathR(qm, qm.bodies[qid], inp).None? ==> t == LT.Mismatch)
     case Some(Jmp(_)) => true        // excluded by !StuttersRE at use sites
     case Some(BeginLoop) => true     // excluded by !StuttersRE at use sites
-    case Some(_) => false            // WriteOracle/CheckNullable/Fail:
+    case Some(_) => false            // WriteOracle/Fail:
                                      // unreachable in fragment-represented code
     case None => false               // out-of-range: a tree-thread pins an instr
   }
@@ -185,6 +192,7 @@ module LindenElkGenStep {
       }
     case Some(CheckOracle(lid)) =>   // the gate rule, read off the instruction
     case Some(NegCheckOracle(lid)) =>
+    case Some(CheckNullable(qid)) => // excluded by !StuttersRE (G5a)
     case Some(Jmp(_)) =>             // excluded by !StuttersRE
     case Some(BeginLoop) =>          // excluded by !StuttersRE
     case Some(_) =>                  // no TreeRepRE disjunct: requires is false

@@ -1499,7 +1499,7 @@ module LindenElkLiftSimCore {
           } else {
             // §2.5b CIN-GREEDY: clock-mark (min > 1) or the head Fork (min == 1),
             // either ≠ Jmp
-            var em, e1 := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+            var em, e1, gNul := AR.NfaRepLNulInv(rer, qm, greedy, min, r1, code, pc, pcmid);
             NfaRepMinLHeadPin(rer, qm, min - 1, r1, code, pc, em);
             if min == 1 {
               assert em == pc;
@@ -1730,7 +1730,7 @@ module LindenElkLiftSimCore {
         } else {
           // §2.5b CIN-GREEDY: the head is a chain clock-mark (min > 1) or the
           // head FORK (min == 1) -- either satisfies these pins.
-          var em, e1 := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+          var em, e1, gNul := AR.NfaRepLNulInv(rer, qm, greedy, min, r1, code, pc, pcmid);
           NfaRepMinLHeadPin(rer, qm, min - 1, r1, code, pc, em);
           if min == 1 {
             assert em == pc;
@@ -1803,7 +1803,7 @@ module LindenElkLiftSimCore {
         } else {
           // §2.5b CIN-GREEDY: a chain clock-mark (min > 1) or the head FORK
           // (min == 1) -- both satisfy Fork-or-SQC.
-          var em, e1 := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+          var em, e1, gNul := AR.NfaRepLNulInv(rer, qm, greedy, min, r1, code, pc, pcmid);
           NfaRepMinLHeadPin(rer, qm, min - 1, r1, code, pc, em);
           if min == 1 {
             assert em == pc;
@@ -1855,7 +1855,7 @@ module LindenElkLiftSimCore {
       } else if greedy {
         // §2.5b CIN-GREEDY (min > 1 by the requires): `min - 1` forced copies
         // precede the head fork, so the chain's head pins the clock-mark.
-        var em, e1 := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+        var em, e1, gNul := AR.NfaRepLNulInv(rer, qm, greedy, min, r1, code, pc, pcmid);
         NfaRepMinLHeadPin(rer, qm, min - 1, r1, code, pc, em);
       } else {
         // GENERIC: `min` (not `min - 1`) forced copies precede the star loop,
@@ -1903,6 +1903,28 @@ module LindenElkLiftSimCore {
       AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Areg(quant1)] + cont, code, pc + 1, e_body);
     case Inf =>
       var quant1 := L.Quantified(greedy, min - 1, LN.Inf, r1);
+      if !NUL.NonNullableL(r1) && greedy && !NUL.CINullableL(r1) {
+        assert {:split_here} true;   // (G5a-1 step 3) section: a CDN-greedy forced copy
+        // min > 1 by the requires: the copy's clock-mark at pc, its body, then the residual CDN
+        // quantifier (min - 1 >= 1) from the copy's end. The CIN section below with the guard at
+        // e1 + 2 and the true stamp at e1 + 3.
+        var emD, e1D := AR.NfaRepLCdnInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+        var qidD: int :| NR.GetPcRE(code, emD + 1) == Some(RB.SetQuantToClock(qidD, false))
+                         && NR.GetPcRE(code, e1D + 2) == Some(RB.CheckNullable(qidD))
+                         && NR.GetPcRE(code, e1D + 3) == Some(RB.SetQuantToClock(qidD, true))
+                         && qidD in qm.quants && qm.quants[qidD] == L.DefGroups(r1)
+                         && AR.StampBodyOk(qm, qidD, r1);
+        var e_bodyD: nat :|
+          (exists qid: int :: NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
+                              && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
+          && AR.NfaRepL(rer, qm, r1, code, pc + 1, e_bodyD)
+          && AR.NfaRepMinL(rer, qm, min - 2, r1, code, e_bodyD, emD);
+        AR.NfaRepLCdnIntro(rer, qm, greedy, min - 1, r1, code, e_bodyD, emD, e1D, pcmid, qidD);
+        AR.ActionsRepLCons(rer, qm, LS.Areg(quant1), cont, code, e_bodyD, pcmid);
+        assert [LS.Areg(r1), LS.Areg(quant1)] + cont == [LS.Areg(r1)] + ([LS.Areg(quant1)] + cont);
+        AR.ActionsRepLCons(rer, qm, LS.Areg(r1), [LS.Areg(quant1)] + cont, code, pc + 1, e_bodyD);
+        return;
+      }
       if !NUL.NonNullableL(r1) && greedy {
         assert {:split_here} true;   // (§2.5b F-c) section: a CIN-greedy forced copy
         // min > 1 by the requires: the copy's clock-mark at pc, its body, then the
@@ -2013,7 +2035,7 @@ module LindenElkLiftSimCore {
     case Inf =>
       if !NUL.NonNullableL(r1) && greedy {
         // §2.5b CIN-GREEDY (min > 1 by the requires): the first forced copy's clock-mark
-        var emC, e1C := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+        var emC, e1C, gNul := AR.NfaRepLNulInv(rer, qm, greedy, min, r1, code, pc, pcmid);
         var e_bodyC: nat :|
           (exists qid: int :: NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
                               && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
@@ -3221,6 +3243,7 @@ module LindenElkLiftSimCore {
                                    && qidg in qm.quants && qm.quants[qidg] == gidl;
                   AR.NfaRepIncrL(rer, qm, r1, code, emg + 3, e1g);
                   var quant1g := L.Quantified(greedy, min - 1, LN.Inf, r1);
+                  if EL.CinHeadL(greedy, min, LN.Inf, r1) { EL.CinHeadMono(greedy, min, LN.Inf, r1, min - 1, LN.Inf); }   // (G5a-1 3-L0c)
                   var ebg: nat :| (exists qid2: int ::
                                      NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid2, false))
                                      && qid2 in qm.quants && qm.quants[qid2] == gidl)
@@ -3266,6 +3289,7 @@ module LindenElkLiftSimCore {
                 AR.NfaRepIncrL(rer, qm, r1, code, em + 1, e1x);
                 if min > 1 {
                   var quant1 := L.Quantified(greedy, min - 1, LN.Inf, r1);
+                  if EL.CinHeadL(greedy, min, LN.Inf, r1) { EL.CinHeadMono(greedy, min, LN.Inf, r1, min - 1, LN.Inf); }   // (G5a-1 3-L0c)
                   var eb: nat :| (exists qid2: int ::
                                     NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid2, false))
                                     && qid2 in qm.quants && qm.quants[qid2] == gidl)
@@ -3303,6 +3327,7 @@ module LindenElkLiftSimCore {
                   // insertion invisible (BoolCheckInsert's ProgErase ensures).
                   assert em == pc;
                   var q0 := L.Quantified(greedy, 0, LN.Inf, r1);
+                  EL.CinHeadIntro(greedy, 0, LN.Inf, r1);   // (G5a-1 3-L0c)
                   match t {
                     case GroupActionT(g, tc) =>
                       assert g == LG.Reset(gidl);
@@ -3384,6 +3409,7 @@ module LindenElkLiftSimCore {
                 CW.NotCinGreedyNN(greedy, kx, r1);
                 var em := AR.NfaRepLQuantInv(rer, qm, greedy, min, kx, r1, code, pc, pcmid);
                 var quant1 := L.Quantified(greedy, min - 1, delta, r1);
+                if EL.CinHeadL(greedy, min, delta, r1) { EL.CinHeadMono(greedy, min, delta, r1, min - 1, delta); }   // (G5a-1 3-L0c)
                 var eb: nat :| (exists qid: int ::
                                   NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
                                   && qid in qm.quants && qm.quants[qid] == gidl)
@@ -3434,6 +3460,7 @@ module LindenElkLiftSimCore {
             } else {
               // one bounded layer: the fork skips to the common end pcmid
               var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+              EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
               assert quant == L.Quantified(greedy, 0, LN.NN(k - 1), r1);
               var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, pcmid) else RB.Fork(pcmid, pc + 1))
                              && (exists qid: int ::
@@ -3502,6 +3529,7 @@ module LindenElkLiftSimCore {
           assert {:split_here} true;   // (E3) the star in its own batch
           assert min == 0 && delta == LN.Inf;
           var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+          EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
           assert quant == L.Quantified(greedy, 0, LN.Inf, r1) == L.Quantified(greedy, min, delta, r1);
           if exists e1: nat :: NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1))
                                && (exists qid: int ::
@@ -3719,6 +3747,7 @@ module LindenElkLiftSimCore {
     if min > 1 {
       assert {:split_here} true;   // (E3) section: a forced copy — the generalized layout lemmas
       var quant1 := L.Quantified(true, min - 1, LN.Inf, r1);
+      if EL.CinHeadL(true, min, LN.Inf, r1) { EL.CinHeadMono(true, min, LN.Inf, r1, min - 1, LN.Inf); }   // (G5a-1 3-L0c)
       var ia := [LS.Areg(r1), LS.Areg(quant1)] + cont;
       ATR.FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
       QuantForcedContRep(rer, qm, true, min, LN.Inf, r1, code, pc, pcmid, cont);
@@ -3746,6 +3775,7 @@ module LindenElkLiftSimCore {
       }
     } else {
       assert {:split_here} true;   // (E3) section: the head fork
+      EL.CinHeadOf(true, min, LN.Inf, r1);   // (G5a-1 3-L0) the head atom of PikeLkActionRec(acts[0])
       var em, e1x := AR.NfaRepLCinInv(rer, qm, true, min, r1, code, pc, pcmid);
       var qidC: int :| NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qidC, false))
                        && NR.GetPcRE(code, e1x + 2) == Some(RB.SetQuantToClock(qidC, true))
@@ -3754,6 +3784,7 @@ module LindenElkLiftSimCore {
       AR.NfaRepIncrL(rer, qm, r1, code, em + 3, e1x);
       assert em == pc;
       var q0 := L.Quantified(true, 0, LN.Inf, r1);
+      EL.CinHeadIntro(true, 0, LN.Inf, r1);   // (G5a-1 3-L0c)
       var ia := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont;
       assert ia == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
       CW.CinGreedyIntro(r1);
@@ -3870,6 +3901,7 @@ module LindenElkLiftSimCore {
                      && qidC in qm.quants && qm.quants[qidC] == gidl
                      && AR.StampBodyOk(qm, qidC, r1);
     var q0 := L.Quantified(true, 0, LN.Inf, r1);
+    EL.CinHeadIntro(true, 0, LN.Inf, r1);   // (G5a-1 3-L0c)
     assert FS.NoiPred(LN.Inf) == LN.Inf;
     WO.WalkOkLoopViewCin(acts, code, pc, true, true, LN.Inf, r1, em + 1, e1 + 3, inp);
     match tc {
@@ -4050,7 +4082,7 @@ module LindenElkLiftSimCore {
                 if greedy {
                   // §2.5b F-c: the CIN head is a FORWARD fork (min == 1) or a
                   // clock-mark (min > 1) — neither is the backward fork we sit at
-                  var emC, e1C := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+                  var emC, e1C, gNul := AR.NfaRepLNulInv(rer, qm, greedy, min, r1, code, pc, pcmid);   // (G5a-1 3b) no CIN fact needed
                   NfaRepMinLHeadPin(rer, qm, min - 1, r1, code, pc, emC);
                   AR.NfaRepIncrL(rer, qm, r1, code, emC + 3, e1C);
                   assert false;
@@ -4135,6 +4167,7 @@ module LindenElkLiftSimCore {
             var qid: int :| NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
                             && qid in qm.quants && qm.quants[qid] == gidl;
             var q0 := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+            EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
             assert q0 == L.Quantified(greedy, 0, LN.Inf, r1) == r;
             WO.WalkOkLoopView(acts, code, pc, true, greedy, LN.Inf, r1,
                               if greedy then em else pc + 1,

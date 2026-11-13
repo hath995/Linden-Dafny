@@ -145,6 +145,7 @@ module LindenElkBackRowGate {
     KG.TranslateNoBackref(body);
     FK.TranslateDefGroupsNoDupK(body);
     assert G.OppDir(WP.Backward) == WP.Forward;
+    EL.TranslateFragmentNoCdn(body);   // (G5a-1 step 3-L0) NUL.NoCdnPlusL of the translation
     OG.BodyGmTieFlipG(rer, tr, inp, n, WP.Backward);
     var tB := FU.ComputeTr(rer, [LS.Areg(tr)], inp, LG.Empty, WP.Backward);
     var rb := LT.TreeRes(tB, LG.Empty, inp, WP.Backward);

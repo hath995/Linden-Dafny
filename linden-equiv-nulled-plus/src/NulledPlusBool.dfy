@@ -507,8 +507,10 @@ module LindenElkNulledPlusBool {
     var gidl := L.DefGroups(r1);
     var plus := L.Quantified(true, 1, LN.Inf, r1);
     var star := L.Quantified(true, 0, LN.Inf, r1);
+    EL.CinHeadIntro(true, 0, LN.Inf, r1);   // (G5a-1 3-L0c)
     var pacts := [LS.Areg(plus)] + cont;
     var ia := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(star)] + cont;
+    EL.CinHeadIntro(true, 1, LN.Inf, r1);   // (G5a-1 3-L0) the plus head's atom, from CINullableL(r1)
     assert EL.PikeLkRegexRec(plus) && EL.PikeLkRegexRec(star);
     assert EL.PikeLkActionRec(LS.Areg(plus)) && EL.PikeLkActionRec(LS.Areg(star))
         && EL.PikeLkActionRec(LS.Areg(r1)) && EL.PikeLkActionRec(LS.Acheck(inp));

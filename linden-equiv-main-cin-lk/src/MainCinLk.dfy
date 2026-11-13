@@ -440,7 +440,14 @@ module LindenElkMainCinLk {
     match re
     case Re_alt(r1, r2) => TranslateFragmentPikeLkRecLk(r1); TranslateFragmentPikeLkRecLk(r2);
     case Re_con(r1, r2) => TranslateFragmentPikeLkRecLk(r1); TranslateFragmentPikeLkRecLk(r2);
-    case Re_quant(nul, qid, q, r1) => TranslateFragmentPikeLkRecLk(r1);
+    case Re_quant(nul, qid, q, r1) =>
+      TranslateFragmentPikeLkRecLk(r1);
+      // (G5a-1 step 3-L0) the head condition, as in EL.TranslateFragmentPikeLkRec
+      reveal EL.CinHeadL();
+      if q.min > 0 && q.max == None && q.greedy {
+        if R.nullable(r1) == R.NonNullable { NUL.TransNonNullable(r1); }
+        NUL.TransCINullable(r1);
+      }
     case Re_capture(_, r1) => TranslateFragmentPikeLkRecLk(r1);
     case Re_lookaround(lid, la, r1) =>
       EL.TranslateFragmentPikeLkRec(r1);   // (gate C) the look arm is the body's own fragment
@@ -513,6 +520,28 @@ module LindenElkMainCinLk {
     && AI.FFullMatch(raw, str)
        == Some(AI.filter_reset(R.annotate(raw), thread.capture_regs, thread.look_regs,
                                thread.quant_regs, -1))
+  }
+
+  /** (G5a-1) Package the extraction premises in a context of their own: revealing `ExtractionPre` inside
+      `MainTheoremL5Cin` ran 772M once steps 2-3 grew that context. */
+  lemma ExtractionPreIntro(raw: R.raw_regex, str: string, t: LT.Tree, thread: AI.Thread, leaf: LT.Leaf)
+    requires NR.NestedFragmentRaw(raw)
+    requires T.Latin1Wf(raw)
+    requires EL.BoolTreeLk(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), BS.CannotExit, t)
+    requires LS.IsTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), LG.Empty, WP.Forward, t)
+    requires CM.ThreadRegsWf(thread, 2 * R.max_group(R.annotate(raw)) + 2,
+                             R.max_lookaround(R.annotate(raw)) + 1,
+                             R.max_quant(R.annotate(raw)) + 1)
+    requires M.QuantClkFinal(thread)
+    requires var re := R.lazy_prefix(R.annotate(raw));
+             leaf.1 == PIV.NormGm(PIV.GmOfLive(re, thread.capture_regs, thread.look_regs, thread.quant_regs))
+    requires LT.FirstLeaf(t, LC.InitInput(str)) == Some(leaf)
+    requires AI.FFullMatch(raw, str)
+             == Some(AI.filter_reset(R.annotate(raw), thread.capture_regs, thread.look_regs,
+                                     thread.quant_regs, -1))
+    ensures ExtractionPre(raw, str, t, thread, leaf)
+  {
+    reveal ExtractionPre();
   }
 
   lemma MainExtractionL5LkPre(raw: R.raw_regex, str: string, t: LT.Tree, thread: AI.Thread, leaf: LT.Leaf)
@@ -860,6 +889,7 @@ module LindenElkMainCinLk {
                                        inits, crv.f_main_cdns, result, ncap, nlook, nquant, G);
     // machine A: the VM's best is the checked tree's first leaf
     var pts0 := PT.PikeTreeInitialState(tstar, inp);
+    PSM.GuardsOkRunStaticNested(qm, re, code, endl, crv.f_main_cdns, ov, str);   // (G5a step 2) no guard in this code
     var bestT := PSM.FindMatchSimRENested(rer, qm, re, code, endl, ngroups, str, pts0, inits,
                                           ov, LAnc.Forward, crv.f_main_cdns, ncap, nlook, nquant);
     M.TrcREToLinden(pts0, PT.PTS_final(bestT));
@@ -975,7 +1005,8 @@ module LindenElkMainCinLk {
       assert NR.NestedFragmentRaw(raw) && T.Latin1Wf(raw);
       assert {:split_here} true;   // (G3a) the extraction section, one batch per step
       assert ExtractionPre(raw, str, t, synthetic, leaf) by {
-        hide *; reveal ExtractionPre();
+        hide *;
+        ExtractionPreIntro(raw, str, t, synthetic, leaf);   // (G5a-1) the body stays folded here
       }
       assert {:split_here} true;   // (G3a) the extraction section, one batch per step
       assert LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str))) by {

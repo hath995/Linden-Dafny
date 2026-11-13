@@ -229,6 +229,7 @@ module LindenElkMachineA {
     assert {:split_here} true;
     // ---- machine A: the VM's best is the checked tree's first leaf ----------
     var pts0 := PT.PikeTreeInitialState(tstar, inp);
+    PSM.GuardsOkRunStaticNested(qm, body, bodycode, endl, cdn, ov, str);   // (G5a step 2) no guard in this code
     var bestT := PSM.FindMatchSimRENested(rer, qm, body, bodycode, endl, ngroups, str, pts0, vms,
                                           ov, LAnc.Forward, cdn, ncap, nlook, nquant);
     M.TrcREToLinden(pts0, PT.PTS_final(bestT));

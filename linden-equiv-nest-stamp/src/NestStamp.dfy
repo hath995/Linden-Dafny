@@ -836,6 +836,7 @@ module LindenElkNestStamp {
     case Some(AnchorAssertion(_)) => pc' == pc + 1
     case Some(CheckOracle(_)) => pc' == pc + 1
     case Some(NegCheckOracle(_)) => pc' == pc + 1
+    case Some(CheckNullable(_)) => pc' == pc + 1   // (G5a) the CDN guard
     case Some(BeginLoop) => pc' == pc + 1
     case Some(EndLoop) => pc' == pc + 1
     case Some(Fork(x, y)) => (pc' as int == x) || (pc' as int == y)
@@ -1161,7 +1162,9 @@ module LindenElkNestStamp {
             NestStampCdnREIntro(nul, qid, q, r1, code, pcb, pce, pc', qcp, em, e1);
           }
         } else if pc == e1 + 2 {
-          assert false;      // (G5a) CheckNullable: no edge of the step relation yet (step 2 adds `pc' == e1 + 3`)
+          // (G5a step 2) the guard falls through to the true-stamp site (no claim there)
+          assert pc' == e1 + 3;
+          NestStampCdnREIntro(nul, qid, q, r1, code, pcb, pce, pc', qcp, em, e1);
         } else {
           assert pc == e1 + 3;
           assert false;                              // SetQuantToClock

@@ -1627,6 +1627,7 @@ module LindenElkMain {
                                  inits, ncap, nlook, nquant);
     var pts0 := PT.PikeTreeInitialState(tstar, inp);
     assert ctx.nextchar == AI.get_char(str, cp);        // cp_context definitional
+    PSM.GuardsOkRunStatic(qm, body, bodycode, endl, cdns, ov, str);   // (G5a step 2) no guard in this code
     bestT := PSM.FindMatchSimRE(rer, qm, body, bodycode, endl, ngroups, str, pts0, inits,
                                 ov, LAnc.Forward, cdns, ncap, nlook, nquant);
     assert PSM.TrcRE(pts0, PT.PTS_final(bestT));
@@ -1680,6 +1681,7 @@ module LindenElkMain {
                                        inits, ncap, nlook, nquant);
     var pts0 := PT.PikeTreeInitialState(tstar, inp);
     assert ctx.nextchar == AI.get_char(str, cp);
+    PSM.GuardsOkRunStaticNested(qm, body, bodycode, endl, cdns, ov, str);   // (G5a step 2) no guard in this code
     bestT := PSM.FindMatchSimRENested(rer, qm, body, bodycode, endl, ngroups, str, pts0, inits,
                                       ov, LAnc.Forward, cdns, ncap, nlook, nquant);
     assert PSM.TrcRE(pts0, PT.PTS_final(bestT));

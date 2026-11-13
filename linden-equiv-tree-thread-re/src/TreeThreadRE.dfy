@@ -98,6 +98,8 @@ module LindenElkTreeThread {
     // never uses the stutter machinery.
     case Some(CheckOracle(_)) => true
     case Some(NegCheckOracle(_)) => true
+    // G5a: the CDN guard is leaf-transparent in the same way (`tr_cdn`).
+    case Some(CheckNullable(_)) => true
     case _ => false
   }
 
@@ -167,7 +169,7 @@ module LindenElkTreeThread {
         } else {
           // §2.5b CIN-GREEDY: the head is the first chain stamp (min > 1) or
           // the head fork (min == 1) — either way not a BeginLoop.
-          var em, e1 := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc1, pc2);
+          var em, e1, gNul := AR.NfaRepLNulInv(rer, qm, greedy, min, r1, code, pc1, pc2);
           assert AR.NfaRepMinL(rer, qm, min - 1, r1, code, pc1, em);
           if min > 1 {
             assert exists qid: int :: NR.GetPcRE(code, pc1) == Some(RB.SetQuantToClock(qid, false));

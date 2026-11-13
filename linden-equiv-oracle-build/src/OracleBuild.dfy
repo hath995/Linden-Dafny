@@ -367,7 +367,6 @@ module LindenElkOracleBuild {
       bytecode -- the `else` half of `AllLidsBuildOk`, split out so the
       direction bridge can use it too. */
   lemma NonLidRowEmpty(re: R.regex, i: int)
-    requires NR.LookBehindFragmentRE(re)
     requires !(i >= 0 && (i as nat) in LT.LookIds(re))
     ensures AI.get_code_v(CP.FFullCompilation(re).f_look_build_bc, i) == []
   {
@@ -398,24 +397,9 @@ module LindenElkOracleBuild {
       LT.FFullCompilationLookOk(re);
       LookTablesLidBuildOk(re, crv, i as nat);
     } else {
-      // outside LookIds: the fold framed the row, which the seed left empty
-      var maxlook := R.max_lookaround(re);
-      var maxquant := R.max_quant(re);
-      var nlook := if maxlook + 1 >= 0 then maxlook + 1 else 0;
-      var nquant := if maxquant + 1 >= 0 then maxquant + 1 else 0;
-      var seed := CP.FCompiled(re, CP.compile_to_bytecode(R.lazy_prefix(re)), LCdn.compile_cdns(re),
-                               seq(nlook, k => R.Lookahead), seq(nlook, k => R.Re_empty),
-                               seq(nlook, k => []), seq(nlook, k => []),
-                               seq(nlook, k => []), seq(nquant, k => []));
-      assert crv == CP.FCompileExtra(re, seed);
-      LT.FCompileExtraLookFrame(re, seed);
-      if 0 <= i < |crv.f_look_build_bc| {
-        assert LT.AgreeAt(seed, crv, i as nat);
-        assert seed.f_look_build_bc[i] == [];
-        assert AI.get_code_v(crv.f_look_build_bc, i) == [];
-      } else {
-        assert AI.get_code_v(crv.f_look_build_bc, i) == [];
-      }
+      // outside LookIds: the row is empty (G5a-1: the inline unfolding of FFullCompilation looped here)
+      NonLidRowEmpty(re, i);
+      assert AI.get_code_v(crv.f_look_build_bc, i) == [];
     }
   }
 
@@ -1180,23 +1164,9 @@ module LindenElkOracleBuild {
       LT.FFullCompilationLookOk(re);
       NestedLidBuildOkAbove(re, crv, i as nat);
     } else {
-      var maxlook := R.max_lookaround(re);
-      var maxquant := R.max_quant(re);
-      var nlook := if maxlook + 1 >= 0 then maxlook + 1 else 0;
-      var nquant := if maxquant + 1 >= 0 then maxquant + 1 else 0;
-      var seed := CP.FCompiled(re, CP.compile_to_bytecode(R.lazy_prefix(re)), LCdn.compile_cdns(re),
-                               seq(nlook, k => R.Lookahead), seq(nlook, k => R.Re_empty),
-                               seq(nlook, k => []), seq(nlook, k => []),
-                               seq(nlook, k => []), seq(nquant, k => []));
-      assert crv == CP.FCompileExtra(re, seed);
-      LT.FCompileExtraLookFrame(re, seed);
-      if 0 <= i < |crv.f_look_build_bc| {
-        assert LT.AgreeAt(seed, crv, i as nat);
-        assert seed.f_look_build_bc[i] == [];
-        assert AI.get_code_v(crv.f_look_build_bc, i) == [];
-      } else {
-        assert AI.get_code_v(crv.f_look_build_bc, i) == [];
-      }
+      // outside LookIds: the row is empty (G5a-1: the inline unfolding of FFullCompilation looped here)
+      NonLidRowEmpty(re, i);
+      assert AI.get_code_v(crv.f_look_build_bc, i) == [];
     }
   }
 

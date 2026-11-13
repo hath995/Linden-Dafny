@@ -1310,6 +1310,8 @@ module LindenElkNestInv {
     // quant clocks only.
     case Some(CheckOracle(_)) => pc' == pc + 1
     case Some(NegCheckOracle(_)) => pc' == pc + 1
+    // (G5a) the CDN guard: zero-width fall-through, no register write at all
+    case Some(CheckNullable(_)) => pc' == pc + 1
     case Some(BeginLoop) => pc' == pc + 1
     case Some(EndLoop) => pc' == pc + 1
     case Some(Fork(x, y)) => (pc' as int == x) || (pc' as int == y)
@@ -1404,14 +1406,17 @@ module LindenElkNestInv {
     NR.NfaRepIncrRE(r1, code, pcb + 3, e1);
     NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, pce);
     if pc == pcb {
+      assert {:split_here} true;   // (G5a-1 step 2) one batch per pc case
       // the layer fork: stamp site (claims `true`) or the common end.
       assert pc' == pcb + 1 || pc' == pce;
       if pc' == pcb + 1 {
         assert NestInvOptRE(k, greedy, qid, r1, code, pcb, pce, pc', cc, qc, mx);
       }
     } else if pc == pcb + 1 {
+      assert {:split_here} true;   // (G5a-1 step 2) one batch per pc case
       assert false;                                 // SetQuantToClock is a write
     } else if pc == pcb + 2 {
+      assert {:split_here} true;   // (G5a-1 step 2) one batch per pc case
       // BeginLoop falls into the body entry (or, empty body, onto EndLoop).
       assert pc' == pcb + 3;
       var qv := AI.get_idx(qc, qid);
@@ -1422,6 +1427,7 @@ module LindenElkNestInv {
         assert NestInvOptRE(k, greedy, qid, r1, code, pcb, pce, pc', cc, qc, mx);
       }
     } else if pcb + 3 <= pc < e1 {
+      assert {:split_here} true;   // (G5a-1 step 2) one batch per pc case
       var qv := AI.get_idx(qc, qid);
       NestInvAdvance(r1, code, pcb + 3, e1, pc, pc', cc, qc, qv);
       if pc' == e1 {
@@ -1430,6 +1436,7 @@ module LindenElkNestInv {
         assert NestInvOptRE(k, greedy, qid, r1, code, pcb, pce, pc', cc, qc, mx);
       }
     } else if pc == e1 {
+      assert {:split_here} true;   // (G5a-1 step 2) one batch per pc case
       // EndLoop falls onto the next layer head (claims `true`) or the chain end.
       assert pc' == e1 + 1;
       if k - 1 == 0 {
@@ -1440,6 +1447,7 @@ module LindenElkNestInv {
         assert NestInvOptRE(k, greedy, qid, r1, code, pcb, pce, pc', cc, qc, mx);
       }
     } else {
+      assert {:split_here} true;   // (G5a-1 step 2) one batch per pc case
       NestInvAdvanceOpt(k - 1, greedy, qid, r1, code, e1 + 1, pce, pc, pc', cc, qc, mx);
       if pc' == pce {
       } else {
@@ -1542,6 +1550,7 @@ module LindenElkNestInv {
     case Re_quant(nul, qid, q, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if q.max.Some? {
+        assert {:split_here} true;   // (G5a-1 step 2) one batch per quant scheme
         var mn := q.min as nat;
         var kx := (q.max.value - q.min) as nat;
         var em: nat :| NR.NfaRepMinRE(mn, qid, r1, code, pcb, em)
@@ -1572,6 +1581,7 @@ module LindenElkNestInv {
         return;
       }
       if !(q.min == 0 && q.max == None) && nul != R.NonNullable && !q.greedy {
+        assert {:split_here} true;   // (G5a-1 step 2) one batch per quant scheme
         // §2.5a GENERIC: `min` forced copies, then the ORDINARY STAR loop at
         // `em`. Edges: the chain's (`NestInvAdvanceMin`), then the star arm's
         // shifted from `pcb` to `em` -- with the back-`Jmp(em)` returning to
@@ -1621,6 +1631,7 @@ module LindenElkNestInv {
         return;
       }
       if !(q.min == 0 && q.max == None) && nul == R.CINullable {
+        assert {:split_here} true;   // (G5a-1 step 2) one batch per quant scheme
         // §2.5b CIN-GREEDY: min-1 forced copies, then the stamped end-fork
         // loop. New edges against the GENERIC arm: the head fork's SKIP arm
         // jumps forward INSIDE the block to the stamp-true site at e1+2
@@ -1676,6 +1687,7 @@ module LindenElkNestInv {
         return;
       }
       if !(q.min == 0 && q.max == None) && nul == R.CDNullable {
+        assert {:split_here} true;   // (G5a-1 step 2) one batch per quant scheme
         // §2.5b CDN-GREEDY (G5a): min-1 forced copies, then the stamped end-fork
         // loop. New edges against the GENERIC arm: the head fork's SKIP arm
         // jumps forward INSIDE the block to the stamp-true site at e1+2
@@ -1725,7 +1737,10 @@ module LindenElkNestInv {
             assert NestInvRE(re, code, pcb, pce, pc', cc, qc, mx);
           }
         } else if pc == e1 + 2 {
-          assert false;      // (G5a) CheckNullable: no edge of the step relation yet (step 2 adds `pc' == e1 + 3`)
+          // (G5a step 2) the guard falls through to the true-stamp site (no claim there)
+          assert pc' == e1 + 3;
+          NestInvCdnREIntro(nul, qid, q, r1, code, pcb, pce, pc', cc, qc, mx, em, e1);
+          assert NestInvRE(re, code, pcb, pce, pc', cc, qc, mx);
         } else {
           assert pc == e1 + 3;
           assert false;      // SetQuantToClock is a write, not a StepEdge
@@ -1733,6 +1748,7 @@ module LindenElkNestInv {
         return;
       }
       if !(q.min == 0 && q.max == None) {
+        assert {:split_here} true;   // (G5a-1 step 2) one batch per quant scheme
         var mn1 := (q.min - 1) as nat;
         var em: nat, e1: nat :|
           NR.NfaRepMinRE(mn1, qid, r1, code, pcb, em)
@@ -3598,6 +3614,7 @@ module LindenElkNestInv {
          case Some(AnchorAssertion(_)) => ColdF(c, pc + 1, n - 1)
          case Some(CheckOracle(_)) => ColdF(c, pc + 1, n - 1)
          case Some(NegCheckOracle(_)) => ColdF(c, pc + 1, n - 1)
+         case Some(CheckNullable(_)) => ColdF(c, pc + 1, n - 1)   // (G5a) the guard is zero-width
          case Some(BeginLoop) => ColdF(c, pc + 1, n - 1)
          case _ => false))
   }

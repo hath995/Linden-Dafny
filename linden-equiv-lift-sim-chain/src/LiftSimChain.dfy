@@ -1343,6 +1343,7 @@ module LindenElkLiftSimChain {
           assert {:split_here} true;   // (gate C) one batch per arm
           if min == 1 && delta.Inf? && greedy && !NUL.NonNullableL(r1) {
             // §2.5b F-c: the CIN head is the FORK `Fork(em + 1, e1 + 2)` at pc
+            assert EL.PikeLkActionRec(acts[0]); EL.CinHeadOf(greedy, min, delta, r1);   // (G5a-1 3-L0)
             var emC, e1C := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
             assert emC == pc;
             assert false;
@@ -1350,6 +1351,7 @@ module LindenElkLiftSimChain {
           if min == 1 { CW.NotCinGreedy(greedy, delta, r1); }
           // THE forced-copy real head.
           var quant1 := L.Quantified(greedy, min - 1, delta, r1);
+          if EL.CinHeadL(greedy, min, delta, r1) { EL.CinHeadMono(greedy, min, delta, r1, min - 1, delta); }   // (G5a-1 3-L0c)
           var contActs := [LS.Areg(r1), LS.Areg(quant1)] + cont;
           var gidl := L.DefGroups(r1);
           assert tb.GroupActionT? && tb.g == LG.Reset(gidl)
@@ -1683,6 +1685,7 @@ module LindenElkLiftSimChain {
           // min == 0 with Inf or NN(kx>0): the star fork — tb is the Choice.
           var gidl := L.DefGroups(r1);
           var q' := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+          EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
           var itert := if greedy then tb.t1 else tb.t2;
           var skipt := if greedy then tb.t2 else tb.t1;
           assert tb.Choice?
@@ -2652,6 +2655,7 @@ module LindenElkLiftSimChain {
     var g := ATR.EaOf(b);
     var gidl := L.DefGroups(r1);
     assert AR.NfaRepL(rer, qm, L.Quantified(true, 1, LN.Inf, r1), code, pc, pcmid);
+    assert EL.PikeLkActionRec(acts[0]); EL.CinHeadOf(true, 1, LN.Inf, r1);   // (G5a-1 3-L0)
     var em, e1x := AR.NfaRepLCinInv(rer, qm, true, 1, r1, code, pc, pcmid);
     var qidC: int :| NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qidC, false))
                      && NR.GetPcRE(code, e1x + 2) == Some(RB.SetQuantToClock(qidC, true))
@@ -2662,6 +2666,7 @@ module LindenElkLiftSimChain {
     assert x == pc + 1 && y == e1x + 2;
     CW.CinGreedyIntro(r1);
     var q0 := L.Quantified(true, 0, LN.Inf, r1);
+    EL.CinHeadIntro(true, 0, LN.Inf, r1);   // (G5a-1 3-L0c)
     var ia := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont;
     assert ia == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
     match tb {
@@ -2761,6 +2766,7 @@ module LindenElkLiftSimChain {
                      && AR.StampBodyOk(qm, qidC, r1);
     assert x == em + 1 && y == e1 + 3 && pc == e1 + 1 && pcmid == e1 + 3;
     var q0 := L.Quantified(true, 0, LN.Inf, r1);
+    EL.CinHeadIntro(true, 0, LN.Inf, r1);   // (G5a-1 3-L0c)
     assert FS.NoiPred(LN.Inf) == LN.Inf;
     var ia := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont;
     assert ia == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));

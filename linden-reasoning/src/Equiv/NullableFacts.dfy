@@ -160,6 +160,41 @@ module LindenElkNullable {
     case Re_lookaround(_, _, r1) => TransNoNulledPlus(r1);
   }
 
+  /** (G5a-1 step 3-L0) No CDN-greedy plus anywhere in `r`, lookaround bodies included: a greedy
+      unbounded forced quantifier whose body is nullable has a CONTEXT-INDEPENDENTLY nullable body.
+      The Linden-side image of "the narrow fragment admits a greedy nullable plus only as CIN". */
+  predicate NoCdnPlusL(r: L.Regex)
+    decreases r
+  {
+    match r
+    case Epsilon => true
+    case Character(_) => true
+    case Disjunction(r1, r2) => NoCdnPlusL(r1) && NoCdnPlusL(r2)
+    case Sequence(r1, r2) => NoCdnPlusL(r1) && NoCdnPlusL(r2)
+    case Quantified(greedy, min, delta, r1) =>
+      ((min > 0 && delta.Inf? && greedy && !NonNullableL(r1)) ==> CINullableL(r1))
+      && NoCdnPlusL(r1)
+    case Group(_, r1) => NoCdnPlusL(r1)
+    case AnchorR(_) => true
+    case LookaroundR(_, r1) => NoCdnPlusL(r1)
+    case Backreference(_) => true
+  }
+
+  /** No nulled plus at all is, in particular, no CDN-greedy plus. */
+  lemma NoNulledIsNoCdnL(r: L.Regex)
+    requires NoNulledPlusL(r)
+    ensures NoCdnPlusL(r)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => NoNulledIsNoCdnL(r1); NoNulledIsNoCdnL(r2);
+    case Sequence(r1, r2) => NoNulledIsNoCdnL(r1); NoNulledIsNoCdnL(r2);
+    case Quantified(_, _, _, r1) => NoNulledIsNoCdnL(r1);
+    case Group(_, r1) => NoNulledIsNoCdnL(r1);
+    case LookaroundR(_, r1) => NoNulledIsNoCdnL(r1);
+    case _ =>
+  }
+
   /** Local copy of the engine-side gate conjunct (`NR.NoNulledPlusRE` lives
       downstream in `linden-equiv-nfa-rep-re`; the definitions coincide). */
   predicate NoNulledPlusRE_(re: R.regex)

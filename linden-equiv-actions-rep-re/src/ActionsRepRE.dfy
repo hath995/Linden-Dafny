@@ -271,6 +271,32 @@ module LindenElkActionsRep {
       && pc2 == e1 + 3
   }
 
+  /** (G5a-1 step 3) The CDN-GREEDY scheme: a context-dependently nullable body under a GREEDY unbounded
+      `min > 0`. `NfaRepCinL`'s layout with the skip exit guarded: the head fork's skip arm lands on
+      `CheckNullable(qid)` at `e1 + 2`, which falls through to the true stamp at `e1 + 3`; the end fork exits
+      to `e1 + 4`. OPAQUE: `NfaRepL`'s `Inf` arm is this file's hot unfolding, and consumers that hold the
+      narrow fragment never need the body (`NfaRepLCdnInv` / `NfaRepLCdnIntro` are the only reveals). */
+  opaque ghost predicate NfaRepCdnL(rer: LW.RegExpRecord, qm: QMap, min: nat, r1: L.Regex, c: RB.code, pc1: nat, pc2: nat)
+    requires min > 0
+    decreases r1, min + 3
+  {
+    exists em: nat, e1: nat
+      {:trigger NfaRepMinL(rer, qm, min - 1, r1, c, pc1, em), NfaRepL(rer, qm, r1, c, em + 3, e1)} ::
+      NfaRepMinL(rer, qm, min - 1, r1, c, pc1, em)
+      && NR.GetPcRE(c, em) == Some(RB.Fork(em + 1, e1 + 2))
+      && (exists qid: int ::
+            NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+            && NR.GetPcRE(c, e1 + 2) == Some(RB.CheckNullable(qid))
+            && NR.GetPcRE(c, e1 + 3) == Some(RB.SetQuantToClock(qid, true))
+            && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1)
+            && StampBodyOk(qm, qid, r1))
+      && NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+      && NfaRepL(rer, qm, r1, c, em + 3, e1)
+      && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+      && NR.GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 4))
+      && pc2 == e1 + 4
+  }
+
   /** §2.5b: what the nulled-exit stamp `SetQuantToClock(qid, true)` needs of
       the tables — `qm.bodies[qid]` is a well-formed annotated RegElk regex
       translating to the Linden body `r1`, and its lookaround ids are in the
@@ -394,7 +420,11 @@ module LindenElkActionsRep {
                // SYNTACTICALLY guard-disjoint. The CDN-greedy scheme
                // (CheckNullable) stays out of the fragment.
                || (!NUL.NonNullableL(r1) && greedy && NUL.CINullableL(r1)
-                   && NfaRepCinL(rer, qm, min, r1, c, pc1, pc2)))
+                   && NfaRepCinL(rer, qm, min, r1, c, pc1, pc2))
+               // (G5a-1 step 3) the CDN-GREEDY scheme: the CIN layout with the skip exit
+               // guarded by `CheckNullable`. Guard-disjoint from the three above.
+               || (!NUL.NonNullableL(r1) && greedy && !NUL.CINullableL(r1)
+                   && NfaRepCdnL(rer, qm, min, r1, c, pc1, pc2)))
          case NN(kx) =>
            exists em: nat ::
              NfaRepMinL(rer, qm, min, r1, c, pc1, em)
@@ -556,8 +586,8 @@ module LindenElkActionsRep {
   lemma NfaRepLCinInv(rer: LW.RegExpRecord, qm: QMap, greedy: bool, min: nat, r1: L.Regex, c: RB.code, pc1: nat, pc2: nat) returns (em: nat, e1: nat)
     requires min > 0
     requires !NUL.NonNullableL(r1) && greedy
+    requires NUL.CINullableL(r1)   // (G5a-1 step 3) the CDN-greedy arm shares the rest of the guard
     requires NfaRepL(rer, qm, L.Quantified(greedy, min, LN.Inf, r1), c, pc1, pc2)
-    ensures NUL.CINullableL(r1)
     ensures NfaRepMinL(rer, qm, min - 1, r1, c, pc1, em)
     ensures NR.GetPcRE(c, em) == Some(RB.Fork(em + 1, e1 + 2))
     ensures exists qid: int ::
@@ -585,6 +615,97 @@ module LindenElkActionsRep {
       && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
       && NR.GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 3))
       && pc2 == e1 + 3;
+  }
+
+  /** (G5a-1 step 3) Introduction lemma for the CDN-GREEDY arm of `NfaRepL`. */
+  lemma NfaRepLCdnIntro(rer: LW.RegExpRecord, qm: QMap, greedy: bool, min: nat, r1: L.Regex, c: RB.code, pc1: nat, em: nat, e1: nat, pc2: nat, qid: int)
+    requires min > 0 && !NUL.NonNullableL(r1) && greedy && !NUL.CINullableL(r1)
+    requires NfaRepMinL(rer, qm, min - 1, r1, c, pc1, em)
+    requires NR.GetPcRE(c, em) == Some(RB.Fork(em + 1, e1 + 2))
+    requires NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    requires NR.GetPcRE(c, e1 + 2) == Some(RB.CheckNullable(qid))
+    requires NR.GetPcRE(c, e1 + 3) == Some(RB.SetQuantToClock(qid, true))
+    requires qid in qm.quants && qm.quants[qid] == L.DefGroups(r1)
+    requires StampBodyOk(qm, qid, r1)
+    requires NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+    requires NfaRepL(rer, qm, r1, c, em + 3, e1)
+    requires NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+    requires NR.GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 4))
+    requires pc2 == e1 + 4
+    ensures NfaRepL(rer, qm, L.Quantified(greedy, min, LN.Inf, r1), c, pc1, pc2)
+  {
+    assert NfaRepCdnL(rer, qm, min, r1, c, pc1, pc2) by {
+      reveal NfaRepCdnL();
+    }
+  }
+
+  /** (G5a-1 step 3) Inversion lemma for the CDN-GREEDY arm of `NfaRepL`: the head fork, the loop-body
+      end, the guard and the stamp (one shared `qid`). */
+  lemma NfaRepLCdnInv(rer: LW.RegExpRecord, qm: QMap, greedy: bool, min: nat, r1: L.Regex, c: RB.code, pc1: nat, pc2: nat) returns (em: nat, e1: nat)
+    requires min > 0
+    requires !NUL.NonNullableL(r1) && greedy && !NUL.CINullableL(r1)
+    requires NfaRepL(rer, qm, L.Quantified(greedy, min, LN.Inf, r1), c, pc1, pc2)
+    ensures NfaRepMinL(rer, qm, min - 1, r1, c, pc1, em)
+    ensures NR.GetPcRE(c, em) == Some(RB.Fork(em + 1, e1 + 2))
+    ensures exists qid: int ::
+      NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(c, e1 + 2) == Some(RB.CheckNullable(qid))
+      && NR.GetPcRE(c, e1 + 3) == Some(RB.SetQuantToClock(qid, true))
+      && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1)
+      && StampBodyOk(qm, qid, r1)
+    ensures NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+    ensures NfaRepL(rer, qm, r1, c, em + 3, e1)
+    ensures NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+    ensures NR.GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 4))
+    ensures pc2 == e1 + 4
+  {
+    assert NfaRepCdnL(rer, qm, min, r1, c, pc1, pc2);
+    reveal NfaRepCdnL();
+    em, e1 :|
+      NfaRepMinL(rer, qm, min - 1, r1, c, pc1, em)
+      && NR.GetPcRE(c, em) == Some(RB.Fork(em + 1, e1 + 2))
+      && (exists qid: int ::
+            NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+            && NR.GetPcRE(c, e1 + 2) == Some(RB.CheckNullable(qid))
+            && NR.GetPcRE(c, e1 + 3) == Some(RB.SetQuantToClock(qid, true))
+            && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1)
+            && StampBodyOk(qm, qid, r1))
+      && NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+      && NfaRepL(rer, qm, r1, c, em + 3, e1)
+      && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+      && NR.GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 4))
+      && pc2 == e1 + 4;
+  }
+
+  /** (G5a-1 step 3) ONE inversion for both greedy nullable schemes, for callers that read only what the
+      two layouts share. `g` is 0 for CIN and 1 for CDN: the true stamp is at `e1 + 2 + g`, the end fork
+      exits to `e1 + 3 + g == pc2`, and for `g == 1` the guard sits at `e1 + 2`. */
+  lemma NfaRepLNulInv(rer: LW.RegExpRecord, qm: QMap, greedy: bool, min: nat, r1: L.Regex, c: RB.code, pc1: nat, pc2: nat) returns (em: nat, e1: nat, g: nat)
+    requires min > 0
+    requires !NUL.NonNullableL(r1) && greedy
+    requires NfaRepL(rer, qm, L.Quantified(greedy, min, LN.Inf, r1), c, pc1, pc2)
+    ensures g == (if NUL.CINullableL(r1) then 0 else 1)
+    ensures NfaRepMinL(rer, qm, min - 1, r1, c, pc1, em)
+    ensures NR.GetPcRE(c, em) == Some(RB.Fork(em + 1, e1 + 2))
+    ensures exists qid: int ::
+      NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(c, e1 + 2 + g) == Some(RB.SetQuantToClock(qid, true))
+      && (g == 1 ==> NR.GetPcRE(c, e1 + 2) == Some(RB.CheckNullable(qid)))
+      && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1)
+      && StampBodyOk(qm, qid, r1)
+    ensures NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+    ensures NfaRepL(rer, qm, r1, c, em + 3, e1)
+    ensures NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+    ensures NR.GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 3 + g))
+    ensures pc2 == e1 + 3 + g
+  {
+    if NUL.CINullableL(r1) {
+      em, e1 := NfaRepLCinInv(rer, qm, greedy, min, r1, c, pc1, pc2);
+      g := 0;
+    } else {
+      em, e1 := NfaRepLCdnInv(rer, qm, greedy, min, r1, c, pc1, pc2);
+      g := 1;
+    }
   }
 
   /** Introduction lemma for the CIN loop-view arm of `NfaRepL`'s star (§2.5b). */
@@ -663,6 +784,16 @@ module LindenElkActionsRep {
       && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
       && NR.GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 3))
       && pc2 == e1 + 3;
+  }
+
+  /** (G5a-1 step 3) Under `NoTrueStamps` the CDN-greedy layout is impossible too (its stamp is at `e1 + 3`). */
+  lemma NoTrueStampsRefutesCdn(rer: LW.RegExpRecord, qm: QMap, greedy: bool, min: nat, r1: L.Regex, c: RB.code, pc1: nat, pc2: nat)
+    requires NoTrueStamps(c)
+    requires min > 0 && !NUL.NonNullableL(r1) && greedy && !NUL.CINullableL(r1)
+    requires NfaRepL(rer, qm, L.Quantified(greedy, min, LN.Inf, r1), c, pc1, pc2)
+    ensures false
+  {
+    var em, e1 := NfaRepLCdnInv(rer, qm, greedy, min, r1, c, pc1, pc2);
   }
 
   /** At a star whose head is not the fast path's forward fork, the body is
@@ -1065,8 +1196,8 @@ module LindenElkActionsRep {
               NfaRepIncrMinL(rer, qm, min, r1, c, start, em);
               NfaRepIncrL(rer, qm, r1, c, em + 3, e1);
             } else {
-              // the CIN-GREEDY end-fork scheme (§2.5b)
-              var em, e1 := NfaRepLCinInv(rer, qm, greedy, min, r1, c, start, endl);
+              // the CIN-GREEDY end-fork scheme (§2.5b) or the CDN-GREEDY one (G5a): the shared shape
+              var em, e1, g := NfaRepLNulInv(rer, qm, greedy, min, r1, c, start, endl);
               NfaRepIncrMinL(rer, qm, min - 1, r1, c, start, em);
               NfaRepIncrL(rer, qm, r1, c, em + 3, e1);
             }
@@ -1177,10 +1308,10 @@ module LindenElkActionsRep {
   // the depth-1 proof ports verbatim under the wider fragment predicate.
   // =========================================================================
 
-  /** `TransNfaRepNested` for the forced-copy chains: `NfaRepMinRE` over the RegElk
+  /** `TransNfaRepCdn` for the forced-copy chains: `NfaRepMinRE` over the RegElk
       body transports to `NfaRepMinL` over its translation. */
-  lemma TransNfaRepMinNested(rer: LW.RegExpRecord, qm: QMap, k: nat, qid: R.quantid, r1: R.regex, c: RB.code, pc1: nat, pc2: nat)
-    requires NR.NestedFragmentRE(r1) && T.TransWf(r1) && !rer.ignoreCase
+  lemma TransNfaRepMinCdn(rer: LW.RegExpRecord, qm: QMap, k: nat, qid: R.quantid, r1: R.regex, c: RB.code, pc1: nat, pc2: nat)
+    requires NR.NestedFragmentCdnRE(r1) && T.TransWf(r1) && !rer.ignoreCase
     requires QmapOk(r1, qm) && LmapOk(r1, qm)
     requires qid in qm.quants && qm.quants[qid] == L.DefGroups(T.Translate(r1))
     requires NR.NfaRepMinRE(k, qid, r1, c, pc1, pc2)
@@ -1191,8 +1322,8 @@ module LindenElkActionsRep {
       var e1: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetQuantToClock(qid, false))
         && NR.NfaRepRE(r1, c, pc1 + 1, e1)
         && NR.NfaRepMinRE(k - 1, qid, r1, c, e1, pc2);
-      TransNfaRepNested(rer, qm, r1, c, pc1 + 1, e1);
-      TransNfaRepMinNested(rer, qm, k - 1, qid, r1, c, e1, pc2);
+      TransNfaRepCdn(rer, qm, r1, c, pc1 + 1, e1);
+      TransNfaRepMinCdn(rer, qm, k - 1, qid, r1, c, e1, pc2);
       assert (exists qd: int ::
            NR.GetPcRE(c, pc1) == Some(RB.SetQuantToClock(qd, false))
            && qd in qm.quants && qm.quants[qd] == L.DefGroups(T.Translate(r1)))
@@ -1201,10 +1332,10 @@ module LindenElkActionsRep {
     }
   }
 
-  /** `TransNfaRepNested` for the optional-layer chains: `NfaRepOptRE` over the
+  /** `TransNfaRepCdn` for the optional-layer chains: `NfaRepOptRE` over the
       RegElk body transports to `NfaRepOptL` over its translation. */
-  lemma TransNfaRepOptNested(rer: LW.RegExpRecord, qm: QMap, k: nat, greedy: bool, qid: R.quantid, r1: R.regex, c: RB.code, pc1: nat, pc2: nat)
-    requires NR.NestedFragmentRE(r1) && T.TransWf(r1) && !rer.ignoreCase
+  lemma TransNfaRepOptCdn(rer: LW.RegExpRecord, qm: QMap, k: nat, greedy: bool, qid: R.quantid, r1: R.regex, c: RB.code, pc1: nat, pc2: nat)
+    requires NR.NestedFragmentCdnRE(r1) && T.TransWf(r1) && !rer.ignoreCase
     requires QmapOk(r1, qm) && LmapOk(r1, qm)
     requires qid in qm.quants && qm.quants[qid] == L.DefGroups(T.Translate(r1))
     requires NR.NfaRepOptRE(k, greedy, qid, r1, c, pc1, pc2)
@@ -1218,8 +1349,8 @@ module LindenElkActionsRep {
         && NR.NfaRepRE(r1, c, pc1 + 3, e1)
         && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
         && NR.NfaRepOptRE(k - 1, greedy, qid, r1, c, e1 + 1, pc2);
-      TransNfaRepNested(rer, qm, r1, c, pc1 + 3, e1);
-      TransNfaRepOptNested(rer, qm, k - 1, greedy, qid, r1, c, e1 + 1, pc2);
+      TransNfaRepCdn(rer, qm, r1, c, pc1 + 3, e1);
+      TransNfaRepOptCdn(rer, qm, k - 1, greedy, qid, r1, c, e1 + 1, pc2);
       assert NR.GetPcRE(c, pc1) == Some(if greedy then RB.Fork(pc1 + 1, pc2) else RB.Fork(pc2, pc1 + 1))
         && (exists qd: int ::
               NR.GetPcRE(c, pc1 + 1) == Some(RB.SetQuantToClock(qd, false))
@@ -1231,8 +1362,8 @@ module LindenElkActionsRep {
     }
   }
 
-  lemma TransNfaRepNested(rer: LW.RegExpRecord, qm: QMap, re: R.regex, c: RB.code, pc1: nat, pc2: nat)
-    requires NR.NestedFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase
+  lemma TransNfaRepCdn(rer: LW.RegExpRecord, qm: QMap, re: R.regex, c: RB.code, pc1: nat, pc2: nat)
+    requires NR.NestedFragmentCdnRE(re) && T.TransWf(re) && !rer.ignoreCase
     requires QmapOk(re, qm) && LmapOk(re, qm)
     requires NR.NfaRepRE(re, c, pc1, pc2)
     ensures NfaRepL(rer, qm, T.Translate(re), c, pc1, pc2)
@@ -1254,16 +1385,16 @@ module LindenElkActionsRep {
         && NR.NfaRepRE(r1, c, pc1 + 1, e1)
         && NR.GetPcRE(c, e1) == Some(RB.Jmp(pc2))
         && NR.NfaRepRE(r2, c, e1 + 1, pc2);
-      TransNfaRepNested(rer, qm, r1, c, pc1 + 1, e1);
-      TransNfaRepNested(rer, qm, r2, c, e1 + 1, pc2);
+      TransNfaRepCdn(rer, qm, r1, c, pc1 + 1, e1);
+      TransNfaRepCdn(rer, qm, r2, c, e1 + 1, pc2);
       assert NR.GetPcRE(c, pc1) == Some(RB.Fork(pc1 + 1, e1 + 1))
           && NfaRepL(rer, qm, T.Translate(r1), c, pc1 + 1, e1)
           && NR.GetPcRE(c, e1) == Some(RB.Jmp(pc2))
           && NfaRepL(rer, qm, T.Translate(r2), c, e1 + 1, pc2);
     case Re_con(r1, r2) =>
       var e1: nat :| NR.NfaRepRE(r1, c, pc1, e1) && NR.NfaRepRE(r2, c, e1, pc2);
-      TransNfaRepNested(rer, qm, r1, c, pc1, e1);
-      TransNfaRepNested(rer, qm, r2, c, e1, pc2);
+      TransNfaRepCdn(rer, qm, r1, c, pc1, e1);
+      TransNfaRepCdn(rer, qm, r2, c, e1, pc2);
       assert NfaRepL(rer, qm, T.Translate(r1), c, pc1, e1) && NfaRepL(rer, qm, T.Translate(r2), c, e1, pc2);
     case Re_quant(nul, qid, q, r1) =>
       if q.min == 0 && q.max == None {
@@ -1274,7 +1405,7 @@ module LindenElkActionsRep {
           && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
           && NR.GetPcRE(c, e1 + 1) == Some(RB.Jmp(pc1))
           && pc2 == e1 + 2;
-        TransNfaRepNested(rer, qm, r1, c, pc1 + 3, e1);
+        TransNfaRepCdn(rer, qm, r1, c, pc1 + 3, e1);
         assert T.TrDelta(q) == LN.Inf;
         assert T.Translate(re) == L.Quantified(q.greedy, 0, LN.Inf, T.Translate(r1));
         assert qid in qm.quants && qm.quants[qid] == L.DefGroups(T.Translate(r1));
@@ -1291,8 +1422,8 @@ module LindenElkActionsRep {
         var em := NR.NfaRepREQuantInv(nul, qid, q, r1, c, pc1, pc2);
         var mn := q.min as nat;
         var kx := (q.max.value - q.min) as nat;
-        TransNfaRepMinNested(rer, qm, mn, qid, r1, c, pc1, em);
-        TransNfaRepOptNested(rer, qm, kx, q.greedy, qid, r1, c, em, pc2);
+        TransNfaRepMinCdn(rer, qm, mn, qid, r1, c, pc1, em);
+        TransNfaRepOptCdn(rer, qm, kx, q.greedy, qid, r1, c, em, pc2);
         assert T.TrDelta(q) == LN.NN(kx);
         assert T.Translate(re) == L.Quantified(q.greedy, mn, LN.NN(kx), T.Translate(r1));
         NfaRepLQuantIntro(rer, qm, q.greedy, mn, kx, T.Translate(r1), c, pc1, em, pc2);
@@ -1302,21 +1433,38 @@ module LindenElkActionsRep {
         // NonNullable" into the `!NonNullableL` the GENERIC arm asks for.
         var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, c, pc1, pc2);
         var mn := q.min as nat;
-        TransNfaRepMinNested(rer, qm, mn, qid, r1, c, pc1, em);
-        TransNfaRepNested(rer, qm, r1, c, em + 3, e1);
+        TransNfaRepMinCdn(rer, qm, mn, qid, r1, c, pc1, em);
+        TransNfaRepCdn(rer, qm, r1, c, em + 3, e1);
         TransNullableAgree(r1);
         assert !NUL.NonNullableL(T.Translate(r1));
         assert T.TrDelta(q) == LN.Inf;
         assert T.Translate(re) == L.Quantified(q.greedy, mn, LN.Inf, T.Translate(r1));
         assert qid in qm.quants && qm.quants[qid] == L.DefGroups(T.Translate(r1));
         NfaRepLGenIntro(rer, qm, q.greedy, mn, T.Translate(r1), c, pc1, em, e1, pc2, qid);
+      } else if nul == R.CDNullable {
+        // (G5a-1 step 3) the CDN-GREEDY scheme: transport the forced chain and the loop body. The fragment
+        // ties the annotation to the body (`R.nullable(r1) == CDNullable`), and the two agreement lemmas
+        // turn that into the Linden-side guard `!NonNullableL && !CINullableL`.
+        var em, e1 := NR.NfaRepRECdnInv(nul, qid, q, r1, c, pc1, pc2);
+        var mn := q.min as nat;
+        TransNfaRepMinCdn(rer, qm, mn - 1, qid, r1, c, pc1, em);
+        TransNfaRepCdn(rer, qm, r1, c, em + 3, e1);
+        TransNullableAgree(r1);
+        NUL.TransCINullable(r1);
+        assert R.nullable(r1) == R.CDNullable;
+        assert !NUL.NonNullableL(T.Translate(r1)) && !NUL.CINullableL(T.Translate(r1));
+        assert T.TrDelta(q) == LN.Inf;
+        assert T.Translate(re) == L.Quantified(q.greedy, mn, LN.Inf, T.Translate(r1));
+        assert qid in qm.quants && qm.quants[qid] == L.DefGroups(T.Translate(r1));
+        assert StampBodyOk(qm, qid, T.Translate(r1));   // QmapOk pins the body; LmapOk descends
+        NfaRepLCdnIntro(rer, qm, q.greedy, mn, T.Translate(r1), c, pc1, em, e1, pc2, qid);
       } else if nul != R.NonNullable {
         // the CIN-GREEDY end-fork scheme (§2.5b): transport the forced chain
         // and the loop body (mirror of the depth-1 bridge's CIN branch).
         var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, c, pc1, pc2);
         var mn := q.min as nat;
-        TransNfaRepMinNested(rer, qm, mn - 1, qid, r1, c, pc1, em);
-        TransNfaRepNested(rer, qm, r1, c, em + 3, e1);
+        TransNfaRepMinCdn(rer, qm, mn - 1, qid, r1, c, pc1, em);
+        TransNfaRepCdn(rer, qm, r1, c, em + 3, e1);
         TransNullableAgree(r1);
         NUL.TransCINullable(r1);
         assert !NUL.NonNullableL(T.Translate(r1)) && NUL.CINullableL(T.Translate(r1));
@@ -1330,8 +1478,8 @@ module LindenElkActionsRep {
         // and carry NonNullableL through the annotation agreement
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, c, pc1, pc2);
         var mn := q.min as nat;
-        TransNfaRepMinNested(rer, qm, mn - 1, qid, r1, c, pc1, em);
-        TransNfaRepNested(rer, qm, r1, c, em + 1, e1);
+        TransNfaRepMinCdn(rer, qm, mn - 1, qid, r1, c, pc1, em);
+        TransNfaRepCdn(rer, qm, r1, c, em + 1, e1);
         NUL.TransNonNullable(r1);
         assert T.TrDelta(q) == LN.Inf;
         assert T.Translate(re) == L.Quantified(q.greedy, mn, LN.Inf, T.Translate(r1));
@@ -1343,7 +1491,7 @@ module LindenElkActionsRep {
         && NR.NfaRepRE(r1, c, pc1 + 1, e1)
         && NR.GetPcRE(c, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
         && pc2 == e1 + 1;
-      TransNfaRepNested(rer, qm, r1, c, pc1 + 1, e1);
+      TransNfaRepCdn(rer, qm, r1, c, pc1 + 1, e1);
       assert T.Translate(re) == L.Group(cid as nat, T.Translate(r1));
       assert CP.start_reg((cid as nat) as int) == CP.start_reg(cid);
       assert CP.end_reg((cid as nat) as int) == CP.end_reg(cid);
@@ -1364,22 +1512,67 @@ module LindenElkActionsRep {
   /** L4 depth-k (ADDITIVE): the nested-fragment analogue of
       `CompileToBytecodeActionsRepLookBehind`. The whole compiled program
       represents the single spec action for a NESTED-fragment `re`, routed
-      through `CompileToBytecodeRepNested` + `TransNfaRepNested`. */
-  lemma CompileToBytecodeActionsRepNested(rer: LW.RegExpRecord, qm: QMap, re: R.regex)
-    requires NR.NestedFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase
+      through `CompileToBytecodeRepNested` + `TransNfaRepCdn`. */
+  lemma CompileToBytecodeActionsRepCdn(rer: LW.RegExpRecord, qm: QMap, re: R.regex)
+    requires NR.NestedFragmentCdnRE(re) && T.TransWf(re) && !rer.ignoreCase
     requires QmapOk(re, qm) && LmapOk(re, qm)
     ensures var code := CP.compile_to_bytecode(re);
       ActionsRepL(rer, qm, [LS.Areg(T.Translate(re))], code, 0)
   {
     var code := CP.compile_to_bytecode(re);
     var next := CP.compile(re, 0, CP.Progress).1;
-    NR.CompileToBytecodeRepNested(re);
-    TransNfaRepNested(rer, qm, re, code, 0, next as nat);
+    NR.CompileToBytecodeRepCdn(re);
+    TransNfaRepCdn(rer, qm, re, code, 0, next as nat);
     assert ActionsRepL(rer, qm, [], code, next as nat);
     var single := [LS.Areg(T.Translate(re))];
     assert ActionRepL(rer, qm, single[0], code, 0, next as nat);
     assert single[1..] == [];
     assert ActionsRepL(rer, qm, single, code, 0);
+  }
+
+  // ---------------------------------------------------------------------------
+  // (G5a-1 step 3) The narrow names, as corollaries of the Cdn-fragment lemmas.
+  // ---------------------------------------------------------------------------
+  lemma TransNfaRepMinNested(rer: LW.RegExpRecord, qm: QMap, k: nat, qid: R.quantid, r1: R.regex, c: RB.code, pc1: nat, pc2: nat)
+    requires NR.NestedFragmentRE(r1) && T.TransWf(r1) && !rer.ignoreCase
+    requires QmapOk(r1, qm) && LmapOk(r1, qm)
+    requires qid in qm.quants && qm.quants[qid] == L.DefGroups(T.Translate(r1))
+    requires NR.NfaRepMinRE(k, qid, r1, c, pc1, pc2)
+    ensures NfaRepMinL(rer, qm, k, T.Translate(r1), c, pc1, pc2)
+  {
+    NR.NarrowIsCdn(r1);
+    TransNfaRepMinCdn(rer, qm, k, qid, r1, c, pc1, pc2);
+  }
+
+  lemma TransNfaRepOptNested(rer: LW.RegExpRecord, qm: QMap, k: nat, greedy: bool, qid: R.quantid, r1: R.regex, c: RB.code, pc1: nat, pc2: nat)
+    requires NR.NestedFragmentRE(r1) && T.TransWf(r1) && !rer.ignoreCase
+    requires QmapOk(r1, qm) && LmapOk(r1, qm)
+    requires qid in qm.quants && qm.quants[qid] == L.DefGroups(T.Translate(r1))
+    requires NR.NfaRepOptRE(k, greedy, qid, r1, c, pc1, pc2)
+    ensures NfaRepOptL(rer, qm, k, greedy, T.Translate(r1), c, pc1, pc2)
+  {
+    NR.NarrowIsCdn(r1);
+    TransNfaRepOptCdn(rer, qm, k, greedy, qid, r1, c, pc1, pc2);
+  }
+
+  lemma TransNfaRepNested(rer: LW.RegExpRecord, qm: QMap, re: R.regex, c: RB.code, pc1: nat, pc2: nat)
+    requires NR.NestedFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase
+    requires QmapOk(re, qm) && LmapOk(re, qm)
+    requires NR.NfaRepRE(re, c, pc1, pc2)
+    ensures NfaRepL(rer, qm, T.Translate(re), c, pc1, pc2)
+  {
+    NR.NarrowIsCdn(re);
+    TransNfaRepCdn(rer, qm, re, c, pc1, pc2);
+  }
+
+  lemma CompileToBytecodeActionsRepNested(rer: LW.RegExpRecord, qm: QMap, re: R.regex)
+    requires NR.NestedFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase
+    requires QmapOk(re, qm) && LmapOk(re, qm)
+    ensures var code := CP.compile_to_bytecode(re);
+      ActionsRepL(rer, qm, [LS.Areg(T.Translate(re))], code, 0)
+  {
+    NR.NarrowIsCdn(re);
+    CompileToBytecodeActionsRepCdn(rer, qm, re);
   }
 
 

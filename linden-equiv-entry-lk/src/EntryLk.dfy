@@ -437,6 +437,7 @@ module LindenElkEntryLk {
         var gidl := L.DefGroups(r1);
         if min > 0 {
           var quant := L.Quantified(greedy, min - 1, delta, r1);
+          if CinHeadL(greedy, min, delta, r1) { CinHeadMono(greedy, min, delta, r1, min - 1, delta); }   // (G5a-1 3-L0c)
           var na := [LS.Areg(r1), LS.Areg(quant)] + cont;
           assert PikeLkActionsRec(na) by {
             assert na == [LS.Areg(r1)] + ([LS.Areg(quant)] + cont);
@@ -448,6 +449,7 @@ module LindenElkEntryLk {
           ComputeTreeGmIndepLkRec(rer, cont, inp, gm1, gm2, dir, f);
         } else {
           var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+          CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
           var na := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
           assert PikeLkActionsRec(na) by {
             assert na == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(quant)] + cont));
@@ -680,6 +682,71 @@ module LindenElkEntryLk {
   // The fragment: the pike subset plus capture-free lookarounds
   // ===========================================================================
 
+  /** (G5a-1 step 3-L0) The fragment's head condition: a greedy unbounded plus whose body is nullable
+      is CI-nullable, never CDN-greedy. ONE OPAQUE ATOM per head: `NonNullableL` / `CINullableL` are
+      recursive and hot, and an inline guard `(min > 0 && delta.Inf?) ==> …` costs a case split at every
+      unfolding of the fragment (measured: ATR_QuantStarNested 30M as an atom, out of resource inline).
+      A derived head (`min - 1`, the star) gets its atom from `CinHeadMono` / `CinHeadIntro`. */
+  opaque ghost predicate CinHeadL(greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex) {
+    (min > 0 && delta.Inf? && greedy && !NUL.NonNullableL(r1)) ==> NUL.CINullableL(r1)
+  }
+
+  lemma CinHeadOf(greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex)
+    requires CinHeadL(greedy, min, delta, r1)
+    requires min > 0 && delta.Inf? && greedy && !NUL.NonNullableL(r1)
+    ensures NUL.CINullableL(r1)
+  {
+    reveal CinHeadL();
+  }
+
+  lemma CinHeadIntro(greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex)
+    requires NUL.NonNullableL(r1) || NUL.CINullableL(r1) || !greedy || !(min > 0 && delta.Inf?)
+    ensures CinHeadL(greedy, min, delta, r1)
+  {
+    reveal CinHeadL();
+  }
+
+  /** A derived head whose guard implies the original's keeps the atom (`min - 1`, same `delta`). */
+  lemma CinHeadMono(greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex, min2: nat, delta2: LN.NoI)
+    requires CinHeadL(greedy, min, delta, r1)
+    requires (min2 > 0 && delta2.Inf?) ==> (min > 0 && delta.Inf?)
+    ensures CinHeadL(greedy, min2, delta2, r1)
+  {
+    reveal CinHeadL();
+  }
+
+  /** (G5a-1 3-L0) The fragment of a derived head, by name: `min - 1` keeps the atom. For lemmas that hide
+      `PikeLkRegexRec` (its unfolding over symbolic bodies is the cost). */
+  lemma PikeLkRecQuantDec(greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex)
+    requires PikeLkRegexRec(L.Quantified(greedy, min, delta, r1)) && min > 0
+    ensures PikeLkRegexRec(L.Quantified(greedy, min - 1, delta, r1))
+  {
+    CinHeadMono(greedy, min, delta, r1, min - 1, delta);
+  }
+
+  /** (G5a-1 3-L0) A head with `min == 0` (the star, a bounded tail) is in the fragment whenever its body is. */
+  lemma PikeLkRecQuantZero(greedy: bool, delta: LN.NoI, r1: L.Regex)
+    requires PikeLkRegexRec(r1)
+    ensures PikeLkRegexRec(L.Quantified(greedy, 0, delta, r1))
+  {
+    CinHeadIntro(greedy, 0, delta, r1);
+  }
+
+  /** (G5a-1 3-L0) `PikeLkRecQuantDec` / `PikeLkRecQuantZero` for the top-level (non-Rec) fragment. */
+  lemma PikeLkQuantDec(greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex)
+    requires PikeLkRegex(L.Quantified(greedy, min, delta, r1)) && min > 0
+    ensures PikeLkRegex(L.Quantified(greedy, min - 1, delta, r1))
+  {
+    CinHeadMono(greedy, min, delta, r1, min - 1, delta);
+  }
+
+  lemma PikeLkQuantZero(greedy: bool, delta: LN.NoI, r1: L.Regex)
+    requires PikeLkRegex(r1)
+    ensures PikeLkRegex(L.Quantified(greedy, 0, delta, r1))
+  {
+    CinHeadIntro(greedy, 0, delta, r1);
+  }
+
   /** `PS.PikeRegex` widened with the L1 lookaround gate: a lookaround is
       admitted when its body is group-free (hence lookaround- and
       backreference-free) — exactly the image of a capture-free, look-free
@@ -697,7 +764,9 @@ module LindenElkEntryLk {
       // engine's nulled-plus reconstruction scheme) is IN the spec fragment
       // outside lookaround bodies; the look arms below keep it out of the
       // bodies (the replay machinery is still stamp-free there).
+      // (G5a-1 step 3-L0) and it is CIN, never CDN-greedy: the head condition (opaque atom)
       PikeLkRegex(r1)
+      && CinHeadL(greedy, min, delta, r1)
     case Group(_, r1) => PikeLkRegex(r1)
     case LookaroundR(lk, r1) =>
       // L3a/L3b: a POSITIVE lookaround -- forward (lookAHEAD) OR backward
@@ -770,7 +839,9 @@ module LindenElkEntryLk {
     case Quantified(greedy, min, delta, r1) =>
       // §2.5b stage 2a: the greedy CI-nullable unbounded quantifier is IN the
       // fragment outside lookaround bodies (see `PikeLkRegex`).
+      // (G5a-1 step 3-L0) and it is CIN, never CDN-greedy: the head condition (opaque atom)
       PikeLkRegexRec(r1)
+      && CinHeadL(greedy, min, delta, r1)
     case Group(_, r1) => PikeLkRegexRec(r1)
     case LookaroundR(lk, r1) =>
       // Either polarity: the body recurses into the fragment (depth-k).
@@ -828,7 +899,7 @@ module LindenElkEntryLk {
     match r
     case Disjunction(r1, r2) => NoLkBrLIsPikeLkRegexRec(r1); NoLkBrLIsPikeLkRegexRec(r2);
     case Sequence(r1, r2) => NoLkBrLIsPikeLkRegexRec(r1); NoLkBrLIsPikeLkRegexRec(r2);
-    case Quantified(_, _, _, r1) => NoLkBrLIsPikeLkRegexRec(r1);
+    case Quantified(_, _, _, r1) => NoLkBrLIsPikeLkRegexRec(r1); reveal CinHeadL();   // (G5a-1 3-L0)
     case Group(_, r1) => NoLkBrLIsPikeLkRegexRec(r1);
     case _ =>  // Epsilon/Character/AnchorR trivial; LookaroundR/Backreference vacuous
   }
@@ -878,7 +949,7 @@ module LindenElkEntryLk {
     match r
     case Disjunction(r1, r2) => PikeIsPikeLkRegex(r1); PikeIsPikeLkRegex(r2);
     case Sequence(r1, r2) => PikeIsPikeLkRegex(r1); PikeIsPikeLkRegex(r2);
-    case Quantified(_, _, _, r1) => PikeIsPikeLkRegex(r1);
+    case Quantified(_, _, _, r1) => PikeIsPikeLkRegex(r1); reveal CinHeadL();   // (G5a-1 3-L0)
     case Group(_, r1) => PikeIsPikeLkRegex(r1);
     case _ =>
   }
@@ -895,6 +966,7 @@ module LindenElkEntryLk {
     case Re_con(r1, r2) => TranslateFragmentPikeLk(r1); TranslateFragmentPikeLk(r2);
     case Re_quant(nul, qid, q, r1) =>
       TranslateFragmentPikeLk(r1);
+      reveal CinHeadL();   // (G5a-1 3-L0)
       if q.min > 0 && q.max == None && q.greedy {
         // the gate conjunct pins nul == NonNullable; TransWf ties it to
         // nullable(r1); TransNonNullable carries it to the L side
@@ -1004,10 +1076,42 @@ module LindenElkEntryLk {
     case Re_con(r1, r2) => TranslateFragmentPikeLkRec(r1); TranslateFragmentPikeLkRec(r2);
     case Re_quant(nul, qid, q, r1) =>
       TranslateFragmentPikeLkRec(r1);
+      // (G5a-1 step 3-L0) the head condition: a greedy unbounded plus of the narrow fragment is
+      // annotated NonNullable (body NonNullable) or CINullable (body CINullable)
+      reveal CinHeadL();
+      if q.min > 0 && q.max == None && q.greedy {
+        if R.nullable(r1) == R.NonNullable { NUL.TransNonNullable(r1); }
+        NUL.TransCINullable(r1);
+      }
     case Re_capture(_, r1) => TranslateFragmentPikeLkRec(r1);
     case Re_lookaround(lid, la, r1) =>
       TranslateFragmentPikeLkRec(r1);     // PikeLkRegexRec(Translate(r1)), either polarity
     case _ =>
+  }
+
+  /** (G5a-1 step 3-L0) The recursive fragment has no CDN-greedy plus (its quantifier arm says so at
+      every head; its look arm recurses). */
+  lemma PikeLkRegexRecNoCdn(r: L.Regex)
+    requires PikeLkRegexRec(r)
+    ensures NUL.NoCdnPlusL(r)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) => PikeLkRegexRecNoCdn(r1); PikeLkRegexRecNoCdn(r2);
+    case Sequence(r1, r2) => PikeLkRegexRecNoCdn(r1); PikeLkRegexRecNoCdn(r2);
+    case Quantified(_, _, _, r1) => PikeLkRegexRecNoCdn(r1); reveal CinHeadL();   // (G5a-1 3-L0)
+    case Group(_, r1) => PikeLkRegexRecNoCdn(r1);
+    case LookaroundR(_, r1) => PikeLkRegexRecNoCdn(r1);
+    case _ =>
+  }
+
+  /** (G5a-1 step 3-L0) A narrow-fragment RegElk regex translates to a regex with no CDN-greedy plus. */
+  lemma TranslateFragmentNoCdn(re: R.regex)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re)
+    ensures NUL.NoCdnPlusL(T.Translate(re))
+  {
+    TranslateFragmentPikeLkRec(re);
+    PikeLkRegexRecNoCdn(T.Translate(re));
   }
 
   // ===========================================================================
@@ -1186,6 +1290,7 @@ module LindenElkEntryLk {
         if min > 0 {
           var gidl := L.DefGroups(r1);
           var quant := L.Quantified(greedy, min - 1, delta, r1);
+          if CinHeadL(greedy, min, delta, r1) { CinHeadMono(greedy, min, delta, r1, min - 1, delta); }   // (G5a-1 3-L0c)
           var na := [LS.Areg(r1), LS.Areg(quant)] + cont;
           var gm' := LG.GMReset(gidl, gm);
           assert PikeLkActions(na) by {
@@ -1215,6 +1320,7 @@ module LindenElkEntryLk {
         }
         var gidl := L.DefGroups(r1);
         var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+        CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
         var na := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
         var gm' := LG.GMReset(gidl, gm);
         assert PikeLkRegex(quant);
@@ -1433,6 +1539,7 @@ module LindenElkEntryLk {
         if min > 0 {
           var gidl := L.DefGroups(r1);
           var quant := L.Quantified(greedy, min - 1, delta, r1);
+          if CinHeadL(greedy, min, delta, r1) { CinHeadMono(greedy, min, delta, r1, min - 1, delta); }   // (G5a-1 3-L0c)
           var na := [LS.Areg(r1), LS.Areg(quant)] + cont;
           var gm' := LG.GMReset(gidl, gm);
           assert PikeLkActionsRec(na) by {
@@ -1462,6 +1569,7 @@ module LindenElkEntryLk {
         }
         var gidl := L.DefGroups(r1);
         var quant := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+        CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
         var na := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(quant)] + cont;
         var gm' := LG.GMReset(gidl, gm);
         assert PikeLkRegexRec(quant);
