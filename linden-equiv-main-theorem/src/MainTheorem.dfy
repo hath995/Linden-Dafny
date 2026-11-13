@@ -3780,10 +3780,23 @@ module LindenElkMain {
           CaptureWriteIdsOutsideREGen(r1, code, em + 3, e1, pc);
         } else {
         }
-      } else if nul != R.NonNullable {
+      } else if nul == R.CINullable {
         // §2.5b CIN-GREEDY: min-1 forced copies, then the stamped end-fork
         // loop; its six own instructions are all of the harmless kind
         var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          CaptureWriteIdsOutsideMinREGen((q.min - 1) as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          CaptureWriteIdsOutsideREGen(r1, code, em + 3, e1, pc);
+        } else {
+        }
+      } else if nul == R.CDNullable {
+        // §2.5b CDN-GREEDY (G5a): min-1 forced copies, then the stamped end-fork
+        // loop; its six own instructions are all of the harmless kind
+        var em, e1 := NR.NfaRepRECdnInv(nul, qid, q, r1, code, start, endl);
         NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
         NR.NfaRepIncrRE(r1, code, em + 3, e1);
         if pc < em {
@@ -4062,10 +4075,23 @@ module LindenElkMain {
           LookCheckIdsREGen(r1, code, em + 3, e1, pc);
         } else {
         }
-      } else if nul != R.NonNullable {
+      } else if nul == R.CINullable {
         // §2.5b CIN-GREEDY: min-1 forced copies, then the stamped end-fork
         // loop; its six own instructions are all of the harmless kind
         var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          LookCheckIdsMinREGen((q.min - 1) as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          LookCheckIdsREGen(r1, code, em + 3, e1, pc);
+        } else {
+        }
+      } else if nul == R.CDNullable {
+        // §2.5b CDN-GREEDY (G5a): min-1 forced copies, then the stamped end-fork
+        // loop; its six own instructions are all of the harmless kind
+        var em, e1 := NR.NfaRepRECdnInv(nul, qid, q, r1, code, start, endl);
         NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
         NR.NfaRepIncrRE(r1, code, em + 3, e1);
         if pc < em {
@@ -8130,10 +8156,23 @@ module LindenElkMain {
           LookCheckDirectREGen(r1, code, em + 3, e1, pc);
         } else {
         }
-      } else if nul != R.NonNullable {
+      } else if nul == R.CINullable {
         // §2.5b CIN-GREEDY: min-1 forced copies, then the stamped end-fork
         // loop; its six own instructions are all of the harmless kind
         var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          LookCheckDirectMinREGen((q.min - 1) as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          LookCheckDirectREGen(r1, code, em + 3, e1, pc);
+        } else {
+        }
+      } else if nul == R.CDNullable {
+        // §2.5b CDN-GREEDY (G5a): min-1 forced copies, then the stamped end-fork
+        // loop; its six own instructions are all of the harmless kind
+        var em, e1 := NR.NfaRepRECdnInv(nul, qid, q, r1, code, start, endl);
         NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
         NR.NfaRepIncrRE(r1, code, em + 3, e1);
         if pc < em {

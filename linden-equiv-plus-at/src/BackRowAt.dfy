@@ -133,5 +133,6 @@ module LindenElkBackRowAt {
     var next := CP.compile(rb, 0, CP.Progress).1;
     RevQuantUnique(body);
     RevCinQids(body);
+    FRD.NestedNoCdnPlus(rb);   // (G5a) TrueStampsInCin's premise
     FRD.TrueStampsInCin(rb, CP.compile_to_bytecode(rb), next as nat);
   }}

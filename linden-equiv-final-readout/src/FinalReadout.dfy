@@ -103,6 +103,7 @@ module LindenElkFinalReadout {
   lemma TrueStampCinMin(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat)
     requires NR.NfaRepMinRE(k, qid, r1, code, pcb, pce)
     requires PIV.QuantUnique(r1)
+    requires NRC.NoCdnPlusRE(r1)   // (G5a) a true stamp is then a CIN plus's
     requires pcb <= pc < pce
     ensures TrueAt(r1, code, pc)
     decreases CP.rsize(r1), k + 2
@@ -125,6 +126,7 @@ module LindenElkFinalReadout {
                         pcb: nat, pce: nat, pc: nat)
     requires NR.NfaRepOptRE(k, greedy, qid, r1, code, pcb, pce)
     requires PIV.QuantUnique(r1)
+    requires NRC.NoCdnPlusRE(r1)
     requires pcb <= pc < pce
     ensures TrueAt(r1, code, pc)
     decreases CP.rsize(r1), k + 2
@@ -151,6 +153,7 @@ module LindenElkFinalReadout {
   lemma TrueStampCin(re: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat)
     requires NR.NfaRepRE(re, code, pcb, pce)
     requires PIV.QuantUnique(re)
+    requires NRC.NoCdnPlusRE(re)
     requires pcb <= pc < pce
     ensures TrueAt(re, code, pc)
     decreases CP.rsize(re), 1
@@ -209,6 +212,7 @@ module LindenElkFinalReadout {
                           code: RB.code, pcb: nat, pce: nat, pc: nat)
     requires NR.NfaRepRE(R.Re_quant(nul, qid, q, r1), code, pcb, pce)
     requires PIV.QuantUnique(R.Re_quant(nul, qid, q, r1))
+    requires NRC.NoCdnPlusRE(R.Re_quant(nul, qid, q, r1))
     requires pcb <= pc < pce
     ensures TrueAt(R.Re_quant(nul, qid, q, r1), code, pc)
     decreases CP.rsize(R.Re_quant(nul, qid, q, r1)), 0
@@ -283,9 +287,26 @@ module LindenElkFinalReadout {
     }
   }
 
+  /** (G5a) Today's fragment admits no CDN-greedy plus. For the callers of `TrueStampsInCin` that hold only
+      the fragment (twin of `M.NestedNoCdn`, which sits above this package). */
+  lemma NestedNoCdnPlus(re: R.regex)
+    requires NR.NestedFragmentRE(re)
+    ensures NRC.NoCdnPlusRE(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => NestedNoCdnPlus(r1); NestedNoCdnPlus(r2);
+    case Re_con(r1, r2) => NestedNoCdnPlus(r1); NestedNoCdnPlus(r2);
+    case Re_quant(_, _, _, r1) => NestedNoCdnPlus(r1);
+    case Re_capture(_, r1) => NestedNoCdnPlus(r1);
+    case Re_lookaround(_, _, r1) => NestedNoCdnPlus(r1);
+    case _ =>
+  }
+
   /** The whole main block: every true stamp's qid is in `CinQids(re)`. */
   lemma TrueStampsInCin(re: R.regex, code: RB.code, endl: nat)
     requires NR.NfaRepRE(re, code, 0, endl) && PIV.QuantUnique(re)
+    requires NRC.NoCdnPlusRE(re)   // (G5a) rows: the gate / `NestedNoCdnPlus`; the top: `StampQids` in step 4
     requires NR.GetPcRE(code, endl) == Some(RB.Accept) && |code| == endl + 1
     ensures FV.TrueStampsIn(code, CinQids(re))
   {

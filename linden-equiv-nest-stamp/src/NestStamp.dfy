@@ -203,8 +203,11 @@ module LindenElkNestStamp {
              else StampClearRE(qcp, qid)
       else if !q.greedy then
         NestStampGenRE(nul, qid, q, r1, code, pcb, pce, pc, qcp)
-      else
+      else if nul == R.CINullable then
         NestStampCinRE(nul, qid, q, r1, code, pcb, pce, pc, qcp)
+      else
+        // (G5a) CDN-GREEDY: the same loop with the guarded stamp
+        NestStampCdnRE(nul, qid, q, r1, code, pcb, pce, pc, qcp)
     case Re_capture(cid, r1) =>
       exists e1: nat ::
         NR.GetPcRE(code, pcb) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
@@ -383,6 +386,118 @@ module LindenElkNestStamp {
          else true;
   }
 
+  /** (G5a) The CDN-GREEDY arm: the CIN arm's layout with the skip exit guarded by `CheckNullable(qid)`. */
+  ghost predicate NestStampCdnRE(nul: R.nullability, qid: R.quantid, q: R.counted_quantifier,
+                                 r1: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat, qcp: seq<int>)
+    requires q.min > 0
+    decreases CP.rsize(r1), q.min as nat + 3
+  {
+    var mn1 := (q.min - 1) as nat;
+    exists em: nat, e1: nat
+      {:trigger NR.NfaRepMinRE(mn1, qid, r1, code, pcb, em), NR.NfaRepRE(r1, code, em + 3, e1)} ::
+      NR.NfaRepMinRE(mn1, qid, r1, code, pcb, em)
+      && NR.GetPcRE(code, em) == Some(RB.Fork(em + 1, e1 + 2))
+      && NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(code, em + 2) == Some(RB.BeginLoop)
+      && NR.NfaRepRE(r1, code, em + 3, e1)
+      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+      && NR.GetPcRE(code, e1 + 1) == Some(RB.Fork(em + 1, e1 + 4))
+      && NR.GetPcRE(code, e1 + 2) == Some(RB.CheckNullable(qid))
+      && NR.GetPcRE(code, e1 + 3) == Some(RB.SetQuantToClock(qid, true))
+      && pce == e1 + 4
+      && if pc < em then NestStampMinRE(mn1, qid, r1, code, pcb, em, pc, qcp)
+         else if pc == em || pc == em + 1 then true
+         else if pc == em + 2 then StampClearRE(qcp, qid)
+         else if em + 3 <= pc < e1 then
+           StampClearRE(qcp, qid) && NestStampRE(r1, code, em + 3, e1, pc, qcp)
+         else if pc == e1 || pc == e1 + 1 then StampClearRE(qcp, qid)
+         else true                                      // the guard and the true-stamp site
+  }
+
+  lemma NestStampCdnREInv(nul: R.nullability, qid: R.quantid, q: R.counted_quantifier,
+                          r1: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat, qcp: seq<int>)
+    returns (em: nat, e1: nat)
+    requires q.min > 0
+    requires NestStampCdnRE(nul, qid, q, r1, code, pcb, pce, pc, qcp)
+    ensures NR.NfaRepMinRE((q.min - 1) as nat, qid, r1, code, pcb, em)
+    ensures NR.GetPcRE(code, em) == Some(RB.Fork(em + 1, e1 + 2))
+    ensures NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    ensures NR.GetPcRE(code, em + 2) == Some(RB.BeginLoop)
+    ensures NR.NfaRepRE(r1, code, em + 3, e1)
+    ensures NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+    ensures NR.GetPcRE(code, e1 + 1) == Some(RB.Fork(em + 1, e1 + 4))
+    ensures NR.GetPcRE(code, e1 + 2) == Some(RB.CheckNullable(qid))
+    ensures NR.GetPcRE(code, e1 + 3) == Some(RB.SetQuantToClock(qid, true))
+    ensures pce == e1 + 4
+    ensures pc < em ==> NestStampMinRE((q.min - 1) as nat, qid, r1, code, pcb, em, pc, qcp)
+    ensures pc == em + 2 ==> StampClearRE(qcp, qid)
+    ensures em + 3 <= pc < e1 ==>
+              StampClearRE(qcp, qid) && NestStampRE(r1, code, em + 3, e1, pc, qcp)
+    ensures pc == e1 || pc == e1 + 1 ==> StampClearRE(qcp, qid)
+  {
+    var mn1 := (q.min - 1) as nat;
+    em, e1 :|
+      NR.NfaRepMinRE(mn1, qid, r1, code, pcb, em)
+      && NR.GetPcRE(code, em) == Some(RB.Fork(em + 1, e1 + 2))
+      && NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(code, em + 2) == Some(RB.BeginLoop)
+      && NR.NfaRepRE(r1, code, em + 3, e1)
+      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+      && NR.GetPcRE(code, e1 + 1) == Some(RB.Fork(em + 1, e1 + 4))
+      && NR.GetPcRE(code, e1 + 2) == Some(RB.CheckNullable(qid))
+      && NR.GetPcRE(code, e1 + 3) == Some(RB.SetQuantToClock(qid, true))
+      && pce == e1 + 4
+      && if pc < em then NestStampMinRE(mn1, qid, r1, code, pcb, em, pc, qcp)
+         else if pc == em || pc == em + 1 then true
+         else if pc == em + 2 then StampClearRE(qcp, qid)
+         else if em + 3 <= pc < e1 then
+           StampClearRE(qcp, qid) && NestStampRE(r1, code, em + 3, e1, pc, qcp)
+         else if pc == e1 || pc == e1 + 1 then StampClearRE(qcp, qid)
+         else true;
+    NR.NfaRepIncrRE(r1, code, em + 3, e1);
+  }
+
+  lemma NestStampCdnREIntro(nul: R.nullability, qid: R.quantid, q: R.counted_quantifier,
+                            r1: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat, qcp: seq<int>,
+                            em: nat, e1: nat)
+    requires q.min > 0
+    requires NR.NfaRepMinRE((q.min - 1) as nat, qid, r1, code, pcb, em)
+    requires NR.GetPcRE(code, em) == Some(RB.Fork(em + 1, e1 + 2))
+    requires NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    requires NR.GetPcRE(code, em + 2) == Some(RB.BeginLoop)
+    requires NR.NfaRepRE(r1, code, em + 3, e1)
+    requires NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+    requires NR.GetPcRE(code, e1 + 1) == Some(RB.Fork(em + 1, e1 + 4))
+    requires NR.GetPcRE(code, e1 + 2) == Some(RB.CheckNullable(qid))
+    requires NR.GetPcRE(code, e1 + 3) == Some(RB.SetQuantToClock(qid, true))
+    requires pce == e1 + 4
+    requires pc < em ==> NestStampMinRE((q.min - 1) as nat, qid, r1, code, pcb, em, pc, qcp)
+    requires pc == em + 2 ==> StampClearRE(qcp, qid)
+    requires em + 3 <= pc < e1 ==>
+               StampClearRE(qcp, qid) && NestStampRE(r1, code, em + 3, e1, pc, qcp)
+    requires pc == e1 || pc == e1 + 1 ==> StampClearRE(qcp, qid)
+    ensures NestStampCdnRE(nul, qid, q, r1, code, pcb, pce, pc, qcp)
+  {
+    var mn1 := (q.min - 1) as nat;
+    assert NR.NfaRepMinRE(mn1, qid, r1, code, pcb, em)
+      && NR.GetPcRE(code, em) == Some(RB.Fork(em + 1, e1 + 2))
+      && NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(code, em + 2) == Some(RB.BeginLoop)
+      && NR.NfaRepRE(r1, code, em + 3, e1)
+      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+      && NR.GetPcRE(code, e1 + 1) == Some(RB.Fork(em + 1, e1 + 4))
+      && NR.GetPcRE(code, e1 + 2) == Some(RB.CheckNullable(qid))
+      && NR.GetPcRE(code, e1 + 3) == Some(RB.SetQuantToClock(qid, true))
+      && pce == e1 + 4
+      && if pc < em then NestStampMinRE(mn1, qid, r1, code, pcb, em, pc, qcp)
+         else if pc == em || pc == em + 1 then true
+         else if pc == em + 2 then StampClearRE(qcp, qid)
+         else if em + 3 <= pc < e1 then
+           StampClearRE(qcp, qid) && NestStampRE(r1, code, em + 3, e1, pc, qcp)
+         else if pc == e1 || pc == e1 + 1 then StampClearRE(qcp, qid)
+         else true;
+  }
+
   // =========================================================================
   // 3. Entry: arriving at a block's head satisfies the invariant there —
   //    unconditionally, since every head site (fork / mark / capture open)
@@ -464,7 +579,7 @@ module LindenElkNestStamp {
           assert em == pcb;
         }
         NestStampGenREIntro(nul, qid, q, r1, code, pcb, pce, pcb, qcp, em, e1);
-      } else if nul != R.NonNullable {
+      } else if nul == R.CINullable {
         var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, code, pcb, pce);
         var mn1 := (q.min - 1) as nat;
         NR.NfaRepIncrMinRE(mn1, qid, r1, code, pcb, em);
@@ -475,6 +590,17 @@ module LindenElkNestStamp {
           assert em == pcb;
         }
         NestStampCinREIntro(nul, qid, q, r1, code, pcb, pce, pcb, qcp, em, e1);
+      } else if nul == R.CDNullable {
+        var em, e1 := NR.NfaRepRECdnInv(nul, qid, q, r1, code, pcb, pce);
+        var mn1 := (q.min - 1) as nat;
+        NR.NfaRepIncrMinRE(mn1, qid, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pcb < em {
+          NestStampMinEntryRE(mn1, qid, r1, code, pcb, em, qcp);
+        } else {
+          assert em == pcb;
+        }
+        NestStampCdnREIntro(nul, qid, q, r1, code, pcb, pce, pcb, qcp, em, e1);
       } else {
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, pcb, pce);
         var mn1 := (q.min - 1) as nat;
@@ -667,7 +793,7 @@ module LindenElkNestStamp {
           NestStampMonoRE(r1, code, em + 3, e1, pc, qcp, qcp');
         }
         NestStampGenREIntro(nul, qid, q, r1, code, pcb, pce, pc, qcp', em, e1);
-      } else {
+      } else if nul == R.CINullable {
         var em, e1 := NestStampCinREInv(nul, qid, q, r1, code, pcb, pce, pc, qcp);
         var mn1 := (q.min - 1) as nat;
         if pc < em {
@@ -676,6 +802,15 @@ module LindenElkNestStamp {
           NestStampMonoRE(r1, code, em + 3, e1, pc, qcp, qcp');
         }
         NestStampCinREIntro(nul, qid, q, r1, code, pcb, pce, pc, qcp', em, e1);
+      } else {
+        var em, e1 := NestStampCdnREInv(nul, qid, q, r1, code, pcb, pce, pc, qcp);
+        var mn1 := (q.min - 1) as nat;
+        if pc < em {
+          NestStampMonoMinRE(mn1, qid, r1, code, pcb, em, pc, qcp, qcp');
+        } else if em + 3 <= pc < e1 {
+          NestStampMonoRE(r1, code, em + 3, e1, pc, qcp, qcp');
+        }
+        NestStampCdnREIntro(nul, qid, q, r1, code, pcb, pce, pc, qcp', em, e1);
       }
     case Re_capture(cid, r1) =>
       var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
@@ -953,7 +1088,7 @@ module LindenElkNestStamp {
         }
         return;
       }
-      if !(q.min == 0 && q.max == None) && nul != R.NonNullable {
+      if !(q.min == 0 && q.max == None) && nul == R.CINullable {
         assert {:split_here} true;
         // §2.5b CIN-GREEDY
         var mn1 := (q.min - 1) as nat;
@@ -988,6 +1123,47 @@ module LindenElkNestStamp {
           }
         } else {
           assert pc == e1 + 2;
+          assert false;                              // SetQuantToClock
+        }
+        return;
+      }
+      if !(q.min == 0 && q.max == None) && nul == R.CDNullable {
+        assert {:split_here} true;
+        // §2.5b CDN-GREEDY (G5a)
+        var mn1 := (q.min - 1) as nat;
+        var em, e1 := NestStampCdnREInv(nul, qid, q, r1, code, pcb, pce, pc, qcp);
+        NR.NfaRepIncrMinRE(mn1, qid, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NestStampAdvanceMin(mn1, qid, r1, code, pcb, em, pc, pc', qcp);
+          NestStampCdnREIntro(nul, qid, q, r1, code, pcb, pce, pc', qcp, em, e1);
+        } else if pc == em {
+          // the head fork: the mark (no claim) or the skip arm to the true
+          // stamp site (no claim)
+          assert pc' == em + 1 || pc' == e1 + 2;
+          NestStampCdnREIntro(nul, qid, q, r1, code, pcb, pce, pc', qcp, em, e1);
+        } else if pc == em + 1 {
+          assert false;                              // SetQuantToClock
+        } else if pc == em + 2 {
+          assert pc' == em + 3;
+          if pc' != e1 { NestStampEntryRE(r1, code, em + 3, e1, qcp); }
+          NestStampCdnREIntro(nul, qid, q, r1, code, pcb, pce, pc', qcp, em, e1);
+        } else if em + 3 <= pc < e1 {
+          NestStampAdvanceRE(r1, code, em + 3, e1, pc, pc', qcp);
+          NestStampCdnREIntro(nul, qid, q, r1, code, pcb, pce, pc', qcp, em, e1);
+        } else if pc == e1 {
+          assert pc' == e1 + 1;
+          NestStampCdnREIntro(nul, qid, q, r1, code, pcb, pce, pc', qcp, em, e1);
+        } else if pc == e1 + 1 {
+          // the end fork: back to the mark (no claim) or out of the block
+          assert pc' == em + 1 || pc' == pce;
+          if pc' == em + 1 {
+            NestStampCdnREIntro(nul, qid, q, r1, code, pcb, pce, pc', qcp, em, e1);
+          }
+        } else if pc == e1 + 2 {
+          assert false;      // (G5a) CheckNullable: no edge of the step relation yet (step 2 adds `pc' == e1 + 3`)
+        } else {
+          assert pc == e1 + 3;
           assert false;                              // SetQuantToClock
         }
         return;
@@ -1401,7 +1577,8 @@ module LindenElkNestStamp {
     assert qid >= 0;                               // QuantUnique
     if q.max.Some? { QWQBounded(re, code, pcb, pce, pc, qcp, qcp', qid0, b, nul, qid, q, r1); }
     else if !(q.min == 0 && q.max == None) && nul != R.NonNullable && !q.greedy { QWQGen(re, code, pcb, pce, pc, qcp, qcp', qid0, b, nul, qid, q, r1); }
-    else if !(q.min == 0 && q.max == None) && nul != R.NonNullable { QWQCin(re, code, pcb, pce, pc, qcp, qcp', qid0, b, nul, qid, q, r1); }
+    else if !(q.min == 0 && q.max == None) && nul == R.CINullable { QWQCin(re, code, pcb, pce, pc, qcp, qcp', qid0, b, nul, qid, q, r1); }
+    else if !(q.min == 0 && q.max == None) && nul == R.CDNullable { QWQCdn(re, code, pcb, pce, pc, qcp, qcp', qid0, b, nul, qid, q, r1); }
     else if !(q.min == 0 && q.max == None) { QWQNonNull(re, code, pcb, pce, pc, qcp, qcp', qid0, b, nul, qid, q, r1); }
     else { QWQStar(re, code, pcb, pce, pc, qcp, qcp', qid0, b, nul, qid, q, r1); }
   }
@@ -1502,7 +1679,7 @@ module LindenElkNestStamp {
                               qcp: seq<int>, qcp': seq<int>, qid0: R.quantid, b: bool,
                               nul: R.nullability, qid: R.quantid, q: R.counted_quantifier, r1: R.regex)
     requires re == R.Re_quant(nul, qid, q, r1)
-    requires !q.max.Some? && !(q.min == 0 && q.max == None) && nul != R.NonNullable && q.greedy
+    requires !q.max.Some? && !(q.min == 0 && q.max == None) && nul == R.CINullable && q.greedy   // (G5a) the CDN plus has QWQCdn
     requires NR.NfaRepRE(re, code, pcb, pce)
     requires PIV.QuantUnique(re)
     requires pcb <= pc < pce
@@ -1548,6 +1725,111 @@ module LindenElkNestStamp {
       }
   }
 
+  lemma QWQCdn(re: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
+                              qcp: seq<int>, qcp': seq<int>, qid0: R.quantid, b: bool,
+                              nul: R.nullability, qid: R.quantid, q: R.counted_quantifier, r1: R.regex)
+    requires re == R.Re_quant(nul, qid, q, r1)
+    requires !q.max.Some? && !(q.min == 0 && q.max == None) && nul == R.CDNullable && q.greedy
+    requires NR.NfaRepRE(re, code, pcb, pce)
+    requires PIV.QuantUnique(re)
+    requires pcb <= pc < pce
+    requires NestStampRE(re, code, pcb, pce, pc, qcp)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid0, b))
+    requires qid0 >= 0
+    requires forall kk: int :: kk != qid0 ==> AI.get_idx(qcp', kk) == AI.get_idx(qcp, kk)
+    requires !b ==> AI.get_idx(qcp', qid0) < 0
+    ensures pc + 1 == pce || (pcb <= pc + 1 < pce && NestStampRE(re, code, pcb, pce, pc + 1, qcp'))
+    ensures (qid0 as nat) in PIV.QuantIds(re)
+    decreases CP.rsize(re), 0
+  {
+      assert qid >= 0;                               // QuantUnique
+      assert (qid as nat) !in PIV.QuantIds(r1);       // QuantUnique
+      assert {:split_here} true;
+      // §2.5b CDN-GREEDY (G5a)
+      var mn1 := (q.min - 1) as nat;
+      var em, e1 := NestStampCdnREInv(nul, qid, q, r1, code, pcb, pce, pc, qcp);
+      NR.NfaRepIncrMinRE(mn1, qid, r1, code, pcb, em);
+      NR.NfaRepIncrRE(r1, code, em + 3, e1);
+      if pc < em {
+        NestStampQuantWriteMin(mn1, qid, r1, code, pcb, em, pc, qcp, qcp', qid0, b);
+        NestStampCdnREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, qcp', em, e1);
+      } else if pc == em {
+        assert false;                              // the head fork
+      } else if pc == em + 1 {
+        // THE LOOP'S MARK
+        assert qid0 == qid && !b;
+        NestStampCdnREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, qcp', em, e1);
+      } else if pc == em + 2 {
+        assert false;                              // BeginLoop
+      } else if em + 3 <= pc < e1 {
+        NestStampQuantWriteRE(r1, code, em + 3, e1, pc, qcp, qcp', qid0, b);
+        assert qid0 != qid;
+        NestStampCdnREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, qcp', em, e1);
+      } else if pc == e1 || pc == e1 + 1 || pc == e1 + 2 {
+        assert false;                              // EndLoop / the end fork / CheckNullable
+      } else {
+        // THE TRUE STAMP at e1 + 3: it exits the block.
+        assert pc == e1 + 3;
+        assert qid0 == qid;
+        assert pc + 1 == pce;
+      }
+  }
+
+  /** (G5a) Inversion of `NestStampRE`'s NonNullable do-while arm, in a small context (QWQNonNull's
+      inline `:|` ran out of resources once the CDN arms lengthened both if-chains). */
+  lemma NestStampDoWhileInv(nul: R.nullability, qid: R.quantid, q: R.counted_quantifier, r1: R.regex,
+                            code: RB.code, pcb: nat, pce: nat, pc: nat, qcp: seq<int>) returns (em: nat, e1: nat)
+    requires !q.max.Some? && !(q.min == 0 && q.max == None) && nul == R.NonNullable
+    requires NR.NfaRepRE(R.Re_quant(nul, qid, q, r1), code, pcb, pce)
+    requires NestStampRE(R.Re_quant(nul, qid, q, r1), code, pcb, pce, pc, qcp)
+    ensures var mn1 := (q.min - 1) as nat;
+            NR.NfaRepMinRE(mn1, qid, r1, code, pcb, em)
+            && NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
+            && NR.NfaRepRE(r1, code, em + 1, e1)
+            && NR.GetPcRE(code, e1) == Some(if q.greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
+            && pce == e1 + 1
+            && (if pc < em then NestStampMinRE(mn1, qid, r1, code, pcb, em, pc, qcp)
+                else if pc == em then true
+                else if em + 1 <= pc < e1 then
+                  StampClearRE(qcp, qid) && NestStampRE(r1, code, em + 1, e1, pc, qcp)
+                else StampClearRE(qcp, qid))
+  {
+    var mn1 := (q.min - 1) as nat;
+    hide NR.NfaRepRE, NR.NfaRepMinRE, NR.NfaRepOptRE, NestStampMinRE;
+    em, e1 :|
+        NR.NfaRepMinRE(mn1, qid, r1, code, pcb, em)
+          && NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
+          && NR.NfaRepRE(r1, code, em + 1, e1)
+          && NR.GetPcRE(code, e1) == Some(if q.greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
+          && pce == e1 + 1
+          && (if pc < em then NestStampMinRE(mn1, qid, r1, code, pcb, em, pc, qcp)
+              else if pc == em then true
+              else if em + 1 <= pc < e1 then
+                StampClearRE(qcp, qid) && NestStampRE(r1, code, em + 1, e1, pc, qcp)
+              else StampClearRE(qcp, qid));
+  }
+
+  /** (G5a) Introduction of `NestStampRE`'s NonNullable do-while arm, in a small context. */
+  lemma NestStampDoWhileIntro(nul: R.nullability, qid: R.quantid, q: R.counted_quantifier, r1: R.regex,
+                              code: RB.code, pcb: nat, pce: nat, pc: nat, qcp: seq<int>, em: nat, e1: nat)
+    requires !q.max.Some? && !(q.min == 0 && q.max == None) && nul == R.NonNullable
+    requires NR.NfaRepRE(R.Re_quant(nul, qid, q, r1), code, pcb, pce)
+    requires var mn1 := (q.min - 1) as nat;
+            NR.NfaRepMinRE(mn1, qid, r1, code, pcb, em)
+            && NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
+            && NR.NfaRepRE(r1, code, em + 1, e1)
+            && NR.GetPcRE(code, e1) == Some(if q.greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
+            && pce == e1 + 1
+            && (if pc < em then NestStampMinRE(mn1, qid, r1, code, pcb, em, pc, qcp)
+                else if pc == em then true
+                else if em + 1 <= pc < e1 then
+                  StampClearRE(qcp, qid) && NestStampRE(r1, code, em + 1, e1, pc, qcp)
+                else StampClearRE(qcp, qid))
+    ensures NestStampRE(R.Re_quant(nul, qid, q, r1), code, pcb, pce, pc, qcp)
+  {
+    hide NR.NfaRepRE, NR.NfaRepMinRE, NR.NfaRepOptRE, NestStampMinRE;
+  }
+
   lemma QWQNonNull(re: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
                               qcp: seq<int>, qcp': seq<int>, qid0: R.quantid, b: bool,
                               nul: R.nullability, qid: R.quantid, q: R.counted_quantifier, r1: R.regex)
@@ -1570,33 +1852,26 @@ module LindenElkNestStamp {
       assert {:split_here} true;
       // the NonNullable do-while
       var mn1 := (q.min - 1) as nat;
-      var em: nat, e1: nat :|
-        NR.NfaRepMinRE(mn1, qid, r1, code, pcb, em)
-        && NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
-        && NR.NfaRepRE(r1, code, em + 1, e1)
-        && NR.GetPcRE(code, e1) == Some(if q.greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
-        && pce == e1 + 1
-        && (if pc < em then NestStampMinRE(mn1, qid, r1, code, pcb, em, pc, qcp)
-            else if pc == em then true
-            else if em + 1 <= pc < e1 then
-              StampClearRE(qcp, qid) && NestStampRE(r1, code, em + 1, e1, pc, qcp)
-            else StampClearRE(qcp, qid));
+      var em, e1 := NestStampDoWhileInv(nul, qid, q, r1, code, pcb, pce, pc, qcp);
       NR.NfaRepIncrMinRE(mn1, qid, r1, code, pcb, em);
       NR.NfaRepIncrRE(r1, code, em + 1, e1);
       if pc < em {
+        assert {:split_here} true;   // (G5a)
         NestStampQuantWriteMin(mn1, qid, r1, code, pcb, em, pc, qcp, qcp', qid0, b);
-        assert NestStampRE(re, code, pcb, pce, pc + 1, qcp');
+        NestStampDoWhileIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, qcp', em, e1);
       } else if pc == em {
+        assert {:split_here} true;   // (G5a)
         // THE LAST MARK
         assert qid0 == qid && !b;
         if pc + 1 != e1 {
           NestStampEntryRE(r1, code, em + 1, e1, qcp');
         }
-        assert NestStampRE(re, code, pcb, pce, pc + 1, qcp');
+        NestStampDoWhileIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, qcp', em, e1);
       } else if em + 1 <= pc < e1 {
+        assert {:split_here} true;   // (G5a)
         NestStampQuantWriteRE(r1, code, em + 1, e1, pc, qcp, qcp', qid0, b);
         assert qid0 != qid;
-        assert NestStampRE(re, code, pcb, pce, pc + 1, qcp');
+        NestStampDoWhileIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, qcp', em, e1);
       } else {
         assert pc == e1;
         assert false;                              // the backward fork
@@ -1892,10 +2167,26 @@ module LindenElkNestStamp {
         NestStampQuantIds(re, nul, qid, q, r1, qcp, gid);
         return;
       }
-      if !(q.min == 0 && q.max == None) && nul != R.NonNullable {
+      if !(q.min == 0 && q.max == None) && nul == R.CINullable {
         assert {:split_here} true;
         var mn1 := (q.min - 1) as nat;
         var em, e1 := NestStampCinREInv(nul, qid, q, r1, code, pcb, pce, pc, qcp);
+        NR.NfaRepIncrMinRE(mn1, qid, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NestStampOpenSiteMin(mn1, qid, r1, code, pcb, em, pc, qcp, gid);
+        } else if em + 3 <= pc < e1 {
+          NestStampOpenSiteRE(r1, code, em + 3, e1, pc, qcp, gid);
+        } else {
+          assert false;                              // the loop's own instructions
+        }
+        NestStampQuantIds(re, nul, qid, q, r1, qcp, gid);
+        return;
+      }
+      if !(q.min == 0 && q.max == None) && nul == R.CDNullable {
+        assert {:split_here} true;
+        var mn1 := (q.min - 1) as nat;
+        var em, e1 := NestStampCdnREInv(nul, qid, q, r1, code, pcb, pce, pc, qcp);
         NR.NfaRepIncrMinRE(mn1, qid, r1, code, pcb, em);
         NR.NfaRepIncrRE(r1, code, em + 3, e1);
         if pc < em {
@@ -2177,10 +2468,26 @@ module LindenElkNestStamp {
         NestStampQuantIds(re, nul, qid, q, r1, qcp, gid);
         return;
       }
-      if !(q.min == 0 && q.max == None) && nul != R.NonNullable {
+      if !(q.min == 0 && q.max == None) && nul == R.CINullable {
         assert {:split_here} true;
         var mn1 := (q.min - 1) as nat;
         var em, e1 := NestStampCinREInv(nul, qid, q, r1, code, pcb, pce, pc, qcp);
+        NR.NfaRepIncrMinRE(mn1, qid, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NestStampCapSiteMin(mn1, qid, r1, code, pcb, em, pc, qcp, gid, reg);
+        } else if em + 3 <= pc < e1 {
+          NestStampCapSiteRE(r1, code, em + 3, e1, pc, qcp, gid, reg);
+        } else {
+          assert false;                              // the loop's own instructions
+        }
+        NestStampQuantIds(re, nul, qid, q, r1, qcp, gid);
+        return;
+      }
+      if !(q.min == 0 && q.max == None) && nul == R.CDNullable {
+        assert {:split_here} true;
+        var mn1 := (q.min - 1) as nat;
+        var em, e1 := NestStampCdnREInv(nul, qid, q, r1, code, pcb, pce, pc, qcp);
         NR.NfaRepIncrMinRE(mn1, qid, r1, code, pcb, em);
         NR.NfaRepIncrRE(r1, code, em + 3, e1);
         if pc < em {
@@ -2592,7 +2899,7 @@ module LindenElkNestStamp {
         QuantSiteLift(re, nul, qid, q, r1, qcp, q0);
         return;
       }
-      if !(q.min == 0 && q.max == None) && nul != R.NonNullable {
+      if !(q.min == 0 && q.max == None) && nul == R.CINullable {
         assert {:split_here} true;
         var mn1 := (q.min - 1) as nat;
         var em, e1 := NestStampCinREInv(nul, qid, q, r1, code, pcb, pce, pc, qcp);
@@ -2601,6 +2908,24 @@ module LindenElkNestStamp {
         if pc < em {
           NestStampQuantSiteMin(mn1, qid, r1, code, pcb, em, pc, qcp, q0, b);
         } else if pc == em + 1 || pc == e1 + 2 {
+          assert q0 == qid;                          // the loop's mark / the true stamp
+        } else if em + 3 <= pc < e1 {
+          NestStampQuantSiteRE(r1, code, em + 3, e1, pc, qcp, q0, b);
+        } else {
+          assert false;                              // Fork/BeginLoop/EndLoop/end fork
+        }
+        QuantSiteLift(re, nul, qid, q, r1, qcp, q0);
+        return;
+      }
+      if !(q.min == 0 && q.max == None) && nul == R.CDNullable {
+        assert {:split_here} true;
+        var mn1 := (q.min - 1) as nat;
+        var em, e1 := NestStampCdnREInv(nul, qid, q, r1, code, pcb, pce, pc, qcp);
+        NR.NfaRepIncrMinRE(mn1, qid, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NestStampQuantSiteMin(mn1, qid, r1, code, pcb, em, pc, qcp, q0, b);
+        } else if pc == em + 1 || pc == e1 + 3 {
           assert q0 == qid;                          // the loop's mark / the true stamp
         } else if em + 3 <= pc < e1 {
           NestStampQuantSiteRE(r1, code, em + 3, e1, pc, qcp, q0, b);
@@ -2884,7 +3209,7 @@ module LindenElkNestStamp {
         }
         return;
       }
-      if !(q.min == 0 && q.max == None) && nul != R.NonNullable {
+      if !(q.min == 0 && q.max == None) && nul == R.CINullable {
         // §2.5b CIN-GREEDY: `em + 1` is this quant's own reset site; the
         // trailing stamp at `e1 + 2` carries flag TRUE, contradicting the
         // reset-site (false) hypothesis.
@@ -2895,6 +3220,34 @@ module LindenElkNestStamp {
         if pc < em {
           TrueStampSiteMin(mn1, qid0, r1, code, pcb, em, pc, cc, qc, mx, qid);
         } else if pc == e1 + 2 {
+          // THE true stamp: the instruction pins qid == qid0
+          assert (qid as int) == qid0;
+        } else if em + 3 <= pc < e1 {
+          var qv := AI.get_idx(qc, qid0);
+          TrueStampSite(r1, code, em + 3, e1, pc, cc, qc, qv, qid);
+        } else {
+          assert false;   // forks/mark(false)/BeginLoop/EndLoop
+        }
+        if (qid as int) == qid0 {
+          assert qid in PIV.QuantIds(re);           // PathPresentQ base case
+        } else {
+          assert (qid0 as nat) != qid;
+          assert qid in PIV.QuantIds(r1);
+          assert AI.get_idx(qc, qid0) >= mx;        // ancestor clause
+        }
+        return;
+      }
+      if !(q.min == 0 && q.max == None) && nul == R.CDNullable {
+        // §2.5b CDN-GREEDY (G5a): `em + 1` is this quant's own reset site; the
+        // trailing stamp at `e1 + 2` carries flag TRUE, contradicting the
+        // reset-site (false) hypothesis.
+        var mn1 := (q.min - 1) as nat;
+        var em, e1 := NI.NestInvCdnREInv(nul, qid0, q, r1, code, pcb, pce, pc, cc, qc, mx);
+        NR.NfaRepIncrMinRE(mn1, qid0, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          TrueStampSiteMin(mn1, qid0, r1, code, pcb, em, pc, cc, qc, mx, qid);
+        } else if pc == e1 + 3 {
           // THE true stamp: the instruction pins qid == qid0
           assert (qid as int) == qid0;
         } else if em + 3 <= pc < e1 {
@@ -3008,7 +3361,7 @@ module LindenElkNestStamp {
 
   lemma TrueStampBackMin(k: nat, qn: R.quantid, r1: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
                          cc: seq<int>, qc: seq<int>, qc': seq<int>, mx: int, q0: nat, clk: int)
-    returns (fx: int)
+    returns (fx: int, back: nat)
     requires NR.NfaRepMinRE(k, qn, r1, code, pcb, pce)
     requires PIV.CapUnique(r1) && PIV.QuantUnique(r1)
     requires qn >= 0 && (qn as nat) !in PIV.QuantIds(r1)
@@ -3017,8 +3370,9 @@ module LindenElkNestStamp {
     requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q0 as int, true))
     requires TrueStampClocks(qc, qc', q0, clk) && mx < clk
     ensures q0 in PIV.QuantIds(r1)
-    ensures pcb <= pc - 1 && NI.NestInvMinRE(k, qn, r1, code, pcb, pce, pc - 1, cc, qc', mx)
-    ensures NR.GetPcRE(code, pc - 1) == Some(RB.Fork(fx, pc + 1))
+    ensures (back == pc - 1 || back == pc - 2) && pcb <= back   // (G5a) the end fork: right before the stamp (CIN) or before the guard (CDN)
+    ensures NI.NestInvMinRE(k, qn, r1, code, pcb, pce, back, cc, qc', mx)
+    ensures NR.GetPcRE(code, back) == Some(RB.Fork(fx, pc + 1))
     decreases CP.rsize(r1), k + 2
   {
     assert k > 0 by { if k == 0 { assert pcb == pce; } }
@@ -3038,21 +3392,21 @@ module LindenElkNestStamp {
     } else if pcb + 1 <= pc < e1 {
       assert {:split_here} true;
       var qv := AI.get_idx(qc, qn);
-      fx := TrueStampBackRE(r1, code, pcb + 1, e1, pc, cc, qc, qc', qv, q0, clk);
+      fx, back := TrueStampBackRE(r1, code, pcb + 1, e1, pc, cc, qc, qc', qv, q0, clk);
       assert qn != q0 as int;
       assert AI.get_idx(qc', qn) == qv;
-      assert NI.NestInvMinRE(k, qn, r1, code, pcb, pce, pc - 1, cc, qc', mx);
+      assert NI.NestInvMinRE(k, qn, r1, code, pcb, pce, back, cc, qc', mx);
     } else {
       assert {:split_here} true;
-      fx := TrueStampBackMin(k - 1, qn, r1, code, e1, pce, pc, cc, qc, qc', mx, q0, clk);
-      assert NI.NestInvMinRE(k, qn, r1, code, pcb, pce, pc - 1, cc, qc', mx);
+      fx, back := TrueStampBackMin(k - 1, qn, r1, code, e1, pce, pc, cc, qc, qc', mx, q0, clk);
+      assert NI.NestInvMinRE(k, qn, r1, code, pcb, pce, back, cc, qc', mx);
     }
   }
 
   lemma TrueStampBackOpt(k: nat, greedy: bool, qn: R.quantid, r1: R.regex, code: RB.code,
                          pcb: nat, pce: nat, pc: nat,
                          cc: seq<int>, qc: seq<int>, qc': seq<int>, mx: int, q0: nat, clk: int)
-    returns (fx: int)
+    returns (fx: int, back: nat)
     requires NR.NfaRepOptRE(k, greedy, qn, r1, code, pcb, pce)
     requires PIV.CapUnique(r1) && PIV.QuantUnique(r1)
     requires qn >= 0 && (qn as nat) !in PIV.QuantIds(r1)
@@ -3061,8 +3415,9 @@ module LindenElkNestStamp {
     requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q0 as int, true))
     requires TrueStampClocks(qc, qc', q0, clk) && mx < clk
     ensures q0 in PIV.QuantIds(r1)
-    ensures pcb <= pc - 1 && NI.NestInvOptRE(k, greedy, qn, r1, code, pcb, pce, pc - 1, cc, qc', mx)
-    ensures NR.GetPcRE(code, pc - 1) == Some(RB.Fork(fx, pc + 1))
+    ensures (back == pc - 1 || back == pc - 2) && pcb <= back   // (G5a) the end fork: right before the stamp (CIN) or before the guard (CDN)
+    ensures NI.NestInvOptRE(k, greedy, qn, r1, code, pcb, pce, back, cc, qc', mx)
+    ensures NR.GetPcRE(code, back) == Some(RB.Fork(fx, pc + 1))
     decreases CP.rsize(r1), k + 2
   {
     assert k > 0 by { if k == 0 { assert pcb == pce; } }
@@ -3088,14 +3443,14 @@ module LindenElkNestStamp {
     } else if pcb + 3 <= pc < e1 {
       assert {:split_here} true;
       var qv := AI.get_idx(qc, qn);
-      fx := TrueStampBackRE(r1, code, pcb + 3, e1, pc, cc, qc, qc', qv, q0, clk);
+      fx, back := TrueStampBackRE(r1, code, pcb + 3, e1, pc, cc, qc, qc', qv, q0, clk);
       assert qn != q0 as int;
       assert AI.get_idx(qc', qn) == qv;
-      assert NI.NestInvOptRE(k, greedy, qn, r1, code, pcb, pce, pc - 1, cc, qc', mx);
+      assert NI.NestInvOptRE(k, greedy, qn, r1, code, pcb, pce, back, cc, qc', mx);
     } else {
       assert {:split_here} true;
-      fx := TrueStampBackOpt(k - 1, greedy, qn, r1, code, e1 + 1, pce, pc, cc, qc, qc', mx, q0, clk);
-      assert NI.NestInvOptRE(k, greedy, qn, r1, code, pcb, pce, pc - 1, cc, qc', mx);
+      fx, back := TrueStampBackOpt(k - 1, greedy, qn, r1, code, e1 + 1, pce, pc, cc, qc, qc', mx, q0, clk);
+      assert NI.NestInvOptRE(k, greedy, qn, r1, code, pcb, pce, back, cc, qc', mx);
     }
   }
 
@@ -3103,7 +3458,7 @@ module LindenElkNestStamp {
       clocks (see the section comment). */
   lemma TrueStampBackRE(re: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
                         cc: seq<int>, qc: seq<int>, qc': seq<int>, mx: int, q0: nat, clk: int)
-    returns (fx: int)
+    returns (fx: int, back: nat)
     requires NR.NfaRepRE(re, code, pcb, pce)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re)
     requires pcb <= pc < pce
@@ -3111,8 +3466,9 @@ module LindenElkNestStamp {
     requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q0 as int, true))
     requires TrueStampClocks(qc, qc', q0, clk) && mx < clk
     ensures q0 in PIV.QuantIds(re)
-    ensures pcb <= pc - 1 && NI.NestInvRE(re, code, pcb, pce, pc - 1, cc, qc', mx)
-    ensures NR.GetPcRE(code, pc - 1) == Some(RB.Fork(fx, pc + 1))
+    ensures (back == pc - 1 || back == pc - 2) && pcb <= back   // (G5a) the end fork: right before the stamp (CIN) or before the guard (CDN)
+    ensures NI.NestInvRE(re, code, pcb, pce, back, cc, qc', mx)
+    ensures NR.GetPcRE(code, back) == Some(RB.Fork(fx, pc + 1))
     decreases CP.rsize(re), 1
   {
     match re
@@ -3147,11 +3503,11 @@ module LindenElkNestStamp {
       if pc == pcb || pc == e1 {
         assert false;                               // Fork / Jmp
       } else if pcb + 1 <= pc < e1 {
-        fx := TrueStampBackRE(r1, code, pcb + 1, e1, pc, cc, qc, qc', mx, q0, clk);
-        assert NI.NestInvRE(re, code, pcb, pce, pc - 1, cc, qc', mx);
+        fx, back := TrueStampBackRE(r1, code, pcb + 1, e1, pc, cc, qc, qc', mx, q0, clk);
+        assert NI.NestInvRE(re, code, pcb, pce, back, cc, qc', mx);
       } else {
-        fx := TrueStampBackRE(r2, code, e1 + 1, pce, pc, cc, qc, qc', mx, q0, clk);
-        assert NI.NestInvRE(re, code, pcb, pce, pc - 1, cc, qc', mx);
+        fx, back := TrueStampBackRE(r2, code, e1 + 1, pce, pc, cc, qc, qc', mx, q0, clk);
+        assert NI.NestInvRE(re, code, pcb, pce, back, cc, qc', mx);
       }
     case Re_con(r1, r2) =>
       assert {:split_here} true;
@@ -3161,11 +3517,11 @@ module LindenElkNestStamp {
       NR.NfaRepIncrRE(r1, code, pcb, e1);
       NR.NfaRepIncrRE(r2, code, e1, pce);
       if pc < e1 {
-        fx := TrueStampBackRE(r1, code, pcb, e1, pc, cc, qc, qc', mx, q0, clk);
-        assert NI.NestInvRE(re, code, pcb, pce, pc - 1, cc, qc', mx);
+        fx, back := TrueStampBackRE(r1, code, pcb, e1, pc, cc, qc, qc', mx, q0, clk);
+        assert NI.NestInvRE(re, code, pcb, pce, back, cc, qc', mx);
       } else {
-        fx := TrueStampBackRE(r2, code, e1, pce, pc, cc, qc, qc', mx, q0, clk);
-        assert NI.NestInvRE(re, code, pcb, pce, pc - 1, cc, qc', mx);
+        fx, back := TrueStampBackRE(r2, code, e1, pce, pc, cc, qc, qc', mx, q0, clk);
+        assert NI.NestInvRE(re, code, pcb, pce, back, cc, qc', mx);
       }
     case Re_capture(cid, r1) =>
       assert {:split_here} true;
@@ -3184,8 +3540,8 @@ module LindenElkNestStamp {
       if pc == pcb || pc == e1 {
         assert false;                               // SetRegisterToCP
       } else {
-        fx := TrueStampBackRE(r1, code, pcb + 1, e1, pc, cc, qc, qc', mx, q0, clk);
-        assert NI.NestInvRE(re, code, pcb, pce, pc - 1, cc, qc', mx);
+        fx, back := TrueStampBackRE(r1, code, pcb + 1, e1, pc, cc, qc, qc', mx, q0, clk);
+        assert NI.NestInvRE(re, code, pcb, pce, back, cc, qc', mx);
       }
     case Re_quant(nul, qid0, q, r1) =>
       assert {:split_here} true;
@@ -3201,12 +3557,12 @@ module LindenElkNestStamp {
         NR.NfaRepIncrMinRE(mn, qid0, r1, code, pcb, em);
         NR.NfaRepIncrOptRE(kx, q.greedy, qid0, r1, code, em, pce);
         if pc < em {
-          fx := TrueStampBackMin(mn, qid0, r1, code, pcb, em, pc, cc, qc, qc', mx, q0, clk);
+          fx, back := TrueStampBackMin(mn, qid0, r1, code, pcb, em, pc, cc, qc, qc', mx, q0, clk);
         } else {
-          fx := TrueStampBackOpt(kx, q.greedy, qid0, r1, code, em, pce, pc, cc, qc, qc', mx, q0, clk);
-          assert pc - 1 >= em;      // an Opt layer's first site is its fork, not a stamp
+          fx, back := TrueStampBackOpt(kx, q.greedy, qid0, r1, code, em, pce, pc, cc, qc, qc', mx, q0, clk);
+          assert back >= em;      // an Opt layer's first site is its fork, not a stamp
         }
-        assert NI.NestInvRE(re, code, pcb, pce, pc - 1, cc, qc', mx);
+        assert NI.NestInvRE(re, code, pcb, pce, back, cc, qc', mx);
         return;
       }
       if !(q.min == 0 && q.max == None) && nul != R.NonNullable && !q.greedy {
@@ -3216,41 +3572,69 @@ module LindenElkNestStamp {
         NR.NfaRepIncrMinRE(mn, qid0, r1, code, pcb, em);
         NR.NfaRepIncrRE(r1, code, em + 3, e1);
         if pc < em {
-          fx := TrueStampBackMin(mn, qid0, r1, code, pcb, em, pc, cc, qc, qc', mx, q0, clk);
-          NI.NestInvGenREIntro(nul, qid0, q, r1, code, pcb, pce, pc - 1, cc, qc', mx, em, e1);
+          fx, back := TrueStampBackMin(mn, qid0, r1, code, pcb, em, pc, cc, qc, qc', mx, q0, clk);
+          NI.NestInvGenREIntro(nul, qid0, q, r1, code, pcb, pce, back, cc, qc', mx, em, e1);
         } else if em + 3 <= pc < e1 {
           var qv := AI.get_idx(qc, qid0);
-          fx := TrueStampBackRE(r1, code, em + 3, e1, pc, cc, qc, qc', qv, q0, clk);
+          fx, back := TrueStampBackRE(r1, code, em + 3, e1, pc, cc, qc, qc', qv, q0, clk);
           assert AI.get_idx(qc', qid0) == qv;
-          NI.NestInvGenREIntro(nul, qid0, q, r1, code, pcb, pce, pc - 1, cc, qc', mx, em, e1);
+          NI.NestInvGenREIntro(nul, qid0, q, r1, code, pcb, pce, back, cc, qc', mx, em, e1);
         } else {
           assert false;                             // Fork/mark(false)/BeginLoop/EndLoop/Jmp
         }
         return;
       }
-      if !(q.min == 0 && q.max == None) && nul != R.NonNullable {
+      if !(q.min == 0 && q.max == None) && nul == R.CINullable {
         assert {:split_here} true;
         var mn1 := (q.min - 1) as nat;
         var em, e1 := NI.NestInvCinREInv(nul, qid0, q, r1, code, pcb, pce, pc, cc, qc, mx);
         NR.NfaRepIncrMinRE(mn1, qid0, r1, code, pcb, em);
         NR.NfaRepIncrRE(r1, code, em + 3, e1);
         if pc < em {
-          fx := TrueStampBackMin(mn1, qid0, r1, code, pcb, em, pc, cc, qc, qc', mx, q0, clk);
-          NI.NestInvCinREIntro(nul, qid0, q, r1, code, pcb, pce, pc - 1, cc, qc', mx, em, e1);
+          fx, back := TrueStampBackMin(mn1, qid0, r1, code, pcb, em, pc, cc, qc, qc', mx, q0, clk);
+          NI.NestInvCinREIntro(nul, qid0, q, r1, code, pcb, pce, back, cc, qc', mx, em, e1);
         } else if em + 3 <= pc < e1 {
           var qv := AI.get_idx(qc, qid0);
-          fx := TrueStampBackRE(r1, code, em + 3, e1, pc, cc, qc, qc', qv, q0, clk);
+          fx, back := TrueStampBackRE(r1, code, em + 3, e1, pc, cc, qc, qc', qv, q0, clk);
           assert AI.get_idx(qc', qid0) == qv;
-          NI.NestInvCinREIntro(nul, qid0, q, r1, code, pcb, pce, pc - 1, cc, qc', mx, em, e1);
+          NI.NestInvCinREIntro(nul, qid0, q, r1, code, pcb, pce, back, cc, qc', mx, em, e1);
         } else if pc == e1 + 2 {
           // THE BASE CASE: q0's own true stamp; the end fork's claim holds for
           // the fresh clock.
           assert qid0 == q0 as int;
           assert AI.get_idx(qc', qid0) == clk >= mx;
           fx := em + 1;
-          NI.NestInvCinREIntro(nul, qid0, q, r1, code, pcb, pce, pc - 1, cc, qc', mx, em, e1);
+          back := pc - 1;
+          NI.NestInvCinREIntro(nul, qid0, q, r1, code, pcb, pce, back, cc, qc', mx, em, e1);
         } else {
           assert false;                             // Fork/mark(false)/BeginLoop/EndLoop/end fork
+        }
+        return;
+      }
+      if !(q.min == 0 && q.max == None) && nul == R.CDNullable {
+        assert {:split_here} true;
+        var mn1 := (q.min - 1) as nat;
+        var em, e1 := NI.NestInvCdnREInv(nul, qid0, q, r1, code, pcb, pce, pc, cc, qc, mx);
+        NR.NfaRepIncrMinRE(mn1, qid0, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          fx, back := TrueStampBackMin(mn1, qid0, r1, code, pcb, em, pc, cc, qc, qc', mx, q0, clk);
+          NI.NestInvCdnREIntro(nul, qid0, q, r1, code, pcb, pce, back, cc, qc', mx, em, e1);
+        } else if em + 3 <= pc < e1 {
+          var qv := AI.get_idx(qc, qid0);
+          fx, back := TrueStampBackRE(r1, code, em + 3, e1, pc, cc, qc, qc', qv, q0, clk);
+          assert AI.get_idx(qc', qid0) == qv;
+          NI.NestInvCdnREIntro(nul, qid0, q, r1, code, pcb, pce, back, cc, qc', mx, em, e1);
+        } else if pc == e1 + 3 {
+          // THE BASE CASE: q0's own true stamp; the end fork's claim holds for
+          // the fresh clock.
+          assert qid0 == q0 as int;
+          assert AI.get_idx(qc', qid0) == clk >= mx;
+          fx := em + 1;
+          back := pc - 2;                               // (G5a) over the guard at e1 + 2, onto the end fork at e1 + 1
+          NI.NestInvCdnREIntro(nul, qid0, q, r1, code, pcb, pce, back, cc, qc', mx, em, e1);
+        } else {
+          assert false;                             // Fork/mark(false)/BeginLoop/EndLoop/end fork/CheckNullable
         }
         return;
       }
@@ -3272,15 +3656,15 @@ module LindenElkNestStamp {
         NR.NfaRepIncrMinRE(mn1, qid0, r1, code, pcb, em);
         NR.NfaRepIncrRE(r1, code, em + 1, e1);
         if pc < em {
-          fx := TrueStampBackMin(mn1, qid0, r1, code, pcb, em, pc, cc, qc, qc', mx, q0, clk);
+          fx, back := TrueStampBackMin(mn1, qid0, r1, code, pcb, em, pc, cc, qc, qc', mx, q0, clk);
         } else if em + 1 <= pc < e1 {
           var qv := AI.get_idx(qc, qid0);
-          fx := TrueStampBackRE(r1, code, em + 1, e1, pc, cc, qc, qc', qv, q0, clk);
+          fx, back := TrueStampBackRE(r1, code, em + 1, e1, pc, cc, qc, qc', qv, q0, clk);
           assert AI.get_idx(qc', qid0) == qv;
         } else {
           assert false;                             // the mark(false) / the backward fork
         }
-        assert NI.NestInvRE(re, code, pcb, pce, pc - 1, cc, qc', mx);
+        assert NI.NestInvRE(re, code, pcb, pce, back, cc, qc', mx);
         return;
       }
       // the star
@@ -3301,9 +3685,9 @@ module LindenElkNestStamp {
       NR.NfaRepIncrRE(r1, code, pcb + 3, e1);
       if pcb + 3 <= pc < e1 {
         var qv := AI.get_idx(qc, qid0);
-        fx := TrueStampBackRE(r1, code, pcb + 3, e1, pc, cc, qc, qc', qv, q0, clk);
+        fx, back := TrueStampBackRE(r1, code, pcb + 3, e1, pc, cc, qc, qc', qv, q0, clk);
         assert AI.get_idx(qc', qid0) == qv;
-        assert NI.NestInvRE(re, code, pcb, pce, pc - 1, cc, qc', mx);
+        assert NI.NestInvRE(re, code, pcb, pce, back, cc, qc', mx);
       } else {
         assert false;                               // Fork/mark(false)/BeginLoop/EndLoop/Jmp
       }
@@ -3329,9 +3713,9 @@ module LindenElkNestStamp {
     assert q0 >= 0 by { NI.CodeShapeAt(re, code, 0, endl, pc); }
     var q: nat := q0 as nat;
     TrueStampSite(re, code, 0, endl, pc, cc, qc, -1, q);
-    var fx := TrueStampBackRE(re, code, 0, endl, pc, cc, qc, qc', -1, q, clk);
-    assert NI.StepEdgeRE(code, pc - 1, pc + 1);
-    NI.NestInvAdvance(re, code, 0, endl, pc - 1, pc + 1, cc, qc', -1);
+    var fx, back := TrueStampBackRE(re, code, 0, endl, pc, cc, qc, qc', -1, q, clk);
+    assert NI.StepEdgeRE(code, back, pc + 1);
+    NI.NestInvAdvance(re, code, 0, endl, back, pc + 1, cc, qc', -1);
   }
 
 }

@@ -148,6 +148,7 @@ module LindenElkLookCapture {
     requires NR.LookBehindFragmentRE(body) && NR.LookFreeRE(body)
     ensures CM.NoLookWriteCode(CP.compile_to_bytecode(body))
   {
+    hide *; reveal NR.GetPcRE, CM.NoLookWriteCode;   // (G5a) a marginal lemma: only these two need a body
     var code := CP.compile_to_bytecode(body);
     var next := CP.compile(body, 0, CP.Progress).1;
     NR.CompileToBytecodeRepLookBehind(body);

@@ -580,6 +580,7 @@ module LindenElkMainCinLk {
     CM.FInitStateRegsWf(code, 0, ncap, nlook, nquant, 0, ctx);
     M.FFindMatchRegsWf(code, str, inits, ov, LAnc.Forward, crv.f_main_cdns, ncap, nlook, nquant);
     assert CM.ThreadRegsWf(best, ncap, nlook, nquant);
+    FRD.NestedNoCdnPlus(re);   // (G5a) TrueStampsInCin's premise
     FRD.TrueStampsInCin(re, code, endl);
     FV.RegsFinalOkInit(ncap, nlook, nquant, |str|, Q);
     assert FV.VmRegsFinalOk(inits, |str|, Q) by {

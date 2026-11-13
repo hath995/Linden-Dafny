@@ -470,10 +470,17 @@ module LindenElkOracleDecompV {
         NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
         NR.NfaRepIncrRE(r1, code, em + 3, e1);
         assert false;
-      } else if nul != R.NonNullable {
+      } else if nul == R.CINullable {
         // §2.5b CIN-GREEDY: the loop tail alone spans six instructions, so an
         // empty block is refuted.
         var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, code, start, start);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        assert false;
+      } else if nul == R.CDNullable {
+        // §2.5b CDN-GREEDY (G5a): the loop tail alone spans six instructions, so an
+        // empty block is refuted.
+        var em, e1 := NR.NfaRepRECdnInv(nul, qid, q, r1, code, start, start);
         NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
         NR.NfaRepIncrRE(r1, code, em + 3, e1);
         assert false;
@@ -691,6 +698,7 @@ module LindenElkOracleDecompV {
       is NOT needed: a lookaround block enters onto its own gate pin. */
   lemma BlockEntryV(re: R.regex, code: RB.code, start: nat, endl: nat, str: string, ov: LOr.OracleView, cp: int)
     requires NR.NfaRepRE(re, code, start, endl)
+    requires NR.NestedFragmentRE(re)   // (G5a) a look body: its greedy nullable plus is CIN (the CDN arm of NfaRepRE is G5b's here)
     ensures InBlockV(re, code, start, endl, str, ov, cp, start, cp) || start == endl
     decreases CP.rsize(re), 0, 0
   {
@@ -1140,18 +1148,22 @@ module LindenElkOracleDecompV {
         EdgeFromCheckOracleV(code, str, ov, lid, pc, eb, cp, pc2, eb2, cp2);
         assert LOr.view_get_oracle(ov, i, lid);
       } else {
+        assert {:split_here} true;   // (G5a) one batch per arm
         EdgeFromNegCheckOracleV(code, str, ov, lid, pc, eb, cp, pc2, eb2, cp2);
         assert !LOr.view_get_oracle(ov, i, lid);
       }
       assert pc2 == endl && cp2 == i;
       assert OBV.MatchesV(re, str, ov, i, cp2);
     case Re_character(ch) =>
+      assert {:split_here} true;   // (G5a) one batch per arm
       EdgeFromConsumeV(code, str, ov, T.ExpectationOf(ch), pc, eb, cp, pc2, eb2, cp2);
       assert OBV.MatchesV(re, str, ov, i, cp2);
     case Re_anchor(a) =>
+      assert {:split_here} true;   // (G5a) one batch per arm
       EdgeFromAnchorV(code, str, ov, a, pc, eb, cp, pc2, eb2, cp2);
       assert OBV.MatchesV(re, str, ov, i, cp2);
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (G5a) one batch per arm
       var e1: nat :| OD.AltShape(r1, r2, code, start, e1, endl)
         && ((pc == start && cp == i)
             || InBlockV(r1, code, start + 1, e1, str, ov, i, pc, cp)
@@ -1180,12 +1192,15 @@ module LindenElkOracleDecompV {
           }
         }
       } else if InBlockV(r1, code, start + 1, e1, str, ov, i, pc, cp) {
+        assert {:split_here} true;   // (G5a) one batch per arm
         BlockStepV(r1, code, start + 1, e1, str, ov, i, pc, eb, cp, pc2, eb2, cp2);
         assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
       } else if pc == e1 && OBV.MatchesV(r1, str, ov, i, cp) {
+        assert {:split_here} true;   // (G5a) one batch per arm
         EdgeFromJmpV(code, str, ov, endl as int, pc, eb, cp, pc2, eb2, cp2);
         assert pc2 == endl && OBV.MatchesV(re, str, ov, i, cp2);
       } else {
+        assert {:split_here} true;   // (G5a) one batch per arm
         BlockStepV(r2, code, e1 + 1, endl, str, ov, i, pc, eb, cp, pc2, eb2, cp2);
         if InBlockV(r2, code, e1 + 1, endl, str, ov, i, pc2, cp2) {
           assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
@@ -1194,6 +1209,7 @@ module LindenElkOracleDecompV {
         }
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (G5a) one batch per arm
       var e1: nat :| OD.ConShape(r1, r2, code, start, e1, endl)
         && (InBlockV(r1, code, start, e1, str, ov, i, pc, cp)
             || exists m: int :: OBV.MatchesV(r1, str, ov, i, m) && InBlockV(r2, code, e1, endl, str, ov, m, pc, cp));
@@ -1212,6 +1228,7 @@ module LindenElkOracleDecompV {
           }
         }
       } else {
+        assert {:split_here} true;   // (G5a) one batch per arm
         var m: int :| OBV.MatchesV(r1, str, ov, i, m) && InBlockV(r2, code, e1, endl, str, ov, m, pc, cp);
         BlockStepV(r2, code, e1, endl, str, ov, m, pc, eb, cp, pc2, eb2, cp2);
         if InBlockV(r2, code, e1, endl, str, ov, m, pc2, cp2) {
@@ -1221,6 +1238,7 @@ module LindenElkOracleDecompV {
         }
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (G5a) one batch per arm
       var e1: nat :| OD.CapShape(cid, r1, code, start, e1, endl)
         && ((pc == start && cp == i)
             || InBlockV(r1, code, start + 1, e1, str, ov, i, pc, cp)
@@ -1236,14 +1254,17 @@ module LindenElkOracleDecompV {
           assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
         }
       } else if InBlockV(r1, code, start + 1, e1, str, ov, i, pc, cp) {
+        assert {:split_here} true;   // (G5a) one batch per arm
         BlockStepV(r1, code, start + 1, e1, str, ov, i, pc, eb, cp, pc2, eb2, cp2);
         assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
       } else {
+        assert {:split_here} true;   // (G5a) one batch per arm
         EdgeFromSetRegV(code, str, ov, CP.end_reg(cid), pc, eb, cp, pc2, eb2, cp2);
         assert pc2 == endl && OBV.MatchesV(re, str, ov, i, cp2);
       }
     case Re_quant(nul, qid, q, r1) =>
       if q.min == 0 && q.max == None {
+        assert {:split_here} true;   // (G5a) one batch per arm
         var es1: nat :| OD.StarShape(qid, r1, code, start, es1, endl)
           && StTailV(qid, r1, code, start, es1, str, ov, i, pc, cp);
         var m := StTailVInv(qid, r1, code, start, es1, str, ov, i, pc, cp);
@@ -1290,6 +1311,7 @@ module LindenElkOracleDecompV {
           assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
         }
       } else if q.max.Some? {
+        assert {:split_here} true;   // (G5a) one batch per arm
         var em: nat :|
           NR.NfaRepMinRE(q.min as nat, qid, r1, code, start, em)
           && NR.NfaRepOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl)
@@ -1323,6 +1345,7 @@ module LindenElkOracleDecompV {
           }
         }
       } else if nul != R.NonNullable && !q.greedy {
+        assert {:split_here} true;   // (G5a) one batch per arm
         // §2.5a GENERIC: min forced copies, then the ordinary star loop at em
         var em: nat, es1: nat :|
           NR.NfaRepMinRE(q.min as nat, qid, r1, code, start, em)
@@ -1381,6 +1404,7 @@ module LindenElkOracleDecompV {
           }
         }
       } else if nul != R.NonNullable {
+        assert {:split_here} true;   // (G5a) one batch per arm
         // §2.5b CIN-GREEDY: min-1 forced copies, then the stamped end-fork
         // loop; the head fork's SKIP arm exits over the stamp-true with the
         // NULLED iteration -- the empty span the CI-nullable body always has
@@ -1459,12 +1483,14 @@ module LindenElkOracleDecompV {
           }
         }
       } else {
+        assert {:split_here} true;   // (G5a) one batch per arm
         var em: nat, e1: nat :|
           NR.NfaRepMinRE((q.min - 1) as nat, qid, r1, code, start, em)
           && OD.DoWhileShape(qid, r1, code, em, e1, endl)
           && (InMinV((q.min - 1) as nat, qid, r1, code, start, em, str, ov, i, pc, cp)
               || DwTailV((q.min - 1) as nat, qid, r1, code, em, e1, str, ov, i, pc, cp));
         if InMinV((q.min - 1) as nat, qid, r1, code, start, em, str, ov, i, pc, cp) {
+          assert {:split_here} true;   // (G5a) sub-batch
           BlockStepMinV((q.min - 1) as nat, qid, r1, code, start, em, str, ov, i, pc, eb, cp, pc2, eb2, cp2);
           if InMinV((q.min - 1) as nat, qid, r1, code, start, em, str, ov, i, pc2, cp2) {
             assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
@@ -1474,8 +1500,10 @@ module LindenElkOracleDecompV {
             assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
           }
         } else {
+          assert {:split_here} true;   // (G5a) sub-batch
           var m := DwTailVInv((q.min - 1) as nat, qid, r1, code, em, e1, str, ov, i, pc, cp);
           if pc == em && cp == m {
+            assert {:split_here} true;   // (G5a) sub-batch
             EdgeFromSetQuantV(code, str, ov, qid, false, pc, eb, cp, pc2, eb2, cp2);
             BlockEntryV(r1, code, em + 1, e1, str, ov, m);
             if em + 1 == e1 {
@@ -1487,10 +1515,12 @@ module LindenElkOracleDecompV {
               assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
             }
           } else if InBlockV(r1, code, em + 1, e1, str, ov, m, pc, cp) {
+            assert {:split_here} true;   // (G5a) sub-batch
             BlockStepV(r1, code, em + 1, e1, str, ov, m, pc, eb, cp, pc2, eb2, cp2);
             DwTailVIntro((q.min - 1) as nat, qid, r1, code, em, e1, str, ov, i, pc2, cp2, m);
             assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
           } else {
+            assert {:split_here} true;   // (G5a) sub-batch
             assert OB.ForkAt(code, e1, em, endl);
             EdgeFromForkAtV(code, str, ov, em, endl, pc, eb, cp, pc2, eb2, cp2);
             if pc2 == em {
@@ -1562,6 +1592,7 @@ module LindenElkOracleDecompV {
                   pc1: nat, eb1: bool, cp1: int, pc: nat, eb: bool, cp: int)
     requires OD.StarShape(0, R.Re_character(R.Dot), code, 0, 4, 6)
     requires NR.NfaRepRE(body, code, 6, next)
+    requires NR.NestedFragmentRE(body)   // (G5a) for BlockEntryV
     requires 6 <= next
     requires pc1 <= 5 && 0 <= cp1
     requires AnyEdgeV(code, str, ov, pc1, eb1, cp1, pc, eb, cp)

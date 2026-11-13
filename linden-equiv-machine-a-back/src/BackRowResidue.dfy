@@ -410,6 +410,7 @@ module LindenElkBackRowResidue {
     QuantUniqueFXR(body);
     CinQidsFXR(body);
     var endl := FST.FXRCompileFacts(body);
+    FRD.NestedNoCdnPlus(FST.FXR(body));   // (G5a) TrueStampsInCin's premise
     FRD.TrueStampsInCin(FST.FXR(body), CP.compile_to_bytecode(FST.FXR(body)), endl);
   }
 
@@ -493,6 +494,7 @@ module LindenElkBackRowResidue {
     var next := CP.compile(rb, 0, CP.Progress).1;
     RevQuantUnique(body);
     RevCinQids(body);
+    FRD.NestedNoCdnPlus(rb);   // (G5a) TrueStampsInCin's premise
     FRD.TrueStampsInCin(rb, CP.compile_to_bytecode(rb), next as nat);
   }
 

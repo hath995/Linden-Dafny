@@ -178,10 +178,24 @@ module LindenElkPikeInv {
         // pc in {em, em+1, em+2, e1}: Fork/SetQuantToClock/BeginLoop/EndLoop, not a Jmp
         return;
       }
-      if !(q.min == 0 && q.max == None) && nul != R.NonNullable {
+      if !(q.min == 0 && q.max == None) && nul == R.CINullable {
         // §2.5b CIN-GREEDY: NO Jmp anywhere in the loop's own six
         // instructions (two forks, two stamps, BeginLoop, EndLoop)
         var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, code, pc1, pc2);
+        var mn1 := (q.min - 1) as nat;
+        NR.NfaRepIncrMinRE(mn1, qid, r1, code, pc1, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          CompileJumpsMinRE(mn1, qid, r1, code, pc1, em, pc, next);
+        } else if em + 3 <= pc < e1 {
+          CompileJumpsRE(r1, code, em + 3, e1, pc, next);
+        }
+        return;
+      }
+      if !(q.min == 0 && q.max == None) && nul == R.CDNullable {
+        // §2.5b CDN-GREEDY (G5a): NO Jmp anywhere in the loop's own six
+        // instructions (two forks, two stamps, BeginLoop, EndLoop)
+        var em, e1 := NR.NfaRepRECdnInv(nul, qid, q, r1, code, pc1, pc2);
         var mn1 := (q.min - 1) as nat;
         NR.NfaRepIncrMinRE(mn1, qid, r1, code, pc1, em);
         NR.NfaRepIncrRE(r1, code, em + 3, e1);

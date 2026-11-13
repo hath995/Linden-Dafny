@@ -598,10 +598,17 @@ module LindenElkOracleDecomp {
         NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
         NR.NfaRepIncrRE(r1, code, em + 3, e1);
         assert false;
-      } else if nul != R.NonNullable {
+      } else if nul == R.CINullable {
         // §2.5b CIN-GREEDY: the block cannot be empty (the loop tail alone
         // spans six instructions), so `start == start` is refuted.
         var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, code, start, start);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        assert false;
+      } else if nul == R.CDNullable {
+        // §2.5b CDN-GREEDY (G5a): the block cannot be empty (the loop tail alone
+        // spans six instructions), so `start == start` is refuted.
+        var em, e1 := NR.NfaRepRECdnInv(nul, qid, q, r1, code, start, start);
         NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
         NR.NfaRepIncrRE(r1, code, em + 3, e1);
         assert false;
@@ -939,6 +946,7 @@ module LindenElkOracleDecomp {
   lemma BlockEntry(re: R.regex, code: RB.code, start: nat, endl: nat, str: string, cp: int)
     requires NR.LookFreeRE(re)
     requires NR.NfaRepRE(re, code, start, endl)
+    requires NR.PlusFragmentRE(re)   // (G5a) its greedy nullable plus is CIN
     ensures InBlock(re, code, start, endl, str, cp, start, cp) || start == endl
     decreases CP.rsize(re), 0, 0
   {
@@ -1267,12 +1275,15 @@ module LindenElkOracleDecomp {
     case Re_empty =>
     case Re_lookaround(_, _, _) =>
     case Re_character(ch) =>
+      assert {:split_here} true;   // (G5a) one batch per arm
       EdgeFromConsume(code, str, T.ExpectationOf(ch), pc, eb, cp, pc2, eb2, cp2);
       assert OB.Matches(re, str, i, cp2);
     case Re_anchor(a) =>
+      assert {:split_here} true;   // (G5a) one batch per arm
       EdgeFromAnchor(code, str, a, pc, eb, cp, pc2, eb2, cp2);
       assert OB.Matches(re, str, i, cp2);
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (G5a) one batch per arm
       var e1: nat :| AltShape(r1, r2, code, start, e1, endl)
         && ((pc == start && cp == i)
             || InBlock(r1, code, start + 1, e1, str, i, pc, cp)
@@ -1301,12 +1312,15 @@ module LindenElkOracleDecomp {
           }
         }
       } else if InBlock(r1, code, start + 1, e1, str, i, pc, cp) {
+        assert {:split_here} true;   // (G5a) one batch per arm
         BlockStep(r1, code, start + 1, e1, str, i, pc, eb, cp, pc2, eb2, cp2);
         assert InBlock(re, code, start, endl, str, i, pc2, cp2);
       } else if pc == e1 && OB.Matches(r1, str, i, cp) {
+        assert {:split_here} true;   // (G5a) one batch per arm
         EdgeFromJmp(code, str, endl as int, pc, eb, cp, pc2, eb2, cp2);
         assert pc2 == endl && OB.Matches(re, str, i, cp2);
       } else {
+        assert {:split_here} true;   // (G5a) one batch per arm
         BlockStep(r2, code, e1 + 1, endl, str, i, pc, eb, cp, pc2, eb2, cp2);
         if InBlock(r2, code, e1 + 1, endl, str, i, pc2, cp2) {
           assert InBlock(re, code, start, endl, str, i, pc2, cp2);
@@ -1315,6 +1329,7 @@ module LindenElkOracleDecomp {
         }
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (G5a) one batch per arm
       var e1: nat :| ConShape(r1, r2, code, start, e1, endl)
         && (InBlock(r1, code, start, e1, str, i, pc, cp)
             || exists m: int :: OB.Matches(r1, str, i, m) && InBlock(r2, code, e1, endl, str, m, pc, cp));
@@ -1334,6 +1349,7 @@ module LindenElkOracleDecomp {
           }
         }
       } else {
+        assert {:split_here} true;   // (G5a) one batch per arm
         var m: int :| OB.Matches(r1, str, i, m) && InBlock(r2, code, e1, endl, str, m, pc, cp);
         BlockStep(r2, code, e1, endl, str, m, pc, eb, cp, pc2, eb2, cp2);
         if InBlock(r2, code, e1, endl, str, m, pc2, cp2) {
@@ -1343,6 +1359,7 @@ module LindenElkOracleDecomp {
         }
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (G5a) one batch per arm
       var e1: nat :| CapShape(cid, r1, code, start, e1, endl)
         && ((pc == start && cp == i)
             || InBlock(r1, code, start + 1, e1, str, i, pc, cp)
@@ -1358,14 +1375,17 @@ module LindenElkOracleDecomp {
           assert InBlock(re, code, start, endl, str, i, pc2, cp2);
         }
       } else if InBlock(r1, code, start + 1, e1, str, i, pc, cp) {
+        assert {:split_here} true;   // (G5a) one batch per arm
         BlockStep(r1, code, start + 1, e1, str, i, pc, eb, cp, pc2, eb2, cp2);
         assert InBlock(re, code, start, endl, str, i, pc2, cp2);
       } else {
+        assert {:split_here} true;   // (G5a) one batch per arm
         EdgeFromSetReg(code, str, CP.end_reg(cid), pc, eb, cp, pc2, eb2, cp2);
         assert pc2 == endl && OB.Matches(re, str, i, cp2);
       }
     case Re_quant(nul, qid, q, r1) =>
       if q.min == 0 && q.max == None {
+        assert {:split_here} true;   // (G5a) one batch per arm
         var es1: nat :| StarShape(qid, r1, code, start, es1, endl)
           && StTail(qid, r1, code, start, es1, str, i, pc, cp);
         var m := StTailInv(qid, r1, code, start, es1, str, i, pc, cp);
@@ -1412,6 +1432,7 @@ module LindenElkOracleDecomp {
           assert InBlock(re, code, start, endl, str, i, pc2, cp2);
         }
       } else if q.max.Some? {
+        assert {:split_here} true;   // (G5a) one batch per arm
         var em: nat :|
           NR.NfaRepMinRE(q.min as nat, qid, r1, code, start, em)
           && NR.NfaRepOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl)
@@ -1446,6 +1467,7 @@ module LindenElkOracleDecomp {
           }
         }
       } else if nul != R.NonNullable && !q.greedy {
+        assert {:split_here} true;   // (G5a) one batch per arm
         // §2.5a GENERIC: `min` forced copies, then the ordinary star loop at
         // `em` -- the forced-copy half mirrors the do-while's `InMin` branch
         // (with `q.min`, not `q.min - 1`), and the loop half is the `q.min == 0`
@@ -1509,6 +1531,7 @@ module LindenElkOracleDecomp {
           }
         }
       } else if nul != R.NonNullable {
+        assert {:split_here} true;   // (G5a) one batch per arm
         // §2.5b CIN-GREEDY: min-1 forced copies, then the stamped end-fork
         // loop. Two exits: the end fork after a completed span (>= min spans
         // total), and the head fork's SKIP arm over the stamp-true — the
@@ -1593,6 +1616,7 @@ module LindenElkOracleDecomp {
           }
         }
       } else {
+        assert {:split_here} true;   // (G5a) one batch per arm
         var em: nat, e1: nat :|
           NR.NfaRepMinRE((q.min - 1) as nat, qid, r1, code, start, em)
           && DoWhileShape(qid, r1, code, em, e1, endl)
@@ -1764,6 +1788,7 @@ module LindenElkOracleDecomp {
     requires NR.LookFreeRE(body)
     requires StarShape(0, R.Re_character(R.Dot), code, 0, 4, 6)
     requires NR.NfaRepRE(body, code, 6, next)
+    requires NR.PlusFragmentRE(body)   // (G5a) for BlockEntry
     requires 6 <= next
     requires pc1 <= 5 && 0 <= cp1
     requires AnyEdge(code, str, pc1, eb1, cp1, pc, eb, cp)

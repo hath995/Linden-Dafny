@@ -899,9 +899,21 @@ module LindenElkLiftSimCore {
           GatePolarityRE(r1, qm, code, em + 3, e1, pc);
         } else {
         }
-      } else if nul != R.NonNullable {
+      } else if nul == R.CINullable {
         // §2.5b CIN-GREEDY: the loop's six own instructions carry no gate
         var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          GatePolarityMinRE((q.min - 1) as nat, qid, r1, qm, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          GatePolarityRE(r1, qm, code, em + 3, e1, pc);
+        } else {
+        }
+      } else if nul == R.CDNullable {
+        // §2.5b CDN-GREEDY (G5a): the loop's six own instructions carry no gate
+        var em, e1 := NR.NfaRepRECdnInv(nul, qid, q, r1, code, start, endl);
         NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
         NR.NfaRepIncrRE(r1, code, em + 3, e1);
         if pc < em {
