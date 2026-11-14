@@ -162,6 +162,19 @@ verify .*Lemma`); `--boogie` options are rejected by `.doo` manifests (use manif
 deps for Boogie `/proc`, `/trace`); Dafny "starts at column" is 1-based, warning columns 0-based;
 `.doo` error locations point into the serialized `program`, not source lines.
 
+### 3.1 `dafny verify` green is not `lem pack` green (2026-11-14)
+
+`lem pack` runs `dafny build -t:lib`, which verifies through a different path from `dafny verify`.
+* The same batch can behave very differently. `AtBackForkTreeRepNested` was one assertion batch: 31 s under
+  `verify`, but under `build` it drove one z3 to 19–21 GB and OOM-stopped the pack twice. Binaries, deps and
+  flags were identical. Splitting it per arm (`split_here` + per-leaf postcondition asserts) fixed both.
+* **Before a pack, check every large un-split lemma under `build`, not just `verify`.**
+* To diagnose under `build`, which prints nothing until it ends (`/trace` and `/proverLog` name nothing):
+  1. Run the member's exact pack build with `--verification-time-limit:90`. The runaway times out and the
+     summary names lemma and line.
+  2. Loop on that lemma alone with `--boogie /proc:*Lemma*`, against manifest-patched deps (std-libs off).
+* Scripts: `packbuild.sh` and `patchdeps.sh` in `~/code/Linden-Dafny-scratch/work/g5p3/` (README there).
+
 ## 4. From the Dafny-VMC guidelines (adopted / not adopted)
 
 Adopted: make functions opaque; name preconditions and reveal only when necessary; keep each
