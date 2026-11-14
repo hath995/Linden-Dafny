@@ -156,6 +156,11 @@ module LindenElkTreeThread {
       NfaRepLTransparentAtBeginLoop(rer, qm, r1, code, pc1, e1);
       NfaRepLTransparentAtBeginLoop(rer, qm, r2, code, e1, pc2);
     case Quantified(greedy, min, delta, r1) =>
+      if min == 0 && delta == LN.Inf && AR.NfaRepStarCdnL(rer, qm, r1, code, pc1, pc2) {
+        // (G5a-1 P2) the CDN loop view of a residual star starts at its end fork
+        var em, e1 := AR.NfaRepLStarCdnInv(rer, qm, r1, code, pc1, pc2);
+        assert false;   // Fork != BeginLoop
+      }
       // pins Fork (star / bounded head) or SetQuantToClock (forced-copy head).
       // §2.5a: the GENERIC unbounded arm lives behind `NfaRepGenL`'s trigger,
       // so its head fact has to be unfolded by hand rather than by the

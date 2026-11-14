@@ -49,6 +49,15 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-back-value"
 
 [[package]]
+name = "linden.equiv-cdn-priority"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-cdn-priority"
+
+[[package]]
 name = "linden.equiv-check-erase"
 class = 1
 version = "1.0.0"

@@ -1,7 +1,16 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:85f5116aed4cb93db0d380967995588aa04c89693c1a600fb0a649530133e7f9"
+manifest-hash = "sha256:3af88bc7792c88acc8ecb2a44fd65d85704e2823c57a2f34674a4c60b3ed31b9"
+
+[[package]]
+name = "linden.engine-model"
+class = 1
+version = "1.0.2"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-engine-model"
 
 [[package]]
 name = "linden.equiv-look-tables"
@@ -11,6 +20,60 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-look-tables"
+
+[[package]]
+name = "linden.equiv-mirror"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-mirror"
+
+[[package]]
+name = "linden.equiv-oracle-bridge"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-bridge"
+
+[[package]]
+name = "linden.equiv-oracle-build"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-build"
+
+[[package]]
+name = "linden.equiv-oracle-decomp"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-decomp"
+
+[[package]]
+name = "linden.equiv-oracle-reach"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-reach"
+
+[[package]]
+name = "linden.equiv-oracle-spec"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-spec"
 
 [[package]]
 name = "linden.equiv-oracle-sweep"
@@ -65,3 +128,12 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-nfa-rep-re"
+
+[[package]]
+name = "linden.equiv-entry-lk"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-entry-lk"

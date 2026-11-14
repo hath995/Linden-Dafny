@@ -42,6 +42,7 @@ module LindenElkActionsRep {
   import T = LindenElkTranslate
   import NR = LindenElkNfaRep
   import NUL = LindenElkNullable
+  import EL = LindenElkEntryLk   // (G5a-1 row A3) the switch `CdnHeadsOn` in the CDN loop view
   import LOr = Oracle
 
   // The erased-id tables: RegElk's bytecode carries bare integer ids where the
@@ -338,6 +339,28 @@ module LindenElkActionsRep {
       && pc2 == e1 + 3
   }
 
+  /** (G5a-1 row A3) The residual star `r1*` seen from the CDN-greedy loop's BACKWARD end fork (`pc1 == e1 + 1`,
+      the `Fork(em + 1, e1 + 4)` after the loop's `EndLoop`): re-entry through the clock-mark and `BeginLoop`
+      at `em + 1`, exit straight to `e1 + 4`, past the guard at `e1 + 2` and the stamp at `e1 + 3` (which only
+      the HEAD fork's skip arm runs). `NfaRepStarCinL` with the guard. OPAQUE, like `NfaRepCdnL`. */
+  opaque ghost predicate NfaRepStarCdnL(rer: LW.RegExpRecord, qm: QMap, r1: L.Regex, c: RB.code, pc1: nat, pc2: nat)
+    decreases r1, 2
+  {
+    exists em: nat, e1: nat {:trigger NfaRepL(rer, qm, r1, c, em + 3, e1)} ::
+      pc1 == e1 + 1
+      && NR.GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 4))
+      && (exists qid: int ::
+            NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+            && NR.GetPcRE(c, e1 + 2) == Some(RB.CheckNullable(qid))
+            && NR.GetPcRE(c, e1 + 3) == Some(RB.SetQuantToClock(qid, true))
+            && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1)
+            && StampBodyOk(qm, qid, r1))
+      && NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+      && NfaRepL(rer, qm, r1, c, em + 3, e1)
+      && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+      && pc2 == e1 + 4
+  }
+
   ghost predicate NfaRepL(rer: LW.RegExpRecord, qm: QMap, r: L.Regex, c: RB.code, pc1: nat, pc2: nat)
     decreases r, 1
   {
@@ -384,6 +407,12 @@ module LindenElkActionsRep {
         // loop's backward end fork — only a CI-nullable GREEDY body loops
         // this way (guard-disjoint from the do-while's `NonNullableL`)
         || (NUL.CINullableL(r1) && greedy && NfaRepStarCinL(rer, qm, r1, c, pc1, pc2))
+        // ... or the CDN LOOP VIEW (G5a-1 row A3): the star seen from the CDN-greedy loop's backward end
+        // fork. Guard-disjoint from the three above. `EL.CdnHeadsOn()` is the fragment's switch: a producer
+        // holds it from the plus head's atom (`EL.CdnHeadOn`); until row F a consumer may dismiss the
+        // disjunct through `NfaRepLStarLoopViews`.
+        || (!NUL.NonNullableL(r1) && !NUL.CINullableL(r1) && greedy && EL.CdnHeadsOn()
+            && NfaRepStarCdnL(rer, qm, r1, c, pc1, pc2))
       else
         // bounded {min,min+kx}: min forced copies, then kx optional layers;
         // unbounded min > 0 is the engine's do-while, represented only for
@@ -755,6 +784,85 @@ module LindenElkActionsRep {
     NfaRepIncrL(rer, qm, r1, c, em + 3, e1);
   }
 
+  /** (G5a-1 row A3) Introduction lemma for the CDN loop-view arm of `NfaRepL`'s star. */
+  lemma NfaRepLStarCdnIntro(rer: LW.RegExpRecord, qm: QMap, r1: L.Regex, c: RB.code, em: nat, e1: nat, qid: int)
+    requires !NUL.NonNullableL(r1) && !NUL.CINullableL(r1)
+    requires EL.CdnHeadsOn()   // from the plus head's atom: `EL.CdnHeadOn`
+    requires NR.GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 4))
+    requires NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    requires NR.GetPcRE(c, e1 + 2) == Some(RB.CheckNullable(qid))
+    requires NR.GetPcRE(c, e1 + 3) == Some(RB.SetQuantToClock(qid, true))
+    requires qid in qm.quants && qm.quants[qid] == L.DefGroups(r1)
+    requires StampBodyOk(qm, qid, r1)
+    requires NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+    requires NfaRepL(rer, qm, r1, c, em + 3, e1)
+    requires NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+    ensures NfaRepL(rer, qm, L.Quantified(true, 0, LN.Inf, r1), c, e1 + 1, e1 + 4)
+  {
+    assert NfaRepStarCdnL(rer, qm, r1, c, e1 + 1, e1 + 4) by { reveal NfaRepStarCdnL(); }
+  }
+
+  /** (G5a-1 row A3) Inversion lemma for the CDN loop view. */
+  lemma NfaRepLStarCdnInv(rer: LW.RegExpRecord, qm: QMap, r1: L.Regex, c: RB.code, pc1: nat, pc2: nat) returns (em: nat, e1: nat)
+    requires NfaRepStarCdnL(rer, qm, r1, c, pc1, pc2)
+    ensures pc1 == e1 + 1 && pc2 == e1 + 4 && em + 3 <= e1
+    ensures NR.GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 4))
+    ensures exists qid: int ::
+      NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(c, e1 + 2) == Some(RB.CheckNullable(qid))
+      && NR.GetPcRE(c, e1 + 3) == Some(RB.SetQuantToClock(qid, true))
+      && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1)
+      && StampBodyOk(qm, qid, r1)
+    ensures NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+    ensures NfaRepL(rer, qm, r1, c, em + 3, e1)
+    ensures NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+    decreases r1, 2
+  {
+    reveal NfaRepStarCdnL();
+    em, e1 :|
+      pc1 == e1 + 1
+      && NR.GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 4))
+      && (exists qid: int ::
+            NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+            && NR.GetPcRE(c, e1 + 2) == Some(RB.CheckNullable(qid))
+            && NR.GetPcRE(c, e1 + 3) == Some(RB.SetQuantToClock(qid, true))
+            && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1)
+            && StampBodyOk(qm, qid, r1))
+      && NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+      && NfaRepL(rer, qm, r1, c, em + 3, e1)
+      && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+      && pc2 == e1 + 4;
+    NfaRepIncrL(rer, qm, r1, c, em + 3, e1);
+  }
+
+  /** (G5a-1 row A3) ONE inversion for both greedy nullable loop views, for callers that read only what the
+      two share. `g` is 0 for CIN and 1 for CDN: the true stamp is at `e1 + 2 + g`, the exit is
+      `e1 + 3 + g == pc2`, and for `g == 1` the guard sits at `e1 + 2`. */
+  lemma NfaRepLStarNulInv(rer: LW.RegExpRecord, qm: QMap, r1: L.Regex, c: RB.code, pc1: nat, pc2: nat) returns (em: nat, e1: nat, g: nat)
+    requires (NUL.CINullableL(r1) && NfaRepStarCinL(rer, qm, r1, c, pc1, pc2))
+          || (!NUL.CINullableL(r1) && NfaRepStarCdnL(rer, qm, r1, c, pc1, pc2))
+    ensures g == (if NUL.CINullableL(r1) then 0 else 1)
+    ensures pc1 == e1 + 1 && pc2 == e1 + 3 + g && em + 3 <= e1
+    ensures NR.GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 3 + g))
+    ensures exists qid: int ::
+      NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(c, e1 + 2 + g) == Some(RB.SetQuantToClock(qid, true))
+      && (g == 1 ==> NR.GetPcRE(c, e1 + 2) == Some(RB.CheckNullable(qid)))
+      && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1)
+      && StampBodyOk(qm, qid, r1)
+    ensures NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+    ensures NfaRepL(rer, qm, r1, c, em + 3, e1)
+    ensures NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+  {
+    if NUL.CINullableL(r1) {
+      em, e1 := NfaRepLStarCinInv(rer, qm, r1, c, pc1, pc2);
+      g := 0;
+    } else {
+      em, e1 := NfaRepLStarCdnInv(rer, qm, r1, c, pc1, pc2);
+      g := 1;
+    }
+  }
+
   /** Under `NoTrueStamps` the CIN loop view is impossible (it pins a true
       stamp at `e1 + 2`). */
   lemma NoTrueStampsRefutesStarCin(rer: LW.RegExpRecord, qm: QMap, r1: L.Regex, c: RB.code, pc1: nat, pc2: nat)
@@ -812,6 +920,29 @@ module LindenElkActionsRep {
           && NR.GetPcRE(c, e1 + 1) == Some(RB.Jmp(pc1))
           && pc2 == e1 + 2)
     ensures NUL.NonNullableL(r1) || (NUL.CINullableL(r1) && greedy && NfaRepStarCinL(rer, qm, r1, c, pc1, pc2))
+    ensures NUL.CINullableL(r1) ==> !NUL.NonNullableL(r1)
+  {
+    reveal EL.CdnHeadsOn();   // (G5a-1 row A3) THE SECOND CRUTCH: no CDN loop view while the switch is off.
+                              // Callers move to `NfaRepLStarLoopViews3`; delete this lemma at row F.
+    if NUL.CINullableL(r1) { NUL.CINotNonNullableL(r1); }
+  }
+
+  /** (G5a-1 row A3) The lasting form: do-while view, CIN view, or CDN view. */
+  lemma NfaRepLStarLoopViews3(rer: LW.RegExpRecord, qm: QMap, greedy: bool, r1: L.Regex, c: RB.code, pc1: nat, pc2: nat)
+    requires NfaRepL(rer, qm, L.Quantified(greedy, 0, LN.Inf, r1), c, pc1, pc2)
+    requires !(exists e1: nat ::
+          NR.GetPcRE(c, pc1) == Some(if greedy then RB.Fork(pc1 + 1, e1 + 2) else RB.Fork(e1 + 2, pc1 + 1))
+          && (exists qid: int ::
+                NR.GetPcRE(c, pc1 + 1) == Some(RB.SetQuantToClock(qid, false))
+                && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
+          && NR.GetPcRE(c, pc1 + 2) == Some(RB.BeginLoop)
+          && NfaRepL(rer, qm, r1, c, pc1 + 3, e1)
+          && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+          && NR.GetPcRE(c, e1 + 1) == Some(RB.Jmp(pc1))
+          && pc2 == e1 + 2)
+    ensures NUL.NonNullableL(r1)
+         || (NUL.CINullableL(r1) && greedy && NfaRepStarCinL(rer, qm, r1, c, pc1, pc2))
+         || (!NUL.CINullableL(r1) && greedy && EL.CdnHeadsOn() && NfaRepStarCdnL(rer, qm, r1, c, pc1, pc2))
     ensures NUL.CINullableL(r1) ==> !NUL.NonNullableL(r1)
   {
     if NUL.CINullableL(r1) { NUL.CINotNonNullableL(r1); }
@@ -1171,9 +1302,12 @@ module LindenElkActionsRep {
           NfaRepIncrL(rer, qm, r1, c, start + 3, e1);
         } else if NUL.NonNullableL(r1) {
           // the do-while loop view: endl == start + 1
-        } else {
+        } else if NUL.CINullableL(r1) {
           // the CIN loop view (§2.5b): endl == start + 2
           var em, e1 := NfaRepLStarCinInv(rer, qm, r1, c, start, endl);
+        } else {
+          // (G5a-1 row A3) the CDN loop view: endl == start + 3
+          var em, e1 := NfaRepLStarCdnInv(rer, qm, r1, c, start, endl);
         }
       } else {
         match delta {

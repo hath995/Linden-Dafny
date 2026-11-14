@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:ebcf0d6f0d359d0227cdd9eef6027e955e12e02470b497e2f972942f52940538"
+manifest-hash = "sha256:e8f241326cf6dc7d9ed5424500d5207157ec5ef99e6cbf0c21c128bdefb191d7"
 
 [[package]]
 name = "linden.engine-model"
@@ -182,3 +182,12 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-nulled-plus"
+
+[[package]]
+name = "linden.equiv-cdn-priority"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-cdn-priority"

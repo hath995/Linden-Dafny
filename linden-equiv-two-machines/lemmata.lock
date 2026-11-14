@@ -4,6 +4,15 @@ dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
 manifest-hash = "sha256:f64a61074d8c502b7538d4b6180ea235fffeb0a88f415543d5f9dfdf637c35fa"
 
 [[package]]
+name = "linden.equiv-cdn-priority"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-cdn-priority"
+
+[[package]]
 name = "linden.equiv-gen-step-re"
 class = 1
 version = "1.0.0"

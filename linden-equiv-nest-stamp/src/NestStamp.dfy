@@ -1678,6 +1678,84 @@ module LindenElkNestStamp {
       }
   }
 
+  /** (G5a-1 P1) The reverse of `QWQCinHead`: fold the CIN arm back into `NestStampRE`, and lift a qid of
+      the body (or the loop's own) to the quantifier's ids. */
+  lemma QWQCinFold(re: R.regex, code: RB.code, pcb: nat, pce: nat, pc': nat, qcp': seq<int>,
+                   nul: R.nullability, qid: R.quantid, q: R.counted_quantifier, r1: R.regex, x: R.quantid)
+    requires re == R.Re_quant(nul, qid, q, r1)
+    requires !q.max.Some? && !(q.min == 0 && q.max == None) && nul == R.CINullable && q.greedy
+    requires NR.NfaRepRE(re, code, pcb, pce)
+    requires q.min > 0 && NestStampCinRE(nul, qid, q, r1, code, pcb, pce, pc', qcp')
+    requires x >= 0 && qid >= 0 && ((x as nat) in PIV.QuantIds(r1) || x == qid)
+    ensures NestStampRE(re, code, pcb, pce, pc', qcp')
+    ensures (x as nat) in PIV.QuantIds(re)
+  {
+  }
+
+  /** (G5a-1 P1) The CIN dispatch of `NestStampRE`, unfolded in a small context (QWQCin's opening batch
+      blew the z3 memory cap doing it among QWQCin's premises). */
+  lemma QWQCinHead(re: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat, qcp: seq<int>,
+                   nul: R.nullability, qid: R.quantid, q: R.counted_quantifier, r1: R.regex)
+    requires re == R.Re_quant(nul, qid, q, r1)
+    requires !q.max.Some? && !(q.min == 0 && q.max == None) && nul == R.CINullable && q.greedy
+    requires NR.NfaRepRE(re, code, pcb, pce)
+    requires NestStampRE(re, code, pcb, pce, pc, qcp)
+    ensures q.min > 0 && NestStampCinRE(nul, qid, q, r1, code, pcb, pce, pc, qcp)
+  {
+  }
+
+  /** (G5a-1 P1) QWQCin's case analysis on the CIN arm alone: none of the `re`-level premises
+      (`NfaRepRE(re)`, `NestStampRE(re)`), whose fuel unfolding sent the opening batch past the z3 memory cap. */
+  lemma QWQCinBody(code: RB.code, pcb: nat, pce: nat, pc: nat, qcp: seq<int>, qcp': seq<int>, qid0: R.quantid, b: bool,
+                   nul: R.nullability, qid: R.quantid, q: R.counted_quantifier, r1: R.regex)
+    requires !q.max.Some? && q.min > 0 && nul == R.CINullable && q.greedy
+    requires NestStampCinRE(nul, qid, q, r1, code, pcb, pce, pc, qcp)
+    requires PIV.QuantUnique(r1) && qid >= 0 && (qid as nat) !in PIV.QuantIds(r1)
+    requires pcb <= pc < pce
+    requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid0, b))
+    requires qid0 >= 0
+    requires forall kk: int :: kk != qid0 ==> AI.get_idx(qcp', kk) == AI.get_idx(qcp, kk)
+    requires !b ==> AI.get_idx(qcp', qid0) < 0
+    ensures pc + 1 == pce || (pcb <= pc + 1 < pce && NestStampCinRE(nul, qid, q, r1, code, pcb, pce, pc + 1, qcp'))
+    ensures (qid0 as nat) in PIV.QuantIds(r1) || qid0 == qid
+    decreases CP.rsize(r1), q.min + 2   // below QWQCin (rsize(re), 0), above WriteMin (rsize(r1), q.min + 1) and WriteRE (rsize(r1), 2)
+  {
+      var mn1 := (q.min - 1) as nat;
+      var em, e1 := NestStampCinREInv(nul, qid, q, r1, code, pcb, pce, pc, qcp);
+      NR.NfaRepIncrMinRE(mn1, qid, r1, code, pcb, em);
+      NR.NfaRepIncrRE(r1, code, em + 3, e1);
+      if pc < em {
+        assert {:split_here} true;   // (G5a-1 P1) per pc case
+        NestStampQuantWriteMin(mn1, qid, r1, code, pcb, em, pc, qcp, qcp', qid0, b);
+        NestStampCinREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, qcp', em, e1);
+      } else if pc == em {
+        assert {:split_here} true;   // (G5a-1 P1) per pc case
+        assert false;                              // the head fork
+      } else if pc == em + 1 {
+        assert {:split_here} true;   // (G5a-1 P1) per pc case
+        // THE LOOP'S MARK
+        assert qid0 == qid && !b;
+        NestStampCinREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, qcp', em, e1);
+      } else if pc == em + 2 {
+        assert {:split_here} true;   // (G5a-1 P1) per pc case
+        assert false;                              // BeginLoop
+      } else if em + 3 <= pc < e1 {
+        assert {:split_here} true;   // (G5a-1 P1) per pc case
+        NestStampQuantWriteRE(r1, code, em + 3, e1, pc, qcp, qcp', qid0, b);
+        assert qid0 != qid;
+        NestStampCinREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, qcp', em, e1);
+      } else if pc == e1 || pc == e1 + 1 {
+        assert {:split_here} true;   // (G5a-1 P1) per pc case
+        assert false;                              // EndLoop / the end fork
+      } else {
+        assert {:split_here} true;   // (G5a-1 P1) per pc case
+        // THE TRUE STAMP at e1 + 2: it exits the block.
+        assert pc == e1 + 2;
+        assert qid0 == qid;
+        assert pc + 1 == pce;
+      }
+  }
+
   lemma QWQCin(re: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
                               qcp: seq<int>, qcp': seq<int>, qid0: R.quantid, b: bool,
                               nul: R.nullability, qid: R.quantid, q: R.counted_quantifier, r1: R.regex)
@@ -1697,35 +1775,26 @@ module LindenElkNestStamp {
   {
       assert qid >= 0;                               // QuantUnique
       assert (qid as nat) !in PIV.QuantIds(r1);       // QuantUnique
+      assert PIV.QuantUnique(r1);
       assert {:split_here} true;
-      // §2.5b CIN-GREEDY
-      var mn1 := (q.min - 1) as nat;
-      var em, e1 := NestStampCinREInv(nul, qid, q, r1, code, pcb, pce, pc, qcp);
-      NR.NfaRepIncrMinRE(mn1, qid, r1, code, pcb, em);
-      NR.NfaRepIncrRE(r1, code, em + 3, e1);
-      if pc < em {
-        NestStampQuantWriteMin(mn1, qid, r1, code, pcb, em, pc, qcp, qcp', qid0, b);
-        NestStampCinREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, qcp', em, e1);
-      } else if pc == em {
-        assert false;                              // the head fork
-      } else if pc == em + 1 {
-        // THE LOOP'S MARK
-        assert qid0 == qid && !b;
-        NestStampCinREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, qcp', em, e1);
-      } else if pc == em + 2 {
-        assert false;                              // BeginLoop
-      } else if em + 3 <= pc < e1 {
-        NestStampQuantWriteRE(r1, code, em + 3, e1, pc, qcp, qcp', qid0, b);
-        assert qid0 != qid;
-        NestStampCinREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, qcp', em, e1);
-      } else if pc == e1 || pc == e1 + 1 {
-        assert false;                              // EndLoop / the end fork
+      QWQCinHead(re, code, pcb, pce, pc, qcp, nul, qid, q, r1);   // (G5a-1 P1) the dispatch, in a small context
+      QWQCinBody(code, pcb, pce, pc, qcp, qcp', qid0, b, nul, qid, q, r1);
+      if pc + 1 != pce {
+        QWQCinFold(re, code, pcb, pce, pc + 1, qcp', nul, qid, q, r1, qid0);
       } else {
-        // THE TRUE STAMP at e1 + 2: it exits the block.
-        assert pc == e1 + 2;
-        assert qid0 == qid;
-        assert pc + 1 == pce;
+        assert (qid0 as nat) in PIV.QuantIds(re);
       }
+  }
+
+  /** (G5a-1 P1) `QWQCinHead`'s CDN twin. */
+  lemma QWQCdnHead(re: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat, qcp: seq<int>,
+                   nul: R.nullability, qid: R.quantid, q: R.counted_quantifier, r1: R.regex)
+    requires re == R.Re_quant(nul, qid, q, r1)
+    requires !q.max.Some? && !(q.min == 0 && q.max == None) && nul == R.CDNullable && q.greedy
+    requires NR.NfaRepRE(re, code, pcb, pce)
+    requires NestStampRE(re, code, pcb, pce, pc, qcp)
+    ensures q.min > 0 && NestStampCdnRE(nul, qid, q, r1, code, pcb, pce, pc, qcp)
+  {
   }
 
   lemma QWQCdn(re: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
@@ -1750,27 +1819,35 @@ module LindenElkNestStamp {
       assert {:split_here} true;
       // §2.5b CDN-GREEDY (G5a)
       var mn1 := (q.min - 1) as nat;
+      QWQCdnHead(re, code, pcb, pce, pc, qcp, nul, qid, q, r1);   // (G5a-1 P1) the dispatch, in a small context
       var em, e1 := NestStampCdnREInv(nul, qid, q, r1, code, pcb, pce, pc, qcp);
       NR.NfaRepIncrMinRE(mn1, qid, r1, code, pcb, em);
       NR.NfaRepIncrRE(r1, code, em + 3, e1);
       if pc < em {
+        assert {:split_here} true;   // (G5a-1 P1) per pc case
         NestStampQuantWriteMin(mn1, qid, r1, code, pcb, em, pc, qcp, qcp', qid0, b);
         NestStampCdnREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, qcp', em, e1);
       } else if pc == em {
+        assert {:split_here} true;   // (G5a-1 P1) per pc case
         assert false;                              // the head fork
       } else if pc == em + 1 {
+        assert {:split_here} true;   // (G5a-1 P1) per pc case
         // THE LOOP'S MARK
         assert qid0 == qid && !b;
         NestStampCdnREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, qcp', em, e1);
       } else if pc == em + 2 {
+        assert {:split_here} true;   // (G5a-1 P1) per pc case
         assert false;                              // BeginLoop
       } else if em + 3 <= pc < e1 {
+        assert {:split_here} true;   // (G5a-1 P1) per pc case
         NestStampQuantWriteRE(r1, code, em + 3, e1, pc, qcp, qcp', qid0, b);
         assert qid0 != qid;
         NestStampCdnREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, qcp', em, e1);
       } else if pc == e1 || pc == e1 + 1 || pc == e1 + 2 {
+        assert {:split_here} true;   // (G5a-1 P1) per pc case
         assert false;                              // EndLoop / the end fork / CheckNullable
       } else {
+        assert {:split_here} true;   // (G5a-1 P1) per pc case
         // THE TRUE STAMP at e1 + 3: it exits the block.
         assert pc == e1 + 3;
         assert qid0 == qid;

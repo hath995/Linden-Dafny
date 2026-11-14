@@ -687,14 +687,39 @@ module LindenElkEntryLk {
       recursive and hot, and an inline guard `(min > 0 && delta.Inf?) ==> …` costs a case split at every
       unfolding of the fragment (measured: ATR_QuantStarNested 30M as an atom, out of resource inline).
       A derived head (`min - 1`, the star) gets its atom from `CinHeadMono` / `CinHeadIntro`. */
+  /** (G5a-1 P2, row F0) THE SWITCH: whether a greedy CDN plus is admitted at a head. `false` until row F.
+      Opaque and nullary: a proof that never reveals it holds for either value, so a consumer that
+      splits on `NUL.CINullableL(r1)` proves its CDN arm with content while the switch is still off. */
+  opaque ghost predicate CdnHeadsOn() { false }
+
   opaque ghost predicate CinHeadL(greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex) {
-    (min > 0 && delta.Inf? && greedy && !NUL.NonNullableL(r1)) ==> NUL.CINullableL(r1)
+    (min > 0 && delta.Inf? && greedy && !NUL.NonNullableL(r1)) ==> (NUL.CINullableL(r1) || CdnHeadsOn())
   }
 
   lemma CinHeadOf(greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex)
     requires CinHeadL(greedy, min, delta, r1)
     requires min > 0 && delta.Inf? && greedy && !NUL.NonNullableL(r1)
     ensures NUL.CINullableL(r1)
+  {
+    reveal CinHeadL();
+    reveal CdnHeadsOn();   // (row F0) THE CRUTCH: true only while the switch is off; callers move to a CDN arm
+  }
+
+  /** (row F0) The lasting form: a head with no CDN-greedy plus is CIN, whatever the switch says. */
+  lemma CinHeadOfNoCdn(greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex)
+    requires CinHeadL(greedy, min, delta, r1)
+    requires min > 0 && delta.Inf? && greedy && !NUL.NonNullableL(r1)
+    requires NUL.NoCdnPlusL(L.Quantified(greedy, min, delta, r1))
+    ensures NUL.CINullableL(r1)
+  {
+  }
+
+  /** (rows A3, H) A CDN head in the fragment witnesses the switch, as an OPAQUE ground fact: what the
+      producers of a CDN layout (`AR.NfaRepLStarCdnIntro`) take. Reveals the atom only, never the switch. */
+  lemma CdnHeadOn(greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex)
+    requires CinHeadL(greedy, min, delta, r1)
+    requires min > 0 && delta.Inf? && greedy && !NUL.NonNullableL(r1) && !NUL.CINullableL(r1)
+    ensures CdnHeadsOn()
   {
     reveal CinHeadL();
   }
@@ -1099,7 +1124,7 @@ module LindenElkEntryLk {
     match r
     case Disjunction(r1, r2) => PikeLkRegexRecNoCdn(r1); PikeLkRegexRecNoCdn(r2);
     case Sequence(r1, r2) => PikeLkRegexRecNoCdn(r1); PikeLkRegexRecNoCdn(r2);
-    case Quantified(_, _, _, r1) => PikeLkRegexRecNoCdn(r1); reveal CinHeadL();   // (G5a-1 3-L0)
+    case Quantified(_, _, _, r1) => PikeLkRegexRecNoCdn(r1); reveal CinHeadL(); reveal CdnHeadsOn();   // (row F0) crutch: false as stated once the switch is on   // (G5a-1 3-L0)
     case Group(_, r1) => PikeLkRegexRecNoCdn(r1);
     case LookaroundR(_, r1) => PikeLkRegexRecNoCdn(r1);
     case _ =>

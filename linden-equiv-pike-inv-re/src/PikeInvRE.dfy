@@ -3663,8 +3663,8 @@ module LindenElkPikeInv {
   // the proofs are unchanged. Used by `LiftPreserveSetQuantLkNested`.
   // ==========================================================================
 
-  lemma QuantWriteIdsRENested(re: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
-    requires NR.NestedFragmentRE(re) && QuantUnique(re)
+  lemma QuantWriteIdsRECdn(re: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentCdnRE(re) && QuantUnique(re)
     requires NR.NfaRepRE(re, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetQuantToClock? ==>
@@ -3687,19 +3687,19 @@ module LindenElkPikeInv {
       NR.NfaRepIncrRE(r2, code, e1 + 1, endl);
       if pc == start {
       } else if pc < e1 {
-        QuantWriteIdsRENested(r1, code, start + 1, e1, pc);
+        QuantWriteIdsRECdn(r1, code, start + 1, e1, pc);
       } else if pc == e1 {
       } else {
-        QuantWriteIdsRENested(r2, code, e1 + 1, endl, pc);
+        QuantWriteIdsRECdn(r2, code, e1 + 1, endl, pc);
       }
     case Re_con(r1, r2) =>
       var e1: nat :| NR.NfaRepRE(r1, code, start, e1) && NR.NfaRepRE(r2, code, e1, endl);
       NR.NfaRepIncrRE(r1, code, start, e1);
       NR.NfaRepIncrRE(r2, code, e1, endl);
       if pc < e1 {
-        QuantWriteIdsRENested(r1, code, start, e1, pc);
+        QuantWriteIdsRECdn(r1, code, start, e1, pc);
       } else {
-        QuantWriteIdsRENested(r2, code, e1, endl, pc);
+        QuantWriteIdsRECdn(r2, code, e1, endl, pc);
       }
     case Re_capture(cid, r1) =>
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
@@ -3709,7 +3709,7 @@ module LindenElkPikeInv {
       NR.NfaRepIncrRE(r1, code, start + 1, e1);
       if pc == start {
       } else if pc < e1 {
-        QuantWriteIdsRENested(r1, code, start + 1, e1, pc);
+        QuantWriteIdsRECdn(r1, code, start + 1, e1, pc);
       } else {
       }
     case Re_quant(nul, qid, q, r1) =>
@@ -3724,7 +3724,7 @@ module LindenElkPikeInv {
         NR.NfaRepIncrRE(r1, code, start + 3, e1);
         if pc <= start + 2 {
         } else if pc < e1 {
-          QuantWriteIdsRENested(r1, code, start + 3, e1, pc);
+          QuantWriteIdsRECdn(r1, code, start + 3, e1, pc);
         } else {
         }
       } else if q.max.Some? {
@@ -3732,9 +3732,9 @@ module LindenElkPikeInv {
         NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
         NR.NfaRepIncrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl);
         if pc < em {
-          QuantWriteIdsMinRENested(q.min as nat, qid, r1, code, start, em, pc);
+          QuantWriteIdsMinRECdn(q.min as nat, qid, r1, code, start, em, pc);
         } else {
-          QuantWriteIdsOptRENested((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
+          QuantWriteIdsOptRECdn((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
         }
       } else if nul != R.NonNullable && !q.greedy {
         // §2.5a GENERIC: min forced copies, then the star loop
@@ -3742,10 +3742,23 @@ module LindenElkPikeInv {
         NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
         NR.NfaRepIncrRE(r1, code, em + 3, e1);
         if pc < em {
-          QuantWriteIdsMinRENested(q.min as nat, qid, r1, code, start, em, pc);
+          QuantWriteIdsMinRECdn(q.min as nat, qid, r1, code, start, em, pc);
         } else if pc <= em + 2 {
         } else if pc < e1 {
-          QuantWriteIdsRENested(r1, code, em + 3, e1, pc);
+          QuantWriteIdsRECdn(r1, code, em + 3, e1, pc);
+        } else {
+        }
+      } else if nul == R.CDNullable {
+        // (G5a) CDN-GREEDY: the CIN layout with the guard at e1 + 2 (no write, no gate) and the
+        // true stamp at e1 + 3
+        var em, e1 := NR.NfaRepRECdnInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          QuantWriteIdsMinRECdn((q.min - 1) as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          QuantWriteIdsRECdn(r1, code, em + 3, e1, pc);
         } else {
         }
       } else if nul != R.NonNullable {
@@ -3754,10 +3767,10 @@ module LindenElkPikeInv {
         NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
         NR.NfaRepIncrRE(r1, code, em + 3, e1);
         if pc < em {
-          QuantWriteIdsMinRENested((q.min - 1) as nat, qid, r1, code, start, em, pc);
+          QuantWriteIdsMinRECdn((q.min - 1) as nat, qid, r1, code, start, em, pc);
         } else if pc <= em + 2 {
         } else if pc < e1 {
-          QuantWriteIdsRENested(r1, code, em + 3, e1, pc);
+          QuantWriteIdsRECdn(r1, code, em + 3, e1, pc);
         } else {
         }
       } else {
@@ -3765,18 +3778,32 @@ module LindenElkPikeInv {
         NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
         NR.NfaRepIncrRE(r1, code, em + 1, e1);
         if pc < em {
-          QuantWriteIdsMinRENested((q.min - 1) as nat, qid, r1, code, start, em, pc);
+          QuantWriteIdsMinRECdn((q.min - 1) as nat, qid, r1, code, start, em, pc);
         } else if pc == em {
         } else if pc < e1 {
-          QuantWriteIdsRENested(r1, code, em + 1, e1, pc);
+          QuantWriteIdsRECdn(r1, code, em + 1, e1, pc);
         } else {
         }
       }
   }
 
+  /** (G5a-1) The narrow name: `QuantWriteIdsRECdn` through `NR.NarrowIsCdn`. */
+  lemma QuantWriteIdsRENested(re: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentRE(re) && QuantUnique(re)
+    requires NR.NfaRepRE(re, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetQuantToClock? ==>
+              var q := NR.GetPcRE(code, pc).value.sq;
+              q >= 0 && (q as nat) in QuantIds(re)
+              && (q as nat) in QuantIdsOutsideLooks(re)
+  {
+    NR.NarrowIsCdn(re);
+    QuantWriteIdsRECdn(re, code, start, endl, pc);
+  }
+
   /** `QuantWriteIdsRENested` for the forced-copy chain. */
-  lemma QuantWriteIdsMinRENested(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
-    requires NR.NestedFragmentRE(r1) && QuantUnique(r1)
+  lemma QuantWriteIdsMinRECdn(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentCdnRE(r1) && QuantUnique(r1)
     requires NR.NfaRepMinRE(k, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetQuantToClock? ==>
@@ -3792,15 +3819,15 @@ module LindenElkPikeInv {
     NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
     if pc == start {
     } else if pc < e1 {
-      QuantWriteIdsRENested(r1, code, start + 1, e1, pc);
+      QuantWriteIdsRECdn(r1, code, start + 1, e1, pc);
     } else {
-      QuantWriteIdsMinRENested(k - 1, qid, r1, code, e1, endl, pc);
+      QuantWriteIdsMinRECdn(k - 1, qid, r1, code, e1, endl, pc);
     }
   }
 
   /** `QuantWriteIdsRENested` for the optional-layer chain. */
-  lemma QuantWriteIdsOptRENested(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
-    requires NR.NestedFragmentRE(r1) && QuantUnique(r1)
+  lemma QuantWriteIdsOptRECdn(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentCdnRE(r1) && QuantUnique(r1)
     requires NR.NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetQuantToClock? ==>
@@ -3819,10 +3846,10 @@ module LindenElkPikeInv {
     NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
     if pc <= start + 2 {
     } else if pc < e1 {
-      QuantWriteIdsRENested(r1, code, start + 3, e1, pc);
+      QuantWriteIdsRECdn(r1, code, start + 3, e1, pc);
     } else if pc == e1 {
     } else {
-      QuantWriteIdsOptRENested(k - 1, greedy, qid, r1, code, e1 + 1, endl, pc);
+      QuantWriteIdsOptRECdn(k - 1, greedy, qid, r1, code, e1 + 1, endl, pc);
     }
   }
 
@@ -4251,8 +4278,8 @@ module LindenElkPikeInv {
   // conjunct with `LookBehindFragmentRE`. Used by `LiftPreserveSetRegLkNested`.
   // ==========================================================================
 
-  lemma CaptureWriteIdsOutsideRENested(re: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
-    requires NR.NestedFragmentRE(re) && CapUnique(re)
+  lemma CaptureWriteIdsOutsideRECdn(re: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentCdnRE(re) && CapUnique(re)
     requires NR.NfaRepRE(re, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetRegisterToCP? ==>
@@ -4275,11 +4302,11 @@ module LindenElkPikeInv {
       NR.NfaRepIncrRE(r2, code, e1 + 1, endl);
       if pc == start {
       } else if pc < e1 {
-        CaptureWriteIdsOutsideRENested(r1, code, start + 1, e1, pc);
+        CaptureWriteIdsOutsideRECdn(r1, code, start + 1, e1, pc);
         CaptureRegsSetMono(CapIdsOutsideLooks(r1), CapIdsOutsideLooks(re));
       } else if pc == e1 {
       } else {
-        CaptureWriteIdsOutsideRENested(r2, code, e1 + 1, endl, pc);
+        CaptureWriteIdsOutsideRECdn(r2, code, e1 + 1, endl, pc);
         CaptureRegsSetMono(CapIdsOutsideLooks(r2), CapIdsOutsideLooks(re));
       }
     case Re_con(r1, r2) =>
@@ -4288,10 +4315,10 @@ module LindenElkPikeInv {
       NR.NfaRepIncrRE(r1, code, start, e1);
       NR.NfaRepIncrRE(r2, code, e1, endl);
       if pc < e1 {
-        CaptureWriteIdsOutsideRENested(r1, code, start, e1, pc);
+        CaptureWriteIdsOutsideRECdn(r1, code, start, e1, pc);
         CaptureRegsSetMono(CapIdsOutsideLooks(r1), CapIdsOutsideLooks(re));
       } else {
-        CaptureWriteIdsOutsideRENested(r2, code, e1, endl, pc);
+        CaptureWriteIdsOutsideRECdn(r2, code, e1, endl, pc);
         CaptureRegsSetMono(CapIdsOutsideLooks(r2), CapIdsOutsideLooks(re));
       }
     case Re_capture(cid, r1) =>
@@ -4305,7 +4332,7 @@ module LindenElkPikeInv {
       if pc == start {
         assert CP.start_reg(cid) in CaptureRegsSet(CapIdsOutsideLooks(re));
       } else if pc < e1 {
-        CaptureWriteIdsOutsideRENested(r1, code, start + 1, e1, pc);
+        CaptureWriteIdsOutsideRECdn(r1, code, start + 1, e1, pc);
         CaptureRegsSetMono(CapIdsOutsideLooks(r1), CapIdsOutsideLooks(re));
       } else {
         assert CP.end_reg(cid) in CaptureRegsSet(CapIdsOutsideLooks(re));
@@ -4324,7 +4351,7 @@ module LindenElkPikeInv {
         NR.NfaRepIncrRE(r1, code, start + 3, e1);
         if pc <= start + 2 {
         } else if pc < e1 {
-          CaptureWriteIdsOutsideRENested(r1, code, start + 3, e1, pc);
+          CaptureWriteIdsOutsideRECdn(r1, code, start + 3, e1, pc);
         } else {
         }
       } else if q.max.Some? {
@@ -4332,9 +4359,9 @@ module LindenElkPikeInv {
         NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
         NR.NfaRepIncrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl);
         if pc < em {
-          CaptureWriteIdsOutsideMinRENested(q.min as nat, qid, r1, code, start, em, pc);
+          CaptureWriteIdsOutsideMinRECdn(q.min as nat, qid, r1, code, start, em, pc);
         } else {
-          CaptureWriteIdsOutsideOptRENested((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
+          CaptureWriteIdsOutsideOptRECdn((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
         }
       } else if nul != R.NonNullable && !q.greedy {
         // §2.5a GENERIC: min forced copies, then the star loop
@@ -4342,10 +4369,23 @@ module LindenElkPikeInv {
         NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
         NR.NfaRepIncrRE(r1, code, em + 3, e1);
         if pc < em {
-          CaptureWriteIdsOutsideMinRENested(q.min as nat, qid, r1, code, start, em, pc);
+          CaptureWriteIdsOutsideMinRECdn(q.min as nat, qid, r1, code, start, em, pc);
         } else if pc <= em + 2 {
         } else if pc < e1 {
-          CaptureWriteIdsOutsideRENested(r1, code, em + 3, e1, pc);
+          CaptureWriteIdsOutsideRECdn(r1, code, em + 3, e1, pc);
+        } else {
+        }
+      } else if nul == R.CDNullable {
+        // (G5a) CDN-GREEDY: the CIN layout with the guard at e1 + 2 (no write, no gate) and the
+        // true stamp at e1 + 3
+        var em, e1 := NR.NfaRepRECdnInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          CaptureWriteIdsOutsideMinRECdn((q.min - 1) as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          CaptureWriteIdsOutsideRECdn(r1, code, em + 3, e1, pc);
         } else {
         }
       } else if nul != R.NonNullable {
@@ -4354,10 +4394,10 @@ module LindenElkPikeInv {
         NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
         NR.NfaRepIncrRE(r1, code, em + 3, e1);
         if pc < em {
-          CaptureWriteIdsOutsideMinRENested((q.min - 1) as nat, qid, r1, code, start, em, pc);
+          CaptureWriteIdsOutsideMinRECdn((q.min - 1) as nat, qid, r1, code, start, em, pc);
         } else if pc <= em + 2 {
         } else if pc < e1 {
-          CaptureWriteIdsOutsideRENested(r1, code, em + 3, e1, pc);
+          CaptureWriteIdsOutsideRECdn(r1, code, em + 3, e1, pc);
         } else {
         }
       } else {
@@ -4365,17 +4405,29 @@ module LindenElkPikeInv {
         NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
         NR.NfaRepIncrRE(r1, code, em + 1, e1);
         if pc < em {
-          CaptureWriteIdsOutsideMinRENested((q.min - 1) as nat, qid, r1, code, start, em, pc);
+          CaptureWriteIdsOutsideMinRECdn((q.min - 1) as nat, qid, r1, code, start, em, pc);
         } else if pc == em {
         } else if pc < e1 {
-          CaptureWriteIdsOutsideRENested(r1, code, em + 1, e1, pc);
+          CaptureWriteIdsOutsideRECdn(r1, code, em + 1, e1, pc);
         } else {
         }
       }
   }
 
-  lemma CaptureWriteIdsOutsideMinRENested(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
-    requires NR.NestedFragmentRE(r1) && CapUnique(r1)
+  /** (G5a-1) The narrow name: `CaptureWriteIdsOutsideRECdn` through `NR.NarrowIsCdn`. */
+  lemma CaptureWriteIdsOutsideRENested(re: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentRE(re) && CapUnique(re)
+    requires NR.NfaRepRE(re, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetRegisterToCP? ==>
+              NR.GetPcRE(code, pc).value.reg in CaptureRegsSet(CapIdsOutsideLooks(re))
+  {
+    NR.NarrowIsCdn(re);
+    CaptureWriteIdsOutsideRECdn(re, code, start, endl, pc);
+  }
+
+  lemma CaptureWriteIdsOutsideMinRECdn(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentCdnRE(r1) && CapUnique(r1)
     requires NR.NfaRepMinRE(k, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetRegisterToCP? ==>
@@ -4390,14 +4442,14 @@ module LindenElkPikeInv {
     NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
     if pc == start {
     } else if pc < e1 {
-      CaptureWriteIdsOutsideRENested(r1, code, start + 1, e1, pc);
+      CaptureWriteIdsOutsideRECdn(r1, code, start + 1, e1, pc);
     } else {
-      CaptureWriteIdsOutsideMinRENested(k - 1, qid, r1, code, e1, endl, pc);
+      CaptureWriteIdsOutsideMinRECdn(k - 1, qid, r1, code, e1, endl, pc);
     }
   }
 
-  lemma CaptureWriteIdsOutsideOptRENested(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
-    requires NR.NestedFragmentRE(r1) && CapUnique(r1)
+  lemma CaptureWriteIdsOutsideOptRECdn(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentCdnRE(r1) && CapUnique(r1)
     requires NR.NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.SetRegisterToCP? ==>
@@ -4415,10 +4467,10 @@ module LindenElkPikeInv {
     NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
     if pc <= start + 2 {
     } else if pc < e1 {
-      CaptureWriteIdsOutsideRENested(r1, code, start + 3, e1, pc);
+      CaptureWriteIdsOutsideRECdn(r1, code, start + 3, e1, pc);
     } else if pc == e1 {
     } else {
-      CaptureWriteIdsOutsideOptRENested(k - 1, greedy, qid, r1, code, e1 + 1, endl, pc);
+      CaptureWriteIdsOutsideOptRECdn(k - 1, greedy, qid, r1, code, e1 + 1, endl, pc);
     }
   }
 
@@ -4609,8 +4661,8 @@ module LindenElkPikeInv {
   // identically. Used by `LiftPreserveGatePassLkNested`.
   // ==========================================================================
 
-  lemma LookCheckIdsRENested(re: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
-    requires NR.NestedFragmentRE(re) && LTB.LookUnique(re)
+  lemma LookCheckIdsRECdn(re: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentCdnRE(re) && LTB.LookUnique(re)
     requires NR.NfaRepRE(re, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
@@ -4637,19 +4689,19 @@ module LindenElkPikeInv {
       NR.NfaRepIncrRE(r2, code, e1 + 1, endl);
       if pc == start {
       } else if pc < e1 {
-        LookCheckIdsRENested(r1, code, start + 1, e1, pc);
+        LookCheckIdsRECdn(r1, code, start + 1, e1, pc);
       } else if pc == e1 {
       } else {
-        LookCheckIdsRENested(r2, code, e1 + 1, endl, pc);
+        LookCheckIdsRECdn(r2, code, e1 + 1, endl, pc);
       }
     case Re_con(r1, r2) =>
       var e1: nat :| NR.NfaRepRE(r1, code, start, e1) && NR.NfaRepRE(r2, code, e1, endl);
       NR.NfaRepIncrRE(r1, code, start, e1);
       NR.NfaRepIncrRE(r2, code, e1, endl);
       if pc < e1 {
-        LookCheckIdsRENested(r1, code, start, e1, pc);
+        LookCheckIdsRECdn(r1, code, start, e1, pc);
       } else {
-        LookCheckIdsRENested(r2, code, e1, endl, pc);
+        LookCheckIdsRECdn(r2, code, e1, endl, pc);
       }
     case Re_capture(cid, r1) =>
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
@@ -4659,7 +4711,7 @@ module LindenElkPikeInv {
       NR.NfaRepIncrRE(r1, code, start + 1, e1);
       if pc == start {
       } else if pc < e1 {
-        LookCheckIdsRENested(r1, code, start + 1, e1, pc);
+        LookCheckIdsRECdn(r1, code, start + 1, e1, pc);
       } else {
       }
     case Re_quant(nul, qid, q, r1) =>
@@ -4674,7 +4726,7 @@ module LindenElkPikeInv {
         NR.NfaRepIncrRE(r1, code, start + 3, e1);
         if pc <= start + 2 {
         } else if pc < e1 {
-          LookCheckIdsRENested(r1, code, start + 3, e1, pc);
+          LookCheckIdsRECdn(r1, code, start + 3, e1, pc);
         } else {
         }
       } else if q.max.Some? {
@@ -4682,9 +4734,9 @@ module LindenElkPikeInv {
         NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
         NR.NfaRepIncrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl);
         if pc < em {
-          LookCheckIdsMinRENested(q.min as nat, qid, r1, code, start, em, pc);
+          LookCheckIdsMinRECdn(q.min as nat, qid, r1, code, start, em, pc);
         } else {
-          LookCheckIdsOptRENested((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
+          LookCheckIdsOptRECdn((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
         }
       } else if nul != R.NonNullable && !q.greedy {
         // §2.5a GENERIC: min forced copies, then the star loop
@@ -4692,10 +4744,23 @@ module LindenElkPikeInv {
         NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
         NR.NfaRepIncrRE(r1, code, em + 3, e1);
         if pc < em {
-          LookCheckIdsMinRENested(q.min as nat, qid, r1, code, start, em, pc);
+          LookCheckIdsMinRECdn(q.min as nat, qid, r1, code, start, em, pc);
         } else if pc <= em + 2 {
         } else if pc < e1 {
-          LookCheckIdsRENested(r1, code, em + 3, e1, pc);
+          LookCheckIdsRECdn(r1, code, em + 3, e1, pc);
+        } else {
+        }
+      } else if nul == R.CDNullable {
+        // (G5a) CDN-GREEDY: the CIN layout with the guard at e1 + 2 (no write, no gate) and the
+        // true stamp at e1 + 3
+        var em, e1 := NR.NfaRepRECdnInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          LookCheckIdsMinRECdn((q.min - 1) as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          LookCheckIdsRECdn(r1, code, em + 3, e1, pc);
         } else {
         }
       } else if nul != R.NonNullable {
@@ -4704,10 +4769,10 @@ module LindenElkPikeInv {
         NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
         NR.NfaRepIncrRE(r1, code, em + 3, e1);
         if pc < em {
-          LookCheckIdsMinRENested((q.min - 1) as nat, qid, r1, code, start, em, pc);
+          LookCheckIdsMinRECdn((q.min - 1) as nat, qid, r1, code, start, em, pc);
         } else if pc <= em + 2 {
         } else if pc < e1 {
-          LookCheckIdsRENested(r1, code, em + 3, e1, pc);
+          LookCheckIdsRECdn(r1, code, em + 3, e1, pc);
         } else {
         }
       } else {
@@ -4715,18 +4780,34 @@ module LindenElkPikeInv {
         NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
         NR.NfaRepIncrRE(r1, code, em + 1, e1);
         if pc < em {
-          LookCheckIdsMinRENested((q.min - 1) as nat, qid, r1, code, start, em, pc);
+          LookCheckIdsMinRECdn((q.min - 1) as nat, qid, r1, code, start, em, pc);
         } else if pc == em {
         } else if pc < e1 {
-          LookCheckIdsRENested(r1, code, em + 1, e1, pc);
+          LookCheckIdsRECdn(r1, code, em + 1, e1, pc);
         } else {
         }
       }
   }
 
+  /** (G5a-1) The narrow name: `LookCheckIdsRECdn` through `NR.NarrowIsCdn`. */
+  lemma LookCheckIdsRENested(re: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentRE(re) && LTB.LookUnique(re)
+    requires NR.NfaRepRE(re, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
+              var l := NR.GetPcRE(code, pc).value.col;
+              l >= 0 && (l as nat) in LTB.LookIds(re)
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.NegCheckOracle? ==>
+              var l := NR.GetPcRE(code, pc).value.ncl;
+              l >= 0 && (l as nat) in LTB.LookIds(re)
+  {
+    NR.NarrowIsCdn(re);
+    LookCheckIdsRECdn(re, code, start, endl, pc);
+  }
+
   /** `LookCheckIdsRENested` for the forced-copy chain. */
-  lemma LookCheckIdsMinRENested(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
-    requires NR.NestedFragmentRE(r1) && LTB.LookUnique(r1)
+  lemma LookCheckIdsMinRECdn(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentCdnRE(r1) && LTB.LookUnique(r1)
     requires NR.NfaRepMinRE(k, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
@@ -4745,15 +4826,15 @@ module LindenElkPikeInv {
     NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
     if pc == start {
     } else if pc < e1 {
-      LookCheckIdsRENested(r1, code, start + 1, e1, pc);
+      LookCheckIdsRECdn(r1, code, start + 1, e1, pc);
     } else {
-      LookCheckIdsMinRENested(k - 1, qid, r1, code, e1, endl, pc);
+      LookCheckIdsMinRECdn(k - 1, qid, r1, code, e1, endl, pc);
     }
   }
 
   /** `LookCheckIdsRENested` for the optional-layer chain. */
-  lemma LookCheckIdsOptRENested(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
-    requires NR.NestedFragmentRE(r1) && LTB.LookUnique(r1)
+  lemma LookCheckIdsOptRECdn(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentCdnRE(r1) && LTB.LookUnique(r1)
     requires NR.NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
     requires start <= pc < endl
     ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
@@ -4775,10 +4856,10 @@ module LindenElkPikeInv {
     NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
     if pc <= start + 2 {
     } else if pc < e1 {
-      LookCheckIdsRENested(r1, code, start + 3, e1, pc);
+      LookCheckIdsRECdn(r1, code, start + 3, e1, pc);
     } else if pc == e1 {
     } else {
-      LookCheckIdsOptRENested(k - 1, greedy, qid, r1, code, e1 + 1, endl, pc);
+      LookCheckIdsOptRECdn(k - 1, greedy, qid, r1, code, e1 + 1, endl, pc);
     }
   }
 
@@ -5522,82 +5603,84 @@ module LindenElkPikeInv {
   // ===========================================================================
 
   /** `FilterCaptureVsAll` under the nested fragment (recurses into the look body). */
-  lemma FilterCaptureVsAllNested(r: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, M: int, j: int)
-    requires NR.NestedFragmentRE(r)
+  lemma FilterCaptureVsAllCdn(r: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, M: int, j: int)
+    requires NR.NestedFragmentCdnRE(r)
     requires forall cid: nat :: cid in CapIds(r) ==> CP.start_reg(cid) != j
     ensures AI.get_idx(AI.filter_capture(r, A, cc, lc, qc, M), j) == AI.get_idx(AI.filter_all(r, A), j)
     decreases r
   {
     match r
     case Re_lookaround(lid, la, r1) =>
+      assert NR.NestedFragmentCdnRE(r1) by { reveal NR.NestedFragmentCdnRE; NR.NarrowIsCdn(r1); }   // (G5a-1) a look body is narrow
       var lv := AI.get_idx(lc, lid);
-      if lv < 0 || lv < M {} else { FilterCaptureVsAllNested(r1, A, cc, lc, qc, -1, j); }
+      if lv < 0 || lv < M {} else { FilterCaptureVsAllCdn(r1, A, cc, lc, qc, -1, j); }
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_alt(r1, r2) =>
-      FilterCaptureVsAllNested(r1, A, cc, lc, qc, M, j);
-      FilterCaptureVsAllNested(r2, AI.filter_capture(r1, A, cc, lc, qc, M), cc, lc, qc, M, j);
+      FilterCaptureVsAllCdn(r1, A, cc, lc, qc, M, j);
+      FilterCaptureVsAllCdn(r2, AI.filter_capture(r1, A, cc, lc, qc, M), cc, lc, qc, M, j);
       FilterAllKeepsNonStart(r2, AI.filter_capture(r1, A, cc, lc, qc, M), j);
       FilterAllKeepsNonStart(r2, AI.filter_all(r1, A), j);
     case Re_con(r1, r2) =>
-      FilterCaptureVsAllNested(r1, A, cc, lc, qc, M, j);
-      FilterCaptureVsAllNested(r2, AI.filter_capture(r1, A, cc, lc, qc, M), cc, lc, qc, M, j);
+      FilterCaptureVsAllCdn(r1, A, cc, lc, qc, M, j);
+      FilterCaptureVsAllCdn(r2, AI.filter_capture(r1, A, cc, lc, qc, M), cc, lc, qc, M, j);
       FilterAllKeepsNonStart(r2, AI.filter_capture(r1, A, cc, lc, qc, M), j);
       FilterAllKeepsNonStart(r2, AI.filter_all(r1, A), j);
     case Re_quant(nul, qid, q, r1) =>
       var qv := AI.get_idx(qc, qid);
-      if qv < M {} else { FilterCaptureVsAllNested(r1, A, cc, lc, qc, qv, j); }
+      if qv < M {} else { FilterCaptureVsAllCdn(r1, A, cc, lc, qc, qv, j); }
     case Re_capture(cid, r1) =>
       var start := AI.get_idx(cc, CP.start_reg(cid));
       if cid >= 0 { SetIdxKeepsOther(A, CP.start_reg(cid), j); }
       if start < 0 {
-        FilterCaptureVsAllNested(r1, A, cc, lc, qc, M, j);
+        FilterCaptureVsAllCdn(r1, A, cc, lc, qc, M, j);
         FilterAllKeepsNonStart(r1, A, j);
         FilterAllKeepsNonStart(r1, AI.set_idx(A, CP.start_reg(cid), -1), j);
       } else if start < M {
       } else {
-        FilterCaptureVsAllNested(r1, A, cc, lc, qc, M, j);
+        FilterCaptureVsAllCdn(r1, A, cc, lc, qc, M, j);
         FilterAllKeepsNonStart(r1, A, j);
         FilterAllKeepsNonStart(r1, AI.set_idx(A, CP.start_reg(cid), -1), j);
       }
   }
 
   /** `FilterCaptureCrPointwise` under the nested fragment (recurses into the look body). */
-  lemma FilterCaptureCrPointwiseNested(r: R.regex, X: seq<int>, Y: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, M: int, j: int)
-    requires NR.NestedFragmentRE(r)
+  lemma FilterCaptureCrPointwiseCdn(r: R.regex, X: seq<int>, Y: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, M: int, j: int)
+    requires NR.NestedFragmentCdnRE(r)
     requires AI.get_idx(X, j) == AI.get_idx(Y, j)
     ensures AI.get_idx(AI.filter_capture(r, X, cc, lc, qc, M), j) == AI.get_idx(AI.filter_capture(r, Y, cc, lc, qc, M), j)
     decreases r
   {
     match r
     case Re_lookaround(lid, la, r1) =>
+      assert NR.NestedFragmentCdnRE(r1) by { reveal NR.NestedFragmentCdnRE; NR.NarrowIsCdn(r1); }   // (G5a-1) a look body is narrow
       var lv := AI.get_idx(lc, lid);
       if lv < 0 || lv < M { FilterAllCrPointwise(r1, X, Y, j); }
-      else { FilterCaptureCrPointwiseNested(r1, X, Y, cc, lc, qc, -1, j); }
+      else { FilterCaptureCrPointwiseCdn(r1, X, Y, cc, lc, qc, -1, j); }
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_alt(r1, r2) =>
-      FilterCaptureCrPointwiseNested(r1, X, Y, cc, lc, qc, M, j);
-      FilterCaptureCrPointwiseNested(r2, AI.filter_capture(r1, X, cc, lc, qc, M), AI.filter_capture(r1, Y, cc, lc, qc, M), cc, lc, qc, M, j);
+      FilterCaptureCrPointwiseCdn(r1, X, Y, cc, lc, qc, M, j);
+      FilterCaptureCrPointwiseCdn(r2, AI.filter_capture(r1, X, cc, lc, qc, M), AI.filter_capture(r1, Y, cc, lc, qc, M), cc, lc, qc, M, j);
     case Re_con(r1, r2) =>
-      FilterCaptureCrPointwiseNested(r1, X, Y, cc, lc, qc, M, j);
-      FilterCaptureCrPointwiseNested(r2, AI.filter_capture(r1, X, cc, lc, qc, M), AI.filter_capture(r1, Y, cc, lc, qc, M), cc, lc, qc, M, j);
+      FilterCaptureCrPointwiseCdn(r1, X, Y, cc, lc, qc, M, j);
+      FilterCaptureCrPointwiseCdn(r2, AI.filter_capture(r1, X, cc, lc, qc, M), AI.filter_capture(r1, Y, cc, lc, qc, M), cc, lc, qc, M, j);
     case Re_quant(nul, qid, q, r1) =>
       var qv := AI.get_idx(qc, qid);
-      if qv < M { FilterAllCrPointwise(r1, X, Y, j); } else { FilterCaptureCrPointwiseNested(r1, X, Y, cc, lc, qc, qv, j); }
+      if qv < M { FilterAllCrPointwise(r1, X, Y, j); } else { FilterCaptureCrPointwiseCdn(r1, X, Y, cc, lc, qc, qv, j); }
     case Re_capture(cid, r1) =>
       var start := AI.get_idx(cc, CP.start_reg(cid));
       if start < 0 { FilterAllCrPointwise(r1, X, Y, j); }
       else if start < M {
         if j == CP.start_reg(cid) {} else { SetIdxKeepsOther(X, CP.start_reg(cid), j); SetIdxKeepsOther(Y, CP.start_reg(cid), j); }
         FilterAllCrPointwise(r1, AI.set_idx(X, CP.start_reg(cid), -1), AI.set_idx(Y, CP.start_reg(cid), -1), j);
-      } else { FilterCaptureCrPointwiseNested(r1, X, Y, cc, lc, qc, M, j); }
+      } else { FilterCaptureCrPointwiseCdn(r1, X, Y, cc, lc, qc, M, j); }
   }
 
   /** `LkValAtNonStart` under the nested fragment: a look node's filter output at
       a position outside the body's capture-starts is the input there, at any
-      body nesting depth (uses `FilterCaptureVsAllNested`). */
-  lemma LkValAtNonStartNested(lid: R.lookid, la: R.lookaround, r1: R.regex, cr: seq<int>,
+      body nesting depth (uses `FilterCaptureVsAllCdn`). */
+  lemma LkValAtNonStartCdn(lid: R.lookid, la: R.lookaround, r1: R.regex, cr: seq<int>,
                               cc: seq<int>, lc: seq<int>, qc: seq<int>, M: int, j: int)
-    requires NR.NestedFragmentRE(r1)
+    requires NR.NestedFragmentCdnRE(r1)
     requires forall cid: nat :: cid in CapIds(r1) ==> CP.start_reg(cid) != j
     ensures AI.get_idx(AI.filter_capture(R.Re_lookaround(lid, la, r1), cr, cc, lc, qc, M), j)
          == AI.get_idx(cr, j)
@@ -5606,7 +5689,7 @@ module LindenElkPikeInv {
     if lv < 0 || lv < M {
       FilterAllKeepsNonStart(r1, cr, j);
     } else {
-      FilterCaptureVsAllNested(r1, cr, cc, lc, qc, -1, j);
+      FilterCaptureVsAllCdn(r1, cr, cc, lc, qc, -1, j);
       FilterAllKeepsNonStart(r1, cr, j);
     }
   }
@@ -5614,9 +5697,9 @@ module LindenElkPikeInv {
   /** `FilterCaptureLookIndep` under the nested fragment: the filter output
       agrees at every position outside `W = CaptureRegsSet(CapIdsInLooks(r))` for
       two look banks, at any nesting depth. */
-  lemma FilterCaptureLookIndepNested(r: R.regex, cap_regs: seq<int>, cap_clocks: seq<int>,
+  lemma FilterCaptureLookIndepCdn(r: R.regex, cap_regs: seq<int>, cap_clocks: seq<int>,
                                      lc1: seq<int>, lc2: seq<int>, quant_clocks: seq<int>, maxclock: int)
-    requires NR.NestedFragmentRE(r)
+    requires NR.NestedFragmentCdnRE(r)
     ensures forall j :: j !in CaptureRegsSet(CapIdsInLooks(r)) ==>
                           AI.get_idx(AI.filter_capture(r, cap_regs, cap_clocks, lc1, quant_clocks, maxclock), j)
                           == AI.get_idx(AI.filter_capture(r, cap_regs, cap_clocks, lc2, quant_clocks, maxclock), j)
@@ -5627,8 +5710,8 @@ module LindenElkPikeInv {
     case Re_alt(r1, r2) =>
       var Y1 := AI.filter_capture(r1, cap_regs, cap_clocks, lc1, quant_clocks, maxclock);
       var Y2 := AI.filter_capture(r1, cap_regs, cap_clocks, lc2, quant_clocks, maxclock);
-      FilterCaptureLookIndepNested(r1, cap_regs, cap_clocks, lc1, lc2, quant_clocks, maxclock);
-      FilterCaptureLookIndepNested(r2, Y2, cap_clocks, lc1, lc2, quant_clocks, maxclock);
+      FilterCaptureLookIndepCdn(r1, cap_regs, cap_clocks, lc1, lc2, quant_clocks, maxclock);
+      FilterCaptureLookIndepCdn(r2, Y2, cap_clocks, lc1, lc2, quant_clocks, maxclock);
       forall j | j !in CaptureRegsSet(CapIdsInLooks(r))
         ensures AI.get_idx(AI.filter_capture(r2, Y1, cap_clocks, lc1, quant_clocks, maxclock), j)
              == AI.get_idx(AI.filter_capture(r2, Y2, cap_clocks, lc2, quant_clocks, maxclock), j)
@@ -5636,13 +5719,13 @@ module LindenElkPikeInv {
         CaptureRegsSetMono(CapIdsInLooks(r1), CapIdsInLooks(r));
         CaptureRegsSetMono(CapIdsInLooks(r2), CapIdsInLooks(r));
         assert AI.get_idx(Y1, j) == AI.get_idx(Y2, j);
-        FilterCaptureCrPointwiseNested(r2, Y1, Y2, cap_clocks, lc1, quant_clocks, maxclock, j);
+        FilterCaptureCrPointwiseCdn(r2, Y1, Y2, cap_clocks, lc1, quant_clocks, maxclock, j);
       }
     case Re_con(r1, r2) =>
       var Y1 := AI.filter_capture(r1, cap_regs, cap_clocks, lc1, quant_clocks, maxclock);
       var Y2 := AI.filter_capture(r1, cap_regs, cap_clocks, lc2, quant_clocks, maxclock);
-      FilterCaptureLookIndepNested(r1, cap_regs, cap_clocks, lc1, lc2, quant_clocks, maxclock);
-      FilterCaptureLookIndepNested(r2, Y2, cap_clocks, lc1, lc2, quant_clocks, maxclock);
+      FilterCaptureLookIndepCdn(r1, cap_regs, cap_clocks, lc1, lc2, quant_clocks, maxclock);
+      FilterCaptureLookIndepCdn(r2, Y2, cap_clocks, lc1, lc2, quant_clocks, maxclock);
       forall j | j !in CaptureRegsSet(CapIdsInLooks(r))
         ensures AI.get_idx(AI.filter_capture(r2, Y1, cap_clocks, lc1, quant_clocks, maxclock), j)
              == AI.get_idx(AI.filter_capture(r2, Y2, cap_clocks, lc2, quant_clocks, maxclock), j)
@@ -5650,15 +5733,16 @@ module LindenElkPikeInv {
         CaptureRegsSetMono(CapIdsInLooks(r1), CapIdsInLooks(r));
         CaptureRegsSetMono(CapIdsInLooks(r2), CapIdsInLooks(r));
         assert AI.get_idx(Y1, j) == AI.get_idx(Y2, j);
-        FilterCaptureCrPointwiseNested(r2, Y1, Y2, cap_clocks, lc1, quant_clocks, maxclock, j);
+        FilterCaptureCrPointwiseCdn(r2, Y1, Y2, cap_clocks, lc1, quant_clocks, maxclock, j);
       }
     case Re_quant(_, qid, _, r1) =>
       var qv := AI.get_idx(quant_clocks, qid);
-      if qv < maxclock { } else { FilterCaptureLookIndepNested(r1, cap_regs, cap_clocks, lc1, lc2, quant_clocks, qv); }
+      if qv < maxclock { } else { FilterCaptureLookIndepCdn(r1, cap_regs, cap_clocks, lc1, lc2, quant_clocks, qv); }
     case Re_capture(cid, r1) =>
       var start := AI.get_idx(cap_clocks, CP.start_reg(cid));
-      if start < 0 { } else if start < maxclock { } else { FilterCaptureLookIndepNested(r1, cap_regs, cap_clocks, lc1, lc2, quant_clocks, maxclock); }
+      if start < 0 { } else if start < maxclock { } else { FilterCaptureLookIndepCdn(r1, cap_regs, cap_clocks, lc1, lc2, quant_clocks, maxclock); }
     case Re_lookaround(lid, la, r1) =>
+      assert NR.NestedFragmentCdnRE(r1) by { reveal NR.NestedFragmentCdnRE; NR.NarrowIsCdn(r1); }   // (G5a-1) a look body is narrow
       forall j | j !in CaptureRegsSet(CapIdsInLooks(r))   // W == CaptureRegsSet(CapIds(r1))
         ensures AI.get_idx(AI.filter_capture(r, cap_regs, cap_clocks, lc1, quant_clocks, maxclock), j)
              == AI.get_idx(AI.filter_capture(r, cap_regs, cap_clocks, lc2, quant_clocks, maxclock), j)
@@ -5666,17 +5750,17 @@ module LindenElkPikeInv {
         assert forall cid: nat :: cid in CapIds(r1) ==> CP.start_reg(cid) != j by {
           forall cid: nat | cid in CapIds(r1) ensures CP.start_reg(cid) != j { StartRegInCaptureRegsSet(CapIds(r1), cid); }
         }
-        LkValAtNonStartNested(lid, la, r1, cap_regs, cap_clocks, lc1, quant_clocks, maxclock, j);
-        LkValAtNonStartNested(lid, la, r1, cap_regs, cap_clocks, lc2, quant_clocks, maxclock, j);
+        LkValAtNonStartCdn(lid, la, r1, cap_regs, cap_clocks, lc1, quant_clocks, maxclock, j);
+        LkValAtNonStartCdn(lid, la, r1, cap_regs, cap_clocks, lc2, quant_clocks, maxclock, j);
       }
   }
 
   /** `GmOfLiveLookIndep` under the nested fragment: on OUTSIDE-look groups,
       `GmOfLive` (hence `ThreadTracksGm`) is independent of the look bank, at any
       nesting depth. The keystone value fact `PreserveOraclePassNested` consumes. */
-  lemma GmOfLiveLookIndepNested(ast: R.regex, caps: AReg.Regs, look1: AReg.Regs, look2: AReg.Regs,
+  lemma GmOfLiveLookIndepCdn(ast: R.regex, caps: AReg.Regs, look1: AReg.Regs, look2: AReg.Regs,
                                 quant: AReg.Regs)
-    requires NR.NestedFragmentRE(ast)
+    requires NR.NestedFragmentCdnRE(ast)
     ensures forall g: nat :: g !in CapIdsInLooks(ast) ==>
                                ((g in GmOfLive(ast, caps, look1, quant)) <==> (g in GmOfLive(ast, caps, look2, quant)))
                                && (g in GmOfLive(ast, caps, look1, quant) ==>
@@ -5687,7 +5771,7 @@ module LindenElkPikeInv {
     var lc2 := AReg.as_arrays(look2).1;
     var qc := AReg.as_arrays(quant).1;
     var W := CaptureRegsSet(CapIdsInLooks(ast));
-    FilterCaptureLookIndepNested(ast, cap_regs, cap_clocks, lc1, lc2, qc, -1);
+    FilterCaptureLookIndepCdn(ast, cap_regs, cap_clocks, lc1, lc2, qc, -1);
     var f1 := AI.filter_reset(ast, caps, look1, quant, -1);
     var f2 := AI.filter_reset(ast, caps, look2, quant, -1);
     assert f1 == AI.filter_capture(ast, cap_regs, cap_clocks, lc1, qc, -1);
@@ -5703,6 +5787,19 @@ module LindenElkPikeInv {
       assert AI.get_idx(f1, CP.start_reg(g)) == AI.get_idx(f2, CP.start_reg(g));
       assert AI.get_idx(f1, CP.end_reg(g)) == AI.get_idx(f2, CP.end_reg(g));
     }
+  }
+
+  /** (G5a-1) The narrow name: `GmOfLiveLookIndepCdn` through `NR.NarrowIsCdn`. */
+  lemma GmOfLiveLookIndepNested(ast: R.regex, caps: AReg.Regs, look1: AReg.Regs, look2: AReg.Regs,
+                                quant: AReg.Regs)
+    requires NR.NestedFragmentRE(ast)
+    ensures forall g: nat :: g !in CapIdsInLooks(ast) ==>
+                               ((g in GmOfLive(ast, caps, look1, quant)) <==> (g in GmOfLive(ast, caps, look2, quant)))
+                               && (g in GmOfLive(ast, caps, look1, quant) ==>
+                                     GmOfLive(ast, caps, look1, quant)[g] == GmOfLive(ast, caps, look2, quant)[g])
+  {
+    NR.NarrowIsCdn(ast);
+    GmOfLiveLookIndepCdn(ast, caps, look1, look2, quant);
   }
 
   // On a properly closed match (every present group with a set end has
@@ -6099,8 +6196,8 @@ module LindenElkPikeInv {
   // ===========================================================================
 
   /** `FilterCaptureOutside` under the nested fragment. */
-  lemma FilterCaptureOutsideNested(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, mx: int, g: nat)
-    requires NR.NestedFragmentRE(r)
+  lemma FilterCaptureOutsideCdn(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, mx: int, g: nat)
+    requires NR.NestedFragmentCdnRE(r)
     requires g !in CapIds(r)
     ensures AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), CP.start_reg(g)) == AI.get_idx(cr, CP.start_reg(g))
     decreases r
@@ -6115,58 +6212,79 @@ module LindenElkPikeInv {
       else { FilterCaptureAgreeOutsideOwn(r1, cr, cc, lc, qc, -1, CP.start_reg(g)); }
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_alt(r1, r2) =>
-      FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, g);
-      FilterCaptureOutsideNested(r2, AI.filter_capture(r1, cr, cc, lc, qc, mx), cc, lc, qc, mx, g);
+      FilterCaptureOutsideCdn(r1, cr, cc, lc, qc, mx, g);
+      FilterCaptureOutsideCdn(r2, AI.filter_capture(r1, cr, cc, lc, qc, mx), cc, lc, qc, mx, g);
     case Re_con(r1, r2) =>
-      FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, g);
-      FilterCaptureOutsideNested(r2, AI.filter_capture(r1, cr, cc, lc, qc, mx), cc, lc, qc, mx, g);
+      FilterCaptureOutsideCdn(r1, cr, cc, lc, qc, mx, g);
+      FilterCaptureOutsideCdn(r2, AI.filter_capture(r1, cr, cc, lc, qc, mx), cc, lc, qc, mx, g);
     case Re_quant(nul, qid, q, r1) =>
       var qv := AI.get_idx(qc, qid);
-      if qv < mx { FilterAllOutside(r1, cr, g); } else { FilterCaptureOutsideNested(r1, cr, cc, lc, qc, qv, g); }
+      if qv < mx { FilterAllOutside(r1, cr, g); } else { FilterCaptureOutsideCdn(r1, cr, cc, lc, qc, qv, g); }
     case Re_capture(cid, r1) =>
       var start := AI.get_idx(cc, CP.start_reg(cid));
       if start < 0 { FilterAllOutside(r1, cr, g); }
       else if start < mx {
         SetIdxKeepsOther(cr, CP.start_reg(cid), CP.start_reg(g));
         FilterAllOutside(r1, AI.set_idx(cr, CP.start_reg(cid), -1), g);
-      } else { FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, g); }
+      } else { FilterCaptureOutsideCdn(r1, cr, cc, lc, qc, mx, g); }
+  }
+
+  /** (G5a-1) The narrow name: `FilterCaptureOutsideCdn` through `NR.NarrowIsCdn`. */
+  lemma FilterCaptureOutsideNested(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, mx: int, g: nat)
+    requires NR.NestedFragmentRE(r)
+    requires g !in CapIds(r)
+    ensures AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), CP.start_reg(g)) == AI.get_idx(cr, CP.start_reg(g))
+  {
+    NR.NarrowIsCdn(r);
+    FilterCaptureOutsideCdn(r, cr, cc, lc, qc, mx, g);
   }
 
   /** `FilterCaptureGeqNeg1` under the nested fragment. */
-  lemma FilterCaptureGeqNeg1Nested(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, mx: int, i: int)
-    requires NR.NestedFragmentRE(r)
+  lemma FilterCaptureGeqNeg1Cdn(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, mx: int, i: int)
+    requires NR.NestedFragmentCdnRE(r)
     requires AI.get_idx(cr, i) >= -1
     ensures AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), i) >= -1
     decreases r
   {
     match r
     case Re_lookaround(lid, la, r1) =>
+      assert NR.NestedFragmentCdnRE(r1) by { reveal NR.NestedFragmentCdnRE; NR.NarrowIsCdn(r1); }   // (G5a-1) a look body is narrow
       var lv := AI.get_idx(lc, lid);
       if lv < 0 || lv < mx { FilterAllGeqNeg1(r1, cr, i); }
-      else { FilterCaptureGeqNeg1Nested(r1, cr, cc, lc, qc, -1, i); }
+      else { FilterCaptureGeqNeg1Cdn(r1, cr, cc, lc, qc, -1, i); }
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_alt(r1, r2) =>
-      FilterCaptureGeqNeg1Nested(r1, cr, cc, lc, qc, mx, i);
-      FilterCaptureGeqNeg1Nested(r2, AI.filter_capture(r1, cr, cc, lc, qc, mx), cc, lc, qc, mx, i);
+      FilterCaptureGeqNeg1Cdn(r1, cr, cc, lc, qc, mx, i);
+      FilterCaptureGeqNeg1Cdn(r2, AI.filter_capture(r1, cr, cc, lc, qc, mx), cc, lc, qc, mx, i);
     case Re_con(r1, r2) =>
-      FilterCaptureGeqNeg1Nested(r1, cr, cc, lc, qc, mx, i);
-      FilterCaptureGeqNeg1Nested(r2, AI.filter_capture(r1, cr, cc, lc, qc, mx), cc, lc, qc, mx, i);
+      FilterCaptureGeqNeg1Cdn(r1, cr, cc, lc, qc, mx, i);
+      FilterCaptureGeqNeg1Cdn(r2, AI.filter_capture(r1, cr, cc, lc, qc, mx), cc, lc, qc, mx, i);
     case Re_quant(nul, qid, q, r1) =>
       var qv := AI.get_idx(qc, qid);
-      if qv < mx { FilterAllGeqNeg1(r1, cr, i); } else { FilterCaptureGeqNeg1Nested(r1, cr, cc, lc, qc, qv, i); }
+      if qv < mx { FilterAllGeqNeg1(r1, cr, i); } else { FilterCaptureGeqNeg1Cdn(r1, cr, cc, lc, qc, qv, i); }
     case Re_capture(cid, r1) =>
       var start := AI.get_idx(cc, CP.start_reg(cid));
       if start < 0 { FilterAllGeqNeg1(r1, cr, i); }
       else if start < mx {
         if i == CP.start_reg(cid) {} else { SetIdxKeepsOther(cr, CP.start_reg(cid), i); }
         FilterAllGeqNeg1(r1, AI.set_idx(cr, CP.start_reg(cid), -1), i);
-      } else { FilterCaptureGeqNeg1Nested(r1, cr, cc, lc, qc, mx, i); }
+      } else { FilterCaptureGeqNeg1Cdn(r1, cr, cc, lc, qc, mx, i); }
+  }
+
+  /** (G5a-1) The narrow name: `FilterCaptureGeqNeg1Cdn` through `NR.NarrowIsCdn`. */
+  lemma FilterCaptureGeqNeg1Nested(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, mx: int, i: int)
+    requires NR.NestedFragmentRE(r)
+    requires AI.get_idx(cr, i) >= -1
+    ensures AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), i) >= -1
+  {
+    NR.NarrowIsCdn(r);
+    FilterCaptureGeqNeg1Cdn(r, cr, cc, lc, qc, mx, i);
   }
 
   /** `FilterCaptureFrameAt` under the nested fragment. */
-  lemma FilterCaptureFrameAtNested(r: R.regex, A: seq<int>, B: seq<int>, cc: seq<int>, cc': seq<int>,
+  lemma FilterCaptureFrameAtCdn(r: R.regex, A: seq<int>, B: seq<int>, cc: seq<int>, cc': seq<int>,
                                    lc: seq<int>, qc: seq<int>, mx: int, gid: nat)
-    requires NR.NestedFragmentRE(r)
+    requires NR.NestedFragmentCdnRE(r)
     requires gid !in CapIds(r)
     requires |A| == |B|
     requires forall j :: j != CP.start_reg(gid) ==> AI.get_idx(A, j) == AI.get_idx(B, j)
@@ -6179,26 +6297,27 @@ module LindenElkPikeInv {
     FilterCaptureLen(r, A, cc, lc, qc, mx); FilterCaptureLen(r, B, cc', lc, qc, mx);
     match r
     case Re_lookaround(lid, la, r1) =>
+      assert NR.NestedFragmentCdnRE(r1) by { reveal NR.NestedFragmentCdnRE; NR.NarrowIsCdn(r1); }   // (G5a-1) a look body is narrow
       var lv := AI.get_idx(lc, lid);
       if lv < 0 || lv < mx { FilterAllFrameAt(r1, A, B, gid); }
-      else { FilterCaptureFrameAtNested(r1, A, B, cc, cc', lc, qc, -1, gid); }
+      else { FilterCaptureFrameAtCdn(r1, A, B, cc, cc', lc, qc, -1, gid); }
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_alt(r1, r2) =>
-      FilterCaptureFrameAtNested(r1, A, B, cc, cc', lc, qc, mx, gid);
+      FilterCaptureFrameAtCdn(r1, A, B, cc, cc', lc, qc, mx, gid);
       FilterCaptureLen(r1, A, cc, lc, qc, mx); FilterCaptureLen(r1, B, cc', lc, qc, mx);
       var a := AI.filter_capture(r1, A, cc, lc, qc, mx); var b := AI.filter_capture(r1, B, cc', lc, qc, mx);
       forall j | j != CP.start_reg(gid) ensures AI.get_idx(a, j) == AI.get_idx(b, j) {}
-      FilterCaptureFrameAtNested(r2, a, b, cc, cc', lc, qc, mx, gid);
+      FilterCaptureFrameAtCdn(r2, a, b, cc, cc', lc, qc, mx, gid);
     case Re_con(r1, r2) =>
-      FilterCaptureFrameAtNested(r1, A, B, cc, cc', lc, qc, mx, gid);
+      FilterCaptureFrameAtCdn(r1, A, B, cc, cc', lc, qc, mx, gid);
       FilterCaptureLen(r1, A, cc, lc, qc, mx); FilterCaptureLen(r1, B, cc', lc, qc, mx);
       var a := AI.filter_capture(r1, A, cc, lc, qc, mx); var b := AI.filter_capture(r1, B, cc', lc, qc, mx);
       forall j | j != CP.start_reg(gid) ensures AI.get_idx(a, j) == AI.get_idx(b, j) {}
-      FilterCaptureFrameAtNested(r2, a, b, cc, cc', lc, qc, mx, gid);
+      FilterCaptureFrameAtCdn(r2, a, b, cc, cc', lc, qc, mx, gid);
     case Re_quant(nul, qid, q, r1) =>
       var qv := AI.get_idx(qc, qid);
       if qv < mx { FilterAllFrameAt(r1, A, B, gid); }
-      else { FilterCaptureFrameAtNested(r1, A, B, cc, cc', lc, qc, qv, gid); }
+      else { FilterCaptureFrameAtCdn(r1, A, B, cc, cc', lc, qc, qv, gid); }
     case Re_capture(cid, r1) =>
       assert CP.start_reg(cid) != CP.start_reg(gid);
       var start := AI.get_idx(cc, CP.start_reg(cid));
@@ -6211,13 +6330,13 @@ module LindenElkPikeInv {
         }
         FilterAllFrameAt(r1, A2, B2, gid);
       } else {
-        FilterCaptureFrameAtNested(r1, A, B, cc, cc', lc, qc, mx, gid);
+        FilterCaptureFrameAtCdn(r1, A, B, cc, cc', lc, qc, mx, gid);
       }
   }
 
   /** `FilterCaptureAllStale` under the nested fragment (recurses into the look body). */
-  lemma FilterCaptureAllStaleNested(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, M: int)
-    requires NR.NestedFragmentRE(r)
+  lemma FilterCaptureAllStaleCdn(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, M: int)
+    requires NR.NestedFragmentCdnRE(r)
     requires LooksCapUnset(r, cc)
     requires forall cid: nat :: cid in CapIds(r)
                                 ==> AI.get_idx(cc, CP.start_reg(cid)) < M
@@ -6230,33 +6349,34 @@ module LindenElkPikeInv {
   {
     match r
     case Re_lookaround(lid, la, r1) =>
+      assert NR.NestedFragmentCdnRE(r1) by { reveal NR.NestedFragmentCdnRE; NR.NarrowIsCdn(r1); }   // (G5a-1) a look body is narrow
       var lv := AI.get_idx(lc, lid);
       if lv < 0 || lv < M {
       } else {
         CapIdsSplit(r1);
         assert LooksCapUnset(r1, cc);
-        FilterCaptureAllStaleNested(r1, cr, cc, lc, qc, -1);
+        FilterCaptureAllStaleCdn(r1, cr, cc, lc, qc, -1);
       }
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_alt(r1, r2) =>
-      FilterCaptureAllStaleNested(r1, cr, cc, lc, qc, M);
+      FilterCaptureAllStaleCdn(r1, cr, cc, lc, qc, M);
       var cr2 := AI.filter_all(r1, cr);
       forall k ensures AI.get_idx(cr2, k) >= -1 { FilterAllGeqNeg1(r1, cr, k); }
       forall cid: nat | cid in CapIds(r2) && AI.get_idx(cc, CP.start_reg(cid)) < 0
         ensures AI.get_idx(cr2, CP.start_reg(cid)) < 0 { FilterAllNeg(r1, cr, CP.start_reg(cid)); }
-      FilterCaptureAllStaleNested(r2, cr2, cc, lc, qc, M);
+      FilterCaptureAllStaleCdn(r2, cr2, cc, lc, qc, M);
     case Re_con(r1, r2) =>
-      FilterCaptureAllStaleNested(r1, cr, cc, lc, qc, M);
+      FilterCaptureAllStaleCdn(r1, cr, cc, lc, qc, M);
       var cr2 := AI.filter_all(r1, cr);
       forall k ensures AI.get_idx(cr2, k) >= -1 { FilterAllGeqNeg1(r1, cr, k); }
       forall cid: nat | cid in CapIds(r2) && AI.get_idx(cc, CP.start_reg(cid)) < 0
         ensures AI.get_idx(cr2, CP.start_reg(cid)) < 0 { FilterAllNeg(r1, cr, CP.start_reg(cid)); }
-      FilterCaptureAllStaleNested(r2, cr2, cc, lc, qc, M);
+      FilterCaptureAllStaleCdn(r2, cr2, cc, lc, qc, M);
     case Re_quant(nul, qid, q, r1) =>
       var qv := AI.get_idx(qc, qid);
       if qv < M {
       } else {
-        FilterCaptureAllStaleNested(r1, cr, cc, lc, qc, qv);
+        FilterCaptureAllStaleCdn(r1, cr, cc, lc, qc, qv);
       }
     case Re_capture(cid, r1) =>
       var start := AI.get_idx(cc, CP.start_reg(cid));
@@ -6270,9 +6390,9 @@ module LindenElkPikeInv {
   /** `FilterOpenFrame` under the nested fragment: the look case is `assert false`
       (an outside-look gid never lives in a look body); the sibling frames use the
       `*Nested` filter frames. */
-  lemma FilterOpenFrameNested(r: R.regex, cr: seq<int>, cr': seq<int>, cc: seq<int>, cc': seq<int>,
+  lemma FilterOpenFrameCdn(r: R.regex, cr: seq<int>, cr': seq<int>, cc: seq<int>, cc': seq<int>,
                               lc: seq<int>, qc: seq<int>, mx: int, gid: nat, cp: int, clk: int)
-    requires NR.NestedFragmentRE(r)
+    requires NR.NestedFragmentCdnRE(r)
     requires CapUnique(r)
     requires gid in CapIds(r)
     requires gid !in CapIdsInLooks(r)
@@ -6313,33 +6433,33 @@ module LindenElkPikeInv {
       if gid in CapIds(r1) {
         assert MxAtGid(r, cc, qc, mx, gid) == MxAtGid(r1, cc, qc, mx, gid);
         assert BodyOf(r, gid) == BodyOf(r1, gid);
-        FilterOpenFrameNested(r1, cr, cr', cc, cc', lc, qc, mx, gid, cp, clk);
+        FilterOpenFrameCdn(r1, cr, cr', cc, cc', lc, qc, mx, gid, cp, clk);
         assert gid !in CapIds(r2) by { if gid in CapIds(r2) { assert gid in CapIds(r1) * CapIds(r2); } }
-        FilterCaptureFrameAtNested(r2, X', X, cc', cc, lc, qc, mx, gid);
-        FilterCaptureOutsideNested(r2, X, cc, lc, qc, mx, gid);
-        FilterCaptureOutsideNested(r2, X', cc', lc, qc, mx, gid);
+        FilterCaptureFrameAtCdn(r2, X', X, cc', cc, lc, qc, mx, gid);
+        FilterCaptureOutsideCdn(r2, X, cc, lc, qc, mx, gid);
+        FilterCaptureOutsideCdn(r2, X', cc', lc, qc, mx, gid);
       } else {
         assert gid in CapIds(r2) && gid !in CapIds(r1);
-        FilterCaptureFrameAtNested(r1, cr', cr, cc', cc, lc, qc, mx, gid);
-        FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, gid);
-        FilterCaptureOutsideNested(r1, cr', cc', lc, qc, mx, gid);
-        forall k ensures AI.get_idx(X, k) >= -1 { FilterCaptureGeqNeg1Nested(r1, cr, cc, lc, qc, mx, k); }
-        forall k ensures AI.get_idx(X', k) >= -1 { FilterCaptureGeqNeg1Nested(r1, cr', cc', lc, qc, mx, k); }
+        FilterCaptureFrameAtCdn(r1, cr', cr, cc', cc, lc, qc, mx, gid);
+        FilterCaptureOutsideCdn(r1, cr, cc, lc, qc, mx, gid);
+        FilterCaptureOutsideCdn(r1, cr', cc', lc, qc, mx, gid);
+        forall k ensures AI.get_idx(X, k) >= -1 { FilterCaptureGeqNeg1Cdn(r1, cr, cc, lc, qc, mx, k); }
+        forall k ensures AI.get_idx(X', k) >= -1 { FilterCaptureGeqNeg1Cdn(r1, cr', cc', lc, qc, mx, k); }
         forall c: nat | c in CapIds(r2) && AI.get_idx(cc, CP.start_reg(c)) < 0
           ensures AI.get_idx(X, CP.start_reg(c)) < 0
         {
           assert c !in CapIds(r1) by { if c in CapIds(r1) { assert c in CapIds(r1) * CapIds(r2); } }
-          FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, c);
+          FilterCaptureOutsideCdn(r1, cr, cc, lc, qc, mx, c);
         }
         forall c: nat | c in CapIds(r2) && AI.get_idx(cc', CP.start_reg(c)) < 0
           ensures AI.get_idx(X', CP.start_reg(c)) < 0
         {
           assert c !in CapIds(r1) by { if c in CapIds(r1) { assert c in CapIds(r1) * CapIds(r2); } }
-          FilterCaptureOutsideNested(r1, cr', cc', lc, qc, mx, c);
+          FilterCaptureOutsideCdn(r1, cr', cc', lc, qc, mx, c);
         }
         assert MxAtGid(r, cc, qc, mx, gid) == MxAtGid(r2, cc, qc, mx, gid);
         assert BodyOf(r, gid) == BodyOf(r2, gid);
-        FilterOpenFrameNested(r2, X, X', cc, cc', lc, qc, mx, gid, cp, clk);
+        FilterOpenFrameCdn(r2, X, X', cc, cc', lc, qc, mx, gid, cp, clk);
       }
     case Re_con(r1, r2) =>
       var X := AI.filter_capture(r1, cr, cc, lc, qc, mx);
@@ -6348,40 +6468,40 @@ module LindenElkPikeInv {
       if gid in CapIds(r1) {
         assert MxAtGid(r, cc, qc, mx, gid) == MxAtGid(r1, cc, qc, mx, gid);
         assert BodyOf(r, gid) == BodyOf(r1, gid);
-        FilterOpenFrameNested(r1, cr, cr', cc, cc', lc, qc, mx, gid, cp, clk);
+        FilterOpenFrameCdn(r1, cr, cr', cc, cc', lc, qc, mx, gid, cp, clk);
         assert gid !in CapIds(r2) by { if gid in CapIds(r2) { assert gid in CapIds(r1) * CapIds(r2); } }
-        FilterCaptureFrameAtNested(r2, X', X, cc', cc, lc, qc, mx, gid);
-        FilterCaptureOutsideNested(r2, X, cc, lc, qc, mx, gid);
-        FilterCaptureOutsideNested(r2, X', cc', lc, qc, mx, gid);
+        FilterCaptureFrameAtCdn(r2, X', X, cc', cc, lc, qc, mx, gid);
+        FilterCaptureOutsideCdn(r2, X, cc, lc, qc, mx, gid);
+        FilterCaptureOutsideCdn(r2, X', cc', lc, qc, mx, gid);
       } else {
         assert gid in CapIds(r2) && gid !in CapIds(r1);
-        FilterCaptureFrameAtNested(r1, cr', cr, cc', cc, lc, qc, mx, gid);
-        FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, gid);
-        FilterCaptureOutsideNested(r1, cr', cc', lc, qc, mx, gid);
-        forall k ensures AI.get_idx(X, k) >= -1 { FilterCaptureGeqNeg1Nested(r1, cr, cc, lc, qc, mx, k); }
-        forall k ensures AI.get_idx(X', k) >= -1 { FilterCaptureGeqNeg1Nested(r1, cr', cc', lc, qc, mx, k); }
+        FilterCaptureFrameAtCdn(r1, cr', cr, cc', cc, lc, qc, mx, gid);
+        FilterCaptureOutsideCdn(r1, cr, cc, lc, qc, mx, gid);
+        FilterCaptureOutsideCdn(r1, cr', cc', lc, qc, mx, gid);
+        forall k ensures AI.get_idx(X, k) >= -1 { FilterCaptureGeqNeg1Cdn(r1, cr, cc, lc, qc, mx, k); }
+        forall k ensures AI.get_idx(X', k) >= -1 { FilterCaptureGeqNeg1Cdn(r1, cr', cc', lc, qc, mx, k); }
         forall c: nat | c in CapIds(r2) && AI.get_idx(cc, CP.start_reg(c)) < 0
           ensures AI.get_idx(X, CP.start_reg(c)) < 0
         {
           assert c !in CapIds(r1) by { if c in CapIds(r1) { assert c in CapIds(r1) * CapIds(r2); } }
-          FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, c);
+          FilterCaptureOutsideCdn(r1, cr, cc, lc, qc, mx, c);
         }
         forall c: nat | c in CapIds(r2) && AI.get_idx(cc', CP.start_reg(c)) < 0
           ensures AI.get_idx(X', CP.start_reg(c)) < 0
         {
           assert c !in CapIds(r1) by { if c in CapIds(r1) { assert c in CapIds(r1) * CapIds(r2); } }
-          FilterCaptureOutsideNested(r1, cr', cc', lc, qc, mx, c);
+          FilterCaptureOutsideCdn(r1, cr', cc', lc, qc, mx, c);
         }
         assert MxAtGid(r, cc, qc, mx, gid) == MxAtGid(r2, cc, qc, mx, gid);
         assert BodyOf(r, gid) == BodyOf(r2, gid);
-        FilterOpenFrameNested(r2, X, X', cc, cc', lc, qc, mx, gid, cp, clk);
+        FilterOpenFrameCdn(r2, X, X', cc, cc', lc, qc, mx, gid, cp, clk);
       }
     case Re_quant(nul, qid, q, r1) =>
       var qv := AI.get_idx(qc, qid);
       assert qv >= mx;
       assert MxAtGid(r, cc, qc, mx, gid) == MxAtGid(r1, cc, qc, qv, gid);
       assert BodyOf(r, gid) == BodyOf(r1, gid);
-      FilterOpenFrameNested(r1, cr, cr', cc, cc', lc, qc, qv, gid, cp, clk);
+      FilterOpenFrameCdn(r1, cr, cr', cc, cc', lc, qc, qv, gid, cp, clk);
     case Re_capture(cid, r1) =>
       if cid == gid {
         assert gid !in CapIds(r1);
@@ -6389,7 +6509,7 @@ module LindenElkPikeInv {
         var sclk := AI.get_idx(cc, CP.start_reg(cid));
         assert sclk < mx || sclk < 0;
         assert AI.get_idx(cc', CP.start_reg(cid)) == clk;
-        FilterCaptureOutsideNested(r1, cr', cc', lc, qc, mx, gid);
+        FilterCaptureOutsideCdn(r1, cr', cc', lc, qc, mx, gid);
         assert BodyOf(r, gid) == r1;
         forall cidx: nat | cidx in CapIds(r1)
           ensures AI.get_idx(cc', CP.start_reg(cidx)) < mx || AI.get_idx(cc', CP.start_reg(cidx)) < 0
@@ -6406,7 +6526,7 @@ module LindenElkPikeInv {
             assert AI.get_idx(cc', CP.start_reg(c)) == AI.get_idx(cc, CP.start_reg(c));
           }
         }
-        FilterCaptureAllStaleNested(r1, cr', cc', lc, qc, mx);
+        FilterCaptureAllStaleCdn(r1, cr', cc', lc, qc, mx);
         if sclk < 0 {
           assert AI.get_idx(cr, CP.start_reg(gid)) < 0;
           FilterAllOutside(r1, cr, gid);
@@ -6429,19 +6549,19 @@ module LindenElkPikeInv {
         assert AI.get_idx(cc', CP.start_reg(cid)) == AI.get_idx(cc, CP.start_reg(cid));
         assert MxAtGid(r, cc, qc, mx, gid) == MxAtGid(r1, cc, qc, mx, gid);
         assert BodyOf(r, gid) == BodyOf(r1, gid);
-        FilterOpenFrameNested(r1, cr, cr', cc, cc', lc, qc, mx, gid, cp, clk);
+        FilterOpenFrameCdn(r1, cr, cr', cc, cc', lc, qc, mx, gid, cp, clk);
       }
   }
 
-  /** `GmOfLiveOpenFull` under the nested fragment (uses `FilterOpenFrameNested`
+  /** `GmOfLiveOpenFull` under the nested fragment (uses `FilterOpenFrameCdn`
       + the blind `GmOfLiveOpen`). */
-  lemma GmOfLiveOpenFullNested(ast: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+  lemma GmOfLiveOpenFullCdn(ast: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
                                gid: nat, cp: int, clk: int)
     requires |caps.a_cp| == |caps.a_clk|
     requires CP.start_reg(gid) < |caps.a_cp|
     requires cp >= 0 && clk >= 0
     requires clk > AI.get_idx(caps.a_clk, CP.end_reg(gid))
-    requires NR.NestedFragmentRE(ast) && CapUnique(ast) && gid in CapIds(ast)
+    requires NR.NestedFragmentCdnRE(ast) && CapUnique(ast) && gid in CapIds(ast)
     requires gid !in CapIdsInLooks(ast)
     requires AI.get_idx(caps.a_clk, CP.start_reg(gid))
            < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
@@ -6473,11 +6593,38 @@ module LindenElkPikeInv {
       ensures AI.get_idx(cr', CP.start_reg(c)) < 0 {
       if c == gid {} else { assert CP.start_reg(c) != CP.start_reg(gid); }
     }
-    FilterOpenFrameNested(ast, cr, cr', cc, cc', lc, qc, -1, gid, cp, clk);
+    FilterOpenFrameCdn(ast, cr, cr', cc, cc', lc, qc, -1, gid, cp, clk);
     GmOfLiveOpen(ast, caps, look, quant, gid, cp, clk);
   }
 
   /** `GmOfLiveOpenGMOpen` under the nested fragment. */
+  lemma GmOfLiveOpenGMOpenCdn(ast: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+                                 gid: nat, cp: int, clk: int)
+    requires |caps.a_cp| == |caps.a_clk|
+    requires CP.start_reg(gid) < |caps.a_cp|
+    requires cp >= 0 && clk >= 0
+    requires clk > AI.get_idx(caps.a_clk, CP.end_reg(gid))
+    requires NR.NestedFragmentCdnRE(ast) && CapUnique(ast) && gid in CapIds(ast)
+    requires gid !in CapIdsInLooks(ast)
+    requires AI.get_idx(caps.a_clk, CP.start_reg(gid))
+           < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
+             || AI.get_idx(caps.a_clk, CP.start_reg(gid)) < 0
+    requires clk >= MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
+    requires PathPresent(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
+    requires forall k :: AI.get_idx(caps.a_cp, k) >= -1
+    requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
+                              ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
+    requires forall sg: nat :: sg in CapIds(BodyOf(ast, gid))
+                               ==> AI.get_idx(caps.a_clk, CP.start_reg(sg)) < MxAtGid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, gid)
+                                   || AI.get_idx(caps.a_clk, CP.start_reg(sg)) < 0
+    requires LooksCapUnset(BodyOf(ast, gid), caps.a_clk)
+    ensures GmOfLive(ast, AReg.set_reg(caps, CP.start_reg(gid), Some(cp), clk), look, quant)
+         == LG.GMOpen(cp as nat, gid, GmOfLive(ast, caps, look, quant))
+  {
+    GmOfLiveOpenFullCdn(ast, caps, look, quant, gid, cp, clk);
+  }
+
+  /** (G5a-1) The narrow name: `GmOfLiveOpenGMOpenCdn` through `NR.NarrowIsCdn`. */
   lemma GmOfLiveOpenGMOpenNested(ast: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
                                  gid: nat, cp: int, clk: int)
     requires |caps.a_cp| == |caps.a_clk|
@@ -6501,7 +6648,8 @@ module LindenElkPikeInv {
     ensures GmOfLive(ast, AReg.set_reg(caps, CP.start_reg(gid), Some(cp), clk), look, quant)
          == LG.GMOpen(cp as nat, gid, GmOfLive(ast, caps, look, quant))
   {
-    GmOfLiveOpenFullNested(ast, caps, look, quant, gid, cp, clk);
+    NR.NarrowIsCdn(ast);
+    GmOfLiveOpenGMOpenCdn(ast, caps, look, quant, gid, cp, clk);
   }
 
   // GmOfLiveOpen with the no-exposure precondition DISCHARGED by FilterOpenFrame.
@@ -6618,8 +6766,8 @@ module LindenElkPikeInv {
   // ===========================================================================
 
   /** `FilterCaptureQcFrame` under the nested fragment (recurses into the look body). */
-  lemma FilterCaptureQcFrameNested(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, qc': seq<int>, M: int, qid: nat, j: int)
-    requires NR.NestedFragmentRE(r)
+  lemma FilterCaptureQcFrameCdn(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, qc': seq<int>, M: int, qid: nat, j: int)
+    requires NR.NestedFragmentCdnRE(r)
     requires qid !in QuantIds(r)
     requires forall q0: nat :: q0 in QuantIds(r) ==> AI.get_idx(qc, q0) == AI.get_idx(qc', q0)
     ensures AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, M), j) == AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc', M), j)
@@ -6627,46 +6775,47 @@ module LindenElkPikeInv {
   {
     match r
     case Re_lookaround(lid, la, r1) =>
+      assert NR.NestedFragmentCdnRE(r1) by { reveal NR.NestedFragmentCdnRE; NR.NarrowIsCdn(r1); }   // (G5a-1) a look body is narrow
       var lv := AI.get_idx(lc, lid);
-      if lv < 0 || lv < M {} else { FilterCaptureQcFrameNested(r1, cr, cc, lc, qc, qc', -1, qid, j); }
+      if lv < 0 || lv < M {} else { FilterCaptureQcFrameCdn(r1, cr, cc, lc, qc, qc', -1, qid, j); }
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
     case Re_alt(r1, r2) =>
-      FilterCaptureQcFrameNested(r1, cr, cc, lc, qc, qc', M, qid, j);
+      FilterCaptureQcFrameCdn(r1, cr, cc, lc, qc, qc', M, qid, j);
       forall j0 ensures AI.get_idx(AI.filter_capture(r1, cr, cc, lc, qc, M), j0) == AI.get_idx(AI.filter_capture(r1, cr, cc, lc, qc', M), j0)
-      { FilterCaptureQcFrameNested(r1, cr, cc, lc, qc, qc', M, qid, j0); }
+      { FilterCaptureQcFrameCdn(r1, cr, cc, lc, qc, qc', M, qid, j0); }
       var Y := AI.filter_capture(r1, cr, cc, lc, qc, M);
       var Y' := AI.filter_capture(r1, cr, cc, lc, qc', M);
-      FilterCaptureQcFrameNested(r2, Y, cc, lc, qc, qc', M, qid, j);
-      FilterCaptureCrPointwiseNested(r2, Y', Y, cc, lc, qc', M, j);
+      FilterCaptureQcFrameCdn(r2, Y, cc, lc, qc, qc', M, qid, j);
+      FilterCaptureCrPointwiseCdn(r2, Y', Y, cc, lc, qc', M, j);
     case Re_con(r1, r2) =>
       forall j0 ensures AI.get_idx(AI.filter_capture(r1, cr, cc, lc, qc, M), j0) == AI.get_idx(AI.filter_capture(r1, cr, cc, lc, qc', M), j0)
-      { FilterCaptureQcFrameNested(r1, cr, cc, lc, qc, qc', M, qid, j0); }
+      { FilterCaptureQcFrameCdn(r1, cr, cc, lc, qc, qc', M, qid, j0); }
       var Y := AI.filter_capture(r1, cr, cc, lc, qc, M);
       var Y' := AI.filter_capture(r1, cr, cc, lc, qc', M);
-      FilterCaptureQcFrameNested(r2, Y, cc, lc, qc, qc', M, qid, j);
-      FilterCaptureCrPointwiseNested(r2, Y', Y, cc, lc, qc', M, j);
+      FilterCaptureQcFrameCdn(r2, Y, cc, lc, qc, qc', M, qid, j);
+      FilterCaptureCrPointwiseCdn(r2, Y', Y, cc, lc, qc', M, j);
     case Re_quant(nul, qid0, q, r1) =>
       if qid0 >= 0 { assert (qid0 as nat) in QuantIds(r); }
       assert AI.get_idx(qc, qid0) == AI.get_idx(qc', qid0);
       var qv := AI.get_idx(qc, qid0);
-      if qv < M {} else { FilterCaptureQcFrameNested(r1, cr, cc, lc, qc, qc', qv, qid, j); }
+      if qv < M {} else { FilterCaptureQcFrameCdn(r1, cr, cc, lc, qc, qc', qv, qid, j); }
     case Re_capture(cid, r1) =>
       var start := AI.get_idx(cc, CP.start_reg(cid));
-      if start < 0 { FilterCaptureQcFrameNested(r1, cr, cc, lc, qc, qc', M, qid, j); }
+      if start < 0 { FilterCaptureQcFrameCdn(r1, cr, cc, lc, qc, qc', M, qid, j); }
       else if start < M {}
-      else { FilterCaptureQcFrameNested(r1, cr, cc, lc, qc, qc', M, qid, j); }
+      else { FilterCaptureQcFrameCdn(r1, cr, cc, lc, qc, qc', M, qid, j); }
   }
 
 
-  /** The `qid`-node branch of `FilterResetFrameNested`'s quantifier arm, stated on the
+  /** The `qid`-node branch of `FilterResetFrameCdn`'s quantifier arm, stated on the
       BODY ALONE: at the fresh reset stamp `clk` every capture inside the body is
       stale, so the body's filter is `filter_all` — which clears exactly the body's
       start slots and agrees with the pre-stamp filter off them. Extracted (2026-09-04)
       because the same reasoning inside the arm's own VC, with the arm's whole
       hypothesis list and `r` in scope, times out at 900 s. */
-  lemma FRFBodyResetNested(r1: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, qc': seq<int>,
+  lemma FRFBodyResetCdn(r1: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, qc': seq<int>,
                        M: int, clk: int, j: int, oldv: int)
-    requires NR.NestedFragmentRE(r1) && CapUnique(r1)
+    requires NR.NestedFragmentCdnRE(r1) && CapUnique(r1)
     requires clk >= M
     requires LooksCapUnset(r1, cc)
     requires forall cid: nat :: cid in CapIds(r1) ==> AI.get_idx(cc, CP.start_reg(cid)) < clk
@@ -6681,21 +6830,21 @@ module LindenElkPikeInv {
     ensures (exists g: nat :: g in CapIds(r1) && CP.start_reg(g) == j)
             ==> AI.get_idx(AI.filter_all(r1, A), j) < 0
   {
-    FilterCaptureAllStaleNested(r1, A, cc, lc, qc', clk);
+    FilterCaptureAllStaleCdn(r1, A, cc, lc, qc', clk);
     if exists g: nat :: g in CapIds(r1) && CP.start_reg(g) == j {
       var g: nat :| g in CapIds(r1) && CP.start_reg(g) == j;
       FilterAllClearsStart(r1, A, g);
     }
     if forall g: nat :: g in CapIds(r1) ==> CP.start_reg(g) != j {
-      if oldv >= M { FilterCaptureVsAllNested(r1, A, cc, lc, qc, oldv, j); }
+      if oldv >= M { FilterCaptureVsAllCdn(r1, A, cc, lc, qc, oldv, j); }
     }
   }
 
   /** `FilterResetFrame` under the nested fragment (look case `assert false`;
       sibling frames use the `*Nested` filter frames). */
-  lemma FilterResetFrameNested(r: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, qc': seq<int>,
+  lemma FilterResetFrameCdn(r: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, qc': seq<int>,
                                M: int, qid: nat, clk: int, j: int)
-    requires NR.NestedFragmentRE(r) && CapUnique(r) && QuantUnique(r)
+    requires NR.NestedFragmentCdnRE(r) && CapUnique(r) && QuantUnique(r)
     requires qid in QuantIds(r)
     requires qid in QuantIdsOutsideLooks(r)
     requires clk >= 0
@@ -6714,7 +6863,7 @@ module LindenElkPikeInv {
     decreases r, 1
   {
     hide R.nullable;
-    hide NR.NestedFragmentRE;   // (2026-09-03) revealed per arm for the recursive calls only   // (2026-09-03) the annotation's nullability is never needed here; unfolded, z3 4.14 loops (30+ GB)
+    hide NR.NestedFragmentCdnRE;   // (2026-09-03) revealed per arm for the recursive calls only   // (2026-09-03) the annotation's nullability is never needed here; unfolded, z3 4.14 loops (30+ GB)
     // (2026-09-04) EVERY arm is its OWN lemma: at z3 4.14 the un-extracted body
     // batched to 30-47 GB in one solver (the pack's OOM), although every single
     // assertion isolates in under a second. Splitting the VCs is the fix, not
@@ -6723,14 +6872,14 @@ module LindenElkPikeInv {
     case Re_lookaround(lid, la, r1) =>
       FRFNestedLook(r, lid, la, r1, cc, qc, M, qid);
     case Re_capture(cid, r1) =>
-      FRFNestedCap(r, cid, r1, A, cc, lc, qc, qc', M, qid, clk, j);
+      FRFCdnCap(r, cid, r1, A, cc, lc, qc, qc', M, qid, clk, j);
     case Re_quant(nul, qid0, q, r1) =>
-      FRFNestedQuant(r, nul, qid0, q, r1, A, cc, lc, qc, qc', M, qid, clk, j);
-    case Re_alt(r1, r2) => FilterResetFrameSeqNested(r, r1, r2, A, cc, lc, qc, qc', M, qid, clk, j);
-    case Re_con(r1, r2) => FilterResetFrameSeqNested(r, r1, r2, A, cc, lc, qc, qc', M, qid, clk, j);
+      FRFCdnQuant(r, nul, qid0, q, r1, A, cc, lc, qc, qc', M, qid, clk, j);
+    case Re_alt(r1, r2) => FilterResetFrameSeqCdn(r, r1, r2, A, cc, lc, qc, qc', M, qid, clk, j);
+    case Re_con(r1, r2) => FilterResetFrameSeqCdn(r, r1, r2, A, cc, lc, qc, qc', M, qid, clk, j);
   }
 
-  /** `FilterResetFrameNested`'s LOOKAROUND arm: `qid` is outside every look
+  /** `FilterResetFrameCdn`'s LOOKAROUND arm: `qid` is outside every look
       body, so a lookaround node has no such `qid` — the arm is vacuous. */
   lemma FRFNestedLook(r: R.regex, lid: int, la: R.lookaround, r1: R.regex,
                       cc: seq<int>, qc: seq<int>, M: int, qid: nat)
@@ -6741,12 +6890,12 @@ module LindenElkPikeInv {
     assert false by { hide *; reveal QuantIdsOutsideLooks; }
   }
 
-  /** `FilterResetFrameNested`'s CAPTURE arm: the node is present (its start
+  /** `FilterResetFrameCdn`'s CAPTURE arm: the node is present (its start
       clock is fresh), so the filter descends into the body unchanged. */
-  lemma FRFNestedCap(r: R.regex, cid: int, r1: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>,
+  lemma FRFCdnCap(r: R.regex, cid: int, r1: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>,
                      qc: seq<int>, qc': seq<int>, M: int, qid: nat, clk: int, j: int)
     requires r == R.Re_capture(cid, r1)
-    requires NR.NestedFragmentRE(r) && CapUnique(r) && QuantUnique(r)
+    requires NR.NestedFragmentCdnRE(r) && CapUnique(r) && QuantUnique(r)
     requires qid in QuantIds(r)
     requires qid in QuantIdsOutsideLooks(r)
     requires clk >= 0
@@ -6765,26 +6914,26 @@ module LindenElkPikeInv {
     decreases r, 0
   {
     hide R.nullable;
-    hide NR.NestedFragmentRE;
-    assert NR.NestedFragmentRE(r1) by { reveal NR.NestedFragmentRE; }
+    hide NR.NestedFragmentCdnRE;
+    assert NR.NestedFragmentCdnRE(r1) by { reveal NR.NestedFragmentCdnRE; }
     assert qid in QuantIds(r1);
     assert AI.get_idx(cc, CP.start_reg(cid)) >= M && AI.get_idx(cc, CP.start_reg(cid)) >= 0;
     assert MxAtQid(r, cc, qc, M, qid) == MxAtQid(r1, cc, qc, M, qid);
     assert QidBody(r, qid) == QidBody(r1, qid);
-    FilterResetFrameNested(r1, A, cc, lc, qc, qc', M, qid, clk, j);
+    FilterResetFrameCdn(r1, A, cc, lc, qc, qc', M, qid, clk, j);
     // (2026-09-03) the present-capture unfolding, explicit for z3 4.14
     assert AI.filter_capture(r, A, cc, lc, qc', M) == AI.filter_capture(r1, A, cc, lc, qc', M);
     assert AI.filter_capture(r, A, cc, lc, qc, M) == AI.filter_capture(r1, A, cc, lc, qc, M);
   }
 
-  /** `FilterResetFrameNested`'s QUANTIFIER arm.
+  /** `FilterResetFrameCdn`'s QUANTIFIER arm.
       (gate C) `{:induction false}`: no induction is used here; with the bare look arm of
       `NestedFragmentRE` the automatic induction hypothesis ran z3 out of memory (8 s -> OOM). */
-  lemma {:induction false} FRFNestedQuant(r: R.regex, nul: R.nullability, qid0: R.quantid, q: R.counted_quantifier, r1: R.regex,
+  lemma {:induction false} FRFCdnQuant(r: R.regex, nul: R.nullability, qid0: R.quantid, q: R.counted_quantifier, r1: R.regex,
                        A: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, qc': seq<int>,
                        M: int, qid: nat, clk: int, j: int)
     requires r == R.Re_quant(nul, qid0, q, r1)
-    requires NR.NestedFragmentRE(r) && CapUnique(r) && QuantUnique(r)
+    requires NR.NestedFragmentCdnRE(r) && CapUnique(r) && QuantUnique(r)
     requires qid in QuantIds(r)
     requires qid in QuantIdsOutsideLooks(r)
     requires clk >= 0
@@ -6803,8 +6952,8 @@ module LindenElkPikeInv {
     decreases r, 0
   {
     hide R.nullable;
-    hide NR.NestedFragmentRE;
-    assert NR.NestedFragmentRE(r1) by { reveal NR.NestedFragmentRE; }
+    hide NR.NestedFragmentCdnRE;
+    assert NR.NestedFragmentCdnRE(r1) by { reveal NR.NestedFragmentCdnRE; }
     if qid0 >= 0 && (qid0 as nat) == qid {
       assert QidBody(r, qid) == r1;
       assert MxAtQid(r, cc, qc, M, qid) == M;
@@ -6821,7 +6970,7 @@ module LindenElkPikeInv {
       assert {:split_here} true;
       // (2026-09-04) the body-level content is its own lemma: with `r` and the
       // arm's hypothesis list in scope this batch timed out at 900 s.
-      FRFBodyResetNested(r1, A, cc, lc, qc, qc', M, clk, j, oldv);
+      FRFBodyResetCdn(r1, A, cc, lc, qc, qc', M, clk, j, oldv);
     } else {
       assert qid in QuantIds(r1);
       var qv0 := AI.get_idx(qc, qid0);
@@ -6829,17 +6978,17 @@ module LindenElkPikeInv {
       assert qv0 >= M;
       assert MxAtQid(r, cc, qc, M, qid) == MxAtQid(r1, cc, qc, qv0, qid);
       assert QidBody(r, qid) == QidBody(r1, qid);
-      FilterResetFrameNested(r1, A, cc, lc, qc, qc', qv0, qid, clk, j);
+      FilterResetFrameCdn(r1, A, cc, lc, qc, qc', qv0, qid, clk, j);
       assert AI.filter_capture(r, A, cc, lc, qc', M) == AI.filter_capture(r1, A, cc, lc, qc', qv0);
       assert AI.filter_capture(r, A, cc, lc, qc, M) == AI.filter_capture(r1, A, cc, lc, qc, qv0);
     }
   }
 
-  /** Sequential (`alt`/`con`) handling for `FilterResetFrameNested`. */
-  lemma FilterResetFrameSeqNested(r: R.regex, r1: R.regex, r2: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>,
+  /** Sequential (`alt`/`con`) handling for `FilterResetFrameCdn`. */
+  lemma FilterResetFrameSeqCdn(r: R.regex, r1: R.regex, r2: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>,
                                   qc: seq<int>, qc': seq<int>, M: int, qid: nat, clk: int, j: int)
     requires r == R.Re_alt(r1, r2) || r == R.Re_con(r1, r2)
-    requires NR.NestedFragmentRE(r) && CapUnique(r) && QuantUnique(r)
+    requires NR.NestedFragmentCdnRE(r) && CapUnique(r) && QuantUnique(r)
     requires qid in QuantIds(r)
     requires qid in QuantIdsOutsideLooks(r)
     requires clk >= 0
@@ -6859,10 +7008,10 @@ module LindenElkPikeInv {
     decreases r, 0
   {
     hide R.nullable;
-    hide NR.NestedFragmentRE;   // (2026-09-03) revealed per arm for the recursive calls only   // (2026-09-03) the annotation's nullability is never needed here; unfolded, z3 4.14 loops (30+ GB)
+    hide NR.NestedFragmentCdnRE;   // (2026-09-03) revealed per arm for the recursive calls only   // (2026-09-03) the annotation's nullability is never needed here; unfolded, z3 4.14 loops (30+ GB)
     // (2026-09-04) both halves' fragment facts, revealed ONCE (the hide above
     // otherwise starves every `*Nested` callee's precondition).
-    assert NR.NestedFragmentRE(r1) && NR.NestedFragmentRE(r2) by { reveal NR.NestedFragmentRE; }
+    assert NR.NestedFragmentCdnRE(r1) && NR.NestedFragmentCdnRE(r2) by { reveal NR.NestedFragmentCdnRE; }
     var X := AI.filter_capture(r1, A, cc, lc, qc, M);
     var X' := AI.filter_capture(r1, A, cc, lc, qc', M);
     FilterCaptureLen(r1, A, cc, lc, qc, M); FilterCaptureLen(r1, A, cc, lc, qc', M);
@@ -6877,28 +7026,28 @@ module LindenElkPikeInv {
       }
       assert LooksCapUnset(QidBody(r1, qid), cc);
       CapIdsQidBodySubset(r1, qid);
-      FilterResetFrameNested(r1, A, cc, lc, qc, qc', M, qid, clk, j);
+      FilterResetFrameCdn(r1, A, cc, lc, qc, qc', M, qid, clk, j);
       forall q0: nat | q0 in QuantIds(r2) ensures AI.get_idx(qc, q0) == AI.get_idx(qc', q0) {}
       if exists g: nat :: g in CapIds(QidBody(r, qid)) && CP.start_reg(g) == j {
         var g: nat :| g in CapIds(QidBody(r, qid)) && CP.start_reg(g) == j;
         assert g in CapIds(r1);
         assert g !in CapIds(r2) by { if g in CapIds(r2) { assert g in CapIds(r1) * CapIds(r2); } }
-        FilterCaptureOutsideNested(r2, X', cc, lc, qc', M, g);
+        FilterCaptureOutsideCdn(r2, X', cc, lc, qc', M, g);
       }
       if forall g: nat :: g in CapIds(QidBody(r, qid)) ==> CP.start_reg(g) != j {
-        FilterCaptureQcFrameNested(r2, X', cc, lc, qc, qc', M, qid, j);
-        FilterCaptureCrPointwiseNested(r2, X', X, cc, lc, qc, M, j);
+        FilterCaptureQcFrameCdn(r2, X', cc, lc, qc, qc', M, qid, j);
+        FilterCaptureCrPointwiseCdn(r2, X', X, cc, lc, qc, M, j);
       }
     } else {
       assert qid in QuantIds(r2) && qid !in QuantIds(r1);
       forall j0 ensures AI.get_idx(X, j0) == AI.get_idx(X', j0)
-      { FilterCaptureQcFrameNested(r1, A, cc, lc, qc, qc', M, qid, j0); }
-      forall k ensures AI.get_idx(X, k) >= -1 { FilterCaptureGeqNeg1Nested(r1, A, cc, lc, qc, M, k); }
+      { FilterCaptureQcFrameCdn(r1, A, cc, lc, qc, qc', M, qid, j0); }
+      forall k ensures AI.get_idx(X, k) >= -1 { FilterCaptureGeqNeg1Cdn(r1, A, cc, lc, qc, M, k); }
       forall c: nat | c in CapIds(r2) && AI.get_idx(cc, CP.start_reg(c)) < 0
         ensures AI.get_idx(X, CP.start_reg(c)) < 0
       {
         assert c !in CapIds(r1) by { if c in CapIds(r1) { assert c in CapIds(r1) * CapIds(r2); } }
-        FilterCaptureOutsideNested(r1, A, cc, lc, qc, M, c);
+        FilterCaptureOutsideCdn(r1, A, cc, lc, qc, M, c);
       }
       assert MxAtQid(r, cc, qc, M, qid) == MxAtQid(r2, cc, qc, M, qid);
       assert QidBody(r, qid) == QidBody(r2, qid);
@@ -6908,16 +7057,16 @@ module LindenElkPikeInv {
         QuantIdsSplit(r1);
       }
       assert LooksCapUnset(QidBody(r2, qid), cc);
-      FilterResetFrameNested(r2, X, cc, lc, qc, qc', M, qid, clk, j);
-      FilterCaptureCrPointwiseNested(r2, X', X, cc, lc, qc', M, j);
+      FilterResetFrameCdn(r2, X, cc, lc, qc, qc', M, qid, clk, j);
+      FilterCaptureCrPointwiseCdn(r2, X', X, cc, lc, qc', M, j);
     }
   }
 
-  /** `GmOfLiveResetFull` under the nested fragment (uses `FilterResetFrameNested`
+  /** `GmOfLiveResetFull` under the nested fragment (uses `FilterResetFrameCdn`
       + the blind `GmOfLiveReset`). */
-  lemma GmOfLiveResetFullNested(ast: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+  lemma GmOfLiveResetFullCdn(ast: R.regex, caps: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
                                 qid: nat, clk: int)
-    requires NR.NestedFragmentRE(ast) && CapUnique(ast) && QuantUnique(ast)
+    requires NR.NestedFragmentCdnRE(ast) && CapUnique(ast) && QuantUnique(ast)
     requires qid in QuantIds(ast)
     requires qid in QuantIdsOutsideLooks(ast)
     requires qid < |AReg.as_arrays(quant).1|
@@ -6944,18 +7093,45 @@ module LindenElkPikeInv {
     forall g: nat | g in gl
       ensures AI.get_idx(AI.filter_capture(ast, cr, cc, lc, qc', -1), CP.start_reg(g)) < 0
     {
-      FilterResetFrameNested(ast, cr, cc, lc, qc, qc', -1, qid, clk, CP.start_reg(g));
+      FilterResetFrameCdn(ast, cr, cc, lc, qc, qc', -1, qid, clk, CP.start_reg(g));
     }
     forall j | (forall g: nat :: g in gl ==> CP.start_reg(g) != j)
       ensures AI.get_idx(AI.filter_capture(ast, cr, cc, lc, qc', -1), j)
            == AI.get_idx(AI.filter_capture(ast, cr, cc, lc, qc, -1), j)
     {
-      FilterResetFrameNested(ast, cr, cc, lc, qc, qc', -1, qid, clk, j);
+      FilterResetFrameCdn(ast, cr, cc, lc, qc, qc', -1, qid, clk, j);
     }
     GmOfLiveReset(ast, caps, look, quant, qid, clk, gl);
   }
 
   /** `GmOfLiveResetGMReset` under the nested fragment. */
+  lemma GmOfLiveResetGMResetCdn(ast: R.regex, qm: AR.QMap, caps: AReg.Regs, look: AReg.Regs,
+                                   quant: AReg.Regs, qid: nat, clk: int)
+    requires NR.NestedFragmentCdnRE(ast) && CapUnique(ast) && QuantUnique(ast)
+    requires T.TransWf(ast) && AR.QmapOk(ast, qm)
+    requires qid in QuantIds(ast)
+    requires qid in QuantIdsOutsideLooks(ast)
+    requires qid < |AReg.as_arrays(quant).1|
+    requires |AReg.as_arrays(quant).0| == |AReg.as_arrays(quant).1|
+    requires clk >= 0
+    requires clk >= MxAtQid(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, qid)
+    requires PathPresentQ(ast, caps.a_clk, AReg.as_arrays(quant).1, -1, qid)
+    requires forall sg: nat :: sg in CapIds(QidBody(ast, qid)) ==> AI.get_idx(caps.a_clk, CP.start_reg(sg)) < clk
+    requires LooksCapUnset(QidBody(ast, qid), caps.a_clk)
+    requires forall k :: AI.get_idx(caps.a_cp, k) >= -1
+    requires forall c: nat :: c in CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
+                              ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
+    ensures (qid as int) in qm.quants
+    ensures GmOfLive(ast, caps, look, AReg.set_reg(quant, qid, None, clk))
+         == LG.GMReset(qm.quants[qid as int], GmOfLive(ast, caps, look, quant))
+  {
+    GmOfLiveResetFullCdn(ast, caps, look, quant, qid, clk);
+    QmapOkAtQid(ast, qm, qid);
+    assert LG.GMReset(qm.quants[qid as int], GmOfLive(ast, caps, look, quant))
+        == GmOfLive(ast, caps, look, quant) - (set g: nat {:autotriggers false} | g in qm.quants[qid as int]);
+  }
+
+  /** (G5a-1) The narrow name: `GmOfLiveResetGMResetCdn` through `NR.NarrowIsCdn`. */
   lemma GmOfLiveResetGMResetNested(ast: R.regex, qm: AR.QMap, caps: AReg.Regs, look: AReg.Regs,
                                    quant: AReg.Regs, qid: nat, clk: int)
     requires NR.NestedFragmentRE(ast) && CapUnique(ast) && QuantUnique(ast)
@@ -6976,10 +7152,8 @@ module LindenElkPikeInv {
     ensures GmOfLive(ast, caps, look, AReg.set_reg(quant, qid, None, clk))
          == LG.GMReset(qm.quants[qid as int], GmOfLive(ast, caps, look, quant))
   {
-    GmOfLiveResetFullNested(ast, caps, look, quant, qid, clk);
-    QmapOkAtQid(ast, qm, qid);
-    assert LG.GMReset(qm.quants[qid as int], GmOfLive(ast, caps, look, quant))
-        == GmOfLive(ast, caps, look, quant) - (set g: nat {:autotriggers false} | g in qm.quants[qid as int]);
+    NR.NarrowIsCdn(ast);
+    GmOfLiveResetGMResetCdn(ast, qm, caps, look, quant, qid, clk);
   }
 
   lemma FilterResetFrame(r: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, qc': seq<int>,
@@ -7005,7 +7179,7 @@ module LindenElkPikeInv {
     decreases r, 2
   {
     hide R.nullable;   // (2026-09-03) the annotation's nullability is never needed here; unfolded, z3 4.14 loops (30+ GB)
-    // (2026-09-04) EVERY arm is its OWN lemma — see `FilterResetFrameNested`.
+    // (2026-09-04) EVERY arm is its OWN lemma — see `FilterResetFrameCdn`.
     match r
     case Re_lookaround(lid, la, r1) => FRFLook(r, lid, la, r1, qid);
     case Re_capture(cid, r1) => FRFCap(r, cid, r1, A, cc, lc, qc, qc', M, qid, clk, j);
@@ -7015,7 +7189,7 @@ module LindenElkPikeInv {
   }
 
   /** `FilterResetFrame`'s `qid`-node reasoning, stated on the BODY ALONE — the
-      `LookBehindFragmentRE` twin of `FRFBodyResetNested`. */
+      `LookBehindFragmentRE` twin of `FRFBodyResetCdn`. */
   lemma FRFBodyReset(r1: R.regex, A: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>, qc': seq<int>,
                      M: int, clk: int, j: int, oldv: int)
     requires NR.LookBehindFragmentRE(r1) && CapUnique(r1)
@@ -8003,9 +8177,9 @@ module LindenElkPikeInv {
       `LookBehindFragmentRE(re)` requirement is vestigial here — the body uses only
       the depth-blind `GmOfLiveInit`/`ActiveRepRE`/`InitialInclusionRE`. Verbatim
       with `LookBehindFragmentRE -> NestedFragmentRE`. */
-  lemma InitialPikeInvREAtCpNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, ngroups: nat,
+  lemma InitialPikeInvREAtCpCdn(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, ngroups: nat,
                                    str: string, cp: nat, tree: LT.Tree, vms: AI.VmState, ncap: int, nlook: int, nquant: int)
-    requires NR.NestedFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase && AR.QmapOk(re, qm)
+    requires NR.NestedFragmentCdnRE(re) && T.TransWf(re) && !rer.ignoreCase && AR.QmapOk(re, qm)
     requires code == CP.compile_to_bytecode(re)
     requires cp <= |str|
     requires TT.TreeThreadRE(rer, qm, code, InpOfCp(str, cp), tree, 0, false)
@@ -8025,6 +8199,25 @@ module LindenElkPikeInv {
       assert ActiveRepRE(rer, qm, re, code, str, inp, [], []);
     }
     InitialInclusionRE(rer, qm, code, inp, Some(tree), 0, |code|);
+  }
+
+  /** (G5a-1) The narrow name: `InitialPikeInvREAtCpCdn` through `NR.NarrowIsCdn`. */
+  lemma InitialPikeInvREAtCpNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, ngroups: nat,
+                                   str: string, cp: nat, tree: LT.Tree, vms: AI.VmState, ncap: int, nlook: int, nquant: int)
+    requires NR.NestedFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase && AR.QmapOk(re, qm)
+    requires code == CP.compile_to_bytecode(re)
+    requires cp <= |str|
+    requires TT.TreeThreadRE(rer, qm, code, InpOfCp(str, cp), tree, 0, false)
+    requires vms.cp == cp
+    requires vms.active == [AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant))]
+    requires vms.blocked == []
+    requires vms.bestmatch.None?
+    requires vms.processed == AI.init_bpcset(|code|)
+    requires vms.context == AI.cp_context(cp, str, LAnc.Forward)
+    ensures PikeInvRE(rer, qm, re, code, ngroups, str, PT.PikeTreeInitialState(tree, InpOfCp(str, cp)), vms)
+  {
+    NR.NarrowIsCdn(re);
+    InitialPikeInvREAtCpCdn(rer, qm, re, code, ngroups, str, cp, tree, vms, ncap, nlook, nquant);
   }
 
   // ===========================================================================

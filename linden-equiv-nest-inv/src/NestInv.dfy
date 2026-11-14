@@ -3961,15 +3961,15 @@ module LindenElkNestInv {
   }
 
   /** L4 depth-k (ADDITIVE): `NotColdEntryRE` under the nested fragment (uses
-      `ColdPropagatesFNested`). */
-  lemma NotColdEntryRENested(re: R.regex, c: RB.code, endl: nat)
-    requires NR.NestedFragmentRE(re) && NR.NfaRepRE(re, c, 0, endl)
+      `ColdPropagatesFCdn`). */
+  lemma NotColdEntryRECdn(re: R.regex, c: RB.code, endl: nat)
+    requires NR.NestedFragmentCdnRE(re) && NR.NfaRepRE(re, c, 0, endl)
     requires NR.GetPcRE(c, endl) == Some(RB.Accept)
     ensures !ColdRE(c, 0)
   {
     if ColdRE(c, 0) {
       var n: nat :| ColdF(c, 0, n);
-      ColdPropagatesFNested(re, c, 0, endl, n);
+      ColdPropagatesFCdn(re, c, 0, endl, n);
       assert !AR.BackForkAt(c, endl);
       assert false;
     }
@@ -4187,8 +4187,8 @@ module LindenElkNestInv {
   // =========================================================================
 
   /** `ColdNNF` under the nested fragment. */
-  lemma ColdNNFNested(re: R.regex, c: RB.code, pc1: nat, pc2: nat, n: nat)
-    requires NR.NestedFragmentRE(re) && NR.NfaRepRE(re, c, pc1, pc2)
+  lemma ColdNNFCdn(re: R.regex, c: RB.code, pc1: nat, pc2: nat, n: nat)
+    requires NR.NestedFragmentCdnRE(re) && NR.NfaRepRE(re, c, pc1, pc2)
     requires R.nullable(re) == R.NonNullable
     requires ColdF(c, pc1, n)
     ensures false
@@ -4214,19 +4214,19 @@ module LindenElkNestInv {
       NR.NfaRepIncrRE(r2, c, e1 + 1, pc2);
       assert !AR.BackForkAt(c, pc1);
       if ColdF(c, pc1 + 1, n - 1) {
-        ColdNNFNested(r1, c, pc1 + 1, e1, n - 1);
+        ColdNNFCdn(r1, c, pc1 + 1, e1, n - 1);
       } else {
-        ColdNNFNested(r2, c, e1 + 1, pc2, n - 1);
+        ColdNNFCdn(r2, c, e1 + 1, pc2, n - 1);
       }
     case Re_con(r1, r2) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.NfaRepRE(r1, c, pc1, e1) && NR.NfaRepRE(r2, c, e1, pc2);
       if R.nullable(r1) == R.NonNullable {
-        ColdNNFNested(r1, c, pc1, e1, n);
+        ColdNNFCdn(r1, c, pc1, e1, n);
       } else {
         assert R.nullable(r2) == R.NonNullable;
-        ColdPropagatesFNested(r1, c, pc1, e1, n);
-        ColdNNFNested(r2, c, e1, pc2, n);
+        ColdPropagatesFCdn(r1, c, pc1, e1, n);
+        ColdNNFCdn(r2, c, e1, pc2, n);
       }
     case Re_capture(cid, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
@@ -4235,7 +4235,7 @@ module LindenElkNestInv {
         && NR.GetPcRE(c, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
         && pc2 == e1 + 1;
       assert !AR.BackForkAt(c, pc1);
-      ColdNNFNested(r1, c, pc1 + 1, e1, n - 1);
+      ColdNNFCdn(r1, c, pc1 + 1, e1, n - 1);
     case Re_quant(nul, qid, q, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert q.min > 0 && R.nullable(r1) == R.NonNullable;
@@ -4246,7 +4246,7 @@ module LindenElkNestInv {
           && NR.NfaRepRE(r1, c, pc1 + 1, eb)
           && NR.NfaRepMinRE(mn - 1, qid, r1, c, eb, em);
         assert !AR.BackForkAt(c, pc1);
-        ColdNNFNested(r1, c, pc1 + 1, eb, n - 1);
+        ColdNNFCdn(r1, c, pc1 + 1, eb, n - 1);
       } else if nul != R.NonNullable && !q.greedy {
         // §2.5a GENERIC: min forced copies, then the star loop
         var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, c, pc1, pc2);
@@ -4256,16 +4256,17 @@ module LindenElkNestInv {
             && NR.NfaRepRE(r1, c, pc1 + 1, eb)
             && NR.NfaRepMinRE(mn1 - 1, qid, r1, c, eb, em);
           assert !AR.BackForkAt(c, pc1);
-          ColdNNFNested(r1, c, pc1 + 1, eb, n - 1);
+          ColdNNFCdn(r1, c, pc1 + 1, eb, n - 1);
         } else {
           assert em == pc1;
           assert !AR.BackForkAt(c, pc1);
-          ColdNNFNested(r1, c, pc1 + 1, e1, n - 1);
+          ColdNNFCdn(r1, c, pc1 + 1, e1, n - 1);
         }
       } else if nul != R.NonNullable {
         // §2.5b CIN-GREEDY: the fragment's CIN disjunct pins
         // R.nullable(r1) == CINullable, contradicting NonNullable (min > 0).
-        assert R.nullable(r1) == R.CINullable;
+        // (G5a) CIN or CDN: either way the body is nullable
+        assert R.nullable(r1) != R.NonNullable;
         assert false;
       } else {
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, c, pc1, pc2);
@@ -4275,18 +4276,18 @@ module LindenElkNestInv {
             && NR.NfaRepRE(r1, c, pc1 + 1, eb)
             && NR.NfaRepMinRE(mn1 - 1, qid, r1, c, eb, em);
           assert !AR.BackForkAt(c, pc1);
-          ColdNNFNested(r1, c, pc1 + 1, eb, n - 1);
+          ColdNNFCdn(r1, c, pc1 + 1, eb, n - 1);
         } else {
           assert em == pc1;
           assert !AR.BackForkAt(c, pc1);
-          ColdNNFNested(r1, c, pc1 + 1, e1, n - 1);
+          ColdNNFCdn(r1, c, pc1 + 1, e1, n - 1);
         }
       }
   }
 
   /** `ColdPropagatesMinF` under the nested fragment. */
-  lemma ColdPropagatesMinFNested(k: nat, qid: R.quantid, r1: R.regex, c: RB.code, pcb: nat, pce: nat, n: nat)
-    requires NR.NestedFragmentRE(r1) && NR.NfaRepMinRE(k, qid, r1, c, pcb, pce)
+  lemma ColdPropagatesMinFCdn(k: nat, qid: R.quantid, r1: R.regex, c: RB.code, pcb: nat, pce: nat, n: nat)
+    requires NR.NestedFragmentCdnRE(r1) && NR.NfaRepMinRE(k, qid, r1, c, pcb, pce)
     requires ColdF(c, pcb, n)
     ensures ColdF(c, pce, n)
     decreases n, CP.rsize(r1), k + 2
@@ -4297,14 +4298,14 @@ module LindenElkNestInv {
       && NR.NfaRepMinRE(k - 1, qid, r1, c, e1, pce);
     assert !AR.BackForkAt(c, pcb);
     assert ColdF(c, pcb + 1, n - 1);
-    ColdPropagatesFNested(r1, c, pcb + 1, e1, n - 1);
-    ColdPropagatesMinFNested(k - 1, qid, r1, c, e1, pce, n - 1);
+    ColdPropagatesFCdn(r1, c, pcb + 1, e1, n - 1);
+    ColdPropagatesMinFCdn(k - 1, qid, r1, c, e1, pce, n - 1);
     ColdFMono(c, pce, n - 1, n);
   }
 
   /** `ColdPropagatesOptF` under the nested fragment. */
-  lemma ColdPropagatesOptFNested(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, c: RB.code, pcb: nat, pce: nat, n: nat)
-    requires NR.NestedFragmentRE(r1) && NR.NfaRepOptRE(k, greedy, qid, r1, c, pcb, pce)
+  lemma ColdPropagatesOptFCdn(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, c: RB.code, pcb: nat, pce: nat, n: nat)
+    requires NR.NestedFragmentCdnRE(r1) && NR.NfaRepOptRE(k, greedy, qid, r1, c, pcb, pce)
     requires ColdF(c, pcb, n)
     ensures ColdF(c, pce, n)
     decreases n, CP.rsize(r1), k + 2
@@ -4324,7 +4325,7 @@ module LindenElkNestInv {
       assert ColdF(c, pcb + 2, n - 2);
       assert !AR.BackForkAt(c, pcb + 2);
       assert ColdF(c, pcb + 3, n - 3);
-      ColdPropagatesFNested(r1, c, pcb + 3, e1, n - 3);
+      ColdPropagatesFCdn(r1, c, pcb + 3, e1, n - 3);
       assert !AR.BackForkAt(c, e1);
       assert false;
     } else {
@@ -4334,8 +4335,8 @@ module LindenElkNestInv {
   }
 
   /** `ColdPropagatesF` under the nested fragment. */
-  lemma ColdPropagatesFNested(re: R.regex, c: RB.code, pc1: nat, pc2: nat, n: nat)
-    requires NR.NestedFragmentRE(re) && NR.NfaRepRE(re, c, pc1, pc2)
+  lemma ColdPropagatesFCdn(re: R.regex, c: RB.code, pc1: nat, pc2: nat, n: nat)
+    requires NR.NestedFragmentCdnRE(re) && NR.NfaRepRE(re, c, pc1, pc2)
     requires ColdF(c, pc1, n)
     ensures ColdF(c, pc2, n)
     decreases n, CP.rsize(re), 1
@@ -4363,20 +4364,20 @@ module LindenElkNestInv {
       NR.NfaRepIncrRE(r2, c, e1 + 1, pc2);
       assert !AR.BackForkAt(c, pc1);
       if ColdF(c, pc1 + 1, n - 1) {
-        ColdPropagatesFNested(r1, c, pc1 + 1, e1, n - 1);
+        ColdPropagatesFCdn(r1, c, pc1 + 1, e1, n - 1);
         assert !AR.BackForkAt(c, e1);
         assert ColdF(c, pc2, n - 2);
         ColdFMono(c, pc2, n - 2, n);
       } else {
         assert ColdF(c, e1 + 1, n - 1);
-        ColdPropagatesFNested(r2, c, e1 + 1, pc2, n - 1);
+        ColdPropagatesFCdn(r2, c, e1 + 1, pc2, n - 1);
         ColdFMono(c, pc2, n - 1, n);
       }
     case Re_con(r1, r2) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.NfaRepRE(r1, c, pc1, e1) && NR.NfaRepRE(r2, c, e1, pc2);
-      ColdPropagatesFNested(r1, c, pc1, e1, n);
-      ColdPropagatesFNested(r2, c, e1, pc2, n);
+      ColdPropagatesFCdn(r1, c, pc1, e1, n);
+      ColdPropagatesFCdn(r2, c, e1, pc2, n);
     case Re_capture(cid, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var e1: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
@@ -4385,7 +4386,7 @@ module LindenElkNestInv {
         && pc2 == e1 + 1;
       assert !AR.BackForkAt(c, pc1);
       assert ColdF(c, pc1 + 1, n - 1);
-      ColdPropagatesFNested(r1, c, pc1 + 1, e1, n - 1);
+      ColdPropagatesFCdn(r1, c, pc1 + 1, e1, n - 1);
       assert !AR.BackForkAt(c, e1);
       assert ColdF(c, pc2, n - 2);
       ColdFMono(c, pc2, n - 2, n);
@@ -4411,7 +4412,7 @@ module LindenElkNestInv {
           assert ColdF(c, pc1 + 2, n - 2);
           assert !AR.BackForkAt(c, pc1 + 2);
           assert ColdF(c, pc1 + 3, n - 3);
-          ColdPropagatesFNested(r1, c, pc1 + 3, e1, n - 3);
+          ColdPropagatesFCdn(r1, c, pc1 + 3, e1, n - 3);
           assert !AR.BackForkAt(c, e1);
           assert false;
         } else {
@@ -4422,14 +4423,14 @@ module LindenElkNestInv {
         var em := NR.NfaRepREQuantInv(nul, qid, q, r1, c, pc1, pc2);
         var mn := q.min as nat;
         var kx := (q.max.value - q.min) as nat;
-        ColdPropagatesMinFNested(mn, qid, r1, c, pc1, em, n);
-        ColdPropagatesOptFNested(kx, q.greedy, qid, r1, c, em, pc2, n);
+        ColdPropagatesMinFCdn(mn, qid, r1, c, pc1, em, n);
+        ColdPropagatesOptFCdn(kx, q.greedy, qid, r1, c, em, pc2, n);
       } else if nul != R.NonNullable && !q.greedy {
         // §2.5a GENERIC: `min` forced copies, then the ORDINARY STAR loop at
         // `em` -- the star arm verbatim, shifted by `em - pc1`.
         var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, c, pc1, pc2);
         var mn := q.min as nat;
-        ColdPropagatesMinFNested(mn, qid, r1, c, pc1, em, n);
+        ColdPropagatesMinFCdn(mn, qid, r1, c, pc1, em, n);
         NR.NfaRepIncrRE(r1, c, em + 3, e1);
         assert !AR.BackForkAt(c, em);
         if ColdF(c, em + 1, n - 1) {
@@ -4437,19 +4438,20 @@ module LindenElkNestInv {
           assert ColdF(c, em + 2, n - 2);
           assert !AR.BackForkAt(c, em + 2);
           assert ColdF(c, em + 3, n - 3);
-          ColdPropagatesFNested(r1, c, em + 3, e1, n - 3);
+          ColdPropagatesFCdn(r1, c, em + 3, e1, n - 3);
           assert !AR.BackForkAt(c, e1);
           assert false;   // EndLoop has no Cold edge
         } else {
           assert ColdF(c, pc2, n - 1);
           ColdFMono(c, pc2, n - 1, n);
         }
-      } else if nul != R.NonNullable {
-        // §2.5b CIN-GREEDY: only the head fork's skip arm, over the
-        // stamp-true, reaches pc2 (the loop body is a Cold sink)
-        var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, c, pc1, pc2);
+      } else if nul == R.CDNullable {
+        assert {:split_here} true;
+        // (G5a) CDN-GREEDY: the loop body is a Cold sink as for CIN; the head fork's skip arm crosses the
+        // guard (zero-width) and the stamp-true to pc2
+        var em, e1 := NR.NfaRepRECdnInv(nul, qid, q, r1, c, pc1, pc2);
         var mn1 := (q.min - 1) as nat;
-        ColdPropagatesMinFNested(mn1, qid, r1, c, pc1, em, n);
+        ColdPropagatesMinFCdn(mn1, qid, r1, c, pc1, em, n);
         NR.NfaRepIncrRE(r1, c, em + 3, e1);
         assert !AR.BackForkAt(c, em);
         if ColdF(c, em + 1, n - 1) {
@@ -4457,7 +4459,31 @@ module LindenElkNestInv {
           assert ColdF(c, em + 2, n - 2);
           assert !AR.BackForkAt(c, em + 2);
           assert ColdF(c, em + 3, n - 3);
-          ColdPropagatesFNested(r1, c, em + 3, e1, n - 3);
+          ColdPropagatesFCdn(r1, c, em + 3, e1, n - 3);
+          assert !AR.BackForkAt(c, e1);
+          assert false;   // EndLoop has no Cold edge
+        } else {
+          assert ColdF(c, e1 + 2, n - 1);
+          assert !AR.BackForkAt(c, e1 + 2);
+          assert ColdF(c, e1 + 3, n - 2);   // over the guard
+          assert !AR.BackForkAt(c, e1 + 3);
+          assert ColdF(c, pc2, n - 3);      // over the stamp-true
+          ColdFMono(c, pc2, n - 3, n);
+        }
+      } else if nul != R.NonNullable {
+        // §2.5b CIN-GREEDY: only the head fork's skip arm, over the
+        // stamp-true, reaches pc2 (the loop body is a Cold sink)
+        var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, c, pc1, pc2);
+        var mn1 := (q.min - 1) as nat;
+        ColdPropagatesMinFCdn(mn1, qid, r1, c, pc1, em, n);
+        NR.NfaRepIncrRE(r1, c, em + 3, e1);
+        assert !AR.BackForkAt(c, em);
+        if ColdF(c, em + 1, n - 1) {
+          assert !AR.BackForkAt(c, em + 1);
+          assert ColdF(c, em + 2, n - 2);
+          assert !AR.BackForkAt(c, em + 2);
+          assert ColdF(c, em + 3, n - 3);
+          ColdPropagatesFCdn(r1, c, em + 3, e1, n - 3);
           assert !AR.BackForkAt(c, e1);
           assert false;   // EndLoop has no Cold edge
         } else {
@@ -4469,17 +4495,17 @@ module LindenElkNestInv {
       } else {
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, c, pc1, pc2);
         var mn1 := (q.min - 1) as nat;
-        ColdPropagatesMinFNested(mn1, qid, r1, c, pc1, em, n);
+        ColdPropagatesMinFCdn(mn1, qid, r1, c, pc1, em, n);
         assert !AR.BackForkAt(c, em);
         assert ColdF(c, em + 1, n - 1);
-        ColdNNFNested(r1, c, em + 1, e1, n - 1);
+        ColdNNFCdn(r1, c, em + 1, e1, n - 1);
         assert false;
       }
   }
 
   /** `BeginLoopColdSafeAtMin` under the nested fragment. */
-  lemma BeginLoopColdSafeAtMinNested(k: nat, qid: R.quantid, r1: R.regex, c: RB.code, pcb: nat, pce: nat, p: nat)
-    requires NR.NestedFragmentRE(r1) && NR.NfaRepMinRE(k, qid, r1, c, pcb, pce)
+  lemma BeginLoopColdSafeAtMinCdn(k: nat, qid: R.quantid, r1: R.regex, c: RB.code, pcb: nat, pce: nat, p: nat)
+    requires NR.NestedFragmentCdnRE(r1) && NR.NfaRepMinRE(k, qid, r1, c, pcb, pce)
     requires pcb <= p < pce
     requires NR.GetPcRE(c, p) == Some(RB.BeginLoop)
     ensures !ColdRE(c, p + 1)
@@ -4492,16 +4518,16 @@ module LindenElkNestInv {
     NR.NfaRepIncrRE(r1, c, pcb + 1, e1);
     NR.NfaRepIncrMinRE(k - 1, qid, r1, c, e1, pce);
     if pcb + 1 <= p < e1 {
-      BeginLoopColdSafeAtNested(r1, c, pcb + 1, e1, p);
+      BeginLoopColdSafeAtCdn(r1, c, pcb + 1, e1, p);
     } else {
       assert p != pcb;
-      BeginLoopColdSafeAtMinNested(k - 1, qid, r1, c, e1, pce, p);
+      BeginLoopColdSafeAtMinCdn(k - 1, qid, r1, c, e1, pce, p);
     }
   }
 
   /** `BeginLoopColdSafeAtOpt` under the nested fragment. */
-  lemma BeginLoopColdSafeAtOptNested(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, c: RB.code, pcb: nat, pce: nat, p: nat)
-    requires NR.NestedFragmentRE(r1) && NR.NfaRepOptRE(k, greedy, qid, r1, c, pcb, pce)
+  lemma BeginLoopColdSafeAtOptCdn(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, c: RB.code, pcb: nat, pce: nat, p: nat)
+    requires NR.NestedFragmentCdnRE(r1) && NR.NfaRepOptRE(k, greedy, qid, r1, c, pcb, pce)
     requires pcb <= p < pce
     requires NR.GetPcRE(c, p) == Some(RB.BeginLoop)
     ensures !ColdRE(c, p + 1)
@@ -4519,21 +4545,21 @@ module LindenElkNestInv {
     if p == pcb + 2 {
       if ColdRE(c, p + 1) {
         var n: nat :| ColdF(c, pcb + 3, n);
-        ColdPropagatesFNested(r1, c, pcb + 3, e1, n);
+        ColdPropagatesFCdn(r1, c, pcb + 3, e1, n);
         assert !AR.BackForkAt(c, e1);
         assert false;
       }
     } else if pcb + 3 <= p < e1 {
-      BeginLoopColdSafeAtNested(r1, c, pcb + 3, e1, p);
+      BeginLoopColdSafeAtCdn(r1, c, pcb + 3, e1, p);
     } else {
       assert p != pcb && p != pcb + 1 && p != e1;
-      BeginLoopColdSafeAtOptNested(k - 1, greedy, qid, r1, c, e1 + 1, pce, p);
+      BeginLoopColdSafeAtOptCdn(k - 1, greedy, qid, r1, c, e1 + 1, pce, p);
     }
   }
 
   /** `BeginLoopColdSafeAt` under the nested fragment. */
-  lemma BeginLoopColdSafeAtNested(re: R.regex, c: RB.code, pcb: nat, pce: nat, p: nat)
-    requires NR.NestedFragmentRE(re) && NR.NfaRepRE(re, c, pcb, pce)
+  lemma BeginLoopColdSafeAtCdn(re: R.regex, c: RB.code, pcb: nat, pce: nat, p: nat)
+    requires NR.NestedFragmentCdnRE(re) && NR.NfaRepRE(re, c, pcb, pce)
     requires pcb <= p < pce
     requires NR.GetPcRE(c, p) == Some(RB.BeginLoop)
     ensures !ColdRE(c, p + 1)
@@ -4557,10 +4583,10 @@ module LindenElkNestInv {
       NR.NfaRepIncrRE(r1, c, pcb + 1, e1);
       NR.NfaRepIncrRE(r2, c, e1 + 1, pce);
       if pcb + 1 <= p < e1 {
-        BeginLoopColdSafeAtNested(r1, c, pcb + 1, e1, p);
+        BeginLoopColdSafeAtCdn(r1, c, pcb + 1, e1, p);
       } else {
         assert p != pcb && p != e1;
-        BeginLoopColdSafeAtNested(r2, c, e1 + 1, pce, p);
+        BeginLoopColdSafeAtCdn(r2, c, e1 + 1, pce, p);
       }
     case Re_con(r1, r2) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
@@ -4568,9 +4594,9 @@ module LindenElkNestInv {
       NR.NfaRepIncrRE(r1, c, pcb, e1);
       NR.NfaRepIncrRE(r2, c, e1, pce);
       if p < e1 {
-        BeginLoopColdSafeAtNested(r1, c, pcb, e1, p);
+        BeginLoopColdSafeAtCdn(r1, c, pcb, e1, p);
       } else {
-        BeginLoopColdSafeAtNested(r2, c, e1, pce, p);
+        BeginLoopColdSafeAtCdn(r2, c, e1, pce, p);
       }
     case Re_capture(cid, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
@@ -4580,10 +4606,11 @@ module LindenElkNestInv {
         && pce == e1 + 1;
       NR.NfaRepIncrRE(r1, c, pcb + 1, e1);
       assert p != pcb && p != e1;
-      BeginLoopColdSafeAtNested(r1, c, pcb + 1, e1, p);
+      BeginLoopColdSafeAtCdn(r1, c, pcb + 1, e1, p);
     case Re_quant(nul, qid, q, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if q.min == 0 && q.max == None {
+        assert {:split_here} true;   // (G5a-1 P1) one batch per quant scheme
         var e1: nat :| NR.GetPcRE(c, pcb) == Some(if q.greedy then RB.Fork(pcb + 1, e1 + 2) else RB.Fork(e1 + 2, pcb + 1))
           && NR.GetPcRE(c, pcb + 1) == Some(RB.SetQuantToClock(qid, false))
           && NR.GetPcRE(c, pcb + 2) == Some(RB.BeginLoop)
@@ -4595,79 +4622,124 @@ module LindenElkNestInv {
         if p == pcb + 2 {
           if ColdRE(c, p + 1) {
             var n: nat :| ColdF(c, pcb + 3, n);
-            ColdPropagatesFNested(r1, c, pcb + 3, e1, n);
+            ColdPropagatesFCdn(r1, c, pcb + 3, e1, n);
             assert !AR.BackForkAt(c, e1);
             assert false;
           }
         } else {
           assert p != pcb && p != pcb + 1 && p != e1 && p != e1 + 1;
           assert pcb + 3 <= p < e1;
-          BeginLoopColdSafeAtNested(r1, c, pcb + 3, e1, p);
+          BeginLoopColdSafeAtCdn(r1, c, pcb + 3, e1, p);
         }
       } else if q.max.Some? {
+        assert {:split_here} true;   // (G5a-1 P1) one batch per quant scheme
         var em := NR.NfaRepREQuantInv(nul, qid, q, r1, c, pcb, pce);
         var mn := q.min as nat;
         var kx := (q.max.value - q.min) as nat;
         NR.NfaRepIncrMinRE(mn, qid, r1, c, pcb, em);
         NR.NfaRepIncrOptRE(kx, q.greedy, qid, r1, c, em, pce);
         if p < em {
-          BeginLoopColdSafeAtMinNested(mn, qid, r1, c, pcb, em, p);
+          BeginLoopColdSafeAtMinCdn(mn, qid, r1, c, pcb, em, p);
         } else {
-          BeginLoopColdSafeAtOptNested(kx, q.greedy, qid, r1, c, em, pce, p);
+          BeginLoopColdSafeAtOptCdn(kx, q.greedy, qid, r1, c, em, pce, p);
         }
       } else if nul != R.NonNullable && !q.greedy {
+        assert {:split_here} true;   // (G5a-1 P1) one batch per quant scheme
         // §2.5a GENERIC: the star arm's Cold sink argument, shifted to `em`.
         var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, c, pcb, pce);
         var mn := q.min as nat;
         NR.NfaRepIncrMinRE(mn, qid, r1, c, pcb, em);
         NR.NfaRepIncrRE(r1, c, em + 3, e1);
         if p < em {
-          BeginLoopColdSafeAtMinNested(mn, qid, r1, c, pcb, em, p);
+          BeginLoopColdSafeAtMinCdn(mn, qid, r1, c, pcb, em, p);
         } else if p == em + 2 {
           if ColdRE(c, p + 1) {
             var n: nat :| ColdF(c, em + 3, n);
-            ColdPropagatesFNested(r1, c, em + 3, e1, n);
+            ColdPropagatesFCdn(r1, c, em + 3, e1, n);
             assert !AR.BackForkAt(c, e1);
             assert false;
           }
         } else {
           assert p != em && p != em + 1 && p != e1 && p != e1 + 1;
           assert em + 3 <= p < e1;
-          BeginLoopColdSafeAtNested(r1, c, em + 3, e1, p);
+          BeginLoopColdSafeAtCdn(r1, c, em + 3, e1, p);
+        }
+      } else if nul == R.CDNullable {
+        assert {:split_here} true;   // (G5a-1 P1) one batch per quant scheme
+        // (G5a) CDN-GREEDY: the same Cold sink argument; the tail has one more instruction (the guard)
+        var em, e1 := NR.NfaRepRECdnInv(nul, qid, q, r1, c, pcb, pce);
+        var mn1 := (q.min - 1) as nat;
+        NR.NfaRepIncrMinRE(mn1, qid, r1, c, pcb, em);
+        NR.NfaRepIncrRE(r1, c, em + 3, e1);
+        if p < em {
+          BeginLoopColdSafeAtMinCdn(mn1, qid, r1, c, pcb, em, p);
+        } else if p == em + 2 {
+          if ColdRE(c, p + 1) {
+            var n: nat :| ColdF(c, em + 3, n);
+            ColdPropagatesFCdn(r1, c, em + 3, e1, n);
+            assert !AR.BackForkAt(c, e1);
+            assert false;
+          }
+        } else {
+          assert p != em && p != em + 1 && p != e1 && p != e1 + 1 && p != e1 + 2 && p != e1 + 3;
+          assert em + 3 <= p < e1;
+          BeginLoopColdSafeAtCdn(r1, c, em + 3, e1, p);
         }
       } else if nul != R.NonNullable {
+        assert {:split_here} true;   // (G5a-1 P1) one batch per quant scheme
         // §2.5b CIN-GREEDY: the same Cold sink argument over the end-fork loop.
         var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, c, pcb, pce);
         var mn1 := (q.min - 1) as nat;
         NR.NfaRepIncrMinRE(mn1, qid, r1, c, pcb, em);
         NR.NfaRepIncrRE(r1, c, em + 3, e1);
         if p < em {
-          BeginLoopColdSafeAtMinNested(mn1, qid, r1, c, pcb, em, p);
+          BeginLoopColdSafeAtMinCdn(mn1, qid, r1, c, pcb, em, p);
         } else if p == em + 2 {
           if ColdRE(c, p + 1) {
             var n: nat :| ColdF(c, em + 3, n);
-            ColdPropagatesFNested(r1, c, em + 3, e1, n);
+            ColdPropagatesFCdn(r1, c, em + 3, e1, n);
             assert !AR.BackForkAt(c, e1);
             assert false;
           }
         } else {
           assert p != em && p != em + 1 && p != e1 && p != e1 + 1 && p != e1 + 2;
           assert em + 3 <= p < e1;
-          BeginLoopColdSafeAtNested(r1, c, em + 3, e1, p);
+          BeginLoopColdSafeAtCdn(r1, c, em + 3, e1, p);
         }
       } else {
+        assert {:split_here} true;   // (G5a-1 P1) one batch per quant scheme
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, c, pcb, pce);
         var mn1 := (q.min - 1) as nat;
         NR.NfaRepIncrMinRE(mn1, qid, r1, c, pcb, em);
         NR.NfaRepIncrRE(r1, c, em + 1, e1);
         if p < em {
-          BeginLoopColdSafeAtMinNested(mn1, qid, r1, c, pcb, em, p);
+          BeginLoopColdSafeAtMinCdn(mn1, qid, r1, c, pcb, em, p);
         } else {
           assert p != em && p != e1;
           assert em + 1 <= p < e1;
-          BeginLoopColdSafeAtNested(r1, c, em + 1, e1, p);
+          BeginLoopColdSafeAtCdn(r1, c, em + 1, e1, p);
         }
       }
+  }
+
+  // (G5a-1) The narrow names of the two cold lemmas that are called from outside this file.
+  lemma NotColdEntryRENested(re: R.regex, c: RB.code, endl: nat)
+    requires NR.NestedFragmentRE(re) && NR.NfaRepRE(re, c, 0, endl)
+    requires NR.GetPcRE(c, endl) == Some(RB.Accept)
+    ensures !ColdRE(c, 0)
+  {
+    NR.NarrowIsCdn(re);
+    NotColdEntryRECdn(re, c, endl);
+  }
+
+  lemma BeginLoopColdSafeAtNested(re: R.regex, c: RB.code, pcb: nat, pce: nat, p: nat)
+    requires NR.NestedFragmentRE(re) && NR.NfaRepRE(re, c, pcb, pce)
+    requires pcb <= p < pce
+    requires NR.GetPcRE(c, p) == Some(RB.BeginLoop)
+    ensures !ColdRE(c, p + 1)
+  {
+    NR.NarrowIsCdn(re);
+    BeginLoopColdSafeAtCdn(re, c, pcb, pce, p);
   }
 
   // Node ids are bounded by the max functions the pipeline sizes register
@@ -5149,6 +5221,30 @@ module LindenElkNestInv {
         // a nested body genuinely owns foreign lids — recurse into r1
         LookBodyOfFragmentNested(r1, lid);
       }
+  }
+
+  /** (G5a-1) A look body of a top-level-fragment regex is in the NARROW fragment: the Cdn fragment's look arm
+      is `NestedFragmentRE(body)`, and a body's own looks are found by the narrow lemma. */
+  lemma LookBodyOfFragmentCdn(r: R.regex, lid: nat)
+    requires NR.NestedFragmentCdnRE(r)
+    requires lid in LTB.LookIds(r)
+    ensures NR.NestedFragmentRE(LookBodyOfRE(r, lid))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodyOfFragmentCdn(r1, lid); } else { LookBodyOfFragmentCdn(r2, lid); }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodyOfFragmentCdn(r1, lid); } else { LookBodyOfFragmentCdn(r2, lid); }
+    case Re_quant(_, _, _, r1) => LookBodyOfFragmentCdn(r1, lid);
+    case Re_capture(_, r1) => LookBodyOfFragmentCdn(r1, lid);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+        // the body is r1, narrow at the node
+      } else {
+        LookBodyOfFragmentNested(r1, lid);
+      }
+    case _ =>
   }
 
   /** The body's captures are inside-look captures of `r` (hence captures of `r`). */

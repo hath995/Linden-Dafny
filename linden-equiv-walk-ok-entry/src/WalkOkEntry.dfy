@@ -945,7 +945,7 @@ module LindenElkWalkOkEntry {
   // =========================================================================
 
   lemma NfaRepREPinsNested(re: R.regex, c: RB.code, pc1: nat, pc2: nat)
-    requires NR.NestedFragmentRE(re) && T.TransWf(re)
+    requires NR.NestedFragmentCdnRE(re) && T.TransWf(re)
     requires NR.NfaRepRE(re, c, pc1, pc2)
     requires NR.GetPcRE(c, pc1).Some? && NR.GetPcRE(c, pc1).value.Jmp?
     ensures pc1 == pc2 && TransparentL(T.Translate(re))
@@ -989,6 +989,17 @@ module LindenElkWalkOkEntry {
           assert T.TrDelta(q) == LN.NN(0);
           assert T.Translate(re) == L.Quantified(q.greedy, 0, LN.NN(0), T.Translate(r1));
         }
+      } else if nul == R.CDNullable && q.greedy {
+        // (G5a) the CDN-greedy plus: the chain head pins SetQuantToClock, or the head IS the fork: vacuous
+        var em, e1 := NR.NfaRepRECdnInv(nul, qid, q, r1, c, pc1, pc2);
+        var mn1 := (q.min - 1) as nat;
+        if mn1 > 0 {
+          var e1b: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetQuantToClock(qid, false))
+            && NR.NfaRepRE(r1, c, pc1 + 1, e1b) && NR.NfaRepMinRE(mn1 - 1, qid, r1, c, e1b, em);
+        } else {
+          NR.NfaRepIncrMinRE(0, qid, r1, c, pc1, em);
+          assert em == pc1;
+        }
       } else {
         // the do-while chain head pins SetQuantToClock: vacuous
         var mn1 := (q.min - 1) as nat;
@@ -1008,7 +1019,7 @@ module LindenElkWalkOkEntry {
   }
 
   lemma WalkOkCompFNested(n: nat, re: R.regex, c: RB.code, pc1: nat, pc2: nat, cont: LS.Actions, g: bool)
-    requires NR.NestedFragmentRE(re) && T.TransWf(re)
+    requires NR.NestedFragmentCdnRE(re) && T.TransWf(re)
     requires NR.NfaRepRE(re, c, pc1, pc2)
     requires forall gp: bool, mm: nat {:trigger WO.WalkOkF(cont, c, pc2, gp, mm)} :: mm < n ==> WO.WalkOkF(cont, c, pc2, gp, mm)
     ensures WO.WalkOkF([LS.Areg(T.Translate(re))] + cont, c, pc1, g, n)
@@ -1169,6 +1180,14 @@ module LindenElkWalkOkEntry {
         assert trre == L.Quantified(q.greedy, mn, LN.Inf, T.Translate(r1));
         assert CP.rsize(r1) < CP.rsize(re);
         WalkOkGenChainFNested(n, mn, nul, q.greedy, qid, r1, c, pc1, em, e1, pc2, cont, g);
+      } else if nul == R.CDNullable {
+        // (G5a) CDN-GREEDY: min-1 forced copies, then the guarded, stamped end-fork loop
+        var mn := q.min as nat;
+        var em, e1 := NR.NfaRepRECdnInv(nul, qid, q, r1, c, pc1, pc2);
+        assert T.TrDelta(q) == LN.Inf;
+        assert trre == L.Quantified(q.greedy, mn, LN.Inf, T.Translate(r1));
+        assert CP.rsize(r1) < CP.rsize(re);
+        WalkOkCdnChainFNested(n, mn, q.greedy, qid, r1, c, pc1, em, e1, pc2, cont, g);
       } else if nul != R.NonNullable {
         // §2.5b CIN-GREEDY: min-1 forced copies, then the stamped end-fork loop
         var mn := q.min as nat;
@@ -1197,7 +1216,7 @@ module LindenElkWalkOkEntry {
 
   lemma WalkOkMinChainFNested(n: nat, k: nat, kx: nat, greedy: bool, qid: R.quantid, r1: R.regex,
                         c: RB.code, pc1: nat, em: nat, pc2: nat, cont: LS.Actions, g: bool)
-    requires NR.NestedFragmentRE(r1) && T.TransWf(r1)
+    requires NR.NestedFragmentCdnRE(r1) && T.TransWf(r1)
     requires NR.NfaRepMinRE(k, qid, r1, c, pc1, em)
     requires NR.NfaRepOptRE(kx, greedy, qid, r1, c, em, pc2)
     requires forall gp: bool, mm: nat {:trigger WO.WalkOkF(cont, c, pc2, gp, mm)} :: mm < n ==> WO.WalkOkF(cont, c, pc2, gp, mm)
@@ -1232,7 +1251,7 @@ module LindenElkWalkOkEntry {
 
   lemma WalkOkOptChainFNested(n: nat, k: nat, greedy: bool, qid: R.quantid, r1: R.regex,
                         c: RB.code, pc1: nat, pc2: nat, cont: LS.Actions, g: bool)
-    requires NR.NestedFragmentRE(r1) && T.TransWf(r1)
+    requires NR.NestedFragmentCdnRE(r1) && T.TransWf(r1)
     requires NR.NfaRepOptRE(k, greedy, qid, r1, c, pc1, pc2)
     requires forall gp: bool, mm: nat {:trigger WO.WalkOkF(cont, c, pc2, gp, mm)} :: mm < n ==> WO.WalkOkF(cont, c, pc2, gp, mm)
     ensures WO.WalkOkF([LS.Areg(L.Quantified(greedy, 0, LN.NN(k), T.Translate(r1)))] + cont, c, pc1, g, n)
@@ -1291,7 +1310,7 @@ module LindenElkWalkOkEntry {
 
   lemma WalkOkOptRestFNested(m: nat, k: nat, greedy: bool, qid: R.quantid, r1: R.regex,
                        c: RB.code, e1: nat, pc2: nat, cont: LS.Actions, gp: bool, chk: LC.Input)
-    requires NR.NestedFragmentRE(r1) && T.TransWf(r1)
+    requires NR.NestedFragmentCdnRE(r1) && T.TransWf(r1)
     requires NR.GetPcRE(c, e1) == Some(RB.EndLoop)
     requires NR.NfaRepOptRE(k, greedy, qid, r1, c, e1 + 1, pc2)
     requires forall gp2: bool, mm: nat {:trigger WO.WalkOkF(cont, c, pc2, gp2, mm)} :: mm < m ==> WO.WalkOkF(cont, c, pc2, gp2, mm)
@@ -1310,7 +1329,7 @@ module LindenElkWalkOkEntry {
 
   lemma WalkOkStarRestFNested(m: nat, re: R.regex, c: RB.code, pc1: nat, pc2: nat, e1: nat,
                         cont: LS.Actions, gp: bool, chk: LC.Input)
-    requires NR.NestedFragmentRE(re) && T.TransWf(re)
+    requires NR.NestedFragmentCdnRE(re) && T.TransWf(re)
     requires NR.NfaRepRE(re, c, pc1, pc2)
     requires NR.GetPcRE(c, e1) == Some(RB.EndLoop)
     requires NR.GetPcRE(c, e1 + 1) == Some(RB.Jmp(pc1))
@@ -1346,7 +1365,7 @@ module LindenElkWalkOkEntry {
       and the `k == 0` bottom is the star arm verbatim, shifted to `em`. (nested fragment). */
   lemma WalkOkGenChainFNested(n: nat, k: nat, nul: R.nullability, greedy: bool, qid: R.quantid, r1: R.regex,
                         c: RB.code, pc1: nat, em: nat, e1: nat, pc2: nat, cont: LS.Actions, g: bool)
-    requires NR.NestedFragmentRE(r1) && T.TransWf(r1)
+    requires NR.NestedFragmentCdnRE(r1) && T.TransWf(r1)
     requires nul == R.nullable(r1) && nul != R.NonNullable
     requires NR.NfaRepMinRE(k, qid, r1, c, pc1, em)
     requires NR.GetPcRE(c, em) == Some(RB.Fork(e1 + 2, em + 1))
@@ -1391,7 +1410,7 @@ module LindenElkWalkOkEntry {
       NR.NfaRepIncrMinRE(0, qid, r1, c, pc1, em);
       assert pc1 == em;
       var re0 := R.Re_quant(nul, qid, R.CountedQuant(0, None, greedy), r1);
-      assert NR.NestedFragmentRE(re0);
+      assert NR.NestedFragmentCdnRE(re0);
       assert T.TransWf(re0);
       assert NR.NfaRepRE(re0, c, em, pc2);
       assert T.TrDelta(R.CountedQuant(0, None, greedy)) == LN.Inf;
@@ -1431,7 +1450,7 @@ module LindenElkWalkOkEntry {
       `WalkOkDoWhileRestF`; the KNOT recurses at strictly smaller fuel. */
   lemma WalkOkCinRestFNested(m: nat, qid: R.quantid, r1: R.regex,
                        c: RB.code, em: nat, e1: nat, pc2: nat, cont: LS.Actions, gp: bool, chk: LC.Input)
-    requires NR.NestedFragmentRE(r1) && T.TransWf(r1)
+    requires NR.NestedFragmentCdnRE(r1) && T.TransWf(r1)
     requires NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
     requires NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
     requires NR.NfaRepRE(r1, c, em + 3, e1)
@@ -1487,7 +1506,7 @@ module LindenElkWalkOkEntry {
   lemma WalkOkCinChainFNested(n: nat, k: nat, greedy: bool, qid: R.quantid, r1: R.regex,
                          c: RB.code, pc1: nat, em: nat, e1: nat, pc2: nat, cont: LS.Actions, g: bool)
     requires k >= 1 && greedy
-    requires NR.NestedFragmentRE(r1) && T.TransWf(r1)
+    requires NR.NestedFragmentCdnRE(r1) && T.TransWf(r1)
     requires NR.NfaRepMinRE(k - 1, qid, r1, c, pc1, em)
     requires NR.GetPcRE(c, em) == Some(RB.Fork(em + 1, e1 + 2))
     requires NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
@@ -1547,13 +1566,136 @@ module LindenElkWalkOkEntry {
     }
   }
 
+  /** (G5a) the CDN loop's rest: `WalkOkCinRestFNested` for the guarded layout (end fork exits three past). */
+  lemma WalkOkCdnRestFNested(m: nat, qid: R.quantid, r1: R.regex,
+                       c: RB.code, em: nat, e1: nat, pc2: nat, cont: LS.Actions, gp: bool, chk: LC.Input)
+    requires NR.NestedFragmentCdnRE(r1) && T.TransWf(r1)
+    requires NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    requires NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+    requires NR.NfaRepRE(r1, c, em + 3, e1)
+    requires NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+    requires NR.GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 4))
+    requires NR.GetPcRE(c, e1 + 2) == Some(RB.CheckNullable(qid))
+    requires NR.GetPcRE(c, e1 + 3) == Some(RB.SetQuantToClock(qid, true))
+    requires pc2 == e1 + 4
+    requires forall gp2: bool, mm: nat {:trigger WO.WalkOkF(cont, c, pc2, gp2, mm)} :: mm < m ==> WO.WalkOkF(cont, c, pc2, gp2, mm)
+    ensures WO.WalkOkF([LS.Acheck(chk), LS.Areg(L.Quantified(true, 0, LN.Inf, T.Translate(r1)))] + cont, c, e1, gp, m)
+    decreases m, CP.rsize(r1), 0
+  {
+    if m == 0 { return; }
+    var tr1 := T.Translate(r1);
+    var q0L := L.Quantified(true, 0, LN.Inf, tr1);
+    var tgt := [LS.Acheck(chk), LS.Areg(q0L)] + cont;
+    assert tgt[0] == LS.Acheck(chk) && tgt[1..] == [LS.Areg(q0L)] + cont;
+    NR.NfaRepIncrRE(r1, c, em + 3, e1);
+    assert em + 3 <= e1;
+    assert !AR.BackForkAt(c, e1);
+    assert FS.NoiPred(LN.Inf) == LN.Inf;
+    var lv := [LS.Areg(q0L)] + cont;
+    assert lv[0] == LS.Areg(q0L) && lv[1..] == cont;
+    if m >= 2 {
+      // the old loop-view conjunct lands on the BeginLoop: vacuous there
+      forall chk2: LC.Input
+        ensures WO.WalkOkF([LS.Areg(tr1), LS.Acheck(chk2), LS.Areg(q0L)] + cont, c, em + 2, true, m - 2)
+      {
+        WO.WalkOkFAtBeginLoop([LS.Areg(tr1), LS.Acheck(chk2), LS.Areg(q0L)] + cont, c, em + 2, true, m - 2);
+      }
+      // the CIN loop-view conjunct: the iteration from the body start, flag dropped (the KNOT)
+      forall chk2: LC.Input
+        ensures WO.WalkOkF([LS.Areg(tr1), LS.Acheck(chk2), LS.Areg(q0L)] + cont, c, em + 3, false, m - 2)
+      {
+        var rest := [LS.Acheck(chk2), LS.Areg(q0L)] + cont;
+        forall gp2: bool, mm: nat {:trigger WO.WalkOkF(rest, c, e1, gp2, mm)} | mm < m - 2
+          ensures WO.WalkOkF(rest, c, e1, gp2, mm)
+        {
+          WalkOkCdnRestFNested(mm, qid, r1, c, em, e1, pc2, cont, gp2, chk2);
+        }
+        WalkOkCompFNested(m - 2, r1, c, em + 3, e1, rest, false);
+        assert [LS.Areg(tr1)] + rest == [LS.Areg(tr1), LS.Acheck(chk2), LS.Areg(q0L)] + cont;
+      }
+      // the skip onto the exit arm
+      assert WO.WalkOkF(cont, c, pc2, true, m - 2);
+      assert WO.WalkOkRegF(q0L, cont, c, e1 + 1, true, m - 1);
+      assert WO.WalkOkF(lv, c, e1 + 1, true, m - 1);
+    } else {
+      assert WO.WalkOkF(lv, c, e1 + 1, true, m - 1);
+    }
+    assert WO.WalkOkF(tgt, c, e1, gp, m);
+  }
+
+  /** (G5a) the CDN chain: `WalkOkCinChainFNested` for the guarded layout (the skip arm is the guard). */
+  lemma WalkOkCdnChainFNested(n: nat, k: nat, greedy: bool, qid: R.quantid, r1: R.regex,
+                         c: RB.code, pc1: nat, em: nat, e1: nat, pc2: nat, cont: LS.Actions, g: bool)
+    requires k >= 1 && greedy
+    requires NR.NestedFragmentCdnRE(r1) && T.TransWf(r1)
+    requires NR.NfaRepMinRE(k - 1, qid, r1, c, pc1, em)
+    requires NR.GetPcRE(c, em) == Some(RB.Fork(em + 1, e1 + 2))
+    requires NR.GetPcRE(c, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    requires NR.GetPcRE(c, em + 2) == Some(RB.BeginLoop)
+    requires NR.NfaRepRE(r1, c, em + 3, e1)
+    requires NR.GetPcRE(c, e1) == Some(RB.EndLoop)
+    requires NR.GetPcRE(c, e1 + 1) == Some(RB.Fork(em + 1, e1 + 4))
+    requires NR.GetPcRE(c, e1 + 2) == Some(RB.CheckNullable(qid))
+    requires NR.GetPcRE(c, e1 + 3) == Some(RB.SetQuantToClock(qid, true))
+    requires pc2 == e1 + 4
+    requires forall gp: bool, mm: nat {:trigger WO.WalkOkF(cont, c, pc2, gp, mm)} :: mm < n ==> WO.WalkOkF(cont, c, pc2, gp, mm)
+    ensures WO.WalkOkF([LS.Areg(L.Quantified(greedy, k, LN.Inf, T.Translate(r1)))] + cont, c, pc1, g, n)
+    decreases n, CP.rsize(r1), 1
+  {
+    if n == 0 { return; }
+    var tr1 := T.Translate(r1);
+    var qk := L.Quantified(greedy, k, LN.Inf, tr1);
+    var tgt := [LS.Areg(qk)] + cont;
+    assert tgt[0] == LS.Areg(qk) && tgt[1..] == cont;
+    if k > 1 {
+      var e1b: nat :| NR.GetPcRE(c, pc1) == Some(RB.SetQuantToClock(qid, false))
+        && NR.NfaRepRE(r1, c, pc1 + 1, e1b)
+        && NR.NfaRepMinRE(k - 2, qid, r1, c, e1b, em);
+      var qk1 := L.Quantified(greedy, k - 1, LN.Inf, tr1);
+      forall gp: bool, mm: nat {:trigger WO.WalkOkF([LS.Areg(qk1)] + cont, c, e1b, gp, mm)} | mm < n - 1
+        ensures WO.WalkOkF([LS.Areg(qk1)] + cont, c, e1b, gp, mm)
+      {
+        WalkOkCdnChainFNested(mm, k - 1, greedy, qid, r1, c, e1b, em, e1, pc2, cont, gp);
+      }
+      WalkOkCompFNested(n - 1, r1, c, pc1 + 1, e1b, [LS.Areg(qk1)] + cont, g);
+      assert [LS.Areg(tr1)] + ([LS.Areg(qk1)] + cont) == [LS.Areg(tr1), LS.Areg(qk1)] + cont;
+      assert WO.WalkOkF([LS.Areg(tr1), LS.Areg(qk1)] + cont, c, pc1 + 1, g, n - 1);
+      assert WO.WalkOkRegF(qk, cont, c, pc1, g, n);
+      assert WO.WalkOkF(tgt, c, pc1, g, n);
+    } else {
+      // k == 1: the head IS the fork (§2.5b): the iteration list walks from
+      // the body start with the flag dropped, its checked rest sitting at the
+      // loop's EndLoop; the skip resumes past the stamp.
+      NR.NfaRepIncrMinRE(0, qid, r1, c, pc1, em);
+      assert pc1 == em;
+      assert NR.GetPcRE(c, pc1) == Some(RB.Fork(em + 1, e1 + 2));
+      var q0L := L.Quantified(greedy, 0, LN.Inf, tr1);
+      forall chk: LC.Input
+        ensures WO.WalkOkF([LS.Areg(tr1), LS.Acheck(chk), LS.Areg(q0L)] + cont, c, em + 3, false, n - 1)
+      {
+        var rest := [LS.Acheck(chk), LS.Areg(q0L)] + cont;
+        forall gp2: bool, mm: nat {:trigger WO.WalkOkF(rest, c, e1, gp2, mm)} | mm < n - 1
+          ensures WO.WalkOkF(rest, c, e1, gp2, mm)
+        {
+          WalkOkCdnRestFNested(mm, qid, r1, c, em, e1, pc2, cont, gp2, chk);
+        }
+        WalkOkCompFNested(n - 1, r1, c, em + 3, e1, rest, false);
+        assert [LS.Areg(tr1)] + rest == [LS.Areg(tr1), LS.Acheck(chk), LS.Areg(q0L)] + cont;
+      }
+      assert NR.GetPcRE(c, e1 + 2).Some? && NR.GetPcRE(c, e1 + 2).value.CheckNullable?;   // the skip arm is the guard
+      assert WO.WalkOkF(cont, c, e1 + 4, g, n - 1);
+      assert WO.WalkOkRegF(qk, cont, c, pc1, g, n);
+      assert WO.WalkOkF(tgt, c, pc1, g, n);
+    }
+  }
+
   lemma WalkOkPlusChainFNested(n: nat, k: nat, greedy: bool, qid: R.quantid, r1: R.regex,
                          c: RB.code, pc1: nat, em: nat, e1: nat, pc2: nat, cont: LS.Actions, g: bool)
     requires k >= 1
     // §2.5a: ONLY a non-nullable body compiles to the do-while, and the seam at
     // `k == 1` is exactly `WalkOkRegF`'s NonNullableL-gated case.
     requires R.nullable(r1) == R.NonNullable
-    requires NR.NestedFragmentRE(r1) && T.TransWf(r1)
+    requires NR.NestedFragmentCdnRE(r1) && T.TransWf(r1)
     requires NR.NfaRepMinRE(k - 1, qid, r1, c, pc1, em)
     requires NR.GetPcRE(c, em) == Some(RB.SetQuantToClock(qid, false))
     requires NR.NfaRepRE(r1, c, em + 1, e1)
@@ -1608,7 +1750,7 @@ module LindenElkWalkOkEntry {
 
   lemma WalkOkDoWhileRestFNested(m: nat, greedy: bool, qid: R.quantid, r1: R.regex,
                            c: RB.code, em: nat, e1: nat, pc2: nat, cont: LS.Actions, gp: bool, chk: LC.Input)
-    requires NR.NestedFragmentRE(r1) && T.TransWf(r1)
+    requires NR.NestedFragmentCdnRE(r1) && T.TransWf(r1)
     requires NR.NfaRepRE(r1, c, em + 1, e1)
     requires NR.GetPcRE(c, e1) == Some(if greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
     requires pc2 == e1 + 1
@@ -1652,14 +1794,14 @@ module LindenElkWalkOkEntry {
     assert WO.WalkOkF(tgt, c, e1, gp, m);
   }
 
-  lemma WalkOkEntryNested(re: R.regex)
-    requires NR.NestedFragmentRE(re) && T.TransWf(re)
+  lemma WalkOkEntryCdn(re: R.regex)
+    requires NR.NestedFragmentCdnRE(re) && T.TransWf(re)
     ensures forall g: bool ::
       WO.WalkOk([LS.Areg(T.Translate(re))], CP.compile_to_bytecode(re), 0, g)
   {
     var code := CP.compile_to_bytecode(re);
     var next := CP.compile(re, 0, CP.Progress).1;
-    NR.CompileToBytecodeRepNested(re);
+    NR.CompileToBytecodeRepCdn(re);
     assert NR.NfaRepRE(re, code, 0, next as nat);
     assert NR.GetPcRE(code, next as nat) == Some(RB.Accept);
     forall g: bool
@@ -1678,6 +1820,16 @@ module LindenElkWalkOkEntry {
         assert [LS.Areg(T.Translate(re))] + nil == [LS.Areg(T.Translate(re))];
       }
     }
+  }
+
+  /** The narrow name, for the row callers. */
+  lemma WalkOkEntryNested(re: R.regex)
+    requires NR.NestedFragmentRE(re) && T.TransWf(re)
+    ensures forall g: bool ::
+      WO.WalkOk([LS.Areg(T.Translate(re))], CP.compile_to_bytecode(re), 0, g)
+  {
+    NR.NarrowIsCdn(re);
+    WalkOkEntryCdn(re);
   }
 
 }

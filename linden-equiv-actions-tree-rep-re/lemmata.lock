@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:ecaf4d84df8b7ebafb441e9e4d4e25c2b9a699c35ec813ee374fd0a05faa4f3f"
+manifest-hash = "sha256:04ddfe59228fd2d5b34f9360da831baf08446c2e635d0a628a004006248b7175"
 
 [[package]]
 name = "linden.equiv-look-tables"
@@ -191,3 +191,12 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-nulled-plus"
+
+[[package]]
+name = "linden.equiv-cdn-priority"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-cdn-priority"

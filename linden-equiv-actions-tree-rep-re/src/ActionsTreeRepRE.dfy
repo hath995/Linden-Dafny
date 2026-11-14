@@ -57,6 +57,8 @@ module LindenElkActionsTreeRep {
   import NP = LindenElkNulledPlus
   import NT = LindenElkNulledPlusTie
   import NB = LindenElkNulledPlusBool
+  import CDP = LindenElkCdnPriority   // (G5a-1 row H) rung A without the nullability premise
+  import CNE = LindenElkCdnNoEmpty    // (G5a-1 row H) the iteration tree when the guard fails
 
   // RegElk's exit_allowed bool for a Linden LoopBool.
   /** RegElk's `exit_allowed` bit for a Linden `LoopBool`: `true` iff the
@@ -203,7 +205,7 @@ module LindenElkActionsTreeRep {
     // a matching loop (as in the LiftSimCore giants): every use here is opaque, so hide them.
     // (G5a-1 3-L0) the head's fragment facts as ground facts, then the fragment stays folded
     assert EL.PikeLkRegex(r1) && EL.CinHeadL(greedy, min, delta, r1);
-    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, AR.NfaRepStarCinL, EL.PikeLkRegexRec, EL.PikeLkRegex, MsizeA;
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, AR.NfaRepStarCinL, EL.PikeLkRegexRec, EL.PikeLkRegex, MsizeA, WO.WalkOkF, WO.WalkOkRegF;   // (G5a-1 P1) walk facts only through WO's lemmas
     EL.CinHeadOf(greedy, min, delta, r1);   // CINullableL(r1), a ground fact under the hide   // every recursive call below decreases on PSize alone
     assert acts == [acts[0]] + cont;
     EL.PikeLkActionsConsIff(acts[0], cont);
@@ -345,6 +347,7 @@ module LindenElkActionsTreeRep {
                     var lq := [LS.Areg(q0)] + cont;
                     assert lq[0] == LS.Areg(q0) && lq[1..] == cont;
                     assert AR.ActionsRepL(rer, qm, lq, code, e1x + 1);
+                    assert {:split_here} true;   // (G5a-1) sub-split of the representation batch
                     var lc := [LS.Acheck(inp)] + lq;
                     assert AR.ActionRepL(rer, qm, LS.Acheck(inp), code, e1x, e1x + 1);
                     assert lc[0] == LS.Acheck(inp) && lc[1..] == lq;
@@ -352,8 +355,10 @@ module LindenElkActionsTreeRep {
                     assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, em + 3, e1x);
                     assert ia[0] == LS.Areg(r1) && ia[1..] == lc;
                     assert AR.ActionsRepL(rer, qm, ia, code, em + 3);
+                    assert {:split_here} true;   // (G5a-1) sub-split of the representation batch
                     ActionsRepLToFuel(rer, qm, ia, code, em + 3);
                     var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, em + 3, ni);
+                    assert {:split_here} true;   // (G5a-1) sub-split of the representation batch
                     // the walk guard's CIN head arm
                     WO.WalkOkQuantCinHead(acts, code, pc, EaOf(b), greedy, min, delta, r1, em + 1, e1x + 2, inp);
                     assert {:split_here} true;   // (gate C) one batch per recursive call: as one, z3 ran past 700 M
@@ -843,6 +848,7 @@ module LindenElkActionsTreeRep {
     ensures NP.ResAgreeAtOutside(tstar, t, inp, S)
     decreases CE.PSize(t), MsizeA(acts), n, 1
   {
+    hide WO.WalkOkF, WO.WalkOkRegF;   // (G5a-1 P1) walk facts only through WO's lemmas
     assert acts == [acts[0]] + cont;
     EL.PikeLkActionsConsIff(acts[0], cont);
     var gidl := L.DefGroups(r1);
@@ -1562,6 +1568,7 @@ module LindenElkActionsTreeRep {
     ensures NP.ResAgreeAtOutside(tcstar, tc, inp, S)
     decreases CE.PSize(tc), MsizeA(acts), n, 0
   {
+    hide WO.WalkOkF, WO.WalkOkRegF;   // (G5a-1 P2) walk facts only through WO's lemmas
     var fx: int, fy: int :| NR.GetPcRE(code, pc) == Some(RB.Fork(fx, fy))
       && fx >= 0 && fy >= 0 && (fx as nat <= pc || fy as nat <= pc);
     // Accept and Jmp bottoms contradict the pinned Fork: the fuel derivation
@@ -1574,6 +1581,7 @@ module LindenElkActionsTreeRep {
     EL.PikeLkActionsConsIff(acts[0], cont);
     match acts[0]
     case Acheck(strcheck) =>
+      assert {:split_here} true;   // (G5a-1 P2) per-case batch
       // a stacked check: also zero-width at the fork (EndLoop is refuted);
       // its Progress collapses into the same leaves
       assert pcmid == pc;
@@ -1590,9 +1598,11 @@ module LindenElkActionsTreeRep {
         case _ =>
       }
     case Aclose(gid) =>
+      assert {:split_here} true;   // (G5a-1 P2) per-case batch
       // pins SetRegisterToCP: contradiction with the Fork
       assert false;
     case Areg(r) =>
+      assert {:split_here} true;   // (G5a-1 P2) per-case batch
       assert EL.PikeLkRegex(r);
       match r
       case Epsilon =>
@@ -1609,6 +1619,7 @@ module LindenElkActionsTreeRep {
         var ra: R.anchor :| NR.GetPcRE(code, pc) == Some(RB.AnchorAssertion(ra)) && T.TrAnchor(ra) == la;
         assert false;   // AnchorAssertion != Fork
       case Disjunction(r1, r2) =>
+        assert {:split_here} true;   // (G5a-1 P2) per-case batch
         var e1: nat :| NR.GetPcRE(code, pc) == Some(RB.Fork(pc + 1, e1 + 1))
           && AR.NfaRepL(rer, qm, r1, code, pc + 1, e1)
           && NR.GetPcRE(code, e1) == Some(RB.Jmp(pcmid))
@@ -1616,6 +1627,7 @@ module LindenElkActionsTreeRep {
         AR.NfaRepIncrL(rer, qm, r1, code, pc + 1, e1);
         assert false;   // both arms forward: contradicts the backward arm
       case Sequence(r1, r2) =>
+        assert {:split_here} true;   // (G5a-1 P2) per-case batch
         EL.PikeLkActionsConsIff(LS.Areg(r2), cont);
         EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Areg(r2)] + cont);
         assert AR.NfaRepL(rer, qm, L.Sequence(r1, r2), code, pc, pcmid);
@@ -1650,8 +1662,10 @@ module LindenElkActionsTreeRep {
         }
         tcstar := AtBackForkTreeRep(rer, qm, na, code, pc, inp, tc, nn, S);
       case Quantified(greedy, min, delta, r1) =>
+        assert {:split_here} true;   // (G5a-1 P2) per-case batch
         var gidl := L.DefGroups(r1);
         if min > 0 {
+          assert {:split_here} true;   // (G5a-1 P2) per-scheme batch
           // every forced-copy head pins a clock-mark: contradiction
           match delta {
             case Inf =>
@@ -1707,6 +1721,7 @@ module LindenElkActionsTreeRep {
               assert false;      // SetQuantToClock != Fork
           }
         } else if delta.NN? {
+          assert {:split_here} true;   // (G5a-1 P2) per-scheme batch
           var k := delta.n;
           var em := AR.NfaRepLQuantInv(rer, qm, greedy, 0, k, r1, code, pc, pcmid);
           assert em == pc;
@@ -1720,6 +1735,7 @@ module LindenElkActionsTreeRep {
             assert NB.EncOk(cont, inp, BS.CanExit) by { NB.EncOkTailReg(acts, inp, BS.CanExit); }
             tcstar := AtBackForkTreeRep(rer, qm, cont, code, pc, inp, tc, n - 1, S);
           } else {
+            assert {:split_here} true;   // (G5a-1 P2) star: fast path / loop views
             // a bounded layer pins a FORWARD fork: contradiction
             var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, pcmid) else RB.Fork(pcmid, pc + 1))
               && (exists qid: int ::
@@ -1734,6 +1750,7 @@ module LindenElkActionsTreeRep {
             assert false;
           }
         } else {
+          assert {:split_here} true;   // (G5a-1 P2) per-scheme batch
           assert min == 0 && delta == LN.Inf;
           if exists e1: nat :: NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1))
                        && (exists qid: int ::
@@ -1751,6 +1768,7 @@ module LindenElkActionsTreeRep {
             AR.NfaRepIncrL(rer, qm, r1, code, pc + 3, e1);
             assert false;
           } else {
+            assert {:split_here} true;   // (G5a-1 P2) star: fast path / loop views
             // THE LOOP VIEW: the star seen from the fork itself
             AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
             if NUL.NonNullableL(r1) {
@@ -1933,6 +1951,7 @@ module LindenElkActionsTreeRep {
           }
         }
       case Group(gid, r1) =>
+        assert {:split_here} true;   // (G5a-1 P2) per-case batch
         var e1: nat :| NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(CP.start_reg(gid as int)))
           && AR.NfaRepL(rer, qm, r1, code, pc + 1, e1)
           && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(gid as int)))
@@ -2020,7 +2039,7 @@ module LindenElkActionsTreeRep {
     // (G5a-1 3-L0) the head's fragment facts as ground facts, then the recursive fragment stays folded
     assert EL.PikeLkRegexRec(r1) && EL.CinHeadL(greedy, min, delta, r1);
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, AR.NfaRepStarCinL, MsizeA, EL.PikeLkRegexRec;   // every recursive call below decreases on PSize alone
-    EL.CinHeadOf(greedy, min, delta, r1);   // CINullableL(r1), a ground fact under the hide
+    // (G5a-1 row H) no `EL.CinHeadOf`: the head is CIN or CDN, told apart by the layout below
     assert acts == [acts[0]] + cont;
     EL.PikeLkActionsRecConsIff(acts[0], cont);
     var gidl := L.DefGroups(r1);
@@ -2031,11 +2050,15 @@ module LindenElkActionsTreeRep {
           // is the nulled-exit stamp = the VIRTUAL CHAIN of the body's first
           // empty path over the continuation (`tr_stamp`), and rung A's
           // priority theorem (`NB.CinPlusPriorityBool`) relates the two shapes.
-          var em, e1x := AR.NfaRepLCinInv(rer, qm, greedy, min, r1, code, pc, pcmid);
+          // (G5a-1 row H) ONE inversion for the CIN and the CDN layout: gN == 0 / 1. The true stamp is at
+          // e1x + 2 + gN, the exit at pcmid == e1x + 3 + gN, and for gN == 1 the guard sits at e1x + 2.
+          var em, e1x, gN := AR.NfaRepLNulInv(rer, qm, greedy, min, r1, code, pc, pcmid);
           var qidC: int :| NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qidC, false))
-            && NR.GetPcRE(code, e1x + 2) == Some(RB.SetQuantToClock(qidC, true))
+            && NR.GetPcRE(code, e1x + 2 + gN) == Some(RB.SetQuantToClock(qidC, true))
+            && (gN == 1 ==> NR.GetPcRE(code, e1x + 2) == Some(RB.CheckNullable(qidC)))
             && qidC in qm.quants && qm.quants[qidC] == gidl
             && AR.StampBodyOk(qm, qidC, r1);
+          if gN == 1 { EL.CdnHeadOn(greedy, min, delta, r1); }   // the switch, as an opaque ground fact
           AR.NfaRepIncrL(rer, qm, r1, code, em + 3, e1x);
           assert {:split_here} true;   // (E3) section: the forced copy
           if min > 1 {
@@ -2046,7 +2069,8 @@ module LindenElkActionsTreeRep {
                   && qid2 in qm.quants && qm.quants[qid2] == gidl)
               && AR.NfaRepL(rer, qm, r1, code, pc + 1, eb)
               && AR.NfaRepMinL(rer, qm, min - 2, r1, code, eb, em);
-            AR.NfaRepLCinIntro(rer, qm, greedy, min - 1, r1, code, eb, em, e1x, pcmid, qidC);
+            if gN == 0 { AR.NfaRepLCinIntro(rer, qm, greedy, min - 1, r1, code, eb, em, e1x, pcmid, qidC); }
+            else { AR.NfaRepLCdnIntro(rer, qm, greedy, min - 1, r1, code, eb, em, e1x, pcmid, qidC); }
             assert AR.NfaRepL(rer, qm, quant1, code, eb, pcmid);
             match t {
               case GroupActionT(g, tc) =>
@@ -2123,95 +2147,150 @@ module LindenElkActionsTreeRep {
                 // the spec trees of the iteration and of the continuation live
                 // INSIDE `tc` (at the body's first empty leaf), so both are
                 // PSize-smaller than `t`
-                assert NP.FirstEmptyPathL(rer, r1, inp).Some? by {
-                  assert NP.FirstEmptyPathA(rer, [], inp) == Some([]);
-                  NP.CINullableEmptyPathA(rer, r1, [], inp);
-                  assert [LS.Areg(r1)] + [] == [LS.Areg(r1)];
-                }
                 assert [LS.Areg(r1), LS.Areg(q0)] + cont == [LS.Areg(r1)] + ([LS.Areg(q0)] + cont);
-                var tcont0 := NB.BoolTreeLkEmptyPathSub(rer, r1, [LS.Areg(q0)] + cont, inp, b, tc);
-                assert FS.NoiPred(LN.Inf) == LN.Inf;
-                match tcont0 {
-                  case Choice(ta, tb) =>
-                    var ti: LT.Tree := *;
-                    match ta {
-                      case GroupActionT(g2, ti2) =>
-                        assert g2 == LG.Reset(gidl);
-                        ti := ti2;
-                      case _ => assert false;
-                    }
-                    var tcont := tb;
-                    assert EL.BoolTreeLk(rer, ia, inp, BS.CannotExit, ti);
-                    assert EL.BoolTreeLk(rer, cont, inp, b, tcont);
-                    assert CE.PSize(ti) < CE.PSize(t) && CE.PSize(tcont) < CE.PSize(t);
-                    assert CE.LkConfinedTreeK(tc, S);
-                    assert CE.LkConfinedTreeK(tcont0, S);
-                    assert tcont0 == LT.Choice(ta, tb);
-                    assert CE.LkConfinedTreeK(ta, S) && CE.LkConfinedTreeK(tb, S);
-                    assert ta.GroupActionT? && ti == ta.t;
-                    assert CE.LkConfinedTreeK(ti, S) && CE.LkConfinedTreeK(tcont, S);
-                    assert {:split_here} true;   // (E3) section: representation
-                    // representation of the two lists: the loop body at em + 3
-                    // (EndLoop at e1x, the CIN loop view of the star at e1x + 1),
-                    // the continuation at pcmid == e1x + 3
-                    FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
-                    AR.NfaRepLStarCinIntro(rer, qm, r1, code, em, e1x, qidC);
-                    assert AR.ActionRepL(rer, qm, LS.Areg(q0), code, e1x + 1, pcmid);
-                    var lq := [LS.Areg(q0)] + cont;
-                    assert lq[0] == LS.Areg(q0) && lq[1..] == cont;
-                    assert AR.ActionsRepL(rer, qm, lq, code, e1x + 1);
-                    assert {:split_here} true;   // (G5a-1) sub-split of the representation batch
-                    var lc := [LS.Acheck(inp)] + lq;
-                    assert AR.ActionRepL(rer, qm, LS.Acheck(inp), code, e1x, e1x + 1);
-                    assert lc[0] == LS.Acheck(inp) && lc[1..] == lq;
-                    assert AR.ActionsRepL(rer, qm, lc, code, e1x);
-                    assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, em + 3, e1x);
-                    assert ia[0] == LS.Areg(r1) && ia[1..] == lc;
-                    assert AR.ActionsRepL(rer, qm, ia, code, em + 3);
-                    assert {:split_here} true;   // (G5a-1) sub-split of the representation batch
-                    ActionsRepLToFuel(rer, qm, ia, code, em + 3);
-                    var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, em + 3, ni);
-                    assert {:split_here} true;   // (G5a-1) sub-split of the representation batch
-                    // the walk guard's CIN head arm
-                    WO.WalkOkQuantCinHead(acts, code, pc, EaOf(b), greedy, min, delta, r1, em + 1, e1x + 2, inp);
-                    assert {:split_here} true;   // (gate C) one batch per recursive call: as one, z3 ran past 700 M
-                    var subi := ActionsTreeRepFRENested(rer, qm, ia, code, em + 3, inp, BS.CannotExit, ti, ni, S);
-                    assert {:split_here} true;
-                    var subc := ActionsTreeRepFRENested(rer, qm, cont, code, pcmid, inp, b, tcont, n - 1, S);
-                    assert {:split_here} true;   // (E3) section: assembly
-                    // loop arm: tr_begin at em + 2, tr_reset at em + 1
-                    assert TR.TreeRepRE(qm, subi, code, em + 2, inp, EaOf(b));
-                    var tloop := LT.GroupActionT(LG.Reset(gidl), subi);
-                    assert TR.TreeRepRE(qm, tloop, code, em + 1, inp, EaOf(b));
-                    // skip arm: tr_stamp at e1x + 2 — the virtual chain of the
-                    // body's first empty path, read off the oracle bits and tied
-                    // to the spec path by rung B's `FirstEmptyPathRL`
-                    assert LL.OracleOkAt(rer, qm, inp);
-                    NT.FirstEmptyPathRL(rer, qm, qm.bodies[qidC], inp);
-                    var p := NP.FirstEmptyPathL(rer, r1, inp).value;
-                    assert TR.FirstEmptyPathR(qm, qm.bodies[qidC], inp) == Some(p);
-                    var tskip := LT.GroupActionT(LG.Reset(gidl), TR.ChainT(p, subc));
-                    assert TR.TreeRepRE(qm, tskip, code, e1x + 2, inp, EaOf(b)) by {
-                      TR.PeelChainT(p, subc);
-                      assert TR.StampShape(qm, qidC, tskip);
-                      assert TR.PeelT(p, tskip.t) == Some(subc);
-                      assert TR.TreeRepRE(qm, subc, code, e1x + 3, inp, EaOf(b));
-                    }
-                    tstar := LT.Choice(tloop, tskip);
-                    assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));   // tr_choice at the head fork
-                    assert {:split_here} true;   // (E3) section: the relation
-                    // the relation: rung A's theorem on the spec side, congruences on ours
-                    NB.CinPlusPriorityBool(rer, r1, cont, inp, b, S, t, ti, tcont);
-                    var tcin := LT.Choice(LT.GroupActionT(LG.Reset(gidl), ti),
-                                          LT.GroupActionT(LG.Reset(gidl), NP.Chain(p, tcont)));
-                    NB.ChainTEqChain(p, subc);
-                    NB.RACongChainOutside(p, subc, tcont, inp, S);
-                    NP.RACongGroupOutside(LG.Reset(gidl), subi, ti, inp, S);
-                    NP.RACongGroupOutside(LG.Reset(gidl), NP.Chain(p, subc), NP.Chain(p, tcont), inp, S);
-                    NP.RACongChoiceOutside(tloop, LT.GroupActionT(LG.Reset(gidl), ti),
-                                           tskip, LT.GroupActionT(LG.Reset(gidl), NP.Chain(p, tcont)), inp, S);
-                    NP.RATransOutside(tstar, tcin, t, inp, S);
-                  case _ => assert false;
+                // (G5a-1 row H) split on the guard: the body's first empty path at `inp` (always there for CIN)
+                if NP.FirstEmptyPathL(rer, r1, inp).Some? {
+                  var tcont0 := NB.BoolTreeLkEmptyPathSub(rer, r1, [LS.Areg(q0)] + cont, inp, b, tc);
+                  assert FS.NoiPred(LN.Inf) == LN.Inf;
+                  match tcont0 {
+                    case Choice(ta, tb) =>
+                      var ti: LT.Tree := *;
+                      match ta {
+                        case GroupActionT(g2, ti2) =>
+                          assert g2 == LG.Reset(gidl);
+                          ti := ti2;
+                        case _ => assert false;
+                      }
+                      var tcont := tb;
+                      assert EL.BoolTreeLk(rer, ia, inp, BS.CannotExit, ti);
+                      assert EL.BoolTreeLk(rer, cont, inp, b, tcont);
+                      assert CE.PSize(ti) < CE.PSize(t) && CE.PSize(tcont) < CE.PSize(t);
+                      assert CE.LkConfinedTreeK(tc, S);
+                      assert CE.LkConfinedTreeK(tcont0, S);
+                      assert tcont0 == LT.Choice(ta, tb);
+                      assert CE.LkConfinedTreeK(ta, S) && CE.LkConfinedTreeK(tb, S);
+                      assert ta.GroupActionT? && ti == ta.t;
+                      assert CE.LkConfinedTreeK(ti, S) && CE.LkConfinedTreeK(tcont, S);
+                      assert {:split_here} true;   // (E3) section: representation
+                      // representation of the two lists: the loop body at em + 3
+                      // (EndLoop at e1x, the CIN loop view of the star at e1x + 1),
+                      // the continuation at pcmid == e1x + 3
+                      FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
+                      if gN == 0 { AR.NfaRepLStarCinIntro(rer, qm, r1, code, em, e1x, qidC); }
+                      else { AR.NfaRepLStarCdnIntro(rer, qm, r1, code, em, e1x, qidC); }
+                      assert AR.ActionRepL(rer, qm, LS.Areg(q0), code, e1x + 1, pcmid);
+                      var lq := [LS.Areg(q0)] + cont;
+                      assert lq[0] == LS.Areg(q0) && lq[1..] == cont;
+                      assert AR.ActionsRepL(rer, qm, lq, code, e1x + 1);
+                      assert {:split_here} true;   // (G5a-1) sub-split of the representation batch
+                      var lc := [LS.Acheck(inp)] + lq;
+                      assert AR.ActionRepL(rer, qm, LS.Acheck(inp), code, e1x, e1x + 1);
+                      assert lc[0] == LS.Acheck(inp) && lc[1..] == lq;
+                      assert AR.ActionsRepL(rer, qm, lc, code, e1x);
+                      assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, em + 3, e1x);
+                      assert ia[0] == LS.Areg(r1) && ia[1..] == lc;
+                      assert AR.ActionsRepL(rer, qm, ia, code, em + 3);
+                      assert {:split_here} true;   // (G5a-1) sub-split of the representation batch
+                      ActionsRepLToFuel(rer, qm, ia, code, em + 3);
+                      var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, em + 3, ni);
+                      assert {:split_here} true;   // (G5a-1) sub-split of the representation batch
+                      // the walk guard's CIN head arm
+                      if gN == 0 { WO.WalkOkQuantCinHead(acts, code, pc, EaOf(b), greedy, min, delta, r1, em + 1, e1x + 2, inp); }
+                      else { WO.WalkOkQuantCdnHead(acts, code, pc, EaOf(b), greedy, min, delta, r1, em + 1, e1x + 2, inp); }
+                      assert WO.WalkOk(cont, code, pcmid, EaOf(b));
+                      assert {:split_here} true;   // (gate C) one batch per recursive call: as one, z3 ran past 700 M
+                      var subi := ActionsTreeRepFRENested(rer, qm, ia, code, em + 3, inp, BS.CannotExit, ti, ni, S);
+                      assert {:split_here} true;
+                      var subc := ActionsTreeRepFRENested(rer, qm, cont, code, pcmid, inp, b, tcont, n - 1, S);
+                      assert {:split_here} true;   // (E3) section: assembly
+                      // loop arm: tr_begin at em + 2, tr_reset at em + 1
+                      assert TR.TreeRepRE(qm, subi, code, em + 2, inp, EaOf(b));
+                      var tloop := LT.GroupActionT(LG.Reset(gidl), subi);
+                      assert TR.TreeRepRE(qm, tloop, code, em + 1, inp, EaOf(b));
+                      // skip arm: tr_stamp at e1x + 2 — the virtual chain of the
+                      // body's first empty path, read off the oracle bits and tied
+                      // to the spec path by rung B's `FirstEmptyPathRL`
+                      assert LL.OracleOkAt(rer, qm, inp);
+                      NT.FirstEmptyPathRL(rer, qm, qm.bodies[qidC], inp);
+                      var p := NP.FirstEmptyPathL(rer, r1, inp).value;
+                      assert TR.FirstEmptyPathR(qm, qm.bodies[qidC], inp) == Some(p);
+                      var tskip := LT.GroupActionT(LG.Reset(gidl), TR.ChainT(p, subc));
+                      assert TR.TreeRepRE(qm, tskip, code, e1x + 2 + gN, inp, EaOf(b)) by {
+                        TR.PeelChainT(p, subc);
+                        assert TR.StampShape(qm, qidC, tskip);
+                        assert TR.PeelT(p, tskip.t) == Some(subc);
+                        assert TR.TreeRepRE(qm, subc, code, e1x + 3 + gN, inp, EaOf(b));
+                      }
+                      // (G5a-1 row H) gN == 1: tr_cdn at the guard, which passes (the path exists)
+                      assert TR.TreeRepRE(qm, tskip, code, e1x + 2, inp, EaOf(b));
+                      tstar := LT.Choice(tloop, tskip);
+                      assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));   // tr_choice at the head fork
+                      assert {:split_here} true;   // (E3) section: the relation
+                      // the relation: rung A's theorem on the spec side, congruences on ours
+                      var tcin := LT.Choice(LT.GroupActionT(LG.Reset(gidl), ti),
+                                            LT.GroupActionT(LG.Reset(gidl), NP.Chain(p, tcont)));
+                      CDP.CdnPlusPriorityBool(rer, r1, cont, inp, b, S, t, ti, tcont);   // (G5a-1 row H) no nullability premise
+                      assert CDP.CdnTree(rer, r1, inp, ti, tcont) == tcin;
+                      NB.ChainTEqChain(p, subc);
+                      NB.RACongChainOutside(p, subc, tcont, inp, S);
+                      NP.RACongGroupOutside(LG.Reset(gidl), subi, ti, inp, S);
+                      NP.RACongGroupOutside(LG.Reset(gidl), NP.Chain(p, subc), NP.Chain(p, tcont), inp, S);
+                      NP.RACongChoiceOutside(tloop, LT.GroupActionT(LG.Reset(gidl), ti),
+                                             tskip, LT.GroupActionT(LG.Reset(gidl), NP.Chain(p, tcont)), inp, S);
+                      NP.RATransOutside(tstar, tcin, t, inp, S);
+                    case _ => assert false;
+                  }
+                } else {
+                  // ---- (G5a-1 row H) THE GUARD FAILS: no empty path of the body here. Only a CDN head.
+                  assert {:split_here} true;
+                  assert gN == 1 by { if NUL.CINullableL(r1) { CDP.CinIsSomeCase(rer, r1, inp); } }
+                  // the iteration tree: the forced copy's tree with the check inserted after the body
+                  var ti := CNE.IterTreeOfNoEmpty(rer, r1, [LS.Areg(q0)] + cont, inp, b, tc);
+                  assert [LS.Areg(r1), LS.Acheck(inp)] + ([LS.Areg(q0)] + cont) == ia;
+                  assert EL.BoolTreeLk(rer, ia, inp, BS.CannotExit, ti);
+                  assert CE.PSize(ti) < CE.PSize(t);
+                  assert CE.LkConfinedTreeK(tc, S);
+                  assert CE.LkConfinedTreeK(ti, S);
+                  assert {:split_here} true;   // representation: the loop body at em + 3, the CDN loop view at e1x + 1
+                  FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
+                  AR.NfaRepLStarCdnIntro(rer, qm, r1, code, em, e1x, qidC);
+                  assert AR.ActionRepL(rer, qm, LS.Areg(q0), code, e1x + 1, pcmid);
+                  var lq := [LS.Areg(q0)] + cont;
+                  assert lq[0] == LS.Areg(q0) && lq[1..] == cont;
+                  assert AR.ActionsRepL(rer, qm, lq, code, e1x + 1);
+                  assert {:split_here} true;
+                  var lc := [LS.Acheck(inp)] + lq;
+                  assert AR.ActionRepL(rer, qm, LS.Acheck(inp), code, e1x, e1x + 1);
+                  assert lc[0] == LS.Acheck(inp) && lc[1..] == lq;
+                  assert AR.ActionsRepL(rer, qm, lc, code, e1x);
+                  assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, em + 3, e1x);
+                  assert ia[0] == LS.Areg(r1) && ia[1..] == lc;
+                  assert AR.ActionsRepL(rer, qm, ia, code, em + 3);
+                  assert {:split_here} true;
+                  ActionsRepLToFuel(rer, qm, ia, code, em + 3);
+                  var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, em + 3, ni);
+                  assert {:split_here} true;
+                  WO.WalkOkQuantCdnHead(acts, code, pc, EaOf(b), greedy, min, delta, r1, em + 1, e1x + 2, inp);
+                  assert {:split_here} true;
+                  var subi := ActionsTreeRepFRENested(rer, qm, ia, code, em + 3, inp, BS.CannotExit, ti, ni, S);
+                  assert {:split_here} true;   // assembly
+                  assert TR.TreeRepRE(qm, subi, code, em + 2, inp, EaOf(b));
+                  var tloop := LT.GroupActionT(LG.Reset(gidl), subi);
+                  assert TR.TreeRepRE(qm, tloop, code, em + 1, inp, EaOf(b));
+                  // skip arm: tr_cdnfail at the guard e1x + 2
+                  assert LL.OracleOkAt(rer, qm, inp);
+                  NT.FirstEmptyPathRL(rer, qm, qm.bodies[qidC], inp);
+                  assert TR.FirstEmptyPathR(qm, qm.bodies[qidC], inp).None?;
+                  assert TR.TreeRepRE(qm, LT.Mismatch, code, e1x + 2, inp, EaOf(b));
+                  tstar := LT.Choice(tloop, LT.Mismatch);
+                  assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));   // tr_choice at the head fork
+                  assert {:split_here} true;   // the relation: rung A's None case, congruences on ours
+                  var tdead := CDP.CdnDeadTree(gidl, ti);
+                  CDP.CdnPlusPriorityBoolNone(rer, r1, cont, inp, b, S, t, ti);
+                  NP.RACongGroupOutside(LG.Reset(gidl), subi, ti, inp, S);
+                  NP.RAReflOutside(LT.Mismatch, inp, S);
+                  NP.RACongChoiceOutside(tloop, LT.GroupActionT(LG.Reset(gidl), ti), LT.Mismatch, LT.Mismatch, inp, S);
+                  NP.RATransOutside(tstar, tdead, t, inp, S);
                 }
               case _ =>
             }
@@ -2661,6 +2740,7 @@ module LindenElkActionsTreeRep {
     ensures NP.ResAgreeAtOutside(tstar, t, inp, S)
     decreases CE.PSize(t), MsizeA(acts), n, 1
   {
+    hide WO.WalkOkF, WO.WalkOkRegF;   // (G5a-1 P1) walk facts only through WO's lemmas
     assert acts == [acts[0]] + cont;
     EL.PikeLkActionsRecConsIff(acts[0], cont);
     var gidl := L.DefGroups(r1);
@@ -2764,7 +2844,7 @@ module LindenElkActionsTreeRep {
       // WalkOk pins the flag to CanExit; the whole configuration is
       // delegated to the fused fork lemma, and the extra Progress it
       // returns is invisible to the leaves.
-      AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+      AR.NfaRepLStarLoopViews3(rer, qm, greedy, r1, code, pc, pcmid);
       if NUL.NonNullableL(r1) {
         var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em))
           && em <= pc
@@ -2778,8 +2858,8 @@ module LindenElkActionsTreeRep {
                           if greedy then pc + 1 else em, inp);
       } else {
         // §2.5b: the CIN loop view (a greedy star at the CIN loop's end fork)
-        var em, e1 := AR.NfaRepLStarCinInv(rer, qm, r1, code, pc, pcmid);
-        WO.WalkOkLoopView(acts, code, pc, EaOf(b), greedy, LN.Inf, r1, em + 1, e1 + 3, inp);
+        var em, e1, gS := AR.NfaRepLStarNulInv(rer, qm, r1, code, pc, pcmid);   // (G5a-1 row H) CIN or CDN view
+        WO.WalkOkLoopView(acts, code, pc, EaOf(b), greedy, LN.Inf, r1, em + 1, e1 + 3 + gS, inp);
       }
       assert EaOf(b) == true;
       assert b == BS.CanExit;
@@ -3374,6 +3454,7 @@ module LindenElkActionsTreeRep {
     ensures NP.ResAgreeAtOutside(tcstar, tc, inp, S)
     decreases CE.PSize(tc), MsizeA(acts), n, 0
   {
+    hide WO.WalkOkF, WO.WalkOkRegF;   // (G5a-1 P2) walk facts only through WO's lemmas
     var fx: int, fy: int :| NR.GetPcRE(code, pc) == Some(RB.Fork(fx, fy))
       && fx >= 0 && fy >= 0 && (fx as nat <= pc || fy as nat <= pc);
     // Accept and Jmp bottoms contradict the pinned Fork: the fuel derivation
@@ -3564,7 +3645,7 @@ module LindenElkActionsTreeRep {
             assert false;
           } else {
             // THE LOOP VIEW: the star seen from the fork itself
-            AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+            AR.NfaRepLStarLoopViews3(rer, qm, greedy, r1, code, pc, pcmid);
             if NUL.NonNullableL(r1) {
             var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em))
               && em <= pc
@@ -3672,16 +3753,19 @@ module LindenElkActionsTreeRep {
               // backward end fork: re-entry through the clock-mark and the BeginLoop
               // (the iteration walks at CannotExit; the loop's EndLoop IS the spec's
               // check, so nothing is lifted), exit straight to e1 + 3.
-              var em, e1 := AR.NfaRepLStarCinInv(rer, qm, r1, code, pc, pcmid);
+              // (G5a-1 row H) the CIN or the CDN loop view: gS == 0 / 1, exit at pcmid == e1 + 3 + gS
+              var em, e1, gS := AR.NfaRepLStarNulInv(rer, qm, r1, code, pc, pcmid);
               var qidC: int :| NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qidC, false))
-                && NR.GetPcRE(code, e1 + 2) == Some(RB.SetQuantToClock(qidC, true))
+                && NR.GetPcRE(code, e1 + 2 + gS) == Some(RB.SetQuantToClock(qidC, true))
                 && qidC in qm.quants && qm.quants[qidC] == gidl
                 && AR.StampBodyOk(qm, qidC, r1);
               assert greedy;
               var q0 := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
               EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
               assert q0 == L.Quantified(greedy, 0, LN.Inf, r1) == r;
-              WO.WalkOkLoopViewCin(acts, code, pc, true, greedy, LN.Inf, r1, em + 1, e1 + 3, inp);
+              if gS == 0 { WO.WalkOkLoopViewCin(acts, code, pc, true, greedy, LN.Inf, r1, em + 1, e1 + 3, inp); }
+              else { WO.WalkOkLoopViewCdn(acts, code, pc, true, greedy, LN.Inf, r1, em + 1, e1 + 4, inp); }
+              assert WO.WalkOk(cont, code, pcmid, true);
               match tc {
                 case Choice(cta, ctb) =>
                   var itert := cta;

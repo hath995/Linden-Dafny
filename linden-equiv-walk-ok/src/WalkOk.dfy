@@ -124,7 +124,9 @@ module LindenElkWalkOk {
              (forall chk: LC.Input ::
                 WalkOkF([LS.Areg(r1), LS.Acheck(chk), LS.Areg(L.Quantified(greedy, 0, LN.Inf, r1))] + cont,
                         c, x as nat + 2, false, n - 1))
-             && WalkOkF(cont, c, y as nat + 1, g, n - 1)
+             // (G5a) CIN: the skip arm `y` is the stamp, the continuation resumes at `y + 1`.
+             // CDN: `y` is the guard, `y + 1` the stamp, the continuation resumes at `y + 2`.
+             && WalkOkF(cont, c, SkipResume(c, y as nat), g, n - 1)
          case _ => true)
       else if delta == LN.NN(0) then
         WalkOkF(cont, c, pc, g, n - 1)
@@ -152,6 +154,10 @@ module LindenElkWalkOk {
                && (skiparm == pc + 2 ==>
                      forall chk: LC.Input ::
                        WalkOkF([LS.Areg(r1), LS.Acheck(chk), LS.Areg(qnext)] + cont, c, iterarm + 2, false, n - 1))
+               // (G5a) the CDN loop view: the guard and the stamp sit between, exit arm three past the fork
+               && (skiparm == pc + 3 ==>
+                     forall chk: LC.Input ::
+                       WalkOkF([LS.Areg(r1), LS.Acheck(chk), LS.Areg(qnext)] + cont, c, iterarm + 2, false, n - 1))
              else
                // a forward decision point: star fast path / bounded layer
                (forall chk: LC.Input ::
@@ -175,6 +181,12 @@ module LindenElkWalkOk {
       instantiation per step, `g` in lockstep with the walk flag. */
   ghost predicate WalkOk(acts: LS.Actions, c: RB.code, pc: nat, g: bool) {
     forall n: nat :: WalkOkF(acts, c, pc, g, n)
+  }
+
+  /** (G5a) Where the continuation resumes after the head fork's skip arm `y`: past the stamp (CIN), or past
+      the guard and the stamp (CDN). ONE term for the solver, whichever layout. */
+  ghost function SkipResume(c: RB.code, y: nat): nat {
+    if NR.GetPcRE(c, y).Some? && NR.GetPcRE(c, y).value.CheckNullable? then y + 2 else y + 1
   }
 
   // ===========================================================================
@@ -462,6 +474,7 @@ module LindenElkWalkOk {
     requires |acts| > 0 && acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1))
     requires min > 0
     requires NR.GetPcRE(c, pc) == Some(RB.Fork(x, y)) && x >= 0 && y >= 0
+    requires !(NR.GetPcRE(c, y as nat).Some? && NR.GetPcRE(c, y as nat).value.CheckNullable?)   // (G5a) the skip arm is the stamp, not a guard
     ensures WalkOk([LS.Areg(r1), LS.Acheck(chk), LS.Areg(L.Quantified(greedy, 0, LN.Inf, r1))] + acts[1..], c, x as nat + 2, false)
     ensures WalkOk(acts[1..], c, y as nat + 1, g)
   {
@@ -506,6 +519,60 @@ module LindenElkWalkOk {
     assert WalkOk(il, c, iterarm + 2, false);
     assert WalkOk([LS.Areg(r1), LS.Acheck(chk), LS.Areg(qnext)] + acts[1..], c, iterarm + 2, false);
     assert WalkOk(acts[1..], c, pc + 2, true);
+  }
+
+  /** (G5a) the CDN-greedy head fork: `WalkOkQuantCinHead` with the skip arm at the guard, so the
+      continuation resumes two past it (guard, stamp). */
+  lemma WalkOkQuantCdnHead(acts: LS.Actions, c: RB.code, pc: nat, g: bool,
+                           greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex, x: int, y: int, chk: LC.Input)
+    requires WalkOk(acts, c, pc, g)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Quantified(greedy, min, delta, r1))
+    requires min > 0
+    requires NR.GetPcRE(c, pc) == Some(RB.Fork(x, y)) && x >= 0 && y >= 0
+    requires NR.GetPcRE(c, y as nat).Some? && NR.GetPcRE(c, y as nat).value.CheckNullable?
+    ensures WalkOk([LS.Areg(r1), LS.Acheck(chk), LS.Areg(L.Quantified(greedy, 0, LN.Inf, r1))] + acts[1..], c, x as nat + 2, false)
+    ensures WalkOk(acts[1..], c, y as nat + 2, g)
+  {
+    var il := [LS.Areg(r1), LS.Acheck(chk), LS.Areg(L.Quantified(greedy, 0, LN.Inf, r1))] + acts[1..];
+    forall n: nat {:trigger WalkOkF(il, c, x as nat + 2, false, n)}
+      ensures WalkOkF(il, c, x as nat + 2, false, n) {
+      assert WalkOkF(acts, c, pc, g, n + 1);
+      assert WalkOkRegF(acts[0].r, acts[1..], c, pc, g, n + 1);
+    }
+    forall n: nat {:trigger WalkOkF(acts[1..], c, y as nat + 2, g, n)}
+      ensures WalkOkF(acts[1..], c, y as nat + 2, g, n) {
+      assert WalkOkF(acts, c, pc, g, n + 1);
+      assert WalkOkRegF(acts[0].r, acts[1..], c, pc, g, n + 1);
+    }
+  }
+
+  /** (G5a) the CDN loop view of a bare star (exit arm at `pc + 3`). */
+  lemma WalkOkLoopViewCdn(acts: LS.Actions, c: RB.code, pc: nat, g: bool,
+                          greedy: bool, delta: LN.NoI, r1: L.Regex, x: int, y: int, chk: LC.Input)
+    requires WalkOk(acts, c, pc, g)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Quantified(greedy, 0, delta, r1))
+    requires delta != LN.NN(0)
+    requires NR.GetPcRE(c, pc) == Some(RB.Fork(x, y)) && x >= 0 && y >= 0
+    requires (if greedy then x else y) as nat <= pc
+    requires (if greedy then y else x) as nat == pc + 3
+    ensures g == true
+    ensures var iterarm := (if greedy then x else y) as nat;
+            var qnext := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+            WalkOk([LS.Areg(r1), LS.Acheck(chk), LS.Areg(qnext)] + acts[1..], c, iterarm + 2, false)
+            && WalkOk(acts[1..], c, pc + 3, true)
+  {
+    WalkOkLoopView(acts, c, pc, g, greedy, delta, r1, x, y, chk);
+    var iterarm := (if greedy then x else y) as nat;
+    var qnext := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
+    var il := [LS.Areg(r1), LS.Acheck(chk), LS.Areg(qnext)] + acts[1..];
+    forall n: nat {:trigger WalkOkF(il, c, iterarm + 2, false, n)}
+      ensures WalkOkF(il, c, iterarm + 2, false, n) {
+      assert WalkOkF(acts, c, pc, g, n + 1);
+      assert WalkOkRegF(acts[0].r, acts[1..], c, pc, g, n + 1);
+    }
+    assert WalkOk(il, c, iterarm + 2, false);
+    assert WalkOk([LS.Areg(r1), LS.Acheck(chk), LS.Areg(qnext)] + acts[1..], c, iterarm + 2, false);
+    assert WalkOk(acts[1..], c, pc + 3, true);
   }
 
   /** §2.5b: at a `BeginLoop` pc the walk guard demands nothing of ANY stack —

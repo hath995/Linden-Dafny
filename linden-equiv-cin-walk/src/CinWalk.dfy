@@ -38,6 +38,8 @@ module LindenElkCinWalk {
   import LL = LindenElkLookLeaves
   import NP = LindenElkNulledPlus
   import NB = LindenElkNulledPlusBool
+  import CDP = LindenElkCdnPriority   // (G5a-1 row G) rung A without the nullability premise
+  import CNE = LindenElkCdnNoEmpty    // (G5a-1 row G) the iteration tree when the guard fails
 
   // ===========================================================================
   // The engine-shaped walk tree
@@ -54,31 +56,70 @@ module LindenElkCinWalk {
   lemma CinGreedyIntro(r1: L.Regex)
     requires NUL.CINullableL(r1)
     ensures CinGreedyL(true, LN.Inf, r1)
-  { reveal CinGreedyL; }
+    ensures !CdnGreedyL(true, LN.Inf, r1)   // (G5a-1 row G)
+  { reveal CinGreedyL; reveal CdnGreedyL; }
 
   lemma NotCinGreedy(greedy: bool, delta: LN.NoI, r1: L.Regex)
     requires !greedy || delta != LN.Inf || NUL.NonNullableL(r1)
     ensures !CinGreedyL(greedy, delta, r1)
+    ensures !CdnGreedyL(greedy, delta, r1)   // (G5a-1 row G)
   {
-    reveal CinGreedyL;
+    reveal CinGreedyL; reveal CdnGreedyL;
     if NUL.CINullableL(r1) && NUL.NonNullableL(r1) { NUL.CINotNonNullableL(r1); }
   }
 
   lemma NotCinGreedyNonNullable(greedy: bool, delta: LN.NoI, r1: L.Regex)
     requires NUL.NonNullableL(r1)
     ensures !CinGreedyL(greedy, delta, r1)
+    ensures !CdnGreedyL(greedy, delta, r1)   // (G5a-1 row G)
   {
-    reveal CinGreedyL;
+    reveal CinGreedyL; reveal CdnGreedyL;
     if NUL.CINullableL(r1) { NUL.CINotNonNullableL(r1); }
   }
 
   lemma NotCinGreedyLazy(delta: LN.NoI, r1: L.Regex)
     ensures !CinGreedyL(false, delta, r1)
-  { reveal CinGreedyL; }
+    ensures !CdnGreedyL(false, delta, r1)   // (G5a-1 row G)
+  { reveal CinGreedyL; reveal CdnGreedyL; }
 
   lemma NotCinGreedyNN(greedy: bool, k: nat, r1: L.Regex)
     ensures !CinGreedyL(greedy, LN.NN(k), r1)
-  { reveal CinGreedyL; }
+    ensures !CdnGreedyL(greedy, LN.NN(k), r1)   // (G5a-1 row G)
+  { reveal CinGreedyL; reveal CdnGreedyL; }
+
+  /** (G5a-1 row G) The CDN-greedy unbounded quantifier: the engine's end-fork scheme with the nulled-exit
+      stamp behind a guard (`CheckNullable`). OPAQUE for the same reason as `CinGreedyL`. Disjoint from it. */
+  opaque ghost predicate CdnGreedyL(greedy: bool, delta: LN.NoI, r1: L.Regex) {
+    greedy && delta == LN.Inf && !NUL.NonNullableL(r1) && !NUL.CINullableL(r1)
+  }
+
+  lemma CdnGreedyIntro(r1: L.Regex)
+    requires !NUL.NonNullableL(r1) && !NUL.CINullableL(r1)
+    ensures CdnGreedyL(true, LN.Inf, r1)
+    ensures !CinGreedyL(true, LN.Inf, r1)
+  { reveal CinGreedyL; reveal CdnGreedyL; }
+
+  /** What the two greedy nullable heads share. */
+  lemma NulGreedyFacts(greedy: bool, delta: LN.NoI, r1: L.Regex)
+    requires CinGreedyL(greedy, delta, r1) || CdnGreedyL(greedy, delta, r1)
+    ensures greedy && delta == LN.Inf && !NUL.NonNullableL(r1)
+    ensures CinGreedyL(greedy, delta, r1) <==> NUL.CINullableL(r1)
+    ensures CdnGreedyL(greedy, delta, r1) <==> !NUL.CINullableL(r1)
+  {
+    reveal CinGreedyL; reveal CdnGreedyL;
+    if NUL.CINullableL(r1) { NUL.CINotNonNullableL(r1); }
+  }
+
+  /** (G5a-1 row G) A CRUTCH, true only while `EL.CdnHeadsOn()` is off: a head in the fragment is not CDN.
+      For machine-B inverters of `BoolTreeLkX` that must dismiss the CDN arm until row K gives them one.
+      Delete with `EL.CinHeadOf` at row F. */
+  lemma NotCdnGreedyOfHead(greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex)
+    requires min > 0 && EL.CinHeadL(greedy, min, delta, r1)
+    ensures !CdnGreedyL(greedy, delta, r1)
+  {
+    reveal CdnGreedyL;
+    if greedy && delta == LN.Inf && !NUL.NonNullableL(r1) { EL.CinHeadOf(greedy, min, delta, r1); }
+  }
 
   /** `EL.BoolTreeLk` with the CIN-greedy plus at `min == 1` in the ENGINE'S
       shape: the head fork's loop arm (the star's iteration at `CannotExit`,
@@ -123,6 +164,22 @@ module LindenElkCinWalk {
                && (match tb
                    case GroupActionT(g, tc) => g == LG.Reset(gidl) && BoolTreeLkX(rer, cont, inp, b, tc)
                    case _ => false)
+             case _ => false)
+          else if min == 1 && CdnGreedyL(greedy, delta, r1) then
+            // (G5a-1 row G) the CDN head fork: loop arm | GUARDED stamp arm. The guard is the body's empty
+            // path at `inp`: it passes to the stamp's `Reset(gidl)` over the continuation, or the arm is dead.
+            (match t
+             case Choice(ta, tb) =>
+               (match ta
+                case GroupActionT(g, ti) =>
+                  g == LG.Reset(gidl)
+                  && BoolTreeLkX(rer, [LS.Areg(r1), LS.Acheck(inp), LS.Areg(L.Quantified(true, 0, LN.Inf, r1))] + cont, inp, BS.CannotExit, ti)
+                case _ => false)
+               && (if NP.FirstEmptyPathL(rer, r1, inp).Some? then
+                     (match tb
+                      case GroupActionT(g, tc) => g == LG.Reset(gidl) && BoolTreeLkX(rer, cont, inp, b, tc)
+                      case _ => false)
+                   else tb == LT.Mismatch)
              case _ => false)
           else if min > 0 then
             (match t case GroupActionT(g, tc) => g == LG.Reset(gidl) && BoolTreeLkX(rer, [LS.Areg(r1), LS.Areg(L.Quantified(greedy, min - 1, delta, r1))] + cont, inp, b, tc) case _ => false)
@@ -204,6 +261,19 @@ module LindenElkCinWalk {
                   BoolTreeLkXDeterm(rer, ia, inp, BS.CannotExit, i1, i2);
                   BoolTreeLkXDeterm(rer, cont, inp, b, c1, c2);
                 case _ => } case _ => }
+              case _ => } case _ => }
+            case _ => } case _ => }
+          } else if min == 1 && CdnGreedyL(greedy, delta, r1) {
+            // (G5a-1 row G)
+            var ia := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(L.Quantified(true, 0, LN.Inf, r1))] + cont;
+            match t1 { case Choice(a1, s1) => match t2 { case Choice(a2, s2) =>
+              match a1 { case GroupActionT(g1, i1) => match a2 { case GroupActionT(g2, i2) =>
+                BoolTreeLkXDeterm(rer, ia, inp, BS.CannotExit, i1, i2);
+                if NP.FirstEmptyPathL(rer, r1, inp).Some? {
+                  match s1 { case GroupActionT(h1, c1) => match s2 { case GroupActionT(h2, c2) =>
+                    BoolTreeLkXDeterm(rer, cont, inp, b, c1, c2);
+                  case _ => } case _ => }
+                }
               case _ => } case _ => }
             case _ => } case _ => }
           } else if min > 0 {
@@ -356,6 +426,23 @@ module LindenElkCinWalk {
                   assert LS.TreeSize(tc) < LS.TreeSize(t);
                   BoolFlagLiftRecX(rer, cont, inp, tc);
                 case _ =>
+              }
+            case _ =>
+          }
+        } else if min == 1 && CdnGreedyL(greedy, delta, r1) {
+          // (G5a-1 row G) the CDN head: the loop arm is shared; a passing guard's stamp arm lifts with the
+          // continuation; a failing guard's arm is `Mismatch` at either flag
+          match t {
+            case Choice(ta, tb) =>
+              if NP.FirstEmptyPathL(rer, r1, inp).Some? {
+                match tb {
+                  case GroupActionT(h, tc) =>
+                    assert !NUL.NonNullableL(r) by { reveal CdnGreedyL; }
+                    CE.ShieldedTail(acts);
+                    assert LS.TreeSize(tc) < LS.TreeSize(t);
+                    BoolFlagLiftRecX(rer, cont, inp, tc);
+                  case _ =>
+                }
               }
             case _ =>
           }
@@ -597,6 +684,43 @@ module LindenElkCinWalk {
                 }
               case _ =>
             }
+          } else if min == 1 && CdnGreedyL(greedy, delta, r1) {
+            // (G5a-1 row G) the CDN head: the CIN arm, with the stamp arm present only if the guard passes
+            match t {
+              case Choice(ta, tb) =>
+                match ta {
+                  case GroupActionT(g, ti) =>
+                    var q0 := L.Quantified(true, 0, LN.Inf, r1);
+                    EL.CinHeadIntro(true, 0, LN.Inf, r1);
+                    var pi := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + pre[1..];
+                    assert pi + rest == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + (pre[1..] + rest);
+                    assert pi + [LS.Acheck(chk)] + rest == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + (pre[1..] + [LS.Acheck(chk)] + rest);
+                    assert EL.PikeLkActionsRec(pi) by {
+                      forall i | 0 <= i < |pi| ensures EL.PikeLkActionRec(pi[i]) {
+                        if i >= 3 { assert pi[i] == pre[i - 2]; }
+                      }
+                    }
+                    assert CE.AcheckIn(pi) by { assert pi[1].Acheck?; }
+                    assert LS.TreeSize(ti) < LS.TreeSize(t);
+                    var si := BoolCheckInsertKX(rer, pi, chk, rest, inp, BS.CannotExit, ti);
+                    if NP.FirstEmptyPathL(rer, r1, inp).Some? {
+                      match tb {
+                        case GroupActionT(h, tc) =>
+                          assert !NUL.NonNullableL(r) by { reveal CdnGreedyL; }
+                          if CE.ConsumesBeforeAreg(pre) { CE.ConsumesTailC(pre); }
+                          if CE.AcheckIn(pre) && !(CE.ConsumesBeforeAreg(pre[1..]) || b == BS.CanExit) { CE.AcheckInTail(pre); }
+                          assert LS.TreeSize(tc) < LS.TreeSize(t);
+                          var ss := BoolCheckInsertKX(rer, pre[1..], chk, rest, inp, b, tc);
+                          tstar := LT.Choice(LT.GroupActionT(g, si), LT.GroupActionT(h, ss));
+                        case _ =>
+                      }
+                    } else {
+                      tstar := LT.Choice(LT.GroupActionT(g, si), LT.Mismatch);
+                    }
+                  case _ =>
+                }
+              case _ =>
+            }
           } else if min > 0 {
             match t {
               case GroupActionT(g, tc) =>
@@ -747,7 +871,7 @@ module LindenElkCinWalk {
     case Sequence(r1, r2) => CinOk(r1, G) && CinOk(r2, G)
     case Quantified(greedy, min, delta, r1) =>
       CinOk(r1, G)
-      && (min > 0 && CinGreedyL(greedy, delta, r1) ==>
+      && (min > 0 && (CinGreedyL(greedy, delta, r1) || CdnGreedyL(greedy, delta, r1)) ==>   // (G5a-1 row G)
             LL.LkBodiesInS(r1, {}) && forall g :: g in L.DefGroups(r1) ==> g in G)
     case Group(_, r1) => CinOk(r1, G)
     // (G3a) no condition under a look: the walk never enters a look body (`CinWalkReg`'s look arm
@@ -1109,7 +1233,7 @@ module LindenElkCinWalk {
     var gidl := L.DefGroups(r1);
     assert EL.PikeLkRegexRec(r1);
     assert CinOk(r1, G);
-    if min == 1 && CinGreedyL(greedy, delta, r1) {
+    if min == 1 && (CinGreedyL(greedy, delta, r1) || CdnGreedyL(greedy, delta, r1)) {   // (G5a-1 row G) both heads
       tX := CinWalkHead(rer, acts, cont, r1, inp, b, t, G);
     } else if min > 0 {
       match t {
@@ -1182,15 +1306,19 @@ module LindenElkCinWalk {
     }
   }
 
-  /** THE CIN HEAD: the spec's forced iteration `Reset(gidl); [r1, r1*] + cont`
-      against the engine's head fork `Choice(Reset(gidl); ti, Reset(gidl); tc)`.
-      Rung A (`NB.CinPlusPriorityBool` at `S = {}`) relates the spec tree to
-      the chained shape; dropping the chain is invisible outside `G`. */
+  /** THE HEAD of a greedy nullable plus, CIN or CDN (G5a-1 row G): the spec's forced iteration
+      `Reset(gidl); [r1, r1*] + cont` against the engine's head fork. Split on the body's first empty path at
+      `inp` (for a CIN body it always exists):
+        Some: the fork is `Choice(Reset(gidl); ti, Reset(gidl); tc)`. Rung A (`CDP.CdnPlusPriorityBool` at
+              `S = {}`) relates the spec tree to the chained shape; dropping the chain is invisible outside `G`.
+        None: only a CDN head. The guard kills the skip arm: `Choice(Reset(gidl); ti, Mismatch)`. The iteration
+              tree is the forced copy's with the check inserted (`CNE.IterTreeOfNoEmpty`), and
+              `CDP.CdnPlusPriorityBoolNone` relates the dead shape to the spec tree. */
   lemma CinWalkHead(rer: LW.RegExpRecord, acts: LS.Actions, cont: LS.Actions, r1: L.Regex,
                     inp: LC.Input, b: BS.LoopBool, t: LT.Tree, G: set<LG.GroupId>)
     returns (tX: LT.Tree)
     requires |acts| > 0 && cont == acts[1..]
-    requires exists greedy: bool, delta: LN.NoI :: acts[0] == LS.Areg(L.Quantified(greedy, 1, delta, r1)) && CinGreedyL(greedy, delta, r1)
+    requires exists greedy: bool, delta: LN.NoI :: acts[0] == LS.Areg(L.Quantified(greedy, 1, delta, r1)) && (CinGreedyL(greedy, delta, r1) || CdnGreedyL(greedy, delta, r1))
     requires EL.PikeLkActionsRec(acts) && EL.PikeLkActionsRec(cont) && EL.PikeLkRegexRec(r1)
     requires NB.EncOk(acts, inp, b)
     requires CinActsIn(acts, G) && CinActsIn(cont, G) && CinOk(r1, G)
@@ -1200,9 +1328,17 @@ module LindenElkCinWalk {
     ensures NP.ResAgreeAtOutside(tX, t, inp, G)
     decreases CE.PSize(t), MsizeX(acts), 0
   {
+    // the head atom of the plus, as a ground fact, before the hide
+    assert EL.CinHeadL(true, 1, LN.Inf, r1) by {
+      var greedy0: bool, delta0: LN.NoI :| acts[0] == LS.Areg(L.Quantified(greedy0, 1, delta0, r1)) && (CinGreedyL(greedy0, delta0, r1) || CdnGreedyL(greedy0, delta0, r1));
+      NulGreedyFacts(greedy0, delta0, r1);
+      assert EL.PikeLkActionRec(acts[0]);
+      assert EL.PikeLkRegexRec(L.Quantified(true, 1, LN.Inf, r1));
+    }
     hide NUL.NonNullableL, NUL.NoNulledPlusL;
-    var greedy: bool, delta: LN.NoI :| acts[0] == LS.Areg(L.Quantified(greedy, 1, delta, r1)) && CinGreedyL(greedy, delta, r1);
-    assert greedy && delta == LN.Inf && NUL.CINullableL(r1) by { reveal CinGreedyL; }
+    var greedy: bool, delta: LN.NoI :| acts[0] == LS.Areg(L.Quantified(greedy, 1, delta, r1)) && (CinGreedyL(greedy, delta, r1) || CdnGreedyL(greedy, delta, r1));
+    NulGreedyFacts(greedy, delta, r1);
+    assert greedy && delta == LN.Inf && !NUL.NonNullableL(r1);
     var gidl := L.DefGroups(r1);
     var q0 := L.Quantified(true, 0, LN.Inf, r1);
     EL.CinHeadIntro(true, 0, LN.Inf, r1);   // (G5a-1 3-L0c)
@@ -1222,68 +1358,89 @@ module LindenElkCinWalk {
         CinActsInCons(LS.Areg(q0), cont, G);
         CinActsInCons(LS.Acheck(inp), [LS.Areg(q0)] + cont, G);
         CinActsInCons(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(q0)] + cont), G);
-        NUL.CINotNonNullableL(r1);
         assert !NUL.NonNullableL(acts[0].r) by { reveal NUL.NonNullableL; }
         NB.EncOkTailReg(acts, inp, b);
         NB.EncodableTail(acts, inp, b);
         NB.EncOkIter(r1, q0, cont, inp);
-        // the iteration's and the continuation's spec trees live INSIDE `tc`
-        assert NP.FirstEmptyPathL(rer, r1, inp).Some? by {
-          assert NP.FirstEmptyPathA(rer, [], inp) == Some([]);
-          NP.CINullableEmptyPathA(rer, r1, [], inp);
-          assert [LS.Areg(r1)] + [] == [LS.Areg(r1)];
-        }
         assert [LS.Areg(r1), LS.Areg(q0)] + cont == [LS.Areg(r1)] + ([LS.Areg(q0)] + cont);
-        var tcont0 := NB.BoolTreeLkEmptyPathSub(rer, r1, [LS.Areg(q0)] + cont, inp, b, tc);
-        assert FS.NoiPred(LN.Inf) == LN.Inf;
-        match tcont0 {
-          case Choice(ta, tb) =>
-            match ta {
-              case GroupActionT(g2, ti) =>
-                assert g2 == LG.Reset(gidl);
-                var tcont := tb;
-                assert EL.BoolTreeLk(rer, ia, inp, BS.CannotExit, ti);
-                assert EL.BoolTreeLk(rer, cont, inp, b, tcont);
-                assert CE.PSize(ti) < CE.PSize(t) && CE.PSize(tcont) < CE.PSize(t);
-                var si := CinWalkX(rer, ia, inp, BS.CannotExit, ti, G);
-                var sc := CinWalkX(rer, cont, inp, b, tcont, G);
-                var tloop := LT.GroupActionT(LG.Reset(gidl), si);
-                var tskip := LT.GroupActionT(LG.Reset(gidl), sc);
-                tX := LT.Choice(tloop, tskip);
-                assert BoolTreeLkX(rer, acts, inp, b, tX);
-                // (1) ours vs the chain-free spec-built shape: congruences
-                var tfree := LT.Choice(LT.GroupActionT(LG.Reset(gidl), ti), LT.GroupActionT(LG.Reset(gidl), tcont));
-                NP.RACongGroupOutside(LG.Reset(gidl), si, ti, inp, G);
-                NP.RACongGroupOutside(LG.Reset(gidl), sc, tcont, inp, G);
-                NP.RACongChoiceOutside(tloop, LT.GroupActionT(LG.Reset(gidl), ti),
-                                       tskip, LT.GroupActionT(LG.Reset(gidl), tcont), inp, G);
-                // (2) the chain is invisible outside G
-                var p := NP.FirstEmptyPathL(rer, r1, inp).value;
-                assert NP.PathIn(p, G) by {
-                  assert NP.ActsGroupsIn([LS.Areg(r1)], G) by {
-                    forall i | 0 <= i < |[LS.Areg(r1)]|
-                      ensures ([LS.Areg(r1)][i].Areg? ==> forall g :: g in L.DefGroups([LS.Areg(r1)][i].r) ==> g in G)
-                           && ([LS.Areg(r1)][i].Aclose? ==> [LS.Areg(r1)][i].gid in G)
-                    {}
+        if NP.FirstEmptyPathL(rer, r1, inp).Some? {
+          // ---- the guard passes (always, for a CIN body): the iteration's and the continuation's spec
+          //      trees live INSIDE `tc`
+          var tcont0 := NB.BoolTreeLkEmptyPathSub(rer, r1, [LS.Areg(q0)] + cont, inp, b, tc);
+          assert FS.NoiPred(LN.Inf) == LN.Inf;
+          match tcont0 {
+            case Choice(ta, tb) =>
+              match ta {
+                case GroupActionT(g2, ti) =>
+                  assert g2 == LG.Reset(gidl);
+                  var tcont := tb;
+                  assert EL.BoolTreeLk(rer, ia, inp, BS.CannotExit, ti);
+                  assert EL.BoolTreeLk(rer, cont, inp, b, tcont);
+                  assert CE.PSize(ti) < CE.PSize(t) && CE.PSize(tcont) < CE.PSize(t);
+                  var si := CinWalkX(rer, ia, inp, BS.CannotExit, ti, G);
+                  var sc := CinWalkX(rer, cont, inp, b, tcont, G);
+                  var tloop := LT.GroupActionT(LG.Reset(gidl), si);
+                  var tskip := LT.GroupActionT(LG.Reset(gidl), sc);
+                  tX := LT.Choice(tloop, tskip);
+                  assert BoolTreeLkX(rer, acts, inp, b, tX);
+                  // (1) ours vs the chain-free spec-built shape: congruences
+                  var tfree := LT.Choice(LT.GroupActionT(LG.Reset(gidl), ti), LT.GroupActionT(LG.Reset(gidl), tcont));
+                  NP.RACongGroupOutside(LG.Reset(gidl), si, ti, inp, G);
+                  NP.RACongGroupOutside(LG.Reset(gidl), sc, tcont, inp, G);
+                  NP.RACongChoiceOutside(tloop, LT.GroupActionT(LG.Reset(gidl), ti),
+                                         tskip, LT.GroupActionT(LG.Reset(gidl), tcont), inp, G);
+                  // (2) the chain is invisible outside G
+                  var p := NP.FirstEmptyPathL(rer, r1, inp).value;
+                  assert NP.PathIn(p, G) by {
+                    assert NP.ActsGroupsIn([LS.Areg(r1)], G) by {
+                      forall i | 0 <= i < |[LS.Areg(r1)]|
+                        ensures ([LS.Areg(r1)][i].Areg? ==> forall g :: g in L.DefGroups([LS.Areg(r1)][i].r) ==> g in G)
+                             && ([LS.Areg(r1)][i].Aclose? ==> [LS.Areg(r1)][i].gid in G)
+                      {}
+                    }
+                    NP.PathActionsIn(rer, [LS.Areg(r1)], inp, G);
                   }
-                  NP.PathActionsIn(rer, [LS.Areg(r1)], inp, G);
-                }
-                var tcin := LT.Choice(LT.GroupActionT(LG.Reset(gidl), ti),
-                                      LT.GroupActionT(LG.Reset(gidl), NP.Chain(p, tcont)));
-                RAChainDropOutside(p, tcont, inp, G);
-                NP.RACongGroupOutside(LG.Reset(gidl), tcont, NP.Chain(p, tcont), inp, G);
-                NP.RAReflOutside(LT.GroupActionT(LG.Reset(gidl), ti), inp, G);
-                NP.RACongChoiceOutside(LT.GroupActionT(LG.Reset(gidl), ti), LT.GroupActionT(LG.Reset(gidl), ti),
-                                       LT.GroupActionT(LG.Reset(gidl), tcont),
-                                       LT.GroupActionT(LG.Reset(gidl), NP.Chain(p, tcont)), inp, G);
-                // (3) rung A at S = {}: the chained shape vs the spec tree
-                NB.CinPlusPriorityBool(rer, r1, cont, inp, b, {}, t, ti, tcont);
-                RAMonoOutside(tcin, t, inp, {}, G);
-                NP.RATransOutside(tfree, tcin, t, inp, G);
-                NP.RATransOutside(tX, tfree, t, inp, G);
-              case _ =>
-            }
-          case _ =>
+                  var tcin := LT.Choice(LT.GroupActionT(LG.Reset(gidl), ti),
+                                        LT.GroupActionT(LG.Reset(gidl), NP.Chain(p, tcont)));
+                  RAChainDropOutside(p, tcont, inp, G);
+                  NP.RACongGroupOutside(LG.Reset(gidl), tcont, NP.Chain(p, tcont), inp, G);
+                  NP.RAReflOutside(LT.GroupActionT(LG.Reset(gidl), ti), inp, G);
+                  NP.RACongChoiceOutside(LT.GroupActionT(LG.Reset(gidl), ti), LT.GroupActionT(LG.Reset(gidl), ti),
+                                         LT.GroupActionT(LG.Reset(gidl), tcont),
+                                         LT.GroupActionT(LG.Reset(gidl), NP.Chain(p, tcont)), inp, G);
+                  // (3) rung A at S = {}: the chained shape vs the spec tree
+                  CDP.CdnPlusPriorityBool(rer, r1, cont, inp, b, {}, t, ti, tcont);
+                  assert CDP.CdnTree(rer, r1, inp, ti, tcont) == tcin;
+                  RAMonoOutside(tcin, t, inp, {}, G);
+                  NP.RATransOutside(tfree, tcin, t, inp, G);
+                  NP.RATransOutside(tX, tfree, t, inp, G);
+                case _ =>
+              }
+            case _ =>
+          }
+        } else {
+          // ---- (G5a-1 row G) the guard fails: only a CDN head gets here
+          assert !CinGreedyL(greedy, delta, r1) by {
+            if CinGreedyL(greedy, delta, r1) { CDP.CinIsSomeCase(rer, r1, inp); }
+          }
+          assert CdnGreedyL(greedy, delta, r1);
+          // the iteration tree: the forced copy's tree with the check inserted after the body
+          var ti := CNE.IterTreeOfNoEmpty(rer, r1, [LS.Areg(q0)] + cont, inp, b, tc);
+          assert [LS.Areg(r1), LS.Acheck(inp)] + ([LS.Areg(q0)] + cont) == ia;
+          assert EL.BoolTreeLk(rer, ia, inp, BS.CannotExit, ti);
+          assert CE.PSize(ti) < CE.PSize(t);
+          var si := CinWalkX(rer, ia, inp, BS.CannotExit, ti, G);
+          var tloop := LT.GroupActionT(LG.Reset(gidl), si);
+          tX := LT.Choice(tloop, LT.Mismatch);
+          assert BoolTreeLkX(rer, acts, inp, b, tX);
+          // ours vs the dead shape: congruences; the dead shape vs the spec tree: rung A's None case
+          var tdead := CDP.CdnDeadTree(gidl, ti);
+          NP.RACongGroupOutside(LG.Reset(gidl), si, ti, inp, G);
+          NP.RAReflOutside(LT.Mismatch, inp, G);
+          NP.RACongChoiceOutside(tloop, LT.GroupActionT(LG.Reset(gidl), ti), LT.Mismatch, LT.Mismatch, inp, G);
+          CDP.CdnPlusPriorityBoolNone(rer, r1, cont, inp, b, {}, t, ti);
+          RAMonoOutside(tdead, t, inp, {}, G);
+          NP.RATransOutside(tX, tdead, t, inp, G);
         }
       case _ =>
     }

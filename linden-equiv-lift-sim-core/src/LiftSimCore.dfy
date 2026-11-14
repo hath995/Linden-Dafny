@@ -3051,7 +3051,7 @@ module LindenElkLiftSimCore {
     // (§2.5b) the new recursive nullability predicates' definitional axioms send
     // z3 4.14 into a matching loop on otherwise-trivial goals in the quant arms;
     // every use here is opaque (guards + lemma calls), so hide them.
-    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, WO.WalkOkF, WO.WalkOkRegF;
     if |acts| == 0 && NR.GetPcRE(code, pc) == Some(RB.Accept) {
       assert t == LT.Match;
       tcan := LT.Match;
@@ -3718,6 +3718,21 @@ module LindenElkLiftSimCore {
     }
   }
 
+  /** (G5a-1 P1) The CIN head's walk step in a context of its own: inside `LkCinQuantRec` the step ran
+      past the z3 memory cap (24 GB slice), though every goal alone is cheap. */
+  lemma LkCinHeadWalk(acts: LS.Actions, cont: LS.Actions, ia: LS.Actions, code: RB.code, pc: nat, pcmid: nat,
+                      em: nat, e1x: nat, g: bool, r1: L.Regex, inp: LC.Input, qid: int)
+    requires WO.WalkOk(acts, code, pc, g)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Quantified(true, 1, LN.Inf, r1)) && cont == acts[1..]
+    requires ia == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(L.Quantified(true, 0, LN.Inf, r1))] + cont
+    requires em == pc && pcmid == e1x + 3
+    requires NR.GetPcRE(code, pc) == Some(RB.Fork(em + 1, e1x + 2))
+    requires NR.GetPcRE(code, e1x + 2) == Some(RB.SetQuantToClock(qid, true))
+    ensures WO.WalkOk(ia, code, em + 3, false) && WO.WalkOk(cont, code, pcmid, g)
+  {
+    WO.WalkOkQuantCinHead(acts, code, pc, g, true, 1, LN.Inf, r1, em + 1, e1x + 2, inp);
+  }
+
   /** (§2.5b F-c) THE CIN-GREEDY PLUS in the Rec construction: `min - 1` forced
       copies (each a clock-mark, like the do-while's), then at `min == 1` the
       head fork `Fork(em + 1, e1 + 2)`: its loop arm is the star's iteration
@@ -3739,7 +3754,7 @@ module LindenElkLiftSimCore {
     ensures CE.ProgErase(tcan) == CE.ProgErase(t)
     decreases CE.PSize(t), ATR.MsizeA(acts), n, 1
   {
-    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, AR.NfaRepStarCinL;
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, AR.NfaRepStarCinL, WO.WalkOkF, WO.WalkOkRegF;
     var gidl := L.DefGroups(r1);
     assert EL.PikeLkActionRec(acts[0]);
     assert EL.PikeLkRegexRec(r1);
@@ -3830,9 +3845,7 @@ module LindenElkLiftSimCore {
                   assert {:split_here} true;   // (§2.5b pack) section: the walk
                   assert WO.WalkOk(ia, code, em + 3, false) && WO.WalkOk(cont, code, pcmid, ATR.EaOf(b)) by {
                     hide *;
-                    assert acts[0] == LS.Areg(L.Quantified(true, 1, LN.Inf, r1));
-                    WO.WalkOkQuantCinHead(acts, code, pc, ATR.EaOf(b), true, 1, LN.Inf, r1, em + 1, e1x + 2, inp);
-                    assert [LS.Areg(r1), LS.Acheck(inp), LS.Areg(L.Quantified(true, 0, LN.Inf, r1))] + acts[1..] == ia;
+                    LkCinHeadWalk(acts, cont, ia, code, pc, pcmid, em, e1x, ATR.EaOf(b), r1, inp, qidC);   // (G5a-1 P1) own context
                   }
                   assert {:split_here} true;   // (E3) section: the loop arm
                   // (z3 4.14) the call's preconditions spelled out one by one
@@ -3891,7 +3904,7 @@ module LindenElkLiftSimCore {
     ensures CE.ProgErase(tcstar) == CE.ProgErase(tc)
     decreases CE.PSize(tc), ATR.MsizeA(acts), n, 0
   {
-    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, AR.NfaRepStarCinL;
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, AR.NfaRepStarCinL, WO.WalkOkF, WO.WalkOkRegF;
     var gidl := L.DefGroups(r1);
     assert EL.PikeLkActionRec(acts[0]);
     assert EL.PikeLkRegexRec(r1);
@@ -3977,7 +3990,7 @@ module LindenElkLiftSimCore {
     // (§2.5b) the new recursive nullability predicates' definitional axioms send
     // z3 4.14 into a matching loop on otherwise-trivial goals in the quant arms;
     // every use here is opaque (guards + lemma calls), so hide them.
-    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, WO.WalkOkF, WO.WalkOkRegF;
     var fx: int, fy: int :| NR.GetPcRE(code, pc) == Some(RB.Fork(fx, fy))
                             && fx >= 0 && fy >= 0 && (fx as nat <= pc || fy as nat <= pc);
     assert |acts| > 0;

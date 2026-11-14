@@ -153,6 +153,15 @@ module LindenElkTwoMachines {
           assert g in PIV.CapIdsOutsideLooks(r);
         }
       }
+      if q.min > 0 && CW.CdnGreedyL(q.greedy, T.TrDelta(q), tb) {
+        // (G5a-1 row G) `CinOk` also asks the body condition of a CDN head; the narrow fragment has none
+        assert q.greedy && T.TrDelta(q) == LN.Inf && !NUL.NonNullableL(tb) && !NUL.CINullableL(tb) by { reveal CW.CdnGreedyL(); }
+        assert q.max == None;
+        if nul == R.NonNullable { NUL.TransNonNullable(body); assert false; }
+        assert nul == R.CINullable;
+        NUL.TransCINullable(body);
+        assert false;
+      }
     case _ =>
   }
   // =========================================================================
