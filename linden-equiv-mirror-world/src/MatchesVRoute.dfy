@@ -67,9 +67,9 @@ module LindenElkMatchesVRoute {
   // extracted. Its premises are FBuildOracleCorrectAtNested's: no GroupOkLB.
   // ===========================================================================
 
-  lemma ColumnBehindBitIsRecorderHit(re: R.regex, str: string, lid: int, la: R.lookaround,
+  lemma ColumnBehindBitIsRecorderHitCdn(re: R.regex, str: string, lid: int, la: R.lookaround,
                                      body: R.regex, cp: int)
-    requires NR.NestedFragmentRE(re) && LTB.LidsWellNested(re) && LTB.LookUnique(re)
+    requires NR.NestedFragmentCdnRE(re) && LTB.LidsWellNested(re) && LTB.LookUnique(re)
     requires LTB.LookEntryOk(CP.FFullCompilation(re), lid, la, body)
     requires la.Lookbehind? || la.NegLookbehind?
     requires NR.NestedFragmentRE(body)
@@ -81,7 +81,7 @@ module LindenElkMatchesVRoute {
     var ovf := AI.FBuildOracle(CP.FFullCompilation(re), str);
     var rcb := R.remove_capture(body);
     OMV.RemoveCaptureNestedFragment(body);
-    OB.FBuildOracleCorrectAtNested(re, str, lid, la, body, cp);
+    OB.FBuildOracleCorrectAtCdn(re, str, lid, la, body, cp);
     if LOr.view_get_oracle(ovf, cp, lid) {
       var i := ODV.ReachesWriteVToMatchesV(rcb, lid, str, ovf, cp);
       OMV.MatchesVRemoveCapture(body, str, ovf, i, cp);
@@ -92,6 +92,22 @@ module LindenElkMatchesVRoute {
       OMV.MatchesVRemoveCapture(body, str, ovf, i, cp);
       OBV.MatchesVToReachesWriteV(rcb, lid, str, ovf, i, cp);
     }
+  }
+
+  /** (G5a-1 row J) The narrow name, as a corollary of `ColumnBehindBitIsRecorderHitCdn`. */
+  lemma ColumnBehindBitIsRecorderHit(re: R.regex, str: string, lid: int, la: R.lookaround,
+                                     body: R.regex, cp: int)
+    requires NR.NestedFragmentRE(re) && LTB.LidsWellNested(re) && LTB.LookUnique(re)
+    requires LTB.LookEntryOk(CP.FFullCompilation(re), lid, la, body)
+    requires la.Lookbehind? || la.NegLookbehind?
+    requires NR.NestedFragmentRE(body)
+    requires 1 <= lid
+    requires 0 <= cp <= |str|
+    ensures LOr.view_get_oracle(AI.FBuildOracle(CP.FFullCompilation(re), str), cp, lid)
+        <==> ODV.RecorderHitV(body, str, AI.FBuildOracle(CP.FFullCompilation(re), str), cp)
+  {
+    NR.NarrowIsCdn(re);
+    ColumnBehindBitIsRecorderHitCdn(re, str, lid, la, body, cp);
   }
 
   // ===========================================================================
@@ -277,10 +293,10 @@ module LindenElkMatchesVRoute {
   // THE NARROW CONTRACT: a lookbehind row's column, body of any look kinds.
   // ===========================================================================
 
-  lemma ColumnBehindViaMirror(rer: LW.RegExpRecord, top: R.regex, qmb: AR.QMap, str: string,
+  lemma ColumnBehindViaMirrorCdn(rer: LW.RegExpRecord, top: R.regex, qmb: AR.QMap, str: string,
                               lid: int, la: R.lookaround, body: R.regex, cp: nat)
     requires !rer.ignoreCase && !rer.multiline
-    requires NR.NestedFragmentRE(top) && LTB.LidsWellNested(top) && LTB.LookUnique(top)
+    requires NR.NestedFragmentCdnRE(top) && LTB.LidsWellNested(top) && LTB.LookUnique(top)
     requires LTB.LookEntryOk(CP.FFullCompilation(top), lid, la, body)
     requires la.Lookbehind? || la.NegLookbehind?
     requires 1 <= lid && cp <= |str|
@@ -309,7 +325,7 @@ module LindenElkMatchesVRoute {
 
     // step 1
     assert {:split_here} true;
-    ColumnBehindBitIsRecorderHit(top, str, lid, la, body, cp);
+    ColumnBehindBitIsRecorderHitCdn(top, str, lid, la, body, cp);
     // step 2
     assert {:split_here} true;
     RecorderHitVMirrorFXR(body, str, ovf, cp, mcp);
@@ -332,5 +348,26 @@ module LindenElkMatchesVRoute {
     assert {:split_here} true;
     FlippedRunIsBackLeaf(rer, qmb, body, str, cp, cdnsF, ncap, nlook, nquant);
     assert {:split_here} true;
+  }
+
+  /** (G5a-1 row J) The narrow name, as a corollary of `ColumnBehindViaMirrorCdn`. */
+  lemma ColumnBehindViaMirror(rer: LW.RegExpRecord, top: R.regex, qmb: AR.QMap, str: string,
+                              lid: int, la: R.lookaround, body: R.regex, cp: nat)
+    requires !rer.ignoreCase && !rer.multiline
+    requires NR.NestedFragmentRE(top) && LTB.LidsWellNested(top) && LTB.LookUnique(top)
+    requires LTB.LookEntryOk(CP.FFullCompilation(top), lid, la, body)
+    requires la.Lookbehind? || la.NegLookbehind?
+    requires 1 <= lid && cp <= |str|
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)   // (G3b) no stamp-free premise
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires forall y: nat :: y in LTB.LookIds(body) ==> 1 <= y
+    requires qmb.ov == AI.FBuildOracle(CP.FFullCompilation(top), str) && qmb.looks == OE.LmOf(body)
+    requires OE.OracleColsOk(rer, qmb, str)
+    ensures LOr.view_get_oracle(qmb.ov, cp, lid)
+        <==> LT.TreeRes(FU.ComputeTr(rer, [LS.Areg(T.Translate(body))], T.InputAt(str, cp), LG.Empty, WP.Backward),
+                        LG.Empty, T.InputAt(str, cp), WP.Backward).Some?
+  {
+    NR.NarrowIsCdn(top);
+    ColumnBehindViaMirrorCdn(rer, top, qmb, str, lid, la, body, cp);
   }
 }

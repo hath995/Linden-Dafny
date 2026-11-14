@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:7c12060174cde68cc906f0d2b0759aca982ba097a3be854abbca898e177621c9"
+manifest-hash = "sha256:5840373b2a2cc3d443898d1ea5b8dac134bf2bc15915ab24d6963254ead146a7"
 
 [[package]]
 name = "linden.equiv-cdn-priority"
@@ -65,15 +65,6 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-nest-stamp"
-
-[[package]]
-name = "linden.equiv-nulled-plus"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-nulled-plus"
 
 [[package]]
 name = "linden.equiv-nulled-recon"
@@ -407,6 +398,15 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-nfa-rep-re"
+
+[[package]]
+name = "linden.equiv-nulled-plus"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-nulled-plus"
 
 [[package]]
 name = "linden.equiv-oracle-accept-v"

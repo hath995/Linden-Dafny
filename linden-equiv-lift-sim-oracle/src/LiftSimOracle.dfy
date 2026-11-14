@@ -474,6 +474,79 @@ module LindenElkLiftSimOracle {
     GateStaticsSweepRENested(qm, re, re, crv, ncap, nlook, nquant);
   }
 
+  // ===========================================================================
+  // (G5a-1 row J) The gate statics of a TOP-LEVEL (Cdn-fragment) regex. Every lookaround NODE of the Cdn
+  // fragment is in the narrow fragment, so the sweep descends the non-look structure and hands each look
+  // node to `GateStaticsSweepRENested`.
+  // ===========================================================================
+
+  /** The plus-row premise of the narrow sweep, at every lookaround node of `re` outside looks. */
+  ghost predicate LookNodesPlusOk(re: R.regex, bc: seq<RB.code>)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => LookNodesPlusOk(r1, bc) && LookNodesPlusOk(r2, bc)
+    case Re_con(r1, r2) => LookNodesPlusOk(r1, bc) && LookNodesPlusOk(r2, bc)
+    case Re_quant(_, _, _, r1) => LookNodesPlusOk(r1, bc)
+    case Re_capture(_, r1) => LookNodesPlusOk(r1, bc)
+    case Re_lookaround(_, _, _) => NRR.PlusTableOk(re, bc)
+    case _ => true
+  }
+
+  lemma GateStaticsSweepRECdn(qm: AR.QMap, re0: R.regex, re: R.regex, crv: CP.FCompiled,
+                              ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
+    requires M.LookBodiesPlusGateRE(re)
+    requires NR.NestedFragmentCdnRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires PIV.CapIdsInLooks(re) <= PIV.CapIdsInLooks(re0)
+    requires LTB.LookUnique(re) && LookNodesPlusOk(re, crv.f_plus_bc)
+    requires forall l: nat :: l in LTB.LookIds(re) ==> l < nlook
+    ensures forall l: int :: l >= 0 && (l as nat) in LTB.LookIds(re) ==>
+                               GateStaticAtNested(qm, re0, crv, l, ncap, nlook, nquant)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) =>
+      assert LTB.LookIds(r1) <= LTB.LookIds(re) && LTB.LookIds(r2) <= LTB.LookIds(re);
+      GateStaticsSweepRECdn(qm, re0, r1, crv, ncap, nlook, nquant);
+      GateStaticsSweepRECdn(qm, re0, r2, crv, ncap, nlook, nquant);
+    case Re_con(r1, r2) =>
+      assert LTB.LookIds(r1) <= LTB.LookIds(re) && LTB.LookIds(r2) <= LTB.LookIds(re);
+      GateStaticsSweepRECdn(qm, re0, r1, crv, ncap, nlook, nquant);
+      GateStaticsSweepRECdn(qm, re0, r2, crv, ncap, nlook, nquant);
+    case Re_quant(_, _, _, r1) =>
+      assert LTB.LookIds(r1) <= LTB.LookIds(re);
+      GateStaticsSweepRECdn(qm, re0, r1, crv, ncap, nlook, nquant);
+    case Re_capture(_, r1) =>
+      assert LTB.LookIds(r1) <= LTB.LookIds(re);
+      GateStaticsSweepRECdn(qm, re0, r1, crv, ncap, nlook, nquant);
+    case Re_lookaround(lid, la, body) =>
+      assert NR.NestedFragmentRE(re);   // the look node of the Cdn fragment is narrow
+      GateStaticsSweepRENested(qm, re0, re, crv, ncap, nlook, nquant);
+    case _ =>
+  }
+
+  /** `GateStaticsFromTablesNested` for a top-level regex. */
+  lemma GateStaticsFromTablesCdn(qm: AR.QMap, re: R.regex, crv: CP.FCompiled,
+                                 ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
+    requires M.LookBodiesPlusGateRE(re)
+    requires NR.NestedFragmentCdnRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires forall l: int :: l in qm.looks ==>
+                                l >= 0 && (l as nat) in LTB.LookIds(re) && l < nlook
+    requires LTB.LookUnique(re) && LookNodesPlusOk(re, crv.f_plus_bc)
+    requires forall l: nat :: l in LTB.LookIds(re) ==> l < nlook
+    ensures GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
+  {
+    GateStaticsSweepRECdn(qm, re, re, crv, ncap, nlook, nquant);
+  }
+
   /** `ActionsRepL` sees THROUGH a `Jmp`: representing at a `Jmp(x)` pc is the
       same as representing at the target `x`. Transparent `Areg` heads are
       relocated intact (`NfaRepLAtJmpTransparent`); every other head pins a
@@ -1398,7 +1471,7 @@ module LindenElkLiftSimOracle {
                                            S: set<LG.GroupId>, gmt: LG.GroupMap, gmt': LG.GroupMap,
                                            th: AI.Thread, th': AI.Thread, qn: nat,
                                            ncap: int, nlook: int, nquant: int)
-    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires NR.NestedFragmentCdnRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re)
     requires LTB.LookUnique(re)
     requires LookNestBackTTopDeep(rer, re, crv, str, ov, S, gmt, th, ncap, nlook, nquant)
     requires qn in PIV.QuantIds(re) && qn in PIV.QuantIdsOutsideLooks(re)
@@ -1426,7 +1499,7 @@ module LindenElkLiftSimOracle {
       var L := AI.get_idx(th.look_regs.a_clk, lid as int);
       if lid in LTB.LookIds(PIV.QidBody(re, qn)) {
         assert AI.get_idx(th'.quant_regs.a_clk, qn as int) > L;
-        NI.LookPathDomOnPathBreaksNested(re, L, th'.quant_regs.a_clk, lid, qn);
+        NI.LookPathDomOnPathBreaksCdn(re, L, th'.quant_regs.a_clk, lid, qn);
         assert false;
       } else {
         NI.LookPathDomQuantOffPath(re, L, th.quant_regs.a_clk, th'.quant_regs.a_clk, lid, qn);
@@ -1582,11 +1655,11 @@ module LindenElkLiftSimOracle {
                   && pcmid == e1 + 2 {
                 var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1));
               } else {
-                AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+                AR.NfaRepLStarLoopViews3(rer, qm, greedy, r1, code, pc, pcmid);   // (G5a-1 row K) do-while, CIN or CDN view
                 if NUL.NonNullableL(r1) {
                   var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
                 } else {
-                  var emC, e1C := AR.NfaRepLStarCinInv(rer, qm, r1, code, pc, pcmid);
+                  var emC, e1C, gS := AR.NfaRepLStarNulInv(rer, qm, r1, code, pc, pcmid);   // (G5a-1 row K) either view pins the Fork
                 }
               }
             case NN(kx) =>
@@ -2053,8 +2126,8 @@ module LindenElkLiftSimOracle {
   // which is how it presented as a "time out" — see the isolate_assertions
   // policy. The hide below does the real work.
   /** (gate B, W9) The row facts for a lid of `sub`, either kind, no scope. */
-  lemma LookBodyRowAny(sub: R.regex, crv: CP.FCompiled, lid: nat)
-    requires T.TransWf(sub) && NR.NestedFragmentRE(sub)
+  lemma LookBodyRowAnyCdn(sub: R.regex, crv: CP.FCompiled, lid: nat)
+    requires T.TransWf(sub) && NR.NestedFragmentCdnRE(sub)
     requires PIV.CapUnique(sub) && PIV.QuantUnique(sub) && LTB.LookUnique(sub)
     requires LTB.LookTablesOk(sub, crv)
     requires lid in LTB.LookIds(sub)
@@ -2074,31 +2147,31 @@ module LindenElkLiftSimOracle {
     case Re_alt(r1, r2) =>
       OE.LmOfDom(r1); OE.LmOfDom(r2);
       if lid in LTB.LookIds(r1) {
-        LookBodyRowAny(r1, crv, lid);
+        LookBodyRowAnyCdn(r1, crv, lid);
         assert lid !in LTB.LookIds(r2);
         assert (lid as int) !in OE.LmOf(r2);
         assert OE.LmOf(sub)[lid as int] == OE.LmOf(r1)[lid as int];
         assert LTB.LookIds(r1) <= LTB.LookIds(sub);
       } else {
-        LookBodyRowAny(r2, crv, lid);
+        LookBodyRowAnyCdn(r2, crv, lid);
         assert OE.LmOf(sub)[lid as int] == OE.LmOf(r2)[lid as int];
         assert LTB.LookIds(r2) <= LTB.LookIds(sub);
       }
     case Re_con(r1, r2) =>
       OE.LmOfDom(r1); OE.LmOfDom(r2);
       if lid in LTB.LookIds(r1) {
-        LookBodyRowAny(r1, crv, lid);
+        LookBodyRowAnyCdn(r1, crv, lid);
         assert lid !in LTB.LookIds(r2);
         assert (lid as int) !in OE.LmOf(r2);
         assert OE.LmOf(sub)[lid as int] == OE.LmOf(r1)[lid as int];
         assert LTB.LookIds(r1) <= LTB.LookIds(sub);
       } else {
-        LookBodyRowAny(r2, crv, lid);
+        LookBodyRowAnyCdn(r2, crv, lid);
         assert OE.LmOf(sub)[lid as int] == OE.LmOf(r2)[lid as int];
         assert LTB.LookIds(r2) <= LTB.LookIds(sub);
       }
-    case Re_quant(_, _, _, r1) => LookBodyRowAny(r1, crv, lid);
-    case Re_capture(_, r1) => LookBodyRowAny(r1, crv, lid);
+    case Re_quant(_, _, _, r1) => LookBodyRowAnyCdn(r1, crv, lid);
+    case Re_capture(_, r1) => LookBodyRowAnyCdn(r1, crv, lid);
     case Re_lookaround(lid0, la0, r1) =>
       if lid0 >= 0 && (lid0 as nat) == lid {
         assert NI.LookBodyOfRE(sub, lid) == r1;
@@ -2107,21 +2180,42 @@ module LindenElkLiftSimOracle {
       } else {
         assert lid in LTB.LookIds(r1);
         OE.LmOfDom(r1);
-        LookBodyRowAny(r1, crv, lid);
+        NR.NarrowIsCdn(r1);   // (G5a-1 row J) a look body is narrow
+        LookBodyRowAnyCdn(r1, crv, lid);
         assert lid0 != lid as int;
         assert OE.LmOf(sub)[lid as int] == OE.LmOf(r1)[lid as int];
         assert LTB.LookIds(r1) <= LTB.LookIds(sub);
       }
   }
 
-  lemma OracleColumnNested(rer: LW.RegExpRecord, top: R.regex, crv: CP.FCompiled,
+  /** (G5a-1 row J) The narrow name, as a corollary of `LookBodyRowAnyCdn`. */
+  lemma LookBodyRowAny(sub: R.regex, crv: CP.FCompiled, lid: nat)
+    requires T.TransWf(sub) && NR.NestedFragmentRE(sub)
+    requires PIV.CapUnique(sub) && PIV.QuantUnique(sub) && LTB.LookUnique(sub)
+    requires LTB.LookTablesOk(sub, crv)
+    requires lid in LTB.LookIds(sub)
+    ensures var body := NI.LookBodyOfRE(sub, lid);
+            T.TransWf(body) && NR.NestedFragmentRE(body)
+            && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+            && LTB.LookTablesOk(body, crv)
+            && LTB.LookIds(body) <= LTB.LookIds(sub)
+            && (lid as int) in OE.LmOf(sub)
+            && exists la: R.lookaround ::
+              LTB.LookEntryOk(crv, lid as int, la, body)
+              && OE.LmOf(sub)[lid as int] == (T.TrLookaround(la), T.Translate(body))
+  {
+    NR.NarrowIsCdn(sub);
+    LookBodyRowAnyCdn(sub, crv, lid);
+  }
+
+  lemma OracleColumnCdn(rer: LW.RegExpRecord, top: R.regex, crv: CP.FCompiled,
                             str: string, sub: R.regex, lid: int,
                             lk: L.Lookaround, r1: L.Regex, cp: nat)
     requires !rer.ignoreCase && !rer.multiline
     requires crv == CP.FFullCompilation(top)
-    requires NR.NestedFragmentRE(top) && LTB.LidsWellNested(top) && LTB.LookUnique(top)
+    requires NR.NestedFragmentCdnRE(top) && LTB.LidsWellNested(top) && LTB.LookUnique(top)
     requires forall x: nat :: x in LTB.LookIds(top) ==> 1 <= x
-    requires NR.NestedFragmentRE(sub)                    // W9: L5ScopeRE / NegBehindLBOnlyRE deleted
+    requires NR.NestedFragmentCdnRE(sub)                    // W9: L5ScopeRE / NegBehindLBOnlyRE deleted
     requires M.LookBodiesPlusGateRE(sub)   // (G3a) the weak gate
     requires T.TransWf(sub) && LTB.LookUnique(sub) && PIV.CapUnique(sub) && PIV.QuantUnique(sub)
     requires LTB.LookTablesOk(sub, crv)
@@ -2137,13 +2231,13 @@ module LindenElkLiftSimOracle {
        <==> LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(r1)], T.InputAt(str, cp), LG.Empty, L.LkDir(lk)),
                        LG.Empty, T.InputAt(str, cp), L.LkDir(lk)).Some?
   {
-    hide NR.NestedFragmentRE, NR.NoNulledPlusRE, LTB.LidsWellNested, LTB.LookUnique;
+    hide NR.NestedFragmentRE, NR.NestedFragmentCdnRE, NR.NoNulledPlusRE, LTB.LidsWellNested, LTB.LookUnique;
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     var n := |str|;
     var ovf := AI.FBuildOracle(crv, str);
     var lidn: nat := lid as nat;
     assert {:split_here} true;
-    LookBodyRowAny(sub, crv, lidn);
+    LookBodyRowAnyCdn(sub, crv, lidn);
     var body := NI.LookBodyOfRE(sub, lidn);
     var la: R.lookaround :| LTB.LookEntryOk(crv, lid, la, body)
                             && OE.LmOf(sub)[lid] == (T.TrLookaround(la), T.Translate(body));
@@ -2161,7 +2255,7 @@ module LindenElkLiftSimOracle {
     assert {:split_here} true;
     assert |ovf| == n + 1;
     assert {:split_here} true;
-    OB.FBuildOracleCorrectAboveNested(top, str);
+    OB.FBuildOracleCorrectAboveCdn(top, str);
     var bit := LOr.view_get_oracle(ovf, cp, lid);
     assert {:split_here} true;
     assert bit == OB.LidReachesVFinal(crv, str, ovf, lid, cp);
@@ -2290,15 +2384,44 @@ module LindenElkLiftSimOracle {
         SufForallToColsOk(rer, qmb, str);
       }
       assert {:split_here} true;
-      M.PlusGateBody(sub, crv, lid as nat, la, body);   // (G3a) a lookbehind body is nulled-plus-free
+      M.PlusGateBodyCdn(sub, crv, lid as nat, la, body);   // (G3a) a lookbehind body is nulled-plus-free
       assert {:split_here} true;
       assert forall y: nat :: y in LTB.LookIds(body) ==> 1 <= y;
       assert {:split_here} true;
-      MV.ColumnBehindViaMirror(rer, top, qmb, str, lid, la, body, cp);
+      MV.ColumnBehindViaMirrorCdn(rer, top, qmb, str, lid, la, body, cp);
       assert {:split_here} true;
       assert bit <==> LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, WP.Backward),
                                  LG.Empty, inp, WP.Backward).Some?;
     }
+  }
+
+  /** (G5a-1 row J) The narrow name, as a corollary of `OracleColumnCdn`. */
+  lemma OracleColumnNested(rer: LW.RegExpRecord, top: R.regex, crv: CP.FCompiled,
+                            str: string, sub: R.regex, lid: int,
+                            lk: L.Lookaround, r1: L.Regex, cp: nat)
+    requires !rer.ignoreCase && !rer.multiline
+    requires crv == CP.FFullCompilation(top)
+    requires NR.NestedFragmentRE(top) && LTB.LidsWellNested(top) && LTB.LookUnique(top)
+    requires forall x: nat :: x in LTB.LookIds(top) ==> 1 <= x
+    requires NR.NestedFragmentRE(sub)                    // W9: L5ScopeRE / NegBehindLBOnlyRE deleted
+    requires M.LookBodiesPlusGateRE(sub)   // (G3a) the weak gate
+    requires T.TransWf(sub) && LTB.LookUnique(sub) && PIV.CapUnique(sub) && PIV.QuantUnique(sub)
+    requires LTB.LookTablesOk(sub, crv)
+    requires LTB.LookIds(sub) <= LTB.LookIds(top)
+    requires cp <= |str|
+    requires lid >= 0 && (lid as nat) in LTB.LookIds(sub)
+    requires lid in OE.LmOf(sub) && OE.LmOf(sub)[lid] == (lk, r1)
+    requires T.TransWf(NI.LookBodyOfRE(sub, lid as nat))
+    requires var body := NI.LookBodyOfRE(sub, lid as nat);
+             LL.OracleOkSuffix(rer, AR.QMap(M.QmOfRE(body), OE.LmOf(body), AI.FBuildOracle(crv, str), M.BodiesOfRE(body)),
+                               LC.InitInput(str))
+    ensures LOr.view_get_oracle(AI.FBuildOracle(crv, str), cp, lid)
+       <==> LT.TreeRes(LFU.ComputeTr(rer, [LS.Areg(r1)], T.InputAt(str, cp), LG.Empty, L.LkDir(lk)),
+                       LG.Empty, T.InputAt(str, cp), L.LkDir(lk)).Some?
+  {
+    NR.NarrowIsCdn(top);
+    NR.NarrowIsCdn(sub);
+    OracleColumnCdn(rer, top, crv, str, sub, lid, lk, r1, cp);
   }
 
   /** THE NESTED ORACLE ENTRY: the oracle truth of every row of `sub` (a look
@@ -2309,13 +2432,13 @@ module LindenElkLiftSimOracle {
   /** (L5 F7g) THE NESTED ORACLE ENTRY under the L5 scope (positive lookbehinds
       with lookbehind-only bodies admitted — their column is `OracleColumnNested`'s
       new arm). (the L4-scope wrapper has been retired). */
-  lemma OracleOkRowsL5(rer: LW.RegExpRecord, top: R.regex, crv: CP.FCompiled,
+  lemma OracleOkRowsL5Cdn(rer: LW.RegExpRecord, top: R.regex, crv: CP.FCompiled,
                         str: string, sub: R.regex)
     requires !rer.ignoreCase && !rer.multiline
     requires crv == CP.FFullCompilation(top)
-    requires NR.NestedFragmentRE(top) && LTB.LidsWellNested(top) && LTB.LookUnique(top)
+    requires NR.NestedFragmentCdnRE(top) && LTB.LidsWellNested(top) && LTB.LookUnique(top)
     requires forall x: nat :: x in LTB.LookIds(top) ==> 1 <= x
-    requires NR.NestedFragmentRE(sub)                    // W9: L5ScopeRE / NegBehindLBOnlyRE deleted
+    requires NR.NestedFragmentCdnRE(sub)                    // W9: L5ScopeRE / NegBehindLBOnlyRE deleted
     requires M.LookBodiesPlusGateRE(sub)   // (G3a) the weak gate
     requires T.TransWf(sub) && LTB.LookUnique(sub) && PIV.CapUnique(sub) && PIV.QuantUnique(sub)
     requires LTB.LookTablesOk(sub, crv)
@@ -2351,15 +2474,36 @@ module LindenElkLiftSimOracle {
       {
         assert lid >= 0 && (lid as nat) in LTB.LookIds(sub);
         var lidn: nat := lid as nat;
-        LookBodyRowAny(sub, crv, lidn);
+        LookBodyRowAnyCdn(sub, crv, lidn);
         var body := NI.LookBodyOfRE(sub, lidn);
         LookIdNotInOwnBody(sub, lidn);
         SubsetCardLt(LTB.LookIds(body), LTB.LookIds(sub), lidn);
-        M.PlusGateBodyRE(sub, lidn);   // (G3a) the gate descends
-        OracleOkRowsL5(rer, top, crv, str, body);
-        OracleColumnNested(rer, top, crv, str, sub, lid, lk, r1, cp);
+        M.PlusGateBodyRECdn(sub, lidn);   // (G3a) the gate descends
+        NR.NarrowIsCdn(body);   // (G5a-1 row J) a row body is narrow
+        OracleOkRowsL5Cdn(rer, top, crv, str, body);
+        OracleColumnCdn(rer, top, crv, str, sub, lid, lk, r1, cp);
       }
     }
+  }
+
+  /** (G5a-1 row J) The narrow name, as a corollary of `OracleOkRowsL5Cdn`. */
+  lemma OracleOkRowsL5(rer: LW.RegExpRecord, top: R.regex, crv: CP.FCompiled,
+                        str: string, sub: R.regex)
+    requires !rer.ignoreCase && !rer.multiline
+    requires crv == CP.FFullCompilation(top)
+    requires NR.NestedFragmentRE(top) && LTB.LidsWellNested(top) && LTB.LookUnique(top)
+    requires forall x: nat :: x in LTB.LookIds(top) ==> 1 <= x
+    requires NR.NestedFragmentRE(sub)                    // W9: L5ScopeRE / NegBehindLBOnlyRE deleted
+    requires M.LookBodiesPlusGateRE(sub)   // (G3a) the weak gate
+    requires T.TransWf(sub) && LTB.LookUnique(sub) && PIV.CapUnique(sub) && PIV.QuantUnique(sub)
+    requires LTB.LookTablesOk(sub, crv)
+    requires LTB.LookIds(sub) <= LTB.LookIds(top)
+    ensures LL.OracleOkSuffix(rer, AR.QMap(M.QmOfRE(sub), OE.LmOf(sub), AI.FBuildOracle(crv, str), M.BodiesOfRE(sub)),
+                              LC.InitInput(str))
+  {
+    NR.NarrowIsCdn(top);
+    NR.NarrowIsCdn(sub);
+    OracleOkRowsL5Cdn(rer, top, crv, str, sub);
   }
 
 }

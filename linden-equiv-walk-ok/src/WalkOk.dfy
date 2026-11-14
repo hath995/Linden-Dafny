@@ -179,7 +179,7 @@ module LindenElkWalkOk {
   /** The walk guard at every fuel — the greatest-fixpoint reading of
       `WalkOkF`. This is what the construction threads: one hypothesis
       instantiation per step, `g` in lockstep with the walk flag. */
-  ghost predicate WalkOk(acts: LS.Actions, c: RB.code, pc: nat, g: bool) {
+  opaque ghost predicate WalkOk(acts: LS.Actions, c: RB.code, pc: nat, g: bool) {
     forall n: nat :: WalkOkF(acts, c, pc, g, n)
   }
 
@@ -198,6 +198,7 @@ module LindenElkWalkOk {
     requires NR.GetPcRE(c, pc) == Some(RB.Jmp(np)) && np >= 0
     ensures WalkOk(acts, c, np as nat, g)
   {
+    reveal WalkOk();   // WalkOk is opaque
     forall n: nat {:trigger WalkOkF(acts, c, np as nat, g, n)} ensures WalkOkF(acts, c, np as nat, g, n) {
       assert WalkOkF(acts, c, pc, g, n + 1);
       if |acts| > 0 && acts[0].Areg? {
@@ -212,6 +213,7 @@ module LindenElkWalkOk {
     requires NR.GetPcRE(c, pc) == Some(RB.EndLoop)
     ensures WalkOk(acts[1..], c, pc + 1, true)
   {
+    reveal WalkOk();   // WalkOk is opaque
     forall n: nat {:trigger WalkOkF(acts[1..], c, pc + 1, true, n)} ensures WalkOkF(acts[1..], c, pc + 1, true, n) {
       assert WalkOkF(acts, c, pc, g, n + 1);
       if |acts| > 0 && acts[0].Areg? {
@@ -226,6 +228,7 @@ module LindenElkWalkOk {
     requires AR.BackForkAt(c, pc)
     ensures WalkOk(acts[1..], c, pc, true)
   {
+    reveal WalkOk();   // WalkOk is opaque
     forall n: nat {:trigger WalkOkF(acts[1..], c, pc, true, n)} ensures WalkOkF(acts[1..], c, pc, true, n) {
       assert WalkOkF(acts, c, pc, g, n + 1);
       if |acts| > 0 && acts[0].Areg? {
@@ -240,6 +243,7 @@ module LindenElkWalkOk {
     requires NR.GetPcRE(c, pc).Some? && NR.GetPcRE(c, pc).value.SetRegisterToCP?
     ensures WalkOk(acts[1..], c, pc + 1, g)
   {
+    reveal WalkOk();   // WalkOk is opaque
     forall n: nat {:trigger WalkOkF(acts[1..], c, pc + 1, g, n)} ensures WalkOkF(acts[1..], c, pc + 1, g, n) {
       assert WalkOkF(acts, c, pc, g, n + 1);
       if |acts| > 0 && acts[0].Areg? {
@@ -253,6 +257,7 @@ module LindenElkWalkOk {
     requires |acts| > 0 && acts[0] == LS.Areg(L.Epsilon)
     ensures WalkOk(acts[1..], c, pc, g)
   {
+    reveal WalkOk();   // WalkOk is opaque
     forall n: nat {:trigger WalkOkF(acts[1..], c, pc, g, n)} ensures WalkOkF(acts[1..], c, pc, g, n) {
       assert WalkOkF(acts, c, pc, g, n + 1);
       if |acts| > 0 && acts[0].Areg? {
@@ -267,6 +272,7 @@ module LindenElkWalkOk {
     requires NR.GetPcRE(c, pc).Some? && NR.GetPcRE(c, pc).value.Consume?
     ensures WalkOk(acts[1..], c, pc + 1, true)
   {
+    reveal WalkOk();   // WalkOk is opaque
     forall n: nat {:trigger WalkOkF(acts[1..], c, pc + 1, true, n)} ensures WalkOkF(acts[1..], c, pc + 1, true, n) {
       assert WalkOkF(acts, c, pc, g, n + 1);
       if |acts| > 0 && acts[0].Areg? {
@@ -281,6 +287,7 @@ module LindenElkWalkOk {
     requires NR.GetPcRE(c, pc).Some? && NR.GetPcRE(c, pc).value.AnchorAssertion?
     ensures WalkOk(acts[1..], c, pc + 1, g)
   {
+    reveal WalkOk();   // WalkOk is opaque
     forall n: nat {:trigger WalkOkF(acts[1..], c, pc + 1, g, n)} ensures WalkOkF(acts[1..], c, pc + 1, g, n) {
       assert WalkOkF(acts, c, pc, g, n + 1);
       if |acts| > 0 && acts[0].Areg? {
@@ -298,6 +305,7 @@ module LindenElkWalkOk {
              && (NR.GetPcRE(c, pc).value.CheckOracle? || NR.GetPcRE(c, pc).value.NegCheckOracle?)
     ensures WalkOk(acts[1..], c, pc + 1, g)
   {
+    reveal WalkOk();   // WalkOk is opaque
     forall n: nat {:trigger WalkOkF(acts[1..], c, pc + 1, g, n)} ensures WalkOkF(acts[1..], c, pc + 1, g, n) {
       assert WalkOkF(acts, c, pc, g, n + 1);
       if |acts| > 0 && acts[0].Areg? {
@@ -311,6 +319,7 @@ module LindenElkWalkOk {
     requires |acts| > 0 && acts[0] == LS.Areg(L.Sequence(r1, r2))
     ensures WalkOk([LS.Areg(r1), LS.Areg(r2)] + acts[1..], c, pc, g)
   {
+    reveal WalkOk();   // WalkOk is opaque
     forall n: nat {:trigger WalkOkF([LS.Areg(r1), LS.Areg(r2)] + acts[1..], c, pc, g, n)} ensures WalkOkF([LS.Areg(r1), LS.Areg(r2)] + acts[1..], c, pc, g, n) {
       assert WalkOkF(acts, c, pc, g, n + 1);
       if |acts| > 0 && acts[0].Areg? {
@@ -325,6 +334,7 @@ module LindenElkWalkOk {
     requires NR.GetPcRE(c, pc).Some? && NR.GetPcRE(c, pc).value.SetRegisterToCP?
     ensures WalkOk([LS.Areg(r1), LS.Aclose(gid)] + acts[1..], c, pc + 1, g)
   {
+    reveal WalkOk();   // WalkOk is opaque
     forall n: nat {:trigger WalkOkF([LS.Areg(r1), LS.Aclose(gid)] + acts[1..], c, pc + 1, g, n)} ensures WalkOkF([LS.Areg(r1), LS.Aclose(gid)] + acts[1..], c, pc + 1, g, n) {
       assert WalkOkF(acts, c, pc, g, n + 1);
       if |acts| > 0 && acts[0].Areg? {
@@ -340,6 +350,7 @@ module LindenElkWalkOk {
     ensures WalkOk([LS.Areg(r1)] + acts[1..], c, x as nat, g)
     ensures WalkOk([LS.Areg(r2)] + acts[1..], c, y as nat, g)
   {
+    reveal WalkOk();   // WalkOk is opaque
     forall n: nat {:trigger WalkOkF([LS.Areg(r1)] + acts[1..], c, x as nat, g, n)}
       ensures WalkOkF([LS.Areg(r1)] + acts[1..], c, x as nat, g, n) {
       assert WalkOkF(acts, c, pc, g, n + 1);
@@ -360,6 +371,7 @@ module LindenElkWalkOk {
     requires NR.GetPcRE(c, pc).Some? && NR.GetPcRE(c, pc).value.SetQuantToClock?
     ensures WalkOk([LS.Areg(r1), LS.Areg(L.Quantified(greedy, min - 1, delta, r1))] + acts[1..], c, pc + 1, g)
   {
+    reveal WalkOk();   // WalkOk is opaque
     forall n: nat {:trigger WalkOkF([LS.Areg(r1), LS.Areg(L.Quantified(greedy, min - 1, delta, r1))] + acts[1..], c, pc + 1, g, n)} 
       ensures WalkOkF([LS.Areg(r1), LS.Areg(L.Quantified(greedy, min - 1, delta, r1))] + acts[1..], c, pc + 1, g, n) {
       assert WalkOkF(acts, c, pc, g, n + 1);
@@ -378,6 +390,7 @@ module LindenElkWalkOk {
     ensures WalkOk([LS.Areg(r1), LS.Acheck(chk), LS.Areg(L.Quantified(greedy, 0, LN.Inf, r1))] + acts[1..],
                    c, pc + 1, g)
   {
+    reveal WalkOk();   // WalkOk is opaque
     forall n: nat {:trigger WalkOkF([LS.Areg(r1), LS.Acheck(chk), LS.Areg(L.Quantified(greedy, 0, LN.Inf, r1))] + acts[1..], c, pc + 1, g, n)}
       ensures WalkOkF([LS.Areg(r1), LS.Acheck(chk), LS.Areg(L.Quantified(greedy, 0, LN.Inf, r1))] + acts[1..],
                       c, pc + 1, g, n) {
@@ -394,6 +407,7 @@ module LindenElkWalkOk {
     requires |acts| > 0 && acts[0] == LS.Areg(L.Quantified(greedy, 0, LN.NN(0), r1))
     ensures WalkOk(acts[1..], c, pc, g)
   {
+    reveal WalkOk();   // WalkOk is opaque
     forall n: nat {:trigger WalkOkF(acts[1..], c, pc, g, n)} ensures WalkOkF(acts[1..], c, pc, g, n) {
       assert WalkOkF(acts, c, pc, g, n + 1);
       if |acts| > 0 && acts[0].Areg? {
@@ -415,6 +429,7 @@ module LindenElkWalkOk {
             WalkOk([LS.Areg(r1), LS.Acheck(chk), LS.Areg(qnext)] + acts[1..], c, iterarm + 2, false)
             && WalkOk(acts[1..], c, skiparm, g)
   {
+    reveal WalkOk();   // WalkOk is opaque
     var iterarm := (if greedy then x else y) as nat;
     var skiparm := (if greedy then y else x) as nat;
     var qnext := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
@@ -446,6 +461,7 @@ module LindenElkWalkOk {
             WalkOk([LS.Areg(r1), LS.Acheck(chk), LS.Areg(qnext)] + acts[1..], c, iterarm + 1, true)
             && WalkOk(acts[1..], c, skiparm, true)
   {
+    reveal WalkOk();   // WalkOk is opaque
     assert WalkOkF(acts, c, pc, g, 1);
     assert WalkOkRegF(acts[0].r, acts[1..], c, pc, g, 1);
     var iterarm := (if greedy then x else y) as nat;
@@ -478,6 +494,7 @@ module LindenElkWalkOk {
     ensures WalkOk([LS.Areg(r1), LS.Acheck(chk), LS.Areg(L.Quantified(greedy, 0, LN.Inf, r1))] + acts[1..], c, x as nat + 2, false)
     ensures WalkOk(acts[1..], c, y as nat + 1, g)
   {
+    reveal WalkOk();   // WalkOk is opaque
     var il := [LS.Areg(r1), LS.Acheck(chk), LS.Areg(L.Quantified(greedy, 0, LN.Inf, r1))] + acts[1..];
     forall n: nat {:trigger WalkOkF(il, c, x as nat + 2, false, n)}
       ensures WalkOkF(il, c, x as nat + 2, false, n) {
@@ -507,6 +524,7 @@ module LindenElkWalkOk {
             WalkOk([LS.Areg(r1), LS.Acheck(chk), LS.Areg(qnext)] + acts[1..], c, iterarm + 2, false)
             && WalkOk(acts[1..], c, pc + 2, true)
   {
+    reveal WalkOk();   // WalkOk is opaque
     WalkOkLoopView(acts, c, pc, g, greedy, delta, r1, x, y, chk);
     var iterarm := (if greedy then x else y) as nat;
     var qnext := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
@@ -533,6 +551,7 @@ module LindenElkWalkOk {
     ensures WalkOk([LS.Areg(r1), LS.Acheck(chk), LS.Areg(L.Quantified(greedy, 0, LN.Inf, r1))] + acts[1..], c, x as nat + 2, false)
     ensures WalkOk(acts[1..], c, y as nat + 2, g)
   {
+    reveal WalkOk();   // WalkOk is opaque
     var il := [LS.Areg(r1), LS.Acheck(chk), LS.Areg(L.Quantified(greedy, 0, LN.Inf, r1))] + acts[1..];
     forall n: nat {:trigger WalkOkF(il, c, x as nat + 2, false, n)}
       ensures WalkOkF(il, c, x as nat + 2, false, n) {
@@ -561,6 +580,7 @@ module LindenElkWalkOk {
             WalkOk([LS.Areg(r1), LS.Acheck(chk), LS.Areg(qnext)] + acts[1..], c, iterarm + 2, false)
             && WalkOk(acts[1..], c, pc + 3, true)
   {
+    reveal WalkOk();   // WalkOk is opaque
     WalkOkLoopView(acts, c, pc, g, greedy, delta, r1, x, y, chk);
     var iterarm := (if greedy then x else y) as nat;
     var qnext := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);

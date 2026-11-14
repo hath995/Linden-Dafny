@@ -4769,8 +4769,8 @@ module LindenElkMain {
   }
 
   /** The gate at a look node (G3b: the same for every kind). Structural; replaces `LooksNoNulledPlusBody`. */
-  lemma PlusGateBodyRE(re: R.regex, l: nat)
-    requires NR.NestedFragmentRE(re)
+  lemma PlusGateBodyRECdn(re: R.regex, l: nat)
+    requires NR.NestedFragmentCdnRE(re)
     requires LookBodiesPlusGateRE(re) && l in LTB.LookIds(re)
     ensures var b := NI.LookBodyOfRE(re, l);
             LookBodiesPlusGateRE(b) && NRC.NoCdnPlusRE(b) && RF.CinBodiesLookFreeRE(b)
@@ -4778,16 +4778,41 @@ module LindenElkMain {
   {
     match re
     case Re_alt(r1, r2) =>
-      if l in LTB.LookIds(r1) { PlusGateBodyRE(r1, l); } else { PlusGateBodyRE(r2, l); }
+      if l in LTB.LookIds(r1) { PlusGateBodyRECdn(r1, l); } else { PlusGateBodyRECdn(r2, l); }
     case Re_con(r1, r2) =>
-      if l in LTB.LookIds(r1) { PlusGateBodyRE(r1, l); } else { PlusGateBodyRE(r2, l); }
-    case Re_quant(_, _, _, r1) => PlusGateBodyRE(r1, l);
-    case Re_capture(_, r1) => PlusGateBodyRE(r1, l);
+      if l in LTB.LookIds(r1) { PlusGateBodyRECdn(r1, l); } else { PlusGateBodyRECdn(r2, l); }
+    case Re_quant(_, _, _, r1) => PlusGateBodyRECdn(r1, l);
+    case Re_capture(_, r1) => PlusGateBodyRECdn(r1, l);
     case Re_lookaround(lid0, la0, r1) =>
-      if lid0 >= 0 && (lid0 as nat) == l { } else { PlusGateBodyRE(r1, l); }
+      if lid0 >= 0 && (lid0 as nat) == l { } else { NR.NarrowIsCdn(r1); PlusGateBodyRECdn(r1, l); }   // (G5a-1 row J) a look body is narrow
+  }
+
+  /** (G5a-1 row J) The narrow name, as a corollary of `PlusGateBodyRECdn`. */
+  lemma PlusGateBodyRE(re: R.regex, l: nat)
+    requires NR.NestedFragmentRE(re)
+    requires LookBodiesPlusGateRE(re) && l in LTB.LookIds(re)
+    ensures var b := NI.LookBodyOfRE(re, l);
+            LookBodiesPlusGateRE(b) && NRC.NoCdnPlusRE(b) && RF.CinBodiesLookFreeRE(b)
+  {
+    NR.NarrowIsCdn(re);
+    PlusGateBodyRECdn(re, l);
   }
 
   /** The row form: any table row `(la, body)` at a look id of `re`. */
+  lemma PlusGateBodyCdn(re: R.regex, crv: CP.FCompiled, l: nat, la: R.lookaround, body: R.regex)
+    requires NR.NestedFragmentCdnRE(re)
+    requires LookBodiesPlusGateRE(re) && l in LTB.LookIds(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires LTB.LookEntryOk(crv, l as int, la, body)
+    ensures body == NI.LookBodyOfRE(re, l) && la == LookKindOfRE(re, l)
+    ensures LookBodiesPlusGateRE(body)
+    ensures NRC.NoCdnPlusRE(body) && RF.CinBodiesLookFreeRE(body)   // (G3b) every kind
+  {
+    LookKindOfTablesTie(re, crv, l);
+    PlusGateBodyRECdn(re, l);
+  }
+
+  /** (G5a-1 row J) The narrow name, as a corollary of `PlusGateBodyCdn`. */
   lemma PlusGateBody(re: R.regex, crv: CP.FCompiled, l: nat, la: R.lookaround, body: R.regex)
     requires NR.NestedFragmentRE(re)
     requires LookBodiesPlusGateRE(re) && l in LTB.LookIds(re)
@@ -4797,8 +4822,8 @@ module LindenElkMain {
     ensures LookBodiesPlusGateRE(body)
     ensures NRC.NoCdnPlusRE(body) && RF.CinBodiesLookFreeRE(body)   // (G3b) every kind
   {
-    LookKindOfTablesTie(re, crv, l);
-    PlusGateBodyRE(re, l);
+    NR.NarrowIsCdn(re);
+    PlusGateBodyCdn(re, crv, l, la, body);
   }
 
   // ===========================================================================

@@ -912,6 +912,7 @@ module LindenElkWalkOkEntry {
     ensures forall g: bool ::
       WO.WalkOk([LS.Areg(T.Translate(re))], CP.compile_to_bytecode(re), 0, g)
   {
+    reveal WO.WalkOk();   // WalkOk is opaque
     var code := CP.compile_to_bytecode(re);
     var next := CP.compile(re, 0, CP.Progress).1;
     NR.CompileToBytecodeRepLookBehind(re);
@@ -1799,6 +1800,7 @@ module LindenElkWalkOkEntry {
     ensures forall g: bool ::
       WO.WalkOk([LS.Areg(T.Translate(re))], CP.compile_to_bytecode(re), 0, g)
   {
+    reveal WO.WalkOk();   // WalkOk is opaque
     var code := CP.compile_to_bytecode(re);
     var next := CP.compile(re, 0, CP.Progress).1;
     NR.CompileToBytecodeRepCdn(re);
@@ -1828,6 +1830,7 @@ module LindenElkWalkOkEntry {
     ensures forall g: bool ::
       WO.WalkOk([LS.Areg(T.Translate(re))], CP.compile_to_bytecode(re), 0, g)
   {
+    reveal WO.WalkOk();   // WalkOk is opaque
     NR.NarrowIsCdn(re);
     WalkOkEntryCdn(re);
   }

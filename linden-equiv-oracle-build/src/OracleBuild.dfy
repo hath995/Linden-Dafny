@@ -450,8 +450,8 @@ module LindenElkOracleBuild {
   /** `LookTablesLidDirForward` for the NESTED fragment: recurses into look
       bodies (which now carry their own lids) instead of stopping at a look-free
       body. A lookBEHIND row still builds Forward. */
-  lemma LookTablesLidDirForwardNested(r: R.regex, fc: CP.FCompiled, i: nat)
-    requires NR.NestedFragmentRE(r)
+  lemma LookTablesLidDirForwardCdn(r: R.regex, fc: CP.FCompiled, i: nat)
+    requires NR.NestedFragmentCdnRE(r)
     requires LT.LookTablesOk(r, fc)
     requires i in LT.LookIds(r)
     ensures 0 <= i < |fc.f_look_types|
@@ -461,19 +461,33 @@ module LindenElkOracleBuild {
   {
     match r
     case Re_alt(r1, r2) =>
-      if i in LT.LookIds(r1) { LookTablesLidDirForwardNested(r1, fc, i); }
-      else { LookTablesLidDirForwardNested(r2, fc, i); }
+      if i in LT.LookIds(r1) { LookTablesLidDirForwardCdn(r1, fc, i); }
+      else { LookTablesLidDirForwardCdn(r2, fc, i); }
     case Re_con(r1, r2) =>
-      if i in LT.LookIds(r1) { LookTablesLidDirForwardNested(r1, fc, i); }
-      else { LookTablesLidDirForwardNested(r2, fc, i); }
-    case Re_quant(_, _, _, r1) => LookTablesLidDirForwardNested(r1, fc, i);
-    case Re_capture(_, r1) => LookTablesLidDirForwardNested(r1, fc, i);
+      if i in LT.LookIds(r1) { LookTablesLidDirForwardCdn(r1, fc, i); }
+      else { LookTablesLidDirForwardCdn(r2, fc, i); }
+    case Re_quant(_, _, _, r1) => LookTablesLidDirForwardCdn(r1, fc, i);
+    case Re_capture(_, r1) => LookTablesLidDirForwardCdn(r1, fc, i);
     case Re_lookaround(lid, la, body) =>
       if lid >= 0 && (lid as nat) == i {
         assert fc.f_look_types[i] == la;              // LookEntryOk(fc, lid, la, body)
       } else {
-        LookTablesLidDirForwardNested(body, fc, i);   // i in LookIds(body)
+        NR.NarrowIsCdn(body);   // (G5a-1 row J) a look body is narrow
+        LookTablesLidDirForwardCdn(body, fc, i);   // i in LookIds(body)
       }
+  }
+
+  /** (G5a-1 row J) The narrow name, as a corollary of `LookTablesLidDirForwardCdn`. */
+  lemma LookTablesLidDirForwardNested(r: R.regex, fc: CP.FCompiled, i: nat)
+    requires NR.NestedFragmentRE(r)
+    requires LT.LookTablesOk(r, fc)
+    requires i in LT.LookIds(r)
+    ensures 0 <= i < |fc.f_look_types|
+    ensures (fc.f_look_types[i].Lookbehind? || fc.f_look_types[i].NegLookbehind?)
+            ==> LidDir(fc, i) == LAnc.Forward
+  {
+    NR.NarrowIsCdn(r);
+    LookTablesLidDirForwardCdn(r, fc, i);
   }
 
   /** On the lookbehind fragment `LidReaches` IS the plain forward
@@ -1113,8 +1127,8 @@ module LindenElkOracleBuild {
       `compile_to_write(oracle_regex(la, body), i)`. The build regex is nested,
       lid-unique, and — by `LidsWellNested` — has every gate strictly above `i`,
       so `NR.NestedCompileToWriteClassifiedAbove` supplies the four conjuncts. */
-  lemma NestedLidBuildOkAbove(re: R.regex, fc: CP.FCompiled, i: nat)
-    requires NR.NestedFragmentRE(re)
+  lemma CdnLidBuildOkAbove(re: R.regex, fc: CP.FCompiled, i: nat)
+    requires NR.NestedFragmentCdnRE(re)
     requires LT.LidsWellNested(re)
     requires LT.LookUnique(re)
     requires LT.LookTablesOk(re, fc)
@@ -1124,13 +1138,13 @@ module LindenElkOracleBuild {
   {
     match re
     case Re_alt(r1, r2) =>
-      if i in LT.LookIds(r1) { NestedLidBuildOkAbove(r1, fc, i); }
-      else { NestedLidBuildOkAbove(r2, fc, i); }
+      if i in LT.LookIds(r1) { CdnLidBuildOkAbove(r1, fc, i); }
+      else { CdnLidBuildOkAbove(r2, fc, i); }
     case Re_con(r1, r2) =>
-      if i in LT.LookIds(r1) { NestedLidBuildOkAbove(r1, fc, i); }
-      else { NestedLidBuildOkAbove(r2, fc, i); }
-    case Re_quant(_, _, _, r1) => NestedLidBuildOkAbove(r1, fc, i);
-    case Re_capture(_, r1) => NestedLidBuildOkAbove(r1, fc, i);
+      if i in LT.LookIds(r1) { CdnLidBuildOkAbove(r1, fc, i); }
+      else { CdnLidBuildOkAbove(r2, fc, i); }
+    case Re_quant(_, _, _, r1) => CdnLidBuildOkAbove(r1, fc, i);
+    case Re_capture(_, r1) => CdnLidBuildOkAbove(r1, fc, i);
     case Re_lookaround(lid, la, body) =>
       assert lid >= 0;
       if (i as int) == lid {
@@ -1144,8 +1158,22 @@ module LindenElkOracleBuild {
         assert AI.get_code_v(fc.f_look_build_bc, i) == CP.compile_to_write(og, lid);
       } else {
         assert i in LT.LookIds(body);
-        NestedLidBuildOkAbove(body, fc, i);
+        NR.NarrowIsCdn(body);   // (G5a-1 row J) a look body is narrow
+        CdnLidBuildOkAbove(body, fc, i);
       }
+  }
+
+  /** (G5a-1 row J) The narrow name, as a corollary of `CdnLidBuildOkAbove`. */
+  lemma NestedLidBuildOkAbove(re: R.regex, fc: CP.FCompiled, i: nat)
+    requires NR.NestedFragmentRE(re)
+    requires LT.LidsWellNested(re)
+    requires LT.LookUnique(re)
+    requires LT.LookTablesOk(re, fc)
+    requires i in LT.LookIds(re)
+    ensures LidBuildOkAbove(fc, i)
+  {
+    NR.NarrowIsCdn(re);
+    CdnLidBuildOkAbove(re, fc, i);
   }
 
   /** ESTABLISHER (brick 4b, depth k): every row of `FFullCompilation(re)`
@@ -1153,8 +1181,8 @@ module LindenElkOracleBuild {
       `re` — the real lids by `NestedLidBuildOkAbove`, all other rows because they
       still hold the seed's empty bytecode. Discharges the sole hypothesis of
       `FBuildOracleCorrectAbove` for the NESTED fragment. */
-  lemma AllLidsBuildOkAboveNested(re: R.regex, i: int)
-    requires NR.NestedFragmentRE(re)
+  lemma AllLidsBuildOkAboveCdn(re: R.regex, i: int)
+    requires NR.NestedFragmentCdnRE(re)
     requires LT.LidsWellNested(re)
     requires LT.LookUnique(re)
     ensures LidBuildOkAbove(CP.FFullCompilation(re), i)
@@ -1162,12 +1190,23 @@ module LindenElkOracleBuild {
     var crv := CP.FFullCompilation(re);
     if i >= 0 && (i as nat) in LT.LookIds(re) {
       LT.FFullCompilationLookOk(re);
-      NestedLidBuildOkAbove(re, crv, i as nat);
+      CdnLidBuildOkAbove(re, crv, i as nat);
     } else {
       // outside LookIds: the row is empty (G5a-1: the inline unfolding of FFullCompilation looped here)
       NonLidRowEmpty(re, i);
       assert AI.get_code_v(crv.f_look_build_bc, i) == [];
     }
+  }
+
+  /** (G5a-1 row J) The narrow name, as a corollary of `AllLidsBuildOkAboveCdn`. */
+  lemma AllLidsBuildOkAboveNested(re: R.regex, i: int)
+    requires NR.NestedFragmentRE(re)
+    requires LT.LidsWellNested(re)
+    requires LT.LookUnique(re)
+    ensures LidBuildOkAbove(CP.FFullCompilation(re), i)
+  {
+    NR.NarrowIsCdn(re);
+    AllLidsBuildOkAboveCdn(re, i);
   }
 
   /** STEP 3 (nested capstone) — THE §6.2 THEOREM FOR THE NESTED FRAGMENT, fully
@@ -1176,6 +1215,23 @@ module LindenElkOracleBuild {
       oracle holds EXACTLY the `LidReachesVFinal` positions of that lid's build
       code — the genuinely GATED depth-k oracle correctness. Discharges
       `AllLidsBuildOkAboveNested` into `FBuildOracleCorrectAbove`. */
+  lemma FBuildOracleCorrectAboveCdn(re: R.regex, str: string)
+    requires NR.NestedFragmentCdnRE(re)
+    requires LT.LidsWellNested(re)
+    requires LT.LookUnique(re)
+    ensures var crv := CP.FFullCompilation(re);
+      var ovf := AI.FBuildOracle(crv, str);
+      forall lid: int, cp: int ::
+        LOr.view_get_oracle(ovf, cp, lid)
+        == (1 <= lid <= R.max_lookaround(re) && LidReachesVFinal(crv, str, ovf, lid, cp))
+  {
+    forall i: int ensures LidBuildOkAbove(CP.FFullCompilation(re), i) {
+      AllLidsBuildOkAboveCdn(re, i);
+    }
+    FBuildOracleCorrectAbove(re, str);
+  }
+
+  /** (G5a-1 row J) The narrow name, as a corollary of `FBuildOracleCorrectAboveCdn`. */
   lemma FBuildOracleCorrectAboveNested(re: R.regex, str: string)
     requires NR.NestedFragmentRE(re)
     requires LT.LidsWellNested(re)
@@ -1186,10 +1242,8 @@ module LindenElkOracleBuild {
         LOr.view_get_oracle(ovf, cp, lid)
         == (1 <= lid <= R.max_lookaround(re) && LidReachesVFinal(crv, str, ovf, lid, cp))
   {
-    forall i: int ensures LidBuildOkAbove(CP.FFullCompilation(re), i) {
-      AllLidsBuildOkAboveNested(re, i);
-    }
-    FBuildOracleCorrectAbove(re, str);
+    NR.NarrowIsCdn(re);
+    FBuildOracleCorrectAboveCdn(re, str);
   }
 
   /** `FBuildOracleCorrect` restated per lookaround, with the bytecode in its
@@ -1234,8 +1288,8 @@ module LindenElkOracleBuild {
       V-MODEL reachability (`ReachesWriteV`, which crosses inner gates against
       the finished view) of the lid's build bytecode. Same shape as the look-free
       version but off `FBuildOracleCorrectAboveNested` + `LidReachesVFinal`. */
-  lemma FBuildOracleCorrectAtNested(re: R.regex, str: string, lid: int, la: R.lookaround, body: R.regex, cp: int)
-    requires NR.NestedFragmentRE(re)
+  lemma FBuildOracleCorrectAtCdn(re: R.regex, str: string, lid: int, la: R.lookaround, body: R.regex, cp: int)
+    requires NR.NestedFragmentCdnRE(re)
     requires LT.LidsWellNested(re)
     requires LT.LookUnique(re)
     requires LT.LookEntryOk(CP.FFullCompilation(re), lid, la, body)
@@ -1248,7 +1302,7 @@ module LindenElkOracleBuild {
   {
     var crv := CP.FFullCompilation(re);
     var ovf := AI.FBuildOracle(crv, str);
-    FBuildOracleCorrectAboveNested(re, str);         // oracle bit == LidReachesVFinal (for 1<=lid<=maxlook)
+    FBuildOracleCorrectAboveCdn(re, str);         // oracle bit == LidReachesVFinal (for 1<=lid<=maxlook)
     assert crv.f_look_types[lid] == la;              // LookEntryOk
     assert LidDir(crv, lid) == LAnc.Forward;         // oracle_direction(lookbehind) == Forward
     // table size: lid <= maxlook0 (identical to the look-free version)
@@ -1269,6 +1323,23 @@ module LindenElkOracleBuild {
     assert CP.oracle_regex(la, body) == R.lazy_prefix(R.remove_capture(body));
     assert AI.get_code_v(crv.f_look_build_bc, lid)
         == CP.compile_to_write(R.lazy_prefix(R.remove_capture(body)), lid);
+  }
+
+  /** (G5a-1 row J) The narrow name, as a corollary of `FBuildOracleCorrectAtCdn`. */
+  lemma FBuildOracleCorrectAtNested(re: R.regex, str: string, lid: int, la: R.lookaround, body: R.regex, cp: int)
+    requires NR.NestedFragmentRE(re)
+    requires LT.LidsWellNested(re)
+    requires LT.LookUnique(re)
+    requires LT.LookEntryOk(CP.FFullCompilation(re), lid, la, body)
+    requires la.Lookbehind? || la.NegLookbehind?
+    requires 1 <= lid
+    requires 0 <= cp <= |str|
+    ensures LOr.view_get_oracle(AI.FBuildOracle(CP.FFullCompilation(re), str), cp, lid)
+         <==> ORc.ReachesWriteV(CP.compile_to_write(R.lazy_prefix(R.remove_capture(body)), lid),
+                                str, AI.FBuildOracle(CP.FFullCompilation(re), str), 0, lid, cp)
+  {
+    NR.NarrowIsCdn(re);
+    FBuildOracleCorrectAtCdn(re, str, lid, la, body, cp);
   }
 
   // ===========================================================================

@@ -112,6 +112,7 @@ module LindenElkLiftSimCore {
   import GG = LindenElkFlipGateG         // (gate B) flip-gate F6 lemmas, scope-free
   import CG = LindenElkFlipClosedG       // (gate B) the scope-free closedness ladder
   import CW = LindenElkCinWalk
+  import NP = LindenElkNulledPlus        // (G5a-1 row K) FirstEmptyPathL: the guard rule's test
   import NRR = LindenElkNulledReconRegs   // (G3a) the plus table
   import NRC = LindenElkNulledRecon      // (G3b)
   import RF = LindenElkReconFrame        // (G3b)
@@ -396,6 +397,15 @@ module LindenElkLiftSimCore {
           then t.LK? && t.lk == lk && t.tlk == tlk
                && TreeRepLkRE(rer, qm, code, inp, t.t, pc + 1, b)
           else t == LT.LKFail(lk, tlk)
+        // tr_cdn / tr_cdnfail (G5a-1 row K): the CDN-greedy plus's nulled-exit guard, zero-width and
+        // leaf-transparent. The test is the SPEC's: the body has a first empty path here
+        // (`CW.BoolTreeLkX`'s CDN arm splits on the same function); `LmapOk` is carried for the
+        // bridge to machine A's test and the table bit (`NT.FirstEmptyPathRL`)
+        case Some(CheckNullable(qid)) =>
+          qid in qm.bodies && T.TransWf(qm.bodies[qid]) && AR.LmapOk(qm.bodies[qid], qm)
+          && (if NP.FirstEmptyPathL(rer, T.Translate(qm.bodies[qid]), inp).Some?
+              then TreeRepLkRE(rer, qm, code, inp, t, pc + 1, b)
+              else t == LT.Mismatch)
         case _ => false)
   }
 
@@ -549,7 +559,12 @@ module LindenElkLiftSimCore {
           }
         }
       }
-    case Some(_) =>                 // WriteOracle/CheckNullable/Fail: no rule — vacuous
+    case Some(CheckNullable(qid)) =>  // tr_cdn (empty path here) or tr_cdnfail (both Mismatch)
+      if qid in qm.bodies && T.TransWf(qm.bodies[qid])
+         && NP.FirstEmptyPathL(rer, T.Translate(qm.bodies[qid]), inp).Some? {
+        TreeRepLkDetermRE(rer, qm, code, inp, t1, t2, pc + 1, b);
+      }
+    case Some(_) =>                 // WriteOracle/Fail: no rule — vacuous
     case None =>                    // vacuous
   }
 
@@ -645,6 +660,37 @@ module LindenElkLiftSimCore {
               t.AnchorPass? && t.a == T.TrAnchor(a)
               && TreeRepLkRE(rer, qm, code, inp, t.t, pc + 1, b)
     ensures !LS.AnchorSatisfied(rer, T.TrAnchor(a), inp) ==> t == LT.Mismatch
+  { }
+
+  /** (G5a-1 row K) Inversion at the CDN guard: the SAME tree at `pc + 1` when the plus body has a first
+      empty path here, `Mismatch` otherwise. */
+  lemma TreeRepLkREAtCdn(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                         t: LT.Tree, pc: nat, b: bool, qid: int)
+    requires TreeRepLkRE(rer, qm, code, inp, t, pc, b)
+    requires NR.GetPcRE(code, pc) == Some(RB.CheckNullable(qid))
+    ensures qid in qm.bodies && T.TransWf(qm.bodies[qid]) && AR.LmapOk(qm.bodies[qid], qm)
+    ensures NP.FirstEmptyPathL(rer, T.Translate(qm.bodies[qid]), inp).Some? ==>
+              TreeRepLkRE(rer, qm, code, inp, t, pc + 1, b)
+    ensures NP.FirstEmptyPathL(rer, T.Translate(qm.bodies[qid]), inp).None? ==> t == LT.Mismatch
+  { }
+
+  /** (G5a-1 row K) tr_cdn, as an introduction: proved here once, in a small context. */
+  lemma TreeRepLkRECdnPassIntro(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                                t: LT.Tree, pc: nat, b: bool, qid: int)
+    requires NR.GetPcRE(code, pc) == Some(RB.CheckNullable(qid))
+    requires qid in qm.bodies && T.TransWf(qm.bodies[qid]) && AR.LmapOk(qm.bodies[qid], qm)
+    requires NP.FirstEmptyPathL(rer, T.Translate(qm.bodies[qid]), inp).Some?
+    requires TreeRepLkRE(rer, qm, code, inp, t, pc + 1, b)
+    ensures TreeRepLkRE(rer, qm, code, inp, t, pc, b)
+  { }
+
+  /** (G5a-1 row K) tr_cdnfail, as an introduction. */
+  lemma TreeRepLkRECdnFailIntro(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
+                                pc: nat, b: bool, qid: int)
+    requires NR.GetPcRE(code, pc) == Some(RB.CheckNullable(qid))
+    requires qid in qm.bodies && T.TransWf(qm.bodies[qid]) && AR.LmapOk(qm.bodies[qid], qm)
+    requires NP.FirstEmptyPathL(rer, T.Translate(qm.bodies[qid]), inp).None?
+    ensures TreeRepLkRE(rer, qm, code, inp, LT.Mismatch, pc, b)
   { }
 
   lemma TreeRepLkREAtCheckOracle(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
@@ -1211,6 +1257,30 @@ module LindenElkLiftSimCore {
     }
   }
 
+  /** (G5a-1 row K) `CompileStutterTameRENested` on the top-level fragment: the same five lines over
+      `NR.CompileToBytecodeRepCdn`. */
+  lemma CompileStutterTameRECdn(re: R.regex)
+    requires NR.NestedFragmentCdnRE(re)
+    ensures PIV.StutterTameRE(CP.compile_to_bytecode(re))
+  {
+    var code := CP.compile_to_bytecode(re);
+    var endl := CP.compile(re, 0, CP.Progress).1;
+    NR.CompileToBytecodeRepCdn(re);
+    forall pc: nat | pc < |code|
+      ensures match NR.GetPcRE(code, pc)
+              case Some(Jmp(next)) =>
+                pc < next
+                || (next >= 0 && NR.GetPcRE(code, next as nat).Some? && NR.GetPcRE(code, next as nat).value.Fork?)
+              case _ => true
+    {
+      match NR.GetPcRE(code, pc)
+      case Some(Jmp(n)) =>
+        assert pc < endl as nat;
+        PIV.CompileJumpsRE(re, code, 0, endl as nat, pc, n);
+      case _ =>
+    }
+  }
+
   /** (L4 NESTED) clone of `DispatchSetRegEffect` under `StaticOkNestedRE`: the
       Open/Close gm-effect callees are swapped to their nested-fragment
       counterparts (`OpenStepThreadRENested`/`CloseStepThreadRENested`, which
@@ -1221,7 +1291,7 @@ module LindenElkLiftSimCore {
                                    s1: AI.VmState, reg: int, th': AI.Thread,
                                    ncap: int, nlook: int, nquant: int)
     requires !rer.multiline
-    requires PSM.StaticCoreNestedRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires PSM.StaticCoreCdnRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires ptsA.PTS?
     requires PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, ptsA, s, ncap, nlook, nquant)
     requires |s.active| > 0 && s.active[0].pc >= 0
@@ -1256,11 +1326,11 @@ module LindenElkLiftSimCore {
     assert PIV.LooksCapUnset(re, th.capture_regs.a_clk);
     assert 0 <= s1.cp;
     if reg % 2 == 0 {
-      PSM.OpenStepThreadRENested(rer, qm, re, code, endl, inpA, tA, gmA, th, pc, reg, s.cp, s.clock);
+      PSM.OpenStepThreadRECdn(rer, qm, re, code, endl, inpA, tA, gmA, th, pc, reg, s.cp, s.clock);
       assert tA.GroupActionT? && tA.g.Open? && reg == CP.start_reg(tA.g.g as int);
       assert reg == 2 * (tA.g.g as int) && (reg / 2) as nat == tA.g.g;
     } else {
-      PSM.CloseStepThreadRENested(rer, qm, re, code, endl, inpA, tA, gmA, th, pc, reg, s.cp, s.clock);
+      PSM.CloseStepThreadRECdn(rer, qm, re, code, endl, inpA, tA, gmA, th, pc, reg, s.cp, s.clock);
       assert tA.GroupActionT? && tA.g.Close? && reg == CP.end_reg(tA.g.g as int);
       assert reg == 2 * (tA.g.g as int) + 1 && (reg / 2) as nat == tA.g.g;
     }
@@ -1273,7 +1343,7 @@ module LindenElkLiftSimCore {
                                   s1: AI.VmState, q: int, th': AI.Thread,
                                   ncap: int, nlook: int, nquant: int)
     requires !rer.multiline
-    requires PSM.StaticCoreNestedRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires PSM.StaticCoreCdnRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires ptsA.PTS?
     requires PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, ptsA, s, ncap, nlook, nquant)
     requires |s.active| > 0 && s.active[0].pc >= 0
@@ -1301,7 +1371,7 @@ module LindenElkLiftSimCore {
     assert PSM.ThreadNestRE(re, code, endl, th.pc, th);
     assert CM.ThreadClocksLE(th, s.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant);
     assert PIV.LooksCapUnset(re, th.capture_regs.a_clk);
-    PSM.ResetStepThreadRENested(rer, qm, re, code, endl, inpA, tA, gmA, th, pc, q, s.clock);
+    PSM.ResetStepThreadRECdn(rer, qm, re, code, endl, inpA, tA, gmA, th, pc, q, s.clock);
     assert tA.GroupActionT? && tA.g.Reset? && qm.quants[q] == tA.g.gl;
   }
 
@@ -1314,7 +1384,7 @@ module LindenElkLiftSimCore {
                                   s1: AI.VmState, q: int, th': AI.Thread,
                                   ncap: int, nlook: int, nquant: int)
     requires !rer.multiline
-    requires PSM.StaticCoreNestedRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires PSM.StaticCoreCdnRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
     requires ptsA.PTS?
     requires PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, ptsA, s, ncap, nlook, nquant)
     requires |s.active| > 0 && s.active[0].pc >= 0
@@ -1342,7 +1412,7 @@ module LindenElkLiftSimCore {
     assert CM.ThreadClocksLE(th, s.clock) && CM.ThreadRegsWf(th, ncap, nlook, nquant);
     assert PIV.LooksCapUnset(re, th.capture_regs.a_clk);
     assert s1.cp >= 0;
-    PSM.StampStepThreadRENested(rer, qm, re, code, endl, inpA, tA, gmA, th, pc, q, s1.cp, s.clock);
+    PSM.StampStepThreadRECdn(rer, qm, re, code, endl, inpA, tA, gmA, th, pc, q, s1.cp, s.clock);
     assert tA.GroupActionT? && tA.g.Reset? && qm.quants[q] == tA.g.gl;
   }
 
@@ -1473,11 +1543,11 @@ module LindenElkLiftSimCore {
             && pcmid == e1 + 2 {
           var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1));
         } else {
-          AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+          AR.NfaRepLStarLoopViews3(rer, qm, greedy, r1, code, pc, pcmid);   // (G5a-1 row K) do-while, CIN or CDN view
           if NUL.NonNullableL(r1) {
             var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
           } else {
-            var emC, e1C := AR.NfaRepLStarCinInv(rer, qm, r1, code, pc, pcmid);
+            var emC, e1C, gS := AR.NfaRepLStarNulInv(rer, qm, r1, code, pc, pcmid);   // (G5a-1 row K) either view pins the Fork
           }
         }
       } else {
@@ -1542,7 +1612,7 @@ module LindenElkLiftSimCore {
                                      r1: L.Regex, tlk: LT.Tree, gm: LG.GroupMap, t: AI.Thread,
                                      l: int, cp: nat, clk: int, S: set<LG.GroupId>)
     requires cp <= |str|
-    requires NR.NestedFragmentRE(re) && T.TransWf(re)
+    requires NR.NestedFragmentCdnRE(re) && T.TransWf(re)
     requires S == LL.LkBodyGroups(T.Translate(re))
     requires (set g | g in L.DefGroups(r1)) <= S
     requires GmtTieOutside(re, t, gm, S)
@@ -1557,7 +1627,7 @@ module LindenElkLiftSimCore {
     var t' := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(cp as int), clk));
     LkResultAgreeOutsideNested(rer, lk, r1, inp, tlk, gm);      // GmAgreeOutside(gm2, gm, DefGroups(r1))
     M.LkBodyGroupsEqCapIdsInLooks(re);                    // S == CapIdsInLooks(re)
-    PIV.GmOfLiveLookIndepNested(re, t.capture_regs, t.look_regs, t'.look_regs, t.quant_regs);
+    PIV.GmOfLiveLookIndepCdn(re, t.capture_regs, t.look_regs, t'.look_regs, t.quant_regs);
     forall g: LG.GroupId | g !in S
       ensures (g in gm2 <==> g in PIV.GmOfLive(re, t'.capture_regs, t'.look_regs, t'.quant_regs))
               && (g in gm2 ==> gm2[g] == PIV.GmOfLive(re, t'.capture_regs, t'.look_regs, t'.quant_regs)[g])
@@ -1702,11 +1772,11 @@ module LindenElkLiftSimCore {
           && pcmid == e1 + 2 {
         var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1));
       } else {
-        AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+        AR.NfaRepLStarLoopViews3(rer, qm, greedy, r1, code, pc, pcmid);   // (G5a-1 row K) do-while, CIN or CDN view
         if NUL.NonNullableL(r1) {
           var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
         } else {
-          var emC, e1C := AR.NfaRepLStarCinInv(rer, qm, r1, code, pc, pcmid);
+          var emC, e1C, gS := AR.NfaRepLStarNulInv(rer, qm, r1, code, pc, pcmid);   // (G5a-1 row K) either view pins the Fork
         }
       }
     } else {
@@ -1770,11 +1840,11 @@ module LindenElkLiftSimCore {
           && pcmid == e1 + 2 {
         var e1: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(pc + 1, e1 + 2) else RB.Fork(e1 + 2, pc + 1));
       } else {
-        AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+        AR.NfaRepLStarLoopViews3(rer, qm, greedy, r1, code, pc, pcmid);   // (G5a-1 row K) do-while, CIN or CDN view
         if NUL.NonNullableL(r1) {
           var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em));
         } else {
-          var emC, e1C := AR.NfaRepLStarCinInv(rer, qm, r1, code, pc, pcmid);
+          var emC, e1C, gS := AR.NfaRepLStarNulInv(rer, qm, r1, code, pc, pcmid);   // (G5a-1 row K) either view pins the Fork
         }
       }
     } else {
@@ -2584,7 +2654,7 @@ module LindenElkLiftSimCore {
                                        S: set<LG.GroupId>, gmt: LG.GroupMap, gmt': LG.GroupMap,
                                        th: AI.Thread, th': AI.Thread, qn: nat,
                                        ncap: int, nlook: int, nquant: int)
-    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires NR.NestedFragmentCdnRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re)
     requires LTB.LookUnique(re)
     requires LookNestBackTTop(re, crv, str, ov, S, gmt, th, ncap, nlook, nquant)
     requires qn in PIV.QuantIds(re) && qn in PIV.QuantIdsOutsideLooks(re)
@@ -2611,7 +2681,7 @@ module LindenElkLiftSimCore {
       var L := AI.get_idx(th.look_regs.a_clk, lid as int);
       if lid in LTB.LookIds(PIV.QidBody(re, qn)) {
         assert AI.get_idx(th'.quant_regs.a_clk, qn as int) > L;
-        NI.LookPathDomOnPathBreaksNested(re, L, th'.quant_regs.a_clk, lid, qn);
+        NI.LookPathDomOnPathBreaksCdn(re, L, th'.quant_regs.a_clk, lid, qn);
         assert false;
       } else {
         NI.LookPathDomQuantOffPath(re, L, th.quant_regs.a_clk, th'.quant_regs.a_clk, lid, qn);
@@ -2692,7 +2762,7 @@ module LindenElkLiftSimCore {
                                      gmt: LG.GroupMap, gmt': LG.GroupMap,
                                      th: AI.Thread, th': AI.Thread, pc: nat, lid0: int)
     requires NR.NfaRepRE(re, code, 0, endl)
-    requires NR.NestedFragmentRE(re) && LTB.LookUnique(re) && PIV.CapUnique(re)
+    requires NR.NestedFragmentCdnRE(re) && LTB.LookUnique(re) && PIV.CapUnique(re)
     requires LookNestOkTTop(re, S, gmt, th)
     requires pc < endl && NR.GetPcRE(code, pc) == Some(RB.CheckOracle(lid0))
     requires NI.NestInvRE(re, code, 0, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk, -1)
@@ -2707,9 +2777,9 @@ module LindenElkLiftSimCore {
                                        && g in PIV.CapIds(NI.LookBodyOfRE(re, lid0 as nat))
     ensures LookNestOkTTop(re, S, gmt', th')
   {
-    NI.GateCrossLookNestNested(re, code, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk,
+    NI.GateCrossLookNestCdn(re, code, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk,
                                th'.look_regs.a_clk, lid0);
-    NI.LookSiteTopNested(re, code, 0, endl, pc);
+    NI.LookSiteTopCdn(re, code, 0, endl, pc);
     assert lid0 >= 0 && (lid0 as nat) in NI.TopLookIds(re);
     NI.TopLookIdsIn(re);
     forall lid: nat | lid in NI.TopLookIds(re)
@@ -2974,6 +3044,16 @@ module LindenElkLiftSimCore {
                 BoolTreeLkXPikeSubtree(rer, [LS.Areg(r1), LS.Acheck(inp), LS.Areg(L.Quantified(true, 0, LN.Inf, r1))] + cont, inp, BS.CannotExit, ti);
               case _ => }
               match tb { case GroupActionT(_, tc) => BoolTreeLkXPikeSubtree(rer, cont, inp, b, tc); case _ => }
+            case _ => }
+          } else if min == 1 && CW.CdnGreedyL(greedy, delta, r1) {
+            // (G5a-1 row K) the CDN head: the skip child is the stamp arm or a dead `Mismatch`
+            match t { case Choice(ta, tb) =>
+              match ta { case GroupActionT(_, ti) =>
+                BoolTreeLkXPikeSubtree(rer, [LS.Areg(r1), LS.Acheck(inp), LS.Areg(L.Quantified(true, 0, LN.Inf, r1))] + cont, inp, BS.CannotExit, ti);
+              case _ => }
+              if NP.FirstEmptyPathL(rer, r1, inp).Some? {
+                match tb { case GroupActionT(_, tc) => BoolTreeLkXPikeSubtree(rer, cont, inp, b, tc); case _ => }
+              }
             case _ => }
           } else if min > 0 {
             match t { case GroupActionT(_, tc) =>
@@ -3605,7 +3685,7 @@ module LindenElkLiftSimCore {
             // WalkOk pins the flag to CanExit; the fused fork lemma builds the
             // Choice and tr_plus consumes the PLANTED Progress with the fork.
             assert {:split_here} true;   // (E3) the loop view in its own batch
-            AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+            AR.NfaRepLStarLoopViews3(rer, qm, greedy, r1, code, pc, pcmid);   // (G5a-1 row K) do-while, CIN or CDN view
             if NUL.NonNullableL(r1) {
               var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em))
                              && em <= pc
@@ -3619,8 +3699,8 @@ module LindenElkLiftSimCore {
                                 if greedy then pc + 1 else em, inp);
             } else {
               // §2.5b F-c: the CIN loop view (the CIN loop's backward end fork)
-              var emC, e1C := AR.NfaRepLStarCinInv(rer, qm, r1, code, pc, pcmid);
-              WO.WalkOkLoopViewCin(acts, code, pc, ATR.EaOf(b), greedy, LN.Inf, r1, emC + 1, e1C + 3, inp);
+              var emC, e1C, gS := AR.NfaRepLStarNulInv(rer, qm, r1, code, pc, pcmid);   // (G5a-1 row K) CIN or CDN view
+              WO.WalkOkLoopView(acts, code, pc, ATR.EaOf(b), greedy, LN.Inf, r1, emC + 1, e1C + 3 + gS, inp);
             }
             assert ATR.EaOf(b) == true;
             assert b == BS.CanExit;
@@ -3733,6 +3813,149 @@ module LindenElkLiftSimCore {
     WO.WalkOkQuantCinHead(acts, code, pc, g, true, 1, LN.Inf, r1, em + 1, e1x + 2, inp);
   }
 
+  /** (G5a-1 row K) The CDN head's walk step in a context of its own (twin of `LkCinHeadWalk`): the skip arm
+      resumes past the guard AND the stamp. */
+  lemma LkCdnHeadWalk(acts: LS.Actions, cont: LS.Actions, ia: LS.Actions, code: RB.code, pc: nat, pcmid: nat,
+                      em: nat, e1x: nat, g: bool, r1: L.Regex, inp: LC.Input, qid: int)
+    requires WO.WalkOk(acts, code, pc, g)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Quantified(true, 1, LN.Inf, r1)) && cont == acts[1..]
+    requires ia == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(L.Quantified(true, 0, LN.Inf, r1))] + cont
+    requires em == pc && pcmid == e1x + 4
+    requires NR.GetPcRE(code, pc) == Some(RB.Fork(em + 1, e1x + 2))
+    requires NR.GetPcRE(code, e1x + 2) == Some(RB.CheckNullable(qid))
+    ensures WO.WalkOk(ia, code, em + 3, false) && WO.WalkOk(cont, code, pcmid, g)
+  {
+    WO.WalkOkQuantCdnHead(acts, code, pc, g, true, 1, LN.Inf, r1, em + 1, e1x + 2, inp);
+  }
+
+  /** (G5a-1 row K) THE CDN-GREEDY PLUS HEAD in the Rec construction (`min == 1`): the head fork
+      `Fork(em + 1, e1 + 2)`. Its loop arm is the star's iteration, as for CIN. Its skip arm lands on the
+      guard `CheckNullable` at `e1 + 2`: when the body has a first empty path here the guard is transparent
+      (tr_cdn) over the stamp's `Reset` at `e1 + 3` and the continuation at `e1 + 4`; otherwise the arm is
+      `Mismatch` (tr_cdnfail). Exactly `CW.BoolTreeLkX`'s CDN shape, so erasure equality is structural. */
+  lemma LkCdnHeadRec(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, cont: LS.Actions,
+                     code: RB.code, pc: nat, pcmid: nat, inp: LC.Input, b: BS.LoopBool,
+                     t: LT.Tree, n: nat, r1: L.Regex)
+    returns (tcan: LT.Tree)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Quantified(true, 1, LN.Inf, r1)) && cont == acts[1..]
+    requires !NUL.NonNullableL(r1) && !NUL.CINullableL(r1)
+    requires EL.PikeLkActionsRec(acts) && EL.PikeLkActionsRec(cont)
+    requires ATR.ActionsRepFuelL(rer, qm, acts, code, pc, n)
+    requires AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && ATR.ActionsRepFuelL(rer, qm, cont, code, pcmid, n - 1)
+    requires WO.WalkOk(acts, code, pc, ATR.EaOf(b))
+    requires CW.BoolTreeLkX(rer, acts, inp, b, t)
+    ensures TreeRepLkRE(rer, qm, code, inp, tcan, pc, ATR.EaOf(b))
+    ensures CE.ProgErase(tcan) == CE.ProgErase(t)
+    decreases CE.PSize(t), ATR.MsizeA(acts), n, 0
+  {
+    hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, AR.NfaRepStarCinL, WO.WalkOkF, WO.WalkOkRegF;
+    var gidl := L.DefGroups(r1);
+    assert EL.PikeLkActionRec(acts[0]);
+    assert EL.PikeLkRegexRec(r1);
+    assert AR.NfaRepL(rer, qm, L.Quantified(true, 1, LN.Inf, r1), code, pc, pcmid);
+    EL.CdnHeadOn(true, 1, LN.Inf, r1);   // the switch, as an opaque ground fact (never revealed here)
+    var em, e1x := AR.NfaRepLCdnInv(rer, qm, true, 1, r1, code, pc, pcmid);
+    var qidC: int :| NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qidC, false))
+                     && NR.GetPcRE(code, e1x + 2) == Some(RB.CheckNullable(qidC))
+                     && NR.GetPcRE(code, e1x + 3) == Some(RB.SetQuantToClock(qidC, true))
+                     && qidC in qm.quants && qm.quants[qidC] == gidl
+                     && AR.StampBodyOk(qm, qidC, r1);
+    AR.NfaRepIncrL(rer, qm, r1, code, em + 3, e1x);
+    assert em == pc;
+    assert pcmid == e1x + 4;
+    var q0 := L.Quantified(true, 0, LN.Inf, r1);
+    EL.CinHeadIntro(true, 0, LN.Inf, r1);
+    var ia := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont;
+    assert ia == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
+    CW.CdnGreedyIntro(r1);
+    match t {
+      case Choice(ta, tb) =>
+        match ta {
+          case GroupActionT(g, ti) =>
+            assert g == LG.Reset(gidl);
+            assert CW.BoolTreeLkX(rer, ia, inp, BS.CannotExit, ti);
+            assert EL.PikeLkRegexRec(q0);
+            EL.PikeLkActionsRecConsIff(LS.Areg(q0), cont);
+            EL.PikeLkActionsRecConsIff(LS.Acheck(inp), [LS.Areg(q0)] + cont);
+            EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
+            assert EL.PikeLkActionsRec(ia);
+            assert {:split_here} true;   // section: representation
+            // the loop body at em + 3 (EndLoop at e1x, the CDN loop view of the star at e1x + 1),
+            // the continuation at pcmid == e1x + 4
+            ATR.FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
+            AR.NfaRepLStarCdnIntro(rer, qm, r1, code, em, e1x, qidC);
+            assert AR.ActionRepL(rer, qm, LS.Areg(q0), code, e1x + 1, pcmid);
+            var lq := [LS.Areg(q0)] + cont;
+            AR.ActionsRepLCons(rer, qm, LS.Areg(q0), cont, code, e1x + 1, pcmid);
+            assert {:split_here} true;   // section: the check + body reps
+            var lc := [LS.Acheck(inp)] + lq;
+            assert AR.ActionRepL(rer, qm, LS.Acheck(inp), code, e1x, e1x + 1);
+            AR.ActionsRepLCons(rer, qm, LS.Acheck(inp), lq, code, e1x, e1x + 1);
+            assert AR.ActionRepL(rer, qm, LS.Areg(r1), code, em + 3, e1x);
+            AR.ActionsRepLCons(rer, qm, LS.Areg(r1), lc, code, em + 3, e1x);
+            assert ia == [LS.Areg(r1)] + lc;
+            assert AR.ActionsRepL(rer, qm, ia, code, em + 3);
+            assert {:split_here} true;   // section: fuel
+            ATR.ActionsRepLToFuel(rer, qm, ia, code, em + 3);
+            assert {:split_here} true;   // section: the fuel pick
+            var ni: nat :| ATR.ActionsRepFuelL(rer, qm, ia, code, em + 3, ni);
+            assert {:split_here} true;   // section: the walk
+            assert WO.WalkOk(ia, code, em + 3, false) && WO.WalkOk(cont, code, pcmid, ATR.EaOf(b)) by {
+              hide *;
+              LkCdnHeadWalk(acts, cont, ia, code, pc, pcmid, em, e1x, ATR.EaOf(b), r1, inp, qidC);
+            }
+            assert {:split_here} true;   // section: the loop arm
+            assert CE.PSize(ti) < CE.PSize(t);
+            assert ATR.MsizeA(ia) >= 0;
+            assert EL.PikeLkActionsRec(ia);
+            assert ATR.ActionsRepFuelL(rer, qm, ia, code, em + 3, ni);
+            assert WO.WalkOk(ia, code, em + 3, ATR.EaOf(BS.CannotExit));
+            assert CW.BoolTreeLkX(rer, ia, inp, BS.CannotExit, ti);
+            var subi := ActionsTreeRepLkFRec(rer, qm, ia, code, em + 3, inp, BS.CannotExit, ti, ni);
+            // tr_begin at em + 2, tr_reset (the clock-mark) at em + 1
+            assert TreeRepLkRE(rer, qm, code, inp, subi, em + 3, false);
+            assert TreeRepLkRE(rer, qm, code, inp, subi, em + 2, ATR.EaOf(b));
+            var tloop := LT.GroupActionT(g, subi);
+            assert TreeRepLkRE(rer, qm, code, inp, tloop, em + 1, ATR.EaOf(b));
+            assert {:split_here} true;   // section: the guarded skip arm
+            // the guard's test is `BoolTreeLkX`'s: `StampBodyOk` identifies the two bodies
+            assert qidC in qm.bodies && T.TransWf(qm.bodies[qidC]) && AR.LmapOk(qm.bodies[qidC], qm)
+                   && T.Translate(qm.bodies[qidC]) == r1;
+            var tskip: LT.Tree := LT.Mismatch;
+            if NP.FirstEmptyPathL(rer, r1, inp).Some? {
+              match tb {
+                case GroupActionT(h, tc) =>
+                  assert h == LG.Reset(gidl);
+                  assert CE.PSize(tc) < CE.PSize(t);
+                  assert EL.PikeLkActionsRec(cont);
+                  assert ATR.ActionsRepFuelL(rer, qm, cont, code, pcmid, n - 1);
+                  assert WO.WalkOk(cont, code, pcmid, ATR.EaOf(b));
+                  assert CW.BoolTreeLkX(rer, cont, inp, b, tc);
+                  var subc := ActionsTreeRepLkFRec(rer, qm, cont, code, pcmid, inp, b, tc, n - 1);
+                  tskip := LT.GroupActionT(h, subc);
+                  // tr_reset (the stamp) at e1x + 3, tr_cdn at e1x + 2
+                  assert TreeRepLkRE(rer, qm, code, inp, tskip, e1x + 3, ATR.EaOf(b));
+                  TreeRepLkRECdnPassIntro(rer, qm, code, inp, tskip, e1x + 2, ATR.EaOf(b), qidC);
+                  assert CE.ProgErase(tskip) == CE.ProgErase(tb);
+                case _ =>
+                  assert false;   // `BoolTreeLkX`'s CDN arm with an empty path: the skip child is a Reset
+              }
+            } else {
+              assert tb == LT.Mismatch;
+              TreeRepLkRECdnFailIntro(rer, qm, code, inp, e1x + 2, ATR.EaOf(b), qidC);   // tr_cdnfail
+              assert CE.ProgErase(tskip) == CE.ProgErase(tb);
+            }
+            assert {:split_here} true;   // section: assembly
+            assert TreeRepLkRE(rer, qm, code, inp, tskip, e1x + 2, ATR.EaOf(b));
+            tcan := LT.Choice(tloop, tskip);
+            assert TreeRepLkRE(rer, qm, code, inp, tcan, pc, ATR.EaOf(b));   // tr_choice
+            assert CE.ProgErase(tcan) == CE.ProgErase(t);
+          case _ =>
+        }
+      case _ =>
+    }
+  }
+
   /** (§2.5b F-c) THE CIN-GREEDY PLUS in the Rec construction: `min - 1` forced
       copies (each a clock-mark, like the do-while's), then at `min == 1` the
       head fork `Fork(em + 1, e1 + 2)`: its loop arm is the star's iteration
@@ -3790,7 +4013,12 @@ module LindenElkLiftSimCore {
       }
     } else {
       assert {:split_here} true;   // (E3) section: the head fork
-      EL.CinHeadOf(true, min, LN.Inf, r1);   // (G5a-1 3-L0) the head atom of PikeLkActionRec(acts[0])
+      // (G5a-1 row K) no `EL.CinHeadOf`: a CDN body has its own head lemma
+      assert min == 1;
+      if !NUL.CINullableL(r1) {
+        tcan := LkCdnHeadRec(rer, qm, acts, cont, code, pc, pcmid, inp, b, t, n, r1);
+        return;
+      }
       var em, e1x := AR.NfaRepLCinInv(rer, qm, true, min, r1, code, pc, pcmid);
       var qidC: int :| NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qidC, false))
                        && NR.GetPcRE(code, e1x + 2) == Some(RB.SetQuantToClock(qidC, true))
@@ -3899,7 +4127,9 @@ module LindenElkLiftSimCore {
     requires AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && ATR.ActionsRepFuelL(rer, qm, cont, code, pcmid, n - 1)
     requires WO.WalkOk(acts, code, pc, true)
     requires CW.BoolTreeLkX(rer, acts, inp, BS.CanExit, tc)
-    requires AR.NfaRepStarCinL(rer, qm, r1, code, pc, pcmid)
+    // (G5a-1 row K) either loop view: CIN, or CDN under the switch
+    requires (NUL.CINullableL(r1) && AR.NfaRepStarCinL(rer, qm, r1, code, pc, pcmid))
+          || (!NUL.CINullableL(r1) && AR.NfaRepStarCdnL(rer, qm, r1, code, pc, pcmid))
     ensures TreeRepLkRE(rer, qm, code, inp, LT.Progress(tcstar), pc, true)
     ensures CE.ProgErase(tcstar) == CE.ProgErase(tc)
     decreases CE.PSize(tc), ATR.MsizeA(acts), n, 0
@@ -3908,15 +4138,22 @@ module LindenElkLiftSimCore {
     var gidl := L.DefGroups(r1);
     assert EL.PikeLkActionRec(acts[0]);
     assert EL.PikeLkRegexRec(r1);
-    var em, e1 := AR.NfaRepLStarCinInv(rer, qm, r1, code, pc, pcmid);
+    var em, e1, gS := AR.NfaRepLStarNulInv(rer, qm, r1, code, pc, pcmid);   // gS: 0 CIN, 1 CDN
+    assert pcmid == pc + 2 + gS;
     var qidC: int :| NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qidC, false))
-                     && NR.GetPcRE(code, e1 + 2) == Some(RB.SetQuantToClock(qidC, true))
+                     && NR.GetPcRE(code, e1 + 2 + gS) == Some(RB.SetQuantToClock(qidC, true))
                      && qidC in qm.quants && qm.quants[qidC] == gidl
                      && AR.StampBodyOk(qm, qidC, r1);
     var q0 := L.Quantified(true, 0, LN.Inf, r1);
     EL.CinHeadIntro(true, 0, LN.Inf, r1);   // (G5a-1 3-L0c)
     assert FS.NoiPred(LN.Inf) == LN.Inf;
-    WO.WalkOkLoopViewCin(acts, code, pc, true, true, LN.Inf, r1, em + 1, e1 + 3, inp);
+    if gS == 0 {
+      WO.WalkOkLoopViewCin(acts, code, pc, true, true, LN.Inf, r1, em + 1, e1 + 3, inp);
+    } else {
+      WO.WalkOkLoopViewCdn(acts, code, pc, true, true, LN.Inf, r1, em + 1, e1 + 4, inp);
+    }
+    assert WO.WalkOk([LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont, code, em + 3, false)
+           && WO.WalkOk(cont, code, pcmid, true);
     match tc {
       case Choice(cta, ctb) =>
         match cta {
@@ -4162,9 +4399,9 @@ module LindenElkLiftSimCore {
             assert false;   // the fast path pins a forward fork
           } else {
             // THE LOOP VIEW: the star seen from the fork itself
-            AR.NfaRepLStarLoopViews(rer, qm, greedy, r1, code, pc, pcmid);
+            AR.NfaRepLStarLoopViews3(rer, qm, greedy, r1, code, pc, pcmid);   // (G5a-1 row K) do-while, CIN or CDN view
             if !NUL.NonNullableL(r1) {
-              // §2.5b F-c: the CIN loop view (its own lemma)
+              // §2.5b F-c: the CIN loop view, or (G5a-1 row K) the CDN one (one lemma for both)
               assert greedy && r == L.Quantified(true, 0, LN.Inf, r1);
               tcstar := LkCinLoopViewRec(rer, qm, acts, cont, code, pc, pcmid, inp, tc, n, r1);
               return;

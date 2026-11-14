@@ -177,6 +177,37 @@ module LindenElkActionsTreeRep {
   // separate them.
   /** (2026-08-29 E3) the `Quantified` arm of `ActionsTreeRepFRE`, min > 0 — extracted from a 350-line
       case so each branch is its own VC (the parent no longer needs `{:isolate_assertions}`). */
+  /** (G5a-1 P4) The CIN head's walk step in a context of its own (twin of LiftSimCore's
+      `LkCinHeadWalk`): the ensures name only the existing stacks `ia` and `cont`. */
+  lemma ATR_CinHeadWalk(acts: LS.Actions, cont: LS.Actions, ia: LS.Actions, code: RB.code, pc: nat, pcmid: nat,
+                        em: nat, e1x: nat, g: bool, r1: L.Regex, inp: LC.Input, qid: int)
+    requires WO.WalkOk(acts, code, pc, g)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Quantified(true, 1, LN.Inf, r1)) && cont == acts[1..]
+    requires ia == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(L.Quantified(true, 0, LN.Inf, r1))] + cont
+    requires em == pc && pcmid == e1x + 3
+    requires NR.GetPcRE(code, pc) == Some(RB.Fork(em + 1, e1x + 2))
+    requires NR.GetPcRE(code, e1x + 2) == Some(RB.SetQuantToClock(qid, true))
+    ensures WO.WalkOk(ia, code, em + 3, false) && WO.WalkOk(cont, code, pcmid, g)
+  {
+    WO.WalkOkQuantCinHead(acts, code, pc, g, true, 1, LN.Inf, r1, em + 1, e1x + 2, inp);
+  }
+
+  /** (G5a-1 P4) `CNE.IterTreeOfNoEmpty` with its quantified confinement carrier and its
+      recursive `ProgErase` equation cut down to the instances `ATR_QuantCinNested` uses:
+      assumed in the guard-fails branch they cost 260 - 380 M per batch. */
+  lemma ATR_CdnIterTree(rer: LW.RegExpRecord, r1: L.Regex, rest: LS.Actions, inp: LC.Input,
+                        b: BS.LoopBool, tc: LT.Tree, S: set<LG.GroupId>) returns (ti: LT.Tree)
+    requires EL.PikeLkRegexRec(r1)
+    requires NP.FirstEmptyPathL(rer, r1, inp).None?
+    requires EL.BoolTreeLk(rer, [LS.Areg(r1)] + rest, inp, b, tc)
+    requires CE.LkConfinedTreeK(tc, S)
+    ensures EL.BoolTreeLk(rer, [LS.Areg(r1), LS.Acheck(inp)] + rest, inp, BS.CannotExit, ti)
+    ensures CE.PSize(ti) == CE.PSize(tc)
+    ensures CE.LkConfinedTreeK(ti, S)
+  {
+    ti := CNE.IterTreeOfNoEmpty(rer, r1, rest, inp, b, tc);
+  }
+
   /** (§2.5b stage 2) the CIN-GREEDY arm of `ATR_QuantMin`: `min - 1` forced copies,
       then the stamped end-fork loop. Extracted so the parent stays within its
       batch budget; sectioned per E3. */
@@ -283,13 +314,20 @@ module LindenElkActionsTreeRep {
               case GroupActionT(g, tc) =>
                 assert g == LG.Reset(gidl);
                 assert EL.BoolTreeLk(rer, [LS.Areg(r1), LS.Areg(q0)] + cont, inp, b, tc);
-                EL.PikeLkActionsConsIff(LS.Areg(q0), cont);
-                EL.PikeLkActionsConsIff(LS.Acheck(inp), [LS.Areg(q0)] + cont);
-                EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
+                assert {:split_here} true;   // (G5a-1 P4) sub-split of the head fork
                 var ia := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont;
-                assert ia == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
-                assert EL.PikeLkActions(ia) && EL.PikeLkActions(cont);
-                EL.PikeLkActionsEmbedsRec(ia); EL.PikeLkActionsEmbedsRec(cont); EL.PikeLkActionsEmbedsRec(acts);
+                // (G5a-1 P4) the stacks' fragment facts in a cut context: the forall
+                // bodies of PikeLkActions over four concatenations blew z3 past 10 GB
+                assert EL.PikeLkActions(ia) && EL.PikeLkActions(cont)
+                    && EL.PikeLkActionsRec(ia) && EL.PikeLkActionsRec(cont) && EL.PikeLkActionsRec(acts) by {
+                  hide *; reveal EL.PikeLkAction;
+                  EL.PikeLkActionsConsIff(LS.Areg(q0), cont);
+                  EL.PikeLkActionsConsIff(LS.Acheck(inp), [LS.Areg(q0)] + cont);
+                  EL.PikeLkActionsConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
+                  assert ia == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(q0)] + cont));
+                  EL.PikeLkActionsEmbedsRec(ia); EL.PikeLkActionsEmbedsRec(cont); EL.PikeLkActionsEmbedsRec(acts);
+                }
+                assert {:split_here} true;   // (G5a-1 P4) sub-split of the head fork
                 // the sub-stacks' confinement and encoding
                 assert LL.LkActsInS(cont, S) by { LL.LkActsInSTail(acts, S); }
                 assert LL.LkBodiesInS(r1, S);
@@ -307,6 +345,7 @@ module LindenElkActionsTreeRep {
                   NB.EncodableTail(acts, inp, b);
                   NB.EncOkIter(r1, q0, cont, inp);
                 }
+                assert {:split_here} true;   // (G5a-1 P4) sub-split of the head fork
                 // the spec trees of the iteration and of the continuation live
                 // INSIDE `tc` (at the body's first empty leaf), so both are
                 // PSize-smaller than `t`
@@ -316,6 +355,7 @@ module LindenElkActionsTreeRep {
                   assert [LS.Areg(r1)] + [] == [LS.Areg(r1)];
                 }
                 assert [LS.Areg(r1), LS.Areg(q0)] + cont == [LS.Areg(r1)] + ([LS.Areg(q0)] + cont);
+                assert {:split_here} true;   // (G5a-1 P4) sub-split of the head fork
                 var tcont0 := NB.BoolTreeLkEmptyPathSub(rer, r1, [LS.Areg(q0)] + cont, inp, b, tc);
                 assert FS.NoiPred(LN.Inf) == LN.Inf;
                 match tcont0 {
@@ -358,9 +398,12 @@ module LindenElkActionsTreeRep {
                     assert {:split_here} true;   // (G5a-1) sub-split of the representation batch
                     ActionsRepLToFuel(rer, qm, ia, code, em + 3);
                     var ni: nat :| ActionsRepFuelL(rer, qm, ia, code, em + 3, ni);
-                    assert {:split_here} true;   // (G5a-1) sub-split of the representation batch
-                    // the walk guard's CIN head arm
-                    WO.WalkOkQuantCinHead(acts, code, pc, EaOf(b), greedy, min, delta, r1, em + 1, e1x + 2, inp);
+                    // the walk guard's CIN head arm, through `ATR_CinHeadWalk` (its ensures name
+                    // only `ia` and `cont`: the bare step's fresh stack term cost 187 M - 1 G here)
+                    assert WO.WalkOk(ia, code, em + 3, false) && WO.WalkOk(cont, code, pcmid, EaOf(b)) by {
+                      hide *;
+                      ATR_CinHeadWalk(acts, cont, ia, code, pc, pcmid, em, e1x, EaOf(b), r1, inp, qidC);
+                    }
                     assert {:split_here} true;   // (gate C) one batch per recursive call: as one, z3 ran past 700 M
                     var subi := ActionsTreeRepFRE(rer, qm, ia, code, em + 3, inp, BS.CannotExit, ti, ni, S);
                     assert {:split_here} true;
@@ -2245,11 +2288,11 @@ module LindenElkActionsTreeRep {
                   assert {:split_here} true;
                   assert gN == 1 by { if NUL.CINullableL(r1) { CDP.CinIsSomeCase(rer, r1, inp); } }
                   // the iteration tree: the forced copy's tree with the check inserted after the body
-                  var ti := CNE.IterTreeOfNoEmpty(rer, r1, [LS.Areg(q0)] + cont, inp, b, tc);
+                  assert CE.LkConfinedTreeK(tc, S);
+                  var ti := ATR_CdnIterTree(rer, r1, [LS.Areg(q0)] + cont, inp, b, tc, S);   // (G5a-1 P4) instances only
                   assert [LS.Areg(r1), LS.Acheck(inp)] + ([LS.Areg(q0)] + cont) == ia;
                   assert EL.BoolTreeLk(rer, ia, inp, BS.CannotExit, ti);
                   assert CE.PSize(ti) < CE.PSize(t);
-                  assert CE.LkConfinedTreeK(tc, S);
                   assert CE.LkConfinedTreeK(ti, S);
                   assert {:split_here} true;   // representation: the loop body at em + 3, the CDN loop view at e1x + 1
                   FuelToActionsRepL(rer, qm, cont, code, pcmid, n - 1);
@@ -2277,11 +2320,13 @@ module LindenElkActionsTreeRep {
                   assert TR.TreeRepRE(qm, subi, code, em + 2, inp, EaOf(b));
                   var tloop := LT.GroupActionT(LG.Reset(gidl), subi);
                   assert TR.TreeRepRE(qm, tloop, code, em + 1, inp, EaOf(b));
+                  assert {:split_here} true;   // (G5a-1 P4) sub-split of the assembly (274 M as one)
                   // skip arm: tr_cdnfail at the guard e1x + 2
                   assert LL.OracleOkAt(rer, qm, inp);
                   NT.FirstEmptyPathRL(rer, qm, qm.bodies[qidC], inp);
                   assert TR.FirstEmptyPathR(qm, qm.bodies[qidC], inp).None?;
                   assert TR.TreeRepRE(qm, LT.Mismatch, code, e1x + 2, inp, EaOf(b));
+                  assert {:split_here} true;   // (G5a-1 P4) sub-split of the assembly
                   tstar := LT.Choice(tloop, LT.Mismatch);
                   assert TR.TreeRepRE(qm, tstar, code, pc, inp, EaOf(b));   // tr_choice at the head fork
                   assert {:split_here} true;   // the relation: rung A's None case, congruences on ours
@@ -3430,6 +3475,41 @@ module LindenElkActionsTreeRep {
           }
   }
 
+  /** (G5a-1 P4) `WO.WalkOkLoopView` through locals only: its ensures build a fresh
+      sequence term, which `AtBackForkTreeRepNested`'s batch cannot afford under
+      `dafny build`. The iteration arm is `em`, the skip arm `pc + 1`. */
+  lemma ATR_LoopViewWalk(acts: LS.Actions, cont: LS.Actions, il: LS.Actions, code: RB.code, pc: nat, em: nat,
+                         greedy: bool, r1: L.Regex, q0: L.Regex, inp: LC.Input)
+    requires WO.WalkOk(acts, code, pc, true)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Quantified(greedy, 0, LN.Inf, r1)) && cont == acts[1..]
+    requires q0 == L.Quantified(greedy, 0, LN.Inf, r1)
+    requires il == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont
+    requires NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em)) && em <= pc
+    ensures WO.WalkOk(il, code, em + 1, true) && WO.WalkOk(cont, code, pc + 1, true)
+  {
+    assert FS.NoiPred(LN.Inf) == LN.Inf;
+    WO.WalkOkLoopView(acts, code, pc, true, greedy, LN.Inf, r1,
+                      if greedy then em else pc + 1, if greedy then pc + 1 else em, inp);
+  }
+
+  /** (G5a-1 P4) `WO.WalkOkLoopViewCin` (`gS == 0`) / `WO.WalkOkLoopViewCdn` (`gS == 1`)
+      through locals only, as `ATR_LoopViewWalk`. */
+  lemma ATR_LoopViewNulWalk(acts: LS.Actions, cont: LS.Actions, il: LS.Actions, code: RB.code, pc: nat, pcmid: nat,
+                            em: nat, x: int, y: int, gS: nat, r1: L.Regex, q0: L.Regex, inp: LC.Input)
+    requires WO.WalkOk(acts, code, pc, true)
+    requires |acts| > 0 && acts[0] == LS.Areg(L.Quantified(true, 0, LN.Inf, r1)) && cont == acts[1..]
+    requires q0 == L.Quantified(true, 0, LN.Inf, r1)
+    requires il == [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont
+    requires gS == 0 || gS == 1
+    requires NR.GetPcRE(code, pc) == Some(RB.Fork(x, y)) && x >= 0 && y >= 0
+    requires x == em + 1 && x as nat <= pc && y as nat == pc + 2 + gS && pcmid == pc + 2 + gS
+    ensures WO.WalkOk(il, code, em + 3, false) && WO.WalkOk(cont, code, pcmid, true)
+  {
+    assert FS.NoiPred(LN.Inf) == LN.Inf;
+    if gS == 0 { WO.WalkOkLoopViewCin(acts, code, pc, true, true, LN.Inf, r1, x, y, inp); }
+    else { WO.WalkOkLoopViewCdn(acts, code, pc, true, true, LN.Inf, r1, x, y, inp); }
+  }
+
   /** The fused fork lemma: at the do-while's backward fork with the walk
       allowed to exit, the (possibly transparent-headed) continuation's spec
       tree yields a checked Choice whose `Progress` wrapper is consumed by
@@ -3645,6 +3725,7 @@ module LindenElkActionsTreeRep {
             assert false;
           } else {
             // THE LOOP VIEW: the star seen from the fork itself
+            assert {:split_here} true;   // (G5a-1 P4) build-mode batch
             AR.NfaRepLStarLoopViews3(rer, qm, greedy, r1, code, pc, pcmid);
             if NUL.NonNullableL(r1) {
             var em: nat :| NR.GetPcRE(code, pc) == Some(if greedy then RB.Fork(em, pc + 1) else RB.Fork(pc + 1, em))
@@ -3659,9 +3740,12 @@ module LindenElkActionsTreeRep {
             var q0 := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
             EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
             assert q0 == L.Quantified(greedy, 0, LN.Inf, r1) == r;
-            WO.WalkOkLoopView(acts, code, pc, true, greedy, LN.Inf, r1,
-                              if greedy then em else pc + 1,
-                              if greedy then pc + 1 else em, inp);
+            var ilw := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont;
+            assert WO.WalkOk(ilw, code, em + 1, true) && WO.WalkOk(cont, code, pc + 1, true) by {
+              hide *;
+              ATR_LoopViewWalk(acts, cont, ilw, code, pc, em, greedy, r1, q0, inp);   // (G5a-1 P4) locals only
+            }
+            assert {:split_here} true;   // (G5a-1 P4) build-mode batch
             match tc {
               case Choice(cta, ctb) =>
                 var itert := if greedy then cta else ctb;
@@ -3676,6 +3760,7 @@ module LindenElkActionsTreeRep {
                     assert LL.LkActsInS(cont, S) by { LL.LkActsInSTail(acts, S); }
                     assert NB.EncOk(cont, inp, BS.CanExit) by { NB.EncOkTailReg(acts, inp, BS.CanExit); }
                     var subs := ActionsTreeRepFRENested(rer, qm, cont, code, pc + 1, inp, BS.CanExit, skipt, n - 1, S);
+                    assert {:split_here} true;   // (G5a-1 P4) build-mode batch
                     // iteration branch: lift to CanExit (the engine keeps
                     // exit_allowed through the back edge), then construct
                     EL.PikeLkActionsRecConsIff(LS.Areg(q0), cont);
@@ -3733,6 +3818,7 @@ module LindenElkActionsTreeRep {
                       NB.EncOkIterLift(r1, q0, cont, inp);
                     }
                     var subi := ActionsTreeRepFRENested(rer, qm, il, code, em + 1, inp, BS.CanExit, ti, ni, S);
+                    assert {:split_here} true;   // (G5a-1 P4) build-mode batch
                     // assemble: tr_reset at the stamp, then tr_plus at the fork
                     var iterstar := LT.GroupActionT(g, subi);
                     assert TR.TreeRepRE(qm, iterstar, code, em, inp, true);
@@ -3744,6 +3830,7 @@ module LindenElkActionsTreeRep {
                       NP.RACongChoiceOutside(subs, skipt, iterstar, itert, inp, S);
                     }
                     assert TR.TreeRepRE(qm, LT.Progress(tcstar), code, pc, inp, true);
+                    assert NP.ResAgreeAtOutside(tcstar, tc, inp, S);
                   case _ =>
                 }
               case _ =>
@@ -3763,9 +3850,12 @@ module LindenElkActionsTreeRep {
               var q0 := L.Quantified(greedy, 0, FS.NoiPred(delta), r1);
               EL.CinHeadIntro(greedy, 0, FS.NoiPred(delta), r1);   // (G5a-1 3-L0c)
               assert q0 == L.Quantified(greedy, 0, LN.Inf, r1) == r;
-              if gS == 0 { WO.WalkOkLoopViewCin(acts, code, pc, true, greedy, LN.Inf, r1, em + 1, e1 + 3, inp); }
-              else { WO.WalkOkLoopViewCdn(acts, code, pc, true, greedy, LN.Inf, r1, em + 1, e1 + 4, inp); }
-              assert WO.WalkOk(cont, code, pcmid, true);
+              var ilw := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(q0)] + cont;
+              assert WO.WalkOk(ilw, code, em + 3, false) && WO.WalkOk(cont, code, pcmid, true) by {
+                hide *;
+                ATR_LoopViewNulWalk(acts, cont, ilw, code, pc, pcmid, em, em + 1, e1 + 3 + gS, gS, r1, q0, inp);   // (G5a-1 P4) locals only
+              }
+              assert {:split_here} true;   // (G5a-1 P4) build-mode batch
               match tc {
                 case Choice(cta, ctb) =>
                   var itert := cta;
@@ -3780,6 +3870,7 @@ module LindenElkActionsTreeRep {
                       assert LL.LkActsInS(cont, S) by { LL.LkActsInSTail(acts, S); }
                       assert NB.EncOk(cont, inp, BS.CanExit) by { NB.EncOkTailReg(acts, inp, BS.CanExit); }
                       var subs := ActionsTreeRepFRENested(rer, qm, cont, code, pcmid, inp, BS.CanExit, skipt, n - 1, S);
+                      assert {:split_here} true;   // (G5a-1 P4) build-mode batch
                       // iteration branch at CannotExit from the body start em + 3
                       EL.PikeLkActionsRecConsIff(LS.Areg(q0), cont);
                       EL.PikeLkActionsRecConsIff(LS.Acheck(inp), [LS.Areg(q0)] + cont);
@@ -3813,6 +3904,7 @@ module LindenElkActionsTreeRep {
                         NB.EncOkIter(r1, q0, cont, inp);
                       }
                       var subi := ActionsTreeRepFRENested(rer, qm, il, code, em + 3, inp, BS.CannotExit, ti, ni, S);
+                      assert {:split_here} true;   // (G5a-1 P4) build-mode batch
                       // assemble: tr_begin at em + 2, tr_reset at em + 1, tr_plus at the fork
                       assert TR.TreeRepRE(qm, subi, code, em + 2, inp, true);
                       var iterstar := LT.GroupActionT(g, subi);
@@ -3821,6 +3913,7 @@ module LindenElkActionsTreeRep {
                       NP.RACongGroupOutside(g, subi, ti, inp, S);
                       NP.RACongChoiceOutside(iterstar, itert, subs, skipt, inp, S);
                       assert TR.TreeRepRE(qm, LT.Progress(tcstar), code, pc, inp, true);
+                      assert NP.ResAgreeAtOutside(tcstar, tc, inp, S);
                     case _ =>
                   }
                 case _ =>

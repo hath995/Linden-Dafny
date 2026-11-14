@@ -6124,6 +6124,293 @@ module LindenElkNestInv {
       assert false;
   }
 
+  // (G5a-1 row K) The gate-site path extraction on the top-level fragment.
+  /** (G5a-1 row K) `NestInvLookSiteMinNested` on the top-level fragment (generated from its text). */
+  lemma NestInvLookSiteMinCdn(k: nat, qn: R.quantid, r1: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
+                                 cc: seq<int>, qc: seq<int>, mx: int, lid: int)
+    requires NR.NfaRepMinRE(k, qn, r1, code, pcb, pce)
+    requires NR.NestedFragmentCdnRE(r1) && LTB.LookUnique(r1)
+    requires pcb <= pc < pce
+    requires NestInvMinRE(k, qn, r1, code, pcb, pce, pc, cc, qc, mx)
+    requires NR.GetPcRE(code, pc) == Some(RB.CheckOracle(lid))
+    ensures lid >= 0 && (lid as nat) in LTB.LookIds(r1)
+    ensures AI.get_idx(qc, qn) >= mx
+    ensures LookPathPresent(r1, cc, qc, AI.get_idx(qc, qn), lid as nat)
+    decreases CP.rsize(r1), k + 2
+  {
+    assert k > 0 by { if k == 0 { assert pcb == pce; } }
+    var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.SetQuantToClock(qn, false))
+      && NR.NfaRepRE(r1, code, pcb + 1, e1)
+      && NR.NfaRepMinRE(k - 1, qn, r1, code, e1, pce)
+      && (if pc == pcb then true
+          else if pcb + 1 <= pc < e1 then
+            AI.get_idx(qc, qn) >= mx
+            && NestInvRE(r1, code, pcb + 1, e1, pc, cc, qc, AI.get_idx(qc, qn))
+          else NestInvMinRE(k - 1, qn, r1, code, e1, pce, pc, cc, qc, mx));
+    NR.NfaRepIncrRE(r1, code, pcb + 1, e1);
+    if pc == pcb {
+      assert false;                                 // SetQuantToClock ≠ CheckOracle
+    } else if pcb + 1 <= pc < e1 {
+      var qv := AI.get_idx(qc, qn);
+      NestInvLookSiteCdn(r1, code, pcb + 1, e1, pc, cc, qc, qv, lid);
+    } else {
+      NestInvLookSiteMinCdn(k - 1, qn, r1, code, e1, pce, pc, cc, qc, mx, lid);
+    }
+  }
+
+  /** (G5a-1 row K) `NestInvLookSiteOptNested` on the top-level fragment (generated from its text). */
+  lemma NestInvLookSiteOptCdn(k: nat, greedy: bool, qn: R.quantid, r1: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
+                                 cc: seq<int>, qc: seq<int>, mx: int, lid: int)
+    requires NR.NfaRepOptRE(k, greedy, qn, r1, code, pcb, pce)
+    requires NR.NestedFragmentCdnRE(r1) && LTB.LookUnique(r1)
+    requires pcb <= pc < pce
+    requires NestInvOptRE(k, greedy, qn, r1, code, pcb, pce, pc, cc, qc, mx)
+    requires NR.GetPcRE(code, pc) == Some(RB.CheckOracle(lid))
+    ensures lid >= 0 && (lid as nat) in LTB.LookIds(r1)
+    ensures AI.get_idx(qc, qn) >= mx
+    ensures LookPathPresent(r1, cc, qc, AI.get_idx(qc, qn), lid as nat)
+    decreases CP.rsize(r1), k + 2
+  {
+    assert k > 0 by { if k == 0 { assert pcb == pce; } }
+    var e1: nat :| NR.GetPcRE(code, pcb) == Some(if greedy then RB.Fork(pcb + 1, pce) else RB.Fork(pce, pcb + 1))
+      && NR.GetPcRE(code, pcb + 1) == Some(RB.SetQuantToClock(qn, false))
+      && NR.GetPcRE(code, pcb + 2) == Some(RB.BeginLoop)
+      && NR.NfaRepRE(r1, code, pcb + 3, e1)
+      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+      && NR.NfaRepOptRE(k - 1, greedy, qn, r1, code, e1 + 1, pce)
+      && (if pc == pcb || pc == pcb + 1 then true
+          else if pc == pcb + 2 then
+            AI.get_idx(qc, qn) >= mx && AllStaleRE(r1, cc, AI.get_idx(qc, qn))
+          else if pcb + 3 <= pc < e1 then
+            AI.get_idx(qc, qn) >= mx
+            && NestInvRE(r1, code, pcb + 3, e1, pc, cc, qc, AI.get_idx(qc, qn))
+          else if pc == e1 then AI.get_idx(qc, qn) >= mx
+          else NestInvOptRE(k - 1, greedy, qn, r1, code, e1 + 1, pce, pc, cc, qc, mx));
+    NR.NfaRepIncrRE(r1, code, pcb + 3, e1);
+    if pc == pcb || pc == pcb + 1 || pc == pcb + 2 || pc == e1 {
+      assert false;                                 // Fork/SetQuantToClock/BeginLoop/EndLoop
+    } else if pcb + 3 <= pc < e1 {
+      var qv := AI.get_idx(qc, qn);
+      NestInvLookSiteCdn(r1, code, pcb + 3, e1, pc, cc, qc, qv, lid);
+    } else {
+      NestInvLookSiteOptCdn(k - 1, greedy, qn, r1, code, e1 + 1, pce, pc, cc, qc, mx, lid);
+    }
+  }
+
+  /** (G5a-1 row K) `NestInvLookSiteNested` on the top-level fragment (generated from its text). */
+  lemma {:induction false} NestInvLookSiteCdn(re: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
+                              cc: seq<int>, qc: seq<int>, mx: int, lid: int)
+    requires NR.NfaRepRE(re, code, pcb, pce)
+    requires NR.NestedFragmentCdnRE(re) && LTB.LookUnique(re)
+    requires pcb <= pc < pce
+    requires NestInvRE(re, code, pcb, pce, pc, cc, qc, mx)
+    requires NR.GetPcRE(code, pc) == Some(RB.CheckOracle(lid))
+    ensures lid >= 0 && (lid as nat) in LTB.LookIds(re)
+    ensures LookPathPresent(re, cc, qc, mx, lid as nat)
+    decreases CP.rsize(re), 1
+  {
+    match re
+    case Re_empty =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
+    case Re_character(ch) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
+      assert pc == pcb;
+      assert false;
+    case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
+      var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.Fork(pcb + 1, e1 + 1))
+        && NR.NfaRepRE(r1, code, pcb + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.Jmp(pce))
+        && NR.NfaRepRE(r2, code, e1 + 1, pce)
+        && if pc == pcb then AllStaleRE(r1, cc, mx) && AllStaleRE(r2, cc, mx)
+           else if pcb + 1 <= pc < e1 then
+             NestInvRE(r1, code, pcb + 1, e1, pc, cc, qc, mx) && AllStaleRE(r2, cc, mx)
+           else if pc == e1 then true
+           else NestInvRE(r2, code, e1 + 1, pce, pc, cc, qc, mx);
+      if pc == pcb {
+        assert false;
+      } else if pcb + 1 <= pc < e1 {
+        NestInvLookSiteCdn(r1, code, pcb + 1, e1, pc, cc, qc, mx, lid);
+      } else if pc == e1 {
+        assert false;
+      } else {
+        NestInvLookSiteCdn(r2, code, e1 + 1, pce, pc, cc, qc, mx, lid);
+        assert (lid as nat) !in LTB.LookIds(r1) by {
+          if (lid as nat) in LTB.LookIds(r1) {
+            assert (lid as nat) in LTB.LookIds(r1) * LTB.LookIds(r2);
+          }
+        }
+      }
+    case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
+      var e1: nat :| NR.NfaRepRE(r1, code, pcb, e1) && NR.NfaRepRE(r2, code, e1, pce)
+        && if pc < e1 then NestInvRE(r1, code, pcb, e1, pc, cc, qc, mx) && AllStaleRE(r2, cc, mx)
+           else NestInvRE(r2, code, e1, pce, pc, cc, qc, mx);
+      if pc < e1 {
+        NestInvLookSiteCdn(r1, code, pcb, e1, pc, cc, qc, mx, lid);
+      } else {
+        NestInvLookSiteCdn(r2, code, e1, pce, pc, cc, qc, mx, lid);
+        assert (lid as nat) !in LTB.LookIds(r1) by {
+          if (lid as nat) in LTB.LookIds(r1) {
+            assert (lid as nat) in LTB.LookIds(r1) * LTB.LookIds(r2);
+          }
+        }
+      }
+    case Re_quant(nul, qid0, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
+      if q.max.Some? {
+        var mn := q.min as nat;
+        var kx := (q.max.value - q.min) as nat;
+        var em: nat :| NR.NfaRepMinRE(mn, qid0, r1, code, pcb, em)
+          && NR.NfaRepOptRE(kx, q.greedy, qid0, r1, code, em, pce)
+          && (if pc < em then NestInvMinRE(mn, qid0, r1, code, pcb, em, pc, cc, qc, mx)
+              else NestInvOptRE(kx, q.greedy, qid0, r1, code, em, pce, pc, cc, qc, mx));
+        NR.NfaRepIncrMinRE(mn, qid0, r1, code, pcb, em);
+        NR.NfaRepIncrOptRE(kx, q.greedy, qid0, r1, code, em, pce);
+        if pc < em {
+          NestInvLookSiteMinCdn(mn, qid0, r1, code, pcb, em, pc, cc, qc, mx, lid);
+        } else {
+          NestInvLookSiteOptCdn(kx, q.greedy, qid0, r1, code, em, pce, pc, cc, qc, mx, lid);
+        }
+        return;
+      }
+      if !(q.min == 0 && q.max == None) && nul != R.NonNullable && !q.greedy {
+        // §2.5a GENERIC: `min` forced copies, then the ORDINARY STAR loop at
+        // `em`; an oracle check sits in the chain or in the loop body.
+        var mn := q.min as nat;
+        var em, e1 := NestInvGenREInv(nul, qid0, q, r1, code, pcb, pce, pc, cc, qc, mx);
+        NR.NfaRepIncrMinRE(mn, qid0, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NestInvLookSiteMinCdn(mn, qid0, r1, code, pcb, em, pc, cc, qc, mx, lid);
+        } else if em + 3 <= pc < e1 {
+          var qv := AI.get_idx(qc, qid0);
+          NestInvLookSiteCdn(r1, code, em + 3, e1, pc, cc, qc, qv, lid);
+        } else {
+          assert false;   // Fork/SetQuantToClock/BeginLoop/EndLoop/Jmp
+        }
+        return;
+      }
+      if !(q.min == 0 && q.max == None) && nul == R.CDNullable {
+        assert {:split_here} true;   // (G5a-1 row K) the CDN-greedy arm in its own batch
+        // CDN-GREEDY: an oracle check sits in the chain or in the loop body; the loop's own eight
+        // instructions (the guard and the stamp among them) are no CheckOracle.
+        var mn1 := (q.min - 1) as nat;
+        var em, e1 := NestInvCdnREInv(nul, qid0, q, r1, code, pcb, pce, pc, cc, qc, mx);
+        NR.NfaRepIncrMinRE(mn1, qid0, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NestInvLookSiteMinCdn(mn1, qid0, r1, code, pcb, em, pc, cc, qc, mx, lid);
+        } else if em + 3 <= pc < e1 {
+          var qv := AI.get_idx(qc, qid0);
+          NestInvLookSiteCdn(r1, code, em + 3, e1, pc, cc, qc, qv, lid);
+        } else {
+          assert false;   // Fork/SetQuantToClock/BeginLoop/EndLoop/Fork/CheckNullable/SetQuantToClock
+        }
+        return;
+      }
+      if !(q.min == 0 && q.max == None) && nul != R.NonNullable {
+        // §2.5b CIN-GREEDY: an oracle check sits in the chain or in the loop
+        // body; the loop's own six instructions are no CheckOracle.
+        var mn1 := (q.min - 1) as nat;
+        var em, e1 := NestInvCinREInv(nul, qid0, q, r1, code, pcb, pce, pc, cc, qc, mx);
+        NR.NfaRepIncrMinRE(mn1, qid0, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NestInvLookSiteMinCdn(mn1, qid0, r1, code, pcb, em, pc, cc, qc, mx, lid);
+        } else if em + 3 <= pc < e1 {
+          var qv := AI.get_idx(qc, qid0);
+          NestInvLookSiteCdn(r1, code, em + 3, e1, pc, cc, qc, qv, lid);
+        } else {
+          assert false;   // Fork/SetQuantToClock/BeginLoop/EndLoop/Fork/SetQuantToClock
+        }
+        return;
+      }
+      if !(q.min == 0 && q.max == None) {
+        var mn1 := (q.min - 1) as nat;
+        var em: nat, e1: nat :|
+          NR.NfaRepMinRE(mn1, qid0, r1, code, pcb, em)
+          && NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid0, false))
+          && NR.NfaRepRE(r1, code, em + 1, e1)
+          && NR.GetPcRE(code, e1) == Some(if q.greedy then RB.Fork(em, e1 + 1) else RB.Fork(e1 + 1, em))
+          && pce == e1 + 1
+          && (if pc < em then NestInvMinRE(mn1, qid0, r1, code, pcb, em, pc, cc, qc, mx)
+              else if pc == em then true
+              else if em + 1 <= pc < e1 then
+                AI.get_idx(qc, qid0) >= mx
+                && NestInvRE(r1, code, em + 1, e1, pc, cc, qc, AI.get_idx(qc, qid0))
+              else AI.get_idx(qc, qid0) >= mx);
+        NR.NfaRepIncrMinRE(mn1, qid0, r1, code, pcb, em);
+        NR.NfaRepIncrRE(r1, code, em + 1, e1);
+        if pc < em {
+          NestInvLookSiteMinCdn(mn1, qid0, r1, code, pcb, em, pc, cc, qc, mx, lid);
+        } else if pc == em {
+          assert false;                             // SetQuantToClock ≠ CheckOracle
+        } else if em + 1 <= pc < e1 {
+          var qv := AI.get_idx(qc, qid0);
+          NestInvLookSiteCdn(r1, code, em + 1, e1, pc, cc, qc, qv, lid);
+        } else {
+          assert pc == e1;
+          assert false;                             // Fork ≠ CheckOracle
+        }
+        return;
+      }
+      var e1: nat :| NR.GetPcRE(code, pcb) == Some(if q.greedy then RB.Fork(pcb + 1, e1 + 2) else RB.Fork(e1 + 2, pcb + 1))
+        && NR.GetPcRE(code, pcb + 1) == Some(RB.SetQuantToClock(qid0, false))
+        && NR.GetPcRE(code, pcb + 2) == Some(RB.BeginLoop)
+        && NR.NfaRepRE(r1, code, pcb + 3, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+        && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(pcb))
+        && pce == e1 + 2
+        && if pc == pcb || pc == pcb + 1 then true
+           else if pc == pcb + 2 then
+             AI.get_idx(qc, qid0) >= mx && AllStaleRE(r1, cc, AI.get_idx(qc, qid0))
+           else if pcb + 3 <= pc < e1 then
+             AI.get_idx(qc, qid0) >= mx
+             && NestInvRE(r1, code, pcb + 3, e1, pc, cc, qc, AI.get_idx(qc, qid0))
+           else AI.get_idx(qc, qid0) >= mx;
+      if pc == pcb || pc == pcb + 1 || pc == pcb + 2 || pc == e1 || pc == e1 + 1 {
+        assert false;                               // Fork/SetQuantToClock/BeginLoop/EndLoop/Jmp
+      } else {
+        assert pcb + 3 <= pc < e1;
+        var qv := AI.get_idx(qc, qid0);
+        NestInvLookSiteCdn(r1, code, pcb + 3, e1, pc, cc, qc, qv, lid);
+      }
+    case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
+      var e1: nat :| NR.GetPcRE(code, pcb) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
+        && NR.NfaRepRE(r1, code, pcb + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+        && pce == e1 + 1
+        && if pc == pcb then
+             (AI.get_idx(cc, CP.start_reg(cid)) < mx || AI.get_idx(cc, CP.start_reg(cid)) < 0)
+             && AllStaleRE(r1, cc, mx)
+           else
+             AI.get_idx(cc, CP.start_reg(cid)) >= mx
+             && AI.get_idx(cc, CP.start_reg(cid)) >= 0
+             && (pcb + 1 <= pc < e1 ==> NestInvRE(r1, code, pcb + 1, e1, pc, cc, qc, mx));
+      NR.NfaRepIncrRE(r1, code, pcb + 1, e1);
+      if pc == pcb || pc == e1 {
+        assert false;                               // SetRegisterToCP ≠ CheckOracle
+      } else {
+        assert pcb + 1 <= pc < e1;
+        NestInvLookSiteCdn(r1, code, pcb + 1, e1, pc, cc, qc, mx, lid);
+      }
+    case Re_lookaround(lid0, la, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
+      // the whole block is the single gate instruction; a positive flavour
+      // compiles to CheckOracle(lid0), pinning lid == lid0.
+      assert pc == pcb;
+      assert la.Lookahead? || la.Lookbehind?;       // NegCheckOracle otherwise
+      assert lid == lid0;
+      assert lid0 >= 0;                             // LookUnique
+      assert (lid as nat) in LTB.LookIds(re);
+    case Re_anchor(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
+      assert pc == pcb;
+      assert false;
+  }
+
   /** THE GATE-SITE EXTRACTION: at a `pc` holding look `lid`'s `CheckOracle`,
       `NestInvRE`'s path claims assemble into `LookPathPresent(re, cc, qc, mx,
       lid)` — every enclosing quantifier's stamp is in scope and every ancestor
@@ -7776,6 +8063,66 @@ module LindenElkNestInv {
       LookPathDomOnPathBreaksNested(r1, L, qc', lid, qid);
   }
 
+  /** (G5a-1 row K) `LookPathDomOnPathBreaksNested` on the top-level fragment (generated from its text). */
+  lemma LookPathDomOnPathBreaksCdn(r: R.regex, L: int, qc': seq<int>, lid: nat, qid: nat)
+    requires NR.NestedFragmentCdnRE(r) && LTB.LookUnique(r)
+    requires lid in LTB.LookIds(r) && qid in PIV.QuantIds(r)
+    requires lid in LTB.LookIds(PIV.QidBody(r, qid))
+    requires AI.get_idx(qc', qid as int) > L
+    ensures !LookPathDom(r, L, qc', lid)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
+      if qid in PIV.QuantIds(r1) {
+        QidBodyLookIdsSub(r1, qid);
+        assert lid in LTB.LookIds(r1);
+        LookPathDomOnPathBreaksCdn(r1, L, qc', lid, qid);
+      } else {
+        QidBodyLookIdsSub(r2, qid);
+        assert lid in LTB.LookIds(r2);
+        assert lid !in LTB.LookIds(r1) by {
+          if lid in LTB.LookIds(r1) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); }
+        }
+        LookPathDomOnPathBreaksCdn(r2, L, qc', lid, qid);
+      }
+    case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
+      if qid in PIV.QuantIds(r1) {
+        QidBodyLookIdsSub(r1, qid);
+        assert lid in LTB.LookIds(r1);
+        LookPathDomOnPathBreaksCdn(r1, L, qc', lid, qid);
+      } else {
+        QidBodyLookIdsSub(r2, qid);
+        assert lid in LTB.LookIds(r2);
+        assert lid !in LTB.LookIds(r1) by {
+          if lid in LTB.LookIds(r1) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); }
+        }
+        LookPathDomOnPathBreaksCdn(r2, L, qc', lid, qid);
+      }
+    case Re_quant(_, qid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
+      if qid0 >= 0 && (qid0 as nat) == qid {
+        assert AI.get_idx(qc', qid0) > L;     // the node's own clause fails
+      } else {
+        LookPathDomOnPathBreaksCdn(r1, L, qc', lid, qid);
+      }
+    case Re_capture(_, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
+      LookPathDomOnPathBreaksCdn(r1, L, qc', lid, qid);
+    case Re_lookaround(lid0, _, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
+      // (L4) the body may hold looks: QuantIds/QidBody descend, so qid lives in
+      // r1 and lid in LookIds(QidBody(r1,qid)) <= LookIds(r1). The outer lid0 is
+      // LookUnique-distinct from every body lid, so LookPathDom reduces to r1.
+      QidBodyLookIdsSub(r1, qid);
+      assert lid in LTB.LookIds(r1);
+      assert (lid0 as nat) != lid;                    // LookUnique: lid0 !in LookIds(r1)
+      // (G5a-1 row K) a look body of the top-level fragment is NARROW
+      LookPathDomOnPathBreaksNested(r1, L, qc', lid, qid);
+  }
+
   // ==========================================================================
   // (L4 depth-k, ADDITIVE) LOOK-CLOCK-AWARE path presence to a look node.
   //
@@ -8637,6 +8984,24 @@ module LindenElkNestInv {
     MxAtLidLE(re, qc, -1, lid as nat, AI.get_idx(lc', lid));
   }
 
+  /** (G5a-1 row K) `GateCrossLookNestNested` on the top-level fragment (generated from its text). */
+  lemma GateCrossLookNestCdn(re: R.regex, code: RB.code, endl: nat, pc: nat,
+                                cc: seq<int>, qc: seq<int>, lc': seq<int>, lid: int)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires NR.NestedFragmentCdnRE(re) && LTB.LookUnique(re)
+    requires pc < endl
+    requires NestInvRE(re, code, 0, endl, pc, cc, qc, -1)
+    requires NR.GetPcRE(code, pc) == Some(RB.CheckOracle(lid))
+    requires AI.get_idx(lc', lid) >= 0
+    requires forall k :: AI.get_idx(qc, k) <= AI.get_idx(lc', lid)
+    ensures lid >= 0 && (lid as nat) in LTB.LookIds(re)
+    ensures LookPathPresent(re, cc, qc, -1, lid as nat)
+    ensures AI.get_idx(lc', lid) >= MxAtLidLk(re, qc, -1, lid as nat)
+  {
+    NestInvLookSiteCdn(re, code, 0, endl, pc, cc, qc, -1, lid);
+    MxAtLidLE(re, qc, -1, lid as nat, AI.get_idx(lc', lid));
+  }
+
   // ==========================================================================
   // (L4 NESTED) TOP-LEVEL gate-site navigation: a `CheckOracle`/`NegCheckOracle`
   // in the MAIN code names a TOP-LEVEL look. Mirrors `PIV.LookCheckIdsRE`
@@ -8820,6 +9185,196 @@ module LindenElkNestInv {
         } else if pc == em {
         } else if pc < e1 {
           LookSiteTopNested(r1, code, em + 1, e1, pc);
+        } else {
+        }
+      }
+  }
+
+  // (G5a-1 row K) TOP-LEVEL gate-site navigation on the top-level fragment.
+  /** (G5a-1 row K) `LookSiteTopMinNested` on the top-level fragment (generated from its text). */
+  lemma LookSiteTopMinCdn(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentCdnRE(r1) && LTB.LookUnique(r1)
+    requires NR.NfaRepMinRE(k, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
+      var l := NR.GetPcRE(code, pc).value.col; l >= 0 && (l as nat) in TopLookIds(r1)
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.NegCheckOracle? ==>
+      var l := NR.GetPcRE(code, pc).value.ncl; l >= 0 && (l as nat) in TopLookIds(r1)
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetQuantToClock(qid, false))
+      && NR.NfaRepRE(r1, code, start + 1, e1)
+      && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
+    NR.NfaRepIncrRE(r1, code, start + 1, e1);
+    NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
+    if pc == start {
+    } else if pc < e1 {
+      LookSiteTopCdn(r1, code, start + 1, e1, pc);
+    } else {
+      LookSiteTopMinCdn(k - 1, qid, r1, code, e1, endl, pc);
+    }
+  }
+
+  /** (G5a-1 row K) `LookSiteTopOptNested` on the top-level fragment (generated from its text). */
+  lemma LookSiteTopOptCdn(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentCdnRE(r1) && LTB.LookUnique(r1)
+    requires NR.NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
+      var l := NR.GetPcRE(code, pc).value.col; l >= 0 && (l as nat) in TopLookIds(r1)
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.NegCheckOracle? ==>
+      var l := NR.GetPcRE(code, pc).value.ncl; l >= 0 && (l as nat) in TopLookIds(r1)
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| NR.GetPcRE(code, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
+      && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+      && NR.NfaRepRE(r1, code, start + 3, e1)
+      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+      && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+    NR.NfaRepIncrRE(r1, code, start + 3, e1);
+    NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+    if pc <= start + 2 {
+    } else if pc < e1 {
+      LookSiteTopCdn(r1, code, start + 3, e1, pc);
+    } else if pc == e1 {
+    } else {
+      LookSiteTopOptCdn(k - 1, greedy, qid, r1, code, e1 + 1, endl, pc);
+    }
+  }
+
+  /** (G5a-1 row K) `LookSiteTopNested` on the top-level fragment (generated from its text). */
+  lemma LookSiteTopCdn(re: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentCdnRE(re) && LTB.LookUnique(re)
+    requires NR.NfaRepRE(re, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.CheckOracle? ==>
+      var l := NR.GetPcRE(code, pc).value.col; l >= 0 && (l as nat) in TopLookIds(re)
+    ensures NR.GetPcRE(code, pc).Some? && NR.GetPcRE(code, pc).value.NegCheckOracle? ==>
+      var l := NR.GetPcRE(code, pc).value.ncl; l >= 0 && (l as nat) in TopLookIds(re)
+    decreases CP.rsize(re), 1
+  {
+    match re
+    case Re_empty =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
+    case Re_character(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
+    case Re_anchor(_) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
+    case Re_lookaround(lid, la, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
+      assert pc == start;
+      assert lid >= 0;                                  // LookUnique
+    case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
+      var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
+        && NR.NfaRepRE(r1, code, start + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
+        && NR.NfaRepRE(r2, code, e1 + 1, endl);
+      NR.NfaRepIncrRE(r1, code, start + 1, e1);
+      NR.NfaRepIncrRE(r2, code, e1 + 1, endl);
+      if pc == start {
+      } else if pc < e1 {
+        LookSiteTopCdn(r1, code, start + 1, e1, pc);
+      } else if pc == e1 {
+      } else {
+        LookSiteTopCdn(r2, code, e1 + 1, endl, pc);
+      }
+    case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
+      var e1: nat :| NR.NfaRepRE(r1, code, start, e1) && NR.NfaRepRE(r2, code, e1, endl);
+      NR.NfaRepIncrRE(r1, code, start, e1);
+      NR.NfaRepIncrRE(r2, code, e1, endl);
+      if pc < e1 {
+        LookSiteTopCdn(r1, code, start, e1, pc);
+      } else {
+        LookSiteTopCdn(r2, code, e1, endl, pc);
+      }
+    case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
+      var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
+        && NR.NfaRepRE(r1, code, start + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+        && endl == e1 + 1;
+      NR.NfaRepIncrRE(r1, code, start + 1, e1);
+      if pc == start {
+      } else if pc < e1 {
+        LookSiteTopCdn(r1, code, start + 1, e1, pc);
+      } else {
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
+      if q.min == 0 && q.max == None {
+        var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
+          && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+          && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+          && NR.NfaRepRE(r1, code, start + 3, e1)
+          && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+          && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
+          && endl == e1 + 2;
+        NR.NfaRepIncrRE(r1, code, start + 3, e1);
+        if pc <= start + 2 {
+        } else if pc < e1 {
+          LookSiteTopCdn(r1, code, start + 3, e1, pc);
+        } else {
+        }
+      } else if q.max.Some? {
+        var em := NR.NfaRepREQuantInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl);
+        if pc < em {
+          LookSiteTopMinCdn(q.min as nat, qid, r1, code, start, em, pc);
+        } else {
+          LookSiteTopOptCdn((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
+        }
+      } else if nul != R.NonNullable && !q.greedy {
+        // §2.5a GENERIC: min forced copies, then the star loop
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          LookSiteTopMinCdn(q.min as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          LookSiteTopCdn(r1, code, em + 3, e1, pc);
+        } else {
+        }
+      } else if nul == R.CDNullable {
+        // (G5a-1 row K) CDN-GREEDY: the CIN layout with the guard at e1 + 2 and the stamp at e1 + 3;
+        // neither is an oracle check
+        var em, e1 := NR.NfaRepRECdnInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          LookSiteTopMinCdn((q.min - 1) as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          LookSiteTopCdn(r1, code, em + 3, e1, pc);
+        } else {
+        }
+      } else if nul != R.NonNullable {
+        // §2.5b CIN-GREEDY: min-1 forced copies, then the stamped end-fork loop
+        var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          LookSiteTopMinCdn((q.min - 1) as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          LookSiteTopCdn(r1, code, em + 3, e1, pc);
+        } else {
+        }
+      } else {
+        var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 1, e1);
+        if pc < em {
+          LookSiteTopMinCdn((q.min - 1) as nat, qid, r1, code, start, em, pc);
+        } else if pc == em {
+        } else if pc < e1 {
+          LookSiteTopCdn(r1, code, em + 1, e1, pc);
         } else {
         }
       }

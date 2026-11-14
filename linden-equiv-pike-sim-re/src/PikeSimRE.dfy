@@ -157,16 +157,25 @@ module LindenElkPikeSim {
       main-pass code holds no `WriteOracle` at ANY nesting depth — a lookaround
       compiles to a single gate, so only the BUILD passes emit `WriteOracle`.
       Uses `NoWriteInstrNestedRE` (the depth-agnostic code-shape tower). */
-  lemma StaticOkNoWriteNested(qm: AR.QMap, re: R.regex, code: RB.code, endl: nat)
-    requires StaticCoreNestedRE(qm, re, code, endl)
+  lemma StaticOkNoWriteCdn(qm: AR.QMap, re: R.regex, code: RB.code, endl: nat)
+    requires StaticCoreCdnRE(qm, re, code, endl)
     ensures CM.NoWriteOracleCode(code)
   {
     forall pc: nat | pc < |code| ensures !code[pc].WriteOracle? {
       if pc != endl {
-        NR.NoWriteInstrNestedRE(re, code, 0, endl, pc);
+        NoWriteInstrCdnRE(re, code, 0, endl, pc);
         assert NR.GetPcRE(code, pc) == Some(code[pc]);
       }
     }
+  }
+
+  /** (G5a-1 row I) The narrow name, as a corollary of `StaticOkNoWriteCdn`. */
+  lemma StaticOkNoWriteNested(qm: AR.QMap, re: R.regex, code: RB.code, endl: nat)
+    requires StaticCoreNestedRE(qm, re, code, endl)
+    ensures CM.NoWriteOracleCode(code)
+  {
+    StaticCoreNestedIsCdn(qm, re, code, endl);
+    StaticOkNoWriteCdn(qm, re, code, endl);
   }
 
   // Register files sized to cover every compiled write.
@@ -802,10 +811,10 @@ module LindenElkPikeSim {
       (the FilterOpenFrame value tower). The positional NestInv layer
       (`NestInvOpenSite`/`NestInvOpenWrite`), `CapIdsInLooksBodyOfSubset`,
       `MxAtGidLE`, `CapIdsLEMaxGroup`, `GenStepRE` are depth-blind. */
-  lemma OpenStepThreadRENested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+  lemma OpenStepThreadRECdn(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                          inp: LC.Input, t: LT.Tree, gm: LG.GroupMap, th: AI.Thread, pc: nat,
                          sreg: int, cp: int, S: int)
-    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re)
+    requires NR.NestedFragmentCdnRE(re) && PIV.CapUnique(re)
     requires !rer.multiline
     requires NR.NfaRepRE(re, code, 0, endl)
     requires NR.GetPcRE(code, endl) == Some(RB.Accept)
@@ -872,7 +881,7 @@ module LindenElkPikeSim {
 
     PIV.CapIdsInLooksBodyOfSubset(re, gid);
     assert PIV.LooksCapUnset(PIV.BodyOf(re, gid), cc);
-    PIV.GmOfLiveOpenGMOpenNested(re, caps, th.look_regs, th.quant_regs, gid, cp, clk);
+    PIV.GmOfLiveOpenGMOpenCdn(re, caps, th.look_regs, th.quant_regs, gid, cp, clk);
     var caps' := AReg.set_reg(caps, sreg, Some(cp), clk);
     assert caps' == AReg.set_reg(caps, CP.start_reg(gid as int), Some(cp), clk);
     assert PIV.GmOfLive(re, caps', th.look_regs, th.quant_regs)
@@ -896,6 +905,44 @@ module LindenElkPikeSim {
 
     // The stamp invariant crosses the capture write.
     StampAdvanceTop(re, code, endl, pc, pc + 1, th.quant_regs.a_cp);
+  }
+
+  /** (G5a-1 row I) The narrow name, as a corollary of `OpenStepThreadRECdn`. */
+  lemma OpenStepThreadRENested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                         inp: LC.Input, t: LT.Tree, gm: LG.GroupMap, th: AI.Thread, pc: nat,
+                         sreg: int, cp: int, S: int)
+    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re)
+    requires !rer.multiline
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires th.pc >= 0 && pc == th.pc as nat && pc <= endl
+    requires NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(sreg))
+    requires sreg % 2 == 0
+    requires TT.TreeThreadRE(rer, qm, code, inp, t, pc, th.exit_allowed)
+    requires StampTopRE(re, code, endl, pc, th.quant_regs.a_cp)
+    requires NI.NestTopRE(re, code, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk)
+    requires CM.ThreadClocksLE(th, S)
+    requires PIV.CapRegWf(th.capture_regs)
+    requires CM.RegsValsLE(th.capture_regs, cp)
+    requires |th.capture_regs.a_cp| >= 2 * R.max_group(re) + 2
+    requires cp >= 0 && S >= 0
+    requires PIV.LooksCapUnset(re, th.capture_regs.a_clk)
+    ensures t.GroupActionT? && t.g.Open? && sreg == CP.start_reg(t.g.g as int)
+    ensures var caps' := AReg.set_reg(th.capture_regs, sreg, Some(cp), S + 1);
+      PIV.LooksCapUnset(re, caps'.a_clk)
+    ensures TT.TreeThreadRE(rer, qm, code, inp, t.t, pc + 1, th.exit_allowed)
+    ensures var caps' := AReg.set_reg(th.capture_regs, sreg, Some(cp), S + 1);
+      t.GroupActionT? && t.g.Open? ==>
+        PIV.GmOfLive(re, caps', th.look_regs, th.quant_regs) == LG.GMOpen(cp as nat, t.g.g, PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs))
+    ensures var caps' := AReg.set_reg(th.capture_regs, sreg, Some(cp), S + 1);
+      pc + 1 <= endl && NI.NestTopRE(re, code, endl, pc + 1, caps'.a_clk, th.quant_regs.a_clk)
+    ensures var caps' := AReg.set_reg(th.capture_regs, sreg, Some(cp), S + 1);
+      CM.RegsClocksLE(caps', S + 1) && PIV.CapRegWf(caps') && CM.RegsValsLE(caps', cp)
+      && |caps'.a_cp| == |th.capture_regs.a_cp| && |caps'.a_clk| == |th.capture_regs.a_clk|
+    ensures pc + 1 <= endl && StampTopRE(re, code, endl, pc + 1, th.quant_regs.a_cp)
+  {
+    NR.NarrowIsCdn(re);
+    OpenStepThreadRECdn(rer, qm, re, code, endl, inp, t, gm, th, pc, sreg, cp, S);
   }
 
   // =========================================================================
@@ -1004,10 +1051,10 @@ module LindenElkPikeSim {
       fragment-blind (odd-slot write); the positional NestInv layer
       (`NestInvRE`/`NestInvAdvance`/`NestInvFrameOdd`/`CodeShapeAt`) and
       `GenStepRE`/`CapIdsLEMaxGroup` are also depth-blind. */
-  lemma CloseStepThreadRENested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+  lemma CloseStepThreadRECdn(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                           inp: LC.Input, t: LT.Tree, gm: LG.GroupMap, th: AI.Thread, pc: nat,
                           ereg: int, cp: int, S: int)
-    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re)
+    requires NR.NestedFragmentCdnRE(re) && PIV.CapUnique(re)
     requires !rer.multiline && PIV.QuantUnique(re)
     requires NR.NfaRepRE(re, code, 0, endl)
     requires NR.GetPcRE(code, endl) == Some(RB.Accept)
@@ -1088,6 +1135,41 @@ module LindenElkPikeSim {
 
     // The stamp invariant crosses the capture write.
     StampAdvanceTop(re, code, endl, pc, pc + 1, th.quant_regs.a_cp);
+  }
+
+  /** (G5a-1 row I) The narrow name, as a corollary of `CloseStepThreadRECdn`. */
+  lemma CloseStepThreadRENested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                          inp: LC.Input, t: LT.Tree, gm: LG.GroupMap, th: AI.Thread, pc: nat,
+                          ereg: int, cp: int, S: int)
+    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re)
+    requires !rer.multiline && PIV.QuantUnique(re)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires th.pc >= 0 && pc == th.pc as nat && pc <= endl
+    requires NR.GetPcRE(code, pc) == Some(RB.SetRegisterToCP(ereg))
+    requires ereg % 2 == 1
+    requires TT.TreeThreadRE(rer, qm, code, inp, t, pc, th.exit_allowed)
+    requires StampTopRE(re, code, endl, pc, th.quant_regs.a_cp)
+    requires NI.NestTopRE(re, code, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk)
+    requires CM.ThreadClocksLE(th, S)
+    requires PIV.CapRegWf(th.capture_regs)
+    requires CM.RegsValsLE(th.capture_regs, cp)
+    requires |th.capture_regs.a_cp| >= 2 * R.max_group(re) + 2
+    requires cp >= 0 && S >= 0
+    ensures t.GroupActionT? && t.g.Close? && ereg == CP.end_reg(t.g.g as int)
+    ensures TT.TreeThreadRE(rer, qm, code, inp, t.t, pc + 1, th.exit_allowed)
+    ensures var caps' := AReg.set_reg(th.capture_regs, ereg, Some(cp), S + 1);
+      t.GroupActionT? && t.g.Close? ==>
+        PIV.GmOfLive(re, caps', th.look_regs, th.quant_regs) == LG.GMClose(cp as nat, t.g.g, PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs))
+    ensures var caps' := AReg.set_reg(th.capture_regs, ereg, Some(cp), S + 1);
+      pc + 1 <= endl && NI.NestTopRE(re, code, endl, pc + 1, caps'.a_clk, th.quant_regs.a_clk)
+    ensures var caps' := AReg.set_reg(th.capture_regs, ereg, Some(cp), S + 1);
+      CM.RegsClocksLE(caps', S + 1) && PIV.CapRegWf(caps') && CM.RegsValsLE(caps', cp)
+      && |caps'.a_cp| == |th.capture_regs.a_cp| && |caps'.a_clk| == |th.capture_regs.a_clk|
+    ensures pc + 1 <= endl && StampTopRE(re, code, endl, pc + 1, th.quant_regs.a_cp)
+  {
+    NR.NarrowIsCdn(re);
+    CloseStepThreadRECdn(rer, qm, re, code, endl, inp, t, gm, th, pc, ereg, cp, S);
   }
 
   // =========================================================================
@@ -1196,10 +1278,10 @@ module LindenElkPikeSim {
       (the FilterResetFrame value tower). The positional NestInv layer
       (`NestInvResetSite`/`NestInvStamp`), `CapIdsInLooksQidBodySubset`,
       `MxAtQidLE`, `QuantIdsLEMaxQuant`, `CodeShapeAt`, `GenStepRE` are depth-blind. */
-  lemma ResetStepThreadRENested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+  lemma ResetStepThreadRECdn(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                           inp: LC.Input, t: LT.Tree, gm: LG.GroupMap, th: AI.Thread, pc: nat,
                           qid0: int, S: int)
-    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re)
+    requires NR.NestedFragmentCdnRE(re) && PIV.CapUnique(re)
     requires !rer.multiline && PIV.QuantUnique(re)
     requires T.TransWf(re) && AR.QmapOk(re, qm)
     requires NR.NfaRepRE(re, code, 0, endl)
@@ -1261,7 +1343,7 @@ module LindenElkPikeSim {
 
     PIV.CapIdsInLooksQidBodySubset(re, qid);
     assert PIV.LooksCapUnset(PIV.QidBody(re, qid), cc);
-    PIV.GmOfLiveResetGMResetNested(re, qm, caps, th.look_regs, quant, qid, clk);
+    PIV.GmOfLiveResetGMResetCdn(re, qm, caps, th.look_regs, quant, qid, clk);
     var quant' := AReg.set_reg(quant, qid0, None, clk);
     assert quant' == AReg.set_reg(quant, qid, None, clk);
     assert PIV.GmOfLive(re, caps, th.look_regs, quant')
@@ -1278,6 +1360,43 @@ module LindenElkPikeSim {
     // The stamp invariant crosses the mark (it clears qid0's stamp).
     assert forall kk: int :: kk != qid0 ==> AI.get_idx(quant'.a_cp, kk) == AI.get_idx(quant.a_cp, kk);
     StampQuantWriteTop(re, code, endl, pc, quant.a_cp, quant'.a_cp, qid0, false);
+  }
+
+  /** (G5a-1 row I) The narrow name, as a corollary of `ResetStepThreadRECdn`. */
+  lemma ResetStepThreadRENested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                          inp: LC.Input, t: LT.Tree, gm: LG.GroupMap, th: AI.Thread, pc: nat,
+                          qid0: int, S: int)
+    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re)
+    requires !rer.multiline && PIV.QuantUnique(re)
+    requires T.TransWf(re) && AR.QmapOk(re, qm)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires th.pc >= 0 && pc == th.pc as nat && pc <= endl
+    requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid0, false))
+    requires TT.TreeThreadRE(rer, qm, code, inp, t, pc, th.exit_allowed)
+    requires StampTopRE(re, code, endl, pc, th.quant_regs.a_cp)
+    requires NI.NestTopRE(re, code, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk)
+    requires CM.ThreadClocksLE(th, S)
+    requires PIV.CapRegWf(th.capture_regs)
+    requires |th.quant_regs.a_clk| >= R.max_quant(re) + 1
+    requires |th.quant_regs.a_cp| == |th.quant_regs.a_clk|
+    requires S >= 0
+    requires PIV.LooksCapUnset(re, th.capture_regs.a_clk)
+    ensures t.GroupActionT? && t.g.Reset? && qid0 in qm.quants && qm.quants[qid0] == t.g.gl
+    ensures TT.TreeThreadRE(rer, qm, code, inp, t.t, pc + 1, th.exit_allowed)
+    ensures var quant' := AReg.set_reg(th.quant_regs, qid0, None, S + 1);
+      t.GroupActionT? && t.g.Reset? ==>
+        PIV.GmOfLive(re, th.capture_regs, th.look_regs, quant') == LG.GMReset(t.g.gl, PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs))
+    ensures var quant' := AReg.set_reg(th.quant_regs, qid0, None, S + 1);
+      pc + 1 <= endl && NI.NestTopRE(re, code, endl, pc + 1, th.capture_regs.a_clk, quant'.a_clk)
+    ensures var quant' := AReg.set_reg(th.quant_regs, qid0, None, S + 1);
+      CM.RegsClocksLE(quant', S + 1)
+      && |quant'.a_cp| == |th.quant_regs.a_cp| && |quant'.a_clk| == |th.quant_regs.a_clk|
+    ensures var quant' := AReg.set_reg(th.quant_regs, qid0, None, S + 1);
+      pc + 1 <= endl && StampTopRE(re, code, endl, pc + 1, quant'.a_cp)
+  {
+    NR.NarrowIsCdn(re);
+    ResetStepThreadRECdn(rer, qm, re, code, endl, inp, t, gm, th, pc, qid0, S);
   }
 
   // =========================================================================
@@ -1651,11 +1770,11 @@ module LindenElkPikeSim {
       the single depth-1 callee `BeginLoopColdSafeAt -> BeginLoopColdSafeAtNested`
       (the only place the stutter case reads the fragment; the rest is the
       depth-agnostic sim invariant). */
-  lemma PreserveStutterCaseNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+  lemma PreserveStutterCaseCdn(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                             ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
                             s1: AI.VmState, th': AI.Thread, vms2: AI.VmState,
                             ncap: int, nlook: int, nquant: int)
-    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires StaticCoreCdnRE(qm, re, code, endl)
     requires pts.PTS?
     requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
     requires |vms.active| > 0
@@ -1740,7 +1859,7 @@ module LindenElkPikeSim {
       if t2 != th' { assert t2 in vms.active; }
       else if !th'.exit_allowed {
         if NR.GetPcRE(code, pc) == Some(RB.BeginLoop) {
-          NI.BeginLoopColdSafeAtNested(re, code, 0, endl, pc);
+          NI.BeginLoopColdSafeAtCdn(re, code, 0, endl, pc);
           assert pc' == pc + 1;
         } else {
           assert !ea;
@@ -1750,6 +1869,31 @@ module LindenElkPikeSim {
       }
     }
     assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms2, ncap, nlook, nquant);
+  }
+
+  /** (G5a-1 row I) The narrow name, as a corollary of `PreserveStutterCaseCdn`. */
+  lemma PreserveStutterCaseNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                            ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                            s1: AI.VmState, th': AI.Thread, vms2: AI.VmState,
+                            ncap: int, nlook: int, nquant: int)
+    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires (exists x: int ::
+                NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.Jmp(x))
+                && th' == vms.active[0].(pc := x))
+          || (NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.BeginLoop)
+              && th' == vms.active[0].(exit_allowed := false, pc := vms.active[0].pc + 1))
+    requires vms2 == s1.(active := [th'] + s1.active[1..])
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms2, ncap, nlook, nquant)
+  {
+    StaticCoreNestedIsCdn(qm, re, code, endl);
+    PreserveStutterCaseCdn(rer, qm, re, code, endl, ngroups, str, pts, vms, s1, th', vms2, ncap, nlook, nquant);
   }
 
   // Growing the seen set preserves the isblocked inclusion (witness carries).
@@ -2148,13 +2292,13 @@ module LindenElkPikeSim {
       Verbatim `PreserveOpenCase` with `StaticOkRE -> StaticOkNestedRE` and the
       Open step callee `OpenStepThreadRE -> OpenStepThreadRENested` (whose
       `LooksCapUnset` ensures still discharges the inside-look-unset conjunct). */
-  lemma PreserveOpenCaseNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+  lemma PreserveOpenCaseCdn(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                          ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
                          s1: AI.VmState, sreg: int, vms2: AI.VmState,
                          ncap: int, nlook: int, nquant: int)
     returns (pts1: PT.PikeTreeState)
     requires !rer.multiline
-    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires StaticCoreCdnRE(qm, re, code, endl)
     requires SizesOkRE(re, ncap, nlook, nquant)
     requires pts.PTS?
     requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
@@ -2189,7 +2333,7 @@ module LindenElkPikeSim {
         && CM.RegsValsLE(th.capture_regs, vms.cp);
 
     // The bundled Open step.
-    OpenStepThreadRENested(rer, qm, re, code, endl, inp, t, gm, th, pc, sreg, vms.cp, vms.clock);
+    OpenStepThreadRECdn(rer, qm, re, code, endl, inp, t, gm, th, pc, sreg, vms.cp, vms.clock);
     var gid: nat := t.g.g;
     var caps' := AReg.set_reg(th.capture_regs, sreg, Some(vms.cp), vms.clock + 1);
     var th' := th.(capture_regs := caps', pc := th.pc + 1);
@@ -2254,11 +2398,40 @@ module LindenElkPikeSim {
         NotColdSucc(code, pc, pc + 1);
       }
     }
-    // L3a: inside-look regs stay unset — th' via OpenStepThreadRENested's LooksCapUnset ensures.
+    // L3a: inside-look regs stay unset — th' via OpenStepThreadRECdn's LooksCapUnset ensures.
     forall t2 | t2 in vms2.active ensures PIV.LooksCapUnset(re, t2.capture_regs.a_clk) {
       if t2 != th' { assert t2 in vms.active; }
     }
     assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
+  }
+
+  /** (G5a-1 row I) The narrow name, as a corollary of `PreserveOpenCaseCdn`. */
+  lemma PreserveOpenCaseNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                         ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                         s1: AI.VmState, sreg: int, vms2: AI.VmState,
+                         ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires SizesOkRE(re, ncap, nlook, nquant)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.SetRegisterToCP(sreg))
+    requires sreg % 2 == 0
+    requires vms2 == s1.(active :=
+      [vms.active[0].(capture_regs := AReg.set_reg(vms.active[0].capture_regs, sreg, Some(s1.cp), s1.clock),
+                      pc := vms.active[0].pc + 1)] + s1.active[1..])
+    ensures PT.PikeTreeStep(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
+  {
+    StaticCoreNestedIsCdn(qm, re, code, endl);
+    pts1 := PreserveOpenCaseCdn(rer, qm, re, code, endl, ngroups, str, pts, vms, s1, sreg, vms2, ncap, nlook, nquant);
   }
 
   // =========================================================================
@@ -2379,13 +2552,13 @@ module LindenElkPikeSim {
   /** L4 depth-k (ADDITIVE): `PreserveCloseCase` under the nested fragment.
       Verbatim `PreserveCloseCase` with `StaticOkRE -> StaticOkNestedRE` and the
       Close step callee `CloseStepThreadRE -> CloseStepThreadRENested`. */
-  lemma PreserveCloseCaseNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+  lemma PreserveCloseCaseCdn(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                           ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
                           s1: AI.VmState, ereg: int, vms2: AI.VmState,
                           ncap: int, nlook: int, nquant: int)
     returns (pts1: PT.PikeTreeState)
     requires !rer.multiline
-    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires StaticCoreCdnRE(qm, re, code, endl)
     requires SizesOkRE(re, ncap, nlook, nquant)
     requires pts.PTS?
     requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
@@ -2420,7 +2593,7 @@ module LindenElkPikeSim {
         && CM.RegsValsLE(th.capture_regs, vms.cp);
 
     // The bundled Close step.
-    CloseStepThreadRENested(rer, qm, re, code, endl, inp, t, gm, th, pc, ereg, vms.cp, vms.clock);
+    CloseStepThreadRECdn(rer, qm, re, code, endl, inp, t, gm, th, pc, ereg, vms.cp, vms.clock);
     var gid: nat := t.g.g;
     var caps' := AReg.set_reg(th.capture_regs, ereg, Some(vms.cp), vms.clock + 1);
     var th' := th.(capture_regs := caps', pc := th.pc + 1);
@@ -2486,6 +2659,35 @@ module LindenElkPikeSim {
       }
     }
     assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
+  }
+
+  /** (G5a-1 row I) The narrow name, as a corollary of `PreserveCloseCaseCdn`. */
+  lemma PreserveCloseCaseNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                          ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                          s1: AI.VmState, ereg: int, vms2: AI.VmState,
+                          ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires SizesOkRE(re, ncap, nlook, nquant)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.SetRegisterToCP(ereg))
+    requires ereg % 2 == 1
+    requires vms2 == s1.(active :=
+      [vms.active[0].(capture_regs := AReg.set_reg(vms.active[0].capture_regs, ereg, Some(s1.cp), s1.clock),
+                      pc := vms.active[0].pc + 1)] + s1.active[1..])
+    ensures PT.PikeTreeStep(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
+  {
+    StaticCoreNestedIsCdn(qm, re, code, endl);
+    pts1 := PreserveCloseCaseCdn(rer, qm, re, code, endl, ngroups, str, pts, vms, s1, ereg, vms2, ncap, nlook, nquant);
   }
 
   // =========================================================================
@@ -2673,13 +2875,13 @@ module LindenElkPikeSim {
                               s1, qid0, bq, vms2, ncap, nlook, nquant);
   }
 
-  lemma PreserveMarkCaseNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+  lemma PreserveMarkCaseCdn(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                           ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
                           s1: AI.VmState, qid0: int, bq: bool, vms2: AI.VmState,
                           ncap: int, nlook: int, nquant: int)
     returns (pts1: PT.PikeTreeState)
     requires !rer.multiline
-    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires StaticCoreCdnRE(qm, re, code, endl)
     requires !bq
     requires SizesOkRE(re, ncap, nlook, nquant)
     requires pts.PTS?
@@ -2716,7 +2918,7 @@ module LindenElkPikeSim {
     assert pc < endl;
 
     // The bundled Reset step.
-    ResetStepThreadRENested(rer, qm, re, code, endl, inp, t, gm, th, pc, qid0, vms.clock);
+    ResetStepThreadRECdn(rer, qm, re, code, endl, inp, t, gm, th, pc, qid0, vms.clock);
     var quant' := AReg.set_reg(th.quant_regs, qid0, None, vms.clock + 1);
     var th' := th.(quant_regs := quant', pc := th.pc + 1);
     assert vms2.active == [th'] + vms.active[1..];
@@ -2776,6 +2978,36 @@ module LindenElkPikeSim {
       }
     }
     assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
+  }
+
+  /** (G5a-1 row I) The narrow name, as a corollary of `PreserveMarkCaseCdn`. */
+  lemma PreserveMarkCaseNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                          ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                          s1: AI.VmState, qid0: int, bq: bool, vms2: AI.VmState,
+                          ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires !bq
+    requires SizesOkRE(re, ncap, nlook, nquant)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.SetQuantToClock(qid0, bq))
+    requires vms2 == s1.(active :=
+      [vms.active[0].(quant_regs := AReg.set_reg(vms.active[0].quant_regs, qid0,
+                                                 if bq then Some(s1.cp) else None, s1.clock),
+                      pc := vms.active[0].pc + 1)] + s1.active[1..])
+    ensures PT.PikeTreeStep(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
+  {
+    StaticCoreNestedIsCdn(qm, re, code, endl);
+    pts1 := PreserveMarkCaseCdn(rer, qm, re, code, endl, ngroups, str, pts, vms, s1, qid0, bq, vms2, ncap, nlook, nquant);
   }
 
   // =========================================================================
@@ -3332,12 +3564,12 @@ module LindenElkPikeSim {
       (the inside-look absence `GmOfLiveInsideLookAbsent` and gate-step
       `OracleStepThreadRE` are already fragment-blind and reused). This is the
       passing-gate `look_regs` write staying GmOfLive-neutral at any depth. */
-  lemma PreserveOraclePassNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+  lemma PreserveOraclePassCdn(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                            ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
                            s1: AI.VmState, th2: AI.Thread, vms2: AI.VmState, l: int, pos: bool,
                            ncap: int, nlook: int, nquant: int)
     requires !rer.multiline
-    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires StaticCoreCdnRE(qm, re, code, endl)
     requires SizesOkRE(re, ncap, nlook, nquant)
     requires pts.PTS?
     requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
@@ -3394,7 +3626,7 @@ module LindenElkPikeSim {
     assert PIV.ThreadTracksGm(re, qm, str, th2, gm) by {
       var g0 := PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs);   // == gm
       var g1 := PIV.GmOfLive(re, th.capture_regs, th2.look_regs, th.quant_regs);  // th2's denotation
-      PIV.GmOfLiveLookIndepNested(re, th.capture_regs, th.look_regs, th2.look_regs, th.quant_regs);
+      PIV.GmOfLiveLookIndepCdn(re, th.capture_regs, th.look_regs, th2.look_regs, th.quant_regs);
       forall g: nat ensures (g in g0) <==> (g in g1) {
         if g in PIV.CapIdsInLooks(re) {
           PIV.GmOfLiveInsideLookAbsent(re, th.capture_regs, th.look_regs, th.quant_regs, g);
@@ -3467,6 +3699,34 @@ module LindenElkPikeSim {
     }
     IsblockedGrow(rer, qm, code, inp, seen, vms.isblocked, t);
     assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms2, ncap, nlook, nquant);
+  }
+
+  /** (G5a-1 row I) The narrow name, as a corollary of `PreserveOraclePassCdn`. */
+  lemma PreserveOraclePassNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                           ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                           s1: AI.VmState, th2: AI.Thread, vms2: AI.VmState, l: int, pos: bool,
+                           ncap: int, nlook: int, nquant: int)
+    requires !rer.multiline
+    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires SizesOkRE(re, ncap, nlook, nquant)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat)
+          == Some(if pos then RB.CheckOracle(l) else RB.NegCheckOracle(l))
+    requires LOr.view_get_oracle(qm.ov, vms.cp, l) == pos
+    requires pos ==> th2 == vms.active[0].(pc := vms.active[0].pc + 1,
+              look_regs := AReg.set_reg(vms.active[0].look_regs, l, Some(s1.cp), s1.clock))
+    requires !pos ==> th2 == vms.active[0].(pc := vms.active[0].pc + 1)
+    requires vms2 == s1.(active := [th2] + s1.active[1..])
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms2, ncap, nlook, nquant)
+  {
+    StaticCoreNestedIsCdn(qm, re, code, endl);
+    PreserveOraclePassCdn(rer, qm, re, code, endl, ngroups, str, pts, vms, s1, th2, vms2, l, pos, ncap, nlook, nquant);
   }
 
   /** Per-case preservation for a FAILING lookaround gate: the checked tree is
@@ -4336,13 +4596,13 @@ module LindenElkPikeSim {
       per-case dispatch swapped to its `*Nested` sibling (the 10 pure-sim
       `*Nested` from #18 plus the 6 value-coupled `*Nested` from #22b-f). This is
       the depth-k one-step preservation of the whole `PikeInvFullRE` invariant. */
-  lemma InvariantPreservationRENested(
+  lemma InvariantPreservationRECdn(
       rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
       ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
       ov: LOr.OracleView, dir: LAnc.direction, ncap: int, nlook: int, nquant: int)
     returns (pts': PT.PikeTreeState)
     requires !rer.multiline
-    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires StaticCoreCdnRE(qm, re, code, endl)
     requires qm.ov == ov
     requires SizesOkRE(re, ncap, nlook, nquant)
     requires pts.PTS?
@@ -4376,8 +4636,8 @@ module LindenElkPikeSim {
     assert TT.TreeThreadRE(rer, qm, code, inp, t, pc, th.exit_allowed);
 
     if AI.bpc_mem(vms.processed, th.pc, th.exit_allowed) {
-      var pts1 := PreserveSkipCaseNested(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant);
-      pts' := InvariantPreservationRENested(rer, qm, re, code, endl, ngroups, str,
+      var pts1 := PreserveSkipCaseCdn(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant);
+      pts' := InvariantPreservationRECdn(rer, qm, re, code, endl, ngroups, str,
                                       pts1, vms.(active := ac), ov, dir, ncap, nlook, nquant);
       TrcCons(pts, pts1, pts');
       return;
@@ -4398,23 +4658,23 @@ module LindenElkPikeSim {
           assert nb == s1.blocked && ni == s1.isblocked;
           var vms2 := s1.(blocked := nb, isblocked := ni, active := ac);
           assert vms2 == s1.(active := ac);
-          var pts1 := PreserveConsumeDropNested(rer, qm, re, code, endl, ngroups, str, pts, vms,
+          var pts1 := PreserveConsumeDropCdn(rer, qm, re, code, endl, ngroups, str, pts, vms,
                                           s1, ce, vms2, ncap, nlook, nquant);
-          pts' := InvariantPreservationRENested(rer, qm, re, code, endl, ngroups, str,
+          pts' := InvariantPreservationRECdn(rer, qm, re, code, endl, ngroups, str,
                                           pts1, vms2, ov, dir, ncap, nlook, nquant);
           TrcCons(pts, pts1, pts');
         } else {
           assert nb == [(th, ce)] + s1.blocked && ni == AI.pc_add(s1.isblocked, th.pc);
           var vms2 := s1.(blocked := nb, isblocked := ni, active := ac);
-          var pts1 := PreserveConsumeAddNested(rer, qm, re, code, endl, ngroups, str, pts, vms,
+          var pts1 := PreserveConsumeAddCdn(rer, qm, re, code, endl, ngroups, str, pts, vms,
                                          s1, ce, vms2, ncap, nlook, nquant);
-          pts' := InvariantPreservationRENested(rer, qm, re, code, endl, ngroups, str,
+          pts' := InvariantPreservationRECdn(rer, qm, re, code, endl, ngroups, str,
                                           pts1, vms2, ov, dir, ncap, nlook, nquant);
           TrcCons(pts, pts1, pts');
         }
       case Accept =>
         var vms2 := s1.(active := [], bestmatch := Some(th));
-        var pts1 := PreserveAcceptCaseNested(rer, qm, re, code, endl, ngroups, str, pts, vms,
+        var pts1 := PreserveAcceptCaseCdn(rer, qm, re, code, endl, ngroups, str, pts, vms,
                                        s1, vms2, ncap, nlook, nquant);
         pts' := pts1;
         TrcCons(pts, pts1, pts1);
@@ -4422,16 +4682,16 @@ module LindenElkPikeSim {
       case Jmp(x) =>
         var th' := th.(pc := x);
         var vms2 := s1.(active := [th'] + ac);
-        PreserveStutterCaseNested(rer, qm, re, code, endl, ngroups, str, pts, vms,
+        PreserveStutterCaseCdn(rer, qm, re, code, endl, ngroups, str, pts, vms,
                             s1, th', vms2, ncap, nlook, nquant);
-        pts' := InvariantPreservationRENested(rer, qm, re, code, endl, ngroups, str,
+        pts' := InvariantPreservationRECdn(rer, qm, re, code, endl, ngroups, str,
                                         pts, vms2, ov, dir, ncap, nlook, nquant);
       case Fork(x, y) =>
         var newt := AI.Thread(x, th.capture_regs, th.look_regs, th.quant_regs, th.exit_allowed);
         var vms2 := s1.(active := [newt, th.(pc := y)] + ac);
-        var pts1 := PreserveForkCaseNested(rer, qm, re, code, endl, ngroups, str, pts, vms,
+        var pts1 := PreserveForkCaseCdn(rer, qm, re, code, endl, ngroups, str, pts, vms,
                                      s1, x, y, vms2, ncap, nlook, nquant);
-        pts' := InvariantPreservationRENested(rer, qm, re, code, endl, ngroups, str,
+        pts' := InvariantPreservationRECdn(rer, qm, re, code, endl, ngroups, str,
                                         pts1, vms2, ov, dir, ncap, nlook, nquant);
         TrcTrans(pts, pts1, pts');
       case SetRegisterToCP(reg) =>
@@ -4440,22 +4700,22 @@ module LindenElkPikeSim {
         var vms2 := s1.(active := [th'] + ac);
         var pts1: PT.PikeTreeState;
         if reg % 2 == 0 {
-          pts1 := PreserveOpenCaseNested(rer, qm, re, code, endl, ngroups, str, pts, vms,
+          pts1 := PreserveOpenCaseCdn(rer, qm, re, code, endl, ngroups, str, pts, vms,
                                    s1, reg, vms2, ncap, nlook, nquant);
         } else {
-          pts1 := PreserveCloseCaseNested(rer, qm, re, code, endl, ngroups, str, pts, vms,
+          pts1 := PreserveCloseCaseCdn(rer, qm, re, code, endl, ngroups, str, pts, vms,
                                     s1, reg, vms2, ncap, nlook, nquant);
         }
-        pts' := InvariantPreservationRENested(rer, qm, re, code, endl, ngroups, str,
+        pts' := InvariantPreservationRECdn(rer, qm, re, code, endl, ngroups, str,
                                         pts1, vms2, ov, dir, ncap, nlook, nquant);
         TrcCons(pts, pts1, pts');
       case SetQuantToClock(q, bq) =>
         var ocp := if bq then Some(s1.cp) else None;
         var th' := th.(quant_regs := AReg.set_reg(th.quant_regs, q, ocp, s1.clock), pc := th.pc + 1);
         var vms2 := s1.(active := [th'] + ac);
-        var pts1 := PreserveQuantCaseNested(rer, qm, re, code, endl, ngroups, str, pts, vms,
+        var pts1 := PreserveQuantCaseCdn(rer, qm, re, code, endl, ngroups, str, pts, vms,
                                       s1, q, bq, vms2, ncap, nlook, nquant);
-        pts' := InvariantPreservationRENested(rer, qm, re, code, endl, ngroups, str,
+        pts' := InvariantPreservationRECdn(rer, qm, re, code, endl, ngroups, str,
                                         pts1, vms2, ov, dir, ncap, nlook, nquant);
         TrcTrans(pts, pts1, pts');
       case CheckOracle(l) =>
@@ -4463,32 +4723,32 @@ module LindenElkPikeSim {
           var th' := th.(pc := th.pc + 1,
                          look_regs := AReg.set_reg(th.look_regs, l, Some(s1.cp), s1.clock));
           var vms2 := s1.(active := [th'] + ac);
-          PreserveOraclePassNested(rer, qm, re, code, endl, ngroups, str, pts, vms,
+          PreserveOraclePassCdn(rer, qm, re, code, endl, ngroups, str, pts, vms,
                              s1, th', vms2, l, true, ncap, nlook, nquant);
-          pts' := InvariantPreservationRENested(rer, qm, re, code, endl, ngroups, str,
+          pts' := InvariantPreservationRECdn(rer, qm, re, code, endl, ngroups, str,
                                           pts, vms2, ov, dir, ncap, nlook, nquant);
         } else {
           var vms2 := s1.(active := ac);
-          var pts1 := PreserveOracleKillNested(rer, qm, re, code, endl, ngroups, str, pts, vms,
+          var pts1 := PreserveOracleKillCdn(rer, qm, re, code, endl, ngroups, str, pts, vms,
                                          s1, vms2, l, true, ncap, nlook, nquant);
-          pts' := InvariantPreservationRENested(rer, qm, re, code, endl, ngroups, str,
+          pts' := InvariantPreservationRECdn(rer, qm, re, code, endl, ngroups, str,
                                           pts1, vms2, ov, dir, ncap, nlook, nquant);
           TrcCons(pts, pts1, pts');
         }
       case NegCheckOracle(l) =>
         if LOr.view_get_oracle(ov, s1.cp, l) {
           var vms2 := s1.(active := ac);
-          var pts1 := PreserveOracleKillNested(rer, qm, re, code, endl, ngroups, str, pts, vms,
+          var pts1 := PreserveOracleKillCdn(rer, qm, re, code, endl, ngroups, str, pts, vms,
                                          s1, vms2, l, false, ncap, nlook, nquant);
-          pts' := InvariantPreservationRENested(rer, qm, re, code, endl, ngroups, str,
+          pts' := InvariantPreservationRECdn(rer, qm, re, code, endl, ngroups, str,
                                           pts1, vms2, ov, dir, ncap, nlook, nquant);
           TrcCons(pts, pts1, pts');
         } else {
           var th' := th.(pc := th.pc + 1);
           var vms2 := s1.(active := [th'] + ac);
-          PreserveOraclePassNested(rer, qm, re, code, endl, ngroups, str, pts, vms,
+          PreserveOraclePassCdn(rer, qm, re, code, endl, ngroups, str, pts, vms,
                              s1, th', vms2, l, false, ncap, nlook, nquant);
-          pts' := InvariantPreservationRENested(rer, qm, re, code, endl, ngroups, str,
+          pts' := InvariantPreservationRECdn(rer, qm, re, code, endl, ngroups, str,
                                           pts, vms2, ov, dir, ncap, nlook, nquant);
         }
       case WriteOracle(l) =>
@@ -4499,23 +4759,23 @@ module LindenElkPikeSim {
       case BeginLoop =>
         var th' := th.(exit_allowed := false, pc := th.pc + 1);
         var vms2 := s1.(active := [th'] + ac);
-        PreserveStutterCaseNested(rer, qm, re, code, endl, ngroups, str, pts, vms,
+        PreserveStutterCaseCdn(rer, qm, re, code, endl, ngroups, str, pts, vms,
                             s1, th', vms2, ncap, nlook, nquant);
-        pts' := InvariantPreservationRENested(rer, qm, re, code, endl, ngroups, str,
+        pts' := InvariantPreservationRECdn(rer, qm, re, code, endl, ngroups, str,
                                         pts, vms2, ov, dir, ncap, nlook, nquant);
       case EndLoop =>
         if th.exit_allowed {
           var vms2 := s1.(active := [th.(pc := th.pc + 1)] + ac);
-          var pts1 := PreserveEndLoopPassNested(rer, qm, re, code, endl, ngroups, str, pts, vms,
+          var pts1 := PreserveEndLoopPassCdn(rer, qm, re, code, endl, ngroups, str, pts, vms,
                                           s1, vms2, ncap, nlook, nquant);
-          pts' := InvariantPreservationRENested(rer, qm, re, code, endl, ngroups, str,
+          pts' := InvariantPreservationRECdn(rer, qm, re, code, endl, ngroups, str,
                                           pts1, vms2, ov, dir, ncap, nlook, nquant);
           TrcCons(pts, pts1, pts');
         } else {
           var vms2 := s1.(active := ac);
-          var pts1 := PreserveEndLoopKillNested(rer, qm, re, code, endl, ngroups, str, pts, vms,
+          var pts1 := PreserveEndLoopKillCdn(rer, qm, re, code, endl, ngroups, str, pts, vms,
                                           s1, vms2, ncap, nlook, nquant);
-          pts' := InvariantPreservationRENested(rer, qm, re, code, endl, ngroups, str,
+          pts' := InvariantPreservationRECdn(rer, qm, re, code, endl, ngroups, str,
                                           pts1, vms2, ov, dir, ncap, nlook, nquant);
           TrcCons(pts, pts1, pts');
         }
@@ -4526,29 +4786,29 @@ module LindenElkPikeSim {
           var vms2 := s1.(active := [th.(pc := th.pc + 1)] + ac);
           PreserveCdnPass(rer, qm, re, code, endl, ngroups, str, pts, vms,
                           s1, vms2, qid, ncap, nlook, nquant);
-          pts' := InvariantPreservationRENested(rer, qm, re, code, endl, ngroups, str,
+          pts' := InvariantPreservationRECdn(rer, qm, re, code, endl, ngroups, str,
                                                 pts, vms2, ov, dir, ncap, nlook, nquant);
         } else {
           var vms2 := s1.(active := ac);
           var pts1 := PreserveCdnKill(rer, qm, re, code, endl, ngroups, str, pts, vms,
                                       s1, vms2, qid, ncap, nlook, nquant);
-          pts' := InvariantPreservationRENested(rer, qm, re, code, endl, ngroups, str,
+          pts' := InvariantPreservationRECdn(rer, qm, re, code, endl, ngroups, str,
                                                 pts1, vms2, ov, dir, ncap, nlook, nquant);
           TrcCons(pts, pts1, pts');
         }
       case AnchorAssertion(a) =>
         if LAnc.is_satisfied(a, s1.context, dir) {
           var vms2 := s1.(active := [th.(pc := th.pc + 1)] + ac);
-          var pts1 := PreserveAnchorPassNested(rer, qm, re, code, endl, ngroups, str, pts, vms,
+          var pts1 := PreserveAnchorPassCdn(rer, qm, re, code, endl, ngroups, str, pts, vms,
                                          s1, vms2, a, ncap, nlook, nquant);
-          pts' := InvariantPreservationRENested(rer, qm, re, code, endl, ngroups, str,
+          pts' := InvariantPreservationRECdn(rer, qm, re, code, endl, ngroups, str,
                                           pts1, vms2, ov, dir, ncap, nlook, nquant);
           TrcCons(pts, pts1, pts');
         } else {
           var vms2 := s1.(active := ac);
-          var pts1 := PreserveAnchorKillNested(rer, qm, re, code, endl, ngroups, str, pts, vms,
+          var pts1 := PreserveAnchorKillCdn(rer, qm, re, code, endl, ngroups, str, pts, vms,
                                          s1, vms2, a, ncap, nlook, nquant);
-          pts' := InvariantPreservationRENested(rer, qm, re, code, endl, ngroups, str,
+          pts' := InvariantPreservationRECdn(rer, qm, re, code, endl, ngroups, str,
                                           pts1, vms2, ov, dir, ncap, nlook, nquant);
           TrcCons(pts, pts1, pts');
         }
@@ -4558,6 +4818,30 @@ module LindenElkPikeSim {
         assert false;
         pts' := pts;
     }
+  }
+
+  /** (G5a-1 row I) The narrow name, as a corollary of `InvariantPreservationRECdn`. */
+  lemma InvariantPreservationRENested(
+      rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+      ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+      ov: LOr.OracleView, dir: LAnc.direction, ncap: int, nlook: int, nquant: int)
+    returns (pts': PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires qm.ov == ov
+    requires SizesOkRE(re, ncap, nlook, nquant)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.processed.true_set| == RB.size(code) && |vms.processed.false_set| == RB.size(code)
+    requires dir == LAnc.Forward
+    requires GuardsOkAt(qm, code, vms.cdn, str, vms.cp)   // (G5a step 2) the table is guard-sound here
+    ensures TrcRE(pts, pts')
+    ensures pts'.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts',
+                          AI.FAdvanceEpsilon(code, vms, ov, dir).0, ncap, nlook, nquant)
+  {
+    StaticCoreNestedIsCdn(qm, re, code, endl);
+    pts' := InvariantPreservationRECdn(rer, qm, re, code, endl, ngroups, str, pts, vms, ov, dir, ncap, nlook, nquant);
   }
 
   // =========================================================================
@@ -5117,13 +5401,13 @@ module LindenElkPikeSim {
       no-write fact `StaticOkNoWrite -> StaticOkNoWriteNested`, and the
       self-recursion pointed at `FindMatchSimRENested`. This is the full
       depth-k Pike search <-> tree-BFS simulation. */
-  lemma FindMatchSimRENested(
+  lemma FindMatchSimRECdn(
       rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
       ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
       ov: LOr.OracleView, dir: LAnc.direction, cdn: LCdn.cdns,
       ncap: int, nlook: int, nquant: int)
     returns (bestT: Option<LT.Leaf>)
-    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires StaticCoreCdnRE(qm, re, code, endl)
     requires qm.ov == ov
     requires SizesOkRE(re, ncap, nlook, nquant)
     requires pts.PTS?
@@ -5146,10 +5430,10 @@ module LindenElkPikeSim {
     GuardsOkRunAt(qm, code, cdn, ov, str, vms.cp, vms.context);
     assert GuardsOkAt(qm, code, s0.cdn, str, s0.cp);
     assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, s0, ncap, nlook, nquant);
-    var pts1 := InvariantPreservationRENested(rer, qm, re, code, endl, ngroups, str,
+    var pts1 := InvariantPreservationRECdn(rer, qm, re, code, endl, ngroups, str,
                                         pts, s0, ov, dir, ncap, nlook, nquant);
     var (s1, ov1) := AI.FAdvanceEpsilon(code, s0, ov, dir);
-    StaticOkNoWriteNested(qm, re, code, endl);
+    StaticOkNoWriteCdn(qm, re, code, endl);
     CM.FAdvanceEpsilonOvStable(code, s0, ov, dir);
     assert ov1 == ov;
     assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, s1, ncap, nlook, nquant);
@@ -5281,13 +5565,40 @@ module LindenElkPikeSim {
         }
         assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts2, s4, ncap, nlook, nquant);
 
-        bestT := FindMatchSimRENested(rer, qm, re, code, endl, ngroups, str,
+        bestT := FindMatchSimRECdn(rer, qm, re, code, endl, ngroups, str,
                                 pts2, s4, ov1, dir, cdn, ncap, nlook, nquant);
         TrcSnoc(pts, pts1, pts2);
         TrcTrans(pts, pts2, PT.PTS_final(bestT));
         assert PIV.BestMatchRE(re, qm, str, bestT, AI.FFindMatch(code, str, s4, ov1, dir, cdn).0);
       }
     }
+  }
+
+  /** (G5a-1 row I) The narrow name, as a corollary of `FindMatchSimRECdn`. */
+  lemma FindMatchSimRENested(
+      rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+      ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+      ov: LOr.OracleView, dir: LAnc.direction, cdn: LCdn.cdns,
+      ncap: int, nlook: int, nquant: int)
+    returns (bestT: Option<LT.Leaf>)
+    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires qm.ov == ov
+    requires SizesOkRE(re, ncap, nlook, nquant)
+    requires pts.PTS?
+    requires !rer.multiline
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.processed.true_set| == RB.size(code) && |vms.processed.false_set| == RB.size(code)
+    requires dir == LAnc.Forward
+    requires GuardsOkRun(qm, code, cdn, ov, str)   // (G5a step 2) every position's table is guard-sound
+    requires vms.context.nextchar == AI.get_char(str, vms.cp)
+    ensures TrcRE(pts, PT.PTS_final(bestT))
+    ensures PIV.BestMatchRE(re, qm, str, bestT, AI.FFindMatch(code, str, vms, ov, dir, cdn).0)
+    // §2.5b rung F: the winning thread keeps its live-stamp register facts
+    ensures AI.FFindMatch(code, str, vms, ov, dir, cdn).0.Some? ==>
+              BestLiveRE(re, AI.FFindMatch(code, str, vms, ov, dir, cdn).0.value)
+  {
+    StaticCoreNestedIsCdn(qm, re, code, endl);
+    bestT := FindMatchSimRECdn(rer, qm, re, code, endl, ngroups, str, pts, vms, ov, dir, cdn, ncap, nlook, nquant);
   }
 
   // NextInp of the cp-input is the cp+1-input (wrapper collecting the bridges).
@@ -5524,10 +5835,10 @@ module LindenElkPikeSim {
       not-Cold fact through `NotColdEntryRENested`; every other callee
       (`NestTopInit`/`NfaRepIncrRE`/`CM.*`) is depth-blind. This is the depth-k
       search-entry establishment `FindMatchBodyAtCpNested` needs. */
-  lemma InitialPikeInvFullREAtCpNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
+  lemma InitialPikeInvFullREAtCpCdn(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
                              endl: nat, ngroups: nat, str: string, cp: nat, tree: LT.Tree, vms: AI.VmState,
                              ncap: int, nlook: int, nquant: int)
-    requires NR.NestedFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase && !rer.multiline && AR.QmapOk(re, qm)
+    requires NR.NestedFragmentCdnRE(re) && T.TransWf(re) && !rer.ignoreCase && !rer.multiline && AR.QmapOk(re, qm)
     requires code == CP.compile_to_bytecode(re)
     requires NR.NfaRepRE(re, code, 0, endl)
     requires NR.GetPcRE(code, endl) == Some(RB.Accept)
@@ -5545,7 +5856,7 @@ module LindenElkPikeSim {
     ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str,
                           PT.PikeTreeInitialState(tree, PIV.InpOfCp(str, cp)), vms, ncap, nlook, nquant)
   {
-    PIV.InitialPikeInvREAtCpNested(rer, qm, re, code, ngroups, str, cp, tree, vms, ncap, nlook, nquant);
+    PIV.InitialPikeInvREAtCpCdn(rer, qm, re, code, ngroups, str, cp, tree, vms, ncap, nlook, nquant);
 
     var th := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
 
@@ -5601,7 +5912,7 @@ module LindenElkPikeSim {
     }
 
     assert forall t | t in vms.active :: EaColdOkRE(code, t) by {
-      NI.NotColdEntryRENested(re, code, endl);
+      NI.NotColdEntryRECdn(re, code, endl);
       forall t | t in vms.active ensures EaColdOkRE(code, t) {
         assert t == th;
       }
@@ -5619,6 +5930,32 @@ module LindenElkPikeSim {
     }
   }
 
+  /** (G5a-1 row I) The narrow name, as a corollary of `InitialPikeInvFullREAtCpCdn`. */
+  lemma InitialPikeInvFullREAtCpNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code,
+                             endl: nat, ngroups: nat, str: string, cp: nat, tree: LT.Tree, vms: AI.VmState,
+                             ncap: int, nlook: int, nquant: int)
+    requires NR.NestedFragmentRE(re) && T.TransWf(re) && !rer.ignoreCase && !rer.multiline && AR.QmapOk(re, qm)
+    requires code == CP.compile_to_bytecode(re)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires cp <= |str|
+    requires TT.TreeThreadRE(rer, qm, code, PIV.InpOfCp(str, cp), tree, 0, false)
+    requires vms.cp == cp
+    requires vms.clock == 0
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires vms.active == [AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant))]
+    requires vms.blocked == []
+    requires vms.bestmatch.None?
+    requires vms.processed == AI.init_bpcset(|code|)
+    requires vms.isblocked == AI.init_pcset(|code|)
+    requires vms.context == AI.cp_context(cp, str, LAnc.Forward)
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str,
+                          PT.PikeTreeInitialState(tree, PIV.InpOfCp(str, cp)), vms, ncap, nlook, nquant)
+  {
+    NR.NarrowIsCdn(re);
+    InitialPikeInvFullREAtCpCdn(rer, qm, re, code, endl, ngroups, str, cp, tree, vms, ncap, nlook, nquant);
+  }
+
   // =========================================================================
   // L4 depth-k (ADDITIVE AUDIT): pure-sim `*Nested` variants. Each is the
   // verbatim body of its `StaticOkRE` original with the static package
@@ -5629,12 +5966,12 @@ module LindenElkPikeSim {
   // =========================================================================
 
   /** ADDITIVE nested-fragment variant of `PreserveSkipCase` (audit: pure-sim). */
-  lemma PreserveSkipCaseNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+  lemma PreserveSkipCaseCdn(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                          ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
                          ncap: int, nlook: int, nquant: int)
     returns (pts1: PT.PikeTreeState)
     requires !rer.multiline
-    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires StaticCoreCdnRE(qm, re, code, endl)
     requires pts.PTS?
     requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
     requires |vms.active| > 0
@@ -5689,14 +6026,34 @@ module LindenElkPikeSim {
     assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms', ncap, nlook, nquant);
   }
 
+  /** (G5a-1 row I) The narrow name, as a corollary of `PreserveSkipCaseCdn`. */
+  lemma PreserveSkipCaseNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                         ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                         ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    ensures PT.PikeTreeStep(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1,
+                          vms.(active := vms.active[1..]), ncap, nlook, nquant)
+  {
+    StaticCoreNestedIsCdn(qm, re, code, endl);
+    pts1 := PreserveSkipCaseCdn(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant);
+  }
+
   /** ADDITIVE nested-fragment variant of `PreserveAcceptCase` (audit: pure-sim). */
-  lemma PreserveAcceptCaseNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+  lemma PreserveAcceptCaseCdn(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                            ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
                            s1: AI.VmState, vms2: AI.VmState,
                            ncap: int, nlook: int, nquant: int)
     returns (pts1: PT.PikeTreeState)
     requires !rer.multiline
-    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires StaticCoreCdnRE(qm, re, code, endl)
     requires pts.PTS?
     requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
     requires |vms.active| > 0
@@ -5749,14 +6106,39 @@ module LindenElkPikeSim {
     assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
   }
 
+  /** (G5a-1 row I) The narrow name, as a corollary of `PreserveAcceptCaseCdn`. */
+  lemma PreserveAcceptCaseNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                           ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                           s1: AI.VmState, vms2: AI.VmState,
+                           ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.Accept)
+    requires vms2 == s1.(active := [], bestmatch := Some(vms.active[0]))
+    ensures PT.PikeTreeStep(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
+  {
+    StaticCoreNestedIsCdn(qm, re, code, endl);
+    pts1 := PreserveAcceptCaseCdn(rer, qm, re, code, endl, ngroups, str, pts, vms, s1, vms2, ncap, nlook, nquant);
+  }
+
   /** ADDITIVE nested-fragment variant of `PreserveForkCase` (audit: pure-sim). */
-  lemma PreserveForkCaseNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+  lemma PreserveForkCaseCdn(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                          ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
                          s1: AI.VmState, x: int, y: int, vms2: AI.VmState,
                          ncap: int, nlook: int, nquant: int)
     returns (pts1: PT.PikeTreeState)
     requires !rer.multiline
-    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires StaticCoreCdnRE(qm, re, code, endl)
     requires pts.PTS?
     requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
     requires |vms.active| > 0
@@ -5930,14 +6312,41 @@ module LindenElkPikeSim {
     }
   }
 
+  /** (G5a-1 row I) The narrow name, as a corollary of `PreserveForkCaseCdn`. */
+  lemma PreserveForkCaseNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                         ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                         s1: AI.VmState, x: int, y: int, vms2: AI.VmState,
+                         ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.Fork(x, y))
+    requires vms2 == s1.(active :=
+      [AI.Thread(x, vms.active[0].capture_regs, vms.active[0].look_regs, vms.active[0].quant_regs, vms.active[0].exit_allowed),
+       vms.active[0].(pc := y)] + s1.active[1..])
+    ensures TrcRE(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
+  {
+    StaticCoreNestedIsCdn(qm, re, code, endl);
+    pts1 := PreserveForkCaseCdn(rer, qm, re, code, endl, ngroups, str, pts, vms, s1, x, y, vms2, ncap, nlook, nquant);
+  }
+
   /** ADDITIVE nested-fragment variant of `PreserveEndLoopPass` (audit: pure-sim). */
-  lemma PreserveEndLoopPassNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+  lemma PreserveEndLoopPassCdn(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                             ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
                             s1: AI.VmState, vms2: AI.VmState,
                             ncap: int, nlook: int, nquant: int)
     returns (pts1: PT.PikeTreeState)
     requires !rer.multiline
-    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires StaticCoreCdnRE(qm, re, code, endl)
     requires pts.PTS?
     requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
     requires |vms.active| > 0
@@ -6010,14 +6419,40 @@ module LindenElkPikeSim {
     assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
   }
 
-  /** ADDITIVE nested-fragment variant of `PreserveEndLoopKill` (audit: pure-sim). */
-  lemma PreserveEndLoopKillNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+  /** (G5a-1 row I) The narrow name, as a corollary of `PreserveEndLoopPassCdn`. */
+  lemma PreserveEndLoopPassNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                             ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
                             s1: AI.VmState, vms2: AI.VmState,
                             ncap: int, nlook: int, nquant: int)
     returns (pts1: PT.PikeTreeState)
     requires !rer.multiline
     requires StaticCoreNestedRE(qm, re, code, endl)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.EndLoop)
+    requires vms.active[0].exit_allowed
+    requires vms2 == s1.(active := [vms.active[0].(pc := vms.active[0].pc + 1)] + s1.active[1..])
+    ensures PT.PikeTreeStep(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
+  {
+    StaticCoreNestedIsCdn(qm, re, code, endl);
+    pts1 := PreserveEndLoopPassCdn(rer, qm, re, code, endl, ngroups, str, pts, vms, s1, vms2, ncap, nlook, nquant);
+  }
+
+  /** ADDITIVE nested-fragment variant of `PreserveEndLoopKill` (audit: pure-sim). */
+  lemma PreserveEndLoopKillCdn(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                            ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                            s1: AI.VmState, vms2: AI.VmState,
+                            ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticCoreCdnRE(qm, re, code, endl)
     requires pts.PTS?
     requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
     requires |vms.active| > 0
@@ -6070,14 +6505,40 @@ module LindenElkPikeSim {
     assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
   }
 
+  /** (G5a-1 row I) The narrow name, as a corollary of `PreserveEndLoopKillCdn`. */
+  lemma PreserveEndLoopKillNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                            ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                            s1: AI.VmState, vms2: AI.VmState,
+                            ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.EndLoop)
+    requires !vms.active[0].exit_allowed
+    requires vms2 == s1.(active := s1.active[1..])
+    ensures PT.PikeTreeStep(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
+  {
+    StaticCoreNestedIsCdn(qm, re, code, endl);
+    pts1 := PreserveEndLoopKillCdn(rer, qm, re, code, endl, ngroups, str, pts, vms, s1, vms2, ncap, nlook, nquant);
+  }
+
   /** ADDITIVE nested-fragment variant of `PreserveAnchorPass` (audit: pure-sim). */
-  lemma PreserveAnchorPassNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+  lemma PreserveAnchorPassCdn(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                            ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
                            s1: AI.VmState, vms2: AI.VmState, a: R.anchor,
                            ncap: int, nlook: int, nquant: int)
     returns (pts1: PT.PikeTreeState)
     requires !rer.multiline
-    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires StaticCoreCdnRE(qm, re, code, endl)
     requires pts.PTS?
     requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
     requires |vms.active| > 0
@@ -6156,14 +6617,40 @@ module LindenElkPikeSim {
     assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
   }
 
-  /** ADDITIVE nested-fragment variant of `PreserveAnchorKill` (audit: pure-sim). */
-  lemma PreserveAnchorKillNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+  /** (G5a-1 row I) The narrow name, as a corollary of `PreserveAnchorPassCdn`. */
+  lemma PreserveAnchorPassNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                            ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
                            s1: AI.VmState, vms2: AI.VmState, a: R.anchor,
                            ncap: int, nlook: int, nquant: int)
     returns (pts1: PT.PikeTreeState)
     requires !rer.multiline
     requires StaticCoreNestedRE(qm, re, code, endl)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.AnchorAssertion(a))
+    requires LAnc.is_satisfied(a, vms.context, LAnc.Forward)
+    requires vms2 == s1.(active := [vms.active[0].(pc := vms.active[0].pc + 1)] + s1.active[1..])
+    ensures PT.PikeTreeStep(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
+  {
+    StaticCoreNestedIsCdn(qm, re, code, endl);
+    pts1 := PreserveAnchorPassCdn(rer, qm, re, code, endl, ngroups, str, pts, vms, s1, vms2, a, ncap, nlook, nquant);
+  }
+
+  /** ADDITIVE nested-fragment variant of `PreserveAnchorKill` (audit: pure-sim). */
+  lemma PreserveAnchorKillCdn(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                           ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                           s1: AI.VmState, vms2: AI.VmState, a: R.anchor,
+                           ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticCoreCdnRE(qm, re, code, endl)
     requires pts.PTS?
     requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
     requires |vms.active| > 0
@@ -6221,14 +6708,40 @@ module LindenElkPikeSim {
     assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
   }
 
+  /** (G5a-1 row I) The narrow name, as a corollary of `PreserveAnchorKillCdn`. */
+  lemma PreserveAnchorKillNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                           ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                           s1: AI.VmState, vms2: AI.VmState, a: R.anchor,
+                           ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.AnchorAssertion(a))
+    requires !LAnc.is_satisfied(a, vms.context, LAnc.Forward)
+    requires vms2 == s1.(active := s1.active[1..])
+    ensures PT.PikeTreeStep(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
+  {
+    StaticCoreNestedIsCdn(qm, re, code, endl);
+    pts1 := PreserveAnchorKillCdn(rer, qm, re, code, endl, ngroups, str, pts, vms, s1, vms2, a, ncap, nlook, nquant);
+  }
+
   /** ADDITIVE nested-fragment variant of `PreserveOracleKill` (audit: pure-sim). */
-  lemma PreserveOracleKillNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+  lemma PreserveOracleKillCdn(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                            ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
                            s1: AI.VmState, vms2: AI.VmState, l: int, pos: bool,
                            ncap: int, nlook: int, nquant: int)
     returns (pts1: PT.PikeTreeState)
     requires !rer.multiline
-    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires StaticCoreCdnRE(qm, re, code, endl)
     requires pts.PTS?
     requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
     requires |vms.active| > 0
@@ -6285,14 +6798,41 @@ module LindenElkPikeSim {
     assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
   }
 
+  /** (G5a-1 row I) The narrow name, as a corollary of `PreserveOracleKillCdn`. */
+  lemma PreserveOracleKillNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                           ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                           s1: AI.VmState, vms2: AI.VmState, l: int, pos: bool,
+                           ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat)
+          == Some(if pos then RB.CheckOracle(l) else RB.NegCheckOracle(l))
+    requires LOr.view_get_oracle(qm.ov, vms.cp, l) != pos
+    requires vms2 == s1.(active := s1.active[1..])
+    ensures PT.PikeTreeStep(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
+  {
+    StaticCoreNestedIsCdn(qm, re, code, endl);
+    pts1 := PreserveOracleKillCdn(rer, qm, re, code, endl, ngroups, str, pts, vms, s1, vms2, l, pos, ncap, nlook, nquant);
+  }
+
   /** ADDITIVE nested-fragment variant of `PreserveConsumeAdd` (audit: pure-sim). */
-  lemma PreserveConsumeAddNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+  lemma PreserveConsumeAddCdn(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                            ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
                            s1: AI.VmState, ce: RC.char_expectation, vms2: AI.VmState,
                            ncap: int, nlook: int, nquant: int)
     returns (pts1: PT.PikeTreeState)
     requires !rer.multiline
-    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires StaticCoreCdnRE(qm, re, code, endl)
     requires pts.PTS?
     requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
     requires |vms.active| > 0
@@ -6406,14 +6946,42 @@ module LindenElkPikeSim {
     }
   }
 
+  /** (G5a-1 row I) The narrow name, as a corollary of `PreserveConsumeAddCdn`. */
+  lemma PreserveConsumeAddNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                           ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                           s1: AI.VmState, ce: RC.char_expectation, vms2: AI.VmState,
+                           ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.Consume(ce))
+    requires !AI.pc_mem(s1.isblocked, vms.active[0].pc)
+    requires vms2 == s1.(blocked := [(vms.active[0], ce)] + s1.blocked,
+                         isblocked := AI.pc_add(s1.isblocked, vms.active[0].pc),
+                         active := s1.active[1..])
+    ensures PT.PikeTreeStep(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
+  {
+    StaticCoreNestedIsCdn(qm, re, code, endl);
+    pts1 := PreserveConsumeAddCdn(rer, qm, re, code, endl, ngroups, str, pts, vms, s1, ce, vms2, ncap, nlook, nquant);
+  }
+
   /** ADDITIVE nested-fragment variant of `PreserveConsumeDrop` (audit: pure-sim). */
-  lemma PreserveConsumeDropNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+  lemma PreserveConsumeDropCdn(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                             ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
                             s1: AI.VmState, ce: RC.char_expectation, vms2: AI.VmState,
                             ncap: int, nlook: int, nquant: int)
     returns (pts1: PT.PikeTreeState)
     requires !rer.multiline
-    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires StaticCoreCdnRE(qm, re, code, endl)
     requires pts.PTS?
     requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
     requires |vms.active| > 0
@@ -6491,6 +7059,32 @@ module LindenElkPikeSim {
     assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
   }
 
+  /** (G5a-1 row I) The narrow name, as a corollary of `PreserveConsumeDropCdn`. */
+  lemma PreserveConsumeDropNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                            ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                            s1: AI.VmState, ce: RC.char_expectation, vms2: AI.VmState,
+                            ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.Consume(ce))
+    requires AI.pc_mem(s1.isblocked, vms.active[0].pc)
+    requires vms2 == s1.(active := s1.active[1..])
+    ensures PT.PikeTreeStep(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
+  {
+    StaticCoreNestedIsCdn(qm, re, code, endl);
+    pts1 := PreserveConsumeDropCdn(rer, qm, re, code, endl, ngroups, str, pts, vms, s1, ce, vms2, ncap, nlook, nquant);
+  }
+
   // =========================================================================
   // §2.5b RUNG D2 (2026-11-04): THE TRUE STAMP `SetQuantToClock(qid, true)`.
   //
@@ -6520,6 +7114,25 @@ module LindenElkPikeSim {
     && NR.GetPcRE(code, endl) == Some(RB.Accept)
     && |code| == endl + 1
     && PIV.StutterTameRE(code)
+  }
+
+  /** (G5a-1 row I) `StaticCoreNestedRE` on the TOP-LEVEL fragment (`NR.NestedFragmentCdnRE`: the nested
+      fragment plus the greedy CDN plus outside look bodies). What the whole-regex simulation takes; rows and
+      look bodies keep `StaticCoreNestedRE`. */
+  ghost predicate StaticCoreCdnRE(qm: AR.QMap, re: R.regex, code: RB.code, endl: nat) {
+    NR.NestedFragmentCdnRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re)
+    && T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
+    && NR.NfaRepRE(re, code, 0, endl)
+    && NR.GetPcRE(code, endl) == Some(RB.Accept)
+    && |code| == endl + 1
+    && PIV.StutterTameRE(code)
+  }
+
+  lemma StaticCoreNestedIsCdn(qm: AR.QMap, re: R.regex, code: RB.code, endl: nat)
+    requires StaticCoreNestedRE(qm, re, code, endl)
+    ensures StaticCoreCdnRE(qm, re, code, endl)
+  {
+    NR.NarrowIsCdn(re);
   }
 
   lemma StaticOkIsCoreRE(qm: AR.QMap, re: R.regex, code: RB.code, endl: nat)
@@ -6640,10 +7253,10 @@ module LindenElkPikeSim {
     assert forall kk: int :: kk != qid0 ==> AI.get_idx(quant'.a_cp, kk) == AI.get_idx(quant.a_cp, kk);
     StampQuantWriteTop(re, code, endl, pc, quant.a_cp, quant'.a_cp, qid0, true);
   }
-  lemma StampStepThreadRENested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+  lemma StampStepThreadRECdn(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                           inp: LC.Input, t: LT.Tree, gm: LG.GroupMap, th: AI.Thread, pc: nat,
                           qid0: int, cp: nat, S: int)
-    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re)
+    requires NR.NestedFragmentCdnRE(re) && PIV.CapUnique(re)
     requires !rer.multiline && PIV.QuantUnique(re)
     requires T.TransWf(re) && AR.QmapOk(re, qm)
     requires NR.NfaRepRE(re, code, 0, endl)
@@ -6719,7 +7332,7 @@ module LindenElkPikeSim {
 
     PIV.CapIdsInLooksQidBodySubset(re, qid);
     assert PIV.LooksCapUnset(PIV.QidBody(re, qid), cc);
-    PIV.GmOfLiveResetGMResetNested(re, qm, caps, th.look_regs, quant, qid, clk);
+    PIV.GmOfLiveResetGMResetCdn(re, qm, caps, th.look_regs, quant, qid, clk);
     var quantN := AReg.set_reg(quant, qid0, None, clk);
     var quant' := AReg.set_reg(quant, qid0, Some(cp), clk);
     assert quantN == AReg.set_reg(quant, qid, None, clk);
@@ -6739,6 +7352,49 @@ module LindenElkPikeSim {
     // The stamp invariant crosses the mark (it clears qid0's stamp).
     assert forall kk: int :: kk != qid0 ==> AI.get_idx(quant'.a_cp, kk) == AI.get_idx(quant.a_cp, kk);
     StampQuantWriteTop(re, code, endl, pc, quant.a_cp, quant'.a_cp, qid0, true);
+  }
+
+  /** (G5a-1 row I) The narrow name, as a corollary of `StampStepThreadRECdn`. */
+  lemma StampStepThreadRENested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                          inp: LC.Input, t: LT.Tree, gm: LG.GroupMap, th: AI.Thread, pc: nat,
+                          qid0: int, cp: nat, S: int)
+    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re)
+    requires !rer.multiline && PIV.QuantUnique(re)
+    requires T.TransWf(re) && AR.QmapOk(re, qm)
+    requires NR.NfaRepRE(re, code, 0, endl)
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires th.pc >= 0 && pc == th.pc as nat && pc <= endl
+    requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid0, true))
+    requires TT.TreeThreadRE(rer, qm, code, inp, t, pc, th.exit_allowed)
+    requires StampTopRE(re, code, endl, pc, th.quant_regs.a_cp)
+    requires NI.NestTopRE(re, code, endl, pc, th.capture_regs.a_clk, th.quant_regs.a_clk)
+    requires CM.ThreadClocksLE(th, S)
+    requires PIV.CapRegWf(th.capture_regs)
+    requires |th.quant_regs.a_clk| >= R.max_quant(re) + 1
+    requires |th.quant_regs.a_cp| == |th.quant_regs.a_clk|
+    requires S >= 0
+    requires PIV.LooksCapUnset(re, th.capture_regs.a_clk)
+    ensures t.GroupActionT? && t.g.Reset? && qid0 in qm.quants && qm.quants[qid0] == t.g.gl
+    ensures TREP.StampShape(qm, qid0, t)
+    ensures var p := TREP.FirstEmptyPathR(qm, qm.bodies[qid0], inp);
+      p.Some? && TREP.PeelT(p.value, t.t).Some?
+      && TT.TreeThreadRE(rer, qm, code, inp, TREP.PeelT(p.value, t.t).value, pc + 1, th.exit_allowed)
+    // the facts the readout needs: the site is a present, outside-look quantifier
+    ensures qid0 >= 0 && (qid0 as nat) in PIV.QuantIdsOutsideLooks(re) && (qid0 as nat) in PIV.QuantIds(re)
+    ensures PIV.PathPresentQ(re, th.capture_regs.a_clk, th.quant_regs.a_clk, -1, qid0 as nat)
+    ensures var quant' := AReg.set_reg(th.quant_regs, qid0, Some(cp), S + 1);
+      t.GroupActionT? && t.g.Reset? ==>
+        PIV.GmOfLive(re, th.capture_regs, th.look_regs, quant') == LG.GMReset(t.g.gl, PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs))
+    ensures var quant' := AReg.set_reg(th.quant_regs, qid0, Some(cp), S + 1);
+      pc + 1 <= endl && NI.NestTopRE(re, code, endl, pc + 1, th.capture_regs.a_clk, quant'.a_clk)
+    ensures var quant' := AReg.set_reg(th.quant_regs, qid0, Some(cp), S + 1);
+      CM.RegsClocksLE(quant', S + 1)
+      && |quant'.a_cp| == |th.quant_regs.a_cp| && |quant'.a_clk| == |th.quant_regs.a_clk|
+    ensures var quant' := AReg.set_reg(th.quant_regs, qid0, Some(cp), S + 1);
+      pc + 1 <= endl && StampTopRE(re, code, endl, pc + 1, quant'.a_cp)
+  {
+    NR.NarrowIsCdn(re);
+    StampStepThreadRECdn(rer, qm, re, code, endl, inp, t, gm, th, pc, qid0, cp, S);
   }
   /** THE TRUE STAMP through the readout: the successor's tie is the reset of
       q0's body followed by its first empty path at `cp` — exactly the tree's
@@ -6980,13 +7636,13 @@ module LindenElkPikeSim {
   /** Per-case preservation for the TRUE stamp `SetQuantToClock(qid0, true)`:
       one VM step against `|p| + 1` tree steps (the `Reset`, then the virtual
       chain), the readout gaining exactly the chain (`ReadoutStampRE`). */
-  lemma PreserveStampCaseNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+  lemma PreserveStampCaseCdn(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                           ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
                           s1: AI.VmState, qid0: int, vms2: AI.VmState,
                           ncap: int, nlook: int, nquant: int)
     returns (pts2: PT.PikeTreeState)
     requires !rer.multiline
-    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires StaticCoreCdnRE(qm, re, code, endl)
     requires SizesOkRE(re, ncap, nlook, nquant)
     requires pts.PTS?
     requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
@@ -7024,7 +7680,7 @@ module LindenElkPikeSim {
     assert LC.Idx(inp) == cp;
 
     // The bundled true-stamp step.
-    StampStepThreadRENested(rer, qm, re, code, endl, inp, t, gm, th, pc, qid0, cp, vms.clock);
+    StampStepThreadRECdn(rer, qm, re, code, endl, inp, t, gm, th, pc, qid0, cp, vms.clock);
     var quant' := AReg.set_reg(th.quant_regs, qid0, Some(cp), vms.clock + 1);
     var th' := th.(quant_regs := quant', pc := th.pc + 1);
     assert s1.cp == vms.cp && s1.clock == vms.clock + 1;
@@ -7106,6 +7762,34 @@ module LindenElkPikeSim {
     assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts2, vms2, ncap, nlook, nquant);
   }
 
+  /** (G5a-1 row I) The narrow name, as a corollary of `PreserveStampCaseCdn`. */
+  lemma PreserveStampCaseNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                          ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                          s1: AI.VmState, qid0: int, vms2: AI.VmState,
+                          ncap: int, nlook: int, nquant: int)
+    returns (pts2: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticCoreNestedRE(qm, re, code, endl)
+    requires SizesOkRE(re, ncap, nlook, nquant)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.SetQuantToClock(qid0, true))
+    requires vms2 == s1.(active :=
+      [vms.active[0].(quant_regs := AReg.set_reg(vms.active[0].quant_regs, qid0, Some(s1.cp), s1.clock),
+                      pc := vms.active[0].pc + 1)] + s1.active[1..])
+    ensures TrcRE(pts, pts2)
+    ensures pts2.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts2, vms2, ncap, nlook, nquant)
+  {
+    StaticCoreNestedIsCdn(qm, re, code, endl);
+    pts2 := PreserveStampCaseCdn(rer, qm, re, code, endl, ngroups, str, pts, vms, s1, qid0, vms2, ncap, nlook, nquant);
+  }
+
 
   /** (§2.5b rung D2) Per-case preservation for `SetQuantToClock(qid0, bq)`
       WITHOUT the interim gate: the clock mark is one tree step
@@ -7148,6 +7832,42 @@ module LindenElkPikeSim {
   /** (§2.5b rung D2) Per-case preservation for `SetQuantToClock(qid0, bq)`
       WITHOUT the interim gate: the clock mark is one tree step
       (`PreserveMarkCase`), the true stamp `|p| + 1` (`PreserveStampCase`). */
+  lemma PreserveQuantCaseCdn(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                          ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
+                          s1: AI.VmState, qid0: int, bq: bool, vms2: AI.VmState,
+                          ncap: int, nlook: int, nquant: int)
+    returns (pts1: PT.PikeTreeState)
+    requires !rer.multiline
+    requires StaticCoreCdnRE(qm, re, code, endl)
+    requires SizesOkRE(re, ncap, nlook, nquant)
+    requires pts.PTS?
+    requires PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts, vms, ncap, nlook, nquant)
+    requires |vms.active| > 0
+    requires !AI.bpc_mem(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed)
+    requires s1 == vms.(clock := vms.clock + 1,
+                        processed := AI.bpc_add(vms.processed, vms.active[0].pc, vms.active[0].exit_allowed))
+    requires vms.active[0].pc >= 0
+    requires NR.GetPcRE(code, vms.active[0].pc as nat) == Some(RB.SetQuantToClock(qid0, bq))
+    requires vms2 == s1.(active :=
+      [vms.active[0].(quant_regs := AReg.set_reg(vms.active[0].quant_regs, qid0,
+                                                 if bq then Some(s1.cp) else None, s1.clock),
+                      pc := vms.active[0].pc + 1)] + s1.active[1..])
+    ensures TrcRE(pts, pts1)
+    ensures pts1.PTS?
+    ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
+  {
+    if bq {
+      pts1 := PreserveStampCaseCdn(rer, qm, re, code, endl, ngroups, str, pts, vms, s1, qid0, vms2,
+                                 ncap, nlook, nquant);
+    } else {
+      pts1 := PreserveMarkCaseCdn(rer, qm, re, code, endl, ngroups, str, pts, vms, s1, qid0, bq, vms2,
+                                ncap, nlook, nquant);
+      TrcRefl(pts1);
+      TrcCons(pts, pts1, pts1);
+    }
+  }
+
+  /** (G5a-1 row I) The narrow name, as a corollary of `PreserveQuantCaseCdn`. */
   lemma PreserveQuantCaseNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                           ngroups: nat, str: string, pts: PT.PikeTreeState, vms: AI.VmState,
                           s1: AI.VmState, qid0: int, bq: bool, vms2: AI.VmState,
@@ -7172,15 +7892,210 @@ module LindenElkPikeSim {
     ensures pts1.PTS?
     ensures PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant)
   {
-    if bq {
-      pts1 := PreserveStampCaseNested(rer, qm, re, code, endl, ngroups, str, pts, vms, s1, qid0, vms2,
-                                 ncap, nlook, nquant);
+    StaticCoreNestedIsCdn(qm, re, code, endl);
+    pts1 := PreserveQuantCaseCdn(rer, qm, re, code, endl, ngroups, str, pts, vms, s1, qid0, bq, vms2, ncap, nlook, nquant);
+  }
+
+  // ===========================================================================
+  // (G5a-1 row I) The no-write classification on the Cdn fragment. `NR.NoWriteInstr…NestedRE`
+  // ported here (so nfa-rep-re is not touched): no `WriteOracle`, no `Accept`; a `CheckNullable`
+  // is allowed, the greedy CDN plus has one.
+  // ===========================================================================
+
+  /** `NoWriteInstrCdnRE` for the `repeat_min` forced-copy chain. */
+  lemma NoWriteInstrMinCdnRE(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentCdnRE(r1)
+    requires NR.NfaRepMinRE(k, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? ==>
+      var i := NR.GetPcRE(code, pc).value;
+      !i.WriteOracle? && !i.Accept?
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetQuantToClock(qid, false))
+      && NR.NfaRepRE(r1, code, start + 1, e1)
+      && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
+    NR.NfaRepIncrRE(r1, code, start + 1, e1);
+    NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
+    if pc == start {
+    } else if pc < e1 {
+      NoWriteInstrCdnRE(r1, code, start + 1, e1, pc);
     } else {
-      pts1 := PreserveMarkCaseNested(rer, qm, re, code, endl, ngroups, str, pts, vms, s1, qid0, bq, vms2,
-                                ncap, nlook, nquant);
-      TrcRefl(pts1);
-      TrcCons(pts, pts1, pts1);
+      NoWriteInstrMinCdnRE(k - 1, qid, r1, code, e1, endl, pc);
     }
+  }
+
+  /** `NoWriteInstrCdnRE` for the `repeat_optional` layer chain. */
+  lemma NoWriteInstrOptCdnRE(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentCdnRE(r1)
+    requires NR.NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? ==>
+      var i := NR.GetPcRE(code, pc).value;
+      !i.WriteOracle? && !i.Accept?
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| NR.GetPcRE(code, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
+      && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+      && NR.NfaRepRE(r1, code, start + 3, e1)
+      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+      && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+    NR.NfaRepIncrRE(r1, code, start + 3, e1);
+    NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+    if pc <= start + 2 {
+    } else if pc < e1 {
+      NoWriteInstrCdnRE(r1, code, start + 3, e1, pc);
+    } else if pc == e1 {
+    } else {
+      NoWriteInstrOptCdnRE(k - 1, greedy, qid, r1, code, e1 + 1, endl, pc);
+    }
+  }
+
+  /** The NESTED analogue of `NoWriteInstrRE`: nested-fragment main code emits no
+      `WriteOracle`, `CheckNullable`, or `Accept` (the compiler adds those only at
+      the `compile_to_write`/`compile_to_bytecode` seam). Lookaround leaves are a
+      single gate (allowed); the plus-fragment quant shapes carry over verbatim. */
+  lemma NoWriteInstrCdnRE(re: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentCdnRE(re)
+    requires NR.NfaRepRE(re, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? ==>
+      var i := NR.GetPcRE(code, pc).value;
+      !i.WriteOracle? && !i.Accept?
+    decreases CP.rsize(re), 1
+  {
+    match re
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (G5a-1 P3) per-arm batch
+      var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
+        && NR.NfaRepRE(r1, code, start + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
+        && NR.NfaRepRE(r2, code, e1 + 1, endl);
+      NR.NfaRepIncrRE(r1, code, start + 1, e1);
+      NR.NfaRepIncrRE(r2, code, e1 + 1, endl);
+      if pc == start {
+      } else if pc < e1 {
+        NoWriteInstrCdnRE(r1, code, start + 1, e1, pc);
+      } else if pc == e1 {
+      } else {
+        NoWriteInstrCdnRE(r2, code, e1 + 1, endl, pc);
+      }
+    case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (G5a-1 P3) per-arm batch
+      var e1: nat :| NR.NfaRepRE(r1, code, start, e1) && NR.NfaRepRE(r2, code, e1, endl);
+      NR.NfaRepIncrRE(r1, code, start, e1);
+      NR.NfaRepIncrRE(r2, code, e1, endl);
+      if pc < e1 {
+        NoWriteInstrCdnRE(r1, code, start, e1, pc);
+      } else {
+        NoWriteInstrCdnRE(r2, code, e1, endl, pc);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (G5a-1 P3) per-arm batch
+      if q.min == 0 && q.max == None {
+        assert {:split_here} true;   // (G5a-1 P3) per-scheme batch
+        var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
+          && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+          && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+          && NR.NfaRepRE(r1, code, start + 3, e1)
+          && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+          && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
+          && endl == e1 + 2;
+        NR.NfaRepIncrRE(r1, code, start + 3, e1);
+        if pc <= start + 2 {
+        } else if pc < e1 {
+          NoWriteInstrCdnRE(r1, code, start + 3, e1, pc);
+        } else {
+        }
+      } else if q.max.Some? {
+        assert {:split_here} true;   // (G5a-1 P3) per-scheme batch
+        var em := NR.NfaRepREQuantInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl);
+        if pc < em {
+          NoWriteInstrMinCdnRE(q.min as nat, qid, r1, code, start, em, pc);
+        } else {
+          NoWriteInstrOptCdnRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
+        }
+      } else if nul != R.NonNullable && !q.greedy {
+        assert {:split_here} true;   // (G5a-1 P3) per-scheme batch
+        // the GENERIC scheme (§2.5a): min forced copies, then the star loop;
+        // the loop's own five instructions (Fork/SetQuantToClock/BeginLoop at
+        // em..em+2, EndLoop/Jmp at e1..e1+1) are all of the harmless kind
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NoWriteInstrMinCdnRE(q.min as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          NoWriteInstrCdnRE(r1, code, em + 3, e1, pc);
+        } else {
+        }
+      } else if nul == R.CDNullable {
+        assert {:split_here} true;   // (G5a-1 P3) per-scheme batch
+        // (G5a-1 row I) the CDN-GREEDY scheme: the CIN layout with the guard `CheckNullable` at e1 + 2 and
+        // the true stamp at e1 + 3 (this twin does not exclude a `CheckNullable`)
+        var em, e1 := NR.NfaRepRECdnInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NoWriteInstrMinCdnRE((q.min - 1) as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          NoWriteInstrCdnRE(r1, code, em + 3, e1, pc);
+        } else {
+        }
+      } else if nul != R.NonNullable {
+        assert {:split_here} true;   // (G5a-1 P3) per-scheme batch
+        // the CIN-GREEDY end-fork scheme (§2.5b): min-1 forced copies, then
+        // the guarded loop; the loop's own six instructions (Fork/
+        // SetQuantToClock/BeginLoop at em..em+2, EndLoop/Fork/
+        // SetQuantToClock(true) at e1..e1+2) are all of the harmless kind
+        var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NoWriteInstrMinCdnRE((q.min - 1) as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          NoWriteInstrCdnRE(r1, code, em + 3, e1, pc);
+        } else {
+        }
+      } else {
+        assert {:split_here} true;   // (G5a-1 P3) per-scheme batch
+        var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 1, e1);
+        if pc < em {
+          NoWriteInstrMinCdnRE((q.min - 1) as nat, qid, r1, code, start, em, pc);
+        } else if pc == em {
+        } else if pc < e1 {
+          NoWriteInstrCdnRE(r1, code, em + 1, e1, pc);
+        } else {
+        }
+      }
+    case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (G5a-1 P3) per-arm batch
+      var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
+        && NR.NfaRepRE(r1, code, start + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+        && endl == e1 + 1;
+      NR.NfaRepIncrRE(r1, code, start + 1, e1);
+      if pc == start {
+      } else if pc < e1 {
+        NoWriteInstrCdnRE(r1, code, start + 1, e1, pc);
+      } else {
+      }
+    case Re_lookaround(lid, la, r1) =>
+      assert {:split_here} true;   // (G5a-1 P3) per-arm batch
+      assert pc == start;
   }
 
 }

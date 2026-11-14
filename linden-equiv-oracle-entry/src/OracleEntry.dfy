@@ -716,6 +716,46 @@ module LindenElkOracleEntry {
       capture-blindness `MatchesVRemoveCapture`), and the value bridge
       `RecorderHitVBackWalk`. This is what §6.5's `OracleOk` for a nested column
       consumes. */
+  lemma OracleColumnSpecCdn(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, str: string,
+                               lid: int, la: R.lookaround, body: R.regex, cp: int)
+    requires !rer.ignoreCase && !rer.multiline
+    requires NR.NestedFragmentCdnRE(re)
+    requires LTB.LidsWellNested(re)
+    requires LTB.LookUnique(re)
+    requires LTB.LookEntryOk(CP.FFullCompilation(re), lid, la, body)
+    requires la.Lookbehind? || la.NegLookbehind?
+    requires NR.NestedFragmentRE(body)
+    requires T.TransWf(body)
+    requires SD.GroupOkLB(T.Translate(body))
+    requires AR.LmapOk(body, qm)
+    requires qm.ov == AI.FBuildOracle(CP.FFullCompilation(re), str)
+    requires OracleColsOk(rer, qm, str)
+    requires 1 <= lid
+    requires 0 <= cp <= |str|
+    ensures LOr.view_get_oracle(qm.ov, cp, lid)
+        <==> SD.SuccActs(rer, [LS.Areg(T.Translate(body))], T.InputAt(str, cp), LG.Empty, WP.Backward)
+  {
+    var ovf := qm.ov;
+    var rcb := R.remove_capture(body);
+    OMV.RemoveCaptureNestedFragment(body);                  // NestedFragmentRE(rcb)
+    OBu.FBuildOracleCorrectAtCdn(re, str, lid, la, body, cp);
+    // oracle bit <==> ReachesWriteV(compile_to_write(lazy_prefix(rcb), lid), str, ovf, 0, lid, cp)
+    // First: oracle bit <==> RecorderHitV(body), by the ReachesWriteV <-> MatchesV chain.
+    if LOr.view_get_oracle(ovf, cp, lid) {
+      var i := ODV.ReachesWriteVToMatchesV(rcb, lid, str, ovf, cp);   // MatchesV(rcb, i, cp)
+      OMV.MatchesVRemoveCapture(body, str, ovf, i, cp);              // MatchesV(body, i, cp)
+      ODV.RecorderHitVIntro(body, str, ovf, cp, i);                  // RecorderHitV(body)
+    }
+    if ODV.RecorderHitV(body, str, ovf, cp) {
+      var i := ODV.RecorderHitVInv(body, str, ovf, cp);             // MatchesV(body, i, cp)
+      OMV.MatchesVRemoveCapture(body, str, ovf, i, cp);            // MatchesV(rcb, i, cp)
+      OBV.MatchesVToReachesWriteV(rcb, lid, str, ovf, i, cp);       // ReachesWriteV(rcb) => oracle bit
+    }
+    // Then: RecorderHitV(body) <==> backward walk.
+    RecorderHitVBackWalk(rer, qm, body, str, cp);
+  }
+
+  /** (G5a-1 row J) The narrow name, as a corollary of `OracleColumnSpecCdn`. */
   lemma OracleColumnSpecNested(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, str: string,
                                lid: int, la: R.lookaround, body: R.regex, cp: int)
     requires !rer.ignoreCase && !rer.multiline
@@ -735,23 +775,7 @@ module LindenElkOracleEntry {
     ensures LOr.view_get_oracle(qm.ov, cp, lid)
         <==> SD.SuccActs(rer, [LS.Areg(T.Translate(body))], T.InputAt(str, cp), LG.Empty, WP.Backward)
   {
-    var ovf := qm.ov;
-    var rcb := R.remove_capture(body);
-    OMV.RemoveCaptureNestedFragment(body);                  // NestedFragmentRE(rcb)
-    OBu.FBuildOracleCorrectAtNested(re, str, lid, la, body, cp);
-    // oracle bit <==> ReachesWriteV(compile_to_write(lazy_prefix(rcb), lid), str, ovf, 0, lid, cp)
-    // First: oracle bit <==> RecorderHitV(body), by the ReachesWriteV <-> MatchesV chain.
-    if LOr.view_get_oracle(ovf, cp, lid) {
-      var i := ODV.ReachesWriteVToMatchesV(rcb, lid, str, ovf, cp);   // MatchesV(rcb, i, cp)
-      OMV.MatchesVRemoveCapture(body, str, ovf, i, cp);              // MatchesV(body, i, cp)
-      ODV.RecorderHitVIntro(body, str, ovf, cp, i);                  // RecorderHitV(body)
-    }
-    if ODV.RecorderHitV(body, str, ovf, cp) {
-      var i := ODV.RecorderHitVInv(body, str, ovf, cp);             // MatchesV(body, i, cp)
-      OMV.MatchesVRemoveCapture(body, str, ovf, i, cp);            // MatchesV(rcb, i, cp)
-      OBV.MatchesVToReachesWriteV(rcb, lid, str, ovf, i, cp);       // ReachesWriteV(rcb) => oracle bit
-    }
-    // Then: RecorderHitV(body) <==> backward walk.
-    RecorderHitVBackWalk(rer, qm, body, str, cp);
+    NR.NarrowIsCdn(re);
+    OracleColumnSpecCdn(rer, qm, re, str, lid, la, body, cp);
   }
 }
