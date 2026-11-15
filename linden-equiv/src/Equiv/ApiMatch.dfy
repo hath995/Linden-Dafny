@@ -27,6 +27,8 @@ module LindenRegexApi {
   import LSIMCOR = LindenElkLiftSimCore
   import LSIMORA = LindenElkLiftSimOracle
   import MCL = LindenElkMainCinLk
+  import CL = LindenElkCinLooks     // (G4a) the CIN-body scope
+  import NRC = LindenElkNulledRecon
   import M = LindenElkMain
   import GF = LindenElkGateFlip   // (G3b) the uniform gate from the CIN fragment
   // ==========================================================================
@@ -38,9 +40,9 @@ module LindenRegexApi {
           looks, captures may sit under quantifiers, and negative look bodies are
           capture-free;
         - it is Latin-1 well-formed (`T.Latin1Wf`);
-        - every greedy CI-nullable plus has a look-free body (`MCL.CinBodiesLookFreeX`).
-          A look body of either kind may hold a greedy CI-nullable plus (G3a lookahead,
-          G3b lookbehind).
+        - every lookaround inside a greedy CI-nullable plus body is capture-free
+          (`CL.CinLooksCapFreeX`; G4a: `((?=a)|a?)+`). A look body of either kind may hold a
+          greedy CI-nullable plus with a look-free body (G3a lookahead, G3b lookbehind).
       Greedy CDN pluses stay out (the nested fragment's plus arm excludes them).
       Looks nest to any depth in either direction: lookaheads inside lookbehinds and
       lookbehinds inside lookaheads (gate B, G1 full depth). Exactly
@@ -48,7 +50,7 @@ module LindenRegexApi {
       and why each gap exists. */
   predicate Supported(pattern: R.raw_regex) {
     NR.NestedFragmentCdnRaw(pattern) && T.Latin1Wf(pattern)
-    && MCL.CinBodiesLookFreeX(R.lazy_prefix(R.annotate(pattern)))
+    && CL.CinLooksCapFreeX(R.lazy_prefix(R.annotate(pattern)))
     // (G5a-1) a greedy CDN plus is supported at top level, with a look-free body holding no
     // greedy nullable unbounded plus: `(\\b|a)+`, `(a?$)+`, `(^|a)+b`
     && MCL.CdnTopX(R.lazy_prefix(R.annotate(pattern)))
@@ -74,10 +76,47 @@ module LindenRegexApi {
     requires Supported(pattern)
     ensures LES.MatcherSpec(pattern, str, Match(pattern, str))
   {
-    MCL.CinBodiesLookFreeXSound(R.lazy_prefix(R.annotate(pattern)));
+    CL.CinLooksCapFreeXSound(R.lazy_prefix(R.annotate(pattern)));
     MCL.CdnTopXSound(R.lazy_prefix(R.annotate(pattern)));
-    GF.GateFromCdnTop(R.lazy_prefix(R.annotate(pattern)));             // (G5a-1) the gate from the scope
+    GateFromCdnTopG4(R.lazy_prefix(R.annotate(pattern)));              // (G5a-1, G4a) the gate from the scope
     MCL.MainTheoremL5Cin(pattern, str);
+  }
+
+  /** (G4a) `GF.GateFromCdnTop` from the G4a scope: a CIN plus body may hold capture-free looks, and every
+      look body is in the look-free CIN fragment, which is what the gate asks at a look node. */
+  lemma GateFromCdnTopG4(re: R.regex)
+    requires NRC.CdnTopRE(re) && CL.CinLooksCapFreeRE(re)
+    ensures M.LookBodiesPlusGateRE(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => GateFromCdnTopG4(r1); GateFromCdnTopG4(r2);
+    case Re_con(r1, r2) => GateFromCdnTopG4(r1); GateFromCdnTopG4(r2);
+    case Re_capture(_, r1) => GateFromCdnTopG4(r1);
+    case Re_lookaround(_, _, r1) => GF.GateFromCin(r1);
+    case Re_quant(nul, _, q, r1) =>
+      if q.min != 0 && q.max.None? && q.greedy && nul == R.CDNullable {
+        GF.LookFreeGate(r1);
+      } else if q.min != 0 && q.max.None? && q.greedy && nul == R.CINullable {
+        GateFromCinG4(r1);
+      } else {
+        GateFromCdnTopG4(r1);
+      }
+    case _ =>
+  }
+
+  lemma GateFromCinG4(re: R.regex)
+    requires NRC.NoCdnPlusRE(re) && CL.CinLooksCapFreeRE(re)
+    ensures M.LookBodiesPlusGateRE(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => GateFromCinG4(r1); GateFromCinG4(r2);
+    case Re_con(r1, r2) => GateFromCinG4(r1); GateFromCinG4(r2);
+    case Re_quant(_, _, _, r1) => GateFromCinG4(r1);
+    case Re_capture(_, r1) => GateFromCinG4(r1);
+    case Re_lookaround(_, _, r1) => GF.GateFromCin(r1);
+    case _ =>
   }
 
   // ==========================================================================

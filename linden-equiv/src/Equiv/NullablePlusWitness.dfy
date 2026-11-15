@@ -168,4 +168,26 @@ module NullablePlusWitness {
     assert R.raw_nullable(WB_OR_A) == R.CDNullable;
     assert R.raw_nullable(A_OPT_END) == R.CDNullable;
   }
+
+  // ==========================================================================
+  // G4a (2026-11-15): capture-free lookarounds inside a greedy CI-nullable plus body. A lookaround
+  // is context-dependent nullable, so it sits where the body stays CI-nullable (`((?=a)a?)+` is a
+  // CDN plus, outside G4a).
+  // ==========================================================================
+  const LOOK_OR_AOPT   := R.Raw_alt(LOOK_A, AOPT)                                                 // (?=a)|a?
+  const A_LOOK_OR_AOPT := R.Raw_alt(R.Raw_con(R.Raw_character(R.Dot), LOOK_A), AOPT)            // a(?=a)|a?
+  const NLOOK_OR_AOPT  := R.Raw_alt(R.Raw_lookaround(R.NegLookahead, R.Raw_character(R.Dot)), AOPT)   // (?!a)|a?
+  const BLOOK_OR_AOPT  := R.Raw_alt(R.Raw_lookaround(R.Lookbehind, R.Raw_character(R.Dot)), AOPT)     // (?<=a)|a?
+
+  lemma G4a_LookInCinPlus()
+    ensures API.Supported(R.Raw_quant(R.Plus, LOOK_OR_AOPT))     // ((?=a)|a?)+
+    ensures API.Supported(R.Raw_quant(R.Plus, A_LOOK_OR_AOPT))   // (a(?=a)|a?)+
+    ensures API.Supported(R.Raw_quant(R.Plus, NLOOK_OR_AOPT))    // ((?!a)|a?)+
+    ensures API.Supported(R.Raw_quant(R.Plus, BLOOK_OR_AOPT))    // ((?<=a)|a?)+
+  {
+    assert R.raw_nullable(LOOK_OR_AOPT) == R.CINullable;
+    assert R.raw_nullable(A_LOOK_OR_AOPT) == R.CINullable;
+    assert R.raw_nullable(NLOOK_OR_AOPT) == R.CINullable;
+    assert R.raw_nullable(BLOOK_OR_AOPT) == R.CINullable;
+  }
 }

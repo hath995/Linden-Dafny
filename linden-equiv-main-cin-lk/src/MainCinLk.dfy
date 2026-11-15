@@ -1,8 +1,8 @@
 // §2.5b STAGE 2, RUNG F (F-c, c6) — CIN-GREEDY PLUSES NEXT TO LOOKAROUNDS.
 //
 // The main theorem, with no `NoNulledPlusRaw` gate: greedy
-// CI-nullable pluses (`(a?)+`) may sit OUTSIDE lookarounds, provided their
-// bodies are look-free and no look body holds a nulled plus. The two machines
+// CI-nullable pluses (`(a?)+`) may sit OUTSIDE lookarounds, and their bodies may
+// hold capture-free looks (G4a, `((?=a)|a?)+`; `CinLooks.dfy`, `ReconBank.dfy`). The two machines
 // split the group space at `S = CapIdsInLooks(re)`:
 //   * OUTSIDE `S` — machine A (`PSM.FindMatchSimRENested`, gate-free), rung C's
 //     checked tree (`ResAgreeAtOutside(tstar, t, inp, S)`) and the F-b readout
@@ -10,8 +10,10 @@
 //     winner `rp = FReconstructPlus(best)`;
 //   * INSIDE `S` — machine B (the lift-sim band on the engine-shaped walk,
 //     `L3aCompositeCloseRecG`), whose carriers read only look registers and the
-//     clocks of the looks' ANCESTORS, none of which a look-free CIN body owns
-//     (`CLP.AncAvoidQ`), so they move from `best` to `rp`.
+//     clocks of the looks' ANCESTORS. A look outside every stamped CIN body keeps
+//     its record and its ancestors' clocks (`CL.AncAvoidQG4`); a look inside one
+//     captures nothing, so its carriers are vacuous (`CL.LooksQCapFree`).
+//     They move from `best` to `rp`.
 // The endpoint (look loop, owner packages, deep conclusion) runs on the
 // SYNTHETIC winner `rp0` = `rp` with the outside-look quant positions cleared:
 // it has the quant finality the endpoint's replay lemmas read, the same clocks
@@ -88,6 +90,8 @@ module LindenElkMainCinLk {
   import LB = LindenElkLookBank          // (gate C, G2) the look-bank invariant
   import opened LindenElkBankFrames      // (G3a, two-machines) ClkFrame, AncFrame, QInCinQ, NRRLookIdsEq, OnlyCapIdsFromFrameOuter
   import opened LindenElkTwoMachines     // (G3a) TranslateCinOk, the four tie transports
+  import CL = LindenElkCinLooks          // (G4a) the scope, machine B's entry, the frame and the transports
+  import RBk = LindenElkReconBank        // (G4a) the replayed look and quant banks
 
   // =========================================================================
   // 0. Statics: the glue's side condition on the translated regex.
@@ -272,22 +276,40 @@ module LindenElkMainCinLk {
     M.LookEntryBody(crv, l, la, body, la0, NI.LookBodyOfRE(re, l as nat));
   }
 
-  /** THE REGISTER TRANSPORT: the winner's gate-free facts + the reconstruction's
-      sharp frame give the endpoint's `WinRegsOk` at the synthetic winner. */
-  lemma WinRegsOkRecon(ast: R.regex, re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
-                       best: AI.Thread, rp: AI.Thread, ncap: int, nlook: int, nquant: int)
+  /** A recorded lid of a bank at init outside the direct lids is direct. */
+  lemma DirectOfSet(re: R.regex, lk: AReg.Regs, nlook: int, l: int)
+    requires CM.RegsAgreeOutside(lk, AReg.init_regs(nlook), M.DirectLidSet(re))
+    requires AReg.get_cp(lk, l).Some?
+    ensures l >= 0 && (l as nat) in M.DirectLookIds(re)
+  {
+    RL.AInitLaws(nlook);
+    if l !in M.DirectLidSet(re) {
+      assert AI.get_idx(lk.a_cp, l) == AI.get_idx(AReg.init_regs(nlook).a_cp, l);
+      assert AI.get_idx(lk.a_cp, l) >= 0;
+      assert false;
+    }
+    var x: nat :| x in M.DirectLookIds(re) && x as int == l;
+  }
+
+  /** THE REGISTER TRANSPORT (G4a): the winner's gate-free facts, the reconstruction's sharp frame and the
+      replay's bank invariants (`RBk.ReconBank`) give the endpoint's `WinRegsOk` at the synthetic winner.
+      Its look bank is the REPLAYED one: a null run may re-set a lookaround of a CIN body. */
+  lemma WinRegsOkReconG4(ast: R.regex, re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                         best: AI.Thread, rp: AI.Thread, ncap: int, nlook: int, nquant: int)
     requires crv == CP.FFullCompilation(ast) && re == R.lazy_prefix(ast)
-    requires T.TransWf(re) && RF.CinBodiesLookFreeRE(re) && NRC.CdnTopRE(re)
-    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookTablesOk(re, crv)
+    requires T.TransWf(re) && CL.CinLooksCapFreeRE(re) && NRC.CdnTopRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re) && LTB.LookTablesOk(re, crv)
+    requires |ov| == |str| + 1
     requires WinRegsOkG(ast, re, crv, str, ov, best, ncap, nlook, nquant)
-    requires FV.RegsFinalOk(best, |str|, FRD.StampQids(re))
     requires CM.ThreadRegsWf(rp, ncap, nlook, nquant)
     requires forall k :: AI.get_idx(rp.quant_regs.a_clk, k) >= -1
     requires var Q := FRD.StampQids(re);
              NRR.AgreeOutside((rp.capture_regs, rp.look_regs, rp.quant_regs),
                               (best.capture_regs, best.look_regs, best.quant_regs),
                               RF.CapsQ(re, Q), RF.LooksQ(re, Q), RF.QuantsQ(re, Q))
-    ensures rp.look_regs == best.look_regs
+    requires RBk.BankOk(rp.look_regs, rp.quant_regs, ov, AReg.init_regs(nlook), M.DirectLidSet(re),
+                        AReg.init_regs(nquant), M.QIdsOuter(re))
+    requires LB.LookSetIn(rp.look_regs, LB.PosLookIds(re))
     ensures M.WinRegsOk(ast, re, crv, str, ov, ClearQuantCps(rp, M.QIdsOuter(re)), ncap, nlook, nquant)
   {
     reveal WinRegsOkG();
@@ -296,38 +318,54 @@ module LindenElkMainCinLk {
     var rp0 := ClearQuantCps(rp, D);
     ClearQuantCpsFacts(rp, D);
     QInStampQ(re);
-    RF.LooksQEmptyS(re, Q);
-    CLP.QsOutsideS(re, Q);
-    RegsEq(rp.look_regs, best.look_regs);
-    assert rp0.look_regs == best.look_regs;
+    RL.AInitLaws(nquant);
 
-    // quant finality of rp0
+    // quant finality of rp0: outside D the replayed bank is still at init
     assert forall k :: AI.get_idx(rp0.quant_regs.a_cp, k) < 0 by {
       forall k ensures AI.get_idx(rp0.quant_regs.a_cp, k) < 0 {
         if k !in D {
-          assert k !in RF.QuantsQ(re, Q) by {
-            if k in RF.QuantsQ(re, Q) { assert k >= 0 && (k as nat) in PIV.QuantIdsOutsideLooks(re); assert k in D; }
-          }
-          assert AI.get_idx(rp0.quant_regs.a_cp, k) == AI.get_idx(best.quant_regs.a_cp, k);
-          assert AI.get_idx(best.quant_regs.a_cp, k) < 0 by {   // (C6 probe) best is at init outside D
-            assert AI.get_idx(best.quant_regs.a_cp, k) == AI.get_idx(AReg.init_regs(nquant).a_cp, k);
-            RL.AInitLaws(nquant);
-            assert AReg.get_cp(AReg.init_regs(nquant), k) == None;
-          }
+          assert AI.get_idx(rp0.quant_regs.a_cp, k) == AI.get_idx(rp.quant_regs.a_cp, k);
+          assert AI.get_idx(rp.quant_regs.a_cp, k) == AI.get_idx(AReg.init_regs(nquant).a_cp, k);
+          assert AReg.get_cp(AReg.init_regs(nquant), k) == None;
         }
       }
     }
-    // the outside-look quant frame
-    assert CM.RegsAgreeOutside(rp0.quant_regs, AReg.init_regs(nquant), D) by {
-      forall k | k !in D
-        ensures AI.get_idx(rp0.quant_regs.a_cp, k) == AI.get_idx(AReg.init_regs(nquant).a_cp, k)
-                && AI.get_idx(rp0.quant_regs.a_clk, k) == AI.get_idx(AReg.init_regs(nquant).a_clk, k)
+    assert CM.RegsAgreeOutside(rp0.quant_regs, AReg.init_regs(nquant), D);
+    // the replayed look bank
+    RBk.OracleTrueCpsLE(rp0.look_regs, ov, |str|);
+    assert {:split_here} true;
+    // a recorded lid has a table row
+    assert forall l: int :: 1 <= l <= R.max_lookaround(ast) && AReg.get_cp(rp0.look_regs, l).Some? ==>
+                              exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body) by {
+      forall l: int | 1 <= l <= R.max_lookaround(ast) && AReg.get_cp(rp0.look_regs, l).Some?
+        ensures exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
       {
-        assert k !in RF.QuantsQ(re, Q) by {
-          if k in RF.QuantsQ(re, Q) { assert k >= 0 && (k as nat) in PIV.QuantIdsOutsideLooks(re); assert k in D; }
+        DirectOfSet(re, rp0.look_regs, nlook, l);
+        M.DirectLidsSubLookIds(re);
+        NI.LookBodyOfTablesTie(re, crv, l as nat);
+      }
+    }
+    assert {:split_here} true;
+    // a recorded lid lies in no other look's body: it is direct
+    assert forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
+             (1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+             && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1
+             && AReg.get_cp(rp0.look_regs, l2).Some?) ==> l2 !in M.LookIdSet(b1) by {
+      forall l1: int, la1: R.lookaround, b1: R.regex, l2: int |
+          1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+          && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1 && AReg.get_cp(rp0.look_regs, l2).Some?
+        ensures l2 !in M.LookIdSet(b1)
+      {
+        RowBody(ast, re, crv, l1, la1, b1);
+        DirectOfSet(re, rp0.look_regs, nlook, l2);
+        M.DirectLidsNotInBody(re, l1 as nat);
+        if l2 in M.LookIdSet(b1) {
+          var x: nat :| x in LTB.LookIds(b1) && x as int == l2;
+          assert x in M.DirectLookIds(re) * LTB.LookIds(NI.LookBodyOfRE(re, l1 as nat));
         }
       }
     }
+    assert {:split_here} true;
     // (c') the look bodies' captures
     assert forall l: int, la: R.lookaround, body: R.regex ::
              1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
@@ -336,7 +374,7 @@ module LindenElkMainCinLk {
         ensures CM.RegsAgreeInside(rp0.capture_regs, AReg.init_regs(ncap), PIV.CaptureRegs(body))
       {
         RowBody(ast, re, crv, l, la, body);
-        CLP.QsAvoidLookBodyS(re, Q, l as nat);
+        CL.CapsQAvoidLookBody(re, Q, l as nat);
         assert CM.RegsAgreeInside(best.capture_regs, AReg.init_regs(ncap), PIV.CaptureRegs(body));
         forall k | k in PIV.CaptureRegs(body)
           ensures AI.get_idx(rp0.capture_regs.a_cp, k) == AI.get_idx(best.capture_regs.a_cp, k)
@@ -346,6 +384,7 @@ module LindenElkMainCinLk {
         }
       }
     }
+    assert {:split_here} true;
     reveal M.WinRegsOk();
   }
 
@@ -623,9 +662,9 @@ module LindenElkMainCinLk {
     returns (rp: AI.Thread)
     requires crv == CP.FFullCompilation(ast) && re == R.lazy_prefix(ast) && code == CP.compile_to_bytecode(re)
     requires crv.f_main_bc == code
-    requires T.TransWf(re) && NR.NestedFragmentCdnRE(re) && M.LookBodiesPlusGateRE(re) && RF.CinBodiesLookFreeRE(re)
+    requires T.TransWf(re) && NR.NestedFragmentCdnRE(re) && M.LookBodiesPlusGateRE(re) && CL.CinLooksCapFreeRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re) && LTB.LookTablesOk(re, crv)
-    requires NRC.CdnTopRE(ast) && NRC.CdnTopRE(re) && AR.QmapOk(re, qm) && qm.ov == ov
+    requires NRC.CdnTopRE(ast) && NRC.CdnTopRE(re) && AR.QmapOk(re, qm) && qm.ov == ov && |ov| == |str| + 1
     requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1 && NR.GetPcRE(code, endl) == Some(RB.Accept)
     requires ncap == 2 * R.max_group(re) + 2 && nlook == R.max_lookaround(re) + 1 && nquant == R.max_quant(re) + 1
     requires capture == AReg.init_regs(ncap) && look == AReg.init_regs(nlook) && quant == AReg.init_regs(nquant)
@@ -641,7 +680,7 @@ module LindenElkMainCinLk {
             == PIV.GmOfLiveR(re, qm, str, result.value.capture_regs, result.value.look_regs, result.value.quant_regs)
     ensures CM.ThreadRegsWf(rp, ncap, nlook, nquant)
     ensures M.WinRegsOk(ast, re, crv, str, ov, ClearQuantCps(rp, M.QIdsOuter(re)), ncap, nlook, nquant)
-    ensures ClkFrame(re, FRD.StampQids(re), ClearQuantCps(rp, M.QIdsOuter(re)), result.value)
+    ensures CL.ClkFrameG4(re, FRD.StampQids(re), ClearQuantCps(rp, M.QIdsOuter(re)), result.value)
   {
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     var best := result.value;
@@ -686,10 +725,49 @@ module LindenElkMainCinLk {
     // the synthetic winner's endpoint facts
     WinRegsOkGFromRun(ast, re, crv, code, str, ov, crv.f_main_cdns, inits, capture, look, quant,
                       ncap, nlook, nquant, endl, result);
-    WinRegsOkRecon(ast, re, crv, str, ov, best, rp, ncap, nlook, nquant);
+    assert {:split_here} true;
+    // (G4a) the replayed banks, the endpoint's register facts and the frame, in a context of their own
+    ReconAtWinnerG4(ast, re, crv, str, ov, best, rp, ncap, nlook, nquant);
+  }
+
+  /** (G4a) `ReadoutAtWinner`'s last section: the replayed look and quant banks (`RBk.ReconBank`), the endpoint's
+      `WinRegsOk` at the synthetic winner and the frame. Inline, that batch ran past 900 s (1.9 G). */
+  lemma ReconAtWinnerG4(ast: R.regex, re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                        best: AI.Thread, rp: AI.Thread, ncap: int, nlook: int, nquant: int)
+    requires crv == CP.FFullCompilation(ast) && re == R.lazy_prefix(ast)
+    requires T.TransWf(re) && CL.CinLooksCapFreeRE(re) && NRC.CdnTopRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re) && LTB.LookTablesOk(re, crv)
+    requires |ov| == |str| + 1
+    requires WinRegsOkG(ast, re, crv, str, ov, best, ncap, nlook, nquant)
+    requires rp == AI.FReconstructPlus(best, ast, crv.f_plus_bc, str, ov, LAnc.Forward).0
+    requires CM.ThreadRegsWf(rp, ncap, nlook, nquant) && CM.ThreadRegsWf(best, ncap, nlook, nquant)
+    requires forall k :: AI.get_idx(rp.quant_regs.a_clk, k) >= -1
+    requires var Q := FRD.StampQids(re);
+             NRR.AgreeOutside((rp.capture_regs, rp.look_regs, rp.quant_regs),
+                              (best.capture_regs, best.look_regs, best.quant_regs),
+                              RF.CapsQ(re, Q), RF.LooksQ(re, Q), RF.QuantsQ(re, Q))
+    ensures M.WinRegsOk(ast, re, crv, str, ov, ClearQuantCps(rp, M.QIdsOuter(re)), ncap, nlook, nquant)
+    ensures CL.ClkFrameG4(re, FRD.StampQids(re), ClearQuantCps(rp, M.QIdsOuter(re)), best)
+  {
+    var Q := FRD.StampQids(re);
+    assert RBk.BankOk(best.look_regs, best.quant_regs, ov, AReg.init_regs(nlook), M.DirectLidSet(re),
+                      AReg.init_regs(nquant), M.QIdsOuter(re)) by { reveal WinRegsOkG(); }
+    FRD.PlusTableOkFullS(ast);
+    RBk.ReconBank(ast, str, best, ov, nlook, nquant);
+    assert LB.LookSetIn(rp.look_regs, LB.PosLookIds(re)) by {
+      assert LB.LookSetIn(best.look_regs, LB.PosLookIds(re)) by { reveal WinRegsOkG(); }
+      LB.FFullCompilationChecksPos(ast);
+      var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
+      assert re == R.Re_con(pre, ast);
+      assert LB.PosLookIds(re) == LB.PosLookIds(ast);
+      LB.FReconstructPlusLookSetIn(best, ast, crv.f_plus_bc, str, ov, LAnc.Forward, LB.PosLookIds(re));
+    }
+    assert {:split_here} true;
+    WinRegsOkReconG4(ast, re, crv, str, ov, best, rp, ncap, nlook, nquant);
+    assert {:split_here} true;
     var rp0 := ClearQuantCps(rp, M.QIdsOuter(re));
     ClearQuantCpsFacts(rp, M.QIdsOuter(re));
-    assert ClkFrame(re, Q, rp0, best);
+    assert CL.ClkFrameG4(re, Q, rp0, best);
   }
 
   /** The endpoint at the synthetic winner (the thread-level producers + the
@@ -754,20 +832,19 @@ module LindenElkMainCinLk {
     assert |seed.f_look_types| == |seed.f_look_ast|;
   }
 
-  /** THE THEOREM, with no interim gate: greedy
-      CI-nullable pluses outside lookarounds, with look-free bodies, and no
-      nulled plus inside a look body. */
+  /** THE THEOREM, with no interim gate: greedy CI-nullable pluses outside lookarounds whose bodies' looks
+      capture nothing (G4a), and in a look body only the look-free CIN fragment. */
   lemma MainTheoremL5Cin(raw: R.raw_regex, str: string)
     requires NR.NestedFragmentCdnRaw(raw)
     requires NRC.CdnTopRE(R.lazy_prefix(R.annotate(raw)))   // (G5a-1) every CDN plus at top level, body look-free
     requires T.Latin1Wf(raw)
     requires M.LookBodiesPlusGateRE(R.lazy_prefix(R.annotate(raw)))   // (G3a) lookbehind bodies stamp-free, lookahead bodies CIN
-    requires RF.CinBodiesLookFreeRE(R.lazy_prefix(R.annotate(raw)))
+    requires CL.CinLooksCapFreeRE(R.lazy_prefix(R.annotate(raw)))   // (G4a) a CIN plus body's looks capture nothing
     ensures LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)))
   {
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     // the two recursive gates are facts here, never unfolded (in context they blew batch 6 past 19 GB)
-    hide M.LookBodiesPlusGateRE, RF.CinBodiesLookFreeRE;
+    hide M.LookBodiesPlusGateRE, CL.CinLooksCapFreeRE;
     var ast := R.annotate(raw);
     var re := R.lazy_prefix(ast);
     var rer := LES.TheRer(raw);
@@ -926,7 +1003,7 @@ module LindenElkMainCinLk {
     SufAllToColsOk(rer, qm, str);
     // machine B on the engine-shaped walk, agreeing with the spec leaf outside G
     var G: set<LG.GroupId> := PIV.CapIdsOutsideLooks(re);
-    TranslateCinOkCdn(re, G);
+    CL.TranslateCinOkG4(re, G);
     PIV.CapIdsLooksDisjoint(re);
     assert G * S == {};
     // (G5a-1 row N) the run premise of the guard, for real (cdn-sound through `GR.GuardsOkRunTop`).
@@ -1008,8 +1085,8 @@ module LindenElkMainCinLk {
       assert GmtTieOutside(re, rp0, leaf.1, S);
       assert bleaf.Some? && LL.GmAgreeOutside(bleaf.value.1, leaf.1, G);
       QInStampQ(re);
-      TieTransportS(rer, re, crv, str, ov, FRD.StampQids(re), S, G, bleaf.value, leaf, best, rp0,
-                   ncap, nlook, nquant);
+      CL.TieTransportG4(rer, re, crv, str, ov, FRD.StampQids(re), S, G, bleaf.value, leaf, best, rp0,
+                        ncap, nlook, nquant);
       M.FirstLeafOrdered(t, inp, leaf);
 
       assert {:split_here} true;
@@ -1094,35 +1171,6 @@ module LindenElkMainCinLk {
   // =========================================================================
   // 8. Executable scope conditions (for `API.Supported`, rung G).
   // =========================================================================
-
-  /** Every greedy CI-nullable plus has a look-free body (executable). */
-  predicate CinBodiesLookFreeX(re: R.regex)
-    decreases re
-  {
-    match re
-    case Re_alt(r1, r2) => CinBodiesLookFreeX(r1) && CinBodiesLookFreeX(r2)
-    case Re_con(r1, r2) => CinBodiesLookFreeX(r1) && CinBodiesLookFreeX(r2)
-    case Re_quant(nul, qid, q, body) =>
-      (q.min != 0 && q.max == None && nul == R.CINullable && q.greedy ==> NR.LookFreeRE(body))
-      && CinBodiesLookFreeX(body)
-    case Re_capture(_, r1) => CinBodiesLookFreeX(r1)
-    case Re_lookaround(_, _, r1) => CinBodiesLookFreeX(r1)
-    case _ => true
-  }
-
-  lemma CinBodiesLookFreeXSound(re: R.regex)
-    requires CinBodiesLookFreeX(re)
-    ensures RF.CinBodiesLookFreeRE(re)
-    decreases re
-  {
-    match re
-    case Re_alt(r1, r2) => CinBodiesLookFreeXSound(r1); CinBodiesLookFreeXSound(r2);
-    case Re_con(r1, r2) => CinBodiesLookFreeXSound(r1); CinBodiesLookFreeXSound(r2);
-    case Re_quant(_, _, _, r1) => CinBodiesLookFreeXSound(r1);
-    case Re_capture(_, r1) => CinBodiesLookFreeXSound(r1);
-    case Re_lookaround(_, _, r1) => CinBodiesLookFreeXSound(r1);
-    case _ =>
-  }
 
   /** (G5a-1 step 4) `NRC.NoCdnPlusRE`, compiled (that one is a ghost predicate). */
   predicate NoCdnPlusX(re: R.regex)
