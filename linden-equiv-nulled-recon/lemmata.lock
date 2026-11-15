@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:7daae745722aaaba7aadc07b96f7d79e6209d98eb51b8aab932755645ebe1fc2"
+manifest-hash = "sha256:95031db6a09c7ffad11255eabd0f85a6c133d99a55d1378a4f0684ca2dd9ff21"
 
 [[package]]
 name = "linden.engine"
@@ -92,6 +92,15 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-bridge"
+
+[[package]]
+name = "linden.equiv-oracle-bridge-v"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-bridge-v"
 
 [[package]]
 name = "linden.equiv-oracle-build"
@@ -245,3 +254,12 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-pike-inv-re"
+
+[[package]]
+name = "linden.equiv-cdn-sound"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-cdn-sound"

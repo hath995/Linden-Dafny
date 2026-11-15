@@ -1201,7 +1201,7 @@ module LindenElkMainCinLk {
     case _ =>
   }
 
-  /** (G5a-1 step 4) `NRC.CdnTopRE`, compiled, for `API.Supported`. */
+  /** (G5a-1 step 4) `NRC.CdnTopRE`, compiled, for `API.Supported` (G5a-2b: only look bodies are restricted). */
   predicate CdnTopX(re: R.regex)
     decreases re
   {
@@ -1210,10 +1210,7 @@ module LindenElkMainCinLk {
     case Re_con(r1, r2) => CdnTopX(r1) && CdnTopX(r2)
     case Re_capture(_, r1) => CdnTopX(r1)
     case Re_lookaround(_, _, r1) => NoCdnPlusX(r1)
-    case Re_quant(nul, _, q, r1) =>
-      if q.min != 0 && q.max == None && q.greedy && nul == R.CDNullable then NoCdnPlusX(r1)   // (G5a-2a)
-      else if q.min != 0 && q.max == None && q.greedy && nul == R.CINullable then NoCdnPlusX(r1)
-      else CdnTopX(r1)
+    case Re_quant(_, _, _, r1) => CdnTopX(r1)
     case _ => true
   }
 
@@ -1227,14 +1224,7 @@ module LindenElkMainCinLk {
     case Re_con(r1, r2) => CdnTopXSound(r1); CdnTopXSound(r2);
     case Re_capture(_, r1) => CdnTopXSound(r1);
     case Re_lookaround(_, _, r1) => NoCdnPlusXSound(r1);
-    case Re_quant(nul, _, q, r1) =>
-      if q.min != 0 && q.max == None && q.greedy && nul == R.CDNullable {
-        NoCdnPlusXSound(r1);
-      } else if q.min != 0 && q.max == None && q.greedy && nul == R.CINullable {
-        NoCdnPlusXSound(r1);
-      } else {
-        CdnTopXSound(r1);
-      }
+    case Re_quant(_, _, _, r1) => CdnTopXSound(r1);
     case _ =>
   }
 

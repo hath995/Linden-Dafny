@@ -43,8 +43,8 @@ module LindenRegexApi {
         - every lookaround inside a greedy nullable plus body is capture-free
           (`CL.CinLooksCapFreeX`; G4a: `((?=a)|a?)+`, G5a-2a: `((?=a)|b)+`). A look body of either
           kind may hold a greedy CI-nullable plus with a look-free body (G3a lookahead, G3b lookbehind);
-        - a greedy CDN plus sits outside every look body and every greedy nullable plus body
-          (`MCL.CdnTopX`; G5a-1: `(\\b|a)+`).
+        - a greedy CDN plus sits outside every look body (`MCL.CdnTopX`; G5a-1: `(\\b|a)+`;
+          G5a-2b: inside a nulled plus's body too, `((\\b)+|)+`).
       Looks nest to any depth in either direction: lookaheads inside lookbehinds and
       lookbehinds inside lookaheads (gate B, G1 full depth). Exactly
       `MCL.MainTheoremL5Cin`'s precondition. `SUPPORTED_FRAGMENT.md` lists what this admits
@@ -52,8 +52,8 @@ module LindenRegexApi {
   predicate Supported(pattern: R.raw_regex) {
     NR.NestedFragmentCdnRaw(pattern) && T.Latin1Wf(pattern)
     && CL.CinLooksCapFreeX(R.lazy_prefix(R.annotate(pattern)))
-    // (G5a-1, G5a-2a) a greedy CDN plus is supported outside look bodies and nullable plus bodies; its body
-    // may hold capture-free looks and CIN pluses: `(\\b|a)+`, `(a?$)+`, `(^|a)+b`, `((?=a)|b)+`, `(\\b(a?)+)+`
+    // (G5a-1, G5a-2) a greedy CDN plus is supported outside look bodies; its body may hold capture-free looks
+    // and nullable pluses: `(\\b|a)+`, `((?=a)|b)+`, `(\\b(a?)+)+`, `((\\b)+|)+`, `((\\b|a)+)+`
     && MCL.CdnTopX(R.lazy_prefix(R.annotate(pattern)))
   }
 
@@ -95,14 +95,7 @@ module LindenRegexApi {
     case Re_con(r1, r2) => GateFromCdnTopG4(r1); GateFromCdnTopG4(r2);
     case Re_capture(_, r1) => GateFromCdnTopG4(r1);
     case Re_lookaround(_, _, r1) => GF.GateFromCin(r1);
-    case Re_quant(nul, _, q, r1) =>
-      if q.min != 0 && q.max.None? && q.greedy && nul == R.CDNullable {
-        GateFromCinG4(r1);   // (G5a-2a) a CDN plus body may hold capture-free looks
-      } else if q.min != 0 && q.max.None? && q.greedy && nul == R.CINullable {
-        GateFromCinG4(r1);
-      } else {
-        GateFromCdnTopG4(r1);
-      }
+    case Re_quant(_, _, _, r1) => GateFromCdnTopG4(r1);   // (G5a-2b) the scope descends into every body
     case _ =>
   }
 

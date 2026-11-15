@@ -14,6 +14,7 @@ module LindenElkReconFrame {
   import LOr = Oracle
   import RA = Anchors
   import LCdn = Cdn
+  import T = LindenElkTranslate
   import AR = LindenElkActionsRep
   import PIV = LindenElkPikeInv
   import NRC = LindenElkNulledRecon
@@ -139,6 +140,8 @@ module LindenElkReconFrame {
           var (rgR, ovR) := NRR.ReconAt(code, body, subtable, start_cp, rg, start_clock, plus_bcv, str, ov);
           assert rg2 == rgR;
           assert 0 <= start_cp <= |str| && start_clock >= -1;
+          NRR.PlusTableOkSNarrow(r, plus_bcv);   // (G5a-2b) the widened table, the vacuous sub-table
+          NRC.NoCdnBitsOk(qm, body, T.InputAt(str, start_cp as nat), subtable);
           NRR.ReconAtFrame(qm, r, body, qid, code, subtable, start_cp as nat, rg, start_clock, plus_bcv, str, ov);
           NRR.AgreeOutsideWeaken(rg2, rg, NRR.CapRegsOf(body), NRR.LookRegsOf(body), NRR.QuantRegsOf(body),
                                  CapsQ(r, Q), LooksQ(r, Q), QuantsQ(r, Q));
@@ -181,13 +184,14 @@ module LindenElkReconFrame {
   // (P5 row E) The sharp frame on the scope `NRC.CdnTopRE` (generated from the two lemmas above).
   lemma FNulledPlusFrameQS(qm: AR.QMap, r: R.regex, rg: Regs3, plus_bcv: seq<RB.code>, str: string,
                           ov: LOr.OracleView, Q: set<int>)
-    requires PIV.CapUnique(r) && PIV.QuantUnique(r) && NRC.CdnTopRE(r) && NRR.PlusTableOkS(r, plus_bcv)
+    requires T.TransWf(r) && PIV.CapUnique(r) && PIV.QuantUnique(r) && NRC.CdnTopRE(r) && NRR.PlusTableOkS(r, plus_bcv)
     requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && ov == qm.ov && NRO.StampsInRangeS(r, rg, str)
     requires StampsIn(r, rg, Q)
     ensures NRR.AgreeOutside(NRO.FP(r, rg, plus_bcv, str, ov), rg, CapsQ(r, Q), LooksQ(r, Q), QuantsQ(r, Q))
     decreases r
   {
-    NRC.CdnTopChild(r);   // (P5) the scope at the subterms; a stamped node's body holds no CDN plus
+    NRC.CdnTopChild(r);   // (P5) the scope at the subterms
+    NRO.CapUniqueChildS(r);   // (G5a-2b) TransWf at the subterms
     NRO.StampsInRangeSChild(r, rg, str);
     var rg2 := NRO.FP(r, rg, plus_bcv, str, ov);
     match r
@@ -223,11 +227,10 @@ module LindenElkReconFrame {
           var (rgR, ovR) := NRR.ReconAt(code, body, subtable, start_cp, rg, start_clock, plus_bcv, str, ov);
           assert rg2 == rgR;
           assert 0 <= start_cp <= |str| && start_clock >= -1;
-          // (P5) a set stamp sits on a stamp-plus; its body holds no CDN plus; the node is read as CIN
+          // (G5a-2b) a set stamp sits on a stamp-plus; the sub-table is right about its body's CDN guards
           assert NRR.QidStampPlus(r, qid as nat);
-          assert NRC.NoCdnPlusRE(body);
-          NRR.RelabOk(r, plus_bcv);
-          NRR.ReconAtFrame(qm, NRR.Relab(r), body, qid, code, subtable, start_cp as nat, rg, start_clock, plus_bcv, str, ov);
+          NRR.SubtableBitsOk(qm, body, str, start_cp as nat, ov);
+          NRR.ReconAtFrame(qm, r, body, qid, code, subtable, start_cp as nat, rg, start_clock, plus_bcv, str, ov);
           NRR.AgreeOutsideWeaken(rg2, rg, NRR.CapRegsOf(body), NRR.LookRegsOf(body), NRR.QuantRegsOf(body),
                                  CapsQ(r, Q), LooksQ(r, Q), QuantsQ(r, Q));
       }
@@ -236,13 +239,14 @@ module LindenElkReconFrame {
   lemma FrameQPairS(qm: AR.QMap, r: R.regex, r1: R.regex, r2: R.regex, rg: Regs3, plus_bcv: seq<RB.code>,
                    str: string, ov: LOr.OracleView, Q: set<int>)
     requires r == R.Re_alt(r1, r2) || r == R.Re_con(r1, r2)
-    requires PIV.CapUnique(r) && PIV.QuantUnique(r) && NRC.CdnTopRE(r) && NRR.PlusTableOkS(r, plus_bcv)
+    requires T.TransWf(r) && PIV.CapUnique(r) && PIV.QuantUnique(r) && NRC.CdnTopRE(r) && NRR.PlusTableOkS(r, plus_bcv)
     requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && ov == qm.ov && NRO.StampsInRangeS(r, rg, str)
     requires StampsIn(r, rg, Q)
     ensures NRR.AgreeOutside(NRO.FP(r, rg, plus_bcv, str, ov), rg, CapsQ(r, Q), LooksQ(r, Q), QuantsQ(r, Q))
     decreases r, 0
   {
     NRC.CdnTopChild(r);
+    NRO.CapUniqueChildS(r);   // (G5a-2b) TransWf at the subterms
     var rg2 := NRO.FP(r, rg, plus_bcv, str, ov);
     NRR.PlusTableOkSChildren(r, plus_bcv);
     assert NRR.L1(r) == r1 && NRR.L2(r) == r2;

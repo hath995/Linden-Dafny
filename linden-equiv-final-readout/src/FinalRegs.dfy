@@ -99,11 +99,13 @@ module LindenElkFinalRegs {
   /** `FNulledChildren` keeps the bound (the `NRR.FNulledChildrenFrame` induction). */
   lemma FCValGe(qm: AR.QMap, r: R.regex, cdnt: LCdn.cdn_table, cp: nat, rg: NRC.Regs3,
                 plus_bcv: seq<RB.code>, str: string, ov: LOr.OracleView)
-    requires PIV.QuantUnique(r) && NRC.NoCdnPlusRE(r) && NRR.PlusTableOk(r, plus_bcv)
+    requires PIV.QuantUnique(r) && NRR.PlusTableOkS(r, plus_bcv)
     requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && CapValGe(rg) && QClkGe(rg) && ov == qm.ov && cp <= |str|
+    requires NRC.CdnBitsOk(qm, r, T.InputAt(str, cp), cdnt)   // (G5a-2b)
     ensures CapValGe(NRR.FC(r, cdnt, cp, rg, plus_bcv, str, ov)) && QClkGe(NRR.FC(r, cdnt, cp, rg, plus_bcv, str, ov))
     decreases r, 1
   {
+    NRR.CdnBitsOkSub(qm, r, T.InputAt(str, cp), cdnt);   // (G5a-2b) the table at the subterms
     var rg2 := NRR.FC(r, cdnt, cp, rg, plus_bcv, str, ov);
     match r
     case Re_empty =>
@@ -111,24 +113,24 @@ module LindenElkFinalRegs {
     case Re_anchor(_) =>
     case Re_lookaround(_, _, _) =>
     case Re_capture(_, r1) =>
-      NRR.PlusTableOkChildren(r, plus_bcv);
+      NRR.PlusTableOkSChildren(r, plus_bcv);
       FCValGe(qm, r1, cdnt, cp, rg, plus_bcv, str, ov);
     case Re_alt(r1, r2) =>
-      NRR.PlusTableOkChildren(r, plus_bcv);
+      NRR.PlusTableOkSChildren(r, plus_bcv);
       FCValGe(qm, r1, cdnt, cp, rg, plus_bcv, str, ov);
       NRR.FNulledChildrenFrame(qm, r1, cdnt, cp, rg, plus_bcv, str, ov);
       var rgA := NRR.FC(r1, cdnt, cp, rg, plus_bcv, str, ov);
       FCValGe(qm, r2, cdnt, cp, rgA, plus_bcv, str, ov);
       assert rg2 == NRR.FC(r2, cdnt, cp, rgA, plus_bcv, str, ov);
     case Re_con(r1, r2) =>
-      NRR.PlusTableOkChildren(r, plus_bcv);
+      NRR.PlusTableOkSChildren(r, plus_bcv);
       FCValGe(qm, r1, cdnt, cp, rg, plus_bcv, str, ov);
       NRR.FNulledChildrenFrame(qm, r1, cdnt, cp, rg, plus_bcv, str, ov);
       var rgA := NRR.FC(r1, cdnt, cp, rg, plus_bcv, str, ov);
       FCValGe(qm, r2, cdnt, cp, rgA, plus_bcv, str, ov);
       assert rg2 == NRR.FC(r2, cdnt, cp, rgA, plus_bcv, str, ov);
     case Re_quant(nul, qid, q, body) =>
-      NRR.PlusTableOkChildren(r, plus_bcv);
+      NRR.PlusTableOkSChildren(r, plus_bcv);
       match AReg.get_cp(rg.2, qid) {
         case None =>
           FCValGe(qm, body, cdnt, cp, rg, plus_bcv, str, ov);
@@ -149,9 +151,10 @@ module LindenElkFinalRegs {
                      cp: nat, rg: NRC.Regs3, start_clock: int, plus_bcv: seq<RB.code>, str: string,
                      ov: LOr.OracleView)
     requires r.Re_quant? && NRR.L1(r) == body && r.qid == qid && qid >= 0
-    requires PIV.QuantUnique(r) && NRC.NoCdnPlusRE(r) && NRR.PlusTableOk(r, plus_bcv)
+    requires PIV.QuantUnique(r) && NRR.PlusTableOkS(r, plus_bcv)
     requires code == AI.get_code_v(plus_bcv, qid)
     requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && CapValGe(rg) && QClkGe(rg) && ov == qm.ov && cp <= |str| && start_clock >= -1
+    requires NRC.CdnBitsOk(qm, body, T.InputAt(str, cp), cdnt)   // (G5a-2b)
     ensures CapValGe(NRR.ReconAt(code, body, cdnt, cp, rg, start_clock, plus_bcv, str, ov).0)
     ensures QClkGe(NRR.ReconAt(code, body, cdnt, cp, rg, start_clock, plus_bcv, str, ov).0)
     decreases r, 0
@@ -161,14 +164,14 @@ module LindenElkFinalRegs {
     var inits := inits0.(cdn := cdnt);
     var (result, _, ov1) := AI.FNullInterp(code, inits, ov, RA.Forward);
     var rg1 := match result case None => rg case Some(w) => (w.capture_regs, w.look_regs, w.quant_regs);
-    NRR.PlusTableOkChildren(r, plus_bcv);
+    NRR.PlusTableOkSChildren(r, plus_bcv);
     assert (qid as nat) in PIV.QuantIds(r) && PIV.QidBody(r, qid as nat) == body;
     var inp := T.InputAt(str, cp);
     NRR.CpOfInputAt(str, cp);
-    if NRR.QidCinPlus(r, qid as nat) {
+    if NRR.QidStampPlus(r, qid as nat) {
       assert code == CP.compile_reconstruct_nulled(body);
       assert inits == AI.FInitState(code, TR.CpOf(inp) as int, rg.0, rg.1, rg.2, start_clock, TR.CtxOf(inp)).(cdn := inits.cdn);
-      NRC.NullInterpNulled(qm, body, inp, inits, ov, rg.0, rg.1, rg.2, start_clock);
+      NRC.NullInterpNulledT(qm, body, inp, inits, ov, rg.0, rg.1, rg.2, start_clock);
       assert ov1 == ov;
       if result.Some? {
         var ws := NRC.NulledWrites(qm, body, inp).value;
@@ -243,18 +246,21 @@ module LindenElkFinalRegs {
           var subtable := LCdn.build_cdn_v(subcdn, start_cp, ov, ctx, RA.Forward);
           var (rgR, ovR) := NRR.ReconAt(code, body, subtable, start_cp, rg, start_clock, plus_bcv, str, ov);
           assert rg2 == rgR;
+          NRR.PlusTableOkSNarrow(r, plus_bcv);   // (G5a-2b) the widened table, the vacuous sub-table
+          NRC.NoCdnBitsOk(qm, body, T.InputAt(str, start_cp as nat), subtable);
           ReconAtValGe(qm, r, body, qid, code, subtable, start_cp as nat, rg, start_clock, plus_bcv, str, ov);
       }
   }
 
   /** (P5 row E) `FPValGe` on the scope `NRC.CdnTopRE` (generated from its text). */
   lemma FPValGeS(qm: AR.QMap, r: R.regex, rg: NRC.Regs3, plus_bcv: seq<RB.code>, str: string, ov: LOr.OracleView)
-    requires PIV.CapUnique(r) && PIV.QuantUnique(r) && NRC.CdnTopRE(r) && NRR.PlusTableOkS(r, plus_bcv)
+    requires T.TransWf(r) && PIV.CapUnique(r) && PIV.QuantUnique(r) && NRC.CdnTopRE(r) && NRR.PlusTableOkS(r, plus_bcv)
     requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && CapValGe(rg) && QClkGe(rg) && ov == qm.ov && NRO.StampsInRangeS(r, rg, str)
     ensures CapValGe(NRO.FP(r, rg, plus_bcv, str, ov)) && QClkGe(NRO.FP(r, rg, plus_bcv, str, ov))
     decreases r
   {
-    NRC.CdnTopChild(r);   // (P5) the scope at the subterms; a stamped node's body holds no CDN plus
+    NRC.CdnTopChild(r);   // (P5) the scope at the subterms
+    NRO.CapUniqueChildS(r);   // (G5a-2b) TransWf at the subterms
     NRO.StampsInRangeSChild(r, rg, str);
     var rg2 := NRO.FP(r, rg, plus_bcv, str, ov);
     match r
@@ -310,11 +316,10 @@ module LindenElkFinalRegs {
           var subtable := LCdn.build_cdn_v(subcdn, start_cp, ov, ctx, RA.Forward);
           var (rgR, ovR) := NRR.ReconAt(code, body, subtable, start_cp, rg, start_clock, plus_bcv, str, ov);
           assert rg2 == rgR;
-          // (P5) a set stamp sits on a stamp-plus; its body holds no CDN plus; the node is read as CIN
+          // (G5a-2b) a set stamp sits on a stamp-plus; the sub-table is right about its body's CDN guards
           assert NRR.QidStampPlus(r, qid as nat);
-          assert NRC.NoCdnPlusRE(body);
-          NRR.RelabOk(r, plus_bcv);
-          ReconAtValGe(qm, NRR.Relab(r), body, qid, code, subtable, start_cp as nat, rg, start_clock, plus_bcv, str, ov);
+          NRR.SubtableBitsOk(qm, body, str, start_cp as nat, ov);
+          ReconAtValGe(qm, r, body, qid, code, subtable, start_cp as nat, rg, start_clock, plus_bcv, str, ov);
       }
   }
 }

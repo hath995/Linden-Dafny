@@ -215,4 +215,23 @@ module NullablePlusWitness {
     assert R.raw_nullable(AOPT) == R.CINullable;
     assert R.raw_nullable(WB_CINPLUS) == R.CDNullable;
   }
+
+  // ==========================================================================
+  // G5a-2b (2026-11-15): a greedy CDN plus inside a nulled plus's body. The reconstruct code of the outer
+  // plus holds the inner one's guard, which reads the sub-table `FNulledPlus` builds.
+  // ==========================================================================
+  const WB_PLUS        := R.Raw_quant(R.Plus, R.Raw_anchor(R.WordBoundary))   // \b+
+  const WB_PLUS_OR_E   := R.Raw_alt(WB_PLUS, R.Raw_empty)                     // \b+|
+  const WB_OR_A_PLUS   := R.Raw_quant(R.Plus, WB_OR_A)                        // (\b|a)+
+
+  lemma G5a2b_CdnPlusInNulledBody()
+    ensures API.Supported(R.Raw_quant(R.Plus, WB_PLUS_OR_E))   // (\b+|)+   a CDN plus in a CIN plus body
+    ensures API.Supported(R.Raw_quant(R.Plus, WB_OR_A_PLUS))   // ((\b|a)+)+  a CDN plus in a CDN plus body
+  {
+    assert R.raw_nullable(R.Raw_anchor(R.WordBoundary)) == R.CDNullable;
+    assert R.raw_nullable(WB_PLUS) == R.CDNullable;
+    assert R.raw_nullable(WB_PLUS_OR_E) == R.CINullable;
+    assert R.raw_nullable(WB_OR_A) == R.CDNullable;
+    assert R.raw_nullable(WB_OR_A_PLUS) == R.CDNullable;
+  }
 }

@@ -69,9 +69,9 @@ module LindenElkNulledRecon {
   // (G5a-1 step 4) The scope of the top theorem.
   // =========================================================================
 
-  /** No CDN-greedy plus sits inside a look body or inside the body of a greedy nullable unbounded plus
-      (CIN or CDN: a node the engine may stamp). A CDN plus body may hold lookarounds and CIN pluses (G5a-2a).
-      `(\b|a)+`, `(a?$)+`, `(^|a)+b`, `((?=a)|b)+`, `(\b(a?)+)+` pass. */
+  /** No CDN-greedy plus sits inside a look body (G5b lifts that). Since G5a-2b a CDN plus may sit inside a
+      nulled plus's body: the reconstruct code's guards read the sub-table, which is right about them
+      (`NRR.SubtableBitsOk`). `(\b|a)+`, `((?=a)|b)+`, `(\b(a?)+)+`, `((\b)+|)+`, `((\b|a)+)+` pass. */
   ghost predicate CdnTopRE(re: R.regex)
     decreases re
   {
@@ -80,10 +80,7 @@ module LindenElkNulledRecon {
     case Re_con(r1, r2) => CdnTopRE(r1) && CdnTopRE(r2)
     case Re_capture(_, r1) => CdnTopRE(r1)
     case Re_lookaround(_, _, r1) => NoCdnPlusRE(r1)
-    case Re_quant(nul, _, q, r1) =>
-      if q.min != 0 && q.max == None && q.greedy && nul == R.CDNullable then NoCdnPlusRE(r1)
-      else if q.min != 0 && q.max == None && q.greedy && nul == R.CINullable then NoCdnPlusRE(r1)
-      else CdnTopRE(r1)
+    case Re_quant(_, _, _, r1) => CdnTopRE(r1)
     case _ => true
   }
 
@@ -111,8 +108,7 @@ module LindenElkNulledRecon {
   }
 
   /** (P5 row E) What the readout walk needs at each node of a regex in scope: the scope passes to the
-      immediate subterms, and the body of a greedy nullable unbounded plus (CIN or CDN: a node the engine
-      may stamp) holds no CDN plus, so the body-level reconstruction lemmas apply to it as they are. */
+      immediate subterms (G5a-2b: a stamped body may hold CDN pluses; the sub-table covers them). */
   lemma CdnTopChild(re: R.regex)
     requires CdnTopRE(re)
     ensures re.Re_alt? ==> CdnTopRE(re.e1) && CdnTopRE(re.e2)
@@ -120,16 +116,8 @@ module LindenElkNulledRecon {
     ensures re.Re_capture? ==> CdnTopRE(re.capr)
     ensures re.Re_quant? ==> CdnTopRE(re.qr)
     ensures re.Re_lookaround? ==> CdnTopRE(re.lr)
-    ensures (re.Re_quant? && re.quant.min != 0 && re.quant.max == None && re.quant.greedy && re.qnul != R.NonNullable)
-            ==> NoCdnPlusRE(re.qr)
   {
     match re
-    case Re_quant(nul, _, q, r1) =>
-      if q.min != 0 && q.max == None && q.greedy && nul == R.CDNullable {
-        NoCdnIsCdnTop(r1);
-      } else if q.min != 0 && q.max == None && q.greedy && nul == R.CINullable {
-        NoCdnIsCdnTop(r1);
-      }
     case Re_lookaround(_, _, r1) => NoCdnIsCdnTop(r1);
     case _ =>
   }
@@ -433,10 +421,10 @@ module LindenElkNulledRecon {
       (c[p].Jmp? ==> c[p].jl > p) && (c[p].Fork? ==> c[p].fl1 > p && c[p].fl2 > p)
   }
 
-  /** The instruction kinds ReconstructNulled code may contain (under `NoCdnPlusRE`). */
+  /** The instruction kinds ReconstructNulled code may contain (G5a-2b: a nested CDN plus's guard too). */
   ghost predicate NulledInstr(i: RB.instruction) {
     i.Fail? || i.Jmp? || i.Fork? || i.SetRegisterToCP? || i.SetQuantToClock?
-    || i.CheckOracle? || i.NegCheckOracle? || i.AnchorAssertion?
+    || i.CheckOracle? || i.NegCheckOracle? || i.AnchorAssertion? || i.CheckNullable?
   }
 
   /** Every pc of the region holds a `NulledInstr` whose successors stay in
@@ -451,7 +439,6 @@ module LindenElkNulledRecon {
 
   lemma RegionShapeRE(re: R.regex, c: RB.code, pc1: nat, pc2: nat)
     requires NfaRepNulledRE(re, c, pc1, pc2)
-    requires NoCdnPlusRE(re)
     ensures pc1 <= pc2 && RegionShape(c, pc1, pc2)
     decreases CP.rsize(re), 1
   {
@@ -476,7 +463,7 @@ module LindenElkNulledRecon {
       } else if nul == R.NonNullable {
       } else if q.max == None && nul == R.CINullable && q.greedy {
       } else if q.max == None && nul == R.CDNullable && q.greedy {
-        assert false;
+        // (G5a-2b) the guard, then the stamp
       } else {
         RegionShapeRE(r1, c, pc1 + 1, pc2);
       }
@@ -489,9 +476,8 @@ module LindenElkNulledRecon {
   }
 
   /** The whole reconstruct code is forward-only and free of consuming,
-      looping, CDN and oracle-writing instructions. */
+      looping and oracle-writing instructions. */
   lemma ReconstructCodeShape(re: R.regex)
-    requires NoCdnPlusRE(re)
     ensures var c := CP.compile_reconstruct_nulled(re);
       ForwardOnly(c) && |c| >= 1 && c[|c| - 1] == RB.Accept
       && (forall p: nat :: p < |c| - 1 ==> NulledInstr(c[p]))
@@ -547,7 +533,11 @@ module LindenElkNulledRecon {
       if q.min == 0 then Some([])
       else if nul == R.NonNullable then None
       else if q.max == None && nul == R.CINullable && q.greedy then Some([WQuant(qid, true)])
-      else if q.max == None && nul == R.CDNullable && q.greedy then None
+      // (G5a-2b) a nested CDN plus: its guard passes iff its body has a nulled run here (`CdnBitsOk`)
+      else if q.max == None && nul == R.CDNullable && q.greedy then
+        (match NulledWrites(qm, r1, inp)
+         case None => None
+         case Some(_) => Some([WQuant(qid, true)]))
       else
         (match NulledWrites(qm, r1, inp)
          case None => None
@@ -560,6 +550,52 @@ module LindenElkNulledRecon {
       var bit := LOr.view_get_oracle(qm.ov, TR.CpOf(inp), lid);
       if PositiveLk(la) then (if bit then Some([WLook(lid)]) else None)
       else (if bit then None else Some([]))
+  }
+
+  /** (G5a-2b) The table `cdn` is right about the guard of every greedy CDN plus that `re`'s reconstruct code
+      holds: the bit is the body's nulled run at `inp` (equivalently its first empty path,
+      `NRR.NulledWritesIffPath`). The code never enters a look body, so the predicate stops at a look.
+      Opaque: its arm names `NulledWrites`, which the readout lemmas unfold heavily. */
+  opaque ghost predicate CdnBitsOk(qm: AR.QMap, re: R.regex, inp: LC.Input, cdn: LCdn.cdn_table)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => CdnBitsOk(qm, r1, inp, cdn) && CdnBitsOk(qm, r2, inp, cdn)
+    case Re_con(r1, r2) => CdnBitsOk(qm, r1, inp, cdn) && CdnBitsOk(qm, r2, inp, cdn)
+    case Re_capture(_, r1) => CdnBitsOk(qm, r1, inp, cdn)
+    case Re_quant(nul, qid, q, r1) =>
+      ((q.min != 0 && q.max == None && nul == R.CDNullable && q.greedy)
+         ==> (LCdn.cdn_get(cdn, qid) <==> NulledWrites(qm, r1, inp).Some?))
+      && CdnBitsOk(qm, r1, inp, cdn)
+    case _ => true
+  }
+
+  /** Without a CDN plus every table is right (there is no guard to be right about). */
+  lemma NoCdnBitsOk(qm: AR.QMap, re: R.regex, inp: LC.Input, cdn: LCdn.cdn_table)
+    requires NoCdnPlusRE(re)
+    ensures CdnBitsOk(qm, re, inp, cdn)
+    decreases re
+  {
+    reveal CdnBitsOk();
+    match re
+    case Re_alt(r1, r2) => NoCdnBitsOk(qm, r1, inp, cdn); NoCdnBitsOk(qm, r2, inp, cdn);
+    case Re_con(r1, r2) => NoCdnBitsOk(qm, r1, inp, cdn); NoCdnBitsOk(qm, r2, inp, cdn);
+    case Re_capture(_, r1) => NoCdnBitsOk(qm, r1, inp, cdn);
+    case Re_quant(_, _, _, r1) => NoCdnBitsOk(qm, r1, inp, cdn);
+    case _ =>
+  }
+
+  /** `CdnBitsOk` passes to the immediate subterms. */
+  lemma CdnBitsOkChild(qm: AR.QMap, re: R.regex, inp: LC.Input, cdn: LCdn.cdn_table)
+    requires CdnBitsOk(qm, re, inp, cdn)
+    ensures re.Re_alt? ==> CdnBitsOk(qm, re.e1, inp, cdn) && CdnBitsOk(qm, re.e2, inp, cdn)
+    ensures re.Re_con? ==> CdnBitsOk(qm, re.c1, inp, cdn) && CdnBitsOk(qm, re.c2, inp, cdn)
+    ensures re.Re_capture? ==> CdnBitsOk(qm, re.capr, inp, cdn)
+    ensures re.Re_quant? ==> CdnBitsOk(qm, re.qr, inp, cdn)
+    ensures (re.Re_quant? && re.quant.min != 0 && re.quant.max == None && re.qnul == R.CDNullable && re.quant.greedy)
+            ==> (LCdn.cdn_get(cdn, re.qid) <==> NulledWrites(qm, re.qr, inp).Some?)
+  {
+    reveal CdnBitsOk();
   }
 
   // ===========================================================================
@@ -679,6 +715,8 @@ module LindenElkNulledRecon {
     case CheckOracle(l) => !LOr.view_get_oracle(ov, cp, l) || Dead(c, pc + 1, B, cp, ctx, ov)
     case NegCheckOracle(l) => LOr.view_get_oracle(ov, cp, l) || Dead(c, pc + 1, B, cp, ctx, ov)
     case AnchorAssertion(a) => !RA.is_satisfied(a, ctx, RA.Forward) || Dead(c, pc + 1, B, cp, ctx, ov)
+    // (G5a-2b) a CDN guard read as passing: the path is dead whatever the table says
+    case CheckNullable(_) => Dead(c, pc + 1, B, cp, ctx, ov)
     case _ => false
   }
 
@@ -698,6 +736,8 @@ module LindenElkNulledRecon {
         case CheckOracle(l) => !LOr.view_get_oracle(ov, cp, l) || Junk(c, pc + 1, q, cp, ctx, ov)
         case NegCheckOracle(l) => LOr.view_get_oracle(ov, cp, l) || Junk(c, pc + 1, q, cp, ctx, ov)
         case AnchorAssertion(a) => !RA.is_satisfied(a, ctx, RA.Forward) || Junk(c, pc + 1, q, cp, ctx, ov)
+        // (G5a-2b) a CDN guard read as passing: junk whatever the table says
+        case CheckNullable(_) => Junk(c, pc + 1, q, cp, ctx, ov)
         case _ => false)
   }
 
@@ -716,6 +756,7 @@ module LindenElkNulledRecon {
     case CheckOracle(l) => if LOr.view_get_oracle(ov, cp, l) { DeadWeaken(c, pc + 1, B, B', cp, ctx, ov); }
     case NegCheckOracle(l) => if !LOr.view_get_oracle(ov, cp, l) { DeadWeaken(c, pc + 1, B, B', cp, ctx, ov); }
     case AnchorAssertion(a) => if RA.is_satisfied(a, ctx, RA.Forward) { DeadWeaken(c, pc + 1, B, B', cp, ctx, ov); }
+    case CheckNullable(_) => DeadWeaken(c, pc + 1, B, B', cp, ctx, ov);
     case _ =>
   }
 
@@ -737,6 +778,7 @@ module LindenElkNulledRecon {
       case CheckOracle(l) => if LOr.view_get_oracle(ov, cp, l) { JunkTrans(c, pc + 1, q1, q2, cp, ctx, ov); }
       case NegCheckOracle(l) => if !LOr.view_get_oracle(ov, cp, l) { JunkTrans(c, pc + 1, q1, q2, cp, ctx, ov); }
       case AnchorAssertion(a) => if RA.is_satisfied(a, ctx, RA.Forward) { JunkTrans(c, pc + 1, q1, q2, cp, ctx, ov); }
+      case CheckNullable(_) => JunkTrans(c, pc + 1, q1, q2, cp, ctx, ov);
       case _ =>
     }
   }
@@ -745,7 +787,6 @@ module LindenElkNulledRecon {
   lemma RegionJunkRE(re: R.regex, c: RB.code, pc1: nat, pc2: nat, cp: int, ctx: RA.char_context, ov: LOr.OracleView)
     requires ForwardOnly(c)
     requires NfaRepNulledRE(re, c, pc1, pc2)
-    requires NoCdnPlusRE(re)
     ensures Junk(c, pc1, pc2, cp, ctx, ov)
     decreases CP.rsize(re), 1
   {
@@ -778,7 +819,9 @@ module LindenElkNulledRecon {
       } else if nul == R.NonNullable {
       } else if q.max == None && nul == R.CINullable && q.greedy {
       } else if q.max == None && nul == R.CDNullable && q.greedy {
-        assert false;
+        // (G5a-2b) the guard (read as passing), then the stamp
+        assert c[pc1 + 1].SetQuantToClock? && Junk(c, pc1 + 2, pc2, cp, ctx, ov);
+        assert Junk(c, pc1 + 1, pc2, cp, ctx, ov);
       } else {
         RegionJunkRE(r1, c, pc1 + 1, pc2, cp, ctx, ov);
       }
@@ -928,6 +971,18 @@ module LindenElkNulledRecon {
     ensures RA.is_satisfied(a, s.context, dir) ==>
       AI.FAdvanceEpsilon(c, s, ov, dir) == AI.FAdvanceEpsilon(c, Bump(s, t).(active := [t.(pc := t.pc + 1)] + ac), ov, dir)
     ensures !RA.is_satisfied(a, s.context, dir) ==>
+      AI.FAdvanceEpsilon(c, s, ov, dir) == AI.FAdvanceEpsilon(c, Bump(s, t).(active := ac), ov, dir)
+  {
+    assert s.active[0] == t && s.active[1..] == ac;
+  }
+
+  lemma StepCheckNullable(c: RB.code, s: AI.VmState, ov: LOr.OracleView, dir: RA.direction, t: AI.Thread, ac: seq<AI.Thread>, q: int)
+    requires Sized(c, s) && s.active == [t] + ac
+    requires !AI.bpc_mem(s.processed, t.pc, t.exit_allowed)
+    requires RB.get_instr(c, t.pc) == RB.CheckNullable(q)
+    ensures LCdn.cdn_get(s.cdn, q) ==>
+      AI.FAdvanceEpsilon(c, s, ov, dir) == AI.FAdvanceEpsilon(c, Bump(s, t).(active := [t.(pc := t.pc + 1)] + ac), ov, dir)
+    ensures !LCdn.cdn_get(s.cdn, q) ==>
       AI.FAdvanceEpsilon(c, s, ov, dir) == AI.FAdvanceEpsilon(c, Bump(s, t).(active := ac), ov, dir)
   {
     assert s.active[0] == t && s.active[1..] == ac;
@@ -1120,6 +1175,22 @@ module LindenElkNulledRecon {
         } else {
           s' := JunkSkip(c, s1.(active := ac), ov, junk[1..], rest, lo, hi);
         }
+      case CheckNullable(q0) =>
+        StepCheckNullable(c, s, ov, RA.Forward, t, ac, q0);
+        if LCdn.cdn_get(s.cdn, q0) {
+          var t2 := t.(pc := t.pc + 1);
+          assert JunkOk(c, t2, s1.processed, hi, s.cp, s.context, ov) && lo <= t2.pc <= hi by {
+            if Dead(c, pc, hi, s.cp, s.context, ov) {
+              assert Dead(c, pc + 1, hi, s.cp, s.context, ov);
+            } else {
+              var q: nat :| q <= hi && Junk(c, pc, q, s.cp, s.context, ov) && AI.bpc_mem(s.processed, q, false);
+              assert Junk(c, pc + 1, q, s.cp, s.context, ov);
+            }
+          }
+          s' := JunkSkip(c, s1.(active := [t2] + ac), ov, [t2] + junk[1..], rest, lo, hi);
+        } else {
+          s' := JunkSkip(c, s1.(active := ac), ov, junk[1..], rest, lo, hi);
+        }
       case _ =>
         // excluded by Dead/Junk at a processed pc
         assert false by {
@@ -1160,7 +1231,7 @@ module LindenElkNulledRecon {
                     s: AI.VmState, ov: LOr.OracleView, t: AI.Thread, rest: seq<AI.Thread>, ws: seq<Write>,
                     rg0: Regs3, clk0: int)
       returns (s': AI.VmState, t': AI.Thread, junk: seq<AI.Thread>)
-    requires NoCdnPlusRE(re)
+    requires CdnBitsOk(qm, re, inp, s.cdn)   // (G5a-2b) was `NoCdnPlusRE(re)`
     requires NfaRepNulledRE(re, c, pc1, pc2)
     requires ForwardOnly(c) && Sized(c, s)
     requires s.active == [t] + rest
@@ -1187,6 +1258,7 @@ module LindenElkNulledRecon {
               && (forall th <- junk :: JunkOk(c, th, s'.processed, pc2, s.cp, s.context, ov))
     decreases CP.rsize(re), 1
   {
+    CdnBitsOkChild(qm, re, inp, s.cdn);   // (G5a-2b) the table at the subterms and at this node
     var cp := s.cp;
     var ctx := s.context;
     match re {
@@ -1258,7 +1330,29 @@ module LindenElkNulledRecon {
           RegsFromWrite(RegsOf(t), ws, cp, rg0, clk0, s.clock, WQuant(qid, true), s.clock + 1);
           assert RegsOf(t') == ApplyWrite(WQuant(qid, true), cp, s.clock + 1, RegsOf(t));
         } else if q.max == None && nul == R.CDNullable && q.greedy {
-          assert false;
+          // (G5a-2b) the guard reads the table (`CdnBitsOk`), then the stamp as for CIN
+          HeadUnvisited(c, s, t, pc1, pc2);
+          StepCheckNullable(c, s, ov, RA.Forward, t, rest, qid);
+          BumpFacts(c, s, t);
+          var s1 := Bump(s, t);
+          if LCdn.cdn_get(s.cdn, qid) {
+            assert NulledWrites(qm, r1, inp).Some?;
+            assert NulledWrites(qm, re, inp) == Some([WQuant(qid, true)]);
+            var t1 := t.(pc := t.pc + 1);
+            var s2 := s1.(active := [t1] + rest);
+            assert !AI.bpc_mem(s2.processed, t1.pc, t1.exit_allowed);
+            assert RegsOf(t1) == RegsOf(t);
+            RegsFromWeaken(RegsOf(t), ws, cp, rg0, clk0, s.clock, s2.clock);
+            StepSetQuant(c, s2, ov, RA.Forward, t1, rest, qid, true);
+            BumpFacts(c, s2, t1);
+            t' := t1.(quant_regs := AReg.set_reg(t1.quant_regs, qid, Some(cp), s2.clock + 1), pc := t1.pc + 1);
+            s' := Bump(s2, t1).(active := [t'] + rest); junk := [];
+            RegsFromWrite(RegsOf(t1), ws, cp, rg0, clk0, s2.clock, WQuant(qid, true), s2.clock + 1);
+            assert RegsOf(t') == ApplyWrite(WQuant(qid, true), cp, s2.clock + 1, RegsOf(t1));
+          } else {
+            assert NulledWrites(qm, re, inp) == None;
+            s' := s1.(active := rest); t' := t; junk := [];
+          }
         } else {
           NfaRepNulledMono(r1, c, pc1 + 1, pc2);
           HeadUnvisited(c, s, t, pc1, pc2);
@@ -1640,6 +1734,23 @@ module LindenElkNulledRecon {
   lemma NullInterpNulled(qm: AR.QMap, re: R.regex, inp: LC.Input, s0: AI.VmState, ov: LOr.OracleView,
                          cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, clk: int)
     requires NoCdnPlusRE(re) && ov == qm.ov
+    requires var c := CP.compile_reconstruct_nulled(re);
+             s0 == AI.FInitState(c, TR.CpOf(inp) as int, cap, lk, qt, clk, TR.CtxOf(inp)).(cdn := s0.cdn)
+    ensures var c := CP.compile_reconstruct_nulled(re);
+      var (res, sf, ov') := AI.FNullInterp(c, s0, ov, RA.Forward);
+      ov' == ov
+      && (res.Some? <==> NulledWrites(qm, re, inp).Some?)
+      && (res.Some? ==> RegsFrom(RegsOf(res.value), NulledWrites(qm, re, inp).value,
+                                 TR.CpOf(inp) as int, (cap, lk, qt), clk, sf.clock))
+  {
+    NoCdnBitsOk(qm, re, inp, s0.cdn);
+    NullInterpNulledT(qm, re, inp, s0, ov, cap, lk, qt, clk);
+  }
+
+  /** (G5a-2b) `NullInterpNulled` with nested CDN pluses: the run's table is right about their guards. */
+  lemma NullInterpNulledT(qm: AR.QMap, re: R.regex, inp: LC.Input, s0: AI.VmState, ov: LOr.OracleView,
+                          cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs, clk: int)
+    requires CdnBitsOk(qm, re, inp, s0.cdn) && ov == qm.ov
     requires var c := CP.compile_reconstruct_nulled(re);
              s0 == AI.FInitState(c, TR.CpOf(inp) as int, cap, lk, qt, clk, TR.CtxOf(inp)).(cdn := s0.cdn)
     ensures var c := CP.compile_reconstruct_nulled(re);

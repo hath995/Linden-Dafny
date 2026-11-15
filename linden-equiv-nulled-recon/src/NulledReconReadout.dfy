@@ -289,6 +289,8 @@ module LindenElkNulledReconReadout {
     var (rg2, ov2) := PlusAt(qm, r, rg, plus_bcv, str, ov);
     assert rg2 == NRR.FC(r1, subtable, cpi, rgW, plus_bcv, str, ov) && ov2 == NRR.FCov(r1, subtable, cpi, rgW, plus_bcv, str, ov);
     NRR.PlusTableOkChildren(r, plus_bcv);
+    NRR.PlusTableOkSNarrow(r1, plus_bcv);   // (G5a-2b) the readout takes the widened table
+    NRC.NoCdnBitsOk(qm, r1, inp, subtable);
     assert NRR.ReadoutCtx(qm, r1, plus_bcv, ov, str, cp);
     assert PIV.CapIds(r1) <= PIV.CapIds(r) && PIV.QuantIds(r1) <= PIV.QuantIds(r) && NRR.LookIds(r1) <= NRR.LookIds(r);
     assert NRR.Covers(r1, rg);
@@ -406,6 +408,8 @@ module LindenElkNulledReconReadout {
           var subtable := LCdn.build_cdn_v(subcdn, start_cp, ov, ctx, RA.Forward);
           var (rgR, ovR) := NRR.ReconAt(code, body, subtable, start_cp, rg, start_clock, plus_bcv, str, ov);
           assert rg2 == rgR && FPov(r, rg, plus_bcv, str, ov) == ovR;
+          NRR.PlusTableOkSNarrow(r, plus_bcv);   // (G5a-2b) the frame takes the widened table
+          NRC.NoCdnBitsOk(qm, body, T.InputAt(str, start_cp as nat), subtable);
           NRR.ReconAtFrame(qm, r, body, qid, code, subtable, start_cp as nat, rg, start_clock, plus_bcv, str, ov);
       }
   }
@@ -477,6 +481,8 @@ module LindenElkNulledReconReadout {
           var ctx := AI.cp_context(start_cp, str, RA.Forward);
           var subtable := LCdn.build_cdn_v(LCdn.compile_cdns(body), start_cp, ov, ctx, RA.Forward);
           assert rg2 == NRR.ReconAt(code, body, subtable, start_cp, rg, start_clock, plus_bcv, str, ov).0;
+          NRR.PlusTableOkSNarrow(r, plus_bcv);   // (G5a-2b) the frame takes the widened table
+          NRC.NoCdnBitsOk(qm, body, T.InputAt(str, start_cp as nat), subtable);
           NRR.ReconAtLookCapsAbsent(qm, r, body, qid, code, subtable, start_cp as nat, rg, start_clock, plus_bcv, str, ov);
       }
   }
@@ -943,7 +949,7 @@ module LindenElkNulledReconReadout {
     LiveStampsGmKeys(r2, qm, str, qc, qcp, mx, g2);
     forall g: nat ensures (g in a2 <==> g in g1' + g2') && (g in a2 ==> a2[g] == (g1' + g2')[g]) {
       if g in PIV.CapIds(r1) {
-        assert g !in PIV.CapIds(r2);
+        assert g !in PIV.CapIds(r2) by { if g in PIV.CapIds(r2) { assert g in PIV.CapIds(r1) * PIV.CapIds(r2); } }
       } else if g in PIV.CapIds(r2) {
       } else {
       }
@@ -1546,8 +1552,6 @@ module LindenElkNulledReconReadout {
             && (forall c: nat :: c in PIV.CapIds(NRR.L1(r)) ==>
                   NRR.ReadsAs(NRR.Filt(NRR.L1(r), rg2, K), rg2, c, cp, c in NRR.PathGroupsR(qm, NRR.L1(r), inp)))
   {
-    NRC.CdnTopChild(r);   // (P5) the scope at the subterms; a stamped node's body holds no CDN plus
-    assert NRC.NoCdnPlusRE(NRR.L1(r));
     var qid := r.qid; var r1 := NRR.L1(r);
     var K := AI.get_idx(rg.2.a_clk, qid);
     var cp: nat := AI.get_idx(rg.2.a_cp, qid) as nat;
@@ -1566,8 +1570,9 @@ module LindenElkNulledReconReadout {
     var (result, sF, ov1) := AI.FNullInterp(code, inits, ov, RA.Forward);
     NRR.CpOfInputAt(str, cp);
     assert inits == AI.FInitState(code, TR.CpOf(inp) as int, rg.0, rg.1, rg.2, K, TR.CtxOf(inp)).(cdn := inits.cdn);
-    NRC.NullInterpNulled(qm, r1, inp, inits, ov, rg.0, rg.1, rg.2, K);
     CapUniqueChildS(r);
+    NRR.SubtableBitsOk(qm, r1, str, cp, ov);   // (G5a-2b) the sub-table is right about the body's CDN guards
+    NRC.NullInterpNulledT(qm, r1, inp, inits, ov, rg.0, rg.1, rg.2, K);
     assert TR.FirstEmptyPathR(qm, r1, inp).Some?;   // (P5) the premise
     NRR.NulledWritesIffPath(qm, r1, inp);
     assert result.Some? && ov1 == ov;
@@ -1578,7 +1583,6 @@ module LindenElkNulledReconReadout {
     var (rg2, ov2) := PlusAt(qm, r, rg, plus_bcv, str, ov);
     assert rg2 == NRR.FC(r1, subtable, cpi, rgW, plus_bcv, str, ov) && ov2 == NRR.FCov(r1, subtable, cpi, rgW, plus_bcv, str, ov);
     NRR.PlusTableOkSChildren(r, plus_bcv);
-    NRR.PlusTableOkSNarrow(r1, plus_bcv);   // (P5) the body is narrow: its table is the narrow one
     assert NRR.ReadoutCtx(qm, r1, plus_bcv, ov, str, cp);
     assert PIV.CapIds(r1) <= PIV.CapIds(r) && PIV.QuantIds(r1) <= PIV.QuantIds(r) && NRR.LookIds(r1) <= NRR.LookIds(r);
     assert NRR.Covers(r1, rg);
@@ -1589,7 +1593,7 @@ module LindenElkNulledReconReadout {
   }
 
   lemma FNulledPlusFrameS(qm: AR.QMap, r: R.regex, rg: Regs3, plus_bcv: seq<RB.code>, str: string, ov: LOr.OracleView)
-    requires PIV.CapUnique(r) && PIV.QuantUnique(r) && NRC.CdnTopRE(r) && NRR.PlusTableOkS(r, plus_bcv)
+    requires T.TransWf(r) && PIV.CapUnique(r) && PIV.QuantUnique(r) && NRC.CdnTopRE(r) && NRR.PlusTableOkS(r, plus_bcv)
     requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && ov == qm.ov && StampsInRangeS(r, rg, str)
     ensures FPov(r, rg, plus_bcv, str, ov) == ov
     ensures var rg2 := FP(r, rg, plus_bcv, str, ov);
@@ -1598,6 +1602,7 @@ module LindenElkNulledReconReadout {
     decreases r
   {
     NRC.CdnTopChild(r);   // (P5) the scope at the subterms; a stamped node's body holds no CDN plus
+    CapUniqueChildS(r);   // (G5a-2b) TransWf at the subterms
     StampsInRangeSChild(r, rg, str);
     var rg2 := FP(r, rg, plus_bcv, str, ov);
     match r
@@ -1659,22 +1664,22 @@ module LindenElkNulledReconReadout {
           var subtable := LCdn.build_cdn_v(subcdn, start_cp, ov, ctx, RA.Forward);
           var (rgR, ovR) := NRR.ReconAt(code, body, subtable, start_cp, rg, start_clock, plus_bcv, str, ov);
           assert rg2 == rgR && FPov(r, rg, plus_bcv, str, ov) == ovR;
-          // (P5) a set stamp sits on a stamp-plus; its body holds no CDN plus; the node is read as CIN
+          // (G5a-2b) a set stamp sits on a stamp-plus; the sub-table is right about its body's CDN guards
           assert NRR.QidStampPlus(r, qid as nat);
-          assert NRC.NoCdnPlusRE(body);
-          NRR.RelabOk(r, plus_bcv);
-          NRR.ReconAtFrame(qm, NRR.Relab(r), body, qid, code, subtable, start_cp as nat, rg, start_clock, plus_bcv, str, ov);
+          NRR.SubtableBitsOk(qm, body, str, start_cp as nat, ov);
+          NRR.ReconAtFrame(qm, r, body, qid, code, subtable, start_cp as nat, rg, start_clock, plus_bcv, str, ov);
       }
   }
 
   lemma FNulledPlusLookCapsAbsentS(qm: AR.QMap, r: R.regex, rg: Regs3, plus_bcv: seq<RB.code>, str: string, ov: LOr.OracleView)
-    requires PIV.CapUnique(r) && PIV.QuantUnique(r) && NRC.CdnTopRE(r) && NRR.PlusTableOkS(r, plus_bcv)
+    requires T.TransWf(r) && PIV.CapUnique(r) && PIV.QuantUnique(r) && NRC.CdnTopRE(r) && NRR.PlusTableOkS(r, plus_bcv)
     requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && ov == qm.ov && StampsInRangeS(r, rg, str)
     requires NRR.LookCapsAbsent(r, rg)
     ensures NRR.LookCapsAbsent(r, FP(r, rg, plus_bcv, str, ov))
     decreases r
   {
     NRC.CdnTopChild(r);   // (P5) the scope at the subterms; a stamped node's body holds no CDN plus
+    CapUniqueChildS(r);   // (G5a-2b) TransWf at the subterms
     StampsInRangeSChild(r, rg, str);
     var rg2 := FP(r, rg, plus_bcv, str, ov);
     FNulledPlusFrameS(qm, r, rg, plus_bcv, str, ov);
@@ -1735,11 +1740,10 @@ module LindenElkNulledReconReadout {
           var ctx := AI.cp_context(start_cp, str, RA.Forward);
           var subtable := LCdn.build_cdn_v(LCdn.compile_cdns(body), start_cp, ov, ctx, RA.Forward);
           assert rg2 == NRR.ReconAt(code, body, subtable, start_cp, rg, start_clock, plus_bcv, str, ov).0;
-          // (P5) a set stamp sits on a stamp-plus; its body holds no CDN plus; the node is read as CIN
+          // (G5a-2b) a set stamp sits on a stamp-plus; the sub-table is right about its body's CDN guards
           assert NRR.QidStampPlus(r, qid as nat);
-          assert NRC.NoCdnPlusRE(body);
-          NRR.RelabOk(r, plus_bcv);
-          NRR.ReconAtLookCapsAbsent(qm, NRR.Relab(r), body, qid, code, subtable, start_cp as nat, rg, start_clock, plus_bcv, str, ov);
+          NRR.SubtableBitsOk(qm, body, str, start_cp as nat, ov);
+          NRR.ReconAtLookCapsAbsent(qm, r, body, qid, code, subtable, start_cp as nat, rg, start_clock, plus_bcv, str, ov);
       }
   }
 
@@ -1820,7 +1824,7 @@ module LindenElkNulledReconReadout {
     }
   }
 
-  lemma ReconReadoutBinS(qm: AR.QMap, r: R.regex, rg: Regs3, plus_bcv: seq<RB.code>, str: string, ov: LOr.OracleView, mx: int)
+  lemma {:induction false} ReconReadoutBinS(qm: AR.QMap, r: R.regex, rg: Regs3, plus_bcv: seq<RB.code>, str: string, ov: LOr.OracleView, mx: int)
     requires mx >= -1
     requires r.Re_alt? || r.Re_con?
     requires T.TransWf(r) && PIV.CapUnique(r) && PIV.QuantUnique(r) && NRR.LookUnique(r) && NRC.CdnTopRE(r) && NRR.PlusTableOkS(r, plus_bcv)
@@ -1883,10 +1887,15 @@ module LindenElkNulledReconReadout {
     assert BodiesMatch(qm, r, qcp) by { StampsLocalSBodies(qm, r, str, rg, mx); }
     BodiesMatchChild(qm, r, qcp);
     var a1 := PIV.LiveStampsGm(r1, qm, str, qc, qcp, mx, gmS);
-    LiveStampsGmFrame(r1, qm, str, qc, qcp, mx, gmS, g1);
-    var a2 := PIV.LiveStampsGm(r2, qm, str, qc, qcp, mx, a1);
     assert PIV.CapIds(r1) * PIV.CapIds(r2) == {} by { CapUniqueDisjoint(r); }
     GmSubKeys(r1, rg, mx); GmSubKeys(r2, rg, mx);
+    assert forall g: nat :: g in PIV.CapIds(r1) ==> ((g in gmS <==> g in g1) && (g in gmS ==> gmS[g] == g1[g])) by {
+      forall g: nat | g in PIV.CapIds(r1) ensures (g in gmS <==> g in g1) && (g in gmS ==> gmS[g] == g1[g]) {
+        assert g !in g2 by { if g in g2 { assert g in PIV.CapIds(r1) * PIV.CapIds(r2); } }
+      }
+    }
+    LiveStampsGmFrame(r1, qm, str, qc, qcp, mx, gmS, g1);
+    var a2 := PIV.LiveStampsGm(r2, qm, str, qc, qcp, mx, a1);
     LiveStampsGmFrame(r2, qm, str, qc, qcp, mx, a1, g2);
     assert PIV.LiveStampsGm(r, qm, str, qc, qcp, mx, gmS) == a2;
     assert {:split_here} true;
@@ -1897,7 +1906,7 @@ module LindenElkNulledReconReadout {
     LiveStampsGmKeys(r2, qm, str, qc, qcp, mx, g2);
     forall g: nat ensures (g in a2 <==> g in g1' + g2') && (g in a2 ==> a2[g] == (g1' + g2')[g]) {
       if g in PIV.CapIds(r1) {
-        assert g !in PIV.CapIds(r2);
+        assert g !in PIV.CapIds(r2) by { if g in PIV.CapIds(r2) { assert g in PIV.CapIds(r1) * PIV.CapIds(r2); } }
       } else if g in PIV.CapIds(r2) {
       } else {
       }
