@@ -1211,7 +1211,7 @@ module LindenElkMainCinLk {
     case Re_capture(_, r1) => CdnTopX(r1)
     case Re_lookaround(_, _, r1) => NoCdnPlusX(r1)
     case Re_quant(nul, _, q, r1) =>
-      if q.min != 0 && q.max == None && q.greedy && nul == R.CDNullable then NR.LookFreeRE(r1) && NR.NoNulledPlusRE(r1) && NoCdnPlusX(r1)
+      if q.min != 0 && q.max == None && q.greedy && nul == R.CDNullable then NoCdnPlusX(r1)   // (G5a-2a)
       else if q.min != 0 && q.max == None && q.greedy && nul == R.CINullable then NoCdnPlusX(r1)
       else CdnTopX(r1)
     case _ => true

@@ -69,8 +69,9 @@ module LindenElkNulledRecon {
   // (G5a-1 step 4) The scope of the top theorem.
   // =========================================================================
 
-  /** Every CDN-greedy plus is at top level (outside looks and outside CIN-plus bodies), and its body is
-      look-free and holds no greedy nullable unbounded plus. `(\b|a)+`, `(a?$)+`, `(^|a)+b` pass. */
+  /** No CDN-greedy plus sits inside a look body or inside the body of a greedy nullable unbounded plus
+      (CIN or CDN: a node the engine may stamp). A CDN plus body may hold lookarounds and CIN pluses (G5a-2a).
+      `(\b|a)+`, `(a?$)+`, `(^|a)+b`, `((?=a)|b)+`, `(\b(a?)+)+` pass. */
   ghost predicate CdnTopRE(re: R.regex)
     decreases re
   {
@@ -80,7 +81,7 @@ module LindenElkNulledRecon {
     case Re_capture(_, r1) => CdnTopRE(r1)
     case Re_lookaround(_, _, r1) => NoCdnPlusRE(r1)
     case Re_quant(nul, _, q, r1) =>
-      if q.min != 0 && q.max == None && q.greedy && nul == R.CDNullable then NR.LookFreeRE(r1) && NR.NoNulledPlusRE(r1) && NoCdnPlusRE(r1)
+      if q.min != 0 && q.max == None && q.greedy && nul == R.CDNullable then NoCdnPlusRE(r1)
       else if q.min != 0 && q.max == None && q.greedy && nul == R.CINullable then NoCdnPlusRE(r1)
       else CdnTopRE(r1)
     case _ => true

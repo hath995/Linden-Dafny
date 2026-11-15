@@ -57,27 +57,4 @@ module LindenElkGateFlip {
     case _ =>
   }
 
-  /** (G5a-1 step 4) The gate from the scope: `GateFromCin` without `NoCdnPlusRE(re)` at the top. */
-  lemma GateFromCdnTop(re: R.regex)
-    requires NRC.CdnTopRE(re) && RF.CinBodiesLookFreeRE(re)
-    ensures M.LookBodiesPlusGateRE(re)
-    decreases re
-  {
-    match re
-    case Re_alt(r1, r2) => GateFromCdnTop(r1); GateFromCdnTop(r2);
-    case Re_con(r1, r2) => GateFromCdnTop(r1); GateFromCdnTop(r2);
-    case Re_capture(_, r1) => GateFromCdnTop(r1);
-    case Re_lookaround(_, _, r1) =>
-      // the gate's look arm: NoCdnPlusRE(r1) [the scope] && CinBodiesLookFreeRE(r1) [descends] && gate(r1)
-      GateFromCin(r1);
-    case Re_quant(nul, _, q, r1) =>
-      if q.min != 0 && q.max.None? && q.greedy && nul == R.CDNullable {
-        LookFreeGate(r1);
-      } else if q.min != 0 && q.max.None? && q.greedy && nul == R.CINullable {
-        GateFromCin(r1);
-      } else {
-        GateFromCdnTop(r1);
-      }
-    case _ =>
-  }
 }

@@ -362,65 +362,10 @@ module LindenElkReconFrame {
     case _ =>
   }
 
-  // (G5a-1 P5, row L) Bridge 3: the lemmas above on `StampQids` and the scope `NRC.CdnTopRE`
-  // (generated from their text; see probes/G5a1-P5-L0-bridge3.py.txt).
+  // (G5a-1 P5, row L) Bridge 3: the quantifier set `StampQids` ranges over (CIN or CDN stamps).
+  // (G5a-2a) `LooksQEmptyS` is gone: a CDN plus body may hold looks; the top uses `CL.LooksQCapFree`.
   ghost predicate QInStamp(r: R.regex, Q: set<int>) {
     forall q: nat :: q in PIV.QuantIds(r) && (q as int) in Q ==> NRR.QidStampPlus(r, q)
   }
 
-  lemma LooksQEmptyS(r: R.regex, Q: set<int>)
-    requires CinBodiesLookFreeRE(r) && NRC.CdnTopRE(r) && PIV.QuantUnique(r) && QInStamp(r, Q)
-    ensures LooksQ(r, Q) == {}
-    decreases r
-  {
-    NRC.CdnTopChild(r);   // (P5) the scope at the subterms
-    match r
-    case Re_alt(r1, r2) =>
-      assert QInStamp(r1, Q) by {
-        forall q2: nat | q2 in PIV.QuantIds(r1) && (q2 as int) in Q ensures NRR.QidStampPlus(r1, q2) {
-          assert q2 in PIV.QuantIds(r) && NRR.QidStampPlus(r, q2);
-        }
-      }
-      assert QInStamp(r2, Q) by {
-        forall q2: nat | q2 in PIV.QuantIds(r2) && (q2 as int) in Q ensures NRR.QidStampPlus(r2, q2) {
-          assert q2 !in PIV.QuantIds(r1) by { if q2 in PIV.QuantIds(r1) { assert q2 in PIV.QuantIds(r1) * PIV.QuantIds(r2); } }
-          assert q2 in PIV.QuantIds(r) && NRR.QidStampPlus(r, q2);
-        }
-      }
-      LooksQEmptyS(r1, Q); LooksQEmptyS(r2, Q);
-    case Re_con(r1, r2) =>
-      assert QInStamp(r1, Q) by {
-        forall q2: nat | q2 in PIV.QuantIds(r1) && (q2 as int) in Q ensures NRR.QidStampPlus(r1, q2) {
-          assert q2 in PIV.QuantIds(r) && NRR.QidStampPlus(r, q2);
-        }
-      }
-      assert QInStamp(r2, Q) by {
-        forall q2: nat | q2 in PIV.QuantIds(r2) && (q2 as int) in Q ensures NRR.QidStampPlus(r2, q2) {
-          assert q2 !in PIV.QuantIds(r1) by { if q2 in PIV.QuantIds(r1) { assert q2 in PIV.QuantIds(r1) * PIV.QuantIds(r2); } }
-          assert q2 in PIV.QuantIds(r) && NRR.QidStampPlus(r, q2);
-        }
-      }
-      LooksQEmptyS(r1, Q); LooksQEmptyS(r2, Q);
-    case Re_quant(nul, qid, q, body) =>
-      assert QInStamp(body, Q) by {
-        forall q2: nat | q2 in PIV.QuantIds(body) && (q2 as int) in Q ensures NRR.QidStampPlus(body, q2) {
-          assert q2 in PIV.QuantIds(r);
-          assert !(qid >= 0 && (qid as nat) == q2);   // QuantUnique: the node's id is not in its body
-        }
-      }
-      LooksQEmptyS(body, Q);
-      if qid in Q {
-        assert qid >= 0 && (qid as nat) in PIV.QuantIds(r);
-        assert NRR.QidStampPlus(r, qid as nat);
-        LookFreeNoLookRegs(body);
-      }
-    case Re_capture(_, r1) =>
-      assert QInStamp(r1, Q) by {
-        forall q2: nat | q2 in PIV.QuantIds(r1) && (q2 as int) in Q ensures NRR.QidStampPlus(r1, q2) {
-          assert q2 in PIV.QuantIds(r) && NRR.QidStampPlus(r, q2);
-        }
-      }
-      LooksQEmptyS(r1, Q);
-    case _ =>
-  }
 }

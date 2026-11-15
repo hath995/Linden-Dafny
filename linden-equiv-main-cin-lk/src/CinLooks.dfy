@@ -1,9 +1,9 @@
-// (G4a) Capture-free lookarounds inside a greedy CIN plus body (`((?=a)|a?)+`): the scope, machine B's entry,
-// and the frame facts and tie transports that replace `RF.CinBodiesLookFreeRE` at the top regex.
-// Design: linden-equiv/endgame/G4a-design.md.
+// (G4a) Capture-free lookarounds inside a greedy CIN plus body (`((?=a)|a?)+`), and (G5a-2a) inside a greedy
+// CDN plus body (`((?=a)|b)+`): the scope, machine B's entry, and the frame facts and tie transports that
+// replace `RF.CinBodiesLookFreeRE` at the top regex. Design: linden-equiv/endgame/G4a-design.md, G5a2-design.md.
 //
 // A look body keeps the strong condition: `M.LookBodiesPlusGateRE` asks `RF.CinBodiesLookFreeRE` at every look
-// node. Only the top regex's CIN plus bodies may hold lookarounds, and those capture nothing. So a lid that the
+// node. Only the top regex's nullable plus bodies may hold lookarounds, and those capture nothing. So a lid that the
 // reconstruction may re-set (`RF.LooksQ`) has no carrier content, and every other lid keeps its record.
 module LindenElkCinLooks {
   import opened Std.Wrappers
@@ -38,8 +38,8 @@ module LindenElkCinLooks {
   // 1. The scope.
   // =========================================================================
 
-  /** Every greedy CI-nullable plus body's lookarounds capture nothing; a look body is in the look-free CIN
-      fragment (what `M.LookBodiesPlusGateRE` asks at a look node). */
+  /** Every greedy nullable plus body's lookarounds capture nothing (CIN: G4a; CDN: G5a-2a); a look body is in
+      the look-free CIN fragment (what `M.LookBodiesPlusGateRE` asks at a look node). */
   ghost predicate CinLooksCapFreeRE(re: R.regex)
     decreases re
   {
@@ -47,28 +47,11 @@ module LindenElkCinLooks {
     case Re_alt(r1, r2) => CinLooksCapFreeRE(r1) && CinLooksCapFreeRE(r2)
     case Re_con(r1, r2) => CinLooksCapFreeRE(r1) && CinLooksCapFreeRE(r2)
     case Re_quant(nul, qid, q, body) =>
-      (q.min != 0 && q.max == None && nul == R.CINullable && q.greedy ==> PIV.CapIdsInLooks(body) == {})
+      (q.min != 0 && q.max == None && nul != R.NonNullable && q.greedy ==> PIV.CapIdsInLooks(body) == {})
       && CinLooksCapFreeRE(body)
     case Re_capture(_, r1) => CinLooksCapFreeRE(r1)
     case Re_lookaround(_, _, r1) => RF.CinBodiesLookFreeRE(r1)
     case _ => true
-  }
-
-  /** The look-free scope is inside it. */
-  lemma CinBodiesLookFreeWeak(re: R.regex)
-    requires RF.CinBodiesLookFreeRE(re)
-    ensures CinLooksCapFreeRE(re)
-    decreases re
-  {
-    match re
-    case Re_alt(r1, r2) => CinBodiesLookFreeWeak(r1); CinBodiesLookFreeWeak(r2);
-    case Re_con(r1, r2) => CinBodiesLookFreeWeak(r1); CinBodiesLookFreeWeak(r2);
-    case Re_quant(nul, qid, q, body) =>
-      CinBodiesLookFreeWeak(body);
-      if q.min != 0 && q.max == None && nul == R.CINullable && q.greedy { PIV.LookFreeCapIdsInLooksEmpty(body); }
-    case Re_capture(_, r1) => CinBodiesLookFreeWeak(r1);
-    case Re_lookaround(_, _, r1) =>
-    case _ =>
   }
 
   /** Every lookaround body of `r` is capture-free (executable). */
@@ -148,7 +131,7 @@ module LindenElkCinLooks {
     case Re_alt(r1, r2) => CinLooksCapFreeX(r1) && CinLooksCapFreeX(r2)
     case Re_con(r1, r2) => CinLooksCapFreeX(r1) && CinLooksCapFreeX(r2)
     case Re_quant(nul, qid, q, body) =>
-      (q.min != 0 && q.max == None && nul == R.CINullable && q.greedy ==> LooksCapFreeX(body))
+      (q.min != 0 && q.max == None && nul != R.NonNullable && q.greedy ==> LooksCapFreeX(body))
       && CinLooksCapFreeX(body)
     case Re_capture(_, r1) => CinLooksCapFreeX(r1)
     case Re_lookaround(_, _, r1) => CinBodiesLookFreeX(r1)
@@ -165,7 +148,7 @@ module LindenElkCinLooks {
     case Re_con(r1, r2) => CinLooksCapFreeXSound(r1); CinLooksCapFreeXSound(r2);
     case Re_quant(nul, qid, q, body) =>
       CinLooksCapFreeXSound(body);
-      if q.min != 0 && q.max == None && nul == R.CINullable && q.greedy { LooksCapFreeXSound(body); }
+      if q.min != 0 && q.max == None && nul != R.NonNullable && q.greedy { LooksCapFreeXSound(body); }
     case Re_capture(_, r1) => CinLooksCapFreeXSound(r1);
     case Re_lookaround(_, _, r1) => CinBodiesLookFreeXSound(r1);
     case _ =>
@@ -220,11 +203,7 @@ module LindenElkCinLooks {
           assert false;
         }
         assert nul == R.CINullable || nul == R.CDNullable;
-        if nul == R.CDNullable {
-          assert NR.LookFreeRE(body);   // `CdnTopRE`
-          PIV.LookFreeCapIdsInLooksEmpty(body);
-        }
-        assert PIV.CapIdsInLooks(body) == {};
+        assert PIV.CapIdsInLooks(body) == {};   // `CinLooksCapFreeRE`, CIN or CDN
         CapFreeLooksLkBodies(body, {});
         PIV.DefGroupsCapIds(body);
         PIV.CapIdsSplit(body);
@@ -304,13 +283,7 @@ module LindenElkCinLooks {
         assert q.min != 0 && q.max == None && nul != R.NonNullable && q.greedy;
         LooksQInIds(r, Q, lid);
         assert lid in LTB.LookIds(body);
-        if nul == R.CDNullable {
-          assert NR.LookFreeRE(body);
-          NI.LookFreeNoLookIdsN(body);
-          assert false;
-        }
-        assert nul == R.CINullable;
-        assert PIV.CapIdsInLooks(body) == {};
+        assert PIV.CapIdsInLooks(body) == {};   // `CinLooksCapFreeRE`, CIN or CDN
         NI.LookBodyCapsIn(body, lid);
         assert NI.LookBodyOfRE(r, lid) == NI.LookBodyOfRE(body, lid);
       }
@@ -404,11 +377,7 @@ module LindenElkCinLooks {
         assert qid >= 0 && (qid as nat) in PIV.QuantIds(r);
         assert NRR.QidStampPlus(r, qid as nat);
         assert q.min != 0 && q.max == None && nul != R.NonNullable && q.greedy;
-        if nul == R.CDNullable {
-          assert NR.LookFreeRE(body);
-          PIV.LookFreeCapIdsInLooksEmpty(body);
-        }
-        assert PIV.CapIdsInLooks(body) == {};
+        assert PIV.CapIdsInLooks(body) == {};   // `CinLooksCapFreeRE`, CIN or CDN
         PIV.CapIdsSplit(body);
         NRR.CapRegsOfChar(body);
         forall k | k in NRR.CapRegsOf(body) ensures k in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(r)) {

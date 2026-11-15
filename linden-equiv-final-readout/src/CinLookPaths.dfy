@@ -348,8 +348,8 @@ module LindenElkCinLookPaths {
     }
   }
 
-  // (G5a-1 P5, row L) Bridge 3: the lemmas above on `StampQids` and the scope `NRC.CdnTopRE`
-  // (generated from their text; see probes/G5a1-P5-L0-bridge3.py.txt).
+  // (G5a-1 P5, row L) Bridge 3: `QInStamp` passes to subterms. (G5a-2a) Its `QsOutsideS`, `QsAvoidLookBodyS`
+  // and `AncAvoidQS` are gone (a CDN plus body may hold looks); the top uses `CL.CapsQOutside`, `CL.AncAvoidQG4`.
   lemma QInStampLeft(r: R.regex, r1: R.regex, r2: R.regex, Q: set<int>)
     requires r == R.Re_alt(r1, r2) || r == R.Re_con(r1, r2)
     requires PIV.QuantUnique(r) && RF.QInStamp(r, Q)
@@ -385,131 +385,6 @@ module LindenElkCinLookPaths {
       forall q2: nat | q2 in PIV.QuantIds(r1) && (q2 as int) in Q ensures NRR.QidStampPlus(r1, q2) {
         assert q2 in PIV.QuantIds(r) && NRR.QidStampPlus(r, q2);
       }
-    case _ =>
-  }
-
-  lemma QsOutsideS(r: R.regex, Q: set<int>)
-    requires RF.CinBodiesLookFreeRE(r) && NRC.CdnTopRE(r) && PIV.CapUnique(r) && PIV.QuantUnique(r) && RF.QInStamp(r, Q)
-    ensures RF.CapsQ(r, Q) <= PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(r))
-    ensures forall k :: k in RF.QuantsQ(r, Q) ==> k >= 0 && (k as nat) in PIV.QuantIdsOutsideLooks(r)
-    decreases r
-  {
-    NRC.CdnTopChild(r);   // (P5) the scope at the subterms
-    QInStampDown(r, Q);
-    match r
-    case Re_alt(r1, r2) =>
-      QsOutsideS(r1, Q); QsOutsideS(r2, Q);
-      PIV.CaptureRegsSetMono(PIV.CapIdsOutsideLooks(r1), PIV.CapIdsOutsideLooks(r));
-      PIV.CaptureRegsSetMono(PIV.CapIdsOutsideLooks(r2), PIV.CapIdsOutsideLooks(r));
-    case Re_con(r1, r2) =>
-      QsOutsideS(r1, Q); QsOutsideS(r2, Q);
-      PIV.CaptureRegsSetMono(PIV.CapIdsOutsideLooks(r1), PIV.CapIdsOutsideLooks(r));
-      PIV.CaptureRegsSetMono(PIV.CapIdsOutsideLooks(r2), PIV.CapIdsOutsideLooks(r));
-    case Re_capture(cid, r1) =>
-      QsOutsideS(r1, Q);
-      PIV.CaptureRegsSetMono(PIV.CapIdsOutsideLooks(r1), PIV.CapIdsOutsideLooks(r));
-    case Re_quant(nul, qid, q, body) =>
-      QsOutsideS(body, Q);
-      assert PIV.CapIdsOutsideLooks(r) == PIV.CapIdsOutsideLooks(body);
-      if qid in Q {
-        assert qid >= 0 && (qid as nat) in PIV.QuantIds(r);
-        assert NRR.QidStampPlus(r, qid as nat);
-        assert NR.LookFreeRE(body);
-        PIV.LookFreeCapIdsInLooksEmpty(body); PIV.CapIdsSplit(body);
-        LookFreeQuantIdsInLooksEmpty(body); PIV.QuantIdsSplit(body);
-        NRR.CapRegsOfChar(body); NRR.QuantRegsOfChar(body);
-        forall k | k in NRR.CapRegsOf(body) ensures k in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(r)) {
-          var c: nat :| c in PIV.CapIds(body) && (k == CP.start_reg(c) || k == CP.end_reg(c));
-          assert c in PIV.CapIdsOutsideLooks(r);
-          if k == CP.start_reg(c) {
-            assert k in (set cid | cid in PIV.CapIdsOutsideLooks(r) :: CP.start_reg(cid));
-          } else {
-            assert k in (set cid | cid in PIV.CapIdsOutsideLooks(r) :: CP.end_reg(cid));
-          }
-        }
-        forall k | k in NRR.QuantRegsOf(body) ensures k >= 0 && (k as nat) in PIV.QuantIdsOutsideLooks(r) {
-          assert (k as nat) in PIV.QuantIdsOutsideLooks(body);
-        }
-      }
-    case Re_lookaround(_, _, _) =>
-    case _ =>
-  }
-
-  lemma QsAvoidLookBodyS(r: R.regex, Q: set<int>, lid: nat)
-    requires lid in LTB.LookIds(r)
-    requires RF.CinBodiesLookFreeRE(r) && NRC.CdnTopRE(r) && PIV.CapUnique(r) && PIV.QuantUnique(r) && RF.QInStamp(r, Q)
-    ensures RF.CapsQ(r, Q) * PIV.CaptureRegs(NI.LookBodyOfRE(r, lid)) == {}
-    ensures forall k :: k in RF.QuantsQ(r, Q) ==> k >= 0 && (k as nat) !in PIV.QuantIds(NI.LookBodyOfRE(r, lid))
-  {
-    NRC.CdnTopChild(r);   // (P5) the scope at the subterms
-    var b := NI.LookBodyOfRE(r, lid);
-    QsOutsideS(r, Q);
-    NI.LookBodyCapsIn(r, lid);
-    PIV.CaptureRegsIsSet(b);
-    PIV.CaptureRegsSetMono(PIV.CapIds(b), PIV.CapIdsInLooks(r));
-    PIV.CapIdsLooksDisjoint(r);
-    PIV.CaptureRegsSetDisjoint(PIV.CapIdsOutsideLooks(r), PIV.CapIdsInLooks(r));
-    LookBodyQuantsInL(r, lid);
-    PIV.QuantIdsLooksDisjoint(r);
-    forall k | k in RF.QuantsQ(r, Q) ensures k >= 0 && (k as nat) !in PIV.QuantIds(b) {
-      assert (k as nat) in PIV.QuantIdsOutsideLooks(r);
-      if (k as nat) in PIV.QuantIds(b) { assert (k as nat) in PIV.QuantIdsOutsideLooks(r) * PIV.QuantIdsInLooks(r); }
-    }
-  }
-
-  lemma AncAvoidQS(r: R.regex, Q: set<int>, lid: nat)
-    requires lid in LTB.LookIds(r)
-    requires RF.CinBodiesLookFreeRE(r) && NRC.CdnTopRE(r) && PIV.CapUnique(r) && PIV.QuantUnique(r) && RF.QInStamp(r, Q)
-    ensures AncCapRegs(r, lid) * RF.CapsQ(r, Q) == {}
-    ensures AncQuants(r, lid) * RF.QuantsQ(r, Q) == {}
-    decreases r
-  {
-    NRC.CdnTopChild(r);   // (P5) the scope at the subterms
-    match r
-    case Re_alt(r1, r2) =>
-      QInStampLeft(r, r1, r2, Q);
-      NRR.DisjointRegs(r);
-      assert NRR.L1(r) == r1 && NRR.L2(r) == r2;
-      RF.QSetsSub(r1, Q); RF.QSetsSub(r2, Q);
-      if lid in LTB.LookIds(r1) { AncAvoidQS(r1, Q, lid); AncSub(r1, lid); }
-      else { AncAvoidQS(r2, Q, lid); AncSub(r2, lid); }
-    case Re_con(r1, r2) =>
-      QInStampLeft(r, r1, r2, Q);
-      NRR.DisjointRegs(r);
-      assert NRR.L1(r) == r1 && NRR.L2(r) == r2;
-      RF.QSetsSub(r1, Q); RF.QSetsSub(r2, Q);
-      if lid in LTB.LookIds(r1) { AncAvoidQS(r1, Q, lid); AncSub(r1, lid); }
-      else { AncAvoidQS(r2, Q, lid); AncSub(r2, lid); }
-    case Re_quant(nul, qid, q, body) =>
-      assert RF.QInStamp(body, Q) by {
-        forall q2: nat | q2 in PIV.QuantIds(body) && (q2 as int) in Q ensures NRR.QidStampPlus(body, q2) {
-          assert q2 in PIV.QuantIds(r);
-          assert !(qid >= 0 && (qid as nat) == q2);
-        }
-      }
-      assert (qid as int) !in Q by {
-        if (qid as int) in Q {
-          assert qid >= 0 && (qid as nat) in PIV.QuantIds(r);
-          assert NRR.QidStampPlus(r, qid as nat);
-          NI.LookFreeNoLookIdsN(body);
-        }
-      }
-      AncAvoidQS(body, Q, lid);
-      RF.QSetsSub(body, Q);
-      NRR.QuantRegsOfChar(body);
-      assert (qid as int) !in RF.QuantsQ(body, Q);
-    case Re_capture(cid, r1) =>
-      assert RF.QInStamp(r1, Q) by {
-        forall q2: nat | q2 in PIV.QuantIds(r1) && (q2 as int) in Q ensures NRR.QidStampPlus(r1, q2) {
-          assert q2 in PIV.QuantIds(r) && NRR.QidStampPlus(r, q2);
-        }
-      }
-      AncAvoidQS(r1, Q, lid);
-      RF.QSetsSub(r1, Q);
-      NRR.CapRegsOfOwn(r);
-      assert NRR.L1(r) == r1;
-      assert CP.start_reg(cid) !in RF.CapsQ(r1, Q);
-    case Re_lookaround(lid0, _, r1) =>
     case _ =>
   }
 

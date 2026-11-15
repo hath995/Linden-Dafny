@@ -190,4 +190,29 @@ module NullablePlusWitness {
     assert R.raw_nullable(NLOOK_OR_AOPT) == R.CINullable;
     assert R.raw_nullable(BLOOK_OR_AOPT) == R.CINullable;
   }
+
+  // ==========================================================================
+  // G5a-2a (2026-11-15): a greedy CDN plus whose body holds capture-free lookarounds or a CIN plus.
+  // A lookaround is context-dependent nullable, so `((?=a)a?)+` is a CDN plus and is now in.
+  // ==========================================================================
+  const LOOK_OR_B    := R.Raw_alt(LOOK_A, R.Raw_character(R.Dot))                                     // (?=a)|b
+  const NLOOK_OR_B   := R.Raw_alt(R.Raw_lookaround(R.NegLookahead, R.Raw_character(R.Dot)), R.Raw_character(R.Dot))   // (?!a)|b
+  const BLOOK_OR_B   := R.Raw_alt(R.Raw_lookaround(R.Lookbehind, R.Raw_character(R.Dot)), R.Raw_character(R.Dot))     // (?<=a)|b
+  const LOOK_AOPT    := R.Raw_con(LOOK_A, AOPT)                                                        // (?=a)a?
+  const WB_CINPLUS   := R.Raw_con(R.Raw_anchor(R.WordBoundary), R.Raw_quant(R.Plus, AOPT))             // \b(a?)+
+
+  lemma G5a2a_CdnPlusBodies()
+    ensures API.Supported(R.Raw_quant(R.Plus, LOOK_OR_B))     // ((?=a)|b)+
+    ensures API.Supported(R.Raw_quant(R.Plus, NLOOK_OR_B))    // ((?!a)|b)+
+    ensures API.Supported(R.Raw_quant(R.Plus, BLOOK_OR_B))    // ((?<=a)|b)+
+    ensures API.Supported(R.Raw_quant(R.Plus, LOOK_AOPT))     // ((?=a)a?)+
+    ensures API.Supported(R.Raw_quant(R.Plus, WB_CINPLUS))    // (\b(a?)+)+
+  {
+    assert R.raw_nullable(LOOK_OR_B) == R.CDNullable;
+    assert R.raw_nullable(NLOOK_OR_B) == R.CDNullable;
+    assert R.raw_nullable(BLOOK_OR_B) == R.CDNullable;
+    assert R.raw_nullable(LOOK_AOPT) == R.CDNullable;
+    assert R.raw_nullable(AOPT) == R.CINullable;
+    assert R.raw_nullable(WB_CINPLUS) == R.CDNullable;
+  }
 }
