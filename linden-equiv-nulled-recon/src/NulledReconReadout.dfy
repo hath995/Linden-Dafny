@@ -1370,4 +1370,703 @@ module LindenElkNulledReconReadout {
     NRR.CoversSized(re, rg, rg');
     GmOfLiveIsGmSub(re, rg');
   }
+
+  // ===========================================================================
+  // (G5a-1 P5, row E) THE READOUT THEOREM ON THE SCOPE `NRC.CdnTopRE`: the walk tier, as `…S` twins
+  // GENERATED from the lemmas above (see probes/G5a1-P5-E2-readout.py.txt for the substitutions).
+  // A CDN stamp differs from a CIN one in one place, `StampReadoutS`: the body's empty path at the
+  // stamped position is not a consequence of CI-nullability but a fact carried by the simulation
+  // (`PSM.StampPathOk`), threaded here through `StampsLocalS`.
+  // ===========================================================================
+
+  ghost predicate StampsInRangeS(r: R.regex, rg: Regs3, str: string) {
+    forall q: nat :: q in PIV.QuantIds(r) && AI.get_idx(rg.2.a_cp, q) >= 0 ==>
+      AI.get_idx(rg.2.a_cp, q) <= |str| && NRR.QidStampPlus(r, q)   // (P5) no stray stamp
+  }
+
+  lemma StampsInRangeSTransfer(r: R.regex, sub: R.regex, rg: Regs3, rg': Regs3, str: string)
+    requires (r.Re_alt? || r.Re_con?) && (sub == NRR.L1(r) || sub == NRR.L2(r)) && PIV.QuantUnique(r)
+    requires StampsInRangeS(r, rg, str)
+    requires forall k: int :: k in NRR.QuantRegsOf(sub) ==> AI.get_idx(rg'.2.a_cp, k) == AI.get_idx(rg.2.a_cp, k)
+    ensures StampsInRangeS(sub, rg', str)
+  {
+    NRR.QuantRegsOfChar(sub);
+    forall q: nat | q in PIV.QuantIds(sub) && AI.get_idx(rg'.2.a_cp, q) >= 0
+      ensures AI.get_idx(rg'.2.a_cp, q) <= |str| && NRR.QidStampPlus(sub, q)
+    {
+      assert (q as int) in NRR.QuantRegsOf(sub) && q in PIV.QuantIds(r);
+      if sub == NRR.L2(r) { QuantSideDisjoint(r, q); }
+    }
+  }
+
+  /** (P5 row E) `NRR.CapUniqueChild` without the `NoCdnPlusRE` premise and conclusion. */
+  lemma CapUniqueChildS(r: R.regex)
+    requires PIV.CapUnique(r) && PIV.QuantUnique(r) && T.TransWf(r)
+    ensures r.Re_alt? || r.Re_con? ==> PIV.CapUnique(NRR.L1(r)) && PIV.QuantUnique(NRR.L1(r)) && T.TransWf(NRR.L1(r))
+                                       && PIV.CapUnique(NRR.L2(r)) && PIV.QuantUnique(NRR.L2(r)) && T.TransWf(NRR.L2(r))
+    ensures r.Re_quant? || r.Re_capture? || r.Re_lookaround? ==> PIV.CapUnique(NRR.L1(r)) && PIV.QuantUnique(NRR.L1(r)) && T.TransWf(NRR.L1(r))
+    ensures NRR.LookUnique(r) ==> (r.Re_alt? || r.Re_con? ==> NRR.LookUnique(NRR.L1(r)) && NRR.LookUnique(NRR.L2(r)))
+    ensures NRR.LookUnique(r) ==> (r.Re_quant? || r.Re_capture? || r.Re_lookaround? ==> NRR.LookUnique(NRR.L1(r)))
+  {}
+
+  /** (P5 row E) `StampsInRangeS` at the subterms, on the SAME registers (the second side of an alternation or
+      a sequence is reached on moved registers: `StampsInRangeSTransfer`). */
+  lemma StampsInRangeSChild(r: R.regex, rg: Regs3, str: string)
+    requires PIV.QuantUnique(r) && StampsInRangeS(r, rg, str)
+    ensures r.Re_alt? || r.Re_con? ==> StampsInRangeS(NRR.L1(r), rg, str) && StampsInRangeS(NRR.L2(r), rg, str)
+    ensures r.Re_capture? ==> StampsInRangeS(NRR.L1(r), rg, str)
+    ensures r.Re_quant? ==> StampsInRangeS(NRR.L1(r), rg, str)
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      forall q: nat | q in PIV.QuantIds(r1) && AI.get_idx(rg.2.a_cp, q) >= 0
+        ensures AI.get_idx(rg.2.a_cp, q) <= |str| && NRR.QidStampPlus(r1, q) { assert q in PIV.QuantIds(r); }
+      forall q: nat | q in PIV.QuantIds(r2) && AI.get_idx(rg.2.a_cp, q) >= 0
+        ensures AI.get_idx(rg.2.a_cp, q) <= |str| && NRR.QidStampPlus(r2, q) { QuantSideDisjoint(r, q); assert q in PIV.QuantIds(r); }
+    case Re_con(r1, r2) =>
+      forall q: nat | q in PIV.QuantIds(r1) && AI.get_idx(rg.2.a_cp, q) >= 0
+        ensures AI.get_idx(rg.2.a_cp, q) <= |str| && NRR.QidStampPlus(r1, q) { assert q in PIV.QuantIds(r); }
+      forall q: nat | q in PIV.QuantIds(r2) && AI.get_idx(rg.2.a_cp, q) >= 0
+        ensures AI.get_idx(rg.2.a_cp, q) <= |str| && NRR.QidStampPlus(r2, q) { QuantSideDisjoint(r, q); assert q in PIV.QuantIds(r); }
+    case Re_capture(_, r1) =>
+      forall q: nat | q in PIV.QuantIds(r1) && AI.get_idx(rg.2.a_cp, q) >= 0
+        ensures AI.get_idx(rg.2.a_cp, q) <= |str| && NRR.QidStampPlus(r1, q) { assert q in PIV.QuantIds(r); }
+    case Re_quant(_, qid, _, r1) =>
+      forall q: nat | q in PIV.QuantIds(r1) && AI.get_idx(rg.2.a_cp, q) >= 0
+        ensures AI.get_idx(rg.2.a_cp, q) <= |str| && NRR.QidStampPlus(r1, q) { assert q in PIV.QuantIds(r) && q != qid as nat; }
+    case _ =>
+  }
+
+
+  ghost predicate StampsLocalS(qm: AR.QMap, r: R.regex, str: string, rg: Regs3, mx: int) {
+    forall q: nat :: q in PIV.QuantIds(r) && AI.get_idx(rg.2.a_cp, q) >= 0 ==>
+      NRR.QidStampPlus(r, q)
+      && 0 <= AI.get_idx(rg.2.a_cp, q) <= |str|
+      && (q as int) in qm.bodies && qm.bodies[q as int] == PIV.QidBody(r, q)
+      // (P5) the stamp was taken where its body has a first empty path (`PSM.StampPathOk` at the top)
+      && T.TransWf(qm.bodies[q as int])
+      && TR.FirstEmptyPathR(qm, qm.bodies[q as int], T.InputAt(str, AI.get_idx(rg.2.a_cp, q) as nat)).Some?
+      && (PIV.QChainFresh(r, rg.2.a_clk, mx, q) ==>
+            PIV.PathPresentQ(r, rg.0.a_clk, rg.2.a_clk, mx, q)
+            && NRR.RegsStale(PIV.QidBody(r, q), rg, AI.get_idx(rg.2.a_clk, q)))
+  }
+
+  lemma StampsLocalSChild(qm: AR.QMap, r: R.regex, str: string, rg: Regs3, mx: int)
+    requires PIV.QuantUnique(r) && StampsLocalS(qm, r, str, rg, mx)
+    ensures r.Re_alt? || r.Re_con? ==> StampsLocalS(qm, NRR.L1(r), str, rg, mx) && StampsLocalS(qm, NRR.L2(r), str, rg, mx)
+    ensures r.Re_capture? ==> StampsLocalS(qm, NRR.L1(r), str, rg, mx)
+    ensures r.Re_quant? && AI.get_idx(rg.2.a_clk, r.qid) >= mx ==> StampsLocalS(qm, NRR.L1(r), str, rg, AI.get_idx(rg.2.a_clk, r.qid))
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      forall q: nat | q in PIV.QuantIds(r1) && AI.get_idx(rg.2.a_cp, q) >= 0 ensures
+        NRR.QidStampPlus(r1, q) && (q as int) in qm.bodies && qm.bodies[q as int] == PIV.QidBody(r1, q)
+        && (PIV.QChainFresh(r1, rg.2.a_clk, mx, q) ==> PIV.PathPresentQ(r1, rg.0.a_clk, rg.2.a_clk, mx, q) && NRR.RegsStale(PIV.QidBody(r1, q), rg, AI.get_idx(rg.2.a_clk, q)))
+      { assert q in PIV.QuantIds(r); }
+      forall q: nat | q in PIV.QuantIds(r2) && AI.get_idx(rg.2.a_cp, q) >= 0 ensures
+        NRR.QidStampPlus(r2, q) && (q as int) in qm.bodies && qm.bodies[q as int] == PIV.QidBody(r2, q)
+        && (PIV.QChainFresh(r2, rg.2.a_clk, mx, q) ==> PIV.PathPresentQ(r2, rg.0.a_clk, rg.2.a_clk, mx, q) && NRR.RegsStale(PIV.QidBody(r2, q), rg, AI.get_idx(rg.2.a_clk, q)))
+      { QuantSideDisjoint(r, q); assert q in PIV.QuantIds(r); }
+    case Re_con(r1, r2) =>
+      forall q: nat | q in PIV.QuantIds(r1) && AI.get_idx(rg.2.a_cp, q) >= 0 ensures
+        NRR.QidStampPlus(r1, q) && (q as int) in qm.bodies && qm.bodies[q as int] == PIV.QidBody(r1, q)
+        && (PIV.QChainFresh(r1, rg.2.a_clk, mx, q) ==> PIV.PathPresentQ(r1, rg.0.a_clk, rg.2.a_clk, mx, q) && NRR.RegsStale(PIV.QidBody(r1, q), rg, AI.get_idx(rg.2.a_clk, q)))
+      { assert q in PIV.QuantIds(r); }
+      forall q: nat | q in PIV.QuantIds(r2) && AI.get_idx(rg.2.a_cp, q) >= 0 ensures
+        NRR.QidStampPlus(r2, q) && (q as int) in qm.bodies && qm.bodies[q as int] == PIV.QidBody(r2, q)
+        && (PIV.QChainFresh(r2, rg.2.a_clk, mx, q) ==> PIV.PathPresentQ(r2, rg.0.a_clk, rg.2.a_clk, mx, q) && NRR.RegsStale(PIV.QidBody(r2, q), rg, AI.get_idx(rg.2.a_clk, q)))
+      { QuantSideDisjoint(r, q); assert q in PIV.QuantIds(r); }
+    case Re_capture(cid, r1) =>
+      forall q: nat | q in PIV.QuantIds(r1) && AI.get_idx(rg.2.a_cp, q) >= 0 ensures
+        NRR.QidStampPlus(r1, q) && (q as int) in qm.bodies && qm.bodies[q as int] == PIV.QidBody(r1, q)
+        && (PIV.QChainFresh(r1, rg.2.a_clk, mx, q) ==> PIV.PathPresentQ(r1, rg.0.a_clk, rg.2.a_clk, mx, q) && NRR.RegsStale(PIV.QidBody(r1, q), rg, AI.get_idx(rg.2.a_clk, q)))
+      { assert q in PIV.QuantIds(r); }
+    case Re_quant(nul, qid, qq, r1) =>
+      var qv := AI.get_idx(rg.2.a_clk, qid);
+      if qv >= mx {
+        forall q: nat | q in PIV.QuantIds(r1) && AI.get_idx(rg.2.a_cp, q) >= 0 ensures
+          NRR.QidStampPlus(r1, q) && (q as int) in qm.bodies && qm.bodies[q as int] == PIV.QidBody(r1, q)
+          && (PIV.QChainFresh(r1, rg.2.a_clk, qv, q) ==> PIV.PathPresentQ(r1, rg.0.a_clk, rg.2.a_clk, qv, q) && NRR.RegsStale(PIV.QidBody(r1, q), rg, AI.get_idx(rg.2.a_clk, q)))
+        { assert q in PIV.QuantIds(r) && q != qid as nat; }
+      }
+    case _ =>
+  }
+
+  lemma StampsLocalSBodies(qm: AR.QMap, r: R.regex, str: string, rg: Regs3, mx: int)
+    requires StampsLocalS(qm, r, str, rg, mx)
+    ensures forall q: nat :: q in PIV.QuantIds(r) && AI.get_idx(rg.2.a_cp, q) >= 0 ==> (q as int) in qm.bodies && qm.bodies[q as int] == PIV.QidBody(r, q)
+  {}
+
+  lemma StampsLocalSTransfer(qm: AR.QMap, r: R.regex, str: string, rg: Regs3, rg': Regs3, mx: int)
+    requires PIV.CapUnique(r) && PIV.QuantUnique(r)
+    requires StampsLocalS(qm, r, str, rg, mx) && NRR.LookCapsAbsent(r, rg)
+    requires forall k: int :: k in NRR.CapRegsOf(r) ==> AI.get_idx(rg'.0.a_cp, k) == AI.get_idx(rg.0.a_cp, k) && AI.get_idx(rg'.0.a_clk, k) == AI.get_idx(rg.0.a_clk, k)
+    requires forall k: int :: k in NRR.QuantRegsOf(r) ==> AI.get_idx(rg'.2.a_cp, k) == AI.get_idx(rg.2.a_cp, k) && AI.get_idx(rg'.2.a_clk, k) == AI.get_idx(rg.2.a_clk, k)
+    ensures StampsLocalS(qm, r, str, rg', mx)
+  {
+    NRR.QuantRegsOfChar(r);
+    NRR.CapRegsOfChar(r);
+    forall q: nat | q in PIV.QuantIds(r) && AI.get_idx(rg'.2.a_cp, q) >= 0 ensures
+      NRR.QidStampPlus(r, q) && 0 <= AI.get_idx(rg'.2.a_cp, q) <= |str|
+      && (q as int) in qm.bodies && qm.bodies[q as int] == PIV.QidBody(r, q)
+      && T.TransWf(qm.bodies[q as int])
+      && TR.FirstEmptyPathR(qm, qm.bodies[q as int], T.InputAt(str, AI.get_idx(rg'.2.a_cp, q) as nat)).Some?
+      && (PIV.QChainFresh(r, rg'.2.a_clk, mx, q) ==> PIV.PathPresentQ(r, rg'.0.a_clk, rg'.2.a_clk, mx, q) && NRR.RegsStale(PIV.QidBody(r, q), rg', AI.get_idx(rg'.2.a_clk, q)))
+    {
+      assert AI.get_idx(rg.2.a_cp, q) >= 0;
+      QChainFreshDep(r, rg.2.a_clk, rg'.2.a_clk, mx, q);
+      if PIV.QChainFresh(r, rg'.2.a_clk, mx, q) {
+        PathPresentQDep(r, rg.0.a_clk, rg'.0.a_clk, rg.2.a_clk, rg'.2.a_clk, mx, q);
+        QidBodyRegs(r, q);
+        assert NRR.LookCapsAbsent(PIV.QidBody(r, q), rg);
+        NRR.StaleFrame(PIV.QidBody(r, q), rg, rg', AI.get_idx(rg.2.a_clk, q));
+      }
+    }
+  }
+
+  lemma StampReadoutS(qm: AR.QMap, r: R.regex, rg: Regs3, plus_bcv: seq<RB.code>, str: string, ov: LOr.OracleView)
+    requires r.Re_quant? && r.qid >= 0
+    requires T.TransWf(r) && PIV.CapUnique(r) && PIV.QuantUnique(r) && NRR.LookUnique(r) && NRC.CdnTopRE(r) && NRR.PlusTableOkS(r, plus_bcv)
+    requires ov == qm.ov
+    requires NRR.QidStampPlus(r, r.qid as nat)
+    // (P5) for a CIN body this is `NRR.CINullablePath`; for a CDN one it is the carried fact
+    requires 0 <= AI.get_idx(rg.2.a_cp, r.qid) <= |str|
+             ==> TR.FirstEmptyPathR(qm, NRR.L1(r), T.InputAt(str, AI.get_idx(rg.2.a_cp, r.qid) as nat)).Some?
+    requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && NRR.Covers(r, rg)
+    requires 0 <= AI.get_idx(rg.2.a_cp, r.qid) <= |str|
+    requires var K := AI.get_idx(rg.2.a_clk, r.qid); NRR.RegsStale(NRR.L1(r), rg, K) && NRR.LookCapsAbsent(NRR.L1(r), rg) && K >= -1
+    ensures var K := AI.get_idx(rg.2.a_clk, r.qid);
+            var cp: nat := AI.get_idx(rg.2.a_cp, r.qid) as nat;
+            var inp := T.InputAt(str, cp);
+            var (rg2, ov2) := PlusAt(qm, r, rg, plus_bcv, str, ov);
+            ov2 == ov && NRR.WfRegs(rg2) && NRR.Sized3(rg2, rg) && NRR.CapValWf(rg2)
+            && NRR.AgreeOutside(rg2, rg, NRR.CapRegsOf(NRR.L1(r)), NRR.LookRegsOf(NRR.L1(r)), NRR.QuantRegsOf(NRR.L1(r)))
+            && AI.get_idx(rg2.2.a_clk, r.qid) == K
+            && TR.FirstEmptyPathR(qm, NRR.L1(r), inp).Some?
+            && (forall c: nat :: c in PIV.CapIds(NRR.L1(r)) ==>
+                  NRR.ReadsAs(NRR.Filt(NRR.L1(r), rg2, K), rg2, c, cp, c in NRR.PathGroupsR(qm, NRR.L1(r), inp)))
+  {
+    NRC.CdnTopChild(r);   // (P5) the scope at the subterms; a stamped node's body holds no CDN plus
+    assert NRC.NoCdnPlusRE(NRR.L1(r));
+    var qid := r.qid; var r1 := NRR.L1(r);
+    var K := AI.get_idx(rg.2.a_clk, qid);
+    var cp: nat := AI.get_idx(rg.2.a_cp, qid) as nat;
+    var cpi := cp as int;
+    var inp := T.InputAt(str, cp);
+    // unfold FNulledPlus's Some branch
+    assert AReg.get_cp(rg.2, qid) == Some(cpi);
+    assert AI.opt_int(AReg.get_clock(rg.2, qid)) == K;
+    var code := AI.get_code_v(plus_bcv, qid);
+    assert (qid as nat) in PIV.QuantIds(r) && PIV.QidBody(r, qid as nat) == r1;
+    assert code == CP.compile_reconstruct_nulled(r1);
+    var ctx := AI.cp_context(cpi, str, RA.Forward);
+    var subcdn := LCdn.compile_cdns(r1);
+    var subtable := LCdn.build_cdn_v(subcdn, cpi, ov, ctx, RA.Forward);
+    var inits := AI.FInitState(code, cpi, rg.0, rg.1, rg.2, K, ctx).(cdn := subtable);
+    var (result, sF, ov1) := AI.FNullInterp(code, inits, ov, RA.Forward);
+    NRR.CpOfInputAt(str, cp);
+    assert inits == AI.FInitState(code, TR.CpOf(inp) as int, rg.0, rg.1, rg.2, K, TR.CtxOf(inp)).(cdn := inits.cdn);
+    NRC.NullInterpNulled(qm, r1, inp, inits, ov, rg.0, rg.1, rg.2, K);
+    CapUniqueChildS(r);
+    assert TR.FirstEmptyPathR(qm, r1, inp).Some?;   // (P5) the premise
+    NRR.NulledWritesIffPath(qm, r1, inp);
+    assert result.Some? && ov1 == ov;
+    var w1 := NRC.NulledWrites(qm, r1, inp).value;
+    var clks: seq<int> :| |clks| == |w1| && NRC.Incr(clks) && NRC.ClksIn(clks, K, sF.clock)
+                          && NRC.RegsOf(result.value) == NRC.ApplyWrites(w1, cpi, clks, rg);
+    var rgW := NRC.ApplyWrites(w1, cpi, clks, rg);
+    var (rg2, ov2) := PlusAt(qm, r, rg, plus_bcv, str, ov);
+    assert rg2 == NRR.FC(r1, subtable, cpi, rgW, plus_bcv, str, ov) && ov2 == NRR.FCov(r1, subtable, cpi, rgW, plus_bcv, str, ov);
+    NRR.PlusTableOkSChildren(r, plus_bcv);
+    NRR.PlusTableOkSNarrow(r1, plus_bcv);   // (P5) the body is narrow: its table is the narrow one
+    assert NRR.ReadoutCtx(qm, r1, plus_bcv, ov, str, cp);
+    assert PIV.CapIds(r1) <= PIV.CapIds(r) && PIV.QuantIds(r1) <= PIV.QuantIds(r) && NRR.LookIds(r1) <= NRR.LookIds(r);
+    assert NRR.Covers(r1, rg);
+    assert NRR.RegsCtx(r1, rg, K);
+    NRR.EngineReadout(qm, r1, subtable, cp, rg, K, clks, plus_bcv, str, ov);
+    NRR.QuantRegsOfOwn(r);
+    assert AI.get_idx(rg2.2.a_clk, qid) == K;
+  }
+
+  lemma FNulledPlusFrameS(qm: AR.QMap, r: R.regex, rg: Regs3, plus_bcv: seq<RB.code>, str: string, ov: LOr.OracleView)
+    requires PIV.CapUnique(r) && PIV.QuantUnique(r) && NRC.CdnTopRE(r) && NRR.PlusTableOkS(r, plus_bcv)
+    requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && ov == qm.ov && StampsInRangeS(r, rg, str)
+    ensures FPov(r, rg, plus_bcv, str, ov) == ov
+    ensures var rg2 := FP(r, rg, plus_bcv, str, ov);
+            NRR.WfRegs(rg2) && NRR.Sized3(rg2, rg) && NRR.CapValWf(rg2)
+            && NRR.AgreeOutside(rg2, rg, NRR.InnerCapRegs(r), NRR.InnerLookRegs(r), NRR.InnerQuantRegs(r))
+    decreases r
+  {
+    NRC.CdnTopChild(r);   // (P5) the scope at the subterms; a stamped node's body holds no CDN plus
+    StampsInRangeSChild(r, rg, str);
+    var rg2 := FP(r, rg, plus_bcv, str, ov);
+    match r
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_lookaround(_, _, _) =>
+    case Re_capture(_, r1) =>
+      NRR.PlusTableOkSChildren(r, plus_bcv);
+      FNulledPlusFrameS(qm, r1, rg, plus_bcv, str, ov);
+    case Re_alt(r1, r2) =>
+      NRR.PlusTableOkSChildren(r, plus_bcv);
+      FNulledPlusFrameS(qm, r1, rg, plus_bcv, str, ov);
+      var rgA := FP(r1, rg, plus_bcv, str, ov);
+      assert StampsInRangeS(r2, rgA, str) by {
+        NRR.DisjointRegs(r); NRR.InnerSub(r1);
+        forall k: int | k in NRR.QuantRegsOf(r2) ensures AI.get_idx(rgA.2.a_cp, k) == AI.get_idx(rg.2.a_cp, k) {
+          assert NRR.L1(r) == r1 && NRR.L2(r) == r2;
+          assert k !in NRR.QuantRegsOf(r1) * NRR.QuantRegsOf(r2);
+        }
+        StampsInRangeSTransfer(r, r2, rg, rgA, str);
+      }
+      FNulledPlusFrameS(qm, r2, rgA, plus_bcv, str, ov);
+      assert rg2 == FP(r2, rgA, plus_bcv, str, ov);
+      NRR.AgreeOutsideWeaken(rg2, rgA, NRR.InnerCapRegs(r2), NRR.InnerLookRegs(r2), NRR.InnerQuantRegs(r2), NRR.InnerCapRegs(r), NRR.InnerLookRegs(r), NRR.InnerQuantRegs(r));
+      NRR.AgreeOutsideWeaken(rgA, rg, NRR.InnerCapRegs(r1), NRR.InnerLookRegs(r1), NRR.InnerQuantRegs(r1), NRR.InnerCapRegs(r), NRR.InnerLookRegs(r), NRR.InnerQuantRegs(r));
+      NRR.AgreeOutsideTrans(rg2, rgA, rg, NRR.InnerCapRegs(r), NRR.InnerLookRegs(r), NRR.InnerQuantRegs(r));
+    case Re_con(r1, r2) =>
+      NRR.PlusTableOkSChildren(r, plus_bcv);
+      FNulledPlusFrameS(qm, r1, rg, plus_bcv, str, ov);
+      var rgA := FP(r1, rg, plus_bcv, str, ov);
+      assert StampsInRangeS(r2, rgA, str) by {
+        NRR.DisjointRegs(r); NRR.InnerSub(r1);
+        forall k: int | k in NRR.QuantRegsOf(r2) ensures AI.get_idx(rgA.2.a_cp, k) == AI.get_idx(rg.2.a_cp, k) {
+          assert NRR.L1(r) == r1 && NRR.L2(r) == r2;
+          assert k !in NRR.QuantRegsOf(r1) * NRR.QuantRegsOf(r2);
+        }
+        StampsInRangeSTransfer(r, r2, rg, rgA, str);
+      }
+      FNulledPlusFrameS(qm, r2, rgA, plus_bcv, str, ov);
+      assert rg2 == FP(r2, rgA, plus_bcv, str, ov);
+      NRR.AgreeOutsideWeaken(rg2, rgA, NRR.InnerCapRegs(r2), NRR.InnerLookRegs(r2), NRR.InnerQuantRegs(r2), NRR.InnerCapRegs(r), NRR.InnerLookRegs(r), NRR.InnerQuantRegs(r));
+      NRR.AgreeOutsideWeaken(rgA, rg, NRR.InnerCapRegs(r1), NRR.InnerLookRegs(r1), NRR.InnerQuantRegs(r1), NRR.InnerCapRegs(r), NRR.InnerLookRegs(r), NRR.InnerQuantRegs(r));
+      NRR.AgreeOutsideTrans(rg2, rgA, rg, NRR.InnerCapRegs(r), NRR.InnerLookRegs(r), NRR.InnerQuantRegs(r));
+    case Re_quant(nul, qid, q, body) =>
+      NRR.PlusTableOkSChildren(r, plus_bcv);
+      NRR.InnerSub(body);
+      match AReg.get_cp(rg.2, qid) {
+        case None =>
+          FNulledPlusFrameS(qm, body, rg, plus_bcv, str, ov);
+          NRR.AgreeOutsideWeaken(rg2, rg, NRR.InnerCapRegs(body), NRR.InnerLookRegs(body), NRR.InnerQuantRegs(body), NRR.CapRegsOf(body), NRR.LookRegsOf(body), NRR.QuantRegsOf(body));
+        case Some(start_cp) =>
+          assert qid >= 0 && (qid as nat) in PIV.QuantIds(r) && 0 <= start_cp <= |str|;
+          var start_clock := AI.opt_int(AReg.get_clock(rg.2, qid));
+          assert start_clock >= -1;
+          var code := AI.get_code_v(plus_bcv, qid);
+          var ctx := AI.cp_context(start_cp, str, RA.Forward);
+          var subcdn := LCdn.compile_cdns(body);
+          var subtable := LCdn.build_cdn_v(subcdn, start_cp, ov, ctx, RA.Forward);
+          var (rgR, ovR) := NRR.ReconAt(code, body, subtable, start_cp, rg, start_clock, plus_bcv, str, ov);
+          assert rg2 == rgR && FPov(r, rg, plus_bcv, str, ov) == ovR;
+          // (P5) a set stamp sits on a stamp-plus; its body holds no CDN plus; the node is read as CIN
+          assert NRR.QidStampPlus(r, qid as nat);
+          assert NRC.NoCdnPlusRE(body);
+          NRR.RelabOk(r, plus_bcv);
+          NRR.ReconAtFrame(qm, NRR.Relab(r), body, qid, code, subtable, start_cp as nat, rg, start_clock, plus_bcv, str, ov);
+      }
+  }
+
+  lemma FNulledPlusLookCapsAbsentS(qm: AR.QMap, r: R.regex, rg: Regs3, plus_bcv: seq<RB.code>, str: string, ov: LOr.OracleView)
+    requires PIV.CapUnique(r) && PIV.QuantUnique(r) && NRC.CdnTopRE(r) && NRR.PlusTableOkS(r, plus_bcv)
+    requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && ov == qm.ov && StampsInRangeS(r, rg, str)
+    requires NRR.LookCapsAbsent(r, rg)
+    ensures NRR.LookCapsAbsent(r, FP(r, rg, plus_bcv, str, ov))
+    decreases r
+  {
+    NRC.CdnTopChild(r);   // (P5) the scope at the subterms; a stamped node's body holds no CDN plus
+    StampsInRangeSChild(r, rg, str);
+    var rg2 := FP(r, rg, plus_bcv, str, ov);
+    FNulledPlusFrameS(qm, r, rg, plus_bcv, str, ov);
+    match r
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_lookaround(_, _, _) =>
+    case Re_capture(_, r1) =>
+      NRR.PlusTableOkSChildren(r, plus_bcv);
+      FNulledPlusLookCapsAbsentS(qm, r1, rg, plus_bcv, str, ov);
+    case Re_alt(r1, r2) =>
+      NRR.PlusTableOkSChildren(r, plus_bcv);
+      FNulledPlusLookCapsAbsentS(qm, r1, rg, plus_bcv, str, ov);
+      var rgA := FP(r1, rg, plus_bcv, str, ov);
+      FNulledPlusFrameS(qm, r1, rg, plus_bcv, str, ov);
+      NRR.SubAgree2(r, rg, rgA);
+      NRR.CapIdsInLooksSub(r2); NRR.CapRegsOfChar(r2);
+      assert NRR.LookCapsAbsent(r2, rgA) by {
+        forall c: nat | c in PIV.CapIdsInLooks(r2) ensures AI.get_idx(rgA.0.a_cp, CP.start_reg(c)) < 0 { assert CP.start_reg(c) in NRR.CapRegsOf(r2); }
+      }
+      assert StampsInRangeS(r2, rgA, str) by { NRR.DisjointRegs(r); NRR.InnerSub(r1); StampsInRangeSTransfer(r, r2, rg, rgA, str); }
+      FNulledPlusLookCapsAbsentS(qm, r2, rgA, plus_bcv, str, ov);
+      FNulledPlusFrameS(qm, r2, rgA, plus_bcv, str, ov);
+      assert rg2 == FP(r2, rgA, plus_bcv, str, ov);
+      NRR.SubAgree(r, rgA, rg2);
+      NRR.CapIdsInLooksSub(r1); NRR.CapRegsOfChar(r1);
+      forall c: nat | c in PIV.CapIdsInLooks(r) ensures AI.get_idx(rg2.0.a_cp, CP.start_reg(c)) < 0 {
+        if c in PIV.CapIdsInLooks(r1) { assert CP.start_reg(c) in NRR.CapRegsOf(r1); }
+      }
+    case Re_con(r1, r2) =>
+      NRR.PlusTableOkSChildren(r, plus_bcv);
+      FNulledPlusLookCapsAbsentS(qm, r1, rg, plus_bcv, str, ov);
+      var rgA := FP(r1, rg, plus_bcv, str, ov);
+      FNulledPlusFrameS(qm, r1, rg, plus_bcv, str, ov);
+      NRR.SubAgree2(r, rg, rgA);
+      NRR.CapIdsInLooksSub(r2); NRR.CapRegsOfChar(r2);
+      assert NRR.LookCapsAbsent(r2, rgA) by {
+        forall c: nat | c in PIV.CapIdsInLooks(r2) ensures AI.get_idx(rgA.0.a_cp, CP.start_reg(c)) < 0 { assert CP.start_reg(c) in NRR.CapRegsOf(r2); }
+      }
+      assert StampsInRangeS(r2, rgA, str) by { NRR.DisjointRegs(r); NRR.InnerSub(r1); StampsInRangeSTransfer(r, r2, rg, rgA, str); }
+      FNulledPlusLookCapsAbsentS(qm, r2, rgA, plus_bcv, str, ov);
+      FNulledPlusFrameS(qm, r2, rgA, plus_bcv, str, ov);
+      assert rg2 == FP(r2, rgA, plus_bcv, str, ov);
+      NRR.SubAgree(r, rgA, rg2);
+      NRR.CapIdsInLooksSub(r1); NRR.CapRegsOfChar(r1);
+      forall c: nat | c in PIV.CapIdsInLooks(r) ensures AI.get_idx(rg2.0.a_cp, CP.start_reg(c)) < 0 {
+        if c in PIV.CapIdsInLooks(r1) { assert CP.start_reg(c) in NRR.CapRegsOf(r1); }
+      }
+    case Re_quant(nul, qid, q, body) =>
+      NRR.PlusTableOkSChildren(r, plus_bcv);
+      match AReg.get_cp(rg.2, qid) {
+        case None => FNulledPlusLookCapsAbsentS(qm, body, rg, plus_bcv, str, ov);
+        case Some(start_cp) =>
+          assert qid >= 0 && (qid as nat) in PIV.QuantIds(r) && 0 <= start_cp <= |str|;
+          var start_clock := AI.opt_int(AReg.get_clock(rg.2, qid));
+          var code := AI.get_code_v(plus_bcv, qid);
+          var ctx := AI.cp_context(start_cp, str, RA.Forward);
+          var subtable := LCdn.build_cdn_v(LCdn.compile_cdns(body), start_cp, ov, ctx, RA.Forward);
+          assert rg2 == NRR.ReconAt(code, body, subtable, start_cp, rg, start_clock, plus_bcv, str, ov).0;
+          // (P5) a set stamp sits on a stamp-plus; its body holds no CDN plus; the node is read as CIN
+          assert NRR.QidStampPlus(r, qid as nat);
+          assert NRC.NoCdnPlusRE(body);
+          NRR.RelabOk(r, plus_bcv);
+          NRR.ReconAtLookCapsAbsent(qm, NRR.Relab(r), body, qid, code, subtable, start_cp as nat, rg, start_clock, plus_bcv, str, ov);
+      }
+  }
+
+  lemma QuantEngineSideS(qm: AR.QMap, r: R.regex, rg: Regs3, rg': Regs3, plus_bcv: seq<RB.code>, str: string, ov: LOr.OracleView, mx: int)
+    requires r.Re_quant? && r.qid >= 0 && mx >= -1
+    requires T.TransWf(r) && PIV.CapUnique(r) && PIV.QuantUnique(r) && NRR.LookUnique(r) && NRC.CdnTopRE(r) && NRR.PlusTableOkS(r, plus_bcv)
+    requires ov == qm.ov && NRR.WfRegs(rg) && NRR.CapValWf(rg) && NRR.Covers(r, rg) && NRR.LookCapsAbsent(r, rg)
+    requires NRR.QidStampPlus(r, r.qid as nat) && 0 <= AI.get_idx(rg.2.a_cp, r.qid) <= |str|
+    requires TR.FirstEmptyPathR(qm, NRR.L1(r), T.InputAt(str, AI.get_idx(rg.2.a_cp, r.qid) as nat)).Some?   // (P5)
+    requires var K := AI.get_idx(rg.2.a_clk, r.qid); K >= mx && NRR.RegsStale(NRR.L1(r), rg, K) && NRR.LookCapsAbsent(NRR.L1(r), rg)
+    requires rg' == PlusAt(qm, r, rg, plus_bcv, str, ov).0
+    ensures var cp: nat := AI.get_idx(rg.2.a_cp, r.qid) as nat;
+            var inp := T.InputAt(str, cp);
+            TR.FirstEmptyPathR(qm, NRR.L1(r), inp).Some?
+            && GmSub(r, rg', mx) == PathMap(NRR.PathGroupsR(qm, NRR.L1(r), inp), cp)
+  {
+    var qid := r.qid; var r1 := NRR.L1(r);
+    var K := AI.get_idx(rg.2.a_clk, qid);
+    var cp: nat := AI.get_idx(rg.2.a_cp, qid) as nat;
+    var inp := T.InputAt(str, cp);
+    StampReadoutS(qm, r, rg, plus_bcv, str, ov);
+    assert AI.get_idx(rg'.2.a_clk, qid) == K;
+    assert NRR.Filt(r, rg', mx) == AI.filter_capture(r1, rg'.0.a_cp, rg'.0.a_clk, rg'.1.a_clk, rg'.2.a_clk, K);
+    var P := NRR.PathGroupsR(qm, r1, inp);
+    NRR.PathGroupsInCapIds(qm, r1, inp);
+    var f := NRR.Filt(r1, rg', K);
+    assert f == NRR.Filt(r, rg', mx);
+    forall c: nat ensures (c in GmSub(r, rg', mx) <==> c in PathMap(P, cp)) && (c in PathMap(P, cp) ==> GmSub(r, rg', mx)[c] == LG.Range(cp, Some(cp))) {
+      if c in PIV.CapIds(r1) {
+        assert NRR.ReadsAs(f, rg', c, cp, c in P);
+        if c in P {
+          PIV.FilterCaptureKeepsOdd(r1, rg'.0.a_cp, rg'.0.a_clk, rg'.1.a_clk, rg'.2.a_clk, K, CP.end_reg(c));
+          assert PIV.LiveRange(f, rg'.0.a_clk, c) == LG.Range(cp, Some(cp));
+        }
+      }
+    }
+  }
+
+  lemma ReconReadoutSubS(qm: AR.QMap, r: R.regex, rg: Regs3, plus_bcv: seq<RB.code>, str: string, ov: LOr.OracleView, mx: int)
+    requires mx >= -1
+    requires T.TransWf(r) && PIV.CapUnique(r) && PIV.QuantUnique(r) && NRR.LookUnique(r) && NRC.CdnTopRE(r) && NRR.PlusTableOkS(r, plus_bcv)
+    requires ov == qm.ov
+    requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && NRR.Covers(r, rg) && NRR.LookCapsAbsent(r, rg)
+    requires StampsLocalS(qm, r, str, rg, mx)
+    ensures StampsInRangeS(r, rg, str)
+    ensures var rg' := FP(r, rg, plus_bcv, str, ov);
+            GmSub(r, rg', mx) == PIV.LiveStampsGm(r, qm, str, rg.2.a_clk, rg.2.a_cp, mx, GmSub(r, rg, mx))
+    decreases r
+  {
+    NRC.CdnTopChild(r);   // (P5) the scope at the subterms; a stamped node's body holds no CDN plus
+    assert StampsInRangeS(r, rg, str);
+    var rg' := FP(r, rg, plus_bcv, str, ov);
+    FNulledPlusFrameS(qm, r, rg, plus_bcv, str, ov);
+    NRR.InnerSub(r);
+    var qc := rg.2.a_clk; var qcp := rg.2.a_cp;
+    var gmS := GmSub(r, rg, mx);
+    match r {
+      case Re_empty =>
+        assert GmSub(r, rg', mx) == map[] == gmS;
+      case Re_character(_) =>
+        assert GmSub(r, rg', mx) == map[] == gmS;
+      case Re_anchor(_) =>
+        assert GmSub(r, rg', mx) == map[] == gmS;
+      case Re_lookaround(_, _, _) =>
+        assert rg' == rg;
+      case Re_capture(cid, r1) =>
+        assert {:split_here} true;
+        ReconReadoutCaptureS(qm, r, rg, plus_bcv, str, ov, mx);
+      case Re_quant(nul, qid, q, r1) =>
+        assert {:split_here} true;
+        ReconReadoutQuantS(qm, r, rg, plus_bcv, str, ov, mx);
+      case Re_alt(r1, r2) =>
+        assert {:split_here} true;
+        ReconReadoutBinS(qm, r, rg, plus_bcv, str, ov, mx);
+      case Re_con(r1, r2) =>
+        assert {:split_here} true;
+        ReconReadoutBinS(qm, r, rg, plus_bcv, str, ov, mx);
+    }
+  }
+
+  lemma ReconReadoutBinS(qm: AR.QMap, r: R.regex, rg: Regs3, plus_bcv: seq<RB.code>, str: string, ov: LOr.OracleView, mx: int)
+    requires mx >= -1
+    requires r.Re_alt? || r.Re_con?
+    requires T.TransWf(r) && PIV.CapUnique(r) && PIV.QuantUnique(r) && NRR.LookUnique(r) && NRC.CdnTopRE(r) && NRR.PlusTableOkS(r, plus_bcv)
+    requires ov == qm.ov
+    requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && NRR.Covers(r, rg) && NRR.LookCapsAbsent(r, rg)
+    requires StampsLocalS(qm, r, str, rg, mx)
+    ensures var rg' := FP(r, rg, plus_bcv, str, ov);
+            GmSub(r, rg', mx) == PIV.LiveStampsGm(r, qm, str, rg.2.a_clk, rg.2.a_cp, mx, GmSub(r, rg, mx))
+    decreases r, 0
+  {
+    NRC.CdnTopChild(r);   // (P5) the scope at the subterms; a stamped node's body holds no CDN plus
+    var r1 := NRR.L1(r); var r2 := NRR.L2(r);
+    var qc := rg.2.a_clk; var qcp := rg.2.a_cp;
+    NRR.PlusTableOkSChildren(r, plus_bcv);
+    CapUniqueChildS(r);
+    CapUniqueDisjoint(r);
+    NRR.DisjointRegs(r);
+    StampsLocalSChild(qm, r, str, rg, mx);
+    NRR.InnerSub(r1); NRR.InnerSub(r2);
+    NRR.CoversChild(r, rg);
+    var rgA := FP(r1, rg, plus_bcv, str, ov);
+    var rg' := FP(r, rg, plus_bcv, str, ov);
+    ReconReadoutSubS(qm, r1, rg, plus_bcv, str, ov, mx);
+    FNulledPlusFrameS(qm, r1, rg, plus_bcv, str, ov);
+    assert rg' == FP(r2, rgA, plus_bcv, str, ov);
+    // r2's hypotheses at rgA (its registers are rg's)
+    assert NRR.Covers(r2, rgA) && NRR.LookCapsAbsent(r2, rgA) && StampsLocalS(qm, r2, str, rgA, mx) by {
+      NRR.CoversSized(r2, rg, rgA);
+      NRR.SubAgree2(r, rg, rgA);
+      NRR.CapIdsInLooksSub(r2); NRR.CapRegsOfChar(r2);
+      assert NRR.LookCapsAbsent(r2, rgA) by {
+        forall c: nat | c in PIV.CapIdsInLooks(r2) ensures AI.get_idx(rgA.0.a_cp, CP.start_reg(c)) < 0 { assert CP.start_reg(c) in NRR.CapRegsOf(r2); }
+      }
+      StampsLocalSTransfer(qm, r2, str, rg, rgA, mx);
+    }
+    ReconReadoutSubS(qm, r2, rgA, plus_bcv, str, ov, mx);
+    FNulledPlusFrameS(qm, r2, rgA, plus_bcv, str, ov);
+    assert {:split_here} true;
+    // GmSub pieces
+    GmSubSplit(r, rg, mx);
+    assert NRR.LookCapsAbsent(r, rg') by { FNulledPlusLookCapsAbsentS(qm, r, rg, plus_bcv, str, ov); }
+    GmSubSplit(r, rg', mx);
+    NRR.AgreeOutsideWeaken(rg', rgA, NRR.InnerCapRegs(r2), NRR.InnerLookRegs(r2), NRR.InnerQuantRegs(r2), NRR.CapRegsOf(r2), NRR.LookRegsOf(r2), NRR.QuantRegsOf(r2));
+    NRR.AgreeOutsideWeaken(rgA, rg, NRR.InnerCapRegs(r1), NRR.InnerLookRegs(r1), NRR.InnerQuantRegs(r1), NRR.CapRegsOf(r1), NRR.LookRegsOf(r1), NRR.QuantRegsOf(r1));
+    assert GmSub(r1, rg', mx) == GmSub(r1, rgA, mx) by { GmSubDep(r1, rgA, rg', mx); }
+    assert GmSub(r2, rgA, mx) == GmSub(r2, rg, mx) by { GmSubDep(r2, rg, rgA, mx); }
+    var g1 := GmSub(r1, rg, mx); var g2 := GmSub(r2, rg, mx);
+    var g1' := GmSub(r1, rg', mx); var g2' := GmSub(r2, rg', mx);
+    assert g1' == PIV.LiveStampsGm(r1, qm, str, qc, qcp, mx, g1);
+    assert g2' == PIV.LiveStampsGm(r2, qm, str, rgA.2.a_clk, rgA.2.a_cp, mx, g2);
+    assert PIV.LiveStampsGm(r2, qm, str, rgA.2.a_clk, rgA.2.a_cp, mx, g2) == PIV.LiveStampsGm(r2, qm, str, qc, qcp, mx, g2) by {
+      NRR.SubAgree2(r, rg, rgA);
+      NRR.QuantRegsOfChar(r2);
+      assert forall q: nat :: q in PIV.QuantIds(r2) ==> (q as int) in NRR.QuantRegsOf(r2);
+      LiveStampsGmQcDep(r2, qm, str, rgA.2.a_clk, qc, rgA.2.a_cp, qcp, mx, g2);
+    }
+    assert {:split_here} true;
+    // assemble: LSG(r, g1 + g2) = LSG(r2, LSG(r1, g1 + g2)); frames split it into g1' + g2'
+    var gmS := g1 + g2;
+    assert BodiesMatch(qm, r, qcp) by { StampsLocalSBodies(qm, r, str, rg, mx); }
+    BodiesMatchChild(qm, r, qcp);
+    var a1 := PIV.LiveStampsGm(r1, qm, str, qc, qcp, mx, gmS);
+    LiveStampsGmFrame(r1, qm, str, qc, qcp, mx, gmS, g1);
+    var a2 := PIV.LiveStampsGm(r2, qm, str, qc, qcp, mx, a1);
+    assert PIV.CapIds(r1) * PIV.CapIds(r2) == {} by { CapUniqueDisjoint(r); }
+    GmSubKeys(r1, rg, mx); GmSubKeys(r2, rg, mx);
+    LiveStampsGmFrame(r2, qm, str, qc, qcp, mx, a1, g2);
+    assert PIV.LiveStampsGm(r, qm, str, qc, qcp, mx, gmS) == a2;
+    assert {:split_here} true;
+    // keys: CapIds(r1) from g1', CapIds(r2) from g2', nothing else
+    assert PIV.CapIds(r1) * PIV.CapIds(r2) == {} by { CapUniqueDisjoint(r); }
+    GmSubKeys(r1, rg, mx); GmSubKeys(r2, rg, mx); GmSubKeys(r1, rg', mx); GmSubKeys(r2, rg', mx);
+    LiveStampsGmKeys(r1, qm, str, qc, qcp, mx, g1);
+    LiveStampsGmKeys(r2, qm, str, qc, qcp, mx, g2);
+    forall g: nat ensures (g in a2 <==> g in g1' + g2') && (g in a2 ==> a2[g] == (g1' + g2')[g]) {
+      if g in PIV.CapIds(r1) {
+        assert g !in PIV.CapIds(r2);
+      } else if g in PIV.CapIds(r2) {
+      } else {
+      }
+    }
+    assert a2 == g1' + g2';
+  }
+
+  lemma ReconReadoutCaptureS(qm: AR.QMap, r: R.regex, rg: Regs3, plus_bcv: seq<RB.code>, str: string, ov: LOr.OracleView, mx: int)
+    requires mx >= -1
+    requires r.Re_capture?
+    requires T.TransWf(r) && PIV.CapUnique(r) && PIV.QuantUnique(r) && NRR.LookUnique(r) && NRC.CdnTopRE(r) && NRR.PlusTableOkS(r, plus_bcv)
+    requires ov == qm.ov
+    requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && NRR.Covers(r, rg) && NRR.LookCapsAbsent(r, rg)
+    requires StampsLocalS(qm, r, str, rg, mx)
+    ensures var rg' := FP(r, rg, plus_bcv, str, ov);
+            GmSub(r, rg', mx) == PIV.LiveStampsGm(r, qm, str, rg.2.a_clk, rg.2.a_cp, mx, GmSub(r, rg, mx))
+    decreases r, 0
+  {
+    var cid := r.cid; var r1 := NRR.L1(r);
+    assert NRC.CdnTopRE(r1) by { NRC.CdnTopChild(r); }   // (P5) the scope at the body (scoped: one batch)
+    var qc := rg.2.a_clk; var qcp := rg.2.a_cp;
+    NRR.PlusTableOkSChildren(r, plus_bcv);
+    CapUniqueChildS(r);
+    StampsLocalSChild(qm, r, str, rg, mx);
+    NRR.InnerSub(r1);
+    NRR.CoversChild(r, rg);
+    var rg' := FP(r, rg, plus_bcv, str, ov);
+    assert rg' == FP(r1, rg, plus_bcv, str, ov);
+    ReconReadoutSubS(qm, r1, rg, plus_bcv, str, ov, mx);
+    FNulledPlusFrameS(qm, r1, rg, plus_bcv, str, ov);
+    NRR.CapRegsOfOwn(r);
+    var sr := CP.start_reg(cid); var er := CP.end_reg(cid);
+    assert AI.get_idx(rg'.0.a_cp, sr) == AI.get_idx(rg.0.a_cp, sr) && AI.get_idx(rg'.0.a_clk, sr) == AI.get_idx(rg.0.a_clk, sr)
+        && AI.get_idx(rg'.0.a_cp, er) == AI.get_idx(rg.0.a_cp, er) && AI.get_idx(rg'.0.a_clk, er) == AI.get_idx(rg.0.a_clk, er);
+    var start := AI.get_idx(rg.0.a_clk, sr);
+    var g: nat := cid as nat;
+    if start < 0 || start < mx {
+      // hidden: both readouts on r are empty; no chain-fresh stamp sits inside
+      forall c: nat | c in PIV.CapIds(r) ensures AI.get_idx(NRR.Filt(r, rg, mx), CP.start_reg(c)) < 0 && AI.get_idx(NRR.Filt(r, rg', mx), CP.start_reg(c)) < 0 {
+        HiddenCaptureClears(r, rg, mx, c);
+        HiddenCaptureClears(r, rg', mx, c);
+      }
+      assert GmSub(r, rg, mx) == map[] && GmSub(r, rg', mx) == map[];
+      assert PIV.NoFreshStamp(r1, qc, qcp, mx) by {
+        forall q: nat | q in PIV.QuantIds(r1) && AI.get_idx(qcp, q) >= 0 ensures !PIV.QChainFresh(r1, qc, mx, q) {
+          if PIV.QChainFresh(r1, qc, mx, q) {
+            assert q in PIV.QuantIds(r) && PIV.QChainFresh(r, qc, mx, q);
+            assert PIV.PathPresentQ(r, rg.0.a_clk, qc, mx, q);
+            assert start >= 0 && start >= mx;
+          }
+        }
+      }
+      PIV.LiveStampsGmStaleIdentity(r1, qm, str, qc, qcp, mx, map[]);
+    } else {
+      // present: cid's own entry is unchanged, the body's is the inductive readout
+      assert NRR.Filt(r, rg, mx) == AI.filter_capture(r1, rg.0.a_cp, rg.0.a_clk, rg.1.a_clk, rg.2.a_clk, mx);
+      assert NRR.Filt(r, rg', mx) == AI.filter_capture(r1, rg'.0.a_cp, rg'.0.a_clk, rg'.1.a_clk, rg'.2.a_clk, mx);
+      NRR.FilterKeepsNonStart(r1, rg.0.a_cp, rg.0.a_clk, rg.1.a_clk, rg.2.a_clk, mx, sr);
+      NRR.FilterKeepsNonStart(r1, rg'.0.a_cp, rg'.0.a_clk, rg'.1.a_clk, rg'.2.a_clk, mx, sr);
+      PIV.FilterCaptureKeepsOdd(r1, rg.0.a_cp, rg.0.a_clk, rg.1.a_clk, rg.2.a_clk, mx, er);
+      PIV.FilterCaptureKeepsOdd(r1, rg'.0.a_cp, rg'.0.a_clk, rg'.1.a_clk, rg'.2.a_clk, mx, er);
+      assert AI.get_idx(rg.0.a_cp, sr) >= 0;   // CapValWf
+      var g1 := GmSub(r1, rg, mx); var g1' := GmSub(r1, rg', mx);
+      var own := PIV.LiveRange(NRR.Filt(r, rg, mx), rg.0.a_clk, g);
+      assert PIV.LiveRange(NRR.Filt(r, rg', mx), rg'.0.a_clk, g) == own;
+      assert GmSub(r, rg, mx) == g1[g := own] && GmSub(r, rg', mx) == g1'[g := own] by {
+        GmSubKeys(r1, rg, mx); GmSubKeys(r1, rg', mx);
+        assert g !in PIV.CapIds(r1);
+        forall c: nat | c in PIV.CapIds(r1) ensures
+          AI.get_idx(NRR.Filt(r, rg, mx), CP.start_reg(c)) == AI.get_idx(NRR.Filt(r1, rg, mx), CP.start_reg(c))
+          && AI.get_idx(NRR.Filt(r, rg', mx), CP.start_reg(c)) == AI.get_idx(NRR.Filt(r1, rg', mx), CP.start_reg(c)) {}
+      }
+      assert BodiesMatch(qm, r, qcp) by { StampsLocalSBodies(qm, r, str, rg, mx); }
+      BodiesMatchChild(qm, r, qcp);
+      LiveStampsGmFrame(r1, qm, str, qc, qcp, mx, g1[g := own], g1);
+      LiveStampsGmKeys(r1, qm, str, qc, qcp, mx, g1);
+      var a := PIV.LiveStampsGm(r1, qm, str, qc, qcp, mx, g1[g := own]);
+      assert a == g1'[g := own] by {
+        forall x: nat ensures (x in a <==> x in g1'[g := own]) && (x in a ==> a[x] == g1'[g := own][x]) {
+          if x in PIV.CapIds(r1) { } else if x == g { } else { }
+        }
+      }
+    }
+  }
+
+  lemma ReconReadoutQuantS(qm: AR.QMap, r: R.regex, rg: Regs3, plus_bcv: seq<RB.code>, str: string, ov: LOr.OracleView, mx: int)
+    requires mx >= -1
+    requires r.Re_quant?
+    requires T.TransWf(r) && PIV.CapUnique(r) && PIV.QuantUnique(r) && NRR.LookUnique(r) && NRC.CdnTopRE(r) && NRR.PlusTableOkS(r, plus_bcv)
+    requires ov == qm.ov
+    requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && NRR.Covers(r, rg) && NRR.LookCapsAbsent(r, rg)
+    requires StampsLocalS(qm, r, str, rg, mx)
+    ensures var rg' := FP(r, rg, plus_bcv, str, ov);
+            GmSub(r, rg', mx) == PIV.LiveStampsGm(r, qm, str, rg.2.a_clk, rg.2.a_cp, mx, GmSub(r, rg, mx))
+    decreases r, 0
+  {
+    NRC.CdnTopChild(r);   // (P5) the scope at the subterms; a stamped node's body holds no CDN plus
+    var qid := r.qid; var r1 := NRR.L1(r);
+    var qc := rg.2.a_clk; var qcp := rg.2.a_cp;
+    assert qid >= 0 && (qid as nat) in PIV.QuantIds(r);
+    var qv := AI.get_idx(qc, qid);
+    NRR.PlusTableOkSChildren(r, plus_bcv);
+    CapUniqueChildS(r);
+    StampsLocalSChild(qm, r, str, rg, mx);
+    NRR.InnerSub(r1);
+    NRR.QuantRegsOfOwn(r);
+    var rg' := FP(r, rg, plus_bcv, str, ov);
+    FNulledPlusFrameS(qm, r, rg, plus_bcv, str, ov);
+    assert AI.get_idx(rg'.2.a_clk, qid) == qv;
+    if qv < mx {
+      assert {:split_here} true;
+      // stale node: everything below is cleared on both sides, the readout leaves gm
+      forall c: nat | c in PIV.CapIds(r) ensures AI.get_idx(NRR.Filt(r, rg, mx), CP.start_reg(c)) < 0 && AI.get_idx(NRR.Filt(r, rg', mx), CP.start_reg(c)) < 0 {
+        PIV.FilterAllClearsStart(r1, rg.0.a_cp, c);
+        PIV.FilterAllClearsStart(r1, rg'.0.a_cp, c);
+      }
+      assert GmSub(r, rg, mx) == map[] && GmSub(r, rg', mx) == map[];
+    } else if AI.get_idx(qcp, qid) >= 0 {
+      assert {:split_here} true;
+      // a live stamp: the engine reconstructs the body; the readout folds the path
+      assert PIV.QChainFresh(r, qc, mx, qid as nat);
+      var K := qv;
+      var cp: nat := AI.get_idx(qcp, qid) as nat;
+      var inp := T.InputAt(str, cp);
+      assert NRR.RegsStale(r1, rg, K) && NRR.QidStampPlus(r, qid as nat) && PIV.QidBody(r, qid as nat) == r1;
+      assert (qid as int) in qm.bodies && qm.bodies[qid as int] == r1;
+      assert NRR.LookCapsAbsent(r1, rg) by { assert PIV.CapIdsInLooks(r1) == PIV.CapIdsInLooks(r); }
+      assert K >= -1;
+      assert TR.FirstEmptyPathR(qm, r1, inp).Some?;   // (P5) StampsLocalS at qid, with qm.bodies[qid] == r1
+      StampReadoutS(qm, r, rg, plus_bcv, str, ov);
+      var (rg2, ov2) := PlusAt(qm, r, rg, plus_bcv, str, ov);
+      assert rg2 == rg';
+      QuantEngineSideS(qm, r, rg, rg', plus_bcv, str, ov, mx);
+      QuantSpecSide(qm, r, rg, plus_bcv, str, ov, mx);
+    } else {
+      assert {:split_here} true;
+      // unstamped, present: recurse at threshold qv on all three
+      assert rg' == FP(r1, rg, plus_bcv, str, ov) by { assert AReg.get_cp(rg.2, qid) == None; }
+      NRR.CoversChild(r, rg);
+      assert PIV.CapIdsInLooks(r1) == PIV.CapIdsInLooks(r);
+      ReconReadoutSubS(qm, r1, rg, plus_bcv, str, ov, qv);
+      assert NRR.Filt(r, rg, mx) == NRR.Filt(r1, rg, qv) && NRR.Filt(r, rg', mx) == NRR.Filt(r1, rg', qv);
+      assert GmSub(r, rg, mx) == GmSub(r1, rg, qv) && GmSub(r, rg', mx) == GmSub(r1, rg', qv) by {
+        assert PIV.CapIds(r) == PIV.CapIds(r1);
+      }
+    }
+  }
+
+  lemma ReconReadoutS(qm: AR.QMap, re: R.regex, rg: Regs3, plus_bcv: seq<RB.code>, str: string, ov: LOr.OracleView)
+    requires T.TransWf(re) && PIV.CapUnique(re) && PIV.QuantUnique(re) && NRR.LookUnique(re) && NRC.CdnTopRE(re) && NRR.PlusTableOkS(re, plus_bcv)
+    requires ov == qm.ov
+    requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && NRR.Covers(re, rg) && NRR.LookCapsAbsent(re, rg) && OnlyCapIdsSet(re, rg)
+    requires StampsLocalS(qm, re, str, rg, -1)
+    ensures var rg' := FP(re, rg, plus_bcv, str, ov);
+            FPov(re, rg, plus_bcv, str, ov) == ov
+            && PIV.GmOfLive(re, rg'.0, rg'.1, rg'.2) == PIV.GmOfLiveR(re, qm, str, rg.0, rg.1, rg.2)
+  {
+    var rg' := FP(re, rg, plus_bcv, str, ov);
+    ReconReadoutSubS(qm, re, rg, plus_bcv, str, ov, -1);
+    FNulledPlusFrameS(qm, re, rg, plus_bcv, str, ov);
+    GmOfLiveIsGmSub(re, rg);
+    assert OnlyCapIdsSet(re, rg') by {
+      NRR.InnerSub(re);
+      NRR.CapRegsOfChar(re);
+      forall gid: nat | gid !in PIV.CapIds(re) ensures AI.get_idx(rg'.0.a_cp, CP.start_reg(gid)) < 0 {
+        assert CP.start_reg(gid) !in NRR.CapRegsOf(re);
+      }
+    }
+    NRR.CoversSized(re, rg, rg');
+    GmOfLiveIsGmSub(re, rg');
+  }
 }

@@ -7477,9 +7477,11 @@ module LindenElkNestInv {
       `TopLookIds(Re_lookaround) == {lid0}` kills the else-branch), so two bank
       pairs agreeing there give the same `LookPathPresent` verdict and the same
       `MxAtLidLk`. */
-  lemma LookPathPresentAgreeTop(r: R.regex, cc1: seq<int>, qc1: seq<int>,
+/** (G5a-1 P5b) `LookPathPresentAgreeTop` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma LookPathPresentAgreeTopCdn(r: R.regex, cc1: seq<int>, qc1: seq<int>,
                                 cc2: seq<int>, qc2: seq<int>, mx: int, lid: nat)
-    requires NR.NestedFragmentRE(r) && LTB.LookUnique(r)
+    requires NR.NestedFragmentCdnRE(r) && LTB.LookUnique(r)
     requires lid in LTB.LookIds(r) && lid in TopLookIds(r)
     requires forall c: nat :: c in PIV.CapIdsOutsideLooks(r) ==>
       AI.get_idx(cc1, CP.start_reg(c as int)) == AI.get_idx(cc2, CP.start_reg(c as int))
@@ -7487,7 +7489,7 @@ module LindenElkNestInv {
       AI.get_idx(qc1, q as int) == AI.get_idx(qc2, q as int)
     ensures LookPathPresent(r, cc1, qc1, mx, lid) == LookPathPresent(r, cc2, qc2, mx, lid)
     ensures MxAtLidLk(r, qc1, mx, lid) == MxAtLidLk(r, qc2, mx, lid)
-    decreases r
+    decreases r, 0
   {
     TopLookIdsIn(r);
     match r
@@ -7502,12 +7504,12 @@ module LindenElkNestInv {
         }
         assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r1) ==> c in PIV.CapIdsOutsideLooks(r);
         assert forall q0: nat :: q0 in PIV.QuantIdsOutsideLooks(r1) ==> q0 in PIV.QuantIdsOutsideLooks(r);
-        LookPathPresentAgreeTop(r1, cc1, qc1, cc2, qc2, mx, lid);
+        LookPathPresentAgreeTopCdn(r1, cc1, qc1, cc2, qc2, mx, lid);
       } else {
         assert lid in TopLookIds(r2) by { TopLookIdsIn(r1); }
         assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r2) ==> c in PIV.CapIdsOutsideLooks(r);
         assert forall q0: nat :: q0 in PIV.QuantIdsOutsideLooks(r2) ==> q0 in PIV.QuantIdsOutsideLooks(r);
-        LookPathPresentAgreeTop(r2, cc1, qc1, cc2, qc2, mx, lid);
+        LookPathPresentAgreeTopCdn(r2, cc1, qc1, cc2, qc2, mx, lid);
       }
     case Re_con(r1, r2) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
@@ -7520,12 +7522,12 @@ module LindenElkNestInv {
         }
         assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r1) ==> c in PIV.CapIdsOutsideLooks(r);
         assert forall q0: nat :: q0 in PIV.QuantIdsOutsideLooks(r1) ==> q0 in PIV.QuantIdsOutsideLooks(r);
-        LookPathPresentAgreeTop(r1, cc1, qc1, cc2, qc2, mx, lid);
+        LookPathPresentAgreeTopCdn(r1, cc1, qc1, cc2, qc2, mx, lid);
       } else {
         assert lid in TopLookIds(r2) by { TopLookIdsIn(r1); }
         assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r2) ==> c in PIV.CapIdsOutsideLooks(r);
         assert forall q0: nat :: q0 in PIV.QuantIdsOutsideLooks(r2) ==> q0 in PIV.QuantIdsOutsideLooks(r);
-        LookPathPresentAgreeTop(r2, cc1, qc1, cc2, qc2, mx, lid);
+        LookPathPresentAgreeTopCdn(r2, cc1, qc1, cc2, qc2, mx, lid);
       }
     case Re_quant(nul, qid, q, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
@@ -7538,7 +7540,7 @@ module LindenElkNestInv {
       }
       assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r1) ==> c in PIV.CapIdsOutsideLooks(r);
       assert forall q0: nat :: q0 in PIV.QuantIdsOutsideLooks(r1) ==> q0 in PIV.QuantIdsOutsideLooks(r);
-      LookPathPresentAgreeTop(r1, cc1, qc1, cc2, qc2, AI.get_idx(qc1, qid), lid);
+      LookPathPresentAgreeTopCdn(r1, cc1, qc1, cc2, qc2, AI.get_idx(qc1, qid), lid);
     case Re_capture(cid, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert cid >= 0 ==> (cid as nat) in PIV.CapIdsOutsideLooks(r);
@@ -7551,7 +7553,7 @@ module LindenElkNestInv {
       }
       assert forall c: nat :: c in PIV.CapIdsOutsideLooks(r1) ==> c in PIV.CapIdsOutsideLooks(r);
       assert forall q0: nat :: q0 in PIV.QuantIdsOutsideLooks(r1) ==> q0 in PIV.QuantIdsOutsideLooks(r);
-      LookPathPresentAgreeTop(r1, cc1, qc1, cc2, qc2, mx, lid);
+      LookPathPresentAgreeTopCdn(r1, cc1, qc1, cc2, qc2, mx, lid);
     case Re_lookaround(lid0, la, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
@@ -7561,16 +7563,36 @@ module LindenElkNestInv {
       }
   }
 
+  /** (G5a-1 P5b) The narrow form, as a corollary of `LookPathPresentAgreeTopCdn`. */
+  lemma LookPathPresentAgreeTop(r: R.regex, cc1: seq<int>, qc1: seq<int>,
+                                cc2: seq<int>, qc2: seq<int>, mx: int, lid: nat)
+    requires NR.NestedFragmentRE(r) && LTB.LookUnique(r)
+    requires lid in LTB.LookIds(r) && lid in TopLookIds(r)
+    requires forall c: nat :: c in PIV.CapIdsOutsideLooks(r) ==>
+      AI.get_idx(cc1, CP.start_reg(c as int)) == AI.get_idx(cc2, CP.start_reg(c as int))
+    requires forall q: nat :: q in PIV.QuantIdsOutsideLooks(r) ==>
+      AI.get_idx(qc1, q as int) == AI.get_idx(qc2, q as int)
+    ensures LookPathPresent(r, cc1, qc1, mx, lid) == LookPathPresent(r, cc2, qc2, mx, lid)
+    ensures MxAtLidLk(r, qc1, mx, lid) == MxAtLidLk(r, qc2, mx, lid)
+    decreases r
+  {
+    NR.NarrowIsCdn(r);
+    hide *;   // the wide premises are this lemma's own: match by name
+    LookPathPresentAgreeTopCdn(r, cc1, qc1, cc2, qc2, mx, lid);
+  }
+
   /** (FORWARD wrapper) For a TOP lid the Lk-presence path crosses no look node,
       so plain `LookPathPresent` already IS `LookPathPresentLk` (the two differ
       only at the else-lookaround branch, vacuous for top lids). */
-  lemma LookPathPresentLkFromPresentTop(r: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>,
+/** (G5a-1 P5b) `LookPathPresentLkFromPresentTop` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma LookPathPresentLkFromPresentTopCdn(r: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>,
                                         mx: int, lid: nat)
-    requires NR.NestedFragmentRE(r) && LTB.LookUnique(r)
+    requires NR.NestedFragmentCdnRE(r) && LTB.LookUnique(r)
     requires lid in LTB.LookIds(r) && lid in TopLookIds(r)
     requires LookPathPresent(r, cc, qc, mx, lid)
     ensures LookPathPresentLk(r, cc, lc, qc, mx, lid)
-    decreases r
+    decreases r, 0
   {
     TopLookIdsIn(r);
     match r
@@ -7583,10 +7605,10 @@ module LindenElkNestInv {
             assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
           }
         }
-        LookPathPresentLkFromPresentTop(r1, cc, lc, qc, mx, lid);
+        LookPathPresentLkFromPresentTopCdn(r1, cc, lc, qc, mx, lid);
       } else {
         assert lid in TopLookIds(r2) by { TopLookIdsIn(r1); }
-        LookPathPresentLkFromPresentTop(r2, cc, lc, qc, mx, lid);
+        LookPathPresentLkFromPresentTopCdn(r2, cc, lc, qc, mx, lid);
       }
     case Re_con(r1, r2) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
@@ -7597,17 +7619,17 @@ module LindenElkNestInv {
             assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
           }
         }
-        LookPathPresentLkFromPresentTop(r1, cc, lc, qc, mx, lid);
+        LookPathPresentLkFromPresentTopCdn(r1, cc, lc, qc, mx, lid);
       } else {
         assert lid in TopLookIds(r2) by { TopLookIdsIn(r1); }
-        LookPathPresentLkFromPresentTop(r2, cc, lc, qc, mx, lid);
+        LookPathPresentLkFromPresentTopCdn(r2, cc, lc, qc, mx, lid);
       }
     case Re_quant(nul, qid, q, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
-      LookPathPresentLkFromPresentTop(r1, cc, lc, qc, AI.get_idx(qc, qid), lid);
+      LookPathPresentLkFromPresentTopCdn(r1, cc, lc, qc, AI.get_idx(qc, qid), lid);
     case Re_capture(cid, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
-      LookPathPresentLkFromPresentTop(r1, cc, lc, qc, mx, lid);
+      LookPathPresentLkFromPresentTopCdn(r1, cc, lc, qc, mx, lid);
     case Re_lookaround(lid0, la, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
@@ -7615,6 +7637,20 @@ module LindenElkNestInv {
         assert lid !in TopLookIds(r);
         assert false;
       }
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `LookPathPresentLkFromPresentTopCdn`. */
+  lemma LookPathPresentLkFromPresentTop(r: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>,
+                                        mx: int, lid: nat)
+    requires NR.NestedFragmentRE(r) && LTB.LookUnique(r)
+    requires lid in LTB.LookIds(r) && lid in TopLookIds(r)
+    requires LookPathPresent(r, cc, qc, mx, lid)
+    ensures LookPathPresentLk(r, cc, lc, qc, mx, lid)
+    decreases r
+  {
+    NR.NarrowIsCdn(r);
+    hide *;   // the wide premises are this lemma's own: match by name
+    LookPathPresentLkFromPresentTopCdn(r, cc, lc, qc, mx, lid);
   }
 
   /** (L4 depth-k, ADDITIVE) TOP-look twin of `MxAtLidGeMx` for the NESTED
@@ -7626,7 +7662,7 @@ module LindenElkNestInv {
       `NestedFragmentRE` with no look-free hypothesis. `LookUnique` routes the
       alt/con descent to the branch actually holding `lid`. */
   lemma MxAtLidGeMxTop(r: R.regex, cc: seq<int>, qc: seq<int>, mx: int, lid: nat)
-    requires NR.NestedFragmentRE(r) && LTB.LookUnique(r)
+    requires LTB.LookUnique(r)   // (G5a-1 P5b) no fragment premise: unused, and the wide `LookPathDomIntroTopCdn` passes a Cdn body
     requires lid in LTB.LookIds(r)
     requires lid in TopLookIds(r)
     requires LookPathPresent(r, cc, qc, mx, lid)
@@ -7693,14 +7729,16 @@ module LindenElkNestInv {
       TOP look `lid` (path never crosses a look body). Identical increasing-chain
       argument to `LookPathDomIntro`, but the `Re_lookaround` else-branch is
       vacuous for a top look, so it runs under `NestedFragmentRE`. */
-  lemma LookPathDomIntroTop(r: R.regex, cc: seq<int>, qc: seq<int>, mx: int, lid: nat, L: int)
-    requires NR.NestedFragmentRE(r) && LTB.LookUnique(r)
+/** (G5a-1 P5b) `LookPathDomIntroTop` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma LookPathDomIntroTopCdn(r: R.regex, cc: seq<int>, qc: seq<int>, mx: int, lid: nat, L: int)
+    requires NR.NestedFragmentCdnRE(r) && LTB.LookUnique(r)
     requires lid in LTB.LookIds(r)
     requires lid in TopLookIds(r)
     requires LookPathPresent(r, cc, qc, mx, lid)
     requires L >= MxAtLidLk(r, qc, mx, lid)
     ensures LookPathDom(r, L, qc, lid)
-    decreases r
+    decreases r, 0
   {
     TopLookIdsIn(r);
     match r
@@ -7713,7 +7751,7 @@ module LindenElkNestInv {
             assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
           }
         }
-        LookPathDomIntroTop(r1, cc, qc, mx, lid, L);
+        LookPathDomIntroTopCdn(r1, cc, qc, mx, lid, L);
       } else {
         assert lid in LTB.LookIds(r2);
         assert lid in TopLookIds(r2) by {
@@ -7722,7 +7760,7 @@ module LindenElkNestInv {
             assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
           }
         }
-        LookPathDomIntroTop(r2, cc, qc, mx, lid, L);
+        LookPathDomIntroTopCdn(r2, cc, qc, mx, lid, L);
       }
     case Re_con(r1, r2) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
@@ -7733,7 +7771,7 @@ module LindenElkNestInv {
             assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
           }
         }
-        LookPathDomIntroTop(r1, cc, qc, mx, lid, L);
+        LookPathDomIntroTopCdn(r1, cc, qc, mx, lid, L);
       } else {
         assert lid in LTB.LookIds(r2);
         assert lid in TopLookIds(r2) by {
@@ -7742,7 +7780,7 @@ module LindenElkNestInv {
             assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
           }
         }
-        LookPathDomIntroTop(r2, cc, qc, mx, lid, L);
+        LookPathDomIntroTopCdn(r2, cc, qc, mx, lid, L);
       }
     case Re_quant(_, qid, _, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
@@ -7750,13 +7788,28 @@ module LindenElkNestInv {
       MxAtLidGeMxTop(r1, cc, qc, qv, lid);
       assert MxAtLidLk(r1, qc, qv, lid) >= qv;
       assert L >= qv;
-      LookPathDomIntroTop(r1, cc, qc, qv, lid, L);
+      LookPathDomIntroTopCdn(r1, cc, qc, qv, lid, L);
     case Re_capture(_, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
-      LookPathDomIntroTop(r1, cc, qc, mx, lid, L);
+      LookPathDomIntroTopCdn(r1, cc, qc, mx, lid, L);
     case Re_lookaround(lid0, _, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert lid0 >= 0 && (lid0 as nat) == lid;
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `LookPathDomIntroTopCdn`. */
+  lemma LookPathDomIntroTop(r: R.regex, cc: seq<int>, qc: seq<int>, mx: int, lid: nat, L: int)
+    requires NR.NestedFragmentRE(r) && LTB.LookUnique(r)
+    requires lid in LTB.LookIds(r)
+    requires lid in TopLookIds(r)
+    requires LookPathPresent(r, cc, qc, mx, lid)
+    requires L >= MxAtLidLk(r, qc, mx, lid)
+    ensures LookPathDom(r, L, qc, lid)
+    decreases r
+  {
+    NR.NarrowIsCdn(r);
+    hide *;   // the wide premises are this lemma's own: match by name
+    LookPathDomIntroTopCdn(r, cc, qc, mx, lid, L);
   }
 
   /** A stamp beating EVERY stored quant clock dominates any path outright. */
@@ -8168,9 +8221,11 @@ module LindenElkNestInv {
       (which `PIV.PathPresentLk` demands) is now SUPPLIED by the look-clock-aware
       `LookPathPresentLk` premise — so the composition still lands the full
       `PIV.PathPresentLk(r, .., g)` at a DEEPLY-nested owner. */
-  lemma LookPathComposeNested(r: R.regex, body: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>,
+/** (G5a-1 P5b) `LookPathComposeNested` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma LookPathComposeCdn(r: R.regex, body: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>,
                               mx: int, lid: nat, g: nat)
-    requires NR.NestedFragmentRE(r) && PIV.CapUnique(r)
+    requires NR.NestedFragmentCdnRE(r) && PIV.CapUnique(r)
     requires lid in LTB.LookIds(r)
     requires body == LookBodyOfRE(r, lid)
     requires g in PIV.CapIds(body)
@@ -8181,7 +8236,7 @@ module LindenElkNestInv {
     ensures g in PIV.CapIds(r)
     ensures PIV.PathPresentLk(r, cc, lc, qc, mx, g)
     ensures PIV.MxAtGidLk(r, cc, lc, qc, mx, g) == PIV.MxAtGidLk(body, cc, lc, qc, -1, g)
-    decreases r
+    decreases r, 0
   {
     LookBodyCapsIn(r, lid);
     match r
@@ -8190,34 +8245,34 @@ module LindenElkNestInv {
       if lid in LTB.LookIds(r1) {
         LookBodyCapsIn(r1, lid);
         assert g in PIV.CapIds(r1);
-        LookPathComposeNested(r1, body, cc, lc, qc, mx, lid, g);
+        LookPathComposeCdn(r1, body, cc, lc, qc, mx, lid, g);
       } else {
         LookBodyCapsIn(r2, lid);
         assert g in PIV.CapIds(r2);
         assert g !in PIV.CapIds(r1) by {
           if g in PIV.CapIds(r1) { assert g in PIV.CapIds(r1) * PIV.CapIds(r2); }
         }
-        LookPathComposeNested(r2, body, cc, lc, qc, mx, lid, g);
+        LookPathComposeCdn(r2, body, cc, lc, qc, mx, lid, g);
       }
     case Re_con(r1, r2) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         LookBodyCapsIn(r1, lid);
         assert g in PIV.CapIds(r1);
-        LookPathComposeNested(r1, body, cc, lc, qc, mx, lid, g);
+        LookPathComposeCdn(r1, body, cc, lc, qc, mx, lid, g);
       } else {
         LookBodyCapsIn(r2, lid);
         assert g in PIV.CapIds(r2);
         assert g !in PIV.CapIds(r1) by {
           if g in PIV.CapIds(r1) { assert g in PIV.CapIds(r1) * PIV.CapIds(r2); }
         }
-        LookPathComposeNested(r2, body, cc, lc, qc, mx, lid, g);
+        LookPathComposeCdn(r2, body, cc, lc, qc, mx, lid, g);
       }
     case Re_quant(nul, qid, q, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var qv := AI.get_idx(qc, qid);
       assert qv >= mx;                               // LookPathPresentLk
-      LookPathComposeNested(r1, body, cc, lc, qc, qv, lid, g);
+      LookPathComposeCdn(r1, body, cc, lc, qc, qv, lid, g);
     case Re_capture(cid, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       LookBodyCapsIn(r1, lid);
@@ -8226,7 +8281,7 @@ module LindenElkNestInv {
       assert (cid as nat) != g;
       assert AI.get_idx(cc, CP.start_reg(cid)) >= 0
           && AI.get_idx(cc, CP.start_reg(cid)) >= mx;       // LookPathPresentLk
-      LookPathComposeNested(r1, body, cc, lc, qc, mx, lid, g);
+      LookPathComposeCdn(r1, body, cc, lc, qc, mx, lid, g);
     case Re_lookaround(lid0, la, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
@@ -8247,15 +8302,38 @@ module LindenElkNestInv {
       }
   }
 
+  /** (G5a-1 P5b) The narrow form, as a corollary of `LookPathComposeCdn`. */
+  lemma LookPathComposeNested(r: R.regex, body: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>,
+                              mx: int, lid: nat, g: nat)
+    requires NR.NestedFragmentRE(r) && PIV.CapUnique(r)
+    requires lid in LTB.LookIds(r)
+    requires body == LookBodyOfRE(r, lid)
+    requires g in PIV.CapIds(body)
+    requires LookPathPresentLk(r, cc, lc, qc, mx, lid)
+    requires AI.get_idx(lc, lid as int) >= 0
+    requires AI.get_idx(lc, lid as int) >= MxAtLidLk(r, qc, mx, lid)
+    requires PIV.PathPresentLk(body, cc, lc, qc, -1, g)
+    ensures g in PIV.CapIds(r)
+    ensures PIV.PathPresentLk(r, cc, lc, qc, mx, g)
+    ensures PIV.MxAtGidLk(r, cc, lc, qc, mx, g) == PIV.MxAtGidLk(body, cc, lc, qc, -1, g)
+    decreases r
+  {
+    NR.NarrowIsCdn(r);
+    hide *;   // the wide premises are this lemma's own: match by name
+    LookPathComposeCdn(r, body, cc, lc, qc, mx, lid, g);
+  }
+
   /** (L4 depth-k) the NESTED counterpart of `LookPathDecompose` (inverse of
       `LookPathComposeNested`): the full `PIV.PathPresentLk(r, .., g)` at a
       DEEPLY-nested inside-look `g` peels into the look-clock-aware path presence
       TO the owner (`LookPathPresentLk`, which now records the ancestor look
       clocks the outer path crosses), the owner's own clock clause, and the
       body-side presence. The `Re_lookaround(lid0 != lid)` case recurses. */
-  lemma LookPathDecomposeNested(r: R.regex, body: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>,
+/** (G5a-1 P5b) `LookPathDecomposeNested` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma LookPathDecomposeCdn(r: R.regex, body: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>,
                                 mx: int, lid: nat, g: nat)
-    requires NR.NestedFragmentRE(r) && PIV.CapUnique(r)
+    requires NR.NestedFragmentCdnRE(r) && PIV.CapUnique(r)
     requires lid in LTB.LookIds(r)
     requires body == LookBodyOfRE(r, lid)
     requires g in PIV.CapIds(body)
@@ -8266,7 +8344,7 @@ module LindenElkNestInv {
     ensures AI.get_idx(lc, lid as int) >= MxAtLidLk(r, qc, mx, lid)
     ensures PIV.PathPresentLk(body, cc, lc, qc, -1, g)
     ensures PIV.MxAtGidLk(r, cc, lc, qc, mx, g) == PIV.MxAtGidLk(body, cc, lc, qc, -1, g)
-    decreases r
+    decreases r, 0
   {
     LookBodyCapsIn(r, lid);
     match r
@@ -8275,41 +8353,41 @@ module LindenElkNestInv {
       if lid in LTB.LookIds(r1) {
         LookBodyCapsIn(r1, lid);
         assert g in PIV.CapIds(r1);
-        LookPathDecomposeNested(r1, body, cc, lc, qc, mx, lid, g);
+        LookPathDecomposeCdn(r1, body, cc, lc, qc, mx, lid, g);
       } else {
         LookBodyCapsIn(r2, lid);
         assert g in PIV.CapIds(r2);
         assert g !in PIV.CapIds(r1) by {
           if g in PIV.CapIds(r1) { assert g in PIV.CapIds(r1) * PIV.CapIds(r2); }
         }
-        LookPathDecomposeNested(r2, body, cc, lc, qc, mx, lid, g);
+        LookPathDecomposeCdn(r2, body, cc, lc, qc, mx, lid, g);
       }
     case Re_con(r1, r2) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid in LTB.LookIds(r1) {
         LookBodyCapsIn(r1, lid);
         assert g in PIV.CapIds(r1);
-        LookPathDecomposeNested(r1, body, cc, lc, qc, mx, lid, g);
+        LookPathDecomposeCdn(r1, body, cc, lc, qc, mx, lid, g);
       } else {
         LookBodyCapsIn(r2, lid);
         assert g in PIV.CapIds(r2);
         assert g !in PIV.CapIds(r1) by {
           if g in PIV.CapIds(r1) { assert g in PIV.CapIds(r1) * PIV.CapIds(r2); }
         }
-        LookPathDecomposeNested(r2, body, cc, lc, qc, mx, lid, g);
+        LookPathDecomposeCdn(r2, body, cc, lc, qc, mx, lid, g);
       }
     case Re_quant(nul, qid, q, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var qv := AI.get_idx(qc, qid);
       assert qv >= mx;                               // PathPresentLk
-      LookPathDecomposeNested(r1, body, cc, lc, qc, qv, lid, g);
+      LookPathDecomposeCdn(r1, body, cc, lc, qc, qv, lid, g);
     case Re_capture(cid, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       LookBodyCapsIn(r1, lid);
       assert g in PIV.CapIds(r1);
       assert cid >= 0 && (cid as nat) !in PIV.CapIds(r1);   // CapUnique
       assert (cid as nat) != g;
-      LookPathDecomposeNested(r1, body, cc, lc, qc, mx, lid, g);
+      LookPathDecomposeCdn(r1, body, cc, lc, qc, mx, lid, g);
     case Re_lookaround(lid0, la, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if lid0 >= 0 && (lid0 as nat) == lid {
@@ -8327,6 +8405,27 @@ module LindenElkNestInv {
         LookPathDecomposeNested(r1, body, cc, lc, qc, -1, lid, g);
         assert MxAtLidLk(r, qc, mx, lid) == MxAtLidLk(r1, qc, -1, lid);
       }
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `LookPathDecomposeCdn`. */
+  lemma LookPathDecomposeNested(r: R.regex, body: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>,
+                                mx: int, lid: nat, g: nat)
+    requires NR.NestedFragmentRE(r) && PIV.CapUnique(r)
+    requires lid in LTB.LookIds(r)
+    requires body == LookBodyOfRE(r, lid)
+    requires g in PIV.CapIds(body)
+    requires g in PIV.CapIds(r)
+    requires PIV.PathPresentLk(r, cc, lc, qc, mx, g)
+    ensures LookPathPresentLk(r, cc, lc, qc, mx, lid)
+    ensures AI.get_idx(lc, lid as int) >= 0
+    ensures AI.get_idx(lc, lid as int) >= MxAtLidLk(r, qc, mx, lid)
+    ensures PIV.PathPresentLk(body, cc, lc, qc, -1, g)
+    ensures PIV.MxAtGidLk(r, cc, lc, qc, mx, g) == PIV.MxAtGidLk(body, cc, lc, qc, -1, g)
+    decreases r
+  {
+    NR.NarrowIsCdn(r);
+    hide *;   // the wide premises are this lemma's own: match by name
+    LookPathDecomposeCdn(r, body, cc, lc, qc, mx, lid, g);
   }
 
   /** (L4 depth-k) `LookPathPresentLk`/`MxAtLidLk` read the banks only at `r`'s
@@ -8449,9 +8548,11 @@ module LindenElkNestInv {
       presence + the look stamp beating the node threshold. Under FULL liveness this
       is a clean extraction — the escaped-matched-look failure mode of `res0`-live-
       alone never arises. */
-  lemma LookPathDomFromLivenessRes(re: R.regex, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
+/** (G5a-1 P5b) `LookPathDomFromLivenessRes` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma LookPathDomFromLivenessResCdn(re: R.regex, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
                                    g2: nat, A0: nat)
-    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re) && LTB.LookUnique(re)
+    requires NR.NestedFragmentCdnRE(re) && PIV.CapUnique(re) && LTB.LookUnique(re)
     requires g2 in PIV.CapIdsInLooks(re)
     requires forall c: nat :: c in PIV.CapIds(re) && AI.get_idx(res0.a_clk, CP.start_reg(c)) < 0
                              ==> AI.get_idx(res0.a_cp, CP.start_reg(c)) < 0
@@ -8467,10 +8568,10 @@ module LindenElkNestInv {
     var qc := AReg.as_arrays(res2).1;                 // == res2.a_clk definitionally
     var body := LookBodyOfRE(re, A0);
     // (1) FULL liveness -> look-aware path presence at g2.
-    GmOfLivePresenceExtractLkNested(re, res0, res1, res2, g2);
+    GmOfLivePresenceExtractLkCdn(re, res0, res1, res2, g2);
     assert PIV.PathPresentLk(re, cc, lc, qc, -1, g2);
     // (2) peel off the path-to-A0 + A0's own look-clock clause.
-    LookPathDecomposeNested(re, body, cc, lc, qc, -1, A0, g2);
+    LookPathDecomposeCdn(re, body, cc, lc, qc, -1, A0, g2);
     assert LookPathPresentLk(re, cc, lc, qc, -1, A0);
     assert AI.get_idx(lc, A0 as int) >= 0;
     assert AI.get_idx(lc, A0 as int) >= MxAtLidLk(re, qc, -1, A0);
@@ -8478,8 +8579,25 @@ module LindenElkNestInv {
     LookPathPresentLkImpliesPresent(re, cc, lc, qc, -1, A0);
     assert LookPathPresent(re, cc, qc, -1, A0);
     // (4) assemble dominance from presence + the stamp beating the threshold.
-    LookPathDomIntroTop(re, cc, qc, -1, A0, AI.get_idx(lc, A0 as int));
+    LookPathDomIntroTopCdn(re, cc, qc, -1, A0, AI.get_idx(lc, A0 as int));
     assert LookPathDom(re, AI.get_idx(lc, A0 as int), qc, A0);
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `LookPathDomFromLivenessResCdn`. */
+  lemma LookPathDomFromLivenessRes(re: R.regex, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
+                                   g2: nat, A0: nat)
+    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re) && LTB.LookUnique(re)
+    requires g2 in PIV.CapIdsInLooks(re)
+    requires forall c: nat :: c in PIV.CapIds(re) && AI.get_idx(res0.a_clk, CP.start_reg(c)) < 0
+                             ==> AI.get_idx(res0.a_cp, CP.start_reg(c)) < 0
+    requires g2 in PIV.GmOfLive(re, res0, res1, res2)
+    requires A0 in TopLookIds(re) && A0 in LTB.LookIds(re)
+    requires g2 in PIV.CapIds(LookBodyOfRE(re, A0))
+    ensures LookPathDom(re, AI.get_idx(res1.a_clk, A0 as int), res2.a_clk, A0)
+  {
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    LookPathDomFromLivenessResCdn(re, res0, res1, res2, g2, A0);
   }
 
   /** (L4 depth-k) TOP-look qc-congruence for `LookPathDom`: for a TOP look `lid`
@@ -8488,14 +8606,16 @@ module LindenElkNestInv {
       alone suffices — the exact frame the endpoint's recon quant frame supplies
       (`res2.a_clk == thread.quant_regs.a_clk` on `QuantIdsOutsideLooks(re)`).
       Same TopLookIds alt/con routing as `MxAtLidGeMxTop`. */
-  lemma LookPathDomQcAgreeTop(r: R.regex, L: int, qc: seq<int>, qc': seq<int>, lid: nat)
-    requires NR.NestedFragmentRE(r) && LTB.LookUnique(r)
+/** (G5a-1 P5b) `LookPathDomQcAgreeTop` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma LookPathDomQcAgreeTopCdn(r: R.regex, L: int, qc: seq<int>, qc': seq<int>, lid: nat)
+    requires NR.NestedFragmentCdnRE(r) && LTB.LookUnique(r)
     requires lid in LTB.LookIds(r)
     requires lid in TopLookIds(r)
     requires forall q: nat :: q in PIV.QuantIdsOutsideLooks(r) ==>
       AI.get_idx(qc, q as int) == AI.get_idx(qc', q as int)
     ensures LookPathDom(r, L, qc, lid) == LookPathDom(r, L, qc', lid)
-    decreases r
+    decreases r, 0
   {
     TopLookIdsIn(r);
     match r
@@ -8510,7 +8630,7 @@ module LindenElkNestInv {
             assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
           }
         }
-        LookPathDomQcAgreeTop(r1, L, qc, qc', lid);
+        LookPathDomQcAgreeTopCdn(r1, L, qc, qc', lid);
       } else {
         assert lid in LTB.LookIds(r2);
         assert lid in TopLookIds(r2) by {
@@ -8519,7 +8639,7 @@ module LindenElkNestInv {
             assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
           }
         }
-        LookPathDomQcAgreeTop(r2, L, qc, qc', lid);
+        LookPathDomQcAgreeTopCdn(r2, L, qc, qc', lid);
       }
     case Re_con(r1, r2) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
@@ -8532,7 +8652,7 @@ module LindenElkNestInv {
             assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
           }
         }
-        LookPathDomQcAgreeTop(r1, L, qc, qc', lid);
+        LookPathDomQcAgreeTopCdn(r1, L, qc, qc', lid);
       } else {
         assert lid in LTB.LookIds(r2);
         assert lid in TopLookIds(r2) by {
@@ -8541,7 +8661,7 @@ module LindenElkNestInv {
             assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
           }
         }
-        LookPathDomQcAgreeTop(r2, L, qc, qc', lid);
+        LookPathDomQcAgreeTopCdn(r2, L, qc, qc', lid);
       }
     case Re_quant(_, qid, _, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
@@ -8549,14 +8669,29 @@ module LindenElkNestInv {
       assert AI.get_idx(qc, qid) == AI.get_idx(qc', qid) by {
         if qid >= 0 { assert (qid as nat) in PIV.QuantIdsOutsideLooks(r); }
       }
-      LookPathDomQcAgreeTop(r1, L, qc, qc', lid);
+      LookPathDomQcAgreeTopCdn(r1, L, qc, qc', lid);
     case Re_capture(_, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert PIV.QuantIdsOutsideLooks(r1) <= PIV.QuantIdsOutsideLooks(r);
-      LookPathDomQcAgreeTop(r1, L, qc, qc', lid);
+      LookPathDomQcAgreeTopCdn(r1, L, qc, qc', lid);
     case Re_lookaround(lid0, _, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert lid0 >= 0 && (lid0 as nat) == lid;
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `LookPathDomQcAgreeTopCdn`. */
+  lemma LookPathDomQcAgreeTop(r: R.regex, L: int, qc: seq<int>, qc': seq<int>, lid: nat)
+    requires NR.NestedFragmentRE(r) && LTB.LookUnique(r)
+    requires lid in LTB.LookIds(r)
+    requires lid in TopLookIds(r)
+    requires forall q: nat :: q in PIV.QuantIdsOutsideLooks(r) ==>
+      AI.get_idx(qc, q as int) == AI.get_idx(qc', q as int)
+    ensures LookPathDom(r, L, qc, lid) == LookPathDom(r, L, qc', lid)
+    decreases r
+  {
+    NR.NarrowIsCdn(r);
+    hide *;   // the wide premises are this lemma's own: match by name
+    LookPathDomQcAgreeTopCdn(r, L, qc, qc', lid);
   }
 
   /** (L4 depth-k — THE REVERSE-RECON CONNECTIVE, thread-bank half) The res-bank
@@ -8569,6 +8704,33 @@ module LindenElkNestInv {
       the same look clock, and `LookPathDom` at a top look reads `qc` only on
       outside-look path quants (`LookPathDomQcAgreeTop`). This is the exact
       `LookPathDom`-on-thread the DIRECT descent package owes. */
+/** (G5a-1 P5b) `LookPathDomFromLivenessThread` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma LookPathDomFromLivenessThreadCdn(re: R.regex, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
+                                      thread: AI.Thread, g2: nat, A0: nat)
+    requires NR.NestedFragmentCdnRE(re) && PIV.CapUnique(re) && LTB.LookUnique(re)
+    requires g2 in PIV.CapIdsInLooks(re)
+    requires forall c: nat :: c in PIV.CapIds(re) && AI.get_idx(res0.a_clk, CP.start_reg(c)) < 0
+                             ==> AI.get_idx(res0.a_cp, CP.start_reg(c)) < 0
+    requires g2 in PIV.GmOfLive(re, res0, res1, res2)
+    requires A0 in TopLookIds(re) && A0 in LTB.LookIds(re)
+    requires g2 in PIV.CapIds(LookBodyOfRE(re, A0))
+    // res -> thread transfer facts at the TOP look A0.
+    requires AI.get_idx(res1.a_clk, A0 as int) == AI.get_idx(thread.look_regs.a_clk, A0 as int)
+    requires forall q: nat :: q in PIV.QuantIdsOutsideLooks(re) ==>
+      AI.get_idx(res2.a_clk, q as int) == AI.get_idx(thread.quant_regs.a_clk, q as int)
+    ensures LookPathDom(re, AI.get_idx(thread.look_regs.a_clk, A0 as int), thread.quant_regs.a_clk, A0)
+  {
+    LookPathDomFromLivenessResCdn(re, res0, res1, res2, g2, A0);
+    assert LookPathDom(re, AI.get_idx(res1.a_clk, A0 as int), res2.a_clk, A0);
+    // look clock unchanged: rewrite the L stamp.
+    assert AI.get_idx(res1.a_clk, A0 as int) == AI.get_idx(thread.look_regs.a_clk, A0 as int);
+    // quant frame outside looks: LookPathDom at a top look reads only those.
+    LookPathDomQcAgreeTopCdn(re, AI.get_idx(thread.look_regs.a_clk, A0 as int),
+                          res2.a_clk, thread.quant_regs.a_clk, A0);
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `LookPathDomFromLivenessThreadCdn`. */
   lemma LookPathDomFromLivenessThread(re: R.regex, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
                                       thread: AI.Thread, g2: nat, A0: nat)
     requires NR.NestedFragmentRE(re) && PIV.CapUnique(re) && LTB.LookUnique(re)
@@ -8584,13 +8746,9 @@ module LindenElkNestInv {
       AI.get_idx(res2.a_clk, q as int) == AI.get_idx(thread.quant_regs.a_clk, q as int)
     ensures LookPathDom(re, AI.get_idx(thread.look_regs.a_clk, A0 as int), thread.quant_regs.a_clk, A0)
   {
-    LookPathDomFromLivenessRes(re, res0, res1, res2, g2, A0);
-    assert LookPathDom(re, AI.get_idx(res1.a_clk, A0 as int), res2.a_clk, A0);
-    // look clock unchanged: rewrite the L stamp.
-    assert AI.get_idx(res1.a_clk, A0 as int) == AI.get_idx(thread.look_regs.a_clk, A0 as int);
-    // quant frame outside looks: LookPathDom at a top look reads only those.
-    LookPathDomQcAgreeTop(re, AI.get_idx(thread.look_regs.a_clk, A0 as int),
-                          res2.a_clk, thread.quant_regs.a_clk, A0);
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    LookPathDomFromLivenessThreadCdn(re, res0, res1, res2, thread, g2, A0);
   }
 
   /** (L4 depth-k) the NESTED counterpart of `PIV.FilterPresenceExtractLk`: a
@@ -8600,9 +8758,11 @@ module LindenElkNestInv {
       (`PlusIsLookBehindFragmentRE`); here the recursion is directly under
       `NestedFragmentRE`, and the outside-own frame steps route through the
       nested `PIV.FilterCaptureOutsideNested`. */
-  lemma FilterPresenceExtractLkNested(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>,
+/** (G5a-1 P5b) `FilterPresenceExtractLkNested` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma FilterPresenceExtractLkCdn(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>,
                                       mx: int, gid: nat)
-    requires NR.NestedFragmentRE(r)
+    requires NR.NestedFragmentCdnRE(r)
     requires PIV.CapUnique(r)
     requires gid in PIV.CapIds(r)
     requires forall c: nat :: c in PIV.CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0
@@ -8612,7 +8772,7 @@ module LindenElkNestInv {
     ensures AI.get_idx(cc, CP.start_reg(gid)) >= 0
     ensures AI.get_idx(cc, CP.start_reg(gid)) >= PIV.MxAtGidLk(r, cc, lc, qc, mx, gid)
     ensures AI.get_idx(cr, CP.start_reg(gid)) >= 0
-    decreases r
+    decreases r, 0
   {
     match r
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
@@ -8630,36 +8790,36 @@ module LindenElkNestInv {
       var c1 := AI.filter_capture(r1, cr, cc, lc, qc, mx);
       if gid in PIV.CapIds(r1) {
         assert gid !in PIV.CapIds(r2) by { if gid in PIV.CapIds(r2) { assert gid in PIV.CapIds(r1) * PIV.CapIds(r2); } }
-        PIV.FilterCaptureOutsideNested(r2, c1, cc, lc, qc, mx, gid);
-        FilterPresenceExtractLkNested(r1, cr, cc, lc, qc, mx, gid);
+        PIV.FilterCaptureOutsideCdn(r2, c1, cc, lc, qc, mx, gid);
+        FilterPresenceExtractLkCdn(r1, cr, cc, lc, qc, mx, gid);
       } else {
         assert gid in PIV.CapIds(r2) && gid !in PIV.CapIds(r1);
         forall c: nat | c in PIV.CapIds(r2) && AI.get_idx(cc, CP.start_reg(c)) < 0
           ensures AI.get_idx(c1, CP.start_reg(c)) < 0
         {
           assert c !in PIV.CapIds(r1) by { if c in PIV.CapIds(r1) { assert c in PIV.CapIds(r1) * PIV.CapIds(r2); } }
-          PIV.FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, c);
+          PIV.FilterCaptureOutsideCdn(r1, cr, cc, lc, qc, mx, c);
         }
-        FilterPresenceExtractLkNested(r2, c1, cc, lc, qc, mx, gid);
-        PIV.FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, gid);
+        FilterPresenceExtractLkCdn(r2, c1, cc, lc, qc, mx, gid);
+        PIV.FilterCaptureOutsideCdn(r1, cr, cc, lc, qc, mx, gid);
       }
     case Re_con(r1, r2) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       var c1 := AI.filter_capture(r1, cr, cc, lc, qc, mx);
       if gid in PIV.CapIds(r1) {
         assert gid !in PIV.CapIds(r2) by { if gid in PIV.CapIds(r2) { assert gid in PIV.CapIds(r1) * PIV.CapIds(r2); } }
-        PIV.FilterCaptureOutsideNested(r2, c1, cc, lc, qc, mx, gid);
-        FilterPresenceExtractLkNested(r1, cr, cc, lc, qc, mx, gid);
+        PIV.FilterCaptureOutsideCdn(r2, c1, cc, lc, qc, mx, gid);
+        FilterPresenceExtractLkCdn(r1, cr, cc, lc, qc, mx, gid);
       } else {
         assert gid in PIV.CapIds(r2) && gid !in PIV.CapIds(r1);
         forall c: nat | c in PIV.CapIds(r2) && AI.get_idx(cc, CP.start_reg(c)) < 0
           ensures AI.get_idx(c1, CP.start_reg(c)) < 0
         {
           assert c !in PIV.CapIds(r1) by { if c in PIV.CapIds(r1) { assert c in PIV.CapIds(r1) * PIV.CapIds(r2); } }
-          PIV.FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, c);
+          PIV.FilterCaptureOutsideCdn(r1, cr, cc, lc, qc, mx, c);
         }
-        FilterPresenceExtractLkNested(r2, c1, cc, lc, qc, mx, gid);
-        PIV.FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, gid);
+        FilterPresenceExtractLkCdn(r2, c1, cc, lc, qc, mx, gid);
+        PIV.FilterCaptureOutsideCdn(r1, cr, cc, lc, qc, mx, gid);
       }
     case Re_quant(nul, qid, q, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
@@ -8668,7 +8828,7 @@ module LindenElkNestInv {
         PIV.FilterAllClearsStart(r1, cr, gid);
         assert false;
       } else {
-        FilterPresenceExtractLkNested(r1, cr, cc, lc, qc, qv, gid);
+        FilterPresenceExtractLkCdn(r1, cr, cc, lc, qc, qv, gid);
       }
     case Re_capture(cid, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
@@ -8685,7 +8845,7 @@ module LindenElkNestInv {
           assert AI.get_idx(cr2, CP.start_reg(gid)) <= -1;
           assert false;
         } else {
-          PIV.FilterCaptureOutsideNested(r1, cr, cc, lc, qc, mx, gid);
+          PIV.FilterCaptureOutsideCdn(r1, cr, cc, lc, qc, mx, gid);
           assert PIV.MxAtGidLk(r, cc, lc, qc, mx, gid) == mx;
         }
       } else {
@@ -8700,17 +8860,39 @@ module LindenElkNestInv {
         } else {
           forall c: nat | c in PIV.CapIds(r1) && AI.get_idx(cc, CP.start_reg(c)) < 0
             ensures AI.get_idx(cr, CP.start_reg(c)) < 0 {}
-          FilterPresenceExtractLkNested(r1, cr, cc, lc, qc, mx, gid);
+          FilterPresenceExtractLkCdn(r1, cr, cc, lc, qc, mx, gid);
         }
       }
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `FilterPresenceExtractLkCdn`. */
+  lemma FilterPresenceExtractLkNested(r: R.regex, cr: seq<int>, cc: seq<int>, lc: seq<int>, qc: seq<int>,
+                                      mx: int, gid: nat)
+    requires NR.NestedFragmentRE(r)
+    requires PIV.CapUnique(r)
+    requires gid in PIV.CapIds(r)
+    requires forall c: nat :: c in PIV.CapIds(r) && AI.get_idx(cc, CP.start_reg(c)) < 0
+                             ==> AI.get_idx(cr, CP.start_reg(c)) < 0
+    requires AI.get_idx(AI.filter_capture(r, cr, cc, lc, qc, mx), CP.start_reg(gid)) >= 0
+    ensures PIV.PathPresentLk(r, cc, lc, qc, mx, gid)
+    ensures AI.get_idx(cc, CP.start_reg(gid)) >= 0
+    ensures AI.get_idx(cc, CP.start_reg(gid)) >= PIV.MxAtGidLk(r, cc, lc, qc, mx, gid)
+    ensures AI.get_idx(cr, CP.start_reg(gid)) >= 0
+    decreases r
+  {
+    NR.NarrowIsCdn(r);
+    hide *;   // the wide premises are this lemma's own: match by name
+    FilterPresenceExtractLkCdn(r, cr, cc, lc, qc, mx, gid);
   }
 
   /** (L4 depth-k) gm-level wrapper — the NESTED `PIV.GmOfLivePresenceExtractLk`:
       any group present in the live denotation (inside-look ones included, to any
       depth) is look-aware path-present with a fresh, set start clock. */
-  lemma GmOfLivePresenceExtractLkNested(ast: R.regex, caps: AReg.Regs, look: AReg.Regs,
+/** (G5a-1 P5b) `GmOfLivePresenceExtractLkNested` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma GmOfLivePresenceExtractLkCdn(ast: R.regex, caps: AReg.Regs, look: AReg.Regs,
                                         quant: AReg.Regs, gid: nat)
-    requires NR.NestedFragmentRE(ast)
+    requires NR.NestedFragmentCdnRE(ast)
     requires PIV.CapUnique(ast)
     requires gid in PIV.CapIds(ast)
     requires forall c: nat :: c in PIV.CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
@@ -8728,7 +8910,27 @@ module LindenElkNestInv {
     var f := AI.filter_reset(ast, caps, look, quant, -1);
     assert f == AI.filter_capture(ast, cr, cc, lc, qc, -1);
     assert AI.get_idx(f, CP.start_reg(gid)) >= 0;
-    FilterPresenceExtractLkNested(ast, cr, cc, lc, qc, -1, gid);
+    FilterPresenceExtractLkCdn(ast, cr, cc, lc, qc, -1, gid);
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `GmOfLivePresenceExtractLkCdn`. */
+  lemma GmOfLivePresenceExtractLkNested(ast: R.regex, caps: AReg.Regs, look: AReg.Regs,
+                                        quant: AReg.Regs, gid: nat)
+    requires NR.NestedFragmentRE(ast)
+    requires PIV.CapUnique(ast)
+    requires gid in PIV.CapIds(ast)
+    requires forall c: nat :: c in PIV.CapIds(ast) && AI.get_idx(caps.a_clk, CP.start_reg(c)) < 0
+                             ==> AI.get_idx(caps.a_cp, CP.start_reg(c)) < 0
+    requires gid in PIV.GmOfLive(ast, caps, look, quant)
+    ensures PIV.PathPresentLk(ast, caps.a_clk, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, gid)
+    ensures AI.get_idx(caps.a_clk, CP.start_reg(gid)) >= 0
+    ensures AI.get_idx(caps.a_clk, CP.start_reg(gid))
+              >= PIV.MxAtGidLk(ast, caps.a_clk, AReg.as_arrays(look).1, AReg.as_arrays(quant).1, -1, gid)
+    ensures AI.get_idx(caps.a_cp, CP.start_reg(gid)) >= 0
+  {
+    NR.NarrowIsCdn(ast);
+    hide *;   // the wide premises are this lemma's own: match by name
+    GmOfLivePresenceExtractLkCdn(ast, caps, look, quant, gid);
   }
 
   /** (L4 depth-k) the NESTED `PIV.GmOfLiveKeepsPresentLk` — the FORWARD closing
@@ -8737,9 +8939,11 @@ module LindenElkNestInv {
       proof uses no fragment fact at all (`FilterKeepsPresentLk`/
       `FilterCaptureKeepsOdd` need only `CapUnique`), so this is a pure
       fragment-relabel that re-exposes it under `NestedFragmentRE`. */
-  lemma GmOfLiveKeepsPresentLkNested(re: R.regex, cap: AReg.Regs, look: AReg.Regs,
+/** (G5a-1 P5b) `GmOfLiveKeepsPresentLkNested` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma GmOfLiveKeepsPresentLkCdn(re: R.regex, cap: AReg.Regs, look: AReg.Regs,
                                      quant: AReg.Regs, gid: nat)
-    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re)
+    requires NR.NestedFragmentCdnRE(re) && PIV.CapUnique(re)
     requires gid in PIV.CapIds(re)
     requires PIV.PathPresentLk(re, AReg.as_arrays(cap).1, AReg.as_arrays(look).1,
                                AReg.as_arrays(quant).1, -1, gid)
@@ -8762,6 +8966,27 @@ module LindenElkNestInv {
     assert AI.get_idx(f, CP.end_reg(gid)) == AI.get_idx(cr, CP.end_reg(gid));
     assert AI.get_idx(f, CP.start_reg(gid)) >= 0;
     assert PIV.LiveRange(f, cc, gid) == PIV.LiveRange(cr, cc, gid);
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `GmOfLiveKeepsPresentLkCdn`. */
+  lemma GmOfLiveKeepsPresentLkNested(re: R.regex, cap: AReg.Regs, look: AReg.Regs,
+                                     quant: AReg.Regs, gid: nat)
+    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re)
+    requires gid in PIV.CapIds(re)
+    requires PIV.PathPresentLk(re, AReg.as_arrays(cap).1, AReg.as_arrays(look).1,
+                               AReg.as_arrays(quant).1, -1, gid)
+    requires AI.get_idx(AReg.as_arrays(cap).1, CP.start_reg(gid)) >= 0
+    requires AI.get_idx(AReg.as_arrays(cap).0, CP.start_reg(gid)) >= 0   // value set
+    requires AI.get_idx(AReg.as_arrays(cap).1, CP.start_reg(gid))
+               >= PIV.MxAtGidLk(re, AReg.as_arrays(cap).1, AReg.as_arrays(look).1,
+                                AReg.as_arrays(quant).1, -1, gid)
+    ensures gid in PIV.GmOfLive(re, cap, look, quant)
+    ensures PIV.GmOfLive(re, cap, look, quant)[gid]
+              == PIV.LiveRange(AReg.as_arrays(cap).0, AReg.as_arrays(cap).1, gid)
+  {
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    GmOfLiveKeepsPresentLkCdn(re, cap, look, quant, gid);
   }
 
   /** `QidBody`'s captures are among `r`'s (a subtree). */

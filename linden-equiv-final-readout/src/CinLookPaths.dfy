@@ -348,6 +348,171 @@ module LindenElkCinLookPaths {
     }
   }
 
+  // (G5a-1 P5, row L) Bridge 3: the lemmas above on `StampQids` and the scope `NRC.CdnTopRE`
+  // (generated from their text; see probes/G5a1-P5-L0-bridge3.py.txt).
+  lemma QInStampLeft(r: R.regex, r1: R.regex, r2: R.regex, Q: set<int>)
+    requires r == R.Re_alt(r1, r2) || r == R.Re_con(r1, r2)
+    requires PIV.QuantUnique(r) && RF.QInStamp(r, Q)
+    ensures RF.QInStamp(r1, Q) && RF.QInStamp(r2, Q)
+  {
+    forall q2: nat | q2 in PIV.QuantIds(r1) && (q2 as int) in Q ensures NRR.QidStampPlus(r1, q2) {
+      assert q2 in PIV.QuantIds(r) && NRR.QidStampPlus(r, q2);
+    }
+    forall q2: nat | q2 in PIV.QuantIds(r2) && (q2 as int) in Q ensures NRR.QidStampPlus(r2, q2) {
+      assert q2 !in PIV.QuantIds(r1) by { if q2 in PIV.QuantIds(r1) { assert q2 in PIV.QuantIds(r1) * PIV.QuantIds(r2); } }
+      assert q2 in PIV.QuantIds(r) && NRR.QidStampPlus(r, q2);
+    }
+  }
+
+  lemma QInStampDown(r: R.regex, Q: set<int>)
+    requires PIV.QuantUnique(r) && RF.QInStamp(r, Q)
+    ensures r.Re_alt? || r.Re_con? ==> RF.QInStamp(NRR.L1(r), Q) && RF.QInStamp(NRR.L2(r), Q)
+    ensures r.Re_capture? || r.Re_lookaround? || r.Re_quant? ==> RF.QInStamp(NRR.L1(r), Q)
+  {
+    match r
+    case Re_alt(r1, r2) => QInStampLeft(r, r1, r2, Q);
+    case Re_con(r1, r2) => QInStampLeft(r, r1, r2, Q);
+    case Re_quant(_, qid, _, body) =>
+      forall q2: nat | q2 in PIV.QuantIds(body) && (q2 as int) in Q ensures NRR.QidStampPlus(body, q2) {
+        assert q2 in PIV.QuantIds(r);
+        assert !(qid >= 0 && (qid as nat) == q2);
+      }
+    case Re_capture(_, r1) =>
+      forall q2: nat | q2 in PIV.QuantIds(r1) && (q2 as int) in Q ensures NRR.QidStampPlus(r1, q2) {
+        assert q2 in PIV.QuantIds(r) && NRR.QidStampPlus(r, q2);
+      }
+    case Re_lookaround(_, _, r1) =>
+      forall q2: nat | q2 in PIV.QuantIds(r1) && (q2 as int) in Q ensures NRR.QidStampPlus(r1, q2) {
+        assert q2 in PIV.QuantIds(r) && NRR.QidStampPlus(r, q2);
+      }
+    case _ =>
+  }
+
+  lemma QsOutsideS(r: R.regex, Q: set<int>)
+    requires RF.CinBodiesLookFreeRE(r) && NRC.CdnTopRE(r) && PIV.CapUnique(r) && PIV.QuantUnique(r) && RF.QInStamp(r, Q)
+    ensures RF.CapsQ(r, Q) <= PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(r))
+    ensures forall k :: k in RF.QuantsQ(r, Q) ==> k >= 0 && (k as nat) in PIV.QuantIdsOutsideLooks(r)
+    decreases r
+  {
+    NRC.CdnTopChild(r);   // (P5) the scope at the subterms
+    QInStampDown(r, Q);
+    match r
+    case Re_alt(r1, r2) =>
+      QsOutsideS(r1, Q); QsOutsideS(r2, Q);
+      PIV.CaptureRegsSetMono(PIV.CapIdsOutsideLooks(r1), PIV.CapIdsOutsideLooks(r));
+      PIV.CaptureRegsSetMono(PIV.CapIdsOutsideLooks(r2), PIV.CapIdsOutsideLooks(r));
+    case Re_con(r1, r2) =>
+      QsOutsideS(r1, Q); QsOutsideS(r2, Q);
+      PIV.CaptureRegsSetMono(PIV.CapIdsOutsideLooks(r1), PIV.CapIdsOutsideLooks(r));
+      PIV.CaptureRegsSetMono(PIV.CapIdsOutsideLooks(r2), PIV.CapIdsOutsideLooks(r));
+    case Re_capture(cid, r1) =>
+      QsOutsideS(r1, Q);
+      PIV.CaptureRegsSetMono(PIV.CapIdsOutsideLooks(r1), PIV.CapIdsOutsideLooks(r));
+    case Re_quant(nul, qid, q, body) =>
+      QsOutsideS(body, Q);
+      assert PIV.CapIdsOutsideLooks(r) == PIV.CapIdsOutsideLooks(body);
+      if qid in Q {
+        assert qid >= 0 && (qid as nat) in PIV.QuantIds(r);
+        assert NRR.QidStampPlus(r, qid as nat);
+        assert NR.LookFreeRE(body);
+        PIV.LookFreeCapIdsInLooksEmpty(body); PIV.CapIdsSplit(body);
+        LookFreeQuantIdsInLooksEmpty(body); PIV.QuantIdsSplit(body);
+        NRR.CapRegsOfChar(body); NRR.QuantRegsOfChar(body);
+        forall k | k in NRR.CapRegsOf(body) ensures k in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(r)) {
+          var c: nat :| c in PIV.CapIds(body) && (k == CP.start_reg(c) || k == CP.end_reg(c));
+          assert c in PIV.CapIdsOutsideLooks(r);
+          if k == CP.start_reg(c) {
+            assert k in (set cid | cid in PIV.CapIdsOutsideLooks(r) :: CP.start_reg(cid));
+          } else {
+            assert k in (set cid | cid in PIV.CapIdsOutsideLooks(r) :: CP.end_reg(cid));
+          }
+        }
+        forall k | k in NRR.QuantRegsOf(body) ensures k >= 0 && (k as nat) in PIV.QuantIdsOutsideLooks(r) {
+          assert (k as nat) in PIV.QuantIdsOutsideLooks(body);
+        }
+      }
+    case Re_lookaround(_, _, _) =>
+    case _ =>
+  }
+
+  lemma QsAvoidLookBodyS(r: R.regex, Q: set<int>, lid: nat)
+    requires lid in LTB.LookIds(r)
+    requires RF.CinBodiesLookFreeRE(r) && NRC.CdnTopRE(r) && PIV.CapUnique(r) && PIV.QuantUnique(r) && RF.QInStamp(r, Q)
+    ensures RF.CapsQ(r, Q) * PIV.CaptureRegs(NI.LookBodyOfRE(r, lid)) == {}
+    ensures forall k :: k in RF.QuantsQ(r, Q) ==> k >= 0 && (k as nat) !in PIV.QuantIds(NI.LookBodyOfRE(r, lid))
+  {
+    NRC.CdnTopChild(r);   // (P5) the scope at the subterms
+    var b := NI.LookBodyOfRE(r, lid);
+    QsOutsideS(r, Q);
+    NI.LookBodyCapsIn(r, lid);
+    PIV.CaptureRegsIsSet(b);
+    PIV.CaptureRegsSetMono(PIV.CapIds(b), PIV.CapIdsInLooks(r));
+    PIV.CapIdsLooksDisjoint(r);
+    PIV.CaptureRegsSetDisjoint(PIV.CapIdsOutsideLooks(r), PIV.CapIdsInLooks(r));
+    LookBodyQuantsInL(r, lid);
+    PIV.QuantIdsLooksDisjoint(r);
+    forall k | k in RF.QuantsQ(r, Q) ensures k >= 0 && (k as nat) !in PIV.QuantIds(b) {
+      assert (k as nat) in PIV.QuantIdsOutsideLooks(r);
+      if (k as nat) in PIV.QuantIds(b) { assert (k as nat) in PIV.QuantIdsOutsideLooks(r) * PIV.QuantIdsInLooks(r); }
+    }
+  }
+
+  lemma AncAvoidQS(r: R.regex, Q: set<int>, lid: nat)
+    requires lid in LTB.LookIds(r)
+    requires RF.CinBodiesLookFreeRE(r) && NRC.CdnTopRE(r) && PIV.CapUnique(r) && PIV.QuantUnique(r) && RF.QInStamp(r, Q)
+    ensures AncCapRegs(r, lid) * RF.CapsQ(r, Q) == {}
+    ensures AncQuants(r, lid) * RF.QuantsQ(r, Q) == {}
+    decreases r
+  {
+    NRC.CdnTopChild(r);   // (P5) the scope at the subterms
+    match r
+    case Re_alt(r1, r2) =>
+      QInStampLeft(r, r1, r2, Q);
+      NRR.DisjointRegs(r);
+      assert NRR.L1(r) == r1 && NRR.L2(r) == r2;
+      RF.QSetsSub(r1, Q); RF.QSetsSub(r2, Q);
+      if lid in LTB.LookIds(r1) { AncAvoidQS(r1, Q, lid); AncSub(r1, lid); }
+      else { AncAvoidQS(r2, Q, lid); AncSub(r2, lid); }
+    case Re_con(r1, r2) =>
+      QInStampLeft(r, r1, r2, Q);
+      NRR.DisjointRegs(r);
+      assert NRR.L1(r) == r1 && NRR.L2(r) == r2;
+      RF.QSetsSub(r1, Q); RF.QSetsSub(r2, Q);
+      if lid in LTB.LookIds(r1) { AncAvoidQS(r1, Q, lid); AncSub(r1, lid); }
+      else { AncAvoidQS(r2, Q, lid); AncSub(r2, lid); }
+    case Re_quant(nul, qid, q, body) =>
+      assert RF.QInStamp(body, Q) by {
+        forall q2: nat | q2 in PIV.QuantIds(body) && (q2 as int) in Q ensures NRR.QidStampPlus(body, q2) {
+          assert q2 in PIV.QuantIds(r);
+          assert !(qid >= 0 && (qid as nat) == q2);
+        }
+      }
+      assert (qid as int) !in Q by {
+        if (qid as int) in Q {
+          assert qid >= 0 && (qid as nat) in PIV.QuantIds(r);
+          assert NRR.QidStampPlus(r, qid as nat);
+          NI.LookFreeNoLookIdsN(body);
+        }
+      }
+      AncAvoidQS(body, Q, lid);
+      RF.QSetsSub(body, Q);
+      NRR.QuantRegsOfChar(body);
+      assert (qid as int) !in RF.QuantsQ(body, Q);
+    case Re_capture(cid, r1) =>
+      assert RF.QInStamp(r1, Q) by {
+        forall q2: nat | q2 in PIV.QuantIds(r1) && (q2 as int) in Q ensures NRR.QidStampPlus(r1, q2) {
+          assert q2 in PIV.QuantIds(r) && NRR.QidStampPlus(r, q2);
+        }
+      }
+      AncAvoidQS(r1, Q, lid);
+      RF.QSetsSub(r1, Q);
+      NRR.CapRegsOfOwn(r);
+      assert NRR.L1(r) == r1;
+      assert CP.start_reg(cid) !in RF.CapsQ(r1, Q);
+    case Re_lookaround(lid0, _, r1) =>
+    case _ =>
+  }
+
   // ---------------------------------------------------------------------------
   // The reconstruction's sharp frame at the winner (companion of `FRD.FinalReadout`)
   // ---------------------------------------------------------------------------
@@ -387,6 +552,55 @@ module LindenElkCinLookPaths {
         assert (0 as int) in Q;
         var qn: nat :| qn in PIV.QuantIds(re) && NRR.QidCinPlus(re, qn) && qn as int == 0;
         assert qn == 0 && !NRR.QidCinPlus(re, 0);
+      }
+    }
+    FRD.PrefixIdentity(ast, rg, plus, str, qm.ov);
+  }
+
+  /** (P5 row E) `FinalReadoutFrame` on the scope `NRC.CdnTopRE` and `StampQids` (generated). */
+  lemma FinalReadoutFrameS(qm: AR.QMap, ast: R.regex, str: string, th: AI.Thread)
+    requires T.TransWf(R.lazy_prefix(ast))
+    requires PIV.CapUnique(R.lazy_prefix(ast)) && PIV.QuantUnique(R.lazy_prefix(ast)) && NRC.CdnTopRE(ast)
+    requires FV.RegsFinalOk(th, |str|, FRD.StampQids(R.lazy_prefix(ast)))
+    requires NRR.WfRegs((th.capture_regs, th.look_regs, th.quant_regs))
+    ensures var re := R.lazy_prefix(ast);
+            var Q := FRD.StampQids(re);
+            var rp := AI.FReconstructPlus(th, ast, CP.FFullCompilation(ast).f_plus_bc, str, qm.ov, LAnc.Forward).0;
+            NRR.AgreeOutside((rp.capture_regs, rp.look_regs, rp.quant_regs),
+                             (th.capture_regs, th.look_regs, th.quant_regs),
+                             RF.CapsQ(re, Q), RF.LooksQ(re, Q), RF.QuantsQ(re, Q))
+  {
+    var re := R.lazy_prefix(ast);
+    var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
+    assert re == R.Re_con(pre, ast);
+    var Q := FRD.StampQids(re);
+    var rg: NRC.Regs3 := (th.capture_regs, th.look_regs, th.quant_regs);
+    var plus := CP.FFullCompilation(ast).f_plus_bc;
+    FRD.PlusTableOkFullS(ast);
+    NRC.CdnTopPrefix(ast);
+    assert NRC.CdnTopRE(re);
+    assert NRR.CapValWf(rg);
+    assert NRO.StampsInRangeS(re, rg, str) by {
+      forall q: nat | q in PIV.QuantIds(re) && AI.get_idx(rg.2.a_cp, q) >= 0
+        ensures AI.get_idx(rg.2.a_cp, q) <= |str| && NRR.QidStampPlus(re, q)
+      {
+        assert (q as int) in Q;
+        var qn: nat :| qn in PIV.QuantIds(re) && NRR.QidStampPlus(re, qn) && qn as int == q as int;
+        assert qn == q;
+      }
+    }
+    assert RF.StampsIn(re, rg, Q) by {
+      forall q: nat | q in PIV.QuantIds(re) && AI.get_idx(rg.2.a_cp, q) >= 0 ensures (q as int) in Q {
+        assert (q as int) in Q;
+      }
+    }
+    RF.FNulledPlusFrameQS(qm, re, rg, plus, str, qm.ov, Q);
+    assert AReg.get_cp(rg.2, 0) == None by {
+      assert 0 in PIV.QuantIds(re);
+      if AI.get_idx(rg.2.a_cp, 0) >= 0 {
+        assert (0 as int) in Q;
+        var qn: nat :| qn in PIV.QuantIds(re) && NRR.QidStampPlus(re, qn) && qn as int == 0;
+        assert qn == 0 && !NRR.QidStampPlus(re, 0);
       }
     }
     FRD.PrefixIdentity(ast, rg, plus, str, qm.ov);

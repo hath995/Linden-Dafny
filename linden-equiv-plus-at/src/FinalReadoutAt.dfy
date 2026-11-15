@@ -66,6 +66,37 @@ module LindenElkFinalReadoutAt {
       if lid0 >= 0 && (lid0 as nat) == lid { } else { PlusTableOkLookBody(r1, plus, lid); }
   }
 
+  /** (G5a-1 step 4) `PlusTableOkLookBody` for the widened table. */
+  lemma PlusTableOkSLookBodyS(r: R.regex, plus: seq<RB.code>, lid: nat)
+    requires PIV.QuantUnique(r) && NRR.PlusTableOkS(r, plus)
+    requires lid in LTB.LookIds(r)
+    ensures NRR.PlusTableOkS(NI.LookBodyOfRE(r, lid), plus)
+    decreases r
+  {
+    NRR.PlusTableOkSChildren(r, plus);
+    match r
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) { PlusTableOkSLookBodyS(r1, plus, lid); } else { PlusTableOkSLookBodyS(r2, plus, lid); }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) { PlusTableOkSLookBodyS(r1, plus, lid); } else { PlusTableOkSLookBodyS(r2, plus, lid); }
+    case Re_quant(_, _, _, r1) => PlusTableOkSLookBodyS(r1, plus, lid);
+    case Re_capture(_, r1) => PlusTableOkSLookBodyS(r1, plus, lid);
+    case Re_lookaround(lid0, _, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid { } else { PlusTableOkSLookBodyS(r1, plus, lid); }
+  }
+
+  /** (G5a-1 step 4) BRIDGE 1: the top's widened table is the rows' CIN table on a look body without a
+      CDN-greedy plus (the gate's `NoCdnPlusRE(body)`). Replaces `PlusTableOkLookBody` at the hub. */
+  lemma PlusTableOkSLookBody(re: R.regex, plus: seq<RB.code>, lid: nat)
+    requires PIV.QuantUnique(re) && NRR.PlusTableOkS(re, plus)
+    requires lid in LTB.LookIds(re)
+    requires NRC.NoCdnPlusRE(NI.LookBodyOfRE(re, lid))
+    ensures NRR.PlusTableOk(NI.LookBodyOfRE(re, lid), plus)
+  {
+    PlusTableOkSLookBodyS(re, plus, lid);
+    NRR.PlusTableOkSNarrow(NI.LookBodyOfRE(re, lid), plus);
+  }
+
   /** `NoCdnPlusRE` passes to look bodies. */
   lemma NoCdnPlusLookBody(r: R.regex, lid: nat)
     requires NRC.NoCdnPlusRE(r) && lid in LTB.LookIds(r)

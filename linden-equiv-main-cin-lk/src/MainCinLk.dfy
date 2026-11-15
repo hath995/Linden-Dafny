@@ -38,6 +38,7 @@ module LindenElkMainCinLk {
   import LN = WarblreNumeric
   import AR = LindenElkActionsRep
   import EL = LindenElkEntryLk
+  import GR = LindenElkGuardsRun         // (G5a-1 row N) the guard premise, for real
   import PIV = LindenElkPikeInv
   import CM = LindenElkClockMono
   import M = LindenElkMain
@@ -172,7 +173,7 @@ module LindenElkMainCinLk {
     requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate
     requires T.TransWf(re)   // (G3a) main-theorem's re-gated row lemmas ask for it
     requires code == CP.compile_to_bytecode(re)
-    requires NR.NestedFragmentRE(re)
+    requires NR.NestedFragmentCdnRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
@@ -187,21 +188,21 @@ module LindenElkMainCinLk {
     requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
     ensures result.Some? ==> WinRegsOkG(ast, re, crv, str, ov, result.value, ncap, nlook, nquant)
   {
-    M.LookRowsDynamicNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
+    M.LookRowsDynamicCdn(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant,
                             ncap, nlook, nquant, endl, result);
-    M.FStabilityNested(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant, nlook, result);
+    M.FStabilityCdn(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant, nlook, result);
     var initlk := AReg.init_regs(nlook);
     var Sd := M.DirectLidSet(re);
-    M.DirectLidClassified(re);
+    M.DirectLidClassifiedCdn(re);
     assert CM.VmLooksAgree(inits, initlk, Sd) by {
       forall t | t in inits.active ensures CM.RegsAgreeOutside(t.look_regs, initlk, Sd) {
         assert t == AI.init_thread(cap, look, quant);
       }
     }
     CM.FFindMatchLookFrame(code, str, inits, ov, LAnc.Forward, cdn, initlk, Sd);
-    M.NoWriteOracleBodyCodeNested(re);
+    M.NoWriteOracleBodyCodeCdn(re);
     if result.Some? {
-      M.MainMatchBodyQuantsInitNested(re, code, str, inits, cap, look, quant, ov, cdn, result);
+      M.MainMatchBodyQuantsInitCdn(re, code, str, inits, cap, look, quant, ov, cdn, result);
       assert CM.VmLookClkSet(inits) by {
         RL.AInitLaws(nlook);
         forall lz | AI.get_idx(look.a_cp, lz) >= 0 ensures AI.get_idx(look.a_clk, lz) >= 0 {
@@ -276,13 +277,13 @@ module LindenElkMainCinLk {
   lemma WinRegsOkRecon(ast: R.regex, re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
                        best: AI.Thread, rp: AI.Thread, ncap: int, nlook: int, nquant: int)
     requires crv == CP.FFullCompilation(ast) && re == R.lazy_prefix(ast)
-    requires T.TransWf(re) && RF.CinBodiesLookFreeRE(re)
+    requires T.TransWf(re) && RF.CinBodiesLookFreeRE(re) && NRC.CdnTopRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookTablesOk(re, crv)
     requires WinRegsOkG(ast, re, crv, str, ov, best, ncap, nlook, nquant)
-    requires FV.RegsFinalOk(best, |str|, FRD.CinQids(re))
+    requires FV.RegsFinalOk(best, |str|, FRD.StampQids(re))
     requires CM.ThreadRegsWf(rp, ncap, nlook, nquant)
     requires forall k :: AI.get_idx(rp.quant_regs.a_clk, k) >= -1
-    requires var Q := FRD.CinQids(re);
+    requires var Q := FRD.StampQids(re);
              NRR.AgreeOutside((rp.capture_regs, rp.look_regs, rp.quant_regs),
                               (best.capture_regs, best.look_regs, best.quant_regs),
                               RF.CapsQ(re, Q), RF.LooksQ(re, Q), RF.QuantsQ(re, Q))
@@ -290,13 +291,13 @@ module LindenElkMainCinLk {
     ensures M.WinRegsOk(ast, re, crv, str, ov, ClearQuantCps(rp, M.QIdsOuter(re)), ncap, nlook, nquant)
   {
     reveal WinRegsOkG();
-    var Q := FRD.CinQids(re);
+    var Q := FRD.StampQids(re);
     var D := M.QIdsOuter(re);
     var rp0 := ClearQuantCps(rp, D);
     ClearQuantCpsFacts(rp, D);
-    QInCinQ(re);
-    RF.LooksQEmpty(re, Q);
-    CLP.QsOutside(re, Q);
+    QInStampQ(re);
+    RF.LooksQEmptyS(re, Q);
+    CLP.QsOutsideS(re, Q);
     RegsEq(rp.look_regs, best.look_regs);
     assert rp0.look_regs == best.look_regs;
 
@@ -335,7 +336,7 @@ module LindenElkMainCinLk {
         ensures CM.RegsAgreeInside(rp0.capture_regs, AReg.init_regs(ncap), PIV.CaptureRegs(body))
       {
         RowBody(ast, re, crv, l, la, body);
-        CLP.QsAvoidLookBody(re, Q, l as nat);
+        CLP.QsAvoidLookBodyS(re, Q, l as nat);
         assert CM.RegsAgreeInside(best.capture_regs, AReg.init_regs(ncap), PIV.CaptureRegs(body));
         forall k | k in PIV.CaptureRegs(body)
           ensures AI.get_idx(rp0.capture_regs.a_cp, k) == AI.get_idx(best.capture_regs.a_cp, k)
@@ -454,10 +455,50 @@ module LindenElkMainCinLk {
     case _ =>
   }
 
+  /** (G5a-1 rows F, N) `TranslateFragmentPikeLkRecLk` on the top-level fragment. The head atom of a greedy
+      CDN plus is the switch itself, so the lemma takes it: `EL.CdnHeadsAreOn()` supplies it after the flip. */
+  lemma TranslateFragmentPikeLkRecLkCdn(re: R.regex)
+    requires T.TransWf(re) && NR.NestedFragmentCdnRE(re)
+    requires EL.CdnHeadsOn()
+    ensures EL.PikeLkRegexRec(T.Translate(re))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => TranslateFragmentPikeLkRecLkCdn(r1); TranslateFragmentPikeLkRecLkCdn(r2);
+    case Re_con(r1, r2) => TranslateFragmentPikeLkRecLkCdn(r1); TranslateFragmentPikeLkRecLkCdn(r2);
+    case Re_quant(nul, qid, q, r1) =>
+      TranslateFragmentPikeLkRecLkCdn(r1);
+      reveal EL.CinHeadL();   // the head condition holds by its second disjunct
+    case Re_capture(_, r1) => TranslateFragmentPikeLkRecLkCdn(r1);
+    case Re_lookaround(lid, la, r1) =>
+      EL.TranslateFragmentPikeLkRec(r1);   // a look body is in the narrow fragment
+    case _ =>
+  }
+
+  /** (G5a-1 row N) What `GateStaticsFromTablesCdn` takes of the plus table: the narrow table at every look
+      node. From the widened table of the whole regex, since a look node of a regex in scope holds no CDN plus. */
+  lemma LookNodesPlusOkFromS(re: R.regex, bc: seq<RB.code>)
+    requires PIV.QuantUnique(re) && NRR.PlusTableOkS(re, bc) && NRC.CdnTopRE(re)
+    ensures LookNodesPlusOk(re, bc)
+    decreases re
+  {
+    NRR.PlusTableOkSChildren(re, bc);
+    NRC.CdnTopChild(re);
+    match re
+    case Re_alt(r1, r2) => LookNodesPlusOkFromS(r1, bc); LookNodesPlusOkFromS(r2, bc);
+    case Re_con(r1, r2) => LookNodesPlusOkFromS(r1, bc); LookNodesPlusOkFromS(r2, bc);
+    case Re_quant(_, _, _, r1) => LookNodesPlusOkFromS(r1, bc);
+    case Re_capture(_, r1) => LookNodesPlusOkFromS(r1, bc);
+    case Re_lookaround(_, _, r1) =>
+      assert NRC.NoCdnPlusRE(re);          // CdnTopRE's look arm: the body holds no CDN plus
+      NRR.PlusTableOkSNarrow(re, bc);
+    case _ =>
+  }
+
   /** `LSC.MainExtractionL5` under the look-bodies gate. */
   lemma MainExtractionL5Lk(raw: R.raw_regex, str: string,
                            t: LT.Tree, thread: AI.Thread, leaf: LT.Leaf)
-    requires NR.NestedFragmentRaw(raw)
+    requires NR.NestedFragmentCdnRaw(raw)
     requires T.Latin1Wf(raw)
     requires EL.BoolTreeLk(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), BS.CannotExit, t)
     requires LS.IsTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), LG.Empty, WP.Forward, t)
@@ -479,13 +520,14 @@ module LindenElkMainCinLk {
     var rer := LES.TheRer(raw);
     var inp := LC.InitInput(str);
     T.AnnotateWf(raw);
-    NR.SpecRegexNestedFragment(raw);
+    NR.SpecRegexNestedFragmentCdn(raw);
     assert LES.SpecRegex(raw) == T.Translate(re);
 
     // closedness of the leaf gm
     assert LT.TreeRes(t, LG.Empty, inp, WP.Forward) == Some(leaf);
     assert M.OpenOf(LG.Empty) <= M.PendingCloses([LS.Areg(T.Translate(re))]);
-    TranslateFragmentPikeLkRecLk(re);
+    EL.CdnHeadsAreOn();
+    TranslateFragmentPikeLkRecLkCdn(re);
     assert EL.PikeLkActionsRec([LS.Areg(T.Translate(re))]) by {
       assert [LS.Areg(T.Translate(re))] == [LS.Areg(T.Translate(re))] + [];
       assert EL.PikeLkActionsRec([]);
@@ -501,12 +543,12 @@ module LindenElkMainCinLk {
     CG.FirstLeafClosedRecAny(rer, [LS.Areg(T.Translate(re))], inp, BS.CannotExit, t, LG.Empty, leaf,
                             M.NestDepthL(T.Translate(re)));
     assert M.ClosedGm(leaf.1);
-    M.MainExtractionFromClosed(raw, str, t, thread, leaf);
+    M.MainExtractionFromClosedCdn(raw, str, t, thread, leaf);
   }
   /** (G3a) `MainExtractionL5Lk`'s premises as one opaque fact: at the end of `MainTheoremL5Cin` the call
       then matches a single ground atom (the eight separate premises took minutes in that context). */
   opaque ghost predicate ExtractionPre(raw: R.raw_regex, str: string, t: LT.Tree, thread: AI.Thread, leaf: LT.Leaf) {
-    NR.NestedFragmentRaw(raw)
+    NR.NestedFragmentCdnRaw(raw)
     && T.Latin1Wf(raw)
     && EL.BoolTreeLk(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), BS.CannotExit, t)
     && LS.IsTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), LG.Empty, WP.Forward, t)
@@ -525,7 +567,7 @@ module LindenElkMainCinLk {
   /** (G5a-1) Package the extraction premises in a context of their own: revealing `ExtractionPre` inside
       `MainTheoremL5Cin` ran 772M once steps 2-3 grew that context. */
   lemma ExtractionPreIntro(raw: R.raw_regex, str: string, t: LT.Tree, thread: AI.Thread, leaf: LT.Leaf)
-    requires NR.NestedFragmentRaw(raw)
+    requires NR.NestedFragmentCdnRaw(raw)
     requires T.Latin1Wf(raw)
     requires EL.BoolTreeLk(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), BS.CannotExit, t)
     requires LS.IsTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), LG.Empty, WP.Forward, t)
@@ -581,15 +623,16 @@ module LindenElkMainCinLk {
     returns (rp: AI.Thread)
     requires crv == CP.FFullCompilation(ast) && re == R.lazy_prefix(ast) && code == CP.compile_to_bytecode(re)
     requires crv.f_main_bc == code
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && M.LookBodiesPlusGateRE(re) && RF.CinBodiesLookFreeRE(re)
+    requires T.TransWf(re) && NR.NestedFragmentCdnRE(re) && M.LookBodiesPlusGateRE(re) && RF.CinBodiesLookFreeRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re) && LTB.LookTablesOk(re, crv)
-    requires NRC.NoCdnPlusRE(ast) && AR.QmapOk(re, qm) && qm.ov == ov
+    requires NRC.CdnTopRE(ast) && NRC.CdnTopRE(re) && AR.QmapOk(re, qm) && qm.ov == ov
     requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1 && NR.GetPcRE(code, endl) == Some(RB.Accept)
     requires ncap == 2 * R.max_group(re) + 2 && nlook == R.max_lookaround(re) + 1 && nquant == R.max_quant(re) + 1
     requires capture == AReg.init_regs(ncap) && look == AReg.init_regs(nlook) && quant == AReg.init_regs(nquant)
     requires inits == AI.FInitState(code, 0, capture, look, quant, 0, AI.cp_context(0, str, LAnc.Forward))
     requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, crv.f_main_cdns).0
     requires result.Some? && PSM.BestLiveRE(re, result.value)
+    requires PSM.StampPathOk(qm, str, result.value.quant_regs.a_cp)   // (G5a-1 row E) the carried fact
     ensures AI.FFindMatch(code, str, inits, ov, LAnc.Forward, crv.f_main_cdns).1 == ov
     ensures var rpp := AI.FReconstructPlus(result.value, ast, crv.f_plus_bc, str, ov, LAnc.Forward);
             rp == rpp.0 && rpp.1 == ov
@@ -598,19 +641,18 @@ module LindenElkMainCinLk {
             == PIV.GmOfLiveR(re, qm, str, result.value.capture_regs, result.value.look_regs, result.value.quant_regs)
     ensures CM.ThreadRegsWf(rp, ncap, nlook, nquant)
     ensures M.WinRegsOk(ast, re, crv, str, ov, ClearQuantCps(rp, M.QIdsOuter(re)), ncap, nlook, nquant)
-    ensures ClkFrame(re, FRD.CinQids(re), ClearQuantCps(rp, M.QIdsOuter(re)), result.value)
+    ensures ClkFrame(re, FRD.StampQids(re), ClearQuantCps(rp, M.QIdsOuter(re)), result.value)
   {
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     var best := result.value;
     var ctx := AI.cp_context(0, str, LAnc.Forward);
     var rg: NRC.Regs3 := (best.capture_regs, best.look_regs, best.quant_regs);
-    var Q := FRD.CinQids(re);
+    var Q := FRD.StampQids(re);
     // VM facts of the winning thread
     CM.FInitStateRegsWf(code, 0, ncap, nlook, nquant, 0, ctx);
     M.FFindMatchRegsWf(code, str, inits, ov, LAnc.Forward, crv.f_main_cdns, ncap, nlook, nquant);
     assert CM.ThreadRegsWf(best, ncap, nlook, nquant);
-    FRD.NestedNoCdnPlus(re);   // (G5a) TrueStampsInCin's premise
-    FRD.TrueStampsInCin(re, code, endl);
+    FRD.TrueStampsInStamp(re, code, endl);
     FV.RegsFinalOkInit(ncap, nlook, nquant, |str|, Q);
     assert FV.VmRegsFinalOk(inits, |str|, Q) by {
       forall t0 | t0 in inits.active ensures FV.RegsFinalOk(t0, |str|, Q) {
@@ -621,7 +663,7 @@ module LindenElkMainCinLk {
     assert FV.RegsFinalOk(best, |str|, Q);
     assert {:split_here} true;
     // the registers of groups outside the regex stay unset
-    M.CaptureBytecodeClassifiedNestedOuter(re);
+    M.CaptureBytecodeClassifiedCdnOuter(re);
     var Sout := PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(re));
     assert CM.VmCapturesAgree(inits, capture, Sout) by {
       forall t0 | t0 in inits.active ensures CM.RegsAgreeOutside(t0.capture_regs, capture, Sout) {
@@ -635,9 +677,9 @@ module LindenElkMainCinLk {
     CoversAll(re, rg, ncap, nlook, nquant);
     assert {:split_here} true;
     // THE FINAL READOUT (rung F-b) + its frame
-    FRD.FinalReadout(qm, ast, str, best, ncap, nlook, nquant);
-    CLP.FinalReadoutFrame(qm, ast, str, best);
-    M.NoWriteOracleBodyCodeNested(re);
+    FRD.FinalReadoutS(qm, ast, str, best, ncap, nlook, nquant);
+    CLP.FinalReadoutFrameS(qm, ast, str, best);
+    M.NoWriteOracleBodyCodeCdn(re);
     CM.FFindMatchOvStable(code, str, inits, ov, LAnc.Forward, crv.f_main_cdns);
     rp := AI.FReconstructPlus(best, ast, crv.f_plus_bc, str, ov, LAnc.Forward).0;
     assert {:split_here} true;
@@ -656,7 +698,7 @@ module LindenElkMainCinLk {
                       code: RB.code, endl: nat, ov: LOr.OracleView, th: AI.Thread, leaf: LT.Leaf,
                       t: LT.Tree, inp: LC.Input, S: set<LG.GroupId>, ncap: int, nlook: int, nquant: int)
     requires crv == CP.FFullCompilation(ast) && re == R.lazy_prefix(ast)
-    requires T.TransWf(re) && NR.NestedFragmentRE(re)
+    requires T.TransWf(re) && NR.NestedFragmentCdnRE(re)
     requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
@@ -681,17 +723,17 @@ module LindenElkMainCinLk {
             && CM.ThreadRegsWf(synthetic, ncap, nlook, nquant) && M.QuantClkFinal(synthetic)
   {
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
-    M.EndpointValueOkRegs(ast, re, crv, str, ov, th, ncap, nlook, nquant);
-    M.EndpointQuantValueOkRegs(ast, re, crv, str, ov, th, ncap, nlook, nquant);
-    M.EndpointChildLinkOkRegs(ast, re, crv, str, ov, th, ncap, nlook, nquant);
-    M.EndpointLookInvRegs(ast, re, crv, str, ov, th, ncap, nlook, nquant);
-    M.EndpointTopLookFrameRegs(ast, re, crv, str, ov, th, ncap, nlook, nquant);
+    M.EndpointValueOkRegsCdn(ast, re, crv, str, ov, th, ncap, nlook, nquant);
+    M.EndpointQuantValueOkRegsCdn(ast, re, crv, str, ov, th, ncap, nlook, nquant);
+    M.EndpointChildLinkOkRegsCdn(ast, re, crv, str, ov, th, ncap, nlook, nquant);
+    M.EndpointLookInvRegsCdn(ast, re, crv, str, ov, th, ncap, nlook, nquant);
+    M.EndpointTopLookFrameRegsCdn(ast, re, crv, str, ov, th, ncap, nlook, nquant);
     var resO := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), th.capture_regs, th.look_regs, th.quant_regs, ov);
-    ProduceOwnerForallRes(qm, crv, str, ast, re, ov, resO.0, resO.1, resO.2, S, ncap, nlook, nquant);
+    ProduceOwnerForallResCdn(qm, crv, str, ast, re, ov, resO.0, resO.1, resO.2, S, ncap, nlook, nquant);
     var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast), th.capture_regs, th.look_regs, th.quant_regs, ov);
     var synthetic := AI.Thread(th.pc, res.0, res.1, res.2, th.exit_allowed);
     assert CM.ThreadRegsWf(synthetic, ncap, nlook, nquant) && M.QuantClkFinal(synthetic);
-    MainTheoremL4DeepConclude(rer, qm, crv, str, ast, re, code, endl, ov, th, leaf,
+    MainTheoremL4DeepConcludeCdn(rer, qm, crv, str, ast, re, code, endl, ov, th, leaf,
                               t, inp, S, ncap, nlook, nquant);
   }
 
@@ -716,7 +758,8 @@ module LindenElkMainCinLk {
       CI-nullable pluses outside lookarounds, with look-free bodies, and no
       nulled plus inside a look body. */
   lemma MainTheoremL5Cin(raw: R.raw_regex, str: string)
-    requires NR.NestedFragmentRaw(raw)
+    requires NR.NestedFragmentCdnRaw(raw)
+    requires NRC.CdnTopRE(R.lazy_prefix(R.annotate(raw)))   // (G5a-1) every CDN plus at top level, body look-free
     requires T.Latin1Wf(raw)
     requires M.LookBodiesPlusGateRE(R.lazy_prefix(R.annotate(raw)))   // (G3a) lookbehind bodies stamp-free, lookahead bodies CIN
     requires RF.CinBodiesLookFreeRE(R.lazy_prefix(R.annotate(raw)))
@@ -734,7 +777,7 @@ module LindenElkMainCinLk {
 
     // ---- static packages -------------------------------------------------
     T.AnnotateWf(raw);
-    NR.SpecRegexNestedFragment(raw);
+    NR.SpecRegexNestedFragmentCdn(raw);
     LTB.SpecRegexLookUnique(raw);
     LTB.SpecRegexLidsWellNested(raw);
     PIV.SpecRegexCapUnique(raw);
@@ -756,18 +799,18 @@ module LindenElkMainCinLk {
       assert LTB.LookTablesOk(re, crv0);
       assert LTB.LookIds(pre) == {};
       assert LTB.LookIds(re) == LTB.LookIds(ast);
-      assert NR.NestedFragmentRE(ast);
-      OracleOkRowsL5(rer, ast, crv0, str, re);
+      assert NR.NestedFragmentCdnRE(ast);
+      OracleOkRowsL5Cdn(rer, ast, crv0, str, re);
     }
 
-    NR.CompileToBytecodeRepNested(re);
+    NR.CompileToBytecodeRepCdn(re);
     var code := CP.compile_to_bytecode(re);
     var next := CP.compile(re, 0, CP.Progress).1;
     var endl: nat := next as nat;
     assert NR.NfaRepRE(re, code, 0, endl)
            && NR.GetPcRE(code, endl) == Some(RB.Accept) && |code| == endl + 1;
-    CompileStutterTameRENested(re);
-    assert PSM.StaticCoreNestedRE(qm, re, code, endl);
+    CompileStutterTameRECdn(re);
+    assert PSM.StaticCoreCdnRE(qm, re, code, endl);
 
     var maxcap := R.max_group(ast);
     var maxquant := R.max_quant(ast);
@@ -790,7 +833,8 @@ module LindenElkMainCinLk {
     var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(re))], inp, LG.Empty, WP.Forward);
     assert LS.IsTree(rer, [LS.Areg(T.Translate(re))], inp, LG.Empty, WP.Forward, t);
     assert LES.SpecRegex(raw) == T.Translate(re);
-    TranslateFragmentPikeLkRecLk(re);
+    EL.CdnHeadsAreOn();   // (G5a-1 rows F, N) the switch is on
+    TranslateFragmentPikeLkRecLkCdn(re);
     EL.BooleanCorrectLkRec(rer, T.Translate(re), inp, t);
     assert forall i :: 0 <= i < |[LS.Areg(T.Translate(re))]| ==> ![LS.Areg(T.Translate(re))][i].Acheck?;
     M.BoolTreeLbIrrel(rer, [LS.Areg(T.Translate(re))], inp, BS.CanExit, BS.CannotExit, t);
@@ -798,7 +842,7 @@ module LindenElkMainCinLk {
 
     assert {:split_here} true;
     // ---- the CHECKED tree (machine A's, shared with B) ----------------------
-    WkE.WalkOkEntryNested(re);
+    WkE.WalkOkEntryCdn(re);
     assert EL.PikeLkActionsRec([LS.Areg(T.Translate(re))]) by {
       assert [LS.Areg(T.Translate(re))] == [LS.Areg(T.Translate(re))] + [];
       assert EL.PikeLkActionsRec([]);
@@ -808,7 +852,7 @@ module LindenElkMainCinLk {
     M.LkBodyGroupsEqCapIdsInLooks(re);
     assert S == LL.LkBodyGroups(T.Translate(re));
     assert WO.WalkOk([LS.Areg(T.Translate(re))], code, 0, ATR.EaOf(BS.CannotExit));
-    AR.CompileToBytecodeActionsRepNested(rer, qm, re);
+    AR.CompileToBytecodeActionsRepCdn(rer, qm, re);
     assert AR.ActionsRepL(rer, qm, [LS.Areg(T.Translate(re))], code, 0);
     assert LL.LkActsInS([LS.Areg(T.Translate(re))], S) by {
       LL.LkBodyGroupsConfines(T.Translate(re), S);
@@ -858,18 +902,18 @@ module LindenElkMainCinLk {
     }
     assert GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant) by {
       // (G3a) the plus-row premises at the top regex, scoped: as context facts they stalled the final call
-      assert NRR.PlusTableOk(re, crv.f_plus_bc) by {
-        assert NR.NestedFragmentRE(ast);
-        M.NestedNoCdn(ast);
-        FRD.PlusTableOkFull(ast);
+      // (G5a-1 row N) the top may hold a CDN plus: the widened table, and the narrow one at each look node
+      assert LookNodesPlusOk(re, crv.f_plus_bc) by {
+        FRD.PlusTableOkFullS(ast);
+        LookNodesPlusOkFromS(re, crv.f_plus_bc);
       }
       assert forall l: nat :: l in LTB.LookIds(re) ==> l < nlook;
-      GateStaticsFromTablesNested(qm, re, crv, ncap, nlook, nquant);
+      GateStaticsFromTablesCdn(qm, re, crv, ncap, nlook, nquant);
     }
 
     assert {:split_here} true;
     // ---- the two machines on the same checked tree --------------------------
-    PSM.InitialPikeInvFullREAtCpNested(rer, qm, re, code, endl, ngroups, str, 0, tstar,
+    PSM.InitialPikeInvFullREAtCpCdn(rer, qm, re, code, endl, ngroups, str, 0, tstar,
                                        inits, ncap, nlook, nquant);
     assert ctx.nextchar == AI.get_char(str, 0);
     assert PIV.ContextOkRE(str, inits.cp, inits.context);
@@ -882,15 +926,28 @@ module LindenElkMainCinLk {
     SufAllToColsOk(rer, qm, str);
     // machine B on the engine-shaped walk, agreeing with the spec leaf outside G
     var G: set<LG.GroupId> := PIV.CapIdsOutsideLooks(re);
-    TranslateCinOk(re, G);
+    TranslateCinOkCdn(re, G);
     PIV.CapIdsLooksDisjoint(re);
     assert G * S == {};
-    var bleaf := L3aCompositeCloseRecG(rer, qm, re, code, endl, ngroups, crv, str, ov, S, tstar, t, inp,
+    // (G5a-1 row N) the run premise of the guard, for real (cdn-sound through `GR.GuardsOkRunTop`).
+    // Scoped: `OracleOkAt` is a transparent quantifier; at the top level it blew this batch past 10 GB.
+    assert {:split_here} true;
+    assert PSM.GuardsOkRun(qm, code, crv.f_main_cdns, ov, str) by {
+      assert forall cp: nat :: cp <= |str| ==> LL.OracleOkAt(rer, qm, PIV.InpOfCp(str, cp)) by {
+        forall cp: nat | cp <= |str| ensures LL.OracleOkAt(rer, qm, PIV.InpOfCp(str, cp)) {
+          OracleOkSuffixAtCp(rer, qm, str, cp);   // the source of the suffix fact (no longer in scope here)
+          assert LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp));
+        }
+      }
+      GR.GuardsOkRunTop(rer, qm, ast, re, code, endl, str, ov);
+    }
+    assert {:split_here} true;
+    var bleaf := L3aCompositeCloseRecGCdn(rer, qm, re, code, endl, ngroups, crv, str, ov, S, tstar, t, inp,
                                        inits, crv.f_main_cdns, result, ncap, nlook, nquant, G);
     // machine A: the VM's best is the checked tree's first leaf
+    assert {:split_here} true;
     var pts0 := PT.PikeTreeInitialState(tstar, inp);
-    PSM.GuardsOkRunStaticNested(qm, re, code, endl, crv.f_main_cdns, ov, str);   // (G5a step 2) no guard in this code
-    var bestT := PSM.FindMatchSimRENested(rer, qm, re, code, endl, ngroups, str, pts0, inits,
+    var bestT := PSM.FindMatchSimRECdn(rer, qm, re, code, endl, ngroups, str, pts0, inits,
                                           ov, LAnc.Forward, crv.f_main_cdns, ncap, nlook, nquant);
     M.TrcREToLinden(pts0, PT.PTS_final(bestT));
     TREP.TreeRepPikeSubtree(qm, tstar, code, 0, inp, false);
@@ -927,7 +984,8 @@ module LindenElkMainCinLk {
       assert {:split_here} true;
       var best := result.value;
       assert PSM.BestLiveRE(re, best);
-      NestedNoCdnLk(ast);
+      NRC.CdnTopPrefix(ast);   // (G5a-1 row N) the scope on `ast`
+      assert PSM.StampPathOk(qm, str, best.quant_regs.a_cp);   // FindMatchSimRECdn, for the winner
       var rp := ReadoutAtWinner(qm, ast, re, crv, code, endl, str, ov, inits, capture, look, quant,
                                 ncap, nlook, nquant, result);
       var D := M.QIdsOuter(re);
@@ -949,8 +1007,8 @@ module LindenElkMainCinLk {
       assert LL.GmAgreeOutside(bestT.value.1, leaf.1, S);
       assert GmtTieOutside(re, rp0, leaf.1, S);
       assert bleaf.Some? && LL.GmAgreeOutside(bleaf.value.1, leaf.1, G);
-      QInCinQ(re);
-      TieTransport(rer, re, crv, str, ov, FRD.CinQids(re), S, G, bleaf.value, leaf, best, rp0,
+      QInStampQ(re);
+      TieTransportS(rer, re, crv, str, ov, FRD.StampQids(re), S, G, bleaf.value, leaf, best, rp0,
                    ncap, nlook, nquant);
       M.FirstLeafOrdered(t, inp, leaf);
 
@@ -1002,7 +1060,7 @@ module LindenElkMainCinLk {
       assert var re' := R.lazy_prefix(R.annotate(raw));
              leaf.1 == PIV.NormGm(PIV.GmOfLive(re', synthetic.capture_regs, synthetic.look_regs, synthetic.quant_regs));
       assert {:split_here} true;   // (G3a) the extraction section, one batch per step
-      assert NR.NestedFragmentRaw(raw) && T.Latin1Wf(raw);
+      assert NR.NestedFragmentCdnRaw(raw) && T.Latin1Wf(raw);
       assert {:split_here} true;   // (G3a) the extraction section, one batch per step
       assert ExtractionPre(raw, str, t, synthetic, leaf) by {
         hide *;
@@ -1063,6 +1121,86 @@ module LindenElkMainCinLk {
     case Re_quant(_, _, _, r1) => CinBodiesLookFreeXSound(r1);
     case Re_capture(_, r1) => CinBodiesLookFreeXSound(r1);
     case Re_lookaround(_, _, r1) => CinBodiesLookFreeXSound(r1);
+    case _ =>
+  }
+
+  /** (G5a-1 step 4) `NRC.NoCdnPlusRE`, compiled (that one is a ghost predicate). */
+  predicate NoCdnPlusX(re: R.regex)
+    decreases re
+  {
+    match re
+    case Re_empty => true
+    case Re_character(_) => true
+    case Re_anchor(_) => true
+    case Re_alt(r1, r2) => NoCdnPlusX(r1) && NoCdnPlusX(r2)
+    case Re_con(r1, r2) => NoCdnPlusX(r1) && NoCdnPlusX(r2)
+    case Re_quant(nul, qid, q, r1) =>
+      !(q.min != 0 && q.max == None && nul == R.CDNullable && q.greedy) && NoCdnPlusX(r1)
+    case Re_capture(_, r1) => NoCdnPlusX(r1)
+    case Re_lookaround(_, _, r1) => NoCdnPlusX(r1)
+  }
+
+  lemma NoCdnPlusXSound(re: R.regex)
+    ensures NoCdnPlusX(re) <==> NRC.NoCdnPlusRE(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => NoCdnPlusXSound(r1); NoCdnPlusXSound(r2);
+    case Re_con(r1, r2) => NoCdnPlusXSound(r1); NoCdnPlusXSound(r2);
+    case Re_quant(_, _, _, r1) => NoCdnPlusXSound(r1);
+    case Re_capture(_, r1) => NoCdnPlusXSound(r1);
+    case Re_lookaround(_, _, r1) => NoCdnPlusXSound(r1);
+    case _ =>
+  }
+
+  /** (G5a-1 step 4) `NRC.CdnTopRE`, compiled, for `API.Supported`. */
+  predicate CdnTopX(re: R.regex)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => CdnTopX(r1) && CdnTopX(r2)
+    case Re_con(r1, r2) => CdnTopX(r1) && CdnTopX(r2)
+    case Re_capture(_, r1) => CdnTopX(r1)
+    case Re_lookaround(_, _, r1) => NoCdnPlusX(r1)
+    case Re_quant(nul, _, q, r1) =>
+      if q.min != 0 && q.max == None && q.greedy && nul == R.CDNullable then NR.LookFreeRE(r1) && NR.NoNulledPlusRE(r1) && NoCdnPlusX(r1)
+      else if q.min != 0 && q.max == None && q.greedy && nul == R.CINullable then NoCdnPlusX(r1)
+      else CdnTopX(r1)
+    case _ => true
+  }
+
+  lemma CdnTopXSound(re: R.regex)
+    requires CdnTopX(re)
+    ensures NRC.CdnTopRE(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => CdnTopXSound(r1); CdnTopXSound(r2);
+    case Re_con(r1, r2) => CdnTopXSound(r1); CdnTopXSound(r2);
+    case Re_capture(_, r1) => CdnTopXSound(r1);
+    case Re_lookaround(_, _, r1) => NoCdnPlusXSound(r1);
+    case Re_quant(nul, _, q, r1) =>
+      if q.min != 0 && q.max == None && q.greedy && nul == R.CDNullable {
+        NoCdnPlusXSound(r1);
+      } else if q.min != 0 && q.max == None && q.greedy && nul == R.CINullable {
+        NoCdnPlusXSound(r1);
+      } else {
+        CdnTopXSound(r1);
+      }
+    case _ =>
+  }
+
+  /** (G5a-1 step 4) No CDN-greedy plus at all is in scope (for `API.SupportedWidens`). */
+  lemma NoCdnXIsCdnTopX(re: R.regex)
+    requires NoCdnPlusX(re)
+    ensures CdnTopX(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => NoCdnXIsCdnTopX(r1); NoCdnXIsCdnTopX(r2);
+    case Re_con(r1, r2) => NoCdnXIsCdnTopX(r1); NoCdnXIsCdnTopX(r2);
+    case Re_capture(_, r1) => NoCdnXIsCdnTopX(r1);
+    case Re_quant(_, _, _, r1) => NoCdnXIsCdnTopX(r1);
     case _ =>
   }
 }

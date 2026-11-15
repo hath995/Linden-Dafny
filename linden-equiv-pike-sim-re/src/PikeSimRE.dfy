@@ -1577,6 +1577,11 @@ module LindenElkPikeSim {
     // §2.5b rung F (F-a): the best thread keeps the register facts the final
     // readout needs (recorded at Accept from the head's `ThreadNestRE`).
     && (vms.bestmatch.Some? ==> BestLiveRE(re, vms.bestmatch.value))
+    // (G5a-1 row E) every set stamp has an empty path at its position: what the final readout needs of
+    // a CDN stamp (for a CIN one it is `NRR.CINullablePath`). On the quant bank only (opaque atom).
+    && (forall t | t in vms.active :: StampPathOk(qm, str, t.quant_regs.a_cp))
+    && (forall tb | tb in vms.blocked :: StampPathOk(qm, str, tb.0.quant_regs.a_cp))
+    && (vms.bestmatch.Some? ==> StampPathOk(qm, str, vms.bestmatch.value.quant_regs.a_cp))
   }
 
   /** The best thread's register facts for the final readout (rung F). OPAQUE:
@@ -1585,6 +1590,55 @@ module LindenElkPikeSim {
   opaque ghost predicate BestLiveRE(re: R.regex, th: AI.Thread) {
     SL.StampLiveOk(re, th.capture_regs.a_clk, th.quant_regs.a_clk, th.quant_regs.a_cp)
     && PIV.LooksCapUnset(re, th.capture_regs.a_clk)
+  }
+
+  /** (G5a-1 row E) Every set stamp of a quant bank was taken where its body had a first empty path. The
+      engine reconstructs a stamp by running the body's nulled code at the stamped position; for a CDN body
+      that run succeeds only where this holds (the guard `CheckNullable` passed there). OPAQUE: three
+      quantified copies of it sit in `PikeInvFullRE`. */
+  opaque ghost predicate StampPathOk(qm: AR.QMap, str: string, qcp: seq<int>) {
+    forall q: int {:trigger AI.get_idx(qcp, q)} ::
+      (0 <= AI.get_idx(qcp, q) <= |str| && q in qm.bodies && T.TransWf(qm.bodies[q])) ==>
+        TREP.FirstEmptyPathR(qm, qm.bodies[q], PIV.InpOfCp(str, AI.get_idx(qcp, q) as nat)).Some?
+  }
+
+  lemma StampPathInit(qm: AR.QMap, str: string, n: int)
+    ensures StampPathOk(qm, str, AReg.init_regs(n).a_cp)
+  {
+    reveal StampPathOk();
+    forall q: int ensures AI.get_idx(AReg.init_regs(n).a_cp, q) == -1 { }
+  }
+
+  /** A clock mark clears the stamp. */
+  lemma StampPathClear(qm: AR.QMap, str: string, quant: AReg.Regs, q0: int, clk: int)
+    requires StampPathOk(qm, str, quant.a_cp)
+    ensures StampPathOk(qm, str, AReg.set_reg(quant, q0, None, clk).a_cp)
+  {
+    reveal StampPathOk();
+    var qcp' := AReg.set_reg(quant, q0, None, clk).a_cp;
+    forall q: int ensures AI.get_idx(qcp', q) == AI.get_idx(quant.a_cp, q) || AI.get_idx(qcp', q) == -1 { }
+  }
+
+  /** The true stamp records a position where the body has a path. */
+  lemma StampPathSet(qm: AR.QMap, str: string, quant: AReg.Regs, q0: int, cp: nat, clk: int)
+    requires StampPathOk(qm, str, quant.a_cp)
+    requires cp <= |str|
+    requires (q0 in qm.bodies && T.TransWf(qm.bodies[q0])) ==>
+               TREP.FirstEmptyPathR(qm, qm.bodies[q0], PIV.InpOfCp(str, cp)).Some?
+    ensures StampPathOk(qm, str, AReg.set_reg(quant, q0, Some(cp), clk).a_cp)
+  {
+    reveal StampPathOk();
+    var qcp' := AReg.set_reg(quant, q0, Some(cp), clk).a_cp;
+    forall q: int ensures AI.get_idx(qcp', q) == AI.get_idx(quant.a_cp, q) || (q == q0 && AI.get_idx(qcp', q) == cp) { }
+  }
+
+  /** `ResumeAll` only touches `pc` / `exit_allowed`. */
+  lemma ResumeAllStampPath(qm: AR.QMap, str: string, bl: seq<(AI.Thread, RC.char_expectation)>)
+    requires forall p | p in bl :: StampPathOk(qm, str, p.0.quant_regs.a_cp)
+    ensures forall t | t in ResumeAll(bl) :: StampPathOk(qm, str, t.quant_regs.a_cp)
+    decreases bl
+  {
+    if |bl| > 0 { ResumeAllStampPath(qm, str, bl[1..]); }
   }
 
   // =========================================================================
@@ -1969,6 +2023,7 @@ module LindenElkPikeSim {
     // §2.5b rung F (F-a): the recorded best keeps its register facts
     assert th in vms.active && ThreadNestRE(re, code, endl, th.pc, th) && PIV.LooksCapUnset(re, th.capture_regs.a_clk);
     assert BestLiveRE(re, th) by { reveal BestLiveRE; }
+    assert StampPathOk(qm, str, th.quant_regs.a_cp);   // (G5a-1 row E) th in vms.active
     assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, [], []);
     PIV.AddInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea,
                        PIV.HdTreeOf([]), PIV.HeadPcOf([]));
@@ -2282,6 +2337,9 @@ module LindenElkPikeSim {
       }
     }
     // L3a: inside-look regs stay unset — th' via OpenStepThreadRE's LooksCapUnset ensures.
+    forall t2 | t2 in vms2.active ensures StampPathOk(qm, str, t2.quant_regs.a_cp) {   // (G5a-1 row E)
+      if t2 != th' { assert t2 in vms.active; } else { assert vms.active[0] in vms.active; }
+    }
     forall t2 | t2 in vms2.active ensures PIV.LooksCapUnset(re, t2.capture_regs.a_clk) {
       if t2 != th' { assert t2 in vms.active; }
     }
@@ -2399,6 +2457,9 @@ module LindenElkPikeSim {
       }
     }
     // L3a: inside-look regs stay unset — th' via OpenStepThreadRECdn's LooksCapUnset ensures.
+    forall t2 | t2 in vms2.active ensures StampPathOk(qm, str, t2.quant_regs.a_cp) {   // (G5a-1 row E)
+      if t2 != th' { assert t2 in vms.active; } else { assert vms.active[0] in vms.active; }
+    }
     forall t2 | t2 in vms2.active ensures PIV.LooksCapUnset(re, t2.capture_regs.a_clk) {
       if t2 != th' { assert t2 in vms.active; }
     }
@@ -2795,6 +2856,10 @@ module LindenElkPikeSim {
     }
     // §2.5b rung F (F-a): the live-stamp facts survive the mark
     StampLiveMarkRE(re, code, endl, pc, th.capture_regs, th.quant_regs, qid0, vms.clock + 1, vms.clock);
+    // (G5a-1 row E) the mark clears the stamp
+    assert vms.active[0] in vms.active;
+    StampPathClear(qm, str, th.quant_regs, qid0, vms.clock + 1);
+    assert StampPathOk(qm, str, th'.quant_regs.a_cp);
 
     // Backbones for the successor.
     BBTick(vms, s1, ncap, nlook, nquant);
@@ -2832,6 +2897,9 @@ module LindenElkPikeSim {
         assert !NI.ColdRE(code, pc);
         NotColdSucc(code, pc, pc + 1);
       }
+    }
+    forall t2 | t2 in vms2.active ensures StampPathOk(qm, str, t2.quant_regs.a_cp) {   // (G5a-1 row E)
+      if t2 != th' { assert t2 in vms.active; }
     }
     assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
   }
@@ -2939,6 +3007,10 @@ module LindenElkPikeSim {
     }
     // §2.5b rung F (F-a): the live-stamp facts survive the mark
     StampLiveMarkRE(re, code, endl, pc, th.capture_regs, th.quant_regs, qid0, vms.clock + 1, vms.clock);
+    // (G5a-1 row E) the mark clears the stamp
+    assert vms.active[0] in vms.active;
+    StampPathClear(qm, str, th.quant_regs, qid0, vms.clock + 1);
+    assert StampPathOk(qm, str, th'.quant_regs.a_cp);
 
     // Backbones for the successor.
     BBTick(vms, s1, ncap, nlook, nquant);
@@ -2976,6 +3048,9 @@ module LindenElkPikeSim {
         assert !NI.ColdRE(code, pc);
         NotColdSucc(code, pc, pc + 1);
       }
+    }
+    forall t2 | t2 in vms2.active ensures StampPathOk(qm, str, t2.quant_regs.a_cp) {   // (G5a-1 row E)
+      if t2 != th' { assert t2 in vms.active; }
     }
     assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts1, vms2, ncap, nlook, nquant);
   }
@@ -4281,6 +4356,9 @@ module LindenElkPikeSim {
         NotColdSucc(code, pc, pc + 1);
       }
     }
+    forall t2 | t2 in vms2.active ensures StampPathOk(qm, str, t2.quant_regs.a_cp) {   // (G5a-1 row E)
+      if t2 != th2 { assert t2 in vms.active; } else { assert vms.active[0] in vms.active; }
+    }
     forall t2 | t2 in vms2.active ensures PIV.LooksCapUnset(re, t2.capture_regs.a_clk) {
       if t2 != th2 { assert t2 in vms.active; }
     }
@@ -5229,6 +5307,9 @@ module LindenElkPikeSim {
     // §2.5b rung F: the winning thread keeps its live-stamp register facts
     ensures AI.FFindMatch(code, str, vms, ov, dir, cdn).0.Some? ==>
               BestLiveRE(re, AI.FFindMatch(code, str, vms, ov, dir, cdn).0.value)
+    // (G5a-1 row E) and every stamp it holds has an empty path at its position
+    ensures AI.FFindMatch(code, str, vms, ov, dir, cdn).0.Some? ==>
+              StampPathOk(qm, str, AI.FFindMatch(code, str, vms, ov, dir, cdn).0.value.quant_regs.a_cp)
     decreases |str| - vms.cp
   {
     var s0 := vms.(cdn := LCdn.build_cdn_v(cdn, vms.cp, ov, vms.context, dir));
@@ -5383,6 +5464,15 @@ module LindenElkPikeSim {
           ResumeAllCapUnset(re, filter);
           assert s4.active == ResumeAll(filter);
         }
+        assert forall t2 | t2 in s4.active :: StampPathOk(qm, str, t2.quant_regs.a_cp) by {   // (G5a-1 row E)
+          forall p | p in filter ensures StampPathOk(qm, str, p.0.quant_regs.a_cp) {
+            MatchingBlockedSubset(LC.Reverse(s1.blocked), inp1, p);
+            ReverseMembership(s1.blocked, p);
+            assert p in s1.blocked;
+          }
+          ResumeAllStampPath(qm, str, filter);
+          assert s4.active == ResumeAll(filter);
+        }
         assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts2, s4, ncap, nlook, nquant);
 
         // Recurse and chain.
@@ -5422,6 +5512,9 @@ module LindenElkPikeSim {
     // §2.5b rung F: the winning thread keeps its live-stamp register facts
     ensures AI.FFindMatch(code, str, vms, ov, dir, cdn).0.Some? ==>
               BestLiveRE(re, AI.FFindMatch(code, str, vms, ov, dir, cdn).0.value)
+    // (G5a-1 row E) and every stamp it holds has an empty path at its position
+    ensures AI.FFindMatch(code, str, vms, ov, dir, cdn).0.Some? ==>
+              StampPathOk(qm, str, AI.FFindMatch(code, str, vms, ov, dir, cdn).0.value.quant_regs.a_cp)
     decreases |str| - vms.cp
   {
     var s0 := vms.(cdn := LCdn.build_cdn_v(cdn, vms.cp, ov, vms.context, dir));
@@ -5563,6 +5656,15 @@ module LindenElkPikeSim {
           ResumeAllCapUnset(re, filter);
           assert s4.active == ResumeAll(filter);
         }
+        assert forall t2 | t2 in s4.active :: StampPathOk(qm, str, t2.quant_regs.a_cp) by {   // (G5a-1 row E)
+          forall p | p in filter ensures StampPathOk(qm, str, p.0.quant_regs.a_cp) {
+            MatchingBlockedSubset(LC.Reverse(s1.blocked), inp1, p);
+            ReverseMembership(s1.blocked, p);
+            assert p in s1.blocked;
+          }
+          ResumeAllStampPath(qm, str, filter);
+          assert s4.active == ResumeAll(filter);
+        }
         assert PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, pts2, s4, ncap, nlook, nquant);
 
         bestT := FindMatchSimRECdn(rer, qm, re, code, endl, ngroups, str,
@@ -5596,6 +5698,9 @@ module LindenElkPikeSim {
     // §2.5b rung F: the winning thread keeps its live-stamp register facts
     ensures AI.FFindMatch(code, str, vms, ov, dir, cdn).0.Some? ==>
               BestLiveRE(re, AI.FFindMatch(code, str, vms, ov, dir, cdn).0.value)
+    // (G5a-1 row E) and every stamp it holds has an empty path at its position
+    ensures AI.FFindMatch(code, str, vms, ov, dir, cdn).0.Some? ==>
+              StampPathOk(qm, str, AI.FFindMatch(code, str, vms, ov, dir, cdn).0.value.quant_regs.a_cp)
   {
     StaticCoreNestedIsCdn(qm, re, code, endl);
     bestT := FindMatchSimRECdn(rer, qm, re, code, endl, ngroups, str, pts, vms, ov, dir, cdn, ncap, nlook, nquant);
@@ -5642,6 +5747,10 @@ module LindenElkPikeSim {
     PIV.InitialPikeInvRE(rer, qm, re, code, ngroups, str, tree, vms, ncap, nlook, nquant);
 
     var th := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
+    StampPathInit(qm, str, nquant);   // (G5a-1 row E) no stamp is set
+    assert forall t | t in vms.active :: StampPathOk(qm, str, t.quant_regs.a_cp) by {
+      forall t | t in vms.active ensures StampPathOk(qm, str, t.quant_regs.a_cp) { assert t == th; }
+    }
 
     // Clock backbone at the entry state.
     assert CM.VmClocksLE(vms) by {
@@ -5752,6 +5861,10 @@ module LindenElkPikeSim {
     PIV.InitialPikeInvREAtCp(rer, qm, re, code, ngroups, str, cp, tree, vms, ncap, nlook, nquant);
 
     var th := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
+    StampPathInit(qm, str, nquant);   // (G5a-1 row E) no stamp is set
+    assert forall t | t in vms.active :: StampPathOk(qm, str, t.quant_regs.a_cp) by {
+      forall t | t in vms.active ensures StampPathOk(qm, str, t.quant_regs.a_cp) { assert t == th; }
+    }
 
     // Clock backbone at the entry state (clock == 0, cp-independent).
     assert CM.VmClocksLE(vms) by {
@@ -5859,6 +5972,10 @@ module LindenElkPikeSim {
     PIV.InitialPikeInvREAtCpCdn(rer, qm, re, code, ngroups, str, cp, tree, vms, ncap, nlook, nquant);
 
     var th := AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant));
+    StampPathInit(qm, str, nquant);   // (G5a-1 row E) no stamp is set
+    assert forall t | t in vms.active :: StampPathOk(qm, str, t.quant_regs.a_cp) by {
+      forall t | t in vms.active ensures StampPathOk(qm, str, t.quant_regs.a_cp) { assert t == th; }
+    }
 
     assert CM.VmClocksLE(vms) by {
       CM.RegsClocksLEInit(ncap, 0);
@@ -6096,6 +6213,7 @@ module LindenElkPikeSim {
     // §2.5b rung F (F-a): the recorded best keeps its register facts
     assert th in vms.active && ThreadNestRE(re, code, endl, th.pc, th) && PIV.LooksCapUnset(re, th.capture_regs.a_clk);
     assert BestLiveRE(re, th) by { reveal BestLiveRE; }
+    assert StampPathOk(qm, str, th.quant_regs.a_cp);   // (G5a-1 row E) th in vms.active
     assert PIV.ActiveRepRE(rer, qm, re, code, str, inp, [], []);
     PIV.AddInclusionRE(rer, qm, code, inp, seen, vms.processed, t, pc, ea,
                        PIV.HdTreeOf([]), PIV.HeadPcOf([]));
@@ -7583,6 +7701,12 @@ module LindenElkPikeSim {
     }
     // §2.5b rung F (F-a): the live-stamp facts survive the true stamp
     StampLiveStampRE(re, code, endl, pc, th.capture_regs, th.quant_regs, qid0, cp, vms.clock + 1, vms.clock);
+    // (G5a-1 row E) the stamp records a position where the body has a path: `StampStepThreadRE`'s
+    // `p.Some?` at inp == InpOfCp(str, cp)
+    assert vms.active[0] in vms.active;
+    assert cp <= |str| && inp == PIV.InpOfCp(str, cp);
+    StampPathSet(qm, str, th.quant_regs, qid0, cp, vms.clock + 1);
+    assert StampPathOk(qm, str, th'.quant_regs.a_cp);
 
     // Backbones for the successor.
     assert {:split_here} true;
@@ -7626,6 +7750,9 @@ module LindenElkPikeSim {
         assert !NI.ColdRE(code, pc);
         NotColdSucc(code, pc, pc + 1);
       }
+    }
+    forall t2 | t2 in vms2.active ensures StampPathOk(qm, str, t2.quant_regs.a_cp) {   // (G5a-1 row E)
+      if t2 != th' { assert t2 in vms.active; } else { assert vms.active[0] in vms.active; }
     }
     forall t2 | t2 in vms2.active ensures PIV.LooksCapUnset(re, t2.capture_regs.a_clk) {
       if t2 != th' { assert t2 in vms.active; }
@@ -7712,6 +7839,12 @@ module LindenElkPikeSim {
     }
     // §2.5b rung F (F-a): the live-stamp facts survive the true stamp
     StampLiveStampRE(re, code, endl, pc, th.capture_regs, th.quant_regs, qid0, cp, vms.clock + 1, vms.clock);
+    // (G5a-1 row E) the stamp records a position where the body has a path: `StampStepThreadRE`'s
+    // `p.Some?` at inp == InpOfCp(str, cp)
+    assert vms.active[0] in vms.active;
+    assert cp <= |str| && inp == PIV.InpOfCp(str, cp);
+    StampPathSet(qm, str, th.quant_regs, qid0, cp, vms.clock + 1);
+    assert StampPathOk(qm, str, th'.quant_regs.a_cp);
 
     // Backbones for the successor.
     assert {:split_here} true;
@@ -7755,6 +7888,9 @@ module LindenElkPikeSim {
         assert !NI.ColdRE(code, pc);
         NotColdSucc(code, pc, pc + 1);
       }
+    }
+    forall t2 | t2 in vms2.active ensures StampPathOk(qm, str, t2.quant_regs.a_cp) {   // (G5a-1 row E)
+      if t2 != th' { assert t2 in vms.active; } else { assert vms.active[0] in vms.active; }
     }
     forall t2 | t2 in vms2.active ensures PIV.LooksCapUnset(re, t2.capture_regs.a_clk) {
       if t2 != th' { assert t2 in vms.active; }

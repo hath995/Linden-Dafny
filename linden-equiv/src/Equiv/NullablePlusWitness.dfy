@@ -153,4 +153,19 @@ module NullablePlusWitness {
   {
     assert R.raw_nullable(AOPT) == R.CINullable;
   }
+
+  // ==========================================================================
+  // G5a-1 (2026-11-15): a greedy plus over a context-dependent nullable body
+  // (CDN), at top level with a look-free body.
+  // ==========================================================================
+  const WB_OR_A  := R.Raw_alt(R.Raw_anchor(R.WordBoundary), R.Raw_character(R.Dot))   // \b|a
+  const A_OPT_END := R.Raw_con(AOPT, R.Raw_anchor(R.EndInput))                         // a?$
+
+  lemma CdnPlusIsSupported()
+    ensures API.Supported(R.Raw_quant(R.Plus, WB_OR_A))     // (\b|a)+
+    ensures API.Supported(R.Raw_quant(R.Plus, A_OPT_END))   // (a?$)+
+  {
+    assert R.raw_nullable(WB_OR_A) == R.CDNullable;
+    assert R.raw_nullable(A_OPT_END) == R.CDNullable;
+  }
 }

@@ -64,6 +64,75 @@ module LindenElkNulledRecon {
     case Re_lookaround(_, _, r1) => NoCdnPlusRE(r1)
   }
 
+
+  // =========================================================================
+  // (G5a-1 step 4) The scope of the top theorem.
+  // =========================================================================
+
+  /** Every CDN-greedy plus is at top level (outside looks and outside CIN-plus bodies), and its body is
+      look-free and holds no greedy nullable unbounded plus. `(\b|a)+`, `(a?$)+`, `(^|a)+b` pass. */
+  ghost predicate CdnTopRE(re: R.regex)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => CdnTopRE(r1) && CdnTopRE(r2)
+    case Re_con(r1, r2) => CdnTopRE(r1) && CdnTopRE(r2)
+    case Re_capture(_, r1) => CdnTopRE(r1)
+    case Re_lookaround(_, _, r1) => NoCdnPlusRE(r1)
+    case Re_quant(nul, _, q, r1) =>
+      if q.min != 0 && q.max == None && q.greedy && nul == R.CDNullable then NR.LookFreeRE(r1) && NR.NoNulledPlusRE(r1) && NoCdnPlusRE(r1)
+      else if q.min != 0 && q.max == None && q.greedy && nul == R.CINullable then NoCdnPlusRE(r1)
+      else CdnTopRE(r1)
+    case _ => true
+  }
+
+  /** The patterns supported before step 4 are in scope. */
+  lemma NoCdnIsCdnTop(re: R.regex)
+    requires NoCdnPlusRE(re)
+    ensures CdnTopRE(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => NoCdnIsCdnTop(r1); NoCdnIsCdnTop(r2);
+    case Re_con(r1, r2) => NoCdnIsCdnTop(r1); NoCdnIsCdnTop(r2);
+    case Re_capture(_, r1) => NoCdnIsCdnTop(r1);
+    case Re_quant(_, _, _, r1) => NoCdnIsCdnTop(r1);
+    case _ =>
+  }
+
+  /** The scope on `lazy_prefix(ast)` is the scope on `ast` (the prefix is a lazy star over a character). */
+  lemma CdnTopPrefix(ast: R.regex)
+    ensures CdnTopRE(R.lazy_prefix(ast)) <==> CdnTopRE(ast)
+  {
+    var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
+    assert R.lazy_prefix(ast) == R.Re_con(pre, ast);
+    assert CdnTopRE(pre);
+  }
+
+  /** (P5 row E) What the readout walk needs at each node of a regex in scope: the scope passes to the
+      immediate subterms, and the body of a greedy nullable unbounded plus (CIN or CDN: a node the engine
+      may stamp) holds no CDN plus, so the body-level reconstruction lemmas apply to it as they are. */
+  lemma CdnTopChild(re: R.regex)
+    requires CdnTopRE(re)
+    ensures re.Re_alt? ==> CdnTopRE(re.e1) && CdnTopRE(re.e2)
+    ensures re.Re_con? ==> CdnTopRE(re.c1) && CdnTopRE(re.c2)
+    ensures re.Re_capture? ==> CdnTopRE(re.capr)
+    ensures re.Re_quant? ==> CdnTopRE(re.qr)
+    ensures re.Re_lookaround? ==> CdnTopRE(re.lr)
+    ensures (re.Re_quant? && re.quant.min != 0 && re.quant.max == None && re.quant.greedy && re.qnul != R.NonNullable)
+            ==> NoCdnPlusRE(re.qr)
+  {
+    match re
+    case Re_quant(nul, _, q, r1) =>
+      if q.min != 0 && q.max == None && q.greedy && nul == R.CDNullable {
+        NoCdnIsCdnTop(r1);
+      } else if q.min != 0 && q.max == None && q.greedy && nul == R.CINullable {
+        NoCdnIsCdnTop(r1);
+      }
+    case Re_lookaround(_, _, r1) => NoCdnIsCdnTop(r1);
+    case _ =>
+  }
+
   ghost predicate NfaRepNulledRE(re: R.regex, c: RB.code, pc1: nat, pc2: nat)
     decreases CP.rsize(re), 1
   {

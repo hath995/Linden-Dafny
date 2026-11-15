@@ -2937,9 +2937,11 @@ module LindenElkLiftSimCore {
       register-layout W-set, handling `Re_lookaround` via `FilterCaptureAgreeOutsideOwn`),
       so the nested outside frame is a SINGLE `FilterFrameOutside` call — no
       fragment hypothesis anywhere. Feeds the endpoint's outside-`S` half. */
-  lemma OutsideLookValueBridgeNested(re: R.regex, capT: AReg.Regs, capR: AReg.Regs, look: AReg.Regs,
+/** (G5a-1 P5b) `OutsideLookValueBridgeNested` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma OutsideLookValueBridgeCdn(re: R.regex, capT: AReg.Regs, capR: AReg.Regs, look: AReg.Regs,
                                      quantT: AReg.Regs, quantR: AReg.Regs, gmBest: LG.GroupMap, ft: LG.GroupMap)
-    requires T.TransWf(re) && NR.NestedFragmentRE(re) && PIV.CapUnique(re)
+    requires T.TransWf(re) && NR.NestedFragmentCdnRE(re) && PIV.CapUnique(re)
     requires gmBest == PIV.GmOfLive(re, capT, look, quantT)
     requires forall g: nat :: g !in LL.LkBodyGroups(T.Translate(re)) ==>
                                 (g in ft <==> g in gmBest) && (g in ft ==> ft[g] == gmBest[g])
@@ -2994,6 +2996,27 @@ module LindenElkLiftSimCore {
       assert AI.get_idx(ccA, CP.start_reg(g)) == AI.get_idx(ccB, CP.start_reg(g));
       assert AI.get_idx(ccA, CP.end_reg(g)) == AI.get_idx(ccB, CP.end_reg(g));
     }
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `OutsideLookValueBridgeCdn`. */
+  lemma OutsideLookValueBridgeNested(re: R.regex, capT: AReg.Regs, capR: AReg.Regs, look: AReg.Regs,
+                                     quantT: AReg.Regs, quantR: AReg.Regs, gmBest: LG.GroupMap, ft: LG.GroupMap)
+    requires T.TransWf(re) && NR.NestedFragmentRE(re) && PIV.CapUnique(re)
+    requires gmBest == PIV.GmOfLive(re, capT, look, quantT)
+    requires forall g: nat :: g !in LL.LkBodyGroups(T.Translate(re)) ==>
+                                (g in ft <==> g in gmBest) && (g in ft ==> ft[g] == gmBest[g])
+    requires forall k: int :: k !in PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)) ==>
+                                AI.get_idx(AReg.as_arrays(capR).0, k) == AI.get_idx(AReg.as_arrays(capT).0, k)
+                                && AI.get_idx(AReg.as_arrays(capR).1, k) == AI.get_idx(AReg.as_arrays(capT).1, k)
+    requires forall q: nat :: q in PIV.QuantIdsOutsideLooks(re) ==>
+                                AI.get_idx(AReg.as_arrays(quantR).1, q) == AI.get_idx(AReg.as_arrays(quantT).1, q)
+    ensures forall g: nat :: g !in PIV.CapIdsInLooks(re) ==>
+                               (g in ft <==> g in PIV.GmOfLive(re, capR, look, quantR))
+                               && (g in ft ==> ft[g] == PIV.GmOfLive(re, capR, look, quantR)[g])
+  {
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    OutsideLookValueBridgeCdn(re, capT, capR, look, quantT, quantR, gmBest, ft);
   }
 
   /** (K-close) TOP-LEVEL: the winning VM thread and the spec tree's FIRST LEAF
@@ -4692,6 +4715,43 @@ module LindenElkLiftSimCore {
 
   /** `M.LookBodyFactsL5` minus `NR.L5ScopeRE` (premise and both scope conclusions);
       the row-entry `exists` keeps a cast-free trigger (AGENTS §2.8). */
+/** (G5a-1 P5b) `LookBodyFactsKB` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma LookBodyFactsKBCdn(re: R.regex, crv: CP.FCompiled, lid: nat)
+    requires NR.NestedFragmentCdnRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires lid in LTB.LookIds(re)
+    ensures var body := NI.LookBodyOfRE(re, lid);
+            var li: int := lid as int;   // cast-free trigger term
+            NR.NestedFragmentRE(body)
+            && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+            && LTB.LookTablesOk(body, crv)
+            && LTB.LookIds(body) <= LTB.LookIds(re)
+            && (exists la: R.lookaround :: LTB.LookEntryOk(crv, li, la, body))
+    decreases re, 0
+  {
+    match re
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodyFactsKBCdn(r1, crv, lid); }
+      else { LookBodyFactsKBCdn(r2, crv, lid); }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodyFactsKBCdn(r1, crv, lid); }
+      else { LookBodyFactsKBCdn(r2, crv, lid); }
+    case Re_quant(_, _, _, r1) => LookBodyFactsKBCdn(r1, crv, lid);
+    case Re_capture(_, r1) => LookBodyFactsKBCdn(r1, crv, lid);
+    case Re_lookaround(lid0, la0, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+        assert NI.LookBodyOfRE(re, lid) == r1;
+        assert LTB.LookEntryOk(crv, lid as int, la0, r1);   // LookTablesOk's lookaround case
+      } else {
+        assert lid in LTB.LookIds(r1);
+        LookBodyFactsKB(r1, crv, lid);
+        assert LTB.LookIds(r1) <= LTB.LookIds(re);
+      }
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `LookBodyFactsKBCdn`. */
   lemma LookBodyFactsKB(re: R.regex, crv: CP.FCompiled, lid: nat)
     requires NR.NestedFragmentRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
@@ -4706,24 +4766,9 @@ module LindenElkLiftSimCore {
             && (exists la: R.lookaround :: LTB.LookEntryOk(crv, li, la, body))
     decreases re
   {
-    match re
-    case Re_alt(r1, r2) =>
-      if lid in LTB.LookIds(r1) { LookBodyFactsKB(r1, crv, lid); }
-      else { LookBodyFactsKB(r2, crv, lid); }
-    case Re_con(r1, r2) =>
-      if lid in LTB.LookIds(r1) { LookBodyFactsKB(r1, crv, lid); }
-      else { LookBodyFactsKB(r2, crv, lid); }
-    case Re_quant(_, _, _, r1) => LookBodyFactsKB(r1, crv, lid);
-    case Re_capture(_, r1) => LookBodyFactsKB(r1, crv, lid);
-    case Re_lookaround(lid0, la0, r1) =>
-      if lid0 >= 0 && (lid0 as nat) == lid {
-        assert NI.LookBodyOfRE(re, lid) == r1;
-        assert LTB.LookEntryOk(crv, lid as int, la0, r1);   // LookTablesOk's lookaround case
-      } else {
-        assert lid in LTB.LookIds(r1);
-        LookBodyFactsKB(r1, crv, lid);
-        assert LTB.LookIds(r1) <= LTB.LookIds(re);
-      }
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    LookBodyFactsKBCdn(re, crv, lid);
   }
 
   /** (gate B) `GG.BackLeafAt` (the leaf's copy) is `FG.BackLeafAt`. */

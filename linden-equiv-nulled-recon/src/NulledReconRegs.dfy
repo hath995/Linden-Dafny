@@ -1024,6 +1024,141 @@ module LindenElkNulledReconRegs {
     case Re_anchor(_) =>
   }
 
+  // ---------------------------------------------------------------------------
+  // (G5a-1 step 4) The table over CIN-OR-CDN greedy pluses: what `FCompileExtra` fills
+  // (`nul != NonNullable`). Rows keep `PlusTableOk`; the top regex takes this one.
+  // ---------------------------------------------------------------------------
+
+  /** `QidCinPlus` with the nullability test weakened to `nul != NonNullable`. */
+  ghost predicate QidStampPlus(r: R.regex, qid: nat)
+    requires qid in PIV.QuantIds(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => if qid in PIV.QuantIds(r1) then QidStampPlus(r1, qid) else QidStampPlus(r2, qid)
+    case Re_con(r1, r2) => if qid in PIV.QuantIds(r1) then QidStampPlus(r1, qid) else QidStampPlus(r2, qid)
+    case Re_quant(nul, qid0, q, r1) =>
+      if qid0 >= 0 && (qid0 as nat) == qid then (q.min != 0 && q.max == None && nul != R.NonNullable && q.greedy)
+      else QidStampPlus(r1, qid)
+    case Re_capture(cid, r1) => QidStampPlus(r1, qid)
+    case Re_lookaround(lid, l, r1) => QidStampPlus(r1, qid)
+  }
+
+  /** `PlusTableOk` on `QidStampPlus`. */
+  ghost predicate PlusTableOkS(r: R.regex, plus_bcv: seq<RB.code>) {
+    forall q: nat :: q in PIV.QuantIds(r) ==>
+      AI.get_code_v(plus_bcv, q as int)
+        == (if QidStampPlus(r, q) then CP.compile_reconstruct_nulled(PIV.QidBody(r, q)) else [])
+  }
+
+  /** `PlusTableOkChildren` for the widened table. */
+  lemma PlusTableOkSChildren(r: R.regex, plus_bcv: seq<RB.code>)
+    requires PIV.QuantUnique(r) && PlusTableOkS(r, plus_bcv)
+    ensures r.Re_alt? || r.Re_con? ==> PlusTableOkS(L1(r), plus_bcv) && PlusTableOkS(L2(r), plus_bcv)
+    ensures r.Re_quant? ==> PlusTableOkS(L1(r), plus_bcv)
+    ensures r.Re_capture? ==> PlusTableOkS(L1(r), plus_bcv)
+    ensures r.Re_lookaround? ==> PlusTableOkS(L1(r), plus_bcv)
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      forall q: nat | q in PIV.QuantIds(r1) ensures AI.get_code_v(plus_bcv, q as int) == (if QidStampPlus(r1, q) then CP.compile_reconstruct_nulled(PIV.QidBody(r1, q)) else []) {
+        assert q in PIV.QuantIds(r);
+      }
+      forall q: nat | q in PIV.QuantIds(r2) ensures AI.get_code_v(plus_bcv, q as int) == (if QidStampPlus(r2, q) then CP.compile_reconstruct_nulled(PIV.QidBody(r2, q)) else []) {
+        assert PIV.QuantIds(r1) * PIV.QuantIds(r2) == {};
+        assert q in PIV.QuantIds(r) && q !in PIV.QuantIds(r1);
+        assert PIV.QidBody(r, q) == PIV.QidBody(r2, q) && QidStampPlus(r, q) == QidStampPlus(r2, q);
+      }
+    case Re_con(r1, r2) =>
+      forall q: nat | q in PIV.QuantIds(r1) ensures AI.get_code_v(plus_bcv, q as int) == (if QidStampPlus(r1, q) then CP.compile_reconstruct_nulled(PIV.QidBody(r1, q)) else []) {
+        assert q in PIV.QuantIds(r);
+      }
+      forall q: nat | q in PIV.QuantIds(r2) ensures AI.get_code_v(plus_bcv, q as int) == (if QidStampPlus(r2, q) then CP.compile_reconstruct_nulled(PIV.QidBody(r2, q)) else []) {
+        assert PIV.QuantIds(r1) * PIV.QuantIds(r2) == {};
+        assert q in PIV.QuantIds(r) && q !in PIV.QuantIds(r1);
+        assert PIV.QidBody(r, q) == PIV.QidBody(r2, q) && QidStampPlus(r, q) == QidStampPlus(r2, q);
+      }
+    case Re_quant(nul, qid0, qq, r1) =>
+      forall q: nat | q in PIV.QuantIds(r1) ensures AI.get_code_v(plus_bcv, q as int) == (if QidStampPlus(r1, q) then CP.compile_reconstruct_nulled(PIV.QidBody(r1, q)) else []) {
+        assert q in PIV.QuantIds(r) && (qid0 as nat) != q;
+      }
+    case Re_capture(_, r1) =>
+      forall q: nat | q in PIV.QuantIds(r1) ensures AI.get_code_v(plus_bcv, q as int) == (if QidStampPlus(r1, q) then CP.compile_reconstruct_nulled(PIV.QidBody(r1, q)) else []) {
+        assert q in PIV.QuantIds(r);
+      }
+    case Re_lookaround(_, _, r1) =>
+      forall q: nat | q in PIV.QuantIds(r1) ensures AI.get_code_v(plus_bcv, q as int) == (if QidStampPlus(r1, q) then CP.compile_reconstruct_nulled(PIV.QidBody(r1, q)) else []) {
+        assert q in PIV.QuantIds(r);
+      }
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+  }
+
+  /** Without a CDN-greedy plus the two classifications coincide. */
+  lemma QidStampIsCin(r: R.regex, q: nat)
+    requires NRC.NoCdnPlusRE(r) && q in PIV.QuantIds(r)
+    ensures QidStampPlus(r, q) == QidCinPlus(r, q)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => if q in PIV.QuantIds(r1) { QidStampIsCin(r1, q); } else { QidStampIsCin(r2, q); }
+    case Re_con(r1, r2) => if q in PIV.QuantIds(r1) { QidStampIsCin(r1, q); } else { QidStampIsCin(r2, q); }
+    case Re_quant(nul, qid0, qq, r1) =>
+      if qid0 >= 0 && (qid0 as nat) == q {
+      } else {
+        QidStampIsCin(r1, q);
+      }
+    case Re_capture(_, r1) => QidStampIsCin(r1, q);
+    case Re_lookaround(_, _, r1) => QidStampIsCin(r1, q);
+  }
+
+  lemma PlusTableOkSNarrow(r: R.regex, plus_bcv: seq<RB.code>)
+    requires NRC.NoCdnPlusRE(r)
+    ensures PlusTableOkS(r, plus_bcv) <==> PlusTableOk(r, plus_bcv)
+  {
+    forall q: nat | q in PIV.QuantIds(r) ensures QidStampPlus(r, q) == QidCinPlus(r, q) {
+      QidStampIsCin(r, q);
+    }
+  }
+
+  /** (P5 row E) A CDN quantifier node read as a CIN one. The body-tier reconstruction lemmas
+      (`ReconAtFrame`, `ReconAtLookCapsAbsent`) take the node only to read its table row, and conclude about
+      the body and the code alone; a CDN-plus node, whose body holds no CDN plus, is handed to them
+      relabelled. Every other node is itself. */
+  ghost function Relab(r: R.regex): R.regex {
+    if r.Re_quant? && r.qnul == R.CDNullable then R.Re_quant(R.CINullable, r.qid, r.quant, r.qr) else r
+  }
+
+  lemma RelabOk(r: R.regex, plus_bcv: seq<RB.code>)
+    requires r.Re_quant? && r.qid >= 0 && PIV.QuantUnique(r)
+    requires NRC.NoCdnPlusRE(r.qr) && PlusTableOkS(r, plus_bcv)
+    ensures var rc := Relab(r);
+            rc.Re_quant? && L1(rc) == L1(r) && rc.qid == r.qid
+            && PIV.QuantUnique(rc) && (PIV.CapUnique(r) ==> PIV.CapUnique(rc))
+            && NRC.NoCdnPlusRE(rc) && PlusTableOk(rc, plus_bcv)
+  {
+    var rc := Relab(r);
+    var body := r.qr;
+    PlusTableOkSChildren(r, plus_bcv);
+    PlusTableOkSNarrow(body, plus_bcv);
+    assert PIV.QuantIds(rc) == PIV.QuantIds(r);
+    forall q: nat | q in PIV.QuantIds(rc)
+      ensures AI.get_code_v(plus_bcv, q as int)
+              == (if QidCinPlus(rc, q) then CP.compile_reconstruct_nulled(PIV.QidBody(rc, q)) else [])
+    {
+      assert q in PIV.QuantIds(r);
+      if q == r.qid as nat {
+        assert QidCinPlus(rc, q) == QidStampPlus(r, q) && PIV.QidBody(rc, q) == PIV.QidBody(r, q);
+      } else {
+        assert q in PIV.QuantIds(body);
+        assert QidCinPlus(rc, q) == QidCinPlus(body, q) && PIV.QidBody(rc, q) == PIV.QidBody(body, q);
+        assert QidStampPlus(r, q) == QidStampPlus(body, q) && PIV.QidBody(r, q) == PIV.QidBody(body, q);
+        QidStampIsCin(body, q);
+      }
+    }
+  }
+
   lemma CpOfInputAt(str: string, cp: nat)
     requires cp <= |str|
     ensures TR.CpOf(T.InputAt(str, cp)) == cp

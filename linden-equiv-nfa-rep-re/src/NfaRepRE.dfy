@@ -1540,6 +1540,86 @@ module LindenElkNfaRep {
     AnnotateNestedFragment(R.Raw_capture(raw), 0, 1, 1);
   }
 
+  // ---------------------------------------------------------------------------
+  // (G5a-1 step 4) The raw counterpart of the TOP-LEVEL fragment `NestedFragmentCdnRE`.
+  // ---------------------------------------------------------------------------
+
+  /** `NestedFragmentRaw` plus the greedy CDN plus. Greediness of a `Raw_quant` is its constructor and the
+      old arm constrained `Plus` alone, so that arm is now just the recursion; `Raw_count`'s greedy-plus
+      disjunct takes any nullable body. A lookaround body stays NARROW. */
+  predicate NestedFragmentCdnRaw(raw: R.raw_regex)
+    decreases raw
+  {
+    match raw
+    case Raw_empty => true
+    case Raw_character(_) => true
+    case Raw_anchor(_) => true
+    case Raw_alt(r1, r2) => NestedFragmentCdnRaw(r1) && NestedFragmentCdnRaw(r2)
+    case Raw_con(r1, r2) => NestedFragmentCdnRaw(r1) && NestedFragmentCdnRaw(r2)
+    case Raw_quant(q, r1) => NestedFragmentCdnRaw(r1)
+    case Raw_count(q, r1) =>
+      ((q.min == 0 && q.max == None)
+       || (0 <= q.min && q.max.Some? && q.min <= q.max.value)
+       || (q.min > 0 && q.max == None && R.raw_nullable(r1) == R.NonNullable)
+       || (q.min > 0 && q.max == None && !q.greedy
+           && R.raw_nullable(r1) != R.NonNullable)
+       || (q.min > 0 && q.max == None && q.greedy
+           && R.raw_nullable(r1) != R.NonNullable))
+      && NestedFragmentCdnRaw(r1)
+    case Raw_capture(r1) => NestedFragmentCdnRaw(r1)
+    case Raw_lookaround(look, r1) => NestedFragmentRaw(r1)   // NARROW
+  }
+
+  /** Every raw input supported before step 4 stays supported. */
+  lemma NarrowIsCdnRaw(raw: R.raw_regex)
+    requires NestedFragmentRaw(raw)
+    ensures NestedFragmentCdnRaw(raw)
+    decreases raw
+  {
+    match raw
+    case Raw_alt(r1, r2) => NarrowIsCdnRaw(r1); NarrowIsCdnRaw(r2);
+    case Raw_con(r1, r2) => NarrowIsCdnRaw(r1); NarrowIsCdnRaw(r2);
+    case Raw_quant(_, r1) => NarrowIsCdnRaw(r1);
+    case Raw_count(_, r1) => NarrowIsCdnRaw(r1);
+    case Raw_capture(r1) => NarrowIsCdnRaw(r1);
+    case _ =>
+  }
+
+  /** Annotation preserves the top-level fragment (twin of `AnnotateNestedFragment`; the look arm calls it). */
+  lemma AnnotateNestedFragmentCdn(ra: R.raw_regex, c: int, l: int, q: int)
+    requires NestedFragmentCdnRaw(ra)
+    ensures NestedFragmentCdnRE(R.annotate_regex(ra, c, l, q).0)
+    decreases ra
+  {
+    match ra
+    case Raw_alt(r1, r2) =>
+      AnnotateNestedFragmentCdn(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateNestedFragmentCdn(r2, c1, l1, q1);
+    case Raw_con(r1, r2) =>
+      AnnotateNestedFragmentCdn(r1, c, l, q);
+      var (_, c1, l1, q1) := R.annotate_regex(r1, c, l, q);
+      AnnotateNestedFragmentCdn(r2, c1, l1, q1);
+    case Raw_quant(quant, r1) =>
+      AnnotateNestedFragmentCdn(r1, c, l, q + 1);
+      AnnotateNullable(r1, c, l, q + 1);
+    case Raw_count(quant, r1) =>
+      AnnotateNestedFragmentCdn(r1, c, l, q + 1);
+      AnnotateNullable(r1, c, l, q + 1);
+    case Raw_capture(r1) => AnnotateNestedFragmentCdn(r1, c + 1, l, q);
+    case Raw_lookaround(look, r1) =>
+      AnnotateNestedFragment(r1, c, l + 1, q);   // the body is narrow
+    case _ =>
+  }
+
+  /** `lazy_prefix(annotate(raw))` stays in the top-level fragment. */
+  lemma SpecRegexNestedFragmentCdn(raw: R.raw_regex)
+    requires NestedFragmentCdnRaw(raw)
+    ensures NestedFragmentCdnRE(R.lazy_prefix(R.annotate(raw)))
+  {
+    AnnotateNestedFragmentCdn(R.Raw_capture(raw), 0, 1, 1);
+  }
+
   /** On capture-free regexes `remove_capture` is the identity, so an L1
       lookbehind's oracle build regex is `lazy_prefix(body)` itself. */
   lemma RemoveCaptureFreeId(re: R.regex)

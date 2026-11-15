@@ -123,12 +123,14 @@ module LindenElkLiftSimDeep {
       3000-assertion parent (with the hub's `NoPosLookbehindRE` conjunct gone, several
       of the arm's VCs timed out at 900 s inside the parent). Mutually recursive with
       `DeepFindRec` on the lexicographic metric `(|LookIds(host)|, arm)`. */
-  lemma DeepFindRecLB(
+/** (G5a-1 P5b) `DeepFindRecLB` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma DeepFindRecLBCdn(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed through the recursion) ----
-    requires T.TransWf(re) && NR.NestedFragmentRE(re)
+    requires T.TransWf(re) && NR.NestedFragmentCdnRE(re)
     requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
@@ -167,7 +169,7 @@ module LindenElkLiftSimDeep {
     ensures var lsub := SubFirstLeafAt(rer, crv, str, A as int, res1);
             lsub.Some? && g2 in lsub.value
     requires crv.f_look_types[A as int].Lookbehind?
-    decreases |LTB.LookIds(host)|, 0
+    decreases |LTB.LookIds(host)|, 0, 0
   {
     hide M.LookBodiesPlusGateRE;   // (G3a) a fact here, never unfolded (recursive: batch memory)
     // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
@@ -249,7 +251,7 @@ module LindenElkLiftSimDeep {
         OracleColsOkRestrict(rer, qm, qmB0, str);
       }
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      M.PlusGateBody(re, crv, A, laA, host);   // (G3b) the uniform gate at the row body
+      M.PlusGateBodyCdn(re, crv, A, laA, host);   // (G3b) the uniform gate at the row body
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       RowPlusFacts(host, crv.f_plus_bc, nlook);   // (G3b) the plus twin's premises
       assert {:split_here} true;
@@ -503,7 +505,7 @@ module LindenElkLiftSimDeep {
         SubsetCardLt(LTB.LookIds(bodyA1), LTB.LookIds(host), A1);
       }
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      DeepFindRec(rer, qm, crv, str, ast, re, ov, res0, res1, res2,
+      DeepFindRecCdn(rer, qm, crv, str, ast, re, ov, res0, res1, res2,
                   bodyA1, A1, owner, g2, ncap, nlook, nquant);
       var lsub1 := SubFirstLeafAt(rer, crv, str, A1 as int, res1);
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -531,12 +533,8 @@ module LindenElkLiftSimDeep {
     }
   }
 
-  /** (perf) The FORWARD DEEP arm of `DeepFindRec`, extracted so its assertions are
-      checked in a small context (same treatment as `DeepFindRecLB`).
-      Mutually recursive with `DeepFindRec` on `(|LookIds(host)|, arm)`. */
-  // (gate C) `{:induction false}`: the recursion is explicit (`DeepFindRec`); with the bare look
-  // arm of `NestedFragmentRE` the automatic induction hypothesis pushed two sections past 900 s.
-  lemma {:induction false} DeepFindRecFwdDeep(
+  /** (G5a-1 P5b) The narrow form, as a corollary of `DeepFindRecLBCdn`. */
+  lemma DeepFindRecLB(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
@@ -579,9 +577,67 @@ module LindenElkLiftSimDeep {
     requires PIV.PathPresentLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, g2)
     ensures var lsub := SubFirstLeafAt(rer, crv, str, A as int, res1);
             lsub.Some? && g2 in lsub.value
+    requires crv.f_look_types[A as int].Lookbehind?
+    decreases |LTB.LookIds(host)|, 0
+  {
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    DeepFindRecLBCdn(rer, qm, crv, str, ast, re, ov, res0, res1, res2, host, A, owner, g2, ncap, nlook, nquant);
+  }
+
+  /** (perf) The FORWARD DEEP arm of `DeepFindRec`, extracted so its assertions are
+      checked in a small context (same treatment as `DeepFindRecLB`).
+      Mutually recursive with `DeepFindRec` on `(|LookIds(host)|, arm)`. */
+  // (gate C) `{:induction false}`: the recursion is explicit (`DeepFindRec`); with the bare look
+  // arm of `NestedFragmentRE` the automatic induction hypothesis pushed two sections past 900 s.
+/** (G5a-1 P5b) `DeepFindRecFwdDeep` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma {:induction false} DeepFindRecFwdDeepCdn(
+    rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
+    ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
+    host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
+    // ---- whole-regex statics (fixed through the recursion) ----
+    requires T.TransWf(re) && NR.NestedFragmentCdnRE(re)
+    requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires |crv.f_look_types| == |crv.f_look_ast|
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> (x as int) in qm.looks
+    requires nlook == R.max_lookaround(ast) + 1
+    requires qm.ov == ov && !rer.multiline && !rer.ignoreCase && |ov| == |str| + 1
+    requires forall l: int :: l in qm.looks ==> l >= 0
+    requires M.OracleSufAllO(rer, qm, str)
+    requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
+    requires M.FrameEntryAllO(crv, re, ast)
+    // ---- (§2.3/§2.4) the FLookLoop value lifts: the reverse descent reads its dominance off them ----
+    requires M.ValueOkO(crv, str, res0, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    requires M.LookPosO(res1, crv)   // (gate C, G2) set look records sit at positive rows
+    requires M.QuantValueOkO(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    // ---- global res-side facts (fixed) ----
+    requires |res1.a_cp| == nlook && |res1.a_clk| == nlook
+    requires CM.LookCpSetWithClk(res1) && CM.LookCpsLE(res1, |str|)
+    requires CM.LookCpsOracleTrue(res1, ov)
+    requires M.FLookLoopChildLinkOk(crv, str, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    // ---- the OWNER package (A1/A2's conclusions at g2's innermost owner) ----
+    requires g2 in PIV.CapIdsInLooks(re)
+    requires owner in LTB.LookIds(re)
+    requires g2 in PIV.CapIds(NI.LookBodyOfRE(re, owner))
+    requires g2 !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
+    requires var rfO := M.FreshBodyMatchPlus(crv, str, owner as int, res1, ov, ncap, nlook, nquant);   // (G3a) OwnerPkg
+             rfO.Some? && g2 in PIV.GmOfLive(NI.LookBodyOfRE(re, owner),
+                                             rfO.value.capture_regs, rfO.value.look_regs, rfO.value.quant_regs)
+    // ---- per-level data ----
+    requires A in LTB.LookIds(re)
+    requires host == NI.LookBodyOfRE(re, A)
+    requires M.MatchedPosLA(crv, res1, A as int)
+    requires g2 in PIV.CapIds(host)
+    requires PIV.PathPresentLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, g2)
+    ensures var lsub := SubFirstLeafAt(rer, crv, str, A as int, res1);
+            lsub.Some? && g2 in lsub.value
     requires !crv.f_look_types[A as int].Lookbehind?
     requires g2 in PIV.CapIdsInLooks(host)
-    decreases |LTB.LookIds(host)|, 0
+    decreases |LTB.LookIds(host)|, 0, 0
   {
     hide M.LookBodiesPlusGateRE;   // (G3a) a fact here, never unfolded (recursive: batch memory)
     // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
@@ -762,7 +818,7 @@ module LindenElkLiftSimDeep {
       LookIdNotInOwnBody(host, A1);
       SubsetCardLt(LTB.LookIds(bodyA1), LTB.LookIds(host), A1);
     }
-    DeepFindRec(rer, qm, crv, str, ast, re, ov, res0, res1, res2,
+    DeepFindRecCdn(rer, qm, crv, str, ast, re, ov, res0, res1, res2,
                 bodyA1, A1, owner, g2, ncap, nlook, nquant);
     var lsub1 := SubFirstLeafAt(rer, crv, str, A1 as int, res1);
     assert lsub1.Some? && g2 in lsub1.value;
@@ -777,6 +833,152 @@ module LindenElkLiftSimDeep {
     assert SubFirstLeafAt(rer, crv, str, A as int, res1) == Some(gmtH);
   }
 
+  /** (G5a-1 P5b) The narrow form, as a corollary of `DeepFindRecFwdDeepCdn`. */
+  lemma {:induction false} DeepFindRecFwdDeep(
+    rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
+    ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
+    host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
+    // ---- whole-regex statics (fixed through the recursion) ----
+    requires T.TransWf(re) && NR.NestedFragmentRE(re)
+    requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires |crv.f_look_types| == |crv.f_look_ast|
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> (x as int) in qm.looks
+    requires nlook == R.max_lookaround(ast) + 1
+    requires qm.ov == ov && !rer.multiline && !rer.ignoreCase && |ov| == |str| + 1
+    requires forall l: int :: l in qm.looks ==> l >= 0
+    requires M.OracleSufAllO(rer, qm, str)
+    requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
+    requires M.FrameEntryAllO(crv, re, ast)
+    // ---- (§2.3/§2.4) the FLookLoop value lifts: the reverse descent reads its dominance off them ----
+    requires M.ValueOkO(crv, str, res0, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    requires M.LookPosO(res1, crv)   // (gate C, G2) set look records sit at positive rows
+    requires M.QuantValueOkO(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    // ---- global res-side facts (fixed) ----
+    requires |res1.a_cp| == nlook && |res1.a_clk| == nlook
+    requires CM.LookCpSetWithClk(res1) && CM.LookCpsLE(res1, |str|)
+    requires CM.LookCpsOracleTrue(res1, ov)
+    requires M.FLookLoopChildLinkOk(crv, str, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    // ---- the OWNER package (A1/A2's conclusions at g2's innermost owner) ----
+    requires g2 in PIV.CapIdsInLooks(re)
+    requires owner in LTB.LookIds(re)
+    requires g2 in PIV.CapIds(NI.LookBodyOfRE(re, owner))
+    requires g2 !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
+    requires var rfO := M.FreshBodyMatchPlus(crv, str, owner as int, res1, ov, ncap, nlook, nquant);   // (G3a) OwnerPkg
+             rfO.Some? && g2 in PIV.GmOfLive(NI.LookBodyOfRE(re, owner),
+                                             rfO.value.capture_regs, rfO.value.look_regs, rfO.value.quant_regs)
+    // ---- per-level data ----
+    requires A in LTB.LookIds(re)
+    requires host == NI.LookBodyOfRE(re, A)
+    requires M.MatchedPosLA(crv, res1, A as int)
+    requires g2 in PIV.CapIds(host)
+    requires PIV.PathPresentLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, g2)
+    ensures var lsub := SubFirstLeafAt(rer, crv, str, A as int, res1);
+            lsub.Some? && g2 in lsub.value
+    requires !crv.f_look_types[A as int].Lookbehind?
+    requires g2 in PIV.CapIdsInLooks(host)
+    decreases |LTB.LookIds(host)|, 0
+  {
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    DeepFindRecFwdDeepCdn(rer, qm, crv, str, ast, re, ov, res0, res1, res2, host, A, owner, g2, ncap, nlook, nquant);
+  }
+
+/** (G5a-1 P5b) `DeepFindRec` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma DeepFindRecCdn(
+    rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
+    ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
+    host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
+    // ---- whole-regex statics (fixed through the recursion) ----
+    requires T.TransWf(re) && NR.NestedFragmentCdnRE(re)
+    requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires |crv.f_look_types| == |crv.f_look_ast|
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> (x as int) in qm.looks
+    requires nlook == R.max_lookaround(ast) + 1
+    requires qm.ov == ov && !rer.multiline && !rer.ignoreCase && |ov| == |str| + 1
+    requires forall l: int :: l in qm.looks ==> l >= 0
+    requires M.OracleSufAllO(rer, qm, str)
+    requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
+    requires M.FrameEntryAllO(crv, re, ast)
+    // ---- (§2.3/§2.4) the FLookLoop value lifts: the reverse descent reads its dominance off them ----
+    requires M.ValueOkO(crv, str, res0, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    requires M.LookPosO(res1, crv)   // (gate C, G2) set look records sit at positive rows
+    requires M.QuantValueOkO(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    // ---- global res-side facts (fixed) ----
+    requires |res1.a_cp| == nlook && |res1.a_clk| == nlook
+    requires CM.LookCpSetWithClk(res1) && CM.LookCpsLE(res1, |str|)
+    requires CM.LookCpsOracleTrue(res1, ov)
+    requires M.FLookLoopChildLinkOk(crv, str, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    // ---- the OWNER package (A1/A2's conclusions at g2's innermost owner) ----
+    requires g2 in PIV.CapIdsInLooks(re)
+    requires owner in LTB.LookIds(re)
+    requires g2 in PIV.CapIds(NI.LookBodyOfRE(re, owner))
+    requires g2 !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
+    requires var rfO := M.FreshBodyMatchPlus(crv, str, owner as int, res1, ov, ncap, nlook, nquant);   // (G3a) OwnerPkg
+             rfO.Some? && g2 in PIV.GmOfLive(NI.LookBodyOfRE(re, owner),
+                                             rfO.value.capture_regs, rfO.value.look_regs, rfO.value.quant_regs)
+    // ---- per-level data ----
+    requires A in LTB.LookIds(re)
+    requires host == NI.LookBodyOfRE(re, A)
+    requires M.MatchedPosLA(crv, res1, A as int)
+    requires g2 in PIV.CapIds(host)
+    requires PIV.PathPresentLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, g2)
+    ensures var lsub := SubFirstLeafAt(rer, crv, str, A as int, res1);
+            lsub.Some? && g2 in lsub.value
+    decreases |LTB.LookIds(host)|, 1, 0
+  {
+    hide M.LookBodiesPlusGateRE;   // (G3a) a fact here, never unfolded (recursive: batch memory)
+    // (2026-08-25) this lemma takes the L4-perf OPAQUE bundles (`117b6aa`) but its
+    // body reads their foralls (`FrameEntryOk` at A, `OracleOkSuffix` at cps) —
+    // reveal them. (Never re-verified after the perf pass; failed 3 asserts.)
+    reveal M.OracleSufAllO(), M.FrameEntryAllO();
+    var maxlook := R.max_lookaround(ast);
+    var cpA := AReg.get_cp(res1, A as int).value;
+    RL.AAsArraysLaws(res1);
+    assert AI.get_idx(res1.a_cp, A as int) >= 0 && cpA == AI.get_idx(res1.a_cp, A as int);
+    assert 0 <= cpA <= |str|;                                    // LookCpsLE(res1)
+    var inpA := PIV.InpOfCp(str, cpA);
+    var bodycode := CP.compile_to_bytecode(host);
+
+    // ---- the row at A: la_A + host tie + statics ----
+    assert 1 <= A <= maxlook && (A as int) in qm.looks;
+    assert GateStaticAtNested(qm, re, crv, A as int, ncap, nlook, nquant);   // GateStaticsOkNested
+    var laA: R.lookaround, bA: R.regex := GateStaticPick(qm, re, crv, A as int, ncap, nlook, nquant);   // (G3a) the picker
+    NI.LookBodyOfTablesTie(re, crv, A);
+    var laT: R.lookaround :| LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A));
+    assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
+    assert host == M.VBody(crv, A as int);
+    var endlH: nat := |bodycode| - 1;
+    assert PSM.StaticCoreNestedRE(qm, host, bodycode, endlH);
+    assert crv.f_look_types[A as int] == laA;
+    assert (laA.Lookahead? || laA.Lookbehind?) by {
+      assert AI.capture_type(crv.f_look_types[A as int]);        // MatchedPosLA
+    }
+    if laA.Lookbehind? {
+      // (L5 F7f perf) the LOOKBEHIND arm lives in its own lemma (small VC context).
+      DeepFindRecLBCdn(rer, qm, crv, str, ast, re, ov, res0, res1, res2,
+                    host, A, owner, g2, ncap, nlook, nquant);
+    } else {
+      assert !laA.Lookbehind? by { assert crv.f_look_types[A as int] == laA; }
+      if g2 !in PIV.CapIdsInLooks(host) {
+        // (perf) the forward BASE arm lives in its own lemma.
+        DeepFindRecFwdBaseCdn(rer, qm, crv, str, ast, re, ov, res0, res1, res2,
+                           host, A, owner, g2, ncap, nlook, nquant);
+      } else {
+        // (perf) the forward DEEP arm lives in its own lemma.
+        DeepFindRecFwdDeepCdn(rer, qm, crv, str, ast, re, ov, res0, res1, res2,
+                           host, A, owner, g2, ncap, nlook, nquant);
+      }
+    }
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `DeepFindRecCdn`. */
   lemma DeepFindRec(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
@@ -822,49 +1024,9 @@ module LindenElkLiftSimDeep {
             lsub.Some? && g2 in lsub.value
     decreases |LTB.LookIds(host)|, 1
   {
-    hide M.LookBodiesPlusGateRE;   // (G3a) a fact here, never unfolded (recursive: batch memory)
-    // (2026-08-25) this lemma takes the L4-perf OPAQUE bundles (`117b6aa`) but its
-    // body reads their foralls (`FrameEntryOk` at A, `OracleOkSuffix` at cps) —
-    // reveal them. (Never re-verified after the perf pass; failed 3 asserts.)
-    reveal M.OracleSufAllO(), M.FrameEntryAllO();
-    var maxlook := R.max_lookaround(ast);
-    var cpA := AReg.get_cp(res1, A as int).value;
-    RL.AAsArraysLaws(res1);
-    assert AI.get_idx(res1.a_cp, A as int) >= 0 && cpA == AI.get_idx(res1.a_cp, A as int);
-    assert 0 <= cpA <= |str|;                                    // LookCpsLE(res1)
-    var inpA := PIV.InpOfCp(str, cpA);
-    var bodycode := CP.compile_to_bytecode(host);
-
-    // ---- the row at A: la_A + host tie + statics ----
-    assert 1 <= A <= maxlook && (A as int) in qm.looks;
-    assert GateStaticAtNested(qm, re, crv, A as int, ncap, nlook, nquant);   // GateStaticsOkNested
-    var laA: R.lookaround, bA: R.regex := GateStaticPick(qm, re, crv, A as int, ncap, nlook, nquant);   // (G3a) the picker
-    NI.LookBodyOfTablesTie(re, crv, A);
-    var laT: R.lookaround :| LTB.LookEntryOk(crv, A as int, laT, NI.LookBodyOfRE(re, A));
-    assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
-    assert host == M.VBody(crv, A as int);
-    var endlH: nat := |bodycode| - 1;
-    assert PSM.StaticCoreNestedRE(qm, host, bodycode, endlH);
-    assert crv.f_look_types[A as int] == laA;
-    assert (laA.Lookahead? || laA.Lookbehind?) by {
-      assert AI.capture_type(crv.f_look_types[A as int]);        // MatchedPosLA
-    }
-    if laA.Lookbehind? {
-      // (L5 F7f perf) the LOOKBEHIND arm lives in its own lemma (small VC context).
-      DeepFindRecLB(rer, qm, crv, str, ast, re, ov, res0, res1, res2,
-                    host, A, owner, g2, ncap, nlook, nquant);
-    } else {
-      assert !laA.Lookbehind? by { assert crv.f_look_types[A as int] == laA; }
-      if g2 !in PIV.CapIdsInLooks(host) {
-        // (perf) the forward BASE arm lives in its own lemma.
-        DeepFindRecFwdBase(rer, qm, crv, str, ast, re, ov, res0, res1, res2,
-                           host, A, owner, g2, ncap, nlook, nquant);
-      } else {
-        // (perf) the forward DEEP arm lives in its own lemma.
-        DeepFindRecFwdDeep(rer, qm, crv, str, ast, re, ov, res0, res1, res2,
-                           host, A, owner, g2, ncap, nlook, nquant);
-      }
-    }
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    DeepFindRecCdn(rer, qm, crv, str, ast, re, ov, res0, res1, res2, host, A, owner, g2, ncap, nlook, nquant);
   }
 
   /** (FORWARD membership + VALUE recursion — the mirror of `DeepFindRec`) For a
@@ -900,13 +1062,15 @@ module LindenElkLiftSimDeep {
   /** (perf) The BASE arm of `ForwardFindRecLB` (a LOOKBEHIND owner), extracted: the whole LB arm
       OOM-kills the 80G slice alone at CORES=4. Mutually recursive with `ForwardFindRec` on
       `(|LookIds(host)|, arm)`: ForwardFindRec 2 > ForwardFindRecLB 1 > this 0. */
-  lemma ForwardFindRecLBBase(   // (E3) opaque preamble block
+/** (G5a-1 P5b) `ForwardFindRecLBBase` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma ForwardFindRecLBBaseCdn(   // (E3) opaque preamble block
 
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed) ----
-    requires T.TransWf(re) && NR.NestedFragmentRE(re)
+    requires T.TransWf(re) && NR.NestedFragmentCdnRE(re)
     requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
@@ -947,7 +1111,7 @@ module LindenElkLiftSimDeep {
          == PIV.NormRange(PIV.LiveRange(res0.a_cp, res0.a_clk, g))
     requires crv.f_look_types[A as int].Lookbehind?
     requires g !in PIV.CapIdsInLooks(host)
-    decreases |LTB.LookIds(host)|, 0
+    decreases |LTB.LookIds(host)|, 0, 0
   {
     hide M.LookBodiesPlusGateRE;   // (G3a) a fact here, never unfolded (recursive: batch memory)
     // (2026-08-29 E3) the preamble is an OPAQUE block: only the facts below reach the arm's VC.
@@ -1061,7 +1225,7 @@ module LindenElkLiftSimDeep {
       assert host == M.VBody(crv, A as int);
       endlH := |bodycode| - 1;
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      M.PlusGateBody(re, crv, A, laA, host);   // (G3b) the uniform gate at the row body
+      M.PlusGateBodyCdn(re, crv, A, laA, host);   // (G3b) the uniform gate at the row body
       assert PSM.StaticCoreNestedRE(qm, host, bodycode, endlH);   // (G3b) the hub row, no stamp-free conjunct
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert crv.f_look_types[A as int] == laA;
@@ -1074,7 +1238,7 @@ module LindenElkLiftSimDeep {
       assert laA.Lookbehind? by { assert crv.f_look_types[A as int] == laA; }
       // ==== (L5 F7c-4) LOOKBEHIND lid: lift via the FLIP twins ====
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      LookBodyFactsKB(re, crv, A);   // (W16) uniqueness only; no LBOnlyLooksRE(host)
+      LookBodyFactsKBCdn(re, crv, A);   // (W16) uniqueness only; no LBOnlyLooksRE(host)
       // ---- rf_A: the fresh BACKWARD body match (Some via the LB carrier's None-iff — the
       //      backward leaf EXISTS by hypothesis) ----
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -1174,7 +1338,7 @@ module LindenElkLiftSimDeep {
 
     // ==== BASE: g DIRECT in host ====
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    M.PlusGateBody(re, crv, A, laA, host);   // (G3b) the uniform gate at the row body
+    M.PlusGateBodyCdn(re, crv, A, laA, host);   // (G3b) the uniform gate at the row body
     RowPlusFacts(host, crv.f_plus_bc, nlook);   // (G3b) the plus twin's premises
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     SubFirstLeafDirectInFreshLB(rer, qmB, crv, str, ov, A, res1, host, g, ncap, nlook, nquant);
@@ -1186,7 +1350,7 @@ module LindenElkLiftSimDeep {
            && lsubA.value[g] == LBV.SwapRange(PIV.GmOfLive(host, rfc, rfl, rfq)[g]);
     // presence + dominance on the FRESH banks
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    LookBodyFactsKB(re, crv, A);          // (W16) CapUnique/QuantUnique/LookUnique(host)
+    LookBodyFactsKBCdn(re, crv, A);          // (W16) CapUnique/QuantUnique/LookUnique(host)
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert CM.ThreadRegsWf(rfFresh.value, ncap, nlook, nquant);   // (G3b) from the carrier
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -1267,6 +1431,63 @@ module LindenElkLiftSimDeep {
     NormSwapCong(PIV.LiveRange(res0.a_cp, res0.a_clk, g));
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert PIV.NormRange(lsubA.value[g]) == PIV.NormRange(PIV.LiveRange(res0.a_cp, res0.a_clk, g));
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `ForwardFindRecLBBaseCdn`. */
+  lemma ForwardFindRecLBBase(   // (E3) opaque preamble block
+
+    rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
+    ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
+    host: R.regex, A: nat, g: nat, ncap: int, nlook: int, nquant: int)
+    // ---- whole-regex statics (fixed) ----
+    requires T.TransWf(re) && NR.NestedFragmentRE(re)
+    requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires |crv.f_look_types| == |crv.f_look_ast|
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> (x as int) in qm.looks
+    requires nlook == R.max_lookaround(ast) + 1
+    requires qm.ov == ov && !rer.multiline && !rer.ignoreCase && |ov| == |str| + 1
+    requires forall l: int :: l in qm.looks ==> l >= 0
+    requires forall cp: nat :: cp <= |str| ==> LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
+    requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
+    requires forall l: int, la: R.lookaround, b: R.regex ::
+               1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, b) ==>
+                 M.FrameEntryOk(crv, la, b, PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re))
+    // ---- global res-side facts ----
+    requires |res1.a_cp| == nlook && |res1.a_clk| == nlook
+    requires CM.LookCpSetWithClk(res1) && CM.LookCpsLE(res1, |str|)
+    requires M.FLookLoopChildLinkOk(crv, str, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    requires M.FLookLoopValueOkFull(crv, str, res0, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    requires M.LookPosO(res1, crv)   // (gate C, G2) set look records sit at positive rows
+    requires M.FLookLoopQuantValueOkFull(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    // ---- per-level data ----
+    requires A in LTB.LookIds(re)
+    requires host == NI.LookBodyOfRE(re, A)
+    requires M.MatchedPosLA(crv, res1, A as int)
+    requires g in PIV.CapIds(host) && g in PIV.CapIdsInLooks(re)
+    requires var lsub := SubFirstLeafAt(rer, crv, str, A as int, res1);
+             lsub.Some? && g in lsub.value
+    ensures PIV.PathPresentLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, g)
+    ensures AI.get_idx(res0.a_clk, CP.start_reg(g)) >= 0
+    ensures AI.get_idx(res0.a_cp, CP.start_reg(g)) >= 0
+    ensures AI.get_idx(res0.a_clk, CP.start_reg(g))
+         >= PIV.MxAtGidLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, g)
+    // (L5 F7c-4) the value tie is stated as a `NormRange` equality so that the
+    // backward fresh match's reversed read (LB arm) and the forward read (LA
+    // arm) chain uniformly; `NormSwapCong` absorbs the LB swap.
+    ensures PIV.NormRange(SubFirstLeafAt(rer, crv, str, A as int, res1).value[g])
+         == PIV.NormRange(PIV.LiveRange(res0.a_cp, res0.a_clk, g))
+    requires crv.f_look_types[A as int].Lookbehind?
+    requires g !in PIV.CapIdsInLooks(host)
+    decreases |LTB.LookIds(host)|, 0
+  {
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    ForwardFindRecLBBaseCdn(// (E3) opaque preamble block
+
+    rer, qm, crv, str, ast, re, ov, res0, res1, res2, host, A, g, ncap, nlook, nquant);
   }
 
 }

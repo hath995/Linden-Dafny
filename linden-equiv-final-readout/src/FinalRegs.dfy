@@ -246,4 +246,75 @@ module LindenElkFinalRegs {
           ReconAtValGe(qm, r, body, qid, code, subtable, start_cp as nat, rg, start_clock, plus_bcv, str, ov);
       }
   }
+
+  /** (P5 row E) `FPValGe` on the scope `NRC.CdnTopRE` (generated from its text). */
+  lemma FPValGeS(qm: AR.QMap, r: R.regex, rg: NRC.Regs3, plus_bcv: seq<RB.code>, str: string, ov: LOr.OracleView)
+    requires PIV.CapUnique(r) && PIV.QuantUnique(r) && NRC.CdnTopRE(r) && NRR.PlusTableOkS(r, plus_bcv)
+    requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && CapValGe(rg) && QClkGe(rg) && ov == qm.ov && NRO.StampsInRangeS(r, rg, str)
+    ensures CapValGe(NRO.FP(r, rg, plus_bcv, str, ov)) && QClkGe(NRO.FP(r, rg, plus_bcv, str, ov))
+    decreases r
+  {
+    NRC.CdnTopChild(r);   // (P5) the scope at the subterms; a stamped node's body holds no CDN plus
+    NRO.StampsInRangeSChild(r, rg, str);
+    var rg2 := NRO.FP(r, rg, plus_bcv, str, ov);
+    match r
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_lookaround(_, _, _) =>
+    case Re_capture(_, r1) =>
+      NRR.PlusTableOkSChildren(r, plus_bcv);
+      FPValGeS(qm, r1, rg, plus_bcv, str, ov);
+    case Re_alt(r1, r2) =>
+      NRR.PlusTableOkSChildren(r, plus_bcv);
+      FPValGeS(qm, r1, rg, plus_bcv, str, ov);
+      NRO.FNulledPlusFrameS(qm, r1, rg, plus_bcv, str, ov);
+      var rgA := NRO.FP(r1, rg, plus_bcv, str, ov);
+      assert NRO.StampsInRangeS(r2, rgA, str) by {
+        NRR.DisjointRegs(r); NRR.InnerSub(r1);
+        forall k: int | k in NRR.QuantRegsOf(r2) ensures AI.get_idx(rgA.2.a_cp, k) == AI.get_idx(rg.2.a_cp, k) {
+          assert NRR.L1(r) == r1 && NRR.L2(r) == r2;
+          assert k !in NRR.QuantRegsOf(r1) * NRR.QuantRegsOf(r2);
+        }
+        NRO.StampsInRangeSTransfer(r, r2, rg, rgA, str);
+      }
+      FPValGeS(qm, r2, rgA, plus_bcv, str, ov);
+      assert rg2 == NRO.FP(r2, rgA, plus_bcv, str, ov);
+    case Re_con(r1, r2) =>
+      NRR.PlusTableOkSChildren(r, plus_bcv);
+      FPValGeS(qm, r1, rg, plus_bcv, str, ov);
+      NRO.FNulledPlusFrameS(qm, r1, rg, plus_bcv, str, ov);
+      var rgA := NRO.FP(r1, rg, plus_bcv, str, ov);
+      assert NRO.StampsInRangeS(r2, rgA, str) by {
+        NRR.DisjointRegs(r); NRR.InnerSub(r1);
+        forall k: int | k in NRR.QuantRegsOf(r2) ensures AI.get_idx(rgA.2.a_cp, k) == AI.get_idx(rg.2.a_cp, k) {
+          assert NRR.L1(r) == r1 && NRR.L2(r) == r2;
+          assert k !in NRR.QuantRegsOf(r1) * NRR.QuantRegsOf(r2);
+        }
+        NRO.StampsInRangeSTransfer(r, r2, rg, rgA, str);
+      }
+      FPValGeS(qm, r2, rgA, plus_bcv, str, ov);
+      assert rg2 == NRO.FP(r2, rgA, plus_bcv, str, ov);
+    case Re_quant(nul, qid, q, body) =>
+      NRR.PlusTableOkSChildren(r, plus_bcv);
+      match AReg.get_cp(rg.2, qid) {
+        case None =>
+          FPValGeS(qm, body, rg, plus_bcv, str, ov);
+        case Some(start_cp) =>
+          assert qid >= 0 && (qid as nat) in PIV.QuantIds(r) && 0 <= start_cp <= |str|;
+          var start_clock := AI.opt_int(AReg.get_clock(rg.2, qid));
+          assert start_clock >= -1;
+          var code := AI.get_code_v(plus_bcv, qid);
+          var ctx := AI.cp_context(start_cp, str, RA.Forward);
+          var subcdn := LCdn.compile_cdns(body);
+          var subtable := LCdn.build_cdn_v(subcdn, start_cp, ov, ctx, RA.Forward);
+          var (rgR, ovR) := NRR.ReconAt(code, body, subtable, start_cp, rg, start_clock, plus_bcv, str, ov);
+          assert rg2 == rgR;
+          // (P5) a set stamp sits on a stamp-plus; its body holds no CDN plus; the node is read as CIN
+          assert NRR.QidStampPlus(r, qid as nat);
+          assert NRC.NoCdnPlusRE(body);
+          NRR.RelabOk(r, plus_bcv);
+          ReconAtValGe(qm, NRR.Relab(r), body, qid, code, subtable, start_cp as nat, rg, start_clock, plus_bcv, str, ov);
+      }
+  }
 }

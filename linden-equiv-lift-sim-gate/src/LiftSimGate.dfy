@@ -2774,6 +2774,15 @@ module LindenElkLiftSimGate {
           PSM.ResumeAllCapUnset(re, filter);
           assert s4.active == PSM.ResumeAll(filter);
         }
+        assert forall t2 | t2 in s4.active :: PSM.StampPathOk(qm, str, t2.quant_regs.a_cp) by {   // (G5a-1 row E)
+          forall p | p in filter ensures PSM.StampPathOk(qm, str, p.0.quant_regs.a_cp) {
+            PSM.MatchingBlockedSubset(LC.Reverse(s1.blocked), inp1, p);
+            PSM.ReverseMembership(s1.blocked, p);
+            assert p in s1.blocked;
+          }
+          PSM.ResumeAllStampPath(qm, str, filter);
+          assert s4.active == PSM.ResumeAll(filter);
+        }
         assert PSM.PikeInvFullRE(rer, qm, re, code, endl, ngroups, str, ptsA2, s4, ncap, nlook, nquant);
 
         // ---- machine B: LiftInv at (bst2, s4).

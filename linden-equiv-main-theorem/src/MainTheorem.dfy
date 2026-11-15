@@ -1752,7 +1752,10 @@ module LindenElkMain {
     assert LL.LkActsInS(acts, {}) by { LL.NoLkBrLkBodiesInS(T.Translate(body), {}); }
     LL.ComputeTrLkConfined(rer, acts, inp, LG.Empty, WP.Forward, {});   // LkConfinedTree(t, {})
     assert NB.EncOk(acts, inp, BS.CannotExit) by { NB.EncOkNoChecks(acts, inp, BS.CannotExit); }
-    var tstar := ATR.ActionsTreeRepRE(rer, qm, acts, bodycode, 0, inp, BS.CannotExit, t, {});
+    // (G5a-1 row F) the Rec family serves the look-free body too: both premises embed
+    EL.PikeLkActionsEmbedsRec(acts);
+    CE.LkConfinedTreeEmbedsK(t, {});
+    var tstar := ATR.ActionsTreeRepRENested(rer, qm, acts, bodycode, 0, inp, BS.CannotExit, t, {});
     assert TR.TreeRepRE(qm, tstar, bodycode, 0, inp, false);
     NB.RAFirstLeafEmpty(tstar, t, inp);                       // Outside({}) -> equal first leaves
     assert LT.FirstLeaf(tstar, inp) == LT.FirstLeaf(t, inp);
@@ -3483,9 +3486,11 @@ module LindenElkMain {
   /** `NoPosLookbehindRE` translates to FORWARD-only positive looks on the L side
       (`TrLookaround` maps Lookahead to a forward positive look; the negatives are
       not positive). Feeds `FirstLeafClosedRec`'s scope. */
-  lemma CapArrayFromRegs(re: R.regex, thread: AI.Thread, leaf: LT.Leaf, inp: LC.Input,
+/** (G5a-1 P5b) `CapArrayFromRegs` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma CapArrayFromRegsCdn(re: R.regex, thread: AI.Thread, leaf: LT.Leaf, inp: LC.Input,
                          ngroups: nat, ncap: nat, nlook: nat, nquant: nat)
-    requires NR.NestedFragmentRE(re)
+    requires NR.NestedFragmentCdnRE(re)
     requires ClosedGm(leaf.1)
     requires leaf.1 == PIV.NormGm(PIV.GmOfLive(re, thread.capture_regs, thread.look_regs, thread.quant_regs))
     requires CM.ThreadRegsWf(thread, ncap, nlook, nquant)
@@ -3549,7 +3554,7 @@ module LindenElkMain {
     // lemma, not the surrounding context.
     forall i | 0 <= i < |f| ensures f[i] >= -1 {
       hide *;                                        // the whole ambient context is dead weight here
-      PIV.FilterCaptureGeqNeg1Nested(re, caps.a_cp, cc, lk.a_clk, qt.a_clk, -1, i);
+      PIV.FilterCaptureGeqNeg1Cdn(re, caps.a_cp, cc, lk.a_clk, qt.a_clk, -1, i);
       assert AI.get_idx(caps.a_cp, i) >= -1;         // CapRegWf
       assert AI.get_idx(f, i) == f[i];
     }
@@ -3574,9 +3579,27 @@ module LindenElkMain {
         == LES.CapArrayOfLeaf(leaf, ngroups);
   }
 
-  lemma MainExtractionFromClosed(raw: R.raw_regex, str: string,
+  /** (G5a-1 P5b) The narrow form, as a corollary of `CapArrayFromRegsCdn`. */
+  lemma CapArrayFromRegs(re: R.regex, thread: AI.Thread, leaf: LT.Leaf, inp: LC.Input,
+                         ngroups: nat, ncap: nat, nlook: nat, nquant: nat)
+    requires NR.NestedFragmentRE(re)
+    requires ClosedGm(leaf.1)
+    requires leaf.1 == PIV.NormGm(PIV.GmOfLive(re, thread.capture_regs, thread.look_regs, thread.quant_regs))
+    requires CM.ThreadRegsWf(thread, ncap, nlook, nquant)
+    requires ncap == 2 * ngroups
+    ensures LES.NormalizeArr(AI.filter_reset(re, thread.capture_regs, thread.look_regs, thread.quant_regs, -1))
+         == LES.CapArrayOfLeaf(leaf, ngroups)
+  {
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    CapArrayFromRegsCdn(re, thread, leaf, inp, ngroups, ncap, nlook, nquant);
+  }
+
+/** (G5a-1 P5b) `MainExtractionFromClosed` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma MainExtractionFromClosedCdn(raw: R.raw_regex, str: string,
                                  t: LT.Tree, thread: AI.Thread, leaf: LT.Leaf)
-    requires NR.NestedFragmentRaw(raw)
+    requires NR.NestedFragmentCdnRaw(raw)
     requires ClosedGm(leaf.1)                                   // (L5 F7e-2) closedness IS the scope's only use
     // (2026-09-05) `NegLooksLookFreeRE` dropped: the register half moved to
     // `CapArrayFromRegs` and the remaining body does not use it — which lets
@@ -3610,7 +3633,7 @@ module LindenElkMain {
     assert {:split_here} true;
     T.AnnotateWf(raw);
     assert {:split_here} true;
-    NR.SpecRegexNestedFragment(raw);
+    NR.SpecRegexNestedFragmentCdn(raw);
     var caps := thread.capture_regs;
     var lk := thread.look_regs;
     var qt := thread.quant_regs;
@@ -3628,7 +3651,7 @@ module LindenElkMain {
     // (2026-09-05) the register/filter half is its own lemma — see CapArrayFromRegs.
     // Its preconditions are asserted ONE PER BATCH first: matched against the
     // ambient context all at once, the call site alone was a 900 s batch.
-    assert NR.NestedFragmentRE(re);
+    assert NR.NestedFragmentCdnRE(re);   // (G5a-1 P5b) the top-level fragment
     assert {:split_here} true;
     assert ClosedGm(leaf.1);
     assert {:split_here} true;
@@ -3636,7 +3659,7 @@ module LindenElkMain {
     assert {:split_here} true;
     assert CM.ThreadRegsWf(thread, ncap, R.max_lookaround(ast) + 1, R.max_quant(ast) + 1);
     assert {:split_here} true;
-    CapArrayFromRegs(re, thread, leaf, inp, ngroups, ncap,
+    CapArrayFromRegsCdn(re, thread, leaf, inp, ngroups, ncap,
                      R.max_lookaround(ast) + 1, R.max_quant(ast) + 1);
     assert {:split_here} true;
     assert LES.NormalizeArr(f) == LES.CapArrayOfLeaf(leaf, ngroups);
@@ -3653,6 +3676,38 @@ module LindenElkMain {
     assert LES.Normalize(AI.FFullMatch(raw, str)) == Some(LES.NormalizeArr(f));
     assert {:split_here} true;
     assert LES.MatcherSpec(raw, str, Some(LES.CapArrayOfLeaf(leaf, ngroups)));
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `MainExtractionFromClosedCdn`. */
+  lemma MainExtractionFromClosed(raw: R.raw_regex, str: string,
+                                 t: LT.Tree, thread: AI.Thread, leaf: LT.Leaf)
+    requires NR.NestedFragmentRaw(raw)
+    requires ClosedGm(leaf.1)                                   // (L5 F7e-2) closedness IS the scope's only use
+    // (2026-09-05) `NegLooksLookFreeRE` dropped: the register half moved to
+    // `CapArrayFromRegs` and the remaining body does not use it — which lets
+    // `MainExtraction` (LookBehind fragment) delegate here.
+    requires T.Latin1Wf(raw)
+    requires EL.BoolTreeLk(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), BS.CannotExit, t)
+    requires LS.IsTree(LES.TheRer(raw), [LS.Areg(LES.SpecRegex(raw))], LC.InitInput(str), LG.Empty, WP.Forward, t)
+    requires CM.ThreadRegsWf(thread, 2 * R.max_group(R.annotate(raw)) + 2,
+                             R.max_lookaround(R.annotate(raw)) + 1,
+                             R.max_quant(R.annotate(raw)) + 1)
+    requires QuantClkFinal(thread)   // (G3a) clocks only
+    // L3b: for a CAPTURING lookbehind the engine registers hold the REVERSED span,
+    // so the ordered spec leaf is the POSITIONAL normalization (`NormGm`) of the
+    // reconstructed `GmOfLive`. NO-OP for forward matches (`NormGm` is identity on
+    // ordered ranges), so this subsumes the old `leaf.1 == GmOfLive`.
+    requires var re := R.lazy_prefix(R.annotate(raw));
+             leaf.1 == PIV.NormGm(PIV.GmOfLive(re, thread.capture_regs, thread.look_regs, thread.quant_regs))
+    requires LT.FirstLeaf(t, LC.InitInput(str)) == Some(leaf)
+    requires AI.FFullMatch(raw, str)
+          == Some(AI.filter_reset(R.annotate(raw), thread.capture_regs, thread.look_regs,
+                                  thread.quant_regs, -1))
+    ensures LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)))
+  {
+    NR.NarrowIsCdnRaw(raw);
+    hide *;   // the callee's premises are this lemma's own, verbatim: match them by name, unfold nothing
+    MainExtractionFromClosedCdn(raw, str, t, thread, leaf);
   }
 
   /** `FConsume` (moving matched blocked threads to active for the next
@@ -3874,14 +3929,16 @@ module LindenElkMain {
       compiled bytecode writes captures only to its OUTSIDE-look registers.
       `NR.CompileToBytecodeRepNested` supplies the `NfaRepRE` (and the `Accept`
       terminator), and `CaptureWriteIdsOutsideREGen` discharges every body pc. */
-  lemma CaptureBytecodeClassifiedNestedOuter(body: R.regex)
-    requires NR.NestedFragmentRE(body) && PIV.CapUnique(body)
+/** (G5a-1 P5b) `CaptureBytecodeClassifiedNestedOuter` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma CaptureBytecodeClassifiedCdnOuter(body: R.regex)
+    requires NR.NestedFragmentCdnRE(body) && PIV.CapUnique(body)
     ensures CM.CaptureWritesInside(CP.compile_to_bytecode(body),
                                    PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)))
   {
     var code := CP.compile_to_bytecode(body);
     var next := CP.compile(body, 0, CP.Progress).1;
-    NR.CompileToBytecodeRepNested(body);
+    NR.CompileToBytecodeRepCdn(body);
     var endl := next as nat;
     var Sc := PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body));
     forall pc: nat | pc < |code|
@@ -3895,6 +3952,17 @@ module LindenElkMain {
         assert NR.GetPcRE(code, endl) == Some(RB.Accept);
       }
     }
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `CaptureBytecodeClassifiedCdnOuter`. */
+  lemma CaptureBytecodeClassifiedNestedOuter(body: R.regex)
+    requires NR.NestedFragmentRE(body) && PIV.CapUnique(body)
+    ensures CM.CaptureWritesInside(CP.compile_to_bytecode(body),
+                                   PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)))
+  {
+    NR.NarrowIsCdn(body);
+    hide *;   // the wide premises are this lemma's own: match by name
+    CaptureBytecodeClassifiedCdnOuter(body);
   }
 
   /** R2: nested twin of `ReplayCaptureFrame`, restricted to OUTER caps. For a
@@ -4177,13 +4245,15 @@ module LindenElkMain {
       NESTED body -- every gate the replay executes targets one of `body`'s own
       look ids. Nested twin of the capture-side `CaptureBytecodeClassifiedNested
       Outer`, via `LookCheckIdsREGen`. */
-  lemma LookBytecodeClassifiedNested(body: R.regex)
-    requires NR.NestedFragmentRE(body) && LTB.LookUnique(body)
+/** (G5a-1 P5b) `LookBytecodeClassifiedNested` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma LookBytecodeClassifiedCdn(body: R.regex)
+    requires NR.NestedFragmentCdnRE(body) && LTB.LookUnique(body)
     ensures CM.LookChecksInside(CP.compile_to_bytecode(body), LookIdSet(body))
   {
     var code := CP.compile_to_bytecode(body);
     var next := CP.compile(body, 0, CP.Progress).1;
-    NR.CompileToBytecodeRepNested(body);
+    NR.CompileToBytecodeRepCdn(body);
     var endl := next as nat;
     var S := LookIdSet(body);
     forall pc: nat | pc < |code|
@@ -4198,6 +4268,16 @@ module LindenElkMain {
         assert NR.GetPcRE(code, endl) == Some(RB.Accept);
       }
     }
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `LookBytecodeClassifiedCdn`. */
+  lemma LookBytecodeClassifiedNested(body: R.regex)
+    requires NR.NestedFragmentRE(body) && LTB.LookUnique(body)
+    ensures CM.LookChecksInside(CP.compile_to_bytecode(body), LookIdSet(body))
+  {
+    NR.NarrowIsCdn(body);
+    hide *;   // the wide premises are this lemma's own: match by name
+    LookBytecodeClassifiedCdn(body);
   }
 
   /** R2: the FFindMatchPlus-level look frame for a NESTED positive lookAHEAD
@@ -4855,8 +4935,10 @@ module LindenElkMain {
 
   /** Two rows `l1 < l2` of `re`: the earlier body's outside-look quantifiers are not quantifiers of the
       later body. `DOrdQuantFromTables` on the syntax, without the gate. */
-  lemma DOrdQuantRE(re: R.regex, crv: CP.FCompiled, l1: nat, l2: nat)
-    requires NR.NestedFragmentRE(re)
+/** (G5a-1 P5b) `DOrdQuantRE` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma DOrdQuantRECdn(re: R.regex, crv: CP.FCompiled, l1: nat, l2: nat)
+    requires NR.NestedFragmentCdnRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
     requires l1 in LTB.LookIds(re) && l2 in LTB.LookIds(re) && l1 < l2
@@ -4865,7 +4947,7 @@ module LindenElkMain {
     var b1 := NI.LookBodyOfRE(re, l1);
     var b2 := NI.LookBodyOfRE(re, l2);
     PIV.QuantIdsSplit(b1);
-    LookBodyFactsL5(re, crv, l1);
+    LookBodyFactsL5Cdn(re, crv, l1);
     LookBodiesQuantsDisjointOrNested(re, l1, l2);
     if PIV.QuantIds(b1) * PIV.QuantIds(b2) == {} {
     } else if l2 in LTB.LookIds(b1) && PIV.QuantIds(b2) <= PIV.QuantIds(b1) {
@@ -4879,10 +4961,25 @@ module LindenElkMain {
     }
   }
 
-  /** The producer, from the whole-regex tables. */
-  lemma RowsAvoidFromTables(ast: R.regex, re: R.regex, crv: CP.FCompiled)
-    requires crv == CP.FFullCompilation(ast) && re == R.lazy_prefix(ast)
+  /** (G5a-1 P5b) The narrow form, as a corollary of `DOrdQuantRECdn`. */
+  lemma DOrdQuantRE(re: R.regex, crv: CP.FCompiled, l1: nat, l2: nat)
     requires NR.NestedFragmentRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
+    requires l1 in LTB.LookIds(re) && l2 in LTB.LookIds(re) && l1 < l2
+    ensures PIV.QuantIdsOutsideLooks(NI.LookBodyOfRE(re, l1)) * PIV.QuantIds(NI.LookBodyOfRE(re, l2)) == {}
+  {
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    DOrdQuantRECdn(re, crv, l1, l2);
+  }
+
+  /** The producer, from the whole-regex tables. */
+/** (G5a-1 P5b) `RowsAvoidFromTables` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma RowsAvoidFromTablesCdn(ast: R.regex, re: R.regex, crv: CP.FCompiled)
+    requires crv == CP.FFullCompilation(ast) && re == R.lazy_prefix(ast)
+    requires NR.NestedFragmentCdnRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
     ensures RowsAvoidO(crv, 1, R.max_lookaround(ast))
@@ -4915,7 +5012,7 @@ module LindenElkMain {
           LookKindOfTablesTie(re, crv, lid2);
           var b2 := NI.LookBodyOfRE(re, lid2);
           assert crv.f_look_ast[l] == b2;
-          DOrdQuantRE(re, crv, lid1, lid2);
+          DOrdQuantRECdn(re, crv, lid1, lid2);
           RRA.QidsOfNonneg(b2);
           PIV.QuantIdsSplit(b2);
           forall k | k in QCI.QidsOf(b2) && k in QIdsOuter(b1) ensures false {
@@ -4934,6 +5031,19 @@ module LindenElkMain {
     reveal RowsAvoidO();
   }
 
+  /** (G5a-1 P5b) The narrow form, as a corollary of `RowsAvoidFromTablesCdn`. */
+  lemma RowsAvoidFromTables(ast: R.regex, re: R.regex, crv: CP.FCompiled)
+    requires crv == CP.FFullCompilation(ast) && re == R.lazy_prefix(ast)
+    requires NR.NestedFragmentRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
+    ensures RowsAvoidO(crv, 1, R.max_lookaround(ast))
+  {
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    RowsAvoidFromTablesCdn(ast, re, crv);
+  }
+
   /** C4e: the int-lid image of `body`'s OUTSIDE-look quant ids — the quant-bank
       indices a replay of `body` may touch (its inner looks are CheckOracle
       leaves, so their quants never appear in `body`'s code). Quant analogue of
@@ -4947,13 +5057,15 @@ module LindenElkMain {
       OUTSIDE-look quant ids (`QuantWriteIdsRENested`, the L3a-sharpened classifier
       that already excludes inside-look quants). `NR.CompileToBytecodeRepNested`
       supplies the `NfaRepRE` + `Accept` terminator. */
-  lemma QuantBytecodeClassifiedNestedOuter(body: R.regex)
-    requires NR.NestedFragmentRE(body) && PIV.QuantUnique(body)
+/** (G5a-1 P5b) `QuantBytecodeClassifiedNestedOuter` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma QuantBytecodeClassifiedCdnOuter(body: R.regex)
+    requires NR.NestedFragmentCdnRE(body) && PIV.QuantUnique(body)
     ensures CM.QuantWritesInside(CP.compile_to_bytecode(body), QIdsOuter(body))
   {
     var code := CP.compile_to_bytecode(body);
     var next := CP.compile(body, 0, CP.Progress).1;
-    NR.CompileToBytecodeRepNested(body);
+    NR.CompileToBytecodeRepCdn(body);
     var endl := next as nat;
     var Sq := QIdsOuter(body);
     forall pc: nat | pc < |code|
@@ -4961,7 +5073,7 @@ module LindenElkMain {
     {
       assert NR.GetPcRE(code, pc) == Some(code[pc]);
       if pc < endl {
-        PIV.QuantWriteIdsRENested(body, code, 0, endl, pc);
+        PIV.QuantWriteIdsRECdn(body, code, 0, endl, pc);
         if code[pc].SetQuantToClock? {
           var qn: nat := code[pc].sq as nat;
           assert qn in PIV.QuantIdsOutsideLooks(body);
@@ -4972,6 +5084,16 @@ module LindenElkMain {
         assert NR.GetPcRE(code, endl) == Some(RB.Accept);
       }
     }
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `QuantBytecodeClassifiedCdnOuter`. */
+  lemma QuantBytecodeClassifiedNestedOuter(body: R.regex)
+    requires NR.NestedFragmentRE(body) && PIV.QuantUnique(body)
+    ensures CM.QuantWritesInside(CP.compile_to_bytecode(body), QIdsOuter(body))
+  {
+    NR.NarrowIsCdn(body);
+    hide *;   // the wide premises are this lemma's own: match by name
+    QuantBytecodeClassifiedCdnOuter(body);
   }
 
   /** C4e: nested twin of `ReplayPlusCaptureFrameNestedOuter` for QUANTS. The
@@ -7252,23 +7374,35 @@ module LindenElkMain {
   // `AncSetInvRE` is `reverse_regex`-invariant (capture NESTING is untouched).
   // ===========================================================================
 
-  lemma NoWriteOracleBodyCodeNested(body: R.regex)
-    requires NR.NestedFragmentRE(body)
+/** (G5a-1 P5b) `NoWriteOracleBodyCodeNested` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma NoWriteOracleBodyCodeCdn(body: R.regex)
+    requires NR.NestedFragmentCdnRE(body)
     ensures CM.NoWriteOracleCode(CP.compile_to_bytecode(body))
   {
     var code := CP.compile_to_bytecode(body);
     var next := CP.compile(body, 0, CP.Progress).1;
-    NR.CompileToBytecodeRepNested(body);
+    NR.CompileToBytecodeRepCdn(body);
     var endl := next as nat;
     forall pc: nat | pc < |code| ensures !code[pc].WriteOracle? {
       assert NR.GetPcRE(code, pc) == Some(code[pc]);
       if pc < endl {
-        NR.NoWriteInstrNestedRE(body, code, 0, endl, pc);
+        PSM.NoWriteInstrCdnRE(body, code, 0, endl, pc);
       } else {
         assert pc == endl;
         assert NR.GetPcRE(code, endl) == Some(RB.Accept);
       }
     }
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `NoWriteOracleBodyCodeCdn`. */
+  lemma NoWriteOracleBodyCodeNested(body: R.regex)
+    requires NR.NestedFragmentRE(body)
+    ensures CM.NoWriteOracleCode(CP.compile_to_bytecode(body))
+  {
+    NR.NarrowIsCdn(body);
+    hide *;   // the wide premises are this lemma's own: match by name
+    NoWriteOracleBodyCodeCdn(body);
   }
 
   /** R2: nested twin of `FFindMatchPlusOvStable` — a nested positive lookAHEAD
@@ -7443,6 +7577,43 @@ module LindenElkMain {
       the enclosing look is not a positive lookbehind. The nested analogue of
       `LookBodyOfFragment` + the uniqueness/table transfers, in one recursion
       mirroring `NI.LookBodyOfRE`. Depth-general. */
+/** (G5a-1 P5b) `LookBodyFactsL5` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma LookBodyFactsL5Cdn(re: R.regex, crv: CP.FCompiled, lid: nat)
+    requires NR.NestedFragmentCdnRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires lid in LTB.LookIds(re)
+    ensures var body := NI.LookBodyOfRE(re, lid);
+            NR.NestedFragmentRE(body)
+            && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+            && LTB.LookTablesOk(body, crv)
+            && LTB.LookIds(body) <= LTB.LookIds(re)
+            && var li: int := lid as int;   // (gate B) cast-free trigger; the LB-only clause is gone
+               exists la: R.lookaround {:trigger LTB.LookEntryOk(crv, li, la, body)} :: LTB.LookEntryOk(crv, li, la, body)
+    decreases re, 0
+  {
+    match re
+    case Re_alt(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodyFactsL5Cdn(r1, crv, lid); }
+      else { LookBodyFactsL5Cdn(r2, crv, lid); }
+    case Re_con(r1, r2) =>
+      if lid in LTB.LookIds(r1) { LookBodyFactsL5Cdn(r1, crv, lid); }
+      else { LookBodyFactsL5Cdn(r2, crv, lid); }
+    case Re_quant(_, _, _, r1) => LookBodyFactsL5Cdn(r1, crv, lid);
+    case Re_capture(_, r1) => LookBodyFactsL5Cdn(r1, crv, lid);
+    case Re_lookaround(lid0, la0, r1) =>
+      if lid0 >= 0 && (lid0 as nat) == lid {
+        assert NI.LookBodyOfRE(re, lid) == r1;
+        assert LTB.LookEntryOk(crv, lid as int, la0, r1);   // LookTablesOk's lookaround case
+      } else {
+        assert lid in LTB.LookIds(r1);
+        LookBodyFactsL5(r1, crv, lid);
+        assert LTB.LookIds(r1) <= LTB.LookIds(re);
+      }
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `LookBodyFactsL5Cdn`. */
   lemma LookBodyFactsL5(re: R.regex, crv: CP.FCompiled, lid: nat)
     requires NR.NestedFragmentRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
@@ -7457,24 +7628,9 @@ module LindenElkMain {
                exists la: R.lookaround {:trigger LTB.LookEntryOk(crv, li, la, body)} :: LTB.LookEntryOk(crv, li, la, body)
     decreases re
   {
-    match re
-    case Re_alt(r1, r2) =>
-      if lid in LTB.LookIds(r1) { LookBodyFactsL5(r1, crv, lid); }
-      else { LookBodyFactsL5(r2, crv, lid); }
-    case Re_con(r1, r2) =>
-      if lid in LTB.LookIds(r1) { LookBodyFactsL5(r1, crv, lid); }
-      else { LookBodyFactsL5(r2, crv, lid); }
-    case Re_quant(_, _, _, r1) => LookBodyFactsL5(r1, crv, lid);
-    case Re_capture(_, r1) => LookBodyFactsL5(r1, crv, lid);
-    case Re_lookaround(lid0, la0, r1) =>
-      if lid0 >= 0 && (lid0 as nat) == lid {
-        assert NI.LookBodyOfRE(re, lid) == r1;
-        assert LTB.LookEntryOk(crv, lid as int, la0, r1);   // LookTablesOk's lookaround case
-      } else {
-        assert lid in LTB.LookIds(r1);
-        LookBodyFactsL5(r1, crv, lid);
-        assert LTB.LookIds(r1) <= LTB.LookIds(re);
-      }
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    LookBodyFactsL5Cdn(re, crv, lid);
   }
 
 
@@ -7641,13 +7797,15 @@ module LindenElkMain {
       LookIdSet(re). Body facts from `LookBodyFactsNested`; the capture-set
       containment from `NI.LookBodyCapsIn` (body caps are inside-look caps of
       re); the lookahead-only clause from `NoPosLookbehindRE`. Depth-general. */
-  lemma FrameEntryOkFromTables(ast: R.regex, re: R.regex, crv: CP.FCompiled,
+/** (G5a-1 P5b) `FrameEntryOkFromTables` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma FrameEntryOkFromTablesCdn(ast: R.regex, re: R.regex, crv: CP.FCompiled,
                                l: int, la: R.lookaround, body: R.regex)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
     requires T.TransWf(re)               // (G3a) for the plus table (`FRD.PlusTableOkFull`)
-    requires NR.NestedFragmentRE(re)
+    requires NR.NestedFragmentCdnRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires 1 <= l <= R.max_lookaround(ast)
@@ -7663,7 +7821,7 @@ module LindenElkMain {
     LookEntryOnlyReal(ast, crv, l, la, body);           // (l as nat) in LookIds(ast) == LookIds(re)
     var lid := l as nat;
     assert lid in LTB.LookIds(re);
-    LookBodyFactsL5(re, crv, lid);
+    LookBodyFactsL5Cdn(re, crv, lid);
     var body' := NI.LookBodyOfRE(re, lid);
     // LookEntryOk determinism at row lid pins body == body' (via the table tie).
     NI.LookBodyOfTablesTie(re, crv, lid);
@@ -7677,13 +7835,35 @@ module LindenElkMain {
     assert LTB.LookIds(body') <= LTB.LookIds(re);
     assert LookIdSet(body') <= LookIdSet(re);
     // (G3a/G3b) the row's statics, every kind
-    PlusGateBody(re, crv, lid, la, body);
-    assert NR.NestedFragmentRE(ast);                     // re == Re_con(pre, ast)
-    NestedNoCdn(ast);
-    FRD.PlusTableOkFull(ast);
-    FRA.PlusTableOkLookBody(re, crv.f_plus_bc, lid);
+    PlusGateBodyCdn(re, crv, lid, la, body);
+    // (G5a-1 P5b) the top may hold a CDN plus (`NestedNoCdn(ast)` is false then): the widened table of
+    // the whole regex, and bridge 1 at this look body, which is narrow
+    FRD.PlusTableOkFullS(ast);
+    NI.LookBodyOfFragmentCdn(re, lid);
+    NestedNoCdn(body');
+    FRA.PlusTableOkSLookBody(re, crv.f_plus_bc, lid);
     reveal RowLAStatics();
     assert RowLAStatics(body, crv.f_plus_bc);
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `FrameEntryOkFromTablesCdn`. */
+  lemma FrameEntryOkFromTables(ast: R.regex, re: R.regex, crv: CP.FCompiled,
+                               l: int, la: R.lookaround, body: R.regex)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
+    requires T.TransWf(re)               // (G3a) for the plus table (`FRD.PlusTableOkFull`)
+    requires NR.NestedFragmentRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires 1 <= l <= R.max_lookaround(ast)
+    requires LTB.LookEntryOk(crv, l, la, body)
+    ensures FrameEntryOk(crv, la, body,
+                         PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), LookIdSet(re))
+  {
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    FrameEntryOkFromTablesCdn(ast, re, crv, l, la, body);
   }
 
   /** (G3a) The nested fragment admits no CDN-greedy plus (twin of `MCL.NestedNoCdnLk`, needed below
@@ -7743,14 +7923,16 @@ module LindenElkMain {
       third "b1 nested in b2" arm is killed by well-nesting (`l1 < l2` forbids
       `l1 in LookIds(b2)`). In the nested arm `b2`'s caps sit in `b1`'s
       INSIDE-look caps, disjoint from `b1`'s OUTSIDE-look caps. Depth-general. */
-  lemma DOrdFromTables(ast: R.regex, re: R.regex, crv: CP.FCompiled,
+/** (G5a-1 P5b) `DOrdFromTables` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma DOrdFromTablesCdn(ast: R.regex, re: R.regex, crv: CP.FCompiled,
                        l1: int, la1: R.lookaround, b1: R.regex,
                        l2: int, la2: R.lookaround, b2: R.regex)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires LookBodiesPlusGateRE(re)   // (G3a) the weak gate (was LooksNoNulledPlusRE)
     requires T.TransWf(re)   // (G3a) for FrameEntryOkFromTables' plus table
-    requires NR.NestedFragmentRE(re)   // (L5 F7c) lifted from NoPosLookbehindRE
+    requires NR.NestedFragmentCdnRE(re)   // (L5 F7c) lifted from NoPosLookbehindRE
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
     requires 1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
@@ -7771,7 +7953,7 @@ module LindenElkMain {
     var la02: R.lookaround :| LTB.LookEntryOk(crv, lid2 as int, la02, NI.LookBodyOfRE(re, lid2));
     assert b1 == NI.LookBodyOfRE(re, lid1);
     assert b2 == NI.LookBodyOfRE(re, lid2);
-    LookBodyFactsL5(re, crv, lid1);                 // CapUnique(b1)
+    LookBodyFactsL5Cdn(re, crv, lid1);                 // CapUnique(b1)
     PIV.CaptureRegsIsSet(b2);                           // CaptureRegs(b2) == CaptureRegsSet(CapIds(b2))
     PIV.CapIdsSplit(b1);                                // CapIdsOutsideLooks(b1) <= CapIds(b1)
     NI.LookBodiesCapsDisjointOrNested(re, lid1, lid2);
@@ -7793,6 +7975,26 @@ module LindenElkMain {
       assert lid2 < lid1;                               // contra l1 < l2
       assert false;
     }
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `DOrdFromTablesCdn`. */
+  lemma DOrdFromTables(ast: R.regex, re: R.regex, crv: CP.FCompiled,
+                       l1: int, la1: R.lookaround, b1: R.regex,
+                       l2: int, la2: R.lookaround, b2: R.regex)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires LookBodiesPlusGateRE(re)   // (G3a) the weak gate (was LooksNoNulledPlusRE)
+    requires T.TransWf(re)   // (G3a) for FrameEntryOkFromTables' plus table
+    requires NR.NestedFragmentRE(re)   // (L5 F7c) lifted from NoPosLookbehindRE
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
+    requires 1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+    requires LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2)
+    ensures PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
+  {
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    DOrdFromTablesCdn(ast, re, crv, l1, la1, b1, l2, la2, b2);
   }
 
   /** A look body's lids are among the whole regex's lids — the LookIds twin of
@@ -7854,6 +8056,55 @@ module LindenElkMain {
       (g) was replaced by the ordered (g_new) (`GNewFromTablesNested` via
       `DirectEarlyNotInLateBody`), so the `NR.NestDepth(re) <= 2` premise is GONE.
       Each forall dispatches to its per-row helper. */
+/** (G5a-1 P5b) `LookRowsStaticNested` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma LookRowsStaticCdn(ast: R.regex, re: R.regex, crv: CP.FCompiled)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires LookBodiesPlusGateRE(re)   // (G3a) the weak gate (was LooksNoNulledPlusRE)
+    requires T.TransWf(re)   // (G3a) for FrameEntryOkFromTables' plus table
+    requires NR.NestedFragmentCdnRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
+    ensures forall l: int, la: R.lookaround, body: R.regex ::                                  // (a)
+              1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
+                FrameEntryOk(crv, la, body, PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), LookIdSet(re))
+    ensures forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (D-ord)
+              1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+              && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
+    ensures forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex ::  // (g_new)
+              1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+              && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2) ==>
+                DirectLookIds(b1) * LTB.LookIds(b2) == {}
+    ensures forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::                          // (h)
+              1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==>
+                l2 !in LookIdSet(b1)
+  {
+    forall l: int, la: R.lookaround, body: R.regex |
+      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body)
+      ensures FrameEntryOk(crv, la, body, PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), LookIdSet(re))
+    { FrameEntryOkFromTablesCdn(ast, re, crv, l, la, body); }
+
+    forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex |
+      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2)
+      ensures PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
+    { DOrdFromTablesCdn(ast, re, crv, l1, la1, b1, l2, la2, b2); }
+
+    forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex |
+      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2)
+      ensures DirectLookIds(b1) * LTB.LookIds(b2) == {}
+    { GNewFromTablesNested(ast, re, crv, l1, la1, b1, l2, la2, b2); }
+
+    forall l1: int, la1: R.lookaround, b1: R.regex, l2: int |
+      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1
+      ensures l2 !in LookIdSet(b1)
+    { HFromTables(ast, re, crv, l1, la1, b1, l2); }
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `LookRowsStaticCdn`. */
   lemma LookRowsStaticNested(ast: R.regex, re: R.regex, crv: CP.FCompiled)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
@@ -7877,27 +8128,9 @@ module LindenElkMain {
               1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1 ==>
                 l2 !in LookIdSet(b1)
   {
-    forall l: int, la: R.lookaround, body: R.regex |
-      1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body)
-      ensures FrameEntryOk(crv, la, body, PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), LookIdSet(re))
-    { FrameEntryOkFromTables(ast, re, crv, l, la, body); }
-
-    forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex |
-      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2)
-      ensures PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(b1)) * PIV.CaptureRegs(b2) == {}
-    { DOrdFromTables(ast, re, crv, l1, la1, b1, l2, la2, b2); }
-
-    forall l1: int, la1: R.lookaround, b1: R.regex, l2: int, la2: R.lookaround, b2: R.regex |
-      1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
-      && LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2)
-      ensures DirectLookIds(b1) * LTB.LookIds(b2) == {}
-    { GNewFromTablesNested(ast, re, crv, l1, la1, b1, l2, la2, b2); }
-
-    forall l1: int, la1: R.lookaround, b1: R.regex, l2: int |
-      1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1) && 1 <= l2 <= l1
-      ensures l2 !in LookIdSet(b1)
-    { HFromTables(ast, re, crv, l1, la1, b1, l2); }
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    LookRowsStaticCdn(ast, re, crv);
   }
 
   /** The DYNAMIC trio (b)/(c')/(e) plus register well-formedness: the
@@ -7948,7 +8181,9 @@ module LindenElkMain {
     RegsAgreeOutsideToInside(cp', cap, PIV.CaptureRegs(body), Sc);
   }
 
-  lemma LookRowsDynamicNested(
+/** (G5a-1 P5b) `LookRowsDynamicNested` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma LookRowsDynamicCdn(
     ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
     ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
     cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
@@ -7958,7 +8193,7 @@ module LindenElkMain {
     requires LookBodiesPlusGateRE(re)   // (G3a) the weak gate (was LooksNoNulledPlusRE)
     requires T.TransWf(re)   // (G3a) for FrameEntryOkFromTables' plus table
     requires code == CP.compile_to_bytecode(re)
-    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires NR.NestedFragmentCdnRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
     requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
     requires NR.GetPcRE(code, endl) == Some(RB.Accept)
@@ -8006,7 +8241,7 @@ module LindenElkMain {
 
     // look-frame: recorded lids sit in LookIdSet(re)
     var Slk := LookIdSet(re);
-    LookBytecodeClassifiedNested(re);                 // LookChecksInside(code, Slk)
+    LookBytecodeClassifiedCdn(re);                 // LookChecksInside(code, Slk)
     assert CM.VmLooksAgree(inits, look, Slk) by {
       assert CM.RegsAgreeOutside(look, look, Slk);
     }
@@ -8014,7 +8249,7 @@ module LindenElkMain {
 
     // capture-frame: main pass writes only OUTSIDE-look caps
     var Sc := PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(re));
-    CaptureBytecodeClassifiedNestedOuter(re);         // CaptureWritesInside(code, Sc)
+    CaptureBytecodeClassifiedCdnOuter(re);         // CaptureWritesInside(code, Sc)
     assert CM.VmCapturesAgree(inits, cap, Sc) by {
       assert AI.init_thread(cap, look, quant).capture_regs == cap;
       assert CM.RegsAgreeOutside(cap, cap, Sc);
@@ -8054,6 +8289,44 @@ module LindenElkMain {
         LookRowCapsUntouched(ast, re, crv, cp', cap, ncap, l, la, body);
       }
     }
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `LookRowsDynamicCdn`. */
+  lemma LookRowsDynamicNested(
+    ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
+    ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
+    cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+    ncap: int, nlook: int, nquant: int, endl: nat, result: Option<AI.Thread>)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires LookBodiesPlusGateRE(re)   // (G3a) the weak gate (was LooksNoNulledPlusRE)
+    requires T.TransWf(re)   // (G3a) for FrameEntryOkFromTables' plus table
+    requires code == CP.compile_to_bytecode(re)
+    requires NR.NestedFragmentRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1
+    requires NR.GetPcRE(code, endl) == Some(RB.Accept)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires cap == AReg.init_regs(ncap) && look == AReg.init_regs(nlook) && quant == AReg.init_regs(nquant)
+    requires |inits.processed.true_set| == RB.size(code) && |inits.processed.false_set| == RB.size(code)
+    requires inits.context.nextchar == AI.get_char(str, inits.cp)
+    requires 0 <= inits.cp <= |str| && inits.clock >= 0
+    requires inits.active == [AI.init_thread(cap, look, quant)]
+    requires inits.blocked == [] && inits.bestmatch.None?
+    requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
+    ensures result.Some? ==> CM.ThreadRegsWf(result.value, ncap, nlook, nquant)                   // reg wf
+    ensures result.Some? ==> CM.LookCpsLE(result.value.look_regs, |str|)                           // (e)
+    ensures result.Some? ==>
+              forall l: int :: 1 <= l <= R.max_lookaround(ast) && AReg.get_cp(result.value.look_regs, l).Some? ==>  // (b)
+                                 exists la: R.lookaround, body: R.regex :: LTB.LookEntryOk(crv, l, la, body)
+    ensures result.Some? ==>
+              forall l: int, la: R.lookaround, body: R.regex ::                                            // (c')
+                1 <= l <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l, la, body) ==>
+                  CM.RegsAgreeInside(result.value.capture_regs, AReg.init_regs(ncap), PIV.CaptureRegs(body))
+  {
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    LookRowsDynamicCdn(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant, ncap, nlook, nquant, endl, result);
   }
 
   /** The DIRECT (top-level) lookaround ids of `re`: a lookaround node
@@ -8282,13 +8555,15 @@ module LindenElkMain {
   /** `LookChecksInside(compile_to_bytecode(re), DirectLidSet(re))`: the main
       bytecode gates only on DIRECT lids. Nested-body twin of the (b) look
       classification but with the TIGHTER direct set — the (f) backbone. */
-  lemma DirectLidClassified(re: R.regex)
-    requires NR.NestedFragmentRE(re) && LTB.LookUnique(re)
+/** (G5a-1 P5b) `DirectLidClassified` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma DirectLidClassifiedCdn(re: R.regex)
+    requires NR.NestedFragmentCdnRE(re) && LTB.LookUnique(re)
     ensures CM.LookChecksInside(CP.compile_to_bytecode(re), DirectLidSet(re))
   {
     var code := CP.compile_to_bytecode(re);
     var next := CP.compile(re, 0, CP.Progress).1;
-    NR.CompileToBytecodeRepNested(re);
+    NR.CompileToBytecodeRepCdn(re);
     var endl := next as nat;
     var S := DirectLidSet(re);
     forall pc: nat | pc < |code|
@@ -8303,6 +8578,16 @@ module LindenElkMain {
         assert NR.GetPcRE(code, endl) == Some(RB.Accept);
       }
     }
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `DirectLidClassifiedCdn`. */
+  lemma DirectLidClassified(re: R.regex)
+    requires NR.NestedFragmentRE(re) && LTB.LookUnique(re)
+    ensures CM.LookChecksInside(CP.compile_to_bytecode(re), DirectLidSet(re))
+  {
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    DirectLidClassifiedCdn(re);
   }
 
   /** Direct lids are among all lids. */
@@ -8433,7 +8718,9 @@ module LindenElkMain {
       (the main bytecode gates only on direct lids, `DirectLidClassified` +
       look-frame), and no direct lid lands inside another look's body
       (`DirectLidsNotInBody`), so `l2 !in LookIdSet(b1)`. */
-  lemma FStabilityNested(
+/** (G5a-1 P5b) `FStabilityNested` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma FStabilityCdn(
     ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
     ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
     cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, nlook: int, result: Option<AI.Thread>)
@@ -8442,7 +8729,7 @@ module LindenElkMain {
     requires LookBodiesPlusGateRE(re)   // (G3a) the weak gate (was LooksNoNulledPlusRE)
     requires T.TransWf(re)   // (G3a) for FrameEntryOkFromTables' plus table
     requires code == CP.compile_to_bytecode(re)
-    requires NR.NestedFragmentRE(re) && LTB.LookUnique(re) && LTB.LookTablesOk(re, crv)
+    requires NR.NestedFragmentCdnRE(re) && LTB.LookUnique(re) && LTB.LookTablesOk(re, crv)
     requires look == AReg.init_regs(nlook)
     requires |inits.processed.true_set| == RB.size(code) && |inits.processed.false_set| == RB.size(code)
     requires inits.context.nextchar == AI.get_char(str, inits.cp)
@@ -8456,7 +8743,7 @@ module LindenElkMain {
                 && AReg.get_cp(result.value.look_regs, l2).Some?) ==> l2 !in LookIdSet(b1)
   {
     var Sd := DirectLidSet(re);
-    DirectLidClassified(re);                            // LookChecksInside(code, Sd)
+    DirectLidClassifiedCdn(re);                            // LookChecksInside(code, Sd)
     assert CM.VmLooksAgree(inits, look, Sd) by {
       assert CM.RegsAgreeOutside(look, look, Sd);
     }
@@ -8493,6 +8780,34 @@ module LindenElkMain {
         }
       }
     }
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `FStabilityCdn`. */
+  lemma FStabilityNested(
+    ast: R.regex, re: R.regex, crv: CP.FCompiled, code: RB.code, str: string,
+    ov: LOr.OracleView, cdn: LCdn.cdns, inits: AI.VmState,
+    cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs, nlook: int, result: Option<AI.Thread>)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires LookBodiesPlusGateRE(re)   // (G3a) the weak gate (was LooksNoNulledPlusRE)
+    requires T.TransWf(re)   // (G3a) for FrameEntryOkFromTables' plus table
+    requires code == CP.compile_to_bytecode(re)
+    requires NR.NestedFragmentRE(re) && LTB.LookUnique(re) && LTB.LookTablesOk(re, crv)
+    requires look == AReg.init_regs(nlook)
+    requires |inits.processed.true_set| == RB.size(code) && |inits.processed.false_set| == RB.size(code)
+    requires inits.context.nextchar == AI.get_char(str, inits.cp)
+    requires inits.active == [AI.init_thread(cap, look, quant)]
+    requires inits.blocked == [] && inits.bestmatch.None?
+    requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
+    ensures result.Some? ==>
+              forall l1: int, la1: R.lookaround, b1: R.regex, l2: int ::
+                (1 <= l1 <= R.max_lookaround(ast) && LTB.LookEntryOk(crv, l1, la1, b1)
+                && 1 <= l2 <= R.max_lookaround(ast) && l2 != l1
+                && AReg.get_cp(result.value.look_regs, l2).Some?) ==> l2 !in LookIdSet(b1)
+  {
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    FStabilityCdn(ast, re, crv, code, str, ov, cdn, inits, cap, look, quant, nlook, result);
   }
 
   /** DELIVERABLE #3: the nested analogue of `LookRowsFromTablesL3a`. From the
@@ -8597,14 +8912,16 @@ module LindenElkMain {
       - (recon_inner) carries every `g in CapIdsInLooks(re)` whose innermost
         owner is a matched positive lookahead, at the owner's fresh-body value
         (`FLookLoopFullCoversInLooks`). */
-  lemma DOrdQuantFromTables(ast: R.regex, re: R.regex, crv: CP.FCompiled,
+/** (G5a-1 P5b) `DOrdQuantFromTables` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma DOrdQuantFromTablesCdn(ast: R.regex, re: R.regex, crv: CP.FCompiled,
                             l1: int, la1: R.lookaround, b1: R.regex,
                             l2: int, la2: R.lookaround, b2: R.regex)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires LookBodiesPlusGateRE(re)   // (G3a) the weak gate (was LooksNoNulledPlusRE)
     requires T.TransWf(re)   // (G3a) for FrameEntryOkFromTables' plus table
-    requires NR.NestedFragmentRE(re)   // (L5 F7c) lifted from NoPosLookbehindRE
+    requires NR.NestedFragmentCdnRE(re)   // (L5 F7c) lifted from NoPosLookbehindRE
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
     requires 1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
@@ -8626,7 +8943,7 @@ module LindenElkMain {
     assert b1 == NI.LookBodyOfRE(re, lid1);
     assert b2 == NI.LookBodyOfRE(re, lid2);
     PIV.QuantIdsSplit(b1);                               // QuantIdsOutsideLooks(b1) <= QuantIds(b1)
-    LookBodyFactsL5(re, crv, lid1);                  // QuantUnique(b1)
+    LookBodyFactsL5Cdn(re, crv, lid1);                  // QuantUnique(b1)
     LookBodiesQuantsDisjointOrNested(re, lid1, lid2);
     // nat-set disjointness: QuantIdsOutsideLooks(b1) * QuantIds(b2) == {}
     if PIV.QuantIds(b1) * PIV.QuantIds(b2) == {} {
@@ -8649,6 +8966,26 @@ module LindenElkMain {
       assert q1 == q2;
       assert q1 in PIV.QuantIdsOutsideLooks(b1) * PIV.QuantIds(b2);
     }
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `DOrdQuantFromTablesCdn`. */
+  lemma DOrdQuantFromTables(ast: R.regex, re: R.regex, crv: CP.FCompiled,
+                            l1: int, la1: R.lookaround, b1: R.regex,
+                            l2: int, la2: R.lookaround, b2: R.regex)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires LookBodiesPlusGateRE(re)   // (G3a) the weak gate (was LooksNoNulledPlusRE)
+    requires T.TransWf(re)   // (G3a) for FrameEntryOkFromTables' plus table
+    requires NR.NestedFragmentRE(re)   // (L5 F7c) lifted from NoPosLookbehindRE
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
+    requires 1 <= l1 <= R.max_lookaround(ast) && 1 <= l2 <= R.max_lookaround(ast) && l1 < l2
+    requires LTB.LookEntryOk(crv, l1, la1, b1) && LTB.LookEntryOk(crv, l2, la2, b2)
+    ensures QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
+  {
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    DOrdQuantFromTablesCdn(ast, re, crv, l1, la1, b1, l2, la2, b2);
   }
 
   /** C4e: (Sq-bound) per-row — each body's OUTSIDE-look quant ids land in the
@@ -8691,6 +9028,30 @@ module LindenElkMain {
       whose quant bank agrees with the INITIAL bank OUTSIDE `QIdsOuter(re)`. Via
       the nested outer-quant classifier `QuantBytecodeClassifiedNestedOuter` +
       `CM.FFindMatchQuantFrame`. */
+/** (G5a-1 P5b) `MainMatchBodyQuantsInitNested` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma MainMatchBodyQuantsInitCdn(re: R.regex, code: RB.code, str: string,
+                                      inits: AI.VmState, cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
+                                      ov: LOr.OracleView, cdn: LCdn.cdns, result: Option<AI.Thread>)
+    requires NR.NestedFragmentCdnRE(re) && PIV.QuantUnique(re)
+    requires code == CP.compile_to_bytecode(re)
+    requires |inits.processed.true_set| == RB.size(code) && |inits.processed.false_set| == RB.size(code)
+    requires inits.context.nextchar == AI.get_char(str, inits.cp)
+    requires 0 <= inits.cp <= |str|
+    requires inits.active == [AI.init_thread(cap, look, quant)]
+    requires inits.blocked == [] && inits.bestmatch.None?
+    requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
+    ensures result.Some? ==> CM.RegsAgreeOutside(result.value.quant_regs, quant, QIdsOuter(re))
+  {
+    QuantBytecodeClassifiedCdnOuter(re);              // QuantWritesInside(code, QIdsOuter(re))
+    assert CM.VmQuantsAgree(inits, quant, QIdsOuter(re)) by {
+      assert AI.init_thread(cap, look, quant).quant_regs == quant;
+      assert CM.RegsAgreeOutside(quant, quant, QIdsOuter(re));
+    }
+    CM.FFindMatchQuantFrame(code, str, inits, ov, LAnc.Forward, cdn, quant, QIdsOuter(re));
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `MainMatchBodyQuantsInitCdn`. */
   lemma MainMatchBodyQuantsInitNested(re: R.regex, code: RB.code, str: string,
                                       inits: AI.VmState, cap: AReg.Regs, look: AReg.Regs, quant: AReg.Regs,
                                       ov: LOr.OracleView, cdn: LCdn.cdns, result: Option<AI.Thread>)
@@ -8704,12 +9065,9 @@ module LindenElkMain {
     requires result == AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0
     ensures result.Some? ==> CM.RegsAgreeOutside(result.value.quant_regs, quant, QIdsOuter(re))
   {
-    QuantBytecodeClassifiedNestedOuter(re);              // QuantWritesInside(code, QIdsOuter(re))
-    assert CM.VmQuantsAgree(inits, quant, QIdsOuter(re)) by {
-      assert AI.init_thread(cap, look, quant).quant_regs == quant;
-      assert CM.RegsAgreeOutside(quant, quant, QIdsOuter(re));
-    }
-    CM.FFindMatchQuantFrame(code, str, inits, ov, LAnc.Forward, cdn, quant, QIdsOuter(re));
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    MainMatchBodyQuantsInitCdn(re, code, str, inits, cap, look, quant, ov, cdn, result);
   }
 
   /** C4e: a look body's quant ids are disjoint from `re`'s OUTSIDE-look quant
@@ -8845,14 +9203,16 @@ module LindenElkMain {
     && LB.LookSetIn(th.look_regs, LB.PosLookIds(re))
   }
 
-  lemma EndpointQuantValueOkRegs(
+/** (G5a-1 P5b) `EndpointQuantValueOkRegs` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma EndpointQuantValueOkRegsCdn(
     ast: R.regex, re: R.regex, crv: CP.FCompiled, str: string,
     ov: LOr.OracleView, th: AI.Thread, ncap: int, nlook: int, nquant: int)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires LookBodiesPlusGateRE(re)   // (G3a) the weak gate (was LooksNoNulledPlusRE)
     requires T.TransWf(re)   // (G3a) for FrameEntryOkFromTables' plus table
-    requires NR.NestedFragmentRE(re)
+    requires NR.NestedFragmentCdnRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
     requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
@@ -8866,8 +9226,8 @@ module LindenElkMain {
             && QuantFrameO(re, res.2, th.quant_regs)
   {
     reveal QuantValueOkO();
-    LookRowsStaticNested(ast, re, crv);
-    RowsAvoidFromTables(ast, re, crv);   // (G3a) later rows never name a row's outside-look quantifiers
+    LookRowsStaticCdn(ast, re, crv);
+    RowsAvoidFromTablesCdn(ast, re, crv);   // (G3a) later rows never name a row's outside-look quantifiers
     reveal WinRegsOk();
     {
       var S := PIV.CaptureRegsSet(PIV.CapIdsInLooks(re));
@@ -8903,7 +9263,7 @@ module LindenElkMain {
           1 <= lx1 <= maxlook && 1 <= lx2 <= maxlook && lx1 < lx2
           && LTB.LookEntryOk(crv, lx1, lax1, b1) && LTB.LookEntryOk(crv, lx2, lax2, b2)
           ensures QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
-        { DOrdQuantFromTables(ast, re, crv, lx1, lax1, b1, lx2, lax2, b2); }
+        { DOrdQuantFromTablesCdn(ast, re, crv, lx1, lax1, b1, lx2, lax2, b2); }
       }
       assert forall lx: int, lax: R.lookaround, body: R.regex ::
           1 <= lx <= maxlook && LTB.LookEntryOk(crv, lx, lax, body) ==> QIdsOuter(body) <= Sq
@@ -8941,12 +9301,8 @@ module LindenElkMain {
     }
   }
 
-  /** (L4 PERF adapter) The whole-bank `FLookLoopValueOkFull` from the STATIC
-      package. `FLookLoopValueLiftFull`'s preconditions are ALL directly ensured
-      by `LookRowsFromTablesNested` (no quant/look variant needed), so this is a
-      thin two-call wrapper — but isolating it keeps the value-lift out of
-      MainTheoremL4's ambient context. */
-  lemma EndpointValueOkRegs(
+  /** (G5a-1 P5b) The narrow form, as a corollary of `EndpointQuantValueOkRegsCdn`. */
+  lemma EndpointQuantValueOkRegs(
     ast: R.regex, re: R.regex, crv: CP.FCompiled, str: string,
     ov: LOr.OracleView, th: AI.Thread, ncap: int, nlook: int, nquant: int)
     requires crv == CP.FFullCompilation(ast)
@@ -8954,6 +9310,38 @@ module LindenElkMain {
     requires LookBodiesPlusGateRE(re)   // (G3a) the weak gate (was LooksNoNulledPlusRE)
     requires T.TransWf(re)   // (G3a) for FrameEntryOkFromTables' plus table
     requires NR.NestedFragmentRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires WinRegsOk(ast, re, crv, str, ov, th, ncap, nlook, nquant)
+    ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                    th.capture_regs, th.look_regs, th.quant_regs, ov);
+            |res.2.a_cp| == nquant && |res.2.a_clk| == nquant
+            && (forall k :: AI.get_idx(res.2.a_clk, k) >= -1)   // (G3a) clocks only: a look row may stamp positions
+            && QuantValueOkO(crv, str, res.2, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+            && QuantFrameO(re, res.2, th.quant_regs)
+  {
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    EndpointQuantValueOkRegsCdn(ast, re, crv, str, ov, th, ncap, nlook, nquant);
+  }
+
+  /** (L4 PERF adapter) The whole-bank `FLookLoopValueOkFull` from the STATIC
+      package. `FLookLoopValueLiftFull`'s preconditions are ALL directly ensured
+      by `LookRowsFromTablesNested` (no quant/look variant needed), so this is a
+      thin two-call wrapper — but isolating it keeps the value-lift out of
+      MainTheoremL4's ambient context. */
+/** (G5a-1 P5b) `EndpointValueOkRegs` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma EndpointValueOkRegsCdn(
+    ast: R.regex, re: R.regex, crv: CP.FCompiled, str: string,
+    ov: LOr.OracleView, th: AI.Thread, ncap: int, nlook: int, nquant: int)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires LookBodiesPlusGateRE(re)   // (G3a) the weak gate (was LooksNoNulledPlusRE)
+    requires T.TransWf(re)   // (G3a) for FrameEntryOkFromTables' plus table
+    requires NR.NestedFragmentCdnRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
     requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
@@ -8969,8 +9357,8 @@ module LindenElkMain {
     ensures FrameEntryAllO(crv, re, ast)
   {
     reveal ValueOkO(), Res0LiveO();
-    LookRowsStaticNested(ast, re, crv);
-    RowsAvoidFromTables(ast, re, crv);   // (G3a) later rows never name a row's outside-look quantifiers
+    LookRowsStaticCdn(ast, re, crv);
+    RowsAvoidFromTablesCdn(ast, re, crv);   // (G3a) later rows never name a row's outside-look quantifiers
     reveal WinRegsOk();
     assert FrameEntryAllO(crv, re, ast) by { reveal FrameEntryAllO(); }
     {
@@ -9004,7 +9392,7 @@ module LindenElkMain {
           1 <= lx1 <= R.max_lookaround(ast) && 1 <= lx2 <= R.max_lookaround(ast) && lx1 < lx2
           && LTB.LookEntryOk(crv, lx1, lax1, b1) && LTB.LookEntryOk(crv, lx2, lax2, b2)
           ensures QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
-        { DOrdQuantFromTables(ast, re, crv, lx1, lax1, b1, lx2, lax2, b2); }
+        { DOrdQuantFromTablesCdn(ast, re, crv, lx1, lax1, b1, lx2, lax2, b2); }
       }
       FLookLoopValueLiftFull(crv, str, 1, R.max_lookaround(ast), c, l, q, ov, S, Slook, ncap, nlook, nquant);
       // Res0LiveO: CapRegWf(res.0) makes cp<0 whenever clk<0 (register invariant)
@@ -9023,17 +9411,8 @@ module LindenElkMain {
     }
   }
 
-  /** (L4 PERF adapter) `FLookLoopChildLinkOk` from the STATIC package. Unlike the
-      value/quant lifts, `FLookLoopChildLinkLift` needs the (c'-look) precondition
-      (the winning look bank is INITIAL on every look body's direct-child lids),
-      which no existing `FromTables` wrapper produces — proving it inline in
-      MainTheoremL4 timed out. Here it is built once, in a minimal context: the
-      main code gates only DIRECT lids (`DirectLidClassified` -> `LookChecksInside
-      (code, DirectLidSet(re))`), so the winning look bank agrees with the initial
-      bank OUTSIDE `DirectLidSet(re)` (`CM.FFindMatchLookFrame`); and a look body's
-      direct children are disjoint from `re`'s direct lids (`DirectLidsNotInBody`),
-      so the bank is initial on each `DirectLidSet(body)`. */
-  lemma EndpointChildLinkOkRegs(
+  /** (G5a-1 P5b) The narrow form, as a corollary of `EndpointValueOkRegsCdn`. */
+  lemma EndpointValueOkRegs(
     ast: R.regex, re: R.regex, crv: CP.FCompiled, str: string,
     ov: LOr.OracleView, th: AI.Thread, ncap: int, nlook: int, nquant: int)
     requires crv == CP.FFullCompilation(ast)
@@ -9048,11 +9427,50 @@ module LindenElkMain {
     requires WinRegsOk(ast, re, crv, str, ov, th, ncap, nlook, nquant)
     ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
                                     th.capture_regs, th.look_regs, th.quant_regs, ov);
+            |res.0.a_cp| == ncap && |res.0.a_clk| == ncap && PIV.CapRegWf(res.0)
+            && |res.1.a_cp| == nlook && |res.1.a_clk| == nlook
+            && |res.2.a_cp| == nquant && |res.2.a_clk| == nquant
+            && ValueOkO(crv, str, res.0, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+            && Res0LiveO(re, res.0) && CaptureFrameO(re, res.0, th.capture_regs)
+    ensures FrameEntryAllO(crv, re, ast)
+  {
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    EndpointValueOkRegsCdn(ast, re, crv, str, ov, th, ncap, nlook, nquant);
+  }
+
+  /** (L4 PERF adapter) `FLookLoopChildLinkOk` from the STATIC package. Unlike the
+      value/quant lifts, `FLookLoopChildLinkLift` needs the (c'-look) precondition
+      (the winning look bank is INITIAL on every look body's direct-child lids),
+      which no existing `FromTables` wrapper produces — proving it inline in
+      MainTheoremL4 timed out. Here it is built once, in a minimal context: the
+      main code gates only DIRECT lids (`DirectLidClassified` -> `LookChecksInside
+      (code, DirectLidSet(re))`), so the winning look bank agrees with the initial
+      bank OUTSIDE `DirectLidSet(re)` (`CM.FFindMatchLookFrame`); and a look body's
+      direct children are disjoint from `re`'s direct lids (`DirectLidsNotInBody`),
+      so the bank is initial on each `DirectLidSet(body)`. */
+/** (G5a-1 P5b) `EndpointChildLinkOkRegs` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma EndpointChildLinkOkRegsCdn(
+    ast: R.regex, re: R.regex, crv: CP.FCompiled, str: string,
+    ov: LOr.OracleView, th: AI.Thread, ncap: int, nlook: int, nquant: int)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires LookBodiesPlusGateRE(re)   // (G3a) the weak gate (was LooksNoNulledPlusRE)
+    requires T.TransWf(re)   // (G3a) for FrameEntryOkFromTables' plus table
+    requires NR.NestedFragmentCdnRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires WinRegsOk(ast, re, crv, str, ov, th, ncap, nlook, nquant)
+    ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                    th.capture_regs, th.look_regs, th.quant_regs, ov);
             ChildLinkO(crv, str, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
   {
     reveal ChildLinkO();
-    LookRowsStaticNested(ast, re, crv);
-    RowsAvoidFromTables(ast, re, crv);   // (G3a) later rows never name a row's outside-look quantifiers
+    LookRowsStaticCdn(ast, re, crv);
+    RowsAvoidFromTablesCdn(ast, re, crv);   // (G3a) later rows never name a row's outside-look quantifiers
     reveal WinRegsOk();
     var maxlook := R.max_lookaround(ast);
     var initlk := AReg.init_regs(nlook);
@@ -9123,10 +9541,33 @@ module LindenElkMain {
           1 <= lx1 <= maxlook && 1 <= lx2 <= maxlook && lx1 < lx2
           && LTB.LookEntryOk(crv, lx1, lax1, b1) && LTB.LookEntryOk(crv, lx2, lax2, b2)
           ensures QIdsOuter(b1) * LKC.QIdsInt(b2) == {}
-        { DOrdQuantFromTables(ast, re, crv, lx1, lax1, b1, lx2, lax2, b2); }
+        { DOrdQuantFromTablesCdn(ast, re, crv, lx1, lax1, b1, lx2, lax2, b2); }
       }
       FLookLoopChildLinkLift(crv, str, 1, maxlook, c, l, q, ov, S, Slook, ncap, nlook, nquant);
     }
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `EndpointChildLinkOkRegsCdn`. */
+  lemma EndpointChildLinkOkRegs(
+    ast: R.regex, re: R.regex, crv: CP.FCompiled, str: string,
+    ov: LOr.OracleView, th: AI.Thread, ncap: int, nlook: int, nquant: int)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires LookBodiesPlusGateRE(re)   // (G3a) the weak gate (was LooksNoNulledPlusRE)
+    requires T.TransWf(re)   // (G3a) for FrameEntryOkFromTables' plus table
+    requires NR.NestedFragmentRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires WinRegsOk(ast, re, crv, str, ov, th, ncap, nlook, nquant)
+    ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                    th.capture_regs, th.look_regs, th.quant_regs, ov);
+            ChildLinkO(crv, str, res.1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+  {
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    EndpointChildLinkOkRegsCdn(ast, re, crv, str, ov, th, ncap, nlook, nquant);
   }
 
   /** (L4 PERF adapter) The res.1 look-bank invariants `LookCpsOracleTrue`,
@@ -9214,6 +9655,50 @@ module LindenElkMain {
                                    th.capture_regs, th.look_regs, th.quant_regs, ov).1, P, crv);
   }
 
+/** (G5a-1 P5b) `EndpointLookInvRegs` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma EndpointLookInvRegsCdn(
+    ast: R.regex, re: R.regex, crv: CP.FCompiled, str: string,
+    ov: LOr.OracleView, th: AI.Thread, ncap: int, nlook: int, nquant: int)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires LookBodiesPlusGateRE(re)   // (G3a) the weak gate (was LooksNoNulledPlusRE)
+    requires T.TransWf(re)   // (G3a) for FrameEntryOkFromTables' plus table
+    requires NR.NestedFragmentCdnRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires WinRegsOk(ast, re, crv, str, ov, th, ncap, nlook, nquant)
+    ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                    th.capture_regs, th.look_regs, th.quant_regs, ov);
+            LookInvO(res.1, ov, str)
+            && ThreadLookInvO(th.look_regs, ov, str)
+            && LookPosO(res.1, crv)   // (gate C, G2)
+  {
+    LookPosAtEndpoint(ast, re, crv, str, ov, th, ncap, nlook, nquant);
+    reveal LookInvO(), ThreadLookInvO();
+    LookRowsStaticCdn(ast, re, crv);
+    RowsAvoidFromTablesCdn(ast, re, crv);   // (G3a) later rows never name a row's outside-look quantifiers
+    reveal WinRegsOk();
+    var maxlook := R.max_lookaround(ast);
+    {
+      var S := PIV.CaptureRegsSet(PIV.CapIdsInLooks(re));
+      var Slook := LookIdSet(re);
+      var c := th.capture_regs;
+      var l := th.look_regs;
+      var q := th.quant_regs;
+      assert CM.ThreadRegsWf(th, ncap, nlook, nquant);
+      assert CM.LookClkSetWithCp(l);
+      assert CM.LookCpSetWithClk(l);
+      assert CM.LookCpsOracleTrue(l, ov);
+      FLookLoopLookOracleTrue(crv, str, 1, maxlook, c, l, q, ov, S, Slook, ncap, nlook, nquant);
+      FLookLoopLookCpSet(crv, str, 1, maxlook, c, l, q, ov, S, Slook, ncap, nlook, nquant);
+      assert ThreadLookInvO(l, ov, str) by { reveal ThreadLookInvO(); assert CM.LookCpsLE(l, |str|); }
+    }
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `EndpointLookInvRegsCdn`. */
   lemma EndpointLookInvRegs(
     ast: R.regex, re: R.regex, crv: CP.FCompiled, str: string,
     ov: LOr.OracleView, th: AI.Thread, ncap: int, nlook: int, nquant: int)
@@ -9233,26 +9718,9 @@ module LindenElkMain {
             && ThreadLookInvO(th.look_regs, ov, str)
             && LookPosO(res.1, crv)   // (gate C, G2)
   {
-    LookPosAtEndpoint(ast, re, crv, str, ov, th, ncap, nlook, nquant);
-    reveal LookInvO(), ThreadLookInvO();
-    LookRowsStaticNested(ast, re, crv);
-    RowsAvoidFromTables(ast, re, crv);   // (G3a) later rows never name a row's outside-look quantifiers
-    reveal WinRegsOk();
-    var maxlook := R.max_lookaround(ast);
-    {
-      var S := PIV.CaptureRegsSet(PIV.CapIdsInLooks(re));
-      var Slook := LookIdSet(re);
-      var c := th.capture_regs;
-      var l := th.look_regs;
-      var q := th.quant_regs;
-      assert CM.ThreadRegsWf(th, ncap, nlook, nquant);
-      assert CM.LookClkSetWithCp(l);
-      assert CM.LookCpSetWithClk(l);
-      assert CM.LookCpsOracleTrue(l, ov);
-      FLookLoopLookOracleTrue(crv, str, 1, maxlook, c, l, q, ov, S, Slook, ncap, nlook, nquant);
-      FLookLoopLookCpSet(crv, str, 1, maxlook, c, l, q, ov, S, Slook, ncap, nlook, nquant);
-      assert ThreadLookInvO(l, ov, str) by { reveal ThreadLookInvO(); assert CM.LookCpsLE(l, |str|); }
-    }
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    EndpointLookInvRegsCdn(ast, re, crv, str, ov, th, ncap, nlook, nquant);
   }
 
   /** (L4 PERF adapter) The TOP-look frame: `FLookLoop` leaves every TOP lid's
@@ -9260,14 +9728,16 @@ module LindenElkMain {
       Verbatim from MainTheoremL4's block — per top lid `l`, the (h')@l premise
       (`l !in LookIdSet` of every row's body, via `TopLookNotNested`) feeds
       `FLookLoopTopLook{Clk,Cp}StableFull`. */
-  lemma EndpointTopLookFrameRegs(
+/** (G5a-1 P5b) `EndpointTopLookFrameRegs` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma EndpointTopLookFrameRegsCdn(
     ast: R.regex, re: R.regex, crv: CP.FCompiled, str: string,
     ov: LOr.OracleView, th: AI.Thread, ncap: int, nlook: int, nquant: int)
     requires crv == CP.FFullCompilation(ast)
     requires re == R.lazy_prefix(ast)
     requires LookBodiesPlusGateRE(re)   // (G3a) the weak gate (was LooksNoNulledPlusRE)
     requires T.TransWf(re)   // (G3a) for FrameEntryOkFromTables' plus table
-    requires NR.NestedFragmentRE(re)
+    requires NR.NestedFragmentCdnRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
     requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
@@ -9278,8 +9748,8 @@ module LindenElkMain {
             TopLookFrameO(re, res.1, th.look_regs)
   {
     reveal TopLookFrameO();
-    LookRowsStaticNested(ast, re, crv);
-    RowsAvoidFromTables(ast, re, crv);   // (G3a) later rows never name a row's outside-look quantifiers
+    LookRowsStaticCdn(ast, re, crv);
+    RowsAvoidFromTablesCdn(ast, re, crv);   // (G3a) later rows never name a row's outside-look quantifiers
     reveal WinRegsOk();
     var maxlook := R.max_lookaround(ast);
     {
@@ -9321,5 +9791,28 @@ module LindenElkMain {
         FLookLoopTopLookCpStableFull(crv, str, 1, maxlook, lz as int, c, l, q, ov, S, Slook, ncap, nlook, nquant);
       }
     }
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `EndpointTopLookFrameRegsCdn`. */
+  lemma EndpointTopLookFrameRegs(
+    ast: R.regex, re: R.regex, crv: CP.FCompiled, str: string,
+    ov: LOr.OracleView, th: AI.Thread, ncap: int, nlook: int, nquant: int)
+    requires crv == CP.FFullCompilation(ast)
+    requires re == R.lazy_prefix(ast)
+    requires LookBodiesPlusGateRE(re)   // (G3a) the weak gate (was LooksNoNulledPlusRE)
+    requires T.TransWf(re)   // (G3a) for FrameEntryOkFromTables' plus table
+    requires NR.NestedFragmentRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv) && LTB.LidsWellNested(re)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires WinRegsOk(ast, re, crv, str, ov, th, ncap, nlook, nquant)
+    ensures var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
+                                    th.capture_regs, th.look_regs, th.quant_regs, ov);
+            TopLookFrameO(re, res.1, th.look_regs)
+  {
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    EndpointTopLookFrameRegsCdn(ast, re, crv, str, ov, th, ncap, nlook, nquant);
   }
 }

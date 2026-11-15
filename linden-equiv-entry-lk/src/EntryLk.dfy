@@ -690,19 +690,18 @@ module LindenElkEntryLk {
   /** (G5a-1 P2, row F0) THE SWITCH: whether a greedy CDN plus is admitted at a head. `false` until row F.
       Opaque and nullary: a proof that never reveals it holds for either value, so a consumer that
       splits on `NUL.CINullableL(r1)` proves its CDN arm with content while the switch is still off. */
-  opaque ghost predicate CdnHeadsOn() { false }
+  opaque ghost predicate CdnHeadsOn() { true }
+
+  /** (G5a-1 row F) The switch is on: a greedy CDN plus is a head of the Linden fragment. The ONLY
+      reveal of the switch; whoever needs a CDN head in the fragment calls this. */
+  lemma CdnHeadsAreOn()
+    ensures CdnHeadsOn()
+  {
+    reveal CdnHeadsOn();
+  }
 
   opaque ghost predicate CinHeadL(greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex) {
     (min > 0 && delta.Inf? && greedy && !NUL.NonNullableL(r1)) ==> (NUL.CINullableL(r1) || CdnHeadsOn())
-  }
-
-  lemma CinHeadOf(greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex)
-    requires CinHeadL(greedy, min, delta, r1)
-    requires min > 0 && delta.Inf? && greedy && !NUL.NonNullableL(r1)
-    ensures NUL.CINullableL(r1)
-  {
-    reveal CinHeadL();
-    reveal CdnHeadsOn();   // (row F0) THE CRUTCH: true only while the switch is off; callers move to a CDN arm
   }
 
   /** (row F0) The lasting form: a head with no CDN-greedy plus is CIN, whatever the switch says. */
@@ -1114,29 +1113,26 @@ module LindenElkEntryLk {
     case _ =>
   }
 
-  /** (G5a-1 step 3-L0) The recursive fragment has no CDN-greedy plus (its quantifier arm says so at
-      every head; its look arm recurses). */
-  lemma PikeLkRegexRecNoCdn(r: L.Regex)
-    requires PikeLkRegexRec(r)
-    ensures NUL.NoCdnPlusL(r)
-    decreases r
-  {
-    match r
-    case Disjunction(r1, r2) => PikeLkRegexRecNoCdn(r1); PikeLkRegexRecNoCdn(r2);
-    case Sequence(r1, r2) => PikeLkRegexRecNoCdn(r1); PikeLkRegexRecNoCdn(r2);
-    case Quantified(_, _, _, r1) => PikeLkRegexRecNoCdn(r1); reveal CinHeadL(); reveal CdnHeadsOn();   // (row F0) crutch: false as stated once the switch is on   // (G5a-1 3-L0)
-    case Group(_, r1) => PikeLkRegexRecNoCdn(r1);
-    case LookaroundR(_, r1) => PikeLkRegexRecNoCdn(r1);
-    case _ =>
-  }
-
   /** (G5a-1 step 3-L0) A narrow-fragment RegElk regex translates to a regex with no CDN-greedy plus. */
   lemma TranslateFragmentNoCdn(re: R.regex)
     requires T.TransWf(re) && NR.NestedFragmentRE(re)
     ensures NUL.NoCdnPlusL(T.Translate(re))
+    decreases re
   {
-    TranslateFragmentPikeLkRec(re);
-    PikeLkRegexRecNoCdn(T.Translate(re));
+    // (G5a-1 row F) by its own induction: the Linden fragment no longer says "no CDN plus"
+    match re
+    case Re_alt(r1, r2) => TranslateFragmentNoCdn(r1); TranslateFragmentNoCdn(r2);
+    case Re_con(r1, r2) => TranslateFragmentNoCdn(r1); TranslateFragmentNoCdn(r2);
+    case Re_capture(_, r1) => TranslateFragmentNoCdn(r1);
+    case Re_lookaround(_, _, r1) => TranslateFragmentNoCdn(r1);
+    case Re_quant(nul, qid, q, r1) =>
+      TranslateFragmentNoCdn(r1);
+      // the head: a greedy unbounded plus of the narrow fragment is NonNullable or CI-nullable
+      if q.min > 0 && q.max == None && q.greedy {
+        if R.nullable(r1) == R.NonNullable { NUL.TransNonNullable(r1); }
+        NUL.TransCINullable(r1);
+      }
+    case _ =>
   }
 
   // ===========================================================================

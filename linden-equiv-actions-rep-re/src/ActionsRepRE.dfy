@@ -904,29 +904,6 @@ module LindenElkActionsRep {
     var em, e1 := NfaRepLCdnInv(rer, qm, greedy, min, r1, c, pc1, pc2);
   }
 
-  /** At a star whose head is not the fast path's forward fork, the body is
-      either NonNullable (do-while loop view) or CI-nullable under a greedy
-      star (CIN loop view) — the case split every loop-view inversion takes. */
-  lemma NfaRepLStarLoopViews(rer: LW.RegExpRecord, qm: QMap, greedy: bool, r1: L.Regex, c: RB.code, pc1: nat, pc2: nat)
-    requires NfaRepL(rer, qm, L.Quantified(greedy, 0, LN.Inf, r1), c, pc1, pc2)
-    requires !(exists e1: nat ::
-          NR.GetPcRE(c, pc1) == Some(if greedy then RB.Fork(pc1 + 1, e1 + 2) else RB.Fork(e1 + 2, pc1 + 1))
-          && (exists qid: int ::
-                NR.GetPcRE(c, pc1 + 1) == Some(RB.SetQuantToClock(qid, false))
-                && qid in qm.quants && qm.quants[qid] == L.DefGroups(r1))
-          && NR.GetPcRE(c, pc1 + 2) == Some(RB.BeginLoop)
-          && NfaRepL(rer, qm, r1, c, pc1 + 3, e1)
-          && NR.GetPcRE(c, e1) == Some(RB.EndLoop)
-          && NR.GetPcRE(c, e1 + 1) == Some(RB.Jmp(pc1))
-          && pc2 == e1 + 2)
-    ensures NUL.NonNullableL(r1) || (NUL.CINullableL(r1) && greedy && NfaRepStarCinL(rer, qm, r1, c, pc1, pc2))
-    ensures NUL.CINullableL(r1) ==> !NUL.NonNullableL(r1)
-  {
-    reveal EL.CdnHeadsOn();   // (G5a-1 row A3) THE SECOND CRUTCH: no CDN loop view while the switch is off.
-                              // Callers move to `NfaRepLStarLoopViews3`; delete this lemma at row F.
-    if NUL.CINullableL(r1) { NUL.CINotNonNullableL(r1); }
-  }
-
   /** (G5a-1 row A3) The lasting form: do-while view, CIN view, or CDN view. */
   lemma NfaRepLStarLoopViews3(rer: LW.RegExpRecord, qm: QMap, greedy: bool, r1: L.Regex, c: RB.code, pc1: nat, pc2: nat)
     requires NfaRepL(rer, qm, L.Quantified(greedy, 0, LN.Inf, r1), c, pc1, pc2)

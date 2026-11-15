@@ -1937,12 +1937,14 @@ module LindenElkLiftSimOracle {
   /** (perf) The FORWARD BASE arm of `DeepFindRec`, extracted so its assertions are
       checked in a small context (same treatment as `DeepFindRecLB`).
       Mutually recursive with `DeepFindRec` on `(|LookIds(host)|, arm)`. */
-  lemma DeepFindRecFwdBase(
+/** (G5a-1 P5b) `DeepFindRecFwdBase` on the top-level fragment: the same proof, the premise widened and its callees
+      on their `…Cdn` forms where the argument is the top regex or a non-look subterm of it. */
+  lemma DeepFindRecFwdBaseCdn(
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
     ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
     host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
     // ---- whole-regex statics (fixed through the recursion) ----
-    requires T.TransWf(re) && NR.NestedFragmentRE(re)
+    requires T.TransWf(re) && NR.NestedFragmentCdnRE(re)
     requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
     requires LTB.LookTablesOk(re, crv)
@@ -1978,7 +1980,7 @@ module LindenElkLiftSimOracle {
             lsub.Some? && g2 in lsub.value
     requires !crv.f_look_types[A as int].Lookbehind?
     requires g2 !in PIV.CapIdsInLooks(host)
-    decreases |LTB.LookIds(host)|, 0
+    decreases |LTB.LookIds(host)|, 0, 0
   {
     // (2026-08-25) this lemma takes the L4-perf OPAQUE bundles (`117b6aa`) but its
     // body reads their foralls (`FrameEntryOk` at A, `OracleOkSuffix` at cps) —
@@ -2022,6 +2024,55 @@ module LindenElkLiftSimOracle {
     assert LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cpA));
     FreshBodyDirectInSubFirstLeaf(rer, qm, crv, str, ov, A, res1, host, bodycode,
                                   endlH, 0, g2, ncap, nlook, nquant);
+  }
+
+  /** (G5a-1 P5b) The narrow form, as a corollary of `DeepFindRecFwdBaseCdn`. */
+  lemma DeepFindRecFwdBase(
+    rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ast: R.regex, re: R.regex,
+    ov: LOr.OracleView, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
+    host: R.regex, A: nat, owner: nat, g2: nat, ncap: int, nlook: int, nquant: int)
+    // ---- whole-regex statics (fixed through the recursion) ----
+    requires T.TransWf(re) && NR.NestedFragmentRE(re)
+    requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires |crv.f_look_types| == |crv.f_look_ast|
+    requires forall x: nat :: x in LTB.LookIds(re) ==> 1 <= x <= R.max_lookaround(ast)
+    requires forall x: nat :: x in LTB.LookIds(re) ==> (x as int) in qm.looks
+    requires nlook == R.max_lookaround(ast) + 1
+    requires qm.ov == ov && !rer.multiline && !rer.ignoreCase && |ov| == |str| + 1
+    requires forall l: int :: l in qm.looks ==> l >= 0
+    requires M.OracleSufAllO(rer, qm, str)
+    requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
+    requires M.FrameEntryAllO(crv, re, ast)
+    // ---- global res-side facts (fixed) ----
+    requires |res1.a_cp| == nlook && |res1.a_clk| == nlook
+    requires CM.LookCpSetWithClk(res1) && CM.LookCpsLE(res1, |str|)
+    requires CM.LookCpsOracleTrue(res1, ov)
+    requires M.FLookLoopChildLinkOk(crv, str, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
+    // ---- the OWNER package (A1/A2's conclusions at g2's innermost owner) ----
+    requires g2 in PIV.CapIdsInLooks(re)
+    requires owner in LTB.LookIds(re)
+    requires g2 in PIV.CapIds(NI.LookBodyOfRE(re, owner))
+    requires g2 !in PIV.CapIdsInLooks(NI.LookBodyOfRE(re, owner))
+    requires var rfO := M.FreshBodyMatchPlus(crv, str, owner as int, res1, ov, ncap, nlook, nquant);   // (G3a)
+             rfO.Some? && g2 in PIV.GmOfLive(NI.LookBodyOfRE(re, owner),
+                                             rfO.value.capture_regs, rfO.value.look_regs, rfO.value.quant_regs)
+    // ---- per-level data ----
+    requires A in LTB.LookIds(re)
+    requires host == NI.LookBodyOfRE(re, A)
+    requires M.MatchedPosLA(crv, res1, A as int)
+    requires g2 in PIV.CapIds(host)
+    requires PIV.PathPresentLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, g2)
+    ensures var lsub := SubFirstLeafAt(rer, crv, str, A as int, res1);
+            lsub.Some? && g2 in lsub.value
+    requires !crv.f_look_types[A as int].Lookbehind?
+    requires g2 !in PIV.CapIdsInLooks(host)
+    decreases |LTB.LookIds(host)|, 0
+  {
+    NR.NarrowIsCdn(re);
+    hide *;   // the wide premises are this lemma's own: match by name
+    DeepFindRecFwdBaseCdn(rer, qm, crv, str, ast, re, ov, res0, res1, res2, host, A, owner, g2, ncap, nlook, nquant);
   }
 
   /** The L4 scope is a special case of the L5 scope. */

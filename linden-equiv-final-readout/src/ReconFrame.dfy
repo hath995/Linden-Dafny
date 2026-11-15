@@ -178,6 +178,98 @@ module LindenElkReconFrame {
     NRR.AgreeOutsideTrans(rg2, rgA, rg, CapsQ(r, Q), LooksQ(r, Q), QuantsQ(r, Q));
   }
 
+  // (P5 row E) The sharp frame on the scope `NRC.CdnTopRE` (generated from the two lemmas above).
+  lemma FNulledPlusFrameQS(qm: AR.QMap, r: R.regex, rg: Regs3, plus_bcv: seq<RB.code>, str: string,
+                          ov: LOr.OracleView, Q: set<int>)
+    requires PIV.CapUnique(r) && PIV.QuantUnique(r) && NRC.CdnTopRE(r) && NRR.PlusTableOkS(r, plus_bcv)
+    requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && ov == qm.ov && NRO.StampsInRangeS(r, rg, str)
+    requires StampsIn(r, rg, Q)
+    ensures NRR.AgreeOutside(NRO.FP(r, rg, plus_bcv, str, ov), rg, CapsQ(r, Q), LooksQ(r, Q), QuantsQ(r, Q))
+    decreases r
+  {
+    NRC.CdnTopChild(r);   // (P5) the scope at the subterms; a stamped node's body holds no CDN plus
+    NRO.StampsInRangeSChild(r, rg, str);
+    var rg2 := NRO.FP(r, rg, plus_bcv, str, ov);
+    match r
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_lookaround(_, _, _) =>
+    case Re_capture(_, r1) =>
+      NRR.PlusTableOkSChildren(r, plus_bcv);
+      FNulledPlusFrameQS(qm, r1, rg, plus_bcv, str, ov, Q);
+    case Re_alt(r1, r2) =>
+      FrameQPairS(qm, r, r1, r2, rg, plus_bcv, str, ov, Q);
+    case Re_con(r1, r2) =>
+      FrameQPairS(qm, r, r1, r2, rg, plus_bcv, str, ov, Q);
+    case Re_quant(nul, qid, q, body) =>
+      NRR.PlusTableOkSChildren(r, plus_bcv);
+      QSetsSub(body, Q);
+      match AReg.get_cp(rg.2, qid) {
+        case None =>
+          FNulledPlusFrameQS(qm, body, rg, plus_bcv, str, ov, Q);
+          NRR.AgreeOutsideWeaken(rg2, rg, CapsQ(body, Q), LooksQ(body, Q), QuantsQ(body, Q),
+                                 CapsQ(r, Q), LooksQ(r, Q), QuantsQ(r, Q));
+        case Some(start_cp) =>
+          assert qid >= 0 && (qid as nat) in PIV.QuantIds(r);
+          assert AI.get_idx(rg.2.a_cp, qid) >= 0;
+          assert (qid as int) in Q;
+          // rung E's frame at a stamped quantifier: the body's registers alone move
+          var start_clock := AI.opt_int(AReg.get_clock(rg.2, qid));
+          var code := AI.get_code_v(plus_bcv, qid);
+          var ctx := AI.cp_context(start_cp, str, RA.Forward);
+          var subcdn := LCdn.compile_cdns(body);
+          var subtable := LCdn.build_cdn_v(subcdn, start_cp, ov, ctx, RA.Forward);
+          var (rgR, ovR) := NRR.ReconAt(code, body, subtable, start_cp, rg, start_clock, plus_bcv, str, ov);
+          assert rg2 == rgR;
+          assert 0 <= start_cp <= |str| && start_clock >= -1;
+          // (P5) a set stamp sits on a stamp-plus; its body holds no CDN plus; the node is read as CIN
+          assert NRR.QidStampPlus(r, qid as nat);
+          assert NRC.NoCdnPlusRE(body);
+          NRR.RelabOk(r, plus_bcv);
+          NRR.ReconAtFrame(qm, NRR.Relab(r), body, qid, code, subtable, start_cp as nat, rg, start_clock, plus_bcv, str, ov);
+          NRR.AgreeOutsideWeaken(rg2, rg, NRR.CapRegsOf(body), NRR.LookRegsOf(body), NRR.QuantRegsOf(body),
+                                 CapsQ(r, Q), LooksQ(r, Q), QuantsQ(r, Q));
+      }
+  }
+
+  lemma FrameQPairS(qm: AR.QMap, r: R.regex, r1: R.regex, r2: R.regex, rg: Regs3, plus_bcv: seq<RB.code>,
+                   str: string, ov: LOr.OracleView, Q: set<int>)
+    requires r == R.Re_alt(r1, r2) || r == R.Re_con(r1, r2)
+    requires PIV.CapUnique(r) && PIV.QuantUnique(r) && NRC.CdnTopRE(r) && NRR.PlusTableOkS(r, plus_bcv)
+    requires NRR.WfRegs(rg) && NRR.CapValWf(rg) && ov == qm.ov && NRO.StampsInRangeS(r, rg, str)
+    requires StampsIn(r, rg, Q)
+    ensures NRR.AgreeOutside(NRO.FP(r, rg, plus_bcv, str, ov), rg, CapsQ(r, Q), LooksQ(r, Q), QuantsQ(r, Q))
+    decreases r, 0
+  {
+    NRC.CdnTopChild(r);
+    var rg2 := NRO.FP(r, rg, plus_bcv, str, ov);
+    NRR.PlusTableOkSChildren(r, plus_bcv);
+    assert NRR.L1(r) == r1 && NRR.L2(r) == r2;
+    assert PIV.QuantIds(r1) <= PIV.QuantIds(r) && PIV.QuantIds(r2) <= PIV.QuantIds(r);
+    assert NRO.StampsInRangeS(r1, rg, str) by {
+      NRO.StampsInRangeSTransfer(r, r1, rg, rg, str);
+    }
+    FNulledPlusFrameQS(qm, r1, rg, plus_bcv, str, ov, Q);
+    NRO.FNulledPlusFrameS(qm, r1, rg, plus_bcv, str, ov);
+    var rgA := NRO.FP(r1, rg, plus_bcv, str, ov);
+    NRR.DisjointRegs(r); NRR.InnerSub(r1); QSetsSub(r1, Q);
+    forall k: int | k in NRR.QuantRegsOf(r2) ensures AI.get_idx(rgA.2.a_cp, k) == AI.get_idx(rg.2.a_cp, k) {
+      assert NRR.L1(r) == r1 && NRR.L2(r) == r2;
+      assert k !in NRR.QuantRegsOf(r1) * NRR.QuantRegsOf(r2);
+    }
+    assert NRO.StampsInRangeS(r2, rgA, str) by {
+      NRO.StampsInRangeSTransfer(r, r2, rg, rgA, str);
+    }
+    QuantIdsInRegs(r2);
+    StampsInSub(r, r2, rg, rgA, Q);
+    FNulledPlusFrameQS(qm, r2, rgA, plus_bcv, str, ov, Q);
+    assert rg2 == NRO.FP(r2, rgA, plus_bcv, str, ov);
+    NRR.AgreeOutsideWeaken(rg2, rgA, CapsQ(r2, Q), LooksQ(r2, Q), QuantsQ(r2, Q), CapsQ(r, Q), LooksQ(r, Q), QuantsQ(r, Q));
+    NRR.AgreeOutsideWeaken(rgA, rg, CapsQ(r1, Q), LooksQ(r1, Q), QuantsQ(r1, Q), CapsQ(r, Q), LooksQ(r, Q), QuantsQ(r, Q));
+    NRR.AgreeOutsideTrans(rg2, rgA, rg, CapsQ(r, Q), LooksQ(r, Q), QuantsQ(r, Q));
+  }
+
   // ===========================================================================
   // CIN-tameness: look-free CIN bodies keep the look bank
   // ===========================================================================
@@ -267,6 +359,68 @@ module LindenElkReconFrame {
         }
       }
       LooksQEmpty(r1, Q);
+    case _ =>
+  }
+
+  // (G5a-1 P5, row L) Bridge 3: the lemmas above on `StampQids` and the scope `NRC.CdnTopRE`
+  // (generated from their text; see probes/G5a1-P5-L0-bridge3.py.txt).
+  ghost predicate QInStamp(r: R.regex, Q: set<int>) {
+    forall q: nat :: q in PIV.QuantIds(r) && (q as int) in Q ==> NRR.QidStampPlus(r, q)
+  }
+
+  lemma LooksQEmptyS(r: R.regex, Q: set<int>)
+    requires CinBodiesLookFreeRE(r) && NRC.CdnTopRE(r) && PIV.QuantUnique(r) && QInStamp(r, Q)
+    ensures LooksQ(r, Q) == {}
+    decreases r
+  {
+    NRC.CdnTopChild(r);   // (P5) the scope at the subterms
+    match r
+    case Re_alt(r1, r2) =>
+      assert QInStamp(r1, Q) by {
+        forall q2: nat | q2 in PIV.QuantIds(r1) && (q2 as int) in Q ensures NRR.QidStampPlus(r1, q2) {
+          assert q2 in PIV.QuantIds(r) && NRR.QidStampPlus(r, q2);
+        }
+      }
+      assert QInStamp(r2, Q) by {
+        forall q2: nat | q2 in PIV.QuantIds(r2) && (q2 as int) in Q ensures NRR.QidStampPlus(r2, q2) {
+          assert q2 !in PIV.QuantIds(r1) by { if q2 in PIV.QuantIds(r1) { assert q2 in PIV.QuantIds(r1) * PIV.QuantIds(r2); } }
+          assert q2 in PIV.QuantIds(r) && NRR.QidStampPlus(r, q2);
+        }
+      }
+      LooksQEmptyS(r1, Q); LooksQEmptyS(r2, Q);
+    case Re_con(r1, r2) =>
+      assert QInStamp(r1, Q) by {
+        forall q2: nat | q2 in PIV.QuantIds(r1) && (q2 as int) in Q ensures NRR.QidStampPlus(r1, q2) {
+          assert q2 in PIV.QuantIds(r) && NRR.QidStampPlus(r, q2);
+        }
+      }
+      assert QInStamp(r2, Q) by {
+        forall q2: nat | q2 in PIV.QuantIds(r2) && (q2 as int) in Q ensures NRR.QidStampPlus(r2, q2) {
+          assert q2 !in PIV.QuantIds(r1) by { if q2 in PIV.QuantIds(r1) { assert q2 in PIV.QuantIds(r1) * PIV.QuantIds(r2); } }
+          assert q2 in PIV.QuantIds(r) && NRR.QidStampPlus(r, q2);
+        }
+      }
+      LooksQEmptyS(r1, Q); LooksQEmptyS(r2, Q);
+    case Re_quant(nul, qid, q, body) =>
+      assert QInStamp(body, Q) by {
+        forall q2: nat | q2 in PIV.QuantIds(body) && (q2 as int) in Q ensures NRR.QidStampPlus(body, q2) {
+          assert q2 in PIV.QuantIds(r);
+          assert !(qid >= 0 && (qid as nat) == q2);   // QuantUnique: the node's id is not in its body
+        }
+      }
+      LooksQEmptyS(body, Q);
+      if qid in Q {
+        assert qid >= 0 && (qid as nat) in PIV.QuantIds(r);
+        assert NRR.QidStampPlus(r, qid as nat);
+        LookFreeNoLookRegs(body);
+      }
+    case Re_capture(_, r1) =>
+      assert QInStamp(r1, Q) by {
+        forall q2: nat | q2 in PIV.QuantIds(r1) && (q2 as int) in Q ensures NRR.QidStampPlus(r1, q2) {
+          assert q2 in PIV.QuantIds(r) && NRR.QidStampPlus(r, q2);
+        }
+      }
+      LooksQEmptyS(r1, Q);
     case _ =>
   }
 }

@@ -110,17 +110,6 @@ module LindenElkCinWalk {
     if NUL.CINullableL(r1) { NUL.CINotNonNullableL(r1); }
   }
 
-  /** (G5a-1 row G) A CRUTCH, true only while `EL.CdnHeadsOn()` is off: a head in the fragment is not CDN.
-      For machine-B inverters of `BoolTreeLkX` that must dismiss the CDN arm until row K gives them one.
-      Delete with `EL.CinHeadOf` at row F. */
-  lemma NotCdnGreedyOfHead(greedy: bool, min: nat, delta: LN.NoI, r1: L.Regex)
-    requires min > 0 && EL.CinHeadL(greedy, min, delta, r1)
-    ensures !CdnGreedyL(greedy, delta, r1)
-  {
-    reveal CdnGreedyL;
-    if greedy && delta == LN.Inf && !NUL.NonNullableL(r1) { EL.CinHeadOf(greedy, min, delta, r1); }
-  }
-
   /** `EL.BoolTreeLk` with the CIN-greedy plus at `min == 1` in the ENGINE'S
       shape: the head fork's loop arm (the star's iteration at `CannotExit`,
       under `Reset(gidl)`) and its skip arm (the stamp's `Reset(gidl)` over the

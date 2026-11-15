@@ -47,8 +47,11 @@ module LindenRegexApi {
       `MCL.MainTheoremL5Cin`'s precondition. `SUPPORTED_FRAGMENT.md` lists what this admits
       and why each gap exists. */
   predicate Supported(pattern: R.raw_regex) {
-    NR.NestedFragmentRaw(pattern) && T.Latin1Wf(pattern)
+    NR.NestedFragmentCdnRaw(pattern) && T.Latin1Wf(pattern)
     && MCL.CinBodiesLookFreeX(R.lazy_prefix(R.annotate(pattern)))
+    // (G5a-1) a greedy CDN plus is supported at top level, with a look-free body holding no
+    // greedy nullable unbounded plus: `(\\b|a)+`, `(a?$)+`, `(^|a)+b`
+    && MCL.CdnTopX(R.lazy_prefix(R.annotate(pattern)))
   }
 
   // ==========================================================================
@@ -72,9 +75,8 @@ module LindenRegexApi {
     ensures LES.MatcherSpec(pattern, str, Match(pattern, str))
   {
     MCL.CinBodiesLookFreeXSound(R.lazy_prefix(R.annotate(pattern)));
-    NR.SpecRegexNestedFragment(pattern);
-    M.NestedNoCdn(R.lazy_prefix(R.annotate(pattern)));                 // (G3b) the gate from the CIN fragment
-    GF.GateFromCin(R.lazy_prefix(R.annotate(pattern)));
+    MCL.CdnTopXSound(R.lazy_prefix(R.annotate(pattern)));
+    GF.GateFromCdnTop(R.lazy_prefix(R.annotate(pattern)));             // (G5a-1) the gate from the scope
     MCL.MainTheoremL5Cin(pattern, str);
   }
 
