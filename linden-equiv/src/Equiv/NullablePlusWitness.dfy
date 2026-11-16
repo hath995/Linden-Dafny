@@ -234,4 +234,28 @@ module NullablePlusWitness {
     assert R.raw_nullable(WB_OR_A) == R.CDNullable;
     assert R.raw_nullable(WB_OR_A_PLUS) == R.CDNullable;
   }
+
+  // ==========================================================================
+  // G5b-0 (2026-11-16): a greedy CDN plus inside a NEGATIVE lookaround body. The look's oracle column is
+  // built by code holding the plus's guard (the oracle V graph carries the table); a negative look is never
+  // replayed. A positive look body stays CDN-free (G5b-1/2).
+  // ==========================================================================
+  const NEG_AHEAD_CDN  := R.Raw_lookaround(R.NegLookahead, WB_OR_A_PLUS)               // (?!(\b|a)+)
+  const NEG_BEHIND_CDN := R.Raw_lookaround(R.NegLookbehind, WB_OR_A_PLUS)              // (?<!(\b|a)+)
+
+  lemma G5b0_CdnPlusInNegLook()
+    ensures API.Supported(NEG_AHEAD_CDN)                                      // (?!(\b|a)+)
+    ensures API.Supported(NEG_BEHIND_CDN)                                     // (?<!(\b|a)+)
+  {
+    assert R.raw_nullable(WB_OR_A) == R.CDNullable;
+    assert R.raw_nullable(WB_OR_A_PLUS) == R.CDNullable;
+  }
+
+  /** Still out: a CDN plus in a POSITIVE look body (G5b-1/2). */
+  lemma G5b0_PosLookCdnOut()
+    ensures !API.Supported(R.Raw_lookaround(R.Lookahead, WB_OR_A_PLUS))     // (?=(\b|a)+)
+  {
+    assert R.raw_nullable(WB_OR_A) == R.CDNullable;
+    assert R.raw_nullable(WB_OR_A_PLUS) == R.CDNullable;
+  }
 }

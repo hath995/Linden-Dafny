@@ -520,9 +520,13 @@ module LindenElkMainCinLk {
     case Re_con(r1, r2) => LookNodesPlusOkFromS(r1, bc); LookNodesPlusOkFromS(r2, bc);
     case Re_quant(_, _, _, r1) => LookNodesPlusOkFromS(r1, bc);
     case Re_capture(_, r1) => LookNodesPlusOkFromS(r1, bc);
-    case Re_lookaround(_, _, r1) =>
-      assert NRC.NoCdnPlusRE(re);          // CdnTopRE's look arm: the body holds no CDN plus
-      NRR.PlusTableOkSNarrow(re, bc);
+    case Re_lookaround(_, la, r1) =>
+      if NRC.PositiveLk(la) {
+        assert NRC.NoCdnPlusRE(re);          // CdnTopRE's look arm: a positive body holds no CDN plus
+        NRR.PlusTableOkSNarrow(re, bc);
+      } else {
+        LookNodesPlusOkFromS(r1, bc);        // (G5b) a negative body may hold one: its inner look nodes
+      }
     case _ =>
   }
 
@@ -1201,7 +1205,8 @@ module LindenElkMainCinLk {
     case Re_alt(r1, r2) => CdnTopX(r1) && CdnTopX(r2)
     case Re_con(r1, r2) => CdnTopX(r1) && CdnTopX(r2)
     case Re_capture(_, r1) => CdnTopX(r1)
-    case Re_lookaround(_, _, r1) => NoCdnPlusX(r1)
+    // (G5b) a NEGATIVE look body may hold a CDN plus; a positive one stays CDN-free
+    case Re_lookaround(_, la, r1) => ((la.Lookahead? || la.Lookbehind?) ==> NoCdnPlusX(r1)) && CdnTopX(r1)
     case Re_quant(_, _, _, r1) => CdnTopX(r1)
     case _ => true
   }
@@ -1215,7 +1220,7 @@ module LindenElkMainCinLk {
     case Re_alt(r1, r2) => CdnTopXSound(r1); CdnTopXSound(r2);
     case Re_con(r1, r2) => CdnTopXSound(r1); CdnTopXSound(r2);
     case Re_capture(_, r1) => CdnTopXSound(r1);
-    case Re_lookaround(_, _, r1) => NoCdnPlusXSound(r1);
+    case Re_lookaround(_, _, r1) => NoCdnPlusXSound(r1); CdnTopXSound(r1);
     case Re_quant(_, _, _, r1) => CdnTopXSound(r1);
     case _ =>
   }
@@ -1231,6 +1236,7 @@ module LindenElkMainCinLk {
     case Re_con(r1, r2) => NoCdnXIsCdnTopX(r1); NoCdnXIsCdnTopX(r2);
     case Re_capture(_, r1) => NoCdnXIsCdnTopX(r1);
     case Re_quant(_, _, _, r1) => NoCdnXIsCdnTopX(r1);
+    case Re_lookaround(_, _, r1) => NoCdnXIsCdnTopX(r1);
     case _ =>
   }
 }

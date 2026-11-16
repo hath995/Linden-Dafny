@@ -362,6 +362,22 @@ module LindenElkLiftSimOracle {
 
   // (gate C, G2) `MatchedPosFromHub` removed: `M.MatchedPosFromBank` (the look-bank invariant) replaces it.
 
+  /** (G5b) The hub row from its witnesses, in a small context: proving the (per-kind) existential inside the
+      sweeps reached 700 M. */
+  lemma GateStaticAtNestedIntro(qm: AR.QMap, re0: R.regex, crv: CP.FCompiled, l: int, la: R.lookaround, body: R.regex,
+                                ncap: int, nlook: int, nquant: int)
+    requires l in qm.looks
+    requires LTB.LookEntryOk(crv, l, la, body) && T.TransWf(body) && NR.NestedFragmentCdnRE(body)
+    requires NRC.PositiveLk(la) ==> NR.NestedFragmentRE(body) && RowPlusOk(body, crv.f_plus_bc, nlook)
+    requires qm.looks[l].0 == T.TrLookaround(la) && qm.looks[l].1 == T.Translate(body)
+    requires (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re0)
+    requires |CP.compile_to_bytecode(body)| >= 1
+    requires PSM.StaticCoreCdnRE(qm, body, CP.compile_to_bytecode(body), |CP.compile_to_bytecode(body)| - 1)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    ensures GateStaticAtNested(qm, re0, crv, l, ncap, nlook, nquant)
+  {
+  }
+
   /** (L4 NESTED) `GateStaticsSweepRENested` — the nested-fragment establishment
       sweep, off `GateStaticsSweepRE`. Two changes: the body-cap facts are the
       NESTED ones (`NestedFragmentRE`/`StaticOkNestedRE` via
@@ -413,6 +429,7 @@ module LindenElkLiftSimOracle {
       assert PIV.CapIdsInLooks(body) <= PIV.CapIdsInLooks(re0);
       // recurse into the body for its OWN inner lids
       // (G3b) the uniform gate descends: every look body is in the CIN fragment and carries the gate
+      M.NestedNoCdn(body);   // (G5b) a narrow body is CDN-free (the gate says so only at positive looks)
       assert NRC.NoCdnPlusRE(body) && RF.CinBodiesLookFreeRE(body) && M.LookBodiesPlusGateRE(body);
       // (G3a) the plus-row premises descend to the body
       assert NRR.PlusTableOk(body, crv.f_plus_bc) by { assert NRR.L1(re) == body; }
@@ -448,8 +465,10 @@ module LindenElkLiftSimOracle {
                && NR.GetPcRE(bodycode, next as nat) == Some(RB.Accept);
         assert (next as nat) == |bodycode| - 1;
         assert PSM.StaticCoreNestedRE(qm, body, bodycode, |bodycode| - 1);   // (G3a) no NoNulledPlusRE needed
+        PSM.StaticCoreNestedIsCdn(qm, body, bodycode, |bodycode| - 1);
+        NR.NarrowIsCdn(body);
         assert PSM.SizesOkRE(body, ncap, nlook, nquant);
-        assert GateStaticAtNested(qm, re0, crv, lid, ncap, nlook, nquant);
+        GateStaticAtNestedIntro(qm, re0, crv, lid, la, body, ncap, nlook, nquant);
       }
     case _ =>
   }
@@ -491,7 +510,8 @@ module LindenElkLiftSimOracle {
     case Re_con(r1, r2) => LookNodesPlusOk(r1, bc) && LookNodesPlusOk(r2, bc)
     case Re_quant(_, _, _, r1) => LookNodesPlusOk(r1, bc)
     case Re_capture(_, r1) => LookNodesPlusOk(r1, bc)
-    case Re_lookaround(_, _, _) => NRR.PlusTableOk(re, bc)
+    // (G5b) a positive look node keeps the narrow table; a negative one passes the premise to its body
+    case Re_lookaround(_, la, r1) => if NRC.PositiveLk(la) then NRR.PlusTableOk(re, bc) else LookNodesPlusOk(r1, bc)
     case _ => true
   }
 
@@ -508,7 +528,7 @@ module LindenElkLiftSimOracle {
     requires forall l: nat :: l in LTB.LookIds(re) ==> l < nlook
     ensures forall l: int :: l >= 0 && (l as nat) in LTB.LookIds(re) ==>
                                GateStaticAtNested(qm, re0, crv, l, ncap, nlook, nquant)
-    decreases re
+    decreases re, 1
   {
     match re
     case Re_alt(r1, r2) =>
@@ -526,11 +546,69 @@ module LindenElkLiftSimOracle {
       assert LTB.LookIds(r1) <= LTB.LookIds(re);
       GateStaticsSweepRECdn(qm, re0, r1, crv, ncap, nlook, nquant);
     case Re_lookaround(lid, la, body) =>
-      NRC.CdnNoCdnIsNarrow(body);        // (G5b) the gate keeps this body CDN-free
-      assert NR.NestedFragmentRE(re);   // so the look node is narrow
-      GateStaticsSweepRENested(qm, re0, re, crv, ncap, nlook, nquant);
+      if NRC.PositiveLk(la) {
+        NRC.CdnNoCdnIsNarrow(body);        // (G5b) the gate keeps a positive body CDN-free
+        assert NR.NestedFragmentRE(re);   // so the look node is narrow
+        GateStaticsSweepRENested(qm, re0, re, crv, ncap, nlook, nquant);
+      } else {
+        GateStaticsNegLookCdn(qm, re0, re, crv, ncap, nlook, nquant);   // (G5b) a negative look node
+      }
     case _ =>
   }
+  /** (G5b) The Cdn sweep at a NEGATIVE look node: its body may hold a CDN plus. The row's own statics are
+      the Cdn ones (it is never replayed: `FLookLoop` skips negative looks); its inner lids recurse. */
+  lemma GateStaticsNegLookCdn(qm: AR.QMap, re0: R.regex, re: R.regex, crv: CP.FCompiled,
+                              ncap: int, nlook: int, nquant: int)
+    requires re.Re_lookaround? && !NRC.PositiveLk(re.look)
+    requires T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
+    requires M.LookBodiesPlusGateRE(re)
+    requires NR.NestedFragmentCdnRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires PIV.CapIdsInLooks(re) <= PIV.CapIdsInLooks(re0)
+    requires LTB.LookUnique(re) && LookNodesPlusOk(re, crv.f_plus_bc)
+    requires forall l: nat :: l in LTB.LookIds(re) ==> l < nlook
+    ensures forall l: int :: l >= 0 && (l as nat) in LTB.LookIds(re) ==>
+                               GateStaticAtNested(qm, re0, crv, l, ncap, nlook, nquant)
+    decreases re, 0
+  {
+    var lid, la, body := re.lid, re.look, re.lr;
+    // confinement: CapIdsInLooks(body) ⊆ CapIds(body) == CapIdsInLooks(re) ⊆ CapIdsInLooks(re0)
+    PIV.CapIdsSplit(body);
+    assert PIV.CapIdsInLooks(re) == PIV.CapIds(body);
+    assert PIV.CapIdsInLooks(body) <= PIV.CapIdsInLooks(re0);
+    assert LookNodesPlusOk(body, crv.f_plus_bc);
+    assert LTB.LookUnique(body);
+    assert forall l: nat :: l in LTB.LookIds(body) ==> l < nlook by {
+      assert LTB.LookIds(body) <= LTB.LookIds(re);
+    }
+    assert {:split_here} true;
+    GateStaticsSweepRECdn(qm, re0, body, crv, ncap, nlook, nquant);   // the body's own inner lids
+    assert {:split_here} true;
+    if lid >= 0 {
+      // the node's own bundle, Cdn
+      assert LTB.LookEntryOk(crv, lid, la, body);
+      assert T.TransWf(body) && NR.NestedFragmentCdnRE(body);
+      assert PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body);
+      assert lid in qm.looks && qm.looks[lid] == (T.TrLookaround(la), T.Translate(body));
+      M.TranslateDefGroupsEqCapIds(body);
+      assert (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re0);
+      assert {:split_here} true;
+      NR.CompileToBytecodeRepCdn(body);
+      CompileStutterTameRECdn(body);
+      var bodycode := CP.compile_to_bytecode(body);
+      var next := CP.compile(body, 0, CP.Progress).1;
+      assert next >= 0 && |bodycode| == next + 1 && |bodycode| >= 1;
+      assert NR.NfaRepRE(body, bodycode, 0, next as nat)
+             && NR.GetPcRE(bodycode, next as nat) == Some(RB.Accept);
+      assert (next as nat) == |bodycode| - 1;
+      assert PSM.StaticCoreCdnRE(qm, body, bodycode, |bodycode| - 1);
+      assert PSM.SizesOkRE(body, ncap, nlook, nquant);
+      GateStaticAtNestedIntro(qm, re0, crv, lid, la, body, ncap, nlook, nquant);   // a negative row: no narrow part
+    }
+  }
+
 
   /** `GateStaticsFromTablesNested` for a top-level regex. */
   lemma GateStaticsFromTablesCdn(qm: AR.QMap, re: R.regex, crv: CP.FCompiled,

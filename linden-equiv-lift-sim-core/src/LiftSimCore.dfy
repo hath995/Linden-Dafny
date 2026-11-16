@@ -1070,8 +1070,10 @@ module LindenElkLiftSimCore {
     l in qm.looks
     && exists la: R.lookaround, body: R.regex ::
       LTB.LookEntryOk(crv, l, la, body)
-      && T.TransWf(body) && NR.NestedFragmentRE(body)
-      && RowPlusOk(body, crv.f_plus_bc, nlook)   // (G3a) what the plus-replay readers need (opaque)
+      && T.TransWf(body) && NR.NestedFragmentCdnRE(body)
+      // (G3a) what the plus-replay readers need (opaque); (G5b) at positive rows only: a negative body may
+      // hold a CDN plus
+      && (NRC.PositiveLk(la) ==> NR.NestedFragmentRE(body) && RowPlusOk(body, crv.f_plus_bc, nlook))
       // (gate B, G1 full depth) the three lookbehind-only scope conjuncts are DELETED:
       // the flip route is direction-generic (mirror-world leaf), so no row body is pinned.
       && qm.looks[l].0 == T.TrLookaround(la)
@@ -1079,7 +1081,7 @@ module LindenElkLiftSimCore {
       && (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
       && var bodycode := CP.compile_to_bytecode(body);
       |bodycode| >= 1
-      && PSM.StaticCoreNestedRE(qm, body, bodycode, |bodycode| - 1)   // (G3a) StaticOk = core + NoNulledPlusRE
+      && PSM.StaticCoreCdnRE(qm, body, bodycode, |bodycode| - 1)   // (G3a, G5b) the Cdn core at every row
       && PSM.SizesOkRE(body, ncap, nlook, nquant)
   }
 
@@ -1090,25 +1092,28 @@ module LindenElkLiftSimCore {
     requires GateStaticAtNested(qm, re, crv, l, ncap, nlook, nquant)
     ensures l in qm.looks
     ensures LTB.LookEntryOk(crv, l, la, body)
-            && T.TransWf(body) && NR.NestedFragmentRE(body)
-            && RowPlusOk(body, crv.f_plus_bc, nlook)
+            && T.TransWf(body) && NR.NestedFragmentCdnRE(body)
             && qm.looks[l].0 == T.TrLookaround(la)
             && qm.looks[l].1 == T.Translate(body)
             && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
             && var bc := CP.compile_to_bytecode(body);
             |bc| >= 1
-            && PSM.StaticCoreNestedRE(qm, body, bc, |bc| - 1)
+            && PSM.StaticCoreCdnRE(qm, body, bc, |bc| - 1)
             && PSM.SizesOkRE(body, ncap, nlook, nquant)
+    // (G5b) the narrow row facts at a positive row (a negative body may hold a CDN plus)
+    ensures NRC.PositiveLk(la) ==>
+              NR.NestedFragmentRE(body) && RowPlusOk(body, crv.f_plus_bc, nlook)
+              && PSM.StaticCoreNestedRE(qm, body, CP.compile_to_bytecode(body), |CP.compile_to_bytecode(body)| - 1)
   {
     la, body :| LTB.LookEntryOk(crv, l, la, body)
-                && T.TransWf(body) && NR.NestedFragmentRE(body)
-                    && RowPlusOk(body, crv.f_plus_bc, nlook)
+                && T.TransWf(body) && NR.NestedFragmentCdnRE(body)
+                && (NRC.PositiveLk(la) ==> NR.NestedFragmentRE(body) && RowPlusOk(body, crv.f_plus_bc, nlook))
                 && qm.looks[l].0 == T.TrLookaround(la)
                 && qm.looks[l].1 == T.Translate(body)
                 && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
                 && var bc := CP.compile_to_bytecode(body);
                 |bc| >= 1
-                && PSM.StaticCoreNestedRE(qm, body, bc, |bc| - 1)
+                && PSM.StaticCoreCdnRE(qm, body, bc, |bc| - 1)
                 && PSM.SizesOkRE(body, ncap, nlook, nquant);
   }
 

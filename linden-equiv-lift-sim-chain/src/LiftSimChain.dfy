@@ -3442,7 +3442,7 @@ module LindenElkLiftSimChain {
     var body := NI.LookBodyOfRE(re, owner);
     NI.LookPathDecomposeCdn(re, body, res0.a_clk, res1.a_clk, res2.a_clk, -1, owner, g);
     LookBodyFactsKBCdn(re, crv, owner);   // (gate B) scope-free row facts
-    assert NR.NestedFragmentRE(body) && PIV.CapUnique(body);
+    assert NR.NestedFragmentCdnRE(body) && PIV.CapUnique(body);   // (G5b) the look arm is Cdn
     assert {:split_here} true;
     // the owner matched: the record is set and the look is positive
     assert AI.get_idx(res1.a_cp, owner as int) >= 0;

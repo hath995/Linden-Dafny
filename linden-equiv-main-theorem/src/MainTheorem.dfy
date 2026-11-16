@@ -4860,8 +4860,9 @@ module LindenElkMain {
     case Re_con(r1, r2) => LookBodiesPlusGateRE(r1) && LookBodiesPlusGateRE(r2)
     case Re_quant(_, _, _, r1) => LookBodiesPlusGateRE(r1)
     case Re_capture(_, r1) => LookBodiesPlusGateRE(r1)
-    case Re_lookaround(_, la, r1) =>   // (G3b) every look kind: the body is in the CIN fragment
-      NRC.NoCdnPlusRE(r1) && RF.CinBodiesLookFreeRE(r1) && LookBodiesPlusGateRE(r1)
+    case Re_lookaround(_, la, r1) =>   // (G3b) every look kind: CIN-plus bodies look-free;
+      // (G5b) a positive body is CDN-free, a NEGATIVE one may hold a CDN plus (never replayed)
+      (NRC.PositiveLk(la) ==> NRC.NoCdnPlusRE(r1)) && RF.CinBodiesLookFreeRE(r1) && LookBodiesPlusGateRE(r1)
     case _ => true
   }
 
@@ -4968,7 +4969,8 @@ module LindenElkMain {
     requires NR.NestedFragmentCdnRE(re)
     requires LookBodiesPlusGateRE(re) && l in LTB.LookIds(re)
     ensures var b := NI.LookBodyOfRE(re, l);
-            LookBodiesPlusGateRE(b) && NRC.NoCdnPlusRE(b) && RF.CinBodiesLookFreeRE(b)
+            LookBodiesPlusGateRE(b) && RF.CinBodiesLookFreeRE(b)
+            && (NRC.PositiveLk(LookKindOfRE(re, l)) ==> NRC.NoCdnPlusRE(b))   // (G5b) per kind
     decreases re
   {
     match re
@@ -4991,6 +4993,8 @@ module LindenElkMain {
   {
     NR.NarrowIsCdn(re);
     PlusGateBodyRECdn(re, l);
+    NestedFragmentLookBody(re, l);
+    NestedNoCdn(NI.LookBodyOfRE(re, l));   // (G5b) a narrow regex's look body is CDN-free
   }
 
   /** The row form: any table row `(la, body)` at a look id of `re`. */
@@ -5001,7 +5005,8 @@ module LindenElkMain {
     requires LTB.LookEntryOk(crv, l as int, la, body)
     ensures body == NI.LookBodyOfRE(re, l) && la == LookKindOfRE(re, l)
     ensures LookBodiesPlusGateRE(body)
-    ensures NRC.NoCdnPlusRE(body) && RF.CinBodiesLookFreeRE(body)   // (G3b) every kind
+    ensures RF.CinBodiesLookFreeRE(body)   // (G3b) every kind
+    ensures NRC.PositiveLk(la) ==> NRC.NoCdnPlusRE(body)   // (G5b) a negative body may hold a CDN plus
   {
     LookKindOfTablesTie(re, crv, l);
     PlusGateBodyRECdn(re, l);
@@ -5019,6 +5024,8 @@ module LindenElkMain {
   {
     NR.NarrowIsCdn(re);
     PlusGateBodyCdn(re, crv, l, la, body);
+    NestedFragmentLookBody(re, l);
+    NestedNoCdn(body);   // (G5b) a narrow regex's look body is CDN-free
   }
 
   // ===========================================================================
@@ -5260,8 +5267,10 @@ module LindenElkMain {
       is a positive lookahead. STATIC (look-bank independent), so it transfers
       unchanged through the induction as the look bank grows. */
   ghost predicate FrameEntryOk(crv: CP.FCompiled, la: R.lookaround, body: R.regex, S: set<int>, Slook: set<int>) {
-    NR.NestedFragmentRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
-    && RowLAStatics(body, crv.f_plus_bc)   // (G3b) every row replays the plus machine
+    NR.NestedFragmentCdnRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    // (G3b) every positive row replays the plus machine; (G5b) a negative row is never replayed and its
+    // body may hold a CDN plus
+    && (NRC.PositiveLk(la) ==> NR.NestedFragmentRE(body) && RowLAStatics(body, crv.f_plus_bc))
     && LTB.LookTablesOk(body, crv)
     && PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)) <= S
     && LookIdSet(body) <= Slook
@@ -6812,6 +6821,8 @@ module LindenElkMain {
         assert looktype == la;
         assert FrameEntryOk(crv, la, body, S, Slook);
         assert la.Lookahead? || la.Lookbehind?;            // (L5 F7c-2) capture_type; per-kind dispatch below
+        assert NRC.PositiveLk(la);                         // (G5b) a replayed row is positive: its narrow statics
+        assert NR.NestedFragmentRE(body) && RowLAStatics(body, crv.f_plus_bc);
         assert {:split_here} true;
         var bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
         var dir := AI.capture_direction(looktype);
@@ -7952,14 +7963,17 @@ module LindenElkMain {
     assert LookIdSet(body') <= LookIdSet(re);
     // (G3a/G3b) the row's statics, every kind
     PlusGateBodyCdn(re, crv, lid, la, body);
-    // (G5a-1 P5b) the top may hold a CDN plus (`NestedNoCdn(ast)` is false then): the widened table of
-    // the whole regex, and bridge 1 at this look body, which is narrow ((G5b) Cdn + the gate's NoCdnPlusRE)
-    FRD.PlusTableOkFullS(ast);
-    NI.LookBodyOfFragmentCdn(re, lid);
-    NRC.CdnNoCdnIsNarrow(body');
-    FRA.PlusTableOkSLookBody(re, crv.f_plus_bc, lid);
-    reveal RowLAStatics();
-    assert RowLAStatics(body, crv.f_plus_bc);
+    NI.LookBodyOfFragmentCdn(re, lid);   // the body is in the Cdn fragment
+    if NRC.PositiveLk(la) {
+      // (G5a-1 P5b) the top may hold a CDN plus (`NestedNoCdn(ast)` is false then): the widened table of
+      // the whole regex, and bridge 1 at this look body, which is narrow ((G5b) Cdn + the gate's
+      // NoCdnPlusRE, at a positive look only)
+      FRD.PlusTableOkFullS(ast);
+      NRC.CdnNoCdnIsNarrow(body');
+      FRA.PlusTableOkSLookBody(re, crv.f_plus_bc, lid);
+      reveal RowLAStatics();
+      assert RowLAStatics(body, crv.f_plus_bc);
+    }
   }
 
   /** (G5a-1 P5b) The narrow form, as a corollary of `FrameEntryOkFromTablesCdn`. */

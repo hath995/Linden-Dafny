@@ -95,7 +95,8 @@ module LindenElkNulledRecon {
     case Re_alt(r1, r2) => CdnTopRE(r1) && CdnTopRE(r2)
     case Re_con(r1, r2) => CdnTopRE(r1) && CdnTopRE(r2)
     case Re_capture(_, r1) => CdnTopRE(r1)
-    case Re_lookaround(_, _, r1) => NoCdnPlusRE(r1)
+    // (G5b) a NEGATIVE look body may hold a CDN plus (never replayed); a positive one stays CDN-free
+    case Re_lookaround(_, la, r1) => (PositiveLk(la) ==> NoCdnPlusRE(r1)) && CdnTopRE(r1)
     case Re_quant(_, _, _, r1) => CdnTopRE(r1)
     case _ => true
   }
@@ -133,9 +134,6 @@ module LindenElkNulledRecon {
     ensures re.Re_quant? ==> CdnTopRE(re.qr)
     ensures re.Re_lookaround? ==> CdnTopRE(re.lr)
   {
-    match re
-    case Re_lookaround(_, _, r1) => NoCdnIsCdnTop(r1);
-    case _ =>
   }
 
   ghost predicate NfaRepNulledRE(re: R.regex, c: RB.code, pc1: nat, pc2: nat)

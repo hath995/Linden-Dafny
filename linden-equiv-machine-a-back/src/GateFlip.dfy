@@ -23,7 +23,8 @@ module LindenElkGateFlip {
     case Re_quant(nul, qid, q, a) => W.FXRQuant(nul, qid, q, a); GateFXR(a);
     case Re_capture(c, a) => W.FXRCap(c, a); GateFXR(a);
     case Re_lookaround(l, la, a) =>
-      W.FXRLook(l, la, a); GateFXR(a); TB.NoCdnPlusFXR(a); TB.CinBodiesLookFreeFXR(a);
+      W.FXRLook(l, la, a); GateFXR(a); TB.CinBodiesLookFreeFXR(a);
+      if NRC.PositiveLk(la) { TB.NoCdnPlusFXR(a); }   // (G5b) the gate keeps only positive bodies CDN-free
     case Re_anchor(x) => W.FXRAnchor(x);
     case Re_empty =>
     case Re_character(_) =>

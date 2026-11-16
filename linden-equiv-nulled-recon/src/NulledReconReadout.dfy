@@ -1896,6 +1896,15 @@ module LindenElkNulledReconReadout {
     }
     LiveStampsGmFrame(r1, qm, str, qc, qcp, mx, gmS, g1);
     var a2 := PIV.LiveStampsGm(r2, qm, str, qc, qcp, mx, a1);
+    // (G5b) the r2 premise spelled out: outside CapIds(r1), a1 is gmS, and on CapIds(r2) gmS is g2
+    assert forall g: nat :: g in PIV.CapIds(r2) ==> ((g in a1 <==> g in g2) && (g in a1 ==> a1[g] == g2[g])) by {
+      forall g: nat | g in PIV.CapIds(r2) ensures (g in a1 <==> g in g2) && (g in a1 ==> a1[g] == g2[g]) {
+        assert g !in PIV.CapIds(r1) by { if g in PIV.CapIds(r1) { assert g in PIV.CapIds(r1) * PIV.CapIds(r2); } }
+        assert g !in g1;
+        assert (g in a1 <==> g in gmS) && (g in a1 ==> a1[g] == gmS[g]);
+        assert (g in gmS <==> g in g2) && (g in gmS ==> gmS[g] == g2[g]);
+      }
+    }
     LiveStampsGmFrame(r2, qm, str, qc, qcp, mx, a1, g2);
     assert PIV.LiveStampsGm(r, qm, str, qc, qcp, mx, gmS) == a2;
     assert {:split_here} true;
