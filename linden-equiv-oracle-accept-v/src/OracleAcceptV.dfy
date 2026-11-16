@@ -46,6 +46,7 @@ module LindenElkOracleAcceptV {
   import OB = LindenElkOracleBridge
   import OBV = LindenElkOracleBridgeV
   import ODV = LindenElkOracleDecompV
+  import OBu = LindenElkOracleBuild
 
   // ===========================================================================
   // Classification
@@ -86,7 +87,8 @@ module LindenElkOracleAcceptV {
       view never changes (`NoOracleWrites`). */
   lemma AdvanceAcceptSoundV(c: RB.code, str: string, cp0: int, s: AI.VmState, ov: LOr.OracleView, cdn: LCdn.cdns)
     requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
-    requires OS.NoCheckNullable(c) && NoOracleWrites(c)
+    requires NoOracleWrites(c)
+    requires s.cdn == LCdn.build_cdn_v(cdn, s.cp, ov, ORc.CtxAt(str, s.cp), LAnc.Forward)   // (G5b) the state's table
     requires s.context == ORc.CtxAt(str, s.cp)
     requires ORc.ActiveOkV(c, str, ov, cdn, cp0, s.active, s.cp)
     requires ORc.BlockedOkV(c, str, ov, cdn, cp0, s.blocked, s.cp)
@@ -172,8 +174,15 @@ module LindenElkOracleAcceptV {
         AdvanceAcceptSoundV(c, str, cp0, s1.(active := ac), ov, cdn);
       }
     case CheckNullable(qid) =>
+      // (G5b) the state's table is the model table: the interpreter's branch is the guarded edge
       assert 0 <= t.pc < |c| && c[t.pc].CheckNullable?;
-      assert false;
+      if LCdn.cdn_get(s1.cdn, qid) {
+        assert ORc.CdnBit(cdn, str, ov, s.cp, qid);
+        assert ORc.EpsEdgeV(c, str, ov, cdn, s.cp, t.pc, t.exit_allowed, t.pc + 1, t.exit_allowed);
+        AdvanceAcceptSoundV(c, str, cp0, s1.(active := [t.(pc := t.pc + 1)] + ac), ov, cdn);
+      } else {
+        AdvanceAcceptSoundV(c, str, cp0, s1.(active := ac), ov, cdn);
+      }
     case AnchorAssertion(a) =>
       if LAnc.is_satisfied(a, s1.context, LAnc.Forward) {
         assert ORc.EpsEdgeV(c, str, ov, cdn, s.cp, t.pc, t.exit_allowed, t.pc + 1, t.exit_allowed);
@@ -191,7 +200,7 @@ module LindenElkOracleAcceptV {
                               ov: LOr.OracleView, cdn: LCdn.cdns)
     requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
     requires s.context.nextchar == AI.get_char(str, s.cp)
-    requires OS.NoCheckNullable(c) && NoOracleWrites(c)
+    requires NoOracleWrites(c)
     requires s.context == ORc.CtxAt(str, s.cp)
     requires ORc.ActiveOkV(c, str, ov, cdn, cp0, s.active, s.cp)
     requires ORc.BlockedOkV(c, str, ov, cdn, cp0, s.blocked, s.cp)
@@ -201,6 +210,7 @@ module LindenElkOracleAcceptV {
     decreases |str| - s.cp
   {
     var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, LAnc.Forward));
+    assert s0.cdn == LCdn.build_cdn_v(cdn, s0.cp, ov, ORc.CtxAt(str, s0.cp), LAnc.Forward);
     var (s1, ov1) := AI.FAdvanceEpsilon(c, s0, ov, LAnc.Forward);
     AdvanceAcceptSoundV(c, str, cp0, s0, ov, cdn);
     assert ov1 == ov;
@@ -244,7 +254,8 @@ module LindenElkOracleAcceptV {
       `ClosureInvV` is vacuous. */
   lemma AdvanceAcceptCompleteV(c: RB.code, str: string, s: AI.VmState, ov: LOr.OracleView, cdn: LCdn.cdns)
     requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
-    requires OS.AllGatesAbove(c, 0) && OS.NoCheckNullable(c) && NoOracleWrites(c)
+    requires OS.AllGatesAbove(c, 0) && NoOracleWrites(c)
+    requires s.cdn == LCdn.build_cdn_v(cdn, s.cp, ov, ORc.CtxAt(str, s.cp), LAnc.Forward)   // (G5b) the state's table
     requires s.context == ORc.CtxAt(str, s.cp)
     requires ORc.ClosureInvV(c, 0, str, s, ov, ov, cdn)
     requires forall pc: nat, eb: bool ::
@@ -371,8 +382,21 @@ module LindenElkOracleAcceptV {
         AdvanceAcceptCompleteV(c, str, sr, ov, cdn);
       }
     case CheckNullable(qid) =>
+      // (G5b) the anchor case with the table bit for the anchor test
       assert 0 <= t.pc < |c| && c[t.pc].CheckNullable?;
-      assert false;
+      assert LCdn.cdn_get(s1.cdn, qid) == ORc.CdnBit(cdn, str, ov, s.cp, qid);
+      if LCdn.cdn_get(s1.cdn, qid) {
+        var sr := s1.(active := [t.(pc := t.pc + 1)] + ac);
+        assert sr.active[0] == t.(pc := t.pc + 1);
+        ORc.ClosureInvStepV(c, 0, str, s, ov, ov, cdn, t.pc, t.exit_allowed, [t.(pc := t.pc + 1)], sr);
+        NoAcceptProcExtend(c, s, sr, t.pc, t.exit_allowed);
+        AdvanceAcceptCompleteV(c, str, sr, ov, cdn);
+      } else {
+        var sr := s1.(active := ac);
+        ORc.ClosureInvStepV(c, 0, str, s, ov, ov, cdn, t.pc, t.exit_allowed, [], sr);
+        NoAcceptProcExtend(c, s, sr, t.pc, t.exit_allowed);
+        AdvanceAcceptCompleteV(c, str, sr, ov, cdn);
+      }
     case AnchorAssertion(a) =>
       if LAnc.is_satisfied(a, s1.context, LAnc.Forward) {
         var sr := s1.(active := [t.(pc := t.pc + 1)] + ac);
@@ -536,7 +560,7 @@ module LindenElkOracleAcceptV {
                                  ov: LOr.OracleView, cdn: LCdn.cdns)
     requires |s.processed.true_set| == RB.size(c) && |s.processed.false_set| == RB.size(c)
     requires s.context.nextchar == AI.get_char(str, s.cp)
-    requires OS.AllGatesAbove(c, 0) && OS.NoCheckNullable(c) && NoOracleWrites(c)
+    requires OS.AllGatesAbove(c, 0) && NoOracleWrites(c)
     requires s.context == ORc.CtxAt(str, s.cp)
     requires s.processed == AI.init_bpcset(RB.size(c))
     requires s.isblocked == AI.init_pcset(RB.size(c))
@@ -552,6 +576,7 @@ module LindenElkOracleAcceptV {
     decreases |str| - s.cp
   {
     var s0 := s.(cdn := LCdn.build_cdn_v(cdn, s.cp, ov, s.context, LAnc.Forward));
+    assert s0.cdn == LCdn.build_cdn_v(cdn, s0.cp, ov, ORc.CtxAt(str, s0.cp), LAnc.Forward);
     var (s1, ov1) := AI.FAdvanceEpsilon(c, s0, ov, LAnc.Forward);
     assert ORc.ClosureInvV(c, 0, str, s0, ov, ov, cdn);   // processed/isblocked empty, blocked == []
     assert forall pc: nat, eb: bool ::
@@ -677,7 +702,8 @@ module LindenElkOracleAcceptV {
       or the Accept with a completed span. */
   least lemma BodyProgInvV(body: R.regex, code: RB.code, next: nat, str: string, ov: LOr.OracleView, cdn: LCdn.cdns,
                            cp0: int, pc: nat, eb: bool, cp: int)
-    requires NR.NestedFragmentRE(body)   // §2.5b: BlockStepV's nulled exit reads the fragment
+    requires NR.NestedFragmentCdnRE(body) && OBV.GuardsOk(body, cdn, str, ov)   // §2.5b, (G5b)
+    requires 0 <= cp0 <= |str|
     requires NR.NfaRepRE(body, code, 0, next)
     requires NR.GetPcRE(code, next) == Some(RB.Accept)
     requires ORc.ReachFV(code, str, ov, cdn, cp0, pc, eb, cp)
@@ -696,6 +722,8 @@ module LindenElkOracleAcceptV {
       BodyProgInvV(body, code, next, str, ov, cdn, cp0, pc1, eb1, cp);
       assert ODV.AnyEdgeV(code, str, ov, cdn, pc1, eb1, cp, pc, eb, cp);
       if ODV.InBlockV(body, code, 0, next, str, ov, cp0, pc1, cp) {
+        ORc.ReachFVGeStart(code, str, ov, cdn, cp0, pc1, eb1, cp);
+        ORc.ReachFVLeEnd(code, str, ov, cdn, cp0, pc1, eb1, cp);
         ODV.BlockStepV(body, code, 0, next, str, ov, cdn, cp0, pc1, eb1, cp, pc, eb, cp);
       } else {
         // the Accept has no outgoing edges
@@ -709,6 +737,8 @@ module LindenElkOracleAcceptV {
       BodyProgInvV(body, code, next, str, ov, cdn, cp0, pc - 1, eb1, cp - 1);
       assert ODV.AnyEdgeV(code, str, ov, cdn, pc - 1, eb1, cp - 1, pc, eb, cp);
       if ODV.InBlockV(body, code, 0, next, str, ov, cp0, pc - 1, cp - 1) {
+        ORc.ReachFVGeStart(code, str, ov, cdn, cp0, pc - 1, eb1, cp - 1);
+        ORc.ReachFVLeEnd(code, str, ov, cdn, cp0, pc - 1, eb1, cp - 1);
         ODV.BlockStepV(body, code, 0, next, str, ov, cdn, cp0, pc - 1, eb1, cp - 1, pc, eb, cp);
       } else {
         OB.GetPcInstr(code, next, RB.Accept);
@@ -734,19 +764,49 @@ module LindenElkOracleAcceptV {
             && |code| == next + 1
             && OS.NoCheckNullable(code) && NoOracleWrites(code) && OS.AllGatesAbove(code, 0)
   {
+    NR.NarrowIsCdn(body);
+    BodyCodeClassifiedCdn(body);
     NR.CompileToBytecodeRepNested(body);
     var code := CP.compile_to_bytecode(body);
     var next := CP.compile(body, 0, CP.Progress).1;
     forall pc: nat | 0 <= pc < |code|
-      ensures !code[pc].CheckNullable? && !code[pc].WriteOracle?
+      ensures !code[pc].CheckNullable?
+    {
+      assert NR.GetPcRE(code, pc) == Some(code[pc]);
+      if pc < next as nat {
+        NR.NoWriteInstrNestedRE(body, code, 0, next as nat, pc);
+      } else {
+        assert pc == next as nat;
+        assert code[pc] == RB.Accept;
+      }
+    }
+  }
+
+  /** (G5b) The Cdn twin: no WriteOracle, every gate reads a column `>= 1`; a `CheckNullable` may occur. */
+  lemma BodyCodeClassifiedCdn(body: R.regex)
+    requires NR.NestedFragmentCdnRE(body)
+    requires LTB.LookUnique(body)
+    requires forall x: nat :: x in LTB.LookIds(body) ==> 1 <= x
+    ensures var code := CP.compile_to_bytecode(body);
+            var next := CP.compile(body, 0, CP.Progress).1;
+            next >= 0 && NR.NfaRepRE(body, code, 0, next as nat)
+            && NR.GetPcRE(code, next as nat) == Some(RB.Accept)
+            && |code| == next + 1
+            && NoOracleWrites(code) && OS.AllGatesAbove(code, 0)
+  {
+    NR.CompileToBytecodeRepCdn(body);
+    var code := CP.compile_to_bytecode(body);
+    var next := CP.compile(body, 0, CP.Progress).1;
+    forall pc: nat | 0 <= pc < |code|
+      ensures !code[pc].WriteOracle?
               && (code[pc].CheckOracle? ==> code[pc].col > 0)
               && (code[pc].NegCheckOracle? ==> code[pc].ncl > 0)
     {
       assert NR.GetPcRE(code, pc) == Some(code[pc]);
       if pc < next as nat {
-        NR.NoWriteInstrNestedRE(body, code, 0, next as nat, pc);
+        OBu.NoWriteInstrCdnRE(body, code, 0, next as nat, pc);
         assert forall x: nat :: x in LTB.LookIds(body) ==> x > 0;
-        NR.GatesAboveInstrRE(body, code, 0, next as nat, 0, pc);
+        OBu.GatesAboveInstrCdnRE(body, code, 0, next as nat, 0, pc);
       } else {
         assert pc == next as nat;
         assert code[pc] == RB.Accept;
@@ -773,7 +833,27 @@ module LindenElkOracleAcceptV {
             AI.FFindMatch(code, str, s, ov, LAnc.Forward, cdn).0.Some?
             <==> exists j: int :: OBV.MatchesV(body, str, ov, cp, j)
   {
-    BodyCodeClassified(body);
+    NR.NarrowIsCdn(body);
+    OBV.NarrowGuardsOk(body, cdn, str, ov);
+    AcceptRunCharacterizationVCdn(body, str, ov, cp, cdn, initcap, initlook, initquant, initclk);
+  }
+
+  /** (G5b) The accept-run characterization on the Cdn fragment: the run's table must be right about
+      every guard of the body (`OBV.GuardsOk`). */
+  lemma AcceptRunCharacterizationVCdn(body: R.regex, str: string, ov: LOr.OracleView, cp: int,
+                                      cdn: LCdn.cdns, initcap: AReg.Regs, initlook: AReg.Regs,
+                                      initquant: AReg.Regs, initclk: int)
+    requires NR.NestedFragmentCdnRE(body) && OBV.GuardsOk(body, cdn, str, ov)
+    requires LTB.LookUnique(body)
+    requires forall x: nat :: x in LTB.LookIds(body) ==> 1 <= x
+    requires 0 <= cp <= |str|
+    ensures var code := CP.compile_to_bytecode(body);
+            var s := AI.FInitState(code, cp, initcap, initlook, initquant, initclk,
+                                   AI.cp_context(cp, str, LAnc.Forward));
+            AI.FFindMatch(code, str, s, ov, LAnc.Forward, cdn).0.Some?
+            <==> exists j: int :: OBV.MatchesV(body, str, ov, cp, j)
+  {
+    BodyCodeClassifiedCdn(body);
     var code := CP.compile_to_bytecode(body);
     var next := CP.compile(body, 0, CP.Progress).1;
     var s := AI.FInitState(code, cp, initcap, initlook, initquant, initclk,
@@ -787,6 +867,7 @@ module LindenElkOracleAcceptV {
     assert ORc.BlockedOkV(code, str, ov, cdn, cp, s.blocked, cp);
     var (m, ovf) := AI.FFindMatch(code, str, s, ov, LAnc.Forward, cdn);
 
+    assert {:split_here} true;   // (G5b) soundness: one batch (it looped as one with completeness)
     if m.Some? {
       // soundness: a reachable Accept, decomposed to a MatchesV span
       FindMatchAcceptSoundV(code, str, cp, s, ov, cdn);
@@ -796,7 +877,7 @@ module LindenElkOracleAcceptV {
       // pin the Accept's pc to `next`
       assert pc == next as nat by {
         if pc < next as nat {
-          NR.NoWriteInstrNestedRE(body, code, 0, next as nat, pc);
+          OBu.NoWriteInstrCdnRE(body, code, 0, next as nat, pc);
           assert NR.GetPcRE(code, pc) == Some(code[pc]);
           assert false;
         } else if pc > next as nat {
@@ -804,6 +885,7 @@ module LindenElkOracleAcceptV {
           assert false;
         }
       }
+      assert {:split_here} true;
       BodyProgInvV(body, code, next as nat, str, ov, cdn, cp, pc, eb, cp2);
       if ODV.InBlockV(body, code, 0, next as nat, str, ov, cp, pc, cp2) {
         ODV.InBlockVRange(body, code, 0, next as nat, str, ov, cp, pc, cp2);
@@ -812,16 +894,16 @@ module LindenElkOracleAcceptV {
       assert OBV.MatchesV(body, str, ov, cp, cp2);
     }
 
+    assert {:split_here} true;   // (G5b) completeness
     if exists j: int :: OBV.MatchesV(body, str, ov, cp, j) {
       var j: int :| OBV.MatchesV(body, str, ov, cp, j);
       OBV.MatchesVBounds(body, str, ov, cp, j);
       OBV.MatchesVLeEnd(body, str, ov, cp, j);
-      NR.NarrowIsCdn(body);
-      OBV.NarrowGuardsOk(body, cdn, str, ov);
       // completeness: the span reaches the Accept, so a None result is absurd
       OBV.MatchesVToPath(body, code, 0, next as nat, str, ov, cdn, cp, cp, j, false);
       OB.GetPcInstr(code, next as nat, RB.Accept);
       assert ORc.ReachFV(code, str, ov, cdn, cp, next as nat, if j > cp then true else false, j);
+      assert {:split_here} true;
       if m.None? {
         // entry coverage at the initial position: only the base config
         forall pc: nat, eb: bool | ORc.EntryConfigV(code, str, ov, cdn, cp, pc, eb, cp) && pc < RB.size(code)

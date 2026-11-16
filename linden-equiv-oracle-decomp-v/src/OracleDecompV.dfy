@@ -31,6 +31,7 @@ module LindenElkOracleDecompV {
   import NR = LindenElkNfaRep
   import ORc = LindenElkOracleReach
   import LCdn = Cdn
+  import OBu = LindenElkOracleBuild
   import OB = LindenElkOracleBridge
   import OD = LindenElkOracleDecomp
   import OBV = LindenElkOracleBridgeV
@@ -176,6 +177,36 @@ module LindenElkOracleDecompV {
           || (pc == e1 + 2 && cp == m))
   }
 
+  /** (G5b) The CDN-GREEDY loop layout (`NR.NfaRepRECdnInv`): the CIN one with the guard
+      `CheckNullable(qid)` before the stamp, and the end fork exiting at `e1 + 4`. */
+  ghost predicate CdnShapeV(qid: R.quantid, r1: R.regex, code: RB.code, em: nat, e1: nat, endl: nat) {
+    NR.GetPcRE(code, em) == Some(RB.Fork((em + 1) as int, (e1 + 2) as int))
+    && NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    && NR.GetPcRE(code, em + 2) == Some(RB.BeginLoop)
+    && NR.NfaRepRE(r1, code, em + 3, e1)
+    && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+    && NR.GetPcRE(code, e1 + 1) == Some(RB.Fork((em + 1) as int, (e1 + 4) as int))
+    && NR.GetPcRE(code, e1 + 2) == Some(RB.CheckNullable(qid))
+    && NR.GetPcRE(code, e1 + 3) == Some(RB.SetQuantToClock(qid, true))
+    && endl == e1 + 4
+  }
+
+  /** (G5b) The CDN-GREEDY arm's looped interior: `CinTailV` with the guard site at `e1 + 2` (reached
+      by the head fork's skip arm) and the stamp site at `e1 + 3`, reached only past the guard, which
+      carries the body's empty span at `m`. */
+  ghost predicate CdnTailV(mn1: nat, qid: R.quantid, r1: R.regex, code: RB.code, em: nat, e1: nat,
+                           str: string, ov: LOr.OracleView, i: int, pc: nat, cp: int)
+    decreases CP.rsize(r1), 3, 0
+  {
+    exists m: int {:trigger IterFromV(r1, mn1, str, ov, i, m)} ::
+      IterFromV(r1, mn1, str, ov, i, m)
+      && (((pc == em || pc == em + 1 || pc == em + 2) && cp == m)
+          || InBlockV(r1, code, em + 3, e1, str, ov, m, pc, cp)
+          || ((pc == e1 || pc == e1 + 1) && OBV.MatchesV(r1, str, ov, m, cp))
+          || (pc == e1 + 2 && cp == m)
+          || (pc == e1 + 3 && cp == m && OBV.MatchesV(r1, str, ov, m, m)))
+  }
+
   /** Configuration `(pc, cp)` is a legitimate mid-parse state of `re`'s block,
       entered at string position `i`, against the view `ov`. NEW versus the
       blind original: `Re_lookaround` is a one-instruction state (the gate
@@ -247,6 +278,13 @@ module LindenElkOracleDecompV {
                  && OD.StarShape(qid, r1, code, em, es1, endl)
                  && (InMinV(q.min as nat, qid, r1, code, start, em, str, ov, i, pc, cp)
                      || StTailKV(q.min as nat, qid, r1, code, em, es1, str, ov, i, pc, cp)))
+            else if nul == R.CDNullable then
+              // (G5b) CDN-GREEDY: the CIN loop with the head skip arm guarded.
+              (exists em: nat, e1: nat {:trigger CdnShapeV(qid, r1, code, em, e1, endl)} ::
+                 NR.NfaRepMinRE((q.min - 1) as nat, qid, r1, code, start, em)
+                 && CdnShapeV(qid, r1, code, em, e1, endl)
+                 && (InMinV((q.min - 1) as nat, qid, r1, code, start, em, str, ov, i, pc, cp)
+                     || CdnTailV((q.min - 1) as nat, qid, r1, code, em, e1, str, ov, i, pc, cp)))
             else
               // §2.5b CIN-GREEDY: min-1 forced copies, then the stamped
               // end-fork loop.
@@ -331,6 +369,36 @@ module LindenElkOracleDecompV {
           || ((pc == e1 || pc == e1 + 1) && OBV.MatchesV(r1, str, ov, m, cp))
           || (pc == e1 + 2 && cp == m)
     ensures CinTailV(mn1, qid, r1, code, em, e1, str, ov, i, pc, cp)
+  {
+  }
+
+  lemma CdnTailVInv(mn1: nat, qid: R.quantid, r1: R.regex, code: RB.code, em: nat, e1: nat,
+                    str: string, ov: LOr.OracleView, i: int, pc: nat, cp: int) returns (m: int)
+    requires CdnTailV(mn1, qid, r1, code, em, e1, str, ov, i, pc, cp)
+    ensures IterFromV(r1, mn1, str, ov, i, m)
+    ensures ((pc == em || pc == em + 1 || pc == em + 2) && cp == m)
+         || InBlockV(r1, code, em + 3, e1, str, ov, m, pc, cp)
+         || ((pc == e1 || pc == e1 + 1) && OBV.MatchesV(r1, str, ov, m, cp))
+         || (pc == e1 + 2 && cp == m)
+         || (pc == e1 + 3 && cp == m && OBV.MatchesV(r1, str, ov, m, m))
+  {
+    m :| IterFromV(r1, mn1, str, ov, i, m)
+      && (((pc == em || pc == em + 1 || pc == em + 2) && cp == m)
+          || InBlockV(r1, code, em + 3, e1, str, ov, m, pc, cp)
+          || ((pc == e1 || pc == e1 + 1) && OBV.MatchesV(r1, str, ov, m, cp))
+          || (pc == e1 + 2 && cp == m)
+          || (pc == e1 + 3 && cp == m && OBV.MatchesV(r1, str, ov, m, m)));
+  }
+
+  lemma CdnTailVIntro(mn1: nat, qid: R.quantid, r1: R.regex, code: RB.code, em: nat, e1: nat,
+                      str: string, ov: LOr.OracleView, i: int, pc: nat, cp: int, m: int)
+    requires IterFromV(r1, mn1, str, ov, i, m)
+    requires ((pc == em || pc == em + 1 || pc == em + 2) && cp == m)
+          || InBlockV(r1, code, em + 3, e1, str, ov, m, pc, cp)
+          || ((pc == e1 || pc == e1 + 1) && OBV.MatchesV(r1, str, ov, m, cp))
+          || (pc == e1 + 2 && cp == m)
+          || (pc == e1 + 3 && cp == m && OBV.MatchesV(r1, str, ov, m, m))
+    ensures CdnTailV(mn1, qid, r1, code, em, e1, str, ov, i, pc, cp)
   {
   }
 
@@ -580,6 +648,23 @@ module LindenElkOracleDecompV {
             InBlockVRange(r1, code, em + 3, es1, str, ov, m, pc, cp);
           }
         }
+      } else if nul == R.CDNullable {
+        // (G5b) CDN-GREEDY
+        var em: nat, e1: nat :|
+          NR.NfaRepMinRE((q.min - 1) as nat, qid, r1, code, start, em)
+          && CdnShapeV(qid, r1, code, em, e1, endl)
+          && (InMinV((q.min - 1) as nat, qid, r1, code, start, em, str, ov, i, pc, cp)
+              || CdnTailV((q.min - 1) as nat, qid, r1, code, em, e1, str, ov, i, pc, cp));
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if InMinV((q.min - 1) as nat, qid, r1, code, start, em, str, ov, i, pc, cp) {
+          InMinVRange((q.min - 1) as nat, qid, r1, code, start, em, str, ov, i, pc, cp);
+        } else {
+          var m := CdnTailVInv((q.min - 1) as nat, qid, r1, code, em, e1, str, ov, i, pc, cp);
+          if InBlockV(r1, code, em + 3, e1, str, ov, m, pc, cp) {
+            InBlockVRange(r1, code, em + 3, e1, str, ov, m, pc, cp);
+          }
+        }
       } else if nul != R.NonNullable {
         // §2.5b CIN-GREEDY: min-1 forced copies, then the stamped end-fork loop
         var em: nat, e1: nat :|
@@ -699,7 +784,7 @@ module LindenElkOracleDecompV {
       is NOT needed: a lookaround block enters onto its own gate pin. */
   lemma BlockEntryV(re: R.regex, code: RB.code, start: nat, endl: nat, str: string, ov: LOr.OracleView, cp: int)
     requires NR.NfaRepRE(re, code, start, endl)
-    requires NR.NestedFragmentRE(re)   // (G5a) a look body: its greedy nullable plus is CIN (the CDN arm of NfaRepRE is G5b's here)
+    requires NR.NestedFragmentCdnRE(re)   // (G5b) a greedy nullable plus is CIN or CDN
     ensures InBlockV(re, code, start, endl, str, ov, cp, start, cp) || start == endl
     decreases CP.rsize(re), 0, 0
   {
@@ -776,6 +861,19 @@ module LindenElkOracleDecompV {
         assert OD.StarShape(qid, r1, code, em, e1, endl);
         MinEntryV(q.min as nat, qid, r1, code, start, em, str, ov, cp);
         assert InBlockV(re, code, start, endl, str, ov, cp, start, cp);
+      } else if nul == R.CDNullable {
+        // (G5b) CDN-GREEDY: as CIN
+        var em, e1 := NR.NfaRepRECdnInv(nul, qid, q, r1, code, start, endl);
+        assert CdnShapeV(qid, r1, code, em, e1, endl);
+        if (q.min - 1) as nat > 0 {
+          MinEntryV((q.min - 1) as nat, qid, r1, code, start, em, str, ov, cp);
+          assert InBlockV(re, code, start, endl, str, ov, cp, start, cp);
+        } else {
+          OD.MinZeroSame(qid, r1, code, start, em);
+          IterFromZeroV(r1, str, ov, cp);
+          CdnTailVIntro((q.min - 1) as nat, qid, r1, code, em, e1, str, ov, cp, start, cp, cp);
+          assert InBlockV(re, code, start, endl, str, ov, cp, start, cp);
+        }
       } else if nul != R.NonNullable {
         // §2.5b CIN-GREEDY: min-1 copies before the loop; at min == 1 the
         // entry IS the head fork (the tail at `em` with zero spans done).
@@ -906,6 +1004,18 @@ module LindenElkOracleDecompV {
     OB.GetPcInstr(code, pc, RB.CheckOracle(l));
   }
 
+  /** (G5b) The guard inversion: the only V edge out of a `CheckNullable(q)` is the eps step to
+      `pc + 1`, and it carries the table bit. */
+  lemma EdgeFromCheckNullableV(code: RB.code, str: string, ov: LOr.OracleView, cdn: LCdn.cdns, q: R.quantid,
+                               pc: nat, eb: bool, cp: int, pc2: nat, eb2: bool, cp2: int)
+    requires NR.GetPcRE(code, pc) == Some(RB.CheckNullable(q))
+    requires AnyEdgeV(code, str, ov, cdn, pc, eb, cp, pc2, eb2, cp2)
+    ensures pc2 == pc + 1 && eb2 == eb && cp2 == cp
+    ensures ORc.CdnBit(cdn, str, ov, cp, q)
+  {
+    OB.GetPcInstr(code, pc, RB.CheckNullable(q));
+  }
+
   /** THE gate inversion, negative. */
   lemma EdgeFromNegCheckOracleV(code: RB.code, str: string, ov: LOr.OracleView, cdn: LCdn.cdns, l: R.lookid,
                                 pc: nat, eb: bool, cp: int, pc2: nat, eb2: bool, cp2: int)
@@ -959,7 +1069,7 @@ module LindenElkOracleDecompV {
       CINullable regex never rests on one (mirror of
       `OD.CINullableMatchesEmpty`). */
   lemma CINullableMatchesEmptyV(re: R.regex, str: string, ov: LOr.OracleView, i: int)
-    requires NR.NestedFragmentRE(re)
+    requires NR.NestedFragmentCdnRE(re)
     requires R.nullable(re) == R.CINullable
     ensures OBV.MatchesV(re, str, ov, i, i)
     decreases CP.rsize(re), 0, 0
@@ -999,7 +1109,8 @@ module LindenElkOracleDecompV {
   lemma BlockStepMinV(k: nat, qid: R.quantid, r1: R.regex, code: RB.code,
                       start: nat, endl: nat, str: string, ov: LOr.OracleView, cdn: LCdn.cdns, j: int,
                       pc: nat, eb: bool, cp: int, pc2: nat, eb2: bool, cp2: int)
-    requires NR.NestedFragmentRE(r1)
+    requires NR.NestedFragmentCdnRE(r1) && OBV.GuardsOk(r1, cdn, str, ov)
+    requires 0 <= cp <= |str|   // (G5b) the guard premise is range-limited
     requires InMinV(k, qid, r1, code, start, endl, str, ov, j, pc, cp)
     requires AnyEdgeV(code, str, ov, cdn, pc, eb, cp, pc2, eb2, cp2)
     ensures InMinV(k, qid, r1, code, start, endl, str, ov, j, pc2, cp2)
@@ -1057,7 +1168,8 @@ module LindenElkOracleDecompV {
   lemma BlockStepOptV(layers: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code,
                       start: nat, endl: nat, str: string, ov: LOr.OracleView, cdn: LCdn.cdns, j: int,
                       pc: nat, eb: bool, cp: int, pc2: nat, eb2: bool, cp2: int)
-    requires NR.NestedFragmentRE(r1)
+    requires NR.NestedFragmentCdnRE(r1) && OBV.GuardsOk(r1, cdn, str, ov)
+    requires 0 <= cp <= |str|   // (G5b) the guard premise is range-limited
     requires InOptV(layers, greedy, qid, r1, code, start, endl, str, ov, j, pc, cp)
     requires AnyEdgeV(code, str, ov, cdn, pc, eb, cp, pc2, eb2, cp2)
     ensures InOptV(layers, greedy, qid, r1, code, start, endl, str, ov, j, pc2, cp2)
@@ -1135,7 +1247,8 @@ module LindenElkOracleDecompV {
       IS the `MatchesV` clause. */
   lemma BlockStepV(re: R.regex, code: RB.code, start: nat, endl: nat, str: string, ov: LOr.OracleView, cdn: LCdn.cdns, i: int,
                    pc: nat, eb: bool, cp: int, pc2: nat, eb2: bool, cp2: int)
-    requires NR.NestedFragmentRE(re)
+    requires NR.NestedFragmentCdnRE(re) && OBV.GuardsOk(re, cdn, str, ov)
+    requires 0 <= cp <= |str|   // (G5b) the guard premise is range-limited
     requires InBlockV(re, code, start, endl, str, ov, i, pc, cp)
     requires AnyEdgeV(code, str, ov, cdn, pc, eb, cp, pc2, eb2, cp2)
     ensures InBlockV(re, code, start, endl, str, ov, i, pc2, cp2)
@@ -1354,6 +1467,7 @@ module LindenElkOracleDecompV {
           && (InMinV(q.min as nat, qid, r1, code, start, em, str, ov, i, pc, cp)
               || StTailKV(q.min as nat, qid, r1, code, em, es1, str, ov, i, pc, cp));
         if InMinV(q.min as nat, qid, r1, code, start, em, str, ov, i, pc, cp) {
+          assert {:split_here} true;   // (G5b) sub-batch
           BlockStepMinV(q.min as nat, qid, r1, code, start, em, str, ov, cdn, i, pc, eb, cp, pc2, eb2, cp2);
           if InMinV(q.min as nat, qid, r1, code, start, em, str, ov, i, pc2, cp2) {
             assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
@@ -1363,6 +1477,7 @@ module LindenElkOracleDecompV {
             assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
           }
         } else {
+          assert {:split_here} true;   // (G5b) sub-batch
           var m := StTailKVInv(q.min as nat, qid, r1, code, em, es1, str, ov, i, pc, cp);
           if (pc == em || pc == em + 1 || pc == em + 2) && cp == m {
             if pc == em {
@@ -1390,18 +1505,110 @@ module LindenElkOracleDecompV {
               assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
             }
           } else if InBlockV(r1, code, em + 3, es1, str, ov, m, pc, cp) {
+            assert {:split_here} true;   // (G5b) sub-batch
             BlockStepV(r1, code, em + 3, es1, str, ov, cdn, m, pc, eb, cp, pc2, eb2, cp2);
             StTailKVIntro(q.min as nat, qid, r1, code, em, es1, str, ov, i, pc2, cp2, m);
             assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
           } else if pc == es1 {
+            assert {:split_here} true;   // (G5b) sub-batch
             EdgeFromEndLoopV(code, str, ov, cdn, pc, eb, cp, pc2, eb2, cp2);
             StTailKVIntro(q.min as nat, qid, r1, code, em, es1, str, ov, i, pc2, cp2, m);
             assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
           } else {
+            assert {:split_here} true;   // (G5b) sub-batch
             EdgeFromJmpV(code, str, ov, cdn, em as int, pc, eb, cp, pc2, eb2, cp2);
             IterFromSnocV(r1, q.min as nat, str, ov, i, m, cp);
             StTailKVIntro(q.min as nat, qid, r1, code, em, es1, str, ov, i, pc2, cp2, cp);
             assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
+          }
+        }
+      } else if nul == R.CDNullable {
+        assert {:split_here} true;   // (G5b) one batch per arm
+        // (G5b) CDN-GREEDY: the CIN arm, except that the head fork's SKIP arm crosses the guard at
+        // `e1 + 2`, which `GuardsOk` turns into the body's empty span at `m`; the stamp-true at `e1 + 3`
+        // then exits with that span as the last iteration.
+        var mn1 := (q.min - 1) as nat;
+        var em: nat, e1: nat :|
+          NR.NfaRepMinRE(mn1, qid, r1, code, start, em)
+          && CdnShapeV(qid, r1, code, em, e1, endl)
+          && (InMinV(mn1, qid, r1, code, start, em, str, ov, i, pc, cp)
+              || CdnTailV(mn1, qid, r1, code, em, e1, str, ov, i, pc, cp));
+        if InMinV(mn1, qid, r1, code, start, em, str, ov, i, pc, cp) {
+          assert {:split_here} true;   // (G5b) sub-batch
+          BlockStepMinV(mn1, qid, r1, code, start, em, str, ov, cdn, i, pc, eb, cp, pc2, eb2, cp2);
+          if InMinV(mn1, qid, r1, code, start, em, str, ov, i, pc2, cp2) {
+            assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
+          } else {
+            IterFromIntroV(r1, mn1, mn1, str, ov, i, cp2);
+            CdnTailVIntro(mn1, qid, r1, code, em, e1, str, ov, i, pc2, cp2, cp2);
+            assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
+          }
+        } else {
+          assert {:split_here} true;   // (G5b) sub-batch
+          var m := CdnTailVInv(mn1, qid, r1, code, em, e1, str, ov, i, pc, cp);
+          if (pc == em || pc == em + 1 || pc == em + 2) && cp == m {
+            if pc == em {
+              assert OB.ForkAt(code, em, em + 1, e1 + 2);
+              EdgeFromForkAtV(code, str, ov, cdn, em + 1, e1 + 2, pc, eb, cp, pc2, eb2, cp2);
+              CdnTailVIntro(mn1, qid, r1, code, em, e1, str, ov, i, pc2, cp2, m);
+              assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
+            } else if pc == em + 1 {
+              EdgeFromSetQuantV(code, str, ov, cdn, qid, false, pc, eb, cp, pc2, eb2, cp2);
+              CdnTailVIntro(mn1, qid, r1, code, em, e1, str, ov, i, pc2, cp2, m);
+              assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
+            } else {
+              EdgeFromBeginLoopV(code, str, ov, cdn, pc, eb, cp, pc2, eb2, cp2);
+              BlockEntryV(r1, code, em + 3, e1, str, ov, m);
+              if em + 3 == e1 {
+                BlockEmptyV(r1, code, em + 3, str, ov, m);
+                assert pc2 == e1 && OBV.MatchesV(r1, str, ov, m, cp2);
+              }
+              CdnTailVIntro(mn1, qid, r1, code, em, e1, str, ov, i, pc2, cp2, m);
+              assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
+            }
+          } else if InBlockV(r1, code, em + 3, e1, str, ov, m, pc, cp) {
+            assert {:split_here} true;   // (G5b) sub-batch
+            BlockStepV(r1, code, em + 3, e1, str, ov, cdn, m, pc, eb, cp, pc2, eb2, cp2);
+            CdnTailVIntro(mn1, qid, r1, code, em, e1, str, ov, i, pc2, cp2, m);
+            assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
+          } else if (pc == e1 || pc == e1 + 1) && OBV.MatchesV(r1, str, ov, m, cp) {
+            assert {:split_here} true;   // (G5b) sub-batch
+            if pc == e1 {
+              EdgeFromEndLoopV(code, str, ov, cdn, pc, eb, cp, pc2, eb2, cp2);
+              CdnTailVIntro(mn1, qid, r1, code, em, e1, str, ov, i, pc2, cp2, m);
+              assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
+            } else {
+              assert OB.ForkAt(code, e1 + 1, em + 1, endl);
+              EdgeFromForkAtV(code, str, ov, cdn, em + 1, endl, pc, eb, cp, pc2, eb2, cp2);
+              if pc2 == em + 1 {
+                IterFromSnocV(r1, mn1, str, ov, i, m, cp);
+                CdnTailVIntro(mn1, qid, r1, code, em, e1, str, ov, i, pc2, cp2, cp);
+                assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
+              } else {
+                var k := IterFromInvV(r1, mn1, str, ov, i, m);
+                IterSnocV(r1, k, str, ov, i, m, cp);
+                assert OBV.MatchesIterV(r1, k + 1, str, ov, i, cp2);
+                assert pc2 == endl && OBV.MatchesV(re, str, ov, i, cp2);
+              }
+            }
+          } else if pc == e1 + 2 && cp == m {
+            assert {:split_here} true;   // (G5b) sub-batch
+            // THE GUARD: the edge carries the table bit, which is the body's empty span here
+            EdgeFromCheckNullableV(code, str, ov, cdn, qid, pc, eb, cp, pc2, eb2, cp2);
+            assert ORc.CdnBit(cdn, str, ov, cp, qid);
+            assert OBV.MatchesV(r1, str, ov, cp, cp);   // GuardsOk at this node, 0 <= cp <= |str|
+            CdnTailVIntro(mn1, qid, r1, code, em, e1, str, ov, i, pc2, cp2, m);
+            assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
+          } else {
+            assert {:split_here} true;   // (G5b) sub-batch
+            // the stamp-true site past the guard: the NULLED exit, with the guard's empty span
+            assert pc == e1 + 3 && cp == m && OBV.MatchesV(r1, str, ov, m, m);
+            EdgeFromSetQuantV(code, str, ov, cdn, qid, true, pc, eb, cp, pc2, eb2, cp2);
+            assert pc2 == endl && cp2 == m;
+            var k := IterFromInvV(r1, mn1, str, ov, i, m);
+            IterSnocV(r1, k, str, ov, i, m, m);
+            assert OBV.MatchesIterV(r1, k + 1, str, ov, i, cp2);
+            assert pc2 == endl && OBV.MatchesV(re, str, ov, i, cp2);
           }
         }
       } else if nul != R.NonNullable {
@@ -1517,6 +1724,7 @@ module LindenElkOracleDecompV {
             }
           } else if InBlockV(r1, code, em + 1, e1, str, ov, m, pc, cp) {
             assert {:split_here} true;   // (G5a) sub-batch
+            assert NR.NestedFragmentCdnRE(r1) && OBV.GuardsOk(r1, cdn, str, ov);   // (G5b) the callee's premises
             BlockStepV(r1, code, em + 1, e1, str, ov, cdn, m, pc, eb, cp, pc2, eb2, cp2);
             DwTailVIntro((q.min - 1) as nat, qid, r1, code, em, e1, str, ov, i, pc2, cp2, m);
             assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
@@ -1593,7 +1801,7 @@ module LindenElkOracleDecompV {
                   pc1: nat, eb1: bool, cp1: int, pc: nat, eb: bool, cp: int)
     requires OD.StarShape(0, R.Re_character(R.Dot), code, 0, 4, 6)
     requires NR.NfaRepRE(body, code, 6, next)
-    requires NR.NestedFragmentRE(body)   // (G5a) for BlockEntryV
+    requires NR.NestedFragmentCdnRE(body)   // (G5a) for BlockEntryV
     requires 6 <= next
     requires pc1 <= 5 && 0 <= cp1
     requires AnyEdgeV(code, str, ov, cdn, pc1, eb1, cp1, pc, eb, cp)
@@ -1629,7 +1837,7 @@ module LindenElkOracleDecompV {
       invariant — the least-lemma sweep over `ReachFV`. */
   least lemma ProgReachInvV(body: R.regex, code: RB.code, next: nat, lid: R.lookid, str: string,
                             ov: LOr.OracleView, cdn: LCdn.cdns, pc: nat, eb: bool, cp: int)
-    requires NR.NestedFragmentRE(body)   // §2.5b: BlockStepV's nulled exit reads the fragment
+    requires NR.NestedFragmentCdnRE(body) && OBV.GuardsOk(body, cdn, str, ov)   // §2.5b, (G5b)
     requires OD.StarShape(0, R.Re_character(R.Dot), code, 0, 4, 6)
     requires NR.NfaRepRE(body, code, 6, next)
     requires 6 <= next
@@ -1649,6 +1857,8 @@ module LindenElkOracleDecompV {
         ZoneStepV(body, code, next, str, ov, cdn, pc1, eb1, cp, pc, eb, cp);
       } else if BodyMidV(body, code, next, str, ov, pc1, cp) {
         var i := BodyMidVInv(body, code, next, str, ov, pc1, cp);
+        ORc.ReachFVGeStart(code, str, ov, cdn, 0, pc1, eb1, cp);
+        ORc.ReachFVLeEnd(code, str, ov, cdn, 0, pc1, eb1, cp);
         BlockStepV(body, code, 6, next, str, ov, cdn, i, pc1, eb1, cp, pc, eb, cp);
         if InBlockV(body, code, 6, next, str, ov, i, pc, cp) {
           BodyMidVIntro(body, code, next, str, ov, pc, cp, i);
@@ -1671,6 +1881,8 @@ module LindenElkOracleDecompV {
         ZoneStepV(body, code, next, str, ov, cdn, pc - 1, eb1, cp - 1, pc, eb, cp);
       } else if BodyMidV(body, code, next, str, ov, pc - 1, cp - 1) {
         var i := BodyMidVInv(body, code, next, str, ov, pc - 1, cp - 1);
+        ORc.ReachFVGeStart(code, str, ov, cdn, 0, pc - 1, eb1, cp - 1);
+        ORc.ReachFVLeEnd(code, str, ov, cdn, 0, pc - 1, eb1, cp - 1);
         BlockStepV(body, code, 6, next, str, ov, cdn, i, pc - 1, eb1, cp - 1, pc, eb, cp);
         if InBlockV(body, code, 6, next, str, ov, i, pc, cp) {
           BodyMidVIntro(body, code, next, str, ov, pc, cp, i);
@@ -1696,8 +1908,20 @@ module LindenElkOracleDecompV {
     requires ORc.ReachesWriteV(CP.compile_to_write(R.lazy_prefix(body), lid), str, ov, cdn, 0, lid, cp)
     ensures 0 <= i <= cp && OBV.MatchesV(body, str, ov, i, cp)
   {
-    OBV.NestedLazyPrefix(body);
-    NR.CompileToWriteRepNested(R.lazy_prefix(body), lid);
+    NR.NarrowIsCdn(body);
+    OBV.NarrowGuardsOk(body, cdn, str, ov);
+    i := ReachesWriteVToMatchesVCdn(body, lid, str, ov, cdn, cp);
+  }
+
+  /** (G5b) The decomposition direction on the Cdn fragment: the body may hold greedy CDN pluses whose
+      guards are right (`OBV.GuardsOk`). */
+  lemma ReachesWriteVToMatchesVCdn(body: R.regex, lid: R.lookid, str: string, ov: LOr.OracleView, cdn: LCdn.cdns, cp: int) returns (i: int)
+    requires NR.NestedFragmentCdnRE(body) && OBV.GuardsOk(body, cdn, str, ov)
+    requires ORc.ReachesWriteV(CP.compile_to_write(R.lazy_prefix(body), lid), str, ov, cdn, 0, lid, cp)
+    ensures 0 <= i <= cp && OBV.MatchesV(body, str, ov, i, cp)
+  {
+    OBV.NestedLazyPrefixCdn(body);
+    OBV.CompileToWriteRepCdn(R.lazy_prefix(body), lid);
     var code := CP.compile_to_write(R.lazy_prefix(body), lid);
     var next := CP.compile(R.lazy_prefix(body), 0, CP.Progress).1;
     // the two-block layout: dot-star head at 0..5, body at [6, next)
@@ -1728,7 +1952,7 @@ module LindenElkOracleDecompV {
         assert NR.GetPcRE(code, pc).Some? && !NR.GetPcRE(code, pc).value.WriteOracle?;
         assert false;
       } else {
-        NR.NoWriteInstrNestedRE(body, code, 6, next as nat, pc);
+        OBu.NoWriteInstrCdnRE(body, code, 6, next as nat, pc);
         assert false;
       }
     }

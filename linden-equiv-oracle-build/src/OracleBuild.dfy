@@ -1176,6 +1176,472 @@ module LindenElkOracleBuild {
       }
   }
 
+  // ===========================================================================
+  // (G5b) Build-code classification on the Cdn fragment. The narrow `NR.NoWriteInstrNestedRE` /
+  // `NR.GatesAboveInstrRE` / `NR.NestedCompileToWriteClassifiedAbove` admit no greedy CDN plus; these
+  // twins do, and drop only `NoCheckNullable`. (The no-write lemmas are pike-sim-re's `…CdnRE`, ported
+  // down; nfa-rep-re stays as it is.)
+  // ===========================================================================
+
+  /** `NoWriteInstrCdnRE` for the `repeat_min` forced-copy chain. */
+  lemma NoWriteInstrMinCdnRE(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentCdnRE(r1)
+    requires NR.NfaRepMinRE(k, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? ==>
+      var i := NR.GetPcRE(code, pc).value;
+      !i.WriteOracle? && !i.Accept?
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetQuantToClock(qid, false))
+      && NR.NfaRepRE(r1, code, start + 1, e1)
+      && NR.NfaRepMinRE(k - 1, qid, r1, code, e1, endl);
+    NR.NfaRepIncrRE(r1, code, start + 1, e1);
+    NR.NfaRepIncrMinRE(k - 1, qid, r1, code, e1, endl);
+    if pc == start {
+    } else if pc < e1 {
+      NoWriteInstrCdnRE(r1, code, start + 1, e1, pc);
+    } else {
+      NoWriteInstrMinCdnRE(k - 1, qid, r1, code, e1, endl, pc);
+    }
+  }
+
+  /** `NoWriteInstrCdnRE` for the `repeat_optional` layer chain. */
+  lemma NoWriteInstrOptCdnRE(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentCdnRE(r1)
+    requires NR.NfaRepOptRE(k, greedy, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? ==>
+      var i := NR.GetPcRE(code, pc).value;
+      !i.WriteOracle? && !i.Accept?
+    decreases CP.rsize(r1), k + 2
+  {
+    if k == 0 { return; }
+    var e1: nat :| NR.GetPcRE(code, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
+      && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+      && NR.NfaRepRE(r1, code, start + 3, e1)
+      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+      && NR.NfaRepOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+    NR.NfaRepIncrRE(r1, code, start + 3, e1);
+    NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, endl);
+    if pc <= start + 2 {
+    } else if pc < e1 {
+      NoWriteInstrCdnRE(r1, code, start + 3, e1, pc);
+    } else if pc == e1 {
+    } else {
+      NoWriteInstrOptCdnRE(k - 1, greedy, qid, r1, code, e1 + 1, endl, pc);
+    }
+  }
+
+  /** The NESTED analogue of `NoWriteInstrRE`: nested-fragment main code emits no
+      `WriteOracle`, `CheckNullable`, or `Accept` (the compiler adds those only at
+      the `compile_to_write`/`compile_to_bytecode` seam). Lookaround leaves are a
+      single gate (allowed); the plus-fragment quant shapes carry over verbatim. */
+  lemma NoWriteInstrCdnRE(re: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+    requires NR.NestedFragmentCdnRE(re)
+    requires NR.NfaRepRE(re, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? ==>
+      var i := NR.GetPcRE(code, pc).value;
+      !i.WriteOracle? && !i.Accept?
+    decreases CP.rsize(re), 1
+  {
+    match re
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (G5a-1 P3) per-arm batch
+      var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
+        && NR.NfaRepRE(r1, code, start + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
+        && NR.NfaRepRE(r2, code, e1 + 1, endl);
+      NR.NfaRepIncrRE(r1, code, start + 1, e1);
+      NR.NfaRepIncrRE(r2, code, e1 + 1, endl);
+      if pc == start {
+      } else if pc < e1 {
+        NoWriteInstrCdnRE(r1, code, start + 1, e1, pc);
+      } else if pc == e1 {
+      } else {
+        NoWriteInstrCdnRE(r2, code, e1 + 1, endl, pc);
+      }
+    case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (G5a-1 P3) per-arm batch
+      var e1: nat :| NR.NfaRepRE(r1, code, start, e1) && NR.NfaRepRE(r2, code, e1, endl);
+      NR.NfaRepIncrRE(r1, code, start, e1);
+      NR.NfaRepIncrRE(r2, code, e1, endl);
+      if pc < e1 {
+        NoWriteInstrCdnRE(r1, code, start, e1, pc);
+      } else {
+        NoWriteInstrCdnRE(r2, code, e1, endl, pc);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (G5a-1 P3) per-arm batch
+      if q.min == 0 && q.max == None {
+        assert {:split_here} true;   // (G5a-1 P3) per-scheme batch
+        var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
+          && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+          && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+          && NR.NfaRepRE(r1, code, start + 3, e1)
+          && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+          && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
+          && endl == e1 + 2;
+        NR.NfaRepIncrRE(r1, code, start + 3, e1);
+        if pc <= start + 2 {
+        } else if pc < e1 {
+          NoWriteInstrCdnRE(r1, code, start + 3, e1, pc);
+        } else {
+        }
+      } else if q.max.Some? {
+        assert {:split_here} true;   // (G5a-1 P3) per-scheme batch
+        var em := NR.NfaRepREQuantInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl);
+        if pc < em {
+          NoWriteInstrMinCdnRE(q.min as nat, qid, r1, code, start, em, pc);
+        } else {
+          NoWriteInstrOptCdnRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
+        }
+      } else if nul != R.NonNullable && !q.greedy {
+        assert {:split_here} true;   // (G5a-1 P3) per-scheme batch
+        // the GENERIC scheme (§2.5a): min forced copies, then the star loop;
+        // the loop's own five instructions (Fork/SetQuantToClock/BeginLoop at
+        // em..em+2, EndLoop/Jmp at e1..e1+1) are all of the harmless kind
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NoWriteInstrMinCdnRE(q.min as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          NoWriteInstrCdnRE(r1, code, em + 3, e1, pc);
+        } else {
+        }
+      } else if nul == R.CDNullable {
+        assert {:split_here} true;   // (G5a-1 P3) per-scheme batch
+        // (G5a-1 row I) the CDN-GREEDY scheme: the CIN layout with the guard `CheckNullable` at e1 + 2 and
+        // the true stamp at e1 + 3 (this twin does not exclude a `CheckNullable`)
+        var em, e1 := NR.NfaRepRECdnInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NoWriteInstrMinCdnRE((q.min - 1) as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          NoWriteInstrCdnRE(r1, code, em + 3, e1, pc);
+        } else {
+        }
+      } else if nul != R.NonNullable {
+        assert {:split_here} true;   // (G5a-1 P3) per-scheme batch
+        // the CIN-GREEDY end-fork scheme (§2.5b): min-1 forced copies, then
+        // the guarded loop; the loop's own six instructions (Fork/
+        // SetQuantToClock/BeginLoop at em..em+2, EndLoop/Fork/
+        // SetQuantToClock(true) at e1..e1+2) are all of the harmless kind
+        var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          NoWriteInstrMinCdnRE((q.min - 1) as nat, qid, r1, code, start, em, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          NoWriteInstrCdnRE(r1, code, em + 3, e1, pc);
+        } else {
+        }
+      } else {
+        assert {:split_here} true;   // (G5a-1 P3) per-scheme batch
+        var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 1, e1);
+        if pc < em {
+          NoWriteInstrMinCdnRE((q.min - 1) as nat, qid, r1, code, start, em, pc);
+        } else if pc == em {
+        } else if pc < e1 {
+          NoWriteInstrCdnRE(r1, code, em + 1, e1, pc);
+        } else {
+        }
+      }
+    case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (G5a-1 P3) per-arm batch
+      var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
+        && NR.NfaRepRE(r1, code, start + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+        && endl == e1 + 1;
+      NR.NfaRepIncrRE(r1, code, start + 1, e1);
+      if pc == start {
+      } else if pc < e1 {
+        NoWriteInstrCdnRE(r1, code, start + 1, e1, pc);
+      } else {
+      }
+    case Re_lookaround(lid, la, r1) =>
+      assert {:split_here} true;   // (G5a-1 P3) per-arm batch
+      assert pc == start;
+  }
+
+  /** `GatesAboveInstrCdnRE` for the `repeat_min` forced-copy chain. */
+  lemma GatesAboveInstrMinCdnRE(cnt: nat, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, k: nat, pc: nat)
+    requires NR.NestedFragmentCdnRE(r1)
+    requires LT.LookUnique(r1)
+    requires forall x: nat :: x in LT.LookIds(r1) ==> x > k
+    requires NR.NfaRepMinRE(cnt, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? ==>
+      var i := NR.GetPcRE(code, pc).value;
+      (i.CheckOracle? ==> i.col > k) && (i.NegCheckOracle? ==> i.ncl > k)
+    decreases CP.rsize(r1), cnt + 2
+  {
+    if cnt == 0 { return; }
+    var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetQuantToClock(qid, false))
+      && NR.NfaRepRE(r1, code, start + 1, e1)
+      && NR.NfaRepMinRE(cnt - 1, qid, r1, code, e1, endl);
+    NR.NfaRepIncrRE(r1, code, start + 1, e1);
+    NR.NfaRepIncrMinRE(cnt - 1, qid, r1, code, e1, endl);
+    if pc == start {
+    } else if pc < e1 {
+      GatesAboveInstrCdnRE(r1, code, start + 1, e1, k, pc);
+    } else {
+      GatesAboveInstrMinCdnRE(cnt - 1, qid, r1, code, e1, endl, k, pc);
+    }
+  }
+
+  /** `GatesAboveInstrCdnRE` for the `repeat_optional` layer chain. */
+  lemma GatesAboveInstrOptCdnRE(cnt: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat, k: nat, pc: nat)
+    requires NR.NestedFragmentCdnRE(r1)
+    requires LT.LookUnique(r1)
+    requires forall x: nat :: x in LT.LookIds(r1) ==> x > k
+    requires NR.NfaRepOptRE(cnt, greedy, qid, r1, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? ==>
+      var i := NR.GetPcRE(code, pc).value;
+      (i.CheckOracle? ==> i.col > k) && (i.NegCheckOracle? ==> i.ncl > k)
+    decreases CP.rsize(r1), cnt + 2
+  {
+    if cnt == 0 { return; }
+    var e1: nat :| NR.GetPcRE(code, start) == Some(if greedy then RB.Fork(start + 1, endl) else RB.Fork(endl, start + 1))
+      && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+      && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+      && NR.NfaRepRE(r1, code, start + 3, e1)
+      && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+      && NR.NfaRepOptRE(cnt - 1, greedy, qid, r1, code, e1 + 1, endl);
+    NR.NfaRepIncrRE(r1, code, start + 3, e1);
+    NR.NfaRepIncrOptRE(cnt - 1, greedy, qid, r1, code, e1 + 1, endl);
+    if pc <= start + 2 {
+    } else if pc < e1 {
+      GatesAboveInstrCdnRE(r1, code, start + 3, e1, k, pc);
+    } else if pc == e1 {
+    } else {
+      GatesAboveInstrOptCdnRE(cnt - 1, greedy, qid, r1, code, e1 + 1, endl, k, pc);
+    }
+  }
+
+  /** Nested-fragment code whose lookaround ids all sit strictly above `k` emits
+      only gates that READ strictly above `k`: at every position inside the
+      `NfaRepRE` block a `CheckOracle`/`NegCheckOracle` (if any) reads a column
+      `> k`. The additive L4 generalization of `NoOracleInstrRE` — which FORBADE
+      gates over a look-free body; here the gates are ADMITTED and BOUNDED. */
+  lemma GatesAboveInstrCdnRE(re: R.regex, code: RB.code, start: nat, endl: nat, k: nat, pc: nat)
+    requires NR.NestedFragmentCdnRE(re)
+    requires LT.LookUnique(re)
+    requires forall x: nat :: x in LT.LookIds(re) ==> x > k
+    requires NR.NfaRepRE(re, code, start, endl)
+    requires start <= pc < endl
+    ensures NR.GetPcRE(code, pc).Some? ==>
+      var i := NR.GetPcRE(code, pc).value;
+      (i.CheckOracle? ==> i.col > k) && (i.NegCheckOracle? ==> i.ncl > k)
+    decreases CP.rsize(re), 1
+  {
+    match re
+    case Re_empty =>
+    case Re_character(_) =>
+    case Re_anchor(_) =>
+    case Re_alt(r1, r2) =>
+      var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
+        && NR.NfaRepRE(r1, code, start + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.Jmp(endl))
+        && NR.NfaRepRE(r2, code, e1 + 1, endl);
+      NR.NfaRepIncrRE(r1, code, start + 1, e1);
+      NR.NfaRepIncrRE(r2, code, e1 + 1, endl);
+      assert LT.LookIds(re) == LT.LookIds(r1) + LT.LookIds(r2);
+      assert forall x: nat :: x in LT.LookIds(r1) ==> x in LT.LookIds(re);
+      assert forall x: nat :: x in LT.LookIds(r2) ==> x in LT.LookIds(re);
+      if pc == start {
+      } else if pc < e1 {
+        GatesAboveInstrCdnRE(r1, code, start + 1, e1, k, pc);
+      } else if pc == e1 {
+      } else {
+        GatesAboveInstrCdnRE(r2, code, e1 + 1, endl, k, pc);
+      }
+    case Re_con(r1, r2) =>
+      var e1: nat :| NR.NfaRepRE(r1, code, start, e1) && NR.NfaRepRE(r2, code, e1, endl);
+      NR.NfaRepIncrRE(r1, code, start, e1);
+      NR.NfaRepIncrRE(r2, code, e1, endl);
+      assert LT.LookIds(re) == LT.LookIds(r1) + LT.LookIds(r2);
+      assert forall x: nat :: x in LT.LookIds(r1) ==> x in LT.LookIds(re);
+      assert forall x: nat :: x in LT.LookIds(r2) ==> x in LT.LookIds(re);
+      if pc < e1 {
+        GatesAboveInstrCdnRE(r1, code, start, e1, k, pc);
+      } else {
+        GatesAboveInstrCdnRE(r2, code, e1, endl, k, pc);
+      }
+    case Re_quant(nul, qid, q, r1) =>
+      assert LT.LookIds(re) == LT.LookIds(r1);
+      if q.min == 0 && q.max == None {
+        var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
+          && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+          && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+          && NR.NfaRepRE(r1, code, start + 3, e1)
+          && NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+          && NR.GetPcRE(code, e1 + 1) == Some(RB.Jmp(start))
+          && endl == e1 + 2;
+        NR.NfaRepIncrRE(r1, code, start + 3, e1);
+        if pc <= start + 2 {
+        } else if pc < e1 {
+          GatesAboveInstrCdnRE(r1, code, start + 3, e1, k, pc);
+        } else {
+        }
+      } else if q.max.Some? {
+        var em := NR.NfaRepREQuantInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl);
+        if pc < em {
+          GatesAboveInstrMinCdnRE(q.min as nat, qid, r1, code, start, em, k, pc);
+        } else {
+          GatesAboveInstrOptCdnRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, k, pc);
+        }
+      } else if nul != R.NonNullable && !q.greedy {
+        // the GENERIC scheme (§2.5a): min forced copies, then the star loop;
+        // the loop's own five instructions (Fork/SetQuantToClock/BeginLoop at
+        // em..em+2, EndLoop/Jmp at e1..e1+1) are all of the harmless kind
+        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          GatesAboveInstrMinCdnRE(q.min as nat, qid, r1, code, start, em, k, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          GatesAboveInstrCdnRE(r1, code, em + 3, e1, k, pc);
+        } else {
+        }
+      } else if nul == R.CDNullable {
+        // (G5b) the CDN-GREEDY scheme: the CIN loop plus the guard; none of the loop's own seven
+        // instructions is a gate
+        var em, e1 := NR.NfaRepRECdnInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          GatesAboveInstrMinCdnRE((q.min - 1) as nat, qid, r1, code, start, em, k, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          GatesAboveInstrCdnRE(r1, code, em + 3, e1, k, pc);
+        } else {
+        }
+      } else if nul != R.NonNullable {
+        // the CIN-GREEDY end-fork scheme (§2.5b): min-1 forced copies, then
+        // the guarded loop; the loop's own six instructions (Fork/
+        // SetQuantToClock/BeginLoop at em..em+2, EndLoop/Fork/
+        // SetQuantToClock(true) at e1..e1+2) are all of the harmless kind
+        var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 3, e1);
+        if pc < em {
+          GatesAboveInstrMinCdnRE((q.min - 1) as nat, qid, r1, code, start, em, k, pc);
+        } else if pc <= em + 2 {
+        } else if pc < e1 {
+          GatesAboveInstrCdnRE(r1, code, em + 3, e1, k, pc);
+        } else {
+        }
+      } else {
+        var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
+        NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
+        NR.NfaRepIncrRE(r1, code, em + 1, e1);
+        if pc < em {
+          GatesAboveInstrMinCdnRE((q.min - 1) as nat, qid, r1, code, start, em, k, pc);
+        } else if pc == em {
+        } else if pc < e1 {
+          GatesAboveInstrCdnRE(r1, code, em + 1, e1, k, pc);
+        } else {
+        }
+      }
+    case Re_capture(cid, r1) =>
+      var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
+        && NR.NfaRepRE(r1, code, start + 1, e1)
+        && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
+        && endl == e1 + 1;
+      NR.NfaRepIncrRE(r1, code, start + 1, e1);
+      assert LT.LookIds(re) == LT.LookIds(r1);
+      if pc == start {
+      } else if pc < e1 {
+        GatesAboveInstrCdnRE(r1, code, start + 1, e1, k, pc);
+      } else {
+      }
+    case Re_lookaround(lid, la, r1) =>
+      // The whole block is the single gate at `start`: NfaRepRE pins
+      // `endl == start + 1`, so `start <= pc < endl` forces `pc == start`, and
+      // the instruction there is `CheckOracle(lid)`/`NegCheckOracle(lid)`.
+      assert pc == start;
+      assert NR.GetPcRE(code, start)
+        == Some(if la.Lookahead? || la.Lookbehind? then RB.CheckOracle(lid) else RB.NegCheckOracle(lid));
+      // `LookUnique(re)` gives `lid >= 0`, so `lid` lands in `LookIds(re)` and
+      // the floor hypothesis bounds it: `lid > k`.
+      assert lid >= 0;
+      assert (lid as nat) in LT.LookIds(re);
+      assert lid > k;
+  }
+
+  /** `compile_to_write` adheres to the representation predicate on the Cdn fragment (the twin of
+      `NR.CompileToWriteRepNested`; bridge-v keeps its own copy, it sits beside this member). */
+  lemma CompileToWriteRepCdn(re: R.regex, l: R.lookid)
+    requires NR.NestedFragmentCdnRE(re)
+    ensures var code := CP.compile_to_write(re, l);
+      var next := CP.compile(re, 0, CP.Progress).1;
+      next >= 0 && NR.NfaRepRE(re, code, 0, next as nat)
+      && NR.GetPcRE(code, next as nat) == Some(RB.WriteOracle(l))
+      && |code| == next + 1
+  {
+    var (tl, next) := CP.compile(re, 0, CP.Progress);
+    NR.FreshCorrectCdnRE(re, 0, tl, next);
+    NR.CompileNfaRepCdnRE(re, 0, tl, next, []);
+    assert [] + NR.Flat(tl) == NR.Flat(tl);
+    NR.FlattenApp(tl, [RB.WriteOracle(l)]);
+    assert CP.compile_to_write(re, l) == NR.Flat(tl) + [RB.WriteOracle(l)];
+    NR.NfaRepExtendRE(re, NR.Flat(tl), 0, next as nat, [RB.WriteOracle(l)]);
+    assert NR.GetPcRE(NR.Flat(tl) + [RB.WriteOracle(l)], next as nat) == Some(RB.WriteOracle(l)) by {
+      assert (NR.Flat(tl) + [RB.WriteOracle(l)])[next as nat] == RB.WriteOracle(l);
+    }
+  }
+
+  /** The Cdn twin of `NR.NestedCompileToWriteClassifiedAbove`: gates above `lid`, the one write is the
+      recorder, no `Accept`. A `CheckNullable` may occur. */
+  lemma CdnCompileToWriteClassifiedAbove(og: R.regex, lid: R.lookid)
+    requires NR.NestedFragmentCdnRE(og)
+    requires LT.LookUnique(og)
+    requires lid >= 0
+    requires forall x: nat :: x in LT.LookIds(og) ==> x > lid
+    ensures var bc := CP.compile_to_write(og, lid);
+      OS.AllGatesAbove(bc, lid) && OS.WritesOnlyLid(bc, lid) && OS.NoAccept(bc)
+  {
+    CompileToWriteRepCdn(og, lid);
+    var bc := CP.compile_to_write(og, lid);
+    var next := CP.compile(og, 0, CP.Progress).1;
+    assert forall x: nat :: x in LT.LookIds(og) ==> x > (lid as nat);
+    forall pc | 0 <= pc < |bc|
+      ensures (bc[pc].CheckOracle? ==> bc[pc].col > lid)
+              && (bc[pc].NegCheckOracle? ==> bc[pc].ncl > lid)
+              && !bc[pc].Accept?
+              && (bc[pc].WriteOracle? ==> bc[pc].wol == lid)
+    {
+      if pc < next as nat {
+        GatesAboveInstrCdnRE(og, bc, 0, next as nat, lid as nat, pc);
+        NoWriteInstrCdnRE(og, bc, 0, next as nat, pc);
+        assert NR.GetPcRE(bc, pc) == Some(bc[pc]);
+      } else {
+        assert pc == next as nat;
+        assert NR.GetPcRE(bc, pc) == Some(RB.WriteOracle(lid));
+      }
+    }
+  }
+
   /** (G5a-1 row J) The narrow name, as a corollary of `CdnLidBuildOkAbove`. */
   lemma NestedLidBuildOkAbove(re: R.regex, fc: CP.FCompiled, i: nat)
     requires NR.NestedFragmentRE(re)
