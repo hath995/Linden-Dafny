@@ -944,8 +944,8 @@ module LindenElkNfaRep {
   // ===========================================================================
   // (G5a-1 step 3) THE TOP-LEVEL FRAGMENT. `NestedFragmentRE` plus the greedy
   // CDN plus (`Compiler.dfy`'s "greedy CDN +" scheme, the `NfaRepCdnArmRE` layout).
-  // A lookaround BODY stays in the narrow fragment: a CDN plus inside a look is
-  // a later rung, and every row / look-body lemma keeps `NestedFragmentRE`.
+  // (G5b) A lookaround body is in this fragment too: a CDN plus may sit inside a
+  // look. Which look bodies may hold one is the scope's business (`Supported`).
   // ===========================================================================
   predicate NestedFragmentCdnRE(re: R.regex)
     decreases re
@@ -972,7 +972,7 @@ module LindenElkNfaRep {
            && R.nullable(r1) == R.CDNullable))
       && NestedFragmentCdnRE(r1)
     case Re_capture(cid, r1) => NestedFragmentCdnRE(r1)
-    case Re_lookaround(lid, la, r1) => NestedFragmentRE(r1)   // NARROW
+    case Re_lookaround(lid, la, r1) => NestedFragmentCdnRE(r1)   // (G5b) a look body may hold a greedy CDN plus
   }
 
   /** Today's fragment embeds in the top-level one. */
@@ -986,6 +986,7 @@ module LindenElkNfaRep {
     case Re_con(r1, r2) => NarrowIsCdn(r1); NarrowIsCdn(r2);
     case Re_quant(_, _, _, r1) => NarrowIsCdn(r1);
     case Re_capture(_, r1) => NarrowIsCdn(r1);
+    case Re_lookaround(_, _, r1) => NarrowIsCdn(r1);
     case _ =>
   }
 
@@ -1546,7 +1547,7 @@ module LindenElkNfaRep {
 
   /** `NestedFragmentRaw` plus the greedy CDN plus. Greediness of a `Raw_quant` is its constructor and the
       old arm constrained `Plus` alone, so that arm is now just the recursion; `Raw_count`'s greedy-plus
-      disjunct takes any nullable body. A lookaround body stays NARROW. */
+      disjunct takes any nullable body. (G5b) A lookaround body is in this fragment too. */
   predicate NestedFragmentCdnRaw(raw: R.raw_regex)
     decreases raw
   {
@@ -1567,7 +1568,7 @@ module LindenElkNfaRep {
            && R.raw_nullable(r1) != R.NonNullable))
       && NestedFragmentCdnRaw(r1)
     case Raw_capture(r1) => NestedFragmentCdnRaw(r1)
-    case Raw_lookaround(look, r1) => NestedFragmentRaw(r1)   // NARROW
+    case Raw_lookaround(look, r1) => NestedFragmentCdnRaw(r1)   // (G5b) a look body may hold a greedy CDN plus
   }
 
   /** Every raw input supported before step 4 stays supported. */
@@ -1582,6 +1583,7 @@ module LindenElkNfaRep {
     case Raw_quant(_, r1) => NarrowIsCdnRaw(r1);
     case Raw_count(_, r1) => NarrowIsCdnRaw(r1);
     case Raw_capture(r1) => NarrowIsCdnRaw(r1);
+    case Raw_lookaround(_, r1) => NarrowIsCdnRaw(r1);
     case _ =>
   }
 
@@ -1608,7 +1610,7 @@ module LindenElkNfaRep {
       AnnotateNullable(r1, c, l, q + 1);
     case Raw_capture(r1) => AnnotateNestedFragmentCdn(r1, c + 1, l, q);
     case Raw_lookaround(look, r1) =>
-      AnnotateNestedFragment(r1, c, l + 1, q);   // the body is narrow
+      AnnotateNestedFragmentCdn(r1, c, l + 1, q);   // (G5b) the body is in the Cdn fragment too
     case _ =>
   }
 
@@ -3216,7 +3218,7 @@ module LindenElkNfaRep {
 
   /** `FreshCorrectCdnRE` for `repeat_min` (nested-fragment variant of
       `FreshCorrectMinRE`). */
-  lemma FreshCorrectMinCdnRE(k: nat, qid: R.quantid, r1: R.regex, start: nat, tl: CP.treelist, next: int)
+  lemma {:induction false} FreshCorrectMinCdnRE(k: nat, qid: R.quantid, r1: R.regex, start: nat, tl: CP.treelist, next: int)
     requires NestedFragmentCdnRE(r1)
     requires CP.repeat_min(k, qid, r1, start, CP.Progress) == (tl, next)
     ensures next == start + |Flat(tl)|
@@ -3238,7 +3240,7 @@ module LindenElkNfaRep {
 
   /** `FreshCorrectCdnRE` for `repeat_optional` (nested-fragment variant of
       `FreshCorrectOptRE`). */
-  lemma FreshCorrectOptCdnRE(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, start: nat, tl: CP.treelist, next: int)
+  lemma {:induction false} FreshCorrectOptCdnRE(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, start: nat, tl: CP.treelist, next: int)
     requires NestedFragmentCdnRE(r1)
     requires CP.repeat_optional(k, qid, r1, start, CP.Progress, greedy) == (tl, next)
     ensures next == start + |Flat(tl)|
@@ -3277,6 +3279,7 @@ module LindenElkNfaRep {
     case Re_anchor(_) =>
     case Re_lookaround(_, _, _) =>
     case Re_alt(r1, r2) =>
+      assert {:split_here} true;   // (G5b) one batch per arm
       var (l1, f1) := CP.compile(r1, start + 1, CP.Progress);
       var (l2, f2) := CP.compile(r2, f1 + 1, CP.Progress);
       FreshCorrectCdnRE(r1, start + 1, l1, f1);
@@ -3289,13 +3292,16 @@ module LindenElkNfaRep {
         ChainFour(CP.Leaf([RB.Fork(start + 1, f1 + 1)]), l1, CP.Leaf([RB.Jmp(f2)]), l2);
       }
     case Re_con(r1, r2) =>
+      assert {:split_here} true;   // (G5b) one batch per arm
       var (l1, f1) := CP.compile(r1, start, CP.Progress);
       FreshCorrectCdnRE(r1, start, l1, f1);
       var (l2, f2) := CP.compile(r2, f1, CP.Progress);
       FreshCorrectCdnRE(r2, f1, l2, f2);
       FlattenApp(l1, Flat(l2));
     case Re_quant(nul, qid, q, r1) =>
+      assert {:split_here} true;   // (G5b) one batch per arm
       if q.min == 0 && q.max == None {
+        assert {:split_here} true;   // (G5b) one batch per scheme
         var (iter_code, iter_f) := CP.compile(r1, start + 3, CP.Progress);
         FreshCorrectCdnRE(r1, start + 3, iter_code, iter_f);
         var fork := if q.greedy then RB.Fork(start + 1, iter_f + 2) else RB.Fork(iter_f + 2, start + 1);
@@ -3307,6 +3313,7 @@ module LindenElkNfaRep {
           ChainFour(CP.Leaf([]), CP.Leaf([fork, RB.SetQuantToClock(qid, false), RB.BeginLoop]), iter_code, CP.Leaf([RB.EndLoop, RB.Jmp(start)]));
         }
       } else if q.max.Some? {
+        assert {:split_here} true;   // (G5b) one batch per scheme
         var (min_code, min_f) := CP.repeat_min(q.min, qid, r1, start, CP.Progress);
         FreshCorrectMinCdnRE(q.min as nat, qid, r1, start, min_code, min_f);
         var (opt_code, opt_f) := CP.repeat_optional(q.max.value - q.min, qid, r1, min_f, CP.Progress, q.greedy);
@@ -3314,6 +3321,7 @@ module LindenElkNfaRep {
         FlattenApp(min_code, Flat(opt_code));
         assert Flat(tl) == Flat(min_code) + Flat(opt_code);
       } else if nul != R.NonNullable && !q.greedy {
+        assert {:split_here} true;   // (G5b) one batch per scheme
         // the GENERIC scheme (§2.5a): min forced copies, then the star loop
         var (min_code, min_f) := CP.repeat_min(q.min, qid, r1, start, CP.Progress);
         FreshCorrectMinCdnRE(q.min as nat, qid, r1, start, min_code, min_f);
@@ -3330,6 +3338,7 @@ module LindenElkNfaRep {
                     iter_code, CP.Leaf([RB.EndLoop, RB.Jmp(min_f)]));
         }
       } else if nul == R.CDNullable {
+        assert {:split_here} true;   // (G5b) one batch per scheme
         // (G5a-1 step 3) the CDN-GREEDY scheme: the CIN layout with the skip exit guarded
         var (min_code, min_f) := CP.repeat_min(q.min - 1, qid, r1, start, CP.Progress);
         FreshCorrectMinCdnRE((q.min - 1) as nat, qid, r1, start, min_code, min_f);
@@ -3342,6 +3351,7 @@ module LindenElkNfaRep {
           ChainFour(min_code, CP.Leaf(hdr), body_code, CP.Leaf(ftr));
         }
       } else if nul != R.NonNullable {
+        assert {:split_here} true;   // (G5b) one batch per scheme
         // the CIN-GREEDY end-fork scheme (§2.5b): min-1 forced copies, the
         // guarded loop, the stamped exit
         var (min_code, min_f) := CP.repeat_min(q.min - 1, qid, r1, start, CP.Progress);
@@ -3355,6 +3365,7 @@ module LindenElkNfaRep {
           ChainFour(min_code, CP.Leaf(hdr), body_code, CP.Leaf(ftr));
         }
       } else {
+        assert {:split_here} true;   // (G5b) one batch per scheme
         var (min_code, min_f) := CP.repeat_min(q.min - 1, qid, r1, start, CP.Progress);
         FreshCorrectMinCdnRE((q.min - 1) as nat, qid, r1, start, min_code, min_f);
         var (body_code, body_f) := CP.compile(r1, min_f + 1, CP.Progress);
@@ -3366,6 +3377,7 @@ module LindenElkNfaRep {
         }
       }
     case Re_capture(cid, r1) =>
+      assert {:split_here} true;   // (G5b) one batch per arm
       var (l1, f1) := CP.compile(r1, start + 1, CP.Progress);
       FreshCorrectCdnRE(r1, start + 1, l1, f1);
       var ch := CP.chain([CP.Leaf([RB.SetRegisterToCP(CP.start_reg(cid))]), l1, CP.Leaf([RB.SetRegisterToCP(CP.end_reg(cid))])]);
@@ -3375,7 +3387,7 @@ module LindenElkNfaRep {
   }
 
   /** Nested-fragment variant of `CompileNfaRepMinRE`. */
-  lemma CompileNfaRepMinCdnRE(k: nat, qid: R.quantid, r1: R.regex, start: nat, tl: CP.treelist, next: int, prev: RB.code)
+  lemma {:induction false} CompileNfaRepMinCdnRE(k: nat, qid: R.quantid, r1: R.regex, start: nat, tl: CP.treelist, next: int, prev: RB.code)
     requires NestedFragmentCdnRE(r1)
     requires CP.repeat_min(k, qid, r1, start, CP.Progress) == (tl, next)
     requires start == |prev|
@@ -3420,7 +3432,7 @@ module LindenElkNfaRep {
   }
 
   /** Nested-fragment variant of `CompileNfaRepOptRE`. */
-  lemma CompileNfaRepOptCdnRE(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, start: nat, tl: CP.treelist, next: int, prev: RB.code)
+  lemma {:induction false} CompileNfaRepOptCdnRE(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, start: nat, tl: CP.treelist, next: int, prev: RB.code)
     requires NestedFragmentCdnRE(r1)
     requires CP.repeat_optional(k, qid, r1, start, CP.Progress, greedy) == (tl, next)
     requires start == |prev|

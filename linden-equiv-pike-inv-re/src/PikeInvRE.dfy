@@ -5611,7 +5611,7 @@ module LindenElkPikeInv {
   {
     match r
     case Re_lookaround(lid, la, r1) =>
-      assert NR.NestedFragmentCdnRE(r1) by { reveal NR.NestedFragmentCdnRE; NR.NarrowIsCdn(r1); }   // (G5a-1) a look body is narrow
+      assert NR.NestedFragmentCdnRE(r1) by { reveal NR.NestedFragmentCdnRE; }   // (G5b) the look arm is Cdn
       var lv := AI.get_idx(lc, lid);
       if lv < 0 || lv < M {} else { FilterCaptureVsAllCdn(r1, A, cc, lc, qc, -1, j); }
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>
@@ -5652,7 +5652,7 @@ module LindenElkPikeInv {
   {
     match r
     case Re_lookaround(lid, la, r1) =>
-      assert NR.NestedFragmentCdnRE(r1) by { reveal NR.NestedFragmentCdnRE; NR.NarrowIsCdn(r1); }   // (G5a-1) a look body is narrow
+      assert NR.NestedFragmentCdnRE(r1) by { reveal NR.NestedFragmentCdnRE; }   // (G5b) the look arm is Cdn
       var lv := AI.get_idx(lc, lid);
       if lv < 0 || lv < M { FilterAllCrPointwise(r1, X, Y, j); }
       else { FilterCaptureCrPointwiseCdn(r1, X, Y, cc, lc, qc, -1, j); }
@@ -5742,7 +5742,7 @@ module LindenElkPikeInv {
       var start := AI.get_idx(cap_clocks, CP.start_reg(cid));
       if start < 0 { } else if start < maxclock { } else { FilterCaptureLookIndepCdn(r1, cap_regs, cap_clocks, lc1, lc2, quant_clocks, maxclock); }
     case Re_lookaround(lid, la, r1) =>
-      assert NR.NestedFragmentCdnRE(r1) by { reveal NR.NestedFragmentCdnRE; NR.NarrowIsCdn(r1); }   // (G5a-1) a look body is narrow
+      assert NR.NestedFragmentCdnRE(r1) by { reveal NR.NestedFragmentCdnRE; }   // (G5b) the look arm is Cdn
       forall j | j !in CaptureRegsSet(CapIdsInLooks(r))   // W == CaptureRegsSet(CapIds(r1))
         ensures AI.get_idx(AI.filter_capture(r, cap_regs, cap_clocks, lc1, quant_clocks, maxclock), j)
              == AI.get_idx(AI.filter_capture(r, cap_regs, cap_clocks, lc2, quant_clocks, maxclock), j)
@@ -6248,7 +6248,7 @@ module LindenElkPikeInv {
   {
     match r
     case Re_lookaround(lid, la, r1) =>
-      assert NR.NestedFragmentCdnRE(r1) by { reveal NR.NestedFragmentCdnRE; NR.NarrowIsCdn(r1); }   // (G5a-1) a look body is narrow
+      assert NR.NestedFragmentCdnRE(r1) by { reveal NR.NestedFragmentCdnRE; }   // (G5b) the look arm is Cdn
       var lv := AI.get_idx(lc, lid);
       if lv < 0 || lv < mx { FilterAllGeqNeg1(r1, cr, i); }
       else { FilterCaptureGeqNeg1Cdn(r1, cr, cc, lc, qc, -1, i); }
@@ -6297,7 +6297,7 @@ module LindenElkPikeInv {
     FilterCaptureLen(r, A, cc, lc, qc, mx); FilterCaptureLen(r, B, cc', lc, qc, mx);
     match r
     case Re_lookaround(lid, la, r1) =>
-      assert NR.NestedFragmentCdnRE(r1) by { reveal NR.NestedFragmentCdnRE; NR.NarrowIsCdn(r1); }   // (G5a-1) a look body is narrow
+      assert NR.NestedFragmentCdnRE(r1) by { reveal NR.NestedFragmentCdnRE; }   // (G5b) the look arm is Cdn
       var lv := AI.get_idx(lc, lid);
       if lv < 0 || lv < mx { FilterAllFrameAt(r1, A, B, gid); }
       else { FilterCaptureFrameAtCdn(r1, A, B, cc, cc', lc, qc, -1, gid); }
@@ -6349,7 +6349,7 @@ module LindenElkPikeInv {
   {
     match r
     case Re_lookaround(lid, la, r1) =>
-      assert NR.NestedFragmentCdnRE(r1) by { reveal NR.NestedFragmentCdnRE; NR.NarrowIsCdn(r1); }   // (G5a-1) a look body is narrow
+      assert NR.NestedFragmentCdnRE(r1) by { reveal NR.NestedFragmentCdnRE; }   // (G5b) the look arm is Cdn
       var lv := AI.get_idx(lc, lid);
       if lv < 0 || lv < M {
       } else {
@@ -6775,7 +6775,7 @@ module LindenElkPikeInv {
   {
     match r
     case Re_lookaround(lid, la, r1) =>
-      assert NR.NestedFragmentCdnRE(r1) by { reveal NR.NestedFragmentCdnRE; NR.NarrowIsCdn(r1); }   // (G5a-1) a look body is narrow
+      assert NR.NestedFragmentCdnRE(r1) by { reveal NR.NestedFragmentCdnRE; }   // (G5b) the look arm is Cdn
       var lv := AI.get_idx(lc, lid);
       if lv < 0 || lv < M {} else { FilterCaptureQcFrameCdn(r1, cr, cc, lc, qc, qc', -1, qid, j); }
     case Re_empty => case Re_character(_) => case Re_anchor(_) =>

@@ -63,6 +63,22 @@ module LindenElkNulledRecon {
     case Re_capture(_, r1) => NoCdnPlusRE(r1)
     case Re_lookaround(_, _, r1) => NoCdnPlusRE(r1)
   }
+  /** (G5b) The Cdn fragment without a greedy CDN plus is the narrow fragment (look bodies included). How a
+      reader that needs a narrow look body gets it now that the fragment's look arm admits a CDN plus. */
+  lemma CdnNoCdnIsNarrow(re: R.regex)
+    requires NR.NestedFragmentCdnRE(re) && NoCdnPlusRE(re)
+    ensures NR.NestedFragmentRE(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => CdnNoCdnIsNarrow(r1); CdnNoCdnIsNarrow(r2);
+    case Re_con(r1, r2) => CdnNoCdnIsNarrow(r1); CdnNoCdnIsNarrow(r2);
+    case Re_quant(_, _, _, r1) => CdnNoCdnIsNarrow(r1);
+    case Re_capture(_, r1) => CdnNoCdnIsNarrow(r1);
+    case Re_lookaround(_, _, r1) => CdnNoCdnIsNarrow(r1);
+    case _ =>
+  }
+
 
 
   // =========================================================================

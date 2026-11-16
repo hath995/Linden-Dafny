@@ -782,7 +782,7 @@ module LindenElkNulledPlus {
   // ===========================================================================
 
   /** Converse of `FM.FlatMapApp`: a flat-map over a concatenation splits. */
-  lemma FlatMapSplit(l1: seq<LT.Leaf>, l2: seq<LT.Leaf>, f: (LT.Leaf, seq<LT.Leaf>) -> bool, R: seq<LT.Leaf>)
+  lemma {:induction false} FlatMapSplit(l1: seq<LT.Leaf>, l2: seq<LT.Leaf>, f: (LT.Leaf, seq<LT.Leaf>) -> bool, R: seq<LT.Leaf>)
     requires FM.FlatMapRel(l1 + l2, f, R)
     ensures exists R1, R2 :: FM.FlatMapRel(l1, f, R1) && FM.FlatMapRel(l2, f, R2) && R == R1 + R2
     decreases |l1|

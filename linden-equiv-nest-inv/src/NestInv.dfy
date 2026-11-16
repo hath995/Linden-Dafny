@@ -5223,12 +5223,12 @@ module LindenElkNestInv {
       }
   }
 
-  /** (G5a-1) A look body of a top-level-fragment regex is in the NARROW fragment: the Cdn fragment's look arm
-      is `NestedFragmentRE(body)`, and a body's own looks are found by the narrow lemma. */
+  /** A look body of a top-level-fragment regex is in the Cdn fragment ((G5b) the look arm is Cdn too; a
+      reader that needs it narrow adds the scope's `NoCdnPlusRE`, `NRC.CdnNoCdnIsNarrow`). */
   lemma LookBodyOfFragmentCdn(r: R.regex, lid: nat)
     requires NR.NestedFragmentCdnRE(r)
     requires lid in LTB.LookIds(r)
-    ensures NR.NestedFragmentRE(LookBodyOfRE(r, lid))
+    ensures NR.NestedFragmentCdnRE(LookBodyOfRE(r, lid))
     decreases r
   {
     match r
@@ -5240,9 +5240,9 @@ module LindenElkNestInv {
     case Re_capture(_, r1) => LookBodyOfFragmentCdn(r1, lid);
     case Re_lookaround(lid0, _, r1) =>
       if lid0 >= 0 && (lid0 as nat) == lid {
-        // the body is r1, narrow at the node
+        // the body is r1, Cdn at the node
       } else {
-        LookBodyOfFragmentNested(r1, lid);
+        LookBodyOfFragmentCdn(r1, lid);
       }
     case _ =>
   }
@@ -8172,8 +8172,8 @@ module LindenElkNestInv {
       QidBodyLookIdsSub(r1, qid);
       assert lid in LTB.LookIds(r1);
       assert (lid0 as nat) != lid;                    // LookUnique: lid0 !in LookIds(r1)
-      // (G5a-1 row K) a look body of the top-level fragment is NARROW
-      LookPathDomOnPathBreaksNested(r1, L, qc', lid, qid);
+      // (G5b) a look body of the top-level fragment is in the Cdn fragment too
+      LookPathDomOnPathBreaksCdn(r1, L, qc', lid, qid);
   }
 
   // ==========================================================================
@@ -8298,7 +8298,7 @@ module LindenElkNestInv {
         assert MxAtLidLk(r, qc, mx, lid) == MxAtLidLk(r1, qc, -1, lid);
         LookBodyCapsIn(r1, lid);
         assert g in PIV.CapIds(r1);
-        LookPathComposeNested(r1, body, cc, lc, qc, -1, lid, g);
+        LookPathComposeCdn(r1, body, cc, lc, qc, -1, lid, g);
       }
   }
 
@@ -8402,7 +8402,7 @@ module LindenElkNestInv {
         LookBodyCapsIn(r1, lid);
         assert g in PIV.CapIds(r1);
         assert AI.get_idx(lc, lid0) >= 0 && AI.get_idx(lc, lid0) >= mx;   // PathPresentLk
-        LookPathDecomposeNested(r1, body, cc, lc, qc, -1, lid, g);
+        LookPathDecomposeCdn(r1, body, cc, lc, qc, -1, lid, g);
         assert MxAtLidLk(r, qc, mx, lid) == MxAtLidLk(r1, qc, -1, lid);
       }
   }
@@ -8783,7 +8783,7 @@ module LindenElkNestInv {
         PIV.FilterAllClearsStart(r1, cr, gid);
         assert false;
       } else {
-        FilterPresenceExtractLkNested(r1, cr, cc, lc, qc, -1, gid);
+        FilterPresenceExtractLkCdn(r1, cr, cc, lc, qc, -1, gid);
       }
     case Re_alt(r1, r2) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
@@ -9471,7 +9471,7 @@ module LindenElkNestInv {
   }
 
   /** (G5a-1 row K) `LookSiteTopNested` on the top-level fragment (generated from its text). */
-  lemma LookSiteTopCdn(re: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
+  lemma {:induction false} LookSiteTopCdn(re: R.regex, code: RB.code, start: nat, endl: nat, pc: nat)
     requires NR.NestedFragmentCdnRE(re) && LTB.LookUnique(re)
     requires NR.NfaRepRE(re, code, start, endl)
     requires start <= pc < endl
@@ -9532,6 +9532,7 @@ module LindenElkNestInv {
     case Re_quant(nul, qid, q, r1) =>
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       if q.min == 0 && q.max == None {
+        assert {:split_here} true;   // (G5b) one batch per scheme
         var e1: nat :| NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, e1 + 2) else RB.Fork(e1 + 2, start + 1))
           && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
           && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
@@ -9546,6 +9547,7 @@ module LindenElkNestInv {
         } else {
         }
       } else if q.max.Some? {
+        assert {:split_here} true;   // (G5b) one batch per scheme
         var em := NR.NfaRepREQuantInv(nul, qid, q, r1, code, start, endl);
         NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
         NR.NfaRepIncrOptRE((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl);
@@ -9555,6 +9557,7 @@ module LindenElkNestInv {
           LookSiteTopOptCdn((q.max.value - q.min) as nat, q.greedy, qid, r1, code, em, endl, pc);
         }
       } else if nul != R.NonNullable && !q.greedy {
+        assert {:split_here} true;   // (G5b) one batch per scheme
         // §2.5a GENERIC: min forced copies, then the star loop
         var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
         NR.NfaRepIncrMinRE(q.min as nat, qid, r1, code, start, em);
@@ -9567,6 +9570,7 @@ module LindenElkNestInv {
         } else {
         }
       } else if nul == R.CDNullable {
+        assert {:split_here} true;   // (G5b) one batch per scheme
         // (G5a-1 row K) CDN-GREEDY: the CIN layout with the guard at e1 + 2 and the stamp at e1 + 3;
         // neither is an oracle check
         var em, e1 := NR.NfaRepRECdnInv(nul, qid, q, r1, code, start, endl);
@@ -9580,6 +9584,7 @@ module LindenElkNestInv {
         } else {
         }
       } else if nul != R.NonNullable {
+        assert {:split_here} true;   // (G5b) one batch per scheme
         // §2.5b CIN-GREEDY: min-1 forced copies, then the stamped end-fork loop
         var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, code, start, endl);
         NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
@@ -9592,6 +9597,7 @@ module LindenElkNestInv {
         } else {
         }
       } else {
+        assert {:split_here} true;   // (G5b) one batch per scheme
         var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
         NR.NfaRepIncrMinRE((q.min - 1) as nat, qid, r1, code, start, em);
         NR.NfaRepIncrRE(r1, code, em + 1, e1);

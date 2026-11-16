@@ -895,6 +895,8 @@ module LindenElkOracleAcceptV {
     }
 
     assert {:split_here} true;   // (G5b) completeness
+    // (G5b) the recursive statics only pass through here: hidden, they cost 234 M once the look arm recursed
+    hide NR.NestedFragmentCdnRE, OBV.GuardsOk, OBV.MatchesV;
     if exists j: int :: OBV.MatchesV(body, str, ov, cp, j) {
       var j: int :| OBV.MatchesV(body, str, ov, cp, j);
       OBV.MatchesVBounds(body, str, ov, cp, j);

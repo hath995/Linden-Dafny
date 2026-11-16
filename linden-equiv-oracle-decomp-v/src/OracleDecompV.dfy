@@ -1481,6 +1481,7 @@ module LindenElkOracleDecompV {
           var m := StTailKVInv(q.min as nat, qid, r1, code, em, es1, str, ov, i, pc, cp);
           if (pc == em || pc == em + 1 || pc == em + 2) && cp == m {
             if pc == em {
+              assert {:split_here} true;   // (G5b) sub-batch
               assert OB.ForkAt(code, em, em + 1, endl);
               EdgeFromForkAtV(code, str, ov, cdn, em + 1, endl, pc, eb, cp, pc2, eb2, cp2);
               if pc2 == em + 1 {
@@ -1491,10 +1492,12 @@ module LindenElkOracleDecompV {
                 assert OBV.MatchesV(re, str, ov, i, cp2);
               }
             } else if pc == em + 1 {
+              assert {:split_here} true;   // (G5b) sub-batch
               EdgeFromSetQuantV(code, str, ov, cdn, qid, false, pc, eb, cp, pc2, eb2, cp2);
               StTailKVIntro(q.min as nat, qid, r1, code, em, es1, str, ov, i, pc2, cp2, m);
               assert InBlockV(re, code, start, endl, str, ov, i, pc2, cp2);
             } else {
+              assert {:split_here} true;   // (G5b) sub-batch
               EdgeFromBeginLoopV(code, str, ov, cdn, pc, eb, cp, pc2, eb2, cp2);
               BlockEntryV(r1, code, em + 3, es1, str, ov, m);
               if em + 3 == es1 {

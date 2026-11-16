@@ -502,17 +502,9 @@ module LindenElkMainCinLk {
     ensures EL.PikeLkRegexRec(T.Translate(re))
     decreases re
   {
-    match re
-    case Re_alt(r1, r2) => TranslateFragmentPikeLkRecLkCdn(r1); TranslateFragmentPikeLkRecLkCdn(r2);
-    case Re_con(r1, r2) => TranslateFragmentPikeLkRecLkCdn(r1); TranslateFragmentPikeLkRecLkCdn(r2);
-    case Re_quant(nul, qid, q, r1) =>
-      TranslateFragmentPikeLkRecLkCdn(r1);
-      reveal EL.CinHeadL();   // the head condition holds by its second disjunct
-    case Re_capture(_, r1) => TranslateFragmentPikeLkRecLkCdn(r1);
-    case Re_lookaround(lid, la, r1) =>
-      EL.TranslateFragmentPikeLkRec(r1);   // a look body is in the narrow fragment
-    case _ =>
+    EL.TranslateFragmentPikeLkRecCdn(re);   // (G5b) moved down to entry-lk
   }
+
 
   /** (G5a-1 row N) What `GateStaticsFromTablesCdn` takes of the plus table: the narrow table at every look
       node. From the widened table of the whole regex, since a look node of a regex in scope holds no CDN plus. */

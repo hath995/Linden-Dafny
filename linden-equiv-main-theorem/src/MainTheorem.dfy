@@ -1860,6 +1860,121 @@ module LindenElkMain {
     assert bestT == LT.FirstLeaf(tstar, inp);
     // FirstLeafAgreeOutside(tstar, t, S): same success/position, gms agree outside S.
   }
+  /** (G5b) `FindMatchBodyAtCpNested` / `BodyTreeAtCpNested` on the Cdn fragment: the body may hold a
+      greedy CDN plus, whose guard reads the run's table (`PSM.GuardsOkRun`, the caller's premise). The
+      oracle column's own forward run of a look body. */
+  lemma FindMatchBodyAtCpCdn(
+    rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat,
+    ngroups: nat, str: string, cp: nat, tstar: LT.Tree, ov: LOr.OracleView,
+    cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
+    returns (bestT: Option<LT.Leaf>)
+    requires PSM.StaticCoreCdnRE(qm, body, bodycode, endl)
+    requires PSM.GuardsOkRun(qm, bodycode, cdns, ov, str)   // (G5b) every guard of the body code reads a right bit
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires qm.ov == ov
+    requires !rer.ignoreCase && !rer.multiline
+    requires cp <= |str|
+    requires bodycode == CP.compile_to_bytecode(body)
+    requires TT.TreeThreadRE(rer, qm, bodycode, PIV.InpOfCp(str, cp), tstar, 0, false)
+    requires TR.TreeRepRE(qm, tstar, bodycode, 0, PIV.InpOfCp(str, cp), false)
+    ensures var inp := PIV.InpOfCp(str, cp);
+            var inits := AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                       AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward));
+            PIV.BestMatchRE(body, qm, str, bestT, AI.FFindMatch(bodycode, str, inits, ov, LAnc.Forward, cdns).0)
+            && bestT == LT.FirstLeaf(tstar, inp)
+  {
+    var inp := PIV.InpOfCp(str, cp);
+    var ctx := AI.cp_context(cp, str, LAnc.Forward);
+    var capture := AReg.init_regs(ncap);
+    var look := AReg.init_regs(nlook);
+    var quant := AReg.init_regs(nquant);
+    var inits := AI.FInitState(bodycode, cp, capture, look, quant, 0, ctx);
+
+    // Entry invariant at cp (fresh registers) -> the full simulation invariant.
+    PSM.InitialPikeInvFullREAtCpCdn(rer, qm, body, bodycode, endl, ngroups, str, cp, tstar,
+                                       inits, ncap, nlook, nquant);
+    var pts0 := PT.PikeTreeInitialState(tstar, inp);
+    assert ctx.nextchar == AI.get_char(str, cp);
+    bestT := PSM.FindMatchSimRECdn(rer, qm, body, bodycode, endl, ngroups, str, pts0, inits,
+                                      ov, LAnc.Forward, cdns, ncap, nlook, nquant);
+    assert PSM.TrcRE(pts0, PT.PTS_final(bestT));
+    assert PIV.BestMatchRE(body, qm, str, bestT, AI.FFindMatch(bodycode, str, inits, ov, LAnc.Forward, cdns).0);
+
+    // Pin bestT to the checked tree's first leaf.
+    TrcREToLinden(pts0, PT.PTS_final(bestT));
+    TR.TreeRepPikeSubtree(qm, tstar, bodycode, 0, inp, false);
+    PT.InitPiketreeInv(tstar, inp);
+    CR.PikeTreeTrcCorrect(pts0, PT.PTS_final(bestT), LT.FirstLeaf(tstar, inp));
+    assert bestT == LT.FirstLeaf(tstar, inp);
+  }
+  lemma BodyTreeAtCpCdn(
+    rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, bodycode: RB.code, endl: nat,
+    ngroups: nat, str: string, cp: nat, ov: LOr.OracleView,
+    cdns: LCdn.cdns, ncap: int, nlook: int, nquant: int)
+    returns (bestT: Option<LT.Leaf>)
+    requires PSM.StaticCoreCdnRE(qm, body, bodycode, endl)
+    requires PSM.GuardsOkRun(qm, bodycode, cdns, ov, str)   // (G5b) every guard of the body code reads a right bit
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires qm.ov == ov
+    requires !rer.ignoreCase && !rer.multiline
+    requires cp <= |str|
+    requires bodycode == CP.compile_to_bytecode(body)
+    requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
+    ensures var inp := PIV.InpOfCp(str, cp);
+            var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Forward);
+            var S := LL.LkBodyGroups(T.Translate(body));
+            var inits := AI.FInitState(bodycode, cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                       AReg.init_regs(nquant), 0, AI.cp_context(cp, str, LAnc.Forward));
+            PIV.BestMatchRE(body, qm, str, bestT, AI.FFindMatch(bodycode, str, inits, ov, LAnc.Forward, cdns).0)
+            && (bestT.None? <==> LT.FirstLeaf(t, inp).None?)
+            && (bestT.Some? ==>
+                  LT.FirstLeaf(t, inp).Some?
+                  && bestT.value.0 == LT.FirstLeaf(t, inp).value.0
+                  && LL.GmAgreeOutside(bestT.value.1, LT.FirstLeaf(t, inp).value.1, S))
+  {
+    var inp := PIV.InpOfCp(str, cp);
+    var acts := [LS.Areg(T.Translate(body))];
+    var S := LL.LkBodyGroups(T.Translate(body));
+
+    // ---- the spec tree ---------------------------------------------------
+    LFU.ComputeTrIsTree(rer, acts, inp, LG.Empty, WP.Forward);
+    var t := LFU.ComputeTr(rer, acts, inp, LG.Empty, WP.Forward);
+    assert LS.IsTree(rer, acts, inp, LG.Empty, WP.Forward, t);
+    EL.TranslateFragmentPikeLkRecCdn(body);          // PikeLkRegex(Translate(body))
+    EL.BooleanCorrectLkRec(rer, T.Translate(body), inp, t);
+    assert forall i :: 0 <= i < |acts| ==> !acts[i].Acheck?;
+    BoolTreeLbIrrel(rer, acts, inp, BS.CanExit, BS.CannotExit, t);
+
+    // ---- the CHECKED tree the simulation runs on -------------------------
+    WOE.WalkOkEntryCdn(body);
+    assert EL.PikeLkActionsRec(acts) by {
+      assert acts == acts + [];
+      assert EL.PikeLkActionsRec([]);
+      EL.PikeLkActionsRecConsIff(LS.Areg(T.Translate(body)), []);
+    }
+    assert WO.WalkOk(acts, bodycode, 0, ATR.EaOf(BS.CannotExit));
+    AR.CompileToBytecodeActionsRepCdn(rer, qm, body);   // ActionsRepL
+    // `body` may now hold CAPTURING lookarounds: the spec tree's LK bodies confine
+    // to `S = LkBodyGroups(Translate(body))`, so the tree is `LkConfinedTree(_, S)`.
+    LL.LkBodyGroupsConfines(T.Translate(body), S);             // LkBodiesInS(Translate(body), S)
+    assert LL.LkActsInS(acts, S) by { LL.LkActsInSCons(LS.Areg(T.Translate(body)), [], S); }
+    LL.ComputeTrLkConfinedK(rer, acts, inp, LG.Empty, WP.Forward, S);   // LkConfinedTree(t, S)
+    assert NB.EncOk(acts, inp, BS.CannotExit) by { NB.EncOkNoChecks(acts, inp, BS.CannotExit); }
+    var tstar := ATR.ActionsTreeRepRENested(rer, qm, acts, bodycode, 0, inp, BS.CannotExit, t, S);
+    assert TR.TreeRepRE(qm, tstar, bodycode, 0, inp, false);
+    // ActionsTreeRepRE ensures LeavesAgreeAtOutside(tstar, t, inp, S); lift to FirstLeaf.
+    NB.RAFirstLeafOutside(tstar, t, inp, S);
+
+    // TreeThreadRE is definitionally TreeRepRE, so the checked tree discharges
+    // both of FindMatchBodyAtCpNested's tree hypotheses.
+    assert TT.TreeThreadRE(rer, qm, bodycode, inp, tstar, 0, false);
+
+    // ---- run the simulation at cp ----------------------------------------
+    bestT := FindMatchBodyAtCpCdn(rer, qm, body, bodycode, endl, ngroups, str, cp, tstar,
+                                     ov, cdns, ncap, nlook, nquant);
+    assert bestT == LT.FirstLeaf(tstar, inp);
+    // FirstLeafAgreeOutside(tstar, t, S): same success/position, gms agree outside S.
+  }
 
 
   // {:isolate_assertions} is REQUIRED here, not a tuning knob. Admitting
@@ -4864,7 +4979,7 @@ module LindenElkMain {
     case Re_quant(_, _, _, r1) => PlusGateBodyRECdn(r1, l);
     case Re_capture(_, r1) => PlusGateBodyRECdn(r1, l);
     case Re_lookaround(lid0, la0, r1) =>
-      if lid0 >= 0 && (lid0 as nat) == l { } else { NR.NarrowIsCdn(r1); PlusGateBodyRECdn(r1, l); }   // (G5a-1 row J) a look body is narrow
+      if lid0 >= 0 && (lid0 as nat) == l { } else { PlusGateBodyRECdn(r1, l); }   // (G5b) the look arm is Cdn
   }
 
   /** (G5a-1 row J) The narrow name, as a corollary of `PlusGateBodyRECdn`. */
@@ -7585,7 +7700,7 @@ module LindenElkMain {
     requires LTB.LookTablesOk(re, crv)
     requires lid in LTB.LookIds(re)
     ensures var body := NI.LookBodyOfRE(re, lid);
-            NR.NestedFragmentRE(body)
+            NR.NestedFragmentCdnRE(body)   // (G5b) the look arm is Cdn; narrow readers add the gate
             && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
             && LTB.LookTablesOk(body, crv)
             && LTB.LookIds(body) <= LTB.LookIds(re)
@@ -7608,7 +7723,7 @@ module LindenElkMain {
         assert LTB.LookEntryOk(crv, lid as int, la0, r1);   // LookTablesOk's lookaround case
       } else {
         assert lid in LTB.LookIds(r1);
-        LookBodyFactsL5(r1, crv, lid);
+        LookBodyFactsL5Cdn(r1, crv, lid);
         assert LTB.LookIds(r1) <= LTB.LookIds(re);
       }
   }
@@ -7631,6 +7746,7 @@ module LindenElkMain {
     NR.NarrowIsCdn(re);
     hide *;   // the wide premises are this lemma's own: match by name
     LookBodyFactsL5Cdn(re, crv, lid);
+    NestedFragmentLookBody(re, lid);   // (G5b) narrow body from a narrow regex
   }
 
 
@@ -7837,10 +7953,10 @@ module LindenElkMain {
     // (G3a/G3b) the row's statics, every kind
     PlusGateBodyCdn(re, crv, lid, la, body);
     // (G5a-1 P5b) the top may hold a CDN plus (`NestedNoCdn(ast)` is false then): the widened table of
-    // the whole regex, and bridge 1 at this look body, which is narrow
+    // the whole regex, and bridge 1 at this look body, which is narrow ((G5b) Cdn + the gate's NoCdnPlusRE)
     FRD.PlusTableOkFullS(ast);
     NI.LookBodyOfFragmentCdn(re, lid);
-    NestedNoCdn(body');
+    NRC.CdnNoCdnIsNarrow(body');
     FRA.PlusTableOkSLookBody(re, crv.f_plus_bc, lid);
     reveal RowLAStatics();
     assert RowLAStatics(body, crv.f_plus_bc);

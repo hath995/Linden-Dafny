@@ -42,6 +42,30 @@ module LindenElkBackRowStatics {
     FST.LmapOkFlipXRev(body, qmB, qm'');
     endl' := FST.FXRCompileFacts(body);
   }
+  /** (G5b) `FlipXRevStaticCoreNested` on the Cdn fragment: the statics of `FXR(body)` for a body that may
+      hold a greedy CDN plus. */
+  lemma FlipXRevStaticCoreCdn(body: R.regex, someView: LOr.OracleView,
+                                 ncap: int, nlook: int, nquant: int)
+      returns (qm'': AR.QMap, endl': nat)
+    requires T.TransWf(body) && NR.NestedFragmentCdnRE(body)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    ensures PSM.StaticCoreCdnRE(qm'', FST.FXR(body), CP.compile_to_bytecode(FST.FXR(body)), endl')
+    ensures PSM.SizesOkRE(FST.FXR(body), ncap, nlook, nquant)
+    ensures qm''.ov == someView && qm''.looks == FST.FlipLooksMap(OE.LmOf(body))
+    ensures qm''.bodies == M.BodiesOfRE(FST.FXR(body))
+  {
+    var re' := FST.FXR(body);
+    FST.FXRStructuralCdn(body);
+    qm'' := AR.QMap(M.QmOfRE(re'), FST.FlipLooksMap(OE.LmOf(body)), someView, M.BodiesOfRE(re'));
+    M.QmOfREEntries(re');
+    M.BodiesOfREEntries(re');
+    M.QmapOkFromEntries(re', qm'');
+    var qmB := AR.QMap(map[], OE.LmOf(body), someView, map[]);
+    OE.LmapOkOfLmOf(body, qmB);
+    FST.LmapOkFlipXRev(body, qmB, qm'');
+    endl' := FST.FXRCompileFactsCdn(body);
+  }
 
   /** Anti-vacuity: the premises admit a nulled plus, `(?:())+` (no NoNulledPlusRE). */
   lemma NulledPlusAdmitted()

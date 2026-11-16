@@ -178,6 +178,20 @@ module LindenElkFlipStatics {
     case _ =>
   }
 
+  /** (G5b) The Cdn fragment is flip-invariant too. */
+  lemma FlipCdnFragment(r: R.regex)
+    ensures NR.NestedFragmentCdnRE(FR.FlipRE(r)) == NR.NestedFragmentCdnRE(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => FlipCdnFragment(r1); FlipCdnFragment(r2);
+    case Re_con(r1, r2) => FlipCdnFragment(r1); FlipCdnFragment(r2);
+    case Re_quant(_, _, _, r1) => FlipNullable(r1); FlipCdnFragment(r1);
+    case Re_capture(_, r1) => FlipCdnFragment(r1);
+    case Re_lookaround(_, la, r1) => FlipCdnFragment(r1);
+    case _ =>
+  }
+
   lemma FlipCapIds(r: R.regex)
     ensures PIV.CapIds(FR.FlipRE(r)) == PIV.CapIds(r)
     decreases r
@@ -286,6 +300,39 @@ module LindenElkFlipStatics {
     case _ =>
   }
 
+  /** (G5b) `XRVNestedFragment` on the Cdn fragment. */
+  lemma XRVCdnFragment(r: R.regex)
+    ensures NR.NestedFragmentCdnRE(XRV(r)) == NR.NestedFragmentCdnRE(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => XRVCdnFragment(r1); XRVCdnFragment(r2);
+    case Re_con(r1, r2) => XRVCdnFragment(r1); XRVCdnFragment(r2);
+    case Re_quant(_, _, _, r1) => OMV.XRevNullable(r1); XRVCdnFragment(r1);
+    case Re_capture(_, r1) => XRVCdnFragment(r1);
+    case Re_lookaround(_, _, r1) => XRVCdnFragment(r1);
+    case _ =>
+  }
+
+  /** (G5b) `FXRStructural` on the Cdn fragment. */
+  lemma FXRStructuralCdn(body: R.regex)
+    requires T.TransWf(body) && NR.NestedFragmentCdnRE(body)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body)
+    ensures T.TransWf(FXR(body)) && NR.NestedFragmentCdnRE(FXR(body))
+    ensures PIV.CapUnique(FXR(body)) && PIV.QuantUnique(FXR(body))
+    ensures R.max_group(FXR(body)) == R.max_group(body)
+    ensures R.max_quant(FXR(body)) == R.max_quant(body)
+  {
+    XRevIsRevRENested(body);
+    SD.RevRETransWf(body);
+    FR.FlipTransWf(XRV(body));
+    XRVCdnFragment(body); FlipCdnFragment(XRV(body));
+    LBV.CapUniqueRevRE(body); FlipCapUnique(XRV(body));
+    LBV.QuantUniqueRevRE(body); FlipQuantUnique(XRV(body));
+    LBV.MaxGroupRevRE(body); FlipMaxGroup(XRV(body));
+    LBV.MaxQuantRevRE(body); FlipMaxQuant(XRV(body));
+  }
+
   /** The structural statics of the flip-reversed body, from the body's. */
   lemma FXRStructural(body: R.regex)
     requires T.TransWf(body) && NR.NestedFragmentRE(body)
@@ -326,6 +373,37 @@ module LindenElkFlipStatics {
     var re := FXR(body);
     var code := CP.compile_to_bytecode(re);
     NR.CompileToBytecodeRepNested(re);
+    var next := CP.compile(re, 0, CP.Progress).1;
+    endl := next as nat;
+    forall pc: nat | pc < |code|
+      ensures match NR.GetPcRE(code, pc)
+              case Some(Jmp(nxt)) =>
+                pc < nxt
+                || (nxt >= 0 && NR.GetPcRE(code, nxt as nat).Some? && NR.GetPcRE(code, nxt as nat).value.Fork?)
+              case _ => true
+    {
+      match NR.GetPcRE(code, pc)
+      case Some(Jmp(nn)) =>
+        assert pc < endl;
+        PIV.CompileJumpsRE(re, code, 0, endl, pc, nn);
+      case _ =>
+    }
+  }
+  /** (G5b) `FXRCompileFacts` on the Cdn fragment. */
+  lemma FXRCompileFactsCdn(body: R.regex) returns (endl: nat)
+    requires NR.NestedFragmentCdnRE(FXR(body))
+    ensures var code := CP.compile_to_bytecode(FXR(body));
+            && NR.NfaRepRE(FXR(body), code, 0, endl)
+            && NR.GetPcRE(code, endl) == Some(RB.Accept)
+            && |code| == endl + 1
+            && PIV.StutterTameRE(code)
+  {
+    hide FXR;
+    hide NR.NfaRepRE, NR.NfaRepMinRE, NR.NfaRepOptRE;   // (G5a) only passed on, never unfolded
+    // (§2.5b) `re` is opaque here; unfolding FXR grinds z3 4.14 past 900 s
+    var re := FXR(body);
+    var code := CP.compile_to_bytecode(re);
+    NR.CompileToBytecodeRepCdn(re);
     var next := CP.compile(re, 0, CP.Progress).1;
     endl := next as nat;
     forall pc: nat | pc < |code|

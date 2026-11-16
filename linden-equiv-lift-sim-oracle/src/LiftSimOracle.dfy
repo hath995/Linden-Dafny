@@ -120,6 +120,8 @@ module LindenElkLiftSimOracle {
   import KG = LindenElkFlipKeystoneG     // (gate B) keystone, scope-free
   import OG = LindenElkFlipOracleG       // (gate B) generic F2/F3
   import G = LindenElkFlipMirrorG        // (gate B) generic tree mirror
+  import CG = LindenElkCdnGuards
+  import CS = LindenElkCdnSound
   import MV = LindenElkMatchesVRoute     // (gate B) W9: lookbehind column via the mirrored MatchesV route
 
   /** The keystone's `Empty` hypothesis, as a walk-state invariant: any gate
@@ -524,7 +526,8 @@ module LindenElkLiftSimOracle {
       assert LTB.LookIds(r1) <= LTB.LookIds(re);
       GateStaticsSweepRECdn(qm, re0, r1, crv, ncap, nlook, nquant);
     case Re_lookaround(lid, la, body) =>
-      assert NR.NestedFragmentRE(re);   // the look node of the Cdn fragment is narrow
+      NRC.CdnNoCdnIsNarrow(body);        // (G5b) the gate keeps this body CDN-free
+      assert NR.NestedFragmentRE(re);   // so the look node is narrow
       GateStaticsSweepRENested(qm, re0, re, crv, ncap, nlook, nquant);
     case _ =>
   }
@@ -2111,7 +2114,9 @@ module LindenElkLiftSimOracle {
       lemma's context even this direction's one-line steps took 900 s). */
   lemma ColumnAheadBitToRun(body: R.regex, lid: int, str: string, ovf: LOr.OracleView, cp: nat,
                             cdnsb: LCdn.cdns, initcap: AReg.Regs, initlook: AReg.Regs, initquant: AReg.Regs)
-    requires NR.NestedFragmentRE(body) && LTB.LookUnique(body)
+    requires NR.NestedFragmentCdnRE(body) && LTB.LookUnique(body)   // (G5b) the body may hold a greedy CDN plus
+    requires T.TransWf(body) && PIV.QuantUnique(body)
+    requires cdnsb == LCdn.compile_cdns(body)   // (G5b) the accept run reads the body's own table
     requires forall y: nat :: y in LTB.LookIds(body) ==> 1 <= y
     requires cp <= |str| && |ovf| == |str| + 1
     requires ORc.ReachesWriteV(CP.compile_to_write(R.lazy_prefix(OMV.XRev(R.remove_capture(body))), lid),
@@ -2130,15 +2135,19 @@ module LindenElkLiftSimOracle {
     var rstr := LC.Reverse(str);
     var mv := MIR.MirrorView(ovf, n);
     SD.ReverseLength(str);
-    OMV.RemoveCaptureNestedFragment(body);
-    OMV.XRevNestedFragment(rcb);
-    var i := ODV.ReachesWriteVToMatchesV(x, lid, rstr, mv, MIR.SwapAnchorsCdns(LCdn.compile_cdns(body)), n - cp);
+    OMV.RemoveCaptureCdnFragment(body);
+    OMV.XRevCdnFragment(rcb);
+    CS.TransWfCdnWf(body);
+    CG.QUniqueOfQuantUnique(body);
+    CG.GuardsOkLookaheadBuild(body, str, ovf);   // (G5b) the build's guards
+    CG.GuardsOkForward(body, str, ovf);          // (G5b) the accept run's guards
+    var i := ODV.ReachesWriteVToMatchesVCdn(x, lid, rstr, mv, MIR.SwapAnchorsCdns(LCdn.compile_cdns(body)), n - cp);
     OMV.MatchesVMirror(rcb, str, ovf, cp, n - i);
     assert n - (n - i) == i;
     assert OBV.MatchesV(rcb, str, ovf, cp, n - i);
     OMV.MatchesVRemoveCapture(body, str, ovf, cp, n - i);
     assert OBV.MatchesV(body, str, ovf, cp, n - i);
-    OAV.AcceptRunCharacterizationV(body, str, ovf, cp, cdnsb, initcap, initlook, initquant, 0);
+    OAV.AcceptRunCharacterizationVCdn(body, str, ovf, cp, cdnsb, initcap, initlook, initquant, 0);
   }
 
   /** (2026-11-05) `OracleColumnNested`'s lookahead row, spec -> engine, with a
@@ -2146,26 +2155,32 @@ module LindenElkLiftSimOracle {
       context made the column lemma's last call a 900 s batch at one worker). */
   lemma ColumnAheadSpecToBit(body: R.regex, lid: int, str: string, ovf: LOr.OracleView,
                              cp: nat, j: int)
-    requires NR.NestedFragmentRE(body)
+    requires NR.NestedFragmentCdnRE(body) && T.TransWf(body) && PIV.QuantUnique(body)   // (G5b)
     requires cp <= |str| && |ovf| == |str| + 1
     requires OBV.MatchesV(body, str, ovf, cp, j)
     ensures ORc.ReachesWriteV(CP.compile_to_write(R.lazy_prefix(OMV.XRev(R.remove_capture(body))), lid),
                               LC.Reverse(str), MIR.MirrorView(ovf, |str|), MIR.SwapAnchorsCdns(LCdn.compile_cdns(body)), 0, lid, |str| - cp)
   {
+    // (G5b) only lemma postconditions are needed (the `ColumnAheadBitToRun` recipe): with the Cdn guard
+    // steps the unhidden context timed out at 600 s
+    hide *;
     var n := |str|;
     var rcb := R.remove_capture(body);
     var x := OMV.XRev(rcb);
     var rstr := LC.Reverse(str);
     var mv := MIR.MirrorView(ovf, n);
     SD.ReverseLength(str);
-    OMV.RemoveCaptureNestedFragment(body);
-    OMV.XRevNestedFragment(rcb);
+    OMV.RemoveCaptureCdnFragment(body);
+    OMV.XRevCdnFragment(rcb);
+    CS.TransWfCdnWf(body);
+    CG.QUniqueOfQuantUnique(body);
+    CG.GuardsOkLookaheadBuild(body, str, ovf);   // (G5b) the build's guards
     OBV.MatchesVBounds(body, str, ovf, cp, j);
     MatchesVUpper(body, str, ovf, cp, j);
     OMV.MatchesVRemoveCapture(body, str, ovf, cp, j);
     OMV.MatchesVMirror(rcb, str, ovf, cp, j);
     assert OBV.MatchesV(x, rstr, mv, n - j, n - cp);
-    OBV.MatchesVToReachesWriteV(x, lid, rstr, mv, MIR.SwapAnchorsCdns(LCdn.compile_cdns(body)), n - j, n - cp);
+    OBV.MatchesVToReachesWriteVCdn(x, lid, rstr, mv, MIR.SwapAnchorsCdns(LCdn.compile_cdns(body)), n - j, n - cp);
   }
 
   /** THE NESTED COLUMN SPEC, one row at one column. Given the oracle truth of
@@ -2183,7 +2198,7 @@ module LindenElkLiftSimOracle {
     requires LTB.LookTablesOk(sub, crv)
     requires lid in LTB.LookIds(sub)
     ensures var body := NI.LookBodyOfRE(sub, lid);
-            T.TransWf(body) && NR.NestedFragmentRE(body)
+            T.TransWf(body) && NR.NestedFragmentCdnRE(body)   // (G5b) a look body is in the Cdn fragment
             && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
             && LTB.LookTablesOk(body, crv)
             && LTB.LookIds(body) <= LTB.LookIds(sub)
@@ -2231,32 +2246,11 @@ module LindenElkLiftSimOracle {
       } else {
         assert lid in LTB.LookIds(r1);
         OE.LmOfDom(r1);
-        NR.NarrowIsCdn(r1);   // (G5a-1 row J) a look body is narrow
         LookBodyRowAnyCdn(r1, crv, lid);
         assert lid0 != lid as int;
         assert OE.LmOf(sub)[lid as int] == OE.LmOf(r1)[lid as int];
         assert LTB.LookIds(r1) <= LTB.LookIds(sub);
       }
-  }
-
-  /** (G5a-1 row J) The narrow name, as a corollary of `LookBodyRowAnyCdn`. */
-  lemma LookBodyRowAny(sub: R.regex, crv: CP.FCompiled, lid: nat)
-    requires T.TransWf(sub) && NR.NestedFragmentRE(sub)
-    requires PIV.CapUnique(sub) && PIV.QuantUnique(sub) && LTB.LookUnique(sub)
-    requires LTB.LookTablesOk(sub, crv)
-    requires lid in LTB.LookIds(sub)
-    ensures var body := NI.LookBodyOfRE(sub, lid);
-            T.TransWf(body) && NR.NestedFragmentRE(body)
-            && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
-            && LTB.LookTablesOk(body, crv)
-            && LTB.LookIds(body) <= LTB.LookIds(sub)
-            && (lid as int) in OE.LmOf(sub)
-            && exists la: R.lookaround ::
-              LTB.LookEntryOk(crv, lid as int, la, body)
-              && OE.LmOf(sub)[lid as int] == (T.TrLookaround(la), T.Translate(body))
-  {
-    NR.NarrowIsCdn(sub);
-    LookBodyRowAnyCdn(sub, crv, lid);
   }
 
   lemma OracleColumnCdn(rer: LW.RegExpRecord, top: R.regex, crv: CP.FCompiled,
@@ -2318,7 +2312,7 @@ module LindenElkLiftSimOracle {
     assert crv.f_look_types[lid] == la;
     var rcb := R.remove_capture(body);
     assert {:split_here} true;
-    OMV.RemoveCaptureNestedFragment(body);
+    OMV.RemoveCaptureCdnFragment(body);
     var inp := T.InputAt(str, cp);
     assert {:split_here} true;
     assert PIV.InpOfCp(str, cp) == inp by { LS.ReverseLength(str[..cp]); }
@@ -2345,7 +2339,7 @@ module LindenElkLiftSimOracle {
       assert {:split_here} true;
       assert MIR.SwapAnchorsCode(bc) == CP.compile_to_write(R.lazy_prefix(x), lid);
       assert {:split_here} true;
-      OMV.XRevNestedFragment(rcb);
+      OMV.XRevCdnFragment(rcb);
       var mv := MIR.MirrorView(ovf, n);
       var mcp := MIR.Mirror(cp, n);
       assert {:split_here} true;
@@ -2364,17 +2358,21 @@ module LindenElkLiftSimOracle {
       assert {:split_here} true;
       assert forall y: nat :: y in LTB.LookIds(body) ==> 1 <= y;
       assert {:split_here} true;
-      OAV.AcceptRunCharacterizationV(body, str, ovf, cp, cdnsb, AReg.init_regs(ncapb),
-                                     AReg.init_regs(nlookb), AReg.init_regs(nquantb), 0);
+      CS.TransWfCdnWf(body);
+      CG.QUniqueOfQuantUnique(body);
+      CG.GuardsOkForward(body, str, ovf);   // (G5b) the accept run's guards
+      assert {:split_here} true;
+      OAV.AcceptRunCharacterizationVCdn(body, str, ovf, cp, cdnsb, AReg.init_regs(ncapb),
+                                        AReg.init_regs(nlookb), AReg.init_regs(nquantb), 0);
 
       var qmb := AR.QMap(M.QmOfRE(body), OE.LmOf(body), ovf, M.BodiesOfRE(body));
       assert {:split_here} true;
       OracleOkSuffixAtCp(rer, qmb, str, cp);
       assert {:split_here} true;
-      NR.CompileToBytecodeRepNested(body);
+      NR.CompileToBytecodeRepCdn(body);
       var endlb: nat := CP.compile(body, 0, CP.Progress).1 as nat;
       assert {:split_here} true;
-      CompileStutterTameRENested(body);
+      CompileStutterTameRECdn(body);
       assert {:split_here} true;
       M.QmOfREEntries(body);
       assert {:split_here} true;
@@ -2385,11 +2383,13 @@ module LindenElkLiftSimOracle {
       OE.LmapOkOfLmOf(body, qmb);
       assert {:split_here} true;
       assert {:split_here} true;
-      assert PSM.StaticCoreNestedRE(qmb, body, codeb, endlb);   // (G3a) a lookahead body may hold a CIN plus
+      assert PSM.StaticCoreCdnRE(qmb, body, codeb, endlb);   // (G3a, G5b) a CIN or CDN plus
       assert {:split_here} true;
       assert PSM.SizesOkRE(body, ncapb, nlookb, nquantb);
-      var bestT := M.BodyTreeAtCpNested(rer, qmb, body, codeb, endlb, 0, str, cp, ovf, cdnsb,
-                                        ncapb, nlookb, nquantb);
+      CG.GuardsOkRunRow(qmb, body, codeb, endlb, str, ovf);   // (G5b) N1: the body run's guards
+      assert {:split_here} true;
+      var bestT := M.BodyTreeAtCpCdn(rer, qmb, body, codeb, endlb, 0, str, cp, ovf, cdnsb,
+                                     ncapb, nlookb, nquantb);
       var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Forward);
       assert {:split_here} true;
       assert (bestT.None? <==> r.None?) && (bestT.None? <==> LT.FirstLeaf(t, inp).None?);
@@ -2530,7 +2530,6 @@ module LindenElkLiftSimOracle {
         LookIdNotInOwnBody(sub, lidn);
         SubsetCardLt(LTB.LookIds(body), LTB.LookIds(sub), lidn);
         M.PlusGateBodyRECdn(sub, lidn);   // (G3a) the gate descends
-        NR.NarrowIsCdn(body);   // (G5a-1 row J) a row body is narrow
         OracleOkRowsL5Cdn(rer, top, crv, str, body);
         OracleColumnCdn(rer, top, crv, str, sub, lid, lk, r1, cp);
       }

@@ -1113,6 +1113,26 @@ module LindenElkEntryLk {
     case _ =>
   }
 
+  /** (G5b) `TranslateFragmentPikeLkRec` on the Cdn fragment, look bodies included (moved down from
+      main-cin-lk's `TranslateFragmentPikeLkRecLkCdn` so the oracle column chain can use it). A greedy CDN
+      plus is a head by the switch's second disjunct. */
+  lemma TranslateFragmentPikeLkRecCdn(re: R.regex)
+    requires T.TransWf(re) && NR.NestedFragmentCdnRE(re)
+    ensures PikeLkRegexRec(T.Translate(re))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => TranslateFragmentPikeLkRecCdn(r1); TranslateFragmentPikeLkRecCdn(r2);
+    case Re_con(r1, r2) => TranslateFragmentPikeLkRecCdn(r1); TranslateFragmentPikeLkRecCdn(r2);
+    case Re_quant(nul, qid, q, r1) =>
+      TranslateFragmentPikeLkRecCdn(r1);
+      CdnHeadsAreOn();
+      reveal CinHeadL();
+    case Re_capture(_, r1) => TranslateFragmentPikeLkRecCdn(r1);
+    case Re_lookaround(lid, la, r1) => TranslateFragmentPikeLkRecCdn(r1);
+    case _ =>
+  }
+
   /** (G5a-1 step 3-L0) A narrow-fragment RegElk regex translates to a regex with no CDN-greedy plus. */
   lemma TranslateFragmentNoCdn(re: R.regex)
     requires T.TransWf(re) && NR.NestedFragmentRE(re)

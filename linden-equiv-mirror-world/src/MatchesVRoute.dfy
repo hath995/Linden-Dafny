@@ -34,6 +34,8 @@ module LindenElkMatchesVRoute {
   import LOr = Oracle
   import LAnc = Anchors
   import LCdn = Cdn
+  import CG = LindenElkCdnGuards
+  import CS = LindenElkCdnSound
   import NR = LindenElkNfaRep
   import LTB = LindenElkLookTables
   import T = LindenElkTranslate
@@ -72,7 +74,7 @@ module LindenElkMatchesVRoute {
     requires NR.NestedFragmentCdnRE(re) && LTB.LidsWellNested(re) && LTB.LookUnique(re)
     requires LTB.LookEntryOk(CP.FFullCompilation(re), lid, la, body)
     requires la.Lookbehind? || la.NegLookbehind?
-    requires NR.NestedFragmentRE(body)
+    requires NR.NestedFragmentCdnRE(body) && T.TransWf(body) && PIV.QuantUnique(body)   // (G5b)
     requires 1 <= lid
     requires 0 <= cp <= |str|
     ensures LOr.view_get_oracle(AI.FBuildOracle(CP.FFullCompilation(re), str), cp, lid)
@@ -80,34 +82,23 @@ module LindenElkMatchesVRoute {
   {
     var ovf := AI.FBuildOracle(CP.FFullCompilation(re), str);
     var rcb := R.remove_capture(body);
-    OMV.RemoveCaptureNestedFragment(body);
+    OMV.RemoveCaptureCdnFragment(body);
+    // (G5b) the build run's guards read the original body's table: right by CdnSound
+    CS.TransWfCdnWf(body);
+    CG.QUniqueOfQuantUnique(body);
+    OB.FBuildOracleViewLen(CP.FFullCompilation(re), str);
+    CG.GuardsOkLookbehindBuild(body, str, ovf);
     OB.FBuildOracleCorrectAtCdn(re, str, lid, la, body, cp);
     if LOr.view_get_oracle(ovf, cp, lid) {
-      var i := ODV.ReachesWriteVToMatchesV(rcb, lid, str, ovf, LCdn.compile_cdns(body), cp);
+      var i := ODV.ReachesWriteVToMatchesVCdn(rcb, lid, str, ovf, LCdn.compile_cdns(body), cp);
       OMV.MatchesVRemoveCapture(body, str, ovf, i, cp);
       ODV.RecorderHitVIntro(body, str, ovf, cp, i);
     }
     if ODV.RecorderHitV(body, str, ovf, cp) {
       var i := ODV.RecorderHitVInv(body, str, ovf, cp);
       OMV.MatchesVRemoveCapture(body, str, ovf, i, cp);
-      OBV.MatchesVToReachesWriteV(rcb, lid, str, ovf, LCdn.compile_cdns(body), i, cp);
+      OBV.MatchesVToReachesWriteVCdn(rcb, lid, str, ovf, LCdn.compile_cdns(body), i, cp);
     }
-  }
-
-  /** (G5a-1 row J) The narrow name, as a corollary of `ColumnBehindBitIsRecorderHitCdn`. */
-  lemma ColumnBehindBitIsRecorderHit(re: R.regex, str: string, lid: int, la: R.lookaround,
-                                     body: R.regex, cp: int)
-    requires NR.NestedFragmentRE(re) && LTB.LidsWellNested(re) && LTB.LookUnique(re)
-    requires LTB.LookEntryOk(CP.FFullCompilation(re), lid, la, body)
-    requires la.Lookbehind? || la.NegLookbehind?
-    requires NR.NestedFragmentRE(body)
-    requires 1 <= lid
-    requires 0 <= cp <= |str|
-    ensures LOr.view_get_oracle(AI.FBuildOracle(CP.FFullCompilation(re), str), cp, lid)
-        <==> ODV.RecorderHitV(body, str, AI.FBuildOracle(CP.FFullCompilation(re), str), cp)
-  {
-    NR.NarrowIsCdn(re);
-    ColumnBehindBitIsRecorderHitCdn(re, str, lid, la, body, cp);
   }
 
   // ===========================================================================
@@ -288,6 +279,67 @@ module LindenElkMatchesVRoute {
     OG.BodySomeTieFlipG(rer, tr, inp, WP.Backward);
     assert MG.OppDir(WP.Backward) == WP.Forward;
   }
+  /** (G5b) `FlippedRunIsBackLeaf` for a body that may hold a greedy CDN plus: the flipped run reads
+      `compile_cdns(FXR(body))`, whose guards are right by N1 (`CG.GuardsOkRunRow`). */
+  lemma FlippedRunIsBackLeafCdn(rer: LW.RegExpRecord, qmb: AR.QMap, body: R.regex, str: string, cp: nat,
+                             cdnsF: LCdn.cdns, ncap: int, nlook: int, nquant: int)
+    requires !rer.ignoreCase && !rer.multiline
+    requires T.TransWf(body) && NR.NestedFragmentCdnRE(body)
+    requires cdnsF == LCdn.compile_cdns(FST.FXR(body))   // (G5b) the flipped run reads its own table
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires cp <= |str| && |qmb.ov| == |str| + 1
+    requires qmb.looks == OE.LmOf(body)
+    requires OE.OracleColsOk(rer, qmb, str)
+    ensures |LC.Reverse(str)| == |str|
+    ensures var n := |str|;
+            var rstr := LC.Reverse(str);
+            var bcF := CP.compile_to_bytecode(FST.FXR(body));
+            var initsF := AI.FInitState(bcF, n - cp, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                        AReg.init_regs(nquant), 0, AI.cp_context(n - cp, rstr, LAnc.Forward));
+            var inp := T.InputAt(str, cp);
+            AI.FFindMatch(bcF, rstr, initsF, MIR.MirrorView(qmb.ov, n), LAnc.Forward, cdnsF).0.Some?
+            <==> LT.TreeRes(FU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Backward),
+                            LG.Empty, inp, WP.Backward).Some?
+  {
+    var n := |str|;
+    var tr := T.Translate(body);
+    var re' := FST.FXR(body);
+    SD.ReverseLength(str);
+    var rstr := LC.Reverse(str);
+    var mcp: nat := n - cp;
+    var mv := MIR.MirrorView(qmb.ov, n);
+
+    // ---- statics of FXR(body) + the flipped table (F4; no kind premise) ----
+    var qm'', endl' := BRS.FlipXRevStaticCoreCdn(body, mv, ncap, nlook, nquant);
+
+    // ---- oracle for the flipped table: W3's generic transport (mixed kinds) ----
+    KG.LmOfBodiesNoBackref(body);
+    assert OG.QmBodiesNoBackref(qmb);
+    FST.FlipLooksMapTie(qmb, qm'');
+    OG.MirrorOracleColsOkG(rer, qmb, qm'', str);
+    FO.ColsOkToSuffix(rer, qm'', rstr, mcp);
+    LBV.InpOfCpSwap(str, cp, n);
+    assert PIV.InpOfCp(rstr, mcp) == T.InputAt(rstr, mcp);
+    assert LL.OracleOkSuffix(rer, qm'', PIV.InpOfCp(rstr, mcp));
+
+    // ---- the forward keystone at FXR(body) (step 4) ----
+    var bcF := CP.compile_to_bytecode(re');
+    CG.GuardsOkRunRow(qm'', re', bcF, endl', rstr, mv);   // (G5b) N1 at the flipped body
+    var bestT := M.BodyTreeAtCpCdn(rer, qm'', re', bcF, endl', 0, rstr, mcp, mv, cdnsF,
+                                   ncap, nlook, nquant);
+    FST.TranslateFlipXRev(body);
+    assert T.Translate(re') == FM.FlipRevL(tr);
+    var inp := T.InputAt(str, cp);
+    assert PIV.InpOfCp(str, cp) == inp;
+    var inpF := SD.SwapInput(inp);
+    assert PIV.InpOfCp(rstr, mcp) == inpF;
+
+    // ---- the backward leaf <=> the flipped forward leaf (step 5, W3) ----
+    KG.TranslateNoBackref(body);
+    OG.BodySomeTieFlipG(rer, tr, inp, WP.Backward);
+    assert MG.OppDir(WP.Backward) == WP.Forward;
+  }
 
   // ===========================================================================
   // THE NARROW CONTRACT: a lookbehind row's column, body of any look kinds.
@@ -300,7 +352,7 @@ module LindenElkMatchesVRoute {
     requires LTB.LookEntryOk(CP.FFullCompilation(top), lid, la, body)
     requires la.Lookbehind? || la.NegLookbehind?
     requires 1 <= lid && cp <= |str|
-    requires T.TransWf(body) && NR.NestedFragmentRE(body)   // (G3b) no stamp-free premise
+    requires T.TransWf(body) && NR.NestedFragmentCdnRE(body)   // (G5b) the body may hold a greedy CDN plus
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires forall y: nat :: y in LTB.LookIds(body) ==> 1 <= y
     requires qmb.ov == AI.FBuildOracle(CP.FFullCompilation(top), str) && qmb.looks == OE.LmOf(body)
@@ -331,7 +383,7 @@ module LindenElkMatchesVRoute {
     RecorderHitVMirrorFXR(body, str, ovf, cp, mcp);
     // step 3
     assert {:split_here} true;
-    FST.FXRStructural(body);
+    FST.FXRStructuralCdn(body);
     FG.LookUniqueFXR(body);
     FG.LookIdsFXR(body);
     assert forall y: nat :: y in LTB.LookIds(re') ==> 1 <= y;
@@ -342,11 +394,15 @@ module LindenElkMatchesVRoute {
     assert PSM.SizesOkRE(body, ncap, nlook, nquant) by { reveal PSM.SizesOkRE, R.imax; }
     var cdnsF := LCdn.compile_cdns(re');
     assert {:split_here} true;
-    OAV.AcceptRunCharacterizationV(re', rstr, mv, mcp, cdnsF, AReg.init_regs(ncap),
-                                   AReg.init_regs(nlook), AReg.init_regs(nquant), 0);
+    CS.TransWfCdnWf(re');
+    CG.QUniqueOfQuantUnique(re');
+    CG.GuardsOkForward(re', rstr, mv);   // (G5b) the flipped accept run reads its own table
+    assert {:split_here} true;
+    OAV.AcceptRunCharacterizationVCdn(re', rstr, mv, mcp, cdnsF, AReg.init_regs(ncap),
+                                      AReg.init_regs(nlook), AReg.init_regs(nquant), 0);
     // steps 4-5
     assert {:split_here} true;
-    FlippedRunIsBackLeaf(rer, qmb, body, str, cp, cdnsF, ncap, nlook, nquant);
+    FlippedRunIsBackLeafCdn(rer, qmb, body, str, cp, cdnsF, ncap, nlook, nquant);
     assert {:split_here} true;
   }
 
@@ -368,6 +424,7 @@ module LindenElkMatchesVRoute {
                         LG.Empty, T.InputAt(str, cp), WP.Backward).Some?
   {
     NR.NarrowIsCdn(top);
+    NR.NarrowIsCdn(body);
     ColumnBehindViaMirrorCdn(rer, top, qmb, str, lid, la, body, cp);
   }
 }

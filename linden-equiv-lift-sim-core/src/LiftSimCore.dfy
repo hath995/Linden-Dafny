@@ -3856,6 +3856,15 @@ module LindenElkLiftSimCore {
       guard `CheckNullable` at `e1 + 2`: when the body has a first empty path here the guard is transparent
       (tr_cdn) over the stamp's `Reset` at `e1 + 3` and the continuation at `e1 + 4`; otherwise the arm is
       `Mismatch` (tr_cdnfail). Exactly `CW.BoolTreeLkX`'s CDN shape, so erasure equality is structural. */
+  /** (G5b) An `ActionsRepL` has a fuel: the pick, out of the caller's context. */
+  lemma FuelPickL(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, code: RB.code, pc: nat) returns (n: nat)
+    requires AR.ActionsRepL(rer, qm, acts, code, pc)
+    ensures ATR.ActionsRepFuelL(rer, qm, acts, code, pc, n)
+  {
+    ATR.ActionsRepLToFuel(rer, qm, acts, code, pc);
+    n :| ATR.ActionsRepFuelL(rer, qm, acts, code, pc, n);
+  }
+
   lemma LkCdnHeadRec(rer: LW.RegExpRecord, qm: AR.QMap, acts: LS.Actions, cont: LS.Actions,
                      code: RB.code, pc: nat, pcmid: nat, inp: LC.Input, b: BS.LoopBool,
                      t: LT.Tree, n: nat, r1: L.Regex)
@@ -3919,9 +3928,8 @@ module LindenElkLiftSimCore {
             assert ia == [LS.Areg(r1)] + lc;
             assert AR.ActionsRepL(rer, qm, ia, code, em + 3);
             assert {:split_here} true;   // section: fuel
-            ATR.ActionsRepLToFuel(rer, qm, ia, code, em + 3);
-            assert {:split_here} true;   // section: the fuel pick
-            var ni: nat :| ATR.ActionsRepFuelL(rer, qm, ia, code, em + 3, ni);
+            // (G5b) the pick in a small context: inline it reached 700 M once the fragment's look arm recursed
+            var ni: nat := FuelPickL(rer, qm, ia, code, em + 3);
             assert {:split_here} true;   // section: the walk
             assert WO.WalkOk(ia, code, em + 3, false) && WO.WalkOk(cont, code, pcmid, ATR.EaOf(b)) by {
               hide *;
@@ -4724,7 +4732,7 @@ module LindenElkLiftSimCore {
     requires lid in LTB.LookIds(re)
     ensures var body := NI.LookBodyOfRE(re, lid);
             var li: int := lid as int;   // cast-free trigger term
-            NR.NestedFragmentRE(body)
+            NR.NestedFragmentCdnRE(body)   // (G5b) the look arm is Cdn; narrow readers add the gate
             && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
             && LTB.LookTablesOk(body, crv)
             && LTB.LookIds(body) <= LTB.LookIds(re)
@@ -4746,7 +4754,7 @@ module LindenElkLiftSimCore {
         assert LTB.LookEntryOk(crv, lid as int, la0, r1);   // LookTablesOk's lookaround case
       } else {
         assert lid in LTB.LookIds(r1);
-        LookBodyFactsKB(r1, crv, lid);
+        LookBodyFactsKBCdn(r1, crv, lid);
         assert LTB.LookIds(r1) <= LTB.LookIds(re);
       }
   }
@@ -4769,6 +4777,7 @@ module LindenElkLiftSimCore {
     NR.NarrowIsCdn(re);
     hide *;   // the wide premises are this lemma's own: match by name
     LookBodyFactsKBCdn(re, crv, lid);
+    M.NestedFragmentLookBody(re, lid);   // (G5b) narrow body from a narrow regex
   }
 
   /** (gate B) `GG.BackLeafAt` (the leaf's copy) is `FG.BackLeafAt`. */

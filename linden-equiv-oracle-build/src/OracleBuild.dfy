@@ -480,8 +480,7 @@ module LindenElkOracleBuild {
       if lid >= 0 && (lid as nat) == i {
         assert fc.f_look_types[i] == la;              // LookEntryOk(fc, lid, la, body)
       } else {
-        NR.NarrowIsCdn(body);   // (G5a-1 row J) a look body is narrow
-        LookTablesLidDirForwardCdn(body, fc, i);   // i in LookIds(body)
+        LookTablesLidDirForwardCdn(body, fc, i);   // i in LookIds(body); (G5b) the body is Cdn
       }
   }
 
@@ -1135,6 +1134,114 @@ module LindenElkOracleBuild {
   // (which `NR.GatesAboveClassified` machinery + `LidsWellNested` supply).
   // ===========================================================================
 
+  // ---------------------------------------------------------------------------
+  // (G5b) The build regex of a Cdn body stays Cdn, and its table reads only the body's looks.
+  // ---------------------------------------------------------------------------
+
+  lemma RemoveCaptureCdnFragmentRE(r: R.regex)
+    requires NR.NestedFragmentCdnRE(r)
+    ensures NR.NestedFragmentCdnRE(R.remove_capture(r))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => RemoveCaptureCdnFragmentRE(r1); RemoveCaptureCdnFragmentRE(r2);
+    case Re_con(r1, r2) => RemoveCaptureCdnFragmentRE(r1); RemoveCaptureCdnFragmentRE(r2);
+    case Re_quant(nul, qid, q, r1) => RemoveCaptureCdnFragmentRE(r1); NR.RemoveCaptureNullableRE(r1);
+    case Re_capture(_, r1) => RemoveCaptureCdnFragmentRE(r1);
+    case Re_lookaround(lid, la, r1) => RemoveCaptureCdnFragmentRE(r1);
+    case _ =>
+  }
+
+  lemma ReverseCdnFragmentRE(r: R.regex)
+    requires NR.NestedFragmentCdnRE(r)
+    ensures NR.NestedFragmentCdnRE(R.reverse_regex(r))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => ReverseCdnFragmentRE(r1); ReverseCdnFragmentRE(r2);
+    case Re_con(r1, r2) => ReverseCdnFragmentRE(r1); ReverseCdnFragmentRE(r2);
+    case Re_quant(nul, qid, q, r1) => ReverseCdnFragmentRE(r1); NR.ReverseNullableRE(r1);
+    case Re_capture(_, r1) => ReverseCdnFragmentRE(r1);
+    case Re_lookaround(lid, la, r1) => ReverseCdnFragmentRE(r1);
+    case _ =>
+  }
+
+  /** `oracle_regex(la, body)` stays in the Cdn fragment when `body` does. */
+  lemma OracleRegexCdnFragment(la: R.lookaround, body: R.regex)
+    requires NR.NestedFragmentCdnRE(body)
+    ensures NR.NestedFragmentCdnRE(CP.oracle_regex(la, body))
+  {
+    RemoveCaptureCdnFragmentRE(body);
+    var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
+    if la.Lookahead? || la.NegLookahead? {
+      assert CP.oracle_regex(la, body) == R.lazy_prefix(R.reverse_regex(R.remove_capture(body)));
+      ReverseCdnFragmentRE(R.remove_capture(body));
+      assert R.lazy_prefix(R.reverse_regex(R.remove_capture(body))) == R.Re_con(pre, R.reverse_regex(R.remove_capture(body)));
+    } else {
+      assert CP.oracle_regex(la, body) == R.lazy_prefix(R.remove_capture(body));
+      assert R.lazy_prefix(R.remove_capture(body)) == R.Re_con(pre, R.remove_capture(body));
+    }
+    assert NR.NestedFragmentCdnRE(pre);
+  }
+
+  /** The looks `compile_cdnf(r)` reads are looks of `r`. */
+  lemma CompileCdnfRefsAbove(r: R.regex, k: int)
+    requires LT.LookUnique(r)
+    requires forall x: nat :: x in LT.LookIds(r) ==> x > k
+    ensures forall l :: l in ORc.LookRefs(LCdn.compile_cdnf(r)) ==> l > k
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      assert LT.LookIds(r) == LT.LookIds(r1) + LT.LookIds(r2);
+      CompileCdnfRefsAbove(r1, k); CompileCdnfRefsAbove(r2, k);
+    case Re_con(r1, r2) =>
+      assert LT.LookIds(r) == LT.LookIds(r1) + LT.LookIds(r2);
+      CompileCdnfRefsAbove(r1, k); CompileCdnfRefsAbove(r2, k);
+    case Re_quant(_, _, _, r1) => assert LT.LookIds(r) == LT.LookIds(r1); CompileCdnfRefsAbove(r1, k);
+    case Re_capture(_, r1) => assert LT.LookIds(r) == LT.LookIds(r1); CompileCdnfRefsAbove(r1, k);
+    case Re_lookaround(lid, la, r1) =>
+      assert lid >= 0 && (lid as nat) in LT.LookIds(r);
+    case _ =>
+  }
+
+  /** Every formula `compile_cdns_rec(r, c)` lists reads only columns above `k` when `c`'s do and every
+      look of `r` is above `k` (looks of nested look bodies included: the list holds their pluses too). */
+  lemma CompileCdnsRefsAbove(r: R.regex, k: int, c: LCdn.cdns)
+    requires LT.LookUnique(r)
+    requires forall x: nat :: x in LT.LookIds(r) ==> x > k
+    requires ORc.CdnsRefsAbove(c, k)
+    ensures ORc.CdnsRefsAbove(LCdn.compile_cdns_rec(r, c), k)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      assert LT.LookIds(r) == LT.LookIds(r1) + LT.LookIds(r2);
+      CompileCdnsRefsAbove(r1, k, c);
+      CompileCdnsRefsAbove(r2, k, LCdn.compile_cdns_rec(r1, c));
+    case Re_con(r1, r2) =>
+      assert LT.LookIds(r) == LT.LookIds(r1) + LT.LookIds(r2);
+      CompileCdnsRefsAbove(r1, k, c);
+      CompileCdnsRefsAbove(r2, k, LCdn.compile_cdns_rec(r1, c));
+    case Re_lookaround(lid, la, r1) => assert LT.LookIds(r1) <= LT.LookIds(r); CompileCdnsRefsAbove(r1, k, c);
+    case Re_capture(_, r1) => assert LT.LookIds(r) == LT.LookIds(r1); CompileCdnsRefsAbove(r1, k, c);
+    case Re_quant(nul, qid, q, r1) =>
+      assert LT.LookIds(r) == LT.LookIds(r1);
+      if nul == R.CDNullable && q.min > 0 && q.max == None && q.greedy {
+        var c' := [(qid, LCdn.compile_cdnf(r1))] + c;
+        CompileCdnfRefsAbove(r1, k);
+        assert ORc.CdnsRefsAbove(c', k) by {
+          forall i: int, l: int | 0 <= i < |c'| && l in ORc.LookRefs(c'[i].1) ensures l > k {
+            if i > 0 { assert c'[i] == c[i - 1]; }
+          }
+        }
+        CompileCdnsRefsAbove(r1, k, c');
+      } else {
+        CompileCdnsRefsAbove(r1, k, c);
+      }
+    case _ =>
+  }
+
   /** A lid OF a nested-fragment regex satisfies `LidBuildOkAbove`: recurse to the
       lookaround node owning `i` and classify its build code
       `compile_to_write(oracle_regex(la, body), i)`. The build regex is nested,
@@ -1163,16 +1270,18 @@ module LindenElkOracleBuild {
       if (i as int) == lid {
         assert LT.LookEntryOk(fc, lid, la, body);
         var og := CP.oracle_regex(la, body);
-        NR.OracleRegexNestedFragment(la, body);
+        OracleRegexCdnFragment(la, body);   // (G5b) the body may hold a greedy CDN plus
         NR.OracleRegexLookUnique(la, body);
         NR.OracleRegexLookIds(la, body);   // LookIds(og) == LookIds(body)
         assert forall x: nat :: x in LT.LookIds(og) ==> x > lid;
-        NR.NestedCompileToWriteClassifiedAbove(og, lid);
+        CdnCompileToWriteClassifiedAbove(og, lid);
         assert AI.get_code_v(fc.f_look_build_bc, i) == CP.compile_to_write(og, lid);
+        // (G5b) the build run's table reads only the body's looks, all above `lid`
+        assert LookCdnsOf(fc, i) == LCdn.compile_cdns(body);
+        CompileCdnsRefsAbove(body, lid, []);
       } else {
         assert i in LT.LookIds(body);
-        NR.NarrowIsCdn(body);   // (G5a-1 row J) a look body is narrow
-        CdnLidBuildOkAbove(body, fc, i);
+        CdnLidBuildOkAbove(body, fc, i);   // (G5b) the body is in the Cdn fragment
       }
   }
 

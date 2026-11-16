@@ -98,6 +98,21 @@ module LindenElkOracleMirrorV {
   }
 
   /** Local copy: `remove_capture` preserves nullability. */
+  /** (G5b) `RemoveCaptureNestedFragment` on the Cdn fragment. */
+  lemma RemoveCaptureCdnFragment(re: R.regex)
+    requires NR.NestedFragmentCdnRE(re)
+    ensures NR.NestedFragmentCdnRE(R.remove_capture(re))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => RemoveCaptureCdnFragment(r1); RemoveCaptureCdnFragment(r2);
+    case Re_con(r1, r2) => RemoveCaptureCdnFragment(r1); RemoveCaptureCdnFragment(r2);
+    case Re_quant(_, _, _, r1) => RemoveCaptureCdnFragment(r1); RemoveCaptureNullableX(r1);
+    case Re_capture(_, r1) => RemoveCaptureCdnFragment(r1);
+    case Re_lookaround(_, _, r1) => RemoveCaptureCdnFragment(r1); RemoveCaptureCapFreeX(r1);
+    case _ =>
+  }
+
   lemma RemoveCaptureNullableX(re: R.regex)
     ensures R.nullable(R.remove_capture(re)) == R.nullable(re)
     decreases re
@@ -200,6 +215,24 @@ module LindenElkOracleMirrorV {
   }
 
   /** `XRev` is an involution. */
+  /** (G5b) `XRevNestedFragment` on the Cdn fragment. */
+  lemma XRevCdnFragment(re: R.regex)
+    requires NR.NestedFragmentCdnRE(re)
+    ensures NR.NestedFragmentCdnRE(XRev(re))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => XRevCdnFragment(r1); XRevCdnFragment(r2);
+    case Re_con(r1, r2) => XRevCdnFragment(r1); XRevCdnFragment(r2);
+    case Re_quant(nul, qid, q, r1) =>
+      XRevCdnFragment(r1);
+      XRevNullable(r1);
+    case Re_capture(_, r1) => XRevCdnFragment(r1);
+    case Re_lookaround(lid, la, r1) =>
+      XRevCdnFragment(r1);
+    case _ =>
+  }
+
   lemma XRevInvolution(re: R.regex)
     ensures XRev(XRev(re)) == re
     decreases re
