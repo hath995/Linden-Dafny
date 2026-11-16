@@ -1241,6 +1241,30 @@ module LindenElkMirror {
     }
   }
 
+  /** (G5b) The anchor swap keeps every look a table formula reads. */
+  lemma SwapAnchorsLookRefs(f: LCdn.cdn_formula)
+    ensures ORc.LookRefs(SwapAnchorsFormula(f)) == ORc.LookRefs(f)
+    decreases f
+  {
+    match f
+    case CDN_and(f1, f2) => SwapAnchorsLookRefs(f1); SwapAnchorsLookRefs(f2);
+    case CDN_or(f1, f2) => SwapAnchorsLookRefs(f1); SwapAnchorsLookRefs(f2);
+    case _ =>
+  }
+
+  /** (G5b) ... so a table list that reads only columns above `k` still does after the swap. */
+  lemma CdnsRefsAboveSwap(cdn: LCdn.cdns, k: int)
+    ensures ORc.CdnsRefsAbove(cdn, k) ==> ORc.CdnsRefsAbove(SwapAnchorsCdns(cdn), k)
+  {
+    if ORc.CdnsRefsAbove(cdn, k) {
+      forall i: int, l: int | 0 <= i < |SwapAnchorsCdns(cdn)| && l in ORc.LookRefs(SwapAnchorsCdns(cdn)[i].1)
+        ensures l > k
+      {
+        SwapAnchorsLookRefs(cdn[i].1);
+      }
+    }
+  }
+
   /** THE L4 GATE-FUL TRANSPORT. `SweepCharacterizationV` is forward-only; this
       is its BACKWARD counterpart, obtained — exactly as `BackwardSweep-
       Characterization` mirrors `SweepCharacterization` — not by re-proving it
@@ -1257,8 +1281,8 @@ module LindenElkMirror {
                                        cdn: LCdn.cdns, ncap: int, nlook: int, nquant: int,
                                        n: int)
     requires n == |str| && |ov| == n + 1
-    requires OS.AllGatesAbove(c, k) && OS.NoCheckNullable(c) && OS.WritesOnlyLid(c, k)
-          && OS.NoAccept(c)
+    requires OS.AllGatesAbove(c, k) && OS.WritesOnlyLid(c, k) && OS.NoAccept(c)
+    requires OS.NoCheckNullable(c) || ORc.CdnsRefsAbove(cdn, k)   // (G5b) a look body's guards read inner columns
     requires forall i: int :: 0 <= i < |ov| ==> 0 <= k < |ov[i]|
     ensures
       var initcp := AI.init_cp(LAnc.Backward, n);
@@ -1269,7 +1293,7 @@ module LindenElkMirror {
       forall cp: int :: LOr.view_get_oracle(ov', cp, k)
         == (LOr.view_get_oracle(ov, cp, k)
             || ORc.ReachesWriteV(SwapAnchorsCode(c), LC.Reverse(str), MirrorView(ov, n),
-                                 0, k, Mirror(cp, n)))
+                                 SwapAnchorsCdns(cdn), 0, k, Mirror(cp, n)))
   {
     ReverseLen(str);
     var cs := SwapAnchorsCode(c);
@@ -1285,7 +1309,9 @@ module LindenElkMirror {
     }
     assert |rstr| < |mv|;
 
-    assert OS.AllGatesAbove(cs, k) && OS.NoCheckNullable(cs);
+    assert OS.AllGatesAbove(cs, k);
+    CdnsRefsAboveSwap(cdn, k);
+    assert OS.NoCheckNullable(cs) || ORc.CdnsRefsAbove(SwapAnchorsCdns(cdn), k);
     assert OS.WritesOnlyLid(cs, k) && OS.NoAccept(cs);
     assert |rstr| < |mv|;
     assert 0 <= k < |mv[0]|;
@@ -1306,7 +1332,7 @@ module LindenElkMirror {
     forall cp: int
       ensures LOr.view_get_oracle(ovb, cp, k)
            == (LOr.view_get_oracle(ov, cp, k)
-               || ORc.ReachesWriteV(cs, rstr, mv, 0, k, Mirror(cp, n)))
+               || ORc.ReachesWriteV(cs, rstr, mv, SwapAnchorsCdns(cdn), 0, k, Mirror(cp, n)))
     {
       MirrorViewGet(ovb, n, cp, k);
       MirrorViewGet(ov, n, cp, k);

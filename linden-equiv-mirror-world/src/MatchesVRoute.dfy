@@ -83,14 +83,14 @@ module LindenElkMatchesVRoute {
     OMV.RemoveCaptureNestedFragment(body);
     OB.FBuildOracleCorrectAtCdn(re, str, lid, la, body, cp);
     if LOr.view_get_oracle(ovf, cp, lid) {
-      var i := ODV.ReachesWriteVToMatchesV(rcb, lid, str, ovf, cp);
+      var i := ODV.ReachesWriteVToMatchesV(rcb, lid, str, ovf, LCdn.compile_cdns(body), cp);
       OMV.MatchesVRemoveCapture(body, str, ovf, i, cp);
       ODV.RecorderHitVIntro(body, str, ovf, cp, i);
     }
     if ODV.RecorderHitV(body, str, ovf, cp) {
       var i := ODV.RecorderHitVInv(body, str, ovf, cp);
       OMV.MatchesVRemoveCapture(body, str, ovf, i, cp);
-      OBV.MatchesVToReachesWriteV(rcb, lid, str, ovf, i, cp);
+      OBV.MatchesVToReachesWriteV(rcb, lid, str, ovf, LCdn.compile_cdns(body), i, cp);
     }
   }
 

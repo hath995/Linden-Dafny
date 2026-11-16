@@ -30,6 +30,7 @@ module LindenElkOracleBridgeV {
   import T = LindenElkTranslate
   import NR = LindenElkNfaRep
   import ORc = LindenElkOracleReach
+  import LCdn = Cdn
   import OB = LindenElkOracleBridge
 
   // ===========================================================================
@@ -96,6 +97,44 @@ module LindenElkOracleBridgeV {
       MatchesIterVBounds(r1, k, str, ov, i, j);
     case Re_capture(_, r1) => MatchesVBounds(r1, str, ov, i, j);
     case _ =>
+  }
+
+  /** (G5b) A span that starts in range ends in range (a character reads an in-range position). */
+  lemma MatchesVLeEnd(re: R.regex, str: string, ov: LOr.OracleView, i: int, j: int)
+    requires MatchesV(re, str, ov, i, j)
+    requires i <= |str|
+    ensures j <= |str|
+    decreases CP.rsize(re), 0, 0
+  {
+    match re
+    case Re_alt(r1, r2) =>
+      if MatchesV(r1, str, ov, i, j) { MatchesVLeEnd(r1, str, ov, i, j); }
+      else { MatchesVLeEnd(r2, str, ov, i, j); }
+    case Re_con(r1, r2) =>
+      var m: int :| MatchesV(r1, str, ov, i, m) && MatchesV(r2, str, ov, m, j);
+      MatchesVLeEnd(r1, str, ov, i, m);
+      MatchesVLeEnd(r2, str, ov, m, j);
+    case Re_quant(nul, qid, q, r1) =>
+      var k: nat :| q.min <= k && (q.max.Some? ==> k <= q.max.value)
+                 && MatchesIterV(r1, k, str, ov, i, j);
+      MatchesIterVLeEnd(r1, k, str, ov, i, j);
+    case Re_capture(_, r1) => MatchesVLeEnd(r1, str, ov, i, j);
+    case Re_character(ch) =>
+      assert AI.get_char(str, i).Some?;
+    case _ =>
+  }
+
+  lemma MatchesIterVLeEnd(r: R.regex, k: nat, str: string, ov: LOr.OracleView, i: int, j: int)
+    requires MatchesIterV(r, k, str, ov, i, j)
+    requires i <= |str|
+    ensures j <= |str|
+    decreases CP.rsize(r), 1, k
+  {
+    if k > 0 {
+      var m: int :| MatchesV(r, str, ov, i, m) && MatchesIterV(r, k - 1, str, ov, m, j);
+      MatchesVLeEnd(r, str, ov, i, m);
+      MatchesIterVLeEnd(r, k - 1, str, ov, m, j);
+    }
   }
 
   /** `MatchesVBounds` for iteration chains. */
@@ -173,7 +212,7 @@ module LindenElkOracleBridgeV {
       Lookarounds are `CDNullable`, so the new case is vacuous under the
       `NonNullable` hypothesis. */
   lemma NonNullableNoEmptyMatchV(re: R.regex, str: string, ov: LOr.OracleView, i: int)
-    requires NR.NestedFragmentRE(re)
+    requires NR.NestedFragmentCdnRE(re)
     requires R.nullable(re) == R.NonNullable
     ensures !MatchesV(re, str, ov, i, i)
     decreases CP.rsize(re), 0, 0
@@ -217,19 +256,19 @@ module LindenElkOracleBridgeV {
   // ===========================================================================
 
   /** Take one V epsilon edge from a V-reachable configuration. */
-  lemma ReachFVEpsIntro(c: RB.code, str: string, ov: LOr.OracleView, cp0: int, pc: nat, eb: bool,
+  lemma ReachFVEpsIntro(c: RB.code, str: string, ov: LOr.OracleView, cdn: LCdn.cdns, cp0: int, pc: nat, eb: bool,
                         pc2: nat, eb2: bool, cp: int)
-    requires ORc.ReachFV(c, str, ov, cp0, pc, eb, cp)
-    requires ORc.EpsEdgeV(c, str, ov, cp, pc, eb, pc2, eb2)
-    ensures ORc.ReachFV(c, str, ov, cp0, pc2, eb2, cp)
+    requires ORc.ReachFV(c, str, ov, cdn, cp0, pc, eb, cp)
+    requires ORc.EpsEdgeV(c, str, ov, cdn, cp, pc, eb, pc2, eb2)
+    ensures ORc.ReachFV(c, str, ov, cdn, cp0, pc2, eb2, cp)
   {
   }
 
   /** Take one consume edge from a V-reachable configuration. */
-  lemma ReachFVConsumeIntro(c: RB.code, str: string, ov: LOr.OracleView, cp0: int, pc: nat, eb: bool, cp: int)
-    requires ORc.ReachFV(c, str, ov, cp0, pc, eb, cp)
+  lemma ReachFVConsumeIntro(c: RB.code, str: string, ov: LOr.OracleView, cdn: LCdn.cdns, cp0: int, pc: nat, eb: bool, cp: int)
+    requires ORc.ReachFV(c, str, ov, cdn, cp0, pc, eb, cp)
     requires ORc.ConsumeEdge(c, str, cp, pc)
-    ensures ORc.ReachFV(c, str, ov, cp0, pc + 1, true, cp + 1)
+    ensures ORc.ReachFV(c, str, ov, cdn, cp0, pc + 1, true, cp + 1)
   {
   }
 
@@ -247,10 +286,10 @@ module LindenElkOracleBridgeV {
   }
 
   /** Both arms of a fork are V epsilon successors (fork edges are blind). */
-  lemma ForkEdgesV(code: RB.code, str: string, ov: LOr.OracleView, cp: int, pc: nat, eb: bool, a: nat, b: nat)
+  lemma ForkEdgesV(code: RB.code, str: string, ov: LOr.OracleView, cdn: LCdn.cdns, cp: int, pc: nat, eb: bool, a: nat, b: nat)
     requires OB.ForkAt(code, pc, a, b)
-    ensures ORc.EpsEdgeV(code, str, ov, cp, pc, eb, a, eb)
-    ensures ORc.EpsEdgeV(code, str, ov, cp, pc, eb, b, eb)
+    ensures ORc.EpsEdgeV(code, str, ov, cdn, cp, pc, eb, a, eb)
+    ensures ORc.EpsEdgeV(code, str, ov, cdn, cp, pc, eb, b, eb)
   {
     if NR.GetPcRE(code, pc) == Some(RB.Fork(a as int, b as int)) {
       OB.GetPcInstr(code, pc, RB.Fork(a as int, b as int));
@@ -261,8 +300,9 @@ module LindenElkOracleBridgeV {
 
   /** The star loop, gated. */
   lemma StarLoopPathV(qid: R.quantid, r1: R.regex, code: RB.code, start: nat, es1: nat, endl: nat,
-                      str: string, ov: LOr.OracleView, cp0: int, k: nat, i: int, j: int, eb: bool)
-    requires NR.NestedFragmentRE(r1)
+                      str: string, ov: LOr.OracleView, cdn: LCdn.cdns, cp0: int, k: nat, i: int, j: int, eb: bool)
+    requires NR.NestedFragmentCdnRE(r1) && GuardsOk(r1, cdn, str, ov)
+    requires 0 <= i && j <= |str|   // (G5b) the guard premise is range-limited
     requires OB.ForkAt(code, start, start + 1, endl)
     requires NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
     requires NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
@@ -270,40 +310,41 @@ module LindenElkOracleBridgeV {
     requires NR.GetPcRE(code, es1) == Some(RB.EndLoop)
     requires NR.GetPcRE(code, es1 + 1) == Some(RB.Jmp(start as int))
     requires MatchesIterVNE(r1, k, str, ov, i, j)
-    requires ORc.ReachFV(code, str, ov, cp0, start, eb, i)
-    ensures ORc.ReachFV(code, str, ov, cp0, endl, if j > i then true else eb, j)
+    requires ORc.ReachFV(code, str, ov, cdn, cp0, start, eb, i)
+    ensures ORc.ReachFV(code, str, ov, cdn, cp0, endl, if j > i then true else eb, j)
     decreases CP.rsize(r1), 1, k
   {
     if k == 0 {
-      ForkEdgesV(code, str, ov, i, start, eb, start + 1, endl);
-      ReachFVEpsIntro(code, str, ov, cp0, start, eb, endl, eb, i);
+      ForkEdgesV(code, str, ov, cdn, i, start, eb, start + 1, endl);
+      ReachFVEpsIntro(code, str, ov, cdn, cp0, start, eb, endl, eb, i);
       return;
     }
     var m := MatchesIterVNEHead(r1, k, str, ov, i, j);
     MatchesIterVNEBounds(r1, k - 1, str, ov, m, j);
-    ForkEdgesV(code, str, ov, i, start, eb, start + 1, endl);
-    ReachFVEpsIntro(code, str, ov, cp0, start, eb, start + 1, eb, i);
+    ForkEdgesV(code, str, ov, cdn, i, start, eb, start + 1, endl);
+    ReachFVEpsIntro(code, str, ov, cdn, cp0, start, eb, start + 1, eb, i);
     OB.GetPcInstr(code, start + 1, RB.SetQuantToClock(qid, false));
-    ReachFVEpsIntro(code, str, ov, cp0, start + 1, eb, start + 2, eb, i);
+    ReachFVEpsIntro(code, str, ov, cdn, cp0, start + 1, eb, start + 2, eb, i);
     OB.GetPcInstr(code, start + 2, RB.BeginLoop);
-    ReachFVEpsIntro(code, str, ov, cp0, start + 2, eb, start + 3, false, i);
-    MatchesVToPath(r1, code, start + 3, es1, str, ov, cp0, i, m, false);
-    assert ORc.ReachFV(code, str, ov, cp0, es1, true, m);
+    ReachFVEpsIntro(code, str, ov, cdn, cp0, start + 2, eb, start + 3, false, i);
+    MatchesVToPath(r1, code, start + 3, es1, str, ov, cdn, cp0, i, m, false);
+    assert ORc.ReachFV(code, str, ov, cdn, cp0, es1, true, m);
     OB.GetPcInstr(code, es1, RB.EndLoop);
-    ReachFVEpsIntro(code, str, ov, cp0, es1, true, es1 + 1, true, m);
+    ReachFVEpsIntro(code, str, ov, cdn, cp0, es1, true, es1 + 1, true, m);
     OB.GetPcInstr(code, es1 + 1, RB.Jmp(start as int));
-    ReachFVEpsIntro(code, str, ov, cp0, es1 + 1, true, start, true, m);
-    StarLoopPathV(qid, r1, code, start, es1, endl, str, ov, cp0, k - 1, m, j, true);
+    ReachFVEpsIntro(code, str, ov, cdn, cp0, es1 + 1, true, start, true, m);
+    StarLoopPathV(qid, r1, code, start, es1, endl, str, ov, cdn, cp0, k - 1, m, j, true);
   }
 
   /** The forced-copy chain, gated. */
   lemma MinChainPathV(n: nat, qid: R.quantid, r1: R.regex, code: RB.code, start: nat, endl: nat,
-                      str: string, ov: LOr.OracleView, cp0: int, i: int, j: int, eb: bool)
-    requires NR.NestedFragmentRE(r1)
+                      str: string, ov: LOr.OracleView, cdn: LCdn.cdns, cp0: int, i: int, j: int, eb: bool)
+    requires NR.NestedFragmentCdnRE(r1) && GuardsOk(r1, cdn, str, ov)
+    requires 0 <= i && j <= |str|   // (G5b) the guard premise is range-limited
     requires NR.NfaRepMinRE(n, qid, r1, code, start, endl)
     requires MatchesIterV(r1, n, str, ov, i, j)
-    requires ORc.ReachFV(code, str, ov, cp0, start, eb, i)
-    ensures ORc.ReachFV(code, str, ov, cp0, endl, if j > i then true else eb, j)
+    requires ORc.ReachFV(code, str, ov, cdn, cp0, start, eb, i)
+    ensures ORc.ReachFV(code, str, ov, cdn, cp0, endl, if j > i then true else eb, j)
     decreases CP.rsize(r1), 1, n
   {
     if n == 0 { return; }
@@ -314,21 +355,22 @@ module LindenElkOracleBridgeV {
     MatchesVBounds(r1, str, ov, i, m);
     MatchesIterVBounds(r1, n - 1, str, ov, m, j);
     OB.GetPcInstr(code, start, RB.SetQuantToClock(qid, false));
-    ReachFVEpsIntro(code, str, ov, cp0, start, eb, start + 1, eb, i);
-    MatchesVToPath(r1, code, start + 1, e1, str, ov, cp0, i, m, eb);
-    MinChainPathV(n - 1, qid, r1, code, e1, endl, str, ov, cp0, m, j, if m > i then true else eb);
+    ReachFVEpsIntro(code, str, ov, cdn, cp0, start, eb, start + 1, eb, i);
+    MatchesVToPath(r1, code, start + 1, e1, str, ov, cdn, cp0, i, m, eb);
+    MinChainPathV(n - 1, qid, r1, code, e1, endl, str, ov, cdn, cp0, m, j, if m > i then true else eb);
   }
 
   /** The optional layers, gated. */
   lemma OptChainPathV(layers: nat, k2: nat, greedy: bool, qid: R.quantid, r1: R.regex,
-                      code: RB.code, start: nat, endl: nat, str: string, ov: LOr.OracleView,
+                      code: RB.code, start: nat, endl: nat, str: string, ov: LOr.OracleView, cdn: LCdn.cdns,
                       cp0: int, i: int, j: int, eb: bool)
-    requires NR.NestedFragmentRE(r1)
+    requires NR.NestedFragmentCdnRE(r1) && GuardsOk(r1, cdn, str, ov)
+    requires 0 <= i && j <= |str|   // (G5b) the guard premise is range-limited
     requires NR.NfaRepOptRE(layers, greedy, qid, r1, code, start, endl)
     requires MatchesIterVNE(r1, k2, str, ov, i, j)
     requires k2 <= layers
-    requires ORc.ReachFV(code, str, ov, cp0, start, eb, i)
-    ensures ORc.ReachFV(code, str, ov, cp0, endl, if j > i then true else eb, j)
+    requires ORc.ReachFV(code, str, ov, cdn, cp0, start, eb, i)
+    ensures ORc.ReachFV(code, str, ov, cdn, cp0, endl, if j > i then true else eb, j)
     decreases CP.rsize(r1), 1, layers
   {
     if layers == 0 { return; }
@@ -340,29 +382,30 @@ module LindenElkOracleBridgeV {
       && NR.NfaRepOptRE(layers - 1, greedy, qid, r1, code, e1 + 1, endl);
     assert OB.ForkAt(code, start, start + 1, endl);
     if k2 == 0 {
-      ForkEdgesV(code, str, ov, i, start, eb, start + 1, endl);
-      ReachFVEpsIntro(code, str, ov, cp0, start, eb, endl, eb, i);
+      ForkEdgesV(code, str, ov, cdn, i, start, eb, start + 1, endl);
+      ReachFVEpsIntro(code, str, ov, cdn, cp0, start, eb, endl, eb, i);
       return;
     }
     var m := MatchesIterVNEHead(r1, k2, str, ov, i, j);
     MatchesIterVNEBounds(r1, k2 - 1, str, ov, m, j);
-    ForkEdgesV(code, str, ov, i, start, eb, start + 1, endl);
-    ReachFVEpsIntro(code, str, ov, cp0, start, eb, start + 1, eb, i);
+    ForkEdgesV(code, str, ov, cdn, i, start, eb, start + 1, endl);
+    ReachFVEpsIntro(code, str, ov, cdn, cp0, start, eb, start + 1, eb, i);
     OB.GetPcInstr(code, start + 1, RB.SetQuantToClock(qid, false));
-    ReachFVEpsIntro(code, str, ov, cp0, start + 1, eb, start + 2, eb, i);
+    ReachFVEpsIntro(code, str, ov, cdn, cp0, start + 1, eb, start + 2, eb, i);
     OB.GetPcInstr(code, start + 2, RB.BeginLoop);
-    ReachFVEpsIntro(code, str, ov, cp0, start + 2, eb, start + 3, false, i);
-    MatchesVToPath(r1, code, start + 3, e1, str, ov, cp0, i, m, false);
-    assert ORc.ReachFV(code, str, ov, cp0, e1, true, m);
+    ReachFVEpsIntro(code, str, ov, cdn, cp0, start + 2, eb, start + 3, false, i);
+    MatchesVToPath(r1, code, start + 3, e1, str, ov, cdn, cp0, i, m, false);
+    assert ORc.ReachFV(code, str, ov, cdn, cp0, e1, true, m);
     OB.GetPcInstr(code, e1, RB.EndLoop);
-    ReachFVEpsIntro(code, str, ov, cp0, e1, true, e1 + 1, true, m);
-    OptChainPathV(layers - 1, k2 - 1, greedy, qid, r1, code, e1 + 1, endl, str, ov, cp0, m, j, true);
+    ReachFVEpsIntro(code, str, ov, cdn, cp0, e1, true, e1 + 1, true, m);
+    OptChainPathV(layers - 1, k2 - 1, greedy, qid, r1, code, e1 + 1, endl, str, ov, cdn, cp0, m, j, true);
   }
 
   /** The do-while loop, gated. */
   lemma DoWhilePathV(krem: nat, qid: R.quantid, r1: R.regex, code: RB.code, em: nat, e1: nat,
-                     endl: nat, str: string, ov: LOr.OracleView, cp0: int, i: int, j: int, eb: bool)
-    requires NR.NestedFragmentRE(r1)
+                     endl: nat, str: string, ov: LOr.OracleView, cdn: LCdn.cdns, cp0: int, i: int, j: int, eb: bool)
+    requires NR.NestedFragmentCdnRE(r1) && GuardsOk(r1, cdn, str, ov)
+    requires 0 <= i && j <= |str|   // (G5b) the guard premise is range-limited
     requires R.nullable(r1) == R.NonNullable
     requires NR.GetPcRE(code, em) == Some(RB.SetQuantToClock(qid, false))
     requires NR.NfaRepRE(r1, code, em + 1, e1)
@@ -370,33 +413,35 @@ module LindenElkOracleBridgeV {
     requires endl == e1 + 1
     requires krem >= 1
     requires MatchesIterV(r1, krem, str, ov, i, j)
-    requires ORc.ReachFV(code, str, ov, cp0, em, eb, i)
-    ensures ORc.ReachFV(code, str, ov, cp0, endl, true, j)
+    requires ORc.ReachFV(code, str, ov, cdn, cp0, em, eb, i)
+    ensures ORc.ReachFV(code, str, ov, cdn, cp0, endl, true, j)
     decreases CP.rsize(r1), 1, krem
   {
     var m := MatchesIterVHead(r1, krem, str, ov, i, j);
     NonNullableNoEmptyMatchV(r1, str, ov, i);
     MatchesVBounds(r1, str, ov, i, m);
     assert i < m;
+    MatchesIterVBounds(r1, krem - 1, str, ov, m, j);
     OB.GetPcInstr(code, em, RB.SetQuantToClock(qid, false));
-    ReachFVEpsIntro(code, str, ov, cp0, em, eb, em + 1, eb, i);
-    MatchesVToPath(r1, code, em + 1, e1, str, ov, cp0, i, m, eb);
-    assert ORc.ReachFV(code, str, ov, cp0, e1, true, m);
-    ForkEdgesV(code, str, ov, m, e1, true, em, endl);
+    ReachFVEpsIntro(code, str, ov, cdn, cp0, em, eb, em + 1, eb, i);
+    MatchesVToPath(r1, code, em + 1, e1, str, ov, cdn, cp0, i, m, eb);
+    assert ORc.ReachFV(code, str, ov, cdn, cp0, e1, true, m);
+    ForkEdgesV(code, str, ov, cdn, m, e1, true, em, endl);
     if krem == 1 {
-      ReachFVEpsIntro(code, str, ov, cp0, e1, true, endl, true, m);
+      ReachFVEpsIntro(code, str, ov, cdn, cp0, e1, true, endl, true, m);
       assert m == j;
     } else {
-      ReachFVEpsIntro(code, str, ov, cp0, e1, true, em, true, m);
-      DoWhilePathV(krem - 1, qid, r1, code, em, e1, endl, str, ov, cp0, m, j, true);
+      ReachFVEpsIntro(code, str, ov, cdn, cp0, e1, true, em, true, m);
+      DoWhilePathV(krem - 1, qid, r1, code, em, e1, endl, str, ov, cdn, cp0, m, j, true);
     }
   }
 
   /** §2.5b: the CIN-GREEDY loop iterations in the V graph, entered AT THE
       STAMP `em + 1` (mirror of `OB.CinLoopIter`). */
   lemma CinLoopIterV(qid: R.quantid, r1: R.regex, code: RB.code, em: nat, e1: nat, endl: nat,
-                     str: string, ov: LOr.OracleView, cp0: int, k: nat, i: int, j: int, eb: bool)
-    requires NR.NestedFragmentRE(r1)
+                     str: string, ov: LOr.OracleView, cdn: LCdn.cdns, cp0: int, k: nat, i: int, j: int, eb: bool)
+    requires NR.NestedFragmentCdnRE(r1) && GuardsOk(r1, cdn, str, ov)
+    requires 0 <= i && j <= |str|   // (G5b) the guard premise is range-limited
     requires NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qid, false))
     requires NR.GetPcRE(code, em + 2) == Some(RB.BeginLoop)
     requires NR.NfaRepRE(r1, code, em + 3, e1)
@@ -405,37 +450,38 @@ module LindenElkOracleBridgeV {
     requires endl == e1 + 3
     requires k >= 1
     requires MatchesIterVNE(r1, k, str, ov, i, j)
-    requires ORc.ReachFV(code, str, ov, cp0, em + 1, eb, i)
-    ensures ORc.ReachFV(code, str, ov, cp0, endl, true, j)
+    requires ORc.ReachFV(code, str, ov, cdn, cp0, em + 1, eb, i)
+    ensures ORc.ReachFV(code, str, ov, cdn, cp0, endl, true, j)
     ensures i < j
     decreases CP.rsize(r1), 1, k
   {
     var m := MatchesIterVNEHead(r1, k, str, ov, i, j);
     MatchesIterVNEBounds(r1, k - 1, str, ov, m, j);
     OB.GetPcInstr(code, em + 1, RB.SetQuantToClock(qid, false));
-    ReachFVEpsIntro(code, str, ov, cp0, em + 1, eb, em + 2, eb, i);
+    ReachFVEpsIntro(code, str, ov, cdn, cp0, em + 1, eb, em + 2, eb, i);
     OB.GetPcInstr(code, em + 2, RB.BeginLoop);
-    ReachFVEpsIntro(code, str, ov, cp0, em + 2, eb, em + 3, false, i);
-    MatchesVToPath(r1, code, em + 3, e1, str, ov, cp0, i, m, false);
-    assert ORc.ReachFV(code, str, ov, cp0, e1, true, m);
+    ReachFVEpsIntro(code, str, ov, cdn, cp0, em + 2, eb, em + 3, false, i);
+    MatchesVToPath(r1, code, em + 3, e1, str, ov, cdn, cp0, i, m, false);
+    assert ORc.ReachFV(code, str, ov, cdn, cp0, e1, true, m);
     OB.GetPcInstr(code, e1, RB.EndLoop);
-    ReachFVEpsIntro(code, str, ov, cp0, e1, true, e1 + 1, true, m);
+    ReachFVEpsIntro(code, str, ov, cdn, cp0, e1, true, e1 + 1, true, m);
     assert OB.ForkAt(code, e1 + 1, em + 1, endl);
-    ForkEdgesV(code, str, ov, m, e1 + 1, true, em + 1, endl);
+    ForkEdgesV(code, str, ov, cdn, m, e1 + 1, true, em + 1, endl);
     if k == 1 {
-      ReachFVEpsIntro(code, str, ov, cp0, e1 + 1, true, endl, true, m);
+      ReachFVEpsIntro(code, str, ov, cdn, cp0, e1 + 1, true, endl, true, m);
       assert m == j;
     } else {
-      ReachFVEpsIntro(code, str, ov, cp0, e1 + 1, true, em + 1, true, m);
-      CinLoopIterV(qid, r1, code, em, e1, endl, str, ov, cp0, k - 1, m, j, true);
+      ReachFVEpsIntro(code, str, ov, cdn, cp0, e1 + 1, true, em + 1, true, m);
+      CinLoopIterV(qid, r1, code, em, e1, endl, str, ov, cdn, cp0, k - 1, m, j, true);
     }
   }
 
   /** §2.5b: the CIN-GREEDY loop from its head fork, in the V graph (mirror
       of `OB.CinLoopPath`). */
   lemma CinLoopPathV(qid: R.quantid, r1: R.regex, code: RB.code, em: nat, e1: nat, endl: nat,
-                     str: string, ov: LOr.OracleView, cp0: int, k: nat, i: int, j: int, eb: bool)
-    requires NR.NestedFragmentRE(r1)
+                     str: string, ov: LOr.OracleView, cdn: LCdn.cdns, cp0: int, k: nat, i: int, j: int, eb: bool)
+    requires NR.NestedFragmentCdnRE(r1) && GuardsOk(r1, cdn, str, ov)
+    requires 0 <= i && j <= |str|   // (G5b) the guard premise is range-limited
     requires NR.GetPcRE(code, em) == Some(RB.Fork((em + 1) as int, (e1 + 2) as int))
     requires NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qid, false))
     requires NR.GetPcRE(code, em + 2) == Some(RB.BeginLoop)
@@ -445,23 +491,150 @@ module LindenElkOracleBridgeV {
     requires NR.GetPcRE(code, e1 + 2) == Some(RB.SetQuantToClock(qid, true))
     requires endl == e1 + 3
     requires MatchesIterVNE(r1, k, str, ov, i, j)
-    requires ORc.ReachFV(code, str, ov, cp0, em, eb, i)
-    ensures ORc.ReachFV(code, str, ov, cp0, endl, if j > i then true else eb, j)
+    requires ORc.ReachFV(code, str, ov, cdn, cp0, em, eb, i)
+    ensures ORc.ReachFV(code, str, ov, cdn, cp0, endl, if j > i then true else eb, j)
     decreases CP.rsize(r1), 2
   {
     if k == 0 {
       // the skip arm: over the stamp-true and out
       assert OB.ForkAt(code, em, em + 1, e1 + 2);
-      ForkEdgesV(code, str, ov, i, em, eb, em + 1, e1 + 2);
-      ReachFVEpsIntro(code, str, ov, cp0, em, eb, e1 + 2, eb, i);
+      ForkEdgesV(code, str, ov, cdn, i, em, eb, em + 1, e1 + 2);
+      ReachFVEpsIntro(code, str, ov, cdn, cp0, em, eb, e1 + 2, eb, i);
       OB.GetPcInstr(code, e1 + 2, RB.SetQuantToClock(qid, true));
-      ReachFVEpsIntro(code, str, ov, cp0, e1 + 2, eb, endl, eb, i);
+      ReachFVEpsIntro(code, str, ov, cdn, cp0, e1 + 2, eb, endl, eb, i);
       return;
     }
     assert OB.ForkAt(code, em, em + 1, e1 + 2);
-    ForkEdgesV(code, str, ov, i, em, eb, em + 1, e1 + 2);
-    ReachFVEpsIntro(code, str, ov, cp0, em, eb, em + 1, eb, i);
-    CinLoopIterV(qid, r1, code, em, e1, endl, str, ov, cp0, k, i, j, eb);
+    ForkEdgesV(code, str, ov, cdn, i, em, eb, em + 1, e1 + 2);
+    ReachFVEpsIntro(code, str, ov, cdn, cp0, em, eb, em + 1, eb, i);
+    CinLoopIterV(qid, r1, code, em, e1, endl, str, ov, cdn, cp0, k, i, j, eb);
+  }
+
+  // ===========================================================================
+  // (G5b) The greedy CDN plus: the guard premise and the guarded loop
+  // ===========================================================================
+
+  /** At every greedy CDN plus of `re` (outside looks, which are gates here), the guard bit is "the body
+      matches the empty span" at every in-range position. The meaning of `CheckNullable` in the V graph;
+      `cdn-guards` discharges it from `CdnSound` for the runs the column chain uses. */
+  ghost predicate GuardsOk(re: R.regex, cdn: LCdn.cdns, str: string, ov: LOr.OracleView)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => GuardsOk(r1, cdn, str, ov) && GuardsOk(r2, cdn, str, ov)
+    case Re_con(r1, r2) => GuardsOk(r1, cdn, str, ov) && GuardsOk(r2, cdn, str, ov)
+    case Re_capture(_, r1) => GuardsOk(r1, cdn, str, ov)
+    case Re_quant(nul, qid, q, r1) =>
+      ((nul == R.CDNullable && q.min > 0 && q.max == None && q.greedy) ==>
+         forall cp: int :: 0 <= cp <= |str| ==>
+           (ORc.CdnBit(cdn, str, ov, cp, qid) <==> MatchesV(r1, str, ov, cp, cp)))
+      && GuardsOk(r1, cdn, str, ov)
+    case _ => true
+  }
+
+  /** The narrow fragment has no greedy CDN plus: `GuardsOk` holds for any table. */
+  lemma NarrowGuardsOk(re: R.regex, cdn: LCdn.cdns, str: string, ov: LOr.OracleView)
+    requires NR.NestedFragmentRE(re)
+    ensures GuardsOk(re, cdn, str, ov)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => NarrowGuardsOk(r1, cdn, str, ov); NarrowGuardsOk(r2, cdn, str, ov);
+    case Re_con(r1, r2) => NarrowGuardsOk(r1, cdn, str, ov); NarrowGuardsOk(r2, cdn, str, ov);
+    case Re_capture(_, r1) => NarrowGuardsOk(r1, cdn, str, ov);
+    case Re_quant(_, _, _, r1) => NarrowGuardsOk(r1, cdn, str, ov);
+    case _ =>
+  }
+
+  /** k >= 1 iterations that start and end at the same position: the body matches that empty span. */
+  lemma IterVAllEmpty(r: R.regex, k: nat, str: string, ov: LOr.OracleView, i: int)
+    requires k >= 1 && MatchesIterV(r, k, str, ov, i, i)
+    ensures MatchesV(r, str, ov, i, i)
+  {
+    var m := MatchesIterVHead(r, k, str, ov, i, i);
+    MatchesVBounds(r, str, ov, i, m);
+    MatchesIterVBounds(r, k - 1, str, ov, m, i);
+    assert m == i;
+  }
+
+  /** The CDN loop's iterations from the clock mark (`CinLoopIterV` with the end fork exiting at e1+4). */
+  lemma CdnLoopIterV(qid: R.quantid, r1: R.regex, code: RB.code, em: nat, e1: nat, endl: nat,
+                     str: string, ov: LOr.OracleView, cdn: LCdn.cdns, cp0: int, k: nat, i: int, j: int, eb: bool)
+    requires NR.NestedFragmentCdnRE(r1) && GuardsOk(r1, cdn, str, ov)
+    requires 0 <= i && j <= |str|   // (G5b) the guard premise is range-limited
+    requires NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    requires NR.GetPcRE(code, em + 2) == Some(RB.BeginLoop)
+    requires NR.NfaRepRE(r1, code, em + 3, e1)
+    requires NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+    requires NR.GetPcRE(code, e1 + 1) == Some(RB.Fork((em + 1) as int, (e1 + 4) as int))
+    requires endl == e1 + 4
+    requires k >= 1
+    requires MatchesIterVNE(r1, k, str, ov, i, j)
+    requires ORc.ReachFV(code, str, ov, cdn, cp0, em + 1, eb, i)
+    ensures ORc.ReachFV(code, str, ov, cdn, cp0, endl, true, j)
+    ensures i < j
+    decreases CP.rsize(r1), 1, k
+  {
+    var m := MatchesIterVNEHead(r1, k, str, ov, i, j);
+    MatchesIterVNEBounds(r1, k - 1, str, ov, m, j);
+    OB.GetPcInstr(code, em + 1, RB.SetQuantToClock(qid, false));
+    ReachFVEpsIntro(code, str, ov, cdn, cp0, em + 1, eb, em + 2, eb, i);
+    OB.GetPcInstr(code, em + 2, RB.BeginLoop);
+    ReachFVEpsIntro(code, str, ov, cdn, cp0, em + 2, eb, em + 3, false, i);
+    MatchesVToPath(r1, code, em + 3, e1, str, ov, cdn, cp0, i, m, false);
+    assert ORc.ReachFV(code, str, ov, cdn, cp0, e1, true, m);
+    OB.GetPcInstr(code, e1, RB.EndLoop);
+    ReachFVEpsIntro(code, str, ov, cdn, cp0, e1, true, e1 + 1, true, m);
+    assert OB.ForkAt(code, e1 + 1, em + 1, endl);
+    ForkEdgesV(code, str, ov, cdn, m, e1 + 1, true, em + 1, endl);
+    if k == 1 {
+      ReachFVEpsIntro(code, str, ov, cdn, cp0, e1 + 1, true, endl, true, m);
+      assert m == j;
+    } else {
+      ReachFVEpsIntro(code, str, ov, cdn, cp0, e1 + 1, true, em + 1, true, m);
+      CdnLoopIterV(qid, r1, code, em, e1, endl, str, ov, cdn, cp0, k - 1, m, j, true);
+    }
+  }
+
+  /** The CDN loop from its head fork. NEW versus CIN: the k == 0 skip arm crosses `CheckNullable(qid)`,
+      passable because the guard premise turns the body's empty span at `i` into the table bit. */
+  lemma CdnLoopPathV(qid: R.quantid, r1: R.regex, code: RB.code, em: nat, e1: nat, endl: nat,
+                     str: string, ov: LOr.OracleView, cdn: LCdn.cdns, cp0: int, k: nat, i: int, j: int, eb: bool)
+    requires NR.NestedFragmentCdnRE(r1) && GuardsOk(r1, cdn, str, ov)
+    requires 0 <= i && j <= |str|   // (G5b) the guard premise is range-limited
+    requires NR.GetPcRE(code, em) == Some(RB.Fork((em + 1) as int, (e1 + 2) as int))
+    requires NR.GetPcRE(code, em + 1) == Some(RB.SetQuantToClock(qid, false))
+    requires NR.GetPcRE(code, em + 2) == Some(RB.BeginLoop)
+    requires NR.NfaRepRE(r1, code, em + 3, e1)
+    requires NR.GetPcRE(code, e1) == Some(RB.EndLoop)
+    requires NR.GetPcRE(code, e1 + 1) == Some(RB.Fork((em + 1) as int, (e1 + 4) as int))
+    requires NR.GetPcRE(code, e1 + 2) == Some(RB.CheckNullable(qid))
+    requires NR.GetPcRE(code, e1 + 3) == Some(RB.SetQuantToClock(qid, true))
+    requires endl == e1 + 4
+    requires forall cp: int :: 0 <= cp <= |str| ==>
+               (ORc.CdnBit(cdn, str, ov, cp, qid) <==> MatchesV(r1, str, ov, cp, cp))
+    requires 0 <= i <= |str|
+    requires MatchesIterVNE(r1, k, str, ov, i, j)
+    requires k == 0 ==> MatchesV(r1, str, ov, i, i)
+    requires ORc.ReachFV(code, str, ov, cdn, cp0, em, eb, i)
+    ensures ORc.ReachFV(code, str, ov, cdn, cp0, endl, if j > i then true else eb, j)
+    decreases CP.rsize(r1), 2
+  {
+    assert OB.ForkAt(code, em, em + 1, e1 + 2);
+    ForkEdgesV(code, str, ov, cdn, i, em, eb, em + 1, e1 + 2);
+    if k == 0 {
+      // the skip arm: over the GUARD, then the stamp-true, and out
+      ReachFVEpsIntro(code, str, ov, cdn, cp0, em, eb, e1 + 2, eb, i);
+      OB.GetPcInstr(code, e1 + 2, RB.CheckNullable(qid));
+      assert ORc.CdnBit(cdn, str, ov, i, qid);
+      assert ORc.EpsEdgeV(code, str, ov, cdn, i, e1 + 2, eb, e1 + 3, eb);
+      ReachFVEpsIntro(code, str, ov, cdn, cp0, e1 + 2, eb, e1 + 3, eb, i);
+      OB.GetPcInstr(code, e1 + 3, RB.SetQuantToClock(qid, true));
+      ReachFVEpsIntro(code, str, ov, cdn, cp0, e1 + 3, eb, endl, eb, i);
+      return;
+    }
+    ReachFVEpsIntro(code, str, ov, cdn, cp0, em, eb, em + 1, eb, i);
+    CdnLoopIterV(qid, r1, code, em, e1, endl, str, ov, cdn, cp0, k, i, j, eb);
   }
 
   /** THE forward bridge direction, gated: a `MatchesV` span of a NESTED-
@@ -469,36 +642,37 @@ module LindenElkOracleBridgeV {
       is `Re_lookaround`: its block is the single gate instruction, and the
       match clause IS the gate edge's guard. */
   lemma MatchesVToPath(re: R.regex, code: RB.code, start: nat, endl: nat,
-                       str: string, ov: LOr.OracleView, cp0: int, i: int, j: int, eb: bool)
-    requires NR.NestedFragmentRE(re)
+                       str: string, ov: LOr.OracleView, cdn: LCdn.cdns, cp0: int, i: int, j: int, eb: bool)
+    requires NR.NestedFragmentCdnRE(re) && GuardsOk(re, cdn, str, ov)   // (G5b) the greedy CDN plus too
+    requires 0 <= i && j <= |str|   // (G5b) the guard premise is range-limited
     requires NR.NfaRepRE(re, code, start, endl)
     requires MatchesV(re, str, ov, i, j)
-    requires ORc.ReachFV(code, str, ov, cp0, start, eb, i)
-    ensures ORc.ReachFV(code, str, ov, cp0, endl, if j > i then true else eb, j)
-    decreases CP.rsize(re), 0, 0
+    requires ORc.ReachFV(code, str, ov, cdn, cp0, start, eb, i)
+    ensures ORc.ReachFV(code, str, ov, cdn, cp0, endl, if j > i then true else eb, j)
+    decreases CP.rsize(re), 0, 1
   {
     match re
     case Re_empty =>
     case Re_character(ch) =>
       OB.GetPcInstr(code, start, RB.Consume(T.ExpectationOf(ch)));
       assert ORc.ConsumeEdge(code, str, i, start);
-      ReachFVConsumeIntro(code, str, ov, cp0, start, eb, i);
+      ReachFVConsumeIntro(code, str, ov, cdn, cp0, start, eb, i);
     case Re_anchor(a) =>
       OB.GetPcInstr(code, start, RB.AnchorAssertion(a));
-      assert ORc.EpsEdgeV(code, str, ov, i, start, eb, start + 1, eb);
-      ReachFVEpsIntro(code, str, ov, cp0, start, eb, start + 1, eb, i);
+      assert ORc.EpsEdgeV(code, str, ov, cdn, i, start, eb, start + 1, eb);
+      ReachFVEpsIntro(code, str, ov, cdn, cp0, start, eb, start + 1, eb, i);
     case Re_lookaround(lid, la, r1) =>
       // one zero-width gate: the MatchesV clause is exactly the edge guard
       if la.Lookahead? || la.Lookbehind? {
         OB.GetPcInstr(code, start, RB.CheckOracle(lid));
         assert LOr.view_get_oracle(ov, i, lid);
-        assert ORc.EpsEdgeV(code, str, ov, i, start, eb, start + 1, eb);
+        assert ORc.EpsEdgeV(code, str, ov, cdn, i, start, eb, start + 1, eb);
       } else {
         OB.GetPcInstr(code, start, RB.NegCheckOracle(lid));
         assert !LOr.view_get_oracle(ov, i, lid);
-        assert ORc.EpsEdgeV(code, str, ov, i, start, eb, start + 1, eb);
+        assert ORc.EpsEdgeV(code, str, ov, cdn, i, start, eb, start + 1, eb);
       }
-      ReachFVEpsIntro(code, str, ov, cp0, start, eb, start + 1, eb, i);
+      ReachFVEpsIntro(code, str, ov, cdn, cp0, start, eb, start + 1, eb, i);
     case Re_alt(r1, r2) =>
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.Fork(start + 1, e1 + 1))
         && NR.NfaRepRE(r1, code, start + 1, e1)
@@ -507,13 +681,13 @@ module LindenElkOracleBridgeV {
       assert MatchesV(R.Re_alt(r1, r2), str, ov, i, j);
       OB.GetPcInstr(code, start, RB.Fork(start + 1, e1 + 1));
       if MatchesV(r1, str, ov, i, j) {
-        ReachFVEpsIntro(code, str, ov, cp0, start, eb, start + 1, eb, i);
-        MatchesVToPath(r1, code, start + 1, e1, str, ov, cp0, i, j, eb);
+        ReachFVEpsIntro(code, str, ov, cdn, cp0, start, eb, start + 1, eb, i);
+        MatchesVToPath(r1, code, start + 1, e1, str, ov, cdn, cp0, i, j, eb);
         OB.GetPcInstr(code, e1, RB.Jmp(endl as int));
-        ReachFVEpsIntro(code, str, ov, cp0, e1, if j > i then true else eb, endl, if j > i then true else eb, j);
+        ReachFVEpsIntro(code, str, ov, cdn, cp0, e1, if j > i then true else eb, endl, if j > i then true else eb, j);
       } else {
-        ReachFVEpsIntro(code, str, ov, cp0, start, eb, e1 + 1, eb, i);
-        MatchesVToPath(r2, code, e1 + 1, endl, str, ov, cp0, i, j, eb);
+        ReachFVEpsIntro(code, str, ov, cdn, cp0, start, eb, e1 + 1, eb, i);
+        MatchesVToPath(r2, code, e1 + 1, endl, str, ov, cdn, cp0, i, j, eb);
       }
     case Re_con(r1, r2) =>
       var e1: nat :| NR.NfaRepRE(r1, code, start, e1) && NR.NfaRepRE(r2, code, e1, endl);
@@ -522,90 +696,134 @@ module LindenElkOracleBridgeV {
       var m: int :| MatchesV(r1, str, ov, i, m) && MatchesV(r2, str, ov, m, j);
       MatchesVBounds(r1, str, ov, i, m);
       MatchesVBounds(r2, str, ov, m, j);
-      MatchesVToPath(r1, code, start, e1, str, ov, cp0, i, m, eb);
-      MatchesVToPath(r2, code, e1, endl, str, ov, cp0, m, j, if m > i then true else eb);
+      MatchesVToPath(r1, code, start, e1, str, ov, cdn, cp0, i, m, eb);
+      MatchesVToPath(r2, code, e1, endl, str, ov, cdn, cp0, m, j, if m > i then true else eb);
     case Re_capture(cid, r1) =>
       var e1: nat :| NR.GetPcRE(code, start) == Some(RB.SetRegisterToCP(CP.start_reg(cid)))
         && NR.NfaRepRE(r1, code, start + 1, e1)
         && NR.GetPcRE(code, e1) == Some(RB.SetRegisterToCP(CP.end_reg(cid)))
         && endl == e1 + 1;
       OB.GetPcInstr(code, start, RB.SetRegisterToCP(CP.start_reg(cid)));
-      ReachFVEpsIntro(code, str, ov, cp0, start, eb, start + 1, eb, i);
-      MatchesVToPath(r1, code, start + 1, e1, str, ov, cp0, i, j, eb);
+      ReachFVEpsIntro(code, str, ov, cdn, cp0, start, eb, start + 1, eb, i);
+      MatchesVToPath(r1, code, start + 1, e1, str, ov, cdn, cp0, i, j, eb);
       OB.GetPcInstr(code, e1, RB.SetRegisterToCP(CP.end_reg(cid)));
-      ReachFVEpsIntro(code, str, ov, cp0, e1, if j > i then true else eb, endl, if j > i then true else eb, j);
+      ReachFVEpsIntro(code, str, ov, cdn, cp0, e1, if j > i then true else eb, endl, if j > i then true else eb, j);
     case Re_quant(nul, qid, q, r1) =>
-      assert MatchesV(R.Re_quant(nul, qid, q, r1), str, ov, i, j);
-      assert exists k: nat :: q.min <= k && (q.max.Some? ==> k <= q.max.value)
-                           && MatchesIterV(r1, k, str, ov, i, j);
-      var k: nat :| q.min <= k && (q.max.Some? ==> k <= q.max.value)
-                 && MatchesIterV(r1, k, str, ov, i, j);
-      if q.min == 0 && q.max == None {
-        var es1: nat :|
-          NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, es1 + 2) else RB.Fork(es1 + 2, start + 1))
-          && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
-          && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
-          && NR.NfaRepRE(r1, code, start + 3, es1)
-          && NR.GetPcRE(code, es1) == Some(RB.EndLoop)
-          && NR.GetPcRE(code, es1 + 1) == Some(RB.Jmp(start as int))
-          && endl == es1 + 2;
-        assert OB.ForkAt(code, start, start + 1, endl);
-        var k2 := IterVDropEmpty(r1, k, str, ov, i, j);
-        StarLoopPathV(qid, r1, code, start, es1, endl, str, ov, cp0, k2, i, j, eb);
-      } else if q.max.Some? {
-        var em := NR.NfaRepREQuantInv(nul, qid, q, r1, code, start, endl);
-        var mn := q.min as nat;
-        var kx := (q.max.value - q.min) as nat;
-        var mid := IterVSplit(r1, k, mn, str, ov, i, j);
-        MinChainPathV(mn, qid, r1, code, start, em, str, ov, cp0, i, mid, eb);
-        var k2 := IterVDropEmpty(r1, k - mn, str, ov, mid, j);
-        MatchesIterVBounds(r1, mn, str, ov, i, mid);
-        MatchesIterVBounds(r1, k - mn, str, ov, mid, j);
-        OptChainPathV(kx, k2, q.greedy, qid, r1, code, em, endl, str, ov, cp0, mid, j,
-                      if mid > i then true else eb);
-      } else if nul != R.NonNullable && !q.greedy {
-        // §2.5a GENERIC: `min` forced copies, then the very star loop the
-        // `q.min == 0` arm walks -- at `em` instead of `start`.
-        var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
-        var mn := q.min as nat;
-        var mid := IterVSplit(r1, k, mn, str, ov, i, j);
-        MinChainPathV(mn, qid, r1, code, start, em, str, ov, cp0, i, mid, eb);
-        MatchesIterVBounds(r1, mn, str, ov, i, mid);
-        MatchesIterVBounds(r1, k - mn, str, ov, mid, j);
-        assert OB.ForkAt(code, em, em + 1, endl);
-        var k2 := IterVDropEmpty(r1, k - mn, str, ov, mid, j);
-        StarLoopPathV(qid, r1, code, em, e1, endl, str, ov, cp0, k2, mid, j,
-                      if mid > i then true else eb);
-      } else if nul != R.NonNullable {
-        // §2.5b CIN-GREEDY: min-1 forced copies, then the stamped end-fork
-        // loop; a fully empty remainder leaves through the head fork's skip
-        // arm, over the stamp-true.
-        var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, code, start, endl);
-        var mn1 := (q.min - 1) as nat;
-        var mid := IterVSplit(r1, k, mn1, str, ov, i, j);
-        MinChainPathV(mn1, qid, r1, code, start, em, str, ov, cp0, i, mid, eb);
-        MatchesIterVBounds(r1, mn1, str, ov, i, mid);
-        MatchesIterVBounds(r1, k - mn1, str, ov, mid, j);
-        var k2 := IterVDropEmpty(r1, k - mn1, str, ov, mid, j);
-        CinLoopPathV(qid, r1, code, em, e1, endl, str, ov, cp0, k2, mid, j,
-                     if mid > i then true else eb);
-      } else {
-        var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
-        var mn1 := (q.min - 1) as nat;
-        var mid := IterVSplit(r1, k, mn1, str, ov, i, j);
-        MinChainPathV(mn1, qid, r1, code, start, em, str, ov, cp0, i, mid, eb);
-        MatchesIterVBounds(r1, mn1, str, ov, i, mid);
-        assert OB.ForkAt(code, e1, em, endl);
-        DoWhilePathV(k - mn1, qid, r1, code, em, e1, endl, str, ov, cp0, mid, j,
-                     if mid > i then true else eb);
-        assert j > mid by {
-          var mm := MatchesIterVHead(r1, k - mn1, str, ov, mid, j);
-          NonNullableNoEmptyMatchV(r1, str, ov, mid);
-          MatchesVBounds(r1, str, ov, mid, mm);
-          MatchesIterVBounds(r1, k - mn1 - 1, str, ov, mm, j);
-        }
-      }
+      MatchesVToPathQuant(nul, qid, q, r1, code, start, endl, str, ov, cdn, cp0, i, j, eb);
   }
+
+  /** `MatchesVToPath`'s quantifier arm, on its own (its batch was 416 M inline after G5b's CDN branch). */
+  lemma MatchesVToPathQuant(nul: R.nullability, qid: R.quantid, q: R.counted_quantifier, r1: R.regex,
+                            code: RB.code, start: nat, endl: nat,
+                       str: string, ov: LOr.OracleView, cdn: LCdn.cdns, cp0: int, i: int, j: int, eb: bool)
+    requires NR.NestedFragmentCdnRE(R.Re_quant(nul, qid, q, r1)) && GuardsOk(R.Re_quant(nul, qid, q, r1), cdn, str, ov)   // (G5b) the greedy CDN plus too
+    requires 0 <= i && j <= |str|   // (G5b) the guard premise is range-limited
+    requires NR.NfaRepRE(R.Re_quant(nul, qid, q, r1), code, start, endl)
+    requires MatchesV(R.Re_quant(nul, qid, q, r1), str, ov, i, j)
+    requires ORc.ReachFV(code, str, ov, cdn, cp0, start, eb, i)
+    ensures ORc.ReachFV(code, str, ov, cdn, cp0, endl, if j > i then true else eb, j)
+    decreases CP.rsize(R.Re_quant(nul, qid, q, r1)), 0, 0
+  {
+    assert MatchesV(R.Re_quant(nul, qid, q, r1), str, ov, i, j);
+    assert exists k: nat :: q.min <= k && (q.max.Some? ==> k <= q.max.value)
+                         && MatchesIterV(r1, k, str, ov, i, j);
+    var k: nat :| q.min <= k && (q.max.Some? ==> k <= q.max.value)
+               && MatchesIterV(r1, k, str, ov, i, j);
+    if q.min == 0 && q.max == None {
+      assert {:split_here} true;
+      var es1: nat :|
+        NR.GetPcRE(code, start) == Some(if q.greedy then RB.Fork(start + 1, es1 + 2) else RB.Fork(es1 + 2, start + 1))
+        && NR.GetPcRE(code, start + 1) == Some(RB.SetQuantToClock(qid, false))
+        && NR.GetPcRE(code, start + 2) == Some(RB.BeginLoop)
+        && NR.NfaRepRE(r1, code, start + 3, es1)
+        && NR.GetPcRE(code, es1) == Some(RB.EndLoop)
+        && NR.GetPcRE(code, es1 + 1) == Some(RB.Jmp(start as int))
+        && endl == es1 + 2;
+      assert OB.ForkAt(code, start, start + 1, endl);
+      var k2 := IterVDropEmpty(r1, k, str, ov, i, j);
+      StarLoopPathV(qid, r1, code, start, es1, endl, str, ov, cdn, cp0, k2, i, j, eb);
+    } else if q.max.Some? {
+      assert {:split_here} true;
+      var em := NR.NfaRepREQuantInv(nul, qid, q, r1, code, start, endl);
+      var mn := q.min as nat;
+      var kx := (q.max.value - q.min) as nat;
+      var mid := IterVSplit(r1, k, mn, str, ov, i, j);
+      MatchesIterVBounds(r1, k - mn, str, ov, mid, j);
+      MinChainPathV(mn, qid, r1, code, start, em, str, ov, cdn, cp0, i, mid, eb);
+      var k2 := IterVDropEmpty(r1, k - mn, str, ov, mid, j);
+      MatchesIterVBounds(r1, mn, str, ov, i, mid);
+      MatchesIterVBounds(r1, k - mn, str, ov, mid, j);
+      OptChainPathV(kx, k2, q.greedy, qid, r1, code, em, endl, str, ov, cdn, cp0, mid, j,
+                    if mid > i then true else eb);
+    } else if nul != R.NonNullable && !q.greedy {
+      assert {:split_here} true;
+      // §2.5a GENERIC: `min` forced copies, then the very star loop the
+      // `q.min == 0` arm walks -- at `em` instead of `start`.
+      var em, e1 := NR.NfaRepREGenInv(nul, qid, q, r1, code, start, endl);
+      var mn := q.min as nat;
+      var mid := IterVSplit(r1, k, mn, str, ov, i, j);
+      MatchesIterVBounds(r1, k - mn, str, ov, mid, j);
+      MinChainPathV(mn, qid, r1, code, start, em, str, ov, cdn, cp0, i, mid, eb);
+      MatchesIterVBounds(r1, mn, str, ov, i, mid);
+      MatchesIterVBounds(r1, k - mn, str, ov, mid, j);
+      assert OB.ForkAt(code, em, em + 1, endl);
+      var k2 := IterVDropEmpty(r1, k - mn, str, ov, mid, j);
+      StarLoopPathV(qid, r1, code, em, e1, endl, str, ov, cdn, cp0, k2, mid, j,
+                    if mid > i then true else eb);
+    } else if nul == R.CDNullable {
+      assert {:split_here} true;
+      // (G5b) CDN-GREEDY: the CIN arm with the head skip arm guarded by `CheckNullable(qid)`. A fully
+      // empty remainder of k2 == 0 iterations needs the guard, which `GuardsOk` turns into the body's
+      // empty span at `mid` (an all-empty tail of >= 1 iterations gives it, `IterVAllEmpty`).
+      var em, e1 := NR.NfaRepRECdnInv(nul, qid, q, r1, code, start, endl);
+      var mn1 := (q.min - 1) as nat;
+      var mid := IterVSplit(r1, k, mn1, str, ov, i, j);
+      MatchesIterVBounds(r1, k - mn1, str, ov, mid, j);
+      MinChainPathV(mn1, qid, r1, code, start, em, str, ov, cdn, cp0, i, mid, eb);
+      MatchesIterVBounds(r1, mn1, str, ov, i, mid);
+      MatchesIterVBounds(r1, k - mn1, str, ov, mid, j);
+      var k2 := IterVDropEmpty(r1, k - mn1, str, ov, mid, j);
+      if k2 == 0 {
+        assert mid == j;
+        IterVAllEmpty(r1, k - mn1, str, ov, mid);
+      }
+      CdnLoopPathV(qid, r1, code, em, e1, endl, str, ov, cdn, cp0, k2, mid, j,
+                   if mid > i then true else eb);
+    } else if nul != R.NonNullable {
+      assert {:split_here} true;
+      // §2.5b CIN-GREEDY: min-1 forced copies, then the stamped end-fork
+      // loop; a fully empty remainder leaves through the head fork's skip
+      // arm, over the stamp-true.
+      var em, e1 := NR.NfaRepRECinInv(nul, qid, q, r1, code, start, endl);
+      var mn1 := (q.min - 1) as nat;
+      var mid := IterVSplit(r1, k, mn1, str, ov, i, j);
+      MatchesIterVBounds(r1, k - mn1, str, ov, mid, j);
+      MinChainPathV(mn1, qid, r1, code, start, em, str, ov, cdn, cp0, i, mid, eb);
+      MatchesIterVBounds(r1, mn1, str, ov, i, mid);
+      MatchesIterVBounds(r1, k - mn1, str, ov, mid, j);
+      var k2 := IterVDropEmpty(r1, k - mn1, str, ov, mid, j);
+      CinLoopPathV(qid, r1, code, em, e1, endl, str, ov, cdn, cp0, k2, mid, j,
+                   if mid > i then true else eb);
+    } else {
+      assert {:split_here} true;
+      var em, e1 := NR.NfaRepREPlusInv(nul, qid, q, r1, code, start, endl);
+      var mn1 := (q.min - 1) as nat;
+      var mid := IterVSplit(r1, k, mn1, str, ov, i, j);
+      MatchesIterVBounds(r1, k - mn1, str, ov, mid, j);
+      MinChainPathV(mn1, qid, r1, code, start, em, str, ov, cdn, cp0, i, mid, eb);
+      MatchesIterVBounds(r1, mn1, str, ov, i, mid);
+      assert OB.ForkAt(code, e1, em, endl);
+      DoWhilePathV(k - mn1, qid, r1, code, em, e1, endl, str, ov, cdn, cp0, mid, j,
+                   if mid > i then true else eb);
+      assert j > mid by {
+        var mm := MatchesIterVHead(r1, k - mn1, str, ov, mid, j);
+        NonNullableNoEmptyMatchV(r1, str, ov, mid);
+        MatchesVBounds(r1, str, ov, mid, mm);
+        MatchesIterVBounds(r1, k - mn1 - 1, str, ov, mm, j);
+      }
+    }
+  }
+
 
   // ===========================================================================
   // The lazy-prefix walker, V (the dot-star head has no gates)
@@ -613,10 +831,10 @@ module LindenElkOracleBridgeV {
 
   /** The lazy `.*?` head reaches its own loop head at every position, in the
       V graph (all its edges are gate-free, so the blind walk replays). */
-  lemma LazyPrefixHeadReachV(body: R.regex, code: RB.code, endl: nat, str: string, ov: LOr.OracleView, i: int)
+  lemma LazyPrefixHeadReachV(body: R.regex, code: RB.code, endl: nat, str: string, ov: LOr.OracleView, cdn: LCdn.cdns, i: int)
     requires NR.NfaRepRE(R.lazy_prefix(body), code, 0, endl)
     requires 0 <= i <= |str|
-    ensures ORc.ReachFV(code, str, ov, 0, 0, false, i) || ORc.ReachFV(code, str, ov, 0, 0, true, i)
+    ensures ORc.ReachFV(code, str, ov, cdn, 0, 0, false, i) || ORc.ReachFV(code, str, ov, cdn, 0, 0, true, i)
     decreases i
   {
     var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
@@ -632,35 +850,35 @@ module LindenElkOracleBridgeV {
       && e1 == es1 + 2;
     assert NR.GetPcRE(code, 3) == Some(RB.Consume(T.ExpectationOf(R.Dot))) && es1 == 4;
     if i == 0 {
-      assert ORc.ReachFV(code, str, ov, 0, 0, false, 0);
+      assert ORc.ReachFV(code, str, ov, cdn, 0, 0, false, 0);
     } else {
-      LazyPrefixHeadReachV(body, code, endl, str, ov, i - 1);
-      var eb: bool :| ORc.ReachFV(code, str, ov, 0, 0, eb, i - 1);
-      assert ORc.EpsEdgeV(code, str, ov, i - 1, 0, eb, 1, eb);
-      ReachFVEpsIntro(code, str, ov, 0, 0, eb, 1, eb, i - 1);
-      assert ORc.EpsEdgeV(code, str, ov, i - 1, 1, eb, 2, eb);
-      ReachFVEpsIntro(code, str, ov, 0, 1, eb, 2, eb, i - 1);
-      assert ORc.EpsEdgeV(code, str, ov, i - 1, 2, eb, 3, false);
-      ReachFVEpsIntro(code, str, ov, 0, 2, eb, 3, false, i - 1);
+      LazyPrefixHeadReachV(body, code, endl, str, ov, cdn, i - 1);
+      var eb: bool :| ORc.ReachFV(code, str, ov, cdn, 0, 0, eb, i - 1);
+      assert ORc.EpsEdgeV(code, str, ov, cdn, i - 1, 0, eb, 1, eb);
+      ReachFVEpsIntro(code, str, ov, cdn, 0, 0, eb, 1, eb, i - 1);
+      assert ORc.EpsEdgeV(code, str, ov, cdn, i - 1, 1, eb, 2, eb);
+      ReachFVEpsIntro(code, str, ov, cdn, 0, 1, eb, 2, eb, i - 1);
+      assert ORc.EpsEdgeV(code, str, ov, cdn, i - 1, 2, eb, 3, false);
+      ReachFVEpsIntro(code, str, ov, cdn, 0, 2, eb, 3, false, i - 1);
       assert AI.get_char(str, i - 1).Some?;
       assert RC.is_accepted(AI.get_char(str, i - 1), T.ExpectationOf(R.Dot));
       assert ORc.ConsumeEdge(code, str, i - 1, 3);
-      ReachFVConsumeIntro(code, str, ov, 0, 3, false, i - 1);
-      assert ORc.ReachFV(code, str, ov, 0, 4, true, i);
-      assert ORc.EpsEdgeV(code, str, ov, i, es1, true, es1 + 1, true);
-      ReachFVEpsIntro(code, str, ov, 0, es1, true, es1 + 1, true, i);
-      assert ORc.EpsEdgeV(code, str, ov, i, es1 + 1, true, 0, true);
-      ReachFVEpsIntro(code, str, ov, 0, es1 + 1, true, 0, true, i);
+      ReachFVConsumeIntro(code, str, ov, cdn, 0, 3, false, i - 1);
+      assert ORc.ReachFV(code, str, ov, cdn, 0, 4, true, i);
+      assert ORc.EpsEdgeV(code, str, ov, cdn, i, es1, true, es1 + 1, true);
+      ReachFVEpsIntro(code, str, ov, cdn, 0, es1, true, es1 + 1, true, i);
+      assert ORc.EpsEdgeV(code, str, ov, cdn, i, es1 + 1, true, 0, true);
+      ReachFVEpsIntro(code, str, ov, cdn, 0, es1 + 1, true, 0, true, i);
     }
   }
 
   /** The "start anywhere" walker, V. */
-  lemma LazyPrefixBodyEntryV(body: R.regex, code: RB.code, endl: nat, str: string, ov: LOr.OracleView, i: int)
+  lemma LazyPrefixBodyEntryV(body: R.regex, code: RB.code, endl: nat, str: string, ov: LOr.OracleView, cdn: LCdn.cdns, i: int)
     returns (bentry: nat)
     requires NR.NfaRepRE(R.lazy_prefix(body), code, 0, endl)
     requires 0 <= i <= |str|
     ensures NR.NfaRepRE(body, code, bentry, endl)
-    ensures ORc.ReachFV(code, str, ov, 0, bentry, false, i) || ORc.ReachFV(code, str, ov, 0, bentry, true, i)
+    ensures ORc.ReachFV(code, str, ov, cdn, 0, bentry, false, i) || ORc.ReachFV(code, str, ov, cdn, 0, bentry, true, i)
   {
     var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
     assert R.lazy_prefix(body) == R.Re_con(pre, body);
@@ -674,10 +892,10 @@ module LindenElkOracleBridgeV {
       && NR.GetPcRE(code, es1 + 1) == Some(RB.Jmp(0))
       && e1 == es1 + 2;
     bentry := e1;
-    LazyPrefixHeadReachV(body, code, endl, str, ov, i);
-    var eb: bool :| ORc.ReachFV(code, str, ov, 0, 0, eb, i);
-    assert ORc.EpsEdgeV(code, str, ov, i, 0, eb, es1 + 2, eb);
-    ReachFVEpsIntro(code, str, ov, 0, 0, eb, es1 + 2, eb, i);
+    LazyPrefixHeadReachV(body, code, endl, str, ov, cdn, i);
+    var eb: bool :| ORc.ReachFV(code, str, ov, cdn, 0, 0, eb, i);
+    assert ORc.EpsEdgeV(code, str, ov, cdn, i, 0, eb, es1 + 2, eb);
+    ReachFVEpsIntro(code, str, ov, cdn, 0, 0, eb, es1 + 2, eb, i);
   }
 
   /** `NestedFragmentRE` passes through `lazy_prefix` (the dot-star head is a
@@ -688,24 +906,67 @@ module LindenElkOracleBridgeV {
   {
   }
 
-  /** THE forward bridge, assembled and gated: a `MatchesV` span of the body
-      ending at `cp` makes the build program's `WriteOracle(lid)` V-reachable
-      at `cp` against the same view. */
-  lemma MatchesVToReachesWriteV(body: R.regex, lid: R.lookid, str: string, ov: LOr.OracleView, i: int, cp: int)
+  /** (G5b) `NestedFragmentCdnRE` passes through `lazy_prefix`. */
+  lemma NestedLazyPrefixCdn(body: R.regex)
+    requires NR.NestedFragmentCdnRE(body)
+    ensures NR.NestedFragmentCdnRE(R.lazy_prefix(body))
+  {
+  }
+
+  /** (G5b) `compile_to_write` adheres to the representation predicate on the Cdn fragment
+      (`NR.CompileToWriteRepNested`'s twin over `NR.CompileNfaRepCdnRE`). */
+  lemma CompileToWriteRepCdn(re: R.regex, l: R.lookid)
+    requires NR.NestedFragmentCdnRE(re)
+    ensures var code := CP.compile_to_write(re, l);
+      var next := CP.compile(re, 0, CP.Progress).1;
+      next >= 0 && NR.NfaRepRE(re, code, 0, next as nat)
+      && NR.GetPcRE(code, next as nat) == Some(RB.WriteOracle(l))
+      && |code| == next + 1
+  {
+    var (tl, next) := CP.compile(re, 0, CP.Progress);
+    NR.FreshCorrectCdnRE(re, 0, tl, next);
+    NR.CompileNfaRepCdnRE(re, 0, tl, next, []);
+    assert [] + NR.Flat(tl) == NR.Flat(tl);
+    NR.FlattenApp(tl, [RB.WriteOracle(l)]);
+    assert CP.compile_to_write(re, l) == NR.Flat(tl) + [RB.WriteOracle(l)];
+    NR.NfaRepExtendRE(re, NR.Flat(tl), 0, next as nat, [RB.WriteOracle(l)]);
+    assert NR.GetPcRE(NR.Flat(tl) + [RB.WriteOracle(l)], next as nat) == Some(RB.WriteOracle(l)) by {
+      assert (NR.Flat(tl) + [RB.WriteOracle(l)])[next as nat] == RB.WriteOracle(l);
+    }
+  }
+
+  /** THE forward bridge, assembled and gated, narrow form (no guard to read): the corollary of
+      `MatchesVToReachesWriteVCdn` at any table. */
+  lemma MatchesVToReachesWriteV(body: R.regex, lid: R.lookid, str: string, ov: LOr.OracleView, cdn: LCdn.cdns, i: int, cp: int)
     requires NR.NestedFragmentRE(body)
     requires 0 <= i <= |str|
     requires MatchesV(body, str, ov, i, cp)
     requires cp <= |str|
-    ensures ORc.ReachesWriteV(CP.compile_to_write(R.lazy_prefix(body), lid), str, ov, 0, lid, cp)
+    ensures ORc.ReachesWriteV(CP.compile_to_write(R.lazy_prefix(body), lid), str, ov, cdn, 0, lid, cp)
   {
-    NestedLazyPrefix(body);
-    NR.CompileToWriteRepNested(R.lazy_prefix(body), lid);
+    NR.NarrowIsCdn(body);
+    NarrowGuardsOk(body, cdn, str, ov);
+    MatchesVToReachesWriteVCdn(body, lid, str, ov, cdn, i, cp);
+  }
+
+  /** THE forward bridge, assembled and gated: a `MatchesV` span of the body
+      ending at `cp` makes the build program's `WriteOracle(lid)` V-reachable
+      at `cp` against the same view. (G5b) The body may hold greedy CDN pluses whose guards are right. */
+  lemma MatchesVToReachesWriteVCdn(body: R.regex, lid: R.lookid, str: string, ov: LOr.OracleView, cdn: LCdn.cdns, i: int, cp: int)
+    requires NR.NestedFragmentCdnRE(body) && GuardsOk(body, cdn, str, ov)
+    requires 0 <= i <= |str|
+    requires MatchesV(body, str, ov, i, cp)
+    requires cp <= |str|
+    ensures ORc.ReachesWriteV(CP.compile_to_write(R.lazy_prefix(body), lid), str, ov, cdn, 0, lid, cp)
+  {
+    NestedLazyPrefixCdn(body);
+    CompileToWriteRepCdn(R.lazy_prefix(body), lid);
     var code := CP.compile_to_write(R.lazy_prefix(body), lid);
     var next := CP.compile(R.lazy_prefix(body), 0, CP.Progress).1;
-    var bentry := LazyPrefixBodyEntryV(body, code, next as nat, str, ov, i);
-    var eb: bool :| ORc.ReachFV(code, str, ov, 0, bentry, eb, i);
-    MatchesVToPath(body, code, bentry, next as nat, str, ov, 0, i, cp, eb);
+    var bentry := LazyPrefixBodyEntryV(body, code, next as nat, str, ov, cdn, i);
+    var eb: bool :| ORc.ReachFV(code, str, ov, cdn, 0, bentry, eb, i);
+    MatchesVToPath(body, code, bentry, next as nat, str, ov, cdn, 0, i, cp, eb);
     OB.GetPcInstr(code, next as nat, RB.WriteOracle(lid));
-    assert ORc.ReachFV(code, str, ov, 0, next as nat, if cp > i then true else eb, cp);
+    assert ORc.ReachFV(code, str, ov, cdn, 0, next as nat, if cp > i then true else eb, cp);
   }
 }

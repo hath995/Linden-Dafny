@@ -172,8 +172,14 @@ module LindenElkOracleBuild {
   ghost predicate LidBuildOkAbove(crv: CP.FCompiled, i: int) {
     var bc := AI.get_code_v(crv.f_look_build_bc, i);
     bc == []
-    || (OS.AllGatesAbove(bc, i) && OS.NoCheckNullable(bc) && OS.WritesOnlyLid(bc, i)
-        && OS.NoAccept(bc))
+    || (OS.AllGatesAbove(bc, i) && OS.WritesOnlyLid(bc, i) && OS.NoAccept(bc)
+        // (G5b) a guard reads the look's own table, whose formulas read only inner columns
+        && (OS.NoCheckNullable(bc) || ORc.CdnsRefsAbove(LookCdnsOf(crv, i), i)))
+  }
+
+  /** (G5b) The table list `FBuildLids` hands lid `i`'s build run. */
+  function LookCdnsOf(crv: CP.FCompiled, i: int): LCdn.cdns {
+    if 0 <= i < |crv.f_look_cdns| then crv.f_look_cdns[i] else []
   }
 
   /** The gate-free `LidBuildOk` IMPLIES the gated `LidBuildOkAbove`: the only
@@ -275,8 +281,8 @@ module LindenElkOracleBuild {
   ghost opaque predicate LidReachesV(crv: CP.FCompiled, str: string, ov: LOr.OracleView, i: int, cp: int) {
     var bc := AI.get_code_v(crv.f_look_build_bc, i);
     if LidDir(crv, i) == LAnc.Forward
-    then ORc.ReachesWriteV(bc, str, ov, 0, i, cp)
-    else ORc.ReachesWriteV(MIR.SwapAnchorsCode(bc), LC.Reverse(str), ov, 0, i,
+    then ORc.ReachesWriteV(bc, str, ov, LookCdnsOf(crv, i), 0, i, cp)
+    else ORc.ReachesWriteV(MIR.SwapAnchorsCode(bc), LC.Reverse(str), ov, MIR.SwapAnchorsCdns(LookCdnsOf(crv, i)), 0, i,
                            MIR.Mirror(cp, |str|))
   }
 
@@ -302,16 +308,18 @@ module LindenElkOracleBuild {
       column that remains gate-free (all of them at depth 1). */
   lemma LidReachesVErasure(crv: CP.FCompiled, str: string, ov: LOr.OracleView, i: int, cp: int)
     requires OS.NoOracleReads(AI.get_code_v(crv.f_look_build_bc, i))
+    requires OS.NoCheckNullable(AI.get_code_v(crv.f_look_build_bc, i))
     ensures LidReachesV(crv, str, ov, i, cp) == LidReaches(crv, str, i, cp)
   {
     reveal LidReachesV();
     reveal LidReaches();
     var bc := AI.get_code_v(crv.f_look_build_bc, i);
     if LidDir(crv, i) == LAnc.Forward {
-      ORc.ReachesWriteVErasure(bc, str, ov, 0, i, cp);
+      ORc.ReachesWriteVErasure(bc, str, ov, LookCdnsOf(crv, i), 0, i, cp);
     } else {
       SwapAnchorsCodeNoOracleReads(bc);
-      ORc.ReachesWriteVErasure(MIR.SwapAnchorsCode(bc), LC.Reverse(str), ov, 0, i,
+      MIR.SwapPreservesClassification(bc, i);
+      ORc.ReachesWriteVErasure(MIR.SwapAnchorsCode(bc), LC.Reverse(str), ov, MIR.SwapAnchorsCdns(LookCdnsOf(crv, i)), 0, i,
                                MIR.Mirror(cp, |str|));
     }
   }
@@ -826,10 +834,10 @@ module LindenElkOracleBuild {
   ghost opaque predicate LidReachesVFinal(crv: CP.FCompiled, str: string, ov: LOr.OracleView, i: int, cp: int) {
     var bc := AI.get_code_v(crv.f_look_build_bc, i);
     if LidDir(crv, i) == LAnc.Forward
-    then ORc.ReachesWriteV(bc, str, ov, 0, i, cp)
+    then ORc.ReachesWriteV(bc, str, ov, LookCdnsOf(crv, i), 0, i, cp)
     else if |ov| == |str| + 1
          then ORc.ReachesWriteV(MIR.SwapAnchorsCode(bc), LC.Reverse(str), MIR.MirrorView(ov, |str|),
-                                0, i, MIR.Mirror(cp, |str|))
+                                MIR.SwapAnchorsCdns(LookCdnsOf(crv, i)), 0, i, MIR.Mirror(cp, |str|))
          else false
   }
 
@@ -840,6 +848,7 @@ module LindenElkOracleBuild {
       (they coincide on every gate-free column, in both directions). */
   lemma LidReachesVFinalErasure(crv: CP.FCompiled, str: string, ov: LOr.OracleView, i: int, cp: int)
     requires OS.NoOracleReads(AI.get_code_v(crv.f_look_build_bc, i))
+    requires OS.NoCheckNullable(AI.get_code_v(crv.f_look_build_bc, i))
     requires |ov| == |str| + 1
     ensures LidReachesVFinal(crv, str, ov, i, cp) == LidReaches(crv, str, i, cp)
   {
@@ -847,11 +856,12 @@ module LindenElkOracleBuild {
     reveal LidReaches();
     var bc := AI.get_code_v(crv.f_look_build_bc, i);
     if LidDir(crv, i) == LAnc.Forward {
-      ORc.ReachesWriteVErasure(bc, str, ov, 0, i, cp);
+      ORc.ReachesWriteVErasure(bc, str, ov, LookCdnsOf(crv, i), 0, i, cp);
     } else {
       SwapAnchorsCodeNoOracleReads(bc);
+      MIR.SwapPreservesClassification(bc, i);
       ORc.ReachesWriteVErasure(MIR.SwapAnchorsCode(bc), LC.Reverse(str), MIR.MirrorView(ov, |str|),
-                               0, i, MIR.Mirror(cp, |str|));
+                               MIR.SwapAnchorsCdns(LookCdnsOf(crv, i)), 0, i, MIR.Mirror(cp, |str|));
     }
   }
 
@@ -971,8 +981,9 @@ module LindenElkOracleBuild {
       }
     } else {
       assert LidBuildOkAbove(crv, lid);
-      assert OS.AllGatesAbove(bc, lid) && OS.NoCheckNullable(bc) && OS.WritesOnlyLid(bc, lid)
-          && OS.NoAccept(bc);
+      assert lookcdn == LookCdnsOf(crv, lid);
+      assert OS.AllGatesAbove(bc, lid) && OS.WritesOnlyLid(bc, lid) && OS.NoAccept(bc)
+          && (OS.NoCheckNullable(bc) || ORc.CdnsRefsAbove(lookcdn, lid));
       assert LidDir(crv, lid) == dir;
       assert AI.get_code_v(crv.f_look_build_bc, lid) == bc;
       // The tail is split by direction ON PURPOSE (as in FBuildLidsCharacterized):
@@ -1001,7 +1012,7 @@ module LindenElkOracleBuild {
           if i == lid {
             reveal LidReachesVFinal();
             assert LOr.view_get_oracle(ov', cp, i) == LOr.view_get_oracle(ov1, cp, i);
-            ORc.ReachesWriteVBuildFinalReconcile(bc, str, ov, ov', lid, 0, cp);
+            ORc.ReachesWriteVBuildFinalReconcile(bc, str, ov, lookcdn, ov', lid, 0, cp);
           } else if 1 <= i <= lid - 1 {
             assert LOr.view_get_oracle(ov1, cp, i) == LOr.view_get_oracle(ov, cp, i);
           } else {
@@ -1026,6 +1037,8 @@ module LindenElkOracleBuild {
         // reference view, then reconcile the swapped program's reading.
         AgreeAboveMirror(ov, ov', lid, n);
         MIR.SwapPreservesAllGatesAbove(bc, lid);
+        MIR.SwapPreservesClassification(bc, lid);
+        MIR.CdnsRefsAboveSwap(lookcdn, lid);
         forall i: int, cp: int
           ensures LOr.view_get_oracle(ov', cp, i)
                == (LOr.view_get_oracle(ov, cp, i)
@@ -1035,7 +1048,7 @@ module LindenElkOracleBuild {
             reveal LidReachesVFinal();
             assert LOr.view_get_oracle(ov', cp, i) == LOr.view_get_oracle(ov1, cp, i);
             ORc.ReachesWriteVBuildFinalReconcile(MIR.SwapAnchorsCode(bc), LC.Reverse(str),
-                                                 MIR.MirrorView(ov, n), MIR.MirrorView(ov', n),
+                                                 MIR.MirrorView(ov, n), MIR.SwapAnchorsCdns(lookcdn), MIR.MirrorView(ov', n),
                                                  lid, 0, MIR.Mirror(cp, n));
           } else if 1 <= i <= lid - 1 {
             assert LOr.view_get_oracle(ov1, cp, i) == LOr.view_get_oracle(ov, cp, i);
@@ -1298,7 +1311,7 @@ module LindenElkOracleBuild {
     requires 0 <= cp <= |str|
     ensures LOr.view_get_oracle(AI.FBuildOracle(CP.FFullCompilation(re), str), cp, lid)
          <==> ORc.ReachesWriteV(CP.compile_to_write(R.lazy_prefix(R.remove_capture(body)), lid),
-                                str, AI.FBuildOracle(CP.FFullCompilation(re), str), 0, lid, cp)
+                                str, AI.FBuildOracle(CP.FFullCompilation(re), str), LCdn.compile_cdns(body), 0, lid, cp)
   {
     var crv := CP.FFullCompilation(re);
     var ovf := AI.FBuildOracle(crv, str);
@@ -1323,6 +1336,7 @@ module LindenElkOracleBuild {
     assert CP.oracle_regex(la, body) == R.lazy_prefix(R.remove_capture(body));
     assert AI.get_code_v(crv.f_look_build_bc, lid)
         == CP.compile_to_write(R.lazy_prefix(R.remove_capture(body)), lid);
+    assert LookCdnsOf(crv, lid) == LCdn.compile_cdns(body);   // LookEntryOk
   }
 
   /** (G5a-1 row J) The narrow name, as a corollary of `FBuildOracleCorrectAtCdn`. */
@@ -1336,7 +1350,7 @@ module LindenElkOracleBuild {
     requires 0 <= cp <= |str|
     ensures LOr.view_get_oracle(AI.FBuildOracle(CP.FFullCompilation(re), str), cp, lid)
          <==> ORc.ReachesWriteV(CP.compile_to_write(R.lazy_prefix(R.remove_capture(body)), lid),
-                                str, AI.FBuildOracle(CP.FFullCompilation(re), str), 0, lid, cp)
+                                str, AI.FBuildOracle(CP.FFullCompilation(re), str), LCdn.compile_cdns(body), 0, lid, cp)
   {
     NR.NarrowIsCdn(re);
     FBuildOracleCorrectAtCdn(re, str, lid, la, body, cp);

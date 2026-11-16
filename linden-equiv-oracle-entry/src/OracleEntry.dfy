@@ -30,6 +30,7 @@ module LindenElkOracleEntry {
   import CP = Compiler
   import AI = ArrayInterp
   import LOr = Oracle
+  import LCdn = Cdn
   import T = LindenElkTranslate
   import NR = LindenElkNfaRep
   import AR = LindenElkActionsRep
@@ -742,14 +743,14 @@ module LindenElkOracleEntry {
     // oracle bit <==> ReachesWriteV(compile_to_write(lazy_prefix(rcb), lid), str, ovf, 0, lid, cp)
     // First: oracle bit <==> RecorderHitV(body), by the ReachesWriteV <-> MatchesV chain.
     if LOr.view_get_oracle(ovf, cp, lid) {
-      var i := ODV.ReachesWriteVToMatchesV(rcb, lid, str, ovf, cp);   // MatchesV(rcb, i, cp)
+      var i := ODV.ReachesWriteVToMatchesV(rcb, lid, str, ovf, LCdn.compile_cdns(body), cp);   // MatchesV(rcb, i, cp)
       OMV.MatchesVRemoveCapture(body, str, ovf, i, cp);              // MatchesV(body, i, cp)
       ODV.RecorderHitVIntro(body, str, ovf, cp, i);                  // RecorderHitV(body)
     }
     if ODV.RecorderHitV(body, str, ovf, cp) {
       var i := ODV.RecorderHitVInv(body, str, ovf, cp);             // MatchesV(body, i, cp)
       OMV.MatchesVRemoveCapture(body, str, ovf, i, cp);            // MatchesV(rcb, i, cp)
-      OBV.MatchesVToReachesWriteV(rcb, lid, str, ovf, i, cp);       // ReachesWriteV(rcb) => oracle bit
+      OBV.MatchesVToReachesWriteV(rcb, lid, str, ovf, LCdn.compile_cdns(body), i, cp);       // ReachesWriteV(rcb) => oracle bit
     }
     // Then: RecorderHitV(body) <==> backward walk.
     RecorderHitVBackWalk(rer, qm, body, str, cp);

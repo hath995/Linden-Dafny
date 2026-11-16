@@ -2115,7 +2115,7 @@ module LindenElkLiftSimOracle {
     requires forall y: nat :: y in LTB.LookIds(body) ==> 1 <= y
     requires cp <= |str| && |ovf| == |str| + 1
     requires ORc.ReachesWriteV(CP.compile_to_write(R.lazy_prefix(OMV.XRev(R.remove_capture(body))), lid),
-                               LC.Reverse(str), MIR.MirrorView(ovf, |str|), 0, lid, |str| - cp)
+                               LC.Reverse(str), MIR.MirrorView(ovf, |str|), MIR.SwapAnchorsCdns(LCdn.compile_cdns(body)), 0, lid, |str| - cp)
     ensures var code := CP.compile_to_bytecode(body);
             var s := AI.FInitState(code, cp, initcap, initlook, initquant, 0,
                                    AI.cp_context(cp, str, LAnc.Forward));
@@ -2132,7 +2132,7 @@ module LindenElkLiftSimOracle {
     SD.ReverseLength(str);
     OMV.RemoveCaptureNestedFragment(body);
     OMV.XRevNestedFragment(rcb);
-    var i := ODV.ReachesWriteVToMatchesV(x, lid, rstr, mv, n - cp);
+    var i := ODV.ReachesWriteVToMatchesV(x, lid, rstr, mv, MIR.SwapAnchorsCdns(LCdn.compile_cdns(body)), n - cp);
     OMV.MatchesVMirror(rcb, str, ovf, cp, n - i);
     assert n - (n - i) == i;
     assert OBV.MatchesV(rcb, str, ovf, cp, n - i);
@@ -2150,7 +2150,7 @@ module LindenElkLiftSimOracle {
     requires cp <= |str| && |ovf| == |str| + 1
     requires OBV.MatchesV(body, str, ovf, cp, j)
     ensures ORc.ReachesWriteV(CP.compile_to_write(R.lazy_prefix(OMV.XRev(R.remove_capture(body))), lid),
-                              LC.Reverse(str), MIR.MirrorView(ovf, |str|), 0, lid, |str| - cp)
+                              LC.Reverse(str), MIR.MirrorView(ovf, |str|), MIR.SwapAnchorsCdns(LCdn.compile_cdns(body)), 0, lid, |str| - cp)
   {
     var n := |str|;
     var rcb := R.remove_capture(body);
@@ -2165,7 +2165,7 @@ module LindenElkLiftSimOracle {
     OMV.MatchesVRemoveCapture(body, str, ovf, cp, j);
     OMV.MatchesVMirror(rcb, str, ovf, cp, j);
     assert OBV.MatchesV(x, rstr, mv, n - j, n - cp);
-    OBV.MatchesVToReachesWriteV(x, lid, rstr, mv, n - j, n - cp);
+    OBV.MatchesVToReachesWriteV(x, lid, rstr, mv, MIR.SwapAnchorsCdns(LCdn.compile_cdns(body)), n - j, n - cp);
   }
 
   /** THE NESTED COLUMN SPEC, one row at one column. Given the oracle truth of
@@ -2351,7 +2351,7 @@ module LindenElkLiftSimOracle {
       assert {:split_here} true;
       assert mcp == n - cp;
       assert {:split_here} true;
-      assert bit == ORc.ReachesWriteV(CP.compile_to_write(R.lazy_prefix(x), lid), rstr, mv, 0, lid, mcp);
+      assert bit == ORc.ReachesWriteV(CP.compile_to_write(R.lazy_prefix(x), lid), rstr, mv, MIR.SwapAnchorsCdns(LCdn.compile_cdns(body)), 0, lid, mcp);
 
       var codeb := CP.compile_to_bytecode(body);
       var cdnsb := LCdn.compile_cdns(body);
