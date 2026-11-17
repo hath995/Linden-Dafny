@@ -31,6 +31,8 @@ module LindenElkEmptyLooks {
   import NRR = LindenElkNulledReconRegs
   import NRO = LindenElkNulledReconReadout
   import RF = LindenElkReconFrame
+  import CLP = LindenElkCinLookPaths
+  import SL = LindenElkStampLive
   type Regs3 = NRC.Regs3
 
   // ===========================================================================
@@ -541,6 +543,100 @@ module LindenElkEmptyLooks {
       if (lid as int) in LooksQE(body, Q) { LooksQECapFree(body, Q, lid); }
       else { InnerLooksCapFree(r, lid); }
     case Re_capture(_, r1) => LooksQECapFree(r1, Q, lid);
+    case _ =>
+  }
+
+  // ===========================================================================
+  // 7. (G4b-1, the transports' case 3a) An ancestor register of a top lid inside a stamped body kills the lid's
+  //    presence: below the stamp the threshold is at least the stamp clock (`NI.LookPathPresent` raises it at
+  //    every quantifier), while `SL.BodyStale` puts every capture/quant clock of the body under it.
+  // ===========================================================================
+
+  lemma StaleAncNotPresent(r: R.regex, cc: seq<int>, qc: seq<int>, K: int, mx: int, lid: nat)
+    requires lid in NI.TopLookIds(r) && lid in LTB.LookIds(r)
+    requires PIV.CapUnique(r) && PIV.QuantUnique(r) && LTB.LookUnique(r)
+    requires SL.BodyStale(r, cc, qc, K) && mx >= K
+    requires CLP.AncCapRegs(r, lid) != {} || CLP.AncQuants(r, lid) != {}
+    ensures !NI.LookPathPresent(r, cc, qc, mx, lid)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      NI.TopLookIdsIn(r1); NI.TopLookIdsIn(r2);
+      if lid in LTB.LookIds(r1) {
+        assert lid in NI.TopLookIds(r1) by { if lid in NI.TopLookIds(r2) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); } }
+        StaleAncNotPresent(r1, cc, qc, K, mx, lid);
+      } else {
+        StaleAncNotPresent(r2, cc, qc, K, mx, lid);
+      }
+    case Re_con(r1, r2) =>
+      NI.TopLookIdsIn(r1); NI.TopLookIdsIn(r2);
+      if lid in LTB.LookIds(r1) {
+        assert lid in NI.TopLookIds(r1) by { if lid in NI.TopLookIds(r2) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); } }
+        StaleAncNotPresent(r1, cc, qc, K, mx, lid);
+      } else {
+        StaleAncNotPresent(r2, cc, qc, K, mx, lid);
+      }
+    case Re_capture(cid, r1) =>
+      assert (cid as nat) in PIV.CapIds(r);
+    case Re_quant(_, qid, _, r1) =>
+      assert (qid as nat) in PIV.QuantIds(r);
+    case _ =>
+  }
+
+  lemma StampedAncKillsPresence(r: R.regex, cc: seq<int>, qc: seq<int>, mx: int, lid: nat, Q: set<int>)
+    requires lid in NI.TopLookIds(r) && lid in LTB.LookIds(r)
+    requires PIV.CapUnique(r) && PIV.QuantUnique(r) && LTB.LookUnique(r)
+    requires forall q: nat :: q in PIV.QuantIds(r) && (q as int) in Q ==>
+               SL.BodyStale(PIV.QidBody(r, q), cc, qc, AI.get_idx(qc, q))
+    requires CLP.AncCapRegs(r, lid) * RF.CapsQ(r, Q) != {} || CLP.AncQuants(r, lid) * RF.QuantsQ(r, Q) != {}
+    ensures !NI.LookPathPresent(r, cc, qc, mx, lid)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      NRR.DisjointRegs(r);
+      assert NRR.L1(r) == r1 && NRR.L2(r) == r2;
+      RF.QSetsSub(r1, Q); RF.QSetsSub(r2, Q);
+      NI.TopLookIdsIn(r1); NI.TopLookIdsIn(r2);
+      if lid in LTB.LookIds(r1) {
+        assert lid in NI.TopLookIds(r1) by { if lid in NI.TopLookIds(r2) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); } }
+        CLP.AncSub(r1, lid);
+        StampedAncKillsPresence(r1, cc, qc, mx, lid, Q);
+      } else {
+        CLP.AncSub(r2, lid);
+        StampedAncKillsPresence(r2, cc, qc, mx, lid, Q);
+      }
+    case Re_con(r1, r2) =>
+      NRR.DisjointRegs(r);
+      assert NRR.L1(r) == r1 && NRR.L2(r) == r2;
+      RF.QSetsSub(r1, Q); RF.QSetsSub(r2, Q);
+      NI.TopLookIdsIn(r1); NI.TopLookIdsIn(r2);
+      if lid in LTB.LookIds(r1) {
+        assert lid in NI.TopLookIds(r1) by { if lid in NI.TopLookIds(r2) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); } }
+        CLP.AncSub(r1, lid);
+        StampedAncKillsPresence(r1, cc, qc, mx, lid, Q);
+      } else {
+        CLP.AncSub(r2, lid);
+        StampedAncKillsPresence(r2, cc, qc, mx, lid, Q);
+      }
+    case Re_capture(cid, r1) =>
+      RF.QSetsSub(r1, Q);
+      NRR.CapRegsOfOwn(r);
+      assert NRR.L1(r) == r1;
+      assert CP.start_reg(cid) !in RF.CapsQ(r1, Q);
+      StampedAncKillsPresence(r1, cc, qc, mx, lid, Q);
+    case Re_quant(nul, qid, q, body) =>
+      RF.QSetsSub(body, Q);
+      NRR.QuantRegsOfChar(body);
+      assert (qid as int) !in RF.QuantsQ(body, Q) && (qid as int) !in NRR.QuantRegsOf(body);
+      var K := AI.get_idx(qc, qid);
+      if (qid as int) in Q && (CLP.AncCapRegs(body, lid) != {} || CLP.AncQuants(body, lid) != {}) {
+        assert (qid as nat) in PIV.QuantIds(r) && PIV.QidBody(r, qid as nat) == body;
+        StaleAncNotPresent(body, cc, qc, K, K, lid);
+      } else {
+        StampedAncKillsPresence(body, cc, qc, K, lid, Q);
+      }
     case _ =>
   }
 }
