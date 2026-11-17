@@ -25,6 +25,8 @@ module LindenElkEmptyLooks {
   import AR = LindenElkActionsRep
   import TR = LindenElkTreeRep
   import PIV = LindenElkPikeInv
+  import NI = LindenElkNestInv
+  import LTB = LindenElkLookTables
   import NRC = LindenElkNulledRecon
   import NRR = LindenElkNulledReconRegs
   import NRO = LindenElkNulledReconReadout
@@ -395,5 +397,150 @@ module LindenElkEmptyLooks {
     NRR.AgreeOutsideWeaken(rg2, rgA, RF.CapsQ(r2, Q), LooksQE(r2, Q), RF.QuantsQ(r2, Q), RF.CapsQ(r, Q), LooksQE(r, Q), RF.QuantsQ(r, Q));
     NRR.AgreeOutsideWeaken(rgA, rg, RF.CapsQ(r1, Q), LooksQE(r1, Q), RF.QuantsQ(r1, Q), RF.CapsQ(r, Q), LooksQE(r, Q), RF.QuantsQ(r, Q));
     NRR.AgreeOutsideTrans(rg2, rgA, rg, RF.CapsQ(r, Q), LooksQE(r, Q), RF.QuantsQ(r, Q));
+  }
+
+  // ===========================================================================
+  // 5. The scope: every look an empty path can cross is capture-free (any polarity)
+  // ===========================================================================
+
+  /** The RE twin of `NPL.EmptyLooksGroupFreeL` (its con arm translates verbatim under `TransWf`). */
+  ghost predicate EmptyPathLooksCapFree(r: R.regex)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => EmptyPathLooksCapFree(r1) && EmptyPathLooksCapFree(r2)
+    case Re_con(r1, r2) => (MayNull(r2) ==> EmptyPathLooksCapFree(r1)) && (MayNull(r1) ==> EmptyPathLooksCapFree(r2))
+    case Re_quant(_, _, q, r1) => q.min == 0 || EmptyPathLooksCapFree(r1)
+    case Re_capture(_, r1) => EmptyPathLooksCapFree(r1)
+    case Re_lookaround(_, _, b) => PIV.CapIds(b) == {}
+    case _ => true
+  }
+
+  /** (G4b-1) `RF.StampLooksCapFreeRE` with the stamp arm weakened to the empty-path looks. */
+  ghost predicate StampLooksCapFreeE(re: R.regex)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => StampLooksCapFreeE(r1) && StampLooksCapFreeE(r2)
+    case Re_con(r1, r2) => StampLooksCapFreeE(r1) && StampLooksCapFreeE(r2)
+    case Re_quant(nul, qid, q, body) => (StampNode(nul, q) ==> EmptyPathLooksCapFree(body)) && StampLooksCapFreeE(body)
+    case Re_capture(_, r1) => StampLooksCapFreeE(r1)
+    case Re_lookaround(_, _, r1) => StampLooksCapFreeE(r1)
+    case _ => true
+  }
+
+  lemma CapFreeLooksEPCF(r: R.regex)
+    requires PIV.CapIdsInLooks(r) == {}
+    ensures EmptyPathLooksCapFree(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => CapFreeLooksEPCF(r1); CapFreeLooksEPCF(r2);
+    case Re_con(r1, r2) => CapFreeLooksEPCF(r1); CapFreeLooksEPCF(r2);
+    case Re_quant(_, _, _, r1) => CapFreeLooksEPCF(r1);
+    case Re_capture(_, r1) => CapFreeLooksEPCF(r1);
+    case _ =>
+  }
+
+  /** G4a's scope is an instance. */
+  lemma StampLooksCapFreeToE(re: R.regex)
+    requires RF.StampLooksCapFreeRE(re)
+    ensures StampLooksCapFreeE(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => StampLooksCapFreeToE(r1); StampLooksCapFreeToE(r2);
+    case Re_con(r1, r2) => StampLooksCapFreeToE(r1); StampLooksCapFreeToE(r2);
+    case Re_quant(nul, qid, q, body) =>
+      StampLooksCapFreeToE(body);
+      if StampNode(nul, q) { CapFreeLooksEPCF(body); }
+    case Re_capture(_, r1) => StampLooksCapFreeToE(r1);
+    case Re_lookaround(_, _, r1) => StampLooksCapFreeToE(r1);
+    case _ =>
+  }
+
+  // ===========================================================================
+  // 6. Every lid the reconstruction may re-set has a capture-free body
+  // ===========================================================================
+
+  lemma OwnLooksCapFree(r: R.regex, lid: nat)
+    requires (lid as int) in OwnLooksE(r) && EmptyPathLooksCapFree(r) && LTB.LookUnique(r)
+    ensures lid in LTB.LookIds(r) && PIV.CapIds(NI.LookBodyOfRE(r, lid)) == {}
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if (lid as int) in OwnLooksE(r1) {
+        OwnLooksCapFree(r1, lid);
+      } else {
+        OwnLooksCapFree(r2, lid);
+        assert lid !in LTB.LookIds(r1) by { if lid in LTB.LookIds(r1) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); } }
+      }
+    case Re_con(r1, r2) =>
+      if MayNull(r2) && (lid as int) in OwnLooksE(r1) {
+        OwnLooksCapFree(r1, lid);
+      } else {
+        OwnLooksCapFree(r2, lid);
+        assert lid !in LTB.LookIds(r1) by { if lid in LTB.LookIds(r1) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); } }
+      }
+    case Re_quant(_, _, _, r1) => OwnLooksCapFree(r1, lid);
+    case Re_capture(_, r1) => OwnLooksCapFree(r1, lid);
+    case Re_lookaround(lid0, la, b) => assert lid0 == lid as int;
+    case _ =>
+  }
+
+  lemma InnerLooksCapFree(r: R.regex, lid: nat)
+    requires (lid as int) in InnerLookRegsE(r) && StampLooksCapFreeE(r) && LTB.LookUnique(r)
+    ensures lid in LTB.LookIds(r) && PIV.CapIds(NI.LookBodyOfRE(r, lid)) == {}
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if (lid as int) in InnerLookRegsE(r1) {
+        InnerLooksCapFree(r1, lid);
+      } else {
+        InnerLooksCapFree(r2, lid);
+        assert lid !in LTB.LookIds(r1) by { if lid in LTB.LookIds(r1) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); } }
+      }
+    case Re_con(r1, r2) =>
+      if (lid as int) in InnerLookRegsE(r1) {
+        InnerLooksCapFree(r1, lid);
+      } else {
+        InnerLooksCapFree(r2, lid);
+        assert lid !in LTB.LookIds(r1) by { if lid in LTB.LookIds(r1) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); } }
+      }
+    case Re_quant(nul, _, q, r1) =>
+      if StampNode(nul, q) && (lid as int) in OwnLooksE(r1) { OwnLooksCapFree(r1, lid); }
+      else { InnerLooksCapFree(r1, lid); }
+    case Re_capture(_, r1) => InnerLooksCapFree(r1, lid);
+    case _ =>
+  }
+
+  /** (G4b-1) `SLk.LooksQCapFree` on the E set, with no stamp-set premise. */
+  lemma LooksQECapFree(r: R.regex, Q: set<int>, lid: nat)
+    requires (lid as int) in LooksQE(r, Q) && StampLooksCapFreeE(r) && LTB.LookUnique(r)
+    ensures lid in LTB.LookIds(r) && PIV.CapIds(NI.LookBodyOfRE(r, lid)) == {}
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if (lid as int) in LooksQE(r1, Q) {
+        LooksQECapFree(r1, Q, lid);
+      } else {
+        LooksQECapFree(r2, Q, lid);
+        assert lid !in LTB.LookIds(r1) by { if lid in LTB.LookIds(r1) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); } }
+      }
+    case Re_con(r1, r2) =>
+      if (lid as int) in LooksQE(r1, Q) {
+        LooksQECapFree(r1, Q, lid);
+      } else {
+        LooksQECapFree(r2, Q, lid);
+        assert lid !in LTB.LookIds(r1) by { if lid in LTB.LookIds(r1) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); } }
+      }
+    case Re_quant(_, qid, _, body) =>
+      if (lid as int) in LooksQE(body, Q) { LooksQECapFree(body, Q, lid); }
+      else { InnerLooksCapFree(r, lid); }
+    case Re_capture(_, r1) => LooksQECapFree(r1, Q, lid);
+    case _ =>
   }
 }
