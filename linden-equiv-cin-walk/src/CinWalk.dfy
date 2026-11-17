@@ -40,6 +40,7 @@ module LindenElkCinWalk {
   import NB = LindenElkNulledPlusBool
   import CDP = LindenElkCdnPriority   // (G5a-1 row G) rung A without the nullability premise
   import CNE = LindenElkCdnNoEmpty    // (G5a-1 row G) the iteration tree when the guard fails
+  import NPL = LindenElkNulledPlusLk  // (G4b-1) the look-carrying empty path, exact rung A, the OC frame
 
   // ===========================================================================
   // The engine-shaped walk tree
@@ -848,8 +849,8 @@ module LindenElkCinWalk {
   {}
 
   // ===========================================================================
-  // The glue's side condition: every CIN body's groups lie in `G`, and its
-  // positive looks capture nothing (rung A then runs at `S = {}`)
+  // The glue's side condition: every CIN body's out-of-look groups lie in `G`, and every look its empty
+  // path can cross captures nothing (G4b-1: rung A is then exact on the bare chain)
   // ===========================================================================
 
   ghost predicate CinOk(r: L.Regex, G: set<LG.GroupId>)
@@ -861,7 +862,7 @@ module LindenElkCinWalk {
     case Quantified(greedy, min, delta, r1) =>
       CinOk(r1, G)
       && (min > 0 && (CinGreedyL(greedy, delta, r1) || CdnGreedyL(greedy, delta, r1)) ==>   // (G5a-1 row G)
-            LL.LkBodiesInS(r1, {}) && forall g :: g in L.DefGroups(r1) ==> g in G)
+            NPL.EmptyLooksGroupFreeL(r1) && NPL.OutLk(r1) <= G)   // (G4b-1)
     case Group(_, r1) => CinOk(r1, G)
     // (G3a) no condition under a look: the walk never enters a look body (`CinWalkReg`'s look arm
     // keeps the body tree and recurses on the continuation only), and a CIN plus inside a look body
@@ -893,6 +894,15 @@ module LindenElkCinWalk {
   }
 
   /** A regex without a nulled plus satisfies the side condition vacuously. */
+  /** (G4b-1) The G4a-era arm (look bodies group-free, all body groups in `G`) implies today's. */
+  lemma CinArmFromOld(r1: L.Regex, G: set<LG.GroupId>)
+    requires LL.LkBodiesInS(r1, {}) && forall g :: g in L.DefGroups(r1) ==> g in G
+    ensures NPL.EmptyLooksGroupFreeL(r1) && NPL.OutLk(r1) <= G
+  {
+    NPL.LkBodiesInSEmptyGF(r1);
+    NPL.OutLkSubDG(r1);
+  }
+
   lemma NoNulledPlusCinOk(r: L.Regex, G: set<LG.GroupId>)
     requires NUL.NoNulledPlusL(r)
     ensures CinOk(r, G)
@@ -964,6 +974,30 @@ module LindenElkCinWalk {
       NP.ApplyPathOutside(p, LC.Idx(inp), gm, G);
       LL.GmAgreeOutsideSym(gmP, gm, G);
       TreeResFrameOutside(t, gm, gmP, inp, WP.Forward, G);
+    }
+  }
+
+  /** (G4b-1) After the plus's `Reset(gidl)`, a path whose Open/Close groups lie in `G` and whose actions stay
+      in `gidl` is invisible outside `G`: the reset groups outside `G` stay unset. */
+  lemma RAChainDropAfterReset(gidl: LG.GroupSet, p: seq<LG.GroupAction>, t: LT.Tree, inp: LC.Input, G: set<LG.GroupId>)
+    requires NPL.OCInP(p, G) && NP.PathIn(p, set g | g in gidl)
+    ensures NP.ResAgreeAtOutside(LT.GroupActionT(LG.Reset(gidl), t), LT.GroupActionT(LG.Reset(gidl), NP.Chain(p, t)), inp, G)
+  {
+    forall gm: LG.GroupMap
+      ensures var r1 := LT.TreeRes(LT.GroupActionT(LG.Reset(gidl), t), gm, inp, WP.Forward);
+              var r2 := LT.TreeRes(LT.GroupActionT(LG.Reset(gidl), NP.Chain(p, t)), gm, inp, WP.Forward);
+              (r1.Some? <==> r2.Some?)
+              && (r1.Some? ==> r1.value.0 == r2.value.0 && LL.GmAgreeOutside(r1.value.1, r2.value.1, G))
+    {
+      var gm1 := LG.GMReset(gidl, gm);
+      ChainRes(p, t, gm1, inp);
+      var gmP := NP.ApplyPath(p, LC.Idx(inp), gm1);
+      NPL.ApplyPathOCOutside(p, LC.Idx(inp), gm1, G, set g | g in gidl);
+      LL.GmAgreeOutsideSym(gmP, gm1, G);
+      TreeResFrameOutside(t, gm1, gmP, inp, WP.Forward, G);
+      assert LT.TreeRes(LT.GroupActionT(LG.Reset(gidl), t), gm, inp, WP.Forward) == LT.TreeRes(t, gm1, inp, WP.Forward);
+      assert LT.TreeRes(LT.GroupActionT(LG.Reset(gidl), NP.Chain(p, t)), gm, inp, WP.Forward)
+          == LT.TreeRes(NP.Chain(p, t), gm1, inp, WP.Forward);
     }
   }
 
@@ -1311,7 +1345,7 @@ module LindenElkCinWalk {
     requires EL.PikeLkActionsRec(acts) && EL.PikeLkActionsRec(cont) && EL.PikeLkRegexRec(r1)
     requires NB.EncOk(acts, inp, b)
     requires CinActsIn(acts, G) && CinActsIn(cont, G) && CinOk(r1, G)
-    requires LL.LkBodiesInS(r1, {}) && forall g :: g in L.DefGroups(r1) ==> g in G
+    requires NPL.EmptyLooksGroupFreeL(r1) && NPL.OutLk(r1) <= G   // (G4b-1)
     requires EL.BoolTreeLk(rer, acts, inp, b, t)
     ensures BoolTreeLkX(rer, acts, inp, b, tX)
     ensures NP.ResAgreeAtOutside(tX, t, inp, G)
@@ -1378,27 +1412,20 @@ module LindenElkCinWalk {
                   NP.RACongGroupOutside(LG.Reset(gidl), sc, tcont, inp, G);
                   NP.RACongChoiceOutside(tloop, LT.GroupActionT(LG.Reset(gidl), ti),
                                          tskip, LT.GroupActionT(LG.Reset(gidl), tcont), inp, G);
-                  // (2) the chain is invisible outside G
+                  // (2) the chain is invisible outside G (G4b-1: its Open/Close groups are out-of-look groups of
+                  //     r1, and after the plus's Reset its Resets only clear groups that stay unset outside G)
                   var p := NP.FirstEmptyPathL(rer, r1, inp).value;
-                  assert NP.PathIn(p, G) by {
-                    assert NP.ActsGroupsIn([LS.Areg(r1)], G) by {
-                      forall i | 0 <= i < |[LS.Areg(r1)]|
-                        ensures ([LS.Areg(r1)][i].Areg? ==> forall g :: g in L.DefGroups([LS.Areg(r1)][i].r) ==> g in G)
-                             && ([LS.Areg(r1)][i].Aclose? ==> [LS.Areg(r1)][i].gid in G)
-                      {}
-                    }
-                    NP.PathActionsIn(rer, [LS.Areg(r1)], inp, G);
-                  }
+                  NPL.FirstEmptyPathOC(rer, r1, inp);
+                  assert NPL.OCInP(p, G);
                   var tcin := LT.Choice(LT.GroupActionT(LG.Reset(gidl), ti),
                                         LT.GroupActionT(LG.Reset(gidl), NP.Chain(p, tcont)));
-                  RAChainDropOutside(p, tcont, inp, G);
-                  NP.RACongGroupOutside(LG.Reset(gidl), tcont, NP.Chain(p, tcont), inp, G);
+                  RAChainDropAfterReset(gidl, p, tcont, inp, G);
                   NP.RAReflOutside(LT.GroupActionT(LG.Reset(gidl), ti), inp, G);
                   NP.RACongChoiceOutside(LT.GroupActionT(LG.Reset(gidl), ti), LT.GroupActionT(LG.Reset(gidl), ti),
                                          LT.GroupActionT(LG.Reset(gidl), tcont),
                                          LT.GroupActionT(LG.Reset(gidl), NP.Chain(p, tcont)), inp, G);
-                  // (3) rung A at S = {}: the chained shape vs the spec tree
-                  CDP.CdnPlusPriorityBool(rer, r1, cont, inp, b, {}, t, ti, tcont);
+                  // (3) rung A at S = {}, exact (G4b-1: the looks the empty path crosses are group-free)
+                  NPL.CdnPlusPriorityBoolGF(rer, r1, cont, inp, b, t, ti, tcont);
                   assert CDP.CdnTree(rer, r1, inp, ti, tcont) == tcin;
                   RAMonoOutside(tcin, t, inp, {}, G);
                   NP.RATransOutside(tfree, tcin, t, inp, G);
@@ -1427,7 +1454,7 @@ module LindenElkCinWalk {
           NP.RACongGroupOutside(LG.Reset(gidl), si, ti, inp, G);
           NP.RAReflOutside(LT.Mismatch, inp, G);
           NP.RACongChoiceOutside(tloop, LT.GroupActionT(LG.Reset(gidl), ti), LT.Mismatch, LT.Mismatch, inp, G);
-          CDP.CdnPlusPriorityBoolNone(rer, r1, cont, inp, b, {}, t, ti);
+          NPL.CdnPlusPriorityBoolNoneExact(rer, r1, cont, inp, b, t, ti);   // (G4b-1) exact, no look premise
           RAMonoOutside(tdead, t, inp, {}, G);
           NP.RATransOutside(tX, tdead, t, inp, G);
         }

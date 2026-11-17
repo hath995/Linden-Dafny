@@ -154,6 +154,7 @@ module LindenElkTwoMachines {
           assert g in PIV.CapIds(body);
           assert g in PIV.CapIdsOutsideLooks(r);
         }
+        CW.CinArmFromOld(tb, G);   // (G4b-1) the old arm implies today's
       }
       if q.min > 0 && CW.CdnGreedyL(q.greedy, T.TrDelta(q), tb) {
         // (G5a-1 row G) `CinOk` also asks the body condition of a CDN head; the narrow fragment has none
@@ -525,6 +526,7 @@ module LindenElkTwoMachines {
           assert g in PIV.CapIds(body);
           assert g in PIV.CapIdsOutsideLooks(r);
         }
+        CW.CinArmFromOld(tb, G);   // (G4b-1) the old arm implies today's
       }
     case _ =>
   }
@@ -696,6 +698,7 @@ module LindenElkTwoMachines {
           assert g in PIV.CapIds(body);
           assert g in PIV.CapIdsOutsideLooks(r);
         }
+        CW.CinArmFromOld(tb, G);   // (G4b-1) the old arm implies today's
       }
     case _ =>
   }

@@ -320,6 +320,7 @@ module LindenElkCinLooks {
           assert g in PIV.CapIds(body);
           assert g in PIV.CapIdsOutsideLooks(r);
         }
+        CW.CinArmFromOld(tb, G);   // (G4b-1) the old arm implies today's
       }
     case _ =>
   }
