@@ -1099,7 +1099,21 @@ module LindenElkMachineABack {
     MW.SwapRunIsOwnRunPlus(reF, rstr, cp, AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant),
                            ov', plus);
     assert LCdn.compile_cdns(FST.FXR(reF)) == LCdn.compile_cdns(body);
+    // (G5b-3, build path) the descent's premises in their own batch; under `dafny build` (lem's source order) the
+    // call batch looped while every body was visible
     assert {:split_here} true;
+    assert T.TransWf(reF) && NR.NestedFragmentCdnRE(reF);
+    assert PIV.CapUnique(reF) && PIV.QuantUnique(reF) && LTB.LookUnique(reF);
+    assert PSM.SizesOkRE(reF, ncap, nlook, nquant);
+    assert forall l: nat :: l in LTB.LookIds(reF) ==> l < nlook;
+    assert NRC.CdnTopRE(reF) && RF.StampLooksCapFreeRE(reF) && NRR.PlusTableOkS(reF, plusF);
+    assert NRR.PlusTableOkS(FST.FXR(reF), plus);
+    assert AR.QmapOk(reF, qmF) && qmF.bodies == M.BodiesOfRE(reF);
+    assert n == |rstr| && mcpN <= n && |ov'| == n + 1;
+    assert qmF.ov == ov' && AR.LmapOk(reF, qmF) && OE.OracleColsOk(rer, qmF, rstr);
+    // the call: its postcondition transfers to ours by congruence on the involution equalities above
+    assert {:split_here} true;
+    hide *;
     RowKeysLBS(rer, qmF, reF, rstr, mcpN, ov', LCdn.compile_cdns(reF), plusF, plus, ncap, nlook, nquant, n);
   }
 
