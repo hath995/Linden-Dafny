@@ -37,9 +37,8 @@ module LindenRegexApi {
   // membership at runtime or by assertion in their own proofs.
   // ==========================================================================
   /** The supported fragment. A pattern is supported when:
-        - it is in the nested fragment (`NR.NestedFragmentRaw`): looks may hold
-          looks, captures may sit under quantifiers, and negative look bodies are
-          capture-free;
+        - it is in the nested fragment (`NR.NestedFragmentCdnRaw`): looks may hold
+          looks, captures may sit under quantifiers and inside negative look bodies;
         - it is Latin-1 well-formed (`T.Latin1Wf`);
         - every lookaround inside a greedy nullable plus body is capture-free
           (`CL.CinLooksCapFreeX`; G4a: `((?=a)|a?)+`, G5a-2a: `((?=a)|b)+`). A look body of either
