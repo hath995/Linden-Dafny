@@ -9,12 +9,13 @@ module LindenElkGateFlip {
   import FRD = LindenElkFinalReadout
   import FST = LindenElkFlipStatics
   import TB = LindenElkMirrorPlus
+  import T = LindenElkTranslate
   import W = LindenElkBackRowResidue
 
   /** It is flip-invariant. (G5b-2) The gate's look arm is the same for both directions (inside a positive look
       body every nullable plus body is look-free), and the flip swaps the directions. */
   lemma GateFXR(r: R.regex)
-    requires M.LookBodiesPlusGateRE(r)
+    requires M.LookBodiesPlusGateRE(r) && T.TransWf(r)
     ensures M.LookBodiesPlusGateRE(FST.FXR(r))
     decreases r
   {
@@ -24,8 +25,8 @@ module LindenElkGateFlip {
     case Re_quant(nul, qid, q, a) => W.FXRQuant(nul, qid, q, a); GateFXR(a);
     case Re_capture(c, a) => W.FXRCap(c, a); GateFXR(a);
     case Re_lookaround(l, la, a) =>
-      W.FXRLook(l, la, a); GateFXR(a); TB.CinBodiesLookFreeFXR(a);
-      if NRC.PositiveLk(la) { TB.StampBodiesLookFreeFXR(a); }   // (G5b-2) a positive look stays positive
+      W.FXRLook(l, la, a); GateFXR(a);
+      if NRC.PositiveLk(la) { TB.StampLooksCapFreeFXR(a); }   // (G5b-2/3) a positive look stays positive
     case Re_anchor(x) => W.FXRAnchor(x);
     case Re_empty =>
     case Re_character(_) =>
@@ -41,7 +42,7 @@ module LindenElkGateFlip {
     case Re_con(r1, r2) => GateFromCin(r1); GateFromCin(r2);
     case Re_quant(_, _, _, r1) => GateFromCin(r1);
     case Re_capture(_, r1) => GateFromCin(r1);
-    case Re_lookaround(_, _, r1) => GateFromCin(r1); RF.CinStampBodiesNoCdn(r1);
+    case Re_lookaround(_, _, r1) => GateFromCin(r1); RF.CinStampBodiesNoCdn(r1); RF.StampBodiesLookFreeIsCapFree(r1);
     case _ =>
   }
 

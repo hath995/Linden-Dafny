@@ -46,8 +46,11 @@ module LindenRegexApi {
           kind may hold a greedy CI-nullable plus with a look-free body (G3a lookahead, G3b lookbehind);
         - a greedy CDN plus may sit anywhere (G5a-1: `(\\b|a)+`; G5a-2b: inside a nulled plus's body too,
           `((\\b)+|)+`; G5b-0: inside a negative look body, `(?!(\\b|a)+)`, `(?<!(\\b|a)+)`; G5b-1/G5b-2: inside a
-          positive look body of either direction, `(?=(\\b|a)+)`, `(?<=(\\b|a)+)`, when every nullable plus body
-          inside the look is look-free, `CL.LookStampOkX`). `MCL.CdnTopX` is true of every regex since G5b-2.
+          positive look body of either direction, `(?=(\\b|a)+)`, `(?<=(\\b|a)+)`). `MCL.CdnTopX` is true of every
+          regex since G5b-2;
+        - (G5b-3) inside a look body too, a nullable plus body may hold capture-free looks: `(?=((?=a)|b)+)`,
+          `(?<=((?=a)|a?)+)`, `(?!((?=a)|a?)+)` (`CL.LookStampOkX`: inside a positive look, every look in a nullable
+          plus body is capture-free; a negative look body is unrestricted).
       Looks nest to any depth in either direction: lookaheads inside lookbehinds and
       lookbehinds inside lookaheads (gate B, G1 full depth). Exactly
       `MCL.MainTheoremL5Cin`'s precondition. `SUPPORTED_FRAGMENT.md` lists what this admits
@@ -102,10 +105,10 @@ module LindenRegexApi {
     case _ =>
   }
 
-  /** (G5b) The gate from the scope: a look body of any kind may hold a CDN plus; every CIN plus body inside a
-      look stays look-free; (G5b-1, G5b-2) inside a positive look body, every nullable plus body is look-free. */
+  /** (G5b) The gate from the scope: a look body of any kind may hold a CDN plus; (G5b-3) inside a positive look
+      body, every look inside a nullable plus body is capture-free; a negative body is unrestricted. */
   lemma GateFromCdnTopCin(re: R.regex)
-    requires NRC.CdnTopRE(re) && RF.CinBodiesLookFreeRE(re) && CL.LookStampOkRE(re)
+    requires CL.LookStampOkRE(re)
     ensures M.LookBodiesPlusGateRE(re)
     decreases re
   {
@@ -118,19 +121,6 @@ module LindenRegexApi {
     case _ =>
   }
 
-  lemma GateFromCinG4(re: R.regex)
-    requires NRC.NoCdnPlusRE(re) && CL.CinLooksCapFreeRE(re)
-    ensures M.LookBodiesPlusGateRE(re)
-    decreases re
-  {
-    match re
-    case Re_alt(r1, r2) => GateFromCinG4(r1); GateFromCinG4(r2);
-    case Re_con(r1, r2) => GateFromCinG4(r1); GateFromCinG4(r2);
-    case Re_quant(_, _, _, r1) => GateFromCinG4(r1);
-    case Re_capture(_, r1) => GateFromCinG4(r1);
-    case Re_lookaround(_, _, r1) => GF.GateFromCin(r1);
-    case _ =>
-  }
 
   // ==========================================================================
   // The transfer principle: any fact proven of THE backtracking tree of

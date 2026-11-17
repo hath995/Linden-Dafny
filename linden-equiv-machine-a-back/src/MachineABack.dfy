@@ -76,6 +76,7 @@ module LindenElkMachineABack {
   import CMr = LindenElkCdnMirror      // (G5b-2) the mirrored CDN table
   import CS = LindenElkCdnSound
   import CTT = LindenElkCdnTreeTie
+  import SBk = LindenElkStampBank      // (G5b-3)
 
   /** Machine A's first half: the fresh forward VM winner of `body` at `cp` against the spec first leaf.
       No plus table, no reconstruction. (`MachineAAt` up to its readout.) */
@@ -531,7 +532,7 @@ module LindenElkMachineABack {
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
-    requires NRC.CdnTopRE(body) && RF.StampBodiesLookFreeRE(body) && NRR.PlusTableOkS(body, plus)
+    requires NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body) && NRR.PlusTableOkS(body, plus)
     requires AR.QmapOk(body, qm) && qm.bodies == M.BodiesOfRE(body)
     requires cdns == LCdn.compile_cdns(body)   // (G5b-2) the row's own table (the mirrored run's guards)
     requires !rer.ignoreCase && !rer.multiline
@@ -555,7 +556,12 @@ module LindenElkMachineABack {
             && PIV.GmOfLive(body, rr.0.value.capture_regs, rr.0.value.look_regs, rr.0.value.quant_regs)
               == BGM.RawMirrorGm(G, n)
             && LL.GmAgreeOutside(G, LT.FirstLeaf(t_F, inpF).value.1, LL.LkBodyGroups(T.Translate(body)))
-            && ClkFrame(body, FRD.StampQids(body), rr.0.value, raB.value)
+            && ClkFrameG4(body, FRD.StampQids(body), rr.0.value, raB.value)   // (G5b-3) outside LooksQ
+            && CM.RegsAgreeOutside(rr.0.value.look_regs, raB.value.look_regs, SBk.DirectLidSetRN(body))
+            && (CM.LookCpsOracleTrue(raB.value.look_regs, ov) ==> CM.LookCpsOracleTrue(rr.0.value.look_regs, ov))
+            && (CM.LookClkSetWithCp(raB.value.look_regs) ==> CM.LookClkSetWithCp(rr.0.value.look_regs))
+            && (CM.LookCpSetWithClk(raB.value.look_regs) ==> CM.LookCpSetWithClk(rr.0.value.look_regs))
+            && (CM.LookCpsLE(raB.value.look_regs, |str|) ==> CM.LookCpsLE(rr.0.value.look_regs, |str|))
             && CM.ThreadRegsWf(rr.0.value, ncap, nlook, nquant))
     // the flipped side, for callers that read out there too
     ensures |LC.Reverse(str)| == n
@@ -719,11 +725,14 @@ module LindenElkMachineABack {
       // ---- the readout, the frame, and direction blindness ----
       FRA.FinalReadoutAtS(qm, body, plus, str, tB, ncap, nlook, nquant);
       FRA.FinalReadoutFrameAtStamp(qm, body, plus, str, tB);
-      RRA.RowReconAtS(qm, body, plus, str, tB, ncap, nlook, nquant);
+      // (G5b-3) the bank and the look frame outside `LooksQ`
+      var F := SBk.Flags(CM.LookCpsOracleTrue(tB.look_regs, ov), CM.LookClkSetWithCp(tB.look_regs),
+                         CM.LookCpSetWithClk(tB.look_regs), CM.LookCpsLE(tB.look_regs, |str|), |str|);
+      RRA.RowReconAtG4(F, qm, body, plus, str, tB, ncap, nlook, nquant);
       DB.ReconstructPlusDirBlind(tB, body, plus, str, ov);
       var rp := AI.FReconstructPlus(tB, body, plus, str, ov, LAnc.Backward).0;
       assert rr.0 == Some(rp);
-      assert ClkFrame(body, Q, rp, tB);
+      assert ClkFrameG4(body, Q, rp, tB);
 
       assert {:split_here} true;
       // ---- the stamp mirror ----
@@ -861,6 +870,7 @@ module LindenElkMachineABack {
 
   lemma RegsOfFXR(r: R.regex)
     ensures NRR.CapRegsOf(FST.FXR(r)) == NRR.CapRegsOf(r) && NRR.QuantRegsOf(FST.FXR(r)) == NRR.QuantRegsOf(r)
+    ensures NRR.LookRegsOf(FST.FXR(r)) == NRR.LookRegsOf(r)   // (G5b-3)
     decreases r
   {
     match r
@@ -875,6 +885,7 @@ module LindenElkMachineABack {
   }
   lemma QSetsFXR(r: R.regex, Q: set<int>)
     ensures RF.CapsQ(FST.FXR(r), Q) == RF.CapsQ(r, Q) && RF.QuantsQ(FST.FXR(r), Q) == RF.QuantsQ(r, Q)
+    ensures RF.LooksQ(FST.FXR(r), Q) == RF.LooksQ(r, Q)   // (G5b-3)
     decreases r
   {
     match r
@@ -970,7 +981,7 @@ module LindenElkMachineABack {
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
-    requires NRC.CdnTopRE(body) && RF.StampBodiesLookFreeRE(body) && NRR.PlusTableOkS(body, plus)
+    requires NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body) && NRR.PlusTableOkS(body, plus)
     requires NRR.PlusTableOkS(FST.FXR(body), plusF)
     requires AR.QmapOk(body, qm) && qm.bodies == M.BodiesOfRE(body)
     requires cdns == LCdn.compile_cdns(body)
@@ -1014,7 +1025,7 @@ module LindenElkMachineABack {
       FG.LookUniqueFXR(body);
       FG.LookIdsFXR(body);
       NRC.CdnTopAll(reF);
-      TB.StampBodiesLookFreeFXR(body);
+      TB.StampLooksCapFreeFXR(body);
       SizesCoverFromOk(reF, ncap, nlook, nquant);
       var rp := MA.ReadoutAtWinnerAtS(qmF, reF, bcF, endlF, plusF, rstr, mcpN, ov', cdns', initsF,
                                      ncap, nlook, nquant, fmF.0);
@@ -1032,7 +1043,7 @@ module LindenElkMachineABack {
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
-    requires NRC.CdnTopRE(body) && RF.StampBodiesLookFreeRE(body) && NRR.PlusTableOkS(body, plus)
+    requires NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body) && NRR.PlusTableOkS(body, plus)
     requires NRR.PlusTableOkS(FST.FXR(body), plusF)
     requires !rer.ignoreCase && !rer.multiline
     requires n == |str| && cp <= n && |ov| == n + 1
@@ -1077,7 +1088,7 @@ module LindenElkMachineABack {
     FG.LookUniqueFXR(body);
     FG.LookIdsFXR(body);
     NRC.CdnTopAll(reF);
-    TB.StampBodiesLookFreeFXR(body);
+    TB.StampLooksCapFreeFXR(body);
     // ---- the involutions ----
     MW.FXRInvol(body);
     FS.ReverseReverse(str);
@@ -1102,7 +1113,7 @@ module LindenElkMachineABack {
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
-    requires NRC.CdnTopRE(body) && RF.StampBodiesLookFreeRE(body) && NRR.PlusTableOkS(body, plus)
+    requires NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body) && NRR.PlusTableOkS(body, plus)
     requires NRR.PlusTableOkS(FST.FXR(body), plusF)
     requires AR.QmapOk(body, qm) && qm.bodies == M.BodiesOfRE(body)
     requires cdns == LCdn.compile_cdns(body)
@@ -1120,7 +1131,7 @@ module LindenElkMachineABack {
                                    MIR.SwapAnchorsCdns(cdns)).0;
       (rr.Some? <==> rrF.Some?)
       && (rr.Some? ==>
-            ClkFrame(FST.FXR(body), FRD.StampQids(FST.FXR(body)), MIR.MirrorThread(rr.value, n), rrF.value))
+            ClkFrameG4(FST.FXR(body), FRD.StampQids(FST.FXR(body)), MIR.MirrorThread(rr.value, n), rrF.value))
   {
     var reF := FST.FXR(body);
     var rstr := LC.Reverse(str);
@@ -1149,7 +1160,7 @@ module LindenElkMachineABack {
       FG.LookUniqueFXR(body);
       FG.LookIdsFXR(body);
       NRC.CdnTopAll(reF);
-      TB.StampBodiesLookFreeFXR(body);
+      TB.StampLooksCapFreeFXR(body);
       SizesCoverFromOk(reF, ncap, nlook, nquant);
       var rpF := MA.ReadoutAtWinnerAtS(qmF, reF, bcF, endlF, plusF, rstr, mcpN, ov', cdns', initsF,
                                       ncap, nlook, nquant, fmF.0);
@@ -1159,11 +1170,21 @@ module LindenElkMachineABack {
       W.StampQidsFXR(body);
       QSetsFXR(body, Q);
       var tB := raB.value; var tF := fmF.0.value; var rp := rr.value;
-      assert ClkFrame(body, Q, rp, tB) && ClkFrame(reF, Q, rpF, tF) && tF == MIR.MirrorThread(tB, n);
+      assert ClkFrameG4(body, Q, rp, tB) && ClkFrameG4(reF, Q, rpF, tF) && tF == MIR.MirrorThread(tB, n);
       var m := MIR.MirrorThread(rp, n);
-      assert m.look_regs == rpF.look_regs;
       assert m.capture_regs.a_clk == rp.capture_regs.a_clk && m.quant_regs.a_clk == rp.quant_regs.a_clk;
       assert tF.capture_regs.a_clk == tB.capture_regs.a_clk && tF.quant_regs.a_clk == tB.quant_regs.a_clk;
+      // (G5b-3) the look registers outside LooksQ: rp == tB there, the mirror acts pointwise, tF == Mirror(tB)
+      assert |m.look_regs.a_cp| == |rpF.look_regs.a_cp|;
+      forall k | k !in RF.LooksQ(reF, Q)
+        ensures AI.get_idx(m.look_regs.a_cp, k) == AI.get_idx(rpF.look_regs.a_cp, k)
+                && AI.get_idx(m.look_regs.a_clk, k) == AI.get_idx(rpF.look_regs.a_clk, k)
+      {
+        assert k !in RF.LooksQ(body, Q);
+        W.MirrorGetIdx(rp.look_regs, n, k);
+        W.MirrorGetIdx(tB.look_regs, n, k);
+      }
+      assert ClkFrameG4(reF, Q, m, rpF);
     }
   }
 }

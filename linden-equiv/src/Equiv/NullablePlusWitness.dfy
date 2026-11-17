@@ -298,4 +298,33 @@ module NullablePlusWitness {
     assert NR.NestedFragmentCdnRaw(AHEAD_IN_BEHIND_CDN) && T.Latin1Wf(AHEAD_IN_BEHIND_CDN);
     assert CL.CinLooksCapFreeX(re3) && MCL.CdnTopX(re3);
   }
+
+  // (G5b-3) Inside a look body, a greedy nullable plus whose body holds a capture-free lookaround: G4a/G5a-2a at
+  // look depth, in a positive lookahead, a positive lookbehind, and a negative look.
+  const AHEAD_LOOKPLUS_CDN  := R.Raw_lookaround(R.Lookahead, R.Raw_quant(R.Plus, LOOK_OR_B))      // (?=((?=a)|b)+)
+  const AHEAD_LOOKPLUS_CIN  := R.Raw_lookaround(R.Lookahead, R.Raw_quant(R.Plus, LOOK_OR_AOPT))   // (?=((?=a)|a?)+)
+  const BEHIND_LOOKPLUS_CIN := R.Raw_lookaround(R.Lookbehind, R.Raw_quant(R.Plus, LOOK_OR_AOPT))  // (?<=((?=a)|a?)+)
+  const NEG_LOOKPLUS_CIN    := R.Raw_lookaround(R.NegLookahead, R.Raw_quant(R.Plus, LOOK_OR_AOPT)) // (?!((?=a)|a?)+)
+
+  lemma G5b3_LookPlusInLookBody()
+    ensures API.Supported(AHEAD_LOOKPLUS_CDN)    // (?=((?=a)|b)+)
+    ensures API.Supported(AHEAD_LOOKPLUS_CIN)    // (?=((?=a)|a?)+)
+    ensures API.Supported(BEHIND_LOOKPLUS_CIN)   // (?<=((?=a)|a?)+)
+    ensures API.Supported(NEG_LOOKPLUS_CIN)      // (?!((?=a)|a?)+)
+  {
+    assert R.raw_nullable(LOOK_OR_B) == R.CDNullable;
+    assert R.raw_nullable(LOOK_OR_AOPT) == R.CINullable;
+    var re1 := R.lazy_prefix(R.annotate(AHEAD_LOOKPLUS_CDN));
+    assert NR.NestedFragmentCdnRaw(AHEAD_LOOKPLUS_CDN) && T.Latin1Wf(AHEAD_LOOKPLUS_CDN);
+    assert CL.CinLooksCapFreeX(re1) && MCL.CdnTopX(re1);
+    var re2 := R.lazy_prefix(R.annotate(AHEAD_LOOKPLUS_CIN));
+    assert NR.NestedFragmentCdnRaw(AHEAD_LOOKPLUS_CIN) && T.Latin1Wf(AHEAD_LOOKPLUS_CIN);
+    assert CL.CinLooksCapFreeX(re2) && MCL.CdnTopX(re2);
+    var re3 := R.lazy_prefix(R.annotate(BEHIND_LOOKPLUS_CIN));
+    assert NR.NestedFragmentCdnRaw(BEHIND_LOOKPLUS_CIN) && T.Latin1Wf(BEHIND_LOOKPLUS_CIN);
+    assert CL.CinLooksCapFreeX(re3) && MCL.CdnTopX(re3);
+    var re4 := R.lazy_prefix(R.annotate(NEG_LOOKPLUS_CIN));
+    assert NR.NestedFragmentCdnRaw(NEG_LOOKPLUS_CIN) && T.Latin1Wf(NEG_LOOKPLUS_CIN);
+    assert CL.CinLooksCapFreeX(re4) && MCL.CdnTopX(re4);
+  }
 }

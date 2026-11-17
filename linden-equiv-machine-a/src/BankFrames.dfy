@@ -15,6 +15,7 @@ module LindenElkBankFrames {
   import FRD = LindenElkFinalReadout
   import RF = LindenElkReconFrame
   import CLP = LindenElkCinLookPaths
+  import SLk = LindenElkStampLooks   // (G5b-3)
 
   /** The register frame the transport needs: look registers equal, capture and
       quant CLOCKS equal outside the reconstruction's write sets. */
@@ -98,6 +99,51 @@ module LindenElkBankFrames {
     }
   }
   // (G5a-1 P5, row L) Bridge 3 on `StampQids`. (G5a-2a) `AncFrameS` is gone: the top uses `CL.AncFrameG4`.
+  /** (G5b-3) `ClkFrame` with the look bank equal only outside the reconstruction's look set (a stamp body may
+      hold capture-free looks; the G4a frame, moved down from main-cin-lk). */
+  ghost predicate ClkFrameG4(re: R.regex, Q: set<int>, a: AI.Thread, b: AI.Thread) {
+    |a.look_regs.a_cp| == |b.look_regs.a_cp|
+    && (forall k :: k !in RF.LooksQ(re, Q) ==>
+          AI.get_idx(a.look_regs.a_cp, k) == AI.get_idx(b.look_regs.a_cp, k)
+          && AI.get_idx(a.look_regs.a_clk, k) == AI.get_idx(b.look_regs.a_clk, k))
+    && (forall k :: k !in RF.CapsQ(re, Q) ==> AI.get_idx(a.capture_regs.a_clk, k) == AI.get_idx(b.capture_regs.a_clk, k))
+    && (forall k :: k !in RF.QuantsQ(re, Q) ==> AI.get_idx(a.quant_regs.a_clk, k) == AI.get_idx(b.quant_regs.a_clk, k))
+  }
+
+  /** (G5b-3) `AncFrameS` for a lid the reconstruction leaves alone (`SLk.AncAvoidQG4`: no scope needed). */
+  lemma AncFrameG4(re: R.regex, Q: set<int>, a: AI.Thread, b: AI.Thread, lid: nat)
+    requires lid in LTB.LookIds(re) && (lid as int) !in RF.LooksQ(re, Q)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re) && RF.QInStamp(re, Q)
+    requires ClkFrameG4(re, Q, a, b)
+    ensures forall mx :: NI.LookPathPresent(re, a.capture_regs.a_clk, a.quant_regs.a_clk, mx, lid)
+                         == NI.LookPathPresent(re, b.capture_regs.a_clk, b.quant_regs.a_clk, mx, lid)
+    ensures forall mx :: NI.MxAtLidLk(re, a.quant_regs.a_clk, mx, lid) == NI.MxAtLidLk(re, b.quant_regs.a_clk, mx, lid)
+    ensures forall L :: NI.LookPathDom(re, L, a.quant_regs.a_clk, lid) == NI.LookPathDom(re, L, b.quant_regs.a_clk, lid)
+  {
+    SLk.AncAvoidQG4(re, Q, lid);
+    var cc1 := a.capture_regs.a_clk;
+    var cc2 := b.capture_regs.a_clk;
+    var qc1 := a.quant_regs.a_clk;
+    var qc2 := b.quant_regs.a_clk;
+    assert forall k :: k in CLP.AncCapRegs(re, lid) ==> AI.get_idx(cc1, k) == AI.get_idx(cc2, k) by {
+      forall k | k in CLP.AncCapRegs(re, lid) ensures AI.get_idx(cc1, k) == AI.get_idx(cc2, k) {
+        if k in RF.CapsQ(re, Q) { assert k in CLP.AncCapRegs(re, lid) * RF.CapsQ(re, Q); }
+      }
+    }
+    assert forall k :: k in CLP.AncQuants(re, lid) ==> AI.get_idx(qc1, k) == AI.get_idx(qc2, k) by {
+      forall k | k in CLP.AncQuants(re, lid) ensures AI.get_idx(qc1, k) == AI.get_idx(qc2, k) {
+        if k in RF.QuantsQ(re, Q) { assert k in CLP.AncQuants(re, lid) * RF.QuantsQ(re, Q); }
+      }
+    }
+    forall mx ensures NI.LookPathPresent(re, cc1, qc1, mx, lid) == NI.LookPathPresent(re, cc2, qc2, mx, lid)
+                      && NI.MxAtLidLk(re, qc1, mx, lid) == NI.MxAtLidLk(re, qc2, mx, lid) {
+      CLP.LookPathFrame(re, cc1, qc1, cc2, qc2, mx, lid);
+    }
+    forall L ensures NI.LookPathDom(re, L, qc1, lid) == NI.LookPathDom(re, L, qc2, lid) {
+      CLP.LookPathDomFrame(re, L, qc1, qc2, lid);
+    }
+  }
+
   lemma QInStampQ(re: R.regex)
     ensures RF.QInStamp(re, FRD.StampQids(re))
   {

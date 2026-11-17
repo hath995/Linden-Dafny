@@ -78,6 +78,7 @@ module LindenElkMain {
   import FRA = LindenElkFinalReadoutAt
   import BR = LindenElkBackRowAt          // (G3b) backward row register lemmas
   import OBu = LindenElkOracleBuild       // (G5b-2) ReverseCdnFragmentRE
+  import SBk = LindenElkStampBank         // (G5b-3) the bank through a row's reconstruction
   import DB = LindenElkDirBlind           // (G3b) FReconstructPlus is direction-blind
 
   // ==========================================================================
@@ -4665,7 +4666,7 @@ module LindenElkMain {
       `QidStampPlus` pluses; every stamp body is look-free). */
   opaque ghost predicate RowLAStaticsS(body: R.regex, plus_bcv: seq<RB.code>) {
     T.TransWf(body) && NR.NestedFragmentCdnRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
-    && LTB.LookUnique(body) && NRC.CdnTopRE(body) && RF.StampBodiesLookFreeRE(body)
+    && LTB.LookUnique(body) && NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body)   // (G5b-3) stamp looks capture-free
     && NRR.PlusTableOkS(body, plus_bcv)
   }
 
@@ -4678,6 +4679,7 @@ module LindenElkMain {
     NR.NarrowIsCdn(body);
     NRC.NoCdnIsCdnTop(body);
     RF.CinStampBodiesNoCdn(body);
+    RF.StampBodiesLookFreeIsCapFree(body);   // (G5b-3)
     NRR.PlusTableOkSNarrow(body, plus_bcv);
   }
 
@@ -4708,9 +4710,16 @@ module LindenElkMain {
                   && CM.RegsAgreeOutside(r.value.quant_regs, qt, QIdsOuter(body))
                   && (forall k :: AI.get_idx(r.value.quant_regs.a_clk, k) >= -1)
                   && (forall k :: k !in QIdsOuter(body) ==> AI.get_idx(r.value.quant_regs.a_cp, k) < 0))
+    // (G5b-3) the reconstruction may re-set lids inside a stamp body (capture-free looks): the plus winner's
+    // look bank agrees with the VM winner's outside them, and keeps each bank invariant the VM winner has
     ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Forward, cp, cap, lk, qt, 0, lookcdn).0;
             var fm := AI.FFindMatch(bytecode, str, AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, LAnc.Forward)), ov, LAnc.Forward, lookcdn).0;
-            r.Some? ==> fm.Some? && r.value.look_regs == fm.value.look_regs
+            r.Some? ==> (fm.Some?
+              && CM.RegsAgreeOutside(r.value.look_regs, fm.value.look_regs, DirectLidSet(body))
+              && CM.RegsAgreeOutside(r.value.look_regs, fm.value.look_regs, RF.LooksQ(body, FRD.StampQids(body)))
+              && (CM.LookCpsOracleTrue(fm.value.look_regs, ov) ==> CM.LookCpsOracleTrue(r.value.look_regs, ov))
+              && (CM.LookClkSetWithCp(fm.value.look_regs) ==> CM.LookClkSetWithCp(r.value.look_regs))
+              && (CM.LookCpSetWithClk(fm.value.look_regs) ==> CM.LookCpSetWithClk(r.value.look_regs)))
   {
     reveal RowLAStaticsS();
     var dir := LAnc.Forward;
@@ -4771,7 +4780,27 @@ module LindenElkMain {
     if res0.Some? {
       var th := res0.value;
       var qm := AR.QMap(map[], map[], ov, map[]);
-      RRA.RowReconAtS(qm, body, plus_bcv, str, th, ncap, nlook, nquant);
+      // (G5b-3) the reconstruction re-sets only lids inside stamp bodies (direct lids of `body`); the bank
+      // invariants the VM winner has pass through
+      var F := SBk.Flags(CM.LookCpsOracleTrue(th.look_regs, ov), CM.LookClkSetWithCp(th.look_regs),
+                         CM.LookCpSetWithClk(th.look_regs), true, |str|);
+      RRA.RowReconAtG4(F, qm, body, plus_bcv, str, th, ncap, nlook, nquant);
+      DirectLidSetBridge(body);
+      DirectLidsSubLookIds(body);
+      assert CM.RegsAgreeOutside(AI.FReconstructPlus(th, body, plus_bcv, str, ov, LAnc.Forward).0.look_regs,
+                                 lk, DirectLidSet(body)) by {
+        CM.RegsAgreeOutsideTrans(AI.FReconstructPlus(th, body, plus_bcv, str, ov, LAnc.Forward).0.look_regs,
+                                 th.look_regs, lk, DirectLidSet(body));
+      }
+      assert CM.RegsAgreeOutside(AI.FReconstructPlus(th, body, plus_bcv, str, ov, LAnc.Forward).0.look_regs,
+                                 lk, LookIdSet(body)) by {
+        var a := AI.FReconstructPlus(th, body, plus_bcv, str, ov, LAnc.Forward).0.look_regs;
+        forall k: int | k !in LookIdSet(body)
+          ensures AI.get_idx(a.a_cp, k) == AI.get_idx(lk.a_cp, k) && AI.get_idx(a.a_clk, k) == AI.get_idx(lk.a_clk, k)
+        {
+          assert k !in DirectLidSet(body);
+        }
+      }
       var rp := AI.FReconstructPlus(th, body, plus_bcv, str, ov, dir);
       assert RRA.QOuter(body) == QIdsOuter(body);
       CM.RegsAgreeOutsideTrans(rp.0.capture_regs, th.capture_regs, cap,
@@ -4917,9 +4946,16 @@ module LindenElkMain {
                   && CM.RegsAgreeOutside(r.value.quant_regs, qt, QIdsOuter(body))
                   && (forall k :: AI.get_idx(r.value.quant_regs.a_clk, k) >= -1)
                   && (forall k :: k !in QIdsOuter(body) ==> AI.get_idx(r.value.quant_regs.a_cp, k) < 0))
+    // (G5b-3) the reconstruction may re-set lids inside a stamp body (capture-free looks): the plus winner's
+    // look bank agrees with the VM winner's outside them, and keeps each bank invariant the VM winner has
     ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Backward, cp, cap, lk, qt, 0, lookcdn).0;
             var fm := AI.FFindMatch(bytecode, str, AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, LAnc.Backward)), ov, LAnc.Backward, lookcdn).0;
-            r.Some? ==> fm.Some? && r.value.look_regs == fm.value.look_regs
+            r.Some? ==> (fm.Some?
+              && CM.RegsAgreeOutside(r.value.look_regs, fm.value.look_regs, DirectLidSet(body))
+              && CM.RegsAgreeOutside(r.value.look_regs, fm.value.look_regs, RF.LooksQ(body, FRD.StampQids(body)))
+              && (CM.LookCpsOracleTrue(fm.value.look_regs, ov) ==> CM.LookCpsOracleTrue(r.value.look_regs, ov))
+              && (CM.LookClkSetWithCp(fm.value.look_regs) ==> CM.LookClkSetWithCp(r.value.look_regs))
+              && (CM.LookCpSetWithClk(fm.value.look_regs) ==> CM.LookCpSetWithClk(r.value.look_regs)))
   {
     reveal RowLAStaticsS();
     var dir := LAnc.Backward;
@@ -4986,7 +5022,27 @@ module LindenElkMain {
     if res0.Some? {
       var th := res0.value;
       var qm := AR.QMap(map[], map[], ov, map[]);
-      RRA.RowReconAtS(qm, body, plus_bcv, str, th, ncap, nlook, nquant);
+      // (G5b-3) the reconstruction re-sets only lids inside stamp bodies (direct lids of `body`); the bank
+      // invariants the VM winner has pass through
+      var F := SBk.Flags(CM.LookCpsOracleTrue(th.look_regs, ov), CM.LookClkSetWithCp(th.look_regs),
+                         CM.LookCpSetWithClk(th.look_regs), true, |str|);
+      RRA.RowReconAtG4(F, qm, body, plus_bcv, str, th, ncap, nlook, nquant);
+      DirectLidSetBridge(body);
+      DirectLidsSubLookIds(body);
+      assert CM.RegsAgreeOutside(AI.FReconstructPlus(th, body, plus_bcv, str, ov, LAnc.Forward).0.look_regs,
+                                 lk, DirectLidSet(body)) by {
+        CM.RegsAgreeOutsideTrans(AI.FReconstructPlus(th, body, plus_bcv, str, ov, LAnc.Forward).0.look_regs,
+                                 th.look_regs, lk, DirectLidSet(body));
+      }
+      assert CM.RegsAgreeOutside(AI.FReconstructPlus(th, body, plus_bcv, str, ov, LAnc.Forward).0.look_regs,
+                                 lk, LookIdSet(body)) by {
+        var a := AI.FReconstructPlus(th, body, plus_bcv, str, ov, LAnc.Forward).0.look_regs;
+        forall k: int | k !in LookIdSet(body)
+          ensures AI.get_idx(a.a_cp, k) == AI.get_idx(lk.a_cp, k) && AI.get_idx(a.a_clk, k) == AI.get_idx(lk.a_clk, k)
+        {
+          assert k !in DirectLidSet(body);
+        }
+      }
       DB.ReconstructPlusDirBlind(th, body, plus_bcv, str, ov);
       var rp := AI.FReconstructPlus(th, body, plus_bcv, str, ov, dir);
       assert rp == AI.FReconstructPlus(th, body, plus_bcv, str, ov, LAnc.Forward);
@@ -5110,11 +5166,10 @@ module LindenElkMain {
     case Re_con(r1, r2) => LookBodiesPlusGateRE(r1) && LookBodiesPlusGateRE(r2)
     case Re_quant(_, _, _, r1) => LookBodiesPlusGateRE(r1)
     case Re_capture(_, r1) => LookBodiesPlusGateRE(r1)
-    case Re_lookaround(_, la, r1) =>   // (G3b) every look kind: CIN-plus bodies look-free;
-      // (G5b) a look body of any kind may hold a CDN plus (a NEGATIVE one is never replayed); (G5b-1, G5b-2) in a
-      // POSITIVE body (either direction) every greedy nullable plus body is look-free
-      (NRC.PositiveLk(la) ==> RF.StampBodiesLookFreeRE(r1))
-      && RF.CinBodiesLookFreeRE(r1) && LookBodiesPlusGateRE(r1)
+    case Re_lookaround(_, la, r1) =>
+      // (G5b) a look body of any kind may hold a CDN plus (a NEGATIVE one is never replayed); (G5b-3) inside a
+      // POSITIVE body (either direction) every look inside a greedy nullable plus body is capture-free
+      (NRC.PositiveLk(la) ==> RF.StampLooksCapFreeRE(r1)) && LookBodiesPlusGateRE(r1)
     case _ => true
   }
 
@@ -5163,7 +5218,8 @@ module LindenElkMain {
     case Re_con(r1, r2) => PlusGateFromFull(r1); PlusGateFromFull(r2);
     case Re_quant(_, _, _, r1) => PlusGateFromFull(r1);
     case Re_capture(_, r1) => PlusGateFromFull(r1);
-    case Re_lookaround(_, _, r1) => NoNulledPlusCinFragment(r1); RF.CinStampBodiesNoCdn(r1); PlusGateFromFull(r1);
+    case Re_lookaround(_, _, r1) =>
+      NoNulledPlusCinFragment(r1); RF.CinStampBodiesNoCdn(r1); RF.StampBodiesLookFreeIsCapFree(r1); PlusGateFromFull(r1);
     case _ =>
   }
 
@@ -5178,7 +5234,8 @@ module LindenElkMain {
     case Re_con(r1, r2) => PlusGateFromStrong(r1); PlusGateFromStrong(r2);
     case Re_quant(_, _, _, r1) => PlusGateFromStrong(r1);
     case Re_capture(_, r1) => PlusGateFromStrong(r1);
-    case Re_lookaround(_, _, r1) => NoNulledPlusCinFragment(r1); RF.CinStampBodiesNoCdn(r1); PlusGateFromFull(r1);
+    case Re_lookaround(_, _, r1) =>
+      NoNulledPlusCinFragment(r1); RF.CinStampBodiesNoCdn(r1); RF.StampBodiesLookFreeIsCapFree(r1); PlusGateFromFull(r1);
     case _ =>
   }
 
@@ -5221,8 +5278,8 @@ module LindenElkMain {
     requires NR.NestedFragmentCdnRE(re)
     requires LookBodiesPlusGateRE(re) && l in LTB.LookIds(re)
     ensures var b := NI.LookBodyOfRE(re, l);
-            LookBodiesPlusGateRE(b) && RF.CinBodiesLookFreeRE(b)
-            && (NRC.PositiveLk(LookKindOfRE(re, l)) ==> RF.StampBodiesLookFreeRE(b))   // (G5b-1, G5b-2)
+            LookBodiesPlusGateRE(b)
+            && (NRC.PositiveLk(LookKindOfRE(re, l)) ==> RF.StampLooksCapFreeRE(b))   // (G5b-1/2/3)
     decreases re
   {
     match re
@@ -5241,7 +5298,7 @@ module LindenElkMain {
     requires NR.NestedFragmentRE(re)
     requires LookBodiesPlusGateRE(re) && l in LTB.LookIds(re)
     ensures var b := NI.LookBodyOfRE(re, l);
-            LookBodiesPlusGateRE(b) && NRC.NoCdnPlusRE(b) && RF.CinBodiesLookFreeRE(b)
+            LookBodiesPlusGateRE(b) && NRC.NoCdnPlusRE(b)
   {
     NR.NarrowIsCdn(re);
     PlusGateBodyRECdn(re, l);
@@ -5257,8 +5314,7 @@ module LindenElkMain {
     requires LTB.LookEntryOk(crv, l as int, la, body)
     ensures body == NI.LookBodyOfRE(re, l) && la == LookKindOfRE(re, l)
     ensures LookBodiesPlusGateRE(body)
-    ensures RF.CinBodiesLookFreeRE(body)   // (G3b) every kind
-    ensures NRC.PositiveLk(la) ==> RF.StampBodiesLookFreeRE(body)   // (G5b-1, G5b-2) a positive body, either direction
+    ensures NRC.PositiveLk(la) ==> RF.StampLooksCapFreeRE(body)   // (G5b-1/2/3) a positive body, either direction
   {
     LookKindOfTablesTie(re, crv, l);
     PlusGateBodyRECdn(re, l);
@@ -5287,7 +5343,7 @@ module LindenElkMain {
     requires LTB.LookEntryOk(crv, l as int, la, body)
     ensures body == NI.LookBodyOfRE(re, l) && la == LookKindOfRE(re, l)
     ensures LookBodiesPlusGateRE(body)
-    ensures NRC.NoCdnPlusRE(body) && RF.CinBodiesLookFreeRE(body)   // (G3b) every kind
+    ensures NRC.NoCdnPlusRE(body)
   {
     NR.NarrowIsCdn(re);
     PlusGateBodyCdn(re, crv, l, la, body);
@@ -7172,7 +7228,7 @@ module LindenElkMain {
         }
         assert {:split_here} true;
         assert CM.LookCpSetWithClk(nlk) by {
-          if result.Some? { assert fmres.Some? && nlk == fmres.value.look_regs; } else { assert nlk == lk; }
+          if result.Some? { assert fmres.Some?; } else { assert nlk == lk; }   // (G5b-3) the replay keeps CpSet
         }
         assert {:split_here} true;
         // ---- (G3a) clear-and-transfer: the tail on the CLEARED bank is the tail on the real one ----
@@ -7317,7 +7373,7 @@ module LindenElkMain {
           // (G3b) the plus winner keeps the VM winner's look bank (`ReplayPlusRowLB`)
         }
         assert CM.LookCpsOracleTrue(nlk, ov1) by {
-          if result.Some? { assert fmres.Some? && nlk == fmres.value.look_regs; } else { assert nlk == lk; }
+          if result.Some? { assert fmres.Some?; } else { assert nlk == lk; }   // (G5b-3) the replay keeps OracleTrue
         }
         assert {:split_here} true;
         // ---- (G3a) clear-and-transfer: the tail on the CLEARED bank is the tail on the real one ----
@@ -8995,6 +9051,20 @@ module LindenElkMain {
     NR.NarrowIsCdn(re);
     hide *;   // the wide premises are this lemma's own: match by name
     DirectLidClassifiedCdn(re);
+  }
+
+  /** (G5b-3) plus-at's copy of the direct lids is this one. */
+  lemma DirectLidSetBridge(re: R.regex)
+    ensures DirectLookIds(re) == SBk.DirectLooksRN(re)
+    ensures DirectLidSet(re) == SBk.DirectLidSetRN(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => DirectLidSetBridge(r1); DirectLidSetBridge(r2);
+    case Re_con(r1, r2) => DirectLidSetBridge(r1); DirectLidSetBridge(r2);
+    case Re_quant(_, _, _, r1) => DirectLidSetBridge(r1);
+    case Re_capture(_, r1) => DirectLidSetBridge(r1);
+    case _ =>
   }
 
   /** Direct lids are among all lids. */

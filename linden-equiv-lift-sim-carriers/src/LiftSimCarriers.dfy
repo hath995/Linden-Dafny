@@ -217,7 +217,7 @@ module LindenElkLiftSimCarriers {
     requires RowPlusOkS(body, plus, nlook)
     ensures T.TransWf(body) && NR.NestedFragmentCdnRE(body)
     ensures PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
-    ensures NRC.CdnTopRE(body) && RF.StampBodiesLookFreeRE(body) && NRR.PlusTableOkS(body, plus)
+    ensures NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body) && NRR.PlusTableOkS(body, plus)
     ensures forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
     ensures M.LookBodiesPlusGateRE(body)
     ensures LookNodesPlusOk(body, plus)   // what `GateStaticsFromTablesCdn` takes
@@ -270,13 +270,14 @@ module LindenElkLiftSimCarriers {
             // (G3a) the reconstruction keeps the VM winner's look bank (from A6)
             && TM.WinnerLookKept(bodycode, str, cp, ov, lookcdn, ncap, nlook, nquant, rf.value))
   {
+    hide BF.ClkFrameG4, RF.StampLooksCapFreeRE;   // (G5b-3) passed on as terms: their quantifiers stay out of every batch
     // (G3a) A6: machine A (the fresh plus replay, reconstructed) tied to machine B's winner.
     assert NR.NestedFragmentCdnRE(body) && T.TransWf(body);
-    assert NRC.CdnTopRE(body) && NRR.PlusTableOkS(body, plus_bc) && RF.StampBodiesLookFreeRE(body)
+    assert NRC.CdnTopRE(body) && NRR.PlusTableOkS(body, plus_bc) && RF.StampLooksCapFreeRE(body)
            && (forall l: nat :: l in LTB.LookIds(body) ==> l < nlook) by {
       reveal RowPlusOkS(); reveal M.RowLAStaticsS();
     }
-    TM.TranslateCinOkS(body, PIV.CapIdsOutsideLooks(body));
+    TM.TranslateCinOkG4(body, PIV.CapIdsOutsideLooks(body));   // (G5b-3)
     CG.GuardsOkRunRow(qm, body, bodycode, endl, str, ov);   // (G5b-1) N1 at the row
     TM.TwoMachinesAtS(rer, qm, body, bodycode, endl, ngroups, crv, str, cp, ov, lookcdn, plus_bc,
                      ncap, nlook, nquant);
@@ -324,7 +325,7 @@ module LindenElkLiftSimCarriers {
     requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
     requires NRR.PlusTableOkS(body, crv.f_plus_bc)
     requires plus_bc == crv.f_plus_bc
-    requires NRC.CdnTopRE(body) && RF.StampBodiesLookFreeRE(body)   // (G5b-2) the body may hold a CDN plus
+    requires NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body)   // (G5b-2, G5b-3)
     requires lookcdn == LCdn.compile_cdns(body)                     // the row's own table (LookEntryOk)
     requires M.LookBodiesPlusGateRE(FST.FXR(body))     // the flipped host's rows (uniform after G3b commit 3)
     ensures
@@ -347,6 +348,7 @@ module LindenElkLiftSimCarriers {
             && CM.LookCpSetWithClk(rf.value.look_regs)
             && CM.LookCpsLE(rf.value.look_regs, |str|))
   {
+    hide BF.ClkFrameG4, RF.StampLooksCapFreeRE;   // (G5b-3) passed on as terms: their quantifiers stay out of every batch
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     var n := |str|;
     MIR.ReverseLen(str);
@@ -388,7 +390,7 @@ module LindenElkLiftSimCarriers {
       }
     }
     TB.PlusTableOkSMirror(body, plus_bc);
-    TB.StampBodiesLookFreeFXR(body);
+    TB.StampLooksCapFreeFXR(body);
     NRC.CdnTopAll(reF);
     assert crvF.f_plus_bc == plusF;
     assert forall l: nat :: l in LTB.LookIds(reF) ==> l < nlook;
@@ -429,14 +431,29 @@ module LindenElkLiftSimCarriers {
     assert {:split_here} true;
     // ---- the real backward plus match and its frame across the mirror ----
     var qmR := BRG.RowQm(rer, qm, body, str, ov);
-    RP.BackRowClkFrameS(rer, qmR, body, str, cp, ov, lookcdn, plus_bc, plusF, ncap, nlook, nquant, n);
-    var Gx, qmX, endlX := RP.BackRowReadoutS(rer, qmR, body, str, cp, ov, lookcdn, plus_bc, ncap, nlook, nquant, n);
     var rf := AI.FFindMatchPlus(bodycodeB, body, plus_bc, str, ov, LAnc.Backward, cp,
                                 capture, look, quant, 0, lookcdn).0;
     var ctxB := AI.cp_context(cp, str, LAnc.Backward);
     var initsB := AI.FInitState(bodycodeB, cp, capture, look, quant, 0, ctxB);
     var raB := AI.FFindMatch(bodycodeB, str, initsB, ov, LAnc.Backward, lookcdn).0;
-    assert (rf.Some? <==> rfFP.Some?);
+    // (G5b-3) the two mirror-row lemmas, scoped and in separate batches (the section looped as one batch although
+    // every obligation closes in isolation): only the facts the rest of the proof reads leave each block
+    assert {:split_here} true;
+    assert (rf.Some? <==> rfFP.Some?)
+           && (rf.Some? ==> BF.ClkFrameG4(reF, Q, MIR.MirrorThread(rf.value, n), rfFP.value)) by {
+      hide CM.LookCpsOracleTrue, CM.LookClkSetWithCp, CM.LookCpSetWithClk, CM.LookCpsLE;
+      RP.BackRowClkFrameS(rer, qmR, body, str, cp, ov, lookcdn, plus_bc, plusF, ncap, nlook, nquant, n);
+    }
+    assert {:split_here} true;
+    assert rf.Some? ==>
+             raB.Some? && CM.ThreadRegsWf(rf.value, ncap, nlook, nquant)
+             && (CM.LookCpsOracleTrue(raB.value.look_regs, ov) ==> CM.LookCpsOracleTrue(rf.value.look_regs, ov))
+             && (CM.LookClkSetWithCp(raB.value.look_regs) ==> CM.LookClkSetWithCp(rf.value.look_regs))
+             && (CM.LookCpSetWithClk(raB.value.look_regs) ==> CM.LookCpSetWithClk(rf.value.look_regs))
+             && (CM.LookCpsLE(raB.value.look_regs, |str|) ==> CM.LookCpsLE(rf.value.look_regs, |str|)) by {
+      hide CM.LookCpsOracleTrue, CM.LookClkSetWithCp, CM.LookCpSetWithClk, CM.LookCpsLE;
+      var Gx, qmX, endlX := RP.BackRowReadoutS(rer, qmR, body, str, cp, ov, lookcdn, plus_bc, ncap, nlook, nquant, n);
+    }
 
     assert {:split_here} true;
     // ---- F2: the spec leaves mirror ----
@@ -471,20 +488,20 @@ module LindenElkLiftSimCarriers {
       assert PIV.CapIdsInLooks(reF) == S;
       assert {:split_here} true;
       // ---- move the forward carriers from the flipped plus winner onto MirrorThread(th) ----
-      assert BF.ClkFrame(reF, Q, thF, best);
+      assert BF.ClkFrameG4(reF, Q, thF, best);   // (G5b-3)
       BF.QInStampQ(reF);
       var G0: set<LG.GroupId> := {};
       assert G0 * S == {} && LL.GmAgreeOutside(gmtF, gmtF, G0);
-      TM.TieOkTTransportS(reF, Q, S, G0, gmtF, gmtF, best, thF);
-      TM.TieBackTransportS(reF, crvF, rstr, ov', Q, S, G0, gmtF, gmtF, best, thF, ncap, nlook, nquant);
-      TM.TieDeepTransportS(rer, reF, crvF, rstr, ov', Q, S, G0, gmtF, gmtF, best, thF, ncap, nlook, nquant);
+      TM.TieOkTTransportG4(reF, Q, S, G0, gmtF, gmtF, best, thF);
+      TM.TieBackTransportG4(reF, crvF, rstr, ov', Q, S, G0, gmtF, gmtF, best, thF, ncap, nlook, nquant);
+      TM.TieDeepTransportG4(rer, reF, crvF, rstr, ov', Q, S, G0, gmtF, gmtF, best, thF, ncap, nlook, nquant);
       assert LookNestBackTTop(reF, crvF, rstr, ov', S, gmtF, thF, ncap, nlook, nquant);
       assert LookNestBackTTopDeep(rer, reF, crvF, rstr, ov', S, gmtF, thF, ncap, nlook, nquant);
       assert LookNestOkTTop(reF, S, gmtF, thF);
 
       assert {:split_here} true;
       // ---- look-bank invariants: the reconstruction keeps the backward VM winner's look bank ----
-      assert raB.Some? && th.look_regs == raB.value.look_regs;
+      assert raB.Some?;   // (G5b-3) the reconstruction keeps each look-bank invariant (`RP.BackRowReadoutS`)
       RL.AInitLaws(nlook);
       assert CM.VmLookClkSet(initsB) by {
         assert AI.init_thread(capture, look, quant).look_regs == look;
@@ -525,7 +542,7 @@ module LindenElkLiftSimCarriers {
                                          rfl.value.look_regs, rfl.value.quant_regs)
                     ==> g in gmt
       {
-        StampBodiesLookFreeLookBody(body, lid);
+        StampLooksCapFreeLookBody(body, lid);
         LookNestBackTTopLidFlipPS(rer, qm, body, crv, str, ov, gmt, th, lid, ncap, nlook, nquant);
       }
       assert LookNestBackTTop(body, crv, str, ov, S, gmt, th, ncap, nlook, nquant);
@@ -546,21 +563,21 @@ module LindenElkLiftSimCarriers {
       assert LookNestBackTTopDeep(rer, body, crv, str, ov, S, gmt, th, ncap, nlook, nquant);
     }
   }
-  /** (G5b-2) `CinBodiesLookFreeLookBody` on the stamp bodies. */
-  lemma StampBodiesLookFreeLookBody(r: R.regex, lid: nat)
-    requires RF.StampBodiesLookFreeRE(r) && lid in LTB.LookIds(r)
-    ensures RF.StampBodiesLookFreeRE(NI.LookBodyOfRE(r, lid))
+  /** (G5b-3) the capture-free stamp looks of a host hold at its look bodies. */
+  lemma StampLooksCapFreeLookBody(r: R.regex, lid: nat)
+    requires RF.StampLooksCapFreeRE(r) && lid in LTB.LookIds(r)
+    ensures RF.StampLooksCapFreeRE(NI.LookBodyOfRE(r, lid))
     decreases r
   {
     match r
     case Re_alt(r1, r2) =>
-      if lid in LTB.LookIds(r1) { StampBodiesLookFreeLookBody(r1, lid); } else { StampBodiesLookFreeLookBody(r2, lid); }
+      if lid in LTB.LookIds(r1) { StampLooksCapFreeLookBody(r1, lid); } else { StampLooksCapFreeLookBody(r2, lid); }
     case Re_con(r1, r2) =>
-      if lid in LTB.LookIds(r1) { StampBodiesLookFreeLookBody(r1, lid); } else { StampBodiesLookFreeLookBody(r2, lid); }
-    case Re_quant(_, _, _, r1) => StampBodiesLookFreeLookBody(r1, lid);
-    case Re_capture(_, r1) => StampBodiesLookFreeLookBody(r1, lid);
+      if lid in LTB.LookIds(r1) { StampLooksCapFreeLookBody(r1, lid); } else { StampLooksCapFreeLookBody(r2, lid); }
+    case Re_quant(_, _, _, r1) => StampLooksCapFreeLookBody(r1, lid);
+    case Re_capture(_, r1) => StampLooksCapFreeLookBody(r1, lid);
     case Re_lookaround(lid0, _, r1) =>
-      if lid0 >= 0 && (lid0 as nat) == lid { } else { StampBodiesLookFreeLookBody(r1, lid); }
+      if lid0 >= 0 && (lid0 as nat) == lid { } else { StampLooksCapFreeLookBody(r1, lid); }
   }
 
   /** (G5b-2) `DeepLidFlipP` at a Cdn host over the S mirrored tables. */

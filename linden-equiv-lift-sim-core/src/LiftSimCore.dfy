@@ -6230,7 +6230,7 @@ module LindenElkLiftSimCore {
     requires M.MatchedPosLA(crv, lk, lid as int)
     requires CM.LookCpsLE(lk, |str|)
     requires NRR.PlusTableOkS(body, crv.f_plus_bc)
-    requires RF.StampBodiesLookFreeRE(NI.LookBodyOfRE(body, lid))   // (G5b-2) the row body may hold a CDN plus
+    requires RF.StampLooksCapFreeRE(NI.LookBodyOfRE(body, lid))   // (G5b-2, G5b-3) the row body: CDN plus, capture-free stamp looks
     ensures
       var n := |str|;
       var r1 := NI.LookBodyOfRE(body, lid);
@@ -6340,7 +6340,7 @@ module LindenElkLiftSimCore {
     requires M.MatchedPosLA(crv, th.look_regs, lid as int)
     requires NI.LookPathDom(body, AI.get_idx(th.look_regs.a_clk, lid as int), th.quant_regs.a_clk, lid)
     requires NRR.PlusTableOkS(body, crv.f_plus_bc)
-    requires RF.StampBodiesLookFreeRE(NI.LookBodyOfRE(body, lid))   // (G5b-2) the row body may hold a CDN plus
+    requires RF.StampLooksCapFreeRE(NI.LookBodyOfRE(body, lid))   // (G5b-2, G5b-3) the row body: CDN plus, capture-free stamp looks
     requires LookNestBackTTop(FST.FXR(body), MirrorTablesPS(crv, body), LC.Reverse(str),
                                   MIR.MirrorView(ov, |str|), PIV.CapIdsInLooks(body),
                                   TRM.MirrorGm(gmt, |str|), MIR.MirrorThread(th, |str|), ncap, nlook, nquant)

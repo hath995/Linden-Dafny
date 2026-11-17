@@ -117,6 +117,10 @@ module LindenElkLiftSimForward {
   import opened LindenElkLiftSimCarriers
   import opened LindenElkLiftSimDeep
   import TM = LindenElkTwoMachines       // (G3a) WinnerLookKept
+  import RF = LindenElkReconFrame        // (G5b-3)
+  import FRD = LindenElkFinalReadout
+  import SLk = LindenElkStampLooks
+  import BF = LindenElkBankFrames
 
   /** (G3b) The look bank of a lookbehind row's fresh PLUS match: the reconstruction keeps the backward VM
       winner's look bank (`M.ReplayPlusRowLB`), so the fresh run's look facts hold of it. */
@@ -175,8 +179,7 @@ module LindenElkLiftSimForward {
     ensures var bcB := CP.compile_to_bytecode(R.reverse_regex(host));
             var rf := AI.FFindMatchPlus(bcB, host, crv.f_plus_bc, str, ov, LAnc.Backward, cp,
                                         AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0, cdn).0;
-            rf.Some? ==> M.LookPosO(rf.value.look_regs, crv) && CM.LookCpsOracleTrue(rf.value.look_regs, ov)
-                         && CM.LookCpsLE(rf.value.look_regs, |str|)
+            rf.Some? ==> CM.LookCpsOracleTrue(rf.value.look_regs, ov) && CM.LookCpsLE(rf.value.look_regs, |str|)
   {
     var bcB := CP.compile_to_bytecode(R.reverse_regex(host));
     var capture := AReg.init_regs(ncap);
@@ -196,7 +199,6 @@ module LindenElkLiftSimForward {
     assert M.RowLAStaticsS(host, crv.f_plus_bc) && NR.NestedFragmentCdnRE(host)
            && PIV.CapUnique(host) && PIV.QuantUnique(host) by { reveal RowPlusOkS(); reveal M.RowLAStaticsS(); }
     M.ReplayPlusRowLBS(bcB, str, ov, cdn, crv.f_plus_bc, cp, capture, look, quant, host, ncap, nlook, nquant);
-    M.FreshReplayLookPos(host, crv, str, cp, ov, LAnc.Backward, cdn, ncap, nlook, nquant);
     assert {:split_here} true;
     var ctxB := AI.cp_context(cp, str, LAnc.Backward);
     var initsB := AI.FInitState(bcB, cp, capture, look, quant, 0, ctxB);
@@ -211,6 +213,103 @@ module LindenElkLiftSimForward {
     M.NoWriteOracleBodyCodeCdn(R.reverse_regex(host));
     assert ctxB.nextchar == AI.get_char(str, cp - 1) by { hide *; reveal AI.cp_context; }
     CM.FFindMatchLookOracleTrueB(bcB, str, initsB, ov, LAnc.Backward, cdn);
+  }
+
+
+  /** (G5b-3) A lid whose body holds a capture is not re-set by the reconstruction (`SLk.LooksQCapFree`), so a set
+      record of the lookbehind row's fresh PLUS winner at it is the VM winner's, a matched positive row
+      (`M.FreshReplayLookPos`). What `BackPlusLookFacts`' `LookPosO` gave before stamp bodies held looks. */
+  lemma BackPlusMatchedPos(host: R.regex, crv: CP.FCompiled, str: string, cp: nat, ov: LOr.OracleView,
+                           cdn: LCdn.cdns, ncap: int, nlook: int, nquant: int, A1: nat, g: nat)
+    requires RowPlusOkS(host, crv.f_plus_bc, nlook)
+    requires LTB.LookTablesOk(host, crv)
+    requires cp <= |str| && ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires A1 in LTB.LookIds(host) && g in PIV.CapIds(NI.LookBodyOfRE(host, A1))
+    ensures var bcB := CP.compile_to_bytecode(R.reverse_regex(host));
+            var rf := AI.FFindMatchPlus(bcB, host, crv.f_plus_bc, str, ov, LAnc.Backward, cp,
+                                        AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0, cdn).0;
+            rf.Some? && AReg.get_cp(rf.value.look_regs, A1 as int).Some? ==> M.MatchedPosLA(crv, rf.value.look_regs, A1 as int)
+  {
+    var bcB := CP.compile_to_bytecode(R.reverse_regex(host));
+    var capture := AReg.init_regs(ncap);
+    var look := AReg.init_regs(nlook);
+    var quant := AReg.init_regs(nquant);
+    RL.AInitLaws(ncap); RL.AInitLaws(nlook); RL.AInitLaws(nquant);
+    PIV.CapRegWfInit(ncap);
+    assert CM.LookCpsLE(look, |str|) by {
+      forall l: int ensures AI.get_idx(look.a_cp, l) <= |str| { if 0 <= l < |look.a_cp| { assert look.a_cp[l] == -1; } }
+    }
+    assert (forall k :: AI.get_idx(quant.a_cp, k) < 0) && (forall k :: AI.get_idx(quant.a_clk, k) >= -1) by {
+      forall k ensures AI.get_idx(quant.a_cp, k) < 0 && AI.get_idx(quant.a_clk, k) >= -1 {
+        if 0 <= k < |quant.a_cp| { assert quant.a_cp[k] == -1; }
+        if 0 <= k < |quant.a_clk| { assert quant.a_clk[k] == -1; }
+      }
+    }
+    assert M.RowLAStaticsS(host, crv.f_plus_bc) && RF.StampLooksCapFreeRE(host)
+           && PIV.QuantUnique(host) && LTB.LookUnique(host) by { reveal RowPlusOkS(); reveal M.RowLAStaticsS(); }
+    M.ReplayPlusRowLBS(bcB, str, ov, cdn, crv.f_plus_bc, cp, capture, look, quant, host, ncap, nlook, nquant);
+    M.FreshReplayLookPos(host, crv, str, cp, ov, LAnc.Backward, cdn, ncap, nlook, nquant);
+    var Q := FRD.StampQids(host);
+    BF.QInStampQ(host);
+    assert (A1 as int) !in RF.LooksQ(host, Q) by {
+      if (A1 as int) in RF.LooksQ(host, Q) { SLk.LooksQCapFree(host, Q, A1); assert g in PIV.CapIds(NI.LookBodyOfRE(host, A1)); }
+    }
+    var rf := AI.FFindMatchPlus(bcB, host, crv.f_plus_bc, str, ov, LAnc.Backward, cp, capture, look, quant, 0, cdn).0;
+    var fm := AI.FFindMatch(bcB, str, AI.FInitState(bcB, cp, capture, look, quant, 0, AI.cp_context(cp, str, LAnc.Backward)),
+                            ov, LAnc.Backward, cdn).0;
+    if rf.Some? && AReg.get_cp(rf.value.look_regs, A1 as int).Some? {
+      assert fm.Some?;
+      assert AI.get_idx(rf.value.look_regs.a_cp, A1 as int) == AI.get_idx(fm.value.look_regs.a_cp, A1 as int);
+      assert AReg.get_cp(fm.value.look_regs, A1 as int) == AReg.get_cp(rf.value.look_regs, A1 as int);
+      M.MatchedPosFromBank(crv, fm.value.look_regs, A1 as int);
+    }
+  }
+
+  /** (G5b-3) `BackPlusMatchedPos` at a LOOKAHEAD row. */
+  lemma FwdPlusMatchedPos(host: R.regex, crv: CP.FCompiled, str: string, cp: nat, ov: LOr.OracleView,
+                           cdn: LCdn.cdns, ncap: int, nlook: int, nquant: int, A1: nat, g: nat)
+    requires RowPlusOkS(host, crv.f_plus_bc, nlook)
+    requires LTB.LookTablesOk(host, crv)
+    requires cp <= |str| && ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires A1 in LTB.LookIds(host) && g in PIV.CapIds(NI.LookBodyOfRE(host, A1))
+    ensures var bcB := CP.compile_to_bytecode(host);
+            var rf := AI.FFindMatchPlus(bcB, host, crv.f_plus_bc, str, ov, LAnc.Forward, cp,
+                                        AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0, cdn).0;
+            rf.Some? && AReg.get_cp(rf.value.look_regs, A1 as int).Some? ==> M.MatchedPosLA(crv, rf.value.look_regs, A1 as int)
+  {
+    var bcB := CP.compile_to_bytecode(host);
+    var capture := AReg.init_regs(ncap);
+    var look := AReg.init_regs(nlook);
+    var quant := AReg.init_regs(nquant);
+    RL.AInitLaws(ncap); RL.AInitLaws(nlook); RL.AInitLaws(nquant);
+    PIV.CapRegWfInit(ncap);
+    assert CM.LookCpsLE(look, |str|) by {
+      forall l: int ensures AI.get_idx(look.a_cp, l) <= |str| { if 0 <= l < |look.a_cp| { assert look.a_cp[l] == -1; } }
+    }
+    assert (forall k :: AI.get_idx(quant.a_cp, k) < 0) && (forall k :: AI.get_idx(quant.a_clk, k) >= -1) by {
+      forall k ensures AI.get_idx(quant.a_cp, k) < 0 && AI.get_idx(quant.a_clk, k) >= -1 {
+        if 0 <= k < |quant.a_cp| { assert quant.a_cp[k] == -1; }
+        if 0 <= k < |quant.a_clk| { assert quant.a_clk[k] == -1; }
+      }
+    }
+    assert M.RowLAStaticsS(host, crv.f_plus_bc) && RF.StampLooksCapFreeRE(host)
+           && PIV.QuantUnique(host) && LTB.LookUnique(host) by { reveal RowPlusOkS(); reveal M.RowLAStaticsS(); }
+    M.ReplayPlusRowLAS(bcB, str, ov, cdn, crv.f_plus_bc, cp, capture, look, quant, host, ncap, nlook, nquant);
+    M.FreshReplayLookPos(host, crv, str, cp, ov, LAnc.Forward, cdn, ncap, nlook, nquant);
+    var Q := FRD.StampQids(host);
+    BF.QInStampQ(host);
+    assert (A1 as int) !in RF.LooksQ(host, Q) by {
+      if (A1 as int) in RF.LooksQ(host, Q) { SLk.LooksQCapFree(host, Q, A1); assert g in PIV.CapIds(NI.LookBodyOfRE(host, A1)); }
+    }
+    var rf := AI.FFindMatchPlus(bcB, host, crv.f_plus_bc, str, ov, LAnc.Forward, cp, capture, look, quant, 0, cdn).0;
+    var fm := AI.FFindMatch(bcB, str, AI.FInitState(bcB, cp, capture, look, quant, 0, AI.cp_context(cp, str, LAnc.Forward)),
+                            ov, LAnc.Forward, cdn).0;
+    if rf.Some? && AReg.get_cp(rf.value.look_regs, A1 as int).Some? {
+      assert fm.Some?;
+      assert AI.get_idx(rf.value.look_regs.a_cp, A1 as int) == AI.get_idx(fm.value.look_regs.a_cp, A1 as int);
+      assert AReg.get_cp(fm.value.look_regs, A1 as int) == AReg.get_cp(rf.value.look_regs, A1 as int);
+      M.MatchedPosFromBank(crv, fm.value.look_regs, A1 as int);
+    }
   }
 
   /** (perf) The DEEP arm of `ForwardFindRecLB` (a LOOKBEHIND owner), extracted: the whole LB arm
@@ -268,6 +367,7 @@ module LindenElkLiftSimForward {
     requires g in PIV.CapIdsInLooks(host)
     decreases |LTB.LookIds(host)|, 0, 0
   {
+    hide RF.StampLooksCapFreeRE;   // (G5b-3) a row fact passed on as a term (its CapIdsInLooks equality loops here)
     hide M.LookBodiesPlusGateRE;   // (G3a) a fact here, never unfolded (recursive: batch memory)
     // (2026-08-29 E3) the preamble is an OPAQUE block: only the facts below reach the arm's VC.
     var maxlook := *;
@@ -568,8 +668,7 @@ module LindenElkLiftSimForward {
         assert bodycodeB == CP.compile_to_bytecode(R.reverse_regex(host));
         assert LTB.LookTablesOk(host, crv);
         hide *;
-        BackPlusLookFactsS(host, crv, str, cpA, ov, cdnA, ncap, nlook, nquant);   // (G3b) on the plus winner
-        M.MatchedPosFromBank(crv, rfA.look_regs, A1 as int);
+        BackPlusMatchedPos(host, crv, str, cpA, ov, cdnA, ncap, nlook, nquant, A1, g);   // (G5b-3) A1's body captures
       }
 
       assert {:split_here} true;   // (E3) block-2 sub-batch: (a) | (b)
@@ -1018,6 +1117,7 @@ module LindenElkLiftSimForward {
     requires g in PIV.CapIdsInLooks(host)
     decreases |LTB.LookIds(host)|, 0, 0
   {
+    hide RF.StampLooksCapFreeRE;   // (G5b-3) a row fact passed on as a term (its CapIdsInLooks equality loops here)
     hide M.LookBodiesPlusGateRE;   // (G3a) a fact here, never unfolded (recursive: batch memory)
     var maxlook := R.max_lookaround(ast);
     var cpA := AReg.get_cp(res1, A as int).value;
@@ -1146,7 +1246,7 @@ module LindenElkLiftSimForward {
                                                           AReg.init_regs(nquant), 0, AI.cp_context(cpA, str, LAnc.Forward)),
                              ov, LAnc.Forward, cdnA).0;
     assert {:split_here} true;
-    assert rfV.Some? && rfA.look_regs == rfV.value.look_regs by {   // the carrier's instance, scoped
+    assert rfV.Some? && (CM.LookCpsOracleTrue(rfV.value.look_regs, ov) ==> CM.LookCpsOracleTrue(rfA.look_regs, ov)) by {   // the carrier's instance, scoped (G5b-3: the oracle half is kept)
       LookNestBackTFromBodyReplayS(rer, qmB, laA, host, bodycode, endlH, 0, crv, str, cpA, ov,
                                   cdnA, crv.f_plus_bc, ncap, nlook, nquant);
       reveal TM.WinnerLookKept();
@@ -1216,9 +1316,10 @@ module LindenElkLiftSimForward {
     assert M.MatchedPosLA(crv, rfA.look_regs, A1 as int) by {   // (gate C, G2) the fresh run records only positive rows
       assert bodycode == CP.compile_to_bytecode(host);
       assert LTB.LookTablesOk(host, crv);
+      assert RowPlusOkS(host, crv.f_plus_bc, nlook);   // GateStaticPick at a positive row
+      assert g in PIV.CapIds(NI.LookBodyOfRE(host, A1));
       hide *;
-      M.FreshReplayLookPos(host, crv, str, cpA, ov, LAnc.Forward, cdnA, ncap, nlook, nquant);
-      M.MatchedPosFromBank(crv, rfA.look_regs, A1 as int);
+      FwdPlusMatchedPos(host, crv, str, cpA, ov, cdnA, ncap, nlook, nquant, A1, g);   // (G5b-3) A1's body captures
     }
 
     // (b) the ⊆ direction of the REGION-EQUALITY deep carrier at A1 needs
@@ -1248,7 +1349,7 @@ module LindenElkLiftSimForward {
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert CM.LookCpsOracleTrue(rfA.look_regs, ov) by {
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert rfA.look_regs == rfV.value.look_regs;   // (G3a) the VM winner's bank
+      assert CM.LookCpsOracleTrue(rfV.value.look_regs, ov);   // (G3a, G5b-3) the VM winner's, kept by the reconstruction
     }
     var cp1 := AReg.get_cp(rfA.look_regs, A1 as int).value;
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14

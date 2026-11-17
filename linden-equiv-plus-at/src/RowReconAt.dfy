@@ -26,6 +26,9 @@ module LindenElkRowReconAt {
   import QCI = LindenElkQuantCpIrrel
   import RA = LindenElkReconAgree
   import FRA = LindenElkFinalReadoutAt
+  import LTB = LindenElkLookTables
+  import SBk = LindenElkStampBank      // (G5b-3) the bank through the reconstruction
+  import SLk = LindenElkStampLooks     // (G5b-3) the frame at capture-free stamp looks
 
   /** The int image of `body`'s outside-look quantifier ids (`M.QIdsOuter`). */
   ghost function QOuter(body: R.regex): set<int> {
@@ -218,6 +221,74 @@ module LindenElkRowReconAt {
           assert k >= 0 && (k as nat) in PIV.QuantIdsOutsideLooks(body);
           assert k in QOuter(body);
         }
+      }
+    }
+  }
+
+  /** (G5b-3) THE ROW PACKAGE when a stamp body may hold capture-free lookarounds (`RF.StampLooksCapFreeRE`): the
+      reconstruction may re-set lids in `LooksQ` (inside a stamp body: their bodies capture nothing), and keeps every
+      other look register; the look-bank invariants named by `F` pass through it (`SBk.RowBank`), and so does the quant
+      frame (the replay writes only outside-look quants). Replaces `RowReconAtS`'s "the look bank is kept". */
+  lemma RowReconAtG4(F: SBk.Flags, qm: AR.QMap, body: R.regex, plus: seq<RB.code>, str: string, th: AI.Thread,
+                     ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(body) && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires RF.StampLooksCapFreeRE(body)
+    requires NRR.PlusTableOkS(body, plus)
+    requires FV.RegsFinalOk(th, |str|, FRD.StampQids(body))
+    requires CM.ThreadRegsWf(th, ncap, nlook, nquant)
+    requires (F.o ==> CM.LookCpsOracleTrue(th.look_regs, qm.ov)) && (F.cs ==> CM.LookClkSetWithCp(th.look_regs))
+             && (F.ps ==> CM.LookCpSetWithClk(th.look_regs))
+    requires F.le ==> F.ub == |str| && CM.LookCpsLE(th.look_regs, |str|)
+    ensures var rp := AI.FReconstructPlus(th, body, plus, str, qm.ov, LAnc.Forward);
+            rp.1 == qm.ov && rp.0.pc == th.pc && rp.0.exit_allowed == th.exit_allowed
+            && CM.ThreadRegsWf(rp.0, ncap, nlook, nquant)
+            && (forall k: int :: AI.get_idx(rp.0.quant_regs.a_clk, k) >= -1)
+            && CM.RegsAgreeOutside(rp.0.capture_regs, th.capture_regs,
+                                   PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)))
+            && CM.RegsAgreeOutside(rp.0.look_regs, th.look_regs, RF.LooksQ(body, FRD.StampQids(body)))
+            && CM.RegsAgreeOutside(rp.0.look_regs, th.look_regs, SBk.DirectLidSetRN(body))
+            && CM.RegsAgreeOutside(rp.0.quant_regs, th.quant_regs, QOuter(body))
+            && (F.o ==> CM.LookCpsOracleTrue(rp.0.look_regs, qm.ov))
+            && (F.cs ==> CM.LookClkSetWithCp(rp.0.look_regs))
+            && (F.ps ==> CM.LookCpSetWithClk(rp.0.look_regs))
+            && (F.le ==> CM.LookCpsLE(rp.0.look_regs, |str|))
+  {
+    var rg: NRC.Regs3 := (th.capture_regs, th.look_regs, th.quant_regs);
+    var Q := FRD.StampQids(body);
+    var rp := AI.FReconstructPlus(th, body, plus, str, qm.ov, LAnc.Forward);
+    NRC.CdnTopAll(body);
+    FRA.StampsFinalAtSFromRegsFinalOk(body, th, |str|);
+    assert NRR.CapValWf(rg) && FRG.QClkGe(rg) && NRR.WfRegs(rg);
+    ReadoutBankLiteS(qm, body, plus, str, th, ncap, nlook, nquant);
+    FRA.FinalReadoutFrameAtStamp(qm, body, plus, str, th);
+    assert RF.QInStamp(body, Q);
+    SLk.CapsQOutside(body, Q);
+    assert {:split_here} true;
+    // the bank: the frames at the direct lids and the outside-look quants, and the selected invariants
+    assert F.le ==> CM.LookCpsLE(th.quant_regs, |str|) by {   // the stamps are final: at most |str|
+      if F.le {
+        forall q: int ensures AI.get_idx(th.quant_regs.a_cp, q) <= |str| {
+          if AI.get_idx(th.quant_regs.a_cp, q) >= 0 { assert FV.RegsFinalOk(th, |str|, Q); }
+        }
+      }
+    }
+    assert SBk.BankOk(F, th.look_regs, th.quant_regs, qm.ov, th.look_regs, SBk.DirectLidSetRN(body),
+                      th.quant_regs, SBk.QOuterRN(body)) by {
+      assert CM.RegsAgreeOutside(th.look_regs, th.look_regs, SBk.DirectLidSetRN(body));
+      assert CM.RegsAgreeOutside(th.quant_regs, th.quant_regs, SBk.QOuterRN(body));
+    }
+    SBk.RowBank(F, body, plus, str, th, qm.ov, LAnc.Forward, th.look_regs, th.quant_regs);
+    assert SBk.QOuterRN(body) == QOuter(body);
+    assert {:split_here} true;
+    // the look frame outside LooksQ and the capture frame outside the outside-look captures
+    assert CM.RegsAgreeOutside(rp.0.look_regs, th.look_regs, RF.LooksQ(body, Q));
+    assert CM.RegsAgreeOutside(rp.0.capture_regs, th.capture_regs,
+                               PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body))) by {
+      forall k: int | k !in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body))
+        ensures AI.get_idx(rp.0.capture_regs.a_cp, k) == AI.get_idx(th.capture_regs.a_cp, k)
+                && AI.get_idx(rp.0.capture_regs.a_clk, k) == AI.get_idx(th.capture_regs.a_clk, k)
+      {
+        assert k !in RF.CapsQ(body, Q);
       }
     }
   }

@@ -424,7 +424,7 @@ module LindenElkBackRowGate {
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
-    requires NRC.CdnTopRE(body) && RF.StampBodiesLookFreeRE(body) && NRR.PlusTableOkS(body, plus)
+    requires NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body) && NRR.PlusTableOkS(body, plus)
     requires cdns == LCdn.compile_cdns(body)   // (G5b-2) the row's own table
     requires !rer.ignoreCase && !rer.multiline
     requires n == |str| && cp <= n && |ov| == n + 1
@@ -521,7 +521,7 @@ module LindenElkBackRowGate {
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
-    requires NRC.CdnTopRE(body) && RF.StampBodiesLookFreeRE(body) && NRR.PlusTableOkS(body, plus)
+    requires NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body) && NRR.PlusTableOkS(body, plus)
     requires cdns == LCdn.compile_cdns(body)   // (G5b-2) the row's own table
     requires !rer.ignoreCase && !rer.multiline
     requires n == |str| && cp <= n && |ov| == n + 1
@@ -539,11 +539,15 @@ module LindenElkBackRowGate {
     TB.PlusTableOkSMirror(body, plus);
     var qmR := RowQm(rer, qm, body, str, ov);
     RP.RowKeysLBS(rer, qmR, body, str, cp, ov, cdns, plus, plusF, ncap, nlook, nquant, n);
-    FST.FXRStructuralCdn(body);
-    FG.LookUniqueFXR(body);
-    NRC.CdnTopAll(reF);
-    TB.StampBodiesLookFreeFXR(body);
-    assert M.RowLAStaticsS(reF, plusF) by { reveal M.RowLAStaticsS(); }
+    assert {:split_here} true;   // (G5b-3) the flipped row's statics, scoped: the recursive predicates stay out
+    assert M.RowLAStaticsS(reF, plusF) by {
+      FST.FXRStructuralCdn(body);
+      FG.LookUniqueFXR(body);
+      NRC.CdnTopAll(reF);
+      TB.StampLooksCapFreeFXR(body);
+      reveal M.RowLAStaticsS();
+    }
+    assert {:split_here} true;
     MA.FreshPlusGmOuterS(reF, CP.compile_to_bytecode(reF), LC.Reverse(str), n - cp, MIR.MirrorView(ov, n),
                         MIR.SwapAnchorsCdns(cdns), plusF, ncap, nlook, nquant);
     FG.CapIdsInLooksFXR(body);
@@ -558,7 +562,7 @@ module LindenElkBackRowGate {
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
-    requires NRC.CdnTopRE(body) && RF.StampBodiesLookFreeRE(body)
+    requires NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body)
     requires !rer.ignoreCase && !rer.multiline
     requires NRR.PlusTableOkS(body, plus)
     requires cdns == LCdn.compile_cdns(body)   // (G5b-2) the row's own table
@@ -618,7 +622,7 @@ module LindenElkBackRowGate {
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
-    requires NRC.CdnTopRE(body) && RF.StampBodiesLookFreeRE(body)
+    requires NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body)
     requires !rer.ignoreCase && !rer.multiline
     requires NRR.PlusTableOkS(body, crv.f_plus_bc)
     requires |ov| == |str| + 1
@@ -659,7 +663,7 @@ module LindenElkBackRowGate {
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
-    requires NRC.CdnTopRE(body) && RF.StampBodiesLookFreeRE(body)
+    requires NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body)
     requires !rer.ignoreCase && !rer.multiline
     requires NRR.PlusTableOkS(body, crv.f_plus_bc)
     requires |ov| == |str| + 1

@@ -29,6 +29,7 @@ module LindenElkMachineA {
   import RF = LindenElkReconFrame
   import FRA = LindenElkFinalReadoutAt
   import RRA = LindenElkRowReconAt
+  import SBk = LindenElkStampBank      // (G5b-3)
   import LG = Groups
   import LT = Tree
   import LC = Chars
@@ -306,7 +307,7 @@ module LindenElkMachineA {
                            ncap: int, nlook: int, nquant: int, result: Option<AI.Thread>)
     returns (rp: AI.Thread)
     requires code == CP.compile_to_bytecode(body)
-    requires T.TransWf(body) && NR.NestedFragmentCdnRE(body) && RF.StampBodiesLookFreeRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentCdnRE(body) && RF.StampLooksCapFreeRE(body)   // (G5b-3)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires NRC.CdnTopRE(body) && NRR.PlusTableOkS(body, plus)
     requires AR.QmapOk(body, qm) && qm.ov == ov
@@ -327,8 +328,14 @@ module LindenElkMachineA {
             == PIV.GmOfLiveR(body, qm, str, result.value.capture_regs, result.value.look_regs, result.value.quant_regs)
     ensures CM.ThreadRegsWf(rp, ncap, nlook, nquant)
     ensures CM.ThreadRegsWf(result.value, ncap, nlook, nquant)
-    ensures ClkFrame(body, FRD.StampQids(body), rp, result.value)
-    ensures rp.look_regs == result.value.look_regs
+    // (G5b-3) the reconstruction may re-set lids inside a stamp body (capture-free looks): the frame outside them,
+    // and every look-bank invariant the VM winner has
+    ensures ClkFrameG4(body, FRD.StampQids(body), rp, result.value)
+    ensures CM.RegsAgreeOutside(rp.look_regs, result.value.look_regs, SBk.DirectLidSetRN(body))
+    ensures CM.LookCpsOracleTrue(result.value.look_regs, ov) ==> CM.LookCpsOracleTrue(rp.look_regs, ov)
+    ensures CM.LookClkSetWithCp(result.value.look_regs) ==> CM.LookClkSetWithCp(rp.look_regs)
+    ensures CM.LookCpSetWithClk(result.value.look_regs) ==> CM.LookCpSetWithClk(rp.look_regs)
+    ensures CM.LookCpsLE(result.value.look_regs, |str|) ==> CM.LookCpsLE(rp.look_regs, |str|)
   {
     var best := result.value;
     var ctx := AI.cp_context(cp, str, LAnc.Forward);
@@ -373,11 +380,14 @@ module LindenElkMachineA {
     // THE READOUT (A1) + its frame (A2), and the untouched view
     FRA.FinalReadoutAtS(qm, body, plus, str, best, ncap, nlook, nquant);
     FRA.FinalReadoutFrameAtStamp(qm, body, plus, str, best);
-    RRA.RowReconAtS(qm, body, plus, str, best, ncap, nlook, nquant);   // the look bank is kept
+    // (G5b-3) the bank and the look frame outside `LooksQ` (no longer "the look bank is kept")
+    var F := SBk.Flags(CM.LookCpsOracleTrue(best.look_regs, ov), CM.LookClkSetWithCp(best.look_regs),
+                       CM.LookCpSetWithClk(best.look_regs), CM.LookCpsLE(best.look_regs, |str|), |str|);
+    RRA.RowReconAtG4(F, qm, body, plus, str, best, ncap, nlook, nquant);
     M.NoWriteOracleBodyCodeCdn(body);
     CM.FFindMatchOvStable(code, str, inits, ov, LAnc.Forward, cdn);
     rp := AI.FReconstructPlus(best, body, plus, str, ov, LAnc.Forward).0;
-    assert ClkFrame(body, Q, rp, best);
+    assert ClkFrameG4(body, Q, rp, best);
   }
 
   /** `MachineAPre` on the S forms. */
@@ -391,7 +401,7 @@ module LindenElkMachineA {
     && LTB.LookUnique(body)
     && qm.ov == ov && !rer.multiline && !rer.ignoreCase
     && cp <= |str| && bodycode == CP.compile_to_bytecode(body)
-    && NRC.CdnTopRE(body) && NRR.PlusTableOkS(body, plus_bc) && RF.StampBodiesLookFreeRE(body)
+    && NRC.CdnTopRE(body) && NRR.PlusTableOkS(body, plus_bc) && RF.StampLooksCapFreeRE(body)   // (G5b-3)
   }
 
   /** Machine A at a body, S: the body may hold a greedy CDN plus. */
@@ -505,8 +515,7 @@ module LindenElkMachineA {
       assert LL.GmAgreeOutside(bestT.value.1, LT.FirstLeaf(t, inp).value.1, S);
 
       assert {:split_here} true;
-      // ---- fresh-run look-bank invariants on the winner; rp keeps the look bank ----
-      assert rp.look_regs == best.look_regs;
+      // ---- fresh-run look-bank invariants on the winner; (G5b-3) rp keeps each of them ----
       RL.AInitLaws(nlook);
       assert CM.VmLookClkSet(vms) by {
         assert AI.init_thread(capture, look, quant).look_regs == look;

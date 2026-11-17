@@ -309,6 +309,41 @@ module LindenElkReconFrame {
     case _ => true
   }
 
+  /** (G5b-3) Every lookaround inside a greedy nullable plus body (CIN or CDN: a stamp plus) captures nothing. The
+      row twin of main-cin-lk's G4a scope `CL.CinLooksCapFreeRE` (quant arm): what a positive row whose stamp
+      bodies may hold (capture-free) looks needs. It descends into look bodies, so a nested row's statics come from
+      its host's (like `StampBodiesLookFreeRE`, which implies it). */
+  ghost predicate StampLooksCapFreeRE(re: R.regex)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => StampLooksCapFreeRE(r1) && StampLooksCapFreeRE(r2)
+    case Re_con(r1, r2) => StampLooksCapFreeRE(r1) && StampLooksCapFreeRE(r2)
+    case Re_quant(nul, qid, q, body) =>
+      (q.min != 0 && q.max == None && nul != R.NonNullable && q.greedy ==> PIV.CapIdsInLooks(body) == {})
+      && StampLooksCapFreeRE(body)
+    case Re_capture(_, r1) => StampLooksCapFreeRE(r1)
+    case Re_lookaround(_, _, r1) => StampLooksCapFreeRE(r1)
+    case _ => true
+  }
+
+  /** (G5b-3) Look-free stamp bodies capture nothing in looks: the narrow statics are an instance. */
+  lemma StampBodiesLookFreeIsCapFree(re: R.regex)
+    requires StampBodiesLookFreeRE(re)
+    ensures StampLooksCapFreeRE(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => StampBodiesLookFreeIsCapFree(r1); StampBodiesLookFreeIsCapFree(r2);
+    case Re_con(r1, r2) => StampBodiesLookFreeIsCapFree(r1); StampBodiesLookFreeIsCapFree(r2);
+    case Re_quant(nul, qid, q, body) =>
+      StampBodiesLookFreeIsCapFree(body);
+      if q.min != 0 && q.max == None && nul != R.NonNullable && q.greedy { PIV.LookFreeCapIdsInLooksEmpty(body); }
+    case Re_capture(_, r1) => StampBodiesLookFreeIsCapFree(r1);
+    case Re_lookaround(_, _, r1) => StampBodiesLookFreeIsCapFree(r1);
+    case _ =>
+  }
+
   lemma StampBodiesIsCin(re: R.regex)
     requires StampBodiesLookFreeRE(re)
     ensures CinBodiesLookFreeRE(re)

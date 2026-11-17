@@ -378,128 +378,9 @@ module LindenElkLiftSimOracle {
   {
   }
 
-  /** (L4 NESTED) `GateStaticsSweepRENested` — the nested-fragment establishment
-      sweep, off `GateStaticsSweepRE`. Two changes: the body-cap facts are the
-      NESTED ones (`NestedFragmentRE`/`StaticOkNestedRE` via
-      `CompileToBytecodeRepNested`+`CompileStutterTameRENested`), and — crucially —
-      the sweep RECURSES INTO each lookaround body (`GateStaticsSweepRE` stopped at
-      the leaf because look-free bodies own no lids). Every static fact descends
-      DEFINITIONALLY to the body at a `Re_lookaround` node (TransWf/QmapOk/LmapOk/
-      CapUnique/QuantUnique/NestedFragmentRE/NoPosLookbehindRE/
-      LookTablesOk/SizesOkRE); the confinement descends via `CapIdsInLooks(body) ⊆
-      CapIds(body) == CapIdsInLooks(re) ⊆ CapIdsInLooks(re0)`. `re0` carries the
-      whole-regex confinement target. */
-  lemma GateStaticsSweepRENested(qm: AR.QMap, re0: R.regex, re: R.regex, crv: CP.FCompiled,
-                                 ncap: int, nlook: int, nquant: int)
-    requires T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
-    requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
-    requires NR.NestedFragmentRE(re)
-    requires PIV.CapUnique(re) && PIV.QuantUnique(re)
-    requires LTB.LookTablesOk(re, crv)
-    requires PSM.SizesOkRE(re, ncap, nlook, nquant)
-    requires PIV.CapIdsInLooks(re) <= PIV.CapIdsInLooks(re0)
-    requires LTB.LookUnique(re) && NRR.PlusTableOk(re, crv.f_plus_bc)          // (G3a) the plus row
-    requires forall l: nat :: l in LTB.LookIds(re) ==> l < nlook
-    ensures forall l: int :: l >= 0 && (l as nat) in LTB.LookIds(re) ==>
-                               GateStaticAtNested(qm, re0, crv, l, ncap, nlook, nquant)
-    decreases re
-  {
-    NRR.PlusTableOkChildren(re, crv.f_plus_bc);
-    match re
-    case Re_alt(r1, r2) =>
-      assert NRR.L1(re) == r1 && NRR.L2(re) == r2;   // (G3a) the plus-row premises descend
-      assert LTB.LookIds(r1) <= LTB.LookIds(re) && LTB.LookIds(r2) <= LTB.LookIds(re);
-      GateStaticsSweepRENested(qm, re0, r1, crv, ncap, nlook, nquant);
-      GateStaticsSweepRENested(qm, re0, r2, crv, ncap, nlook, nquant);
-    case Re_con(r1, r2) =>
-      assert NRR.L1(re) == r1 && NRR.L2(re) == r2;
-      assert LTB.LookIds(r1) <= LTB.LookIds(re) && LTB.LookIds(r2) <= LTB.LookIds(re);
-      GateStaticsSweepRENested(qm, re0, r1, crv, ncap, nlook, nquant);
-      GateStaticsSweepRENested(qm, re0, r2, crv, ncap, nlook, nquant);
-    case Re_quant(_, _, _, r1) =>
-      assert NRR.L1(re) == r1 && LTB.LookIds(r1) <= LTB.LookIds(re);
-      GateStaticsSweepRENested(qm, re0, r1, crv, ncap, nlook, nquant);
-    case Re_capture(_, r1) =>
-      assert NRR.L1(re) == r1 && LTB.LookIds(r1) <= LTB.LookIds(re);
-      GateStaticsSweepRENested(qm, re0, r1, crv, ncap, nlook, nquant);
-    case Re_lookaround(lid, la, body) =>
-      // confinement: CapIdsInLooks(body) ⊆ CapIds(body) == CapIdsInLooks(re) ⊆ CapIdsInLooks(re0)
-      PIV.CapIdsSplit(body);
-      assert PIV.CapIdsInLooks(re) == PIV.CapIds(body);
-      assert PIV.CapIdsInLooks(body) <= PIV.CapIdsInLooks(re0);
-      // recurse into the body for its OWN inner lids
-      // (G3b) the uniform gate descends: every look body is in the CIN fragment and carries the gate
-      M.NestedNoCdn(body);   // (G5b) a narrow body is CDN-free (the gate says so only at positive looks)
-      assert NRC.NoCdnPlusRE(body) && RF.CinBodiesLookFreeRE(body) && M.LookBodiesPlusGateRE(body);
-      // (G3a) the plus-row premises descend to the body
-      assert NRR.PlusTableOk(body, crv.f_plus_bc) by { assert NRR.L1(re) == body; }
-      assert LTB.LookUnique(body);
-      assert forall l: nat :: l in LTB.LookIds(body) ==> l < nlook by {
-        assert LTB.LookIds(body) <= LTB.LookIds(re);
-      }
-      assert {:split_here} true;   // (G3a) the lookaround arm in its own batches
-      GateStaticsSweepRENested(qm, re0, body, crv, ncap, nlook, nquant);
-      assert {:split_here} true;
-      if lid >= 0 {
-        // the node's own bundle
-        assert LTB.LookEntryOk(crv, lid, la, body);
-        assert T.TransWf(body) && NR.NestedFragmentRE(body);
-        assert PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body);
-        M.NestedNoCdn(body);
-        assert RF.CinBodiesLookFreeRE(body) && M.LookBodiesPlusGateRE(body);
-        assert RowPlusOk(body, crv.f_plus_bc, nlook) by {   // (G3a) the plus row's statics
-          reveal RowPlusOk(); reveal M.RowLAStatics();
-        }
-        RowPlusOkToS(body, crv.f_plus_bc, nlook);   // (G5b-1) the lookahead arm
-        assert {:split_here} true;
-        assert lid in qm.looks && qm.looks[lid] == (T.TrLookaround(la), T.Translate(body));
-        // confinement: the body's groups are inside-look groups of re0
-        M.TranslateDefGroupsEqCapIds(body);
-        assert (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re0);
-        // compile statics for the body's own bytecode (NESTED)
-        NR.CompileToBytecodeRepNested(body);
-        CompileStutterTameRENested(body);
-        var bodycode := CP.compile_to_bytecode(body);
-        var next := CP.compile(body, 0, CP.Progress).1;
-        assert next >= 0 && |bodycode| == next + 1 && |bodycode| >= 1;
-        assert NR.NfaRepRE(body, bodycode, 0, next as nat)
-               && NR.GetPcRE(bodycode, next as nat) == Some(RB.Accept);
-        assert (next as nat) == |bodycode| - 1;
-        assert PSM.StaticCoreNestedRE(qm, body, bodycode, |bodycode| - 1);   // (G3a) no NoNulledPlusRE needed
-        PSM.StaticCoreNestedIsCdn(qm, body, bodycode, |bodycode| - 1);
-        NR.NarrowIsCdn(body);
-        assert PSM.SizesOkRE(body, ncap, nlook, nquant);
-        GateStaticAtNestedIntro(qm, re0, crv, lid, la, body, ncap, nlook, nquant);
-      }
-    case _ =>
-  }
-
-  /** (L4 NESTED) TOP-LEVEL establishment of `GateStaticsOkNested` from the
-      compile tables + nested-fragment well-formedness (`M.NoPosLookbehindRE` +
-      `EL.NegBehindLBOnlyRE` pin the positive-lookahead-nesting scope). Proves
-      `GateStaticsOkNested` is DISCHARGEABLE for the nested fragment — the
-      "requires-side" of the non-vacuity claim. Off `GateStaticsFromTables`. */
-  lemma GateStaticsFromTablesNested(qm: AR.QMap, re: R.regex, crv: CP.FCompiled,
-                                    ncap: int, nlook: int, nquant: int)
-    requires T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
-    requires M.LookBodiesPlusGateRE(re)   // (G3a) the weak gate: lookbehind bodies stamp-free, lookahead bodies CIN
-    requires NR.NestedFragmentRE(re)
-    requires PIV.CapUnique(re) && PIV.QuantUnique(re)
-    requires LTB.LookTablesOk(re, crv)
-    requires PSM.SizesOkRE(re, ncap, nlook, nquant)
-    requires forall l: int :: l in qm.looks ==>
-                                l >= 0 && (l as nat) in LTB.LookIds(re) && l < nlook
-    requires LTB.LookUnique(re) && NRR.PlusTableOk(re, crv.f_plus_bc)          // (G3a) the plus row
-    requires forall l: nat :: l in LTB.LookIds(re) ==> l < nlook
-    ensures GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
-  {
-    GateStaticsSweepRENested(qm, re, re, crv, ncap, nlook, nquant);
-  }
-
   // ===========================================================================
-  // (G5a-1 row J) The gate statics of a TOP-LEVEL (Cdn-fragment) regex. Every lookaround NODE of the Cdn
-  // fragment is in the narrow fragment, so the sweep descends the non-look structure and hands each look
-  // node to `GateStaticsSweepRENested`.
+  // (G5a-1 row J) The gate statics of a TOP-LEVEL (Cdn-fragment) regex. (G5b-3) The narrow sweep
+  // `GateStaticsSweepRENested` is gone: every look node takes the Cdn/S sweep below.
   // ===========================================================================
 
   /** The plus-row premise of the narrow sweep, at every lookaround node of `re` outside looks. */
@@ -605,7 +486,7 @@ module LindenElkLiftSimOracle {
     assert NRR.PlusTableOkS(re, crv.f_plus_bc);
     NRR.PlusTableOkSChildren(re, crv.f_plus_bc);
     assert NRR.PlusTableOkS(body, crv.f_plus_bc);
-    assert M.LookBodiesPlusGateRE(body) && RF.StampBodiesLookFreeRE(body);
+    assert M.LookBodiesPlusGateRE(body) && RF.StampLooksCapFreeRE(body);   // (G5b-3) the gate's positive arm
     M.GateCdnTop(body);
     LookNodesPlusOkFromS(body, crv.f_plus_bc);
     assert LTB.LookUnique(body);
@@ -695,7 +576,7 @@ module LindenElkLiftSimOracle {
   }
 
 
-  /** `GateStaticsFromTablesNested` for a top-level regex. */
+  /** The gate statics of a top-level regex (the Cdn/S sweep). */
   lemma GateStaticsFromTablesCdn(qm: AR.QMap, re: R.regex, crv: CP.FCompiled,
                                  ncap: int, nlook: int, nquant: int)
     requires T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
@@ -1139,7 +1020,7 @@ module LindenElkLiftSimOracle {
     A0: nat, lk: AReg.Regs, body: R.regex, g2: nat, ncap: int, nlook: int, nquant: int)
     requires T.TransWf(body) && NR.NestedFragmentCdnRE(body)
     requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook          // (G3b) the plus row's premises
-    requires NRC.CdnTopRE(body) && RF.StampBodiesLookFreeRE(body)   // (G5b-2) the body may hold a CDN plus
+    requires NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body)   // (G5b-2, G5b-3)
     requires NRR.PlusTableOkS(body, crv.f_plus_bc)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
@@ -1171,7 +1052,7 @@ module LindenElkLiftSimOracle {
     A0: nat, lk: AReg.Regs, body: R.regex, g2: nat, ncap: int, nlook: int, nquant: int)
     requires T.TransWf(body) && NR.NestedFragmentCdnRE(body)
     requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook          // (G3b) the plus row's premises
-    requires NRC.CdnTopRE(body) && RF.StampBodiesLookFreeRE(body)   // (G5b-2) the body may hold a CDN plus
+    requires NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body)   // (G5b-2, G5b-3)
     requires NRR.PlusTableOkS(body, crv.f_plus_bc)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
