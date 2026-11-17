@@ -99,6 +99,8 @@ module LindenElkTwoMachines {
   import CR = Correctness
   import opened LindenElkBankFrames
   import SLk = LindenElkStampLooks   // (G5b-3)
+  import ELk = LindenElkEmptyLooks   // (G4b-1) the empty-path look scope
+  import NPL = LindenElkNulledPlusLk   // (G4b-1) machine B's static scope
   import SBk = LindenElkStampBank
   import opened LindenElkMachineA
 
@@ -699,6 +701,73 @@ module LindenElkTwoMachines {
           assert g in PIV.CapIdsOutsideLooks(r);
         }
         CW.CinArmFromOld(tb, G);   // (G4b-1) the old arm implies today's
+      }
+    case _ =>
+  }
+
+  /** (G4b-1) The RE scope translates to machine B's: every look an empty path can cross is group-free. */
+  lemma EPCFTranslate(r: R.regex)
+    requires T.TransWf(r) && ELk.EmptyPathLooksCapFree(r)
+    ensures NPL.EmptyLooksGroupFreeL(T.Translate(r))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => EPCFTranslate(r1); EPCFTranslate(r2);
+    case Re_con(r1, r2) =>
+      if ELk.MayNull(r2) { EPCFTranslate(r1); }
+      if ELk.MayNull(r1) { EPCFTranslate(r2); }
+    case Re_quant(_, _, q, r1) => if q.min != 0 { EPCFTranslate(r1); }
+    case Re_capture(_, r1) => EPCFTranslate(r1);
+    case Re_lookaround(_, _, b) =>
+      PIV.DefGroupsCapIds(b);
+      assert NPL.DG(T.Translate(b)) == {} by {
+        forall g | g in L.DefGroups(T.Translate(b)) ensures false { assert g in PIV.CapIds(b); }
+      }
+    case _ =>
+  }
+
+  /** (G4b-1) The translation's out-of-look groups are the out-of-look captures. */
+  lemma OutLkTranslate(r: R.regex)
+    requires T.TransWf(r)
+    ensures forall g :: g in NPL.OutLk(T.Translate(r)) ==> g in PIV.CapIdsOutsideLooks(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => OutLkTranslate(r1); OutLkTranslate(r2);
+    case Re_con(r1, r2) => OutLkTranslate(r1); OutLkTranslate(r2);
+    case Re_quant(_, _, _, r1) => OutLkTranslate(r1);
+    case Re_capture(_, r1) => OutLkTranslate(r1);
+    case _ =>
+  }
+
+  lemma TranslateCinOkE(r: R.regex, G: set<LG.GroupId>)
+    requires T.TransWf(r) && NR.NestedFragmentCdnRE(r)
+    requires ELk.StampLooksCapFreeE(r)   // (G4b-1)
+    requires forall g: nat :: g in PIV.CapIdsOutsideLooks(r) ==> g in G
+    ensures CW.CinOk(T.Translate(r), G)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => TranslateCinOkE(r1, G); TranslateCinOkE(r2, G);
+    case Re_con(r1, r2) => TranslateCinOkE(r1, G); TranslateCinOkE(r2, G);
+    case Re_capture(_, r1) => TranslateCinOkE(r1, G);
+    case Re_lookaround(_, _, _) =>
+    case Re_quant(nul, qid, q, body) =>
+      TranslateCinOkE(body, G);
+      var tb := T.Translate(body);
+      assert T.Translate(r) == L.Quantified(q.greedy, q.min as nat, T.TrDelta(q), tb);
+      if q.min > 0 && (CW.CinGreedyL(q.greedy, T.TrDelta(q), tb) || CW.CdnGreedyL(q.greedy, T.TrDelta(q), tb)) {
+        CW.NulGreedyFacts(q.greedy, T.TrDelta(q), tb);   // greedy, Inf, the body is not NonNullable
+        assert q.max == None;
+        if nul == R.NonNullable {
+          NUL.TransNonNullable(body);
+          assert false;
+        }
+        assert nul == R.CINullable || nul == R.CDNullable;
+        assert ELk.StampNode(nul, q) && ELk.EmptyPathLooksCapFree(body);   // `ELk.StampLooksCapFreeE`, CIN or CDN
+        EPCFTranslate(body);
+        OutLkTranslate(body);
+        assert NPL.OutLk(tb) <= G;
       }
     case _ =>
   }
