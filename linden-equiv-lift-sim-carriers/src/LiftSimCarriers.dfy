@@ -122,6 +122,7 @@ module LindenElkLiftSimCarriers {
   import NRC = LindenElkNulledRecon      // (G3a) NoCdnPlusRE
   import RF = LindenElkReconFrame        // (G3a) CinBodiesLookFreeRE
   import TM = LindenElkTwoMachines       // (G3a) A6, TranslateCinOk
+  import CG = LindenElkCdnGuards         // (G5b-1) N1 at a lookahead row
   import TB = LindenElkMirrorPlus        // (G3b)
   import RP = LindenElkMachineABack      // (G3b)
   import BRG = LindenElkBackRowGate      // (G3b)
@@ -208,6 +209,75 @@ module LindenElkLiftSimCarriers {
     }
     TM.TranslateCinOk(body, PIV.CapIdsOutsideLooks(body));
     TM.TwoMachinesAt(rer, qm, body, bodycode, endl, ngroups, crv, str, cp, ov, lookcdn, plus_bc,
+                     ncap, nlook, nquant);
+  }
+  /** (G5b-1) `RowPlusFacts` at a lookahead row. */
+  lemma RowPlusFactsS(body: R.regex, plus: seq<RB.code>, nlook: int)
+    requires RowPlusOkS(body, plus, nlook)
+    ensures T.TransWf(body) && NR.NestedFragmentCdnRE(body)
+    ensures PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    ensures NRC.CdnTopRE(body) && RF.StampBodiesLookFreeRE(body) && NRR.PlusTableOkS(body, plus)
+    ensures forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
+    ensures M.LookBodiesPlusGateRE(body)
+    ensures LookNodesPlusOk(body, plus)   // what `GateStaticsFromTablesCdn` takes
+  {
+    reveal RowPlusOkS(); reveal M.RowLAStaticsS();
+    LookNodesPlusOkFromS(body, plus);
+  }
+
+  /** (G5b-1) A6 at a lookahead row whose body may hold a greedy CDN plus: machine B is
+      `L3aCompositeCloseRecGCdn`, the row's guards come from N1. */
+  lemma LookNestBackTFromBodyReplayS(
+    rer: LW.RegExpRecord, qm: AR.QMap, la: R.lookaround, body: R.regex, bodycode: RB.code,
+    endl: nat, ngroups: nat, crv: CP.FCompiled, str: string, cp: nat, ov: LOr.OracleView,
+    lookcdn: LCdn.cdns, plus_bc: seq<RB.code>, ncap: int, nlook: int, nquant: int)
+    requires la.Lookahead?
+    requires PSM.StaticCoreCdnRE(qm, body, bodycode, endl)
+    requires RowPlusOkS(body, plus_bc, nlook)   // (G5b-1) the body may hold a greedy CDN plus
+    requires lookcdn == LCdn.compile_cdns(body)   // the row's table (LookEntryOk)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
+    requires cp <= |str|
+    requires bodycode == CP.compile_to_bytecode(body)
+    requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
+    requires |ov| == |str| + 1
+    requires OE.OracleColsOk(rer, qm, str)                    // (L5 F7d) whole-string oracle correctness (backward keystone)
+    requires GateStaticsOkNested(qm, body, crv, ncap, nlook, nquant)
+    requires LTB.LookUnique(body)
+    requires LTB.LookTablesOk(body, crv)
+    ensures
+      var inp := PIV.InpOfCp(str, cp);
+      var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Forward);
+      var rf := AI.FFindMatchPlus(bodycode, body, plus_bc, str, ov, LAnc.Forward, cp,
+                                  AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant),
+                                  0, lookcdn).0;
+      (rf.Some? <==> LT.FirstLeaf(t, inp).Some?)
+      && (rf.Some? ==>
+            LT.FirstLeaf(t, inp).Some?
+            && LookNestBackTTop(body, crv, str, ov, PIV.CapIdsInLooks(body),
+                                LT.FirstLeaf(t, inp).value.1, rf.value, ncap, nlook, nquant)
+            && LookNestBackTTopDeep(rer, body, crv, str, ov, PIV.CapIdsInLooks(body),
+                                    LT.FirstLeaf(t, inp).value.1, rf.value, ncap, nlook, nquant)
+            // the FORWARD presence carrier (leaf-witness ==> gate crossed + dominant)
+            && LookNestOkTTop(body, PIV.CapIdsInLooks(body), LT.FirstLeaf(t, inp).value.1, rf.value)
+            // the carrier thread's own look-bank invariants (fresh run): the deep
+            // per-g2 package reads them at the crossed inner lids.
+            && CM.ThreadRegsWf(rf.value, ncap, nlook, nquant)   // (G3a) from A6
+            && CM.LookClkSetWithCp(rf.value.look_regs)
+            && CM.LookCpSetWithClk(rf.value.look_regs)
+            && CM.LookCpsLE(rf.value.look_regs, |str|)
+            // (G3a) the reconstruction keeps the VM winner's look bank (from A6)
+            && TM.WinnerLookKept(bodycode, str, cp, ov, lookcdn, ncap, nlook, nquant, rf.value))
+  {
+    // (G3a) A6: machine A (the fresh plus replay, reconstructed) tied to machine B's winner.
+    assert NR.NestedFragmentCdnRE(body) && T.TransWf(body);
+    assert NRC.CdnTopRE(body) && NRR.PlusTableOkS(body, plus_bc) && RF.StampBodiesLookFreeRE(body)
+           && (forall l: nat :: l in LTB.LookIds(body) ==> l < nlook) by {
+      reveal RowPlusOkS(); reveal M.RowLAStaticsS();
+    }
+    TM.TranslateCinOkS(body, PIV.CapIdsOutsideLooks(body));
+    CG.GuardsOkRunRow(qm, body, bodycode, endl, str, ov);   // (G5b-1) N1 at the row
+    TM.TwoMachinesAtS(rer, qm, body, bodycode, endl, ngroups, crv, str, cp, ov, lookcdn, plus_bc,
                      ncap, nlook, nquant);
   }
 
@@ -623,7 +693,7 @@ module LindenElkLiftSimCarriers {
     assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
     assert host == M.VBody(crv, A as int);
     var endlH: nat := |bodycode| - 1;
-    assert PSM.StaticCoreNestedRE(qm, host, bodycode, endlH);
+    assert PSM.StaticCoreCdnRE(qm, host, bodycode, endlH);   // (G5b-1) a lookahead host may hold a greedy CDN plus
     assert crv.f_look_types[A as int] == laA;
     assert (laA.Lookahead? || laA.Lookbehind?) by {
       assert AI.capture_type(crv.f_look_types[A as int]);        // MatchedPosLA
@@ -641,23 +711,23 @@ module LindenElkLiftSimCarriers {
                        qm.ov, qm.bodies);
     assert AR.QmapOk(host, qmB) by { QmapOkLooksIrrel(host, qm, qmB); }
     assert AR.LmapOk(host, qmB) by { LmapOkRestrict(host, qm, qmB); }
-    assert PSM.StaticCoreNestedRE(qmB, host, bodycode, endlH) by {
-      assert PSM.StaticCoreNestedRE(qm, host, bodycode, endlH);
+    assert PSM.StaticCoreCdnRE(qmB, host, bodycode, endlH) by {
+      assert PSM.StaticCoreCdnRE(qm, host, bodycode, endlH);   // (G5b-1) a lookahead host may hold a greedy CDN plus
     }
     assert LL.OracleOkSuffix(rer, qmB, inpA) by {
       assert LL.OracleOkSuffix(rer, qm, inpA);
       OracleOkSuffixRestrict(rer, qm, qmB, inpA);
     }
     assert GateStaticsOkNested(qmB, host, crv, ncap, nlook, nquant) by {
-      RowPlusFacts(host, crv.f_plus_bc, nlook);   // (G3a) the row's plus facts and the gate at host
-      GateStaticsFromTablesNested(qmB, host, crv, ncap, nlook, nquant);
+      RowPlusFactsS(host, crv.f_plus_bc, nlook);   // (G3a) the row's plus facts and the gate at host
+      GateStaticsFromTablesCdn(qmB, host, crv, ncap, nlook, nquant);
     }
     assert OE.OracleColsOk(rer, qmB, str) by {                         // (L5 F7d)
       SufForallToColsOk(rer, qm, str);
       OracleColsOkRestrict(rer, qm, qmB, str);
     }
     var cdnA := crv.f_look_cdns[A as int];
-    LookNestBackTFromBodyReplay(rer, qmB, laA, host, bodycode, endlH, 0, crv, str, cpA, ov,
+    LookNestBackTFromBodyReplayS(rer, qmB, laA, host, bodycode, endlH, 0, crv, str, cpA, ov,
                                 cdnA, crv.f_plus_bc, ncap, nlook, nquant);
     var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(host))], inpA, LG.Empty, WP.Forward);
     var rfP := AI.FFindMatchPlus(bodycode, host, crv.f_plus_bc, str, ov, LAnc.Forward, cpA,
@@ -709,7 +779,7 @@ module LindenElkLiftSimCarriers {
     assert PIV.CapRegWf(rfc);
     assert forall c: nat :: c in PIV.CapIds(host) && AI.get_idx(rfc.a_clk, CP.start_reg(c)) < 0
                             ==> AI.get_idx(rfc.a_cp, CP.start_reg(c)) < 0;
-    NI.GmOfLivePresenceExtractLkNested(host, rfFresh.value.capture_regs, rfl, rfq, g);
+    NI.GmOfLivePresenceExtractLkCdn(host, rfFresh.value.capture_regs, rfl, rfq, g);
     assert AReg.as_arrays(rfl).1 == rfl.a_clk && AReg.as_arrays(rfq).1 == rfq.a_clk;
     assert PIV.PathPresentLk(host, rfc.a_clk, rfl.a_clk, rfq.a_clk, -1, g);
     assert AI.get_idx(rfc.a_clk, CP.start_reg(g)) >= 0
@@ -751,7 +821,7 @@ module LindenElkLiftSimCarriers {
     assert PIV.MxAtGidLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, g)
         == PIV.MxAtGidLk(host, rfc.a_clk, rfl.a_clk, rfq.a_clk, -1, g);
     // the value: GmOfLive[g] == LiveRange(rf) == LiveRange(res0)
-    NI.GmOfLiveKeepsPresentLkNested(host, rfFresh.value.capture_regs, rfl, rfq, g);
+    NI.GmOfLiveKeepsPresentLkCdn(host, rfFresh.value.capture_regs, rfl, rfq, g);
     assert PIV.GmOfLive(host, rfc, rfl, rfq)[g] == PIV.LiveRange(rfc.a_cp, rfc.a_clk, g);
     assert PIV.LiveRange(rfc.a_cp, rfc.a_clk, g) == PIV.LiveRange(res0.a_cp, res0.a_clk, g);
   }

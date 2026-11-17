@@ -95,8 +95,9 @@ module LindenElkNulledRecon {
     case Re_alt(r1, r2) => CdnTopRE(r1) && CdnTopRE(r2)
     case Re_con(r1, r2) => CdnTopRE(r1) && CdnTopRE(r2)
     case Re_capture(_, r1) => CdnTopRE(r1)
-    // (G5b) a NEGATIVE look body may hold a CDN plus (never replayed); a positive one stays CDN-free
-    case Re_lookaround(_, la, r1) => (PositiveLk(la) ==> NoCdnPlusRE(r1)) && CdnTopRE(r1)
+    // (G5b) a NEGATIVE look body may hold a CDN plus (never replayed); (G5b-1) so may a LOOKAHEAD body;
+    // a positive lookbehind body stays CDN-free (G5b-2)
+    case Re_lookaround(_, la, r1) => (la.Lookbehind? ==> NoCdnPlusRE(r1)) && CdnTopRE(r1)
     case Re_quant(_, _, _, r1) => CdnTopRE(r1)
     case _ => true
   }

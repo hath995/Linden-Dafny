@@ -1065,6 +1065,20 @@ module LindenElkLiftSimCore {
     && M.LookBodiesPlusGateRE(body)   // (G3a) the gate descends: the sub-level row tables of a host
   }
 
+  /** (G5b-1) `RowPlusOk` at a positive LOOKAHEAD row: the body may hold a greedy CDN plus (`M.RowLAStaticsS`). */
+  opaque ghost predicate RowPlusOkS(body: R.regex, plus: seq<RB.code>, nlook: int) {
+    M.RowLAStaticsS(body, plus) && (forall l: nat :: l in LTB.LookIds(body) ==> l < nlook)
+    && M.LookBodiesPlusGateRE(body)
+  }
+
+  lemma RowPlusOkToS(body: R.regex, plus: seq<RB.code>, nlook: int)
+    requires RowPlusOk(body, plus, nlook) && T.TransWf(body)
+    ensures RowPlusOkS(body, plus, nlook)
+  {
+    reveal RowPlusOk(); reveal RowPlusOkS();
+    M.RowLAStaticsToS(body, plus);
+  }
+
   ghost predicate GateStaticAtNested(qm: AR.QMap, re: R.regex, crv: CP.FCompiled, l: int,
                                      ncap: int, nlook: int, nquant: int) {
     l in qm.looks
@@ -1073,7 +1087,8 @@ module LindenElkLiftSimCore {
       && T.TransWf(body) && NR.NestedFragmentCdnRE(body)
       // (G3a) what the plus-replay readers need (opaque); (G5b) at positive rows only: a negative body may
       // hold a CDN plus
-      && (NRC.PositiveLk(la) ==> NR.NestedFragmentRE(body) && RowPlusOk(body, crv.f_plus_bc, nlook))
+      && (NRC.PositiveLk(la) && la.Lookahead? ==> RowPlusOkS(body, crv.f_plus_bc, nlook))   // (G5b-1)
+      && (NRC.PositiveLk(la) && !la.Lookahead? ==> NR.NestedFragmentRE(body) && RowPlusOk(body, crv.f_plus_bc, nlook))
       // (gate B, G1 full depth) the three lookbehind-only scope conjuncts are DELETED:
       // the flip route is direction-generic (mirror-world leaf), so no row body is pinned.
       && qm.looks[l].0 == T.TrLookaround(la)
@@ -1100,14 +1115,17 @@ module LindenElkLiftSimCore {
             |bc| >= 1
             && PSM.StaticCoreCdnRE(qm, body, bc, |bc| - 1)
             && PSM.SizesOkRE(body, ncap, nlook, nquant)
-    // (G5b) the narrow row facts at a positive row (a negative body may hold a CDN plus)
-    ensures NRC.PositiveLk(la) ==>
+    // (G5b) the narrow row facts at a positive LOOKBEHIND row (a negative body may hold a CDN plus);
+    // (G5b-1) the S row facts at a positive LOOKAHEAD row
+    ensures NRC.PositiveLk(la) && la.Lookahead? ==> RowPlusOkS(body, crv.f_plus_bc, nlook)
+    ensures NRC.PositiveLk(la) && !la.Lookahead? ==>
               NR.NestedFragmentRE(body) && RowPlusOk(body, crv.f_plus_bc, nlook)
               && PSM.StaticCoreNestedRE(qm, body, CP.compile_to_bytecode(body), |CP.compile_to_bytecode(body)| - 1)
   {
     la, body :| LTB.LookEntryOk(crv, l, la, body)
                 && T.TransWf(body) && NR.NestedFragmentCdnRE(body)
-                && (NRC.PositiveLk(la) ==> NR.NestedFragmentRE(body) && RowPlusOk(body, crv.f_plus_bc, nlook))
+                && (NRC.PositiveLk(la) && la.Lookahead? ==> RowPlusOkS(body, crv.f_plus_bc, nlook))
+                && (NRC.PositiveLk(la) && !la.Lookahead? ==> NR.NestedFragmentRE(body) && RowPlusOk(body, crv.f_plus_bc, nlook))
                 && qm.looks[l].0 == T.TrLookaround(la)
                 && qm.looks[l].1 == T.Translate(body)
                 && (set gx: LG.GroupId | gx in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re)
@@ -5210,9 +5228,9 @@ module LindenElkLiftSimCore {
   /** For a TOP lid the path to the look node crosses no other look, so the
       look-clock-aware presence IS the plain presence (converse of
       `NI.LookPathPresentLkFromPresentTop`). */
-  lemma LookPathPresentFromLkTop(r: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>,
+  lemma LookPathPresentFromLkTopCdn(r: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>,
                                  mx: int, lid: nat)
-    requires NR.NestedFragmentRE(r) && LTB.LookUnique(r)
+    requires NR.NestedFragmentCdnRE(r) && LTB.LookUnique(r)
     requires lid in LTB.LookIds(r) && lid in NI.TopLookIds(r)
     requires NI.LookPathPresentLk(r, cc, lc, qc, mx, lid)
     ensures NI.LookPathPresent(r, cc, qc, mx, lid)
@@ -5229,10 +5247,10 @@ module LindenElkLiftSimCore {
             assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
           }
         }
-        LookPathPresentFromLkTop(r1, cc, lc, qc, mx, lid);
+        LookPathPresentFromLkTopCdn(r1, cc, lc, qc, mx, lid);
       } else {
         assert lid in NI.TopLookIds(r2) by { NI.TopLookIdsIn(r1); }
-        LookPathPresentFromLkTop(r2, cc, lc, qc, mx, lid);
+        LookPathPresentFromLkTopCdn(r2, cc, lc, qc, mx, lid);
       }
     case Re_con(r1, r2) =>
       assert {:split_here} true;
@@ -5243,17 +5261,17 @@ module LindenElkLiftSimCore {
             assert lid in LTB.LookIds(r1) * LTB.LookIds(r2);
           }
         }
-        LookPathPresentFromLkTop(r1, cc, lc, qc, mx, lid);
+        LookPathPresentFromLkTopCdn(r1, cc, lc, qc, mx, lid);
       } else {
         assert lid in NI.TopLookIds(r2) by { NI.TopLookIdsIn(r1); }
-        LookPathPresentFromLkTop(r2, cc, lc, qc, mx, lid);
+        LookPathPresentFromLkTopCdn(r2, cc, lc, qc, mx, lid);
       }
     case Re_quant(nul, qid, q, r1) =>
       assert {:split_here} true;
-      LookPathPresentFromLkTop(r1, cc, lc, qc, AI.get_idx(qc, qid), lid);
+      LookPathPresentFromLkTopCdn(r1, cc, lc, qc, AI.get_idx(qc, qid), lid);
     case Re_capture(cid, r1) =>
       assert {:split_here} true;
-      LookPathPresentFromLkTop(r1, cc, lc, qc, mx, lid);
+      LookPathPresentFromLkTopCdn(r1, cc, lc, qc, mx, lid);
     case Re_lookaround(lid0, la, r1) =>
       assert {:split_here} true;
       if lid0 >= 0 && (lid0 as nat) == lid {
@@ -5262,6 +5280,18 @@ module LindenElkLiftSimCore {
         assert false;
       }
   }
+  /** (G5b-1) The narrow form, as a corollary. */
+  lemma LookPathPresentFromLkTop(r: R.regex, cc: seq<int>, lc: seq<int>, qc: seq<int>,
+                                 mx: int, lid: nat)
+    requires NR.NestedFragmentRE(r) && LTB.LookUnique(r)
+    requires lid in LTB.LookIds(r) && lid in NI.TopLookIds(r)
+    requires NI.LookPathPresentLk(r, cc, lc, qc, mx, lid)
+    ensures NI.LookPathPresent(r, cc, qc, mx, lid)
+  {
+    NR.NarrowIsCdn(r);
+    LookPathPresentFromLkTopCdn(r, cc, lc, qc, mx, lid);
+  }
+
 
   /** (reverse descent) A top-in-`host` look's dominance on the fresh body match,
       read off the presence path of `g2` on the reconstructed banks: the value
@@ -5293,6 +5323,35 @@ module LindenElkLiftSimCore {
     NI.LookPathPresentAgreeTop(host, rfA.capture_regs.a_clk, rfA.quant_regs.a_clk,
                                res0.a_clk, res2.a_clk, -1, A1);
     NI.LookPathDomIntroTop(host, rfA.capture_regs.a_clk, rfA.quant_regs.a_clk, -1, A1,
+                           AI.get_idx(rfA.look_regs.a_clk, A1 as int));
+  }
+  /** (G5b-1) `ReverseLookDomOnFresh` on the Cdn fragment: a lookahead host may hold a greedy CDN plus. */
+  lemma ReverseLookDomOnFreshCdn(host: R.regex, res0: AReg.Regs, res1: AReg.Regs, res2: AReg.Regs,
+                              rfA: AI.Thread, A1: nat, g2: nat)
+    requires NR.NestedFragmentCdnRE(host) && PIV.CapUnique(host) && LTB.LookUnique(host)
+    requires A1 in LTB.LookIds(host) && A1 in NI.TopLookIds(host)
+    requires g2 in PIV.CapIds(NI.LookBodyOfRE(host, A1)) && g2 in PIV.CapIds(host)
+    requires PIV.PathPresentLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, g2)
+    requires CM.RegsAgreeInside(res0, rfA.capture_regs, PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host)))
+    requires M.QuantClkAgreeInside(res2, rfA.quant_regs, M.QIdsOuter(host))
+    requires AI.get_idx(res1.a_clk, A1 as int) == AI.get_idx(rfA.look_regs.a_clk, A1 as int)
+    ensures NI.LookPathDom(host, AI.get_idx(rfA.look_regs.a_clk, A1 as int), rfA.quant_regs.a_clk, A1)
+  {
+    NI.LookPathDecomposeCdn(host, NI.LookBodyOfRE(host, A1), res0.a_clk, res1.a_clk, res2.a_clk, -1, A1, g2);
+    LookPathPresentFromLkTopCdn(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, A1);
+    forall c: nat | c in PIV.CapIdsOutsideLooks(host)
+      ensures AI.get_idx(rfA.capture_regs.a_clk, CP.start_reg(c as int)) == AI.get_idx(res0.a_clk, CP.start_reg(c as int))
+    {
+      assert CP.start_reg(c as int) in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(host));
+    }
+    forall q: nat | q in PIV.QuantIdsOutsideLooks(host)
+      ensures AI.get_idx(rfA.quant_regs.a_clk, q as int) == AI.get_idx(res2.a_clk, q as int)
+    {
+      assert (q as int) in M.QIdsOuter(host);
+    }
+    NI.LookPathPresentAgreeTopCdn(host, rfA.capture_regs.a_clk, rfA.quant_regs.a_clk,
+                               res0.a_clk, res2.a_clk, -1, A1);
+    NI.LookPathDomIntroTopCdn(host, rfA.capture_regs.a_clk, rfA.quant_regs.a_clk, -1, A1,
                            AI.get_idx(rfA.look_regs.a_clk, A1 as int));
   }
 

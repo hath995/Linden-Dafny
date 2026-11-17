@@ -118,6 +118,7 @@ module LindenElkLiftSimGate {
   import GG = LindenElkFlipGateG         // (gate B) flip-gate F6, scope-free
   import MA = LindenElkMachineA          // (G3a) machine A on the plus match
   import NRC = LindenElkNulledRecon      // (G3b)
+  import CG = LindenElkCdnGuards         // (G5b-1) N1 at a lookahead row
   import RF = LindenElkReconFrame        // (G3b)
   import NRR = LindenElkNulledReconRegs  // (G3b)
   import BRG = LindenElkBackRowGate      // (G3b) the lookbehind plus twins
@@ -1375,7 +1376,7 @@ module LindenElkLiftSimGate {
     // (`LkResultAgreeOutsideNested` on the recursive `PikeLkRegexRec(r1)`) replaces
     // the depth-1 look-free `NoLkBrL(r1)` frame. The fold still writes only
     // `DefGroups(r1)`, so any newly-set S-group of gm2 lies in the gate body.
-    EL.TranslateFragmentPikeLkRec(body);
+    EL.TranslateFragmentPikeLkRecCdn(body);   // (G5b-1) either kind: the Cdn form
     assert EL.PikeLkRegexRec(r1);
     LkResultAgreeOutsideNested(rer, lk, r1, inp, tlk, gm);
     assert forall g: LG.GroupId :: g in S && g in gm2 && g !in gm ==>
@@ -1439,7 +1440,7 @@ module LindenElkLiftSimGate {
           M.LkBodyGroupsEqCapIdsInLooks(body);
           PIV.CapIdsLooksDisjoint(body);
           // (BRICK D5) depth-k gm-independence (recursive PikeLkRegexRec body).
-          EL.TranslateFragmentPikeLkRec(body);
+          EL.TranslateFragmentPikeLkRecCdn(body);   // (G5b-1) the body may hold a greedy CDN plus
           EL.ComputeTrGmIndepLkRec(rer, r1, inp, gm, WP.Forward);
           assert tlk == LFU.ComputeTr(rer, [LS.Areg(r1)], inp, gm, WP.Forward);
           assert M.GmAgreeOn(gm, LG.Empty, set gx | gx in L.DefGroups(r1)) by {
@@ -1465,12 +1466,14 @@ module LindenElkLiftSimGate {
             reveal M.FreshBodyMatchPlus();
           }
           assert {:split_here} true;
-          assert MA.MachineAPre(rer, qm, body, bodycode3, |bodycode3| - 1, str, cp, ov, crv.f_plus_bc,
-                                ncap, nlook, nquant) by {
-            reveal RowPlusOk(); reveal M.RowLAStatics();
+          assert NRC.PositiveLk(la) && RowPlusOkS(body, crv.f_plus_bc, nlook);   // GateStaticPick, lookahead
+          assert MA.MachineAPreS(rer, qm, body, bodycode3, |bodycode3| - 1, str, cp, ov, crv.f_plus_bc,
+                                 ncap, nlook, nquant) by {
+            reveal RowPlusOkS(); reveal M.RowLAStaticsS();
           }
-          MA.LkReplayMatchesSpecPlus(rer, qm, body, bodycode3, |bodycode3| - 1, 0, str, cp, ov, cdnb,
-                                     crv.f_plus_bc, tlk, gm, ncap, nlook, nquant);
+          CG.GuardsOkRunRow(qm, body, bodycode3, |bodycode3| - 1, str, ov);   // (G5b-1) N1 at the row
+          MA.LkReplayMatchesSpecPlusS(rer, qm, body, bodycode3, |bodycode3| - 1, 0, str, cp, ov, cdnb,
+                                      crv.f_plus_bc, tlk, gm, ncap, nlook, nquant);
           assert LS.LkResult(T.TrLookaround(la), tlk, gm, inp).Some?
                  && LS.LkResult(T.TrLookaround(la), tlk, gm, inp).value == gm2 by {
             assert lk == T.TrLookaround(la);
@@ -1484,8 +1487,8 @@ module LindenElkLiftSimGate {
           assert {:split_here} true;
           // the INNER groups (`LkBodyGroups(tr) == CapIdsInLooks(body)`) are ABSENT from the fresh plus
           // replay's live denotation (`MA.FreshPlusGmOuter`); the coverage reduces to the OUTER groups.
-          assert M.RowLAStatics(body, crv.f_plus_bc) by { reveal RowPlusOk(); }
-          MA.FreshPlusGmOuter(body, bodycode3, str, cp, ov, cdnb, crv.f_plus_bc, ncap, nlook, nquant);
+          assert M.RowLAStaticsS(body, crv.f_plus_bc) by { reveal RowPlusOkS(); }
+          MA.FreshPlusGmOuterS(body, bodycode3, str, cp, ov, cdnb, crv.f_plus_bc, ncap, nlook, nquant);
           forall g: LG.GroupId |
             g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, l as nat))
             && g in PIV.GmOfLive(NI.LookBodyOfRE(re, l as nat), rfx.value.capture_regs,

@@ -368,7 +368,8 @@ module LindenElkLiftSimOracle {
                                 ncap: int, nlook: int, nquant: int)
     requires l in qm.looks
     requires LTB.LookEntryOk(crv, l, la, body) && T.TransWf(body) && NR.NestedFragmentCdnRE(body)
-    requires NRC.PositiveLk(la) ==> NR.NestedFragmentRE(body) && RowPlusOk(body, crv.f_plus_bc, nlook)
+    requires NRC.PositiveLk(la) && la.Lookahead? ==> RowPlusOkS(body, crv.f_plus_bc, nlook)   // (G5b-1)
+    requires NRC.PositiveLk(la) && !la.Lookahead? ==> NR.NestedFragmentRE(body) && RowPlusOk(body, crv.f_plus_bc, nlook)
     requires qm.looks[l].0 == T.TrLookaround(la) && qm.looks[l].1 == T.Translate(body)
     requires (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re0)
     requires |CP.compile_to_bytecode(body)| >= 1
@@ -450,6 +451,7 @@ module LindenElkLiftSimOracle {
         assert RowPlusOk(body, crv.f_plus_bc, nlook) by {   // (G3a) the plus row's statics
           reveal RowPlusOk(); reveal M.RowLAStatics();
         }
+        RowPlusOkToS(body, crv.f_plus_bc, nlook);   // (G5b-1) the lookahead arm
         assert {:split_here} true;
         assert lid in qm.looks && qm.looks[lid] == (T.TrLookaround(la), T.Translate(body));
         // confinement: the body's groups are inside-look groups of re0
@@ -510,11 +512,40 @@ module LindenElkLiftSimOracle {
     case Re_con(r1, r2) => LookNodesPlusOk(r1, bc) && LookNodesPlusOk(r2, bc)
     case Re_quant(_, _, _, r1) => LookNodesPlusOk(r1, bc)
     case Re_capture(_, r1) => LookNodesPlusOk(r1, bc)
-    // (G5b) a positive look node keeps the narrow table; a negative one passes the premise to its body
-    case Re_lookaround(_, la, r1) => if NRC.PositiveLk(la) then NRR.PlusTableOk(re, bc) else LookNodesPlusOk(r1, bc)
+    // (G5b) a positive lookbehind node keeps the narrow table; (G5b-1) a lookahead node the widened one;
+    // a negative one passes the premise to its body
+    case Re_lookaround(_, la, r1) =>
+      if la.Lookbehind? then NRR.PlusTableOk(re, bc)
+      else if la.Lookahead? then NRR.PlusTableOkS(re, bc)
+      else LookNodesPlusOk(r1, bc)
     case _ => true
   }
 
+  /** (G5a-1 row N; moved here from main-cin-lk in G5b-1) What `GateStaticsFromTablesCdn` takes of the plus table: the narrow table at every look
+      node. From the widened table of the whole regex, since a look node of a regex in scope holds no CDN plus. */
+  lemma LookNodesPlusOkFromS(re: R.regex, bc: seq<RB.code>)
+    requires PIV.QuantUnique(re) && NRR.PlusTableOkS(re, bc) && NRC.CdnTopRE(re)
+    ensures LookNodesPlusOk(re, bc)
+    decreases re
+  {
+    NRR.PlusTableOkSChildren(re, bc);
+    NRC.CdnTopChild(re);
+    match re
+    case Re_alt(r1, r2) => LookNodesPlusOkFromS(r1, bc); LookNodesPlusOkFromS(r2, bc);
+    case Re_con(r1, r2) => LookNodesPlusOkFromS(r1, bc); LookNodesPlusOkFromS(r2, bc);
+    case Re_quant(_, _, _, r1) => LookNodesPlusOkFromS(r1, bc);
+    case Re_capture(_, r1) => LookNodesPlusOkFromS(r1, bc);
+    case Re_lookaround(_, la, r1) =>
+      if la.Lookbehind? {
+        assert NRC.NoCdnPlusRE(re);          // CdnTopRE's look arm: a positive lookbehind body holds no CDN plus
+        NRR.PlusTableOkSNarrow(re, bc);
+      } else if la.Lookahead? {
+                                             // (G5b-1) the widened table is the arm itself
+      } else {
+        LookNodesPlusOkFromS(r1, bc);        // (G5b) a negative body may hold one: its inner look nodes
+      }
+    case _ =>
+  }
   lemma GateStaticsSweepRECdn(qm: AR.QMap, re0: R.regex, re: R.regex, crv: CP.FCompiled,
                               ncap: int, nlook: int, nquant: int)
     requires T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
@@ -546,15 +577,79 @@ module LindenElkLiftSimOracle {
       assert LTB.LookIds(r1) <= LTB.LookIds(re);
       GateStaticsSweepRECdn(qm, re0, r1, crv, ncap, nlook, nquant);
     case Re_lookaround(lid, la, body) =>
-      if NRC.PositiveLk(la) {
-        NRC.CdnNoCdnIsNarrow(body);        // (G5b) the gate keeps a positive body CDN-free
+      if la.Lookbehind? {
+        NRC.CdnNoCdnIsNarrow(body);        // (G5b) the gate keeps a positive lookbehind body CDN-free
         assert NR.NestedFragmentRE(re);   // so the look node is narrow
         GateStaticsSweepRENested(qm, re0, re, crv, ncap, nlook, nquant);
+      } else if la.Lookahead? {
+        GateStaticsPosAheadCdn(qm, re0, re, crv, ncap, nlook, nquant);   // (G5b-1) a lookahead node, S
       } else {
         GateStaticsNegLookCdn(qm, re0, re, crv, ncap, nlook, nquant);   // (G5b) a negative look node
       }
     case _ =>
   }
+  /** (G5b-1) The Cdn sweep at a LOOKAHEAD node: its body may hold a greedy CDN plus (every nullable plus body
+      inside it look-free, the gate). The row's statics are the S ones; its inner lids recurse. */
+  lemma GateStaticsPosAheadCdn(qm: AR.QMap, re0: R.regex, re: R.regex, crv: CP.FCompiled,
+                               ncap: int, nlook: int, nquant: int)
+    requires re.Re_lookaround? && re.look.Lookahead?
+    requires T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
+    requires M.LookBodiesPlusGateRE(re)
+    requires NR.NestedFragmentCdnRE(re)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires LTB.LookTablesOk(re, crv)
+    requires PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires PIV.CapIdsInLooks(re) <= PIV.CapIdsInLooks(re0)
+    requires LTB.LookUnique(re) && LookNodesPlusOk(re, crv.f_plus_bc)
+    requires forall l: nat :: l in LTB.LookIds(re) ==> l < nlook
+    ensures forall l: int :: l >= 0 && (l as nat) in LTB.LookIds(re) ==>
+                               GateStaticAtNested(qm, re0, crv, l, ncap, nlook, nquant)
+    decreases re, 0
+  {
+    var lid, la, body := re.lid, re.look, re.lr;
+    // confinement: CapIdsInLooks(body) ⊆ CapIds(body) == CapIdsInLooks(re) ⊆ CapIdsInLooks(re0)
+    PIV.CapIdsSplit(body);
+    assert PIV.CapIdsInLooks(re) == PIV.CapIds(body);
+    assert PIV.CapIdsInLooks(body) <= PIV.CapIdsInLooks(re0);
+    // the widened table at the node descends to the body; the body is in the scope (the gate)
+    assert NRR.PlusTableOkS(re, crv.f_plus_bc);
+    NRR.PlusTableOkSChildren(re, crv.f_plus_bc);
+    assert NRR.PlusTableOkS(body, crv.f_plus_bc);
+    assert M.LookBodiesPlusGateRE(body) && RF.StampBodiesLookFreeRE(body);
+    M.GateCdnTop(body);
+    LookNodesPlusOkFromS(body, crv.f_plus_bc);
+    assert LTB.LookUnique(body);
+    assert forall l: nat :: l in LTB.LookIds(body) ==> l < nlook by {
+      assert LTB.LookIds(body) <= LTB.LookIds(re);
+    }
+    assert {:split_here} true;
+    GateStaticsSweepRECdn(qm, re0, body, crv, ncap, nlook, nquant);   // the body's own inner lids
+    assert {:split_here} true;
+    if lid >= 0 {
+      // the node's own bundle, Cdn + S
+      assert LTB.LookEntryOk(crv, lid, la, body);
+      assert T.TransWf(body) && NR.NestedFragmentCdnRE(body);
+      assert PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body);
+      assert NRC.CdnTopRE(body);
+      assert RowPlusOkS(body, crv.f_plus_bc, nlook) by { reveal RowPlusOkS(); reveal M.RowLAStaticsS(); }
+      assert lid in qm.looks && qm.looks[lid] == (T.TrLookaround(la), T.Translate(body));
+      M.TranslateDefGroupsEqCapIds(body);
+      assert (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re0);
+      assert {:split_here} true;
+      NR.CompileToBytecodeRepCdn(body);
+      CompileStutterTameRECdn(body);
+      var bodycode := CP.compile_to_bytecode(body);
+      var next := CP.compile(body, 0, CP.Progress).1;
+      assert next >= 0 && |bodycode| == next + 1 && |bodycode| >= 1;
+      assert NR.NfaRepRE(body, bodycode, 0, next as nat)
+             && NR.GetPcRE(bodycode, next as nat) == Some(RB.Accept);
+      assert (next as nat) == |bodycode| - 1;
+      assert PSM.StaticCoreCdnRE(qm, body, bodycode, |bodycode| - 1);
+      assert PSM.SizesOkRE(body, ncap, nlook, nquant);
+      GateStaticAtNestedIntro(qm, re0, crv, lid, la, body, ncap, nlook, nquant);
+    }
+  }
+
   /** (G5b) The Cdn sweep at a NEGATIVE look node: its body may hold a CDN plus. The row's own statics are
       the Cdn ones (it is never replayed: `FLookLoop` skips negative looks); its inner lids recurse. */
   lemma GateStaticsNegLookCdn(qm: AR.QMap, re0: R.regex, re: R.regex, crv: CP.FCompiled,
@@ -834,8 +929,8 @@ module LindenElkLiftSimOracle {
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
     A0: nat, lk: AReg.Regs, body: R.regex, bodycode: RB.code, endl: nat, ngroups: nat,
     g2: nat, ncap: int, nlook: int, nquant: int)
-    requires PSM.StaticCoreNestedRE(qm, body, bodycode, endl)   // (G3a) no stamp-free premise
-    requires RowPlusOk(body, crv.f_plus_bc, nlook)   // (G3a) machine A on the plus match
+    requires PSM.StaticCoreCdnRE(qm, body, bodycode, endl)   // (G5b-1) the body may hold a greedy CDN plus
+    requires RowPlusOkS(body, crv.f_plus_bc, nlook)   // (G5b-1) machine A on the plus match, S
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires qm.ov == ov && !rer.ignoreCase && !rer.multiline
     requires bodycode == CP.compile_to_bytecode(body)
@@ -843,7 +938,7 @@ module LindenElkLiftSimOracle {
     // A0's table row: VBody == body, cdns row present, look type is a lookAHEAD.
     requires body == M.VBody(crv, A0 as int)
     requires 0 <= (A0 as int) < |crv.f_look_types| && crv.f_look_types[A0 as int].Lookahead?
-    requires 0 <= (A0 as int) < |crv.f_look_cdns|
+    requires 0 <= (A0 as int) < |crv.f_look_cdns| && crv.f_look_cdns[A0 as int] == LCdn.compile_cdns(body)
     requires M.MatchedPosLA(crv, lk, A0 as int)
     requires var cp := AReg.get_cp(lk, A0 as int).value;
              0 <= cp <= |str| && LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
@@ -874,10 +969,11 @@ module LindenElkLiftSimOracle {
     assert {:split_here} true;
 
     // (2) machine A at (body, cp): the plus match against the spec first leaf, outside Sb.
-    assert MA.MachineAPre(rer, qm, body, bodycode, endl, str, cp, ov, crv.f_plus_bc, ncap, nlook, nquant) by {
-      reveal RowPlusOk(); reveal M.RowLAStatics();
+    assert MA.MachineAPreS(rer, qm, body, bodycode, endl, str, cp, ov, crv.f_plus_bc, ncap, nlook, nquant) by {
+      reveal RowPlusOkS(); reveal M.RowLAStaticsS();
     }
-    MA.MachineAAt(rer, qm, body, bodycode, endl, ngroups, str, cp, ov, cdns, crv.f_plus_bc, ncap, nlook, nquant);
+    CG.GuardsOkRunRow(qm, body, bodycode, endl, str, ov);   // (G5b-1) N1: the row's guards read right bits
+    MA.MachineAAtS(rer, qm, body, bodycode, endl, ngroups, str, cp, ov, cdns, crv.f_plus_bc, ncap, nlook, nquant);
     assert {:split_here} true;
 
     // (3) g2 is DIRECT, so it survives into the spec first leaf FirstLeaf(t).value.1.
@@ -905,15 +1001,15 @@ module LindenElkLiftSimOracle {
     rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
     A0: nat, lk: AReg.Regs, body: R.regex, bodycode: RB.code, endl: nat, ngroups: nat,
     g2: nat, ncap: int, nlook: int, nquant: int)
-    requires PSM.StaticCoreNestedRE(qm, body, bodycode, endl)   // (G3a) no stamp-free premise
-    requires RowPlusOk(body, crv.f_plus_bc, nlook)   // (G3a) machine A on the plus match
+    requires PSM.StaticCoreCdnRE(qm, body, bodycode, endl)   // (G5b-1) the body may hold a greedy CDN plus
+    requires RowPlusOkS(body, crv.f_plus_bc, nlook)   // (G5b-1) machine A on the plus match, S
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires qm.ov == ov && !rer.ignoreCase && !rer.multiline
     requires bodycode == CP.compile_to_bytecode(body)
     requires T.TransWf(body)
     requires body == M.VBody(crv, A0 as int)
     requires 0 <= (A0 as int) < |crv.f_look_types| && crv.f_look_types[A0 as int].Lookahead?
-    requires 0 <= (A0 as int) < |crv.f_look_cdns|
+    requires 0 <= (A0 as int) < |crv.f_look_cdns| && crv.f_look_cdns[A0 as int] == LCdn.compile_cdns(body)
     requires M.MatchedPosLA(crv, lk, A0 as int)
     requires var cp := AReg.get_cp(lk, A0 as int).value;
              0 <= cp <= |str| && LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
@@ -946,10 +1042,11 @@ module LindenElkLiftSimOracle {
     assert {:split_here} true;
 
     // (2) machine A at (body, cp).
-    assert MA.MachineAPre(rer, qm, body, bodycode, endl, str, cp, ov, crv.f_plus_bc, ncap, nlook, nquant) by {
-      reveal RowPlusOk(); reveal M.RowLAStatics();
+    assert MA.MachineAPreS(rer, qm, body, bodycode, endl, str, cp, ov, crv.f_plus_bc, ncap, nlook, nquant) by {
+      reveal RowPlusOkS(); reveal M.RowLAStaticsS();
     }
-    MA.MachineAAt(rer, qm, body, bodycode, endl, ngroups, str, cp, ov, cdns, crv.f_plus_bc, ncap, nlook, nquant);
+    CG.GuardsOkRunRow(qm, body, bodycode, endl, str, ov);   // (G5b-1) N1: the row's guards read right bits
+    MA.MachineAAtS(rer, qm, body, bodycode, endl, ngroups, str, cp, ov, cdns, crv.f_plus_bc, ncap, nlook, nquant);
     assert {:split_here} true;
 
     // (3) SubFirstLeafAt unfolds to FirstLeaf(t); g2 is DIRECT, so it transports
@@ -2084,13 +2181,15 @@ module LindenElkLiftSimOracle {
     assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
     assert host == M.VBody(crv, A as int);
     var endlH: nat := |bodycode| - 1;
-    assert PSM.StaticCoreNestedRE(qm, host, bodycode, endlH);
+    assert PSM.StaticCoreCdnRE(qm, host, bodycode, endlH);   // (G5b-1) the row may hold a greedy CDN plus
     assert crv.f_look_types[A as int] == laA;
     assert (laA.Lookahead? || laA.Lookbehind?) by {
       assert AI.capture_type(crv.f_look_types[A as int]);        // MatchedPosLA
     }
     assert !laA.Lookbehind? by { assert crv.f_look_types[A as int] == laA; }
     assert laA.Lookahead?;
+    assert NRC.PositiveLk(laA) && RowPlusOkS(host, crv.f_plus_bc, nlook);   // GateStaticPick, lookahead
+    assert crv.f_look_cdns[A as int] == LCdn.compile_cdns(host);           // LookEntryOk
     assert M.FrameEntryOk(crv, laA, host,
                           PIV.CaptureRegsSet(PIV.CapIdsInLooks(re)), M.LookIdSet(re));
     assert PIV.CapUnique(host) && PIV.QuantUnique(host) && LTB.LookUnique(host)

@@ -4647,6 +4647,129 @@ module LindenElkMain {
       assert AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp, cap, lk, qt, 0, lookcdn) == (None, ovx);
     }
   }
+  /** (G5b-1) `RowLAStatics` on the S forms: the row body may hold a greedy CDN plus (its stamps are the
+      `QidStampPlus` pluses; every stamp body is look-free). */
+  opaque ghost predicate RowLAStaticsS(body: R.regex, plus_bcv: seq<RB.code>) {
+    T.TransWf(body) && NR.NestedFragmentCdnRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    && LTB.LookUnique(body) && NRC.CdnTopRE(body) && RF.StampBodiesLookFreeRE(body)
+    && NRR.PlusTableOkS(body, plus_bcv)
+  }
+
+  /** (G5b-1) The narrow row statics are an instance of the S ones. */
+  lemma RowLAStaticsToS(body: R.regex, plus_bcv: seq<RB.code>)
+    requires RowLAStatics(body, plus_bcv) && T.TransWf(body)
+    ensures RowLAStaticsS(body, plus_bcv)
+  {
+    reveal RowLAStatics(); reveal RowLAStaticsS();
+    NR.NarrowIsCdn(body);
+    NRC.NoCdnIsCdnTop(body);
+    RF.CinStampBodiesNoCdn(body);
+    NRR.PlusTableOkSNarrow(body, plus_bcv);
+  }
+
+  /** (G5b-1) `ReplayPlusRowLA` on the S forms. The run's frames are kind-blind; the reconstruction is
+      `RRA.RowReconAtS` (no empty-path fact needed: the frame reads only the stamps' range). */
+  lemma ReplayPlusRowLAS(bytecode: RB.code, str: string, ov: LOr.OracleView, lookcdn: LCdn.cdns,
+                         plus_bcv: seq<RB.code>, cp: int, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs,
+                         body: R.regex, ncap: int, nlook: int, nquant: int)
+    requires RowLAStaticsS(body, plus_bcv)
+    requires bytecode == CP.compile_to_bytecode(body)
+    requires 0 <= cp <= |str|
+    requires ncap >= 0 && nlook >= 0 && nquant >= 0
+    requires |cap.a_cp| == ncap && |cap.a_clk| == ncap && PIV.CapRegWf(cap)
+    requires |lk.a_cp| == nlook && |lk.a_clk| == nlook && CM.LookCpsLE(lk, |str|)
+    requires |qt.a_cp| == nquant && |qt.a_clk| == nquant
+    requires (forall k :: AI.get_idx(qt.a_cp, k) < 0) && (forall k :: AI.get_idx(qt.a_clk, k) >= -1)
+    ensures var rr := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Forward,
+                                        cp, cap, lk, qt, 0, lookcdn);
+            var r := rr.0;
+            rr.1 == ov
+            && (r.Some? ==>
+                  CM.ThreadRegsWf(r.value, ncap, nlook, nquant)
+                  && CM.RegsAgreeOutside(r.value.capture_regs, cap,
+                                         PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)))
+                  && CM.RegsAgreeOutside(r.value.look_regs, lk, LookIdSet(body))
+                  && CM.RegsAgreeOutside(r.value.look_regs, lk, DirectLidSet(body))   // the tight frame
+                  && CM.LookCpsLE(r.value.look_regs, |str|)
+                  && CM.RegsAgreeOutside(r.value.quant_regs, qt, QIdsOuter(body))
+                  && (forall k :: AI.get_idx(r.value.quant_regs.a_clk, k) >= -1)
+                  && (forall k :: k !in QIdsOuter(body) ==> AI.get_idx(r.value.quant_regs.a_cp, k) < 0))
+    ensures var r := AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, LAnc.Forward, cp, cap, lk, qt, 0, lookcdn).0;
+            var fm := AI.FFindMatch(bytecode, str, AI.FInitState(bytecode, cp, cap, lk, qt, 0, AI.cp_context(cp, str, LAnc.Forward)), ov, LAnc.Forward, lookcdn).0;
+            r.Some? ==> fm.Some? && r.value.look_regs == fm.value.look_regs
+  {
+    reveal RowLAStaticsS();
+    var dir := LAnc.Forward;
+    var ctx := AI.cp_context(cp, str, dir);
+    var inits := AI.FInitState(bytecode, cp, cap, lk, qt, 0, ctx);
+    var th0 := AI.init_thread(cap, lk, qt);
+    assert inits.active == [th0] && inits.blocked == [] && inits.bestmatch.None?;
+    assert {:split_here} true;
+    // well-formedness of the VM winner
+    assert CM.VmRegsWf(inits, ncap, nlook, nquant) by {
+      assert CM.ThreadRegsWf(th0, ncap, nlook, nquant);
+      forall t | t in inits.active ensures CM.ThreadRegsWf(t, ncap, nlook, nquant) {}
+    }
+    FFindMatchRegsWf(bytecode, str, inits, ov, dir, lookcdn, ncap, nlook, nquant);
+    assert {:split_here} true;
+    // the winner is RegsFinalOk on the body's stamp quantifiers (the incoming quant bank is final)
+    NR.CompileToBytecodeRepCdn(body);
+    var endl := CP.compile(body, 0, CP.Progress).1;
+    FRD.TrueStampsInStamp(body, bytecode, endl as nat);
+    var Q := FRD.StampQids(body);
+    assert FV.VmRegsFinalOk(inits, |str|, Q) by {
+      assert FV.RegsFinalOk(th0, |str|, Q);
+      forall t | t in inits.active ensures FV.RegsFinalOk(t, |str|, Q) { assert t == th0; }
+    }
+    FV.FFindMatchRegsFinal(bytecode, str, inits, ov, dir, lookcdn, Q);
+    assert {:split_here} true;
+    // the VM's write frames, its look-cp bound, and the untouched view
+    var Sc := PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body));
+    CaptureBytecodeClassifiedCdnOuter(body);
+    assert CM.VmCapturesAgree(inits, cap, Sc) by {
+      assert CM.RegsAgreeOutside(cap, cap, Sc);
+    }
+    CM.FFindMatchCapWriteFrame(bytecode, str, inits, ov, dir, lookcdn, cap, Sc);
+    LookBytecodeClassifiedCdn(body);
+    assert CM.VmLooksAgree(inits, lk, LookIdSet(body)) by {
+      assert CM.RegsAgreeOutside(lk, lk, LookIdSet(body));
+    }
+    CM.FFindMatchLookFrame(bytecode, str, inits, ov, dir, lookcdn, lk, LookIdSet(body));
+    DirectLidClassifiedCdn(body);
+    assert CM.VmLooksAgree(inits, lk, DirectLidSet(body)) by {
+      assert CM.RegsAgreeOutside(lk, lk, DirectLidSet(body));
+    }
+    CM.FFindMatchLookFrame(bytecode, str, inits, ov, dir, lookcdn, lk, DirectLidSet(body));
+    QuantBytecodeClassifiedCdnOuter(body);
+    assert CM.VmQuantsAgree(inits, qt, QIdsOuter(body)) by {
+      assert th0.quant_regs == qt;
+      assert CM.RegsAgreeOutside(qt, qt, QIdsOuter(body));
+    }
+    CM.FFindMatchQuantFrame(bytecode, str, inits, ov, dir, lookcdn, qt, QIdsOuter(body));
+    assert CM.VmLookCpOk(inits, |str|) by { assert th0.look_regs == lk; }
+    CM.FFindMatchLookCpOk(bytecode, str, inits, ov, dir, lookcdn);
+    NoWriteOracleBodyCodeCdn(body);
+    CM.FFindMatchOvStable(bytecode, str, inits, ov, dir, lookcdn);
+    var (res0, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+    assert ovx == ov;
+    assert {:split_here} true;
+    // the reconstruction (`RowReconAtS` reads the view through `qm.ov` only)
+    if res0.Some? {
+      var th := res0.value;
+      var qm := AR.QMap(map[], map[], ov, map[]);
+      RRA.RowReconAtS(qm, body, plus_bcv, str, th, ncap, nlook, nquant);
+      var rp := AI.FReconstructPlus(th, body, plus_bcv, str, ov, dir);
+      assert RRA.QOuter(body) == QIdsOuter(body);
+      CM.RegsAgreeOutsideTrans(rp.0.capture_regs, th.capture_regs, cap,
+                               PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)));
+      RRA.RowQuantFinalOutside(th, rp.0.quant_regs, qt, QIdsOuter(body));
+      assert AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp, cap, lk, qt, 0, lookcdn)
+          == (Some(rp.0), rp.1);
+    } else {
+      assert AI.FFindMatchPlus(bytecode, body, plus_bcv, str, ov, dir, cp, cap, lk, qt, 0, lookcdn) == (None, ovx);
+    }
+  }
+
   /** (G3b) `ReplayPlusRowLA`'s lookbehind twin: the row replays `compile(reverse_regex(body))` BACKWARD and
       reconstructs with `body` (`FReconstructPlus` is direction-blind). Same conclusions. */
   lemma ReplayPlusRowLB(bytecode: RB.code, str: string, ov: LOr.OracleView, lookcdn: LCdn.cdns,
@@ -4861,8 +4984,10 @@ module LindenElkMain {
     case Re_quant(_, _, _, r1) => LookBodiesPlusGateRE(r1)
     case Re_capture(_, r1) => LookBodiesPlusGateRE(r1)
     case Re_lookaround(_, la, r1) =>   // (G3b) every look kind: CIN-plus bodies look-free;
-      // (G5b) a positive body is CDN-free, a NEGATIVE one may hold a CDN plus (never replayed)
-      (NRC.PositiveLk(la) ==> NRC.NoCdnPlusRE(r1)) && RF.CinBodiesLookFreeRE(r1) && LookBodiesPlusGateRE(r1)
+      // (G5b) a positive LOOKBEHIND body is CDN-free, a NEGATIVE one may hold a CDN plus (never replayed);
+      // (G5b-1) a LOOKAHEAD body may hold one, with every greedy nullable plus body look-free
+      (la.Lookbehind? ==> NRC.NoCdnPlusRE(r1)) && (la.Lookahead? ==> RF.StampBodiesLookFreeRE(r1))
+      && RF.CinBodiesLookFreeRE(r1) && LookBodiesPlusGateRE(r1)
     case _ => true
   }
 
@@ -4911,7 +5036,7 @@ module LindenElkMain {
     case Re_con(r1, r2) => PlusGateFromFull(r1); PlusGateFromFull(r2);
     case Re_quant(_, _, _, r1) => PlusGateFromFull(r1);
     case Re_capture(_, r1) => PlusGateFromFull(r1);
-    case Re_lookaround(_, _, r1) => NoNulledPlusCinFragment(r1); PlusGateFromFull(r1);
+    case Re_lookaround(_, _, r1) => NoNulledPlusCinFragment(r1); RF.CinStampBodiesNoCdn(r1); PlusGateFromFull(r1);
     case _ =>
   }
 
@@ -4926,7 +5051,7 @@ module LindenElkMain {
     case Re_con(r1, r2) => PlusGateFromStrong(r1); PlusGateFromStrong(r2);
     case Re_quant(_, _, _, r1) => PlusGateFromStrong(r1);
     case Re_capture(_, r1) => PlusGateFromStrong(r1);
-    case Re_lookaround(_, _, r1) => NoNulledPlusCinFragment(r1); PlusGateFromFull(r1);
+    case Re_lookaround(_, _, r1) => NoNulledPlusCinFragment(r1); RF.CinStampBodiesNoCdn(r1); PlusGateFromFull(r1);
     case _ =>
   }
 
@@ -4970,7 +5095,8 @@ module LindenElkMain {
     requires LookBodiesPlusGateRE(re) && l in LTB.LookIds(re)
     ensures var b := NI.LookBodyOfRE(re, l);
             LookBodiesPlusGateRE(b) && RF.CinBodiesLookFreeRE(b)
-            && (NRC.PositiveLk(LookKindOfRE(re, l)) ==> NRC.NoCdnPlusRE(b))   // (G5b) per kind
+            && (LookKindOfRE(re, l).Lookbehind? ==> NRC.NoCdnPlusRE(b))   // (G5b, G5b-1) per kind
+            && (LookKindOfRE(re, l).Lookahead? ==> RF.StampBodiesLookFreeRE(b))
     decreases re
   {
     match re
@@ -5006,10 +5132,26 @@ module LindenElkMain {
     ensures body == NI.LookBodyOfRE(re, l) && la == LookKindOfRE(re, l)
     ensures LookBodiesPlusGateRE(body)
     ensures RF.CinBodiesLookFreeRE(body)   // (G3b) every kind
-    ensures NRC.PositiveLk(la) ==> NRC.NoCdnPlusRE(body)   // (G5b) a negative body may hold a CDN plus
+    ensures la.Lookbehind? ==> NRC.NoCdnPlusRE(body)   // (G5b) a negative body may hold a CDN plus
+    ensures la.Lookahead? ==> RF.StampBodiesLookFreeRE(body)   // (G5b-1) so may a lookahead body
   {
     LookKindOfTablesTie(re, crv, l);
     PlusGateBodyRECdn(re, l);
+  }
+
+  /** (G5b-1) The gate is in the scope `NRC.CdnTopRE` (a positive lookbehind body is CDN-free). */
+  lemma GateCdnTop(re: R.regex)
+    requires LookBodiesPlusGateRE(re)
+    ensures NRC.CdnTopRE(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => GateCdnTop(r1); GateCdnTop(r2);
+    case Re_con(r1, r2) => GateCdnTop(r1); GateCdnTop(r2);
+    case Re_quant(_, _, _, r1) => GateCdnTop(r1);
+    case Re_capture(_, r1) => GateCdnTop(r1);
+    case Re_lookaround(_, _, r1) => GateCdnTop(r1);
+    case _ =>
   }
 
   /** (G5a-1 row J) The narrow name, as a corollary of `PlusGateBodyCdn`. */
@@ -5270,7 +5412,10 @@ module LindenElkMain {
     NR.NestedFragmentCdnRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     // (G3b) every positive row replays the plus machine; (G5b) a negative row is never replayed and its
     // body may hold a CDN plus
-    && (NRC.PositiveLk(la) ==> NR.NestedFragmentRE(body) && RowLAStatics(body, crv.f_plus_bc))
+    // (G5b-1) a positive LOOKAHEAD row's body may hold a CDN plus: the S statics; a positive lookbehind
+    // row stays narrow until G5b-2
+    && (NRC.PositiveLk(la) && la.Lookahead? ==> RowLAStaticsS(body, crv.f_plus_bc))
+    && (NRC.PositiveLk(la) && !la.Lookahead? ==> NR.NestedFragmentRE(body) && RowLAStatics(body, crv.f_plus_bc))
     && LTB.LookTablesOk(body, crv)
     && PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)) <= S
     && LookIdSet(body) <= Slook
@@ -5347,7 +5492,7 @@ module LindenElkMain {
           assert CP.capture_regex(la, body) == body;
           assert bytecode == CP.compile_to_bytecode(body);
           assert dir == LAnc.Forward;
-          ReplayPlusRowLA(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body, ncap, nlook, nquant);
+          ReplayPlusRowLAS(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body, ncap, nlook, nquant);
         } else {
           assert CP.capture_regex(la, body) == R.reverse_regex(body);
           assert bytecode == CP.compile_to_bytecode(R.reverse_regex(body));
@@ -5497,7 +5642,7 @@ module LindenElkMain {
           assert bytecode == CP.compile_to_bytecode(body);
           assert dir == LAnc.Forward;
           assert ctxc.nextchar == AI.get_char(str, cp);
-          ReplayPlusRowLA(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body, ncap, nlook, nquant);
+          ReplayPlusRowLAS(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body, ncap, nlook, nquant);
         } else {
           assert CP.capture_regex(la, body) == R.reverse_regex(body);
           assert bytecode == CP.compile_to_bytecode(R.reverse_regex(body));
@@ -6017,7 +6162,7 @@ module LindenElkMain {
           assert CP.capture_regex(la, body) == body;
           assert bytecode == CP.compile_to_bytecode(body);
           assert dir == LAnc.Forward;
-          ReplayPlusRowLA(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body, ncap, nlook, nquant);
+          ReplayPlusRowLAS(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body, ncap, nlook, nquant);
           ReplayAgreePlusFresh(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body,
                                PIV.CaptureRegs(body), {}, ncap, nlook, nquant);
           assert rfLid == AI.FFindMatchPlus(bytecode, body, crv.f_plus_bc, str, ov, LAnc.Forward, cp,
@@ -6506,7 +6651,7 @@ module LindenElkMain {
           }
           assert {:split_here} true;
           if la.Lookahead? {
-            ReplayPlusRowLA(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body, ncap, nlook, nquant);
+            ReplayPlusRowLAS(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body, ncap, nlook, nquant);
             assert CM.RegsAgreeInside(cap, AReg.init_regs(ncap), {});
             ReplayAgreePlusFresh(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body,
                                  {}, DirectLidSet(body), ncap, nlook, nquant);
@@ -6655,7 +6800,9 @@ module LindenElkMain {
                 assert (l2 as nat) in DirectLookIds(body);
                 assert lid < l1;                                          // l1 >= next
                 assert DirectLookIds(body) * LTB.LookIds(b1) == {};       // (g_new) with (lid, l1)
-                assert (l2 as nat) !in LTB.LookIds(b1);
+                assert (l2 as nat) !in LTB.LookIds(b1) by {
+                  if (l2 as nat) in LTB.LookIds(b1) { assert (l2 as nat) in DirectLookIds(body) * LTB.LookIds(b1); }
+                }
                 if l2 in LookIdSet(b1) {
                   var q: nat :| q in LTB.LookIds(b1) && (q as int) == l2;
                   assert q == l2 as nat;
@@ -6684,7 +6831,7 @@ module LindenElkMain {
                 ensures AI.get_idx(nqtC.a_cp, k) == AI.get_idx(AReg.init_regs(nquant).a_cp, k)
                         && AI.get_idx(nqtC.a_clk, k) == AI.get_idx(AReg.init_regs(nquant).a_clk, k)
               {
-                assert k !in D;
+                assert k !in D by { if k in D { assert k in D * LKC.QIdsInt(body2); } }
               }
             }
           }
@@ -6821,8 +6968,12 @@ module LindenElkMain {
         assert looktype == la;
         assert FrameEntryOk(crv, la, body, S, Slook);
         assert la.Lookahead? || la.Lookbehind?;            // (L5 F7c-2) capture_type; per-kind dispatch below
-        assert NRC.PositiveLk(la);                         // (G5b) a replayed row is positive: its narrow statics
-        assert NR.NestedFragmentRE(body) && RowLAStatics(body, crv.f_plus_bc);
+        assert NRC.PositiveLk(la);                         // (G5b) a replayed row is positive: its row statics
+        if la.Lookahead? {                                 // (G5b-1) S at a lookahead row
+          assert RowLAStaticsS(body, crv.f_plus_bc);
+        } else {
+          assert NR.NestedFragmentRE(body) && RowLAStatics(body, crv.f_plus_bc);
+        }
         assert {:split_here} true;
         var bytecode := AI.get_code_v(crv.f_look_capture_bc, lid);
         var dir := AI.capture_direction(looktype);
@@ -6847,7 +6998,7 @@ module LindenElkMain {
           assert bytecode == CP.compile_to_bytecode(body);
           assert dir == LAnc.Forward;
           assert ctxc.nextchar == AI.get_char(str, cp);
-          ReplayPlusRowLA(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body, ncap, nlook, nquant);
+          ReplayPlusRowLAS(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body, ncap, nlook, nquant);
         } else {
           assert CP.capture_regex(la, body) == R.reverse_regex(body);
           assert bytecode == CP.compile_to_bytecode(R.reverse_regex(body));
@@ -6893,12 +7044,14 @@ module LindenElkMain {
           assert inits.active == [AI.init_thread(cap, lk, qt)];
         }
         var (fmres, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
+        assert {:split_here} true;   // (G5b-1) the section loops as one batch (each obligation alone < 60 s)
         if la.Lookahead? {
           CM.FFindMatchLookCpSet(bytecode, str, inits, ov, dir, lookcdn);
         } else {
           CM.FFindMatchLookCpSetB(bytecode, str, inits, ov, dir, lookcdn);
           // (G3b) the plus winner keeps the VM winner's look bank (`ReplayPlusRowLB`)
         }
+        assert {:split_here} true;
         assert CM.LookCpSetWithClk(nlk) by {
           if result.Some? { assert fmres.Some? && nlk == fmres.value.look_regs; } else { assert nlk == lk; }
         }
@@ -6986,7 +7139,7 @@ module LindenElkMain {
           assert bytecode == CP.compile_to_bytecode(body);
           assert dir == LAnc.Forward;
           assert ctxc.nextchar == AI.get_char(str, cp);
-          ReplayPlusRowLA(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body, ncap, nlook, nquant);
+          ReplayPlusRowLAS(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body, ncap, nlook, nquant);
         } else {
           assert CP.capture_regex(la, body) == R.reverse_regex(body);
           assert bytecode == CP.compile_to_bytecode(R.reverse_regex(body));
@@ -7034,8 +7187,8 @@ module LindenElkMain {
         }
         var (fmres, ovx) := AI.FFindMatch(bytecode, str, inits, ov, dir, lookcdn);
         if la.Lookahead? {
-          reveal RowLAStatics();
-          NoWriteOracleBodyCodeNested(body);
+          reveal RowLAStaticsS();
+          NoWriteOracleBodyCodeCdn(body);
           CM.FFindMatchLookOracleTrue(bytecode, str, inits, ov, dir, lookcdn);
         } else {
           ReverseNestedPackage(body);
@@ -7277,7 +7430,7 @@ module LindenElkMain {
           assert CP.capture_regex(la, body) == body;
           assert bytecode == CP.compile_to_bytecode(body);
           assert dir == LAnc.Forward;
-          ReplayPlusRowLA(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body, ncap, nlook, nquant);
+          ReplayPlusRowLAS(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body, ncap, nlook, nquant);
           assert {:split_here} true;
           ReplayAgreePlusFresh(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, {}, {},
                                ncap, nlook, nquant);
@@ -7382,7 +7535,9 @@ module LindenElkMain {
               assert (l2 as nat) in DirectLookIds(body);
               assert lid < l1;                                          // l1 >= next
               assert DirectLookIds(body) * LTB.LookIds(b1) == {};       // (g_new) with (lid, l1)
-              assert (l2 as nat) !in LTB.LookIds(b1);
+              assert (l2 as nat) !in LTB.LookIds(b1) by {
+                if (l2 as nat) in LTB.LookIds(b1) { assert (l2 as nat) in DirectLookIds(body) * LTB.LookIds(b1); }
+              }
               if l2 in LookIdSet(b1) {
                 var q: nat :| q in LTB.LookIds(b1) && (q as int) == l2;
                 assert q == l2 as nat;
@@ -7966,13 +8121,22 @@ module LindenElkMain {
     NI.LookBodyOfFragmentCdn(re, lid);   // the body is in the Cdn fragment
     if NRC.PositiveLk(la) {
       // (G5a-1 P5b) the top may hold a CDN plus (`NestedNoCdn(ast)` is false then): the widened table of
-      // the whole regex, and bridge 1 at this look body, which is narrow ((G5b) Cdn + the gate's
-      // NoCdnPlusRE, at a positive look only)
+      // the whole regex
       FRD.PlusTableOkFullS(ast);
-      NRC.CdnNoCdnIsNarrow(body');
-      FRA.PlusTableOkSLookBody(re, crv.f_plus_bc, lid);
-      reveal RowLAStatics();
-      assert RowLAStatics(body, crv.f_plus_bc);
+      if la.Lookahead? {
+        // (G5b-1) a lookahead body may hold a CDN plus: the S statics, the widened table at the body
+        TransWfLookBodyOfRE(re, lid);
+        FRA.PlusTableOkSLookBodyS(re, crv.f_plus_bc, lid);
+        GateCdnTop(body);
+        reveal RowLAStaticsS();
+        assert RowLAStaticsS(body, crv.f_plus_bc);
+      } else {
+        // a lookbehind body is narrow ((G5b) Cdn + the gate's NoCdnPlusRE): bridge 1 at this look body
+        NRC.CdnNoCdnIsNarrow(body');
+        FRA.PlusTableOkSLookBody(re, crv.f_plus_bc, lid);
+        reveal RowLAStatics();
+        assert RowLAStatics(body, crv.f_plus_bc);
+      }
     }
   }
 

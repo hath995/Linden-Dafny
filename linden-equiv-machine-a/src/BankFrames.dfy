@@ -64,6 +64,39 @@ module LindenElkBankFrames {
     }
   }
 
+  // (G5b-1) Restored from `a8adac7^`, on `RF.StampBodiesLookFreeRE`.
+  lemma AncFrameS(re: R.regex, Q: set<int>, a: AI.Thread, b: AI.Thread, lid: nat)
+    requires lid in LTB.LookIds(re)
+    requires RF.StampBodiesLookFreeRE(re) && PIV.CapUnique(re) && PIV.QuantUnique(re) && RF.QInStamp(re, Q)
+    requires ClkFrame(re, Q, a, b)
+    ensures forall mx :: NI.LookPathPresent(re, a.capture_regs.a_clk, a.quant_regs.a_clk, mx, lid)
+                         == NI.LookPathPresent(re, b.capture_regs.a_clk, b.quant_regs.a_clk, mx, lid)
+    ensures forall mx :: NI.MxAtLidLk(re, a.quant_regs.a_clk, mx, lid) == NI.MxAtLidLk(re, b.quant_regs.a_clk, mx, lid)
+    ensures forall L :: NI.LookPathDom(re, L, a.quant_regs.a_clk, lid) == NI.LookPathDom(re, L, b.quant_regs.a_clk, lid)
+  {
+    CLP.AncAvoidQS(re, Q, lid);
+    var cc1 := a.capture_regs.a_clk;
+    var cc2 := b.capture_regs.a_clk;
+    var qc1 := a.quant_regs.a_clk;
+    var qc2 := b.quant_regs.a_clk;
+    assert forall k :: k in CLP.AncCapRegs(re, lid) ==> AI.get_idx(cc1, k) == AI.get_idx(cc2, k) by {
+      forall k | k in CLP.AncCapRegs(re, lid) ensures AI.get_idx(cc1, k) == AI.get_idx(cc2, k) {
+        if k in RF.CapsQ(re, Q) { assert k in CLP.AncCapRegs(re, lid) * RF.CapsQ(re, Q); }
+      }
+    }
+    assert forall k :: k in CLP.AncQuants(re, lid) ==> AI.get_idx(qc1, k) == AI.get_idx(qc2, k) by {
+      forall k | k in CLP.AncQuants(re, lid) ensures AI.get_idx(qc1, k) == AI.get_idx(qc2, k) {
+        if k in RF.QuantsQ(re, Q) { assert k in CLP.AncQuants(re, lid) * RF.QuantsQ(re, Q); }
+      }
+    }
+    forall mx ensures NI.LookPathPresent(re, cc1, qc1, mx, lid) == NI.LookPathPresent(re, cc2, qc2, mx, lid)
+                      && NI.MxAtLidLk(re, qc1, mx, lid) == NI.MxAtLidLk(re, qc2, mx, lid) {
+      CLP.LookPathFrame(re, cc1, qc1, cc2, qc2, mx, lid);
+    }
+    forall L ensures NI.LookPathDom(re, L, qc1, lid) == NI.LookPathDom(re, L, qc2, lid) {
+      CLP.LookPathDomFrame(re, L, qc1, qc2, lid);
+    }
+  }
   // (G5a-1 P5, row L) Bridge 3 on `StampQids`. (G5a-2a) `AncFrameS` is gone: the top uses `CL.AncFrameG4`.
   lemma QInStampQ(re: R.regex)
     ensures RF.QInStamp(re, FRD.StampQids(re))

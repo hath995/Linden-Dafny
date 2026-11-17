@@ -50,8 +50,81 @@ module LindenElkCinLooks {
       (q.min != 0 && q.max == None && nul != R.NonNullable && q.greedy ==> PIV.CapIdsInLooks(body) == {})
       && CinLooksCapFreeRE(body)
     case Re_capture(_, r1) => CinLooksCapFreeRE(r1)
-    case Re_lookaround(_, _, r1) => RF.CinBodiesLookFreeRE(r1)
+    // (G5b-1) a lookahead body (any depth) may hold a greedy CDN plus, whose body is look-free like a CIN one's
+    case Re_lookaround(_, la, r1) =>
+      RF.CinBodiesLookFreeRE(r1) && (la.Lookahead? ==> RF.StampBodiesLookFreeRE(r1)) && LookStampOkRE(r1)
     case _ => true
+  }
+
+  /** (G5b-1) At every lookahead node, every greedy nullable plus body (CIN or CDN) is look-free. */
+  ghost predicate LookStampOkRE(re: R.regex)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => LookStampOkRE(r1) && LookStampOkRE(r2)
+    case Re_con(r1, r2) => LookStampOkRE(r1) && LookStampOkRE(r2)
+    case Re_quant(_, _, _, r1) => LookStampOkRE(r1)
+    case Re_capture(_, r1) => LookStampOkRE(r1)
+    case Re_lookaround(_, la, r1) => (la.Lookahead? ==> RF.StampBodiesLookFreeRE(r1)) && LookStampOkRE(r1)
+    case _ => true
+  }
+
+  /** (G5b-1) `RF.StampBodiesLookFreeRE`, compiled. */
+  predicate StampBodiesLookFreeX(re: R.regex)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => StampBodiesLookFreeX(r1) && StampBodiesLookFreeX(r2)
+    case Re_con(r1, r2) => StampBodiesLookFreeX(r1) && StampBodiesLookFreeX(r2)
+    case Re_quant(nul, qid, q, body) =>
+      (q.min != 0 && q.max == None && nul != R.NonNullable && q.greedy ==> NR.LookFreeRE(body))
+      && StampBodiesLookFreeX(body)
+    case Re_capture(_, r1) => StampBodiesLookFreeX(r1)
+    case Re_lookaround(_, _, r1) => StampBodiesLookFreeX(r1)
+    case _ => true
+  }
+
+  lemma StampBodiesLookFreeXSound(re: R.regex)
+    requires StampBodiesLookFreeX(re)
+    ensures RF.StampBodiesLookFreeRE(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => StampBodiesLookFreeXSound(r1); StampBodiesLookFreeXSound(r2);
+    case Re_con(r1, r2) => StampBodiesLookFreeXSound(r1); StampBodiesLookFreeXSound(r2);
+    case Re_quant(_, _, _, r1) => StampBodiesLookFreeXSound(r1);
+    case Re_capture(_, r1) => StampBodiesLookFreeXSound(r1);
+    case Re_lookaround(_, _, r1) => StampBodiesLookFreeXSound(r1);
+    case _ =>
+  }
+
+  /** (G5b-1) `LookStampOkRE`, compiled. */
+  predicate LookStampOkX(re: R.regex)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => LookStampOkX(r1) && LookStampOkX(r2)
+    case Re_con(r1, r2) => LookStampOkX(r1) && LookStampOkX(r2)
+    case Re_quant(_, _, _, r1) => LookStampOkX(r1)
+    case Re_capture(_, r1) => LookStampOkX(r1)
+    case Re_lookaround(_, la, r1) => (la.Lookahead? ==> StampBodiesLookFreeX(r1)) && LookStampOkX(r1)
+    case _ => true
+  }
+
+  lemma LookStampOkXSound(re: R.regex)
+    requires LookStampOkX(re)
+    ensures LookStampOkRE(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => LookStampOkXSound(r1); LookStampOkXSound(r2);
+    case Re_con(r1, r2) => LookStampOkXSound(r1); LookStampOkXSound(r2);
+    case Re_quant(_, _, _, r1) => LookStampOkXSound(r1);
+    case Re_capture(_, r1) => LookStampOkXSound(r1);
+    case Re_lookaround(_, la, r1) =>
+      if la.Lookahead? { StampBodiesLookFreeXSound(r1); }
+      LookStampOkXSound(r1);
+    case _ =>
   }
 
   /** Every lookaround body of `r` is capture-free (executable). */
@@ -134,7 +207,8 @@ module LindenElkCinLooks {
       (q.min != 0 && q.max == None && nul != R.NonNullable && q.greedy ==> LooksCapFreeX(body))
       && CinLooksCapFreeX(body)
     case Re_capture(_, r1) => CinLooksCapFreeX(r1)
-    case Re_lookaround(_, _, r1) => CinBodiesLookFreeX(r1)
+    case Re_lookaround(_, la, r1) =>
+      CinBodiesLookFreeX(r1) && (la.Lookahead? ==> StampBodiesLookFreeX(r1)) && LookStampOkX(r1)
     case _ => true
   }
 
@@ -150,7 +224,9 @@ module LindenElkCinLooks {
       CinLooksCapFreeXSound(body);
       if q.min != 0 && q.max == None && nul != R.NonNullable && q.greedy { LooksCapFreeXSound(body); }
     case Re_capture(_, r1) => CinLooksCapFreeXSound(r1);
-    case Re_lookaround(_, _, r1) => CinBodiesLookFreeXSound(r1);
+    case Re_lookaround(_, la, r1) =>
+      CinBodiesLookFreeXSound(r1); LookStampOkXSound(r1);
+      if la.Lookahead? { StampBodiesLookFreeXSound(r1); }
     case _ =>
   }
 

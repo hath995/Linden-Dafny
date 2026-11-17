@@ -506,29 +506,8 @@ module LindenElkMainCinLk {
   }
 
 
-  /** (G5a-1 row N) What `GateStaticsFromTablesCdn` takes of the plus table: the narrow table at every look
-      node. From the widened table of the whole regex, since a look node of a regex in scope holds no CDN plus. */
-  lemma LookNodesPlusOkFromS(re: R.regex, bc: seq<RB.code>)
-    requires PIV.QuantUnique(re) && NRR.PlusTableOkS(re, bc) && NRC.CdnTopRE(re)
-    ensures LookNodesPlusOk(re, bc)
-    decreases re
-  {
-    NRR.PlusTableOkSChildren(re, bc);
-    NRC.CdnTopChild(re);
-    match re
-    case Re_alt(r1, r2) => LookNodesPlusOkFromS(r1, bc); LookNodesPlusOkFromS(r2, bc);
-    case Re_con(r1, r2) => LookNodesPlusOkFromS(r1, bc); LookNodesPlusOkFromS(r2, bc);
-    case Re_quant(_, _, _, r1) => LookNodesPlusOkFromS(r1, bc);
-    case Re_capture(_, r1) => LookNodesPlusOkFromS(r1, bc);
-    case Re_lookaround(_, la, r1) =>
-      if NRC.PositiveLk(la) {
-        assert NRC.NoCdnPlusRE(re);          // CdnTopRE's look arm: a positive body holds no CDN plus
-        NRR.PlusTableOkSNarrow(re, bc);
-      } else {
-        LookNodesPlusOkFromS(r1, bc);        // (G5b) a negative body may hold one: its inner look nodes
-      }
-    case _ =>
-  }
+  // (G5b-1) `LookNodesPlusOkFromS` moved down to lift-sim-oracle (the band's lookahead hosts read it).
+
 
   /** `LSC.MainExtractionL5` under the look-bodies gate. */
   lemma MainExtractionL5Lk(raw: R.raw_regex, str: string,
@@ -1205,8 +1184,9 @@ module LindenElkMainCinLk {
     case Re_alt(r1, r2) => CdnTopX(r1) && CdnTopX(r2)
     case Re_con(r1, r2) => CdnTopX(r1) && CdnTopX(r2)
     case Re_capture(_, r1) => CdnTopX(r1)
-    // (G5b) a NEGATIVE look body may hold a CDN plus; a positive one stays CDN-free
-    case Re_lookaround(_, la, r1) => ((la.Lookahead? || la.Lookbehind?) ==> NoCdnPlusX(r1)) && CdnTopX(r1)
+    // (G5b) a NEGATIVE look body may hold a CDN plus; (G5b-1) so may a lookahead body; a positive
+    // lookbehind body stays CDN-free (G5b-2)
+    case Re_lookaround(_, la, r1) => (la.Lookbehind? ==> NoCdnPlusX(r1)) && CdnTopX(r1)
     case Re_quant(_, _, _, r1) => CdnTopX(r1)
     case _ => true
   }
@@ -1220,7 +1200,7 @@ module LindenElkMainCinLk {
     case Re_alt(r1, r2) => CdnTopXSound(r1); CdnTopXSound(r2);
     case Re_con(r1, r2) => CdnTopXSound(r1); CdnTopXSound(r2);
     case Re_capture(_, r1) => CdnTopXSound(r1);
-    case Re_lookaround(_, _, r1) => NoCdnPlusXSound(r1); CdnTopXSound(r1);
+    case Re_lookaround(_, la, r1) => if la.Lookbehind? { NoCdnPlusXSound(r1); } CdnTopXSound(r1);
     case Re_quant(_, _, _, r1) => CdnTopXSound(r1);
     case _ =>
   }

@@ -991,7 +991,7 @@ module LindenElkLiftSimForward {
     assert host == M.VBody(crv, A as int);
     var endlH: nat := |bodycode| - 1;
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    assert PSM.StaticCoreNestedRE(qm, host, bodycode, endlH);
+    assert PSM.StaticCoreCdnRE(qm, host, bodycode, endlH);   // (G5b-1) a lookahead host may hold a greedy CDN plus
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert crv.f_look_types[A as int] == laA;
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -1018,9 +1018,9 @@ module LindenElkLiftSimForward {
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert AR.LmapOk(host, qmB) by { LmapOkRestrict(host, qm, qmB); }
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    assert PSM.StaticCoreNestedRE(qmB, host, bodycode, endlH) by {
+    assert PSM.StaticCoreCdnRE(qmB, host, bodycode, endlH) by {
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert PSM.StaticCoreNestedRE(qm, host, bodycode, endlH);
+      assert PSM.StaticCoreCdnRE(qm, host, bodycode, endlH);   // (G5b-1) a lookahead host may hold a greedy CDN plus
     }
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert LL.OracleOkSuffix(rer, qmB, inpA) by {
@@ -1033,8 +1033,8 @@ module LindenElkLiftSimForward {
     assert GateStaticsOkNested(qmB, host, crv, ncap, nlook, nquant) by {
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      RowPlusFacts(host, crv.f_plus_bc, nlook);   // (G3a)
-      GateStaticsFromTablesNested(qmB, host, crv, ncap, nlook, nquant);
+      RowPlusFactsS(host, crv.f_plus_bc, nlook);   // (G3a)
+      GateStaticsFromTablesCdn(qmB, host, crv, ncap, nlook, nquant);
     }
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert OE.OracleColsOk(rer, qmB, str) by {                         // (L5 F7d)
@@ -1056,7 +1056,7 @@ module LindenElkLiftSimForward {
         && (rfP.Some? ==> CM.LookClkSetWithCp(rfP.value.look_regs) && CM.LookCpSetWithClk(rfP.value.look_regs)
                           && CM.LookCpsLE(rfP.value.look_regs, |str|)) by {
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      LookNestBackTFromBodyReplay(rer, qmB, laA, host, bodycode, endlH, 0, crv, str, cpA, ov,
+      LookNestBackTFromBodyReplayS(rer, qmB, laA, host, bodycode, endlH, 0, crv, str, cpA, ov,
                                   cdnA, crv.f_plus_bc, ncap, nlook, nquant);
     }
     // the leaf exists (hypothesis) — unfold SubFirstLeafAt to FirstLeaf(t)
@@ -1093,7 +1093,7 @@ module LindenElkLiftSimForward {
                              ov, LAnc.Forward, cdnA).0;
     assert {:split_here} true;
     assert rfV.Some? && rfA.look_regs == rfV.value.look_regs by {   // the carrier's instance, scoped
-      LookNestBackTFromBodyReplay(rer, qmB, laA, host, bodycode, endlH, 0, crv, str, cpA, ov,
+      LookNestBackTFromBodyReplayS(rer, qmB, laA, host, bodycode, endlH, 0, crv, str, cpA, ov,
                                   cdnA, crv.f_plus_bc, ncap, nlook, nquant);
       reveal TM.WinnerLookKept();
     }
@@ -1141,14 +1141,14 @@ module LindenElkLiftSimForward {
            && AI.get_idx(rfA.look_regs.a_clk, A1 as int)
               >= NI.MxAtLidLk(host, rfA.quant_regs.a_clk, -1, A1) by {
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      LookNestBackTFromBodyReplay(rer, qmB, laA, host, bodycode, endlH, 0, crv, str, cpA, ov,
+      LookNestBackTFromBodyReplayS(rer, qmB, laA, host, bodycode, endlH, 0, crv, str, cpA, ov,
                                   cdnA, crv.f_plus_bc, ncap, nlook, nquant);
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert LookNestOkTTop(host, Sh, gmtH, rfA);
     }
     var L1 := AI.get_idx(rfA.look_regs.a_clk, A1 as int);
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    NI.LookPathDomIntroTop(host, rfA.capture_regs.a_clk, rfA.quant_regs.a_clk, -1, A1, L1);
+    NI.LookPathDomIntroTopCdn(host, rfA.capture_regs.a_clk, rfA.quant_regs.a_clk, -1, A1, L1);
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert NI.LookPathDom(host, L1, rfA.quant_regs.a_clk, A1);
     // A1 matched on rf_A (forward invariant: clk set => cp set on the fresh run)
@@ -1186,7 +1186,7 @@ module LindenElkLiftSimForward {
       }
     }
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    M.NoWriteOracleBodyCodeNested(host);
+    M.NoWriteOracleBodyCodeCdn(host);
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert ctxF.nextchar == AI.get_char(str, cpA);
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -1259,7 +1259,7 @@ module LindenElkLiftSimForward {
       assert {:split_here} true;   // (E3) block-2 sub-batch (heavy obligation)
     assert g in lsub1rf.value && gmtH[g] == lsub1rf.value[g] by {   // the deep carrier's instance at A1, scoped
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      LookNestBackTFromBodyReplay(rer, qmB, laA, host, bodycode, endlH, 0, crv, str, cpA, ov,
+      LookNestBackTFromBodyReplayS(rer, qmB, laA, host, bodycode, endlH, 0, crv, str, cpA, ov,
                                   cdnA, crv.f_plus_bc, ncap, nlook, nquant);
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert LookNestBackTTopDeep(rer, host, crv, str, ov, Sh, gmtH, rfA, ncap, nlook, nquant);
@@ -1348,14 +1348,14 @@ module LindenElkLiftSimForward {
       }
     }
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    NI.LookPathPresentAgreeTop(host, rfA.capture_regs.a_clk, rfA.quant_regs.a_clk,
+    NI.LookPathPresentAgreeTopCdn(host, rfA.capture_regs.a_clk, rfA.quant_regs.a_clk,
                                res0.a_clk, res2.a_clk, -1, A1);
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert NI.LookPathPresent(host, res0.a_clk, res2.a_clk, -1, A1);
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert NI.MxAtLidLk(host, res2.a_clk, -1, A1) == NI.MxAtLidLk(host, rfA.quant_regs.a_clk, -1, A1);
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    NI.LookPathPresentLkFromPresentTop(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, A1);
+    NI.LookPathPresentLkFromPresentTopCdn(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, A1);
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert NI.LookPathPresentLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, A1);
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -1373,7 +1373,7 @@ module LindenElkLiftSimForward {
       assert L1 >= NI.MxAtLidLk(host, rfA.quant_regs.a_clk, -1, A1);
     }
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-    NI.LookPathComposeNested(host, bodyA1, res0.a_clk, res1.a_clk, res2.a_clk, -1, A1, g);
+    NI.LookPathComposeCdn(host, bodyA1, res0.a_clk, res1.a_clk, res2.a_clk, -1, A1, g);
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
     assert PIV.PathPresentLk(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, g);
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -1505,7 +1505,7 @@ module LindenElkLiftSimForward {
     assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
     assert host == M.VBody(crv, A as int);
     var endlH: nat := |bodycode| - 1;
-    assert PSM.StaticCoreNestedRE(qm, host, bodycode, endlH);
+    assert PSM.StaticCoreCdnRE(qm, host, bodycode, endlH);   // (G5b-1) any kind
     assert crv.f_look_types[A as int] == laA;
     assert (laA.Lookahead? || laA.Lookbehind?) by {
       assert AI.capture_type(crv.f_look_types[A as int]);        // MatchedPosLA

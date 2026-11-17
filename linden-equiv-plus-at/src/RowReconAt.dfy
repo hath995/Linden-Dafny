@@ -5,6 +5,7 @@
 module LindenElkRowReconAt {
   import opened Std.Wrappers
   import R = RegElkRegex
+  import T = LindenElkTranslate
   import RB = Bytecode
   import CP = Compiler
   import AI = ArrayInterp
@@ -106,6 +107,94 @@ module LindenElkRowReconAt {
     assert RF.QInCin(body, Q);
     RF.LooksQEmpty(body, Q);
     CLP.QsOutside(body, Q);
+    assert {:split_here} true;
+    assert rp.0.look_regs == th.look_regs by {
+      var a := rp.0.look_regs; var b := th.look_regs;
+      assert |a.a_cp| == |b.a_cp| && |a.a_clk| == |b.a_clk|;
+      forall i | 0 <= i < |a.a_cp| ensures a.a_cp[i] == b.a_cp[i] {
+        assert i !in RF.LooksQ(body, Q);
+        assert AI.get_idx(a.a_cp, i) == AI.get_idx(b.a_cp, i);
+      }
+      forall i | 0 <= i < |a.a_clk| ensures a.a_clk[i] == b.a_clk[i] {
+        assert i !in RF.LooksQ(body, Q);
+        assert AI.get_idx(a.a_clk, i) == AI.get_idx(b.a_clk, i);
+      }
+      assert a.a_cp == b.a_cp && a.a_clk == b.a_clk;
+    }
+    assert CM.RegsAgreeOutside(rp.0.quant_regs, th.quant_regs, QOuter(body)) by {
+      forall k: int | k !in QOuter(body)
+        ensures AI.get_idx(rp.0.quant_regs.a_cp, k) == AI.get_idx(th.quant_regs.a_cp, k)
+                && AI.get_idx(rp.0.quant_regs.a_clk, k) == AI.get_idx(th.quant_regs.a_clk, k)
+      {
+        if k in RF.QuantsQ(body, Q) {
+          assert k >= 0 && (k as nat) in PIV.QuantIdsOutsideLooks(body);
+          assert k in QOuter(body);
+        }
+      }
+    }
+  }
+
+  /** (G5b-1) `ReadoutBankLite` on the S forms: the row body may hold a greedy CDN plus. */
+  lemma ReadoutBankLiteS(qm: AR.QMap, re: R.regex, plus: seq<RB.code>, str: string, th: AI.Thread,
+                         ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(re) && PIV.CapUnique(re) && PIV.QuantUnique(re) && NRC.CdnTopRE(re)
+    requires NRR.PlusTableOkS(re, plus)
+    requires var rg: NRC.Regs3 := (th.capture_regs, th.look_regs, th.quant_regs);
+             FRA.StampsFinalAtS(re, rg, |str|) && NRR.CapValWf(rg) && FRG.QClkGe(rg)
+    requires CM.ThreadRegsWf(th, ncap, nlook, nquant)
+    ensures var rg: NRC.Regs3 := (th.capture_regs, th.look_regs, th.quant_regs);
+            var rp := AI.FReconstructPlus(th, re, plus, str, qm.ov, LAnc.Forward);
+            rp.1 == qm.ov && rp.0.pc == th.pc && rp.0.exit_allowed == th.exit_allowed
+            && (rp.0.capture_regs, rp.0.look_regs, rp.0.quant_regs) == NRO.FP(re, rg, plus, str, qm.ov)
+            && CM.ThreadRegsWf(rp.0, ncap, nlook, nquant)
+            && (forall k: int :: AI.get_idx(rp.0.quant_regs.a_clk, k) >= -1)
+  {
+    var rg: NRC.Regs3 := (th.capture_regs, th.look_regs, th.quant_regs);
+    assert NRR.WfRegs(rg);
+    assert NRO.StampsInRangeS(re, rg, str);
+    assert FRG.CapValGe(rg) by {
+      forall k: int ensures AI.get_idx(rg.0.a_cp, k) >= -1 { assert PIV.CapRegWf(rg.0); }
+    }
+    NRO.FNulledPlusFrameS(qm, re, rg, plus, str, qm.ov);
+    FRG.FPValGeS(qm, re, rg, plus, str, qm.ov);
+    var rg2 := NRO.FP(re, rg, plus, str, qm.ov);
+    var rp := AI.FReconstructPlus(th, re, plus, str, qm.ov, LAnc.Forward);
+    assert (rp.0.capture_regs, rp.0.look_regs, rp.0.quant_regs) == rg2;
+    assert FRG.QClkGe(rg2);
+    assert PIV.CapRegWf(rp.0.capture_regs) by {
+      assert NRR.WfRegs(rg2) && NRR.CapValWf(rg2) && FRG.CapValGe(rg2);
+    }
+    assert NRR.Sized3(rg2, rg);
+  }
+
+  /** (G5b-1) THE ROW PACKAGE on the S forms: a lookahead row whose body may hold a greedy CDN plus
+      (stamped pluses `StampQids`; every stamp body look-free, `RF.StampBodiesLookFreeRE`). */
+  lemma RowReconAtS(qm: AR.QMap, body: R.regex, plus: seq<RB.code>, str: string, th: AI.Thread,
+                    ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
+    requires NRC.CdnTopRE(body) && RF.StampBodiesLookFreeRE(body)
+    requires NRR.PlusTableOkS(body, plus)
+    requires FV.RegsFinalOk(th, |str|, FRD.StampQids(body))
+    requires CM.ThreadRegsWf(th, ncap, nlook, nquant)
+    ensures var rp := AI.FReconstructPlus(th, body, plus, str, qm.ov, LAnc.Forward);
+            rp.1 == qm.ov && rp.0.pc == th.pc && rp.0.exit_allowed == th.exit_allowed
+            && CM.ThreadRegsWf(rp.0, ncap, nlook, nquant)
+            && (forall k: int :: AI.get_idx(rp.0.quant_regs.a_clk, k) >= -1)
+            && CM.RegsAgreeOutside(rp.0.capture_regs, th.capture_regs,
+                                   PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)))
+            && rp.0.look_regs == th.look_regs
+            && CM.RegsAgreeOutside(rp.0.quant_regs, th.quant_regs, QOuter(body))
+  {
+    var rg: NRC.Regs3 := (th.capture_regs, th.look_regs, th.quant_regs);
+    var Q := FRD.StampQids(body);
+    var rp := AI.FReconstructPlus(th, body, plus, str, qm.ov, LAnc.Forward);
+    FRA.StampsFinalAtSFromRegsFinalOk(body, th, |str|);
+    assert NRR.CapValWf(rg) && FRG.QClkGe(rg) && NRR.WfRegs(rg);
+    ReadoutBankLiteS(qm, body, plus, str, th, ncap, nlook, nquant);
+    FRA.FinalReadoutFrameAtStamp(qm, body, plus, str, th);
+    assert RF.QInStamp(body, Q);
+    RF.LooksQEmptyS(body, Q);
+    CLP.QsOutsideS(body, Q);
     assert {:split_here} true;
     assert rp.0.look_regs == th.look_regs by {
       var a := rp.0.look_regs; var b := th.look_regs;

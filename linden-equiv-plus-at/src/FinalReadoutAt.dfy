@@ -36,6 +36,7 @@ module LindenElkFinalReadoutAt {
   import FRD = LindenElkFinalReadout
   import RF = LindenElkReconFrame
   import CM = LindenElkClockMono
+  import TR = LindenElkTreeRep   // (G5b-1) FirstEmptyPathR in StampsLocalS
 
   /** The local half of `FV.RegsFinalOk`: every stamped quantifier OF `re` is a
       CIN-greedy plus of `re`, stamped inside the string. */
@@ -294,6 +295,187 @@ module LindenElkFinalReadoutAt {
     {
       assert (q as int) in FRD.CinQids(re);
       var qn: nat :| qn in PIV.QuantIds(re) && NRR.QidCinPlus(re, qn) && qn as int == q as int;
+      assert qn == q;
+    }
+  }
+
+  // ===========================================================================
+  // (G5b-1) THE S FORMS: a row body that may hold a greedy CDN plus. The scope is `NRC.CdnTopRE`, the
+  // stamped pluses are `NRR.QidStampPlus` (CIN or CDN), and a CDN stamp is reconstructed where its body has
+  // an empty path, which the simulation carries (`PSM.StampPathOk`, ensured by `PSM.FindMatchSimRECdn`).
+  // The twins of the lemmas above over nulled-recon's S readout (as `FRD.FinalReadoutS` at the top).
+  // ===========================================================================
+
+  ghost predicate StampsFinalAtS(re: R.regex, rg: NRC.Regs3, ub: int) {
+    forall q: nat :: q in PIV.QuantIds(re) && AI.get_idx(rg.2.a_cp, q) >= 0 ==>
+      AI.get_idx(rg.2.a_cp, q) <= ub && NRR.QidStampPlus(re, q)
+  }
+
+  ghost predicate ReadoutPreS(qm: AR.QMap, re: R.regex, plus: seq<RB.code>, str: string, th: AI.Thread,
+                              ncap: int, nlook: int, nquant: int) {
+    var rg: NRC.Regs3 := (th.capture_regs, th.look_regs, th.quant_regs);
+    T.TransWf(re)
+    && PIV.CapUnique(re) && PIV.QuantUnique(re)
+    && LTB.LookUnique(re) && NRC.CdnTopRE(re)
+    && NRR.PlusTableOkS(re, plus)
+    && AR.QmapOk(re, qm)
+    && PSM.BestLiveRE(re, th) && PSM.StampPathOk(qm, str, th.quant_regs.a_cp)
+    && StampsFinalAtS(re, rg, |str|) && NRR.CapValWf(rg) && FRG.QClkGe(rg)
+    && NRR.WfRegs(rg) && NRR.Covers(re, rg)
+    && CM.ThreadRegsWf(th, ncap, nlook, nquant)
+  }
+
+  lemma ReadoutStampsS(qm: AR.QMap, re: R.regex, plus: seq<RB.code>, str: string, th: AI.Thread,
+                       ncap: int, nlook: int, nquant: int)
+    requires ReadoutPreS(qm, re, plus, str, th, ncap, nlook, nquant)
+    ensures var rg: NRC.Regs3 := (th.capture_regs, th.look_regs, th.quant_regs);
+            NRR.LookUnique(re) && NRR.LookCapsAbsent(re, rg) && NRO.StampsLocalS(qm, re, str, rg, -1)
+  {
+    var rg: NRC.Regs3 := (th.capture_regs, th.look_regs, th.quant_regs);
+    FRD.LookUniqueBridge(re);
+    assert SL.StampLiveOk(re, rg.0.a_clk, rg.2.a_clk, rg.2.a_cp) && PIV.LooksCapUnset(re, rg.0.a_clk)
+      by { reveal PSM.BestLiveRE; }
+    assert NRR.LookCapsAbsent(re, rg) by {
+      forall c: nat | c in PIV.CapIdsInLooks(re) ensures AI.get_idx(rg.0.a_cp, CP.start_reg(c)) < 0 {
+        assert AI.get_idx(rg.0.a_clk, CP.start_reg(c)) < 0;
+      }
+    }
+    assert {:split_here} true;
+    forall q: nat | q in PIV.QuantIds(re) && AI.get_idx(rg.2.a_cp, q) >= 0
+      ensures NRR.QidStampPlus(re, q)
+              && 0 <= AI.get_idx(rg.2.a_cp, q) <= |str|
+              && (q as int) in qm.bodies && qm.bodies[q as int] == PIV.QidBody(re, q)
+              && T.TransWf(qm.bodies[q as int])
+              && TR.FirstEmptyPathR(qm, qm.bodies[q as int], T.InputAt(str, AI.get_idx(rg.2.a_cp, q) as nat)).Some?
+              && (PIV.QChainFresh(re, rg.2.a_clk, -1, q) ==>
+                    PIV.PathPresentQ(re, rg.0.a_clk, rg.2.a_clk, -1, q)
+                    && NRR.RegsStale(PIV.QidBody(re, q), rg, AI.get_idx(rg.2.a_clk, q)))
+    {
+      PIV.QmapOkBodyAtQid(re, qm, q);
+      SL.StampLiveAt(re, rg.0.a_clk, rg.2.a_clk, rg.2.a_cp, q);
+      PIV.TransWfQidBodyPIV(re, q);
+      var cq: nat := AI.get_idx(rg.2.a_cp, q) as nat;
+      PSM.InpOfCpIsInputAt(str, cq);
+      assert TR.FirstEmptyPathR(qm, qm.bodies[q as int], T.InputAt(str, cq)).Some? by {
+        reveal PSM.StampPathOk();
+        assert AI.get_idx(th.quant_regs.a_cp, q as int) == cq;
+      }
+    }
+  }
+
+  lemma ReadoutBankS(qm: AR.QMap, re: R.regex, plus: seq<RB.code>, str: string, th: AI.Thread,
+                     ncap: int, nlook: int, nquant: int)
+    requires ReadoutPreS(qm, re, plus, str, th, ncap, nlook, nquant)
+    ensures var rg: NRC.Regs3 := (th.capture_regs, th.look_regs, th.quant_regs);
+            var rp := AI.FReconstructPlus(th, re, plus, str, qm.ov, LAnc.Forward);
+            rp.1 == qm.ov && rp.0.pc == th.pc && rp.0.exit_allowed == th.exit_allowed
+            && (rp.0.capture_regs, rp.0.look_regs, rp.0.quant_regs) == NRO.FP(re, rg, plus, str, qm.ov)
+            && CM.ThreadRegsWf(rp.0, ncap, nlook, nquant)
+            && (forall k: int :: AI.get_idx(rp.0.quant_regs.a_clk, k) >= -1)
+  {
+    var rg: NRC.Regs3 := (th.capture_regs, th.look_regs, th.quant_regs);
+    assert NRO.StampsInRangeS(re, rg, str);
+    assert FRG.CapValGe(rg) by {
+      forall k: int ensures AI.get_idx(rg.0.a_cp, k) >= -1 { assert PIV.CapRegWf(rg.0); }
+    }
+    NRO.FNulledPlusFrameS(qm, re, rg, plus, str, qm.ov);
+    FRG.FPValGeS(qm, re, rg, plus, str, qm.ov);
+    var rg2 := NRO.FP(re, rg, plus, str, qm.ov);
+    var rp := AI.FReconstructPlus(th, re, plus, str, qm.ov, LAnc.Forward);
+    assert (rp.0.capture_regs, rp.0.look_regs, rp.0.quant_regs) == rg2;
+    assert FRG.QClkGe(rg2);
+    assert PIV.CapRegWf(rp.0.capture_regs) by {
+      assert NRR.WfRegs(rg2) && NRR.CapValWf(rg2) && FRG.CapValGe(rg2);
+    }
+    assert NRR.Sized3(rg2, rg);
+  }
+
+  /** A1, look-replay form, S. */
+  lemma FinalReadoutSubAtS(qm: AR.QMap, re: R.regex, plus: seq<RB.code>, str: string, th: AI.Thread,
+                           ncap: int, nlook: int, nquant: int)
+    requires ReadoutPreS(qm, re, plus, str, th, ncap, nlook, nquant)
+    ensures var rg: NRC.Regs3 := (th.capture_regs, th.look_regs, th.quant_regs);
+            var rp := AI.FReconstructPlus(th, re, plus, str, qm.ov, LAnc.Forward);
+            var rg2: NRC.Regs3 := (rp.0.capture_regs, rp.0.look_regs, rp.0.quant_regs);
+            rp.1 == qm.ov && rp.0.pc == th.pc && rp.0.exit_allowed == th.exit_allowed
+            && NRO.GmSub(re, rg2, -1)
+               == PIV.LiveStampsGm(re, qm, str, rg.2.a_clk, rg.2.a_cp, -1, NRO.GmSub(re, rg, -1))
+            && CM.ThreadRegsWf(rp.0, ncap, nlook, nquant)
+            && (forall k: int :: AI.get_idx(rp.0.quant_regs.a_clk, k) >= -1)
+  {
+    var rg: NRC.Regs3 := (th.capture_regs, th.look_regs, th.quant_regs);
+    ReadoutStampsS(qm, re, plus, str, th, ncap, nlook, nquant);
+    ReadoutBankS(qm, re, plus, str, th, ncap, nlook, nquant);
+    NRO.ReconReadoutSubS(qm, re, rg, plus, str, qm.ov, -1);
+  }
+
+  /** A1, original form, S: a run from a fresh bank. */
+  lemma FinalReadoutAtS(qm: AR.QMap, re: R.regex, plus: seq<RB.code>, str: string, th: AI.Thread,
+                        ncap: int, nlook: int, nquant: int)
+    requires ReadoutPreS(qm, re, plus, str, th, ncap, nlook, nquant)
+    requires NRO.OnlyCapIdsSet(re, (th.capture_regs, th.look_regs, th.quant_regs))
+    ensures var rp := AI.FReconstructPlus(th, re, plus, str, qm.ov, LAnc.Forward);
+            rp.1 == qm.ov && rp.0.pc == th.pc && rp.0.exit_allowed == th.exit_allowed
+            && PIV.GmOfLive(re, rp.0.capture_regs, rp.0.look_regs, rp.0.quant_regs)
+               == PIV.GmOfLiveR(re, qm, str, th.capture_regs, th.look_regs, th.quant_regs)
+            && CM.ThreadRegsWf(rp.0, ncap, nlook, nquant)
+            && (forall k: int :: AI.get_idx(rp.0.quant_regs.a_clk, k) >= -1)
+  {
+    var rg: NRC.Regs3 := (th.capture_regs, th.look_regs, th.quant_regs);
+    ReadoutStampsS(qm, re, plus, str, th, ncap, nlook, nquant);
+    ReadoutBankS(qm, re, plus, str, th, ncap, nlook, nquant);
+    NRO.ReconReadoutS(qm, re, rg, plus, str, qm.ov);
+  }
+
+  /** A2, S: the sharp frame for any stamp set `Q` covering the stamps. */
+  lemma FinalReadoutFrameAtS(qm: AR.QMap, re: R.regex, plus: seq<RB.code>, str: string, th: AI.Thread, Q: set<int>)
+    requires T.TransWf(re) && PIV.CapUnique(re) && PIV.QuantUnique(re) && NRC.CdnTopRE(re)
+    requires NRR.PlusTableOkS(re, plus)
+    requires var rg: NRC.Regs3 := (th.capture_regs, th.look_regs, th.quant_regs);
+             StampsFinalAtS(re, rg, |str|) && NRR.CapValWf(rg) && NRR.WfRegs(rg)
+             && RF.StampsIn(re, rg, Q)
+    ensures var rp := AI.FReconstructPlus(th, re, plus, str, qm.ov, LAnc.Forward).0;
+            NRR.AgreeOutside((rp.capture_regs, rp.look_regs, rp.quant_regs),
+                             (th.capture_regs, th.look_regs, th.quant_regs),
+                             RF.CapsQ(re, Q), RF.LooksQ(re, Q), RF.QuantsQ(re, Q))
+  {
+    var rg: NRC.Regs3 := (th.capture_regs, th.look_regs, th.quant_regs);
+    assert NRO.StampsInRangeS(re, rg, str);
+    RF.FNulledPlusFrameQS(qm, re, rg, plus, str, qm.ov, Q);
+  }
+
+  /** The instance callers use: `Q := StampQids(re)`. */
+  lemma FinalReadoutFrameAtStamp(qm: AR.QMap, re: R.regex, plus: seq<RB.code>, str: string, th: AI.Thread)
+    requires T.TransWf(re) && PIV.CapUnique(re) && PIV.QuantUnique(re) && NRC.CdnTopRE(re)
+    requires NRR.PlusTableOkS(re, plus)
+    requires var rg: NRC.Regs3 := (th.capture_regs, th.look_regs, th.quant_regs);
+             StampsFinalAtS(re, rg, |str|) && NRR.CapValWf(rg) && NRR.WfRegs(rg)
+    ensures var Q := FRD.StampQids(re);
+            var rp := AI.FReconstructPlus(th, re, plus, str, qm.ov, LAnc.Forward).0;
+            NRR.AgreeOutside((rp.capture_regs, rp.look_regs, rp.quant_regs),
+                             (th.capture_regs, th.look_regs, th.quant_regs),
+                             RF.CapsQ(re, Q), RF.LooksQ(re, Q), RF.QuantsQ(re, Q))
+  {
+    var rg: NRC.Regs3 := (th.capture_regs, th.look_regs, th.quant_regs);
+    var Q := FRD.StampQids(re);
+    assert RF.StampsIn(re, rg, Q) by {
+      forall q: nat | q in PIV.QuantIds(re) && AI.get_idx(rg.2.a_cp, q) >= 0 ensures (q as int) in Q {
+        assert NRR.QidStampPlus(re, q);
+      }
+    }
+    FinalReadoutFrameAtS(qm, re, plus, str, th, Q);
+  }
+
+  lemma StampsFinalAtSFromRegsFinalOk(re: R.regex, th: AI.Thread, ub: int)
+    requires (forall q: int :: AI.get_idx(th.quant_regs.a_cp, q) >= 0 ==>
+                AI.get_idx(th.quant_regs.a_cp, q) <= ub && q in FRD.StampQids(re))
+    ensures StampsFinalAtS(re, (th.capture_regs, th.look_regs, th.quant_regs), ub)
+  {
+    forall q: nat | q in PIV.QuantIds(re) && AI.get_idx(th.quant_regs.a_cp, q) >= 0
+      ensures NRR.QidStampPlus(re, q)
+    {
+      assert (q as int) in FRD.StampQids(re);
+      var qn: nat :| qn in PIV.QuantIds(re) && NRR.QidStampPlus(re, qn) && qn as int == q as int;
       assert qn == q;
     }
   }

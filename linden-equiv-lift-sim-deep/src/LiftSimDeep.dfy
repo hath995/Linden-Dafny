@@ -664,7 +664,7 @@ module LindenElkLiftSimDeep {
     assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
     assert host == M.VBody(crv, A as int);
     var endlH: nat := |bodycode| - 1;
-    assert PSM.StaticCoreNestedRE(qm, host, bodycode, endlH);
+    assert PSM.StaticCoreCdnRE(qm, host, bodycode, endlH);   // (G5b-1) a lookahead host may hold a greedy CDN plus
     assert crv.f_look_types[A as int] == laA;
     assert (laA.Lookahead? || laA.Lookbehind?) by {
       assert AI.capture_type(crv.f_look_types[A as int]);        // MatchedPosLA
@@ -689,7 +689,7 @@ module LindenElkLiftSimDeep {
 
     assert {:split_here} true;   // (E3) step boundary: its own assertion batch
     // (α) presence descends + A1's res1 clock is set
-    NI.LookPathDecomposeNested(host, bodyA1, res0.a_clk, res1.a_clk, res2.a_clk, -1, A1, g2);
+    NI.LookPathDecomposeCdn(host, bodyA1, res0.a_clk, res1.a_clk, res2.a_clk, -1, A1, g2);
     assert AI.get_idx(res1.a_clk, A1 as int) >= 0;
     assert PIV.PathPresentLk(bodyA1, res0.a_clk, res1.a_clk, res2.a_clk, -1, g2);
 
@@ -724,16 +724,16 @@ module LindenElkLiftSimDeep {
                        qm.ov, qm.bodies);
     assert AR.QmapOk(host, qmB) by { QmapOkLooksIrrel(host, qm, qmB); }
     assert AR.LmapOk(host, qmB) by { LmapOkRestrict(host, qm, qmB); }
-    assert PSM.StaticCoreNestedRE(qmB, host, bodycode, endlH) by {
-      assert PSM.StaticCoreNestedRE(qm, host, bodycode, endlH);
+    assert PSM.StaticCoreCdnRE(qmB, host, bodycode, endlH) by {
+      assert PSM.StaticCoreCdnRE(qm, host, bodycode, endlH);   // (G5b-1) a lookahead host may hold a greedy CDN plus
     }
     assert LL.OracleOkSuffix(rer, qmB, inpA) by {
       assert LL.OracleOkSuffix(rer, qm, inpA);
       OracleOkSuffixRestrict(rer, qm, qmB, inpA);
     }
     assert GateStaticsOkNested(qmB, host, crv, ncap, nlook, nquant) by {
-      RowPlusFacts(host, crv.f_plus_bc, nlook);   // (G3a)
-      GateStaticsFromTablesNested(qmB, host, crv, ncap, nlook, nquant);
+      RowPlusFactsS(host, crv.f_plus_bc, nlook);   // (G3a)
+      GateStaticsFromTablesCdn(qmB, host, crv, ncap, nlook, nquant);
     }
     assert OE.OracleColsOk(rer, qmB, str) by {                       // (L5 F7d)
       SufAllToColsOk(rer, qm, str);
@@ -743,7 +743,7 @@ module LindenElkLiftSimDeep {
     assert {:split_here} true;   // (E3) step boundary: its own assertion batch
     // (ε) the per-body replay: both carriers + None-iff + bank invariants at rf_A
     var cdnA := crv.f_look_cdns[A as int];
-    LookNestBackTFromBodyReplay(rer, qmB, laA, host, bodycode, endlH, 0, crv, str, cpA, ov,
+    LookNestBackTFromBodyReplayS(rer, qmB, laA, host, bodycode, endlH, 0, crv, str, cpA, ov,
                                 cdnA, crv.f_plus_bc, ncap, nlook, nquant);
     var rfP := AI.FFindMatchPlus(bodycode, host, crv.f_plus_bc, str, ov, LAnc.Forward, cpA,
                                  AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant),
@@ -808,7 +808,7 @@ module LindenElkLiftSimDeep {
       assert 1 <= A as int <= maxlook && M.MatchedPosLA(crv, res1, A as int);
       assert host == M.VBody(crv, A as int);
     }
-    ReverseLookDomOnFresh(host, res0, res1, res2, rfA, A1, g2);
+    ReverseLookDomOnFreshCdn(host, res0, res1, res2, rfA, A1, g2);
     assert NI.LookPathDom(host, L1, rfA.quant_regs.a_clk, A1);
 
     assert {:split_here} true;   // (E3) step boundary: its own assertion batch
@@ -955,7 +955,7 @@ module LindenElkLiftSimDeep {
     assert bA == host by { assert crv.f_look_ast[A as int] == bA == host; }
     assert host == M.VBody(crv, A as int);
     var endlH: nat := |bodycode| - 1;
-    assert PSM.StaticCoreNestedRE(qm, host, bodycode, endlH);
+    assert PSM.StaticCoreCdnRE(qm, host, bodycode, endlH);   // (G5b-1) any kind
     assert crv.f_look_types[A as int] == laA;
     assert (laA.Lookahead? || laA.Lookbehind?) by {
       assert AI.capture_type(crv.f_look_types[A as int]);        // MatchedPosLA

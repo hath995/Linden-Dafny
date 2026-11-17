@@ -8,6 +8,9 @@ module NullablePlusWitness {
   import NR = LindenElkNfaRep
   import M = LindenElkMain
   import LSIMCOR = LindenElkLiftSimCore
+  import T = LindenElkTranslate
+  import CL = LindenElkCinLooks
+  import MCL = LindenElkMainCinLk
 
   /** The opaque scope conjunct of `API.Supported`, for a pattern with no positive lookbehind. */
   lemma ScopeNoPos(p: R.raw_regex)
@@ -251,11 +254,31 @@ module NullablePlusWitness {
     assert R.raw_nullable(WB_OR_A_PLUS) == R.CDNullable;
   }
 
-  /** Still out: a CDN plus in a POSITIVE look body (G5b-1/2). */
+  /** Still out: a CDN plus in a positive LOOKBEHIND body (G5b-2). */
   lemma G5b0_PosLookCdnOut()
-    ensures !API.Supported(R.Raw_lookaround(R.Lookahead, WB_OR_A_PLUS))     // (?=(\b|a)+)
+    ensures !API.Supported(R.Raw_lookaround(R.Lookbehind, WB_OR_A_PLUS))    // (?<=(\b|a)+)
   {
     assert R.raw_nullable(WB_OR_A) == R.CDNullable;
     assert R.raw_nullable(WB_OR_A_PLUS) == R.CDNullable;
+  }
+
+  // (G5b-1) A greedy CDN plus inside a LOOKAHEAD body, at the top and nested in another lookahead.
+  const POS_AHEAD_CDN := R.Raw_lookaround(R.Lookahead, WB_OR_A_PLUS)                     // (?=(\b|a)+)
+  const POS_AHEAD_NESTED_CDN :=
+    R.Raw_lookaround(R.Lookahead, R.Raw_con(R.Raw_character(R.Dot), POS_AHEAD_CDN))   // (?=a(?=(\b|a)+))
+
+  lemma G5b1_CdnPlusInLookahead()
+    ensures API.Supported(POS_AHEAD_CDN)                                      // (?=(\b|a)+)
+    ensures API.Supported(POS_AHEAD_NESTED_CDN)                               // (?=a(?=(\b|a)+))
+  {
+    assert R.raw_nullable(WB_OR_A) == R.CDNullable;
+    assert R.raw_nullable(WB_OR_A_PLUS) == R.CDNullable;
+    // `Supported`'s conjuncts, one by one (the solver needs the unfolding spelled out)
+    var re1 := R.lazy_prefix(R.annotate(POS_AHEAD_CDN));
+    assert NR.NestedFragmentCdnRaw(POS_AHEAD_CDN) && T.Latin1Wf(POS_AHEAD_CDN);
+    assert CL.CinLooksCapFreeX(re1) && MCL.CdnTopX(re1);
+    var re2 := R.lazy_prefix(R.annotate(POS_AHEAD_NESTED_CDN));
+    assert NR.NestedFragmentCdnRaw(POS_AHEAD_NESTED_CDN) && T.Latin1Wf(POS_AHEAD_NESTED_CDN);
+    assert CL.CinLooksCapFreeX(re2) && MCL.CdnTopX(re2);
   }
 }
