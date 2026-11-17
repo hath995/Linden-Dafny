@@ -6299,23 +6299,111 @@ module LindenElkLiftSimCore {
     assert NRR.PlusTableOkS(r1, plus) && NRR.PlusTableOkS(FST.FXR(r1), plusF);
     NRC.CdnTopAll(r1);
 
+    // (G5b-3, lem-order deps) `FreshBodyMatchPlus` is revealed only where a fresh match is equated with the run it
+    // abbreviates; the rest of each arm (and the exit postcondition) is congruence
     assert {:split_here} true;
-    reveal M.FreshBodyMatchPlus();
     var rp := M.FreshBodyMatchPlus(crv, str, l, lk, ov, ncap, nlook, nquant);
     var rpF := M.FreshBodyMatchPlus(crvF, rstr, l, lkF, ov', ncap, nlook, nquant);
     assert M.VBody(crv, l) == r1 && M.VBody(crvF, l) == FST.FXR(r1);
+    assert AReg.get_cp(lk, l).Some? && AReg.get_cp(lkF, l).Some?;
+    // the row descents' premises at r1, in their own batch (each arm calls its descent under `hide *`)
+    assert {:split_here} true;
+    assert T.TransWf(r1) && NR.NestedFragmentCdnRE(r1);
+    assert PIV.CapUnique(r1) && PIV.QuantUnique(r1) && LTB.LookUnique(r1);
+    assert PSM.SizesOkRE(r1, ncap, nlook, nquant);
+    assert forall l0: nat :: l0 in LTB.LookIds(r1) ==> l0 < nlook;
+    assert NRC.CdnTopRE(r1) && RF.StampLooksCapFreeRE(r1) && NRR.PlusTableOkS(r1, plus);
+    assert NRR.PlusTableOkS(FST.FXR(r1), plusF);
+    assert AR.QmapOk(r1, qmR) && qmR.bodies == M.BodiesOfRE(r1);
+    assert n == |str| && cpN <= n && |ov| == n + 1;
+    assert qmR.ov == ov && AR.LmapOk(r1, qmR) && OE.OracleColsOk(rer, qmR, str);
     if la.Lookbehind? {
+      assert {:split_here} true;
       assert FR.FlipLkRE(la) == R.Lookahead;
       assert CP.capture_regex(la, r1) == R.reverse_regex(r1) && CP.capture_regex(R.Lookahead, FST.FXR(r1)) == FST.FXR(r1);
+      var rr := AI.FFindMatchPlus(CP.compile_to_bytecode(R.reverse_regex(r1)), r1, plus, str, ov, LAnc.Backward, cpN,
+                                  AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0,
+                                  LCdn.compile_cdns(r1)).0;
+      var rrF := AI.FFindMatchPlus(CP.compile_to_bytecode(FST.FXR(r1)), FST.FXR(r1), plusF, rstr, ov', LAnc.Forward,
+                                   n - cpN, AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0,
+                                   LCdn.compile_cdns(FST.FXR(r1))).0;
+      var rrS := AI.FFindMatchPlus(CP.compile_to_bytecode(FST.FXR(r1)), FST.FXR(r1), plusF, rstr, ov', LAnc.Forward,
+                                   n - cpN, AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0,
+                                   MIR.SwapAnchorsCdns(LCdn.compile_cdns(r1))).0;
       // (G5b-2) the mirrored row runs FXR(r1)'s own table, the swapped list of r1's (tables agree)
-      MW.SwapRunIsOwnRunPlus(r1, str, n - cpN, AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant),
-                             ov, plusF);
-      RP.RowKeysLBS(rer, qmR, r1, str, cpN, ov, LCdn.compile_cdns(r1), plus, plusF, ncap, nlook, nquant, n);
+      assert rrS == rrF by {
+        hide *;
+        MW.SwapRunIsOwnRunPlus(r1, str, n - cpN, AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant),
+                               ov, plusF);
+      }
+      assert {:split_here} true;
+      assert (rr.Some? <==> rrS.Some?)
+          && (rr.Some? ==>
+                BGM.GmLeN(PIV.GmOfLive(FST.FXR(r1), rrS.value.capture_regs, rrS.value.look_regs, rrS.value.quant_regs), n)
+                && PIV.GmOfLive(r1, rr.value.capture_regs, rr.value.look_regs, rr.value.quant_regs)
+                   == BGM.RawMirrorGm(PIV.GmOfLive(FST.FXR(r1), rrS.value.capture_regs, rrS.value.look_regs,
+                                                   rrS.value.quant_regs), n)) by {
+        hide *;
+        RP.RowKeysLBS(rer, qmR, r1, str, cpN, ov, LCdn.compile_cdns(r1), plus, plusF, ncap, nlook, nquant, n);
+      }
+      assert {:split_here} true;
+      assert rp == rr by { hide *; reveal M.FreshBodyMatchPlus, AI.capture_direction; }
+      assert {:split_here} true;
+      assert rpF == rrF by { hide *; reveal M.FreshBodyMatchPlus, AI.capture_direction; }
+      assert {:split_here} true;
+      assert (rr.Some? <==> rrF.Some?);
+      if rr.Some? {
+        var GF := PIV.GmOfLive(FST.FXR(r1), rrF.value.capture_regs, rrF.value.look_regs, rrF.value.quant_regs);
+        assert BGM.GmLeN(GF, n);
+        assert PIV.GmOfLive(r1, rr.value.capture_regs, rr.value.look_regs, rr.value.quant_regs) == BGM.RawMirrorGm(GF, n);
+        forall g: LG.GroupId
+          ensures g in PIV.GmOfLive(r1, rr.value.capture_regs, rr.value.look_regs, rr.value.quant_regs) <==> g in GF {}
+      }
+      assert {:split_here} true;
+      assert (rp.Some? <==> rpF.Some?)
+          && (rp.Some? ==>
+                forall g: LG.GroupId ::
+                  g in PIV.GmOfLive(r1, rp.value.capture_regs, rp.value.look_regs, rp.value.quant_regs)
+                  <==> g in PIV.GmOfLive(FST.FXR(r1), rpF.value.capture_regs, rpF.value.look_regs, rpF.value.quant_regs));   // this arm's postcondition
     } else {
+      assert {:split_here} true;
       assert FR.FlipLkRE(la) == R.Lookbehind;
       assert CP.capture_regex(la, r1) == r1
           && CP.capture_regex(R.Lookbehind, FST.FXR(r1)) == R.reverse_regex(FST.FXR(r1));
-      RP.RowKeysLAS(rer, qmR, r1, str, cpN, ov, plus, plusF, ncap, nlook, nquant, n);
+      var rr := AI.FFindMatchPlus(CP.compile_to_bytecode(r1), r1, plus, str, ov, LAnc.Forward, cpN,
+                                  AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0,
+                                  LCdn.compile_cdns(r1)).0;
+      var rrF := AI.FFindMatchPlus(CP.compile_to_bytecode(R.reverse_regex(FST.FXR(r1))), FST.FXR(r1), plusF, rstr, ov',
+                                   LAnc.Backward, n - cpN, AReg.init_regs(ncap), AReg.init_regs(nlook),
+                                   AReg.init_regs(nquant), 0, LCdn.compile_cdns(FST.FXR(r1))).0;
+      assert (rr.Some? <==> rrF.Some?)
+          && (rr.Some? ==>
+                BGM.GmLeN(PIV.GmOfLive(r1, rr.value.capture_regs, rr.value.look_regs, rr.value.quant_regs), n)
+                && PIV.GmOfLive(FST.FXR(r1), rrF.value.capture_regs, rrF.value.look_regs, rrF.value.quant_regs)
+                   == BGM.RawMirrorGm(PIV.GmOfLive(r1, rr.value.capture_regs, rr.value.look_regs, rr.value.quant_regs), n)) by {
+        hide *;
+        RP.RowKeysLAS(rer, qmR, r1, str, cpN, ov, plus, plusF, ncap, nlook, nquant, n);
+      }
+      assert {:split_here} true;
+      assert rp == rr by { hide *; reveal M.FreshBodyMatchPlus, AI.capture_direction; }
+      assert {:split_here} true;
+      assert rpF == rrF by { hide *; reveal M.FreshBodyMatchPlus, AI.capture_direction; }
+      assert {:split_here} true;
+      assert (rr.Some? <==> rrF.Some?);
+      if rr.Some? {
+        var Gr := PIV.GmOfLive(r1, rr.value.capture_regs, rr.value.look_regs, rr.value.quant_regs);
+        assert BGM.GmLeN(Gr, n);
+        assert PIV.GmOfLive(FST.FXR(r1), rrF.value.capture_regs, rrF.value.look_regs, rrF.value.quant_regs)
+               == BGM.RawMirrorGm(Gr, n);
+        forall g: LG.GroupId
+          ensures g in Gr <==> g in PIV.GmOfLive(FST.FXR(r1), rrF.value.capture_regs, rrF.value.look_regs, rrF.value.quant_regs) {}
+      }
+      assert {:split_here} true;
+      assert (rp.Some? <==> rpF.Some?)
+          && (rp.Some? ==>
+                forall g: LG.GroupId ::
+                  g in PIV.GmOfLive(r1, rp.value.capture_regs, rp.value.look_regs, rp.value.quant_regs)
+                  <==> g in PIV.GmOfLive(FST.FXR(r1), rpF.value.capture_regs, rpF.value.look_regs, rpF.value.quant_regs));   // this arm's postcondition
     }
   }
 
