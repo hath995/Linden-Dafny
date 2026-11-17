@@ -624,6 +624,7 @@ module LindenElkMachineABack {
 
     assert {:split_here} true;
     // ---- machine A's first half at the flipped body: the swapped list is guard-sound (N2 + N1) ----
+    hide PSM.GuardsOkRun;   // (G5b-2, pack S25) passed on as a term, never unfolded: a quantifier the later sections must not see
     CMr.GuardsOkRunFlip(qmF, body, bcF, endl', str, ov);
     MachineAWinnerS(rer, qmF, reF, bcF, endl', 0, rstr, mcpN, ov', cdns', ncap, nlook, nquant);
     FST.TranslateFlipXRev(body);
@@ -649,6 +650,7 @@ module LindenElkMachineABack {
     FR.FlipCompileToBytecode(FST.XRV(body));
     assert bcF == CP.compile_to_bytecode(FST.XRV(body));
     assert raB.None? <==> rfF.None?;
+    assert {:split_here} true;   // (G5b-2, pack S25) the tie's second half in its own batch
     // the view is kept by the backward run
     M.ReverseCdnPackage(body);
     M.NoWriteOracleBodyCodeCdn(R.reverse_regex(body));
@@ -997,6 +999,7 @@ module LindenElkMachineABack {
     var cdns' := MIR.SwapAnchorsCdns(cdns);
     var bcF := CP.compile_to_bytecode(reF);
     var G, qmF, endlF := BackRowReadoutS(rer, qm, body, str, cp, ov, cdns, plus, ncap, nlook, nquant, n);
+    assert {:split_here} true;   // (G5b-2, pack S25) one batch per section under `dafny build`
     var mcpN: nat := n - cp;
     var initsF := AI.FInitState(bcF, mcpN, AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0,
                                 AI.cp_context(mcpN, rstr, LAnc.Forward));
@@ -1140,6 +1143,7 @@ module LindenElkMachineABack {
                                AI.cp_context(cp, str, LAnc.Backward)), ov, LAnc.Backward, cdns).0;
     var rr := AI.FFindMatchPlus(bcB, body, plus, str, ov, LAnc.Backward, cp,
                                 AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0, cdns).0;
+    assert {:split_here} true;   // (G5b-2, pack S25) one batch per section under `dafny build`
     if fmF.0.Some? {
       FST.FXRStructuralCdn(body);
       FG.LookUniqueFXR(body);
@@ -1150,6 +1154,7 @@ module LindenElkMachineABack {
       var rpF := MA.ReadoutAtWinnerAtS(qmF, reF, bcF, endlF, plusF, rstr, mcpN, ov', cdns', initsF,
                                       ncap, nlook, nquant, fmF.0);
       assert rrF.0 == Some(rpF);
+      assert {:split_here} true;
       var Q := FRD.StampQids(body);
       W.StampQidsFXR(body);
       QSetsFXR(body, Q);
