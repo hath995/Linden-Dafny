@@ -1516,7 +1516,7 @@ module LindenElkLiftSimGate {
           // groups are never live in the backward fresh run, F6b).
           assert la.Lookbehind?;
           assert L.LkDir(lk) == WP.Backward;
-          EL.TranslateFragmentPikeLkRec(body);
+          EL.TranslateFragmentPikeLkRecCdn(body);   // (G5b-2) the body may hold a CDN plus
           EL.ComputeTrGmIndepLkRec(rer, r1, inp, gm, WP.Backward);
           assert tlk == LFU.ComputeTr(rer, [LS.Areg(r1)], inp, gm, WP.Backward);
           assert M.GmAgreeOn(gm, LG.Empty, set gx | gx in L.DefGroups(r1)) by {
@@ -1543,11 +1543,13 @@ module LindenElkLiftSimGate {
           assert rfx == AI.FFindMatchPlus(bcB, body, crv.f_plus_bc, str, ov, LAnc.Backward, cp,
                                           AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0,
                                           crv.f_look_cdns[l]).0;
+          assert NRC.PositiveLk(la) && RowPlusOkS(body, crv.f_plus_bc, nlook);   // GateStaticPick (G5b-2: S)
           assert (forall l0: nat :: l0 in LTB.LookIds(body) ==> l0 < nlook)
-                 && NRC.NoCdnPlusRE(body) && RF.CinBodiesLookFreeRE(body) && NRR.PlusTableOk(body, crv.f_plus_bc) by {
-            reveal RowPlusOk(); reveal M.RowLAStatics();
+                 && NRC.CdnTopRE(body) && RF.StampBodiesLookFreeRE(body) && NRR.PlusTableOkS(body, crv.f_plus_bc) by {
+            reveal RowPlusOkS(); reveal M.RowLAStaticsS();
           }
-          BRG.GateCrossCoveragePlusLB(rer, qm, body, str, cp, ov, crv.f_look_cdns[l], crv.f_plus_bc, la, tlk, gm,
+          assert crv.f_look_cdns[l] == LCdn.compile_cdns(body);                  // LookEntryOk row
+          BRG.GateCrossCoveragePlusLBS(rer, qm, body, str, cp, ov, crv.f_look_cdns[l], crv.f_plus_bc, la, tlk, gm,
                                       ncap, nlook, nquant, |str|);
           assert LS.LkResult(T.TrLookaround(la), tlk, gm, inp).Some?
                  && LS.LkResult(T.TrLookaround(la), tlk, gm, inp).value == gm2 by {

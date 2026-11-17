@@ -16,6 +16,7 @@ module LindenElkBackRowAt {
   import FV = LindenElkFinalVm
   import FRD = LindenElkFinalReadout
   import CM = LindenElkClockMono
+  import OBu = LindenElkOracleBuild
 
   lemma FFindMatchRegsFinalAny(c: RB.code, str: string, s: AI.VmState, ov: LOr.OracleView,
                                dir: LAnc.direction, cdn: LCdn.cdns, Q: set<int>)
@@ -135,4 +136,60 @@ module LindenElkBackRowAt {
     RevCinQids(body);
     FRD.NestedNoCdnPlus(rb);   // (G5a) TrueStampsInCin's premise
     FRD.TrueStampsInCin(rb, CP.compile_to_bytecode(rb), next as nat);
-  }}
+  }
+  /** (G5b-2) `RevCinPlus` on the stamp predicate. */
+  lemma RevStampPlus(r: R.regex, q: nat)
+    requires PIV.QuantUnique(r) && q in PIV.QuantIds(r)
+    ensures q in PIV.QuantIds(R.reverse_regex(r))
+    ensures NRR.QidStampPlus(R.reverse_regex(r), q) == NRR.QidStampPlus(r, q)
+    decreases r
+  {
+    RevIds(r);
+    match r
+    case Re_alt(a, b) =>
+      RevIds(a); RevIds(b);
+      if q in PIV.QuantIds(a) { RevStampPlus(a, q); } else { RevStampPlus(b, q); }
+    case Re_con(a, b) =>
+      RevIds(a); RevIds(b);
+      assert PIV.QuantIds(a) * PIV.QuantIds(b) == {};
+      if q in PIV.QuantIds(a) {
+        assert q !in PIV.QuantIds(b) by { assert q !in PIV.QuantIds(a) * PIV.QuantIds(b); }
+        RevStampPlus(a, q);
+      } else {
+        RevStampPlus(b, q);
+      }
+    case Re_quant(_, qid0, _, a) =>
+      if qid0 >= 0 && (qid0 as nat) == q {} else { RevStampPlus(a, q); }
+    case Re_capture(_, a) => RevStampPlus(a, q);
+    case Re_lookaround(_, _, a) => RevStampPlus(a, q);
+    case _ =>
+  }
+  lemma RevStampQids(r: R.regex)
+    requires PIV.QuantUnique(r)
+    ensures FRD.StampQids(R.reverse_regex(r)) == FRD.StampQids(r)
+  {
+    RevIds(r);
+    forall x | x in FRD.StampQids(R.reverse_regex(r)) ensures x in FRD.StampQids(r) {
+      var q: nat :| q in PIV.QuantIds(R.reverse_regex(r)) && NRR.QidStampPlus(R.reverse_regex(r), q) && q as int == x;
+      RevStampPlus(r, q);
+    }
+    forall x | x in FRD.StampQids(r) ensures x in FRD.StampQids(R.reverse_regex(r)) {
+      var q: nat :| q in PIV.QuantIds(r) && NRR.QidStampPlus(r, q) && q as int == x;
+      RevStampPlus(r, q);
+    }
+  }
+  /** (G5b-2) `RevTrueStampsCin` on the Cdn fragment and the stamp set: the lookbehind capture code
+      stamps only the body's stamp quantifiers. */
+  lemma RevTrueStampsS(body: R.regex)
+    requires NR.NestedFragmentCdnRE(body) && PIV.QuantUnique(body)
+    ensures FV.TrueStampsIn(CP.compile_to_bytecode(R.reverse_regex(body)), FRD.StampQids(body))
+  {
+    var rb := R.reverse_regex(body);
+    OBu.ReverseCdnFragmentRE(body);
+    NR.CompileToBytecodeRepCdn(rb);
+    var next := CP.compile(rb, 0, CP.Progress).1;
+    RevQuantUnique(body);
+    RevStampQids(body);
+    FRD.TrueStampsInStamp(rb, CP.compile_to_bytecode(rb), next as nat);
+  }
+}

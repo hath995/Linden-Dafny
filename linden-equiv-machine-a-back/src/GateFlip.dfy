@@ -11,11 +11,10 @@ module LindenElkGateFlip {
   import TB = LindenElkMirrorPlus
   import W = LindenElkBackRowResidue
 
-  /** It is flip-invariant on a CDN-free regex. (G5b-1) A lookahead body may hold a CDN plus and becomes a
-      lookbehind body under the flip, so the premise `NoCdnPlusRE(r)`: the flipped regexes are lookbehind
-      bodies, which the gate keeps CDN-free. */
+  /** It is flip-invariant. (G5b-2) The gate's look arm is the same for both directions (inside a positive look
+      body every nullable plus body is look-free), and the flip swaps the directions. */
   lemma GateFXR(r: R.regex)
-    requires M.LookBodiesPlusGateRE(r) && NRC.NoCdnPlusRE(r)
+    requires M.LookBodiesPlusGateRE(r)
     ensures M.LookBodiesPlusGateRE(FST.FXR(r))
     decreases r
   {
@@ -26,8 +25,7 @@ module LindenElkGateFlip {
     case Re_capture(c, a) => W.FXRCap(c, a); GateFXR(a);
     case Re_lookaround(l, la, a) =>
       W.FXRLook(l, la, a); GateFXR(a); TB.CinBodiesLookFreeFXR(a);
-      TB.NoCdnPlusFXR(a);                              // (G5b-1) a CDN-free body flips CDN-free
-      RF.CinStampBodiesNoCdn(FST.FXR(a));              // so its stamp bodies are its CIN bodies
+      if NRC.PositiveLk(la) { TB.StampBodiesLookFreeFXR(a); }   // (G5b-2) a positive look stays positive
     case Re_anchor(x) => W.FXRAnchor(x);
     case Re_empty =>
     case Re_character(_) =>

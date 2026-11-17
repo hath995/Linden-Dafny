@@ -1184,9 +1184,8 @@ module LindenElkMainCinLk {
     case Re_alt(r1, r2) => CdnTopX(r1) && CdnTopX(r2)
     case Re_con(r1, r2) => CdnTopX(r1) && CdnTopX(r2)
     case Re_capture(_, r1) => CdnTopX(r1)
-    // (G5b) a NEGATIVE look body may hold a CDN plus; (G5b-1) so may a lookahead body; a positive
-    // lookbehind body stays CDN-free (G5b-2)
-    case Re_lookaround(_, la, r1) => (la.Lookbehind? ==> NoCdnPlusX(r1)) && CdnTopX(r1)
+    // (G5b) a look body of any kind may hold a CDN plus (G5b-0 negative, G5b-1 lookahead, G5b-2 lookbehind)
+    case Re_lookaround(_, la, r1) => CdnTopX(r1)
     case Re_quant(_, _, _, r1) => CdnTopX(r1)
     case _ => true
   }
@@ -1200,7 +1199,7 @@ module LindenElkMainCinLk {
     case Re_alt(r1, r2) => CdnTopXSound(r1); CdnTopXSound(r2);
     case Re_con(r1, r2) => CdnTopXSound(r1); CdnTopXSound(r2);
     case Re_capture(_, r1) => CdnTopXSound(r1);
-    case Re_lookaround(_, la, r1) => if la.Lookbehind? { NoCdnPlusXSound(r1); } CdnTopXSound(r1);
+    case Re_lookaround(_, la, r1) => CdnTopXSound(r1);
     case Re_quant(_, _, _, r1) => CdnTopXSound(r1);
     case _ =>
   }

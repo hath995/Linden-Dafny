@@ -241,7 +241,7 @@ module NullablePlusWitness {
   // ==========================================================================
   // G5b-0 (2026-11-16): a greedy CDN plus inside a NEGATIVE lookaround body. The look's oracle column is
   // built by code holding the plus's guard (the oracle V graph carries the table); a negative look is never
-  // replayed. A positive look body stays CDN-free (G5b-1/2).
+  // replayed. (G5b-1, G5b-2 below: a positive look body of either direction may hold one too.)
   // ==========================================================================
   const NEG_AHEAD_CDN  := R.Raw_lookaround(R.NegLookahead, WB_OR_A_PLUS)               // (?!(\b|a)+)
   const NEG_BEHIND_CDN := R.Raw_lookaround(R.NegLookbehind, WB_OR_A_PLUS)              // (?<!(\b|a)+)
@@ -249,14 +249,6 @@ module NullablePlusWitness {
   lemma G5b0_CdnPlusInNegLook()
     ensures API.Supported(NEG_AHEAD_CDN)                                      // (?!(\b|a)+)
     ensures API.Supported(NEG_BEHIND_CDN)                                     // (?<!(\b|a)+)
-  {
-    assert R.raw_nullable(WB_OR_A) == R.CDNullable;
-    assert R.raw_nullable(WB_OR_A_PLUS) == R.CDNullable;
-  }
-
-  /** Still out: a CDN plus in a positive LOOKBEHIND body (G5b-2). */
-  lemma G5b0_PosLookCdnOut()
-    ensures !API.Supported(R.Raw_lookaround(R.Lookbehind, WB_OR_A_PLUS))    // (?<=(\b|a)+)
   {
     assert R.raw_nullable(WB_OR_A) == R.CDNullable;
     assert R.raw_nullable(WB_OR_A_PLUS) == R.CDNullable;
@@ -280,5 +272,30 @@ module NullablePlusWitness {
     var re2 := R.lazy_prefix(R.annotate(POS_AHEAD_NESTED_CDN));
     assert NR.NestedFragmentCdnRaw(POS_AHEAD_NESTED_CDN) && T.Latin1Wf(POS_AHEAD_NESTED_CDN);
     assert CL.CinLooksCapFreeX(re2) && MCL.CdnTopX(re2);
+  }
+
+  // (G5b-2) A greedy CDN plus inside a LOOKBEHIND body: at the top, nested in another lookbehind, and inside a
+  // lookahead inside a lookbehind (the flipped world holds it in a lookbehind).
+  const POS_BEHIND_CDN := R.Raw_lookaround(R.Lookbehind, WB_OR_A_PLUS)                    // (?<=(\b|a)+)
+  const POS_BEHIND_NESTED_CDN :=
+    R.Raw_lookaround(R.Lookbehind, R.Raw_con(R.Raw_character(R.Dot), POS_BEHIND_CDN))  // (?<=a(?<=(\b|a)+))
+  const AHEAD_IN_BEHIND_CDN := R.Raw_lookaround(R.Lookbehind, POS_AHEAD_CDN)               // (?<=(?=(\b|a)+))
+
+  lemma G5b2_CdnPlusInLookbehind()
+    ensures API.Supported(POS_BEHIND_CDN)                                     // (?<=(\b|a)+)
+    ensures API.Supported(POS_BEHIND_NESTED_CDN)                              // (?<=a(?<=(\b|a)+))
+    ensures API.Supported(AHEAD_IN_BEHIND_CDN)                                // (?<=(?=(\b|a)+))
+  {
+    assert R.raw_nullable(WB_OR_A) == R.CDNullable;
+    assert R.raw_nullable(WB_OR_A_PLUS) == R.CDNullable;
+    var re1 := R.lazy_prefix(R.annotate(POS_BEHIND_CDN));
+    assert NR.NestedFragmentCdnRaw(POS_BEHIND_CDN) && T.Latin1Wf(POS_BEHIND_CDN);
+    assert CL.CinLooksCapFreeX(re1) && MCL.CdnTopX(re1);
+    var re2 := R.lazy_prefix(R.annotate(POS_BEHIND_NESTED_CDN));
+    assert NR.NestedFragmentCdnRaw(POS_BEHIND_NESTED_CDN) && T.Latin1Wf(POS_BEHIND_NESTED_CDN);
+    assert CL.CinLooksCapFreeX(re2) && MCL.CdnTopX(re2);
+    var re3 := R.lazy_prefix(R.annotate(AHEAD_IN_BEHIND_CDN));
+    assert NR.NestedFragmentCdnRaw(AHEAD_IN_BEHIND_CDN) && T.Latin1Wf(AHEAD_IN_BEHIND_CDN);
+    assert CL.CinLooksCapFreeX(re3) && MCL.CdnTopX(re3);
   }
 }

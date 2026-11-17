@@ -44,10 +44,10 @@ module LindenRegexApi {
         - every lookaround inside a greedy nullable plus body is capture-free
           (`CL.CinLooksCapFreeX`; G4a: `((?=a)|a?)+`, G5a-2a: `((?=a)|b)+`). A look body of either
           kind may hold a greedy CI-nullable plus with a look-free body (G3a lookahead, G3b lookbehind);
-        - a greedy CDN plus sits outside every positive LOOKBEHIND body (`MCL.CdnTopX`; G5a-1: `(\\b|a)+`;
-          G5a-2b: inside a nulled plus's body too, `((\\b)+|)+`; G5b-0: inside a negative look body,
-          `(?!(\\b|a)+)`, `(?<!(\\b|a)+)`; G5b-1: inside a lookahead body, `(?=(\\b|a)+)`, when every
-          nullable plus body inside the lookahead is look-free, `CL.LookStampOkX`).
+        - a greedy CDN plus may sit anywhere (G5a-1: `(\\b|a)+`; G5a-2b: inside a nulled plus's body too,
+          `((\\b)+|)+`; G5b-0: inside a negative look body, `(?!(\\b|a)+)`, `(?<!(\\b|a)+)`; G5b-1/G5b-2: inside a
+          positive look body of either direction, `(?=(\\b|a)+)`, `(?<=(\\b|a)+)`, when every nullable plus body
+          inside the look is look-free, `CL.LookStampOkX`). `MCL.CdnTopX` is true of every regex since G5b-2.
       Looks nest to any depth in either direction: lookaheads inside lookbehinds and
       lookbehinds inside lookaheads (gate B, G1 full depth). Exactly
       `MCL.MainTheoremL5Cin`'s precondition. `SUPPORTED_FRAGMENT.md` lists what this admits
@@ -55,7 +55,7 @@ module LindenRegexApi {
   predicate Supported(pattern: R.raw_regex) {
     NR.NestedFragmentCdnRaw(pattern) && T.Latin1Wf(pattern)
     && CL.CinLooksCapFreeX(R.lazy_prefix(R.annotate(pattern)))
-    // (G5a-1, G5a-2, G5b-0, G5b-1) a greedy CDN plus is supported outside positive lookbehind bodies; its body may hold capture-free looks
+    // (G5a-1, G5a-2, G5b) a greedy CDN plus is supported anywhere (the look bodies: CL.LookStampOkX); its body may hold capture-free looks
     // and nullable pluses: `(\\b|a)+`, `((?=a)|b)+`, `(\\b(a?)+)+`, `((\\b)+|)+`, `((\\b|a)+)+`
     && MCL.CdnTopX(R.lazy_prefix(R.annotate(pattern)))
   }
@@ -102,9 +102,8 @@ module LindenRegexApi {
     case _ =>
   }
 
-  /** (G5b) The gate from the scope, per look kind: a positive lookbehind body is CDN-free (the scope's look
-      arm), a negative one may hold a CDN plus; every CIN plus body inside a look stays look-free; (G5b-1) a
-      lookahead body may hold a CDN plus, and every nullable plus body inside it is look-free. */
+  /** (G5b) The gate from the scope: a look body of any kind may hold a CDN plus; every CIN plus body inside a
+      look stays look-free; (G5b-1, G5b-2) inside a positive look body, every nullable plus body is look-free. */
   lemma GateFromCdnTopCin(re: R.regex)
     requires NRC.CdnTopRE(re) && RF.CinBodiesLookFreeRE(re) && CL.LookStampOkRE(re)
     ensures M.LookBodiesPlusGateRE(re)

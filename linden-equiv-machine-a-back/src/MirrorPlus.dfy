@@ -117,4 +117,65 @@ module LindenElkMirrorPlus {
     case Re_empty =>
     case Re_character(_) =>
   }
+
+  // ===========================================================================
+  // (G5b-2, N4) The flipped plus table on the stamp pluses: a CDN plus is stamped too.
+  // ===========================================================================
+
+  ghost function MirrorPlusAtS(host: R.regex, plus: seq<RB.code>, q: nat): RB.code
+    requires q < |plus|
+  {
+    if q in PIV.QuantIds(FST.FXR(host)) && NRR.QidStampPlus(FST.FXR(host), q)
+    then CP.compile_reconstruct_nulled(PIV.QidBody(FST.FXR(host), q)) else plus[q]
+  }
+  /** `MirrorPlus` keyed on `QidStampPlus`. */
+  ghost function MirrorPlusS(host: R.regex, plus: seq<RB.code>): seq<RB.code> {
+    seq(|plus|, q requires 0 <= q < |plus| => MirrorPlusAtS(host, plus, q))
+  }
+
+  lemma PlusTableOkSMirror(host: R.regex, plus: seq<RB.code>)
+    requires PIV.QuantUnique(host) && NRR.PlusTableOkS(host, plus)
+    ensures NRR.PlusTableOkS(FST.FXR(host), MirrorPlusS(host, plus))
+  {
+    var hF := FST.FXR(host);
+    var pF := MirrorPlusS(host, plus);
+    W.IdsFXR(host);
+    forall q: nat | q in PIV.QuantIds(hF)
+      ensures AI.get_code_v(pF, q as int)
+           == (if NRR.QidStampPlus(hF, q) then CP.compile_reconstruct_nulled(PIV.QidBody(hF, q)) else [])
+    {
+      W.PathsFXR(host, [], [], -1, q);
+      var e := AI.get_code_v(plus, q as int);
+      assert e == (if NRR.QidStampPlus(host, q) then CP.compile_reconstruct_nulled(PIV.QidBody(host, q)) else []);
+      ReconNonEmpty(PIV.QidBody(host, q));
+      hide *;
+      reveal AI.get_code_v, MirrorPlusS, MirrorPlusAtS;
+      if NRR.QidStampPlus(hF, q) {
+        assert |e| >= 1;
+        assert 0 <= (q as int) < |plus|;
+        assert pF[q] == MirrorPlusAtS(host, plus, q);
+      } else {
+        if 0 <= (q as int) < |plus| { assert pF[q] == MirrorPlusAtS(host, plus, q); }
+      }
+    }
+  }
+
+  /** (G5b-2) `CinBodiesLookFreeFXR` on the stamp bodies. */
+  lemma StampBodiesLookFreeFXR(r: R.regex)
+    requires RF.StampBodiesLookFreeRE(r)
+    ensures RF.StampBodiesLookFreeRE(FST.FXR(r))
+    decreases r
+  {
+    match r
+    case Re_alt(a, b) => W.FXRAlt(a, b); StampBodiesLookFreeFXR(a); StampBodiesLookFreeFXR(b);
+    case Re_con(a, b) => W.FXRCon(a, b); StampBodiesLookFreeFXR(a); StampBodiesLookFreeFXR(b);
+    case Re_quant(nul, qid, q, a) =>
+      W.FXRQuant(nul, qid, q, a); StampBodiesLookFreeFXR(a);
+      if q.min != 0 && q.max == None && nul != R.NonNullable && q.greedy { LookFreeFXR(a); }
+    case Re_capture(c, a) => W.FXRCap(c, a); StampBodiesLookFreeFXR(a);
+    case Re_lookaround(l, la, a) => W.FXRLook(l, la, a); StampBodiesLookFreeFXR(a);
+    case Re_anchor(x) => W.FXRAnchor(x);
+    case Re_empty =>
+    case Re_character(_) =>
+  }
 }

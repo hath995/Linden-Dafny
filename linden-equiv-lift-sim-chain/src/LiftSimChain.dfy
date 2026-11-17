@@ -3277,7 +3277,7 @@ module LindenElkLiftSimChain {
     // is replaced by the positive-nesting sub-fragment (feeds PikeLkRegexRec(r1)
     // for the recursive outside-tie); the GateStepValue body-package requires
     // (StaticOkRE(body)/bodycode/qt/f_look_* rows) are DROPPED with the call.
-    requires T.TransWf(body) && NR.NestedFragmentRE(body) && la.Lookbehind?
+    requires T.TransWf(body) && NR.NestedFragmentCdnRE(body) && la.Lookbehind?   // (G5b-2) the body may hold a greedy CDN plus
     requires r1 == T.Translate(body) && lk == T.TrLookaround(la)
     requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
     requires 0 <= l < nlook && l < RL.ASize(t.look_regs)
@@ -3306,7 +3306,7 @@ module LindenElkLiftSimChain {
     assert WalkPairLkRec(rer, qm, code, inp, tc, gm2, (t.pc + 1) as nat, t.exit_allowed);
     // (3) OUTSIDE frame: recursive-body confinement (PikeLkRegexRec(r1)).
     assert GmtTieOutside(re, t, gm, S);   // from the incoming ThreadRepLkRec(LK, gm, t)
-    EL.TranslateFragmentPikeLkRec(body);  // PikeLkRegexRec(Translate(body)) == PikeLkRegexRec(r1)
+    EL.TranslateFragmentPikeLkRecCdn(body);  // PikeLkRegexRec(Translate(body)) == PikeLkRegexRec(r1)
     GmtTieOutsideAfterGateNested(rer, re, str, lk, r1, tlk, gm, t, l, cp, clk, S);   // GmtTieOutside(t',gm2,S)
   }
 

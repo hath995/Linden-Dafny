@@ -31,6 +31,9 @@ module LindenElkMirrorWorld {
   import FR = LindenElkFlipRev
   import OBu = LindenElkOracleBuild
   import FS = FunctionalSemantics
+  import T = LindenElkTranslate
+  import PIV = LindenElkPikeInv
+  import CMr = LindenElkCdnMirror
 
   // ===========================================================================
   // §1  Bank bounds: every recorded position lies in [-1, ub]
@@ -392,27 +395,47 @@ module LindenElkMirrorWorld {
     case Some(x) => Some(MIR.MirrorThread(x, n))
   }
 
-  /** The row facts the tie uses: a well-formed row whose body and flipped body
-      both compile to an EMPTY cdn list. (Stated on the cdn lists, not on
-      `NestedFragmentRE`, so the statement does not name a fragment predicate:
-      G2 edits `NestedFragmentRE`, and G5b is exactly the case `cdns != []`.) */
+  /** The row facts the tie uses: a well-formed row whose body is in the Cdn fragment. (G5b-2) The body may
+      hold a greedy CDN plus: the real list and the mirrored one build the same table at every position
+      (`CMr.CdnTableSwapFXR`), so the runs agree (`CMr.FFindMatchTableCong`). Before G5b-2 this asked for
+      EMPTY cdn lists on both sides. */
   ghost predicate RowOk(crv: CP.FCompiled, l: int) {
     0 <= l < |crv.f_look_types| && 0 <= l < |crv.f_look_ast|
     && LTB.LookEntryOk(crv, l, crv.f_look_types[l], crv.f_look_ast[l])
-    && LCdn.compile_cdns(crv.f_look_ast[l]) == []
-    && LCdn.compile_cdns(FST.FXR(crv.f_look_ast[l])) == []
+    && T.TransWf(crv.f_look_ast[l]) && NR.NestedFragmentCdnRE(crv.f_look_ast[l])
+    && PIV.CapUnique(crv.f_look_ast[l]) && PIV.QuantUnique(crv.f_look_ast[l])
   }
 
-  /** The probe's original premise implies `RowOk`. */
-  lemma RowOkOfNested(crv: CP.FCompiled, l: int)
-    requires 0 <= l < |crv.f_look_types| && 0 <= l < |crv.f_look_ast|
-    requires LTB.LookEntryOk(crv, l, crv.f_look_types[l], crv.f_look_ast[l])
-    requires NR.NestedFragmentRE(crv.f_look_ast[l])
-    requires NR.NestedFragmentRE(FST.FXR(crv.f_look_ast[l]))
-    ensures RowOk(crv, l)
+  /** The mirrored world's forward run of `FXR(b)` with the anchor-swapped list of `b` is its run with
+      `FXR(b)`'s own list (the list `FG.MirrorTables` installs). */
+  lemma SwapRunIsOwnRun(b: R.regex, str: string, m: int, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs,
+                        ov: LOr.OracleView)
+    requires T.TransWf(b) && NR.NestedFragmentCdnRE(b) && PIV.CapUnique(b) && PIV.QuantUnique(b)
+    requires |ov| == |str| + 1 && 0 <= m <= |str|
+    ensures var n := |str|;
+            var bcF := CP.compile_to_bytecode(FST.FXR(b));
+            var initsF := AI.FInitState(bcF, m, cap, lk, qt, 0, AI.cp_context(m, LC.Reverse(str), LAnc.Forward));
+            AI.FFindMatch(bcF, LC.Reverse(str), initsF, MIR.MirrorView(ov, n), LAnc.Forward,
+                          MIR.SwapAnchorsCdns(LCdn.compile_cdns(b)))
+            == AI.FFindMatch(bcF, LC.Reverse(str), initsF, MIR.MirrorView(ov, n), LAnc.Forward,
+                             LCdn.compile_cdns(FST.FXR(b)))
   {
-    FG.NestedCdnsEmpty(crv.f_look_ast[l]);
-    FG.NestedCdnsEmpty(FST.FXR(crv.f_look_ast[l]));
+    var n := |str|;
+    MIR.ReverseLen(str);
+    var rstr := LC.Reverse(str);
+    var ovF := MIR.MirrorView(ov, n);
+    var bcF := CP.compile_to_bytecode(FST.FXR(b));
+    FST.FXRStructuralCdn(b);
+    M.NoWriteOracleBodyCodeCdn(FST.FXR(b));
+    var initsF := AI.FInitState(bcF, m, cap, lk, qt, 0, AI.cp_context(m, rstr, LAnc.Forward));
+    forall k: int | 0 <= k <= |rstr|
+      ensures LCdn.build_cdn_v(MIR.SwapAnchorsCdns(LCdn.compile_cdns(b)), k, ovF, AI.cp_context(k, rstr, LAnc.Forward), LAnc.Forward)
+           == LCdn.build_cdn_v(LCdn.compile_cdns(FST.FXR(b)), k, ovF, AI.cp_context(k, rstr, LAnc.Forward), LAnc.Forward)
+    {
+      CMr.CdnTableSwapFXR(b, str, ov, k);
+    }
+    CMr.FFindMatchTableCong(bcF, rstr, initsF, ovF, LAnc.Forward, MIR.SwapAnchorsCdns(LCdn.compile_cdns(b)),
+                            LCdn.compile_cdns(FST.FXR(b)));
   }
 
   /** The per-row tie: the mirrored world's fresh match is the mirror of the real one. */
@@ -425,6 +448,21 @@ module LindenElkMirrorWorld {
     M.FreshBodyMatch(FG.MirrorTables(crv), LC.Reverse(str), l, MIR.MirrorRegs(lk, n),
                      MIR.MirrorView(ov, n), ncap, nlook, nquant)
     == MirrorOpt(M.FreshBodyMatch(crv, str, l, lk, ov, ncap, nlook, nquant), n)
+  }
+
+  /** `SwapRunIsOwnRun` on the plus match (the reconstruction reads no cdn list). */
+  lemma SwapRunIsOwnRunPlus(b: R.regex, str: string, m: int, cap: AReg.Regs, lk: AReg.Regs, qt: AReg.Regs,
+                            ov: LOr.OracleView, plus: seq<RB.code>)
+    requires T.TransWf(b) && NR.NestedFragmentCdnRE(b) && PIV.CapUnique(b) && PIV.QuantUnique(b)
+    requires |ov| == |str| + 1 && 0 <= m <= |str|
+    ensures var n := |str|;
+            var bcF := CP.compile_to_bytecode(FST.FXR(b));
+            AI.FFindMatchPlus(bcF, FST.FXR(b), plus, LC.Reverse(str), MIR.MirrorView(ov, n), LAnc.Forward, m,
+                              cap, lk, qt, 0, MIR.SwapAnchorsCdns(LCdn.compile_cdns(b)))
+            == AI.FFindMatchPlus(bcF, FST.FXR(b), plus, LC.Reverse(str), MIR.MirrorView(ov, n), LAnc.Forward, m,
+                                 cap, lk, qt, 0, LCdn.compile_cdns(FST.FXR(b)))
+  {
+    SwapRunIsOwnRun(b, str, m, cap, lk, qt, ov);
   }
 
   /** LOOKBEHIND row, body arbitrary: mirrored fresh match == mirror of the real one. */
@@ -454,14 +492,14 @@ module LindenElkMirrorWorld {
     assert crvF.f_look_ast[l] == FST.FXR(b);
     assert crvF.f_look_cdns[l] == LCdn.compile_cdns(FST.FXR(b));
     assert crv.f_look_cdns[l] == LCdn.compile_cdns(b);
-    assert LCdn.compile_cdns(b) == [] && LCdn.compile_cdns(FST.FXR(b)) == [];
-    assert MIR.SwapAnchorsCdns([]) == [];
     MIR.MirrorInitRegs(ncap, n); MIR.MirrorInitRegs(nlook, n); MIR.MirrorInitRegs(nquant, n);
     BV.BackwardReplayMirrorNested(b, str, cp0, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                  AReg.init_regs(nquant), ov, [], n);
+                                  AReg.init_regs(nquant), ov, LCdn.compile_cdns(b), n);
     FR.FlipCompileToBytecode(FST.XRV(b));
     assert CP.compile_to_bytecode(FST.FXR(b))
         == CP.compile_to_bytecode(OBu.SwapAnchorsRegex(R.reverse_regex(b)));
+    // (G5b-2) the swapped list runs as the flipped body's own list
+    SwapRunIsOwnRun(b, str, n - cp0, AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), ov);
     assert CP.capture_regex(R.Lookahead, FST.FXR(b)) == FST.FXR(b);
     assert CP.capture_regex(R.Lookbehind, b) == R.reverse_regex(b);
     assert MIR.Mirror(cp0, n) == n - cp0;
@@ -502,11 +540,14 @@ module LindenElkMirrorWorld {
     assert crvF.f_look_ast[l] == FST.FXR(b);
     assert crvF.f_look_cdns[l] == LCdn.compile_cdns(FST.FXR(b));
     assert crv.f_look_cdns[l] == LCdn.compile_cdns(b);
-    assert LCdn.compile_cdns(b) == [] && LCdn.compile_cdns(FST.FXR(b)) == [];
-    assert MIR.SwapAnchorsCdns([]) == [];
     MIR.MirrorInitRegs(ncap, n); MIR.MirrorInitRegs(nlook, n); MIR.MirrorInitRegs(nquant, n);
     BV.BackwardReplayMirrorNested(FST.FXR(b), rstr, n - cp0, AReg.init_regs(ncap), AReg.init_regs(nlook),
-                                  AReg.init_regs(nquant), ovF, [], n);
+                                  AReg.init_regs(nquant), ovF, LCdn.compile_cdns(FST.FXR(b)), n);
+    // (G5b-2) the swapped list of FXR(b) runs as b's own list (FXR is an involution)
+    FST.FXRStructuralCdn(b);
+    FXRInvol(b);
+    SwapRunIsOwnRun(FST.FXR(b), rstr, cp0, AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), ovF);
+    assert MIR.MirrorView(ovF, n) == ov;
     SwapRevFXR(b);
     FR.FlipCompileToBytecode(b);
     assert CP.compile_to_bytecode(OBu.SwapAnchorsRegex(R.reverse_regex(FST.FXR(b))))

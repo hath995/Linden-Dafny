@@ -368,8 +368,7 @@ module LindenElkLiftSimOracle {
                                 ncap: int, nlook: int, nquant: int)
     requires l in qm.looks
     requires LTB.LookEntryOk(crv, l, la, body) && T.TransWf(body) && NR.NestedFragmentCdnRE(body)
-    requires NRC.PositiveLk(la) && la.Lookahead? ==> RowPlusOkS(body, crv.f_plus_bc, nlook)   // (G5b-1)
-    requires NRC.PositiveLk(la) && !la.Lookahead? ==> NR.NestedFragmentRE(body) && RowPlusOk(body, crv.f_plus_bc, nlook)
+    requires NRC.PositiveLk(la) ==> RowPlusOkS(body, crv.f_plus_bc, nlook)   // (G5b-1, G5b-2) every positive row
     requires qm.looks[l].0 == T.TrLookaround(la) && qm.looks[l].1 == T.Translate(body)
     requires (set g: LG.GroupId | g in L.DefGroups(T.Translate(body))) <= PIV.CapIdsInLooks(re0)
     requires |CP.compile_to_bytecode(body)| >= 1
@@ -512,11 +511,9 @@ module LindenElkLiftSimOracle {
     case Re_con(r1, r2) => LookNodesPlusOk(r1, bc) && LookNodesPlusOk(r2, bc)
     case Re_quant(_, _, _, r1) => LookNodesPlusOk(r1, bc)
     case Re_capture(_, r1) => LookNodesPlusOk(r1, bc)
-    // (G5b) a positive lookbehind node keeps the narrow table; (G5b-1) a lookahead node the widened one;
-    // a negative one passes the premise to its body
+    // (G5b-1, G5b-2) a positive look node takes the widened table; a negative one passes the premise to its body
     case Re_lookaround(_, la, r1) =>
-      if la.Lookbehind? then NRR.PlusTableOk(re, bc)
-      else if la.Lookahead? then NRR.PlusTableOkS(re, bc)
+      if NRC.PositiveLk(la) then NRR.PlusTableOkS(re, bc)
       else LookNodesPlusOk(r1, bc)
     case _ => true
   }
@@ -536,11 +533,8 @@ module LindenElkLiftSimOracle {
     case Re_quant(_, _, _, r1) => LookNodesPlusOkFromS(r1, bc);
     case Re_capture(_, r1) => LookNodesPlusOkFromS(r1, bc);
     case Re_lookaround(_, la, r1) =>
-      if la.Lookbehind? {
-        assert NRC.NoCdnPlusRE(re);          // CdnTopRE's look arm: a positive lookbehind body holds no CDN plus
-        NRR.PlusTableOkSNarrow(re, bc);
-      } else if la.Lookahead? {
-                                             // (G5b-1) the widened table is the arm itself
+      if NRC.PositiveLk(la) {
+                                             // (G5b-1, G5b-2) the widened table is the arm itself
       } else {
         LookNodesPlusOkFromS(r1, bc);        // (G5b) a negative body may hold one: its inner look nodes
       }
@@ -577,22 +571,18 @@ module LindenElkLiftSimOracle {
       assert LTB.LookIds(r1) <= LTB.LookIds(re);
       GateStaticsSweepRECdn(qm, re0, r1, crv, ncap, nlook, nquant);
     case Re_lookaround(lid, la, body) =>
-      if la.Lookbehind? {
-        NRC.CdnNoCdnIsNarrow(body);        // (G5b) the gate keeps a positive lookbehind body CDN-free
-        assert NR.NestedFragmentRE(re);   // so the look node is narrow
-        GateStaticsSweepRENested(qm, re0, re, crv, ncap, nlook, nquant);
-      } else if la.Lookahead? {
-        GateStaticsPosAheadCdn(qm, re0, re, crv, ncap, nlook, nquant);   // (G5b-1) a lookahead node, S
+      if NRC.PositiveLk(la) {
+        GateStaticsPosLookCdn(qm, re0, re, crv, ncap, nlook, nquant);   // (G5b-1, G5b-2) a positive look node, S
       } else {
         GateStaticsNegLookCdn(qm, re0, re, crv, ncap, nlook, nquant);   // (G5b) a negative look node
       }
     case _ =>
   }
-  /** (G5b-1) The Cdn sweep at a LOOKAHEAD node: its body may hold a greedy CDN plus (every nullable plus body
-      inside it look-free, the gate). The row's statics are the S ones; its inner lids recurse. */
-  lemma GateStaticsPosAheadCdn(qm: AR.QMap, re0: R.regex, re: R.regex, crv: CP.FCompiled,
-                               ncap: int, nlook: int, nquant: int)
-    requires re.Re_lookaround? && re.look.Lookahead?
+  /** (G5b-1, G5b-2) The Cdn sweep at a POSITIVE look node: its body may hold a greedy CDN plus (every nullable
+      plus body inside it look-free, the gate). The row's statics are the S ones; its inner lids recurse. */
+  lemma GateStaticsPosLookCdn(qm: AR.QMap, re0: R.regex, re: R.regex, crv: CP.FCompiled,
+                              ncap: int, nlook: int, nquant: int)
+    requires re.Re_lookaround? && NRC.PositiveLk(re.look)
     requires T.TransWf(re) && AR.QmapOk(re, qm) && AR.LmapOk(re, qm)
     requires M.LookBodiesPlusGateRE(re)
     requires NR.NestedFragmentCdnRE(re)
@@ -1140,6 +1130,71 @@ module LindenElkLiftSimOracle {
     SubFirstLeafAtIsBackLeaf(rer, crv, str, A0 as int, lk, body);
     BackLeafAtSame(rer, body, str, AReg.get_cp(lk, A0 as int).value);
     BRG.BackLeafDirectInFreshPlus(rer, qm, crv, str, ov, A0, lk, body, g2, ncap, nlook, nquant);
+  }
+
+  /** (G5b-2) S twin. LB twin of `FreshBodyDirectInSubFirstLeaf`: a DIRECT group of the body live
+      in the fresh BACKWARD body match lands in `SubFirstLeafAt`. */
+  lemma FreshBodyDirectInSubFirstLeafLBS(
+    rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+    A0: nat, lk: AReg.Regs, body: R.regex, g2: nat, ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(body) && NR.NestedFragmentCdnRE(body)
+    requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook          // (G3b) the plus row's premises
+    requires NRC.CdnTopRE(body) && RF.StampBodiesLookFreeRE(body)   // (G5b-2) the body may hold a CDN plus
+    requires NRR.PlusTableOkS(body, crv.f_plus_bc)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires !rer.ignoreCase && !rer.multiline
+    requires |ov| == |str| + 1
+    requires qm.ov == ov && AR.LmapOk(body, qm) && OE.OracleColsOk(rer, qm, str)
+    requires body == M.VBody(crv, A0 as int)
+    requires 0 <= (A0 as int) < |crv.f_look_types| && crv.f_look_types[A0 as int].Lookbehind?
+    requires 0 <= (A0 as int) < |crv.f_look_cdns| && crv.f_look_cdns[A0 as int] == LCdn.compile_cdns(body)
+    requires M.MatchedPosLA(crv, lk, A0 as int)
+    requires var cp := AReg.get_cp(lk, A0 as int).value; 0 <= cp <= |str|
+    requires g2 in PIV.CapIds(body) && g2 !in PIV.CapIdsInLooks(body)
+    requires var rf := M.FreshBodyMatchPlus(crv, str, A0 as int, lk, ov, ncap, nlook, nquant);
+             rf.Some?
+             && g2 in PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs)
+    ensures var lsub := SubFirstLeafAt(rer, crv, str, A0 as int, lk);
+            lsub.Some? && g2 in lsub.value
+  {
+    BRG.FreshPlusDirectInBackLeafS(rer, qm, crv, str, ov, A0, lk, body, g2, ncap, nlook, nquant);
+    BackLeafAtSame(rer, body, str, AReg.get_cp(lk, A0 as int).value);
+    SubFirstLeafAtIsBackLeaf(rer, crv, str, A0 as int, lk, body);
+  }
+
+  /** (G5b-2) S twin. LB twin of `SubFirstLeafDirectInFresh`: a DIRECT group present in
+      `SubFirstLeafAt` is live in the fresh BACKWARD body match, with the leaf's
+      ordered range = `SwapRange` of the backward match's reversed read. */
+  lemma SubFirstLeafDirectInFreshLBS(
+    rer: LW.RegExpRecord, qm: AR.QMap, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+    A0: nat, lk: AReg.Regs, body: R.regex, g2: nat, ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(body) && NR.NestedFragmentCdnRE(body)
+    requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook          // (G3b) the plus row's premises
+    requires NRC.CdnTopRE(body) && RF.StampBodiesLookFreeRE(body)   // (G5b-2) the body may hold a CDN plus
+    requires NRR.PlusTableOkS(body, crv.f_plus_bc)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires !rer.ignoreCase && !rer.multiline
+    requires |ov| == |str| + 1
+    requires qm.ov == ov && AR.LmapOk(body, qm) && OE.OracleColsOk(rer, qm, str)
+    requires body == M.VBody(crv, A0 as int)
+    requires 0 <= (A0 as int) < |crv.f_look_types| && crv.f_look_types[A0 as int].Lookbehind?
+    requires 0 <= (A0 as int) < |crv.f_look_cdns| && crv.f_look_cdns[A0 as int] == LCdn.compile_cdns(body)
+    requires M.MatchedPosLA(crv, lk, A0 as int)
+    requires var cp := AReg.get_cp(lk, A0 as int).value; 0 <= cp <= |str|
+    requires g2 in PIV.CapIds(body) && g2 !in PIV.CapIdsInLooks(body)
+    requires M.FreshBodyMatchPlus(crv, str, A0 as int, lk, ov, ncap, nlook, nquant).Some?
+    requires var lsub := SubFirstLeafAt(rer, crv, str, A0 as int, lk);
+             lsub.Some? && g2 in lsub.value
+    ensures var rf := M.FreshBodyMatchPlus(crv, str, A0 as int, lk, ov, ncap, nlook, nquant);
+            var gmb := PIV.GmOfLive(body, rf.value.capture_regs, rf.value.look_regs, rf.value.quant_regs);
+            g2 in gmb
+            && SubFirstLeafAt(rer, crv, str, A0 as int, lk).value[g2] == LBV.SwapRange(gmb[g2])
+  {
+    SubFirstLeafAtIsBackLeaf(rer, crv, str, A0 as int, lk, body);
+    BackLeafAtSame(rer, body, str, AReg.get_cp(lk, A0 as int).value);
+    BRG.BackLeafDirectInFreshPlusS(rer, qm, crv, str, ov, A0, lk, body, g2, ncap, nlook, nquant);
   }
 
   /** (R2 — the crossing DISCHARGES the deep gate-pass requires) Ties rung 1 to the
@@ -1972,11 +2027,11 @@ module LindenElkLiftSimOracle {
       mirrored world is the `MirrorGm` of the backward sub-leaf (F2 at the lid
       body), so key membership is preserved and value equality comes back
       through `MirrorRange` injectivity. */
-  lemma LookNestBackTTopDeepLidFlip(
+  lemma LookNestBackTTopDeepLidFlipCdn(
     rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, crv: CP.FCompiled, str: string,
     ov: LOr.OracleView, gmt: LG.GroupMap, th: AI.Thread, lid: nat,
     ncap: int, nlook: int, nquant: int)
-    requires T.TransWf(body) && NR.NestedFragmentRE(body)
+    requires T.TransWf(body) && NR.NestedFragmentCdnRE(body)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires !rer.ignoreCase && !rer.multiline
@@ -2011,7 +2066,7 @@ module LindenElkLiftSimOracle {
     var r1 := NI.LookBodyOfRE(body, lid);
     var l := lid as int;
 
-    FreshMatchLidFlip(rer, qm, body, crv, str, ov, th.look_regs, lid, ncap, nlook, nquant);
+    FreshMatchLidFlipCdn(rer, qm, body, crv, str, ov, th.look_regs, lid, ncap, nlook, nquant);
     var lkF := thF.look_regs;
     assert lkF == MIR.MirrorRegs(th.look_regs, n);
     var cp: nat := AReg.get_cp(th.look_regs, l).value;
@@ -2024,7 +2079,7 @@ module LindenElkLiftSimOracle {
     // ---- sub-body facts needed on the spec side ----
     M.TransWfLookBodyOfRE(body, lid);
     M.CapUniqueLookBodyOfRE(body, lid);
-    NI.LookBodyOfFragmentNested(body, lid);
+    NI.LookBodyOfFragmentCdn(body, lid);
     FG.LookBodySubFactsLB(body, lid);
     FST.TranslateFlipXRev(r1);
 
@@ -2060,7 +2115,6 @@ module LindenElkLiftSimOracle {
     MIR.ReverseLen(str[..cp]);
     assert |inp.pref| + |inp.next| == n;
     // (G3b) the flip tie needs no nulled-plus premise (OG.BodyGmTieFlipG)
-    EL.TranslateFragmentNoCdn(r1);   // (G5a-1 step 3-L0) NUL.NoCdnPlusL of the translation
     OG.BodyGmTieFlipG(rer, T.Translate(r1), inp, n, dir);
     assert tF == LFU.ComputeTr(rer, [LS.Areg(FM.FlipRevL(T.Translate(r1)))], SD.SwapInput(inp),
                                LG.Empty, G.OppDir(dir));
@@ -2110,6 +2164,37 @@ module LindenElkLiftSimOracle {
         }
       }
     }
+  }
+
+  /** The narrow host, as a corollary of `LookNestBackTTopDeepLidFlipCdn`. */
+  lemma LookNestBackTTopDeepLidFlip(
+    rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, crv: CP.FCompiled, str: string,
+    ov: LOr.OracleView, gmt: LG.GroupMap, th: AI.Thread, lid: nat,
+    ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(body) && NR.NestedFragmentRE(body)
+    requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
+    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
+    requires !rer.ignoreCase && !rer.multiline
+    requires |ov| == |str| + 1
+    requires qm.ov == ov && AR.LmapOk(body, qm) && OE.OracleColsOk(rer, qm, str)
+    requires LTB.LookTablesOk(body, crv) && |crv.f_look_types| == |crv.f_look_ast|
+    requires TRM.GmInBounds(gmt, |str|)
+    requires CM.LookCpsLE(th.look_regs, |str|)
+    requires lid in NI.TopLookIds(body) && lid in LTB.LookIds(body)
+    requires M.MatchedPosLA(crv, th.look_regs, lid as int)
+    requires NI.LookPathDom(body, AI.get_idx(th.look_regs.a_clk, lid as int), th.quant_regs.a_clk, lid)
+    requires LookNestBackTTopDeep(rer, FST.FXR(body), FG.MirrorTables(crv), LC.Reverse(str),
+                                  MIR.MirrorView(ov, |str|), PIV.CapIdsInLooks(body),
+                                  TRM.MirrorGm(gmt, |str|), MIR.MirrorThread(th, |str|), ncap, nlook, nquant)
+    ensures var lsub := SubFirstLeafAt(rer, crv, str, lid as int, th.look_regs);
+            lsub.Some? ==>
+              forall g: LG.GroupId ::
+                g in PIV.CapIdsInLooks(body) && g in PIV.CapIds(NI.LookBodyOfRE(body, lid)) ==>
+                  (g in lsub.value ==> g in gmt && gmt[g] == lsub.value[g])
+                  && (g in gmt ==> g in lsub.value)
+  {
+    NR.NarrowIsCdn(body);
+    LookNestBackTTopDeepLidFlipCdn(rer, qm, body, crv, str, ov, gmt, th, lid, ncap, nlook, nquant);
   }
 
   /** (perf) The FORWARD BASE arm of `DeepFindRec`, extracted so its assertions are

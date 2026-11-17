@@ -34,6 +34,7 @@ module LindenElkBackRowResidue {
   import FV = LindenElkFinalVm
   import FRD = LindenElkFinalReadout
   import CM = LindenElkClockMono
+  import BR = LindenElkBackRowAt   // (G5b-2) RevTrueStampsS
 
   // ===========================================================================
   // 0. FXR's shape, one constructor at a time.
@@ -104,6 +105,7 @@ module LindenElkBackRowResidue {
     ensures PIV.QChainFresh(FST.FXR(r), qc, mx, q) == PIV.QChainFresh(r, qc, mx, q)
     ensures PIV.PathPresentQ(FST.FXR(r), cc, qc, mx, q) == PIV.PathPresentQ(r, cc, qc, mx, q)
     ensures NRR.QidCinPlus(FST.FXR(r), q) == NRR.QidCinPlus(r, q)
+    ensures NRR.QidStampPlus(FST.FXR(r), q) == NRR.QidStampPlus(r, q)   // (G5b-2)
     decreases r
   {
     IdsFXR(r);
@@ -397,7 +399,37 @@ module LindenElkBackRowResidue {
 
   // ===========================================================================
   // 7. P3: the true-stamp inventories (Q = CinQids(body)) of the two codes.
+  /** (G5b-2) `CinQidsFXR` on the stamp set. */
+  lemma StampQidsFXR(r: R.regex)
+    requires PIV.QuantUnique(r)
+    ensures FRD.StampQids(FST.FXR(r)) == FRD.StampQids(r)
+  {
+    IdsFXR(r);
+    forall x | x in FRD.StampQids(FST.FXR(r)) ensures x in FRD.StampQids(r) {
+      var q: nat :| q in PIV.QuantIds(FST.FXR(r)) && NRR.QidStampPlus(FST.FXR(r), q) && q as int == x;
+      PathsFXR(r, [], [], -1, q);
+    }
+    forall x | x in FRD.StampQids(r) ensures x in FRD.StampQids(FST.FXR(r)) {
+      var q: nat :| q in PIV.QuantIds(r) && NRR.QidStampPlus(r, q) && q as int == x;
+      PathsFXR(r, [], [], -1, q);
+    }
+  }
+
   // ===========================================================================
+
+  /** (G5b-2) `FXRTrueStampsCin` on the Cdn fragment and the stamp set. */
+  lemma FXRTrueStampsS(body: R.regex)
+    requires NR.NestedFragmentCdnRE(body) && PIV.QuantUnique(body)
+    ensures FV.TrueStampsIn(CP.compile_to_bytecode(FST.FXR(body)), FRD.StampQids(body))
+  {
+    FST.XRVCdnFragment(body);
+    FST.FlipCdnFragment(FST.XRV(body));
+    assert NR.NestedFragmentCdnRE(FST.FXR(body));
+    QuantUniqueFXR(body);
+    StampQidsFXR(body);
+    var endl := FST.FXRCompileFactsCdn(body);
+    FRD.TrueStampsInStamp(FST.FXR(body), CP.compile_to_bytecode(FST.FXR(body)), endl);
+  }
 
   /** Mirror world: compile(FXR(body)). */
   lemma FXRTrueStampsCin(body: R.regex)
@@ -550,6 +582,64 @@ module LindenElkBackRowResidue {
   {
     var Q := FRD.CinQids(body);
     RevTrueStampsCin(body);
+    var bcB := CP.compile_to_bytecode(R.reverse_regex(body));
+    FV.RegsFinalOkInit(ncap, nlook, nquant, |str|, Q);
+    var sB := AI.FInitState(bcB, cp, AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant),
+                            0, AI.cp_context(cp, str, LAnc.Backward));
+    assert FV.VmRegsFinalOk(sB, |str|, Q) by {
+      assert sB.active == [AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant))];
+    }
+    FFindMatchRegsFinalAny(bcB, str, sB, ov, LAnc.Backward, cdns, Q);
+  }
+
+  /** (G5b-2) the S twin of (a). (a) FV.FFindMatchRegsFinal AS IS (Forward) at FXR(body) / Reverse(str) /
+      MirrorRegs(entry banks), entry banks = the fresh row's init banks (the
+      run LBEngineLeafFlip and W1's RowTieLB name). The entry premise holds. */
+  lemma MirrorRowEntryRegsFinalS(body: R.regex, str: string, cp: nat, ov: LOr.OracleView, cdns: LCdn.cdns,
+                                ncap: int, nlook: int, nquant: int)
+    requires cp <= |str| && |ov| == |str| + 1
+    requires NR.NestedFragmentCdnRE(body) && PIV.QuantUnique(body)
+    ensures |LC.Reverse(str)| == |str|
+    ensures var n := |str|; var rstr := LC.Reverse(str); var mcp := n - cp;
+      var bcF := CP.compile_to_bytecode(FST.FXR(body));
+      var sF := AI.FInitState(bcF, mcp, MIR.MirrorRegs(AReg.init_regs(ncap), n),
+                              MIR.MirrorRegs(AReg.init_regs(nlook), n), MIR.MirrorRegs(AReg.init_regs(nquant), n),
+                              0, AI.cp_context(mcp, rstr, LAnc.Forward));
+      FV.VmRegsFinalOk(sF, n, FRD.StampQids(body))
+      && (var rfF := AI.FFindMatch(bcF, rstr, sF, MIR.MirrorView(ov, n), LAnc.Forward, cdns).0;
+          rfF.Some? ==> FV.RegsFinalOk(rfF.value, n, FRD.StampQids(body)))
+  {
+    var n := |str|;
+    MIR.ReverseLen(str);
+    var rstr := LC.Reverse(str);
+    var mcp := n - cp;
+    var Q := FRD.StampQids(body);
+    FXRTrueStampsS(body);
+    var bcF := CP.compile_to_bytecode(FST.FXR(body));
+    MIR.MirrorInitRegs(ncap, n); MIR.MirrorInitRegs(nlook, n); MIR.MirrorInitRegs(nquant, n);
+    FV.RegsFinalOkInit(ncap, nlook, nquant, n, Q);
+    var sF := AI.FInitState(bcF, mcp, AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant),
+                            0, AI.cp_context(mcp, rstr, LAnc.Forward));
+    assert FV.VmRegsFinalOk(sF, n, Q) by {
+      assert sF.active == [AI.init_thread(AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant))];
+    }
+    FV.FFindMatchRegsFinal(bcF, rstr, sF, MIR.MirrorView(ov, n), LAnc.Forward, cdns, Q);
+  }
+
+  /** (G5b-2) the S twin of (b). (b) The twin, directly on the REAL backward fresh run: no mirror, no bound. */
+  lemma BackRowEntryRegsFinalS(body: R.regex, str: string, cp: nat, ov: LOr.OracleView, cdns: LCdn.cdns,
+                              ncap: int, nlook: int, nquant: int)
+    requires cp <= |str|
+    requires NR.NestedFragmentCdnRE(body) && PIV.QuantUnique(body)
+    ensures var bcB := CP.compile_to_bytecode(R.reverse_regex(body));
+      var sB := AI.FInitState(bcB, cp, AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant),
+                              0, AI.cp_context(cp, str, LAnc.Backward));
+      FV.VmRegsFinalOk(sB, |str|, FRD.StampQids(body))
+      && (var raB := AI.FFindMatch(bcB, str, sB, ov, LAnc.Backward, cdns).0;
+          raB.Some? ==> FV.RegsFinalOk(raB.value, |str|, FRD.StampQids(body)))
+  {
+    var Q := FRD.StampQids(body);
+    BR.RevTrueStampsS(body);
     var bcB := CP.compile_to_bytecode(R.reverse_regex(body));
     FV.RegsFinalOkInit(ncap, nlook, nquant, |str|, Q);
     var sB := AI.FInitState(bcB, cp, AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant),
