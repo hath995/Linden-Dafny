@@ -1500,7 +1500,8 @@ module LindenElkNulledPlusLk {
   // ===========================================================================
 
   lemma NulledIterationLeaf(rer: LW.RegExpRecord, r1: L.Regex, inp: LC.Input, gm: LG.GroupMap, t: LT.Tree)
-    requires EL.PikeLkRegexRec(r1) && GUniq(r1) && NUL.CINullableL(r1)
+    requires EL.PikeLkRegexRec(r1) && GUniq(r1)
+    requires NP.FirstEmptyPathL(rer, r1, inp).Some?   // (G4b-2) CIN or CDN: the CIN premise weakened to its only use
     requires LS.IsTree(rer, [LS.Areg(r1)], inp, LG.GMReset(L.DefGroups(r1), gm), WP.Forward, t)
     ensures FirstEmptyPathLkL(rer, r1, inp).Some?
     ensures ProjO(FirstEmptyPathLkL(rer, r1, inp)) == NP.FirstEmptyPathL(rer, r1, inp)
@@ -1520,7 +1521,7 @@ module LindenElkNulledPlusLk {
     var A := [LS.Areg(r1)];
     assert A == [LS.Areg(r1)] + [];
     assert NP.FirstEmptyPathA(rer, [], inp) == Some([]);
-    NP.CINullableEmptyPathA(rer, r1, [], inp);
+    assert NP.FirstEmptyPathA(rer, A, inp).Some?;
     ProjPath(rer, A, inp);
     EL.PikeLkActionsRecConsIff(LS.Areg(r1), []);
     EmptyLeavesLk(rer, A, inp, gm', t);
@@ -2293,4 +2294,244 @@ module LindenElkNulledPlusLk {
     case Group(_, r1) => OutLkSubDG(r1);
     case _ =>
   }
+
+  // ===========================================================================
+  // 16. (G4b-2) The synthetic stamp node, spec side (ported from the W20 §7 probe, `work/g4b2/`): machine B's
+  //     node at a nulled-exit stamp is ONE lookahead gate whose body tree is `Reset(DefGroups r1); ChainLk(DropOC s)`
+  //     with `s` the body's Lk-carrying first empty path; its fold is `NulledIterationLeaf`'s leaf.
+  // ===========================================================================
+
+  function DropOC(s: seq<Step>): seq<Step>
+    decreases |s|
+  {
+    if |s| == 0 then [] else (if s[0].GA? && !s[0].a.Reset? then [] else [s[0]]) + DropOC(s[1..])
+  }
+
+  lemma DropOCSteps(rer: LW.RegExpRecord, s: seq<Step>, inp: LC.Input, X: set<LG.GroupId>)
+    requires LkStepsOk(rer, s, inp, X)
+    ensures LkStepsOk(rer, DropOC(s), inp, X)
+    decreases |s|
+  {
+    if |s| > 0 {
+      assert LkStepsOk(rer, s[1..], inp, X) by {
+        forall i | 0 <= i < |s[1..]| && s[1..][i].LkS?
+          ensures DG(s[1..][i].b) <= X && EL.PikeLkRegexRec(s[1..][i].b)
+                  && NP.LkVerdictL(rer, s[1..][i].lk, s[1..][i].b, inp)
+        { assert s[1..][i] == s[i + 1]; }
+      }
+      DropOCSteps(rer, s[1..], inp, X);
+      var h := if s[0].GA? && !s[0].a.Reset? then [] else [s[0]];
+      assert DropOC(s) == h + DropOC(s[1..]);
+      assert LkStepsOk(rer, h, inp, X);
+      LkStepsOkCat(rer, h, DropOC(s[1..]), inp, X);
+    }
+  }
+
+  /** A look step is a frame outside any `G` (W15 G4bWalkB). */
+  lemma LkGmFrameOutside(rer: LW.RegExpRecord, lk: L.Lookaround, b: L.Regex, inp: LC.Input,
+                         gm1: LG.GroupMap, gm2: LG.GroupMap, G: set<LG.GroupId>)
+    requires EL.PikeLkRegexRec(b)
+    requires LL.GmAgreeOutside(gm1, gm2, G)
+    ensures LL.GmAgreeOutside(LkGm(rer, lk, b, inp, gm1), LkGm(rer, lk, b, inp, gm2), G)
+  {
+    var ldir := L.LkDir(lk);
+    EL.ComputeTrGmIndepLkRec(rer, b, inp, gm1, ldir);
+    EL.ComputeTrGmIndepLkRec(rer, b, inp, gm2, ldir);
+    var tlk := FU.ComputeTr(rer, [LS.Areg(b)], inp, LG.Empty, ldir);
+    assert LkGm(rer, lk, b, inp, gm1) == (match LS.LkResult(lk, tlk, gm1, inp) case Some(g) => g case None => gm1);
+    assert LkGm(rer, lk, b, inp, gm2) == (match LS.LkResult(lk, tlk, gm2, inp) case Some(g) => g case None => gm2);
+    hide FU.ComputeTr;
+    LL.TreeLeavesFrameOutside(tlk, gm1, gm2, inp, ldir, G);
+    LT.FirstTreeLeaf(tlk, gm1, inp, ldir);
+    LT.FirstTreeLeaf(tlk, gm2, inp, ldir);
+    var s1 := LT.TreeLeaves(tlk, gm1, inp, ldir);
+    var s2 := LT.TreeLeaves(tlk, gm2, inp, ldir);
+    if L.Positivity(lk) && |s1| > 0 {
+      assert LS.LkResult(lk, tlk, gm1, inp) == Some(s1[0].1);
+      assert LS.LkResult(lk, tlk, gm2, inp) == Some(s2[0].1);
+    }
+  }
+
+  /** Dropping Open/Close in `G` is a frame outside `G` (W15 G4bWalkB). */
+  lemma DropOCFrame(rer: LW.RegExpRecord, s: seq<Step>, inp: LC.Input, gm1: LG.GroupMap, gm2: LG.GroupMap,
+                    G: set<LG.GroupId>)
+    requires LL.GmAgreeOutside(gm1, gm2, G)
+    requires OCIn(s, G)
+    requires forall i :: 0 <= i < |s| && s[i].LkS? ==> EL.PikeLkRegexRec(s[i].b)
+    ensures LL.GmAgreeOutside(ApplyPathLk(rer, DropOC(s), inp, gm1), ApplyPathLk(rer, s, inp, gm2), G)
+    decreases |s|
+  {
+    if |s| == 0 { return; }
+    var t := s[1..];
+    assert OCIn(t, G) by {
+      forall i | 0 <= i < |t| && t[i].GA? && !t[i].a.Reset? ensures t[i].a.g in G { assert t[i] == s[i + 1]; }
+    }
+    assert forall i :: 0 <= i < |t| && t[i].LkS? ==> EL.PikeLkRegexRec(t[i].b) by {
+      forall i | 0 <= i < |t| && t[i].LkS? ensures EL.PikeLkRegexRec(t[i].b) { assert t[i] == s[i + 1]; }
+    }
+    var x := s[0];
+    var gm2' := StepGm(rer, x, inp, gm2);
+    assert ApplyPathLk(rer, s, inp, gm2) == ApplyPathLk(rer, t, inp, gm2');
+    if x.GA? && !x.a.Reset? {
+      assert DropOC(s) == DropOC(t);
+      assert x.a.g in G;
+      assert LL.GmAgreeOutside(gm2', gm2, G) by {
+        match x.a
+        case Open(g) =>
+        case Close(g) =>
+      }
+      LL.GmAgreeOutsideSym(gm2', gm2, G);
+      LL.GmAgreeOutsideTrans(gm1, gm2, gm2', G);
+      DropOCFrame(rer, t, inp, gm1, gm2', G);
+    } else {
+      assert DropOC(s) == [x] + DropOC(t);
+      ApplyPathLkCons(rer, x, DropOC(t), inp, gm1);
+      var gm1' := StepGm(rer, x, inp, gm1);
+      match x {
+        case GA(a) => LL.GMUpdateAgreeOutside(a, LC.Idx(inp), gm1, gm2, G);
+        case LkS(lk, b) => LkGmFrameOutside(rer, lk, b, inp, gm1, gm2, G);
+      }
+      DropOCFrame(rer, t, inp, gm1', gm2', G);
+    }
+  }
+
+  /** Resets and looks only: from a map where `D \ X` is unset, the fold is the identity outside `X`
+      (`X` holds every crossed look body's groups, `D` every action's groups). */
+  lemma DropOCPlain(rer: LW.RegExpRecord, s: seq<Step>, inp: LC.Input, gm: LG.GroupMap,
+                    X: set<LG.GroupId>, D: set<LG.GroupId>)
+    requires NP.PathIn(Proj(s), D)
+    requires forall i :: 0 <= i < |s| && s[i].LkS? ==> DG(s[i].b) <= X && EL.PikeLkRegexRec(s[i].b)
+    requires forall g :: g in D && g !in X ==> g !in gm
+    ensures LL.GmAgreeOutside(ApplyPathLk(rer, DropOC(s), inp, gm), gm, X)
+    decreases |s|
+  {
+    if |s| == 0 { return; }
+    var t := s[1..];
+    var x := s[0];
+    assert s == [x] + t;
+    ProjCons(x, t);
+    var h := if x.GA? then [x.a] else [];
+    assert Proj(s) == h + Proj(t);
+    assert forall i :: 0 <= i < |t| && t[i].LkS? ==> DG(t[i].b) <= X && EL.PikeLkRegexRec(t[i].b) by {
+      forall i | 0 <= i < |t| && t[i].LkS? ensures DG(t[i].b) <= X && EL.PikeLkRegexRec(t[i].b) { assert t[i] == s[i + 1]; }
+    }
+    assert NP.PathIn(Proj(t), D) by {
+      forall i | 0 <= i < |Proj(t)| ensures CE.GmActionIn(Proj(t)[i], D) {
+        assert Proj(t)[i] == Proj(s)[|h| + i];
+      }
+    }
+    if x.GA? && !x.a.Reset? {
+      assert DropOC(s) == DropOC(t);
+      DropOCPlain(rer, t, inp, gm, X, D);
+    } else {
+      assert DropOC(s) == [x] + DropOC(t);
+      ApplyPathLkCons(rer, x, DropOC(t), inp, gm);
+      var gm1 := StepGm(rer, x, inp, gm);
+      assert LL.GmAgreeOutside(gm1, gm, X) && (forall g :: g in D && g !in X ==> g !in gm1) by {
+        match x {
+          case GA(a) =>
+            assert Proj(s)[0] == a;
+            assert CE.GmActionIn(a, D);
+          case LkS(lk, b) =>
+            assert s[0].LkS?;
+            LkGmOutside(rer, lk, b, inp, gm);
+        }
+      }
+      DropOCPlain(rer, t, inp, gm1, X, D);
+    }
+  }
+
+  /** Under group uniqueness, a group outside every look is in no look body. */
+  lemma OutLkLkBodyDisjoint(r: L.Regex)
+    requires GUniq(r)
+    ensures OutLk(r) !! LL.LkBodyGroups(r)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) =>
+      OutLkLkBodyDisjoint(r1); OutLkLkBodyDisjoint(r2);
+      OutLkSubDG(r1); OutLkSubDG(r2); LkBodyGroupsSubDG(r1); LkBodyGroupsSubDG(r2);
+    case Sequence(r1, r2) =>
+      OutLkLkBodyDisjoint(r1); OutLkLkBodyDisjoint(r2);
+      OutLkSubDG(r1); OutLkSubDG(r2); LkBodyGroupsSubDG(r1); LkBodyGroupsSubDG(r2);
+    case Quantified(_, _, _, r1) => OutLkLkBodyDisjoint(r1);
+    case Group(id, r1) => OutLkLkBodyDisjoint(r1); LkBodyGroupsSubDG(r1);
+    case _ =>
+  }
+
+  /** The stamp gate's path: the body's Lk-carrying first empty path with Open/Close dropped. */
+  ghost function StampPath(rer: LW.RegExpRecord, r1: L.Regex, inp: LC.Input): seq<Step> {
+    var p := FirstEmptyPathLkL(rer, r1, inp);
+    if p.Some? then DropOC(p.value) else []
+  }
+
+  /** THE SYNTHETIC NODE'S BODY (W20 §4): `Reset(gidl); ChainLk(DropOC(s), Match)`. */
+  ghost function StampTreeLk(rer: LW.RegExpRecord, r1: L.Regex, inp: LC.Input): LT.Tree {
+    LT.GroupActionT(LG.Reset(L.DefGroups(r1)), ChainLk(rer, StampPath(rer, r1, inp), inp, LT.Match))
+  }
+
+  /** `gm' = fold`: what machine B's map becomes across the synthetic node. */
+  ghost function StampFold(rer: LW.RegExpRecord, r1: L.Regex, inp: LC.Input, gm: LG.GroupMap): LG.GroupMap {
+    ApplyPathLk(rer, StampPath(rer, r1, inp), inp, LG.GMReset(L.DefGroups(r1), gm))
+  }
+
+  /** `SynthGateRes`: ONE `LK(LookAhead, StampTreeLk, t')` node is one machine-B step whose effect is the fold. */
+
+  ghost predicate FrozenAt(rer: LW.RegExpRecord, r1: L.Regex, inp: LC.Input, gmt: LG.GroupMap) {
+    var p := FirstEmptyPathLkL(rer, r1, inp);
+    p.Some?
+    && LkStepsIn(p.value, LL.LkBodyGroups(r1))
+    && LkLeafOk(rer, p.value, inp, gmt)
+    && (forall g :: g in LL.LkBodyGroups(r1) && !Crossed(p.value, g) ==> g !in gmt)
+  }
+
+  /** `FrozenAt` reads `gmt` only on the body's look groups. */
+  lemma FrozenAtFrame(rer: LW.RegExpRecord, r1: L.Regex, inp: LC.Input, gmt: LG.GroupMap, gmt': LG.GroupMap)
+    requires FrozenAt(rer, r1, inp, gmt)
+    requires LL.GmAgreeInside(gmt', gmt, LL.LkBodyGroups(r1))
+    ensures FrozenAt(rer, r1, inp, gmt')
+  {
+    var s := FirstEmptyPathLkL(rer, r1, inp).value;
+    forall i | 0 <= i < |s| && s[i].LkS? && L.Positivity(s[i].lk)
+      ensures LL.GmAgreeInside(gmt', BodyLeafE(rer, s[i].lk, s[i].b, inp), DG(s[i].b))
+    {
+      assert DG(s[i].b) <= LL.LkBodyGroups(r1);
+      assert LL.GmAgreeInside(gmt, BodyLeafE(rer, s[i].lk, s[i].b, inp), DG(s[i].b));
+    }
+  }
+
+  /** THE FOLD'S VALUE (uses `NulledIterationLeaf`): outside the body's look groups it is the plain Reset
+      (so machine A's tie and every off-body carrier see today's step), and on them it is frozen. */
+  lemma StampFoldFacts(rer: LW.RegExpRecord, r1: L.Regex, inp: LC.Input, gm: LG.GroupMap)
+    requires EL.PikeLkRegexRec(r1) && GUniq(r1) && NP.FirstEmptyPathL(rer, r1, inp).Some?
+    ensures LL.GmAgreeOutside(StampFold(rer, r1, inp, gm), LG.GMReset(L.DefGroups(r1), gm), LL.LkBodyGroups(r1))
+    ensures FrozenAt(rer, r1, inp, StampFold(rer, r1, inp, gm))
+  {
+    var gidl := L.DefGroups(r1);
+    var gm0 := LG.GMReset(gidl, gm);
+    var t := FU.ComputeTr(rer, [LS.Areg(r1)], inp, gm0, WP.Forward);
+    FU.ComputeTrIsTree(rer, [LS.Areg(r1)], inp, gm0, WP.Forward);
+    NulledIterationLeaf(rer, r1, inp, gm, t);
+    var s := FirstEmptyPathLkL(rer, r1, inp).value;
+    var gme := ApplyPathLk(rer, s, inp, gm0);
+    var mB := ApplyPathLk(rer, DropOC(s), inp, gm0);
+    assert mB == StampFold(rer, r1, inp, gm);
+    assert LkLeafOk(rer, s, inp, gme);
+    assert forall g :: g in LL.LkBodyGroups(r1) && !Crossed(s, g) ==> g !in gme;
+    StepsOkL(rer, r1, inp);
+    assert LkStepsIn(s, LL.LkBodyGroups(r1));
+    OCStepsL(rer, r1, inp);
+    LL.GmAgreeOutsideRefl(gm0, OutLk(r1));
+    DropOCFrame(rer, s, inp, gm0, gm0, OutLk(r1));
+    OutLkLkBodyDisjoint(r1);
+    assert LL.GmAgreeInside(mB, gme, LL.LkBodyGroups(r1));
+    assert FrozenAt(rer, r1, inp, gme);
+    FrozenAtFrame(rer, r1, inp, gme, mB);
+    // the plain half
+    assert NP.FirstEmptyPathL(rer, r1, inp) == Some(Proj(s));
+    FirstEmptyPathOC(rer, r1, inp);
+    LkBodyGroupsSubDG(r1);
+    DropOCPlain(rer, s, inp, gm0, LL.LkBodyGroups(r1), DG(r1));
+  }
+
 }
