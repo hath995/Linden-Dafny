@@ -107,10 +107,29 @@ module LindenElkTransportsG4b2 {
   import NPL = LindenElkNulledPlusLk   // (G4b-1) machine B's static scope
   import SBk = LindenElkStampBank
   import opened LindenElkMachineA
-  import opened LindenElkTwoMachines
   import LR = LindenElkLookRecord
   import SLS = LindenElkStampLookSite
   import NST = LindenElkNestStamp
+
+  // (moved here from `LindenElkTwoMachines`, which imports this module)
+  lemma GetCpCong(a: AReg.Regs, b: AReg.Regs, l: int)
+    requires |a.a_cp| == |b.a_cp| && AI.get_idx(a.a_cp, l) == AI.get_idx(b.a_cp, l)
+    ensures AReg.get_cp(a, l) == AReg.get_cp(b, l)
+  {}
+
+  lemma FreshBodyCong(crv: CP.FCompiled, str: string, l: int, a: AReg.Regs, b: AReg.Regs,
+                      ov: LOr.OracleView, ncap: int, nlook: int, nquant: int)
+    requires AReg.get_cp(a, l) == AReg.get_cp(b, l)
+    ensures M.FreshBodyMatchPlus(crv, str, l, a, ov, ncap, nlook, nquant)
+            == M.FreshBodyMatchPlus(crv, str, l, b, ov, ncap, nlook, nquant)
+  {
+    reveal M.FreshBodyMatchPlus();
+  }
+
+  lemma SubFirstLeafCong(rer: LW.RegExpRecord, crv: CP.FCompiled, str: string, l: int, a: AReg.Regs, b: AReg.Regs)
+    requires AReg.get_cp(a, l) == AReg.get_cp(b, l)
+    ensures SubFirstLeafAt(rer, crv, str, l, a) == SubFirstLeafAt(rer, crv, str, l, b)
+  {}
 
   // ===========================================================================
   // 1. Body-level statics.
