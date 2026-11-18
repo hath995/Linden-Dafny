@@ -175,6 +175,8 @@ module LindenElkLiftSimCore {
   ghost predicate StampNodeOk(rer: LW.RegExpRecord, qm: AR.QMap, inp: LC.Input, q: int, t: LT.Tree) {
     q in qm.quants && q in qm.bodies && T.TransWf(qm.bodies[q])
     && qm.quants[q] == L.DefGroups(T.Translate(qm.bodies[q]))
+    && EL.PikeLkRegexRec(T.Translate(qm.bodies[q]))                  // the gate's statics
+    && NP.FirstEmptyPathL(rer, T.Translate(qm.bodies[q]), inp).Some?  // the stamp runs on an empty path
     && t.LK? && t.lk == L.LookAhead && t.tlk == NPL.StampTreeLk(rer, T.Translate(qm.bodies[q]), inp)
   }
 
@@ -2484,6 +2486,7 @@ module LindenElkLiftSimCore {
     ensures (qid as int) in qm.quants
     ensures T.TransWf(PIV.QidBody(re, qid))
     ensures qm.quants[qid as int] == L.DefGroups(T.Translate(PIV.QidBody(re, qid)))
+    ensures (qid as int) in qm.bodies && qm.bodies[qid as int] == PIV.QidBody(re, qid)   // (G4b-2)
     decreases re
   {
     match re
@@ -2667,8 +2670,10 @@ module LindenElkLiftSimCore {
 
   /** ★ THE NEW PER-THREAD INVARIANT (opaque): every live stamp's body is frozen at its stamp position. */
   opaque ghost predicate FrozenOk(rer: LW.RegExpRecord, re: R.regex, str: string, gmt: LG.GroupMap, th: AI.Thread) {
+    // keyed on quantifiers OUTSIDE looks: a top-level thread stamps only those (a look gate writes its
+    // body's groups, which a look-internal quantifier's body shares)
     forall qid: nat {:trigger LiveStampAt(re, th.quant_regs, qid)} ::
-      qid in PIV.QuantIds(re) && LiveStampAt(re, th.quant_regs, qid)
+      qid in PIV.QuantIdsOutsideLooks(re) && LiveStampAt(re, th.quant_regs, qid)
       ==> FrozenAtQ(rer, re, str, gmt, qid, AI.get_idx(th.quant_regs.a_cp, qid as int))
   }
 
@@ -2795,7 +2800,8 @@ module LindenElkLiftSimCore {
                                        (g in gm' <==> g in gm) && (g in gm' ==> gm'[g] == gm[g])
     ensures FrozenOk(rer, re, str, gm', th')
   {
-    forall qid: nat | qid in PIV.QuantIds(re) && LiveStampAt(re, th'.quant_regs, qid)
+    PIV.QuantIdsOutsideLooksSub(re);
+    forall qid: nat | qid in PIV.QuantIdsOutsideLooks(re) && LiveStampAt(re, th'.quant_regs, qid)
       ensures FrozenAtQ(rer, re, str, gm', qid, AI.get_idx(th'.quant_regs.a_cp, qid as int))
     {
       if qid == qn {
@@ -2859,7 +2865,8 @@ module LindenElkLiftSimCore {
                                        (g in gm' <==> g in gm) && (g in gm' ==> gm'[g] == gm[g])
     ensures FrozenOk(rer, re, str, gm', th')
   {
-    forall qid: nat | qid in PIV.QuantIds(re) && LiveStampAt(re, th'.quant_regs, qid)
+    PIV.QuantIdsOutsideLooksSub(re);
+    forall qid: nat | qid in PIV.QuantIdsOutsideLooks(re) && LiveStampAt(re, th'.quant_regs, qid)
       ensures FrozenAtQ(rer, re, str, gm', qid, AI.get_idx(th'.quant_regs.a_cp, qid as int))
     {
       if qid == qn {
@@ -2903,6 +2910,56 @@ module LindenElkLiftSimCore {
     }
     reveal FrozenOk();
   }
+  /** `FrozenOk` reads the thread's quant bank only. */
+  lemma FrozenOkRegsCong(rer: LW.RegExpRecord, re: R.regex, str: string, gm: LG.GroupMap, th: AI.Thread, th': AI.Thread)
+    requires th'.quant_regs == th.quant_regs
+    requires FrozenOk(rer, re, str, gm, th)
+    ensures FrozenOk(rer, re, str, gm, th')
+  { reveal FrozenOk(); }
+
+  /** No stamp is set: nothing is frozen. */
+  lemma FrozenOkNoStamps(rer: LW.RegExpRecord, re: R.regex, str: string, gm: LG.GroupMap, th: AI.Thread)
+    requires forall A: int :: AI.get_idx(th.quant_regs.a_cp, A) < 0
+    ensures FrozenOk(rer, re, str, gm, th)
+  { reveal FrozenOk(); }
+
+  /** `FrozenOk` across a step that keeps the quant bank and writes only groups `G` that no stamped
+      quantifier's body (outside looks) owns: capture writes (`NST.NestStampTopCapSite`) and look gates
+      (`StampTopLookSite` + `LookBodyQidBodyDisjoint`). */
+  lemma FrozenOkFrame(rer: LW.RegExpRecord, re: R.regex, str: string, gm: LG.GroupMap, gm': LG.GroupMap,
+                      th: AI.Thread, th': AI.Thread, G: set<LG.GroupId>)
+    requires th'.quant_regs == th.quant_regs
+    requires FrozenOk(rer, re, str, gm, th)
+    requires forall g: LG.GroupId :: g !in G ==> (g in gm' <==> g in gm) && (g in gm' ==> gm'[g] == gm[g])
+    requires forall A: nat :: A in PIV.QuantIdsOutsideLooks(re) && A in PIV.QuantIds(re)
+                              && AI.get_idx(th.quant_regs.a_cp, A as int) >= 0
+               ==> PIV.CapIds(PIV.QidBody(re, A)) !! G
+    ensures FrozenOk(rer, re, str, gm', th')
+  {
+    PIV.QuantIdsOutsideLooksSub(re);
+    forall qid: nat | qid in PIV.QuantIdsOutsideLooks(re) && LiveStampAt(re, th'.quant_regs, qid)
+      ensures FrozenAtQ(rer, re, str, gm', qid, AI.get_idx(th'.quant_regs.a_cp, qid as int))
+    {
+      var c := AI.get_idx(th.quant_regs.a_cp, qid as int);
+      assert LiveStampAt(re, th.quant_regs, qid);
+      assert FrozenAtQ(rer, re, str, gm, qid, c) by { reveal FrozenOk(); }
+      var rq := T.Translate(PIV.QidBody(re, qid));
+      M.TranslateDefGroupsEqCapIds(PIV.QidBody(re, qid));
+      NPL.LkBodyGroupsSubDG(rq);
+      assert LL.GmAgreeInside(gm', gm, LL.LkBodyGroups(rq)) by {
+        forall g | g in LL.LkBodyGroups(rq)
+          ensures (g in gm' <==> g in gm) && (g in gm' ==> gm'[g] == gm[g])
+        {
+          assert g in NPL.DG(rq);
+          assert g in PIV.CapIds(PIV.QidBody(re, qid));
+          assert g !in G;
+        }
+      }
+      NPL.FrozenAtFrame(rer, rq, PIV.InpOfCp(str, c), gm, gm');
+    }
+    reveal FrozenOk();
+  }
+
 
   ghost predicate LookNestOkTTop(re: R.regex, S: set<LG.GroupId>, gmt: LG.GroupMap, th: AI.Thread) {
     forall lid: nat | lid in NI.TopLookIds(re) ::
@@ -4407,6 +4464,7 @@ module LindenElkLiftSimCore {
                   assert CW.BoolTreeLkX(rer, cont, inp, b, tc);
                   var subc := ActionsTreeRepLkFRec(rer, qm, cont, code, pcmid, inp, b, tc, n - 1);
                   tskip := LT.LK(hk, hl, subc);
+                  assert EL.PikeLkRegexRec(r1);
                   assert StampNodeOk(rer, qm, inp, qidC, tskip);
                   // tr_stamp at e1x + 3, tr_cdn at e1x + 2
                   assert TreeRepLkRE(rer, qm, code, inp, tskip, e1x + 3, ATR.EaOf(b));
@@ -4574,6 +4632,13 @@ module LindenElkLiftSimCore {
                   assert TreeRepLkRE(rer, qm, code, inp, tloop, em + 1, ATR.EaOf(b));
                   // skip arm: tr_stamp (G4b-2: the synthetic gate) at e1x + 2
                   var tskip := LT.LK(hk, hl, subc);
+                  assert EL.PikeLkRegexRec(r1);
+                  assert NP.FirstEmptyPathL(rer, r1, inp).Some? by {   // CIN: the empty path always exists
+                    assert NUL.CINullableL(r1);
+                    assert NP.FirstEmptyPathA(rer, [], inp) == Some([]);
+                    NP.CINullableEmptyPathA(rer, r1, [], inp);
+                    assert [LS.Areg(r1)] + [] == [LS.Areg(r1)];
+                  }
                   assert StampNodeOk(rer, qm, inp, qidC, tskip);
                   assert TreeRepLkRE(rer, qm, code, inp, tskip, e1x + 2, ATR.EaOf(b));
                   tcan := LT.Choice(tloop, tskip);
