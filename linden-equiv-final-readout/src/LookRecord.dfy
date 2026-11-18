@@ -44,6 +44,11 @@ module LindenElkLookRecord {
   import CLP = LindenElkCinLookPaths
   import SL = LindenElkStampLive
   import ELk = LindenElkEmptyLooks
+  import FRD = LindenElkFinalReadout   // (G4b-2) the top readout's premises
+  import FV = LindenElkFinalVm
+  import PSM = LindenElkPikeSim
+  import LAnc = Anchors
+  import CM = LindenElkClockMono
   type Regs3 = NRC.Regs3
 
   // ===========================================================================
@@ -1927,5 +1932,153 @@ module LindenElkLookRecord {
     FPLiveFrame(qm, re, rg, plus_bcv, str, ov, -1, q);
     assert PIV.PathPresentQ(re, rg.0.a_clk, rg.2.a_clk, -1, q);
     LookPathPresentThroughQ(re, rp.0.a_clk, rp.2.a_clk, -1, q, l);
+  }
+
+  // ===========================================================================
+  // (G4b-2) The thread-level export: the look record at a reconstructed winner `rp` of `best`, per
+  // machine-A-live stamp `q` of `best` and top lid `l` of its body (what the transports read).
+  // ===========================================================================
+
+  ghost function RgOf(th: AI.Thread): Regs3 { (th.capture_regs, th.look_regs, th.quant_regs) }
+
+  opaque ghost predicate WinnerLookRec(qm: AR.QMap, re: R.regex, str: string, best: AI.Thread, rp: AI.Thread) {
+    forall q: nat | q in PIV.QuantIds(re) && PIV.QLive(re, best.quant_regs.a_clk, best.quant_regs.a_cp, q) ::
+      forall l: nat | l in NI.TopLookIds(PIV.QidBody(re, q)) && l in LTB.LookIds(PIV.QidBody(re, q)) ::
+        var cp := AI.get_idx(best.quant_regs.a_cp, q);
+        var K := AI.get_idx(best.quant_regs.a_clk, q);
+        0 <= cp <= |str| && T.TransWf(PIV.QidBody(re, q)) && l in LTB.LookIds(re)
+        && AI.get_idx(rp.quant_regs.a_clk, q) == K && AI.get_idx(rp.quant_regs.a_cp, q) == cp
+        && PIV.QChainFresh(re, rp.quant_regs.a_clk, -1, q)
+        && PIV.PathPresentQ(re, rp.capture_regs.a_clk, rp.quant_regs.a_clk, -1, q)
+        && LookRecTop(re, RgOf(best), RgOf(rp), cp, K, l, l in PathLooksR(qm, PIV.QidBody(re, q), T.InputAt(str, cp as nat)))
+  }
+
+  /** Read one (q, l) instance off the export. */
+  lemma WinnerLookRecAt(qm: AR.QMap, re: R.regex, str: string, best: AI.Thread, rp: AI.Thread, q: nat, l: nat)
+    requires WinnerLookRec(qm, re, str, best, rp)
+    requires q in PIV.QuantIds(re) && PIV.QLive(re, best.quant_regs.a_clk, best.quant_regs.a_cp, q)
+    requires l in NI.TopLookIds(PIV.QidBody(re, q)) && l in LTB.LookIds(PIV.QidBody(re, q))
+    ensures var cp := AI.get_idx(best.quant_regs.a_cp, q);
+            var K := AI.get_idx(best.quant_regs.a_clk, q);
+            0 <= cp <= |str| && T.TransWf(PIV.QidBody(re, q)) && l in LTB.LookIds(re)
+            && AI.get_idx(rp.quant_regs.a_clk, q) == K && AI.get_idx(rp.quant_regs.a_cp, q) == cp
+            && PIV.QChainFresh(re, rp.quant_regs.a_clk, -1, q)
+            && PIV.PathPresentQ(re, rp.capture_regs.a_clk, rp.quant_regs.a_clk, -1, q)
+            && LookRecTop(re, RgOf(best), RgOf(rp), cp, K, l, l in PathLooksR(qm, PIV.QidBody(re, q), T.InputAt(str, cp as nat)))
+  {
+    reveal WinnerLookRec();
+  }
+
+  /** The producer, from the readout's premises (`NRO.FP` is the reconstruction's register effect). */
+  lemma WinnerLookRecIntro(qm: AR.QMap, re: R.regex, best: AI.Thread, plus_bcv: seq<RB.code>, str: string, ov: LOr.OracleView,
+                           rp: AI.Thread)
+    requires T.TransWf(re) && PIV.CapUnique(re) && PIV.QuantUnique(re) && NRR.LookUnique(re) && LTB.LookUnique(re)
+    requires NRC.CdnTopRE(re) && NRR.PlusTableOkS(re, plus_bcv)
+    requires ov == qm.ov
+    requires var rg := RgOf(best);
+             NRR.WfRegs(rg) && NRR.CapValWf(rg) && NRR.Covers(re, rg) && NRR.LookCapsAbsent(re, rg)
+             && NRO.StampsLocalS(qm, re, str, rg, -1)
+    requires RgOf(rp) == NRO.FP(re, RgOf(best), plus_bcv, str, ov)
+    ensures WinnerLookRec(qm, re, str, best, rp)
+  {
+    reveal WinnerLookRec();
+    var rg := RgOf(best);
+    forall q: nat | q in PIV.QuantIds(re) && PIV.QLive(re, best.quant_regs.a_clk, best.quant_regs.a_cp, q)
+      ensures forall l: nat | l in NI.TopLookIds(PIV.QidBody(re, q)) && l in LTB.LookIds(PIV.QidBody(re, q)) ::
+        var cp := AI.get_idx(best.quant_regs.a_cp, q);
+        var K := AI.get_idx(best.quant_regs.a_clk, q);
+        0 <= cp <= |str| && T.TransWf(PIV.QidBody(re, q)) && l in LTB.LookIds(re)
+        && AI.get_idx(rp.quant_regs.a_clk, q) == K && AI.get_idx(rp.quant_regs.a_cp, q) == cp
+        && PIV.QChainFresh(re, rp.quant_regs.a_clk, -1, q)
+        && PIV.PathPresentQ(re, rp.capture_regs.a_clk, rp.quant_regs.a_clk, -1, q)
+        && LookRecTop(re, RgOf(best), RgOf(rp), cp, K, l, l in PathLooksR(qm, PIV.QidBody(re, q), T.InputAt(str, cp as nat)))
+    {
+      forall l: nat | l in NI.TopLookIds(PIV.QidBody(re, q)) && l in LTB.LookIds(PIV.QidBody(re, q))
+        ensures var cp := AI.get_idx(best.quant_regs.a_cp, q);
+                var K := AI.get_idx(best.quant_regs.a_clk, q);
+                0 <= cp <= |str| && T.TransWf(PIV.QidBody(re, q)) && l in LTB.LookIds(re)
+                && AI.get_idx(rp.quant_regs.a_clk, q) == K && AI.get_idx(rp.quant_regs.a_cp, q) == cp
+                && PIV.QChainFresh(re, rp.quant_regs.a_clk, -1, q)
+                && PIV.PathPresentQ(re, rp.capture_regs.a_clk, rp.quant_regs.a_clk, -1, q)
+                && LookRecTop(re, RgOf(best), RgOf(rp), cp, K, l, l in PathLooksR(qm, PIV.QidBody(re, q), T.InputAt(str, cp as nat)))
+      {
+        ReconLookRecordTop(qm, re, rg, plus_bcv, str, ov, q, l);
+        assert RgOf(rp) == NRO.FP(re, rg, plus_bcv, str, ov);
+      }
+    }
+  }
+
+  /** (G4b-2) The top-level producer: the premises of `FRD.FinalReadoutS` (the lazy prefix is never stamped,
+      so the reconstruction over `ast` is `NRO.FP` over `R.lazy_prefix(ast)`). */
+  lemma WinnerLookRecTopS(qm: AR.QMap, ast: R.regex, str: string, th: AI.Thread, ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(R.lazy_prefix(ast))
+    requires PIV.CapUnique(R.lazy_prefix(ast)) && PIV.QuantUnique(R.lazy_prefix(ast))
+    requires LTB.LookUnique(R.lazy_prefix(ast)) && NRC.CdnTopRE(ast)
+    requires AR.QmapOk(R.lazy_prefix(ast), qm)
+    requires PSM.BestLiveRE(R.lazy_prefix(ast), th)
+    requires PSM.StampPathOk(qm, str, th.quant_regs.a_cp)
+    requires FV.RegsFinalOk(th, |str|, FRD.StampQids(R.lazy_prefix(ast)))
+    requires NRR.WfRegs((th.capture_regs, th.look_regs, th.quant_regs))
+    requires NRR.Covers(R.lazy_prefix(ast), (th.capture_regs, th.look_regs, th.quant_regs))
+    requires CM.ThreadRegsWf(th, ncap, nlook, nquant)
+    ensures WinnerLookRec(qm, R.lazy_prefix(ast), str, th,
+                          AI.FReconstructPlus(th, ast, CP.FFullCompilation(ast).f_plus_bc, str, qm.ov, LAnc.Forward).0)
+  {
+    var re := R.lazy_prefix(ast);
+    var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false), R.Re_character(R.Dot));
+    assert re == R.Re_con(pre, ast);
+    var rg: Regs3 := (th.capture_regs, th.look_regs, th.quant_regs);
+    var plus := CP.FFullCompilation(ast).f_plus_bc;
+    FRD.PlusTableOkFullS(ast);
+    FRD.LookUniqueBridge(re);
+    NRC.CdnTopPrefix(ast);
+    assert NRC.CdnTopRE(re);
+    assert SL.StampLiveOk(re, rg.0.a_clk, rg.2.a_clk, rg.2.a_cp) && PIV.LooksCapUnset(re, rg.0.a_clk)
+      by { reveal PSM.BestLiveRE; }
+    assert NRR.CapValWf(rg);
+    assert NRR.LookCapsAbsent(re, rg) by {
+      forall c: nat | c in PIV.CapIdsInLooks(re) ensures AI.get_idx(rg.0.a_cp, CP.start_reg(c)) < 0 {
+        assert AI.get_idx(rg.0.a_clk, CP.start_reg(c)) < 0;
+      }
+    }
+    assert {:split_here} true;
+    assert NRO.StampsLocalS(qm, re, str, rg, -1) by {
+      forall q: nat | q in PIV.QuantIds(re) && AI.get_idx(rg.2.a_cp, q) >= 0
+        ensures NRR.QidStampPlus(re, q)
+                && 0 <= AI.get_idx(rg.2.a_cp, q) <= |str|
+                && (q as int) in qm.bodies && qm.bodies[q as int] == PIV.QidBody(re, q)
+                && T.TransWf(qm.bodies[q as int])
+                && TR.FirstEmptyPathR(qm, qm.bodies[q as int], T.InputAt(str, AI.get_idx(rg.2.a_cp, q) as nat)).Some?
+                && (PIV.QChainFresh(re, rg.2.a_clk, -1, q) ==>
+                      PIV.PathPresentQ(re, rg.0.a_clk, rg.2.a_clk, -1, q)
+                      && NRR.RegsStale(PIV.QidBody(re, q), rg, AI.get_idx(rg.2.a_clk, q)))
+      {
+        assert (q as int) in FRD.StampQids(re);
+        var qn: nat :| qn in PIV.QuantIds(re) && NRR.QidStampPlus(re, qn) && qn as int == q as int;
+        assert qn == q;
+        PIV.QmapOkBodyAtQid(re, qm, q);
+        SL.StampLiveAt(re, rg.0.a_clk, rg.2.a_clk, rg.2.a_cp, q);
+        PIV.TransWfQidBodyPIV(re, q);
+        var cq: nat := AI.get_idx(rg.2.a_cp, q) as nat;
+        PSM.InpOfCpIsInputAt(str, cq);
+        assert TR.FirstEmptyPathR(qm, qm.bodies[q as int], T.InputAt(str, cq)).Some? by {
+          reveal PSM.StampPathOk();
+          assert AI.get_idx(th.quant_regs.a_cp, q as int) == cq;
+        }
+      }
+    }
+    assert {:split_here} true;
+    assert AReg.get_cp(rg.2, 0) == None by {
+      assert 0 in PIV.QuantIds(re);
+      if AI.get_idx(rg.2.a_cp, 0) >= 0 {
+        assert (0 as int) in FRD.StampQids(re);
+        var qn: nat :| qn in PIV.QuantIds(re) && NRR.QidStampPlus(re, qn) && qn as int == 0;
+        assert qn == 0 && !NRR.QidStampPlus(re, 0);
+      }
+    }
+    FRD.PrefixIdentity(ast, rg, plus, str, qm.ov);
+    var rp := AI.FReconstructPlus(th, ast, plus, str, qm.ov, LAnc.Forward).0;
+    assert RgOf(rp) == NRO.FP(re, rg, plus, str, qm.ov);
+    WinnerLookRecIntro(qm, re, th, plus, str, qm.ov, rp);
   }
 }

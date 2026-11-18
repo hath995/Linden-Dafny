@@ -31,6 +31,7 @@ module LindenElkMachineA {
   import RRA = LindenElkRowReconAt
   import SBk = LindenElkStampBank      // (G5b-3)
   import ELk = LindenElkEmptyLooks     // (G4b-1)
+  import LR = LindenElkLookRecord   // (G4b-2) the look record at the winner
   import SL = LindenElkStampLive
   import LG = Groups
   import LT = Tree
@@ -338,6 +339,7 @@ module LindenElkMachineA {
     ensures CM.LookClkSetWithCp(result.value.look_regs) ==> CM.LookClkSetWithCp(rp.look_regs)
     ensures CM.LookCpSetWithClk(result.value.look_regs) ==> CM.LookCpSetWithClk(rp.look_regs)
     ensures CM.LookCpsLE(result.value.look_regs, |str|) ==> CM.LookCpsLE(rp.look_regs, |str|)
+    ensures LR.WinnerLookRec(qm, body, str, result.value, rp)   // (G4b-2) the look record per live stamp
   {
     var best := result.value;
     var ctx := AI.cp_context(cp, str, LAnc.Forward);
@@ -395,6 +397,7 @@ module LindenElkMachineA {
     }
     FRA.FinalReadoutFrameAtStampE(qm, body, plus, str, best);
     assert ClkFrameG4(body, ELk.StampSet(best.quant_regs.a_cp), rp, best);
+    FRA.FinalReadoutLookRecAtS(qm, body, plus, str, best, ncap, nlook, nquant);   // (G4b-2)
   }
 
   /** `MachineAPre` on the S forms. */

@@ -38,6 +38,7 @@ module LindenElkFinalReadoutAt {
   import ELk = LindenElkEmptyLooks   // (G4b-1) the frame on the empty-path look set
   import CM = LindenElkClockMono
   import TR = LindenElkTreeRep   // (G5b-1) FirstEmptyPathR in StampsLocalS
+  import LR = LindenElkLookRecord   // (G4b-2) the look record at the winner
 
   /** The local half of `FV.RegsFinalOk`: every stamped quantifier OF `re` is a
       CIN-greedy plus of `re`, stamped inside the string. */
@@ -426,6 +427,18 @@ module LindenElkFinalReadoutAt {
     ReadoutStampsS(qm, re, plus, str, th, ncap, nlook, nquant);
     ReadoutBankS(qm, re, plus, str, th, ncap, nlook, nquant);
     NRO.ReconReadoutS(qm, re, rg, plus, str, qm.ov);
+  }
+
+  /** (G4b-2) The look record at the reconstructed winner, per live stamp (`LR.WinnerLookRec`). */
+  lemma FinalReadoutLookRecAtS(qm: AR.QMap, re: R.regex, plus: seq<RB.code>, str: string, th: AI.Thread,
+                               ncap: int, nlook: int, nquant: int)
+    requires ReadoutPreS(qm, re, plus, str, th, ncap, nlook, nquant)
+    ensures LR.WinnerLookRec(qm, re, str, th, AI.FReconstructPlus(th, re, plus, str, qm.ov, LAnc.Forward).0)
+  {
+    ReadoutStampsS(qm, re, plus, str, th, ncap, nlook, nquant);
+    var rp := AI.FReconstructPlus(th, re, plus, str, qm.ov, LAnc.Forward).0;
+    assert LR.RgOf(rp) == NRO.FP(re, LR.RgOf(th), plus, str, qm.ov);
+    LR.WinnerLookRecIntro(qm, re, th, plus, str, qm.ov, rp);
   }
 
   /** A2, S: the sharp frame for any stamp set `Q` covering the stamps. */
