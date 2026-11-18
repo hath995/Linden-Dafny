@@ -27,6 +27,7 @@ module LindenRegexApi {
   import LSIMCOR = LindenElkLiftSimCore
   import LSIMORA = LindenElkLiftSimOracle
   import MCL = LindenElkMainCinLk
+  import MCG = LindenElkMainCinG4b2   // (G4b-2) the theorem on the four-case transports
   import CL = LindenElkCinLooks     // (G4a) the CIN-body scope
   import NRC = LindenElkNulledRecon
   import M = LindenElkMain
@@ -89,7 +90,7 @@ module LindenRegexApi {
     CL.CinLooksCapFreeXSound(R.lazy_prefix(R.annotate(pattern)));
     MCL.CdnTopXSound(R.lazy_prefix(R.annotate(pattern)));
     GateFromCdnTopG4(R.lazy_prefix(R.annotate(pattern)));              // (G5a-1, G4a) the gate from the scope
-    MCL.MainTheoremL5Cin(pattern, str);
+    MCG.MainTheoremL5Cin(pattern, str);
   }
 
   /** (G4a, G5a-2a) The look-bodies gate from the scope: a nullable plus body may hold capture-free looks,
