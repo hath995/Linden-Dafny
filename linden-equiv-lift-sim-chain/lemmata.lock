@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:5840373b2a2cc3d443898d1ea5b8dac134bf2bc15915ab24d6963254ead146a7"
+manifest-hash = "sha256:99354814686eaa445142664cfa0d68409192366c8fa64443ba797e573da7916c"
 
 [[package]]
 name = "linden.equiv-cdn-priority"
@@ -236,6 +236,15 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-cin-walk"
+
+[[package]]
+name = "linden.equiv-nulled-plus-lk"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-nulled-plus-lk"
 
 [[package]]
 name = "linden.equiv-clock-mono"

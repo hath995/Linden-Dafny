@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:a32828a2c8a9b3c6a9c14980c8670070d244524e3af29e513bac3c1015dc2a95"
+manifest-hash = "sha256:8c6d78ab31b3a5e2c5d1e527377abe6e7026fe50e52aa66d36048f6a1227ed31"
 
 [[package]]
 name = "linden.equiv-cdn-priority"
@@ -596,6 +596,15 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-cin-walk"
+
+[[package]]
+name = "linden.equiv-nulled-plus-lk"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-nulled-plus-lk"
 
 [[package]]
 name = "linden.equiv-nulled-recon"

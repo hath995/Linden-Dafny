@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:c66d88b052db19ad014711d48d15f3a2a0f03f1233fc725e8bfa4cf13fffe81a"
+manifest-hash = "sha256:647656e27bb7f7f2a0a78970593fce6d05f599125744090762df36c0bf0535ef"
 
 [[package]]
 name = "linden.equiv-cdn-priority"
@@ -58,15 +58,6 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-machine-a"
 
 [[package]]
-name = "linden.equiv-nest-stamp"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-nest-stamp"
-
-[[package]]
 name = "linden.equiv-nulled-recon"
 class = 1
 version = "1.0.0"
@@ -101,15 +92,6 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-plus-at"
-
-[[package]]
-name = "linden.equiv-stamp-live"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-stamp-live"
 
 [[package]]
 name = "linden.equiv-stamp-mirror"
@@ -227,6 +209,24 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-cin-walk"
+
+[[package]]
+name = "linden.equiv-nulled-plus-lk"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-nulled-plus-lk"
+
+[[package]]
+name = "linden.equiv-nest-stamp"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-nest-stamp"
 
 [[package]]
 name = "linden.equiv-clock-mono"
@@ -389,6 +389,15 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-nest-inv"
+
+[[package]]
+name = "linden.equiv-stamp-live"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-stamp-live"
 
 [[package]]
 name = "linden.equiv-nfa-rep-re"

@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:f64a61074d8c502b7538d4b6180ea235fffeb0a88f415543d5f9dfdf637c35fa"
+manifest-hash = "sha256:5b64eb4ded0a10dd76cd2eb63842614b53af4b0a387b6d5e61e3bdf0b04473f3"
 
 [[package]]
 name = "linden.equiv-cdn-priority"
@@ -47,15 +47,6 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-machine-a-back"
-
-[[package]]
-name = "linden.equiv-nest-stamp"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-nest-stamp"
 
 [[package]]
 name = "linden.equiv-oracle-decomp"
@@ -191,6 +182,15 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-cin-walk"
+
+[[package]]
+name = "linden.equiv-nulled-plus-lk"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-nulled-plus-lk"
 
 [[package]]
 name = "linden.equiv-nulled-plus"
@@ -533,6 +533,15 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-lift-sim-core"
+
+[[package]]
+name = "linden.equiv-nest-stamp"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-nest-stamp"
 
 [[package]]
 name = "linden.equiv-lift-sim-oracle"

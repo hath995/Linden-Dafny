@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:e5703a5e2afe3c0a6e672764c46a8d1b981edbcce75fb8f466eb4151a779eeac"
+manifest-hash = "sha256:d5d2733b77a2af8c1090dbb3fdcb0de6a39084ba48b1d5ebec1b786f9fcb406a"
 
 [[package]]
 name = "linden.engine"
@@ -308,6 +308,15 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-nulled-recon"
+
+[[package]]
+name = "linden.equiv-nulled-plus-lk"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-equiv-nulled-plus-lk"
 
 [[package]]
 name = "linden.equiv-stamp-live"
