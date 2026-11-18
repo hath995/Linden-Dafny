@@ -155,64 +155,6 @@ module LindenElkLiftSimCarriers {
     reveal RowPlusOk(); reveal M.RowLAStatics();
   }
 
-  /** (BRICK D-8 FINDING 1) The BACKWARD per-body carrier: a verbatim twin of
-      `LookNestOkTFromBodyReplay` whose only difference is the projected conjunct.
-      The SAME `BestTieLkNestedTop(body, ...)` (obtained at :23036 via
-      `L3aCompositeCloseRec`) ALSO ensures `LookNestBackTTop(body, ...)` (its third
-      conjunct); we project THAT out of the winning body replay instead of the
-      forward `LookNestOkTTop`. Used by the reverse-recon descent lemma to tie a
-      deep, recon-live inner capture into the body's spec group map. */
-  lemma LookNestBackTFromBodyReplay(
-    rer: LW.RegExpRecord, qm: AR.QMap, la: R.lookaround, body: R.regex, bodycode: RB.code,
-    endl: nat, ngroups: nat, crv: CP.FCompiled, str: string, cp: nat, ov: LOr.OracleView,
-    lookcdn: LCdn.cdns, plus_bc: seq<RB.code>, ncap: int, nlook: int, nquant: int)
-    requires la.Lookahead?
-    requires PSM.StaticCoreNestedRE(qm, body, bodycode, endl)
-    requires RowPlusOk(body, plus_bc, nlook)   // (G3a) the CIN fragment at this body (A6's premises)
-    requires PSM.SizesOkRE(body, ncap, nlook, nquant)
-    requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
-    requires cp <= |str|
-    requires bodycode == CP.compile_to_bytecode(body)
-    requires LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
-    requires |ov| == |str| + 1
-    requires OE.OracleColsOk(rer, qm, str)                    // (L5 F7d) whole-string oracle correctness (backward keystone)
-    requires GateStaticsOkNested(qm, body, crv, ncap, nlook, nquant)
-    requires LTB.LookUnique(body)
-    requires LTB.LookTablesOk(body, crv)
-    ensures
-      var inp := PIV.InpOfCp(str, cp);
-      var t := LFU.ComputeTr(rer, [LS.Areg(T.Translate(body))], inp, LG.Empty, WP.Forward);
-      var rf := AI.FFindMatchPlus(bodycode, body, plus_bc, str, ov, LAnc.Forward, cp,
-                                  AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant),
-                                  0, lookcdn).0;
-      (rf.Some? <==> LT.FirstLeaf(t, inp).Some?)
-      && (rf.Some? ==>
-            LT.FirstLeaf(t, inp).Some?
-            && LookNestBackTTop(body, crv, str, ov, PIV.CapIdsInLooks(body),
-                                LT.FirstLeaf(t, inp).value.1, rf.value, ncap, nlook, nquant)
-            && LookNestBackTTopDeep(rer, body, crv, str, ov, PIV.CapIdsInLooks(body),
-                                    LT.FirstLeaf(t, inp).value.1, rf.value, ncap, nlook, nquant)
-            // the FORWARD presence carrier (leaf-witness ==> gate crossed + dominant)
-            && LookNestOkTTop(body, PIV.CapIdsInLooks(body), LT.FirstLeaf(t, inp).value.1, rf.value)
-            // the carrier thread's own look-bank invariants (fresh run): the deep
-            // per-g2 package reads them at the crossed inner lids.
-            && CM.ThreadRegsWf(rf.value, ncap, nlook, nquant)   // (G3a) from A6
-            && CM.LookClkSetWithCp(rf.value.look_regs)
-            && CM.LookCpSetWithClk(rf.value.look_regs)
-            && CM.LookCpsLE(rf.value.look_regs, |str|)
-            // (G3a) the reconstruction keeps the VM winner's look bank (from A6)
-            && TM.WinnerLookKept(bodycode, str, cp, ov, lookcdn, ncap, nlook, nquant, rf.value))
-  {
-    // (G3a) A6: machine A (the fresh plus replay, reconstructed) tied to machine B's winner.
-    assert NR.NestedFragmentRE(body) && T.TransWf(body);
-    assert NRC.NoCdnPlusRE(body) && NRR.PlusTableOk(body, plus_bc) && RF.CinBodiesLookFreeRE(body)
-           && (forall l: nat :: l in LTB.LookIds(body) ==> l < nlook) by {
-      reveal RowPlusOk(); reveal M.RowLAStatics();
-    }
-    TM.TranslateCinOk(body, PIV.CapIdsOutsideLooks(body));
-    TM.TwoMachinesAt(rer, qm, body, bodycode, endl, ngroups, crv, str, cp, ov, lookcdn, plus_bc,
-                     ncap, nlook, nquant);
-  }
   /** (G5b-1) `RowPlusFacts` at a lookahead row. */
   lemma RowPlusFactsS(body: R.regex, plus: seq<RB.code>, nlook: int)
     requires RowPlusOkS(body, plus, nlook)
@@ -256,11 +198,13 @@ module LindenElkLiftSimCarriers {
       (rf.Some? <==> LT.FirstLeaf(t, inp).Some?)
       && (rf.Some? ==>
             LT.FirstLeaf(t, inp).Some?
-            && LookNestBackTTop(body, crv, str, ov, PIV.CapIdsInLooks(body),
-                                LT.FirstLeaf(t, inp).value.1, rf.value, ncap, nlook, nquant)
-            && LookNestBackTTopDeep(rer, body, crv, str, ov, PIV.CapIdsInLooks(body),
-                                    LT.FirstLeaf(t, inp).value.1, rf.value, ncap, nlook, nquant)
-            // the FORWARD presence carrier (leaf-witness ==> gate crossed + dominant)
+            // (G4b-2) the row's winner keeps dead stamps' records: presence-premised converses
+            && LookNestBackTTopP(body, crv, str, ov, PIV.CapIdsInLooks(body),
+                                 LT.FirstLeaf(t, inp).value.1, rf.value, ncap, nlook, nquant)
+            && LookNestBackTTopDeepP(rer, body, crv, str, ov, PIV.CapIdsInLooks(body),
+                                     LT.FirstLeaf(t, inp).value.1, rf.value, ncap, nlook, nquant)
+            // the FORWARD presence carrier (leaf-witness ==> gate crossed + dominant), UNGUARDED (G4b-2)
+            && LookNestOkTTopU(body, PIV.CapIdsInLooks(body), LT.FirstLeaf(t, inp).value.1, rf.value)
             && LookNestOkTTop(body, PIV.CapIdsInLooks(body), LT.FirstLeaf(t, inp).value.1, rf.value)
             // the carrier thread's own look-bank invariants (fresh run): the deep
             // per-g2 package reads them at the crossed inner lids.
@@ -389,6 +333,11 @@ module LindenElkLiftSimCarriers {
             && LookNestBackTTopDeep(rer, body, crv, str, ov, PIV.CapIdsInLooks(body),
                                     rb.value.1, rf.value, ncap, nlook, nquant)
             && LookNestOkTTop(body, PIV.CapIdsInLooks(body), rb.value.1, rf.value)
+            // (G4b-2) the unguarded OkT and the presence-premised converses (what the row consumers read)
+            && LookNestOkTTopU(body, PIV.CapIdsInLooks(body), rb.value.1, rf.value)
+            && LookNestBackTTopP(body, crv, str, ov, PIV.CapIdsInLooks(body), rb.value.1, rf.value, ncap, nlook, nquant)
+            && LookNestBackTTopDeepP(rer, body, crv, str, ov, PIV.CapIdsInLooks(body), rb.value.1, rf.value,
+                                     ncap, nlook, nquant)
             && CM.ThreadRegsWf(rf.value, ncap, nlook, nquant)   // (G3b) the plus winner's wf
             && CM.LookClkSetWithCp(rf.value.look_regs)
             && CM.LookCpSetWithClk(rf.value.look_regs)
@@ -550,12 +499,17 @@ module LindenElkLiftSimCarriers {
       assert LookNestOkTTop(reF, S, gB, best)
              && LookNestBackTTop(reF, crvF, rstr, ov', S, gB, best, ncap, nlook, nquant)
              && LookNestBackTTopDeep(rer, reF, crvF, rstr, ov', S, gB, best, ncap, nlook, nquant);
-      TM.TieOkTTransportG4(reF, QF, S, GF, gB, gmtF, best, thF);
+      // (G4b-2) the guard: a guarded lid's groups are unset in machine B's leaf (G4b-1 scope, stamp pluses only)
+      assert BestTieLkNestedTop(rer, reF, crvF, rstr, ov', S, bleafF, fF, ncap, nlook, nquant);
+      assert FrozenOk(rer, reF, rstr, gB, best);
+      TM.QInStampOfRun(reF, bcF, endl', rstr, mcpN, ov', cdn', ncap, nlook, nquant);
+      assert RF.QInStamp(reF, QF);
+      TM.TieOkTTransportG4(rer, reF, rstr, QF, S, GF, gB, gmtF, best, thF);
       TM.TieBackTransportG4(reF, crvF, rstr, ov', QF, S, GF, gB, gmtF, best, thF, ncap, nlook, nquant);
       TM.TieDeepTransportG4(rer, reF, crvF, rstr, ov', QF, S, GF, gB, gmtF, best, thF, ncap, nlook, nquant);
       assert LookNestBackTTop(reF, crvF, rstr, ov', S, gmtF, thF, ncap, nlook, nquant);
       assert LookNestBackTTopDeep(rer, reF, crvF, rstr, ov', S, gmtF, thF, ncap, nlook, nquant);
-      assert LookNestOkTTop(reF, S, gmtF, thF);
+      assert LookNestOkTTopU(reF, S, gmtF, thF);
 
       assert {:split_here} true;
       // ---- look-bank invariants: the reconstruction keeps the backward VM winner's look bank ----
@@ -584,7 +538,8 @@ module LindenElkLiftSimCarriers {
       assert CM.LookClkSetWithCp(th.look_regs) && CM.LookCpSetWithClk(th.look_regs) && CM.LookCpsLE(th.look_regs, |str|);
 
       assert {:split_here} true;
-      LookNestOkTTopFlip(body, S, gmt, th, n);
+      LookNestOkTTopUFlip(body, S, gmt, th, n);   // (G4b-2) unguarded at the winner
+      OkTUToGuarded(body, S, gmt, th);
 
       assert {:split_here} true;
       NI.TopLookIdsIn(body);
@@ -619,6 +574,8 @@ module LindenElkLiftSimCarriers {
         DeepLidFlipPS(rer, qm, body, crv, str, ov, gmt, th, lid, ncap, nlook, nquant);
       }
       assert LookNestBackTTopDeep(rer, body, crv, str, ov, S, gmt, th, ncap, nlook, nquant);
+      BackTTopToP(body, crv, str, ov, S, gmt, th, ncap, nlook, nquant);
+      DeepTopToP(rer, body, crv, str, ov, S, gmt, th, ncap, nlook, nquant);
     }
   }
   /** (G5b-3) the capture-free stamp looks of a host hold at its look bodies. */

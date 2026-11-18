@@ -5628,6 +5628,42 @@ module LindenElkLiftSimCore {
     }
   }
 
+  /** (G4b-2) The UNGUARDED presence carrier through the flip (a lookbehind row's reconstructed winner). */
+  lemma LookNestOkTTopUFlip(body: R.regex, S: set<LG.GroupId>, gmt: LG.GroupMap, th: AI.Thread, n: nat)
+    requires LTB.LookUnique(body) && TRM.GmInBounds(gmt, n)
+    requires LookNestOkTTopU(FST.FXR(body), S, TRM.MirrorGm(gmt, n), MIR.MirrorThread(th, n))
+    ensures LookNestOkTTopU(body, S, gmt, th)
+  {
+    var reF := FST.FXR(body);
+    var gmtF := TRM.MirrorGm(gmt, n);
+    var thF := MIR.MirrorThread(th, n);
+    FG.TopLookIdsFXR(body);
+    TRM.MirrorGmAt(gmt, n);
+    NI.TopLookIdsIn(body);
+    forall lid: nat | lid in NI.TopLookIds(body)
+                      && (exists g: LG.GroupId :: g in S && g in gmt && g in PIV.CapIds(NI.LookBodyOfRE(body, lid)))
+      ensures NI.LookPathPresent(body, th.capture_regs.a_clk, th.quant_regs.a_clk, -1, lid)
+              && AI.get_idx(th.look_regs.a_clk, lid as int) >= 0
+              && AI.get_idx(th.look_regs.a_clk, lid as int)
+                 >= NI.MxAtLidLk(body, th.quant_regs.a_clk, -1, lid)
+    {
+      assert lid in LTB.LookIds(body);
+      FG.LookBodyOfREFXR(body, lid);
+      FG.CapIdsFXR(NI.LookBodyOfRE(body, lid));
+      assert lid in NI.TopLookIds(reF);
+      assert exists g: LG.GroupId :: g in S && g in gmtF && g in PIV.CapIds(NI.LookBodyOfRE(reF, lid));
+      assert NI.LookPathPresent(reF, thF.capture_regs.a_clk, thF.quant_regs.a_clk, -1, lid)
+             && AI.get_idx(thF.look_regs.a_clk, lid as int) >= 0
+             && AI.get_idx(thF.look_regs.a_clk, lid as int)
+                >= NI.MxAtLidLk(reF, thF.quant_regs.a_clk, -1, lid);
+      assert thF.capture_regs.a_clk == th.capture_regs.a_clk;
+      assert thF.quant_regs.a_clk == th.quant_regs.a_clk;
+      assert thF.look_regs.a_clk == th.look_regs.a_clk;
+      FG.LookPathPresentFXR(body, th.capture_regs.a_clk, th.quant_regs.a_clk, -1, lid);
+      FG.MxAtLidLkFXR(body, th.quant_regs.a_clk, -1, lid);
+    }
+  }
+
   /** (key carrier, per lid) The `LookNestBackTTop` clause at a top lookbehind
       lid transports back through the flip: the backward fresh match's live
       inner gids are the flipped forward fresh match's (raw mirror, same keys),
@@ -6024,6 +6060,9 @@ module LindenElkLiftSimCore {
     requires M.QuantClkAgreeInside(res2, rfA.quant_regs, M.QIdsOuter(host))
     requires AI.get_idx(res1.a_clk, A1 as int) == AI.get_idx(rfA.look_regs.a_clk, A1 as int)
     ensures NI.LookPathDom(host, AI.get_idx(rfA.look_regs.a_clk, A1 as int), rfA.quant_regs.a_clk, A1)
+    // (G4b-2) the presence-premised converses (`LookNestBackTTopP`/`DeepP`) read these too
+    ensures NI.LookPathPresent(host, rfA.capture_regs.a_clk, rfA.quant_regs.a_clk, -1, A1)
+    ensures AI.get_idx(rfA.look_regs.a_clk, A1 as int) >= NI.MxAtLidLk(host, rfA.quant_regs.a_clk, -1, A1)
   {
     NI.LookPathDecomposeCdn(host, NI.LookBodyOfRE(host, A1), res0.a_clk, res1.a_clk, res2.a_clk, -1, A1, g2);
     LookPathPresentFromLkTopCdn(host, res0.a_clk, res1.a_clk, res2.a_clk, -1, A1);

@@ -458,7 +458,7 @@ module LindenElkTwoMachines {
     requires G * S == {} && LL.GmAgreeOutside(gmB, gm, G)
     requires ClkFrameG4(re, Q, th, best)
     requires LookNestOkTTop(re, S, gmB, best) && FrozenOk(rer, re, str, gmB, best)   // (G4b-2) the guard
-    ensures LookNestOkTTop(re, S, gm, th)
+    ensures LookNestOkTTopU(re, S, gm, th)   // (G4b-2) unguarded at the winner
   {
     ELk.StampLooksCapFreeETop(re);
     ELk.BodyStaleAtStamps(re, best, Q);
