@@ -97,6 +97,7 @@ module LindenElkLiftSimCore {
   import LN = WarblreNumeric
   import PSM = LindenElkPikeSim
   import NPL = LindenElkNulledPlusLk   // (G4b-2) the synthetic stamp node
+  import NST = LindenElkNestStamp      // (G4b-2) quantifier-body nesting
   import RL = LindenElkRegsLaws
   import LKC = LindenElkLookCapture
   import OE = LindenElkOracleEntry
@@ -2543,9 +2544,370 @@ module LindenElkLiftSimCore {
   // restricting to `TopLookIds` DROPS them. `TopLookIds == LookIds` at depth 1,
   // so `*Top` is a strict weakening of the full carrier (`NI.TopLookIdsIn`).
   // ==========================================================================
+  // ==========================================================================
+  // (G4b-2) Live stamps (W20 §4, the W20 §7 probe, `work/g4b2/`): a stamped, chain-fresh quantifier's top-level
+  // lids are exempt from the presence carrier (`LiveStampLids`, opaque) and carried by `FrozenOk` instead
+  // (every live stamp's body is frozen at its stamp position: `NPL.FrozenAt`, `NulledIterationLeaf`'s leaf).
+  // ==========================================================================
+
+
+  // ---- structural facts about `PIV.QidBody` (subterm nesting) ----
+
+  lemma DisjOfInter(A: set<nat>, B: set<nat>, A': set<nat>, B': set<nat>)
+    requires A <= A' && B <= B' && A' * B' == {}
+    ensures A !! B
+  {
+    forall x | x in A && x in B ensures false { assert x in A' * B'; }
+  }
+
+  /** A quantifier inside another's body: its body's looks are the outer body's. */
+  lemma QidBodyNestLookIds(re: R.regex, qo: nat, qi: nat)
+    requires PIV.QuantUnique(re)
+    requires qo in PIV.QuantIds(re) && qi in PIV.QuantIds(re)
+    requires qi in PIV.QuantIds(PIV.QidBody(re, qo))
+    ensures LTB.LookIds(PIV.QidBody(re, qi)) <= LTB.LookIds(PIV.QidBody(re, qo))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) =>
+      if qo in PIV.QuantIds(r1) { NST.QuantIdsQidBodySubset(r1, qo); QidBodyNestLookIds(r1, qo, qi); }
+      else {
+        NST.QuantIdsQidBodySubset(r2, qo);
+        assert qi in PIV.QuantIds(r2);
+        if qi in PIV.QuantIds(r1) { assert qi in PIV.QuantIds(r1) * PIV.QuantIds(r2); }
+        QidBodyNestLookIds(r2, qo, qi);
+      }
+    case Re_con(r1, r2) =>
+      if qo in PIV.QuantIds(r1) { NST.QuantIdsQidBodySubset(r1, qo); QidBodyNestLookIds(r1, qo, qi); }
+      else {
+        NST.QuantIdsQidBodySubset(r2, qo);
+        assert qi in PIV.QuantIds(r2);
+        if qi in PIV.QuantIds(r1) { assert qi in PIV.QuantIds(r1) * PIV.QuantIds(r2); }
+        QidBodyNestLookIds(r2, qo, qi);
+      }
+    case Re_quant(_, qid0, _, r1) =>
+      if (qid0 as nat) == qo {
+        NI.QidBodyLookIdsSub(r1, qi);
+      } else {
+        NST.QuantIdsQidBodySubset(r1, qo);
+        QidBodyNestLookIds(r1, qo, qi);
+      }
+    case Re_capture(_, r1) => QidBodyNestLookIds(r1, qo, qi);
+    case Re_lookaround(_, _, r1) => QidBodyNestLookIds(r1, qo, qi);
+  }
+
+  /** Two quantifier bodies are nested or capture-disjoint. */
+  lemma QidBodyTrichotomy(re: R.regex, q1: nat, q2: nat)
+    requires PIV.QuantUnique(re) && PIV.CapUnique(re)
+    requires q1 in PIV.QuantIds(re) && q2 in PIV.QuantIds(re) && q1 != q2
+    ensures q1 in PIV.QuantIds(PIV.QidBody(re, q2)) || q2 in PIV.QuantIds(PIV.QidBody(re, q1))
+            || PIV.CapIds(PIV.QidBody(re, q1)) !! PIV.CapIds(PIV.QidBody(re, q2))
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) =>
+      if q1 in PIV.QuantIds(r1) && q2 in PIV.QuantIds(r1) { QidBodyTrichotomy(r1, q1, q2); }
+      else if q1 !in PIV.QuantIds(r1) && q2 !in PIV.QuantIds(r1) { QidBodyTrichotomy(r2, q1, q2); }
+      else if q1 in PIV.QuantIds(r1) {
+        PIV.CapIdsQidBodySubset(r1, q1); PIV.CapIdsQidBodySubset(r2, q2);
+        DisjOfInter(PIV.CapIds(PIV.QidBody(r1, q1)), PIV.CapIds(PIV.QidBody(r2, q2)), PIV.CapIds(r1), PIV.CapIds(r2));
+      } else {
+        PIV.CapIdsQidBodySubset(r2, q1); PIV.CapIdsQidBodySubset(r1, q2);
+        DisjOfInter(PIV.CapIds(PIV.QidBody(r1, q2)), PIV.CapIds(PIV.QidBody(r2, q1)), PIV.CapIds(r1), PIV.CapIds(r2));
+      }
+    case Re_con(r1, r2) =>
+      if q1 in PIV.QuantIds(r1) && q2 in PIV.QuantIds(r1) { QidBodyTrichotomy(r1, q1, q2); }
+      else if q1 !in PIV.QuantIds(r1) && q2 !in PIV.QuantIds(r1) { QidBodyTrichotomy(r2, q1, q2); }
+      else if q1 in PIV.QuantIds(r1) {
+        PIV.CapIdsQidBodySubset(r1, q1); PIV.CapIdsQidBodySubset(r2, q2);
+        DisjOfInter(PIV.CapIds(PIV.QidBody(r1, q1)), PIV.CapIds(PIV.QidBody(r2, q2)), PIV.CapIds(r1), PIV.CapIds(r2));
+      } else {
+        PIV.CapIdsQidBodySubset(r2, q1); PIV.CapIdsQidBodySubset(r1, q2);
+        DisjOfInter(PIV.CapIds(PIV.QidBody(r1, q2)), PIV.CapIds(PIV.QidBody(r2, q1)), PIV.CapIds(r1), PIV.CapIds(r2));
+      }
+    case Re_quant(_, qid0, _, r1) =>
+      if (qid0 as nat) == q1 || (qid0 as nat) == q2 {
+      } else {
+        QidBodyTrichotomy(r1, q1, q2);
+      }
+    case Re_capture(_, r1) => QidBodyTrichotomy(r1, q1, q2);
+    case Re_lookaround(_, _, r1) => QidBodyTrichotomy(r1, q1, q2);
+  }
+
+  // ---- live stamps ----
+
+  /** No enclosing quantifier was re-clocked after `qid`. */
+  ghost predicate ChainFresh(re: R.regex, qr: AReg.Regs, qid: nat) {
+    forall qo: nat {:trigger PIV.QidBody(re, qo)} ::
+      qo in PIV.QuantIds(re) && qid in PIV.QuantIds(PIV.QidBody(re, qo))
+      ==> AI.get_idx(qr.a_clk, qo as int) <= AI.get_idx(qr.a_clk, qid as int)
+  }
+
+  /** `qid` carries a live (chain-fresh) nulled-exit stamp. */
+  ghost predicate LiveStampAt(re: R.regex, qr: AReg.Regs, qid: nat) {
+    qid in PIV.QuantIds(re) && AI.get_idx(qr.a_cp, qid as int) >= 0 && ChainFresh(re, qr, qid)
+  }
+
+  ghost predicate LidUnderLiveStamp(re: R.regex, qr: AReg.Regs, lid: nat) {
+    exists qid: nat {:trigger LiveStampAt(re, qr, qid)} ::
+      qid in PIV.QuantIds(re) && LiveStampAt(re, qr, qid) && lid in LTB.LookIds(PIV.QidBody(re, qid))
+  }
+
+  /** ★ THE GUARD SET (opaque): top-level looks in the body of a live stamped quantifier. */
+  opaque ghost function LiveStampLids(re: R.regex, qr: AReg.Regs): set<nat> {
+    set lid: nat | lid in NI.TopLookIds(re) && LidUnderLiveStamp(re, qr, lid)
+  }
+
+  ghost predicate FrozenAtQ(rer: LW.RegExpRecord, re: R.regex, str: string, gmt: LG.GroupMap, qid: nat, cp: int)
+    requires qid in PIV.QuantIds(re)
+  {
+    0 <= cp <= |str| && T.TransWf(PIV.QidBody(re, qid))
+    && NPL.FrozenAt(rer, T.Translate(PIV.QidBody(re, qid)), PIV.InpOfCp(str, cp), gmt)
+  }
+
+  /** ★ THE NEW PER-THREAD INVARIANT (opaque): every live stamp's body is frozen at its stamp position. */
+  opaque ghost predicate FrozenOk(rer: LW.RegExpRecord, re: R.regex, str: string, gmt: LG.GroupMap, th: AI.Thread) {
+    forall qid: nat {:trigger LiveStampAt(re, th.quant_regs, qid)} ::
+      qid in PIV.QuantIds(re) && LiveStampAt(re, th.quant_regs, qid)
+      ==> FrozenAtQ(rer, re, str, gmt, qid, AI.get_idx(th.quant_regs.a_cp, qid as int))
+  }
+
+  /** The register effect of `SetQuantToClock(qn, true)` on one thread, as the core effect lemmas state it. */
+  ghost predicate StampRegs(th: AI.Thread, th': AI.Thread, qn: nat, cp: int) {
+    th'.capture_regs == th.capture_regs && th'.look_regs == th.look_regs
+    && (forall j: int :: j != qn as int ==>
+          AI.get_idx(th'.quant_regs.a_clk, j) == AI.get_idx(th.quant_regs.a_clk, j)
+          && AI.get_idx(th'.quant_regs.a_cp, j) == AI.get_idx(th.quant_regs.a_cp, j))
+    && AI.get_idx(th'.quant_regs.a_cp, qn as int) == cp && cp >= 0
+    && (forall j: int :: AI.get_idx(th.quant_regs.a_clk, j) < AI.get_idx(th'.quant_regs.a_clk, qn as int))
+    && (forall j: int :: AI.get_idx(th.look_regs.a_clk, j) < AI.get_idx(th'.quant_regs.a_clk, qn as int))
+  }
+
+  /** After the stamp, `qn` is live. */
+  lemma StampIsLive(re: R.regex, th: AI.Thread, th': AI.Thread, qn: nat, cp: int)
+    requires qn in PIV.QuantIds(re) && StampRegs(th, th', qn, cp)
+    ensures LiveStampAt(re, th'.quant_regs, qn)
+  {
+    forall qo: nat | qo in PIV.QuantIds(re) && qn in PIV.QuantIds(PIV.QidBody(re, qo))
+      ensures AI.get_idx(th'.quant_regs.a_clk, qo as int) <= AI.get_idx(th'.quant_regs.a_clk, qn as int)
+    {
+      if qo != qn {
+        assert AI.get_idx(th'.quant_regs.a_clk, qo as int) == AI.get_idx(th.quant_regs.a_clk, qo as int);
+      }
+    }
+  }
+
+  /** A stamp off `qn`'s nest that was live stays live, and conversely. */
+  lemma LiveStampOffNest(re: R.regex, th: AI.Thread, th': AI.Thread, qn: nat, cp: int, qid: nat)
+    requires qn in PIV.QuantIds(re) && StampRegs(th, th', qn, cp)
+    requires qid in PIV.QuantIds(re) && qid != qn
+    requires qid !in PIV.QuantIds(PIV.QidBody(re, qn))
+    ensures LiveStampAt(re, th.quant_regs, qid) <==> LiveStampAt(re, th'.quant_regs, qid)
+  {
+    assert AI.get_idx(th'.quant_regs.a_clk, qid as int) == AI.get_idx(th.quant_regs.a_clk, qid as int);
+    assert AI.get_idx(th'.quant_regs.a_cp, qid as int) == AI.get_idx(th.quant_regs.a_cp, qid as int);
+    forall qo: nat | qo in PIV.QuantIds(re) && qid in PIV.QuantIds(PIV.QidBody(re, qo))
+      ensures qo != qn
+              && AI.get_idx(th'.quant_regs.a_clk, qo as int) == AI.get_idx(th.quant_regs.a_clk, qo as int)
+    {}
+  }
+
+  /** A lid outside `qn`'s body that was under a live stamp stays under it. */
+  lemma LiveStampLidsOffPath(re: R.regex, th: AI.Thread, th': AI.Thread, qn: nat, cp: int, lid: nat)
+    requires PIV.QuantUnique(re)
+    requires qn in PIV.QuantIds(re) && StampRegs(th, th', qn, cp)
+    requires lid !in LTB.LookIds(PIV.QidBody(re, qn))
+    requires lid in LiveStampLids(re, th.quant_regs)
+    ensures lid in LiveStampLids(re, th'.quant_regs)
+  {
+    reveal LiveStampLids();
+    var qid: nat :| qid in PIV.QuantIds(re) && LiveStampAt(re, th.quant_regs, qid)
+                    && lid in LTB.LookIds(PIV.QidBody(re, qid));
+    assert qid != qn;
+    if qid in PIV.QuantIds(PIV.QidBody(re, qn)) {
+      QidBodyNestLookIds(re, qn, qid);
+      assert false;
+    }
+    LiveStampOffNest(re, th, th', qn, cp, qid);
+    assert LidUnderLiveStamp(re, th'.quant_regs, lid);
+  }
+
+  // ---- (1) the guarded OkT across the stamp ----
+
+  lemma StampStepOkTG(re: R.regex, S: set<LG.GroupId>, gm: LG.GroupMap, gm': LG.GroupMap,
+                      th: AI.Thread, th': AI.Thread, qn: nat, cp: int)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires qn in PIV.QuantIds(re) && qn in PIV.QuantIdsOutsideLooks(re)
+    requires StampRegs(th, th', qn, cp)
+    requires LookNestOkTTop(re, S, gm, th)
+    // the fold is a frame off q's body
+    requires forall g: LG.GroupId :: g in gm' && g !in PIV.CapIds(PIV.QidBody(re, qn)) ==> g in gm
+    ensures LookNestOkTTop(re, S, gm', th')
+  {
+    NI.TopLookIdsIn(re);
+    forall lid: nat | lid in NI.TopLookIds(re)
+                      && lid !in LiveStampLids(re, th'.quant_regs)
+                      && (exists g: LG.GroupId :: g in S && g in gm' && g in PIV.CapIds(NI.LookBodyOfRE(re, lid)))
+      ensures NI.LookPathPresent(re, th'.capture_regs.a_clk, th'.quant_regs.a_clk, -1, lid)
+              && AI.get_idx(th'.look_regs.a_clk, lid as int) >= 0
+              && AI.get_idx(th'.look_regs.a_clk, lid as int)
+                 >= NI.MxAtLidLk(re, th'.quant_regs.a_clk, -1, lid)
+    {
+      var g: LG.GroupId :| g in S && g in gm' && g in PIV.CapIds(NI.LookBodyOfRE(re, lid));
+      if lid in LTB.LookIds(PIV.QidBody(re, qn)) {
+        // on q's path: the lid is now under q's live stamp — the guard is off
+        StampIsLive(re, th, th', qn, cp);
+        assert LidUnderLiveStamp(re, th'.quant_regs, lid);
+        assert lid in LiveStampLids(re, th'.quant_regs) by { reveal LiveStampLids(); }
+        assert false;
+      } else {
+        NI.LookBodyQidBodyDisjoint(re, qn, lid);
+        assert g !in PIV.CapIds(PIV.QidBody(re, qn)) by {
+          if g in PIV.CapIds(PIV.QidBody(re, qn)) {
+            assert g in PIV.CapIds(NI.LookBodyOfRE(re, lid)) * PIV.CapIds(PIV.QidBody(re, qn));
+          }
+        }
+        assert g in gm;
+        if lid in LiveStampLids(re, th.quant_regs) {
+          LiveStampLidsOffPath(re, th, th', qn, cp, lid);
+          assert false;
+        }
+        NI.LookPathPresentQuantOffPath(re, th.capture_regs.a_clk, th.quant_regs.a_clk,
+                                       th'.quant_regs.a_clk, -1, lid, qn);
+      }
+    }
+  }
+
+  // ---- (2) FrozenOk across the stamp ----
+
+  lemma StampStepFrozen(rer: LW.RegExpRecord, re: R.regex, str: string, gm: LG.GroupMap, gm': LG.GroupMap,
+                        th: AI.Thread, th': AI.Thread, qn: nat, cp: int)
+    requires T.TransWf(re) && PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires qn in PIV.QuantIds(re)
+    requires StampRegs(th, th', qn, cp)
+    requires FrozenOk(rer, re, str, gm, th)
+    // machine A's `NST.NestStampTopQuantSite`: no stamped quantifier encloses the write site
+    requires PIV.NoStampedAbove(re, th.quant_regs.a_cp, qn)
+    // the stamp's own body: the fold's frozen value (StampFoldFacts)
+    requires FrozenAtQ(rer, re, str, gm', qn, cp)
+    // the fold is a frame off q's body
+    requires forall g: LG.GroupId :: g !in PIV.CapIds(PIV.QidBody(re, qn)) ==>
+                                       (g in gm' <==> g in gm) && (g in gm' ==> gm'[g] == gm[g])
+    ensures FrozenOk(rer, re, str, gm', th')
+  {
+    forall qid: nat | qid in PIV.QuantIds(re) && LiveStampAt(re, th'.quant_regs, qid)
+      ensures FrozenAtQ(rer, re, str, gm', qid, AI.get_idx(th'.quant_regs.a_cp, qid as int))
+    {
+      if qid == qn {
+      } else if qid in PIV.QuantIds(PIV.QidBody(re, qn)) {
+        // inside q's body: stale under q's fresh clock
+        assert AI.get_idx(th'.quant_regs.a_clk, qn as int) <= AI.get_idx(th'.quant_regs.a_clk, qid as int);
+        assert AI.get_idx(th'.quant_regs.a_clk, qid as int) == AI.get_idx(th.quant_regs.a_clk, qid as int);
+        assert false;
+      } else if qn in PIV.QuantIds(PIV.QidBody(re, qid)) {
+        // enclosing q: it would be a stamped quantifier above the write site
+        assert AI.get_idx(th.quant_regs.a_cp, qid as int) == AI.get_idx(th'.quant_regs.a_cp, qid as int);
+        assert false;
+      } else {
+        // a sibling: capture-disjoint from q's body, untouched by the fold
+        LiveStampOffNest(re, th, th', qn, cp, qid);
+        assert LiveStampAt(re, th.quant_regs, qid);
+        var c := AI.get_idx(th.quant_regs.a_cp, qid as int);
+        assert c == AI.get_idx(th'.quant_regs.a_cp, qid as int);
+        assert FrozenAtQ(rer, re, str, gm, qid, c) by { reveal FrozenOk(); }
+        QidBodyTrichotomy(re, qid, qn);
+        var rq := T.Translate(PIV.QidBody(re, qid));
+        M.TranslateDefGroupsEqCapIds(PIV.QidBody(re, qid));
+        NPL.LkBodyGroupsSubDG(rq);
+        assert LL.GmAgreeInside(gm', gm, LL.LkBodyGroups(rq)) by {
+          forall g | g in LL.LkBodyGroups(rq)
+            ensures (g in gm' <==> g in gm) && (g in gm' ==> gm'[g] == gm[g])
+          {
+            assert g in NPL.DG(rq);
+            assert g in PIV.CapIds(PIV.QidBody(re, qid));
+            assert g !in PIV.CapIds(PIV.QidBody(re, qn));
+          }
+        }
+        NPL.FrozenAtFrame(rer, rq, PIV.InpOfCp(str, c), gm, gm');
+      }
+    }
+    reveal FrozenOk();
+  }
+
+  // ---- (2b) the other consumers of the two new carriers: the clock MARK and a register-preserving step ----
+
+  /** The register effect of the clock mark `SetQuantToClock(qn, false)`. */
+  ghost predicate MarkRegs(th: AI.Thread, th': AI.Thread, qn: nat) {
+    th'.capture_regs == th.capture_regs && th'.look_regs == th.look_regs
+    && (forall j: int :: j != qn as int ==>
+          AI.get_idx(th'.quant_regs.a_clk, j) == AI.get_idx(th.quant_regs.a_clk, j)
+          && AI.get_idx(th'.quant_regs.a_cp, j) == AI.get_idx(th.quant_regs.a_cp, j))
+    && AI.get_idx(th'.quant_regs.a_cp, qn as int) < 0
+    && (forall j: int :: AI.get_idx(th.quant_regs.a_clk, j) < AI.get_idx(th'.quant_regs.a_clk, qn as int))
+  }
+
+  /** `FrozenOk` across the MARK: `qn`'s own stamp is cleared, stamps inside its body go stale, siblings are
+      untouched by the Reset. */
+  lemma MarkStepFrozen(rer: LW.RegExpRecord, re: R.regex, str: string, gm: LG.GroupMap, gm': LG.GroupMap,
+                       th: AI.Thread, th': AI.Thread, qn: nat)
+    requires T.TransWf(re) && PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires qn in PIV.QuantIds(re)
+    requires MarkRegs(th, th', qn)
+    requires FrozenOk(rer, re, str, gm, th)
+    requires PIV.NoStampedAbove(re, th.quant_regs.a_cp, qn)
+    requires forall g: LG.GroupId :: g !in PIV.CapIds(PIV.QidBody(re, qn)) ==>
+                                       (g in gm' <==> g in gm) && (g in gm' ==> gm'[g] == gm[g])
+    ensures FrozenOk(rer, re, str, gm', th')
+  {
+    forall qid: nat | qid in PIV.QuantIds(re) && LiveStampAt(re, th'.quant_regs, qid)
+      ensures FrozenAtQ(rer, re, str, gm', qid, AI.get_idx(th'.quant_regs.a_cp, qid as int))
+    {
+      if qid == qn {
+        assert false;
+      } else if qid in PIV.QuantIds(PIV.QidBody(re, qn)) {
+        assert AI.get_idx(th'.quant_regs.a_clk, qn as int) <= AI.get_idx(th'.quant_regs.a_clk, qid as int);
+        assert AI.get_idx(th'.quant_regs.a_clk, qid as int) == AI.get_idx(th.quant_regs.a_clk, qid as int);
+        assert false;
+      } else if qn in PIV.QuantIds(PIV.QidBody(re, qid)) {
+        assert AI.get_idx(th.quant_regs.a_cp, qid as int) == AI.get_idx(th'.quant_regs.a_cp, qid as int);
+        assert false;
+      } else {
+        var c := AI.get_idx(th.quant_regs.a_cp, qid as int);
+        assert c == AI.get_idx(th'.quant_regs.a_cp, qid as int);
+        assert AI.get_idx(th'.quant_regs.a_clk, qid as int) == AI.get_idx(th.quant_regs.a_clk, qid as int);
+        assert ChainFresh(re, th.quant_regs, qid) by {
+          forall qo: nat | qo in PIV.QuantIds(re) && qid in PIV.QuantIds(PIV.QidBody(re, qo))
+            ensures AI.get_idx(th.quant_regs.a_clk, qo as int) <= AI.get_idx(th.quant_regs.a_clk, qid as int)
+          {
+            assert qo != qn;
+            assert AI.get_idx(th'.quant_regs.a_clk, qo as int) <= AI.get_idx(th'.quant_regs.a_clk, qid as int);
+          }
+        }
+        assert LiveStampAt(re, th.quant_regs, qid);
+        assert FrozenAtQ(rer, re, str, gm, qid, c) by { reveal FrozenOk(); }
+        QidBodyTrichotomy(re, qid, qn);
+        var rq := T.Translate(PIV.QidBody(re, qid));
+        M.TranslateDefGroupsEqCapIds(PIV.QidBody(re, qid));
+        NPL.LkBodyGroupsSubDG(rq);
+        assert LL.GmAgreeInside(gm', gm, LL.LkBodyGroups(rq)) by {
+          forall g | g in LL.LkBodyGroups(rq)
+            ensures (g in gm' <==> g in gm) && (g in gm' ==> gm'[g] == gm[g])
+          {
+            assert g in NPL.DG(rq);
+            assert g in PIV.CapIds(PIV.QidBody(re, qid));
+            assert g !in PIV.CapIds(PIV.QidBody(re, qn));
+          }
+        }
+        NPL.FrozenAtFrame(rer, rq, PIV.InpOfCp(str, c), gm, gm');
+      }
+    }
+    reveal FrozenOk();
+  }
+
   ghost predicate LookNestOkTTop(re: R.regex, S: set<LG.GroupId>, gmt: LG.GroupMap, th: AI.Thread) {
     forall lid: nat | lid in NI.TopLookIds(re) ::
       (lid in LTB.LookIds(re)   // (2026-08-28) wf guard for `LookBodyOfRE`/`LookPathPresent` (TopLookIds ⊆ LookIds)
+       && lid !in LiveStampLids(re, th.quant_regs)   // (G4b-2 ★) a live stamp's lids are carried by `FrozenOk`
        && exists g: LG.GroupId :: g in S && g in gmt && g in PIV.CapIds(NI.LookBodyOfRE(re, lid))) ==>
         NI.LookPathPresent(re, th.capture_regs.a_clk, th.quant_regs.a_clk, -1, lid)
         && AI.get_idx(th.look_regs.a_clk, lid as int) >= 0
@@ -2661,6 +3023,7 @@ module LindenElkLiftSimCore {
   {
     NI.TopLookIdsIn(re);
     forall lid: nat | lid in NI.TopLookIds(re)
+                      && lid !in LiveStampLids(re, th'.quant_regs)   // (G4b-2)
                       && (exists g: LG.GroupId :: g in S && g in gmt' && g in PIV.CapIds(NI.LookBodyOfRE(re, lid)))
       ensures NI.LookPathPresent(re, th'.capture_regs.a_clk, th'.quant_regs.a_clk, -1, lid)
               && AI.get_idx(th'.look_regs.a_clk, lid as int) >= 0
@@ -2682,12 +3045,15 @@ module LindenElkLiftSimCore {
     requires th'.capture_regs == th.capture_regs && th'.look_regs == th.look_regs
     requires forall j: int :: j != qid as int ==>
                                 AI.get_idx(th'.quant_regs.a_clk, j) == AI.get_idx(th.quant_regs.a_clk, j)
+    requires forall j: int :: j != qid as int ==>   // (G4b-2) the stamps off qid are kept (the guard reads them)
+                                AI.get_idx(th'.quant_regs.a_cp, j) == AI.get_idx(th.quant_regs.a_cp, j)
     requires forall g: nat :: g in PIV.CapIds(PIV.QidBody(re, qid)) ==> g !in gmt'
     requires forall g: LG.GroupId :: g in gmt' ==> g in gmt
     ensures LookNestOkTTop(re, S, gmt', th')
   {
     NI.TopLookIdsIn(re);
     forall lid: nat | lid in NI.TopLookIds(re)
+                      && lid !in LiveStampLids(re, th'.quant_regs)   // (G4b-2)
                       && (exists g: LG.GroupId :: g in S && g in gmt' && g in PIV.CapIds(NI.LookBodyOfRE(re, lid)))
       ensures NI.LookPathPresent(re, th'.capture_regs.a_clk, th'.quant_regs.a_clk, -1, lid)
               && AI.get_idx(th'.look_regs.a_clk, lid as int) >= 0
@@ -2701,11 +3067,30 @@ module LindenElkLiftSimCore {
         assert false;
       } else {
         assert g in gmt;
+        if lid in LiveStampLids(re, th.quant_regs) {
+          // (G4b-2) a host off qid's nest stays live (qid's own stamp only moved qid's clock)
+          reveal LiveStampLids();
+          var qh: nat :| qh in PIV.QuantIds(re) && LiveStampAt(re, th.quant_regs, qh)
+                         && lid in LTB.LookIds(PIV.QidBody(re, qh));
+          assert qh != qid;
+          if qh in PIV.QuantIds(PIV.QidBody(re, qid)) { QidBodyNestLookIds(re, qid, qh); assert false; }
+          assert AI.get_idx(th'.quant_regs.a_cp, qh as int) == AI.get_idx(th.quant_regs.a_cp, qh as int);
+          forall qo: nat | qo in PIV.QuantIds(re) && qh in PIV.QuantIds(PIV.QidBody(re, qo))
+            ensures AI.get_idx(th'.quant_regs.a_clk, qo as int) <= AI.get_idx(th'.quant_regs.a_clk, qh as int)
+          {
+            if qo == qid { QidBodyNestLookIds(re, qid, qh); assert false; }
+            assert AI.get_idx(th.quant_regs.a_clk, qo as int) <= AI.get_idx(th.quant_regs.a_clk, qh as int);
+          }
+          assert LiveStampAt(re, th'.quant_regs, qh);
+          assert LidUnderLiveStamp(re, th'.quant_regs, lid);
+          assert false;
+        }
         NI.LookPathPresentQuantOffPath(re, th.capture_regs.a_clk, th.quant_regs.a_clk,
                                        th'.quant_regs.a_clk, -1, lid, qid);
       }
     }
   }
+
 
   lemma LookNestBackTSetQuantNestedTop(re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
                                        S: set<LG.GroupId>, gmt: LG.GroupMap, gmt': LG.GroupMap,
@@ -2840,6 +3225,7 @@ module LindenElkLiftSimCore {
     assert lid0 >= 0 && (lid0 as nat) in NI.TopLookIds(re);
     NI.TopLookIdsIn(re);
     forall lid: nat | lid in NI.TopLookIds(re)
+                      && lid !in LiveStampLids(re, th'.quant_regs)   // (G4b-2)
                       && (exists g: LG.GroupId :: g in S && g in gmt' && g in PIV.CapIds(NI.LookBodyOfRE(re, lid)))
       ensures NI.LookPathPresent(re, th'.capture_regs.a_clk, th'.quant_regs.a_clk, -1, lid)
               && AI.get_idx(th'.look_regs.a_clk, lid as int) >= 0
@@ -4972,10 +5358,72 @@ module LindenElkLiftSimCore {
     FreshMatchLidFlipCdn(rer, qm, body, crv, str, ov, lk, lid, ncap, nlook, nquant);
   }
 
+  // (G4b-2) The live-stamp guard across the flip: a stamp live in the mirrored world was live in the real one.
+  lemma QuantIdsFXRC(r: R.regex)
+    ensures PIV.QuantIds(FST.FXR(r)) == PIV.QuantIds(r)
+    decreases r
+  {
+    match r
+    case Re_alt(a, b) => FG.FXRAlt(a, b); QuantIdsFXRC(a); QuantIdsFXRC(b);
+    case Re_con(a, b) => FG.FXRCon(a, b); QuantIdsFXRC(a); QuantIdsFXRC(b);
+    case Re_quant(nul, qid, q, a) => FG.FXRQuant(nul, qid, q, a); QuantIdsFXRC(a);
+    case Re_capture(c, a) => FG.FXRCapture(c, a); QuantIdsFXRC(a);
+    case Re_lookaround(l, la, a) => FG.FXRLook(l, la, a); QuantIdsFXRC(a);
+    case _ =>
+  }
+
+  lemma QidBodyFXR(r: R.regex, q: nat)
+    requires PIV.QuantUnique(r) && q in PIV.QuantIds(r)
+    ensures q in PIV.QuantIds(FST.FXR(r)) && PIV.QidBody(FST.FXR(r), q) == FST.FXR(PIV.QidBody(r, q))
+    decreases r
+  {
+    QuantIdsFXRC(r);
+    match r
+    case Re_alt(a, b) =>
+      FG.FXRAlt(a, b); QuantIdsFXRC(a);
+      if q in PIV.QuantIds(a) { QidBodyFXR(a, q); } else { QidBodyFXR(b, q); }
+    case Re_con(a, b) =>
+      FG.FXRCon(a, b); QuantIdsFXRC(a); QuantIdsFXRC(b);
+      if q in PIV.QuantIds(a) {
+        QidBodyFXR(a, q);
+        assert q !in PIV.QuantIds(b) by { if q in PIV.QuantIds(b) { assert q in PIV.QuantIds(a) * PIV.QuantIds(b); } }
+      } else { QidBodyFXR(b, q); }
+    case Re_quant(nul, qid, qq, a) =>
+      FG.FXRQuant(nul, qid, qq, a);
+      if !(qid >= 0 && (qid as nat) == q) { QidBodyFXR(a, q); }
+    case Re_capture(c, a) => FG.FXRCapture(c, a); QidBodyFXR(a, q);
+    case Re_lookaround(l, la, a) => FG.FXRLook(l, la, a); QidBodyFXR(a, q);
+  }
+
+  lemma LiveStampLidsFXRSub(body: R.regex, qr: AReg.Regs, n: nat, lid: nat)
+    requires PIV.QuantUnique(body)
+    requires lid in LiveStampLids(FST.FXR(body), MIR.MirrorRegs(qr, n))
+    ensures lid in LiveStampLids(body, qr)
+  {
+    reveal LiveStampLids();
+    var reF := FST.FXR(body);
+    var qm := MIR.MirrorRegs(qr, n);
+    FG.TopLookIdsFXR(body);
+    QuantIdsFXRC(body);
+    var q: nat :| q in PIV.QuantIds(reF) && LiveStampAt(reF, qm, q) && lid in LTB.LookIds(PIV.QidBody(reF, q));
+    QidBodyFXR(body, q);
+    FG.LookIdsFXR(PIV.QidBody(body, q));
+    assert AI.get_idx(qm.a_cp, q as int) == MIR.MirrorCpVal(AI.get_idx(qr.a_cp, q as int), n);
+    assert qm.a_clk == qr.a_clk;
+    forall qo: nat | qo in PIV.QuantIds(body) && q in PIV.QuantIds(PIV.QidBody(body, qo))
+      ensures AI.get_idx(qr.a_clk, qo as int) <= AI.get_idx(qr.a_clk, q as int)
+    {
+      QidBodyFXR(body, qo);
+      QuantIdsFXRC(PIV.QidBody(body, qo));
+    }
+    assert LiveStampAt(body, qr, q);
+    assert LidUnderLiveStamp(body, qr, lid);
+  }
+
   /** (presence carrier) `LookNestOkTTop` transports back through the flip by
       pure congruence: same top lids, same gids, same clock banks. */
   lemma LookNestOkTTopFlip(body: R.regex, S: set<LG.GroupId>, gmt: LG.GroupMap, th: AI.Thread, n: nat)
-    requires LTB.LookUnique(body) && TRM.GmInBounds(gmt, n)
+    requires LTB.LookUnique(body) && PIV.QuantUnique(body) && TRM.GmInBounds(gmt, n)
     requires LookNestOkTTop(FST.FXR(body), S, TRM.MirrorGm(gmt, n), MIR.MirrorThread(th, n))
     ensures LookNestOkTTop(body, S, gmt, th)
   {
@@ -4986,6 +5434,7 @@ module LindenElkLiftSimCore {
     TRM.MirrorGmAt(gmt, n);
     NI.TopLookIdsIn(body);
     forall lid: nat | lid in NI.TopLookIds(body)
+                      && lid !in LiveStampLids(body, th.quant_regs)   // (G4b-2)
                       && (exists g: LG.GroupId :: g in S && g in gmt && g in PIV.CapIds(NI.LookBodyOfRE(body, lid)))
       ensures NI.LookPathPresent(body, th.capture_regs.a_clk, th.quant_regs.a_clk, -1, lid)
               && AI.get_idx(th.look_regs.a_clk, lid as int) >= 0
@@ -4996,6 +5445,9 @@ module LindenElkLiftSimCore {
       FG.LookBodyOfREFXR(body, lid);
       FG.CapIdsFXR(NI.LookBodyOfRE(body, lid));
       assert lid in NI.TopLookIds(reF);
+      assert lid !in LiveStampLids(reF, thF.quant_regs) by {
+        if lid in LiveStampLids(reF, thF.quant_regs) { LiveStampLidsFXRSub(body, th.quant_regs, n, lid); }
+      }
       assert exists g: LG.GroupId :: g in S && g in gmtF && g in PIV.CapIds(NI.LookBodyOfRE(reF, lid));
       assert NI.LookPathPresent(reF, thF.capture_regs.a_clk, thF.quant_regs.a_clk, -1, lid)
              && AI.get_idx(thF.look_regs.a_clk, lid as int) >= 0
