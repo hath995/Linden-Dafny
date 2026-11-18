@@ -1653,7 +1653,6 @@ module LindenElkLiftSimGate {
           reveal M.FreshBodyMatchPlus();
         }
         assert {:split_here} true;
-        hide RF.StampLooksCapFreeRE;   // (G5b-3) passed on as a term, never unfolded here
         assert NRC.PositiveLk(la) && RowPlusOkS(body, crv.f_plus_bc, nlook);   // GateStaticPick, lookahead
         assert MA.MachineAPreS(rer, qm, body, bodycode3, |bodycode3| - 1, str, cp, ov, crv.f_plus_bc,
                                ncap, nlook, nquant) by {
@@ -1704,7 +1703,6 @@ module LindenElkLiftSimGate {
         // groups are never live in the backward fresh run, F6b).
         assert la.Lookbehind?;
         assert {:split_here} true;   // (G4b-1b, pack S32) the lookbehind arm in a batch of its own
-        hide RF.StampLooksCapFreeRE;   // (G4b-1b) passed on as a term, never unfolded here
         assert L.LkDir(lk) == WP.Backward;
         EL.TranslateFragmentPikeLkRecCdn(body);   // (G5b-2) the body may hold a CDN plus
         EL.ComputeTrGmIndepLkRec(rer, r1, inp, gm, WP.Backward);
@@ -1733,7 +1731,7 @@ module LindenElkLiftSimGate {
                                         crv.f_look_cdns[l]).0;
         assert NRC.PositiveLk(la) && RowPlusOkS(body, crv.f_plus_bc, nlook);   // GateStaticPick (G5b-2: S)
         assert (forall l0: nat :: l0 in LTB.LookIds(body) ==> l0 < nlook)
-               && NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body) && NRR.PlusTableOkS(body, crv.f_plus_bc) by {
+               && NRC.CdnTopRE(body) && NRR.PlusTableOkS(body, crv.f_plus_bc) by {
           reveal RowPlusOkS(); reveal M.RowLAStaticsS();
         }
         assert crv.f_look_cdns[l] == LCdn.compile_cdns(body);                  // LookEntryOk row
@@ -2064,7 +2062,6 @@ module LindenElkLiftSimGate {
             reveal M.FreshBodyMatchPlus();
           }
           assert {:split_here} true;
-          hide RF.StampLooksCapFreeRE;   // (G5b-3) passed on as a term, never unfolded here
           assert NRC.PositiveLk(la) && RowPlusOkS(body, crv.f_plus_bc, nlook);   // GateStaticPick, lookahead
           assert MA.MachineAPreS(rer, qm, body, bodycode3, |bodycode3| - 1, str, cp, ov, crv.f_plus_bc,
                                  ncap, nlook, nquant) by {
@@ -2115,7 +2112,6 @@ module LindenElkLiftSimGate {
           // groups are never live in the backward fresh run, F6b).
           assert la.Lookbehind?;
           assert {:split_here} true;   // (G4b-1b, pack S32) the lookbehind arm in a batch of its own
-          hide RF.StampLooksCapFreeRE;   // (G4b-1b) passed on as a term, never unfolded here
           assert L.LkDir(lk) == WP.Backward;
           EL.TranslateFragmentPikeLkRecCdn(body);   // (G5b-2) the body may hold a CDN plus
           EL.ComputeTrGmIndepLkRec(rer, r1, inp, gm, WP.Backward);
@@ -2146,7 +2142,7 @@ module LindenElkLiftSimGate {
                                           crv.f_look_cdns[l]).0;
           assert NRC.PositiveLk(la) && RowPlusOkS(body, crv.f_plus_bc, nlook);   // GateStaticPick (G5b-2: S)
           assert (forall l0: nat :: l0 in LTB.LookIds(body) ==> l0 < nlook)
-                 && NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body) && NRR.PlusTableOkS(body, crv.f_plus_bc) by {
+                 && NRC.CdnTopRE(body) && NRR.PlusTableOkS(body, crv.f_plus_bc) by {
             reveal RowPlusOkS(); reveal M.RowLAStaticsS();
           }
           assert crv.f_look_cdns[l] == LCdn.compile_cdns(body);                  // LookEntryOk row

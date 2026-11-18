@@ -181,43 +181,4 @@ module LindenElkMirrorPlus {
     case Re_empty =>
     case Re_character(_) =>
   }
-
-  /** (G4b-1b) The empty-path look scope is FXR-invariant (`R.nullable` is, `CMr.NullableFXR`). */
-  lemma EPCFFXR(r: R.regex)
-    requires RF.EmptyPathLooksCapFree(r)
-    ensures RF.EmptyPathLooksCapFree(FST.FXR(r))
-    decreases r
-  {
-    match r
-    case Re_alt(a, b) => W.FXRAlt(a, b); EPCFFXR(a); EPCFFXR(b);
-    case Re_con(a, b) =>
-      W.FXRCon(a, b); CMr.NullableFXR(a); CMr.NullableFXR(b);
-      if RF.MayNull(a) { EPCFFXR(b); }
-      if RF.MayNull(b) { EPCFFXR(a); }
-    case Re_quant(nul, qid, q, a) => W.FXRQuant(nul, qid, q, a); if q.min != 0 { EPCFFXR(a); }
-    case Re_capture(c, a) => W.FXRCap(c, a); EPCFFXR(a);
-    case Re_lookaround(l, la, a) => W.FXRLook(l, la, a); W.IdsFXR(a);
-    case Re_anchor(x) => W.FXRAnchor(x);
-    case Re_empty =>
-    case Re_character(_) =>
-  }
-
-  /** (G5b-3, G4b-1b) `StampBodiesLookFreeFXR` on the stamp scope. */
-  lemma StampLooksCapFreeFXR(r: R.regex)
-    requires RF.StampLooksCapFreeRE(r) && T.TransWf(r)
-    ensures RF.StampLooksCapFreeRE(FST.FXR(r))
-    decreases r
-  {
-    match r
-    case Re_alt(a, b) => W.FXRAlt(a, b); StampLooksCapFreeFXR(a); StampLooksCapFreeFXR(b);
-    case Re_con(a, b) => W.FXRCon(a, b); StampLooksCapFreeFXR(a); StampLooksCapFreeFXR(b);
-    case Re_quant(nul, qid, q, a) =>
-      W.FXRQuant(nul, qid, q, a); StampLooksCapFreeFXR(a);
-      if RF.StampNode(nul, q) { EPCFFXR(a); }
-    case Re_capture(c, a) => W.FXRCap(c, a); StampLooksCapFreeFXR(a);
-    case Re_lookaround(l, la, a) => W.FXRLook(l, la, a); StampLooksCapFreeFXR(a);
-    case Re_anchor(x) => W.FXRAnchor(x);
-    case Re_empty =>
-    case Re_character(_) =>
-  }
 }

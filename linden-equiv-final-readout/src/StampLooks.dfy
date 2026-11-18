@@ -1,6 +1,6 @@
 // (G5b-3) The reconstruction's look set (moved down from main-cin-lk's G4a `CinLooks.dfy`): a lid outside `RF.LooksQ`
 // keeps its ancestors' registers (scope-free). (G4b-1) The capture-free half moved to `EmptyLooks.dfy` on the sharper
-// set `ELk.LooksQE` (`ELk.LooksQECapFree`, `ELk.CapsQOOutside`). Valid at the top regex and at a look row.
+// set `ELk.LooksQE` (`ELk.CapsQOOutside`). Valid at the top regex and at a look row.
 module LindenElkStampLooks {
   import opened Std.Wrappers
   import R = RegElkRegex

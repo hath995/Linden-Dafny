@@ -487,7 +487,7 @@ module LindenElkLiftSimOracle {
     assert NRR.PlusTableOkS(re, crv.f_plus_bc);
     NRR.PlusTableOkSChildren(re, crv.f_plus_bc);
     assert NRR.PlusTableOkS(body, crv.f_plus_bc);
-    assert M.LookBodiesPlusGateRE(body) && RF.StampLooksCapFreeRE(body);   // (G5b-3) the gate's positive arm
+    assert M.LookBodiesPlusGateRE(body);   // (G5b-3) the gate's positive arm
     M.GateCdnTop(body);
     LookNodesPlusOkFromS(body, crv.f_plus_bc);
     assert LTB.LookUnique(body);
@@ -1095,7 +1095,7 @@ module LindenElkLiftSimOracle {
     A0: nat, lk: AReg.Regs, body: R.regex, g2: nat, ncap: int, nlook: int, nquant: int)
     requires T.TransWf(body) && NR.NestedFragmentCdnRE(body)
     requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook          // (G3b) the plus row's premises
-    requires NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body)   // (G5b-2, G5b-3)
+    requires NRC.CdnTopRE(body)   // (G5b-2, G5b-3)
     requires NRR.PlusTableOkS(body, crv.f_plus_bc)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
@@ -1127,7 +1127,7 @@ module LindenElkLiftSimOracle {
     A0: nat, lk: AReg.Regs, body: R.regex, g2: nat, ncap: int, nlook: int, nquant: int)
     requires T.TransWf(body) && NR.NestedFragmentCdnRE(body)
     requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook          // (G3b) the plus row's premises
-    requires NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body)   // (G5b-2, G5b-3)
+    requires NRC.CdnTopRE(body)   // (G5b-2, G5b-3)
     requires NRR.PlusTableOkS(body, crv.f_plus_bc)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)

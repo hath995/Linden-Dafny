@@ -225,14 +225,13 @@ module LindenElkRowReconAt {
     }
   }
 
-  /** (G5b-3) THE ROW PACKAGE when a stamp body may hold capture-free lookarounds (`RF.StampLooksCapFreeRE`): the
-      reconstruction may re-set lids in `LooksQ` (inside a stamp body: their bodies capture nothing), and keeps every
+  /** (G5b-3, G4b-2) THE ROW PACKAGE when a stamp body may hold lookarounds (capturing ones included): the
+      reconstruction may re-set lids in `LooksQ` (inside a stamp body), and keeps every
       other look register; the look-bank invariants named by `F` pass through it (`SBk.RowBank`), and so does the quant
       frame (the replay writes only outside-look quants). Replaces `RowReconAtS`'s "the look bank is kept". */
   lemma RowReconAtG4(F: SBk.Flags, qm: AR.QMap, body: R.regex, plus: seq<RB.code>, str: string, th: AI.Thread,
                      ncap: int, nlook: int, nquant: int)
     requires T.TransWf(body) && PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
-    requires RF.StampLooksCapFreeRE(body)
     requires NRR.PlusTableOkS(body, plus)
     requires FV.RegsFinalOk(th, |str|, FRD.StampQids(body))
     requires CM.ThreadRegsWf(th, ncap, nlook, nquant)

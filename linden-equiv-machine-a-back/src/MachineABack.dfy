@@ -534,7 +534,7 @@ module LindenElkMachineABack {
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
-    requires NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body) && NRR.PlusTableOkS(body, plus)
+    requires NRC.CdnTopRE(body) && NRR.PlusTableOkS(body, plus)
     requires AR.QmapOk(body, qm) && qm.bodies == M.BodiesOfRE(body)
     requires cdns == LCdn.compile_cdns(body)   // (G5b-2) the row's own table (the mirrored run's guards)
     requires !rer.ignoreCase && !rer.multiline
@@ -1065,7 +1065,7 @@ module LindenElkMachineABack {
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
-    requires NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body) && NRR.PlusTableOkS(body, plus)
+    requires NRC.CdnTopRE(body) && NRR.PlusTableOkS(body, plus)
     requires NRR.PlusTableOkS(FST.FXR(body), plusF)
     requires AR.QmapOk(body, qm) && qm.bodies == M.BodiesOfRE(body)
     requires cdns == LCdn.compile_cdns(body)
@@ -1109,7 +1109,6 @@ module LindenElkMachineABack {
       FG.LookUniqueFXR(body);
       FG.LookIdsFXR(body);
       NRC.CdnTopAll(reF);
-      TB.StampLooksCapFreeFXR(body);
       SizesCoverFromOk(reF, ncap, nlook, nquant);
       var rp := MA.ReadoutAtWinnerAtS(qmF, reF, bcF, endlF, plusF, rstr, mcpN, ov', cdns', initsF,
                                      ncap, nlook, nquant, fmF.0);
@@ -1127,7 +1126,7 @@ module LindenElkMachineABack {
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
-    requires NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body) && NRR.PlusTableOkS(body, plus)
+    requires NRC.CdnTopRE(body) && NRR.PlusTableOkS(body, plus)
     requires NRR.PlusTableOkS(FST.FXR(body), plusF)
     requires !rer.ignoreCase && !rer.multiline
     requires n == |str| && cp <= n && |ov| == n + 1
@@ -1172,7 +1171,6 @@ module LindenElkMachineABack {
     FG.LookUniqueFXR(body);
     FG.LookIdsFXR(body);
     NRC.CdnTopAll(reF);
-    TB.StampLooksCapFreeFXR(body);
     // ---- the involutions ----
     MW.FXRInvol(body);
     FS.ReverseReverse(str);
@@ -1190,7 +1188,7 @@ module LindenElkMachineABack {
     assert PIV.CapUnique(reF) && PIV.QuantUnique(reF) && LTB.LookUnique(reF);
     assert PSM.SizesOkRE(reF, ncap, nlook, nquant);
     assert forall l: nat :: l in LTB.LookIds(reF) ==> l < nlook;
-    assert NRC.CdnTopRE(reF) && RF.StampLooksCapFreeRE(reF) && NRR.PlusTableOkS(reF, plusF);
+    assert NRC.CdnTopRE(reF) && NRR.PlusTableOkS(reF, plusF);
     assert NRR.PlusTableOkS(FST.FXR(reF), plus);
     assert AR.QmapOk(reF, qmF) && qmF.bodies == M.BodiesOfRE(reF);
     assert n == |rstr| && mcpN <= n && |ov'| == n + 1;
@@ -1211,7 +1209,7 @@ module LindenElkMachineABack {
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
-    requires NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body) && NRR.PlusTableOkS(body, plus)
+    requires NRC.CdnTopRE(body) && NRR.PlusTableOkS(body, plus)
     requires NRR.PlusTableOkS(FST.FXR(body), plusF)
     requires AR.QmapOk(body, qm) && qm.bodies == M.BodiesOfRE(body)
     requires cdns == LCdn.compile_cdns(body)

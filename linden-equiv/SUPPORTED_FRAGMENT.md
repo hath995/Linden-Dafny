@@ -1,10 +1,10 @@
 # The verified fragment — what `Match` is guaranteed to get right
 
-> Verification status (2026-11-18): the entire equivalence — `linden.equiv` and its dependency packages —
-> verifies under `lem pack` with `lem` 0.1.23 and z3 4.14.1 (78/78 members, up to two members at a time, at most
-> four z3 workers each), through the greedy nullable plus everywhere it can occur (§2.5e–§2.5f), a *capturing*
-> lookaround in its body included when no empty path of the body crosses it, at any look depth (§2.5g, G4b-1). The
-> rest of §2.5g (G4b-2) is in progress. Branch `g4b` (`c7d4cb4`, gates S32/S32.run2).
+> Verification status (2026-11-19): G4b-2 (§2.5g) is proven in full-file dev runs of every changed member
+> (branch `g4b2`); the `lem pack` gate for it is pending. The last green gate (2026-11-18, `lem` 0.1.23, z3 4.14.1,
+> 78/78 members, branch `g4b`, `4f37099`, S32.run2) covers everything up to G4b-1. With G4b-2, `Supported` is the
+> nested fragment plus Latin-1 and nothing else: the greedy nullable plus is supported everywhere it can occur, and
+> lookarounds in its body may capture, on its empty paths too, at any look depth (§2.5e–§2.5g).
 > No `{:isolate_assertions}` remains anywhere in shipped code.
 
 Entry point: `ApiMatch.MatchCorrect(pattern, str)`:
@@ -19,10 +19,10 @@ lemma MatchCorrect(pattern: R.raw_regex, str: string)
 `MatcherSpec` is the ECMAScript **backtracking tree semantics** (Linden). So the guarantee is not
 "same yes/no answer" but "same match AND the same capture array, group by group".
 
-`Supported(p)` is one executable predicate (`ApiMatch.dfy`), and it is exactly the precondition of the one theorem
-behind `MatchCorrect`, `MCL.MainTheoremL5Cin`. Its conjuncts are `NR.NestedFragmentCdnRaw`, `T.Latin1Wf`,
-`CL.CinLooksCapFreeX` (every lookaround inside a greedy nullable plus body is capture-free, §2.5f) and `MCL.CdnTopX`
-(true of every regex since G5b-2, §2.5e). A look body of either kind may hold a greedy nullable plus, CI- or
+`Supported(p)` is one executable predicate (`ApiMatch.dfy`): `NR.NestedFragmentCdnRaw(p) && T.Latin1Wf(p)`. It is
+the precondition of the one theorem behind `MatchCorrect`, `MCG.MainTheoremL5Cin` (`MainCinG4b2.dfy`), whose other
+premise `NRC.CdnTopRE` holds of every regex (`MCL.CdnTopXAll`, §2.5e). The capture-free scope `CL.CinLooksCapFreeX`
+is gone since G4b-2 (§2.5g). A look body of either kind may hold a greedy nullable plus, CI- or
 CD-nullable (§2.5c, §2.5d, §2.5e). The two look-nesting scope conjuncts (`LSIMCOR.L5ScopeV1RE`, `EL.NegBehindLBOnlyRaw`)
 were deleted on 2026-11-11 (§2.1a): no condition on which kind of look may sit inside which remains.
 `NR.NestedFragmentRaw` no longer asks a negative look's body to be capture-free (§2.2a).
@@ -42,7 +42,7 @@ Everything below is verified for **case-sensitive, single-line, Latin-1** patter
 | alternation, concatenation | ✅ |
 | capture groups, arbitrarily nested | ✅ |
 | `*`, `?`, `{m,n}`, lazy variants | ✅ |
-| `+`, `{n,}` (n>0, unbounded) | ✅ non-nullable body (any greediness); ✅ **nullable body when LAZY** (`(a?)+?`, §2.5a, 2026-08-30); ✅ **CI-nullable body when GREEDY** (`(a?)+`, `(a\|)+`, §2.5b, 2026-11-05/06); ✅ **context-dependent-nullable body when GREEDY** (`(\b\|a)+`, `CheckNullable`, §2.5e, 2026-11-15); ✅ **either kind inside a look body of any kind and polarity** (`(?=(a?)+b)`, `(?<!(a?)+b)`, §2.5c/§2.5d, 2026-11-12; `(?=(\b\|a)+)`, `(?<=(\b\|a)+)`, §2.5e, 2026-11-16/17); ✅ **capture-free lookarounds in its body**, at any look depth (`((?=a)\|a?)+`, `((?=a)\|b)+`, `(?<=((?=a)\|a?)+)`, §2.5f, 2026-11-15/17); ✅ **capturing lookarounds off the body's empty paths**, at any look depth (`(a(?=(b))\|c?)+`, `(?<=(a(?=(b))\|c?)+)`, §2.5g, 2026-11-18). ❌ a **capturing** lookaround ON an empty path of a greedy nullable plus body (`((?=(a))\|b?)+`, §2.5g, G4b-2) |
+| `+`, `{n,}` (n>0, unbounded) | ✅ non-nullable body (any greediness); ✅ **nullable body when LAZY** (`(a?)+?`, §2.5a, 2026-08-30); ✅ **CI-nullable body when GREEDY** (`(a?)+`, `(a\|)+`, §2.5b, 2026-11-05/06); ✅ **context-dependent-nullable body when GREEDY** (`(\b\|a)+`, `CheckNullable`, §2.5e, 2026-11-15); ✅ **either kind inside a look body of any kind and polarity** (`(?=(a?)+b)`, `(?<!(a?)+b)`, §2.5c/§2.5d, 2026-11-12; `(?=(\b\|a)+)`, `(?<=(\b\|a)+)`, §2.5e, 2026-11-16/17); ✅ **capture-free lookarounds in its body**, at any look depth (`((?=a)\|a?)+`, `((?=a)\|b)+`, `(?<=((?=a)\|a?)+)`, §2.5f, 2026-11-15/17); ✅ **capturing lookarounds in its body**, on its empty paths too, at any look depth (`(a(?=(b))\|c?)+`, `((?=(a))\|b?)+`, `(?<=((?=(a))\|b?)+)`, §2.5g, 2026-11-18/19) |
 | positive lookahead `(?=…)`, capturing, nested to any depth | ✅ (L4) |
 | **positive lookbehind `(?<=…)`, capturing, nested to any depth** | ✅ (L5, 2026-08-28) |
 | **any look inside any look, all four kinds, to any depth** (`(?<=a(?=a))`, `(?<=(?=(a))a)`, `(?<!a(?=a))`, `(?=(?<=a(?=a)))`) | ✅ (§2.1a, 2026-11-11). Before this a lookbehind's body, positive or negative, could hold only lookbehinds |
@@ -232,7 +232,7 @@ unbounded `min > 0` quantifier (`Compiler.dfy:104-156`), not one:
 |---|---|---|---|
 | `NonNullable` | either | do-while (min-1 copies, stamp, body, backward fork) | ✅ always was |
 | nullable | **lazy** | the GENERIC scheme — `repeat_min(min)` then the ordinary star loop | ✅ **§2.5a, DONE** |
-| `CINullable` | greedy | end-fork + `SetQuantToClock(qid, true)` | ✅ everywhere, including inside look bodies (§2.5c, §2.5d); its body may hold capture-free lookarounds (§2.5f), and capturing ones off its empty paths (§2.5g); ❌ a capturing lookaround on an empty path of its body (§2.5g) |
+| `CINullable` | greedy | end-fork + `SetQuantToClock(qid, true)` | ✅ everywhere, including inside look bodies (§2.5c, §2.5d); its body may hold lookarounds, capturing ones included, on its empty paths too (§2.5f, §2.5g) |
 | `CDNullable` | greedy | end-fork + **`CheckNullable(qid)`** | ✅ everywhere (§2.5e, G5a-1/G5a-2/G5b); same body condition as CIN (§2.5f) |
 
 **§2.5a (done).** `(a?)+?`, `(a?){2,}?` and friends verify. Nothing nullability-specific was
@@ -347,27 +347,37 @@ The scope is `RF.StampLooksCapFreeRE`: every lookaround inside a greedy nullable
 body. Executable twin: `CL.CinLooksCapFreeX` (top level) and `CL.LookStampOkX` (look bodies). Witnesses:
 `G4a_LookInCinPlus`, `G5a2a_CdnPlusBodies`, `G5b3_LookPlusInLookBody`.
 
-### 2.5g A CAPTURING lookaround inside a greedy nullable plus body — `((?=(a))|b?)+` — PARTLY DONE (G4b)
+### 2.5g A CAPTURING lookaround inside a greedy nullable plus body — `((?=(a))|b?)+` — CLOSED 2026-11-19 (G4b)
 
-**G4b-1 (2026-11-18, any look depth): a capturing look OFF the body's empty paths** — `(a(?=(b))|c?)+`,
-`(?:(a(?=(b))|c?)+b)*`, `(?=(a(?=(b))|c?)+)`, `(?<=(a(?=(b))|c?)+)`. The scope (`RF.StampLooksCapFreeRE`'s and
-`CL.CinLooksCapFreeRE`'s plus arm, `RF.EmptyPathLooksCapFree`) asks only
-that every look an empty path of the plus body can cross be capture-free; the others may capture. The
-reconstruction re-sets exactly the looks on those empty paths (`ELk.LooksQE`), so it never touches a capturing
-look's record. Such a look keeps its record, and its tie with machine B moves to the reconstructed winner. Either
-its ancestors keep their clocks, or one of them sits in a stamped body. In the second case the stamp's stale body
-means the look is not present in the winner (`ELk.StampedAncKillsPresence`), and machine B names none of its
-groups. The replay only raises quant clocks (`ELk.ReplayQuantClkMono`), so the look's dominance moves back.
-Machine B's walk crosses only group-free looks (`NPL.EmptyLooksGroupFreeL`, `cin-walk`). In a lookbehind body
-the transport runs from the mirrored forward VM winner to the mirror of the backward reconstruction
-(`MAB.BackRowClkFrameS`, `TM.TwoMachinesAtVMS`).
+**G4b-1 (2026-11-18): a capturing look OFF the body's empty paths** — `(a(?=(b))|c?)+`, `(?:(a(?=(b))|c?)+b)*`,
+`(?=(a(?=(b))|c?)+)`, `(?<=(a(?=(b))|c?)+)`. The reconstruction re-sets exactly the looks on the stamp bodies'
+empty paths (`ELk.LooksQE`). A look off them keeps its record, and its tie with machine B moves to the reconstructed
+winner. Either its ancestors keep their clocks, or one of them sits in a stamped body, whose stale body means the
+look is not present in the winner (`ELk.StampedAncKillsPresence`). The replay only raises quant clocks
+(`ELk.ReplayQuantClkMono`).
 
-**Still open (G4b-2): a capturing look ON an empty path** (`((?=(a))|b?)+`). When the plus's iterations are all empty, the engine skips the body and the reconstruction replays one
-empty iteration. Its replay re-sets the record of each look it crosses, and the spec's leaf then defines that look's groups from the look body's match at the plus's
-start. Today's proof reads those groups from machine B, whose walk resets them at a skipped iteration, so the
-values disagree. The spec side is settled (`NulledIterationLeaf`, W15: on the nulled iteration the leaf's look
-groups are each crossed look's body leaf at the start position). The open work is machine B and the band's look
-carriers.
+**G4b-2 (2026-11-19): a capturing look ON an empty path** — `((?=(a))|b?)+`, `((?:(?=(a))|b?)+|c?)+`,
+`(?:c(((((?=(.)))))|b?)+|d)*`, `(?:(?:b(?:((((?=(d)))))|c?)+|)+d??)*`, `(?=((?=(a))|b?)+)`, `(?<=((?=(a))|b?)+)`
+(`NullablePlusWitness.G4b2_CapLookOnEmptyPath`). When a plus's iterations are all empty, the engine skips the
+body and the reconstruction replays one empty iteration. That replay re-sets the record of each look it crosses,
+and the spec's leaf defines the look's groups from the look body's match at the plus's start (W15,
+`NulledIterationLeaf`). The proof:
+* Machine B's walk keeps a crossed look's groups. The stamp arm of `WalkPairLkRec` (lift-sim-chain) carries the
+  synthetic gate `StampNodeOk` with fold `NPL.StampFold`, and `FrozenOk` holds machine B's frozen empty path at
+  every live stamp.
+* The band's carriers split per top lid. A lid on a LIVE host's frozen path is crossed: its carriers come from
+  the crossing (`T4.CrossedLidCarriers`). A live but uncrossed lid keeps its record, or is not present. A lid
+  under a DEAD stamp only is not present (`T4.DeadOnlyNotPresent`). A lid outside `LooksQE` keeps its record (the
+  G4b-1 argument). The guarded `LookNestOkTTop` skips live-stamp lids. The presence-premised converses
+  (`LookNestBackTTopP` / `DeepP`) replace the dominance forms at rows. The winner's look record
+  (`LR.WinnerLookRec`) carries the frozen-path records.
+* At the top, the synthetic winner lowers dead look clocks (`DL.LowerDeadLookClks`), which leaves the engine
+  answer unchanged (`DL.AnswerSyntheticLowered`): `MainCinG4b2.MainTheoremL5Cin`.
+* At a lookbehind row, the look record flips to the mirror world (`LB2.WinnerLookRecFlip`, `PathLooksRMirror`).
+
+The scope predicates (`RF.StampLooksCapFreeRE`, `RF.EmptyPathLooksCapFree`, `CL.CinLooksCapFreeRE` and their
+executable twins) are deleted. `M.LookBodiesPlusGateRE` and `MCL.CdnTopX` now hold of every regex
+(`M.LookBodiesPlusGateAll`, `MCL.CdnTopXAll`). Design: `endgame/G4b-design.md`.
 
 ### 2.6 Flags and alphabet
 
@@ -414,7 +424,7 @@ proof engineering of known shape.
 | ~~§2.5a lazy nullable plus~~ | — | **DONE 2026-08-30** (branch `nullable-plus`) |
 | ~~§2.5e greedy CDN plus (`CheckNullable`), anywhere~~ | — | **DONE 2026-11-15/17** (G5a-1, G5a-2, G5b-0…2) |
 | ~~§2.5f capture-free lookarounds in a greedy nullable plus body, any depth~~ | — | **DONE 2026-11-15/17** (G4a, G5a-2a, G5b-3) |
-| §2.5g a **capturing** lookaround ON an empty path of a greedy nullable plus body (G4b-2) | large, in progress | G4b-1 (off the empty paths, any depth) **DONE 2026-11-18**; the band's look carriers for a re-set capturing look; spec lemma done (W15) |
+| ~~§2.5g capturing lookarounds in a greedy nullable plus body, any depth~~ | — | **DONE 2026-11-18/19** (G4b-1 off the empty paths, G4b-2 on them); `lem pack` gate pending |
 | ~~§2.5b greedy nullable plus inside a look body~~ (lookaround-free: **DONE 2026-11-05**; next to lookarounds: **DONE 2026-11-06**; inside a LOOKAHEAD body: **DONE 2026-11-12**, §2.5c; inside a lookbehind body: **DONE 2026-11-12**, §2.5d) | history — the look-body replay would need the reconstruction readout (rung E) at every look depth; machine B's look-path frame (`CinLookPaths`) assumes the CIN bodies own no look-path registers | TWO end-fork layouts (CIN/CDN), the new `CheckNullable` instruction, the first `SetQuantToClock(qid, **true**)` (breaks the all-stamps-false invariant `NI.CodeShapeAt` proves and `MainTheoremL3` consumes), a second path in `ReconstructNulled`, plus `QuantRegsFinal` and `FNulledPlus`'s unproven spec tie. The §2.5a shift-to-`em` rewrite does NOT carry over — see `NULLABLE_PLUS_HANDOFF.md` § WHAT §2.5b ACTUALLY COSTS |
 | ~~§2.2 nested looks in negative bodies~~ | — | negative lookahead: **DONE 2026-11-09**, negative lookbehind: **DONE 2026-11-10** (branch `neg-look-nest`) |
 | ~~lookahead inside a lookbehind body, either polarity~~ | — | **DONE 2026-11-11** (§2.1a, branch `endgame`, `eacf6ec`) |

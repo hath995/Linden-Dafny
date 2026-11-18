@@ -119,6 +119,7 @@ module LindenElkLiftSimForward {
   import TM = LindenElkTwoMachines       // (G3a) WinnerLookKept
   import RF = LindenElkReconFrame        // (G5b-3)
   import ELk = LindenElkEmptyLooks   // (G4b-1b)
+  import NRC = LindenElkNulledRecon   // (G4b-2) PositiveLk
   import FRD = LindenElkFinalReadout
   import SLk = LindenElkStampLooks
   import BF = LindenElkBankFrames
@@ -217,8 +218,89 @@ module LindenElkLiftSimForward {
   }
 
 
-  /** (G5b-3, G4b-1b) A lid whose body holds a capture is not re-set by the reconstruction (`ELk.LooksQECapFree`), so a set
-      record of the lookbehind row's fresh PLUS winner at it is the VM winner's, a matched positive row
+  /** (G4b-2) The lids the reconstruction may re-set are positive looks of the regex. */
+  lemma OwnLooksEPos(r: R.regex, lid: nat)
+    requires (lid as int) in ELk.OwnLooksE(r) && LTB.LookUnique(r)
+    ensures lid in LTB.LookIds(r) && NRC.PositiveLk(M.LookKindOfRE(r, lid))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if (lid as int) in ELk.OwnLooksE(r1) {
+        OwnLooksEPos(r1, lid);
+      } else {
+        OwnLooksEPos(r2, lid);
+        assert lid !in LTB.LookIds(r1) by { if lid in LTB.LookIds(r1) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); } }
+      }
+    case Re_con(r1, r2) =>
+      if RF.MayNull(r2) && (lid as int) in ELk.OwnLooksE(r1) {
+        OwnLooksEPos(r1, lid);
+      } else {
+        OwnLooksEPos(r2, lid);
+        assert lid !in LTB.LookIds(r1) by { if lid in LTB.LookIds(r1) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); } }
+      }
+    case Re_quant(_, _, _, r1) => OwnLooksEPos(r1, lid);
+    case Re_capture(_, r1) => OwnLooksEPos(r1, lid);
+    case Re_lookaround(lid0, la, b) => assert lid0 == lid as int;
+    case _ =>
+  }
+
+  lemma InnerLookRegsEPos(r: R.regex, lid: nat)
+    requires (lid as int) in ELk.InnerLookRegsE(r) && LTB.LookUnique(r)
+    ensures lid in LTB.LookIds(r) && NRC.PositiveLk(M.LookKindOfRE(r, lid))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if (lid as int) in ELk.InnerLookRegsE(r1) {
+        InnerLookRegsEPos(r1, lid);
+      } else {
+        InnerLookRegsEPos(r2, lid);
+        assert lid !in LTB.LookIds(r1) by { if lid in LTB.LookIds(r1) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); } }
+      }
+    case Re_con(r1, r2) =>
+      if (lid as int) in ELk.InnerLookRegsE(r1) {
+        InnerLookRegsEPos(r1, lid);
+      } else {
+        InnerLookRegsEPos(r2, lid);
+        assert lid !in LTB.LookIds(r1) by { if lid in LTB.LookIds(r1) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); } }
+      }
+    case Re_quant(nul, _, q, r1) =>
+      if RF.StampNode(nul, q) && (lid as int) in ELk.OwnLooksE(r1) { OwnLooksEPos(r1, lid); }
+      else { InnerLookRegsEPos(r1, lid); }
+    case Re_capture(_, r1) => InnerLookRegsEPos(r1, lid);
+    case _ =>
+  }
+
+  lemma LooksQEPos(r: R.regex, Q: set<int>, lid: nat)
+    requires (lid as int) in ELk.LooksQE(r, Q) && LTB.LookUnique(r)
+    ensures lid in LTB.LookIds(r) && NRC.PositiveLk(M.LookKindOfRE(r, lid))
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) =>
+      if (lid as int) in ELk.LooksQE(r1, Q) {
+        LooksQEPos(r1, Q, lid);
+      } else {
+        LooksQEPos(r2, Q, lid);
+        assert lid !in LTB.LookIds(r1) by { if lid in LTB.LookIds(r1) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); } }
+      }
+    case Re_con(r1, r2) =>
+      if (lid as int) in ELk.LooksQE(r1, Q) {
+        LooksQEPos(r1, Q, lid);
+      } else {
+        LooksQEPos(r2, Q, lid);
+        assert lid !in LTB.LookIds(r1) by { if lid in LTB.LookIds(r1) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); } }
+      }
+    case Re_quant(_, qid, _, body) =>
+      if (lid as int) in ELk.LooksQE(body, Q) { LooksQEPos(body, Q, lid); }
+      else { InnerLookRegsEPos(r, lid); }
+    case Re_capture(_, r1) => LooksQEPos(r1, Q, lid);
+    case _ =>
+  }
+
+  /** (G5b-3, G4b-2) A set record of the lookbehind row's fresh PLUS winner at `A1` is a matched positive row: a lid the
+      reconstruction re-set is a positive look (`LooksQEPos`); any other keeps the VM winner's record
       (`M.FreshReplayLookPos`). What `BackPlusLookFacts`' `LookPosO` gave before stamp bodies held looks. */
   lemma BackPlusMatchedPos(host: R.regex, crv: CP.FCompiled, str: string, cp: nat, ov: LOr.OracleView,
                            cdn: LCdn.cdns, ncap: int, nlook: int, nquant: int, A1: nat, g: nat)
@@ -246,26 +328,24 @@ module LindenElkLiftSimForward {
         if 0 <= k < |quant.a_clk| { assert quant.a_clk[k] == -1; }
       }
     }
-    assert M.RowLAStaticsS(host, crv.f_plus_bc) && RF.StampLooksCapFreeRE(host)
+    assert M.RowLAStaticsS(host, crv.f_plus_bc)
            && PIV.QuantUnique(host) && LTB.LookUnique(host) by { reveal RowPlusOkS(); reveal M.RowLAStaticsS(); }
     M.ReplayPlusRowLBS(bcB, str, ov, cdn, crv.f_plus_bc, cp, capture, look, quant, host, ncap, nlook, nquant);
     M.FreshReplayLookPos(host, crv, str, cp, ov, LAnc.Backward, cdn, ncap, nlook, nquant);
     var Q := FRD.StampQids(host);
-    assert (A1 as int) !in ELk.LooksQE(host, Q) by {   // (G4b-1b) the re-set lids capture nothing
-      if (A1 as int) in ELk.LooksQE(host, Q) {
-        ELk.StampLooksCapFreeETop(host);
-        ELk.LooksQECapFree(host, Q, A1);
-        assert g in PIV.CapIds(NI.LookBodyOfRE(host, A1));
-      }
-    }
     var rf := AI.FFindMatchPlus(bcB, host, crv.f_plus_bc, str, ov, LAnc.Backward, cp, capture, look, quant, 0, cdn).0;
     var fm := AI.FFindMatch(bcB, str, AI.FInitState(bcB, cp, capture, look, quant, 0, AI.cp_context(cp, str, LAnc.Backward)),
                             ov, LAnc.Backward, cdn).0;
     if rf.Some? && AReg.get_cp(rf.value.look_regs, A1 as int).Some? {
-      assert fm.Some?;
-      assert AI.get_idx(rf.value.look_regs.a_cp, A1 as int) == AI.get_idx(fm.value.look_regs.a_cp, A1 as int);
-      assert AReg.get_cp(fm.value.look_regs, A1 as int) == AReg.get_cp(rf.value.look_regs, A1 as int);
-      M.MatchedPosFromBank(crv, fm.value.look_regs, A1 as int);
+      if (A1 as int) in ELk.LooksQE(host, Q) {   // (G4b-2) re-set by the replay: a positive look of the host
+        LooksQEPos(host, Q, A1);
+        M.LookKindOfTablesTie(host, crv, A1);
+      } else {   // kept: the VM winner's record
+        assert fm.Some?;
+        assert AI.get_idx(rf.value.look_regs.a_cp, A1 as int) == AI.get_idx(fm.value.look_regs.a_cp, A1 as int);
+        assert AReg.get_cp(fm.value.look_regs, A1 as int) == AReg.get_cp(rf.value.look_regs, A1 as int);
+        M.MatchedPosFromBank(crv, fm.value.look_regs, A1 as int);
+      }
     }
   }
 
@@ -296,26 +376,24 @@ module LindenElkLiftSimForward {
         if 0 <= k < |quant.a_clk| { assert quant.a_clk[k] == -1; }
       }
     }
-    assert M.RowLAStaticsS(host, crv.f_plus_bc) && RF.StampLooksCapFreeRE(host)
+    assert M.RowLAStaticsS(host, crv.f_plus_bc)
            && PIV.QuantUnique(host) && LTB.LookUnique(host) by { reveal RowPlusOkS(); reveal M.RowLAStaticsS(); }
     M.ReplayPlusRowLAS(bcB, str, ov, cdn, crv.f_plus_bc, cp, capture, look, quant, host, ncap, nlook, nquant);
     M.FreshReplayLookPos(host, crv, str, cp, ov, LAnc.Forward, cdn, ncap, nlook, nquant);
     var Q := FRD.StampQids(host);
-    assert (A1 as int) !in ELk.LooksQE(host, Q) by {   // (G4b-1b) the re-set lids capture nothing
-      if (A1 as int) in ELk.LooksQE(host, Q) {
-        ELk.StampLooksCapFreeETop(host);
-        ELk.LooksQECapFree(host, Q, A1);
-        assert g in PIV.CapIds(NI.LookBodyOfRE(host, A1));
-      }
-    }
     var rf := AI.FFindMatchPlus(bcB, host, crv.f_plus_bc, str, ov, LAnc.Forward, cp, capture, look, quant, 0, cdn).0;
     var fm := AI.FFindMatch(bcB, str, AI.FInitState(bcB, cp, capture, look, quant, 0, AI.cp_context(cp, str, LAnc.Forward)),
                             ov, LAnc.Forward, cdn).0;
     if rf.Some? && AReg.get_cp(rf.value.look_regs, A1 as int).Some? {
-      assert fm.Some?;
-      assert AI.get_idx(rf.value.look_regs.a_cp, A1 as int) == AI.get_idx(fm.value.look_regs.a_cp, A1 as int);
-      assert AReg.get_cp(fm.value.look_regs, A1 as int) == AReg.get_cp(rf.value.look_regs, A1 as int);
-      M.MatchedPosFromBank(crv, fm.value.look_regs, A1 as int);
+      if (A1 as int) in ELk.LooksQE(host, Q) {   // (G4b-2) re-set by the replay: a positive look of the host
+        LooksQEPos(host, Q, A1);
+        M.LookKindOfTablesTie(host, crv, A1);
+      } else {   // kept: the VM winner's record
+        assert fm.Some?;
+        assert AI.get_idx(rf.value.look_regs.a_cp, A1 as int) == AI.get_idx(fm.value.look_regs.a_cp, A1 as int);
+        assert AReg.get_cp(fm.value.look_regs, A1 as int) == AReg.get_cp(rf.value.look_regs, A1 as int);
+        M.MatchedPosFromBank(crv, fm.value.look_regs, A1 as int);
+      }
     }
   }
 
@@ -374,7 +452,6 @@ module LindenElkLiftSimForward {
     requires g in PIV.CapIdsInLooks(host)
     decreases |LTB.LookIds(host)|, 0, 0
   {
-    hide RF.StampLooksCapFreeRE;   // (G5b-3) a row fact passed on as a term (its CapIdsInLooks equality loops here)
     hide M.LookBodiesPlusGateRE;   // (G3a) a fact here, never unfolded (recursive: batch memory)
     // (2026-08-29 E3) the preamble is an OPAQUE block: only the facts below reach the arm's VC.
     var maxlook := *;
@@ -1124,7 +1201,6 @@ module LindenElkLiftSimForward {
     requires g in PIV.CapIdsInLooks(host)
     decreases |LTB.LookIds(host)|, 0, 0
   {
-    hide RF.StampLooksCapFreeRE;   // (G5b-3) a row fact passed on as a term (its CapIdsInLooks equality loops here)
     hide M.LookBodiesPlusGateRE;   // (G3a) a fact here, never unfolded (recursive: batch memory)
     var maxlook := R.max_lookaround(ast);
     var cpA := AReg.get_cp(res1, A as int).value;

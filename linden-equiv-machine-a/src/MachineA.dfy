@@ -310,7 +310,7 @@ module LindenElkMachineA {
                            ncap: int, nlook: int, nquant: int, result: Option<AI.Thread>)
     returns (rp: AI.Thread)
     requires code == CP.compile_to_bytecode(body)
-    requires T.TransWf(body) && NR.NestedFragmentCdnRE(body) && RF.StampLooksCapFreeRE(body)   // (G5b-3)
+    requires T.TransWf(body) && NR.NestedFragmentCdnRE(body)   // (G5b-3)
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires NRC.CdnTopRE(body) && NRR.PlusTableOkS(body, plus)
     requires AR.QmapOk(body, qm) && qm.ov == ov
@@ -411,7 +411,7 @@ module LindenElkMachineA {
     && LTB.LookUnique(body)
     && qm.ov == ov && !rer.multiline && !rer.ignoreCase
     && cp <= |str| && bodycode == CP.compile_to_bytecode(body)
-    && NRC.CdnTopRE(body) && NRR.PlusTableOkS(body, plus_bc) && RF.StampLooksCapFreeRE(body)   // (G5b-3)
+    && NRC.CdnTopRE(body) && NRR.PlusTableOkS(body, plus_bc)   // (G5b-3)
   }
 
   /** Machine A at a body, S: the body may hold a greedy CDN plus. */

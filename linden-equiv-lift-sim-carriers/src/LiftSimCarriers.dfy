@@ -163,7 +163,7 @@ module LindenElkLiftSimCarriers {
     requires RowPlusOkS(body, plus, nlook)
     ensures T.TransWf(body) && NR.NestedFragmentCdnRE(body)
     ensures PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
-    ensures NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body) && NRR.PlusTableOkS(body, plus)
+    ensures NRC.CdnTopRE(body) && NRR.PlusTableOkS(body, plus)
     ensures forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
     ensures M.LookBodiesPlusGateRE(body)
     ensures LookNodesPlusOk(body, plus)   // what `GateStaticsFromTablesCdn` takes
@@ -218,10 +218,10 @@ module LindenElkLiftSimCarriers {
             // (G3a) the reconstruction keeps the VM winner's look bank (from A6)
             && TM.WinnerLookKept(bodycode, str, cp, ov, lookcdn, ncap, nlook, nquant, rf.value))
   {
-    hide BF.ClkFrameG4, RF.StampLooksCapFreeRE;   // (G5b-3) passed on as terms: their quantifiers stay out of every batch
+    hide BF.ClkFrameG4;   // (G5b-3) passed on as terms: their quantifiers stay out of every batch
     // (G3a) A6: machine A (the fresh plus replay, reconstructed) tied to machine B's winner.
     assert NR.NestedFragmentCdnRE(body) && T.TransWf(body);
-    assert NRC.CdnTopRE(body) && NRR.PlusTableOkS(body, plus_bc) && RF.StampLooksCapFreeRE(body)
+    assert NRC.CdnTopRE(body) && NRR.PlusTableOkS(body, plus_bc)
            && (forall l: nat :: l in LTB.LookIds(body) ==> l < nlook) by {
       reveal RowPlusOkS(); reveal M.RowLAStaticsS();
     }
@@ -267,9 +267,9 @@ module LindenElkLiftSimCarriers {
             // (G4b-2) what the four-case transports read at the winner
             && PSM.BestLiveRE(body, result.value) && PSM.StampPathOk(qm, str, result.value.quant_regs.a_cp))
   {
-    hide BF.ClkFrameG4, RF.StampLooksCapFreeRE;   // passed on as terms
+    hide BF.ClkFrameG4;   // passed on as terms
     assert NR.NestedFragmentCdnRE(body) && T.TransWf(body);
-    assert NRC.CdnTopRE(body) && NRR.PlusTableOkS(body, plus_bc) && RF.StampLooksCapFreeRE(body)
+    assert NRC.CdnTopRE(body) && NRR.PlusTableOkS(body, plus_bc)
            && (forall l: nat :: l in LTB.LookIds(body) ==> l < nlook) by {
       reveal RowPlusOkS(); reveal M.RowLAStaticsS();
     }
@@ -320,7 +320,7 @@ module LindenElkLiftSimCarriers {
     requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
     requires NRR.PlusTableOkS(body, crv.f_plus_bc)
     requires plus_bc == crv.f_plus_bc
-    requires NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body)   // (G5b-2, G5b-3)
+    requires NRC.CdnTopRE(body)   // (G5b-2, G5b-3)
     requires lookcdn == LCdn.compile_cdns(body)                     // the row's own table (LookEntryOk)
     requires M.LookBodiesPlusGateRE(FST.FXR(body))     // the flipped host's rows (uniform after G3b commit 3)
     ensures
@@ -345,7 +345,7 @@ module LindenElkLiftSimCarriers {
             && CM.LookCpSetWithClk(rf.value.look_regs)
             && CM.LookCpsLE(rf.value.look_regs, |str|))
   {
-    hide BF.ClkFrameG4, RF.StampLooksCapFreeRE;   // (G5b-3) passed on as terms: their quantifiers stay out of every batch
+    hide BF.ClkFrameG4;   // (G5b-3) passed on as terms: their quantifiers stay out of every batch
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     var n := |str|;
     MIR.ReverseLen(str);
@@ -387,7 +387,6 @@ module LindenElkLiftSimCarriers {
       }
     }
     TB.PlusTableOkSMirror(body, plus_bc);
-    TB.StampLooksCapFreeFXR(body);
     NRC.CdnTopAll(reF);
     assert crvF.f_plus_bc == plusF;
     assert forall l: nat :: l in LTB.LookIds(reF) ==> l < nlook;
@@ -556,23 +555,6 @@ module LindenElkLiftSimCarriers {
       LB2.FlipBackP(rer, qm, body, crv, str, ov, gmt, th, ncap, nlook, nquant);
     }
   }
-  /** (G5b-3) the capture-free stamp looks of a host hold at its look bodies. */
-  lemma StampLooksCapFreeLookBody(r: R.regex, lid: nat)
-    requires RF.StampLooksCapFreeRE(r) && lid in LTB.LookIds(r)
-    ensures RF.StampLooksCapFreeRE(NI.LookBodyOfRE(r, lid))
-    decreases r
-  {
-    match r
-    case Re_alt(r1, r2) =>
-      if lid in LTB.LookIds(r1) { StampLooksCapFreeLookBody(r1, lid); } else { StampLooksCapFreeLookBody(r2, lid); }
-    case Re_con(r1, r2) =>
-      if lid in LTB.LookIds(r1) { StampLooksCapFreeLookBody(r1, lid); } else { StampLooksCapFreeLookBody(r2, lid); }
-    case Re_quant(_, _, _, r1) => StampLooksCapFreeLookBody(r1, lid);
-    case Re_capture(_, r1) => StampLooksCapFreeLookBody(r1, lid);
-    case Re_lookaround(lid0, _, r1) =>
-      if lid0 >= 0 && (lid0 as nat) == lid { } else { StampLooksCapFreeLookBody(r1, lid); }
-  }
-
   /** (G5b-2) `DeepLidFlipP` at a Cdn host over the S mirrored tables. */
   lemma DeepLidFlipPS(
     rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, crv: CP.FCompiled, str: string,

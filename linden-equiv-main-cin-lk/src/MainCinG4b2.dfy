@@ -85,21 +85,20 @@ module LindenElkMainCinG4b2 {
   import BF = LindenElkBankFrames
 
   /** THE THEOREM (G4b-2 wiring): machine B's carriers reach the top synthetic winner through the four-case
-      transports; its dead look clocks are lowered, which leaves the engine answer unchanged. The scope premise
-      `CL.CinLooksCapFreeRE` is still carried here (its removal is the last G4b step). */
+      transports; its dead look clocks are lowered, which leaves the engine answer unchanged. No capture-free
+      scope: a nullable plus body's looks may capture, on its empty paths too (G4b-2). */
   lemma MainTheoremL5Cin(raw: R.raw_regex, str: string)
     requires NR.NestedFragmentCdnRaw(raw)
     requires NRC.CdnTopRE(R.lazy_prefix(R.annotate(raw)))   // (G5a-1) every CDN plus at top level, body look-free
     requires T.Latin1Wf(raw)
-    requires M.LookBodiesPlusGateRE(R.lazy_prefix(R.annotate(raw)))   // (G3a) lookbehind bodies stamp-free, lookahead bodies CIN
-    requires CL.CinLooksCapFreeRE(R.lazy_prefix(R.annotate(raw)))   // (G4a) a CIN plus body's looks capture nothing
     ensures LES.MatcherSpec(raw, str, LES.Normalize(AI.FFullMatch(raw, str)))
   {
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     // the two recursive gates are facts here, never unfolded (in context they blew batch 6 past 19 GB)
-    hide M.LookBodiesPlusGateRE, CL.CinLooksCapFreeRE;
+    hide M.LookBodiesPlusGateRE;
     var ast := R.annotate(raw);
     var re := R.lazy_prefix(ast);
+    M.LookBodiesPlusGateAll(re);   // (G4b-2) the gate holds of every regex
     var rer := LES.TheRer(raw);
     var inp := LC.InitInput(str);
     var ngroups := LES.NGroups(raw);
@@ -256,7 +255,7 @@ module LindenElkMainCinG4b2 {
     SufAllToColsOk(rer, qm, str);
     // machine B on the engine-shaped walk, agreeing with the spec leaf outside G
     var G: set<LG.GroupId> := PIV.CapIdsOutsideLooks(re);
-    CL.TranslateCinOkG4(re, G);
+    TranslateCinOkG4(re, G);
     PIV.CapIdsLooksDisjoint(re);
     assert G * S == {};
     // (G5a-1 row N) the run premise of the guard, for real (cdn-sound through `GR.GuardsOkRunTop`).

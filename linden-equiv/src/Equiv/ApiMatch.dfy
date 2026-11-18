@@ -40,30 +40,16 @@ module LindenRegexApi {
   /** The supported fragment. A pattern is supported when:
         - it is in the nested fragment (`NR.NestedFragmentCdnRaw`): looks may hold
           looks, captures may sit under quantifiers and inside negative look bodies;
-        - it is Latin-1 well-formed (`T.Latin1Wf`);
-        - every lookaround an empty path of a greedy nullable plus body can cross is capture-free
-          (`CL.CinLooksCapFreeX`; G4a: `((?=a)|a?)+`, G5a-2a: `((?=a)|b)+`; G4b-1 below). A look body of either
-          kind may hold a greedy CI-nullable plus with a look-free body (G3a lookahead, G3b lookbehind);
-        - a greedy CDN plus may sit anywhere (G5a-1: `(\\b|a)+`; G5a-2b: inside a nulled plus's body too,
-          `((\\b)+|)+`; G5b-0: inside a negative look body, `(?!(\\b|a)+)`, `(?<!(\\b|a)+)`; G5b-1/G5b-2: inside a
-          positive look body of either direction, `(?=(\\b|a)+)`, `(?<=(\\b|a)+)`). `MCL.CdnTopX` is true of every
-          regex since G5b-2;
-        - (G5b-3) inside a look body too, a nullable plus body may hold capture-free looks: `(?=((?=a)|b)+)`,
-          `(?<=((?=a)|a?)+)`, `(?!((?=a)|a?)+)` (`CL.LookStampOkX`: inside a positive look, every look in a nullable
-          plus body is capture-free; a negative look body is unrestricted).
-        - (G4b-1) a nullable plus body may hold CAPTURING looks off its empty paths, at any look depth:
-          `(a(?=(b))|c?)+`, `(?:(a(?=(b))|c?)+b)*`, `(?=(a(?=(b))|c?)+)`, `(?<=(a(?=(b))|c?)+)`
-          (`CL.EmptyPathLooksCapFreeX`: every look an empty path of the body can cross is capture-free).
-      Looks nest to any depth in either direction: lookaheads inside lookbehinds and
-      lookbehinds inside lookaheads (gate B, G1 full depth). Exactly
-      `MCL.MainTheoremL5Cin`'s precondition. `SUPPORTED_FRAGMENT.md` lists what this admits
-      and why each gap exists. */
+        - it is Latin-1 well-formed (`T.Latin1Wf`).
+      Nothing else. Greedy nullable pluses (CI: `(a?)+`; CDN: `(\\b|a)+`) may sit anywhere, top level or inside
+      a look body of either direction (G3a/G3b, G5a-1/2, G5b-0..3), and their bodies may hold lookarounds that
+      CAPTURE, on the body's empty paths too (G4a, G4b-1, G4b-2: `((?=(a))|b?)+`, `(?=((?=(a))|b?)+)`,
+      `(?<=((?=(a))|b?)+)`). Looks nest to any depth in either direction: lookaheads inside lookbehinds and
+      lookbehinds inside lookaheads (gate B, G1 full depth). `MCG.MainTheoremL5Cin`'s precondition, with the
+      vacuous CDN-top scope (`MCL.CdnTopXAll`) and look gate (`M.LookBodiesPlusGateAll`) discharged.
+      `SUPPORTED_FRAGMENT.md` lists what this admits and why each gap exists. */
   predicate Supported(pattern: R.raw_regex) {
     NR.NestedFragmentCdnRaw(pattern) && T.Latin1Wf(pattern)
-    && CL.CinLooksCapFreeX(R.lazy_prefix(R.annotate(pattern)))
-    // (G5a-1, G5a-2, G5b) a greedy CDN plus is supported anywhere (the look bodies: CL.LookStampOkX); its body may hold capture-free looks
-    // and nullable pluses: `(\\b|a)+`, `((?=a)|b)+`, `(\\b(a?)+)+`, `((\\b)+|)+`, `((\\b|a)+)+`
-    && MCL.CdnTopX(R.lazy_prefix(R.annotate(pattern)))
   }
 
   // ==========================================================================
@@ -86,43 +72,9 @@ module LindenRegexApi {
     requires Supported(pattern)
     ensures LES.MatcherSpec(pattern, str, Match(pattern, str))
   {
-    T.AnnotateWf(pattern);   // (G4b-1) the executable scope reads the engine's nullability
-    CL.CinLooksCapFreeXSound(R.lazy_prefix(R.annotate(pattern)));
+    MCL.CdnTopXAll(R.lazy_prefix(R.annotate(pattern)));
     MCL.CdnTopXSound(R.lazy_prefix(R.annotate(pattern)));
-    GateFromCdnTopG4(R.lazy_prefix(R.annotate(pattern)));              // (G5a-1, G4a) the gate from the scope
     MCG.MainTheoremL5Cin(pattern, str);
-  }
-
-  /** (G4a, G5a-2a) The look-bodies gate from the scope: a nullable plus body may hold capture-free looks,
-      and every look body is in the look-free CIN fragment, which is what the gate asks at a look node. */
-  lemma GateFromCdnTopG4(re: R.regex)
-    requires NRC.CdnTopRE(re) && CL.CinLooksCapFreeRE(re)
-    ensures M.LookBodiesPlusGateRE(re)
-    decreases re
-  {
-    match re
-    case Re_alt(r1, r2) => GateFromCdnTopG4(r1); GateFromCdnTopG4(r2);
-    case Re_con(r1, r2) => GateFromCdnTopG4(r1); GateFromCdnTopG4(r2);
-    case Re_capture(_, r1) => GateFromCdnTopG4(r1);
-    case Re_lookaround(_, _, r1) => GateFromCdnTopCin(re);   // (G5b) per look kind
-    case Re_quant(_, _, _, r1) => GateFromCdnTopG4(r1);   // (G5a-2b) the scope descends into every body
-    case _ =>
-  }
-
-  /** (G5b) The gate from the scope: a look body of any kind may hold a CDN plus; (G5b-3) inside a positive look
-      body, every look inside a nullable plus body is capture-free; a negative body is unrestricted. */
-  lemma GateFromCdnTopCin(re: R.regex)
-    requires CL.LookStampOkRE(re)
-    ensures M.LookBodiesPlusGateRE(re)
-    decreases re
-  {
-    match re
-    case Re_alt(r1, r2) => GateFromCdnTopCin(r1); GateFromCdnTopCin(r2);
-    case Re_con(r1, r2) => GateFromCdnTopCin(r1); GateFromCdnTopCin(r2);
-    case Re_quant(_, _, _, r1) => GateFromCdnTopCin(r1);
-    case Re_capture(_, r1) => GateFromCdnTopCin(r1);
-    case Re_lookaround(_, _, r1) => GateFromCdnTopCin(r1);
-    case _ =>
   }
 
 

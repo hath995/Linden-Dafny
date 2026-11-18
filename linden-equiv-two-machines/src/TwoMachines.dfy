@@ -240,8 +240,8 @@ module LindenElkTwoMachines {
   }
   /** (G5b-1) A6 on the S forms. */
   // ===========================================================================
-  // (G5b-3) Machine B's entry and the tie transports when a stamp body may hold capture-free lookarounds
-  // (`RF.StampLooksCapFreeRE`): G4a's top-level lemmas (main-cin-lk `CinLooks.dfy`), moved down to the rows.
+  // (G5b-3, G4b-2) Machine B's entry when a stamp body may hold lookarounds: G4a's top-level lemmas (main-cin-lk
+  // `CinLooks.dfy`), moved down to the rows.
   // ===========================================================================
 
   lemma CapFreeLooksLkBodies(r: R.regex, S: set<LG.GroupId>)
@@ -262,11 +262,10 @@ module LindenElkTwoMachines {
     case _ =>
   }
 
-  /** `TranslateCinOkS` under the stamp scope (G5b-3): the body of a greedy nullable plus, CIN or CDN, has
-      capture-free look bodies, and its groups lie in `G`. */
+  /** (G4b-2) `TranslateCinOkS` for any stamp body: machine B's arm asks only that the body's out-of-look groups
+      lie in `G` (its looks may capture). */
   lemma TranslateCinOkG4(r: R.regex, G: set<LG.GroupId>)
     requires T.TransWf(r) && NR.NestedFragmentCdnRE(r)
-    requires RF.StampLooksCapFreeRE(r)
     requires forall g: nat :: g in PIV.CapIdsOutsideLooks(r) ==> g in G
     ensures CW.CinOk(T.Translate(r), G)
     decreases r
@@ -288,38 +287,8 @@ module LindenElkTwoMachines {
           assert false;
         }
         assert nul == R.CINullable || nul == R.CDNullable;
-        assert RF.StampNode(nul, q) && RF.EmptyPathLooksCapFree(body);   // `RF.StampLooksCapFreeRE`, CIN or CDN
-        EPCFTranslate(body);   // (G4b-1) machine B's arm: the crossed looks are group-free
         OutLkTranslate(body);
         assert NPL.OutLk(tb) <= G;
-      }
-    case _ =>
-  }
-
-  /** (G4b-1) The RE scope translates to machine B's: every look an empty path can cross is group-free. */
-  lemma EPCFTranslate(r: R.regex)
-    requires T.TransWf(r) && RF.EmptyPathLooksCapFree(r)
-    ensures NPL.EmptyLooksGroupFreeL(T.Translate(r))
-    decreases r
-  {
-    match r
-    case Re_alt(r1, r2) => EPCFTranslate(r1); EPCFTranslate(r2);
-    case Re_con(r1, r2) =>
-      // a half the Linden side calls nullable is nullable for the engine (`NUL.TransNonNullable`, contrapositive)
-      if !NUL.NonNullableL(T.Translate(r2)) {
-        if R.nullable(r2) == R.NonNullable { NUL.TransNonNullable(r2); }
-        EPCFTranslate(r1);
-      }
-      if !NUL.NonNullableL(T.Translate(r1)) {
-        if R.nullable(r1) == R.NonNullable { NUL.TransNonNullable(r1); }
-        EPCFTranslate(r2);
-      }
-    case Re_quant(_, _, q, r1) => if q.min != 0 { EPCFTranslate(r1); }
-    case Re_capture(_, r1) => EPCFTranslate(r1);
-    case Re_lookaround(_, _, b) =>
-      PIV.DefGroupsCapIds(b);
-      assert NPL.DG(T.Translate(b)) == {} by {
-        forall g | g in L.DefGroups(T.Translate(b)) ensures false { assert g in PIV.CapIds(b); }
       }
     case _ =>
   }
@@ -358,235 +327,6 @@ module LindenElkTwoMachines {
     ensures SubFirstLeafAt(rer, crv, str, l, a) == SubFirstLeafAt(rer, crv, str, l, b)
   {}
 
-  /** (G4b-1) OkT: a re-set lid (`ELk.LooksQE`) has no carrier content; a kept lid either keeps its ancestors' clocks
-      (`AncFrameAvoid`) or has an ancestor in a stamped body, where the winner's stale body kills its presence (so B's
-      OkT names none of its groups, `ELk.StampedAncKillsPresence`). */
-  /** (G4b-2) Under the G4b-1 scope a guarded lid's groups are unset in machine B's leaf: the live host's frozen
-      path crosses only capture-free looks (`NPL.CrossedGroupFreeOfScope`). */
-  lemma GuardedLidUnset(rer: LW.RegExpRecord, re: R.regex, str: string, Q: set<int>, gmB: LG.GroupMap,
-                        best: AI.Thread, lid: nat, g: LG.GroupId)
-    requires RF.StampLooksCapFreeRE(re) && T.TransWf(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
-    requires Q == ELk.StampSet(best.quant_regs.a_cp) && RF.QInStamp(re, Q)
-    requires FrozenOk(rer, re, str, gmB, best)
-    requires lid in LiveStampLids(re, best.quant_regs) && lid in LTB.LookIds(re)
-    requires g in PIV.CapIds(NI.LookBodyOfRE(re, lid))
-    ensures g !in gmB
-  {
-    var q := LiveStampLidHost(re, best.quant_regs, lid);
-    var cp := AI.get_idx(best.quant_regs.a_cp, q as int);
-    assert FrozenAtQ(rer, re, str, gmB, q, cp) by { reveal FrozenOk(); }
-    assert (q as int) in Q;
-    assert NRR.QidStampPlus(re, q);
-    StampScopeAtQid(re, q);
-    var body := PIV.QidBody(re, q);
-    M.TransWfQidBody(re, q);
-    EPCFTranslate(body);
-    var R1 := T.Translate(body);
-    var inp := PIV.InpOfCp(str, cp);
-    assert NPL.FrozenAt(rer, R1, inp, gmB);
-    var p := NPL.FirstEmptyPathLkL(rer, R1, inp);
-    NPL.CrossedGroupFreeOfScope(rer, R1, inp);
-    T4.TopLidBody(re, q, lid);
-    T4.CapIdsLookBodyInLooks(body, lid);
-    M.LkBodyGroupsEqCapIdsInLooks(body);
-    assert g in LL.LkBodyGroups(R1);
-    if g in gmB {
-      assert NPL.Crossed(p.value, g);
-      var i :| 0 <= i < |p.value| && p.value[i].LkS? && L.Positivity(p.value[i].lk) && g in L.DefGroups(p.value[i].b);
-      assert g in NPL.DG(p.value[i].b);
-      assert false;
-    }
-  }
-
-  /** (G4b-2) A forward run's winner stamps only stamp pluses (the true-stamp sites), as machine A's readout. */
-  lemma QInStampOfRun(re: R.regex, code: RB.code, endl: nat, str: string, cp: nat, ov: LOr.OracleView,
-                      cdn: LCdn.cdns, ncap: int, nlook: int, nquant: int)
-    requires NR.NfaRepRE(re, code, 0, endl) && PIV.QuantUnique(re)
-    requires NR.GetPcRE(code, endl) == Some(RB.Accept) && |code| == endl + 1
-    requires cp <= |str|
-    ensures var inits := AI.FInitState(code, cp, AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0,
-                                       AI.cp_context(cp, str, LAnc.Forward));
-            var r := AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0;
-            r.Some? ==> RF.QInStamp(re, ELk.StampSet(r.value.quant_regs.a_cp))
-  {
-    var ctx := AI.cp_context(cp, str, LAnc.Forward);
-    var capture := AReg.init_regs(ncap);
-    var look := AReg.init_regs(nlook);
-    var quant := AReg.init_regs(nquant);
-    var inits := AI.FInitState(code, cp, capture, look, quant, 0, ctx);
-    var Q := FRD.StampQids(re);
-    assert ctx.nextchar == AI.get_char(str, cp);
-    FRD.TrueStampsInStamp(re, code, endl);
-    FV.RegsFinalOkInit(ncap, nlook, nquant, |str|, Q);
-    assert FV.VmRegsFinalOk(inits, |str|, Q) by {
-      forall t0 | t0 in inits.active ensures FV.RegsFinalOk(t0, |str|, Q) {
-        assert t0 == AI.init_thread(capture, look, quant);
-      }
-    }
-    FV.FFindMatchRegsFinal(code, str, inits, ov, LAnc.Forward, cdn, Q);
-    var r := AI.FFindMatch(code, str, inits, ov, LAnc.Forward, cdn).0;
-    if r.Some? {
-      assert FV.RegsFinalOk(r.value, |str|, Q);
-      forall q: nat | q in PIV.QuantIds(re) && (q as int) in ELk.StampSet(r.value.quant_regs.a_cp)
-        ensures NRR.QidStampPlus(re, q)
-      {
-        assert AI.get_idx(r.value.quant_regs.a_cp, q as int) >= 0;
-        assert (q as int) in Q;
-        var qn: nat :| qn in PIV.QuantIds(re) && NRR.QidStampPlus(re, qn) && qn as int == q as int;
-      }
-    }
-  }
-
-  /** Under `RF.StampLooksCapFreeRE`, a stamp plus's body has capture-free empty-path looks. */
-  lemma StampScopeAtQid(re: R.regex, q: nat)
-    requires RF.StampLooksCapFreeRE(re) && PIV.QuantUnique(re) && q in PIV.QuantIds(re) && NRR.QidStampPlus(re, q)
-    ensures RF.EmptyPathLooksCapFree(PIV.QidBody(re, q))
-    decreases re
-  {
-    match re
-    case Re_alt(r1, r2) => if q in PIV.QuantIds(r1) { StampScopeAtQid(r1, q); } else { StampScopeAtQid(r2, q); }
-    case Re_con(r1, r2) => if q in PIV.QuantIds(r1) { StampScopeAtQid(r1, q); } else { StampScopeAtQid(r2, q); }
-    case Re_quant(_, qid0, _, r1) => if !(qid0 >= 0 && (qid0 as nat) == q) { StampScopeAtQid(r1, q); }
-    case Re_capture(_, r1) => StampScopeAtQid(r1, q);
-    case Re_lookaround(_, _, r1) => StampScopeAtQid(r1, q);
-  }
-
-  lemma TieOkTTransportG4(rer: LW.RegExpRecord, re: R.regex, str: string, Q: set<int>, S: set<LG.GroupId>,
-                          G: set<LG.GroupId>, gmB: LG.GroupMap, gm: LG.GroupMap, best: AI.Thread, th: AI.Thread)
-    requires RF.StampLooksCapFreeRE(re) && T.TransWf(re) && PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
-    requires PSM.BestLiveRE(re, best) && Q == ELk.StampSet(best.quant_regs.a_cp) && RF.QInStamp(re, Q)
-    requires G * S == {} && LL.GmAgreeOutside(gmB, gm, G)
-    requires ClkFrameG4(re, Q, th, best)
-    requires LookNestOkTTop(re, S, gmB, best) && FrozenOk(rer, re, str, gmB, best)   // (G4b-2) the guard
-    ensures LookNestOkTTopU(re, S, gm, th)   // (G4b-2) unguarded at the winner
-  {
-    ELk.StampLooksCapFreeETop(re);
-    ELk.BodyStaleAtStamps(re, best, Q);
-    forall lid: nat | lid in NI.TopLookIds(re)
-                      && (lid in LTB.LookIds(re)
-                          && exists g: LG.GroupId :: g in S && g in gm && g in PIV.CapIds(NI.LookBodyOfRE(re, lid)))
-      ensures NI.LookPathPresent(re, th.capture_regs.a_clk, th.quant_regs.a_clk, -1, lid)
-              && AI.get_idx(th.look_regs.a_clk, lid as int) >= 0
-              && AI.get_idx(th.look_regs.a_clk, lid as int) >= NI.MxAtLidLk(re, th.quant_regs.a_clk, -1, lid)
-    {
-      var g: LG.GroupId :| g in S && g in gm && g in PIV.CapIds(NI.LookBodyOfRE(re, lid));
-      if (lid as int) in ELk.LooksQE(re, Q) { ELk.LooksQECapFree(re, Q, lid); assert false; }
-      assert g !in G by { if g in G { assert g in G * S; } }
-      assert g in gmB;
-      if lid in LiveStampLids(re, best.quant_regs) {
-        GuardedLidUnset(rer, re, str, Q, gmB, best, lid, g);
-        assert false;
-      }
-      assert exists g0: LG.GroupId :: g0 in S && g0 in gmB && g0 in PIV.CapIds(NI.LookBodyOfRE(re, lid));
-      assert NI.LookPathPresent(re, best.capture_regs.a_clk, best.quant_regs.a_clk, -1, lid)
-             && AI.get_idx(best.look_regs.a_clk, lid as int) >= 0
-             && AI.get_idx(best.look_regs.a_clk, lid as int) >= NI.MxAtLidLk(re, best.quant_regs.a_clk, -1, lid);
-      if CLP.AncCapRegs(re, lid) * RF.CapsQ(re, Q) != {} || CLP.AncQuants(re, lid) * RF.QuantsQ(re, Q) != {} {
-        ELk.StampedAncKillsPresence(re, best.capture_regs.a_clk, best.quant_regs.a_clk, -1, lid, Q);
-        assert false;
-      }
-      AncFrameAvoid(re, Q, th, best, lid);
-      assert AI.get_idx(th.look_regs.a_clk, lid as int) == AI.get_idx(best.look_regs.a_clk, lid as int);
-    }
-  }
-
-  /** (G4b-1) BackT: a kept lid keeps its record, and its dominance moves down to the winner (the replay only raised
-      quant clocks). */
-  lemma TieBackTransportG4(re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
-                           Q: set<int>, S: set<LG.GroupId>, G: set<LG.GroupId>,
-                           gmB: LG.GroupMap, gm: LG.GroupMap, best: AI.Thread, th: AI.Thread,
-                           ncap: int, nlook: int, nquant: int)
-    requires RF.StampLooksCapFreeRE(re) && LTB.LookUnique(re)
-    requires G * S == {} && LL.GmAgreeOutside(gmB, gm, G)
-    requires ClkFrameG4(re, Q, th, best)
-    requires LookNestBackTTop(re, crv, str, ov, S, gmB, best, ncap, nlook, nquant)
-    ensures LookNestBackTTop(re, crv, str, ov, S, gm, th, ncap, nlook, nquant)
-  {
-    ELk.StampLooksCapFreeETop(re);
-    forall lid: nat | lid in NI.TopLookIds(re)
-                      && (M.MatchedPosLA(crv, th.look_regs, lid as int)
-                          && lid in LTB.LookIds(re)
-                          && NI.LookPathDom(re, AI.get_idx(th.look_regs.a_clk, lid as int), th.quant_regs.a_clk, lid))
-      ensures var rf := M.FreshBodyMatchPlus(crv, str, lid as int, th.look_regs, ov, ncap, nlook, nquant);
-              rf.Some? ==>
-                forall g: LG.GroupId ::
-                  g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, lid))
-                  && g in PIV.GmOfLive(NI.LookBodyOfRE(re, lid), rf.value.capture_regs,
-                                       rf.value.look_regs, rf.value.quant_regs)
-                  ==> g in gm
-    {
-      if (lid as int) in ELk.LooksQE(re, Q) {
-        ELk.LooksQECapFree(re, Q, lid);   // no group of the body: the conclusion is vacuous
-      } else {
-        GetCpCong(th.look_regs, best.look_regs, lid as int);
-        FreshBodyCong(crv, str, lid as int, th.look_regs, best.look_regs, ov, ncap, nlook, nquant);
-        assert M.MatchedPosLA(crv, best.look_regs, lid as int);
-        assert AI.get_idx(th.look_regs.a_clk, lid as int) == AI.get_idx(best.look_regs.a_clk, lid as int);
-        ELk.LookPathDomMono(re, AI.get_idx(th.look_regs.a_clk, lid as int), th.quant_regs.a_clk,
-                            best.quant_regs.a_clk, lid);
-        assert NI.LookPathDom(re, AI.get_idx(best.look_regs.a_clk, lid as int), best.quant_regs.a_clk, lid);
-        var rf := M.FreshBodyMatchPlus(crv, str, lid as int, th.look_regs, ov, ncap, nlook, nquant);
-        if rf.Some? {
-          forall g: LG.GroupId | g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, lid))
-                                 && g in PIV.GmOfLive(NI.LookBodyOfRE(re, lid), rf.value.capture_regs,
-                                                      rf.value.look_regs, rf.value.quant_regs)
-            ensures g in gm
-          {
-            assert g !in G by { if g in G { assert g in G * S; } }
-            assert g in gmB;
-          }
-        }
-      }
-    }
-  }
-
-  lemma TieDeepTransportG4(rer: LW.RegExpRecord, re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
-                           Q: set<int>, S: set<LG.GroupId>, G: set<LG.GroupId>,
-                           gmB: LG.GroupMap, gm: LG.GroupMap, best: AI.Thread, th: AI.Thread,
-                           ncap: int, nlook: int, nquant: int)
-    requires RF.StampLooksCapFreeRE(re) && LTB.LookUnique(re)
-    requires G * S == {} && LL.GmAgreeOutside(gmB, gm, G)
-    requires ClkFrameG4(re, Q, th, best)
-    requires LookNestBackTTopDeep(rer, re, crv, str, ov, S, gmB, best, ncap, nlook, nquant)
-    ensures LookNestBackTTopDeep(rer, re, crv, str, ov, S, gm, th, ncap, nlook, nquant)
-  {
-    ELk.StampLooksCapFreeETop(re);
-    forall lid: nat | lid in NI.TopLookIds(re)
-                      && (M.MatchedPosLA(crv, th.look_regs, lid as int)
-                          && lid in LTB.LookIds(re)
-                          && NI.LookPathDom(re, AI.get_idx(th.look_regs.a_clk, lid as int), th.quant_regs.a_clk, lid))
-      ensures var lsub := SubFirstLeafAt(rer, crv, str, lid as int, th.look_regs);
-              lsub.Some? ==>
-                forall g: LG.GroupId ::
-                  g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, lid)) ==>
-                    (g in lsub.value ==> g in gm && gm[g] == lsub.value[g])
-                    && (g in gm ==> g in lsub.value)
-    {
-      if (lid as int) in ELk.LooksQE(re, Q) {
-        ELk.LooksQECapFree(re, Q, lid);   // no group of the body: the conclusion is vacuous
-      } else {
-        GetCpCong(th.look_regs, best.look_regs, lid as int);
-        SubFirstLeafCong(rer, crv, str, lid as int, th.look_regs, best.look_regs);
-        assert M.MatchedPosLA(crv, best.look_regs, lid as int);
-        assert AI.get_idx(th.look_regs.a_clk, lid as int) == AI.get_idx(best.look_regs.a_clk, lid as int);
-        ELk.LookPathDomMono(re, AI.get_idx(th.look_regs.a_clk, lid as int), th.quant_regs.a_clk,
-                            best.quant_regs.a_clk, lid);
-        assert NI.LookPathDom(re, AI.get_idx(best.look_regs.a_clk, lid as int), best.quant_regs.a_clk, lid);
-        var lsub := SubFirstLeafAt(rer, crv, str, lid as int, th.look_regs);
-        if lsub.Some? {
-          forall g: LG.GroupId | g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, lid))
-            ensures (g in lsub.value ==> g in gm && gm[g] == lsub.value[g])
-                    && (g in gm ==> g in lsub.value)
-          {
-            assert g !in G by { if g in G { assert g in G * S; } }
-            assert (g in gmB <==> g in gm) && (g in gmB ==> gmB[g] == gm[g]);
-          }
-        }
-      }
-    }
-  }
-
-
   /** (G4b-1b) Machine B and machine A at a row's VM winner: B's carriers at the winner itself, the spec leaf
       outside `G`, machine A's readout outside `S`, and the winner's live stamps (what the transports read). Split out of
       `TwoMachinesAtS` so a lookbehind row can transport from its mirrored VM winner. */
@@ -610,7 +350,6 @@ module LindenElkTwoMachines {
     requires LTB.LookTablesOk(body, crv)
     // (G3a) the CIN fragment at this body
     requires NRC.CdnTopRE(body) && NRR.PlusTableOkS(body, plus_bc)
-    requires RF.StampLooksCapFreeRE(body)   // (G5b-3) stamp looks capture-free
     requires CW.CinOk(T.Translate(body), PIV.CapIdsOutsideLooks(body))
     ensures
       var inp := PIV.InpOfCp(str, cp);
@@ -629,7 +368,7 @@ module LindenElkTwoMachines {
                                  LT.FirstLeaf(t, inp).value.1, PIV.CapIdsInLooks(body))
             && PSM.BestLiveRE(body, result.value) && PSM.StampPathOk(qm, str, result.value.quant_regs.a_cp))
   {
-    hide ClkFrameG4, RF.StampLooksCapFreeRE;   // (G5b-3) passed on as terms: their quantifiers stay out of every batch
+    hide ClkFrameG4;   // (G5b-3) passed on as terms: their quantifiers stay out of every batch
 
     var inp := PIV.InpOfCp(str, cp);
     var acts := [LS.Areg(T.Translate(body))];
@@ -737,7 +476,6 @@ module LindenElkTwoMachines {
     requires LTB.LookTablesOk(body, crv)
     // (G3a) the CIN fragment at this body
     requires NRC.CdnTopRE(body) && NRR.PlusTableOkS(body, plus_bc)
-    requires RF.StampLooksCapFreeRE(body)   // (G5b-3) stamp looks capture-free
     requires CW.CinOk(T.Translate(body), PIV.CapIdsOutsideLooks(body))
     ensures
       var inp := PIV.InpOfCp(str, cp);
@@ -763,7 +501,7 @@ module LindenElkTwoMachines {
             // (G3a) the reconstruction keeps the VM winner's look bank
             && WinnerLookKept(bodycode, str, cp, ov, lookcdn, ncap, nlook, nquant, rf.value))
   {
-    hide ClkFrameG4, RF.StampLooksCapFreeRE;   // (G5b-3) passed on as terms: their quantifiers stay out of every batch
+    hide ClkFrameG4;   // (G5b-3) passed on as terms: their quantifiers stay out of every batch
 
     var inp := PIV.InpOfCp(str, cp);
     var S := PIV.CapIdsInLooks(body);

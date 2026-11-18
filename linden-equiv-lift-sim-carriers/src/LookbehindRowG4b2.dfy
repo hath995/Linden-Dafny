@@ -259,7 +259,7 @@ module LindenElkLookbehindRowG4b2 {
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
-    requires NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body) && NRR.PlusTableOkS(body, plus)   // (scope: `RP.BackRowReadoutS`'s)
+    requires NRC.CdnTopRE(body) && NRR.PlusTableOkS(body, plus)
     requires AR.QmapOk(body, qm) && qm.bodies == M.BodiesOfRE(body)
     requires cdns == LCdn.compile_cdns(body)
     requires !rer.ignoreCase && !rer.multiline
@@ -282,7 +282,6 @@ module LindenElkLookbehindRowG4b2 {
         && rf.value == AI.FReconstructPlus(raB.value, body, plus, str, ov, LAnc.Backward).0
         && FRA.ReadoutPreS(qm, body, plus, str, raB.value, ncap, nlook, nquant)
   {
-    hide RF.StampLooksCapFreeRE;
     var capture := AReg.init_regs(ncap);
     var look := AReg.init_regs(nlook);
     var quant := AReg.init_regs(nquant);
@@ -358,7 +357,7 @@ module LindenElkLookbehindRowG4b2 {
     requires PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body)
     requires PSM.SizesOkRE(body, ncap, nlook, nquant)
     requires forall l: nat :: l in LTB.LookIds(body) ==> l < nlook
-    requires NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body) && NRR.PlusTableOkS(body, plus)   // (scope: `RP.BackRowReadoutS`'s)
+    requires NRC.CdnTopRE(body) && NRR.PlusTableOkS(body, plus)
     requires AR.QmapOk(body, qm) && qm.bodies == M.BodiesOfRE(body)
     requires cdns == LCdn.compile_cdns(body)
     requires !rer.ignoreCase && !rer.multiline
@@ -377,7 +376,6 @@ module LindenElkLookbehindRowG4b2 {
       rf.Some? ==>
         fF.Some? && LR.WinnerLookRec(qmF, FST.FXR(body), LC.Reverse(str), fF.value, MIR.MirrorThread(rf.value, n))
   {
-    hide RF.StampLooksCapFreeRE;
     var bcB := CP.compile_to_bytecode(R.reverse_regex(body));
     var raB := AI.FFindMatch(bcB, str,
                  AI.FInitState(bcB, cp, AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0,
@@ -415,22 +413,6 @@ module LindenElkLookbehindRowG4b2 {
     }
   }
 
-  lemma StampLooksCapFreeLookBodyL(r: R.regex, lid: nat)
-    requires RF.StampLooksCapFreeRE(r) && lid in LTB.LookIds(r)
-    ensures RF.StampLooksCapFreeRE(NI.LookBodyOfRE(r, lid))
-    decreases r
-  {
-    match r
-    case Re_alt(r1, r2) =>
-      if lid in LTB.LookIds(r1) { StampLooksCapFreeLookBodyL(r1, lid); } else { StampLooksCapFreeLookBodyL(r2, lid); }
-    case Re_con(r1, r2) =>
-      if lid in LTB.LookIds(r1) { StampLooksCapFreeLookBodyL(r1, lid); } else { StampLooksCapFreeLookBodyL(r2, lid); }
-    case Re_quant(_, _, _, r1) => StampLooksCapFreeLookBodyL(r1, lid);
-    case Re_capture(_, r1) => StampLooksCapFreeLookBodyL(r1, lid);
-    case Re_lookaround(lid0, _, r1) =>
-      if lid0 >= 0 && (lid0 as nat) == lid { } else { StampLooksCapFreeLookBodyL(r1, lid); }
-  }
-
   /** `LookNestBackTTopP` at one lid, back through the flip (via `LookNestBackTTopLidFlipPS` on the solo thread). */
   lemma BackLidFlipP(
     rer: LW.RegExpRecord, qm: AR.QMap, body: R.regex, crv: CP.FCompiled, str: string,
@@ -452,7 +434,6 @@ module LindenElkLookbehindRowG4b2 {
     requires NI.LookPathPresent(body, th.capture_regs.a_clk, th.quant_regs.a_clk, -1, lid)
     requires AI.get_idx(th.look_regs.a_clk, lid as int) >= NI.MxAtLidLk(body, th.quant_regs.a_clk, -1, lid)
     requires NRR.PlusTableOkS(body, crv.f_plus_bc)
-    requires RF.StampLooksCapFreeRE(NI.LookBodyOfRE(body, lid))   // (scope: `FreshPlusLidFlipS`'s, in core)
     requires LookNestBackTTopP(FST.FXR(body), MirrorTablesPS(crv, body), LC.Reverse(str),
                                MIR.MirrorView(ov, |str|), PIV.CapIdsInLooks(body),
                                TRM.MirrorGm(gmt, |str|), MIR.MirrorThread(th, |str|), ncap, nlook, nquant)
@@ -464,7 +445,6 @@ module LindenElkLookbehindRowG4b2 {
                                      rf.value.look_regs, rf.value.quant_regs)
                 ==> g in gmt
   {
-    hide RF.StampLooksCapFreeRE;
     var n := |str|;
     var rstr := LC.Reverse(str);
     var ov' := MIR.MirrorView(ov, n);
@@ -501,7 +481,6 @@ module LindenElkLookbehindRowG4b2 {
       }
     }
     assert {:split_here} true;
-    reveal RF.StampLooksCapFreeRE;
     LookNestBackTTopLidFlipPS(rer, qm, body, crv, str, ov, gmt, thS, lid, ncap, nlook, nquant);
     T4.FreshBodyCong(crv, str, lid as int, thS.look_regs, th.look_regs, ov, ncap, nlook, nquant);
   }
@@ -595,7 +574,6 @@ module LindenElkLookbehindRowG4b2 {
     requires TRM.GmInBounds(gmt, |str|)
     requires CM.LookCpsLE(th.look_regs, |str|)
     requires NRR.PlusTableOkS(body, crv.f_plus_bc)
-    requires RF.StampLooksCapFreeRE(body)   // (scope: the per-lid plus flip's, in core)
     requires LookNestBackTTopP(FST.FXR(body), MirrorTablesPS(crv, body), LC.Reverse(str),
                                MIR.MirrorView(ov, |str|), PIV.CapIdsInLooks(body),
                                TRM.MirrorGm(gmt, |str|), MIR.MirrorThread(th, |str|), ncap, nlook, nquant)
@@ -620,7 +598,6 @@ module LindenElkLookbehindRowG4b2 {
                                        rfl.value.look_regs, rfl.value.quant_regs)
                   ==> g in gmt
     {
-      StampLooksCapFreeLookBodyL(body, lid);
       BackLidFlipP(rer, qm, body, crv, str, ov, gmt, th, lid, ncap, nlook, nquant);
     }
     assert {:split_here} true;

@@ -4667,7 +4667,7 @@ module LindenElkMain {
       `QidStampPlus` pluses; every stamp body is look-free). */
   opaque ghost predicate RowLAStaticsS(body: R.regex, plus_bcv: seq<RB.code>) {
     T.TransWf(body) && NR.NestedFragmentCdnRE(body) && PIV.CapUnique(body) && PIV.QuantUnique(body)
-    && LTB.LookUnique(body) && NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body)   // (G5b-3) stamp looks capture-free
+    && LTB.LookUnique(body) && NRC.CdnTopRE(body)
     && NRR.PlusTableOkS(body, plus_bcv)
   }
 
@@ -4680,7 +4680,6 @@ module LindenElkMain {
     NR.NarrowIsCdn(body);
     NRC.NoCdnIsCdnTop(body);
     RF.CinStampBodiesNoCdn(body);
-    RF.StampBodiesLookFreeIsCapFree(body);   // (G5b-3)
     NRR.PlusTableOkSNarrow(body, plus_bcv);
   }
 
@@ -5159,8 +5158,10 @@ module LindenElkMain {
 
   ghost predicate BehindKind(la: R.lookaround) { la.Lookbehind? || la.NegLookbehind? }
 
-  /** Lookbehind bodies are nulled-plus-free (their rows keep the stamp-free twins).
-      Lookahead bodies are in the CIN fragment, recursively. */
+  /** The look-bodies gate. History: G3a asked lookbehind bodies to be nulled-plus-free and lookahead bodies CIN;
+      G5b let any look body hold a CDN plus; G5b-3/G4b-1 kept only "inside a positive body, every look an empty path
+      of a stamp body crosses is capture-free"; (G4b-2) that scope is gone too, so the gate holds of every regex
+      (`LookBodiesPlusGateAll`). It stays a premise name of the band's lemmas. */
   ghost predicate LookBodiesPlusGateRE(re: R.regex)
     decreases re
   {
@@ -5169,11 +5170,22 @@ module LindenElkMain {
     case Re_con(r1, r2) => LookBodiesPlusGateRE(r1) && LookBodiesPlusGateRE(r2)
     case Re_quant(_, _, _, r1) => LookBodiesPlusGateRE(r1)
     case Re_capture(_, r1) => LookBodiesPlusGateRE(r1)
-    case Re_lookaround(_, la, r1) =>
-      // (G5b) a look body of any kind may hold a CDN plus (a NEGATIVE one is never replayed); (G5b-3) inside a
-      // POSITIVE body (either direction) every look inside a greedy nullable plus body is capture-free
-      (NRC.PositiveLk(la) ==> RF.StampLooksCapFreeRE(r1)) && LookBodiesPlusGateRE(r1)
+    case Re_lookaround(_, _, r1) => LookBodiesPlusGateRE(r1)
     case _ => true
+  }
+
+  /** (G4b-2) The gate holds of every regex. */
+  lemma LookBodiesPlusGateAll(re: R.regex)
+    ensures LookBodiesPlusGateRE(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => LookBodiesPlusGateAll(r1); LookBodiesPlusGateAll(r2);
+    case Re_con(r1, r2) => LookBodiesPlusGateAll(r1); LookBodiesPlusGateAll(r2);
+    case Re_quant(_, _, _, r1) => LookBodiesPlusGateAll(r1);
+    case Re_capture(_, r1) => LookBodiesPlusGateAll(r1);
+    case Re_lookaround(_, _, r1) => LookBodiesPlusGateAll(r1);
+    case _ =>
   }
 
   /** The nested fragment passes to a look body. */
@@ -5222,7 +5234,7 @@ module LindenElkMain {
     case Re_quant(_, _, _, r1) => PlusGateFromFull(r1);
     case Re_capture(_, r1) => PlusGateFromFull(r1);
     case Re_lookaround(_, _, r1) =>
-      NoNulledPlusCinFragment(r1); RF.CinStampBodiesNoCdn(r1); RF.StampBodiesLookFreeIsCapFree(r1); PlusGateFromFull(r1);
+      NoNulledPlusCinFragment(r1); RF.CinStampBodiesNoCdn(r1); PlusGateFromFull(r1);
     case _ =>
   }
 
@@ -5238,7 +5250,7 @@ module LindenElkMain {
     case Re_quant(_, _, _, r1) => PlusGateFromStrong(r1);
     case Re_capture(_, r1) => PlusGateFromStrong(r1);
     case Re_lookaround(_, _, r1) =>
-      NoNulledPlusCinFragment(r1); RF.CinStampBodiesNoCdn(r1); RF.StampBodiesLookFreeIsCapFree(r1); PlusGateFromFull(r1);
+      NoNulledPlusCinFragment(r1); RF.CinStampBodiesNoCdn(r1); PlusGateFromFull(r1);
     case _ =>
   }
 
@@ -5282,7 +5294,6 @@ module LindenElkMain {
     requires LookBodiesPlusGateRE(re) && l in LTB.LookIds(re)
     ensures var b := NI.LookBodyOfRE(re, l);
             LookBodiesPlusGateRE(b)
-            && (NRC.PositiveLk(LookKindOfRE(re, l)) ==> RF.StampLooksCapFreeRE(b))   // (G5b-1/2/3)
     decreases re
   {
     match re
@@ -5317,7 +5328,6 @@ module LindenElkMain {
     requires LTB.LookEntryOk(crv, l as int, la, body)
     ensures body == NI.LookBodyOfRE(re, l) && la == LookKindOfRE(re, l)
     ensures LookBodiesPlusGateRE(body)
-    ensures NRC.PositiveLk(la) ==> RF.StampLooksCapFreeRE(body)   // (G5b-1/2/3) a positive body, either direction
   {
     LookKindOfTablesTie(re, crv, l);
     PlusGateBodyRECdn(re, l);

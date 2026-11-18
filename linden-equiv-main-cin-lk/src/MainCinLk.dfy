@@ -11,8 +11,8 @@
 //     winner `rp = FReconstructPlus(best)`;
 //   * INSIDE `S` — machine B (the lift-sim band on the engine-shaped walk,
 //     `L3aCompositeCloseRecG`), whose carriers read only look registers and the
-//     clocks of the looks' ANCESTORS. A look the reconstruction may re-set captures
-//     nothing, so its carriers are vacuous (`ELk.LooksQECapFree`); every other look
+//     clocks of the looks' ANCESTORS. (G4b-2: `MainCinG4b2.dfy` moves them through the
+//     four-case transports; what follows is the G4b-1 frame those reuse.) A kept look
 //     keeps its record, and either its ancestors keep their clocks (`CL.AncFrameAvoid`)
 //     or one sits in a stamped body, where the winner's stale body kills its presence
 //     (`ELk.StampedAncKillsPresence`); the replay only raises quant clocks
@@ -303,7 +303,7 @@ module LindenElkMainCinLk {
   lemma WinRegsOkReconG4(ast: R.regex, re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
                          best: AI.Thread, rp: AI.Thread, ncap: int, nlook: int, nquant: int)
     requires crv == CP.FFullCompilation(ast) && re == R.lazy_prefix(ast)
-    requires T.TransWf(re) && CL.CinLooksCapFreeRE(re) && NRC.CdnTopRE(re)
+    requires T.TransWf(re) && NRC.CdnTopRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re) && LTB.LookTablesOk(re, crv)
     requires |ov| == |str| + 1
     requires WinRegsOkG(ast, re, crv, str, ov, best, ncap, nlook, nquant)
@@ -642,7 +642,7 @@ module LindenElkMainCinLk {
     returns (rp: AI.Thread)
     requires crv == CP.FFullCompilation(ast) && re == R.lazy_prefix(ast) && code == CP.compile_to_bytecode(re)
     requires crv.f_main_bc == code
-    requires T.TransWf(re) && NR.NestedFragmentCdnRE(re) && M.LookBodiesPlusGateRE(re) && CL.CinLooksCapFreeRE(re)
+    requires T.TransWf(re) && NR.NestedFragmentCdnRE(re) && M.LookBodiesPlusGateRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re) && LTB.LookTablesOk(re, crv)
     requires NRC.CdnTopRE(ast) && NRC.CdnTopRE(re) && AR.QmapOk(re, qm) && qm.ov == ov && |ov| == |str| + 1
     requires NR.NfaRepRE(re, code, 0, endl) && |code| == endl + 1 && NR.GetPcRE(code, endl) == Some(RB.Accept)
@@ -721,7 +721,7 @@ module LindenElkMainCinLk {
   lemma ReconAtWinnerG4(ast: R.regex, re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
                         best: AI.Thread, rp: AI.Thread, ncap: int, nlook: int, nquant: int)
     requires crv == CP.FFullCompilation(ast) && re == R.lazy_prefix(ast)
-    requires T.TransWf(re) && CL.CinLooksCapFreeRE(re) && NRC.CdnTopRE(re)
+    requires T.TransWf(re) && NRC.CdnTopRE(re)
     requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re) && LTB.LookTablesOk(re, crv)
     requires |ov| == |str| + 1
     requires WinRegsOkG(ast, re, crv, str, ov, best, ncap, nlook, nquant)
@@ -883,6 +883,20 @@ module LindenElkMainCinLk {
     case Re_lookaround(_, la, r1) => CdnTopX(r1)
     case Re_quant(_, _, _, r1) => CdnTopX(r1)
     case _ => true
+  }
+
+  /** (G5b-2) Every regex is in the CDN-top scope. */
+  lemma CdnTopXAll(re: R.regex)
+    ensures CdnTopX(re)
+    decreases re
+  {
+    match re
+    case Re_alt(r1, r2) => CdnTopXAll(r1); CdnTopXAll(r2);
+    case Re_con(r1, r2) => CdnTopXAll(r1); CdnTopXAll(r2);
+    case Re_capture(_, r1) => CdnTopXAll(r1);
+    case Re_lookaround(_, _, r1) => CdnTopXAll(r1);
+    case Re_quant(_, _, _, r1) => CdnTopXAll(r1);
+    case _ =>
   }
 
   lemma CdnTopXSound(re: R.regex)
