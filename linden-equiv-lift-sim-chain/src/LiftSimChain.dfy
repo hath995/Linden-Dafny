@@ -109,6 +109,7 @@ module LindenElkLiftSimChain {
   import LTB = LindenElkLookTables
   import NI = LindenElkNestInv
   import CW = LindenElkCinWalk
+  import NPL = LindenElkNulledPlusLk     // (G4b-2) the synthetic stamp node's fold
   import NP = LindenElkNulledPlus        // (G5a-1 row K) FirstEmptyPathL: the guard's test
   import opened LindenElkLiftSimCore
   import opened LindenElkLiftSimOracle
@@ -120,16 +121,21 @@ module LindenElkLiftSimChain {
   {
     (pc < RB.size(code) && NR.GetPcRE(code, pc) == Some(RB.BeginLoop)
      && WalkPairLkRec(rer, qm, code, inp, tb, gmt, pc + 1, false))
-    // (§2.5b F-c) the see-through also crosses the nulled-exit stamp (a plain
-    // Reset on the B side); the walk tree is ENGINE-SHAPED (`CW.BoolTreeLkX`)
+    // the see-through crosses the clock mark (a plain Reset); the walk tree is ENGINE-SHAPED (`CW.BoolTreeLkX`)
     || (pc < RB.size(code)
         && exists q: int ::
-          (NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, false))
-           || NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, true)))
+          NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, false))
           && q in qm.quants
           && tb.GroupActionT? && tb.g == LG.Reset(qm.quants[q])
           && WalkPairLkRec(rer, qm, code, inp, tb.t,
                            LG.GMUpdate(tb.g, LC.Idx(inp), gmt), pc + 1, ea))
+    // (G4b-2) ... and the nulled-exit stamp: the synthetic gate, machine B's map becoming the fold
+    || (pc < RB.size(code)
+        && exists q: int ::
+          NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, true))
+          && StampNodeOk(rer, qm, inp, q, tb)
+          && WalkPairLkRec(rer, qm, code, inp, tb.t,
+                           NPL.StampFold(rer, T.Translate(qm.bodies[q]), inp, gmt), pc + 1, ea))
     // (G5a-1 row K) the see-through also crosses the CDN guard: it passes iff the plus body has a
     // first empty path here (`TreeRepLkRE`'s test and conjuncts); a failing guard's walk tree is
     // `Mismatch`
@@ -312,6 +318,86 @@ module LindenElkLiftSimChain {
     && (forall i | 0 <= i < |acts| && acts[i].Areg? ::
           M.NoDupSeq(L.DefGroups(acts[i].r)))                                  // C2
     && QuantsClearActs(acts)                                                   // C3
+  }
+
+  /** (G4b-2) Dup-free def groups give Linden-level capture uniqueness. */
+  lemma NoDupGUniq(r: L.Regex)
+    requires M.NoDupSeq(L.DefGroups(r))
+    ensures NPL.GUniq(r)
+    decreases r
+  {
+    match r
+    case Disjunction(r1, r2) =>
+      assert L.DefGroups(r) == L.DefGroups(r1) + L.DefGroups(r2);
+      M.NoDupConcat(L.DefGroups(r1), L.DefGroups(r2)); NoDupGUniq(r1); NoDupGUniq(r2);
+      assert NPL.DG(r1) !! NPL.DG(r2) by {
+        forall g | g in NPL.DG(r1) ensures g !in NPL.DG(r2) {
+          if g in NPL.DG(r2) { assert g in (set x | x in L.DefGroups(r1)) * (set x | x in L.DefGroups(r2)); }
+        }
+      }
+    case Sequence(r1, r2) =>
+      assert L.DefGroups(r) == L.DefGroups(r1) + L.DefGroups(r2);
+      M.NoDupConcat(L.DefGroups(r1), L.DefGroups(r2)); NoDupGUniq(r1); NoDupGUniq(r2);
+      assert NPL.DG(r1) !! NPL.DG(r2) by {
+        forall g | g in NPL.DG(r1) ensures g !in NPL.DG(r2) {
+          if g in NPL.DG(r2) { assert g in (set x | x in L.DefGroups(r1)) * (set x | x in L.DefGroups(r2)); }
+        }
+      }
+    case Quantified(_, _, _, r1) => NoDupGUniq(r1);
+    case Group(id, r1) =>
+      M.NoDupConcat([id], L.DefGroups(r1)); NoDupGUniq(r1);
+      assert id !in NPL.DG(r1) by {
+        if id in NPL.DG(r1) { assert id in (set g | g in [id]) * (set g | g in L.DefGroups(r1)); }
+      }
+    case LookaroundR(_, r1) => NoDupGUniq(r1);
+    case _ =>
+  }
+
+  /** (G4b-2) Across the synthetic stamp gate the continuation's pending gates stay clear: the fold adds only
+      groups of the plus body's looks, and C3 keeps the body's groups off the continuation's top-level looks. */
+  lemma GateAheadClearStampFold(rer: LW.RegExpRecord, acts: LS.Actions, r1: L.Regex, inp: LC.Input, gm: LG.GroupMap)
+    requires |acts| > 0 && acts[0].Areg? && acts[0].r.Quantified? && acts[0].r.r1 == r1
+    requires EL.PikeLkRegexRec(r1) && NP.FirstEmptyPathL(rer, r1, inp).Some?
+    requires GateAheadClear(acts, gm) && WalkDefsOk(acts)
+    ensures GateAheadClear(acts[1..], NPL.StampFold(rer, r1, inp, gm))
+  {
+    var cont := acts[1..];
+    assert M.NoDupSeq(L.DefGroups(acts[0].r));
+    assert L.DefGroups(acts[0].r) == L.DefGroups(r1);
+    NoDupGUniq(r1);
+    NPL.StampFoldFacts(rer, r1, inp, gm);
+    NPL.LkBodyGroupsSubDG(r1);
+    var gidl := L.DefGroups(r1);
+    var fold := NPL.StampFold(rer, r1, inp, gm);
+    assert QuantsRightClear(acts[0].r, TopLkSetActs(acts[1..]));
+    assert forall g :: g in L.DefGroups(r1) ==> g !in TopLkSetActs(cont) by {
+      match acts[0].r { case Quantified(_, _, _, b0) => assert b0 == r1; }
+    }
+    forall lk: L.Lookaround, rr: L.Regex | GatePending(cont, lk, rr)
+      ensures forall gg :: gg in L.DefGroups(rr) ==> gg !in fold
+    {
+      var j :| 0 <= j < |cont| && cont[j].Areg? && RegexTopGate(cont[j].r, lk, rr);
+      assert acts[j + 1] == cont[j];
+      assert GatePending(acts, lk, rr);
+      assert forall g :: g in L.DefGroups(rr) ==> g !in gm;   // GateAheadClear(acts, gm) at the pending gate
+      RegexTopGateSubTopLk(cont[j].r, lk, rr);
+      TopLkDefsListMemberSub(cont, j);
+      var SRR := set gx | gx in L.DefGroups(rr);
+      var SCJ := set gx | gx in TopLkDefsList(cont[j].r);
+      var SAC := set gx | gx in TopLkDefsListActs(cont);
+      assert SRR <= SCJ && SCJ <= SAC;
+      assert SAC == TopLkSetActs(cont);
+      forall gg | gg in L.DefGroups(rr) ensures gg !in fold {
+        assert gg !in gm;
+        assert gg in SRR;
+        assert gg in SCJ;
+        assert gg in SAC;
+        assert gg in TopLkSetActs(cont);
+        assert gg !in L.DefGroups(r1);
+        assert gg !in LL.LkBodyGroups(r1);
+        assert gg !in LG.GMReset(gidl, gm);
+      }
+    }
   }
 
   /** Carrier tail: drop the head. */
@@ -1467,6 +1553,8 @@ module LindenElkLiftSimChain {
                           LG.GMUpdate(tb.g, LC.Idx(inp), gm), pc + 1, ATR.EaOf(b))
     decreases ATR.MsizeA(acts)
   {
+    hide NPL.StampFold, NPL.StampTreeLk;   // (G4b-2) the stamp see-through is passed on as terms
+
     var g := ATR.EaOf(b);
     var pcmid: nat :| AR.ActionRepL(rer, qm, acts[0], code, pc, pcmid) && AR.ActionsRepL(rer, qm, acts[1..], code, pcmid);
     EL.PikeLkActionsRecTail(acts);
@@ -1666,9 +1754,13 @@ module LindenElkLiftSimChain {
     requires WalkPairLkRec(rer, qm, code, inp, tb, gm, pc, ea)
     requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, bq))
     ensures q in qm.quants
-    ensures tb.GroupActionT? && tb.g == LG.Reset(qm.quants[q])
-    ensures WalkPairLkRec(rer, qm, code, inp, tb.t,
-                          LG.GMUpdate(tb.g, LC.Idx(inp), gm), pc + 1, ea)
+    // the clock mark: a plain Reset
+    ensures !bq ==> tb.GroupActionT? && tb.g == LG.Reset(qm.quants[q])
+                    && WalkPairLkRec(rer, qm, code, inp, tb.t, LG.GMUpdate(tb.g, LC.Idx(inp), gm), pc + 1, ea)
+    // (G4b-2) the stamp: the synthetic gate, machine B's map becoming the fold
+    ensures bq ==> StampNodeOk(rer, qm, inp, q, tb)
+                   && WalkPairLkRec(rer, qm, code, inp, tb.t,
+                                    NPL.StampFold(rer, T.Translate(qm.bodies[q]), inp, gm), pc + 1, ea)
   {
     if (exists acts: LS.Actions, b: BS.LoopBool ::
           AR.ActionsRepL(rer, qm, acts, code, pc)
@@ -1686,16 +1778,23 @@ module LindenElkLiftSimChain {
         && WalkDefsOk(acts);
       if bq { ActionsRepNotAtTrueStamp(rer, qm, acts, code, pc, q); }   // (§2.5b F-c) no stack sits at the stamp
       WalkPairLkAtSetQuantCoreRec(rer, qm, code, inp, tb, gm, pc, b, acts, q);
+    } else if bq {
+      // the stamp see-through disjunct is the live one
+      var q0: int :| NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q0, true))
+                     && StampNodeOk(rer, qm, inp, q0, tb)
+                     && WalkPairLkRec(rer, qm, code, inp, tb.t,
+                                      NPL.StampFold(rer, T.Translate(qm.bodies[q0]), inp, gm), pc + 1, ea);
+      assert q0 == q;
     } else {
-      // the SQC see-through disjunct is the live one
-      var q0: int :| (NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q0, false))
-                      || NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q0, true)))
+      // the mark see-through disjunct is the live one
+      var q0: int :| NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q0, false))
                      && q0 in qm.quants
                      && tb.GroupActionT? && tb.g == LG.Reset(qm.quants[q0])
                      && WalkPairLkRec(rer, qm, code, inp, tb.t, LG.GMUpdate(tb.g, LC.Idx(inp), gm), pc + 1, ea);
       assert q0 == q;
     }
   }
+
 
   /** (gate A) `WalkPairLkAtForkCoreRec`'s postcondition, named so that every match arm asserts it
       at its own end instead of the whole nested match meeting one exit check (z3 4.14 repair). */
@@ -1730,6 +1829,8 @@ module LindenElkLiftSimChain {
               && WalkPairLkRec(rer, qm, code, inp, ta2, gm, y as nat, ATR.EaOf(b))
     decreases ATR.MsizeA(acts)
   {
+    hide NPL.StampFold, NPL.StampTreeLk;   // (G4b-2) the stamp see-through is passed on as terms
+
     // (§2.5b/z3 4.14) recursive nullability predicates + the CIN disjunct's
     // triggered existential storm the solver; all uses here are opaque.
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
@@ -2830,6 +2931,7 @@ module LindenElkLiftSimChain {
               && WalkPairLkRec(rer, qm, code, inp, ta1, gm, x as nat, ATR.EaOf(b))
               && WalkPairLkRec(rer, qm, code, inp, ta2, gm, y as nat, ATR.EaOf(b))
   {
+    hide NPL.StampFold, NPL.StampTreeLk;   // (G4b-2) the stamp see-through is passed on as terms
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, AR.NfaRepStarCinL;
     var g := ATR.EaOf(b);
     var gidl := L.DefGroups(r1);
@@ -2887,12 +2989,11 @@ module LindenElkLiftSimChain {
                    && T.Translate(qm.bodies[qidC]) == r1;
             if NP.FirstEmptyPathL(rer, r1, inp).Some? {
               match tbb {
-                case GroupActionT(h1, tc) =>
-                  assert h1 == LG.Reset(gidl);
+                case LK(hk, hl, tc) =>   // (G4b-2) the synthetic stamp gate
+                  assert hk == L.LookAhead && hl == NPL.StampTreeLk(rer, r1, inp);
                   assert CW.BoolTreeLkX(rer, cont, inp, b, tc);
-                  var gm2 := LG.GMUpdate(LG.Reset(gidl), LC.Idx(inp), gm);
-                  assert gm2 == LG.GMReset(gidl, gm);
-                  GateAheadClearReset(cont, gidl, gm);
+                  var gm2 := NPL.StampFold(rer, r1, inp, gm);
+                  GateAheadClearStampFold(rer, acts, r1, inp, gm);
                   // the continuation's walk at pcmid: the explicit (acts, b) witness
                   assert AR.ActionsRepL(rer, qm, cont, code, pcmid) && EL.PikeLkActionsRec(cont)
                          && ATR.EaOf(b) == g && CW.BoolTreeLkX(rer, cont, inp, b, tc)
@@ -2900,17 +3001,18 @@ module LindenElkLiftSimChain {
                   assert WalkPairLkRec(rer, qm, code, inp, tc, gm2, pcmid, g);
                   assert e1x + 3 < RB.size(code);
                   // the stamp see-through at e1x + 3: the explicit qid witness
-                  assert tbb.t == tc && LG.GMUpdate(tbb.g, LC.Idx(inp), gm) == gm2 && pcmid == (e1x + 3) + 1;
-                  assert (NR.GetPcRE(code, e1x + 3) == Some(RB.SetQuantToClock(qidC, false))
-                          || NR.GetPcRE(code, e1x + 3) == Some(RB.SetQuantToClock(qidC, true)))
-                         && qidC in qm.quants
-                         && tbb.GroupActionT? && tbb.g == LG.Reset(qm.quants[qidC])
-                         && WalkPairLkRec(rer, qm, code, inp, tbb.t, LG.GMUpdate(tbb.g, LC.Idx(inp), gm), (e1x + 3) + 1, g);
+                  assert StampNodeOk(rer, qm, inp, qidC, tbb);
+                  assert tbb.t == tc && pcmid == (e1x + 3) + 1
+                         && NPL.StampFold(rer, T.Translate(qm.bodies[qidC]), inp, gm) == gm2;
+                  assert NR.GetPcRE(code, e1x + 3) == Some(RB.SetQuantToClock(qidC, true))
+                         && StampNodeOk(rer, qm, inp, qidC, tbb)
+                         && WalkPairLkRec(rer, qm, code, inp, tbb.t,
+                                          NPL.StampFold(rer, T.Translate(qm.bodies[qidC]), inp, gm), (e1x + 3) + 1, g);
                   assert WalkPairLkRec(rer, qm, code, inp, tbb, gm, e1x + 3, g);
                   // the guard see-through at y == e1x + 2
                   WalkPairLkCdnPassIntro(rer, qm, code, inp, tbb, gm, e1x + 2, g, qidC);
                 case _ =>
-                  assert false;   // `BoolTreeLkX`'s CDN arm with an empty path: the skip child is a Reset
+                  assert false;   // `BoolTreeLkX`'s CDN arm with an empty path: the skip child is the gate
               }
             } else {
               assert tbb == LT.Mismatch;
@@ -2944,6 +3046,8 @@ module LindenElkLiftSimChain {
               && WalkPairLkRec(rer, qm, code, inp, ta1, gm, x as nat, ATR.EaOf(b))
               && WalkPairLkRec(rer, qm, code, inp, ta2, gm, y as nat, ATR.EaOf(b))
   {
+    hide NPL.StampFold, NPL.StampTreeLk;   // (G4b-2) the stamp see-through is passed on as terms
+
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL, AR.NfaRepStarCinL;
     var g := ATR.EaOf(b);
     var gidl := L.DefGroups(r1);
@@ -2971,8 +3075,8 @@ module LindenElkLiftSimChain {
         match ta {
           case GroupActionT(g1, ti) =>
             match tbb {
-              case GroupActionT(h1, tc) =>
-                assert g1 == LG.Reset(gidl) && h1 == LG.Reset(gidl);
+              case LK(hk, hl, tc) =>   // (G4b-2) the synthetic stamp gate
+                assert g1 == LG.Reset(gidl) && hk == L.LookAhead && hl == NPL.StampTreeLk(rer, r1, inp);
                 assert CW.BoolTreeLkX(rer, ia, inp, BS.CannotExit, ti);
                 assert CW.BoolTreeLkX(rer, cont, inp, b, tc);
                 assert EL.PikeLkActionRec(acts[0]);
@@ -3005,10 +3109,15 @@ module LindenElkLiftSimChain {
                 StarIterArmWalkBLRec(rer, qm, code, inp, gm, em + 1, g, qidC, r1, ti, ia);
                 assert WalkPairLkRec(rer, qm, code, inp, ta, gm, x as nat, g);
                 assert {:split_here} true;   // (E3) section: the stamp arm
-                // stamp arm at y == e1x + 2: the see-through over the stamp's Reset
-                var gm2 := LG.GMUpdate(LG.Reset(gidl), LC.Idx(inp), gm);
-                assert gm2 == LG.GMReset(gidl, gm);
-                GateAheadClearReset(cont, gidl, gm);
+                // stamp arm at y == e1x + 2: the see-through over the synthetic gate (G4b-2)
+                assert NP.FirstEmptyPathL(rer, r1, inp).Some? by {
+                  assert NUL.CINullableL(r1);
+                  assert NP.FirstEmptyPathA(rer, [], inp) == Some([]);
+                  NP.CINullableEmptyPathA(rer, r1, [], inp);
+                  assert [LS.Areg(r1)] + [] == [LS.Areg(r1)];
+                }
+                var gm2 := NPL.StampFold(rer, r1, inp, gm);
+                GateAheadClearStampFold(rer, acts, r1, inp, gm);
                 WalkDefsOkTail(acts);
                 // the continuation's walk at pcmid: the explicit (acts, b) witness
                 assert AR.ActionsRepL(rer, qm, cont, code, pcmid) && EL.PikeLkActionsRec(cont)
@@ -3017,12 +3126,13 @@ module LindenElkLiftSimChain {
                 assert WalkPairLkRec(rer, qm, code, inp, tc, gm2, pcmid, g);
                 assert e1x + 2 < RB.size(code);
                 // the stamp see-through at y: the explicit qid witness
-                assert tbb.t == tc && LG.GMUpdate(tbb.g, LC.Idx(inp), gm) == gm2 && pcmid == (e1x + 2) + 1;
-                assert (NR.GetPcRE(code, e1x + 2) == Some(RB.SetQuantToClock(qidC, false))
-                        || NR.GetPcRE(code, e1x + 2) == Some(RB.SetQuantToClock(qidC, true)))
-                       && qidC in qm.quants
-                       && tbb.GroupActionT? && tbb.g == LG.Reset(qm.quants[qidC])
-                       && WalkPairLkRec(rer, qm, code, inp, tbb.t, LG.GMUpdate(tbb.g, LC.Idx(inp), gm), (e1x + 2) + 1, g);
+                assert StampNodeOk(rer, qm, inp, qidC, tbb);
+                assert tbb.t == tc && pcmid == (e1x + 2) + 1
+                       && NPL.StampFold(rer, T.Translate(qm.bodies[qidC]), inp, gm) == gm2;
+                assert NR.GetPcRE(code, e1x + 2) == Some(RB.SetQuantToClock(qidC, true))
+                       && StampNodeOk(rer, qm, inp, qidC, tbb)
+                       && WalkPairLkRec(rer, qm, code, inp, tbb.t,
+                                        NPL.StampFold(rer, T.Translate(qm.bodies[qidC]), inp, gm), (e1x + 2) + 1, g);
                 assert WalkPairLkRec(rer, qm, code, inp, tbb, gm, y as nat, g);
                 assert CE.ProgErase(tb) == LT.Choice(CE.ProgErase(ta), CE.ProgErase(tbb));
               case _ =>
