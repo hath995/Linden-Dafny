@@ -158,7 +158,7 @@ module LindenElkLiftSimMain {
     requires M.FLookLoopQuantValueOkFull(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     // ---- the whole-regex carriers at the winning thread ----
     requires S == PIV.CapIdsInLooks(re)
-    requires LookNestOkTTop(re, S, leafgm, thread)
+    requires LookNestOkTTopU(re, S, leafgm, thread)   // (G4b-2) the winner's unguarded carrier
     requires LookNestBackTTopDeep(rer, re, crv, str, ov, S, leafgm, thread, ncap, nlook, nquant)
     // ---- res -> thread frames + thread invariants ----
     requires forall l: nat :: l in NI.TopLookIds(re) ==>
@@ -375,7 +375,7 @@ module LindenElkLiftSimMain {
     requires M.FLookLoopQuantValueOkFull(crv, str, res2, res1, 1, R.max_lookaround(ast), ov, ncap, nlook, nquant)
     // ---- the whole-regex carriers at the winning thread ----
     requires S == PIV.CapIdsInLooks(re)
-    requires LookNestOkTTop(re, S, leafgm, thread)
+    requires LookNestOkTTopU(re, S, leafgm, thread)   // (G4b-2) the winner's unguarded carrier
     requires LookNestBackTTopDeep(rer, re, crv, str, ov, S, leafgm, thread, ncap, nlook, nquant)
     // ---- res -> thread frames + thread invariants ----
     requires forall l: nat :: l in NI.TopLookIds(re) ==>
@@ -438,6 +438,7 @@ module LindenElkLiftSimMain {
     requires M.OrderedGm(leaf.1)
     requires LT.FirstLeaf(t, inp) == Some(leaf)
     requires BestTieLkNestedTop(rer, re, crv, str, ov, S, Some(leaf), Some(thread), ncap, nlook, nquant)
+    requires LookNestOkTTopU(re, S, leaf.1, thread)   // (G4b-2) the winner's unguarded carrier (no stamps there)
     // ---- global res-side facts, OPAQUE (the endpoint adapters' outputs) ----
     requires var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
                                      thread.capture_regs, thread.look_regs, thread.quant_regs, ov);
@@ -516,6 +517,7 @@ module LindenElkLiftSimMain {
     requires M.OrderedGm(leaf.1)
     requires LT.FirstLeaf(t, inp) == Some(leaf)
     requires BestTieLkNestedTop(rer, re, crv, str, ov, S, Some(leaf), Some(thread), ncap, nlook, nquant)
+    requires LookNestOkTTopU(re, S, leaf.1, thread)   // (G4b-2) the winner's unguarded carrier (no stamps there)
     // ---- global res-side facts, OPAQUE (the endpoint adapters' outputs) ----
     requires var res := AI.FLookLoop(crv, str, 1, R.max_lookaround(ast),
                                      thread.capture_regs, thread.look_regs, thread.quant_regs, ov);

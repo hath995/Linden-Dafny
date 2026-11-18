@@ -529,6 +529,7 @@ module LindenElkDeadLooks {
       by { AI.UnprocessedAdd(b0, t.pc, t.exit_allowed); }
     match RB.get_instr(c, t.pc) {
       case Consume(ce) =>
+        assert {:split_here} true;   // (G4b-2, pack) one batch per instruction arm
         var (nb1, ni1) := AI.add_thread(t, ce, x1.blocked, x1.isblocked);
         var (nb2, ni2) := AI.add_thread(u, ce, x2.blocked, x2.isblocked);
         assert ni1 == ni2;
@@ -543,9 +544,11 @@ module LindenElkDeadLooks {
                              x2.(blocked := nb2, isblocked := ni2, active := bc), ov, dir, D);
       case Accept =>
       case Jmp(x) =>
+        assert {:split_here} true;   // (G4b-2, pack) one batch per instruction arm
         ListAgreeCons(t.(pc := x), u.(pc := x), ac, bc, D);
         FAdvanceEpsilonAgree(c, x1.(active := [t.(pc := x)] + ac), x2.(active := [u.(pc := x)] + bc), ov, dir, D);
       case Fork(x, y) =>
+        assert {:split_here} true;   // (G4b-2, pack) one batch per instruction arm
         var n1 := AI.Thread(x, t.capture_regs, t.look_regs, t.quant_regs, t.exit_allowed);
         var n2 := AI.Thread(x, u.capture_regs, u.look_regs, u.quant_regs, u.exit_allowed);
         ListAgreeCons(t.(pc := y), u.(pc := y), ac, bc, D);
@@ -554,17 +557,20 @@ module LindenElkDeadLooks {
         assert [n2, u.(pc := y)] + bc == [n2] + ([u.(pc := y)] + bc);
         FAdvanceEpsilonAgree(c, x1.(active := [n1, t.(pc := y)] + ac), x2.(active := [n2, u.(pc := y)] + bc), ov, dir, D);
       case SetRegisterToCP(reg) =>
+        assert {:split_here} true;   // (G4b-2, pack) one batch per instruction arm
         var t2 := t.(capture_regs := AReg.set_reg(t.capture_regs, reg, Some(x1.cp), x1.clock), pc := t.pc + 1);
         var u2 := u.(capture_regs := AReg.set_reg(u.capture_regs, reg, Some(x2.cp), x2.clock), pc := u.pc + 1);
         ListAgreeCons(t2, u2, ac, bc, D);
         FAdvanceEpsilonAgree(c, x1.(active := [t2] + ac), x2.(active := [u2] + bc), ov, dir, D);
       case SetQuantToClock(q, bq) =>
+        assert {:split_here} true;   // (G4b-2, pack) one batch per instruction arm
         var ocp := if bq then Some(x1.cp) else None;
         var t2 := t.(quant_regs := AReg.set_reg(t.quant_regs, q, ocp, x1.clock), pc := t.pc + 1);
         var u2 := u.(quant_regs := AReg.set_reg(u.quant_regs, q, ocp, x2.clock), pc := u.pc + 1);
         ListAgreeCons(t2, u2, ac, bc, D);
         FAdvanceEpsilonAgree(c, x1.(active := [t2] + ac), x2.(active := [u2] + bc), ov, dir, D);
       case CheckOracle(l) =>
+        assert {:split_here} true;   // (G4b-2, pack) one batch per instruction arm
         if LOr.view_get_oracle(ov, x1.cp, l) {
           var t2 := t.(pc := t.pc + 1, look_regs := AReg.set_reg(t.look_regs, l, Some(x1.cp), x1.clock));
           var u2 := u.(pc := u.pc + 1, look_regs := AReg.set_reg(u.look_regs, l, Some(x2.cp), x2.clock));
@@ -575,6 +581,7 @@ module LindenElkDeadLooks {
           FAdvanceEpsilonAgree(c, x1.(active := ac), x2.(active := bc), ov, dir, D);
         }
       case NegCheckOracle(l) =>
+        assert {:split_here} true;   // (G4b-2, pack) one batch per instruction arm
         if LOr.view_get_oracle(ov, x1.cp, l) {
           FAdvanceEpsilonAgree(c, x1.(active := ac), x2.(active := bc), ov, dir, D);
         } else {
@@ -582,13 +589,16 @@ module LindenElkDeadLooks {
           FAdvanceEpsilonAgree(c, x1.(active := [t.(pc := t.pc + 1)] + ac), x2.(active := [u.(pc := u.pc + 1)] + bc), ov, dir, D);
         }
       case WriteOracle(l) =>
+        assert {:split_here} true;   // (G4b-2, pack) one batch per instruction arm
         FAdvanceEpsilonAgree(c, x1.(active := ac), x2.(active := bc), LOr.view_set_oracle(ov, x1.cp, l), dir, D);
       case BeginLoop =>
+        assert {:split_here} true;   // (G4b-2, pack) one batch per instruction arm
         var t2 := t.(exit_allowed := false, pc := t.pc + 1);
         var u2 := u.(exit_allowed := false, pc := u.pc + 1);
         ListAgreeCons(t2, u2, ac, bc, D);
         FAdvanceEpsilonAgree(c, x1.(active := [t2] + ac), x2.(active := [u2] + bc), ov, dir, D);
       case EndLoop =>
+        assert {:split_here} true;   // (G4b-2, pack) one batch per instruction arm
         if t.exit_allowed {
           ListAgreeCons(t.(pc := t.pc + 1), u.(pc := u.pc + 1), ac, bc, D);
           FAdvanceEpsilonAgree(c, x1.(active := [t.(pc := t.pc + 1)] + ac), x2.(active := [u.(pc := u.pc + 1)] + bc), ov, dir, D);
@@ -596,6 +606,7 @@ module LindenElkDeadLooks {
           FAdvanceEpsilonAgree(c, x1.(active := ac), x2.(active := bc), ov, dir, D);
         }
       case CheckNullable(qid) =>
+        assert {:split_here} true;   // (G4b-2, pack) one batch per instruction arm
         if LCdn.cdn_get(x1.cdn, qid) {
           ListAgreeCons(t.(pc := t.pc + 1), u.(pc := u.pc + 1), ac, bc, D);
           FAdvanceEpsilonAgree(c, x1.(active := [t.(pc := t.pc + 1)] + ac), x2.(active := [u.(pc := u.pc + 1)] + bc), ov, dir, D);
@@ -603,6 +614,7 @@ module LindenElkDeadLooks {
           FAdvanceEpsilonAgree(c, x1.(active := ac), x2.(active := bc), ov, dir, D);
         }
       case AnchorAssertion(a) =>
+        assert {:split_here} true;   // (G4b-2, pack) one batch per instruction arm
         if LAnc.is_satisfied(a, x1.context, dir) {
           ListAgreeCons(t.(pc := t.pc + 1), u.(pc := u.pc + 1), ac, bc, D);
           FAdvanceEpsilonAgree(c, x1.(active := [t.(pc := t.pc + 1)] + ac), x2.(active := [u.(pc := u.pc + 1)] + bc), ov, dir, D);
@@ -610,6 +622,7 @@ module LindenElkDeadLooks {
           FAdvanceEpsilonAgree(c, x1.(active := ac), x2.(active := bc), ov, dir, D);
         }
       case Fail =>
+        assert {:split_here} true;   // (G4b-2, pack) one batch per instruction arm
         FAdvanceEpsilonAgree(c, x1.(active := ac), x2.(active := bc), ov, dir, D);
     }
   }
