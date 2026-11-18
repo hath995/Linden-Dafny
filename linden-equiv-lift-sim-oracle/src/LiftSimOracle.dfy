@@ -836,6 +836,28 @@ module LindenElkLiftSimOracle {
   {
   }
 
+  /** (G4b-2) `DescentLandTopDeep` from the presence-premised carrier (a row's reconstructed winner). */
+  lemma DescentLandTopDeepP(
+    rer: LW.RegExpRecord, re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+    S: set<LG.GroupId>, gmt: LG.GroupMap, thread: AI.Thread, A0: nat, g2: nat,
+    ncap: int, nlook: int, nquant: int)
+    requires S == PIV.CapIdsInLooks(re)
+    requires LookNestBackTTopDeepP(rer, re, crv, str, ov, S, gmt, thread, ncap, nlook, nquant)
+    requires A0 in NI.TopLookIds(re)
+    requires A0 in LTB.LookIds(re)
+    requires M.MatchedPosLA(crv, thread.look_regs, A0 as int)
+    requires NI.LookPathDom(re, AI.get_idx(thread.look_regs.a_clk, A0 as int), thread.quant_regs.a_clk, A0)
+    requires NI.LookPathPresent(re, thread.capture_regs.a_clk, thread.quant_regs.a_clk, -1, A0)
+    requires AI.get_idx(thread.look_regs.a_clk, A0 as int) >= NI.MxAtLidLk(re, thread.quant_regs.a_clk, -1, A0)
+    requires g2 in S && g2 in PIV.CapIds(NI.LookBodyOfRE(re, A0))
+    requires var lsub := SubFirstLeafAt(rer, crv, str, A0 as int, thread.look_regs);
+             lsub.Some? && g2 in lsub.value
+    ensures g2 in gmt
+    ensures var lsub := SubFirstLeafAt(rer, crv, str, A0 as int, thread.look_regs);
+            gmt[g2] == lsub.value[g2]
+  {
+  }
+
   /** (R2 direct-capture landing) A DIRECTLY-owned inside-look capture `g2` (in
       `body`'s caps but OUTSIDE `body`'s own inner looks) that the FRESH body match
       of a top lookAHEAD `A0` carries LIVE lands in `A0`'s sub-first-leaf

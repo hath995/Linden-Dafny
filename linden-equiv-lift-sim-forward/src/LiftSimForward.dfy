@@ -661,7 +661,7 @@ module LindenElkLiftSimForward {
         assert cdnA == LCdn.compile_cdns(host);   // (G5b-2) the row's own table (LookEntryOk)
         LookNestBackTFromBodyReplayLBS(rer, qmB, laA, host, bodycodeB, crv, str, cpA, ov,
                                       cdnA, crv.f_plus_bc, ncap, nlook, nquant);
-        assert LookNestOkTTop(host, Sh, gmtH, rfA);
+        assert LookNestOkTTopU(host, Sh, gmtH, rfA);   // (G4b-2) the row's unguarded form
       }
       L1 := AI.get_idx(rfA.look_regs.a_clk, A1 as int);
       NI.LookPathDomIntroTopCdn(host, rfA.capture_regs.a_clk, rfA.quant_regs.a_clk, -1, A1, L1);
@@ -1305,7 +1305,7 @@ module LindenElkLiftSimForward {
       LookNestBackTFromBodyReplayS(rer, qmB, laA, host, bodycode, endlH, 0, crv, str, cpA, ov,
                                   cdnA, crv.f_plus_bc, ncap, nlook, nquant);
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert LookNestOkTTop(host, Sh, gmtH, rfA);
+      assert LookNestOkTTopU(host, Sh, gmtH, rfA);   // (G4b-2) the row's unguarded form
     }
     var L1 := AI.get_idx(rfA.look_regs.a_clk, A1 as int);
     assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
@@ -1424,7 +1424,7 @@ module LindenElkLiftSimForward {
       LookNestBackTFromBodyReplayS(rer, qmB, laA, host, bodycode, endlH, 0, crv, str, cpA, ov,
                                   cdnA, crv.f_plus_bc, ncap, nlook, nquant);
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert LookNestBackTTopDeep(rer, host, crv, str, ov, Sh, gmtH, rfA, ncap, nlook, nquant);
+      assert LookNestBackTTopDeepP(rer, host, crv, str, ov, Sh, gmtH, rfA, ncap, nlook, nquant);   // (G4b-2) P form
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert g in gmtH;
     }

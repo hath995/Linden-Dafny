@@ -401,7 +401,7 @@ module LindenElkLiftSimDeep {
       var Sh := PIV.CapIdsInLooks(host);
       var gmtH := rb.value.1;
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      assert LookNestBackTTopDeep(rer, host, crv, str, ov, Sh, gmtH, rfA, ncap, nlook, nquant);
+      assert LookNestBackTTopDeepP(rer, host, crv, str, ov, Sh, gmtH, rfA, ncap, nlook, nquant);   // (G4b-2) the row's P form
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert CM.LookClkSetWithCp(rfA.look_regs) && CM.LookCpSetWithClk(rfA.look_regs);
 
@@ -755,7 +755,7 @@ module LindenElkLiftSimDeep {
     var rfA := rfP.value;
     var Sh := PIV.CapIdsInLooks(host);
     var gmtH := LT.FirstLeaf(t, inpA).value.1;
-    assert LookNestBackTTopDeep(rer, host, crv, str, ov, Sh, gmtH, rfA, ncap, nlook, nquant);
+    assert LookNestBackTTopDeepP(rer, host, crv, str, ov, Sh, gmtH, rfA, ncap, nlook, nquant);   // (G4b-2) the row's P form
     assert CM.LookClkSetWithCp(rfA.look_regs) && CM.LookCpSetWithClk(rfA.look_regs);
 
     assert {:split_here} true;   // (E3) step boundary: its own assertion batch
@@ -828,8 +828,9 @@ module LindenElkLiftSimDeep {
     assert SubFirstLeafAt(rer, crv, str, A1 as int, rfA.look_regs) == lsub1;   // reads only get_cp at A1
 
     assert {:split_here} true;   // (E3) step boundary: its own assertion batch
-    // (κ) LAND via the DEEP carrier, then identify the leaf with SubFirstLeafAt(A, res1)
-    DescentLandTopDeep(rer, host, crv, str, ov, Sh, gmtH, rfA, A1, g2, ncap, nlook, nquant);
+    // (κ) LAND via the DEEP carrier (G4b-2: its presence-premised form; ReverseLookDomOnFreshCdn gave presence),
+    //     then identify the leaf with SubFirstLeafAt(A, res1)
+    DescentLandTopDeepP(rer, host, crv, str, ov, Sh, gmtH, rfA, A1, g2, ncap, nlook, nquant);
     assert g2 in gmtH;
     assert LidDir(crv, A as int) == WP.Forward;               // laA.Lookahead? (dispatch)
     BodyReplayGmtIsSubFirstLeaf(rer, crv, str, A as int, res1, host);
