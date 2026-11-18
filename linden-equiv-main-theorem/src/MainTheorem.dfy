@@ -7226,7 +7226,11 @@ module LindenElkMain {
         assert {:split_here} true;
         // ---- the winner's look bank is the VM winner's (a lookahead row: `ReplayPlusRowLA`'s last
         //      conjunct; the reconstruction keeps the look bank), and the VM run keeps the invariant ----
-        assert res == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1);
+        // (G4b-2) one FLookLoop unfolding: alone, the context's quantifiers stalled it at the time limit (AGENTS §2.9)
+        assert res == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1) by {
+          hide *; reveal AI.FLookLoop;
+        }
+        assert {:split_here} true;
         assert CM.VmLookCpSet(inits) by {
           assert AI.init_thread(cap, lk, qt).look_regs == lk;
           assert inits.active == [AI.init_thread(cap, lk, qt)];
@@ -7512,6 +7516,13 @@ module LindenElkMain {
     { assert owner != lid; }
   }
 
+  /** The backward context reads the character before `cp` (one unfolding, in an empty context). */
+  lemma CpContextBackNext(cp: int, str: string)
+    ensures AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1)
+  {
+    reveal AI.cp_context;
+  }
+
   /** C4e DELIVERABLE 2 (value lift): THE nested FLookLoop QUANT value lift keyed
       on the FINAL look bank `res.1` — quant twin of `FLookLoopValueLiftFull`,
       generalizing depth-1 `FLookLoopQuantValueLift` from `lk`-keyed to `res.1`-
@@ -7608,7 +7619,9 @@ module LindenElkMain {
         var nlk := if result.None? then lk else result.value.look_regs;
         var nqt := if result.None? then qt else result.value.quant_regs;
         var D := QIdsOuter(body);
-        assert res == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1);
+        assert res == AI.FLookLoop(crv, str, next, maxlook, capN, nlk, nqt, ov1) by {
+          hide *; reveal AI.FLookLoop;   // (G4b-2) a one-step unfold (AGENTS §2.9)
+        }
         assert 0 <= cp <= |str| by { assert AI.get_idx(lk.a_cp, lid) == cp; }   // LookCpsLE + get_cp.Some?
         assert CM.RegsAgreeInside(qt, AReg.init_regs(nquant), LKC.QIdsInt(body));   // (c'q)@lid
         // the fresh PLUS match at lid, keyed on lk
@@ -7619,6 +7632,7 @@ module LindenElkMain {
           assert CP.capture_regex(la, body) == body;
           assert bytecode == CP.compile_to_bytecode(body);
           assert dir == LAnc.Forward;
+          assert {:split_here} true;   // (G4b-2) the arms' statics and the replay call loop as one batch (each < 60 s alone)
           ReplayPlusRowLAS(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body, ncap, nlook, nquant);
           assert {:split_here} true;
           ReplayAgreePlusFresh(bytecode, str, cp, cap, lk, qt, ov, lookcdn, crv.f_plus_bc, body, {}, {},
@@ -7633,9 +7647,7 @@ module LindenElkMain {
           assert CP.capture_regex(la, body) == R.reverse_regex(body);
           assert bytecode == CP.compile_to_bytecode(R.reverse_regex(body));
           assert dir == LAnc.Backward;
-          assert AI.cp_context(cp, str, LAnc.Backward).nextchar == AI.get_char(str, cp - 1) by {
-            hide *; reveal AI.cp_context;   // a one-step unfold the ambient context drowns (20 s isolated)
-          }
+          CpContextBackNext(cp, str);   // (G4b-2) a one-step unfold the ambient facts drowned even under `hide *`
           assert {:split_here} true;
           // (G3b) a lookbehind row replays the plus machine too
           ReplayPlusRowLBS(bytecode, str, ov, lookcdn, crv.f_plus_bc, cp, cap, lk, qt, body, ncap, nlook, nquant);
