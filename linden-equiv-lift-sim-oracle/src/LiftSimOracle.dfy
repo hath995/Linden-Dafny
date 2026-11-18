@@ -146,6 +146,7 @@ module LindenElkLiftSimOracle {
           bm.Some?
           && GmtTieOutside(re, bm.value, bbest.value.1, S)
           && LookNestOkTTop(re, S, bbest.value.1, bm.value)
+          && FrozenOk(rer, re, str, bbest.value.1, bm.value)   // (G4b-2) the live stamps' frozen look groups
           && LookNestBackTTop(re, crv, str, ov, S, bbest.value.1, bm.value, ncap, nlook, nquant)
           // (R2 DEEP CARRIER) the strengthened converse: lands l's WHOLE
           // sub-first-leaf captures (inner-look included), not just direct ones.
@@ -681,6 +682,58 @@ module LindenElkLiftSimOracle {
               (g in lsub.value ==> g in gmt && gmt[g] == lsub.value[g])
               && (g in gmt ==> g in lsub.value)
   }
+  /** (G4b-2) The PRESENCE-premised converse carriers: a row's reconstructed winner keeps stale replay
+      records of dead stamps, so its converse is claimed only at present, fresh lids. The Dom forms imply them. */
+  ghost predicate LookNestBackTTopP(re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                                    S: set<LG.GroupId>, gmt: LG.GroupMap, th: AI.Thread,
+                                    ncap: int, nlook: int, nquant: int) {
+    forall lid: nat | lid in NI.TopLookIds(re) ::
+      (M.MatchedPosLA(crv, th.look_regs, lid as int)
+       && lid in LTB.LookIds(re)
+       && NI.LookPathDom(re, AI.get_idx(th.look_regs.a_clk, lid as int), th.quant_regs.a_clk, lid)
+       && NI.LookPathPresent(re, th.capture_regs.a_clk, th.quant_regs.a_clk, -1, lid)
+       && AI.get_idx(th.look_regs.a_clk, lid as int) >= NI.MxAtLidLk(re, th.quant_regs.a_clk, -1, lid))
+      ==>
+        var rf := M.FreshBodyMatchPlus(crv, str, lid as int, th.look_regs, ov, ncap, nlook, nquant);
+        rf.Some? ==>
+          forall g: LG.GroupId ::
+            g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, lid))
+            && g in PIV.GmOfLive(NI.LookBodyOfRE(re, lid), rf.value.capture_regs,
+                                 rf.value.look_regs, rf.value.quant_regs)
+            ==> g in gmt
+  }
+
+  ghost predicate LookNestBackTTopDeepP(rer: LW.RegExpRecord, re: R.regex, crv: CP.FCompiled,
+                                        str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
+                                        gmt: LG.GroupMap, th: AI.Thread,
+                                        ncap: int, nlook: int, nquant: int) {
+    forall lid: nat | lid in NI.TopLookIds(re) ::
+      (M.MatchedPosLA(crv, th.look_regs, lid as int)
+       && lid in LTB.LookIds(re)
+       && NI.LookPathDom(re, AI.get_idx(th.look_regs.a_clk, lid as int), th.quant_regs.a_clk, lid)
+       && NI.LookPathPresent(re, th.capture_regs.a_clk, th.quant_regs.a_clk, -1, lid)
+       && AI.get_idx(th.look_regs.a_clk, lid as int) >= NI.MxAtLidLk(re, th.quant_regs.a_clk, -1, lid))
+      ==>
+        var lsub := SubFirstLeafAt(rer, crv, str, lid as int, th.look_regs);
+        lsub.Some? ==>
+          forall g: LG.GroupId ::
+            g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, lid)) ==>
+              (g in lsub.value ==> g in gmt && gmt[g] == lsub.value[g])
+              && (g in gmt ==> g in lsub.value)
+  }
+
+  lemma BackTTopToP(re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                    S: set<LG.GroupId>, gmt: LG.GroupMap, th: AI.Thread, ncap: int, nlook: int, nquant: int)
+    requires LookNestBackTTop(re, crv, str, ov, S, gmt, th, ncap, nlook, nquant)
+    ensures LookNestBackTTopP(re, crv, str, ov, S, gmt, th, ncap, nlook, nquant)
+  {}
+
+  lemma DeepTopToP(rer: LW.RegExpRecord, re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
+                   S: set<LG.GroupId>, gmt: LG.GroupMap, th: AI.Thread, ncap: int, nlook: int, nquant: int)
+    requires LookNestBackTTopDeep(rer, re, crv, str, ov, S, gmt, th, ncap, nlook, nquant)
+    ensures LookNestBackTTopDeepP(rer, re, crv, str, ov, S, gmt, th, ncap, nlook, nquant)
+  {}
+
 
   /** (R2 — DEEP gate-pass maintenance) `LookNestBackTGatePassTop` for the DEEP
       carrier. Verbatim structure: for the crossed lid `l0` the caller supplies the

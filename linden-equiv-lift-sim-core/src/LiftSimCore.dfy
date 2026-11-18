@@ -110,6 +110,7 @@ module LindenElkLiftSimCore {
   import TREP = LindenElkTreeRep
   import LTB = LindenElkLookTables
   import NI = LindenElkNestInv
+  import SL = LindenElkStampLive   // (G4b-2) machine A's chain freshness (QChainFreshOff)
   import MW = LindenElkMirrorWorld       // (gate B) the G1 leaf: per-row ties, bank bounds
   import GG = LindenElkFlipGateG         // (gate B) flip-gate F6 lemmas, scope-free
   import CG = LindenElkFlipClosedG       // (gate B) the scope-free closedness ladder
@@ -2675,6 +2676,8 @@ module LindenElkLiftSimCore {
     forall qid: nat {:trigger LiveStampAt(re, th.quant_regs, qid)} ::
       qid in PIV.QuantIdsOutsideLooks(re) && LiveStampAt(re, th.quant_regs, qid)
       ==> FrozenAtQ(rer, re, str, gmt, qid, AI.get_idx(th.quant_regs.a_cp, qid as int))
+          // machine A's (stronger) chain freshness: its readout's `PathPresentQ` is keyed on it
+          && PIV.QChainFresh(re, th.quant_regs.a_clk, -1, qid)
   }
 
   /** The register effect of `SetQuantToClock(qn, true)` on one thread, as the core effect lemmas state it. */
@@ -2793,8 +2796,9 @@ module LindenElkLiftSimCore {
     requires FrozenOk(rer, re, str, gm, th)
     // machine A's `NST.NestStampTopQuantSite`: no stamped quantifier encloses the write site
     requires PIV.NoStampedAbove(re, th.quant_regs.a_cp, qn)
-    // the stamp's own body: the fold's frozen value (StampFoldFacts)
+    // the stamp's own body: the fold's frozen value (StampFoldFacts), and machine A's fresh chain
     requires FrozenAtQ(rer, re, str, gm', qn, cp)
+    requires PIV.QChainFresh(re, th'.quant_regs.a_clk, -1, qn)
     // the fold is a frame off q's body
     requires forall g: LG.GroupId :: g !in PIV.CapIds(PIV.QidBody(re, qn)) ==>
                                        (g in gm' <==> g in gm) && (g in gm' ==> gm'[g] == gm[g])
@@ -2803,6 +2807,7 @@ module LindenElkLiftSimCore {
     PIV.QuantIdsOutsideLooksSub(re);
     forall qid: nat | qid in PIV.QuantIdsOutsideLooks(re) && LiveStampAt(re, th'.quant_regs, qid)
       ensures FrozenAtQ(rer, re, str, gm', qid, AI.get_idx(th'.quant_regs.a_cp, qid as int))
+              && PIV.QChainFresh(re, th'.quant_regs.a_clk, -1, qid)
     {
       if qid == qn {
       } else if qid in PIV.QuantIds(PIV.QidBody(re, qn)) {
@@ -2820,7 +2825,9 @@ module LindenElkLiftSimCore {
         assert LiveStampAt(re, th.quant_regs, qid);
         var c := AI.get_idx(th.quant_regs.a_cp, qid as int);
         assert c == AI.get_idx(th'.quant_regs.a_cp, qid as int);
-        assert FrozenAtQ(rer, re, str, gm, qid, c) by { reveal FrozenOk(); }
+        assert FrozenAtQ(rer, re, str, gm, qid, c) && PIV.QChainFresh(re, th.quant_regs.a_clk, -1, qid)
+          by { reveal FrozenOk(); }
+        SL.QChainFreshOff(re, th.quant_regs.a_clk, th'.quant_regs.a_clk, -1, qn, qid);
         QidBodyTrichotomy(re, qid, qn);
         var rq := T.Translate(PIV.QidBody(re, qid));
         M.TranslateDefGroupsEqCapIds(PIV.QidBody(re, qid));
@@ -2868,6 +2875,7 @@ module LindenElkLiftSimCore {
     PIV.QuantIdsOutsideLooksSub(re);
     forall qid: nat | qid in PIV.QuantIdsOutsideLooks(re) && LiveStampAt(re, th'.quant_regs, qid)
       ensures FrozenAtQ(rer, re, str, gm', qid, AI.get_idx(th'.quant_regs.a_cp, qid as int))
+              && PIV.QChainFresh(re, th'.quant_regs.a_clk, -1, qid)
     {
       if qid == qn {
         assert false;
@@ -2891,7 +2899,9 @@ module LindenElkLiftSimCore {
           }
         }
         assert LiveStampAt(re, th.quant_regs, qid);
-        assert FrozenAtQ(rer, re, str, gm, qid, c) by { reveal FrozenOk(); }
+        assert FrozenAtQ(rer, re, str, gm, qid, c) && PIV.QChainFresh(re, th.quant_regs.a_clk, -1, qid)
+          by { reveal FrozenOk(); }
+        SL.QChainFreshOff(re, th.quant_regs.a_clk, th'.quant_regs.a_clk, -1, qn, qid);
         QidBodyTrichotomy(re, qid, qn);
         var rq := T.Translate(PIV.QidBody(re, qid));
         M.TranslateDefGroupsEqCapIds(PIV.QidBody(re, qid));
@@ -2939,10 +2949,12 @@ module LindenElkLiftSimCore {
     PIV.QuantIdsOutsideLooksSub(re);
     forall qid: nat | qid in PIV.QuantIdsOutsideLooks(re) && LiveStampAt(re, th'.quant_regs, qid)
       ensures FrozenAtQ(rer, re, str, gm', qid, AI.get_idx(th'.quant_regs.a_cp, qid as int))
+              && PIV.QChainFresh(re, th'.quant_regs.a_clk, -1, qid)
     {
       var c := AI.get_idx(th.quant_regs.a_cp, qid as int);
       assert LiveStampAt(re, th.quant_regs, qid);
-      assert FrozenAtQ(rer, re, str, gm, qid, c) by { reveal FrozenOk(); }
+      assert FrozenAtQ(rer, re, str, gm, qid, c) && PIV.QChainFresh(re, th.quant_regs.a_clk, -1, qid)
+        by { reveal FrozenOk(); }
       var rq := T.Translate(PIV.QidBody(re, qid));
       M.TranslateDefGroupsEqCapIds(PIV.QidBody(re, qid));
       NPL.LkBodyGroupsSubDG(rq);
@@ -2971,6 +2983,96 @@ module LindenElkLiftSimCore {
         && AI.get_idx(th.look_regs.a_clk, lid as int)
            >= NI.MxAtLidLk(re, th.quant_regs.a_clk, -1, lid)
   }
+  /** (G4b-2) The UNGUARDED presence carrier (the pre-G4b-2 body): what a reconstructed winner satisfies,
+      where no machine-B stamp is left to defer to. */
+  ghost predicate LookNestOkTTopU(re: R.regex, S: set<LG.GroupId>, gmt: LG.GroupMap, th: AI.Thread) {
+    forall lid: nat | lid in NI.TopLookIds(re) ::
+      (lid in LTB.LookIds(re)
+       && exists g: LG.GroupId :: g in S && g in gmt && g in PIV.CapIds(NI.LookBodyOfRE(re, lid))) ==>
+        NI.LookPathPresent(re, th.capture_regs.a_clk, th.quant_regs.a_clk, -1, lid)
+        && AI.get_idx(th.look_regs.a_clk, lid as int) >= 0
+        && AI.get_idx(th.look_regs.a_clk, lid as int)
+           >= NI.MxAtLidLk(re, th.quant_regs.a_clk, -1, lid)
+  }
+
+  lemma OkTUToGuarded(re: R.regex, S: set<LG.GroupId>, gmt: LG.GroupMap, th: AI.Thread)
+    requires LookNestOkTTopU(re, S, gmt, th)
+    ensures LookNestOkTTop(re, S, gmt, th)
+  {}
+
+  /** With no stamp set, the guard is empty and the two carriers coincide. */
+  lemma OkTGuardedNoStampsU(re: R.regex, S: set<LG.GroupId>, gmt: LG.GroupMap, th: AI.Thread)
+    requires forall A: int :: AI.get_idx(th.quant_regs.a_cp, A) < 0
+    requires LookNestOkTTop(re, S, gmt, th)
+    ensures LookNestOkTTopU(re, S, gmt, th)
+  {
+    LiveStampLidsNoStamps(re, th.quant_regs);
+  }
+
+  lemma LiveStampLidsNoStamps(re: R.regex, qr: AReg.Regs)
+    requires forall A: int :: AI.get_idx(qr.a_cp, A) < 0
+    ensures LiveStampLids(re, qr) == {}
+  {
+    reveal LiveStampLids();
+  }
+
+  /** A top look inside a quantifier's body: the quantifier is outside every look. */
+  lemma TopLidQuantOutsideLooks(re: R.regex, q: nat, lid: nat)
+    requires LTB.LookUnique(re) && q in PIV.QuantIds(re)
+    requires lid in NI.TopLookIds(re) && lid in LTB.LookIds(PIV.QidBody(re, q))
+    ensures q in PIV.QuantIdsOutsideLooks(re)
+    decreases re
+  {
+    NI.QidBodyLookIdsSub(re, q);
+    match re
+    case Re_alt(r1, r2) =>
+      NI.TopLookIdsIn(r1); NI.TopLookIdsIn(r2);
+      if q in PIV.QuantIds(r1) {
+        NI.QidBodyLookIdsSub(r1, q);
+        assert lid in LTB.LookIds(r1);
+        assert lid !in NI.TopLookIds(r2) by { if lid in NI.TopLookIds(r2) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); } }
+        TopLidQuantOutsideLooks(r1, q, lid);
+      } else {
+        NI.QidBodyLookIdsSub(r2, q);
+        assert lid in LTB.LookIds(r2);
+        assert lid !in NI.TopLookIds(r1) by { if lid in NI.TopLookIds(r1) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); } }
+        TopLidQuantOutsideLooks(r2, q, lid);
+      }
+    case Re_con(r1, r2) =>
+      NI.TopLookIdsIn(r1); NI.TopLookIdsIn(r2);
+      if q in PIV.QuantIds(r1) {
+        NI.QidBodyLookIdsSub(r1, q);
+        assert lid in LTB.LookIds(r1);
+        assert lid !in NI.TopLookIds(r2) by { if lid in NI.TopLookIds(r2) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); } }
+        TopLidQuantOutsideLooks(r1, q, lid);
+      } else {
+        NI.QidBodyLookIdsSub(r2, q);
+        assert lid in LTB.LookIds(r2);
+        assert lid !in NI.TopLookIds(r1) by { if lid in NI.TopLookIds(r1) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); } }
+        TopLidQuantOutsideLooks(r2, q, lid);
+      }
+    case Re_quant(_, qid0, _, r1) =>
+      if !(qid0 >= 0 && (qid0 as nat) == q) { TopLidQuantOutsideLooks(r1, q, lid); }
+    case Re_capture(_, r1) => TopLidQuantOutsideLooks(r1, q, lid);
+    case Re_lookaround(lid0, _, r1) =>
+      assert lid == lid0 as nat;
+      NI.QidBodyLookIdsSub(r1, q);
+      assert false;   // LookUnique: the look's own id is not in its body
+  }
+
+  /** A guarded lid names its live host, a quantifier outside looks (so `FrozenOk`'s key applies). */
+  lemma LiveStampLidHost(re: R.regex, qr: AReg.Regs, lid: nat) returns (q: nat)
+    requires LTB.LookUnique(re)
+    requires lid in LiveStampLids(re, qr)
+    ensures q in PIV.QuantIds(re) && q in PIV.QuantIdsOutsideLooks(re) && LiveStampAt(re, qr, q)
+    ensures lid in NI.TopLookIds(re) && lid in LTB.LookIds(PIV.QidBody(re, q))
+  {
+    reveal LiveStampLids();
+    assert lid in NI.TopLookIds(re) && LidUnderLiveStamp(re, qr, lid);
+    q :| q in PIV.QuantIds(re) && LiveStampAt(re, qr, q) && lid in LTB.LookIds(PIV.QidBody(re, q));
+    TopLidQuantOutsideLooks(re, q, lid);
+  }
+
 
   ghost predicate LookNestBackTTop(re: R.regex, crv: CP.FCompiled, str: string, ov: LOr.OracleView,
                                    S: set<LG.GroupId>, gmt: LG.GroupMap, th: AI.Thread,

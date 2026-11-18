@@ -173,6 +173,7 @@ module LindenElkLiftSimChain {
                                   ncap: int, nlook: int, nquant: int) {
     th.pc >= 0
     && TreeRepLkRE(rer, qm, code, inp, tcan, th.pc as nat, th.exit_allowed)
+    && FrozenOk(rer, re, str, gmt, th)   // (G4b-2) the live stamps' frozen look groups
     && exists traw: LT.Tree ::
       CE.ProgErase(traw) == CE.ProgErase(tcan)
       && ThreadRepLkRec(rer, qm, re, code, inp, crv, str, ov, S, traw, gmt, th, ncap, nlook, nquant)
@@ -209,6 +210,7 @@ module LindenElkLiftSimChain {
               CE.ProgErase(traw) == CE.ProgErase(tl[0].0)
               && WalkPairLkRec(rer, qm, code, nextinp, traw, tl[0].1, (bl[0].0.pc + 1) as nat, true))
         && GmtTieOutside(re, bl[0].0, tl[0].1, S)
+        && FrozenOk(rer, re, str, tl[0].1, bl[0].0)   // (G4b-2)
         && BlockedRepLkCRec(rer, qm, re, code, inp, nextinp, crv, str, ov, S, tl[1..], bl[1..],
                             ncap, nlook, nquant))
   }
@@ -3274,6 +3276,7 @@ module LindenElkLiftSimChain {
                CE.ProgErase(traw) == CE.ProgErase(tp.0)
                && WalkPairLkRec(rer, qm, code, nextinp, traw, tp.1, (p.0.pc + 1) as nat, true)
     requires GmtTieOutside(re, p.0, tp.1, S)
+    requires FrozenOk(rer, re, str, tp.1, p.0)   // (G4b-2)
     ensures BlockedRepLkCRec(rer, qm, re, code, inp, nextinp, crv, str, ov, S, tl + [tp], bl + [p],
                              ncap, nlook, nquant)
     decreases tl
@@ -3506,6 +3509,7 @@ module LindenElkLiftSimChain {
              && rth.quant_regs == th.quant_regs;
       assert GmtTieOutside(re, rth, tl[0].1, S)
         ;
+      FrozenOkRegsCong(rer, re, str, tl[0].1, th, rth);   // (G4b-2)
       assert ThreadRepLkRec(rer, qm, re, code, nextinp, crv, str, ov, S, traw, tl[0].1, rth,
                             ncap, nlook, nquant);
       assert ThreadRepLkCRec(rer, qm, re, code, nextinp, crv, str, ov, S, tl[0].0, tl[0].1, rth,

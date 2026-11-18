@@ -110,6 +110,9 @@ module LindenElkLiftSimGate {
   import NI = LindenElkNestInv
   import CW = LindenElkCinWalk
   import NB = LindenElkNulledPlusBool
+  import NST = LindenElkNestStamp      // (G4b-2) machine A's positional stamp invariant
+  import SLS = LindenElkStampLookSite  // (G4b-2) its look-gate twin
+  import NPL = LindenElkNulledPlusLk   // (G4b-2) the stamp fold
   import NP = LindenElkNulledPlus        // (G5a-1 row K) the guard rule's test
   import NT = LindenElkNulledPlusTie     // (G5a-1 row K) FirstEmptyPathRL: machine A's test is the spec's
   import opened LindenElkLiftSimCore
@@ -288,6 +291,7 @@ module LindenElkLiftSimGate {
            && th'.quant_regs == th.quant_regs;
     assert GmtTieOutside(re, th', gm, S);
     assert ThreadRepLkRec(rer, qm, re, code, inp, crv, str, ov, S, traw, gm, th', ncap, nlook, nquant);
+    FrozenOkRegsCong(rer, re, str, gm, th, th');   // (G4b-2)
     assert ThreadRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, t, gm, th', ncap, nlook, nquant);
 
     // active: same (tree, gm) list against the relocated head
@@ -561,6 +565,65 @@ module LindenElkLiftSimGate {
     assert vms2.active == s.active[1..];
   }
 
+  /** (G4b-2) `FrozenOk` across a capture write: machine A's positional stamp invariant puts the write
+      outside every stamped body (`NST.NestStampTopCapSite`). */
+  lemma SetRegFrozen(rer: LW.RegExpRecord, re: R.regex, code: RB.code, endl: nat, str: string,
+                     gm: LG.GroupMap, gm2: LG.GroupMap, th: AI.Thread, th': AI.Thread, reg: int, gid: LG.GroupId)
+    requires NR.NfaRepRE(re, code, 0, endl) && PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires th.pc >= 0 && (th.pc as nat) < endl
+    requires PSM.ThreadNestRE(re, code, endl, th.pc, th)
+    requires NR.GetPcRE(code, th.pc as nat) == Some(RB.SetRegisterToCP(reg))
+    requires reg == CP.start_reg(gid as int) || reg == CP.end_reg(gid as int)
+    requires th'.quant_regs == th.quant_regs
+    requires forall g: LG.GroupId :: g != gid ==> (g in gm2 <==> g in gm) && (g in gm2 ==> gm2[g] == gm[g])
+    requires FrozenOk(rer, re, str, gm, th)
+    ensures FrozenOk(rer, re, str, gm2, th')
+  {
+    assert PSM.StampTopRE(re, code, endl, th.pc as nat, th.quant_regs.a_cp);
+    reveal PSM.StampTopRE();
+    NST.NestStampTopCapSite(re, code, endl, th.pc as nat, th.quant_regs.a_cp, gid, reg);
+    PIV.QuantIdsOutsideLooksSub(re);
+    FrozenOkFrame(rer, re, str, gm, gm2, th, th', {gid});
+  }
+
+  /** (G4b-2) `FrozenOk` across a positive look gate: the gate writes only its body's groups, and no
+      stamped quantifier (outside looks) holds the look (`SLS.StampTopLookSite`), so its body's groups
+      are disjoint from the gate's (`SLS.LookBodyQidBodyDisjoint`). */
+  lemma GatePassFrozen(rer: LW.RegExpRecord, re: R.regex, code: RB.code, endl: nat, str: string,
+                       lk: L.Lookaround, r1: L.Regex, body: R.regex, inp: LC.Input, tlk: LT.Tree,
+                       gm: LG.GroupMap, gm2: LG.GroupMap, th: AI.Thread, th': AI.Thread, l: int)
+    requires NR.NfaRepRE(re, code, 0, endl) && PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re)
+    requires th.pc >= 0 && (th.pc as nat) < endl
+    requires PSM.ThreadNestRE(re, code, endl, th.pc, th)
+    requires NR.GetPcRE(code, th.pc as nat) == Some(RB.CheckOracle(l)) && l >= 0
+    requires (l as nat) in LTB.LookIds(re) && body == NI.LookBodyOfRE(re, l as nat)
+    requires T.TransWf(body) && r1 == T.Translate(body)
+    requires L.Positivity(lk) && EL.PikeLkRegexRec(r1)
+    requires tlk == LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk))
+    requires LS.LkResult(lk, tlk, gm, inp).Some? && gm2 == LS.LkResult(lk, tlk, gm, inp).value
+    requires th'.quant_regs == th.quant_regs
+    requires FrozenOk(rer, re, str, gm, th)
+    ensures FrozenOk(rer, re, str, gm2, th')
+  {
+    var G := set gx | gx in L.DefGroups(r1);
+    LkResultAgreeOutsideNested(rer, lk, r1, inp, tlk, gm);
+    M.TranslateDefGroupsEqCapIds(body);
+    assert G == PIV.CapIds(body);
+    assert PSM.StampTopRE(re, code, endl, th.pc as nat, th.quant_regs.a_cp);
+    reveal PSM.StampTopRE();
+    assert ((l as nat) as int) == l;
+    SLS.StampTopLookSite(re, code, endl, th.pc as nat, th.quant_regs.a_cp, l as nat);
+    PIV.QuantIdsOutsideLooksSub(re);
+    forall A: nat | A in PIV.QuantIdsOutsideLooks(re) && A in PIV.QuantIds(re)
+                    && AI.get_idx(th.quant_regs.a_cp, A as int) >= 0
+      ensures PIV.CapIds(PIV.QidBody(re, A)) !! G
+    {
+      SLS.LookBodyQidBodyDisjoint(re, l as nat, A);
+    }
+    assert forall g: LG.GroupId :: g !in G ==> (g in gm2 <==> g in gm) && (g in gm2 ==> gm2[g] == gm[g]);
+    FrozenOkFrame(rer, re, str, gm, gm2, th, th', G);
+  }
+
   lemma LiftPreserveSetRegLkRec(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                                 crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                                 bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
@@ -579,6 +642,7 @@ module LindenElkLiftSimGate {
     requires th' == s.active[0].(capture_regs := AReg.set_reg(s.active[0].capture_regs, reg, Some(s1.cp), s1.clock),
                     pc := s.active[0].pc + 1)
     requires vms2 == s1.(active := [th'] + s1.active[1..])
+    requires PSM.ThreadNestRE(re, code, endl, s.active[0].pc, s.active[0])   // (G4b-2) the stamp-site feed
     // the value-tie boundary: SetReg gids are outside-look, hence outside S
     requires S == PIV.CapIdsInLooks(re)
     requires reg >= 0 && 0 <= s1.cp
@@ -705,6 +769,12 @@ module LindenElkLiftSimGate {
     assert th'.look_regs == th.look_regs && th'.quant_regs == th.quant_regs;
     assert (th.pc + 1) as nat == pc + 1;
     assert ThreadRepLkRec(rer, qm, re, code, inp, crv, str, ov, S, traw.t, gm2, th', ncap, nlook, nquant);
+    assert {:split_here} true;   // (G4b-2) FrozenOk across the capture write
+    assert reg == CP.start_reg(gid as int) || reg == CP.end_reg(gid as int) by {
+      if t.g.Open? { assert reg == CP.start_reg(gid as int); } else { assert reg == CP.end_reg(gid as int); }
+    }
+    assert forall g: LG.GroupId :: g != gid ==> (g in gm2 <==> g in gm) && (g in gm2 ==> gm2[g] == gm[g]);
+    SetRegFrozen(rer, re, code, endl, str, gm, gm2, th, th', reg, gid);
     assert ThreadRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, t.t, gm2, th', ncap, nlook, nquant);
 
     // list bookkeeping
@@ -798,12 +868,318 @@ module LindenElkLiftSimGate {
     IsblockedGrowLk(rer, qm, code, inp, seen, s.isblocked, t);
   }
 
+  /** `set_reg` at `q` keeps every other slot of both arrays, and writes `q`'s when in range. */
+  lemma QuantRegsOffQ(r: AReg.Regs, r': AReg.Regs, q: int, cp: Option<int>, clk: int)
+    requires r' == AReg.set_reg(r, q, cp, clk)
+    ensures forall j: int :: j != q ==> AI.get_idx(r'.a_cp, j) == AI.get_idx(r.a_cp, j)
+                                        && AI.get_idx(r'.a_clk, j) == AI.get_idx(r.a_clk, j)
+    ensures 0 <= q < |r.a_cp| && 0 <= q < |r.a_clk| ==>
+              AI.get_idx(r'.a_cp, q) == (if cp.Some? then cp.value else -1) && AI.get_idx(r'.a_clk, q) == clk
+  {}
+
+  /** (G4b-2) The fresh stamp's chain is fresh in machine A's sense: the site's ancestors are present
+      (`NST.TrueStampSite`) and the new clock beats every stored one (`PIV.PathPresentQChainFresh`). */
+  lemma StampChainFresh(re: R.regex, code: RB.code, endl: nat, th: AI.Thread, th': AI.Thread, q: int, clk: int)
+    requires NR.NfaRepRE(re, code, 0, endl) && PIV.CapUnique(re) && PIV.QuantUnique(re)
+    requires th.pc >= 0 && (th.pc as nat) < endl
+    requires PSM.ThreadNestRE(re, code, endl, th.pc, th)
+    requires q >= 0 && NR.GetPcRE(code, th.pc as nat) == Some(RB.SetQuantToClock(q, true))
+    requires forall j: int :: j != q ==> AI.get_idx(th'.quant_regs.a_clk, j) == AI.get_idx(th.quant_regs.a_clk, j)
+    requires AI.get_idx(th'.quant_regs.a_clk, q) == clk
+    requires forall j: int :: AI.get_idx(th.quant_regs.a_clk, j) < clk
+    ensures (q as nat) in PIV.QuantIds(re) && PIV.QChainFresh(re, th'.quant_regs.a_clk, -1, q as nat)
+  {
+    var cc := th.capture_regs.a_clk;
+    var qc := th.quant_regs.a_clk;
+    assert NI.NestTopRE(re, code, endl, th.pc as nat, cc, qc);
+    assert NI.NestInvRE(re, code, 0, endl, th.pc as nat, cc, qc, -1);
+    var q0: nat := q as nat;
+    assert (q0 as int) == q;
+    NST.TrueStampSite(re, code, 0, endl, th.pc as nat, cc, qc, -1, q0);
+    assert AI.get_idx(qc, -1) == -1;
+    assert -1 <= clk;
+    assert forall x: int :: x != q0 as int ==> AI.get_idx(th'.quant_regs.a_clk, x) == AI.get_idx(qc, x);
+    assert AI.get_idx(th'.quant_regs.a_clk, q0) == clk;
+    assert forall x: nat :: x in PIV.QuantIds(re) ==> AI.get_idx(qc, x) <= clk;
+    PIV.PathPresentQChainFresh(re, cc, qc, th'.quant_regs.a_clk, -1, q0, clk);
+  }
+
+  /** (G4b-2) `FrozenOk` across the clock MARK (`MarkStepFrozen`): machine A's positional invariant gives
+      `PIV.NoStampedAbove` at the write site (`NST.NestStampTopQuantSite`). */
+  lemma MarkFrozenStep(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat, str: string,
+                       s: AI.VmState, s1: AI.VmState, gm: LG.GroupMap, gm2: LG.GroupMap,
+                       th: AI.Thread, th': AI.Thread, q: int, ncap: int, nlook: int, nquant: int)
+    requires PSM.StaticCoreCdnRE(qm, re, code, endl) && PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires th.pc >= 0 && (th.pc as nat) < endl
+    requires PSM.ThreadNestRE(re, code, endl, th.pc, th)
+    requires NR.GetPcRE(code, th.pc as nat) == Some(RB.SetQuantToClock(q, false))
+    requires q >= 0 && (q as nat) in PIV.QuantIds(re) && q < nquant
+    requires CM.ThreadRegsWf(th, ncap, nlook, nquant)
+    requires s.clock >= 0 && CM.ThreadClocksLE(th, s.clock) && s1.clock == s.clock + 1
+    requires th' == th.(quant_regs := AReg.set_reg(th.quant_regs, q, None, s1.clock), pc := th.pc + 1)
+    requires forall g: LG.GroupId :: g !in PIV.CapIds(PIV.QidBody(re, q as nat)) ==>
+                                       (g in gm2 <==> g in gm) && (g in gm2 ==> gm2[g] == gm[g])
+    requires FrozenOk(rer, re, str, gm, th)
+    ensures FrozenOk(rer, re, str, gm2, th')
+  {
+    var qn: nat := q as nat;
+    assert PSM.StampTopRE(re, code, endl, th.pc as nat, th.quant_regs.a_cp);
+    reveal PSM.StampTopRE();
+    NST.NestStampTopQuantSite(re, code, endl, th.pc as nat, th.quant_regs.a_cp, q, false);
+    QuantRegsOffQ(th.quant_regs, th'.quant_regs, q, None, s1.clock);
+    assert |th.quant_regs.a_cp| == nquant && |th.quant_regs.a_clk| == nquant;
+    assert MarkRegs(th, th', qn) by {
+      assert CM.RegsClocksLE(th.quant_regs, s.clock);
+    }
+    MarkStepFrozen(rer, re, str, gm, gm2, th, th', qn);
+  }
+
+  /** (G4b-2) The nulled-exit STAMP `SetQuantToClock(q, true)`: machine B crosses the synthetic gate
+      (`SynthGateStep`), its map becoming `NPL.StampFold`; outside `S` the fold is machine A's Reset
+      (`NPL.StampFoldFacts`); the carriers follow the W20 §7 probe (`StampStepOkTG`, the BackT/Deep
+      SetQuant lemmas, `StampStepFrozen`). */
+  lemma LiftPreserveStampLkRec(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
+                               crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
+                               bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
+                               q: int, th': AI.Thread, vms2: AI.VmState,
+                               ncap: int, nlook: int, nquant: int)
+    returns (bst1: PT.PikeTreeState)
+    requires PSM.StaticCoreCdnRE(qm, re, code, endl)
+    requires S == PIV.CapIdsInLooks(re)
+    requires bst.PTS?
+    requires LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
+    requires |s.active| > 0
+    requires !AI.bpc_mem(s.processed, s.active[0].pc, s.active[0].exit_allowed)
+    requires s.active[0].pc >= 0
+    requires NR.GetPcRE(code, s.active[0].pc as nat) == Some(RB.SetQuantToClock(q, true))
+    requires s1 == s.(clock := s.clock + 1,
+                   processed := AI.bpc_add(s.processed, s.active[0].pc, s.active[0].exit_allowed))
+    requires th' == s.active[0].(quant_regs := AReg.set_reg(s.active[0].quant_regs, q, Some(s1.cp), s1.clock),
+                    pc := s.active[0].pc + 1)
+    requires vms2 == s1.(active := [th'] + s1.active[1..])
+    requires q in qm.quants
+    requires LTB.LookUnique(re)
+    requires PSM.SizesOkRE(re, ncap, nlook, nquant)
+    requires CM.ThreadRegsWf(s.active[0], ncap, nlook, nquant)
+    requires s.clock >= 0 && CM.ThreadClocksLE(s.active[0], s.clock)
+    requires PIV.GmOfLive(re, th'.capture_regs, th'.look_regs, th'.quant_regs)
+          == LG.GMReset(qm.quants[q],
+                        PIV.GmOfLive(re, s.active[0].capture_regs, s.active[0].look_regs,
+                                     s.active[0].quant_regs))
+    requires PSM.ThreadNestRE(re, code, endl, s.active[0].pc, s.active[0])
+    ensures PTL.TrcPikeTreeLk(bst, bst1)
+    ensures bst1.PTS?
+    ensures LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
+  {
+    var PTS(inp, ta, best, tb, seen) := bst;
+    var th := s.active[0];
+    assert ActiveRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
+    assert |ta| > 0;
+    var t := ta[0].0;
+    var gm := ta[0].1;
+    assert ThreadRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, t, gm, th, ncap, nlook, nquant);
+    var pc: nat := th.pc as nat;
+    var ea := th.exit_allowed;
+    assert TreeRepLkRE(rer, qm, code, inp, t, pc, ea);
+    assert FrozenOk(rer, re, str, gm, th);
+
+    // canonical head: the synthetic gate over q's body, canonical child at (pc+1, ea)
+    TreeRepLkREAtSetQuant(rer, qm, code, inp, t, pc, ea, q, true);
+    assert StampNodeOk(rer, qm, inp, q, t);
+    assert TreeRepLkRE(rer, qm, code, inp, t.t, pc + 1, ea);
+    assert pc < endl by {
+      TreeRepLkREInRange(rer, qm, code, inp, t, pc, ea);
+      assert pc < |code| == endl + 1;
+      if pc == endl { assert NR.GetPcRE(code, pc) == Some(RB.Accept); assert false; }
+    }
+    PIV.QuantWriteIdsRECdn(re, code, 0, endl, pc);
+    assert q >= 0 && (q as nat) in PIV.QuantIds(re);
+    var qn: nat := q as nat;
+    M.TransWfQidBody(re, qn);
+    QmapOkAtQid(re, qm, qn);
+    var body := PIV.QidBody(re, qn);
+    assert qm.bodies[q] == body;
+    var r1 := T.Translate(body);
+    var gidl := qm.quants[q];
+    assert gidl == L.DefGroups(r1);
+    assert EL.PikeLkRegexRec(r1) && NP.FirstEmptyPathL(rer, r1, inp).Some?;   // StampNodeOk
+    assert NPL.GUniq(r1) by {
+      SLS.CapUniqueQidBody(re, qn);
+      TranslateDefGroupsNoDup(body);
+      NoDupGUniq(r1);
+    }
+    var gm2 := NPL.StampFold(rer, r1, inp, gm);
+
+    // B step: the gate passes with the fold
+    SynthGateStep(rer, r1, inp, gm, t.t);
+    assert t == LT.LK(L.LookAhead, NPL.StampTreeLk(rer, r1, inp), t.t);
+    assert PTL.TreeBfsStepLk(t, gm, inp) == PT.StepActive([(t.t, gm2)]);
+    bst1 := PT.PTS(inp, [(t.t, gm2)] + ta[1..], best, tb, SS.AddSeenTrees(seen, t));
+    assert PTL.PikeTreeStepLk(bst, bst1);
+    TrcLkRefl(bst1);
+    TrcLkCons(bst, bst1, bst1);
+
+    assert {:split_here} true;   // section: the raw witness
+    var traw: LT.Tree :| CE.ProgErase(traw) == CE.ProgErase(t)
+                         && ThreadRepLkRec(rer, qm, re, code, inp, crv, str, ov, S, traw, gm, th, ncap, nlook, nquant);
+    WalkPairLkAtSetQuantRec(rer, qm, code, inp, traw, gm, pc, ea, q, true);
+    assert StampNodeOk(rer, qm, inp, q, traw);
+    assert CE.ProgErase(traw.t) == CE.ProgErase(t.t) by {
+      assert CE.ProgErase(traw) == LT.LK(traw.lk, CE.ProgErase(traw.tlk), CE.ProgErase(traw.t));
+      assert CE.ProgErase(t) == LT.LK(t.lk, CE.ProgErase(t.tlk), CE.ProgErase(t.t));
+    }
+    assert WalkPairLkRec(rer, qm, code, inp, traw.t, gm2, pc + 1, ea);
+
+    assert {:split_here} true;   // section: the fold's facts and the value tie
+    NPL.StampFoldFacts(rer, r1, inp, gm);
+    M.TranslateDefGroupsEqCapIds(body);
+    NPL.LkBodyGroupsSubDG(r1);
+    M.LkBodyGroupsEqCapIdsInLooks(body);
+    PIV.CapIdsInLooksQidBodySubset(re, qn);
+    assert LL.LkBodyGroups(r1) <= S;
+    var gmR := LG.GMReset(gidl, gm);
+    assert LL.GmAgreeOutside(gm2, gmR, LL.LkBodyGroups(r1));
+    assert OffBody: forall g: LG.GroupId :: g !in PIV.CapIds(body) ==>
+                                              (g in gm2 <==> g in gm) && (g in gm2 ==> gm2[g] == gm[g])
+    by {
+      forall g: LG.GroupId | g !in PIV.CapIds(body)
+        ensures (g in gm2 <==> g in gm) && (g in gm2 ==> gm2[g] == gm[g])
+      {
+        assert g !in NPL.DG(r1);
+        assert g !in LL.LkBodyGroups(r1);
+        assert g !in (set gx | gx in gidl);
+        assert (g in gm2 <==> g in gmR) && (g in gm2 ==> gm2[g] == gmR[g]);
+      }
+    }
+    var gml := PIV.GmOfLive(re, th.capture_regs, th.look_regs, th.quant_regs);
+    var gml2 := PIV.GmOfLive(re, th'.capture_regs, th'.look_regs, th'.quant_regs);
+    assert gml2 == LG.GMReset(gidl, gml);
+    assert GmtTieOutside(re, th, gm, S);
+    assert GmtTieOutside(re, th', gm2, S) by {
+      forall g: LG.GroupId | g !in S
+        ensures (g in gm2 <==> g in gml2) && (g in gm2 ==> gm2[g] == gml2[g])
+      {
+        assert g !in LL.LkBodyGroups(r1);
+        assert (g in gm2 <==> g in gmR) && (g in gm2 ==> gm2[g] == gmR[g]);
+        assert (g in gm <==> g in gml) && (g in gm ==> gm[g] == gml[g]);
+      }
+    }
+    assert th'.look_regs == th.look_regs;
+    assert (th.pc + 1) as nat == pc + 1;
+    assert ThreadRepLkRec(rer, qm, re, code, inp, crv, str, ov, S, traw.t, gm2, th', ncap, nlook, nquant);
+
+    assert {:split_here} true;   // section: the stamp's registers and FrozenOk
+    assert 0 <= q < nquant by {
+      NI.QuantIdsLEMaxQuant(re);
+      assert (q as nat) <= R.max_quant(re);
+    }
+    assert 0 <= s1.cp && s1.cp == s.cp;
+    QuantRegsOffQ(th.quant_regs, th'.quant_regs, q, Some(s1.cp), s1.clock);
+    assert |th.quant_regs.a_cp| == nquant && |th.quant_regs.a_clk| == nquant;
+    assert StampRegs(th, th', qn, s1.cp) by {
+      assert CM.RegsClocksLE(th.quant_regs, s.clock);
+      assert CM.RegsClocksLE(th.look_regs, s.clock);
+    }
+    assert PSM.StampTopRE(re, code, endl, pc, th.quant_regs.a_cp);
+    assert PIV.NoStampedAbove(re, th.quant_regs.a_cp, qn) by {
+      reveal PSM.StampTopRE();
+      NST.NestStampTopQuantSite(re, code, endl, pc, th.quant_regs.a_cp, q, true);
+    }
+    assert inp == PIV.InpOfCp(str, s1.cp);
+    assert FrozenAtQ(rer, re, str, gm2, qn, s1.cp);
+    assert AI.get_idx(th'.quant_regs.a_clk, q) == s1.clock;
+    assert forall j: int :: AI.get_idx(th.quant_regs.a_clk, j) < s1.clock by {
+      assert CM.RegsClocksLE(th.quant_regs, s.clock);
+    }
+    StampChainFresh(re, code, endl, th, th', q, s1.clock);
+    StampStepFrozen(rer, re, str, gm, gm2, th, th', qn, s1.cp) by { reveal OffBody; }
+    assert ThreadRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, t.t, gm2, th', ncap, nlook, nquant);
+
+    // list bookkeeping
+    assert ActiveRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, ta[1..], s.active[1..],
+                           ncap, nlook, nquant);
+    assert vms2.active[0] == th' && vms2.active[1..] == s.active[1..];
+    assert ([(t.t, gm2)] + ta[1..])[0] == (t.t, gm2) && ([(t.t, gm2)] + ta[1..])[1..] == ta[1..];
+    assert ActiveRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, [(t.t, gm2)] + ta[1..], vms2.active,
+                           ncap, nlook, nquant);
+
+    assert {:split_here} true;   // section: (E3) the guarded look-path carrier
+    assert LookNestRepCTop(re, S, ta, s.active);
+    assert LookNestOkTTop(re, S, gm, th);
+    assert qn in PIV.QuantIdsOutsideLooks(re);
+    assert LookNestOkTTop(re, S, gm2, th') by {
+      reveal OffBody;
+      StampStepOkTG(re, S, gm, gm2, th, th', qn, s1.cp);
+    }
+    assert LookNestRepCTop(re, S, [(t.t, gm2)] + ta[1..], vms2.active) by {
+      forall i | 0 <= i < |[(t.t, gm2)] + ta[1..]|
+        ensures LookNestOkTTop(re, S, ([(t.t, gm2)] + ta[1..])[i].1, vms2.active[i])
+      {
+        if i == 0 {
+        } else {
+          assert ([(t.t, gm2)] + ta[1..])[i] == ta[i];
+          assert vms2.active[i] == s.active[i];
+        }
+      }
+    }
+
+    assert {:split_here} true;   // section: (E4) the converse (today's SetQuant lemma, verbatim)
+    assert LookNestBackRepCTop(re, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
+    assert AI.get_idx(th'.quant_regs.a_clk, q) == s1.clock;
+    assert forall j: int :: AI.get_idx(th.look_regs.a_clk, j) < AI.get_idx(th'.quant_regs.a_clk, q as int) by {
+      assert CM.RegsClocksLE(th.look_regs, s.clock);
+    }
+    assert forall g: LG.GroupId :: g in gm && g !in PIV.CapIds(body) ==> g in gm2 by { reveal OffBody; }
+    LookNestBackTSetQuantNestedTop(re, crv, str, ov, S, gm, gm2, th, th', qn, ncap, nlook, nquant);
+    assert LookNestBackRepCTop(re, crv, str, ov, S, [(t.t, gm2)] + ta[1..], vms2.active,
+                               ncap, nlook, nquant) by {
+      forall i | 0 <= i < |[(t.t, gm2)] + ta[1..]|
+        ensures LookNestBackTTop(re, crv, str, ov, S, ([(t.t, gm2)] + ta[1..])[i].1, vms2.active[i],
+                                 ncap, nlook, nquant)
+      {
+        if i == 0 {
+        } else {
+          assert ([(t.t, gm2)] + ta[1..])[i] == ta[i];
+          assert vms2.active[i] == s.active[i];
+        }
+      }
+    }
+
+    assert {:split_here} true;   // section: (E4 DEEP)
+    assert LookNestBackRepCTopDeep(rer, re, crv, str, ov, S, ta, s.active, ncap, nlook, nquant);
+    assert forall g: LG.GroupId :: g in S && g !in PIV.CapIds(body) ==>
+                                     ((g in gm <==> g in gm2) && (g in gm ==> gm2[g] == gm[g]))
+      by { reveal OffBody; }
+    LookNestBackTSetQuantNestedTopDeep(rer, re, crv, str, ov, S, gm, gm2, th, th', qn, ncap, nlook, nquant);
+    assert LookNestBackRepCTopDeep(rer, re, crv, str, ov, S, [(t.t, gm2)] + ta[1..], vms2.active,
+                                   ncap, nlook, nquant) by {
+      forall i | 0 <= i < |[(t.t, gm2)] + ta[1..]|
+        ensures LookNestBackTTopDeep(rer, re, crv, str, ov, S, ([(t.t, gm2)] + ta[1..])[i].1, vms2.active[i],
+                                     ncap, nlook, nquant)
+      {
+        if i == 0 {
+        } else {
+          assert ([(t.t, gm2)] + ta[1..])[i] == ta[i];
+          assert vms2.active[i] == s.active[i];
+        }
+      }
+    }
+    assert {:split_here} true;   // section: seen bookkeeping
+
+    // seen + isblocked bookkeeping
+    assert PIV.HdTreeOf(ta) == Some(t) && PIV.HeadPcOf(s.active) == pc;
+    AddSeenRepLk(rer, qm, code, inp, seen, s.processed, t, pc, ea,
+                 PIV.HdTreeOf([(t.t, gm2)] + ta[1..]), PIV.HeadPcOf(vms2.active));
+    IsblockedGrowLk(rer, qm, code, inp, seen, s.isblocked, t);
+  }
+
   lemma LiftPreserveSetQuantLkRec(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                                   crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                                   bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
                                   q: int, bq: bool, th': AI.Thread, vms2: AI.VmState,
                                   ncap: int, nlook: int, nquant: int)
     returns (bst1: PT.PikeTreeState)
+    requires !bq   // (G4b-2) the clock mark; the stamp is `LiftPreserveStampLkRec`
     requires PSM.StaticCoreCdnRE(qm, re, code, endl)
     requires bst.PTS?
     requires LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst, s, ncap, nlook, nquant)
@@ -830,6 +1206,7 @@ module LindenElkLiftSimGate {
           == LG.GMReset(qm.quants[q],
                         PIV.GmOfLive(re, s.active[0].capture_regs, s.active[0].look_regs,
                                      s.active[0].quant_regs))
+    requires PSM.ThreadNestRE(re, code, endl, s.active[0].pc, s.active[0])   // (G4b-2) NoStampedAbove
     ensures PTL.TrcPikeTreeLk(bst, bst1)
     ensures bst1.PTS?
     ensures LiftInvRec(rer, qm, re, code, crv, str, ov, S, bst1, vms2, ncap, nlook, nquant)
@@ -889,6 +1266,34 @@ module LindenElkLiftSimGate {
     assert th'.look_regs == th.look_regs;
     assert (th.pc + 1) as nat == pc + 1;
     assert ThreadRepLkRec(rer, qm, re, code, inp, crv, str, ov, S, traw.t, gm2, th', ncap, nlook, nquant);
+    assert {:split_here} true;   // (G4b-2) FrozenOk across the mark
+    assert FrozenOk(rer, re, str, gm2, th') by {
+      assert pc < endl by {
+        TreeRepLkREInRange(rer, qm, code, inp, t, pc, ea);
+        assert pc < |code| == endl + 1;
+        if pc == endl { assert NR.GetPcRE(code, pc) == Some(RB.Accept); assert false; }
+      }
+      PIV.QuantWriteIdsRECdn(re, code, 0, endl, pc);
+      assert q >= 0 && (q as nat) in PIV.QuantIds(re);
+      assert 0 <= q < nquant by {
+        NI.QuantIdsLEMaxQuant(re);
+        assert (q as nat) <= R.max_quant(re);
+      }
+      M.TransWfQidBody(re, q as nat);
+      QmapOkAtQid(re, qm, q as nat);
+      M.TranslateDefGroupsEqCapIds(PIV.QidBody(re, q as nat));
+      assert gidl == L.DefGroups(T.Translate(PIV.QidBody(re, q as nat)));
+      assert forall g: LG.GroupId :: g !in PIV.CapIds(PIV.QidBody(re, q as nat)) ==>
+                                       (g in gm2 <==> g in gm) && (g in gm2 ==> gm2[g] == gm[g]) by {
+        forall g: LG.GroupId | g !in PIV.CapIds(PIV.QidBody(re, q as nat))
+          ensures (g in gm2 <==> g in gm) && (g in gm2 ==> gm2[g] == gm[g])
+        {
+          assert g !in (set gx | gx in gidl);
+          assert g !in gidl;
+        }
+      }
+      MarkFrozenStep(rer, qm, re, code, endl, str, s, s1, gm, gm2, th, th', q, ncap, nlook, nquant);
+    }
     assert ThreadRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, t.t, gm2, th', ncap, nlook, nquant);
 
     // list bookkeeping
@@ -924,6 +1329,7 @@ module LindenElkLiftSimGate {
     assert forall j: int :: j != q ==>
                               AI.get_idx(th'.quant_regs.a_clk, j) == AI.get_idx(th.quant_regs.a_clk, j)
     by { RL.ASetLaws(th.quant_regs, q, if bq then Some(s1.cp) else None, s1.clock); }
+    QuantRegsOffQ(th.quant_regs, th'.quant_regs, q, None, s1.clock);   // (G4b-2) the guard reads the other stamps
     LookNestOkTSetQuantTop(re, S, gm, gm2, th, th', qn);
     assert LookNestRepCTop(re, S, [(t.t, gm2)] + ta[1..], vms2.active) by {
       forall i | 0 <= i < |[(t.t, gm2)] + ta[1..]|
@@ -1076,6 +1482,7 @@ module LindenElkLiftSimGate {
       assert th1.pc >= 0 && th2.pc >= 0;
       assert ThreadRepLkRec(rer, qm, re, code, inp, crv, str, ov, S, ta1, gm, th1, ncap, nlook, nquant);
       assert ThreadRepLkRec(rer, qm, re, code, inp, crv, str, ov, S, ta2, gm, th2, ncap, nlook, nquant);
+      FrozenOkRegsCong(rer, re, str, gm, th, th1); FrozenOkRegsCong(rer, re, str, gm, th, th2);   // (G4b-2)
       assert ThreadRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, t.t1, gm, th1, ncap, nlook, nquant);
       assert ThreadRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, t.t2, gm, th2, ncap, nlook, nquant);
 
@@ -1119,6 +1526,7 @@ module LindenElkLiftSimGate {
       assert th1.pc >= 0 && th2.pc >= 0 && th1.exit_allowed && th2.exit_allowed;
       assert ThreadRepLkRec(rer, qm, re, code, inp, crv, str, ov, S, ta1, gm, th1, ncap, nlook, nquant);
       assert ThreadRepLkRec(rer, qm, re, code, inp, crv, str, ov, S, ta2, gm, th2, ncap, nlook, nquant);
+      FrozenOkRegsCong(rer, re, str, gm, th, th1); FrozenOkRegsCong(rer, re, str, gm, th, th2);   // (G4b-2)
       assert ThreadRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, t.t.t1, gm, th1, ncap, nlook, nquant);
       assert ThreadRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, t.t.t2, gm, th2, ncap, nlook, nquant);
 
@@ -1337,6 +1745,16 @@ module LindenElkLiftSimGate {
       assert ThreadRepLkRec(rer, qm, re, code, inp, crv, str, ov, S, traw.t, gm2, th', ncap, nlook, nquant);
     }
 
+    assert {:split_here} true;   // (G4b-2) FrozenOk across the gate
+    assert pc < endl by {
+      TreeRepLkREInRange(rer, qm, code, inp, t, pc, ea);
+      assert pc < |code| == endl + 1;
+      if pc == endl { assert NR.GetPcRE(code, pc) == Some(RB.Accept); assert false; }
+    }
+    assert th'.quant_regs == th.quant_regs;
+    EL.TranslateFragmentPikeLkRecCdn(body);   // the gate body's statics, as below
+    assert EL.PikeLkRegexRec(r1);
+    GatePassFrozen(rer, re, code, endl, str, lk, r1, body, inp, tlk, gm, gm2, th, th', l);
     assert ThreadRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, t.t, gm2, th', ncap, nlook, nquant);
 
     assert {:split_here} true;   // (§2.5b pack) section: list bookkeeping
@@ -1712,6 +2130,7 @@ module LindenElkLiftSimGate {
       assert CE.ProgErase(traw) == LT.LK(traw.lk, CE.ProgErase(traw.tlk), CE.ProgErase(traw.t));
       assert CE.ProgErase(t) == LT.LK(t.lk, CE.ProgErase(t.tlk), CE.ProgErase(t.t));
     }
+    FrozenOkRegsCong(rer, re, str, gm, th, th');   // (G4b-2)
     assert ThreadRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, t.t, gm, th', ncap, nlook, nquant);
 
     // list bookkeeping
@@ -1856,6 +2275,7 @@ module LindenElkLiftSimGate {
       assert CE.ProgErase(traw) == CE.ProgErase(traw.t);   // Progress transparent
       assert CE.ProgErase(t) == CE.ProgErase(t.t);
     }
+    FrozenOkRegsCong(rer, re, str, gm, th, th');   // (G4b-2)
     assert ThreadRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, t.t, gm, th', ncap, nlook, nquant);
 
     // list bookkeeping
@@ -1990,6 +2410,7 @@ module LindenElkLiftSimGate {
       assert CE.ProgErase(t) == LT.AnchorPass(t.a, CE.ProgErase(t.t));
     }
     assert (th.pc + 1) as nat == pc + 1;
+    FrozenOkRegsCong(rer, re, str, gm, th, th');   // (G4b-2)
     assert ThreadRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, t.t, gm, th', ncap, nlook, nquant);
 
     // list bookkeeping
@@ -2126,6 +2547,7 @@ module LindenElkLiftSimGate {
            && th'.quant_regs == th.quant_regs;
     assert GmtTieOutside(re, th', gm, S);
     assert ThreadRepLkRec(rer, qm, re, code, inp, crv, str, ov, S, traw, gm, th', ncap, nlook, nquant);
+    FrozenOkRegsCong(rer, re, str, gm, th, th');   // (G4b-2)
     assert ThreadRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, t, gm, th', ncap, nlook, nquant);
 
     // active: same (tree, gm) list against the relocated head
@@ -2389,6 +2811,7 @@ module LindenElkLiftSimGate {
                                    ncap, nlook, nquant);
         assert th in s.active;
         assert CM.ThreadClocksLE(th, s.clock) && s.clock >= 0;   // PikeInvFullRE backbone
+        assert PSM.ThreadNestRE(re, code, endl, th.pc, th);   // (G4b-2) the stamp-site feed
         var bstS := LiftPreserveSetRegLkRec(rer, qm, re, code, endl, crv, str, ov, S,
                                             bst, s, s1, reg, th', vms2, ncap, nlook, nquant);
         var ptsS: PT.PikeTreeState;
@@ -2419,15 +2842,19 @@ module LindenElkLiftSimGate {
         assert th in s.active;
         assert CM.ThreadRegsWf(th, ncap, nlook, nquant);   // PikeInvFullRE backbone
         assert CM.ThreadClocksLE(th, s.clock) && s.clock >= 0;
+        assert PSM.ThreadNestRE(re, code, endl, th.pc, th);   // (G4b-2) the stamp-site feed
+        var bstS: PT.PikeTreeState;
         if bq {
           DispatchStampEffectNested(rer, qm, re, code, endl, ngroups, str, ptsA, s, s1, q, th',
                                     ncap, nlook, nquant);
+          bstS := LiftPreserveStampLkRec(rer, qm, re, code, endl, crv, str, ov, S,
+                                         bst, s, s1, q, th', vms2, ncap, nlook, nquant);
         } else {
           DispatchResetEffectNested(rer, qm, re, code, endl, ngroups, str, ptsA, s, s1, q, th',
                                     ncap, nlook, nquant);
+          bstS := LiftPreserveSetQuantLkRec(rer, qm, re, code, endl, crv, str, ov, S,
+                                            bst, s, s1, q, bq, th', vms2, ncap, nlook, nquant);
         }
-        var bstS := LiftPreserveSetQuantLkRec(rer, qm, re, code, endl, crv, str, ov, S,
-                                              bst, s, s1, q, bq, th', vms2, ncap, nlook, nquant);
         var ptsS := PSM.PreserveQuantCaseCdn(rer, qm, re, code, endl, ngroups, str, ptsA, s,
                                                 s1, q, bq, vms2, ncap, nlook, nquant);
         var ptsA2, bst2 := LiftAdvanceEpsilonRec(rer, qm, re, code, endl, ngroups, crv, str, ov, S,
@@ -2988,6 +3415,8 @@ module LindenElkLiftSimGate {
     assert WO.WalkOk(acts, code, 0, false);
     assert ATR.EaOf(BS.CannotExit) == false;
     tcan := ActionsTreeRepLkRERec(rer, qm, acts, code, 0, inp, BS.CannotExit, t);
+    assert forall A: int :: AI.get_idx(it.quant_regs.a_cp, A) < 0;   // (G4b-2) no stamp is set
+    FrozenOkNoStamps(rer, re, str, LG.Empty, it);
     assert ThreadRepLkCRec(rer, qm, re, code, inp, crv, str, ov, S, tcan, LG.Empty, it,
                            ncap, nlook, nquant) by {
       assert TreeRepLkRE(rer, qm, code, inp, tcan, it.pc as nat, it.exit_allowed);
