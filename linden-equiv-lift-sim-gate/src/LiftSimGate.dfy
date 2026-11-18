@@ -1575,6 +1575,186 @@ module LindenElkLiftSimGate {
     FG.LookBodySubFactsLB(re, lid);
   }
 
+  /** (G4b-2) The gate pass's converse LANDING as a standalone lemma: at a positive lid `l` whose look record
+      sits at `cp`, every live group of the fresh plus match lands in the gate's `LkResult` from any incoming
+      map with the body's groups unset. The gate-pass step uses it at the thread's own map; the G4b-2 transports
+      at `Empty` and the stamp position (a "virtual gate pass" of the frozen empty path). */
+  lemma LookGateLanding(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, crv: CP.FCompiled, str: string,
+                        ov: LOr.OracleView, S: set<LG.GroupId>, l: int, cp: nat, lkr: AReg.Regs, gm: LG.GroupMap,
+                        ncap: int, nlook: int, nquant: int)
+    requires T.TransWf(re) && AR.LmapOk(re, qm)
+    requires qm.ov == ov && !rer.multiline && !rer.ignoreCase
+    requires |ov| == |str| + 1 && OE.OracleColsOk(rer, qm, str)
+    requires S == PIV.CapIdsInLooks(re)
+    requires GateStaticsOkNested(qm, re, crv, ncap, nlook, nquant)
+    requires PIV.CapUnique(re) && PIV.QuantUnique(re) && LTB.LookUnique(re) && LTB.LookTablesOk(re, crv)
+    requires l >= 0 && l in qm.looks && (l as nat) in LTB.LookIds(re)
+    requires AR.PositiveL(qm.looks[l].0) && L.Positivity(qm.looks[l].0)
+    requires cp <= |str| && LL.OracleOkSuffix(rer, qm, PIV.InpOfCp(str, cp))
+    requires AReg.get_cp(lkr, l) == Some(cp as int)
+    requires forall gg :: gg in L.DefGroups(qm.looks[l].1) ==> gg !in gm
+    requires var tlk := LFU.ComputeTr(rer, [LS.Areg(qm.looks[l].1)], PIV.InpOfCp(str, cp), LG.Empty, L.LkDir(qm.looks[l].0));
+             LS.LkResult(qm.looks[l].0, tlk, gm, PIV.InpOfCp(str, cp)).Some?
+    ensures var tlk := LFU.ComputeTr(rer, [LS.Areg(qm.looks[l].1)], PIV.InpOfCp(str, cp), LG.Empty, L.LkDir(qm.looks[l].0));
+            var gm2 := LS.LkResult(qm.looks[l].0, tlk, gm, PIV.InpOfCp(str, cp)).value;
+            var rfx := M.FreshBodyMatchPlus(crv, str, l, lkr, ov, ncap, nlook, nquant);
+            rfx.Some? ==>
+              forall g: LG.GroupId ::
+                g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, l as nat))
+                && g in PIV.GmOfLive(NI.LookBodyOfRE(re, l as nat), rfx.value.capture_regs,
+                                     rfx.value.look_regs, rfx.value.quant_regs)
+                ==> g in gm2
+  {
+    var lk := qm.looks[l].0;
+    var r1 := qm.looks[l].1;
+    var inp := PIV.InpOfCp(str, cp);
+    var tlk := LFU.ComputeTr(rer, [LS.Areg(r1)], inp, LG.Empty, L.LkDir(lk));
+    var gm2 := LS.LkResult(lk, tlk, gm, inp).value;
+    assert GateStaticAtNested(qm, re, crv, l, ncap, nlook, nquant);
+    var la: R.lookaround, body: R.regex := GateStaticPick(qm, re, crv, l, ncap, nlook, nquant);
+    assert lk == T.TrLookaround(la) && r1 == T.Translate(body);
+    assert body == M.VBody(crv, l);
+    assert 0 <= l < nlook;
+    assert !la.NegLookahead? && !la.NegLookbehind? by {
+      if la.NegLookahead? || la.NegLookbehind? { assert !L.Positivity(lk); }
+    }
+    NI.LookBodyOfTablesTie(re, crv, l as nat);
+    var la3: R.lookaround :| LTB.LookEntryOk(crv, l, la3, NI.LookBodyOfRE(re, l as nat));
+    assert NI.LookBodyOfRE(re, l as nat) == body;
+    assert {:split_here} true;
+    var rfx := M.FreshBodyMatchPlus(crv, str, l, lkr, ov, ncap, nlook, nquant);
+    if rfx.Some? {
+      if la.Lookahead? {
+        M.TranslateDefGroupsEqCapIds(body);
+        M.LkBodyGroupsEqCapIdsInLooks(body);
+        PIV.CapIdsLooksDisjoint(body);
+        // (BRICK D5) depth-k gm-independence (recursive PikeLkRegexRec body).
+        EL.TranslateFragmentPikeLkRecCdn(body);   // (G5b-1) the body may hold a greedy CDN plus
+        EL.ComputeTrGmIndepLkRec(rer, r1, inp, gm, WP.Forward);
+        assert tlk == LFU.ComputeTr(rer, [LS.Areg(r1)], inp, gm, WP.Forward);
+        assert M.GmAgreeOn(gm, LG.Empty, set gx | gx in L.DefGroups(r1)) by {
+          forall g: LG.GroupId | g in (set gx | gx in L.DefGroups(r1))
+            ensures (g in gm <==> g in LG.Empty) && (g in gm ==> gm[g] == LG.Empty[g])
+          {
+            assert g !in gm;
+          }
+        }
+        var bodycode3 := CP.compile_to_bytecode(body);
+        assert AReg.get_cp(lkr, l) == Some(cp as int);
+        // (G3a) machine A on the PLUS match: the gate's `LkResult` agrees with the fresh plus replay on
+        // the OUTER groups `Sout = DefGroups(tr) \ LkBodyGroups(tr)` (`MA.LkReplayMatchesSpecPlus`).
+        var cdnb := LCdn.compile_cdns(body);
+        assert crv.f_look_cdns[l] == cdnb;                          // LookEntryOk row
+        var rfPlus := AI.FFindMatchPlus(bodycode3, body, crv.f_plus_bc, str, ov, LAnc.Forward, cp,
+                                        AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant),
+                                        0, cdnb).0;
+        assert rfx == rfPlus by {
+          assert CP.capture_regex(la, body) == body && AI.capture_direction(la) == LAnc.Forward;
+          reveal M.FreshBodyMatchPlus();
+        }
+        assert {:split_here} true;
+        hide RF.StampLooksCapFreeRE;   // (G5b-3) passed on as a term, never unfolded here
+        assert NRC.PositiveLk(la) && RowPlusOkS(body, crv.f_plus_bc, nlook);   // GateStaticPick, lookahead
+        assert MA.MachineAPreS(rer, qm, body, bodycode3, |bodycode3| - 1, str, cp, ov, crv.f_plus_bc,
+                               ncap, nlook, nquant) by {
+          reveal RowPlusOkS(); reveal M.RowLAStaticsS();
+        }
+        CG.GuardsOkRunRow(qm, body, bodycode3, |bodycode3| - 1, str, ov);   // (G5b-1) N1 at the row
+        MA.LkReplayMatchesSpecPlusS(rer, qm, body, bodycode3, |bodycode3| - 1, 0, str, cp, ov, cdnb,
+                                    crv.f_plus_bc, tlk, gm, ncap, nlook, nquant);
+        assert LS.LkResult(T.TrLookaround(la), tlk, gm, inp).Some?
+               && LS.LkResult(T.TrLookaround(la), tlk, gm, inp).value == gm2 by {
+          assert lk == T.TrLookaround(la);
+        }
+        var Sout := set gx | gx in L.DefGroups(T.Translate(body))
+                             && gx !in LL.LkBodyGroups(T.Translate(body));
+        assert M.GmAgreeOn(gm2,
+                           PIV.GmOfLive(body, rfPlus.value.capture_regs,
+                                        rfPlus.value.look_regs, rfPlus.value.quant_regs),
+                           Sout);
+        assert {:split_here} true;
+        // the INNER groups (`LkBodyGroups(tr) == CapIdsInLooks(body)`) are ABSENT from the fresh plus
+        // replay's live denotation (`MA.FreshPlusGmOuter`); the coverage reduces to the OUTER groups.
+        assert M.RowLAStaticsS(body, crv.f_plus_bc) by { reveal RowPlusOkS(); }
+        MA.FreshPlusGmOuterS(body, bodycode3, str, cp, ov, cdnb, crv.f_plus_bc, ncap, nlook, nquant);
+        forall g: LG.GroupId |
+          g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, l as nat))
+          && g in PIV.GmOfLive(NI.LookBodyOfRE(re, l as nat), rfx.value.capture_regs,
+                               rfx.value.look_regs, rfx.value.quant_regs)
+          ensures g in gm2
+        {
+          assert g in PIV.CapIds(body);                                  // body == LookBodyOfRE(re,l)
+          assert g in PIV.GmOfLive(body, rfPlus.value.capture_regs,
+                                   rfPlus.value.look_regs, rfPlus.value.quant_regs);  // rfx == rfPlus
+          assert g in (set gx | gx in L.DefGroups(T.Translate(body)));   // TranslateDefGroupsEqCapIds
+          if g in PIV.CapIdsInLooks(body) {
+            // the fresh plus replay records no inner-look captures ⇒ contradicts g live
+            assert g !in PIV.GmOfLive(body, rfPlus.value.capture_regs,
+                                      rfPlus.value.look_regs, rfPlus.value.quant_regs);
+            assert false;
+          }
+          assert g !in LL.LkBodyGroups(T.Translate(body));   // == CapIdsInLooks(body)
+          assert g in Sout;                                  // hence g in the OUTER set
+        }
+      } else {
+        // (L5 F7f) capturing-LOOKBEHIND lid: the fresh body match is the BACKWARD
+        // run of `reverse_regex(body)` at the recorded cp (`FreshBodyMatchLBUnfold`);
+        // F6's crossing coverage `GateCrossCoverageLBNested` lands every live
+        // surface group of the body in the passing gate's `LkResult` (inner-look
+        // groups are never live in the backward fresh run, F6b).
+        assert la.Lookbehind?;
+        assert {:split_here} true;   // (G4b-1b, pack S32) the lookbehind arm in a batch of its own
+        hide RF.StampLooksCapFreeRE;   // (G4b-1b) passed on as a term, never unfolded here
+        assert L.LkDir(lk) == WP.Backward;
+        EL.TranslateFragmentPikeLkRecCdn(body);   // (G5b-2) the body may hold a CDN plus
+        EL.ComputeTrGmIndepLkRec(rer, r1, inp, gm, WP.Backward);
+        assert tlk == LFU.ComputeTr(rer, [LS.Areg(r1)], inp, gm, WP.Backward);
+        assert M.GmAgreeOn(gm, LG.Empty, set gx | gx in L.DefGroups(r1)) by {
+          forall g: LG.GroupId | g in (set gx | gx in L.DefGroups(r1))
+            ensures (g in gm <==> g in LG.Empty) && (g in gm ==> gm[g] == LG.Empty[g])
+          {
+            assert g !in gm;
+          }
+        }
+        assert AReg.get_cp(lkr, l) == Some(cp as int);
+        // site statics of the F6 atom: LB-only body (the L5 dispatch), body-level
+        // uniqueness, LmapOk on the body, the whole-string oracle (F7d)
+        assert PIV.CapUnique(body) && PIV.QuantUnique(body) && LTB.LookUnique(body) by {
+          LookBodyUniqAny(re, l as nat);
+        }
+        assert AR.LmapOk(body, qm) by { FG.LmapOkLookBody(re, qm, l as nat); }
+        assert 0 <= l < |crv.f_look_types| && crv.f_look_types[l].Lookbehind?
+               && 0 <= l < |crv.f_look_cdns|;                                   // LookEntryOk row
+        // (G3b) the lookbehind crossing on the plus replay (the body may hold a nulled plus)
+        BRG.FreshPlusLBUnfold(crv, str, l, lkr, ov, body, ncap, nlook, nquant);
+        var bcB := CP.compile_to_bytecode(R.reverse_regex(body));
+        assert rfx == AI.FFindMatchPlus(bcB, body, crv.f_plus_bc, str, ov, LAnc.Backward, cp,
+                                        AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0,
+                                        crv.f_look_cdns[l]).0;
+        assert NRC.PositiveLk(la) && RowPlusOkS(body, crv.f_plus_bc, nlook);   // GateStaticPick (G5b-2: S)
+        assert (forall l0: nat :: l0 in LTB.LookIds(body) ==> l0 < nlook)
+               && NRC.CdnTopRE(body) && RF.StampLooksCapFreeRE(body) && NRR.PlusTableOkS(body, crv.f_plus_bc) by {
+          reveal RowPlusOkS(); reveal M.RowLAStaticsS();
+        }
+        assert crv.f_look_cdns[l] == LCdn.compile_cdns(body);                  // LookEntryOk row
+        BRG.GateCrossCoveragePlusLBS(rer, qm, body, str, cp, ov, crv.f_look_cdns[l], crv.f_plus_bc, la, tlk, gm,
+                                    ncap, nlook, nquant, |str|);
+        assert LS.LkResult(T.TrLookaround(la), tlk, gm, inp).Some?
+               && LS.LkResult(T.TrLookaround(la), tlk, gm, inp).value == gm2 by {
+          assert lk == T.TrLookaround(la);
+        }
+        forall g: LG.GroupId |
+          g in S && g in PIV.CapIds(NI.LookBodyOfRE(re, l as nat))
+          && g in PIV.GmOfLive(NI.LookBodyOfRE(re, l as nat), rfx.value.capture_regs,
+                               rfx.value.look_regs, rfx.value.quant_regs)
+          ensures g in gm2
+        {
+          assert g in PIV.CapIds(body);                                  // body == LookBodyOfRE(re,l)
+        }
+      }
+    }
+  }
+
   lemma LiftPreserveGatePassLkRec(rer: LW.RegExpRecord, qm: AR.QMap, re: R.regex, code: RB.code, endl: nat,
                                                         crv: CP.FCompiled, str: string, ov: LOr.OracleView, S: set<LG.GroupId>,
                                                         bst: PT.PikeTreeState, s: AI.VmState, s1: AI.VmState,
