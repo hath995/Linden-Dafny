@@ -96,6 +96,7 @@ module LindenElkLiftSimCore {
   import SSx = StrictSuffix
   import LN = WarblreNumeric
   import PSM = LindenElkPikeSim
+  import NPL = LindenElkNulledPlusLk   // (G4b-2) the synthetic stamp node
   import RL = LindenElkRegsLaws
   import LKC = LindenElkLookCapture
   import OE = LindenElkOracleEntry
@@ -168,6 +169,24 @@ module LindenElkLiftSimCore {
   // drops `GmtTieInside`) is what these `*Rec` clones mirror.
   // ==========================================================================
 
+  /** (G4b-2) The stamp node's shape at quantifier `q`: `LK(LookAhead, NPL.StampTreeLk(r1), t')` with `r1` the
+      translated body of `q` and `q`'s reset set its groups. */
+  ghost predicate StampNodeOk(rer: LW.RegExpRecord, qm: AR.QMap, inp: LC.Input, q: int, t: LT.Tree) {
+    q in qm.quants && q in qm.bodies && T.TransWf(qm.bodies[q])
+    && qm.quants[q] == L.DefGroups(T.Translate(qm.bodies[q]))
+    && t.LK? && t.lk == L.LookAhead && t.tlk == NPL.StampTreeLk(rer, T.Translate(qm.bodies[q]), inp)
+  }
+
+  /** (G4b-2) Machine B's step at the synthetic stamp gate is ONE step whose effect is the fold (W20 §7 probe). */
+  lemma SynthGateStep(rer: LW.RegExpRecord, r1: L.Regex, inp: LC.Input, gm: LG.GroupMap, tnext: LT.Tree)
+    requires EL.PikeLkRegexRec(r1)
+    ensures LS.LkResult(L.LookAhead, NPL.StampTreeLk(rer, r1, inp), gm, inp) == Some(NPL.StampFold(rer, r1, inp, gm))
+    ensures PTL.TreeBfsStepLk(LT.LK(L.LookAhead, NPL.StampTreeLk(rer, r1, inp), tnext), gm, inp)
+         == PT.StepActive([(tnext, NPL.StampFold(rer, r1, inp, gm))])
+  {
+    NPL.StampGateRes(rer, r1, inp, gm);
+  }
+
   /** `TtLk` rebuilt on `EL.PikeLkActionsRec` (recursive fragment). */
   ghost predicate TtLkRec(rer: LW.RegExpRecord, qm: AR.QMap, code: RB.code, inp: LC.Input,
                           tb: LT.Tree, pc: nat, ea: bool)
@@ -175,14 +194,19 @@ module LindenElkLiftSimCore {
   {
     (pc < RB.size(code) && NR.GetPcRE(code, pc) == Some(RB.BeginLoop)
      && TtLkRec(rer, qm, code, inp, tb, pc + 1, false))
-    // (§2.5b F-c) the see-through also crosses the nulled-exit stamp (a plain
-    // Reset on the B side), and the walk tree is ENGINE-SHAPED (`CW.BoolTreeLkX`)
+    // the see-through crosses the clock mark (a plain Reset), and the walk tree is ENGINE-SHAPED
+    // (`CW.BoolTreeLkX`)
     || (pc < RB.size(code)
         && exists q: int ::
-          (NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, false))
-           || NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, true)))
+          NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, false))
           && q in qm.quants
           && tb.GroupActionT? && tb.g == LG.Reset(qm.quants[q])
+          && TtLkRec(rer, qm, code, inp, tb.t, pc + 1, ea))
+    // (G4b-2) ... and the nulled-exit stamp: ONE synthetic lookahead gate carrying the nulled iteration's looks
+    || (pc < RB.size(code)
+        && exists q: int ::
+          NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(q, true))
+          && StampNodeOk(rer, qm, inp, q, tb)
           && TtLkRec(rer, qm, code, inp, tb.t, pc + 1, ea))
     || (exists acts: LS.Actions, b: BS.LoopBool ::
           AR.ActionsRepL(rer, qm, acts, code, pc)
@@ -321,13 +345,16 @@ module LindenElkLiftSimCore {
     // tr_begin
     || (NR.GetPcRE(code, pc) == Some(RB.BeginLoop)
         && TreeRepLkRE(rer, qm, code, inp, t, pc + 1, false))
-    // tr_reset — the clock-mark AND (§2.5b F-c) the nulled-exit stamp: machine B
-    // carries no virtual chain (the stamp's reconstruction is machine A's and the
-    // engine's), so both flags represent a plain Reset
+    // tr_reset — the clock MARK: a plain Reset
     || (t.GroupActionT? && t.g.Reset? && exists qid: int ::
-          (NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
-           || NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, true)))
+          NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, false))
           && qid in qm.quants && qm.quants[qid] == t.g.gl
+          && TreeRepLkRE(rer, qm, code, inp, t.t, pc + 1, b))
+    // tr_stamp (G4b-2 ★) — the nulled-exit STAMP: ONE synthetic lookahead gate whose body tree is
+    // `Reset(gidl); ChainLk(DropOC s, Match)` (the nulled iteration's crossed looks, W20 §4)
+    || (t.LK? && exists qid: int ::
+          NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, true))
+          && StampNodeOk(rer, qm, inp, qid, t)
           && TreeRepLkRE(rer, qm, code, inp, t.t, pc + 1, b))
     // tr_choice (forward forks)
     || (t.Choice? && exists pcl: int, pcr: int ::
@@ -425,16 +452,28 @@ module LindenElkLiftSimCore {
       TreeRepLkDetermRE(rer, qm, code, inp, t1, t2, np as nat, b);
     case Some(BeginLoop) =>         // both tr_begin
       TreeRepLkDetermRE(rer, qm, code, inp, t1, t2, pc + 1, false);
-    case Some(SetQuantToClock(qid, bb)) =>  // both tr_reset (either flag, §2.5b F-c)
-      match t1 {
-        case GroupActionT(g1, tc1) =>
-          match t2 {
-            case GroupActionT(g2, tc2) =>
-              assert g1 == LG.Reset(qm.quants[qid]) && g2 == LG.Reset(qm.quants[qid]);
-              TreeRepLkDetermRE(rer, qm, code, inp, tc1, tc2, pc + 1, b);
-            case _ =>
-          }
-        case _ =>
+    case Some(SetQuantToClock(qid, bb)) =>  // tr_reset (the mark) xor tr_stamp (G4b-2: the synthetic gate)
+      if bb {
+        match t1 {
+          case LK(l1, k1, tc1) =>
+            match t2 {
+              case LK(l2, k2, tc2) =>
+                TreeRepLkDetermRE(rer, qm, code, inp, tc1, tc2, pc + 1, b);
+              case _ =>
+            }
+          case _ =>
+        }
+      } else {
+        match t1 {
+          case GroupActionT(g1, tc1) =>
+            match t2 {
+              case GroupActionT(g2, tc2) =>
+                assert g1 == LG.Reset(qm.quants[qid]) && g2 == LG.Reset(qm.quants[qid]);
+                TreeRepLkDetermRE(rer, qm, code, inp, tc1, tc2, pc + 1, b);
+              case _ =>
+            }
+          case _ =>
+        }
       }
     case Some(Fork(pl, pr)) =>
       if pl >= 0 && pr >= 0 && pl as nat > pc && pr as nat > pc {
@@ -602,8 +641,9 @@ module LindenElkLiftSimCore {
                               t: LT.Tree, pc: nat, b: bool, qid: int, bb: bool)
     requires TreeRepLkRE(rer, qm, code, inp, t, pc, b)
     requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid, bb))
-    ensures qid in qm.quants   // (§2.5b F-c) either flag: the stamp is a plain Reset on the B side
-    ensures t.GroupActionT? && t.g == LG.Reset(qm.quants[qid])
+    ensures qid in qm.quants
+    ensures !bb ==> t.GroupActionT? && t.g == LG.Reset(qm.quants[qid])   // the mark
+    ensures bb ==> StampNodeOk(rer, qm, inp, qid, t)                      // (G4b-2) the stamp
     ensures TreeRepLkRE(rer, qm, code, inp, t.t, pc + 1, b)
   { }
 
@@ -3972,21 +4012,22 @@ module LindenElkLiftSimCore {
             var tskip: LT.Tree := LT.Mismatch;
             if NP.FirstEmptyPathL(rer, r1, inp).Some? {
               match tb {
-                case GroupActionT(h, tc) =>
-                  assert h == LG.Reset(gidl);
+                case LK(hk, hl, tc) =>   // (G4b-2) the synthetic stamp gate
+                  assert hk == L.LookAhead && hl == NPL.StampTreeLk(rer, r1, inp);
                   assert CE.PSize(tc) < CE.PSize(t);
                   assert EL.PikeLkActionsRec(cont);
                   assert ATR.ActionsRepFuelL(rer, qm, cont, code, pcmid, n - 1);
                   assert WO.WalkOk(cont, code, pcmid, ATR.EaOf(b));
                   assert CW.BoolTreeLkX(rer, cont, inp, b, tc);
                   var subc := ActionsTreeRepLkFRec(rer, qm, cont, code, pcmid, inp, b, tc, n - 1);
-                  tskip := LT.GroupActionT(h, subc);
-                  // tr_reset (the stamp) at e1x + 3, tr_cdn at e1x + 2
+                  tskip := LT.LK(hk, hl, subc);
+                  assert StampNodeOk(rer, qm, inp, qidC, tskip);
+                  // tr_stamp at e1x + 3, tr_cdn at e1x + 2
                   assert TreeRepLkRE(rer, qm, code, inp, tskip, e1x + 3, ATR.EaOf(b));
                   TreeRepLkRECdnPassIntro(rer, qm, code, inp, tskip, e1x + 2, ATR.EaOf(b), qidC);
                   assert CE.ProgErase(tskip) == CE.ProgErase(tb);
                 case _ =>
-                  assert false;   // `BoolTreeLkX`'s CDN arm with an empty path: the skip child is a Reset
+                  assert false;   // `BoolTreeLkX`'s CDN arm with an empty path: the skip child is the gate
               }
             } else {
               assert tb == LT.Mismatch;
@@ -4084,8 +4125,8 @@ module LindenElkLiftSimCore {
           match ta {
             case GroupActionT(g, ti) =>
               match tb {
-                case GroupActionT(h, tc) =>
-                  assert g == LG.Reset(gidl) && h == LG.Reset(gidl);
+                case LK(hk, hl, tc) =>   // (G4b-2) the synthetic stamp gate
+                  assert g == LG.Reset(gidl) && hk == L.LookAhead && hl == NPL.StampTreeLk(rer, r1, inp);
                   assert CW.BoolTreeLkX(rer, ia, inp, BS.CannotExit, ti);
                   assert CW.BoolTreeLkX(rer, cont, inp, b, tc);
                   assert EL.PikeLkRegexRec(q0);
@@ -4145,8 +4186,9 @@ module LindenElkLiftSimCore {
                   assert TreeRepLkRE(rer, qm, code, inp, subi, em + 2, ATR.EaOf(b));
                   var tloop := LT.GroupActionT(g, subi);
                   assert TreeRepLkRE(rer, qm, code, inp, tloop, em + 1, ATR.EaOf(b));
-                  // skip arm: tr_reset (the stamp) at e1x + 2
-                  var tskip := LT.GroupActionT(h, subc);
+                  // skip arm: tr_stamp (G4b-2: the synthetic gate) at e1x + 2
+                  var tskip := LT.LK(hk, hl, subc);
+                  assert StampNodeOk(rer, qm, inp, qidC, tskip);
                   assert TreeRepLkRE(rer, qm, code, inp, tskip, e1x + 2, ATR.EaOf(b));
                   tcan := LT.Choice(tloop, tskip);
                   assert TreeRepLkRE(rer, qm, code, inp, tcan, pc, ATR.EaOf(b));   // tr_choice
