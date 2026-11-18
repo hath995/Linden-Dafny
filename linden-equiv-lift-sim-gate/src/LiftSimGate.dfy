@@ -1516,6 +1516,8 @@ module LindenElkLiftSimGate {
           // surface group of the body in the passing gate's `LkResult` (inner-look
           // groups are never live in the backward fresh run, F6b).
           assert la.Lookbehind?;
+          assert {:split_here} true;   // (G4b-1b, pack S32) the lookbehind arm in a batch of its own
+          hide RF.StampLooksCapFreeRE;   // (G4b-1b) passed on as a term, never unfolded here
           assert L.LkDir(lk) == WP.Backward;
           EL.TranslateFragmentPikeLkRecCdn(body);   // (G5b-2) the body may hold a CDN plus
           EL.ComputeTrGmIndepLkRec(rer, r1, inp, gm, WP.Backward);
