@@ -4,7 +4,7 @@
 //
 // A look body keeps the strong condition: `M.LookBodiesPlusGateRE` asks `RF.CinBodiesLookFreeRE` at every look
 // node. (G4b-1) At the top regex a nullable plus body may hold CAPTURING looks off its empty paths: every look an
-// empty path can cross is capture-free (`ELk.EmptyPathLooksCapFree`, `(a(?=(b))|c?)+`). A lid the reconstruction
+// empty path can cross is capture-free (`RF.EmptyPathLooksCapFree`, `(a(?=(b))|c?)+`). A lid the reconstruction
 // may re-set (`ELk.LooksQE`) has no carrier content; every other lid keeps its record, and either its ancestors
 // keep their clocks or one of them sits in a stamped body, where the stamp's stale body kills the lid's presence
 // (`ELk.StampedAncKillsPresence`); the replay only raises quant clocks (`ELk.ReplayQuantClkMono`).
@@ -55,7 +55,7 @@ module LindenElkCinLooks {
     case Re_con(r1, r2) => CinLooksCapFreeRE(r1) && CinLooksCapFreeRE(r2)
     // (G4b-1) a stamp body: every look an empty path can cross is capture-free (others may capture)
     case Re_quant(nul, qid, q, body) =>
-      (ELk.StampNode(nul, q) ==> ELk.EmptyPathLooksCapFree(body))
+      (RF.StampNode(nul, q) ==> RF.EmptyPathLooksCapFree(body))
       && CinLooksCapFreeRE(body)
     case Re_capture(_, r1) => CinLooksCapFreeRE(r1)
     // (G5b-1/2/3) a positive look body (either direction, any depth) may hold a greedy CDN plus, and every look inside
@@ -116,7 +116,7 @@ module LindenElkCinLooks {
     case Re_alt(r1, r2) => StampLooksCapFreeX(r1) && StampLooksCapFreeX(r2)
     case Re_con(r1, r2) => StampLooksCapFreeX(r1) && StampLooksCapFreeX(r2)
     case Re_quant(nul, qid, q, body) =>
-      (q.min != 0 && q.max == None && nul != R.NonNullable && q.greedy ==> LooksCapFreeX(body))
+      (q.min != 0 && q.max == None && nul != R.NonNullable && q.greedy ==> EmptyPathLooksCapFreeX(body))   // (G4b-1b)
       && StampLooksCapFreeX(body)
     case Re_capture(_, r1) => StampLooksCapFreeX(r1)
     case Re_lookaround(_, _, r1) => StampLooksCapFreeX(r1)
@@ -133,7 +133,7 @@ module LindenElkCinLooks {
     case Re_con(r1, r2) => StampLooksCapFreeXSound(r1); StampLooksCapFreeXSound(r2);
     case Re_quant(nul, qid, q, body) =>
       StampLooksCapFreeXSound(body);
-      if q.min != 0 && q.max == None && nul != R.NonNullable && q.greedy { LooksCapFreeXSound(body); }
+      if q.min != 0 && q.max == None && nul != R.NonNullable && q.greedy { EmptyPathLooksCapFreeXSound(body); }
     case Re_capture(_, r1) => StampLooksCapFreeXSound(r1);
     case Re_lookaround(_, _, r1) => StampLooksCapFreeXSound(r1);
     case _ =>
@@ -253,8 +253,7 @@ module LindenElkCinLooks {
     case _ => true
   }
 
-  /** (G4b-1) `ELk.EmptyPathLooksCapFree`, compiled: the engine's own nullability (`R.nullable`) decides which
-      half of a sequence an empty path can cross. */
+  /** (G4b-1) `RF.EmptyPathLooksCapFree`, compiled (`RF.MayNull` is the engine's own `R.nullable`). */
   predicate EmptyPathLooksCapFreeX(r: R.regex)
     decreases r
   {
@@ -270,21 +269,15 @@ module LindenElkCinLooks {
   }
 
   lemma EmptyPathLooksCapFreeXSound(r: R.regex)
-    requires T.TransWf(r) && EmptyPathLooksCapFreeX(r)
-    ensures ELk.EmptyPathLooksCapFree(r)
+    requires EmptyPathLooksCapFreeX(r)
+    ensures RF.EmptyPathLooksCapFree(r)
     decreases r
   {
     match r
     case Re_alt(r1, r2) => EmptyPathLooksCapFreeXSound(r1); EmptyPathLooksCapFreeXSound(r2);
     case Re_con(r1, r2) =>
-      if ELk.MayNull(r2) {
-        if R.nullable(r2) == R.NonNullable { NUL.TransNonNullable(r2); assert false; }
-        EmptyPathLooksCapFreeXSound(r1);
-      }
-      if ELk.MayNull(r1) {
-        if R.nullable(r1) == R.NonNullable { NUL.TransNonNullable(r1); assert false; }
-        EmptyPathLooksCapFreeXSound(r2);
-      }
+      if RF.MayNull(r2) { EmptyPathLooksCapFreeXSound(r1); }
+      if RF.MayNull(r1) { EmptyPathLooksCapFreeXSound(r2); }
     case Re_quant(_, _, q, r1) => if q.min != 0 { EmptyPathLooksCapFreeXSound(r1); }
     case Re_capture(_, r1) => EmptyPathLooksCapFreeXSound(r1);
     case Re_lookaround(_, _, b) => PIV.CaptureFreeNoCapIds(b);
@@ -358,7 +351,7 @@ module LindenElkCinLooks {
           assert false;
         }
         assert nul == R.CINullable || nul == R.CDNullable;
-        assert ELk.StampNode(nul, q) && ELk.EmptyPathLooksCapFree(body);   // `CinLooksCapFreeRE`, CIN or CDN
+        assert RF.StampNode(nul, q) && RF.EmptyPathLooksCapFree(body);   // `CinLooksCapFreeRE`, CIN or CDN
         TM.EPCFTranslate(body);   // (G4b-1) machine B's arm: the crossed looks are group-free
         TM.OutLkTranslate(body);
         assert NPL.OutLk(tb) <= G;

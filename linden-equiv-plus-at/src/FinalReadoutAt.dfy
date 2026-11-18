@@ -35,6 +35,7 @@ module LindenElkFinalReadoutAt {
   import FRG = LindenElkFinalRegs
   import FRD = LindenElkFinalReadout
   import RF = LindenElkReconFrame
+  import ELk = LindenElkEmptyLooks   // (G4b-1) the frame on the empty-path look set
   import CM = LindenElkClockMono
   import TR = LindenElkTreeRep   // (G5b-1) FirstEmptyPathR in StampsLocalS
 
@@ -442,6 +443,57 @@ module LindenElkFinalReadoutAt {
     var rg: NRC.Regs3 := (th.capture_regs, th.look_regs, th.quant_regs);
     assert NRO.StampsInRangeS(re, rg, str);
     RF.FNulledPlusFrameQS(qm, re, rg, plus, str, qm.ov, Q);
+  }
+
+  /** (G4b-1) The same frame on the sharper sets: looks outside `ELk.LooksQE`, captures outside `ELk.CapsQO` (the
+      reconstruction never writes inside a look body). */
+  lemma FinalReadoutFrameAtSE(qm: AR.QMap, re: R.regex, plus: seq<RB.code>, str: string, th: AI.Thread, Q: set<int>)
+    requires T.TransWf(re) && PIV.CapUnique(re) && PIV.QuantUnique(re) && NRC.CdnTopRE(re)
+    requires NRR.PlusTableOkS(re, plus)
+    requires var rg: NRC.Regs3 := (th.capture_regs, th.look_regs, th.quant_regs);
+             StampsFinalAtS(re, rg, |str|) && NRR.CapValWf(rg) && NRR.WfRegs(rg)
+             && RF.StampsIn(re, rg, Q)
+    ensures var rp := AI.FReconstructPlus(th, re, plus, str, qm.ov, LAnc.Forward).0;
+            NRR.AgreeOutside((rp.capture_regs, rp.look_regs, rp.quant_regs),
+                             (th.capture_regs, th.look_regs, th.quant_regs),
+                             ELk.CapsQO(re, Q), ELk.LooksQE(re, Q), RF.QuantsQ(re, Q))
+  {
+    var rg: NRC.Regs3 := (th.capture_regs, th.look_regs, th.quant_regs);
+    assert NRO.StampsInRangeS(re, rg, str);
+    ELk.FNulledPlusFrameQSE(qm, re, rg, plus, str, qm.ov, Q);
+  }
+
+  /** (G4b-1) At the row winner's STAMPED set: the sharp frame, the stamps are stamp pluses, and (from the live
+      stamps) the replay only raised quant clocks. */
+  lemma FinalReadoutFrameAtStampE(qm: AR.QMap, re: R.regex, plus: seq<RB.code>, str: string, th: AI.Thread)
+    requires T.TransWf(re) && PIV.CapUnique(re) && PIV.QuantUnique(re) && NRC.CdnTopRE(re)
+    requires NRR.PlusTableOkS(re, plus)
+    requires var rg: NRC.Regs3 := (th.capture_regs, th.look_regs, th.quant_regs);
+             StampsFinalAtS(re, rg, |str|) && NRR.CapValWf(rg) && NRR.WfRegs(rg)
+    requires SL.StampLiveOk(re, th.capture_regs.a_clk, th.quant_regs.a_clk, th.quant_regs.a_cp)
+    ensures var Q := ELk.StampSet(th.quant_regs.a_cp);
+            var rp := AI.FReconstructPlus(th, re, plus, str, qm.ov, LAnc.Forward).0;
+            NRR.AgreeOutside((rp.capture_regs, rp.look_regs, rp.quant_regs),
+                             (th.capture_regs, th.look_regs, th.quant_regs),
+                             ELk.CapsQO(re, Q), ELk.LooksQE(re, Q), RF.QuantsQ(re, Q))
+            && ELk.QClkGe(rp.quant_regs, th.quant_regs.a_clk)
+            && RF.QInStamp(re, Q)
+  {
+    var rg: NRC.Regs3 := (th.capture_regs, th.look_regs, th.quant_regs);
+    var Q := ELk.StampSet(th.quant_regs.a_cp);
+    assert RF.StampsIn(re, rg, Q) by {
+      forall q: nat | q in PIV.QuantIds(re) && AI.get_idx(rg.2.a_cp, q) >= 0 ensures (q as int) in Q {
+        assert 0 <= q < |th.quant_regs.a_cp| && th.quant_regs.a_cp[q] >= 0;
+      }
+    }
+    assert RF.QInStamp(re, Q) by {
+      forall q: nat | q in PIV.QuantIds(re) && (q as int) in Q ensures NRR.QidStampPlus(re, q) {
+        assert AI.get_idx(rg.2.a_cp, q) >= 0;
+      }
+    }
+    FinalReadoutFrameAtSE(qm, re, plus, str, th, Q);
+    assert NRO.StampsInRangeS(re, rg, str);
+    ELk.ReplayQuantClkMono(qm, re, rg, plus, str, qm.ov, th.capture_regs.a_clk);
   }
 
   /** The instance callers use: `Q := StampQids(re)`. */

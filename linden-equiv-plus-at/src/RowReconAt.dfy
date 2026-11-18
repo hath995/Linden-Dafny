@@ -28,7 +28,7 @@ module LindenElkRowReconAt {
   import FRA = LindenElkFinalReadoutAt
   import LTB = LindenElkLookTables
   import SBk = LindenElkStampBank      // (G5b-3) the bank through the reconstruction
-  import SLk = LindenElkStampLooks     // (G5b-3) the frame at capture-free stamp looks
+  import ELk = LindenElkEmptyLooks     // (G4b-1) the capture frame outside look bodies
 
   /** The int image of `body`'s outside-look quantifier ids (`M.QIdsOuter`). */
   ghost function QOuter(body: R.regex): set<int> {
@@ -246,6 +246,7 @@ module LindenElkRowReconAt {
             && CM.RegsAgreeOutside(rp.0.capture_regs, th.capture_regs,
                                    PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body)))
             && CM.RegsAgreeOutside(rp.0.look_regs, th.look_regs, RF.LooksQ(body, FRD.StampQids(body)))
+            && CM.RegsAgreeOutside(rp.0.look_regs, th.look_regs, ELk.LooksQE(body, FRD.StampQids(body)))   // (G4b-1b)
             && CM.RegsAgreeOutside(rp.0.look_regs, th.look_regs, SBk.DirectLidSetRN(body))
             && CM.RegsAgreeOutside(rp.0.quant_regs, th.quant_regs, QOuter(body))
             && (F.o ==> CM.LookCpsOracleTrue(rp.0.look_regs, qm.ov))
@@ -262,7 +263,13 @@ module LindenElkRowReconAt {
     ReadoutBankLiteS(qm, body, plus, str, th, ncap, nlook, nquant);
     FRA.FinalReadoutFrameAtStamp(qm, body, plus, str, th);
     assert RF.QInStamp(body, Q);
-    SLk.CapsQOutside(body, Q);
+    assert RF.StampsIn(body, rg, Q) by {
+      forall q: nat | q in PIV.QuantIds(body) && AI.get_idx(rg.2.a_cp, q) >= 0 ensures (q as int) in Q {
+        assert NRR.QidStampPlus(body, q);
+      }
+    }
+    FRA.FinalReadoutFrameAtSE(qm, body, plus, str, th, Q);   // (G4b-1) captures move only outside look bodies
+    ELk.CapsQOOutside(body, Q);
     assert {:split_here} true;
     // the bank: the frames at the direct lids and the outside-look quants, and the selected invariants
     assert F.le ==> CM.LookCpsLE(th.quant_regs, |str|) by {   // the stamps are final: at most |str|
@@ -282,13 +289,14 @@ module LindenElkRowReconAt {
     assert {:split_here} true;
     // the look frame outside LooksQ and the capture frame outside the outside-look captures
     assert CM.RegsAgreeOutside(rp.0.look_regs, th.look_regs, RF.LooksQ(body, Q));
+    assert CM.RegsAgreeOutside(rp.0.look_regs, th.look_regs, ELk.LooksQE(body, Q));
     assert CM.RegsAgreeOutside(rp.0.capture_regs, th.capture_regs,
                                PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body))) by {
       forall k: int | k !in PIV.CaptureRegsSet(PIV.CapIdsOutsideLooks(body))
         ensures AI.get_idx(rp.0.capture_regs.a_cp, k) == AI.get_idx(th.capture_regs.a_cp, k)
                 && AI.get_idx(rp.0.capture_regs.a_clk, k) == AI.get_idx(th.capture_regs.a_clk, k)
       {
-        assert k !in RF.CapsQ(body, Q);
+        assert k !in ELk.CapsQO(body, Q);
       }
     }
   }

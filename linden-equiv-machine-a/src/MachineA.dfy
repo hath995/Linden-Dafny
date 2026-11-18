@@ -30,6 +30,8 @@ module LindenElkMachineA {
   import FRA = LindenElkFinalReadoutAt
   import RRA = LindenElkRowReconAt
   import SBk = LindenElkStampBank      // (G5b-3)
+  import ELk = LindenElkEmptyLooks     // (G4b-1)
+  import SL = LindenElkStampLive
   import LG = Groups
   import LT = Tree
   import LC = Chars
@@ -330,7 +332,7 @@ module LindenElkMachineA {
     ensures CM.ThreadRegsWf(result.value, ncap, nlook, nquant)
     // (G5b-3) the reconstruction may re-set lids inside a stamp body (capture-free looks): the frame outside them,
     // and every look-bank invariant the VM winner has
-    ensures ClkFrameG4(body, FRD.StampQids(body), rp, result.value)
+    ensures ClkFrameG4(body, ELk.StampSet(result.value.quant_regs.a_cp), rp, result.value)   // (G4b-1) at the stamped set
     ensures CM.RegsAgreeOutside(rp.look_regs, result.value.look_regs, SBk.DirectLidSetRN(body))
     ensures CM.LookCpsOracleTrue(result.value.look_regs, ov) ==> CM.LookCpsOracleTrue(rp.look_regs, ov)
     ensures CM.LookClkSetWithCp(result.value.look_regs) ==> CM.LookClkSetWithCp(rp.look_regs)
@@ -387,7 +389,12 @@ module LindenElkMachineA {
     M.NoWriteOracleBodyCodeCdn(body);
     CM.FFindMatchOvStable(code, str, inits, ov, LAnc.Forward, cdn);
     rp := AI.FReconstructPlus(best, body, plus, str, ov, LAnc.Forward).0;
-    assert ClkFrameG4(body, Q, rp, best);
+    // (G4b-1) the sharp frame at the stamped set, and the replay only raised quant clocks
+    assert SL.StampLiveOk(body, best.capture_regs.a_clk, best.quant_regs.a_clk, best.quant_regs.a_cp) by {
+      reveal PSM.BestLiveRE();
+    }
+    FRA.FinalReadoutFrameAtStampE(qm, body, plus, str, best);
+    assert ClkFrameG4(body, ELk.StampSet(best.quant_regs.a_cp), rp, best);
   }
 
   /** `MachineAPre` on the S forms. */

@@ -25,6 +25,8 @@ module LindenElkMachineABack {
   import FRD = LindenElkFinalReadout
   import FV = LindenElkFinalVm
   import RF = LindenElkReconFrame
+  import ELk = LindenElkEmptyLooks      // (G4b-1b) the frame at the stamped set
+  import SL = LindenElkStampLive
   import FRA = LindenElkFinalReadoutAt
   import RRA = LindenElkRowReconAt
   import LG = Groups
@@ -556,7 +558,8 @@ module LindenElkMachineABack {
             && PIV.GmOfLive(body, rr.0.value.capture_regs, rr.0.value.look_regs, rr.0.value.quant_regs)
               == BGM.RawMirrorGm(G, n)
             && LL.GmAgreeOutside(G, LT.FirstLeaf(t_F, inpF).value.1, LL.LkBodyGroups(T.Translate(body)))
-            && ClkFrameG4(body, FRD.StampQids(body), rr.0.value, raB.value)   // (G5b-3) outside LooksQ
+            && ClkFrameG4(body, ELk.StampSet(raB.value.quant_regs.a_cp), rr.0.value, raB.value)   // (G4b-1b) at the stamped set
+            && (forall k: int :: AI.get_idx(raB.value.quant_regs.a_cp, k) <= n)
             && CM.RegsAgreeOutside(rr.0.value.look_regs, raB.value.look_regs, SBk.DirectLidSetRN(body))
             && (CM.LookCpsOracleTrue(raB.value.look_regs, ov) ==> CM.LookCpsOracleTrue(rr.0.value.look_regs, ov))
             && (CM.LookClkSetWithCp(raB.value.look_regs) ==> CM.LookClkSetWithCp(rr.0.value.look_regs))
@@ -732,7 +735,17 @@ module LindenElkMachineABack {
       DB.ReconstructPlusDirBlind(tB, body, plus, str, ov);
       var rp := AI.FReconstructPlus(tB, body, plus, str, ov, LAnc.Backward).0;
       assert rr.0 == Some(rp);
-      assert ClkFrameG4(body, Q, rp, tB);
+      // (G4b-1b) the sharp frame at the stamped set, and the replay only raised quant clocks
+      assert SL.StampLiveOk(body, tB.capture_regs.a_clk, tB.quant_regs.a_clk, tB.quant_regs.a_cp) by {
+        reveal PSM.BestLiveRE();
+      }
+      FRA.FinalReadoutFrameAtStampE(qm, body, plus, str, tB);
+      assert ClkFrameG4(body, ELk.StampSet(tB.quant_regs.a_cp), rp, tB);
+      assert forall k: int :: AI.get_idx(tB.quant_regs.a_cp, k) <= n by {
+        forall k: int ensures AI.get_idx(tB.quant_regs.a_cp, k) <= n {
+          if AI.get_idx(tB.quant_regs.a_cp, k) >= 0 { assert FV.RegsFinalOk(tB, n, Q); }
+        }
+      }
 
       assert {:split_here} true;
       // ---- the stamp mirror ----
@@ -897,6 +910,77 @@ module LindenElkMachineABack {
     case Re_anchor(x) => W.FXRAnchor(x);
     case Re_empty =>
     case Re_character(_) =>
+  }
+
+  // (G4b-1b) The empty-path look sets and the out-of-look capture sets are FXR-invariant.
+  lemma OwnLooksEFXR(r: R.regex)
+    ensures ELk.OwnLooksE(FST.FXR(r)) == ELk.OwnLooksE(r)
+    decreases r
+  {
+    match r
+    case Re_alt(a, b) => W.FXRAlt(a, b); OwnLooksEFXR(a); OwnLooksEFXR(b);
+    case Re_con(a, b) => W.FXRCon(a, b); OwnLooksEFXR(a); OwnLooksEFXR(b); CMr.NullableFXR(a); CMr.NullableFXR(b);
+    case Re_quant(nul, qid, q, a) => W.FXRQuant(nul, qid, q, a); OwnLooksEFXR(a);
+    case Re_capture(c, a) => W.FXRCap(c, a); OwnLooksEFXR(a);
+    case Re_lookaround(l, la, a) => W.FXRLook(l, la, a);
+    case Re_anchor(x) => W.FXRAnchor(x);
+    case Re_empty =>
+    case Re_character(_) =>
+  }
+  lemma InnerLookRegsEFXR(r: R.regex)
+    ensures ELk.InnerLookRegsE(FST.FXR(r)) == ELk.InnerLookRegsE(r)
+    decreases r
+  {
+    match r
+    case Re_alt(a, b) => W.FXRAlt(a, b); InnerLookRegsEFXR(a); InnerLookRegsEFXR(b);
+    case Re_con(a, b) => W.FXRCon(a, b); InnerLookRegsEFXR(a); InnerLookRegsEFXR(b);
+    case Re_quant(nul, qid, q, a) => W.FXRQuant(nul, qid, q, a); InnerLookRegsEFXR(a); OwnLooksEFXR(a);
+    case Re_capture(c, a) => W.FXRCap(c, a); InnerLookRegsEFXR(a);
+    case Re_lookaround(l, la, a) => W.FXRLook(l, la, a);
+    case Re_anchor(x) => W.FXRAnchor(x);
+    case Re_empty =>
+    case Re_character(_) =>
+  }
+  lemma CapRegsOFXR(r: R.regex)
+    ensures ELk.CapRegsO(FST.FXR(r)) == ELk.CapRegsO(r)
+    decreases r
+  {
+    match r
+    case Re_alt(a, b) => W.FXRAlt(a, b); CapRegsOFXR(a); CapRegsOFXR(b);
+    case Re_con(a, b) => W.FXRCon(a, b); CapRegsOFXR(a); CapRegsOFXR(b);
+    case Re_quant(nul, qid, q, a) => W.FXRQuant(nul, qid, q, a); CapRegsOFXR(a);
+    case Re_capture(c, a) => W.FXRCap(c, a); CapRegsOFXR(a);
+    case Re_lookaround(l, la, a) => W.FXRLook(l, la, a);
+    case Re_anchor(x) => W.FXRAnchor(x);
+    case Re_empty =>
+    case Re_character(_) =>
+  }
+  lemma QSetsFXRE(r: R.regex, Q: set<int>)
+    ensures ELk.LooksQE(FST.FXR(r), Q) == ELk.LooksQE(r, Q) && ELk.CapsQO(FST.FXR(r), Q) == ELk.CapsQO(r, Q)
+    decreases r
+  {
+    match r
+    case Re_alt(a, b) => W.FXRAlt(a, b); QSetsFXRE(a, Q); QSetsFXRE(b, Q);
+    case Re_con(a, b) => W.FXRCon(a, b); QSetsFXRE(a, Q); QSetsFXRE(b, Q);
+    case Re_quant(nul, qid, q, a) =>
+      W.FXRQuant(nul, qid, q, a); QSetsFXRE(a, Q); InnerLookRegsEFXR(R.Re_quant(nul, qid, q, a)); CapRegsOFXR(a);
+    case Re_capture(c, a) => W.FXRCap(c, a); QSetsFXRE(a, Q);
+    case Re_lookaround(l, la, a) => W.FXRLook(l, la, a);
+    case Re_anchor(x) => W.FXRAnchor(x);
+    case Re_empty =>
+    case Re_character(_) =>
+  }
+
+  /** (G4b-1b) The stamped set crosses the mirror (a bank bounded by `n` keeps every sign). */
+  lemma StampSetMirror(r: AReg.Regs, n: nat)
+    requires forall k: int :: AI.get_idx(r.a_cp, k) <= n
+    ensures ELk.StampSet(MIR.MirrorRegs(r, n).a_cp) == ELk.StampSet(r.a_cp)
+  {
+    W.MirrorSign(r, n);
+    forall q: int ensures q in ELk.StampSet(MIR.MirrorRegs(r, n).a_cp) <==> q in ELk.StampSet(r.a_cp) {
+      W.MirrorGetIdx(r, n, q);
+      assert (AI.get_idx(MIR.MirrorRegs(r, n).a_cp, q) >= 0) == (AI.get_idx(r.a_cp, q) >= 0);
+    }
   }
 
   /** THE CARRIER'S FRAME across the mirror: the mirror image of the real backward plus winner and the
@@ -1143,9 +1227,15 @@ module LindenElkMachineABack {
       var rrF := AI.FFindMatchPlus(bcF, FST.FXR(body), plusF, LC.Reverse(str), MIR.MirrorView(ov, n), LAnc.Forward,
                                    n - cp, AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0,
                                    MIR.SwapAnchorsCdns(cdns)).0;
-      (rr.Some? <==> rrF.Some?)
+      var fF := AI.FFindMatch(bcF, LC.Reverse(str),
+                  AI.FInitState(bcF, n - cp, AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0,
+                                AI.cp_context(n - cp, LC.Reverse(str), LAnc.Forward)),
+                  MIR.MirrorView(ov, n), LAnc.Forward, MIR.SwapAnchorsCdns(cdns)).0;
+      (rr.Some? <==> rrF.Some?) && (rr.Some? <==> fF.Some?)
+      // (G4b-1b) the frame from the FORWARD VM WINNER (live) to the mirror of the backward reconstruction
       && (rr.Some? ==>
-            ClkFrameG4(FST.FXR(body), FRD.StampQids(FST.FXR(body)), MIR.MirrorThread(rr.value, n), rrF.value))
+            ClkFrameG4(FST.FXR(body), ELk.StampSet(fF.value.quant_regs.a_cp), MIR.MirrorThread(rr.value, n), fF.value)
+            && PSM.BestLiveRE(FST.FXR(body), fF.value))
   {
     var reF := FST.FXR(body);
     var rstr := LC.Reverse(str);
@@ -1169,36 +1259,30 @@ module LindenElkMachineABack {
     var rr := AI.FFindMatchPlus(bcB, body, plus, str, ov, LAnc.Backward, cp,
                                 AReg.init_regs(ncap), AReg.init_regs(nlook), AReg.init_regs(nquant), 0, cdns).0;
     assert {:split_here} true;   // (G5b-2, pack S25) one batch per section under `dafny build`
-    if fmF.0.Some? {
-      FST.FXRStructuralCdn(body);
-      FG.LookUniqueFXR(body);
-      FG.LookIdsFXR(body);
-      NRC.CdnTopAll(reF);
-      TB.StampLooksCapFreeFXR(body);
-      SizesCoverFromOk(reF, ncap, nlook, nquant);
-      var rpF := MA.ReadoutAtWinnerAtS(qmF, reF, bcF, endlF, plusF, rstr, mcpN, ov', cdns', initsF,
-                                      ncap, nlook, nquant, fmF.0);
-      assert rrF.0 == Some(rpF);
-      assert {:split_here} true;
-      var Q := FRD.StampQids(body);
-      W.StampQidsFXR(body);
-      QSetsFXR(body, Q);
+    if rr.Some? {
       var tB := raB.value; var tF := fmF.0.value; var rp := rr.value;
-      assert ClkFrameG4(body, Q, rp, tB) && ClkFrameG4(reF, Q, rpF, tF) && tF == MIR.MirrorThread(tB, n);
+      assert tF == MIR.MirrorThread(tB, n) && PSM.BestLiveRE(reF, tF);
+      var Q := ELk.StampSet(tB.quant_regs.a_cp);
+      assert ClkFrameG4(body, Q, rp, tB);
+      StampSetMirror(tB.quant_regs, n);
+      assert ELk.StampSet(tF.quant_regs.a_cp) == Q;
+      QSetsFXR(body, Q);
+      QSetsFXRE(body, Q);
       var m := MIR.MirrorThread(rp, n);
       assert m.capture_regs.a_clk == rp.capture_regs.a_clk && m.quant_regs.a_clk == rp.quant_regs.a_clk;
       assert tF.capture_regs.a_clk == tB.capture_regs.a_clk && tF.quant_regs.a_clk == tB.quant_regs.a_clk;
-      // (G5b-3) the look registers outside LooksQ: rp == tB there, the mirror acts pointwise, tF == Mirror(tB)
-      assert |m.look_regs.a_cp| == |rpF.look_regs.a_cp|;
-      forall k | k !in RF.LooksQ(reF, Q)
-        ensures AI.get_idx(m.look_regs.a_cp, k) == AI.get_idx(rpF.look_regs.a_cp, k)
-                && AI.get_idx(m.look_regs.a_clk, k) == AI.get_idx(rpF.look_regs.a_clk, k)
+      // the look registers outside LooksQE: rp == tB there, and the mirror acts pointwise
+      assert |m.look_regs.a_cp| == |tF.look_regs.a_cp|;
+      forall k | k !in ELk.LooksQE(reF, Q)
+        ensures AI.get_idx(m.look_regs.a_cp, k) == AI.get_idx(tF.look_regs.a_cp, k)
+                && AI.get_idx(m.look_regs.a_clk, k) == AI.get_idx(tF.look_regs.a_clk, k)
       {
-        assert k !in RF.LooksQ(body, Q);
+        assert k !in ELk.LooksQE(body, Q);
         W.MirrorGetIdx(rp.look_regs, n, k);
         W.MirrorGetIdx(tB.look_regs, n, k);
       }
-      assert ClkFrameG4(reF, Q, m, rpF);
+      assert ClkFrameG4(reF, Q, m, tF);
     }
   }
+
 }

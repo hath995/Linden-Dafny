@@ -337,32 +337,32 @@ module NullablePlusWitness {
   const G4B1_PLUS := R.Raw_quant(R.Plus, R.Raw_capture(A_LOOKCAP_OR_AOPT))                // (a(?=(a))|a?)+
   const G4B1_STAR := R.Raw_quant(R.Star, R.Raw_con(G4B1_PLUS, R.Raw_character(R.Dot)))    // (?:(a(?=(a))|a?)+a)*
 
-  /** `annotate`'s output on `G4B1_PLUS` (quant ids from `q`), spelled out: the patterns are too deep for the
-      solver to evaluate `annotate_regex` as a ground term, so each step is one unfolding. */
-  function PlusA(q: int): R.regex {
+  /** `annotate`'s output on `G4B1_PLUS` (look ids from `l`, quant ids from `q`), spelled out: the patterns are too
+      deep for the solver to evaluate `annotate_regex` as a ground term, so each step is one unfolding. */
+  function PlusA(l: int, q: int): R.regex {
     var dot := R.Re_character(R.Dot);
-    var alt := R.Re_alt(R.Re_con(dot, R.Re_lookaround(1, R.Lookahead, R.Re_capture(2, dot))),
+    var alt := R.Re_alt(R.Re_con(dot, R.Re_lookaround(l, R.Lookahead, R.Re_capture(2, dot))),
                         R.Re_quant(R.NonNullable, q + 1, R.CountedQuant(0, Some(1), true), dot));
     R.Re_quant(R.CINullable, q, R.CountedQuant(1, None, true), R.Re_capture(1, alt))
   }
 
-  lemma AnnotPlus(q: int)
-    ensures R.annotate_regex(G4B1_PLUS, 1, 1, q) == (PlusA(q), 3, 2, q + 2)
+  lemma AnnotPlus(l: int, q: int)
+    ensures R.annotate_regex(G4B1_PLUS, 1, l, q) == (PlusA(l, q), 3, l + 1, q + 2)
   {
     var dot := R.Re_character(R.Dot);
-    var look := R.Re_lookaround(1, R.Lookahead, R.Re_capture(2, dot));
+    var look := R.Re_lookaround(l, R.Lookahead, R.Re_capture(2, dot));
     var aopt := R.Re_quant(R.NonNullable, q + 1, R.CountedQuant(0, Some(1), true), dot);
     var alt := R.Re_alt(R.Re_con(dot, look), aopt);
-    assert R.annotate_regex(R.Raw_character(R.Dot), 3, 2, q + 1) == (dot, 3, 2, q + 1);
-    assert R.annotate_regex(CAP_A, 2, 2, q + 1) == (R.Re_capture(2, dot), 3, 2, q + 1);
-    assert R.annotate_regex(LOOK_CAP, 2, 1, q + 1) == (look, 3, 2, q + 1);
-    assert R.annotate_regex(R.Raw_character(R.Dot), 2, 1, q + 1) == (dot, 2, 1, q + 1);
-    assert R.annotate_regex(R.Raw_con(R.Raw_character(R.Dot), LOOK_CAP), 2, 1, q + 1) == (R.Re_con(dot, look), 3, 2, q + 1);
-    assert R.annotate_regex(R.Raw_character(R.Dot), 3, 2, q + 2) == (dot, 3, 2, q + 2);
+    assert R.annotate_regex(R.Raw_character(R.Dot), 3, l + 1, q + 1) == (dot, 3, l + 1, q + 1);
+    assert R.annotate_regex(CAP_A, 2, l + 1, q + 1) == (R.Re_capture(2, dot), 3, l + 1, q + 1);
+    assert R.annotate_regex(LOOK_CAP, 2, l, q + 1) == (look, 3, l + 1, q + 1);
+    assert R.annotate_regex(R.Raw_character(R.Dot), 2, l, q + 1) == (dot, 2, l, q + 1);
+    assert R.annotate_regex(R.Raw_con(R.Raw_character(R.Dot), LOOK_CAP), 2, l, q + 1) == (R.Re_con(dot, look), 3, l + 1, q + 1);
+    assert R.annotate_regex(R.Raw_character(R.Dot), 3, l + 1, q + 2) == (dot, 3, l + 1, q + 2);
     assert R.nullable(dot) == R.NonNullable;
-    assert R.annotate_regex(AOPT, 3, 2, q + 1) == (aopt, 3, 2, q + 2);
-    assert R.annotate_regex(A_LOOKCAP_OR_AOPT, 2, 1, q + 1) == (alt, 3, 2, q + 2);
-    assert R.annotate_regex(R.Raw_capture(A_LOOKCAP_OR_AOPT), 1, 1, q + 1) == (R.Re_capture(1, alt), 3, 2, q + 2);
+    assert R.annotate_regex(AOPT, 3, l + 1, q + 1) == (aopt, 3, l + 1, q + 2);
+    assert R.annotate_regex(A_LOOKCAP_OR_AOPT, 2, l, q + 1) == (alt, 3, l + 1, q + 2);
+    assert R.annotate_regex(R.Raw_capture(A_LOOKCAP_OR_AOPT), 1, l, q + 1) == (R.Re_capture(1, alt), 3, l + 1, q + 2);
     assert R.nullable(look) == R.CDNullable;
     assert R.nullable(R.Re_con(dot, look)) == R.NonNullable;
     assert R.nullable(aopt) == R.CINullable;
@@ -373,9 +373,9 @@ module NullablePlusWitness {
   lemma G4b1_CapLookInPlusBody()
     ensures API.Supported(G4B1_PLUS)    // (a(?=(a))|a?)+
   {
-    AnnotPlus(1);
+    AnnotPlus(1, 1);
     var re1 := R.lazy_prefix(R.annotate(G4B1_PLUS));
-    assert R.annotate(G4B1_PLUS) == R.Re_capture(0, PlusA(1));
+    assert R.annotate(G4B1_PLUS) == R.Re_capture(0, PlusA(1, 1));
     assert NR.NestedFragmentCdnRaw(G4B1_PLUS) && T.Latin1Wf(G4B1_PLUS);
     assert MCL.CdnTopX(re1);
     assert CL.CinLooksCapFreeX(re1);
@@ -384,10 +384,10 @@ module NullablePlusWitness {
   lemma G4b1_CapLookInPlusBodyUnderStar()
     ensures API.Supported(G4B1_STAR)    // (?:(a(?=(a))|a?)+a)*
   {
-    AnnotPlus(2);
+    AnnotPlus(1, 2);
     var dot := R.Re_character(R.Dot);
     assert R.annotate_regex(R.Raw_character(R.Dot), 3, 2, 4) == (dot, 3, 2, 4);
-    var con := R.Re_con(PlusA(2), dot);
+    var con := R.Re_con(PlusA(1, 2), dot);
     assert R.annotate_regex(R.Raw_con(G4B1_PLUS, R.Raw_character(R.Dot)), 1, 1, 2) == (con, 3, 2, 4);
     assert R.nullable(con) == R.NonNullable;
     var star := R.Re_quant(R.NonNullable, 1, R.CountedQuant(0, None, true), con);
@@ -397,5 +397,35 @@ module NullablePlusWitness {
     assert NR.NestedFragmentCdnRaw(G4B1_STAR) && T.Latin1Wf(G4B1_STAR);
     assert MCL.CdnTopX(re2);
     assert CL.CinLooksCapFreeX(re2);
+  }
+
+  // (G4b-1b) The same inside a look body of either direction.
+  const G4B1_AHEAD  := R.Raw_lookaround(R.Lookahead, G4B1_PLUS)    // (?=(a(?=(a))|a?)+)
+  const G4B1_BEHIND := R.Raw_lookaround(R.Lookbehind, G4B1_PLUS)   // (?<=(a(?=(a))|a?)+)
+
+  lemma G4b1b_CapLookInPlusInLookahead()
+    ensures API.Supported(G4B1_AHEAD)    // (?=(a(?=(a))|a?)+)
+  {
+    AnnotPlus(2, 1);
+    var lk := R.Re_lookaround(1, R.Lookahead, PlusA(2, 1));
+    assert R.annotate_regex(G4B1_AHEAD, 1, 1, 1) == (lk, 3, 3, 3);
+    assert R.annotate(G4B1_AHEAD) == R.Re_capture(0, lk);
+    var re := R.lazy_prefix(R.annotate(G4B1_AHEAD));
+    assert NR.NestedFragmentCdnRaw(G4B1_AHEAD) && T.Latin1Wf(G4B1_AHEAD);
+    assert MCL.CdnTopX(re);
+    assert CL.CinLooksCapFreeX(re);
+  }
+
+  lemma G4b1b_CapLookInPlusInLookbehind()
+    ensures API.Supported(G4B1_BEHIND)   // (?<=(a(?=(a))|a?)+)
+  {
+    AnnotPlus(2, 1);
+    var lk := R.Re_lookaround(1, R.Lookbehind, PlusA(2, 1));
+    assert R.annotate_regex(G4B1_BEHIND, 1, 1, 1) == (lk, 3, 3, 3);
+    assert R.annotate(G4B1_BEHIND) == R.Re_capture(0, lk);
+    var re := R.lazy_prefix(R.annotate(G4B1_BEHIND));
+    assert NR.NestedFragmentCdnRaw(G4B1_BEHIND) && T.Latin1Wf(G4B1_BEHIND);
+    assert MCL.CdnTopX(re);
+    assert CL.CinLooksCapFreeX(re);
   }
 }

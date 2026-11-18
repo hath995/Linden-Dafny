@@ -118,6 +118,7 @@ module LindenElkLiftSimForward {
   import opened LindenElkLiftSimDeep
   import TM = LindenElkTwoMachines       // (G3a) WinnerLookKept
   import RF = LindenElkReconFrame        // (G5b-3)
+  import ELk = LindenElkEmptyLooks   // (G4b-1b)
   import FRD = LindenElkFinalReadout
   import SLk = LindenElkStampLooks
   import BF = LindenElkBankFrames
@@ -216,7 +217,7 @@ module LindenElkLiftSimForward {
   }
 
 
-  /** (G5b-3) A lid whose body holds a capture is not re-set by the reconstruction (`SLk.LooksQCapFree`), so a set
+  /** (G5b-3, G4b-1b) A lid whose body holds a capture is not re-set by the reconstruction (`ELk.LooksQECapFree`), so a set
       record of the lookbehind row's fresh PLUS winner at it is the VM winner's, a matched positive row
       (`M.FreshReplayLookPos`). What `BackPlusLookFacts`' `LookPosO` gave before stamp bodies held looks. */
   lemma BackPlusMatchedPos(host: R.regex, crv: CP.FCompiled, str: string, cp: nat, ov: LOr.OracleView,
@@ -250,9 +251,12 @@ module LindenElkLiftSimForward {
     M.ReplayPlusRowLBS(bcB, str, ov, cdn, crv.f_plus_bc, cp, capture, look, quant, host, ncap, nlook, nquant);
     M.FreshReplayLookPos(host, crv, str, cp, ov, LAnc.Backward, cdn, ncap, nlook, nquant);
     var Q := FRD.StampQids(host);
-    BF.QInStampQ(host);
-    assert (A1 as int) !in RF.LooksQ(host, Q) by {
-      if (A1 as int) in RF.LooksQ(host, Q) { SLk.LooksQCapFree(host, Q, A1); assert g in PIV.CapIds(NI.LookBodyOfRE(host, A1)); }
+    assert (A1 as int) !in ELk.LooksQE(host, Q) by {   // (G4b-1b) the re-set lids capture nothing
+      if (A1 as int) in ELk.LooksQE(host, Q) {
+        ELk.StampLooksCapFreeETop(host);
+        ELk.LooksQECapFree(host, Q, A1);
+        assert g in PIV.CapIds(NI.LookBodyOfRE(host, A1));
+      }
     }
     var rf := AI.FFindMatchPlus(bcB, host, crv.f_plus_bc, str, ov, LAnc.Backward, cp, capture, look, quant, 0, cdn).0;
     var fm := AI.FFindMatch(bcB, str, AI.FInitState(bcB, cp, capture, look, quant, 0, AI.cp_context(cp, str, LAnc.Backward)),
@@ -297,9 +301,12 @@ module LindenElkLiftSimForward {
     M.ReplayPlusRowLAS(bcB, str, ov, cdn, crv.f_plus_bc, cp, capture, look, quant, host, ncap, nlook, nquant);
     M.FreshReplayLookPos(host, crv, str, cp, ov, LAnc.Forward, cdn, ncap, nlook, nquant);
     var Q := FRD.StampQids(host);
-    BF.QInStampQ(host);
-    assert (A1 as int) !in RF.LooksQ(host, Q) by {
-      if (A1 as int) in RF.LooksQ(host, Q) { SLk.LooksQCapFree(host, Q, A1); assert g in PIV.CapIds(NI.LookBodyOfRE(host, A1)); }
+    assert (A1 as int) !in ELk.LooksQE(host, Q) by {   // (G4b-1b) the re-set lids capture nothing
+      if (A1 as int) in ELk.LooksQE(host, Q) {
+        ELk.StampLooksCapFreeETop(host);
+        ELk.LooksQECapFree(host, Q, A1);
+        assert g in PIV.CapIds(NI.LookBodyOfRE(host, A1));
+      }
     }
     var rf := AI.FFindMatchPlus(bcB, host, crv.f_plus_bc, str, ov, LAnc.Forward, cp, capture, look, quant, 0, cdn).0;
     var fm := AI.FFindMatch(bcB, str, AI.FInitState(bcB, cp, capture, look, quant, 0, AI.cp_context(cp, str, LAnc.Forward)),

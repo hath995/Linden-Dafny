@@ -50,9 +50,9 @@ module LindenRegexApi {
         - (G5b-3) inside a look body too, a nullable plus body may hold capture-free looks: `(?=((?=a)|b)+)`,
           `(?<=((?=a)|a?)+)`, `(?!((?=a)|a?)+)` (`CL.LookStampOkX`: inside a positive look, every look in a nullable
           plus body is capture-free; a negative look body is unrestricted).
-        - (G4b-1) at the top regex, a nullable plus body may hold CAPTURING looks off its empty paths:
-          `(a(?=(b))|c?)+`, `(?:(a(?=(b))|c?)+b)*` (`CL.EmptyPathLooksCapFreeX`: every look an empty path of the
-          body can cross is capture-free).
+        - (G4b-1) a nullable plus body may hold CAPTURING looks off its empty paths, at any look depth:
+          `(a(?=(b))|c?)+`, `(?:(a(?=(b))|c?)+b)*`, `(?=(a(?=(b))|c?)+)`, `(?<=(a(?=(b))|c?)+)`
+          (`CL.EmptyPathLooksCapFreeX`: every look an empty path of the body can cross is capture-free).
       Looks nest to any depth in either direction: lookaheads inside lookbehinds and
       lookbehinds inside lookaheads (gate B, G1 full depth). Exactly
       `MCL.MainTheoremL5Cin`'s precondition. `SUPPORTED_FRAGMENT.md` lists what this admits

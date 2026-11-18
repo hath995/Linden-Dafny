@@ -313,6 +313,45 @@ module LindenElkReconFrame {
       row twin of main-cin-lk's G4a scope `CL.CinLooksCapFreeRE` (quant arm): what a positive row whose stamp
       bodies may hold (capture-free) looks needs. It descends into look bodies, so a nested row's statics come from
       its host's (like `StampBodiesLookFreeRE`, which implies it). */
+  /** (G4b-1) `r` may match empty somewhere: the engine's own nullability (symmetric under reversal). */
+  predicate MayNull(r: R.regex) {
+    R.nullable(r) != R.NonNullable
+  }
+
+  /** The stamp-plus shape (`NRR.QidStampPlus` at the node itself). */
+  predicate StampNode(nul: R.nullability, q: R.counted_quantifier) {
+    q.min != 0 && q.max == None && nul != R.NonNullable && q.greedy
+  }
+
+  /** (G4b-1) Every look an empty path of `r` can cross is capture-free (any polarity); the RE twin of
+      `NPL.EmptyLooksGroupFreeL`. */
+  ghost predicate EmptyPathLooksCapFree(r: R.regex)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => EmptyPathLooksCapFree(r1) && EmptyPathLooksCapFree(r2)
+    case Re_con(r1, r2) => (MayNull(r2) ==> EmptyPathLooksCapFree(r1)) && (MayNull(r1) ==> EmptyPathLooksCapFree(r2))
+    case Re_quant(_, _, q, r1) => q.min == 0 || EmptyPathLooksCapFree(r1)
+    case Re_capture(_, r1) => EmptyPathLooksCapFree(r1)
+    case Re_lookaround(_, _, b) => PIV.CapIds(b) == {}
+    case _ => true
+  }
+
+  lemma CapFreeLooksEPCF(r: R.regex)
+    requires PIV.CapIdsInLooks(r) == {}
+    ensures EmptyPathLooksCapFree(r)
+    decreases r
+  {
+    match r
+    case Re_alt(r1, r2) => CapFreeLooksEPCF(r1); CapFreeLooksEPCF(r2);
+    case Re_con(r1, r2) => CapFreeLooksEPCF(r1); CapFreeLooksEPCF(r2);
+    case Re_quant(_, _, _, r1) => CapFreeLooksEPCF(r1);
+    case Re_capture(_, r1) => CapFreeLooksEPCF(r1);
+    case _ =>
+  }
+
+  /** (G5b-3, G4b-1) The stamp scope: in every greedy nullable plus body, every look an empty path can cross is
+      capture-free (G5b-3 asked it of every look of the body; G4b-1 lets the others capture). */
   ghost predicate StampLooksCapFreeRE(re: R.regex)
     decreases re
   {
@@ -320,7 +359,7 @@ module LindenElkReconFrame {
     case Re_alt(r1, r2) => StampLooksCapFreeRE(r1) && StampLooksCapFreeRE(r2)
     case Re_con(r1, r2) => StampLooksCapFreeRE(r1) && StampLooksCapFreeRE(r2)
     case Re_quant(nul, qid, q, body) =>
-      (q.min != 0 && q.max == None && nul != R.NonNullable && q.greedy ==> PIV.CapIdsInLooks(body) == {})
+      (StampNode(nul, q) ==> EmptyPathLooksCapFree(body))
       && StampLooksCapFreeRE(body)
     case Re_capture(_, r1) => StampLooksCapFreeRE(r1)
     case Re_lookaround(_, _, r1) => StampLooksCapFreeRE(r1)
@@ -338,7 +377,7 @@ module LindenElkReconFrame {
     case Re_con(r1, r2) => StampBodiesLookFreeIsCapFree(r1); StampBodiesLookFreeIsCapFree(r2);
     case Re_quant(nul, qid, q, body) =>
       StampBodiesLookFreeIsCapFree(body);
-      if q.min != 0 && q.max == None && nul != R.NonNullable && q.greedy { PIV.LookFreeCapIdsInLooksEmpty(body); }
+      if StampNode(nul, q) { PIV.LookFreeCapIdsInLooksEmpty(body); CapFreeLooksEPCF(body); }
     case Re_capture(_, r1) => StampBodiesLookFreeIsCapFree(r1);
     case Re_lookaround(_, _, r1) => StampBodiesLookFreeIsCapFree(r1);
     case _ =>

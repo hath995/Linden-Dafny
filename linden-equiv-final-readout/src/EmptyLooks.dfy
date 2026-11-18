@@ -33,6 +33,7 @@ module LindenElkEmptyLooks {
   import RF = LindenElkReconFrame
   import CLP = LindenElkCinLookPaths
   import SL = LindenElkStampLive
+  import PSM = LindenElkPikeSim
   import FV = LindenElkFinalVm
   import FRD = LindenElkFinalReadout
   import LAnc = Anchors
@@ -42,23 +43,13 @@ module LindenElkEmptyLooks {
   // 1. The sets
   // ===========================================================================
 
-  /** `r` may match empty somewhere (its translation is not `NonNullableL`). */
-  predicate MayNull(r: R.regex) {
-    T.TransWf(r) ==> !NUL.NonNullableL(T.Translate(r))
-  }
-
-  /** The stamp-plus shape (`NRR.QidStampPlus` at the node itself). */
-  predicate StampNode(nul: R.nullability, q: R.counted_quantifier) {
-    q.min != 0 && q.max == None && nul != R.NonNullable && q.greedy
-  }
-
   ghost function OwnLooksE(r: R.regex): set<int>
     decreases r
   {
     match r
     case Re_alt(r1, r2) => OwnLooksE(r1) + OwnLooksE(r2)
-    case Re_con(r1, r2) => (if MayNull(r2) then OwnLooksE(r1) else {}) + (if MayNull(r1) then OwnLooksE(r2) else {})
-    case Re_quant(nul, _, q, r1) => if q.min == 0 || nul == R.NonNullable || StampNode(nul, q) then {} else OwnLooksE(r1)
+    case Re_con(r1, r2) => (if RF.MayNull(r2) then OwnLooksE(r1) else {}) + (if RF.MayNull(r1) then OwnLooksE(r2) else {})
+    case Re_quant(nul, _, q, r1) => if q.min == 0 || nul == R.NonNullable || RF.StampNode(nul, q) then {} else OwnLooksE(r1)
     case Re_capture(_, r1) => OwnLooksE(r1)
     case Re_lookaround(lid, la, _) => if NRC.PositiveLk(la) then {lid} else {}
     case _ => {}
@@ -70,7 +61,7 @@ module LindenElkEmptyLooks {
     match r
     case Re_alt(r1, r2) => InnerLookRegsE(r1) + InnerLookRegsE(r2)
     case Re_con(r1, r2) => InnerLookRegsE(r1) + InnerLookRegsE(r2)
-    case Re_quant(nul, _, q, r1) => (if StampNode(nul, q) then OwnLooksE(r1) else {}) + InnerLookRegsE(r1)
+    case Re_quant(nul, _, q, r1) => (if RF.StampNode(nul, q) then OwnLooksE(r1) else {}) + InnerLookRegsE(r1)
     case Re_capture(_, r1) => InnerLookRegsE(r1)
     case _ => {}
   }
@@ -181,7 +172,7 @@ module LindenElkEmptyLooks {
   lemma NulledWritesMayNull(qm: AR.QMap, r: R.regex, inp: LC.Input)
     requires T.TransWf(r)
     requires NRC.NulledWrites(qm, r, inp).Some?
-    ensures MayNull(r)
+    ensures RF.MayNull(r)
     decreases r
   {
     match r
@@ -198,8 +189,7 @@ module LindenElkEmptyLooks {
     case Re_quant(nul, qid, q, r1) =>
       if q.min == 0 {
       } else if q.max == None && nul == R.CINullable && q.greedy {
-        NUL.TransCINullable(r1);
-        NUL.CINotNonNullableL(T.Translate(r1));
+        assert nul == R.nullable(r1);   // `TransWf`
       } else {
         NulledWritesMayNull(qm, r1, inp);
       }
@@ -248,7 +238,7 @@ module LindenElkEmptyLooks {
         assert ws == [NRC.WQuant(qid, true)];
         assert NRR.LookTargets(ws) == {} && NRR.CapTargets(ws) == {};
       } else {
-        assert !StampNode(nul, q);
+        assert !RF.StampNode(nul, q);
         NulledWritesTargetsE(qm, r1, inp);
         var w1 := NRC.NulledWrites(qm, r1, inp).value;
         NRR.TargetsApp([NRC.WQuant(qid, false)], w1);
@@ -361,8 +351,8 @@ module LindenElkEmptyLooks {
     assert (qid as nat) in PIV.QuantIds(r) && PIV.QidBody(r, qid as nat) == body;
     var inp := T.InputAt(str, cp);
     NRR.CpOfInputAt(str, cp);
-    var Own := if StampNode(r.qnul, r.quant) then OwnLooksE(body) else {};
-    assert NRR.QidStampPlus(r, qid as nat) == StampNode(r.qnul, r.quant);
+    var Own := if RF.StampNode(r.qnul, r.quant) then OwnLooksE(body) else {};
+    assert NRR.QidStampPlus(r, qid as nat) == RF.StampNode(r.qnul, r.quant);
     if NRR.QidStampPlus(r, qid as nat) {
       assert code == CP.compile_reconstruct_nulled(body);
       assert inits == AI.FInitState(code, TR.CpOf(inp) as int, rg.0, rg.1, rg.2, start_clock, TR.CtxOf(inp)).(cdn := inits.cdn);
@@ -503,32 +493,6 @@ module LindenElkEmptyLooks {
   // 5. The scope: every look an empty path can cross is capture-free (any polarity)
   // ===========================================================================
 
-  /** The RE twin of `NPL.EmptyLooksGroupFreeL` (its con arm translates verbatim under `TransWf`). */
-  ghost predicate EmptyPathLooksCapFree(r: R.regex)
-    decreases r
-  {
-    match r
-    case Re_alt(r1, r2) => EmptyPathLooksCapFree(r1) && EmptyPathLooksCapFree(r2)
-    case Re_con(r1, r2) => (MayNull(r2) ==> EmptyPathLooksCapFree(r1)) && (MayNull(r1) ==> EmptyPathLooksCapFree(r2))
-    case Re_quant(_, _, q, r1) => q.min == 0 || EmptyPathLooksCapFree(r1)
-    case Re_capture(_, r1) => EmptyPathLooksCapFree(r1)
-    case Re_lookaround(_, _, b) => PIV.CapIds(b) == {}
-    case _ => true
-  }
-
-  /** (G4b-1) `RF.StampLooksCapFreeRE` with the stamp arm weakened to the empty-path looks. */
-  ghost predicate StampLooksCapFreeE(re: R.regex)
-    decreases re
-  {
-    match re
-    case Re_alt(r1, r2) => StampLooksCapFreeE(r1) && StampLooksCapFreeE(r2)
-    case Re_con(r1, r2) => StampLooksCapFreeE(r1) && StampLooksCapFreeE(r2)
-    case Re_quant(nul, qid, q, body) => (StampNode(nul, q) ==> EmptyPathLooksCapFree(body)) && StampLooksCapFreeE(body)
-    case Re_capture(_, r1) => StampLooksCapFreeE(r1)
-    case Re_lookaround(_, _, r1) => StampLooksCapFreeE(r1)
-    case _ => true
-  }
-
   /** The scope outside look bodies (what the top reconstruction reads; a look body has its own scope). */
   ghost predicate StampLooksCapFreeTop(re: R.regex)
     decreases re
@@ -536,13 +500,13 @@ module LindenElkEmptyLooks {
     match re
     case Re_alt(r1, r2) => StampLooksCapFreeTop(r1) && StampLooksCapFreeTop(r2)
     case Re_con(r1, r2) => StampLooksCapFreeTop(r1) && StampLooksCapFreeTop(r2)
-    case Re_quant(nul, qid, q, body) => (StampNode(nul, q) ==> EmptyPathLooksCapFree(body)) && StampLooksCapFreeTop(body)
+    case Re_quant(nul, qid, q, body) => (RF.StampNode(nul, q) ==> RF.EmptyPathLooksCapFree(body)) && StampLooksCapFreeTop(body)
     case Re_capture(_, r1) => StampLooksCapFreeTop(r1)
     case _ => true
   }
 
   lemma StampLooksCapFreeETop(re: R.regex)
-    requires StampLooksCapFreeE(re)
+    requires RF.StampLooksCapFreeRE(re)
     ensures StampLooksCapFreeTop(re)
     decreases re
   {
@@ -554,42 +518,12 @@ module LindenElkEmptyLooks {
     case _ =>
   }
 
-  lemma CapFreeLooksEPCF(r: R.regex)
-    requires PIV.CapIdsInLooks(r) == {}
-    ensures EmptyPathLooksCapFree(r)
-    decreases r
-  {
-    match r
-    case Re_alt(r1, r2) => CapFreeLooksEPCF(r1); CapFreeLooksEPCF(r2);
-    case Re_con(r1, r2) => CapFreeLooksEPCF(r1); CapFreeLooksEPCF(r2);
-    case Re_quant(_, _, _, r1) => CapFreeLooksEPCF(r1);
-    case Re_capture(_, r1) => CapFreeLooksEPCF(r1);
-    case _ =>
-  }
-
-  /** G4a's scope is an instance. */
-  lemma StampLooksCapFreeToE(re: R.regex)
-    requires RF.StampLooksCapFreeRE(re)
-    ensures StampLooksCapFreeE(re)
-    decreases re
-  {
-    match re
-    case Re_alt(r1, r2) => StampLooksCapFreeToE(r1); StampLooksCapFreeToE(r2);
-    case Re_con(r1, r2) => StampLooksCapFreeToE(r1); StampLooksCapFreeToE(r2);
-    case Re_quant(nul, qid, q, body) =>
-      StampLooksCapFreeToE(body);
-      if StampNode(nul, q) { CapFreeLooksEPCF(body); }
-    case Re_capture(_, r1) => StampLooksCapFreeToE(r1);
-    case Re_lookaround(_, _, r1) => StampLooksCapFreeToE(r1);
-    case _ =>
-  }
-
   // ===========================================================================
   // 6. Every lid the reconstruction may re-set has a capture-free body
   // ===========================================================================
 
   lemma OwnLooksCapFree(r: R.regex, lid: nat)
-    requires (lid as int) in OwnLooksE(r) && EmptyPathLooksCapFree(r) && LTB.LookUnique(r)
+    requires (lid as int) in OwnLooksE(r) && RF.EmptyPathLooksCapFree(r) && LTB.LookUnique(r)
     ensures lid in LTB.LookIds(r) && PIV.CapIds(NI.LookBodyOfRE(r, lid)) == {}
     decreases r
   {
@@ -602,7 +536,7 @@ module LindenElkEmptyLooks {
         assert lid !in LTB.LookIds(r1) by { if lid in LTB.LookIds(r1) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); } }
       }
     case Re_con(r1, r2) =>
-      if MayNull(r2) && (lid as int) in OwnLooksE(r1) {
+      if RF.MayNull(r2) && (lid as int) in OwnLooksE(r1) {
         OwnLooksCapFree(r1, lid);
       } else {
         OwnLooksCapFree(r2, lid);
@@ -635,7 +569,7 @@ module LindenElkEmptyLooks {
         assert lid !in LTB.LookIds(r1) by { if lid in LTB.LookIds(r1) { assert lid in LTB.LookIds(r1) * LTB.LookIds(r2); } }
       }
     case Re_quant(nul, _, q, r1) =>
-      if StampNode(nul, q) && (lid as int) in OwnLooksE(r1) { OwnLooksCapFree(r1, lid); }
+      if RF.StampNode(nul, q) && (lid as int) in OwnLooksE(r1) { OwnLooksCapFree(r1, lid); }
       else { InnerLooksCapFree(r1, lid); }
     case Re_capture(_, r1) => InnerLooksCapFree(r1, lid);
     case _ =>
@@ -1285,5 +1219,22 @@ module LindenElkEmptyLooks {
       }
     }
     FRD.PrefixIdentity(ast, rg, plus, str, qm.ov);
+  }
+
+  /** The stamp-liveness facts of a VM winner at its stamped set (for `StampedAncKillsPresence`). */
+  lemma BodyStaleAtStamps(re: R.regex, best: AI.Thread, Q: set<int>)
+    requires PSM.BestLiveRE(re, best) && Q == StampSet(best.quant_regs.a_cp)
+    ensures forall q: nat :: q in PIV.QuantIds(re) && (q as int) in Q ==>
+              SL.BodyStale(PIV.QidBody(re, q), best.capture_regs.a_clk, best.quant_regs.a_clk,
+                           AI.get_idx(best.quant_regs.a_clk, q))
+  {
+    reveal PSM.BestLiveRE();
+    forall q: nat | q in PIV.QuantIds(re) && (q as int) in Q
+      ensures SL.BodyStale(PIV.QidBody(re, q), best.capture_regs.a_clk, best.quant_regs.a_clk,
+                           AI.get_idx(best.quant_regs.a_clk, q))
+    {
+      assert AI.get_idx(best.quant_regs.a_cp, q) >= 0;
+      SL.StampLiveAt(re, best.capture_regs.a_clk, best.quant_regs.a_clk, best.quant_regs.a_cp, q);
+    }
   }
 }

@@ -72,6 +72,7 @@ module LindenElkMain {
   import NRC = LindenElkNulledRecon
   import NRR = LindenElkNulledReconRegs
   import RRA = LindenElkRowReconAt
+  import ELk = LindenElkEmptyLooks   // (G4b-1b) the empty-path look set
   import RA = LindenElkReconAgree
   import QCI = LindenElkQuantCpIrrel
   import LLAF = LindenElkLookLoopAgreeFrom
@@ -4717,6 +4718,7 @@ module LindenElkMain {
             r.Some? ==> (fm.Some?
               && CM.RegsAgreeOutside(r.value.look_regs, fm.value.look_regs, DirectLidSet(body))
               && CM.RegsAgreeOutside(r.value.look_regs, fm.value.look_regs, RF.LooksQ(body, FRD.StampQids(body)))
+              && CM.RegsAgreeOutside(r.value.look_regs, fm.value.look_regs, ELk.LooksQE(body, FRD.StampQids(body)))   // (G4b-1b)
               && (CM.LookCpsOracleTrue(fm.value.look_regs, ov) ==> CM.LookCpsOracleTrue(r.value.look_regs, ov))
               && (CM.LookClkSetWithCp(fm.value.look_regs) ==> CM.LookClkSetWithCp(r.value.look_regs))
               && (CM.LookCpSetWithClk(fm.value.look_regs) ==> CM.LookCpSetWithClk(r.value.look_regs)))
@@ -4953,6 +4955,7 @@ module LindenElkMain {
             r.Some? ==> (fm.Some?
               && CM.RegsAgreeOutside(r.value.look_regs, fm.value.look_regs, DirectLidSet(body))
               && CM.RegsAgreeOutside(r.value.look_regs, fm.value.look_regs, RF.LooksQ(body, FRD.StampQids(body)))
+              && CM.RegsAgreeOutside(r.value.look_regs, fm.value.look_regs, ELk.LooksQE(body, FRD.StampQids(body)))   // (G4b-1b)
               && (CM.LookCpsOracleTrue(fm.value.look_regs, ov) ==> CM.LookCpsOracleTrue(r.value.look_regs, ov))
               && (CM.LookClkSetWithCp(fm.value.look_regs) ==> CM.LookClkSetWithCp(r.value.look_regs))
               && (CM.LookCpSetWithClk(fm.value.look_regs) ==> CM.LookCpSetWithClk(r.value.look_regs)))
