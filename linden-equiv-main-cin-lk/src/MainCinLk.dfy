@@ -2,7 +2,8 @@
 //
 // The main theorem, with no `NoNulledPlusRaw` gate: greedy
 // CI-nullable pluses (`(a?)+`) may sit OUTSIDE lookarounds, and their bodies may
-// hold capture-free looks (G4a, `((?=a)|a?)+`; `CinLooks.dfy`, `ReconBank.dfy`). The two machines
+// hold capture-free looks (G4a, `((?=a)|a?)+`; `CinLooks.dfy`, `ReconBank.dfy`), and (G4b-1) capturing looks off
+// their empty paths (`(a(?=(b))|c?)+`). The two machines
 // split the group space at `S = CapIdsInLooks(re)`:
 //   * OUTSIDE `S` — machine A (`PSM.FindMatchSimRENested`, gate-free), rung C's
 //     checked tree (`ResAgreeAtOutside(tstar, t, inp, S)`) and the F-b readout
@@ -10,10 +11,12 @@
 //     winner `rp = FReconstructPlus(best)`;
 //   * INSIDE `S` — machine B (the lift-sim band on the engine-shaped walk,
 //     `L3aCompositeCloseRecG`), whose carriers read only look registers and the
-//     clocks of the looks' ANCESTORS. A look outside every stamped CIN body keeps
-//     its record and its ancestors' clocks (`CL.AncAvoidQG4`); a look inside one
-//     captures nothing, so its carriers are vacuous (`CL.LooksQCapFree`).
-//     They move from `best` to `rp`.
+//     clocks of the looks' ANCESTORS. A look the reconstruction may re-set captures
+//     nothing, so its carriers are vacuous (`ELk.LooksQECapFree`); every other look
+//     keeps its record, and either its ancestors keep their clocks (`CL.AncFrameAvoid`)
+//     or one sits in a stamped body, where the winner's stale body kills its presence
+//     (`ELk.StampedAncKillsPresence`); the replay only raises quant clocks
+//     (`ELk.ReplayQuantClkMono`), so dominance moves back. They move from `best` to `rp`.
 // The endpoint (look loop, owner packages, deep conclusion) runs on the
 // SYNTHETIC winner `rp0` = `rp` with the outside-look quant positions cleared:
 // it has the quant finality the endpoint's replay lemmas read, the same clocks
@@ -92,6 +95,8 @@ module LindenElkMainCinLk {
   import opened LindenElkTwoMachines     // (G3a) TranslateCinOk, the four tie transports
   import CL = LindenElkCinLooks          // (G4a) the scope, machine B's entry, the frame and the transports
   import RBk = LindenElkReconBank        // (G4a) the replayed look and quant banks
+  import ELk = LindenElkEmptyLooks       // (G4b-1) the empty-path look set, the frames at the stamped set
+  import SL = LindenElkStampLive
 
   // =========================================================================
   // 0. Statics: the glue's side condition on the translated regex.
@@ -303,21 +308,20 @@ module LindenElkMainCinLk {
     requires WinRegsOkG(ast, re, crv, str, ov, best, ncap, nlook, nquant)
     requires CM.ThreadRegsWf(rp, ncap, nlook, nquant)
     requires forall k :: AI.get_idx(rp.quant_regs.a_clk, k) >= -1
-    requires var Q := FRD.StampQids(re);
+    requires var Q := ELk.StampSet(best.quant_regs.a_cp);
              NRR.AgreeOutside((rp.capture_regs, rp.look_regs, rp.quant_regs),
                               (best.capture_regs, best.look_regs, best.quant_regs),
-                              RF.CapsQ(re, Q), RF.LooksQ(re, Q), RF.QuantsQ(re, Q))
+                              ELk.CapsQO(re, Q), ELk.LooksQE(re, Q), RF.QuantsQ(re, Q))
     requires RBk.BankOk(rp.look_regs, rp.quant_regs, ov, AReg.init_regs(nlook), M.DirectLidSet(re),
                         AReg.init_regs(nquant), M.QIdsOuter(re))
     requires LB.LookSetIn(rp.look_regs, LB.PosLookIds(re))
     ensures M.WinRegsOk(ast, re, crv, str, ov, ClearQuantCps(rp, M.QIdsOuter(re)), ncap, nlook, nquant)
   {
     reveal WinRegsOkG();
-    var Q := FRD.StampQids(re);
+    var Q := ELk.StampSet(best.quant_regs.a_cp);
     var D := M.QIdsOuter(re);
     var rp0 := ClearQuantCps(rp, D);
     ClearQuantCpsFacts(rp, D);
-    QInStampQ(re);
     RL.AInitLaws(nquant);
 
     // quant finality of rp0: outside D the replayed bank is still at init
@@ -380,7 +384,7 @@ module LindenElkMainCinLk {
           ensures AI.get_idx(rp0.capture_regs.a_cp, k) == AI.get_idx(best.capture_regs.a_cp, k)
                   && AI.get_idx(rp0.capture_regs.a_clk, k) == AI.get_idx(best.capture_regs.a_clk, k)
         {
-          assert k !in RF.CapsQ(re, Q) by { if k in RF.CapsQ(re, Q) { assert k in RF.CapsQ(re, Q) * PIV.CaptureRegs(body); } }
+          assert k !in ELk.CapsQO(re, Q) by { if k in ELk.CapsQO(re, Q) { assert k in ELk.CapsQO(re, Q) * PIV.CaptureRegs(body); } }
         }
       }
     }
@@ -655,7 +659,7 @@ module LindenElkMainCinLk {
             == PIV.GmOfLiveR(re, qm, str, result.value.capture_regs, result.value.look_regs, result.value.quant_regs)
     ensures CM.ThreadRegsWf(rp, ncap, nlook, nquant)
     ensures M.WinRegsOk(ast, re, crv, str, ov, ClearQuantCps(rp, M.QIdsOuter(re)), ncap, nlook, nquant)
-    ensures CL.ClkFrameG4(re, FRD.StampQids(re), ClearQuantCps(rp, M.QIdsOuter(re)), result.value)
+    ensures CL.ClkFrameG4(re, ELk.StampSet(result.value.quant_regs.a_cp), ClearQuantCps(rp, M.QIdsOuter(re)), result.value)
   {
     hide NUL.NonNullableL, NUL.CINullableL, NUL.NoNulledPlusL, AR.NfaRepCinL;
     var best := result.value;
@@ -692,7 +696,11 @@ module LindenElkMainCinLk {
     assert {:split_here} true;
     // THE FINAL READOUT (rung F-b) + its frame
     FRD.FinalReadoutS(qm, ast, str, best, ncap, nlook, nquant);
-    CLP.FinalReadoutFrameS(qm, ast, str, best);
+    // (G4b-1) the frame at the stamped set, and the replay only raised quant clocks
+    assert SL.StampLiveOk(re, best.capture_regs.a_clk, best.quant_regs.a_clk, best.quant_regs.a_cp) by {
+      reveal PSM.BestLiveRE();
+    }
+    ELk.FinalReadoutFrameSE(qm, ast, str, best);
     M.NoWriteOracleBodyCodeCdn(re);
     CM.FFindMatchOvStable(code, str, inits, ov, LAnc.Forward, crv.f_main_cdns);
     rp := AI.FReconstructPlus(best, ast, crv.f_plus_bc, str, ov, LAnc.Forward).0;
@@ -717,14 +725,15 @@ module LindenElkMainCinLk {
     requires rp == AI.FReconstructPlus(best, ast, crv.f_plus_bc, str, ov, LAnc.Forward).0
     requires CM.ThreadRegsWf(rp, ncap, nlook, nquant) && CM.ThreadRegsWf(best, ncap, nlook, nquant)
     requires forall k :: AI.get_idx(rp.quant_regs.a_clk, k) >= -1
-    requires var Q := FRD.StampQids(re);
+    requires var Q := ELk.StampSet(best.quant_regs.a_cp);
              NRR.AgreeOutside((rp.capture_regs, rp.look_regs, rp.quant_regs),
                               (best.capture_regs, best.look_regs, best.quant_regs),
-                              RF.CapsQ(re, Q), RF.LooksQ(re, Q), RF.QuantsQ(re, Q))
+                              ELk.CapsQO(re, Q), ELk.LooksQE(re, Q), RF.QuantsQ(re, Q))
+    requires ELk.QClkGe(rp.quant_regs, best.quant_regs.a_clk)
     ensures M.WinRegsOk(ast, re, crv, str, ov, ClearQuantCps(rp, M.QIdsOuter(re)), ncap, nlook, nquant)
-    ensures CL.ClkFrameG4(re, FRD.StampQids(re), ClearQuantCps(rp, M.QIdsOuter(re)), best)
+    ensures CL.ClkFrameG4(re, ELk.StampSet(best.quant_regs.a_cp), ClearQuantCps(rp, M.QIdsOuter(re)), best)
   {
-    var Q := FRD.StampQids(re);
+    var Q := ELk.StampSet(best.quant_regs.a_cp);
     assert RBk.BankOk(best.look_regs, best.quant_regs, ov, AReg.init_regs(nlook), M.DirectLidSet(re),
                       AReg.init_regs(nquant), M.QIdsOuter(re)) by { reveal WinRegsOkG(); }
     FRD.PlusTableOkFullS(ast);
@@ -1059,8 +1068,7 @@ module LindenElkMainCinLk {
       assert LL.GmAgreeOutside(bestT.value.1, leaf.1, S);
       assert GmtTieOutside(re, rp0, leaf.1, S);
       assert bleaf.Some? && LL.GmAgreeOutside(bleaf.value.1, leaf.1, G);
-      QInStampQ(re);
-      CL.TieTransportG4(rer, re, crv, str, ov, FRD.StampQids(re), S, G, bleaf.value, leaf, best, rp0,
+      CL.TieTransportG4(rer, re, crv, str, ov, ELk.StampSet(best.quant_regs.a_cp), S, G, bleaf.value, leaf, best, rp0,
                         ncap, nlook, nquant);
       M.FirstLeafOrdered(t, inp, leaf);
 

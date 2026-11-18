@@ -40,8 +40,8 @@ module LindenRegexApi {
         - it is in the nested fragment (`NR.NestedFragmentCdnRaw`): looks may hold
           looks, captures may sit under quantifiers and inside negative look bodies;
         - it is Latin-1 well-formed (`T.Latin1Wf`);
-        - every lookaround inside a greedy nullable plus body is capture-free
-          (`CL.CinLooksCapFreeX`; G4a: `((?=a)|a?)+`, G5a-2a: `((?=a)|b)+`). A look body of either
+        - every lookaround an empty path of a greedy nullable plus body can cross is capture-free
+          (`CL.CinLooksCapFreeX`; G4a: `((?=a)|a?)+`, G5a-2a: `((?=a)|b)+`; G4b-1 below). A look body of either
           kind may hold a greedy CI-nullable plus with a look-free body (G3a lookahead, G3b lookbehind);
         - a greedy CDN plus may sit anywhere (G5a-1: `(\\b|a)+`; G5a-2b: inside a nulled plus's body too,
           `((\\b)+|)+`; G5b-0: inside a negative look body, `(?!(\\b|a)+)`, `(?<!(\\b|a)+)`; G5b-1/G5b-2: inside a
@@ -50,6 +50,9 @@ module LindenRegexApi {
         - (G5b-3) inside a look body too, a nullable plus body may hold capture-free looks: `(?=((?=a)|b)+)`,
           `(?<=((?=a)|a?)+)`, `(?!((?=a)|a?)+)` (`CL.LookStampOkX`: inside a positive look, every look in a nullable
           plus body is capture-free; a negative look body is unrestricted).
+        - (G4b-1) at the top regex, a nullable plus body may hold CAPTURING looks off its empty paths:
+          `(a(?=(b))|c?)+`, `(?:(a(?=(b))|c?)+b)*` (`CL.EmptyPathLooksCapFreeX`: every look an empty path of the
+          body can cross is capture-free).
       Looks nest to any depth in either direction: lookaheads inside lookbehinds and
       lookbehinds inside lookaheads (gate B, G1 full depth). Exactly
       `MCL.MainTheoremL5Cin`'s precondition. `SUPPORTED_FRAGMENT.md` lists what this admits
@@ -82,6 +85,7 @@ module LindenRegexApi {
     requires Supported(pattern)
     ensures LES.MatcherSpec(pattern, str, Match(pattern, str))
   {
+    T.AnnotateWf(pattern);   // (G4b-1) the executable scope reads the engine's nullability
     CL.CinLooksCapFreeXSound(R.lazy_prefix(R.annotate(pattern)));
     MCL.CdnTopXSound(R.lazy_prefix(R.annotate(pattern)));
     GateFromCdnTopG4(R.lazy_prefix(R.annotate(pattern)));              // (G5a-1, G4a) the gate from the scope
