@@ -2534,4 +2534,117 @@ module LindenElkNulledPlusLk {
     DropOCPlain(rer, s, inp, gm0, LL.LkBodyGroups(r1), DG(r1));
   }
 
+  // ===========================================================================
+  // 17. (G4b-2) Machine B's plus head with the SYNTHETIC skip arm (W15 `CinHeadB`, CIN or CDN): the skip arm is
+  //     ONE lookahead gate `LK(LookAhead, StampTreeLk, tcont)` (W20 §4: the 1:1 VM lockstep), whose result is the
+  //     inline arm's `Reset; ChainLk(DropOC s, tcont)`; it agrees with the spec's forced iteration outside any `G`
+  //     holding the body's out-of-look groups, hence EXACTLY on every look group.
+  // ===========================================================================
+
+  /** `TreeRes` is a frame (the cin-walk lemma, copied: cin-walk sits above this member). */
+  lemma TreeResFrameOutsideL(t: LT.Tree, gm1: LG.GroupMap, gm2: LG.GroupMap, inp: LC.Input,
+                             dir: WP.Direction, G: set<LG.GroupId>)
+    requires LL.GmAgreeOutside(gm1, gm2, G)
+    ensures var r1 := LT.TreeRes(t, gm1, inp, dir);
+            var r2 := LT.TreeRes(t, gm2, inp, dir);
+            (r1.Some? <==> r2.Some?)
+            && (r1.Some? ==> r1.value.0 == r2.value.0 && LL.GmAgreeOutside(r1.value.1, r2.value.1, G))
+  {
+    LL.TreeLeavesFrameOutside(t, gm1, gm2, inp, dir, G);
+    LT.FirstTreeLeaf(t, gm1, inp, dir);
+    LT.FirstTreeLeaf(t, gm2, inp, dir);
+    var l1 := LT.TreeLeaves(t, gm1, inp, dir);
+    var l2 := LT.TreeLeaves(t, gm2, inp, dir);
+    if |l1| > 0 {
+      assert l1[0].0 == l2[0].0 && LL.GmAgreeOutside(l1[0].1, l2[0].1, G);
+    }
+  }
+
+  /** The synthetic gate's body passes, ending at `inp` with the fold. */
+  lemma StampGateRes(rer: LW.RegExpRecord, r1: L.Regex, inp: LC.Input, gm: LG.GroupMap)
+    requires EL.PikeLkRegexRec(r1)
+    ensures LT.TreeRes(StampTreeLk(rer, r1, inp), gm, inp, WP.Forward) == Some((inp, StampFold(rer, r1, inp, gm)))
+  {
+    var gm0 := LG.GMReset(L.DefGroups(r1), gm);
+    var sB := StampPath(rer, r1, inp);
+    var p := FirstEmptyPathLkL(rer, r1, inp);
+    assert LkStepsOk(rer, sB, inp, LL.LkBodyGroups(r1)) by {
+      if p.Some? {
+        StepsOkL(rer, r1, inp);
+        DropOCSteps(rer, p.value, inp, LL.LkBodyGroups(r1));
+      }
+    }
+    ChainLkLeaves(rer, sB, LT.Match, gm0, inp);
+    var c := ChainLk(rer, sB, inp, LT.Match);
+    var mB := ApplyPathLk(rer, sB, inp, gm0);
+    LT.FirstTreeLeaf(c, gm0, inp, WP.Forward);
+    assert LT.TreeLeaves(LT.Match, mB, inp, WP.Forward) == [(inp, mB)];
+    assert LT.TreeRes(c, gm0, inp, WP.Forward) == Some((inp, mB));
+    assert LG.GMUpdate(LG.Reset(L.DefGroups(r1)), LC.Idx(inp), gm) == gm0;
+  }
+
+  /** The synthetic gate's tree result is the continuation's at the fold. */
+  lemma SynthTreeRes(rer: LW.RegExpRecord, r1: L.Regex, inp: LC.Input, gm: LG.GroupMap, tc: LT.Tree)
+    requires EL.PikeLkRegexRec(r1)
+    ensures LT.TreeRes(LT.LK(L.LookAhead, StampTreeLk(rer, r1, inp), tc), gm, inp, WP.Forward)
+         == LT.TreeRes(tc, StampFold(rer, r1, inp, gm), inp, WP.Forward)
+  {
+    StampGateRes(rer, r1, inp, gm);
+    assert L.Positivity(L.LookAhead) && L.LkDir(L.LookAhead) == WP.Forward;
+  }
+
+  /** THE HEAD: machine B's synthetic skip arm against the spec's forced-iteration tree. */
+  lemma CinHeadSynth(rer: LW.RegExpRecord, r1: L.Regex, cont: LS.Actions, inp: LC.Input, gm: LG.GroupMap,
+                     tplus: LT.Tree, titer: LT.Tree, tcont: LT.Tree, G: set<LG.GroupId>)
+    requires EL.PikeLkRegexRec(r1) && EL.PikeLkActionsRec(cont)
+    requires NP.FirstEmptyPathL(rer, r1, inp).Some?   // CIN, or CDN with the guard passing
+    requires LS.IsTree(rer, [LS.Areg(L.Quantified(true, 1, LN.Inf, r1))] + cont, inp, gm, WP.Forward, tplus)
+    requires LS.IsTree(rer, [LS.Areg(r1), LS.Acheck(inp), LS.Areg(L.Quantified(true, 0, LN.Inf, r1))] + cont,
+                       inp, LG.GMReset(L.DefGroups(r1), gm), WP.Forward, titer)
+    requires LS.IsTree(rer, cont, inp, gm, WP.Forward, tcont)
+    requires OutLk(r1) <= G
+    ensures var gidl := L.DefGroups(r1);
+            var tB := LT.Choice(LT.GroupActionT(LG.Reset(gidl), titer),
+                                LT.LK(L.LookAhead, StampTreeLk(rer, r1, inp), tcont));
+            var rb := LT.TreeRes(tB, gm, inp, WP.Forward);
+            var rp := LT.TreeRes(tplus, gm, inp, WP.Forward);
+            (rb.Some? <==> rp.Some?)
+            && (rb.Some? ==> rb.value.0 == rp.value.0 && LL.GmAgreeOutside(rb.value.1, rp.value.1, G))
+  {
+    var gidl := L.DefGroups(r1);
+    var gm' := LG.GMReset(gidl, gm);
+    CdnPlusPriorityLkSome(rer, r1, cont, inp, gm, tplus, titer, tcont);
+    var s := FirstEmptyPathLkL(rer, r1, inp).value;
+    var sB := DropOC(s);
+    assert StampPath(rer, r1, inp) == sB;
+    StepsOkL(rer, r1, inp);
+    DropOCSteps(rer, s, inp, LL.LkBodyGroups(r1));
+    OCStepsL(rer, r1, inp);
+    assert OCIn(s, G) by {
+      forall i | 0 <= i < |s| && s[i].GA? && !s[i].a.Reset? ensures s[i].a.g in G {
+        assert s[i].a.g in OutLk(r1);
+      }
+    }
+    var tF := ChainLk(rer, s, inp, tcont);
+    ChainLkLeaves(rer, s, tcont, gm', inp);
+    var mF := ApplyPathLk(rer, s, inp, gm');
+    var mB := ApplyPathLk(rer, sB, inp, gm');
+    assert mB == StampFold(rer, r1, inp, gm);
+    LL.GmAgreeOutsideRefl(gm', G);
+    DropOCFrame(rer, s, inp, gm', gm', G);
+    TreeResFrameOutsideL(tcont, mB, mF, inp, WP.Forward, G);
+    LT.FirstTreeLeaf(tF, gm', inp, WP.Forward);
+    LT.FirstTreeLeaf(tcont, mF, inp, WP.Forward);
+    assert LT.TreeRes(tF, gm', inp, WP.Forward) == LT.TreeRes(tcont, mF, inp, WP.Forward);
+    SynthTreeRes(rer, r1, inp, gm, tcont);
+    var tL := LT.GroupActionT(LG.Reset(gidl), titer);
+    var tcin := LT.Choice(tL, LT.GroupActionT(LG.Reset(gidl), tF));
+    var tB := LT.Choice(tL, LT.LK(L.LookAhead, StampTreeLk(rer, r1, inp), tcont));
+    assert LT.TreeRes(tcin, gm, inp, WP.Forward) == LT.Seqop(LT.TreeRes(tL, gm, inp, WP.Forward), LT.TreeRes(tF, gm', inp, WP.Forward));
+    assert LT.TreeRes(tB, gm, inp, WP.Forward) == LT.Seqop(LT.TreeRes(tL, gm, inp, WP.Forward), LT.TreeRes(tcont, mB, inp, WP.Forward));
+    var rL := LT.TreeRes(tL, gm, inp, WP.Forward);
+    if rL.Some? {
+      LL.GmAgreeOutsideRefl(rL.value.1, G);
+    }
+  }
 }
