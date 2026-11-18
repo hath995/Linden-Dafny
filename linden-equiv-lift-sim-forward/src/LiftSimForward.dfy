@@ -768,7 +768,7 @@ module LindenElkLiftSimForward {
         assert cdnA == LCdn.compile_cdns(host);   // (G5b-2) the row's own table (LookEntryOk)
         LookNestBackTFromBodyReplayLBS(rer, qmB, laA, host, bodycodeB, crv, str, cpA, ov,
                                       cdnA, crv.f_plus_bc, ncap, nlook, nquant);
-        assert LookNestBackTTopDeep(rer, host, crv, str, ov, Sh, gmtH, rfA, ncap, nlook, nquant);
+        assert LookNestBackTTopDeepP(rer, host, crv, str, ov, Sh, gmtH, rfA, ncap, nlook, nquant);   // (G4b-2) P form: A1 is present and fresh on rf_A, (a)
         assert g in gmtH;
       }
     }

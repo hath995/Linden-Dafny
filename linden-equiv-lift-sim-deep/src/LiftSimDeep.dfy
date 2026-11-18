@@ -518,9 +518,10 @@ module LindenElkLiftSimDeep {
 
       assert {:split_here} true;   // (E3) step boundary: its own assertion batch
       // (κ) LAND via the DEEP carrier, then identify the leaf with the
-      //     backward `BackLeafAt(host, cpA)` (== SubFirstLeafAt(A, res1))
+      //     backward `BackLeafAt(host, cpA)` (== SubFirstLeafAt(A, res1)); (G4b-2) the presence-premised form
+      //     (`ReverseLookDomOnFreshCdn` gave presence and freshness at A1)
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
-      DescentLandTopDeep(rer, host, crv, str, ov, Sh, gmtH, rfA, A1, g2, ncap, nlook, nquant);
+      DescentLandTopDeepP(rer, host, crv, str, ov, Sh, gmtH, rfA, A1, g2, ncap, nlook, nquant);
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
       assert g2 in gmtH;
       assert {:split_here} true;   // (2026-09-06) per-step batch under z3 4.14
