@@ -2647,4 +2647,72 @@ module LindenElkNulledPlusLk {
       LL.GmAgreeOutsideRefl(rL.value.1, G);
     }
   }
+
+  /** A positive forward gate is a congruence: equal bodies, continuations agreeing outside `G`. */
+  lemma RACongLkPosOutside(lk: L.Lookaround, tlk: LT.Tree, x: LT.Tree, y: LT.Tree, inp: LC.Input, G: set<LG.GroupId>)
+    requires L.Positivity(lk)
+    requires NP.ResAgreeAtOutside(x, y, inp, G)
+    ensures NP.ResAgreeAtOutside(LT.LK(lk, tlk, x), LT.LK(lk, tlk, y), inp, G)
+  {
+    forall gm: LG.GroupMap
+      ensures var r1 := LT.TreeRes(LT.LK(lk, tlk, x), gm, inp, WP.Forward);
+              var r2 := LT.TreeRes(LT.LK(lk, tlk, y), gm, inp, WP.Forward);
+              (r1.Some? <==> r2.Some?)
+              && (r1.Some? ==> r1.value.0 == r2.value.0 && LL.GmAgreeOutside(r1.value.1, r2.value.1, G))
+    {
+      var rl := LT.TreeRes(tlk, gm, inp, L.LkDir(lk));
+      if rl.Some? {
+        var gm1 := rl.value.1;
+        assert LT.TreeRes(LT.LK(lk, tlk, x), gm, inp, WP.Forward) == LT.TreeRes(x, gm1, inp, WP.Forward);
+        assert LT.TreeRes(LT.LK(lk, tlk, y), gm, inp, WP.Forward) == LT.TreeRes(y, gm1, inp, WP.Forward);
+      }
+    }
+  }
+
+  /** `CinHeadSynth` on the Bool trees (machine B's walk lives there): the synthetic head against the spec's. */
+  lemma CinHeadSynthBool(rer: LW.RegExpRecord, r1: L.Regex, cont: LS.Actions, inp: LC.Input, b: BS.LoopBool,
+                         t: LT.Tree, ti: LT.Tree, tcont: LT.Tree, G: set<LG.GroupId>)
+    requires EL.PikeLkRegexRec(r1) && EL.PikeLkActionsRec(cont)
+    requires EL.CinHeadL(true, 1, LN.Inf, r1)
+    requires NP.FirstEmptyPathL(rer, r1, inp).Some?
+    requires NB.EncOk(cont, inp, b)
+    requires EL.BoolTreeLk(rer, [LS.Areg(L.Quantified(true, 1, LN.Inf, r1))] + cont, inp, b, t)
+    requires EL.BoolTreeLk(rer, [LS.Areg(r1), LS.Acheck(inp), LS.Areg(L.Quantified(true, 0, LN.Inf, r1))] + cont, inp, BS.CannotExit, ti)
+    requires EL.BoolTreeLk(rer, cont, inp, b, tcont)
+    requires OutLk(r1) <= G
+    ensures NP.ResAgreeAtOutside(LT.Choice(LT.GroupActionT(LG.Reset(L.DefGroups(r1)), ti),
+                                           LT.LK(L.LookAhead, StampTreeLk(rer, r1, inp), tcont)), t, inp, G)
+  {
+    var gidl := L.DefGroups(r1);
+    var plus := L.Quantified(true, 1, LN.Inf, r1);
+    var star := L.Quantified(true, 0, LN.Inf, r1);
+    EL.PikeLkRecQuantZero(true, LN.Inf, r1);
+    var pacts := [LS.Areg(plus)] + cont;
+    var ia := [LS.Areg(r1), LS.Acheck(inp), LS.Areg(star)] + cont;
+    assert EL.PikeLkRegexRec(plus) && EL.PikeLkRegexRec(star);
+    assert EL.PikeLkActionRec(LS.Areg(plus)) && EL.PikeLkActionRec(LS.Areg(star))
+        && EL.PikeLkActionRec(LS.Areg(r1)) && EL.PikeLkActionRec(LS.Acheck(inp));
+    EL.PikeLkActionsRecConsIff(LS.Areg(plus), cont);
+    EL.PikeLkActionsRecConsIff(LS.Areg(star), cont);
+    EL.PikeLkActionsRecConsIff(LS.Acheck(inp), [LS.Areg(star)] + cont);
+    EL.PikeLkActionsRecConsIff(LS.Areg(r1), [LS.Acheck(inp)] + ([LS.Areg(star)] + cont));
+    assert ia == [LS.Areg(r1)] + ([LS.Acheck(inp)] + ([LS.Areg(star)] + cont));
+    assert EL.PikeLkActionsRec(pacts) && EL.PikeLkActionsRec(ia);
+    NB.EncOkConsPlus(plus, cont, inp, b);
+    NB.EncOkEncodable(cont, inp, b);
+    NB.EncOkIter(r1, star, cont, inp);
+    assert {:split_here} true;
+    var tB := LT.Choice(LT.GroupActionT(LG.Reset(gidl), ti), LT.LK(L.LookAhead, StampTreeLk(rer, r1, inp), tcont));
+    forall gm: LG.GroupMap
+      ensures var rb := LT.TreeRes(tB, gm, inp, WP.Forward);
+              var rp := LT.TreeRes(t, gm, inp, WP.Forward);
+              (rb.Some? <==> rp.Some?)
+              && (rb.Some? ==> rb.value.0 == rp.value.0 && LL.GmAgreeOutside(rb.value.1, rp.value.1, G))
+    {
+      NB.EncTreeIsTree(rer, pacts, inp, b, t, gm);
+      NB.EncTreeIsTree(rer, ia, inp, BS.CannotExit, ti, LG.GMReset(gidl, gm));
+      NB.EncTreeIsTree(rer, cont, inp, b, tcont, gm);
+      CinHeadSynth(rer, r1, cont, inp, gm, t, ti, tcont, G);
+    }
+  }
 }
