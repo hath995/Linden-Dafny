@@ -9198,6 +9198,33 @@ module LindenElkPikeInv {
     case Re_lookaround(_, _, _) =>
   }
 
+  /** The two children of a split node have disjoint quantifier and capture ids. */
+  lemma SplitDisjoint(r: R.regex, r1: R.regex, r2: R.regex)
+    requires r == R.Re_alt(r1, r2) || r == R.Re_con(r1, r2)
+    requires QuantUnique(r) && CapUnique(r)
+    ensures QuantIds(r1) !! QuantIds(r2) && CapIds(r1) !! CapIds(r2)
+  {
+    assert QuantIds(r1) * QuantIds(r2) == {} && CapIds(r1) * CapIds(r2) == {} by {
+      if r == R.Re_alt(r1, r2) {} else {}
+    }
+    forall x | x in QuantIds(r1) ensures x !in QuantIds(r2) { assert x !in QuantIds(r1) * QuantIds(r2); }
+    forall x | x in CapIds(r1) ensures x !in CapIds(r2) { assert x !in CapIds(r1) * CapIds(r2); }
+  }
+
+  /** The groups a reset of q0's body touches are captures of the child holding q0. */
+  lemma ResetGroupsIn(r: R.regex, sub: R.regex, q0: nat)
+    requires q0 in QuantIds(r) && q0 in QuantIds(sub)
+    requires T.TransWf(QidBody(r, q0)) && QidBody(r, q0) == QidBody(sub, q0)
+    ensures ActGroups(LG.Reset(L.DefGroups(T.Translate(QidBody(r, q0))))) <= CapIds(sub)
+  {
+    var G0 := L.DefGroups(T.Translate(QidBody(r, q0)));
+    DefGroupsCapIds(QidBody(r, q0));
+    CapIdsQidBodySubset(sub, q0);
+    forall g | g in ActGroups(LG.Reset(G0)) ensures g in CapIds(sub) {
+      assert g in G0;
+    }
+  }
+
   /** The alt/con arm of `LiveStampsGmMark`: recurse into the side holding
       `q0`; the other side commutes with the reset and ignores the write. */
   lemma MarkSplit(r: R.regex, r1: R.regex, r2: R.regex, qm: AR.QMap, str: string,
@@ -9228,11 +9255,13 @@ module LindenElkPikeInv {
     var Rs := LG.Reset(G0);
     assert LG.GMUpdate(Rs, 0, X) == LG.GMReset(G0, X);
     if q0 in QuantIds(r1) {
-      assert q0 !in QuantIds(r2);
+      assert q0 !in QuantIds(r2) by { SplitDisjoint(r, r1, r2); }
       assert QidBody(r, q0) == QidBody(r1, q0);
       CapIdsQidBodySubset(r1, q0);
       // r2 is untouched by the write and disjoint from q0's body
       assert StampedDisjoint(r2, qcp, ActGroups(Rs)) by {
+        SplitDisjoint(r, r1, r2);
+        ResetGroupsIn(r, r1, q0);
         forall A: nat | A in QuantIds(r2) && AI.get_idx(qcp, A) >= 0
           ensures CapIds(QidBody(r2, A)) !! ActGroups(Rs)
         { CapIdsQidBodySubset(r2, A); }
@@ -9246,6 +9275,8 @@ module LindenElkPikeInv {
       assert QidBody(r, q0) == QidBody(r2, q0);
       CapIdsQidBodySubset(r2, q0);
       assert StampedDisjoint(r1, qcp, ActGroups(Rs)) by {
+        SplitDisjoint(r, r1, r2);
+        ResetGroupsIn(r, r2, q0);
         forall A: nat | A in QuantIds(r1) && AI.get_idx(qcp, A) >= 0
           ensures CapIds(QidBody(r1, A)) !! ActGroups(Rs)
         { CapIdsQidBodySubset(r1, A); }
@@ -9427,12 +9458,14 @@ module LindenElkPikeInv {
     var Rs := LG.Reset(G0);
     assert LG.GMUpdate(Rs, 0, X) == LG.GMReset(G0, X);
     if q0 in QuantIds(r1) {
-      assert q0 !in QuantIds(r2);
+      assert q0 !in QuantIds(r2) by { SplitDisjoint(r, r1, r2); }
       assert QidBody(r, q0) == QidBody(r1, q0);
       QuantIdsOutsideLooksSub(r2);
       assert q0 in QuantIdsOutsideLooks(r1) && QChainFresh(r1, qc', mx, q0);
       CapIdsQidBodySubset(r1, q0);
       assert StampedDisjoint(r2, qcp, CapIds(b1)) by {
+        SplitDisjoint(r, r1, r2);
+        assert CapIds(b1) <= CapIds(r1);
         forall A: nat | A in QuantIds(r2) && AI.get_idx(qcp, A) >= 0
           ensures CapIds(QidBody(r2, A)) !! CapIds(b1)
         { CapIdsQidBodySubset(r2, A); }
@@ -9449,6 +9482,8 @@ module LindenElkPikeInv {
       assert q0 in QuantIdsOutsideLooks(r2) && QChainFresh(r2, qc', mx, q0);
       CapIdsQidBodySubset(r2, q0);
       assert StampedDisjoint(r1, qcp, ActGroups(Rs)) by {
+        SplitDisjoint(r, r1, r2);
+        ResetGroupsIn(r, r2, q0);
         forall A: nat | A in QuantIds(r1) && AI.get_idx(qcp, A) >= 0
           ensures CapIds(QidBody(r1, A)) !! ActGroups(Rs)
         { CapIdsQidBodySubset(r1, A); }
