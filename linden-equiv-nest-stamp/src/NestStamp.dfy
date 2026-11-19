@@ -1250,14 +1250,18 @@ module LindenElkNestStamp {
         && pce == e1 + 1
         && (pcb + 1 <= pc < e1 ==> NestStampRE(r1, code, pcb + 1, e1, pc, qcp));
       NR.NfaRepIncrRE(r1, code, pcb + 1, e1);
+      // one batch per branch: stock z3 4.12.1 stalls on the arm as one batch
       if pc == pcb {
+        assert {:split_here} true;
         // the OPEN write falls into the body (or straight onto the close site)
         assert pc' == pcb + 1;
         if pc' != e1 { NestStampEntryRE(r1, code, pcb + 1, e1, qcp); }
         assert NestStampRE(re, code, pcb, pce, pc', qcp);
       } else if pc == e1 {
+        assert {:split_here} true;
         assert pc' == e1 + 1 == pce;
       } else {
+        assert {:split_here} true;
         assert pcb + 1 <= pc < e1;
         NestStampAdvanceRE(r1, code, pcb + 1, e1, pc, pc', qcp);
         assert NestStampRE(re, code, pcb, pce, pc', qcp);
@@ -2384,6 +2388,7 @@ module LindenElkNestStamp {
     decreases CP.rsize(r1), k + 2
   {
     assert k > 0 by { if k == 0 { assert pcb == pce; } }
+    assert {:split_here} true;   // stock z3 4.12.1: the preamble as one batch runs away (905 M in 120 s)
     var e1: nat :| NR.GetPcRE(code, pcb) == Some(if greedy then RB.Fork(pcb + 1, pce) else RB.Fork(pce, pcb + 1))
       && NR.GetPcRE(code, pcb + 1) == Some(RB.SetQuantToClock(qid, false))
       && NR.GetPcRE(code, pcb + 2) == Some(RB.BeginLoop)
@@ -2396,6 +2401,7 @@ module LindenElkNestStamp {
             StampClearRE(qcp, qid) && NestStampRE(r1, code, pcb + 3, e1, pc, qcp)
           else if pc == e1 then StampClearRE(qcp, qid)
           else NestStampOptRE(k - 1, greedy, qid, r1, code, e1 + 1, pce, pc, qcp));
+    assert {:split_here} true;
     NR.NfaRepIncrRE(r1, code, pcb + 3, e1);
     NR.NfaRepIncrOptRE(k - 1, greedy, qid, r1, code, e1 + 1, pce);
     // (2026-09-04) refutation branch FIRST and one batch per branch: the
