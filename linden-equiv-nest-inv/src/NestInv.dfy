@@ -1118,6 +1118,7 @@ module LindenElkNestInv {
       assert {:split_here} true;   // (2026-09-05) per-arm batch under z3 4.14
       assert {:split_here} true;   // (2026-09-05) per-arm batch: the un-split body is a 35 GB z3 hog under 4.14
       if q.min == 0 && q.max == None {
+        assert {:split_here} true;   // one batch per quant scheme (stock z3 4.12.1: 168 s as one batch)
         var e1: nat :| NR.GetPcRE(code, pcb) == Some(if q.greedy then RB.Fork(pcb + 1, e1 + 2) else RB.Fork(e1 + 2, pcb + 1))
           && NR.GetPcRE(code, pcb + 1) == Some(RB.SetQuantToClock(qid, false))
           && NR.GetPcRE(code, pcb + 2) == Some(RB.BeginLoop)
@@ -1143,6 +1144,7 @@ module LindenElkNestInv {
           assert qv >= mx;                          // the stamp-chain claim
         }
       } else if q.max.Some? {
+        assert {:split_here} true;   // one batch per quant scheme (stock z3 4.12.1: 168 s as one batch)
         var mn := q.min as nat;
         var kx := (q.max.value - q.min) as nat;
         var em: nat :| NR.NfaRepMinRE(mn, qid, r1, code, pcb, em)
@@ -1158,6 +1160,7 @@ module LindenElkNestInv {
         assert PIV.MxAtGid(re, cc, qc, mx, gid) == PIV.MxAtGid(r1, cc, qc, qv, gid);
         assert PIV.BodyOf(re, gid) == PIV.BodyOf(r1, gid);
       } else if nul != R.NonNullable && !q.greedy {
+        assert {:split_here} true;   // one batch per quant scheme (stock z3 4.12.1: 168 s as one batch)
         // §2.5a GENERIC: `min` forced copies, then the ORDINARY STAR loop at
         // `em`. An open site is inside the chain or inside the loop body; every
         // structural instruction of the loop itself is not a SetRegisterToCP.
@@ -1177,6 +1180,7 @@ module LindenElkNestInv {
         assert PIV.MxAtGid(re, cc, qc, mx, gid) == PIV.MxAtGid(r1, cc, qc, qv, gid);
         assert PIV.BodyOf(re, gid) == PIV.BodyOf(r1, gid);
       } else if nul == R.CINullable {
+        assert {:split_here} true;   // one batch per quant scheme (stock z3 4.12.1: 168 s as one batch)
         // §2.5b CIN-GREEDY: an open site is inside the chain or the loop body;
         // the loop's own six instructions (two forks, two stamps, BeginLoop,
         // EndLoop) are not SetRegisterToCP.
@@ -1196,6 +1200,7 @@ module LindenElkNestInv {
         assert PIV.MxAtGid(re, cc, qc, mx, gid) == PIV.MxAtGid(r1, cc, qc, qv, gid);
         assert PIV.BodyOf(re, gid) == PIV.BodyOf(r1, gid);
       } else if nul == R.CDNullable {
+        assert {:split_here} true;   // one batch per quant scheme (stock z3 4.12.1: 168 s as one batch)
         // §2.5b CDN-GREEDY (G5a): an open site is inside the chain or the loop body;
         // the loop's own six instructions (two forks, two stamps, BeginLoop,
         // EndLoop) are not SetRegisterToCP.
@@ -1215,6 +1220,7 @@ module LindenElkNestInv {
         assert PIV.MxAtGid(re, cc, qc, mx, gid) == PIV.MxAtGid(r1, cc, qc, qv, gid);
         assert PIV.BodyOf(re, gid) == PIV.BodyOf(r1, gid);
       } else {
+        assert {:split_here} true;   // one batch per quant scheme (stock z3 4.12.1: 168 s as one batch)
         var mn1 := (q.min - 1) as nat;
         var em: nat, e1: nat :|
           NR.NfaRepMinRE(mn1, qid, r1, code, pcb, em)
@@ -2143,7 +2149,7 @@ module LindenElkNestInv {
       stamping inside a body recurses with this quantifier's node framed by
       quant-id uniqueness. The advance may exit the chain (empty bodies), hence
       the disjunctive ensures. */
-  lemma NestInvStampMin(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
+  lemma {:induction false} NestInvStampMin(k: nat, qid: R.quantid, r1: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
                         cc: seq<int>, qc: seq<int>, qc': seq<int>, mx: int, qid0: int, clk: int)
     requires NR.NfaRepMinRE(k, qid, r1, code, pcb, pce)
     requires PIV.QuantUnique(r1)
@@ -2222,7 +2228,7 @@ module LindenElkNestInv {
       `BeginLoop` with the body re-armed; body stamps are framed like the
       star's. A stamp is never the last instruction of a layer, so the strong
       ensures survives. */
-  lemma NestInvStampOpt(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
+  lemma {:induction false} NestInvStampOpt(k: nat, greedy: bool, qid: R.quantid, r1: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
                         cc: seq<int>, qc: seq<int>, qc': seq<int>, mx: int, qid0: int, clk: int)
     requires NR.NfaRepOptRE(k, greedy, qid, r1, code, pcb, pce)
     requires PIV.QuantUnique(r1)
@@ -2287,7 +2293,146 @@ module LindenElkNestInv {
     }
   }
 
-  lemma NestInvStamp(re: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
+  /** The Gen arm of `NestInvStamp` (stock z3 4.12.1: inline, one per-pc batch burned > 2^31
+      resources; here the context is the arm's own invariant). */
+  lemma {:induction false} NestInvStampGen(nul: R.nullability, qid: R.quantid, q: R.counted_quantifier, r1: R.regex,
+                                           code: RB.code, pcb: nat, pce: nat, pc: nat,
+                                           cc: seq<int>, qc: seq<int>, qc': seq<int>, mx: int, qid0: int, clk: int)
+    requires q.min > 0 && q.max.None? && nul != R.NonNullable && !q.greedy
+    requires PIV.QuantUnique(r1) && qid >= 0 && (qid as nat) !in PIV.QuantIds(r1)
+    requires pcb <= pc < pce
+    requires NestInvGenRE(nul, qid, q, r1, code, pcb, pce, pc, cc, qc, mx)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid0, false))
+    requires 0 <= qid0 < |qc|
+    requires qc' == qc[qid0 := clk]
+    requires forall k :: AI.get_idx(cc, k) < clk
+    requires forall k :: AI.get_idx(qc, k) < clk
+    requires mx < clk
+    ensures pc + 1 == pce || (pcb <= pc + 1 < pce && NestInvGenRE(nul, qid, q, r1, code, pcb, pce, pc + 1, cc, qc', mx))
+    ensures qid0 == qid || (qid0 as nat) in PIV.QuantIds(r1)
+    decreases CP.rsize(r1), q.min as nat + 3
+  {
+    var mn := q.min as nat;
+    var em, e1 := NestInvGenREInv(nul, qid, q, r1, code, pcb, pce, pc, cc, qc, mx);
+    NR.NfaRepIncrMinRE(mn, qid, r1, code, pcb, em);
+    NR.NfaRepIncrRE(r1, code, em + 3, e1);
+    if pc < em {
+      assert {:split_here} true;   // (G5a) per pc case
+      NestInvStampMin(mn, qid, r1, code, pcb, em, pc, cc, qc, qc', mx, qid0, clk);
+      assert qid0 == qid || (qid0 as nat) in PIV.QuantIds(r1);
+      NestInvGenREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, cc, qc', mx, em, e1);
+    } else if pc == em + 1 {
+      assert {:split_here} true;   // (G5a) per pc case
+      // THE loop stamp: the instruction pins qid0 == qid.
+      assert qid0 == qid;
+      assert qid0 == qid || (qid0 as nat) in PIV.QuantIds(r1);
+      assert AI.get_idx(qc', qid) == clk;
+      assert clk >= mx;
+      assert AllStaleRE(r1, cc, clk);
+      NestInvGenREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, cc, qc', mx, em, e1);
+    } else if em + 3 <= pc < e1 {
+      assert {:split_here} true;   // (G5a) per pc case
+      var qv := AI.get_idx(qc, qid);
+      NestInvStamp(r1, code, em + 3, e1, pc, cc, qc, qc', qv, qid0, clk);
+      assert (qid0 as nat) in PIV.QuantIds(r1);
+      assert qid != qid0;
+      assert AI.get_idx(qc', qid) == AI.get_idx(qc, qid);
+      NestInvGenREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, cc, qc', mx, em, e1);
+    } else {
+      assert {:split_here} true;   // (G5a) per pc case
+      // pc == em (Fork), em + 2 (BeginLoop), e1 (EndLoop), e1 + 1 (Jmp):
+      // none of these is a SetQuantToClock.
+      assert false;
+    }
+  }
+
+  lemma NestInvREUnfoldGen(nul: R.nullability, qid: R.quantid, q: R.counted_quantifier, r1: R.regex,
+                         code: RB.code, pcb: nat, pce: nat, pc: nat, cc: seq<int>, qc: seq<int>, mx: int)
+    requires NR.NfaRepRE(R.Re_quant(nul, qid, q, r1), code, pcb, pce)
+    requires q.min > 0 && q.max.None? && nul != R.NonNullable && !q.greedy
+    requires NestInvRE(R.Re_quant(nul, qid, q, r1), code, pcb, pce, pc, cc, qc, mx)
+    ensures NestInvGenRE(nul, qid, q, r1, code, pcb, pce, pc, cc, qc, mx)
+  {}
+
+  lemma NestInvREFoldGen(nul: R.nullability, qid: R.quantid, q: R.counted_quantifier, r1: R.regex,
+                         code: RB.code, pcb: nat, pce: nat, pc: nat, cc: seq<int>, qc: seq<int>, mx: int)
+    requires NR.NfaRepRE(R.Re_quant(nul, qid, q, r1), code, pcb, pce)
+    requires q.min > 0 && q.max.None? && nul != R.NonNullable && !q.greedy
+    requires NestInvGenRE(nul, qid, q, r1, code, pcb, pce, pc, cc, qc, mx)
+    ensures NestInvRE(R.Re_quant(nul, qid, q, r1), code, pcb, pce, pc, cc, qc, mx)
+  {}
+
+  /** The Cin arm of `NestInvStamp` (stock z3 4.12.1: inline, one per-pc batch burned > 2^31
+      resources; here the context is the arm's own invariant). */
+  lemma {:induction false} NestInvStampCin(nul: R.nullability, qid: R.quantid, q: R.counted_quantifier, r1: R.regex,
+                                           code: RB.code, pcb: nat, pce: nat, pc: nat,
+                                           cc: seq<int>, qc: seq<int>, qc': seq<int>, mx: int, qid0: int, clk: int)
+    requires q.min > 0 && q.max.None? && nul == R.CINullable && q.greedy
+    requires PIV.QuantUnique(r1) && qid >= 0 && (qid as nat) !in PIV.QuantIds(r1)
+    requires pcb <= pc < pce
+    requires NestInvCinRE(nul, qid, q, r1, code, pcb, pce, pc, cc, qc, mx)
+    requires NR.GetPcRE(code, pc) == Some(RB.SetQuantToClock(qid0, false))
+    requires 0 <= qid0 < |qc|
+    requires qc' == qc[qid0 := clk]
+    requires forall k :: AI.get_idx(cc, k) < clk
+    requires forall k :: AI.get_idx(qc, k) < clk
+    requires mx < clk
+    ensures pc + 1 == pce || (pcb <= pc + 1 < pce && NestInvCinRE(nul, qid, q, r1, code, pcb, pce, pc + 1, cc, qc', mx))
+    ensures qid0 == qid || (qid0 as nat) in PIV.QuantIds(r1)
+    decreases CP.rsize(r1), q.min as nat + 3
+  {
+    var mn1 := (q.min - 1) as nat;
+    var em, e1 := NestInvCinREInv(nul, qid, q, r1, code, pcb, pce, pc, cc, qc, mx);
+    NR.NfaRepIncrMinRE(mn1, qid, r1, code, pcb, em);
+    NR.NfaRepIncrRE(r1, code, em + 3, e1);
+    if pc < em {
+      assert {:split_here} true;   // (G5a) per pc case
+      NestInvStampMin(mn1, qid, r1, code, pcb, em, pc, cc, qc, qc', mx, qid0, clk);
+      assert qid0 == qid || (qid0 as nat) in PIV.QuantIds(r1);
+      NestInvCinREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, cc, qc', mx, em, e1);
+    } else if pc == em + 1 {
+      assert {:split_here} true;   // (G5a) per pc case
+      // THE loop stamp: the instruction pins qid0 == qid.
+      assert qid0 == qid;
+      assert qid0 == qid || (qid0 as nat) in PIV.QuantIds(r1);
+      assert AI.get_idx(qc', qid) == clk;
+      assert clk >= mx;
+      assert AllStaleRE(r1, cc, clk);
+      NestInvCinREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, cc, qc', mx, em, e1);
+    } else if em + 3 <= pc < e1 {
+      assert {:split_here} true;   // (G5a) per pc case
+      var qv := AI.get_idx(qc, qid);
+      NestInvStamp(r1, code, em + 3, e1, pc, cc, qc, qc', qv, qid0, clk);
+      assert (qid0 as nat) in PIV.QuantIds(r1);
+      assert qid != qid0;
+      assert AI.get_idx(qc', qid) == AI.get_idx(qc, qid);
+      NestInvCinREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, cc, qc', mx, em, e1);
+    } else {
+      assert {:split_here} true;   // (G5a) per pc case
+      // pc == em (Fork), em + 2 (BeginLoop), e1 (EndLoop), e1 + 1 (Fork):
+      // not stamps; pc == e1 + 2 is the stamp-TRUE site, contradicting
+      // the stamp-false hypothesis.
+      assert false;
+    }
+  }
+
+  lemma NestInvREUnfoldCin(nul: R.nullability, qid: R.quantid, q: R.counted_quantifier, r1: R.regex,
+                         code: RB.code, pcb: nat, pce: nat, pc: nat, cc: seq<int>, qc: seq<int>, mx: int)
+    requires NR.NfaRepRE(R.Re_quant(nul, qid, q, r1), code, pcb, pce)
+    requires q.min > 0 && q.max.None? && nul == R.CINullable && q.greedy
+    requires NestInvRE(R.Re_quant(nul, qid, q, r1), code, pcb, pce, pc, cc, qc, mx)
+    ensures NestInvCinRE(nul, qid, q, r1, code, pcb, pce, pc, cc, qc, mx)
+  {}
+
+  lemma NestInvREFoldCin(nul: R.nullability, qid: R.quantid, q: R.counted_quantifier, r1: R.regex,
+                         code: RB.code, pcb: nat, pce: nat, pc: nat, cc: seq<int>, qc: seq<int>, mx: int)
+    requires NR.NfaRepRE(R.Re_quant(nul, qid, q, r1), code, pcb, pce)
+    requires q.min > 0 && q.max.None? && nul == R.CINullable && q.greedy
+    requires NestInvCinRE(nul, qid, q, r1, code, pcb, pce, pc, cc, qc, mx)
+    ensures NestInvRE(R.Re_quant(nul, qid, q, r1), code, pcb, pce, pc, cc, qc, mx)
+  {}
+
+  lemma {:induction false} NestInvStamp(re: R.regex, code: RB.code, pcb: nat, pce: nat, pc: nat,
                      cc: seq<int>, qc: seq<int>, qc': seq<int>, mx: int, qid0: int, clk: int)
     requires NR.NfaRepRE(re, code, pcb, pce)
     requires PIV.QuantUnique(re)
@@ -2406,43 +2551,13 @@ module LindenElkNestInv {
         // `em`. A stamp lands either inside the chain (`NestInvStampMin`), at
         // the loop's own stamp `em + 1`, or inside its body (recursive call);
         // every other site in the loop is not a `SetQuantToClock`.
-        var mn := q.min as nat;
-        var em, e1 := NestInvGenREInv(nul, qid, q, r1, code, pcb, pce, pc, cc, qc, mx);
-        NR.NfaRepIncrMinRE(mn, qid, r1, code, pcb, em);
-        NR.NfaRepIncrRE(r1, code, em + 3, e1);
         assert qid >= 0;                                // QuantUnique
         assert (qid as nat) !in PIV.QuantIds(r1);       // QuantUnique
-        if pc < em {
-          assert {:split_here} true;   // (G5a) per pc case
-          NestInvStampMin(mn, qid, r1, code, pcb, em, pc, cc, qc, qc', mx, qid0, clk);
-          assert (qid0 as nat) in PIV.QuantIds(re);
-          NestInvGenREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, cc, qc', mx, em, e1);
-          assert NestInvRE(re, code, pcb, pce, pc + 1, cc, qc', mx);
-        } else if pc == em + 1 {
-          assert {:split_here} true;   // (G5a) per pc case
-          // THE loop stamp: the instruction pins qid0 == qid.
-          assert qid0 == qid;
-          assert (qid0 as nat) in PIV.QuantIds(re);
-          assert AI.get_idx(qc', qid) == clk;
-          assert clk >= mx;
-          assert AllStaleRE(r1, cc, clk);
-          NestInvGenREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, cc, qc', mx, em, e1);
-          assert NestInvRE(re, code, pcb, pce, pc + 1, cc, qc', mx);
-        } else if em + 3 <= pc < e1 {
-          assert {:split_here} true;   // (G5a) per pc case
-          var qv := AI.get_idx(qc, qid);
-          NestInvStamp(r1, code, em + 3, e1, pc, cc, qc, qc', qv, qid0, clk);
-          assert (qid0 as nat) in PIV.QuantIds(r1);
-          assert qid != qid0;
-          assert AI.get_idx(qc', qid) == AI.get_idx(qc, qid);
-          NestInvGenREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, cc, qc', mx, em, e1);
-          assert NestInvRE(re, code, pcb, pce, pc + 1, cc, qc', mx);
-        } else {
-          assert {:split_here} true;   // (G5a) per pc case
-          // pc == em (Fork), em + 2 (BeginLoop), e1 (EndLoop), e1 + 1 (Jmp):
-          // none of these is a SetQuantToClock.
-          assert false;
-        }
+        // stock z3 4.12.1: the per-pc cases run in NestInvStampGen, under the arm's own invariant
+        NestInvREUnfoldGen(nul, qid, q, r1, code, pcb, pce, pc, cc, qc, mx);
+        NestInvStampGen(nul, qid, q, r1, code, pcb, pce, pc, cc, qc, qc', mx, qid0, clk);
+        if pc + 1 < pce { NestInvREFoldGen(nul, qid, q, r1, code, pcb, pce, pc + 1, cc, qc', mx); }
+        assert (qid0 as nat) in PIV.QuantIds(re);
         return;
       }
       if !(q.min == 0 && q.max == None) && nul == R.CINullable {
@@ -2451,44 +2566,13 @@ module LindenElkNestInv {
         // stamp at em + 1 or inside the body; the trailing stamp at e1 + 2
         // carries flag TRUE, so it contradicts this lemma's stamp-false
         // hypothesis (its clock write is discharged by NestInvStampTrue).
-        var mn1 := (q.min - 1) as nat;
-        var em, e1 := NestInvCinREInv(nul, qid, q, r1, code, pcb, pce, pc, cc, qc, mx);
-        NR.NfaRepIncrMinRE(mn1, qid, r1, code, pcb, em);
-        NR.NfaRepIncrRE(r1, code, em + 3, e1);
         assert qid >= 0;                                // QuantUnique
         assert (qid as nat) !in PIV.QuantIds(r1);       // QuantUnique
-        if pc < em {
-          assert {:split_here} true;   // (G5a) per pc case
-          NestInvStampMin(mn1, qid, r1, code, pcb, em, pc, cc, qc, qc', mx, qid0, clk);
-          assert (qid0 as nat) in PIV.QuantIds(re);
-          NestInvCinREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, cc, qc', mx, em, e1);
-          assert NestInvRE(re, code, pcb, pce, pc + 1, cc, qc', mx);
-        } else if pc == em + 1 {
-          assert {:split_here} true;   // (G5a) per pc case
-          // THE loop stamp: the instruction pins qid0 == qid.
-          assert qid0 == qid;
-          assert (qid0 as nat) in PIV.QuantIds(re);
-          assert AI.get_idx(qc', qid) == clk;
-          assert clk >= mx;
-          assert AllStaleRE(r1, cc, clk);
-          NestInvCinREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, cc, qc', mx, em, e1);
-          assert NestInvRE(re, code, pcb, pce, pc + 1, cc, qc', mx);
-        } else if em + 3 <= pc < e1 {
-          assert {:split_here} true;   // (G5a) per pc case
-          var qv := AI.get_idx(qc, qid);
-          NestInvStamp(r1, code, em + 3, e1, pc, cc, qc, qc', qv, qid0, clk);
-          assert (qid0 as nat) in PIV.QuantIds(r1);
-          assert qid != qid0;
-          assert AI.get_idx(qc', qid) == AI.get_idx(qc, qid);
-          NestInvCinREIntro(nul, qid, q, r1, code, pcb, pce, pc + 1, cc, qc', mx, em, e1);
-          assert NestInvRE(re, code, pcb, pce, pc + 1, cc, qc', mx);
-        } else {
-          assert {:split_here} true;   // (G5a) per pc case
-          // pc == em (Fork), em + 2 (BeginLoop), e1 (EndLoop), e1 + 1 (Fork):
-          // not stamps; pc == e1 + 2 is the stamp-TRUE site, contradicting
-          // the stamp-false hypothesis.
-          assert false;
-        }
+        // stock z3 4.12.1: the per-pc cases run in NestInvStampCin, under the arm's own invariant
+        NestInvREUnfoldCin(nul, qid, q, r1, code, pcb, pce, pc, cc, qc, mx);
+        NestInvStampCin(nul, qid, q, r1, code, pcb, pce, pc, cc, qc, qc', mx, qid0, clk);
+        if pc + 1 < pce { NestInvREFoldCin(nul, qid, q, r1, code, pcb, pce, pc + 1, cc, qc', mx); }
+        assert (qid0 as nat) in PIV.QuantIds(re);
         return;
       }
       if !(q.min == 0 && q.max == None) && nul == R.CDNullable {
