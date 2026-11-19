@@ -9588,6 +9588,7 @@ module LindenElkMain {
     requires 1 <= l <= R.max_lookaround(ast)
     requires LTB.LookEntryOk(crv, l, la, body)
     ensures LKC.QIdsInt(body) * QIdsOuter(re) == {}
+    ensures forall k: int :: k in LKC.QIdsInt(body) ==> k !in QIdsOuter(re)   // per element (z3 4.12.1)
   {
     var pre := R.Re_quant(R.NonNullable, 0, R.CountedQuant(0, None, false),
                           R.Re_character(R.Dot));
@@ -9606,6 +9607,9 @@ module LindenElkMain {
       assert q1 == q2;
       assert q1 in PIV.QuantIdsInLooks(re);
       assert q2 in PIV.QuantIdsOutsideLooks(re) * PIV.QuantIdsInLooks(re);
+    }
+    forall k: int | k in LKC.QIdsInt(body) ensures k !in QIdsOuter(re) {
+      assert k !in LKC.QIdsInt(body) * QIdsOuter(re);
     }
   }
 
