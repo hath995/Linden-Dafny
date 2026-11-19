@@ -699,7 +699,42 @@ module LindenElkNulledReconReadout {
     }
   }
 
-  /** `GmSub` reads only `r`'s registers. */
+  /** `end_reg` is odd. */
+  lemma EndRegOdd(c: nat)
+    ensures CP.end_reg(c) % 2 == 1
+  {}
+
+  /** `GmSubDep` at one capture's start register. */
+  lemma GmSubDepStart(r: R.regex, a: Regs3, b: Regs3, mx: int, c: nat)
+    requires c in PIV.CapIds(r)
+    requires AI.get_idx(b.0.a_cp, CP.start_reg(c)) == AI.get_idx(a.0.a_cp, CP.start_reg(c))
+    requires c in PIV.CapIdsInLooks(r) ==> AI.get_idx(a.0.a_cp, CP.start_reg(c)) < 0
+    requires forall c': nat :: c' in PIV.CapIds(r) ==> AI.get_idx(a.0.a_clk, CP.start_reg(c')) == AI.get_idx(b.0.a_clk, CP.start_reg(c'))
+    requires forall q: nat :: q in PIV.QuantIds(r) ==> AI.get_idx(a.2.a_clk, q) == AI.get_idx(b.2.a_clk, q)
+    ensures var fa := NRR.Filt(r, a, mx); var fb := NRR.Filt(r, b, mx);
+            (AI.get_idx(fa, CP.start_reg(c)) >= 0 <==> AI.get_idx(fb, CP.start_reg(c)) >= 0)
+            && (AI.get_idx(fa, CP.start_reg(c)) >= 0 ==> AI.get_idx(fa, CP.start_reg(c)) == AI.get_idx(fb, CP.start_reg(c)))
+  {
+    if c in PIV.CapIdsInLooks(r) {
+      PIV.FilterCaptureNeg(r, a.0.a_cp, a.0.a_clk, a.1.a_clk, a.2.a_clk, mx, CP.start_reg(c));
+      PIV.FilterCaptureNeg(r, b.0.a_cp, b.0.a_clk, b.1.a_clk, b.2.a_clk, mx, CP.start_reg(c));
+    } else {
+      NRR.FilterAtStartDep(r, a.0.a_cp, b.0.a_cp, a.0.a_clk, b.0.a_clk, a.1.a_clk, b.1.a_clk, a.2.a_clk, b.2.a_clk, mx, c);
+    }
+  }
+
+  /** `GmSubDep` at one capture's end register: the filter keeps odd registers. */
+  lemma GmSubDepEnd(r: R.regex, a: Regs3, b: Regs3, mx: int, c: nat)
+    requires AI.get_idx(b.0.a_cp, CP.end_reg(c)) == AI.get_idx(a.0.a_cp, CP.end_reg(c))
+    ensures AI.get_idx(NRR.Filt(r, a, mx), CP.end_reg(c)) == AI.get_idx(NRR.Filt(r, b, mx), CP.end_reg(c))
+  {
+    EndRegOdd(c);
+    PIV.FilterCaptureKeepsOdd(r, a.0.a_cp, a.0.a_clk, a.1.a_clk, a.2.a_clk, mx, CP.end_reg(c));
+    PIV.FilterCaptureKeepsOdd(r, b.0.a_cp, b.0.a_clk, b.1.a_clk, b.2.a_clk, mx, CP.end_reg(c));
+  }
+
+  /** `GmSub` reads only `r`'s registers. (Per-capture steps in `GmSubDepStart`/`GmSubDepEnd`:
+      inline, z3 4.12.1 does not finish them in this context.) */
   lemma GmSubDep(r: R.regex, a: Regs3, b: Regs3, mx: int)
     requires PIV.CapUnique(r) && PIV.QuantUnique(r)
     requires forall k: int :: k in NRR.CapRegsOf(r) ==> AI.get_idx(b.0.a_cp, k) == AI.get_idx(a.0.a_cp, k) && AI.get_idx(b.0.a_clk, k) == AI.get_idx(a.0.a_clk, k)
@@ -709,25 +744,30 @@ module LindenElkNulledReconReadout {
   {
     NRR.CapRegsOfChar(r);
     NRR.QuantRegsOfChar(r);
-    assert forall c: nat :: c in PIV.CapIds(r) ==> CP.start_reg(c) in NRR.CapRegsOf(r) && CP.end_reg(c) in NRR.CapRegsOf(r);
-    assert forall q: nat :: q in PIV.QuantIds(r) ==> (q as int) in NRR.QuantRegsOf(r);
     var fa := NRR.Filt(r, a, mx);
     var fb := NRR.Filt(r, b, mx);
     NRR.CapIdsInLooksSub(r);
+    forall c: nat | c in PIV.CapIds(r)
+      ensures AI.get_idx(a.0.a_cp, CP.start_reg(c)) == AI.get_idx(b.0.a_cp, CP.start_reg(c))
+           && AI.get_idx(a.0.a_cp, CP.end_reg(c)) == AI.get_idx(b.0.a_cp, CP.end_reg(c))
+           && AI.get_idx(a.0.a_clk, CP.start_reg(c)) == AI.get_idx(b.0.a_clk, CP.start_reg(c))
+           && AI.get_idx(a.0.a_clk, CP.end_reg(c)) == AI.get_idx(b.0.a_clk, CP.end_reg(c))
+    {
+      assert CP.start_reg(c) in NRR.CapRegsOf(r) && CP.end_reg(c) in NRR.CapRegsOf(r);
+    }
+    forall q: nat | q in PIV.QuantIds(r) ensures AI.get_idx(a.2.a_clk, q) == AI.get_idx(b.2.a_clk, q) {
+      assert (q as int) in NRR.QuantRegsOf(r);
+    }
     forall c: nat | c in PIV.CapIds(r)
       ensures (AI.get_idx(fa, CP.start_reg(c)) >= 0 <==> AI.get_idx(fb, CP.start_reg(c)) >= 0)
               && (AI.get_idx(fa, CP.start_reg(c)) >= 0 ==> AI.get_idx(fa, CP.start_reg(c)) == AI.get_idx(fb, CP.start_reg(c)))
               && AI.get_idx(fa, CP.end_reg(c)) == AI.get_idx(fb, CP.end_reg(c))
     {
       if c in PIV.CapIdsInLooks(r) {
-        assert AI.get_idx(a.0.a_cp, CP.start_reg(c)) < 0 && AI.get_idx(b.0.a_cp, CP.start_reg(c)) < 0;
-        PIV.FilterCaptureNeg(r, a.0.a_cp, a.0.a_clk, a.1.a_clk, a.2.a_clk, mx, CP.start_reg(c));
-        PIV.FilterCaptureNeg(r, b.0.a_cp, b.0.a_clk, b.1.a_clk, b.2.a_clk, mx, CP.start_reg(c));
-      } else {
-        NRR.FilterAtStartDep(r, a.0.a_cp, b.0.a_cp, a.0.a_clk, b.0.a_clk, a.1.a_clk, b.1.a_clk, a.2.a_clk, b.2.a_clk, mx, c);
+        assert AI.get_idx(a.0.a_cp, CP.start_reg(c)) < 0;
       }
-      PIV.FilterCaptureKeepsOdd(r, a.0.a_cp, a.0.a_clk, a.1.a_clk, a.2.a_clk, mx, CP.end_reg(c));
-      PIV.FilterCaptureKeepsOdd(r, b.0.a_cp, b.0.a_clk, b.1.a_clk, b.2.a_clk, mx, CP.end_reg(c));
+      GmSubDepStart(r, a, b, mx, c);
+      GmSubDepEnd(r, a, b, mx, c);
     }
     forall c: nat ensures (c in GmSub(r, a, mx) <==> c in GmSub(r, b, mx)) && (c in GmSub(r, a, mx) ==> GmSub(r, a, mx)[c] == GmSub(r, b, mx)[c]) {
       if c in PIV.CapIds(r) && AI.get_idx(fa, CP.start_reg(c)) >= 0 {

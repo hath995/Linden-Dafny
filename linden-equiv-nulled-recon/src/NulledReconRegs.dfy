@@ -370,6 +370,25 @@ module LindenElkNulledReconRegs {
     }
   }
 
+  /** One write at a non-negative clock and position keeps the value/clock bank invariant. */
+  lemma ApplyWriteCapValWf(w: NRC.Write, cp: int, clk: int, rg: Regs3)
+    requires cp >= 0 && clk >= 0 && CapValWf(rg)
+    ensures CapValWf(NRC.ApplyWrite(w, cp, clk, rg))
+  {
+    var rg1 := NRC.ApplyWrite(w, cp, clk, rg);
+    match w
+    case WCap(reg) =>
+      forall k: int ensures AI.get_idx(rg1.0.a_clk, k) < 0 <==> AI.get_idx(rg1.0.a_cp, k) < 0 {
+        if 0 <= reg < |rg.0.a_cp| && 0 <= reg < |rg.0.a_clk| && k == reg {
+          assert AI.get_idx(rg1.0.a_clk, k) == clk && AI.get_idx(rg1.0.a_cp, k) == cp;
+        } else {
+          assert AI.get_idx(rg1.0.a_clk, k) == AI.get_idx(rg.0.a_clk, k) && AI.get_idx(rg1.0.a_cp, k) == AI.get_idx(rg.0.a_cp, k);
+        }
+      }
+    case WLook(_) => assert rg1.0 == rg.0;
+    case WQuant(_, _) => assert rg1.0 == rg.0;
+  }
+
   /** Writes at non-negative clocks and positions keep the value/clock bank invariant. */
   lemma ApplyWritesCapValWf(ws: seq<NRC.Write>, cp: int, clks: seq<int>, rg: Regs3)
     requires |clks| == |ws| && cp >= 0 && forall i :: 0 <= i < |clks| ==> clks[i] >= 0
@@ -379,7 +398,7 @@ module LindenElkNulledReconRegs {
   {
     if |ws| > 0 {
       var rg1 := NRC.ApplyWrite(ws[0], cp, clks[0], rg);
-      assert CapValWf(rg1);
+      ApplyWriteCapValWf(ws[0], cp, clks[0], rg);
       ApplyWritesCapValWf(ws[1..], cp, clks[1..], rg1);
     }
   }
@@ -1719,6 +1738,9 @@ module LindenElkNulledReconRegs {
     requires (r.Re_alt? || r.Re_con?) && PIV.CapUnique(r) && PIV.QuantUnique(r)
     ensures CapRegsOf(L1(r)) * CapRegsOf(L2(r)) == {}
     ensures QuantRegsOf(L1(r)) * QuantRegsOf(L2(r)) == {}
+    // per element too: z3 4.12.1 does not derive these from the intersections
+    ensures forall k: int :: k in CapRegsOf(L1(r)) ==> k !in CapRegsOf(L2(r))
+    ensures forall k: int :: k in QuantRegsOf(L1(r)) ==> k !in QuantRegsOf(L2(r))
   {
     CapRegsOfChar(L1(r)); CapRegsOfChar(L2(r));
     QuantRegsOfChar(L1(r)); QuantRegsOfChar(L2(r));
@@ -2504,12 +2526,13 @@ module LindenElkNulledReconRegs {
       FNulledChildrenLookCapsAbsent(qm, r, cdnt, cp, rg1, plus_bcv, str, ov);
     }
     AgreeOutsideWeaken(rg2, rgA, InnerCapRegs(r2), InnerLookRegs(r2), InnerQuantRegs(r2), CapRegsOf(r2), LookRegsOf(r2), QuantRegsOf(r2));
+    assert {:split_here} true;   // stock z3 4.12.1 stalls on this section as one batch
     var f1 := AI.filter_capture(r1, rg2.0.a_cp, rg2.0.a_clk, rg2.1.a_clk, rg2.2.a_clk, K);
     assert Filt(r, rg2, K) == AI.filter_capture(r2, f1, rg2.0.a_clk, rg2.1.a_clk, rg2.2.a_clk, K);
     forall c: nat | c in PIV.CapIds(r) ensures ReadsAs(Filt(r, rg2, K), rg2, c, cp, c in PathGroupsR(qm, r, inp)) {
       var j := CP.start_reg(c);
       if c in PIV.CapIds(r1) {
-        assert c !in PIV.CapIds(r2);
+        assert c !in PIV.CapIds(r2) by { assert c !in PIV.CapIds(r1) * PIV.CapIds(r2); }
         assert c in PathGroupsR(qm, r, inp) <==> c in PathGroupsR(qm, r1, inp) by { PathGroupsInCapIds(qm, r2, inp); }
         FilterKeepsNonStart(r2, f1, rg2.0.a_clk, rg2.1.a_clk, rg2.2.a_clk, K, j);
         ReadsAsTransfer(r1, rgA, rg2, K, c, cp, c in PathGroupsR(qm, r1, inp));
@@ -2643,7 +2666,25 @@ module LindenElkNulledReconRegs {
     ApplyWritesOnTargets(w2, cp, cl2, rgX, rg0);
     var rg1' := NRC.ApplyWrites(w2, cp, cl2, rg0);
     ApplyWritesFrame(w2, cp, cl2, rg0);
-    // on w2's targets rgA == rg1 == ApplyWrites(w2, rg0)
+    // on w2's targets rgA == rg1 == ApplyWrites(w2, rg0); per element for z3 4.12.1
+    forall k: int | k in CapTargets(w2)
+      ensures AI.get_idx(rgA.0.a_cp, k) == AI.get_idx(rg1'.0.a_cp, k) && AI.get_idx(rgA.0.a_clk, k) == AI.get_idx(rg1'.0.a_clk, k)
+    {
+      assert k !in CapTargets(w2) * CapRegsOf(r1);
+      assert k !in InnerCapRegs(r1);
+    }
+    forall k: int | k in LookTargets(w2)
+      ensures AI.get_idx(rgA.1.a_cp, k) == AI.get_idx(rg1'.1.a_cp, k) && AI.get_idx(rgA.1.a_clk, k) == AI.get_idx(rg1'.1.a_clk, k)
+    {
+      assert k !in LookTargets(w2) * LookRegsOf(r1);
+      assert k !in InnerLookRegs(r1);
+    }
+    forall k: int | k in QuantTargets(w2)
+      ensures AI.get_idx(rgA.2.a_cp, k) == AI.get_idx(rg1'.2.a_cp, k) && AI.get_idx(rgA.2.a_clk, k) == AI.get_idx(rg1'.2.a_clk, k)
+    {
+      assert k !in QuantTargets(w2) * QuantRegsOf(r1);
+      assert k !in InnerQuantRegs(r1);
+    }
     MergeOnApply(w2, cp, cl2, rg0, rgA, rgB, r1, r2);
   }
 
