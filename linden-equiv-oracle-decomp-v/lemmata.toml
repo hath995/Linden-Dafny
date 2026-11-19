@@ -27,3 +27,4 @@ expected-errors = [
 "linden.equiv-oracle-bridge-v" = "^1.0.0"
 "linden.equiv-oracle-decomp" = "^1.0.0"
 "linden.equiv-oracle-reach" = "^1.0.0"
+"linden.equiv-oracle-build" = "^1.0.0"

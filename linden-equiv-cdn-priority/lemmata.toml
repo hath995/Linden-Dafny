@@ -30,3 +30,4 @@ expected-errors = [
 "linden.equiv-tree-rep-re" = "^1.0.0"
 "linden.equiv-look-leaves" = "^1.0.0"
 "linden.equiv-nulled-plus" = "^1.0.0"
+"linden.engine-model" = "^1.0.0"

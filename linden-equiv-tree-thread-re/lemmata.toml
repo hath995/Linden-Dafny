@@ -28,3 +28,4 @@ expected-errors = [
 "linden.equiv-actions-tree-rep-re" = "^1.0.0"
 "linden.equiv-nfa-rep-re" = "^1.0.0"
 "linden.equiv-tree-rep-re" = "^1.0.0"
+"linden.bridge" = "^1.0.0"

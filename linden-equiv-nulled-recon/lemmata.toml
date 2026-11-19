@@ -30,3 +30,4 @@ expected-errors = [
 "linden.equiv-nulled-plus" = "^1.0.0"
 "linden.equiv-pike-inv-re" = "^1.0.0"
 "linden.equiv-cdn-sound" = "^1.0.0"
+"linden.equiv-check-erase" = "^1.0.0"

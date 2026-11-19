@@ -1,106 +1,111 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:75eca7dc339be41c7adc15629a8479d4f1e115d45df4bc7912d2b018dd0944b0"
-
-[[package]]
-name = "linden.equiv-mirror"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-mirror"
-
-[[package]]
-name = "linden.equiv-oracle-build"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-build"
-
-[[package]]
-name = "linden.equiv-oracle-decomp"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-decomp"
-
-[[package]]
-name = "linden.semantics-core"
-class = 1
-version = "1.0.2"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-semantics-core"
-
-[[package]]
-name = "linden.warblre"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-warblre"
+manifest-hash = "sha256:6398d2dcca403a0e208e6578838529c0d1172018b98ed59d3ea9d06837845483"
 
 [[package]]
 name = "linden.bridge"
 class = 1
 version = "1.0.0"
 ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-bridge"
+fileset-hash = "sha256:adb1b1c5c87b2d6a554897d09e55c82c1f2e248f229bff18660349843b7855d0"
+doo-hash = "b1eaafc468121c047c46afc4886fcc7f5a5827cc0e8eb2b3002ce071f0750866"
 
 [[package]]
 name = "linden.regex-engine"
 class = 1
-version = "1.0.1"
+version = "1.0.0"
 ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/regex-engine"
+fileset-hash = "sha256:9aa71b8dfbf9bd6d81ab44c525403131e00f48feffcd0f538f96d4e717429411"
+doo-hash = "215f65498547ff58935be2db7d73181ca0e0a736cbc9da6d1d1e6fc518391ca2"
 
 [[package]]
 name = "linden.equiv-look-tables"
 class = 1
 version = "1.0.0"
 ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-look-tables"
+fileset-hash = "sha256:f5c87a3f8437473903605e98130355df6bb8967be28154eceadd6af3ae300bda"
+doo-hash = "e83128e63025a93459efea5bee2e4b6b27f2b3870e3a545d507362c7ede9e9ca"
 
 [[package]]
 name = "linden.equiv-nfa-rep-re"
 class = 1
 version = "1.0.0"
 ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-nfa-rep-re"
+fileset-hash = "sha256:e4d811193840fc54c859da361d6974ea6b2ebad090bbcc18f07a98a5b130e254"
+doo-hash = "c7929982f7a18e446e2778a7e5adc47c4ca704d0c0bc8ae0ab19901c661ba01b"
 
 [[package]]
 name = "linden.equiv-oracle-bridge"
 class = 1
 version = "1.0.0"
 ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-bridge"
+fileset-hash = "sha256:bceb1dba6b3bc9d9c1bc6cfb84df89c5c31242caa77b441ffba06792eb145de8"
+doo-hash = "0b2ed38e89e5c80e095a244e00a4594b7306231e49e18f5fbdc0bf3290e635e5"
 
 [[package]]
 name = "linden.equiv-oracle-bridge-v"
 class = 1
 version = "1.0.0"
 ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-bridge-v"
+fileset-hash = "sha256:140b59a77590d37ce49d9a8742f94408db5aa370ab3568cd006990f3be548869"
+doo-hash = "2e0dd43bd282694b5b6d35876cedbb43c7eaaa758e828e74bf9e7a9da49f865a"
+
+[[package]]
+name = "linden.equiv-oracle-reach"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:263d769ed801297ab90e53c6b5f18262969926f22e4f175754abb328c7b50d80"
+doo-hash = "9b8df228227560a8bb0e4a75de20f918f7dbba3cef156d79d6c61371f1ff4ce2"
+
+[[package]]
+name = "linden.equiv-oracle-sweep"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:fb60648f06fd8e5edd46203d7700eb0a2e966ee036466c7a2fe016db569fc5a2"
+doo-hash = "cc3fad29b13a62686c9fc19bfa4a88e2c118b2f0f577ff021c5851f76909354c"
+
+[[package]]
+name = "linden.equiv-oracle-build"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:e1de30a2e4eb77799d1e3db54a251aafff15b99f1bb1ff3787d2468317327f7e"
+doo-hash = "8838983f828b72579e039c4f31c1fbaae341c5fbba711304b240c04106977ec2"
+
+[[package]]
+name = "linden.warblre"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:e9dde53e09025948937d5909676a90ab84923307a53b85638c6798f0226831a4"
+doo-hash = "60b3b64672a152a26f13b3b23941dc513f0471d13e53336652c6421eb9f3e8c5"
+
+[[package]]
+name = "linden.semantics-core"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:d53eab0b28c3863b7d56c865f5a7ce59c85c9876130cc7658735c655d02838da"
+doo-hash = "f9acee02aff64ca49e9be1f9b0d0641e2bc25ab0ebe33262c11e9405ed56e632"
+
+[[package]]
+name = "linden.equiv-oracle-decomp"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:e61d2355ff76e94ce9b8030446155802ea63b674ec16a72d8260deb89f7bad34"
+doo-hash = "aab96b9090cd0185e2b56686487e29f50760c873178f4f0156780b8fff9ceb94"
+
+[[package]]
+name = "linden.equiv-mirror"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:1cf2ef69a74a664886c7bfa996e49b4833803ad759c218f8ec703fc6e57b5eba"
+doo-hash = "7b00c9b8374bc2fa07d7260bb033141103c061786c6afb4a26b7d0ecf4abbf59"
 
 [[package]]
 name = "linden.equiv-oracle-decomp-v"
@@ -110,21 +115,3 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-decomp-v"
-
-[[package]]
-name = "linden.equiv-oracle-reach"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-reach"
-
-[[package]]
-name = "linden.equiv-oracle-sweep"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-sweep"

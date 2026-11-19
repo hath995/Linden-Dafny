@@ -76,3 +76,6 @@ expected-errors = [
 "linden.equiv-walk-ok-entry" = "^1.0.0"
 "linden.equiv-mirror-world" = "^1.0.0"
 "linden.equiv-machine-a-back" = "^1.0.0"
+"linden.equiv-final-readout" = "^1.0.0"
+"linden.equiv-nulled-recon" = "^1.0.0"
+"linden.equiv-plus-at" = "^1.0.0"

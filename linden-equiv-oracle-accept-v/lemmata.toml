@@ -29,3 +29,4 @@ expected-errors = [
 "linden.equiv-oracle-decomp-v" = "^1.0.0"
 "linden.equiv-oracle-reach" = "^1.0.0"
 "linden.equiv-oracle-sweep" = "^1.0.0"
+"linden.equiv-oracle-build" = "^1.0.0"

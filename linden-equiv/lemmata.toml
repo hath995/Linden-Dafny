@@ -39,3 +39,6 @@ expected-errors = [
 "linden.equiv-tree-mirror-lk" = "^1.0.0"
 "linden.equiv-mirror-world" = "^1.0.0"
 "linden.equiv-machine-a-back" = "^1.0.0"
+"linden.equiv-entry-lk" = "^1.0.0"
+"linden.equiv-final-readout" = "^1.0.0"
+"linden.equiv-nulled-recon" = "^1.0.0"

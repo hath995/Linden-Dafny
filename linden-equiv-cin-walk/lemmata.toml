@@ -32,3 +32,4 @@ expected-errors = [
 "linden.equiv-nulled-plus" = "^1.0.0"
 "linden.equiv-cdn-priority" = "^1.0.0"
 "linden.equiv-nulled-plus-lk" = "^1.0.0"
+"linden.engine-model" = "^1.0.0"

@@ -78,3 +78,6 @@ expected-errors = [
 "linden.equiv-mirror-world" = "^1.0.0"
 "linden.equiv-two-machines" = "^1.0.0"
 "linden.equiv-machine-a-back" = "^1.0.0"
+"linden.equiv-final-readout" = "^1.0.0"
+"linden.equiv-machine-a" = "^1.0.0"
+"linden.equiv-nulled-recon" = "^1.0.0"

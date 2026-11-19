@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:211f3e45181c285db7ee806ac0b2d4056c00d67bdae06d1f6cdb12e62da59082"
+manifest-hash = "sha256:26534ec09a96a283854926def9bcfedca8e9212c460c1d65e417886987b21912"
 
 [[package]]
 name = "linden.bridge"
@@ -60,6 +60,14 @@ fileset-hash = "sha256:263d769ed801297ab90e53c6b5f18262969926f22e4f175754abb328c
 doo-hash = "9b8df228227560a8bb0e4a75de20f918f7dbba3cef156d79d6c61371f1ff4ce2"
 
 [[package]]
+name = "linden.equiv-oracle-build"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:e1de30a2e4eb77799d1e3db54a251aafff15b99f1bb1ff3787d2468317327f7e"
+doo-hash = "8838983f828b72579e039c4f31c1fbaae341c5fbba711304b240c04106977ec2"
+
+[[package]]
 name = "linden.warblre"
 class = 1
 version = "1.0.0"
@@ -90,14 +98,6 @@ version = "1.0.0"
 ordinal = 0
 fileset-hash = "sha256:fb60648f06fd8e5edd46203d7700eb0a2e966ee036466c7a2fe016db569fc5a2"
 doo-hash = "cc3fad29b13a62686c9fc19bfa4a88e2c118b2f0f577ff021c5851f76909354c"
-
-[[package]]
-name = "linden.equiv-oracle-build"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = "sha256:e1de30a2e4eb77799d1e3db54a251aafff15b99f1bb1ff3787d2468317327f7e"
-doo-hash = "8838983f828b72579e039c4f31c1fbaae341c5fbba711304b240c04106977ec2"
 
 [[package]]
 name = "linden.equiv-mirror"

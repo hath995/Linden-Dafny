@@ -53,3 +53,4 @@ expected-errors = [
 "linden.equiv-nulled-recon" = "^1.0.0"
 "linden.equiv-stamp-live" = "^1.0.0"
 "linden.equiv-plus-at" = "^1.0.0"
+"linden.equiv-oracle-build" = "^1.0.0"

@@ -37,3 +37,4 @@ expected-errors = [
 "linden.equiv-pike-inv-re" = "^1.0.0"
 "linden.equiv-tree-rep-re" = "^1.0.0"
 "linden.equiv-tree-thread-re" = "^1.0.0"
+"linden.equiv-nulled-plus" = "^1.0.0"

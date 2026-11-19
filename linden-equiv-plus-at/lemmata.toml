@@ -31,3 +31,6 @@ expected-errors = [
 "linden.equiv-stamp-live" = "^1.0.0"
 "linden.equiv-pike-sim-re" = "^1.0.0"
 "linden.equiv-final-readout" = "^1.0.0"
+"linden.equiv-nfa-rep-re" = "^1.0.0"
+"linden.equiv-oracle-build" = "^1.0.0"
+"linden.equiv-tree-rep-re" = "^1.0.0"

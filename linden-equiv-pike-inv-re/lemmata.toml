@@ -32,3 +32,6 @@ expected-errors = [
 "linden.equiv-nfa-rep-re" = "^1.0.0"
 "linden.equiv-regs-laws" = "^1.0.0"
 "linden.equiv-tree-thread-re" = "^1.0.0"
+"linden.equiv-check-erase" = "^1.0.0"
+"linden.equiv-nulled-plus" = "^1.0.0"
+"linden.equiv-tree-rep-re" = "^1.0.0"
