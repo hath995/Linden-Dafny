@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:3c3ccdd23f785e1f437500b1afe06100744249f4e83eef415909a0fe55e57b76"
+manifest-hash = "sha256:b4d4b407a57b0b758e790d6f9669f6f67f1310310c1fb39b4ac0bd2abd47827e"
 
 [[package]]
 name = "linden.equiv-cdn-priority"
@@ -204,7 +204,7 @@ path = "/home/aaron/code/Linden-Dafny/linden-semantics-core"
 [[package]]
 name = "linden.warblre"
 class = 1
-version = "1.0.3"
+version = "1.0.0"
 ordinal = 0
 fileset-hash = ""
 doo-hash = ""

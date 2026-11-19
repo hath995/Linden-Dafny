@@ -23,4 +23,4 @@ expected-errors = [
 ]
 
 [dependencies]
-linden.warblre = "^1.0.0"
+"linden.warblre" = "^1.0.0"

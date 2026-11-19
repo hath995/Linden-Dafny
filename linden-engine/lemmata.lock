@@ -1,12 +1,12 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:3ad1dd62313d91255dff5ce2ea67b7085dee4004e6b5e03da089242f758f42b1"
+manifest-hash = "sha256:69c0e30087e0c0a367e5d95a20e5bc1ab85619d961e6f2b08e11667c9dd07bca"
 
 [[package]]
 name = "linden.warblre"
 class = 1
-version = "1.0.3"
+version = "1.0.0"
 ordinal = 0
 fileset-hash = ""
 doo-hash = ""

@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:eb3ffb74328dc77cd6e89421e71e6ab873d139543b10eaf480b9fdd8e7ec1cbb"
+manifest-hash = "sha256:1a660337c684aa51b17850629fa134e823f444737b3653845512071367067968"
 
 [[package]]
 name = "linden.engine-model"
@@ -114,7 +114,7 @@ path = "/home/aaron/code/Linden-Dafny/linden-semantics-core"
 [[package]]
 name = "linden.warblre"
 class = 1
-version = "1.0.3"
+version = "1.0.0"
 ordinal = 0
 fileset-hash = ""
 doo-hash = ""

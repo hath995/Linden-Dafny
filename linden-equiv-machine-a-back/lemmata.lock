@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:b738e44025e59d6a34060d9b2e12cb571ed05e2de23e4c199d66b699765e473c"
+manifest-hash = "sha256:4a1d32048e267f2d09782008b792fe195774809a2fadd3ffa03e662759629e7a"
 
 [[package]]
 name = "linden.equiv-back-gm-mirror"
@@ -249,7 +249,7 @@ path = "/home/aaron/code/Linden-Dafny/linden-semantics-core"
 [[package]]
 name = "linden.warblre"
 class = 1
-version = "1.0.3"
+version = "1.0.0"
 ordinal = 0
 fileset-hash = ""
 doo-hash = ""

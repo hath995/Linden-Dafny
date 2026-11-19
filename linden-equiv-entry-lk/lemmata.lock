@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:4623e5752a1755b21ef01cc0add8d0b7289dba6155353e1de0253cae78e2c423"
+manifest-hash = "sha256:ea3518446ce7a0f8e365da36b826309bbc98a448fc82f7a4d58e7c8eacba826c"
 
 [[package]]
 name = "linden.equiv-look-tables"
@@ -96,7 +96,7 @@ path = "/home/aaron/code/Linden-Dafny/linden-semantics-core"
 [[package]]
 name = "linden.warblre"
 class = 1
-version = "1.0.3"
+version = "1.0.0"
 ordinal = 0
 fileset-hash = ""
 doo-hash = ""

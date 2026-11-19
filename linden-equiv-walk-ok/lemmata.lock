@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:b0549bf8085fd81221c3cc113144e6d344f017275c04f38f85d4e4249850165f"
+manifest-hash = "sha256:90c78c8d04325db8cec852e3909de5488aa9eb8b9511439190b031a9512d08e8"
 
 [[package]]
 name = "linden.bridge"
@@ -114,7 +114,7 @@ path = "/home/aaron/code/Linden-Dafny/linden-semantics-core"
 [[package]]
 name = "linden.warblre"
 class = 1
-version = "1.0.3"
+version = "1.0.0"
 ordinal = 0
 fileset-hash = ""
 doo-hash = ""

@@ -1,7 +1,7 @@
 [package]
 namespace = "linden"
 name = "warblre"
-version = "1.0.3"
+version = "1.0.0"
 description = "ECMAScript regex primitives (character classes, numerics, RegExpRecord) for the Linden reference spec"
 repository = "https://github.com/hath995/Linden-Dafny/tree/main/linden-warblre"
 license = "MIT"

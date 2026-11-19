@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:2729a1efdf8fbe62fe45f62ca07e37952d053a0f3b76ea861af1b7647bdcff04"
+manifest-hash = "sha256:41381eaf2c30b58c8a98a3af431e858c11669412cf81846913da2484c78b2f67"
 
 [[package]]
 name = "linden.regex-engine"
@@ -15,7 +15,7 @@ path = "/home/aaron/code/Linden-Dafny/regex-engine"
 [[package]]
 name = "linden.warblre"
 class = 1
-version = "1.0.3"
+version = "1.0.0"
 ordinal = 0
 fileset-hash = ""
 doo-hash = ""
