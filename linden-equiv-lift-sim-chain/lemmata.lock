@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:99354814686eaa445142664cfa0d68409192366c8fa64443ba797e573da7916c"
+manifest-hash = "sha256:2f3551d9d3634a8bbc39c2cdc151ce167af1b11274d7f2a9269007b7b788fe06"
 
 [[package]]
 name = "linden.equiv-cdn-priority"
@@ -130,6 +130,15 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-stamp-mirror"
 
 [[package]]
+name = "linden.reasoning"
+class = 1
+version = "1.0.1"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-reasoning"
+
+[[package]]
 name = "linden.engine"
 class = 1
 version = "1.0.2"
@@ -148,13 +157,13 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-engine-model"
 
 [[package]]
-name = "linden.reasoning"
+name = "linden.bridge"
 class = 1
-version = "1.0.1"
+version = "1.0.0"
 ordinal = 0
 fileset-hash = ""
 doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-reasoning"
+path = "/home/aaron/code/Linden-Dafny/linden-bridge"
 
 [[package]]
 name = "linden.semantics-core"

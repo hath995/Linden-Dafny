@@ -4,6 +4,15 @@ dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
 manifest-hash = "sha256:b0549bf8085fd81221c3cc113144e6d344f017275c04f38f85d4e4249850165f"
 
 [[package]]
+name = "linden.bridge"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = ""
+doo-hash = ""
+path = "/home/aaron/code/Linden-Dafny/linden-bridge"
+
+[[package]]
 name = "linden.engine-model"
 class = 1
 version = "1.0.2"
@@ -92,15 +101,6 @@ ordinal = 0
 fileset-hash = ""
 doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-sweep"
-
-[[package]]
-name = "linden.reasoning"
-class = 1
-version = "1.0.1"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-reasoning"
 
 [[package]]
 name = "linden.semantics-core"

@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:69925eb488ec8716179afe436b7eacb51c375c0e63b436fc210881ec92041c01"
+manifest-hash = "sha256:f56f8391d12ce55424daf14fe95120602a6a7ad35ebe9dc07ac94af769392bf5"
 
 [[package]]
 name = "linden.equiv-entry-lk"
@@ -94,13 +94,13 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-engine-model"
 
 [[package]]
-name = "linden.reasoning"
+name = "linden.bridge"
 class = 1
-version = "1.0.1"
+version = "1.0.0"
 ordinal = 0
 fileset-hash = ""
 doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-reasoning"
+path = "/home/aaron/code/Linden-Dafny/linden-bridge"
 
 [[package]]
 name = "linden.semantics-core"

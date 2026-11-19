@@ -21,6 +21,7 @@ expected-errors = [
 
 [dependencies]
 linden.reasoning = "^1.0.0"
+linden.bridge = "^1.0.0"
 linden.semantics-core = "^1.0.0"
 linden.warblre = "^1.0.0"
 linden.regex-engine = "^1.0.0"

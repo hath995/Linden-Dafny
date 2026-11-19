@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:dee6575323e25380dd464233965748932c89314a6575d600f8924f119e7a9859"
+manifest-hash = "sha256:02cda5576b2fd8b55fde674e4a85a518ff96b20f5bd0fc90283a46daab2081cd"
 
 [[package]]
 name = "linden.engine"
@@ -256,13 +256,13 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/regex-engine"
 
 [[package]]
-name = "linden.reasoning"
+name = "linden.bridge"
 class = 1
-version = "1.0.1"
+version = "1.0.0"
 ordinal = 0
 fileset-hash = ""
 doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-reasoning"
+path = "/home/aaron/code/Linden-Dafny/linden-bridge"
 
 [[package]]
 name = "linden.equiv-actions-rep-re"

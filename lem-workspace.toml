@@ -6,8 +6,10 @@
 #   regex-engine, linden-warblre        (leaves)
 #     -> linden-semantics-core
 #          -> linden-engine-model -> linden-engine
-#          -> linden-reasoning
-#               -> linden-equiv         (top)
+#          -> linden-bridge          (RegElk -> Linden translation, spec, shared facts)
+#               -> linden-reasoning      (pattern-reasoning API)
+#               -> linden-equiv-*        (the equivalence proof's layers)
+#                    -> linden-equiv     (top)
 [workspace]
 members = ["regex-engine", "linden-*"]
 

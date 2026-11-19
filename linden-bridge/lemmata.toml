@@ -1,0 +1,27 @@
+[package]
+namespace = "linden"
+name = "bridge"
+version = "1.0.0"
+description = "linden-equiv foundation: RegElk-to-Linden regex translation, the matcher spec, nullability, span-duality and tree-mirror facts shared by the equivalence proof"
+repository = "https://github.com/hath995/Linden-Dafny/tree/main/linden-bridge"
+license = "MIT"
+entry = true
+
+[toolchain]
+dafny = ">= 4.11.0"
+
+[source]
+to_export = ["src/**/*.dfy"]
+
+[options]
+standard-libraries = true
+verification-time-limit = "600"
+
+[verification]
+expected-errors = [
+]
+
+[dependencies]
+linden.regex-engine = "^1.0.0"
+linden.warblre = "^1.0.0"
+linden.semantics-core = "^1.0.0"

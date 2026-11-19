@@ -6,18 +6,17 @@ semantics, without pulling in the engine-equivalence proof.
 
 This is the layer a consumer uses when the **semantics is the spec** for their
 production JavaScript engine: they reason about pattern behaviour over Linden
-trees, and never touch the (heavy) RegElk ⇔ semantics equivalence. It provides
-the RegElk→Linden translation bridge and a set of headline theorems —
+trees, and never touch the (heavy) RegElk ⇔ semantics equivalence. It builds on the RegElk→Linden
+translation in [`linden.bridge`](../linden-bridge) and provides a set of headline theorems —
 `TypedCapture` (a capture group's set membership, index bounds, and character
 content), `SemResult` ("what a conforming engine returns"), and negative-search
 (`NoMatchMeansAbsent`).
 
 ## Contents
 
-- **Bridge** — `LindenElkTranslate` (`Translate`), `LindenElkReduce`,
-  `LindenElkTransfer`, `LindenElkSpec`, `LindenElkNullable`: the canonical
-  RegElk-regex → Linden-regex translation and the raw/spec transfer lemmas that
-  bypass the fuel wall.
+- **Transfer** — `LindenElkReduce` (`Reduce`), `LindenElkTransfer` (`Transfer`):
+  the raw/spec transfer lemmas that bypass the fuel wall (simple and
+  group-container patterns, character-class predicates).
 - **API** — `CaptureContent`, `LindenSemanticsReasoning` (`SemanticsApi`):
   `TypedCaptureTree`/`TypedCaptureSem`, `SemResult`, `WholeMatchSem`,
   `NoMatchAnywhereSem`, and the pattern-combinator facts.
@@ -28,6 +27,8 @@ engine-independent.
 
 ## Dependencies
 
+- **`linden.bridge`** — the RegElk→Linden translation (`LindenElkTranslate`),
+  the matcher spec (`LindenElkSpec`), and nullability facts.
 - **`regex-engine`** — the RegElk regex AST (surface pattern representation).
 - **`linden-semantics-core`** — the reference tree semantics.
 - **`linden-warblre`** — ECMAScript primitives.
@@ -43,8 +44,10 @@ linden-warblre  ·  regex-engine     two leaves: ECMAScript primitives · the Re
   └─ linden-semantics-core          backtracking-tree reference semantics
        ├─ linden-engine-model       NFA bytecode compilation
        │    └─ linden-engine        Pike VM ⇔ tree equivalence
-       └─ linden-reasoning          engine-independent reasoning API   (+ regex-engine AST)
-              └─ linden-equiv       RegElk engine ⇔ semantics — pinnacle (+ regex-engine)
+       └─ linden-bridge             RegElk → Linden translation, spec, shared facts   (+ regex-engine AST)
+            ├─ linden-reasoning     engine-independent reasoning API
+            └─ linden-equiv-*       the equivalence proof's layers
+                 └─ linden-equiv    RegElk engine ⇔ semantics — pinnacle (+ reasoning)
 ```
 
 You're in **`linden-reasoning`** — engine-independent: it imports only

@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:37c814a01106f619562770c903b8091d698a3e6a39a5afd267269d90b53d8b0c"
+manifest-hash = "sha256:169ca16ea0955616f0730a30690d9b1b4a6cba1cba8000c9e5c731aa7cb2c2f1"
 
 [[package]]
 name = "linden.equiv-look-tables"
@@ -40,13 +40,13 @@ doo-hash = ""
 path = "/home/aaron/code/Linden-Dafny/linden-warblre"
 
 [[package]]
-name = "linden.reasoning"
+name = "linden.bridge"
 class = 1
-version = "1.0.1"
+version = "1.0.0"
 ordinal = 0
 fileset-hash = ""
 doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-reasoning"
+path = "/home/aaron/code/Linden-Dafny/linden-bridge"
 
 [[package]]
 name = "linden.regex-engine"

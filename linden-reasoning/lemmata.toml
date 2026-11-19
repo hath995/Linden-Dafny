@@ -2,9 +2,10 @@
 namespace = "linden"
 name = "reasoning"
 version = "1.0.1"
-description = "Engine-independent regex reasoning API over the Linden semantics: RegElk-to-Linden translation, capture-content facts, and the semantics-level TypedCapture / SemResult theorems"
+description = "Engine-independent reasoning about particular regex patterns over the Linden semantics: capture-content facts, the semantics-level TypedCapture / SemResult theorems, and their transfer to the verified RegElk matcher"
 repository = "https://github.com/hath995/Linden-Dafny/tree/main/linden-reasoning"
 license = "MIT"
+entry = true
 keywords = ["regular expression", "Linden Tree", "semantics", "reasoning"]
 
 [toolchain]
@@ -25,3 +26,4 @@ expected-errors = [
 linden.regex-engine = "^1.0.0"
 linden.warblre = "^1.0.0"
 linden.semantics-core = "^1.0.0"
+linden.bridge = "^1.0.0"
