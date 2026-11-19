@@ -1,0 +1,7 @@
+# Created by lem: the restored dependency closure. No `includes` key —
+# Dafny defaults to **/*.dfy, covering src, tests, and materialized deps.
+
+[options]
+standard-libraries = true
+verification-time-limit = "600"
+library = ["deps/linden.regex-engine.doo", "deps/linden.semantics-core.doo", "deps/linden.warblre.doo"]
