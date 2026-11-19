@@ -664,8 +664,10 @@ module LindenElkMachineABack {
     M.ReverseCdnPackage(body);
     M.NoWriteOracleBodyCodeCdn(R.reverse_regex(body));
     assert ctxB.nextchar == AI.get_char(str, cp - 1);
+    assert {:split_here} true;   // stock z3 4.12.1 stalls on this section as one batch
     CM.FFindMatchOvStable(bcB, str, initsB, ov, LAnc.Backward, cdns);
     assert fmB.1 == ov;
+    assert {:split_here} true;
     var rr := AI.FFindMatchPlus(bcB, body, plus, str, ov, LAnc.Backward, cp, capture, look, quant, 0, cdns);
     assert rr.0 == (match raB
                     case None => None
