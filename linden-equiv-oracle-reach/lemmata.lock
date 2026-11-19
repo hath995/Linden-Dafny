@@ -1,22 +1,20 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:7e6413017cc7b28d40f81d593397e66fc697611ada875dda3e757f3057ea1d0b"
+manifest-hash = "sha256:10568bed438bd899c1eebf57614c189f53831fd15d19c94365140d35fcdba607"
 
 [[package]]
 name = "linden.regex-engine"
 class = 1
-version = "1.0.1"
+version = "1.0.0"
 ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/regex-engine"
+fileset-hash = "sha256:9aa71b8dfbf9bd6d81ab44c525403131e00f48feffcd0f538f96d4e717429411"
+doo-hash = "215f65498547ff58935be2db7d73181ca0e0a736cbc9da6d1d1e6fc518391ca2"
 
 [[package]]
 name = "linden.equiv-oracle-sweep"
 class = 1
 version = "1.0.0"
 ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-sweep"
+fileset-hash = "sha256:fb60648f06fd8e5edd46203d7700eb0a2e966ee036466c7a2fe016db569fc5a2"
+doo-hash = "cc3fad29b13a62686c9fc19bfa4a88e2c118b2f0f577ff021c5851f76909354c"

@@ -20,9 +20,9 @@ expected-errors = [
 ]
 
 [dependencies]
-"linden.bridge" = "^1.0.0"
-"linden.semantics-core" = "^1.0.0"
-"linden.regex-engine" = "^1.0.0"
-"linden.equiv-mirror" = "^1.0.0"
-"linden.equiv-nfa-rep-re" = "^1.0.0"
-"linden.equiv-oracle-build" = "^1.0.0"
+linden.bridge = "^1.0.0"
+linden.semantics-core = "^1.0.0"
+linden.regex-engine = "^1.0.0"
+linden.equiv-mirror = "^1.0.0"
+linden.equiv-nfa-rep-re = "^1.0.0"
+linden.equiv-oracle-build = "^1.0.0"
