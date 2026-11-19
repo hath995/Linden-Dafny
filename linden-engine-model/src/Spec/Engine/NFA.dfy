@@ -895,18 +895,34 @@ module NFA {
       hide Compile; hide RepeatMin; hide RepeatOpt;
       assert c == hdr + bc1 + [el] + c2 && endl == f2;
       assert Compile(r, start + 3) == (bc1, f1) && RepeatOpt(k - 1, greedy, gidl, r, f1 + 1) == (c2, f2);
+      assert {:split_here} true;
       FreshCorrect(r, start + 3, bc1, f1);
       OptLayout(prev, h0, BeginLoop, ResetRegs(gidl), bc1, el, c2);
+      assert {:split_here} true;
       var pre1 := prev + hdr;
       CompileNfaRep(r, bc1, start + 3, f1, pre1);
       NfaRepExtend(r, pre1 + bc1, start + 3, f1, [el] + c2);
+      assert {:split_here} true;
       CompileNfaRepOpt(k - 1, greedy, gidl, r, c2, f1 + 1, f2, prev + hdr + bc1 + [el]);
+      assert {:split_here} true;
       assert GetPc(prev + c, start) == Some(GreedyFork(greedy, start + 1, f2))
           && GetPc(prev + c, start + 1) == Some(BeginLoop)
           && GetPc(prev + c, start + 2) == Some(ResetRegs(gidl))
           && NfaRep(r, prev + c, start + 3, f1)
           && GetPc(prev + c, f1) == Some(EndLoop(f1 + 1))
           && NfaRepOpt(k - 1, greedy, gidl, r, prev + c, f1 + 1, f2);
+      assert {:split_here} true;
+      // The witness is f1. Stock z3 4.12.1 does not find it in this context: one step, everything hidden.
+      assert NfaRepOpt(k, greedy, gidl, r, prev + c, start, endl) by {
+        hide *; reveal NfaRepOpt;
+        var e1: nat := f1;
+        assert GetPc(prev + c, start) == Some(GreedyFork(greedy, start + 1, endl))
+            && GetPc(prev + c, start + 1) == Some(BeginLoop)
+            && GetPc(prev + c, start + 2) == Some(ResetRegs(gidl))
+            && NfaRep(r, prev + c, start + 3, e1)
+            && GetPc(prev + c, e1) == Some(EndLoop(e1 + 1))
+            && NfaRepOpt(k - 1, greedy, gidl, r, prev + c, e1 + 1, endl);
+      }
     }
   }
 
