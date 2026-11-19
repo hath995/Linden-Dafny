@@ -1,10 +1,10 @@
 # The verified fragment — what `Match` is guaranteed to get right
 
-> Verification status (2026-11-19): G4b-2 (§2.5g) is proven in full-file dev runs of every changed member
-> (branch `g4b2`); the `lem pack` gate for it is pending. The last green gate (2026-11-18, `lem` 0.1.23, z3 4.14.1,
-> 78/78 members, branch `g4b`, `4f37099`, S32.run2) covers everything up to G4b-1. With G4b-2, `Supported` is the
-> nested fragment plus Latin-1 and nothing else: the greedy nullable plus is supported everywhere it can occur, and
-> lookarounds in its body may capture, on its empty paths too, at any look depth (§2.5e–§2.5g).
+> Verification status (2026-11-19): the entire equivalence — `linden.equiv` and its dependency packages —
+> verifies under `lem pack` with `lem` 0.1.23 and z3 4.14.1 (78/78 members, pack run S33.run2, branch `g4b2`,
+> `f272ad0`). `Supported` is the nested fragment plus Latin-1 and nothing else: the greedy nullable plus is supported
+> everywhere it can occur, and lookarounds in its body may capture, on its empty paths too, at any look depth
+> (§2.5e–§2.5g).
 > No `{:isolate_assertions}` remains anywhere in shipped code.
 
 Entry point: `ApiMatch.MatchCorrect(pattern, str)`:
@@ -424,7 +424,7 @@ proof engineering of known shape.
 | ~~§2.5a lazy nullable plus~~ | — | **DONE 2026-08-30** (branch `nullable-plus`) |
 | ~~§2.5e greedy CDN plus (`CheckNullable`), anywhere~~ | — | **DONE 2026-11-15/17** (G5a-1, G5a-2, G5b-0…2) |
 | ~~§2.5f capture-free lookarounds in a greedy nullable plus body, any depth~~ | — | **DONE 2026-11-15/17** (G4a, G5a-2a, G5b-3) |
-| ~~§2.5g capturing lookarounds in a greedy nullable plus body, any depth~~ | — | **DONE 2026-11-18/19** (G4b-1 off the empty paths, G4b-2 on them); `lem pack` gate pending |
+| ~~§2.5g capturing lookarounds in a greedy nullable plus body, any depth~~ | — | **DONE 2026-11-18/19** (G4b-1 off the empty paths, G4b-2 on them; pack run S33.run2 green) |
 | ~~§2.5b greedy nullable plus inside a look body~~ (lookaround-free: **DONE 2026-11-05**; next to lookarounds: **DONE 2026-11-06**; inside a LOOKAHEAD body: **DONE 2026-11-12**, §2.5c; inside a lookbehind body: **DONE 2026-11-12**, §2.5d) | history — the look-body replay would need the reconstruction readout (rung E) at every look depth; machine B's look-path frame (`CinLookPaths`) assumes the CIN bodies own no look-path registers | TWO end-fork layouts (CIN/CDN), the new `CheckNullable` instruction, the first `SetQuantToClock(qid, **true**)` (breaks the all-stamps-false invariant `NI.CodeShapeAt` proves and `MainTheoremL3` consumes), a second path in `ReconstructNulled`, plus `QuantRegsFinal` and `FNulledPlus`'s unproven spec tie. The §2.5a shift-to-`em` rewrite does NOT carry over — see `NULLABLE_PLUS_HANDOFF.md` § WHAT §2.5b ACTUALLY COSTS |
 | ~~§2.2 nested looks in negative bodies~~ | — | negative lookahead: **DONE 2026-11-09**, negative lookbehind: **DONE 2026-11-10** (branch `neg-look-nest`) |
 | ~~lookahead inside a lookbehind body, either polarity~~ | — | **DONE 2026-11-11** (§2.1a, branch `endgame`, `eacf6ec`) |
