@@ -6,7 +6,6 @@
 // (capture, lookaround, quantifier) counter threading made explicit, so a
 // concrete pattern's reduction is a short ladder of lemma calls at fuel 1 —
 // what ButtonATree.dfy assembled by hand, packaged once.
-include "Spec.dfy"
 
 /** The reduction toolkit: `TA` characterizes `Translate . annotate_regex` with
     counters; the per-constructor `TA_*` lemmas unfold it one level at a time;
