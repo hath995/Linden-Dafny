@@ -626,6 +626,17 @@ module LindenElkLookRecord {
     NRR.DisjointRegs(r);
     NRR.InnerSub(o);
     CLP.AncSub(s, l);
+    // s's ancestor registers lie outside o's (stated per element for z3 4.12.1)
+    forall k | k in CLP.AncCapRegs(s, l) ensures AI.get_idx(a.0.a_clk, k) == AI.get_idx(b.0.a_clk, k) {
+      assert k in NRR.CapRegsOf(s);
+      assert k !in NRR.CapRegsOf(NRR.L1(r)) * NRR.CapRegsOf(NRR.L2(r));
+      assert k !in NRR.CapRegsOf(o) && k !in NRR.InnerCapRegs(o);
+    }
+    forall k | k in CLP.AncQuants(s, l) ensures AI.get_idx(a.2.a_clk, k) == AI.get_idx(b.2.a_clk, k) {
+      assert k in NRR.QuantRegsOf(s);
+      assert k !in NRR.QuantRegsOf(NRR.L1(r)) * NRR.QuantRegsOf(NRR.L2(r));
+      assert k !in NRR.QuantRegsOf(o) && k !in NRR.InnerQuantRegs(o);
+    }
     CLP.LookPathFrame(s, a.0.a_clk, a.2.a_clk, b.0.a_clk, b.2.a_clk, K, l);
   }
 
@@ -1030,6 +1041,29 @@ module LindenElkLookRecord {
       } else {
         assert {:split_here} true;
         var rgB := NRR.MergeOn(rgA, rg0, NRR.CapTargets(ws), NRR.LookTargets(ws), NRR.QuantTargets(ws));
+        assert forall k: int :: k in NRR.CapTargets(ws) ==>
+                 AI.get_idx(rgA.0.a_cp, k) == AI.get_idx(rg1.0.a_cp, k) && AI.get_idx(rgA.0.a_clk, k) == AI.get_idx(rg1.0.a_clk, k) by {
+          forall k: int | k in NRR.CapTargets(ws)
+            ensures AI.get_idx(rgA.0.a_cp, k) == AI.get_idx(rg1.0.a_cp, k) && AI.get_idx(rgA.0.a_clk, k) == AI.get_idx(rg1.0.a_clk, k)
+          {
+            assert k in NRR.CapRegsOf(r2);
+            assert k !in NRR.CapRegsOf(r1) by { assert NRR.CapRegsOf(r1) * NRR.CapRegsOf(r2) == {}; }
+            assert k !in NRR.InnerCapRegs(r1);
+          }
+        }
+        assert forall k: int :: k in NRR.LookTargets(ws) ==>
+                 AI.get_idx(rgA.1.a_cp, k) == AI.get_idx(rg1.1.a_cp, k) && AI.get_idx(rgA.1.a_clk, k) == AI.get_idx(rg1.1.a_clk, k) by {
+          forall k: int | k in NRR.LookTargets(ws)
+            ensures AI.get_idx(rgA.1.a_cp, k) == AI.get_idx(rg1.1.a_cp, k) && AI.get_idx(rgA.1.a_clk, k) == AI.get_idx(rg1.1.a_clk, k)
+          {
+            assert k in NRR.LookRegsOf(r2);
+            assert k !in NRR.LookRegsOf(r1) by {
+              assert NRR.LookRegsOf(r1) * NRR.LookRegsOf(r2) == {};
+              assert k !in NRR.LookRegsOf(r1) * NRR.LookRegsOf(r2);
+            }
+            assert k !in NRR.InnerLookRegs(r1);
+          }
+        }
         assert forall k: int :: k in NRR.QuantTargets(ws) ==>
                  AI.get_idx(rgA.2.a_cp, k) == AI.get_idx(rg1.2.a_cp, k) && AI.get_idx(rgA.2.a_clk, k) == AI.get_idx(rg1.2.a_clk, k) by {
           forall k: int | k in NRR.QuantTargets(ws)

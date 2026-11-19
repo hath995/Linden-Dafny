@@ -216,6 +216,11 @@ module LindenElkFinalRegs {
       var rgA := NRO.FP(r1, rg, plus_bcv, str, ov);
       assert NRO.StampsInRange(r2, rgA, str) by {
         NRR.DisjointRegs(r); NRR.InnerSub(r1);
+        // r1's frame leaves r2's quantifier registers alone (stated for z3 4.12.1)
+        forall k: int | k in NRR.QuantRegsOf(r2) ensures AI.get_idx(rgA.2.a_cp, k) == AI.get_idx(rg.2.a_cp, k) {
+          assert k !in NRR.QuantRegsOf(NRR.L1(r)) * NRR.QuantRegsOf(NRR.L2(r));
+          assert k !in NRR.InnerQuantRegs(r1);
+        }
         NRO.StampsInRangeTransfer(r, r2, rg, rgA, str);
       }
       FPValGe(qm, r2, rgA, plus_bcv, str, ov);
@@ -227,6 +232,11 @@ module LindenElkFinalRegs {
       var rgA := NRO.FP(r1, rg, plus_bcv, str, ov);
       assert NRO.StampsInRange(r2, rgA, str) by {
         NRR.DisjointRegs(r); NRR.InnerSub(r1);
+        // r1's frame leaves r2's quantifier registers alone (stated for z3 4.12.1)
+        forall k: int | k in NRR.QuantRegsOf(r2) ensures AI.get_idx(rgA.2.a_cp, k) == AI.get_idx(rg.2.a_cp, k) {
+          assert k !in NRR.QuantRegsOf(NRR.L1(r)) * NRR.QuantRegsOf(NRR.L2(r));
+          assert k !in NRR.InnerQuantRegs(r1);
+        }
         NRO.StampsInRangeTransfer(r, r2, rg, rgA, str);
       }
       FPValGe(qm, r2, rgA, plus_bcv, str, ov);

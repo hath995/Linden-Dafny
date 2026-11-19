@@ -548,6 +548,7 @@ module LindenElkEmptyLooks {
         StampedAncKillsPresence(r1, cc, qc, mx, lid, Q);
       } else {
         CLP.AncSub(r2, lid);
+        PIV.SubQuantIds(r, r1, r2);   // QidBody(r, q) == QidBody(r2, q) on r2's ids (z3 4.12.1)
         StampedAncKillsPresence(r2, cc, qc, mx, lid, Q);
       }
     case Re_con(r1, r2) =>
@@ -561,6 +562,7 @@ module LindenElkEmptyLooks {
         StampedAncKillsPresence(r1, cc, qc, mx, lid, Q);
       } else {
         CLP.AncSub(r2, lid);
+        PIV.SubQuantIds(r, r1, r2);   // QidBody(r, q) == QidBody(r2, q) on r2's ids (z3 4.12.1)
         StampedAncKillsPresence(r2, cc, qc, mx, lid, Q);
       }
     case Re_capture(cid, r1) =>
