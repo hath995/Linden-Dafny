@@ -59,4 +59,9 @@ RUN git clone --filter=blob:none "${LINDEN_REPO}" Linden-Dafny \
  && git -C Linden-Dafny checkout --detach "${LINDEN_REF}" \
  && git -C Linden-Dafny log -1 --format='baked Linden-Dafny %H (%cd)'
 
+LABEL org.opencontainers.image.title="linden-verify" \
+      org.opencontainers.image.description="Re-verifies every Linden package from source with stock Dafny 4.11.0 (z3 4.12.1), then audits for axioms and assumes" \
+      org.opencontainers.image.source="https://github.com/hath995/Linden-Dafny" \
+      org.opencontainers.image.revision="${LINDEN_REF}"
+
 ENTRYPOINT ["run-suite"]
