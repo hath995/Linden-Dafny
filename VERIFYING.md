@@ -54,8 +54,8 @@ The proof is split into 79 Dafny packages, built as one lem workspace
   see the notes below for other platforms.
 * **48 GB of RAM** for the default 4 parallel solver workers. Under z3 4.12.1
   a single proof batch can use up to 16 GB, so we do not recommend less.
-* 4 cores. A full run takes about 2 hours: about 1 h 45 min for the build
-  and about 20 min for the audits.
+* 4 cores. A full run takes about 2 hours. Our test run of the image took
+  1 h 45 min for the build and 17 min for the audits.
 * Network access: Docker Hub (option A, about 800 MB), apt.lemmata.sh and
   GitHub (option B), and registry.lemmata.sh. lem reads the registry's package
   index to resolve the workspace, but builds every package locally.
@@ -113,7 +113,7 @@ A successful `summary.txt` contains these lines:
 
 ```
 pack:      exit 0, 79 members packed, ...
-workspace packed: 79 members, ... obligations verified, in ...
+workspace packed: 79 members, 6997 obligations verified, in ...
 audit:     79 members, 0 findings outside the standard library
 lem audit: exit 0, 0 declared-unproven obligations
 == PASS
@@ -201,7 +201,7 @@ It writes the same files as option A, to `~/linden-out`.
 ```sh
 # 1. Rebuild and verify every package from source (about 1 h 45 min at 4 cores).
 lem pack --jobs 1
-#    The last line reads "workspace packed: 79 members, N obligations verified, in ...".
+#    The last line reads "workspace packed: 79 members, 6997 obligations verified, in ...".
 #    `lem verify` checks the same packages through `dafny verify` instead of
 #    `dafny build`. The registry worker runs `dafny build`, as `lem pack` does.
 
