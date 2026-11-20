@@ -1,0 +1,29 @@
+#!/bin/sh
+# Shim between lem and the pinned Dafny toolchain ($DAFNY_REAL).
+#
+# For `build` and `verify` it pins the z3 worker count to at most
+# $DAFNY_MAX_CORES (default 4). Without the cap, `lem pack --jobs 1` passes no
+# --cores and Dafny starts one z3 per core. Some Linden batches take 10-16 GB in
+# z3 4.12.1, so 16 parallel workers exceed 48 GB. A member that asks for fewer
+# cores in its manifest keeps its lower value.
+# Every other command, and every other argument, passes through unchanged.
+set -eu
+real=${DAFNY_REAL:?DAFNY_REAL must point at the toolchain dafny}
+case "${1:-}" in
+  build|verify) ;;
+  *) exec "$real" "$@" ;;
+esac
+max=${DAFNY_MAX_CORES:-4}
+want=$max
+set -- "$@" --end-of-args--
+while [ "$1" != --end-of-args-- ]; do
+  a=$1; shift
+  case "$a" in
+    --cores:*|--cores=*) n=${a#--cores?} ;;
+    --cores) n=$1; shift ;;
+    *) set -- "$@" "$a"; continue ;;
+  esac
+  case "$n" in ''|*[!0-9]*) ;; *) [ "$n" -lt "$want" ] && want=$n ;; esac
+done
+shift
+exec "$real" "$@" "--cores:$want"
