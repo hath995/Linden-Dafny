@@ -1,5 +1,8 @@
 # Linden-Dafny
 
+> **Re-checking the proof?** [VERIFYING.md](VERIFYING.md) shows how to rebuild
+> and audit all 79 packages from source, with Docker or with lem directly.
+
 A machine-checked (Dafny) formalization of the **[Linden](https://github.com/LindenRegex/Linden)
 ECMAScript regular-expression semantics** and its **equivalence with the
 [RegElk](https://github.com/LindenRegex/RegElk) engine**, developed as a
