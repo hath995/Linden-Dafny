@@ -57,8 +57,9 @@ WORKDIR /home/linden
 # The baked source. A /linden-src mount replaces it at run time.
 # LINDEN_REPO may also be a local repository mounted into the build with
 # `podman build -v <checkout>:/linden-src:ro --build-arg LINDEN_REPO=/linden-src`,
-# which is how a commit is baked before it is pushed. safe.directory lets git
-# read a repo owned by another uid.
+# which is how a commit is baked before it is pushed. Such an image is for local
+# testing only: its clone carries every local branch, so never publish it.
+# safe.directory lets git read a repo owned by another uid.
 RUN git config --global --add safe.directory '*' \
  && git clone --filter=blob:none "${LINDEN_REPO}" Linden-Dafny \
  && git -C Linden-Dafny checkout --detach "${LINDEN_REF}" \

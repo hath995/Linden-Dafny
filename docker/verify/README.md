@@ -29,12 +29,14 @@ docker run --rm --memory=48g -v "$PWD:/linden-src:ro" -v "$PWD/out:/out" linden-
 
 Podman works the same way (`podman build`, `podman run`).
 
-For a published image, build with `LINDEN_REF` set to a full commit SHA. The
-image then carries that exact source, and its `org.opencontainers.image.revision`
-label names it. Reviewers only need to run it:
+For a published image, build from GitHub (the default `LINDEN_REPO`) with
+`LINDEN_REF` set to a full commit SHA. The image then carries that exact source,
+and its `org.opencontainers.image.revision` label names it. Never publish an
+image baked from a local repository: its clone carries every local branch.
+Reviewers only need to run it:
 
 ```sh
-docker run --rm --memory=48g -v "$PWD/out:/out" <image>
+docker run --rm --memory=48g -v "$PWD/out:/out" aelligsen/linden-verify:9c7d8ca
 ```
 
 `out/summary.txt` names the commit, the lem and Dafny versions, and the verdict.

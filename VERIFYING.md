@@ -56,7 +56,7 @@ The proof is split into 79 Dafny packages, built as one lem workspace
   a single proof batch can use up to 16 GB, so we do not recommend less.
 * 4 cores. A full run takes about 2 hours. Our test run of the image took
   1 h 45 min for the build and 17 min for the audits.
-* Network access: Docker Hub (option A, about 800 MB), apt.lemmata.sh and
+* Network access: Docker Hub (option A, a 330 MB download), apt.lemmata.sh and
   GitHub (option B), and registry.lemmata.sh. lem reads the registry's package
   index to resolve the workspace, but builds every package locally.
 * A few GB of disk.
@@ -68,10 +68,10 @@ The proof is split into 79 Dafny packages, built as one lem workspace
 ### A1. Use the published image
 
 ```sh
-docker pull <dockerhub-user>/linden-verify:9c7d8ca
+docker pull aelligsen/linden-verify:9c7d8ca
 mkdir -p out
 docker run --rm --memory=48g --memory-swap=48g -v "$PWD/out:/out" \
-  <dockerhub-user>/linden-verify:9c7d8ca
+  aelligsen/linden-verify:9c7d8ca
 ```
 
 ### A2. Or build the image yourself
