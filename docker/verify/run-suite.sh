@@ -17,7 +17,9 @@ SUMMARY=$OUT/summary.txt
 : > "$SUMMARY"
 say() { echo "$*" | tee -a "$SUMMARY"; }
 
-if [ -d /linden-src ]; then
+# Test for .git, not the directory: baking from a mounted repo with
+# `podman build -v` leaves an empty /linden-src mount point in the image.
+if [ -e /linden-src/.git ]; then
   WS=$HOME/work/Linden-Dafny
   rm -rf "$WS"
   git -c safe.directory='*' clone -q /linden-src "$WS" || exit 2
