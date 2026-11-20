@@ -53,9 +53,19 @@ say "== step 2: dafny audit (every member, standard library excluded)"
 AUDIT_JOBS=${AUDIT_JOBS:-4}
 mkdir -p "$OUT/audit"
 members=$(for d in regex-engine linden-*/; do d=${d%/}; [ -f "$d/lemmata.toml" ] && echo "$d"; done)
+# Audits the shipped fileset (every manifest has to_export = src/**/*.dfy)
+# against the member's restored closure from dfyconfig.toml. That dfyconfig
+# globs **/*.dfy, which would pull in tests/ and their test-only dependencies.
 audit_one() {
   local m=$1 log=$OUT/audit/$1.txt
-  (cd "$m" && "$DAFNY_REAL" audit dfyconfig.toml > "$log" 2>&1)
+  (
+    cd "$m" || exit 1
+    args=()
+    for l in $(grep -o '"deps/[^"]*\.doo"' dfyconfig.toml | tr -d '"'); do args+=(--library "$l"); done
+    grep -q '^standard-libraries *= *true' dfyconfig.toml && args+=(--standard-libraries:true)
+    mapfile -t srcs < <(find src -name '*.dfy' | sort)
+    "$DAFNY_REAL" audit "${srcs[@]}" "${args[@]}"
+  ) > "$log" 2>&1
   if grep -q 'Dafny auditor completed' "$log"; then echo ok > "$OUT/audit/$m.status"
   else echo incomplete > "$OUT/audit/$m.status"; fi
 }
