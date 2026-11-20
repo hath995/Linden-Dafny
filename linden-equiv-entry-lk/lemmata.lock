@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:8b3ce1fefb6fac73000d6500f374aed1324a22bcab89cb31395af324a6c9de09"
+manifest-hash = "sha256:d54681320ae5d7eca0894e4316a0147c7d2c62da5d77e68cb74376aeedcde7fc"
 
 [[package]]
 name = "linden.engine-model"
@@ -50,6 +50,14 @@ version = "1.0.0"
 ordinal = 0
 fileset-hash = "sha256:e4d811193840fc54c859da361d6974ea6b2ebad090bbcc18f07a98a5b130e254"
 doo-hash = "c7929982f7a18e446e2778a7e5adc47c4ca704d0c0bc8ae0ab19901c661ba01b"
+
+[[package]]
+name = "linden.equiv-oracle-spec"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:228d4f8967d080cac86fc8820aef1d3369d99bf5ee89e683cb211f8a2577047d"
+doo-hash = "3cbdc6abfd56bad3a2f767992edd73bf9a967d49d8223177f1f13c60358cc65d"
 
 [[package]]
 name = "linden.equiv-look-tables"
@@ -106,12 +114,3 @@ version = "1.0.0"
 ordinal = 0
 fileset-hash = "sha256:263d769ed801297ab90e53c6b5f18262969926f22e4f175754abb328c7b50d80"
 doo-hash = "9b8df228227560a8bb0e4a75de20f918f7dbba3cef156d79d6c61371f1ff4ce2"
-
-[[package]]
-name = "linden.equiv-oracle-spec"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-spec"

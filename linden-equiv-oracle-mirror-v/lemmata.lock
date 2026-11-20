@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:d954531a63c900d73619a6fa54425b8d67e3794d04213e24fcb94f8c08fcb1ea"
+manifest-hash = "sha256:ab8a623cb1aedb9a932bd0263cce959da6a490eedc7ee716c382a9c5eb660d22"
 
 [[package]]
 name = "linden.bridge"
@@ -60,6 +60,14 @@ fileset-hash = "sha256:e1de30a2e4eb77799d1e3db54a251aafff15b99f1bb1ff3787d246831
 doo-hash = "8838983f828b72579e039c4f31c1fbaae341c5fbba711304b240c04106977ec2"
 
 [[package]]
+name = "linden.equiv-oracle-decomp-v"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:1174ab7b2f847f57f05b9b9606a7be9d4f068fe91e23a434d4dbd37dca9800fc"
+doo-hash = "140061f4e18853fc34009ceb83d61ceae413364d3d4116849762b912f6e2dafc"
+
+[[package]]
 name = "linden.equiv-oracle-reach"
 class = 1
 version = "1.0.0"
@@ -106,12 +114,3 @@ version = "1.0.0"
 ordinal = 0
 fileset-hash = "sha256:e61d2355ff76e94ce9b8030446155802ea63b674ec16a72d8260deb89f7bad34"
 doo-hash = "aab96b9090cd0185e2b56686487e29f50760c873178f4f0156780b8fff9ceb94"
-
-[[package]]
-name = "linden.equiv-oracle-decomp-v"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-decomp-v"

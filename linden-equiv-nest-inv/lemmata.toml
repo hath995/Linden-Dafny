@@ -14,8 +14,6 @@ to_export = ["src/**/*.dfy"]
 [options]
 standard-libraries = true
 verification-time-limit = "900"
-# NestInv.dfy is 7k lines; at --cores=4 a whole-file run OOMs against the
-# 80G dafny.slice cap. Two z3 workers keep it under the cap.
 cores = "2"
 
 [verification]
@@ -23,8 +21,8 @@ expected-errors = [
 ]
 
 [dependencies]
-"linden.regex-engine" = "^1.0.0"
-"linden.equiv-actions-rep-re" = "^1.0.0"
-"linden.equiv-look-tables" = "^1.0.0"
-"linden.equiv-nfa-rep-re" = "^1.0.0"
-"linden.equiv-pike-inv-re" = "^1.0.0"
+linden.regex-engine = "^1.0.0"
+linden.equiv-actions-rep-re = "^1.0.0"
+linden.equiv-look-tables = "^1.0.0"
+linden.equiv-nfa-rep-re = "^1.0.0"
+linden.equiv-pike-inv-re = "^1.0.0"

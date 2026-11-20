@@ -20,10 +20,10 @@ expected-errors = [
 ]
 
 [dependencies]
-"linden.bridge" = "^1.0.0"
-"linden.semantics-core" = "^1.0.0"
-"linden.warblre" = "^1.0.0"
-"linden.regex-engine" = "^1.0.0"
-"linden.equiv-actions-rep-re" = "^1.0.0"
-"linden.equiv-nfa-rep-re" = "^1.0.0"
-"linden.equiv-walk-ok" = "^1.0.0"
+linden.bridge = "^1.0.0"
+linden.semantics-core = "^1.0.0"
+linden.warblre = "^1.0.0"
+linden.regex-engine = "^1.0.0"
+linden.equiv-actions-rep-re = "^1.0.0"
+linden.equiv-nfa-rep-re = "^1.0.0"
+linden.equiv-walk-ok = "^1.0.0"

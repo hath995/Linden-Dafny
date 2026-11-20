@@ -20,4 +20,4 @@ expected-errors = [
 ]
 
 [dependencies]
-"linden.regex-engine" = "^1.0.0"
+linden.regex-engine = "^1.0.0"

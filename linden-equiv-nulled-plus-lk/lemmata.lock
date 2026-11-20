@@ -1,7 +1,7 @@
 lock-version = 1
 solver = "lem-mvs/1"
 dafny = "4.11.0+fcb2042d6d043a2634f0854338c08feeaaaf4ae2"
-manifest-hash = "sha256:04fb4f21b16b6608aa1edb40009e09f5e3a3a33d49c3e6e3f335916527336820"
+manifest-hash = "sha256:6ffc02cebc5ee2e997484db8b5b5f2a4a756707577c54036032e710152b2bab8"
 
 [[package]]
 name = "linden.bridge"
@@ -36,6 +36,62 @@ fileset-hash = "sha256:9aa71b8dfbf9bd6d81ab44c525403131e00f48feffcd0f538f96d4e71
 doo-hash = "215f65498547ff58935be2db7d73181ca0e0a736cbc9da6d1d1e6fc518391ca2"
 
 [[package]]
+name = "linden.equiv-actions-rep-re"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:16fb14547f2ba5fb3c2d3fd049f695ca1f473d4c4f1718b1fd0251af51d98c5d"
+doo-hash = "7e3823159433b258e592b0a2945d216383f67fbba853b27f4bc7dd6e0fd64c11"
+
+[[package]]
+name = "linden.equiv-check-erase"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:c55af67df17cd7e52569226cfdbd7a85a3556251369ac0d01488e53b4dcb6960"
+doo-hash = "933dea3b89982dcf2f2ddd9ad6de4c19dd65095008da40d1cf9471b04171d48d"
+
+[[package]]
+name = "linden.equiv-entry-lk"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:efa644245b6306f230b08332fe7b65351ec8912aaf028aa6155f5d367cc13130"
+doo-hash = "07372633ba148949ffbf2df861e0528712b3521043c5eaea229e3e66ed493825"
+
+[[package]]
+name = "linden.equiv-tree-rep-re"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:65da25ee8967daa9c4c98aa3d839d17b82280322d00f312faf4e25a92e1d303c"
+doo-hash = "0b5385365b04ce84e3a93248dbbc1666cd54abbd7df34b3f40ab9d1b5658126c"
+
+[[package]]
+name = "linden.equiv-look-leaves"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:c4a74262f87a5b7ff88786cf3bad8d854169659aee6d7d5add2d6b8da7b6ab98"
+doo-hash = "27351d4f4d9ea6e866dedb8a77e5c43a8a56135da9f28a9e6a85ba3c01f0101f"
+
+[[package]]
+name = "linden.equiv-nulled-plus"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:2cecfd6e0e56281c8e75482e6b15da5c63b56ab9f4221829a291349c6f397d3c"
+doo-hash = "78641c523b21375b7888403134eba9ad6eae2e2d6bdbdc2d7ce5252a05bd8cb1"
+
+[[package]]
+name = "linden.equiv-cdn-priority"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:08ebe086dadd84994ad7b5f72142d96a3716da800d6604acc17434f6f7231cc8"
+doo-hash = "4f16da91607e27777aa0b0e8aca28ca36e41b9f54dd2eb4a456f392c6ba44859"
+
+[[package]]
 name = "linden.engine-model"
 class = 1
 version = "1.0.0"
@@ -50,6 +106,14 @@ version = "1.0.0"
 ordinal = 0
 fileset-hash = "sha256:e4d811193840fc54c859da361d6974ea6b2ebad090bbcc18f07a98a5b130e254"
 doo-hash = "c7929982f7a18e446e2778a7e5adc47c4ca704d0c0bc8ae0ab19901c661ba01b"
+
+[[package]]
+name = "linden.equiv-oracle-spec"
+class = 1
+version = "1.0.0"
+ordinal = 0
+fileset-hash = "sha256:228d4f8967d080cac86fc8820aef1d3369d99bf5ee89e683cb211f8a2577047d"
+doo-hash = "3cbdc6abfd56bad3a2f767992edd73bf9a967d49d8223177f1f13c60358cc65d"
 
 [[package]]
 name = "linden.equiv-look-tables"
@@ -106,75 +170,3 @@ version = "1.0.0"
 ordinal = 0
 fileset-hash = "sha256:263d769ed801297ab90e53c6b5f18262969926f22e4f175754abb328c7b50d80"
 doo-hash = "9b8df228227560a8bb0e4a75de20f918f7dbba3cef156d79d6c61371f1ff4ce2"
-
-[[package]]
-name = "linden.equiv-oracle-spec"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-oracle-spec"
-
-[[package]]
-name = "linden.equiv-actions-rep-re"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-actions-rep-re"
-
-[[package]]
-name = "linden.equiv-check-erase"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-check-erase"
-
-[[package]]
-name = "linden.equiv-entry-lk"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-entry-lk"
-
-[[package]]
-name = "linden.equiv-tree-rep-re"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-tree-rep-re"
-
-[[package]]
-name = "linden.equiv-look-leaves"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-look-leaves"
-
-[[package]]
-name = "linden.equiv-nulled-plus"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-nulled-plus"
-
-[[package]]
-name = "linden.equiv-cdn-priority"
-class = 1
-version = "1.0.0"
-ordinal = 0
-fileset-hash = ""
-doo-hash = ""
-path = "/home/aaron/code/Linden-Dafny/linden-equiv-cdn-priority"
